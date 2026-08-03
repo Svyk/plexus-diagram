@@ -1,0 +1,9 @@
+/* Roam injects this stylesheet on load and removes it on unload. */
+:root {
+  --example-extension-accent: var(--roam-color-primary, #106ba3);
+}
+
+.example-extension__accent {
+  color: var(--example-extension-accent);
+}
+

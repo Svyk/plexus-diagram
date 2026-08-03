@@ -1,0 +1,23 @@
+{
+  "name": "roam-extension-template",
+  "version": "0.1.0",
+  "private": true,
+  "description": "Zero-runtime-dependency template for Roam Depot extensions",
+  "type": "module",
+  "main": "extension.js",
+  "scripts": {
+    "build": "node build.mjs",
+    "dev": "node build.mjs --watch",
+    "scan:secrets": "node scripts/scan-secrets.mjs",
+    "test": "node --test test/*.test.js",
+    "verify:generated": "node scripts/verify-generated.mjs",
+    "check": "npm run build && npm run scan:secrets && node --check extension.js && npm test && npm run verify:generated"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "devDependencies": {
+    "esbuild": "0.28.1"
+  },
+  "license": "MIT"
+}

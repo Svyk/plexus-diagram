@@ -76,9 +76,9 @@ async function assertBundleFailure(source, expected) {
   }
 }
 
-test("browser bundle rejects an unresolved package", async () => {
+test("browser bundle rejects an unresolved package hidden after same-line code", async () => {
   await assertBundleFailure(
-    'import value from "definitely-not-installed-roam-template-package"; export default value;',
+    'const marker = 1; import value from "definitely-not-installed-roam-template-package"; export default { marker, value };',
     /Could not resolve/,
   );
 });
@@ -90,9 +90,9 @@ test("browser bundle rejects a Node built-in", async () => {
   );
 });
 
-test("browser bundle rejects remote imports instead of shipping runtime dependencies", async () => {
+test("browser bundle rejects a remote import hidden after a comment prefix", async () => {
   await assertBundleFailure(
-    'import value from "https://example.com/module.js"; export default value;',
+    '/* hidden prefix */ import value from "https://example.com/module.js"; export default value;',
     /Remote import is not allowed/,
   );
 });

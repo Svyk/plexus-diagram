@@ -1,5 +1,4 @@
 import { buildEdgePath, arrowheadPoints } from "./edges.js";
-import { isDiagramString } from "./discovery.js";
 
 export function createCanvasRoot({ session, settings, version, onPersist }) {
   const root = document.createElement("div");
@@ -23,6 +22,17 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
   root.append(world, toolbar);
   if (settings.get("minimap")) root.append(minimap);
 
+  const syncRenderChildrenDepth = () => {
+    root.dataset.renderChildrenDepth = String(settings.get("render-children-depth") ?? "1");
+  };
+
+  const setActiveTool = (tool) => {
+    session.model.activeTool = tool;
+    toolbar.querySelectorAll(".pxd-toolbar__btn").forEach((el) => {
+      el.classList.toggle("pxd-toolbar__btn--active", el.dataset.tool === tool);
+    });
+  };
+
   const tools = [
     ["select", "Select"],
     ["card", "Card"],
@@ -37,16 +47,52 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
     button.className = "pxd-toolbar__btn";
     button.dataset.tool = tool;
     button.title = label;
-    button.textContent = label.slice(0, 1);
+    button.textContent = label;
     button.addEventListener("click", () => {
-      session.model.activeTool = tool;
-      toolbar.querySelectorAll(".pxd-toolbar__btn").forEach((el) => {
-        el.classList.toggle("pxd-toolbar__btn--active", el.dataset.tool === tool);
-      });
-      if (tool === "library") onPersist?.({ openLibrary: true });
+      setActiveTool(tool);
+      if (tool === "library") onPersist?.({ toggleLibrary: true });
     });
     toolbar.append(button);
   }
+
+  const zoomInBtn = document.createElement("button");
+  zoomInBtn.type = "button";
+  zoomInBtn.className = "pxd-toolbar__btn pxd-toolbar__btn--zoom";
+  zoomInBtn.textContent = "Zoom+";
+  zoomInBtn.title = "Zoom in";
+  zoomInBtn.addEventListener("click", () => {
+    const zoomMax = Number(settings.get("zoom-max")) || 3;
+    session.model.viewport.zoom = Math.min(zoomMax, (session.model.viewport.zoom || 1) * 1.2);
+    onPersist?.({ persistViewport: true });
+    render();
+  });
+  toolbar.append(zoomInBtn);
+
+  const zoomOutBtn = document.createElement("button");
+  zoomOutBtn.type = "button";
+  zoomOutBtn.className = "pxd-toolbar__btn pxd-toolbar__btn--zoom";
+  zoomOutBtn.textContent = "Zoom-";
+  zoomOutBtn.title = "Zoom out";
+  zoomOutBtn.addEventListener("click", () => {
+    const zoomMin = Number(settings.get("zoom-min")) || 0.15;
+    session.model.viewport.zoom = Math.max(zoomMin, (session.model.viewport.zoom || 1) / 1.2);
+    onPersist?.({ persistViewport: true });
+    render();
+  });
+  toolbar.append(zoomOutBtn);
+
+  const fitBtn = document.createElement("button");
+  fitBtn.type = "button";
+  fitBtn.className = "pxd-toolbar__btn pxd-toolbar__btn--zoom";
+  fitBtn.textContent = "Fit";
+  fitBtn.title = "Fit all cards in view";
+  fitBtn.addEventListener("click", () => {
+    fitToView();
+    onPersist?.({ persistViewport: true });
+    render();
+  });
+  toolbar.append(fitBtn);
+
   if (settings.get("show-version-badge")) {
     const badge = document.createElement("span");
     badge.className = "pxd-version";
@@ -84,6 +130,38 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
     const node = session.model.nodes.get(contentUid);
     if (!node) return null;
     return { x: node.pos.x, y: node.pos.y, width: node.size.width, height: node.size.height };
+  };
+
+  const fitToView = () => {
+    const padding = 40;
+    const rect = root.getBoundingClientRect();
+    const zoomMin = Number(settings.get("zoom-min")) || 0.15;
+    const zoomMax = Number(settings.get("zoom-max")) || 3;
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const child of session.model.children) {
+      const node = session.model.nodes.get(child.uid);
+      if (!node) continue;
+      minX = Math.min(minX, node.pos.x);
+      minY = Math.min(minY, node.pos.y);
+      maxX = Math.max(maxX, node.pos.x + node.size.width);
+      maxY = Math.max(maxY, node.pos.y + node.size.height);
+    }
+    if (!Number.isFinite(minX)) return;
+    const contentW = Math.max(maxX - minX, 1);
+    const contentH = Math.max(maxY - minY, 1);
+    const zoom = Math.min(
+      zoomMax,
+      Math.max(
+        zoomMin,
+        Math.min((rect.width - padding * 2) / contentW, (rect.height - padding * 2) / contentH),
+      ),
+    );
+    session.model.viewport.zoom = zoom;
+    session.model.viewport.x = (rect.width - contentW * zoom) / 2 - minX * zoom;
+    session.model.viewport.y = (rect.height - contentH * zoom) / 2 - minY * zoom;
   };
 
   const renderSections = () => {
@@ -140,6 +218,8 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
     }
   };
 
+  const cardTitleText = (child) => child.string.replace(/\{\{.*?\}\}/, "").trim() || child.string.slice(0, 48);
+
   const renderCardContent = (cardEl, child) => {
     const body = document.createElement("div");
     body.className = "pxd-card__body";
@@ -180,11 +260,13 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
       card.style.height = `${node.size.height}px`;
       card.style.borderRadius = `${radius}px`;
       if (session.model.selected.has(child.uid)) card.classList.add("pxd-card--selected");
-      if (settings.get("show-card-title")) {
+      const titleText = cardTitleText(child);
+      if (settings.get("show-card-title") && titleText !== child.string.trim()) {
         const title = document.createElement("div");
         title.className = "pxd-card__title";
-        title.textContent = child.string.replace(/\{\{.*?\}\}/, "").trim() || child.string.slice(0, 48);
+        title.textContent = titleText;
         card.append(title);
+        card.classList.add("pxd-card--titled");
       }
       if (session.model.isNestedDiagram(child.uid)) {
         card.classList.add("pxd-card--nested");
@@ -259,6 +341,7 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
   };
 
   const render = () => {
+    syncRenderChildrenDepth();
     applyTransform();
     renderGrid();
     renderSections();
@@ -271,9 +354,17 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
     event.preventDefault();
     const zoomMin = Number(settings.get("zoom-min")) || 0.15;
     const zoomMax = Number(settings.get("zoom-max")) || 3;
+    const oldZoom = session.model.viewport.zoom || 1;
     const delta = event.deltaY > 0 ? 0.9 : 1.1;
-    const nextZoom = Math.min(zoomMax, Math.max(zoomMin, session.model.viewport.zoom * delta));
+    const nextZoom = Math.min(zoomMax, Math.max(zoomMin, oldZoom * delta));
+    const rect = root.getBoundingClientRect();
+    const mouseX = event.clientX - rect.left;
+    const mouseY = event.clientY - rect.top;
+    const worldX = (mouseX - session.model.viewport.x) / oldZoom;
+    const worldY = (mouseY - session.model.viewport.y) / oldZoom;
     session.model.viewport.zoom = nextZoom;
+    session.model.viewport.x = mouseX - worldX * nextZoom;
+    session.model.viewport.y = mouseY - worldY * nextZoom;
     onPersist?.({ persistViewport: true });
     render();
   }, { passive: false });
@@ -284,11 +375,20 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
   const onKeyUp = (event) => {
     if (event.code === "Space") spaceDown = false;
   };
+
+  const isEmptyCanvasTarget = (event) => !event.target.closest(".pxd-card")
+    && !event.target.closest(".pxd-toolbar")
+    && !event.target.closest(".pxd-library-drawer");
+
   root.addEventListener("mousedown", (event) => {
-    const panEnabled = settings.get("pan-on-space") ? spaceDown : false;
-    if (event.button === 1 || panEnabled) {
+    const panOnSpace = settings.get("pan-on-space") && spaceDown;
+    const panOnEmpty = event.button === 0
+      && isEmptyCanvasTarget(event)
+      && session.model.activeTool === "select";
+    if (event.button === 1 || panOnSpace || panOnEmpty) {
       panning = true;
       panStart = { x: event.clientX, y: event.clientY, viewport: { ...session.model.viewport } };
+      event.preventDefault();
     }
   });
   root.addEventListener("mousemove", (event) => {
@@ -301,6 +401,7 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
   root.addEventListener("mouseup", () => { panning = false; panStart = null; });
   root.addEventListener("click", async (event) => {
     if (event.target.closest(".pxd-card") || event.target.closest(".pxd-toolbar")) return;
+    if (event.target.closest(".pxd-library-drawer")) return;
     const tool = session.model.activeTool;
     if (tool === "card") {
       await onPersist?.({ addCard: screenToWorld(event.clientX, event.clientY) });
@@ -311,11 +412,15 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
   window.addEventListener("keydown", onKeyDown);
   window.addEventListener("keyup", onKeyUp);
 
+  setActiveTool(session.model.activeTool || "select");
   render();
 
   return {
     root,
     render,
+    setLibraryOpen(open) {
+      toolbar.querySelector('[data-tool="library"]')?.classList.toggle("pxd-toolbar__btn--active", open);
+    },
     dispose() {
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);

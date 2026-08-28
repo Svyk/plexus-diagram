@@ -6,10 +6,14 @@ export function mountDiagramView({ nativeElement, session, settings, version, li
   nativeElement.classList.add(NATIVE_HIDDEN_CLASS);
   nativeElement.classList.remove(PENDING_CLASS);
 
-  const height = Number(settings.get("default-height")) || 420;
+  const defaultHeight = Number(settings.get("default-height")) || 560;
+  const nativeRect = nativeElement.getBoundingClientRect();
+  const wrapperHeight = Math.max(nativeRect.height || 0, defaultHeight);
   const wrapper = document.createElement("div");
   wrapper.className = "pxd-mount";
-  wrapper.style.minHeight = `${height}px`;
+  wrapper.style.width = "100%";
+  wrapper.style.height = `${wrapperHeight}px`;
+  wrapper.style.minHeight = `${wrapperHeight}px`;
   wrapper.style.position = "relative";
 
   const canvas = createCanvasRoot({
@@ -19,7 +23,7 @@ export function mountDiagramView({ nativeElement, session, settings, version, li
     onPersist: async (action) => {
       if (action.persistLayout) await session.persistLayout();
       if (action.persistViewport) await session.persistViewport();
-      if (action.openLibrary) onAction?.({ type: "library" });
+      if (action.toggleLibrary) onAction?.({ type: "library" });
       if (action.openNested) onAction?.({ type: "nested", uid: action.openNested });
       if (action.addCard) {
         await session.addCard("", action.addCard);
@@ -41,7 +45,7 @@ export function mountDiagramView({ nativeElement, session, settings, version, li
     nativeElement.classList.remove(NATIVE_HIDDEN_CLASS);
   };
   lifecycle.add(dispose);
-  session.addView({ refresh: () => canvas.render(), dispose });
+  session.addView({ refresh: () => canvas.render(), dispose, canvas });
 
   return { wrapper, canvas, dispose };
 }

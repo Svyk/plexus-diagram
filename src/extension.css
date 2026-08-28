@@ -5,6 +5,8 @@
   --pxd-active: var(--cl-blue, #2d72d2);
   position: absolute;
   inset: 0;
+  width: 100%;
+  height: 100%;
   overflow: hidden;
   background: var(--pxd-bg);
   border: 1px solid var(--pxd-border);
@@ -118,8 +120,22 @@
 
 .pxd-card__body {
   padding: 8px;
-  height: calc(100% - 28px);
+  height: 100%;
   overflow: auto;
+}
+
+.pxd-card--titled .pxd-card__body {
+  height: calc(100% - 28px);
+}
+
+.pxd-card .rm-block__controls,
+.pxd-card .rm-bullet,
+.pxd-card .rm-block__ref-count {
+  display: none !important;
+}
+
+.pxd-root[data-render-children-depth="0"] .pxd-card .rm-block-children {
+  display: none !important;
 }
 
 .pxd-handle {
@@ -146,20 +162,25 @@
   top: 8px;
   left: 8px;
   display: flex;
-  flex-direction: column;
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-items: center;
   gap: 4px;
+  max-width: calc(100% - 240px);
   z-index: 2;
 }
 
 .pxd-toolbar__btn {
-  width: 28px;
-  height: 28px;
+  width: auto;
+  min-height: 28px;
+  padding: 4px 10px;
   border: 1px solid var(--pxd-border);
   background: var(--pxd-bg);
   color: var(--pxd-muted);
   border-radius: 4px;
   cursor: pointer;
-  font-size: 11px;
+  font-size: 12px;
+  white-space: nowrap;
 }
 
 .pxd-toolbar__btn--active {
@@ -190,7 +211,7 @@
   flex-direction: column;
   gap: 4px;
   padding: 8px;
-  max-height: 60vh;
+  max-height: 40vh;
   overflow: auto;
 }
 
@@ -198,6 +219,7 @@
   text-align: left;
   border: 1px solid var(--pxd-border);
   background: var(--pxd-bg);
+  color: var(--cl-font, inherit);
   padding: 6px 8px;
   border-radius: 4px;
   cursor: pointer;
@@ -207,13 +229,45 @@
   position: absolute;
   top: 8px;
   right: 8px;
-  width: 220px;
-  max-height: 60vh;
+  width: 240px;
+  max-height: 45vh;
   z-index: 3;
   background: var(--pxd-bg);
+  color: var(--cl-font, inherit);
   border: 1px solid var(--pxd-border);
   border-radius: 6px;
   overflow: hidden;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.12);
+}
+
+.pxd-library-drawer__header {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 8px;
+  border-bottom: 1px solid var(--pxd-border);
+}
+
+.pxd-library-drawer__search {
+  flex: 1;
+  min-width: 0;
+  padding: 4px 8px;
+  border: 1px solid var(--pxd-border);
+  border-radius: 4px;
+  background: var(--pxd-bg);
+  color: var(--cl-font, inherit);
+  font-size: 12px;
+}
+
+.pxd-library-drawer__close {
+  flex-shrink: 0;
+  padding: 4px 8px;
+  border: 1px solid var(--pxd-border);
+  border-radius: 4px;
+  background: var(--pxd-bg);
+  color: var(--cl-font, inherit);
+  cursor: pointer;
+  font-size: 12px;
 }
 
 .rm-diagram.pxd-native-hidden {

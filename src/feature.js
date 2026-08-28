@@ -29,7 +29,7 @@ export const runtime = {
   lifecycle: null,
   metadata: null,
   settings: null,
-  version: "0.1.4",
+  version: "0.2.0",
   enhancedUids: new Set(),
   activeDiagramUid: null,
   guardStyle: null,
@@ -100,20 +100,20 @@ async function enhanceDiagram(uid, nativeElement) {
   const layout = session.model.layoutSnapshot();
   await runtime.metadata.set(uid, layout);
   runtime.activeDiagramUid = uid;
-  mountDiagramView({
+  const mounted = mountDiagramView({
     nativeElement,
     session,
     settings: runtime.settings,
     version: runtime.version,
     lifecycle: runtime.lifecycle,
     onAction: async (action) => {
-      if (action.type === "library") await openLibrary();
+      if (action.type === "library") await toggleLibrary(mounted.wrapper, mounted.canvas);
       if (action.type === "nested" && action.uid) {
         globalThis.roamAlphaAPI?.ui?.mainWindow?.openBlock?.({ block: { uid: action.uid } });
       }
     },
   });
-  if (runtime.settings.get(SETTING_IDS.showLibraryOnOpen)) await openLibrary();
+  if (runtime.settings.get(SETTING_IDS.showLibraryOnOpen)) await openLibrary(mounted.wrapper, mounted.canvas);
   syncGuard();
 }
 
@@ -179,23 +179,42 @@ async function enhanceByUid(uid) {
   await enhanceDiagram(uid, diagram);
 }
 
-async function openLibrary(mountRoot) {
+let activeLibrary = null;
+
+async function toggleLibrary(mountRoot, canvas) {
   const uid = runtime.activeDiagramUid || focusedDiagramUid();
   const session = uid ? getSession(uid) : null;
   if (!session) return;
   const root = mountRoot || document.querySelector(".pxd-root");
-  createLibrarySidebar({
+  if (activeLibrary?.isOpen?.()) {
+    activeLibrary.close();
+    activeLibrary = null;
+    canvas?.setLibraryOpen?.(false);
+    return;
+  }
+  activeLibrary = createLibrarySidebar({
     lifecycle: runtime.lifecycle,
     settings: runtime.settings,
     session,
     mountRoot: root,
+    onClose: () => {
+      activeLibrary = null;
+      canvas?.setLibraryOpen?.(false);
+    },
     onPlacePage: async (title) => {
       const center = root
         ? viewportCenterPosition(root, session, runtime.settings)
         : { x: 120, y: 120 };
       await session.addCard(`[[${title}]]`, center);
+      session.notifyViews();
     },
   });
+  canvas?.setLibraryOpen?.(true);
+}
+
+async function openLibrary(mountRoot, canvas) {
+  if (activeLibrary?.isOpen?.()) return;
+  await toggleLibrary(mountRoot, canvas);
 }
 
 function scanAddedNode(node) {
@@ -331,7 +350,7 @@ async function registerSlashAndContext(lifecycle, extensionAPI) {
 export async function installPlexusDiagram({ extensionAPI, lifecycle, version }) {
   runtime.extensionAPI = extensionAPI;
   runtime.lifecycle = lifecycle;
-  runtime.version = version || "0.1.4";
+  runtime.version = version || "0.2.0";
   runtime.settings = createSettingsReader(extensionAPI);
   runtime.enhancedUids = readEnhancedUidCache();
   installGuard(runtime.enhancedUids);

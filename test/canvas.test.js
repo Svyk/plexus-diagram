@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createCanvasRoot } from "../src/canvas.js";
+import { createCanvasRoot, shouldCommitPulledString, topbarOffset } from "../src/canvas.js";
 import { settingsDefaults } from "../src/settings.js";
 
 function createDomStub() {
@@ -67,6 +67,26 @@ function createDomStub() {
 
   return { document, window, elements };
 }
+
+test("shouldCommitPulledString refuses empty pulls over known card text", () => {
+  assert.equal(shouldCommitPulledString("Test of this", ""), false);
+  assert.equal(shouldCommitPulledString("Test of this", "   "), false);
+  assert.equal(shouldCommitPulledString("Test of this", "Test of this"), false);
+  assert.equal(shouldCommitPulledString("Test of this", "Edited"), true);
+  assert.equal(shouldCommitPulledString("", "hello"), true);
+  assert.equal(shouldCommitPulledString("x", null), false);
+});
+
+test("topbarOffset uses the bottom of .rm-topbar (breadcrumbs live there)", () => {
+  const root = {
+    querySelector(sel) {
+      if (sel === ".rm-topbar") return { getBoundingClientRect: () => ({ bottom: 48 }) };
+      return null;
+    },
+  };
+  assert.equal(topbarOffset(root), 48);
+  assert.equal(topbarOffset({ querySelector: () => null }), 0);
+});
 
 test("settings defaults use 560px height and hide card titles", () => {
   const defaults = settingsDefaults();

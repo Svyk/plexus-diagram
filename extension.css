@@ -60,10 +60,11 @@
 
 .pxd-mount--fullscreen {
   position: fixed !important;
-  inset: 0;
-  z-index: 40;
-  width: 100vw !important;
-  height: 100vh !important;
+  /* top/left/right/bottom are set in JS so we sit *below* `.rm-topbar`
+     (RoamJS breadcrumbs lives there). Do not use inset:0. */
+  z-index: 20;
+  width: auto !important;
+  height: auto !important;
   min-height: 0 !important;
   border-radius: 0;
 }
@@ -231,6 +232,16 @@ body.pxd-has-fullscreen {
 
 .pxd-card--editing .pxd-card__body {
   cursor: text;
+}
+
+.pxd-card__edit-fallback {
+  color: var(--pxd-text);
+  white-space: pre-wrap;
+}
+
+.pxd-card__editor .rm-block-main,
+.pxd-card__editor .roam-block-container {
+  width: 100%;
 }
 
 .pxd-card__placeholder {

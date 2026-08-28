@@ -34,7 +34,7 @@ export const runtime = {
   lifecycle: null,
   metadata: null,
   settings: null,
-  version: "0.3.1",
+  version: "0.3.2",
   enhancedUids: new Set(),
   activeDiagramUid: null,
   guardStyle: null,
@@ -336,6 +336,11 @@ export function exitFullscreenOnNavigate(hash = globalThis.location?.hash || "")
     const mount = connectedMountForUid(uid);
     if (!mount) continue;
     mount.classList.remove("pxd-mount--fullscreen", "pxd-mount--zoomed");
+    mount.style.top = "";
+    mount.style.left = "";
+    mount.style.right = "";
+    mount.style.bottom = "";
+    mount.style.width = "";
     mount.style.height = `${height}px`;
     mount.style.minHeight = `${height}px`;
   }
@@ -455,7 +460,7 @@ async function registerSlashAndContext(lifecycle, extensionAPI) {
 export async function installPlexusDiagram({ extensionAPI, lifecycle, version }) {
   runtime.extensionAPI = extensionAPI;
   runtime.lifecycle = lifecycle;
-  runtime.version = version || "0.3.1";
+  runtime.version = version || "0.3.2";
   runtime.settings = createSettingsReader(extensionAPI);
   runtime.enhancedUids = readEnhancedUidCache();
   installGuard(runtime.enhancedUids);

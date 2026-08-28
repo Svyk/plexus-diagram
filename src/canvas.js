@@ -10,7 +10,26 @@ import {
 const SVG_NS = "http://www.w3.org/2000/svg";
 const DRAG_THRESHOLD_PX = 4;
 const PERSIST_DEBOUNCE_MS = 150;
+const EDIT_GRACE_MS = 1000;
 const HINT_TEXT = "Drag empty space to pan · double-click to add a card · Fullscreen for a real board";
+
+// renderBlock hydration / outline-focus steal can pull an empty string for a
+// card that still has text. Never commit that over a known non-empty value.
+export function shouldCommitPulledString(previous, pulled) {
+  if (typeof pulled !== "string") return false;
+  if (pulled === previous) return false;
+  if (pulled.trim() === "" && String(previous || "").trim() !== "") return false;
+  return true;
+}
+
+// RoamJS breadcrumbs (and the rest of the top bar) live in `.rm-topbar`.
+// Fullscreen must start below that bar — native Maximize does not cover it.
+export function topbarOffset(root = globalThis.document) {
+  const topbar = root?.querySelector?.(".rm-topbar");
+  if (!topbar?.getBoundingClientRect) return 0;
+  const bottom = topbar.getBoundingClientRect().bottom;
+  return Number.isFinite(bottom) ? Math.max(0, Math.round(bottom)) : 0;
+}
 
 function raf(callback) {
   if (typeof globalThis.requestAnimationFrame === "function") {
@@ -347,17 +366,37 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
     toolbar.append(badge);
   }
 
+  const applyFullscreenChrome = (mount, on) => {
+    mount.classList.toggle("pxd-mount--fullscreen", Boolean(on));
+    document.body?.classList?.toggle("pxd-has-fullscreen", Boolean(on));
+    if (on) {
+      const top = topbarOffset();
+      mount.style.top = `${top}px`;
+      mount.style.left = "0px";
+      mount.style.right = "0px";
+      mount.style.bottom = "0px";
+      mount.style.width = "auto";
+      mount.style.height = "auto";
+      mount.style.minHeight = "0";
+    } else {
+      mount.style.top = "";
+      mount.style.left = "";
+      mount.style.right = "";
+      mount.style.bottom = "";
+    }
+  };
+
   const setFullscreen = (on) => {
     const mount = mountEl();
     if (!mount) return;
     const current = isFullscreen();
     fullBtn.textContent = on ? "Exit full screen" : "Fullscreen";
     fullBtn.setAttribute("aria-pressed", on ? "true" : "false");
-    if (current === Boolean(on)) return;
-    keepCenterAcross(() => {
-      mount.classList.toggle("pxd-mount--fullscreen", Boolean(on));
-      document.body?.classList?.toggle("pxd-has-fullscreen", Boolean(on));
-    });
+    if (current === Boolean(on)) {
+      if (on) applyFullscreenChrome(mount, true);
+      return;
+    }
+    keepCenterAcross(() => applyFullscreenChrome(mount, Boolean(on)));
   };
 
   // ---------------------------------------------------------------- hint
@@ -475,6 +514,7 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
   // ---------------------------------------------------------------- cards
   const cardEls = new Map();
   let editingUid = null;
+  let editOpenedAt = 0;
 
   const cardTitleText = (child) => child.string.replace(/\{\{.*?\}\}/, "").trim() || child.string.slice(0, 48);
 
@@ -522,22 +562,15 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
   };
 
   const focusRoamBlock = (body, uid, attempt = 0) => {
-    const input = body.querySelector?.(".rm-block__input, textarea");
+    const input = body.querySelector?.(".pxd-card__editor .rm-block__input, .pxd-card__editor textarea");
     if (!input) {
-      // renderBlock mounts asynchronously; give React a few frames before giving up.
-      if (attempt < 4 && editingUid === uid) setTimeout(() => focusRoamBlock(body, uid, attempt + 1), 120);
+      if (attempt < 8 && editingUid === uid) setTimeout(() => focusRoamBlock(body, uid, attempt + 1), 80);
       return;
     }
-    const match = String(input.id || "").match(/^block-input-(.+)$/);
-    const windowId = match && match[1].endsWith(`-${uid}`)
-      ? match[1].slice(0, -(uid.length + 1))
-      : null;
-    if (windowId && roamUi()?.setBlockFocusAndSelection) {
-      try {
-        roamUi().setBlockFocusAndSelection({ location: { "block-uid": uid, "window-id": windowId } });
-        return;
-      } catch { /* fall back to a click */ }
-    }
+    body.querySelector(".pxd-card__edit-fallback")?.remove?.();
+    // Do not call setBlockFocusAndSelection. That focuses the *outline* copy of
+    // the same uid; Roam then unmounts or blanks the overlay mount.
+    input.focus?.();
     input.click?.();
   };
 
@@ -545,6 +578,7 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
     const uid = editingUid;
     if (!uid) return;
     editingUid = null;
+    editOpenedAt = 0;
     const card = cardEls.get(uid);
     root.classList.remove("pxd-root--editing");
     if (!card) return;
@@ -554,7 +588,7 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
       try {
         const pulled = globalThis.roamAlphaAPI?.data?.pull?.("[:block/string]", [":block/uid", uid]);
         const fresh = pulled?.[":block/string"] ?? pulled?.string;
-        if (typeof fresh === "string") {
+        if (shouldCommitPulledString(child?.string, fresh)) {
           child = { ...(child || { uid }), string: fresh };
           const live = model().getCard(uid);
           if (live) live.string = fresh;
@@ -577,14 +611,22 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
       return;
     }
     editingUid = uid;
+    editOpenedAt = Date.now();
     model().selected = new Set([uid]);
     syncSelection();
     card.classList.add("pxd-card--editing");
     root.classList.add("pxd-root--editing");
     const body = card._pxdBody;
+    unmountRoam(body);
+    const fallback = document.createElement("div");
+    fallback.className = "pxd-card__edit-fallback";
+    fallback.textContent = child.string;
+    const editor = document.createElement("div");
+    editor.className = "pxd-card__editor";
     body.innerHTML = "";
+    body.append(fallback, editor);
     try {
-      components.renderBlock({ uid, el: body });
+      components.renderBlock({ uid, el: editor });
     } catch {
       exitEdit(false);
       return;
@@ -902,12 +944,14 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
 
   const onFocusOut = (event) => {
     if (!editingUid) return;
+    if (Date.now() - editOpenedAt < EDIT_GRACE_MS) return;
     const card = cardEls.get(editingUid);
     if (!card) return;
     const next = event.relatedTarget;
     if (next && (card.contains?.(next) || next.closest?.(".bp3-portal, .rm-autocomplete__wrapper"))) return;
     setTimeout(() => {
       if (!editingUid) return;
+      if (Date.now() - editOpenedAt < EDIT_GRACE_MS) return;
       const activeEl = document.activeElement;
       if (activeEl && (card.contains?.(activeEl) || activeEl.closest?.(".bp3-portal, .rm-autocomplete__wrapper"))) return;
       exitEdit();

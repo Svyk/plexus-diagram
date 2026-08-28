@@ -3,12 +3,12 @@ import { NATIVE_HIDDEN_CLASS, PENDING_CLASS } from "./discovery.js";
 
 export function mountDiagramView({ nativeElement, session, settings, version, lifecycle, onAction }) {
   const host = nativeElement.parentElement || nativeElement;
-  nativeElement.classList.add(NATIVE_HIDDEN_CLASS);
-  nativeElement.classList.remove(PENDING_CLASS);
-
   const defaultHeight = Number(settings.get("default-height")) || 560;
   const nativeRect = nativeElement.getBoundingClientRect();
   const wrapperHeight = Math.max(nativeRect.height || 0, defaultHeight);
+
+  nativeElement.classList.add(NATIVE_HIDDEN_CLASS);
+  nativeElement.classList.remove(PENDING_CLASS);
   const wrapper = document.createElement("div");
   wrapper.className = "pxd-mount";
   wrapper.style.width = "100%";

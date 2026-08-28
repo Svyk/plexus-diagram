@@ -72,7 +72,7 @@ test("extension exports the Roam lifecycle contract and survives repeated unload
   await extension.onunload();
 
   assert.ok(api.calls.some(([name, label]) => name === "command:add" && label === "Plexus Diagram: Enhance this diagram"));
-  assert.ok(api.calls.some(([name, label]) => name === "slash:add" && label === "Plexus Diagram"));
+  assert.ok(api.calls.some(([name, label]) => name === "slash:add" && label === "Plexus Diagram: Enhance this diagram"));
   assert.ok(api.calls.some(([name, label]) => name === "context:add" && label === "Plexus Diagram: Enhance"));
   assert.ok(api.calls.some(([name, title]) => name === "panel:create" && title === "Plexus Diagram"));
   assert.ok(!api.calls.some(([, key]) => key === "include-timestamp"));

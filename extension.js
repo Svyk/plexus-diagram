@@ -1,4 +1,4 @@
-/* Plexus Diagram v0.1.2 | MIT | generated; edit src/ */
+/* Plexus Diagram v0.1.3 | MIT | generated; edit src/ */
 
 // src/lifecycle.js
 function isPromiseLike(value) {
@@ -1471,7 +1471,7 @@ var runtime = {
   lifecycle: null,
   metadata: null,
   settings: null,
-  version: "0.1.2",
+  version: "0.1.3",
   enhancedUids: /* @__PURE__ */ new Set(),
   activeDiagramUid: null,
   guardStyle: null
@@ -1631,50 +1631,55 @@ function installObservers(lifecycle) {
   });
   lifecycle.observer(bodyObserver, document.body, { childList: true });
 }
-function registerCommands(lifecycle, extensionAPI) {
-  const run = (label, fn) => lifecycle.command(extensionAPI.ui.commandPalette, {
-    label: `Plexus Diagram: ${label}`,
-    callback: () => {
+async function registerCommands(lifecycle, extensionAPI) {
+  const run = async (label, fn) => {
+    const full = `Plexus Diagram: ${label}`;
+    const callback = (context) => {
       if (!enabled()) {
         console.info("[plexus-diagram] Command skipped — extension disabled");
         return;
       }
-      void fn();
+      void fn(context);
+    };
+    await lifecycle.command(extensionAPI.ui.commandPalette, { label: full, callback });
+    if (extensionAPI.ui?.slashCommand?.addCommand) {
+      await lifecycle.command(extensionAPI.ui.slashCommand, { label: full, callback });
     }
-  });
-  run("Enhance this diagram", async () => {
-    const uid = focusedDiagramUid();
+  };
+  await run("Enhance this diagram", async (context) => {
+    const fromSlash = context?.["block-uid"];
+    const uid = fromSlash && isDiagramString(blockStringForUid(fromSlash)) && fromSlash || focusedDiagramUid();
     if (!uid) return;
     const diagram = diagramElForUid(uid) || document.querySelector(".rm-diagram");
     if (diagram) await enhanceDiagram(uid, diagram);
   });
-  run("Restore native diagram", async () => {
+  await run("Restore native diagram", async () => {
     const uid = focusedDiagramUid() || runtime.activeDiagramUid;
     if (uid) await restoreDiagram(uid);
   });
-  run("Add card", async () => {
+  await run("Add card", async () => {
     const uid = runtime.activeDiagramUid || focusedDiagramUid();
     const session = uid ? getSession(uid) : null;
     if (!session) return;
     await session.addCard("", { x: 80, y: 80 });
   });
-  run("Connect selected", async () => {
+  await run("Connect selected", async () => {
     const session = getSession(runtime.activeDiagramUid || focusedDiagramUid());
     if (!session) return;
     await session.connectSelected(runtime.settings.get(SETTING_IDS.connectorStyle));
   });
-  run("Toggle connect tool", () => {
+  await run("Toggle connect tool", () => {
     const session = getSession(runtime.activeDiagramUid || focusedDiagramUid());
     if (!session) return;
     session.model.activeTool = session.model.activeTool === "connect" ? "select" : "connect";
   });
-  run("Open nested diagram", () => {
+  await run("Open nested diagram", () => {
     const session = getSession(runtime.activeDiagramUid || focusedDiagramUid());
     const uid = [...session?.model.selected || []][0];
     if (uid) globalThis.roamAlphaAPI?.ui?.mainWindow?.openBlock?.({ block: { uid } });
   });
-  run("Show library", () => openLibrary());
-  run("Appearances of this block", () => {
+  await run("Show library", () => openLibrary());
+  await run("Appearances of this block", () => {
     const focused = extensionAPI.ui?.getFocusedBlock?.()?.["block-uid"];
     if (!focused) return;
     const rows = globalThis.roamAlphaAPI?.data?.q?.(`[:find ?diagram :where
@@ -1682,14 +1687,14 @@ function registerCommands(lifecycle, extensionAPI) {
       [?diagram :block/children ?child]]`) || [];
     console.info("[plexus-diagram] Appearances:", rows);
   });
-  run("Snap selection to grid", async () => {
+  await run("Snap selection to grid", async () => {
     const session = getSession(runtime.activeDiagramUid || focusedDiagramUid());
     if (!session) return;
     session.model.snapSelectionToGrid(Number(runtime.settings.get(SETTING_IDS.gridSize)) || 24);
     await session.persistLayout();
     session.notifyViews();
   });
-  run("Auto-layout", async () => {
+  await run("Auto-layout", async () => {
     const session = getSession(runtime.activeDiagramUid || focusedDiagramUid());
     if (!session) return;
     session.model.autoLayoutGrid(true, Number(runtime.settings.get(SETTING_IDS.gridSize)) || 24);
@@ -1697,29 +1702,9 @@ function registerCommands(lifecycle, extensionAPI) {
     session.notifyViews();
   });
 }
-function registerSlashAndContext(lifecycle, extensionAPI) {
-  if (extensionAPI.ui?.slashCommand?.addCommand) {
-    lifecycle.command(extensionAPI.ui.slashCommand, {
-      label: "Plexus Diagram",
-      callback: async (context) => {
-        if (!enabled()) return;
-        const blockUid = context["block-uid"];
-        const string = blockStringForUid(blockUid);
-        const diagramUid = focusedDiagramUid() || (isDiagramString(string) ? blockUid : null);
-        if (diagramUid) {
-          const diagram = diagramElForUid(diagramUid);
-          if (diagram) await enhanceDiagram(diagramUid, diagram);
-          return;
-        }
-        if (string && string.trim() && !isDiagramString(string)) return;
-        await globalThis.roamAlphaAPI?.data?.block?.update?.({
-          block: { uid: blockUid, string: "{{[[diagram]]}}" }
-        });
-      }
-    });
-  }
+async function registerSlashAndContext(lifecycle, extensionAPI) {
   if (extensionAPI.ui?.blockContextMenu?.addCommand) {
-    lifecycle.command(extensionAPI.ui.blockContextMenu, {
+    await lifecycle.command(extensionAPI.ui.blockContextMenu, {
       label: "Plexus Diagram: Enhance",
       "display-conditional": (event) => isDiagramString(event["block-string"]),
       callback: async (event) => {
@@ -1733,12 +1718,12 @@ function registerSlashAndContext(lifecycle, extensionAPI) {
 async function installPlexusDiagram({ extensionAPI, lifecycle, version }) {
   runtime.extensionAPI = extensionAPI;
   runtime.lifecycle = lifecycle;
-  runtime.version = version || "0.1.2";
+  runtime.version = version || "0.1.3";
   runtime.settings = createSettingsReader(extensionAPI);
   runtime.enhancedUids = readEnhancedUidCache();
   installGuard(runtime.enhancedUids);
-  registerCommands(lifecycle, extensionAPI);
-  registerSlashAndContext(lifecycle, extensionAPI);
+  await registerCommands(lifecycle, extensionAPI);
+  await registerSlashAndContext(lifecycle, extensionAPI);
   installObservers(lifecycle);
   lifecycle.add(async () => {
     if (runtime.settings.get(SETTING_IDS.restoreNativeOnUnload)) {

@@ -14,6 +14,7 @@ function createDomStub() {
       classList: {
         add(...names) { names.forEach((n) => { if (!el.className.includes(n)) el.className += ` ${n}`; }); },
         remove(...names) { names.forEach((n) => { el.className = el.className.replace(n, "").trim(); }); },
+        contains(name) { return el.className.split(/\s+/).includes(name); },
         toggle(name, force) {
           const has = el.className.includes(name);
           const next = force ?? !has;
@@ -104,16 +105,28 @@ test("toolbar buttons use full labels including Select", () => {
         return defaults[key];
       },
     };
-    const canvas = createCanvasRoot({ session, settings, version: "0.2.0" });
+    const canvas = createCanvasRoot({ session, settings, version: "0.3.0" });
+    try {
     const toolbar = canvas.root.children.find((child) => child.className === "pxd-toolbar");
-    const labels = toolbar.children
+    const buttons = toolbar.children.flatMap((child) => (
+      child.className?.includes("pxd-toolbar__group") ? child.children : [child]
+    ));
+    const labels = buttons
       .filter((child) => child.className?.includes("pxd-toolbar__btn"))
       .map((child) => child.textContent);
     assert.ok(labels.includes("Select"));
     assert.ok(!labels.includes("S"));
     assert.ok(labels.includes("Zoom+"));
     assert.ok(labels.includes("Fit"));
-    canvas.dispose();
+    assert.ok(labels.includes("Fullscreen"));
+    const hintEl = canvas.root.children.find((child) => child.className?.includes("pxd-hint"));
+    assert.ok(hintEl, "hint overlay is mounted");
+    assert.ok(hintEl.className.includes("pxd-hint--visible"), "hint shows on an empty select-tool board");
+    assert.equal(typeof canvas.editCard, "function");
+    assert.equal(typeof canvas.fitToView, "function");
+    } finally {
+      canvas.dispose();
+    }
   } finally {
     globalThis.document = previousDocument;
     globalThis.window = previousWindow;

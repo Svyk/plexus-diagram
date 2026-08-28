@@ -1,5 +1,13 @@
 import { createCanvasRoot } from "./canvas.js";
-import { NATIVE_HIDDEN_CLASS, PENDING_CLASS } from "./discovery.js";
+import { diagramUidFromLocation, NATIVE_HIDDEN_CLASS, PENDING_CLASS } from "./discovery.js";
+
+// True only for a zoomed block page (`#/app/<graph>/page/<uid>` or a
+// `.rm-zoom-block-wrapper` host), never for an inline daily-page embed.
+export function isZoomedDiagramPage(nativeElement, diagramUid, hash) {
+  if (nativeElement?.closest?.(".rm-zoom-block-wrapper")) return true;
+  const pageUid = diagramUidFromLocation(hash);
+  return Boolean(diagramUid && pageUid && pageUid === diagramUid);
+}
 
 export function mountDiagramView({ nativeElement, session, settings, version, lifecycle, onAction }) {
   const host = nativeElement.parentElement || nativeElement;
@@ -31,9 +39,11 @@ export function mountDiagramView({ nativeElement, session, settings, version, li
       if (action.persistViewport) await session.persistViewport();
       if (action.toggleLibrary) onAction?.({ type: "library" });
       if (action.openNested) onAction?.({ type: "nested", uid: action.openNested });
+      if (action.openBlock) onAction?.({ type: "open-block", uid: action.openBlock });
       if (action.addCard) {
-        await session.addCard("", action.addCard);
+        const uid = await session.addCard(action.string ?? "", action.addCard);
         canvas.render();
+        if (uid && !action.string) canvas.editCard?.(uid);
       }
       if (action.addSection) {
         await session.addSection(action.addSection);
@@ -45,13 +55,20 @@ export function mountDiagramView({ nativeElement, session, settings, version, li
   wrapper.append(canvas.root);
   host.insertBefore(wrapper, nativeElement.nextSibling);
 
+  // A zoomed diagram page *is* the whiteboard: open it full-bleed. Inline embeds
+  // stay inline.
+  if (settings.get("fullscreen-on-zoom") !== false
+    && isZoomedDiagramPage(nativeElement, session?.diagramUid)) {
+    canvas.setFullscreen(true);
+  }
+
   const dispose = () => {
     canvas.dispose();
     wrapper.remove();
     nativeElement.classList.remove(NATIVE_HIDDEN_CLASS);
   };
   lifecycle.add(dispose);
-  session.addView({ refresh: () => canvas.render(), dispose, canvas, wrapper });
+  session.addView({ refresh: () => canvas.render(), dispose, canvas, wrapper, setFullscreen: canvas.setFullscreen });
 
   return { wrapper, canvas, dispose };
 }

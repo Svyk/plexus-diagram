@@ -33,7 +33,7 @@ export const runtime = {
   lifecycle: null,
   metadata: null,
   settings: null,
-  version: "0.2.1",
+  version: "0.3.0",
   enhancedUids: new Set(),
   activeDiagramUid: null,
   guardStyle: null,
@@ -135,6 +135,9 @@ async function enhanceDiagram(uid, nativeElement) {
         if (action.type === "library") await toggleLibrary(mounted.wrapper, mounted.canvas);
         if (action.type === "nested" && action.uid) {
           globalThis.roamAlphaAPI?.ui?.mainWindow?.openBlock?.({ block: { uid: action.uid } });
+        }
+        if (action.type === "open-block" && action.uid) {
+          globalThis.roamAlphaAPI?.ui?.rightSidebar?.addWindow?.({ window: { type: "block", "block-uid": action.uid } });
         }
       },
     });
@@ -426,7 +429,7 @@ async function registerSlashAndContext(lifecycle, extensionAPI) {
 export async function installPlexusDiagram({ extensionAPI, lifecycle, version }) {
   runtime.extensionAPI = extensionAPI;
   runtime.lifecycle = lifecycle;
-  runtime.version = version || "0.2.1";
+  runtime.version = version || "0.3.0";
   runtime.settings = createSettingsReader(extensionAPI);
   runtime.enhancedUids = readEnhancedUidCache();
   installGuard(runtime.enhancedUids);

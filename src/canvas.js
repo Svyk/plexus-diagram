@@ -1,13 +1,52 @@
 import { buildEdgePath, arrowheadPoints } from "./edges.js";
+import {
+  contentBounds,
+  fitViewport,
+  MIN_CARD_HEIGHT,
+  MIN_CARD_WIDTH,
+  viewportNeedsFit,
+} from "./model.js";
 
+const SVG_NS = "http://www.w3.org/2000/svg";
+const DRAG_THRESHOLD_PX = 4;
+const PERSIST_DEBOUNCE_MS = 150;
+const HINT_TEXT = "Drag empty space to pan · double-click to add a card · Fullscreen for a real board";
+
+function raf(callback) {
+  if (typeof globalThis.requestAnimationFrame === "function") {
+    const id = globalThis.requestAnimationFrame(callback);
+    return () => globalThis.cancelAnimationFrame?.(id);
+  }
+  const id = setTimeout(callback, 16);
+  return () => clearTimeout(id);
+}
+
+function roamUi() {
+  return globalThis.roamAlphaAPI?.ui;
+}
+
+function isTextEntryTarget(target) {
+  if (!target || typeof target.closest !== "function") return false;
+  const tag = String(target.tagName || "").toLowerCase();
+  if (tag === "input" || tag === "textarea" || tag === "select") return true;
+  if (target.isContentEditable) return true;
+  return Boolean(target.closest(".rm-block__input, [contenteditable=\"true\"], .pxd-library-drawer"));
+}
+
+/**
+ * Vanilla DOM/SVG whiteboard. Pointer motion only touches CSS (`.pxd-world` transform,
+ * one card's left/top/size, the edge paths that hang off it). `render()` is reserved
+ * for structural change — add/remove card, tool change, session pull — and reconciles
+ * card elements by uid so a card being edited is never torn down under the caret.
+ */
 export function createCanvasRoot({ session, settings, version, onPersist }) {
   const root = document.createElement("div");
   root.className = "pxd-root";
-  const world = document.createElement("div");
-  world.className = "pxd-world";
   const grid = document.createElement("div");
   grid.className = "pxd-grid";
-  const edgesSvg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+  const world = document.createElement("div");
+  world.className = "pxd-world";
+  const edgesSvg = document.createElementNS(SVG_NS, "svg");
   edgesSvg.classList.add("pxd-edges");
   const cardsLayer = document.createElement("div");
   cardsLayer.className = "pxd-cards";
@@ -15,103 +54,291 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
   sectionsLayer.className = "pxd-sections";
   const toolbar = document.createElement("div");
   toolbar.className = "pxd-toolbar";
-  const minimap = document.createElement("div");
-  minimap.className = "pxd-minimap";
+  const hint = document.createElement("div");
+  hint.className = "pxd-hint";
+  hint.textContent = HINT_TEXT;
+  const minimap = settings.get("minimap") ? document.createElement("div") : null;
+  if (minimap) minimap.className = "pxd-minimap";
 
-  world.append(grid, sectionsLayer, edgesSvg, cardsLayer);
-  root.append(world, toolbar);
-  if (settings.get("minimap")) root.append(minimap);
+  world.append(sectionsLayer, edgesSvg, cardsLayer);
+  root.append(grid, world, toolbar, hint);
+  if (minimap) root.append(minimap);
 
-  const syncRenderChildrenDepth = () => {
-    root.dataset.renderChildrenDepth = String(settings.get("render-children-depth") ?? "1");
+  const model = () => session.model;
+  const num = (id, fallback) => {
+    const value = Number(settings.get(id));
+    return Number.isFinite(value) && value > 0 ? value : fallback;
+  };
+  const zoomBounds = () => ({ zoomMin: num("zoom-min", 0.15), zoomMax: num("zoom-max", 3) });
+  const defaultCardSize = () => ({
+    width: Math.max(MIN_CARD_WIDTH, num("default-card-width", 280)),
+    height: Math.max(MIN_CARD_HEIGHT, num("default-card-height", 160)),
+  });
+  const getGridSize = () => num("grid-size", 24);
+  const snap = (value) => {
+    if (!settings.get("snap-to-grid")) return value;
+    const size = getGridSize();
+    return Math.round(value / size) * size;
+  };
+  const rootRect = () => root.getBoundingClientRect();
+  const viewSize = () => {
+    const rect = rootRect();
+    return { width: rect.width, height: rect.height };
+  };
+  const screenToWorld = (clientX, clientY, snapped = true) => {
+    const rect = rootRect();
+    const { x, y, zoom } = model().viewport;
+    const wx = (clientX - rect.left - x) / (zoom || 1);
+    const wy = (clientY - rect.top - y) / (zoom || 1);
+    return snapped ? { x: snap(wx), y: snap(wy) } : { x: wx, y: wy };
+  };
+  const mountEl = () => root.closest?.(".pxd-mount") || null;
+  const isFullscreen = () => Boolean(mountEl()?.classList?.contains?.("pxd-mount--fullscreen"));
+
+  // ---------------------------------------------------------------- persistence
+  let disposed = false;
+  let viewportTimer = null;
+  let layoutTimer = null;
+  const flushViewport = () => {
+    if (viewportTimer) clearTimeout(viewportTimer);
+    viewportTimer = null;
+    return onPersist?.({ persistViewport: true });
+  };
+  const flushLayout = () => {
+    if (layoutTimer) clearTimeout(layoutTimer);
+    layoutTimer = null;
+    return onPersist?.({ persistLayout: true });
+  };
+  const schedulePersistViewport = () => {
+    if (disposed) return;
+    if (viewportTimer) clearTimeout(viewportTimer);
+    viewportTimer = setTimeout(flushViewport, PERSIST_DEBOUNCE_MS);
+  };
+  const schedulePersistLayout = () => {
+    if (disposed) return;
+    if (layoutTimer) clearTimeout(layoutTimer);
+    layoutTimer = setTimeout(flushLayout, PERSIST_DEBOUNCE_MS);
   };
 
-  const setActiveTool = (tool) => {
-    session.model.activeTool = tool;
-    toolbar.querySelectorAll(".pxd-toolbar__btn").forEach((el) => {
-      el.classList.toggle("pxd-toolbar__btn--active", el.dataset.tool === tool);
+  // ---------------------------------------------------------------- viewport
+  const zoomLabel = document.createElement("button");
+  zoomLabel.type = "button";
+  zoomLabel.className = "pxd-toolbar__zoom-level";
+  zoomLabel.title = "Reset zoom to 100%";
+
+  const renderGrid = () => {
+    const show = settings.get("show-grid");
+    const style = settings.get("grid-style") || "dots";
+    grid.className = "pxd-grid";
+    grid.classList.toggle("pxd-grid--hidden", !show || style === "none");
+    grid.classList.toggle("pxd-grid--dots", style === "dots");
+    grid.classList.toggle("pxd-grid--lines", style === "lines");
+  };
+
+  let minimapScheduled = null;
+  const updateMinimap = () => {
+    if (!minimap) return;
+    const rect = rootRect();
+    const { x, y, zoom } = model().viewport;
+    const z = zoom || 1;
+    const view = { minX: -x / z, minY: -y / z, maxX: (rect.width - x) / z, maxY: (rect.height - y) / z };
+    const content = contentBounds(model().nodes) || view;
+    const minX = Math.min(content.minX, view.minX);
+    const minY = Math.min(content.minY, view.minY);
+    const maxX = Math.max(content.maxX, view.maxX);
+    const maxY = Math.max(content.maxY, view.maxY);
+    const mw = 140;
+    const mh = 90;
+    const scale = Math.min(mw / Math.max(maxX - minX, 1), mh / Math.max(maxY - minY, 1));
+    const offsetX = (mw - (maxX - minX) * scale) / 2;
+    const offsetY = (mh - (maxY - minY) * scale) / 2;
+    minimap.innerHTML = "";
+    for (const child of model().children) {
+      const node = model().nodes.get(child.uid);
+      if (!node) continue;
+      const dot = document.createElement("div");
+      dot.className = "pxd-minimap__card";
+      if (model().selected.has(child.uid)) dot.classList.add("pxd-minimap__card--selected");
+      dot.style.left = `${offsetX + (node.pos.x - minX) * scale}px`;
+      dot.style.top = `${offsetY + (node.pos.y - minY) * scale}px`;
+      dot.style.width = `${Math.max(2, node.size.width * scale)}px`;
+      dot.style.height = `${Math.max(2, node.size.height * scale)}px`;
+      minimap.append(dot);
+    }
+    const frame = document.createElement("div");
+    frame.className = "pxd-minimap__view";
+    frame.style.left = `${offsetX + (view.minX - minX) * scale}px`;
+    frame.style.top = `${offsetY + (view.minY - minY) * scale}px`;
+    frame.style.width = `${Math.max(2, (view.maxX - view.minX) * scale)}px`;
+    frame.style.height = `${Math.max(2, (view.maxY - view.minY) * scale)}px`;
+    minimap.append(frame);
+  };
+  const scheduleMinimap = () => {
+    if (!minimap || minimapScheduled) return;
+    minimapScheduled = raf(() => {
+      minimapScheduled = null;
+      updateMinimap();
     });
   };
 
+  const applyTransform = () => {
+    const { x, y, zoom } = model().viewport;
+    world.style.transform = `translate(${x}px, ${y}px) scale(${zoom})`;
+    const gridPx = getGridSize() * (zoom || 1);
+    grid.style.setProperty("--pxd-grid-size", `${gridPx}px`);
+    grid.style.backgroundPosition = `${x}px ${y}px`;
+    zoomLabel.textContent = `${Math.round((zoom || 1) * 100)}%`;
+    scheduleMinimap();
+  };
+
+  const clampZoom = (zoom) => {
+    const { zoomMin, zoomMax } = zoomBounds();
+    return Math.min(zoomMax, Math.max(zoomMin, zoom));
+  };
+
+  const zoomAt = (nextZoomRaw, screenX, screenY) => {
+    const viewport = model().viewport;
+    const oldZoom = viewport.zoom || 1;
+    const nextZoom = clampZoom(nextZoomRaw);
+    if (nextZoom === oldZoom) return;
+    const worldX = (screenX - viewport.x) / oldZoom;
+    const worldY = (screenY - viewport.y) / oldZoom;
+    viewport.zoom = nextZoom;
+    viewport.x = screenX - worldX * nextZoom;
+    viewport.y = screenY - worldY * nextZoom;
+    applyTransform();
+  };
+
+  const zoomAroundCenter = (factor) => {
+    const rect = rootRect();
+    zoomAt((model().viewport.zoom || 1) * factor, rect.width / 2, rect.height / 2);
+    schedulePersistViewport();
+  };
+
+  const fitToView = () => {
+    const { zoomMin, zoomMax } = zoomBounds();
+    const next = fitViewport(model().nodes, viewSize(), { zoomMin, zoomMax });
+    model().viewport = next;
+    model().viewportSource = "fit";
+    applyTransform();
+    return next;
+  };
+
+  let cancelInitialFit = null;
+  let initialFitDone = false;
+
+  // Keep the world point under the view centre stable across a size change
+  // (fullscreen toggle), so cards do not jump to the top-left corner.
+  const keepCenterAcross = (mutate) => {
+    const before = rootRect();
+    const viewport = model().viewport;
+    const zoom = viewport.zoom || 1;
+    const centerWorld = {
+      x: (before.width / 2 - viewport.x) / zoom,
+      y: (before.height / 2 - viewport.y) / zoom,
+    };
+    // Before the first fit there is nothing worth keeping centred; the fit sizes itself
+    // to whatever rect the mutation produced.
+    const fitPending = !initialFitDone;
+    mutate();
+    const settle = () => {
+      if (disposed || fitPending) return;
+      const after = rootRect();
+      if (!after.width || !after.height) return;
+      viewport.x = after.width / 2 - centerWorld.x * zoom;
+      viewport.y = after.height / 2 - centerWorld.y * zoom;
+      applyTransform();
+      schedulePersistViewport();
+    };
+    raf(settle);
+  };
+
+  // First paint: reject unusable viewports (native zoomed-out fit-views, cards
+  // painted under 140px, everything off-screen) and fit once the root has a size.
+  const scheduleInitialFit = (attempt = 0) => {
+    if (initialFitDone || disposed) return;
+    cancelInitialFit = raf(() => {
+      cancelInitialFit = null;
+      if (disposed) return;
+      const size = viewSize();
+      if ((!size.width || !size.height) && attempt < 30) {
+        scheduleInitialFit(attempt + 1);
+        return;
+      }
+      initialFitDone = true;
+      if (!size.width || !size.height) return;
+      if (viewportNeedsFit(model().viewport, model().nodes, size)) {
+        fitToView();
+        schedulePersistViewport();
+      } else {
+        applyTransform();
+      }
+    });
+  };
+
+  // ---------------------------------------------------------------- toolbar
   const tools = [
-    ["select", "Select"],
-    ["card", "Card"],
-    ["connect", "Connect"],
-    ["section", "Section"],
-    ["nested", "Nested"],
-    ["library", "Library"],
+    ["select", "Select", "Select, drag, and pan (V)"],
+    ["card", "Card", "Click the board to add a card"],
+    ["connect", "Connect", "Drag from one card to another"],
+    ["section", "Section", "Click the board to add a section frame"],
+    ["nested", "Nested", "Click the board to add a nested diagram card"],
+    ["library", "Library", "Place existing pages as cards"],
   ];
-  for (const [tool, label] of tools) {
+  const toolButtons = new Map();
+  const setActiveTool = (tool) => {
+    model().activeTool = tool;
+    for (const [name, button] of toolButtons) {
+      button.classList.toggle("pxd-toolbar__btn--active", name === tool);
+    }
+    root.dataset.tool = tool;
+    syncHint();
+  };
+  const makeButton = (label, title, className = "") => {
     const button = document.createElement("button");
     button.type = "button";
-    button.className = "pxd-toolbar__btn";
-    button.dataset.tool = tool;
-    button.title = label;
+    button.className = `pxd-toolbar__btn${className ? ` ${className}` : ""}`;
     button.textContent = label;
+    button.title = title;
+    return button;
+  };
+  const toolGroup = document.createElement("div");
+  toolGroup.className = "pxd-toolbar__group";
+  for (const [tool, label, title] of tools) {
+    const button = makeButton(label, title);
+    button.dataset.tool = tool;
     button.addEventListener("click", () => {
+      if (tool === "library") {
+        onPersist?.({ toggleLibrary: true });
+        return;
+      }
       setActiveTool(tool);
-      if (tool === "library") onPersist?.({ toggleLibrary: true });
     });
-    toolbar.append(button);
+    toolButtons.set(tool, button);
+    toolGroup.append(button);
   }
+  toolbar.append(toolGroup);
 
-  const zoomInBtn = document.createElement("button");
-  zoomInBtn.type = "button";
-  zoomInBtn.className = "pxd-toolbar__btn pxd-toolbar__btn--zoom";
-  zoomInBtn.textContent = "Zoom+";
-  zoomInBtn.title = "Zoom in";
-  zoomInBtn.addEventListener("click", () => {
-    const zoomMax = Number(settings.get("zoom-max")) || 3;
-    session.model.viewport.zoom = Math.min(zoomMax, (session.model.viewport.zoom || 1) * 1.2);
-    onPersist?.({ persistViewport: true });
-    render();
+  const viewGroup = document.createElement("div");
+  viewGroup.className = "pxd-toolbar__group";
+  const zoomOutBtn = makeButton("Zoom-", "Zoom out", "pxd-toolbar__btn--zoom");
+  zoomOutBtn.addEventListener("click", () => zoomAroundCenter(1 / 1.2));
+  const zoomInBtn = makeButton("Zoom+", "Zoom in", "pxd-toolbar__btn--zoom");
+  zoomInBtn.addEventListener("click", () => zoomAroundCenter(1.2));
+  zoomLabel.addEventListener("click", () => {
+    const rect = rootRect();
+    zoomAt(1, rect.width / 2, rect.height / 2);
+    schedulePersistViewport();
   });
-  toolbar.append(zoomInBtn);
-
-  const zoomOutBtn = document.createElement("button");
-  zoomOutBtn.type = "button";
-  zoomOutBtn.className = "pxd-toolbar__btn pxd-toolbar__btn--zoom";
-  zoomOutBtn.textContent = "Zoom-";
-  zoomOutBtn.title = "Zoom out";
-  zoomOutBtn.addEventListener("click", () => {
-    const zoomMin = Number(settings.get("zoom-min")) || 0.15;
-    session.model.viewport.zoom = Math.max(zoomMin, (session.model.viewport.zoom || 1) / 1.2);
-    onPersist?.({ persistViewport: true });
-    render();
-  });
-  toolbar.append(zoomOutBtn);
-
-  const fitBtn = document.createElement("button");
-  fitBtn.type = "button";
-  fitBtn.className = "pxd-toolbar__btn pxd-toolbar__btn--zoom";
-  fitBtn.textContent = "Fit";
-  fitBtn.title = "Fit all cards in view";
+  const fitBtn = makeButton("Fit", "Fit all cards in view", "pxd-toolbar__btn--zoom");
   fitBtn.addEventListener("click", () => {
     fitToView();
-    onPersist?.({ persistViewport: true });
-    render();
+    schedulePersistViewport();
   });
-  toolbar.append(fitBtn);
-
-  const setFullscreen = (on) => {
-    const mount = root.closest(".pxd-mount");
-    if (!mount) return;
-    mount.classList.toggle("pxd-mount--fullscreen", on);
-    document.body.classList.toggle("pxd-has-fullscreen", on);
-    fullBtn.textContent = on ? "Exit full screen" : "Fullscreen";
-    fullBtn.setAttribute("aria-pressed", on ? "true" : "false");
-  };
-
-  const fullBtn = document.createElement("button");
-  fullBtn.type = "button";
-  fullBtn.className = "pxd-toolbar__btn pxd-toolbar__btn--zoom";
-  fullBtn.textContent = "Fullscreen";
-  fullBtn.title = "Maximize like native Roam diagrams. Esc exits.";
-  fullBtn.addEventListener("click", () => {
-    const mount = root.closest(".pxd-mount");
-    setFullscreen(!mount?.classList.contains("pxd-mount--fullscreen"));
-  });
-  toolbar.append(fullBtn);
+  const fullBtn = makeButton("Fullscreen", "Maximize like native Roam diagrams. Esc exits.", "pxd-toolbar__btn--zoom");
+  fullBtn.addEventListener("click", () => setFullscreen(!isFullscreen()));
+  viewGroup.append(zoomOutBtn, zoomLabel, zoomInBtn, fitBtn, fullBtn);
+  toolbar.append(viewGroup);
 
   if (settings.get("show-version-badge")) {
     const badge = document.createElement("span");
@@ -120,74 +347,39 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
     toolbar.append(badge);
   }
 
-  let panning = false;
-  let panStart = null;
-  let spaceDown = false;
-  let connectFrom = null;
-
-  const applyTransform = () => {
-    const { x, y, zoom } = session.model.viewport;
-    world.style.transform = `translate(${x}px, ${y}px) scale(${zoom})`;
+  const setFullscreen = (on) => {
+    const mount = mountEl();
+    if (!mount) return;
+    const current = isFullscreen();
+    fullBtn.textContent = on ? "Exit full screen" : "Fullscreen";
+    fullBtn.setAttribute("aria-pressed", on ? "true" : "false");
+    if (current === Boolean(on)) return;
+    keepCenterAcross(() => {
+      mount.classList.toggle("pxd-mount--fullscreen", Boolean(on));
+      document.body?.classList?.toggle("pxd-has-fullscreen", Boolean(on));
+    });
   };
 
-  const getGridSize = () => Number(settings.get("grid-size")) || 24;
-  const snap = (value) => {
-    if (!settings.get("snap-to-grid")) return value;
-    const size = getGridSize();
-    return Math.round(value / size) * size;
+  // ---------------------------------------------------------------- hint
+  let hintDismissed = false;
+  const syncHint = () => {
+    const show = !hintDismissed
+      && model().activeTool === "select"
+      && (model().children?.length || 0) <= 1
+      && !editingUid;
+    hint.classList.toggle("pxd-hint--visible", show);
+  };
+  const dismissHint = () => {
+    if (hintDismissed) return;
+    hintDismissed = true;
+    syncHint();
   };
 
-  const screenToWorld = (clientX, clientY) => {
-    const rect = root.getBoundingClientRect();
-    const zoom = session.model.viewport.zoom || 1;
-    return {
-      x: snap((clientX - rect.left - session.model.viewport.x) / zoom),
-      y: snap((clientY - rect.top - session.model.viewport.y) / zoom),
-    };
-  };
-
-  const cardRect = (contentUid) => {
-    const node = session.model.nodes.get(contentUid);
-    if (!node) return null;
-    return { x: node.pos.x, y: node.pos.y, width: node.size.width, height: node.size.height };
-  };
-
-  const fitToView = () => {
-    const padding = 40;
-    const rect = root.getBoundingClientRect();
-    const zoomMin = Number(settings.get("zoom-min")) || 0.15;
-    const zoomMax = Number(settings.get("zoom-max")) || 3;
-    let minX = Infinity;
-    let minY = Infinity;
-    let maxX = -Infinity;
-    let maxY = -Infinity;
-    for (const child of session.model.children) {
-      const node = session.model.nodes.get(child.uid);
-      if (!node) continue;
-      minX = Math.min(minX, node.pos.x);
-      minY = Math.min(minY, node.pos.y);
-      maxX = Math.max(maxX, node.pos.x + node.size.width);
-      maxY = Math.max(maxY, node.pos.y + node.size.height);
-    }
-    if (!Number.isFinite(minX)) return;
-    const contentW = Math.max(maxX - minX, 1);
-    const contentH = Math.max(maxY - minY, 1);
-    const zoom = Math.min(
-      zoomMax,
-      Math.max(
-        zoomMin,
-        Math.min((rect.width - padding * 2) / contentW, (rect.height - padding * 2) / contentH),
-      ),
-    );
-    session.model.viewport.zoom = zoom;
-    session.model.viewport.x = (rect.width - contentW * zoom) / 2 - minX * zoom;
-    session.model.viewport.y = (rect.height - contentH * zoom) / 2 - minY * zoom;
-  };
-
+  // ---------------------------------------------------------------- sections
   const renderSections = () => {
     sectionsLayer.innerHTML = "";
     if (!settings.get("show-sections")) return;
-    for (const [id, section] of session.model.sections) {
+    for (const [id, section] of model().sections) {
       const el = document.createElement("div");
       el.className = "pxd-section";
       el.style.left = `${section.pos?.x ?? 0}px`;
@@ -205,250 +397,581 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
     }
   };
 
+  // ---------------------------------------------------------------- edges
+  const edgePaths = new Map();
+  let tempEdge = null;
+  const cardRect = (contentUid) => {
+    const node = model().nodes.get(contentUid);
+    if (!node) return null;
+    return { x: node.pos.x, y: node.pos.y, width: node.size.width, height: node.size.height };
+  };
+  const edgeKey = (edge) => `${edge.source}->${edge.target}`;
+  const ensureDefs = () => {
+    if (edgesSvg.querySelector?.("defs")) return;
+    const defs = document.createElementNS(SVG_NS, "defs");
+    defs.innerHTML = `
+        <marker id="pxd-arrow-end" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+          <path d="M0,0 L8,4 L0,8 Z" fill="var(--pxd-edge)" />
+        </marker>
+        <marker id="pxd-arrow-start" markerWidth="8" markerHeight="8" refX="1" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+          <path d="M8,0 L0,4 L8,8 Z" fill="var(--pxd-edge)" />
+        </marker>`;
+    edgesSvg.prepend(defs);
+  };
+  const updateEdgePath = (edge, path) => {
+    const source = cardRect(edge.source);
+    const target = cardRect(edge.target);
+    if (!source || !target) return false;
+    const style = settings.get("connector-style") || "bezier";
+    path.setAttribute("d", buildEdgePath(edge.kind || style, source, target));
+    return true;
+  };
   const renderEdges = () => {
     edgesSvg.innerHTML = "";
-    const style = settings.get("connector-style") || "bezier";
-    const width = Number(settings.get("edge-width")) || 2;
+    edgePaths.clear();
+    ensureDefs();
+    const width = num("edge-width", 2);
     const animated = settings.get("edge-animated");
     const arrowheads = arrowheadPoints(settings.get("arrowheads") || "end");
-    for (const edge of session.model.edges) {
-      const source = cardRect(edge.source);
-      const target = cardRect(edge.target);
-      if (!source || !target) continue;
-      const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-      path.setAttribute("d", buildEdgePath(edge.kind || style, source, target));
+    for (const edge of model().edges) {
+      const path = document.createElementNS(SVG_NS, "path");
+      if (!updateEdgePath(edge, path)) continue;
+      path.classList.add("pxd-edge");
       path.setAttribute("fill", "none");
-      path.setAttribute("stroke", "var(--pxd-active)");
+      path.setAttribute("stroke", "var(--pxd-edge)");
       path.setAttribute("stroke-width", String(width));
+      path.setAttribute("stroke-linecap", "round");
       if (animated) path.classList.add("pxd-edge--animated");
       if (arrowheads.end) path.setAttribute("marker-end", "url(#pxd-arrow-end)");
       if (arrowheads.start) path.setAttribute("marker-start", "url(#pxd-arrow-start)");
       edgesSvg.append(path);
-    }
-    if (!edgesSvg.querySelector("defs")) {
-      const defs = document.createElementNS("http://www.w3.org/2000/svg", "defs");
-      defs.innerHTML = `
-        <marker id="pxd-arrow-end" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto">
-          <path d="M0,0 L8,4 L0,8 Z" fill="var(--pxd-active)" />
-        </marker>
-        <marker id="pxd-arrow-start" markerWidth="8" markerHeight="8" refX="1" refY="4" orient="auto">
-          <path d="M8,0 L0,4 L8,8 Z" fill="var(--pxd-active)" />
-        </marker>`;
-      edgesSvg.prepend(defs);
+      edgePaths.set(edgeKey(edge), { edge, path });
     }
   };
+  const updateEdgesFor = (uids) => {
+    for (const { edge, path } of edgePaths.values()) {
+      if (uids.has(edge.source) || uids.has(edge.target)) updateEdgePath(edge, path);
+    }
+  };
+  const setTempEdge = (from, worldPoint) => {
+    const source = cardRect(from);
+    if (!source) return;
+    if (!tempEdge) {
+      tempEdge = document.createElementNS(SVG_NS, "path");
+      tempEdge.classList.add("pxd-edge", "pxd-edge--temp");
+      tempEdge.setAttribute("fill", "none");
+      tempEdge.setAttribute("stroke", "var(--pxd-edge)");
+      tempEdge.setAttribute("stroke-width", String(num("edge-width", 2)));
+      edgesSvg.append(tempEdge);
+    }
+    const target = { x: worldPoint.x, y: worldPoint.y, width: 1, height: 1 };
+    tempEdge.setAttribute("d", buildEdgePath(settings.get("connector-style") || "bezier", source, target));
+  };
+  const clearTempEdge = () => {
+    tempEdge?.remove?.();
+    tempEdge = null;
+  };
+
+  // ---------------------------------------------------------------- cards
+  const cardEls = new Map();
+  let editingUid = null;
 
   const cardTitleText = (child) => child.string.replace(/\{\{.*?\}\}/, "").trim() || child.string.slice(0, 48);
 
-  const renderCardContent = (cardEl, child) => {
+  const renderStringInto = (el, string) => {
+    const components = roamUi()?.components;
+    if (string && components?.renderString) {
+      try {
+        components.renderString({ string, el });
+        return;
+      } catch { /* fall through to text */ }
+    }
+    el.textContent = string;
+  };
+
+  const unmountRoam = (el) => {
+    try {
+      roamUi()?.components?.unmountNode?.({ el });
+    } catch { /* not mounted by Roam */ }
+  };
+
+  const paintCardBody = (card, child) => {
+    const body = card._pxdBody;
+    if (!body) return;
+    unmountRoam(body);
+    body.innerHTML = "";
+    card.classList.remove("pxd-card--empty");
+    if (model().isNestedDiagram(child.uid)) {
+      const label = document.createElement("div");
+      label.className = "pxd-card__nested-label";
+      label.textContent = cardTitleText(child) || "Nested diagram";
+      const sub = document.createElement("div");
+      sub.className = "pxd-card__placeholder";
+      sub.textContent = "Double-click to open";
+      body.append(label, sub);
+    } else if (!child.string.trim()) {
+      card.classList.add("pxd-card--empty");
+      const placeholder = document.createElement("div");
+      placeholder.className = "pxd-card__placeholder";
+      placeholder.textContent = "Empty card · double-click to write";
+      body.append(placeholder);
+    } else {
+      renderStringInto(body, child.string);
+    }
+    card._pxdString = child.string;
+  };
+
+  const focusRoamBlock = (body, uid, attempt = 0) => {
+    const input = body.querySelector?.(".rm-block__input, textarea");
+    if (!input) {
+      // renderBlock mounts asynchronously; give React a few frames before giving up.
+      if (attempt < 4 && editingUid === uid) setTimeout(() => focusRoamBlock(body, uid, attempt + 1), 120);
+      return;
+    }
+    const match = String(input.id || "").match(/^block-input-(.+)$/);
+    const windowId = match && match[1].endsWith(`-${uid}`)
+      ? match[1].slice(0, -(uid.length + 1))
+      : null;
+    if (windowId && roamUi()?.setBlockFocusAndSelection) {
+      try {
+        roamUi().setBlockFocusAndSelection({ location: { "block-uid": uid, "window-id": windowId } });
+        return;
+      } catch { /* fall back to a click */ }
+    }
+    input.click?.();
+  };
+
+  const exitEdit = (persistString = true) => {
+    const uid = editingUid;
+    if (!uid) return;
+    editingUid = null;
+    const card = cardEls.get(uid);
+    root.classList.remove("pxd-root--editing");
+    if (!card) return;
+    card.classList.remove("pxd-card--editing");
+    let child = model().getCard(uid);
+    if (persistString) {
+      try {
+        const pulled = globalThis.roamAlphaAPI?.data?.pull?.("[:block/string]", [":block/uid", uid]);
+        const fresh = pulled?.[":block/string"] ?? pulled?.string;
+        if (typeof fresh === "string") {
+          child = { ...(child || { uid }), string: fresh };
+          const live = model().getCard(uid);
+          if (live) live.string = fresh;
+        }
+      } catch { /* keep the model string */ }
+    }
+    if (child) paintCardBody(card, child);
+    syncHint();
+  };
+
+  const enterEdit = (uid) => {
+    const card = cardEls.get(uid);
+    const child = model().getCard(uid);
+    if (!card || !child || model().isNestedDiagram(uid)) return;
+    if (editingUid === uid) return;
+    if (editingUid) exitEdit();
+    const components = roamUi()?.components;
+    if (!settings.get("native-block-editor") || !components?.renderBlock) {
+      onPersist?.({ openBlock: uid });
+      return;
+    }
+    editingUid = uid;
+    model().selected = new Set([uid]);
+    syncSelection();
+    card.classList.add("pxd-card--editing");
+    root.classList.add("pxd-root--editing");
+    const body = card._pxdBody;
+    body.innerHTML = "";
+    try {
+      components.renderBlock({ uid, el: body });
+    } catch {
+      exitEdit(false);
+      return;
+    }
+    setTimeout(() => {
+      if (editingUid === uid) focusRoamBlock(body, uid);
+    }, 60);
+    syncHint();
+  };
+
+  const syncSelection = () => {
+    for (const [uid, card] of cardEls) {
+      card.classList.toggle("pxd-card--selected", model().selected.has(uid));
+    }
+    scheduleMinimap();
+  };
+
+  const positionCard = (card, node) => {
+    card.style.left = `${node.pos.x}px`;
+    card.style.top = `${node.pos.y}px`;
+    card.style.width = `${node.size.width}px`;
+    card.style.height = `${node.size.height}px`;
+  };
+
+  const buildCard = (child) => {
+    const card = document.createElement("div");
+    card.className = "pxd-card";
+    card.dataset.uid = child.uid;
+    const title = document.createElement("div");
+    title.className = "pxd-card__title";
     const body = document.createElement("div");
     body.className = "pxd-card__body";
-    if (settings.get("native-block-editor") && globalThis.roamAlphaAPI?.ui?.components?.renderBlock) {
-      try {
-        globalThis.roamAlphaAPI.ui.components.renderBlock({ uid: child.uid, el: body });
-      } catch {
-        body.textContent = child.string;
-      }
-    } else if (globalThis.roamAlphaAPI?.ui?.components?.renderString) {
-      try {
-        globalThis.roamAlphaAPI.ui.components.renderString({ string: child.string, el: body });
-      } catch {
-        body.textContent = child.string;
-      }
-    } else {
-      body.textContent = child.string;
+    card._pxdTitle = title;
+    card._pxdBody = body;
+    card.append(title, body);
+    for (const side of ["top", "right", "bottom", "left"]) {
+      const handle = document.createElement("div");
+      handle.className = `pxd-handle pxd-handle--${side}`;
+      handle.dataset.side = side;
+      handle.title = "Drag to connect";
+      card.append(handle);
     }
-    cardEl.append(body);
+    const resize = document.createElement("div");
+    resize.className = "pxd-card__resize";
+    resize.title = "Drag to resize";
+    card.append(resize);
+    return card;
   };
 
   const renderCards = () => {
-    cardsLayer.innerHTML = "";
-    const radius = Number(settings.get("card-radius")) || 8;
-    for (const child of session.model.children) {
-      const node = session.model.ensureNode(child.uid, {
-        width: Number(settings.get("default-card-width")) || 280,
-        height: Number(settings.get("default-card-height")) || 160,
-      });
-      const card = document.createElement("div");
-      card.className = "pxd-card";
-      if (settings.get("compact-cards")) card.classList.add("pxd-card--compact");
-      if (settings.get("card-shadow")) card.classList.add("pxd-card--shadow");
-      card.dataset.uid = child.uid;
-      card.style.left = `${node.pos.x}px`;
-      card.style.top = `${node.pos.y}px`;
-      card.style.width = `${node.size.width}px`;
-      card.style.height = `${node.size.height}px`;
+    const defaults = defaultCardSize();
+    const radius = num("card-radius", 8);
+    const seen = new Set();
+    for (const child of model().children) {
+      seen.add(child.uid);
+      const node = model().ensureNode(child.uid, defaults);
+      let card = cardEls.get(child.uid);
+      if (!card) {
+        card = buildCard(child);
+        cardEls.set(child.uid, card);
+        card._pxdString = null;
+      }
+      card.classList.toggle("pxd-card--compact", Boolean(settings.get("compact-cards")));
+      card.classList.toggle("pxd-card--shadow", Boolean(settings.get("card-shadow")));
+      card.classList.toggle("pxd-card--nested", model().isNestedDiagram(child.uid));
+      card.classList.toggle("pxd-card--selected", model().selected.has(child.uid));
       card.style.borderRadius = `${radius}px`;
-      if (session.model.selected.has(child.uid)) card.classList.add("pxd-card--selected");
+      positionCard(card, node);
       const titleText = cardTitleText(child);
-      if (settings.get("show-card-title") && titleText !== child.string.trim()) {
-        const title = document.createElement("div");
-        title.className = "pxd-card__title";
-        title.textContent = titleText;
-        card.append(title);
-        card.classList.add("pxd-card--titled");
-      }
-      if (session.model.isNestedDiagram(child.uid)) {
-        card.classList.add("pxd-card--nested");
-        card.title = "Double-click to open nested diagram";
-        card.addEventListener("dblclick", () => onPersist?.({ openNested: child.uid }));
-      }
-      renderCardContent(card, child);
-      for (const side of ["top", "right", "bottom", "left"]) {
-        const handle = document.createElement("div");
-        handle.className = `pxd-handle pxd-handle--${side}`;
-        handle.dataset.side = side;
-        handle.addEventListener("mousedown", (event) => {
-          event.stopPropagation();
-          if (session.model.activeTool !== "connect") return;
-          connectFrom = child.uid;
-        });
-        handle.addEventListener("mouseup", async (event) => {
-          event.stopPropagation();
-          if (!connectFrom || connectFrom === child.uid) return;
-          session.model.addEdge(connectFrom, child.uid, settings.get("connector-style") || "bezier");
-          connectFrom = null;
-          await onPersist?.({ persistLayout: true });
-          render();
-        });
-        card.append(handle);
-      }
-      let drag = null;
-      card.addEventListener("mousedown", (event) => {
-        if (session.model.activeTool !== "select") return;
-        event.stopPropagation();
-        if (!event.shiftKey) session.model.selected.clear();
-        session.model.selected.add(child.uid);
-        drag = { x: event.clientX, y: event.clientY, start: { ...node.pos } };
-      });
-      card.addEventListener("click", (event) => {
-        event.stopPropagation();
-        if (session.model.activeTool === "select") {
-          if (event.shiftKey) session.model.selected.add(child.uid);
-          else session.model.selected = new Set([child.uid]);
-        }
-      });
-      const onMove = async (event) => {
-        if (!drag) return;
-        const zoom = session.model.viewport.zoom || 1;
-        node.pos.x = snap(drag.start.x + (event.clientX - drag.x) / zoom);
-        node.pos.y = snap(drag.start.y + (event.clientY - drag.y) / zoom);
-        render();
-      };
-      const onUp = async () => {
-        if (!drag) return;
-        drag = null;
-        await onPersist?.({ persistLayout: true });
-        window.removeEventListener("mousemove", onMove);
-        window.removeEventListener("mouseup", onUp);
-      };
-      card.addEventListener("mousedown", () => {
-        window.addEventListener("mousemove", onMove);
-        window.addEventListener("mouseup", onUp);
-      });
-      cardsLayer.append(card);
+      const showTitle = settings.get("show-card-title") && titleText !== child.string.trim();
+      card.classList.toggle("pxd-card--titled", Boolean(showTitle));
+      card._pxdTitle.textContent = showTitle ? titleText : "";
+      if (editingUid !== child.uid && card._pxdString !== child.string) paintCardBody(card, child);
+      if (card.parentElement !== cardsLayer) cardsLayer.append(card);
     }
-  };
-
-  const renderGrid = () => {
-    const show = settings.get("show-grid");
-    const style = settings.get("grid-style") || "dots";
-    grid.className = "pxd-grid";
-    grid.classList.toggle("pxd-grid--hidden", !show || style === "none");
-    grid.classList.toggle("pxd-grid--dots", style === "dots");
-    grid.classList.toggle("pxd-grid--lines", style === "lines");
-    grid.style.setProperty("--pxd-grid-size", `${getGridSize()}px`);
+    for (const [uid, card] of cardEls) {
+      if (seen.has(uid)) continue;
+      if (editingUid === uid) exitEdit(false);
+      unmountRoam(card._pxdBody);
+      card.remove();
+      cardEls.delete(uid);
+    }
   };
 
   const render = () => {
-    syncRenderChildrenDepth();
-    applyTransform();
+    root.dataset.renderChildrenDepth = String(settings.get("render-children-depth") ?? "1");
     renderGrid();
+    applyTransform();
     renderSections();
     renderCards();
     renderEdges();
+    syncHint();
+    scheduleMinimap();
   };
 
-  root.addEventListener("wheel", (event) => {
-    if (!settings.get("wheel-zoom")) return;
-    event.preventDefault();
-    const zoomMin = Number(settings.get("zoom-min")) || 0.15;
-    const zoomMax = Number(settings.get("zoom-max")) || 3;
-    const oldZoom = session.model.viewport.zoom || 1;
-    const delta = event.deltaY > 0 ? 0.9 : 1.1;
-    const nextZoom = Math.min(zoomMax, Math.max(zoomMin, oldZoom * delta));
-    const rect = root.getBoundingClientRect();
-    const mouseX = event.clientX - rect.left;
-    const mouseY = event.clientY - rect.top;
-    const worldX = (mouseX - session.model.viewport.x) / oldZoom;
-    const worldY = (mouseY - session.model.viewport.y) / oldZoom;
-    session.model.viewport.zoom = nextZoom;
-    session.model.viewport.x = mouseX - worldX * nextZoom;
-    session.model.viewport.y = mouseY - worldY * nextZoom;
-    onPersist?.({ persistViewport: true });
-    render();
-  }, { passive: false });
+  // ---------------------------------------------------------------- pointer model
+  let gesture = null;
+  let spaceDown = false;
+  let lastToolAddAt = 0;
 
-  const onKeyDown = (event) => {
-    if (event.key === "Escape" && root.closest(".pxd-mount")?.classList.contains("pxd-mount--fullscreen")) {
-      event.preventDefault();
-      event.stopPropagation();
-      setFullscreen(false);
+  const beginGesture = (next) => {
+    gesture = next;
+    root.classList.add("pxd-root--gesturing");
+    if (next.kind === "pan") root.classList.add("pxd-root--panning");
+    document.addEventListener("pointermove", onPointerMove, true);
+    document.addEventListener("pointerup", onPointerUp, true);
+    document.addEventListener("pointercancel", onPointerUp, true);
+  };
+  const endGesture = () => {
+    if (!gesture) return;
+    gesture = null;
+    root.classList.remove("pxd-root--gesturing", "pxd-root--panning", "pxd-root--dragging");
+    document.removeEventListener("pointermove", onPointerMove, true);
+    document.removeEventListener("pointerup", onPointerUp, true);
+    document.removeEventListener("pointercancel", onPointerUp, true);
+    clearTempEdge();
+  };
+
+  const cardFromPoint = (clientX, clientY) => {
+    const el = document.elementFromPoint?.(clientX, clientY);
+    const card = el?.closest?.(".pxd-card");
+    return card && card.parentElement === cardsLayer ? card.dataset.uid : null;
+  };
+
+  const selectCard = (uid, additive) => {
+    const selected = model().selected;
+    if (additive) {
+      if (selected.has(uid)) selected.delete(uid);
+      else selected.add(uid);
+    } else if (!selected.has(uid)) {
+      selected.clear();
+      selected.add(uid);
+    }
+    syncSelection();
+  };
+
+  const onPointerDown = (event) => {
+    if (event.button !== 0 && event.button !== 1) return;
+    const target = event.target;
+    if (target?.closest?.(".pxd-toolbar") || target?.closest?.(".pxd-library-drawer") || target?.closest?.(".pxd-minimap")) return;
+    dismissHint();
+    const cardEl = target?.closest?.(".pxd-card");
+    const uid = cardEl?.dataset?.uid || null;
+    const tool = model().activeTool || "select";
+    const panRequested = event.button === 1 || (spaceDown && settings.get("pan-on-space"));
+
+    if (editingUid && editingUid !== uid) exitEdit();
+    if (editingUid && editingUid === uid) return; // Roam owns the caret inside an editing card.
+
+    if (uid && !panRequested) {
+      const start = { x: event.clientX, y: event.clientY };
+      if (target.closest(".pxd-card__resize")) {
+        const node = model().nodes.get(uid);
+        beginGesture({ kind: "resize", uid, start, size: { ...node.size }, moved: false });
+        event.preventDefault();
+        return;
+      }
+      if (target.closest(".pxd-handle") || tool === "connect") {
+        beginGesture({ kind: "connect", uid, start, moved: false });
+        event.preventDefault();
+        return;
+      }
+      if (tool !== "select") return;
+      selectCard(uid, event.shiftKey);
+      const origins = new Map();
+      for (const selectedUid of model().selected) {
+        const node = model().nodes.get(selectedUid);
+        if (node) origins.set(selectedUid, { ...node.pos });
+      }
+      beginGesture({ kind: "drag", uid, start, origins, moved: false });
       return;
     }
-    if (event.code === "Space" && settings.get("pan-on-space")) spaceDown = true;
-  };
-  const onKeyUp = (event) => {
-    if (event.code === "Space") spaceDown = false;
-  };
 
-  const isEmptyCanvasTarget = (event) => !event.target.closest(".pxd-card")
-    && !event.target.closest(".pxd-toolbar")
-    && !event.target.closest(".pxd-library-drawer");
-
-  root.addEventListener("mousedown", (event) => {
-    const panOnSpace = settings.get("pan-on-space") && spaceDown;
-    const panOnEmpty = event.button === 0
-      && isEmptyCanvasTarget(event)
-      && session.model.activeTool === "select";
-    if (event.button === 1 || panOnSpace || panOnEmpty) {
-      panning = true;
-      panStart = { x: event.clientX, y: event.clientY, viewport: { ...session.model.viewport } };
+    if (panRequested || tool === "select") {
+      beginGesture({
+        kind: "pan",
+        start: { x: event.clientX, y: event.clientY },
+        viewport: { ...model().viewport },
+        moved: false,
+      });
       event.preventDefault();
     }
-  });
-  root.addEventListener("mousemove", (event) => {
-    if (!panning || !panStart) return;
-    session.model.viewport.x = panStart.viewport.x + (event.clientX - panStart.x);
-    session.model.viewport.y = panStart.viewport.y + (event.clientY - panStart.y);
-    onPersist?.({ persistViewport: true });
-    render();
-  });
-  root.addEventListener("mouseup", () => { panning = false; panStart = null; });
-  root.addEventListener("click", async (event) => {
-    if (event.target.closest(".pxd-card") || event.target.closest(".pxd-toolbar")) return;
-    if (event.target.closest(".pxd-library-drawer")) return;
-    const tool = session.model.activeTool;
-    if (tool === "card") {
-      await onPersist?.({ addCard: screenToWorld(event.clientX, event.clientY) });
-    } else if (tool === "section") {
-      await onPersist?.({ addSection: screenToWorld(event.clientX, event.clientY) });
+  };
+
+  const onPointerMove = (event) => {
+    if (!gesture) return;
+    const dx = event.clientX - gesture.start.x;
+    const dy = event.clientY - gesture.start.y;
+    if (!gesture.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return;
+    gesture.moved = true;
+    const zoom = model().viewport.zoom || 1;
+    if (gesture.kind === "pan") {
+      const viewport = model().viewport;
+      viewport.x = gesture.viewport.x + dx;
+      viewport.y = gesture.viewport.y + dy;
+      applyTransform();
+      return;
     }
-  });
+    if (gesture.kind === "drag") {
+      root.classList.add("pxd-root--dragging");
+      const moved = new Set();
+      for (const [uid, origin] of gesture.origins) {
+        const card = cardEls.get(uid);
+        if (!card) continue;
+        const pos = { x: snap(origin.x + dx / zoom), y: snap(origin.y + dy / zoom) };
+        model().setNodePosition(uid, pos);
+        positionCard(card, model().nodes.get(uid));
+        moved.add(uid);
+      }
+      updateEdgesFor(moved);
+      scheduleMinimap();
+      return;
+    }
+    if (gesture.kind === "resize") {
+      const card = cardEls.get(gesture.uid);
+      if (!card) return;
+      model().setNodeSize(gesture.uid, {
+        width: snap(gesture.size.width + dx / zoom),
+        height: snap(gesture.size.height + dy / zoom),
+      });
+      positionCard(card, model().nodes.get(gesture.uid));
+      updateEdgesFor(new Set([gesture.uid]));
+      scheduleMinimap();
+      return;
+    }
+    if (gesture.kind === "connect") {
+      setTempEdge(gesture.uid, screenToWorld(event.clientX, event.clientY, false));
+    }
+  };
+
+  const onPointerUp = async (event) => {
+    const active = gesture;
+    if (!active) return;
+    endGesture();
+    if (active.kind === "pan") {
+      if (active.moved) {
+        schedulePersistViewport();
+      } else if (model().activeTool === "select" && !event.shiftKey && model().selected.size) {
+        model().selected.clear();
+        syncSelection();
+      }
+      return;
+    }
+    if (active.kind === "drag" || active.kind === "resize") {
+      if (active.moved) schedulePersistLayout();
+      return;
+    }
+    if (active.kind === "connect") {
+      const targetUid = cardFromPoint(event.clientX, event.clientY);
+      if (!active.moved || !targetUid || targetUid === active.uid) {
+        if (!active.moved) selectCard(active.uid, event.shiftKey);
+        return;
+      }
+      const added = model().addEdge(active.uid, targetUid, settings.get("connector-style") || "bezier");
+      if (added) {
+        renderEdges();
+        await flushLayout();
+      }
+    }
+  };
+
+  const onDoubleClick = (event) => {
+    const target = event.target;
+    if (target?.closest?.(".pxd-toolbar") || target?.closest?.(".pxd-library-drawer") || target?.closest?.(".pxd-minimap")) return;
+    const cardEl = target?.closest?.(".pxd-card");
+    const uid = cardEl?.dataset?.uid;
+    if (uid) {
+      if (editingUid === uid) return;
+      event.preventDefault();
+      if (model().isNestedDiagram(uid)) onPersist?.({ openNested: uid });
+      else enterEdit(uid);
+      return;
+    }
+    event.preventDefault();
+    dismissHint();
+    if (Date.now() - lastToolAddAt < 600) return; // the Card tool already added on click one
+    const point = screenToWorld(event.clientX, event.clientY);
+    const size = defaultCardSize();
+    setActiveTool("select");
+    void onPersist?.({ addCard: { x: snap(point.x - size.width / 2), y: snap(point.y - size.height / 2) } });
+  };
+
+  const onClick = (event) => {
+    const target = event.target;
+    if (target?.closest?.(".pxd-card") || target?.closest?.(".pxd-toolbar")) return;
+    if (target?.closest?.(".pxd-library-drawer") || target?.closest?.(".pxd-minimap")) return;
+    if (event.detail > 1) return;
+    const tool = model().activeTool;
+    if (tool === "card" || tool === "nested" || tool === "section") {
+      const point = screenToWorld(event.clientX, event.clientY);
+      lastToolAddAt = Date.now();
+      if (tool === "section") void onPersist?.({ addSection: point });
+      else void onPersist?.({ addCard: point, string: tool === "nested" ? "{{[[diagram]]}}" : "" });
+      if (tool !== "section") setActiveTool("select");
+    }
+  };
+
+  const onWheel = (event) => {
+    if (editingUid && event.target?.closest?.(".pxd-card--editing")) return;
+    const pinch = event.ctrlKey || event.metaKey;
+    const zoomWheel = settings.get("wheel-zoom");
+    event.preventDefault();
+    const rect = rootRect();
+    if (pinch || zoomWheel) {
+      const factor = Math.exp(-event.deltaY * (pinch ? 0.01 : 0.002));
+      zoomAt((model().viewport.zoom || 1) * factor, event.clientX - rect.left, event.clientY - rect.top);
+    } else {
+      const viewport = model().viewport;
+      viewport.x -= event.deltaX;
+      viewport.y -= event.deltaY;
+      applyTransform();
+    }
+    schedulePersistViewport();
+  };
+
+  const onFocusOut = (event) => {
+    if (!editingUid) return;
+    const card = cardEls.get(editingUid);
+    if (!card) return;
+    const next = event.relatedTarget;
+    if (next && (card.contains?.(next) || next.closest?.(".bp3-portal, .rm-autocomplete__wrapper"))) return;
+    setTimeout(() => {
+      if (!editingUid) return;
+      const activeEl = document.activeElement;
+      if (activeEl && (card.contains?.(activeEl) || activeEl.closest?.(".bp3-portal, .rm-autocomplete__wrapper"))) return;
+      exitEdit();
+    }, 0);
+  };
+
+  const onKeyDown = (event) => {
+    if (event.key === "Escape") {
+      if (editingUid) {
+        if (event.target?.closest?.(".pxd-card--editing")) return; // Roam blurs the block; focusout commits.
+        exitEdit();
+        return;
+      }
+      if (isFullscreen()) {
+        event.preventDefault();
+        event.stopPropagation();
+        setFullscreen(false);
+      }
+      return;
+    }
+    if (event.code === "Space" && settings.get("pan-on-space") && !isTextEntryTarget(event.target)) {
+      spaceDown = true;
+      root.classList.add("pxd-root--space");
+    }
+  };
+  const onKeyUp = (event) => {
+    if (event.code === "Space") {
+      spaceDown = false;
+      root.classList.remove("pxd-root--space");
+    }
+  };
+
+  root.addEventListener("pointerdown", onPointerDown);
+  root.addEventListener("dblclick", onDoubleClick);
+  root.addEventListener("click", onClick);
+  root.addEventListener("wheel", onWheel, { passive: false });
+  root.addEventListener("focusout", onFocusOut);
   window.addEventListener("keydown", onKeyDown);
   window.addEventListener("keyup", onKeyUp);
 
-  setActiveTool(session.model.activeTool || "select");
+  setActiveTool(model().activeTool || "select");
   render();
+  scheduleInitialFit();
 
   return {
     root,
     render,
+    applyTransform,
+    fitToView,
+    editCard: enterEdit,
     setLibraryOpen(open) {
-      toolbar.querySelector('[data-tool="library"]')?.classList.toggle("pxd-toolbar__btn--active", open);
+      toolButtons.get("library")?.classList.toggle("pxd-toolbar__btn--active", Boolean(open));
     },
     setFullscreen,
     dispose() {
+      disposed = true;
+      cancelInitialFit?.();
+      minimapScheduled?.();
+      if (editingUid) exitEdit(false);
+      endGesture();
+      if (viewportTimer) void flushViewport();
+      if (layoutTimer) void flushLayout();
+      for (const card of cardEls.values()) unmountRoam(card._pxdBody);
+      cardEls.clear();
       setFullscreen(false);
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);

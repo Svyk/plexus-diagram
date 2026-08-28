@@ -65,6 +65,107 @@ export function parsePullResult(raw) {
   return normalizePull(raw);
 }
 
+// Native React Flow nodes are often tiny (165x83 on the live Svy graph). Anything
+// below these floors is not a readable card, so imports snap up to the defaults.
+export const MIN_CARD_WIDTH = 240;
+export const MIN_CARD_HEIGHT = 140;
+export const DEFAULT_CARD_WIDTH = 280;
+export const DEFAULT_CARD_HEIGHT = 160;
+
+export function flooredCardSize(width, height, defaults = {}) {
+  const defaultWidth = Number(defaults.width) || DEFAULT_CARD_WIDTH;
+  const defaultHeight = Number(defaults.height) || DEFAULT_CARD_HEIGHT;
+  const minWidth = Number(defaults.minWidth) || MIN_CARD_WIDTH;
+  const minHeight = Number(defaults.minHeight) || MIN_CARD_HEIGHT;
+  const w = Number(width);
+  const h = Number(height);
+  return {
+    width: Number.isFinite(w) && w >= minWidth ? w : Math.max(defaultWidth, minWidth),
+    height: Number.isFinite(h) && h >= minHeight ? h : Math.max(defaultHeight, minHeight),
+  };
+}
+
+export function nodeList(nodes) {
+  if (nodes instanceof Map) return [...nodes.values()];
+  if (Array.isArray(nodes)) return nodes;
+  return [];
+}
+
+export function contentBounds(nodes) {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  for (const node of nodeList(nodes)) {
+    if (!node?.pos || !node?.size) continue;
+    minX = Math.min(minX, node.pos.x);
+    minY = Math.min(minY, node.pos.y);
+    maxX = Math.max(maxX, node.pos.x + node.size.width);
+    maxY = Math.max(maxY, node.pos.y + node.size.height);
+  }
+  if (!Number.isFinite(minX)) return null;
+  return { minX, minY, maxX, maxY, width: Math.max(maxX - minX, 1), height: Math.max(maxY - minY, 1) };
+}
+
+/**
+ * A viewport is unusable when it paints any card smaller than `minPainted` on either
+ * screen axis, when its zoom is below `minZoom` (native React Flow fit-views hover
+ * around 0.4), or when every card sits outside the visible view. Such viewports come
+ * from the native diagram and must be replaced by a fit, never persisted as-is.
+ */
+export function viewportNeedsFit(viewport, nodes, viewSize = null, options = {}) {
+  const minPainted = Number(options.minPainted) || 140;
+  const minZoom = Number(options.minZoom) || 0.7;
+  const zoom = Number(viewport?.zoom);
+  if (!viewport || !Number.isFinite(zoom) || zoom <= 0) return true;
+  if (!Number.isFinite(Number(viewport.x)) || !Number.isFinite(Number(viewport.y))) return true;
+  if (zoom < minZoom) return true;
+  const list = nodeList(nodes).filter((node) => node?.pos && node?.size);
+  if (!list.length) return false;
+  for (const node of list) {
+    if (node.size.width * zoom < minPainted || node.size.height * zoom < minPainted) return true;
+  }
+  const viewW = Number(viewSize?.width) || 0;
+  const viewH = Number(viewSize?.height) || 0;
+  if (viewW > 0 && viewH > 0) {
+    const visible = list.some((node) => {
+      const left = node.pos.x * zoom + viewport.x;
+      const top = node.pos.y * zoom + viewport.y;
+      const right = left + node.size.width * zoom;
+      const bottom = top + node.size.height * zoom;
+      return right > 0 && bottom > 0 && left < viewW && top < viewH;
+    });
+    if (!visible) return true;
+  }
+  return false;
+}
+
+/**
+ * Pure fit: centre all cards in the view. A single card is never blown up past
+ * `maxFitZoom`, and an empty board resets to 1:1 at the origin.
+ */
+export function fitViewport(nodes, viewSize, options = {}) {
+  const padding = Number.isFinite(Number(options.padding)) ? Number(options.padding) : 48;
+  const zoomMin = Number(options.zoomMin) || 0.15;
+  const zoomMax = Number(options.zoomMax) || 3;
+  const maxFitZoom = Number(options.maxFitZoom) || 1.5;
+  const viewW = Math.max(Number(viewSize?.width) || 0, 1);
+  const viewH = Math.max(Number(viewSize?.height) || 0, 1);
+  const bounds = contentBounds(nodes);
+  if (!bounds) return { x: padding, y: padding, zoom: 1 };
+  const fitZoom = Math.min(
+    (viewW - padding * 2) / bounds.width,
+    (viewH - padding * 2) / bounds.height,
+    maxFitZoom,
+  );
+  const zoom = Math.min(zoomMax, Math.max(zoomMin, fitZoom));
+  return {
+    x: (viewW - bounds.width * zoom) / 2 - bounds.minX * zoom,
+    y: (viewH - bounds.height * zoom) / 2 - bounds.minY * zoom,
+    zoom,
+  };
+}
+
 export function importNativeLayout(tree, metadataLayout, defaults = {}) {
   const nodes = new Map(metadataLayout?.nodes ? [...metadataLayout.nodes] : []);
   const edges = [...(metadataLayout?.edges || [])];
@@ -76,13 +177,18 @@ export function importNativeLayout(tree, metadataLayout, defaults = {}) {
     if (nodes.has(contentUid)) continue;
     const data = nativeNode.data || {};
     const pos = data.position || data.positionAbsolute || { x: 0, y: 0 };
-    const width = data.width ?? data.data?.width ?? defaults.width ?? 280;
-    const height = data.height ?? data.data?.height ?? defaults.height ?? 160;
+    const width = data.width ?? data.data?.width ?? data.style?.width;
+    const height = data.height ?? data.data?.height ?? data.style?.height;
     nodes.set(contentUid, {
       pos: { x: pos.x ?? 0, y: pos.y ?? 0 },
-      size: { width, height },
+      size: flooredCardSize(width, height, defaults),
       color: "",
     });
+  }
+  for (const [contentUid, node] of nodes) {
+    if (!node) { nodes.delete(contentUid); continue; }
+    if (!node.pos) node.pos = { x: 0, y: 0 };
+    if (!node.size) node.size = flooredCardSize(null, null, defaults);
   }
   const existingEdgeKeys = new Set(edges.map((edge) => `${edge.source}->${edge.target}`));
   for (const nativeEdge of tree.diagramEdges || []) {
@@ -110,11 +216,32 @@ export class DiagramModel {
     this.nodes = imported.nodes;
     this.edges = imported.edges;
     this.sections = new Map(metadataLayout?.sections ? [...metadataLayout.sections] : []);
-    this.viewport = metadataLayout?.viewport
-      || tree.props?.["rf-diagram"]?.viewport
-      || { x: 0, y: 0, zoom: 1 };
+    const metadataViewport = metadataLayout?.viewport;
+    const nativeViewport = tree.props?.["rf-diagram"]?.viewport;
+    if (metadataViewport) {
+      this.viewport = { ...metadataViewport };
+      this.viewportSource = "metadata";
+    } else if (nativeViewport) {
+      this.viewport = { ...nativeViewport };
+      this.viewportSource = "native";
+    } else {
+      this.viewport = { x: 0, y: 0, zoom: 1 };
+      this.viewportSource = "none";
+    }
     this.selected = new Set();
     this.activeTool = "select";
+  }
+
+  // Native rf-diagram viewports are zoomed-out React Flow fit-views; treat them as
+  // "needs fit" unless they already paint readable cards.
+  needsFit(viewSize = null, options = {}) {
+    return viewportNeedsFit(this.viewport, this.nodes, viewSize, options);
+  }
+
+  fitTo(viewSize, options = {}) {
+    this.viewport = fitViewport(this.nodes, viewSize, options);
+    this.viewportSource = "fit";
+    return this.viewport;
   }
 
   getCard(contentUid) {
@@ -123,9 +250,12 @@ export class DiagramModel {
 
   ensureNode(contentUid, defaults = {}) {
     if (this.nodes.has(contentUid)) return this.nodes.get(contentUid);
+    const size = defaults.size
+      ? flooredCardSize(defaults.size.width, defaults.size.height, defaults)
+      : flooredCardSize(defaults.width, defaults.height, defaults);
     const node = {
-      pos: defaults.pos || { x: 0, y: 0 },
-      size: defaults.size || { width: defaults.width ?? 280, height: defaults.height ?? 160 },
+      pos: defaults.pos ? { ...defaults.pos } : { x: 0, y: 0 },
+      size,
       color: "",
     };
     this.nodes.set(contentUid, node);
@@ -139,7 +269,10 @@ export class DiagramModel {
 
   setNodeSize(contentUid, size) {
     const node = this.ensureNode(contentUid);
-    node.size = { ...size };
+    node.size = {
+      width: Math.max(MIN_CARD_WIDTH, Number(size.width) || MIN_CARD_WIDTH),
+      height: Math.max(MIN_CARD_HEIGHT, Number(size.height) || MIN_CARD_HEIGHT),
+    };
   }
 
   addEdge(source, target, kind = "bezier") {
@@ -164,17 +297,32 @@ export class DiagramModel {
     };
   }
 
+  // A pull only refreshes content (children, strings). Positions, sizes, edges,
+  // sections and the viewport held in memory are the truth while a view is alive:
+  // a debounced persist may still be in flight, and re-importing stale metadata
+  // here snapped dragged cards back and re-applied native zoomed-out viewports.
   applyPull(tree, metadataLayout, defaults = {}) {
     const next = new DiagramModel({ diagramUid: this.diagramUid, tree, metadataLayout, defaults });
     this.tree = next.tree;
     this.children = next.children;
     this.childrenFingerprint = next.childrenFingerprint;
     this.baseFingerprint = next.baseFingerprint;
-    this.nodes = next.nodes;
-    this.edges = next.edges;
-    this.sections = next.sections;
-    if (tree.props?.["rf-diagram"]?.viewport) this.viewport = { ...tree.props["rf-diagram"].viewport };
-    else if (metadataLayout?.viewport) this.viewport = { ...metadataLayout.viewport };
+    for (const [contentUid, node] of next.nodes) {
+      if (!this.nodes.has(contentUid)) this.nodes.set(contentUid, node);
+    }
+    const known = new Set(this.edges.map((edge) => `${edge.source}->${edge.target}`));
+    for (const edge of next.edges) {
+      const key = `${edge.source}->${edge.target}`;
+      if (known.has(key)) continue;
+      this.edges.push(edge);
+      known.add(key);
+    }
+    for (const [id, section] of next.sections) {
+      if (!this.sections.has(id)) this.sections.set(id, section);
+    }
+    for (const uid of [...this.selected]) {
+      if (!this.getCard(uid)) this.selected.delete(uid);
+    }
   }
 
   autoLayoutGrid(missingOnly = true, gridSize = 24, cardWidth = 280, cardHeight = 160) {

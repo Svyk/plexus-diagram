@@ -1,4 +1,4 @@
-import { DiagramAdapter } from "./adapter.js";
+import { DiagramAdapter, MutationQueue } from "./adapter.js";
 import { DIAGRAM_PULL_PATTERN, DiagramModel } from "./model.js";
 
 export class NativeDiagramSession {
@@ -11,6 +11,9 @@ export class NativeDiagramSession {
     this.model = null;
     this.views = new Set();
     this.unwatch = null;
+    // Metadata writes rewrite the whole diagram block; two in flight at once would
+    // duplicate node/edge lines. Every persist goes through this queue.
+    this.persistQueue = new MutationQueue();
   }
 
   load() {
@@ -61,20 +64,26 @@ export class NativeDiagramSession {
   }
 
   async persistLayout() {
-    const layout = this.model.layoutSnapshot();
-    await this.metadataStore.set(this.diagramUid, layout);
+    return this.persistQueue.run(async () => {
+      const layout = this.model.layoutSnapshot();
+      await this.metadataStore.set(this.diagramUid, layout);
+    });
   }
 
   async persistViewport() {
-    await this.adapter.updateViewport(this.model.viewport);
-    const layout = this.metadataStore.get(this.diagramUid) || this.model.layoutSnapshot();
-    layout.viewport = { ...this.model.viewport };
-    await this.metadataStore.set(this.diagramUid, layout);
+    return this.persistQueue.run(async () => {
+      await this.adapter.updateViewport({ ...this.model.viewport });
+      await this.metadataStore.set(this.diagramUid, this.model.layoutSnapshot());
+    });
   }
 
   async addCard(string, position) {
     const contentUid = await this.adapter.createChild(string);
-    this.model.ensureNode(contentUid, { pos: position });
+    this.model.ensureNode(contentUid, {
+      pos: position,
+      width: Number(this.settings.get("default-card-width")) || 280,
+      height: Number(this.settings.get("default-card-height")) || 160,
+    });
     const tree = this.adapter.pull();
     this.model.applyPull(tree, this.metadataStore.get(this.diagramUid), {});
     this.adapter.adoptBaseTree(tree);

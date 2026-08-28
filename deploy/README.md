@@ -11,6 +11,16 @@ Native-first Heptabase-like overlay for Roam `{{[[diagram]]}}` blocks. Roam's di
 3. The native `.rm-diagram` renderer is hidden and a `.pxd-root` overlay mounts as a sibling.
 4. Run **Plexus Diagram: Restore native diagram** to unmount the overlay and show native React Flow again. Content children are never deleted.
 
+## Using the board
+
+- **Pan:** drag empty space (Select tool), middle mouse, or hold Space and drag. **Zoom:** wheel / pinch, `Zoom+` / `Zoom-`, click the percentage to reset, `Fit` to frame all cards.
+- **Add a card:** double-click empty space, or pick the `Card` tool and click. The new card opens for editing.
+- **Edit a card:** double-click it. Roam's native block editor mounts in place; click away or press Esc to commit. Cards show `renderString` output otherwise.
+- **Move / resize:** drag a card; drag the bottom-right corner to resize (min 240×140). Shift-click to multi-select and drag together.
+- **Connect:** drag from a card's edge dot onto another card, or use the `Connect` tool and drag from anywhere on a card.
+- **Fullscreen:** `Fullscreen` button or the command; Esc exits. Zoomed diagram pages (`#/app/<graph>/page/<uid>`) open full screen by default (`fullscreen-on-zoom`).
+- Viewport and layout persist on pointer-up / wheel-end, not per pixel. A viewport imported from the native diagram that would paint cards under 140px is replaced by a fit on first paint.
+
 ## What is written where
 
 | Data | Location |

@@ -34,6 +34,7 @@ export const SETTING_IDS = Object.freeze({
   viewportCulling: "viewport-culling",
   disableOnMobile: "disable-on-mobile",
   enableShortcuts: "enable-shortcuts",
+  fullscreenOnZoom: "fullscreen-on-zoom",
 });
 
 const DEFAULTS = Object.freeze({
@@ -72,6 +73,7 @@ const DEFAULTS = Object.freeze({
   [SETTING_IDS.viewportCulling]: true,
   [SETTING_IDS.disableOnMobile]: false,
   [SETTING_IDS.enableShortcuts]: true,
+  [SETTING_IDS.fullscreenOnZoom]: true,
 });
 
 export function settingsDefaults() {
@@ -149,7 +151,7 @@ export function createSettingsPanel() {
       inputRow(SETTING_IDS.defaultCardHeight, "Default card height", "Default height for new cards."),
       inputRow(SETTING_IDS.cardRadius, "Card radius", "Card corner radius in pixels."),
       switchRow(SETTING_IDS.showCardTitle, "Show card title", "Show a title bar on cards."),
-      switchRow(SETTING_IDS.nativeBlockEditor, "Native block editor", "Use Roam's native block renderer inside cards."),
+      switchRow(SETTING_IDS.nativeBlockEditor, "Native block editor", "Double-click a card to edit it in place with Roam's block editor. Off opens the block in the sidebar."),
       switchRow(SETTING_IDS.compactCards, "Compact cards", "Use compact card chrome."),
       switchRow(SETTING_IDS.cardShadow, "Card shadow", "Draw a subtle card shadow."),
       selectRow(SETTING_IDS.renderChildrenDepth, "Render children depth", "How many child levels to render.", [
@@ -179,6 +181,7 @@ export function createSettingsPanel() {
       switchRow(SETTING_IDS.viewportCulling, "Viewport culling", "Skip rendering off-screen cards."),
       switchRow(SETTING_IDS.disableOnMobile, "Disable on mobile", "Skip mounting on mobile clients."),
       switchRow(SETTING_IDS.enableShortcuts, "Enable shortcuts", "Enable keyboard shortcuts."),
+      switchRow(SETTING_IDS.fullscreenOnZoom, "Fullscreen on zoom", "Open enhanced diagrams full screen when zoomed into the diagram block. Esc exits."),
     ],
   };
 }

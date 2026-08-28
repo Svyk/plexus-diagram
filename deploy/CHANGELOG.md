@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.2 — 2026-08-27
+
+Metadata writes now generate UIDs before `block.create` / `page.create`. Live roamAlphaAPI returns `undefined` from those calls, so the first enhance was dropping `schema-version::`, `enhanced::`, and node/edge lines. Nested-diagram open uses `roamAlphaAPI.ui.mainWindow.openBlock`.
+
 ## 0.1.1 — 2026-08-27
 
 Live-wire fixes against roamAlphaAPI (CDP, Svy graph):

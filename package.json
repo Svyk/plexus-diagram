@@ -1,6 +1,6 @@
 {
   "name": "plexus-diagram",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "private": true,
   "description": "Native-first Heptabase-like overlay for Roam {{[[diagram]]}} blocks",
   "type": "module",

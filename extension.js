@@ -1,4 +1,4 @@
-/* Plexus Diagram v0.1.1 | MIT | generated; edit src/ */
+/* Plexus Diagram v0.1.2 | MIT | generated; edit src/ */
 
 // src/lifecycle.js
 function isPromiseLike(value) {
@@ -179,19 +179,30 @@ function getPageUid(title) {
   const rows = q(`[:find ?uid :where [?p :node/title "${safe}"] [?p :block/uid ?uid]]`);
   return rows?.[0]?.[0] || null;
 }
-async function createPage(title) {
+function generateUid() {
   const api = roam();
-  if (api?.createPage) return api.createPage({ page: { title } });
-  if (api?.data?.block?.create) {
-    const uid = await api.data.block.create({ block: { string: `[[${title}]]` } });
-    return typeof uid === "string" ? uid : uid?.uid;
-  }
-  throw new Error("Cannot create metadata page");
+  if (typeof api?.util?.generateUID === "function") return api.util.generateUID();
+  throw new Error("roamAlphaAPI.util.generateUID is required");
 }
-async function createBlock(parentUid, string) {
+async function createPage(title) {
+  const existing = getPageUid(title);
+  if (existing) return existing;
   const api = roam();
-  const uid = await api.data.block.create({ location: { "parent-uid": parentUid }, block: { string } });
-  return typeof uid === "string" ? uid : uid?.uid;
+  const uid = generateUid();
+  const payload = { page: { title, uid } };
+  if (typeof api?.data?.page?.create === "function") await api.data.page.create(payload);
+  else if (typeof api?.createPage === "function") await api.createPage(payload);
+  else throw new Error("Cannot create metadata page");
+  return getPageUid(title) || uid;
+}
+async function createBlock(parentUid, string, order = "last") {
+  const api = roam();
+  const uid = generateUid();
+  await api.data.block.create({
+    location: { "parent-uid": parentUid, order },
+    block: { uid, string }
+  });
+  return uid;
 }
 async function updateBlock(uid, string) {
   await roam().data.block.update({ block: { uid, string } });
@@ -1460,7 +1471,7 @@ var runtime = {
   lifecycle: null,
   metadata: null,
   settings: null,
-  version: "0.1.1",
+  version: "0.1.2",
   enhancedUids: /* @__PURE__ */ new Set(),
   activeDiagramUid: null,
   guardStyle: null
@@ -1532,7 +1543,7 @@ async function enhanceDiagram(uid, nativeElement) {
     onAction: async (action) => {
       if (action.type === "library") await openLibrary();
       if (action.type === "nested" && action.uid) {
-        runtime.extensionAPI?.ui?.mainWindow?.openBlock?.({ block: { uid: action.uid } });
+        globalThis.roamAlphaAPI?.ui?.mainWindow?.openBlock?.({ block: { uid: action.uid } });
       }
     }
   });
@@ -1660,7 +1671,7 @@ function registerCommands(lifecycle, extensionAPI) {
   run("Open nested diagram", () => {
     const session = getSession(runtime.activeDiagramUid || focusedDiagramUid());
     const uid = [...session?.model.selected || []][0];
-    if (uid) extensionAPI.ui?.mainWindow?.openBlock?.({ block: { uid } });
+    if (uid) globalThis.roamAlphaAPI?.ui?.mainWindow?.openBlock?.({ block: { uid } });
   });
   run("Show library", () => openLibrary());
   run("Appearances of this block", () => {
@@ -1722,7 +1733,7 @@ function registerSlashAndContext(lifecycle, extensionAPI) {
 async function installPlexusDiagram({ extensionAPI, lifecycle, version }) {
   runtime.extensionAPI = extensionAPI;
   runtime.lifecycle = lifecycle;
-  runtime.version = version || "0.1.1";
+  runtime.version = version || "0.1.2";
   runtime.settings = createSettingsReader(extensionAPI);
   runtime.enhancedUids = readEnhancedUidCache();
   installGuard(runtime.enhancedUids);

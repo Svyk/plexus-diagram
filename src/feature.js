@@ -28,7 +28,7 @@ export const runtime = {
   lifecycle: null,
   metadata: null,
   settings: null,
-  version: "0.1.1",
+  version: "0.1.2",
   enhancedUids: new Set(),
   activeDiagramUid: null,
   guardStyle: null,
@@ -108,7 +108,7 @@ async function enhanceDiagram(uid, nativeElement) {
     onAction: async (action) => {
       if (action.type === "library") await openLibrary();
       if (action.type === "nested" && action.uid) {
-        runtime.extensionAPI?.ui?.mainWindow?.openBlock?.({ block: { uid: action.uid } });
+        globalThis.roamAlphaAPI?.ui?.mainWindow?.openBlock?.({ block: { uid: action.uid } });
       }
     },
   });
@@ -246,7 +246,7 @@ function registerCommands(lifecycle, extensionAPI) {
   run("Open nested diagram", () => {
     const session = getSession(runtime.activeDiagramUid || focusedDiagramUid());
     const uid = [...(session?.model.selected || [])][0];
-    if (uid) extensionAPI.ui?.mainWindow?.openBlock?.({ block: { uid } });
+    if (uid) globalThis.roamAlphaAPI?.ui?.mainWindow?.openBlock?.({ block: { uid } });
   });
   run("Show library", () => openLibrary());
   run("Appearances of this block", () => {
@@ -310,7 +310,7 @@ function registerSlashAndContext(lifecycle, extensionAPI) {
 export async function installPlexusDiagram({ extensionAPI, lifecycle, version }) {
   runtime.extensionAPI = extensionAPI;
   runtime.lifecycle = lifecycle;
-  runtime.version = version || "0.1.1";
+  runtime.version = version || "0.1.2";
   runtime.settings = createSettingsReader(extensionAPI);
   runtime.enhancedUids = readEnhancedUidCache();
   installGuard(runtime.enhancedUids);

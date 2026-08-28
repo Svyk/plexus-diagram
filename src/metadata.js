@@ -14,20 +14,32 @@ export function getPageUid(title) {
   return rows?.[0]?.[0] || null;
 }
 
-export async function createPage(title) {
+function generateUid() {
   const api = roam();
-  if (api?.createPage) return api.createPage({ page: { title } });
-  if (api?.data?.block?.create) {
-    const uid = await api.data.block.create({ block: { string: `[[${title}]]` } });
-    return typeof uid === "string" ? uid : uid?.uid;
-  }
-  throw new Error("Cannot create metadata page");
+  if (typeof api?.util?.generateUID === "function") return api.util.generateUID();
+  throw new Error("roamAlphaAPI.util.generateUID is required");
 }
 
-export async function createBlock(parentUid, string) {
+export async function createPage(title) {
+  const existing = getPageUid(title);
+  if (existing) return existing;
   const api = roam();
-  const uid = await api.data.block.create({ location: { "parent-uid": parentUid }, block: { string } });
-  return typeof uid === "string" ? uid : uid?.uid;
+  const uid = generateUid();
+  const payload = { page: { title, uid } };
+  if (typeof api?.data?.page?.create === "function") await api.data.page.create(payload);
+  else if (typeof api?.createPage === "function") await api.createPage(payload);
+  else throw new Error("Cannot create metadata page");
+  return getPageUid(title) || uid;
+}
+
+export async function createBlock(parentUid, string, order = "last") {
+  const api = roam();
+  const uid = generateUid();
+  await api.data.block.create({
+    location: { "parent-uid": parentUid, order },
+    block: { uid, string },
+  });
+  return uid;
 }
 
 export async function updateBlock(uid, string) {

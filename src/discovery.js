@@ -17,6 +17,10 @@ export function graphCacheKey(locationHash = globalThis.location?.hash || "") {
   const match = String(locationHash).match(/#\/app\/([^/]+)/);
   return match ? `${ENHANCED_UID_CACHE_PREFIX}${match[1]}` : `${ENHANCED_UID_CACHE_PREFIX}unknown`;
 }
+export function diagramUidFromLocation(hash = globalThis.location?.hash || "") {
+  const match = String(hash).match(/#\/app\/[^/]+\/page\/([^/?#]+)/);
+  return match ? match[1] : null;
+}
 
 export function readEnhancedUidCache(storage = globalThis.localStorage, key = graphCacheKey()) {
   try {
@@ -45,17 +49,25 @@ export function enhancedUidGuardCss(uids) {
   }
   for (const uid of unique) {
     const escaped = cssAttributeValue(uid);
-    selectors.push(
-      `[id$="${escaped}"] .rm-diagram:not(.${NATIVE_HIDDEN_CLASS})`,
-      `.rm-block-ref[data-uid="${escaped}"] .rm-diagram:not(.${NATIVE_HIDDEN_CLASS})`,
-      `[data-uid="${escaped}"] .rm-diagram:not(.${NATIVE_HIDDEN_CLASS})`,
-    );
+    for (const host of [
+      `[id$="${escaped}"]`,
+      `[data-uid="${escaped}"]`,
+      `.rm-block-ref[data-uid="${escaped}"]`,
+    ]) {
+      selectors.push(
+        `${host} .rm-diagram:not(.${NATIVE_HIDDEN_CLASS})`,
+        `${host} .rm-diagram-title-panel`,
+        `${host} .react-flow`,
+      );
+    }
   }
+  // display:none is load-bearing: React Flow nodes re-set visibility:visible on
+  // themselves, so a visibility guard leaves native chrome painted over the overlay.
   const hideRule = selectors.length
-    ? `${selectors.join(",\n")} { visibility: hidden !important; pointer-events: none !important; }`
+    ? `${selectors.join(",\n")} { display: none !important; }`
     : "";
   const pendingRule = unique.length
-    ? `.rm-diagram.${PENDING_CLASS}:not(.${NATIVE_HIDDEN_CLASS}) { visibility: hidden !important; }`
+    ? `.rm-diagram.${PENDING_CLASS}:not(.${NATIVE_HIDDEN_CLASS}) { visibility: hidden !important; pointer-events: none !important; }`
     : "";
   return [hideRule, pendingRule].filter(Boolean).join("\n");
 }
@@ -64,13 +76,22 @@ export function findDiagramUidFromEl(element) {
   if (!element) return null;
   const ref = element.closest?.(".rm-block-ref[data-uid]");
   if (ref?.dataset?.uid) return ref.dataset.uid;
-  const host = element.closest?.("[data-uid]");
-  if (host?.dataset?.uid) return host.dataset.uid;
   const blockInput = element.closest?.('[id^="block-input-"]');
   if (blockInput?.id) {
-    const match = blockInput.id.match(/block-input-.+-body-outline-\d{2}-\d{2}-\d{4}-(.+)$/);
-    if (match) return match[1];
+    // Dated zoomed outline ids come first: block-input-<window>-body-outline-MM-DD-YYYY-<uid>.
+    const dated = blockInput.id.match(/block-input-.+-body-outline-\d{2}-\d{2}-\d{4}-(.+)$/);
+    if (dated) return dated[1];
+    const zoomed = blockInput.id.match(/block-input-.+-body-outline-(.+)$/);
+    // Reject a leading date so the looser pattern never captures "MM-DD-YYYY[-<uid>]".
+    if (zoomed && !/^\d{2}-\d{2}-\d{4}(-|$)/.test(zoomed[1])) return zoomed[1];
   }
+  // On a zoomed block page the hash names the zoomed block; trust it when the id parse is ambiguous.
+  if (element.closest?.(".rm-zoom-block-wrapper")) {
+    const pageUid = diagramUidFromLocation();
+    if (pageUid) return pageUid;
+  }
+  const host = element.closest?.("[data-uid]");
+  if (host?.dataset?.uid) return host.dataset.uid;
   return null;
 }
 

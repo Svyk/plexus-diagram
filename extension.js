@@ -1,4 +1,4 @@
-/* Plexus Diagram v0.2.0 | MIT | generated; edit src/ */
+/* Plexus Diagram v0.2.1 | MIT | generated; edit src/ */
 
 // src/lifecycle.js
 function isPromiseLike(value) {
@@ -102,6 +102,10 @@ function graphCacheKey(locationHash = globalThis.location?.hash || "") {
   const match = String(locationHash).match(/#\/app\/([^/]+)/);
   return match ? `${ENHANCED_UID_CACHE_PREFIX}${match[1]}` : `${ENHANCED_UID_CACHE_PREFIX}unknown`;
 }
+function diagramUidFromLocation(hash = globalThis.location?.hash || "") {
+  const match = String(hash).match(/#\/app\/[^/]+\/page\/([^/?#]+)/);
+  return match ? match[1] : null;
+}
 function readEnhancedUidCache(storage = globalThis.localStorage, key = graphCacheKey()) {
   try {
     const raw = storage?.getItem?.(key);
@@ -127,27 +131,39 @@ function enhancedUidGuardCss(uids) {
   }
   for (const uid of unique) {
     const escaped = cssAttributeValue(uid);
-    selectors.push(
-      `[id$="${escaped}"] .rm-diagram:not(.${NATIVE_HIDDEN_CLASS})`,
-      `.rm-block-ref[data-uid="${escaped}"] .rm-diagram:not(.${NATIVE_HIDDEN_CLASS})`,
-      `[data-uid="${escaped}"] .rm-diagram:not(.${NATIVE_HIDDEN_CLASS})`
-    );
+    for (const host of [
+      `[id$="${escaped}"]`,
+      `[data-uid="${escaped}"]`,
+      `.rm-block-ref[data-uid="${escaped}"]`
+    ]) {
+      selectors.push(
+        `${host} .rm-diagram:not(.${NATIVE_HIDDEN_CLASS})`,
+        `${host} .rm-diagram-title-panel`,
+        `${host} .react-flow`
+      );
+    }
   }
-  const hideRule = selectors.length ? `${selectors.join(",\n")} { visibility: hidden !important; pointer-events: none !important; }` : "";
-  const pendingRule = unique.length ? `.rm-diagram.${PENDING_CLASS}:not(.${NATIVE_HIDDEN_CLASS}) { visibility: hidden !important; }` : "";
+  const hideRule = selectors.length ? `${selectors.join(",\n")} { display: none !important; }` : "";
+  const pendingRule = unique.length ? `.rm-diagram.${PENDING_CLASS}:not(.${NATIVE_HIDDEN_CLASS}) { visibility: hidden !important; pointer-events: none !important; }` : "";
   return [hideRule, pendingRule].filter(Boolean).join("\n");
 }
 function findDiagramUidFromEl(element) {
   if (!element) return null;
   const ref = element.closest?.(".rm-block-ref[data-uid]");
   if (ref?.dataset?.uid) return ref.dataset.uid;
-  const host = element.closest?.("[data-uid]");
-  if (host?.dataset?.uid) return host.dataset.uid;
   const blockInput = element.closest?.('[id^="block-input-"]');
   if (blockInput?.id) {
-    const match = blockInput.id.match(/block-input-.+-body-outline-\d{2}-\d{2}-\d{4}-(.+)$/);
-    if (match) return match[1];
+    const dated = blockInput.id.match(/block-input-.+-body-outline-\d{2}-\d{2}-\d{4}-(.+)$/);
+    if (dated) return dated[1];
+    const zoomed = blockInput.id.match(/block-input-.+-body-outline-(.+)$/);
+    if (zoomed && !/^\d{2}-\d{2}-\d{4}(-|$)/.test(zoomed[1])) return zoomed[1];
   }
+  if (element.closest?.(".rm-zoom-block-wrapper")) {
+    const pageUid = diagramUidFromLocation();
+    if (pageUid) return pageUid;
+  }
+  const host = element.closest?.("[data-uid]");
+  if (host?.dataset?.uid) return host.dataset.uid;
   return null;
 }
 function diagramElForUid(uid, root = globalThis.document) {
@@ -1581,9 +1597,26 @@ var NativeDiagramSession = class {
     this.views.clear();
   }
 };
+function pruneDetachedViews(session) {
+  for (const view of [...session.views]) {
+    const root = view.wrapper || view.canvas?.root || null;
+    if (root && root.isConnected === false) {
+      try {
+        view.dispose?.();
+      } catch (error) {
+        console.warn("[plexus-diagram] Detached view cleanup failed", error);
+      }
+      session.removeView(view);
+    }
+  }
+}
 var sessions = /* @__PURE__ */ new Map();
 function getOrCreateSession(diagramUid, factory) {
-  if (sessions.has(diagramUid)) return sessions.get(diagramUid);
+  const existing = sessions.get(diagramUid);
+  if (existing) {
+    pruneDetachedViews(existing);
+    return existing;
+  }
   const session = factory();
   sessions.set(diagramUid, session);
   return session;
@@ -1605,11 +1638,15 @@ function mountDiagramView({ nativeElement, session, settings, version, lifecycle
   const host = nativeElement.parentElement || nativeElement;
   const defaultHeight = Number(settings.get("default-height")) || 560;
   const nativeRect = nativeElement.getBoundingClientRect();
-  const wrapperHeight = Math.max(nativeRect.height || 0, defaultHeight);
+  const zoomed = nativeElement.closest(".rm-zoom-block-wrapper") || nativeElement.closest(".roam-article");
+  const articleRect = zoomed?.getBoundingClientRect();
+  const wrapperHeight = zoomed ? Math.max((articleRect?.height || window.innerHeight) - 24, defaultHeight) : Math.max(nativeRect.height || 0, defaultHeight);
   nativeElement.classList.add(NATIVE_HIDDEN_CLASS);
   nativeElement.classList.remove(PENDING_CLASS);
   const wrapper = document.createElement("div");
   wrapper.className = "pxd-mount";
+  if (zoomed) wrapper.classList.add("pxd-mount--zoomed");
+  if (session?.diagramUid) wrapper.dataset.diagramUid = String(session.diagramUid);
   wrapper.style.width = "100%";
   wrapper.style.height = `${wrapperHeight}px`;
   wrapper.style.minHeight = `${wrapperHeight}px`;
@@ -1641,7 +1678,7 @@ function mountDiagramView({ nativeElement, session, settings, version, lifecycle
     nativeElement.classList.remove(NATIVE_HIDDEN_CLASS);
   };
   lifecycle.add(dispose);
-  session.addView({ refresh: () => canvas.render(), dispose, canvas });
+  session.addView({ refresh: () => canvas.render(), dispose, canvas, wrapper });
   return { wrapper, canvas, dispose };
 }
 function markNativePending(nativeElement) {
@@ -1654,10 +1691,11 @@ var runtime = {
   lifecycle: null,
   metadata: null,
   settings: null,
-  version: "0.2.0",
+  version: "0.2.1",
   enhancedUids: /* @__PURE__ */ new Set(),
   activeDiagramUid: null,
-  guardStyle: null
+  guardStyle: null,
+  mounting: /* @__PURE__ */ new Set()
 };
 function enabled() {
   return runtime.settings?.get(SETTING_IDS.enabled) !== false;
@@ -1696,42 +1734,63 @@ async function ensureMetadata() {
   }
   syncGuard();
 }
+function connectedMountForUid(uid, root = globalThis.document) {
+  if (!uid || !root?.querySelector) return null;
+  const mount = root.querySelector(`.pxd-mount[data-diagram-uid="${cssAttributeValue(uid)}"]`);
+  return mount && mount.isConnected !== false ? mount : null;
+}
+function instanceAlreadyMounted(uid, nativeElement) {
+  const adjacent = nativeElement?.nextElementSibling;
+  if (adjacent?.classList?.contains?.("pxd-mount") && adjacent.isConnected !== false) return true;
+  return Boolean(
+    nativeElement?.classList?.contains?.(NATIVE_HIDDEN_CLASS) && connectedMountForUid(uid)
+  );
+}
 async function enhanceDiagram(uid, nativeElement) {
   if (!enabled() || mobileBlocked()) {
     console.info("[plexus-diagram] Enhance skipped — extension disabled or mobile blocked");
     return;
   }
-  await runtime.metadata.ensurePage();
-  markNativePending(nativeElement);
-  runtime.enhancedUids.add(uid);
-  writeEnhancedUidCache(runtime.enhancedUids);
-  installGuard(runtime.enhancedUids);
-  const session = getOrCreateSession(uid, () => new NativeDiagramSession({
-    diagramUid: uid,
-    metadataStore: runtime.metadata,
-    settings: runtime.settings,
-    onChange: () => syncGuard()
-  }));
-  session.load();
-  session.startWatch();
-  const layout = session.model.layoutSnapshot();
-  await runtime.metadata.set(uid, layout);
-  runtime.activeDiagramUid = uid;
-  const mounted = mountDiagramView({
-    nativeElement,
-    session,
-    settings: runtime.settings,
-    version: runtime.version,
-    lifecycle: runtime.lifecycle,
-    onAction: async (action) => {
-      if (action.type === "library") await toggleLibrary(mounted.wrapper, mounted.canvas);
-      if (action.type === "nested" && action.uid) {
-        globalThis.roamAlphaAPI?.ui?.mainWindow?.openBlock?.({ block: { uid: action.uid } });
+  if (!uid || !nativeElement) return;
+  if (runtime.mounting.has(uid) || instanceAlreadyMounted(uid, nativeElement)) return;
+  runtime.mounting.add(uid);
+  try {
+    if (!runtime.metadata) await ensureMetadata();
+    await runtime.metadata.ensurePage();
+    markNativePending(nativeElement);
+    runtime.enhancedUids.add(uid);
+    writeEnhancedUidCache(runtime.enhancedUids);
+    installGuard(runtime.enhancedUids);
+    const session = getOrCreateSession(uid, () => new NativeDiagramSession({
+      diagramUid: uid,
+      metadataStore: runtime.metadata,
+      settings: runtime.settings,
+      onChange: () => syncGuard()
+    }));
+    pruneDetachedViews(session);
+    session.load();
+    session.startWatch();
+    const layout = session.model.layoutSnapshot();
+    await runtime.metadata.set(uid, layout);
+    runtime.activeDiagramUid = uid;
+    const mounted = mountDiagramView({
+      nativeElement,
+      session,
+      settings: runtime.settings,
+      version: runtime.version,
+      lifecycle: runtime.lifecycle,
+      onAction: async (action) => {
+        if (action.type === "library") await toggleLibrary(mounted.wrapper, mounted.canvas);
+        if (action.type === "nested" && action.uid) {
+          globalThis.roamAlphaAPI?.ui?.mainWindow?.openBlock?.({ block: { uid: action.uid } });
+        }
       }
-    }
-  });
-  if (runtime.settings.get(SETTING_IDS.showLibraryOnOpen)) await openLibrary(mounted.wrapper, mounted.canvas);
-  syncGuard();
+    });
+    if (runtime.settings.get(SETTING_IDS.showLibraryOnOpen)) await openLibrary(mounted.wrapper, mounted.canvas);
+    syncGuard();
+  } finally {
+    runtime.mounting.delete(uid);
+  }
 }
 async function restoreDiagram(uid) {
   disposeSession(uid);
@@ -1870,6 +1929,36 @@ function installObservers(lifecycle) {
   });
   lifecycle.observer(bodyObserver, document.body, { childList: true });
 }
+async function reconcileVisibleDiagrams() {
+  if (guardDisabled()) return;
+  if (typeof document === "undefined") return;
+  for (const session of allSessions().values()) pruneDetachedViews(session);
+  const pageUid = diagramUidFromLocation();
+  for (const uid of [...runtime.enhancedUids]) {
+    if (connectedMountForUid(uid)) continue;
+    let native = diagramElForUid(uid);
+    if (!native && pageUid === uid) {
+      const candidate = document.querySelector(".rm-diagram");
+      const candidateUid = candidate ? findDiagramUidFromEl(candidate) : null;
+      if (candidate && (!candidateUid || candidateUid === uid)) native = candidate;
+    }
+    if (!native && pageUid === uid) native = await waitForDiagramEl(uid, { timeout: 400 });
+    if (!native || native.isConnected === false) continue;
+    if (connectedMountForUid(uid)) continue;
+    await enhanceDiagram(uid, native);
+  }
+}
+var RECONCILE_INTERVAL_MS = 250;
+function installReconcile(lifecycle) {
+  if (typeof window === "undefined" || typeof document === "undefined") return;
+  const trigger = () => {
+    if (!runtime.enhancedUids.size) return;
+    void reconcileVisibleDiagrams().catch((error) => console.warn("[plexus-diagram] Reconcile failed", error));
+  };
+  lifecycle.event(window, "hashchange", trigger);
+  lifecycle.event(window, "popstate", trigger);
+  lifecycle.interval(trigger, RECONCILE_INTERVAL_MS);
+}
 async function registerCommands(lifecycle, extensionAPI) {
   const run = async (label, fn) => {
     const full = `Plexus Diagram: ${label}`;
@@ -1965,13 +2054,14 @@ async function registerSlashAndContext(lifecycle, extensionAPI) {
 async function installPlexusDiagram({ extensionAPI, lifecycle, version }) {
   runtime.extensionAPI = extensionAPI;
   runtime.lifecycle = lifecycle;
-  runtime.version = version || "0.2.0";
+  runtime.version = version || "0.2.1";
   runtime.settings = createSettingsReader(extensionAPI);
   runtime.enhancedUids = readEnhancedUidCache();
   installGuard(runtime.enhancedUids);
   await registerCommands(lifecycle, extensionAPI);
   await registerSlashAndContext(lifecycle, extensionAPI);
   installObservers(lifecycle);
+  installReconcile(lifecycle);
   lifecycle.add(async () => {
     if (runtime.settings.get(SETTING_IDS.restoreNativeOnUnload)) {
       for (const uid of [...runtime.enhancedUids]) await restoreDiagram(uid);

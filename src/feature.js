@@ -1,12 +1,15 @@
 import {
+  cssAttributeValue,
   diagramsWithin,
   diagramElForUid,
+  diagramUidFromLocation,
   waitForDiagramEl,
   diagramInstanceInfo,
   enhancedUidGuardCss,
   findDiagramUidFromEl,
   graphCacheKey,
   isDiagramString,
+  NATIVE_HIDDEN_CLASS,
   PREPAINT_STYLE_ID,
   readEnhancedUidCache,
   writeEnhancedUidCache,
@@ -21,6 +24,7 @@ import {
   getOrCreateSession,
   getSession,
   NativeDiagramSession,
+  pruneDetachedViews,
 } from "./session.js";
 import { markNativePending, mountDiagramView } from "./view.js";
 
@@ -29,10 +33,11 @@ export const runtime = {
   lifecycle: null,
   metadata: null,
   settings: null,
-  version: "0.2.0",
+  version: "0.2.1",
   enhancedUids: new Set(),
   activeDiagramUid: null,
   guardStyle: null,
+  mounting: new Set(),
 };
 
 function enabled() {
@@ -79,42 +84,65 @@ async function ensureMetadata() {
   syncGuard();
 }
 
+export function connectedMountForUid(uid, root = globalThis.document) {
+  if (!uid || !root?.querySelector) return null;
+  const mount = root.querySelector(`.pxd-mount[data-diagram-uid="${cssAttributeValue(uid)}"]`);
+  return mount && mount.isConnected !== false ? mount : null;
+}
+
+function instanceAlreadyMounted(uid, nativeElement) {
+  const adjacent = nativeElement?.nextElementSibling;
+  if (adjacent?.classList?.contains?.("pxd-mount") && adjacent.isConnected !== false) return true;
+  return Boolean(
+    nativeElement?.classList?.contains?.(NATIVE_HIDDEN_CLASS) && connectedMountForUid(uid),
+  );
+}
+
 async function enhanceDiagram(uid, nativeElement) {
   if (!enabled() || mobileBlocked()) {
     console.info("[plexus-diagram] Enhance skipped — extension disabled or mobile blocked");
     return;
   }
-  await runtime.metadata.ensurePage();
-  markNativePending(nativeElement);
-  runtime.enhancedUids.add(uid);
-  writeEnhancedUidCache(runtime.enhancedUids);
-  installGuard(runtime.enhancedUids);
-  const session = getOrCreateSession(uid, () => new NativeDiagramSession({
-    diagramUid: uid,
-    metadataStore: runtime.metadata,
-    settings: runtime.settings,
-    onChange: () => syncGuard(),
-  }));
-  session.load();
-  session.startWatch();
-  const layout = session.model.layoutSnapshot();
-  await runtime.metadata.set(uid, layout);
-  runtime.activeDiagramUid = uid;
-  const mounted = mountDiagramView({
-    nativeElement,
-    session,
-    settings: runtime.settings,
-    version: runtime.version,
-    lifecycle: runtime.lifecycle,
-    onAction: async (action) => {
-      if (action.type === "library") await toggleLibrary(mounted.wrapper, mounted.canvas);
-      if (action.type === "nested" && action.uid) {
-        globalThis.roamAlphaAPI?.ui?.mainWindow?.openBlock?.({ block: { uid: action.uid } });
-      }
-    },
-  });
-  if (runtime.settings.get(SETTING_IDS.showLibraryOnOpen)) await openLibrary(mounted.wrapper, mounted.canvas);
-  syncGuard();
+  if (!uid || !nativeElement) return;
+  if (runtime.mounting.has(uid) || instanceAlreadyMounted(uid, nativeElement)) return;
+  runtime.mounting.add(uid);
+  try {
+    if (!runtime.metadata) await ensureMetadata();
+    await runtime.metadata.ensurePage();
+    markNativePending(nativeElement);
+    runtime.enhancedUids.add(uid);
+    writeEnhancedUidCache(runtime.enhancedUids);
+    installGuard(runtime.enhancedUids);
+    const session = getOrCreateSession(uid, () => new NativeDiagramSession({
+      diagramUid: uid,
+      metadataStore: runtime.metadata,
+      settings: runtime.settings,
+      onChange: () => syncGuard(),
+    }));
+    pruneDetachedViews(session);
+    session.load();
+    session.startWatch();
+    const layout = session.model.layoutSnapshot();
+    await runtime.metadata.set(uid, layout);
+    runtime.activeDiagramUid = uid;
+    const mounted = mountDiagramView({
+      nativeElement,
+      session,
+      settings: runtime.settings,
+      version: runtime.version,
+      lifecycle: runtime.lifecycle,
+      onAction: async (action) => {
+        if (action.type === "library") await toggleLibrary(mounted.wrapper, mounted.canvas);
+        if (action.type === "nested" && action.uid) {
+          globalThis.roamAlphaAPI?.ui?.mainWindow?.openBlock?.({ block: { uid: action.uid } });
+        }
+      },
+    });
+    if (runtime.settings.get(SETTING_IDS.showLibraryOnOpen)) await openLibrary(mounted.wrapper, mounted.canvas);
+    syncGuard();
+  } finally {
+    runtime.mounting.delete(uid);
+  }
 }
 
 async function restoreDiagram(uid) {
@@ -265,6 +293,40 @@ function installObservers(lifecycle) {
   });
   lifecycle.observer(bodyObserver, document.body, { childList: true });
 }
+export async function reconcileVisibleDiagrams() {
+  if (guardDisabled()) return;
+  if (typeof document === "undefined") return;
+  for (const session of allSessions().values()) pruneDetachedViews(session);
+  const pageUid = diagramUidFromLocation();
+  for (const uid of [...runtime.enhancedUids]) {
+    if (connectedMountForUid(uid)) continue;
+    let native = diagramElForUid(uid);
+    if (!native && pageUid === uid) {
+      // Zoomed block page: the visible diagram is this block, but its ancestors carry no
+      // data-uid. Accept the lone native canvas unless it clearly belongs to another diagram.
+      const candidate = document.querySelector(".rm-diagram");
+      const candidateUid = candidate ? findDiagramUidFromEl(candidate) : null;
+      if (candidate && (!candidateUid || candidateUid === uid)) native = candidate;
+    }
+    if (!native && pageUid === uid) native = await waitForDiagramEl(uid, { timeout: 400 });
+    if (!native || native.isConnected === false) continue;
+    if (connectedMountForUid(uid)) continue;
+    await enhanceDiagram(uid, native);
+  }
+}
+
+const RECONCILE_INTERVAL_MS = 250;
+
+function installReconcile(lifecycle) {
+  if (typeof window === "undefined" || typeof document === "undefined") return;
+  const trigger = () => {
+    if (!runtime.enhancedUids.size) return;
+    void reconcileVisibleDiagrams().catch((error) => console.warn("[plexus-diagram] Reconcile failed", error));
+  };
+  lifecycle.event(window, "hashchange", trigger);
+  lifecycle.event(window, "popstate", trigger);
+  lifecycle.interval(trigger, RECONCILE_INTERVAL_MS);
+}
 
 async function registerCommands(lifecycle, extensionAPI) {
   const run = async (label, fn) => {
@@ -364,13 +426,14 @@ async function registerSlashAndContext(lifecycle, extensionAPI) {
 export async function installPlexusDiagram({ extensionAPI, lifecycle, version }) {
   runtime.extensionAPI = extensionAPI;
   runtime.lifecycle = lifecycle;
-  runtime.version = version || "0.2.0";
+  runtime.version = version || "0.2.1";
   runtime.settings = createSettingsReader(extensionAPI);
   runtime.enhancedUids = readEnhancedUidCache();
   installGuard(runtime.enhancedUids);
   await registerCommands(lifecycle, extensionAPI);
   await registerSlashAndContext(lifecycle, extensionAPI);
   installObservers(lifecycle);
+  installReconcile(lifecycle);
   lifecycle.add(async () => {
     if (runtime.settings.get(SETTING_IDS.restoreNativeOnUnload)) {
       for (const uid of [...runtime.enhancedUids]) await restoreDiagram(uid);

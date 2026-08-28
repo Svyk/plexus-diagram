@@ -111,10 +111,31 @@ export class NativeDiagramSession {
   }
 }
 
+// Roam navigation detaches overlay DOM without telling us. A view whose canvas/wrapper
+// is no longer connected is dead: dispose it and drop it so the session accepts a fresh
+// view instead of leaking wrappers registered with the lifecycle.
+export function pruneDetachedViews(session) {
+  for (const view of [...session.views]) {
+    const root = view.wrapper || view.canvas?.root || null;
+    if (root && root.isConnected === false) {
+      try {
+        view.dispose?.();
+      } catch (error) {
+        console.warn("[plexus-diagram] Detached view cleanup failed", error);
+      }
+      session.removeView(view);
+    }
+  }
+}
+
 const sessions = new Map();
 
 export function getOrCreateSession(diagramUid, factory) {
-  if (sessions.has(diagramUid)) return sessions.get(diagramUid);
+  const existing = sessions.get(diagramUid);
+  if (existing) {
+    pruneDetachedViews(existing);
+    return existing;
+  }
   const session = factory();
   sessions.set(diagramUid, session);
   return session;

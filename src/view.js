@@ -5,12 +5,18 @@ export function mountDiagramView({ nativeElement, session, settings, version, li
   const host = nativeElement.parentElement || nativeElement;
   const defaultHeight = Number(settings.get("default-height")) || 560;
   const nativeRect = nativeElement.getBoundingClientRect();
-  const wrapperHeight = Math.max(nativeRect.height || 0, defaultHeight);
+  const zoomed = nativeElement.closest(".rm-zoom-block-wrapper") || nativeElement.closest(".roam-article");
+  const articleRect = zoomed?.getBoundingClientRect();
+  const wrapperHeight = zoomed
+    ? Math.max((articleRect?.height || window.innerHeight) - 24, defaultHeight)
+    : Math.max(nativeRect.height || 0, defaultHeight);
 
   nativeElement.classList.add(NATIVE_HIDDEN_CLASS);
   nativeElement.classList.remove(PENDING_CLASS);
   const wrapper = document.createElement("div");
   wrapper.className = "pxd-mount";
+  if (zoomed) wrapper.classList.add("pxd-mount--zoomed");
+  if (session?.diagramUid) wrapper.dataset.diagramUid = String(session.diagramUid);
   wrapper.style.width = "100%";
   wrapper.style.height = `${wrapperHeight}px`;
   wrapper.style.minHeight = `${wrapperHeight}px`;
@@ -45,7 +51,7 @@ export function mountDiagramView({ nativeElement, session, settings, version, li
     nativeElement.classList.remove(NATIVE_HIDDEN_CLASS);
   };
   lifecycle.add(dispose);
-  session.addView({ refresh: () => canvas.render(), dispose, canvas });
+  session.addView({ refresh: () => canvas.render(), dispose, canvas, wrapper });
 
   return { wrapper, canvas, dispose };
 }

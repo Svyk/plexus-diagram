@@ -130,6 +130,7 @@ function mountWithNativeHeight(nativeHeight) {
   nativeElement.parentElement = host;
 
   const session = {
+    diagramUid: "viewtestuid",
     model: {
       activeTool: "select",
       viewport: { x: 0, y: 0, zoom: 1 },
@@ -184,6 +185,7 @@ test("mountDiagramView measures native height before hiding", () => {
     assert.equal(tall.mounted.wrapper.style.width, "100%");
     assert.equal(tall.mounted.wrapper.style.height, "800px");
     assert.equal(tall.nativeElement.classList.contains(NATIVE_HIDDEN_CLASS), true);
+    assert.equal(tall.mounted.wrapper.dataset.diagramUid, "viewtestuid");
     tall.mounted.dispose();
   } finally {
     tall.restore();

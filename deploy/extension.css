@@ -19,6 +19,11 @@
   width: 100%;
 }
 
+.pxd-mount--zoomed {
+  height: calc(100vh - 72px) !important;
+  min-height: calc(100vh - 72px) !important;
+}
+
 .pxd-mount--fullscreen {
   position: fixed !important;
   inset: 0;

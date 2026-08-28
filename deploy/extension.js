@@ -1,4 +1,4 @@
-/* Plexus Diagram v0.3.0 | MIT | generated; edit src/ */
+/* Plexus Diagram v0.3.1 | MIT | generated; edit src/ */
 
 // src/lifecycle.js
 function isPromiseLike(value) {
@@ -105,6 +105,10 @@ function graphCacheKey(locationHash = globalThis.location?.hash || "") {
 function diagramUidFromLocation(hash = globalThis.location?.hash || "") {
   const match = String(hash).match(/#\/app\/[^/]+\/page\/([^/?#]+)/);
   return match ? match[1] : null;
+}
+function routeLeftZoomedDiagram(diagramUid, hash = globalThis.location?.hash || "") {
+  if (!diagramUid) return true;
+  return diagramUidFromLocation(hash) !== diagramUid;
 }
 function readEnhancedUidCache(storage = globalThis.localStorage, key = graphCacheKey()) {
   try {
@@ -2310,7 +2314,7 @@ var runtime = {
   lifecycle: null,
   metadata: null,
   settings: null,
-  version: "0.3.0",
+  version: "0.3.1",
   enhancedUids: /* @__PURE__ */ new Set(),
   activeDiagramUid: null,
   guardStyle: null,
@@ -2571,14 +2575,38 @@ async function reconcileVisibleDiagrams() {
   }
 }
 var RECONCILE_INTERVAL_MS = 250;
+function exitFullscreenOnNavigate(hash = globalThis.location?.hash || "") {
+  if (typeof document === "undefined") return;
+  const height = Number(runtime.settings?.get(SETTING_IDS.defaultHeight)) || 560;
+  let left = false;
+  for (const uid of [...runtime.enhancedUids]) {
+    if (!routeLeftZoomedDiagram(uid, hash)) continue;
+    left = true;
+    const session = getSession(uid);
+    for (const view of session?.views || []) {
+      const fn = view.setFullscreen || view.canvas?.setFullscreen;
+      fn?.(false);
+    }
+    const mount = connectedMountForUid(uid);
+    if (!mount) continue;
+    mount.classList.remove("pxd-mount--fullscreen", "pxd-mount--zoomed");
+    mount.style.height = `${height}px`;
+    mount.style.minHeight = `${height}px`;
+  }
+  if (left) document.body?.classList?.remove("pxd-has-fullscreen");
+}
 function installReconcile(lifecycle) {
   if (typeof window === "undefined" || typeof document === "undefined") return;
   const trigger = () => {
     if (!runtime.enhancedUids.size) return;
     void reconcileVisibleDiagrams().catch((error) => console.warn("[plexus-diagram] Reconcile failed", error));
   };
-  lifecycle.event(window, "hashchange", trigger);
-  lifecycle.event(window, "popstate", trigger);
+  const onNavigate = () => {
+    exitFullscreenOnNavigate();
+    trigger();
+  };
+  lifecycle.event(window, "hashchange", onNavigate);
+  lifecycle.event(window, "popstate", onNavigate);
   lifecycle.interval(trigger, RECONCILE_INTERVAL_MS);
 }
 async function registerCommands(lifecycle, extensionAPI) {
@@ -2676,7 +2704,7 @@ async function registerSlashAndContext(lifecycle, extensionAPI) {
 async function installPlexusDiagram({ extensionAPI, lifecycle, version }) {
   runtime.extensionAPI = extensionAPI;
   runtime.lifecycle = lifecycle;
-  runtime.version = version || "0.3.0";
+  runtime.version = version || "0.3.1";
   runtime.settings = createSettingsReader(extensionAPI);
   runtime.enhancedUids = readEnhancedUidCache();
   installGuard(runtime.enhancedUids);

@@ -7,6 +7,7 @@ import {
   enhancedUidGuardCss,
   findDiagramUidFromEl,
   isDiagramString,
+  routeLeftZoomedDiagram,
   waitForDiagramEl,
 } from "../src/discovery.js";
 
@@ -69,6 +70,13 @@ test("diagramUidFromLocation reads the page uid from roam hashes", () => {
   assert.equal(diagramUidFromLocation("#/app/Svy/page/1IIx5sG4L"), "1IIx5sG4L");
   assert.equal(diagramUidFromLocation("#/app/Svy"), null);
   assert.equal(diagramUidFromLocation(""), null);
+});
+
+test("routeLeftZoomedDiagram is true when house/daily tab leaves the zoomed diagram page", () => {
+  assert.equal(routeLeftZoomedDiagram("1IIx5sG4L", "#/app/Svy/page/1IIx5sG4L"), false);
+  assert.equal(routeLeftZoomedDiagram("1IIx5sG4L", "#/app/Svy/page/08-27-2026"), true);
+  assert.equal(routeLeftZoomedDiagram("1IIx5sG4L", "#/app/Svy"), true);
+  assert.equal(routeLeftZoomedDiagram("1IIx5sG4L", ""), true);
 });
 
 test("enhancedUidGuardCss hides native canvas, title panel, and react-flow with display:none", () => {

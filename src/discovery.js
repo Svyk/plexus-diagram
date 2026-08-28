@@ -22,6 +22,14 @@ export function diagramUidFromLocation(hash = globalThis.location?.hash || "") {
   return match ? match[1] : null;
 }
 
+// Native Maximize dies when the house / daily tab changes the route. The overlay
+// mount often *survives* (the block is still in the daily outline), so fullscreen
+// must be torn down whenever the open page uid is no longer this diagram.
+export function routeLeftZoomedDiagram(diagramUid, hash = globalThis.location?.hash || "") {
+  if (!diagramUid) return true;
+  return diagramUidFromLocation(hash) !== diagramUid;
+}
+
 export function readEnhancedUidCache(storage = globalThis.localStorage, key = graphCacheKey()) {
   try {
     const raw = storage?.getItem?.(key);

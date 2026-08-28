@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.1.4 — 2026-08-27
+
+Slash/command Enhance was a no-op: typing `/enh` puts the diagram block in edit mode, which unmounts `.rm-diagram`. The command now remembers the uid and waits for the native canvas to remount before overlaying.
+
 ## 0.1.3 — 2026-08-27
 
 Slash commands use the same labels as the command palette (Roam Grid pattern), so `/enh` lists **Plexus Diagram: Enhance this diagram**.

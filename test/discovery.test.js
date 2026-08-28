@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { diagramElForUid, isDiagramString } from "../src/discovery.js";
+import { diagramElForUid, isDiagramString, waitForDiagramEl } from "../src/discovery.js";
 
 test("isDiagramString accepts diagram macros", () => {
   assert.equal(isDiagramString("{{[[diagram]]}}"), true);
@@ -32,6 +32,37 @@ test("diagramElForUid queries id suffix, data-uid, and block-ref hosts", () => {
   try {
     assert.deepEqual(diagramElForUid("abc123"), { host: "id-suffix" });
     assert.match(selectors[0], /\[id\$="abc123"\]/);
+  } finally {
+    globalThis.document = previousDocument;
+    globalThis.CSS = previousCss;
+  }
+});
+
+test("waitForDiagramEl resolves immediately when the canvas exists", async () => {
+  const previousDocument = globalThis.document;
+  const previousCss = globalThis.CSS;
+  const node = { className: "rm-diagram" };
+  globalThis.CSS = { escape: (value) => String(value) };
+  globalThis.document = {
+    querySelector(selector) {
+      return selector.includes('[id$="abc123"]') ? node : null;
+    },
+  };
+  try {
+    assert.equal(await waitForDiagramEl("abc123", { timeout: 50, root: globalThis.document }), node);
+  } finally {
+    globalThis.document = previousDocument;
+    globalThis.CSS = previousCss;
+  }
+});
+
+test("waitForDiagramEl times out when the canvas never remounts", async () => {
+  const previousDocument = globalThis.document;
+  const previousCss = globalThis.CSS;
+  globalThis.CSS = { escape: (value) => String(value) };
+  globalThis.document = { querySelector: () => null };
+  try {
+    assert.equal(await waitForDiagramEl("missing", { timeout: 30, root: globalThis.document }), null);
   } finally {
     globalThis.document = previousDocument;
     globalThis.CSS = previousCss;

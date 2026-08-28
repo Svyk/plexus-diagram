@@ -74,12 +74,49 @@ export function findDiagramUidFromEl(element) {
   return null;
 }
 
-export function diagramElForUid(uid) {
-  if (!uid || typeof document === "undefined") return null;
-  const escaped = CSS.escape(String(uid));
-  return document.querySelector(`[id$="${escaped}"] .rm-diagram`)
-    || document.querySelector(`[data-uid="${escaped}"] .rm-diagram`)
-    || document.querySelector(`.rm-block-ref[data-uid="${escaped}"] .rm-diagram`);
+export function diagramElForUid(uid, root = globalThis.document) {
+  if (!uid || !root?.querySelector) return null;
+  const escaped = (globalThis.CSS?.escape || String)(String(uid));
+  return root.querySelector(`[id$="${escaped}"] .rm-diagram`)
+    || root.querySelector(`[data-uid="${escaped}"] .rm-diagram`)
+    || root.querySelector(`.rm-block-ref[data-uid="${escaped}"] .rm-diagram`);
+}
+
+export function waitForDiagramEl(uid, { timeout = 2500, root = globalThis.document } = {}) {
+  const immediate = diagramElForUid(uid, root) || root?.querySelector?.(".rm-diagram");
+  if (immediate) return Promise.resolve(immediate);
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (node) => {
+      if (settled) return;
+      settled = true;
+      observer?.disconnect();
+      clearInterval(interval);
+      clearTimeout(timer);
+      resolve(node || null);
+    };
+    const tick = () => {
+      const node = diagramElForUid(uid, root) || root?.querySelector?.(".rm-diagram");
+      if (node) finish(node);
+    };
+    const Mutation = globalThis.MutationObserver;
+    const observer = typeof Mutation === "function" && root?.body
+      ? new Mutation((records) => {
+        for (const record of records) {
+          for (const added of record.addedNodes || []) {
+            if (added.nodeType !== 1) continue;
+            if (added.matches?.(".rm-diagram") || added.querySelector?.(".rm-diagram")) {
+              tick();
+              return;
+            }
+          }
+        }
+      })
+      : null;
+    observer?.observe(root.body, { childList: true, subtree: true });
+    const interval = setInterval(tick, 50);
+    const timer = setTimeout(() => finish(null), timeout);
+  });
 }
 
 export function diagramsWithin(root) {

@@ -1,6 +1,7 @@
 import {
   diagramsWithin,
   diagramElForUid,
+  waitForDiagramEl,
   diagramInstanceInfo,
   enhancedUidGuardCss,
   findDiagramUidFromEl,
@@ -28,7 +29,7 @@ export const runtime = {
   lifecycle: null,
   metadata: null,
   settings: null,
-  version: "0.1.3",
+  version: "0.1.4",
   enhancedUids: new Set(),
   activeDiagramUid: null,
   guardStyle: null,
@@ -132,9 +133,50 @@ function blockStringForUid(uid) {
 }
 
 function focusedDiagramUid() {
-  const uid = runtime.extensionAPI?.ui?.getFocusedBlock?.()?.["block-uid"];
+  const uid = globalThis.roamAlphaAPI?.ui?.getFocusedBlock?.()?.["block-uid"]
+    || runtime.extensionAPI?.ui?.getFocusedBlock?.()?.["block-uid"];
   if (!uid) return null;
   return isDiagramString(blockStringForUid(uid)) ? uid : null;
+}
+
+async function resolveDiagramUid(context) {
+  const candidates = [
+    context?.["block-uid"],
+    context?.uid,
+    globalThis.roamAlphaAPI?.ui?.getFocusedBlock?.()?.["block-uid"],
+    runtime.extensionAPI?.ui?.getFocusedBlock?.()?.["block-uid"],
+  ];
+  try {
+    const view = await globalThis.roamAlphaAPI?.ui?.mainWindow?.getOpenView?.();
+    if (view?.uid) candidates.push(view.uid);
+  } catch { /* open view is optional */ }
+  if (typeof document !== "undefined") {
+    const visible = document.querySelector(".rm-diagram");
+    if (visible) candidates.push(findDiagramUidFromEl(visible));
+  }
+  for (const uid of candidates) {
+    if (uid && isDiagramString(blockStringForUid(uid))) return uid;
+  }
+  return null;
+}
+
+async function enhanceByUid(uid) {
+  if (!uid) {
+    console.info("[plexus-diagram] Focus a {{[[diagram]]}} block first");
+    return;
+  }
+  await ensureMetadata();
+  runtime.enhancedUids.add(uid);
+  writeEnhancedUidCache(runtime.enhancedUids);
+  installGuard(runtime.enhancedUids);
+  let diagram = diagramElForUid(uid);
+  if (!diagram && typeof document !== "undefined") diagram = document.querySelector(".rm-diagram");
+  if (!diagram) diagram = await waitForDiagramEl(uid);
+  if (!diagram) {
+    console.info("[plexus-diagram] Native diagram canvas did not remount in time", uid);
+    return;
+  }
+  await enhanceDiagram(uid, diagram);
 }
 
 async function openLibrary(mountRoot) {
@@ -222,12 +264,7 @@ async function registerCommands(lifecycle, extensionAPI) {
   };
 
   await run("Enhance this diagram", async (context) => {
-    const fromSlash = context?.["block-uid"];
-    const uid = (fromSlash && isDiagramString(blockStringForUid(fromSlash)) && fromSlash)
-      || focusedDiagramUid();
-    if (!uid) return;
-    const diagram = diagramElForUid(uid) || document.querySelector(".rm-diagram");
-    if (diagram) await enhanceDiagram(uid, diagram);
+    await enhanceByUid(await resolveDiagramUid(context));
   });
   await run("Restore native diagram", async () => {
     const uid = focusedDiagramUid() || runtime.activeDiagramUid;
@@ -285,9 +322,7 @@ async function registerSlashAndContext(lifecycle, extensionAPI) {
       label: "Plexus Diagram: Enhance",
       "display-conditional": (event) => isDiagramString(event["block-string"]),
       callback: async (event) => {
-        const uid = event["block-uid"];
-        const diagram = diagramElForUid(uid);
-        if (diagram) await enhanceDiagram(uid, diagram);
+        await enhanceByUid(await resolveDiagramUid(event));
       },
     });
   }
@@ -296,7 +331,7 @@ async function registerSlashAndContext(lifecycle, extensionAPI) {
 export async function installPlexusDiagram({ extensionAPI, lifecycle, version }) {
   runtime.extensionAPI = extensionAPI;
   runtime.lifecycle = lifecycle;
-  runtime.version = version || "0.1.3";
+  runtime.version = version || "0.1.4";
   runtime.settings = createSettingsReader(extensionAPI);
   runtime.enhancedUids = readEnhancedUidCache();
   installGuard(runtime.enhancedUids);

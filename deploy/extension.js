@@ -1,4 +1,4 @@
-/* Plexus Diagram v0.1.3 | MIT | generated; edit src/ */
+/* Plexus Diagram v0.1.4 | MIT | generated; edit src/ */
 
 // src/lifecycle.js
 function isPromiseLike(value) {
@@ -150,10 +150,44 @@ function findDiagramUidFromEl(element) {
   }
   return null;
 }
-function diagramElForUid(uid) {
-  if (!uid || typeof document === "undefined") return null;
-  const escaped = CSS.escape(String(uid));
-  return document.querySelector(`[id$="${escaped}"] .rm-diagram`) || document.querySelector(`[data-uid="${escaped}"] .rm-diagram`) || document.querySelector(`.rm-block-ref[data-uid="${escaped}"] .rm-diagram`);
+function diagramElForUid(uid, root = globalThis.document) {
+  if (!uid || !root?.querySelector) return null;
+  const escaped = (globalThis.CSS?.escape || String)(String(uid));
+  return root.querySelector(`[id$="${escaped}"] .rm-diagram`) || root.querySelector(`[data-uid="${escaped}"] .rm-diagram`) || root.querySelector(`.rm-block-ref[data-uid="${escaped}"] .rm-diagram`);
+}
+function waitForDiagramEl(uid, { timeout = 2500, root = globalThis.document } = {}) {
+  const immediate = diagramElForUid(uid, root) || root?.querySelector?.(".rm-diagram");
+  if (immediate) return Promise.resolve(immediate);
+  return new Promise((resolve) => {
+    let settled = false;
+    const finish = (node) => {
+      if (settled) return;
+      settled = true;
+      observer?.disconnect();
+      clearInterval(interval);
+      clearTimeout(timer);
+      resolve(node || null);
+    };
+    const tick = () => {
+      const node = diagramElForUid(uid, root) || root?.querySelector?.(".rm-diagram");
+      if (node) finish(node);
+    };
+    const Mutation = globalThis.MutationObserver;
+    const observer = typeof Mutation === "function" && root?.body ? new Mutation((records) => {
+      for (const record of records) {
+        for (const added of record.addedNodes || []) {
+          if (added.nodeType !== 1) continue;
+          if (added.matches?.(".rm-diagram") || added.querySelector?.(".rm-diagram")) {
+            tick();
+            return;
+          }
+        }
+      }
+    }) : null;
+    observer?.observe(root.body, { childList: true, subtree: true });
+    const interval = setInterval(tick, 50);
+    const timer = setTimeout(() => finish(null), timeout);
+  });
 }
 function diagramsWithin(root) {
   if (!root) return [];
@@ -1471,7 +1505,7 @@ var runtime = {
   lifecycle: null,
   metadata: null,
   settings: null,
-  version: "0.1.3",
+  version: "0.1.4",
   enhancedUids: /* @__PURE__ */ new Set(),
   activeDiagramUid: null,
   guardStyle: null
@@ -1564,9 +1598,48 @@ function blockStringForUid(uid) {
   return pull?.[":block/string"] ?? pull?.string ?? "";
 }
 function focusedDiagramUid() {
-  const uid = runtime.extensionAPI?.ui?.getFocusedBlock?.()?.["block-uid"];
+  const uid = globalThis.roamAlphaAPI?.ui?.getFocusedBlock?.()?.["block-uid"] || runtime.extensionAPI?.ui?.getFocusedBlock?.()?.["block-uid"];
   if (!uid) return null;
   return isDiagramString(blockStringForUid(uid)) ? uid : null;
+}
+async function resolveDiagramUid(context) {
+  const candidates = [
+    context?.["block-uid"],
+    context?.uid,
+    globalThis.roamAlphaAPI?.ui?.getFocusedBlock?.()?.["block-uid"],
+    runtime.extensionAPI?.ui?.getFocusedBlock?.()?.["block-uid"]
+  ];
+  try {
+    const view = await globalThis.roamAlphaAPI?.ui?.mainWindow?.getOpenView?.();
+    if (view?.uid) candidates.push(view.uid);
+  } catch {
+  }
+  if (typeof document !== "undefined") {
+    const visible = document.querySelector(".rm-diagram");
+    if (visible) candidates.push(findDiagramUidFromEl(visible));
+  }
+  for (const uid of candidates) {
+    if (uid && isDiagramString(blockStringForUid(uid))) return uid;
+  }
+  return null;
+}
+async function enhanceByUid(uid) {
+  if (!uid) {
+    console.info("[plexus-diagram] Focus a {{[[diagram]]}} block first");
+    return;
+  }
+  await ensureMetadata();
+  runtime.enhancedUids.add(uid);
+  writeEnhancedUidCache(runtime.enhancedUids);
+  installGuard(runtime.enhancedUids);
+  let diagram = diagramElForUid(uid);
+  if (!diagram && typeof document !== "undefined") diagram = document.querySelector(".rm-diagram");
+  if (!diagram) diagram = await waitForDiagramEl(uid);
+  if (!diagram) {
+    console.info("[plexus-diagram] Native diagram canvas did not remount in time", uid);
+    return;
+  }
+  await enhanceDiagram(uid, diagram);
 }
 async function openLibrary(mountRoot) {
   const uid = runtime.activeDiagramUid || focusedDiagramUid();
@@ -1647,11 +1720,7 @@ async function registerCommands(lifecycle, extensionAPI) {
     }
   };
   await run("Enhance this diagram", async (context) => {
-    const fromSlash = context?.["block-uid"];
-    const uid = fromSlash && isDiagramString(blockStringForUid(fromSlash)) && fromSlash || focusedDiagramUid();
-    if (!uid) return;
-    const diagram = diagramElForUid(uid) || document.querySelector(".rm-diagram");
-    if (diagram) await enhanceDiagram(uid, diagram);
+    await enhanceByUid(await resolveDiagramUid(context));
   });
   await run("Restore native diagram", async () => {
     const uid = focusedDiagramUid() || runtime.activeDiagramUid;
@@ -1708,9 +1777,7 @@ async function registerSlashAndContext(lifecycle, extensionAPI) {
       label: "Plexus Diagram: Enhance",
       "display-conditional": (event) => isDiagramString(event["block-string"]),
       callback: async (event) => {
-        const uid = event["block-uid"];
-        const diagram = diagramElForUid(uid);
-        if (diagram) await enhanceDiagram(uid, diagram);
+        await enhanceByUid(await resolveDiagramUid(event));
       }
     });
   }
@@ -1718,7 +1785,7 @@ async function registerSlashAndContext(lifecycle, extensionAPI) {
 async function installPlexusDiagram({ extensionAPI, lifecycle, version }) {
   runtime.extensionAPI = extensionAPI;
   runtime.lifecycle = lifecycle;
-  runtime.version = version || "0.1.3";
+  runtime.version = version || "0.1.4";
   runtime.settings = createSettingsReader(extensionAPI);
   runtime.enhancedUids = readEnhancedUidCache();
   installGuard(runtime.enhancedUids);

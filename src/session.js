@@ -83,6 +83,18 @@ export class NativeDiagramSession {
     return contentUid;
   }
 
+  async addSection(position) {
+    const id = `s${Date.now().toString(36)}`;
+    this.model.sections.set(id, {
+      pos: { ...position },
+      size: { width: 320, height: 240 },
+      title: "",
+    });
+    await this.persistLayout();
+    this.notifyViews({ type: "section" });
+    return id;
+  }
+
   async connectSelected(kind) {
     const selected = [...this.model.selected];
     if (selected.length !== 2) return false;

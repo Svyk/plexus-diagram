@@ -40,7 +40,7 @@ const DEFAULTS = Object.freeze({
   [SETTING_IDS.enabled]: true,
   [SETTING_IDS.autoEnhance]: false,
   [SETTING_IDS.showVersionBadge]: true,
-  [SETTING_IDS.restoreNativeOnUnload]: true,
+  [SETTING_IDS.restoreNativeOnUnload]: false,
   [SETTING_IDS.defaultHeight]: "420",
   [SETTING_IDS.snapToGrid]: true,
   [SETTING_IDS.gridSize]: "24",

@@ -1,23 +1,25 @@
 import { isDiagramString } from "./discovery.js";
 
-export const DIAGRAM_PULL_PATTERN = [
-  ":block/uid",
-  ":block/string",
-  ":block/props",
-  { ":block/children": [":block/uid", ":block/string", ":block/order"] },
-  { ":diagram/nodes": [
-    ":block/uid",
-    ":diagram.node/data",
-    { ":diagram.node/block": [":block/uid", ":block/string"] },
-    { ":diagram.node/parent-node": [":db/id", ":block/uid"] },
-  ] },
-  { ":diagram/edges": [
-    ":block/uid",
-    ":diagram.edge/data",
-    { ":diagram.edge/source": [":block/uid", ":db/id"] },
-    { ":diagram.edge/target": [":block/uid", ":db/id"] },
-  ] },
-];
+export const DIAGRAM_PULL_PATTERN = `[:block/uid :block/string :block/props
+  {:block/children [:block/uid :block/string :block/order]}
+  {:diagram/nodes [:block/uid :diagram.node/data
+    {:diagram.node/block [:block/uid :block/string]}
+    {:diagram.node/parent-node [:db/id :block/uid]}]}
+  {:diagram/edges [:block/uid :diagram.edge/data
+    {:diagram.edge/source [:block/uid :db/id]}
+    {:diagram.edge/target [:block/uid :db/id]}]}]`;
+
+export function stripKeywords(value) {
+  if (value == null) return value;
+  if (Array.isArray(value)) return value.map(stripKeywords);
+  if (typeof value !== "object") return value;
+  const out = {};
+  for (const [key, val] of Object.entries(value)) {
+    const normalizedKey = key.startsWith(":") ? key.slice(1) : key;
+    out[normalizedKey] = stripKeywords(val);
+  }
+  return out;
+}
 
 export function childrenFingerprint(children) {
   return JSON.stringify(
@@ -42,19 +44,19 @@ function normalizePull(node) {
     uid: node[":block/uid"] ?? node.uid,
     string: node[":block/string"] ?? node.string ?? "",
     order: node[":block/order"] ?? node.order ?? 0,
-    props: node[":block/props"] ?? node.props ?? {},
+    props: stripKeywords(node[":block/props"] ?? node.props ?? {}),
     children,
     diagramNodes: (node[":diagram/nodes"] || node.diagramNodes || []).map((n) => ({
       uid: n[":block/uid"] ?? n.uid,
-      data: n[":diagram.node/data"] ?? n.data ?? {},
+      data: stripKeywords(n[":diagram.node/data"] ?? n.data ?? {}),
       contentBlock: normalizePull(n[":diagram.node/block"] ?? n.contentBlock),
       parentNode: n[":diagram.node/parent-node"] ?? n.parentNode ?? null,
     })),
     diagramEdges: (node[":diagram/edges"] || node.diagramEdges || []).map((e) => ({
       uid: e[":block/uid"] ?? e.uid,
-      data: e[":diagram.edge/data"] ?? e.data ?? {},
-      source: e[":diagram.edge/source"] ?? e.source,
-      target: e[":diagram.edge/target"] ?? e.target,
+      data: stripKeywords(e[":diagram.edge/data"] ?? e.data ?? {}),
+      source: stripKeywords(e[":diagram.edge/source"] ?? e.source),
+      target: stripKeywords(e[":diagram.edge/target"] ?? e.target),
     })),
   };
 }
@@ -84,8 +86,8 @@ export function importNativeLayout(tree, metadataLayout, defaults = {}) {
   }
   const existingEdgeKeys = new Set(edges.map((edge) => `${edge.source}->${edge.target}`));
   for (const nativeEdge of tree.diagramEdges || []) {
-    const sourceUid = nativeEdge.source?.[":block/uid"] ?? nativeEdge.source?.uid;
-    const targetUid = nativeEdge.target?.[":block/uid"] ?? nativeEdge.target?.uid;
+    const sourceUid = nativeEdge.source?.["block/uid"] ?? nativeEdge.source?.uid;
+    const targetUid = nativeEdge.target?.["block/uid"] ?? nativeEdge.target?.uid;
     const srcContent = nodeUidToContent.get(sourceUid);
     const tgtContent = nodeUidToContent.get(targetUid);
     if (!srcContent || !tgtContent) continue;
@@ -109,8 +111,7 @@ export class DiagramModel {
     this.edges = imported.edges;
     this.sections = new Map(metadataLayout?.sections ? [...metadataLayout.sections] : []);
     this.viewport = metadataLayout?.viewport
-      || tree.props?.[":rf-diagram"]?.viewport
-      || tree.props?.[":rf-diagram"]?.["viewport"]
+      || tree.props?.["rf-diagram"]?.viewport
       || { x: 0, y: 0, zoom: 1 };
     this.selected = new Set();
     this.activeTool = "select";
@@ -172,7 +173,7 @@ export class DiagramModel {
     this.nodes = next.nodes;
     this.edges = next.edges;
     this.sections = next.sections;
-    if (tree.props?.[":rf-diagram"]?.viewport) this.viewport = { ...tree.props[":rf-diagram"].viewport };
+    if (tree.props?.["rf-diagram"]?.viewport) this.viewport = { ...tree.props["rf-diagram"].viewport };
     else if (metadataLayout?.viewport) this.viewport = { ...metadataLayout.viewport };
   }
 

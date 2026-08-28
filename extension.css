@@ -13,6 +13,7 @@
 }
 
 .pxd-mount {
+  position: relative;
   width: 100%;
 }
 
@@ -200,6 +201,28 @@
   padding: 6px 8px;
   border-radius: 4px;
   cursor: pointer;
+}
+
+.pxd-library-drawer {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  width: 220px;
+  max-height: 60vh;
+  z-index: 3;
+  background: var(--pxd-bg);
+  border: 1px solid var(--pxd-border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.rm-diagram.pxd-native-hidden {
+  display: none !important;
+}
+
+.rm-diagram.pxd-native-pending {
+  visibility: hidden !important;
+  pointer-events: none !important;
 }
 
 .bp3-dark .pxd-root,

@@ -35,12 +35,12 @@ function fakeExtensionApi() {
         removeCommand: async ({ label }) => { calls.push(["command:remove", label]); return null; },
       },
       slashCommand: {
-        create: async ({ label }) => { calls.push(["slash:create", label]); return null; },
-        remove: async ({ label }) => { calls.push(["slash:remove", label]); return null; },
+        addCommand: async ({ label }) => { calls.push(["slash:add", label]); return null; },
+        removeCommand: async ({ label }) => { calls.push(["slash:remove", label]); return null; },
       },
       blockContextMenu: {
-        add: async ({ label }) => { calls.push(["context:add", label]); return null; },
-        remove: async ({ label }) => { calls.push(["context:remove", label]); return null; },
+        addCommand: async ({ label }) => { calls.push(["context:add", label]); return null; },
+        removeCommand: async ({ label }) => { calls.push(["context:remove", label]); return null; },
       },
       rightSidebar: {
         addWindow: async () => () => {},
@@ -72,6 +72,8 @@ test("extension exports the Roam lifecycle contract and survives repeated unload
   await extension.onunload();
 
   assert.ok(api.calls.some(([name, label]) => name === "command:add" && label === "Plexus Diagram: Enhance this diagram"));
+  assert.ok(api.calls.some(([name, label]) => name === "slash:add" && label === "Plexus Diagram"));
+  assert.ok(api.calls.some(([name, label]) => name === "context:add" && label === "Plexus Diagram: Enhance"));
   assert.ok(api.calls.some(([name, title]) => name === "panel:create" && title === "Plexus Diagram"));
   assert.ok(!api.calls.some(([, key]) => key === "include-timestamp"));
 });

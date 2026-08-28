@@ -71,6 +71,15 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
     return Math.round(value / size) * size;
   };
 
+  const screenToWorld = (clientX, clientY) => {
+    const rect = root.getBoundingClientRect();
+    const zoom = session.model.viewport.zoom || 1;
+    return {
+      x: snap((clientX - rect.left - session.model.viewport.x) / zoom),
+      y: snap((clientY - rect.top - session.model.viewport.y) / zoom),
+    };
+  };
+
   const cardRect = (contentUid) => {
     const node = session.model.nodes.get(contentUid);
     if (!node) return null;
@@ -290,6 +299,15 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
     render();
   });
   root.addEventListener("mouseup", () => { panning = false; panStart = null; });
+  root.addEventListener("click", async (event) => {
+    if (event.target.closest(".pxd-card") || event.target.closest(".pxd-toolbar")) return;
+    const tool = session.model.activeTool;
+    if (tool === "card") {
+      await onPersist?.({ addCard: screenToWorld(event.clientX, event.clientY) });
+    } else if (tool === "section") {
+      await onPersist?.({ addSection: screenToWorld(event.clientX, event.clientY) });
+    }
+  });
   window.addEventListener("keydown", onKeyDown);
   window.addEventListener("keyup", onKeyUp);
 
@@ -306,15 +324,16 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
   };
 }
 
-export function viewportCenterPosition(root, session) {
+export function viewportCenterPosition(root, session, settings) {
   const rect = root.getBoundingClientRect();
   const zoom = session.model.viewport.zoom || 1;
-  return {
-    x: snapValue((rect.width / 2 - session.model.viewport.x) / zoom, session),
-    y: snapValue((rect.height / 2 - session.model.viewport.y) / zoom, session),
+  const snap = (value) => {
+    if (!settings?.get?.("snap-to-grid")) return value;
+    const size = Number(settings.get("grid-size")) || 24;
+    return Math.round(value / size) * size;
   };
-}
-
-function snapValue(value, session) {
-  return value;
+  return {
+    x: snap((rect.width / 2 - session.model.viewport.x) / zoom),
+    y: snap((rect.height / 2 - session.model.viewport.y) / zoom),
+  };
 }

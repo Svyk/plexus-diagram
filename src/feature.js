@@ -1,5 +1,6 @@
 import {
   diagramsWithin,
+  diagramElForUid,
   diagramInstanceInfo,
   enhancedUidGuardCss,
   findDiagramUidFromEl,
@@ -12,6 +13,7 @@ import {
 import { MetadataStore } from "./metadata.js";
 import { createLibrarySidebar } from "./library.js";
 import { createSettingsReader, SETTING_IDS } from "./settings.js";
+import { viewportCenterPosition } from "./canvas.js";
 import {
   allSessions,
   disposeSession,
@@ -26,7 +28,7 @@ export const runtime = {
   lifecycle: null,
   metadata: null,
   settings: null,
-  version: "0.1.0",
+  version: "0.1.1",
   enhancedUids: new Set(),
   activeDiagramUid: null,
   guardStyle: null,
@@ -106,7 +108,7 @@ async function enhanceDiagram(uid, nativeElement) {
     onAction: async (action) => {
       if (action.type === "library") await openLibrary();
       if (action.type === "nested" && action.uid) {
-        runtime.extensionAPI?.ui?.mainWindow?.openBlock?.({ uid: action.uid });
+        runtime.extensionAPI?.ui?.mainWindow?.openBlock?.({ block: { uid: action.uid } });
       }
     },
   });
@@ -121,29 +123,34 @@ async function restoreDiagram(uid) {
   syncGuard();
 }
 
-function focusedDiagramUid() {
-  const uid = runtime.extensionAPI?.ui?.getFocusedBlock?.()?.["block-uid"]
-    || runtime.extensionAPI?.ui?.getFocusedBlock?.()?.uid;
-  if (!uid) return null;
-  const pull = runtime.extensionAPI?.data?.pull?.(
+function blockStringForUid(uid) {
+  const pull = globalThis.roamAlphaAPI?.data?.pull?.(
     "[:block/string]",
     [":block/uid", uid],
   );
-  const string = pull?.[":block/string"] ?? pull?.string;
-  return isDiagramString(string) ? uid : null;
+  return pull?.[":block/string"] ?? pull?.string ?? "";
 }
 
-async function openLibrary() {
+function focusedDiagramUid() {
+  const uid = runtime.extensionAPI?.ui?.getFocusedBlock?.()?.["block-uid"];
+  if (!uid) return null;
+  return isDiagramString(blockStringForUid(uid)) ? uid : null;
+}
+
+async function openLibrary(mountRoot) {
   const uid = runtime.activeDiagramUid || focusedDiagramUid();
   const session = uid ? getSession(uid) : null;
   if (!session) return;
+  const root = mountRoot || document.querySelector(".pxd-root");
   createLibrarySidebar({
-    extensionAPI: runtime.extensionAPI,
     lifecycle: runtime.lifecycle,
     settings: runtime.settings,
     session,
+    mountRoot: root,
     onPlacePage: async (title) => {
-      const center = { x: 120, y: 120 };
+      const center = root
+        ? viewportCenterPosition(root, session, runtime.settings)
+        : { x: 120, y: 120 };
       await session.addCard(`[[${title}]]`, center);
     },
   });
@@ -154,7 +161,7 @@ function scanAddedNode(node) {
     const uid = findDiagramUidFromEl(diagram);
     if (!uid) continue;
     if (!runtime.enhancedUids.has(uid)) {
-      if (runtime.settings.get(SETTING_IDS.autoEnhance) && isDiagramString(diagram.closest("[data-uid]")?.dataset?.uid)) {
+      if (runtime.settings.get(SETTING_IDS.autoEnhance) && isDiagramString(blockStringForUid(uid))) {
         void enhanceDiagram(uid, diagram);
       }
       continue;
@@ -213,7 +220,7 @@ function registerCommands(lifecycle, extensionAPI) {
   run("Enhance this diagram", async () => {
     const uid = focusedDiagramUid();
     if (!uid) return;
-    const diagram = document.querySelector(`[data-uid="${uid}"] .rm-diagram`) || document.querySelector(".rm-diagram");
+    const diagram = diagramElForUid(uid) || document.querySelector(".rm-diagram");
     if (diagram) await enhanceDiagram(uid, diagram);
   });
   run("Restore native diagram", async () => {
@@ -239,13 +246,13 @@ function registerCommands(lifecycle, extensionAPI) {
   run("Open nested diagram", () => {
     const session = getSession(runtime.activeDiagramUid || focusedDiagramUid());
     const uid = [...(session?.model.selected || [])][0];
-    if (uid) extensionAPI.ui?.mainWindow?.openBlock?.({ uid });
+    if (uid) extensionAPI.ui?.mainWindow?.openBlock?.({ block: { uid } });
   });
   run("Show library", () => openLibrary());
   run("Appearances of this block", () => {
     const focused = extensionAPI.ui?.getFocusedBlock?.()?.["block-uid"];
     if (!focused) return;
-    const rows = extensionAPI.q?.(`[:find ?diagram :where
+    const rows = globalThis.roamAlphaAPI?.data?.q?.(`[:find ?diagram :where
       [?child :block/uid "${focused}"]
       [?diagram :block/children ?child]]`) || [];
     console.info("[plexus-diagram] Appearances:", rows);
@@ -267,42 +274,43 @@ function registerCommands(lifecycle, extensionAPI) {
 }
 
 function registerSlashAndContext(lifecycle, extensionAPI) {
-  if (extensionAPI.ui?.slashCommand?.create) {
-    lifecycle.add(() => {
-      extensionAPI.ui.slashCommand.remove?.({ label: "Plexus Diagram" });
-    });
-    extensionAPI.ui.slashCommand.create({
+  if (extensionAPI.ui?.slashCommand?.addCommand) {
+    lifecycle.command(extensionAPI.ui.slashCommand, {
       label: "Plexus Diagram",
-      callback: async ({ uid, string }) => {
+      callback: async (context) => {
         if (!enabled()) return;
-        const diagramUid = focusedDiagramUid() || (isDiagramString(string) ? uid : null);
+        const blockUid = context["block-uid"];
+        const string = blockStringForUid(blockUid);
+        const diagramUid = focusedDiagramUid() || (isDiagramString(string) ? blockUid : null);
         if (diagramUid) {
-          const diagram = document.querySelector(`[data-uid="${diagramUid}"] .rm-diagram`);
+          const diagram = diagramElForUid(diagramUid);
           if (diagram) await enhanceDiagram(diagramUid, diagram);
           return;
         }
         if (string && string.trim() && !isDiagramString(string)) return;
-        await extensionAPI.data.block.update({ block: { uid, string: "{{[[diagram]]}}" } });
+        await globalThis.roamAlphaAPI?.data?.block?.update?.({
+          block: { uid: blockUid, string: "{{[[diagram]]}}" },
+        });
       },
     });
   }
-  if (extensionAPI.ui?.blockContextMenu?.add) {
-    extensionAPI.ui.blockContextMenu.add({
+  if (extensionAPI.ui?.blockContextMenu?.addCommand) {
+    lifecycle.command(extensionAPI.ui.blockContextMenu, {
       label: "Plexus Diagram: Enhance",
-      display: ({ blockString }) => /\{\{\s*(\[\[)?diagram/i.test(blockString || ""),
-      callback: async ({ uid }) => {
-        const diagram = document.querySelector(`[data-uid="${uid}"] .rm-diagram`);
+      "display-conditional": (event) => isDiagramString(event["block-string"]),
+      callback: async (event) => {
+        const uid = event["block-uid"];
+        const diagram = diagramElForUid(uid);
         if (diagram) await enhanceDiagram(uid, diagram);
       },
     });
-    lifecycle.add(() => extensionAPI.ui.blockContextMenu.remove?.({ label: "Plexus Diagram: Enhance" }));
   }
 }
 
 export async function installPlexusDiagram({ extensionAPI, lifecycle, version }) {
   runtime.extensionAPI = extensionAPI;
   runtime.lifecycle = lifecycle;
-  runtime.version = version || "0.1.0";
+  runtime.version = version || "0.1.1";
   runtime.settings = createSettingsReader(extensionAPI);
   runtime.enhancedUids = readEnhancedUidCache();
   installGuard(runtime.enhancedUids);

@@ -74,6 +74,14 @@ export function findDiagramUidFromEl(element) {
   return null;
 }
 
+export function diagramElForUid(uid) {
+  if (!uid || typeof document === "undefined") return null;
+  const escaped = CSS.escape(String(uid));
+  return document.querySelector(`[id$="${escaped}"] .rm-diagram`)
+    || document.querySelector(`[data-uid="${escaped}"] .rm-diagram`)
+    || document.querySelector(`.rm-block-ref[data-uid="${escaped}"] .rm-diagram`);
+}
+
 export function diagramsWithin(root) {
   if (!root) return [];
   const values = [];

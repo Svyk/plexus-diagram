@@ -93,32 +93,36 @@ export class DiagramAdapter {
     return () => roam().data.removePullWatch(this.pullPattern, entity, handler);
   }
 
-  async createChild(string, order) {
+  async createChild(string, order = "last") {
     return this.queue.run(async () => {
+      const api = roam();
       const current = this.pull();
       const beforeFp = childrenFingerprint(current.children);
-      const uid = await roam().data.block.create({
+      const uid = api.util.generateUID();
+      await api.data.block.create({
         location: { "parent-uid": this.diagramUid, order },
-        block: { string },
+        block: { uid, string },
       });
-      const contentUid = typeof uid === "string" ? uid : uid?.uid;
       const after = this.pull();
       this.recordExpectedFingerprint(after);
       this.adoptBaseTree(after);
       if (childrenFingerprint(after.children) === beforeFp) {
         throw new Error("Child create did not change diagram children");
       }
-      return contentUid;
+      return uid;
     });
   }
 
   async updateViewport(viewport) {
     return this.queue.run(async () => {
-      await roam().data.block.update({
-        block: {
-          uid: this.diagramUid,
-          props: { ":rf-diagram": { viewport } },
-        },
+      const api = roam();
+      const props = { ":rf-diagram": { viewport } };
+      if (typeof api.updateBlock === "function") {
+        await api.updateBlock({ block: { uid: this.diagramUid, props } });
+        return;
+      }
+      await api.data.block.update({
+        block: { uid: this.diagramUid, props },
       });
     });
   }

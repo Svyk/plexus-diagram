@@ -4,9 +4,32 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 
-import { childrenFingerprint, DiagramModel, importNativeLayout, parsePullResult } from "../src/model.js";
+import { childrenFingerprint, DiagramModel, DIAGRAM_PULL_PATTERN, importNativeLayout, parsePullResult, stripKeywords } from "../src/model.js";
 
 const fixtureDir = dirname(fileURLToPath(import.meta.url));
+
+test("DIAGRAM_PULL_PATTERN is an EDN string for roamAlphaAPI.data.pull", () => {
+  assert.equal(typeof DIAGRAM_PULL_PATTERN, "string");
+  assert.match(DIAGRAM_PULL_PATTERN, /^\[:block\/uid/);
+});
+
+test("stripKeywords removes leading colons from object keys", () => {
+  assert.deepEqual(stripKeywords({ ":x": 1, nested: { ":y": 2 } }), { x: 1, nested: { y: 2 } });
+});
+
+test("parsePullResult reads viewport from colon-keyed rf-diagram props", () => {
+  const tree = parsePullResult({
+    ":block/uid": "d1",
+    ":block/props": {
+      ":rf-diagram": {
+        ":viewport": { ":x": 0, ":y": 0, ":zoom": 1 },
+      },
+    },
+    ":block/children": [],
+  });
+  const model = new DiagramModel({ diagramUid: "d1", tree, metadataLayout: null });
+  assert.deepEqual(model.viewport, { x: 0, y: 0, zoom: 1 });
+});
 
 test("parsePullResult maps live diagram pull shape into model", async () => {
   const raw = JSON.parse(await readFile(resolve(fixtureDir, "fixtures/diagram-pull.json"), "utf8"));

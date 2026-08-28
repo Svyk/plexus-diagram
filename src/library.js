@@ -1,20 +1,30 @@
-export function createLibrarySidebar({ extensionAPI, lifecycle, settings, session, onPlacePage }) {
+export function createLibrarySidebar({ lifecycle, settings, session, onPlacePage, mountRoot }) {
+  const parent = mountRoot || document.body;
+  parent.querySelector(".pxd-library-drawer")?.remove();
+
+  const drawer = document.createElement("div");
+  drawer.className = "pxd-library-drawer";
   const list = document.createElement("div");
   list.className = "pxd-library";
+  drawer.append(list);
+  lifecycle.node(drawer, parent);
 
   const render = async () => {
     list.innerHTML = "";
     const includeDailies = settings.get("library-include-dailies");
-    const query = includeDailies
-      ? `[:find ?title :where [?p :node/title ?title]]`
-      : `[:find ?title :where [?p :node/title ?title] (not [(clojure.string/includes? ?title " ")])]`;
-    let titles = [];
+    const query = `[:find ?title ?uid :where [?p :node/title ?title] [?p :block/uid ?uid]]`;
+    let rows = [];
     try {
-      titles = (extensionAPI.q?.(query) || []).map((row) => row[0]).filter(Boolean);
+      rows = globalThis.roamAlphaAPI?.data?.q?.(query) || [];
     } catch {
-      titles = [];
+      rows = [];
     }
-    titles = titles.slice(0, 50);
+    const dailyPattern = /^\d{2}-\d{2}-\d{4}$/;
+    const titles = rows
+      .filter(([, pageUid]) => includeDailies || !dailyPattern.test(String(pageUid ?? "")))
+      .map(([title]) => title)
+      .filter(Boolean)
+      .slice(0, 50);
     for (const title of titles) {
       const row = document.createElement("button");
       row.type = "button";
@@ -27,25 +37,10 @@ export function createLibrarySidebar({ extensionAPI, lifecycle, settings, sessio
 
   void render();
 
-  const windowConfig = {
-    label: "Plexus Library",
-    icon: "diagram-tree",
-    content: list,
-  };
-
-  let removeWindow = null;
-  if (extensionAPI.ui?.rightSidebar?.addWindow) {
-    extensionAPI.ui.rightSidebar.addWindow(windowConfig).then((remove) => {
-      removeWindow = remove;
-      lifecycle.add(() => remove?.());
-    });
-  }
-
   return {
     refresh: render,
     dispose() {
-      removeWindow?.();
-      list.remove();
+      drawer.remove();
     },
   };
 }

@@ -21,6 +21,14 @@ export function mountDiagramView({ nativeElement, session, settings, version, li
       if (action.persistViewport) await session.persistViewport();
       if (action.openLibrary) onAction?.({ type: "library" });
       if (action.openNested) onAction?.({ type: "nested", uid: action.openNested });
+      if (action.addCard) {
+        await session.addCard("", action.addCard);
+        canvas.render();
+      }
+      if (action.addSection) {
+        await session.addSection(action.addSection);
+        canvas.render();
+      }
     },
   });
 

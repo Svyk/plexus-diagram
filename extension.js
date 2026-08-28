@@ -1,4 +1,4 @@
-/* Plexus Diagram v0.1.0 | MIT | generated; edit src/ */
+/* Plexus Diagram v0.1.1 | MIT | generated; edit src/ */
 
 // src/lifecycle.js
 function isPromiseLike(value) {
@@ -149,6 +149,11 @@ function findDiagramUidFromEl(element) {
     if (match) return match[1];
   }
   return null;
+}
+function diagramElForUid(uid) {
+  if (!uid || typeof document === "undefined") return null;
+  const escaped = CSS.escape(String(uid));
+  return document.querySelector(`[id$="${escaped}"] .rm-diagram`) || document.querySelector(`[data-uid="${escaped}"] .rm-diagram`) || document.querySelector(`.rm-block-ref[data-uid="${escaped}"] .rm-diagram`);
 }
 function diagramsWithin(root) {
   if (!root) return [];
@@ -389,20 +394,27 @@ var MetadataStore = class {
 };
 
 // src/library.js
-function createLibrarySidebar({ extensionAPI, lifecycle, settings, session, onPlacePage }) {
+function createLibrarySidebar({ lifecycle, settings, session, onPlacePage, mountRoot }) {
+  const parent = mountRoot || document.body;
+  parent.querySelector(".pxd-library-drawer")?.remove();
+  const drawer = document.createElement("div");
+  drawer.className = "pxd-library-drawer";
   const list = document.createElement("div");
   list.className = "pxd-library";
+  drawer.append(list);
+  lifecycle.node(drawer, parent);
   const render = async () => {
     list.innerHTML = "";
     const includeDailies = settings.get("library-include-dailies");
-    const query = includeDailies ? `[:find ?title :where [?p :node/title ?title]]` : `[:find ?title :where [?p :node/title ?title] (not [(clojure.string/includes? ?title " ")])]`;
-    let titles = [];
+    const query = `[:find ?title ?uid :where [?p :node/title ?title] [?p :block/uid ?uid]]`;
+    let rows = [];
     try {
-      titles = (extensionAPI.q?.(query) || []).map((row) => row[0]).filter(Boolean);
+      rows = globalThis.roamAlphaAPI?.data?.q?.(query) || [];
     } catch {
-      titles = [];
+      rows = [];
     }
-    titles = titles.slice(0, 50);
+    const dailyPattern = /^\d{2}-\d{2}-\d{4}$/;
+    const titles = rows.filter(([, pageUid]) => includeDailies || !dailyPattern.test(String(pageUid ?? ""))).map(([title]) => title).filter(Boolean).slice(0, 50);
     for (const title of titles) {
       const row = document.createElement("button");
       row.type = "button";
@@ -413,23 +425,10 @@ function createLibrarySidebar({ extensionAPI, lifecycle, settings, session, onPl
     }
   };
   void render();
-  const windowConfig = {
-    label: "Plexus Library",
-    icon: "diagram-tree",
-    content: list
-  };
-  let removeWindow = null;
-  if (extensionAPI.ui?.rightSidebar?.addWindow) {
-    extensionAPI.ui.rightSidebar.addWindow(windowConfig).then((remove) => {
-      removeWindow = remove;
-      lifecycle.add(() => remove?.());
-    });
-  }
   return {
     refresh: render,
     dispose() {
-      removeWindow?.();
-      list.remove();
+      drawer.remove();
     }
   };
 }
@@ -476,7 +475,7 @@ var DEFAULTS = Object.freeze({
   [SETTING_IDS.enabled]: true,
   [SETTING_IDS.autoEnhance]: false,
   [SETTING_IDS.showVersionBadge]: true,
-  [SETTING_IDS.restoreNativeOnUnload]: true,
+  [SETTING_IDS.restoreNativeOnUnload]: false,
   [SETTING_IDS.defaultHeight]: "420",
   [SETTING_IDS.snapToGrid]: true,
   [SETTING_IDS.gridSize]: "24",
@@ -612,407 +611,6 @@ function createSettingsPanel() {
   };
 }
 
-// src/model.js
-var DIAGRAM_PULL_PATTERN = [
-  ":block/uid",
-  ":block/string",
-  ":block/props",
-  { ":block/children": [":block/uid", ":block/string", ":block/order"] },
-  { ":diagram/nodes": [
-    ":block/uid",
-    ":diagram.node/data",
-    { ":diagram.node/block": [":block/uid", ":block/string"] },
-    { ":diagram.node/parent-node": [":db/id", ":block/uid"] }
-  ] },
-  { ":diagram/edges": [
-    ":block/uid",
-    ":diagram.edge/data",
-    { ":diagram.edge/source": [":block/uid", ":db/id"] },
-    { ":diagram.edge/target": [":block/uid", ":db/id"] }
-  ] }
-];
-function childrenFingerprint(children) {
-  return JSON.stringify(
-    (children || []).map((child) => [child.uid, child.string, child.order]).sort((a, b) => String(a[0]).localeCompare(String(b[0])))
-  );
-}
-function treeFingerprint(tree) {
-  const visit = (node) => [node.uid, node.string, (node.children || []).map(visit)];
-  return JSON.stringify(visit(tree));
-}
-function normalizePull(node) {
-  if (!node) return null;
-  const children = (node[":block/children"] || node.children || []).map(normalizePull).filter(Boolean).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
-  return {
-    uid: node[":block/uid"] ?? node.uid,
-    string: node[":block/string"] ?? node.string ?? "",
-    order: node[":block/order"] ?? node.order ?? 0,
-    props: node[":block/props"] ?? node.props ?? {},
-    children,
-    diagramNodes: (node[":diagram/nodes"] || node.diagramNodes || []).map((n) => ({
-      uid: n[":block/uid"] ?? n.uid,
-      data: n[":diagram.node/data"] ?? n.data ?? {},
-      contentBlock: normalizePull(n[":diagram.node/block"] ?? n.contentBlock),
-      parentNode: n[":diagram.node/parent-node"] ?? n.parentNode ?? null
-    })),
-    diagramEdges: (node[":diagram/edges"] || node.diagramEdges || []).map((e) => ({
-      uid: e[":block/uid"] ?? e.uid,
-      data: e[":diagram.edge/data"] ?? e.data ?? {},
-      source: e[":diagram.edge/source"] ?? e.source,
-      target: e[":diagram.edge/target"] ?? e.target
-    }))
-  };
-}
-function parsePullResult(raw) {
-  return normalizePull(raw);
-}
-function importNativeLayout(tree, metadataLayout, defaults = {}) {
-  const nodes = new Map(metadataLayout?.nodes ? [...metadataLayout.nodes] : []);
-  const edges = [...metadataLayout?.edges || []];
-  const nodeUidToContent = /* @__PURE__ */ new Map();
-  for (const nativeNode of tree.diagramNodes || []) {
-    const contentUid = nativeNode.contentBlock?.uid;
-    if (!contentUid) continue;
-    nodeUidToContent.set(nativeNode.uid, contentUid);
-    if (nodes.has(contentUid)) continue;
-    const data = nativeNode.data || {};
-    const pos = data.position || data.positionAbsolute || { x: 0, y: 0 };
-    const width = data.width ?? data.data?.width ?? defaults.width ?? 280;
-    const height = data.height ?? data.data?.height ?? defaults.height ?? 160;
-    nodes.set(contentUid, {
-      pos: { x: pos.x ?? 0, y: pos.y ?? 0 },
-      size: { width, height },
-      color: ""
-    });
-  }
-  const existingEdgeKeys = new Set(edges.map((edge) => `${edge.source}->${edge.target}`));
-  for (const nativeEdge of tree.diagramEdges || []) {
-    const sourceUid = nativeEdge.source?.[":block/uid"] ?? nativeEdge.source?.uid;
-    const targetUid = nativeEdge.target?.[":block/uid"] ?? nativeEdge.target?.uid;
-    const srcContent = nodeUidToContent.get(sourceUid);
-    const tgtContent = nodeUidToContent.get(targetUid);
-    if (!srcContent || !tgtContent) continue;
-    const key = `${srcContent}->${tgtContent}`;
-    if (existingEdgeKeys.has(key)) continue;
-    edges.push({ source: srcContent, target: tgtContent, kind: "bezier" });
-    existingEdgeKeys.add(key);
-  }
-  return { nodes, edges };
-}
-var DiagramModel = class _DiagramModel {
-  constructor({ diagramUid, tree, metadataLayout, defaults = {} }) {
-    this.diagramUid = diagramUid;
-    this.tree = tree;
-    this.children = [...tree.children || []];
-    this.childrenFingerprint = childrenFingerprint(this.children);
-    this.baseFingerprint = treeFingerprint(tree);
-    const imported = importNativeLayout(tree, metadataLayout, defaults);
-    this.nodes = imported.nodes;
-    this.edges = imported.edges;
-    this.sections = new Map(metadataLayout?.sections ? [...metadataLayout.sections] : []);
-    this.viewport = metadataLayout?.viewport || tree.props?.[":rf-diagram"]?.viewport || tree.props?.[":rf-diagram"]?.["viewport"] || { x: 0, y: 0, zoom: 1 };
-    this.selected = /* @__PURE__ */ new Set();
-    this.activeTool = "select";
-  }
-  getCard(contentUid) {
-    return this.children.find((child) => child.uid === contentUid) || null;
-  }
-  ensureNode(contentUid, defaults = {}) {
-    if (this.nodes.has(contentUid)) return this.nodes.get(contentUid);
-    const node = {
-      pos: defaults.pos || { x: 0, y: 0 },
-      size: defaults.size || { width: defaults.width ?? 280, height: defaults.height ?? 160 },
-      color: ""
-    };
-    this.nodes.set(contentUid, node);
-    return node;
-  }
-  setNodePosition(contentUid, pos) {
-    const node = this.ensureNode(contentUid);
-    node.pos = { ...pos };
-  }
-  setNodeSize(contentUid, size) {
-    const node = this.ensureNode(contentUid);
-    node.size = { ...size };
-  }
-  addEdge(source, target, kind = "bezier") {
-    const key = `${source}->${target}`;
-    if (this.edges.some((edge2) => `${edge2.source}->${edge2.target}` === key)) return null;
-    const edge = { source, target, kind };
-    this.edges.push(edge);
-    return edge;
-  }
-  removeEdge(source, target) {
-    const key = `${source}->${target}`;
-    this.edges = this.edges.filter((edge) => `${edge.source}->${edge.target}` !== key);
-  }
-  layoutSnapshot() {
-    return {
-      viewport: { ...this.viewport },
-      nodes: new Map([...this.nodes].map(([uid, node]) => [uid, { ...node, pos: { ...node.pos }, size: { ...node.size } }])),
-      edges: this.edges.map((edge) => ({ ...edge })),
-      sections: new Map([...this.sections].map(([id, section]) => [id, { ...section }]))
-    };
-  }
-  applyPull(tree, metadataLayout, defaults = {}) {
-    const next = new _DiagramModel({ diagramUid: this.diagramUid, tree, metadataLayout, defaults });
-    this.tree = next.tree;
-    this.children = next.children;
-    this.childrenFingerprint = next.childrenFingerprint;
-    this.baseFingerprint = next.baseFingerprint;
-    this.nodes = next.nodes;
-    this.edges = next.edges;
-    this.sections = next.sections;
-    if (tree.props?.[":rf-diagram"]?.viewport) this.viewport = { ...tree.props[":rf-diagram"].viewport };
-    else if (metadataLayout?.viewport) this.viewport = { ...metadataLayout.viewport };
-  }
-  autoLayoutGrid(missingOnly = true, gridSize = 24, cardWidth = 280, cardHeight = 160) {
-    const targets = this.children.filter((child) => !missingOnly || !this.nodes.has(child.uid));
-    let col = 0;
-    let row = 0;
-    const cols = Math.max(1, Math.ceil(Math.sqrt(targets.length)));
-    for (const child of targets) {
-      this.ensureNode(child.uid, {
-        pos: { x: col * (cardWidth + gridSize), y: row * (cardHeight + gridSize) },
-        size: { width: cardWidth, height: cardHeight }
-      });
-      col += 1;
-      if (col >= cols) {
-        col = 0;
-        row += 1;
-      }
-    }
-  }
-  snapSelectionToGrid(gridSize = 24) {
-    for (const uid of this.selected) {
-      const node = this.nodes.get(uid);
-      if (!node?.pos) continue;
-      node.pos.x = Math.round(node.pos.x / gridSize) * gridSize;
-      node.pos.y = Math.round(node.pos.y / gridSize) * gridSize;
-    }
-  }
-  isNestedDiagram(contentUid) {
-    const card = this.getCard(contentUid);
-    return card ? isDiagramString(card.string) : false;
-  }
-};
-
-// src/adapter.js
-function roam2() {
-  return globalThis.roamAlphaAPI;
-}
-var MutationQueue = class {
-  constructor() {
-    this.tail = Promise.resolve();
-  }
-  run(task) {
-    const next = this.tail.then(task, task);
-    this.tail = next.catch(() => {
-    });
-    return next;
-  }
-};
-var DiagramAdapter = class {
-  constructor(diagramUid, pullPattern) {
-    this.diagramUid = diagramUid;
-    this.pullPattern = pullPattern;
-    this.queue = new MutationQueue();
-    this.baseTree = null;
-    this.childrenFingerprint = null;
-    this.expectedStructuralFingerprint = null;
-    this.watchHandler = null;
-  }
-  pull() {
-    const api = roam2();
-    const raw = api.data.pull(this.pullPattern, [":block/uid", this.diagramUid]);
-    return parsePullResult(raw);
-  }
-  adoptBaseTree(tree) {
-    this.baseTree = tree;
-    this.childrenFingerprint = childrenFingerprint(tree.children);
-  }
-  recordExpectedFingerprint(tree) {
-    this.expectedStructuralFingerprint = childrenFingerprint(tree.children);
-  }
-  consumeExpectedFingerprint(tree) {
-    const fp = childrenFingerprint(tree.children);
-    if (this.expectedStructuralFingerprint && fp === this.expectedStructuralFingerprint) {
-      this.expectedStructuralFingerprint = null;
-      return true;
-    }
-    return false;
-  }
-  watchExternal(callback) {
-    const entity = `[:block/uid "${this.diagramUid}"]`;
-    const handler = (before, after) => {
-      const next = parsePullResult(after);
-      const prev = parsePullResult(before);
-      if (!next) return;
-      const structural = !prev || childrenFingerprint(prev.children) !== childrenFingerprint(next.children);
-      if (structural && this.consumeExpectedFingerprint(next)) return;
-      callback(next, { structural });
-    };
-    roam2().data.addPullWatch(this.pullPattern, entity, handler);
-    this.watchHandler = handler;
-    return () => roam2().data.removePullWatch(this.pullPattern, entity, handler);
-  }
-  async createChild(string, order) {
-    return this.queue.run(async () => {
-      const current = this.pull();
-      const beforeFp = childrenFingerprint(current.children);
-      const uid = await roam2().data.block.create({
-        location: { "parent-uid": this.diagramUid, order },
-        block: { string }
-      });
-      const contentUid = typeof uid === "string" ? uid : uid?.uid;
-      const after = this.pull();
-      this.recordExpectedFingerprint(after);
-      this.adoptBaseTree(after);
-      if (childrenFingerprint(after.children) === beforeFp) {
-        throw new Error("Child create did not change diagram children");
-      }
-      return contentUid;
-    });
-  }
-  async updateViewport(viewport) {
-    return this.queue.run(async () => {
-      await roam2().data.block.update({
-        block: {
-          uid: this.diagramUid,
-          props: { ":rf-diagram": { viewport } }
-        }
-      });
-    });
-  }
-  async deleteChild(contentUid) {
-    return this.queue.run(async () => {
-      const current = this.pull();
-      const beforeFp = childrenFingerprint(current.children);
-      await roam2().data.block.delete({ block: { uid: contentUid } });
-      const after = this.pull();
-      this.recordExpectedFingerprint(after);
-      this.adoptBaseTree(after);
-      if (childrenFingerprint(after.children) === beforeFp) {
-        throw new Error("Child delete did not change diagram children");
-      }
-    });
-  }
-  verifyChildrenBeforeWrite() {
-    const current = this.pull();
-    const fp = childrenFingerprint(current.children);
-    if (this.childrenFingerprint && fp !== this.childrenFingerprint) {
-      return { ok: false, tree: current };
-    }
-    return { ok: true, tree: current };
-  }
-};
-
-// src/session.js
-var NativeDiagramSession = class {
-  constructor({ diagramUid, metadataStore, settings, onChange }) {
-    this.diagramUid = diagramUid;
-    this.metadataStore = metadataStore;
-    this.settings = settings;
-    this.onChange = onChange;
-    this.adapter = new DiagramAdapter(diagramUid, DIAGRAM_PULL_PATTERN);
-    this.model = null;
-    this.views = /* @__PURE__ */ new Set();
-    this.unwatch = null;
-  }
-  load() {
-    const tree = this.adapter.pull();
-    const metadataLayout = this.metadataStore.get(this.diagramUid);
-    this.model = new DiagramModel({
-      diagramUid: this.diagramUid,
-      tree,
-      metadataLayout,
-      defaults: {
-        width: Number(this.settings.get("default-card-width")) || 280,
-        height: Number(this.settings.get("default-card-height")) || 160
-      }
-    });
-    this.adapter.adoptBaseTree(tree);
-    return this.model;
-  }
-  startWatch() {
-    if (this.unwatch) return;
-    this.unwatch = this.adapter.watchExternal((tree, info) => {
-      const metadataLayout = this.metadataStore.get(this.diagramUid);
-      this.model.applyPull(tree, metadataLayout, {
-        width: Number(this.settings.get("default-card-width")) || 280,
-        height: Number(this.settings.get("default-card-height")) || 160
-      });
-      this.adapter.adoptBaseTree(tree);
-      this.notifyViews(info);
-    });
-  }
-  stopWatch() {
-    if (this.unwatch) this.unwatch();
-    this.unwatch = null;
-  }
-  addView(view) {
-    this.views.add(view);
-  }
-  removeView(view) {
-    this.views.delete(view);
-  }
-  notifyViews(info = {}) {
-    for (const view of this.views) view.refresh?.(info);
-    this.onChange?.(this, info);
-  }
-  async persistLayout() {
-    const layout = this.model.layoutSnapshot();
-    await this.metadataStore.set(this.diagramUid, layout);
-  }
-  async persistViewport() {
-    await this.adapter.updateViewport(this.model.viewport);
-    const layout = this.metadataStore.get(this.diagramUid) || this.model.layoutSnapshot();
-    layout.viewport = { ...this.model.viewport };
-    await this.metadataStore.set(this.diagramUid, layout);
-  }
-  async addCard(string, position) {
-    const contentUid = await this.adapter.createChild(string);
-    this.model.ensureNode(contentUid, { pos: position });
-    const tree = this.adapter.pull();
-    this.model.applyPull(tree, this.metadataStore.get(this.diagramUid), {});
-    this.adapter.adoptBaseTree(tree);
-    await this.persistLayout();
-    this.notifyViews({ type: "structural" });
-    return contentUid;
-  }
-  async connectSelected(kind) {
-    const selected = [...this.model.selected];
-    if (selected.length !== 2) return false;
-    this.model.addEdge(selected[0], selected[1], kind);
-    await this.persistLayout();
-    this.notifyViews({ type: "edge" });
-    return true;
-  }
-  dispose() {
-    this.stopWatch();
-    for (const view of [...this.views]) view.dispose?.();
-    this.views.clear();
-  }
-};
-var sessions = /* @__PURE__ */ new Map();
-function getOrCreateSession(diagramUid, factory) {
-  if (sessions.has(diagramUid)) return sessions.get(diagramUid);
-  const session = factory();
-  sessions.set(diagramUid, session);
-  return session;
-}
-function disposeSession(diagramUid) {
-  const session = sessions.get(diagramUid);
-  if (session) session.dispose();
-  sessions.delete(diagramUid);
-}
-function getSession(diagramUid) {
-  return sessions.get(diagramUid) || null;
-}
-function allSessions() {
-  return sessions;
-}
-
 // src/edges.js
 function edgeEndpoints(sourceRect, targetRect, side = "auto") {
   const scx = sourceRect.x + sourceRect.width / 2;
@@ -1136,6 +734,14 @@ function createCanvasRoot({ session, settings, version, onPersist }) {
     if (!settings.get("snap-to-grid")) return value;
     const size = getGridSize();
     return Math.round(value / size) * size;
+  };
+  const screenToWorld = (clientX, clientY) => {
+    const rect = root.getBoundingClientRect();
+    const zoom = session.model.viewport.zoom || 1;
+    return {
+      x: snap((clientX - rect.left - session.model.viewport.x) / zoom),
+      y: snap((clientY - rect.top - session.model.viewport.y) / zoom)
+    };
   };
   const cardRect = (contentUid) => {
     const node = session.model.nodes.get(contentUid);
@@ -1351,6 +957,15 @@ function createCanvasRoot({ session, settings, version, onPersist }) {
     panning = false;
     panStart = null;
   });
+  root.addEventListener("click", async (event) => {
+    if (event.target.closest(".pxd-card") || event.target.closest(".pxd-toolbar")) return;
+    const tool = session.model.activeTool;
+    if (tool === "card") {
+      await onPersist?.({ addCard: screenToWorld(event.clientX, event.clientY) });
+    } else if (tool === "section") {
+      await onPersist?.({ addSection: screenToWorld(event.clientX, event.clientY) });
+    }
+  });
   window.addEventListener("keydown", onKeyDown);
   window.addEventListener("keyup", onKeyUp);
   render();
@@ -1363,6 +978,436 @@ function createCanvasRoot({ session, settings, version, onPersist }) {
       root.remove();
     }
   };
+}
+function viewportCenterPosition(root, session, settings) {
+  const rect = root.getBoundingClientRect();
+  const zoom = session.model.viewport.zoom || 1;
+  const snap = (value) => {
+    if (!settings?.get?.("snap-to-grid")) return value;
+    const size = Number(settings.get("grid-size")) || 24;
+    return Math.round(value / size) * size;
+  };
+  return {
+    x: snap((rect.width / 2 - session.model.viewport.x) / zoom),
+    y: snap((rect.height / 2 - session.model.viewport.y) / zoom)
+  };
+}
+
+// src/model.js
+var DIAGRAM_PULL_PATTERN = `[:block/uid :block/string :block/props
+  {:block/children [:block/uid :block/string :block/order]}
+  {:diagram/nodes [:block/uid :diagram.node/data
+    {:diagram.node/block [:block/uid :block/string]}
+    {:diagram.node/parent-node [:db/id :block/uid]}]}
+  {:diagram/edges [:block/uid :diagram.edge/data
+    {:diagram.edge/source [:block/uid :db/id]}
+    {:diagram.edge/target [:block/uid :db/id]}]}]`;
+function stripKeywords(value) {
+  if (value == null) return value;
+  if (Array.isArray(value)) return value.map(stripKeywords);
+  if (typeof value !== "object") return value;
+  const out = {};
+  for (const [key, val] of Object.entries(value)) {
+    const normalizedKey = key.startsWith(":") ? key.slice(1) : key;
+    out[normalizedKey] = stripKeywords(val);
+  }
+  return out;
+}
+function childrenFingerprint(children) {
+  return JSON.stringify(
+    (children || []).map((child) => [child.uid, child.string, child.order]).sort((a, b) => String(a[0]).localeCompare(String(b[0])))
+  );
+}
+function treeFingerprint(tree) {
+  const visit = (node) => [node.uid, node.string, (node.children || []).map(visit)];
+  return JSON.stringify(visit(tree));
+}
+function normalizePull(node) {
+  if (!node) return null;
+  const children = (node[":block/children"] || node.children || []).map(normalizePull).filter(Boolean).sort((a, b) => (a.order ?? 0) - (b.order ?? 0));
+  return {
+    uid: node[":block/uid"] ?? node.uid,
+    string: node[":block/string"] ?? node.string ?? "",
+    order: node[":block/order"] ?? node.order ?? 0,
+    props: stripKeywords(node[":block/props"] ?? node.props ?? {}),
+    children,
+    diagramNodes: (node[":diagram/nodes"] || node.diagramNodes || []).map((n) => ({
+      uid: n[":block/uid"] ?? n.uid,
+      data: stripKeywords(n[":diagram.node/data"] ?? n.data ?? {}),
+      contentBlock: normalizePull(n[":diagram.node/block"] ?? n.contentBlock),
+      parentNode: n[":diagram.node/parent-node"] ?? n.parentNode ?? null
+    })),
+    diagramEdges: (node[":diagram/edges"] || node.diagramEdges || []).map((e) => ({
+      uid: e[":block/uid"] ?? e.uid,
+      data: stripKeywords(e[":diagram.edge/data"] ?? e.data ?? {}),
+      source: stripKeywords(e[":diagram.edge/source"] ?? e.source),
+      target: stripKeywords(e[":diagram.edge/target"] ?? e.target)
+    }))
+  };
+}
+function parsePullResult(raw) {
+  return normalizePull(raw);
+}
+function importNativeLayout(tree, metadataLayout, defaults = {}) {
+  const nodes = new Map(metadataLayout?.nodes ? [...metadataLayout.nodes] : []);
+  const edges = [...metadataLayout?.edges || []];
+  const nodeUidToContent = /* @__PURE__ */ new Map();
+  for (const nativeNode of tree.diagramNodes || []) {
+    const contentUid = nativeNode.contentBlock?.uid;
+    if (!contentUid) continue;
+    nodeUidToContent.set(nativeNode.uid, contentUid);
+    if (nodes.has(contentUid)) continue;
+    const data = nativeNode.data || {};
+    const pos = data.position || data.positionAbsolute || { x: 0, y: 0 };
+    const width = data.width ?? data.data?.width ?? defaults.width ?? 280;
+    const height = data.height ?? data.data?.height ?? defaults.height ?? 160;
+    nodes.set(contentUid, {
+      pos: { x: pos.x ?? 0, y: pos.y ?? 0 },
+      size: { width, height },
+      color: ""
+    });
+  }
+  const existingEdgeKeys = new Set(edges.map((edge) => `${edge.source}->${edge.target}`));
+  for (const nativeEdge of tree.diagramEdges || []) {
+    const sourceUid = nativeEdge.source?.["block/uid"] ?? nativeEdge.source?.uid;
+    const targetUid = nativeEdge.target?.["block/uid"] ?? nativeEdge.target?.uid;
+    const srcContent = nodeUidToContent.get(sourceUid);
+    const tgtContent = nodeUidToContent.get(targetUid);
+    if (!srcContent || !tgtContent) continue;
+    const key = `${srcContent}->${tgtContent}`;
+    if (existingEdgeKeys.has(key)) continue;
+    edges.push({ source: srcContent, target: tgtContent, kind: "bezier" });
+    existingEdgeKeys.add(key);
+  }
+  return { nodes, edges };
+}
+var DiagramModel = class _DiagramModel {
+  constructor({ diagramUid, tree, metadataLayout, defaults = {} }) {
+    this.diagramUid = diagramUid;
+    this.tree = tree;
+    this.children = [...tree.children || []];
+    this.childrenFingerprint = childrenFingerprint(this.children);
+    this.baseFingerprint = treeFingerprint(tree);
+    const imported = importNativeLayout(tree, metadataLayout, defaults);
+    this.nodes = imported.nodes;
+    this.edges = imported.edges;
+    this.sections = new Map(metadataLayout?.sections ? [...metadataLayout.sections] : []);
+    this.viewport = metadataLayout?.viewport || tree.props?.["rf-diagram"]?.viewport || { x: 0, y: 0, zoom: 1 };
+    this.selected = /* @__PURE__ */ new Set();
+    this.activeTool = "select";
+  }
+  getCard(contentUid) {
+    return this.children.find((child) => child.uid === contentUid) || null;
+  }
+  ensureNode(contentUid, defaults = {}) {
+    if (this.nodes.has(contentUid)) return this.nodes.get(contentUid);
+    const node = {
+      pos: defaults.pos || { x: 0, y: 0 },
+      size: defaults.size || { width: defaults.width ?? 280, height: defaults.height ?? 160 },
+      color: ""
+    };
+    this.nodes.set(contentUid, node);
+    return node;
+  }
+  setNodePosition(contentUid, pos) {
+    const node = this.ensureNode(contentUid);
+    node.pos = { ...pos };
+  }
+  setNodeSize(contentUid, size) {
+    const node = this.ensureNode(contentUid);
+    node.size = { ...size };
+  }
+  addEdge(source, target, kind = "bezier") {
+    const key = `${source}->${target}`;
+    if (this.edges.some((edge2) => `${edge2.source}->${edge2.target}` === key)) return null;
+    const edge = { source, target, kind };
+    this.edges.push(edge);
+    return edge;
+  }
+  removeEdge(source, target) {
+    const key = `${source}->${target}`;
+    this.edges = this.edges.filter((edge) => `${edge.source}->${edge.target}` !== key);
+  }
+  layoutSnapshot() {
+    return {
+      viewport: { ...this.viewport },
+      nodes: new Map([...this.nodes].map(([uid, node]) => [uid, { ...node, pos: { ...node.pos }, size: { ...node.size } }])),
+      edges: this.edges.map((edge) => ({ ...edge })),
+      sections: new Map([...this.sections].map(([id, section]) => [id, { ...section }]))
+    };
+  }
+  applyPull(tree, metadataLayout, defaults = {}) {
+    const next = new _DiagramModel({ diagramUid: this.diagramUid, tree, metadataLayout, defaults });
+    this.tree = next.tree;
+    this.children = next.children;
+    this.childrenFingerprint = next.childrenFingerprint;
+    this.baseFingerprint = next.baseFingerprint;
+    this.nodes = next.nodes;
+    this.edges = next.edges;
+    this.sections = next.sections;
+    if (tree.props?.["rf-diagram"]?.viewport) this.viewport = { ...tree.props["rf-diagram"].viewport };
+    else if (metadataLayout?.viewport) this.viewport = { ...metadataLayout.viewport };
+  }
+  autoLayoutGrid(missingOnly = true, gridSize = 24, cardWidth = 280, cardHeight = 160) {
+    const targets = this.children.filter((child) => !missingOnly || !this.nodes.has(child.uid));
+    let col = 0;
+    let row = 0;
+    const cols = Math.max(1, Math.ceil(Math.sqrt(targets.length)));
+    for (const child of targets) {
+      this.ensureNode(child.uid, {
+        pos: { x: col * (cardWidth + gridSize), y: row * (cardHeight + gridSize) },
+        size: { width: cardWidth, height: cardHeight }
+      });
+      col += 1;
+      if (col >= cols) {
+        col = 0;
+        row += 1;
+      }
+    }
+  }
+  snapSelectionToGrid(gridSize = 24) {
+    for (const uid of this.selected) {
+      const node = this.nodes.get(uid);
+      if (!node?.pos) continue;
+      node.pos.x = Math.round(node.pos.x / gridSize) * gridSize;
+      node.pos.y = Math.round(node.pos.y / gridSize) * gridSize;
+    }
+  }
+  isNestedDiagram(contentUid) {
+    const card = this.getCard(contentUid);
+    return card ? isDiagramString(card.string) : false;
+  }
+};
+
+// src/adapter.js
+function roam2() {
+  return globalThis.roamAlphaAPI;
+}
+var MutationQueue = class {
+  constructor() {
+    this.tail = Promise.resolve();
+  }
+  run(task) {
+    const next = this.tail.then(task, task);
+    this.tail = next.catch(() => {
+    });
+    return next;
+  }
+};
+var DiagramAdapter = class {
+  constructor(diagramUid, pullPattern) {
+    this.diagramUid = diagramUid;
+    this.pullPattern = pullPattern;
+    this.queue = new MutationQueue();
+    this.baseTree = null;
+    this.childrenFingerprint = null;
+    this.expectedStructuralFingerprint = null;
+    this.watchHandler = null;
+  }
+  pull() {
+    const api = roam2();
+    const raw = api.data.pull(this.pullPattern, [":block/uid", this.diagramUid]);
+    return parsePullResult(raw);
+  }
+  adoptBaseTree(tree) {
+    this.baseTree = tree;
+    this.childrenFingerprint = childrenFingerprint(tree.children);
+  }
+  recordExpectedFingerprint(tree) {
+    this.expectedStructuralFingerprint = childrenFingerprint(tree.children);
+  }
+  consumeExpectedFingerprint(tree) {
+    const fp = childrenFingerprint(tree.children);
+    if (this.expectedStructuralFingerprint && fp === this.expectedStructuralFingerprint) {
+      this.expectedStructuralFingerprint = null;
+      return true;
+    }
+    return false;
+  }
+  watchExternal(callback) {
+    const entity = `[:block/uid "${this.diagramUid}"]`;
+    const handler = (before, after) => {
+      const next = parsePullResult(after);
+      const prev = parsePullResult(before);
+      if (!next) return;
+      const structural = !prev || childrenFingerprint(prev.children) !== childrenFingerprint(next.children);
+      if (structural && this.consumeExpectedFingerprint(next)) return;
+      callback(next, { structural });
+    };
+    roam2().data.addPullWatch(this.pullPattern, entity, handler);
+    this.watchHandler = handler;
+    return () => roam2().data.removePullWatch(this.pullPattern, entity, handler);
+  }
+  async createChild(string, order = "last") {
+    return this.queue.run(async () => {
+      const api = roam2();
+      const current = this.pull();
+      const beforeFp = childrenFingerprint(current.children);
+      const uid = api.util.generateUID();
+      await api.data.block.create({
+        location: { "parent-uid": this.diagramUid, order },
+        block: { uid, string }
+      });
+      const after = this.pull();
+      this.recordExpectedFingerprint(after);
+      this.adoptBaseTree(after);
+      if (childrenFingerprint(after.children) === beforeFp) {
+        throw new Error("Child create did not change diagram children");
+      }
+      return uid;
+    });
+  }
+  async updateViewport(viewport) {
+    return this.queue.run(async () => {
+      const api = roam2();
+      const props = { ":rf-diagram": { viewport } };
+      if (typeof api.updateBlock === "function") {
+        await api.updateBlock({ block: { uid: this.diagramUid, props } });
+        return;
+      }
+      await api.data.block.update({
+        block: { uid: this.diagramUid, props }
+      });
+    });
+  }
+  async deleteChild(contentUid) {
+    return this.queue.run(async () => {
+      const current = this.pull();
+      const beforeFp = childrenFingerprint(current.children);
+      await roam2().data.block.delete({ block: { uid: contentUid } });
+      const after = this.pull();
+      this.recordExpectedFingerprint(after);
+      this.adoptBaseTree(after);
+      if (childrenFingerprint(after.children) === beforeFp) {
+        throw new Error("Child delete did not change diagram children");
+      }
+    });
+  }
+  verifyChildrenBeforeWrite() {
+    const current = this.pull();
+    const fp = childrenFingerprint(current.children);
+    if (this.childrenFingerprint && fp !== this.childrenFingerprint) {
+      return { ok: false, tree: current };
+    }
+    return { ok: true, tree: current };
+  }
+};
+
+// src/session.js
+var NativeDiagramSession = class {
+  constructor({ diagramUid, metadataStore, settings, onChange }) {
+    this.diagramUid = diagramUid;
+    this.metadataStore = metadataStore;
+    this.settings = settings;
+    this.onChange = onChange;
+    this.adapter = new DiagramAdapter(diagramUid, DIAGRAM_PULL_PATTERN);
+    this.model = null;
+    this.views = /* @__PURE__ */ new Set();
+    this.unwatch = null;
+  }
+  load() {
+    const tree = this.adapter.pull();
+    const metadataLayout = this.metadataStore.get(this.diagramUid);
+    this.model = new DiagramModel({
+      diagramUid: this.diagramUid,
+      tree,
+      metadataLayout,
+      defaults: {
+        width: Number(this.settings.get("default-card-width")) || 280,
+        height: Number(this.settings.get("default-card-height")) || 160
+      }
+    });
+    this.adapter.adoptBaseTree(tree);
+    return this.model;
+  }
+  startWatch() {
+    if (this.unwatch) return;
+    this.unwatch = this.adapter.watchExternal((tree, info) => {
+      const metadataLayout = this.metadataStore.get(this.diagramUid);
+      this.model.applyPull(tree, metadataLayout, {
+        width: Number(this.settings.get("default-card-width")) || 280,
+        height: Number(this.settings.get("default-card-height")) || 160
+      });
+      this.adapter.adoptBaseTree(tree);
+      this.notifyViews(info);
+    });
+  }
+  stopWatch() {
+    if (this.unwatch) this.unwatch();
+    this.unwatch = null;
+  }
+  addView(view) {
+    this.views.add(view);
+  }
+  removeView(view) {
+    this.views.delete(view);
+  }
+  notifyViews(info = {}) {
+    for (const view of this.views) view.refresh?.(info);
+    this.onChange?.(this, info);
+  }
+  async persistLayout() {
+    const layout = this.model.layoutSnapshot();
+    await this.metadataStore.set(this.diagramUid, layout);
+  }
+  async persistViewport() {
+    await this.adapter.updateViewport(this.model.viewport);
+    const layout = this.metadataStore.get(this.diagramUid) || this.model.layoutSnapshot();
+    layout.viewport = { ...this.model.viewport };
+    await this.metadataStore.set(this.diagramUid, layout);
+  }
+  async addCard(string, position) {
+    const contentUid = await this.adapter.createChild(string);
+    this.model.ensureNode(contentUid, { pos: position });
+    const tree = this.adapter.pull();
+    this.model.applyPull(tree, this.metadataStore.get(this.diagramUid), {});
+    this.adapter.adoptBaseTree(tree);
+    await this.persistLayout();
+    this.notifyViews({ type: "structural" });
+    return contentUid;
+  }
+  async addSection(position) {
+    const id = `s${Date.now().toString(36)}`;
+    this.model.sections.set(id, {
+      pos: { ...position },
+      size: { width: 320, height: 240 },
+      title: ""
+    });
+    await this.persistLayout();
+    this.notifyViews({ type: "section" });
+    return id;
+  }
+  async connectSelected(kind) {
+    const selected = [...this.model.selected];
+    if (selected.length !== 2) return false;
+    this.model.addEdge(selected[0], selected[1], kind);
+    await this.persistLayout();
+    this.notifyViews({ type: "edge" });
+    return true;
+  }
+  dispose() {
+    this.stopWatch();
+    for (const view of [...this.views]) view.dispose?.();
+    this.views.clear();
+  }
+};
+var sessions = /* @__PURE__ */ new Map();
+function getOrCreateSession(diagramUid, factory) {
+  if (sessions.has(diagramUid)) return sessions.get(diagramUid);
+  const session = factory();
+  sessions.set(diagramUid, session);
+  return session;
+}
+function disposeSession(diagramUid) {
+  const session = sessions.get(diagramUid);
+  if (session) session.dispose();
+  sessions.delete(diagramUid);
+}
+function getSession(diagramUid) {
+  return sessions.get(diagramUid) || null;
+}
+function allSessions() {
+  return sessions;
 }
 
 // src/view.js
@@ -1384,6 +1429,14 @@ function mountDiagramView({ nativeElement, session, settings, version, lifecycle
       if (action.persistViewport) await session.persistViewport();
       if (action.openLibrary) onAction?.({ type: "library" });
       if (action.openNested) onAction?.({ type: "nested", uid: action.openNested });
+      if (action.addCard) {
+        await session.addCard("", action.addCard);
+        canvas.render();
+      }
+      if (action.addSection) {
+        await session.addSection(action.addSection);
+        canvas.render();
+      }
     }
   });
   wrapper.append(canvas.root);
@@ -1407,7 +1460,7 @@ var runtime = {
   lifecycle: null,
   metadata: null,
   settings: null,
-  version: "0.1.0",
+  version: "0.1.1",
   enhancedUids: /* @__PURE__ */ new Set(),
   activeDiagramUid: null,
   guardStyle: null
@@ -1479,7 +1532,7 @@ async function enhanceDiagram(uid, nativeElement) {
     onAction: async (action) => {
       if (action.type === "library") await openLibrary();
       if (action.type === "nested" && action.uid) {
-        runtime.extensionAPI?.ui?.mainWindow?.openBlock?.({ uid: action.uid });
+        runtime.extensionAPI?.ui?.mainWindow?.openBlock?.({ block: { uid: action.uid } });
       }
     }
   });
@@ -1492,27 +1545,30 @@ async function restoreDiagram(uid) {
   runtime.enhancedUids.delete(uid);
   syncGuard();
 }
-function focusedDiagramUid() {
-  const uid = runtime.extensionAPI?.ui?.getFocusedBlock?.()?.["block-uid"] || runtime.extensionAPI?.ui?.getFocusedBlock?.()?.uid;
-  if (!uid) return null;
-  const pull = runtime.extensionAPI?.data?.pull?.(
+function blockStringForUid(uid) {
+  const pull = globalThis.roamAlphaAPI?.data?.pull?.(
     "[:block/string]",
     [":block/uid", uid]
   );
-  const string = pull?.[":block/string"] ?? pull?.string;
-  return isDiagramString(string) ? uid : null;
+  return pull?.[":block/string"] ?? pull?.string ?? "";
 }
-async function openLibrary() {
+function focusedDiagramUid() {
+  const uid = runtime.extensionAPI?.ui?.getFocusedBlock?.()?.["block-uid"];
+  if (!uid) return null;
+  return isDiagramString(blockStringForUid(uid)) ? uid : null;
+}
+async function openLibrary(mountRoot) {
   const uid = runtime.activeDiagramUid || focusedDiagramUid();
   const session = uid ? getSession(uid) : null;
   if (!session) return;
+  const root = mountRoot || document.querySelector(".pxd-root");
   createLibrarySidebar({
-    extensionAPI: runtime.extensionAPI,
     lifecycle: runtime.lifecycle,
     settings: runtime.settings,
     session,
+    mountRoot: root,
     onPlacePage: async (title) => {
-      const center = { x: 120, y: 120 };
+      const center = root ? viewportCenterPosition(root, session, runtime.settings) : { x: 120, y: 120 };
       await session.addCard(`[[${title}]]`, center);
     }
   });
@@ -1522,7 +1578,7 @@ function scanAddedNode(node) {
     const uid = findDiagramUidFromEl(diagram);
     if (!uid) continue;
     if (!runtime.enhancedUids.has(uid)) {
-      if (runtime.settings.get(SETTING_IDS.autoEnhance) && isDiagramString(diagram.closest("[data-uid]")?.dataset?.uid)) {
+      if (runtime.settings.get(SETTING_IDS.autoEnhance) && isDiagramString(blockStringForUid(uid))) {
         void enhanceDiagram(uid, diagram);
       }
       continue;
@@ -1578,7 +1634,7 @@ function registerCommands(lifecycle, extensionAPI) {
   run("Enhance this diagram", async () => {
     const uid = focusedDiagramUid();
     if (!uid) return;
-    const diagram = document.querySelector(`[data-uid="${uid}"] .rm-diagram`) || document.querySelector(".rm-diagram");
+    const diagram = diagramElForUid(uid) || document.querySelector(".rm-diagram");
     if (diagram) await enhanceDiagram(uid, diagram);
   });
   run("Restore native diagram", async () => {
@@ -1604,13 +1660,13 @@ function registerCommands(lifecycle, extensionAPI) {
   run("Open nested diagram", () => {
     const session = getSession(runtime.activeDiagramUid || focusedDiagramUid());
     const uid = [...session?.model.selected || []][0];
-    if (uid) extensionAPI.ui?.mainWindow?.openBlock?.({ uid });
+    if (uid) extensionAPI.ui?.mainWindow?.openBlock?.({ block: { uid } });
   });
   run("Show library", () => openLibrary());
   run("Appearances of this block", () => {
     const focused = extensionAPI.ui?.getFocusedBlock?.()?.["block-uid"];
     if (!focused) return;
-    const rows = extensionAPI.q?.(`[:find ?diagram :where
+    const rows = globalThis.roamAlphaAPI?.data?.q?.(`[:find ?diagram :where
       [?child :block/uid "${focused}"]
       [?diagram :block/children ?child]]`) || [];
     console.info("[plexus-diagram] Appearances:", rows);
@@ -1631,41 +1687,42 @@ function registerCommands(lifecycle, extensionAPI) {
   });
 }
 function registerSlashAndContext(lifecycle, extensionAPI) {
-  if (extensionAPI.ui?.slashCommand?.create) {
-    lifecycle.add(() => {
-      extensionAPI.ui.slashCommand.remove?.({ label: "Plexus Diagram" });
-    });
-    extensionAPI.ui.slashCommand.create({
+  if (extensionAPI.ui?.slashCommand?.addCommand) {
+    lifecycle.command(extensionAPI.ui.slashCommand, {
       label: "Plexus Diagram",
-      callback: async ({ uid, string }) => {
+      callback: async (context) => {
         if (!enabled()) return;
-        const diagramUid = focusedDiagramUid() || (isDiagramString(string) ? uid : null);
+        const blockUid = context["block-uid"];
+        const string = blockStringForUid(blockUid);
+        const diagramUid = focusedDiagramUid() || (isDiagramString(string) ? blockUid : null);
         if (diagramUid) {
-          const diagram = document.querySelector(`[data-uid="${diagramUid}"] .rm-diagram`);
+          const diagram = diagramElForUid(diagramUid);
           if (diagram) await enhanceDiagram(diagramUid, diagram);
           return;
         }
         if (string && string.trim() && !isDiagramString(string)) return;
-        await extensionAPI.data.block.update({ block: { uid, string: "{{[[diagram]]}}" } });
+        await globalThis.roamAlphaAPI?.data?.block?.update?.({
+          block: { uid: blockUid, string: "{{[[diagram]]}}" }
+        });
       }
     });
   }
-  if (extensionAPI.ui?.blockContextMenu?.add) {
-    extensionAPI.ui.blockContextMenu.add({
+  if (extensionAPI.ui?.blockContextMenu?.addCommand) {
+    lifecycle.command(extensionAPI.ui.blockContextMenu, {
       label: "Plexus Diagram: Enhance",
-      display: ({ blockString }) => /\{\{\s*(\[\[)?diagram/i.test(blockString || ""),
-      callback: async ({ uid }) => {
-        const diagram = document.querySelector(`[data-uid="${uid}"] .rm-diagram`);
+      "display-conditional": (event) => isDiagramString(event["block-string"]),
+      callback: async (event) => {
+        const uid = event["block-uid"];
+        const diagram = diagramElForUid(uid);
         if (diagram) await enhanceDiagram(uid, diagram);
       }
     });
-    lifecycle.add(() => extensionAPI.ui.blockContextMenu.remove?.({ label: "Plexus Diagram: Enhance" }));
   }
 }
 async function installPlexusDiagram({ extensionAPI, lifecycle, version }) {
   runtime.extensionAPI = extensionAPI;
   runtime.lifecycle = lifecycle;
-  runtime.version = version || "0.1.0";
+  runtime.version = version || "0.1.1";
   runtime.settings = createSettingsReader(extensionAPI);
   runtime.enhancedUids = readEnhancedUidCache();
   installGuard(runtime.enhancedUids);

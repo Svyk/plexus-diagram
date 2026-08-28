@@ -19,6 +19,24 @@
   width: 100%;
 }
 
+.pxd-mount--fullscreen {
+  position: fixed !important;
+  inset: 0;
+  z-index: 40;
+  width: 100vw !important;
+  height: 100vh !important;
+  min-height: 0 !important;
+  border-radius: 0;
+}
+
+.pxd-mount--fullscreen .pxd-root {
+  border-radius: 0;
+}
+
+body.pxd-has-fullscreen {
+  overflow: hidden;
+}
+
 .pxd-world {
   position: absolute;
   inset: 0;

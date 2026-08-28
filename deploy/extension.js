@@ -828,6 +828,24 @@ function createCanvasRoot({ session, settings, version, onPersist }) {
     render();
   });
   toolbar.append(fitBtn);
+  const setFullscreen = (on) => {
+    const mount = root.closest(".pxd-mount");
+    if (!mount) return;
+    mount.classList.toggle("pxd-mount--fullscreen", on);
+    document.body.classList.toggle("pxd-has-fullscreen", on);
+    fullBtn.textContent = on ? "Exit full screen" : "Fullscreen";
+    fullBtn.setAttribute("aria-pressed", on ? "true" : "false");
+  };
+  const fullBtn = document.createElement("button");
+  fullBtn.type = "button";
+  fullBtn.className = "pxd-toolbar__btn pxd-toolbar__btn--zoom";
+  fullBtn.textContent = "Fullscreen";
+  fullBtn.title = "Maximize like native Roam diagrams. Esc exits.";
+  fullBtn.addEventListener("click", () => {
+    const mount = root.closest(".pxd-mount");
+    setFullscreen(!mount?.classList.contains("pxd-mount--fullscreen"));
+  });
+  toolbar.append(fullBtn);
   if (settings.get("show-version-badge")) {
     const badge = document.createElement("span");
     badge.className = "pxd-version";
@@ -1090,6 +1108,12 @@ function createCanvasRoot({ session, settings, version, onPersist }) {
     render();
   }, { passive: false });
   const onKeyDown = (event) => {
+    if (event.key === "Escape" && root.closest(".pxd-mount")?.classList.contains("pxd-mount--fullscreen")) {
+      event.preventDefault();
+      event.stopPropagation();
+      setFullscreen(false);
+      return;
+    }
     if (event.code === "Space" && settings.get("pan-on-space")) spaceDown = true;
   };
   const onKeyUp = (event) => {
@@ -1136,7 +1160,9 @@ function createCanvasRoot({ session, settings, version, onPersist }) {
     setLibraryOpen(open) {
       toolbar.querySelector('[data-tool="library"]')?.classList.toggle("pxd-toolbar__btn--active", open);
     },
+    setFullscreen,
     dispose() {
+      setFullscreen(false);
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
       root.remove();
@@ -1861,6 +1887,20 @@ async function registerCommands(lifecycle, extensionAPI) {
   };
   await run("Enhance this diagram", async (context) => {
     await enhanceByUid(await resolveDiagramUid(context));
+  });
+  await run("Fullscreen this diagram", () => {
+    const session = getSession(runtime.activeDiagramUid || focusedDiagramUid());
+    const mount = document.querySelector(".pxd-mount");
+    const next = !mount?.classList.contains("pxd-mount--fullscreen");
+    if (session) {
+      for (const view of session.views) {
+        const fn = view.setFullscreen || view.canvas?.setFullscreen;
+        fn?.(next);
+      }
+      return;
+    }
+    mount?.classList.toggle("pxd-mount--fullscreen", next);
+    document.body.classList.toggle("pxd-has-fullscreen", next);
   });
   await run("Restore native diagram", async () => {
     const uid = focusedDiagramUid() || runtime.activeDiagramUid;

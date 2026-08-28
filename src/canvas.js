@@ -93,6 +93,26 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
   });
   toolbar.append(fitBtn);
 
+  const setFullscreen = (on) => {
+    const mount = root.closest(".pxd-mount");
+    if (!mount) return;
+    mount.classList.toggle("pxd-mount--fullscreen", on);
+    document.body.classList.toggle("pxd-has-fullscreen", on);
+    fullBtn.textContent = on ? "Exit full screen" : "Fullscreen";
+    fullBtn.setAttribute("aria-pressed", on ? "true" : "false");
+  };
+
+  const fullBtn = document.createElement("button");
+  fullBtn.type = "button";
+  fullBtn.className = "pxd-toolbar__btn pxd-toolbar__btn--zoom";
+  fullBtn.textContent = "Fullscreen";
+  fullBtn.title = "Maximize like native Roam diagrams. Esc exits.";
+  fullBtn.addEventListener("click", () => {
+    const mount = root.closest(".pxd-mount");
+    setFullscreen(!mount?.classList.contains("pxd-mount--fullscreen"));
+  });
+  toolbar.append(fullBtn);
+
   if (settings.get("show-version-badge")) {
     const badge = document.createElement("span");
     badge.className = "pxd-version";
@@ -370,6 +390,12 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
   }, { passive: false });
 
   const onKeyDown = (event) => {
+    if (event.key === "Escape" && root.closest(".pxd-mount")?.classList.contains("pxd-mount--fullscreen")) {
+      event.preventDefault();
+      event.stopPropagation();
+      setFullscreen(false);
+      return;
+    }
     if (event.code === "Space" && settings.get("pan-on-space")) spaceDown = true;
   };
   const onKeyUp = (event) => {
@@ -421,7 +447,9 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
     setLibraryOpen(open) {
       toolbar.querySelector('[data-tool="library"]')?.classList.toggle("pxd-toolbar__btn--active", open);
     },
+    setFullscreen,
     dispose() {
+      setFullscreen(false);
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
       root.remove();

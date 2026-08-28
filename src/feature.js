@@ -285,6 +285,20 @@ async function registerCommands(lifecycle, extensionAPI) {
   await run("Enhance this diagram", async (context) => {
     await enhanceByUid(await resolveDiagramUid(context));
   });
+  await run("Fullscreen this diagram", () => {
+    const session = getSession(runtime.activeDiagramUid || focusedDiagramUid());
+    const mount = document.querySelector(".pxd-mount");
+    const next = !mount?.classList.contains("pxd-mount--fullscreen");
+    if (session) {
+      for (const view of session.views) {
+        const fn = view.setFullscreen || view.canvas?.setFullscreen;
+        fn?.(next);
+      }
+      return;
+    }
+    mount?.classList.toggle("pxd-mount--fullscreen", next);
+    document.body.classList.toggle("pxd-has-fullscreen", next);
+  });
   await run("Restore native diagram", async () => {
     const uid = focusedDiagramUid() || runtime.activeDiagramUid;
     if (uid) await restoreDiagram(uid);

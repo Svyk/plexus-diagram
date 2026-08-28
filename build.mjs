@@ -45,7 +45,7 @@ export async function bundleEntry({
 
 export async function renderArtifacts(rootDirectory = defaultRoot) {
   const packageMetadata = JSON.parse(await readFile(resolve(rootDirectory, "package.json"), "utf8"));
-  const banner = `/* Example Roam Extension v${packageMetadata.version} | MIT | generated; edit src/ */`;
+  const banner = `/* Plexus Diagram v${packageMetadata.version} | MIT | generated; edit src/ */`;
   return {
     javascript: await bundleEntry({ rootDirectory, banner }),
     css: await readFile(resolve(rootDirectory, "src/extension.css"), "utf8"),

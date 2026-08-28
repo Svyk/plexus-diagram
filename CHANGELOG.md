@@ -1,19 +1,12 @@
 # Changelog
 
-All notable changes to this project follow [Keep a Changelog](https://keepachangelog.com/en/1.1.0/) and [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+## 0.1.0 — 2026-08-27
 
-## [Unreleased]
+Initial release of Plexus Diagram.
 
-## [0.1.0] - 2026-08-03
-
-### Added
-
-- Modular source and deterministic browser-ESM build with exactly pinned esbuild.
-- Root Depot artifacts and matching GitHub Pages output.
-- Idempotent lifecycle helpers for commands, watches, DOM, events, observers, and timers.
-- Verified Roam settings panel example.
-- Node test suite, CI, and GitHub Pages deployment workflow.
-- Node.js 20-compatible build paths and browser-platform dependency enforcement.
-- Build-time rejection of unresolved packages, Node built-ins, and remote imports.
-- Generated-artifact drift enforcement and an automated secret scanner.
-- Immutable GitHub Actions revisions and exact Developer Extension installation guidance.
+- Hide native `.rm-diagram` React Flow renderer for enhanced diagrams and mount a vanilla DOM/SVG canvas overlay
+- Keep Roam diagram children as the canonical card store; persist layout on `[[plexus-diagram/metadata]]`
+- Writable viewport via native `:rf-diagram` props; import native node positions when metadata is absent
+- Heptabase-like toolbar, cards, connectors, sections, library sidebar, and fat settings panel
+- Command palette, slash command, and block context menu integration
+- GitHub Pages developer extension at https://svyk.github.io/plexus-diagram

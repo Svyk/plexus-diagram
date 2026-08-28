@@ -1,5 +1,5 @@
 import { createLifecycle } from "./lifecycle.js";
-import { installExampleFeature } from "./feature.js";
+import { installPlexusDiagram } from "./feature.js";
 import { createSettingsPanel, initializeSettings } from "./settings.js";
 
 let activeLifecycle = null;
@@ -13,15 +13,14 @@ export async function onload({ extensionAPI, extension }) {
   try {
     await initializeSettings(extensionAPI);
     await lifecycle.settingsPanel(extensionAPI, createSettingsPanel());
-    await installExampleFeature({ extensionAPI, lifecycle });
-    console.info(`[example-extension] Loaded v${extension?.version || "development"}`);
+    await installPlexusDiagram({ extensionAPI, lifecycle, version: extension?.version });
+    console.info(`[plexus-diagram] Loaded v${extension?.version || "development"}`);
   } catch (error) {
     if (activeLifecycle === lifecycle) activeLifecycle = null;
     await lifecycle.dispose().catch((cleanupError) => console.error(cleanupError));
     throw error;
   }
 
-  // Roam invokes this cleanup immediately before onunload.
   return async () => {
     if (activeLifecycle === lifecycle) activeLifecycle = null;
     await lifecycle.dispose();
@@ -32,8 +31,12 @@ export async function onunload() {
   const lifecycle = activeLifecycle;
   activeLifecycle = null;
   if (lifecycle) await lifecycle.dispose();
-  console.info("[example-extension] Unloaded");
+  console.info("[plexus-diagram] Unloaded");
 }
 
-export default { onload, onunload };
+export { enhancedUidGuardCss, isDiagramString } from "./discovery.js";
+export { settingsDefaults } from "./settings.js";
+export { childrenFingerprint, importNativeLayout } from "./model.js";
+export { buildEdgePath, arrowheadPoints } from "./edges.js";
 
+export default { onload, onunload };

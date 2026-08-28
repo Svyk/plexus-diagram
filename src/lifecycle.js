@@ -14,7 +14,7 @@ export function createLifecycle() {
   const add = (disposer) => {
     if (typeof disposer !== "function") throw new TypeError("A disposer must be a function");
     if (disposed) {
-      void callSafely(disposer).catch((error) => console.error("[example-extension] Late cleanup failed", error));
+      void callSafely(disposer).catch((error) => console.error("[plexus-diagram] Late cleanup failed", error));
       return disposer;
     }
     disposers.push(disposer);

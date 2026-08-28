@@ -1,8 +1,8 @@
 {
-  "name": "roam-extension-template",
+  "name": "plexus-diagram",
   "version": "0.1.0",
   "private": true,
-  "description": "Zero-runtime-dependency template for Roam Depot extensions",
+  "description": "Native-first Heptabase-like overlay for Roam {{[[diagram]]}} blocks",
   "type": "module",
   "main": "extension.js",
   "scripts": {

@@ -1,9 +1,212 @@
-/* Roam injects this stylesheet on load and removes it on unload. */
-:root {
-  --example-extension-accent: var(--roam-color-primary, #106ba3);
+.pxd-root {
+  --pxd-border: var(--bc-menu, #d3d8de);
+  --pxd-bg: var(--bc-main, #ffffff);
+  --pxd-muted: var(--cl-gray-550, #5f6b7c);
+  --pxd-active: var(--cl-blue, #2d72d2);
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  background: var(--pxd-bg);
+  border: 1px solid var(--pxd-border);
+  border-radius: 6px;
+  touch-action: none;
 }
 
-.example-extension__accent {
-  color: var(--example-extension-accent);
+.pxd-mount {
+  width: 100%;
 }
 
+.pxd-world {
+  position: absolute;
+  inset: 0;
+  transform-origin: 0 0;
+}
+
+.pxd-grid {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.pxd-grid--hidden {
+  display: none;
+}
+
+.pxd-grid--dots {
+  background-image: radial-gradient(circle, var(--pxd-border) 1px, transparent 1px);
+  background-size: var(--pxd-grid-size, 24px) var(--pxd-grid-size, 24px);
+}
+
+.pxd-grid--lines {
+  background-image:
+    linear-gradient(var(--pxd-border) 1px, transparent 1px),
+    linear-gradient(90deg, var(--pxd-border) 1px, transparent 1px);
+  background-size: var(--pxd-grid-size, 24px) var(--pxd-grid-size, 24px);
+}
+
+.pxd-edges {
+  position: absolute;
+  inset: 0;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.pxd-edge--animated {
+  stroke-dasharray: 6 4;
+  animation: pxd-edge-flow 1s linear infinite;
+}
+
+@keyframes pxd-edge-flow {
+  to { stroke-dashoffset: -10; }
+}
+
+.pxd-cards,
+.pxd-sections {
+  position: absolute;
+  inset: 0;
+}
+
+.pxd-section {
+  position: absolute;
+  border: 1px dashed var(--pxd-border);
+  border-radius: 8px;
+  background: transparent;
+  pointer-events: none;
+}
+
+.pxd-section__label {
+  position: absolute;
+  top: -1.2em;
+  left: 0;
+  font-size: 12px;
+  color: var(--pxd-muted);
+}
+
+.pxd-card {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1px solid var(--pxd-border);
+  background: var(--pxd-bg);
+  overflow: hidden;
+}
+
+.pxd-card--shadow {
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.08);
+}
+
+.pxd-card--selected {
+  border-color: var(--pxd-active);
+  box-shadow: 0 0 0 1px var(--pxd-active);
+}
+
+.pxd-card--compact .pxd-card__title {
+  display: none;
+}
+
+.pxd-card--nested {
+  border-style: double;
+}
+
+.pxd-card__title {
+  padding: 4px 8px;
+  font-size: 12px;
+  font-weight: 600;
+  border-bottom: 1px solid var(--pxd-border);
+  color: var(--pxd-muted);
+}
+
+.pxd-card__body {
+  padding: 8px;
+  height: calc(100% - 28px);
+  overflow: auto;
+}
+
+.pxd-handle {
+  position: absolute;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--pxd-active);
+  opacity: 0;
+  pointer-events: auto;
+}
+
+.pxd-card:hover .pxd-handle {
+  opacity: 0.8;
+}
+
+.pxd-handle--top { top: -5px; left: 50%; transform: translateX(-50%); }
+.pxd-handle--right { right: -5px; top: 50%; transform: translateY(-50%); }
+.pxd-handle--bottom { bottom: -5px; left: 50%; transform: translateX(-50%); }
+.pxd-handle--left { left: -5px; top: 50%; transform: translateY(-50%); }
+
+.pxd-toolbar {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  z-index: 2;
+}
+
+.pxd-toolbar__btn {
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--pxd-border);
+  background: var(--pxd-bg);
+  color: var(--pxd-muted);
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 11px;
+}
+
+.pxd-toolbar__btn--active {
+  border-color: var(--pxd-active);
+  color: var(--pxd-active);
+}
+
+.pxd-version {
+  font-size: 10px;
+  color: var(--pxd-muted);
+  padding: 2px 4px;
+}
+
+.pxd-minimap {
+  position: absolute;
+  right: 8px;
+  bottom: 8px;
+  width: 120px;
+  height: 80px;
+  border: 1px solid var(--pxd-border);
+  background: var(--pxd-bg);
+  opacity: 0.8;
+  z-index: 2;
+}
+
+.pxd-library {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 8px;
+  max-height: 60vh;
+  overflow: auto;
+}
+
+.pxd-library__item {
+  text-align: left;
+  border: 1px solid var(--pxd-border);
+  background: var(--pxd-bg);
+  padding: 6px 8px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+.bp3-dark .pxd-root,
+body.bt-theme-dark .pxd-root,
+body.roam-body.dark .pxd-root {
+  --pxd-border: var(--bc-menu, #5c7080);
+  --pxd-bg: var(--bc-main, #30404d);
+  --pxd-muted: var(--cl-gray-550, #a7b6c2);
+  --pxd-active: var(--cl-blue, #48aff0);
+}

@@ -1,0 +1,26 @@
+{
+  ":block/uid": "diagram-uid-1",
+  ":block/string": "{{[[diagram]]:Sample}}",
+  ":block/props": {
+    ":rf-diagram": {
+      "viewport": { "x": 10, "y": 20, "zoom": 1.25 }
+    }
+  },
+  ":block/children": [
+    { ":block/uid": "child-a", ":block/string": "First card", ":block/order": 0 },
+    { ":block/uid": "child-b", ":block/string": "[[Page Link]]", ":block/order": 1 }
+  ],
+  ":diagram/nodes": [
+    {
+      ":block/uid": "node-entity-a",
+      ":diagram.node/data": {
+        "type": "block",
+        "position": { "x": 100, "y": 50 },
+        "width": 300,
+        "height": 180
+      },
+      ":diagram.node/block": { ":block/uid": "child-a", ":block/string": "First card" }
+    }
+  ],
+  ":diagram/edges": []
+}

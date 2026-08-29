@@ -39,9 +39,18 @@ export function mountDiagramView({ nativeElement, session, settings, version, li
       if (action.persistViewport) await session.persistViewport();
       if (action.toggleLibrary) onAction?.({ type: "library" });
       if (action.openNested) onAction?.({ type: "nested", uid: action.openNested });
+      if (action.openCrumb) onAction?.({ type: "crumb", uid: action.openCrumb });
       if (action.openBlock) onAction?.({ type: "open-block", uid: action.openBlock });
       if (action.addCard) {
         const uid = await session.addCard(action.string ?? "", action.addCard);
+        if (uid && action.addEdge?.source) {
+          session.model.addEdge(
+            action.addEdge.source,
+            uid,
+            action.addEdge.kind || settings.get("connector-style") || "bezier",
+          );
+          await session.persistLayout();
+        }
         canvas.render();
         if (uid && !action.string) canvas.editCard?.(uid);
       }

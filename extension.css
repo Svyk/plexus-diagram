@@ -23,8 +23,25 @@
   border-radius: 6px;
   touch-action: none;
   cursor: default;
+  caret-color: #1c2127 !important;
   font-size: 14px;
   line-height: 1.45;
+}
+
+/* Native caret + OS text cursor so Svy Beam's fixed overlay (hotspot 16,16)
+   cannot mis-scale inside `.pxd-world { transform: scale() }`. Beat
+   `:root:not(.svy-off-beam) textarea { cursor: url(...) 16 16, text }`. */
+.pxd-root textarea,
+.pxd-root .rm-block__input,
+.pxd-root [contenteditable],
+:root .pxd-root textarea,
+:root .pxd-root .rm-block__input,
+:root .pxd-root [contenteditable],
+:root:not(.svy-off-beam) .pxd-root textarea,
+:root:not(.svy-off-beam) .pxd-root .rm-block__input,
+:root:not(.svy-off-beam) .pxd-root [contenteditable] {
+  caret-color: #1c2127 !important;
+  cursor: text !important;
 }
 
 .pxd-root--gesturing,
@@ -352,6 +369,21 @@ body.roam-body.dark .pxd-section,
   margin-bottom: 4px;
 }
 
+.pxd-card__nested-name {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin-bottom: 6px;
+  padding: 4px 6px;
+  border: 1px solid var(--pxd-border-strong);
+  border-radius: 4px;
+  background: var(--pxd-bg);
+  color: var(--pxd-text);
+  font-size: 13px;
+  line-height: 1.4;
+  cursor: text;
+}
+
 /* Roam chrome that has no place on a card. */
 .pxd-card .rm-block__controls,
 .pxd-card .rm-bullet,
@@ -377,8 +409,8 @@ body.roam-body.dark .pxd-section,
 
 .pxd-handle {
   position: absolute;
-  width: 12px;
-  height: 12px;
+  width: 14px;
+  height: 14px;
   border-radius: 50%;
   border: 2px solid var(--pxd-active);
   background: var(--pxd-card-bg);
@@ -400,10 +432,10 @@ body.roam-body.dark .pxd-section,
   pointer-events: none;
 }
 
-.pxd-handle--top { top: -6px; left: 50%; transform: translateX(-50%); }
-.pxd-handle--right { right: -6px; top: 50%; transform: translateY(-50%); }
-.pxd-handle--bottom { bottom: -6px; left: 50%; transform: translateX(-50%); }
-.pxd-handle--left { left: -6px; top: 50%; transform: translateY(-50%); }
+.pxd-handle--top { top: -7px; left: 50%; transform: translateX(-50%); }
+.pxd-handle--right { right: -7px; top: 50%; transform: translateY(-50%); }
+.pxd-handle--bottom { bottom: -7px; left: 50%; transform: translateX(-50%); }
+.pxd-handle--left { left: -7px; top: 50%; transform: translateY(-50%); }
 
 .pxd-card__resize {
   position: absolute;
@@ -505,6 +537,56 @@ body.roam-body.dark .pxd-section,
   padding: 2px 4px;
 }
 
+.pxd-crumb {
+  display: flex;
+  align-items: center;
+  flex-wrap: nowrap;
+  gap: 2px;
+  padding: 2px 8px;
+  min-height: 24px;
+  border: 1px solid var(--pxd-border-strong);
+  border-radius: 8px;
+  background: var(--pxd-card-bg);
+  box-shadow: var(--pxd-shadow);
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--pxd-text);
+  white-space: nowrap;
+  max-width: 40%;
+  overflow: hidden;
+}
+
+.pxd-crumb--empty {
+  display: none;
+}
+
+.pxd-crumb__item {
+  border: 0;
+  background: transparent;
+  color: var(--pxd-active);
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 4px;
+  border-radius: 4px;
+}
+
+.pxd-crumb__item:hover {
+  text-decoration: underline;
+}
+
+.pxd-crumb__sep {
+  color: var(--pxd-muted);
+  padding: 0 2px;
+}
+
+.pxd-crumb__current {
+  color: var(--pxd-text);
+  font-weight: 600;
+  padding: 2px 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 /* ------------------------------------------------------------------ hint + minimap */
 
 .pxd-hint {
@@ -577,13 +659,16 @@ body.roam-body.dark .pxd-section,
   display: block;
   width: 100%;
   text-align: left;
-  border: 1px solid var(--pxd-border);
-  background: transparent;
-  color: #1c2127;
+  border: 1px solid #d3d8de;
+  background: #f5f8fa;
+  color: #182026;
   padding: 6px 8px;
   border-radius: 4px;
   cursor: pointer;
   box-sizing: border-box;
+  min-height: 36px;
+  font-size: 14px;
+  line-height: 1.4;
 }
 
 .pxd-library__item:hover {
@@ -591,19 +676,21 @@ body.roam-body.dark .pxd-section,
 }
 
 .pxd-library-drawer {
-  position: absolute;
-  top: 8px;
-  right: 8px;
-  width: 240px;
+  position: fixed;
+  top: 56px;
+  right: 16px;
+  width: 320px;
   max-height: 60vh;
-  z-index: 8;
+  z-index: 50;
   background: #ffffff;
-  color: #1c2127;
+  color: #182026;
   border: 1px solid var(--pxd-border-strong);
   border-radius: 6px;
   overflow: auto;
   box-shadow: var(--pxd-shadow);
   isolation: isolate;
+  font-size: 14px;
+  line-height: 1.4;
 }
 
 .bp3-dark .pxd-library-drawer,
@@ -614,11 +701,26 @@ body.roam-body.dark .pxd-library-drawer,
   color: #f5f8fa;
 }
 
+.bp3-dark .pxd-library-drawer__search,
+.bp3-dark .pxd-library-drawer__close,
+body.bt-theme-dark .pxd-library-drawer__search,
+body.bt-theme-dark .pxd-library-drawer__close,
+body.roam-body.dark .pxd-library-drawer__search,
+body.roam-body.dark .pxd-library-drawer__close,
+.rm-dark-theme .pxd-library-drawer__search,
+.rm-dark-theme .pxd-library-drawer__close {
+  background: #252a31;
+  color: #f5f8fa;
+  border-color: #3b4b58;
+}
+
 .bp3-dark .pxd-library__item,
 body.bt-theme-dark .pxd-library__item,
 body.roam-body.dark .pxd-library__item,
 .rm-dark-theme .pxd-library__item {
+  background: #252a31;
   color: #f5f8fa;
+  border-color: #3b4b58;
 }
 
 .pxd-library-drawer__header {
@@ -633,22 +735,22 @@ body.roam-body.dark .pxd-library__item,
   flex: 1;
   min-width: 0;
   padding: 4px 8px;
-  border: 1px solid var(--pxd-border-strong);
+  border: 1px solid #d3d8de;
   border-radius: 4px;
-  background: var(--pxd-card-bg);
-  color: var(--pxd-text);
-  font-size: 12px;
+  background: #ffffff;
+  color: #182026;
+  font-size: 14px;
 }
 
 .pxd-library-drawer__close {
   flex-shrink: 0;
   padding: 4px 8px;
-  border: 1px solid var(--pxd-border-strong);
+  border: 1px solid #d3d8de;
   border-radius: 4px;
-  background: var(--pxd-card-bg);
-  color: var(--pxd-text);
+  background: #ffffff;
+  color: #182026;
   cursor: pointer;
-  font-size: 12px;
+  font-size: 14px;
 }
 
 /* ------------------------------------------------------------------ native guard */
@@ -666,7 +768,8 @@ body.roam-body.dark .pxd-library__item,
 
 .bp3-dark .pxd-root,
 body.bt-theme-dark .pxd-root,
-body.roam-body.dark .pxd-root {
+body.roam-body.dark .pxd-root,
+.rm-dark-theme .pxd-root {
   --pxd-border: var(--bc-menu, #3b4b58);
   --pxd-border-strong: #6b7f91;
   --pxd-bg: var(--bc-main, #293742);
@@ -677,4 +780,20 @@ body.roam-body.dark .pxd-root {
   --pxd-edge: #a7b6c2;
   --pxd-grid-dot: rgba(167, 182, 194, 0.22);
   --pxd-shadow: 0 1px 3px rgba(0, 0, 0, 0.35), 0 4px 12px rgba(0, 0, 0, 0.3);
+  caret-color: #f5f8fa !important;
+}
+
+.bp3-dark .pxd-root textarea,
+.bp3-dark .pxd-root .rm-block__input,
+.bp3-dark .pxd-root [contenteditable],
+body.bt-theme-dark .pxd-root textarea,
+body.bt-theme-dark .pxd-root .rm-block__input,
+body.bt-theme-dark .pxd-root [contenteditable],
+body.roam-body.dark .pxd-root textarea,
+body.roam-body.dark .pxd-root .rm-block__input,
+body.roam-body.dark .pxd-root [contenteditable],
+.rm-dark-theme .pxd-root textarea,
+.rm-dark-theme .pxd-root .rm-block__input,
+.rm-dark-theme .pxd-root [contenteditable] {
+  caret-color: #f5f8fa !important;
 }

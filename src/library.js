@@ -1,20 +1,39 @@
 export function filterLibraryTitles(titles, query) {
   const q = String(query || "").trim().toLowerCase();
   const roamJs = /^roam\/js\//;
+  const roamCss = /^roam\/css/;
   return (titles || [])
     .filter((title) => title && String(title).trim())
     .filter((title) => {
       const text = String(title);
-      if (!q && roamJs.test(text)) return false;
+      if (!q && (roamJs.test(text) || roamCss.test(text))) return false;
       if (q && !text.toLowerCase().includes(q)) return false;
       return true;
     })
     .slice(0, 30);
 }
 
+export function placeLibraryDrawer(drawer, root = globalThis.document) {
+  if (!drawer?.style) return;
+  const toolbar = root?.querySelector?.(".pxd-toolbar");
+  const rect = toolbar?.getBoundingClientRect?.();
+  const overlay = root?.querySelector?.(".pxd-mount--fullscreen") || root?.querySelector?.(".pxd-mount");
+  const overlayRect = overlay?.getBoundingClientRect?.();
+  const view = root?.defaultView || globalThis;
+  const vw = Number(view.innerWidth);
+  let overlayRight = 0;
+  if (overlayRect && Number.isFinite(Number(overlayRect.right)) && Number.isFinite(vw) && vw > 0) {
+    overlayRight = Math.max(0, vw - overlayRect.right);
+  }
+  drawer.style.position = "fixed";
+  drawer.style.top = rect && Number.isFinite(Number(rect.top)) ? `${Math.round(rect.top)}px` : "56px";
+  drawer.style.right = `${Math.max(16, overlayRight + 16)}px`;
+  drawer.style.left = "auto";
+}
+
 export function createLibrarySidebar({ lifecycle, settings, session, onPlacePage, mountRoot, onClose }) {
-  const parent = mountRoot || document.body;
-  parent.querySelector(".pxd-library-drawer")?.remove();
+  const parent = (typeof document !== "undefined" && document.body) || mountRoot;
+  parent.querySelector?.(".pxd-library-drawer")?.remove();
 
   const drawer = document.createElement("div");
   drawer.className = "pxd-library-drawer";
@@ -40,6 +59,7 @@ export function createLibrarySidebar({ lifecycle, settings, session, onPlacePage
   list.className = "pxd-library";
   drawer.append(header, list);
   lifecycle.node(drawer, parent);
+  placeLibraryDrawer(drawer);
 
   let titles = [];
 

@@ -18,7 +18,7 @@ import {
 import { MetadataStore, releaseScratch } from "./metadata.js";
 import { createLibrarySidebar } from "./library.js";
 import { createSettingsReader, SETTING_IDS } from "./settings.js";
-import { viewportCenterPosition } from "./canvas.js";
+import { viewportCenterPosition, nestStack, parseDiagramTitle } from "./canvas.js";
 import {
   allSessions,
   disposeSession,
@@ -34,7 +34,7 @@ export const runtime = {
   lifecycle: null,
   metadata: null,
   settings: null,
-  version: "0.4.1",
+  version: "0.4.2",
   enhancedUids: new Set(),
   activeDiagramUid: null,
   guardStyle: null,
@@ -142,6 +142,9 @@ async function enhanceDiagram(uid, nativeElement) {
         if (action.type === "nested" && action.uid) {
           await openNestedDiagram(action.uid);
         }
+        if (action.type === "crumb" && action.uid) {
+          await openCrumb(action.uid);
+        }
         if (action.type === "open-block" && action.uid) {
           globalThis.roamAlphaAPI?.ui?.rightSidebar?.addWindow?.({ window: { type: "block", "block-uid": action.uid } });
         }
@@ -230,8 +233,34 @@ async function enhanceByUid(uid) {
 
 async function openNestedDiagram(uid) {
   if (!uid) return;
+  const parentUid = runtime.activeDiagramUid;
+  if (parentUid && parentUid !== uid) {
+    const title = parseDiagramTitle(blockStringForUid(parentUid)) || "Diagram";
+    nestStack.push({ uid: parentUid, title });
+  }
   await markEnhanced(uid);
   await globalThis.roamAlphaAPI?.ui?.mainWindow?.openBlock?.({ block: { uid } });
+}
+
+async function openCrumb(uid) {
+  if (!uid) return;
+  const pull = globalThis.roamAlphaAPI?.data?.pull?.(
+    "[:node/title :block/string]",
+    [":block/uid", uid],
+  );
+  const pageTitle = pull?.[":node/title"] ?? pull?.title;
+  if (pageTitle) {
+    await globalThis.roamAlphaAPI?.ui?.mainWindow?.openPage?.({ page: { uid } });
+    return;
+  }
+  await globalThis.roamAlphaAPI?.ui?.mainWindow?.openBlock?.({ block: { uid } });
+}
+
+export function syncNestStackOnNavigate(hash = globalThis.location?.hash || "") {
+  const openUid = diagramUidFromLocation(hash);
+  if (nestStack.length && nestStack[nestStack.length - 1].uid === openUid) {
+    nestStack.pop();
+  }
 }
 
 let activeLibrary = null;
@@ -251,7 +280,7 @@ async function toggleLibrary(mountRoot, canvas) {
     lifecycle: runtime.lifecycle,
     settings: runtime.settings,
     session,
-    mountRoot: root,
+    mountRoot: globalThis.document?.body || root,
     onClose: () => {
       activeLibrary = null;
       canvas?.setLibraryOpen?.(false);
@@ -377,6 +406,7 @@ function installReconcile(lifecycle) {
     void reconcileVisibleDiagrams().catch((error) => console.warn("[plexus-diagram] Reconcile failed", error));
   };
   const onNavigate = () => {
+    syncNestStackOnNavigate();
     exitFullscreenOnNavigate();
     trigger();
   };
@@ -439,7 +469,7 @@ async function registerSlashAndContext(lifecycle, extensionAPI) {
 export async function installPlexusDiagram({ extensionAPI, lifecycle, version }) {
   runtime.extensionAPI = extensionAPI;
   runtime.lifecycle = lifecycle;
-  runtime.version = version || "0.4.1";
+  runtime.version = version || "0.4.2";
   runtime.settings = createSettingsReader(extensionAPI);
   runtime.enhancedUids = readEnhancedUidCache();
   installGuard(runtime.enhancedUids);
@@ -454,6 +484,7 @@ export async function installPlexusDiagram({ extensionAPI, lifecycle, version })
       for (const uid of [...allSessions().keys()]) disposeSession(uid);
     }
     await releaseScratch();
+    nestStack.length = 0;
     runtime.metadata = null;
     runtime.guardStyle?.remove?.();
   });
@@ -468,4 +499,6 @@ export {
   readEnhancedUidCache,
   writeEnhancedUidCache,
   openNestedDiagram,
+  nestStack,
+  parseDiagramTitle,
 };

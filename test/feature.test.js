@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { openNestedDiagram, runtime } from "../src/feature.js";
+import { openNestedDiagram, runtime, nestStack, syncNestStackOnNavigate } from "../src/feature.js";
 
 function roamStub(order) {
   return {
@@ -53,11 +53,16 @@ test("openNestedDiagram calls markEnhanced before openBlock", async () => {
   globalThis.roamAlphaAPI = roamStub(order);
   runtime.metadata = null;
   runtime.enhancedUids = new Set();
+  runtime.activeDiagramUid = null;
+  nestStack.length = 0;
   try {
     await openNestedDiagram("nested-uid");
     assert.deepEqual(order, ["openBlock"]);
     assert.ok(runtime.enhancedUids.has("nested-uid"));
+    assert.equal(nestStack.length, 0);
   } finally {
+    nestStack.length = 0;
+    runtime.activeDiagramUid = null;
     runtime.metadata = previousMetadata;
     runtime.enhancedUids = previousUids;
     globalThis.roamAlphaAPI = previousRoam;
@@ -91,6 +96,8 @@ test("openNestedDiagram ignores parent .rm-diagram and does not wait", async () 
   globalThis.roamAlphaAPI = roamStub(order);
   runtime.metadata = null;
   runtime.enhancedUids = new Set();
+  runtime.activeDiagramUid = null;
+  nestStack.length = 0;
   try {
     await openNestedDiagram("nested-uid");
     assert.ok(Date.now() - start < 500, "must finish well under 500ms without parent wait");
@@ -98,7 +105,47 @@ test("openNestedDiagram ignores parent .rm-diagram and does not wait", async () 
     assert.ok(runtime.enhancedUids.has("nested-uid"));
     assert.ok(!parentClasses.has("pxd-native-hidden"), "parent canvas must not be enhanced");
     assert.equal(parentDiagram.nextElementSibling, null, "parent canvas must not receive a mount");
+    assert.equal(nestStack.length, 0);
   } finally {
+    nestStack.length = 0;
+    runtime.activeDiagramUid = null;
+    runtime.metadata = previousMetadata;
+    runtime.enhancedUids = previousUids;
+    globalThis.roamAlphaAPI = previousRoam;
+    globalThis.document = previousDocument;
+  }
+});
+
+test("openNestedDiagram pushes the parent uid+title onto the nest stack", async () => {
+  const previousRoam = globalThis.roamAlphaAPI;
+  const previousDocument = globalThis.document;
+  const previousUids = runtime.enhancedUids;
+  const previousMetadata = runtime.metadata;
+  const previousActive = runtime.activeDiagramUid;
+  const order = [];
+  globalThis.document = undefined;
+  const api = roamStub(order);
+  const innerPull = api.data.pull;
+  api.data.pull = (_pattern, ref) => {
+    const uid = Array.isArray(ref) ? ref[1] : ref;
+    if (uid === "parent-uid") return { ":block/string": "{{[[diagram]]:Alpha}}" };
+    return innerPull(_pattern, ref);
+  };
+  globalThis.roamAlphaAPI = api;
+  runtime.metadata = null;
+  runtime.enhancedUids = new Set();
+  runtime.activeDiagramUid = "parent-uid";
+  nestStack.length = 0;
+  try {
+    await openNestedDiagram("nested-uid");
+    assert.equal(nestStack.length, 1);
+    assert.equal(nestStack[0].uid, "parent-uid");
+    assert.equal(nestStack[0].title, "Alpha");
+    syncNestStackOnNavigate("#/app/graph/page/parent-uid");
+    assert.equal(nestStack.length, 0);
+  } finally {
+    nestStack.length = 0;
+    runtime.activeDiagramUid = previousActive;
     runtime.metadata = previousMetadata;
     runtime.enhancedUids = previousUids;
     globalThis.roamAlphaAPI = previousRoam;

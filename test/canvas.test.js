@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createCanvasRoot, shouldCommitPulledString, topbarOffset, sidebarOffset, applyFullscreenChrome, cardUidFromHitStack, parseDropPayload } from "../src/canvas.js";
+import { createCanvasRoot, shouldCommitPulledString, topbarOffset, sidebarOffset, applyFullscreenChrome, fullscreenInsets, cardUidFromHitStack, parseDropPayload, parseDiagramTitle, focusRoamInput } from "../src/canvas.js";
 import { settingsDefaults } from "../src/settings.js";
 import { releaseScratch } from "../src/metadata.js";
 import { readFile } from "node:fs/promises";
@@ -84,6 +84,8 @@ function createDomStub() {
       return makeEl(tag);
     },
     querySelector() { return null; },
+    addEventListener() {},
+    removeEventListener() {},
   };
 
   const window = {
@@ -298,6 +300,7 @@ function cardSession(edges = [], extras = {}) {
       edges,
       sections: extras.sections || new Map(),
       selected: new Set(),
+      tree: extras.tree || { string: "{{[[diagram]]}}", children },
       getCard(uid) { return children.find((child) => child.uid === uid) || null; },
       ensureNode(uid, defaults) {
         if (nodes.has(uid)) return nodes.get(uid);
@@ -471,7 +474,7 @@ test("renderSections emits a Section label even when title is empty", () => {
   }
 });
 
-test("nested card paint path uses Nested diagram when the string is only the macro", () => {
+test("nested card with only the macro shows a name field, not Nested diagram", () => {
   const { document, window } = createDomStub();
   const previousDocument = globalThis.document;
   const previousWindow = globalThis.window;
@@ -486,10 +489,10 @@ test("nested card paint path uses Nested diagram when the string is only the mac
     const settings = { get: (key) => settingsDefaults()[key] };
     const canvas = createCanvasRoot({ session, settings, version: "0.4.1" });
     try {
-      const label = findByClass(canvas.root, "pxd-card__nested-label");
-      assert.ok(label, "nested card should paint a nested label");
-      assert.equal(label.textContent, "Nested diagram");
-      assert.notEqual(label.textContent, "{{[[diagram]]}}");
+      const name = findByClass(canvas.root, "pxd-card__nested-name");
+      assert.ok(name, "unnamed nested card should paint an inline name field");
+      assert.equal(name.placeholder, "Name this board…");
+      assert.equal(findByClass(canvas.root, "pxd-card__nested-label"), null);
     } finally {
       canvas.dispose();
     }
@@ -543,4 +546,162 @@ test("parseDropPayload reads [[page]] and block uids", () => {
   assert.deepEqual(parseDropPayload({ getData: (type) => (type === "text/plain" ? "See [[Page Title]]" : ""), types: ["text/plain"] }).string, "[[Page Title]]");
   assert.deepEqual(parseDropPayload({ getData: (type) => (type === "text/html" ? "((abcdefgh))" : ""), types: ["text/html"] }).string, "((abcdefgh))");
   assert.equal(parseDropPayload({ getData: () => "", types: [] }), null);
+});
+
+test("parseDiagramTitle reads named macros and strips unnamed ones", () => {
+  assert.equal(parseDiagramTitle("{{[[diagram]]:Foo}}"), "Foo");
+  assert.equal(parseDiagramTitle("{{[[diagram]]: Board name }}"), "Board name");
+  assert.equal(parseDiagramTitle("{{[[diagram]]}}"), "");
+  assert.equal(parseDiagramTitle("  Hello cards  "), "Hello cards");
+  assert.equal(parseDiagramTitle("{{[[diagram]]}} leftover"), "leftover");
+});
+
+test("focusRoamInput uses preventScroll so the outline copy does not jump", () => {
+  const calls = [];
+  const el = {
+    focus(opts) { calls.push(opts); },
+    dispatchEvent() { return true; },
+    getBoundingClientRect: () => ({ left: 0, top: 0, height: 20 }),
+  };
+  assert.equal(focusRoamInput(el), true);
+  assert.deepEqual(calls[0], { preventScroll: true });
+});
+
+test("overlay CSS sets caret-color under .pxd-root and 14px connect handles", async () => {
+  const css = await readFile(resolve(dirname(fileURLToPath(import.meta.url)), "../src/extension.css"), "utf8");
+  assert.match(css, /\.pxd-root[^{]*\{[^}]*caret-color:\s*#1c2127/s);
+  assert.match(css, /\.pxd-handle\s*\{[^}]*width:\s*14px/s);
+});
+
+test("fullscreenInsets right is the sidebar gap, or 0 when the article is flush", () => {
+  const open = {
+    defaultView: { innerWidth: 1382, innerHeight: 900 },
+    querySelector(sel) {
+      if (sel === ".rm-topbar") return { getBoundingClientRect: () => ({ bottom: 45 }) };
+      if (sel === ".rm-article-wrapper") {
+        return { getBoundingClientRect: () => ({ top: 45, left: 0, right: 1100, bottom: 900 }) };
+      }
+      return null;
+    },
+  };
+  assert.equal(fullscreenInsets(open).right, 282);
+  const collapsed = {
+    defaultView: { innerWidth: 1382, innerHeight: 900 },
+    querySelector(sel) {
+      if (sel === ".rm-topbar") return { getBoundingClientRect: () => ({ bottom: 45 }) };
+      if (sel === ".rm-article-wrapper") {
+        return { getBoundingClientRect: () => ({ top: 45, left: 0, right: 1382, bottom: 900 }) };
+      }
+      return null;
+    },
+  };
+  assert.equal(fullscreenInsets(collapsed).right, 0);
+  const mount = { classList: { toggle() {} }, style: {} };
+  applyFullscreenChrome(mount, true, open);
+  assert.equal(mount.style.right, "282px");
+  applyFullscreenChrome(mount, true, collapsed);
+  assert.equal(mount.style.right, "0px");
+});
+
+test("crumb row appears when nest stack has a parent", () => {
+  const { document, window } = createDomStub();
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  globalThis.document = document;
+  globalThis.window = window;
+  try {
+    const session = cardSession([], { tree: { string: "{{[[diagram]]:Child}}" } });
+    const settings = { get: (key) => settingsDefaults()[key] };
+    const canvas = createCanvasRoot({
+      session,
+      settings,
+      version: "0.4.2",
+      nestStack: [{ uid: "parent-uid", title: "Parent board" }],
+    });
+    try {
+      const crumb = findByClass(canvas.root, "pxd-crumb");
+      assert.ok(crumb, "crumb row should render when the nest stack is non-empty");
+      assert.ok(!String(crumb.className).includes("pxd-crumb--empty"));
+      const texts = [];
+      const walk = (el) => {
+        if (el?.textContent) texts.push(el.textContent);
+        for (const child of el?.children || []) walk(child);
+      };
+      walk(crumb);
+      assert.ok(texts.some((text) => String(text).includes("Parent board")));
+      assert.ok(texts.some((text) => String(text).includes("Child")));
+    } finally {
+      canvas.dispose();
+    }
+  } finally {
+    globalThis.document = previousDocument;
+    globalThis.window = previousWindow;
+  }
+});
+
+test("connect-to-empty invokes onPersist addCard and addEdge", async () => {
+  const { document, window } = createDomStub();
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  globalThis.document = document;
+  globalThis.window = window;
+  try {
+    const session = cardSession([], {
+      children: [{ uid: "card-a", string: "Hello card" }],
+      nodes: new Map([["card-a", { pos: { x: 0, y: 0 }, size: { width: 280, height: 160 } }]]),
+    });
+    const settings = { get: (key) => settingsDefaults()[key] };
+    const actions = [];
+    const canvas = createCanvasRoot({
+      session,
+      settings,
+      version: "0.4.2",
+      nestStack: [],
+      onPersist: async (action) => { actions.push(action); },
+    });
+    try {
+      await canvas.completeConnect({
+        moved: true,
+        sourceUid: "card-a",
+        targetUid: null,
+        clientX: 500,
+        clientY: 300,
+      });
+      assert.equal(actions.length, 1);
+      assert.ok(actions[0].addCard, "connect-to-empty should add a card at the drop point");
+      assert.equal(actions[0].addEdge?.source, "card-a");
+    } finally {
+      canvas.dispose();
+    }
+  } finally {
+    globalThis.document = previousDocument;
+    globalThis.window = previousWindow;
+  }
+});
+
+test("named nested card shows the parsed title, not the raw macro", () => {
+  const { document, window } = createDomStub();
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  globalThis.document = document;
+  globalThis.window = window;
+  try {
+    const session = cardSession([], {
+      children: [{ uid: "nested-1", string: "{{[[diagram]]:Research}}" }],
+      nodes: new Map([["nested-1", { pos: { x: 0, y: 0 }, size: { width: 280, height: 160 } }]]),
+    });
+    const settings = { get: (key) => settingsDefaults()[key] };
+    const canvas = createCanvasRoot({ session, settings, version: "0.4.2", nestStack: [] });
+    try {
+      const label = findByClass(canvas.root, "pxd-card__nested-label");
+      assert.ok(label);
+      assert.equal(label.textContent, "Research");
+      assert.notEqual(label.textContent, "{{[[diagram]]:Research}}");
+    } finally {
+      canvas.dispose();
+    }
+  } finally {
+    globalThis.document = previousDocument;
+    globalThis.window = previousWindow;
+  }
 });

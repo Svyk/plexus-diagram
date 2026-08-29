@@ -1,4 +1,5 @@
 import { DiagramAdapter, MutationQueue } from "./adapter.js";
+import { isDiagramString } from "./discovery.js";
 import { DIAGRAM_PULL_PATTERN, DiagramModel } from "./model.js";
 
 export class NativeDiagramSession {
@@ -11,8 +12,8 @@ export class NativeDiagramSession {
     this.model = null;
     this.views = new Set();
     this.unwatch = null;
-    // Metadata writes rewrite the whole diagram block; two in flight at once would
-    // duplicate node/edge lines. Every persist goes through this queue.
+    // Layout persist is serialized so overlapping writes cannot race. Patch persist
+    // updates only changed metadata rows instead of rewriting the diagram block.
     this.persistQueue = new MutationQueue();
   }
 
@@ -89,6 +90,14 @@ export class NativeDiagramSession {
       width: Number(this.settings.get("default-card-width")) || 280,
       height: Number(this.settings.get("default-card-height")) || 160,
     });
+    if (isDiagramString(string) && this.metadataStore && !this.metadataStore.has(contentUid)) {
+      await this.metadataStore.set(contentUid, {
+        viewport: null,
+        nodes: new Map(),
+        edges: [],
+        sections: new Map(),
+      });
+    }
     const tree = this.adapter.pull();
     this.model.applyPull(tree, this.metadataStore.get(this.diagramUid), {});
     this.adapter.adoptBaseTree(tree);

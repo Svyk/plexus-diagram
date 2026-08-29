@@ -34,7 +34,7 @@ export const runtime = {
   lifecycle: null,
   metadata: null,
   settings: null,
-  version: "0.4.0",
+  version: "0.4.1",
   enhancedUids: new Set(),
   activeDiagramUid: null,
   guardStyle: null,
@@ -140,7 +140,7 @@ async function enhanceDiagram(uid, nativeElement) {
       onAction: async (action) => {
         if (action.type === "library") await toggleLibrary(mounted.wrapper, mounted.canvas);
         if (action.type === "nested" && action.uid) {
-          globalThis.roamAlphaAPI?.ui?.mainWindow?.openBlock?.({ block: { uid: action.uid } });
+          await openNestedDiagram(action.uid);
         }
         if (action.type === "open-block" && action.uid) {
           globalThis.roamAlphaAPI?.ui?.rightSidebar?.addWindow?.({ window: { type: "block", "block-uid": action.uid } });
@@ -203,17 +203,38 @@ async function enhanceByUid(uid) {
     return;
   }
   await ensureMetadata();
+  if (!runtime.metadata.has(uid)) {
+    const empty = { viewport: null, nodes: new Map(), edges: [], sections: new Map() };
+    try {
+      await runtime.metadata.set(uid, empty);
+    } catch {
+      runtime.metadata.diagrams.set(uid, empty);
+    }
+  }
   runtime.enhancedUids.add(uid);
   writeEnhancedUidCache(runtime.enhancedUids);
   installGuard(runtime.enhancedUids);
   let diagram = diagramElForUid(uid);
   if (!diagram && typeof document !== "undefined") diagram = document.querySelector(".rm-diagram");
-  if (!diagram) diagram = await waitForDiagramEl(uid);
+  if (!diagram && typeof document !== "undefined") diagram = await waitForDiagramEl(uid);
   if (!diagram) {
     console.info("[plexus-diagram] Native diagram canvas did not remount in time", uid);
     return;
   }
   await enhanceDiagram(uid, diagram);
+}
+
+async function openNestedDiagram(uid) {
+  if (!uid) return;
+  await enhanceByUid(uid);
+  const session = getSession(uid);
+  if (session?.views?.size) {
+    for (const view of session.views) {
+      const fn = view.setFullscreen || view.canvas?.setFullscreen;
+      fn?.(true);
+    }
+  }
+  await globalThis.roamAlphaAPI?.ui?.mainWindow?.openBlock?.({ block: { uid } });
 }
 
 let activeLibrary = null;
@@ -421,7 +442,7 @@ async function registerSlashAndContext(lifecycle, extensionAPI) {
 export async function installPlexusDiagram({ extensionAPI, lifecycle, version }) {
   runtime.extensionAPI = extensionAPI;
   runtime.lifecycle = lifecycle;
-  runtime.version = version || "0.4.0";
+  runtime.version = version || "0.4.1";
   runtime.settings = createSettingsReader(extensionAPI);
   runtime.enhancedUids = readEnhancedUidCache();
   installGuard(runtime.enhancedUids);
@@ -449,4 +470,5 @@ export {
   isDiagramString,
   readEnhancedUidCache,
   writeEnhancedUidCache,
+  openNestedDiagram,
 };

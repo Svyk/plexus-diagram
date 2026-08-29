@@ -1,3 +1,17 @@
+export function filterLibraryTitles(titles, query) {
+  const q = String(query || "").trim().toLowerCase();
+  const roamJs = /^roam\/js\//;
+  return (titles || [])
+    .filter((title) => title && String(title).trim())
+    .filter((title) => {
+      const text = String(title);
+      if (!q && roamJs.test(text)) return false;
+      if (q && !text.toLowerCase().includes(q)) return false;
+      return true;
+    })
+    .slice(0, 30);
+}
+
 export function createLibrarySidebar({ lifecycle, settings, session, onPlacePage, mountRoot, onClose }) {
   const parent = mountRoot || document.body;
   parent.querySelector(".pxd-library-drawer")?.remove();
@@ -37,11 +51,7 @@ export function createLibrarySidebar({ lifecycle, settings, session, onPlacePage
 
   const renderList = () => {
     list.innerHTML = "";
-    const query = search.value.trim().toLowerCase();
-    const filtered = titles
-      .filter((title) => title && String(title).trim())
-      .filter((title) => !query || String(title).toLowerCase().includes(query))
-      .slice(0, 30);
+    const filtered = filterLibraryTitles(titles, search.value);
     for (const title of filtered) {
       const row = document.createElement("button");
       row.type = "button";

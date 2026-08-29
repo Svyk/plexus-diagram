@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createCanvasRoot, shouldCommitPulledString, topbarOffset, sidebarOffset, applyFullscreenChrome } from "../src/canvas.js";
+import { createCanvasRoot, shouldCommitPulledString, topbarOffset, sidebarOffset, applyFullscreenChrome, cardUidFromHitStack, parseDropPayload } from "../src/canvas.js";
 import { settingsDefaults } from "../src/settings.js";
 import { releaseScratch } from "../src/metadata.js";
 import { readFile } from "node:fs/promises";
@@ -37,9 +37,30 @@ function createDomStub() {
       addEventListener() {},
       removeEventListener() {},
       remove() { el.isConnected = false; },
-      querySelector() { return null; },
+      querySelector(sel) {
+        const match = (node) => {
+          const s = String(sel || "");
+          if (s.startsWith(".")) return node.classList?.contains?.(s.slice(1).split(/[\s.#[]/)[0]);
+          if (s.startsWith("#")) return node.id === s.slice(1);
+          return String(node.tagName || "").toLowerCase() === s.toLowerCase();
+        };
+        for (const child of el.children || []) {
+          if (match(child)) return child;
+          const found = child.querySelector?.(sel);
+          if (found) return found;
+        }
+        return null;
+      },
       querySelectorAll() { return []; },
-      closest() { return null; },
+      closest(sel) {
+        const name = String(sel || "").startsWith(".") ? String(sel).slice(1).split(/[\s.#[]/)[0] : "";
+        let node = el;
+        while (node) {
+          if (name && node.classList?.contains?.(name)) return node;
+          node = node.parentElement;
+        }
+        return null;
+      },
       getBoundingClientRect: () => ({ left: 0, top: 0, width: 800, height: 600 }),
       setAttribute() {},
       getAttribute() { return null; },
@@ -125,7 +146,7 @@ test("sidebarOffset uses the sidebar rect and is 0 when width is 0", () => {
   assert.equal(sidebarOffset({ querySelector: () => null }), 0);
 });
 
-test("applyFullscreenChrome sets left to the sidebar right, not 0, when a sidebar mock exists", () => {
+test("applyFullscreenChrome uses article-wrapper left when the article is inset 232px", () => {
   const classSet = new Set();
   const mount = {
     classList: {
@@ -148,6 +169,9 @@ test("applyFullscreenChrome sets left to the sidebar right, not 0, when a sideba
     },
     querySelector(sel) {
       if (sel === ".rm-topbar") return { getBoundingClientRect: () => ({ bottom: 45 }) };
+      if (sel === ".rm-article-wrapper") {
+        return { getBoundingClientRect: () => ({ top: 45, left: 232, right: 1400, bottom: 900, width: 1168 }) };
+      }
       if (sel === ".roam-sidebar-container") return { getBoundingClientRect: () => ({ right: 232, width: 232 }) };
       return null;
     },
@@ -156,10 +180,30 @@ test("applyFullscreenChrome sets left to the sidebar right, not 0, when a sideba
   assert.equal(mount.style.left, "232px");
   assert.notEqual(mount.style.left, "0px");
   assert.equal(mount.style.top, "45px");
-  assert.equal(mount.style.right, "0px");
-  assert.equal(mount.style.bottom, "0px");
   assert.ok(classSet.has("pxd-mount--fullscreen"));
   assert.ok(bodyClass.has("pxd-has-fullscreen"));
+});
+
+test("applyFullscreenChrome left is 0px when the article is full-width even if the sidebar still reports width 232", () => {
+  const mount = {
+    classList: { toggle() {} },
+    style: {},
+  };
+  const root = {
+    body: { classList: { toggle() {} } },
+    querySelector(sel) {
+      if (sel === ".rm-topbar") return { getBoundingClientRect: () => ({ bottom: 45 }) };
+      if (sel === ".rm-article-wrapper") {
+        return { getBoundingClientRect: () => ({ top: 45, left: 0, right: 1400, bottom: 900, width: 1400 }) };
+      }
+      if (sel === ".roam-sidebar-container") {
+        return { getBoundingClientRect: () => ({ left: -232, right: 0, width: 232 }) };
+      }
+      return null;
+    },
+  };
+  applyFullscreenChrome(mount, true, root);
+  assert.equal(mount.style.left, "0px");
 });
 
 test("settings defaults use 560px height and hide card titles", () => {
@@ -236,12 +280,12 @@ function findByClass(el, name) {
   return null;
 }
 
-function cardSession(edges = []) {
-  const children = [
+function cardSession(edges = [], extras = {}) {
+  const children = extras.children || [
     { uid: "card-a", string: "Hello card" },
     { uid: "card-b", string: "Other" },
   ];
-  const nodes = new Map([
+  const nodes = extras.nodes || new Map([
     ["card-a", { pos: { x: 0, y: 0 }, size: { width: 280, height: 160 } }],
     ["card-b", { pos: { x: 400, y: 0 }, size: { width: 280, height: 160 } }],
   ]);
@@ -252,7 +296,7 @@ function cardSession(edges = []) {
       children,
       nodes,
       edges,
-      sections: new Map(),
+      sections: extras.sections || new Map(),
       selected: new Set(),
       getCard(uid) { return children.find((child) => child.uid === uid) || null; },
       ensureNode(uid, defaults) {
@@ -261,7 +305,16 @@ function cardSession(edges = []) {
         nodes.set(uid, node);
         return node;
       },
-      isNestedDiagram: () => false,
+      addEdge(source, target, kind = "bezier") {
+        if (this.edges.some((edge) => edge.source === source && edge.target === target)) return null;
+        const edge = { source, target, kind, label: "" };
+        this.edges.push(edge);
+        return edge;
+      },
+      isNestedDiagram(uid) {
+        const card = children.find((child) => child.uid === uid);
+        return /\{\{\s*(\[\[)?diagram/i.test(card?.string || "");
+      },
     },
   };
 }
@@ -380,4 +433,114 @@ test("enterEdit calls renderBlock with the scratch uid, not the card uid", async
     globalThis.window = previousWindow;
     globalThis.roamAlphaAPI = previousRoam;
   }
+});
+
+test("default section CSS is pointer-events auto, not none", async () => {
+  const css = await readFile(resolve(dirname(fileURLToPath(import.meta.url)), "../src/extension.css"), "utf8");
+  const block = css.match(/\.pxd-section\s*\{[^}]+\}/);
+  assert.ok(block, ".pxd-section rule exists");
+  assert.match(block[0], /pointer-events:\s*auto/);
+  assert.doesNotMatch(block[0], /pointer-events:\s*none/);
+  assert.match(css, /\.pxd-library-drawer\s*\{[^}]*#ffffff/s);
+  assert.match(css, /\.pxd-root\[data-tool="connect"\]\s+\.pxd-handle/);
+  assert.match(css, /\.pxd-edge--temp\s*\{[^}]*pointer-events:\s*none/s);
+});
+
+test("renderSections emits a Section label even when title is empty", () => {
+  const { document, window } = createDomStub();
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  globalThis.document = document;
+  globalThis.window = window;
+  try {
+    const session = cardSession([], {
+      sections: new Map([["s1", { pos: { x: 10, y: 10 }, size: { width: 320, height: 240 }, title: "" }]]),
+    });
+    const settings = { get: (key) => settingsDefaults()[key] };
+    const canvas = createCanvasRoot({ session, settings, version: "0.4.1" });
+    try {
+      const label = findByClass(canvas.root, "pxd-section__label");
+      assert.ok(label, "section should render a label");
+      assert.equal(label.textContent, "Section");
+    } finally {
+      canvas.dispose();
+    }
+  } finally {
+    globalThis.document = previousDocument;
+    globalThis.window = previousWindow;
+  }
+});
+
+test("nested card paint path uses Nested diagram when the string is only the macro", () => {
+  const { document, window } = createDomStub();
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  globalThis.document = document;
+  globalThis.window = window;
+  try {
+    const session = cardSession([], {
+      children: [{ uid: "nested-1", string: "{{[[diagram]]}}" }],
+      nodes: new Map([["nested-1", { pos: { x: 0, y: 0 }, size: { width: 280, height: 160 } }]]),
+    });
+    assert.equal(session.model.isNestedDiagram("nested-1"), true);
+    const settings = { get: (key) => settingsDefaults()[key] };
+    const canvas = createCanvasRoot({ session, settings, version: "0.4.1" });
+    try {
+      const label = findByClass(canvas.root, "pxd-card__nested-label");
+      assert.ok(label, "nested card should paint a nested label");
+      assert.equal(label.textContent, "Nested diagram");
+      assert.notEqual(label.textContent, "{{[[diagram]]}}");
+    } finally {
+      canvas.dispose();
+    }
+  } finally {
+    globalThis.document = previousDocument;
+    globalThis.window = previousWindow;
+  }
+});
+
+test("cardUidFromHitStack skips edge-hit nodes and returns the card uid", () => {
+  const { document } = createDomStub();
+  const cardsLayer = document.createElement("div");
+  cardsLayer.className = "pxd-cards";
+  const card = document.createElement("div");
+  card.className = "pxd-card";
+  card.dataset.uid = "card-a";
+  cardsLayer.append(card);
+  const hit = document.createElement("path");
+  hit.classList.add("pxd-edge-hit");
+  assert.equal(cardUidFromHitStack([hit, card], cardsLayer), "card-a");
+  assert.equal(cardUidFromHitStack([hit], cardsLayer), null);
+});
+
+test("adding an edge increases model.edges and render creates a .pxd-edge", () => {
+  const { document, window } = createDomStub();
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  globalThis.document = document;
+  globalThis.window = window;
+  try {
+    const session = cardSession();
+    const settings = { get: (key) => settingsDefaults()[key] };
+    const canvas = createCanvasRoot({ session, settings, version: "0.4.1" });
+    try {
+      assert.equal(findByClass(canvas.root, "pxd-edge"), null);
+      const added = session.model.addEdge("card-a", "card-b", "bezier");
+      assert.ok(added);
+      assert.equal(session.model.edges.length, 1);
+      canvas.render();
+      assert.ok(findByClass(canvas.root, "pxd-edge"), "render should create a .pxd-edge path");
+    } finally {
+      canvas.dispose();
+    }
+  } finally {
+    globalThis.document = previousDocument;
+    globalThis.window = previousWindow;
+  }
+});
+
+test("parseDropPayload reads [[page]] and block uids", () => {
+  assert.deepEqual(parseDropPayload({ getData: (type) => (type === "text/plain" ? "See [[Page Title]]" : ""), types: ["text/plain"] }).string, "[[Page Title]]");
+  assert.deepEqual(parseDropPayload({ getData: (type) => (type === "text/html" ? "((abcdefgh))" : ""), types: ["text/html"] }).string, "((abcdefgh))");
+  assert.equal(parseDropPayload({ getData: () => "", types: [] }), null);
 });

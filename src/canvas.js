@@ -68,31 +68,141 @@ function chromeRootBody(root) {
   return root?.body || globalThis.document?.body || null;
 }
 
+function fullscreenInsets(root = globalThis.document) {
+  const topbarBottom = topbarOffset(root);
+  const article = root?.querySelector?.(".rm-article-wrapper");
+  if (!article?.getBoundingClientRect) {
+    return { top: topbarBottom, left: 0, right: 0, bottom: 0 };
+  }
+  const rect = article.getBoundingClientRect();
+  const top = Math.max(Number(rect.top) || 0, topbarBottom);
+  const left = Number.isFinite(Number(rect.left)) ? Math.round(rect.left) : 0;
+  const view = root.defaultView || globalThis;
+  const vw = Number(view.innerWidth);
+  const vh = Number(view.innerHeight);
+  let right = 0;
+  if (Number.isFinite(Number(rect.right)) && Number.isFinite(vw) && vw > 0) {
+    right = Math.max(0, Math.round(vw - rect.right));
+  }
+  let bottom = 0;
+  if (Number.isFinite(Number(rect.bottom)) && Number.isFinite(vh) && vh > 0) {
+    bottom = Math.max(0, Math.round(vh - rect.bottom));
+  }
+  return { top: Math.round(top), left, right, bottom };
+}
+
 export function applyFullscreenChrome(mount, on, root = globalThis.document) {
   mount?.classList?.toggle?.("pxd-mount--fullscreen", Boolean(on));
   chromeRootBody(root)?.classList?.toggle?.("pxd-has-fullscreen", Boolean(on));
-  if (on) {
-    const place = () => {
-      if (!mount?.style) return;
-      mount.style.top = `${topbarOffset(root)}px`;
-      mount.style.left = `${sidebarOffset(root)}px`;
-      mount.style.right = "0px";
-      mount.style.bottom = "0px";
-      mount.style.width = "auto";
-      mount.style.height = "auto";
-      mount.style.minHeight = "0";
-    };
-    place();
-    // Breadcrumbs `display:none` shrinks `.rm-topbar`; remeasure after one frame.
-    return raf(place);
+  if (!on) {
+    if (mount?.style) {
+      mount.style.top = "";
+      mount.style.left = "";
+      mount.style.right = "";
+      mount.style.bottom = "";
+    }
+    return () => {};
   }
-  if (mount?.style) {
-    mount.style.top = "";
-    mount.style.left = "";
-    mount.style.right = "";
-    mount.style.bottom = "";
+  const place = () => {
+    if (!mount?.style) return;
+    const box = fullscreenInsets(root);
+    mount.style.top = `${box.top}px`;
+    mount.style.left = `${box.left}px`;
+    mount.style.right = `${box.right}px`;
+    mount.style.bottom = `${box.bottom}px`;
+    mount.style.width = "auto";
+    mount.style.height = "auto";
+    mount.style.minHeight = "0";
+  };
+  place();
+  const disconnects = [];
+  const article = root?.querySelector?.(".rm-article-wrapper");
+  let sidebar = null;
+  if (root?.querySelector) {
+    for (const selector of SIDEBAR_SELECTORS) {
+      sidebar = root.querySelector(selector);
+      if (sidebar) break;
+    }
   }
-  return () => {};
+  if (typeof ResizeObserver === "function") {
+    try {
+      const ro = new ResizeObserver(() => place());
+      if (article) ro.observe(article);
+      if (sidebar) ro.observe(sidebar);
+      disconnects.push(() => ro.disconnect());
+    } catch { /* stub articles are not Elements */ }
+  }
+  if (typeof MutationObserver === "function" && article) {
+    try {
+      const mo = new MutationObserver(() => place());
+      mo.observe(article, { attributes: true, attributeFilter: ["class"] });
+      disconnects.push(() => mo.disconnect());
+    } catch { /* stub articles are not Nodes */ }
+  }
+  const cancelRaf = raf(place);
+  return () => {
+    cancelRaf();
+    for (const disconnect of disconnects) disconnect();
+  };
+}
+
+const EDGE_HIT_CLASSES = ["pxd-edge", "pxd-edge-hit", "pxd-edge-label", "pxd-edge-label-editor"];
+
+function classTokenList(el) {
+  if (!el) return [];
+  const raw = el.className;
+  const str = typeof raw === "string" ? raw : (raw?.baseVal || "");
+  return String(str).split(/\s+/).filter(Boolean);
+}
+
+function elementHasClass(el, name) {
+  if (el?.classList?.contains?.(name)) return true;
+  return classTokenList(el).includes(name);
+}
+
+function isEdgeHitNode(el) {
+  return EDGE_HIT_CLASSES.some((name) => elementHasClass(el, name));
+}
+
+export function cardUidFromHitStack(stack, cardsLayer) {
+  for (const el of stack || []) {
+    if (!el || isEdgeHitNode(el)) continue;
+    let card = null;
+    if (elementHasClass(el, "pxd-card")) card = el;
+    else if (typeof el.closest === "function") card = el.closest(".pxd-card");
+    if (!card) continue;
+    if (cardsLayer && card.parentElement && card.parentElement !== cardsLayer) continue;
+    return card.dataset?.uid || null;
+  }
+  return null;
+}
+
+const ROAM_UID_RE = /(?:^|[^A-Za-z0-9_-])([A-Za-z0-9_-]{9})(?:[^A-Za-z0-9_-]|$)/;
+
+export function parseDropPayload(dataTransfer) {
+  if (!dataTransfer) return null;
+  const chunks = [];
+  const take = (type) => {
+    try {
+      const value = dataTransfer.getData?.(type);
+      if (value) chunks.push(String(value));
+    } catch { /* unread drag types throw in some browsers */ }
+  };
+  take("text/plain");
+  take("text/html");
+  const types = dataTransfer.types;
+  if (types) {
+    for (const type of types) take(type);
+  }
+  const blob = chunks.join("\n");
+  if (!blob.trim()) return null;
+  const page = blob.match(/\[\[([^\]]+)\]\]/);
+  if (page) return { kind: "page", title: page[1], string: `[[${page[1]}]]` };
+  const blockRef = blob.match(/\(\(([^)]+)\)\)/);
+  if (blockRef) return { kind: "block", uid: blockRef[1], string: `((${blockRef[1]}))` };
+  const uid = blob.match(ROAM_UID_RE);
+  if (uid) return { kind: "block", uid: uid[1], string: `((${uid[1]}))` };
+  return null;
 }
 
 function nextFrame() {
@@ -553,24 +663,83 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
   };
 
   // ---------------------------------------------------------------- sections
+  const sectionEls = new Map();
+  const positionSection = (el, section) => {
+    el.style.left = `${section.pos?.x ?? 0}px`;
+    el.style.top = `${section.pos?.y ?? 0}px`;
+    el.style.width = `${section.size?.width ?? 320}px`;
+    el.style.height = `${section.size?.height ?? 240}px`;
+  };
+  const startSectionRename = (label) => {
+    const sectionId = label.closest?.(".pxd-section")?.dataset?.sectionId;
+    const section = sectionId ? model().sections.get(sectionId) : null;
+    if (!section) return;
+    let cancelled = false;
+    let finished = false;
+    label.contentEditable = "true";
+    label.spellcheck = false;
+    label.textContent = section.title || "";
+    const finish = (commit) => {
+      if (finished) return;
+      finished = true;
+      label.contentEditable = "false";
+      if (commit && !cancelled) {
+        const next = String(label.textContent ?? "").trim();
+        if (section.title !== next) {
+          section.title = next;
+          markLayoutDirty();
+        }
+      }
+      label.textContent = section.title || "Section";
+    };
+    label.addEventListener("blur", () => finish(true), { once: true });
+    label.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        event.stopPropagation();
+        label.blur?.();
+      } else if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        cancelled = true;
+        label.blur?.();
+      }
+    });
+    label.focus?.();
+  };
   const renderSections = () => {
-    sectionsLayer.innerHTML = "";
-    if (!settings.get("show-sections")) return;
+    if (!settings.get("show-sections")) {
+      for (const el of sectionEls.values()) el.remove();
+      sectionEls.clear();
+      return;
+    }
+    const seen = new Set();
     for (const [id, section] of model().sections) {
-      const el = document.createElement("div");
-      el.className = "pxd-section";
-      el.style.left = `${section.pos?.x ?? 0}px`;
-      el.style.top = `${section.pos?.y ?? 0}px`;
-      el.style.width = `${section.size?.width ?? 320}px`;
-      el.style.height = `${section.size?.height ?? 240}px`;
-      if (settings.get("section-label") && section.title) {
+      seen.add(id);
+      let el = sectionEls.get(id);
+      if (!el) {
+        el = document.createElement("div");
+        el.className = "pxd-section";
+        el.dataset.sectionId = id;
         const label = document.createElement("div");
         label.className = "pxd-section__label";
-        label.textContent = section.title;
-        el.append(label);
+        el._pxdLabel = label;
+        const resize = document.createElement("div");
+        resize.className = "pxd-section__resize";
+        resize.title = "Drag to resize";
+        el.append(label, resize);
+        sectionEls.set(id, el);
       }
-      el.dataset.sectionId = id;
-      sectionsLayer.append(el);
+      positionSection(el, section);
+      if (el._pxdLabel.contentEditable !== "true") {
+        el._pxdLabel.textContent = section.title || "Section";
+      }
+      if (el.parentElement !== sectionsLayer) sectionsLayer.append(el);
+    }
+    for (const [id, el] of sectionEls) {
+      if (seen.has(id)) continue;
+      el.remove();
+      sectionEls.delete(id);
     }
   };
 
@@ -762,10 +931,11 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
     if (!source) return;
     if (!tempEdge) {
       tempEdge = document.createElementNS(SVG_NS, "path");
-      tempEdge.classList.add("pxd-edge", "pxd-edge--temp");
+      tempEdge.classList.add("pxd-edge--temp");
       tempEdge.setAttribute("fill", "none");
       tempEdge.setAttribute("stroke", "var(--pxd-edge)");
       tempEdge.setAttribute("stroke-width", String(num("edge-width", 2)));
+      tempEdge.style.pointerEvents = "none";
       edgesSvg.append(tempEdge);
     }
     const target = { x: worldPoint.x, y: worldPoint.y, width: 1, height: 1 };
@@ -781,7 +951,12 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
   let editingUid = null;
   let editOpenedAt = 0;
 
-  const cardTitleText = (child) => child.string.replace(/\{\{.*?\}\}/, "").trim() || child.string.slice(0, 48);
+  const cardTitleText = (child) => {
+    const cleaned = String(child.string || "").replace(/\{\{.*?\}\}/, "").trim();
+    if (cleaned) return cleaned;
+    if (model().isNestedDiagram(child.uid)) return "Nested diagram";
+    return String(child.string || "").slice(0, 48);
+  };
 
   const renderStringInto = (el, string) => {
     const components = roamUi()?.components;
@@ -809,7 +984,7 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
     if (model().isNestedDiagram(child.uid)) {
       const label = document.createElement("div");
       label.className = "pxd-card__nested-label";
-      label.textContent = cardTitleText(child) || "Nested diagram";
+      label.textContent = cardTitleText(child);
       const sub = document.createElement("div");
       sub.className = "pxd-card__placeholder";
       sub.textContent = "Double-click to open";
@@ -1024,9 +1199,14 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
   };
 
   const cardFromPoint = (clientX, clientY) => {
-    const el = document.elementFromPoint?.(clientX, clientY);
-    const card = el?.closest?.(".pxd-card");
-    return card && card.parentElement === cardsLayer ? card.dataset.uid : null;
+    let stack = [];
+    if (typeof document.elementsFromPoint === "function") {
+      stack = document.elementsFromPoint(clientX, clientY) || [];
+    } else {
+      const el = document.elementFromPoint?.(clientX, clientY);
+      if (el) stack = [el];
+    }
+    return cardUidFromHitStack(stack, cardsLayer);
   };
 
   const selectCard = (uid, additive) => {
@@ -1057,6 +1237,26 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
     if (target?.closest?.(".pxd-edge-label") || edgeKeyFromTarget(target)) {
       if (editingEdgeKey && edgeKeyFromTarget(target) !== editingEdgeKey) closeEdgeEditor(true);
       return;
+    }
+
+    const sectionEl = !uid && !panRequested ? target?.closest?.(".pxd-section") : null;
+    if (sectionEl) {
+      const sectionId = sectionEl.dataset?.sectionId;
+      const section = sectionId ? model().sections.get(sectionId) : null;
+      if (section) {
+        const start = { x: event.clientX, y: event.clientY };
+        if (target.closest(".pxd-section__resize")) {
+          beginGesture({ kind: "section-resize", sectionId, start, size: { ...section.size }, moved: false });
+          event.preventDefault();
+          return;
+        }
+        if (target.closest(".pxd-section__label")?.isContentEditable || target.isContentEditable) return;
+        if (tool === "select" || tool === "section") {
+          beginGesture({ kind: "section-drag", sectionId, start, origin: { ...section.pos }, moved: false });
+          event.preventDefault();
+          return;
+        }
+      }
     }
 
     if (uid && !panRequested) {
@@ -1137,6 +1337,25 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
     }
     if (gesture.kind === "connect") {
       setTempEdge(gesture.uid, screenToWorld(event.clientX, event.clientY, false));
+      return;
+    }
+    if (gesture.kind === "section-drag") {
+      const section = model().sections.get(gesture.sectionId);
+      const el = sectionEls.get(gesture.sectionId);
+      if (!section) return;
+      section.pos = { x: snap(gesture.origin.x + dx / zoom), y: snap(gesture.origin.y + dy / zoom) };
+      if (el) positionSection(el, section);
+      return;
+    }
+    if (gesture.kind === "section-resize") {
+      const section = model().sections.get(gesture.sectionId);
+      const el = sectionEls.get(gesture.sectionId);
+      if (!section) return;
+      section.size = {
+        width: Math.max(160, snap(gesture.size.width + dx / zoom)),
+        height: Math.max(100, snap(gesture.size.height + dy / zoom)),
+      };
+      if (el) positionSection(el, section);
     }
   };
 
@@ -1152,7 +1371,7 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
       }
       return;
     }
-    if (active.kind === "drag" || active.kind === "resize") {
+    if (active.kind === "drag" || active.kind === "resize" || active.kind === "section-drag" || active.kind === "section-resize") {
       if (active.moved) markLayoutDirty();
       return;
     }
@@ -1181,6 +1400,12 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
       openEdgeLabelEditor(edgeKeyHit);
       return;
     }
+    const sectionLabel = target?.closest?.(".pxd-section__label");
+    if (sectionLabel) {
+      event.preventDefault();
+      startSectionRename(sectionLabel);
+      return;
+    }
     const cardEl = target?.closest?.(".pxd-card");
     const uid = cardEl?.dataset?.uid;
     if (uid) {
@@ -1204,6 +1429,7 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
     if (target?.closest?.(".pxd-card") || target?.closest?.(".pxd-toolbar")) return;
     if (target?.closest?.(".pxd-library-drawer") || target?.closest?.(".pxd-minimap")) return;
     if (target?.closest?.(".pxd-edge-label-editor")) return;
+    if (target?.closest?.(".pxd-section")) return;
     if (event.detail > 1) return;
     const pill = target?.closest?.(".pxd-edge-label");
     if (pill?.dataset?.edgeKey) {
@@ -1327,6 +1553,25 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
     }
   };
 
+  const onDragOver = (event) => {
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+  };
+  const onDrop = (event) => {
+    event.preventDefault();
+    const parsed = parseDropPayload(event.dataTransfer);
+    if (!parsed) return;
+    const point = screenToWorld(event.clientX, event.clientY);
+    const size = defaultCardSize();
+    void onPersist?.({
+      addCard: {
+        x: snap(point.x - size.width / 2),
+        y: snap(point.y - size.height / 2),
+      },
+      string: parsed.string,
+    });
+  };
+
   root.addEventListener("pointerdown", onPointerDown);
   root.addEventListener("pointerenter", () => { pointerInside = true; });
   root.addEventListener("pointerleave", () => { pointerInside = false; });
@@ -1334,6 +1579,8 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
   root.addEventListener("click", onClick);
   root.addEventListener("wheel", onWheel, { passive: false });
   root.addEventListener("focusout", onFocusOut);
+  root.addEventListener("dragover", onDragOver);
+  root.addEventListener("drop", onDrop);
   window.addEventListener("keydown", onKeyDown);
   window.addEventListener("keyup", onKeyUp);
 
@@ -1369,6 +1616,8 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
       }
       for (const card of cardEls.values()) unmountRoam(card._pxdBody);
       cardEls.clear();
+      for (const el of sectionEls.values()) el.remove();
+      sectionEls.clear();
       setFullscreen(false);
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);

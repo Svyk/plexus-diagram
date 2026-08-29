@@ -181,6 +181,128 @@ export function serializeDiagramMetadata(diagramUid, layout) {
   return lines.join("\n");
 }
 
+function indexPropChildren(children) {
+  const props = {};
+  for (const child of children || []) {
+    const line = String(child.string || "").trim();
+    const key = line.split("::")[0];
+    if (key) props[key] = child;
+  }
+  return props;
+}
+
+function indexDiagramChildren(tree) {
+  const indexed = {
+    viewport: null,
+    nodes: new Map(),
+    edges: new Map(),
+    sections: new Map(),
+  };
+  for (const child of tree?.children || []) {
+    const line = String(child.string || "").trim();
+    if (line.startsWith("viewport::")) indexed.viewport = child;
+    else if (line.startsWith("node ")) indexed.nodes.set(line.slice("node ".length).trim(), child);
+    else if (line.startsWith("edge ")) indexed.edges.set(line.slice("edge ".length).trim(), child);
+    else if (line.startsWith("section ")) indexed.sections.set(line.slice("section ".length).trim(), child);
+  }
+  return indexed;
+}
+
+async function syncBlockString(uid, current, desired) {
+  if (String(current || "").trim() === String(desired).trim()) return false;
+  await updateBlock(uid, desired);
+  return true;
+}
+
+async function syncPropChild(parentUid, existingChild, desiredString) {
+  if (desiredString) {
+    if (existingChild) await syncBlockString(existingChild.uid, existingChild.string, desiredString);
+    else await createBlock(parentUid, desiredString);
+  } else if (existingChild) {
+    await deleteBlock(existingChild.uid);
+  }
+}
+
+async function createDiagramChildren(blockUid, diagramUid, layout) {
+  const serialized = serializeDiagramMetadata(diagramUid, layout);
+  const childLines = serialized.split("\n").slice(1);
+  let parentUid = blockUid;
+  let indent = 0;
+  for (const line of childLines) {
+    const level = (line.match(/^ */)?.[0].length || 0) / 2;
+    const content = line.trim();
+    if (!content) continue;
+    while (indent > level) { parentUid = blockUid; indent -= 1; }
+    const uid = await createBlock(parentUid, content);
+    if (content.startsWith("node ") || content.startsWith("edge ") || content.startsWith("section ") || content.startsWith("viewport::")) {
+      parentUid = uid;
+      indent = level + 1;
+    }
+  }
+}
+
+async function patchDiagramBlock(blockUid, diagramUid, layout) {
+  const tree = getTree(blockUid);
+  if (tree && String(tree.string || "").trim() !== String(diagramUid).trim()) {
+    await updateBlock(blockUid, diagramUid);
+  }
+  const indexed = indexDiagramChildren(tree);
+  const viewportString = layout.viewport
+    ? `viewport:: ${layout.viewport.x},${layout.viewport.y},${layout.viewport.zoom}`
+    : null;
+  await syncPropChild(blockUid, indexed.viewport, viewportString);
+
+  const wantedNodes = new Set();
+  for (const [contentUid, node] of layout.nodes || []) {
+    wantedNodes.add(contentUid);
+    const rowString = `node ${contentUid}`;
+    const existing = indexed.nodes.get(contentUid);
+    const rowUid = existing ? existing.uid : await createBlock(blockUid, rowString);
+    if (existing) await syncBlockString(rowUid, existing.string, rowString);
+    const props = indexPropChildren(existing?.children);
+    await syncPropChild(rowUid, props.pos, node.pos ? `pos:: ${node.pos.x},${node.pos.y}` : null);
+    await syncPropChild(rowUid, props.size, node.size ? `size:: ${node.size.width},${node.size.height}` : null);
+    await syncPropChild(rowUid, props.color, node.color ? `color:: ${node.color}` : null);
+  }
+  for (const [id, row] of indexed.nodes) {
+    if (!wantedNodes.has(id)) await deleteBlock(row.uid);
+  }
+
+  const wantedEdges = new Set();
+  for (const edge of layout.edges || []) {
+    const key = `${edge.source}->${edge.target}`;
+    wantedEdges.add(key);
+    const rowString = `edge ${key}`;
+    const existing = indexed.edges.get(key);
+    const rowUid = existing ? existing.uid : await createBlock(blockUid, rowString);
+    if (existing) await syncBlockString(rowUid, existing.string, rowString);
+    const props = indexPropChildren(existing?.children);
+    const kindString = edge.kind && edge.kind !== "bezier" ? `kind:: ${edge.kind}` : null;
+    const labelString = edge.label ? `label:: ${edge.label}` : null;
+    await syncPropChild(rowUid, props.kind, kindString);
+    await syncPropChild(rowUid, props.label, labelString);
+  }
+  for (const [key, row] of indexed.edges) {
+    if (!wantedEdges.has(key)) await deleteBlock(row.uid);
+  }
+
+  const wantedSections = new Set();
+  for (const [sectionId, section] of layout.sections || []) {
+    wantedSections.add(sectionId);
+    const rowString = `section ${sectionId}`;
+    const existing = indexed.sections.get(sectionId);
+    const rowUid = existing ? existing.uid : await createBlock(blockUid, rowString);
+    if (existing) await syncBlockString(rowUid, existing.string, rowString);
+    const props = indexPropChildren(existing?.children);
+    await syncPropChild(rowUid, props.pos, section.pos ? `pos:: ${section.pos.x},${section.pos.y}` : null);
+    await syncPropChild(rowUid, props.size, section.size ? `size:: ${section.size.width},${section.size.height}` : null);
+    await syncPropChild(rowUid, props.title, section.title ? `title:: ${section.title}` : null);
+  }
+  for (const [id, row] of indexed.sections) {
+    if (!wantedSections.has(id)) await deleteBlock(row.uid);
+  }
+}
+
 export class MetadataStore {
   constructor() {
     this.pageUid = null;
@@ -240,27 +362,12 @@ export class MetadataStore {
     if (!schemaUid) schemaUid = await createBlock(pageUid, `schema-version:: ${METADATA_SCHEMA_VERSION}`);
     let enhancedUid = tree.children?.find((child) => child.string.trim() === "enhanced::")?.uid;
     if (!enhancedUid) enhancedUid = await createBlock(pageUid, "enhanced::");
-    const serialized = serializeDiagramMetadata(diagramUid, layout);
     const existingBlockUid = this.diagramBlockUids.get(diagramUid);
     const blockUid = existingBlockUid || await createBlock(enhancedUid, diagramUid);
     if (existingBlockUid) {
-      await updateBlock(blockUid, diagramUid);
-      const existing = getTree(blockUid);
-      for (const child of existing?.children || []) await deleteBlock(child.uid);
-    }
-    const childLines = serialized.split("\n").slice(1);
-    let parentUid = blockUid;
-    let indent = 0;
-    for (const line of childLines) {
-      const level = (line.match(/^ */)?.[0].length || 0) / 2;
-      const content = line.trim();
-      if (!content) continue;
-      while (indent > level) { parentUid = blockUid; indent -= 1; }
-      const uid = await createBlock(parentUid, content);
-      if (content.startsWith("node ") || content.startsWith("edge ") || content.startsWith("section ") || content.startsWith("viewport::")) {
-        parentUid = uid;
-        indent = level + 1;
-      }
+      await patchDiagramBlock(blockUid, diagramUid, layout);
+    } else {
+      await createDiagramChildren(blockUid, diagramUid, layout);
     }
     this.diagrams.set(diagramUid, layout);
     this.diagramBlockUids.set(diagramUid, blockUid);

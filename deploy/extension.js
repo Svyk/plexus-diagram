@@ -1,4 +1,4 @@
-/* Plexus Diagram v0.4.0 | MIT | generated; edit src/ */
+/* Plexus Diagram v0.4.1 | MIT | generated; edit src/ */
 
 // src/lifecycle.js
 function isPromiseLike(value) {
@@ -383,6 +383,120 @@ function serializeDiagramMetadata(diagramUid, layout) {
   }
   return lines.join("\n");
 }
+function indexPropChildren(children) {
+  const props = {};
+  for (const child of children || []) {
+    const line = String(child.string || "").trim();
+    const key = line.split("::")[0];
+    if (key) props[key] = child;
+  }
+  return props;
+}
+function indexDiagramChildren(tree) {
+  const indexed = {
+    viewport: null,
+    nodes: /* @__PURE__ */ new Map(),
+    edges: /* @__PURE__ */ new Map(),
+    sections: /* @__PURE__ */ new Map()
+  };
+  for (const child of tree?.children || []) {
+    const line = String(child.string || "").trim();
+    if (line.startsWith("viewport::")) indexed.viewport = child;
+    else if (line.startsWith("node ")) indexed.nodes.set(line.slice("node ".length).trim(), child);
+    else if (line.startsWith("edge ")) indexed.edges.set(line.slice("edge ".length).trim(), child);
+    else if (line.startsWith("section ")) indexed.sections.set(line.slice("section ".length).trim(), child);
+  }
+  return indexed;
+}
+async function syncBlockString(uid, current, desired) {
+  if (String(current || "").trim() === String(desired).trim()) return false;
+  await updateBlock(uid, desired);
+  return true;
+}
+async function syncPropChild(parentUid, existingChild, desiredString) {
+  if (desiredString) {
+    if (existingChild) await syncBlockString(existingChild.uid, existingChild.string, desiredString);
+    else await createBlock(parentUid, desiredString);
+  } else if (existingChild) {
+    await deleteBlock(existingChild.uid);
+  }
+}
+async function createDiagramChildren(blockUid, diagramUid, layout) {
+  const serialized = serializeDiagramMetadata(diagramUid, layout);
+  const childLines = serialized.split("\n").slice(1);
+  let parentUid = blockUid;
+  let indent = 0;
+  for (const line of childLines) {
+    const level = (line.match(/^ */)?.[0].length || 0) / 2;
+    const content = line.trim();
+    if (!content) continue;
+    while (indent > level) {
+      parentUid = blockUid;
+      indent -= 1;
+    }
+    const uid = await createBlock(parentUid, content);
+    if (content.startsWith("node ") || content.startsWith("edge ") || content.startsWith("section ") || content.startsWith("viewport::")) {
+      parentUid = uid;
+      indent = level + 1;
+    }
+  }
+}
+async function patchDiagramBlock(blockUid, diagramUid, layout) {
+  const tree = getTree(blockUid);
+  if (tree && String(tree.string || "").trim() !== String(diagramUid).trim()) {
+    await updateBlock(blockUid, diagramUid);
+  }
+  const indexed = indexDiagramChildren(tree);
+  const viewportString = layout.viewport ? `viewport:: ${layout.viewport.x},${layout.viewport.y},${layout.viewport.zoom}` : null;
+  await syncPropChild(blockUid, indexed.viewport, viewportString);
+  const wantedNodes = /* @__PURE__ */ new Set();
+  for (const [contentUid, node] of layout.nodes || []) {
+    wantedNodes.add(contentUid);
+    const rowString = `node ${contentUid}`;
+    const existing = indexed.nodes.get(contentUid);
+    const rowUid = existing ? existing.uid : await createBlock(blockUid, rowString);
+    if (existing) await syncBlockString(rowUid, existing.string, rowString);
+    const props = indexPropChildren(existing?.children);
+    await syncPropChild(rowUid, props.pos, node.pos ? `pos:: ${node.pos.x},${node.pos.y}` : null);
+    await syncPropChild(rowUid, props.size, node.size ? `size:: ${node.size.width},${node.size.height}` : null);
+    await syncPropChild(rowUid, props.color, node.color ? `color:: ${node.color}` : null);
+  }
+  for (const [id, row] of indexed.nodes) {
+    if (!wantedNodes.has(id)) await deleteBlock(row.uid);
+  }
+  const wantedEdges = /* @__PURE__ */ new Set();
+  for (const edge of layout.edges || []) {
+    const key = `${edge.source}->${edge.target}`;
+    wantedEdges.add(key);
+    const rowString = `edge ${key}`;
+    const existing = indexed.edges.get(key);
+    const rowUid = existing ? existing.uid : await createBlock(blockUid, rowString);
+    if (existing) await syncBlockString(rowUid, existing.string, rowString);
+    const props = indexPropChildren(existing?.children);
+    const kindString = edge.kind && edge.kind !== "bezier" ? `kind:: ${edge.kind}` : null;
+    const labelString = edge.label ? `label:: ${edge.label}` : null;
+    await syncPropChild(rowUid, props.kind, kindString);
+    await syncPropChild(rowUid, props.label, labelString);
+  }
+  for (const [key, row] of indexed.edges) {
+    if (!wantedEdges.has(key)) await deleteBlock(row.uid);
+  }
+  const wantedSections = /* @__PURE__ */ new Set();
+  for (const [sectionId, section] of layout.sections || []) {
+    wantedSections.add(sectionId);
+    const rowString = `section ${sectionId}`;
+    const existing = indexed.sections.get(sectionId);
+    const rowUid = existing ? existing.uid : await createBlock(blockUid, rowString);
+    if (existing) await syncBlockString(rowUid, existing.string, rowString);
+    const props = indexPropChildren(existing?.children);
+    await syncPropChild(rowUid, props.pos, section.pos ? `pos:: ${section.pos.x},${section.pos.y}` : null);
+    await syncPropChild(rowUid, props.size, section.size ? `size:: ${section.size.width},${section.size.height}` : null);
+    await syncPropChild(rowUid, props.title, section.title ? `title:: ${section.title}` : null);
+  }
+  for (const [id, row] of indexed.sections) {
+    if (!wantedSections.has(id)) await deleteBlock(row.uid);
+  }
+}
 var MetadataStore = class {
   constructor() {
     this.pageUid = null;
@@ -433,30 +547,12 @@ var MetadataStore = class {
     if (!schemaUid) schemaUid = await createBlock(pageUid, `schema-version:: ${METADATA_SCHEMA_VERSION}`);
     let enhancedUid = tree.children?.find((child) => child.string.trim() === "enhanced::")?.uid;
     if (!enhancedUid) enhancedUid = await createBlock(pageUid, "enhanced::");
-    const serialized = serializeDiagramMetadata(diagramUid, layout);
     const existingBlockUid = this.diagramBlockUids.get(diagramUid);
     const blockUid = existingBlockUid || await createBlock(enhancedUid, diagramUid);
     if (existingBlockUid) {
-      await updateBlock(blockUid, diagramUid);
-      const existing = getTree(blockUid);
-      for (const child of existing?.children || []) await deleteBlock(child.uid);
-    }
-    const childLines = serialized.split("\n").slice(1);
-    let parentUid = blockUid;
-    let indent = 0;
-    for (const line of childLines) {
-      const level = (line.match(/^ */)?.[0].length || 0) / 2;
-      const content = line.trim();
-      if (!content) continue;
-      while (indent > level) {
-        parentUid = blockUid;
-        indent -= 1;
-      }
-      const uid = await createBlock(parentUid, content);
-      if (content.startsWith("node ") || content.startsWith("edge ") || content.startsWith("section ") || content.startsWith("viewport::")) {
-        parentUid = uid;
-        indent = level + 1;
-      }
+      await patchDiagramBlock(blockUid, diagramUid, layout);
+    } else {
+      await createDiagramChildren(blockUid, diagramUid, layout);
     }
     this.diagrams.set(diagramUid, layout);
     this.diagramBlockUids.set(diagramUid, blockUid);
@@ -578,6 +674,16 @@ async function releaseScratch() {
 }
 
 // src/library.js
+function filterLibraryTitles(titles, query) {
+  const q = String(query || "").trim().toLowerCase();
+  const roamJs = /^roam\/js\//;
+  return (titles || []).filter((title) => title && String(title).trim()).filter((title) => {
+    const text = String(title);
+    if (!q && roamJs.test(text)) return false;
+    if (q && !text.toLowerCase().includes(q)) return false;
+    return true;
+  }).slice(0, 30);
+}
 function createLibrarySidebar({ lifecycle, settings, session, onPlacePage, mountRoot, onClose }) {
   const parent = mountRoot || document.body;
   parent.querySelector(".pxd-library-drawer")?.remove();
@@ -608,8 +714,7 @@ function createLibrarySidebar({ lifecycle, settings, session, onPlacePage, mount
   closeBtn.addEventListener("click", close);
   const renderList = () => {
     list.innerHTML = "";
-    const query = search.value.trim().toLowerCase();
-    const filtered = titles.filter((title) => title && String(title).trim()).filter((title) => !query || String(title).toLowerCase().includes(query)).slice(0, 30);
+    const filtered = filterLibraryTitles(titles, search.value);
     for (const title of filtered) {
       const row = document.createElement("button");
       row.type = "button";
@@ -1243,48 +1348,140 @@ function topbarOffset(root = globalThis.document) {
   return Number.isFinite(bottom) ? Math.max(0, Math.round(bottom)) : 0;
 }
 var SIDEBAR_SELECTORS = [".roam-sidebar-container", ".rm-left-sidebar", "#roam-sidebar-container"];
-function sidebarOffset(root = globalThis.document) {
-  if (!root?.querySelector) return 0;
-  let sidebar = null;
-  for (const selector of SIDEBAR_SELECTORS) {
-    sidebar = root.querySelector(selector);
-    if (sidebar) break;
-  }
-  if (!sidebar?.getBoundingClientRect) return 0;
-  const rect = sidebar.getBoundingClientRect();
-  const width = Number(rect.width);
-  if (!(width > 0)) return 0;
-  const right = Number(rect.right);
-  return Number.isFinite(right) ? Math.max(0, Math.round(right)) : 0;
-}
 function chromeRootBody(root) {
   return root?.body || globalThis.document?.body || null;
+}
+function fullscreenInsets(root = globalThis.document) {
+  const topbarBottom = topbarOffset(root);
+  const article = root?.querySelector?.(".rm-article-wrapper");
+  if (!article?.getBoundingClientRect) {
+    return { top: topbarBottom, left: 0, right: 0, bottom: 0 };
+  }
+  const rect = article.getBoundingClientRect();
+  const top = Math.max(Number(rect.top) || 0, topbarBottom);
+  const left = Number.isFinite(Number(rect.left)) ? Math.round(rect.left) : 0;
+  const view = root.defaultView || globalThis;
+  const vw = Number(view.innerWidth);
+  const vh = Number(view.innerHeight);
+  let right = 0;
+  if (Number.isFinite(Number(rect.right)) && Number.isFinite(vw) && vw > 0) {
+    right = Math.max(0, Math.round(vw - rect.right));
+  }
+  let bottom = 0;
+  if (Number.isFinite(Number(rect.bottom)) && Number.isFinite(vh) && vh > 0) {
+    bottom = Math.max(0, Math.round(vh - rect.bottom));
+  }
+  return { top: Math.round(top), left, right, bottom };
 }
 function applyFullscreenChrome(mount, on, root = globalThis.document) {
   mount?.classList?.toggle?.("pxd-mount--fullscreen", Boolean(on));
   chromeRootBody(root)?.classList?.toggle?.("pxd-has-fullscreen", Boolean(on));
-  if (on) {
-    const place = () => {
-      if (!mount?.style) return;
-      mount.style.top = `${topbarOffset(root)}px`;
-      mount.style.left = `${sidebarOffset(root)}px`;
-      mount.style.right = "0px";
-      mount.style.bottom = "0px";
-      mount.style.width = "auto";
-      mount.style.height = "auto";
-      mount.style.minHeight = "0";
+  if (!on) {
+    if (mount?.style) {
+      mount.style.top = "";
+      mount.style.left = "";
+      mount.style.right = "";
+      mount.style.bottom = "";
+    }
+    return () => {
     };
-    place();
-    return raf(place);
   }
-  if (mount?.style) {
-    mount.style.top = "";
-    mount.style.left = "";
-    mount.style.right = "";
-    mount.style.bottom = "";
-  }
-  return () => {
+  const place = () => {
+    if (!mount?.style) return;
+    const box = fullscreenInsets(root);
+    mount.style.top = `${box.top}px`;
+    mount.style.left = `${box.left}px`;
+    mount.style.right = `${box.right}px`;
+    mount.style.bottom = `${box.bottom}px`;
+    mount.style.width = "auto";
+    mount.style.height = "auto";
+    mount.style.minHeight = "0";
   };
+  place();
+  const disconnects = [];
+  const article = root?.querySelector?.(".rm-article-wrapper");
+  let sidebar = null;
+  if (root?.querySelector) {
+    for (const selector of SIDEBAR_SELECTORS) {
+      sidebar = root.querySelector(selector);
+      if (sidebar) break;
+    }
+  }
+  if (typeof ResizeObserver === "function") {
+    try {
+      const ro = new ResizeObserver(() => place());
+      if (article) ro.observe(article);
+      if (sidebar) ro.observe(sidebar);
+      disconnects.push(() => ro.disconnect());
+    } catch {
+    }
+  }
+  if (typeof MutationObserver === "function" && article) {
+    try {
+      const mo = new MutationObserver(() => place());
+      mo.observe(article, { attributes: true, attributeFilter: ["class"] });
+      disconnects.push(() => mo.disconnect());
+    } catch {
+    }
+  }
+  const cancelRaf = raf(place);
+  return () => {
+    cancelRaf();
+    for (const disconnect of disconnects) disconnect();
+  };
+}
+var EDGE_HIT_CLASSES = ["pxd-edge", "pxd-edge-hit", "pxd-edge-label", "pxd-edge-label-editor"];
+function classTokenList(el) {
+  if (!el) return [];
+  const raw = el.className;
+  const str = typeof raw === "string" ? raw : raw?.baseVal || "";
+  return String(str).split(/\s+/).filter(Boolean);
+}
+function elementHasClass(el, name) {
+  if (el?.classList?.contains?.(name)) return true;
+  return classTokenList(el).includes(name);
+}
+function isEdgeHitNode(el) {
+  return EDGE_HIT_CLASSES.some((name) => elementHasClass(el, name));
+}
+function cardUidFromHitStack(stack, cardsLayer) {
+  for (const el of stack || []) {
+    if (!el || isEdgeHitNode(el)) continue;
+    let card = null;
+    if (elementHasClass(el, "pxd-card")) card = el;
+    else if (typeof el.closest === "function") card = el.closest(".pxd-card");
+    if (!card) continue;
+    if (cardsLayer && card.parentElement && card.parentElement !== cardsLayer) continue;
+    return card.dataset?.uid || null;
+  }
+  return null;
+}
+var ROAM_UID_RE = /(?:^|[^A-Za-z0-9_-])([A-Za-z0-9_-]{9})(?:[^A-Za-z0-9_-]|$)/;
+function parseDropPayload(dataTransfer) {
+  if (!dataTransfer) return null;
+  const chunks = [];
+  const take = (type) => {
+    try {
+      const value = dataTransfer.getData?.(type);
+      if (value) chunks.push(String(value));
+    } catch {
+    }
+  };
+  take("text/plain");
+  take("text/html");
+  const types = dataTransfer.types;
+  if (types) {
+    for (const type of types) take(type);
+  }
+  const blob = chunks.join("\n");
+  if (!blob.trim()) return null;
+  const page = blob.match(/\[\[([^\]]+)\]\]/);
+  if (page) return { kind: "page", title: page[1], string: `[[${page[1]}]]` };
+  const blockRef = blob.match(/\(\(([^)]+)\)\)/);
+  if (blockRef) return { kind: "block", uid: blockRef[1], string: `((${blockRef[1]}))` };
+  const uid = blob.match(ROAM_UID_RE);
+  if (uid) return { kind: "block", uid: uid[1], string: `((${uid[1]}))` };
+  return null;
 }
 function nextFrame() {
   return new Promise((resolve) => {
@@ -1698,24 +1895,83 @@ function createCanvasRoot({ session, settings, version, onPersist }) {
     hintDismissed = true;
     syncHint();
   };
+  const sectionEls = /* @__PURE__ */ new Map();
+  const positionSection = (el, section) => {
+    el.style.left = `${section.pos?.x ?? 0}px`;
+    el.style.top = `${section.pos?.y ?? 0}px`;
+    el.style.width = `${section.size?.width ?? 320}px`;
+    el.style.height = `${section.size?.height ?? 240}px`;
+  };
+  const startSectionRename = (label) => {
+    const sectionId = label.closest?.(".pxd-section")?.dataset?.sectionId;
+    const section = sectionId ? model().sections.get(sectionId) : null;
+    if (!section) return;
+    let cancelled = false;
+    let finished = false;
+    label.contentEditable = "true";
+    label.spellcheck = false;
+    label.textContent = section.title || "";
+    const finish = (commit) => {
+      if (finished) return;
+      finished = true;
+      label.contentEditable = "false";
+      if (commit && !cancelled) {
+        const next = String(label.textContent ?? "").trim();
+        if (section.title !== next) {
+          section.title = next;
+          markLayoutDirty();
+        }
+      }
+      label.textContent = section.title || "Section";
+    };
+    label.addEventListener("blur", () => finish(true), { once: true });
+    label.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        event.stopPropagation();
+        label.blur?.();
+      } else if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        cancelled = true;
+        label.blur?.();
+      }
+    });
+    label.focus?.();
+  };
   const renderSections = () => {
-    sectionsLayer.innerHTML = "";
-    if (!settings.get("show-sections")) return;
+    if (!settings.get("show-sections")) {
+      for (const el of sectionEls.values()) el.remove();
+      sectionEls.clear();
+      return;
+    }
+    const seen = /* @__PURE__ */ new Set();
     for (const [id, section] of model().sections) {
-      const el = document.createElement("div");
-      el.className = "pxd-section";
-      el.style.left = `${section.pos?.x ?? 0}px`;
-      el.style.top = `${section.pos?.y ?? 0}px`;
-      el.style.width = `${section.size?.width ?? 320}px`;
-      el.style.height = `${section.size?.height ?? 240}px`;
-      if (settings.get("section-label") && section.title) {
+      seen.add(id);
+      let el = sectionEls.get(id);
+      if (!el) {
+        el = document.createElement("div");
+        el.className = "pxd-section";
+        el.dataset.sectionId = id;
         const label = document.createElement("div");
         label.className = "pxd-section__label";
-        label.textContent = section.title;
-        el.append(label);
+        el._pxdLabel = label;
+        const resize = document.createElement("div");
+        resize.className = "pxd-section__resize";
+        resize.title = "Drag to resize";
+        el.append(label, resize);
+        sectionEls.set(id, el);
       }
-      el.dataset.sectionId = id;
-      sectionsLayer.append(el);
+      positionSection(el, section);
+      if (el._pxdLabel.contentEditable !== "true") {
+        el._pxdLabel.textContent = section.title || "Section";
+      }
+      if (el.parentElement !== sectionsLayer) sectionsLayer.append(el);
+    }
+    for (const [id, el] of sectionEls) {
+      if (seen.has(id)) continue;
+      el.remove();
+      sectionEls.delete(id);
     }
   };
   const edgePaths = /* @__PURE__ */ new Map();
@@ -1905,10 +2161,11 @@ function createCanvasRoot({ session, settings, version, onPersist }) {
     if (!source) return;
     if (!tempEdge) {
       tempEdge = document.createElementNS(SVG_NS, "path");
-      tempEdge.classList.add("pxd-edge", "pxd-edge--temp");
+      tempEdge.classList.add("pxd-edge--temp");
       tempEdge.setAttribute("fill", "none");
       tempEdge.setAttribute("stroke", "var(--pxd-edge)");
       tempEdge.setAttribute("stroke-width", String(num("edge-width", 2)));
+      tempEdge.style.pointerEvents = "none";
       edgesSvg.append(tempEdge);
     }
     const target = { x: worldPoint.x, y: worldPoint.y, width: 1, height: 1 };
@@ -1921,7 +2178,12 @@ function createCanvasRoot({ session, settings, version, onPersist }) {
   const cardEls = /* @__PURE__ */ new Map();
   let editingUid = null;
   let editOpenedAt = 0;
-  const cardTitleText = (child) => child.string.replace(/\{\{.*?\}\}/, "").trim() || child.string.slice(0, 48);
+  const cardTitleText = (child) => {
+    const cleaned = String(child.string || "").replace(/\{\{.*?\}\}/, "").trim();
+    if (cleaned) return cleaned;
+    if (model().isNestedDiagram(child.uid)) return "Nested diagram";
+    return String(child.string || "").slice(0, 48);
+  };
   const renderStringInto = (el, string) => {
     const components = roamUi()?.components;
     if (string && components?.renderString) {
@@ -1948,7 +2210,7 @@ function createCanvasRoot({ session, settings, version, onPersist }) {
     if (model().isNestedDiagram(child.uid)) {
       const label = document.createElement("div");
       label.className = "pxd-card__nested-label";
-      label.textContent = cardTitleText(child) || "Nested diagram";
+      label.textContent = cardTitleText(child);
       const sub = document.createElement("div");
       sub.className = "pxd-card__placeholder";
       sub.textContent = "Double-click to open";
@@ -2155,9 +2417,14 @@ function createCanvasRoot({ session, settings, version, onPersist }) {
     clearTempEdge();
   };
   const cardFromPoint = (clientX, clientY) => {
-    const el = document.elementFromPoint?.(clientX, clientY);
-    const card = el?.closest?.(".pxd-card");
-    return card && card.parentElement === cardsLayer ? card.dataset.uid : null;
+    let stack = [];
+    if (typeof document.elementsFromPoint === "function") {
+      stack = document.elementsFromPoint(clientX, clientY) || [];
+    } else {
+      const el = document.elementFromPoint?.(clientX, clientY);
+      if (el) stack = [el];
+    }
+    return cardUidFromHitStack(stack, cardsLayer);
   };
   const selectCard = (uid, additive) => {
     const selected = model().selected;
@@ -2185,6 +2452,25 @@ function createCanvasRoot({ session, settings, version, onPersist }) {
     if (target?.closest?.(".pxd-edge-label") || edgeKeyFromTarget(target)) {
       if (editingEdgeKey && edgeKeyFromTarget(target) !== editingEdgeKey) closeEdgeEditor(true);
       return;
+    }
+    const sectionEl = !uid && !panRequested ? target?.closest?.(".pxd-section") : null;
+    if (sectionEl) {
+      const sectionId = sectionEl.dataset?.sectionId;
+      const section = sectionId ? model().sections.get(sectionId) : null;
+      if (section) {
+        const start = { x: event.clientX, y: event.clientY };
+        if (target.closest(".pxd-section__resize")) {
+          beginGesture({ kind: "section-resize", sectionId, start, size: { ...section.size }, moved: false });
+          event.preventDefault();
+          return;
+        }
+        if (target.closest(".pxd-section__label")?.isContentEditable || target.isContentEditable) return;
+        if (tool === "select" || tool === "section") {
+          beginGesture({ kind: "section-drag", sectionId, start, origin: { ...section.pos }, moved: false });
+          event.preventDefault();
+          return;
+        }
+      }
     }
     if (uid && !panRequested) {
       const start = { x: event.clientX, y: event.clientY };
@@ -2262,6 +2548,25 @@ function createCanvasRoot({ session, settings, version, onPersist }) {
     }
     if (gesture.kind === "connect") {
       setTempEdge(gesture.uid, screenToWorld(event.clientX, event.clientY, false));
+      return;
+    }
+    if (gesture.kind === "section-drag") {
+      const section = model().sections.get(gesture.sectionId);
+      const el = sectionEls.get(gesture.sectionId);
+      if (!section) return;
+      section.pos = { x: snap(gesture.origin.x + dx / zoom), y: snap(gesture.origin.y + dy / zoom) };
+      if (el) positionSection(el, section);
+      return;
+    }
+    if (gesture.kind === "section-resize") {
+      const section = model().sections.get(gesture.sectionId);
+      const el = sectionEls.get(gesture.sectionId);
+      if (!section) return;
+      section.size = {
+        width: Math.max(160, snap(gesture.size.width + dx / zoom)),
+        height: Math.max(100, snap(gesture.size.height + dy / zoom))
+      };
+      if (el) positionSection(el, section);
     }
   };
   const onPointerUp = async (event) => {
@@ -2276,7 +2581,7 @@ function createCanvasRoot({ session, settings, version, onPersist }) {
       }
       return;
     }
-    if (active.kind === "drag" || active.kind === "resize") {
+    if (active.kind === "drag" || active.kind === "resize" || active.kind === "section-drag" || active.kind === "section-resize") {
       if (active.moved) markLayoutDirty();
       return;
     }
@@ -2304,6 +2609,12 @@ function createCanvasRoot({ session, settings, version, onPersist }) {
       openEdgeLabelEditor(edgeKeyHit);
       return;
     }
+    const sectionLabel = target?.closest?.(".pxd-section__label");
+    if (sectionLabel) {
+      event.preventDefault();
+      startSectionRename(sectionLabel);
+      return;
+    }
     const cardEl = target?.closest?.(".pxd-card");
     const uid = cardEl?.dataset?.uid;
     if (uid) {
@@ -2326,6 +2637,7 @@ function createCanvasRoot({ session, settings, version, onPersist }) {
     if (target?.closest?.(".pxd-card") || target?.closest?.(".pxd-toolbar")) return;
     if (target?.closest?.(".pxd-library-drawer") || target?.closest?.(".pxd-minimap")) return;
     if (target?.closest?.(".pxd-edge-label-editor")) return;
+    if (target?.closest?.(".pxd-section")) return;
     if (event.detail > 1) return;
     const pill = target?.closest?.(".pxd-edge-label");
     if (pill?.dataset?.edgeKey) {
@@ -2444,6 +2756,24 @@ function createCanvasRoot({ session, settings, version, onPersist }) {
       root.classList.remove("pxd-root--space");
     }
   };
+  const onDragOver = (event) => {
+    event.preventDefault();
+    if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+  };
+  const onDrop = (event) => {
+    event.preventDefault();
+    const parsed = parseDropPayload(event.dataTransfer);
+    if (!parsed) return;
+    const point = screenToWorld(event.clientX, event.clientY);
+    const size = defaultCardSize();
+    void onPersist?.({
+      addCard: {
+        x: snap(point.x - size.width / 2),
+        y: snap(point.y - size.height / 2)
+      },
+      string: parsed.string
+    });
+  };
   root.addEventListener("pointerdown", onPointerDown);
   root.addEventListener("pointerenter", () => {
     pointerInside = true;
@@ -2455,6 +2785,8 @@ function createCanvasRoot({ session, settings, version, onPersist }) {
   root.addEventListener("click", onClick);
   root.addEventListener("wheel", onWheel, { passive: false });
   root.addEventListener("focusout", onFocusOut);
+  root.addEventListener("dragover", onDragOver);
+  root.addEventListener("drop", onDrop);
   window.addEventListener("keydown", onKeyDown);
   window.addEventListener("keyup", onKeyUp);
   setActiveTool(model().activeTool || "select");
@@ -2488,6 +2820,8 @@ function createCanvasRoot({ session, settings, version, onPersist }) {
       }
       for (const card of cardEls.values()) unmountRoam(card._pxdBody);
       cardEls.clear();
+      for (const el of sectionEls.values()) el.remove();
+      sectionEls.clear();
       setFullscreen(false);
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
@@ -2701,6 +3035,14 @@ var NativeDiagramSession = class {
       width: Number(this.settings.get("default-card-width")) || 280,
       height: Number(this.settings.get("default-card-height")) || 160
     });
+    if (isDiagramString(string) && this.metadataStore && !this.metadataStore.has(contentUid)) {
+      await this.metadataStore.set(contentUid, {
+        viewport: null,
+        nodes: /* @__PURE__ */ new Map(),
+        edges: [],
+        sections: /* @__PURE__ */ new Map()
+      });
+    }
     const tree = this.adapter.pull();
     this.model.applyPull(tree, this.metadataStore.get(this.diagramUid), {});
     this.adapter.adoptBaseTree(tree);
@@ -2837,7 +3179,7 @@ var runtime = {
   lifecycle: null,
   metadata: null,
   settings: null,
-  version: "0.4.0",
+  version: "0.4.1",
   enhancedUids: /* @__PURE__ */ new Set(),
   activeDiagramUid: null,
   guardStyle: null,
@@ -2933,7 +3275,7 @@ async function enhanceDiagram(uid, nativeElement) {
       onAction: async (action) => {
         if (action.type === "library") await toggleLibrary(mounted.wrapper, mounted.canvas);
         if (action.type === "nested" && action.uid) {
-          globalThis.roamAlphaAPI?.ui?.mainWindow?.openBlock?.({ block: { uid: action.uid } });
+          await openNestedDiagram(action.uid);
         }
         if (action.type === "open-block" && action.uid) {
           globalThis.roamAlphaAPI?.ui?.rightSidebar?.addWindow?.({ window: { type: "block", "block-uid": action.uid } });
@@ -2991,17 +3333,37 @@ async function enhanceByUid(uid) {
     return;
   }
   await ensureMetadata();
+  if (!runtime.metadata.has(uid)) {
+    const empty = { viewport: null, nodes: /* @__PURE__ */ new Map(), edges: [], sections: /* @__PURE__ */ new Map() };
+    try {
+      await runtime.metadata.set(uid, empty);
+    } catch {
+      runtime.metadata.diagrams.set(uid, empty);
+    }
+  }
   runtime.enhancedUids.add(uid);
   writeEnhancedUidCache(runtime.enhancedUids);
   installGuard(runtime.enhancedUids);
   let diagram = diagramElForUid(uid);
   if (!diagram && typeof document !== "undefined") diagram = document.querySelector(".rm-diagram");
-  if (!diagram) diagram = await waitForDiagramEl(uid);
+  if (!diagram && typeof document !== "undefined") diagram = await waitForDiagramEl(uid);
   if (!diagram) {
     console.info("[plexus-diagram] Native diagram canvas did not remount in time", uid);
     return;
   }
   await enhanceDiagram(uid, diagram);
+}
+async function openNestedDiagram(uid) {
+  if (!uid) return;
+  await enhanceByUid(uid);
+  const session = getSession(uid);
+  if (session?.views?.size) {
+    for (const view of session.views) {
+      const fn = view.setFullscreen || view.canvas?.setFullscreen;
+      fn?.(true);
+    }
+  }
+  await globalThis.roamAlphaAPI?.ui?.mainWindow?.openBlock?.({ block: { uid } });
 }
 var activeLibrary = null;
 async function toggleLibrary(mountRoot, canvas) {
@@ -3193,7 +3555,7 @@ async function registerSlashAndContext(lifecycle, extensionAPI) {
 async function installPlexusDiagram({ extensionAPI, lifecycle, version }) {
   runtime.extensionAPI = extensionAPI;
   runtime.lifecycle = lifecycle;
-  runtime.version = version || "0.4.0";
+  runtime.version = version || "0.4.1";
   runtime.settings = createSettingsReader(extensionAPI);
   runtime.enhancedUids = readEnhancedUidCache();
   installGuard(runtime.enhancedUids);

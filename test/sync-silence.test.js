@@ -415,3 +415,150 @@ test("Fit button still invokes persistViewport", async () => {
     globalThis.window = previousWindow;
   }
 });
+
+function twoNodeLayout(pos1 = { x: 10, y: 20 }) {
+  return {
+    viewport: { x: 100, y: 200, zoom: 1.25 },
+    nodes: new Map([
+      ["card-1", { pos: { ...pos1 }, size: { width: 280, height: 160 }, color: "" }],
+      ["card-2", { pos: { x: 400, y: 50 }, size: { width: 280, height: 160 }, color: "" }],
+    ]),
+    edges: [],
+    sections: new Map(),
+  };
+}
+
+function twoNodePageTree() {
+  return {
+    uid: "meta-page",
+    string: "",
+    children: [
+      { uid: "schema", string: "schema-version:: 1", children: [] },
+      {
+        uid: "enhanced",
+        string: "enhanced::",
+        children: [{
+          uid: "diagram-block",
+          string: "diagram-1",
+          children: [
+            { uid: "vp", string: "viewport:: 100,200,1.25", children: [] },
+            {
+              uid: "node-1",
+              string: "node card-1",
+              children: [
+                { uid: "pos-1", string: "pos:: 10,20", children: [] },
+                { uid: "size-1", string: "size:: 280,160", children: [] },
+              ],
+            },
+            {
+              uid: "node-2",
+              string: "node card-2",
+              children: [
+                { uid: "pos-2", string: "pos:: 400,50", children: [] },
+                { uid: "size-2", string: "size:: 280,160", children: [] },
+              ],
+            },
+          ],
+        }],
+      },
+    ],
+  };
+}
+
+function installMutableMetadataRoamMock(pageTree) {
+  const blocks = new Map();
+  const counts = { create: 0, update: 0, delete: 0, deletedUids: [], updated: [] };
+  let n = 0;
+  const register = (node, parentUid = null) => {
+    if (!node?.uid) return;
+    const rec = { uid: node.uid, string: node.string ?? "", children: [], parentUid };
+    blocks.set(node.uid, rec);
+    for (const child of node.children || []) {
+      rec.children.push(child.uid);
+      register(child, node.uid);
+    }
+  };
+  register(pageTree);
+  const toPull = (uid) => {
+    const rec = blocks.get(uid);
+    if (!rec) return null;
+    return {
+      uid: rec.uid,
+      string: rec.string,
+      children: rec.children.map((id) => toPull(id)).filter(Boolean),
+    };
+  };
+  const drop = (uid) => {
+    const rec = blocks.get(uid);
+    if (!rec) return;
+    for (const child of [...rec.children]) drop(child);
+    if (rec.parentUid) {
+      const parent = blocks.get(rec.parentUid);
+      if (parent) parent.children = parent.children.filter((id) => id !== uid);
+    }
+    blocks.delete(uid);
+  };
+  globalThis.roamAlphaAPI = {
+    util: { generateUID: () => `uid-${++n}` },
+    data: {
+      q: (query) => (String(query).includes("plexus-diagram/metadata") ? [["meta-page"]] : []),
+      pull: (_pattern, ref) => {
+        const uid = Array.isArray(ref) ? ref[1] : ref;
+        return toPull(uid);
+      },
+      page: { create: async () => {} },
+      block: {
+        create: async (opts) => {
+          counts.create += 1;
+          const uid = opts.block.uid;
+          const parentUid = opts.location["parent-uid"];
+          blocks.set(uid, { uid, string: opts.block.string, children: [], parentUid });
+          const parent = blocks.get(parentUid);
+          if (parent) parent.children.push(uid);
+        },
+        update: async (opts) => {
+          counts.update += 1;
+          counts.updated.push({ uid: opts.block.uid, string: opts.block.string });
+          const rec = blocks.get(opts.block.uid);
+          if (rec) rec.string = opts.block.string;
+        },
+        delete: async (opts) => {
+          counts.delete += 1;
+          counts.deletedUids.push(opts.block.uid);
+          drop(opts.block.uid);
+        },
+      },
+    },
+    updateBlock: async () => { counts.updateViewport = (counts.updateViewport || 0) + 1; },
+  };
+  return { counts, blocks, toPull };
+}
+
+test("persistLayout that moves one node does not delete unrelated node children", async () => {
+  const { counts, blocks } = installMutableMetadataRoamMock(twoNodePageTree());
+  const store = new MetadataStore();
+  store.pageUid = "meta-page";
+  store.reload();
+  store.diagrams.set("diagram-1", twoNodeLayout({ x: 10, y: 20 }));
+  store.diagramBlockUids.set("diagram-1", "diagram-block");
+
+  const session = new NativeDiagramSession({
+    diagramUid: "diagram-1",
+    metadataStore: store,
+    settings: { get: () => undefined },
+  });
+  session.model = { layoutSnapshot: () => twoNodeLayout({ x: 40, y: 20 }) };
+
+  await session.persistLayout();
+
+  for (const uid of ["node-2", "pos-2", "size-2"]) {
+    assert.equal(counts.deletedUids.includes(uid), false, `must not delete ${uid}`);
+    assert.ok(blocks.has(uid), `must keep ${uid} in the tree`);
+  }
+  assert.equal(counts.delete, 0);
+  assert.equal(counts.create, 0);
+  assert.equal(counts.update, 1);
+  assert.equal(counts.updated[0].uid, "pos-1");
+  assert.equal(counts.updated[0].string, "pos:: 40,20");
+  assert.equal(blocks.get("node-2")?.string, "node card-2");
+});

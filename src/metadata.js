@@ -141,12 +141,13 @@ export function parseMetadataTree(tree) {
       }
       if (line.startsWith("section ")) {
         const sectionId = line.slice("section ".length).trim();
-        const section = { pos: null, size: null, title: "" };
+        const section = { pos: null, size: null, title: "", color: "" };
         for (const prop of child.children || []) {
           const propLine = prop.string.trim();
           if (propLine.startsWith("pos::")) section.pos = parsePair(propLine.slice("pos::".length));
           if (propLine.startsWith("size::")) section.size = parseSize(propLine.slice("size::".length));
           if (propLine.startsWith("title::")) section.title = propLine.slice("title::".length).trim();
+          if (propLine.startsWith("color::")) section.color = propLine.slice("color::".length).trim();
         }
         entry.sections.set(sectionId, section);
       }
@@ -177,6 +178,7 @@ export function serializeDiagramMetadata(diagramUid, layout) {
     if (section.pos) lines.push(`    pos:: ${section.pos.x},${section.pos.y}`);
     if (section.size) lines.push(`    size:: ${section.size.width},${section.size.height}`);
     if (section.title) lines.push(`    title:: ${section.title}`);
+    if (section.color) lines.push(`    color:: ${section.color}`);
   }
   return lines.join("\n");
 }
@@ -297,6 +299,7 @@ async function patchDiagramBlock(blockUid, diagramUid, layout) {
     await syncPropChild(rowUid, props.pos, section.pos ? `pos:: ${section.pos.x},${section.pos.y}` : null);
     await syncPropChild(rowUid, props.size, section.size ? `size:: ${section.size.width},${section.size.height}` : null);
     await syncPropChild(rowUid, props.title, section.title ? `title:: ${section.title}` : null);
+    await syncPropChild(rowUid, props.color, section.color ? `color:: ${section.color}` : null);
   }
   for (const [id, row] of indexed.sections) {
     if (!wantedSections.has(id)) await deleteBlock(row.uid);

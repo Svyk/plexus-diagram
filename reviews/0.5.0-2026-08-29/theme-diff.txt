@@ -1,0 +1,219 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 078e03a..471f7f0 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -50,13 +50,12 @@ All notable changes to this project follow [Keep a Changelog](https://keepachang
+ 
+ ### Fixed
+ 
+-- **Beam v3 caret on CSS-transformed surfaces.** Plexus Diagram (`.pxd-world` /
++- **Beam overlay on CSS-transformed surfaces.** Plexus Diagram (`.pxd-world` /
+   `.pxd-root`) and Roam Grid (`.rg-root` / `.rg-portal`) scale their canvases with
+-  `transform: scale()`, so the overlay's mirror measurement mixed unscaled offsets with a
+-  scaled `getBoundingClientRect` and the beam jumped while typing in a diagram card.
+-  `isTextTarget()` now skips those roots, the paint path hides the overlay there so the
+-  native caret shows, and `40-beam.css` restores visible `caret-color` plus the text
+-  cursor inside `.pxd-root` / `.rg-root` instead of leaving both carets hidden.
++  `transform: scale()`. `measureCaretRect` now derives `scaleX` / `scaleY` from
++  `getBoundingClientRect` versus layout size so mirror offsets map into viewport space
++  without the jump at zoom ≠ 1; the custom beam paints there again with the same
++  suppression and cursor rules as the rest of Roam.
+ - **Auto no longer latches dark in daytime.** Better Tasks stamps `body.bt-theme-dark`
+   as a *follower* of this theme (toggle icon + `.bp3-dark` + body luminance). The
+   dark-signal bridge treated that class as a *source* and re-stamped `.bp3-dark`
+diff --git a/src/caret-overlay.js b/src/caret-overlay.js
+index ed58470..4cb40af 100644
+--- a/src/caret-overlay.js
++++ b/src/caret-overlay.js
+@@ -46,15 +46,8 @@ const MIRROR_PROPERTIES = Object.freeze([
+   "direction",
+ ]);
+ 
+-const OVERLAY_EXCLUDED_ROOTS = ".pxd-root, .pxd-world, .rg-root, .rg-portal";
+-
+-function isOverlayExcludedTarget(element) {
+-  return Boolean(element?.closest?.(OVERLAY_EXCLUDED_ROOTS));
+-}
+-
+ export function isTextTarget(element) {
+   if (!element || !element.tagName) return false;
+-  if (isOverlayExcludedTarget(element)) return false;
+   if (element.tagName === "TEXTAREA") return true;
+   if (element.tagName !== "INPUT") return false;
+   const type = (element.getAttribute?.("type") || "text").toLowerCase();
+@@ -117,28 +110,41 @@ export function measureCaretRect(element, doc, win) {
+   mirror.remove();
+ 
+   const box = element.getBoundingClientRect();
++  const offsetW = element.offsetWidth || 0;
++  const offsetH = element.offsetHeight || 0;
++  const scaleX = offsetW ? box.width / offsetW : 1;
++  const scaleY = offsetH ? box.height / offsetH : 1;
+   const borderLeft = Number.parseFloat(computed.borderLeftWidth) || 0;
+   const borderTop = Number.parseFloat(computed.borderTopWidth) || 0;
+-  const x = box.left + borderLeft + measured.left - (element.scrollLeft || 0);
+-  const y = box.top + borderTop + measured.top - (element.scrollTop || 0);
++  const x = box.left + (borderLeft + measured.left - (element.scrollLeft || 0)) * scaleX;
++  const y = box.top + (borderTop + measured.top - (element.scrollTop || 0)) * scaleY;
+ 
+   const padLeft = Number.parseFloat(computed.paddingLeft) || 0;
+   const padTop = Number.parseFloat(computed.paddingTop) || 0;
+   const padRight = Number.parseFloat(computed.paddingRight) || 0;
+   const padBottom = Number.parseFloat(computed.paddingBottom) || 0;
++  const width = measured.width * scaleX;
++  const height = measured.height * scaleY;
+   const content = {
+-    left: box.left + borderLeft + padLeft,
+-    top: box.top + borderTop + padTop,
+-    right: box.right - borderLeft - padRight,
+-    bottom: box.bottom - borderTop - padBottom,
++    left: box.left + (borderLeft + padLeft) * scaleX,
++    top: box.top + (borderTop + padTop) * scaleY,
++    right: box.right - (borderLeft + padRight) * scaleX,
++    bottom: box.bottom - (borderTop + padBottom) * scaleY,
+   };
+   const visible =
+-    x + measured.width > content.left &&
++    x + width > content.left &&
+     x < content.right &&
+-    y + measured.height > content.top &&
++    y + height > content.top &&
+     y < content.bottom;
+ 
+-  return { x, y, width: measured.width, height: measured.height, glyph: measured.glyph, visible };
++  return {
++    x,
++    y,
++    width,
++    height,
++    glyph: measured.glyph,
++    visible,
++  };
+ }
+ 
+ const halfPixel = (value) => Math.round(value * 2) / 2;
+@@ -253,7 +259,7 @@ export function installCaretOverlay({
+ 
+   const render = () => {
+     if (!enabled || !target || !overlay) return;
+-    if (!target.isConnected || isOverlayExcludedTarget(target)) {
++    if (!target.isConnected) {
+       hide();
+       return;
+     }
+diff --git a/src/css/40-beam.css b/src/css/40-beam.css
+index fed9f2a..2b8af2c 100644
+--- a/src/css/40-beam.css
++++ b/src/css/40-beam.css
+@@ -88,17 +88,6 @@
+   caret-color: transparent !important;
+ }
+ 
+-/* Plexus Diagram and Roam Grid scale their canvases with CSS transform. The overlay
+- * measures unscaled mirror offsets against a scaled getBoundingClientRect, so defer to
+- * the native caret (and restore the text cursor) inside those roots. */
+-:root:not(.svy-off-beam) .pxd-root textarea,
+-:root:not(.svy-off-beam) .pxd-root .rm-block__input,
+-:root:not(.svy-off-beam) .rg-root textarea,
+-:root:not(.svy-off-beam) .rg-root .rm-block__input {
+-  caret-color: var(--svy-beam-caret, #00695e) !important;
+-  cursor: text !important;
+-}
+-
+ /* One fixed overlay node paints the custom insertion point. Shape geometry and the
+  * current color are supplied by caret-overlay.js; CSS owns only composited decoration
+  * and motion, keeping the typing path free from layout-producing animation. */
+diff --git a/test/caret-overlay.test.js b/test/caret-overlay.test.js
+index 0365118..a1e57f3 100644
+--- a/test/caret-overlay.test.js
++++ b/test/caret-overlay.test.js
+@@ -162,16 +162,72 @@ test("isTextTarget covers textareas and text-like inputs only", () => {
+   assert.equal(isTextTarget(null), false);
+ });
+ 
+-test("isTextTarget skips textareas inside scaled diagram/grid surfaces", () => {
++test("isTextTarget includes textareas inside scaled diagram/grid surfaces", () => {
+   const doc = createFakeDocument(createFakeWindow());
+   const pxdRoot = makeElement("div", doc);
+   pxdRoot.classList.add("pxd-root");
+   const inside = makeElement("textarea", doc);
+   pxdRoot.appendChild(inside);
+-  assert.equal(isTextTarget(inside), false);
++  assert.equal(isTextTarget(inside), true);
+   assert.equal(isTextTarget(makeElement("textarea", doc)), true);
+ });
+ 
++test("measureCaretRect applies CSS transform scale to viewport coordinates", () => {
++  const win = createFakeWindow();
++  const doc = createFakeDocument(win);
++  const textarea = makeTextarea(doc, "hello", 0);
++  textarea.offsetWidth = 100;
++  textarea.offsetHeight = 20;
++  textarea.getBoundingClientRect = () => ({
++    left: 100,
++    top: 50,
++    width: 200,
++    height: 40,
++    right: 300,
++    bottom: 90,
++  });
++
++  const scaled = measureCaretRect(textarea, doc, win);
++  assert.equal(scaled.x, 100, "caret at local x=0 stays at box.left when scaleX=2");
++  assert.equal(scaled.y, 50);
++
++  textarea.getBoundingClientRect = () => ({
++    left: 100,
++    top: 50,
++    width: 100,
++    height: 20,
++    right: 200,
++    bottom: 70,
++  });
++  const unscaled = measureCaretRect(textarea, doc, win);
++  assert.equal(scaled.width, unscaled.width * 2, "glyph width scales with scaleX");
++
++  const origCreate = doc.createElement.bind(doc);
++  let spanIndex = 0;
++  doc.createElement = (tag) => {
++    const el = origCreate(tag);
++    if (tag === "span") {
++      const i = spanIndex++;
++      if (i === 0) {
++        el.offsetLeft = 25;
++        el.offsetTop = 5;
++      }
++    }
++    return el;
++  };
++  textarea.getBoundingClientRect = () => ({
++    left: 100,
++    top: 50,
++    width: 200,
++    height: 40,
++    right: 300,
++    bottom: 90,
++  });
++  const offset = measureCaretRect(textarea, doc, win);
++  assert.equal(offset.x, 150, "offsetLeft scales into viewport x");
++  assert.equal(offset.y, 60, "offsetTop scales into viewport y");
++});
++
+ test("measureCaretRect converts mirror offsets to viewport coordinates", () => {
+   const win = createFakeWindow();
+   const doc = createFakeDocument(win);
+diff --git a/test/theme-vars.test.js b/test/theme-vars.test.js
+index 1291af7..d03310e 100644
+--- a/test/theme-vars.test.js
++++ b/test/theme-vars.test.js
+@@ -730,9 +730,7 @@ test("the baked cursor fallbacks in 40-beam.css are byte-identical to what this
+   const scaledSurfaceRules = rules.filter((rule) =>
+     rule.selectors.some((selector) => selector.includes(".pxd-root") || selector.includes(".rg-root")),
+   );
+-  assert.equal(scaledSurfaceRules.length, 1, "one caret/cursor override for scaled diagram/grid roots");
+-  assert.equal(scaledSurfaceRules[0].declarations["caret-color"]?.value, "var(--svy-beam-caret, #00695e)");
+-  assert.equal(scaledSurfaceRules[0].declarations.cursor?.value, "text");
++  assert.equal(scaledSurfaceRules.length, 0, "no native-caret fallback for scaled diagram/grid roots");
+ 
+   // Dark art lives in the zero-specificity :where() blocks.
+   const darkBlocks = rules.filter((rule) => rule.declarations["--svy-beam-cursor-default"]);

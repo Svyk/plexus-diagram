@@ -112,6 +112,7 @@ export class NativeDiagramSession {
       pos: { ...position },
       size: { width: 320, height: 240 },
       title: "",
+      color: "",
     });
     await this.persistLayout();
     this.notifyViews({ type: "section" });

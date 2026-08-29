@@ -295,9 +295,18 @@ export class DiagramModel {
   layoutSnapshot() {
     return {
       viewport: { ...this.viewport },
-      nodes: new Map([...this.nodes].map(([uid, node]) => [uid, { ...node, pos: { ...node.pos }, size: { ...node.size } }])),
+      nodes: new Map([...this.nodes].map(([uid, node]) => [uid, {
+        pos: { ...node.pos },
+        size: { ...node.size },
+        color: node.color || "",
+      }])),
       edges: this.edges.map((edge) => ({ ...edge })),
-      sections: new Map([...this.sections].map(([id, section]) => [id, { ...section }])),
+      sections: new Map([...this.sections].map(([id, section]) => [id, {
+        ...section,
+        pos: section.pos ? { ...section.pos } : section.pos,
+        size: section.size ? { ...section.size } : section.size,
+        color: section.color || "",
+      }])),
     };
   }
 

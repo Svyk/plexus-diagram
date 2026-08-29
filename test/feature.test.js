@@ -31,19 +31,18 @@ function roamStub(order) {
     },
     ui: {
       mainWindow: {
-        openBlock: async ({ block }) => {
+        openBlock: async () => {
           order.push("openBlock");
-          assert.ok(
-            runtime.enhancedUids.has(block.uid),
-            "markEnhanced must register the uid before openBlock",
-          );
+        },
+        openPage: async () => {
+          order.push("openPage");
         },
       },
     },
   };
 }
 
-test("openNestedDiagram calls markEnhanced before openBlock", async () => {
+test("openNestedDiagram marks enhanced and does not navigate", async () => {
   const previousRoam = globalThis.roamAlphaAPI;
   const previousDocument = globalThis.document;
   const previousUids = runtime.enhancedUids;
@@ -57,7 +56,7 @@ test("openNestedDiagram calls markEnhanced before openBlock", async () => {
   nestStack.length = 0;
   try {
     await openNestedDiagram("nested-uid");
-    assert.deepEqual(order, ["openBlock"]);
+    assert.deepEqual(order, []);
     assert.ok(runtime.enhancedUids.has("nested-uid"));
     assert.equal(nestStack.length, 0);
   } finally {
@@ -101,7 +100,7 @@ test("openNestedDiagram ignores parent .rm-diagram and does not wait", async () 
   try {
     await openNestedDiagram("nested-uid");
     assert.ok(Date.now() - start < 500, "must finish well under 500ms without parent wait");
-    assert.deepEqual(order, ["openBlock"]);
+    assert.deepEqual(order, []);
     assert.ok(runtime.enhancedUids.has("nested-uid"));
     assert.ok(!parentClasses.has("pxd-native-hidden"), "parent canvas must not be enhanced");
     assert.equal(parentDiagram.nextElementSibling, null, "parent canvas must not receive a mount");
@@ -135,12 +134,46 @@ test("openNestedDiagram pushes the parent uid+title onto the nest stack", async 
   runtime.enhancedUids = new Set();
   nestStack.length = 0;
   try {
-    await openNestedDiagram("nested-uid", "parent-uid");
+    await openNestedDiagram("nested-uid", "parent-uid", { viewport: { x: 10, y: 20, zoom: 0.63 } });
     assert.equal(nestStack.length, 1);
     assert.equal(nestStack[0].uid, "parent-uid");
     assert.equal(nestStack[0].title, "Alpha");
+    assert.equal(nestStack[0].viewport.zoom, 0.63);
+    assert.deepEqual(order, []);
     syncNestStackOnNavigate("#/app/graph/page/parent-uid");
     assert.equal(nestStack.length, 0);
+  } finally {
+    nestStack.length = 0;
+    runtime.metadata = previousMetadata;
+    runtime.enhancedUids = previousUids;
+    globalThis.roamAlphaAPI = previousRoam;
+    globalThis.document = previousDocument;
+  }
+});
+
+test("openNestedDiagram awaits hooks.attachSession when provided", async () => {
+  const previousRoam = globalThis.roamAlphaAPI;
+  const previousDocument = globalThis.document;
+  const previousUids = runtime.enhancedUids;
+  const previousMetadata = runtime.metadata;
+  const order = [];
+  globalThis.document = undefined;
+  globalThis.roamAlphaAPI = roamStub(order);
+  runtime.metadata = null;
+  runtime.enhancedUids = new Set();
+  nestStack.length = 0;
+  const attached = [];
+  try {
+    await openNestedDiagram("nested-uid", "parent-uid", {
+      viewport: { x: 0, y: 0, zoom: 1 },
+      attachSession: async (uid) => {
+        attached.push(uid);
+      },
+    });
+    assert.deepEqual(attached, ["nested-uid"]);
+    assert.ok(runtime.enhancedUids.has("nested-uid"));
+    assert.equal(nestStack.length, 1);
+    assert.deepEqual(order, []);
   } finally {
     nestStack.length = 0;
     runtime.metadata = previousMetadata;

@@ -34,7 +34,7 @@ export const runtime = {
   lifecycle: null,
   metadata: null,
   settings: null,
-  version: "0.4.2",
+  version: "0.5.0",
   enhancedUids: new Set(),
   activeDiagramUid: null,
   guardStyle: null,
@@ -140,10 +140,17 @@ async function enhanceDiagram(uid, nativeElement) {
       onAction: async (action) => {
         if (action.type === "library") await toggleLibrary(mounted.wrapper, mounted.canvas);
         if (action.type === "nested" && action.uid) {
-          await openNestedDiagram(action.uid, session.diagramUid);
+          await openNestedDiagram(action.uid, action.parentUid || sessionBoxUid(action), {
+            viewport: action.viewport,
+            attachSession: async (childUid) => attachViewSession(childUid, { ...action, viewport: undefined }),
+          });
         }
         if (action.type === "crumb" && action.uid) {
-          await openCrumb(action.uid);
+          await openCrumb(action.uid, {
+            attachSession: async (ancestorUid, extra) => {
+              await attachViewSession(ancestorUid, { ...action, viewport: extra?.viewport });
+            },
+          });
         }
         if (action.type === "open-block" && action.uid) {
           globalThis.roamAlphaAPI?.ui?.rightSidebar?.addWindow?.({ window: { type: "block", "block-uid": action.uid } });
@@ -233,29 +240,72 @@ async function enhanceByUid(uid) {
 
 let nestedOpenUid = null;
 
-async function openNestedDiagram(uid, parentUid) {
+function sessionBoxUid(action) {
+  return action.sessionBox?.current?.diagramUid || runtime.activeDiagramUid;
+}
+
+async function attachViewSession(childUid, { sessionBox, canvas, wrapper, viewport } = {}) {
+  if (!childUid || !sessionBox || !canvas) return;
+  const parent = sessionBox.current;
+  const child = getOrCreateSession(childUid, () => new NativeDiagramSession({
+    diagramUid: childUid,
+    metadataStore: runtime.metadata,
+    settings: runtime.settings,
+    onChange: () => syncGuard(),
+  }));
+  if (!child.model) child.load();
+  if (viewport && child.model) child.model.viewport = { ...viewport };
+  let view = null;
+  for (const candidate of parent?.views || []) {
+    if (candidate.canvas === canvas || candidate.wrapper === wrapper) {
+      view = candidate;
+      break;
+    }
+  }
+  if (view && parent && parent !== child) parent.removeView(view);
+  if (!view) {
+    view = {
+      refresh: () => canvas.render(),
+      dispose: () => canvas.dispose(),
+      canvas,
+      wrapper,
+      setFullscreen: canvas.setFullscreen,
+    };
+  }
+  child.addView(view);
+  child.startWatch();
+  if (parent && parent !== child && parent.views.size === 0) parent.stopWatch();
+  canvas.attachSession(child);
+  sessionBox.current = child;
+  runtime.activeDiagramUid = childUid;
+  if (wrapper?.dataset) wrapper.dataset.diagramUid = childUid;
+}
+
+async function openNestedDiagram(uid, parentUid, hooks = {}) {
   if (!uid) return;
   nestedOpenUid = uid;
   if (parentUid && parentUid !== uid) {
     const title = parseDiagramTitle(blockStringForUid(parentUid)) || "Diagram";
-    nestStack.push({ uid: parentUid, title });
+    const entry = { uid: parentUid, title };
+    if (hooks.viewport) entry.viewport = { ...hooks.viewport };
+    nestStack.push(entry);
   }
   await markEnhanced(uid);
-  await globalThis.roamAlphaAPI?.ui?.mainWindow?.openBlock?.({ block: { uid } });
+  if (hooks.attachSession) {
+    await hooks.attachSession(uid);
+  }
 }
 
-async function openCrumb(uid) {
+async function openCrumb(uid, hooks = {}) {
   if (!uid) return;
-  const pull = globalThis.roamAlphaAPI?.data?.pull?.(
-    "[:node/title :block/string]",
-    [":block/uid", uid],
-  );
-  const pageTitle = pull?.[":node/title"] ?? pull?.title;
-  if (pageTitle) {
-    await globalThis.roamAlphaAPI?.ui?.mainWindow?.openPage?.({ page: { uid } });
-    return;
+  const i = nestStack.findIndex((entry) => entry.uid === uid);
+  if (i < 0) return;
+  const savedViewport = nestStack[i].viewport;
+  nestStack.length = i;
+  nestedOpenUid = uid;
+  if (hooks.attachSession) {
+    await hooks.attachSession(uid, { viewport: savedViewport });
   }
-  await globalThis.roamAlphaAPI?.ui?.mainWindow?.openBlock?.({ block: { uid } });
 }
 
 export function syncNestStackOnNavigate(hash = globalThis.location?.hash || "") {
@@ -483,7 +533,7 @@ async function registerSlashAndContext(lifecycle, extensionAPI) {
 export async function installPlexusDiagram({ extensionAPI, lifecycle, version }) {
   runtime.extensionAPI = extensionAPI;
   runtime.lifecycle = lifecycle;
-  runtime.version = version || "0.4.2";
+  runtime.version = version || "0.5.0";
   runtime.settings = createSettingsReader(extensionAPI);
   runtime.enhancedUids = readEnhancedUidCache();
   installGuard(runtime.enhancedUids);

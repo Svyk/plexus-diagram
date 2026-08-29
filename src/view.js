@@ -30,32 +30,59 @@ export function mountDiagramView({ nativeElement, session, settings, version, li
   wrapper.style.minHeight = `${wrapperHeight}px`;
   wrapper.style.position = "relative";
 
+  const sessionBox = { current: session };
   const canvas = createCanvasRoot({
     session,
     settings,
     version,
     onPersist: async (action) => {
-      if (action.persistLayout) await session.persistLayout();
-      if (action.persistViewport) await session.persistViewport();
+      const current = sessionBox.current;
+      if (action.persistLayout) await current.persistLayout();
+      if (action.persistViewport) await current.persistViewport();
       if (action.toggleLibrary) onAction?.({ type: "library" });
-      if (action.openNested) onAction?.({ type: "nested", uid: action.openNested });
-      if (action.openCrumb) onAction?.({ type: "crumb", uid: action.openCrumb });
+      if (action.openNested) {
+        try { await current.persistLayout?.(); } catch { /* keep going into the nested board */ }
+        onAction?.({
+          type: "nested",
+          uid: action.openNested,
+          parentUid: current.diagramUid,
+          viewport: current.model?.viewport ? { ...current.model.viewport } : undefined,
+          sessionBox,
+          canvas,
+          wrapper,
+        });
+      }
+      if (action.openCrumb) {
+        try { await current.persistLayout?.(); } catch { /* still pop the crumb */ }
+        onAction?.({
+          type: "crumb",
+          uid: action.openCrumb,
+          sessionBox,
+          canvas,
+          wrapper,
+        });
+      }
       if (action.openBlock) onAction?.({ type: "open-block", uid: action.openBlock });
       if (action.addCard) {
-        const uid = await session.addCard(action.string ?? "", action.addCard);
+        const uid = await current.addCard(action.string ?? "", action.addCard);
         if (uid && action.addEdge?.source) {
-          session.model.addEdge(
+          current.model.addEdge(
             action.addEdge.source,
             uid,
             action.addEdge.kind || settings.get("connector-style") || "bezier",
           );
-          await session.persistLayout();
+          try {
+            await current.persistLayout();
+          } catch {
+            current.model.removeEdge(action.addEdge.source, uid);
+            canvas.render();
+          }
         }
         canvas.render();
         if (uid && !action.string) canvas.editCard?.(uid);
       }
       if (action.addSection) {
-        await session.addSection(action.addSection);
+        await current.addSection(action.addSection);
         canvas.render();
       }
     },

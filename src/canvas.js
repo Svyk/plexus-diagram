@@ -343,7 +343,25 @@ function isTextEntryTarget(target) {
  * for structural change — add/remove card, tool change, session pull — and reconciles
  * card elements by uid so a card being edited is never torn down under the caret.
  */
+const COLOR_SWATCHES = [
+  ["", "Default", ""],
+  ["red", "Red", "#db3737"],
+  ["orange", "Orange", "#d9822b"],
+  ["yellow", "Yellow", "#d99e0b"],
+  ["green", "Green", "#29a634"],
+  ["teal", "Teal", "#00b3a4"],
+  ["blue", "Blue", "#2d72d2"],
+  ["violet", "Violet", "#7157d9"],
+  ["rose", "Rose", "#c22762"],
+];
+
+function colorHex(id) {
+  const row = COLOR_SWATCHES.find((entry) => entry[0] === id);
+  return row?.[2] || "";
+}
+
 export function createCanvasRoot({ session, settings, version, onPersist, nestStack: nestStackOption }) {
+  let currentSession = session;
   const crumbs = nestStackOption !== undefined ? nestStackOption : nestStack;
   const root = document.createElement("div");
   root.className = "pxd-root";
@@ -359,6 +377,8 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
   labelsLayer.className = "pxd-edge-labels";
   const sectionsLayer = document.createElement("div");
   sectionsLayer.className = "pxd-sections";
+  const tempSvg = document.createElementNS(SVG_NS, "svg");
+  tempSvg.classList.add("pxd-edges-temp");
   const toolbar = document.createElement("div");
   toolbar.className = "pxd-toolbar";
   const hint = document.createElement("div");
@@ -367,11 +387,11 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
   const minimap = settings.get("minimap") ? document.createElement("div") : null;
   if (minimap) minimap.className = "pxd-minimap";
 
-  world.append(sectionsLayer, edgesSvg, labelsLayer, cardsLayer);
+  world.append(sectionsLayer, edgesSvg, labelsLayer, cardsLayer, tempSvg);
   root.append(grid, world, toolbar, hint);
   if (minimap) root.append(minimap);
 
-  const model = () => session.model;
+  const model = () => currentSession.model;
   const num = (id, fallback) => {
     const value = Number(settings.get(id));
     return Number.isFinite(value) && value > 0 ? value : fallback;
@@ -608,13 +628,14 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
   const tools = [
     ["select", "Select", "Select, drag, and pan (V)"],
     ["card", "Card", "Click the board to add a card"],
-    ["connect", "Connect", "Drag from a card onto another card or empty space"],
+    ["connect", "Connect", "Click-click or drag from a card; the wire follows the cursor"],
     ["section", "Section", "Click the board to add a section frame"],
     ["nested", "Nested", "Click the board to add a nested diagram card"],
     ["library", "Library", "Place existing pages as cards"],
   ];
   const toolButtons = new Map();
   const setActiveTool = (tool) => {
+    if (tool !== "connect") clearConnectArm();
     model().activeTool = tool;
     for (const [name, button] of toolButtons) {
       button.classList.toggle("pxd-toolbar__btn--active", name === tool);
@@ -672,7 +693,6 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
       button.className = "pxd-crumb__item";
       button.textContent = item.title || "Diagram";
       button.addEventListener("click", () => {
-        crumbs.length = i;
         void onPersist?.({ openCrumb: item.uid });
       });
       crumbRow.append(button);
@@ -687,7 +707,7 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
     crumbRow.append(current);
   };
   renderCrumbs();
-  if (crumbs.length) toolbar.append(crumbRow);
+  toolbar.append(crumbRow);
 
   const viewGroup = document.createElement("div");
   viewGroup.className = "pxd-toolbar__group";
@@ -709,6 +729,26 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
   fullBtn.addEventListener("click", () => setFullscreen(!isFullscreen()));
   viewGroup.append(zoomOutBtn, zoomLabel, zoomInBtn, fitBtn, fullBtn);
   toolbar.append(viewGroup);
+
+  const palette = document.createElement("div");
+  palette.className = "pxd-palette pxd-palette--hidden";
+  palette.title = "Card or section color";
+  for (const [id, label, hex] of COLOR_SWATCHES) {
+    const swatch = document.createElement("button");
+    swatch.type = "button";
+    swatch.className = "pxd-swatch";
+    swatch.dataset.color = id;
+    swatch.title = label;
+    if (hex) swatch.style.background = hex;
+    else swatch.classList.add("pxd-swatch--default");
+    swatch.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      applyColor(id);
+    });
+    palette.append(swatch);
+  }
+  toolbar.append(palette);
 
   if (settings.get("show-version-badge")) {
     const badge = document.createElement("span");
@@ -760,11 +800,48 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
 
   // ---------------------------------------------------------------- sections
   const sectionEls = new Map();
+  let selectedSectionId = null;
   const positionSection = (el, section) => {
     el.style.left = `${section.pos?.x ?? 0}px`;
     el.style.top = `${section.pos?.y ?? 0}px`;
     el.style.width = `${section.size?.width ?? 320}px`;
     el.style.height = `${section.size?.height ?? 240}px`;
+  };
+  const paintSectionColor = (el, section) => {
+    const hex = colorHex(section?.color);
+    if (hex) el.style.setProperty?.("--pxd-section-color", hex);
+    else el.style.removeProperty?.("--pxd-section-color");
+  };
+  const syncSectionSelection = () => {
+    for (const [id, el] of sectionEls) {
+      el.classList.toggle("pxd-section--selected", id === selectedSectionId);
+    }
+  };
+  const syncPalette = () => {
+    const show = model().selected.size > 0 || Boolean(selectedSectionId);
+    palette.classList.toggle("pxd-palette--hidden", !show);
+  };
+  const applyColor = (id) => {
+    const hexId = COLOR_SWATCHES.some((entry) => entry[0] === id) ? id : "";
+    let changed = false;
+    for (const uid of model().selected) {
+      const node = model().nodes.get(uid);
+      if (!node) continue;
+      node.color = hexId;
+      const card = cardEls.get(uid);
+      if (card) paintCardColor(card, node);
+      changed = true;
+    }
+    if (selectedSectionId) {
+      const section = model().sections.get(selectedSectionId);
+      if (section) {
+        section.color = hexId;
+        const el = sectionEls.get(selectedSectionId);
+        if (el) paintSectionColor(el, section);
+        changed = true;
+      }
+    }
+    if (changed) markLayoutDirty();
   };
   const startSectionRename = (label) => {
     const sectionId = label.closest?.(".pxd-section")?.dataset?.sectionId;
@@ -827,6 +904,8 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
         sectionEls.set(id, el);
       }
       positionSection(el, section);
+      paintSectionColor(el, section);
+      el.classList.toggle("pxd-section--selected", id === selectedSectionId);
       if (el._pxdLabel.contentEditable !== "true") {
         el._pxdLabel.textContent = section.title || "Section";
       }
@@ -1029,10 +1108,11 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
       tempEdge = document.createElementNS(SVG_NS, "path");
       tempEdge.classList.add("pxd-edge--temp");
       tempEdge.setAttribute("fill", "none");
-      tempEdge.setAttribute("stroke", "var(--pxd-edge)");
-      tempEdge.setAttribute("stroke-width", String(num("edge-width", 2)));
+      tempEdge.setAttribute("stroke", "var(--pxd-active)");
+      tempEdge.setAttribute("stroke-width", "3");
+      tempEdge.setAttribute("stroke-dasharray", "6 4");
       tempEdge.style.pointerEvents = "none";
-      edgesSvg.append(tempEdge);
+      tempSvg.append(tempEdge);
     }
     const target = { x: worldPoint.x, y: worldPoint.y, width: 1, height: 1 };
     tempEdge.setAttribute("d", buildEdgePath(settings.get("connector-style") || "bezier", source, target));
@@ -1040,7 +1120,29 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
   const clearTempEdge = () => {
     tempEdge?.remove?.();
     tempEdge = null;
+    if (typeof tempSvg.replaceChildren === "function") tempSvg.replaceChildren();
+    else if (Array.isArray(tempSvg.children)) tempSvg.children.length = 0;
+    else tempSvg.innerHTML = "";
   };
+
+  let connectArm = null;
+  const onConnectArmMove = (event) => {
+    if (!connectArm) return;
+    setTempEdge(connectArm.uid, screenToWorld(event.clientX, event.clientY, false));
+  };
+  const armConnect = (uid) => {
+    if (!uid) return;
+    connectArm = { uid };
+    document.addEventListener("pointermove", onConnectArmMove, true);
+  };
+  const clearConnectArm = () => {
+    if (connectArm) {
+      document.removeEventListener("pointermove", onConnectArmMove, true);
+    }
+    connectArm = null;
+    clearTempEdge();
+  };
+  const getConnectArm = () => connectArm;
 
   // ---------------------------------------------------------------- cards
   const cardEls = new Map();
@@ -1150,6 +1252,43 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
         sub.textContent = "Double-click to open";
         body.append(input, sub);
       }
+      const nestedLayout = currentSession.metadataStore?.get?.(child.uid);
+      const nestedNodes = nestedLayout?.nodes;
+      if (nestedNodes && nestedNodes.size > 0) {
+        const preview = document.createElement("div");
+        preview.className = "pxd-card__preview";
+        const entries = [...nestedNodes.values()].slice(0, 8);
+        let minX = Infinity;
+        let minY = Infinity;
+        let maxX = -Infinity;
+        let maxY = -Infinity;
+        for (const node of entries) {
+          const x = node.pos?.x ?? 0;
+          const y = node.pos?.y ?? 0;
+          const w = node.size?.width ?? 40;
+          const h = node.size?.height ?? 24;
+          minX = Math.min(minX, x);
+          minY = Math.min(minY, y);
+          maxX = Math.max(maxX, x + w);
+          maxY = Math.max(maxY, y + h);
+        }
+        const bw = Math.max(maxX - minX, 1);
+        const bh = Math.max(maxY - minY, 1);
+        for (const node of entries) {
+          const rect = document.createElement("div");
+          rect.className = "pxd-card__preview-node";
+          const x = node.pos?.x ?? 0;
+          const y = node.pos?.y ?? 0;
+          const w = node.size?.width ?? 40;
+          const h = node.size?.height ?? 24;
+          rect.style.left = `${((x - minX) / bw) * 100}%`;
+          rect.style.top = `${((y - minY) / bh) * 100}%`;
+          rect.style.width = `${(w / bw) * 100}%`;
+          rect.style.height = `${(h / bh) * 100}%`;
+          preview.append(rect);
+        }
+        body.append(preview);
+      }
     } else if (!child.string.trim()) {
       card.classList.add("pxd-card--empty");
       const placeholder = document.createElement("div");
@@ -1257,7 +1396,20 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
     for (const [uid, card] of cardEls) {
       card.classList.toggle("pxd-card--selected", model().selected.has(uid));
     }
+    syncSectionSelection();
+    syncPalette();
     scheduleMinimap();
+  };
+
+  const paintCardColor = (card, node) => {
+    const hex = colorHex(node?.color);
+    if (hex) {
+      card.style.setProperty?.("--pxd-card-color", hex);
+      card.style.borderColor = hex;
+    } else {
+      card.style.removeProperty?.("--pxd-card-color");
+      card.style.borderColor = "";
+    }
   };
 
   const positionCard = (card, node) => {
@@ -1311,6 +1463,7 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
       card.classList.toggle("pxd-card--selected", model().selected.has(child.uid));
       card.style.borderRadius = `${radius}px`;
       positionCard(card, node);
+      paintCardColor(card, node);
       const titleText = cardTitleText(child);
       const showTitle = settings.get("show-card-title") && titleText !== child.string.trim();
       card.classList.toggle("pxd-card--titled", Boolean(showTitle));
@@ -1336,7 +1489,65 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
     renderEdges();
     renderCrumbs();
     syncHint();
+    syncPalette();
     scheduleMinimap();
+  };
+
+  const clearMountedCards = () => {
+    for (const card of cardEls.values()) {
+      if (card._pxdNameTimer) {
+        clearTimeout(card._pxdNameTimer);
+        card._pxdNameTimer = null;
+      }
+      unmountRoam(card._pxdBody);
+      card.remove();
+    }
+    cardEls.clear();
+    if (Array.isArray(cardsLayer.children)) cardsLayer.children.length = 0;
+    for (const el of sectionEls.values()) el.remove();
+    sectionEls.clear();
+    if (Array.isArray(sectionsLayer.children)) sectionsLayer.children.length = 0;
+    edgePaths.clear();
+    for (const pill of edgePills.values()) pill.remove?.();
+    edgePills.clear();
+    if (Array.isArray(labelsLayer.children)) labelsLayer.children.length = 0;
+    if (editingEdgeKey) closeEdgeEditor(false);
+    clearTempEdge();
+  };
+
+  const attachSession = (nextSession) => {
+    if (!nextSession || nextSession === currentSession) return;
+    void exitEdit(false);
+    if (editingEdgeKey) closeEdgeEditor(false);
+    endGesture();
+    clearConnectArm();
+    clearMountedCards();
+    selectedSectionId = null;
+    if (layoutTimer) { clearTimeout(layoutTimer); layoutTimer = null; }
+    if (viewportTimer) { clearTimeout(viewportTimer); viewportTimer = null; }
+    const flushLayoutNow = layoutDirty;
+    const flushViewportNow = viewportDirty;
+    layoutDirty = false;
+    viewportDirty = false;
+    const outgoing = currentSession;
+    currentSession = nextSession;
+    if (flushLayoutNow) void outgoing?.persistLayout?.();
+    if (flushViewportNow) void outgoing?.persistViewport?.();
+    const size = viewSize();
+    const viewport = nextSession.model?.viewport;
+    const usable = viewport
+      && size.width
+      && size.height
+      && !viewportNeedsFit(viewport, nextSession.model.nodes, size, zoomBounds());
+    if (usable) {
+      initialFitDone = true;
+      applyTransform();
+    } else {
+      initialFitDone = false;
+      scheduleInitialFit();
+    }
+    setActiveTool(model().activeTool || "select");
+    render();
   };
 
   // ---------------------------------------------------------------- pointer model
@@ -1359,7 +1570,7 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
     document.removeEventListener("pointermove", onPointerMove, true);
     document.removeEventListener("pointerup", onPointerUp, true);
     document.removeEventListener("pointercancel", onPointerUp, true);
-    clearTempEdge();
+    if (!connectArm) clearTempEdge();
   };
 
   const cardFromPoint = (clientX, clientY) => {
@@ -1374,6 +1585,7 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
   };
 
   const selectCard = (uid, additive) => {
+    selectedSectionId = null;
     const selected = model().selected;
     if (additive) {
       if (selected.has(uid)) selected.delete(uid);
@@ -1382,6 +1594,12 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
       selected.clear();
       selected.add(uid);
     }
+    syncSelection();
+  };
+
+  const selectSection = (sectionId) => {
+    selectedSectionId = sectionId;
+    model().selected.clear();
     syncSelection();
   };
 
@@ -1404,13 +1622,18 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
     }
 
     const sectionEl = !uid && !panRequested ? target?.closest?.(".pxd-section") : null;
-    if (sectionEl) {
+    if (sectionEl && !connectArm) {
       const sectionId = sectionEl.dataset?.sectionId;
       const section = sectionId ? model().sections.get(sectionId) : null;
       if (section) {
         const start = { x: event.clientX, y: event.clientY };
+        selectSection(sectionId);
         if (target.closest(".pxd-section__resize")) {
           beginGesture({ kind: "section-resize", sectionId, start, size: { ...section.size }, moved: false });
+          event.preventDefault();
+          return;
+        }
+        if (target.closest(".pxd-section__label")) {
           event.preventDefault();
           return;
         }
@@ -1423,28 +1646,36 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
       }
     }
 
-    if (uid && !panRequested) {
+    if ((uid || connectArm) && !panRequested) {
       const start = { x: event.clientX, y: event.clientY };
-      if (target.closest(".pxd-card__resize")) {
+      if (uid && target.closest(".pxd-card__resize")) {
         const node = model().nodes.get(uid);
         beginGesture({ kind: "resize", uid, start, size: { ...node.size }, moved: false });
         event.preventDefault();
         return;
       }
-      if (target.closest(".pxd-handle") || tool === "connect") {
-        beginGesture({ kind: "connect", uid, start, moved: false });
+      const connectFrom = connectArm?.uid
+        || ((target.closest(".pxd-handle") || tool === "connect") ? uid : null);
+      if (connectFrom) {
+        beginGesture({ kind: "connect", uid: connectFrom, start, moved: false });
+        setTempEdge(connectFrom, screenToWorld(event.clientX, event.clientY, false));
+        try { root.setPointerCapture?.(event.pointerId); } catch { /* unsupported */ }
         event.preventDefault();
         return;
       }
-      if (tool !== "select") return;
-      selectCard(uid, event.shiftKey);
-      const origins = new Map();
-      for (const selectedUid of model().selected) {
-        const node = model().nodes.get(selectedUid);
-        if (node) origins.set(selectedUid, { ...node.pos });
+      if (!uid) {
+        /* empty space with no connect arm — fall through */
+      } else {
+        if (tool !== "select") return;
+        selectCard(uid, event.shiftKey);
+        const origins = new Map();
+        for (const selectedUid of model().selected) {
+          const node = model().nodes.get(selectedUid);
+          if (node) origins.set(selectedUid, { ...node.pos });
+        }
+        beginGesture({ kind: "drag", uid, start, origins, moved: false });
+        return;
       }
-      beginGesture({ kind: "drag", uid, start, origins, moved: false });
-      return;
     }
 
     if (panRequested || tool === "select") {
@@ -1459,9 +1690,17 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
   };
 
   const onPointerMove = (event) => {
+    if (connectArm && (!gesture || gesture.kind === "connect")) {
+      setTempEdge(connectArm.uid, screenToWorld(event.clientX, event.clientY, false));
+    }
     if (!gesture) return;
     const dx = event.clientX - gesture.start.x;
     const dy = event.clientY - gesture.start.y;
+    if (gesture.kind === "connect") {
+      setTempEdge(gesture.uid, screenToWorld(event.clientX, event.clientY, false));
+      if (!gesture.moved && Math.hypot(dx, dy) >= DRAG_THRESHOLD_PX) gesture.moved = true;
+      return;
+    }
     if (!gesture.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return;
     gesture.moved = true;
     const zoom = model().viewport.zoom || 1;
@@ -1499,10 +1738,6 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
       scheduleMinimap();
       return;
     }
-    if (gesture.kind === "connect") {
-      setTempEdge(gesture.uid, screenToWorld(event.clientX, event.clientY, false));
-      return;
-    }
     if (gesture.kind === "section-drag") {
       const section = model().sections.get(gesture.sectionId);
       const el = sectionEls.get(gesture.sectionId);
@@ -1529,8 +1764,9 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
     endGesture();
     if (active.kind === "pan") {
       if (active.moved) markViewportDirty();
-      else if (model().activeTool === "select" && !event.shiftKey && model().selected.size) {
+      else if (model().activeTool === "select" && !event.shiftKey && (model().selected.size || selectedSectionId)) {
         model().selected.clear();
+        selectedSectionId = null;
         syncSelection();
       }
       return;
@@ -1541,23 +1777,26 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
     }
     if (active.kind === "connect") {
       const targetUid = cardFromPoint(event.clientX, event.clientY);
+      if (!active.moved && targetUid && targetUid === active.uid && !connectArm) {
+        armConnect(active.uid);
+        setTempEdge(active.uid, screenToWorld(event.clientX, event.clientY, false));
+        return;
+      }
+      if (!active.moved && connectArm && targetUid === connectArm.uid) {
+        return;
+      }
       await completeConnect({
         moved: active.moved,
         sourceUid: active.uid,
         targetUid,
         clientX: event.clientX,
         clientY: event.clientY,
-        shiftKey: event.shiftKey,
       });
     }
   };
 
-  const completeConnect = async ({ moved, sourceUid, targetUid, clientX, clientY, shiftKey }) => {
+  const completeConnect = async ({ moved, sourceUid, targetUid, clientX, clientY }) => {
     try {
-      if (!moved) {
-        selectCard(sourceUid, shiftKey);
-        return;
-      }
       if (targetUid && targetUid !== sourceUid) {
         const added = model().addEdge(sourceUid, targetUid, settings.get("connector-style") || "bezier");
         renderEdges();
@@ -1572,7 +1811,7 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
         }
         return;
       }
-      if (!targetUid) {
+      if (!targetUid && (moved || connectArm)) {
         const point = screenToWorld(clientX, clientY);
         const size = defaultCardSize();
         await onPersist?.({
@@ -1583,7 +1822,9 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
           addEdge: { source: sourceUid },
         });
       }
-    } catch { /* connect-to-empty or persist failed — no dangling edge */ }
+    } catch { /* connect-to-empty or persist failed — no dangling edge */ } finally {
+      clearConnectArm();
+    }
   };
 
   const onDoubleClick = (event) => {
@@ -1623,9 +1864,17 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
 
   const onClick = (event) => {
     const target = event.target;
+    if (target?.closest?.(".pxd-palette") || target?.closest?.(".pxd-swatch")) return;
     if (target?.closest?.(".pxd-card") || target?.closest?.(".pxd-toolbar")) return;
     if (target?.closest?.(".pxd-library-drawer") || target?.closest?.(".pxd-minimap")) return;
     if (target?.closest?.(".pxd-edge-label-editor")) return;
+    const sectionLabel = target?.closest?.(".pxd-section__label");
+    if (sectionLabel) {
+      if (sectionLabel.isContentEditable) return;
+      event.preventDefault();
+      startSectionRename(sectionLabel);
+      return;
+    }
     if (target?.closest?.(".pxd-section")) return;
     if (event.detail > 1) return;
     const pill = target?.closest?.(".pxd-edge-label");
@@ -1702,6 +1951,14 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
 
   const onKeyDown = (event) => {
     if (event.key === "Escape") {
+      const owns = overlayOwnsPointer() || isFullscreen();
+      const typingElsewhere = isTextEntryTarget(event.target) && !root.contains?.(event.target);
+      if (typingElsewhere) return;
+      if (connectArm && owns) {
+        event.preventDefault();
+        clearConnectArm();
+        return;
+      }
       if (editingEdgeKey) {
         event.preventDefault();
         closeEdgeEditor(false);
@@ -1710,6 +1967,12 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
       if (editingUid) {
         event.preventDefault();
         void exitEdit();
+        return;
+      }
+      if (crumbs.length && owns) {
+        event.preventDefault();
+        const parent = crumbs[crumbs.length - 1];
+        if (parent?.uid) void onPersist?.({ openCrumb: parent.uid });
         return;
       }
       if (isFullscreen()) {
@@ -1792,6 +2055,10 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
     fitToView,
     editCard: enterEdit,
     completeConnect,
+    attachSession,
+    armConnect,
+    clearConnectArm,
+    getConnectArm,
     setLibraryOpen(open) {
       toolButtons.get("library")?.classList.toggle("pxd-toolbar__btn--active", Boolean(open));
     },
@@ -1804,6 +2071,7 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
       if (editingEdgeKey) closeEdgeEditor(false);
       if (editingUid) void exitEdit(false);
       detachFocusGuard();
+      clearConnectArm();
       endGesture();
       if (viewportTimer) {
         clearTimeout(viewportTimer);

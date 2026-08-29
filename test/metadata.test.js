@@ -96,3 +96,72 @@ test("parse/serialize round-trip of edge label::", () => {
   });
   assert.equal(roundTrip.diagrams.get("diagram-1").edges[0].label, "because it follows");
 });
+
+test("parse/serialize round-trip of node and section color::", () => {
+  const tree = {
+    uid: "page",
+    string: "",
+    children: [
+      { uid: "schema", string: "schema-version:: 1", children: [] },
+      {
+        uid: "enhanced",
+        string: "enhanced::",
+        children: [{
+          uid: "d1",
+          string: "diagram-1",
+          children: [
+            {
+              uid: "n1",
+              string: "node card-a",
+              children: [
+                { uid: "pos", string: "pos:: 10,20", children: [] },
+                { uid: "size", string: "size:: 280,160", children: [] },
+                { uid: "col", string: "color:: teal", children: [] },
+              ],
+            },
+            {
+              uid: "s1",
+              string: "section s1",
+              children: [
+                { uid: "spos", string: "pos:: 0,0", children: [] },
+                { uid: "ssize", string: "size:: 320,240", children: [] },
+                { uid: "stitle", string: "title:: Frame", children: [] },
+                { uid: "scol", string: "color:: rose", children: [] },
+              ],
+            },
+          ],
+        }],
+      },
+    ],
+  };
+  const parsed = parseMetadataTree(tree);
+  const layout = parsed.diagrams.get("diagram-1");
+  assert.equal(layout.nodes.get("card-a").color, "teal");
+  assert.equal(layout.sections.get("s1").color, "rose");
+  const serialized = serializeDiagramMetadata("diagram-1", layout);
+  assert.match(serialized, /node card-a/);
+  assert.match(serialized, /color:: teal/);
+  assert.match(serialized, /section s1/);
+  assert.match(serialized, /color:: rose/);
+  const roundTrip = parseMetadataTree({
+    uid: "page",
+    children: [
+      { uid: "enhanced", string: "enhanced::", children: [{
+        uid: "d1",
+        string: "diagram-1",
+        children: serialized.split("\n").slice(1).reduce((acc, line) => {
+          const indent = (line.match(/^ */)?.[0].length || 0) / 2;
+          const content = line.trim();
+          if (!content) return acc;
+          const node = { uid: content, string: content, children: [] };
+          if (indent === 1) acc.push(node);
+          else acc[acc.length - 1]?.children.push(node);
+          return acc;
+        }, []),
+      }] },
+    ],
+  });
+  assert.equal(roundTrip.diagrams.get("diagram-1").nodes.get("card-a").color, "teal");
+  assert.equal(roundTrip.diagrams.get("diagram-1").sections.get("s1").color, "rose");
+});
+

@@ -314,6 +314,9 @@ function cardSession(edges = [], extras = {}) {
         this.edges.push(edge);
         return edge;
       },
+      removeEdge(source, target) {
+        this.edges = this.edges.filter((edge) => !(edge.source === source && edge.target === target));
+      },
       isNestedDiagram(uid) {
         const card = children.find((child) => child.uid === uid);
         return /\{\{\s*(\[\[)?diagram/i.test(card?.string || "");
@@ -591,10 +594,13 @@ test("focusRoamInput uses preventScroll so the outline copy does not jump", () =
   assert.deepEqual(calls[0], { preventScroll: true });
 });
 
-test("overlay CSS sets caret-color under .pxd-root and 14px connect handles", async () => {
+test("overlay CSS leaves Beam the caret and uses 12px connect handles", async () => {
   const css = await readFile(resolve(dirname(fileURLToPath(import.meta.url)), "../src/extension.css"), "utf8");
-  assert.match(css, /\.pxd-root[^{]*\{[^}]*caret-color:\s*#1c2127/s);
-  assert.match(css, /\.pxd-handle\s*\{[^}]*width:\s*14px/s);
+  assert.doesNotMatch(css, /caret-color:\s*#1c2127/);
+  assert.doesNotMatch(css, /:root:not\(\.svy-off-beam\) \.pxd-root textarea/);
+  assert.match(css, /\.pxd-handle\s*\{[^}]*width:\s*12px/s);
+  assert.match(css, /\.pxd-edges-temp\s*\{[^}]*pointer-events:\s*none/s);
+  assert.match(css, /\.pxd-handle::before\s*\{/);
 });
 
 test("fullscreenInsets right is the sidebar gap, or 0 when the article is flush", () => {
@@ -703,6 +709,160 @@ test("connect-to-empty invokes onPersist addCard and addEdge", async () => {
   }
 });
 
+test("crumb row exists in the toolbar even when nest stack is empty", () => {
+  const { document, window } = createDomStub();
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  globalThis.document = document;
+  globalThis.window = window;
+  try {
+    const session = cardSession([], { tree: { string: "{{[[diagram]]:Child}}" } });
+    const settings = { get: (key) => settingsDefaults()[key] };
+    const canvas = createCanvasRoot({
+      session,
+      settings,
+      version: "0.5.0",
+      nestStack: [],
+    });
+    try {
+      const crumb = findByClass(canvas.root, "pxd-crumb");
+      assert.ok(crumb, "crumb row should exist even when the nest stack is empty");
+      assert.ok(String(crumb.className).includes("pxd-crumb--empty"));
+    } finally {
+      canvas.dispose();
+    }
+  } finally {
+    globalThis.document = previousDocument;
+    globalThis.window = previousWindow;
+  }
+});
+
+test("completeConnect card to card adds an edge and a .pxd-edge", async () => {
+  const { document, window } = createDomStub();
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  globalThis.document = document;
+  globalThis.window = window;
+  try {
+    const session = cardSession([]);
+    const settings = { get: (key) => settingsDefaults()[key] };
+    const canvas = createCanvasRoot({ session, settings, version: "0.5.0", nestStack: [] });
+    try {
+      await canvas.completeConnect({
+        moved: true,
+        sourceUid: "card-a",
+        targetUid: "card-b",
+        clientX: 400,
+        clientY: 80,
+      });
+      assert.equal(session.model.edges.length, 1);
+      assert.equal(session.model.edges[0].source, "card-a");
+      assert.equal(session.model.edges[0].target, "card-b");
+      assert.ok(findByClass(canvas.root, "pxd-edge"), "connected pair should paint a .pxd-edge");
+    } finally {
+      canvas.dispose();
+    }
+  } finally {
+    globalThis.document = previousDocument;
+    globalThis.window = previousWindow;
+  }
+});
+
+test("armConnect then completeConnect to another card creates an edge", async () => {
+  const { document, window } = createDomStub();
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  globalThis.document = document;
+  globalThis.window = window;
+  try {
+    const session = cardSession([]);
+    const settings = { get: (key) => settingsDefaults()[key] };
+    const canvas = createCanvasRoot({ session, settings, version: "0.5.0", nestStack: [] });
+    try {
+      canvas.armConnect("card-a");
+      assert.equal(canvas.getConnectArm()?.uid, "card-a");
+      await canvas.completeConnect({
+        moved: false,
+        sourceUid: "card-a",
+        targetUid: "card-b",
+        clientX: 400,
+        clientY: 80,
+      });
+      assert.equal(session.model.edges.length, 1);
+      assert.equal(session.model.edges[0].target, "card-b");
+      assert.equal(canvas.getConnectArm(), null);
+    } finally {
+      canvas.dispose();
+    }
+  } finally {
+    globalThis.document = previousDocument;
+    globalThis.window = previousWindow;
+  }
+});
+
+test("attachSession swaps cards from session A to session B", () => {
+  const { document, window } = createDomStub();
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  globalThis.document = document;
+  globalThis.window = window;
+  try {
+    const sessionA = cardSession([], {
+      children: [{ uid: "card-a", string: "Alpha" }],
+      nodes: new Map([["card-a", { pos: { x: 0, y: 0 }, size: { width: 280, height: 160 } }]]),
+    });
+    const sessionB = cardSession([], {
+      children: [{ uid: "card-b", string: "Beta" }],
+      nodes: new Map([["card-b", { pos: { x: 40, y: 40 }, size: { width: 280, height: 160 } }]]),
+    });
+    const settings = { get: (key) => settingsDefaults()[key] };
+    const canvas = createCanvasRoot({ session: sessionA, settings, version: "0.5.0", nestStack: [] });
+    try {
+      const cards = findByClass(canvas.root, "pxd-cards");
+      assert.ok(cards.children.some((child) => child.dataset?.uid === "card-a"));
+      canvas.attachSession(sessionB);
+      assert.ok(!cards.children.some((child) => child.dataset?.uid === "card-a"), "A's card node is gone");
+      assert.ok(cards.children.some((child) => child.dataset?.uid === "card-b"), "B's card is present");
+    } finally {
+      canvas.dispose();
+    }
+  } finally {
+    globalThis.document = previousDocument;
+    globalThis.window = previousWindow;
+  }
+});
+
+test("selected card with color teal paints a border", () => {
+  const { document, window } = createDomStub();
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  globalThis.document = document;
+  globalThis.window = window;
+  try {
+    const session = cardSession([], {
+      children: [{ uid: "card-a", string: "Hello card" }],
+      nodes: new Map([["card-a", { pos: { x: 0, y: 0 }, size: { width: 280, height: 160 }, color: "teal" }]]),
+    });
+    session.model.selected.add("card-a");
+    const settings = { get: (key) => settingsDefaults()[key] };
+    const canvas = createCanvasRoot({ session, settings, version: "0.5.0", nestStack: [] });
+    try {
+      const cards = findByClass(canvas.root, "pxd-cards");
+      const card = cards.children.find((child) => child.dataset?.uid === "card-a");
+      assert.ok(card);
+      const painted = card.style.borderColor === "#00b3a4"
+        || card.style["--pxd-card-color"] === "#00b3a4"
+        || (typeof card.style.getPropertyValue === "function" && card.style.getPropertyValue("--pxd-card-color") === "#00b3a4");
+      assert.ok(painted, "teal card should set border-color or --pxd-card-color");
+    } finally {
+      canvas.dispose();
+    }
+  } finally {
+    globalThis.document = previousDocument;
+    globalThis.window = previousWindow;
+  }
+});
+
 test("named nested card shows the parsed title, not the raw macro", () => {
   const { document, window } = createDomStub();
   const previousDocument = globalThis.document;
@@ -715,7 +875,7 @@ test("named nested card shows the parsed title, not the raw macro", () => {
       nodes: new Map([["nested-1", { pos: { x: 0, y: 0 }, size: { width: 280, height: 160 } }]]),
     });
     const settings = { get: (key) => settingsDefaults()[key] };
-    const canvas = createCanvasRoot({ session, settings, version: "0.4.2", nestStack: [] });
+    const canvas = createCanvasRoot({ session, settings, version: "0.5.0", nestStack: [] });
     try {
       const label = findByClass(canvas.root, "pxd-card__nested-label");
       assert.ok(label);

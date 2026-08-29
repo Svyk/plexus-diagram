@@ -1,0 +1,3716 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 67f4d99..cddbb18 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -1,5 +1,12 @@
+ # Changelog
+ 
++## 0.5.0 — 2026-08-29
++
++- **Connect two-click + temp wire** — Connect stays on after an edge. Click-click or drag; the rubber-band lives on `.pxd-edges-temp` above the cards and follows the cursor immediately. Handles are a 12px disc with a larger hit target.
++- **In-place nested boards** — opening a nested diagram does not call `openBlock` / change the hash. The parent session stays loaded; crumbs sit on the toolbar and Esc pops one level.
++- **Section and card color** — toolbar swatches (eight Blueprint-ish ids plus default) write `color::` on nodes and sections. Dark mode uses the border as the signal.
++- **Section click-rename** — a single click on the section title starts rename; pointerdown on the label does not drag the frame.
++
+ ## 0.4.2 — 2026-08-28
+ 
+ - **Svy Beam caret** — overlay inputs use native `caret-color` and `cursor: text` (higher specificity than Beam's custom hotspot cursor). `focus({ preventScroll: true })` plus a capture-phase guard stop Roam from scrolling the outline copy of an editing card into view.
+diff --git a/README.md b/README.md
+index bdf6d1f..576384f 100644
+--- a/README.md
++++ b/README.md
+@@ -17,12 +17,11 @@ Native-first Heptabase-like overlay for Roam `{{[[diagram]]}}` blocks. Roam's di
+ - **Add a card:** double-click empty space, pick the `Card` tool and click, or drop a page/block from the left sidebar onto the board (`[[Title]]` or a Roam uid).
+ - **Edit a card:** double-click it. Roam's native block editor mounts in place; click away or press Esc to commit. Cards show `renderString` output otherwise.
+ - **Move / resize:** drag a card; drag the bottom-right corner to resize (min 240×140). Shift-click to multi-select and drag together.
+-- **Connect:** drag from a card's edge dot onto another card, or onto empty board to pull out a new card and link it. Use the `Connect` tool and drag from anywhere on a card. Double-click a connector (or click its midpoint pill) to add a note on the line — that does not create a card.
+-- **Sections:** frames are visible (solid border, light fill). Drag to move, resize the corner, double-click the label to rename.
+-- **Nested diagrams:** double-click a nested card body to open it in the Plexus overlay fullscreen (`fullscreen-on-zoom`), not native Empty Roam Diagram. The toolbar shows Heptabase-style crumbs (`Parent › Current`); click a parent crumb to go back. Nested cards show the parsed board name, or an inline "Name this board…" field when the block is only `{{[[diagram]]}}`.
++- **Connect:** click-click or drag from a card's edge dot (or from anywhere with the Connect tool) onto another card, or onto empty board to pull out a new card and link it. The wire follows the cursor; the Connect tool stays on after an edge. Double-click a connector (or click its midpoint pill) to add a note on the line — that does not create a card.
++- **Sections:** frames are visible (solid border, light fill). Drag to move, resize the corner, click the title to rename. Color swatches in the toolbar apply to the selected card or section.
++- **Nested diagrams:** double-click a nested card body to open it in place (hash stays on the parent page; fullscreen and crumbs stay). The toolbar shows Heptabase-style crumbs (`Parent › Current`); click a parent crumb or press Esc to pop one level. Nested cards show the parsed board name, or an inline "Name this board…" field when the block is only `{{[[diagram]]}}`.
+ - **Library:** the searchable drawer portals onto `document.body` (not the scaled world) so type stays readable.
+-- **Fullscreen:** `Fullscreen` button or **Plexus Diagram: Fullscreen this diagram**. Esc exits edit, then fullscreen. Zoomed diagram pages (`#/app/<graph>/page/<uid>`) open full screen by default (`fullscreen-on-zoom`). Fullscreen hides RoamJS breadcrumbs, sits below the remaining topbar, and follows `.rm-article-wrapper` so the overlay shrinks with the left and right sidebars instead of covering them.
+-- **Caret:** overlay editors opt out of Svy Beam's custom cursor/caret overlay (`caret-color` + `cursor: text`) so the beam does not jump at zoom.
++- **Fullscreen:** `Fullscreen` button or **Plexus Diagram: Fullscreen this diagram**. Esc exits edit, then pops a nested crumb if any, then exits fullscreen. Zoomed diagram pages (`#/app/<graph>/page/<uid>`) open full screen by default (`fullscreen-on-zoom`). Fullscreen hides RoamJS breadcrumbs, sits below the remaining topbar, and follows `.rm-article-wrapper` so the overlay shrinks with the left and right sidebars instead of covering them.
+ - **Shortcuts** (when `enable-shortcuts` is on and the overlay has the pointer): `V` select, `C` connect, `N` add a card at view center, `F` fit. Ignored while typing in a card or edge-label editor.
+ - Viewport and layout persist on pointer-up / wheel-end, not per pixel. A viewport imported from the native diagram that would paint cards under 140px is replaced by a fit on first paint.
+ 
+diff --git a/deploy/CHANGELOG.md b/deploy/CHANGELOG.md
+index 67f4d99..cddbb18 100644
+--- a/deploy/CHANGELOG.md
++++ b/deploy/CHANGELOG.md
+@@ -1,5 +1,12 @@
+ # Changelog
+ 
++## 0.5.0 — 2026-08-29
++
++- **Connect two-click + temp wire** — Connect stays on after an edge. Click-click or drag; the rubber-band lives on `.pxd-edges-temp` above the cards and follows the cursor immediately. Handles are a 12px disc with a larger hit target.
++- **In-place nested boards** — opening a nested diagram does not call `openBlock` / change the hash. The parent session stays loaded; crumbs sit on the toolbar and Esc pops one level.
++- **Section and card color** — toolbar swatches (eight Blueprint-ish ids plus default) write `color::` on nodes and sections. Dark mode uses the border as the signal.
++- **Section click-rename** — a single click on the section title starts rename; pointerdown on the label does not drag the frame.
++
+ ## 0.4.2 — 2026-08-28
+ 
+ - **Svy Beam caret** — overlay inputs use native `caret-color` and `cursor: text` (higher specificity than Beam's custom hotspot cursor). `focus({ preventScroll: true })` plus a capture-phase guard stop Roam from scrolling the outline copy of an editing card into view.
+diff --git a/deploy/README.md b/deploy/README.md
+index bdf6d1f..576384f 100644
+--- a/deploy/README.md
++++ b/deploy/README.md
+@@ -17,12 +17,11 @@ Native-first Heptabase-like overlay for Roam `{{[[diagram]]}}` blocks. Roam's di
+ - **Add a card:** double-click empty space, pick the `Card` tool and click, or drop a page/block from the left sidebar onto the board (`[[Title]]` or a Roam uid).
+ - **Edit a card:** double-click it. Roam's native block editor mounts in place; click away or press Esc to commit. Cards show `renderString` output otherwise.
+ - **Move / resize:** drag a card; drag the bottom-right corner to resize (min 240×140). Shift-click to multi-select and drag together.
+-- **Connect:** drag from a card's edge dot onto another card, or onto empty board to pull out a new card and link it. Use the `Connect` tool and drag from anywhere on a card. Double-click a connector (or click its midpoint pill) to add a note on the line — that does not create a card.
+-- **Sections:** frames are visible (solid border, light fill). Drag to move, resize the corner, double-click the label to rename.
+-- **Nested diagrams:** double-click a nested card body to open it in the Plexus overlay fullscreen (`fullscreen-on-zoom`), not native Empty Roam Diagram. The toolbar shows Heptabase-style crumbs (`Parent › Current`); click a parent crumb to go back. Nested cards show the parsed board name, or an inline "Name this board…" field when the block is only `{{[[diagram]]}}`.
++- **Connect:** click-click or drag from a card's edge dot (or from anywhere with the Connect tool) onto another card, or onto empty board to pull out a new card and link it. The wire follows the cursor; the Connect tool stays on after an edge. Double-click a connector (or click its midpoint pill) to add a note on the line — that does not create a card.
++- **Sections:** frames are visible (solid border, light fill). Drag to move, resize the corner, click the title to rename. Color swatches in the toolbar apply to the selected card or section.
++- **Nested diagrams:** double-click a nested card body to open it in place (hash stays on the parent page; fullscreen and crumbs stay). The toolbar shows Heptabase-style crumbs (`Parent › Current`); click a parent crumb or press Esc to pop one level. Nested cards show the parsed board name, or an inline "Name this board…" field when the block is only `{{[[diagram]]}}`.
+ - **Library:** the searchable drawer portals onto `document.body` (not the scaled world) so type stays readable.
+-- **Fullscreen:** `Fullscreen` button or **Plexus Diagram: Fullscreen this diagram**. Esc exits edit, then fullscreen. Zoomed diagram pages (`#/app/<graph>/page/<uid>`) open full screen by default (`fullscreen-on-zoom`). Fullscreen hides RoamJS breadcrumbs, sits below the remaining topbar, and follows `.rm-article-wrapper` so the overlay shrinks with the left and right sidebars instead of covering them.
+-- **Caret:** overlay editors opt out of Svy Beam's custom cursor/caret overlay (`caret-color` + `cursor: text`) so the beam does not jump at zoom.
++- **Fullscreen:** `Fullscreen` button or **Plexus Diagram: Fullscreen this diagram**. Esc exits edit, then pops a nested crumb if any, then exits fullscreen. Zoomed diagram pages (`#/app/<graph>/page/<uid>`) open full screen by default (`fullscreen-on-zoom`). Fullscreen hides RoamJS breadcrumbs, sits below the remaining topbar, and follows `.rm-article-wrapper` so the overlay shrinks with the left and right sidebars instead of covering them.
+ - **Shortcuts** (when `enable-shortcuts` is on and the overlay has the pointer): `V` select, `C` connect, `N` add a card at view center, `F` fit. Ignored while typing in a card or edge-label editor.
+ - Viewport and layout persist on pointer-up / wheel-end, not per pixel. A viewport imported from the native diagram that would paint cards under 140px is replaced by a fit on first paint.
+ 
+diff --git a/deploy/extension.css b/deploy/extension.css
+index 62203b1..6dc20b4 100644
+--- a/deploy/extension.css
++++ b/deploy/extension.css
+@@ -23,27 +23,10 @@
+   border-radius: 6px;
+   touch-action: none;
+   cursor: default;
+-  caret-color: #1c2127 !important;
+   font-size: 14px;
+   line-height: 1.45;
+ }
+ 
+-/* Native caret + OS text cursor so Svy Beam's fixed overlay (hotspot 16,16)
+-   cannot mis-scale inside `.pxd-world { transform: scale() }`. Beat
+-   `:root:not(.svy-off-beam) textarea { cursor: url(...) 16 16, text }`. */
+-.pxd-root textarea,
+-.pxd-root .rm-block__input,
+-.pxd-root [contenteditable],
+-:root .pxd-root textarea,
+-:root .pxd-root .rm-block__input,
+-:root .pxd-root [contenteditable],
+-:root:not(.svy-off-beam) .pxd-root textarea,
+-:root:not(.svy-off-beam) .pxd-root .rm-block__input,
+-:root:not(.svy-off-beam) .pxd-root [contenteditable] {
+-  caret-color: #1c2127 !important;
+-  cursor: text !important;
+-}
+-
+ .pxd-root--gesturing,
+ .pxd-root--gesturing * {
+   user-select: none !important;
+@@ -144,6 +127,14 @@ body.pxd-has-fullscreen .breadcrumbs-content {
+   pointer-events: none;
+ }
+ 
++.pxd-edges-temp {
++  position: absolute;
++  inset: 0;
++  overflow: visible;
++  pointer-events: none;
++  z-index: 4;
++}
++
+ .pxd-edge,
+ .pxd-edge-hit {
+   pointer-events: stroke;
+@@ -206,8 +197,11 @@ body.pxd-has-fullscreen .breadcrumbs-content {
+ }
+ 
+ .pxd-edge--temp {
++  stroke: var(--pxd-active);
++  stroke-width: 3;
+   stroke-dasharray: 6 4;
+-  opacity: 0.8;
++  fill: none;
++  opacity: 1;
+   pointer-events: none !important;
+ }
+ 
+@@ -232,7 +226,7 @@ body.pxd-has-fullscreen .breadcrumbs-content {
+ .pxd-section {
+   position: absolute;
+   box-sizing: border-box;
+-  border: 2px solid var(--pxd-border-strong);
++  border: 2px solid var(--pxd-section-color, var(--pxd-border-strong));
+   border-radius: 8px;
+   background: rgba(45, 114, 210, 0.06);
+   pointer-events: auto;
+@@ -241,6 +235,11 @@ body.pxd-has-fullscreen .breadcrumbs-content {
+   cursor: move;
+ }
+ 
++.pxd-section--selected {
++  border-color: var(--pxd-active);
++  box-shadow: 0 0 0 1px var(--pxd-active);
++}
++
+ .bp3-dark .pxd-section,
+ body.bt-theme-dark .pxd-section,
+ body.roam-body.dark .pxd-section,
+@@ -282,7 +281,7 @@ body.roam-body.dark .pxd-section,
+   flex-direction: column;
+   min-width: 240px;
+   min-height: 140px;
+-  border: 1px solid var(--pxd-border-strong);
++  border: 1px solid var(--pxd-card-color, var(--pxd-border-strong));
+   background: var(--pxd-card-bg);
+   color: var(--pxd-text);
+   overflow: visible;
+@@ -299,7 +298,6 @@ body.roam-body.dark .pxd-section,
+ }
+ 
+ .pxd-card--selected {
+-  border-color: var(--pxd-active);
+   box-shadow: 0 0 0 1px var(--pxd-active), var(--pxd-shadow);
+ }
+ 
+@@ -384,6 +382,26 @@ body.roam-body.dark .pxd-section,
+   cursor: text;
+ }
+ 
++.pxd-card__preview {
++  position: relative;
++  height: 56px;
++  margin-top: 8px;
++  border: 1px dashed var(--pxd-border);
++  border-radius: 4px;
++  overflow: hidden;
++  pointer-events: none;
++}
++
++.pxd-card__preview-node {
++  position: absolute;
++  box-sizing: border-box;
++  border: 1px solid var(--pxd-border-strong);
++  border-radius: 2px;
++  background: var(--pxd-bg);
++  min-width: 4px;
++  min-height: 4px;
++}
++
+ /* Roam chrome that has no place on a card. */
+ .pxd-card .rm-block__controls,
+ .pxd-card .rm-bullet,
+@@ -409,8 +427,8 @@ body.roam-body.dark .pxd-section,
+ 
+ .pxd-handle {
+   position: absolute;
+-  width: 14px;
+-  height: 14px;
++  width: 12px;
++  height: 12px;
+   border-radius: 50%;
+   border: 2px solid var(--pxd-active);
+   background: var(--pxd-card-bg);
+@@ -421,6 +439,12 @@ body.roam-body.dark .pxd-section,
+   z-index: 2;
+ }
+ 
++.pxd-handle::before {
++  content: "";
++  position: absolute;
++  inset: -10px;
++}
++
+ .pxd-card:hover .pxd-handle,
+ .pxd-card--selected .pxd-handle,
+ .pxd-root[data-tool="connect"] .pxd-handle {
+@@ -432,10 +456,10 @@ body.roam-body.dark .pxd-section,
+   pointer-events: none;
+ }
+ 
+-.pxd-handle--top { top: -7px; left: 50%; transform: translateX(-50%); }
+-.pxd-handle--right { right: -7px; top: 50%; transform: translateY(-50%); }
+-.pxd-handle--bottom { bottom: -7px; left: 50%; transform: translateX(-50%); }
+-.pxd-handle--left { left: -7px; top: 50%; transform: translateY(-50%); }
++.pxd-handle--top { top: -6px; left: 50%; transform: translateX(-50%); }
++.pxd-handle--right { right: -6px; top: 50%; transform: translateY(-50%); }
++.pxd-handle--bottom { bottom: -6px; left: 50%; transform: translateX(-50%); }
++.pxd-handle--left { left: -6px; top: 50%; transform: translateY(-50%); }
+ 
+ .pxd-card__resize {
+   position: absolute;
+@@ -560,6 +584,40 @@ body.roam-body.dark .pxd-section,
+   display: none;
+ }
+ 
++.pxd-palette {
++  display: flex;
++  align-items: center;
++  gap: 4px;
++  padding: 3px 6px;
++  border: 1px solid var(--pxd-border-strong);
++  border-radius: 8px;
++  background: var(--pxd-card-bg);
++  box-shadow: var(--pxd-shadow);
++}
++
++.pxd-palette--hidden {
++  display: none;
++}
++
++.pxd-swatch {
++  width: 14px;
++  height: 14px;
++  padding: 0;
++  border: 1px solid var(--pxd-border-strong);
++  border-radius: 50%;
++  cursor: pointer;
++  background: var(--pxd-card-bg);
++}
++
++.pxd-swatch--default {
++  background: var(--pxd-card-bg);
++  box-shadow: inset 0 0 0 1px var(--pxd-border);
++}
++
++.pxd-swatch:hover {
++  box-shadow: 0 0 0 1px var(--pxd-active);
++}
++
+ .pxd-crumb__item {
+   border: 0;
+   background: transparent;
+@@ -780,20 +838,4 @@ body.roam-body.dark .pxd-root,
+   --pxd-edge: #a7b6c2;
+   --pxd-grid-dot: rgba(167, 182, 194, 0.22);
+   --pxd-shadow: 0 1px 3px rgba(0, 0, 0, 0.35), 0 4px 12px rgba(0, 0, 0, 0.3);
+-  caret-color: #f5f8fa !important;
+-}
+-
+-.bp3-dark .pxd-root textarea,
+-.bp3-dark .pxd-root .rm-block__input,
+-.bp3-dark .pxd-root [contenteditable],
+-body.bt-theme-dark .pxd-root textarea,
+-body.bt-theme-dark .pxd-root .rm-block__input,
+-body.bt-theme-dark .pxd-root [contenteditable],
+-body.roam-body.dark .pxd-root textarea,
+-body.roam-body.dark .pxd-root .rm-block__input,
+-body.roam-body.dark .pxd-root [contenteditable],
+-.rm-dark-theme .pxd-root textarea,
+-.rm-dark-theme .pxd-root .rm-block__input,
+-.rm-dark-theme .pxd-root [contenteditable] {
+-  caret-color: #f5f8fa !important;
+ }
+diff --git a/deploy/extension.js b/deploy/extension.js
+index e96dc1a..ec923c3 100644
+--- a/deploy/extension.js
++++ b/deploy/extension.js
+@@ -1,4 +1,4 @@
+-/* Plexus Diagram v0.4.2 | MIT | generated; edit src/ */
++/* Plexus Diagram v0.5.0 | MIT | generated; edit src/ */
+ 
+ // src/lifecycle.js
+ function isPromiseLike(value) {
+@@ -345,12 +345,13 @@ function parseMetadataTree(tree) {
+       }
+       if (line.startsWith("section ")) {
+         const sectionId = line.slice("section ".length).trim();
+-        const section = { pos: null, size: null, title: "" };
++        const section = { pos: null, size: null, title: "", color: "" };
+         for (const prop of child.children || []) {
+           const propLine = prop.string.trim();
+           if (propLine.startsWith("pos::")) section.pos = parsePair(propLine.slice("pos::".length));
+           if (propLine.startsWith("size::")) section.size = parseSize(propLine.slice("size::".length));
+           if (propLine.startsWith("title::")) section.title = propLine.slice("title::".length).trim();
++          if (propLine.startsWith("color::")) section.color = propLine.slice("color::".length).trim();
+         }
+         entry.sections.set(sectionId, section);
+       }
+@@ -380,6 +381,7 @@ function serializeDiagramMetadata(diagramUid, layout) {
+     if (section.pos) lines.push(`    pos:: ${section.pos.x},${section.pos.y}`);
+     if (section.size) lines.push(`    size:: ${section.size.width},${section.size.height}`);
+     if (section.title) lines.push(`    title:: ${section.title}`);
++    if (section.color) lines.push(`    color:: ${section.color}`);
+   }
+   return lines.join("\n");
+ }
+@@ -492,6 +494,7 @@ async function patchDiagramBlock(blockUid, diagramUid, layout) {
+     await syncPropChild(rowUid, props.pos, section.pos ? `pos:: ${section.pos.x},${section.pos.y}` : null);
+     await syncPropChild(rowUid, props.size, section.size ? `size:: ${section.size.width},${section.size.height}` : null);
+     await syncPropChild(rowUid, props.title, section.title ? `title:: ${section.title}` : null);
++    await syncPropChild(rowUid, props.color, section.color ? `color:: ${section.color}` : null);
+   }
+   for (const [id, row] of indexed.sections) {
+     if (!wantedSections.has(id)) await deleteBlock(row.uid);
+@@ -1270,9 +1273,18 @@ var DiagramModel = class _DiagramModel {
+   layoutSnapshot() {
+     return {
+       viewport: { ...this.viewport },
+-      nodes: new Map([...this.nodes].map(([uid, node]) => [uid, { ...node, pos: { ...node.pos }, size: { ...node.size } }])),
++      nodes: new Map([...this.nodes].map(([uid, node]) => [uid, {
++        pos: { ...node.pos },
++        size: { ...node.size },
++        color: node.color || ""
++      }])),
+       edges: this.edges.map((edge) => ({ ...edge })),
+-      sections: new Map([...this.sections].map(([id, section]) => [id, { ...section }]))
++      sections: new Map([...this.sections].map(([id, section]) => [id, {
++        ...section,
++        pos: section.pos ? { ...section.pos } : section.pos,
++        size: section.size ? { ...section.size } : section.size,
++        color: section.color || ""
++      }]))
+     };
+   }
+   // A pull only refreshes content (children, strings). Positions, sizes, edges,
+@@ -1627,7 +1639,23 @@ function isTextEntryTarget(target) {
+   if (target.isContentEditable) return true;
+   return Boolean(target.closest('.rm-block__input, [contenteditable="true"], .pxd-library-drawer, .pxd-edge-label-editor'));
+ }
++var COLOR_SWATCHES = [
++  ["", "Default", ""],
++  ["red", "Red", "#db3737"],
++  ["orange", "Orange", "#d9822b"],
++  ["yellow", "Yellow", "#d99e0b"],
++  ["green", "Green", "#29a634"],
++  ["teal", "Teal", "#00b3a4"],
++  ["blue", "Blue", "#2d72d2"],
++  ["violet", "Violet", "#7157d9"],
++  ["rose", "Rose", "#c22762"]
++];
++function colorHex(id) {
++  const row = COLOR_SWATCHES.find((entry) => entry[0] === id);
++  return row?.[2] || "";
++}
+ function createCanvasRoot({ session, settings, version, onPersist, nestStack: nestStackOption }) {
++  let currentSession = session;
+   const crumbs = nestStackOption !== void 0 ? nestStackOption : nestStack;
+   const root = document.createElement("div");
+   root.className = "pxd-root";
+@@ -1643,6 +1671,8 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
+   labelsLayer.className = "pxd-edge-labels";
+   const sectionsLayer = document.createElement("div");
+   sectionsLayer.className = "pxd-sections";
++  const tempSvg = document.createElementNS(SVG_NS, "svg");
++  tempSvg.classList.add("pxd-edges-temp");
+   const toolbar = document.createElement("div");
+   toolbar.className = "pxd-toolbar";
+   const hint = document.createElement("div");
+@@ -1650,10 +1680,10 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
+   hint.textContent = HINT_TEXT;
+   const minimap = settings.get("minimap") ? document.createElement("div") : null;
+   if (minimap) minimap.className = "pxd-minimap";
+-  world.append(sectionsLayer, edgesSvg, labelsLayer, cardsLayer);
++  world.append(sectionsLayer, edgesSvg, labelsLayer, cardsLayer, tempSvg);
+   root.append(grid, world, toolbar, hint);
+   if (minimap) root.append(minimap);
+-  const model = () => session.model;
++  const model = () => currentSession.model;
+   const num = (id, fallback) => {
+     const value = Number(settings.get(id));
+     return Number.isFinite(value) && value > 0 ? value : fallback;
+@@ -1868,13 +1898,14 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
+   const tools = [
+     ["select", "Select", "Select, drag, and pan (V)"],
+     ["card", "Card", "Click the board to add a card"],
+-    ["connect", "Connect", "Drag from a card onto another card or empty space"],
++    ["connect", "Connect", "Click-click or drag from a card; the wire follows the cursor"],
+     ["section", "Section", "Click the board to add a section frame"],
+     ["nested", "Nested", "Click the board to add a nested diagram card"],
+     ["library", "Library", "Place existing pages as cards"]
+   ];
+   const toolButtons = /* @__PURE__ */ new Map();
+   const setActiveTool = (tool) => {
++    if (tool !== "connect") clearConnectArm();
+     model().activeTool = tool;
+     for (const [name, button] of toolButtons) {
+       button.classList.toggle("pxd-toolbar__btn--active", name === tool);
+@@ -1931,7 +1962,6 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
+       button.className = "pxd-crumb__item";
+       button.textContent = item.title || "Diagram";
+       button.addEventListener("click", () => {
+-        crumbs.length = i;
+         void onPersist?.({ openCrumb: item.uid });
+       });
+       crumbRow.append(button);
+@@ -1946,7 +1976,7 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
+     crumbRow.append(current);
+   };
+   renderCrumbs();
+-  if (crumbs.length) toolbar.append(crumbRow);
++  toolbar.append(crumbRow);
+   const viewGroup = document.createElement("div");
+   viewGroup.className = "pxd-toolbar__group";
+   const zoomOutBtn = makeButton("Zoom-", "Zoom out", "pxd-toolbar__btn--zoom");
+@@ -1967,6 +1997,25 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
+   fullBtn.addEventListener("click", () => setFullscreen(!isFullscreen()));
+   viewGroup.append(zoomOutBtn, zoomLabel, zoomInBtn, fitBtn, fullBtn);
+   toolbar.append(viewGroup);
++  const palette = document.createElement("div");
++  palette.className = "pxd-palette pxd-palette--hidden";
++  palette.title = "Card or section color";
++  for (const [id, label, hex] of COLOR_SWATCHES) {
++    const swatch = document.createElement("button");
++    swatch.type = "button";
++    swatch.className = "pxd-swatch";
++    swatch.dataset.color = id;
++    swatch.title = label;
++    if (hex) swatch.style.background = hex;
++    else swatch.classList.add("pxd-swatch--default");
++    swatch.addEventListener("click", (event) => {
++      event.preventDefault();
++      event.stopPropagation();
++      applyColor(id);
++    });
++    palette.append(swatch);
++  }
++  toolbar.append(palette);
+   if (settings.get("show-version-badge")) {
+     const badge = document.createElement("span");
+     badge.className = "pxd-version";
+@@ -2007,12 +2056,56 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
+     syncHint();
+   };
+   const sectionEls = /* @__PURE__ */ new Map();
++  let selectedSectionId = null;
+   const positionSection = (el, section) => {
+     el.style.left = `${section.pos?.x ?? 0}px`;
+     el.style.top = `${section.pos?.y ?? 0}px`;
+     el.style.width = `${section.size?.width ?? 320}px`;
+     el.style.height = `${section.size?.height ?? 240}px`;
+   };
++  const paintSectionColor = (el, section) => {
++    const hex = colorHex(section?.color);
++    if (hex) {
++      el.style.setProperty?.("--pxd-section-color", hex);
++      el.style.borderColor = hex;
++      el.style.background = `color-mix(in srgb, ${hex} 10%, transparent)`;
++    } else {
++      el.style.removeProperty?.("--pxd-section-color");
++      el.style.borderColor = "";
++      el.style.background = "";
++    }
++  };
++  const syncSectionSelection = () => {
++    for (const [id, el] of sectionEls) {
++      el.classList.toggle("pxd-section--selected", id === selectedSectionId);
++    }
++  };
++  const syncPalette = () => {
++    const show = model().selected.size > 0 || Boolean(selectedSectionId);
++    palette.classList.toggle("pxd-palette--hidden", !show);
++  };
++  const applyColor = (id) => {
++    const hexId = COLOR_SWATCHES.some((entry) => entry[0] === id) ? id : "";
++    let changed = false;
++    for (const uid of model().selected) {
++      const node = model().nodes.get(uid);
++      if (!node) continue;
++      node.color = hexId;
++      const card = cardEls.get(uid);
++      if (card) paintCardColor(card, node);
++      changed = true;
++    }
++    if (selectedSectionId) {
++      const section = model().sections.get(selectedSectionId);
++      if (section) {
++        section.color = hexId;
++        const el = sectionEls.get(selectedSectionId);
++        if (el) paintSectionColor(el, section);
++        changed = true;
++      }
++    }
++    if (changed) markLayoutDirty();
++  };
+   const startSectionRename = (label) => {
+     const sectionId = label.closest?.(".pxd-section")?.dataset?.sectionId;
+     const section = sectionId ? model().sections.get(sectionId) : null;
+@@ -2074,6 +2167,8 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
+         sectionEls.set(id, el);
+       }
+       positionSection(el, section);
++      paintSectionColor(el, section);
++      el.classList.toggle("pxd-section--selected", id === selectedSectionId);
+       if (el._pxdLabel.contentEditable !== "true") {
+         el._pxdLabel.textContent = section.title || "Section";
+       }
+@@ -2274,10 +2369,11 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
+       tempEdge = document.createElementNS(SVG_NS, "path");
+       tempEdge.classList.add("pxd-edge--temp");
+       tempEdge.setAttribute("fill", "none");
+-      tempEdge.setAttribute("stroke", "var(--pxd-edge)");
+-      tempEdge.setAttribute("stroke-width", String(num("edge-width", 2)));
++      tempEdge.setAttribute("stroke", "var(--pxd-active)");
++      tempEdge.setAttribute("stroke-width", "3");
++      tempEdge.setAttribute("stroke-dasharray", "6 4");
+       tempEdge.style.pointerEvents = "none";
+-      edgesSvg.append(tempEdge);
++      tempSvg.append(tempEdge);
+     }
+     const target = { x: worldPoint.x, y: worldPoint.y, width: 1, height: 1 };
+     tempEdge.setAttribute("d", buildEdgePath(settings.get("connector-style") || "bezier", source, target));
+@@ -2285,7 +2381,28 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
+   const clearTempEdge = () => {
+     tempEdge?.remove?.();
+     tempEdge = null;
++    if (typeof tempSvg.replaceChildren === "function") tempSvg.replaceChildren();
++    else if (Array.isArray(tempSvg.children)) tempSvg.children.length = 0;
++    else tempSvg.innerHTML = "";
++  };
++  let connectArm = null;
++  const onConnectArmMove = (event) => {
++    if (!connectArm) return;
++    setTempEdge(connectArm.uid, screenToWorld(event.clientX, event.clientY, false));
++  };
++  const armConnect = (uid) => {
++    if (!uid) return;
++    connectArm = { uid };
++    document.addEventListener("pointermove", onConnectArmMove, true);
++  };
++  const clearConnectArm = () => {
++    if (connectArm) {
++      document.removeEventListener("pointermove", onConnectArmMove, true);
++    }
++    connectArm = null;
++    clearTempEdge();
+   };
++  const getConnectArm = () => connectArm;
+   const cardEls = /* @__PURE__ */ new Map();
+   let editingUid = null;
+   let editOpenedAt = 0;
+@@ -2390,6 +2507,43 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
+         sub.textContent = "Double-click to open";
+         body.append(input, sub);
+       }
++      const nestedLayout = currentSession.metadataStore?.get?.(child.uid);
++      const nestedNodes = nestedLayout?.nodes;
++      if (nestedNodes && nestedNodes.size > 0) {
++        const preview = document.createElement("div");
++        preview.className = "pxd-card__preview";
++        const entries = [...nestedNodes.values()].slice(0, 8);
++        let minX = Infinity;
++        let minY = Infinity;
++        let maxX = -Infinity;
++        let maxY = -Infinity;
++        for (const node of entries) {
++          const x = node.pos?.x ?? 0;
++          const y = node.pos?.y ?? 0;
++          const w = node.size?.width ?? 40;
++          const h = node.size?.height ?? 24;
++          minX = Math.min(minX, x);
++          minY = Math.min(minY, y);
++          maxX = Math.max(maxX, x + w);
++          maxY = Math.max(maxY, y + h);
++        }
++        const bw = Math.max(maxX - minX, 1);
++        const bh = Math.max(maxY - minY, 1);
++        for (const node of entries) {
++          const rect = document.createElement("div");
++          rect.className = "pxd-card__preview-node";
++          const x = node.pos?.x ?? 0;
++          const y = node.pos?.y ?? 0;
++          const w = node.size?.width ?? 40;
++          const h = node.size?.height ?? 24;
++          rect.style.left = `${(x - minX) / bw * 100}%`;
++          rect.style.top = `${(y - minY) / bh * 100}%`;
++          rect.style.width = `${w / bw * 100}%`;
++          rect.style.height = `${h / bh * 100}%`;
++          preview.append(rect);
++        }
++        body.append(preview);
++      }
+     } else if (!child.string.trim()) {
+       card.classList.add("pxd-card--empty");
+       const placeholder = document.createElement("div");
+@@ -2497,8 +2651,20 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
+     for (const [uid, card] of cardEls) {
+       card.classList.toggle("pxd-card--selected", model().selected.has(uid));
+     }
++    syncSectionSelection();
++    syncPalette();
+     scheduleMinimap();
+   };
++  const paintCardColor = (card, node) => {
++    const hex = colorHex(node?.color);
++    if (hex) {
++      card.style.setProperty?.("--pxd-card-color", hex);
++      card.style.borderColor = hex;
++    } else {
++      card.style.removeProperty?.("--pxd-card-color");
++      card.style.borderColor = "";
++    }
++  };
+   const positionCard = (card, node) => {
+     card.style.left = `${node.pos.x}px`;
+     card.style.top = `${node.pos.y}px`;
+@@ -2548,6 +2714,7 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
+       card.classList.toggle("pxd-card--selected", model().selected.has(child.uid));
+       card.style.borderRadius = `${radius}px`;
+       positionCard(card, node);
++      paintCardColor(card, node);
+       const titleText = cardTitleText(child);
+       const showTitle = settings.get("show-card-title") && titleText !== child.string.trim();
+       card.classList.toggle("pxd-card--titled", Boolean(showTitle));
+@@ -2572,8 +2739,51 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
+     renderEdges();
+     renderCrumbs();
+     syncHint();
++    syncPalette();
+     scheduleMinimap();
+   };
++  const clearMountedCards = () => {
++    for (const card of cardEls.values()) {
++      if (card._pxdNameTimer) {
++        clearTimeout(card._pxdNameTimer);
++        card._pxdNameTimer = null;
++      }
++      unmountRoam(card._pxdBody);
++      card.remove();
++    }
++    cardEls.clear();
++    if (Array.isArray(cardsLayer.children)) cardsLayer.children.length = 0;
++    for (const el of sectionEls.values()) el.remove();
++    sectionEls.clear();
++    if (Array.isArray(sectionsLayer.children)) sectionsLayer.children.length = 0;
++    edgePaths.clear();
++    for (const pill of edgePills.values()) pill.remove?.();
++    edgePills.clear();
++    if (Array.isArray(labelsLayer.children)) labelsLayer.children.length = 0;
++    if (editingEdgeKey) closeEdgeEditor(false);
++    clearTempEdge();
++  };
++  const attachSession = (nextSession) => {
++    if (!nextSession) return;
++    void exitEdit(false);
++    if (editingEdgeKey) closeEdgeEditor(false);
++    endGesture();
++    clearConnectArm();
++    clearMountedCards();
++    selectedSectionId = null;
++    currentSession = nextSession;
++    const size = viewSize();
++    const viewport = nextSession.model?.viewport;
++    const usable = viewport && size.width && size.height && !viewportNeedsFit(viewport, nextSession.model.nodes, size, zoomBounds());
++    if (usable) {
++      initialFitDone = true;
++      applyTransform();
++    } else {
++      initialFitDone = false;
++      scheduleInitialFit();
++    }
++    render();
++  };
+   let gesture = null;
+   let spaceDown = false;
+   let lastToolAddAt = 0;
+@@ -2592,7 +2802,7 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
+     document.removeEventListener("pointermove", onPointerMove, true);
+     document.removeEventListener("pointerup", onPointerUp, true);
+     document.removeEventListener("pointercancel", onPointerUp, true);
+-    clearTempEdge();
++    if (!connectArm) clearTempEdge();
+   };
+   const cardFromPoint = (clientX, clientY) => {
+     let stack = [];
+@@ -2605,6 +2815,7 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
+     return cardUidFromHitStack(stack, cardsLayer);
+   };
+   const selectCard = (uid, additive) => {
++    selectedSectionId = null;
+     const selected = model().selected;
+     if (additive) {
+       if (selected.has(uid)) selected.delete(uid);
+@@ -2615,6 +2826,11 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
+     }
+     syncSelection();
+   };
++  const selectSection = (sectionId) => {
++    selectedSectionId = sectionId;
++    model().selected.clear();
++    syncSelection();
++  };
+   const onPointerDown = (event) => {
+     if (event.button !== 0 && event.button !== 1) return;
+     const target = event.target;
+@@ -2632,16 +2848,21 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
+       return;
+     }
+     const sectionEl = !uid && !panRequested ? target?.closest?.(".pxd-section") : null;
+-    if (sectionEl) {
++    if (sectionEl && !connectArm) {
+       const sectionId = sectionEl.dataset?.sectionId;
+       const section = sectionId ? model().sections.get(sectionId) : null;
+       if (section) {
+         const start = { x: event.clientX, y: event.clientY };
++        selectSection(sectionId);
+         if (target.closest(".pxd-section__resize")) {
+           beginGesture({ kind: "section-resize", sectionId, start, size: { ...section.size }, moved: false });
+           event.preventDefault();
+           return;
+         }
++        if (target.closest(".pxd-section__label")) {
++          event.preventDefault();
++          return;
++        }
+         if (target.closest(".pxd-section__label")?.isContentEditable || target.isContentEditable) return;
+         if (tool === "select" || tool === "section") {
+           beginGesture({ kind: "section-drag", sectionId, start, origin: { ...section.pos }, moved: false });
+@@ -2650,28 +2871,37 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
+         }
+       }
+     }
+-    if (uid && !panRequested) {
++    if ((uid || connectArm) && !panRequested) {
+       const start = { x: event.clientX, y: event.clientY };
+-      if (target.closest(".pxd-card__resize")) {
++      if (uid && target.closest(".pxd-card__resize")) {
+         const node = model().nodes.get(uid);
+         beginGesture({ kind: "resize", uid, start, size: { ...node.size }, moved: false });
+         event.preventDefault();
+         return;
+       }
+-      if (target.closest(".pxd-handle") || tool === "connect") {
+-        beginGesture({ kind: "connect", uid, start, moved: false });
++      const connectFrom = connectArm?.uid || (target.closest(".pxd-handle") || tool === "connect" ? uid : null);
++      if (connectFrom) {
++        beginGesture({ kind: "connect", uid: connectFrom, start, moved: false });
++        setTempEdge(connectFrom, screenToWorld(event.clientX, event.clientY, false));
++        try {
++          root.setPointerCapture?.(event.pointerId);
++        } catch {
++        }
+         event.preventDefault();
+         return;
+       }
+-      if (tool !== "select") return;
+-      selectCard(uid, event.shiftKey);
+-      const origins = /* @__PURE__ */ new Map();
+-      for (const selectedUid of model().selected) {
+-        const node = model().nodes.get(selectedUid);
+-        if (node) origins.set(selectedUid, { ...node.pos });
++      if (!uid) {
++      } else {
++        if (tool !== "select") return;
++        selectCard(uid, event.shiftKey);
++        const origins = /* @__PURE__ */ new Map();
++        for (const selectedUid of model().selected) {
++          const node = model().nodes.get(selectedUid);
++          if (node) origins.set(selectedUid, { ...node.pos });
++        }
++        beginGesture({ kind: "drag", uid, start, origins, moved: false });
++        return;
+       }
+-      beginGesture({ kind: "drag", uid, start, origins, moved: false });
+-      return;
+     }
+     if (panRequested || tool === "select") {
+       beginGesture({
+@@ -2684,9 +2914,17 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
+     }
+   };
+   const onPointerMove = (event) => {
++    if (connectArm && (!gesture || gesture.kind === "connect")) {
++      setTempEdge(connectArm.uid, screenToWorld(event.clientX, event.clientY, false));
++    }
+     if (!gesture) return;
+     const dx = event.clientX - gesture.start.x;
+     const dy = event.clientY - gesture.start.y;
++    if (gesture.kind === "connect") {
++      setTempEdge(gesture.uid, screenToWorld(event.clientX, event.clientY, false));
++      if (!gesture.moved && Math.hypot(dx, dy) >= DRAG_THRESHOLD_PX) gesture.moved = true;
++      return;
++    }
+     if (!gesture.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return;
+     gesture.moved = true;
+     const zoom = model().viewport.zoom || 1;
+@@ -2753,8 +2991,9 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
+     endGesture();
+     if (active.kind === "pan") {
+       if (active.moved) markViewportDirty();
+-      else if (model().activeTool === "select" && !event.shiftKey && model().selected.size) {
++      else if (model().activeTool === "select" && !event.shiftKey && (model().selected.size || selectedSectionId)) {
+         model().selected.clear();
++        selectedSectionId = null;
+         syncSelection();
+       }
+       return;
+@@ -2765,22 +3004,25 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
+     }
+     if (active.kind === "connect") {
+       const targetUid = cardFromPoint(event.clientX, event.clientY);
++      if (!active.moved && targetUid && targetUid === active.uid && !connectArm) {
++        armConnect(active.uid);
++        setTempEdge(active.uid, screenToWorld(event.clientX, event.clientY, false));
++        return;
++      }
++      if (!active.moved && connectArm && targetUid === connectArm.uid) {
++        return;
++      }
+       await completeConnect({
+         moved: active.moved,
+         sourceUid: active.uid,
+         targetUid,
+         clientX: event.clientX,
+-        clientY: event.clientY,
+-        shiftKey: event.shiftKey
++        clientY: event.clientY
+       });
+     }
+   };
+-  const completeConnect = async ({ moved, sourceUid, targetUid, clientX, clientY, shiftKey }) => {
++  const completeConnect = async ({ moved, sourceUid, targetUid, clientX, clientY }) => {
+     try {
+-      if (!moved) {
+-        selectCard(sourceUid, shiftKey);
+-        return;
+-      }
+       if (targetUid && targetUid !== sourceUid) {
+         const added = model().addEdge(sourceUid, targetUid, settings.get("connector-style") || "bezier");
+         renderEdges();
+@@ -2795,7 +3037,7 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
+         }
+         return;
+       }
+-      if (!targetUid) {
++      if (!targetUid && (moved || connectArm)) {
+         const point = screenToWorld(clientX, clientY);
+         const size = defaultCardSize();
+         await onPersist?.({
+@@ -2807,6 +3049,8 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
+         });
+       }
+     } catch {
++    } finally {
++      clearConnectArm();
+     }
+   };
+   const onDoubleClick = (event) => {
+@@ -2845,9 +3089,17 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
+   };
+   const onClick = (event) => {
+     const target = event.target;
++    if (target?.closest?.(".pxd-palette") || target?.closest?.(".pxd-swatch")) return;
+     if (target?.closest?.(".pxd-card") || target?.closest?.(".pxd-toolbar")) return;
+     if (target?.closest?.(".pxd-library-drawer") || target?.closest?.(".pxd-minimap")) return;
+     if (target?.closest?.(".pxd-edge-label-editor")) return;
++    const sectionLabel = target?.closest?.(".pxd-section__label");
++    if (sectionLabel) {
++      if (sectionLabel.isContentEditable) return;
++      event.preventDefault();
++      startSectionRename(sectionLabel);
++      return;
++    }
+     if (target?.closest?.(".pxd-section")) return;
+     if (event.detail > 1) return;
+     const pill = target?.closest?.(".pxd-edge-label");
+@@ -2920,6 +3172,11 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
+   };
+   const onKeyDown = (event) => {
+     if (event.key === "Escape") {
++      if (connectArm) {
++        event.preventDefault();
++        clearConnectArm();
++        return;
++      }
+       if (editingEdgeKey) {
+         event.preventDefault();
+         closeEdgeEditor(false);
+@@ -2930,6 +3187,12 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
+         void exitEdit();
+         return;
+       }
++      if (crumbs.length) {
++        event.preventDefault();
++        const parent = crumbs[crumbs.length - 1];
++        if (parent?.uid) void onPersist?.({ openCrumb: parent.uid });
++        return;
++      }
+       if (isFullscreen()) {
+         event.preventDefault();
+         event.stopPropagation();
+@@ -3010,6 +3273,10 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
+     fitToView,
+     editCard: enterEdit,
+     completeConnect,
++    attachSession,
++    armConnect,
++    clearConnectArm,
++    getConnectArm,
+     setLibraryOpen(open) {
+       toolButtons.get("library")?.classList.toggle("pxd-toolbar__btn--active", Boolean(open));
+     },
+@@ -3022,6 +3289,7 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
+       if (editingEdgeKey) closeEdgeEditor(false);
+       if (editingUid) void exitEdit(false);
+       detachFocusGuard();
++      clearConnectArm();
+       endGesture();
+       if (viewportTimer) {
+         clearTimeout(viewportTimer);
+@@ -3274,7 +3542,8 @@ var NativeDiagramSession = class {
+     this.model.sections.set(id, {
+       pos: { ...position },
+       size: { width: 320, height: 240 },
+-      title: ""
++      title: "",
++      color: ""
+     });
+     await this.persistLayout();
+     this.notifyViews({ type: "section" });
+@@ -3353,32 +3622,60 @@ function mountDiagramView({ nativeElement, session, settings, version, lifecycle
+   wrapper.style.height = `${wrapperHeight}px`;
+   wrapper.style.minHeight = `${wrapperHeight}px`;
+   wrapper.style.position = "relative";
++  const sessionBox = { current: session };
+   const canvas = createCanvasRoot({
+     session,
+     settings,
+     version,
+     onPersist: async (action) => {
+-      if (action.persistLayout) await session.persistLayout();
+-      if (action.persistViewport) await session.persistViewport();
++      const current = sessionBox.current;
++      if (action.persistLayout) await current.persistLayout();
++      if (action.persistViewport) await current.persistViewport();
+       if (action.toggleLibrary) onAction?.({ type: "library" });
+-      if (action.openNested) onAction?.({ type: "nested", uid: action.openNested });
+-      if (action.openCrumb) onAction?.({ type: "crumb", uid: action.openCrumb });
++      if (action.openNested) {
++        try {
++          await current.persistLayout?.();
++        } catch {
++        }
++        onAction?.({
++          type: "nested",
++          uid: action.openNested,
++          parentUid: current.diagramUid,
++          viewport: current.model?.viewport ? { ...current.model.viewport } : void 0,
++          sessionBox,
++          canvas,
++          wrapper
++        });
++      }
++      if (action.openCrumb) {
++        try {
++          await current.persistLayout?.();
++        } catch {
++        }
++        onAction?.({
++          type: "crumb",
++          uid: action.openCrumb,
++          sessionBox,
++          canvas,
++          wrapper
++        });
++      }
+       if (action.openBlock) onAction?.({ type: "open-block", uid: action.openBlock });
+       if (action.addCard) {
+-        const uid = await session.addCard(action.string ?? "", action.addCard);
++        const uid = await current.addCard(action.string ?? "", action.addCard);
+         if (uid && action.addEdge?.source) {
+-          session.model.addEdge(
++          current.model.addEdge(
+             action.addEdge.source,
+             uid,
+             action.addEdge.kind || settings.get("connector-style") || "bezier"
+           );
+-          await session.persistLayout();
++          await current.persistLayout();
+         }
+         canvas.render();
+         if (uid && !action.string) canvas.editCard?.(uid);
+       }
+       if (action.addSection) {
+-        await session.addSection(action.addSection);
++        await current.addSection(action.addSection);
+         canvas.render();
+       }
+     }
+@@ -3407,7 +3704,7 @@ var runtime = {
+   lifecycle: null,
+   metadata: null,
+   settings: null,
+-  version: "0.4.2",
++  version: "0.5.0",
+   enhancedUids: /* @__PURE__ */ new Set(),
+   activeDiagramUid: null,
+   guardStyle: null,
+@@ -3503,10 +3800,17 @@ async function enhanceDiagram(uid, nativeElement) {
+       onAction: async (action) => {
+         if (action.type === "library") await toggleLibrary(mounted.wrapper, mounted.canvas);
+         if (action.type === "nested" && action.uid) {
+-          await openNestedDiagram(action.uid, session.diagramUid);
++          await openNestedDiagram(action.uid, action.parentUid || sessionBoxUid(action), {
++            viewport: action.viewport,
++            attachSession: async (childUid) => attachViewSession(childUid, { ...action, viewport: void 0 })
++          });
+         }
+         if (action.type === "crumb" && action.uid) {
+-          await openCrumb(action.uid);
++          await openCrumb(action.uid, {
++            attachSession: async (ancestorUid, extra) => {
++              await attachViewSession(ancestorUid, { ...action, viewport: extra?.viewport });
++            }
++          });
+         }
+         if (action.type === "open-block" && action.uid) {
+           globalThis.roamAlphaAPI?.ui?.rightSidebar?.addWindow?.({ window: { type: "block", "block-uid": action.uid } });
+@@ -3588,28 +3892,68 @@ async function enhanceByUid(uid) {
+   await enhanceDiagram(uid, diagram);
+ }
+ var nestedOpenUid = null;
+-async function openNestedDiagram(uid, parentUid) {
++function sessionBoxUid(action) {
++  return action.sessionBox?.current?.diagramUid || runtime.activeDiagramUid;
++}
++async function attachViewSession(childUid, { sessionBox, canvas, wrapper, viewport } = {}) {
++  if (!childUid || !sessionBox || !canvas) return;
++  const parent = sessionBox.current;
++  const child = getOrCreateSession(childUid, () => new NativeDiagramSession({
++    diagramUid: childUid,
++    metadataStore: runtime.metadata,
++    settings: runtime.settings,
++    onChange: () => syncGuard()
++  }));
++  if (!child.model) child.load();
++  if (viewport && child.model) child.model.viewport = { ...viewport };
++  child.startWatch();
++  let view = null;
++  for (const candidate of parent?.views || []) {
++    if (candidate.canvas === canvas || candidate.wrapper === wrapper) {
++      view = candidate;
++      break;
++    }
++  }
++  if (view && parent) parent.removeView(view);
++  if (!view) {
++    view = {
++      refresh: () => canvas.render(),
++      dispose: () => canvas.dispose(),
++      canvas,
++      wrapper,
++      setFullscreen: canvas.setFullscreen
++    };
++  }
++  child.addView(view);
++  sessionBox.current = child;
++  runtime.activeDiagramUid = childUid;
++  if (wrapper?.dataset) wrapper.dataset.diagramUid = childUid;
++  canvas.attachSession(child);
++}
++async function openNestedDiagram(uid, parentUid, hooks = {}) {
+   if (!uid) return;
+   nestedOpenUid = uid;
+   if (parentUid && parentUid !== uid) {
+     const title = parseDiagramTitle(blockStringForUid(parentUid)) || "Diagram";
+-    nestStack.push({ uid: parentUid, title });
++    const entry = { uid: parentUid, title };
++    if (hooks.viewport) entry.viewport = { ...hooks.viewport };
++    nestStack.push(entry);
+   }
+   await markEnhanced(uid);
+-  await globalThis.roamAlphaAPI?.ui?.mainWindow?.openBlock?.({ block: { uid } });
++  if (hooks.attachSession) {
++    await hooks.attachSession(uid);
++  }
+ }
+-async function openCrumb(uid) {
++async function openCrumb(uid, hooks = {}) {
+   if (!uid) return;
+-  const pull = globalThis.roamAlphaAPI?.data?.pull?.(
+-    "[:node/title :block/string]",
+-    [":block/uid", uid]
+-  );
+-  const pageTitle = pull?.[":node/title"] ?? pull?.title;
+-  if (pageTitle) {
+-    await globalThis.roamAlphaAPI?.ui?.mainWindow?.openPage?.({ page: { uid } });
+-    return;
++  const i = nestStack.findIndex((entry) => entry.uid === uid);
++  if (i < 0) return;
++  const savedViewport = nestStack[i].viewport;
++  nestStack.length = i;
++  nestedOpenUid = uid;
++  if (hooks.attachSession) {
++    await hooks.attachSession(uid, { viewport: savedViewport });
+   }
+-  await globalThis.roamAlphaAPI?.ui?.mainWindow?.openBlock?.({ block: { uid } });
+ }
+ function syncNestStackOnNavigate(hash = globalThis.location?.hash || "") {
+   const openUid = diagramUidFromLocation(hash);
+@@ -3820,7 +4164,7 @@ async function registerSlashAndContext(lifecycle, extensionAPI) {
+ async function installPlexusDiagram({ extensionAPI, lifecycle, version }) {
+   runtime.extensionAPI = extensionAPI;
+   runtime.lifecycle = lifecycle;
+-  runtime.version = version || "0.4.2";
++  runtime.version = version || "0.5.0";
+   runtime.settings = createSettingsReader(extensionAPI);
+   runtime.enhancedUids = readEnhancedUidCache();
+   installGuard(runtime.enhancedUids);
+diff --git a/extension.css b/extension.css
+index 62203b1..6dc20b4 100644
+--- a/extension.css
++++ b/extension.css
+@@ -23,27 +23,10 @@
+   border-radius: 6px;
+   touch-action: none;
+   cursor: default;
+-  caret-color: #1c2127 !important;
+   font-size: 14px;
+   line-height: 1.45;
+ }
+ 
+-/* Native caret + OS text cursor so Svy Beam's fixed overlay (hotspot 16,16)
+-   cannot mis-scale inside `.pxd-world { transform: scale() }`. Beat
+-   `:root:not(.svy-off-beam) textarea { cursor: url(...) 16 16, text }`. */
+-.pxd-root textarea,
+-.pxd-root .rm-block__input,
+-.pxd-root [contenteditable],
+-:root .pxd-root textarea,
+-:root .pxd-root .rm-block__input,
+-:root .pxd-root [contenteditable],
+-:root:not(.svy-off-beam) .pxd-root textarea,
+-:root:not(.svy-off-beam) .pxd-root .rm-block__input,
+-:root:not(.svy-off-beam) .pxd-root [contenteditable] {
+-  caret-color: #1c2127 !important;
+-  cursor: text !important;
+-}
+-
+ .pxd-root--gesturing,
+ .pxd-root--gesturing * {
+   user-select: none !important;
+@@ -144,6 +127,14 @@ body.pxd-has-fullscreen .breadcrumbs-content {
+   pointer-events: none;
+ }
+ 
++.pxd-edges-temp {
++  position: absolute;
++  inset: 0;
++  overflow: visible;
++  pointer-events: none;
++  z-index: 4;
++}
++
+ .pxd-edge,
+ .pxd-edge-hit {
+   pointer-events: stroke;
+@@ -206,8 +197,11 @@ body.pxd-has-fullscreen .breadcrumbs-content {
+ }
+ 
+ .pxd-edge--temp {
++  stroke: var(--pxd-active);
++  stroke-width: 3;
+   stroke-dasharray: 6 4;
+-  opacity: 0.8;
++  fill: none;
++  opacity: 1;
+   pointer-events: none !important;
+ }
+ 
+@@ -232,7 +226,7 @@ body.pxd-has-fullscreen .breadcrumbs-content {
+ .pxd-section {
+   position: absolute;
+   box-sizing: border-box;
+-  border: 2px solid var(--pxd-border-strong);
++  border: 2px solid var(--pxd-section-color, var(--pxd-border-strong));
+   border-radius: 8px;
+   background: rgba(45, 114, 210, 0.06);
+   pointer-events: auto;
+@@ -241,6 +235,11 @@ body.pxd-has-fullscreen .breadcrumbs-content {
+   cursor: move;
+ }
+ 
++.pxd-section--selected {
++  border-color: var(--pxd-active);
++  box-shadow: 0 0 0 1px var(--pxd-active);
++}
++
+ .bp3-dark .pxd-section,
+ body.bt-theme-dark .pxd-section,
+ body.roam-body.dark .pxd-section,
+@@ -282,7 +281,7 @@ body.roam-body.dark .pxd-section,
+   flex-direction: column;
+   min-width: 240px;
+   min-height: 140px;
+-  border: 1px solid var(--pxd-border-strong);
++  border: 1px solid var(--pxd-card-color, var(--pxd-border-strong));
+   background: var(--pxd-card-bg);
+   color: var(--pxd-text);
+   overflow: visible;
+@@ -299,7 +298,6 @@ body.roam-body.dark .pxd-section,
+ }
+ 
+ .pxd-card--selected {
+-  border-color: var(--pxd-active);
+   box-shadow: 0 0 0 1px var(--pxd-active), var(--pxd-shadow);
+ }
+ 
+@@ -384,6 +382,26 @@ body.roam-body.dark .pxd-section,
+   cursor: text;
+ }
+ 
++.pxd-card__preview {
++  position: relative;
++  height: 56px;
++  margin-top: 8px;
++  border: 1px dashed var(--pxd-border);
++  border-radius: 4px;
++  overflow: hidden;
++  pointer-events: none;
++}
++
++.pxd-card__preview-node {
++  position: absolute;
++  box-sizing: border-box;
++  border: 1px solid var(--pxd-border-strong);
++  border-radius: 2px;
++  background: var(--pxd-bg);
++  min-width: 4px;
++  min-height: 4px;
++}
++
+ /* Roam chrome that has no place on a card. */
+ .pxd-card .rm-block__controls,
+ .pxd-card .rm-bullet,
+@@ -409,8 +427,8 @@ body.roam-body.dark .pxd-section,
+ 
+ .pxd-handle {
+   position: absolute;
+-  width: 14px;
+-  height: 14px;
++  width: 12px;
++  height: 12px;
+   border-radius: 50%;
+   border: 2px solid var(--pxd-active);
+   background: var(--pxd-card-bg);
+@@ -421,6 +439,12 @@ body.roam-body.dark .pxd-section,
+   z-index: 2;
+ }
+ 
++.pxd-handle::before {
++  content: "";
++  position: absolute;
++  inset: -10px;
++}
++
+ .pxd-card:hover .pxd-handle,
+ .pxd-card--selected .pxd-handle,
+ .pxd-root[data-tool="connect"] .pxd-handle {
+@@ -432,10 +456,10 @@ body.roam-body.dark .pxd-section,
+   pointer-events: none;
+ }
+ 
+-.pxd-handle--top { top: -7px; left: 50%; transform: translateX(-50%); }
+-.pxd-handle--right { right: -7px; top: 50%; transform: translateY(-50%); }
+-.pxd-handle--bottom { bottom: -7px; left: 50%; transform: translateX(-50%); }
+-.pxd-handle--left { left: -7px; top: 50%; transform: translateY(-50%); }
++.pxd-handle--top { top: -6px; left: 50%; transform: translateX(-50%); }
++.pxd-handle--right { right: -6px; top: 50%; transform: translateY(-50%); }
++.pxd-handle--bottom { bottom: -6px; left: 50%; transform: translateX(-50%); }
++.pxd-handle--left { left: -6px; top: 50%; transform: translateY(-50%); }
+ 
+ .pxd-card__resize {
+   position: absolute;
+@@ -560,6 +584,40 @@ body.roam-body.dark .pxd-section,
+   display: none;
+ }
+ 
++.pxd-palette {
++  display: flex;
++  align-items: center;
++  gap: 4px;
++  padding: 3px 6px;
++  border: 1px solid var(--pxd-border-strong);
++  border-radius: 8px;
++  background: var(--pxd-card-bg);
++  box-shadow: var(--pxd-shadow);
++}
++
++.pxd-palette--hidden {
++  display: none;
++}
++
++.pxd-swatch {
++  width: 14px;
++  height: 14px;
++  padding: 0;
++  border: 1px solid var(--pxd-border-strong);
++  border-radius: 50%;
++  cursor: pointer;
++  background: var(--pxd-card-bg);
++}
++
++.pxd-swatch--default {
++  background: var(--pxd-card-bg);
++  box-shadow: inset 0 0 0 1px var(--pxd-border);
++}
++
++.pxd-swatch:hover {
++  box-shadow: 0 0 0 1px var(--pxd-active);
++}
++
+ .pxd-crumb__item {
+   border: 0;
+   background: transparent;
+@@ -780,20 +838,4 @@ body.roam-body.dark .pxd-root,
+   --pxd-edge: #a7b6c2;
+   --pxd-grid-dot: rgba(167, 182, 194, 0.22);
+   --pxd-shadow: 0 1px 3px rgba(0, 0, 0, 0.35), 0 4px 12px rgba(0, 0, 0, 0.3);
+-  caret-color: #f5f8fa !important;
+-}
+-
+-.bp3-dark .pxd-root textarea,
+-.bp3-dark .pxd-root .rm-block__input,
+-.bp3-dark .pxd-root [contenteditable],
+-body.bt-theme-dark .pxd-root textarea,
+-body.bt-theme-dark .pxd-root .rm-block__input,
+-body.bt-theme-dark .pxd-root [contenteditable],
+-body.roam-body.dark .pxd-root textarea,
+-body.roam-body.dark .pxd-root .rm-block__input,
+-body.roam-body.dark .pxd-root [contenteditable],
+-.rm-dark-theme .pxd-root textarea,
+-.rm-dark-theme .pxd-root .rm-block__input,
+-.rm-dark-theme .pxd-root [contenteditable] {
+-  caret-color: #f5f8fa !important;
+ }
+diff --git a/extension.js b/extension.js
+index e96dc1a..ec923c3 100644
+--- a/extension.js
++++ b/extension.js
+@@ -1,4 +1,4 @@
+-/* Plexus Diagram v0.4.2 | MIT | generated; edit src/ */
++/* Plexus Diagram v0.5.0 | MIT | generated; edit src/ */
+ 
+ // src/lifecycle.js
+ function isPromiseLike(value) {
+@@ -345,12 +345,13 @@ function parseMetadataTree(tree) {
+       }
+       if (line.startsWith("section ")) {
+         const sectionId = line.slice("section ".length).trim();
+-        const section = { pos: null, size: null, title: "" };
++        const section = { pos: null, size: null, title: "", color: "" };
+         for (const prop of child.children || []) {
+           const propLine = prop.string.trim();
+           if (propLine.startsWith("pos::")) section.pos = parsePair(propLine.slice("pos::".length));
+           if (propLine.startsWith("size::")) section.size = parseSize(propLine.slice("size::".length));
+           if (propLine.startsWith("title::")) section.title = propLine.slice("title::".length).trim();
++          if (propLine.startsWith("color::")) section.color = propLine.slice("color::".length).trim();
+         }
+         entry.sections.set(sectionId, section);
+       }
+@@ -380,6 +381,7 @@ function serializeDiagramMetadata(diagramUid, layout) {
+     if (section.pos) lines.push(`    pos:: ${section.pos.x},${section.pos.y}`);
+     if (section.size) lines.push(`    size:: ${section.size.width},${section.size.height}`);
+     if (section.title) lines.push(`    title:: ${section.title}`);
++    if (section.color) lines.push(`    color:: ${section.color}`);
+   }
+   return lines.join("\n");
+ }
+@@ -492,6 +494,7 @@ async function patchDiagramBlock(blockUid, diagramUid, layout) {
+     await syncPropChild(rowUid, props.pos, section.pos ? `pos:: ${section.pos.x},${section.pos.y}` : null);
+     await syncPropChild(rowUid, props.size, section.size ? `size:: ${section.size.width},${section.size.height}` : null);
+     await syncPropChild(rowUid, props.title, section.title ? `title:: ${section.title}` : null);
++    await syncPropChild(rowUid, props.color, section.color ? `color:: ${section.color}` : null);
+   }
+   for (const [id, row] of indexed.sections) {
+     if (!wantedSections.has(id)) await deleteBlock(row.uid);
+@@ -1270,9 +1273,18 @@ var DiagramModel = class _DiagramModel {
+   layoutSnapshot() {
+     return {
+       viewport: { ...this.viewport },
+-      nodes: new Map([...this.nodes].map(([uid, node]) => [uid, { ...node, pos: { ...node.pos }, size: { ...node.size } }])),
++      nodes: new Map([...this.nodes].map(([uid, node]) => [uid, {
++        pos: { ...node.pos },
++        size: { ...node.size },
++        color: node.color || ""
++      }])),
+       edges: this.edges.map((edge) => ({ ...edge })),
+-      sections: new Map([...this.sections].map(([id, section]) => [id, { ...section }]))
++      sections: new Map([...this.sections].map(([id, section]) => [id, {
++        ...section,
++        pos: section.pos ? { ...section.pos } : section.pos,
++        size: section.size ? { ...section.size } : section.size,
++        color: section.color || ""
++      }]))
+     };
+   }
+   // A pull only refreshes content (children, strings). Positions, sizes, edges,
+@@ -1627,7 +1639,23 @@ function isTextEntryTarget(target) {
+   if (target.isContentEditable) return true;
+   return Boolean(target.closest('.rm-block__input, [contenteditable="true"], .pxd-library-drawer, .pxd-edge-label-editor'));
+ }
++var COLOR_SWATCHES = [
++  ["", "Default", ""],
++  ["red", "Red", "#db3737"],
++  ["orange", "Orange", "#d9822b"],
++  ["yellow", "Yellow", "#d99e0b"],
++  ["green", "Green", "#29a634"],
++  ["teal", "Teal", "#00b3a4"],
++  ["blue", "Blue", "#2d72d2"],
++  ["violet", "Violet", "#7157d9"],
++  ["rose", "Rose", "#c22762"]
++];
++function colorHex(id) {
++  const row = COLOR_SWATCHES.find((entry) => entry[0] === id);
++  return row?.[2] || "";
++}
+ function createCanvasRoot({ session, settings, version, onPersist, nestStack: nestStackOption }) {
++  let currentSession = session;
+   const crumbs = nestStackOption !== void 0 ? nestStackOption : nestStack;
+   const root = document.createElement("div");
+   root.className = "pxd-root";
+@@ -1643,6 +1671,8 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
+   labelsLayer.className = "pxd-edge-labels";
+   const sectionsLayer = document.createElement("div");
+   sectionsLayer.className = "pxd-sections";
++  const tempSvg = document.createElementNS(SVG_NS, "svg");
++  tempSvg.classList.add("pxd-edges-temp");
+   const toolbar = document.createElement("div");
+   toolbar.className = "pxd-toolbar";
+   const hint = document.createElement("div");
+@@ -1650,10 +1680,10 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
+   hint.textContent = HINT_TEXT;
+   const minimap = settings.get("minimap") ? document.createElement("div") : null;
+   if (minimap) minimap.className = "pxd-minimap";
+-  world.append(sectionsLayer, edgesSvg, labelsLayer, cardsLayer);
++  world.append(sectionsLayer, edgesSvg, labelsLayer, cardsLayer, tempSvg);
+   root.append(grid, world, toolbar, hint);
+   if (minimap) root.append(minimap);
+-  const model = () => session.model;
++  const model = () => currentSession.model;
+   const num = (id, fallback) => {
+     const value = Number(settings.get(id));
+     return Number.isFinite(value) && value > 0 ? value : fallback;
+@@ -1868,13 +1898,14 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
+   const tools = [
+     ["select", "Select", "Select, drag, and pan (V)"],
+     ["card", "Card", "Click the board to add a card"],
+-    ["connect", "Connect", "Drag from a card onto another card or empty space"],
++    ["connect", "Connect", "Click-click or drag from a card; the wire follows the cursor"],
+     ["section", "Section", "Click the board to add a section frame"],
+     ["nested", "Nested", "Click the board to add a nested diagram card"],
+     ["library", "Library", "Place existing pages as cards"]
+   ];
+   const toolButtons = /* @__PURE__ */ new Map();
+   const setActiveTool = (tool) => {
++    if (tool !== "connect") clearConnectArm();
+     model().activeTool = tool;
+     for (const [name, button] of toolButtons) {
+       button.classList.toggle("pxd-toolbar__btn--active", name === tool);
+@@ -1931,7 +1962,6 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
+       button.className = "pxd-crumb__item";
+       button.textContent = item.title || "Diagram";
+       button.addEventListener("click", () => {
+-        crumbs.length = i;
+         void onPersist?.({ openCrumb: item.uid });
+       });
+       crumbRow.append(button);
+@@ -1946,7 +1976,7 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
+     crumbRow.append(current);
+   };
+   renderCrumbs();
+-  if (crumbs.length) toolbar.append(crumbRow);
++  toolbar.append(crumbRow);
+   const viewGroup = document.createElement("div");
+   viewGroup.className = "pxd-toolbar__group";
+   const zoomOutBtn = makeButton("Zoom-", "Zoom out", "pxd-toolbar__btn--zoom");
+@@ -1967,6 +1997,25 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
+   fullBtn.addEventListener("click", () => setFullscreen(!isFullscreen()));
+   viewGroup.append(zoomOutBtn, zoomLabel, zoomInBtn, fitBtn, fullBtn);
+   toolbar.append(viewGroup);
++  const palette = document.createElement("div");
++  palette.className = "pxd-palette pxd-palette--hidden";
++  palette.title = "Card or section color";
++  for (const [id, label, hex] of COLOR_SWATCHES) {
++    const swatch = document.createElement("button");
++    swatch.type = "button";
++    swatch.className = "pxd-swatch";
++    swatch.dataset.color = id;
++    swatch.title = label;
++    if (hex) swatch.style.background = hex;
++    else swatch.classList.add("pxd-swatch--default");
++    swatch.addEventListener("click", (event) => {
++      event.preventDefault();
++      event.stopPropagation();
++      applyColor(id);
++    });
++    palette.append(swatch);
++  }
++  toolbar.append(palette);
+   if (settings.get("show-version-badge")) {
+     const badge = document.createElement("span");
+     badge.className = "pxd-version";
+@@ -2007,12 +2056,56 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
+     syncHint();
+   };
+   const sectionEls = /* @__PURE__ */ new Map();
++  let selectedSectionId = null;
+   const positionSection = (el, section) => {
+     el.style.left = `${section.pos?.x ?? 0}px`;
+     el.style.top = `${section.pos?.y ?? 0}px`;
+     el.style.width = `${section.size?.width ?? 320}px`;
+     el.style.height = `${section.size?.height ?? 240}px`;
+   };
++  const paintSectionColor = (el, section) => {
++    const hex = colorHex(section?.color);
++    if (hex) {
++      el.style.setProperty?.("--pxd-section-color", hex);
++      el.style.borderColor = hex;
++      el.style.background = `color-mix(in srgb, ${hex} 10%, transparent)`;
++    } else {
++      el.style.removeProperty?.("--pxd-section-color");
++      el.style.borderColor = "";
++      el.style.background = "";
++    }
++  };
++  const syncSectionSelection = () => {
++    for (const [id, el] of sectionEls) {
++      el.classList.toggle("pxd-section--selected", id === selectedSectionId);
++    }
++  };
++  const syncPalette = () => {
++    const show = model().selected.size > 0 || Boolean(selectedSectionId);
++    palette.classList.toggle("pxd-palette--hidden", !show);
++  };
++  const applyColor = (id) => {
++    const hexId = COLOR_SWATCHES.some((entry) => entry[0] === id) ? id : "";
++    let changed = false;
++    for (const uid of model().selected) {
++      const node = model().nodes.get(uid);
++      if (!node) continue;
++      node.color = hexId;
++      const card = cardEls.get(uid);
++      if (card) paintCardColor(card, node);
++      changed = true;
++    }
++    if (selectedSectionId) {
++      const section = model().sections.get(selectedSectionId);
++      if (section) {
++        section.color = hexId;
++        const el = sectionEls.get(selectedSectionId);
++        if (el) paintSectionColor(el, section);
++        changed = true;
++      }
++    }
++    if (changed) markLayoutDirty();
++  };
+   const startSectionRename = (label) => {
+     const sectionId = label.closest?.(".pxd-section")?.dataset?.sectionId;
+     const section = sectionId ? model().sections.get(sectionId) : null;
+@@ -2074,6 +2167,8 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
+         sectionEls.set(id, el);
+       }
+       positionSection(el, section);
++      paintSectionColor(el, section);
++      el.classList.toggle("pxd-section--selected", id === selectedSectionId);
+       if (el._pxdLabel.contentEditable !== "true") {
+         el._pxdLabel.textContent = section.title || "Section";
+       }
+@@ -2274,10 +2369,11 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
+       tempEdge = document.createElementNS(SVG_NS, "path");
+       tempEdge.classList.add("pxd-edge--temp");
+       tempEdge.setAttribute("fill", "none");
+-      tempEdge.setAttribute("stroke", "var(--pxd-edge)");
+-      tempEdge.setAttribute("stroke-width", String(num("edge-width", 2)));
++      tempEdge.setAttribute("stroke", "var(--pxd-active)");
++      tempEdge.setAttribute("stroke-width", "3");
++      tempEdge.setAttribute("stroke-dasharray", "6 4");
+       tempEdge.style.pointerEvents = "none";
+-      edgesSvg.append(tempEdge);
++      tempSvg.append(tempEdge);
+     }
+     const target = { x: worldPoint.x, y: worldPoint.y, width: 1, height: 1 };
+     tempEdge.setAttribute("d", buildEdgePath(settings.get("connector-style") || "bezier", source, target));
+@@ -2285,7 +2381,28 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
+   const clearTempEdge = () => {
+     tempEdge?.remove?.();
+     tempEdge = null;
++    if (typeof tempSvg.replaceChildren === "function") tempSvg.replaceChildren();
++    else if (Array.isArray(tempSvg.children)) tempSvg.children.length = 0;
++    else tempSvg.innerHTML = "";
++  };
++  let connectArm = null;
++  const onConnectArmMove = (event) => {
++    if (!connectArm) return;
++    setTempEdge(connectArm.uid, screenToWorld(event.clientX, event.clientY, false));
++  };
++  const armConnect = (uid) => {
++    if (!uid) return;
++    connectArm = { uid };
++    document.addEventListener("pointermove", onConnectArmMove, true);
++  };
++  const clearConnectArm = () => {
++    if (connectArm) {
++      document.removeEventListener("pointermove", onConnectArmMove, true);
++    }
++    connectArm = null;
++    clearTempEdge();
+   };
++  const getConnectArm = () => connectArm;
+   const cardEls = /* @__PURE__ */ new Map();
+   let editingUid = null;
+   let editOpenedAt = 0;
+@@ -2390,6 +2507,43 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
+         sub.textContent = "Double-click to open";
+         body.append(input, sub);
+       }
++      const nestedLayout = currentSession.metadataStore?.get?.(child.uid);
++      const nestedNodes = nestedLayout?.nodes;
++      if (nestedNodes && nestedNodes.size > 0) {
++        const preview = document.createElement("div");
++        preview.className = "pxd-card__preview";
++        const entries = [...nestedNodes.values()].slice(0, 8);
++        let minX = Infinity;
++        let minY = Infinity;
++        let maxX = -Infinity;
++        let maxY = -Infinity;
++        for (const node of entries) {
++          const x = node.pos?.x ?? 0;
++          const y = node.pos?.y ?? 0;
++          const w = node.size?.width ?? 40;
++          const h = node.size?.height ?? 24;
++          minX = Math.min(minX, x);
++          minY = Math.min(minY, y);
++          maxX = Math.max(maxX, x + w);
++          maxY = Math.max(maxY, y + h);
++        }
++        const bw = Math.max(maxX - minX, 1);
++        const bh = Math.max(maxY - minY, 1);
++        for (const node of entries) {
++          const rect = document.createElement("div");
++          rect.className = "pxd-card__preview-node";
++          const x = node.pos?.x ?? 0;
++          const y = node.pos?.y ?? 0;
++          const w = node.size?.width ?? 40;
++          const h = node.size?.height ?? 24;
++          rect.style.left = `${(x - minX) / bw * 100}%`;
++          rect.style.top = `${(y - minY) / bh * 100}%`;
++          rect.style.width = `${w / bw * 100}%`;
++          rect.style.height = `${h / bh * 100}%`;
++          preview.append(rect);
++        }
++        body.append(preview);
++      }
+     } else if (!child.string.trim()) {
+       card.classList.add("pxd-card--empty");
+       const placeholder = document.createElement("div");
+@@ -2497,8 +2651,20 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
+     for (const [uid, card] of cardEls) {
+       card.classList.toggle("pxd-card--selected", model().selected.has(uid));
+     }
++    syncSectionSelection();
++    syncPalette();
+     scheduleMinimap();
+   };
++  const paintCardColor = (card, node) => {
++    const hex = colorHex(node?.color);
++    if (hex) {
++      card.style.setProperty?.("--pxd-card-color", hex);
++      card.style.borderColor = hex;
++    } else {
++      card.style.removeProperty?.("--pxd-card-color");
++      card.style.borderColor = "";
++    }
++  };
+   const positionCard = (card, node) => {
+     card.style.left = `${node.pos.x}px`;
+     card.style.top = `${node.pos.y}px`;
+@@ -2548,6 +2714,7 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
+       card.classList.toggle("pxd-card--selected", model().selected.has(child.uid));
+       card.style.borderRadius = `${radius}px`;
+       positionCard(card, node);
++      paintCardColor(card, node);
+       const titleText = cardTitleText(child);
+       const showTitle = settings.get("show-card-title") && titleText !== child.string.trim();
+       card.classList.toggle("pxd-card--titled", Boolean(showTitle));
+@@ -2572,8 +2739,51 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
+     renderEdges();
+     renderCrumbs();
+     syncHint();
++    syncPalette();
+     scheduleMinimap();
+   };
++  const clearMountedCards = () => {
++    for (const card of cardEls.values()) {
++      if (card._pxdNameTimer) {
++        clearTimeout(card._pxdNameTimer);
++        card._pxdNameTimer = null;
++      }
++      unmountRoam(card._pxdBody);
++      card.remove();
++    }
++    cardEls.clear();
++    if (Array.isArray(cardsLayer.children)) cardsLayer.children.length = 0;
++    for (const el of sectionEls.values()) el.remove();
++    sectionEls.clear();
++    if (Array.isArray(sectionsLayer.children)) sectionsLayer.children.length = 0;
++    edgePaths.clear();
++    for (const pill of edgePills.values()) pill.remove?.();
++    edgePills.clear();
++    if (Array.isArray(labelsLayer.children)) labelsLayer.children.length = 0;
++    if (editingEdgeKey) closeEdgeEditor(false);
++    clearTempEdge();
++  };
++  const attachSession = (nextSession) => {
++    if (!nextSession) return;
++    void exitEdit(false);
++    if (editingEdgeKey) closeEdgeEditor(false);
++    endGesture();
++    clearConnectArm();
++    clearMountedCards();
++    selectedSectionId = null;
++    currentSession = nextSession;
++    const size = viewSize();
++    const viewport = nextSession.model?.viewport;
++    const usable = viewport && size.width && size.height && !viewportNeedsFit(viewport, nextSession.model.nodes, size, zoomBounds());
++    if (usable) {
++      initialFitDone = true;
++      applyTransform();
++    } else {
++      initialFitDone = false;
++      scheduleInitialFit();
++    }
++    render();
++  };
+   let gesture = null;
+   let spaceDown = false;
+   let lastToolAddAt = 0;
+@@ -2592,7 +2802,7 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
+     document.removeEventListener("pointermove", onPointerMove, true);
+     document.removeEventListener("pointerup", onPointerUp, true);
+     document.removeEventListener("pointercancel", onPointerUp, true);
+-    clearTempEdge();
++    if (!connectArm) clearTempEdge();
+   };
+   const cardFromPoint = (clientX, clientY) => {
+     let stack = [];
+@@ -2605,6 +2815,7 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
+     return cardUidFromHitStack(stack, cardsLayer);
+   };
+   const selectCard = (uid, additive) => {
++    selectedSectionId = null;
+     const selected = model().selected;
+     if (additive) {
+       if (selected.has(uid)) selected.delete(uid);
+@@ -2615,6 +2826,11 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
+     }
+     syncSelection();
+   };
++  const selectSection = (sectionId) => {
++    selectedSectionId = sectionId;
++    model().selected.clear();
++    syncSelection();
++  };
+   const onPointerDown = (event) => {
+     if (event.button !== 0 && event.button !== 1) return;
+     const target = event.target;
+@@ -2632,16 +2848,21 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
+       return;
+     }
+     const sectionEl = !uid && !panRequested ? target?.closest?.(".pxd-section") : null;
+-    if (sectionEl) {
++    if (sectionEl && !connectArm) {
+       const sectionId = sectionEl.dataset?.sectionId;
+       const section = sectionId ? model().sections.get(sectionId) : null;
+       if (section) {
+         const start = { x: event.clientX, y: event.clientY };
++        selectSection(sectionId);
+         if (target.closest(".pxd-section__resize")) {
+           beginGesture({ kind: "section-resize", sectionId, start, size: { ...section.size }, moved: false });
+           event.preventDefault();
+           return;
+         }
++        if (target.closest(".pxd-section__label")) {
++          event.preventDefault();
++          return;
++        }
+         if (target.closest(".pxd-section__label")?.isContentEditable || target.isContentEditable) return;
+         if (tool === "select" || tool === "section") {
+           beginGesture({ kind: "section-drag", sectionId, start, origin: { ...section.pos }, moved: false });
+@@ -2650,28 +2871,37 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
+         }
+       }
+     }
+-    if (uid && !panRequested) {
++    if ((uid || connectArm) && !panRequested) {
+       const start = { x: event.clientX, y: event.clientY };
+-      if (target.closest(".pxd-card__resize")) {
++      if (uid && target.closest(".pxd-card__resize")) {
+         const node = model().nodes.get(uid);
+         beginGesture({ kind: "resize", uid, start, size: { ...node.size }, moved: false });
+         event.preventDefault();
+         return;
+       }
+-      if (target.closest(".pxd-handle") || tool === "connect") {
+-        beginGesture({ kind: "connect", uid, start, moved: false });
++      const connectFrom = connectArm?.uid || (target.closest(".pxd-handle") || tool === "connect" ? uid : null);
++      if (connectFrom) {
++        beginGesture({ kind: "connect", uid: connectFrom, start, moved: false });
++        setTempEdge(connectFrom, screenToWorld(event.clientX, event.clientY, false));
++        try {
++          root.setPointerCapture?.(event.pointerId);
++        } catch {
++        }
+         event.preventDefault();
+         return;
+       }
+-      if (tool !== "select") return;
+-      selectCard(uid, event.shiftKey);
+-      const origins = /* @__PURE__ */ new Map();
+-      for (const selectedUid of model().selected) {
+-        const node = model().nodes.get(selectedUid);
+-        if (node) origins.set(selectedUid, { ...node.pos });
++      if (!uid) {
++      } else {
++        if (tool !== "select") return;
++        selectCard(uid, event.shiftKey);
++        const origins = /* @__PURE__ */ new Map();
++        for (const selectedUid of model().selected) {
++          const node = model().nodes.get(selectedUid);
++          if (node) origins.set(selectedUid, { ...node.pos });
++        }
++        beginGesture({ kind: "drag", uid, start, origins, moved: false });
++        return;
+       }
+-      beginGesture({ kind: "drag", uid, start, origins, moved: false });
+-      return;
+     }
+     if (panRequested || tool === "select") {
+       beginGesture({
+@@ -2684,9 +2914,17 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
+     }
+   };
+   const onPointerMove = (event) => {
++    if (connectArm && (!gesture || gesture.kind === "connect")) {
++      setTempEdge(connectArm.uid, screenToWorld(event.clientX, event.clientY, false));
++    }
+     if (!gesture) return;
+     const dx = event.clientX - gesture.start.x;
+     const dy = event.clientY - gesture.start.y;
++    if (gesture.kind === "connect") {
++      setTempEdge(gesture.uid, screenToWorld(event.clientX, event.clientY, false));
++      if (!gesture.moved && Math.hypot(dx, dy) >= DRAG_THRESHOLD_PX) gesture.moved = true;
++      return;
++    }
+     if (!gesture.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return;
+     gesture.moved = true;
+     const zoom = model().viewport.zoom || 1;
+@@ -2753,8 +2991,9 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
+     endGesture();
+     if (active.kind === "pan") {
+       if (active.moved) markViewportDirty();
+-      else if (model().activeTool === "select" && !event.shiftKey && model().selected.size) {
++      else if (model().activeTool === "select" && !event.shiftKey && (model().selected.size || selectedSectionId)) {
+         model().selected.clear();
++        selectedSectionId = null;
+         syncSelection();
+       }
+       return;
+@@ -2765,22 +3004,25 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
+     }
+     if (active.kind === "connect") {
+       const targetUid = cardFromPoint(event.clientX, event.clientY);
++      if (!active.moved && targetUid && targetUid === active.uid && !connectArm) {
++        armConnect(active.uid);
++        setTempEdge(active.uid, screenToWorld(event.clientX, event.clientY, false));
++        return;
++      }
++      if (!active.moved && connectArm && targetUid === connectArm.uid) {
++        return;
++      }
+       await completeConnect({
+         moved: active.moved,
+         sourceUid: active.uid,
+         targetUid,
+         clientX: event.clientX,
+-        clientY: event.clientY,
+-        shiftKey: event.shiftKey
++        clientY: event.clientY
+       });
+     }
+   };
+-  const completeConnect = async ({ moved, sourceUid, targetUid, clientX, clientY, shiftKey }) => {
++  const completeConnect = async ({ moved, sourceUid, targetUid, clientX, clientY }) => {
+     try {
+-      if (!moved) {
+-        selectCard(sourceUid, shiftKey);
+-        return;
+-      }
+       if (targetUid && targetUid !== sourceUid) {
+         const added = model().addEdge(sourceUid, targetUid, settings.get("connector-style") || "bezier");
+         renderEdges();
+@@ -2795,7 +3037,7 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
+         }
+         return;
+       }
+-      if (!targetUid) {
++      if (!targetUid && (moved || connectArm)) {
+         const point = screenToWorld(clientX, clientY);
+         const size = defaultCardSize();
+         await onPersist?.({
+@@ -2807,6 +3049,8 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
+         });
+       }
+     } catch {
++    } finally {
++      clearConnectArm();
+     }
+   };
+   const onDoubleClick = (event) => {
+@@ -2845,9 +3089,17 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
+   };
+   const onClick = (event) => {
+     const target = event.target;
++    if (target?.closest?.(".pxd-palette") || target?.closest?.(".pxd-swatch")) return;
+     if (target?.closest?.(".pxd-card") || target?.closest?.(".pxd-toolbar")) return;
+     if (target?.closest?.(".pxd-library-drawer") || target?.closest?.(".pxd-minimap")) return;
+     if (target?.closest?.(".pxd-edge-label-editor")) return;
++    const sectionLabel = target?.closest?.(".pxd-section__label");
++    if (sectionLabel) {
++      if (sectionLabel.isContentEditable) return;
++      event.preventDefault();
++      startSectionRename(sectionLabel);
++      return;
++    }
+     if (target?.closest?.(".pxd-section")) return;
+     if (event.detail > 1) return;
+     const pill = target?.closest?.(".pxd-edge-label");
+@@ -2920,6 +3172,11 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
+   };
+   const onKeyDown = (event) => {
+     if (event.key === "Escape") {
++      if (connectArm) {
++        event.preventDefault();
++        clearConnectArm();
++        return;
++      }
+       if (editingEdgeKey) {
+         event.preventDefault();
+         closeEdgeEditor(false);
+@@ -2930,6 +3187,12 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
+         void exitEdit();
+         return;
+       }
++      if (crumbs.length) {
++        event.preventDefault();
++        const parent = crumbs[crumbs.length - 1];
++        if (parent?.uid) void onPersist?.({ openCrumb: parent.uid });
++        return;
++      }
+       if (isFullscreen()) {
+         event.preventDefault();
+         event.stopPropagation();
+@@ -3010,6 +3273,10 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
+     fitToView,
+     editCard: enterEdit,
+     completeConnect,
++    attachSession,
++    armConnect,
++    clearConnectArm,
++    getConnectArm,
+     setLibraryOpen(open) {
+       toolButtons.get("library")?.classList.toggle("pxd-toolbar__btn--active", Boolean(open));
+     },
+@@ -3022,6 +3289,7 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
+       if (editingEdgeKey) closeEdgeEditor(false);
+       if (editingUid) void exitEdit(false);
+       detachFocusGuard();
++      clearConnectArm();
+       endGesture();
+       if (viewportTimer) {
+         clearTimeout(viewportTimer);
+@@ -3274,7 +3542,8 @@ var NativeDiagramSession = class {
+     this.model.sections.set(id, {
+       pos: { ...position },
+       size: { width: 320, height: 240 },
+-      title: ""
++      title: "",
++      color: ""
+     });
+     await this.persistLayout();
+     this.notifyViews({ type: "section" });
+@@ -3353,32 +3622,60 @@ function mountDiagramView({ nativeElement, session, settings, version, lifecycle
+   wrapper.style.height = `${wrapperHeight}px`;
+   wrapper.style.minHeight = `${wrapperHeight}px`;
+   wrapper.style.position = "relative";
++  const sessionBox = { current: session };
+   const canvas = createCanvasRoot({
+     session,
+     settings,
+     version,
+     onPersist: async (action) => {
+-      if (action.persistLayout) await session.persistLayout();
+-      if (action.persistViewport) await session.persistViewport();
++      const current = sessionBox.current;
++      if (action.persistLayout) await current.persistLayout();
++      if (action.persistViewport) await current.persistViewport();
+       if (action.toggleLibrary) onAction?.({ type: "library" });
+-      if (action.openNested) onAction?.({ type: "nested", uid: action.openNested });
+-      if (action.openCrumb) onAction?.({ type: "crumb", uid: action.openCrumb });
++      if (action.openNested) {
++        try {
++          await current.persistLayout?.();
++        } catch {
++        }
++        onAction?.({
++          type: "nested",
++          uid: action.openNested,
++          parentUid: current.diagramUid,
++          viewport: current.model?.viewport ? { ...current.model.viewport } : void 0,
++          sessionBox,
++          canvas,
++          wrapper
++        });
++      }
++      if (action.openCrumb) {
++        try {
++          await current.persistLayout?.();
++        } catch {
++        }
++        onAction?.({
++          type: "crumb",
++          uid: action.openCrumb,
++          sessionBox,
++          canvas,
++          wrapper
++        });
++      }
+       if (action.openBlock) onAction?.({ type: "open-block", uid: action.openBlock });
+       if (action.addCard) {
+-        const uid = await session.addCard(action.string ?? "", action.addCard);
++        const uid = await current.addCard(action.string ?? "", action.addCard);
+         if (uid && action.addEdge?.source) {
+-          session.model.addEdge(
++          current.model.addEdge(
+             action.addEdge.source,
+             uid,
+             action.addEdge.kind || settings.get("connector-style") || "bezier"
+           );
+-          await session.persistLayout();
++          await current.persistLayout();
+         }
+         canvas.render();
+         if (uid && !action.string) canvas.editCard?.(uid);
+       }
+       if (action.addSection) {
+-        await session.addSection(action.addSection);
++        await current.addSection(action.addSection);
+         canvas.render();
+       }
+     }
+@@ -3407,7 +3704,7 @@ var runtime = {
+   lifecycle: null,
+   metadata: null,
+   settings: null,
+-  version: "0.4.2",
++  version: "0.5.0",
+   enhancedUids: /* @__PURE__ */ new Set(),
+   activeDiagramUid: null,
+   guardStyle: null,
+@@ -3503,10 +3800,17 @@ async function enhanceDiagram(uid, nativeElement) {
+       onAction: async (action) => {
+         if (action.type === "library") await toggleLibrary(mounted.wrapper, mounted.canvas);
+         if (action.type === "nested" && action.uid) {
+-          await openNestedDiagram(action.uid, session.diagramUid);
++          await openNestedDiagram(action.uid, action.parentUid || sessionBoxUid(action), {
++            viewport: action.viewport,
++            attachSession: async (childUid) => attachViewSession(childUid, { ...action, viewport: void 0 })
++          });
+         }
+         if (action.type === "crumb" && action.uid) {
+-          await openCrumb(action.uid);
++          await openCrumb(action.uid, {
++            attachSession: async (ancestorUid, extra) => {
++              await attachViewSession(ancestorUid, { ...action, viewport: extra?.viewport });
++            }
++          });
+         }
+         if (action.type === "open-block" && action.uid) {
+           globalThis.roamAlphaAPI?.ui?.rightSidebar?.addWindow?.({ window: { type: "block", "block-uid": action.uid } });
+@@ -3588,28 +3892,68 @@ async function enhanceByUid(uid) {
+   await enhanceDiagram(uid, diagram);
+ }
+ var nestedOpenUid = null;
+-async function openNestedDiagram(uid, parentUid) {
++function sessionBoxUid(action) {
++  return action.sessionBox?.current?.diagramUid || runtime.activeDiagramUid;
++}
++async function attachViewSession(childUid, { sessionBox, canvas, wrapper, viewport } = {}) {
++  if (!childUid || !sessionBox || !canvas) return;
++  const parent = sessionBox.current;
++  const child = getOrCreateSession(childUid, () => new NativeDiagramSession({
++    diagramUid: childUid,
++    metadataStore: runtime.metadata,
++    settings: runtime.settings,
++    onChange: () => syncGuard()
++  }));
++  if (!child.model) child.load();
++  if (viewport && child.model) child.model.viewport = { ...viewport };
++  child.startWatch();
++  let view = null;
++  for (const candidate of parent?.views || []) {
++    if (candidate.canvas === canvas || candidate.wrapper === wrapper) {
++      view = candidate;
++      break;
++    }
++  }
++  if (view && parent) parent.removeView(view);
++  if (!view) {
++    view = {
++      refresh: () => canvas.render(),
++      dispose: () => canvas.dispose(),
++      canvas,
++      wrapper,
++      setFullscreen: canvas.setFullscreen
++    };
++  }
++  child.addView(view);
++  sessionBox.current = child;
++  runtime.activeDiagramUid = childUid;
++  if (wrapper?.dataset) wrapper.dataset.diagramUid = childUid;
++  canvas.attachSession(child);
++}
++async function openNestedDiagram(uid, parentUid, hooks = {}) {
+   if (!uid) return;
+   nestedOpenUid = uid;
+   if (parentUid && parentUid !== uid) {
+     const title = parseDiagramTitle(blockStringForUid(parentUid)) || "Diagram";
+-    nestStack.push({ uid: parentUid, title });
++    const entry = { uid: parentUid, title };
++    if (hooks.viewport) entry.viewport = { ...hooks.viewport };
++    nestStack.push(entry);
+   }
+   await markEnhanced(uid);
+-  await globalThis.roamAlphaAPI?.ui?.mainWindow?.openBlock?.({ block: { uid } });
++  if (hooks.attachSession) {
++    await hooks.attachSession(uid);
++  }
+ }
+-async function openCrumb(uid) {
++async function openCrumb(uid, hooks = {}) {
+   if (!uid) return;
+-  const pull = globalThis.roamAlphaAPI?.data?.pull?.(
+-    "[:node/title :block/string]",
+-    [":block/uid", uid]
+-  );
+-  const pageTitle = pull?.[":node/title"] ?? pull?.title;
+-  if (pageTitle) {
+-    await globalThis.roamAlphaAPI?.ui?.mainWindow?.openPage?.({ page: { uid } });
+-    return;
++  const i = nestStack.findIndex((entry) => entry.uid === uid);
++  if (i < 0) return;
++  const savedViewport = nestStack[i].viewport;
++  nestStack.length = i;
++  nestedOpenUid = uid;
++  if (hooks.attachSession) {
++    await hooks.attachSession(uid, { viewport: savedViewport });
+   }
+-  await globalThis.roamAlphaAPI?.ui?.mainWindow?.openBlock?.({ block: { uid } });
+ }
+ function syncNestStackOnNavigate(hash = globalThis.location?.hash || "") {
+   const openUid = diagramUidFromLocation(hash);
+@@ -3820,7 +4164,7 @@ async function registerSlashAndContext(lifecycle, extensionAPI) {
+ async function installPlexusDiagram({ extensionAPI, lifecycle, version }) {
+   runtime.extensionAPI = extensionAPI;
+   runtime.lifecycle = lifecycle;
+-  runtime.version = version || "0.4.2";
++  runtime.version = version || "0.5.0";
+   runtime.settings = createSettingsReader(extensionAPI);
+   runtime.enhancedUids = readEnhancedUidCache();
+   installGuard(runtime.enhancedUids);
+diff --git a/package.json b/package.json
+index 7dbd4f3..d008dd8 100644
+--- a/package.json
++++ b/package.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "plexus-diagram",
+-  "version": "0.4.2",
++  "version": "0.5.0",
+   "private": true,
+   "description": "Native-first Heptabase-like overlay for Roam {{[[diagram]]}} blocks",
+   "type": "module",
+diff --git a/src/canvas.js b/src/canvas.js
+index f5117db..8dbd273 100644
+--- a/src/canvas.js
++++ b/src/canvas.js
+@@ -343,7 +343,25 @@ function isTextEntryTarget(target) {
+  * for structural change — add/remove card, tool change, session pull — and reconciles
+  * card elements by uid so a card being edited is never torn down under the caret.
+  */
++const COLOR_SWATCHES = [
++  ["", "Default", ""],
++  ["red", "Red", "#db3737"],
++  ["orange", "Orange", "#d9822b"],
++  ["yellow", "Yellow", "#d99e0b"],
++  ["green", "Green", "#29a634"],
++  ["teal", "Teal", "#00b3a4"],
++  ["blue", "Blue", "#2d72d2"],
++  ["violet", "Violet", "#7157d9"],
++  ["rose", "Rose", "#c22762"],
++];
++
++function colorHex(id) {
++  const row = COLOR_SWATCHES.find((entry) => entry[0] === id);
++  return row?.[2] || "";
++}
++
+ export function createCanvasRoot({ session, settings, version, onPersist, nestStack: nestStackOption }) {
++  let currentSession = session;
+   const crumbs = nestStackOption !== undefined ? nestStackOption : nestStack;
+   const root = document.createElement("div");
+   root.className = "pxd-root";
+@@ -359,6 +377,8 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
+   labelsLayer.className = "pxd-edge-labels";
+   const sectionsLayer = document.createElement("div");
+   sectionsLayer.className = "pxd-sections";
++  const tempSvg = document.createElementNS(SVG_NS, "svg");
++  tempSvg.classList.add("pxd-edges-temp");
+   const toolbar = document.createElement("div");
+   toolbar.className = "pxd-toolbar";
+   const hint = document.createElement("div");
+@@ -367,11 +387,11 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
+   const minimap = settings.get("minimap") ? document.createElement("div") : null;
+   if (minimap) minimap.className = "pxd-minimap";
+ 
+-  world.append(sectionsLayer, edgesSvg, labelsLayer, cardsLayer);
++  world.append(sectionsLayer, edgesSvg, labelsLayer, cardsLayer, tempSvg);
+   root.append(grid, world, toolbar, hint);
+   if (minimap) root.append(minimap);
+ 
+-  const model = () => session.model;
++  const model = () => currentSession.model;
+   const num = (id, fallback) => {
+     const value = Number(settings.get(id));
+     return Number.isFinite(value) && value > 0 ? value : fallback;
+@@ -608,13 +628,14 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
+   const tools = [
+     ["select", "Select", "Select, drag, and pan (V)"],
+     ["card", "Card", "Click the board to add a card"],
+-    ["connect", "Connect", "Drag from a card onto another card or empty space"],
++    ["connect", "Connect", "Click-click or drag from a card; the wire follows the cursor"],
+     ["section", "Section", "Click the board to add a section frame"],
+     ["nested", "Nested", "Click the board to add a nested diagram card"],
+     ["library", "Library", "Place existing pages as cards"],
+   ];
+   const toolButtons = new Map();
+   const setActiveTool = (tool) => {
++    if (tool !== "connect") clearConnectArm();
+     model().activeTool = tool;
+     for (const [name, button] of toolButtons) {
+       button.classList.toggle("pxd-toolbar__btn--active", name === tool);
+@@ -672,7 +693,6 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
+       button.className = "pxd-crumb__item";
+       button.textContent = item.title || "Diagram";
+       button.addEventListener("click", () => {
+-        crumbs.length = i;
+         void onPersist?.({ openCrumb: item.uid });
+       });
+       crumbRow.append(button);
+@@ -687,7 +707,7 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
+     crumbRow.append(current);
+   };
+   renderCrumbs();
+-  if (crumbs.length) toolbar.append(crumbRow);
++  toolbar.append(crumbRow);
+ 
+   const viewGroup = document.createElement("div");
+   viewGroup.className = "pxd-toolbar__group";
+@@ -710,6 +730,26 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
+   viewGroup.append(zoomOutBtn, zoomLabel, zoomInBtn, fitBtn, fullBtn);
+   toolbar.append(viewGroup);
+ 
++  const palette = document.createElement("div");
++  palette.className = "pxd-palette pxd-palette--hidden";
++  palette.title = "Card or section color";
++  for (const [id, label, hex] of COLOR_SWATCHES) {
++    const swatch = document.createElement("button");
++    swatch.type = "button";
++    swatch.className = "pxd-swatch";
++    swatch.dataset.color = id;
++    swatch.title = label;
++    if (hex) swatch.style.background = hex;
++    else swatch.classList.add("pxd-swatch--default");
++    swatch.addEventListener("click", (event) => {
++      event.preventDefault();
++      event.stopPropagation();
++      applyColor(id);
++    });
++    palette.append(swatch);
++  }
++  toolbar.append(palette);
++
+   if (settings.get("show-version-badge")) {
+     const badge = document.createElement("span");
+     badge.className = "pxd-version";
+@@ -760,12 +800,56 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
+ 
+   // ---------------------------------------------------------------- sections
+   const sectionEls = new Map();
++  let selectedSectionId = null;
+   const positionSection = (el, section) => {
+     el.style.left = `${section.pos?.x ?? 0}px`;
+     el.style.top = `${section.pos?.y ?? 0}px`;
+     el.style.width = `${section.size?.width ?? 320}px`;
+     el.style.height = `${section.size?.height ?? 240}px`;
+   };
++  const paintSectionColor = (el, section) => {
++    const hex = colorHex(section?.color);
++    if (hex) {
++      el.style.setProperty?.("--pxd-section-color", hex);
++      el.style.borderColor = hex;
++      el.style.background = `color-mix(in srgb, ${hex} 10%, transparent)`;
++    } else {
++      el.style.removeProperty?.("--pxd-section-color");
++      el.style.borderColor = "";
++      el.style.background = "";
++    }
++  };
++  const syncSectionSelection = () => {
++    for (const [id, el] of sectionEls) {
++      el.classList.toggle("pxd-section--selected", id === selectedSectionId);
++    }
++  };
++  const syncPalette = () => {
++    const show = model().selected.size > 0 || Boolean(selectedSectionId);
++    palette.classList.toggle("pxd-palette--hidden", !show);
++  };
++  const applyColor = (id) => {
++    const hexId = COLOR_SWATCHES.some((entry) => entry[0] === id) ? id : "";
++    let changed = false;
++    for (const uid of model().selected) {
++      const node = model().nodes.get(uid);
++      if (!node) continue;
++      node.color = hexId;
++      const card = cardEls.get(uid);
++      if (card) paintCardColor(card, node);
++      changed = true;
++    }
++    if (selectedSectionId) {
++      const section = model().sections.get(selectedSectionId);
++      if (section) {
++        section.color = hexId;
++        const el = sectionEls.get(selectedSectionId);
++        if (el) paintSectionColor(el, section);
++        changed = true;
++      }
++    }
++    if (changed) markLayoutDirty();
++  };
+   const startSectionRename = (label) => {
+     const sectionId = label.closest?.(".pxd-section")?.dataset?.sectionId;
+     const section = sectionId ? model().sections.get(sectionId) : null;
+@@ -827,6 +911,8 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
+         sectionEls.set(id, el);
+       }
+       positionSection(el, section);
++      paintSectionColor(el, section);
++      el.classList.toggle("pxd-section--selected", id === selectedSectionId);
+       if (el._pxdLabel.contentEditable !== "true") {
+         el._pxdLabel.textContent = section.title || "Section";
+       }
+@@ -1029,10 +1115,11 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
+       tempEdge = document.createElementNS(SVG_NS, "path");
+       tempEdge.classList.add("pxd-edge--temp");
+       tempEdge.setAttribute("fill", "none");
+-      tempEdge.setAttribute("stroke", "var(--pxd-edge)");
+-      tempEdge.setAttribute("stroke-width", String(num("edge-width", 2)));
++      tempEdge.setAttribute("stroke", "var(--pxd-active)");
++      tempEdge.setAttribute("stroke-width", "3");
++      tempEdge.setAttribute("stroke-dasharray", "6 4");
+       tempEdge.style.pointerEvents = "none";
+-      edgesSvg.append(tempEdge);
++      tempSvg.append(tempEdge);
+     }
+     const target = { x: worldPoint.x, y: worldPoint.y, width: 1, height: 1 };
+     tempEdge.setAttribute("d", buildEdgePath(settings.get("connector-style") || "bezier", source, target));
+@@ -1040,7 +1127,29 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
+   const clearTempEdge = () => {
+     tempEdge?.remove?.();
+     tempEdge = null;
++    if (typeof tempSvg.replaceChildren === "function") tempSvg.replaceChildren();
++    else if (Array.isArray(tempSvg.children)) tempSvg.children.length = 0;
++    else tempSvg.innerHTML = "";
++  };
++
++  let connectArm = null;
++  const onConnectArmMove = (event) => {
++    if (!connectArm) return;
++    setTempEdge(connectArm.uid, screenToWorld(event.clientX, event.clientY, false));
+   };
++  const armConnect = (uid) => {
++    if (!uid) return;
++    connectArm = { uid };
++    document.addEventListener("pointermove", onConnectArmMove, true);
++  };
++  const clearConnectArm = () => {
++    if (connectArm) {
++      document.removeEventListener("pointermove", onConnectArmMove, true);
++    }
++    connectArm = null;
++    clearTempEdge();
++  };
++  const getConnectArm = () => connectArm;
+ 
+   // ---------------------------------------------------------------- cards
+   const cardEls = new Map();
+@@ -1150,6 +1259,43 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
+         sub.textContent = "Double-click to open";
+         body.append(input, sub);
+       }
++      const nestedLayout = currentSession.metadataStore?.get?.(child.uid);
++      const nestedNodes = nestedLayout?.nodes;
++      if (nestedNodes && nestedNodes.size > 0) {
++        const preview = document.createElement("div");
++        preview.className = "pxd-card__preview";
++        const entries = [...nestedNodes.values()].slice(0, 8);
++        let minX = Infinity;
++        let minY = Infinity;
++        let maxX = -Infinity;
++        let maxY = -Infinity;
++        for (const node of entries) {
++          const x = node.pos?.x ?? 0;
++          const y = node.pos?.y ?? 0;
++          const w = node.size?.width ?? 40;
++          const h = node.size?.height ?? 24;
++          minX = Math.min(minX, x);
++          minY = Math.min(minY, y);
++          maxX = Math.max(maxX, x + w);
++          maxY = Math.max(maxY, y + h);
++        }
++        const bw = Math.max(maxX - minX, 1);
++        const bh = Math.max(maxY - minY, 1);
++        for (const node of entries) {
++          const rect = document.createElement("div");
++          rect.className = "pxd-card__preview-node";
++          const x = node.pos?.x ?? 0;
++          const y = node.pos?.y ?? 0;
++          const w = node.size?.width ?? 40;
++          const h = node.size?.height ?? 24;
++          rect.style.left = `${((x - minX) / bw) * 100}%`;
++          rect.style.top = `${((y - minY) / bh) * 100}%`;
++          rect.style.width = `${(w / bw) * 100}%`;
++          rect.style.height = `${(h / bh) * 100}%`;
++          preview.append(rect);
++        }
++        body.append(preview);
++      }
+     } else if (!child.string.trim()) {
+       card.classList.add("pxd-card--empty");
+       const placeholder = document.createElement("div");
+@@ -1257,9 +1403,22 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
+     for (const [uid, card] of cardEls) {
+       card.classList.toggle("pxd-card--selected", model().selected.has(uid));
+     }
++    syncSectionSelection();
++    syncPalette();
+     scheduleMinimap();
+   };
+ 
++  const paintCardColor = (card, node) => {
++    const hex = colorHex(node?.color);
++    if (hex) {
++      card.style.setProperty?.("--pxd-card-color", hex);
++      card.style.borderColor = hex;
++    } else {
++      card.style.removeProperty?.("--pxd-card-color");
++      card.style.borderColor = "";
++    }
++  };
++
+   const positionCard = (card, node) => {
+     card.style.left = `${node.pos.x}px`;
+     card.style.top = `${node.pos.y}px`;
+@@ -1311,6 +1470,7 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
+       card.classList.toggle("pxd-card--selected", model().selected.has(child.uid));
+       card.style.borderRadius = `${radius}px`;
+       positionCard(card, node);
++      paintCardColor(card, node);
+       const titleText = cardTitleText(child);
+       const showTitle = settings.get("show-card-title") && titleText !== child.string.trim();
+       card.classList.toggle("pxd-card--titled", Boolean(showTitle));
+@@ -1336,9 +1496,57 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
+     renderEdges();
+     renderCrumbs();
+     syncHint();
++    syncPalette();
+     scheduleMinimap();
+   };
+ 
++  const clearMountedCards = () => {
++    for (const card of cardEls.values()) {
++      if (card._pxdNameTimer) {
++        clearTimeout(card._pxdNameTimer);
++        card._pxdNameTimer = null;
++      }
++      unmountRoam(card._pxdBody);
++      card.remove();
++    }
++    cardEls.clear();
++    if (Array.isArray(cardsLayer.children)) cardsLayer.children.length = 0;
++    for (const el of sectionEls.values()) el.remove();
++    sectionEls.clear();
++    if (Array.isArray(sectionsLayer.children)) sectionsLayer.children.length = 0;
++    edgePaths.clear();
++    for (const pill of edgePills.values()) pill.remove?.();
++    edgePills.clear();
++    if (Array.isArray(labelsLayer.children)) labelsLayer.children.length = 0;
++    if (editingEdgeKey) closeEdgeEditor(false);
++    clearTempEdge();
++  };
++
++  const attachSession = (nextSession) => {
++    if (!nextSession) return;
++    void exitEdit(false);
++    if (editingEdgeKey) closeEdgeEditor(false);
++    endGesture();
++    clearConnectArm();
++    clearMountedCards();
++    selectedSectionId = null;
++    currentSession = nextSession;
++    const size = viewSize();
++    const viewport = nextSession.model?.viewport;
++    const usable = viewport
++      && size.width
++      && size.height
++      && !viewportNeedsFit(viewport, nextSession.model.nodes, size, zoomBounds());
++    if (usable) {
++      initialFitDone = true;
++      applyTransform();
++    } else {
++      initialFitDone = false;
++      scheduleInitialFit();
++    }
++    render();
++  };
++
+   // ---------------------------------------------------------------- pointer model
+   let gesture = null;
+   let spaceDown = false;
+@@ -1359,7 +1567,7 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
+     document.removeEventListener("pointermove", onPointerMove, true);
+     document.removeEventListener("pointerup", onPointerUp, true);
+     document.removeEventListener("pointercancel", onPointerUp, true);
+-    clearTempEdge();
++    if (!connectArm) clearTempEdge();
+   };
+ 
+   const cardFromPoint = (clientX, clientY) => {
+@@ -1374,6 +1582,7 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
+   };
+ 
+   const selectCard = (uid, additive) => {
++    selectedSectionId = null;
+     const selected = model().selected;
+     if (additive) {
+       if (selected.has(uid)) selected.delete(uid);
+@@ -1385,6 +1594,12 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
+     syncSelection();
+   };
+ 
++  const selectSection = (sectionId) => {
++    selectedSectionId = sectionId;
++    model().selected.clear();
++    syncSelection();
++  };
++
+   const onPointerDown = (event) => {
+     if (event.button !== 0 && event.button !== 1) return;
+     const target = event.target;
+@@ -1404,16 +1619,21 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
+     }
+ 
+     const sectionEl = !uid && !panRequested ? target?.closest?.(".pxd-section") : null;
+-    if (sectionEl) {
++    if (sectionEl && !connectArm) {
+       const sectionId = sectionEl.dataset?.sectionId;
+       const section = sectionId ? model().sections.get(sectionId) : null;
+       if (section) {
+         const start = { x: event.clientX, y: event.clientY };
++        selectSection(sectionId);
+         if (target.closest(".pxd-section__resize")) {
+           beginGesture({ kind: "section-resize", sectionId, start, size: { ...section.size }, moved: false });
+           event.preventDefault();
+           return;
+         }
++        if (target.closest(".pxd-section__label")) {
++          event.preventDefault();
++          return;
++        }
+         if (target.closest(".pxd-section__label")?.isContentEditable || target.isContentEditable) return;
+         if (tool === "select" || tool === "section") {
+           beginGesture({ kind: "section-drag", sectionId, start, origin: { ...section.pos }, moved: false });
+@@ -1423,28 +1643,36 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
+       }
+     }
+ 
+-    if (uid && !panRequested) {
++    if ((uid || connectArm) && !panRequested) {
+       const start = { x: event.clientX, y: event.clientY };
+-      if (target.closest(".pxd-card__resize")) {
++      if (uid && target.closest(".pxd-card__resize")) {
+         const node = model().nodes.get(uid);
+         beginGesture({ kind: "resize", uid, start, size: { ...node.size }, moved: false });
+         event.preventDefault();
+         return;
+       }
+-      if (target.closest(".pxd-handle") || tool === "connect") {
+-        beginGesture({ kind: "connect", uid, start, moved: false });
++      const connectFrom = connectArm?.uid
++        || ((target.closest(".pxd-handle") || tool === "connect") ? uid : null);
++      if (connectFrom) {
++        beginGesture({ kind: "connect", uid: connectFrom, start, moved: false });
++        setTempEdge(connectFrom, screenToWorld(event.clientX, event.clientY, false));
++        try { root.setPointerCapture?.(event.pointerId); } catch { /* unsupported */ }
+         event.preventDefault();
+         return;
+       }
+-      if (tool !== "select") return;
+-      selectCard(uid, event.shiftKey);
+-      const origins = new Map();
+-      for (const selectedUid of model().selected) {
+-        const node = model().nodes.get(selectedUid);
+-        if (node) origins.set(selectedUid, { ...node.pos });
++      if (!uid) {
++        /* empty space with no connect arm — fall through */
++      } else {
++        if (tool !== "select") return;
++        selectCard(uid, event.shiftKey);
++        const origins = new Map();
++        for (const selectedUid of model().selected) {
++          const node = model().nodes.get(selectedUid);
++          if (node) origins.set(selectedUid, { ...node.pos });
++        }
++        beginGesture({ kind: "drag", uid, start, origins, moved: false });
++        return;
+       }
+-      beginGesture({ kind: "drag", uid, start, origins, moved: false });
+-      return;
+     }
+ 
+     if (panRequested || tool === "select") {
+@@ -1459,9 +1687,17 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
+   };
+ 
+   const onPointerMove = (event) => {
++    if (connectArm && (!gesture || gesture.kind === "connect")) {
++      setTempEdge(connectArm.uid, screenToWorld(event.clientX, event.clientY, false));
++    }
+     if (!gesture) return;
+     const dx = event.clientX - gesture.start.x;
+     const dy = event.clientY - gesture.start.y;
++    if (gesture.kind === "connect") {
++      setTempEdge(gesture.uid, screenToWorld(event.clientX, event.clientY, false));
++      if (!gesture.moved && Math.hypot(dx, dy) >= DRAG_THRESHOLD_PX) gesture.moved = true;
++      return;
++    }
+     if (!gesture.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return;
+     gesture.moved = true;
+     const zoom = model().viewport.zoom || 1;
+@@ -1529,8 +1765,9 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
+     endGesture();
+     if (active.kind === "pan") {
+       if (active.moved) markViewportDirty();
+-      else if (model().activeTool === "select" && !event.shiftKey && model().selected.size) {
++      else if (model().activeTool === "select" && !event.shiftKey && (model().selected.size || selectedSectionId)) {
+         model().selected.clear();
++        selectedSectionId = null;
+         syncSelection();
+       }
+       return;
+@@ -1541,23 +1778,26 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
+     }
+     if (active.kind === "connect") {
+       const targetUid = cardFromPoint(event.clientX, event.clientY);
++      if (!active.moved && targetUid && targetUid === active.uid && !connectArm) {
++        armConnect(active.uid);
++        setTempEdge(active.uid, screenToWorld(event.clientX, event.clientY, false));
++        return;
++      }
++      if (!active.moved && connectArm && targetUid === connectArm.uid) {
++        return;
++      }
+       await completeConnect({
+         moved: active.moved,
+         sourceUid: active.uid,
+         targetUid,
+         clientX: event.clientX,
+         clientY: event.clientY,
+-        shiftKey: event.shiftKey,
+       });
+     }
+   };
+ 
+-  const completeConnect = async ({ moved, sourceUid, targetUid, clientX, clientY, shiftKey }) => {
++  const completeConnect = async ({ moved, sourceUid, targetUid, clientX, clientY }) => {
+     try {
+-      if (!moved) {
+-        selectCard(sourceUid, shiftKey);
+-        return;
+-      }
+       if (targetUid && targetUid !== sourceUid) {
+         const added = model().addEdge(sourceUid, targetUid, settings.get("connector-style") || "bezier");
+         renderEdges();
+@@ -1572,7 +1812,7 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
+         }
+         return;
+       }
+-      if (!targetUid) {
++      if (!targetUid && (moved || connectArm)) {
+         const point = screenToWorld(clientX, clientY);
+         const size = defaultCardSize();
+         await onPersist?.({
+@@ -1583,7 +1823,9 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
+           addEdge: { source: sourceUid },
+         });
+       }
+-    } catch { /* connect-to-empty or persist failed — no dangling edge */ }
++    } catch { /* connect-to-empty or persist failed — no dangling edge */ } finally {
++      clearConnectArm();
++    }
+   };
+ 
+   const onDoubleClick = (event) => {
+@@ -1623,9 +1865,17 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
+ 
+   const onClick = (event) => {
+     const target = event.target;
++    if (target?.closest?.(".pxd-palette") || target?.closest?.(".pxd-swatch")) return;
+     if (target?.closest?.(".pxd-card") || target?.closest?.(".pxd-toolbar")) return;
+     if (target?.closest?.(".pxd-library-drawer") || target?.closest?.(".pxd-minimap")) return;
+     if (target?.closest?.(".pxd-edge-label-editor")) return;
++    const sectionLabel = target?.closest?.(".pxd-section__label");
++    if (sectionLabel) {
++      if (sectionLabel.isContentEditable) return;
++      event.preventDefault();
++      startSectionRename(sectionLabel);
++      return;
++    }
+     if (target?.closest?.(".pxd-section")) return;
+     if (event.detail > 1) return;
+     const pill = target?.closest?.(".pxd-edge-label");
+@@ -1702,6 +1952,11 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
+ 
+   const onKeyDown = (event) => {
+     if (event.key === "Escape") {
++      if (connectArm) {
++        event.preventDefault();
++        clearConnectArm();
++        return;
++      }
+       if (editingEdgeKey) {
+         event.preventDefault();
+         closeEdgeEditor(false);
+@@ -1712,6 +1967,12 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
+         void exitEdit();
+         return;
+       }
++      if (crumbs.length) {
++        event.preventDefault();
++        const parent = crumbs[crumbs.length - 1];
++        if (parent?.uid) void onPersist?.({ openCrumb: parent.uid });
++        return;
++      }
+       if (isFullscreen()) {
+         event.preventDefault();
+         event.stopPropagation();
+@@ -1792,6 +2053,10 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
+     fitToView,
+     editCard: enterEdit,
+     completeConnect,
++    attachSession,
++    armConnect,
++    clearConnectArm,
++    getConnectArm,
+     setLibraryOpen(open) {
+       toolButtons.get("library")?.classList.toggle("pxd-toolbar__btn--active", Boolean(open));
+     },
+@@ -1804,6 +2069,7 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
+       if (editingEdgeKey) closeEdgeEditor(false);
+       if (editingUid) void exitEdit(false);
+       detachFocusGuard();
++      clearConnectArm();
+       endGesture();
+       if (viewportTimer) {
+         clearTimeout(viewportTimer);
+diff --git a/src/extension.css b/src/extension.css
+index 62203b1..6dc20b4 100644
+--- a/src/extension.css
++++ b/src/extension.css
+@@ -23,27 +23,10 @@
+   border-radius: 6px;
+   touch-action: none;
+   cursor: default;
+-  caret-color: #1c2127 !important;
+   font-size: 14px;
+   line-height: 1.45;
+ }
+ 
+-/* Native caret + OS text cursor so Svy Beam's fixed overlay (hotspot 16,16)
+-   cannot mis-scale inside `.pxd-world { transform: scale() }`. Beat
+-   `:root:not(.svy-off-beam) textarea { cursor: url(...) 16 16, text }`. */
+-.pxd-root textarea,
+-.pxd-root .rm-block__input,
+-.pxd-root [contenteditable],
+-:root .pxd-root textarea,
+-:root .pxd-root .rm-block__input,
+-:root .pxd-root [contenteditable],
+-:root:not(.svy-off-beam) .pxd-root textarea,
+-:root:not(.svy-off-beam) .pxd-root .rm-block__input,
+-:root:not(.svy-off-beam) .pxd-root [contenteditable] {
+-  caret-color: #1c2127 !important;
+-  cursor: text !important;
+-}
+-
+ .pxd-root--gesturing,
+ .pxd-root--gesturing * {
+   user-select: none !important;
+@@ -144,6 +127,14 @@ body.pxd-has-fullscreen .breadcrumbs-content {
+   pointer-events: none;
+ }
+ 
++.pxd-edges-temp {
++  position: absolute;
++  inset: 0;
++  overflow: visible;
++  pointer-events: none;
++  z-index: 4;
++}
++
+ .pxd-edge,
+ .pxd-edge-hit {
+   pointer-events: stroke;
+@@ -206,8 +197,11 @@ body.pxd-has-fullscreen .breadcrumbs-content {
+ }
+ 
+ .pxd-edge--temp {
++  stroke: var(--pxd-active);
++  stroke-width: 3;
+   stroke-dasharray: 6 4;
+-  opacity: 0.8;
++  fill: none;
++  opacity: 1;
+   pointer-events: none !important;
+ }
+ 
+@@ -232,7 +226,7 @@ body.pxd-has-fullscreen .breadcrumbs-content {
+ .pxd-section {
+   position: absolute;
+   box-sizing: border-box;
+-  border: 2px solid var(--pxd-border-strong);
++  border: 2px solid var(--pxd-section-color, var(--pxd-border-strong));
+   border-radius: 8px;
+   background: rgba(45, 114, 210, 0.06);
+   pointer-events: auto;
+@@ -241,6 +235,11 @@ body.pxd-has-fullscreen .breadcrumbs-content {
+   cursor: move;
+ }
+ 
++.pxd-section--selected {
++  border-color: var(--pxd-active);
++  box-shadow: 0 0 0 1px var(--pxd-active);
++}
++
+ .bp3-dark .pxd-section,
+ body.bt-theme-dark .pxd-section,
+ body.roam-body.dark .pxd-section,
+@@ -282,7 +281,7 @@ body.roam-body.dark .pxd-section,
+   flex-direction: column;
+   min-width: 240px;
+   min-height: 140px;
+-  border: 1px solid var(--pxd-border-strong);
++  border: 1px solid var(--pxd-card-color, var(--pxd-border-strong));
+   background: var(--pxd-card-bg);
+   color: var(--pxd-text);
+   overflow: visible;
+@@ -299,7 +298,6 @@ body.roam-body.dark .pxd-section,
+ }
+ 
+ .pxd-card--selected {
+-  border-color: var(--pxd-active);
+   box-shadow: 0 0 0 1px var(--pxd-active), var(--pxd-shadow);
+ }
+ 
+@@ -384,6 +382,26 @@ body.roam-body.dark .pxd-section,
+   cursor: text;
+ }
+ 
++.pxd-card__preview {
++  position: relative;
++  height: 56px;
++  margin-top: 8px;
++  border: 1px dashed var(--pxd-border);
++  border-radius: 4px;
++  overflow: hidden;
++  pointer-events: none;
++}
++
++.pxd-card__preview-node {
++  position: absolute;
++  box-sizing: border-box;
++  border: 1px solid var(--pxd-border-strong);
++  border-radius: 2px;
++  background: var(--pxd-bg);
++  min-width: 4px;
++  min-height: 4px;
++}
++
+ /* Roam chrome that has no place on a card. */
+ .pxd-card .rm-block__controls,
+ .pxd-card .rm-bullet,
+@@ -409,8 +427,8 @@ body.roam-body.dark .pxd-section,
+ 
+ .pxd-handle {
+   position: absolute;
+-  width: 14px;
+-  height: 14px;
++  width: 12px;
++  height: 12px;
+   border-radius: 50%;
+   border: 2px solid var(--pxd-active);
+   background: var(--pxd-card-bg);
+@@ -421,6 +439,12 @@ body.roam-body.dark .pxd-section,
+   z-index: 2;
+ }
+ 
++.pxd-handle::before {
++  content: "";
++  position: absolute;
++  inset: -10px;
++}
++
+ .pxd-card:hover .pxd-handle,
+ .pxd-card--selected .pxd-handle,
+ .pxd-root[data-tool="connect"] .pxd-handle {
+@@ -432,10 +456,10 @@ body.roam-body.dark .pxd-section,
+   pointer-events: none;
+ }
+ 
+-.pxd-handle--top { top: -7px; left: 50%; transform: translateX(-50%); }
+-.pxd-handle--right { right: -7px; top: 50%; transform: translateY(-50%); }
+-.pxd-handle--bottom { bottom: -7px; left: 50%; transform: translateX(-50%); }
+-.pxd-handle--left { left: -7px; top: 50%; transform: translateY(-50%); }
++.pxd-handle--top { top: -6px; left: 50%; transform: translateX(-50%); }
++.pxd-handle--right { right: -6px; top: 50%; transform: translateY(-50%); }
++.pxd-handle--bottom { bottom: -6px; left: 50%; transform: translateX(-50%); }
++.pxd-handle--left { left: -6px; top: 50%; transform: translateY(-50%); }
+ 
+ .pxd-card__resize {
+   position: absolute;
+@@ -560,6 +584,40 @@ body.roam-body.dark .pxd-section,
+   display: none;
+ }
+ 
++.pxd-palette {
++  display: flex;
++  align-items: center;
++  gap: 4px;
++  padding: 3px 6px;
++  border: 1px solid var(--pxd-border-strong);
++  border-radius: 8px;
++  background: var(--pxd-card-bg);
++  box-shadow: var(--pxd-shadow);
++}
++
++.pxd-palette--hidden {
++  display: none;
++}
++
++.pxd-swatch {
++  width: 14px;
++  height: 14px;
++  padding: 0;
++  border: 1px solid var(--pxd-border-strong);
++  border-radius: 50%;
++  cursor: pointer;
++  background: var(--pxd-card-bg);
++}
++
++.pxd-swatch--default {
++  background: var(--pxd-card-bg);
++  box-shadow: inset 0 0 0 1px var(--pxd-border);
++}
++
++.pxd-swatch:hover {
++  box-shadow: 0 0 0 1px var(--pxd-active);
++}
++
+ .pxd-crumb__item {
+   border: 0;
+   background: transparent;
+@@ -780,20 +838,4 @@ body.roam-body.dark .pxd-root,
+   --pxd-edge: #a7b6c2;
+   --pxd-grid-dot: rgba(167, 182, 194, 0.22);
+   --pxd-shadow: 0 1px 3px rgba(0, 0, 0, 0.35), 0 4px 12px rgba(0, 0, 0, 0.3);
+-  caret-color: #f5f8fa !important;
+-}
+-
+-.bp3-dark .pxd-root textarea,
+-.bp3-dark .pxd-root .rm-block__input,
+-.bp3-dark .pxd-root [contenteditable],
+-body.bt-theme-dark .pxd-root textarea,
+-body.bt-theme-dark .pxd-root .rm-block__input,
+-body.bt-theme-dark .pxd-root [contenteditable],
+-body.roam-body.dark .pxd-root textarea,
+-body.roam-body.dark .pxd-root .rm-block__input,
+-body.roam-body.dark .pxd-root [contenteditable],
+-.rm-dark-theme .pxd-root textarea,
+-.rm-dark-theme .pxd-root .rm-block__input,
+-.rm-dark-theme .pxd-root [contenteditable] {
+-  caret-color: #f5f8fa !important;
+ }
+diff --git a/src/feature.js b/src/feature.js
+index 7acd699..af88ac5 100644
+--- a/src/feature.js
++++ b/src/feature.js
+@@ -34,7 +34,7 @@ export const runtime = {
+   lifecycle: null,
+   metadata: null,
+   settings: null,
+-  version: "0.4.2",
++  version: "0.5.0",
+   enhancedUids: new Set(),
+   activeDiagramUid: null,
+   guardStyle: null,
+@@ -140,10 +140,17 @@ async function enhanceDiagram(uid, nativeElement) {
+       onAction: async (action) => {
+         if (action.type === "library") await toggleLibrary(mounted.wrapper, mounted.canvas);
+         if (action.type === "nested" && action.uid) {
+-          await openNestedDiagram(action.uid, session.diagramUid);
++          await openNestedDiagram(action.uid, action.parentUid || sessionBoxUid(action), {
++            viewport: action.viewport,
++            attachSession: async (childUid) => attachViewSession(childUid, { ...action, viewport: undefined }),
++          });
+         }
+         if (action.type === "crumb" && action.uid) {
+-          await openCrumb(action.uid);
++          await openCrumb(action.uid, {
++            attachSession: async (ancestorUid, extra) => {
++              await attachViewSession(ancestorUid, { ...action, viewport: extra?.viewport });
++            },
++          });
+         }
+         if (action.type === "open-block" && action.uid) {
+           globalThis.roamAlphaAPI?.ui?.rightSidebar?.addWindow?.({ window: { type: "block", "block-uid": action.uid } });
+@@ -233,29 +240,71 @@ async function enhanceByUid(uid) {
+ 
+ let nestedOpenUid = null;
+ 
+-async function openNestedDiagram(uid, parentUid) {
++function sessionBoxUid(action) {
++  return action.sessionBox?.current?.diagramUid || runtime.activeDiagramUid;
++}
++
++async function attachViewSession(childUid, { sessionBox, canvas, wrapper, viewport } = {}) {
++  if (!childUid || !sessionBox || !canvas) return;
++  const parent = sessionBox.current;
++  const child = getOrCreateSession(childUid, () => new NativeDiagramSession({
++    diagramUid: childUid,
++    metadataStore: runtime.metadata,
++    settings: runtime.settings,
++    onChange: () => syncGuard(),
++  }));
++  if (!child.model) child.load();
++  if (viewport && child.model) child.model.viewport = { ...viewport };
++  child.startWatch();
++  let view = null;
++  for (const candidate of parent?.views || []) {
++    if (candidate.canvas === canvas || candidate.wrapper === wrapper) {
++      view = candidate;
++      break;
++    }
++  }
++  if (view && parent) parent.removeView(view);
++  if (!view) {
++    view = {
++      refresh: () => canvas.render(),
++      dispose: () => canvas.dispose(),
++      canvas,
++      wrapper,
++      setFullscreen: canvas.setFullscreen,
++    };
++  }
++  child.addView(view);
++  sessionBox.current = child;
++  runtime.activeDiagramUid = childUid;
++  if (wrapper?.dataset) wrapper.dataset.diagramUid = childUid;
++  canvas.attachSession(child);
++}
++
++async function openNestedDiagram(uid, parentUid, hooks = {}) {
+   if (!uid) return;
+   nestedOpenUid = uid;
+   if (parentUid && parentUid !== uid) {
+     const title = parseDiagramTitle(blockStringForUid(parentUid)) || "Diagram";
+-    nestStack.push({ uid: parentUid, title });
++    const entry = { uid: parentUid, title };
++    if (hooks.viewport) entry.viewport = { ...hooks.viewport };
++    nestStack.push(entry);
+   }
+   await markEnhanced(uid);
+-  await globalThis.roamAlphaAPI?.ui?.mainWindow?.openBlock?.({ block: { uid } });
++  if (hooks.attachSession) {
++    await hooks.attachSession(uid);
++  }
+ }
+ 
+-async function openCrumb(uid) {
++async function openCrumb(uid, hooks = {}) {
+   if (!uid) return;
+-  const pull = globalThis.roamAlphaAPI?.data?.pull?.(
+-    "[:node/title :block/string]",
+-    [":block/uid", uid],
+-  );
+-  const pageTitle = pull?.[":node/title"] ?? pull?.title;
+-  if (pageTitle) {
+-    await globalThis.roamAlphaAPI?.ui?.mainWindow?.openPage?.({ page: { uid } });
+-    return;
++  const i = nestStack.findIndex((entry) => entry.uid === uid);
++  if (i < 0) return;
++  const savedViewport = nestStack[i].viewport;
++  nestStack.length = i;
++  nestedOpenUid = uid;
++  if (hooks.attachSession) {
++    await hooks.attachSession(uid, { viewport: savedViewport });
+   }
+-  await globalThis.roamAlphaAPI?.ui?.mainWindow?.openBlock?.({ block: { uid } });
+ }
+ 
+ export function syncNestStackOnNavigate(hash = globalThis.location?.hash || "") {
+@@ -483,7 +532,7 @@ async function registerSlashAndContext(lifecycle, extensionAPI) {
+ export async function installPlexusDiagram({ extensionAPI, lifecycle, version }) {
+   runtime.extensionAPI = extensionAPI;
+   runtime.lifecycle = lifecycle;
+-  runtime.version = version || "0.4.2";
++  runtime.version = version || "0.5.0";
+   runtime.settings = createSettingsReader(extensionAPI);
+   runtime.enhancedUids = readEnhancedUidCache();
+   installGuard(runtime.enhancedUids);
+diff --git a/src/metadata.js b/src/metadata.js
+index 5abb1cf..3612ac3 100644
+--- a/src/metadata.js
++++ b/src/metadata.js
+@@ -141,12 +141,13 @@ export function parseMetadataTree(tree) {
+       }
+       if (line.startsWith("section ")) {
+         const sectionId = line.slice("section ".length).trim();
+-        const section = { pos: null, size: null, title: "" };
++        const section = { pos: null, size: null, title: "", color: "" };
+         for (const prop of child.children || []) {
+           const propLine = prop.string.trim();
+           if (propLine.startsWith("pos::")) section.pos = parsePair(propLine.slice("pos::".length));
+           if (propLine.startsWith("size::")) section.size = parseSize(propLine.slice("size::".length));
+           if (propLine.startsWith("title::")) section.title = propLine.slice("title::".length).trim();
++          if (propLine.startsWith("color::")) section.color = propLine.slice("color::".length).trim();
+         }
+         entry.sections.set(sectionId, section);
+       }
+@@ -177,6 +178,7 @@ export function serializeDiagramMetadata(diagramUid, layout) {
+     if (section.pos) lines.push(`    pos:: ${section.pos.x},${section.pos.y}`);
+     if (section.size) lines.push(`    size:: ${section.size.width},${section.size.height}`);
+     if (section.title) lines.push(`    title:: ${section.title}`);
++    if (section.color) lines.push(`    color:: ${section.color}`);
+   }
+   return lines.join("\n");
+ }
+@@ -297,6 +299,7 @@ async function patchDiagramBlock(blockUid, diagramUid, layout) {
+     await syncPropChild(rowUid, props.pos, section.pos ? `pos:: ${section.pos.x},${section.pos.y}` : null);
+     await syncPropChild(rowUid, props.size, section.size ? `size:: ${section.size.width},${section.size.height}` : null);
+     await syncPropChild(rowUid, props.title, section.title ? `title:: ${section.title}` : null);
++    await syncPropChild(rowUid, props.color, section.color ? `color:: ${section.color}` : null);
+   }
+   for (const [id, row] of indexed.sections) {
+     if (!wantedSections.has(id)) await deleteBlock(row.uid);
+diff --git a/src/model.js b/src/model.js
+index f123019..7af1432 100644
+--- a/src/model.js
++++ b/src/model.js
+@@ -295,9 +295,18 @@ export class DiagramModel {
+   layoutSnapshot() {
+     return {
+       viewport: { ...this.viewport },
+-      nodes: new Map([...this.nodes].map(([uid, node]) => [uid, { ...node, pos: { ...node.pos }, size: { ...node.size } }])),
++      nodes: new Map([...this.nodes].map(([uid, node]) => [uid, {
++        pos: { ...node.pos },
++        size: { ...node.size },
++        color: node.color || "",
++      }])),
+       edges: this.edges.map((edge) => ({ ...edge })),
+-      sections: new Map([...this.sections].map(([id, section]) => [id, { ...section }])),
++      sections: new Map([...this.sections].map(([id, section]) => [id, {
++        ...section,
++        pos: section.pos ? { ...section.pos } : section.pos,
++        size: section.size ? { ...section.size } : section.size,
++        color: section.color || "",
++      }])),
+     };
+   }
+ 
+diff --git a/src/session.js b/src/session.js
+index 171abe6..1bedde1 100644
+--- a/src/session.js
++++ b/src/session.js
+@@ -112,6 +112,7 @@ export class NativeDiagramSession {
+       pos: { ...position },
+       size: { width: 320, height: 240 },
+       title: "",
++      color: "",
+     });
+     await this.persistLayout();
+     this.notifyViews({ type: "section" });
+diff --git a/src/view.js b/src/view.js
+index 9b0c6c9..ff2d4cd 100644
+--- a/src/view.js
++++ b/src/view.js
+@@ -30,32 +30,54 @@ export function mountDiagramView({ nativeElement, session, settings, version, li
+   wrapper.style.minHeight = `${wrapperHeight}px`;
+   wrapper.style.position = "relative";
+ 
++  const sessionBox = { current: session };
+   const canvas = createCanvasRoot({
+     session,
+     settings,
+     version,
+     onPersist: async (action) => {
+-      if (action.persistLayout) await session.persistLayout();
+-      if (action.persistViewport) await session.persistViewport();
++      const current = sessionBox.current;
++      if (action.persistLayout) await current.persistLayout();
++      if (action.persistViewport) await current.persistViewport();
+       if (action.toggleLibrary) onAction?.({ type: "library" });
+-      if (action.openNested) onAction?.({ type: "nested", uid: action.openNested });
+-      if (action.openCrumb) onAction?.({ type: "crumb", uid: action.openCrumb });
++      if (action.openNested) {
++        try { await current.persistLayout?.(); } catch { /* keep going into the nested board */ }
++        onAction?.({
++          type: "nested",
++          uid: action.openNested,
++          parentUid: current.diagramUid,
++          viewport: current.model?.viewport ? { ...current.model.viewport } : undefined,
++          sessionBox,
++          canvas,
++          wrapper,
++        });
++      }
++      if (action.openCrumb) {
++        try { await current.persistLayout?.(); } catch { /* still pop the crumb */ }
++        onAction?.({
++          type: "crumb",
++          uid: action.openCrumb,
++          sessionBox,
++          canvas,
++          wrapper,
++        });
++      }
+       if (action.openBlock) onAction?.({ type: "open-block", uid: action.openBlock });
+       if (action.addCard) {
+-        const uid = await session.addCard(action.string ?? "", action.addCard);
++        const uid = await current.addCard(action.string ?? "", action.addCard);
+         if (uid && action.addEdge?.source) {
+-          session.model.addEdge(
++          current.model.addEdge(
+             action.addEdge.source,
+             uid,
+             action.addEdge.kind || settings.get("connector-style") || "bezier",
+           );
+-          await session.persistLayout();
++          await current.persistLayout();
+         }
+         canvas.render();
+         if (uid && !action.string) canvas.editCard?.(uid);
+       }
+       if (action.addSection) {
+-        await session.addSection(action.addSection);
++        await current.addSection(action.addSection);
+         canvas.render();
+       }
+     },
+diff --git a/test/build.test.js b/test/build.test.js
+index e6cfc5d..d33a325 100644
+--- a/test/build.test.js
++++ b/test/build.test.js
+@@ -39,7 +39,7 @@ test("build emits deterministic, matching browser ESM artifacts with a default e
+   assert.match(rootJs, /export\s*\{[\s\S]*default/);
+   const rebuilt = await bundleEntry({
+     rootDirectory: rootPath,
+-    banner: "/* Plexus Diagram v0.4.2 | MIT | generated; edit src/ */",
++    banner: "/* Plexus Diagram v0.5.0 | MIT | generated; edit src/ */",
+   });
+   assert.equal(rebuilt, rootJs);
+ 
+diff --git a/test/canvas.test.js b/test/canvas.test.js
+index f66516e..8839f40 100644
+--- a/test/canvas.test.js
++++ b/test/canvas.test.js
+@@ -314,6 +314,9 @@ function cardSession(edges = [], extras = {}) {
+         this.edges.push(edge);
+         return edge;
+       },
++      removeEdge(source, target) {
++        this.edges = this.edges.filter((edge) => !(edge.source === source && edge.target === target));
++      },
+       isNestedDiagram(uid) {
+         const card = children.find((child) => child.uid === uid);
+         return /\{\{\s*(\[\[)?diagram/i.test(card?.string || "");
+@@ -591,10 +594,13 @@ test("focusRoamInput uses preventScroll so the outline copy does not jump", () =
+   assert.deepEqual(calls[0], { preventScroll: true });
+ });
+ 
+-test("overlay CSS sets caret-color under .pxd-root and 14px connect handles", async () => {
++test("overlay CSS leaves Beam the caret and uses 12px connect handles", async () => {
+   const css = await readFile(resolve(dirname(fileURLToPath(import.meta.url)), "../src/extension.css"), "utf8");
+-  assert.match(css, /\.pxd-root[^{]*\{[^}]*caret-color:\s*#1c2127/s);
+-  assert.match(css, /\.pxd-handle\s*\{[^}]*width:\s*14px/s);
++  assert.doesNotMatch(css, /caret-color:\s*#1c2127/);
++  assert.doesNotMatch(css, /:root:not\(\.svy-off-beam\) \.pxd-root textarea/);
++  assert.match(css, /\.pxd-handle\s*\{[^}]*width:\s*12px/s);
++  assert.match(css, /\.pxd-edges-temp\s*\{[^}]*pointer-events:\s*none/s);
++  assert.match(css, /\.pxd-handle::before\s*\{/);
+ });
+ 
+ test("fullscreenInsets right is the sidebar gap, or 0 when the article is flush", () => {
+@@ -703,6 +709,160 @@ test("connect-to-empty invokes onPersist addCard and addEdge", async () => {
+   }
+ });
+ 
++test("crumb row exists in the toolbar even when nest stack is empty", () => {
++  const { document, window } = createDomStub();
++  const previousDocument = globalThis.document;
++  const previousWindow = globalThis.window;
++  globalThis.document = document;
++  globalThis.window = window;
++  try {
++    const session = cardSession([], { tree: { string: "{{[[diagram]]:Child}}" } });
++    const settings = { get: (key) => settingsDefaults()[key] };
++    const canvas = createCanvasRoot({
++      session,
++      settings,
++      version: "0.5.0",
++      nestStack: [],
++    });
++    try {
++      const crumb = findByClass(canvas.root, "pxd-crumb");
++      assert.ok(crumb, "crumb row should exist even when the nest stack is empty");
++      assert.ok(String(crumb.className).includes("pxd-crumb--empty"));
++    } finally {
++      canvas.dispose();
++    }
++  } finally {
++    globalThis.document = previousDocument;
++    globalThis.window = previousWindow;
++  }
++});
++
++test("completeConnect card to card adds an edge and a .pxd-edge", async () => {
++  const { document, window } = createDomStub();
++  const previousDocument = globalThis.document;
++  const previousWindow = globalThis.window;
++  globalThis.document = document;
++  globalThis.window = window;
++  try {
++    const session = cardSession([]);
++    const settings = { get: (key) => settingsDefaults()[key] };
++    const canvas = createCanvasRoot({ session, settings, version: "0.5.0", nestStack: [] });
++    try {
++      await canvas.completeConnect({
++        moved: true,
++        sourceUid: "card-a",
++        targetUid: "card-b",
++        clientX: 400,
++        clientY: 80,
++      });
++      assert.equal(session.model.edges.length, 1);
++      assert.equal(session.model.edges[0].source, "card-a");
++      assert.equal(session.model.edges[0].target, "card-b");
++      assert.ok(findByClass(canvas.root, "pxd-edge"), "connected pair should paint a .pxd-edge");
++    } finally {
++      canvas.dispose();
++    }
++  } finally {
++    globalThis.document = previousDocument;
++    globalThis.window = previousWindow;
++  }
++});
++
++test("armConnect then completeConnect to another card creates an edge", async () => {
++  const { document, window } = createDomStub();
++  const previousDocument = globalThis.document;
++  const previousWindow = globalThis.window;
++  globalThis.document = document;
++  globalThis.window = window;
++  try {
++    const session = cardSession([]);
++    const settings = { get: (key) => settingsDefaults()[key] };
++    const canvas = createCanvasRoot({ session, settings, version: "0.5.0", nestStack: [] });
++    try {
++      canvas.armConnect("card-a");
++      assert.equal(canvas.getConnectArm()?.uid, "card-a");
++      await canvas.completeConnect({
++        moved: false,
++        sourceUid: "card-a",
++        targetUid: "card-b",
++        clientX: 400,
++        clientY: 80,
++      });
++      assert.equal(session.model.edges.length, 1);
++      assert.equal(session.model.edges[0].target, "card-b");
++      assert.equal(canvas.getConnectArm(), null);
++    } finally {
++      canvas.dispose();
++    }
++  } finally {
++    globalThis.document = previousDocument;
++    globalThis.window = previousWindow;
++  }
++});
++
++test("attachSession swaps cards from session A to session B", () => {
++  const { document, window } = createDomStub();
++  const previousDocument = globalThis.document;
++  const previousWindow = globalThis.window;
++  globalThis.document = document;
++  globalThis.window = window;
++  try {
++    const sessionA = cardSession([], {
++      children: [{ uid: "card-a", string: "Alpha" }],
++      nodes: new Map([["card-a", { pos: { x: 0, y: 0 }, size: { width: 280, height: 160 } }]]),
++    });
++    const sessionB = cardSession([], {
++      children: [{ uid: "card-b", string: "Beta" }],
++      nodes: new Map([["card-b", { pos: { x: 40, y: 40 }, size: { width: 280, height: 160 } }]]),
++    });
++    const settings = { get: (key) => settingsDefaults()[key] };
++    const canvas = createCanvasRoot({ session: sessionA, settings, version: "0.5.0", nestStack: [] });
++    try {
++      const cards = findByClass(canvas.root, "pxd-cards");
++      assert.ok(cards.children.some((child) => child.dataset?.uid === "card-a"));
++      canvas.attachSession(sessionB);
++      assert.ok(!cards.children.some((child) => child.dataset?.uid === "card-a"), "A's card node is gone");
++      assert.ok(cards.children.some((child) => child.dataset?.uid === "card-b"), "B's card is present");
++    } finally {
++      canvas.dispose();
++    }
++  } finally {
++    globalThis.document = previousDocument;
++    globalThis.window = previousWindow;
++  }
++});
++
++test("selected card with color teal paints a border", () => {
++  const { document, window } = createDomStub();
++  const previousDocument = globalThis.document;
++  const previousWindow = globalThis.window;
++  globalThis.document = document;
++  globalThis.window = window;
++  try {
++    const session = cardSession([], {
++      children: [{ uid: "card-a", string: "Hello card" }],
++      nodes: new Map([["card-a", { pos: { x: 0, y: 0 }, size: { width: 280, height: 160 }, color: "teal" }]]),
++    });
++    session.model.selected.add("card-a");
++    const settings = { get: (key) => settingsDefaults()[key] };
++    const canvas = createCanvasRoot({ session, settings, version: "0.5.0", nestStack: [] });
++    try {
++      const cards = findByClass(canvas.root, "pxd-cards");
++      const card = cards.children.find((child) => child.dataset?.uid === "card-a");
++      assert.ok(card);
++      const painted = card.style.borderColor === "#00b3a4"
++        || card.style["--pxd-card-color"] === "#00b3a4"
++        || (typeof card.style.getPropertyValue === "function" && card.style.getPropertyValue("--pxd-card-color") === "#00b3a4");
++      assert.ok(painted, "teal card should set border-color or --pxd-card-color");
++    } finally {
++      canvas.dispose();
++    }
++  } finally {
++    globalThis.document = previousDocument;
++    globalThis.window = previousWindow;
++  }
++});
++
+ test("named nested card shows the parsed title, not the raw macro", () => {
+   const { document, window } = createDomStub();
+   const previousDocument = globalThis.document;
+@@ -715,7 +875,7 @@ test("named nested card shows the parsed title, not the raw macro", () => {
+       nodes: new Map([["nested-1", { pos: { x: 0, y: 0 }, size: { width: 280, height: 160 } }]]),
+     });
+     const settings = { get: (key) => settingsDefaults()[key] };
+-    const canvas = createCanvasRoot({ session, settings, version: "0.4.2", nestStack: [] });
++    const canvas = createCanvasRoot({ session, settings, version: "0.5.0", nestStack: [] });
+     try {
+       const label = findByClass(canvas.root, "pxd-card__nested-label");
+       assert.ok(label);
+diff --git a/test/feature.test.js b/test/feature.test.js
+index 757e6db..9e14f99 100644
+--- a/test/feature.test.js
++++ b/test/feature.test.js
+@@ -31,19 +31,18 @@ function roamStub(order) {
+     },
+     ui: {
+       mainWindow: {
+-        openBlock: async ({ block }) => {
++        openBlock: async () => {
+           order.push("openBlock");
+-          assert.ok(
+-            runtime.enhancedUids.has(block.uid),
+-            "markEnhanced must register the uid before openBlock",
+-          );
++        },
++        openPage: async () => {
++          order.push("openPage");
+         },
+       },
+     },
+   };
+ }
+ 
+-test("openNestedDiagram calls markEnhanced before openBlock", async () => {
++test("openNestedDiagram marks enhanced and does not navigate", async () => {
+   const previousRoam = globalThis.roamAlphaAPI;
+   const previousDocument = globalThis.document;
+   const previousUids = runtime.enhancedUids;
+@@ -57,7 +56,7 @@ test("openNestedDiagram calls markEnhanced before openBlock", async () => {
+   nestStack.length = 0;
+   try {
+     await openNestedDiagram("nested-uid");
+-    assert.deepEqual(order, ["openBlock"]);
++    assert.deepEqual(order, []);
+     assert.ok(runtime.enhancedUids.has("nested-uid"));
+     assert.equal(nestStack.length, 0);
+   } finally {
+@@ -101,7 +100,7 @@ test("openNestedDiagram ignores parent .rm-diagram and does not wait", async ()
+   try {
+     await openNestedDiagram("nested-uid");
+     assert.ok(Date.now() - start < 500, "must finish well under 500ms without parent wait");
+-    assert.deepEqual(order, ["openBlock"]);
++    assert.deepEqual(order, []);
+     assert.ok(runtime.enhancedUids.has("nested-uid"));
+     assert.ok(!parentClasses.has("pxd-native-hidden"), "parent canvas must not be enhanced");
+     assert.equal(parentDiagram.nextElementSibling, null, "parent canvas must not receive a mount");
+@@ -135,10 +134,12 @@ test("openNestedDiagram pushes the parent uid+title onto the nest stack", async
+   runtime.enhancedUids = new Set();
+   nestStack.length = 0;
+   try {
+-    await openNestedDiagram("nested-uid", "parent-uid");
++    await openNestedDiagram("nested-uid", "parent-uid", { viewport: { x: 10, y: 20, zoom: 0.63 } });
+     assert.equal(nestStack.length, 1);
+     assert.equal(nestStack[0].uid, "parent-uid");
+     assert.equal(nestStack[0].title, "Alpha");
++    assert.equal(nestStack[0].viewport.zoom, 0.63);
++    assert.deepEqual(order, []);
+     syncNestStackOnNavigate("#/app/graph/page/parent-uid");
+     assert.equal(nestStack.length, 0);
+   } finally {
+@@ -150,6 +151,38 @@ test("openNestedDiagram pushes the parent uid+title onto the nest stack", async
+   }
+ });
+ 
++test("openNestedDiagram awaits hooks.attachSession when provided", async () => {
++  const previousRoam = globalThis.roamAlphaAPI;
++  const previousDocument = globalThis.document;
++  const previousUids = runtime.enhancedUids;
++  const previousMetadata = runtime.metadata;
++  const order = [];
++  globalThis.document = undefined;
++  globalThis.roamAlphaAPI = roamStub(order);
++  runtime.metadata = null;
++  runtime.enhancedUids = new Set();
++  nestStack.length = 0;
++  const attached = [];
++  try {
++    await openNestedDiagram("nested-uid", "parent-uid", {
++      viewport: { x: 0, y: 0, zoom: 1 },
++      attachSession: async (uid) => {
++        attached.push(uid);
++      },
++    });
++    assert.deepEqual(attached, ["nested-uid"]);
++    assert.ok(runtime.enhancedUids.has("nested-uid"));
++    assert.equal(nestStack.length, 1);
++    assert.deepEqual(order, []);
++  } finally {
++    nestStack.length = 0;
++    runtime.metadata = previousMetadata;
++    runtime.enhancedUids = previousUids;
++    globalThis.roamAlphaAPI = previousRoam;
++    globalThis.document = previousDocument;
++  }
++});
++
+ test("syncNestStackOnNavigate truncates deeper entries when jumping back multiple levels", () => {
+   nestStack.length = 0;
+   nestStack.push({ uid: "a", title: "A" }, { uid: "b", title: "B" });
+diff --git a/test/metadata.test.js b/test/metadata.test.js
+index f086308..80ece3e 100644
+--- a/test/metadata.test.js
++++ b/test/metadata.test.js
+@@ -96,3 +96,72 @@ test("parse/serialize round-trip of edge label::", () => {
+   });
+   assert.equal(roundTrip.diagrams.get("diagram-1").edges[0].label, "because it follows");
+ });
++
++test("parse/serialize round-trip of node and section color::", () => {
++  const tree = {
++    uid: "page",
++    string: "",
++    children: [
++      { uid: "schema", string: "schema-version:: 1", children: [] },
++      {
++        uid: "enhanced",
++        string: "enhanced::",
++        children: [{
++          uid: "d1",
++          string: "diagram-1",
++          children: [
++            {
++              uid: "n1",
++              string: "node card-a",
++              children: [
++                { uid: "pos", string: "pos:: 10,20", children: [] },
++                { uid: "size", string: "size:: 280,160", children: [] },
++                { uid: "col", string: "color:: teal", children: [] },
++              ],
++            },
++            {
++              uid: "s1",
++              string: "section s1",
++              children: [
++                { uid: "spos", string: "pos:: 0,0", children: [] },
++                { uid: "ssize", string: "size:: 320,240", children: [] },
++                { uid: "stitle", string: "title:: Frame", children: [] },
++                { uid: "scol", string: "color:: rose", children: [] },
++              ],
++            },
++          ],
++        }],
++      },
++    ],
++  };
++  const parsed = parseMetadataTree(tree);
++  const layout = parsed.diagrams.get("diagram-1");
++  assert.equal(layout.nodes.get("card-a").color, "teal");
++  assert.equal(layout.sections.get("s1").color, "rose");
++  const serialized = serializeDiagramMetadata("diagram-1", layout);
++  assert.match(serialized, /node card-a/);
++  assert.match(serialized, /color:: teal/);
++  assert.match(serialized, /section s1/);
++  assert.match(serialized, /color:: rose/);
++  const roundTrip = parseMetadataTree({
++    uid: "page",
++    children: [
++      { uid: "enhanced", string: "enhanced::", children: [{
++        uid: "d1",
++        string: "diagram-1",
++        children: serialized.split("\n").slice(1).reduce((acc, line) => {
++          const indent = (line.match(/^ */)?.[0].length || 0) / 2;
++          const content = line.trim();
++          if (!content) return acc;
++          const node = { uid: content, string: content, children: [] };
++          if (indent === 1) acc.push(node);
++          else acc[acc.length - 1]?.children.push(node);
++          return acc;
++        }, []),
++      }] },
++    ],
++  });
++  assert.equal(roundTrip.diagrams.get("diagram-1").nodes.get("card-a").color, "teal");
++  assert.equal(roundTrip.diagrams.get("diagram-1").sections.get("s1").color, "rose");
++});
++

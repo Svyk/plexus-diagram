@@ -140,7 +140,7 @@ async function enhanceDiagram(uid, nativeElement) {
       onAction: async (action) => {
         if (action.type === "library") await toggleLibrary(mounted.wrapper, mounted.canvas);
         if (action.type === "nested" && action.uid) {
-          await openNestedDiagram(action.uid);
+          await openNestedDiagram(action.uid, session.diagramUid);
         }
         if (action.type === "crumb" && action.uid) {
           await openCrumb(action.uid);
@@ -231,9 +231,11 @@ async function enhanceByUid(uid) {
   await enhanceDiagram(uid, diagram);
 }
 
-async function openNestedDiagram(uid) {
+let nestedOpenUid = null;
+
+async function openNestedDiagram(uid, parentUid) {
   if (!uid) return;
-  const parentUid = runtime.activeDiagramUid;
+  nestedOpenUid = uid;
   if (parentUid && parentUid !== uid) {
     const title = parseDiagramTitle(blockStringForUid(parentUid)) || "Diagram";
     nestStack.push({ uid: parentUid, title });
@@ -258,9 +260,21 @@ async function openCrumb(uid) {
 
 export function syncNestStackOnNavigate(hash = globalThis.location?.hash || "") {
   const openUid = diagramUidFromLocation(hash);
-  if (nestStack.length && nestStack[nestStack.length - 1].uid === openUid) {
-    nestStack.pop();
+  if (!openUid) {
+    nestStack.length = 0;
+    nestedOpenUid = null;
+    return;
   }
+  const i = nestStack.findIndex((entry) => entry.uid === openUid);
+  if (i >= 0) {
+    nestStack.length = i;
+    nestedOpenUid = openUid;
+    return;
+  }
+  if (openUid !== nestedOpenUid) {
+    nestStack.length = 0;
+  }
+  nestedOpenUid = openUid;
 }
 
 let activeLibrary = null;
@@ -485,6 +499,7 @@ export async function installPlexusDiagram({ extensionAPI, lifecycle, version })
     }
     await releaseScratch();
     nestStack.length = 0;
+    nestedOpenUid = null;
     runtime.metadata = null;
     runtime.guardStyle?.remove?.();
   });

@@ -1498,7 +1498,6 @@ function cardUidFromHitStack(stack, cardsLayer) {
   }
   return null;
 }
-var ROAM_UID_RE = /(?:^|[^A-Za-z0-9_-])([A-Za-z0-9_-]{9})(?:[^A-Za-z0-9_-]|$)/;
 function parseDropPayload(dataTransfer) {
   if (!dataTransfer) return null;
   const chunks = [];
@@ -1521,8 +1520,14 @@ function parseDropPayload(dataTransfer) {
   if (page) return { kind: "page", title: page[1], string: `[[${page[1]}]]` };
   const blockRef = blob.match(/\(\(([^)]+)\)\)/);
   if (blockRef) return { kind: "block", uid: blockRef[1], string: `((${blockRef[1]}))` };
-  const uid = blob.match(ROAM_UID_RE);
-  if (uid) return { kind: "block", uid: uid[1], string: `((${uid[1]}))` };
+  let plain = "";
+  try {
+    plain = String(dataTransfer.getData?.("text/plain") || "").trim();
+  } catch {
+  }
+  if (/^[A-Za-z0-9_-]{9}$/.test(plain)) {
+    return { kind: "block", uid: plain, string: `((${plain}))` };
+  }
   return null;
 }
 function nextFrame() {
@@ -2335,6 +2340,10 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
   const paintCardBody = (card, child) => {
     const body = card._pxdBody;
     if (!body) return;
+    if (card._pxdNameTimer) {
+      clearTimeout(card._pxdNameTimer);
+      card._pxdNameTimer = null;
+    }
     unmountRoam(body);
     body.innerHTML = "";
     card.classList.remove("pxd-card--empty");
@@ -2360,12 +2369,11 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
           event.preventDefault();
           event.stopPropagation();
         });
-        let nameTimer = null;
         input.addEventListener("input", () => {
           if (diagramUidFromLocation() === child.uid) return;
-          if (nameTimer) clearTimeout(nameTimer);
-          nameTimer = setTimeout(() => {
-            nameTimer = null;
+          if (card._pxdNameTimer) clearTimeout(card._pxdNameTimer);
+          card._pxdNameTimer = setTimeout(() => {
+            card._pxdNameTimer = null;
             const name = String(input.value || "").trim();
             const next = name ? `{{[[diagram]]:${name}}}` : "{{[[diagram]]}}";
             void updateBlock(child.uid, next).then(() => {
@@ -2768,29 +2776,37 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
     }
   };
   const completeConnect = async ({ moved, sourceUid, targetUid, clientX, clientY, shiftKey }) => {
-    if (!moved) {
-      selectCard(sourceUid, shiftKey);
-      return;
-    }
-    if (targetUid && targetUid !== sourceUid) {
-      const added = model().addEdge(sourceUid, targetUid, settings.get("connector-style") || "bezier");
-      renderEdges();
-      if (added) {
-        layoutDirty = true;
-        await flushLayout();
+    try {
+      if (!moved) {
+        selectCard(sourceUid, shiftKey);
+        return;
       }
-      return;
-    }
-    if (!targetUid) {
-      const point = screenToWorld(clientX, clientY);
-      const size = defaultCardSize();
-      await onPersist?.({
-        addCard: {
-          x: snap(point.x - size.width / 2),
-          y: snap(point.y - size.height / 2)
-        },
-        addEdge: { source: sourceUid }
-      });
+      if (targetUid && targetUid !== sourceUid) {
+        const added = model().addEdge(sourceUid, targetUid, settings.get("connector-style") || "bezier");
+        renderEdges();
+        if (added) {
+          try {
+            layoutDirty = true;
+            await flushLayout();
+          } catch {
+            model().removeEdge(sourceUid, targetUid);
+            renderEdges();
+          }
+        }
+        return;
+      }
+      if (!targetUid) {
+        const point = screenToWorld(clientX, clientY);
+        const size = defaultCardSize();
+        await onPersist?.({
+          addCard: {
+            x: snap(point.x - size.width / 2),
+            y: snap(point.y - size.height / 2)
+          },
+          addEdge: { source: sourceUid }
+        });
+      }
+    } catch {
     }
   };
   const onDoubleClick = (event) => {
@@ -3015,7 +3031,13 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
         clearTimeout(layoutTimer);
         layoutTimer = null;
       }
-      for (const card of cardEls.values()) unmountRoam(card._pxdBody);
+      for (const card of cardEls.values()) {
+        if (card._pxdNameTimer) {
+          clearTimeout(card._pxdNameTimer);
+          card._pxdNameTimer = null;
+        }
+        unmountRoam(card._pxdBody);
+      }
       cardEls.clear();
       for (const el of sectionEls.values()) el.remove();
       sectionEls.clear();
@@ -3481,7 +3503,7 @@ async function enhanceDiagram(uid, nativeElement) {
       onAction: async (action) => {
         if (action.type === "library") await toggleLibrary(mounted.wrapper, mounted.canvas);
         if (action.type === "nested" && action.uid) {
-          await openNestedDiagram(action.uid);
+          await openNestedDiagram(action.uid, session.diagramUid);
         }
         if (action.type === "crumb" && action.uid) {
           await openCrumb(action.uid);
@@ -3565,9 +3587,10 @@ async function enhanceByUid(uid) {
   }
   await enhanceDiagram(uid, diagram);
 }
-async function openNestedDiagram(uid) {
+var nestedOpenUid = null;
+async function openNestedDiagram(uid, parentUid) {
   if (!uid) return;
-  const parentUid = runtime.activeDiagramUid;
+  nestedOpenUid = uid;
   if (parentUid && parentUid !== uid) {
     const title = parseDiagramTitle(blockStringForUid(parentUid)) || "Diagram";
     nestStack.push({ uid: parentUid, title });
@@ -3590,9 +3613,21 @@ async function openCrumb(uid) {
 }
 function syncNestStackOnNavigate(hash = globalThis.location?.hash || "") {
   const openUid = diagramUidFromLocation(hash);
-  if (nestStack.length && nestStack[nestStack.length - 1].uid === openUid) {
-    nestStack.pop();
+  if (!openUid) {
+    nestStack.length = 0;
+    nestedOpenUid = null;
+    return;
   }
+  const i = nestStack.findIndex((entry) => entry.uid === openUid);
+  if (i >= 0) {
+    nestStack.length = i;
+    nestedOpenUid = openUid;
+    return;
+  }
+  if (openUid !== nestedOpenUid) {
+    nestStack.length = 0;
+  }
+  nestedOpenUid = openUid;
 }
 var activeLibrary = null;
 async function toggleLibrary(mountRoot, canvas) {
@@ -3801,6 +3836,7 @@ async function installPlexusDiagram({ extensionAPI, lifecycle, version }) {
     }
     await releaseScratch();
     nestStack.length = 0;
+    nestedOpenUid = null;
     runtime.metadata = null;
     runtime.guardStyle?.remove?.();
   });

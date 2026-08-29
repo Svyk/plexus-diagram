@@ -548,6 +548,30 @@ test("parseDropPayload reads [[page]] and block uids", () => {
   assert.equal(parseDropPayload({ getData: () => "", types: [] }), null);
 });
 
+test("parseDropPayload ignores incidental 9-char tokens but accepts bare uids", () => {
+  assert.equal(
+    parseDropPayload({
+      getData: (type) => (type === "text/plain" ? "hello ABCDEFGHI world" : ""),
+      types: ["text/plain"],
+    }),
+    null,
+  );
+  assert.deepEqual(
+    parseDropPayload({
+      getData: (type) => (type === "text/html" ? "((ABCDEFGHI))" : ""),
+      types: ["text/html"],
+    }).string,
+    "((ABCDEFGHI))",
+  );
+  assert.deepEqual(
+    parseDropPayload({
+      getData: (type) => (type === "text/plain" ? "ABCDEFGHI" : ""),
+      types: ["text/plain"],
+    }).string,
+    "((ABCDEFGHI))",
+  );
+});
+
 test("parseDiagramTitle reads named macros and strips unnamed ones", () => {
   assert.equal(parseDiagramTitle("{{[[diagram]]:Foo}}"), "Foo");
   assert.equal(parseDiagramTitle("{{[[diagram]]: Board name }}"), "Board name");

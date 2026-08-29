@@ -205,8 +205,6 @@ export function cardUidFromHitStack(stack, cardsLayer) {
   return null;
 }
 
-const ROAM_UID_RE = /(?:^|[^A-Za-z0-9_-])([A-Za-z0-9_-]{9})(?:[^A-Za-z0-9_-]|$)/;
-
 export function parseDropPayload(dataTransfer) {
   if (!dataTransfer) return null;
   const chunks = [];
@@ -228,8 +226,13 @@ export function parseDropPayload(dataTransfer) {
   if (page) return { kind: "page", title: page[1], string: `[[${page[1]}]]` };
   const blockRef = blob.match(/\(\(([^)]+)\)\)/);
   if (blockRef) return { kind: "block", uid: blockRef[1], string: `((${blockRef[1]}))` };
-  const uid = blob.match(ROAM_UID_RE);
-  if (uid) return { kind: "block", uid: uid[1], string: `((${uid[1]}))` };
+  let plain = "";
+  try {
+    plain = String(dataTransfer.getData?.("text/plain") || "").trim();
+  } catch { /* unread drag types throw in some browsers */ }
+  if (/^[A-Za-z0-9_-]{9}$/.test(plain)) {
+    return { kind: "block", uid: plain, string: `((${plain}))` };
+  }
   return null;
 }
 
@@ -1098,6 +1101,10 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
   const paintCardBody = (card, child) => {
     const body = card._pxdBody;
     if (!body) return;
+    if (card._pxdNameTimer) {
+      clearTimeout(card._pxdNameTimer);
+      card._pxdNameTimer = null;
+    }
     unmountRoam(body);
     body.innerHTML = "";
     card.classList.remove("pxd-card--empty");
@@ -1123,12 +1130,11 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
           event.preventDefault();
           event.stopPropagation();
         });
-        let nameTimer = null;
         input.addEventListener("input", () => {
           if (diagramUidFromLocation() === child.uid) return;
-          if (nameTimer) clearTimeout(nameTimer);
-          nameTimer = setTimeout(() => {
-            nameTimer = null;
+          if (card._pxdNameTimer) clearTimeout(card._pxdNameTimer);
+          card._pxdNameTimer = setTimeout(() => {
+            card._pxdNameTimer = null;
             const name = String(input.value || "").trim();
             const next = name ? `{{[[diagram]]:${name}}}` : "{{[[diagram]]}}";
             void updateBlock(child.uid, next).then(() => {
@@ -1547,30 +1553,37 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
   };
 
   const completeConnect = async ({ moved, sourceUid, targetUid, clientX, clientY, shiftKey }) => {
-    if (!moved) {
-      selectCard(sourceUid, shiftKey);
-      return;
-    }
-    if (targetUid && targetUid !== sourceUid) {
-      const added = model().addEdge(sourceUid, targetUid, settings.get("connector-style") || "bezier");
-      renderEdges();
-      if (added) {
-        layoutDirty = true;
-        await flushLayout();
+    try {
+      if (!moved) {
+        selectCard(sourceUid, shiftKey);
+        return;
       }
-      return;
-    }
-    if (!targetUid) {
-      const point = screenToWorld(clientX, clientY);
-      const size = defaultCardSize();
-      await onPersist?.({
-        addCard: {
-          x: snap(point.x - size.width / 2),
-          y: snap(point.y - size.height / 2),
-        },
-        addEdge: { source: sourceUid },
-      });
-    }
+      if (targetUid && targetUid !== sourceUid) {
+        const added = model().addEdge(sourceUid, targetUid, settings.get("connector-style") || "bezier");
+        renderEdges();
+        if (added) {
+          try {
+            layoutDirty = true;
+            await flushLayout();
+          } catch {
+            model().removeEdge(sourceUid, targetUid);
+            renderEdges();
+          }
+        }
+        return;
+      }
+      if (!targetUid) {
+        const point = screenToWorld(clientX, clientY);
+        const size = defaultCardSize();
+        await onPersist?.({
+          addCard: {
+            x: snap(point.x - size.width / 2),
+            y: snap(point.y - size.height / 2),
+          },
+          addEdge: { source: sourceUid },
+        });
+      }
+    } catch { /* connect-to-empty or persist failed — no dangling edge */ }
   };
 
   const onDoubleClick = (event) => {
@@ -1800,7 +1813,13 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
         clearTimeout(layoutTimer);
         layoutTimer = null;
       }
-      for (const card of cardEls.values()) unmountRoam(card._pxdBody);
+      for (const card of cardEls.values()) {
+        if (card._pxdNameTimer) {
+          clearTimeout(card._pxdNameTimer);
+          card._pxdNameTimer = null;
+        }
+        unmountRoam(card._pxdBody);
+      }
       cardEls.clear();
       for (const el of sectionEls.values()) el.remove();
       sectionEls.clear();

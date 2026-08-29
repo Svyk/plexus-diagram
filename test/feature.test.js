@@ -121,7 +121,6 @@ test("openNestedDiagram pushes the parent uid+title onto the nest stack", async 
   const previousDocument = globalThis.document;
   const previousUids = runtime.enhancedUids;
   const previousMetadata = runtime.metadata;
-  const previousActive = runtime.activeDiagramUid;
   const order = [];
   globalThis.document = undefined;
   const api = roamStub(order);
@@ -134,10 +133,9 @@ test("openNestedDiagram pushes the parent uid+title onto the nest stack", async 
   globalThis.roamAlphaAPI = api;
   runtime.metadata = null;
   runtime.enhancedUids = new Set();
-  runtime.activeDiagramUid = "parent-uid";
   nestStack.length = 0;
   try {
-    await openNestedDiagram("nested-uid");
+    await openNestedDiagram("nested-uid", "parent-uid");
     assert.equal(nestStack.length, 1);
     assert.equal(nestStack[0].uid, "parent-uid");
     assert.equal(nestStack[0].title, "Alpha");
@@ -145,10 +143,20 @@ test("openNestedDiagram pushes the parent uid+title onto the nest stack", async 
     assert.equal(nestStack.length, 0);
   } finally {
     nestStack.length = 0;
-    runtime.activeDiagramUid = previousActive;
     runtime.metadata = previousMetadata;
     runtime.enhancedUids = previousUids;
     globalThis.roamAlphaAPI = previousRoam;
     globalThis.document = previousDocument;
   }
+});
+
+test("syncNestStackOnNavigate truncates deeper entries when jumping back multiple levels", () => {
+  nestStack.length = 0;
+  nestStack.push({ uid: "a", title: "A" }, { uid: "b", title: "B" });
+  syncNestStackOnNavigate("#/app/graph/page/a");
+  assert.equal(nestStack.length, 0);
+  nestStack.push({ uid: "a", title: "A" }, { uid: "b", title: "B" });
+  syncNestStackOnNavigate("#/app/graph/page/b");
+  assert.equal(nestStack.length, 1);
+  assert.equal(nestStack[0].uid, "a");
 });

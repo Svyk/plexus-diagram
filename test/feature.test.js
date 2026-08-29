@@ -3,14 +3,8 @@ import test from "node:test";
 
 import { openNestedDiagram, runtime } from "../src/feature.js";
 
-test("openNestedDiagram calls enhance before openBlock", async () => {
-  const previousRoam = globalThis.roamAlphaAPI;
-  const previousDocument = globalThis.document;
-  const previousUids = runtime.enhancedUids;
-  const previousMetadata = runtime.metadata;
-  const order = [];
-  globalThis.document = undefined;
-  globalThis.roamAlphaAPI = {
+function roamStub(order) {
+  return {
     util: { generateUID: () => "gen-1" },
     data: {
       q: (query) => (String(query).includes("plexus-diagram/metadata") ? [["meta-page"]] : []),
@@ -41,18 +35,69 @@ test("openNestedDiagram calls enhance before openBlock", async () => {
           order.push("openBlock");
           assert.ok(
             runtime.enhancedUids.has(block.uid),
-            "enhanceByUid must register the uid before openBlock",
+            "markEnhanced must register the uid before openBlock",
           );
         },
       },
     },
   };
+}
+
+test("openNestedDiagram calls markEnhanced before openBlock", async () => {
+  const previousRoam = globalThis.roamAlphaAPI;
+  const previousDocument = globalThis.document;
+  const previousUids = runtime.enhancedUids;
+  const previousMetadata = runtime.metadata;
+  const order = [];
+  globalThis.document = undefined;
+  globalThis.roamAlphaAPI = roamStub(order);
   runtime.metadata = null;
   runtime.enhancedUids = new Set();
   try {
     await openNestedDiagram("nested-uid");
     assert.deepEqual(order, ["openBlock"]);
     assert.ok(runtime.enhancedUids.has("nested-uid"));
+  } finally {
+    runtime.metadata = previousMetadata;
+    runtime.enhancedUids = previousUids;
+    globalThis.roamAlphaAPI = previousRoam;
+    globalThis.document = previousDocument;
+  }
+});
+
+test("openNestedDiagram ignores parent .rm-diagram and does not wait", async () => {
+  const start = Date.now();
+  const previousRoam = globalThis.roamAlphaAPI;
+  const previousDocument = globalThis.document;
+  const previousUids = runtime.enhancedUids;
+  const previousMetadata = runtime.metadata;
+  const order = [];
+  const parentClasses = new Set(["rm-diagram"]);
+  const parentDiagram = {
+    classList: {
+      contains: (name) => parentClasses.has(name),
+      add: (name) => parentClasses.add(name),
+      remove: () => {},
+    },
+    nextElementSibling: null,
+    isConnected: true,
+  };
+  globalThis.document = {
+    querySelector: (sel) => (sel === ".rm-diagram" ? parentDiagram : null),
+    getElementById: () => null,
+    createElement: () => ({ id: "", textContent: "", isConnected: false }),
+    head: { appendChild: () => {} },
+  };
+  globalThis.roamAlphaAPI = roamStub(order);
+  runtime.metadata = null;
+  runtime.enhancedUids = new Set();
+  try {
+    await openNestedDiagram("nested-uid");
+    assert.ok(Date.now() - start < 500, "must finish well under 500ms without parent wait");
+    assert.deepEqual(order, ["openBlock"]);
+    assert.ok(runtime.enhancedUids.has("nested-uid"));
+    assert.ok(!parentClasses.has("pxd-native-hidden"), "parent canvas must not be enhanced");
+    assert.equal(parentDiagram.nextElementSibling, null, "parent canvas must not receive a mount");
   } finally {
     runtime.metadata = previousMetadata;
     runtime.enhancedUids = previousUids;

@@ -3327,11 +3327,8 @@ async function resolveDiagramUid(context) {
   }
   return null;
 }
-async function enhanceByUid(uid) {
-  if (!uid) {
-    console.info("[plexus-diagram] Focus a {{[[diagram]]}} block first");
-    return;
-  }
+async function markEnhanced(uid) {
+  if (!uid) return;
   await ensureMetadata();
   if (!runtime.metadata.has(uid)) {
     const empty = { viewport: null, nodes: /* @__PURE__ */ new Map(), edges: [], sections: /* @__PURE__ */ new Map() };
@@ -3344,8 +3341,14 @@ async function enhanceByUid(uid) {
   runtime.enhancedUids.add(uid);
   writeEnhancedUidCache(runtime.enhancedUids);
   installGuard(runtime.enhancedUids);
+}
+async function enhanceByUid(uid) {
+  if (!uid) {
+    console.info("[plexus-diagram] Focus a {{[[diagram]]}} block first");
+    return;
+  }
+  await markEnhanced(uid);
   let diagram = diagramElForUid(uid);
-  if (!diagram && typeof document !== "undefined") diagram = document.querySelector(".rm-diagram");
   if (!diagram && typeof document !== "undefined") diagram = await waitForDiagramEl(uid);
   if (!diagram) {
     console.info("[plexus-diagram] Native diagram canvas did not remount in time", uid);
@@ -3355,14 +3358,7 @@ async function enhanceByUid(uid) {
 }
 async function openNestedDiagram(uid) {
   if (!uid) return;
-  await enhanceByUid(uid);
-  const session = getSession(uid);
-  if (session?.views?.size) {
-    for (const view of session.views) {
-      const fn = view.setFullscreen || view.canvas?.setFullscreen;
-      fn?.(true);
-    }
-  }
+  await markEnhanced(uid);
   await globalThis.roamAlphaAPI?.ui?.mainWindow?.openBlock?.({ block: { uid } });
 }
 var activeLibrary = null;

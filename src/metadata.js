@@ -214,11 +214,23 @@ export class MetadataStore {
     return this.diagrams.has(diagramUid);
   }
 
+  hasPersisted(diagramUid) {
+    return this.diagramBlockUids.has(diagramUid);
+  }
+
   enhancedUids() {
     return [...this.diagrams.keys()];
   }
 
+  layoutMatchesStored(diagramUid, layout) {
+    const stored = this.diagrams.get(diagramUid);
+    if (!stored) return false;
+    return serializeDiagramMetadata(diagramUid, layout)
+      === serializeDiagramMetadata(diagramUid, stored);
+  }
+
   async set(diagramUid, layout) {
+    if (this.layoutMatchesStored(diagramUid, layout)) return false;
     const pageUid = await this.ensurePage();
     let tree = getTree(pageUid);
     if (!tree) throw new Error("Metadata page missing");
@@ -250,6 +262,49 @@ export class MetadataStore {
     }
     this.diagrams.set(diagramUid, layout);
     this.diagramBlockUids.set(diagramUid, blockUid);
+    return true;
+  }
+
+  async setViewport(diagramUid, viewport) {
+    const entry = this.diagrams.get(diagramUid);
+    if (entry?.viewport
+      && entry.viewport.x === viewport.x
+      && entry.viewport.y === viewport.y
+      && entry.viewport.zoom === viewport.zoom) {
+      return false;
+    }
+    const pageUid = await this.ensurePage();
+    let tree = getTree(pageUid);
+    if (!tree) throw new Error("Metadata page missing");
+    let schemaUid = tree.children?.find((child) => child.string.startsWith("schema-version::"))?.uid;
+    if (!schemaUid) schemaUid = await createBlock(pageUid, `schema-version:: ${METADATA_SCHEMA_VERSION}`);
+    let enhancedUid = tree.children?.find((child) => child.string.trim() === "enhanced::")?.uid;
+    if (!enhancedUid) enhancedUid = await createBlock(pageUid, "enhanced::");
+    let blockUid = this.diagramBlockUids.get(diagramUid);
+    if (!blockUid) {
+      blockUid = await createBlock(enhancedUid, diagramUid);
+      this.diagramBlockUids.set(diagramUid, blockUid);
+    }
+    const viewportString = `viewport:: ${viewport.x},${viewport.y},${viewport.zoom}`;
+    const blockTree = getTree(blockUid);
+    const viewportChild = blockTree?.children?.find((child) => child.string.trim().startsWith("viewport::"));
+    if (viewportChild) {
+      if (viewportChild.string.trim() === viewportString) {
+        if (!entry) {
+          this.diagrams.set(diagramUid, { viewport: { ...viewport }, nodes: new Map(), edges: [], sections: new Map() });
+        } else {
+          entry.viewport = { ...viewport };
+        }
+        return false;
+      }
+      await updateBlock(viewportChild.uid, viewportString);
+    } else {
+      await createBlock(blockUid, viewportString);
+    }
+    const next = entry || { viewport: null, nodes: new Map(), edges: [], sections: new Map() };
+    next.viewport = { ...viewport };
+    this.diagrams.set(diagramUid, next);
+    return true;
   }
 
   async remove(diagramUid) {

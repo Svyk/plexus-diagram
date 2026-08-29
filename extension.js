@@ -411,10 +411,19 @@ var MetadataStore = class {
   has(diagramUid) {
     return this.diagrams.has(diagramUid);
   }
+  hasPersisted(diagramUid) {
+    return this.diagramBlockUids.has(diagramUid);
+  }
   enhancedUids() {
     return [...this.diagrams.keys()];
   }
+  layoutMatchesStored(diagramUid, layout) {
+    const stored = this.diagrams.get(diagramUid);
+    if (!stored) return false;
+    return serializeDiagramMetadata(diagramUid, layout) === serializeDiagramMetadata(diagramUid, stored);
+  }
   async set(diagramUid, layout) {
+    if (this.layoutMatchesStored(diagramUid, layout)) return false;
     const pageUid = await this.ensurePage();
     let tree = getTree(pageUid);
     if (!tree) throw new Error("Metadata page missing");
@@ -449,6 +458,45 @@ var MetadataStore = class {
     }
     this.diagrams.set(diagramUid, layout);
     this.diagramBlockUids.set(diagramUid, blockUid);
+    return true;
+  }
+  async setViewport(diagramUid, viewport) {
+    const entry = this.diagrams.get(diagramUid);
+    if (entry?.viewport && entry.viewport.x === viewport.x && entry.viewport.y === viewport.y && entry.viewport.zoom === viewport.zoom) {
+      return false;
+    }
+    const pageUid = await this.ensurePage();
+    let tree = getTree(pageUid);
+    if (!tree) throw new Error("Metadata page missing");
+    let schemaUid = tree.children?.find((child) => child.string.startsWith("schema-version::"))?.uid;
+    if (!schemaUid) schemaUid = await createBlock(pageUid, `schema-version:: ${METADATA_SCHEMA_VERSION}`);
+    let enhancedUid = tree.children?.find((child) => child.string.trim() === "enhanced::")?.uid;
+    if (!enhancedUid) enhancedUid = await createBlock(pageUid, "enhanced::");
+    let blockUid = this.diagramBlockUids.get(diagramUid);
+    if (!blockUid) {
+      blockUid = await createBlock(enhancedUid, diagramUid);
+      this.diagramBlockUids.set(diagramUid, blockUid);
+    }
+    const viewportString = `viewport:: ${viewport.x},${viewport.y},${viewport.zoom}`;
+    const blockTree = getTree(blockUid);
+    const viewportChild = blockTree?.children?.find((child) => child.string.trim().startsWith("viewport::"));
+    if (viewportChild) {
+      if (viewportChild.string.trim() === viewportString) {
+        if (!entry) {
+          this.diagrams.set(diagramUid, { viewport: { ...viewport }, nodes: /* @__PURE__ */ new Map(), edges: [], sections: /* @__PURE__ */ new Map() });
+        } else {
+          entry.viewport = { ...viewport };
+        }
+        return false;
+      }
+      await updateBlock(viewportChild.uid, viewportString);
+    } else {
+      await createBlock(blockUid, viewportString);
+    }
+    const next = entry || { viewport: null, nodes: /* @__PURE__ */ new Map(), edges: [], sections: /* @__PURE__ */ new Map() };
+    next.viewport = { ...viewport };
+    this.diagrams.set(diagramUid, next);
+    return true;
   }
   async remove(diagramUid) {
     const blockUid = this.diagramBlockUids.get(diagramUid);
@@ -1172,27 +1220,49 @@ function createCanvasRoot({ session, settings, version, onPersist }) {
   const mountEl = () => root.closest?.(".pxd-mount") || null;
   const isFullscreen = () => Boolean(mountEl()?.classList?.contains?.("pxd-mount--fullscreen"));
   let disposed = false;
+  let viewportDirty = false;
+  let layoutDirty = false;
   let viewportTimer = null;
   let layoutTimer = null;
-  const flushViewport = () => {
+  const flushViewport = async () => {
     if (viewportTimer) clearTimeout(viewportTimer);
     viewportTimer = null;
-    return onPersist?.({ persistViewport: true });
+    if (!viewportDirty) return;
+    try {
+      await onPersist?.({ persistViewport: true });
+      viewportDirty = false;
+    } catch (error) {
+      throw error;
+    }
   };
-  const flushLayout = () => {
+  const flushLayout = async () => {
     if (layoutTimer) clearTimeout(layoutTimer);
     layoutTimer = null;
-    return onPersist?.({ persistLayout: true });
+    if (!layoutDirty) return;
+    try {
+      await onPersist?.({ persistLayout: true });
+      layoutDirty = false;
+    } catch (error) {
+      throw error;
+    }
   };
   const schedulePersistViewport = () => {
-    if (disposed) return;
+    if (disposed || !viewportDirty) return;
     if (viewportTimer) clearTimeout(viewportTimer);
     viewportTimer = setTimeout(flushViewport, PERSIST_DEBOUNCE_MS);
   };
   const schedulePersistLayout = () => {
-    if (disposed) return;
+    if (disposed || !layoutDirty) return;
     if (layoutTimer) clearTimeout(layoutTimer);
     layoutTimer = setTimeout(flushLayout, PERSIST_DEBOUNCE_MS);
+  };
+  const markViewportDirty = () => {
+    viewportDirty = true;
+    schedulePersistViewport();
+  };
+  const markLayoutDirty = () => {
+    layoutDirty = true;
+    schedulePersistLayout();
   };
   const zoomLabel = document.createElement("button");
   zoomLabel.type = "button";
@@ -1278,8 +1348,9 @@ function createCanvasRoot({ session, settings, version, onPersist }) {
   };
   const zoomAroundCenter = (factor) => {
     const rect = rootRect();
-    zoomAt((model().viewport.zoom || 1) * factor, rect.width / 2, rect.height / 2);
-    schedulePersistViewport();
+    const oldZoom = model().viewport.zoom || 1;
+    zoomAt(oldZoom * factor, rect.width / 2, rect.height / 2);
+    if ((model().viewport.zoom || 1) !== oldZoom) markViewportDirty();
   };
   const fitToView = () => {
     const { zoomMin, zoomMax } = zoomBounds();
@@ -1308,7 +1379,6 @@ function createCanvasRoot({ session, settings, version, onPersist }) {
       viewport.x = after.width / 2 - centerWorld.x * zoom;
       viewport.y = after.height / 2 - centerWorld.y * zoom;
       applyTransform();
-      schedulePersistViewport();
     };
     raf(settle);
   };
@@ -1326,7 +1396,6 @@ function createCanvasRoot({ session, settings, version, onPersist }) {
       if (!size.width || !size.height) return;
       if (viewportNeedsFit(model().viewport, model().nodes, size)) {
         fitToView();
-        schedulePersistViewport();
       } else {
         applyTransform();
       }
@@ -1382,12 +1451,12 @@ function createCanvasRoot({ session, settings, version, onPersist }) {
   zoomLabel.addEventListener("click", () => {
     const rect = rootRect();
     zoomAt(1, rect.width / 2, rect.height / 2);
-    schedulePersistViewport();
+    markViewportDirty();
   });
   const fitBtn = makeButton("Fit", "Fit all cards in view", "pxd-toolbar__btn--zoom");
   fitBtn.addEventListener("click", () => {
     fitToView();
-    schedulePersistViewport();
+    markViewportDirty();
   });
   const fullBtn = makeButton("Fullscreen", "Maximize like native Roam diagrams. Esc exits.", "pxd-toolbar__btn--zoom");
   fullBtn.addEventListener("click", () => setFullscreen(!isFullscreen()));
@@ -1861,16 +1930,15 @@ function createCanvasRoot({ session, settings, version, onPersist }) {
     if (!active) return;
     endGesture();
     if (active.kind === "pan") {
-      if (active.moved) {
-        schedulePersistViewport();
-      } else if (model().activeTool === "select" && !event.shiftKey && model().selected.size) {
+      if (active.moved) markViewportDirty();
+      else if (model().activeTool === "select" && !event.shiftKey && model().selected.size) {
         model().selected.clear();
         syncSelection();
       }
       return;
     }
     if (active.kind === "drag" || active.kind === "resize") {
-      if (active.moved) schedulePersistLayout();
+      if (active.moved) markLayoutDirty();
       return;
     }
     if (active.kind === "connect") {
@@ -1882,6 +1950,7 @@ function createCanvasRoot({ session, settings, version, onPersist }) {
       const added = model().addEdge(active.uid, targetUid, settings.get("connector-style") || "bezier");
       if (added) {
         renderEdges();
+        layoutDirty = true;
         await flushLayout();
       }
     }
@@ -1927,15 +1996,17 @@ function createCanvasRoot({ session, settings, version, onPersist }) {
     event.preventDefault();
     const rect = rootRect();
     if (pinch || zoomWheel) {
+      const oldZoom = model().viewport.zoom || 1;
       const factor = Math.exp(-event.deltaY * (pinch ? 0.01 : 2e-3));
-      zoomAt((model().viewport.zoom || 1) * factor, event.clientX - rect.left, event.clientY - rect.top);
+      zoomAt(oldZoom * factor, event.clientX - rect.left, event.clientY - rect.top);
+      if ((model().viewport.zoom || 1) !== oldZoom) markViewportDirty();
     } else {
       const viewport = model().viewport;
       viewport.x -= event.deltaX;
       viewport.y -= event.deltaY;
       applyTransform();
+      markViewportDirty();
     }
-    schedulePersistViewport();
   };
   const onFocusOut = (event) => {
     if (!editingUid) return;
@@ -2003,8 +2074,14 @@ function createCanvasRoot({ session, settings, version, onPersist }) {
       minimapScheduled?.();
       if (editingUid) exitEdit(false);
       endGesture();
-      if (viewportTimer) void flushViewport();
-      if (layoutTimer) void flushLayout();
+      if (viewportTimer) {
+        clearTimeout(viewportTimer);
+        viewportTimer = null;
+      }
+      if (layoutTimer) {
+        clearTimeout(layoutTimer);
+        layoutTimer = null;
+      }
       for (const card of cardEls.values()) unmountRoam(card._pxdBody);
       cardEls.clear();
       setFullscreen(false);
@@ -2204,8 +2281,12 @@ var NativeDiagramSession = class {
   }
   async persistViewport() {
     return this.persistQueue.run(async () => {
+      await this.metadataStore.setViewport(this.diagramUid, { ...this.model.viewport });
+    });
+  }
+  async seedNativeViewport() {
+    return this.persistQueue.run(async () => {
       await this.adapter.updateViewport({ ...this.model.viewport });
-      await this.metadataStore.set(this.diagramUid, this.model.layoutSnapshot());
     });
   }
   async addCard(string, position) {
@@ -2431,7 +2512,12 @@ async function enhanceDiagram(uid, nativeElement) {
     session.load();
     session.startWatch();
     const layout = session.model.layoutSnapshot();
-    await runtime.metadata.set(uid, layout);
+    if (!runtime.metadata.hasPersisted(uid)) {
+      await runtime.metadata.set(uid, layout);
+      await session.seedNativeViewport();
+    } else if (!runtime.metadata.layoutMatchesStored(uid, layout)) {
+      await runtime.metadata.set(uid, layout);
+    }
     runtime.activeDiagramUid = uid;
     const mounted = mountDiagramView({
       nativeElement,

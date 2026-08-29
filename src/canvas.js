@@ -116,27 +116,49 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
 
   // ---------------------------------------------------------------- persistence
   let disposed = false;
+  let viewportDirty = false;
+  let layoutDirty = false;
   let viewportTimer = null;
   let layoutTimer = null;
-  const flushViewport = () => {
+  const flushViewport = async () => {
     if (viewportTimer) clearTimeout(viewportTimer);
     viewportTimer = null;
-    return onPersist?.({ persistViewport: true });
+    if (!viewportDirty) return;
+    try {
+      await onPersist?.({ persistViewport: true });
+      viewportDirty = false;
+    } catch (error) {
+      throw error;
+    }
   };
-  const flushLayout = () => {
+  const flushLayout = async () => {
     if (layoutTimer) clearTimeout(layoutTimer);
     layoutTimer = null;
-    return onPersist?.({ persistLayout: true });
+    if (!layoutDirty) return;
+    try {
+      await onPersist?.({ persistLayout: true });
+      layoutDirty = false;
+    } catch (error) {
+      throw error;
+    }
   };
   const schedulePersistViewport = () => {
-    if (disposed) return;
+    if (disposed || !viewportDirty) return;
     if (viewportTimer) clearTimeout(viewportTimer);
     viewportTimer = setTimeout(flushViewport, PERSIST_DEBOUNCE_MS);
   };
   const schedulePersistLayout = () => {
-    if (disposed) return;
+    if (disposed || !layoutDirty) return;
     if (layoutTimer) clearTimeout(layoutTimer);
     layoutTimer = setTimeout(flushLayout, PERSIST_DEBOUNCE_MS);
+  };
+  const markViewportDirty = () => {
+    viewportDirty = true;
+    schedulePersistViewport();
+  };
+  const markLayoutDirty = () => {
+    layoutDirty = true;
+    schedulePersistLayout();
   };
 
   // ---------------------------------------------------------------- viewport
@@ -230,8 +252,9 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
 
   const zoomAroundCenter = (factor) => {
     const rect = rootRect();
-    zoomAt((model().viewport.zoom || 1) * factor, rect.width / 2, rect.height / 2);
-    schedulePersistViewport();
+    const oldZoom = model().viewport.zoom || 1;
+    zoomAt(oldZoom * factor, rect.width / 2, rect.height / 2);
+    if ((model().viewport.zoom || 1) !== oldZoom) markViewportDirty();
   };
 
   const fitToView = () => {
@@ -267,7 +290,6 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
       viewport.x = after.width / 2 - centerWorld.x * zoom;
       viewport.y = after.height / 2 - centerWorld.y * zoom;
       applyTransform();
-      schedulePersistViewport();
     };
     raf(settle);
   };
@@ -288,7 +310,6 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
       if (!size.width || !size.height) return;
       if (viewportNeedsFit(model().viewport, model().nodes, size)) {
         fitToView();
-        schedulePersistViewport();
       } else {
         applyTransform();
       }
@@ -347,12 +368,12 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
   zoomLabel.addEventListener("click", () => {
     const rect = rootRect();
     zoomAt(1, rect.width / 2, rect.height / 2);
-    schedulePersistViewport();
+    markViewportDirty();
   });
   const fitBtn = makeButton("Fit", "Fit all cards in view", "pxd-toolbar__btn--zoom");
   fitBtn.addEventListener("click", () => {
     fitToView();
-    schedulePersistViewport();
+    markViewportDirty();
   });
   const fullBtn = makeButton("Fullscreen", "Maximize like native Roam diagrams. Esc exits.", "pxd-toolbar__btn--zoom");
   fullBtn.addEventListener("click", () => setFullscreen(!isFullscreen()));
@@ -862,16 +883,15 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
     if (!active) return;
     endGesture();
     if (active.kind === "pan") {
-      if (active.moved) {
-        schedulePersistViewport();
-      } else if (model().activeTool === "select" && !event.shiftKey && model().selected.size) {
+      if (active.moved) markViewportDirty();
+      else if (model().activeTool === "select" && !event.shiftKey && model().selected.size) {
         model().selected.clear();
         syncSelection();
       }
       return;
     }
     if (active.kind === "drag" || active.kind === "resize") {
-      if (active.moved) schedulePersistLayout();
+      if (active.moved) markLayoutDirty();
       return;
     }
     if (active.kind === "connect") {
@@ -883,6 +903,7 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
       const added = model().addEdge(active.uid, targetUid, settings.get("connector-style") || "bezier");
       if (added) {
         renderEdges();
+        layoutDirty = true;
         await flushLayout();
       }
     }
@@ -931,15 +952,17 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
     event.preventDefault();
     const rect = rootRect();
     if (pinch || zoomWheel) {
+      const oldZoom = model().viewport.zoom || 1;
       const factor = Math.exp(-event.deltaY * (pinch ? 0.01 : 0.002));
-      zoomAt((model().viewport.zoom || 1) * factor, event.clientX - rect.left, event.clientY - rect.top);
+      zoomAt(oldZoom * factor, event.clientX - rect.left, event.clientY - rect.top);
+      if ((model().viewport.zoom || 1) !== oldZoom) markViewportDirty();
     } else {
       const viewport = model().viewport;
       viewport.x -= event.deltaX;
       viewport.y -= event.deltaY;
       applyTransform();
+      markViewportDirty();
     }
-    schedulePersistViewport();
   };
 
   const onFocusOut = (event) => {
@@ -1012,8 +1035,14 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
       minimapScheduled?.();
       if (editingUid) exitEdit(false);
       endGesture();
-      if (viewportTimer) void flushViewport();
-      if (layoutTimer) void flushLayout();
+      if (viewportTimer) {
+        clearTimeout(viewportTimer);
+        viewportTimer = null;
+      }
+      if (layoutTimer) {
+        clearTimeout(layoutTimer);
+        layoutTimer = null;
+      }
       for (const card of cardEls.values()) unmountRoam(card._pxdBody);
       cardEls.clear();
       setFullscreen(false);

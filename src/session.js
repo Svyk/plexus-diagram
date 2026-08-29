@@ -72,8 +72,13 @@ export class NativeDiagramSession {
 
   async persistViewport() {
     return this.persistQueue.run(async () => {
+      await this.metadataStore.setViewport(this.diagramUid, { ...this.model.viewport });
+    });
+  }
+
+  async seedNativeViewport() {
+    return this.persistQueue.run(async () => {
       await this.adapter.updateViewport({ ...this.model.viewport });
-      await this.metadataStore.set(this.diagramUid, this.model.layoutSnapshot());
     });
   }
 

@@ -124,7 +124,12 @@ async function enhanceDiagram(uid, nativeElement) {
     session.load();
     session.startWatch();
     const layout = session.model.layoutSnapshot();
-    await runtime.metadata.set(uid, layout);
+    if (!runtime.metadata.hasPersisted(uid)) {
+      await runtime.metadata.set(uid, layout);
+      await session.seedNativeViewport();
+    } else if (!runtime.metadata.layoutMatchesStored(uid, layout)) {
+      await runtime.metadata.set(uid, layout);
+    }
     runtime.activeDiagramUid = uid;
     const mounted = mountDiagramView({
       nativeElement,

@@ -17,8 +17,9 @@ Native-first Heptabase-like overlay for Roam `{{[[diagram]]}}` blocks. Roam's di
 - **Add a card:** double-click empty space, or pick the `Card` tool and click. The new card opens for editing.
 - **Edit a card:** double-click it. Roam's native block editor mounts in place; click away or press Esc to commit. Cards show `renderString` output otherwise.
 - **Move / resize:** drag a card; drag the bottom-right corner to resize (min 240×140). Shift-click to multi-select and drag together.
-- **Connect:** drag from a card's edge dot onto another card, or use the `Connect` tool and drag from anywhere on a card.
-- **Fullscreen:** `Fullscreen` button or the command; Esc exits. Zoomed diagram pages (`#/app/<graph>/page/<uid>`) open full screen by default (`fullscreen-on-zoom`).
+- **Connect:** drag from a card's edge dot onto another card, or use the `Connect` tool and drag from anywhere on a card. Double-click a connector (or click its midpoint pill) to add a note on the line — that does not create a card.
+- **Fullscreen:** `Fullscreen` button or **Plexus Diagram: Fullscreen this diagram**. Esc exits edit, then fullscreen. Zoomed diagram pages (`#/app/<graph>/page/<uid>`) open full screen by default (`fullscreen-on-zoom`). Fullscreen hides RoamJS breadcrumbs, sits below the remaining topbar, and fills the article to the right of the left sidebar.
+- **Shortcuts** (when `enable-shortcuts` is on and the overlay has the pointer): `V` select, `C` connect, `N` add a card at view center, `F` fit. Ignored while typing in a card or edge-label editor.
 - Viewport and layout persist on pointer-up / wheel-end, not per pixel. A viewport imported from the native diagram that would paint cards under 140px is replaced by a fit on first paint.
 
 ## What is written where
@@ -26,8 +27,8 @@ Native-first Heptabase-like overlay for Roam `{{[[diagram]]}}` blocks. Roam's di
 | Data | Location |
 | --- | --- |
 | Card content (pages, text, images) | Diagram block **children** via `data.block.create` |
-| Card positions, sizes, edges, sections | `[[plexus-diagram/metadata]]` blocks keyed by content UIDs |
-| Pan/zoom viewport | Native `:block/props` `":rf-diagram".viewport` (metadata mirrors when saved) |
+| Card positions, sizes, edges, edge labels, sections | `[[plexus-diagram/metadata]]` blocks keyed by content UIDs |
+| Pan/zoom viewport | `viewport::` on `[[plexus-diagram/metadata]]` (native `:rf-diagram` only on first enhance seed) |
 
 Plexus Diagram does **not** create fake `:diagram/nodes`, write to `:rf-diagram.nodes`, or transact `:harc/*` / `:entity/attrs`.
 
@@ -51,18 +52,13 @@ Open **Settings → Extensions → Plexus Diagram**. Key settings:
 
 ## Commands
 
-All commands are prefixed **Plexus Diagram:**
+Palette and slash keep only these, each prefixed **Plexus Diagram:**
 
 - Enhance this diagram
 - Restore native diagram
-- Add card
-- Connect selected
-- Toggle connect tool
-- Open nested diagram
-- Show library
-- Appearances of this block
-- Snap selection to grid
-- Auto-layout
+- Fullscreen this diagram
+
+The block context menu still has **Plexus Diagram: Enhance**. Card, connect, nested, library, snap, and auto-layout stay on the toolbar (single row) and as shortcuts.
 
 ## Development
 

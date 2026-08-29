@@ -57,6 +57,11 @@ export function buildEdgePath(style, sourceRect, targetRect) {
   return bezierPath(sx, sy, tx, ty);
 }
 
+export function edgeMidpoint(sourceRect, targetRect) {
+  const { sx, sy, tx, ty } = edgeEndpoints(sourceRect, targetRect);
+  return { x: (sx + tx) / 2, y: (sy + ty) / 2 };
+}
+
 export function arrowheadMarkerId(kind) {
   return `pxd-arrow-${kind}`;
 }

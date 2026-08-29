@@ -199,7 +199,7 @@ export function importNativeLayout(tree, metadataLayout, defaults = {}) {
     if (!srcContent || !tgtContent) continue;
     const key = `${srcContent}->${tgtContent}`;
     if (existingEdgeKeys.has(key)) continue;
-    edges.push({ source: srcContent, target: tgtContent, kind: "bezier" });
+    edges.push({ source: srcContent, target: tgtContent, kind: "bezier", label: "" });
     existingEdgeKeys.add(key);
   }
   return { nodes, edges };
@@ -275,10 +275,14 @@ export class DiagramModel {
     };
   }
 
-  addEdge(source, target, kind = "bezier") {
+  addEdge(source, target, kind = "bezier", label = "") {
     const key = `${source}->${target}`;
-    if (this.edges.some((edge) => `${edge.source}->${edge.target}` === key)) return null;
-    const edge = { source, target, kind };
+    const existing = this.edges.find((edge) => `${edge.source}->${edge.target}` === key);
+    if (existing) {
+      if (existing.label == null) existing.label = "";
+      return null;
+    }
+    const edge = { source, target, kind, label: label || "" };
     this.edges.push(edge);
     return edge;
   }
@@ -310,12 +314,18 @@ export class DiagramModel {
     for (const [contentUid, node] of next.nodes) {
       if (!this.nodes.has(contentUid)) this.nodes.set(contentUid, node);
     }
-    const known = new Set(this.edges.map((edge) => `${edge.source}->${edge.target}`));
+    const known = new Map(this.edges.map((edge) => [`${edge.source}->${edge.target}`, edge]));
     for (const edge of next.edges) {
       const key = `${edge.source}->${edge.target}`;
-      if (known.has(key)) continue;
-      this.edges.push(edge);
-      known.add(key);
+      const existing = known.get(key);
+      if (existing) {
+        if (existing.label == null) existing.label = "";
+        if (!existing.label && edge.label) existing.label = edge.label;
+        continue;
+      }
+      const incoming = { source: edge.source, target: edge.target, kind: edge.kind || "bezier", label: edge.label || "" };
+      this.edges.push(incoming);
+      known.set(key, incoming);
     }
     for (const [id, section] of next.sections) {
       if (!this.sections.has(id)) this.sections.set(id, section);

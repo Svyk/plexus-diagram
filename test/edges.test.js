@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { arrowheadPoints, bezierPath, buildEdgePath, elbowPath, straightPath } from "../src/edges.js";
+import { arrowheadPoints, bezierPath, buildEdgePath, elbowPath, edgeMidpoint, straightPath } from "../src/edges.js";
 
 const source = { x: 0, y: 0, width: 100, height: 80 };
 const target = { x: 200, y: 120, width: 100, height: 80 };
@@ -22,4 +22,12 @@ test("arrowheadPoints follows setting", () => {
   assert.deepEqual(arrowheadPoints("end"), { start: false, end: true });
   assert.deepEqual(arrowheadPoints("both"), { start: true, end: true });
   assert.deepEqual(arrowheadPoints("none"), { start: false, end: false });
+});
+
+test("edgeMidpoint is the midpoint of the connector endpoints", () => {
+  const mid = edgeMidpoint(source, target);
+  assert.equal(typeof mid.x, "number");
+  assert.equal(typeof mid.y, "number");
+  assert.ok(mid.x > source.x);
+  assert.ok(mid.x < target.x + target.width);
 });

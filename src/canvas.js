@@ -1,4 +1,10 @@
-import { buildEdgePath, arrowheadPoints } from "./edges.js";
+import { buildEdgePath, arrowheadPoints, edgeMidpoint } from "./edges.js";
+import {
+  acquireScratch,
+  blankScratch,
+  peekScratch,
+  updateBlock,
+} from "./metadata.js";
 import {
   contentBounds,
   fitViewport,
@@ -10,7 +16,8 @@ import {
 const SVG_NS = "http://www.w3.org/2000/svg";
 const DRAG_THRESHOLD_PX = 4;
 const PERSIST_DEBOUNCE_MS = 150;
-const EDIT_GRACE_MS = 1000;
+const EDIT_GRACE_MS = 1200;
+const HYDRATE_CAP_MS = 900;
 const HINT_TEXT = "Drag empty space to pan · double-click to add a card · Fullscreen for a real board";
 
 // renderBlock hydration / outline-focus steal can pull an empty string for a
@@ -22,15 +29,6 @@ export function shouldCommitPulledString(previous, pulled) {
   return true;
 }
 
-// RoamJS breadcrumbs (and the rest of the top bar) live in `.rm-topbar`.
-// Fullscreen must start below that bar — native Maximize does not cover it.
-export function topbarOffset(root = globalThis.document) {
-  const topbar = root?.querySelector?.(".rm-topbar");
-  if (!topbar?.getBoundingClientRect) return 0;
-  const bottom = topbar.getBoundingClientRect().bottom;
-  return Number.isFinite(bottom) ? Math.max(0, Math.round(bottom)) : 0;
-}
-
 function raf(callback) {
   if (typeof globalThis.requestAnimationFrame === "function") {
     const id = globalThis.requestAnimationFrame(callback);
@@ -38,6 +36,130 @@ function raf(callback) {
   }
   const id = setTimeout(callback, 16);
   return () => clearTimeout(id);
+}
+
+// RoamJS breadcrumbs live in `.rm-topbar` (hidden in fullscreen via CSS).
+// Fullscreen starts below the remaining topbar — graph switcher stays visible.
+export function topbarOffset(root = globalThis.document) {
+  const topbar = root?.querySelector?.(".rm-topbar");
+  if (!topbar?.getBoundingClientRect) return 0;
+  const bottom = topbar.getBoundingClientRect().bottom;
+  return Number.isFinite(bottom) ? Math.max(0, Math.round(bottom)) : 0;
+}
+
+const SIDEBAR_SELECTORS = [".roam-sidebar-container", ".rm-left-sidebar", "#roam-sidebar-container"];
+
+export function sidebarOffset(root = globalThis.document) {
+  if (!root?.querySelector) return 0;
+  let sidebar = null;
+  for (const selector of SIDEBAR_SELECTORS) {
+    sidebar = root.querySelector(selector);
+    if (sidebar) break;
+  }
+  if (!sidebar?.getBoundingClientRect) return 0;
+  const rect = sidebar.getBoundingClientRect();
+  const width = Number(rect.width);
+  if (!(width > 0)) return 0;
+  const right = Number(rect.right);
+  return Number.isFinite(right) ? Math.max(0, Math.round(right)) : 0;
+}
+
+function chromeRootBody(root) {
+  return root?.body || globalThis.document?.body || null;
+}
+
+export function applyFullscreenChrome(mount, on, root = globalThis.document) {
+  mount?.classList?.toggle?.("pxd-mount--fullscreen", Boolean(on));
+  chromeRootBody(root)?.classList?.toggle?.("pxd-has-fullscreen", Boolean(on));
+  if (on) {
+    const place = () => {
+      if (!mount?.style) return;
+      mount.style.top = `${topbarOffset(root)}px`;
+      mount.style.left = `${sidebarOffset(root)}px`;
+      mount.style.right = "0px";
+      mount.style.bottom = "0px";
+      mount.style.width = "auto";
+      mount.style.height = "auto";
+      mount.style.minHeight = "0";
+    };
+    place();
+    // Breadcrumbs `display:none` shrinks `.rm-topbar`; remeasure after one frame.
+    return raf(place);
+  }
+  if (mount?.style) {
+    mount.style.top = "";
+    mount.style.left = "";
+    mount.style.right = "";
+    mount.style.bottom = "";
+  }
+  return () => {};
+}
+
+function nextFrame() {
+  return new Promise((resolve) => {
+    raf(() => resolve());
+  });
+}
+
+async function waitHydrateQuiet(el, capMs = HYDRATE_CAP_MS) {
+  if (!el || typeof MutationObserver !== "function") {
+    await nextFrame();
+    await nextFrame();
+    return;
+  }
+  let mutations = 0;
+  const observer = new MutationObserver(() => { mutations += 1; });
+  observer.observe(el, { childList: true, subtree: true, attributes: true, characterData: true });
+  const start = Date.now();
+  const preHydrationGrace = 250;
+  let quiet = 0;
+  let sawMutation = false;
+  try {
+    while (Date.now() - start < capMs) {
+      if (!sawMutation && Date.now() - start >= preHydrationGrace) break;
+      await nextFrame();
+      if (mutations > 0) {
+        sawMutation = true;
+        quiet = 0;
+      } else if (sawMutation) {
+        quiet += 1;
+      }
+      mutations = 0;
+      if (sawMutation && quiet >= 2) break;
+    }
+  } finally {
+    observer.disconnect();
+  }
+}
+
+function synthesizeBlockClick(host) {
+  if (!host?.dispatchEvent) return false;
+  const rect = host.getBoundingClientRect?.() || { left: 0, top: 0, height: 0 };
+  const init = {
+    bubbles: true,
+    cancelable: true,
+    composed: true,
+    button: 0,
+    buttons: 1,
+    detail: 1,
+    clientX: (Number(rect.left) || 0) + 2,
+    clientY: (Number(rect.top) || 0) + ((Number(rect.height) || 0) / 2),
+  };
+  for (const type of ["mousedown", "mouseup", "click"]) {
+    const Constructor = globalThis.MouseEvent || globalThis.Event;
+    const event = typeof Constructor === "function" ? new Constructor(type, init) : { type, ...init };
+    host.dispatchEvent(event);
+  }
+  return true;
+}
+
+function scratchTextareaFocused() {
+  const el = globalThis.document?.activeElement;
+  if (!el) return false;
+  const tag = String(el.tagName || "").toLowerCase();
+  const isInput = tag === "textarea" || el.classList?.contains?.("rm-block__input");
+  if (!isInput) return false;
+  return Boolean(el.closest?.(".pxd-card__editor"));
 }
 
 function roamUi() {
@@ -49,7 +171,7 @@ function isTextEntryTarget(target) {
   const tag = String(target.tagName || "").toLowerCase();
   if (tag === "input" || tag === "textarea" || tag === "select") return true;
   if (target.isContentEditable) return true;
-  return Boolean(target.closest(".rm-block__input, [contenteditable=\"true\"], .pxd-library-drawer"));
+  return Boolean(target.closest(".rm-block__input, [contenteditable=\"true\"], .pxd-library-drawer, .pxd-edge-label-editor"));
 }
 
 /**
@@ -69,6 +191,8 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
   edgesSvg.classList.add("pxd-edges");
   const cardsLayer = document.createElement("div");
   cardsLayer.className = "pxd-cards";
+  const labelsLayer = document.createElement("div");
+  labelsLayer.className = "pxd-edge-labels";
   const sectionsLayer = document.createElement("div");
   sectionsLayer.className = "pxd-sections";
   const toolbar = document.createElement("div");
@@ -79,7 +203,7 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
   const minimap = settings.get("minimap") ? document.createElement("div") : null;
   if (minimap) minimap.className = "pxd-minimap";
 
-  world.append(sectionsLayer, edgesSvg, cardsLayer);
+  world.append(sectionsLayer, edgesSvg, labelsLayer, cardsLayer);
   root.append(grid, world, toolbar, hint);
   if (minimap) root.append(minimap);
 
@@ -387,24 +511,10 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
     toolbar.append(badge);
   }
 
-  const applyFullscreenChrome = (mount, on) => {
-    mount.classList.toggle("pxd-mount--fullscreen", Boolean(on));
-    document.body?.classList?.toggle("pxd-has-fullscreen", Boolean(on));
-    if (on) {
-      const top = topbarOffset();
-      mount.style.top = `${top}px`;
-      mount.style.left = "0px";
-      mount.style.right = "0px";
-      mount.style.bottom = "0px";
-      mount.style.width = "auto";
-      mount.style.height = "auto";
-      mount.style.minHeight = "0";
-    } else {
-      mount.style.top = "";
-      mount.style.left = "";
-      mount.style.right = "";
-      mount.style.bottom = "";
-    }
+  let cancelFullscreenPlace = null;
+  const placeFullscreen = (mount, on) => {
+    cancelFullscreenPlace?.();
+    cancelFullscreenPlace = applyFullscreenChrome(mount, on) || null;
   };
 
   const setFullscreen = (on) => {
@@ -414,11 +524,18 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
     fullBtn.textContent = on ? "Exit full screen" : "Fullscreen";
     fullBtn.setAttribute("aria-pressed", on ? "true" : "false");
     if (current === Boolean(on)) {
-      if (on) applyFullscreenChrome(mount, true);
+      if (on) placeFullscreen(mount, true);
       return;
     }
-    keepCenterAcross(() => applyFullscreenChrome(mount, Boolean(on)));
+    keepCenterAcross(() => placeFullscreen(mount, Boolean(on)));
   };
+
+  const onWindowResize = () => {
+    if (!isFullscreen()) return;
+    const mount = mountEl();
+    if (mount) placeFullscreen(mount, true);
+  };
+  window.addEventListener("resize", onWindowResize);
 
   // ---------------------------------------------------------------- hint
   let hintDismissed = false;
@@ -459,13 +576,17 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
 
   // ---------------------------------------------------------------- edges
   const edgePaths = new Map();
+  const edgePills = new Map();
   let tempEdge = null;
+  let editingEdgeKey = null;
+  let edgeEditorEl = null;
   const cardRect = (contentUid) => {
     const node = model().nodes.get(contentUid);
     if (!node) return null;
     return { x: node.pos.x, y: node.pos.y, width: node.size.width, height: node.size.height };
   };
   const edgeKey = (edge) => `${edge.source}->${edge.target}`;
+  const findEdgeByKey = (key) => model().edges.find((edge) => edgeKey(edge) === key) || null;
   const ensureDefs = () => {
     if (edgesSvg.querySelector?.("defs")) return;
     const defs = document.createElementNS(SVG_NS, "defs");
@@ -478,40 +599,163 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
         </marker>`;
     edgesSvg.prepend(defs);
   };
-  const updateEdgePath = (edge, path) => {
+  const positionEdgeChrome = (edge, path, pill) => {
     const source = cardRect(edge.source);
     const target = cardRect(edge.target);
-    if (!source || !target) return false;
+    if (!source || !target) return null;
     const style = settings.get("connector-style") || "bezier";
-    path.setAttribute("d", buildEdgePath(edge.kind || style, source, target));
-    return true;
+    const d = buildEdgePath(edge.kind || style, source, target);
+    path.setAttribute("d", d);
+    const mid = edgeMidpoint(source, target);
+    if (pill) {
+      pill.style.left = `${mid.x}px`;
+      pill.style.top = `${mid.y}px`;
+    }
+    if (editingEdgeKey === edgeKey(edge) && edgeEditorEl) {
+      edgeEditorEl.style.left = `${mid.x}px`;
+      edgeEditorEl.style.top = `${mid.y}px`;
+    }
+    return d;
+  };
+  const updateEdgePath = (edge, path) => positionEdgeChrome(edge, path, edgePills.get(edgeKey(edge)));
+  const closeEdgeEditor = (commit) => {
+    const key = editingEdgeKey;
+    const editor = edgeEditorEl;
+    editingEdgeKey = null;
+    edgeEditorEl = null;
+    if (!editor) return;
+    const next = String(editor.textContent ?? "").trim();
+    editor.remove();
+    if (!key) return;
+    const edge = findEdgeByKey(key);
+    if (!edge) return;
+    if (commit) {
+      const previous = edge.label || "";
+      if (next !== previous) {
+        edge.label = next;
+        markLayoutDirty();
+      }
+    }
+    renderEdges();
+  };
+  const openEdgeLabelEditor = (key) => {
+    const edge = findEdgeByKey(key);
+    if (!edge) return;
+    if (editingUid) void exitEdit();
+    if (editingEdgeKey === key && edgeEditorEl) {
+      edgeEditorEl.focus?.();
+      return;
+    }
+    if (editingEdgeKey) closeEdgeEditor(true);
+    const source = cardRect(edge.source);
+    const target = cardRect(edge.target);
+    if (!source || !target) return;
+    const mid = edgeMidpoint(source, target);
+    editingEdgeKey = key;
+    const editor = document.createElement("div");
+    editor.className = "pxd-edge-label-editor";
+    editor.contentEditable = "true";
+    editor.spellcheck = false;
+    editor.textContent = edge.label || "";
+    editor.style.left = `${mid.x}px`;
+    editor.style.top = `${mid.y}px`;
+    editor.addEventListener("keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        event.stopPropagation();
+        closeEdgeEditor(true);
+      } else if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        closeEdgeEditor(false);
+      }
+    });
+    editor.addEventListener("blur", () => {
+      if (editingEdgeKey === key) closeEdgeEditor(true);
+    });
+    edgeEditorEl = editor;
+    const existingPill = edgePills.get(key);
+    existingPill?.remove?.();
+    labelsLayer.append(editor);
+    editor.focus?.();
   };
   const renderEdges = () => {
+    const keepEditor = editingEdgeKey && edgeEditorEl;
     edgesSvg.innerHTML = "";
     edgePaths.clear();
+    for (const [key, pill] of [...edgePills]) {
+      if (keepEditor && key === editingEdgeKey) continue;
+      pill.remove?.();
+      edgePills.delete(key);
+    }
+    if (!keepEditor) {
+      labelsLayer.querySelectorAll?.(".pxd-edge-label")?.forEach?.((node) => node.remove());
+      edgePills.clear();
+    }
     ensureDefs();
     const width = num("edge-width", 2);
     const animated = settings.get("edge-animated");
     const arrowheads = arrowheadPoints(settings.get("arrowheads") || "end");
+    const showLabels = settings.get("show-edge-labels") !== false;
     for (const edge of model().edges) {
+      if (edge.label == null) edge.label = "";
+      const key = edgeKey(edge);
+      const hit = document.createElementNS(SVG_NS, "path");
       const path = document.createElementNS(SVG_NS, "path");
-      if (!updateEdgePath(edge, path)) continue;
+      const d = positionEdgeChrome(edge, path, null);
+      if (!d) continue;
+      hit.classList.add("pxd-edge-hit");
+      hit.setAttribute("d", d);
+      hit.setAttribute("fill", "none");
+      hit.setAttribute("stroke", "transparent");
+      hit.setAttribute("stroke-width", "16");
+      hit.setAttribute("title", edge.label || "add note");
+      hit.dataset.edgeKey = key;
       path.classList.add("pxd-edge");
       path.setAttribute("fill", "none");
       path.setAttribute("stroke", "var(--pxd-edge)");
       path.setAttribute("stroke-width", String(width));
       path.setAttribute("stroke-linecap", "round");
+      path.setAttribute("title", edge.label || "add note");
+      path.dataset.edgeKey = key;
+      const hint = document.createElementNS(SVG_NS, "title");
+      hint.textContent = edge.label || "add note";
+      path.append(hint);
       if (animated) path.classList.add("pxd-edge--animated");
       if (arrowheads.end) path.setAttribute("marker-end", "url(#pxd-arrow-end)");
       if (arrowheads.start) path.setAttribute("marker-start", "url(#pxd-arrow-start)");
-      edgesSvg.append(path);
-      edgePaths.set(edgeKey(edge), { edge, path });
+      edgesSvg.append(hit, path);
+      edgePaths.set(key, { edge, path, hit });
+      if (showLabels && edge.label && !(keepEditor && key === editingEdgeKey)) {
+        const pill = document.createElement("div");
+        pill.className = "pxd-edge-label";
+        pill.textContent = edge.label;
+        pill.dataset.edgeKey = key;
+        pill.title = edge.label;
+        const source = cardRect(edge.source);
+        const target = cardRect(edge.target);
+        if (source && target) {
+          const mid = edgeMidpoint(source, target);
+          pill.style.left = `${mid.x}px`;
+          pill.style.top = `${mid.y}px`;
+        }
+        labelsLayer.append(pill);
+        edgePills.set(key, pill);
+      }
     }
   };
   const updateEdgesFor = (uids) => {
-    for (const { edge, path } of edgePaths.values()) {
-      if (uids.has(edge.source) || uids.has(edge.target)) updateEdgePath(edge, path);
+    for (const { edge, path, hit } of edgePaths.values()) {
+      if (!uids.has(edge.source) && !uids.has(edge.target)) continue;
+      const pill = edgePills.get(edgeKey(edge));
+      const d = positionEdgeChrome(edge, path, pill);
+      if (d && hit) hit.setAttribute("d", d);
     }
+  };
+  const edgeKeyFromTarget = (target) => {
+    if (!target) return null;
+    const tagged = target.closest?.(".pxd-edge, .pxd-edge-hit, .pxd-edge-label, .pxd-edge-label-editor");
+    return tagged?.dataset?.edgeKey || target.dataset?.edgeKey || null;
   };
   const setTempEdge = (from, worldPoint) => {
     const source = cardRect(from);
@@ -582,52 +826,55 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
     card._pxdString = child.string;
   };
 
-  const focusRoamBlock = (body, uid, attempt = 0) => {
-    const input = body.querySelector?.(".pxd-card__editor .rm-block__input, .pxd-card__editor textarea");
-    if (!input) {
-      if (attempt < 8 && editingUid === uid) setTimeout(() => focusRoamBlock(body, uid, attempt + 1), 80);
-      return;
-    }
-    body.querySelector(".pxd-card__edit-fallback")?.remove?.();
-    // Do not call setBlockFocusAndSelection. That focuses the *outline* copy of
-    // the same uid; Roam then unmounts or blanks the overlay mount.
-    input.focus?.();
-    input.click?.();
-  };
-
-  const exitEdit = (persistString = true) => {
+  const exitEdit = async (persistString = true) => {
     const uid = editingUid;
     if (!uid) return;
     editingUid = null;
     editOpenedAt = 0;
     const card = cardEls.get(uid);
     root.classList.remove("pxd-root--editing");
-    if (!card) return;
-    card.classList.remove("pxd-card--editing");
+    const scratchUid = peekScratch()?.uid;
     let child = model().getCard(uid);
-    if (persistString) {
+    if (persistString && scratchUid) {
       try {
-        const pulled = globalThis.roamAlphaAPI?.data?.pull?.("[:block/string]", [":block/uid", uid]);
+        const pulled = globalThis.roamAlphaAPI?.data?.pull?.("[:block/string]", [":block/uid", scratchUid]);
         const fresh = pulled?.[":block/string"] ?? pulled?.string;
         if (shouldCommitPulledString(child?.string, fresh)) {
+          try {
+            await updateBlock(uid, fresh);
+          } catch { /* keep going so the overlay still paints */ }
           child = { ...(child || { uid }), string: fresh };
           const live = model().getCard(uid);
           if (live) live.string = fresh;
         }
       } catch { /* keep the model string */ }
     }
+    try {
+      await blankScratch();
+    } catch { /* scratch blank is best-effort */ }
+    if (!card) {
+      syncHint();
+      return;
+    }
+    card.classList.remove("pxd-card--editing");
     if (child) paintCardBody(card, child);
     syncHint();
   };
 
-  const enterEdit = (uid) => {
+  const enterEdit = async (uid) => {
     const card = cardEls.get(uid);
     const child = model().getCard(uid);
     if (!card || !child || model().isNestedDiagram(uid)) return;
     if (editingUid === uid) return;
-    if (editingUid) exitEdit();
+    if (editingUid) await exitEdit();
+    if (editingEdgeKey) closeEdgeEditor(true);
     const components = roamUi()?.components;
     if (!settings.get("native-block-editor") || !components?.renderBlock) {
+      onPersist?.({ openBlock: uid });
+      return;
+    }
+    const scratch = await acquireScratch();
+    if (!scratch?.uid) {
       onPersist?.({ openBlock: uid });
       return;
     }
@@ -646,15 +893,25 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
     editor.className = "pxd-card__editor";
     body.innerHTML = "";
     body.append(fallback, editor);
+    if (!scratchTextareaFocused()) {
+      try {
+        await updateBlock(scratch.uid, child.string);
+      } catch { /* mount anyway; Roam may still show the last scratch string */ }
+    }
     try {
-      components.renderBlock({ uid, el: editor });
+      components.renderBlock({ uid: scratch.uid, el: editor });
     } catch {
-      exitEdit(false);
+      await exitEdit(false);
       return;
     }
-    setTimeout(() => {
-      if (editingUid === uid) focusRoamBlock(body, uid);
-    }, 60);
+    await waitHydrateQuiet(editor, HYDRATE_CAP_MS);
+    if (disposed || editingUid !== uid) return;
+    const input = editor.querySelector?.(".rm-block__input")
+      || body.querySelector?.(".pxd-card__editor .rm-block__input, .pxd-card__editor textarea");
+    if (input) {
+      body.querySelector?.(".pxd-card__edit-fallback")?.remove?.();
+      synthesizeBlockClick(input);
+    }
     syncHint();
   };
 
@@ -725,7 +982,7 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
     }
     for (const [uid, card] of cardEls) {
       if (seen.has(uid)) continue;
-      if (editingUid === uid) exitEdit(false);
+      if (editingUid === uid) void exitEdit(false);
       unmountRoam(card._pxdBody);
       card.remove();
       cardEls.delete(uid);
@@ -788,14 +1045,19 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
     if (event.button !== 0 && event.button !== 1) return;
     const target = event.target;
     if (target?.closest?.(".pxd-toolbar") || target?.closest?.(".pxd-library-drawer") || target?.closest?.(".pxd-minimap")) return;
+    if (target?.closest?.(".pxd-edge-label-editor")) return;
     dismissHint();
     const cardEl = target?.closest?.(".pxd-card");
     const uid = cardEl?.dataset?.uid || null;
     const tool = model().activeTool || "select";
     const panRequested = event.button === 1 || (spaceDown && settings.get("pan-on-space"));
 
-    if (editingUid && editingUid !== uid) exitEdit();
+    if (editingUid && editingUid !== uid) void exitEdit();
     if (editingUid && editingUid === uid) return; // Roam owns the caret inside an editing card.
+    if (target?.closest?.(".pxd-edge-label") || edgeKeyFromTarget(target)) {
+      if (editingEdgeKey && edgeKeyFromTarget(target) !== editingEdgeKey) closeEdgeEditor(true);
+      return;
+    }
 
     if (uid && !panRequested) {
       const start = { x: event.clientX, y: event.clientY };
@@ -912,13 +1174,20 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
   const onDoubleClick = (event) => {
     const target = event.target;
     if (target?.closest?.(".pxd-toolbar") || target?.closest?.(".pxd-library-drawer") || target?.closest?.(".pxd-minimap")) return;
+    const edgeKeyHit = edgeKeyFromTarget(target);
+    if (edgeKeyHit) {
+      event.preventDefault();
+      event.stopPropagation?.();
+      openEdgeLabelEditor(edgeKeyHit);
+      return;
+    }
     const cardEl = target?.closest?.(".pxd-card");
     const uid = cardEl?.dataset?.uid;
     if (uid) {
       if (editingUid === uid) return;
       event.preventDefault();
       if (model().isNestedDiagram(uid)) onPersist?.({ openNested: uid });
-      else enterEdit(uid);
+      else void enterEdit(uid);
       return;
     }
     event.preventDefault();
@@ -934,7 +1203,15 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
     const target = event.target;
     if (target?.closest?.(".pxd-card") || target?.closest?.(".pxd-toolbar")) return;
     if (target?.closest?.(".pxd-library-drawer") || target?.closest?.(".pxd-minimap")) return;
+    if (target?.closest?.(".pxd-edge-label-editor")) return;
     if (event.detail > 1) return;
+    const pill = target?.closest?.(".pxd-edge-label");
+    if (pill?.dataset?.edgeKey) {
+      event.preventDefault();
+      openEdgeLabelEditor(pill.dataset.edgeKey);
+      return;
+    }
+    if (edgeKeyFromTarget(target)) return;
     const tool = model().activeTool;
     if (tool === "card" || tool === "nested" || tool === "section") {
       const point = screenToWorld(event.clientX, event.clientY);
@@ -981,11 +1258,35 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
     }, 0);
   };
 
+  let pointerInside = false;
+  const overlayOwnsPointer = () => {
+    if (pointerInside) return true;
+    const active = globalThis.document?.activeElement;
+    return Boolean(active && (root.contains?.(active) || active === root));
+  };
+  const addCardAtViewCenter = () => {
+    const size = defaultCardSize();
+    const rect = rootRect();
+    const { x, y, zoom } = model().viewport;
+    const z = zoom || 1;
+    void onPersist?.({
+      addCard: {
+        x: snap((rect.width / 2 - x) / z - size.width / 2),
+        y: snap((rect.height / 2 - y) / z - size.height / 2),
+      },
+    });
+  };
+
   const onKeyDown = (event) => {
     if (event.key === "Escape") {
+      if (editingEdgeKey) {
+        event.preventDefault();
+        closeEdgeEditor(false);
+        return;
+      }
       if (editingUid) {
-        if (event.target?.closest?.(".pxd-card--editing")) return; // Roam blurs the block; focusout commits.
-        exitEdit();
+        event.preventDefault();
+        void exitEdit();
         return;
       }
       if (isFullscreen()) {
@@ -999,6 +1300,25 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
       spaceDown = true;
       root.classList.add("pxd-root--space");
     }
+    if (settings.get("enable-shortcuts") === false) return;
+    if (editingUid || editingEdgeKey) return;
+    if (isTextEntryTarget(event.target)) return;
+    if (!overlayOwnsPointer()) return;
+    const key = String(event.key || "").toLowerCase();
+    if (key === "v") {
+      event.preventDefault();
+      setActiveTool("select");
+    } else if (key === "c") {
+      event.preventDefault();
+      setActiveTool("connect");
+    } else if (key === "n") {
+      event.preventDefault();
+      addCardAtViewCenter();
+    } else if (key === "f") {
+      event.preventDefault();
+      fitToView();
+      markViewportDirty();
+    }
   };
   const onKeyUp = (event) => {
     if (event.code === "Space") {
@@ -1008,6 +1328,8 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
   };
 
   root.addEventListener("pointerdown", onPointerDown);
+  root.addEventListener("pointerenter", () => { pointerInside = true; });
+  root.addEventListener("pointerleave", () => { pointerInside = false; });
   root.addEventListener("dblclick", onDoubleClick);
   root.addEventListener("click", onClick);
   root.addEventListener("wheel", onWheel, { passive: false });
@@ -1033,7 +1355,9 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
       disposed = true;
       cancelInitialFit?.();
       minimapScheduled?.();
-      if (editingUid) exitEdit(false);
+      cancelFullscreenPlace?.();
+      if (editingEdgeKey) closeEdgeEditor(false);
+      if (editingUid) void exitEdit(false);
       endGesture();
       if (viewportTimer) {
         clearTimeout(viewportTimer);
@@ -1048,6 +1372,7 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
       setFullscreen(false);
       window.removeEventListener("keydown", onKeyDown);
       window.removeEventListener("keyup", onKeyUp);
+      window.removeEventListener("resize", onWindowResize);
       root.remove();
     },
   };

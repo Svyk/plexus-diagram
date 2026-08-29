@@ -15,7 +15,7 @@ import {
   readEnhancedUidCache,
   writeEnhancedUidCache,
 } from "./discovery.js";
-import { MetadataStore } from "./metadata.js";
+import { MetadataStore, releaseScratch } from "./metadata.js";
 import { createLibrarySidebar } from "./library.js";
 import { createSettingsReader, SETTING_IDS } from "./settings.js";
 import { viewportCenterPosition } from "./canvas.js";
@@ -34,7 +34,7 @@ export const runtime = {
   lifecycle: null,
   metadata: null,
   settings: null,
-  version: "0.3.2",
+  version: "0.4.0",
   enhancedUids: new Set(),
   activeDiagramUid: null,
   guardStyle: null,
@@ -386,6 +386,10 @@ async function registerCommands(lifecycle, extensionAPI) {
   await run("Enhance this diagram", async (context) => {
     await enhanceByUid(await resolveDiagramUid(context));
   });
+  await run("Restore native diagram", async () => {
+    const uid = focusedDiagramUid() || runtime.activeDiagramUid;
+    if (uid) await restoreDiagram(uid);
+  });
   await run("Fullscreen this diagram", () => {
     const session = getSession(runtime.activeDiagramUid || focusedDiagramUid());
     const mount = document.querySelector(".pxd-mount");
@@ -399,54 +403,6 @@ async function registerCommands(lifecycle, extensionAPI) {
     }
     mount?.classList.toggle("pxd-mount--fullscreen", next);
     document.body.classList.toggle("pxd-has-fullscreen", next);
-  });
-  await run("Restore native diagram", async () => {
-    const uid = focusedDiagramUid() || runtime.activeDiagramUid;
-    if (uid) await restoreDiagram(uid);
-  });
-  await run("Add card", async () => {
-    const uid = runtime.activeDiagramUid || focusedDiagramUid();
-    const session = uid ? getSession(uid) : null;
-    if (!session) return;
-    await session.addCard("", { x: 80, y: 80 });
-  });
-  await run("Connect selected", async () => {
-    const session = getSession(runtime.activeDiagramUid || focusedDiagramUid());
-    if (!session) return;
-    await session.connectSelected(runtime.settings.get(SETTING_IDS.connectorStyle));
-  });
-  await run("Toggle connect tool", () => {
-    const session = getSession(runtime.activeDiagramUid || focusedDiagramUid());
-    if (!session) return;
-    session.model.activeTool = session.model.activeTool === "connect" ? "select" : "connect";
-  });
-  await run("Open nested diagram", () => {
-    const session = getSession(runtime.activeDiagramUid || focusedDiagramUid());
-    const uid = [...(session?.model.selected || [])][0];
-    if (uid) globalThis.roamAlphaAPI?.ui?.mainWindow?.openBlock?.({ block: { uid } });
-  });
-  await run("Show library", () => openLibrary());
-  await run("Appearances of this block", () => {
-    const focused = extensionAPI.ui?.getFocusedBlock?.()?.["block-uid"];
-    if (!focused) return;
-    const rows = globalThis.roamAlphaAPI?.data?.q?.(`[:find ?diagram :where
-      [?child :block/uid "${focused}"]
-      [?diagram :block/children ?child]]`) || [];
-    console.info("[plexus-diagram] Appearances:", rows);
-  });
-  await run("Snap selection to grid", async () => {
-    const session = getSession(runtime.activeDiagramUid || focusedDiagramUid());
-    if (!session) return;
-    session.model.snapSelectionToGrid(Number(runtime.settings.get(SETTING_IDS.gridSize)) || 24);
-    await session.persistLayout();
-    session.notifyViews();
-  });
-  await run("Auto-layout", async () => {
-    const session = getSession(runtime.activeDiagramUid || focusedDiagramUid());
-    if (!session) return;
-    session.model.autoLayoutGrid(true, Number(runtime.settings.get(SETTING_IDS.gridSize)) || 24);
-    await session.persistLayout();
-    session.notifyViews();
   });
 }
 
@@ -465,7 +421,7 @@ async function registerSlashAndContext(lifecycle, extensionAPI) {
 export async function installPlexusDiagram({ extensionAPI, lifecycle, version }) {
   runtime.extensionAPI = extensionAPI;
   runtime.lifecycle = lifecycle;
-  runtime.version = version || "0.3.2";
+  runtime.version = version || "0.4.0";
   runtime.settings = createSettingsReader(extensionAPI);
   runtime.enhancedUids = readEnhancedUidCache();
   installGuard(runtime.enhancedUids);
@@ -479,6 +435,7 @@ export async function installPlexusDiagram({ extensionAPI, lifecycle, version })
     } else {
       for (const uid of [...allSessions().keys()]) disposeSession(uid);
     }
+    await releaseScratch();
     runtime.metadata = null;
     runtime.guardStyle?.remove?.();
   });

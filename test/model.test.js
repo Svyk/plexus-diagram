@@ -47,6 +47,43 @@ test("childrenFingerprint changes when a child string changes", () => {
   assert.notEqual(childrenFingerprint(before), childrenFingerprint(after));
 });
 
+test("addEdge keeps a label on the edge shape", () => {
+  const model = new DiagramModel({
+    diagramUid: "d1",
+    tree: { uid: "d1", string: "{{[[diagram]]}}", children: [], props: {}, diagramNodes: [], diagramEdges: [] },
+    metadataLayout: null,
+  });
+  const edge = model.addEdge("a", "b", "bezier", "because");
+  assert.equal(edge.label, "because");
+  assert.equal(model.addEdge("a", "b", "bezier"), null);
+  assert.equal(model.edges[0].label, "because");
+  const unlabeled = model.addEdge("b", "a");
+  assert.equal(unlabeled.label, "");
+});
+
+test("applyPull does not drop an in-memory label for a known edge", () => {
+  const tree = {
+    uid: "d1",
+    string: "{{[[diagram]]}}",
+    children: [{ uid: "a", string: "A", order: 0 }, { uid: "b", string: "B", order: 1 }],
+    props: {},
+    diagramNodes: [],
+    diagramEdges: [],
+  };
+  const model = new DiagramModel({
+    diagramUid: "d1",
+    tree,
+    metadataLayout: {
+      nodes: new Map(),
+      edges: [{ source: "a", target: "b", kind: "bezier", label: "kept" }],
+      sections: new Map(),
+    },
+  });
+  assert.equal(model.edges[0].label, "kept");
+  model.applyPull(tree, { nodes: new Map(), edges: [{ source: "a", target: "b", kind: "bezier" }], sections: new Map() });
+  assert.equal(model.edges[0].label, "kept");
+});
+
 test("importNativeLayout does not clobber metadata positions", () => {
   const tree = parsePullResult({
     ":block/uid": "d1",

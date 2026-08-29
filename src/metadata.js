@@ -130,10 +130,11 @@ export function parseMetadataTree(tree) {
         const edgeKey = line.slice("edge ".length).trim();
         const match = edgeKey.match(/^(.+)->(.+)$/);
         if (!match) continue;
-        const edge = { source: match[1].trim(), target: match[2].trim(), kind: "bezier" };
+        const edge = { source: match[1].trim(), target: match[2].trim(), kind: "bezier", label: "" };
         for (const prop of child.children || []) {
           const propLine = prop.string.trim();
           if (propLine.startsWith("kind::")) edge.kind = propLine.slice("kind::".length).trim() || "bezier";
+          if (propLine.startsWith("label::")) edge.label = propLine.slice("label::".length).trim();
         }
         entry.edges.push(edge);
         continue;
@@ -169,6 +170,7 @@ export function serializeDiagramMetadata(diagramUid, layout) {
   for (const edge of layout.edges || []) {
     lines.push(`  edge ${edge.source}->${edge.target}`);
     if (edge.kind && edge.kind !== "bezier") lines.push(`    kind:: ${edge.kind}`);
+    if (edge.label) lines.push(`    label:: ${edge.label}`);
   }
   for (const [sectionId, section] of layout.sections || new Map()) {
     lines.push(`  section ${sectionId}`);
@@ -313,4 +315,76 @@ export class MetadataStore {
     this.diagrams.delete(diagramUid);
     this.diagramBlockUids.delete(diagramUid);
   }
+}
+
+export const SCRATCH_MARKER = "pxd:scratch";
+
+let scratchRuntime = null;
+
+export function peekScratch() {
+  return scratchRuntime;
+}
+
+async function sweepExtraScratchChildren(parentUid, keepUid) {
+  const tree = getTree(parentUid);
+  for (const child of tree?.children || []) {
+    if (child.uid === keepUid) continue;
+    await deleteBlock(child.uid).catch(() => {});
+  }
+}
+
+export async function acquireScratch() {
+  try {
+    if (scratchRuntime?.uid) {
+      await sweepExtraScratchChildren(scratchRuntime.parentUid, scratchRuntime.uid);
+      return scratchRuntime;
+    }
+    const pageUid = getPageUid(METADATA_PAGE) || await createPage(METADATA_PAGE);
+    const tree = getTree(pageUid);
+    const marker = (tree?.children || []).find((child) => child.string === SCRATCH_MARKER);
+    let parentUid;
+    if (marker) {
+      parentUid = marker.uid;
+      const children = marker.children || [];
+      if (!children.length) {
+        const uid = await createBlock(parentUid, " ");
+        scratchRuntime = { parentUid, uid };
+      } else {
+        const keep = children[0];
+        scratchRuntime = { parentUid, uid: keep.uid };
+        await sweepExtraScratchChildren(parentUid, keep.uid);
+      }
+    } else {
+      parentUid = await createBlock(pageUid, SCRATCH_MARKER);
+      const uid = await createBlock(parentUid, " ");
+      scratchRuntime = { parentUid, uid };
+    }
+    return scratchRuntime;
+  } catch {
+    return null;
+  }
+}
+
+export async function blankScratch() {
+  const scratch = scratchRuntime;
+  if (!scratch?.uid) return;
+  try {
+    await updateBlock(scratch.uid, "");
+  } catch {
+    try {
+      await updateBlock(scratch.uid, " ");
+    } catch { /* leave it */ }
+  }
+}
+
+export async function releaseScratch() {
+  const scratch = scratchRuntime;
+  scratchRuntime = null;
+  if (!scratch?.parentUid) return;
+  try {
+    const tree = getTree(scratch.parentUid);
+    for (const child of tree?.children || []) {
+      await deleteBlock(child.uid).catch(() => {});
+    }
+  } catch { /* unload still clears the cache */ }
 }

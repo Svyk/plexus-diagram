@@ -72,8 +72,26 @@ test("extension exports the Roam lifecycle contract and survives repeated unload
   await extension.onunload();
 
   assert.ok(api.calls.some(([name, label]) => name === "command:add" && label === "Plexus Diagram: Enhance this diagram"));
+  assert.ok(api.calls.some(([name, label]) => name === "command:add" && label === "Plexus Diagram: Restore native diagram"));
+  assert.ok(api.calls.some(([name, label]) => name === "command:add" && label === "Plexus Diagram: Fullscreen this diagram"));
   assert.ok(api.calls.some(([name, label]) => name === "slash:add" && label === "Plexus Diagram: Enhance this diagram"));
+  assert.ok(api.calls.some(([name, label]) => name === "slash:add" && label === "Plexus Diagram: Restore native diagram"));
+  assert.ok(api.calls.some(([name, label]) => name === "slash:add" && label === "Plexus Diagram: Fullscreen this diagram"));
   assert.ok(api.calls.some(([name, label]) => name === "context:add" && label === "Plexus Diagram: Enhance"));
+  const palette = api.calls.filter(([name]) => name === "command:add").map(([, label]) => label);
+  assert.deepEqual(palette, [
+    "Plexus Diagram: Enhance this diagram",
+    "Plexus Diagram: Restore native diagram",
+    "Plexus Diagram: Fullscreen this diagram",
+  ]);
+  assert.ok(!palette.includes("Plexus Diagram: Add card"));
+  assert.ok(!api.calls.some(([, label]) => label === "Plexus Diagram: Connect selected"));
+  assert.ok(!api.calls.some(([, label]) => label === "Plexus Diagram: Toggle connect tool"));
+  assert.ok(!api.calls.some(([, label]) => label === "Plexus Diagram: Open nested diagram"));
+  assert.ok(!api.calls.some(([, label]) => label === "Plexus Diagram: Show library"));
+  assert.ok(!api.calls.some(([, label]) => label === "Plexus Diagram: Appearances of this block"));
+  assert.ok(!api.calls.some(([, label]) => label === "Plexus Diagram: Snap selection to grid"));
+  assert.ok(!api.calls.some(([, label]) => label === "Plexus Diagram: Auto-layout"));
   assert.ok(api.calls.some(([name, title]) => name === "panel:create" && title === "Plexus Diagram"));
   assert.ok(!api.calls.some(([, key]) => key === "include-timestamp"));
 });

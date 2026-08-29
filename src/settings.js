@@ -63,7 +63,7 @@ const DEFAULTS = Object.freeze({
   [SETTING_IDS.connectorStyle]: "bezier",
   [SETTING_IDS.arrowheads]: "end",
   [SETTING_IDS.edgeWidth]: "2",
-  [SETTING_IDS.showEdgeLabels]: false,
+  [SETTING_IDS.showEdgeLabels]: true,
   [SETTING_IDS.edgeAnimated]: false,
   [SETTING_IDS.showSections]: true,
   [SETTING_IDS.sectionLabel]: true,

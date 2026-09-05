@@ -334,11 +334,24 @@ function parseMetadataTree(tree) {
         const edgeKey = line.slice("edge ".length).trim();
         const match = edgeKey.match(/^(.+)->(.+)$/);
         if (!match) continue;
-        const edge = { source: match[1].trim(), target: match[2].trim(), kind: "bezier", label: "" };
+        const edge = {
+          source: match[1].trim(),
+          target: match[2].trim(),
+          kind: "bezier",
+          label: "",
+          from: "auto",
+          to: "auto",
+          direction: "",
+          color: ""
+        };
         for (const prop of child.children || []) {
           const propLine = prop.string.trim();
           if (propLine.startsWith("kind::")) edge.kind = propLine.slice("kind::".length).trim() || "bezier";
           if (propLine.startsWith("label::")) edge.label = propLine.slice("label::".length).trim();
+          if (propLine.startsWith("from::")) edge.from = propLine.slice("from::".length).trim() || "auto";
+          if (propLine.startsWith("to::")) edge.to = propLine.slice("to::".length).trim() || "auto";
+          if (propLine.startsWith("direction::")) edge.direction = propLine.slice("direction::".length).trim();
+          if (propLine.startsWith("color::")) edge.color = propLine.slice("color::".length).trim();
         }
         entry.edges.push(edge);
         continue;
@@ -375,6 +388,12 @@ function serializeDiagramMetadata(diagramUid, layout) {
     lines.push(`  edge ${edge.source}->${edge.target}`);
     if (edge.kind && edge.kind !== "bezier") lines.push(`    kind:: ${edge.kind}`);
     if (edge.label) lines.push(`    label:: ${edge.label}`);
+    if (edge.from && edge.from !== "auto") lines.push(`    from:: ${edge.from}`);
+    if (edge.to && edge.to !== "auto") lines.push(`    to:: ${edge.to}`);
+    if (edge.direction === "oneWay" || edge.direction === "twoWay" || edge.direction === "none") {
+      lines.push(`    direction:: ${edge.direction}`);
+    }
+    if (edge.color) lines.push(`    color:: ${edge.color}`);
   }
   for (const [sectionId, section] of layout.sections || /* @__PURE__ */ new Map()) {
     lines.push(`  section ${sectionId}`);
@@ -477,8 +496,16 @@ async function patchDiagramBlock(blockUid, diagramUid, layout) {
     const props = indexPropChildren(existing?.children);
     const kindString = edge.kind && edge.kind !== "bezier" ? `kind:: ${edge.kind}` : null;
     const labelString = edge.label ? `label:: ${edge.label}` : null;
+    const fromString = edge.from && edge.from !== "auto" ? `from:: ${edge.from}` : null;
+    const toString = edge.to && edge.to !== "auto" ? `to:: ${edge.to}` : null;
+    const directionString = edge.direction === "oneWay" || edge.direction === "twoWay" || edge.direction === "none" ? `direction:: ${edge.direction}` : null;
+    const colorString = edge.color ? `color:: ${edge.color}` : null;
     await syncPropChild(rowUid, props.kind, kindString);
     await syncPropChild(rowUid, props.label, labelString);
+    await syncPropChild(rowUid, props.from, fromString);
+    await syncPropChild(rowUid, props.to, toString);
+    await syncPropChild(rowUid, props.direction, directionString);
+    await syncPropChild(rowUid, props.color, colorString);
   }
   for (const [key, row] of indexed.edges) {
     if (!wantedEdges.has(key)) await deleteBlock(row.uid);
@@ -953,7 +980,39 @@ function createSettingsPanel() {
 }
 
 // src/edges.js
-function edgeEndpoints(sourceRect, targetRect, side = "auto") {
+var SIDE_NORMALS = {
+  top: { x: 0, y: -1 },
+  right: { x: 1, y: 0 },
+  bottom: { x: 0, y: 1 },
+  left: { x: -1, y: 0 }
+};
+function sidePoint(rect, side) {
+  const cx = rect.x + rect.width / 2;
+  const cy = rect.y + rect.height / 2;
+  if (side === "auto") return { x: cx, y: cy };
+  if (side === "top") return { x: cx, y: rect.y };
+  if (side === "right") return { x: rect.x + rect.width, y: cy };
+  if (side === "bottom") return { x: cx, y: rect.y + rect.height };
+  if (side === "left") return { x: rect.x, y: cy };
+  return { x: cx, y: cy };
+}
+function facingSide(rect, point) {
+  let best = "left";
+  let bestDot = -Infinity;
+  for (const side of ["top", "right", "bottom", "left"]) {
+    const sp = sidePoint(rect, side);
+    const nx = point.x - sp.x;
+    const ny = point.y - sp.y;
+    const normal = SIDE_NORMALS[side];
+    const dot = normal.x * nx + normal.y * ny;
+    if (dot > bestDot) {
+      bestDot = dot;
+      best = side;
+    }
+  }
+  return best;
+}
+function autoEndpoints(sourceRect, targetRect) {
   const scx = sourceRect.x + sourceRect.width / 2;
   const scy = sourceRect.y + sourceRect.height / 2;
   const tcx = targetRect.x + targetRect.width / 2;
@@ -964,50 +1023,119 @@ function edgeEndpoints(sourceRect, targetRect, side = "auto") {
   let sy = scy;
   let tx = tcx;
   let ty = tcy;
-  if (side === "auto" || side === "sides") {
-    if (Math.abs(dx) > Math.abs(dy)) {
-      sx = dx > 0 ? sourceRect.x + sourceRect.width : sourceRect.x;
-      tx = dx > 0 ? targetRect.x : targetRect.x + targetRect.width;
-      sy = scy;
-      ty = tcy;
-    } else {
-      sy = dy > 0 ? sourceRect.y + sourceRect.height : sourceRect.y;
-      ty = dy > 0 ? targetRect.y : targetRect.y + targetRect.height;
-      sx = scx;
-      tx = tcx;
-    }
+  if (Math.abs(dx) > Math.abs(dy)) {
+    sx = dx > 0 ? sourceRect.x + sourceRect.width : sourceRect.x;
+    tx = dx > 0 ? targetRect.x : targetRect.x + targetRect.width;
+    sy = scy;
+    ty = tcy;
+  } else {
+    sy = dy > 0 ? sourceRect.y + sourceRect.height : sourceRect.y;
+    ty = dy > 0 ? targetRect.y : targetRect.y + targetRect.height;
+    sx = scx;
+    tx = tcx;
   }
   return { sx, sy, tx, ty };
+}
+function edgeEndpoints(sourceRect, targetRect, from = "auto", to = "auto") {
+  if (from === "sides") {
+    from = "auto";
+    to = "auto";
+  }
+  if (from === "auto" && to === "auto") {
+    return autoEndpoints(sourceRect, targetRect);
+  }
+  if (from !== "auto" && to !== "auto") {
+    const sp2 = sidePoint(sourceRect, from);
+    const tp2 = sidePoint(targetRect, to);
+    return { sx: sp2.x, sy: sp2.y, tx: tp2.x, ty: tp2.y };
+  }
+  if (from !== "auto") {
+    const sp2 = sidePoint(sourceRect, from);
+    const tp2 = sidePoint(targetRect, facingSide(targetRect, sp2));
+    return { sx: sp2.x, sy: sp2.y, tx: tp2.x, ty: tp2.y };
+  }
+  const tp = sidePoint(targetRect, to);
+  const sp = sidePoint(sourceRect, facingSide(sourceRect, tp));
+  return { sx: sp.x, sy: sp.y, tx: tp.x, ty: tp.y };
 }
 function straightPath(sx, sy, tx, ty) {
   return `M ${sx} ${sy} L ${tx} ${ty}`;
 }
-function bezierPath(sx, sy, tx, ty) {
+function bezierPath(sx, sy, tx, ty, from = "auto", to = "auto") {
   const dx = Math.abs(tx - sx);
   const dy = Math.abs(ty - sy);
   const offset = Math.max(40, Math.min(dx, dy) * 0.5);
-  if (Math.abs(tx - sx) > Math.abs(ty - sy)) {
-    const c1x = sx + (tx > sx ? offset : -offset);
-    const c2x = tx + (tx > sx ? -offset : offset);
-    return `M ${sx} ${sy} C ${c1x} ${sy}, ${c2x} ${ty}, ${tx} ${ty}`;
+  if (from === "auto" && to === "auto") {
+    if (Math.abs(tx - sx) > Math.abs(ty - sy)) {
+      const c1x2 = sx + (tx > sx ? offset : -offset);
+      const c2x2 = tx + (tx > sx ? -offset : offset);
+      return `M ${sx} ${sy} C ${c1x2} ${sy}, ${c2x2} ${ty}, ${tx} ${ty}`;
+    }
+    const c1y2 = sy + (ty > sy ? offset : -offset);
+    const c2y2 = ty + (ty > sy ? -offset : offset);
+    return `M ${sx} ${sy} C ${sx} ${c1y2}, ${tx} ${c2y2}, ${tx} ${ty}`;
   }
-  const c1y = sy + (ty > sy ? offset : -offset);
-  const c2y = ty + (ty > sy ? -offset : offset);
-  return `M ${sx} ${sy} C ${sx} ${c1y}, ${tx} ${c2y}, ${tx} ${ty}`;
+  let c1x = sx;
+  let c1y = sy;
+  let c2x = tx;
+  let c2y = ty;
+  if (from === "top") c1y = sy - offset;
+  else if (from === "bottom") c1y = sy + offset;
+  else if (from === "right") c1x = sx + offset;
+  else if (from === "left") c1x = sx - offset;
+  else if (Math.abs(tx - sx) > Math.abs(ty - sy)) {
+    c1x = sx + (tx > sx ? offset : -offset);
+  } else {
+    c1y = sy + (ty > sy ? offset : -offset);
+  }
+  if (to === "top") c2y = ty - offset;
+  else if (to === "bottom") c2y = ty + offset;
+  else if (to === "right") c2x = tx + offset;
+  else if (to === "left") c2x = tx - offset;
+  else if (Math.abs(tx - sx) > Math.abs(ty - sy)) {
+    c2x = tx + (tx > sx ? -offset : offset);
+  } else {
+    c2y = ty + (ty > sy ? -offset : offset);
+  }
+  return `M ${sx} ${sy} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${tx} ${ty}`;
 }
 function elbowPath(sx, sy, tx, ty) {
   const midX = (sx + tx) / 2;
   return `M ${sx} ${sy} L ${midX} ${sy} L ${midX} ${ty} L ${tx} ${ty}`;
 }
-function buildEdgePath(style, sourceRect, targetRect) {
-  const { sx, sy, tx, ty } = edgeEndpoints(sourceRect, targetRect);
+function buildEdgePath(style, sourceRect, targetRect, from = "auto", to = "auto") {
+  const { sx, sy, tx, ty } = edgeEndpoints(sourceRect, targetRect, from, to);
   if (style === "straight") return straightPath(sx, sy, tx, ty);
   if (style === "elbow") return elbowPath(sx, sy, tx, ty);
-  return bezierPath(sx, sy, tx, ty);
+  return bezierPath(sx, sy, tx, ty, from, to);
 }
-function edgeMidpoint(sourceRect, targetRect) {
-  const { sx, sy, tx, ty } = edgeEndpoints(sourceRect, targetRect);
+function edgeMidpoint(sourceRect, targetRect, from = "auto", to = "auto") {
+  const { sx, sy, tx, ty } = edgeEndpoints(sourceRect, targetRect, from, to);
   return { x: (sx + tx) / 2, y: (sy + ty) / 2 };
+}
+function arrowheadMarkerId(kind, canvasId = "", colorId = "default") {
+  return `pxd-arrow-${kind}-${canvasId}-${colorId || "default"}`;
+}
+function arrowheadSize(zoom) {
+  return Math.min(24, Math.max(6, 10 / zoom));
+}
+function shouldRescaleMarkers(prev, next) {
+  if (!Number.isFinite(prev) || !Number.isFinite(next) || prev === 0) return false;
+  return Math.abs(next - prev) / Math.abs(prev) >= 0.05;
+}
+function directionToPoints(direction) {
+  if (direction === "twoWay") return { start: true, end: true };
+  if (direction === "none") return { start: false, end: false };
+  return { start: false, end: true };
+}
+function effectiveDirection(edge, setting) {
+  const direction = edge?.direction;
+  if (direction === "oneWay" || direction === "twoWay" || direction === "none") {
+    return direction;
+  }
+  if (setting === "both") return "twoWay";
+  if (setting === "none") return "none";
+  return "oneWay";
 }
 function arrowheadPoints(arrowheads) {
   if (arrowheads === "none") return { start: false, end: false };
@@ -1255,14 +1383,23 @@ var DiagramModel = class _DiagramModel {
       height: Math.max(MIN_CARD_HEIGHT, Number(size.height) || MIN_CARD_HEIGHT)
     };
   }
-  addEdge(source, target, kind = "bezier", label = "") {
+  addEdge(source, target, kind = "bezier", label = "", extra = {}) {
     const key = `${source}->${target}`;
     const existing = this.edges.find((edge2) => `${edge2.source}->${edge2.target}` === key);
     if (existing) {
       if (existing.label == null) existing.label = "";
       return null;
     }
-    const edge = { source, target, kind, label: label || "" };
+    const edge = {
+      source,
+      target,
+      kind,
+      label: label || "",
+      from: extra.from || "auto",
+      to: extra.to || "auto",
+      direction: extra.direction || "",
+      color: extra.color || ""
+    };
     this.edges.push(edge);
     return edge;
   }
@@ -1309,7 +1446,16 @@ var DiagramModel = class _DiagramModel {
         if (!existing.label && edge.label) existing.label = edge.label;
         continue;
       }
-      const incoming = { source: edge.source, target: edge.target, kind: edge.kind || "bezier", label: edge.label || "" };
+      const incoming = {
+        source: edge.source,
+        target: edge.target,
+        kind: edge.kind || "bezier",
+        label: edge.label || "",
+        from: edge.from || "auto",
+        to: edge.to || "auto",
+        direction: edge.direction || "",
+        color: edge.color || ""
+      };
       this.edges.push(incoming);
       known.set(key, incoming);
     }
@@ -1654,8 +1800,62 @@ function colorHex(id) {
   const row = COLOR_SWATCHES.find((entry) => entry[0] === id);
   return row?.[2] || "";
 }
+var canvasCounter = 0;
+var DARK_EDGE = "#a7b6c2";
+var LIGHT_EDGE = "#738694";
+var DARK_ACTIVE = "#48aff0";
+var LIGHT_ACTIVE = "#2d72d2";
+var hasClass = (el, name) => Boolean(el?.classList?.contains?.(name));
+function isDarkHost(root) {
+  let node = root;
+  while (node) {
+    if (hasClass(node, "bp3-dark") || hasClass(node, "rm-dark-theme") || hasClass(node, "bt-theme-dark")) return true;
+    if (hasClass(node, "roam-body") && hasClass(node, "dark")) return true;
+    node = node.parentElement;
+  }
+  const body = globalThis.document?.body;
+  if (hasClass(body, "bt-theme-dark") || hasClass(body, "bp3-dark") || hasClass(body, "rm-dark-theme")) return true;
+  if (hasClass(body, "roam-body") && hasClass(body, "dark")) return true;
+  return false;
+}
+function computedVar(root, name) {
+  const gcs = globalThis.window?.getComputedStyle || globalThis.getComputedStyle;
+  if (typeof gcs !== "function") return "";
+  try {
+    const value = String(gcs(root)?.getPropertyValue?.(name) || "").trim();
+    return value.includes("var(") ? "" : value;
+  } catch {
+    return "";
+  }
+}
+function resolveEdgeColor(root, colorId) {
+  const swatch = colorHex(colorId);
+  if (swatch) return swatch;
+  return computedVar(root, "--pxd-edge") || (isDarkHost(root) ? DARK_EDGE : LIGHT_EDGE);
+}
+function resolveActiveColor(root) {
+  return computedVar(root, "--pxd-active") || (isDarkHost(root) ? DARK_ACTIVE : LIGHT_ACTIVE);
+}
+function markerGeometry(kind, zoom) {
+  const size = Number(arrowheadSize(zoom || 1).toFixed(2));
+  const half = Number((size / 2).toFixed(2));
+  const tip = Number((size - 1).toFixed(2));
+  if (kind === "start") {
+    return { size, refX: 1, refY: half, d: `M${size},0 L0,${half} L${size},${size} Z` };
+  }
+  return { size, refX: tip, refY: half, d: `M0,0 L${size},${half} L0,${size} Z` };
+}
+function applyMarkerGeometry(marker, geometry) {
+  marker.setAttribute("markerWidth", String(geometry.size));
+  marker.setAttribute("markerHeight", String(geometry.size));
+  marker.setAttribute("refX", String(geometry.refX));
+  marker.setAttribute("refY", String(geometry.refY));
+  const path = marker.querySelector?.("path") || marker.children?.[0];
+  path?.setAttribute?.("d", geometry.d);
+}
 function createCanvasRoot({ session, settings, version, onPersist, nestStack: nestStackOption }) {
   let currentSession = session;
+  const canvasId = `pxd${canvasCounter += 1}`;
   const crumbs = nestStackOption !== void 0 ? nestStackOption : nestStack;
   const root = document.createElement("div");
   root.className = "pxd-root";
@@ -1815,9 +2015,19 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
       updateMinimap();
     });
   };
+  let markerZoom = 1;
+  const syncMarkerScale = (zoom) => {
+    markerZoom = zoom || 1;
+    for (const svg of [edgesSvg, tempSvg]) {
+      for (const marker of svg.querySelectorAll?.("marker") || []) {
+        applyMarkerGeometry(marker, markerGeometry(marker.dataset?.pxdKind || "end", markerZoom));
+      }
+    }
+  };
   const applyTransform = () => {
     const { x, y, zoom } = model().viewport;
     world.style.transform = `translate(${x}px, ${y}px) scale(${zoom})`;
+    if (shouldRescaleMarkers(markerZoom, zoom || 1)) syncMarkerScale(zoom || 1);
     const gridPx = getGridSize() * (zoom || 1);
     grid.style.setProperty("--pxd-grid-size", `${gridPx}px`);
     grid.style.backgroundPosition = `${x}px ${y}px`;
@@ -2185,18 +2395,37 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
   };
   const edgeKey = (edge) => `${edge.source}->${edge.target}`;
   const findEdgeByKey = (key) => model().edges.find((edge) => edgeKey(edge) === key) || null;
-  const ensureDefs = () => {
-    if (edgesSvg.querySelector?.("defs")) return;
-    const defs = document.createElementNS(SVG_NS, "defs");
-    defs.innerHTML = `
-        <marker id="pxd-arrow-end" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse">
-          <path d="M0,0 L8,4 L0,8 Z" fill="var(--pxd-edge)" />
-        </marker>
-        <marker id="pxd-arrow-start" markerWidth="8" markerHeight="8" refX="1" refY="4" orient="auto" markerUnits="userSpaceOnUse">
-          <path d="M8,0 L0,4 L8,8 Z" fill="var(--pxd-edge)" />
-        </marker>`;
-    edgesSvg.prepend(defs);
+  const ensureDefs = (svg, entries) => {
+    let defs = svg.querySelector?.("defs");
+    if (!defs) {
+      defs = document.createElementNS(SVG_NS, "defs");
+      svg.prepend(defs);
+    }
+    const zoom = model().viewport.zoom || 1;
+    for (const entry of entries) {
+      if (defs.querySelector?.(`#${entry.id}`)) continue;
+      const marker = document.createElementNS(SVG_NS, "marker");
+      marker.setAttribute("id", entry.id);
+      marker.setAttribute("orient", "auto");
+      marker.setAttribute("markerUnits", "userSpaceOnUse");
+      marker.dataset.pxdKind = entry.kind;
+      const head = document.createElementNS(SVG_NS, "path");
+      head.classList.add("pxd-arrow");
+      head.style.fill = entry.fill;
+      head.style.stroke = "none";
+      marker.append(head);
+      applyMarkerGeometry(marker, markerGeometry(entry.kind, zoom));
+      defs.append(marker);
+    }
+    markerZoom = zoom;
   };
+  const edgeColorId = (edge) => colorHex(edge?.color) ? edge.color : "default";
+  const edgeMarkerId = (kind, colorId) => {
+    const id = arrowheadMarkerId(kind, canvasId, colorId);
+    ensureDefs(edgesSvg, [{ id, kind, fill: resolveEdgeColor(root, colorId === "default" ? "" : colorId) }]);
+    return id;
+  };
+  const tempMarkerId = () => `pxd-arrow-temp-${canvasId}`;
   const positionEdgeChrome = (edge, path, pill) => {
     const source = cardRect(edge.source);
     const target = cardRect(edge.target);
@@ -2290,10 +2519,9 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
       labelsLayer.querySelectorAll?.(".pxd-edge-label")?.forEach?.((node) => node.remove());
       edgePills.clear();
     }
-    ensureDefs();
     const width = num("edge-width", 2);
     const animated = settings.get("edge-animated");
-    const arrowheads = arrowheadPoints(settings.get("arrowheads") || "end");
+    const arrowSetting = settings.get("arrowheads") || "end";
     const showLabels = settings.get("show-edge-labels") !== false;
     for (const edge of model().edges) {
       if (edge.label == null) edge.label = "";
@@ -2311,7 +2539,8 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
       hit.dataset.edgeKey = key;
       path.classList.add("pxd-edge");
       path.setAttribute("fill", "none");
-      path.setAttribute("stroke", "var(--pxd-edge)");
+      const colorId = edgeColorId(edge);
+      path.style.stroke = resolveEdgeColor(root, colorId === "default" ? "" : colorId);
       path.setAttribute("stroke-width", String(width));
       path.setAttribute("stroke-linecap", "round");
       path.setAttribute("title", edge.label || "add note");
@@ -2320,8 +2549,9 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
       hint2.textContent = edge.label || "add note";
       path.append(hint2);
       if (animated) path.classList.add("pxd-edge--animated");
-      if (arrowheads.end) path.setAttribute("marker-end", "url(#pxd-arrow-end)");
-      if (arrowheads.start) path.setAttribute("marker-start", "url(#pxd-arrow-start)");
+      const points = directionToPoints(effectiveDirection(edge, arrowSetting));
+      if (points.end) path.setAttribute("marker-end", `url(#${edgeMarkerId("end", colorId)})`);
+      if (points.start) path.setAttribute("marker-start", `url(#${edgeMarkerId("start", colorId)})`);
       edgesSvg.append(hit, path);
       edgePaths.set(key, { edge, path, hit });
       if (showLabels && edge.label && !(keepEditor && key === editingEdgeKey)) {
@@ -2359,10 +2589,13 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
     const source = cardRect(from);
     if (!source) return;
     if (!tempEdge) {
+      const active = resolveActiveColor(root);
+      ensureDefs(tempSvg, [{ id: tempMarkerId(), kind: "end", fill: active }]);
       tempEdge = document.createElementNS(SVG_NS, "path");
       tempEdge.classList.add("pxd-edge--temp");
       tempEdge.setAttribute("fill", "none");
-      tempEdge.setAttribute("stroke", "var(--pxd-active)");
+      tempEdge.style.stroke = active;
+      tempEdge.setAttribute("marker-end", `url(#${tempMarkerId()})`);
       tempEdge.setAttribute("stroke-width", "3");
       tempEdge.setAttribute("stroke-dasharray", "6 4");
       tempEdge.style.pointerEvents = "none";

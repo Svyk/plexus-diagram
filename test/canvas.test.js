@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createCanvasRoot, shouldCommitPulledString, topbarOffset, sidebarOffset, applyFullscreenChrome, fullscreenInsets, cardUidFromHitStack, parseDropPayload, parseDiagramTitle, focusRoamInput } from "../src/canvas.js";
+import { createCanvasRoot, isDarkHost, resolveEdgeColor, shouldCommitPulledString, topbarOffset, sidebarOffset, applyFullscreenChrome, fullscreenInsets, cardUidFromHitStack, parseDropPayload, parseDiagramTitle, focusRoamInput } from "../src/canvas.js";
 import { settingsDefaults } from "../src/settings.js";
 import { releaseScratch } from "../src/metadata.js";
 import { readFile } from "node:fs/promises";
@@ -10,8 +10,41 @@ import { dirname, resolve } from "node:path";
 
 function createDomStub() {
   const elements = new Map();
+  const theme = {};
   let id = 0;
+  const matchSimple = (node, token) => {
+    const s = String(token || "");
+    if (s.startsWith(".")) return Boolean(node.classList?.contains?.(s.slice(1).split(/[\s.#[]/)[0]));
+    if (s.startsWith("#")) return node.id === s.slice(1);
+    if (s.startsWith("[")) return Boolean(node.hasAttribute?.(s.slice(1).split(/[=\]]/)[0]));
+    return String(node.tagName || "").toLowerCase() === s.toLowerCase();
+  };
+  // Supports comma lists and descendant chains ("A B C"); each token is one simple selector.
+  const matchSelector = (node, sel) => String(sel || "").split(",").some((part) => {
+    const tokens = part.trim().split(/\s+/).filter(Boolean);
+    if (!tokens.length || !matchSimple(node, tokens[tokens.length - 1])) return false;
+    let ancestor = node.parentElement;
+    for (let i = tokens.length - 2; i >= 0; i -= 1) {
+      while (ancestor && !matchSimple(ancestor, tokens[i])) ancestor = ancestor.parentElement;
+      if (!ancestor) return false;
+      ancestor = ancestor.parentElement;
+    }
+    return true;
+  });
+  const makeListeners = (target) => {
+    const registry = new Map();
+    target.listeners = registry;
+    target.addEventListener = (type, fn) => {
+      if (!registry.has(type)) registry.set(type, new Set());
+      registry.get(type).add(fn);
+    };
+    target.removeEventListener = (type, fn) => {
+      registry.get(type)?.delete(fn);
+    };
+  };
   const makeEl = (tag) => {
+    let html = "";
+    const attrs = new Map();
     const el = {
       tagName: tag.toUpperCase(),
       className: "",
@@ -27,31 +60,45 @@ function createDomStub() {
         },
       },
       style: {
-        setProperty() {},
+        setProperty(name, value) { el.style[name] = value; },
       },
       dataset: {},
       children: [],
       append(...nodes) { el.children.push(...nodes); nodes.forEach((n) => { n.parentElement = el; }); },
       appendChild(node) { el.append(node); },
       prepend(node) { el.children.unshift(node); node.parentElement = el; },
-      addEventListener() {},
-      removeEventListener() {},
-      remove() { el.isConnected = false; },
+      replaceChildren(...nodes) {
+        el.children.forEach((child) => { child.parentElement = null; });
+        el.children = [];
+        el.append(...nodes);
+      },
+      remove() {
+        el.isConnected = false;
+        const parent = el.parentElement;
+        if (parent) {
+          parent.children = parent.children.filter((child) => child !== el);
+          el.parentElement = null;
+        }
+      },
       querySelector(sel) {
-        const match = (node) => {
-          const s = String(sel || "");
-          if (s.startsWith(".")) return node.classList?.contains?.(s.slice(1).split(/[\s.#[]/)[0]);
-          if (s.startsWith("#")) return node.id === s.slice(1);
-          return String(node.tagName || "").toLowerCase() === s.toLowerCase();
-        };
         for (const child of el.children || []) {
-          if (match(child)) return child;
+          if (matchSelector(child, sel)) return child;
           const found = child.querySelector?.(sel);
           if (found) return found;
         }
         return null;
       },
-      querySelectorAll() { return []; },
+      querySelectorAll(sel) {
+        const out = [];
+        const walk = (node) => {
+          for (const child of node.children || []) {
+            if (matchSelector(child, sel)) out.push(child);
+            walk(child);
+          }
+        };
+        walk(el);
+        return out;
+      },
       closest(sel) {
         const name = String(sel || "").startsWith(".") ? String(sel).slice(1).split(/[\s.#[]/)[0] : "";
         let node = el;
@@ -62,14 +109,29 @@ function createDomStub() {
         return null;
       },
       getBoundingClientRect: () => ({ left: 0, top: 0, width: 800, height: 600 }),
-      setAttribute() {},
-      getAttribute() { return null; },
+      attributes: attrs,
+      setAttribute(name, value) {
+        attrs.set(String(name), String(value));
+        if (name === "id") el.id = String(value);
+      },
+      getAttribute(name) { return attrs.has(String(name)) ? attrs.get(String(name)) : null; },
+      hasAttribute(name) { return attrs.has(String(name)); },
+      removeAttribute(name) { attrs.delete(String(name)); },
       textContent: "",
-      innerHTML: "",
       isConnected: true,
       parentElement: null,
       id: `el-${id += 1}`,
     };
+    Object.defineProperty(el, "innerHTML", {
+      get() { return html; },
+      set(value) {
+        html = String(value ?? "");
+        el.children.forEach((child) => { child.parentElement = null; });
+        el.children = [];
+      },
+      enumerable: true,
+    });
+    makeListeners(el);
     if (tag === "button") el.type = "button";
     return el;
   };
@@ -84,16 +146,48 @@ function createDomStub() {
       return makeEl(tag);
     },
     querySelector() { return null; },
-    addEventListener() {},
-    removeEventListener() {},
+    querySelectorAll() { return []; },
+    elementsFromPoint: null,
+  };
+  document.body = makeEl("body");
+  makeListeners(document);
+
+  const getComputedStyle = (el) => ({
+    getPropertyValue(name) {
+      const own = el?.style?.[name];
+      if (own != null && own !== "") return String(own);
+      return theme[name] ?? "";
+    },
+  });
+  const window = { getComputedStyle };
+  makeListeners(window);
+
+  const dispatch = (target, type, event = {}) => {
+    const ev = {
+      type,
+      button: 0,
+      target,
+      defaultPrevented: false,
+      propagationStopped: false,
+      preventDefault() { ev.defaultPrevented = true; },
+      stopPropagation() { ev.propagationStopped = true; },
+      stopImmediatePropagation() { ev.propagationStopped = true; },
+      ...event,
+    };
+    let node = target;
+    while (node) {
+      ev.currentTarget = node;
+      for (const fn of [...(node.listeners?.get(type) || [])]) {
+        if (typeof fn === "function") fn(ev);
+        else fn?.handleEvent?.(ev);
+      }
+      if (ev.propagationStopped) break;
+      node = node === document || node === window ? null : node.parentElement;
+    }
+    return ev;
   };
 
-  const window = {
-    addEventListener() {},
-    removeEventListener() {},
-  };
-
-  return { document, window, elements };
+  return { document, window, elements, theme, dispatch, getComputedStyle };
 }
 
 test("shouldCommitPulledString refuses empty pulls over known card text", () => {
@@ -888,4 +982,269 @@ test("named nested card shows the parsed title, not the raw macro", () => {
     globalThis.document = previousDocument;
     globalThis.window = previousWindow;
   }
+});
+
+// ------------------------------------------------------------- U2 arrows
+
+function withStubDom(stub, fn) {
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  globalThis.document = stub.document;
+  globalThis.window = stub.window;
+  try {
+    return fn();
+  } finally {
+    globalThis.document = previousDocument;
+    globalThis.window = previousWindow;
+  }
+}
+
+function svgLayer(canvas, className) {
+  return findByClass(canvas.root, className);
+}
+
+function walkAll(el, out = []) {
+  for (const child of el?.children || []) {
+    out.push(child);
+    walkAll(child, out);
+  }
+  return out;
+}
+
+const defaultSettings = () => ({ get: (key) => settingsDefaults()[key] });
+
+test("edge CSS is scoped to .pxd-root and sets stroke/fill from --pxd-edge", async () => {
+  const css = await readFile(resolve(dirname(fileURLToPath(import.meta.url)), "../src/extension.css"), "utf8");
+  assert.match(css, /\.pxd-root \.pxd-edge\s*\{[^}]*stroke:\s*var\(--pxd-edge\)/s);
+  assert.match(css, /\.pxd-root \.pxd-arrow\s*\{[^}]*fill:\s*var\(--pxd-edge\)/s);
+});
+
+test("rendered edges and markers carry literal colors, never var()", () => {
+  const stub = createDomStub();
+  withStubDom(stub, () => {
+    const session = cardSession([{ source: "card-a", target: "card-b", kind: "bezier", label: "" }]);
+    const canvas = createCanvasRoot({ session, settings: defaultSettings(), version: "0.5.0", nestStack: [] });
+    try {
+      const edges = svgLayer(canvas, "pxd-edges");
+      const arrow = findByClass(edges, "pxd-arrow");
+      assert.ok(arrow, "marker path rendered");
+      assert.match(arrow.style.fill, /^#[0-9a-f]{6}$/);
+      const edge = findByClass(edges, "pxd-edge");
+      assert.match(edge.style.stroke, /^#[0-9a-f]{6}$/);
+      assert.equal(edge.getAttribute("stroke"), null, "stroke lives in style, not a presentation attribute");
+      for (const node of walkAll(edges)) {
+        for (const [name, value] of node.attributes) {
+          assert.ok(!String(value).includes("var("), `${node.tagName} ${name} must not use var()`);
+        }
+        for (const value of Object.values(node.style)) {
+          if (typeof value === "string") assert.ok(!value.includes("var("), "inline style must not use var()");
+        }
+      }
+    } finally {
+      canvas.dispose();
+    }
+  });
+});
+
+test("edge color follows the host --pxd-edge, then dark/light fallbacks", () => {
+  const themed = createDomStub();
+  themed.theme["--pxd-edge"] = "#a7b6c2";
+  withStubDom(themed, () => {
+    const canvas = createCanvasRoot({
+      session: cardSession([{ source: "card-a", target: "card-b", kind: "bezier", label: "" }]),
+      settings: defaultSettings(),
+      version: "0.5.0",
+      nestStack: [],
+    });
+    try {
+      assert.equal(findByClass(canvas.root, "pxd-arrow").style.fill, "#a7b6c2");
+      assert.equal(findByClass(canvas.root, "pxd-edge").style.stroke, "#a7b6c2");
+    } finally {
+      canvas.dispose();
+    }
+  });
+
+  const dark = createDomStub();
+  dark.document.body.classList.add("bt-theme-dark");
+  withStubDom(dark, () => {
+    const canvas = createCanvasRoot({
+      session: cardSession([{ source: "card-a", target: "card-b", kind: "bezier", label: "" }]),
+      settings: defaultSettings(),
+      version: "0.5.0",
+      nestStack: [],
+    });
+    try {
+      assert.equal(findByClass(canvas.root, "pxd-arrow").style.fill, "#a7b6c2");
+    } finally {
+      canvas.dispose();
+    }
+  });
+
+  const light = createDomStub();
+  withStubDom(light, () => {
+    const canvas = createCanvasRoot({
+      session: cardSession([{ source: "card-a", target: "card-b", kind: "bezier", label: "" }]),
+      settings: defaultSettings(),
+      version: "0.5.0",
+      nestStack: [],
+    });
+    try {
+      assert.equal(findByClass(canvas.root, "pxd-arrow").style.fill, "#738694");
+      assert.equal(findByClass(canvas.root, "pxd-edge").style.stroke, "#738694");
+    } finally {
+      canvas.dispose();
+    }
+  });
+});
+
+test("isDarkHost matches every dark selector and swatch colors win over the theme", () => {
+  const stub = createDomStub();
+  withStubDom(stub, () => {
+    const plain = stub.document.createElement("div");
+    assert.equal(isDarkHost(plain), false);
+    for (const marker of ["bp3-dark", "rm-dark-theme", "bt-theme-dark"]) {
+      const host = stub.document.createElement("div");
+      host.classList.add(marker);
+      const child = stub.document.createElement("div");
+      host.append(child);
+      assert.equal(isDarkHost(child), true, marker);
+    }
+    const roamBody = stub.document.createElement("div");
+    roamBody.classList.add("roam-body", "dark");
+    const inner = stub.document.createElement("div");
+    roamBody.append(inner);
+    assert.equal(isDarkHost(inner), true);
+    assert.equal(resolveEdgeColor(plain, "teal"), "#00b3a4");
+    assert.equal(resolveEdgeColor(plain, ""), "#738694");
+    stub.theme["--pxd-edge"] = "rgb(1, 2, 3)";
+    assert.equal(resolveEdgeColor(plain, ""), "rgb(1, 2, 3)");
+    assert.equal(resolveEdgeColor(plain, "teal"), "#00b3a4");
+  });
+});
+
+test("edge.direction drives marker-start/marker-end with canvas-scoped ids", () => {
+  const stub = createDomStub();
+  withStubDom(stub, () => {
+    const session = cardSession([
+      { source: "card-a", target: "card-b", kind: "bezier", label: "", direction: "twoWay" },
+    ]);
+    const canvas = createCanvasRoot({ session, settings: defaultSettings(), version: "0.5.0", nestStack: [] });
+    try {
+      const edgeOf = () => findByClass(canvas.root, "pxd-edge");
+      let edge = edgeOf();
+      assert.match(edge.getAttribute("marker-end"), /^url\(#pxd-arrow-end-pxd\d+-default\)$/);
+      assert.match(edge.getAttribute("marker-start"), /^url\(#pxd-arrow-start-pxd\d+-default\)$/);
+      const endId = edge.getAttribute("marker-end").slice(5, -1);
+      const defs = svgLayer(canvas, "pxd-edges").querySelector("defs");
+      assert.ok(defs.querySelector(`#${endId}`), "marker-end resolves inside this canvas defs");
+
+      session.model.edges[0].direction = "none";
+      canvas.render();
+      edge = edgeOf();
+      assert.equal(edge.getAttribute("marker-end"), null);
+      assert.equal(edge.getAttribute("marker-start"), null);
+
+      delete session.model.edges[0].direction;
+      canvas.render();
+      edge = edgeOf();
+      assert.match(edge.getAttribute("marker-end"), /^url\(#pxd-arrow-end-pxd\d+-default\)$/);
+      assert.equal(edge.getAttribute("marker-start"), null, "default arrowheads setting is end-only");
+
+      session.model.edges[0].color = "teal";
+      canvas.render();
+      edge = edgeOf();
+      assert.match(edge.getAttribute("marker-end"), /^url\(#pxd-arrow-end-pxd\d+-teal\)$/);
+      assert.equal(edge.style.stroke, "#00b3a4");
+      const tealId = edge.getAttribute("marker-end").slice(5, -1);
+      const tealMarker = svgLayer(canvas, "pxd-edges").querySelector("defs").querySelector(`#${tealId}`);
+      assert.equal(findByClass(tealMarker, "pxd-arrow").style.fill, "#00b3a4");
+    } finally {
+      canvas.dispose();
+    }
+  });
+});
+
+test("two canvas roots use disjoint marker ids", () => {
+  const stub = createDomStub();
+  withStubDom(stub, () => {
+    const make = () => createCanvasRoot({
+      session: cardSession([{ source: "card-a", target: "card-b", kind: "bezier", label: "" }]),
+      settings: defaultSettings(),
+      version: "0.5.0",
+      nestStack: [],
+    });
+    const first = make();
+    const second = make();
+    try {
+      const a = findByClass(first.root, "pxd-edge").getAttribute("marker-end");
+      const b = findByClass(second.root, "pxd-edge").getAttribute("marker-end");
+      assert.match(a, /^url\(#pxd-arrow-end-/);
+      assert.match(b, /^url\(#pxd-arrow-end-/);
+      assert.notEqual(a, b);
+      const idsA = walkAll(svgLayer(first, "pxd-edges")).filter((n) => n.tagName === "MARKER").map((n) => n.id);
+      const idsB = walkAll(svgLayer(second, "pxd-edges")).filter((n) => n.tagName === "MARKER").map((n) => n.id);
+      assert.ok(idsA.length && idsB.length);
+      assert.equal(idsA.filter((id) => idsB.includes(id)).length, 0, "no shared marker ids");
+    } finally {
+      first.dispose();
+      second.dispose();
+    }
+  });
+});
+
+test("temp wire points its marker-end at a marker inside tempSvg", () => {
+  const stub = createDomStub();
+  withStubDom(stub, () => {
+    const canvas = createCanvasRoot({ session: cardSession([]), settings: defaultSettings(), version: "0.5.0", nestStack: [] });
+    try {
+      canvas.armConnect("card-a");
+      stub.dispatch(stub.document, "pointermove", { clientX: 500, clientY: 200 });
+      const temp = svgLayer(canvas, "pxd-edges-temp");
+      const wire = findByClass(temp, "pxd-edge--temp");
+      assert.ok(wire, "temp wire painted");
+      assert.equal(wire.getAttribute("stroke"), null);
+      assert.match(wire.style.stroke, /^#[0-9a-f]{6}$/);
+      const markerRef = wire.getAttribute("marker-end");
+      assert.match(markerRef, /^url\(#pxd-arrow-temp-pxd\d+\)$/);
+      const markerId = markerRef.slice(5, -1);
+      const marker = temp.querySelector("defs")?.querySelector(`#${markerId}`);
+      assert.ok(marker, "temp marker lives in tempSvg defs");
+      assert.match(findByClass(marker, "pxd-arrow").style.fill, /^#[0-9a-f]{6}$/);
+      assert.equal(svgLayer(canvas, "pxd-edges").querySelector("defs")?.querySelector(`#${markerId}`) ?? null, null);
+
+      canvas.clearConnectArm();
+      assert.equal(temp.children.length, 0, "clearTempEdge wipes tempSvg including defs");
+      canvas.armConnect("card-a");
+      stub.dispatch(stub.document, "pointermove", { clientX: 520, clientY: 220 });
+      assert.ok(temp.querySelector("defs")?.querySelector(`#${markerId}`), "defs re-ensured after clear");
+    } finally {
+      canvas.dispose();
+    }
+  });
+});
+
+test("markers rescale on zoom changes of 5 percent or more", () => {
+  const stub = createDomStub();
+  withStubDom(stub, () => {
+    const session = cardSession([{ source: "card-a", target: "card-b", kind: "bezier", label: "" }]);
+    const canvas = createCanvasRoot({ session, settings: defaultSettings(), version: "0.5.0", nestStack: [] });
+    try {
+      const marker = () => walkAll(svgLayer(canvas, "pxd-edges")).find((n) => n.tagName === "MARKER");
+      assert.equal(marker().getAttribute("markerWidth"), "10");
+      session.model.viewport.zoom = 1.03;
+      canvas.applyTransform();
+      assert.equal(marker().getAttribute("markerWidth"), "10", "3 percent change leaves markers alone");
+      session.model.viewport.zoom = 0.4;
+      canvas.applyTransform();
+      assert.equal(marker().getAttribute("markerWidth"), "24");
+      assert.equal(marker().getAttribute("markerHeight"), "24");
+      assert.equal(marker().getAttribute("refY"), "12");
+      assert.match(findByClass(marker(), "pxd-arrow").getAttribute("d"), /L24,12/);
+      session.model.viewport.zoom = 3;
+      canvas.applyTransform();
+      assert.equal(marker().getAttribute("markerWidth"), "6");
+    } finally {
+      canvas.dispose();
+    }
+  });
 });

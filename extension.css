@@ -140,6 +140,18 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   pointer-events: stroke;
 }
 
+/* Scoped fallbacks; canvas.js also writes resolved literals inline because var() does not
+   resolve inside SVG presentation attributes. */
+.pxd-root .pxd-edge {
+  stroke: var(--pxd-edge);
+  fill: none;
+}
+
+.pxd-root .pxd-arrow {
+  fill: var(--pxd-edge);
+  stroke: none;
+}
+
 .pxd-edge-hit {
   fill: none;
   stroke: transparent;

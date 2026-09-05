@@ -1,5 +1,13 @@
 import { diagramUidFromLocation } from "./discovery.js";
-import { buildEdgePath, arrowheadPoints, edgeMidpoint } from "./edges.js";
+import {
+  buildEdgePath,
+  edgeMidpoint,
+  arrowheadMarkerId,
+  arrowheadSize,
+  shouldRescaleMarkers,
+  effectiveDirection,
+  directionToPoints,
+} from "./edges.js";
 import {
   acquireScratch,
   blankScratch,
@@ -360,8 +368,72 @@ function colorHex(id) {
   return row?.[2] || "";
 }
 
+let canvasCounter = 0;
+const DARK_EDGE = "#a7b6c2";
+const LIGHT_EDGE = "#738694";
+const DARK_ACTIVE = "#48aff0";
+const LIGHT_ACTIVE = "#2d72d2";
+
+const hasClass = (el, name) => Boolean(el?.classList?.contains?.(name));
+
+/** Mirrors the dark selectors in extension.css (.bp3-dark, body.bt-theme-dark, body.roam-body.dark, .rm-dark-theme). */
+export function isDarkHost(root) {
+  let node = root;
+  while (node) {
+    if (hasClass(node, "bp3-dark") || hasClass(node, "rm-dark-theme") || hasClass(node, "bt-theme-dark")) return true;
+    if (hasClass(node, "roam-body") && hasClass(node, "dark")) return true;
+    node = node.parentElement;
+  }
+  const body = globalThis.document?.body;
+  if (hasClass(body, "bt-theme-dark") || hasClass(body, "bp3-dark") || hasClass(body, "rm-dark-theme")) return true;
+  if (hasClass(body, "roam-body") && hasClass(body, "dark")) return true;
+  return false;
+}
+
+function computedVar(root, name) {
+  const gcs = globalThis.window?.getComputedStyle || globalThis.getComputedStyle;
+  if (typeof gcs !== "function") return "";
+  try {
+    const value = String(gcs(root)?.getPropertyValue?.(name) || "").trim();
+    return value.includes("var(") ? "" : value;
+  } catch {
+    return "";
+  }
+}
+
+/** Literal color for SVG presentation: swatch hex, else the host's --pxd-edge, else a theme fallback. */
+export function resolveEdgeColor(root, colorId) {
+  const swatch = colorHex(colorId);
+  if (swatch) return swatch;
+  return computedVar(root, "--pxd-edge") || (isDarkHost(root) ? DARK_EDGE : LIGHT_EDGE);
+}
+
+function resolveActiveColor(root) {
+  return computedVar(root, "--pxd-active") || (isDarkHost(root) ? DARK_ACTIVE : LIGHT_ACTIVE);
+}
+
+function markerGeometry(kind, zoom) {
+  const size = Number(arrowheadSize(zoom || 1).toFixed(2));
+  const half = Number((size / 2).toFixed(2));
+  const tip = Number((size - 1).toFixed(2));
+  if (kind === "start") {
+    return { size, refX: 1, refY: half, d: `M${size},0 L0,${half} L${size},${size} Z` };
+  }
+  return { size, refX: tip, refY: half, d: `M0,0 L${size},${half} L0,${size} Z` };
+}
+
+function applyMarkerGeometry(marker, geometry) {
+  marker.setAttribute("markerWidth", String(geometry.size));
+  marker.setAttribute("markerHeight", String(geometry.size));
+  marker.setAttribute("refX", String(geometry.refX));
+  marker.setAttribute("refY", String(geometry.refY));
+  const path = marker.querySelector?.("path") || marker.children?.[0];
+  path?.setAttribute?.("d", geometry.d);
+}
+
 export function createCanvasRoot({ session, settings, version, onPersist, nestStack: nestStackOption }) {
   let currentSession = session;
+  const canvasId = `pxd${canvasCounter += 1}`;
   const crumbs = nestStackOption !== undefined ? nestStackOption : nestStack;
   const root = document.createElement("div");
   root.className = "pxd-root";
@@ -530,9 +602,20 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
     });
   };
 
+  let markerZoom = 1;
+  const syncMarkerScale = (zoom) => {
+    markerZoom = zoom || 1;
+    for (const svg of [edgesSvg, tempSvg]) {
+      for (const marker of svg.querySelectorAll?.("marker") || []) {
+        applyMarkerGeometry(marker, markerGeometry(marker.dataset?.pxdKind || "end", markerZoom));
+      }
+    }
+  };
+
   const applyTransform = () => {
     const { x, y, zoom } = model().viewport;
     world.style.transform = `translate(${x}px, ${y}px) scale(${zoom})`;
+    if (shouldRescaleMarkers(markerZoom, zoom || 1)) syncMarkerScale(zoom || 1);
     const gridPx = getGridSize() * (zoom || 1);
     grid.style.setProperty("--pxd-grid-size", `${gridPx}px`);
     grid.style.backgroundPosition = `${x}px ${y}px`;
@@ -931,18 +1014,42 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
   };
   const edgeKey = (edge) => `${edge.source}->${edge.target}`;
   const findEdgeByKey = (key) => model().edges.find((edge) => edgeKey(edge) === key) || null;
-  const ensureDefs = () => {
-    if (edgesSvg.querySelector?.("defs")) return;
-    const defs = document.createElementNS(SVG_NS, "defs");
-    defs.innerHTML = `
-        <marker id="pxd-arrow-end" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse">
-          <path d="M0,0 L8,4 L0,8 Z" fill="var(--pxd-edge)" />
-        </marker>
-        <marker id="pxd-arrow-start" markerWidth="8" markerHeight="8" refX="1" refY="4" orient="auto" markerUnits="userSpaceOnUse">
-          <path d="M8,0 L0,4 L8,8 Z" fill="var(--pxd-edge)" />
-        </marker>`;
-    edgesSvg.prepend(defs);
+  /**
+   * Markers carry literal fills: Chromium does not resolve var() inside SVG presentation
+   * attributes, so every color is resolved to a hex/rgb string before it hits the DOM.
+   * One helper serves edgesSvg and tempSvg; ids are unique per canvas via canvasId.
+   */
+  const ensureDefs = (svg, entries) => {
+    let defs = svg.querySelector?.("defs");
+    if (!defs) {
+      defs = document.createElementNS(SVG_NS, "defs");
+      svg.prepend(defs);
+    }
+    const zoom = model().viewport.zoom || 1;
+    for (const entry of entries) {
+      if (defs.querySelector?.(`#${entry.id}`)) continue;
+      const marker = document.createElementNS(SVG_NS, "marker");
+      marker.setAttribute("id", entry.id);
+      marker.setAttribute("orient", "auto");
+      marker.setAttribute("markerUnits", "userSpaceOnUse");
+      marker.dataset.pxdKind = entry.kind;
+      const head = document.createElementNS(SVG_NS, "path");
+      head.classList.add("pxd-arrow");
+      head.style.fill = entry.fill;
+      head.style.stroke = "none";
+      marker.append(head);
+      applyMarkerGeometry(marker, markerGeometry(entry.kind, zoom));
+      defs.append(marker);
+    }
+    markerZoom = zoom;
   };
+  const edgeColorId = (edge) => (colorHex(edge?.color) ? edge.color : "default");
+  const edgeMarkerId = (kind, colorId) => {
+    const id = arrowheadMarkerId(kind, canvasId, colorId);
+    ensureDefs(edgesSvg, [{ id, kind, fill: resolveEdgeColor(root, colorId === "default" ? "" : colorId) }]);
+    return id;
+  };
+  const tempMarkerId = () => `pxd-arrow-temp-${canvasId}`;
   const positionEdgeChrome = (edge, path, pill) => {
     const source = cardRect(edge.source);
     const target = cardRect(edge.target);
@@ -1036,10 +1143,9 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
       labelsLayer.querySelectorAll?.(".pxd-edge-label")?.forEach?.((node) => node.remove());
       edgePills.clear();
     }
-    ensureDefs();
     const width = num("edge-width", 2);
     const animated = settings.get("edge-animated");
-    const arrowheads = arrowheadPoints(settings.get("arrowheads") || "end");
+    const arrowSetting = settings.get("arrowheads") || "end";
     const showLabels = settings.get("show-edge-labels") !== false;
     for (const edge of model().edges) {
       if (edge.label == null) edge.label = "";
@@ -1057,7 +1163,8 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
       hit.dataset.edgeKey = key;
       path.classList.add("pxd-edge");
       path.setAttribute("fill", "none");
-      path.setAttribute("stroke", "var(--pxd-edge)");
+      const colorId = edgeColorId(edge);
+      path.style.stroke = resolveEdgeColor(root, colorId === "default" ? "" : colorId);
       path.setAttribute("stroke-width", String(width));
       path.setAttribute("stroke-linecap", "round");
       path.setAttribute("title", edge.label || "add note");
@@ -1066,8 +1173,9 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
       hint.textContent = edge.label || "add note";
       path.append(hint);
       if (animated) path.classList.add("pxd-edge--animated");
-      if (arrowheads.end) path.setAttribute("marker-end", "url(#pxd-arrow-end)");
-      if (arrowheads.start) path.setAttribute("marker-start", "url(#pxd-arrow-start)");
+      const points = directionToPoints(effectiveDirection(edge, arrowSetting));
+      if (points.end) path.setAttribute("marker-end", `url(#${edgeMarkerId("end", colorId)})`);
+      if (points.start) path.setAttribute("marker-start", `url(#${edgeMarkerId("start", colorId)})`);
       edgesSvg.append(hit, path);
       edgePaths.set(key, { edge, path, hit });
       if (showLabels && edge.label && !(keepEditor && key === editingEdgeKey)) {
@@ -1105,10 +1213,13 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
     const source = cardRect(from);
     if (!source) return;
     if (!tempEdge) {
+      const active = resolveActiveColor(root);
+      ensureDefs(tempSvg, [{ id: tempMarkerId(), kind: "end", fill: active }]);
       tempEdge = document.createElementNS(SVG_NS, "path");
       tempEdge.classList.add("pxd-edge--temp");
       tempEdge.setAttribute("fill", "none");
-      tempEdge.setAttribute("stroke", "var(--pxd-active)");
+      tempEdge.style.stroke = active;
+      tempEdge.setAttribute("marker-end", `url(#${tempMarkerId()})`);
       tempEdge.setAttribute("stroke-width", "3");
       tempEdge.setAttribute("stroke-dasharray", "6 4");
       tempEdge.style.pointerEvents = "none";

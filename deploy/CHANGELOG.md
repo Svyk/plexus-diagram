@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.6.2 — 2026-09-05
+
+- **Connect hit-test** — targets resolve from the painted card rects (`getBoundingClientRect`, 12px handle inflate) before `elementsFromPoint` and world-rect math, and the card hovered on the last pointermove is the fallback for a captured pointerup.
+- **Rubber-band** — the edge and temp-wire SVGs cover content ∪ viewport (2000px pad) so the dashed wire paints across a panned board.
+- **No junk cards** — a click-click that misses a card cancels the arm; only a real drag onto empty board creates a linked card.
+- **Version badge** — the toolbar stamps the package version, not Roam's `DEV` developer-extension version.
+
 ## 0.6.1 — 2026-09-05
 
 - **Connect hit-test** — when Electron's `elementsFromPoint` misses cards under `.pxd-world`, resolve targets from world-space node rects (12px handle inflate). Click-click arms and drag-to-card both work.

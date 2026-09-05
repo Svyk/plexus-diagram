@@ -29,12 +29,16 @@ import {
 } from "./session.js";
 import { markNativePending, mountDiagramView } from "./view.js";
 
+// Roam reports `extension.version` as "DEV" for URL / local developer installs,
+// so the toolbar badge is stamped from this constant first.
+export const PACKAGE_VERSION = "0.6.2";
+
 export const runtime = {
   extensionAPI: null,
   lifecycle: null,
   metadata: null,
   settings: null,
-  version: "0.6.1",
+  version: PACKAGE_VERSION,
   enhancedUids: new Set(),
   activeDiagramUid: null,
   guardStyle: null,
@@ -533,7 +537,7 @@ async function registerSlashAndContext(lifecycle, extensionAPI) {
 export async function installPlexusDiagram({ extensionAPI, lifecycle, version }) {
   runtime.extensionAPI = extensionAPI;
   runtime.lifecycle = lifecycle;
-  runtime.version = version || "0.6.1";
+  runtime.version = PACKAGE_VERSION || version || "DEV";
   runtime.settings = createSettingsReader(extensionAPI);
   runtime.enhancedUids = readEnhancedUidCache();
   installGuard(runtime.enhancedUids);

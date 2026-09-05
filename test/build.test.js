@@ -39,7 +39,7 @@ test("build emits deterministic, matching browser ESM artifacts with a default e
   assert.match(rootJs, /export\s*\{[\s\S]*default/);
   const rebuilt = await bundleEntry({
     rootDirectory: rootPath,
-    banner: "/* Plexus Diagram v0.6.1 | MIT | generated; edit src/ */",
+    banner: "/* Plexus Diagram v0.6.2 | MIT | generated; edit src/ */",
   });
   assert.equal(rebuilt, rootJs);
 

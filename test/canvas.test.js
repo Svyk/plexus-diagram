@@ -109,7 +109,13 @@ function createDomStub() {
         }
         return null;
       },
-      getBoundingClientRect: () => ({ left: 0, top: 0, width: 800, height: 600 }),
+      // Cards report an unpainted (zero) rect unless a test pins `el._rect`, so
+      // DOM hit-testing falls through to elementsFromPoint / world rects by default.
+      getBoundingClientRect: () => {
+        if (el._rect) return el._rect;
+        if (el.classList.contains("pxd-card")) return { left: 0, top: 0, width: 0, height: 0, right: 0, bottom: 0 };
+        return { left: 0, top: 0, width: 800, height: 600, right: 800, bottom: 600 };
+      },
       attributes: attrs,
       setAttribute(name, value) {
         attrs.set(String(name), String(value));
@@ -1734,6 +1740,178 @@ test("Delete on selected card persists deleteCards", async () => {
       await new Promise((resolve) => setTimeout(resolve, 0));
       assert.ok(persists.some((a) => a.deleteCards), "Delete should persist deleteCards");
       assert.deepEqual(persists.find((a) => a.deleteCards)?.deleteCards, ["card-a"]);
+    } finally {
+      canvas.dispose();
+    }
+  } finally {
+    globalThis.document = previousDocument;
+    globalThis.window = previousWindow;
+  }
+});
+
+// Panned board: card-b paints at screen 500–780 while world math puts the
+// pointer in the gap between A and B and elementsFromPoint returns [].
+function pannedConnectCanvas(stub, persists) {
+  const session = cardSession([]);
+  session.model.activeTool = "connect";
+  session.model.viewport = { x: 200, y: 0, zoom: 1 };
+  const canvas = createCanvasRoot({
+    session,
+    settings: defaultSettings(),
+    version: "0.6.2",
+    nestStack: [],
+    onPersist: async (action) => { persists.push(action); },
+  });
+  const cards = findByClass(canvas.root, "pxd-cards");
+  const cardA = cards.children.find((c) => c.dataset?.uid === "card-a");
+  const cardB = cards.children.find((c) => c.dataset?.uid === "card-b");
+  cardA._rect = { left: 200, top: 0, width: 280, height: 160, right: 480, bottom: 160 };
+  cardB._rect = { left: 500, top: 0, width: 280, height: 160, right: 780, bottom: 160 };
+  canvas.root._rect = { left: 0, top: 0, width: 800, height: 600, right: 800, bottom: 600 };
+  stub.document.elementsFromPoint = () => [];
+  const handle = cardA.children.find((c) => c.className?.includes("pxd-handle--right"));
+  return { session, canvas, cardA, cardB, handle };
+}
+
+test("connect drag onto a painted card adds an edge, not a card, when world math and elementsFromPoint miss", async () => {
+  const stub = createDomStub();
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  globalThis.document = stub.document;
+  globalThis.window = stub.window;
+  try {
+    const persists = [];
+    const { session, canvas, handle } = pannedConnectCanvas(stub, persists);
+    try {
+      stub.dispatch(handle, "pointerdown", { button: 0, clientX: 280, clientY: 80 });
+      stub.dispatch(stub.document, "pointermove", { clientX: 400, clientY: 80 });
+      stub.dispatch(stub.document, "pointermove", { clientX: 540, clientY: 80 });
+      const temp = findByClass(canvas.root, "pxd-edge--temp");
+      assert.ok(temp, "rubber-band paints during the drag");
+      assert.ok(String(temp.getAttribute("d") || "").length > 0, "temp wire has a path");
+      await stub.dispatch(stub.document, "pointerup", { button: 0, clientX: 540, clientY: 80, target: stub.document.body });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      assert.equal(session.model.edges.length, 1, "drop on visible card-b must add an edge");
+      assert.equal(session.model.edges[0].source, "card-a");
+      assert.equal(session.model.edges[0].target, "card-b");
+      assert.equal(persists.some((a) => a.addCard), false, "must not connect-to-empty over a card");
+      assert.equal(findByClass(canvas.root, "pxd-edge--temp"), null, "temp wire clears after the drop");
+    } finally {
+      canvas.dispose();
+    }
+  } finally {
+    globalThis.document = previousDocument;
+    globalThis.window = previousWindow;
+  }
+});
+
+test("connect pointerup uses the card hovered on the last pointermove when the up-event misses", async () => {
+  const stub = createDomStub();
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  globalThis.document = stub.document;
+  globalThis.window = stub.window;
+  try {
+    const persists = [];
+    const { session, canvas, cardB, handle } = pannedConnectCanvas(stub, persists);
+    try {
+      stub.dispatch(handle, "pointerdown", { button: 0, clientX: 280, clientY: 80 });
+      stub.dispatch(stub.document, "pointermove", { clientX: 540, clientY: 80 });
+      // Roam re-rendered under the pointer: the card no longer reports a rect at pointerup.
+      cardB._rect = { left: 0, top: 0, width: 0, height: 0, right: 0, bottom: 0 };
+      await stub.dispatch(stub.document, "pointerup", { button: 0, clientX: 540, clientY: 80, target: stub.document.body });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      assert.equal(session.model.edges.length, 1);
+      assert.equal(session.model.edges[0].target, "card-b");
+      assert.equal(persists.some((a) => a.addCard), false);
+    } finally {
+      canvas.dispose();
+    }
+  } finally {
+    globalThis.document = previousDocument;
+    globalThis.window = previousWindow;
+  }
+});
+
+test("connect click-click onto empty board cancels the arm and does not add a card", async () => {
+  const stub = createDomStub();
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  globalThis.document = stub.document;
+  globalThis.window = stub.window;
+  try {
+    const persists = [];
+    const { session, canvas, handle } = pannedConnectCanvas(stub, persists);
+    try {
+      stub.dispatch(handle, "pointerdown", { button: 0, clientX: 480, clientY: 80 });
+      stub.dispatch(stub.document, "pointerup", { button: 0, clientX: 480, clientY: 80, target: handle });
+      assert.equal(canvas.getConnectArm()?.uid, "card-a", "first click arms");
+      // Second click well below both painted cards (y=400; cards end at y=160).
+      stub.dispatch(canvas.root, "pointerdown", { button: 0, clientX: 490, clientY: 400 });
+      await stub.dispatch(stub.document, "pointerup", { button: 0, clientX: 490, clientY: 400, target: canvas.root });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      assert.equal(canvas.getConnectArm(), null, "click-click miss clears the arm");
+      assert.equal(session.model.edges.length, 0);
+      assert.equal(persists.some((a) => a.addCard), false, "click-click onto empty must not spawn a card");
+      assert.equal(findByClass(canvas.root, "pxd-edge--temp"), null);
+    } finally {
+      canvas.dispose();
+    }
+  } finally {
+    globalThis.document = previousDocument;
+    globalThis.window = previousWindow;
+  }
+});
+
+test("connect drag onto empty board still creates a linked card", async () => {
+  const stub = createDomStub();
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  globalThis.document = stub.document;
+  globalThis.window = stub.window;
+  try {
+    const persists = [];
+    const { session, canvas, handle } = pannedConnectCanvas(stub, persists);
+    try {
+      stub.dispatch(handle, "pointerdown", { button: 0, clientX: 480, clientY: 80 });
+      stub.dispatch(stub.document, "pointermove", { clientX: 600, clientY: 400 });
+      await stub.dispatch(stub.document, "pointerup", { button: 0, clientX: 600, clientY: 400, target: stub.document.body });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      const add = persists.find((a) => a.addCard);
+      assert.ok(add, "drag from a port into empty board adds a card");
+      assert.equal(add.addEdge?.source, "card-a");
+      assert.equal(session.model.edges.length, 0, "edge is created by the host after the card exists");
+    } finally {
+      canvas.dispose();
+    }
+  } finally {
+    globalThis.document = previousDocument;
+    globalThis.window = previousWindow;
+  }
+});
+
+test("edge SVG layers cover content and viewport so a panned rubber-band is not clipped", () => {
+  const stub = createDomStub();
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  globalThis.document = stub.document;
+  globalThis.window = stub.window;
+  try {
+    const session = cardSession([]);
+    session.model.viewport = { x: -3000, y: 0, zoom: 1 };
+    const canvas = createCanvasRoot({ session, settings: defaultSettings(), version: "0.6.2", nestStack: [] });
+    try {
+      canvas.render();
+      for (const name of ["pxd-edges", "pxd-edges-temp"]) {
+        const svg = findByClass(canvas.root, name);
+        const viewBox = String(svg.getAttribute("viewBox") || "").split(/\s+/).map(Number);
+        assert.equal(viewBox.length, 4, `${name} has a viewBox`);
+        const [minX, , width] = viewBox;
+        assert.ok(minX <= -2000, `${name} viewBox starts before the content (${minX})`);
+        assert.ok(minX + width >= 3800, `${name} viewBox reaches the visible viewport (${minX + width})`);
+        assert.equal(svg.style.left, `${minX}px`);
+        assert.equal(svg.style.width, `${width}px`);
+      }
     } finally {
       canvas.dispose();
     }

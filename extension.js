@@ -1,4 +1,4 @@
-/* Plexus Diagram v0.6.1 | MIT | generated; edit src/ */
+/* Plexus Diagram v0.6.2 | MIT | generated; edit src/ */
 
 // src/lifecycle.js
 function isPromiseLike(value) {
@@ -2074,9 +2074,48 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
       }
     }
   };
+  const SVG_BOUNDS_PAD_PX = 2e3;
+  const SVG_BOUNDS_STEP_PX = 500;
+  let svgBoundsKey = "";
+  const syncSvgBounds = (extraPoint) => {
+    const rect = rootRect();
+    const { x, y, zoom } = model().viewport;
+    const z = zoom || 1;
+    const view = { minX: -x / z, minY: -y / z, maxX: (rect.width - x) / z, maxY: (rect.height - y) / z };
+    const content = contentBounds(model().nodes) || view;
+    let minX = Math.min(content.minX, view.minX);
+    let minY = Math.min(content.minY, view.minY);
+    let maxX = Math.max(content.maxX, view.maxX);
+    let maxY = Math.max(content.maxY, view.maxY);
+    if (extraPoint) {
+      minX = Math.min(minX, extraPoint.x);
+      minY = Math.min(minY, extraPoint.y);
+      maxX = Math.max(maxX, extraPoint.x);
+      maxY = Math.max(maxY, extraPoint.y);
+    }
+    const q = SVG_BOUNDS_STEP_PX;
+    minX = Math.floor((minX - SVG_BOUNDS_PAD_PX) / q) * q;
+    minY = Math.floor((minY - SVG_BOUNDS_PAD_PX) / q) * q;
+    const width = Math.ceil((maxX + SVG_BOUNDS_PAD_PX) / q) * q - minX;
+    const height = Math.ceil((maxY + SVG_BOUNDS_PAD_PX) / q) * q - minY;
+    if (!(width > 0) || !(height > 0)) return;
+    const key = `${minX} ${minY} ${width} ${height}`;
+    if (key === svgBoundsKey) return;
+    svgBoundsKey = key;
+    for (const svg of [edgesSvg, tempSvg]) {
+      svg.style.left = `${minX}px`;
+      svg.style.top = `${minY}px`;
+      svg.style.width = `${width}px`;
+      svg.style.height = `${height}px`;
+      svg.setAttribute("width", String(width));
+      svg.setAttribute("height", String(height));
+      svg.setAttribute("viewBox", key);
+    }
+  };
   const applyTransform = () => {
     const { x, y, zoom } = model().viewport;
     world.style.transform = `translate(${x}px, ${y}px) scale(${zoom})`;
+    syncSvgBounds();
     if (shouldRescaleMarkers(markerZoom, zoom || 1)) syncMarkerScale(zoom || 1);
     const gridPx = getGridSize() * (zoom || 1);
     grid.style.setProperty("--pxd-grid-size", `${gridPx}px`);
@@ -2749,6 +2788,7 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
       labelsLayer.querySelectorAll?.(".pxd-edge-label")?.forEach?.((node) => node.remove());
       edgePills.clear();
     }
+    syncSvgBounds();
     const width = num("edge-width", 2);
     const animated = settings.get("edge-animated");
     const arrowSetting = settings.get("arrowheads") || "end";
@@ -2809,6 +2849,7 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
     }
   };
   const updateEdgesFor = (uids) => {
+    syncSvgBounds();
     for (const { edge, path, hit } of edgePaths.values()) {
       if (!uids.has(edge.source) && !uids.has(edge.target)) continue;
       const pill = edgePills.get(edgeKey(edge));
@@ -2839,6 +2880,7 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
     }
     const target = { x: worldPoint.x, y: worldPoint.y, width: 1, height: 1 };
     const style = settings.get("connector-style") || "bezier";
+    syncSvgBounds(worldPoint);
     tempEdge.setAttribute("d", buildEdgePath(style, source, target, fromSide || "auto", "auto"));
   };
   const clearTempEdge = () => {
@@ -2849,9 +2891,14 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
     else tempSvg.innerHTML = "";
   };
   let connectArm = null;
+  let lastHoveredCard = null;
+  const trackConnectHover = (event) => {
+    lastHoveredCard = cardFromClient(event.clientX, event.clientY, event);
+  };
   const onConnectArmMove = (event) => {
     if (!connectArm) return;
     setTempEdge(connectArm.uid, screenToWorld(event.clientX, event.clientY, false), connectArm.side);
+    if (!gesture) trackConnectHover(event);
   };
   const armConnect = (uid, side) => {
     if (!uid) return;
@@ -2863,6 +2910,7 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
       document.removeEventListener("pointermove", onConnectArmMove, true);
     }
     connectArm = null;
+    lastHoveredCard = null;
     clearTempEdge();
   };
   const getConnectArm = () => connectArm;
@@ -3314,7 +3362,24 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
     }
     return null;
   };
+  const cardFromDomRects = (clientX, clientY) => {
+    const pad = CONNECT_HIT_INFLATE_PX;
+    const els = Array.isArray(cardsLayer.children) && cardsLayer.children.length ? cardsLayer.children : [...cardEls.values()];
+    let hit = null;
+    for (const el of els) {
+      const uid = el?.dataset?.uid;
+      if (!uid || typeof el.getBoundingClientRect !== "function") continue;
+      const r = el.getBoundingClientRect();
+      if (!r || !(r.width > 0) || !(r.height > 0)) continue;
+      const right = r.right ?? r.left + r.width;
+      const bottom = r.bottom ?? r.top + r.height;
+      if (clientX >= r.left - pad && clientX <= right + pad && clientY >= r.top - pad && clientY <= bottom + pad) hit = uid;
+    }
+    return hit;
+  };
   const cardFromClient = (clientX, clientY, event) => {
+    const fromDom = cardFromDomRects(clientX, clientY);
+    if (fromDom) return fromDom;
     const fromPoint = cardFromPoint(clientX, clientY);
     if (fromPoint) return fromPoint;
     const fromRects = cardFromWorldRects(clientX, clientY);
@@ -3457,6 +3522,7 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
     if (gesture.kind === "connect") {
       setTempEdge(gesture.uid, screenToWorld(event.clientX, event.clientY, false), gesture.fromSide);
       if (!gesture.moved && Math.hypot(dx, dy) >= DRAG_THRESHOLD_PX) gesture.moved = true;
+      trackConnectHover(event);
       return;
     }
     if (!gesture.moved && Math.hypot(dx, dy) < DRAG_THRESHOLD_PX) return;
@@ -3536,7 +3602,8 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
       return;
     }
     if (active.kind === "connect") {
-      const targetUid = cardFromClient(event.clientX, event.clientY, event);
+      const hovered = lastHoveredCard;
+      const targetUid = cardFromClient(event.clientX, event.clientY, event) || hovered;
       const sourceNode = model().nodes.get(active.uid);
       const sourceHit = pointInInflatedRect(screenToWorld(event.clientX, event.clientY, false), sourceNode);
       if (!active.moved && !connectArm && (targetUid === active.uid || !targetUid && sourceHit)) {
@@ -3562,7 +3629,8 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
     }
   };
   const completeConnect = async ({ moved, sourceUid, targetUid, clientX, clientY, fromSide, toSide, event }) => {
-    const resolvedTarget = cardFromClient(clientX, clientY, event) || targetUid || null;
+    const hovered = lastHoveredCard;
+    const resolvedTarget = cardFromClient(clientX, clientY, event) || targetUid || hovered || null;
     const resolvedFrom = fromSide ?? connectArm?.side;
     const resolvedTo = toSide ?? connectSideFromPoint(clientX, clientY, resolvedTarget);
     const edgeExtra = {
@@ -3591,7 +3659,7 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
         }
         return;
       }
-      if (!resolvedTarget && (moved || connectArm)) {
+      if (!resolvedTarget && moved === true && !hovered) {
         const point = screenToWorld(clientX, clientY);
         const size = defaultCardSize();
         const addEdge = { source: sourceUid };
@@ -3607,6 +3675,7 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
     } catch {
     } finally {
       clearConnectArm();
+      lastHoveredCard = null;
     }
   };
   const onDoubleClick = (event) => {
@@ -4305,12 +4374,13 @@ function markNativePending(nativeElement) {
 }
 
 // src/feature.js
+var PACKAGE_VERSION = "0.6.2";
 var runtime = {
   extensionAPI: null,
   lifecycle: null,
   metadata: null,
   settings: null,
-  version: "0.6.1",
+  version: PACKAGE_VERSION,
   enhancedUids: /* @__PURE__ */ new Set(),
   activeDiagramUid: null,
   guardStyle: null,
@@ -4771,7 +4841,7 @@ async function registerSlashAndContext(lifecycle, extensionAPI) {
 async function installPlexusDiagram({ extensionAPI, lifecycle, version }) {
   runtime.extensionAPI = extensionAPI;
   runtime.lifecycle = lifecycle;
-  runtime.version = version || "0.6.1";
+  runtime.version = PACKAGE_VERSION || version || "DEV";
   runtime.settings = createSettingsReader(extensionAPI);
   runtime.enhancedUids = readEnhancedUidCache();
   installGuard(runtime.enhancedUids);

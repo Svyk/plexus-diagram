@@ -130,11 +130,24 @@ export function parseMetadataTree(tree) {
         const edgeKey = line.slice("edge ".length).trim();
         const match = edgeKey.match(/^(.+)->(.+)$/);
         if (!match) continue;
-        const edge = { source: match[1].trim(), target: match[2].trim(), kind: "bezier", label: "" };
+        const edge = {
+          source: match[1].trim(),
+          target: match[2].trim(),
+          kind: "bezier",
+          label: "",
+          from: "auto",
+          to: "auto",
+          direction: "",
+          color: "",
+        };
         for (const prop of child.children || []) {
           const propLine = prop.string.trim();
           if (propLine.startsWith("kind::")) edge.kind = propLine.slice("kind::".length).trim() || "bezier";
           if (propLine.startsWith("label::")) edge.label = propLine.slice("label::".length).trim();
+          if (propLine.startsWith("from::")) edge.from = propLine.slice("from::".length).trim() || "auto";
+          if (propLine.startsWith("to::")) edge.to = propLine.slice("to::".length).trim() || "auto";
+          if (propLine.startsWith("direction::")) edge.direction = propLine.slice("direction::".length).trim();
+          if (propLine.startsWith("color::")) edge.color = propLine.slice("color::".length).trim();
         }
         entry.edges.push(edge);
         continue;
@@ -172,6 +185,12 @@ export function serializeDiagramMetadata(diagramUid, layout) {
     lines.push(`  edge ${edge.source}->${edge.target}`);
     if (edge.kind && edge.kind !== "bezier") lines.push(`    kind:: ${edge.kind}`);
     if (edge.label) lines.push(`    label:: ${edge.label}`);
+    if (edge.from && edge.from !== "auto") lines.push(`    from:: ${edge.from}`);
+    if (edge.to && edge.to !== "auto") lines.push(`    to:: ${edge.to}`);
+    if (edge.direction === "oneWay" || edge.direction === "twoWay" || edge.direction === "none") {
+      lines.push(`    direction:: ${edge.direction}`);
+    }
+    if (edge.color) lines.push(`    color:: ${edge.color}`);
   }
   for (const [sectionId, section] of layout.sections || new Map()) {
     lines.push(`  section ${sectionId}`);
@@ -281,8 +300,18 @@ async function patchDiagramBlock(blockUid, diagramUid, layout) {
     const props = indexPropChildren(existing?.children);
     const kindString = edge.kind && edge.kind !== "bezier" ? `kind:: ${edge.kind}` : null;
     const labelString = edge.label ? `label:: ${edge.label}` : null;
+    const fromString = edge.from && edge.from !== "auto" ? `from:: ${edge.from}` : null;
+    const toString = edge.to && edge.to !== "auto" ? `to:: ${edge.to}` : null;
+    const directionString = edge.direction === "oneWay" || edge.direction === "twoWay" || edge.direction === "none"
+      ? `direction:: ${edge.direction}`
+      : null;
+    const colorString = edge.color ? `color:: ${edge.color}` : null;
     await syncPropChild(rowUid, props.kind, kindString);
     await syncPropChild(rowUid, props.label, labelString);
+    await syncPropChild(rowUid, props.from, fromString);
+    await syncPropChild(rowUid, props.to, toString);
+    await syncPropChild(rowUid, props.direction, directionString);
+    await syncPropChild(rowUid, props.color, colorString);
   }
   for (const [key, row] of indexed.edges) {
     if (!wantedEdges.has(key)) await deleteBlock(row.uid);

@@ -402,9 +402,16 @@ function cardSession(edges = [], extras = {}) {
         nodes.set(uid, node);
         return node;
       },
-      addEdge(source, target, kind = "bezier") {
+      addEdge(source, target, kind = "bezier", label = "", extra = {}) {
         if (this.edges.some((edge) => edge.source === source && edge.target === target)) return null;
-        const edge = { source, target, kind, label: "" };
+        const edge = {
+          source,
+          target,
+          kind,
+          label: label || "",
+          from: extra.from || "auto",
+          to: extra.to || "auto",
+        };
         this.edges.push(edge);
         return edge;
       },
@@ -853,6 +860,67 @@ test("completeConnect card to card adds an edge and a .pxd-edge", async () => {
       assert.equal(session.model.edges[0].source, "card-a");
       assert.equal(session.model.edges[0].target, "card-b");
       assert.ok(findByClass(canvas.root, "pxd-edge"), "connected pair should paint a .pxd-edge");
+    } finally {
+      canvas.dispose();
+    }
+  } finally {
+    globalThis.document = previousDocument;
+    globalThis.window = previousWindow;
+  }
+});
+
+test("port capture: pointerdown on handle arms connect with side", () => {
+  const { document, window, dispatch } = createDomStub();
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  globalThis.document = document;
+  globalThis.window = window;
+  try {
+    const session = cardSession([]);
+    const settings = { get: (key) => settingsDefaults()[key] };
+    const canvas = createCanvasRoot({ session, settings, version: "0.5.0", nestStack: [] });
+    try {
+      const cards = findByClass(canvas.root, "pxd-cards");
+      const cardEl = cards.children.find((child) => child.dataset?.uid === "card-a");
+      const handle = cardEl.children.find((child) => child.className?.includes("pxd-handle--right"));
+      assert.ok(handle);
+      handle.dataset.side = "right";
+      document.elementsFromPoint = () => [handle, cardEl];
+      dispatch(handle, "pointerdown", { button: 0 });
+      dispatch(document, "pointerup", { button: 0, clientX: 0, clientY: 0 });
+      assert.deepEqual(canvas.getConnectArm(), { uid: "card-a", side: "right" });
+    } finally {
+      canvas.dispose();
+    }
+  } finally {
+    globalThis.document = previousDocument;
+    globalThis.window = previousWindow;
+  }
+});
+
+test("completeConnect stores fromSide and toSide on the model edge", async () => {
+  const { document, window } = createDomStub();
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  globalThis.document = document;
+  globalThis.window = window;
+  try {
+    const session = cardSession([]);
+    const settings = { get: (key) => settingsDefaults()[key] };
+    const canvas = createCanvasRoot({ session, settings, version: "0.5.0", nestStack: [] });
+    try {
+      await canvas.completeConnect({
+        moved: true,
+        sourceUid: "card-a",
+        targetUid: "card-b",
+        clientX: 400,
+        clientY: 80,
+        fromSide: "right",
+        toSide: "left",
+      });
+      assert.equal(session.model.edges.length, 1);
+      assert.equal(session.model.edges[0].from, "right");
+      assert.equal(session.model.edges[0].to, "left");
     } finally {
       canvas.dispose();
     }

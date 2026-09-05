@@ -2585,7 +2585,7 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
     const tagged = target.closest?.(".pxd-edge, .pxd-edge-hit, .pxd-edge-label, .pxd-edge-label-editor");
     return tagged?.dataset?.edgeKey || target.dataset?.edgeKey || null;
   };
-  const setTempEdge = (from, worldPoint) => {
+  const setTempEdge = (from, worldPoint, fromSide = "auto") => {
     const source = cardRect(from);
     if (!source) return;
     if (!tempEdge) {
@@ -2602,7 +2602,8 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
       tempSvg.append(tempEdge);
     }
     const target = { x: worldPoint.x, y: worldPoint.y, width: 1, height: 1 };
-    tempEdge.setAttribute("d", buildEdgePath(settings.get("connector-style") || "bezier", source, target));
+    const style = settings.get("connector-style") || "bezier";
+    tempEdge.setAttribute("d", buildEdgePath(style, source, target, fromSide || "auto", "auto"));
   };
   const clearTempEdge = () => {
     tempEdge?.remove?.();
@@ -2614,11 +2615,11 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
   let connectArm = null;
   const onConnectArmMove = (event) => {
     if (!connectArm) return;
-    setTempEdge(connectArm.uid, screenToWorld(event.clientX, event.clientY, false));
+    setTempEdge(connectArm.uid, screenToWorld(event.clientX, event.clientY, false), connectArm.side);
   };
-  const armConnect = (uid) => {
+  const armConnect = (uid, side) => {
     if (!uid) return;
-    connectArm = { uid };
+    connectArm = { uid, side };
     document.addEventListener("pointermove", onConnectArmMove, true);
   };
   const clearConnectArm = () => {
@@ -3046,15 +3047,25 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
     document.removeEventListener("pointercancel", onPointerUp, true);
     if (!connectArm) clearTempEdge();
   };
-  const cardFromPoint = (clientX, clientY) => {
-    let stack = [];
+  const hitStackFromPoint = (clientX, clientY) => {
     if (typeof document.elementsFromPoint === "function") {
-      stack = document.elementsFromPoint(clientX, clientY) || [];
-    } else {
-      const el = document.elementFromPoint?.(clientX, clientY);
-      if (el) stack = [el];
+      return document.elementsFromPoint(clientX, clientY) || [];
     }
-    return cardUidFromHitStack(stack, cardsLayer);
+    const el = document.elementFromPoint?.(clientX, clientY);
+    return el ? [el] : [];
+  };
+  const cardFromPoint = (clientX, clientY) => cardUidFromHitStack(hitStackFromPoint(clientX, clientY), cardsLayer);
+  const connectSideFromPoint = (clientX, clientY, targetUid) => {
+    if (!targetUid) return "auto";
+    for (const el of hitStackFromPoint(clientX, clientY)) {
+      if (!el) continue;
+      const handle = elementHasClass(el, "pxd-handle") ? el : el.closest?.(".pxd-handle");
+      if (!handle) continue;
+      const card = handle.closest?.(".pxd-card");
+      if (!card || card.dataset?.uid !== targetUid) continue;
+      return handle.dataset?.side || "auto";
+    }
+    return "auto";
   };
   const selectCard = (uid, additive) => {
     selectedSectionId = null;
@@ -3121,10 +3132,12 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
         event.preventDefault();
         return;
       }
-      const connectFrom = connectArm?.uid || (target.closest(".pxd-handle") || tool === "connect" ? uid : null);
+      const handleEl = target.closest?.(".pxd-handle");
+      const connectFrom = connectArm?.uid || (handleEl || tool === "connect" ? uid : null);
       if (connectFrom) {
-        beginGesture({ kind: "connect", uid: connectFrom, start, moved: false });
-        setTempEdge(connectFrom, screenToWorld(event.clientX, event.clientY, false));
+        const fromSide = connectArm?.side ?? handleEl?.dataset?.side;
+        beginGesture({ kind: "connect", uid: connectFrom, start, moved: false, fromSide });
+        setTempEdge(connectFrom, screenToWorld(event.clientX, event.clientY, false), fromSide);
         try {
           root.setPointerCapture?.(event.pointerId);
         } catch {
@@ -3157,13 +3170,13 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
   };
   const onPointerMove = (event) => {
     if (connectArm && (!gesture || gesture.kind === "connect")) {
-      setTempEdge(connectArm.uid, screenToWorld(event.clientX, event.clientY, false));
+      setTempEdge(connectArm.uid, screenToWorld(event.clientX, event.clientY, false), connectArm.side);
     }
     if (!gesture) return;
     const dx = event.clientX - gesture.start.x;
     const dy = event.clientY - gesture.start.y;
     if (gesture.kind === "connect") {
-      setTempEdge(gesture.uid, screenToWorld(event.clientX, event.clientY, false));
+      setTempEdge(gesture.uid, screenToWorld(event.clientX, event.clientY, false), gesture.fromSide);
       if (!gesture.moved && Math.hypot(dx, dy) >= DRAG_THRESHOLD_PX) gesture.moved = true;
       return;
     }
@@ -3243,26 +3256,42 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
     if (active.kind === "connect") {
       const targetUid = cardFromPoint(event.clientX, event.clientY);
       if (!active.moved && targetUid && targetUid === active.uid && !connectArm) {
-        armConnect(active.uid);
-        setTempEdge(active.uid, screenToWorld(event.clientX, event.clientY, false));
+        armConnect(active.uid, active.fromSide);
+        setTempEdge(active.uid, screenToWorld(event.clientX, event.clientY, false), active.fromSide);
         return;
       }
       if (!active.moved && connectArm && targetUid === connectArm.uid) {
         return;
       }
+      const fromSide = active.fromSide ?? connectArm?.side;
+      const toSide = connectSideFromPoint(event.clientX, event.clientY, targetUid);
       await completeConnect({
         moved: active.moved,
         sourceUid: active.uid,
         targetUid,
         clientX: event.clientX,
-        clientY: event.clientY
+        clientY: event.clientY,
+        fromSide,
+        toSide
       });
     }
   };
-  const completeConnect = async ({ moved, sourceUid, targetUid, clientX, clientY }) => {
+  const completeConnect = async ({ moved, sourceUid, targetUid, clientX, clientY, fromSide, toSide }) => {
+    const resolvedFrom = fromSide ?? connectArm?.side;
+    const resolvedTo = toSide ?? connectSideFromPoint(clientX, clientY, targetUid);
+    const edgeExtra = {
+      from: resolvedFrom || "auto",
+      to: resolvedTo || "auto"
+    };
     try {
       if (targetUid && targetUid !== sourceUid) {
-        const added = model().addEdge(sourceUid, targetUid, settings.get("connector-style") || "bezier");
+        const added = model().addEdge(
+          sourceUid,
+          targetUid,
+          settings.get("connector-style") || "bezier",
+          "",
+          edgeExtra
+        );
         renderEdges();
         if (added) {
           try {
@@ -3278,12 +3307,14 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
       if (!targetUid && (moved || connectArm)) {
         const point = screenToWorld(clientX, clientY);
         const size = defaultCardSize();
+        const addEdge = { source: sourceUid };
+        if (resolvedFrom && resolvedFrom !== "auto") addEdge.from = resolvedFrom;
         await onPersist?.({
           addCard: {
             x: snap(point.x - size.width / 2),
             y: snap(point.y - size.height / 2)
           },
-          addEdge: { source: sourceUid }
+          addEdge
         });
       }
     } catch {
@@ -3905,10 +3936,14 @@ function mountDiagramView({ nativeElement, session, settings, version, lifecycle
       if (action.addCard) {
         const uid = await current.addCard(action.string ?? "", action.addCard);
         if (uid && action.addEdge?.source) {
+          const edgeExtra = {};
+          if (action.addEdge.from) edgeExtra.from = action.addEdge.from;
           current.model.addEdge(
             action.addEdge.source,
             uid,
-            action.addEdge.kind || settings.get("connector-style") || "bezier"
+            action.addEdge.kind || settings.get("connector-style") || "bezier",
+            "",
+            edgeExtra
           );
           try {
             await current.persistLayout();

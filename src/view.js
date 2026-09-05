@@ -66,10 +66,14 @@ export function mountDiagramView({ nativeElement, session, settings, version, li
       if (action.addCard) {
         const uid = await current.addCard(action.string ?? "", action.addCard);
         if (uid && action.addEdge?.source) {
+          const edgeExtra = {};
+          if (action.addEdge.from) edgeExtra.from = action.addEdge.from;
           current.model.addEdge(
             action.addEdge.source,
             uid,
             action.addEdge.kind || settings.get("connector-style") || "bezier",
+            "",
+            edgeExtra,
           );
           try {
             await current.persistLayout();

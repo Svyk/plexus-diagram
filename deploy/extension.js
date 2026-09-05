@@ -1911,6 +1911,17 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
     const wy = (clientY - rect.top - y) / (zoom || 1);
     return snapped ? { x: snap(wx), y: snap(wy) } : { x: wx, y: wy };
   };
+  const worldToScreen = (wx, wy) => {
+    const rect = rootRect();
+    const { x, y, zoom } = model().viewport;
+    const z = zoom || 1;
+    return {
+      clientX: rect.left + x + wx * z,
+      clientY: rect.top + y + wy * z
+    };
+  };
+  let positionEdgeInspector = () => {
+  };
   const mountEl = () => root.closest?.(".pxd-mount") || null;
   const isFullscreen = () => Boolean(mountEl()?.classList?.contains?.("pxd-mount--fullscreen"));
   let disposed = false;
@@ -2033,6 +2044,7 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
     grid.style.backgroundPosition = `${x}px ${y}px`;
     zoomLabel.textContent = `${Math.round((zoom || 1) * 100)}%`;
     scheduleMinimap();
+    positionEdgeInspector();
   };
   const clampZoom = (zoom) => {
     const { zoomMin, zoomMax } = zoomBounds();
@@ -2388,6 +2400,8 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
   let tempEdge = null;
   let editingEdgeKey = null;
   let edgeEditorEl = null;
+  let selectedEdgeKey = null;
+  let edgeInspectorEl = null;
   const cardRect = (contentUid) => {
     const node = model().nodes.get(contentUid);
     if (!node) return null;
@@ -2442,6 +2456,7 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
       edgeEditorEl.style.left = `${mid.x}px`;
       edgeEditorEl.style.top = `${mid.y}px`;
     }
+    if (selectedEdgeKey === edgeKey(edge)) positionEdgeInspector();
     return d;
   };
   const updateEdgePath = (edge, path) => positionEdgeChrome(edge, path, edgePills.get(edgeKey(edge)));
@@ -2506,6 +2521,87 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
     labelsLayer.append(editor);
     editor.focus?.();
   };
+  const paintSelectedEdge = () => {
+    for (const [key, { path }] of edgePaths) {
+      path.classList.toggle("pxd-edge--selected", key === selectedEdgeKey);
+    }
+  };
+  positionEdgeInspector = () => {
+    if (!edgeInspectorEl || !selectedEdgeKey) return;
+    const edge = findEdgeByKey(selectedEdgeKey);
+    if (!edge) return;
+    const source = cardRect(edge.source);
+    const target = cardRect(edge.target);
+    if (!source || !target) return;
+    const mid = edgeMidpoint(source, target);
+    const screen = worldToScreen(mid.x, mid.y);
+    const rect = rootRect();
+    edgeInspectorEl.style.left = `${screen.clientX - rect.left}px`;
+    edgeInspectorEl.style.top = `${screen.clientY - rect.top}px`;
+  };
+  const ensureEdgeInspector = () => {
+    if (edgeInspectorEl) return edgeInspectorEl;
+    const inspector = document.createElement("div");
+    inspector.className = "pxd-edge-inspector";
+    const makeBtn = (label, onClick2) => {
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "pxd-edge-inspector__btn";
+      button.textContent = label;
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        onClick2?.(event);
+      });
+      return button;
+    };
+    inspector.append(
+      makeBtn("Direction"),
+      makeBtn("Flip"),
+      makeBtn("Route"),
+      makeBtn("Label", () => {
+        if (selectedEdgeKey) openEdgeLabelEditor(selectedEdgeKey);
+      })
+    );
+    for (const [id, label, hex] of COLOR_SWATCHES) {
+      const swatch = document.createElement("button");
+      swatch.type = "button";
+      swatch.className = "pxd-swatch";
+      swatch.dataset.color = id;
+      swatch.title = label;
+      if (hex) swatch.style.background = hex;
+      else swatch.classList.add("pxd-swatch--default");
+      swatch.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+      });
+      inspector.append(swatch);
+    }
+    inspector.append(makeBtn("Delete"));
+    root.append(inspector);
+    edgeInspectorEl = inspector;
+    return inspector;
+  };
+  const clearEdgeSelection = () => {
+    selectedEdgeKey = null;
+    paintSelectedEdge();
+    edgeInspectorEl?.remove?.();
+    edgeInspectorEl = null;
+  };
+  const selectEdge = (key) => {
+    if (!key || !findEdgeByKey(key)) {
+      clearEdgeSelection();
+      return;
+    }
+    model().selected.clear();
+    selectedSectionId = null;
+    syncSelection();
+    selectedEdgeKey = key;
+    ensureEdgeInspector();
+    paintSelectedEdge();
+    positionEdgeInspector();
+  };
+  const getSelectedEdgeKey = () => selectedEdgeKey;
   const renderEdges = () => {
     const keepEditor = editingEdgeKey && edgeEditorEl;
     edgesSvg.innerHTML = "";
@@ -2570,6 +2666,11 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
         labelsLayer.append(pill);
         edgePills.set(key, pill);
       }
+    }
+    if (selectedEdgeKey && !edgePaths.has(selectedEdgeKey)) clearEdgeSelection();
+    else if (selectedEdgeKey) {
+      paintSelectedEdge();
+      positionEdgeInspector();
     }
   };
   const updateEdgesFor = (uids) => {
@@ -2994,6 +3095,7 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
     if (!nextSession || nextSession === currentSession) return;
     void exitEdit(false);
     if (editingEdgeKey) closeEdgeEditor(false);
+    clearEdgeSelection();
     endGesture();
     clearConnectArm();
     clearMountedCards();
@@ -3068,6 +3170,7 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
     return "auto";
   };
   const selectCard = (uid, additive) => {
+    clearEdgeSelection();
     selectedSectionId = null;
     const selected = model().selected;
     if (additive) {
@@ -3080,6 +3183,7 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
     syncSelection();
   };
   const selectSection = (sectionId) => {
+    clearEdgeSelection();
     selectedSectionId = sectionId;
     model().selected.clear();
     syncSelection();
@@ -3087,7 +3191,7 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
   const onPointerDown = (event) => {
     if (event.button !== 0 && event.button !== 1) return;
     const target = event.target;
-    if (target?.closest?.(".pxd-toolbar") || target?.closest?.(".pxd-library-drawer") || target?.closest?.(".pxd-minimap")) return;
+    if (target?.closest?.(".pxd-toolbar") || target?.closest?.(".pxd-edge-inspector") || target?.closest?.(".pxd-library-drawer") || target?.closest?.(".pxd-minimap")) return;
     if (target?.closest?.(".pxd-edge-label-editor")) return;
     dismissHint();
     const cardEl = target?.closest?.(".pxd-card");
@@ -3096,9 +3200,19 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
     const panRequested = event.button === 1 || spaceDown && settings.get("pan-on-space");
     if (editingUid && editingUid !== uid) void exitEdit();
     if (editingUid && editingUid === uid) return;
-    if (target?.closest?.(".pxd-edge-label") || edgeKeyFromTarget(target)) {
+    if (target?.closest?.(".pxd-edge-label")) {
       if (editingEdgeKey && edgeKeyFromTarget(target) !== editingEdgeKey) closeEdgeEditor(true);
       return;
+    }
+    const edgeHit = target?.closest?.(".pxd-edge") || target?.closest?.(".pxd-edge-hit");
+    if (edgeHit) {
+      const key = edgeKeyFromTarget(target);
+      if (key) {
+        if (editingEdgeKey && editingEdgeKey !== key) closeEdgeEditor(true);
+        selectEdge(key);
+        event.preventDefault();
+        return;
+      }
     }
     const sectionEl = !uid && !panRequested ? target?.closest?.(".pxd-section") : null;
     if (sectionEl && !connectArm) {
@@ -3242,10 +3356,13 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
     endGesture();
     if (active.kind === "pan") {
       if (active.moved) markViewportDirty();
-      else if (model().activeTool === "select" && !event.shiftKey && (model().selected.size || selectedSectionId)) {
-        model().selected.clear();
-        selectedSectionId = null;
-        syncSelection();
+      else if (model().activeTool === "select" && !event.shiftKey) {
+        if (model().selected.size || selectedSectionId) {
+          model().selected.clear();
+          selectedSectionId = null;
+          syncSelection();
+        }
+        clearEdgeSelection();
       }
       return;
     }
@@ -3324,7 +3441,7 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
   };
   const onDoubleClick = (event) => {
     const target = event.target;
-    if (target?.closest?.(".pxd-toolbar") || target?.closest?.(".pxd-library-drawer") || target?.closest?.(".pxd-minimap")) return;
+    if (target?.closest?.(".pxd-toolbar") || target?.closest?.(".pxd-edge-inspector") || target?.closest?.(".pxd-library-drawer") || target?.closest?.(".pxd-minimap")) return;
     const edgeKeyHit = edgeKeyFromTarget(target);
     if (edgeKeyHit) {
       event.preventDefault();
@@ -3359,7 +3476,7 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
   const onClick = (event) => {
     const target = event.target;
     if (target?.closest?.(".pxd-palette") || target?.closest?.(".pxd-swatch")) return;
-    if (target?.closest?.(".pxd-card") || target?.closest?.(".pxd-toolbar")) return;
+    if (target?.closest?.(".pxd-card") || target?.closest?.(".pxd-toolbar") || target?.closest?.(".pxd-edge-inspector")) return;
     if (target?.closest?.(".pxd-library-drawer") || target?.closest?.(".pxd-minimap")) return;
     if (target?.closest?.(".pxd-edge-label-editor")) return;
     const sectionLabel = target?.closest?.(".pxd-section__label");
@@ -3459,6 +3576,11 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
         void exitEdit();
         return;
       }
+      if (selectedEdgeKey && owns) {
+        event.preventDefault();
+        clearEdgeSelection();
+        return;
+      }
       if (crumbs.length && owns) {
         event.preventDefault();
         const parent = crumbs[crumbs.length - 1];
@@ -3549,6 +3671,9 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
     armConnect,
     clearConnectArm,
     getConnectArm,
+    selectEdge,
+    clearEdgeSelection,
+    getSelectedEdgeKey,
     setLibraryOpen(open) {
       toolButtons.get("library")?.classList.toggle("pxd-toolbar__btn--active", Boolean(open));
     },
@@ -3559,6 +3684,7 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
       minimapScheduled?.();
       cancelFullscreenPlace?.();
       if (editingEdgeKey) closeEdgeEditor(false);
+      clearEdgeSelection();
       if (editingUid) void exitEdit(false);
       detachFocusGuard();
       clearConnectArm();

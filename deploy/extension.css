@@ -217,6 +217,47 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   pointer-events: none !important;
 }
 
+.pxd-root .pxd-edge--selected {
+  stroke: var(--pxd-active);
+  stroke-width: 3.5px;
+}
+
+.pxd-edge-inspector {
+  position: absolute;
+  z-index: 6;
+  display: flex;
+  flex-direction: row;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: 2px;
+  padding: 3px 6px;
+  border: 1px solid var(--pxd-border-strong);
+  border-radius: 8px;
+  background: var(--pxd-card-bg);
+  box-shadow: var(--pxd-shadow);
+  transform: translate(-50%, -50%);
+  pointer-events: auto;
+}
+
+.pxd-edge-inspector__btn {
+  width: auto;
+  min-height: 24px;
+  padding: 3px 6px;
+  border: 1px solid var(--pxd-border-strong);
+  background: var(--pxd-card-bg);
+  color: var(--pxd-text);
+  border-radius: 6px;
+  cursor: pointer;
+  font-size: 11px;
+  font-weight: 500;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.pxd-edge-inspector__btn:hover {
+  border-color: var(--pxd-active);
+}
+
 @keyframes pxd-edge-flow {
   to { stroke-dashoffset: -10; }
 }

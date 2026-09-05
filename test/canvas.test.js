@@ -1316,3 +1316,83 @@ test("markers rescale on zoom changes of 5 percent or more", () => {
     }
   });
 });
+
+// ------------------------------------------------------------- U5a inspector chrome
+
+function inspectorOnRoot(root) {
+  return root.children.find((child) => String(child.className || "").split(/\s+/).includes("pxd-edge-inspector"));
+}
+
+test("selectEdge selects the path, mounts inspector on root, and clearEdgeSelection removes both", () => {
+  const stub = createDomStub();
+  withStubDom(stub, () => {
+    const session = cardSession([{ source: "card-a", target: "card-b", kind: "bezier", label: "" }]);
+    const canvas = createCanvasRoot({ session, settings: defaultSettings(), version: "0.5.0", nestStack: [] });
+    try {
+      canvas.selectEdge("card-a->card-b");
+      const path = findByClass(canvas.root, "pxd-edge");
+      assert.ok(path.classList.contains("pxd-edge--selected"));
+      assert.ok(inspectorOnRoot(canvas.root), ".pxd-edge-inspector is a root child");
+      assert.equal(canvas.getSelectedEdgeKey(), "card-a->card-b");
+      canvas.clearEdgeSelection();
+      assert.ok(!path.classList.contains("pxd-edge--selected"));
+      assert.equal(inspectorOnRoot(canvas.root), undefined);
+      assert.equal(canvas.getSelectedEdgeKey(), null);
+    } finally {
+      canvas.dispose();
+    }
+  });
+});
+
+test("Esc dismisses edge selection when the overlay has the pointer, not when focus is outside", () => {
+  const stub = createDomStub();
+  withStubDom(stub, () => {
+    const session = cardSession([{ source: "card-a", target: "card-b", kind: "bezier", label: "" }]);
+    const canvas = createCanvasRoot({ session, settings: defaultSettings(), version: "0.5.0", nestStack: [] });
+    try {
+      canvas.selectEdge("card-a->card-b");
+      stub.dispatch(canvas.root, "pointerenter");
+      stub.dispatch(stub.window, "keydown", { key: "Escape" });
+      assert.equal(canvas.getSelectedEdgeKey(), null, "Esc after pointerenter dismisses");
+      assert.equal(inspectorOnRoot(canvas.root), undefined);
+
+      canvas.selectEdge("card-a->card-b");
+      stub.dispatch(canvas.root, "pointerleave");
+      stub.document.activeElement = stub.document.body;
+      stub.dispatch(stub.window, "keydown", { key: "Escape" });
+      assert.equal(canvas.getSelectedEdgeKey(), "card-a->card-b", "Esc with focus outside keeps selection");
+      assert.ok(inspectorOnRoot(canvas.root));
+    } finally {
+      canvas.dispose();
+    }
+  });
+});
+
+test("attachSession clears edge selection; dispose removes the inspector element", () => {
+  const stub = createDomStub();
+  withStubDom(stub, () => {
+    const session = cardSession([{ source: "card-a", target: "card-b", kind: "bezier", label: "" }]);
+    const other = cardSession([], {
+      children: [{ uid: "card-c", string: "Other diagram" }],
+      nodes: new Map([["card-c", { pos: { x: 10, y: 10 }, size: { width: 280, height: 160 } }]]),
+    });
+    const canvas = createCanvasRoot({ session, settings: defaultSettings(), version: "0.5.0", nestStack: [] });
+    try {
+      canvas.selectEdge("card-a->card-b");
+      assert.ok(inspectorOnRoot(canvas.root));
+      canvas.attachSession(other);
+      assert.equal(canvas.getSelectedEdgeKey(), null);
+      assert.equal(inspectorOnRoot(canvas.root), undefined);
+
+      canvas.attachSession(session);
+      canvas.selectEdge("card-a->card-b");
+      const inspector = inspectorOnRoot(canvas.root);
+      assert.ok(inspector);
+      canvas.dispose();
+      assert.equal(inspector.isConnected, false);
+      assert.equal(inspector.parentElement, null);
+    } finally {
+      /* dispose already ran */
+    }
+  });
+});

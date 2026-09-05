@@ -534,12 +534,150 @@ test("enterEdit calls renderBlock with the scratch uid, not the card uid", async
     const settings = { get: (key) => settingsDefaults()[key] };
     const canvas = createCanvasRoot({ session, settings, version: "0.4.0" });
     try {
+      const beforeEdit = renderUids.length;
       await canvas.editCard("card-a");
-      assert.ok(renderUids.includes("scratch-host"), "renderBlock should mount the scratch uid");
-      assert.ok(!renderUids.includes("card-a"), "renderBlock must not mount the card uid");
+      const editMounts = renderUids.slice(beforeEdit);
+      assert.ok(editMounts.includes("scratch-host"), "renderBlock should mount the scratch uid");
+      assert.ok(!editMounts.includes("card-a"), "renderBlock must not mount the card uid during edit");
       const fallback = findByClass(canvas.root, "pxd-card__edit-fallback");
       assert.ok(fallback, "fallback class still exists until hydrate is quiet");
       assert.equal(fallback.textContent, "Hello card");
+    } finally {
+      canvas.dispose();
+    }
+  } finally {
+    await releaseScratch();
+    globalThis.document = previousDocument;
+    globalThis.window = previousWindow;
+    globalThis.roamAlphaAPI = previousRoam;
+  }
+});
+
+test("idle paint uses renderBlock for a card with children but no string", () => {
+  const stub = createDomStub();
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  const previousRoam = globalThis.roamAlphaAPI;
+  const renderUids = [];
+  globalThis.document = stub.document;
+  globalThis.window = stub.window;
+  globalThis.roamAlphaAPI = {
+    ui: {
+      components: {
+        renderBlock: ({ uid }) => { renderUids.push(uid); },
+        unmountNode: () => {},
+      },
+    },
+  };
+  try {
+    const session = cardSession([], {
+      children: [{
+        uid: "card-a",
+        string: "",
+        children: [{ uid: "child-1", string: "bullet", order: 0 }],
+      }],
+    });
+    const canvas = createCanvasRoot({ session, settings: defaultSettings(), version: "0.6.3" });
+    try {
+      canvas.render();
+      assert.ok(renderUids.includes("card-a"), "children-only card should idle-render the card uid");
+      assert.equal(findByClass(canvas.root, "pxd-card__placeholder"), null, "should not show empty placeholder");
+    } finally {
+      canvas.dispose();
+    }
+  } finally {
+    globalThis.document = previousDocument;
+    globalThis.window = previousWindow;
+    globalThis.roamAlphaAPI = previousRoam;
+  }
+});
+
+test("exitEdit paints idle renderBlock with the card uid after scratch edit", async () => {
+  const stub = createDomStub();
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  const previousRoam = globalThis.roamAlphaAPI;
+  const renderUids = [];
+  globalThis.document = stub.document;
+  globalThis.window = stub.window;
+  globalThis.roamAlphaAPI = {
+    util: { generateUID: () => "generated" },
+    data: {
+      q: () => [["meta-page"]],
+      pull: (_pattern, ref) => {
+        const uid = Array.isArray(ref) ? ref[1] : ref;
+        if (uid === "meta-page") {
+          return {
+            ":block/uid": "meta-page",
+            ":block/string": "",
+            ":block/children": [{
+              ":block/uid": "scratch-marker",
+              ":block/string": "pxd:scratch",
+              ":block/order": 0,
+              ":block/children": [{
+                ":block/uid": "scratch-host",
+                ":block/string": " ",
+                ":block/order": 0,
+                ":block/children": [{
+                  ":block/uid": "scratch-child",
+                  ":block/string": "nested bullet",
+                  ":block/order": 0,
+                }],
+              }],
+            }],
+          };
+        }
+        if (uid === "scratch-marker") {
+          return {
+            ":block/uid": "scratch-marker",
+            ":block/string": "pxd:scratch",
+            ":block/children": [{
+              ":block/uid": "scratch-host",
+              ":block/string": " ",
+              ":block/order": 0,
+            }],
+          };
+        }
+        if (uid === "scratch-host") {
+          return {
+            ":block/uid": "scratch-host",
+            ":block/string": "Hello card",
+            ":block/children": [{
+              ":block/uid": "scratch-child",
+              ":block/string": "nested bullet",
+              ":block/order": 0,
+            }],
+          };
+        }
+        return { ":block/uid": uid, ":block/string": "Hello card" };
+      },
+      page: { create: async () => {} },
+      block: {
+        create: async () => {},
+        update: async () => {},
+        delete: async () => {},
+      },
+    },
+    ui: {
+      components: {
+        renderBlock: ({ uid }) => { renderUids.push(uid); },
+        unmountNode: () => {},
+      },
+    },
+  };
+  try {
+    const session = cardSession();
+    const canvas = createCanvasRoot({ session, settings: defaultSettings(), version: "0.6.3" });
+    try {
+      await canvas.editCard("card-a");
+      assert.ok(renderUids.includes("scratch-host"), "edit should mount scratch uid");
+      stub.dispatch(canvas.root, "pointerenter");
+      stub.dispatch(stub.window, "keydown", { key: "Escape", preventDefault() {} });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      assert.ok(renderUids.includes("card-a"), "idle paint after exit should renderBlock the card uid");
+      assert.ok(renderUids.lastIndexOf("card-a") > renderUids.indexOf("scratch-host"),
+        "card uid idle paint should follow scratch edit mount");
     } finally {
       canvas.dispose();
     }

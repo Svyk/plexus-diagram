@@ -84,7 +84,9 @@ export function createSettingsReader(extensionAPI) {
   return {
     get(id) {
       const value = extensionAPI.settings.get(id);
-      return value == null ? DEFAULTS[id] : value;
+      const resolved = value == null ? DEFAULTS[id] : value;
+      if (id === SETTING_IDS.gridStyle && resolved === "none") return "solid";
+      return resolved;
     },
   };
 }
@@ -140,7 +142,7 @@ export function createSettingsPanel() {
       selectRow(SETTING_IDS.gridStyle, "Grid style", "Background grid style.", [
         ["Dots", "dots"],
         ["Lines", "lines"],
-        ["None", "none"],
+        ["Solid", "solid"],
       ]),
       switchRow(SETTING_IDS.minimap, "Minimap", "Show the minimap."),
       switchRow(SETTING_IDS.panOnSpace, "Pan on space", "Hold space and drag to pan."),

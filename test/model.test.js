@@ -14,6 +14,10 @@ test("DIAGRAM_PULL_PATTERN is an EDN string for roamAlphaAPI.data.pull", () => {
   assert.match(DIAGRAM_PULL_PATTERN, /^\[:block\/uid/);
 });
 
+test("DIAGRAM_PULL_PATTERN includes nested block children", () => {
+  assert.match(DIAGRAM_PULL_PATTERN, /\{:block\/children \[:block\/uid :block\/string :block\/order \{:block\/children/);
+});
+
 test("stripKeywords removes leading colons from object keys", () => {
   assert.deepEqual(stripKeywords({ ":x": 1, nested: { ":y": 2 } }), { x: 1, nested: { y: 2 } });
 });

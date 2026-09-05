@@ -112,6 +112,10 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   background-size: var(--pxd-grid-size, 24px) var(--pxd-grid-size, 24px);
 }
 
+.pxd-grid--solid {
+  background-image: none;
+}
+
 .pxd-world {
   position: absolute;
   inset: 0;
@@ -476,6 +480,15 @@ body.roam-body.dark .pxd-section,
 
 .pxd-root[data-render-children-depth="0"] .pxd-card .rm-block-children {
   display: none !important;
+}
+
+.pxd-card:not(.pxd-card--editing) .rm-block__input {
+  pointer-events: none;
+}
+
+.pxd-card:not(.pxd-card--editing) .rm-page-ref,
+.pxd-card:not(.pxd-card--editing) a {
+  pointer-events: auto;
 }
 
 .pxd-handle {

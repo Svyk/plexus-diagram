@@ -1,7 +1,7 @@
 import { isDiagramString } from "./discovery.js";
 
 export const DIAGRAM_PULL_PATTERN = `[:block/uid :block/string :block/props
-  {:block/children [:block/uid :block/string :block/order]}
+  {:block/children [:block/uid :block/string :block/order {:block/children ...}]}
   {:diagram/nodes [:block/uid :diagram.node/data
     {:diagram.node/block [:block/uid :block/string]}
     {:diagram.node/parent-node [:db/id :block/uid]}]}

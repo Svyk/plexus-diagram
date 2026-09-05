@@ -16,6 +16,7 @@ import {
   updateBlock,
 } from "./metadata.js";
 import {
+  childrenFingerprint,
   contentBounds,
   fitViewport,
   MIN_CARD_HEIGHT,
@@ -559,13 +560,21 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
   zoomLabel.className = "pxd-toolbar__zoom-level";
   zoomLabel.title = "Reset zoom to 100%";
 
+  const GRID_STYLE_CYCLE = ["dots", "lines", "solid"];
+  const GRID_STYLE_LABELS = { dots: "Dots", lines: "Lines", solid: "Solid" };
+  let gridBgBtn = null;
+
   const renderGrid = () => {
     const show = settings.get("show-grid");
     const style = settings.get("grid-style") || "dots";
     grid.className = "pxd-grid";
-    grid.classList.toggle("pxd-grid--hidden", !show || style === "none");
+    grid.classList.toggle("pxd-grid--hidden", !show);
     grid.classList.toggle("pxd-grid--dots", style === "dots");
     grid.classList.toggle("pxd-grid--lines", style === "lines");
+    grid.classList.toggle("pxd-grid--solid", style === "solid");
+    if (gridBgBtn) {
+      gridBgBtn.textContent = GRID_STYLE_LABELS[style] || "Dots";
+    }
   };
 
   let minimapScheduled = null;
@@ -867,7 +876,14 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
   });
   const fullBtn = makeButton("Fullscreen", "Maximize like native Roam diagrams. Esc exits.", "pxd-toolbar__btn--zoom");
   fullBtn.addEventListener("click", () => setFullscreen(!isFullscreen()));
-  viewGroup.append(zoomOutBtn, zoomLabel, zoomInBtn, fitBtn, fullBtn);
+  gridBgBtn = makeButton("Dots", "Board background");
+  gridBgBtn.addEventListener("click", () => {
+    const current = settings.get("grid-style") || "dots";
+    const idx = GRID_STYLE_CYCLE.indexOf(current);
+    const next = GRID_STYLE_CYCLE[(idx + 1) % GRID_STYLE_CYCLE.length];
+    onPersist?.({ setSetting: { id: "grid-style", value: next } });
+  });
+  viewGroup.append(zoomOutBtn, zoomLabel, zoomInBtn, fitBtn, fullBtn, gridBgBtn);
   toolbar.append(viewGroup);
 
   const palette = document.createElement("div");
@@ -1655,16 +1671,26 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
         }
         body.append(preview);
       }
-    } else if (!child.string.trim()) {
+    } else if (!child.string.trim() && !(child.children?.length)) {
       card.classList.add("pxd-card--empty");
       const placeholder = document.createElement("div");
       placeholder.className = "pxd-card__placeholder";
       placeholder.textContent = "Empty card · double-click to write";
       body.append(placeholder);
     } else {
-      renderStringInto(body, child.string);
+      const components = roamUi()?.components;
+      if (settings.get("native-block-editor") && components?.renderBlock) {
+        try {
+          components.renderBlock({ uid: child.uid, el: body });
+        } catch {
+          if (child.string.trim()) renderStringInto(body, child.string);
+        }
+      } else if (child.string.trim()) {
+        renderStringInto(body, child.string);
+      }
     }
     card._pxdString = child.string;
+    card._pxdChildrenFp = childrenFingerprint(child.children || []);
   };
 
   const exitEdit = async (persistString = true) => {
@@ -1841,7 +1867,11 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
       const showTitle = settings.get("show-card-title") && titleText !== child.string.trim();
       card.classList.toggle("pxd-card--titled", Boolean(showTitle));
       card._pxdTitle.textContent = showTitle ? titleText : "";
-      if (editingUid !== child.uid && card._pxdString !== child.string) paintCardBody(card, child);
+      const childFp = childrenFingerprint(child.children || []);
+      if (editingUid !== child.uid
+        && (card._pxdString !== child.string || card._pxdChildrenFp !== childFp)) {
+        paintCardBody(card, child);
+      }
       if (card.parentElement !== cardsLayer) cardsLayer.append(card);
     }
     for (const [uid, card] of cardEls) {

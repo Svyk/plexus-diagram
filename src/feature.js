@@ -31,7 +31,7 @@ import { markNativePending, mountDiagramView } from "./view.js";
 
 // Roam reports `extension.version` as "DEV" for URL / local developer installs,
 // so the toolbar badge is stamped from this constant first.
-export const PACKAGE_VERSION = "0.6.2";
+export const PACKAGE_VERSION = "0.6.3";
 
 export const runtime = {
   extensionAPI: null,
@@ -158,6 +158,9 @@ async function enhanceDiagram(uid, nativeElement) {
         }
         if (action.type === "open-block" && action.uid) {
           globalThis.roamAlphaAPI?.ui?.rightSidebar?.addWindow?.({ window: { type: "block", "block-uid": action.uid } });
+        }
+        if (action.type === "set-setting" && action.id) {
+          await runtime.extensionAPI?.settings?.set(action.id, action.value);
         }
       },
     });

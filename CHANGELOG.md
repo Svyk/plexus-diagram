@@ -1,5 +1,10 @@
 # Changelog
 
+## 0.6.3 — 2026-09-05
+
+- **Idle card children** — after click-away, idle cards `renderBlock` the card uid so child bullets stay visible; deep pull includes nested `:block/children`; empty placeholder only when string is blank and there are no children.
+- **Board background** — toolbar cycles Dots / Lines / Solid (`grid-style` persisted).
+
 ## 0.6.2 — 2026-09-05
 
 - **Connect hit-test** — targets resolve from the painted card rects (`getBoundingClientRect`, 12px handle inflate) before `elementsFromPoint` and world-rect math, and the card hovered on the last pointermove is the fallback for a captured pointerup.

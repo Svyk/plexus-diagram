@@ -1,4 +1,4 @@
-/* Plexus Diagram v0.6.2 | MIT | generated; edit src/ */
+/* Plexus Diagram v0.6.3 | MIT | generated; edit src/ */
 
 // src/lifecycle.js
 function isPromiseLike(value) {
@@ -901,7 +901,9 @@ function createSettingsReader(extensionAPI) {
   return {
     get(id) {
       const value = extensionAPI.settings.get(id);
-      return value == null ? DEFAULTS[id] : value;
+      const resolved = value == null ? DEFAULTS[id] : value;
+      if (id === SETTING_IDS.gridStyle && resolved === "none") return "solid";
+      return resolved;
     }
   };
 }
@@ -952,7 +954,7 @@ function createSettingsPanel() {
       selectRow(SETTING_IDS.gridStyle, "Grid style", "Background grid style.", [
         ["Dots", "dots"],
         ["Lines", "lines"],
-        ["None", "none"]
+        ["Solid", "solid"]
       ]),
       switchRow(SETTING_IDS.minimap, "Minimap", "Show the minimap."),
       switchRow(SETTING_IDS.panOnSpace, "Pan on space", "Hold space and drag to pan."),
@@ -1164,7 +1166,7 @@ function arrowheadPoints(arrowheads) {
 
 // src/model.js
 var DIAGRAM_PULL_PATTERN = `[:block/uid :block/string :block/props
-  {:block/children [:block/uid :block/string :block/order]}
+  {:block/children [:block/uid :block/string :block/order {:block/children ...}]}
   {:diagram/nodes [:block/uid :diagram.node/data
     {:diagram.node/block [:block/uid :block/string]}
     {:diagram.node/parent-node [:db/id :block/uid]}]}
@@ -2012,13 +2014,20 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
   zoomLabel.type = "button";
   zoomLabel.className = "pxd-toolbar__zoom-level";
   zoomLabel.title = "Reset zoom to 100%";
+  const GRID_STYLE_CYCLE = ["dots", "lines", "solid"];
+  const GRID_STYLE_LABELS = { dots: "Dots", lines: "Lines", solid: "Solid" };
+  let gridBgBtn = null;
   const renderGrid = () => {
     const show = settings.get("show-grid");
     const style = settings.get("grid-style") || "dots";
     grid.className = "pxd-grid";
-    grid.classList.toggle("pxd-grid--hidden", !show || style === "none");
+    grid.classList.toggle("pxd-grid--hidden", !show);
     grid.classList.toggle("pxd-grid--dots", style === "dots");
     grid.classList.toggle("pxd-grid--lines", style === "lines");
+    grid.classList.toggle("pxd-grid--solid", style === "solid");
+    if (gridBgBtn) {
+      gridBgBtn.textContent = GRID_STYLE_LABELS[style] || "Dots";
+    }
   };
   let minimapScheduled = null;
   const updateMinimap = () => {
@@ -2295,7 +2304,14 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
   });
   const fullBtn = makeButton("Fullscreen", "Maximize like native Roam diagrams. Esc exits.", "pxd-toolbar__btn--zoom");
   fullBtn.addEventListener("click", () => setFullscreen(!isFullscreen()));
-  viewGroup.append(zoomOutBtn, zoomLabel, zoomInBtn, fitBtn, fullBtn);
+  gridBgBtn = makeButton("Dots", "Board background");
+  gridBgBtn.addEventListener("click", () => {
+    const current = settings.get("grid-style") || "dots";
+    const idx = GRID_STYLE_CYCLE.indexOf(current);
+    const next = GRID_STYLE_CYCLE[(idx + 1) % GRID_STYLE_CYCLE.length];
+    onPersist?.({ setSetting: { id: "grid-style", value: next } });
+  });
+  viewGroup.append(zoomOutBtn, zoomLabel, zoomInBtn, fitBtn, fullBtn, gridBgBtn);
   toolbar.append(viewGroup);
   const palette = document.createElement("div");
   palette.className = "pxd-palette pxd-palette--hidden";
@@ -3055,16 +3071,26 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
         }
         body.append(preview);
       }
-    } else if (!child.string.trim()) {
+    } else if (!child.string.trim() && !child.children?.length) {
       card.classList.add("pxd-card--empty");
       const placeholder = document.createElement("div");
       placeholder.className = "pxd-card__placeholder";
       placeholder.textContent = "Empty card · double-click to write";
       body.append(placeholder);
     } else {
-      renderStringInto(body, child.string);
+      const components = roamUi()?.components;
+      if (settings.get("native-block-editor") && components?.renderBlock) {
+        try {
+          components.renderBlock({ uid: child.uid, el: body });
+        } catch {
+          if (child.string.trim()) renderStringInto(body, child.string);
+        }
+      } else if (child.string.trim()) {
+        renderStringInto(body, child.string);
+      }
     }
     card._pxdString = child.string;
+    card._pxdChildrenFp = childrenFingerprint(child.children || []);
   };
   const exitEdit = async (persistString = true) => {
     const uid = editingUid;
@@ -3238,7 +3264,10 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
       const showTitle = settings.get("show-card-title") && titleText !== child.string.trim();
       card.classList.toggle("pxd-card--titled", Boolean(showTitle));
       card._pxdTitle.textContent = showTitle ? titleText : "";
-      if (editingUid !== child.uid && card._pxdString !== child.string) paintCardBody(card, child);
+      const childFp = childrenFingerprint(child.children || []);
+      if (editingUid !== child.uid && (card._pxdString !== child.string || card._pxdChildrenFp !== childFp)) {
+        paintCardBody(card, child);
+      }
       if (card.parentElement !== cardsLayer) cardsLayer.append(card);
     }
     for (const [uid, card] of cardEls) {
@@ -4353,6 +4382,10 @@ function mountDiagramView({ nativeElement, session, settings, version, lifecycle
         await current.deleteCards(action.deleteCards);
         canvas.render();
       }
+      if (action.setSetting) {
+        onAction?.({ type: "set-setting", id: action.setSetting.id, value: action.setSetting.value });
+        canvas.render();
+      }
     }
   });
   wrapper.append(canvas.root);
@@ -4374,7 +4407,7 @@ function markNativePending(nativeElement) {
 }
 
 // src/feature.js
-var PACKAGE_VERSION = "0.6.2";
+var PACKAGE_VERSION = "0.6.3";
 var runtime = {
   extensionAPI: null,
   lifecycle: null,
@@ -4490,6 +4523,9 @@ async function enhanceDiagram(uid, nativeElement) {
         }
         if (action.type === "open-block" && action.uid) {
           globalThis.roamAlphaAPI?.ui?.rightSidebar?.addWindow?.({ window: { type: "block", "block-uid": action.uid } });
+        }
+        if (action.type === "set-setting" && action.id) {
+          await runtime.extensionAPI?.settings?.set(action.id, action.value);
         }
       }
     });

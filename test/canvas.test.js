@@ -1743,6 +1743,214 @@ test("inspector Route and color swatch mutate the edge with one persist each", a
   }
 });
 
+test("inspector Comment converts oneWay label to Roam comment on target", async () => {
+  const stub = createDomStub();
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  const previousRoam = globalThis.roamAlphaAPI;
+  const commentCalls = [];
+  globalThis.document = stub.document;
+  globalThis.window = stub.window;
+  globalThis.roamAlphaAPI = {
+    data: {
+      block: {
+        addComment: async (payload) => { commentCalls.push(payload); },
+      },
+    },
+  };
+  try {
+    const session = cardSession([{
+      source: "card-a",
+      target: "card-b",
+      kind: "bezier",
+      label: "because",
+      direction: "oneWay",
+    }]);
+    const persists = [];
+    const canvas = createCanvasRoot({
+      session,
+      settings: defaultSettings(),
+      version: "0.6.4",
+      nestStack: [],
+      onPersist: async (action) => { persists.push(action); },
+    });
+    try {
+      canvas.selectEdge("card-a->card-b");
+      stub.dispatch(canvas.root, "pointerenter");
+      const inspector = inspectorOnRoot(canvas.root);
+      const commentBtn = inspectorButton(inspector, "Comment");
+      assert.equal(commentBtn.disabled, false);
+      await clickInspectorButton(stub, commentBtn);
+      assert.equal(commentCalls.length, 1);
+      assert.deepEqual(commentCalls[0], {
+        "block-uid": "card-b",
+        "reply-string": "((card-a)) because",
+      });
+      assert.equal(session.model.edges[0].label, "");
+      assert.equal(persistLayoutCalls(persists).length, 1);
+    } finally {
+      canvas.dispose();
+    }
+  } finally {
+    globalThis.document = previousDocument;
+    globalThis.window = previousWindow;
+    globalThis.roamAlphaAPI = previousRoam;
+  }
+});
+
+test("inspector Comment on twoWay edge comments both endpoints", async () => {
+  const stub = createDomStub();
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  const previousRoam = globalThis.roamAlphaAPI;
+  const commentCalls = [];
+  globalThis.document = stub.document;
+  globalThis.window = stub.window;
+  globalThis.roamAlphaAPI = {
+    data: {
+      block: {
+        addComment: async (payload) => { commentCalls.push(payload); },
+      },
+    },
+  };
+  try {
+    const session = cardSession([{
+      source: "card-a",
+      target: "card-b",
+      kind: "bezier",
+      label: "because",
+      direction: "twoWay",
+    }]);
+    const persists = [];
+    const canvas = createCanvasRoot({
+      session,
+      settings: defaultSettings(),
+      version: "0.6.4",
+      nestStack: [],
+      onPersist: async (action) => { persists.push(action); },
+    });
+    try {
+      canvas.selectEdge("card-a->card-b");
+      stub.dispatch(canvas.root, "pointerenter");
+      await clickInspectorButton(stub, inspectorButton(inspectorOnRoot(canvas.root), "Comment"));
+      assert.equal(commentCalls.length, 2);
+      assert.deepEqual(commentCalls[0], {
+        "block-uid": "card-a",
+        "reply-string": "((card-b)) because",
+      });
+      assert.deepEqual(commentCalls[1], {
+        "block-uid": "card-b",
+        "reply-string": "((card-a)) because",
+      });
+      assert.equal(session.model.edges[0].label, "");
+      assert.equal(persistLayoutCalls(persists).length, 1);
+    } finally {
+      canvas.dispose();
+    }
+  } finally {
+    globalThis.document = previousDocument;
+    globalThis.window = previousWindow;
+    globalThis.roamAlphaAPI = previousRoam;
+  }
+});
+
+test("inspector Comment disabled for none direction and keeps label", async () => {
+  const stub = createDomStub();
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  const previousRoam = globalThis.roamAlphaAPI;
+  const commentCalls = [];
+  globalThis.document = stub.document;
+  globalThis.window = stub.window;
+  globalThis.roamAlphaAPI = {
+    data: {
+      block: {
+        addComment: async (payload) => { commentCalls.push(payload); },
+      },
+    },
+  };
+  try {
+    const session = cardSession([{
+      source: "card-a",
+      target: "card-b",
+      kind: "bezier",
+      label: "because",
+      direction: "none",
+    }]);
+    const persists = [];
+    const canvas = createCanvasRoot({
+      session,
+      settings: defaultSettings(),
+      version: "0.6.4",
+      nestStack: [],
+      onPersist: async (action) => { persists.push(action); },
+    });
+    try {
+      canvas.selectEdge("card-a->card-b");
+      stub.dispatch(canvas.root, "pointerenter");
+      const commentBtn = inspectorButton(inspectorOnRoot(canvas.root), "Comment");
+      assert.equal(commentBtn.disabled, true);
+      assert.equal(commentBtn.title, "Set Direction to one-way or two-way first");
+      await clickInspectorButton(stub, commentBtn);
+      assert.equal(commentCalls.length, 0);
+      assert.equal(session.model.edges[0].label, "because");
+      assert.equal(persistLayoutCalls(persists).length, 0);
+    } finally {
+      canvas.dispose();
+    }
+  } finally {
+    globalThis.document = previousDocument;
+    globalThis.window = previousWindow;
+    globalThis.roamAlphaAPI = previousRoam;
+  }
+});
+
+test("inspector Comment keeps label when addComment throws", async () => {
+  const stub = createDomStub();
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  const previousRoam = globalThis.roamAlphaAPI;
+  globalThis.document = stub.document;
+  globalThis.window = stub.window;
+  globalThis.roamAlphaAPI = {
+    data: {
+      block: {
+        addComment: async () => { throw new Error("roam failed"); },
+      },
+    },
+  };
+  try {
+    const session = cardSession([{
+      source: "card-a",
+      target: "card-b",
+      kind: "bezier",
+      label: "because",
+      direction: "oneWay",
+    }]);
+    const persists = [];
+    const canvas = createCanvasRoot({
+      session,
+      settings: defaultSettings(),
+      version: "0.6.4",
+      nestStack: [],
+      onPersist: async (action) => { persists.push(action); },
+    });
+    try {
+      canvas.selectEdge("card-a->card-b");
+      stub.dispatch(canvas.root, "pointerenter");
+      await clickInspectorButton(stub, inspectorButton(inspectorOnRoot(canvas.root), "Comment"));
+      assert.equal(session.model.edges[0].label, "because");
+      assert.equal(persistLayoutCalls(persists).length, 0);
+    } finally {
+      canvas.dispose();
+    }
+  } finally {
+    globalThis.document = previousDocument;
+    globalThis.window = previousWindow;
+    globalThis.roamAlphaAPI = previousRoam;
+  }
+});
+
 test("inspector Delete and keyboard Delete remove the edge and clear selection", async () => {
   const stub = createDomStub();
   const previousDocument = globalThis.document;

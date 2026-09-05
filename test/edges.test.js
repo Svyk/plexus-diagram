@@ -14,6 +14,7 @@ import {
   elbowPath,
   shouldRescaleMarkers,
   straightPath,
+  commentPlanForEdge,
 } from "../src/edges.js";
 
 const source = { x: 0, y: 0, width: 100, height: 80 };
@@ -93,4 +94,36 @@ test("directionToPoints maps direction to marker sides", () => {
   assert.deepEqual(directionToPoints("oneWay"), { start: false, end: true });
   assert.deepEqual(directionToPoints("twoWay"), { start: true, end: true });
   assert.deepEqual(directionToPoints("none"), { start: false, end: false });
+});
+
+test("commentPlanForEdge oneWay comments target only", () => {
+  const edge = { source: "card-a", target: "card-b", label: "because" };
+  assert.deepEqual(commentPlanForEdge(edge, "end"), [
+    { uid: "card-b", reply: "((card-a)) because" },
+  ]);
+});
+
+test("commentPlanForEdge twoWay comments both endpoints", () => {
+  const edge = { source: "card-a", target: "card-b", label: "because", direction: "twoWay" };
+  assert.deepEqual(commentPlanForEdge(edge, "end"), [
+    { uid: "card-a", reply: "((card-b)) because" },
+    { uid: "card-b", reply: "((card-a)) because" },
+  ]);
+});
+
+test("commentPlanForEdge none returns empty", () => {
+  const edge = { source: "card-a", target: "card-b", label: "because", direction: "none" };
+  assert.deepEqual(commentPlanForEdge(edge, "end"), []);
+});
+
+test("commentPlanForEdge empty label omits trailing text", () => {
+  const edge = { source: "card-a", target: "card-b", label: "  " };
+  assert.deepEqual(commentPlanForEdge(edge, "end"), [
+    { uid: "card-b", reply: "((card-a))" },
+  ]);
+});
+
+test("commentPlanForEdge missing uids returns empty", () => {
+  assert.deepEqual(commentPlanForEdge({ source: "card-a", target: "" }, "end"), []);
+  assert.deepEqual(commentPlanForEdge({ source: "card-a", target: "card-a" }, "end"), []);
 });

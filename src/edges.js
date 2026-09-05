@@ -186,3 +186,18 @@ export function arrowheadPoints(arrowheads) {
   if (arrowheads === "both") return { start: true, end: true };
   return { start: false, end: true };
 }
+
+export function commentPlanForEdge(edge, setting) {
+  const dir = effectiveDirection(edge, setting);
+  const label = String(edge?.label || "").trim();
+  const body = (otherUid) => label ? `((${otherUid})) ${label}` : `((${otherUid}))`;
+  if (!edge?.source || !edge?.target || edge.source === edge.target) return [];
+  if (dir === "twoWay") {
+    return [
+      { uid: edge.source, reply: body(edge.target) },
+      { uid: edge.target, reply: body(edge.source) },
+    ];
+  }
+  if (dir === "oneWay") return [{ uid: edge.target, reply: body(edge.source) }];
+  return [];
+}

@@ -1,5 +1,9 @@
 # Changelog
 
+## 0.6.4 — 2026-09-05
+
+- **Inspector Comment** — converts the edge label to native Roam comments (one-way → target, two-way → both) then clears the pill.
+
 ## 0.6.3 — 2026-09-05
 
 - **Idle card children** — after click-away, idle cards `renderBlock` the card uid so child bullets stay visible; deep pull includes nested `:block/children`; empty placeholder only when string is blank and there are no children.

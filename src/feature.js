@@ -31,7 +31,7 @@ import { markNativePending, mountDiagramView } from "./view.js";
 
 // Roam reports `extension.version` as "DEV" for URL / local developer installs,
 // so the toolbar badge is stamped from this constant first.
-export const PACKAGE_VERSION = "0.6.3";
+export const PACKAGE_VERSION = "0.6.4";
 
 export const runtime = {
   extensionAPI: null,

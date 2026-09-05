@@ -7,6 +7,7 @@ import {
   shouldRescaleMarkers,
   effectiveDirection,
   directionToPoints,
+  commentPlanForEdge,
 } from "./edges.js";
 import {
   acquireScratch,
@@ -1101,6 +1102,31 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
     const reverseExists = Boolean(findEdgeByKey(`${edge.target}->${edge.source}`));
     edgeInspectorControls.flip.disabled = reverseExists;
     edgeInspectorControls.flip.title = reverseExists ? "Reverse connection already exists" : "Flip";
+    const plan = commentPlanForEdge(edge, settings.get("arrowheads") || "end");
+    edgeInspectorControls.comment.disabled = plan.length === 0;
+    edgeInspectorControls.comment.title = plan.length === 0
+      ? "Set Direction to one-way or two-way first"
+      : "Convert label to a Roam comment";
+  };
+  const convertEdgeLabelToComments = async () => {
+    if (!selectedEdgeKey) return;
+    const edge = findEdgeByKey(selectedEdgeKey);
+    if (!edge) return;
+    const plan = commentPlanForEdge(edge, settings.get("arrowheads") || "end");
+    const add = globalThis.roamAlphaAPI?.data?.block?.addComment;
+    if (!add || !plan.length) return;
+    try {
+      for (const item of plan) {
+        await add({ "block-uid": item.uid, "reply-string": item.reply });
+      }
+      edge.label = "";
+      markLayoutDirty();
+      await flushLayout();
+      renderEdges();
+      syncEdgeInspector();
+    } catch {
+      /* keep label when addComment fails */
+    }
   };
   const persistEdgeMutation = async (mutator) => {
     if (!selectedEdgeKey) return;
@@ -1328,6 +1354,8 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
     const routeBtn = makeBtn("Route", () => persistEdgeMutation((edge) => {
       edge.kind = nextRouteKind(edge.kind);
     }));
+    const commentBtn = makeBtn("Comment", () => convertEdgeLabelToComments());
+    commentBtn.title = "Convert label to a Roam comment";
     inspector.append(
       directionBtn,
       flipBtn,
@@ -1335,6 +1363,7 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
       makeBtn("Label", () => {
         if (selectedEdgeKey) openEdgeLabelEditor(selectedEdgeKey);
       }),
+      commentBtn,
     );
     for (const [id, label, hex] of COLOR_SWATCHES) {
       const swatch = document.createElement("button");
@@ -1355,7 +1384,13 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
     }
     const deleteBtn = makeBtn("Delete", () => deleteSelectedEdge());
     inspector.append(deleteBtn);
-    edgeInspectorControls = { direction: directionBtn, flip: flipBtn, route: routeBtn, delete: deleteBtn };
+    edgeInspectorControls = {
+      direction: directionBtn,
+      flip: flipBtn,
+      route: routeBtn,
+      comment: commentBtn,
+      delete: deleteBtn,
+    };
     root.append(inspector);
     edgeInspectorEl = inspector;
     return inspector;

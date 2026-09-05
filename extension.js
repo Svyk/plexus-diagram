@@ -1,4 +1,4 @@
-/* Plexus Diagram v0.6.3 | MIT | generated; edit src/ */
+/* Plexus Diagram v0.6.4 | MIT | generated; edit src/ */
 
 // src/lifecycle.js
 function isPromiseLike(value) {
@@ -1162,6 +1162,20 @@ function arrowheadPoints(arrowheads) {
   if (arrowheads === "none") return { start: false, end: false };
   if (arrowheads === "both") return { start: true, end: true };
   return { start: false, end: true };
+}
+function commentPlanForEdge(edge, setting) {
+  const dir = effectiveDirection(edge, setting);
+  const label = String(edge?.label || "").trim();
+  const body = (otherUid) => label ? `((${otherUid})) ${label}` : `((${otherUid}))`;
+  if (!edge?.source || !edge?.target || edge.source === edge.target) return [];
+  if (dir === "twoWay") {
+    return [
+      { uid: edge.source, reply: body(edge.target) },
+      { uid: edge.target, reply: body(edge.source) }
+    ];
+  }
+  if (dir === "oneWay") return [{ uid: edge.target, reply: body(edge.source) }];
+  return [];
 }
 
 // src/model.js
@@ -2515,6 +2529,28 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
     const reverseExists = Boolean(findEdgeByKey(`${edge.target}->${edge.source}`));
     edgeInspectorControls.flip.disabled = reverseExists;
     edgeInspectorControls.flip.title = reverseExists ? "Reverse connection already exists" : "Flip";
+    const plan = commentPlanForEdge(edge, settings.get("arrowheads") || "end");
+    edgeInspectorControls.comment.disabled = plan.length === 0;
+    edgeInspectorControls.comment.title = plan.length === 0 ? "Set Direction to one-way or two-way first" : "Convert label to a Roam comment";
+  };
+  const convertEdgeLabelToComments = async () => {
+    if (!selectedEdgeKey) return;
+    const edge = findEdgeByKey(selectedEdgeKey);
+    if (!edge) return;
+    const plan = commentPlanForEdge(edge, settings.get("arrowheads") || "end");
+    const add = globalThis.roamAlphaAPI?.data?.block?.addComment;
+    if (!add || !plan.length) return;
+    try {
+      for (const item of plan) {
+        await add({ "block-uid": item.uid, "reply-string": item.reply });
+      }
+      edge.label = "";
+      markLayoutDirty();
+      await flushLayout();
+      renderEdges();
+      syncEdgeInspector();
+    } catch {
+    }
   };
   const persistEdgeMutation = async (mutator) => {
     if (!selectedEdgeKey) return;
@@ -2737,13 +2773,16 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
     const routeBtn = makeBtn("Route", () => persistEdgeMutation((edge) => {
       edge.kind = nextRouteKind(edge.kind);
     }));
+    const commentBtn = makeBtn("Comment", () => convertEdgeLabelToComments());
+    commentBtn.title = "Convert label to a Roam comment";
     inspector.append(
       directionBtn,
       flipBtn,
       routeBtn,
       makeBtn("Label", () => {
         if (selectedEdgeKey) openEdgeLabelEditor(selectedEdgeKey);
-      })
+      }),
+      commentBtn
     );
     for (const [id, label, hex] of COLOR_SWATCHES) {
       const swatch = document.createElement("button");
@@ -2764,7 +2803,13 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
     }
     const deleteBtn = makeBtn("Delete", () => deleteSelectedEdge());
     inspector.append(deleteBtn);
-    edgeInspectorControls = { direction: directionBtn, flip: flipBtn, route: routeBtn, delete: deleteBtn };
+    edgeInspectorControls = {
+      direction: directionBtn,
+      flip: flipBtn,
+      route: routeBtn,
+      comment: commentBtn,
+      delete: deleteBtn
+    };
     root.append(inspector);
     edgeInspectorEl = inspector;
     return inspector;
@@ -4407,7 +4452,7 @@ function markNativePending(nativeElement) {
 }
 
 // src/feature.js
-var PACKAGE_VERSION = "0.6.3";
+var PACKAGE_VERSION = "0.6.4";
 var runtime = {
   extensionAPI: null,
   lifecycle: null,

@@ -92,6 +92,10 @@ export function mountDiagramView({ nativeElement, session, settings, version, li
         await current.addSection(action.addSection);
         canvas.render();
       }
+      if (action.deleteCards?.length) {
+        await current.deleteCards(action.deleteCards);
+        canvas.render();
+      }
     },
   });
 

@@ -1640,3 +1640,105 @@ test("inspector Delete and keyboard Delete remove the edge and clear selection",
     globalThis.window = previousWindow;
   }
 });
+
+test("connect click-click arms when elementsFromPoint misses", () => {
+  const stub = createDomStub();
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  globalThis.document = stub.document;
+  globalThis.window = stub.window;
+  try {
+    const session = cardSession([]);
+    session.model.activeTool = "connect";
+    const canvas = createCanvasRoot({
+      session,
+      settings: defaultSettings(),
+      version: "0.6.1",
+      nestStack: [],
+    });
+    try {
+      const cards = findByClass(canvas.root, "pxd-cards");
+      const cardA = cards.children.find((c) => c.dataset?.uid === "card-a");
+      const handle = cardA.children.find((c) => c.className?.includes("pxd-handle--right"));
+      stub.document.elementsFromPoint = () => [];
+      stub.dispatch(handle, "pointerdown", { button: 0, clientX: 280, clientY: 80 });
+      stub.dispatch(stub.document, "pointerup", { button: 0, clientX: 280, clientY: 80, target: handle });
+      assert.equal(canvas.getConnectArm()?.uid, "card-a", "first click should arm connect");
+      assert.ok(findByClass(canvas.root, "pxd-edge--temp"), "armed connect should show a temp wire");
+    } finally {
+      canvas.dispose();
+    }
+  } finally {
+    globalThis.document = previousDocument;
+    globalThis.window = previousWindow;
+  }
+});
+
+test("connect drag resolves target via world rects when elementsFromPoint misses", () => {
+  const stub = createDomStub();
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  globalThis.document = stub.document;
+  globalThis.window = stub.window;
+  try {
+    const session = cardSession([]);
+    session.model.activeTool = "connect";
+    const canvas = createCanvasRoot({
+      session,
+      settings: defaultSettings(),
+      version: "0.6.1",
+      nestStack: [],
+    });
+    try {
+      const cards = findByClass(canvas.root, "pxd-cards");
+      const cardA = cards.children.find((c) => c.dataset?.uid === "card-a");
+      const handle = cardA.children.find((c) => c.className?.includes("pxd-handle--right"));
+      stub.document.elementsFromPoint = () => [];
+      stub.dispatch(handle, "pointerdown", { button: 0, clientX: 280, clientY: 80 });
+      stub.dispatch(stub.document, "pointermove", { button: 0, clientX: 500, clientY: 80 });
+      stub.dispatch(stub.document, "pointerup", { button: 0, clientX: 500, clientY: 80, target: handle });
+      assert.equal(session.model.edges.length, 1);
+      assert.equal(session.model.edges[0].source, "card-a");
+      assert.equal(session.model.edges[0].target, "card-b");
+    } finally {
+      canvas.dispose();
+    }
+  } finally {
+    globalThis.document = previousDocument;
+    globalThis.window = previousWindow;
+  }
+});
+
+test("Delete on selected card persists deleteCards", async () => {
+  const stub = createDomStub();
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  globalThis.document = stub.document;
+  globalThis.window = stub.window;
+  try {
+    const session = cardSession([]);
+    session.model.activeTool = "select";
+    const persists = [];
+    const canvas = createCanvasRoot({
+      session,
+      settings: defaultSettings(),
+      version: "0.6.1",
+      nestStack: [],
+      onPersist: async (action) => { persists.push(action); },
+    });
+    try {
+      session.model.selected.add("card-a");
+      canvas.render();
+      stub.dispatch(canvas.root, "pointerenter");
+      stub.dispatch(stub.window, "keydown", { key: "Delete" });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      assert.ok(persists.some((a) => a.deleteCards), "Delete should persist deleteCards");
+      assert.deepEqual(persists.find((a) => a.deleteCards)?.deleteCards, ["card-a"]);
+    } finally {
+      canvas.dispose();
+    }
+  } finally {
+    globalThis.document = previousDocument;
+    globalThis.window = previousWindow;
+  }
+});

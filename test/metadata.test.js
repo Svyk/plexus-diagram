@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { createBlock, createPage, parseMetadataTree, serializeDiagramMetadata } from "../src/metadata.js";
+import { createBlock, createPage, parseMetadataTree, serializeDiagramMetadata, acquireScratch, blankScratch, releaseScratch, SCRATCH_MARKER } from "../src/metadata.js";
 
 function installRoamMock() {
   const created = { pages: [], blocks: [] };
@@ -217,5 +217,55 @@ test("parse/serialize round-trip of node and section color::", () => {
   });
   assert.equal(roundTrip.diagrams.get("diagram-1").nodes.get("card-a").color, "teal");
   assert.equal(roundTrip.diagrams.get("diagram-1").sections.get("s1").color, "rose");
+});
+
+test("blankScratch deletes leftover scratch children", async () => {
+  const deleted = [];
+  const blocks = {
+    uid: "page",
+    string: "",
+    children: [{
+      uid: "marker",
+      string: SCRATCH_MARKER,
+      children: [{
+        uid: "host",
+        string: "test",
+        children: [
+          { uid: "kid-1", string: "test", children: [] },
+          { uid: "kid-2", string: "{{[[diagram]]}}", children: [] },
+        ],
+      }],
+    }],
+  };
+  const walk = (n, uid) => (n.uid === uid ? n : (n.children || []).map((c) => walk(c, uid)).find(Boolean));
+  const toPull = (node) => node && ({
+    uid: node.uid,
+    string: node.string,
+    order: 0,
+    children: (node.children || []).map(toPull),
+  });
+  globalThis.roamAlphaAPI = {
+    util: { generateUID: () => "new" },
+    q: () => [["page"]],
+    data: {
+      q: () => [["page"]],
+      pull: (_p, entity) => toPull(walk(blocks, Array.isArray(entity) ? entity[1] : entity)),
+      block: {
+        update: async ({ block }) => {
+          const node = walk(blocks, block.uid);
+          if (node) node.string = block.string;
+        },
+        delete: async ({ block }) => { deleted.push(block.uid); },
+        create: async () => {},
+      },
+    },
+  };
+  await releaseScratch();
+  const scratch = await acquireScratch();
+  assert.equal(scratch?.uid, "host");
+  await blankScratch();
+  assert.ok(deleted.includes("kid-1"), `expected kid-1 deleted, got ${JSON.stringify(deleted)}`);
+  assert.ok(deleted.includes("kid-2"), `expected kid-2 deleted, got ${JSON.stringify(deleted)}`);
+  await releaseScratch();
 });
 

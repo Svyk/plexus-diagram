@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.6.1 — 2026-09-05
+
+- **Connect hit-test** — when Electron's `elementsFromPoint` misses cards under `.pxd-world`, resolve targets from world-space node rects (12px handle inflate). Click-click arms and drag-to-card both work.
+- **Delete cards** — Delete/Backspace on a selected card removes it from the diagram (adapter + metadata), not just edges.
+- **Scratch children** — `blankScratch` deletes scratch-host children so a new card editor never inherits the previous card's bullet tree.
+
 ## 0.6.0 — 2026-09-05
 
 - **Visible arrows** — connector stroke and marker fill are resolved colors, not `var()` in SVG attributes. Marker ids are unique per canvas. Heads scale with zoom (`clamp(10 / zoom, 6, 24)`).

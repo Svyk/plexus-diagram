@@ -1,4 +1,4 @@
-/* Plexus Diagram v0.6.0 | MIT | generated; edit src/ */
+/* Plexus Diagram v0.6.1 | MIT | generated; edit src/ */
 
 // src/lifecycle.js
 function isPromiseLike(value) {
@@ -677,10 +677,29 @@ async function acquireScratch() {
     return null;
   }
 }
+async function deleteAllChildren(uid) {
+  const tree = getTree(uid);
+  for (const child of tree?.children || []) {
+    await deleteBlock(child.uid);
+  }
+}
+async function cloneBlockChildren(fromUid, toUid) {
+  await deleteAllChildren(toUid);
+  const fromTree = getTree(fromUid);
+  const copySubtree = async (sourceParentUid, destParentUid) => {
+    const sourceTree = sourceParentUid === fromUid ? fromTree : getTree(sourceParentUid);
+    for (const child of sourceTree?.children || []) {
+      const newUid = await createBlock(destParentUid, child.string || " ");
+      if (child.children?.length) await copySubtree(child.uid, newUid);
+    }
+  };
+  await copySubtree(fromUid, toUid);
+}
 async function blankScratch() {
   const scratch = scratchRuntime;
   if (!scratch?.uid) return;
   try {
+    await deleteAllChildren(scratch.uid);
     await updateBlock(scratch.uid, "");
   } catch {
     try {
@@ -1414,6 +1433,13 @@ var DiagramModel = class _DiagramModel {
     const key = `${source}->${target}`;
     this.edges = this.edges.filter((edge) => `${edge.source}->${edge.target}` !== key);
   }
+  removeCard(contentUid) {
+    this.nodes.delete(contentUid);
+    this.edges = this.edges.filter((edge) => edge.source !== contentUid && edge.target !== contentUid);
+    this.selected.delete(contentUid);
+    this.children = this.children.filter((child) => child.uid !== contentUid);
+    this.childrenFingerprint = childrenFingerprint(this.children);
+  }
   layoutSnapshot() {
     return {
       viewport: { ...this.viewport },
@@ -1441,9 +1467,14 @@ var DiagramModel = class _DiagramModel {
     this.children = next.children;
     this.childrenFingerprint = next.childrenFingerprint;
     this.baseFingerprint = next.baseFingerprint;
+    const childUids = new Set(next.children.map((child) => child.uid));
+    for (const uid of [...this.nodes.keys()]) {
+      if (!childUids.has(uid)) this.nodes.delete(uid);
+    }
     for (const [contentUid, node] of next.nodes) {
       if (!this.nodes.has(contentUid)) this.nodes.set(contentUid, node);
     }
+    this.edges = this.edges.filter((edge) => childUids.has(edge.source) && childUids.has(edge.target));
     const known = new Map(this.edges.map((edge) => [`${edge.source}->${edge.target}`, edge]));
     for (const edge of next.edges) {
       const key = `${edge.source}->${edge.target}`;
@@ -1514,6 +1545,7 @@ function parseDiagramTitle(string) {
 }
 var SVG_NS = "http://www.w3.org/2000/svg";
 var DRAG_THRESHOLD_PX = 4;
+var CONNECT_HIT_INFLATE_PX = 12;
 var PERSIST_DEBOUNCE_MS = 150;
 var EDIT_GRACE_MS = 1200;
 var HYDRATE_CAP_MS = 900;
@@ -2994,6 +3026,8 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
     detachFocusGuard();
     const card = cardEls.get(uid);
     root.classList.remove("pxd-root--editing");
+    const body = card?._pxdBody;
+    if (body) unmountRoam(body);
     const scratchUid = peekScratch()?.uid;
     let child = model().getCard(uid);
     if (persistString && scratchUid) {
@@ -3009,6 +3043,7 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
           const live = model().getCard(uid);
           if (live) live.string = fresh;
         }
+        await cloneBlockChildren(scratchUid, uid);
       } catch {
       }
     }
@@ -3057,11 +3092,16 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
     editor.className = "pxd-card__editor";
     body.innerHTML = "";
     body.append(fallback, editor);
+    await blankScratch();
     if (!scratchTextareaFocused()) {
       try {
-        await updateBlock(scratch.uid, child.string);
+        await updateBlock(scratch.uid, child.string || " ");
       } catch {
       }
+    }
+    try {
+      await cloneBlockChildren(uid, scratch.uid);
+    } catch {
     }
     try {
       components.renderBlock({ uid: scratch.uid, el: editor });
@@ -3260,6 +3300,28 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
     return el ? [el] : [];
   };
   const cardFromPoint = (clientX, clientY) => cardUidFromHitStack(hitStackFromPoint(clientX, clientY), cardsLayer);
+  const pointInInflatedRect = (worldPoint, node) => {
+    if (!node?.pos || !node?.size) return false;
+    const pad = CONNECT_HIT_INFLATE_PX;
+    const { x, y } = worldPoint;
+    return x >= node.pos.x - pad && x <= node.pos.x + node.size.width + pad && y >= node.pos.y - pad && y <= node.pos.y + node.size.height + pad;
+  };
+  const cardFromWorldRects = (clientX, clientY) => {
+    const world2 = screenToWorld(clientX, clientY, false);
+    for (const child of model().children) {
+      const node = model().nodes.get(child.uid);
+      if (node && pointInInflatedRect(world2, node)) return child.uid;
+    }
+    return null;
+  };
+  const cardFromClient = (clientX, clientY, event) => {
+    const fromPoint = cardFromPoint(clientX, clientY);
+    if (fromPoint) return fromPoint;
+    const fromRects = cardFromWorldRects(clientX, clientY);
+    if (fromRects) return fromRects;
+    const card = event?.target?.closest?.(".pxd-card");
+    return card?.dataset?.uid || null;
+  };
   const connectSideFromPoint = (clientX, clientY, targetUid) => {
     if (!targetUid) return "auto";
     for (const el of hitStackFromPoint(clientX, clientY)) {
@@ -3474,8 +3536,10 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
       return;
     }
     if (active.kind === "connect") {
-      const targetUid = cardFromPoint(event.clientX, event.clientY);
-      if (!active.moved && targetUid && targetUid === active.uid && !connectArm) {
+      const targetUid = cardFromClient(event.clientX, event.clientY, event);
+      const sourceNode = model().nodes.get(active.uid);
+      const sourceHit = pointInInflatedRect(screenToWorld(event.clientX, event.clientY, false), sourceNode);
+      if (!active.moved && !connectArm && (targetUid === active.uid || !targetUid && sourceHit)) {
         armConnect(active.uid, active.fromSide);
         setTempEdge(active.uid, screenToWorld(event.clientX, event.clientY, false), active.fromSide);
         return;
@@ -3492,23 +3556,25 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
         clientX: event.clientX,
         clientY: event.clientY,
         fromSide,
-        toSide
+        toSide,
+        event
       });
     }
   };
-  const completeConnect = async ({ moved, sourceUid, targetUid, clientX, clientY, fromSide, toSide }) => {
+  const completeConnect = async ({ moved, sourceUid, targetUid, clientX, clientY, fromSide, toSide, event }) => {
+    const resolvedTarget = cardFromClient(clientX, clientY, event) || targetUid || null;
     const resolvedFrom = fromSide ?? connectArm?.side;
-    const resolvedTo = toSide ?? connectSideFromPoint(clientX, clientY, targetUid);
+    const resolvedTo = toSide ?? connectSideFromPoint(clientX, clientY, resolvedTarget);
     const edgeExtra = {
       from: resolvedFrom || "auto",
       to: resolvedTo || "auto",
       direction: effectiveDirection({}, settings.get("arrowheads") || "end")
     };
     try {
-      if (targetUid && targetUid !== sourceUid) {
+      if (resolvedTarget && resolvedTarget !== sourceUid) {
         const added = model().addEdge(
           sourceUid,
-          targetUid,
+          resolvedTarget,
           settings.get("connector-style") || "bezier",
           "",
           edgeExtra
@@ -3519,13 +3585,13 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
             layoutDirty = true;
             await flushLayout();
           } catch {
-            model().removeEdge(sourceUid, targetUid);
+            model().removeEdge(sourceUid, resolvedTarget);
             renderEdges();
           }
         }
         return;
       }
-      if (!targetUid && (moved || connectArm)) {
+      if (!resolvedTarget && (moved || connectArm)) {
         const point = screenToWorld(clientX, clientY);
         const size = defaultCardSize();
         const addEdge = { source: sourceUid };
@@ -3709,6 +3775,14 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
     if ((event.key === "Delete" || event.key === "Backspace") && selectedEdgeKey) {
       event.preventDefault();
       void deleteSelectedEdge();
+      return;
+    }
+    if ((event.key === "Delete" || event.key === "Backspace") && model().selected.size > 0) {
+      event.preventDefault();
+      const uids = [...model().selected];
+      model().selected.clear();
+      syncSelection();
+      void onPersist?.({ deleteCards: uids });
       return;
     }
     const key = String(event.key || "").toLowerCase();
@@ -4064,6 +4138,17 @@ var NativeDiagramSession = class {
     this.notifyViews({ type: "edge" });
     return true;
   }
+  async deleteCards(uids) {
+    return this.persistQueue.run(async () => {
+      for (const uid of uids) {
+        if (!this.model.getCard(uid)) continue;
+        await this.adapter.deleteChild(uid);
+        this.model.removeCard(uid);
+      }
+      await this.persistLayout();
+      this.notifyViews({ type: "structural" });
+    });
+  }
   dispose() {
     this.stopWatch();
     for (const view of [...this.views]) view.dispose?.();
@@ -4196,6 +4281,10 @@ function mountDiagramView({ nativeElement, session, settings, version, lifecycle
         await current.addSection(action.addSection);
         canvas.render();
       }
+      if (action.deleteCards?.length) {
+        await current.deleteCards(action.deleteCards);
+        canvas.render();
+      }
     }
   });
   wrapper.append(canvas.root);
@@ -4222,7 +4311,7 @@ var runtime = {
   lifecycle: null,
   metadata: null,
   settings: null,
-  version: "0.6.0",
+  version: "0.6.1",
   enhancedUids: /* @__PURE__ */ new Set(),
   activeDiagramUid: null,
   guardStyle: null,
@@ -4683,7 +4772,7 @@ async function registerSlashAndContext(lifecycle, extensionAPI) {
 async function installPlexusDiagram({ extensionAPI, lifecycle, version }) {
   runtime.extensionAPI = extensionAPI;
   runtime.lifecycle = lifecycle;
-  runtime.version = version || "0.6.0";
+  runtime.version = version || "0.6.1";
   runtime.settings = createSettingsReader(extensionAPI);
   runtime.enhancedUids = readEnhancedUidCache();
   installGuard(runtime.enhancedUids);

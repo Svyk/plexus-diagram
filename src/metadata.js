@@ -504,10 +504,31 @@ export async function acquireScratch() {
   }
 }
 
+async function deleteAllChildren(uid) {
+  const tree = getTree(uid);
+  for (const child of tree?.children || []) {
+    await deleteBlock(child.uid);
+  }
+}
+
+export async function cloneBlockChildren(fromUid, toUid) {
+  await deleteAllChildren(toUid);
+  const fromTree = getTree(fromUid);
+  const copySubtree = async (sourceParentUid, destParentUid) => {
+    const sourceTree = sourceParentUid === fromUid ? fromTree : getTree(sourceParentUid);
+    for (const child of sourceTree?.children || []) {
+      const newUid = await createBlock(destParentUid, child.string || " ");
+      if (child.children?.length) await copySubtree(child.uid, newUid);
+    }
+  };
+  await copySubtree(fromUid, toUid);
+}
+
 export async function blankScratch() {
   const scratch = scratchRuntime;
   if (!scratch?.uid) return;
   try {
+    await deleteAllChildren(scratch.uid);
     await updateBlock(scratch.uid, "");
   } catch {
     try {

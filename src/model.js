@@ -310,6 +310,14 @@ export class DiagramModel {
     this.edges = this.edges.filter((edge) => `${edge.source}->${edge.target}` !== key);
   }
 
+  removeCard(contentUid) {
+    this.nodes.delete(contentUid);
+    this.edges = this.edges.filter((edge) => edge.source !== contentUid && edge.target !== contentUid);
+    this.selected.delete(contentUid);
+    this.children = this.children.filter((child) => child.uid !== contentUid);
+    this.childrenFingerprint = childrenFingerprint(this.children);
+  }
+
   layoutSnapshot() {
     return {
       viewport: { ...this.viewport },
@@ -338,9 +346,14 @@ export class DiagramModel {
     this.children = next.children;
     this.childrenFingerprint = next.childrenFingerprint;
     this.baseFingerprint = next.baseFingerprint;
+    const childUids = new Set(next.children.map((child) => child.uid));
+    for (const uid of [...this.nodes.keys()]) {
+      if (!childUids.has(uid)) this.nodes.delete(uid);
+    }
     for (const [contentUid, node] of next.nodes) {
       if (!this.nodes.has(contentUid)) this.nodes.set(contentUid, node);
     }
+    this.edges = this.edges.filter((edge) => childUids.has(edge.source) && childUids.has(edge.target));
     const known = new Map(this.edges.map((edge) => [`${edge.source}->${edge.target}`, edge]));
     for (const edge of next.edges) {
       const key = `${edge.source}->${edge.target}`;

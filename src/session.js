@@ -129,6 +129,18 @@ export class NativeDiagramSession {
     return true;
   }
 
+  async deleteCards(uids) {
+    return this.persistQueue.run(async () => {
+      for (const uid of uids) {
+        if (!this.model.getCard(uid)) continue;
+        await this.adapter.deleteChild(uid);
+        this.model.removeCard(uid);
+      }
+      await this.persistLayout();
+      this.notifyViews({ type: "structural" });
+    });
+  }
+
   dispose() {
     this.stopWatch();
     for (const view of [...this.views]) view.dispose?.();

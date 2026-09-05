@@ -214,3 +214,69 @@ test("importNativeLayout deep-copies edges so model mutations detect store drift
   model.edges[0].direction = "twoWay";
   assert.equal(store.layoutMatchesStored("d1", model.layoutSnapshot()), false);
 });
+
+test("applyPull drops a node whose uid is gone from children", () => {
+  const tree = {
+    uid: "d1",
+    string: "{{[[diagram]]}}",
+    children: [{ uid: "a", string: "A", order: 0 }],
+    props: {},
+    diagramNodes: [],
+    diagramEdges: [],
+  };
+  const model = new DiagramModel({
+    diagramUid: "d1",
+    tree: {
+      ...tree,
+      children: [
+        { uid: "a", string: "A", order: 0 },
+        { uid: "b", string: "B", order: 1 },
+      ],
+    },
+    metadataLayout: {
+      nodes: new Map([
+        ["a", { pos: { x: 0, y: 0 }, size: { width: 280, height: 160 }, color: "" }],
+        ["b", { pos: { x: 100, y: 0 }, size: { width: 280, height: 160 }, color: "" }],
+      ]),
+      edges: [{ source: "a", target: "b", kind: "bezier", label: "" }],
+      sections: new Map(),
+    },
+  });
+  assert.ok(model.nodes.has("b"));
+  assert.equal(model.edges.length, 1);
+  model.applyPull(tree, { nodes: new Map(), edges: [], sections: new Map() });
+  assert.ok(!model.nodes.has("b"));
+  assert.equal(model.edges.length, 0);
+});
+
+test("removeCard drops node, edges, selection, and children", () => {
+  const model = new DiagramModel({
+    diagramUid: "d1",
+    tree: {
+      uid: "d1",
+      string: "{{[[diagram]]}}",
+      children: [
+        { uid: "a", string: "A", order: 0 },
+        { uid: "b", string: "B", order: 1 },
+      ],
+      props: {},
+      diagramNodes: [],
+      diagramEdges: [],
+    },
+    metadataLayout: {
+      nodes: new Map([
+        ["a", { pos: { x: 0, y: 0 }, size: { width: 280, height: 160 }, color: "" }],
+        ["b", { pos: { x: 100, y: 0 }, size: { width: 280, height: 160 }, color: "" }],
+      ]),
+      edges: [{ source: "a", target: "b", kind: "bezier", label: "" }],
+      sections: new Map(),
+    },
+  });
+  model.selected.add("a");
+  model.removeCard("a");
+  assert.ok(!model.nodes.has("a"));
+  assert.ok(!model.selected.has("a"));
+  assert.equal(model.children.length, 1);
+  assert.equal(model.children[0].uid, "b");
+  assert.equal(model.edges.length, 0);
+});

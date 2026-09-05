@@ -11,6 +11,7 @@ import {
 import {
   acquireScratch,
   blankScratch,
+  cloneBlockChildren,
   peekScratch,
   updateBlock,
 } from "./metadata.js";
@@ -34,6 +35,7 @@ export function parseDiagramTitle(string) {
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const DRAG_THRESHOLD_PX = 4;
+const CONNECT_HIT_INFLATE_PX = 12;
 const PERSIST_DEBOUNCE_MS = 150;
 const EDIT_GRACE_MS = 1200;
 const HYDRATE_CAP_MS = 900;
@@ -1617,6 +1619,8 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
     detachFocusGuard();
     const card = cardEls.get(uid);
     root.classList.remove("pxd-root--editing");
+    const body = card?._pxdBody;
+    if (body) unmountRoam(body);
     const scratchUid = peekScratch()?.uid;
     let child = model().getCard(uid);
     if (persistString && scratchUid) {
@@ -1631,6 +1635,7 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
           const live = model().getCard(uid);
           if (live) live.string = fresh;
         }
+        await cloneBlockChildren(scratchUid, uid);
       } catch { /* keep the model string */ }
     }
     try {
@@ -1678,11 +1683,15 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
     editor.className = "pxd-card__editor";
     body.innerHTML = "";
     body.append(fallback, editor);
+    await blankScratch();
     if (!scratchTextareaFocused()) {
       try {
-        await updateBlock(scratch.uid, child.string);
+        await updateBlock(scratch.uid, child.string || " ");
       } catch { /* mount anyway; Roam may still show the last scratch string */ }
     }
+    try {
+      await cloneBlockChildren(uid, scratch.uid);
+    } catch { /* mount with string only */ }
     try {
       components.renderBlock({ uid: scratch.uid, el: editor });
     } catch {
@@ -1890,6 +1899,31 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
     return el ? [el] : [];
   };
   const cardFromPoint = (clientX, clientY) => cardUidFromHitStack(hitStackFromPoint(clientX, clientY), cardsLayer);
+  const pointInInflatedRect = (worldPoint, node) => {
+    if (!node?.pos || !node?.size) return false;
+    const pad = CONNECT_HIT_INFLATE_PX;
+    const { x, y } = worldPoint;
+    return x >= node.pos.x - pad
+      && x <= node.pos.x + node.size.width + pad
+      && y >= node.pos.y - pad
+      && y <= node.pos.y + node.size.height + pad;
+  };
+  const cardFromWorldRects = (clientX, clientY) => {
+    const world = screenToWorld(clientX, clientY, false);
+    for (const child of model().children) {
+      const node = model().nodes.get(child.uid);
+      if (node && pointInInflatedRect(world, node)) return child.uid;
+    }
+    return null;
+  };
+  const cardFromClient = (clientX, clientY, event) => {
+    const fromPoint = cardFromPoint(clientX, clientY);
+    if (fromPoint) return fromPoint;
+    const fromRects = cardFromWorldRects(clientX, clientY);
+    if (fromRects) return fromRects;
+    const card = event?.target?.closest?.(".pxd-card");
+    return card?.dataset?.uid || null;
+  };
   const connectSideFromPoint = (clientX, clientY, targetUid) => {
     if (!targetUid) return "auto";
     for (const el of hitStackFromPoint(clientX, clientY)) {
@@ -2112,8 +2146,10 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
       return;
     }
     if (active.kind === "connect") {
-      const targetUid = cardFromPoint(event.clientX, event.clientY);
-      if (!active.moved && targetUid && targetUid === active.uid && !connectArm) {
+      const targetUid = cardFromClient(event.clientX, event.clientY, event);
+      const sourceNode = model().nodes.get(active.uid);
+      const sourceHit = pointInInflatedRect(screenToWorld(event.clientX, event.clientY, false), sourceNode);
+      if (!active.moved && !connectArm && (targetUid === active.uid || (!targetUid && sourceHit))) {
         armConnect(active.uid, active.fromSide);
         setTempEdge(active.uid, screenToWorld(event.clientX, event.clientY, false), active.fromSide);
         return;
@@ -2131,23 +2167,25 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
         clientY: event.clientY,
         fromSide,
         toSide,
+        event,
       });
     }
   };
 
-  const completeConnect = async ({ moved, sourceUid, targetUid, clientX, clientY, fromSide, toSide }) => {
+  const completeConnect = async ({ moved, sourceUid, targetUid, clientX, clientY, fromSide, toSide, event }) => {
+    const resolvedTarget = cardFromClient(clientX, clientY, event) || targetUid || null;
     const resolvedFrom = fromSide ?? connectArm?.side;
-    const resolvedTo = toSide ?? connectSideFromPoint(clientX, clientY, targetUid);
+    const resolvedTo = toSide ?? connectSideFromPoint(clientX, clientY, resolvedTarget);
     const edgeExtra = {
       from: resolvedFrom || "auto",
       to: resolvedTo || "auto",
       direction: effectiveDirection({}, settings.get("arrowheads") || "end"),
     };
     try {
-      if (targetUid && targetUid !== sourceUid) {
+      if (resolvedTarget && resolvedTarget !== sourceUid) {
         const added = model().addEdge(
           sourceUid,
-          targetUid,
+          resolvedTarget,
           settings.get("connector-style") || "bezier",
           "",
           edgeExtra,
@@ -2158,13 +2196,13 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
             layoutDirty = true;
             await flushLayout();
           } catch {
-            model().removeEdge(sourceUid, targetUid);
+            model().removeEdge(sourceUid, resolvedTarget);
             renderEdges();
           }
         }
         return;
       }
-      if (!targetUid && (moved || connectArm)) {
+      if (!resolvedTarget && (moved || connectArm)) {
         const point = screenToWorld(clientX, clientY);
         const size = defaultCardSize();
         const addEdge = { source: sourceUid };
@@ -2353,6 +2391,14 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
     if ((event.key === "Delete" || event.key === "Backspace") && selectedEdgeKey) {
       event.preventDefault();
       void deleteSelectedEdge();
+      return;
+    }
+    if ((event.key === "Delete" || event.key === "Backspace") && model().selected.size > 0) {
+      event.preventDefault();
+      const uids = [...model().selected];
+      model().selected.clear();
+      syncSelection();
+      void onPersist?.({ deleteCards: uids });
       return;
     }
     const key = String(event.key || "").toLowerCase();

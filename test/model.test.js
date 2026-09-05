@@ -84,6 +84,91 @@ test("applyPull does not drop an in-memory label for a known edge", () => {
   assert.equal(model.edges[0].label, "kept");
 });
 
+test("addEdge stores from/to/direction/color from extra argument", () => {
+  const model = new DiagramModel({
+    diagramUid: "d1",
+    tree: { uid: "d1", string: "{{[[diagram]]}}", children: [], props: {}, diagramNodes: [], diagramEdges: [] },
+    metadataLayout: null,
+  });
+  const edge = model.addEdge("a", "b", "bezier", "", {
+    from: "right",
+    to: "left",
+    direction: "twoWay",
+    color: "teal",
+  });
+  assert.equal(edge.from, "right");
+  assert.equal(edge.to, "left");
+  assert.equal(edge.direction, "twoWay");
+  assert.equal(edge.color, "teal");
+  assert.equal(model.addEdge("a", "b", "bezier", "", { direction: "oneWay" }), null);
+});
+
+test("applyPull adopts from/to/direction/color for new edges but not existing", () => {
+  const tree = {
+    uid: "d1",
+    string: "{{[[diagram]]}}",
+    children: [
+      { uid: "a", string: "A", order: 0 },
+      { uid: "b", string: "B", order: 1 },
+      { uid: "c", string: "C", order: 2 },
+    ],
+    props: {},
+    diagramNodes: [],
+    diagramEdges: [],
+  };
+  const model = new DiagramModel({
+    diagramUid: "d1",
+    tree,
+    metadataLayout: {
+      nodes: new Map(),
+      edges: [{
+        source: "a",
+        target: "b",
+        kind: "bezier",
+        label: "",
+        from: "auto",
+        to: "auto",
+        direction: "oneWay",
+        color: "",
+      }],
+      sections: new Map(),
+    },
+  });
+  assert.equal(model.edges[0].direction, "oneWay");
+  model.applyPull(tree, {
+    nodes: new Map(),
+    edges: [
+      {
+        source: "a",
+        target: "b",
+        kind: "bezier",
+        label: "",
+        from: "right",
+        to: "left",
+        direction: "twoWay",
+        color: "teal",
+      },
+      {
+        source: "b",
+        target: "c",
+        kind: "bezier",
+        label: "",
+        from: "top",
+        to: "bottom",
+        direction: "none",
+        color: "rose",
+      },
+    ],
+    sections: new Map(),
+  });
+  assert.equal(model.edges[0].direction, "oneWay");
+  const newEdge = model.edges.find((edge) => edge.source === "b" && edge.target === "c");
+  assert.equal(newEdge.from, "top");
+  assert.equal(newEdge.to, "bottom");
+  assert.equal(newEdge.direction, "none");
+  assert.equal(newEdge.color, "rose");
+});
+
 test("importNativeLayout does not clobber metadata positions", () => {
   const tree = parsePullResult({
     ":block/uid": "d1",

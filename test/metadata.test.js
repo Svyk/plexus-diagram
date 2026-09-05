@@ -97,6 +97,60 @@ test("parse/serialize round-trip of edge label::", () => {
   assert.equal(roundTrip.diagrams.get("diagram-1").edges[0].label, "because it follows");
 });
 
+test("parse/serialize round-trip of edge from/to/direction/color", () => {
+  const tree = {
+    uid: "page",
+    string: "",
+    children: [
+      { uid: "schema", string: "schema-version:: 1", children: [] },
+      {
+        uid: "enhanced",
+        string: "enhanced::",
+        children: [{
+          uid: "d1",
+          string: "diagram-1",
+          children: [
+            {
+              uid: "e1",
+              string: "edge a->b",
+              children: [
+                { uid: "from", string: "from:: right", children: [] },
+                { uid: "to", string: "to:: left", children: [] },
+                { uid: "dir", string: "direction:: twoWay", children: [] },
+                { uid: "col", string: "color:: teal", children: [] },
+              ],
+            },
+          ],
+        }],
+      },
+    ],
+  };
+  const parsed = parseMetadataTree(tree);
+  const edge = parsed.diagrams.get("diagram-1").edges[0];
+  assert.equal(edge.source, "a");
+  assert.equal(edge.target, "b");
+  assert.equal(edge.from, "right");
+  assert.equal(edge.to, "left");
+  assert.equal(edge.direction, "twoWay");
+  assert.equal(edge.color, "teal");
+  const serialized = serializeDiagramMetadata("diagram-1", parsed.diagrams.get("diagram-1"));
+  assert.match(serialized, /from:: right/);
+  assert.match(serialized, /to:: left/);
+  assert.match(serialized, /direction:: twoWay/);
+  assert.match(serialized, /color:: teal/);
+  const defaultsLayout = {
+    viewport: null,
+    nodes: new Map(),
+    edges: [{ source: "a", target: "b", kind: "bezier", label: "", from: "auto", to: "auto", direction: "", color: "" }],
+    sections: new Map(),
+  };
+  const defaultsSerialized = serializeDiagramMetadata("diagram-1", defaultsLayout);
+  assert.doesNotMatch(defaultsSerialized, /from::/);
+  assert.doesNotMatch(defaultsSerialized, /to::/);
+  assert.doesNotMatch(defaultsSerialized, /direction::/);
+  assert.doesNotMatch(defaultsSerialized, /color::/);
+});
+
 test("parse/serialize round-trip of node and section color::", () => {
   const tree = {
     uid: "page",

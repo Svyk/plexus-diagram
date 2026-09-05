@@ -275,14 +275,23 @@ export class DiagramModel {
     };
   }
 
-  addEdge(source, target, kind = "bezier", label = "") {
+  addEdge(source, target, kind = "bezier", label = "", extra = {}) {
     const key = `${source}->${target}`;
     const existing = this.edges.find((edge) => `${edge.source}->${edge.target}` === key);
     if (existing) {
       if (existing.label == null) existing.label = "";
       return null;
     }
-    const edge = { source, target, kind, label: label || "" };
+    const edge = {
+      source,
+      target,
+      kind,
+      label: label || "",
+      from: extra.from || "auto",
+      to: extra.to || "auto",
+      direction: extra.direction || "",
+      color: extra.color || "",
+    };
     this.edges.push(edge);
     return edge;
   }
@@ -332,7 +341,16 @@ export class DiagramModel {
         if (!existing.label && edge.label) existing.label = edge.label;
         continue;
       }
-      const incoming = { source: edge.source, target: edge.target, kind: edge.kind || "bezier", label: edge.label || "" };
+      const incoming = {
+        source: edge.source,
+        target: edge.target,
+        kind: edge.kind || "bezier",
+        label: edge.label || "",
+        from: edge.from || "auto",
+        to: edge.to || "auto",
+        direction: edge.direction || "",
+        color: edge.color || "",
+      };
       this.edges.push(incoming);
       known.set(key, incoming);
     }

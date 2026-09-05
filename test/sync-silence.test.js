@@ -465,6 +465,40 @@ function twoNodePageTree() {
   };
 }
 
+function twoNodePageTreeWithEdge() {
+  const tree = twoNodePageTree();
+  tree.children[1].children[0].children.push({
+    uid: "edge-1",
+    string: "edge card-1->card-2",
+    children: [
+      { uid: "kind-1", string: "kind:: straight", children: [] },
+      { uid: "label-1", string: "label:: because", children: [] },
+    ],
+  });
+  return tree;
+}
+
+function twoNodeLayoutWithEdge(direction = "") {
+  return {
+    viewport: { x: 100, y: 200, zoom: 1.25 },
+    nodes: new Map([
+      ["card-1", { pos: { x: 10, y: 20 }, size: { width: 280, height: 160 }, color: "" }],
+      ["card-2", { pos: { x: 400, y: 50 }, size: { width: 280, height: 160 }, color: "" }],
+    ]),
+    edges: [{
+      source: "card-1",
+      target: "card-2",
+      kind: "straight",
+      label: "because",
+      from: "auto",
+      to: "auto",
+      direction,
+      color: "",
+    }],
+    sections: new Map(),
+  };
+}
+
 function installMutableMetadataRoamMock(pageTree) {
   const blocks = new Map();
   const counts = { create: 0, update: 0, delete: 0, deletedUids: [], updated: [] };
@@ -561,4 +595,35 @@ test("persistLayout that moves one node does not delete unrelated node children"
   assert.equal(counts.updated[0].uid, "pos-1");
   assert.equal(counts.updated[0].string, "pos:: 40,20");
   assert.equal(blocks.get("node-2")?.string, "node card-2");
+});
+
+test("MetadataStore.set direction-only change creates one child and reverts cleanly", async () => {
+  const { counts, blocks } = installMutableMetadataRoamMock(twoNodePageTreeWithEdge());
+  const store = new MetadataStore();
+  store.pageUid = "meta-page";
+  store.reload();
+  store.diagrams.set("diagram-1", twoNodeLayoutWithEdge());
+  store.diagramBlockUids.set("diagram-1", "diagram-block");
+
+  const wrote = await store.set("diagram-1", twoNodeLayoutWithEdge("twoWay"));
+  assert.equal(wrote, true);
+  assert.equal(counts.create, 1);
+  assert.equal(counts.delete, 0);
+  assert.equal(counts.update, 0);
+  assert.ok(blocks.has("kind-1"));
+  assert.ok(blocks.has("label-1"));
+  const directionChild = [...blocks.values()].find((block) => block.string === "direction:: twoWay");
+  assert.ok(directionChild);
+
+  counts.create = 0;
+  counts.delete = 0;
+  counts.update = 0;
+  const reverted = await store.set("diagram-1", twoNodeLayoutWithEdge());
+  assert.equal(reverted, true);
+  assert.equal(counts.create, 0);
+  assert.equal(counts.delete, 1);
+  assert.equal(counts.update, 0);
+  assert.ok(blocks.has("kind-1"));
+  assert.ok(blocks.has("label-1"));
+  assert.equal([...blocks.values()].some((block) => block.string.startsWith("direction::")), false);
 });

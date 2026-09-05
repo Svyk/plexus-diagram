@@ -1020,6 +1020,84 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
   let edgeEditorEl = null;
   let selectedEdgeKey = null;
   let edgeInspectorEl = null;
+  let edgeInspectorControls = null;
+  const ROUTE_KINDS = ["straight", "bezier", "elbow"];
+  const nextDirection = (edge) => {
+    const current = effectiveDirection(edge, settings.get("arrowheads") || "end");
+    if (current === "none") return "oneWay";
+    if (current === "oneWay") return "twoWay";
+    return "none";
+  };
+  const nextRouteKind = (kind) => {
+    const idx = ROUTE_KINDS.indexOf(kind || "bezier");
+    return ROUTE_KINDS[(idx + 1) % ROUTE_KINDS.length];
+  };
+  const syncEdgeInspector = () => {
+    if (!edgeInspectorControls || !selectedEdgeKey) return;
+    const edge = findEdgeByKey(selectedEdgeKey);
+    if (!edge) return;
+    const reverseExists = Boolean(findEdgeByKey(`${edge.target}->${edge.source}`));
+    edgeInspectorControls.flip.disabled = reverseExists;
+    edgeInspectorControls.flip.title = reverseExists ? "Reverse connection already exists" : "Flip";
+  };
+  const persistEdgeMutation = async (mutator) => {
+    if (!selectedEdgeKey) return;
+    const edge = findEdgeByKey(selectedEdgeKey);
+    if (!edge) return;
+    mutator(edge);
+    markLayoutDirty();
+    await flushLayout();
+    renderEdges();
+    syncEdgeInspector();
+  };
+  const flipSelectedEdge = async () => {
+    if (!selectedEdgeKey || edgeInspectorControls?.flip?.disabled) return;
+    const edge = findEdgeByKey(selectedEdgeKey);
+    if (!edge) return;
+    const reverseKey = `${edge.target}->${edge.source}`;
+    if (findEdgeByKey(reverseKey)) return;
+    const snapshot = {
+      source: edge.source,
+      target: edge.target,
+      kind: edge.kind,
+      label: edge.label,
+      from: edge.from,
+      to: edge.to,
+      direction: edge.direction,
+      color: edge.color,
+    };
+    model().removeEdge(snapshot.source, snapshot.target);
+    const added = model().addEdge(snapshot.target, snapshot.source, snapshot.kind, snapshot.label, {
+      from: snapshot.to || "auto",
+      to: snapshot.from || "auto",
+      direction: snapshot.direction || "",
+      color: snapshot.color || "",
+    });
+    if (!added) {
+      model().addEdge(snapshot.source, snapshot.target, snapshot.kind, snapshot.label, {
+        from: snapshot.from || "auto",
+        to: snapshot.to || "auto",
+        direction: snapshot.direction || "",
+        color: snapshot.color || "",
+      });
+      return;
+    }
+    selectedEdgeKey = reverseKey;
+    markLayoutDirty();
+    await flushLayout();
+    renderEdges();
+    syncEdgeInspector();
+  };
+  const deleteSelectedEdge = async () => {
+    if (!selectedEdgeKey) return;
+    const edge = findEdgeByKey(selectedEdgeKey);
+    if (!edge) return;
+    model().removeEdge(edge.source, edge.target);
+    clearEdgeSelection();
+    markLayoutDirty();
+    await flushLayout();
+    renderEdges();
+  };
   const cardRect = (contentUid) => {
     const node = model().nodes.get(contentUid);
     if (!node) return null;
@@ -1174,14 +1252,22 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
       button.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
-        onClick?.(event);
+        void onClick?.(event);
       });
       return button;
     };
+    const directionBtn = makeBtn("Direction", () => persistEdgeMutation((edge) => {
+      edge.direction = nextDirection(edge);
+    }));
+    const flipBtn = makeBtn("Flip", () => flipSelectedEdge());
+    flipBtn.title = "Flip";
+    const routeBtn = makeBtn("Route", () => persistEdgeMutation((edge) => {
+      edge.kind = nextRouteKind(edge.kind);
+    }));
     inspector.append(
-      makeBtn("Direction"),
-      makeBtn("Flip"),
-      makeBtn("Route"),
+      directionBtn,
+      flipBtn,
+      routeBtn,
       makeBtn("Label", () => {
         if (selectedEdgeKey) openEdgeLabelEditor(selectedEdgeKey);
       }),
@@ -1197,10 +1283,15 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
       swatch.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
+        void persistEdgeMutation((edge) => {
+          edge.color = id;
+        });
       });
       inspector.append(swatch);
     }
-    inspector.append(makeBtn("Delete"));
+    const deleteBtn = makeBtn("Delete", () => deleteSelectedEdge());
+    inspector.append(deleteBtn);
+    edgeInspectorControls = { direction: directionBtn, flip: flipBtn, route: routeBtn, delete: deleteBtn };
     root.append(inspector);
     edgeInspectorEl = inspector;
     return inspector;
@@ -1210,6 +1301,7 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
     paintSelectedEdge();
     edgeInspectorEl?.remove?.();
     edgeInspectorEl = null;
+    edgeInspectorControls = null;
   };
   const selectEdge = (key) => {
     if (!key || !findEdgeByKey(key)) {
@@ -1221,6 +1313,7 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
     syncSelection();
     selectedEdgeKey = key;
     ensureEdgeInspector();
+    syncEdgeInspector();
     paintSelectedEdge();
     positionEdgeInspector();
   };
@@ -1293,6 +1386,7 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
     if (selectedEdgeKey && !edgePaths.has(selectedEdgeKey)) clearEdgeSelection();
     else if (selectedEdgeKey) {
       paintSelectedEdge();
+      syncEdgeInspector();
       positionEdgeInspector();
     }
   };
@@ -2253,6 +2347,11 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
     if (editingUid || editingEdgeKey) return;
     if (isTextEntryTarget(event.target)) return;
     if (!overlayOwnsPointer()) return;
+    if ((event.key === "Delete" || event.key === "Backspace") && selectedEdgeKey) {
+      event.preventDefault();
+      void deleteSelectedEdge();
+      return;
+    }
     const key = String(event.key || "").toLowerCase();
     if (key === "v") {
       event.preventDefault();

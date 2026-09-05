@@ -411,6 +411,8 @@ function cardSession(edges = [], extras = {}) {
           label: label || "",
           from: extra.from || "auto",
           to: extra.to || "auto",
+          direction: extra.direction || "",
+          color: extra.color || "",
         };
         this.edges.push(edge);
         return edge;
@@ -1395,4 +1397,207 @@ test("attachSession clears edge selection; dispose removes the inspector element
       /* dispose already ran */
     }
   });
+});
+
+// ------------------------------------------------------------- U5b inspector mutations
+
+function inspectorButton(inspector, label) {
+  return inspector.children.find((child) => child.textContent === label);
+}
+
+async function clickInspectorButton(stub, button) {
+  stub.dispatch(button, "click");
+  await new Promise((resolve) => setTimeout(resolve, 0));
+}
+
+function persistLayoutCalls(actions) {
+  return actions.filter((action) => action.persistLayout);
+}
+
+test("inspector direction button cycles direction and persists once", async () => {
+  const stub = createDomStub();
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  globalThis.document = stub.document;
+  globalThis.window = stub.window;
+  try {
+    const session = cardSession([{ source: "card-a", target: "card-b", kind: "bezier", label: "" }]);
+    const persists = [];
+    const canvas = createCanvasRoot({
+      session,
+      settings: defaultSettings(),
+      version: "0.5.0",
+      nestStack: [],
+      onPersist: async (action) => { persists.push(action); },
+    });
+    try {
+      canvas.selectEdge("card-a->card-b");
+      stub.dispatch(canvas.root, "pointerenter");
+      const inspector = inspectorOnRoot(canvas.root);
+      await clickInspectorButton(stub, inspectorButton(inspector, "Direction"));
+      assert.equal(session.model.edges[0].direction, "twoWay");
+      assert.equal(persistLayoutCalls(persists).length, 1);
+      await clickInspectorButton(stub, inspectorButton(inspector, "Direction"));
+      assert.equal(session.model.edges[0].direction, "none");
+      assert.equal(persistLayoutCalls(persists).length, 2);
+      await clickInspectorButton(stub, inspectorButton(inspector, "Direction"));
+      assert.equal(session.model.edges[0].direction, "oneWay");
+      assert.equal(persistLayoutCalls(persists).length, 3);
+    } finally {
+      canvas.dispose();
+    }
+  } finally {
+    globalThis.document = previousDocument;
+    globalThis.window = previousWindow;
+  }
+});
+
+test("inspector Flip swaps endpoints and keeps label; disabled when reverse exists", async () => {
+  const stub = createDomStub();
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  globalThis.document = stub.document;
+  globalThis.window = stub.window;
+  try {
+    const session = cardSession([{
+      source: "card-a",
+      target: "card-b",
+      kind: "bezier",
+      label: "keep",
+      from: "right",
+      to: "left",
+      direction: "oneWay",
+      color: "teal",
+    }]);
+    const persists = [];
+    const canvas = createCanvasRoot({
+      session,
+      settings: defaultSettings(),
+      version: "0.5.0",
+      nestStack: [],
+      onPersist: async (action) => { persists.push(action); },
+    });
+    try {
+      canvas.selectEdge("card-a->card-b");
+      stub.dispatch(canvas.root, "pointerenter");
+      const inspector = inspectorOnRoot(canvas.root);
+      const flipBtn = inspectorButton(inspector, "Flip");
+      assert.equal(flipBtn.disabled, false);
+      await clickInspectorButton(stub, flipBtn);
+      assert.equal(session.model.edges.length, 1);
+      const flipped = session.model.edges[0];
+      assert.equal(flipped.source, "card-b");
+      assert.equal(flipped.target, "card-a");
+      assert.equal(flipped.from, "left");
+      assert.equal(flipped.to, "right");
+      assert.equal(flipped.label, "keep");
+      assert.equal(flipped.kind, "bezier");
+      assert.equal(flipped.direction, "oneWay");
+      assert.equal(flipped.color, "teal");
+      assert.equal(canvas.getSelectedEdgeKey(), "card-b->card-a");
+      assert.equal(persistLayoutCalls(persists).length, 1);
+
+      session.model.edges.push({
+        source: "card-a",
+        target: "card-b",
+        kind: "bezier",
+        label: "",
+        from: "auto",
+        to: "auto",
+        direction: "",
+        color: "",
+      });
+      canvas.selectEdge("card-b->card-a");
+      const blockedFlip = inspectorButton(inspectorOnRoot(canvas.root), "Flip");
+      assert.equal(blockedFlip.disabled, true);
+      assert.equal(blockedFlip.title, "Reverse connection already exists");
+      const edgeCount = session.model.edges.length;
+      await clickInspectorButton(stub, blockedFlip);
+      assert.equal(session.model.edges.length, edgeCount);
+      assert.equal(persistLayoutCalls(persists).length, 1);
+    } finally {
+      canvas.dispose();
+    }
+  } finally {
+    globalThis.document = previousDocument;
+    globalThis.window = previousWindow;
+  }
+});
+
+test("inspector Route and color swatch mutate the edge with one persist each", async () => {
+  const stub = createDomStub();
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  globalThis.document = stub.document;
+  globalThis.window = stub.window;
+  try {
+    const session = cardSession([{ source: "card-a", target: "card-b", kind: "bezier", label: "" }]);
+    const persists = [];
+    const canvas = createCanvasRoot({
+      session,
+      settings: defaultSettings(),
+      version: "0.5.0",
+      nestStack: [],
+      onPersist: async (action) => { persists.push(action); },
+    });
+    try {
+      canvas.selectEdge("card-a->card-b");
+      stub.dispatch(canvas.root, "pointerenter");
+      const inspector = inspectorOnRoot(canvas.root);
+      await clickInspectorButton(stub, inspectorButton(inspector, "Route"));
+      assert.equal(session.model.edges[0].kind, "elbow");
+      assert.equal(persistLayoutCalls(persists).length, 1);
+      const tealSwatch = inspector.children.find((child) => child.dataset?.color === "teal");
+      await clickInspectorButton(stub, tealSwatch);
+      assert.equal(session.model.edges[0].color, "teal");
+      assert.equal(persistLayoutCalls(persists).length, 2);
+    } finally {
+      canvas.dispose();
+    }
+  } finally {
+    globalThis.document = previousDocument;
+    globalThis.window = previousWindow;
+  }
+});
+
+test("inspector Delete and keyboard Delete remove the edge and clear selection", async () => {
+  const stub = createDomStub();
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  globalThis.document = stub.document;
+  globalThis.window = stub.window;
+  try {
+    const session = cardSession([{ source: "card-a", target: "card-b", kind: "bezier", label: "" }]);
+    const persists = [];
+    const canvas = createCanvasRoot({
+      session,
+      settings: defaultSettings(),
+      version: "0.5.0",
+      nestStack: [],
+      onPersist: async (action) => { persists.push(action); },
+    });
+    try {
+      canvas.selectEdge("card-a->card-b");
+      stub.dispatch(canvas.root, "pointerenter");
+      await clickInspectorButton(stub, inspectorButton(inspectorOnRoot(canvas.root), "Delete"));
+      assert.equal(session.model.edges.length, 0);
+      assert.equal(canvas.getSelectedEdgeKey(), null);
+      assert.equal(inspectorOnRoot(canvas.root), undefined);
+      assert.equal(persistLayoutCalls(persists).length, 1);
+
+      session.model.edges.push({ source: "card-a", target: "card-b", kind: "bezier", label: "" });
+      canvas.render();
+      canvas.selectEdge("card-a->card-b");
+      stub.dispatch(stub.window, "keydown", { key: "Delete" });
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      assert.equal(session.model.edges.length, 0);
+      assert.equal(canvas.getSelectedEdgeKey(), null);
+      assert.equal(persistLayoutCalls(persists).length, 2);
+    } finally {
+      canvas.dispose();
+    }
+  } finally {
+    globalThis.document = previousDocument;
+    globalThis.window = previousWindow;
+  }
 });

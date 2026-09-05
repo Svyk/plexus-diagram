@@ -1,4 +1,4 @@
-/* Plexus Diagram v0.5.0 | MIT | generated; edit src/ */
+/* Plexus Diagram v0.6.0 | MIT | generated; edit src/ */
 
 // src/lifecycle.js
 function isPromiseLike(value) {
@@ -958,7 +958,7 @@ function createSettingsPanel() {
         ["Straight", "straight"],
         ["Elbow", "elbow"]
       ]),
-      selectRow(SETTING_IDS.arrowheads, "Arrowheads", "Arrowhead placement.", [
+      selectRow(SETTING_IDS.arrowheads, "Arrowheads", "Default for new connections; the inspector overrides per connection.", [
         ["End", "end"],
         ["Both", "both"],
         ["None", "none"]
@@ -4210,7 +4210,7 @@ var runtime = {
   lifecycle: null,
   metadata: null,
   settings: null,
-  version: "0.5.0",
+  version: "0.6.0",
   enhancedUids: /* @__PURE__ */ new Set(),
   activeDiagramUid: null,
   guardStyle: null,
@@ -4671,7 +4671,7 @@ async function registerSlashAndContext(lifecycle, extensionAPI) {
 async function installPlexusDiagram({ extensionAPI, lifecycle, version }) {
   runtime.extensionAPI = extensionAPI;
   runtime.lifecycle = lifecycle;
-  runtime.version = version || "0.5.0";
+  runtime.version = version || "0.6.0";
   runtime.settings = createSettingsReader(extensionAPI);
   runtime.enhancedUids = readEnhancedUidCache();
   installGuard(runtime.enhancedUids);

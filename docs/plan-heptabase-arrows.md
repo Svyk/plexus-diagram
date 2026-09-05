@@ -115,13 +115,13 @@ Each unit: one `/tmp/wo/` work order, author `Svyatoslav Kleshchev <svyk@icloud.
 
 | # | Unit | Lane | Done |
 |---|---|---|---|
-| U1 | Edge geometry and marker helpers (`src/edges.js` + `test/edges.test.js`). Pure functions. | mechanical | [ ] |
-| U2 | Stub upgrade, then visible unique zoom-stable arrows (`src/canvas.js`, `src/extension.css`, `test/canvas.test.js`). Depends on U1. | tough | [ ] |
-| U3 | Per-edge schema (`src/model.js`, `src/metadata.js`, model/metadata/sync-silence tests). Parallel with U1. | mechanical | [ ] |
-| U4 | Port capture end to end (gesture + `view.js` + pointer-registry test). Depends on U1, U2, U3. | mechanical | [ ] |
-| U5a | Edge selection and inspector chrome. Exported instance methods. Depends on U2–U4 merged. | tough | [ ] |
-| U5b | Inspector mutations + `await flushLayout` persist-once. Depends on U5a. | mechanical | [ ] |
-| U6 | Version, changelog, spec addendum, README, `src/feature.js` 37/536, `test/build.test.js:42`, `npm run build`. Depends on U5b. Then `/prose-clean`. | writing | [ ] |
+| U1 | Edge geometry and marker helpers (`src/edges.js` + `test/edges.test.js`). Pure functions. | mechanical | [x] |
+| U2 | Stub upgrade, then visible unique zoom-stable arrows (`src/canvas.js`, `src/extension.css`, `test/canvas.test.js`). Depends on U1. | tough | [x] |
+| U3 | Per-edge schema (`src/model.js`, `src/metadata.js`, model/metadata/sync-silence tests). Parallel with U1. | mechanical | [x] |
+| U4 | Port capture end to end (gesture + `view.js` + pointer-registry test). Depends on U1, U2, U3. | mechanical | [x] |
+| U5a | Edge selection and inspector chrome. Exported instance methods. Depends on U2–U4 merged. | tough | [x] |
+| U5b | Inspector mutations + `await flushLayout` persist-once. Depends on U5a. | mechanical | [x] |
+| U6 | Version, changelog, spec addendum, README, `src/feature.js` 37/536, `test/build.test.js:42`, `npm run build`. Depends on U5b. Then `/prose-clean`. | writing | [x] |
 
 Order: U1 ∥ U3 → U2 → U4 → U5a → U5b → U6. CDP gate after U6.
 

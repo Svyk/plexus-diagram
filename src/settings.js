@@ -165,7 +165,7 @@ export function createSettingsPanel() {
         ["Straight", "straight"],
         ["Elbow", "elbow"],
       ]),
-      selectRow(SETTING_IDS.arrowheads, "Arrowheads", "Arrowhead placement.", [
+      selectRow(SETTING_IDS.arrowheads, "Arrowheads", "Default for new connections; the inspector overrides per connection.", [
         ["End", "end"],
         ["Both", "both"],
         ["None", "none"],

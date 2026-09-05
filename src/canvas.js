@@ -2387,7 +2387,8 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
     if (settings.get("enable-shortcuts") === false) return;
     if (editingUid || editingEdgeKey) return;
     if (isTextEntryTarget(event.target)) return;
-    if (!overlayOwnsPointer()) return;
+    const shortcutOwns = overlayOwnsPointer() || isFullscreen();
+    if (!shortcutOwns) return;
     if ((event.key === "Delete" || event.key === "Backspace") && selectedEdgeKey) {
       event.preventDefault();
       void deleteSelectedEdge();

@@ -3771,7 +3771,8 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
     if (settings.get("enable-shortcuts") === false) return;
     if (editingUid || editingEdgeKey) return;
     if (isTextEntryTarget(event.target)) return;
-    if (!overlayOwnsPointer()) return;
+    const shortcutOwns = overlayOwnsPointer() || isFullscreen();
+    if (!shortcutOwns) return;
     if ((event.key === "Delete" || event.key === "Backspace") && selectedEdgeKey) {
       event.preventDefault();
       void deleteSelectedEdge();
@@ -4139,15 +4140,13 @@ var NativeDiagramSession = class {
     return true;
   }
   async deleteCards(uids) {
-    return this.persistQueue.run(async () => {
-      for (const uid of uids) {
-        if (!this.model.getCard(uid)) continue;
-        await this.adapter.deleteChild(uid);
-        this.model.removeCard(uid);
-      }
-      await this.persistLayout();
-      this.notifyViews({ type: "structural" });
-    });
+    for (const uid of uids) {
+      if (!this.model.getCard(uid)) continue;
+      await this.adapter.deleteChild(uid);
+      this.model.removeCard(uid);
+    }
+    await this.persistLayout();
+    this.notifyViews({ type: "structural" });
   }
   dispose() {
     this.stopWatch();

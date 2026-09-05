@@ -97,7 +97,7 @@ export function mountDiagramView({ nativeElement, session, settings, version, li
         canvas.render();
       }
       if (action.setSetting) {
-        onAction?.({ type: "set-setting", id: action.setSetting.id, value: action.setSetting.value });
+        await onAction?.({ type: "set-setting", id: action.setSetting.id, value: action.setSetting.value });
         canvas.render();
       }
     },

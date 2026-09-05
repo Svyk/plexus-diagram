@@ -56,8 +56,14 @@ function createDomStub() {
         el.children.splice(index < 0 ? el.children.length : index, 0, node);
         node.parentElement = el;
       },
-      addEventListener() {},
-      removeEventListener() {},
+      listeners: new Map(),
+      addEventListener(type, fn) {
+        if (!el.listeners.has(type)) el.listeners.set(type, new Set());
+        el.listeners.get(type).add(fn);
+      },
+      removeEventListener(type, fn) {
+        el.listeners.get(type)?.delete(fn);
+      },
       remove() {
         el.isConnected = false;
       },
@@ -98,11 +104,26 @@ function createDomStub() {
   };
 
   const window = {
-    addEventListener() {},
-    removeEventListener() {},
+    listeners: new Map(),
+    addEventListener(type, fn) {
+      if (!window.listeners.has(type)) window.listeners.set(type, new Set());
+      window.listeners.get(type).add(fn);
+    },
+    removeEventListener(type, fn) {
+      window.listeners.get(type)?.delete(fn);
+    },
   };
 
-  return { document, window, makeEl };
+  const dispatch = (target, type, event = {}) => {
+    const ev = { type, button: 0, target, preventDefault() {}, ...event };
+    let node = target;
+    while (node) {
+      for (const fn of [...(node.listeners?.get(type) || [])]) fn(ev);
+      node = node === document || node === window ? null : node.parentElement;
+    }
+  };
+
+  return { document, window, makeEl, dispatch };
 }
 
 function makeNativeElement(makeEl, nativeHeight) {
@@ -117,7 +138,17 @@ function makeNativeElement(makeEl, nativeHeight) {
   return nativeElement;
 }
 
-function mountWithNativeHeight(nativeHeight) {
+function findButtonByTitle(root, title) {
+  const stack = [root];
+  while (stack.length) {
+    const node = stack.pop();
+    if (node.title === title) return node;
+    stack.push(...(node.children || []));
+  }
+  return null;
+}
+
+function mountWithNativeHeight(nativeHeight, { onAction } = {}) {
   const { document, window, makeEl } = createDomStub();
   const previousDocument = globalThis.document;
   const previousWindow = globalThis.window;
@@ -167,6 +198,7 @@ function mountWithNativeHeight(nativeHeight) {
       settings,
       version: "0.2.0",
       lifecycle,
+      onAction,
     });
     return { mounted, nativeElement, restore: () => {
       globalThis.document = previousDocument;
@@ -198,5 +230,82 @@ test("mountDiagramView measures native height before hiding", () => {
     short.mounted.dispose();
   } finally {
     short.restore();
+  }
+});
+
+test("setSetting onPersist awaits onAction before canvas.render", async () => {
+  const { document, window, makeEl, dispatch } = createDomStub();
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  globalThis.document = document;
+  globalThis.window = window;
+
+  let resolveSet;
+  const setPromise = new Promise((resolve) => { resolveSet = resolve; });
+  let renderCalls = 0;
+
+  const nativeElement = makeNativeElement(makeEl, 800);
+  const host = makeEl("div");
+  host.appendChild(nativeElement);
+  nativeElement.parentElement = host;
+
+  const session = {
+    diagramUid: "viewtestuid",
+    model: {
+      activeTool: "select",
+      viewport: { x: 0, y: 0, zoom: 1 },
+      children: [],
+      nodes: new Map(),
+      edges: [],
+      sections: new Map(),
+      selected: new Set(),
+      ensureNode(uid, defaults) {
+        const node = { pos: { x: 0, y: 0 }, size: { width: defaults.width, height: defaults.height } };
+        this.nodes.set(uid, node);
+        return node;
+      },
+      isNestedDiagram: () => false,
+    },
+    addView() {},
+    persistLayout: async () => {},
+    persistViewport: async () => {},
+    addCard: async () => {},
+    addSection: async () => {},
+  };
+  const defaults = settingsDefaults();
+  const settings = { get(key) { return defaults[key]; } };
+  const lifecycle = createLifecycle();
+
+  try {
+    const mounted = mountDiagramView({
+      nativeElement,
+      session,
+      settings,
+      version: "0.2.0",
+      lifecycle,
+      onAction: async (action) => {
+        if (action.type === "set-setting") await setPromise;
+      },
+    });
+    const origRender = mounted.canvas.render.bind(mounted.canvas);
+    mounted.canvas.render = (...args) => {
+      renderCalls += 1;
+      return origRender(...args);
+    };
+
+    const gridBtn = findButtonByTitle(mounted.canvas.root, "Board background");
+    assert.ok(gridBtn);
+    dispatch(gridBtn, "click");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(renderCalls, 0);
+
+    resolveSet();
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    assert.equal(renderCalls, 1);
+
+    mounted.dispose();
+  } finally {
+    globalThis.document = previousDocument;
+    globalThis.window = previousWindow;
   }
 });

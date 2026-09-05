@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { createCanvasRoot, isDarkHost, resolveEdgeColor, shouldCommitPulledString, topbarOffset, sidebarOffset, applyFullscreenChrome, fullscreenInsets, cardUidFromHitStack, parseDropPayload, parseDiagramTitle, focusRoamInput } from "../src/canvas.js";
+import { edgeEndpoints } from "../src/edges.js";
 import { settingsDefaults } from "../src/settings.js";
 import { releaseScratch } from "../src/metadata.js";
 import { readFile } from "node:fs/promises";
@@ -923,6 +924,44 @@ test("completeConnect stores fromSide and toSide on the model edge", async () =>
       assert.equal(session.model.edges.length, 1);
       assert.equal(session.model.edges[0].from, "right");
       assert.equal(session.model.edges[0].to, "left");
+      assert.equal(session.model.edges[0].direction, "oneWay");
+    } finally {
+      canvas.dispose();
+    }
+  } finally {
+    globalThis.document = previousDocument;
+    globalThis.window = previousWindow;
+  }
+});
+
+test("completeConnect paints settled edge through stored ports", async () => {
+  const { document, window } = createDomStub();
+  const previousDocument = globalThis.document;
+  const previousWindow = globalThis.window;
+  globalThis.document = document;
+  globalThis.window = window;
+  try {
+    const session = cardSession([]);
+    const settings = { get: (key) => settingsDefaults()[key] };
+    const canvas = createCanvasRoot({ session, settings, version: "0.5.0", nestStack: [] });
+    try {
+      await canvas.completeConnect({
+        moved: true,
+        sourceUid: "card-a",
+        targetUid: "card-b",
+        clientX: 400,
+        clientY: 80,
+        fromSide: "right",
+        toSide: "left",
+      });
+      const edgePath = findByClass(canvas.root, "pxd-edge");
+      assert.ok(edgePath, "connected pair should paint a .pxd-edge");
+      const source = { x: 0, y: 0, width: 280, height: 160 };
+      const target = { x: 400, y: 0, width: 280, height: 160 };
+      const { sx, sy, tx, ty } = edgeEndpoints(source, target, "right", "left");
+      const d = edgePath.getAttribute("d");
+      assert.match(d, new RegExp(`^M ${sx} ${sy}`));
+      assert.ok(d.includes(`${tx}`) && d.includes(`${ty}`));
     } finally {
       canvas.dispose();
     }

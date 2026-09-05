@@ -1,5 +1,6 @@
 import { createCanvasRoot } from "./canvas.js";
 import { diagramUidFromLocation, NATIVE_HIDDEN_CLASS, PENDING_CLASS } from "./discovery.js";
+import { effectiveDirection } from "./edges.js";
 
 // True only for a zoomed block page (`#/app/<graph>/page/<uid>` or a
 // `.rm-zoom-block-wrapper` host), never for an inline daily-page embed.
@@ -66,7 +67,9 @@ export function mountDiagramView({ nativeElement, session, settings, version, li
       if (action.addCard) {
         const uid = await current.addCard(action.string ?? "", action.addCard);
         if (uid && action.addEdge?.source) {
-          const edgeExtra = {};
+          const edgeExtra = {
+            direction: effectiveDirection({}, settings.get("arrowheads") || "end"),
+          };
           if (action.addEdge.from) edgeExtra.from = action.addEdge.from;
           current.model.addEdge(
             action.addEdge.source,

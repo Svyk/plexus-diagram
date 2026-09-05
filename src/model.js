@@ -167,8 +167,17 @@ export function fitViewport(nodes, viewSize, options = {}) {
 }
 
 export function importNativeLayout(tree, metadataLayout, defaults = {}) {
-  const nodes = new Map(metadataLayout?.nodes ? [...metadataLayout.nodes] : []);
-  const edges = [...(metadataLayout?.edges || [])];
+  const cloneNode = (node) => ({
+    ...node,
+    pos: { ...node.pos },
+    size: { ...node.size },
+  });
+  const nodes = new Map(
+    metadataLayout?.nodes
+      ? [...metadataLayout.nodes].map(([k, v]) => [k, cloneNode(v)])
+      : [],
+  );
+  const edges = (metadataLayout?.edges || []).map((edge) => ({ ...edge }));
   const nodeUidToContent = new Map();
   for (const nativeNode of tree.diagramNodes || []) {
     const contentUid = nativeNode.contentBlock?.uid;

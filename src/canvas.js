@@ -1146,9 +1146,11 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
     const target = cardRect(edge.target);
     if (!source || !target) return null;
     const style = settings.get("connector-style") || "bezier";
-    const d = buildEdgePath(edge.kind || style, source, target);
+    const fromSide = edge.from || "auto";
+    const toSide = edge.to || "auto";
+    const d = buildEdgePath(edge.kind || style, source, target, fromSide, toSide);
     path.setAttribute("d", d);
-    const mid = edgeMidpoint(source, target);
+    const mid = edgeMidpoint(source, target, fromSide, toSide);
     if (pill) {
       pill.style.left = `${mid.x}px`;
       pill.style.top = `${mid.y}px`;
@@ -1193,7 +1195,7 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
     const source = cardRect(edge.source);
     const target = cardRect(edge.target);
     if (!source || !target) return;
-    const mid = edgeMidpoint(source, target);
+    const mid = edgeMidpoint(source, target, edge.from || "auto", edge.to || "auto");
     editingEdgeKey = key;
     const editor = document.createElement("div");
     editor.className = "pxd-edge-label-editor";
@@ -1234,7 +1236,7 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
     const source = cardRect(edge.source);
     const target = cardRect(edge.target);
     if (!source || !target) return;
-    const mid = edgeMidpoint(source, target);
+    const mid = edgeMidpoint(source, target, edge.from || "auto", edge.to || "auto");
     const screen = worldToScreen(mid.x, mid.y);
     const rect = rootRect();
     edgeInspectorEl.style.left = `${screen.clientX - rect.left}px`;
@@ -1375,7 +1377,7 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
         const source = cardRect(edge.source);
         const target = cardRect(edge.target);
         if (source && target) {
-          const mid = edgeMidpoint(source, target);
+          const mid = edgeMidpoint(source, target, edge.from || "auto", edge.to || "auto");
           pill.style.left = `${mid.x}px`;
           pill.style.top = `${mid.y}px`;
         }
@@ -2139,6 +2141,7 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
     const edgeExtra = {
       from: resolvedFrom || "auto",
       to: resolvedTo || "auto",
+      direction: effectiveDirection({}, settings.get("arrowheads") || "end"),
     };
     try {
       if (targetUid && targetUid !== sourceUid) {

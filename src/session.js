@@ -1,5 +1,6 @@
 import { DiagramAdapter, MutationQueue } from "./adapter.js";
 import { isDiagramString } from "./discovery.js";
+import { effectiveDirection } from "./edges.js";
 import { DIAGRAM_PULL_PATTERN, DiagramModel } from "./model.js";
 
 export class NativeDiagramSession {
@@ -122,7 +123,7 @@ export class NativeDiagramSession {
   async connectSelected(kind) {
     const selected = [...this.model.selected];
     if (selected.length !== 2) return false;
-    this.model.addEdge(selected[0], selected[1], kind);
+    this.model.addEdge(selected[0], selected[1], kind, "", { direction: effectiveDirection({}, this.settings.get("arrowheads") || "end") });
     await this.persistLayout();
     this.notifyViews({ type: "edge" });
     return true;

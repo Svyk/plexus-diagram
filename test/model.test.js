@@ -5,6 +5,7 @@ import { fileURLToPath } from "node:url";
 import { dirname, resolve } from "node:path";
 
 import { childrenFingerprint, DiagramModel, DIAGRAM_PULL_PATTERN, importNativeLayout, parsePullResult, stripKeywords } from "../src/model.js";
+import { MetadataStore } from "../src/metadata.js";
 
 const fixtureDir = dirname(fileURLToPath(import.meta.url));
 
@@ -186,4 +187,30 @@ test("importNativeLayout does not clobber metadata positions", () => {
   };
   const imported = importNativeLayout(tree, metadata);
   assert.deepEqual(imported.nodes.get("child-a").pos, { x: 5, y: 5 });
+});
+
+test("importNativeLayout deep-copies edges so model mutations detect store drift", () => {
+  const metadataLayout = {
+    nodes: new Map([["a", { pos: { x: 0, y: 0 }, size: { width: 280, height: 160 }, color: "" }]]),
+    edges: [{
+      source: "a",
+      target: "b",
+      kind: "bezier",
+      label: "",
+      from: "auto",
+      to: "auto",
+      direction: "oneWay",
+      color: "",
+    }],
+    sections: new Map(),
+  };
+  const store = new MetadataStore();
+  store.diagrams.set("d1", metadataLayout);
+  const model = new DiagramModel({
+    diagramUid: "d1",
+    tree: { uid: "d1", string: "{{[[diagram]]}}", children: [], props: {}, diagramNodes: [], diagramEdges: [] },
+    metadataLayout,
+  });
+  model.edges[0].direction = "twoWay";
+  assert.equal(store.layoutMatchesStored("d1", model.layoutSnapshot()), false);
 });

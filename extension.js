@@ -1282,8 +1282,15 @@ function fitViewport(nodes, viewSize, options = {}) {
   };
 }
 function importNativeLayout(tree, metadataLayout, defaults = {}) {
-  const nodes = new Map(metadataLayout?.nodes ? [...metadataLayout.nodes] : []);
-  const edges = [...metadataLayout?.edges || []];
+  const cloneNode = (node) => ({
+    ...node,
+    pos: { ...node.pos },
+    size: { ...node.size }
+  });
+  const nodes = new Map(
+    metadataLayout?.nodes ? [...metadataLayout.nodes].map(([k, v]) => [k, cloneNode(v)]) : []
+  );
+  const edges = (metadataLayout?.edges || []).map((edge) => ({ ...edge }));
   const nodeUidToContent = /* @__PURE__ */ new Map();
   for (const nativeNode of tree.diagramNodes || []) {
     const contentUid = nativeNode.contentBlock?.uid;
@@ -2523,9 +2530,11 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
     const target = cardRect(edge.target);
     if (!source || !target) return null;
     const style = settings.get("connector-style") || "bezier";
-    const d = buildEdgePath(edge.kind || style, source, target);
+    const fromSide = edge.from || "auto";
+    const toSide = edge.to || "auto";
+    const d = buildEdgePath(edge.kind || style, source, target, fromSide, toSide);
     path.setAttribute("d", d);
-    const mid = edgeMidpoint(source, target);
+    const mid = edgeMidpoint(source, target, fromSide, toSide);
     if (pill) {
       pill.style.left = `${mid.x}px`;
       pill.style.top = `${mid.y}px`;
@@ -2570,7 +2579,7 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
     const source = cardRect(edge.source);
     const target = cardRect(edge.target);
     if (!source || !target) return;
-    const mid = edgeMidpoint(source, target);
+    const mid = edgeMidpoint(source, target, edge.from || "auto", edge.to || "auto");
     editingEdgeKey = key;
     const editor = document.createElement("div");
     editor.className = "pxd-edge-label-editor";
@@ -2611,7 +2620,7 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
     const source = cardRect(edge.source);
     const target = cardRect(edge.target);
     if (!source || !target) return;
-    const mid = edgeMidpoint(source, target);
+    const mid = edgeMidpoint(source, target, edge.from || "auto", edge.to || "auto");
     const screen = worldToScreen(mid.x, mid.y);
     const rect = rootRect();
     edgeInspectorEl.style.left = `${screen.clientX - rect.left}px`;
@@ -2752,7 +2761,7 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
         const source = cardRect(edge.source);
         const target = cardRect(edge.target);
         if (source && target) {
-          const mid = edgeMidpoint(source, target);
+          const mid = edgeMidpoint(source, target, edge.from || "auto", edge.to || "auto");
           pill.style.left = `${mid.x}px`;
           pill.style.top = `${mid.y}px`;
         }
@@ -3492,7 +3501,8 @@ function createCanvasRoot({ session, settings, version, onPersist, nestStack: ne
     const resolvedTo = toSide ?? connectSideFromPoint(clientX, clientY, targetUid);
     const edgeExtra = {
       from: resolvedFrom || "auto",
-      to: resolvedTo || "auto"
+      to: resolvedTo || "auto",
+      direction: effectiveDirection({}, settings.get("arrowheads") || "end")
     };
     try {
       if (targetUid && targetUid !== sourceUid) {
@@ -4049,7 +4059,7 @@ var NativeDiagramSession = class {
   async connectSelected(kind) {
     const selected = [...this.model.selected];
     if (selected.length !== 2) return false;
-    this.model.addEdge(selected[0], selected[1], kind);
+    this.model.addEdge(selected[0], selected[1], kind, "", { direction: effectiveDirection({}, this.settings.get("arrowheads") || "end") });
     await this.persistLayout();
     this.notifyViews({ type: "edge" });
     return true;
@@ -4161,7 +4171,9 @@ function mountDiagramView({ nativeElement, session, settings, version, lifecycle
       if (action.addCard) {
         const uid = await current.addCard(action.string ?? "", action.addCard);
         if (uid && action.addEdge?.source) {
-          const edgeExtra = {};
+          const edgeExtra = {
+            direction: effectiveDirection({}, settings.get("arrowheads") || "end")
+          };
           if (action.addEdge.from) edgeExtra.from = action.addEdge.from;
           current.model.addEdge(
             action.addEdge.source,

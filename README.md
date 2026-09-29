@@ -49,7 +49,7 @@ The context bar above a selection has 10 colors for cards, sections, text, and c
 
 ## Settings
 
-Settings → Extensions → Plexus Diagram: enabled, fullscreen-on-zoom, graph links default, wheel (pan or zoom), minimap, snap guides, grid (dots / lines / plain), default card size, keyboard shortcuts, version badge, disable on mobile.
+Settings → Extensions → Plexus Diagram: enabled, fullscreen-on-zoom, graph links default, wheel (pan or zoom), minimap, snap guides, grid (dots / lines / plain), default card size, collapse board blocks in the outline (on: the board's cards are not listed again as bullets under an inline board; expand the bullet to see them), keyboard shortcuts, version badge, disable on mobile.
 
 ## Privacy
 

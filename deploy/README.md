@@ -1,67 +1,57 @@
 # Plexus Diagram
 
-Native-first Heptabase-like overlay for Roam `{{[[diagram]]}}` blocks. Roam's diagram children remain the canonical card store; Plexus Diagram hides the native React Flow canvas for enhanced diagrams and mounts an enhanced canvas with cards, connections, sections, and a library sidebar.
+A Heptabase-style whiteboard for Roam `{{[[diagram]]}}` blocks. Cards, colored sections, and connections on an infinite canvas, where every object is a real Roam block: sections are parent blocks of their cards, connections are blocks that link both ends, and relationships already in your graph show up as arrows.
 
 **Developer extension URL:** https://svyk.github.io/plexus-diagram
 
-## Enhance and restore
+## Start a board
 
-1. Focus a diagram block (`{{[[diagram]]}}` or `{{[[diagram]]:title}}`).
-2. Run **Plexus Diagram: Enhance this diagram** from the command palette, the block context menu, or the **Plexus Diagram** slash command.
-3. The native `.rm-diagram` renderer is hidden and a `.pxd-root` overlay mounts as a sibling.
-4. Run **Plexus Diagram: Restore native diagram** to unmount the overlay and show native React Flow again. Content children are never deleted.
+- **Plexus: New whiteboard here** (palette or slash) creates `{{[[diagram]]:Untitled board}}` under the focused block and opens it.
+- **Plexus: Enhance this diagram** turns an existing native diagram into a board. Native node positions, groups (become sections), and edges (become connections) are imported. Native diagrams you never enhance are never touched.
+- **Plexus: Restore native diagram** gives the block back to Roam's React Flow view. Content is not deleted.
+- Opening a board's block page (zoomed in) shows it full screen. **Plexus: Fullscreen this diagram** does the same from anywhere.
+
+Boards enhanced with 0.6 upgrade to the 1.0 format once, the first time they are opened.
 
 ## Using the board
 
-- **Pan:** drag empty space (Select tool), middle mouse, or hold Space and drag. **Zoom:** wheel / pinch, `Zoom+` / `Zoom-`, click the percentage to reset, `Fit` to frame all cards.
-- **Add a card:** double-click empty space, pick the `Card` tool and click, or drop a page/block from the left sidebar onto the board (`[[Title]]` or a Roam uid).
-- **Edit a card:** double-click it. Roam's native block editor mounts in place; click away or press Esc to commit. Cards show `renderString` output otherwise.
-- **Move / resize:** drag a card; drag the bottom-right corner to resize (min 240×140). Shift-click to multi-select and drag together.
-- **Connect:** drag from a card handle (or click-click / Connect tool) onto another card, or onto empty board to pull out a new card and link it. The wire shows a head while dragging. Click a connector for the inspector (direction, flip, route, color, delete). Double-click the line or the midpoint pill to add a note (`label::` on the edge, not a new card). Settings → Arrowheads is the default for new edges only.
-- **Sections:** frames are visible (solid border, light fill). Drag to move, resize the corner, click the title to rename. Color swatches in the toolbar apply to the selected card or section.
-- **Nested diagrams:** double-click a nested card body to open it in place (hash stays on the parent page; fullscreen and crumbs stay). The toolbar shows Heptabase-style crumbs (`Parent › Current`); click a parent crumb or press Esc to pop one level. Nested cards show the parsed board name, or an inline "Name this board…" field when the block is only `{{[[diagram]]}}`.
-- **Library:** the searchable drawer portals onto `document.body` (not the scaled world) so type stays readable.
-- **Fullscreen:** `Fullscreen` button or **Plexus Diagram: Fullscreen this diagram**. Esc exits edit, then pops a nested crumb if any, then exits fullscreen. Zoomed diagram pages (`#/app/<graph>/page/<uid>`) open full screen by default (`fullscreen-on-zoom`). Fullscreen hides RoamJS breadcrumbs, sits below the remaining topbar, and follows `.rm-article-wrapper` so the overlay shrinks with the left and right sidebars instead of covering them.
-- **Shortcuts** (when `enable-shortcuts` is on and the overlay has the pointer): `V` select, `C` connect, `N` add a card at view center, `F` fit. Ignored while typing in a card or edge-label editor.
-- Viewport and layout persist on pointer-up / wheel-end, not per pixel. A viewport imported from the native diagram that would paint cards under 140px is replaced by a fit on first paint.
+| Do | How |
+|---|---|
+| Pan | Trackpad scroll, Space + drag, middle-drag, or the Hand tool (H) |
+| Zoom | Pinch or Ctrl/Cmd + scroll, `−` / `+`, click the % to reset, Shift+1 fit all, Shift+2 fit selection |
+| Select | Click; Shift-click to add; drag on empty board for a selection box; Cmd+A |
+| New card | Double-click empty board, or N. Type right away; an empty new card disappears when you click away |
+| Edit a card | Double-click or Enter. Roam's own editor opens in the card (page cards open the whole page). Esc to finish |
+| Open | Click a `[[link]]` in a card to go there (Shift-click: sidebar). Context bar: Open in sidebar |
+| Move / resize | Drag a card (from anywhere, links included); drag the right edge, bottom edge, or corner. Alignment guides snap to neighbours |
+| Section | G, then drag (or click for a default size). Cmd+G wraps the selection. Drop cards in and out of sections |
+| Connect | Drag from a card's port (the dots on its edges) to another card or section. Drop on empty board to create a new linked card. C turns the whole card into a handle |
+| Text | T for a free heading on the board (16/24/32/48) |
+| Delete | Delete/Backspace. The toast offers Undo; Cmd+Z / Shift+Cmd+Z are Roam's own undo and redo |
+| Search | `/` filters the board and steps through matches |
+| Add | The Add panel searches pages and blocks, and its Related tab lists what the selected card links to and is linked from |
 
-## What is written where
+The context bar above a selection has 10 colors for cards, sections, text, and connections; connection direction (→ ↔ —), flip, route (curve, straight, elbow), dashed line, weight, label, and notes.
 
-| Data | Location |
-| --- | --- |
-| Card content (pages, text, images) | Diagram block **children** via `data.block.create` |
-| Card positions, sizes, edges, edge labels, sections | `[[plexus-diagram/metadata]]` blocks keyed by content UIDs |
-| Pan/zoom viewport | `viewport::` on `[[plexus-diagram/metadata]]` (native `:rf-diagram` only on first enhance seed) |
+## What it means in Roam
 
-Plexus Diagram does **not** create fake `:diagram/nodes`, write to `:rf-diagram.nodes`, or transact `:harc/*` / `:entity/attrs`.
-
-## Privacy
-
-No network requests. All reads and writes go through Roam's Extension API on the local graph.
+| On the board | In the graph |
+|---|---|
+| Card | A child block of the board: a note (its own text and children), a `[[page]]`, a `((block))`, an image, or a nested `{{[[diagram]]}}` board |
+| Section | A block whose children are its cards. Title it `[[Root cause]]` and the section, with its cards, appears in Root cause's linked references |
+| Connection | A block under the board's collapsed **Connections** child, reading `[[Seal failure]] → causes → [[Leak]]`. Both ends get a backlink. Its children are notes on the connection |
+| Graph links (dashed) | Existing references and attributes between cards on the board, drawn automatically and colored by relation. Toggle with **Links** (Off / Attributes / All) or L |
+| Write to graph | On a labelled connection, writes the attribute to the source: `causes:: [[Leak]]` on page Seal failure (a child of the block for block cards). Existing blocks are never rewritten |
+| Layout | Position, size, and color live in each block's hidden properties (`:block/props`), so they move with the block and undo with Roam's undo |
+| Pan and zoom | Stored per device in local storage. Opening, panning, and zooming write nothing to the graph |
 
 ## Settings
 
-Open **Settings → Extensions → Plexus Diagram**. Key settings:
+Settings → Extensions → Plexus Diagram: enabled, fullscreen-on-zoom, graph links default, wheel (pan or zoom), minimap, snap guides, grid (dots / lines / plain), default card size, keyboard shortcuts, version badge, disable on mobile.
 
-- **General:** enabled, auto-enhance, show-version-badge, restore-native-on-unload
-- **Canvas:** default-height, snap-to-grid, grid-size, show-grid, grid-style, minimap, pan-on-space, zoom-min/max, wheel-zoom
-- **Cards:** default-card-width/height, card-radius, show-card-title, native-block-editor, compact-cards, card-shadow, render-children-depth
-- **Edges:** connector-style, arrowheads, edge-width, show-edge-labels, edge-animated
-- **Groups:** show-sections, section-label
-- **Library:** show-library-on-open, library-include-dailies
-- **Theme:** follow-roam-theme
-- **Performance:** viewport-culling, disable-on-mobile
-- **Keyboard:** enable-shortcuts
+## Privacy
 
-## Commands
-
-Palette and slash keep only these, each prefixed **Plexus Diagram:**
-
-- Enhance this diagram
-- Restore native diagram
-- Fullscreen this diagram
-
-The block context menu still has **Plexus Diagram: Enhance**. Card, connect, nested, library, snap, and auto-layout stay on the toolbar (single row) and as shortcuts.
+No network requests. All reads and writes go through Roam's extension API on your graph.
 
 ## Development
 
@@ -70,13 +60,11 @@ npm ci --ignore-scripts --no-audit --no-fund
 npm run check
 ```
 
-Commit `src/`, generated root `extension.js` / `extension.css`, and `deploy/` together.
+Design: `docs/spec-plexus-1.0.md`. Module contracts: `docs/api-plexus-1.0.md`. Commit `src/` with the generated root `extension.js` / `extension.css` and `deploy/`.
 
-## Install as a Developer Extension
+## Install
 
-In Roam: **Settings → Roam Depot → Developer mode → Load extension → URL**
-
-Enter: `https://svyk.github.io/plexus-diagram`
+Roam: **Settings → Roam Depot → Developer extensions → Load extension → URL** → `https://svyk.github.io/plexus-diagram`. To pick up a new version in an open tab, remove that URL entry and add it again.
 
 ## License
 

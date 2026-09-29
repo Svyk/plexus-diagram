@@ -158,13 +158,13 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     relatedTitle.textContent = selected.title || "Related";
     const id = queryId += 1;
     let list = [];
-    try { list = await Promise.resolve(host.related(key, 60)) || []; } catch { list = []; }
+    try { list = await Promise.resolve(host.related(key, 60, { boardUid: root?.dataset?.board })) || []; } catch { list = []; }
     if (id !== queryId || tab !== "related") return;
     relatedList.replaceChildren();
     for (const rel of list) {
       const t = rel.target || {};
       const string = t.kind === "page" ? `[[${t.title}]]` : `((${t.uid}))`;
-      const text = t.kind === "page" ? t.title : (rel.text || t.uid || "");
+      const text = rel.text || (t.kind === "page" ? t.title : t.uid) || "";
       relatedRows.push({ string });
       row(relatedList, { string, label: rel.relation || "related", text, kind: t.kind });
     }

@@ -633,50 +633,52 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
       ) || [];
       return rows.filter(([, , t]) => typeof t === "string" && !t.startsWith("roam/")).slice(0, limit).map(([s, u, t]) => ({ uid: u, string: s, pageTitle: t }));
     },
-    related(ref, limit = 60) {
-      const out = [];
+    // Graph neighbours of a card target, ordered for the Related panel:
+    // attribute relations (both directions) → pages it links to → pages that link to it (grouped, counted).
+    // The attribute-name page itself is not a neighbour, and blocks inside the current board are skipped.
+    related(ref, limit = 60, { boardUid } = {}) {
+      if (!ref || (ref.kind === "page" ? !ref.title : !ref.uid)) return [];
+      const boardEid = boardUid ? host.resolveEid({ uid: boardUid }) ?? -1 : -1;
+      const byPage = ref.kind === "page";
+      const outgoing = host.q(
+        byPage ? `[:find ?rt ?ss :in $ ?title :where [?p :node/title ?title] [?b :block/page ?p] [?b :block/refs ?r] [?r :node/title ?rt] [?b :block/string ?ss]]` : `[:find ?rt ?ss :in $ ?uid :where [?s :block/uid ?uid] (or [?b :block/parents ?s] [(= ?b ?s)]) [?b :block/refs ?r] [?r :node/title ?rt] [?b :block/string ?ss]]`,
+        byPage ? ref.title : ref.uid
+      ) || [];
+      const incoming = host.q(
+        byPage ? `[:find ?u ?ss ?pt :in $ ?title ?board :where [?p :node/title ?title] [?b :block/refs ?p] (not [?b :block/parents ?board]) [(not= ?b ?board)] [?b :block/uid ?u] [?b :block/string ?ss] [?b :block/page ?pg] [?pg :node/title ?pt]]` : `[:find ?u ?ss ?pt :in $ ?uid ?board :where [?s :block/uid ?uid] [?b :block/refs ?s] (not [?b :block/parents ?board]) [(not= ?b ?board)] [?b :block/uid ?u] [?b :block/string ?ss] [?b :block/page ?pg] [?pg :node/title ?pt]]`,
+        byPage ? ref.title : ref.uid,
+        boardEid
+      ) || [];
+      const attrs = [];
+      const links = [];
+      const pages = /* @__PURE__ */ new Map();
       const seen = /* @__PURE__ */ new Set();
-      const push = (relation, target, text) => {
+      const add = (list, relation, target, text) => {
         const key = `${relation}|${target.kind}|${target.title ?? target.uid}`;
         if (seen.has(key)) return;
         seen.add(key);
-        out.push({ relation, target, text });
+        list.push({ relation, target, text });
       };
-      let outgoing;
-      let incoming;
-      if (ref?.kind === "page") {
-        outgoing = host.q(
-          `[:find ?rt ?ss :in $ ?title :where [?p :node/title ?title] [?b :block/page ?p]
- [?b :block/refs ?r] [?r :node/title ?rt] [?b :block/string ?ss]]`,
-          ref.title
-        );
-        incoming = host.q(
-          `[:find ?u ?ss :in $ ?title :where [?p :node/title ?title] [?b :block/refs ?p]
- [?b :block/uid ?u] [?b :block/string ?ss]]`,
-          ref.title
-        );
-      } else {
-        outgoing = host.q(
-          `[:find ?rt ?ss :in $ ?uid :where [?s :block/uid ?uid]
- (or [?b :block/parents ?s] [(= ?b ?s)])
- [?b :block/refs ?r] [?r :node/title ?rt] [?b :block/string ?ss]]`,
-          ref?.uid
-        );
-        incoming = host.q(
-          `[:find ?u ?ss :in $ ?uid :where [?s :block/uid ?uid] [?b :block/refs ?s]
- [?b :block/uid ?u] [?b :block/string ?ss]]`,
-          ref?.uid
-        );
+      for (const [rt, ss] of outgoing) {
+        const attr = attrNameOf(ss);
+        if (attr && rt === attr) continue;
+        if (byPage && rt === ref.title) continue;
+        if (attr) add(attrs, `${attr} →`, { kind: "page", title: rt }, rt);
+        else add(links, "links to", { kind: "page", title: rt }, rt);
       }
-      for (const [rt, ss] of outgoing || []) {
-        if (ref?.kind === "page" && rt === ref.title) continue;
-        push(attrNameOf(ss) ?? "links to", { kind: "page", title: rt }, ss);
+      for (const [u, ss, pt] of incoming) {
+        if (u === ref.uid || byPage && pt === ref.title) continue;
+        const attr = attrNameOf(ss);
+        if (attr) {
+          add(attrs, `← ${attr}`, { kind: "page", title: pt }, pt);
+          continue;
+        }
+        const g = pages.get(pt) || { count: 0 };
+        g.count += 1;
+        pages.set(pt, g);
       }
-      for (const [u, ss] of incoming || []) {
-        if (u === ref?.uid) continue;
-        push(attrNameOf(ss) ?? "linked from", { kind: "block", uid: u }, ss);
-      }
-      return out.slice(0, limit);
+      const linkedFrom = [...pages.entries()].sort((a, b) => b[1].count - a[1].count || a[0].localeCompare(b[0])).map(([pt, g]) => ({ relation: "linked from", target: { kind: "page", title: pt }, text: g.count > 1 ? `${pt} (${g.count})` : pt }));
+      return [...attrs, ...links, ...linkedFrom].slice(0, limit);
     }
   };
   return host;
@@ -4866,7 +4868,7 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {} } 
     const id = queryId += 1;
     let list = [];
     try {
-      list = await Promise.resolve(host.related(key, 60)) || [];
+      list = await Promise.resolve(host.related(key, 60, { boardUid: root?.dataset?.board })) || [];
     } catch {
       list = [];
     }
@@ -4875,7 +4877,7 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {} } 
     for (const rel of list) {
       const t = rel.target || {};
       const string = t.kind === "page" ? `[[${t.title}]]` : `((${t.uid}))`;
-      const text = t.kind === "page" ? t.title : rel.text || t.uid || "";
+      const text = rel.text || (t.kind === "page" ? t.title : t.uid) || "";
       relatedRows.push({ string });
       row(relatedList, { string, label: rel.relation || "related", text, kind: t.kind });
     }

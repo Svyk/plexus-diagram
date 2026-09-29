@@ -7160,6 +7160,7 @@ async function installPlexusDiagram({
     for (const rec of [...mounts.values()]) unmount(rec);
     for (const observer of portalObservers.values()) observer.disconnect();
     portalObservers.clear();
+    for (const el of [...doc?.querySelectorAll?.(`.${OUTLINE_NATIVE_CLASS}`) || []]) el.classList.remove(OUTLINE_NATIVE_CLASS);
     guardStyle?.remove?.();
     guardStyle = null;
   });

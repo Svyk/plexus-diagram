@@ -121,6 +121,8 @@ export async function installPlexusDiagram({
     for (const rec of [...mounts.values()]) unmount(rec);
     for (const observer of portalObservers.values()) observer.disconnect();
     portalObservers.clear();
+    // Outline copies skipped by consider() carry a mark that no mount owns; clear it so unload leaves nothing.
+    for (const el of [...(doc?.querySelectorAll?.(`.${OUTLINE_NATIVE_CLASS}`) || [])]) el.classList.remove(OUTLINE_NATIVE_CLASS);
     guardStyle?.remove?.();
     guardStyle = null;
   });

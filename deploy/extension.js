@@ -309,6 +309,7 @@ var BOARD_PATTERN = `[:block/uid :block/string :block/order :block/heading :bloc
  {:block/children [:block/uid :block/string :block/order :block/heading :block/props
    {:block/children [:block/uid :block/string :block/order :block/heading :block/props
      {:block/children ...}]}]}]`;
+var ciPattern = (text) => `(?i)${String(text).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`;
 var NATIVE_PATTERN = `[{:diagram/nodes [:db/id :diagram.node/data {:diagram.node/block [:block/uid :block/string]} {:diagram.node/parent-node [:db/id]}]}
  {:diagram/edges [{:diagram.edge/source [:db/id]} {:diagram.edge/target [:db/id]} :diagram.edge/data]}]`;
 var eidKey = (uid) => [":block/uid", uid];
@@ -613,9 +614,8 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
       const needle = String(text ?? "").toLowerCase();
       if (!needle) return [];
       const rows = host.q(
-        `[:find ?t ?u :in $ ?q :where [?p :node/title ?t] [?p :block/uid ?u]
- [(clojure.string/lower-case ?t) ?lt] [(clojure.string/includes? ?lt ?q)]]`,
-        needle
+        `[:find ?t ?u :in $ ?pat :where [?p :node/title ?t] [(re-pattern ?pat) ?re] [(re-find ?re ?t)] [?p :block/uid ?u]]`,
+        ciPattern(needle)
       ) || [];
       return rows.filter(([t]) => typeof t === "string" && !t.startsWith("roam/")).map(([t, u]) => ({ uid: u, title: t })).sort((a, b) => {
         const ap = a.title.toLowerCase().startsWith(needle) ? 0 : 1;
@@ -627,10 +627,9 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
       const needle = String(text ?? "").toLowerCase();
       if (!needle) return [];
       const rows = host.q(
-        `[:find ?s ?u ?t :in $ ?q :where [?b :block/string ?s] [?b :block/uid ?u]
- [?b :block/page ?p] [?p :node/title ?t]
- [(clojure.string/lower-case ?s) ?ls] [(clojure.string/includes? ?ls ?q)]]`,
-        needle
+        `[:find ?s ?u ?t :in $ ?pat :where [?b :block/string ?s] [(re-pattern ?pat) ?re] [(re-find ?re ?s)]
+ [?b :block/uid ?u] [?b :block/page ?p] [?p :node/title ?t]]`,
+        ciPattern(needle)
       ) || [];
       return rows.filter(([, , t]) => typeof t === "string" && !t.startsWith("roam/")).slice(0, limit).map(([s, u, t]) => ({ uid: u, string: s, pageTitle: t }));
     },
@@ -3244,7 +3243,8 @@ function isTextEntryTarget(target) {
   if (target.isContentEditable) return true;
   if (typeof target.getAttribute === "function" && target.getAttribute("contenteditable") === "true") return true;
   if (typeof target.closest !== "function") return false;
-  return Boolean(target.closest('.rm-block__input, [contenteditable="true"], .pxd-label--editing, .pxd-section__title--editing, .pxd-input'));
+  const hit = target.closest('[contenteditable="true"], .pxd-label--editing, .pxd-section__title--editing, .pxd-input');
+  return Boolean(hit && !hit.querySelector?.(".pxd-root"));
 }
 function synthesizeBlockClick(host) {
   if (!host?.dispatchEvent) return false;
@@ -6081,8 +6081,8 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
   const onKeyUp = (event) => {
     ctl.handle({ type: "keyup", key: event.key, code: event.code });
   };
-  listen(win, "keydown", onKeyDown);
-  listen(win, "keyup", onKeyUp);
+  listen(win, "keydown", onKeyDown, true);
+  listen(win, "keyup", onKeyUp, true);
   subs.push(session.on("change", ({ dirty: d, structural } = {}) => {
     if (disposed) return;
     const b = board();

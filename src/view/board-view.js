@@ -826,8 +826,10 @@ export function mountBoardView({
     if (handled) { event.preventDefault(); event.stopPropagation(); }
   };
   const onKeyUp = (event) => { ctl.handle({ type: "keyup", key: event.key, code: event.code }); };
-  listen(win, "keydown", onKeyDown);
-  listen(win, "keyup", onKeyUp);
+  // Capture phase: Roam's document-level shortcuts (Delete/Backspace on block selection, etc.) stop propagation
+  // before a bubble listener on window. onKeyDown returns early for any text input outside the board.
+  listen(win, "keydown", onKeyDown, true);
+  listen(win, "keyup", onKeyUp, true);
 
   // ------------------------------------------------------------ session events
   subs.push(session.on("change", ({ dirty: d, structural } = {}) => {

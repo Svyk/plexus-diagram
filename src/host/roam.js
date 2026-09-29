@@ -5,6 +5,8 @@ export const BOARD_PATTERN = `[:block/uid :block/string :block/order :block/head
    {:block/children [:block/uid :block/string :block/order :block/heading :block/props
      {:block/children ...}]}]}]`;
 
+const ciPattern = (text) => `(?i)${String(text).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`;
+
 export const NATIVE_PATTERN = `[{:diagram/nodes [:db/id :diagram.node/data {:diagram.node/block [:block/uid :block/string]} {:diagram.node/parent-node [:db/id]}]}
  {:diagram/edges [{:diagram.edge/source [:db/id]} {:diagram.edge/target [:db/id]} :diagram.edge/data]}]`;
 
@@ -300,10 +302,10 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     searchPages(text, limit = 40) {
       const needle = String(text ?? "").toLowerCase();
       if (!needle) return [];
+      // Roam's Datascript has no clojure.string/lower-case; cljs re-pattern turns a leading (?i) into the JS flag.
       const rows = host.q(
-        `[:find ?t ?u :in $ ?q :where [?p :node/title ?t] [?p :block/uid ?u]
- [(clojure.string/lower-case ?t) ?lt] [(clojure.string/includes? ?lt ?q)]]`,
-        needle,
+        `[:find ?t ?u :in $ ?pat :where [?p :node/title ?t] [(re-pattern ?pat) ?re] [(re-find ?re ?t)] [?p :block/uid ?u]]`,
+        ciPattern(needle),
       ) || [];
       return rows
         .filter(([t]) => typeof t === "string" && !t.startsWith("roam/"))
@@ -320,10 +322,9 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       const needle = String(text ?? "").toLowerCase();
       if (!needle) return [];
       const rows = host.q(
-        `[:find ?s ?u ?t :in $ ?q :where [?b :block/string ?s] [?b :block/uid ?u]
- [?b :block/page ?p] [?p :node/title ?t]
- [(clojure.string/lower-case ?s) ?ls] [(clojure.string/includes? ?ls ?q)]]`,
-        needle,
+        `[:find ?s ?u ?t :in $ ?pat :where [?b :block/string ?s] [(re-pattern ?pat) ?re] [(re-find ?re ?s)]
+ [?b :block/uid ?u] [?b :block/page ?p] [?p :node/title ?t]]`,
+        ciPattern(needle),
       ) || [];
       return rows
         .filter(([, , t]) => typeof t === "string" && !t.startsWith("roam/"))

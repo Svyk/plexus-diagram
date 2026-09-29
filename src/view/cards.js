@@ -25,7 +25,11 @@ export function isTextEntryTarget(target) {
   if (target.isContentEditable) return true;
   if (typeof target.getAttribute === "function" && target.getAttribute("contenteditable") === "true") return true;
   if (typeof target.closest !== "function") return false;
-  return Boolean(target.closest(".rm-block__input, [contenteditable=\"true\"], .pxd-label--editing, .pxd-section__title--editing, .pxd-input"));
+  // Not ".rm-block__input": the board is mounted inside the diagram block's own view-mode div of that class,
+  // so an ancestor match would make every key on the board look like typing. Roam's editor is a textarea
+  // (caught above). An ancestor that contains the board is a host wrapper, not an input.
+  const hit = target.closest("[contenteditable=\"true\"], .pxd-label--editing, .pxd-section__title--editing, .pxd-input");
+  return Boolean(hit && !hit.querySelector?.(".pxd-root"));
 }
 
 function synthesizeBlockClick(host) {

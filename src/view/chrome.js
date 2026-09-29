@@ -18,10 +18,14 @@ const TOOL_LIST = [
   ["card", "Card", "N"],
   ["text", "Text", "T"],
   ["section", "Section", "G"],
+  ["board", "Board", "W"],
   ["connect", "Connect", "C"],
 ];
 
-export function createChrome({ doc = globalThis.document, root, version = "", settings, timers, on = {} } = {}) {
+const MAX_CRUMBS = 4;
+
+export function createChrome({ doc = globalThis.document, root, version = "", settings, timers, on = {}, crumbs = [] } = {}) {
+  const setting = (k) => (typeof settings?.get === "function" ? settings.get(k) : settings?.[k]);
   const listeners = [];
   const listen = (el, type, fn, opts) => {
     el.addEventListener(type, fn, opts);
@@ -63,6 +67,51 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
   // ---------------------------------------------------------------- toolbar
   const toolbar = el("div", "pxd-toolbar pxd-chrome", root);
   stopAll(toolbar);
+  const crumbsEl = el("div", "pxd-toolbar__group pxd-crumbs", toolbar);
+  // One delegated listener; re-rendering the row never adds listeners.
+  listen(crumbsEl, "click", (event) => {
+    const hit = event.target?.closest?.(".pxd-crumb[data-index]");
+    const raw = hit?.dataset?.index ?? hit?.getAttribute?.("data-index");
+    if (raw == null) return;
+    const index = Number(raw);
+    if (!Number.isFinite(index)) return;
+    event.preventDefault?.();
+    event.stopPropagation();
+    on.crumb?.(index);
+  });
+  const renderCrumbs = (list) => {
+    crumbsEl.replaceChildren();
+    const items = Array.isArray(list) ? list : [];
+    crumbsEl.style.display = items.length < 2 ? "none" : "";
+    if (items.length < 2) return;
+    const last = items.length - 1;
+    let shown = items.map((c, i) => i);
+    let hidden = [];
+    if (items.length > MAX_CRUMBS) {
+      shown = [0, last - 2, last - 1, last];
+      hidden = items.slice(1, last - 2);
+    }
+    shown.forEach((i, n) => {
+      if (n === 1 && hidden.length) {
+        const more = el("span", "pxd-crumb__more", crumbsEl, "…");
+        more.title = hidden.map((c) => c.title).join(" › ");
+        el("span", "pxd-crumb__sep", crumbsEl, "›");
+      }
+      const c = items[i];
+      if (i === last) {
+        const cur = el("span", "pxd-crumb pxd-crumb--current", crumbsEl, c.title);
+        cur.title = c.title;
+        return;
+      }
+      const b = el("button", "pxd-btn pxd-crumb", crumbsEl, c.title);
+      b.type = "button";
+      b.title = c.title;
+      b.dataset.index = String(i);
+      b.setAttribute("data-index", String(i));
+      el("span", "pxd-crumb__sep", crumbsEl, "›");
+    });
+  };
+  renderCrumbs(crumbs);
   const toolGroup = el("div", "pxd-toolbar__group", toolbar);
   const toolButtons = new Map();
   for (const [id, label, key] of TOOL_LIST) {
@@ -83,12 +132,13 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
   const minimapBtn = button(group3, "pxd-toolbar__minimap", "Minimap", "Toggle minimap", () => on.toggleMinimap?.());
   const fullBtn = button(group3, "pxd-toolbar__fullscreen", "Fullscreen", "Fullscreen this board", () => on.toggleFullscreen?.());
   const badge = el("span", "pxd-badge", toolbar, version ? `v${version}` : "");
-  if (settings?.get?.("show-version-badge") === false) badge.style.display = "none";
+  if (setting("show-version-badge") === false) badge.style.display = "none";
   const sync = el("span", "pxd-sync", toolbar);
   sync.title = "Synced";
 
   const toolbarApi = {
     el: toolbar,
+    setCrumbs: renderCrumbs,
     setTool(tool, locked) {
       for (const [id, b] of toolButtons) {
         b.classList.toggle("pxd-tool--active", id === tool);
@@ -139,10 +189,18 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
           seg("pxd-ctx__align", [["left", "L", "Align left"], ["center", "C", "Align centers"], ["right", "R", "Align right"], ["top", "T", "Align top"], ["middle", "M", "Align middles"], ["bottom", "B", "Align bottom"]], null, (v) => on.align?.(v));
           seg("pxd-ctx__distribute", [["h", "H", "Distribute horizontally"], ["v", "V", "Distribute vertically"]], null, (v) => on.distribute?.(v));
           btn("pxd-ctx__wrap", "Wrap in section", "Wrap in a new section (Cmd G)", () => on.wrap?.());
+          btn("pxd-ctx__wrap-board", "Move into new board", "Move the selection into a new nested board", () => on.wrapBoard?.());
         }
         btn("pxd-ctx__delete pxd-btn--danger", "Delete", "Delete (Del)", () => on.delete?.());
         break;
       }
+      case "board":
+        swatches(row, (c) => on.setColor?.(c));
+        btn("pxd-ctx__open-board", "Open", "Open this board (Enter)", () => on.openBoard?.());
+        if (model?.enhanced) btn("pxd-ctx__rename-board", "Rename board", "Rename the board", () => on.renameBoard?.());
+        btn("pxd-ctx__sidebar", "Open in sidebar", "Open in the right sidebar", () => on.openSidebar?.());
+        btn("pxd-ctx__delete pxd-btn--danger", "Delete", "Delete (Del)", () => on.delete?.());
+        break;
       case "section":
         swatches(row, (c) => on.setColor?.(c));
         btn("pxd-ctx__rename", "Rename", "Rename (Enter)", () => on.rename?.());

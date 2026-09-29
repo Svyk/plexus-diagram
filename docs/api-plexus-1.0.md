@@ -248,3 +248,62 @@ session.restoreNative()                            // remove plexus from board p
 mountBoardView({ host, session, mountEl, nativeEl, settings, onRequestFullscreen, fullscreen:boolean, version }) → view
 view.setFullscreen(bool) ; view.fit() ; view.dispose() ; view.root (the .pxd-root element)
 ```
+
+## 1.1 additions (R4: Roam drag-and-drop)
+
+```js
+host.cardStringForUid(uid) → string|null           // page uid → "[[Title]]", block uid → "((uid))", unknown → null
+parseDropPayload(dataTransfer, { resolveUid }) → Array<{string}>   // [] when nothing usable; never null
+```
+`parseDropPayload` order: `application/x-plexus-card`; uids from `roam/block-uid-list-only-parents`, then `roam/block-uid-list`, then `/page/<uid>` in `roam/roam-uri-list` / `text/uri-list` (deduped, max 50, each mapped through `resolveUid`, nulls dropped); then the `[[..]]` / `((..))` / bare-uid text fallbacks. Board drops stack cards 24 px apart, the first centred on the drop point; drops onto an editing card (`.pxd-item__editor`) are left to Roam.
+
+## 1.1 additions (R2: focus recovery)
+
+```js
+itemRenderer.recoverFocus() → boolean              // arms the focus floor once: refocus the live Roam textarea of the card being edited
+```
+Called by `board-view.js` when a key arrives during an edit with focus on `<body>` (the key is not run as a board shortcut). It never writes to the graph and is rate-limited (4 recoveries per 1.5 s).
+
+## 1.1 additions (F5: nested boards)
+
+A nested board is one card block: string `{{[[diagram]]:Title}}`, props `{plexus:{x,y,w,h,v:2}}` written in a single create. In the parent it is a `kind:"board"` card (`v` is ignored); its own children form the child board, which `buildBoard` reads as enhanced because of `v:2`.
+
+```js
+// schema
+DEFAULT_BOARD_CARD = {w:320, h:220} ; UNTITLED_BOARD = "Untitled board"
+boardString(title) → "{{[[diagram]]:Title}}"      // newlines → space, "}}" stripped, empty → Untitled board
+setBoardTitle(string, title) → string              // rewrites only the leading {{[[diagram]]…}} token; keeps [[diagram]]/diagram form and trailing text
+isUntitledBoard(title) → boolean                   // "" or "untitled board" (case-insensitive)
+withBoardMarker(plexus, on) → plexus|null          // on: {...plexus, v:2}; off: without v and bg, null when empty
+serializeItemLayout(l)                             // now also keeps v (only 2) and bg (dots|lines|plain)
+
+// board
+hitTest(board, point, rects, {sectionInterior=false, exclude:Set|null})   // exclude skips those uids
+boardPreview(item, {max=60}) → {count, aspect, rects:[{x,y,w,h,type,color}], bounds}
+                                                   // built from item.content (no extra pull); rects are fractions of bounds in draw order, aspect clamped 0.25..4, bounds = absolute child bounds or null
+
+// session
+session.createBoard({rect, title?}) → uid          // one create call, open:false; parent = container at the rect center
+session.wrapInBoard(uids) → uid|null               // card at the bounds (w 240..480, h 180..360); items rebased to the child origin;
+                                                   // edges with both ends moved go to a Connections block in the child; crossing edges are retargeted to the board card (self/duplicate edges are deleted)
+session.moveIntoBoard(uids, boardUid) → {moved, title, boardUid, undo()}|null
+                                                   // null unless the target is a board card; drops the target and any section containing it;
+                                                   // placed right of existing child content (bounds.x+w+48) or at 0,0 when empty; undo() is an inverse transaction
+session.renameBoard(uid, title)                    // string write of the token only, none when unchanged
+session.restoreNative()                            // now strips only v/bg: a nested card keeps x,y,w,h
+executeImport(...)                                 // final write is withBoardMarker(board.plexus, true), so nested layout survives Enhance
+```
+
+```js
+// view
+mountBoardView({ ..., crumbs:[{uid,title}]|null, onOpenBoard(uid), onCrumb(index), routeUid=session.uid, autofocus=false })
+```
+`crumbs` entries are shared with the caller, so a board rename updates them. `routeUid` is the board of the Roam route/mount: it keys the inline height and the fullscreen route watch (the viewport store stays keyed by `session.uid`). Without `onOpenBoard`, Open falls back to `host.openBlock`. Interaction actions added: `createBoard`, `moveIntoBoard(uids, boardUid, dx, dy)` (the view falls back to `commitMove` when it returns null), `openBoard`, `popBoard() → boolean`. Tool `board` (key W); Esc order is gesture, edit, selection, `popBoard`, fullscreen. `createItemRenderer` takes `onOpenBoard(uid)` and `onRenameBoard(uid, title)` and returns `renameBoard(uid)`. `createChrome` takes `crumbs` and returns `toolbar.setCrumbs(list)`; the context bar has a `board` kind (Open, Rename board) and the multi-select bar has Move into new board.
+
+```js
+// feature.js
+window.__plexusDiagram.mounts() → [{uid, current, crumbs:[uid…], fullscreen, connected}]
+```
+`uid` stays the native (route) board; `current` is the board on screen and `crumbs` the trail. Navigation (`onOpenBoard`, `onCrumb`) swaps view and session on the same mount element and keeps fullscreen; it never enhances a native diagram (a child without `v:2` goes to `host.openBlock`). A zoomed nested board seeds its crumbs from its enhanced diagram ancestors, root first. A `.rm-diagram` inside a hidden native or our overlay is never mounted. Settings changes remount with the trail intact.
+
+`settings` may be a `{get(key)}` object or a plain map in `mountBoardView`, `createChrome` and `createInteractions`.

@@ -132,3 +132,13 @@ test("q falls back and searchPages excludes roam/ titles", () => {
   fake.setQ(() => [["Alpha", "u1"], ["roam/js", "u2"], ["Alphabet", "u3"]]);
   assert.deepEqual(host.searchPages("alp").map((p) => p.title), ["Alpha", "Alphabet"]);
 });
+
+test("cardStringForUid: page -> [[Title]], block -> ((uid)), unknown -> null", () => {
+  const { fake, host } = setup();
+  const pageUid = fake.seedPage({ title: "Alpha", children: [{ uid: "p1", string: "hello" }, { uid: "p2", string: "" }] });
+  assert.equal(host.cardStringForUid(pageUid), "[[Alpha]]");
+  assert.equal(host.cardStringForUid("p1"), "((p1))");
+  assert.equal(host.cardStringForUid("p2"), "((p2))");
+  assert.equal(host.cardStringForUid("zzz"), null);
+  assert.equal(host.cardStringForUid(""), null);
+});

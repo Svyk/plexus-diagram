@@ -131,6 +131,7 @@ export function buildBoard(pulled, { defaults } = {}) {
         fontSize: layout.fontSize,
         title,
         target,
+        enhanced: kind === "board" && cplexus?.v === 2,
         members: [],
         content: type === "section" ? [] : kids,
       };
@@ -258,15 +259,15 @@ export function toRelative(board, containerUid, worldPoint, rects) {
   return { x: worldPoint.x - c.x, y: worldPoint.y - c.y };
 }
 
-export function hitTest(board, point, rects, { sectionInterior = false } = {}) {
+export function hitTest(board, point, rects, { sectionInterior = false, exclude = null } = {}) {
   for (let i = board.order.length - 1; i >= 0; i--) {
     const item = board.items.get(board.order[i]);
-    if (item.type === "section") continue;
+    if (item.type === "section" || exclude?.has(item.uid)) continue;
     if (contains(rects.get(item.uid), point)) return { uid: item.uid, part: "body" };
   }
   for (let i = board.order.length - 1; i >= 0; i--) {
     const item = board.items.get(board.order[i]);
-    if (item.type !== "section") continue;
+    if (item.type !== "section" || exclude?.has(item.uid)) continue;
     const r = rects.get(item.uid);
     if (!contains(r, point)) continue;
     if (point.y - r.y <= TITLE_BAND) return { uid: item.uid, part: "title" };
@@ -280,6 +281,30 @@ export function hitTest(board, point, rects, { sectionInterior = false } = {}) {
 export function boundsOf(rectList) {
   const list = [...rectList];
   return list.length ? list.reduce(unionRect) : null;
+}
+
+// Mini map of a nested board card: the child's items as fractions of their bounds. Built from the card's
+// already pulled subtree, so it needs no extra read.
+export function boardPreview(item, { max = 60 } = {}) {
+  const child = buildBoard({
+    ":block/uid": item?.uid,
+    ":block/string": item?.string ?? "",
+    ":block/children": item?.content ?? [],
+  });
+  if (!child) return { count: 0, aspect: 1.5, rects: [], bounds: null };
+  const world = worldRects(child);
+  const bounds = boundsOf([...world.values()]);
+  if (!bounds) return { count: 0, aspect: 1.5, rects: [], bounds: null };
+  const bw = bounds.w || 1;
+  const bh = bounds.h || 1;
+  const rects = [];
+  for (const uid of child.order) {
+    if (rects.length >= max) break;
+    const r = world.get(uid);
+    const it = child.items.get(uid);
+    rects.push({ x: (r.x - bounds.x) / bw, y: (r.y - bounds.y) / bh, w: r.w / bw, h: r.h / bh, type: it.type, color: it.color });
+  }
+  return { count: child.items.size, aspect: Math.min(4, Math.max(0.25, bw / bh)), rects, bounds };
 }
 
 export function itemsInRect(board, rect, rects, { mode = "contain" } = {}) {

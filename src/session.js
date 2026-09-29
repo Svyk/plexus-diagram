@@ -1,7 +1,9 @@
 import {
+  boardPreview,
   boundsOf,
   buildBoard,
   containerAt,
+  descendantsOf,
   diffBoards,
   edgesTouching,
   findEdge,
@@ -13,9 +15,12 @@ import {
   worldRects,
 } from "./model/board.js";
 import {
+  DEFAULT_BOARD_CARD,
   DEFAULT_SIZES,
   MIN_SIZES,
+  SCHEMA_VERSION,
   attrNameOf,
+  boardString,
   edgeString,
   mergePropsForWrite,
   normalizeEdge,
@@ -24,6 +29,8 @@ import {
   semanticRef,
   serializeEdge,
   serializeItemLayout,
+  setBoardTitle,
+  withBoardMarker,
 } from "./model/schema.js";
 import { coveredBy, filterLinks, linksQuery, reduceLinks } from "./model/links.js";
 import { createEchoLedger, createWriteQueue } from "./host/roam.js";
@@ -146,10 +153,11 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
 
   // ---- raw tree helpers (optimistic model) ----
   const rawNode = (id) => (id === uid ? raw : ix().get(id)?.node ?? null);
+  // New children go before the Connections container so it stays last (any board level, nested boards included).
   const insertOrder = (parentUid) => {
-    if (parentUid !== uid || !raw) return "last";
-    const kids = kidsOf(raw);
-    const at = kids.findIndex((k) => readPlexus(k[PROPS])?.type === "edges");
+    const node = raw ? rawNode(parentUid) : null;
+    if (!node) return "last";
+    const at = kidsOf(node).findIndex((k) => readPlexus(k[PROPS])?.type === "edges");
     return at >= 0 ? at : "last";
   };
   const rawInsert = (parentUid, node, order) => {
@@ -187,10 +195,17 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
     if (diff.structural) refreshLinks();
   };
 
+  // The board block itself vanished (deleted, or undone away): tell the owner once so it can pop out.
+  let gone = false;
+  const markGone = () => {
+    if (gone || destroyed) return;
+    gone = true;
+    emit("gone", { uid });
+  };
   const repull = () => {
     if (destroyed) return;
     const fresh = host.pullBoard(uid);
-    if (!fresh) return;
+    if (!fresh) { markGone(); return; }
     raw = clone(fresh);
     publish();
   };
@@ -260,7 +275,11 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
   };
   const unwatch = raw
     ? host.watchBoard(uid, (after) => {
-      if (destroyed || !after || !after[UID]) return;
+      if (destroyed) return;
+      if (!after || !after[UID]) {
+        if (!host.pullBoard(uid)) markGone();
+        return;
+      }
       latest = after;
       if (!scheduled) { scheduled = true; schedule(flush); }
     })
@@ -355,7 +374,7 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
   }
 
   function txn(fn) {
-    if (!board || destroyed) return Promise.resolve(undefined);
+    if (!board || destroyed || gone) return Promise.resolve(undefined);
     const ops = [];
     const t = {
       create({ parent, uid: id, string = "", plexus, open, order }) {
@@ -501,6 +520,7 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
     host,
     settings,
     get board() { return board; },
+    get gone() { return gone; },
     get rects() { return rects; },
     get links() { return visibleLinks; },
     get coveredEdges() { return covered; },
@@ -609,6 +629,81 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
         const pad = 32;
         const rect = { x: b.x - pad, y: b.y - pad, w: b.w + pad * 2, h: b.h + pad * 2 };
         return makeSection(t, rect, "Section", undefined, top);
+      });
+    },
+
+    createBoard({ rect, title } = {}) {
+      return txn((t) => {
+        const d = DEFAULT_BOARD_CARD;
+        const r = { x: rect?.x ?? 0, y: rect?.y ?? 0, w: rect?.w ?? d.w, h: rect?.h ?? d.h };
+        const size = clampSize("card", r.w, r.h);
+        return makeBoard(t, { x: r.x, y: r.y, w: size.w, h: size.h }, title, undefined);
+      });
+    },
+
+    wrapInBoard(uids) {
+      return txn((t) => {
+        const top = topLevelOf(board, uids);
+        const b = boundsOf(top.map((id) => rects.get(id)));
+        if (!b) return null;
+        const card = { x: b.x, y: b.y, w: Math.min(480, Math.max(240, b.w)), h: Math.min(360, Math.max(180, b.h)) };
+        const boardUid = makeBoard(t, card, "", new Set(top), b);
+        moveItemsInto(t, top, boardUid, { x: b.x, y: b.y }, { x: 0, y: 0 });
+        return boardUid;
+      });
+    },
+
+    moveIntoBoard(uids, boardUid) {
+      if (!board || destroyed) return Promise.resolve(null);
+      const target = board.items.get(boardUid);
+      if (!target || target.kind !== "board" || !target.enhanced) return Promise.resolve(null);
+      const top = topLevelOf(board, uids).filter((id) => id !== boardUid && !descendantsOf(board, id).has(boardUid));
+      if (!top.length) return Promise.resolve(null);
+      const preview = boardPreview(target);
+      const cb = preview.bounds;
+      const place = cb ? { x: cb.x + cb.w + 48, y: cb.y } : { x: 0, y: 0 };
+      const origin = boundsOf(top.map((id) => rects.get(id)));
+      const moved = new Set(top);
+      for (const id of top) for (const d of descendantsOf(board, id)) moved.add(d);
+      const undoItems = top.map((id) => {
+        const hit = ix().get(id);
+        return { uid: id, parentUid: hit.parent[UID], order: kidsOf(hit.parent).indexOf(hit.node), plexus: clone(readPlexus(hit.node[PROPS])) };
+      }).sort((a, b) => a.order - b.order);
+      const undoEdges = [];
+      const info = { createdContainer: null };
+      return txn((t) => {
+        moveItemsInto(t, top, boardUid, origin, place, { moved, undoEdges, info });
+        return {
+          moved: top.slice(),
+          title: target.title,
+          boardUid,
+          undo: () => txn((u) => {
+            for (const it of undoItems) {
+              u.move(it.uid, it.parentUid, it.order);
+              u.props(it.uid, it.plexus);
+            }
+            for (const e of undoEdges.sort((a, b) => a.order - b.order)) {
+              if (e.deleted) u.create({ uid: e.uid, parent: e.parent, order: e.order, string: e.string, plexus: e.plexus });
+              else {
+                if (e.relocated) u.move(e.uid, e.parent, e.order);
+                u.props(e.uid, e.plexus);
+                u.string(e.uid, e.string);
+              }
+            }
+            if (info.createdContainer) u.del(info.createdContainer);
+          }),
+        };
+      });
+    },
+
+    renameBoard(id, title) {
+      return txn((t) => {
+        const cur0 = board.items.get(id);
+        if (cur0?.kind !== "board" || !cur0.enhanced) return;
+        const cur = rawNode(id)?.[STR];
+        if (cur === undefined) return;
+        const next = setBoardTitle(cur, title);
+        if (next !== cur) t.string(id, next);
       });
     },
 
@@ -810,7 +905,7 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
     },
 
     restoreNative() {
-      return txn((t) => { t.props(uid, null); });
+      return txn((t) => { t.props(uid, withBoardMarker(rawPlexus(uid), false)); });
     },
 
     release() { /* replaced by acquireSession */ },
@@ -827,6 +922,68 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
       ledger.clear();
     },
   };
+
+  // A nested board is one card block: the board string plus its layout and `v: 2` in a single create.
+  function makeBoard(t, rect, title, exclude, centerOf = rect) {
+    const parent = containerAt(board, { x: centerOf.x + centerOf.w / 2, y: centerOf.y + centerOf.h / 2 }, { rects, exclude });
+    const rel = toRelative(board, parent, { x: rect.x, y: rect.y }, rects);
+    return t.create({
+      parent,
+      string: boardString(title),
+      plexus: serializeItemLayout({ x: rel.x, y: rel.y, w: rect.w, h: rect.h, v: SCHEMA_VERSION }),
+      open: false,
+    });
+  }
+
+  // Moves top-level items into a child board (rebased to its origin) and re-homes the connections that follow.
+  function moveItemsInto(t, top, boardUid, origin, place, track = {}) {
+    const moved = track.moved ?? new Set([...top].flatMap((id) => [id, ...descendantsOf(board, id)]));
+    for (const id of top) {
+      const r = rects.get(id);
+      t.move(id, boardUid, insertOrder(boardUid));
+      t.props(id, itemPlexus(id, { x: round1(r.x - origin.x + place.x), y: round1(r.y - origin.y + place.y) }));
+    }
+    let childContainer = null;
+    const childEdges = () => {
+      if (childContainer) return childContainer;
+      const existing = kidsOf(rawNode(boardUid)).find((k) => readPlexus(k[PROPS])?.type === "edges");
+      if (existing) { childContainer = existing[UID]; return childContainer; }
+      childContainer = t.create({ parent: boardUid, order: "last", string: "Connections", plexus: { type: "edges" }, open: false });
+      if (track.info) track.info.createdContainer = childContainer;
+      return childContainer;
+    };
+    const taken = new Set();
+    // Snapshot first: moving one edge out renumbers its siblings, and undo needs the original positions.
+    const touched = [...board.edges.values()].filter((e) => moved.has(e.from) || moved.has(e.to));
+    const snapshots = new Map();
+    for (const e of touched) {
+      const hit = ix().get(e.uid);
+      if (hit?.parent) {
+        snapshots.set(e.uid, { uid: e.uid, parent: hit.parent[UID], order: kidsOf(hit.parent).indexOf(hit.node), plexus: clone(readPlexus(hit.node[PROPS])), string: hit.node[STR] ?? "" });
+      }
+    }
+    for (const e of touched) {
+      const snapshot = snapshots.get(e.uid);
+      if (snapshot) track.undoEdges?.push(snapshot);
+      if (moved.has(e.from) && moved.has(e.to)) {
+        if (snapshot) snapshot.relocated = true;
+        t.move(e.uid, childEdges(), "last");
+        continue;
+      }
+      const from = moved.has(e.from) ? boardUid : e.from;
+      const to = moved.has(e.to) ? boardUid : e.to;
+      const dup = findEdge(board, from, to);
+      const key = `${from}>${to}`;
+      if (from === to || (dup && dup.uid !== e.uid) || taken.has(key)) {
+        if (snapshot) snapshot.deleted = true;
+        t.del(e.uid);
+        continue;
+      }
+      taken.add(key);
+      t.props(e.uid, edgePlexus(e.uid, { from, to, fromSide: moved.has(e.from) ? "auto" : e.fromSide, toSide: moved.has(e.to) ? "auto" : e.toSide }));
+      t.string(e.uid, edgeStringFor(from, to, e.dir, e.label));
+    }
+  }
 
   function makeSection(t, rect, title, color, adopt) {
     const parent = containerAt(board, { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 }, { rects });

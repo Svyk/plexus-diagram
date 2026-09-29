@@ -4,6 +4,7 @@ import {
   ARROWS, PALETTE, attrNameOf, classifyString, colorForLabel, edgeString, firstLine,
   mergePropsForWrite, normalizeEdge, normalizeItemLayout, parseBoardTitle, parseEdgeLabel,
   plainKeys, plainText, readPlexus, semanticRef, serializeEdge, serializeItemLayout,
+  DEFAULT_BOARD_CARD, UNTITLED_BOARD, boardString, isUntitledBoard, setBoardTitle, withBoardMarker,
 } from "../src/model/schema.js";
 
 test("plainKeys strips one leading colon at every depth and keeps values", () => {
@@ -139,4 +140,45 @@ test("colorForLabel", () => {
     assert.ok(PALETTE.includes(c));
     assert.equal(colorForLabel(l), c);
   }
+});
+
+test("boardString sanitizes braces and newlines and falls back to Untitled board", () => {
+  assert.equal(boardString("Plan"), "{{[[diagram]]:Plan}}");
+  assert.equal(boardString("a}}b\nc"), "{{[[diagram]]:ab c}}");
+  assert.equal(boardString("   "), `{{[[diagram]]:${UNTITLED_BOARD}}}`);
+  assert.equal(boardString(), `{{[[diagram]]:${UNTITLED_BOARD}}}`);
+  assert.deepEqual(DEFAULT_BOARD_CARD, { w: 320, h: 220 });
+});
+
+test("setBoardTitle rewrites only the leading token and keeps its form and trailing text", () => {
+  assert.equal(setBoardTitle("{{[[diagram]]:Old}}", "New"), "{{[[diagram]]:New}}");
+  assert.equal(setBoardTitle("{{diagram:Old}}", "New"), "{{diagram:New}}");
+  assert.equal(setBoardTitle("{{[[diagram]]:Old}} #tag tail", "New"), "{{[[diagram]]:New}} #tag tail");
+  assert.equal(setBoardTitle("{{[[diagram]]}}", "New"), "{{[[diagram]]:New}}");
+  assert.equal(setBoardTitle("{{diagram:Old}}", "  "), `{{diagram:${UNTITLED_BOARD}}}`);
+  assert.equal(setBoardTitle("plain text", "New"), "{{[[diagram]]:New}}");
+  assert.equal(parseBoardTitle(setBoardTitle("{{[[diagram]]:Old}}", "New")), "New");
+});
+
+test("isUntitledBoard is true for empty and the placeholder title only", () => {
+  assert.equal(isUntitledBoard(""), true);
+  assert.equal(isUntitledBoard(undefined), true);
+  assert.equal(isUntitledBoard("Untitled Board"), true);
+  assert.equal(isUntitledBoard("Plan"), false);
+});
+
+test("serializeItemLayout keeps the board marker v:2 and a valid bg, drops other values", () => {
+  assert.deepEqual(serializeItemLayout({ x: 1, y: 2, v: 2 }), { x: 1, y: 2, v: 2 });
+  assert.deepEqual(serializeItemLayout({ x: 1, y: 2, v: 3 }), { x: 1, y: 2 });
+  assert.deepEqual(serializeItemLayout({ x: 1, bg: "lines" }), { x: 1, bg: "lines" });
+  assert.deepEqual(serializeItemLayout({ x: 1, bg: "neon" }), { x: 1 });
+  assert.deepEqual(serializeItemLayout({ x: 1, y: 2, w: 3, h: 4 }), { x: 1, y: 2, w: 3, h: 4 });
+});
+
+test("withBoardMarker adds v:2 or strips v and bg without touching layout", () => {
+  assert.deepEqual(withBoardMarker({ x: 1, y: 2 }, true), { x: 1, y: 2, v: 2 });
+  assert.deepEqual(withBoardMarker(null, true), { v: 2 });
+  assert.deepEqual(withBoardMarker({ ":x": 1, ":v": 2, ":bg": "dots" }, false), { x: 1 });
+  assert.equal(withBoardMarker({ v: 2, bg: "dots" }, false), null);
+  assert.equal(withBoardMarker(null, false), null);
 });

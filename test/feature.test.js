@@ -143,6 +143,7 @@ function setup({ enhanced = [], legacy = null, settings = {}, hash = "" } = {}) 
       data: {
         pull(pattern, ref) {
           if (pattern === "[:block/props]") return { ":block/props": props.get(ref[1]) ?? null };
+          if (pattern.includes(":block/parents")) return env.ancestors?.[ref[1]] ?? null;
           if (pattern.includes("...")) return legacyTree;
           return null;
         },
@@ -158,14 +159,23 @@ function setup({ enhanced = [], legacy = null, settings = {}, hash = "" } = {}) 
     openBlock: async (uid) => { writes.openBlock.push(uid); },
   };
 
-  const sessions = { acquired: 0, released: 0, enhance: 0, restore: 0, live: new Map() };
+  const sessions = { acquired: 0, released: 0, enhance: 0, restore: 0, live: new Map(), made: [] };
   const acquireSession = (uid) => {
     sessions.acquired += 1;
     sessions.live.set(uid, (sessions.live.get(uid) || 0) + 1);
-    return {
+    const handlers = new Set();
+    const goneHandlers = new Set();
+    const session = {
       uid,
-      board: { enhanced: props.has(uid) },
-      on: () => () => {},
+      board: env.ghost?.has(uid) ? null : { enhanced: props.has(uid) },
+      on: (name, fn) => {
+        const set = name === "change" ? handlers : name === "gone" ? goneHandlers : null;
+        set?.add(fn);
+        return () => set?.delete(fn);
+      },
+      emitGone: () => goneHandlers.forEach((fn) => fn()),
+      emitChange: () => handlers.forEach((fn) => fn()),
+      handlerCount: () => handlers.size,
       enhance: async () => { sessions.enhance += 1; props.set(uid, { ":plexus": { ":v": 2 } }); },
       restoreNative: async () => {
         sessions.restore += 1;
@@ -175,6 +185,8 @@ function setup({ enhanced = [], legacy = null, settings = {}, hash = "" } = {}) 
       },
       release: () => { sessions.released += 1; sessions.live.set(uid, sessions.live.get(uid) - 1); },
     };
+    sessions.made.push(session);
+    return session;
   };
 
   const views = [];
@@ -256,7 +268,7 @@ test("an enhanced diagram mounts exactly once and hides the native surfaces", as
     assert.equal(t.views[0].args.nativeEl, native);
     assert.equal(t.views[0].args.version, PACKAGE_VERSION);
     assert.equal(t.views[0].args.settings["graph-links"], "all");
-    assert.deepEqual(t.env.win.__plexusDiagram.mounts(), [{ uid: "boardAAA1", fullscreen: false, connected: true }]);
+    assert.deepEqual(t.env.win.__plexusDiagram.mounts(), [{ uid: "boardAAA1", current: "boardAAA1", crumbs: ["boardAAA1"], fullscreen: false, connected: true }]);
     assert.equal(t.env.win.__plexusDiagram.version, PACKAGE_VERSION);
     assert.equal(t.env.win.__plexusDiagram.stats, t.host.stats);
     assert.match(t.doc.getElementById(PREPAINT_STYLE_ID).textContent, /boardAAA1/);
@@ -544,6 +556,264 @@ test("settings changes reach mounted views through setSettings, else remount", a
 
     rows.enabled.action.onChange({ target: { checked: false } });
     assert.ok(!native.classList.contains("pxd-native-hidden"));
+    assert.deepEqual(t.env.win.__plexusDiagram.mounts(), []);
+  });
+});
+
+// ---- nested boards ----------------------------------------------------------------------------
+
+const settle = () => new Promise((resolve) => setImmediate(resolve));
+
+test("F5 onOpenBoard swaps the view and session in place: same mount, old view disposed once, old session released once", async () => {
+  await withEnv({ enhanced: ["boardAAA1", "childBBB1"] }, async (t) => {
+    const { native } = addNative(t.doc, "boardAAA1");
+    t.strings.set("boardAAA1", "{{[[diagram]]:Root}}");
+    t.strings.set("childBBB1", "{{[[diagram]]:Child}}");
+    await t.install();
+    t.tick();
+    const first = t.views[0];
+    assert.deepEqual(first.args.crumbs, [{ uid: "boardAAA1", title: "Root" }]);
+    assert.equal(first.args.routeUid, "boardAAA1");
+    const mountEl = first.args.mountEl;
+    first.args.onOpenBoard("childBBB1");
+    assert.equal(t.views.length, 1, "navigation is deferred out of the caller's handler stack");
+    await settle();
+    assert.equal(t.views.length, 2);
+    assert.equal(first.disposed, 1);
+    assert.equal(t.sessions.acquired, 2);
+    assert.equal(t.sessions.released, 1);
+    assert.equal(t.sessions.live.get("boardAAA1"), 0);
+    assert.equal(t.sessions.live.get("childBBB1"), 1);
+    const second = t.views[1];
+    assert.equal(second.args.mountEl, mountEl, "same mount element");
+    assert.equal(second.args.nativeEl, native);
+    assert.equal(second.args.session.uid, "childBBB1");
+    assert.equal(second.args.routeUid, "boardAAA1", "the route board stays the zoomed block");
+    assert.equal(second.args.autofocus, true);
+    assert.deepEqual(second.args.crumbs, [{ uid: "boardAAA1", title: "Root" }, { uid: "childBBB1", title: "Child" }]);
+    assert.ok(native.classList.contains("pxd-native-hidden"));
+    assert.equal(t.doc.root.querySelectorAll(".pxd-mount").length, 1);
+    assert.deepEqual(t.env.win.__plexusDiagram.mounts(), [{ uid: "boardAAA1", current: "childBBB1", crumbs: ["boardAAA1", "childBBB1"], fullscreen: false, connected: true }]);
+    assert.equal(t.writes.createBlock.length + t.sessions.enhance, 0, "navigation writes nothing");
+  });
+});
+
+test("F5 onCrumb goes back in place, and a click on the current crumb is a no-op", async () => {
+  await withEnv({ enhanced: ["boardAAA1", "childBBB1"] }, async (t) => {
+    addNative(t.doc, "boardAAA1");
+    await t.install();
+    t.tick();
+    t.views[0].args.onOpenBoard("childBBB1");
+    await settle();
+    const nested = t.views[1];
+    nested.args.onCrumb(1);
+    await settle();
+    assert.equal(t.views.length, 2, "the current board is not re-mounted");
+    nested.args.onCrumb(0);
+    await settle();
+    assert.equal(t.views.length, 3);
+    assert.equal(nested.disposed, 1);
+    assert.equal(t.views[2].args.session.uid, "boardAAA1");
+    assert.deepEqual(t.views[2].args.crumbs.map((c) => c.uid), ["boardAAA1"]);
+    assert.equal(t.sessions.live.get("childBBB1"), 0);
+    assert.equal(t.sessions.live.get("boardAAA1"), 1);
+    assert.equal(t.env.win.__plexusDiagram.mounts()[0].current, "boardAAA1");
+  });
+});
+
+test("F5 opening a child that is not enhanced hands it to Roam and never enhances it", async () => {
+  await withEnv({ enhanced: ["boardAAA1"] }, async (t) => {
+    addNative(t.doc, "boardAAA1");
+    await t.install();
+    t.tick();
+    t.views[0].args.onOpenBoard("nativeCCC1");
+    await settle();
+    assert.deepEqual(t.writes.openBlock, ["nativeCCC1"]);
+    assert.equal(t.views.length, 1);
+    assert.equal(t.views[0].disposed, 0);
+    assert.equal(t.sessions.acquired, 1);
+    assert.equal(t.sessions.enhance, 0);
+    assert.equal(t.writes.createBlock.length, 0);
+  });
+});
+
+test("F5 opening a child whose board cannot be loaded releases it and stays put", async () => {
+  await withEnv({ enhanced: ["boardAAA1", "ghostDDD1"] }, async (t) => {
+    addNative(t.doc, "boardAAA1");
+    await t.install();
+    t.env.ghost = new Set(["ghostDDD1"]);
+    t.tick();
+    t.views[0].args.onOpenBoard("ghostDDD1");
+    await settle();
+    assert.equal(t.views.length, 1);
+    assert.equal(t.views[0].disposed, 0, "still showing the previous board");
+    assert.equal(t.sessions.live.get("ghostDDD1"), 0, "the failed acquire was released");
+    assert.equal(t.sessions.live.get("boardAAA1"), 1);
+    assert.equal(t.env.win.__plexusDiagram.mounts()[0].current, "boardAAA1");
+  });
+});
+
+test("F5 a zoomed nested board seeds its breadcrumbs root-first from the diagram ancestors", async () => {
+  await withEnv({ enhanced: ["childBBB1"] }, async (t) => {
+    t.env.ancestors = {
+      childBBB1: {
+        ":block/uid": "childBBB1",
+        ":block/parents": [
+          { ":block/uid": "pageBlk01", ":block/string": "just a bullet", ":block/parents": [{ ":db/id": 1 }] },
+          { ":block/uid": "midMMM001", ":block/string": "{{[[diagram]]:Middle}}", ":block/props": { ":plexus": { ":v": 2 } }, ":block/parents": [{ ":db/id": 1 }, { ":db/id": 2 }] },
+          { ":block/uid": "boardAAA1", ":block/string": "{{[[diagram]]:Root}}", ":block/props": { ":plexus": { ":v": 2 } }, ":block/parents": [{ ":db/id": 1 }] },
+          { ":block/uid": "nativeNN01", ":block/string": "{{[[diagram]]:Native}}", ":block/props": {}, ":block/parents": [] },
+        ],
+      },
+    };
+    t.strings.set("childBBB1", "{{[[diagram]]}}");
+    addNative(t.doc, "childBBB1");
+    await t.install();
+    t.tick();
+    assert.deepEqual(t.views[0].args.crumbs, [
+      { uid: "boardAAA1", title: "Root" },
+      { uid: "midMMM001", title: "Middle" },
+      { uid: "childBBB1", title: "Untitled board" },
+    ]);
+    assert.equal(t.views[0].args.routeUid, "childBBB1");
+    assert.equal(t.views[0].args.session.uid, "childBBB1");
+    // clicking the root crumb navigates in place; the route board stays the mount's uid
+    t.props.set("boardAAA1", { ":plexus": { ":v": 2 } });
+    t.views[0].args.onCrumb(0);
+    await settle();
+    assert.equal(t.views[1].args.session.uid, "boardAAA1");
+    assert.equal(t.views[1].args.routeUid, "childBBB1");
+    assert.deepEqual(t.views[1].args.crumbs.map((c) => c.uid), ["boardAAA1"]);
+  });
+});
+
+test("F5 a native diagram nested inside a hidden native or our overlay is not mounted", async () => {
+  await withEnv({ enhanced: ["boardAAA1", "innerNNN1"] }, async (t) => {
+    const { native } = addNative(t.doc, "boardAAA1");
+    await t.install();
+    t.tick();
+    const inner = addNative(t.doc, "innerNNN1", { parent: native });
+    inner.native.parentElement.closestMap[".pxd-native-hidden, .pxd-root"] = native;
+    t.tick();
+    t.tick();
+    assert.equal(t.views.length, 1);
+    assert.equal(t.sessions.live.get("innerNNN1"), undefined);
+  });
+});
+
+test("F5 unmount after navigation releases the current session exactly once", async () => {
+  await withEnv({ enhanced: ["boardAAA1", "childBBB1"] }, async (t) => {
+    const { native } = addNative(t.doc, "boardAAA1");
+    await t.install();
+    t.tick();
+    t.views[0].args.onOpenBoard("childBBB1");
+    await settle();
+    native.remove();
+    t.tick();
+    assert.equal(t.views[1].disposed, 1);
+    assert.equal(t.sessions.acquired, 2);
+    assert.equal(t.sessions.released, 2);
+    assert.equal(t.sessions.live.get("childBBB1"), 0);
+    assert.deepEqual(t.env.win.__plexusDiagram.mounts(), []);
+    t.views[1].args.onCrumb(0);
+    await settle();
+    assert.equal(t.views.length, 2, "a stale view cannot navigate a removed mount");
+  });
+});
+
+test("F5 dispose while nested tears down the current view and session", async () => {
+  const t = setup({ enhanced: ["boardAAA1", "childBBB1"] });
+  try {
+    addNative(t.doc, "boardAAA1");
+    await t.install();
+    t.tick();
+    t.views[0].args.onOpenBoard("childBBB1");
+    await settle();
+    await t.lifecycle.dispose();
+    assert.equal(t.views[1].disposed, 1);
+    assert.equal(t.sessions.released, t.sessions.acquired);
+    t.views[1].args.onCrumb(0);
+    await settle();
+    assert.equal(t.views.length, 2, "nothing mounts after teardown");
+  } finally {
+    t.restore();
+  }
+});
+
+test("F5 a settings remount keeps the in-place navigation stack", async () => {
+  const { createSettingsPanel } = await import("../src/settings.js");
+  await withEnv({ enhanced: ["boardAAA1", "childBBB1"] }, async (t) => {
+    addNative(t.doc, "boardAAA1");
+    await t.install();
+    t.tick();
+    t.views[0].args.onOpenBoard("childBBB1");
+    await settle();
+    const rows = Object.fromEntries(createSettingsPanel().settings.map((row) => [row.id, row]));
+    rows.wheel.action.onChange("zoom");
+    const last = t.views.at(-1);
+    assert.equal(last.args.session.uid, "childBBB1");
+    assert.deepEqual(last.args.crumbs.map((c) => c.uid), ["boardAAA1", "childBBB1"]);
+    assert.equal(last.args.routeUid, "boardAAA1");
+    assert.equal(t.sessions.released, t.sessions.acquired - 1);
+  });
+});
+
+test("F5 a nested board that loses its marker pops one level; the route board falls back to native", async () => {
+  await withEnv({ enhanced: ["boardAAA1", "childBBB1"] }, async (t) => {
+    const { native } = addNative(t.doc, "boardAAA1");
+    await t.install();
+    t.tick();
+    t.views[0].args.onOpenBoard("childBBB1");
+    await settle();
+    const child = t.sessions.made.find((s) => s.uid === "childBBB1");
+    const root = t.sessions.made.find((s) => s.uid === "boardAAA1");
+    assert.equal(root.handlerCount(), 0, "the old session is no longer watched");
+    assert.equal(child.handlerCount(), 1);
+    child.board.enhanced = false;
+    child.emitChange();
+    await settle();
+    assert.equal(t.env.win.__plexusDiagram.mounts()[0].current, "boardAAA1", "popped back to the parent board");
+    assert.ok(native.classList.contains("pxd-native-hidden"), "still enhanced at the route board");
+    const rootAgain = t.sessions.made.filter((s) => s.uid === "boardAAA1").at(-1);
+    rootAgain.board.enhanced = false;
+    rootAgain.emitChange();
+    assert.ok(!native.classList.contains("pxd-native-hidden"), "the route board itself restores the native diagram");
+    assert.deepEqual(t.env.win.__plexusDiagram.mounts(), []);
+  });
+});
+
+test("F5 a 0.6 board mounted under an already migrated ancestor still imports", async () => {
+  await withEnv({ enhanced: [], legacy: [{ uid: "legacyLL01", migrated: false }], hash: "#/app/Svy" }, async (t) => {
+    t.env.ancestors = {
+      legacyLL01: {
+        ":block/uid": "legacyLL01",
+        ":block/parents": [
+          { ":block/uid": "boardAAA1", ":block/string": "{{[[diagram]]:Root}}", ":block/props": { ":plexus": { ":v": 2 } }, ":block/parents": [{ ":db/id": 1 }] },
+        ],
+      },
+    };
+    addNative(t.doc, "legacyLL01");
+    await t.install();
+    t.tick();
+    await settle();
+    assert.equal(t.views[0].args.crumbs.length, 2);
+    assert.equal(t.sessions.enhance, 1);
+  });
+});
+
+test("F5 a nested board whose block disappears pops to the parent; a vanished route board unmounts", async () => {
+  await withEnv({ enhanced: ["boardAAA1", "childBBB1"] }, async (t) => {
+    addNative(t.doc, "boardAAA1");
+    await t.install();
+    t.tick();
+    t.views[0].args.onOpenBoard("childBBB1");
+    await settle();
+    const child = t.sessions.made.find((s) => s.uid === "childBBB1");
+    child.emitGone();
+    await settle();
+    assert.equal(t.env.win.__plexusDiagram.mounts()[0].current, "boardAAA1");
+    const root = t.sessions.made.filter((s) => s.uid === "boardAAA1").at(-1);
+    root.emitGone();
     assert.deepEqual(t.env.win.__plexusDiagram.mounts(), []);
   });
 });

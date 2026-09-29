@@ -117,11 +117,14 @@ var PALETTE = ["gray", "red", "orange", "yellow", "green", "teal", "blue", "indi
 var ITEM_TYPES = ["card", "section", "text"];
 var DEFAULT_SIZES = { card: { w: 280, h: 160 }, section: { w: 480, h: 320 }, text: { w: 240, h: 48 } };
 var MIN_SIZES = { card: { w: 200, h: 80 }, section: { w: 160, h: 100 }, text: { w: 60, h: 24 } };
+var DEFAULT_BOARD_CARD = { w: 320, h: 220 };
+var UNTITLED_BOARD = "Untitled board";
 var FONT_SIZES = [16, 24, 32, 48];
 var EDGE_DEFAULTS = { fromSide: "auto", toSide: "auto", dir: "one", route: "curve", dash: "solid", weight: 1 };
 var SIDES = ["auto", "top", "right", "bottom", "left"];
 var ARROWS = { one: "→", two: "↔", none: "—" };
 var ARROW_TOKENS = Object.values(ARROWS);
+var BOARD_BACKGROUNDS = ["dots", "lines", "plain"];
 var ROUTES = ["curve", "straight", "elbow"];
 var DASHES = ["solid", "dashed"];
 var DIRS = ["one", "two", "none"];
@@ -172,7 +175,16 @@ function serializeItemLayout(layout) {
   if (PALETTE.includes(l.color)) out.color = l.color;
   if (l.collapsed === true) out.collapsed = true;
   if (l.type === "text" && FONT_SIZES.includes(l.fontSize)) out.fontSize = l.fontSize;
+  if (l.v === SCHEMA_VERSION) out.v = SCHEMA_VERSION;
+  if (BOARD_BACKGROUNDS.includes(l.bg)) out.bg = l.bg;
   return out;
+}
+function withBoardMarker(plexus, on) {
+  const base = isObject(plexus) ? plainKeys(plexus) : {};
+  if (on) return { ...base, v: SCHEMA_VERSION };
+  delete base.v;
+  delete base.bg;
+  return Object.keys(base).length ? base : null;
 }
 function normalizeEdge(plexus) {
   const p = isObject(plexus) ? plexus : {};
@@ -229,6 +241,20 @@ function classifyString(s) {
 function parseBoardTitle(s) {
   const m = /^\s*\{\{\s*(?:\[\[)?diagram(?:\]\])?\s*:([\s\S]*?)\}\}\s*$/i.exec(String(s ?? ""));
   return m ? m[1].trim() : "";
+}
+var cleanBoardTitle = (title) => String(title ?? "").replace(/\s*[\r\n]+\s*/g, " ").split("}}").join("").trim();
+function boardString(title) {
+  return `{{[[diagram]]:${cleanBoardTitle(title) || UNTITLED_BOARD}}}`;
+}
+function setBoardTitle(s, title) {
+  const cur = String(s ?? "");
+  const m = /^(\s*\{\{\s*(?:\[\[)?diagram(?:\]\])?)\s*(?::[^}]*)?\}\}/i.exec(cur);
+  if (!m) return boardString(title);
+  return `${m[1]}:${cleanBoardTitle(title) || UNTITLED_BOARD}}}${cur.slice(m[0].length)}`;
+}
+function isUntitledBoard(title) {
+  const t = String(title ?? "").trim().toLowerCase();
+  return t === "" || t === UNTITLED_BOARD.toLowerCase();
 }
 function plainText(s, max = 200) {
   let t = String(s ?? "");
@@ -531,6 +557,19 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
       const res = pull("[:block/uid]", [":node/title", title]);
       return res?.[":block/uid"] ?? null;
     },
+    cardStringForUid(uid) {
+      const id = String(uid ?? "").trim();
+      if (!id) return null;
+      let res;
+      try {
+        res = pull("[:block/uid :node/title]", eidKey(id));
+      } catch {
+        return null;
+      }
+      if (!res?.[":block/uid"]) return null;
+      const title = res[":node/title"];
+      return typeof title === "string" && title ? `[[${title}]]` : `((${id}))`;
+    },
     blockString(uid) {
       const res = pull("[:block/string]", eidKey(uid));
       return typeof res?.[":block/string"] === "string" ? res[":block/string"] : null;
@@ -804,6 +843,7 @@ function buildBoard(pulled, { defaults } = {}) {
         fontSize: layout.fontSize,
         title,
         target,
+        enhanced: kind === "board" && cplexus?.v === 2,
         members: [],
         content: type === "section" ? [] : kids
       };
@@ -919,15 +959,15 @@ function toRelative(board, containerUid, worldPoint, rects) {
   const c = worldRect(board, containerUid, rects);
   return { x: worldPoint.x - c.x, y: worldPoint.y - c.y };
 }
-function hitTest(board, point, rects, { sectionInterior = false } = {}) {
+function hitTest(board, point, rects, { sectionInterior = false, exclude = null } = {}) {
   for (let i = board.order.length - 1; i >= 0; i--) {
     const item = board.items.get(board.order[i]);
-    if (item.type === "section") continue;
+    if (item.type === "section" || exclude?.has(item.uid)) continue;
     if (contains(rects.get(item.uid), point)) return { uid: item.uid, part: "body" };
   }
   for (let i = board.order.length - 1; i >= 0; i--) {
     const item = board.items.get(board.order[i]);
-    if (item.type !== "section") continue;
+    if (item.type !== "section" || exclude?.has(item.uid)) continue;
     const r = rects.get(item.uid);
     if (!contains(r, point)) continue;
     if (point.y - r.y <= TITLE_BAND) return { uid: item.uid, part: "title" };
@@ -940,6 +980,27 @@ function hitTest(board, point, rects, { sectionInterior = false } = {}) {
 function boundsOf(rectList) {
   const list = [...rectList];
   return list.length ? list.reduce(unionRect) : null;
+}
+function boardPreview(item, { max = 60 } = {}) {
+  const child = buildBoard({
+    ":block/uid": item?.uid,
+    ":block/string": item?.string ?? "",
+    ":block/children": item?.content ?? []
+  });
+  if (!child) return { count: 0, aspect: 1.5, rects: [], bounds: null };
+  const world = worldRects(child);
+  const bounds = boundsOf([...world.values()]);
+  if (!bounds) return { count: 0, aspect: 1.5, rects: [], bounds: null };
+  const bw = bounds.w || 1;
+  const bh = bounds.h || 1;
+  const rects = [];
+  for (const uid of child.order) {
+    if (rects.length >= max) break;
+    const r = world.get(uid);
+    const it = child.items.get(uid);
+    rects.push({ x: (r.x - bounds.x) / bw, y: (r.y - bounds.y) / bh, w: r.w / bw, h: r.h / bh, type: it.type, color: it.color });
+  }
+  return { count: child.items.size, aspect: Math.min(4, Math.max(0.25, bw / bh)), rects, bounds };
 }
 function itemsInRect(board, rect, rects, { mode = "contain" } = {}) {
   const test = mode === "intersect" ? intersects : (r, a) => containsRect(r, a);
@@ -1437,8 +1498,12 @@ function planImport(board, source, { gen = defaultGen() } = {}) {
 async function executeImport(plan, host, board) {
   const counts = { sections: 0, members: 0, items: 0, edges: 0 };
   const layoutProps = (layout) => serializeItemLayout(layout);
+  const keepMarker = (uid, layout) => {
+    const cur = readPlexus(host.pullProps?.(uid));
+    return layoutProps(cur ? { ...layout, v: cur.v, bg: cur.bg } : layout);
+  };
   for (const s of plan.sections) {
-    if (s.existing) await host.updateProps(s.uid, layoutProps({ ...s.layout, type: "section" }));
+    if (s.existing) await host.updateProps(s.uid, keepMarker(s.uid, { ...s.layout, type: "section" }));
     else {
       await host.createBlock({
         parentUid: board.uid,
@@ -1458,12 +1523,12 @@ async function executeImport(plan, host, board) {
     for (const uid of s.members) {
       await host.moveBlock(uid, s.uid, "last");
       const layout = memberLayouts.get(uid);
-      if (layout) await host.updateProps(uid, layoutProps(layout));
+      if (layout) await host.updateProps(uid, keepMarker(uid, layout));
       counts.members++;
     }
   }
   for (const { uid, layout } of plan.itemLayouts) {
-    await host.updateProps(uid, layoutProps(layout));
+    await host.updateProps(uid, keepMarker(uid, layout));
     counts.items++;
   }
   if (plan.edges.length) {
@@ -1489,7 +1554,7 @@ async function executeImport(plan, host, board) {
     host.viewports?.set(board.uid, plan.viewport);
     host.viewports?.flushAll?.();
   }
-  await host.updateProps(board.uid, { v: 2 });
+  await host.updateProps(board.uid, withBoardMarker(board.plexus, true));
   return counts;
 }
 
@@ -1601,9 +1666,9 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
   let linkMode = LINK_MODES.includes(initialMode) ? initialMode : "all";
   const rawNode = (id) => id === uid ? raw : ix().get(id)?.node ?? null;
   const insertOrder = (parentUid) => {
-    if (parentUid !== uid || !raw) return "last";
-    const kids = kidsOf(raw);
-    const at = kids.findIndex((k) => readPlexus(k[PROPS])?.type === "edges");
+    const node = raw ? rawNode(parentUid) : null;
+    if (!node) return "last";
+    const at = kidsOf(node).findIndex((k) => readPlexus(k[PROPS])?.type === "edges");
     return at >= 0 ? at : "last";
   };
   const rawInsert = (parentUid, node, order) => {
@@ -1642,10 +1707,19 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
     recomputeLinks(false);
     if (diff.structural) refreshLinks();
   };
+  let gone = false;
+  const markGone = () => {
+    if (gone || destroyed) return;
+    gone = true;
+    emit2("gone", { uid });
+  };
   const repull = () => {
     if (destroyed) return;
     const fresh = host.pullBoard(uid);
-    if (!fresh) return;
+    if (!fresh) {
+      markGone();
+      return;
+    }
     raw = clone(fresh);
     publish();
   };
@@ -1710,7 +1784,11 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
     publish();
   };
   const unwatch = raw ? host.watchBoard(uid, (after) => {
-    if (destroyed || !after || !after[UID]) return;
+    if (destroyed) return;
+    if (!after || !after[UID]) {
+      if (!host.pullBoard(uid)) markGone();
+      return;
+    }
     latest = after;
     if (!scheduled) {
       scheduled = true;
@@ -1830,7 +1908,7 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
     });
   }
   function txn(fn) {
-    if (!board || destroyed) return Promise.resolve(void 0);
+    if (!board || destroyed || gone) return Promise.resolve(void 0);
     const ops = [];
     const t = {
       create({ parent, uid: id, string = "", plexus, open, order }) {
@@ -1974,6 +2052,9 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
     get board() {
       return board;
     },
+    get gone() {
+      return gone;
+    },
     get rects() {
       return rects;
     },
@@ -2083,6 +2164,77 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
         const pad = 32;
         const rect = { x: b.x - pad, y: b.y - pad, w: b.w + pad * 2, h: b.h + pad * 2 };
         return makeSection(t, rect, "Section", void 0, top);
+      });
+    },
+    createBoard({ rect, title } = {}) {
+      return txn((t) => {
+        const d = DEFAULT_BOARD_CARD;
+        const r = { x: rect?.x ?? 0, y: rect?.y ?? 0, w: rect?.w ?? d.w, h: rect?.h ?? d.h };
+        const size = clampSize("card", r.w, r.h);
+        return makeBoard(t, { x: r.x, y: r.y, w: size.w, h: size.h }, title, void 0);
+      });
+    },
+    wrapInBoard(uids) {
+      return txn((t) => {
+        const top = topLevelOf(board, uids);
+        const b = boundsOf(top.map((id) => rects.get(id)));
+        if (!b) return null;
+        const card = { x: b.x, y: b.y, w: Math.min(480, Math.max(240, b.w)), h: Math.min(360, Math.max(180, b.h)) };
+        const boardUid = makeBoard(t, card, "", new Set(top), b);
+        moveItemsInto(t, top, boardUid, { x: b.x, y: b.y }, { x: 0, y: 0 });
+        return boardUid;
+      });
+    },
+    moveIntoBoard(uids, boardUid) {
+      if (!board || destroyed) return Promise.resolve(null);
+      const target = board.items.get(boardUid);
+      if (!target || target.kind !== "board" || !target.enhanced) return Promise.resolve(null);
+      const top = topLevelOf(board, uids).filter((id) => id !== boardUid && !descendantsOf(board, id).has(boardUid));
+      if (!top.length) return Promise.resolve(null);
+      const preview = boardPreview(target);
+      const cb = preview.bounds;
+      const place = cb ? { x: cb.x + cb.w + 48, y: cb.y } : { x: 0, y: 0 };
+      const origin = boundsOf(top.map((id) => rects.get(id)));
+      const moved = new Set(top);
+      for (const id of top) for (const d of descendantsOf(board, id)) moved.add(d);
+      const undoItems = top.map((id) => {
+        const hit = ix().get(id);
+        return { uid: id, parentUid: hit.parent[UID], order: kidsOf(hit.parent).indexOf(hit.node), plexus: clone(readPlexus(hit.node[PROPS])) };
+      }).sort((a, b) => a.order - b.order);
+      const undoEdges = [];
+      const info = { createdContainer: null };
+      return txn((t) => {
+        moveItemsInto(t, top, boardUid, origin, place, { moved, undoEdges, info });
+        return {
+          moved: top.slice(),
+          title: target.title,
+          boardUid,
+          undo: () => txn((u) => {
+            for (const it of undoItems) {
+              u.move(it.uid, it.parentUid, it.order);
+              u.props(it.uid, it.plexus);
+            }
+            for (const e of undoEdges.sort((a, b) => a.order - b.order)) {
+              if (e.deleted) u.create({ uid: e.uid, parent: e.parent, order: e.order, string: e.string, plexus: e.plexus });
+              else {
+                if (e.relocated) u.move(e.uid, e.parent, e.order);
+                u.props(e.uid, e.plexus);
+                u.string(e.uid, e.string);
+              }
+            }
+            if (info.createdContainer) u.del(info.createdContainer);
+          })
+        };
+      });
+    },
+    renameBoard(id, title) {
+      return txn((t) => {
+        const cur0 = board.items.get(id);
+        if (cur0?.kind !== "board" || !cur0.enhanced) return;
+        const cur = rawNode(id)?.[STR];
+        if (cur === void 0) return;
+        const next = setBoardTitle(cur, title);
+        if (next !== cur) t.string(id, next);
       });
     },
     addRefCards(list) {
@@ -2278,7 +2430,7 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
     },
     restoreNative() {
       return txn((t) => {
-        t.props(uid, null);
+        t.props(uid, withBoardMarker(rawPlexus(uid), false));
       });
     },
     release() {
@@ -2296,6 +2448,66 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
       ledger.clear();
     }
   };
+  function makeBoard(t, rect, title, exclude, centerOf3 = rect) {
+    const parent = containerAt(board, { x: centerOf3.x + centerOf3.w / 2, y: centerOf3.y + centerOf3.h / 2 }, { rects, exclude });
+    const rel = toRelative(board, parent, { x: rect.x, y: rect.y }, rects);
+    return t.create({
+      parent,
+      string: boardString(title),
+      plexus: serializeItemLayout({ x: rel.x, y: rel.y, w: rect.w, h: rect.h, v: SCHEMA_VERSION }),
+      open: false
+    });
+  }
+  function moveItemsInto(t, top, boardUid, origin, place, track = {}) {
+    const moved = track.moved ?? new Set([...top].flatMap((id) => [id, ...descendantsOf(board, id)]));
+    for (const id of top) {
+      const r = rects.get(id);
+      t.move(id, boardUid, insertOrder(boardUid));
+      t.props(id, itemPlexus(id, { x: round13(r.x - origin.x + place.x), y: round13(r.y - origin.y + place.y) }));
+    }
+    let childContainer = null;
+    const childEdges = () => {
+      if (childContainer) return childContainer;
+      const existing = kidsOf(rawNode(boardUid)).find((k) => readPlexus(k[PROPS])?.type === "edges");
+      if (existing) {
+        childContainer = existing[UID];
+        return childContainer;
+      }
+      childContainer = t.create({ parent: boardUid, order: "last", string: "Connections", plexus: { type: "edges" }, open: false });
+      if (track.info) track.info.createdContainer = childContainer;
+      return childContainer;
+    };
+    const taken = /* @__PURE__ */ new Set();
+    const touched = [...board.edges.values()].filter((e) => moved.has(e.from) || moved.has(e.to));
+    const snapshots = /* @__PURE__ */ new Map();
+    for (const e of touched) {
+      const hit = ix().get(e.uid);
+      if (hit?.parent) {
+        snapshots.set(e.uid, { uid: e.uid, parent: hit.parent[UID], order: kidsOf(hit.parent).indexOf(hit.node), plexus: clone(readPlexus(hit.node[PROPS])), string: hit.node[STR] ?? "" });
+      }
+    }
+    for (const e of touched) {
+      const snapshot = snapshots.get(e.uid);
+      if (snapshot) track.undoEdges?.push(snapshot);
+      if (moved.has(e.from) && moved.has(e.to)) {
+        if (snapshot) snapshot.relocated = true;
+        t.move(e.uid, childEdges(), "last");
+        continue;
+      }
+      const from = moved.has(e.from) ? boardUid : e.from;
+      const to = moved.has(e.to) ? boardUid : e.to;
+      const dup = findEdge(board, from, to);
+      const key = `${from}>${to}`;
+      if (from === to || dup && dup.uid !== e.uid || taken.has(key)) {
+        if (snapshot) snapshot.deleted = true;
+        t.del(e.uid);
+        continue;
+      }
+      taken.add(key);
+      t.props(e.uid, edgePlexus(e.uid, { from, to, fromSide: moved.has(e.from) ? "auto" : e.fromSide, toSide: moved.has(e.to) ? "auto" : e.toSide }));
+      t.string(e.uid, edgeStringFor(from, to, e.dir, e.label));
+    }
+  }
   function makeSection(t, rect, title, color, adopt) {
     const parent = containerAt(board, { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 }, { rects });
     const rel = toRelative(board, parent, { x: rect.x, y: rect.y }, rects);
@@ -2623,8 +2835,8 @@ function gridBackground(vp, style, base = 24) {
 }
 
 // src/view/interactions.js
-var TOOL_KEYS = { v: "select", h: "hand", n: "card", t: "text", g: "section", c: "connect" };
-var TOOLS = ["select", "hand", "card", "text", "section", "connect"];
+var TOOL_KEYS = { v: "select", h: "hand", n: "card", t: "text", g: "section", w: "board", c: "connect" };
+var TOOLS = ["select", "hand", "card", "text", "section", "board", "connect"];
 var DRAG_THRESHOLD_PX = 4;
 var SNAP_PX = 6;
 var STICKY_TOOLS = /* @__PURE__ */ new Set(["select", "hand"]);
@@ -2637,7 +2849,7 @@ function createInteractions({ actions, settings } = {}) {
   const a = actions || {};
   const call = (name, ...args) => typeof a[name] === "function" ? a[name](...args) : void 0;
   const setting = (key, def) => {
-    const v = settings?.get?.(key);
+    const v = typeof settings?.get === "function" ? settings.get(key) : settings?.[key];
     return v === void 0 || v === null ? def : v;
   };
   const state = {
@@ -2795,6 +3007,10 @@ function createInteractions({ actions, settings } = {}) {
       begin({ kind: "section-draw", start: ev.world });
       return;
     }
+    if (state.tool === "board") {
+      begin({ kind: "board-draw", start: ev.world });
+      return;
+    }
     if (state.tool === "card" || state.tool === "text") {
       begin({ kind: "place", tool: state.tool, start: ev.world });
       return;
@@ -2843,6 +3059,20 @@ function createInteractions({ actions, settings } = {}) {
       g.dy = dy;
       call("previewMove", g.uids, dx, dy);
       call("showGuides", guides);
+      const b = board();
+      const r = rects();
+      if (b && r) {
+        if (!g.exclude) {
+          g.exclude = new Set(g.uids);
+          for (const u of g.uids) for (const d of descendantsOf(b, u)) g.exclude.add(d);
+        }
+        const hit = hitTest(b, ev.world, r, { exclude: g.exclude });
+        const drop = hit?.part === "body" && (b.items.get(hit.uid)?.kind === "board" && b.items.get(hit.uid)?.enhanced) ? hit.uid : null;
+        if (drop !== (g.drop ?? null)) {
+          g.drop = drop;
+          call("onHover", drop);
+        }
+      }
       return;
     }
     const wdx = ev.world.x - g.start.x;
@@ -2866,9 +3096,9 @@ function createInteractions({ actions, settings } = {}) {
       }
       return;
     }
-    if (g.kind === "section-draw") {
+    if (g.kind === "section-draw" || g.kind === "board-draw") {
       g.rect = normRect(g.start, ev.world);
-      call("showMarquee", g.rect, "section");
+      call("showMarquee", g.rect, g.kind === "board-draw" ? "board" : "section");
       return;
     }
     if (g.kind === "resize") {
@@ -2906,6 +3136,17 @@ function createInteractions({ actions, settings } = {}) {
         afterToolUse();
         return;
       }
+      case "board-draw": {
+        const d = DEFAULT_BOARD_CARD;
+        const rect = g.moved && g.rect && g.rect.w >= MIN_SIZES.card.w && g.rect.h >= MIN_SIZES.card.h ? g.rect : { x: g.start.x - d.w / 2, y: g.start.y - d.h / 2, w: d.w, h: d.h };
+        end();
+        Promise.resolve(call("createBoard", { rect })).then((uid) => {
+          if (uid) selectItems([uid]);
+        }).catch(() => {
+        });
+        afterToolUse();
+        return;
+      }
       case "place": {
         if (!g.moved) {
           const d = DEFAULT_SIZES[g.tool];
@@ -2925,7 +3166,9 @@ function createInteractions({ actions, settings } = {}) {
         break;
       }
       case "move":
-        if (g.moved) {
+        if (g.moved && g.drop) {
+          call("moveIntoBoard", g.uids, g.drop, g.dx || 0, g.dy || 0);
+        } else if (g.moved) {
           call("commitMove", g.uids, g.dx || 0, g.dy || 0);
         } else if (g.deferred) {
           selectItems([g.target]);
@@ -2983,7 +3226,7 @@ function createInteractions({ actions, settings } = {}) {
     if (t.kind === "item" && t.uid) {
       const item = b?.items.get(t.uid);
       if (!item) return;
-      if (item.kind === "board") call("openBlock", t.uid);
+      if (item.kind === "board") call("openBoard", t.uid);
       else if (editingUid() !== t.uid) {
         selectItems([t.uid]);
         call("enterEdit", t.uid);
@@ -3061,6 +3304,7 @@ function createInteractions({ actions, settings } = {}) {
       return true;
     }
     if (clearSelection()) return true;
+    if (call("popBoard")) return true;
     if (call("isFullscreen")) {
       call("setFullscreen", false);
       return true;
@@ -3131,7 +3375,7 @@ function createInteractions({ actions, settings } = {}) {
       if (state.selection.size === 1) {
         const uid = [...state.selection][0];
         const item = b?.items.get(uid);
-        if (item?.kind === "board") call("openBlock", uid);
+        if (item?.kind === "board") call("openBoard", uid);
         else if (item?.type === "section") call("renameSection", uid);
         else call("enterEdit", uid);
         return true;
@@ -3237,6 +3481,8 @@ var CONTENT_LIMIT = 12;
 var CONTENT_DEPTH = 2;
 var GROW_CAP = 900;
 var HEADER_H = 32;
+var BOARD_KEY_DEPTH = 3;
+var BOARD_KEY_NODES = 400;
 var now = () => globalThis.performance?.now ? globalThis.performance.now() : Date.now();
 function isTextEntryTarget(target) {
   if (!target || typeof target !== "object") return false;
@@ -3325,8 +3571,22 @@ async function waitHydrateQuiet(el, capMs = HYDRATE_CAP_MS) {
 var childString = (c) => c?.[":block/string"] ?? c?.string ?? "";
 var childKids = (c) => c?.[":block/children"] ?? c?.children ?? [];
 var childUid = (c) => c?.[":block/uid"] ?? c?.uid ?? "";
+var childProps = (c) => c?.[":block/props"] ?? c?.props;
 function contentKeyOf(item) {
-  const parts = [item.kind, item.string, item.collapsed ? "c" : "", item.fontSize || ""];
+  const parts = [item.kind, item.enhanced ? "e" : "", item.string, item.collapsed ? "c" : "", item.fontSize || ""];
+  if (item.kind === "board") {
+    let budget = BOARD_KEY_NODES;
+    const walkBoard = (kids, depth) => {
+      if (depth > BOARD_KEY_DEPTH) return;
+      for (const c of kids) {
+        if (budget-- <= 0) return;
+        parts.push(childUid(c), childString(c), JSON.stringify(childProps(c) ?? null));
+        walkBoard(childKids(c), depth + 1);
+      }
+    };
+    walkBoard(item.content || [], 1);
+    return parts.join("");
+  }
   const walk = (kids, depth) => {
     if (depth > CONTENT_DEPTH) return;
     for (const c of kids) {
@@ -3346,7 +3606,9 @@ function createItemRenderer({
   timers,
   onGrow,
   onRenameCommit,
-  onEditChange
+  onEditChange,
+  onOpenBoard,
+  onRenameBoard
 } = {}) {
   const shells = /* @__PURE__ */ new Map();
   const mounted = /* @__PURE__ */ new Map();
@@ -3360,6 +3622,10 @@ function createItemRenderer({
   let lastBoard = null;
   let lastRects = null;
   let focusGuard = null;
+  let floorTeardown = null;
+  let floor = null;
+  let recoveries = [];
+  let lastOutsideDown = -Infinity;
   let disposed = false;
   const later = (fn, ms) => timers?.later ? timers.later(fn, ms) : (() => {
     const t = setTimeout(fn, ms);
@@ -3460,13 +3726,23 @@ function createItemRenderer({
         rec.titleRendered = false;
       }
     } else {
-      rec.header.textContent = item.type === "text" ? "" : item.title || "";
+      if (item.kind === "block" && item.target?.uid) {
+        const refString = host?.blockString?.(item.target.uid);
+        rec.refTitle = typeof refString === "string" ? firstLine(refString) : "";
+      } else rec.refTitle = "";
+      if (editing?.uid !== item.uid && !rec.renaming) rec.header.textContent = item.type === "text" ? "" : rec.refTitle || item.title || "";
       if (item.type === "text") rec.header.style.display = "none";
+      rec.header.classList.toggle("pxd-item__header--muted", item.kind === "board" && isUntitledBoard(item.title));
     }
     node.title = "";
   };
   const position = (rec, rect) => {
+    const prev = rec.rect;
     rec.rect = rect;
+    if (editing?.uid === rec.uid) {
+      if (prev && prev.x === rect.x && prev.y === rect.y && prev.w === rect.w && prev.h === rect.h) return;
+      rec.el.style.minHeight = `${rect.h}px`;
+    }
     rec.el.style.transform = `translate(${rect.x}px, ${rect.y}px)`;
     rec.el.style.width = `${rect.w}px`;
     rec.el.style.height = `${rect.h}px`;
@@ -3533,6 +3809,69 @@ function createItemRenderer({
       }
     }
   };
+  const openBoard = (uid) => {
+    if (onOpenBoard) onOpenBoard(uid);
+    else host?.openBlock?.(uid);
+  };
+  const commitBoardName = (uid, name) => (onRenameBoard || ((u, n) => session?.renameBoard?.(u, n)))(uid, name);
+  const mountBoardBody = (body, item) => {
+    const preview = boardPreview(item);
+    const wrap = el("div", "pxd-item__board", body);
+    const holder = el("div", "pxd-board-preview", wrap);
+    const canvas = el("div", "pxd-board-preview__canvas", holder);
+    canvas.style.aspectRatio = String(preview.aspect);
+    const pct = (n) => `${Math.round(n * 1e4) / 100}%`;
+    for (const r of preview.rects) {
+      const cls = ["pxd-mini"];
+      if (r.type === "section") cls.push("pxd-mini--section");
+      else if (r.type === "text") cls.push("pxd-mini--text");
+      if (r.color) cls.push(`pxd-c-${r.color}`);
+      const mini = el("div", cls.join(" "), canvas);
+      mini.style.left = pct(r.x);
+      mini.style.top = pct(r.y);
+      mini.style.width = pct(r.w);
+      mini.style.height = pct(r.h);
+    }
+    if (item.enhanced && isUntitledBoard(item.title)) {
+      const input = el("input", "pxd-input pxd-item__board-name", wrap);
+      input.type = "text";
+      input.placeholder = "Name this board…";
+      input.setAttribute("placeholder", "Name this board…");
+      for (const type of ["pointerdown", "mousedown", "click", "dblclick"]) input.addEventListener(type, stopEvent);
+      let done = false;
+      const commit = () => {
+        if (done) return;
+        const name = String(input.value || "").trim();
+        if (!name) return;
+        done = true;
+        commitBoardName(item.uid, name);
+      };
+      input.addEventListener("keydown", (event) => {
+        event.stopPropagation();
+        if (event.key === "Enter") {
+          event.preventDefault();
+          commit();
+          input.blur?.();
+        } else if (event.key === "Escape") {
+          event.preventDefault();
+          input.value = "";
+          input.blur?.();
+        }
+      });
+      input.addEventListener("blur", commit);
+    }
+    const meta = el("div", "pxd-item__board-meta", wrap);
+    el("span", "pxd-item__board-count", meta).textContent = preview.count ? `${preview.count} ${preview.count === 1 ? "item" : "items"}` : "Empty board";
+    const open = el("button", "pxd-btn pxd-item__open", meta);
+    open.type = "button";
+    open.textContent = "Open";
+    open.dataset.action = "open";
+    for (const type of ["pointerdown", "mousedown", "dblclick"]) open.addEventListener(type, stopEvent);
+    open.addEventListener("click", (event) => {
+      event.stopPropagation();
+      openBoard(item.uid);
+    });
+  };
   const mountContent = (rec, item) => {
     const body = rec.body;
     unmountRoots(rec);
@@ -3548,17 +3887,7 @@ function createItemRenderer({
     } else if (item.kind === "image") {
       budget.roots.push(renderRoot(el("div", "pxd-item__media", body), item.string));
     } else if (item.kind === "board") {
-      const wrap = el("div", "pxd-item__board", body);
-      el("div", "pxd-item__board-title", wrap).textContent = item.title;
-      el("div", "pxd-item__board-count", wrap).textContent = `${(item.content || []).length} items`;
-      const open = el("button", "pxd-btn pxd-item__open", wrap);
-      open.type = "button";
-      open.textContent = "Open";
-      open.dataset.action = "open";
-      open.addEventListener("click", (event) => {
-        event.stopPropagation();
-        host?.openBlock?.(item.uid);
-      });
+      mountBoardBody(body, item);
     } else if (item.kind === "page") {
       const holder = el("div", "pxd-item__page", body);
       const preview = host?.pagePreview?.(item.title, CONTENT_DEPTH, CONTENT_LIMIT);
@@ -3578,12 +3907,13 @@ function createItemRenderer({
     } else if (item.kind === "block") {
       const ref = item.target.uid;
       const refString = host?.blockString?.(ref);
-      if (typeof refString === "string") rec.header.textContent = firstLine(refString) || item.title;
-      const rest = typeof refString === "string" ? refString.split("\n").slice(1).join("\n").trim() : "";
-      if (rest) budget.roots.push(renderRoot(body, rest));
+      rec.refTitle = typeof refString === "string" ? firstLine(refString) : "";
+      if (editing?.uid !== item.uid) rec.header.textContent = rec.refTitle || item.title || "";
+      if (typeof refString === "string" && refString.trim()) budget.roots.push(renderRoot(body, refString, "pxd-rs pxd-item__string"));
       const tree = host?.pullTree?.(ref, CONTENT_DEPTH, CONTENT_LIMIT);
       const apply = (blocks, sync2 = false) => {
         if (disposed || !body.isConnected || !sync2 && rec.contentKey !== contentKeyOf(item)) return;
+        if (!refString?.trim() && !blocks?.length) el("div", "pxd-item__placeholder", body).textContent = "Empty card";
         const b = { n: 0, roots: [] };
         renderBlocks(body, blocks || [], 1, b);
         rec.roots.push(...b.roots);
@@ -3592,11 +3922,9 @@ function createItemRenderer({
       });
       else apply(tree, true);
     } else {
-      const lines = String(item.string || "").split("\n");
-      const rest = lines.slice(1).join("\n").trim();
-      if (rest) budget.roots.push(renderRoot(body, rest));
+      if (item.string?.trim()) budget.roots.push(renderRoot(body, item.string, "pxd-rs pxd-item__string"));
       renderBlocks(body, item.content || [], 1, budget);
-      if (!rest && !(item.content || []).length && !item.string?.trim()) {
+      if (!item.string?.trim() && !(item.content || []).length) {
         el("div", "pxd-item__placeholder", body).textContent = "Empty card";
       }
     }
@@ -3759,19 +4087,112 @@ function createItemRenderer({
     event.stopPropagation?.();
     event.stopImmediatePropagation?.();
   };
+  const onDocPointerDown = (event) => {
+    if (!editing) return;
+    if (editing.rec.el.contains?.(event.target)) return;
+    lastOutsideDown = now();
+  };
   const attachFocusGuard = () => {
     if (focusGuard || typeof doc.addEventListener !== "function") return;
     doc.addEventListener("focus", onFocusSteal, true);
     doc.addEventListener("scroll", onFocusSteal, true);
+    doc.addEventListener("pointerdown", onDocPointerDown, true);
     focusGuard = () => {
       doc.removeEventListener("focus", onFocusSteal, true);
       doc.removeEventListener("scroll", onFocusSteal, true);
+      doc.removeEventListener("pointerdown", onDocPointerDown, true);
     };
   };
   const detachFocusGuard = () => {
+    floorTeardown?.();
+    floorTeardown = null;
     focusGuard?.();
     focusGuard = null;
   };
+  const FLOOR_WINDOW_MS = 600;
+  const FLOOR_POINTER_MS = 300;
+  const FLOOR_MAX = 4;
+  const FLOOR_SPAN_MS = 1500;
+  const frameLater = (fn) => {
+    if (timers?.frame) return timers.frame(fn);
+    const raf2 = globalThis.requestAnimationFrame;
+    if (typeof raf2 === "function") {
+      const id = raf2(fn);
+      return () => globalThis.cancelAnimationFrame?.(id);
+    }
+    const t = setTimeout(fn, 16);
+    return () => clearTimeout(t);
+  };
+  const rootOfLayer = () => itemsLayer?.closest?.(".pxd-root") ?? null;
+  const focusLost = (a) => !a || a === doc.body || a === doc.documentElement || a === rootOfLayer();
+  const findLiveTextarea = (e) => {
+    const list = [...e.editor.querySelectorAll?.("textarea") || []];
+    if (!list.length) return null;
+    const ta = [...list].reverse().find((n) => String(n.id || "").startsWith("block-input-")) || list[list.length - 1];
+    return ta?.isConnected ? ta : null;
+  };
+  const floorTick = (e) => {
+    const f = floor;
+    if (!f) return;
+    f.cancel = null;
+    const stop = () => {
+      if (floor === f) floor = null;
+    };
+    if (editing !== e || disposed || lastOutsideDown > f.start - FLOOR_POINTER_MS || doc.hasFocus?.() === false) return stop();
+    const a = doc.activeElement;
+    if (e.editor.contains?.(a)) return stop();
+    if (!focusLost(a)) return stop();
+    const ta = findLiveTextarea(e);
+    if (ta) {
+      recoveries.push(now());
+      focusRoamInput(ta);
+      return stop();
+    }
+    if (now() - f.start < FLOOR_WINDOW_MS) f.cancel = frameLater(() => floorTick(e));
+    else stop();
+  };
+  const armFloor = () => {
+    const e = editing;
+    if (!e || disposed || !e.ready || floor) return false;
+    const t = now();
+    recoveries = recoveries.filter((x) => t - x < FLOOR_SPAN_MS);
+    if (recoveries.length >= FLOOR_MAX) return false;
+    floor = { start: t, cancel: null };
+    floor.cancel = frameLater(() => floorTick(e));
+    return true;
+  };
+  const attachFloor = (e) => {
+    const onIn = () => {
+      e.ready = true;
+    };
+    const onOut = (event) => {
+      if (editing !== e || !e.ready) return;
+      const to = event.relatedTarget;
+      if (to) return;
+      armFloor();
+    };
+    e.editor.addEventListener("focusin", onIn);
+    e.editor.addEventListener("focusout", onOut);
+    const MO = doc.defaultView?.MutationObserver || globalThis.MutationObserver;
+    let mo = null;
+    if (typeof MO === "function") {
+      mo = new MO(() => {
+        if (editing === e && e.ready && focusLost(doc.activeElement)) armFloor();
+      });
+      try {
+        mo.observe(e.editor, { childList: true, subtree: true });
+      } catch {
+      }
+    }
+    floorTeardown = () => {
+      e.editor.removeEventListener("focusin", onIn);
+      e.editor.removeEventListener("focusout", onOut);
+      mo?.disconnect();
+      floor?.cancel?.();
+      floor = null;
+    };
+  };
+  const recoverFocus = () => armFloor();
   const stopEvent = (event) => event.stopPropagation();
   const enterEdit = async (uid) => {
     const rec = shells.get(uid);
@@ -3790,9 +4211,12 @@ function createItemRenderer({
     mounted.delete(uid);
     const editor = el("div", "pxd-item__editor", rec.body);
     for (const type of ["pointerdown", "pointerup", "click", "dblclick", "wheel", "mousedown", "mouseup"]) editor.addEventListener(type, stopEvent);
-    editing = { uid, rec, editor, targetUid, item };
+    editing = { uid, rec, editor, targetUid, item, ready: false };
     rec.el.classList.add("pxd-item--editing");
+    if (rec.rect) rec.el.style.minHeight = `${rec.rect.h}px`;
+    lastOutsideDown = -Infinity;
     attachFocusGuard();
+    attachFloor(editing);
     onEditChange?.(uid);
     let ok = true;
     try {
@@ -3814,6 +4238,7 @@ function createItemRenderer({
     if (disposed || editing?.uid !== uid) return false;
     const input = editor.querySelector?.(".rm-block__input") || editor.querySelector?.("textarea");
     if (input) focusRoamInput(input);
+    if (editing?.uid === uid && editor.contains?.(doc.activeElement)) editing.ready = true;
     return true;
   };
   const exitEdit = async ({ silent = false } = {}) => {
@@ -3830,16 +4255,18 @@ function createItemRenderer({
     }
     editor.remove();
     rec.el.classList.remove("pxd-item--editing");
+    rec.el.style.minHeight = "";
     rec.contentKey = null;
     mounted.delete(uid);
     if (!silent && !disposed) {
       const live = lastBoard?.items.get(uid) || item;
       if (live && shells.has(uid)) {
         mountContent(rec, live);
+        paintShell(rec, live);
         mounted.set(uid, now());
       }
       onEditChange?.(null);
-      const need = contentH + HEADER_H + 16;
+      const need = contentH + (["page", "board"].includes(item.kind) || item.collapsed ? HEADER_H : 0) + 20;
       if (contentH > 0 && live && need > live.h) {
         const grow = Math.min(GROW_CAP, need);
         if (grow > live.h) (onGrow || ((u, h) => session?.growToFit?.(u, h)))(uid, grow);
@@ -3903,6 +4330,66 @@ function createItemRenderer({
     }
     return true;
   };
+  const renameBoard = (uid) => {
+    const rec = shells.get(uid);
+    const item = lastBoard?.items.get(uid);
+    if (!rec || !item || item.kind !== "board" || !item.enhanced || !rec.header || rec.renaming) return false;
+    const h = rec.header;
+    const seed = parseBoardTitle(item.string);
+    rec.renaming = true;
+    h.textContent = seed;
+    h.classList.add("pxd-item__header--editing");
+    h.classList.remove("pxd-item__header--muted");
+    h.contentEditable = "true";
+    h.setAttribute("contenteditable", "true");
+    const finish = (commit) => {
+      if (!rec.renaming) return;
+      rec.renaming = false;
+      h.contentEditable = "false";
+      h.removeAttribute("contenteditable");
+      h.classList.remove("pxd-item__header--editing");
+      h.removeEventListener("keydown", onKey);
+      h.removeEventListener("blur", onBlur);
+      h.removeEventListener("pointerdown", stopEvent);
+      h.removeEventListener("dblclick", stopEvent);
+      const next = String(h.textContent || "").trim();
+      const live = lastBoard?.items.get(uid) || item;
+      h.textContent = live.title || "";
+      h.classList.toggle("pxd-item__header--muted", isUntitledBoard(live.title));
+      if (commit && next !== seed) commitBoardName(uid, next);
+    };
+    const onKey = (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        event.stopPropagation();
+        finish(true);
+      } else if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        finish(false);
+      } else event.stopPropagation();
+    };
+    const onBlur = () => finish(true);
+    h.addEventListener("keydown", onKey);
+    h.addEventListener("blur", onBlur);
+    h.addEventListener("pointerdown", stopEvent);
+    h.addEventListener("dblclick", stopEvent);
+    try {
+      h.focus({ preventScroll: true });
+    } catch {
+      h.focus?.();
+    }
+    try {
+      const d = h.ownerDocument;
+      const r = d.createRange();
+      r.selectNodeContents(h);
+      const sel = d.getSelection();
+      sel.removeAllRanges();
+      sel.addRange(r);
+    } catch {
+    }
+    return true;
+  };
   const dispose = () => {
     disposed = true;
     if (editing) {
@@ -3945,8 +4432,10 @@ function createItemRenderer({
     exitEdit,
     editingUid: () => editing?.uid ?? null,
     isEditing: () => Boolean(editing),
+    recoverFocus,
     autocompleteOpen,
     renameSection,
+    renameBoard,
     shellOf: (uid) => shells.get(uid)?.el ?? null,
     mountedCount: () => mounted.size,
     mountedUids: () => [...mounted.keys()],
@@ -4305,9 +4794,12 @@ var TOOL_LIST = [
   ["card", "Card", "N"],
   ["text", "Text", "T"],
   ["section", "Section", "G"],
+  ["board", "Board", "W"],
   ["connect", "Connect", "C"]
 ];
-function createChrome({ doc = globalThis.document, root, version = "", settings, timers, on = {} } = {}) {
+var MAX_CRUMBS = 4;
+function createChrome({ doc = globalThis.document, root, version = "", settings, timers, on = {}, crumbs = [] } = {}) {
+  const setting = (k) => typeof settings?.get === "function" ? settings.get(k) : settings?.[k];
   const listeners2 = [];
   const listen = (el2, type, fn, opts) => {
     el2.addEventListener(type, fn, opts);
@@ -4351,6 +4843,50 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
   };
   const toolbar = el("div", "pxd-toolbar pxd-chrome", root);
   stopAll(toolbar);
+  const crumbsEl = el("div", "pxd-toolbar__group pxd-crumbs", toolbar);
+  listen(crumbsEl, "click", (event) => {
+    const hit = event.target?.closest?.(".pxd-crumb[data-index]");
+    const raw = hit?.dataset?.index ?? hit?.getAttribute?.("data-index");
+    if (raw == null) return;
+    const index = Number(raw);
+    if (!Number.isFinite(index)) return;
+    event.preventDefault?.();
+    event.stopPropagation();
+    on.crumb?.(index);
+  });
+  const renderCrumbs = (list) => {
+    crumbsEl.replaceChildren();
+    const items = Array.isArray(list) ? list : [];
+    crumbsEl.style.display = items.length < 2 ? "none" : "";
+    if (items.length < 2) return;
+    const last = items.length - 1;
+    let shown = items.map((c, i) => i);
+    let hidden = [];
+    if (items.length > MAX_CRUMBS) {
+      shown = [0, last - 2, last - 1, last];
+      hidden = items.slice(1, last - 2);
+    }
+    shown.forEach((i, n) => {
+      if (n === 1 && hidden.length) {
+        const more = el("span", "pxd-crumb__more", crumbsEl, "…");
+        more.title = hidden.map((c2) => c2.title).join(" › ");
+        el("span", "pxd-crumb__sep", crumbsEl, "›");
+      }
+      const c = items[i];
+      if (i === last) {
+        const cur = el("span", "pxd-crumb pxd-crumb--current", crumbsEl, c.title);
+        cur.title = c.title;
+        return;
+      }
+      const b = el("button", "pxd-btn pxd-crumb", crumbsEl, c.title);
+      b.type = "button";
+      b.title = c.title;
+      b.dataset.index = String(i);
+      b.setAttribute("data-index", String(i));
+      el("span", "pxd-crumb__sep", crumbsEl, "›");
+    });
+  };
+  renderCrumbs(crumbs);
   const toolGroup = el("div", "pxd-toolbar__group", toolbar);
   const toolButtons = /* @__PURE__ */ new Map();
   for (const [id, label, key] of TOOL_LIST) {
@@ -4375,11 +4911,12 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
   const minimapBtn = button(group3, "pxd-toolbar__minimap", "Minimap", "Toggle minimap", () => on.toggleMinimap?.());
   const fullBtn = button(group3, "pxd-toolbar__fullscreen", "Fullscreen", "Fullscreen this board", () => on.toggleFullscreen?.());
   const badge = el("span", "pxd-badge", toolbar, version ? `v${version}` : "");
-  if (settings?.get?.("show-version-badge") === false) badge.style.display = "none";
+  if (setting("show-version-badge") === false) badge.style.display = "none";
   const sync = el("span", "pxd-sync", toolbar);
   sync.title = "Synced";
   const toolbarApi = {
     el: toolbar,
+    setCrumbs: renderCrumbs,
     setTool(tool, locked) {
       for (const [id, b] of toolButtons) {
         b.classList.toggle("pxd-tool--active", id === tool);
@@ -4438,10 +4975,18 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
           seg("pxd-ctx__align", [["left", "L", "Align left"], ["center", "C", "Align centers"], ["right", "R", "Align right"], ["top", "T", "Align top"], ["middle", "M", "Align middles"], ["bottom", "B", "Align bottom"]], null, (v) => on.align?.(v));
           seg("pxd-ctx__distribute", [["h", "H", "Distribute horizontally"], ["v", "V", "Distribute vertically"]], null, (v) => on.distribute?.(v));
           btn("pxd-ctx__wrap", "Wrap in section", "Wrap in a new section (Cmd G)", () => on.wrap?.());
+          btn("pxd-ctx__wrap-board", "Move into new board", "Move the selection into a new nested board", () => on.wrapBoard?.());
         }
         btn("pxd-ctx__delete pxd-btn--danger", "Delete", "Delete (Del)", () => on.delete?.());
         break;
       }
+      case "board":
+        swatches(row, (c) => on.setColor?.(c));
+        btn("pxd-ctx__open-board", "Open", "Open this board (Enter)", () => on.openBoard?.());
+        if (model?.enhanced) btn("pxd-ctx__rename-board", "Rename board", "Rename the board", () => on.renameBoard?.());
+        btn("pxd-ctx__sidebar", "Open in sidebar", "Open in the right sidebar", () => on.openSidebar?.());
+        btn("pxd-ctx__delete pxd-btn--danger", "Delete", "Delete (Del)", () => on.delete?.());
+        break;
       case "section":
         swatches(row, (c) => on.setColor?.(c));
         btn("pxd-ctx__rename", "Rename", "Rename (Enter)", () => on.rename?.());
@@ -4696,8 +5241,9 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
 var CARD_MIME = "application/x-plexus-card";
 var DEBOUNCE_MS = 150;
 var LIMIT = 40;
-function parseDropPayload(dataTransfer) {
-  if (!dataTransfer) return null;
+var MAX_DROP = 50;
+function parseDropPayload(dataTransfer, { resolveUid } = {}) {
+  if (!dataTransfer) return [];
   const take = (type) => {
     try {
       return String(dataTransfer.getData?.(type) || "");
@@ -4705,20 +5251,55 @@ function parseDropPayload(dataTransfer) {
       return "";
     }
   };
-  const own = take(CARD_MIME);
-  if (own.trim()) return { kind: "card", string: own.trim() };
+  const resolve = typeof resolveUid === "function" ? resolveUid : (uid) => `((${uid}))`;
+  const own = take(CARD_MIME).trim();
+  if (own) return [{ string: own }];
+  const tokens = (text) => text.split(/\s+/).filter((t) => /^[\w-]+$/.test(t));
+  let uids = tokens(take("roam/block-uid-list-only-parents"));
+  if (!uids.length) uids = tokens(take("roam/block-uid-list"));
+  if (!uids.length) {
+    for (const type of ["roam/roam-uri-list", "text/uri-list"]) {
+      for (const line of take(type).split(/\r?\n/)) {
+        if (!line.trim() || line.startsWith("#")) continue;
+        const m = line.match(/\/page\/([\w-]+)/);
+        if (m) uids.push(m[1]);
+      }
+      if (uids.length) break;
+    }
+  }
+  if (uids.length) {
+    const out = [];
+    for (const uid of [...new Set(uids)].slice(0, MAX_DROP)) {
+      let string = null;
+      try {
+        string = resolve(uid);
+      } catch {
+        string = null;
+      }
+      if (typeof string === "string" && string.trim()) out.push({ string });
+    }
+    if (out.length) return out;
+  }
   const chunks = [take("text/plain"), take("text/html")];
   const types = dataTransfer.types;
   if (types) for (const type of types) chunks.push(take(type));
   const blob = chunks.join("\n");
-  if (!blob.trim()) return null;
+  if (!blob.trim()) return [];
   const page = blob.match(/\[\[([^\]]+)\]\]/);
-  if (page) return { kind: "page", title: page[1], string: `[[${page[1]}]]` };
+  if (page) return [{ string: `[[${page[1]}]]` }];
   const blockRef = blob.match(/\(\(([^)]+)\)\)/);
-  if (blockRef) return { kind: "block", uid: blockRef[1], string: `((${blockRef[1]}))` };
+  if (blockRef) return [{ string: `((${blockRef[1]}))` }];
   const plain = take("text/plain").trim();
-  if (/^[A-Za-z0-9_-]{9}$/.test(plain)) return { kind: "block", uid: plain, string: `((${plain}))` };
-  return null;
+  if (/^[A-Za-z0-9_-]{9}$/.test(plain)) {
+    let string = null;
+    try {
+      string = resolve(plain);
+    } catch {
+      string = null;
+    }
+    if (typeof string === "string" && string.trim()) return [{ string }];
+  }
+  return [];
 }
 function createPanel({ doc = globalThis.document, root, host, timers, on = {} } = {}) {
   const listeners2 = [];
@@ -5313,12 +5894,17 @@ function mountBoardView({
   settings,
   onRequestFullscreen,
   fullscreen = false,
-  version = ""
+  version = "",
+  crumbs = null,
+  onOpenBoard = null,
+  onCrumb = null,
+  routeUid = session.uid,
+  autofocus = false
 } = {}) {
   const doc = globalThis.document;
   const win = globalThis.window;
   const setting = (k, d) => {
-    const v = settings?.get?.(k);
+    const v = typeof settings?.get === "function" ? settings.get(k) : settings?.[k];
     return v === void 0 || v === null ? d : v;
   };
   const timers = createTimers();
@@ -5348,7 +5934,7 @@ function mountBoardView({
   const graph = host?.graph || graphName2(win);
   const storage = globalThis.localStorage;
   const vpStore = host?.viewports || host?.viewportStore || createLocalViewportStore({ storage, graph, timers });
-  const heightKey = `plexus-diagram:h:${graph}:${boardUid}`;
+  const heightKey = `plexus-diagram:h:${graph}:${routeUid}`;
   const root = el("div", "pxd-root", mountEl);
   root.tabIndex = 0;
   root.setAttribute("tabindex", "0");
@@ -5373,7 +5959,7 @@ function mountBoardView({
   let released = false;
   let gesturing = false;
   let isFullscreen = false;
-  let pointerInside = false;
+  let pointerInside = Boolean(mountEl?.matches?.(":hover"));
   let suppressClick = false;
   let swallowMouseUp = false;
   let linkMode = setting("graph-links", "all");
@@ -5411,7 +5997,11 @@ function mountBoardView({
     timers,
     onEditChange: (uid) => {
       root.classList.toggle("pxd-root--editing", Boolean(uid));
-    }
+    },
+    onOpenBoard: (uid) => {
+      void openBoard(uid);
+    },
+    onRenameBoard: (uid, title) => session.renameBoard?.(uid, title)
   });
   const edgesR = createEdgeLayer({
     doc,
@@ -5529,7 +6119,7 @@ function mountBoardView({
     if (!items.length) return chrome.ctx.hide();
     if (items.length > 1) return chrome.ctx.show("cards", null, ctxAnchor);
     const it = items[0];
-    return chrome.ctx.show(it.type === "section" ? "section" : it.type === "text" ? "text" : "card", it, ctxAnchor);
+    return chrome.ctx.show(it.type === "section" ? "section" : it.type === "text" ? "text" : it.kind === "board" ? "board" : "card", it, ctxAnchor);
   };
   const targetUids = () => selection.edge ? [selection.edge] : selection.items;
   const singleItem = () => selection.items.length === 1 ? board()?.items.get(selection.items[0]) : null;
@@ -5542,6 +6132,7 @@ function mountBoardView({
       host?.openInSidebar?.(item.target.uid || item.uid, "block");
     }
   };
+  const stackAt = (strings, x, y, h) => strings.map((string, i) => ({ string, x, y: y + i * (h + 24) }));
   const addStringsBeside = (strings) => {
     const b = board();
     if (!b || !strings.length) return;
@@ -5560,8 +6151,7 @@ function mountBoardView({
       x = c.x - w / 2;
       y = c.y - h / 2;
     }
-    const list = strings.map((string, i) => ({ string, x, y: y + i * (h + 24) }));
-    void session.addRefCards?.(list);
+    void session.addRefCards?.(stackAt(strings, x, y, h));
   };
   const isOnBoard = (string) => {
     const b = board();
@@ -5572,13 +6162,53 @@ function mountBoardView({
     }
     return false;
   };
+  const crumbList = Array.isArray(crumbs) ? crumbs : [];
+  const openBoard = async (uid) => {
+    const item = board()?.items.get(uid);
+    if (!item || item.kind !== "board") return;
+    if (itemsR.isEditing()) await exitEdit();
+    if (disposed) return;
+    if (onOpenBoard) onOpenBoard(uid);
+    else host?.openBlock?.(uid);
+  };
+  const goCrumb = async (index) => {
+    if (itemsR.isEditing()) await exitEdit();
+    if (disposed) return;
+    onCrumb?.(index);
+  };
+  const popBoard = () => {
+    if (crumbList.length > 1 && onCrumb) {
+      void goCrumb(crumbList.length - 2);
+      return true;
+    }
+    return false;
+  };
   const chrome = createChrome({
     doc,
     root,
     version,
     settings,
     timers,
+    crumbs: crumbList,
     on: {
+      openBoard: () => {
+        const it = singleItem();
+        if (it) void openBoard(it.uid);
+      },
+      renameBoard: () => {
+        const it = singleItem();
+        if (it) itemsR.renameBoard(it.uid);
+      },
+      crumb: (index) => {
+        void goCrumb(index);
+      },
+      wrapBoard: () => {
+        if (!selection.items.length) return;
+        Promise.resolve(session.wrapInBoard?.(selection.items)).then((uid) => {
+          if (uid) ctl.select([uid]);
+        }).catch(() => {
+        });
+      },
       setTool: (tool, lock) => ctl.setTool(tool, lock),
       togglePanel: () => panel.toggle(),
       cycleLinks: () => cycleLinks(),
@@ -5885,6 +6515,17 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
       return uid;
     }),
     createSection: (p) => session.createSection?.({ rect: p.rect }),
+    createBoard: (p) => session.createBoard?.({ rect: p.rect }),
+    moveIntoBoard: async (uids, boardUid2, dx = 0, dy = 0) => {
+      const res = await session.moveIntoBoard?.(uids, boardUid2);
+      if (!res) {
+        void session.commitMove?.(uids, dx, dy);
+        return;
+      }
+      chrome.toast.show({ message: `Moved into ${res.title}`, action: { label: "Undo", run: () => res.undo() } });
+    },
+    openBoard: (uid) => openBoard(uid),
+    popBoard,
     wrapInSection: (uids) => session.wrapInSection?.(uids),
     deleteItems: (uids, opts) => session.deleteItems?.(uids, opts),
     deleteEdges: (uids) => session.deleteEdges?.(uids),
@@ -6069,19 +6710,38 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
   listen(root, "pointerleave", () => {
     pointerInside = false;
   });
-  listen(root, "dragover", (event) => {
-    event.preventDefault();
-    if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
-  });
-  listen(root, "drop", (event) => {
+  const acceptsDrop = (event) => !event.target?.closest?.(".pxd-item__editor");
+  const dropEffectFor = (effectAllowed) => {
+    const a = String(effectAllowed || "uninitialized");
+    if (a === "all" || a === "uninitialized" || /copy/i.test(a)) return "copy";
+    if (/move/i.test(a)) return "move";
+    if (/link/i.test(a)) return "link";
+    return "copy";
+  };
+  const onDragAccept = (event) => {
+    if (!acceptsDrop(event)) return;
     event.preventDefault();
     event.stopPropagation();
-    const parsed = parseDropPayload(event.dataTransfer);
-    if (!parsed) return;
+    if (event.dataTransfer) event.dataTransfer.dropEffect = dropEffectFor(event.dataTransfer.effectAllowed);
+  };
+  listen(root, "dragenter", onDragAccept);
+  listen(root, "dragover", onDragAccept);
+  listen(root, "drop", (event) => {
+    if (!acceptsDrop(event)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    measure();
+    const resolveUid = (u) => host?.cardStringForUid ? host.cardStringForUid(u) : `((${u}))`;
+    const list = parseDropPayload(event.dataTransfer, { resolveUid });
+    if (!list.length) return;
     const p = screenToWorld(vp, { x: event.clientX - rootRect.left, y: event.clientY - rootRect.top });
     const w = Number(setting("default-card-width", DEFAULT_SIZES.card.w)) || DEFAULT_SIZES.card.w;
     const h = Number(setting("default-card-height", DEFAULT_SIZES.card.h)) || DEFAULT_SIZES.card.h;
-    void session.addRefCards?.([{ string: parsed.string, x: p.x - w / 2, y: p.y - h / 2 }]);
+    const made = session.addRefCards?.(stackAt(list.map((x) => x.string), p.x - w / 2, p.y - h / 2, h));
+    Promise.resolve(made).then((uids) => {
+      if (Array.isArray(uids) && uids.length) ctl.select(uids);
+    }).catch(() => {
+    });
   });
   const ownsKeyboard = () => pointerInside || isFullscreen || root.contains?.(doc.activeElement);
   const onKeyDown = (event) => {
@@ -6090,6 +6750,10 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
       const inside2 = root.contains?.(event.target) || root.contains?.(doc.activeElement);
       if (!inside2 && !itemsR.isEditing()) return;
     } else if (!ownsKeyboard()) {
+      return;
+    }
+    if (!inputFocused && itemsR.isEditing() && event.key !== "Escape") {
+      itemsR.recoverFocus();
       return;
     }
     const handled = ctl.handle({ type: "keydown", key: event.key, code: event.code, shift: event.shiftKey, alt: event.altKey, meta: event.metaKey, ctrl: event.ctrlKey, inputFocused });
@@ -6106,6 +6770,14 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
   subs.push(session.on("change", ({ dirty: d, structural } = {}) => {
     if (disposed) return;
     const b = board();
+    const current = crumbList[crumbList.length - 1];
+    if (current && b) {
+      const title = b.title || UNTITLED_BOARD;
+      if (current.title !== title) {
+        current.title = title;
+        chrome.toolbar.setCrumbs(crumbList);
+      }
+    }
     if (structural || !d) dirty.structural = true;
     if (d && b) {
       for (const uid of d) {
@@ -6136,7 +6808,7 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
     } catch {
     }
   }
-  routeOff = watchRouteExit({ boardUid, onExit: () => {
+  routeOff = watchRouteExit({ boardUid: routeUid, onExit: () => {
     if (isFullscreen) requestFullscreen(false);
   }, win });
   const renderFrame = () => {
@@ -6190,6 +6862,12 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
   };
   applyFullscreen(fullscreen);
   measure();
+  if (autofocus) {
+    try {
+      root.focus({ preventScroll: true });
+    } catch {
+    }
+  }
   if (!vp) {
     const b = board();
     const r = b ? rects() : /* @__PURE__ */ new Map();
@@ -6386,6 +7064,9 @@ var NEGATIVE_TTL_MS = 1500;
 var LEGACY_METADATA_PAGE = "plexus-diagram/metadata";
 var TITLE_PANEL_CLASS = "rm-diagram-title-panel";
 var NEW_BOARD_STRING = "{{[[diagram]]:Untitled board}}";
+var ANCESTORS_PATTERN = "[:block/uid :block/string {:block/parents [:block/uid :block/string :block/props {:block/parents [:db/id]}]}]";
+var boardTitle = (s) => parseBoardTitle(s) || UNTITLED_BOARD;
+var currentUid = (rec) => rec.crumbs[rec.crumbs.length - 1].uid;
 var PARENTS_QUERY = "[:find ?u ?s :in $ ?uid :where [?b :block/uid ?uid] [?b :block/parents ?p] [?p :block/uid ?u] [?p :block/string ?s]]";
 function graphFromHash(hash = globalThis.location?.hash || "") {
   const match = String(hash).match(/#\/app\/([^/]+)/);
@@ -6524,7 +7205,106 @@ async function installPlexusDiagram({
       console.warn("[plexus-diagram] setFullscreen failed", error);
     }
   }
-  function mount(uid, native) {
+  function seedCrumbs(uid) {
+    const self = { uid, title: boardTitle(host.blockString?.(uid)) };
+    try {
+      const res = host.api.data.pull(ANCESTORS_PATTERN, [":block/uid", uid]);
+      const parents = res?.[":block/parents"] ?? [];
+      const chain = parents.filter((p) => isDiagramString(pulledString(p)) && readPlexus(p[":block/props"] ?? p.props)?.v === 2).map((p) => ({ uid: p[":block/uid"], title: boardTitle(p[":block/string"]), depth: (p[":block/parents"] ?? []).length })).sort((a, b) => a.depth - b.depth).map(({ uid: u, title }) => ({ uid: u, title }));
+      return [...chain, self];
+    } catch {
+      return [self];
+    }
+  }
+  function mountRecView(rec, { autofocus = false } = {}) {
+    return mountView({
+      host,
+      session: rec.session,
+      mountEl: rec.mountEl,
+      nativeEl: rec.native,
+      settings,
+      fullscreen: rec.fullscreen,
+      version: badge,
+      onRequestFullscreen: (want) => setFullscreen(rec, want === void 0 ? !rec.fullscreen : want),
+      crumbs: rec.crumbs.slice(),
+      routeUid: rec.uid,
+      autofocus,
+      onOpenBoard: (child) => navigate(rec, [...rec.crumbs, { uid: child, title: boardTitle(host.blockString?.(child)) }]),
+      onCrumb: (index) => navigate(rec, rec.crumbs.slice(0, index + 1))
+    });
+  }
+  function watchRec(rec) {
+    const session = rec.session;
+    const offGone = session.on?.("gone", () => {
+      if (currentUid(rec) !== rec.uid) navigate(rec, rec.crumbs.slice(0, -1));
+      else unmount(rec);
+    });
+    const offChange = session.on?.("change", () => {
+      if (!session.board || session.board.enhanced !== false) return;
+      if (currentUid(rec) !== rec.uid) {
+        navigate(rec, rec.crumbs.slice(0, -1));
+      } else if (!legacyUids.has(rec.uid)) {
+        markNative(rec.uid);
+        unmount(rec);
+      }
+    });
+    return () => {
+      offGone?.();
+      offChange?.();
+    };
+  }
+  function navigate(rec, next) {
+    queueMicrotask(() => {
+      if (stopped || mounts.get(rec.native) !== rec || !next.length) return;
+      const target = next[next.length - 1].uid;
+      if (target === currentUid(rec)) return;
+      if (!readEnhanced(host.api, target)) {
+        try {
+          Promise.resolve(host.openBlock?.(target)).catch(() => {
+          });
+        } catch {
+        }
+        return;
+      }
+      let session;
+      try {
+        session = acquireSession2(target, { host, settings });
+      } catch (error) {
+        console.warn("[plexus-diagram] Could not open the nested board", error);
+        return;
+      }
+      if (!session?.board) {
+        session?.release?.();
+        return;
+      }
+      try {
+        rec.off?.();
+      } catch {
+      }
+      rec.off = null;
+      try {
+        rec.view?.dispose?.();
+      } catch (error) {
+        console.warn("[plexus-diagram] view dispose failed", error);
+      }
+      try {
+        rec.session?.release?.();
+      } catch (error) {
+        console.warn("[plexus-diagram] session release failed", error);
+      }
+      rec.session = session;
+      rec.crumbs = next;
+      try {
+        rec.view = mountRecView(rec, { autofocus: true });
+        rec.off = watchRec(rec);
+      } catch (error) {
+        console.error("[plexus-diagram] Nested mount failed; native diagram restored", error);
+        negativeUntil.set(rec.uid, Date.now() + 10 * NEGATIVE_TTL_MS);
+        unmount(rec);
+      }
+    });
+  }
+  function mount(uid, native, { crumbs } = {}) {
     const mountEl = doc.createElement("div");
     mountEl.className = "pxd-mount";
     mountEl.dataset.diagramUid = uid;
@@ -6537,6 +7317,7 @@ async function installPlexusDiagram({
       titleDisplay: titlePanel ? titlePanel.style.display : "",
       session: null,
       view: null,
+      crumbs: crumbs ?? seedCrumbs(uid),
       fullscreen: false,
       off: null
     };
@@ -6545,31 +7326,17 @@ async function installPlexusDiagram({
     native.after(mountEl);
     mounts.set(native, rec);
     try {
-      rec.session = acquireSession2(uid, { host, settings });
+      rec.session = acquireSession2(currentUid(rec), { host, settings });
       rec.fullscreen = settings[SETTING_IDS.fullscreenOnZoom] !== false && !routeLeftZoomedDiagram(uid);
-      rec.view = mountView({
-        host,
-        session: rec.session,
-        mountEl,
-        nativeEl: native,
-        settings,
-        fullscreen: rec.fullscreen,
-        version: badge,
-        onRequestFullscreen: (want) => setFullscreen(rec, want === void 0 ? !rec.fullscreen : want)
-      });
-      rec.off = rec.session.on?.("change", () => {
-        if (rec.session.board && rec.session.board.enhanced === false && !legacyUids.has(uid)) {
-          markNative(uid);
-          unmount(rec);
-        }
-      });
+      rec.view = mountRecView(rec);
+      rec.off = watchRec(rec);
     } catch (error) {
       console.error("[plexus-diagram] Mount failed; native diagram restored", error);
       negativeUntil.set(uid, Date.now() + 10 * NEGATIVE_TTL_MS);
       unmount(rec);
       return null;
     }
-    migrateLegacy(rec);
+    if (currentUid(rec) === uid) migrateLegacy(rec);
     return rec;
   }
   function migrateLegacy(rec) {
@@ -6607,16 +7374,17 @@ async function installPlexusDiagram({
     if (rec.titlePanel) rec.titlePanel.style.display = rec.titleDisplay;
   }
   const uidByNative = /* @__PURE__ */ new WeakMap();
-  function consider(native) {
+  function consider(native, options) {
     if (stopped || !native || mounts.has(native) || native.isConnected === false) return;
     if (!active()) return;
+    if (native.parentElement?.closest?.(".pxd-native-hidden, .pxd-root")) return;
     let uid = uidByNative.get(native);
     if (uid === void 0) {
       uid = findDiagramUidFromEl(native, (candidate) => isDiagramString(host.blockString?.(candidate))) || null;
       uidByNative.set(native, uid);
     }
     if (!uid || !isBoardEnhanced(uid)) return;
-    mount(uid, native);
+    mount(uid, native, options);
   }
   function scanAdded(node) {
     for (const diagram of diagramsWithin(node)) consider(diagram);
@@ -6657,8 +7425,13 @@ async function installPlexusDiagram({
     if (isDiagramString(host.blockString?.(uid))) return uid;
     try {
       const rows = host.q?.(PARENTS_QUERY, uid) || [];
-      const hit = rows.find((row) => isDiagramString(row[1]));
-      return hit ? hit[0] : null;
+      const hits = rows.filter((row) => isDiagramString(row[1])).map((row) => row[0]);
+      if (hits.length < 2) return hits[0] ?? null;
+      const deepest = hits.find((cand) => {
+        const above = new Set((host.q?.(PARENTS_QUERY, cand) || []).map((row) => row[0]));
+        return hits.every((other) => other === cand || above.has(other));
+      });
+      return deepest ?? hits[0];
     } catch {
       return null;
     }
@@ -6765,9 +7538,9 @@ async function installPlexusDiagram({
         if (typeof rec.view?.setSettings === "function") {
           rec.view.setSettings(settings);
         } else {
-          const native = rec.native;
+          const { native, crumbs } = rec;
           unmount(rec);
-          consider(native);
+          consider(native, { crumbs });
         }
       } catch (error) {
         console.warn("[plexus-diagram] Settings propagation failed", error);
@@ -6780,6 +7553,8 @@ async function installPlexusDiagram({
     stats: host.stats,
     mounts: () => [...mounts.values()].map((rec) => ({
       uid: rec.uid,
+      current: currentUid(rec),
+      crumbs: rec.crumbs.map((c) => c.uid),
       fullscreen: rec.fullscreen,
       connected: rec.native.isConnected !== false && rec.mountEl.isConnected !== false
     }))

@@ -9,18 +9,19 @@
 //   previewRects(list) showTempWire({ from, fromSide, point }|null)
 //   commitMove(uids, dx, dy) commitRects(list) createCard({x,y}) createText({x,y})
 //   createSection({rect}) wrapInSection(uids) deleteItems(uids, opts) deleteEdges(uids)
+//   createBoard({rect}) moveIntoBoard(uids, boardUid, dx, dy) openBoard(uid) popBoard() → true when it went up a level
 //   addEdge({from,to,fromSide,toSide}) undo() redo()
 //   enterEdit(uid) exitEdit() isEditing() editingUid() autocompleteOpen()
 //   renameSection(uid) editLabel(edgeUid) openBlock(uid)
 //   toast({message, action}) openSearch() cycleLinks() isFullscreen() setFullscreen(bool)
 //   setSpace(bool)
 
-import { DEFAULT_SIZES, MIN_SIZES } from "../model/schema.js";
+import { DEFAULT_BOARD_CARD, DEFAULT_SIZES, MIN_SIZES } from "../model/schema.js";
 import { descendantsOf, findEdge, hitTest, itemsInRect, topLevelOf, boundsOf } from "../model/board.js";
 import { nearestSide, snapMove, zoomAt } from "../model/geometry.js";
 
-export const TOOL_KEYS = { v: "select", h: "hand", n: "card", t: "text", g: "section", c: "connect" };
-export const TOOLS = ["select", "hand", "card", "text", "section", "connect"];
+export const TOOL_KEYS = { v: "select", h: "hand", n: "card", t: "text", g: "section", w: "board", c: "connect" };
+export const TOOLS = ["select", "hand", "card", "text", "section", "board", "connect"];
 export const DRAG_THRESHOLD_PX = 4;
 export const SNAP_PX = 6;
 const STICKY_TOOLS = new Set(["select", "hand"]);
@@ -35,7 +36,7 @@ export function createInteractions({ actions, settings } = {}) {
   const a = actions || {};
   const call = (name, ...args) => (typeof a[name] === "function" ? a[name](...args) : undefined);
   const setting = (key, def) => {
-    const v = settings?.get?.(key);
+    const v = typeof settings?.get === "function" ? settings.get(key) : settings?.[key];
     return v === undefined || v === null ? def : v;
   };
 
@@ -203,6 +204,10 @@ export function createInteractions({ actions, settings } = {}) {
       begin({ kind: "section-draw", start: ev.world });
       return;
     }
+    if (state.tool === "board") {
+      begin({ kind: "board-draw", start: ev.world });
+      return;
+    }
     if (state.tool === "card" || state.tool === "text") {
       begin({ kind: "place", tool: state.tool, start: ev.world });
       return;
@@ -249,6 +254,17 @@ export function createInteractions({ actions, settings } = {}) {
       g.dy = dy;
       call("previewMove", g.uids, dx, dy);
       call("showGuides", guides);
+      const b = board();
+      const r = rects();
+      if (b && r) {
+        if (!g.exclude) {
+          g.exclude = new Set(g.uids);
+          for (const u of g.uids) for (const d of descendantsOf(b, u)) g.exclude.add(d);
+        }
+        const hit = hitTest(b, ev.world, r, { exclude: g.exclude });
+        const drop = hit?.part === "body" && (b.items.get(hit.uid)?.kind === "board" && b.items.get(hit.uid)?.enhanced) ? hit.uid : null;
+        if (drop !== (g.drop ?? null)) { g.drop = drop; call("onHover", drop); }
+      }
       return;
     }
     // world-space gestures
@@ -273,9 +289,9 @@ export function createInteractions({ actions, settings } = {}) {
       }
       return;
     }
-    if (g.kind === "section-draw") {
+    if (g.kind === "section-draw" || g.kind === "board-draw") {
       g.rect = normRect(g.start, ev.world);
-      call("showMarquee", g.rect, "section");
+      call("showMarquee", g.rect, g.kind === "board-draw" ? "board" : "section");
       return;
     }
     if (g.kind === "resize") {
@@ -313,6 +329,16 @@ export function createInteractions({ actions, settings } = {}) {
         afterToolUse();
         return;
       }
+      case "board-draw": {
+        const d = DEFAULT_BOARD_CARD;
+        const rect = g.moved && g.rect && g.rect.w >= MIN_SIZES.card.w && g.rect.h >= MIN_SIZES.card.h
+          ? g.rect
+          : { x: g.start.x - d.w / 2, y: g.start.y - d.h / 2, w: d.w, h: d.h };
+        end();
+        Promise.resolve(call("createBoard", { rect })).then((uid) => { if (uid) selectItems([uid]); }).catch(() => {});
+        afterToolUse();
+        return;
+      }
       case "place": {
         if (!g.moved) {
           const d = DEFAULT_SIZES[g.tool];
@@ -326,7 +352,9 @@ export function createInteractions({ actions, settings } = {}) {
         break;
       }
       case "move":
-        if (g.moved) {
+        if (g.moved && g.drop) {
+          call("moveIntoBoard", g.uids, g.drop, g.dx || 0, g.dy || 0);
+        } else if (g.moved) {
           call("commitMove", g.uids, g.dx || 0, g.dy || 0);
         } else if (g.deferred) {
           selectItems([g.target]);
@@ -383,7 +411,7 @@ export function createInteractions({ actions, settings } = {}) {
     if (t.kind === "item" && t.uid) {
       const item = b?.items.get(t.uid);
       if (!item) return;
-      if (item.kind === "board") call("openBlock", t.uid);
+      if (item.kind === "board") call("openBoard", t.uid);
       else if (editingUid() !== t.uid) { selectItems([t.uid]); call("enterEdit", t.uid); }
       return;
     }
@@ -444,6 +472,7 @@ export function createInteractions({ actions, settings } = {}) {
     if (state.gesture) { onPointerCancel(); return true; }
     if (isEditing()) { call("exitEdit"); return true; }
     if (clearSelection()) return true;
+    if (call("popBoard")) return true;
     if (call("isFullscreen")) { call("setFullscreen", false); return true; }
     return false;
   };
@@ -483,7 +512,7 @@ export function createInteractions({ actions, settings } = {}) {
       if (state.selection.size === 1) {
         const uid = [...state.selection][0];
         const item = b?.items.get(uid);
-        if (item?.kind === "board") call("openBlock", uid);
+        if (item?.kind === "board") call("openBoard", uid);
         else if (item?.type === "section") call("renameSection", uid);
         else call("enterEdit", uid);
         return true;

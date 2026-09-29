@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
-  boundsOf, buildBoard, containerAt, descendantsOf, diffBoards, edgesTouching, findEdge, hitTest,
+  boardPreview, boundsOf, buildBoard, containerAt, descendantsOf, diffBoards, edgesTouching, findEdge, hitTest,
   itemsInRect, membershipPlan, sectionAdoptPlan, toRelative, topLevelOf, worldRect, worldRects,
 } from "../src/model/board.js";
 
@@ -314,4 +314,67 @@ test("diffBoards structural vs dirty-only", () => {
 
   assert.equal(diffBoards(null, prev).structural, true);
   assert.equal(diffBoards(null, prev).dirty.size, prev.items.size + prev.edges.size);
+});
+
+const boardCard = (extra = {}) => ({
+  ...blk("nb1", 0, "{{[[diagram]]:Inner}}", { x: 40, y: 50, w: 320, h: 220, v: 2 }),
+  ":block/children": [
+    blk("k1", 0, "kid one", { x: 100, y: 100, w: 200, h: 100, color: "teal" }),
+    blk("k2", 1, "kid two", { x: 500, y: 300, w: 100, h: 100 }),
+    blk("ks", 2, "Frame", { type: "section", x: 0, y: 0, w: 700, h: 500 }),
+    blk("ke", 3, "Connections", { type: "edges" }, { ":block/children": [blk("kx", 0, "((k1)) → ((k2))", { type: "edge", from: "k1", to: "k2" })] }),
+  ],
+  ...extra,
+});
+
+test("a nested board card is a board-kind item with its layout, and the child board is enhanced", () => {
+  const parent = buildBoard({
+    ":block/uid": "root0001",
+    ":block/string": "{{[[diagram]]:Root}}",
+    ":block/props": { ":plexus": { ":v": 2 } },
+    ":block/children": [boardCard()],
+  });
+  const card = parent.items.get("nb1");
+  assert.equal(card.kind, "board");
+  assert.equal(card.type, "card");
+  assert.equal(card.hasLayout, true);
+  assert.deepEqual([card.x, card.y, card.w, card.h], [40, 50, 320, 220]);
+  assert.equal(card.title, "Inner");
+  const child = buildBoard({ ":block/uid": card.uid, ":block/string": card.string, ":block/props": boardCard()[":block/props"], ":block/children": card.content });
+  assert.equal(child.enhanced, true);
+  assert.equal(child.items.size, 3);
+  assert.equal(child.edges.size, 1);
+});
+
+test("hitTest exclude skips the given uids in both passes", () => {
+  const b = buildBoard(fixture());
+  const rects = worldRects(b);
+  const at = { x: 10, y: 10 };
+  assert.equal(hitTest(b, at, rects)?.uid, "c1");
+  assert.equal(hitTest(b, at, rects, { exclude: new Set(["c1"]) }), null);
+  const title = { x: 10, y: 305 };
+  assert.equal(hitTest(b, title, rects)?.uid, "s1");
+  assert.equal(hitTest(b, title, rects, { exclude: new Set(["s1"]) }), null);
+});
+
+test("boardPreview returns fractions of the child bounds, a count, an aspect and a cap", () => {
+  const b = buildBoard({ ":block/uid": "r", ":block/string": "{{[[diagram]]}}", ":block/children": [boardCard()] });
+  const pv = boardPreview(b.items.get("nb1"));
+  assert.equal(pv.count, 3);
+  assert.deepEqual(pv.bounds, { x: 0, y: 0, w: 700, h: 500 });
+  assert.equal(pv.aspect, 700 / 500);
+  assert.equal(pv.rects[0].type, "section", "sections draw first");
+  assert.deepEqual([pv.rects[0].x, pv.rects[0].y, pv.rects[0].w, pv.rects[0].h], [0, 0, 1, 1]);
+  const k1 = pv.rects.find((r) => r.color === "teal");
+  assert.deepEqual([k1.x, k1.y, k1.w, k1.h], [100 / 700, 100 / 500, 200 / 700, 100 / 500]);
+  assert.ok(pv.rects.every((r) => r.x >= 0 && r.x + r.w <= 1.000001 && r.y >= 0 && r.y + r.h <= 1.000001));
+  assert.equal(boardPreview(b.items.get("nb1"), { max: 2 }).rects.length, 2);
+  assert.equal(boardPreview(b.items.get("nb1"), { max: 2 }).count, 3);
+});
+
+test("boardPreview of an empty board card and an extreme aspect", () => {
+  const empty = buildBoard({ ":block/uid": "r", ":block/string": "{{[[diagram]]}}", ":block/children": [{ ...boardCard(), ":block/children": [] }] });
+  assert.deepEqual(boardPreview(empty.items.get("nb1")), { count: 0, aspect: 1.5, rects: [], bounds: null });
+  const wide = buildBoard({ ":block/uid": "r", ":block/string": "{{[[diagram]]}}", ":block/children": [{ ...boardCard(), ":block/children": [blk("w1", 0, "a", { x: 0, y: 0, w: 1000, h: 10 })] }] });
+  assert.equal(boardPreview(wide.items.get("nb1")).aspect, 4);
 });

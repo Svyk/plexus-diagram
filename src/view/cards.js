@@ -2,8 +2,8 @@
 // and edit mode (spec 3.2). Roam content only ever comes from host.renderString /
 // renderBlock / renderPage; we never build <img> or fake editors.
 
-import { DEFAULT_SIZES, firstLine, plainText } from "../model/schema.js";
-import { descendantsOf } from "../model/board.js";
+import { DEFAULT_SIZES, firstLine, isUntitledBoard, parseBoardTitle, plainText } from "../model/schema.js";
+import { boardPreview, descendantsOf } from "../model/board.js";
 import { lodForZoom, rectsIntersect } from "../model/geometry.js";
 
 const SIDES = ["top", "right", "bottom", "left"];
@@ -15,6 +15,8 @@ const CONTENT_LIMIT = 12;
 const CONTENT_DEPTH = 2;
 const GROW_CAP = 900;
 const HEADER_H = 32;
+const BOARD_KEY_DEPTH = 3;
+const BOARD_KEY_NODES = 400;
 
 const now = () => (globalThis.performance?.now ? globalThis.performance.now() : Date.now());
 
@@ -99,8 +101,24 @@ const childString = (c) => c?.[":block/string"] ?? c?.string ?? "";
 const childKids = (c) => c?.[":block/children"] ?? c?.children ?? [];
 const childUid = (c) => c?.[":block/uid"] ?? c?.uid ?? "";
 
+const childProps = (c) => c?.[":block/props"] ?? c?.props;
+
 function contentKeyOf(item) {
-  const parts = [item.kind, item.string, item.collapsed ? "c" : "", item.fontSize || ""];
+  const parts = [item.kind, item.enhanced ? "e" : "", item.string, item.collapsed ? "c" : "", item.fontSize || ""];
+  if (item.kind === "board") {
+    // The mini preview draws the child board's layout, so a layout-only change inside it must refresh the card.
+    let budget = BOARD_KEY_NODES;
+    const walkBoard = (kids, depth) => {
+      if (depth > BOARD_KEY_DEPTH) return;
+      for (const c of kids) {
+        if (budget-- <= 0) return;
+        parts.push(childUid(c), childString(c), JSON.stringify(childProps(c) ?? null));
+        walkBoard(childKids(c), depth + 1);
+      }
+    };
+    walkBoard(item.content || [], 1);
+    return parts.join("\u0001");
+  }
   const walk = (kids, depth) => {
     if (depth > CONTENT_DEPTH) return;
     for (const c of kids) { parts.push(childString(c)); walk(childKids(c), depth + 1); }
@@ -119,6 +137,8 @@ export function createItemRenderer({
   onGrow,
   onRenameCommit,
   onEditChange,
+  onOpenBoard,
+  onRenameBoard,
 } = {}) {
   const shells = new Map(); // uid → rec
   const mounted = new Map(); // uid → lastWanted (LRU order = insertion order)
@@ -132,6 +152,10 @@ export function createItemRenderer({
   let lastBoard = null;
   let lastRects = null;
   let focusGuard = null;
+  let floorTeardown = null;
+  let floor = null; // { start, cancel } while a focus recovery is pending
+  let recoveries = [];
+  let lastOutsideDown = -Infinity;
   let disposed = false;
 
   const later = (fn, ms) => (timers?.later ? timers.later(fn, ms) : (() => { const t = setTimeout(fn, ms); return () => clearTimeout(t); })());
@@ -229,14 +253,26 @@ export function createItemRenderer({
         rec.titleRendered = false;
       }
     } else {
-      rec.header.textContent = item.type === "text" ? "" : (item.title || "");
+      // A block-ref card's title lives in the referenced block; resolve it here so map LOD and collapsed cards keep a header.
+      if (item.kind === "block" && item.target?.uid) {
+        const refString = host?.blockString?.(item.target.uid);
+        rec.refTitle = typeof refString === "string" ? firstLine(refString) : "";
+      } else rec.refTitle = "";
+      if (editing?.uid !== item.uid && !rec.renaming) rec.header.textContent = item.type === "text" ? "" : (rec.refTitle || item.title || "");
       if (item.type === "text") rec.header.style.display = "none";
+      rec.header.classList.toggle("pxd-item__header--muted", item.kind === "board" && isUntitledBoard(item.title));
     }
     node.title = "";
   };
 
   const position = (rec, rect) => {
+    const prev = rec.rect;
     rec.rect = rect;
+    if (editing?.uid === rec.uid) {
+      // No style writes while typing unless the rect really changed; min-height keeps the card from shrinking.
+      if (prev && prev.x === rect.x && prev.y === rect.y && prev.w === rect.w && prev.h === rect.h) return;
+      rec.el.style.minHeight = `${rect.h}px`;
+    }
     rec.el.style.transform = `translate(${rect.x}px, ${rect.y}px)`;
     rec.el.style.width = `${rect.w}px`;
     rec.el.style.height = `${rect.h}px`;
@@ -307,6 +343,59 @@ export function createItemRenderer({
     }
   };
 
+  const openBoard = (uid) => { if (onOpenBoard) onOpenBoard(uid); else host?.openBlock?.(uid); };
+  const commitBoardName = (uid, name) => (onRenameBoard || ((u, n) => session?.renameBoard?.(u, n)))(uid, name);
+
+  // Board card body: a mini map of the child board's items, the item count and, while untitled, a name field.
+  const mountBoardBody = (body, item) => {
+    const preview = boardPreview(item);
+    const wrap = el("div", "pxd-item__board", body);
+    const holder = el("div", "pxd-board-preview", wrap);
+    const canvas = el("div", "pxd-board-preview__canvas", holder);
+    canvas.style.aspectRatio = String(preview.aspect);
+    const pct = (n) => `${Math.round(n * 10000) / 100}%`;
+    for (const r of preview.rects) {
+      const cls = ["pxd-mini"];
+      if (r.type === "section") cls.push("pxd-mini--section");
+      else if (r.type === "text") cls.push("pxd-mini--text");
+      if (r.color) cls.push(`pxd-c-${r.color}`);
+      const mini = el("div", cls.join(" "), canvas);
+      mini.style.left = pct(r.x);
+      mini.style.top = pct(r.y);
+      mini.style.width = pct(r.w);
+      mini.style.height = pct(r.h);
+    }
+    if (item.enhanced && isUntitledBoard(item.title)) {
+      const input = el("input", "pxd-input pxd-item__board-name", wrap);
+      input.type = "text";
+      input.placeholder = "Name this board…";
+      input.setAttribute("placeholder", "Name this board…");
+      for (const type of ["pointerdown", "mousedown", "click", "dblclick"]) input.addEventListener(type, stopEvent);
+      let done = false;
+      const commit = () => {
+        if (done) return;
+        const name = String(input.value || "").trim();
+        if (!name) return;
+        done = true;
+        commitBoardName(item.uid, name);
+      };
+      input.addEventListener("keydown", (event) => {
+        event.stopPropagation();
+        if (event.key === "Enter") { event.preventDefault(); commit(); input.blur?.(); }
+        else if (event.key === "Escape") { event.preventDefault(); input.value = ""; input.blur?.(); }
+      });
+      input.addEventListener("blur", commit);
+    }
+    const meta = el("div", "pxd-item__board-meta", wrap);
+    el("span", "pxd-item__board-count", meta).textContent = preview.count ? `${preview.count} ${preview.count === 1 ? "item" : "items"}` : "Empty board";
+    const open = el("button", "pxd-btn pxd-item__open", meta);
+    open.type = "button";
+    open.textContent = "Open";
+    open.dataset.action = "open";
+    for (const type of ["pointerdown", "mousedown", "dblclick"]) open.addEventListener(type, stopEvent);
+    open.addEventListener("click", (event) => { event.stopPropagation(); openBoard(item.uid); });
+  };
+
   const mountContent = (rec, item) => {
     const body = rec.body;
     unmountRoots(rec);
@@ -322,14 +411,7 @@ export function createItemRenderer({
     } else if (item.kind === "image") {
       budget.roots.push(renderRoot(el("div", "pxd-item__media", body), item.string));
     } else if (item.kind === "board") {
-      const wrap = el("div", "pxd-item__board", body);
-      el("div", "pxd-item__board-title", wrap).textContent = item.title;
-      el("div", "pxd-item__board-count", wrap).textContent = `${(item.content || []).length} items`;
-      const open = el("button", "pxd-btn pxd-item__open", wrap);
-      open.type = "button";
-      open.textContent = "Open";
-      open.dataset.action = "open";
-      open.addEventListener("click", (event) => { event.stopPropagation(); host?.openBlock?.(item.uid); });
+      mountBoardBody(body, item);
     } else if (item.kind === "page") {
       const holder = el("div", "pxd-item__page", body);
       const preview = host?.pagePreview?.(item.title, CONTENT_DEPTH, CONTENT_LIMIT);
@@ -346,12 +428,13 @@ export function createItemRenderer({
     } else if (item.kind === "block") {
       const ref = item.target.uid;
       const refString = host?.blockString?.(ref);
-      if (typeof refString === "string") rec.header.textContent = firstLine(refString) || item.title;
-      const rest = typeof refString === "string" ? refString.split("\n").slice(1).join("\n").trim() : "";
-      if (rest) budget.roots.push(renderRoot(body, rest));
+      rec.refTitle = typeof refString === "string" ? firstLine(refString) : "";
+      if (editing?.uid !== item.uid) rec.header.textContent = rec.refTitle || item.title || "";
+      if (typeof refString === "string" && refString.trim()) budget.roots.push(renderRoot(body, refString, "pxd-rs pxd-item__string"));
       const tree = host?.pullTree?.(ref, CONTENT_DEPTH, CONTENT_LIMIT);
       const apply = (blocks, sync = false) => {
         if (disposed || !body.isConnected || (!sync && rec.contentKey !== contentKeyOf(item))) return;
+        if (!refString?.trim() && !blocks?.length) el("div", "pxd-item__placeholder", body).textContent = "Empty card";
         const b = { n: 0, roots: [] };
         renderBlocks(body, blocks || [], 1, b);
         rec.roots.push(...b.roots);
@@ -359,11 +442,9 @@ export function createItemRenderer({
       if (tree && typeof tree.then === "function") tree.then((t) => apply(t)).catch(() => {});
       else apply(tree, true);
     } else {
-      const lines = String(item.string || "").split("\n");
-      const rest = lines.slice(1).join("\n").trim();
-      if (rest) budget.roots.push(renderRoot(body, rest));
+      if (item.string?.trim()) budget.roots.push(renderRoot(body, item.string, "pxd-rs pxd-item__string"));
       renderBlocks(body, item.content || [], 1, budget);
-      if (!rest && !(item.content || []).length && !item.string?.trim()) {
+      if (!item.string?.trim() && !(item.content || []).length) {
         el("div", "pxd-item__placeholder", body).textContent = "Empty card";
       }
     }
@@ -538,16 +619,99 @@ export function createItemRenderer({
     event.stopPropagation?.();
     event.stopImmediatePropagation?.();
   };
+  const onDocPointerDown = (event) => {
+    if (!editing) return;
+    if (editing.rec.el.contains?.(event.target)) return;
+    lastOutsideDown = now();
+  };
   const attachFocusGuard = () => {
     if (focusGuard || typeof doc.addEventListener !== "function") return;
     doc.addEventListener("focus", onFocusSteal, true);
     doc.addEventListener("scroll", onFocusSteal, true);
+    doc.addEventListener("pointerdown", onDocPointerDown, true);
     focusGuard = () => {
       doc.removeEventListener("focus", onFocusSteal, true);
       doc.removeEventListener("scroll", onFocusSteal, true);
+      doc.removeEventListener("pointerdown", onDocPointerDown, true);
     };
   };
-  const detachFocusGuard = () => { focusGuard?.(); focusGuard = null; };
+  const detachFocusGuard = () => {
+    floorTeardown?.();
+    floorTeardown = null;
+    focusGuard?.();
+    focusGuard = null;
+  };
+
+  // Focus floor: when Roam drops focus to <body> mid-edit (Enter creating a child block), refocus its live textarea.
+  // Never writes to the graph (rule 19.2) and stands down for any real pointer or focus target outside the editor.
+  const FLOOR_WINDOW_MS = 600;
+  const FLOOR_POINTER_MS = 300;
+  const FLOOR_MAX = 4;
+  const FLOOR_SPAN_MS = 1500;
+  const frameLater = (fn) => {
+    if (timers?.frame) return timers.frame(fn);
+    const raf = globalThis.requestAnimationFrame;
+    if (typeof raf === "function") { const id = raf(fn); return () => globalThis.cancelAnimationFrame?.(id); }
+    const t = setTimeout(fn, 16);
+    return () => clearTimeout(t);
+  };
+  const rootOfLayer = () => itemsLayer?.closest?.(".pxd-root") ?? null;
+  const focusLost = (a) => !a || a === doc.body || a === doc.documentElement || a === rootOfLayer();
+  const findLiveTextarea = (e) => {
+    const list = [...(e.editor.querySelectorAll?.("textarea") || [])];
+    if (!list.length) return null;
+    const ta = [...list].reverse().find((n) => String(n.id || "").startsWith("block-input-")) || list[list.length - 1];
+    return ta?.isConnected ? ta : null;
+  };
+  const floorTick = (e) => {
+    const f = floor;
+    if (!f) return;
+    f.cancel = null;
+    const stop = () => { if (floor === f) floor = null; };
+    if (editing !== e || disposed || lastOutsideDown > f.start - FLOOR_POINTER_MS || doc.hasFocus?.() === false) return stop();
+    const a = doc.activeElement;
+    if (e.editor.contains?.(a)) return stop();
+    if (!focusLost(a)) return stop();
+    const ta = findLiveTextarea(e);
+    if (ta) { recoveries.push(now()); focusRoamInput(ta); return stop(); }
+    if (now() - f.start < FLOOR_WINDOW_MS) f.cancel = frameLater(() => floorTick(e));
+    else stop();
+  };
+  const armFloor = () => {
+    const e = editing;
+    if (!e || disposed || !e.ready || floor) return false;
+    const t = now();
+    recoveries = recoveries.filter((x) => t - x < FLOOR_SPAN_MS);
+    if (recoveries.length >= FLOOR_MAX) return false;
+    floor = { start: t, cancel: null };
+    floor.cancel = frameLater(() => floorTick(e));
+    return true;
+  };
+  const attachFloor = (e) => {
+    const onIn = () => { e.ready = true; };
+    const onOut = (event) => {
+      if (editing !== e || !e.ready) return;
+      const to = event.relatedTarget;
+      if (to) return; // focus moved to a real target (inside the editor or elsewhere)
+      armFloor();
+    };
+    e.editor.addEventListener("focusin", onIn);
+    e.editor.addEventListener("focusout", onOut);
+    const MO = doc.defaultView?.MutationObserver || globalThis.MutationObserver;
+    let mo = null;
+    if (typeof MO === "function") {
+      mo = new MO(() => { if (editing === e && e.ready && focusLost(doc.activeElement)) armFloor(); });
+      try { mo.observe(e.editor, { childList: true, subtree: true }); } catch { /* stub */ }
+    }
+    floorTeardown = () => {
+      e.editor.removeEventListener("focusin", onIn);
+      e.editor.removeEventListener("focusout", onOut);
+      mo?.disconnect();
+      floor?.cancel?.();
+      floor = null;
+    };
+  };
+  const recoverFocus = () => armFloor();
 
   const stopEvent = (event) => event.stopPropagation();
 
@@ -566,9 +730,12 @@ export function createItemRenderer({
     const editor = el("div", "pxd-item__editor", rec.body);
     // Rule 19.1: stop pointer/wheel at the overlay boundary BEFORE the synthetic focus click.
     for (const type of ["pointerdown", "pointerup", "click", "dblclick", "wheel", "mousedown", "mouseup"]) editor.addEventListener(type, stopEvent);
-    editing = { uid, rec, editor, targetUid, item };
+    editing = { uid, rec, editor, targetUid, item, ready: false };
     rec.el.classList.add("pxd-item--editing");
+    if (rec.rect) rec.el.style.minHeight = `${rec.rect.h}px`;
+    lastOutsideDown = -Infinity;
     attachFocusGuard();
+    attachFloor(editing);
     onEditChange?.(uid);
     let ok = true;
     try {
@@ -585,6 +752,7 @@ export function createItemRenderer({
     if (disposed || editing?.uid !== uid) return false;
     const input = editor.querySelector?.(".rm-block__input") || editor.querySelector?.("textarea");
     if (input) focusRoamInput(input);
+    if (editing?.uid === uid && editor.contains?.(doc.activeElement)) editing.ready = true;
     return true;
   };
 
@@ -599,16 +767,18 @@ export function createItemRenderer({
     try { host?.unmount?.(editor); } catch { /* not mounted */ }
     editor.remove();
     rec.el.classList.remove("pxd-item--editing");
+    rec.el.style.minHeight = "";
     rec.contentKey = null;
     mounted.delete(uid);
     if (!silent && !disposed) {
       const live = lastBoard?.items.get(uid) || item;
       if (live && shells.has(uid)) {
         mountContent(rec, live);
+        paintShell(rec, live);
         mounted.set(uid, now());
       }
       onEditChange?.(null);
-      const need = contentH + HEADER_H + 16;
+      const need = contentH + (["page", "board"].includes(item.kind) || item.collapsed ? HEADER_H : 0) + 20;
       if (contentH > 0 && live && need > live.h) {
         const grow = Math.min(GROW_CAP, need);
         if (grow > live.h) (onGrow || ((u, h) => session?.growToFit?.(u, h)))(uid, grow);
@@ -659,6 +829,50 @@ export function createItemRenderer({
     return true;
   };
 
+  // Board title inline rename on the card header (plain contenteditable; writes the block string).
+  const renameBoard = (uid) => {
+    const rec = shells.get(uid);
+    const item = lastBoard?.items.get(uid);
+    if (!rec || !item || item.kind !== "board" || !item.enhanced || !rec.header || rec.renaming) return false;
+    const h = rec.header;
+    const seed = parseBoardTitle(item.string);
+    rec.renaming = true;
+    h.textContent = seed;
+    h.classList.add("pxd-item__header--editing");
+    h.classList.remove("pxd-item__header--muted");
+    h.contentEditable = "true";
+    h.setAttribute("contenteditable", "true");
+    const finish = (commit) => {
+      if (!rec.renaming) return;
+      rec.renaming = false;
+      h.contentEditable = "false";
+      h.removeAttribute("contenteditable");
+      h.classList.remove("pxd-item__header--editing");
+      h.removeEventListener("keydown", onKey);
+      h.removeEventListener("blur", onBlur);
+      h.removeEventListener("pointerdown", stopEvent);
+      h.removeEventListener("dblclick", stopEvent);
+      const next = String(h.textContent || "").trim();
+      const live = lastBoard?.items.get(uid) || item;
+      h.textContent = live.title || "";
+      h.classList.toggle("pxd-item__header--muted", isUntitledBoard(live.title));
+      if (commit && next !== seed) commitBoardName(uid, next);
+    };
+    const onKey = (event) => {
+      if (event.key === "Enter") { event.preventDefault(); event.stopPropagation(); finish(true); }
+      else if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); finish(false); }
+      else event.stopPropagation();
+    };
+    const onBlur = () => finish(true);
+    h.addEventListener("keydown", onKey);
+    h.addEventListener("blur", onBlur);
+    h.addEventListener("pointerdown", stopEvent);
+    h.addEventListener("dblclick", stopEvent);
+    try { h.focus({ preventScroll: true }); } catch { h.focus?.(); }
+    try { const d = h.ownerDocument; const r = d.createRange(); r.selectNodeContents(h); const sel = d.getSelection(); sel.removeAllRanges(); sel.addRange(r); } catch { /* no selection API */ }
+    return true;
+  };
+
   const dispose = () => {
     disposed = true;
     if (editing) {
@@ -693,8 +907,10 @@ export function createItemRenderer({
     exitEdit,
     editingUid: () => editing?.uid ?? null,
     isEditing: () => Boolean(editing),
+    recoverFocus,
     autocompleteOpen,
     renameSection,
+    renameBoard,
     shellOf: (uid) => shells.get(uid)?.el ?? null,
     mountedCount: () => mounted.size,
     mountedUids: () => [...mounted.keys()],

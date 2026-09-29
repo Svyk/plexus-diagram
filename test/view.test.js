@@ -7,7 +7,7 @@ import { createDomStub } from "./fixtures/dom-stub.js";
 
 const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
 
-function pulled() {
+function pulled(extraChildren = []) {
   const item = (uid, string, plexus, order, children = []) => ({
     ":block/uid": uid,
     ":block/string": string,
@@ -34,11 +34,12 @@ function pulled() {
         item("edgeFFFF6", "((cardAAAA1)) → causes → [[Beta]]", { ":type": "edge", ":from": "cardAAAA1", ":to": "cardBBBB2" }, 0),
         item("edgeGGGG7", "[[Beta]] → ((cardAAAA1))", { ":type": "edge", ":from": "cardBBBB2", ":to": "cardAAAA1" }, 1),
       ]),
+      ...extraChildren,
     ],
   };
 }
 
-function fakeHost() {
+function fakeHost(overrides = {}) {
   const calls = { renderString: 0, renderBlock: 0, renderPage: 0, unmount: 0 };
   return {
     calls,
@@ -56,6 +57,8 @@ function fakeHost() {
     searchPages: () => [],
     searchBlocks: () => [],
     related: () => [],
+    cardStringForUid: (uid) => `((${uid}))`,
+    ...overrides,
   };
 }
 
@@ -87,6 +90,13 @@ function fakeSession(board) {
     createText: rec("createText"),
     createSection: rec("createSection"),
     wrapInSection: rec("wrapInSection"),
+    createBoard: rec("createBoard"),
+    wrapInBoard: rec("wrapInBoard"),
+    renameBoard: rec("renameBoard"),
+    moveIntoBoard: (...args) => {
+      mutations.push(["moveIntoBoard", ...args]);
+      return Promise.resolve(session.moveResult === undefined ? { moved: args[0], title: "Inner", boardUid: args[1], undo: () => { mutations.push(["moveUndo"]); } } : session.moveResult);
+    },
     addRefCards: rec("addRefCards"),
     deleteItems: rec("deleteItems"),
     deleteEdges: rec("deleteEdges"),
@@ -104,13 +114,13 @@ function fakeSession(board) {
   return session;
 }
 
-function mountFixture({ vp = { x: 0, y: 0, zoom: 1 }, settings = {} } = {}) {
+function mountFixture({ vp = { x: 0, y: 0, zoom: 1 }, settings = {}, extraChildren = [], hostOverrides = {}, viewOptions = {} } = {}) {
   const stub = createDomStub();
   const restore = stub.install();
   stub.localStorage.setItem(`plexus-diagram:vp:Svy:board0001`, JSON.stringify(vp));
-  const board = buildBoard(pulled());
+  const board = buildBoard(pulled(extraChildren));
   const session = fakeSession(board);
-  const host = fakeHost();
+  const host = fakeHost(hostOverrides);
   const mountEl = stub.document.createElement("div");
   mountEl.className = "pxd-mount";
   stub.document.body.append(mountEl);
@@ -120,6 +130,7 @@ function mountFixture({ vp = { x: 0, y: 0, zoom: 1 }, settings = {} } = {}) {
     mountEl,
     settings: { get: (k) => settings[k] },
     version: "1.0.0",
+    ...viewOptions,
   });
   const flush = async () => {
     stub.flushFrames();
@@ -504,6 +515,584 @@ test("real session: open + pan + select write nothing; one drag = one props writ
   } finally {
     try { f.view.dispose(); } catch { /* already disposed */ }
     resetSessions();
+    f.restore();
+  }
+});
+
+// ------------------------------------------------------------------ 1.1 (R1 cards, R2 focus floor, R3 stability)
+
+const extraCard = (uid, string, order, plexus = {}, children = []) => ({
+  ":block/uid": uid,
+  ":block/string": string,
+  ":block/order": order,
+  ":block/props": { ":plexus": { ":x": 20, ":y": 20, ":w": 200, ":h": 100, ...plexus } },
+  ":block/children": children,
+});
+
+async function startEdit(f, uid = "cardAAAA1") {
+  const alpha = f.view.root.querySelector(`[data-uid=${uid}]`);
+  f.stub.dispatch(alpha, "dblclick", { clientX: 50, clientY: 50 });
+  for (let i = 0; i < 4; i += 1) { f.stub.flushFrames(); await tick(); }
+  await tick(300);
+  f.stub.flushFrames();
+  return alpha;
+}
+
+test("R1: note and block cards render the whole string in the body; header stays the first line", async () => {
+  const f = mountFixture({
+    extraChildren: [
+      extraCard("refLONG01", "((longUid001))", 7, { ":h": 348, ":x": 500, ":y": 300 }),
+      extraCard("emptyCrd1", "", 8, { ":x": 500, ":y": 500 }),
+      extraCard("refEMPTY1", "((emptyUid1))", 9, { ":x": 700, ":y": 500 }),
+    ],
+    hostOverrides: { blockString: (u) => (u === "longUid001" ? "A very long single line that used to be hidden behind an ellipsis" : u === "emptyUid1" ? "" : null) },
+  });
+  try {
+    await f.flush();
+    const root = f.view.root;
+    const alpha = root.querySelector("[data-uid=cardAAAA1]");
+    assert.equal(alpha.querySelector(".pxd-item__string").textContent, "Alpha\nbody line");
+    assert.ok(alpha.querySelector(".pxd-block"), "child block rendered");
+    assert.equal(alpha.querySelector(".pxd-item__header").textContent, "Alpha");
+    assert.ok(root.querySelector("[data-uid=cardDDDD4] .pxd-item__string").textContent.length > 0);
+    const ref = root.querySelector("[data-uid=refLONG01]");
+    assert.equal(ref.querySelector(".pxd-item__string").textContent, "A very long single line that used to be hidden behind an ellipsis");
+    assert.match(root.querySelector("[data-uid=emptyCrd1] .pxd-item__placeholder").textContent, /Empty card/);
+    assert.match(root.querySelector("[data-uid=refEMPTY1] .pxd-item__placeholder").textContent, /Empty card/);
+    const page = root.querySelector("[data-uid=cardBBBB2]");
+    assert.ok(page, "page card still present");
+    const before = f.host.calls.renderString;
+    f.session.emit("change", { dirty: new Set(["cardAAAA1"]), structural: false });
+    await f.flush();
+    assert.equal(f.host.calls.renderString, before, "same string does not re-render");
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("R2: focus floor refocuses Roam's new textarea after focus falls to body", async () => {
+  const f = mountFixture();
+  try {
+    await f.flush();
+    const alpha = await startEdit(f);
+    const editor = alpha.querySelector(".pxd-item__editor");
+    const old = editor.querySelector("textarea");
+    old.focus();
+    f.stub.dispatch(editor, "focusin", { target: old });
+    old.blur();
+    old.remove();
+    f.stub.dispatch(editor, "focusout", { target: old, relatedTarget: null });
+    assert.equal(f.stub.document.activeElement, f.stub.document.body);
+    f.stub.flushFrames();
+    assert.equal(f.stub.document.activeElement, f.stub.document.body, "no textarea yet");
+    const fresh = f.stub.document.createElement("textarea");
+    fresh.className = "rm-block__input";
+    editor.append(fresh);
+    f.stub.flushFrames();
+    assert.equal(f.stub.document.activeElement, fresh);
+    assert.equal(f.session.mutations.filter((m) => m[0] === "setString").length, 0);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("R2: floor stands down for outside pointerdown, outside focus targets, and gives up after 600 ms", async () => {
+  const f = mountFixture();
+  try {
+    await f.flush();
+    const alpha = await startEdit(f);
+    const editor = alpha.querySelector(".pxd-item__editor");
+    const input = editor.querySelector("textarea");
+    const lose = (related = null) => {
+      input.focus();
+      f.stub.dispatch(editor, "focusin", { target: input });
+      input.blur();
+      f.stub.dispatch(editor, "focusout", { target: input, relatedTarget: related });
+      f.stub.flushFrames();
+    };
+    // outside pointerdown, then focusout
+    f.stub.dispatch(f.stub.document.body, "pointerdown", { target: f.stub.document.body });
+    lose();
+    assert.equal(f.stub.document.activeElement, f.stub.document.body);
+    await tick(320);
+    f.stub.flushFrames();
+    // focus moved to a real outside input
+    const other = f.stub.document.createElement("input");
+    f.stub.document.body.append(other);
+    await tick(320);
+    lose(other);
+    assert.equal(f.stub.document.activeElement, f.stub.document.body);
+    // no textarea ever appears
+    input.remove();
+    const mo = f.stub.document.createElement("div");
+    f.stub.document.body.append(mo);
+    await tick(320);
+    lose();
+    await tick(650);
+    f.stub.flushFrames();
+    assert.equal(f.stub.frames.length, 0, "floor gave up");
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("R2: dispose during a pending floor leaves no frames or listeners", async () => {
+  const f = mountFixture();
+  try {
+    await f.flush();
+    const alpha = await startEdit(f);
+    const editor = alpha.querySelector(".pxd-item__editor");
+    const input = editor.querySelector("textarea");
+    input.focus();
+    f.stub.dispatch(editor, "focusin", { target: input });
+    input.blur();
+    input.remove();
+    await tick(320);
+    f.stub.dispatch(editor, "focusout", { target: input, relatedTarget: null });
+    f.view.dispose();
+    f.stub.flushFrames();
+    assert.equal(f.stub.frames.length, 0);
+    assert.equal(f.stub.listenerCount(), 0);
+  } finally {
+    f.restore();
+  }
+});
+
+test("R3: editing card keeps min-height and a frozen header; both restore on exit", async () => {
+  const f = mountFixture();
+  try {
+    await f.flush();
+    const alpha = f.view.root.querySelector("[data-uid=cardAAAA1]");
+    const header = alpha.querySelector(".pxd-item__header");
+    await startEdit(f);
+    assert.equal(alpha.style.minHeight, "100px");
+    assert.equal(header.textContent, "Alpha");
+    f.board.items.get("cardAAAA1").string = "Alpha renamed\nbody line";
+    f.board.items.get("cardAAAA1").title = "Alpha renamed";
+    f.session.emit("change", { dirty: new Set(["cardAAAA1"]), structural: false });
+    await f.flush();
+    assert.equal(header.textContent, "Alpha", "header does not chase Roam saves while editing");
+    const input = alpha.querySelector(".pxd-item__editor textarea");
+    f.stub.dispatch(input, "keydown", { key: "Escape" });
+    await tick();
+    assert.equal(alpha.style.minHeight, "");
+    assert.equal(header.textContent, "Alpha renamed");
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("CSS contract: card header rules, LOD, editing strip and text font variable", async () => {
+  const { readFileSync } = await import("node:fs");
+  const css = readFileSync(new URL("../src/extension.css", import.meta.url), "utf8");
+  assert.match(css, /\.pxd-root \.pxd-item\.pxd-item--card\.pxd-item--note > \.pxd-item__header[^{]*\{\s*display: none/);
+  assert.match(css, /\.pxd-item--collapsed > \.pxd-item__header,\s*\.pxd-root\.pxd-lod-map \.pxd-item\.pxd-item--card > \.pxd-item__header \{\s*display: block/);
+  assert.match(css, /\.pxd-item--editing > \.pxd-item__header \{[^}]*height: 8px/);
+  assert.match(css, /--pxd-text-fs: 48px/);
+  assert.match(css, /\.pxd-item--text \.pxd-item__editor \{[^}]*font-size: var\(--pxd-text-fs/);
+});
+
+// ---- nested boards ----------------------------------------------------------------------------
+
+const boardCardChildren = () => [
+  extraCard("nbCard001", "{{[[diagram]]:Roadmap}}", 7, { ":x": 500, ":y": 300, ":w": 320, ":h": 220, ":v": 2 }, [
+    extraCard("kidNB0001", "one", 0, { ":x": 0, ":y": 0, ":w": 100, ":h": 50, ":color": "teal" }),
+    extraCard("kidNB0002", "two", 1, { ":x": 200, ":y": 100, ":w": 100, ":h": 50 }),
+  ]),
+  extraCard("nbUntitl1", "{{[[diagram]]:Untitled board}}", 8, { ":x": 900, ":y": 300, ":w": 320, ":h": 220, ":v": 2 }),
+];
+
+const selectCard = async (f, uid, world = { x: 60, y: 60 }) => {
+  const el = f.view.root.querySelector(`[data-uid=${uid}]`);
+  f.stub.dispatch(el, "pointerdown", { button: 0, clientX: world.x, clientY: world.y, pointerId: 1 });
+  f.stub.dispatch(f.stub.document, "pointerup", { clientX: world.x, clientY: world.y, pointerId: 1 });
+  await tick(140);
+  f.stub.flushFrames();
+  return el;
+};
+
+test("F5: a board card shows its title, a mini map of the child, the item count and an Open button", async () => {
+  const opened = [];
+  const f = mountFixture({ extraChildren: boardCardChildren(), viewOptions: { onOpenBoard: (uid) => opened.push(uid) } });
+  try {
+    await f.flush();
+    await tick(5);
+    f.stub.flushIdle();
+    const card = f.view.root.querySelector("[data-uid=nbCard001]");
+    assert.ok(card.classList.contains("pxd-item--board"));
+    assert.equal(card.querySelector(".pxd-item__header").textContent, "Roadmap");
+    assert.equal(card.querySelector(".pxd-item__header").classList.contains("pxd-item__header--muted"), false);
+    assert.equal(card.querySelectorAll(".pxd-mini").length, 2);
+    assert.ok(card.querySelector(".pxd-board-preview__canvas").style.aspectRatio);
+    const teal = card.querySelector(".pxd-mini.pxd-c-teal");
+    assert.equal(teal.style.left, "0%");
+    assert.equal(teal.style.width, "33.33%");
+    assert.equal(card.querySelector(".pxd-item__board-count").textContent, "2 items");
+    assert.equal(card.querySelector(".pxd-item__board-name"), null, "a titled board has no name field");
+    const open = card.querySelector(".pxd-item__open");
+    open.click();
+    assert.deepEqual(opened, ["nbCard001"]);
+    assert.equal(f.session.mutations.length, 0);
+    const empty = f.view.root.querySelector("[data-uid=nbUntitl1]");
+    assert.equal(empty.querySelector(".pxd-item__board-count").textContent, "Empty board");
+    assert.equal(empty.querySelector(".pxd-item__header").classList.contains("pxd-item__header--muted"), true);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("F5: Open falls back to the host when no navigation callback is given", async () => {
+  const opened = [];
+  const f = mountFixture({ extraChildren: boardCardChildren(), hostOverrides: { openBlock: (uid) => opened.push(uid) } });
+  try {
+    await f.flush();
+    await tick(5);
+    f.stub.flushIdle();
+    f.view.root.querySelector("[data-uid=nbCard001] .pxd-item__open").click();
+    assert.deepEqual(opened, ["nbCard001"]);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("F5: an untitled board card has a name field that renames on Enter and never starts a drag", async () => {
+  const f = mountFixture({ extraChildren: boardCardChildren() });
+  try {
+    await f.flush();
+    await tick(5);
+    f.stub.flushIdle();
+    const card = f.view.root.querySelector("[data-uid=nbUntitl1]");
+    const input = card.querySelector("input.pxd-item__board-name");
+    assert.ok(input);
+    assert.equal(input.getAttribute("placeholder"), "Name this board…");
+    f.stub.dispatch(input, "pointerdown", { button: 0, clientX: 950, clientY: 400, pointerId: 3 });
+    assert.equal(f.view.controller.isGesturing(), false, "the field owns the pointer");
+    input.value = "  Plan  ";
+    f.stub.dispatch(input, "keydown", { key: "Enter" });
+    assert.deepEqual(f.session.mutations.filter((m) => m[0] === "renameBoard"), [["renameBoard", "nbUntitl1", "Plan"]]);
+    input.value = "";
+    f.stub.dispatch(input, "keydown", { key: "Escape" });
+    assert.equal(f.session.mutations.filter((m) => m[0] === "renameBoard").length, 1, "Esc and an empty blur write nothing");
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("F5: the header rename commits the whole title on Enter and cancels on Esc", async () => {
+  const f = mountFixture({ extraChildren: boardCardChildren() });
+  try {
+    await f.flush();
+    await tick(5);
+    f.stub.flushIdle();
+    await selectCard(f, "nbCard001", { x: 560, y: 320 });
+    const ctx = f.view.root.querySelector(".pxd-ctx");
+    assert.equal(ctx.dataset.kind, "board");
+    const label = (n) => ctx.querySelectorAll(".pxd-btn").find((b) => b.textContent === n);
+    assert.ok(label("Rename board"), "context bar offers Rename board");
+    assert.ok(label("Open"));
+    label("Rename board").click();
+    const header = f.view.root.querySelector("[data-uid=nbCard001] .pxd-item__header");
+    assert.ok(header.classList.contains("pxd-item__header--editing"));
+    assert.equal(header.getAttribute("contenteditable"), "true");
+    assert.equal(header.textContent, "Roadmap");
+    header.textContent = "Roadmap 2027";
+    f.stub.dispatch(header, "keydown", { key: "Enter" });
+    assert.deepEqual(f.session.mutations.filter((m) => m[0] === "renameBoard"), [["renameBoard", "nbCard001", "Roadmap 2027"]]);
+    assert.equal(header.classList.contains("pxd-item__header--editing"), false);
+    label("Rename board").click();
+    header.textContent = "Nope";
+    f.stub.dispatch(header, "keydown", { key: "Escape" });
+    assert.equal(f.session.mutations.filter((m) => m[0] === "renameBoard").length, 1);
+    assert.equal(header.textContent, "Roadmap");
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("F5: changing a layout inside the child board refreshes the card preview", async () => {
+  const f = mountFixture({ extraChildren: boardCardChildren() });
+  try {
+    await f.flush();
+    await tick(5);
+    f.stub.flushIdle();
+    const card = f.view.root.querySelector("[data-uid=nbCard001]");
+    const before = card.querySelector(".pxd-mini.pxd-c-teal");
+    const raw = f.board.items.get("nbCard001");
+    raw.content[0][":block/props"] = { ":plexus": { ":x": 0, ":y": 0, ":w": 200, ":h": 50, ":color": "teal" } };
+    f.session.emit("change", { dirty: new Set(["nbCard001"]), structural: false });
+    await f.flush();
+    await tick(5);
+    f.stub.flushIdle();
+    const after = f.view.root.querySelector("[data-uid=nbCard001] .pxd-mini.pxd-c-teal");
+    assert.notEqual(after, before, "the preview was rebuilt");
+    assert.equal(after.style.width, "66.67%");
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("F5: breadcrumbs render only with two or more entries and a click calls onCrumb(index)", async () => {
+  const clicked = [];
+  const none = mountFixture({ viewOptions: { crumbs: [{ uid: "board0001", title: "Test" }] } });
+  try {
+    await none.flush();
+    assert.equal(none.view.root.querySelector(".pxd-crumbs").style.display, "none");
+    assert.equal(none.view.root.querySelectorAll(".pxd-crumb").length, 0);
+  } finally {
+    none.view.dispose();
+    none.restore();
+  }
+  const f = mountFixture({
+    viewOptions: {
+      crumbs: [{ uid: "rootAAAA1", title: "Root" }, { uid: "midBBBB02", title: "Middle" }, { uid: "board0001", title: "Test" }],
+      onCrumb: (i) => clicked.push(i),
+    },
+  });
+  try {
+    await f.flush();
+    const bar = f.view.root.querySelector(".pxd-crumbs");
+    assert.equal(bar.style.display, "");
+    assert.equal(f.view.root.querySelector(".pxd-toolbar").children[0], bar, "crumbs come first in the toolbar");
+    const buttons = bar.querySelectorAll("button.pxd-crumb");
+    assert.deepEqual(buttons.map((b) => b.textContent), ["Root", "Middle"]);
+    assert.equal(bar.querySelector(".pxd-crumb--current").textContent, "Test");
+    assert.equal(bar.querySelectorAll(".pxd-crumb__sep").length, 2);
+    f.stub.dispatch(buttons[0], "click", { button: 0 });
+    await tick();
+    assert.deepEqual(clicked, [0]);
+    f.stub.dispatch(bar.querySelector(".pxd-crumb--current"), "click", { button: 0 });
+    await tick();
+    assert.deepEqual(clicked, [0], "the current board is not a button");
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("F5: more than four crumbs collapse the middle into an ellipsis that names the hidden boards", async () => {
+  const crumbs = ["A", "B", "C", "D", "E", "F"].map((t, i) => ({ uid: `crumb00${i}`, title: t }));
+  const f = mountFixture({ viewOptions: { crumbs, onCrumb() {} } });
+  try {
+    await f.flush();
+    const bar = f.view.root.querySelector(".pxd-crumbs");
+    assert.deepEqual(bar.querySelectorAll("button.pxd-crumb").map((b) => b.textContent), ["A", "D", "E"]);
+    assert.equal(bar.querySelector(".pxd-crumb--current").textContent, "F");
+    const more = bar.querySelector(".pxd-crumb__more");
+    assert.equal(more.textContent, "…");
+    assert.equal(more.title, "B › C");
+    assert.deepEqual(bar.querySelectorAll("button.pxd-crumb").map((b) => b.dataset.index), ["0", "3", "4"]);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("F5: a session title change updates the current crumb", async () => {
+  const crumbs = [{ uid: "rootAAAA1", title: "Root" }, { uid: "board0001", title: "Old" }];
+  const f = mountFixture({ viewOptions: { crumbs, onCrumb() {} } });
+  try {
+    await f.flush();
+    f.board.title = "Renamed";
+    f.session.emit("change", { dirty: new Set(["board0001"]), structural: false });
+    assert.equal(f.view.root.querySelector(".pxd-crumb--current").textContent, "Renamed");
+    assert.equal(crumbs[1].title, "Renamed", "the shared crumb entry is updated for the feature record");
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("F5: Esc with nothing selected goes up one level; at the top it does nothing", async () => {
+  const clicked = [];
+  const f = mountFixture({
+    viewOptions: { crumbs: [{ uid: "rootAAAA1", title: "Root" }, { uid: "board0001", title: "Test" }], onCrumb: (i) => clicked.push(i), autofocus: true },
+  });
+  try {
+    await f.flush();
+    f.stub.dispatch(f.stub.window, "keydown", { key: "Escape" });
+    await tick();
+    assert.deepEqual(clicked, [0]);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+  const top = mountFixture({ viewOptions: { autofocus: true } });
+  try {
+    await top.flush();
+    top.stub.dispatch(top.stub.window, "keydown", { key: "Escape" });
+    await tick();
+    assert.equal(top.session.mutations.length, 0);
+  } finally {
+    top.view.dispose();
+    top.restore();
+  }
+});
+
+test("F5: multi-selection offers Move into new board, which selects the new card", async () => {
+  const f = mountFixture();
+  try {
+    await f.flush();
+    f.view.controller.select(["cardAAAA1", "cardBBBB2"]);
+    await tick(140);
+    f.stub.flushFrames();
+    const ctx = f.view.root.querySelector(".pxd-ctx");
+    assert.equal(ctx.dataset.kind, "cards");
+    const btn = ctx.querySelectorAll(".pxd-btn").find((b) => b.textContent === "Move into new board");
+    assert.ok(btn);
+    btn.click();
+    await tick();
+    assert.deepEqual(f.session.mutations.find((m) => m[0] === "wrapInBoard").slice(1), [["cardAAAA1", "cardBBBB2"]]);
+    assert.deepEqual(f.view.controller.getSelection().items, ["wrapInBoard-uid"]);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("F5: the board tool creates a board through the session", async () => {
+  const f = mountFixture({ viewOptions: { autofocus: true } });
+  try {
+    await f.flush();
+    assert.ok(f.view.root.querySelector(".pxd-tool[data-tool=board]"), "toolbar has a Board tool");
+    f.stub.dispatch(f.stub.window, "keydown", { key: "w" });
+    assert.equal(f.view.root.dataset.tool, "board");
+    const viewport = f.view.root.querySelector(".pxd-viewport");
+    f.stub.dispatch(viewport, "pointerdown", { button: 0, clientX: 700, clientY: 500, pointerId: 1 });
+    f.stub.dispatch(f.stub.document, "pointerup", { clientX: 700, clientY: 500, pointerId: 1 });
+    await tick();
+    const call = f.session.mutations.find((m) => m[0] === "createBoard");
+    assert.deepEqual(call[1], { rect: { x: 540, y: 390, w: 320, h: 220 } });
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("F5: dropping a card on a board card moves it in with an Undo toast; a refusal falls back to a plain move", async () => {
+  const f = mountFixture({ extraChildren: boardCardChildren() });
+  try {
+    await f.flush();
+    const alpha = f.view.root.querySelector("[data-uid=cardAAAA1]");
+    f.stub.dispatch(alpha, "pointerdown", { button: 0, clientX: 50, clientY: 50, pointerId: 1 });
+    f.stub.dispatch(f.stub.document, "pointermove", { clientX: 300, clientY: 200, pointerId: 1 });
+    f.stub.dispatch(f.stub.document, "pointermove", { clientX: 560, clientY: 340, pointerId: 1 });
+    f.stub.flushFrames();
+    assert.ok(f.view.root.querySelector("[data-uid=nbCard001]").classList.contains("pxd-item--drop"), "drop target is highlighted");
+    f.stub.dispatch(f.stub.document, "pointerup", { clientX: 560, clientY: 340, pointerId: 1 });
+    await tick();
+    const move = f.session.mutations.find((m) => m[0] === "moveIntoBoard");
+    assert.deepEqual(move.slice(1, 3), [["cardAAAA1"], "nbCard001"]);
+    assert.equal(f.session.mutations.filter((m) => m[0] === "commitMove").length, 0);
+    const toast = f.view.root.querySelector(".pxd-toast");
+    assert.equal(toast.style.display, "");
+    assert.equal(toast.querySelector(".pxd-toast__text").textContent, "Moved into Inner");
+    toast.querySelector(".pxd-toast__action").click();
+    assert.ok(f.session.mutations.some((m) => m[0] === "moveUndo"), "Undo runs the inverse transaction");
+    f.session.moveResult = null;
+    f.stub.dispatch(alpha, "pointerdown", { button: 0, clientX: 50, clientY: 50, pointerId: 2 });
+    f.stub.dispatch(f.stub.document, "pointermove", { clientX: 300, clientY: 200, pointerId: 2 });
+    f.stub.dispatch(f.stub.document, "pointermove", { clientX: 560, clientY: 340, pointerId: 2 });
+    f.stub.dispatch(f.stub.document, "pointerup", { clientX: 560, clientY: 340, pointerId: 2 });
+    await tick();
+    assert.equal(f.session.mutations.filter((m) => m[0] === "commitMove").length, 1);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("F5: opening a board card calls onOpenBoard with the uid, and leaves edit mode first", async () => {
+  const opened = [];
+  const f = mountFixture({ extraChildren: boardCardChildren(), viewOptions: { onOpenBoard: (u) => opened.push(u) } });
+  try {
+    await f.flush();
+    await tick(5);
+    f.stub.flushIdle();
+    const card = f.view.root.querySelector("[data-uid=nbCard001]");
+    f.stub.dispatch(card, "dblclick", { clientX: 560, clientY: 320 });
+    await tick();
+    assert.deepEqual(opened, ["nbCard001"]);
+    await startEdit(f, "cardAAAA1");
+    assert.ok(f.view.root.classList.contains("pxd-root--editing"));
+    f.stub.dispatch(card, "dblclick", { clientX: 560, clientY: 320 });
+    await tick(20);
+    assert.equal(f.view.root.classList.contains("pxd-root--editing"), false, "edit mode exited before navigating");
+    assert.deepEqual(opened, ["nbCard001", "nbCard001"]);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("F5: the inline height key and the route watch belong to routeUid, not the nested board", async () => {
+  const f = mountFixture({ viewOptions: { routeUid: "routeUID1", autofocus: true } });
+  try {
+    await f.flush();
+    const grip = f.view.root.querySelector(".pxd-resize-grip");
+    f.stub.dispatch(grip, "pointerdown", { clientY: 100, pointerId: 1 });
+    f.stub.dispatch(f.stub.document, "pointermove", { clientY: 160 });
+    f.stub.dispatch(f.stub.document, "pointerup", { clientY: 160 });
+    assert.ok(f.stub.localStorage.getItem("plexus-diagram:h:Svy:routeUID1"), "height is stored under the route board uid");
+    assert.equal(f.stub.localStorage.getItem("plexus-diagram:h:Svy:board0001"), null);
+    assert.equal(f.stub.document.activeElement, f.view.root, "autofocus puts the keyboard on the board");
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("F5: a fullscreen nested view stays fullscreen while the route is its mount board and exits when the route leaves it", async () => {
+  const exits = [];
+  const f = mountFixture({ viewOptions: { fullscreen: true, routeUid: "routeUID1", onRequestFullscreen: (on) => exits.push(on) } });
+  try {
+    await f.flush();
+    f.stub.window.location.hash = "#/app/Svy/page/routeUID1";
+    f.stub.dispatch(f.stub.window, "hashchange", {});
+    assert.deepEqual(exits, [], "the nested board's own uid is not the route");
+    f.stub.window.location.hash = "#/app/Svy/page/elsewhere";
+    f.stub.dispatch(f.stub.window, "hashchange", {});
+    assert.deepEqual(exits, [false]);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("F5: a plain-object settings map is honored by the view", async () => {
+  const f = mountFixture({ viewOptions: { settings: { grid: "lines", "show-minimap": false } } });
+  try {
+    await f.flush();
+    assert.ok(f.view.root.querySelector(".pxd-grid").classList.contains("pxd-grid--lines"));
+    assert.equal(f.view.root.querySelector(".pxd-minimap").style.display, "none");
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("R2 guard: a key pressed while editing with focus on <body> recovers focus instead of running a board shortcut", async () => {
+  const f = mountFixture({ viewOptions: { autofocus: true } });
+  try {
+    await f.flush();
+    await startEdit(f, "cardAAAA1");
+    assert.ok(f.view.root.classList.contains("pxd-root--editing"));
+    f.stub.document.activeElement = f.stub.document.body;
+    f.stub.dispatch(f.stub.window, "keydown", { key: "Backspace" });
+    f.stub.dispatch(f.stub.window, "keydown", { key: "n" });
+    await tick();
+    assert.equal(f.session.mutations.filter((m) => m[0] === "deleteItems").length, 0, "Backspace never deletes the card being edited");
+    assert.equal(f.view.controller.getTool(), "select", "n does not switch tools mid-edit");
+  } finally {
+    f.view.dispose();
     f.restore();
   }
 });

@@ -225,6 +225,16 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       return res?.[":block/uid"] ?? null;
     },
 
+    cardStringForUid(uid) {
+      const id = String(uid ?? "").trim();
+      if (!id) return null;
+      let res;
+      try { res = pull("[:block/uid :node/title]", eidKey(id)); } catch { return null; }
+      if (!res?.[":block/uid"]) return null;
+      const title = res[":node/title"];
+      return typeof title === "string" && title ? `[[${title}]]` : `((${id}))`;
+    },
+
     blockString(uid) {
       const res = pull("[:block/string]", eidKey(uid));
       return typeof res?.[":block/string"] === "string" ? res[":block/string"] : null;

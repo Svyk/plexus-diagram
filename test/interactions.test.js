@@ -22,6 +22,7 @@ function pulled() {
       { ...item("sectCCCC3", "Evidence", { ":type": "section", ":x": 0, ":y": 300, ":w": 400, ":h": 300 }, [
         item("cardDDDD4", "Inside", { ":x": 20, ":y": 60, ":w": 200, ":h": 100 }),
       ]), ":block/order": 2 },
+      { ...item("boardGGGG7", "{{[[diagram]]:Inner}}", { ":x": 1300, ":y": 400, ":w": 320, ":h": 220, ":v": 2 }), ":block/order": 4 },
       { ...item("edgesEEE5", "Connections", { ":type": "edges" }, [
         item("edgeFFFF6", "((cardAAAA1)) → [[Beta]]", { ":type": "edge", ":from": "cardAAAA1", ":to": "cardBBBB2" }),
       ]), ":block/order": 3 },
@@ -29,7 +30,7 @@ function pulled() {
   };
 }
 
-function harness({ vp = { x: 0, y: 0, zoom: 1 }, settings = {}, editing = null } = {}) {
+function harness({ vp = { x: 0, y: 0, zoom: 1 }, settings = {}, editing = null, canPop = false } = {}) {
   const board = buildBoard(pulled());
   const rects = worldRects(board);
   const calls = [];
@@ -56,6 +57,10 @@ function harness({ vp = { x: 0, y: 0, zoom: 1 }, settings = {}, editing = null }
     createText: (p) => { calls.push(["createText", p]); return Promise.resolve(`txt${uidCounter += 1}`); },
     createSection: (p) => { calls.push(["createSection", p]); return Promise.resolve(`sec${uidCounter += 1}`); },
     wrapInSection: rec("wrapInSection"),
+    createBoard: (p) => { calls.push(["createBoard", p]); return Promise.resolve(`brd${uidCounter += 1}`); },
+    moveIntoBoard: rec("moveIntoBoard"),
+    openBoard: rec("openBoard"),
+    popBoard: () => { calls.push(["popBoard"]); return canPop; },
     deleteItems: rec("deleteItems"),
     deleteEdges: rec("deleteEdges"),
     addEdge: (p) => { calls.push(["addEdge", p]); return Promise.resolve(`edge${uidCounter += 1}`); },
@@ -393,4 +398,129 @@ test("pan, marquee and wheel never call session mutations", () => {
   h.ctl.handle(h.ev("wheel", { x: 0, y: 0 }, { deltaY: 30 }));
   const mutations = ["commitMove", "commitRects", "createCard", "createText", "createSection", "addEdge", "deleteItems", "deleteEdges", "wrapInSection"];
   for (const m of mutations) assert.equal(h.named(m).length, 0, `${m} not called`);
+});
+
+test("W selects the Board tool", () => {
+  const h = harness();
+  h.ctl.handle({ type: "keydown", key: "w" });
+  assert.equal(h.ctl.getTool(), "board");
+});
+
+test("board tool: one click creates exactly one default-size board centered on the click", async () => {
+  const h = harness();
+  h.ctl.setTool("board");
+  h.ctl.handle(h.ev("pointerdown", { x: 1500, y: 1000 }));
+  h.ctl.handle(h.ev("pointerup", { x: 1500, y: 1000 }));
+  await tick();
+  const creates = h.named("createBoard");
+  assert.equal(creates.length, 1);
+  assert.deepEqual(creates[0][1].rect, { x: 1340, y: 890, w: 320, h: 220 });
+  assert.equal(h.ctl.getTool(), "select");
+  assert.deepEqual(h.ctl.getSelection().items, ["brd1"]);
+  assert.equal(h.named("createCard").length, 0);
+});
+
+test("board tool: a drag creates one board of the dragged rect; a tiny drag falls back to the default", async () => {
+  const h = harness();
+  h.ctl.setTool("board");
+  h.ctl.handle(h.ev("pointerdown", { x: 1300, y: 100 }));
+  h.ctl.handle(h.ev("pointermove", { x: 1400, y: 200 }));
+  h.ctl.handle(h.ev("pointermove", { x: 1700, y: 400 }));
+  h.ctl.handle(h.ev("pointerup", { x: 1700, y: 400 }));
+  await tick();
+  assert.equal(h.named("createBoard").length, 1);
+  assert.deepEqual(h.named("createBoard")[0][1].rect, { x: 1300, y: 100, w: 400, h: 300 });
+  assert.ok(h.named("showMarquee").some((c) => c[2] === "board"));
+  h.ctl.setTool("board");
+  h.ctl.handle(h.ev("pointerdown", { x: 2000, y: 100 }));
+  h.ctl.handle(h.ev("pointermove", { x: 2050, y: 130 }));
+  h.ctl.handle(h.ev("pointerup", { x: 2050, y: 130 }));
+  await tick();
+  assert.deepEqual(h.named("createBoard")[1][1].rect, { x: 1840, y: -10, w: 320, h: 220 });
+});
+
+test("board tool over an existing item still draws (items count as empty space)", async () => {
+  const h = harness();
+  h.ctl.setTool("board");
+  const item = { kind: "item", uid: "cardAAAA1", part: "body" };
+  h.ctl.handle(h.ev("pointerdown", { x: 10, y: 10 }, { target: item }));
+  h.ctl.handle(h.ev("pointerup", { x: 10, y: 10 }, { target: item }));
+  await tick();
+  assert.equal(h.named("createBoard").length, 1);
+  assert.equal(h.named("commitMove").length, 0);
+});
+
+test("dragging a card over a board card highlights it and drops through moveIntoBoard, not commitMove", () => {
+  const h = harness();
+  const item = { kind: "item", uid: "cardAAAA1", part: "body" };
+  h.ctl.handle(h.ev("pointerdown", { x: 10, y: 10 }, { target: item }));
+  h.ctl.handle(h.ev("pointermove", { x: 400, y: 100 }, { target: item }));
+  assert.equal(h.named("onHover").filter((c) => c[1] === "boardGGGG7").length, 0);
+  h.ctl.handle(h.ev("pointermove", { x: 1400, y: 500 }, { target: item }));
+  assert.equal(h.named("onHover").at(-1)[1], "boardGGGG7");
+  h.ctl.handle(h.ev("pointermove", { x: 1450, y: 520 }, { target: item }));
+  assert.equal(h.named("onHover").filter((c) => c[1] === "boardGGGG7").length, 1, "hover is reported once per change");
+  h.ctl.handle(h.ev("pointerup", { x: 1450, y: 520 }, { target: item }));
+  assert.equal(h.named("moveIntoBoard").length, 1);
+  assert.deepEqual(h.named("moveIntoBoard")[0].slice(1, 3), [["cardAAAA1"], "boardGGGG7"]);
+  assert.equal(h.named("commitMove").length, 0);
+  assert.equal(h.named("onHover").at(-1)[1], null, "highlight cleared on drop");
+});
+
+test("dragging away from a board card clears the drop target and commits a plain move", () => {
+  const h = harness();
+  const item = { kind: "item", uid: "cardAAAA1", part: "body" };
+  h.ctl.handle(h.ev("pointerdown", { x: 10, y: 10 }, { target: item }));
+  h.ctl.handle(h.ev("pointermove", { x: 1400, y: 500 }, { target: item }));
+  h.ctl.handle(h.ev("pointermove", { x: 1500, y: 900 }, { target: item }));
+  h.ctl.handle(h.ev("pointerup", { x: 1500, y: 900 }, { target: item }));
+  assert.equal(h.named("moveIntoBoard").length, 0);
+  assert.equal(h.named("commitMove").length, 1);
+});
+
+test("a board card dragged over itself is a plain move", () => {
+  const h = harness();
+  const item = { kind: "item", uid: "boardGGGG7", part: "body" };
+  h.ctl.handle(h.ev("pointerdown", { x: 1400, y: 500 }, { target: item }));
+  h.ctl.handle(h.ev("pointermove", { x: 1450, y: 520 }, { target: item }));
+  h.ctl.handle(h.ev("pointerup", { x: 1450, y: 520 }, { target: item }));
+  assert.equal(h.named("moveIntoBoard").length, 0);
+  assert.equal(h.named("commitMove").length, 1);
+  assert.ok(h.named("onHover").every((c) => c[1] !== "boardGGGG7"));
+});
+
+test("dblclick and Enter on a board card open it in place", () => {
+  const h = harness();
+  h.ctl.handle(h.ev("dblclick", { x: 1400, y: 500 }, { target: { kind: "item", uid: "boardGGGG7", part: "body" } }));
+  assert.deepEqual(h.named("openBoard")[0].slice(1), ["boardGGGG7"]);
+  assert.equal(h.named("openBlock").length, 0);
+  h.ctl.select(["boardGGGG7"]);
+  h.ctl.handle({ type: "keydown", key: "Enter" });
+  assert.deepEqual(h.named("openBoard").at(-1).slice(1), ["boardGGGG7"]);
+  assert.equal(h.named("enterEdit").length, 0);
+});
+
+test("Esc chain: clear selection, then pop a nested board, then leave fullscreen", () => {
+  const h = harness({ canPop: true });
+  h.ctl.select(["cardAAAA1"]);
+  assert.equal(h.ctl.handle({ type: "keydown", key: "Escape" }), true);
+  assert.deepEqual(h.ctl.getSelection().items, []);
+  assert.equal(h.named("popBoard").length, 0, "selection clears first");
+  assert.equal(h.ctl.handle({ type: "keydown", key: "Escape" }), true);
+  assert.equal(h.named("popBoard").length, 1);
+  assert.equal(h.named("setFullscreen").length, 0);
+  const top = harness({ canPop: false });
+  assert.equal(top.ctl.handle({ type: "keydown", key: "Escape" }), false, "at the top level Esc falls through");
+  assert.equal(top.named("popBoard").length, 1);
+});
+
+test("plain-object settings are honored as well as settings.get", () => {
+  const calls = [];
+  const h = harness();
+  const ctl = createInteractions({
+    actions: { board: () => h.board, rects: () => h.rects, viewport: () => ({ x: 0, y: 0, zoom: 1 }), setViewport: (v) => calls.push(v) },
+    settings: { wheel: "zoom" },
+  });
+  ctl.handle(h.ev("wheel", { x: 100, y: 100 }, { deltaY: 30 }));
+  assert.ok(calls[0].zoom !== 1, "wheel setting 'zoom' read from a plain object zooms");
 });

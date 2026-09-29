@@ -516,3 +516,253 @@ test("links resolve parent strings for sources under a bare attribute", async ()
   await session.refreshLinks();
   assert.deepEqual(session.links[0].labels, ["Causes"]);
 });
+
+// ---- nested boards ----------------------------------------------------------------------------
+
+function seedNested(fake) {
+  fake.seedBoard({
+    uid: "b1",
+    props: { plexus: { v: 2 } },
+    children: [
+      { uid: "c1", string: "[[A]]", props: { plexus: { x: 100, y: 100, w: 200, h: 100 } } },
+      { uid: "c2", string: "[[B]]", props: { plexus: { x: 400, y: 200, w: 200, h: 100 } } },
+      { uid: "c3", string: "[[C]]", props: { plexus: { x: 1000, y: 0, w: 200, h: 100 } } },
+      {
+        uid: "nbFull",
+        string: "{{[[diagram]]:Full}}",
+        props: { "rf-diagram": { keep: 1 }, plexus: { x: 0, y: 500, w: 320, h: 220, v: 2 } },
+        children: [
+          { uid: "k1", string: "kid", props: { plexus: { x: 10, y: 20, w: 200, h: 100 } } },
+          { uid: "k2", string: "kid2", props: { plexus: { x: 300, y: 0, w: 100, h: 100 } } },
+          { uid: "kec", string: "Connections", props: { plexus: { type: "edges" } }, children: [] },
+        ],
+      },
+      { uid: "nbNative", string: "{{[[diagram]]}}", props: { plexus: { x: 900, y: 500, w: 320, h: 220 } } },
+      { uid: "nbEmpty", string: "{{[[diagram]]:Empty}}", props: { plexus: { x: 600, y: 500, w: 320, h: 220, v: 2 } } },
+      {
+        uid: "sec1",
+        string: "Frame",
+        props: { plexus: { type: "section", x: 0, y: 900, w: 600, h: 400 } },
+        children: [
+          { uid: "nbIn", string: "{{[[diagram]]:Inside}}", props: { plexus: { x: 20, y: 60, w: 320, h: 220, v: 2 } } },
+          { uid: "c5", string: "in frame", props: { plexus: { x: 400, y: 60, w: 100, h: 100 } } },
+        ],
+      },
+      {
+        uid: "ec",
+        string: "Connections",
+        props: { plexus: { type: "edges" } },
+        children: [
+          { uid: "e12", string: "[[A]] → [[B]]", props: { plexus: { type: "edge", from: "c1", to: "c2" } } },
+          { uid: "e13", string: "[[A]] → [[C]]", props: { plexus: { type: "edge", from: "c1", to: "c3", fromSide: "right", toSide: "left" } } },
+          { uid: "e23", string: "[[B]] → [[C]]", props: { plexus: { type: "edge", from: "c2", to: "c3" } } },
+          { uid: "e1f", string: "[[A]] → ((nbFull))", props: { plexus: { type: "edge", from: "c1", to: "nbFull" } } },
+        ],
+      },
+    ],
+  });
+}
+
+const nestedSetup = (opts) => setup(opts, { seedFn: seedNested });
+
+test("createBoard is exactly one create carrying the string, layout with v:2 and open:false", async () => {
+  const { fake, session } = nestedSetup();
+  const uid = await session.createBoard({ rect: { x: 1400, y: 1400, w: 320, h: 220 } });
+  const log = fake.writesLog();
+  assert.equal(log.length, 1);
+  assert.deepEqual(log[0], ["create", uid]);
+  const b = fake.block(uid);
+  assert.equal(b.string, "{{[[diagram]]:Untitled board}}");
+  assert.deepEqual(b.props.plexus, { x: 1400, y: 1400, w: 320, h: 220, v: 2 });
+  assert.equal(b.open, false);
+  assert.equal(b.parent, "b1");
+  assert.equal(fake.children("b1").indexOf(uid) < fake.children("b1").indexOf("ec"), true, "Connections stays last");
+  const item = session.board.items.get(uid);
+  assert.equal(item.kind, "board");
+  assert.equal(item.hasLayout, true);
+});
+
+test("createBoard inside a section creates a board relative to it, and clamps to the card minimum", async () => {
+  const { fake, session } = nestedSetup();
+  const uid = await session.createBoard({ rect: { x: 50, y: 1000, w: 10, h: 10 }, title: "Plan" });
+  assert.equal(fake.block(uid).parent, "sec1");
+  assert.equal(fake.block(uid).string, "{{[[diagram]]:Plan}}");
+  assert.deepEqual(fake.props(uid).plexus, { x: 50, y: 100, w: 200, h: 80, v: 2 });
+});
+
+test("moving or resizing a board card keeps v:2 and unknown keys", async () => {
+  const { fake, session } = nestedSetup();
+  await session.commitMove(["nbFull"], 10, 20);
+  assert.deepEqual(fake.props("nbFull").plexus, { x: 10, y: 520, w: 320, h: 220, v: 2 });
+  assert.deepEqual(fake.props("nbFull")["rf-diagram"], { keep: 1 });
+  await session.commitRects([{ uid: "nbFull", x: 10, y: 520, w: 400, h: 300 }]);
+  assert.deepEqual(fake.props("nbFull").plexus, { x: 10, y: 520, w: 400, h: 300, v: 2 });
+});
+
+test("wrapInBoard rebases coordinates, moves internal edges into a new Connections block and retargets crossing edges", async () => {
+  const { fake, session } = nestedSetup();
+  const uid = await session.wrapInBoard(["c1", "c2"]);
+  assert.ok(uid);
+  const nb = fake.block(uid);
+  assert.equal(nb.string, "{{[[diagram]]:Untitled board}}");
+  assert.equal(nb.parent, "b1");
+  assert.deepEqual(nb.props.plexus, { x: 100, y: 100, w: 480, h: 200, v: 2 });
+  assert.equal(nb.open, false);
+  assert.equal(fake.block("c1").parent, uid);
+  assert.equal(fake.block("c2").parent, uid);
+  assert.deepEqual(fake.props("c1").plexus, { x: 0, y: 0, w: 200, h: 100 });
+  assert.deepEqual(fake.props("c2").plexus, { x: 300, y: 100, w: 200, h: 100 });
+  const kids = fake.children(uid);
+  const container = kids.at(-1);
+  assert.deepEqual(fake.props(container).plexus, { type: "edges" });
+  assert.equal(fake.block(container).open, false);
+  assert.deepEqual(fake.children(container), ["e12"], "the edge between the moved cards follows them");
+  // crossing edges now point at the board card
+  assert.deepEqual(fake.props("e13").plexus, { type: "edge", from: uid, to: "c3", toSide: "left" });
+  assert.equal(fake.block("e13").string, `((${uid})) → [[C]]`);
+  // e13 and e23 both become uid -> c3: the second is a duplicate and is deleted
+  assert.equal(fake.has("e23"), false);
+  assert.deepEqual(fake.props("e1f").plexus, { type: "edge", from: uid, to: "nbFull" });
+  assert.equal(session.board.items.get(uid).kind, "board");
+  assert.equal(session.board.items.has("c1"), false, "moved cards are no longer items of the parent board");
+  assert.equal(session.board.items.get(uid).content.length, 3, "the card holds both cards and the new Connections block");
+});
+
+test("wrapInBoard of a selection whose only edge is internal creates one Connections block and no retargets", async () => {
+  const { fake, session } = nestedSetup();
+  const uid = await session.wrapInBoard(["c1", "c2", "c3"]);
+  const container = fake.children(uid).at(-1);
+  assert.deepEqual(fake.children(container).sort(), ["e12", "e13", "e23"]);
+  assert.equal(fake.props("e1f").plexus.from, uid, "an edge to a card outside is retargeted to the board");
+});
+
+test("moveIntoBoard puts items to the right of existing child content, rebased, in one move+props per item", async () => {
+  const { fake, session } = nestedSetup();
+  fake.clearLog();
+  const res = await session.moveIntoBoard(["c1"], "nbFull");
+  assert.equal(res.title, "Full");
+  assert.equal(res.boardUid, "nbFull");
+  assert.deepEqual(res.moved, ["c1"]);
+  assert.equal(fake.block("c1").parent, "nbFull");
+  // child bounds: x 10..400, y 0..120 -> place at x 448, y 0 (origin is the moved bounds' top-left)
+  assert.deepEqual(fake.props("c1").plexus, { x: 448, y: 0, w: 200, h: 100 });
+  const kids = fake.children("nbFull");
+  assert.equal(kids.at(-1), "kec", "Connections stays last inside the child");
+  assert.equal(kids.indexOf("c1"), 2);
+  // e12 crosses (c1 moved, c2 not): retargeted to the board; e13 becomes nbFull->c3; e1f would be a self edge and is deleted
+  assert.deepEqual(fake.props("e12").plexus, { type: "edge", from: "nbFull", to: "c2" });
+  assert.equal(fake.has("e1f"), false, "an edge between the moved card and the board itself disappears");
+  assert.deepEqual(fake.props("e13").plexus, { type: "edge", from: "nbFull", to: "c3", toSide: "left" });
+  assert.equal(fake.block("e12").string, "((nbFull)) → [[B]]");
+});
+
+test("moveIntoBoard into an empty board places at 0,0 and moves internal edges into a fresh Connections block", async () => {
+  const { fake, session } = nestedSetup();
+  const res = await session.moveIntoBoard(["c1", "c2"], "nbEmpty");
+  assert.ok(res);
+  assert.deepEqual(fake.props("c1").plexus, { x: 0, y: 0, w: 200, h: 100 });
+  assert.deepEqual(fake.props("c2").plexus, { x: 300, y: 100, w: 200, h: 100 });
+  const container = fake.children("nbEmpty").at(-1);
+  assert.deepEqual(fake.props(container).plexus, { type: "edges" });
+  assert.deepEqual(fake.children(container), ["e12"]);
+});
+
+test("moveIntoBoard refuses a non-board target, the board itself and a section that contains it", async () => {
+  const { fake, session } = nestedSetup();
+  fake.clearLog();
+  assert.equal(await session.moveIntoBoard(["c1"], "c2"), null);
+  assert.equal(await session.moveIntoBoard(["nbFull"], "nbFull"), null);
+  assert.equal(await session.moveIntoBoard(["sec1"], "nbIn"), null, "a section holding the target cannot move into it");
+  assert.equal(fake.writesLog().length, 0);
+  const res = await session.moveIntoBoard(["nbFull", "c1"], "nbFull");
+  assert.deepEqual(res.moved, ["c1"], "the target itself is dropped from the selection");
+});
+
+test("moveIntoBoard undo restores parents, orders, props and edges in one transaction", async () => {
+  const { fake, session } = nestedSetup();
+  const before = {
+    root: fake.children("b1"),
+    ec: fake.children("ec"),
+    c1: fake.props("c1"),
+    c2: fake.props("c2"),
+    e12: fake.props("e12"),
+    e13: fake.props("e13"),
+    s12: fake.block("e12").string,
+    s13: fake.block("e13").string,
+    e1f: fake.block("e1f"),
+  };
+  const res = await session.moveIntoBoard(["c1", "c2"], "nbEmpty");
+  assert.notDeepEqual(fake.children("b1"), before.root);
+  await res.undo();
+  assert.deepEqual(fake.children("b1"), before.root);
+  assert.deepEqual(fake.props("c1"), before.c1);
+  assert.deepEqual(fake.props("c2"), before.c2);
+  assert.equal(fake.block("c1").parent, "b1");
+  assert.deepEqual(fake.children("ec"), before.ec);
+  assert.deepEqual(fake.props("e12"), before.e12);
+  assert.deepEqual(fake.props("e13"), before.e13);
+  assert.equal(fake.block("e12").string, before.s12);
+  assert.equal(fake.block("e13").string, before.s13);
+  assert.equal(fake.has("e1f"), true);
+  assert.deepEqual(fake.children("nbEmpty"), [], "the Connections block created for the move is removed again");
+});
+
+test("moveIntoBoard undo re-creates an edge that the move deleted", async () => {
+  const { fake, session } = nestedSetup();
+  const res = await session.moveIntoBoard(["c1"], "nbFull");
+  assert.equal(fake.has("e1f"), false);
+  await res.undo();
+  assert.equal(fake.has("e1f"), true);
+  assert.deepEqual(fake.props("e1f").plexus, { type: "edge", from: "c1", to: "nbFull" });
+  assert.equal(fake.block("e1f").parent, "ec");
+  assert.equal(fake.block("c1").parent, "b1");
+});
+
+test("renameBoard rewrites only the token; a non-board uid is ignored", async () => {
+  const { fake, session } = nestedSetup();
+  await session.setString("nbFull", "{{diagram:Full}} tail");
+  fake.clearLog();
+  await session.renameBoard("nbFull", "Roadmap");
+  assert.equal(fake.block("nbFull").string, "{{diagram:Roadmap}} tail");
+  assert.equal(fake.writesLog().length, 1);
+  await session.renameBoard("nbFull", "Roadmap");
+  assert.equal(fake.writesLog().length, 1, "same title writes nothing");
+  await session.renameBoard("c1", "Nope");
+  assert.equal(fake.block("c1").string, "[[A]]");
+  await session.renameBoard("nbEmpty", "");
+  assert.equal(fake.block("nbEmpty").string, "{{[[diagram]]:Untitled board}}");
+});
+
+test("restoreNative on a nested board keeps its layout and removes only the marker", async () => {
+  const fake = createFakeRoam();
+  const host = createHost({ api: fake.api, storage: fake.storage, graph: "g" });
+  seedNested(fake);
+  const session = acquireSession("nbFull", { host, settings: null, linkDelay: 0 });
+  await session.restoreNative();
+  assert.deepEqual(fake.props("nbFull"), { "rf-diagram": { keep: 1 }, plexus: { x: 0, y: 500, w: 320, h: 220 } });
+  const root = acquireSession("b1", { host, settings: null, linkDelay: 0 });
+  await root.restoreNative();
+  assert.equal(fake.props("b1").plexus, undefined);
+});
+
+test("a non-enhanced native diagram card is neither a move target nor renameable", async () => {
+  const { fake, session } = nestedSetup();
+  assert.equal(session.board.items.get("nbNative").enhanced, false);
+  assert.equal(session.board.items.get("nbFull").enhanced, true);
+  fake.clearLog();
+  assert.equal(await session.moveIntoBoard(["c1"], "nbNative"), null);
+  await session.renameBoard("nbNative", "Foo");
+  assert.equal(fake.block("nbNative").string, "{{[[diagram]]}}");
+  assert.equal(fake.writesLog().length, 0);
+});
+
+test("session emits gone once when the board block disappears, and stops writing", async () => {
+  const { session, host } = setup();
+  const seen = [];
+  session.on("gone", () => seen.push(1));
+  await host.deleteBlock("b1");
+  await sleep(30);
+  assert.deepEqual(seen, [1]);
+  assert.equal(session.gone, true);
+  assert.equal(await session.commitMove?.("c1", { x: 5, y: 5 }), undefined);
+});

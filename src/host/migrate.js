@@ -5,9 +5,11 @@ import {
   SIDES,
   edgeString,
   plainKeys,
+  readPlexus,
   semanticRef,
   serializeEdge,
   serializeItemLayout,
+  withBoardMarker,
 } from "../model/schema.js";
 
 export const METADATA_PAGE = "plexus-diagram/metadata";
@@ -327,10 +329,15 @@ export function planImport(board, source, { gen = defaultGen() } = {}) {
 export async function executeImport(plan, host, board) {
   const counts = { sections: 0, members: 0, items: 0, edges: 0 };
   const layoutProps = (layout) => serializeItemLayout(layout);
+  // Layout writes replace the whole :plexus key, so carry an existing board marker (v, bg) across.
+  const keepMarker = (uid, layout) => {
+    const cur = readPlexus(host.pullProps?.(uid));
+    return layoutProps(cur ? { ...layout, v: cur.v, bg: cur.bg } : layout);
+  };
 
   // Sections first (all created at board root, nested ones moved afterwards).
   for (const s of plan.sections) {
-    if (s.existing) await host.updateProps(s.uid, layoutProps({ ...s.layout, type: "section" }));
+    if (s.existing) await host.updateProps(s.uid, keepMarker(s.uid, { ...s.layout, type: "section" }));
     else {
       await host.createBlock({
         parentUid: board.uid,
@@ -350,12 +357,12 @@ export async function executeImport(plan, host, board) {
     for (const uid of s.members) {
       await host.moveBlock(uid, s.uid, "last");
       const layout = memberLayouts.get(uid);
-      if (layout) await host.updateProps(uid, layoutProps(layout));
+      if (layout) await host.updateProps(uid, keepMarker(uid, layout));
       counts.members++;
     }
   }
   for (const { uid, layout } of plan.itemLayouts) {
-    await host.updateProps(uid, layoutProps(layout));
+    await host.updateProps(uid, keepMarker(uid, layout));
     counts.items++;
   }
 
@@ -383,6 +390,6 @@ export async function executeImport(plan, host, board) {
     host.viewports?.set(board.uid, plan.viewport);
     host.viewports?.flushAll?.();
   }
-  await host.updateProps(board.uid, { v: 2 });
+  await host.updateProps(board.uid, withBoardMarker(board.plexus, true));
   return counts;
 }

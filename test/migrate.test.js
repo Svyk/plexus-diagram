@@ -181,3 +181,36 @@ test("planImport with no source yields an empty plan", () => {
   const plan = planImport(board, null);
   assert.deepEqual([plan.itemLayouts, plan.sections, plan.edges], [[], [], []]);
 });
+
+test("enhancing a nested, not yet enhanced board keeps its card layout keys", async () => {
+  const { fake, host } = setup();
+  fake.seedBoard({ uid: "root1", props: { plexus: { v: 2 } } });
+  fake.seedBoard({
+    uid: "nested1",
+    string: "{{[[diagram]]:Inner}}",
+    parent: "root1",
+    props: { "rf-diagram": { keep: true }, plexus: { x: 40, y: 60, w: 320, h: 220 } },
+    children: [{ uid: "k1", string: "kid" }],
+  });
+  const board = buildBoard(host.pullBoard("nested1"));
+  assert.equal(board.enhanced, false);
+  const plan = planImport(board, null, { gen: () => "x" });
+  await executeImport(plan, host, board);
+  assert.deepEqual(fake.props("nested1"), { "rf-diagram": { keep: true }, plexus: { x: 40, y: 60, w: 320, h: 220, v: 2 } });
+});
+
+test("executeImport keeps the v marker on an already enhanced child board", async () => {
+  const { fake, host } = setup();
+  fake.seedBoard({
+    uid: "n1",
+    children: [{ uid: "a", string: "[[A]]" }],
+    diagram: { nodes: [{ id: 1, blockUid: "a", data: { position: { x: 10, y: 10 }, width: 300, height: 200 } }], edges: [] },
+  });
+  fake.seedBoard({ uid: "kid", string: "{{[[diagram]]:Inner}}", parent: "n1", props: { plexus: { v: 2 } } });
+  const board = buildBoard(host.pullBoard("n1"));
+  const plan = planImport(board, readNative(host, "n1"), { gen: () => "x" });
+  plan.itemLayouts.push({ uid: "kid", layout: { x: 5, y: 5, w: 300, h: 200 } });
+  await executeImport(plan, host, board);
+  assert.equal(fake.props("kid").plexus.v, 2);
+  assert.equal(fake.props("kid").plexus.x, 5);
+});

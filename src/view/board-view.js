@@ -2,7 +2,7 @@
 // runs only when dirty; pan/zoom write one transform on .pxd-world plus the grid background.
 // Entry used by feature.js: mountBoardView(...) → { root, setFullscreen, fit, dispose, stats }.
 
-import { DEFAULT_SIZES, semanticRef, plainText } from "../model/schema.js";
+import { DEFAULT_SIZES, UNTITLED_BOARD, semanticRef, plainText } from "../model/schema.js";
 import { boundsOf, descendantsOf, edgesTouching, worldRects } from "../model/board.js";
 import {
   alignRects,
@@ -118,10 +118,18 @@ export function mountBoardView({
   onRequestFullscreen,
   fullscreen = false,
   version = "",
+  crumbs = null,
+  onOpenBoard = null,
+  onCrumb = null,
+  routeUid = session.uid,
+  autofocus = false,
 } = {}) {
   const doc = globalThis.document;
   const win = globalThis.window;
-  const setting = (k, d) => { const v = settings?.get?.(k); return v === undefined || v === null ? d : v; };
+  const setting = (k, d) => {
+    const v = typeof settings?.get === "function" ? settings.get(k) : settings?.[k];
+    return v === undefined || v === null ? d : v;
+  };
   const timers = createTimers();
   const listeners = [];
   const observers = [];
@@ -150,7 +158,8 @@ export function mountBoardView({
   const graph = host?.graph || graphName(win);
   const storage = globalThis.localStorage;
   const vpStore = host?.viewports || host?.viewportStore || createLocalViewportStore({ storage, graph, timers });
-  const heightKey = `plexus-diagram:h:${graph}:${boardUid}`;
+  // The inline height belongs to the mount (the route board), not to whichever nested board it is showing.
+  const heightKey = `plexus-diagram:h:${graph}:${routeUid}`;
 
   // ------------------------------------------------------------ DOM
   const root = el("div", "pxd-root", mountEl);
@@ -179,7 +188,7 @@ export function mountBoardView({
   let released = false;
   let gesturing = false;
   let isFullscreen = false;
-  let pointerInside = false;
+  let pointerInside = Boolean(mountEl?.matches?.(":hover"));
   let suppressClick = false;
   let swallowMouseUp = false;
   let linkMode = setting("graph-links", "all");
@@ -218,6 +227,8 @@ export function mountBoardView({
     sectionsLayer,
     timers,
     onEditChange: (uid) => { root.classList.toggle("pxd-root--editing", Boolean(uid)); },
+    onOpenBoard: (uid) => { void openBoard(uid); },
+    onRenameBoard: (uid, title) => session.renameBoard?.(uid, title),
   });
   const edgesR = createEdgeLayer({
     doc,
@@ -333,7 +344,7 @@ export function mountBoardView({
     if (!items.length) return chrome.ctx.hide();
     if (items.length > 1) return chrome.ctx.show("cards", null, ctxAnchor);
     const it = items[0];
-    return chrome.ctx.show(it.type === "section" ? "section" : it.type === "text" ? "text" : "card", it, ctxAnchor);
+    return chrome.ctx.show(it.type === "section" ? "section" : it.type === "text" ? "text" : it.kind === "board" ? "board" : "card", it, ctxAnchor);
   };
 
   // ------------------------------------------------------------ session mutations used by chrome
@@ -348,6 +359,7 @@ export function mountBoardView({
       host?.openInSidebar?.(item.target.uid || item.uid, "block");
     }
   };
+  const stackAt = (strings, x, y, h) => strings.map((string, i) => ({ string, x, y: y + i * (h + 24) }));
   const addStringsBeside = (strings) => {
     const b = board();
     if (!b || !strings.length) return;
@@ -358,8 +370,7 @@ export function mountBoardView({
     let x; let y;
     if (sel && r.get(sel.uid)) { const sr = r.get(sel.uid); x = sr.x + sr.w + 40; y = sr.y; }
     else { const c = screenToWorld(vp, { x: size.width / 2, y: size.height / 2 }); x = c.x - w / 2; y = c.y - h / 2; }
-    const list = strings.map((string, i) => ({ string, x, y: y + i * (h + 24) }));
-    void session.addRefCards?.(list);
+    void session.addRefCards?.(stackAt(strings, x, y, h));
   };
   const isOnBoard = (string) => {
     const b = board();
@@ -371,6 +382,27 @@ export function mountBoardView({
     return false;
   };
 
+  // ------------------------------------------------------------ nested boards
+  // `crumbs` entries are shared with the feature's record, so a rename shows up in both.
+  const crumbList = Array.isArray(crumbs) ? crumbs : [];
+  const openBoard = async (uid) => {
+    const item = board()?.items.get(uid);
+    if (!item || item.kind !== "board") return;
+    if (itemsR.isEditing()) await exitEdit();
+    if (disposed) return;
+    if (onOpenBoard) onOpenBoard(uid);
+    else host?.openBlock?.(uid);
+  };
+  const goCrumb = async (index) => {
+    if (itemsR.isEditing()) await exitEdit();
+    if (disposed) return;
+    onCrumb?.(index);
+  };
+  const popBoard = () => {
+    if (crumbList.length > 1 && onCrumb) { void goCrumb(crumbList.length - 2); return true; }
+    return false;
+  };
+
   // ------------------------------------------------------------ chrome + panel
   const chrome = createChrome({
     doc,
@@ -378,7 +410,15 @@ export function mountBoardView({
     version,
     settings,
     timers,
+    crumbs: crumbList,
     on: {
+      openBoard: () => { const it = singleItem(); if (it) void openBoard(it.uid); },
+      renameBoard: () => { const it = singleItem(); if (it) itemsR.renameBoard(it.uid); },
+      crumb: (index) => { void goCrumb(index); },
+      wrapBoard: () => {
+        if (!selection.items.length) return;
+        Promise.resolve(session.wrapInBoard?.(selection.items)).then((uid) => { if (uid) ctl.select([uid]); }).catch(() => {});
+      },
       setTool: (tool, lock) => ctl.setTool(tool, lock),
       togglePanel: () => panel.toggle(),
       cycleLinks: () => cycleLinks(),
@@ -626,6 +666,14 @@ export function mountBoardView({
     createCard: (p) => Promise.resolve(session.createCard?.({ x: p.x, y: p.y })).then((uid) => { if (uid) freshItems.add(uid); return uid; }),
     createText: (p) => Promise.resolve(session.createText?.({ x: p.x, y: p.y })).then((uid) => { if (uid) freshItems.add(uid); return uid; }),
     createSection: (p) => session.createSection?.({ rect: p.rect }),
+    createBoard: (p) => session.createBoard?.({ rect: p.rect }),
+    moveIntoBoard: async (uids, boardUid, dx = 0, dy = 0) => {
+      const res = await session.moveIntoBoard?.(uids, boardUid);
+      if (!res) { void session.commitMove?.(uids, dx, dy); return; }
+      chrome.toast.show({ message: `Moved into ${res.title}`, action: { label: "Undo", run: () => res.undo() } });
+    },
+    openBoard: (uid) => openBoard(uid),
+    popBoard,
     wrapInSection: (uids) => session.wrapInSection?.(uids),
     deleteItems: (uids, opts) => session.deleteItems?.(uids, opts),
     deleteEdges: (uids) => session.deleteEdges?.(uids),
@@ -801,16 +849,35 @@ export function mountBoardView({
   listen(root, "contextmenu", (event) => { if (!event.target?.closest?.(".pxd-chrome")) event.stopPropagation(); });
   listen(root, "pointerenter", () => { pointerInside = true; });
   listen(root, "pointerleave", () => { pointerInside = false; });
-  listen(root, "dragover", (event) => { event.preventDefault(); if (event.dataTransfer) event.dataTransfer.dropEffect = "copy"; });
-  listen(root, "drop", (event) => {
+  const acceptsDrop = (event) => !event.target?.closest?.(".pxd-item__editor");
+  const dropEffectFor = (effectAllowed) => {
+    const a = String(effectAllowed || "uninitialized");
+    if (a === "all" || a === "uninitialized" || /copy/i.test(a)) return "copy";
+    if (/move/i.test(a)) return "move";
+    if (/link/i.test(a)) return "link";
+    return "copy";
+  };
+  const onDragAccept = (event) => {
+    if (!acceptsDrop(event)) return;
     event.preventDefault();
     event.stopPropagation();
-    const parsed = parseDropPayload(event.dataTransfer);
-    if (!parsed) return;
+    if (event.dataTransfer) event.dataTransfer.dropEffect = dropEffectFor(event.dataTransfer.effectAllowed);
+  };
+  listen(root, "dragenter", onDragAccept);
+  listen(root, "dragover", onDragAccept);
+  listen(root, "drop", (event) => {
+    if (!acceptsDrop(event)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    measure();
+    const resolveUid = (u) => (host?.cardStringForUid ? host.cardStringForUid(u) : `((${u}))`);
+    const list = parseDropPayload(event.dataTransfer, { resolveUid });
+    if (!list.length) return;
     const p = screenToWorld(vp, { x: event.clientX - rootRect.left, y: event.clientY - rootRect.top });
     const w = Number(setting("default-card-width", DEFAULT_SIZES.card.w)) || DEFAULT_SIZES.card.w;
     const h = Number(setting("default-card-height", DEFAULT_SIZES.card.h)) || DEFAULT_SIZES.card.h;
-    void session.addRefCards?.([{ string: parsed.string, x: p.x - w / 2, y: p.y - h / 2 }]);
+    const made = session.addRefCards?.(stackAt(list.map((x) => x.string), p.x - w / 2, p.y - h / 2, h));
+    Promise.resolve(made).then((uids) => { if (Array.isArray(uids) && uids.length) ctl.select(uids); }).catch(() => {});
   });
 
   const ownsKeyboard = () => pointerInside || isFullscreen || root.contains?.(doc.activeElement);
@@ -822,6 +889,8 @@ export function mountBoardView({
     } else if (!ownsKeyboard()) {
       return;
     }
+    // Roam dropped focus to <body> mid-edit: put it back on the editor instead of running a board shortcut.
+    if (!inputFocused && itemsR.isEditing() && event.key !== "Escape") { itemsR.recoverFocus(); return; }
     const handled = ctl.handle({ type: "keydown", key: event.key, code: event.code, shift: event.shiftKey, alt: event.altKey, meta: event.metaKey, ctrl: event.ctrlKey, inputFocused });
     if (handled) { event.preventDefault(); event.stopPropagation(); }
   };
@@ -835,6 +904,11 @@ export function mountBoardView({
   subs.push(session.on("change", ({ dirty: d, structural } = {}) => {
     if (disposed) return;
     const b = board();
+    const current = crumbList[crumbList.length - 1];
+    if (current && b) {
+      const title = b.title || UNTITLED_BOARD;
+      if (current.title !== title) { current.title = title; chrome.toolbar.setCrumbs(crumbList); }
+    }
     if (structural || !d) dirty.structural = true;
     if (d && b) {
       for (const uid of d) {
@@ -858,7 +932,7 @@ export function mountBoardView({
       observers.push(ro);
     } catch { /* stub */ }
   }
-  routeOff = watchRouteExit({ boardUid, onExit: () => { if (isFullscreen) requestFullscreen(false); }, win });
+  routeOff = watchRouteExit({ boardUid: routeUid, onExit: () => { if (isFullscreen) requestFullscreen(false); }, win });
 
   // ------------------------------------------------------------ render frame
   const renderFrame = () => {
@@ -914,6 +988,7 @@ export function mountBoardView({
   // ------------------------------------------------------------ boot
   applyFullscreen(fullscreen);
   measure();
+  if (autofocus) { try { root.focus({ preventScroll: true }); } catch { /* stub */ } }
   if (!vp) {
     const b = board();
     const r = b ? rects() : new Map();

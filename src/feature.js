@@ -2,6 +2,7 @@ import pkg from "../package.json" with { type: "json" };
 import { createHost } from "./host/roam.js";
 import { acquireSession as acquireSessionDefault } from "./session.js";
 import { mountBoardView } from "./view/board-view.js";
+import { parseBoardTitle, readPlexus, UNTITLED_BOARD } from "./model/schema.js";
 import {
   diagramsWithin,
   diagramUidFromLocation,
@@ -26,6 +27,9 @@ const NEGATIVE_TTL_MS = 1500;
 const LEGACY_METADATA_PAGE = "plexus-diagram/metadata";
 const TITLE_PANEL_CLASS = "rm-diagram-title-panel";
 const NEW_BOARD_STRING = "{{[[diagram]]:Untitled board}}";
+const ANCESTORS_PATTERN = "[:block/uid :block/string {:block/parents [:block/uid :block/string :block/props {:block/parents [:db/id]}]}]";
+const boardTitle = (s) => parseBoardTitle(s) || UNTITLED_BOARD;
+const currentUid = (rec) => rec.crumbs[rec.crumbs.length - 1].uid;
 const PARENTS_QUERY = "[:find ?u ?s :in $ ?uid :where [?b :block/uid ?uid] [?b :block/parents ?p] [?p :block/uid ?u] [?p :block/string ?s]]";
 
 function graphFromHash(hash = globalThis.location?.hash || "") {
@@ -185,7 +189,101 @@ export async function installPlexusDiagram({
     }
   }
 
-  function mount(uid, native) {
+  // Enhanced diagram ancestors (root first) plus the board itself: the trail shown when a nested board is opened directly.
+  function seedCrumbs(uid) {
+    const self = { uid, title: boardTitle(host.blockString?.(uid)) };
+    try {
+      const res = host.api.data.pull(ANCESTORS_PATTERN, [":block/uid", uid]);
+      const parents = res?.[":block/parents"] ?? [];
+      const chain = parents
+        .filter((p) => isDiagramString(pulledString(p)) && readPlexus(p[":block/props"] ?? p.props)?.v === 2)
+        .map((p) => ({ uid: p[":block/uid"], title: boardTitle(p[":block/string"]), depth: (p[":block/parents"] ?? []).length }))
+        .sort((a, b) => a.depth - b.depth)
+        .map(({ uid: u, title }) => ({ uid: u, title }));
+      return [...chain, self];
+    } catch {
+      return [self];
+    }
+  }
+
+  function mountRecView(rec, { autofocus = false } = {}) {
+    return mountView({
+      host,
+      session: rec.session,
+      mountEl: rec.mountEl,
+      nativeEl: rec.native,
+      settings,
+      fullscreen: rec.fullscreen,
+      version: badge,
+      onRequestFullscreen: (want) => setFullscreen(rec, want === undefined ? !rec.fullscreen : want),
+      crumbs: rec.crumbs.slice(),
+      routeUid: rec.uid,
+      autofocus,
+      onOpenBoard: (child) => navigate(rec, [...rec.crumbs, { uid: child, title: boardTitle(host.blockString?.(child)) }]),
+      onCrumb: (index) => navigate(rec, rec.crumbs.slice(0, index + 1)),
+    });
+  }
+
+  function watchRec(rec) {
+    const session = rec.session;
+    const offGone = session.on?.("gone", () => {
+      if (currentUid(rec) !== rec.uid) navigate(rec, rec.crumbs.slice(0, -1));
+      else unmount(rec);
+    });
+    const offChange = session.on?.("change", () => {
+      // Restore (or an external props edit / undo) removed :plexus: give the native diagram back.
+      if (!session.board || session.board.enhanced !== false) return;
+      if (currentUid(rec) !== rec.uid) {
+        navigate(rec, rec.crumbs.slice(0, -1));
+      } else if (!legacyUids.has(rec.uid)) {
+        markNative(rec.uid);
+        unmount(rec);
+      }
+    });
+    return () => { offGone?.(); offChange?.(); };
+  }
+
+  // In-place navigation between nested boards: same mount element, native surface and fullscreen state,
+  // only the view and session are swapped. Deferred so the old view's handler stack unwinds first.
+  function navigate(rec, next) {
+    queueMicrotask(() => {
+      if (stopped || mounts.get(rec.native) !== rec || !next.length) return;
+      const target = next[next.length - 1].uid;
+      if (target === currentUid(rec)) return;
+      if (!readEnhanced(host.api, target)) {
+        // Never enhance a native diagram from here; Roam opens it.
+        try { Promise.resolve(host.openBlock?.(target)).catch(() => {}); } catch { /* host unavailable */ }
+        return;
+      }
+      let session;
+      try {
+        session = acquireSession(target, { host, settings });
+      } catch (error) {
+        console.warn("[plexus-diagram] Could not open the nested board", error);
+        return;
+      }
+      if (!session?.board) {
+        session?.release?.();
+        return;
+      }
+      try { rec.off?.(); } catch { /* ignore */ }
+      rec.off = null;
+      try { rec.view?.dispose?.(); } catch (error) { console.warn("[plexus-diagram] view dispose failed", error); }
+      try { rec.session?.release?.(); } catch (error) { console.warn("[plexus-diagram] session release failed", error); }
+      rec.session = session;
+      rec.crumbs = next;
+      try {
+        rec.view = mountRecView(rec, { autofocus: true });
+        rec.off = watchRec(rec);
+      } catch (error) {
+        console.error("[plexus-diagram] Nested mount failed; native diagram restored", error);
+        negativeUntil.set(rec.uid, Date.now() + 10 * NEGATIVE_TTL_MS);
+        unmount(rec);
+      }
+    });
+  }
+
+  function mount(uid, native, { crumbs } = {}) {
     const mountEl = doc.createElement("div");
     mountEl.className = "pxd-mount";
     mountEl.dataset.diagramUid = uid;
@@ -198,6 +296,7 @@ export async function installPlexusDiagram({
       titleDisplay: titlePanel ? titlePanel.style.display : "",
       session: null,
       view: null,
+      crumbs: crumbs ?? seedCrumbs(uid),
       fullscreen: false,
       off: null,
     };
@@ -206,33 +305,18 @@ export async function installPlexusDiagram({
     native.after(mountEl);
     mounts.set(native, rec);
     try {
-      rec.session = acquireSession(uid, { host, settings });
+      rec.session = acquireSession(currentUid(rec), { host, settings });
       rec.fullscreen = settings[SETTING_IDS.fullscreenOnZoom] !== false
         && !routeLeftZoomedDiagram(uid);
-      rec.view = mountView({
-        host,
-        session: rec.session,
-        mountEl,
-        nativeEl: native,
-        settings,
-        fullscreen: rec.fullscreen,
-        version: badge,
-        onRequestFullscreen: (want) => setFullscreen(rec, want === undefined ? !rec.fullscreen : want),
-      });
-      rec.off = rec.session.on?.("change", () => {
-        // Restore (or an external props edit / undo) removed :plexus: give the native diagram back.
-        if (rec.session.board && rec.session.board.enhanced === false && !legacyUids.has(uid)) {
-          markNative(uid);
-          unmount(rec);
-        }
-      });
+      rec.view = mountRecView(rec);
+      rec.off = watchRec(rec);
     } catch (error) {
       console.error("[plexus-diagram] Mount failed; native diagram restored", error);
       negativeUntil.set(uid, Date.now() + 10 * NEGATIVE_TTL_MS);
       unmount(rec);
       return null;
     }
-    migrateLegacy(rec);
+    if (currentUid(rec) === uid) migrateLegacy(rec);
     return rec;
   }
 
@@ -265,16 +349,18 @@ export async function installPlexusDiagram({
 
   const uidByNative = new WeakMap();
 
-  function consider(native) {
+  function consider(native, options) {
     if (stopped || !native || mounts.has(native) || native.isConnected === false) return;
     if (!active()) return;
+    // A native diagram nested inside a hidden native (or inside our own overlay) is not a board of its own.
+    if (native.parentElement?.closest?.(".pxd-native-hidden, .pxd-root")) return;
     let uid = uidByNative.get(native);
     if (uid === undefined) {
       uid = findDiagramUidFromEl(native, (candidate) => isDiagramString(host.blockString?.(candidate))) || null;
       uidByNative.set(native, uid);
     }
     if (!uid || !isBoardEnhanced(uid)) return;
-    mount(uid, native);
+    mount(uid, native, options);
   }
 
   function scanAdded(node) {
@@ -325,8 +411,14 @@ export async function installPlexusDiagram({
     if (isDiagramString(host.blockString?.(uid))) return uid;
     try {
       const rows = host.q?.(PARENTS_QUERY, uid) || [];
-      const hit = rows.find((row) => isDiagramString(row[1]));
-      return hit ? hit[0] : null;
+      const hits = rows.filter((row) => isDiagramString(row[1])).map((row) => row[0]);
+      if (hits.length < 2) return hits[0] ?? null;
+      // Nested boards give several diagram ancestors: take the nearest, the one that has all the others above it.
+      const deepest = hits.find((cand) => {
+        const above = new Set((host.q?.(PARENTS_QUERY, cand) || []).map((row) => row[0]));
+        return hits.every((other) => other === cand || above.has(other));
+      });
+      return deepest ?? hits[0];
     } catch {
       return null;
     }
@@ -442,9 +534,9 @@ export async function installPlexusDiagram({
         if (typeof rec.view?.setSettings === "function") {
           rec.view.setSettings(settings);
         } else {
-          const native = rec.native;
+          const { native, crumbs } = rec;
           unmount(rec);
-          consider(native);
+          consider(native, { crumbs });
         }
       } catch (error) {
         console.warn("[plexus-diagram] Settings propagation failed", error);
@@ -460,6 +552,8 @@ export async function installPlexusDiagram({
     stats: host.stats,
     mounts: () => [...mounts.values()].map((rec) => ({
       uid: rec.uid,
+      current: currentUid(rec),
+      crumbs: rec.crumbs.map((c) => c.uid),
       fullscreen: rec.fullscreen,
       connected: rec.native.isConnected !== false && rec.mountEl.isConnected !== false,
     })),

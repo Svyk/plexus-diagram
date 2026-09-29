@@ -4,12 +4,15 @@ export const PALETTE = ["gray", "red", "orange", "yellow", "green", "teal", "blu
 export const ITEM_TYPES = ["card", "section", "text"];
 export const DEFAULT_SIZES = { card: { w: 280, h: 160 }, section: { w: 480, h: 320 }, text: { w: 240, h: 48 } };
 export const MIN_SIZES = { card: { w: 200, h: 80 }, section: { w: 160, h: 100 }, text: { w: 60, h: 24 } };
+export const DEFAULT_BOARD_CARD = { w: 320, h: 220 };
+export const UNTITLED_BOARD = "Untitled board";
 export const FONT_SIZES = [16, 24, 32, 48];
 export const EDGE_DEFAULTS = { fromSide: "auto", toSide: "auto", dir: "one", route: "curve", dash: "solid", weight: 1 };
 export const SIDES = ["auto", "top", "right", "bottom", "left"];
 export const ARROWS = { one: "→", two: "↔", none: "—" };
 
 const ARROW_TOKENS = Object.values(ARROWS);
+const BOARD_BACKGROUNDS = ["dots", "lines", "plain"];
 const ROUTES = ["curve", "straight", "elbow"];
 const DASHES = ["solid", "dashed"];
 const DIRS = ["one", "two", "none"];
@@ -67,7 +70,18 @@ export function serializeItemLayout(layout) {
   if (PALETTE.includes(l.color)) out.color = l.color;
   if (l.collapsed === true) out.collapsed = true;
   if (l.type === "text" && FONT_SIZES.includes(l.fontSize)) out.fontSize = l.fontSize;
+  if (l.v === SCHEMA_VERSION) out.v = SCHEMA_VERSION;
+  if (BOARD_BACKGROUNDS.includes(l.bg)) out.bg = l.bg;
   return out;
+}
+
+// A nested board is a card block whose own props carry `v: 2` next to its layout.
+export function withBoardMarker(plexus, on) {
+  const base = isObject(plexus) ? plainKeys(plexus) : {};
+  if (on) return { ...base, v: SCHEMA_VERSION };
+  delete base.v;
+  delete base.bg;
+  return Object.keys(base).length ? base : null;
 }
 
 export function normalizeEdge(plexus) {
@@ -127,6 +141,25 @@ export function classifyString(s) {
 export function parseBoardTitle(s) {
   const m = /^\s*\{\{\s*(?:\[\[)?diagram(?:\]\])?\s*:([\s\S]*?)\}\}\s*$/i.exec(String(s ?? ""));
   return m ? m[1].trim() : "";
+}
+
+const cleanBoardTitle = (title) => String(title ?? "").replace(/\s*[\r\n]+\s*/g, " ").split("}}").join("").trim();
+
+export function boardString(title) {
+  return `{{[[diagram]]:${cleanBoardTitle(title) || UNTITLED_BOARD}}}`;
+}
+
+// Rewrites only the leading `{{[[diagram]]:...}}` token; the `[[diagram]]` or `diagram` form and any trailing text stay.
+export function setBoardTitle(s, title) {
+  const cur = String(s ?? "");
+  const m = /^(\s*\{\{\s*(?:\[\[)?diagram(?:\]\])?)\s*(?::[^}]*)?\}\}/i.exec(cur);
+  if (!m) return boardString(title);
+  return `${m[1]}:${cleanBoardTitle(title) || UNTITLED_BOARD}}}${cur.slice(m[0].length)}`;
+}
+
+export function isUntitledBoard(title) {
+  const t = String(title ?? "").trim().toLowerCase();
+  return t === "" || t === UNTITLED_BOARD.toLowerCase();
 }
 
 export function plainText(s, max = 200) {

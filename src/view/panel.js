@@ -5,26 +5,55 @@ export const CARD_MIME = "application/x-plexus-card";
 const DEBOUNCE_MS = 150;
 const LIMIT = 40;
 
-// Ported from 0.6: Roam drags carry [[page]] / ((uid)) text; our own rows carry CARD_MIME.
-export function parseDropPayload(dataTransfer) {
-  if (!dataTransfer) return null;
+// Roam bullet drags carry uids in roam/* types (text/plain is a single space); our own rows carry CARD_MIME.
+// Returns Array<{string}> (empty when nothing usable). resolveUid(uid) -> card string | null is injected by the view.
+const MAX_DROP = 50;
+export function parseDropPayload(dataTransfer, { resolveUid } = {}) {
+  if (!dataTransfer) return [];
   const take = (type) => {
     try { return String(dataTransfer.getData?.(type) || ""); } catch { return ""; }
   };
-  const own = take(CARD_MIME);
-  if (own.trim()) return { kind: "card", string: own.trim() };
+  const resolve = typeof resolveUid === "function" ? resolveUid : (uid) => `((${uid}))`;
+  const own = take(CARD_MIME).trim();
+  if (own) return [{ string: own }];
+  const tokens = (text) => text.split(/\s+/).filter((t) => /^[\w-]+$/.test(t));
+  let uids = tokens(take("roam/block-uid-list-only-parents"));
+  if (!uids.length) uids = tokens(take("roam/block-uid-list"));
+  if (!uids.length) {
+    for (const type of ["roam/roam-uri-list", "text/uri-list"]) {
+      for (const line of take(type).split(/\r?\n/)) {
+        if (!line.trim() || line.startsWith("#")) continue;
+        const m = line.match(/\/page\/([\w-]+)/);
+        if (m) uids.push(m[1]);
+      }
+      if (uids.length) break;
+    }
+  }
+  if (uids.length) {
+    const out = [];
+    for (const uid of [...new Set(uids)].slice(0, MAX_DROP)) {
+      let string = null;
+      try { string = resolve(uid); } catch { string = null; }
+      if (typeof string === "string" && string.trim()) out.push({ string });
+    }
+    if (out.length) return out;
+  }
   const chunks = [take("text/plain"), take("text/html")];
   const types = dataTransfer.types;
   if (types) for (const type of types) chunks.push(take(type));
   const blob = chunks.join("\n");
-  if (!blob.trim()) return null;
+  if (!blob.trim()) return [];
   const page = blob.match(/\[\[([^\]]+)\]\]/);
-  if (page) return { kind: "page", title: page[1], string: `[[${page[1]}]]` };
+  if (page) return [{ string: `[[${page[1]}]]` }];
   const blockRef = blob.match(/\(\(([^)]+)\)\)/);
-  if (blockRef) return { kind: "block", uid: blockRef[1], string: `((${blockRef[1]}))` };
+  if (blockRef) return [{ string: `((${blockRef[1]}))` }];
   const plain = take("text/plain").trim();
-  if (/^[A-Za-z0-9_-]{9}$/.test(plain)) return { kind: "block", uid: plain, string: `((${plain}))` };
-  return null;
+  if (/^[A-Za-z0-9_-]{9}$/.test(plain)) {
+    let string = null;
+    try { string = resolve(plain); } catch { string = null; }
+    if (typeof string === "string" && string.trim()) return [{ string }];
+  }
+  return [];
 }
 
 export function createPanel({ doc = globalThis.document, root, host, timers, on = {} } = {}) {

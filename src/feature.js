@@ -1,4 +1,7 @@
 import pkg from "../package.json" with { type: "json" };
+import { createHost } from "./host/roam.js";
+import { acquireSession as acquireSessionDefault } from "./session.js";
+import { mountBoardView } from "./view/board-view.js";
 import {
   diagramsWithin,
   diagramUidFromLocation,
@@ -87,16 +90,9 @@ export async function installPlexusDiagram({
   const win = globalThis.window ?? globalThis;
   const badge = PACKAGE_VERSION || version || "DEV";
 
-  if (!injectedHost) {
-    const { createHost } = await import("./host/roam.js");
-    injectedHost = createHost();
-  }
-  if (!injectedAcquire) {
-    ({ acquireSession: injectedAcquire } = await import("./session.js"));
-  }
-  if (!mountView) {
-    ({ mountBoardView: mountView } = await import("./view/board-view.js"));
-  }
+  if (!injectedHost) injectedHost = createHost();
+  if (!injectedAcquire) injectedAcquire = acquireSessionDefault;
+  if (!mountView) mountView = mountBoardView;
   const host = injectedHost;
   const acquireSession = injectedAcquire;
 
@@ -267,10 +263,16 @@ export async function installPlexusDiagram({
     if (rec.titlePanel) rec.titlePanel.style.display = rec.titleDisplay;
   }
 
+  const uidByNative = new WeakMap();
+
   function consider(native) {
     if (stopped || !native || mounts.has(native) || native.isConnected === false) return;
     if (!active()) return;
-    const uid = findDiagramUidFromEl(native);
+    let uid = uidByNative.get(native);
+    if (uid === undefined) {
+      uid = findDiagramUidFromEl(native, (candidate) => isDiagramString(host.blockString?.(candidate))) || null;
+      uidByNative.set(native, uid);
+    }
     if (!uid || !isBoardEnhanced(uid)) return;
     mount(uid, native);
   }

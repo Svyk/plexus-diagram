@@ -1,8 +1,8 @@
 {
   "name": "plexus-diagram",
-  "version": "0.6.4",
+  "version": "1.0.0",
   "private": true,
-  "description": "Native-first Heptabase-like overlay for Roam {{[[diagram]]}} blocks",
+  "description": "Heptabase-style whiteboard for Roam {{[[diagram]]}} blocks: cards, colored sections, and connections that are real Roam blocks and links",
   "type": "module",
   "main": "extension.js",
   "scripts": {

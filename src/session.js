@@ -141,8 +141,8 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
   let visibleLinks = [];
   let covered = new Set();
   let linkFingerprint = "";
-  const initialMode = settings?.get?.("linkMode");
-  let linkMode = LINK_MODES.includes(initialMode) ? initialMode : "attributes";
+  const initialMode = typeof settings?.get === "function" ? settings.get("graph-links") : settings?.["graph-links"];
+  let linkMode = LINK_MODES.includes(initialMode) ? initialMode : "all";
 
   // ---- raw tree helpers (optimistic model) ----
   const rawNode = (id) => (id === uid ? raw : ix().get(id)?.node ?? null);

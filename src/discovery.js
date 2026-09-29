@@ -82,11 +82,28 @@ export function enhancedUidGuardCss(uids) {
   return [hideRule, pendingRule].filter(Boolean).join("\n");
 }
 
-export function findDiagramUidFromEl(element) {
+// Roam block input ids are `block-input-<window>-body-outline-<page>-<uid>` (plus dated and
+// sidebar variants) and uids may contain "-", so the only unambiguous parse is to try each
+// "-" suffix, shortest first, and keep the first one that names a diagram block.
+export function uidFromBlockInputId(id, isDiagramUid) {
+  const value = String(id || "");
+  const prefix = "block-input-";
+  if (!value.startsWith(prefix) || typeof isDiagramUid !== "function") return null;
+  for (let i = value.length - 1; i >= prefix.length; i -= 1) {
+    if (value[i] !== "-") continue;
+    const candidate = value.slice(i + 1);
+    if (candidate && isDiagramUid(candidate)) return candidate;
+  }
+  return null;
+}
+
+export function findDiagramUidFromEl(element, isDiagramUid) {
   if (!element) return null;
   const ref = element.closest?.(".rm-block-ref[data-uid]");
   if (ref?.dataset?.uid) return ref.dataset.uid;
   const blockInput = element.closest?.('[id^="block-input-"]');
+  const resolved = uidFromBlockInputId(blockInput?.id, isDiagramUid);
+  if (resolved) return resolved;
   if (blockInput?.id) {
     // Dated zoomed outline ids come first: block-input-<window>-body-outline-MM-DD-YYYY-<uid>.
     const dated = blockInput.id.match(/block-input-.+-body-outline-\d{2}-\d{2}-\d{4}-(.+)$/);

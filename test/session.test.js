@@ -488,6 +488,7 @@ test("refreshLinks emits links with mode filter and coveredBy applied", async ()
     [eidA, eidB, "src1", "Causes:: [[B]]"],
     [eidB, eidA, "src2", "see [[A]]"],
   ]);
+  session.setLinkMode("attributes");
   const events = [];
   session.on("links", (e) => events.push(e));
   await session.refreshLinks();

@@ -300,6 +300,8 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     el.addEventListener("blur", onBlur);
     el.addEventListener("pointerdown", stop);
     try { el.focus({ preventScroll: true }); } catch { el.focus?.(); }
+    // Start with the whole text selected so typing replaces it (Heptabase/Roam rename behavior).
+    try { const d = el.ownerDocument; const r = d.createRange(); r.selectNodeContents(el); const s = d.getSelection(); s.removeAllRanges(); s.addRange(r); } catch { /* no selection API */ }
     return true;
   };
 

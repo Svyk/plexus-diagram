@@ -654,6 +654,8 @@ export function createItemRenderer({
     t.addEventListener("blur", onBlur);
     t.addEventListener("pointerdown", stopEvent);
     try { t.focus({ preventScroll: true }); } catch { t.focus?.(); }
+    // Start with the whole text selected so typing replaces it (Heptabase/Roam rename behavior).
+    try { const d = t.ownerDocument; const r = d.createRange(); r.selectNodeContents(t); const s = d.getSelection(); s.removeAllRanges(); s.addRange(r); } catch { /* no selection API */ }
     return true;
   };
 

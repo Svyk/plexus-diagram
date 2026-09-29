@@ -477,10 +477,24 @@ body.pxd-has-fullscreen .breadcrumbs-content {
 .pxd-port--bottom { left: 50%; top: 100%; }
 .pxd-port--left { left: 0; top: 50%; }
 
+/* Grips exist only on hovered/selected items, like ports: invisible grips on idle items used to swallow
+   clicks aimed at a neighbouring section title or card. */
 .pxd-grip {
   position: absolute;
+  display: none;
   pointer-events: auto;
   z-index: 2;
+}
+
+.pxd-item:hover > .pxd-grip,
+.pxd-item--selected > .pxd-grip,
+.pxd-section:hover > .pxd-grip,
+.pxd-section--selected > .pxd-grip {
+  display: block;
+}
+
+.pxd-root--gesturing .pxd-item:not(.pxd-item--selected) > .pxd-grip {
+  display: none;
 }
 
 .pxd-grip--right {
@@ -535,20 +549,20 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   box-shadow: 0 0 0 2px var(--pxd-accent-soft);
 }
 
+/* Heptabase-style: the title sits outside the frame, on its top edge, so it never covers member cards
+   (in map LOD it grows upward with --pxd-map-font). */
 .pxd-section__title {
   position: absolute;
-  left: 0;
-  top: 0;
-  right: 0;
+  left: -2px;
+  bottom: 100%;
+  max-width: calc(100% + 4px);
   box-sizing: border-box;
-  height: 32px;
-  padding: 6px 12px;
-  font-size: 14px;
+  padding: 2px 10px 3px;
+  font-size: 15px;
   font-weight: 600;
   line-height: 20px;
   color: var(--pxd-text-c, var(--pxd-muted));
-  border-bottom: 1px solid var(--pxd-line, var(--pxd-border));
-  border-radius: 8px 8px 0 0;
+  border-radius: 6px 6px 0 0;
   background: var(--pxd-fill, transparent);
   white-space: nowrap;
   overflow: hidden;
@@ -580,7 +594,8 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   display: none;
 }
 
-.pxd-lod-map .pxd-item--editing .pxd-item__body {
+.pxd-lod-map .pxd-item--editing .pxd-item__body,
+.pxd-lod-map .pxd-item--text .pxd-item__body {
   display: block;
 }
 
@@ -592,8 +607,7 @@ body.pxd-has-fullscreen .breadcrumbs-content {
 
 .pxd-lod-map .pxd-section__title {
   font-size: var(--pxd-map-font);
-  height: auto;
-  min-height: 32px;
+  line-height: 1.2;
 }
 
 .pxd-labels--hidden {

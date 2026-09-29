@@ -3890,6 +3890,15 @@ function createItemRenderer({
     } catch {
       t.focus?.();
     }
+    try {
+      const d = t.ownerDocument;
+      const r = d.createRange();
+      r.selectNodeContents(t);
+      const s = d.getSelection();
+      s.removeAllRanges();
+      s.addRange(r);
+    } catch {
+    }
     return true;
   };
   const dispose = () => {
@@ -4233,6 +4242,15 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
       el.focus({ preventScroll: true });
     } catch {
       el.focus?.();
+    }
+    try {
+      const d = el.ownerDocument;
+      const r = d.createRange();
+      r.selectNodeContents(el);
+      const s = d.getSelection();
+      s.removeAllRanges();
+      s.addRange(r);
+    } catch {
     }
     return true;
   };

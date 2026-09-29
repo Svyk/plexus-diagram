@@ -150,6 +150,7 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
   let linkFingerprint = "";
   const initialMode = typeof settings?.get === "function" ? settings.get("graph-links") : settings?.["graph-links"];
   let linkMode = LINK_MODES.includes(initialMode) ? initialMode : "all";
+  const collapseOutline = () => (typeof settings?.get === "function" ? settings.get("collapse-outline") : settings?.["collapse-outline"]) !== false;
 
   // ---- raw tree helpers (optimistic model) ----
   const rawNode = (id) => (id === uid ? raw : ix().get(id)?.node ?? null);
@@ -890,11 +891,15 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
         kind = source ? "native" : "none";
       }
       const plan = planImport(board, source, { gen: () => host.generateUid() });
+      // Roam skips a collapsed block's children, so an open board with an outline is collapsed in the same run.
+      const collapse = collapseOutline() && raw?.[OPEN] !== false;
       let counts = null;
       try {
         counts = await queue.run(async () => {
           ledger.clear();
-          return executeImport(plan, host, board);
+          const done = await executeImport(plan, host, board);
+          if (collapse) await host.setOpen(uid, false);
+          return done;
         });
       } catch (err) {
         handleFailure(err);
@@ -931,7 +936,7 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
       parent,
       string: boardString(title),
       plexus: serializeItemLayout({ x: rel.x, y: rel.y, w: rect.w, h: rect.h, v: SCHEMA_VERSION }),
-      open: false,
+      open: collapseOutline() ? false : undefined,
     });
   }
 

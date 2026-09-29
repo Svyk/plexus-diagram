@@ -26,11 +26,11 @@ function seed(fake, extra = {}) {
   });
 }
 
-function setup(opts = {}, { seedFn = seed } = {}) {
+function setup(opts = {}, { seedFn = seed, settings = null } = {}) {
   const fake = createFakeRoam(opts);
   const host = createHost({ api: fake.api, storage: fake.storage, graph: "g" });
   seedFn(fake);
-  const session = acquireSession("b1", { host, settings: null, linkDelay: 0 });
+  const session = acquireSession("b1", { host, settings, linkDelay: 0 });
   fake.clearLog();
   return { fake, host, session };
 }
@@ -468,6 +468,53 @@ test("enhance on an already-enhanced board is a no-op with zero writes", async (
   assert.equal(fake.writesLog().length, 0);
 });
 
+test("enhance collapses an open board with children in the same run, after the import", async () => {
+  const { fake, session } = setup({}, { seedFn: seedV06 });
+  assert.notEqual(fake.block("b1").open, false);
+  await session.enhance();
+  assert.equal(fake.block("b1").open, false);
+  const log = fake.writesLog();
+  const marker = log.findIndex((e) => e[0] === "update" && e[1] === "b1");
+  assert.ok(marker >= 0);
+  assert.equal(log.filter((e) => e[1] === "b1").length, 2, "one props write and one open write on the board block");
+});
+
+// The fake's seedBoard has no open option; a seeded update collapses the board before the session pulls it.
+const seedClosed = ({ v }) => (fake) => {
+  fake.seedBoard({ uid: "b1", props: v ? { plexus: { v: 2 } } : undefined, children: [{ uid: "a", string: "[[A]]" }] });
+  fake.api.data.block.update({ block: { uid: "b1", open: false } });
+};
+
+test("enhance collapses an empty open board; an already-collapsed one only gets the marker", async () => {
+  const empty = setup({}, { seedFn: (fake) => fake.seedBoard({ uid: "b1", children: [] }) });
+  await empty.session.enhance();
+  assert.equal(empty.fake.block("b1").open, false);
+  const closed = setup({}, { seedFn: seedClosed({ v: false }) });
+  await closed.session.enhance();
+  assert.equal(closed.fake.block("b1").open, false);
+  assert.equal(closed.fake.writesLog().filter((e) => e[1] === "b1").length, 1, "only the marker write");
+});
+
+test("collapse-outline false: enhance leaves the board open and new boards are created without open", async () => {
+  const off = { "collapse-outline": false };
+  const a = setup({}, { seedFn: seedV06, settings: off });
+  await a.session.enhance();
+  assert.notEqual(a.fake.block("b1").open, false);
+  assert.equal(a.fake.writesLog().filter((e) => e[1] === "b1").length, 1, "only the marker write");
+  const b = setup({}, { seedFn: seedNested, settings: { get: (k) => off[k] } });
+  const uid = await b.session.createBoard({ rect: { x: 1400, y: 1400, w: 320, h: 220 } });
+  assert.notEqual(b.fake.block(uid).open, false);
+});
+
+test("restoreNative leaves the open state alone", async () => {
+  const { fake, session } = setup();
+  await session.restoreNative();
+  assert.notEqual(fake.block("b1").open, false);
+  const closed = setup({}, { seedFn: seedClosed({ v: true }) });
+  await closed.session.restoreNative();
+  assert.equal(closed.fake.block("b1").open, false);
+});
+
 test("restoreNative removes only plexus from board props", async () => {
   const { fake, session } = setup();
   await session.restoreNative();
@@ -580,6 +627,12 @@ test("createBoard is exactly one create carrying the string, layout with v:2 and
   const item = session.board.items.get(uid);
   assert.equal(item.kind, "board");
   assert.equal(item.hasLayout, true);
+});
+
+test("wrapInBoard creates the board block with open:false in its create call", async () => {
+  const { fake, session } = nestedSetup();
+  const uid = await session.wrapInBoard(["nbFull"]);
+  assert.equal(fake.block(uid).open, false);
 });
 
 test("createBoard inside a section creates a board relative to it, and clamps to the card minimum", async () => {

@@ -1,4 +1,4 @@
-/* Plexus Diagram v1.0.0 | MIT | generated; edit src/ */
+/* Plexus Diagram v1.1.0 | MIT | generated; edit src/ */
 
 // src/lifecycle.js
 function isPromiseLike(value) {
@@ -88,7 +88,7 @@ function createLifecycle() {
 // package.json
 var package_default = {
   name: "plexus-diagram",
-  version: "1.0.0",
+  version: "1.1.0",
   private: true,
   description: "Heptabase-style whiteboard for Roam {{[[diagram]]}} blocks: cards, colored sections, and connections that are real Roam blocks and links",
   type: "module",
@@ -1664,6 +1664,7 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
   let linkFingerprint = "";
   const initialMode = typeof settings?.get === "function" ? settings.get("graph-links") : settings?.["graph-links"];
   let linkMode = LINK_MODES.includes(initialMode) ? initialMode : "all";
+  const collapseOutline = () => (typeof settings?.get === "function" ? settings.get("collapse-outline") : settings?.["collapse-outline"]) !== false;
   const rawNode = (id) => id === uid ? raw : ix().get(id)?.node ?? null;
   const insertOrder = (parentUid) => {
     const node = raw ? rawNode(parentUid) : null;
@@ -2415,11 +2416,14 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
         kind = source ? "native" : "none";
       }
       const plan = planImport(board, source, { gen: () => host.generateUid() });
+      const collapse = collapseOutline() && raw?.[OPEN] !== false;
       let counts = null;
       try {
         counts = await queue.run(async () => {
           ledger.clear();
-          return executeImport(plan, host, board);
+          const done = await executeImport(plan, host, board);
+          if (collapse) await host.setOpen(uid, false);
+          return done;
         });
       } catch (err) {
         handleFailure(err);
@@ -2455,7 +2459,7 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
       parent,
       string: boardString(title),
       plexus: serializeItemLayout({ x: rel.x, y: rel.y, w: rect.w, h: rect.h, v: SCHEMA_VERSION }),
-      open: false
+      open: collapseOutline() ? false : void 0
     });
   }
   function moveItemsInto(t, top, boardUid, origin, place, track = {}) {
@@ -5515,6 +5519,7 @@ var ENHANCED_UID_CACHE_PREFIX = "plexus-diagram:enhanced-uids:";
 var PREPAINT_STYLE_ID = "plexus-diagram-prepaint-guard";
 var PENDING_CLASS = "pxd-native-pending";
 var NATIVE_HIDDEN_CLASS = "pxd-native-hidden";
+var OUTLINE_NATIVE_CLASS = "pxd-outline-native";
 function isDiagramString(value) {
   return DIAGRAM_MARKER.test(String(value ?? ""));
 }
@@ -5564,14 +5569,14 @@ function enhancedUidGuardCss(uids) {
       `.rm-block-ref[data-uid="${escaped}"]`
     ]) {
       selectors.push(
-        `${host} .rm-diagram:not(.${NATIVE_HIDDEN_CLASS})`,
-        `${host} .rm-diagram-title-panel`,
-        `${host} .react-flow`
+        `${host} .rm-diagram:not(.${NATIVE_HIDDEN_CLASS}):not(.${OUTLINE_NATIVE_CLASS})`,
+        `${host} .rm-diagram-title-panel:not(.${OUTLINE_NATIVE_CLASS})`,
+        `${host} .react-flow:not(.${OUTLINE_NATIVE_CLASS} *)`
       );
     }
   }
   const hideRule = selectors.length ? `${selectors.join(",\n")} { display: none !important; }` : "";
-  const pendingRule = unique.length ? `.rm-diagram.${PENDING_CLASS}:not(.${NATIVE_HIDDEN_CLASS}) { visibility: hidden !important; pointer-events: none !important; }` : "";
+  const pendingRule = unique.length ? `.rm-diagram.${PENDING_CLASS}:not(.${NATIVE_HIDDEN_CLASS}):not(.${OUTLINE_NATIVE_CLASS}) { visibility: hidden !important; pointer-events: none !important; }` : "";
   return [hideRule, pendingRule].filter(Boolean).join("\n");
 }
 function uidFromBlockInputId(id, isDiagramUid) {
@@ -5584,6 +5589,18 @@ function uidFromBlockInputId(id, isDiagramUid) {
     if (candidate && isDiagramUid(candidate)) return candidate;
   }
   return null;
+}
+var BLOCK_CONTAINER_SELECTOR = ".roam-block-container";
+function directChildWithClass(element, className) {
+  for (const child of element?.children || []) {
+    if (child.classList?.contains(className)) return child;
+  }
+  return null;
+}
+function blockContainerUid(container, isDiagramUid) {
+  const main = directChildWithClass(container, "rm-block-main");
+  const input = main?.querySelector?.('[id^="block-input-"]');
+  return uidFromBlockInputId(input?.id, isDiagramUid);
 }
 function findDiagramUidFromEl(element, isDiagramUid) {
   if (!element) return null;
@@ -6937,7 +6954,8 @@ var SETTING_IDS = Object.freeze({
   defaultCardHeight: "default-card-height",
   enableShortcuts: "enable-shortcuts",
   showVersionBadge: "show-version-badge",
-  disableOnMobile: "disable-on-mobile"
+  disableOnMobile: "disable-on-mobile",
+  collapseOutline: "collapse-outline"
 });
 var DEFAULTS = Object.freeze({
   [SETTING_IDS.enabled]: true,
@@ -6951,7 +6969,8 @@ var DEFAULTS = Object.freeze({
   [SETTING_IDS.defaultCardHeight]: 160,
   [SETTING_IDS.enableShortcuts]: true,
   [SETTING_IDS.showVersionBadge]: true,
-  [SETTING_IDS.disableOnMobile]: true
+  [SETTING_IDS.disableOnMobile]: true,
+  [SETTING_IDS.collapseOutline]: true
 });
 var ENUMS = Object.freeze({
   [SETTING_IDS.graphLinks]: ["off", "attributes", "all"],
@@ -7052,7 +7071,8 @@ function createSettingsPanel() {
       inputRow(SETTING_IDS.defaultCardHeight, "Default card height", "Height in pixels for new cards."),
       switchRow(SETTING_IDS.enableShortcuts, "Enable shortcuts", "Enable board keyboard shortcuts."),
       switchRow(SETTING_IDS.showVersionBadge, "Show version badge", "Show the extension version in the toolbar."),
-      switchRow(SETTING_IDS.disableOnMobile, "Disable on mobile", "Skip mounting on mobile clients.")
+      switchRow(SETTING_IDS.disableOnMobile, "Disable on mobile", "Skip mounting on mobile clients."),
+      switchRow(SETTING_IDS.collapseOutline, "Collapse board blocks in the outline (expand the bullet to see them)", "Collapses an enhanced board block once, so Roam does not list every card, section and connection as bullets under it. Expanding the bullet is remembered.")
     ]
   };
 }
@@ -7216,6 +7236,28 @@ async function installPlexusDiagram({
       return [self];
     }
   }
+  const isDiagramUid = (candidate) => isDiagramString(host.blockString?.(candidate));
+  function unmountOutlineCopies(parent) {
+    for (const other of [...mounts.values()]) {
+      if (other !== parent && insideEnhancedOutline(other.native)) unmount(other);
+    }
+  }
+  function collapseOnce(uid, native) {
+    if (settings[SETTING_IDS.collapseOutline] === false || !storage?.getItem || !storage?.setItem) return;
+    if (native?.closest?.(".bp3-portal")) return;
+    const key = `plexus-diagram:collapsed:${graphFromHash()}:${uid}`;
+    let state;
+    try {
+      if (storage.getItem(key)) return;
+      state = host.api.data.pull("[:block/open]", [":block/uid", uid]);
+      if (!state) return;
+      storage.setItem(key, "1");
+    } catch {
+      return;
+    }
+    if (state[":block/open"] === false) return;
+    Promise.resolve().then(() => host.setOpen(uid, false)).catch((error) => console.warn("[plexus-diagram] Could not collapse the board block", uid, error));
+  }
   function mountRecView(rec, { autofocus = false } = {}) {
     return mountView({
       host,
@@ -7309,6 +7351,8 @@ async function installPlexusDiagram({
     mountEl.className = "pxd-mount";
     mountEl.dataset.diagramUid = uid;
     const titlePanel = titlePanelOf(native);
+    native.classList.remove(OUTLINE_NATIVE_CLASS);
+    titlePanel?.classList.remove(OUTLINE_NATIVE_CLASS);
     const rec = {
       uid,
       native,
@@ -7336,6 +7380,8 @@ async function installPlexusDiagram({
       unmount(rec);
       return null;
     }
+    unmountOutlineCopies(rec);
+    collapseOnce(uid, native);
     if (currentUid(rec) === uid) migrateLegacy(rec);
     return rec;
   }
@@ -7374,16 +7420,40 @@ async function installPlexusDiagram({
     if (rec.titlePanel) rec.titlePanel.style.display = rec.titleDisplay;
   }
   const uidByNative = /* @__PURE__ */ new WeakMap();
+  const outlineOwnerByNative = /* @__PURE__ */ new WeakMap();
+  function insideEnhancedOutline(native) {
+    const cached = outlineOwnerByNative.get(native);
+    if (cached) {
+      if (isBoardEnhanced(cached)) return true;
+      outlineOwnerByNative.delete(native);
+    }
+    const own = native.closest?.(BLOCK_CONTAINER_SELECTOR);
+    let container = own ? own.parentElement?.closest?.(BLOCK_CONTAINER_SELECTOR) : null;
+    while (container) {
+      const uid = blockContainerUid(container, isDiagramUid);
+      if (uid && isBoardEnhanced(uid)) {
+        outlineOwnerByNative.set(native, uid);
+        return true;
+      }
+      container = container.parentElement?.closest?.(BLOCK_CONTAINER_SELECTOR);
+    }
+    return false;
+  }
   function consider(native, options) {
     if (stopped || !native || mounts.has(native) || native.isConnected === false) return;
     if (!active()) return;
     if (native.parentElement?.closest?.(".pxd-native-hidden, .pxd-root")) return;
     let uid = uidByNative.get(native);
     if (uid === void 0) {
-      uid = findDiagramUidFromEl(native, (candidate) => isDiagramString(host.blockString?.(candidate))) || null;
+      uid = findDiagramUidFromEl(native, isDiagramUid) || null;
       uidByNative.set(native, uid);
     }
     if (!uid || !isBoardEnhanced(uid)) return;
+    if (insideEnhancedOutline(native)) {
+      native.classList.add(OUTLINE_NATIVE_CLASS);
+      titlePanelOf(native)?.classList.add(OUTLINE_NATIVE_CLASS);
+      return;
+    }
     mount(uid, native, options);
   }
   function scanAdded(node) {
@@ -7483,7 +7553,8 @@ async function installPlexusDiagram({
       order: "last",
       uid,
       string: NEW_BOARD_STRING,
-      props: { plexus: { v: 2 } }
+      props: { plexus: { v: 2 } },
+      open: settings[SETTING_IDS.collapseOutline] === false ? void 0 : false
     });
     markEnhanced(uid);
     await host.openBlock(uid);

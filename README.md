@@ -27,6 +27,8 @@ Boards enhanced with 0.6 upgrade to the 1.0 format once, the first time they are
 | Section | G, then drag (or click for a default size). Cmd+G wraps the selection. Drop cards in and out of sections |
 | Connect | Drag from a card's port (the dots on its edges) to another card or section. Drop on empty board to create a new linked card. C turns the whole card into a handle |
 | Text | T for a free heading on the board (16/24/32/48) |
+| Nested board | W, then click or drag; or select cards → **Move into new board**. Double-click a board card to go inside; the breadcrumb (`Parent › Child`) and Esc take you back up. Drag a card onto a board card to move it in |
+| Drag from Roam | Drag any bullet from the outline or sidebar onto the board to add it as a `((ref))` card |
 | Delete | Delete/Backspace. The toast offers Undo; Cmd+Z / Shift+Cmd+Z are Roam's own undo and redo |
 | Search | `/` filters the board and steps through matches |
 | Add | The Add panel searches pages and blocks, and its Related tab lists what the selected card links to and is linked from |
@@ -37,7 +39,7 @@ The context bar above a selection has 10 colors for cards, sections, text, and c
 
 | On the board | In the graph |
 |---|---|
-| Card | A child block of the board: a note (its own text and children), a `[[page]]`, a `((block))`, an image, or a nested `{{[[diagram]]}}` board |
+| Card | A child block of the board: a note (its own text and children), a `[[page]]`, a `((block))`, an image, or a nested `{{[[diagram]]:Title}}` board (its own cards are its children) |
 | Section | A block whose children are its cards. Title it `[[Root cause]]` and the section, with its cards, appears in Root cause's linked references |
 | Connection | A block under the board's collapsed **Connections** child, reading `[[Seal failure]] → causes → [[Leak]]`. Both ends get a backlink. Its children are notes on the connection |
 | Graph links (dashed) | Existing references and attributes between cards on the board, drawn automatically and colored by relation. Toggle with **Links** (Off / Attributes / All) or L |

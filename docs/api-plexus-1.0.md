@@ -307,3 +307,14 @@ window.__plexusDiagram.mounts() → [{uid, current, crumbs:[uid…], fullscreen,
 `uid` stays the native (route) board; `current` is the board on screen and `crumbs` the trail. Navigation (`onOpenBoard`, `onCrumb`) swaps view and session on the same mount element and keeps fullscreen; it never enhances a native diagram (a child without `v:2` goes to `host.openBlock`). A zoomed nested board seeds its crumbs from its enhanced diagram ancestors, root first. A `.rm-diagram` inside a hidden native or our overlay is never mounted. Settings changes remount with the trail intact.
 
 `settings` may be a `{get(key)}` object or a plain map in `mountBoardView`, `createChrome` and `createInteractions`.
+
+## 1.1 additions (collapsed board blocks)
+
+Roam lists an enhanced board's child blocks as an outline under it. The extension does not hide that outline with CSS or key handlers; it collapses the board block (`:block/open` false), so Roam neither renders the children nor steps into them with the keyboard. The `{{[[diagram]]}}` in the block body still renders, and expanding the bullet shows the outline.
+
+- Creation: "Plexus: New whiteboard here" and `session.createBoard` / `wrapInBoard` (nested boards) pass `open: false` in the create call, or no `open` when `collapse-outline` is off.
+- `session.enhance()` also runs `host.setOpen(uid, false)` in the same queued run, after the import, when `collapse-outline` is on and the board block is open (children or not, so cards added later do not show as an outline). An already collapsed board is not written.
+- First mount of an already-enhanced board that is open with children collapses it once: with the `collapse-outline` setting on, and `localStorage` key `plexus-diagram:collapsed:<graph>:<uid>` absent, the key is set first and then `host.setOpen(uid, false)` runs. A board found already collapsed only records the key. Mounts inside `.bp3-portal` (hover previews, popovers) never write and never record the key. The key is per browser, not per graph, so another device or a cleared storage collapses an expanded board once more. Nothing else writes on mount, and a board that is not enhanced is never touched.
+- `session.restoreNative()` leaves the open state alone.
+- Setting `collapse-outline` (switch, default true): "Collapse board blocks in the outline (expand the bullet to see them)". It replaces the unreleased `show-outline`.
+- Zoomed parent pages still render children under the overlay, so `.rm-diagram` elements inside an enhanced ancestor board's rendered children are never mounted (they get `pxd-outline-native` so the pre-paint guard leaves them alone), and an already-mounted nested one is unmounted when the parent mounts.

@@ -4,12 +4,15 @@ import { acquireSession as acquireSessionDefault } from "./session.js";
 import { mountBoardView } from "./view/board-view.js";
 import { parseBoardTitle, readPlexus, UNTITLED_BOARD } from "./model/schema.js";
 import {
+  BLOCK_CONTAINER_SELECTOR,
+  blockContainerUid,
   diagramsWithin,
   diagramUidFromLocation,
   enhancedUidGuardCss,
   findDiagramUidFromEl,
   isDiagramString,
   NATIVE_HIDDEN_CLASS,
+  OUTLINE_NATIVE_CLASS,
   PREPAINT_STYLE_ID,
   readEnhanced,
   readEnhancedUidCache,
@@ -206,6 +209,35 @@ export async function installPlexusDiagram({
     }
   }
 
+  const isDiagramUid = (candidate) => isDiagramString(host.blockString?.(candidate));
+
+  // A nested board that mounted before this parent claimed its rendered children is an outline copy.
+  function unmountOutlineCopies(parent) {
+    for (const other of [...mounts.values()]) {
+      if (other !== parent && insideEnhancedOutline(other.native)) unmount(other);
+    }
+  }
+
+  // Roam skips a collapsed block's children (not rendered, skipped by keyboard navigation), so the board block
+  // is collapsed instead of hiding its outline. Once per board and graph: the user may expand it on purpose.
+  // Passive mounts (hover previews, popovers) never write: the collapse would land on Roam's undo stack unasked.
+  function collapseOnce(uid, native) {
+    if (settings[SETTING_IDS.collapseOutline] === false || !storage?.getItem || !storage?.setItem) return;
+    if (native?.closest?.(".bp3-portal")) return;
+    const key = `plexus-diagram:collapsed:${graphFromHash()}:${uid}`;
+    let state;
+    try {
+      if (storage.getItem(key)) return;
+      state = host.api.data.pull("[:block/open]", [":block/uid", uid]);
+      if (!state) return;
+      storage.setItem(key, "1"); // set BEFORE the write so a failure never loops
+    } catch { return; }
+    if (state[":block/open"] === false) return;
+    Promise.resolve()
+      .then(() => host.setOpen(uid, false))
+      .catch((error) => console.warn("[plexus-diagram] Could not collapse the board block", uid, error));
+  }
+
   function mountRecView(rec, { autofocus = false } = {}) {
     return mountView({
       host,
@@ -288,6 +320,8 @@ export async function installPlexusDiagram({
     mountEl.className = "pxd-mount";
     mountEl.dataset.diagramUid = uid;
     const titlePanel = titlePanelOf(native);
+    native.classList.remove(OUTLINE_NATIVE_CLASS);
+    titlePanel?.classList.remove(OUTLINE_NATIVE_CLASS);
     const rec = {
       uid,
       native,
@@ -316,6 +350,8 @@ export async function installPlexusDiagram({
       unmount(rec);
       return null;
     }
+    unmountOutlineCopies(rec);
+    collapseOnce(uid, native);
     if (currentUid(rec) === uid) migrateLegacy(rec);
     return rec;
   }
@@ -348,6 +384,28 @@ export async function installPlexusDiagram({
   }
 
   const uidByNative = new WeakMap();
+  const outlineOwnerByNative = new WeakMap(); // native -> uid of the enhanced board whose outline it sits in
+
+  // A .rm-diagram inside an enhanced ancestor board's outline is Roam's bullet copy of a card, never a board to mount.
+  // Roots (zoomed block, sidebar window, block-ref embeds) have no enhanced ancestor container.
+  function insideEnhancedOutline(native) {
+    const cached = outlineOwnerByNative.get(native);
+    if (cached) {
+      if (isBoardEnhanced(cached)) return true;
+      outlineOwnerByNative.delete(native);
+    }
+    const own = native.closest?.(BLOCK_CONTAINER_SELECTOR);
+    let container = own ? own.parentElement?.closest?.(BLOCK_CONTAINER_SELECTOR) : null;
+    while (container) {
+      const uid = blockContainerUid(container, isDiagramUid);
+      if (uid && isBoardEnhanced(uid)) {
+        outlineOwnerByNative.set(native, uid);
+        return true;
+      }
+      container = container.parentElement?.closest?.(BLOCK_CONTAINER_SELECTOR);
+    }
+    return false;
+  }
 
   function consider(native, options) {
     if (stopped || !native || mounts.has(native) || native.isConnected === false) return;
@@ -356,10 +414,16 @@ export async function installPlexusDiagram({
     if (native.parentElement?.closest?.(".pxd-native-hidden, .pxd-root")) return;
     let uid = uidByNative.get(native);
     if (uid === undefined) {
-      uid = findDiagramUidFromEl(native, (candidate) => isDiagramString(host.blockString?.(candidate))) || null;
+      uid = findDiagramUidFromEl(native, isDiagramUid) || null;
       uidByNative.set(native, uid);
     }
     if (!uid || !isBoardEnhanced(uid)) return;
+    if (insideEnhancedOutline(native)) {
+      // An outline copy stays native; exempt it from the pre-paint guard so its bullet is not blank.
+      native.classList.add(OUTLINE_NATIVE_CLASS);
+      titlePanelOf(native)?.classList.add(OUTLINE_NATIVE_CLASS);
+      return;
+    }
     mount(uid, native, options);
   }
 
@@ -475,6 +539,7 @@ export async function installPlexusDiagram({
       uid,
       string: NEW_BOARD_STRING,
       props: { plexus: { v: 2 } },
+      open: settings[SETTING_IDS.collapseOutline] === false ? undefined : false,
     });
     markEnhanced(uid);
     await host.openBlock(uid);

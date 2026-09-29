@@ -201,13 +201,13 @@ Tools: Select (V), Hand (H), Card (N), Text (T), Section (G), Connect (C). Tools
 - Drag one card: zero writes until pointerup, exactly one props write after.
 - Section tool: one drag = one section block; one click = one section block.
 - New card: type text immediately after creation; the text is in the block after exit.
-- Open, pan, zoom, fit, select: sync dot never goes pending; zero writes (count via a write counter exposed as `window.__plexusDiagram.stats`).
+- Open, pan, zoom, fit, select: sync dot never goes pending; zero writes (except the single one-time collapse of an open enhanced board on its first non-portal mount, see api 1.1 additions) (count via a write counter exposed as `window.__plexusDiagram.stats`).
 - Unload: no `.pxd-*` nodes, no pull watches (`stats.watches === 0`), no listeners/timers left; native diagram visible again.
 - Echo: rapid drag A→B→A of one card never shows a flicker back to an intermediate position.
 - `npm run check` green.
 
 ## 6. Settings (panel)
-`enabled`, `fullscreen-on-zoom` (default on), `graph-links` (`off|attributes|all`, default all), `wheel` (`pan|zoom`, default pan), `show-minimap` (default on), `snap-guides` (default on), `grid` (`dots|lines|plain`, default dots), `default-card-width` (280), `default-card-height` (160), `enable-shortcuts` (on), `show-version-badge` (on), `disable-on-mobile` (on).
+`enabled`, `fullscreen-on-zoom` (default on), `graph-links` (`off|attributes|all`, default all), `wheel` (`pan|zoom`, default pan), `show-minimap` (default on), `snap-guides` (default on), `grid` (`dots|lines|plain`, default dots), `default-card-width` (280), `default-card-height` (160), `enable-shortcuts` (on), `show-version-badge` (on), `disable-on-mobile` (on), `collapse-outline` (on).
 
 ## 7. Commands
 Palette + slash, prefixed `Plexus:` — **Enhance this diagram**, **New whiteboard here** (creates `{{[[diagram]]:Untitled board}}` under the focused block, enhances, opens it zoomed), **Restore native diagram**, **Fullscreen this diagram**. Block context menu: **Plexus: Enhance**.

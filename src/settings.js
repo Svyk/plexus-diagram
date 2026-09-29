@@ -11,6 +11,7 @@ export const SETTING_IDS = Object.freeze({
   enableShortcuts: "enable-shortcuts",
   showVersionBadge: "show-version-badge",
   disableOnMobile: "disable-on-mobile",
+  collapseOutline: "collapse-outline",
 });
 
 const DEFAULTS = Object.freeze({
@@ -26,6 +27,7 @@ const DEFAULTS = Object.freeze({
   [SETTING_IDS.enableShortcuts]: true,
   [SETTING_IDS.showVersionBadge]: true,
   [SETTING_IDS.disableOnMobile]: true,
+  [SETTING_IDS.collapseOutline]: true,
 });
 
 const ENUMS = Object.freeze({
@@ -141,6 +143,7 @@ export function createSettingsPanel() {
       switchRow(SETTING_IDS.enableShortcuts, "Enable shortcuts", "Enable board keyboard shortcuts."),
       switchRow(SETTING_IDS.showVersionBadge, "Show version badge", "Show the extension version in the toolbar."),
       switchRow(SETTING_IDS.disableOnMobile, "Disable on mobile", "Skip mounting on mobile clients."),
+      switchRow(SETTING_IDS.collapseOutline, "Collapse board blocks in the outline (expand the bullet to see them)", "Collapses an enhanced board block once, so Roam does not list every card, section and connection as bullets under it. Expanding the bullet is remembered."),
     ],
   };
 }

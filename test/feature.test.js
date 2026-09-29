@@ -21,6 +21,7 @@ class El {
     this.textContent = "";
     this.cls = new Set();
     this.closestMap = {};
+    this.attrs = new Map();
     const cls = this.cls;
     this.classList = {
       add: (...names) => names.forEach((n) => cls.add(n)),
@@ -28,6 +29,14 @@ class El {
       contains: (n) => cls.has(n),
     };
   }
+  get tagName() { return this.tag.toUpperCase(); }
+  get previousElementSibling() {
+    const siblings = this.parentElement?.children;
+    return siblings ? siblings[siblings.indexOf(this) - 1] ?? null : null;
+  }
+  setAttribute(name, value) { this.attrs.set(name, String(value)); this.attrWrites = (this.attrWrites || 0) + 1; }
+  removeAttribute(name) { this.attrs.delete(name); this.attrWrites = (this.attrWrites || 0) + 1; }
+  hasAttribute(name) { return this.attrs.has(name); }
   set className(value) { this.cls.clear(); String(value).split(/\s+/).filter(Boolean).forEach((n) => this.cls.add(n)); }
   get className() { return [...this.cls].join(" "); }
   get isConnected() {
@@ -50,7 +59,14 @@ class El {
     this.parentElement = null;
   }
   closest(selector) { return this.closestMap[selector] ?? null; }
-  matches(selector) { return selector.startsWith(".") && this.cls.has(selector.slice(1)); }
+  matches(selector) {
+    if (selector === '[id^="block-input-"]') return this.id.startsWith("block-input-");
+    return selector.startsWith(".") && this.cls.has(selector.slice(1));
+  }
+  contains(node) {
+    for (let cur = node; cur; cur = cur.parentElement) if (cur === this) return true;
+    return false;
+  }
   querySelectorAll(selector) {
     const out = [];
     for (const child of this.children) {
@@ -72,6 +88,9 @@ function makeDoc() {
   doc.root.append(doc.head);
   doc.root.append(doc.body);
   doc.body.append(doc.app);
+  doc.listeners = new Map();
+  doc.addEventListener = (type, fn) => { if (!doc.listeners.has(type)) doc.listeners.set(type, new Set()); doc.listeners.get(type).add(fn); };
+  doc.removeEventListener = (type, fn) => doc.listeners.get(type)?.delete(fn);
   doc.createElement = (tag) => new El(doc, tag);
   doc.getElementById = (id) => doc.root.querySelectorAll("*").find((n) => n.id === id) ?? null;
   doc.querySelector = (selector) => doc.root.querySelector(selector);
@@ -94,6 +113,43 @@ function addNative(doc, uid, { parent = doc.app } = {}) {
   return { native, panel };
 }
 
+// Roam's block DOM: .roam-block-container > .rm-block-main (block input + the diagram) + .rm-block-children.
+function addBlock(doc, uid, { parent = doc.app, children = true, input = true } = {}) {
+  const container = doc.createElement("div");
+  container.cls.add("roam-block-container");
+  const main = doc.createElement("div");
+  main.cls.add("rm-block-main");
+  container.append(main);
+  if (input) {
+    const inputEl = doc.createElement("div");
+    inputEl.id = `block-input-w-body-outline-${uid}`;
+    main.append(inputEl);
+  }
+  let kids = null;
+  if (children) {
+    kids = doc.createElement("div");
+    kids.cls.add("rm-block-children");
+    container.append(kids);
+  }
+  parent.append(container);
+  parent.closestMap[".roam-block-container"] = parent.cls.has("roam-block-container") ? parent : parent.closestMap[".roam-block-container"] ?? null;
+  return { container, main, kids };
+}
+
+function addBoardBlock(doc, uid, opts) {
+  const block = addBlock(doc, uid, opts);
+  const { native, panel } = addNative(doc, uid, { parent: block.main });
+  native.closestMap[".roam-block-container"] = block.container;
+  return { ...block, native, panel };
+}
+
+// A board block rendered inside another block's .rm-block-children (Roam's outline copy of a card).
+function addOutlineBoard(doc, uid, parentBlock, opts) {
+  const block = addBoardBlock(doc, uid, { ...opts, parent: parentBlock.kids });
+  parentBlock.kids.closestMap[".roam-block-container"] = parentBlock.container;
+  return block;
+}
+
 // ---- environment fixture ------------------------------------------------------------------------
 
 function setup({ enhanced = [], legacy = null, settings = {}, hash = "" } = {}) {
@@ -114,7 +170,7 @@ function setup({ enhanced = [], legacy = null, settings = {}, hash = "" } = {}) 
   define("location", { hash });
   define("MutationObserver", class {
     constructor(callback) { this.callback = callback; }
-    observe() { env.observers.add(this); }
+    observe(target) { this.target = target; env.observers.add(this); }
     disconnect() { env.observers.delete(this); }
   });
   define("setInterval", (callback) => { const id = env.nextInterval++; env.intervals.set(id, callback); return id; });
@@ -122,7 +178,7 @@ function setup({ enhanced = [], legacy = null, settings = {}, hash = "" } = {}) 
 
   const props = new Map(enhanced.map((uid) => [uid, { ":plexus": { ":v": 2 }, ":rf-diagram": { ":x": 1 } }]));
   const strings = new Map();
-  const writes = { createBlock: [], openBlock: [], other: 0 };
+  const writes = { createBlock: [], openBlock: [], setOpen: [], other: 0 };
   const legacyTree = legacy && {
     ":block/uid": "meta",
     ":block/children": [
@@ -142,6 +198,7 @@ function setup({ enhanced = [], legacy = null, settings = {}, hash = "" } = {}) 
     api: {
       data: {
         pull(pattern, ref) {
+          if (pattern.startsWith("[:block/open")) return env.openState?.[ref[1]] ?? null;
           if (pattern === "[:block/props]") return { ":block/props": props.get(ref[1]) ?? null };
           if (pattern.includes(":block/parents")) return env.ancestors?.[ref[1]] ?? null;
           if (pattern.includes("...")) return legacyTree;
@@ -157,6 +214,7 @@ function setup({ enhanced = [], legacy = null, settings = {}, hash = "" } = {}) 
     generateUid: () => "newBoard01",
     createBlock: async (args) => { writes.createBlock.push(args); return args.uid; },
     openBlock: async (uid) => { writes.openBlock.push(uid); },
+    setOpen: async (uid, open) => { writes.setOpen.push([uid, open]); },
   };
 
   const sessions = { acquired: 0, released: 0, enhance: 0, restore: 0, live: new Map(), made: [] };
@@ -416,9 +474,20 @@ test("New whiteboard creates one block with props in the create call, then opens
       uid: "newBoard01",
       string: "{{[[diagram]]:Untitled board}}",
       props: { plexus: { v: 2 } },
+      open: false,
     });
     assert.deepEqual(t.writes.openBlock, ["newBoard01"]);
     assert.equal(t.sessions.enhance, 0);
+  });
+});
+
+test("New whiteboard with collapse-outline off creates the block without open", async () => {
+  await withEnv({ settings: { "collapse-outline": false } }, async (t) => {
+    await t.install();
+    t.env.focused = { "block-uid": "parentPP1" };
+    await t.commands.palette.get("Plexus: New whiteboard here").callback({});
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(t.writes.createBlock[0].open, undefined);
   });
 });
 
@@ -815,5 +884,175 @@ test("F5 a nested board whose block disappears pops to the parent; a vanished ro
     const root = t.sessions.made.filter((s) => s.uid === "boardAAA1").at(-1);
     root.emitGone();
     assert.deepEqual(t.env.win.__plexusDiagram.mounts(), []);
+  });
+});
+
+// ---- 1.1: nested boards inside an enhanced board's rendered children ------------------------------------
+
+test("1.1 a nested enhanced diagram inside the root's outline is not mounted", async () => {
+  await withEnv({ enhanced: ["boardAAA1", "childBBB1"] }, async (t) => {
+    t.strings.set("boardAAA1", "{{[[diagram]]}}");
+    t.strings.set("childBBB1", "{{[[diagram]]:Untitled board}}");
+    const root = addBoardBlock(t.doc, "boardAAA1");
+    const nested = addOutlineBoard(t.doc, "childBBB1", root);
+    await t.install();
+    t.tick();
+    t.tick();
+    assert.equal(t.views.length, 1);
+    assert.equal(t.views[0].args.session.uid, "boardAAA1");
+    assert.equal(t.sessions.live.get("childBBB1"), undefined);
+    assert.ok(!nested.native.classList.contains("pxd-native-hidden"));
+    assert.ok(nested.native.classList.contains("pxd-outline-native"), "outline copy is exempted from the pre-paint guard");
+    assert.ok(nested.panel.classList.contains("pxd-outline-native"));
+    assert.deepEqual(t.env.win.__plexusDiagram.mounts().map((m) => m.uid), ["boardAAA1"]);
+    assert.match(t.doc.getElementById(PREPAINT_STYLE_ID).textContent, /not\(\.pxd-outline-native\)/);
+  });
+});
+
+test("1.1 a nested board that mounted before its parent is unmounted when the parent mounts", async () => {
+  await withEnv({ enhanced: ["boardAAA1", "childBBB1"] }, async (t) => {
+    t.strings.set("boardAAA1", "{{[[diagram]]}}");
+    t.strings.set("childBBB1", "{{[[diagram]]:Untitled board}}");
+    // The parent's block input has not rendered yet, so the child looks like a root.
+    const root = addBlock(t.doc, "boardAAA1", { input: false });
+    const nested = addOutlineBoard(t.doc, "childBBB1", root);
+    await t.install();
+    t.tick();
+    assert.deepEqual(t.env.win.__plexusDiagram.mounts().map((m) => m.uid), ["childBBB1"]);
+    const inputEl = t.doc.createElement("div");
+    inputEl.id = "block-input-w-body-outline-boardAAA1";
+    root.main.append(inputEl);
+    const { native } = addNative(t.doc, "boardAAA1", { parent: root.main });
+    native.closestMap[".roam-block-container"] = root.container;
+    t.tick();
+    assert.deepEqual(t.env.win.__plexusDiagram.mounts().map((m) => m.uid), ["boardAAA1"]);
+    assert.equal(t.sessions.live.get("childBBB1"), 0, "the nested session was released");
+    assert.equal(t.views[0].disposed, 1);
+    assert.ok(!nested.native.classList.contains("pxd-native-hidden"));
+    t.tick();
+    assert.equal(t.views.length, 2, "and it does not mount again");
+  });
+});
+
+test("1.1 a nested board with no enhanced ancestor container (zoomed or sidebar root) still mounts", async () => {
+  await withEnv({ enhanced: ["childBBB1"] }, async (t) => {
+    t.strings.set("childBBB1", "{{[[diagram]]:Untitled board}}");
+    t.strings.set("boardAAA1", "{{[[diagram]]}}");
+    // Roots render the block on its own, and a non-enhanced diagram ancestor never blocks a mount.
+    const zoomed = addBoardBlock(t.doc, "childBBB1");
+    const plainAncestor = addBlock(t.doc, "plainPP01");
+    const inSidebar = addOutlineBoard(t.doc, "childBBB1", plainAncestor);
+    await t.install();
+    t.tick();
+    assert.equal(t.views.length, 2);
+    assert.ok(zoomed.native.classList.contains("pxd-native-hidden"));
+    assert.ok(inSidebar.native.classList.contains("pxd-native-hidden"));
+  });
+});
+
+// ---- 1.1: collapse the board block instead of hiding its outline -------------------------------------
+
+const collapseKeys = (t) => [...t.storageMap.keys()].filter((k) => k.startsWith("plexus-diagram:collapsed:"));
+const openBoard = (t, uid = "boardAAA1", state = { ":block/open": true, ":block/children": [{ ":block/uid": "cardCCC01" }] }) => {
+  t.strings.set(uid, "{{[[diagram]]}}");
+  t.env.openState = { ...(t.env.openState || {}), [uid]: state };
+  return addBoardBlock(t.doc, uid);
+};
+
+test("1.1 the first mount of an open enhanced board with children collapses it once and sets the key first", async () => {
+  await withEnv({ enhanced: ["boardAAA1"], hash: "#/app/Svy" }, async (t) => {
+    const block = openBoard(t);
+    const order = [];
+    const setItem = t.storage.setItem;
+    t.storage.setItem = (k, v) => { if (k.startsWith("plexus-diagram:collapsed:")) order.push("key"); setItem(k, v); };
+    const setOpen = t.host.setOpen;
+    t.host.setOpen = async (uid, open) => { order.push("open"); return setOpen(uid, open); };
+    await t.install();
+    t.tick();
+    await settle();
+    assert.deepEqual(t.writes.setOpen, [["boardAAA1", false]]);
+    assert.deepEqual(order, ["key", "open"]);
+    assert.deepEqual(collapseKeys(t), ["plexus-diagram:collapsed:Svy:boardAAA1"]);
+    // Remount: the user may have expanded it on purpose, so nothing is written again.
+    block.native.remove();
+    t.tick();
+    assert.deepEqual(t.env.win.__plexusDiagram.mounts(), []);
+    addNative(t.doc, "boardAAA1", { parent: block.main });
+    t.tick();
+    await settle();
+    assert.equal(t.views.length, 2);
+    assert.equal(t.writes.setOpen.length, 1);
+  });
+});
+
+test("1.1 an empty open board is collapsed too; an already-collapsed one is never written but records the key", async () => {
+  await withEnv({ enhanced: ["boardAAA1", "boardBBB1"], hash: "#/app/Svy" }, async (t) => {
+    openBoard(t, "boardAAA1", { ":block/open": true, ":block/children": [] });
+    openBoard(t, "boardBBB1", { ":block/open": false, ":block/children": [{ ":block/uid": "x" }] });
+    await t.install();
+    t.tick();
+    await settle();
+    assert.equal(t.views.length, 2);
+    assert.deepEqual(t.writes.setOpen, [["boardAAA1", false]]);
+    assert.deepEqual(collapseKeys(t).sort(), ["plexus-diagram:collapsed:Svy:boardAAA1", "plexus-diagram:collapsed:Svy:boardBBB1"]);
+  });
+});
+
+test("1.1 a passive mount inside a portal (hover preview) never collapses", async () => {
+  await withEnv({ enhanced: ["boardAAA1"], hash: "#/app/Svy" }, async (t) => {
+    const block = openBoard(t);
+    block.native.closestMap[".bp3-portal"] = t.doc.createElement("div");
+    await t.install();
+    t.tick();
+    await settle();
+    assert.equal(t.views.length, 1);
+    assert.equal(t.writes.setOpen.length, 0);
+    assert.deepEqual(collapseKeys(t), []);
+  });
+});
+
+test("1.1 collapse-outline false never collapses", async () => {
+  await withEnv({ enhanced: ["boardAAA1"], settings: { "collapse-outline": false } }, async (t) => {
+    openBoard(t);
+    await t.install();
+    t.tick();
+    await settle();
+    assert.equal(t.views.length, 1);
+    assert.equal(t.writes.setOpen.length, 0);
+    assert.deepEqual(collapseKeys(t), []);
+  });
+});
+
+test("1.1 a native diagram that is not enhanced never gets setOpen", async () => {
+  await withEnv({ enhanced: [] }, async (t) => {
+    openBoard(t);
+    await t.install();
+    t.tick();
+    t.tick();
+    await settle();
+    assert.equal(t.views.length, 0);
+    assert.equal(t.writes.setOpen.length, 0);
+    assert.deepEqual(collapseKeys(t), []);
+  });
+});
+
+test("1.1 a failing setOpen is logged and does not unmount or retry", async () => {
+  await withEnv({ enhanced: ["boardAAA1"] }, async (t) => {
+    openBoard(t);
+    t.host.setOpen = async () => { throw new Error("nope"); };
+    const warn = console.warn;
+    const seen = [];
+    console.warn = (...args) => seen.push(args);
+    try {
+      await t.install();
+      t.tick();
+      await settle();
+      t.tick();
+      await settle();
+    } finally {
+      console.warn = warn;
+    }
+    assert.equal(seen.length, 1);
+    assert.equal(t.views.length, 1);
   });
 });

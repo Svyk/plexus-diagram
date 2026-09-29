@@ -6,6 +6,7 @@ export const ENHANCED_UID_CACHE_PREFIX = "plexus-diagram:enhanced-uids:";
 export const PREPAINT_STYLE_ID = "plexus-diagram-prepaint-guard";
 export const PENDING_CLASS = "pxd-native-pending";
 export const NATIVE_HIDDEN_CLASS = "pxd-native-hidden";
+export const OUTLINE_NATIVE_CLASS = "pxd-outline-native";
 
 export function isDiagramString(value) {
   return DIAGRAM_MARKER.test(String(value ?? ""));
@@ -65,9 +66,9 @@ export function enhancedUidGuardCss(uids) {
       `.rm-block-ref[data-uid="${escaped}"]`,
     ]) {
       selectors.push(
-        `${host} .rm-diagram:not(.${NATIVE_HIDDEN_CLASS})`,
-        `${host} .rm-diagram-title-panel`,
-        `${host} .react-flow`,
+        `${host} .rm-diagram:not(.${NATIVE_HIDDEN_CLASS}):not(.${OUTLINE_NATIVE_CLASS})`,
+        `${host} .rm-diagram-title-panel:not(.${OUTLINE_NATIVE_CLASS})`,
+        `${host} .react-flow:not(.${OUTLINE_NATIVE_CLASS} *)`,
       );
     }
   }
@@ -77,7 +78,7 @@ export function enhancedUidGuardCss(uids) {
     ? `${selectors.join(",\n")} { display: none !important; }`
     : "";
   const pendingRule = unique.length
-    ? `.rm-diagram.${PENDING_CLASS}:not(.${NATIVE_HIDDEN_CLASS}) { visibility: hidden !important; pointer-events: none !important; }`
+    ? `.rm-diagram.${PENDING_CLASS}:not(.${NATIVE_HIDDEN_CLASS}):not(.${OUTLINE_NATIVE_CLASS}) { visibility: hidden !important; pointer-events: none !important; }`
     : "";
   return [hideRule, pendingRule].filter(Boolean).join("\n");
 }
@@ -95,6 +96,22 @@ export function uidFromBlockInputId(id, isDiagramUid) {
     if (candidate && isDiagramUid(candidate)) return candidate;
   }
   return null;
+}
+
+export const BLOCK_CONTAINER_SELECTOR = ".roam-block-container";
+
+export function directChildWithClass(element, className) {
+  for (const child of element?.children || []) {
+    if (child.classList?.contains(className)) return child;
+  }
+  return null;
+}
+
+// The block a .roam-block-container renders: its .rm-block-main holds the block's own input first.
+export function blockContainerUid(container, isDiagramUid) {
+  const main = directChildWithClass(container, "rm-block-main");
+  const input = main?.querySelector?.('[id^="block-input-"]');
+  return uidFromBlockInputId(input?.id, isDiagramUid);
 }
 
 export function findDiagramUidFromEl(element, isDiagramUid) {

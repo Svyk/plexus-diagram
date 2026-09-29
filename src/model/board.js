@@ -1,0 +1,375 @@
+import {
+  DEFAULT_SIZES,
+  classifyString,
+  firstLine,
+  normalizeEdge,
+  normalizeItemLayout,
+  parseBoardTitle,
+  parseEdgeLabel,
+  readPlexus,
+  semanticRef,
+} from "./schema.js";
+
+const AUTO_GAP = 40;
+const AUTO_OFFSET = 48;
+const AUTO_ROWS = 4;
+const TITLE_BAND = 32;
+const BORDER_BAND = 8;
+
+const isNum = (v) => typeof v === "number" && Number.isFinite(v);
+
+function sortedChildren(node) {
+  const kids = Array.isArray(node?.[":block/children"]) ? node[":block/children"] : [];
+  return kids
+    .map((c, i) => ({ c, i }))
+    .sort((a, b) => (a.c[":block/order"] ?? a.i) - (b.c[":block/order"] ?? b.i) || a.i - b.i)
+    .map(({ c }) => c);
+}
+
+function rectOf(o) { return { x: o.x, y: o.y, w: o.w, h: o.h }; }
+function unionRect(a, b) {
+  const x = Math.min(a.x, b.x);
+  const y = Math.min(a.y, b.y);
+  return { x, y, w: Math.max(a.x + a.w, b.x + b.w) - x, h: Math.max(a.y + a.h, b.y + b.h) - y };
+}
+function contains(r, p) { return p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h; }
+function containsRect(outer, inner) {
+  return inner.x >= outer.x && inner.y >= outer.y
+    && inner.x + inner.w <= outer.x + outer.w && inner.y + inner.h <= outer.y + outer.h;
+}
+function intersects(a, b) {
+  return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+}
+function centerOf(r) { return { x: r.x + r.w / 2, y: r.y + r.h / 2 }; }
+
+function autoPlace(siblings) {
+  const placed = siblings.filter((s) => s.hasLayout);
+  const loose = siblings.filter((s) => !s.hasLayout);
+  if (!loose.length) return;
+  let startX = 0;
+  let startY = 0;
+  if (placed.length) {
+    const u = placed.map(rectOf).reduce(unionRect);
+    startX = u.x + u.w + AUTO_OFFSET;
+    startY = u.y;
+  }
+  let colX = startX;
+  let colW = 0;
+  let y = startY;
+  loose.forEach((item, i) => {
+    const row = i % AUTO_ROWS;
+    if (i > 0 && row === 0) { colX += colW + AUTO_GAP; colW = 0; y = startY; }
+    item.x = colX;
+    item.y = y;
+    y += item.h + AUTO_GAP;
+    colW = Math.max(colW, item.w);
+  });
+}
+
+export function buildBoard(pulled, { defaults } = {}) {
+  if (!pulled || typeof pulled !== "object") return null;
+  const uid = pulled[":block/uid"];
+  const string = pulled[":block/string"] ?? "";
+  const plexus = readPlexus(pulled[":block/props"]);
+  const sizes = { ...DEFAULT_SIZES, card: defaults?.card ?? DEFAULT_SIZES.card };
+
+  const items = new Map();
+  const edges = new Map();
+  const roots = [];
+  const preorder = [];
+  let containerUid = null;
+  let containerIndex = -1;
+
+  const boardKids = sortedChildren(pulled);
+  boardKids.forEach((child, index) => {
+    if (containerUid === null && readPlexus(child[":block/props"])?.type === "edges") {
+      containerUid = child[":block/uid"];
+      containerIndex = index;
+    }
+  });
+
+  const walk = (children, parentUid, depth) => {
+    const siblings = [];
+    for (const child of children) {
+      const cuid = child[":block/uid"];
+      if (cuid === containerUid) continue;
+      const cplexus = readPlexus(child[":block/props"]);
+      const cstring = child[":block/string"] ?? "";
+      const heading = child[":block/heading"] || 0;
+      const kids = sortedChildren(child);
+      const layout = normalizeItemLayout(cplexus);
+      let type = layout.type;
+      if (!cplexus && heading > 0 && kids.length) type = "section";
+      const cls = classifyString(cstring);
+      const kind = type === "section" ? "section" : type === "text" ? "text" : cls.kind;
+      const size = sizes[type];
+      const hasLayout = isNum(layout.x) && isNum(layout.y);
+      let title;
+      if (kind === "page") title = cls.title;
+      else if (kind === "board") title = parseBoardTitle(cstring) || "Untitled board";
+      else title = firstLine(cstring);
+      let target;
+      if (kind === "page") target = { kind: "page", title: cls.title };
+      else if (kind === "block") target = { kind: "block", uid: cls.refUid };
+      else target = { kind: "self", uid: cuid };
+      const item = {
+        uid: cuid,
+        type,
+        kind,
+        string: cstring,
+        heading,
+        parentUid,
+        order: child[":block/order"] ?? siblings.length,
+        depth,
+        x: hasLayout ? layout.x : 0,
+        y: hasLayout ? layout.y : 0,
+        w: layout.w ?? size.w,
+        h: layout.h ?? size.h,
+        hasLayout,
+        color: layout.color,
+        collapsed: layout.collapsed === true,
+        fontSize: layout.fontSize,
+        title,
+        target,
+        members: [],
+        content: type === "section" ? [] : kids,
+      };
+      items.set(cuid, item);
+      preorder.push(cuid);
+      siblings.push(item);
+      if (type === "section") {
+        item.members = walk(kids, cuid, depth + 1).map((m) => m.uid);
+      }
+    }
+    autoPlace(siblings);
+    return siblings;
+  };
+
+  for (const item of walk(boardKids, uid, 0)) roots.push(item.uid);
+
+  const sections = preorder.filter((u) => items.get(u).type === "section");
+  const rest = preorder.filter((u) => items.get(u).type !== "section");
+  sections.sort((a, b) => items.get(a).depth - items.get(b).depth);
+  const order = [...sections, ...rest];
+
+  if (containerUid !== null) {
+    const container = boardKids[containerIndex];
+    for (const e of sortedChildren(container)) {
+      const eplexus = readPlexus(e[":block/props"]);
+      if (eplexus?.type !== "edge") continue;
+      const euid = e[":block/uid"];
+      const estring = e[":block/string"] ?? "";
+      const n = normalizeEdge(eplexus);
+      const a = items.get(n.from);
+      const b = items.get(n.to);
+      edges.set(euid, {
+        uid: euid,
+        string: estring,
+        ...n,
+        label: parseEdgeLabel(estring, a ? semanticRef(a) : "", b ? semanticRef(b) : ""),
+        valid: Boolean(a && b),
+      });
+    }
+  }
+
+  return {
+    uid,
+    string,
+    title: parseBoardTitle(string),
+    plexus,
+    enhanced: plexus?.v === 2,
+    items,
+    roots,
+    order,
+    containerUid,
+    containerIndex,
+    childCount: boardKids.length,
+    edges,
+  };
+}
+
+export function worldRects(board) {
+  const rects = new Map();
+  for (const item of board.items.values()) {
+    const p = item.parentUid === board.uid ? null : rects.get(item.parentUid);
+    rects.set(item.uid, { x: item.x + (p?.x ?? 0), y: item.y + (p?.y ?? 0), w: item.w, h: item.h });
+  }
+  return rects;
+}
+
+export function worldRect(board, uid, rects) {
+  if (rects) return rects.get(uid) ?? null;
+  const item = board.items.get(uid);
+  if (!item) return null;
+  let x = item.x;
+  let y = item.y;
+  let parent = board.items.get(item.parentUid);
+  while (parent) {
+    x += parent.x;
+    y += parent.y;
+    parent = board.items.get(parent.parentUid);
+  }
+  return { x, y, w: item.w, h: item.h };
+}
+
+export function descendantsOf(board, uid) {
+  const out = new Set();
+  const stack = [...(board.items.get(uid)?.members ?? [])];
+  while (stack.length) {
+    const u = stack.pop();
+    if (out.has(u)) continue;
+    out.add(u);
+    stack.push(...(board.items.get(u)?.members ?? []));
+  }
+  return out;
+}
+
+function hasAncestorIn(board, uid, set) {
+  let p = board.items.get(uid)?.parentUid;
+  while (p && p !== board.uid) {
+    if (set.has(p)) return true;
+    p = board.items.get(p)?.parentUid;
+  }
+  return false;
+}
+
+export function topLevelOf(board, uids) {
+  const list = [...uids].filter((u) => board.items.has(u));
+  const set = new Set(list);
+  return list.filter((u) => !hasAncestorIn(board, u, set));
+}
+
+export function containerAt(board, point, { exclude = new Set(), rects } = {}) {
+  const r = rects ?? worldRects(board);
+  const ex = exclude instanceof Set ? exclude : new Set(exclude);
+  let best = null;
+  for (const uid of board.order) {
+    const item = board.items.get(uid);
+    if (item.type !== "section" || ex.has(uid) || hasAncestorIn(board, uid, ex)) continue;
+    if (!contains(r.get(uid), point)) continue;
+    if (!best || item.depth >= best.depth) best = item;
+  }
+  return best ? best.uid : board.uid;
+}
+
+export function toRelative(board, containerUid, worldPoint, rects) {
+  if (containerUid === board.uid) return { x: worldPoint.x, y: worldPoint.y };
+  const c = worldRect(board, containerUid, rects);
+  return { x: worldPoint.x - c.x, y: worldPoint.y - c.y };
+}
+
+export function hitTest(board, point, rects, { sectionInterior = false } = {}) {
+  for (let i = board.order.length - 1; i >= 0; i--) {
+    const item = board.items.get(board.order[i]);
+    if (item.type === "section") continue;
+    if (contains(rects.get(item.uid), point)) return { uid: item.uid, part: "body" };
+  }
+  for (let i = board.order.length - 1; i >= 0; i--) {
+    const item = board.items.get(board.order[i]);
+    if (item.type !== "section") continue;
+    const r = rects.get(item.uid);
+    if (!contains(r, point)) continue;
+    if (point.y - r.y <= TITLE_BAND) return { uid: item.uid, part: "title" };
+    const edge = Math.min(point.x - r.x, r.x + r.w - point.x, point.y - r.y, r.y + r.h - point.y);
+    if (edge <= BORDER_BAND) return { uid: item.uid, part: "border" };
+    if (sectionInterior) return { uid: item.uid, part: "interior" };
+  }
+  return null;
+}
+
+export function boundsOf(rectList) {
+  const list = [...rectList];
+  return list.length ? list.reduce(unionRect) : null;
+}
+
+export function itemsInRect(board, rect, rects, { mode = "contain" } = {}) {
+  const test = mode === "intersect" ? intersects : (r, a) => containsRect(r, a);
+  const hits = [];
+  for (const uid of board.order) {
+    const r = rects.get(uid);
+    if (r && test(rect, r)) hits.push(uid);
+  }
+  return topLevelOf(board, hits);
+}
+
+export function membershipPlan(board, movedUids, rects) {
+  const moved = topLevelOf(board, movedUids);
+  const exclude = new Set(moved);
+  const plan = [];
+  for (const uid of moved) {
+    const item = board.items.get(uid);
+    const r = rects.get(uid);
+    const toParent = containerAt(board, centerOf(r), { exclude, rects });
+    if (toParent === item.parentUid) continue;
+    const rel = toRelative(board, toParent, { x: r.x, y: r.y }, rects);
+    plan.push({ uid, fromParent: item.parentUid, toParent, x: rel.x, y: rel.y });
+  }
+  return plan;
+}
+
+export function sectionAdoptPlan(board, sectionUid, rects) {
+  const section = board.items.get(sectionUid);
+  if (!section) return [];
+  const sr = rects.get(sectionUid);
+  const parentUid = section.parentUid;
+  const siblings = parentUid === board.uid ? board.roots : board.items.get(parentUid).members;
+  const plan = [];
+  for (const uid of siblings) {
+    if (uid === sectionUid) continue;
+    const r = rects.get(uid);
+    if (!contains(sr, centerOf(r))) continue;
+    const rel = toRelative(board, sectionUid, { x: r.x, y: r.y }, rects);
+    plan.push({ uid, toParent: sectionUid, x: rel.x, y: rel.y });
+  }
+  for (const uid of section.members) {
+    const r = rects.get(uid);
+    if (contains(sr, centerOf(r))) continue;
+    const rel = toRelative(board, parentUid, { x: r.x, y: r.y }, rects);
+    plan.push({ uid, toParent: parentUid, x: rel.x, y: rel.y });
+  }
+  return plan;
+}
+
+export function edgesTouching(board, uidSet) {
+  const full = new Set(uidSet);
+  for (const u of uidSet) for (const d of descendantsOf(board, u)) full.add(d);
+  const out = new Set();
+  for (const e of board.edges.values()) if (full.has(e.from) || full.has(e.to)) out.add(e.uid);
+  return out;
+}
+
+export function findEdge(board, from, to) {
+  for (const e of board.edges.values()) if (e.from === from && e.to === to) return e;
+  return null;
+}
+
+export function diffBoards(prev, next) {
+  if (!prev || !next) {
+    const dirty = new Set();
+    if (next) {
+      for (const u of next.items.keys()) dirty.add(u);
+      for (const u of next.edges.keys()) dirty.add(u);
+    }
+    return { structural: true, dirty };
+  }
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  let structural = prev.containerUid !== next.containerUid
+    || prev.items.size !== next.items.size
+    || prev.edges.size !== next.edges.size
+    || !same(prev.roots, next.roots)
+    || !same(prev.order, next.order);
+  const dirty = new Set();
+  if (prev.string !== next.string || !same(prev.plexus, next.plexus)) dirty.add(next.uid);
+  for (const [uid, item] of next.items) {
+    const old = prev.items.get(uid);
+    if (!old) { structural = true; dirty.add(uid); continue; }
+    if (old.parentUid !== item.parentUid || !same(old.members, item.members)) structural = true;
+    if (!same(old, item)) dirty.add(uid);
+  }
+  for (const [uid, edge] of next.edges) {
+    const old = prev.edges.get(uid);
+    if (!old) { structural = true; dirty.add(uid); continue; }
+    if (!same(old, edge)) dirty.add(uid);
+  }
+  return { structural, dirty };
+}

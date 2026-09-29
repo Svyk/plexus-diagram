@@ -1,3 +1,5 @@
+import { readPlexus, SCHEMA_VERSION } from "./model/schema.js";
+
 export const DIAGRAM_MARKER = /\{\{\s*(\[\[)?diagram/i;
 export const MAX_GUARD_UIDS = 2000;
 export const ENHANCED_UID_CACHE_PREFIX = "plexus-diagram:enhanced-uids:";
@@ -163,4 +165,19 @@ export function diagramInstanceInfo(nativeElement, enhancedUids = new Set()) {
   const uid = findDiagramUidFromEl(nativeElement);
   if (!uid || !enhancedUids.has(uid)) return null;
   return { uid, nativeElement };
+}
+
+export function isEnhancedProps(pulledProps) {
+  return readPlexus(pulledProps)?.v === SCHEMA_VERSION;
+}
+
+// Synchronous truth read: the board block's own props decide whether it is enhanced.
+export function readEnhanced(api, uid) {
+  if (!uid) return false;
+  try {
+    const pulled = api?.data?.pull?.("[:block/props]", [":block/uid", uid]);
+    return isEnhancedProps(pulled?.[":block/props"] ?? pulled?.props ?? null);
+  } catch {
+    return false;
+  }
 }

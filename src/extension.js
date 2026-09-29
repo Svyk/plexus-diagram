@@ -4,7 +4,7 @@ import { createSettingsPanel, initializeSettings } from "./settings.js";
 
 let activeLifecycle = null;
 
-export async function onload({ extensionAPI, extension }) {
+export async function onload({ extensionAPI, extension, deps }) {
   if (!extensionAPI) throw new TypeError("Roam did not provide extensionAPI");
   if (activeLifecycle) await activeLifecycle.dispose();
 
@@ -13,7 +13,7 @@ export async function onload({ extensionAPI, extension }) {
   try {
     await initializeSettings(extensionAPI);
     await lifecycle.settingsPanel(extensionAPI, createSettingsPanel());
-    await installPlexusDiagram({ extensionAPI, lifecycle, version: extension?.version });
+    await installPlexusDiagram({ extensionAPI, lifecycle, version: extension?.version, ...deps });
     console.info(`[plexus-diagram] Loaded v${extension?.version || "development"}`);
   } catch (error) {
     if (activeLifecycle === lifecycle) activeLifecycle = null;
@@ -36,7 +36,5 @@ export async function onunload() {
 
 export { enhancedUidGuardCss, isDiagramString } from "./discovery.js";
 export { settingsDefaults } from "./settings.js";
-export { childrenFingerprint, importNativeLayout } from "./model.js";
-export { buildEdgePath, arrowheadPoints } from "./edges.js";
 
 export default { onload, onunload };

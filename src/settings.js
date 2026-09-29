@@ -1,94 +1,75 @@
 export const SETTING_IDS = Object.freeze({
   enabled: "enabled",
-  autoEnhance: "auto-enhance",
-  showVersionBadge: "show-version-badge",
-  restoreNativeOnUnload: "restore-native-on-unload",
-  defaultHeight: "default-height",
-  snapToGrid: "snap-to-grid",
-  gridSize: "grid-size",
-  showGrid: "show-grid",
-  gridStyle: "grid-style",
-  minimap: "minimap",
-  panOnSpace: "pan-on-space",
-  zoomMin: "zoom-min",
-  zoomMax: "zoom-max",
-  wheelZoom: "wheel-zoom",
+  fullscreenOnZoom: "fullscreen-on-zoom",
+  graphLinks: "graph-links",
+  wheel: "wheel",
+  showMinimap: "show-minimap",
+  snapGuides: "snap-guides",
+  grid: "grid",
   defaultCardWidth: "default-card-width",
   defaultCardHeight: "default-card-height",
-  cardRadius: "card-radius",
-  showCardTitle: "show-card-title",
-  nativeBlockEditor: "native-block-editor",
-  compactCards: "compact-cards",
-  cardShadow: "card-shadow",
-  renderChildrenDepth: "render-children-depth",
-  connectorStyle: "connector-style",
-  arrowheads: "arrowheads",
-  edgeWidth: "edge-width",
-  showEdgeLabels: "show-edge-labels",
-  edgeAnimated: "edge-animated",
-  showSections: "show-sections",
-  sectionLabel: "section-label",
-  showLibraryOnOpen: "show-library-on-open",
-  libraryIncludeDailies: "library-include-dailies",
-  followRoamTheme: "follow-roam-theme",
-  viewportCulling: "viewport-culling",
-  disableOnMobile: "disable-on-mobile",
   enableShortcuts: "enable-shortcuts",
-  fullscreenOnZoom: "fullscreen-on-zoom",
+  showVersionBadge: "show-version-badge",
+  disableOnMobile: "disable-on-mobile",
 });
 
 const DEFAULTS = Object.freeze({
   [SETTING_IDS.enabled]: true,
-  [SETTING_IDS.autoEnhance]: false,
-  [SETTING_IDS.showVersionBadge]: true,
-  [SETTING_IDS.restoreNativeOnUnload]: false,
-  [SETTING_IDS.defaultHeight]: "560",
-  [SETTING_IDS.snapToGrid]: true,
-  [SETTING_IDS.gridSize]: "24",
-  [SETTING_IDS.showGrid]: true,
-  [SETTING_IDS.gridStyle]: "dots",
-  [SETTING_IDS.minimap]: true,
-  [SETTING_IDS.panOnSpace]: true,
-  [SETTING_IDS.zoomMin]: "0.15",
-  [SETTING_IDS.zoomMax]: "3",
-  [SETTING_IDS.wheelZoom]: true,
-  [SETTING_IDS.defaultCardWidth]: "280",
-  [SETTING_IDS.defaultCardHeight]: "160",
-  [SETTING_IDS.cardRadius]: "8",
-  [SETTING_IDS.showCardTitle]: false,
-  [SETTING_IDS.nativeBlockEditor]: true,
-  [SETTING_IDS.compactCards]: false,
-  [SETTING_IDS.cardShadow]: true,
-  [SETTING_IDS.renderChildrenDepth]: "1",
-  [SETTING_IDS.connectorStyle]: "bezier",
-  [SETTING_IDS.arrowheads]: "end",
-  [SETTING_IDS.edgeWidth]: "2",
-  [SETTING_IDS.showEdgeLabels]: true,
-  [SETTING_IDS.edgeAnimated]: false,
-  [SETTING_IDS.showSections]: true,
-  [SETTING_IDS.sectionLabel]: true,
-  [SETTING_IDS.showLibraryOnOpen]: false,
-  [SETTING_IDS.libraryIncludeDailies]: false,
-  [SETTING_IDS.followRoamTheme]: true,
-  [SETTING_IDS.viewportCulling]: true,
-  [SETTING_IDS.disableOnMobile]: false,
-  [SETTING_IDS.enableShortcuts]: true,
   [SETTING_IDS.fullscreenOnZoom]: true,
+  [SETTING_IDS.graphLinks]: "all",
+  [SETTING_IDS.wheel]: "pan",
+  [SETTING_IDS.showMinimap]: true,
+  [SETTING_IDS.snapGuides]: true,
+  [SETTING_IDS.grid]: "dots",
+  [SETTING_IDS.defaultCardWidth]: 280,
+  [SETTING_IDS.defaultCardHeight]: 160,
+  [SETTING_IDS.enableShortcuts]: true,
+  [SETTING_IDS.showVersionBadge]: true,
+  [SETTING_IDS.disableOnMobile]: true,
 });
+
+const ENUMS = Object.freeze({
+  [SETTING_IDS.graphLinks]: ["off", "attributes", "all"],
+  [SETTING_IDS.wheel]: ["pan", "zoom"],
+  [SETTING_IDS.grid]: ["dots", "lines", "plain"],
+});
+
+const NUMBERS = new Set([SETTING_IDS.defaultCardWidth, SETTING_IDS.defaultCardHeight]);
 
 export function settingsDefaults() {
   return { ...DEFAULTS };
 }
 
-export function createSettingsReader(extensionAPI) {
-  return {
-    get(id) {
-      const value = extensionAPI.settings.get(id);
-      const resolved = value == null ? DEFAULTS[id] : value;
-      if (id === SETTING_IDS.gridStyle && resolved === "none") return "solid";
-      return resolved;
-    },
-  };
+// Roam stores switches as booleans and inputs as strings; coerce to the default's type.
+export function normalizeSetting(id, value) {
+  const fallback = DEFAULTS[id];
+  if (value == null || value === "") return fallback;
+  if (typeof fallback === "boolean") {
+    if (typeof value === "boolean") return value;
+    if (value === "true") return true;
+    if (value === "false") return false;
+    return fallback;
+  }
+  if (NUMBERS.has(id)) {
+    const n = Number(value);
+    return Number.isFinite(n) && n >= 40 ? n : fallback;
+  }
+  if (ENUMS[id]) return ENUMS[id].includes(value) ? value : fallback;
+  return value;
+}
+
+export function readSettings(extensionAPI) {
+  const out = {};
+  for (const id of Object.keys(DEFAULTS)) {
+    let raw = null;
+    try {
+      raw = extensionAPI?.settings?.get?.(id);
+    } catch {
+      raw = null;
+    }
+    out[id] = normalizeSetting(id, raw);
+  }
+  return out;
 }
 
 export async function initializeSettings(extensionAPI) {
@@ -100,12 +81,29 @@ export async function initializeSettings(extensionAPI) {
   }
 }
 
+const listeners = new Set();
+
+export function onSettingsChange(fn) {
+  listeners.add(fn);
+  return () => listeners.delete(fn);
+}
+
+function emit(id, value) {
+  for (const fn of [...listeners]) {
+    try {
+      fn(id, value);
+    } catch (error) {
+      console.error("[plexus-diagram] Settings listener failed", error);
+    }
+  }
+}
+
 function switchRow(id, name, description) {
   return {
     id,
     name,
     description,
-    action: { type: "switch" },
+    action: { type: "switch", onChange: (event) => emit(id, event?.target?.checked ?? event) },
   };
 }
 
@@ -114,7 +112,7 @@ function inputRow(id, name, description) {
     id,
     name,
     description,
-    action: { type: "input" },
+    action: { type: "input", onChange: (event) => emit(id, event?.target?.value ?? event) },
   };
 }
 
@@ -123,7 +121,7 @@ function selectRow(id, name, description, items) {
     id,
     name,
     description,
-    action: { type: "select", items },
+    action: { type: "select", items, onChange: (value) => emit(id, value?.target?.value ?? value) },
   };
 }
 
@@ -132,58 +130,17 @@ export function createSettingsPanel() {
     tabTitle: "Plexus Diagram",
     settings: [
       switchRow(SETTING_IDS.enabled, "Enabled", "Master overlay toggle."),
-      switchRow(SETTING_IDS.autoEnhance, "Auto enhance", "Enhance diagram blocks automatically when discovered."),
-      switchRow(SETTING_IDS.showVersionBadge, "Show version badge", "Show the extension version in the toolbar."),
-      switchRow(SETTING_IDS.restoreNativeOnUnload, "Restore native on unload", "Restore native diagrams when the extension unloads."),
-      inputRow(SETTING_IDS.defaultHeight, "Default height", "Canvas host height in pixels."),
-      switchRow(SETTING_IDS.snapToGrid, "Snap to grid", "Snap card positions to the grid."),
-      inputRow(SETTING_IDS.gridSize, "Grid size", "Grid spacing in pixels."),
-      switchRow(SETTING_IDS.showGrid, "Show grid", "Show the background grid."),
-      selectRow(SETTING_IDS.gridStyle, "Grid style", "Background grid style.", [
-        ["Dots", "dots"],
-        ["Lines", "lines"],
-        ["Solid", "solid"],
-      ]),
-      switchRow(SETTING_IDS.minimap, "Minimap", "Show the minimap."),
-      switchRow(SETTING_IDS.panOnSpace, "Pan on space", "Hold space and drag to pan."),
-      inputRow(SETTING_IDS.zoomMin, "Zoom min", "Minimum zoom level."),
-      inputRow(SETTING_IDS.zoomMax, "Zoom max", "Maximum zoom level."),
-      switchRow(SETTING_IDS.wheelZoom, "Wheel zoom", "Zoom with the mouse wheel."),
-      inputRow(SETTING_IDS.defaultCardWidth, "Default card width", "Default width for new cards."),
-      inputRow(SETTING_IDS.defaultCardHeight, "Default card height", "Default height for new cards."),
-      inputRow(SETTING_IDS.cardRadius, "Card radius", "Card corner radius in pixels."),
-      switchRow(SETTING_IDS.showCardTitle, "Show card title", "Show a title bar on cards."),
-      switchRow(SETTING_IDS.nativeBlockEditor, "Native block editor", "Double-click a card to edit it in place with Roam's block editor. Off opens the block in the sidebar."),
-      switchRow(SETTING_IDS.compactCards, "Compact cards", "Use compact card chrome."),
-      switchRow(SETTING_IDS.cardShadow, "Card shadow", "Draw a subtle card shadow."),
-      selectRow(SETTING_IDS.renderChildrenDepth, "Render children depth", "How many child levels to render.", [
-        ["0", "0"],
-        ["1", "1"],
-        ["2", "2"],
-        ["All", "all"],
-      ]),
-      selectRow(SETTING_IDS.connectorStyle, "Connector style", "Default edge style.", [
-        ["Bezier", "bezier"],
-        ["Straight", "straight"],
-        ["Elbow", "elbow"],
-      ]),
-      selectRow(SETTING_IDS.arrowheads, "Arrowheads", "Default for new connections; the inspector overrides per connection.", [
-        ["End", "end"],
-        ["Both", "both"],
-        ["None", "none"],
-      ]),
-      inputRow(SETTING_IDS.edgeWidth, "Edge width", "Connector stroke width."),
-      switchRow(SETTING_IDS.showEdgeLabels, "Show edge labels", "Show labels on connectors."),
-      switchRow(SETTING_IDS.edgeAnimated, "Edge animated", "Animate connectors."),
-      switchRow(SETTING_IDS.showSections, "Show sections", "Render section frames."),
-      switchRow(SETTING_IDS.sectionLabel, "Section label", "Show section titles."),
-      switchRow(SETTING_IDS.showLibraryOnOpen, "Show library on open", "Open the library when enhancing."),
-      switchRow(SETTING_IDS.libraryIncludeDailies, "Library include dailies", "Include daily pages in the library."),
-      switchRow(SETTING_IDS.followRoamTheme, "Follow Roam theme", "Follow Roam light/dark theme."),
-      switchRow(SETTING_IDS.viewportCulling, "Viewport culling", "Skip rendering off-screen cards."),
-      switchRow(SETTING_IDS.disableOnMobile, "Disable on mobile", "Skip mounting on mobile clients."),
-      switchRow(SETTING_IDS.enableShortcuts, "Enable shortcuts", "Enable keyboard shortcuts."),
       switchRow(SETTING_IDS.fullscreenOnZoom, "Fullscreen on zoom", "Open enhanced diagrams full screen when zoomed into the diagram block. Esc exits."),
+      selectRow(SETTING_IDS.graphLinks, "Graph links", "Show links between cards derived from page references and attributes.", ["all", "attributes", "off"]),
+      selectRow(SETTING_IDS.wheel, "Mouse wheel", "What the mouse wheel does on the board. Pinch always zooms.", ["pan", "zoom"]),
+      switchRow(SETTING_IDS.showMinimap, "Show minimap", "Show the minimap."),
+      switchRow(SETTING_IDS.snapGuides, "Snap guides", "Align dragged cards to neighbours and show guides."),
+      selectRow(SETTING_IDS.grid, "Grid", "Board background.", ["dots", "lines", "plain"]),
+      inputRow(SETTING_IDS.defaultCardWidth, "Default card width", "Width in pixels for new cards."),
+      inputRow(SETTING_IDS.defaultCardHeight, "Default card height", "Height in pixels for new cards."),
+      switchRow(SETTING_IDS.enableShortcuts, "Enable shortcuts", "Enable board keyboard shortcuts."),
+      switchRow(SETTING_IDS.showVersionBadge, "Show version badge", "Show the extension version in the toolbar."),
+      switchRow(SETTING_IDS.disableOnMobile, "Disable on mobile", "Skip mounting on mobile clients."),
     ],
   };
 }

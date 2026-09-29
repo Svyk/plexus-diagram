@@ -1,576 +1,508 @@
+import pkg from "../package.json" with { type: "json" };
 import {
-  cssAttributeValue,
   diagramsWithin,
-  diagramElForUid,
   diagramUidFromLocation,
-  routeLeftZoomedDiagram,
-  waitForDiagramEl,
-  diagramInstanceInfo,
   enhancedUidGuardCss,
   findDiagramUidFromEl,
-  graphCacheKey,
   isDiagramString,
   NATIVE_HIDDEN_CLASS,
   PREPAINT_STYLE_ID,
+  readEnhanced,
   readEnhancedUidCache,
+  routeLeftZoomedDiagram,
   writeEnhancedUidCache,
 } from "./discovery.js";
-import { MetadataStore, releaseScratch } from "./metadata.js";
-import { createLibrarySidebar } from "./library.js";
-import { createSettingsReader, SETTING_IDS } from "./settings.js";
-import { viewportCenterPosition, nestStack, parseDiagramTitle } from "./canvas.js";
-import {
-  allSessions,
-  disposeSession,
-  getOrCreateSession,
-  getSession,
-  NativeDiagramSession,
-  pruneDetachedViews,
-} from "./session.js";
-import { markNativePending, mountDiagramView } from "./view.js";
+import { normalizeSetting, onSettingsChange, readSettings, SETTING_IDS } from "./settings.js";
 
 // Roam reports `extension.version` as "DEV" for URL / local developer installs,
-// so the toolbar badge is stamped from this constant first.
-export const PACKAGE_VERSION = "0.6.4";
+// so the toolbar badge is stamped from package.json first.
+export const PACKAGE_VERSION = pkg.version;
 
-export const runtime = {
-  extensionAPI: null,
-  lifecycle: null,
-  metadata: null,
-  settings: null,
-  version: PACKAGE_VERSION,
-  enhancedUids: new Set(),
-  activeDiagramUid: null,
-  guardStyle: null,
-  mounting: new Set(),
-};
+export const RECONCILE_INTERVAL_MS = 400;
+const NEGATIVE_TTL_MS = 1500;
+const LEGACY_METADATA_PAGE = "plexus-diagram/metadata";
+const TITLE_PANEL_CLASS = "rm-diagram-title-panel";
+const NEW_BOARD_STRING = "{{[[diagram]]:Untitled board}}";
+const PARENTS_QUERY = "[:find ?u ?s :in $ ?uid :where [?b :block/uid ?uid] [?b :block/parents ?p] [?p :block/uid ?u] [?p :block/string ?s]]";
 
-function enabled() {
-  return runtime.settings?.get(SETTING_IDS.enabled) !== false;
+function graphFromHash(hash = globalThis.location?.hash || "") {
+  const match = String(hash).match(/#\/app\/([^/]+)/);
+  return match ? match[1] : "unknown";
 }
 
-function mobileBlocked() {
-  return runtime.settings?.get(SETTING_IDS.disableOnMobile)
-    && runtime.extensionAPI?.platform?.isMobile?.();
+function pulledString(node) {
+  return String(node?.[":block/string"] ?? node?.string ?? "");
 }
 
-function guardDisabled() {
-  return !enabled() || mobileBlocked();
+function pulledChildren(node) {
+  return node?.[":block/children"] ?? node?.children ?? [];
 }
 
-function installGuard(uids) {
-  if (typeof document === "undefined") return;
-  if (guardDisabled()) {
-    const style = document.getElementById(PREPAINT_STYLE_ID);
-    if (style) style.textContent = "";
-    return;
+function hasMigratedMark(node) {
+  for (const child of pulledChildren(node)) {
+    if (/^migrated::\s*2\b/i.test(pulledString(child).trim()) || hasMigratedMark(child)) return true;
   }
-  const style = document.getElementById(PREPAINT_STYLE_ID) || document.createElement("style");
-  style.id = PREPAINT_STYLE_ID;
-  style.textContent = enhancedUidGuardCss(uids);
-  if (!style.isConnected) document.head.appendChild(style);
-  runtime.guardStyle = style;
+  return false;
 }
 
-function syncGuard() {
-  const uids = runtime.metadata?.enhancedUids?.() || [...runtime.enhancedUids];
-  runtime.enhancedUids = new Set(uids);
-  writeEnhancedUidCache(uids);
-  installGuard(uids);
+function uidFromLegacyString(value) {
+  const token = String(value).trim().split(/\s+/)[0] || "";
+  const bare = token.replace(/^(\(\(|\[\[)/, "").replace(/(\)\)|\]\])$/, "");
+  return /^[\w-]{6,}$/.test(bare) ? bare : null;
 }
 
-async function ensureMetadata() {
-  if (!runtime.metadata) runtime.metadata = new MetadataStore();
-  runtime.metadata.reload();
-  const cached = readEnhancedUidCache();
-  for (const uid of cached) {
-    if (!runtime.metadata.has(uid)) runtime.metadata.diagrams.set(uid, { viewport: null, nodes: new Map(), edges: [], sections: new Map() });
-  }
-  syncGuard();
-}
-
-export function connectedMountForUid(uid, root = globalThis.document) {
-  if (!uid || !root?.querySelector) return null;
-  const mount = root.querySelector(`.pxd-mount[data-diagram-uid="${cssAttributeValue(uid)}"]`);
-  return mount && mount.isConnected !== false ? mount : null;
-}
-
-function instanceAlreadyMounted(uid, nativeElement) {
-  const adjacent = nativeElement?.nextElementSibling;
-  if (adjacent?.classList?.contains?.("pxd-mount") && adjacent.isConnected !== false) return true;
-  return Boolean(
-    nativeElement?.classList?.contains?.(NATIVE_HIDDEN_CLASS) && connectedMountForUid(uid),
-  );
-}
-
-async function enhanceDiagram(uid, nativeElement) {
-  if (!enabled() || mobileBlocked()) {
-    console.info("[plexus-diagram] Enhance skipped — extension disabled or mobile blocked");
-    return;
-  }
-  if (!uid || !nativeElement) return;
-  if (runtime.mounting.has(uid) || instanceAlreadyMounted(uid, nativeElement)) return;
-  runtime.mounting.add(uid);
+// 0.6 boards live in [[plexus-diagram/metadata]] -> `enhanced::` -> <boardUid>. Read once at load.
+export function readLegacyEnhanced(host) {
+  const out = new Set();
   try {
-    if (!runtime.metadata) await ensureMetadata();
-    await runtime.metadata.ensurePage();
-    markNativePending(nativeElement);
-    runtime.enhancedUids.add(uid);
-    writeEnhancedUidCache(runtime.enhancedUids);
-    installGuard(runtime.enhancedUids);
-    const session = getOrCreateSession(uid, () => new NativeDiagramSession({
-      diagramUid: uid,
-      metadataStore: runtime.metadata,
-      settings: runtime.settings,
-      onChange: () => syncGuard(),
-    }));
-    pruneDetachedViews(session);
-    session.load();
-    session.startWatch();
-    const layout = session.model.layoutSnapshot();
-    if (!runtime.metadata.hasPersisted(uid)) {
-      await runtime.metadata.set(uid, layout);
-      await session.seedNativeViewport();
-    } else if (!runtime.metadata.layoutMatchesStored(uid, layout)) {
-      await runtime.metadata.set(uid, layout);
+    const pageUid = host.pageUid?.(LEGACY_METADATA_PAGE);
+    if (!pageUid) return out;
+    const tree = host.api.data.pull("[:block/uid :block/string {:block/children ...}]", [":block/uid", pageUid]);
+    const list = pulledChildren(tree).find((child) => /^enhanced::/i.test(pulledString(child).trim()));
+    for (const entry of pulledChildren(list)) {
+      const uid = uidFromLegacyString(pulledString(entry));
+      if (uid && !hasMigratedMark(entry)) out.add(uid);
     }
-    runtime.activeDiagramUid = uid;
-    const mounted = mountDiagramView({
-      nativeElement,
-      session,
-      settings: runtime.settings,
-      version: runtime.version,
-      lifecycle: runtime.lifecycle,
-      onAction: async (action) => {
-        if (action.type === "library") await toggleLibrary(mounted.wrapper, mounted.canvas);
-        if (action.type === "nested" && action.uid) {
-          await openNestedDiagram(action.uid, action.parentUid || sessionBoxUid(action), {
-            viewport: action.viewport,
-            attachSession: async (childUid) => attachViewSession(childUid, { ...action, viewport: undefined }),
-          });
-        }
-        if (action.type === "crumb" && action.uid) {
-          await openCrumb(action.uid, {
-            attachSession: async (ancestorUid, extra) => {
-              await attachViewSession(ancestorUid, { ...action, viewport: extra?.viewport });
-            },
-          });
-        }
-        if (action.type === "open-block" && action.uid) {
-          globalThis.roamAlphaAPI?.ui?.rightSidebar?.addWindow?.({ window: { type: "block", "block-uid": action.uid } });
-        }
-        if (action.type === "set-setting" && action.id) {
-          await runtime.extensionAPI?.settings?.set(action.id, action.value);
-        }
-      },
-    });
-    if (runtime.settings.get(SETTING_IDS.showLibraryOnOpen)) await openLibrary(mounted.wrapper, mounted.canvas);
-    syncGuard();
-  } finally {
-    runtime.mounting.delete(uid);
+  } catch (error) {
+    console.warn("[plexus-diagram] Could not read the 0.6 enhanced list", error);
   }
+  return out;
 }
 
-async function restoreDiagram(uid) {
-  disposeSession(uid);
-  await runtime.metadata.remove(uid);
-  runtime.enhancedUids.delete(uid);
-  syncGuard();
+function isMobile(extensionAPI) {
+  const flag = extensionAPI?.platform?.isMobile;
+  return typeof flag === "function" ? Boolean(flag.call(extensionAPI.platform)) : Boolean(flag);
 }
 
-function blockStringForUid(uid) {
-  const pull = globalThis.roamAlphaAPI?.data?.pull?.(
-    "[:block/string]",
-    [":block/uid", uid],
-  );
-  return pull?.[":block/string"] ?? pull?.string ?? "";
-}
+export async function installPlexusDiagram({
+  extensionAPI,
+  lifecycle,
+  version,
+  mountView,
+  host: injectedHost,
+  acquireSession: injectedAcquire,
+  storage = globalThis.localStorage,
+}) {
+  const doc = globalThis.document;
+  const win = globalThis.window ?? globalThis;
+  const badge = PACKAGE_VERSION || version || "DEV";
 
-function focusedDiagramUid() {
-  const uid = globalThis.roamAlphaAPI?.ui?.getFocusedBlock?.()?.["block-uid"]
-    || runtime.extensionAPI?.ui?.getFocusedBlock?.()?.["block-uid"];
-  if (!uid) return null;
-  return isDiagramString(blockStringForUid(uid)) ? uid : null;
-}
+  if (!injectedHost) {
+    const { createHost } = await import("./host/roam.js");
+    injectedHost = createHost();
+  }
+  if (!injectedAcquire) {
+    ({ acquireSession: injectedAcquire } = await import("./session.js"));
+  }
+  if (!mountView) {
+    ({ mountBoardView: mountView } = await import("./view/board-view.js"));
+  }
+  const host = injectedHost;
+  const acquireSession = injectedAcquire;
 
-async function resolveDiagramUid(context) {
-  const candidates = [
-    context?.["block-uid"],
-    context?.uid,
-    globalThis.roamAlphaAPI?.ui?.getFocusedBlock?.()?.["block-uid"],
-    runtime.extensionAPI?.ui?.getFocusedBlock?.()?.["block-uid"],
-  ];
-  try {
-    const view = await globalThis.roamAlphaAPI?.ui?.mainWindow?.getOpenView?.();
-    if (view?.uid) candidates.push(view.uid);
-  } catch { /* open view is optional */ }
-  if (typeof document !== "undefined") {
-    const visible = document.querySelector(".rm-diagram");
-    if (visible) candidates.push(findDiagramUidFromEl(visible));
-  }
-  for (const uid of candidates) {
-    if (uid && isDiagramString(blockStringForUid(uid))) return uid;
-  }
-  return null;
-}
+  let settings = readSettings(extensionAPI);
+  let stopped = false;
+  const mounts = new Map(); // native element -> record
+  const trusted = new Set(); // uids confirmed enhanced by this runtime (command results)
+  const portalObservers = new Map(); // portal node -> its own added-nodes observer
+  const negativeUntil = new Map(); // uid -> timestamp before which a failed pull is not repeated
+  const legacyUids = readLegacyEnhanced(host);
+  const guardUids = new Set([...readEnhancedUidCache(storage), ...legacyUids]);
+  let guardStyle = null;
 
-async function markEnhanced(uid) {
-  if (!uid) return;
-  await ensureMetadata();
-  if (!runtime.metadata.has(uid)) {
-    const empty = { viewport: null, nodes: new Map(), edges: [], sections: new Map() };
-    try {
-      await runtime.metadata.set(uid, empty);
-    } catch {
-      runtime.metadata.diagrams.set(uid, empty);
-    }
-  }
-  runtime.enhancedUids.add(uid);
-  writeEnhancedUidCache(runtime.enhancedUids);
-  installGuard(runtime.enhancedUids);
-}
+  const active = () => !stopped && settings[SETTING_IDS.enabled] !== false
+    && !(settings[SETTING_IDS.disableOnMobile] && isMobile(extensionAPI));
 
-async function enhanceByUid(uid) {
-  if (!uid) {
-    console.info("[plexus-diagram] Focus a {{[[diagram]]}} block first");
-    return;
-  }
-  await markEnhanced(uid);
-  let diagram = diagramElForUid(uid);
-  if (!diagram && typeof document !== "undefined") diagram = await waitForDiagramEl(uid);
-  if (!diagram) {
-    console.info("[plexus-diagram] Native diagram canvas did not remount in time", uid);
-    return;
-  }
-  await enhanceDiagram(uid, diagram);
-}
-
-let nestedOpenUid = null;
-
-function sessionBoxUid(action) {
-  return action.sessionBox?.current?.diagramUid || runtime.activeDiagramUid;
-}
-
-async function attachViewSession(childUid, { sessionBox, canvas, wrapper, viewport } = {}) {
-  if (!childUid || !sessionBox || !canvas) return;
-  const parent = sessionBox.current;
-  const child = getOrCreateSession(childUid, () => new NativeDiagramSession({
-    diagramUid: childUid,
-    metadataStore: runtime.metadata,
-    settings: runtime.settings,
-    onChange: () => syncGuard(),
-  }));
-  if (!child.model) child.load();
-  if (viewport && child.model) child.model.viewport = { ...viewport };
-  let view = null;
-  for (const candidate of parent?.views || []) {
-    if (candidate.canvas === canvas || candidate.wrapper === wrapper) {
-      view = candidate;
-      break;
-    }
-  }
-  if (view && parent && parent !== child) parent.removeView(view);
-  if (!view) {
-    view = {
-      refresh: () => canvas.render(),
-      dispose: () => canvas.dispose(),
-      canvas,
-      wrapper,
-      setFullscreen: canvas.setFullscreen,
-    };
-  }
-  child.addView(view);
-  child.startWatch();
-  if (parent && parent !== child && parent.views.size === 0) parent.stopWatch();
-  canvas.attachSession(child);
-  sessionBox.current = child;
-  runtime.activeDiagramUid = childUid;
-  if (wrapper?.dataset) wrapper.dataset.diagramUid = childUid;
-}
-
-async function openNestedDiagram(uid, parentUid, hooks = {}) {
-  if (!uid) return;
-  nestedOpenUid = uid;
-  if (parentUid && parentUid !== uid) {
-    const title = parseDiagramTitle(blockStringForUid(parentUid)) || "Diagram";
-    const entry = { uid: parentUid, title };
-    if (hooks.viewport) entry.viewport = { ...hooks.viewport };
-    nestStack.push(entry);
-  }
-  await markEnhanced(uid);
-  if (hooks.attachSession) {
-    await hooks.attachSession(uid);
-  }
-}
-
-async function openCrumb(uid, hooks = {}) {
-  if (!uid) return;
-  const i = nestStack.findIndex((entry) => entry.uid === uid);
-  if (i < 0) return;
-  const savedViewport = nestStack[i].viewport;
-  nestStack.length = i;
-  nestedOpenUid = uid;
-  if (hooks.attachSession) {
-    await hooks.attachSession(uid, { viewport: savedViewport });
-  }
-}
-
-export function syncNestStackOnNavigate(hash = globalThis.location?.hash || "") {
-  const openUid = diagramUidFromLocation(hash);
-  if (!openUid) {
-    nestStack.length = 0;
-    nestedOpenUid = null;
-    return;
-  }
-  const i = nestStack.findIndex((entry) => entry.uid === openUid);
-  if (i >= 0) {
-    nestStack.length = i;
-    nestedOpenUid = openUid;
-    return;
-  }
-  if (openUid !== nestedOpenUid) {
-    nestStack.length = 0;
-  }
-  nestedOpenUid = openUid;
-}
-
-let activeLibrary = null;
-
-async function toggleLibrary(mountRoot, canvas) {
-  const uid = runtime.activeDiagramUid || focusedDiagramUid();
-  const session = uid ? getSession(uid) : null;
-  if (!session) return;
-  const root = mountRoot || document.querySelector(".pxd-root");
-  if (activeLibrary?.isOpen?.()) {
-    activeLibrary.close();
-    activeLibrary = null;
-    canvas?.setLibraryOpen?.(false);
-    return;
-  }
-  activeLibrary = createLibrarySidebar({
-    lifecycle: runtime.lifecycle,
-    settings: runtime.settings,
-    session,
-    mountRoot: globalThis.document?.body || root,
-    onClose: () => {
-      activeLibrary = null;
-      canvas?.setLibraryOpen?.(false);
-    },
-    onPlacePage: async (title) => {
-      const center = root
-        ? viewportCenterPosition(root, session, runtime.settings)
-        : { x: 120, y: 120 };
-      await session.addCard(`[[${title}]]`, center);
-      session.notifyViews();
-    },
+  // Runs last on dispose (disposers unwind in reverse): tear every mount down, restore native Roam.
+  lifecycle.add(() => {
+    for (const rec of [...mounts.values()]) unmount(rec);
+    for (const observer of portalObservers.values()) observer.disconnect();
+    portalObservers.clear();
+    guardStyle?.remove?.();
+    guardStyle = null;
   });
-  canvas?.setLibraryOpen?.(true);
-}
 
-async function openLibrary(mountRoot, canvas) {
-  if (activeLibrary?.isOpen?.()) return;
-  await toggleLibrary(mountRoot, canvas);
-}
-
-function scanAddedNode(node) {
-  for (const diagram of diagramsWithin(node)) {
-    const uid = findDiagramUidFromEl(diagram);
-    if (!uid) continue;
-    if (!runtime.enhancedUids.has(uid)) {
-      if (runtime.settings.get(SETTING_IDS.autoEnhance) && isDiagramString(blockStringForUid(uid))) {
-        void enhanceDiagram(uid, diagram);
-      }
-      continue;
-    }
-    if (!diagram.classList.contains("pxd-native-hidden") && !diagram.nextElementSibling?.classList?.contains("pxd-mount")) {
-      void enhanceDiagram(uid, diagram);
-    }
-  }
-}
-
-function installObservers(lifecycle) {
-  if (typeof document === "undefined") return;
-  const app = document.querySelector(".roam-app");
-  if (app) {
-    const observer = new MutationObserver((records) => {
-      for (const record of records) {
-        for (const node of record.addedNodes) {
-          if (node.nodeType === Node.ELEMENT_NODE) scanAddedNode(node);
-        }
-      }
-    });
-    lifecycle.observer(observer, app, { childList: true, subtree: true });
-    scanAddedNode(app);
-  }
-  const bodyObserver = new MutationObserver((records) => {
-    for (const record of records) {
-      for (const node of record.addedNodes) {
-        if (!(node instanceof Element) || !node.classList?.contains("bp3-portal")) continue;
-        const portalObserver = new MutationObserver((portalRecords) => {
-          for (const portalRecord of portalRecords) {
-            for (const child of portalRecord.addedNodes) {
-              if (child.nodeType === Node.ELEMENT_NODE) scanAddedNode(child);
-            }
-          }
-        });
-        lifecycle.observer(portalObserver, node, { childList: true, subtree: true });
-        scanAddedNode(node);
-      }
-    }
-  });
-  lifecycle.observer(bodyObserver, document.body, { childList: true });
-}
-export async function reconcileVisibleDiagrams() {
-  if (guardDisabled()) return;
-  if (typeof document === "undefined") return;
-  for (const session of allSessions().values()) pruneDetachedViews(session);
-  const pageUid = diagramUidFromLocation();
-  for (const uid of [...runtime.enhancedUids]) {
-    if (connectedMountForUid(uid)) continue;
-    let native = diagramElForUid(uid);
-    if (!native && pageUid === uid) {
-      // Zoomed block page: the visible diagram is this block, but its ancestors carry no
-      // data-uid. Accept the lone native canvas unless it clearly belongs to another diagram.
-      const candidate = document.querySelector(".rm-diagram");
-      const candidateUid = candidate ? findDiagramUidFromEl(candidate) : null;
-      if (candidate && (!candidateUid || candidateUid === uid)) native = candidate;
-    }
-    if (!native && pageUid === uid) native = await waitForDiagramEl(uid, { timeout: 400 });
-    if (!native || native.isConnected === false) continue;
-    if (connectedMountForUid(uid)) continue;
-    await enhanceDiagram(uid, native);
-  }
-}
-
-const RECONCILE_INTERVAL_MS = 250;
-
-export function exitFullscreenOnNavigate(hash = globalThis.location?.hash || "") {
-  if (typeof document === "undefined") return;
-  const height = Number(runtime.settings?.get(SETTING_IDS.defaultHeight)) || 560;
-  let left = false;
-  for (const uid of [...runtime.enhancedUids]) {
-    if (!routeLeftZoomedDiagram(uid, hash)) continue;
-    left = true;
-    const session = getSession(uid);
-    for (const view of session?.views || []) {
-      const fn = view.setFullscreen || view.canvas?.setFullscreen;
-      fn?.(false);
-    }
-    const mount = connectedMountForUid(uid);
-    if (!mount) continue;
-    mount.classList.remove("pxd-mount--fullscreen", "pxd-mount--zoomed");
-    mount.style.top = "";
-    mount.style.left = "";
-    mount.style.right = "";
-    mount.style.bottom = "";
-    mount.style.width = "";
-    mount.style.height = `${height}px`;
-    mount.style.minHeight = `${height}px`;
-  }
-  if (left) document.body?.classList?.remove("pxd-has-fullscreen");
-}
-
-function installReconcile(lifecycle) {
-  if (typeof window === "undefined" || typeof document === "undefined") return;
-  const trigger = () => {
-    if (!runtime.enhancedUids.size) return;
-    void reconcileVisibleDiagrams().catch((error) => console.warn("[plexus-diagram] Reconcile failed", error));
-  };
-  const onNavigate = () => {
-    syncNestStackOnNavigate();
-    exitFullscreenOnNavigate();
-    trigger();
-  };
-  lifecycle.event(window, "hashchange", onNavigate);
-  lifecycle.event(window, "popstate", onNavigate);
-  lifecycle.interval(trigger, RECONCILE_INTERVAL_MS);
-}
-
-async function registerCommands(lifecycle, extensionAPI) {
-  const run = async (label, fn) => {
-    const full = `Plexus Diagram: ${label}`;
-    const callback = (context) => {
-      if (!enabled()) {
-        console.info("[plexus-diagram] Command skipped — extension disabled");
-        return;
-      }
-      void fn(context);
-    };
-    await lifecycle.command(extensionAPI.ui.commandPalette, { label: full, callback });
-    if (extensionAPI.ui?.slashCommand?.addCommand) {
-      await lifecycle.command(extensionAPI.ui.slashCommand, { label: full, callback });
-    }
-  };
-
-  await run("Enhance this diagram", async (context) => {
-    await enhanceByUid(await resolveDiagramUid(context));
-  });
-  await run("Restore native diagram", async () => {
-    const uid = focusedDiagramUid() || runtime.activeDiagramUid;
-    if (uid) await restoreDiagram(uid);
-  });
-  await run("Fullscreen this diagram", () => {
-    const session = getSession(runtime.activeDiagramUid || focusedDiagramUid());
-    const mount = document.querySelector(".pxd-mount");
-    const next = !mount?.classList.contains("pxd-mount--fullscreen");
-    if (session) {
-      for (const view of session.views) {
-        const fn = view.setFullscreen || view.canvas?.setFullscreen;
-        fn?.(next);
-      }
+  function syncGuard() {
+    if (!doc) return;
+    if (!active()) {
+      if (guardStyle) guardStyle.textContent = "";
       return;
     }
-    mount?.classList.toggle("pxd-mount--fullscreen", next);
-    document.body.classList.toggle("pxd-has-fullscreen", next);
-  });
-}
-
-async function registerSlashAndContext(lifecycle, extensionAPI) {
-  if (extensionAPI.ui?.blockContextMenu?.addCommand) {
-    await lifecycle.command(extensionAPI.ui.blockContextMenu, {
-      label: "Plexus Diagram: Enhance",
-      "display-conditional": (event) => isDiagramString(event["block-string"]),
-      callback: async (event) => {
-        await enhanceByUid(await resolveDiagramUid(event));
-      },
-    });
-  }
-}
-
-export async function installPlexusDiagram({ extensionAPI, lifecycle, version }) {
-  runtime.extensionAPI = extensionAPI;
-  runtime.lifecycle = lifecycle;
-  runtime.version = PACKAGE_VERSION || version || "DEV";
-  runtime.settings = createSettingsReader(extensionAPI);
-  runtime.enhancedUids = readEnhancedUidCache();
-  installGuard(runtime.enhancedUids);
-  await registerCommands(lifecycle, extensionAPI);
-  await registerSlashAndContext(lifecycle, extensionAPI);
-  installObservers(lifecycle);
-  installReconcile(lifecycle);
-  lifecycle.add(async () => {
-    if (runtime.settings.get(SETTING_IDS.restoreNativeOnUnload)) {
-      for (const uid of [...runtime.enhancedUids]) await restoreDiagram(uid);
-    } else {
-      for (const uid of [...allSessions().keys()]) disposeSession(uid);
+    if (!guardStyle) {
+      guardStyle = doc.getElementById?.(PREPAINT_STYLE_ID) || doc.createElement("style");
+      guardStyle.id = PREPAINT_STYLE_ID;
+      if (!guardStyle.isConnected) doc.head.appendChild(guardStyle);
     }
-    await releaseScratch();
-    nestStack.length = 0;
-    nestedOpenUid = null;
-    runtime.metadata = null;
-    runtime.guardStyle?.remove?.();
+    guardStyle.textContent = enhancedUidGuardCss(guardUids);
+    try {
+      writeEnhancedUidCache(guardUids, storage);
+    } catch { /* storage is a cache only */ }
+  }
+
+  function markEnhanced(uid) {
+    trusted.add(uid);
+    guardUids.add(uid);
+    negativeUntil.delete(uid);
+    syncGuard();
+  }
+
+  function markNative(uid) {
+    trusted.delete(uid);
+    legacyUids.delete(uid);
+    guardUids.delete(uid);
+    syncGuard();
+  }
+
+  function isBoardEnhanced(uid) {
+    if (trusted.has(uid) || legacyUids.has(uid)) return true;
+    const until = negativeUntil.get(uid);
+    if (until && until > Date.now()) return false;
+    if (readEnhanced(host.api, uid)) {
+      trusted.add(uid);
+      if (!guardUids.has(uid)) {
+        guardUids.add(uid);
+        syncGuard();
+      }
+      return true;
+    }
+    negativeUntil.set(uid, Date.now() + NEGATIVE_TTL_MS);
+    if (guardUids.has(uid)) {
+      guardUids.delete(uid);
+      syncGuard();
+    }
+    return false;
+  }
+
+  function titlePanelOf(native) {
+    for (const sibling of native.parentElement?.children || []) {
+      if (sibling !== native && sibling.classList?.contains(TITLE_PANEL_CLASS)) return sibling;
+    }
+    return null;
+  }
+
+  function setFullscreen(rec, next) {
+    rec.fullscreen = Boolean(next);
+    try {
+      rec.view?.setFullscreen?.(rec.fullscreen);
+    } catch (error) {
+      console.warn("[plexus-diagram] setFullscreen failed", error);
+    }
+  }
+
+  function mount(uid, native) {
+    const mountEl = doc.createElement("div");
+    mountEl.className = "pxd-mount";
+    mountEl.dataset.diagramUid = uid;
+    const titlePanel = titlePanelOf(native);
+    const rec = {
+      uid,
+      native,
+      mountEl,
+      titlePanel,
+      titleDisplay: titlePanel ? titlePanel.style.display : "",
+      session: null,
+      view: null,
+      fullscreen: false,
+      off: null,
+    };
+    native.classList.add(NATIVE_HIDDEN_CLASS);
+    if (titlePanel) titlePanel.style.display = "none";
+    native.after(mountEl);
+    mounts.set(native, rec);
+    try {
+      rec.session = acquireSession(uid, { host, settings });
+      rec.fullscreen = settings[SETTING_IDS.fullscreenOnZoom] !== false
+        && !routeLeftZoomedDiagram(uid);
+      rec.view = mountView({
+        host,
+        session: rec.session,
+        mountEl,
+        nativeEl: native,
+        settings,
+        fullscreen: rec.fullscreen,
+        version: badge,
+        onRequestFullscreen: (want) => setFullscreen(rec, want === undefined ? !rec.fullscreen : want),
+      });
+      rec.off = rec.session.on?.("change", () => {
+        // Restore (or an external props edit / undo) removed :plexus: give the native diagram back.
+        if (rec.session.board && rec.session.board.enhanced === false && !legacyUids.has(uid)) {
+          markNative(uid);
+          unmount(rec);
+        }
+      });
+    } catch (error) {
+      console.error("[plexus-diagram] Mount failed; native diagram restored", error);
+      negativeUntil.set(uid, Date.now() + 10 * NEGATIVE_TTL_MS);
+      unmount(rec);
+      return null;
+    }
+    migrateLegacy(rec);
+    return rec;
+  }
+
+  function migrateLegacy(rec) {
+    const { uid, session } = rec;
+    if (!legacyUids.has(uid) || readEnhanced(host.api, uid)) return;
+    const key = `plexus-diagram:migrated:${graphFromHash()}:${uid}`;
+    try {
+      if (storage?.getItem?.(key)) return;
+      storage?.setItem?.(key, "1"); // set BEFORE the call so a failure never loops
+    } catch { /* fall through: without storage we still migrate once per load */ }
+    if (rec.migrating) return;
+    rec.migrating = true;
+    Promise.resolve()
+      .then(() => session.enhance())
+      .then(() => markEnhanced(uid))
+      .catch((error) => console.warn("[plexus-diagram] 0.6 import failed", uid, error));
+  }
+
+  function unmount(rec) {
+    if (!rec || !mounts.has(rec.native)) return;
+    mounts.delete(rec.native);
+    try { rec.off?.(); } catch { /* ignore */ }
+    try { rec.view?.dispose?.(); } catch (error) { console.warn("[plexus-diagram] view dispose failed", error); }
+    try { rec.session?.release?.(); } catch (error) { console.warn("[plexus-diagram] session release failed", error); }
+    rec.mountEl.remove();
+    rec.native.classList.remove(NATIVE_HIDDEN_CLASS);
+    if (rec.titlePanel) rec.titlePanel.style.display = rec.titleDisplay;
+  }
+
+  function consider(native) {
+    if (stopped || !native || mounts.has(native) || native.isConnected === false) return;
+    if (!active()) return;
+    const uid = findDiagramUidFromEl(native);
+    if (!uid || !isBoardEnhanced(uid)) return;
+    mount(uid, native);
+  }
+
+  function scanAdded(node) {
+    for (const diagram of diagramsWithin(node)) consider(diagram);
+  }
+
+  function reconcile() {
+    if (stopped) return;
+    for (const rec of [...mounts.values()]) {
+      if (rec.native.isConnected === false || rec.mountEl.isConnected === false) unmount(rec);
+    }
+    for (const [node, observer] of portalObservers) {
+      if (node.isConnected === false) {
+        observer.disconnect();
+        portalObservers.delete(node);
+      }
+    }
+    if (!active()) {
+      for (const rec of [...mounts.values()]) unmount(rec);
+      return;
+    }
+    if (!doc) return;
+    for (const diagram of doc.querySelectorAll(".rm-diagram")) consider(diagram);
+  }
+
+  function onNavigate() {
+    for (const rec of mounts.values()) {
+      if (routeLeftZoomedDiagram(rec.uid)) {
+        if (rec.fullscreen) setFullscreen(rec, false);
+      } else if (settings[SETTING_IDS.fullscreenOnZoom] !== false && !rec.fullscreen) {
+        setFullscreen(rec, true);
+      }
+    }
+    reconcile();
+  }
+
+  // ---- commands -------------------------------------------------------------------------------
+
+  function focusedUid(context) {
+    return context?.["block-uid"]
+      || host.api?.ui?.getFocusedBlock?.()?.["block-uid"]
+      || extensionAPI?.ui?.getFocusedBlock?.()?.["block-uid"]
+      || null;
+  }
+
+  function diagramAncestorUid(uid) {
+    if (!uid) return null;
+    if (isDiagramString(host.blockString?.(uid))) return uid;
+    try {
+      const rows = host.q?.(PARENTS_QUERY, uid) || [];
+      const hit = rows.find((row) => isDiagramString(row[1]));
+      return hit ? hit[0] : null;
+    } catch {
+      return null;
+    }
+  }
+
+  function resolveBoardUid(context) {
+    const fromFocus = diagramAncestorUid(focusedUid(context));
+    if (fromFocus) return fromFocus;
+    const zoomed = diagramUidFromLocation();
+    if (zoomed && isDiagramString(host.blockString?.(zoomed))) return zoomed;
+    const uids = new Set([...mounts.values()].map((rec) => rec.uid));
+    return uids.size === 1 ? [...uids][0] : null;
+  }
+
+  async function enhanceCommand(context) {
+    const uid = resolveBoardUid(context);
+    if (!uid) {
+      console.info("[plexus-diagram] Focus a {{[[diagram]]}} block first");
+      return;
+    }
+    const session = acquireSession(uid, { host, settings });
+    try {
+      await session.enhance();
+    } finally {
+      session.release();
+    }
+    markEnhanced(uid);
+    reconcile();
+  }
+
+  async function restoreCommand(context) {
+    const uid = resolveBoardUid(context);
+    if (!uid) return;
+    const session = acquireSession(uid, { host, settings });
+    try {
+      await session.restoreNative();
+    } finally {
+      session.release();
+    }
+    markNative(uid);
+    for (const rec of [...mounts.values()]) if (rec.uid === uid) unmount(rec);
+  }
+
+  async function newWhiteboardCommand(context) {
+    const parentUid = focusedUid(context);
+    if (!parentUid) {
+      console.info("[plexus-diagram] Focus a block first; the whiteboard is created under it");
+      return;
+    }
+    const uid = host.generateUid();
+    await host.createBlock({
+      parentUid,
+      order: "last",
+      uid,
+      string: NEW_BOARD_STRING,
+      props: { plexus: { v: 2 } },
+    });
+    markEnhanced(uid);
+    await host.openBlock(uid);
+  }
+
+  function fullscreenCommand(context) {
+    const uid = resolveBoardUid(context);
+    const recs = [...mounts.values()].filter((rec) => !uid || rec.uid === uid);
+    const rec = recs.find((r) => r.native.isConnected !== false) || recs[0];
+    if (rec) setFullscreen(rec, !rec.fullscreen);
+  }
+
+  async function registerCommands() {
+    const commands = [
+      ["Plexus: Enhance this diagram", enhanceCommand],
+      ["Plexus: New whiteboard here", newWhiteboardCommand],
+      ["Plexus: Restore native diagram", restoreCommand],
+      ["Plexus: Fullscreen this diagram", fullscreenCommand],
+    ];
+    for (const [label, fn] of commands) {
+      const callback = (context) => {
+        if (!active()) {
+          console.info("[plexus-diagram] Command skipped: extension disabled");
+          return;
+        }
+        Promise.resolve(fn(context)).catch((error) => console.warn(`[plexus-diagram] ${label} failed`, error));
+      };
+      await lifecycle.command(extensionAPI.ui.commandPalette, { label, callback });
+      if (extensionAPI.ui?.slashCommand?.addCommand) {
+        await lifecycle.command(extensionAPI.ui.slashCommand, { label, callback });
+      }
+    }
+    if (extensionAPI.ui?.blockContextMenu?.addCommand) {
+      await lifecycle.command(extensionAPI.ui.blockContextMenu, {
+        label: "Plexus: Enhance",
+        "display-conditional": (event) => isDiagramString(event?.["block-string"]),
+        callback: (event) => {
+          if (!active()) return;
+          enhanceCommand(event).catch((error) => console.warn("[plexus-diagram] Enhance failed", error));
+        },
+      });
+    }
+  }
+
+  // ---- settings -------------------------------------------------------------------------------
+
+  lifecycle.add(onSettingsChange((id, value) => {
+    if (stopped) return;
+    settings = { ...settings, [id]: normalizeSetting(id, value) };
+    syncGuard();
+    if (!active()) {
+      for (const rec of [...mounts.values()]) unmount(rec);
+      return;
+    }
+    for (const rec of [...mounts.values()]) {
+      try {
+        if (typeof rec.view?.setSettings === "function") {
+          rec.view.setSettings(settings);
+        } else {
+          const native = rec.native;
+          unmount(rec);
+          consider(native);
+        }
+      } catch (error) {
+        console.warn("[plexus-diagram] Settings propagation failed", error);
+      }
+    }
+    reconcile();
+  }));
+
+  // ---- install --------------------------------------------------------------------------------
+
+  const api = {
+    version: badge,
+    stats: host.stats,
+    mounts: () => [...mounts.values()].map((rec) => ({
+      uid: rec.uid,
+      fullscreen: rec.fullscreen,
+      connected: rec.native.isConnected !== false && rec.mountEl.isConnected !== false,
+    })),
+  };
+  win.__plexusDiagram = api;
+  lifecycle.add(() => {
+    if (win.__plexusDiagram === api) delete win.__plexusDiagram;
   });
-  if (runtime.enhancedUids.size) await ensureMetadata();
+
+  syncGuard();
+  await registerCommands();
+
+  if (doc && typeof globalThis.MutationObserver === "function") {
+    const onAdded = (records) => {
+      for (const record of records) {
+        for (const node of record.addedNodes || []) {
+          if (node.nodeType === 1) scanAdded(node);
+        }
+      }
+    };
+    const app = doc.querySelector(".roam-app");
+    if (app) lifecycle.observer(new MutationObserver(onAdded), app, { childList: true, subtree: true });
+    if (doc.body) {
+      // Blueprint portals (popovers, sidebar previews) are siblings of .roam-app.
+      lifecycle.observer(new MutationObserver((records) => {
+        for (const record of records) {
+          for (const node of record.addedNodes || []) {
+            if (node.nodeType !== 1 || !node.classList?.contains("bp3-portal") || portalObservers.has(node)) continue;
+            const observer = new MutationObserver(onAdded);
+            observer.observe(node, { childList: true, subtree: true });
+            portalObservers.set(node, observer);
+            scanAdded(node);
+          }
+        }
+      }), doc.body, { childList: true });
+    }
+  }
+  if (typeof win.addEventListener === "function") {
+    lifecycle.event(win, "hashchange", onNavigate);
+    lifecycle.event(win, "popstate", onNavigate);
+  }
+  lifecycle.interval(reconcile, RECONCILE_INTERVAL_MS);
+  // Registered last so it runs first on dispose: nothing may mount while teardown is in flight.
+  lifecycle.add(() => { stopped = true; });
+  reconcile();
 }
 
-export {
-  enhancedUidGuardCss,
-  findDiagramUidFromEl,
-  graphCacheKey,
-  isDiagramString,
-  readEnhancedUidCache,
-  writeEnhancedUidCache,
-  openNestedDiagram,
-  nestStack,
-  parseDiagramTitle,
-};
+export { enhancedUidGuardCss, findDiagramUidFromEl, isDiagramString, readEnhancedUidCache, writeEnhancedUidCache };

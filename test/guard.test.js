@@ -17,6 +17,15 @@ test("enhancedUidGuardCss targets rm-diagram hosts for a uid", () => {
   assert.doesNotMatch(css, /overflow:\s*visible/);
 });
 
+test("enhancedUidGuardCss uses display:none for every native surface", () => {
+  const css = enhancedUidGuardCss(new Set(["abc123"]));
+  assert.match(css, /\.rm-diagram-title-panel/);
+  assert.match(css, /\.react-flow/);
+  assert.match(css, /display: none !important/);
+  assert.doesNotMatch(css, /visibility:\s*visible/);
+  assert.equal(enhancedUidGuardCss(new Set()), "");
+});
+
 test("enhancedUidGuardCss caps over-budget uid sets", () => {
   const over = new Set(Array.from({ length: 2001 }, (_, index) => `uid${index}`));
   assert.equal(enhancedUidGuardCss(over), "");

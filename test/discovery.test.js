@@ -7,6 +7,8 @@ import {
   enhancedUidGuardCss,
   findDiagramUidFromEl,
   isDiagramString,
+  isEnhancedProps,
+  readEnhanced,
   routeLeftZoomedDiagram,
   waitForDiagramEl,
 } from "../src/discovery.js";
@@ -139,4 +141,30 @@ test("waitForDiagramEl times out when the canvas never remounts", async () => {
     globalThis.document = previousDocument;
     globalThis.CSS = previousCss;
   }
+});
+
+test("isEnhancedProps needs plexus.v === 2, with or without pulled colon keys", () => {
+  assert.equal(isEnhancedProps({ ":plexus": { ":v": 2 } }), true);
+  assert.equal(isEnhancedProps({ plexus: { v: 2 }, ":rf-diagram": {} }), true);
+  assert.equal(isEnhancedProps({ ":plexus": { ":v": 1 } }), false);
+  assert.equal(isEnhancedProps({ ":rf-diagram": {} }), false);
+  assert.equal(isEnhancedProps(null), false);
+});
+
+test("readEnhanced pulls only :block/props synchronously and never throws", () => {
+  const calls = [];
+  const api = {
+    data: {
+      pull(pattern, ref) {
+        calls.push([pattern, ref]);
+        return { ":block/props": ref[1] === "yes" ? { ":plexus": { ":v": 2 } } : null };
+      },
+    },
+  };
+  assert.equal(readEnhanced(api, "yes"), true);
+  assert.equal(readEnhanced(api, "no"), false);
+  assert.deepEqual(calls[0], ["[:block/props]", [":block/uid", "yes"]]);
+  assert.equal(readEnhanced({ data: { pull() { throw new Error("boom"); } } }, "x"), false);
+  assert.equal(readEnhanced(api, ""), false);
+  assert.equal(readEnhanced(null, "x"), false);
 });

@@ -1,4 +1,5 @@
-// Add panel (spec 3.5): Search (pages + blocks) and Related (for the selected card).
+// Add panel (spec 3.5): Search (pages + blocks), Related (for the selected card), Boards (every diagram
+// board in the graph) and Outline (the board's cards as an indented tree).
 // Rows click-add beside the selection and drag onto the board with a custom MIME.
 
 export const CARD_MIME = "application/x-plexus-card";
@@ -79,8 +80,14 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
   const tabs = el("div", "pxd-panel__tabs", head);
   const tabSearch = el("button", "pxd-btn pxd-panel__tab pxd-panel__tab--on", tabs, "Search");
   const tabRelated = el("button", "pxd-btn pxd-panel__tab", tabs, "Related");
-  tabSearch.type = "button";
-  tabRelated.type = "button";
+  const tabBoards = el("button", "pxd-btn pxd-panel__tab", tabs, "Boards");
+  const tabOutline = el("button", "pxd-btn pxd-panel__tab", tabs, "Outline");
+  const tabButtons = { search: tabSearch, related: tabRelated, boards: tabBoards, outline: tabOutline };
+  for (const [name, b] of Object.entries(tabButtons)) {
+    b.type = "button";
+    b.dataset.tab = name;
+    b.setAttribute("data-tab", name);
+  }
   const closeBtn = el("button", "pxd-btn pxd-panel__close", head, "×");
   closeBtn.type = "button";
   closeBtn.title = "Close";
@@ -98,6 +105,16 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
   addAll.type = "button";
   addAll.style.display = "none";
   const relatedList = el("div", "pxd-panel__list", relatedPane);
+  const boardsPane = el("div", "pxd-panel__pane pxd-panel__pane--boards", panel);
+  boardsPane.style.display = "none";
+  const boardsFilter = el("input", "pxd-input pxd-panel__input pxd-panel__boards-filter", boardsPane);
+  boardsFilter.type = "text";
+  boardsFilter.placeholder = "Filter boards…";
+  boardsFilter.setAttribute("placeholder", "Filter boards…");
+  const boardsList = el("div", "pxd-panel__list pxd-panel__boards", boardsPane);
+  const outlinePane = el("div", "pxd-panel__pane pxd-panel__pane--outline", panel);
+  outlinePane.style.display = "none";
+  const outlineList = el("div", "pxd-panel__list pxd-panel__outline", outlinePane);
 
   let tab = "search";
   let debounce = null;
@@ -163,14 +180,16 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
 
   const setTab = (next) => {
     tab = next;
-    tabSearch.classList.toggle("pxd-panel__tab--on", tab === "search");
-    tabRelated.classList.toggle("pxd-panel__tab--on", tab === "related");
+    for (const [name, b] of Object.entries(tabButtons)) b.classList.toggle("pxd-panel__tab--on", tab === name);
     searchPane.style.display = tab === "search" ? "" : "none";
     relatedPane.style.display = tab === "related" ? "" : "none";
+    boardsPane.style.display = tab === "boards" ? "" : "none";
+    outlinePane.style.display = tab === "outline" ? "" : "none";
     if (tab === "related") void loadRelated();
+    if (tab === "boards") void loadBoards();
+    if (tab === "outline") renderOutline();
   };
-  listen(tabSearch, "click", () => setTab("search"));
-  listen(tabRelated, "click", () => setTab("related"));
+  for (const [name, b] of Object.entries(tabButtons)) listen(b, "click", () => setTab(name));
   listen(closeBtn, "click", () => api.close());
   listen(addAll, "click", () => {
     const strings = relatedRows.map((r) => r.string).filter((s) => !on.isOnBoard?.(s));
@@ -201,9 +220,93 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     addAll.style.display = list.length ? "" : "none";
   };
 
+  // ---- Boards: every diagram board in the graph. Rows open the board; the button adds a shortcut card.
+  let boardRows = [];
+  const renderBoards = () => {
+    boardsList.replaceChildren();
+    const q = String(boardsFilter.value || "").trim().toLowerCase();
+    const shown = boardRows.filter((b) => !q || `${b.title || ""}\n${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
+    if (!shown.length) { el("div", "pxd-panel__empty", boardsList, boardRows.length ? "No matching boards" : "No boards found"); return; }
+    for (const b of shown) {
+      const r = el("div", "pxd-panel__board-row", boardsList);
+      r.dataset.uid = b.uid;
+      r.setAttribute("data-uid", b.uid);
+      const text = el("div", "pxd-panel__board-text", r);
+      el("span", "pxd-panel__board-title", text, b.title || "Untitled board");
+      const page = b.page || b.pageTitle;
+      if (page) el("span", "pxd-panel__board-page", text, page);
+      const n = b.count ?? b.itemCount ?? b.items;
+      if (Number.isFinite(n)) el("span", "pxd-panel__board-count", r, `${n} ${n === 1 ? "item" : "items"}`);
+      const add = el("button", "pxd-btn pxd-panel__board-add", r, "Add shortcut");
+      add.type = "button";
+      add.title = "Add a card for this board to the current board";
+    }
+  };
+  // One delegated listener: re-rendering the list never adds listeners.
+  listen(boardsList, "click", (event) => {
+    const row = event.target?.closest?.(".pxd-panel__board-row");
+    const uid = row?.dataset?.uid ?? row?.getAttribute?.("data-uid");
+    if (!uid) return;
+    event.preventDefault?.();
+    event.stopPropagation();
+    if (event.target.closest(".pxd-panel__board-add")) on.addBoardCard?.(uid);
+    else on.openBoardByUid?.(uid);
+  });
+  const loadBoards = async () => {
+    const id = queryId += 1;
+    boardsList.replaceChildren();
+    el("div", "pxd-panel__empty", boardsList, "Loading boards…");
+    let rows = [];
+    try { rows = await Promise.resolve(on.listBoards?.()) || []; } catch { rows = []; }
+    if (id !== queryId || tab !== "boards") return;
+    boardRows = Array.isArray(rows) ? rows.filter((b) => b && b.uid) : [];
+    renderBoards();
+  };
+  listen(boardsFilter, "input", () => renderBoards());
+  listen(boardsFilter, "keydown", (event) => {
+    event.stopPropagation();
+    if (event.key === "Escape") { event.preventDefault(); api.close(); }
+  });
+
+  // ---- Outline: the board's cards as an indented tree, in reading order.
+  const renderOutline = () => {
+    outlineList.replaceChildren();
+    let rows = [];
+    try { rows = on.getOutline?.() || []; } catch { rows = []; }
+    if (!Array.isArray(rows) || !rows.length) { el("div", "pxd-panel__empty", outlineList, "Nothing on this board yet"); return; }
+    for (const o of rows) {
+      const depth = Math.max(0, Number(o.depth) || 0);
+      const r = el("div", "pxd-panel__outline-row", outlineList);
+      r.dataset.uid = o.uid;
+      r.setAttribute("data-uid", o.uid);
+      r.dataset.depth = String(depth);
+      r.setAttribute("data-depth", String(depth));
+      r.style.paddingLeft = `${8 + depth * 14}px`;
+      const dot = el("span", `pxd-panel__outline-dot${o.color ? ` pxd-c-${o.color}` : ""}`, r);
+      dot.setAttribute("aria-hidden", "true");
+      el("span", "pxd-panel__outline-title", r, o.title || "Untitled");
+      if (Number.isFinite(o.count) && o.count > 0) el("span", "pxd-panel__outline-count", r, String(o.count));
+    }
+  };
+  listen(outlineList, "click", (event) => {
+    const row = event.target?.closest?.(".pxd-panel__outline-row");
+    const uid = row?.dataset?.uid ?? row?.getAttribute?.("data-uid");
+    if (!uid) return;
+    event.stopPropagation();
+    on.outlineClick?.(uid);
+  });
+
   const api = {
     el: panel,
-    open(which = tab) { panel.style.display = ""; setTab(which); on.opened?.(true); if (which === "search") { try { input.focus({ preventScroll: true }); } catch { input.focus?.(); } } },
+    open(which = tab) {
+      panel.style.display = "";
+      setTab(which);
+      on.opened?.(true);
+      const focusTarget = which === "search" ? input : which === "boards" ? boardsFilter : null;
+      if (focusTarget) { try { focusTarget.focus({ preventScroll: true }); } catch { focusTarget.focus?.(); } }
+    },
+    currentTab: () => tab,
+    refreshOutline() { if (api.isOpen() && tab === "outline") renderOutline(); },
     close() { panel.style.display = "none"; on.opened?.(false); },
     toggle() { if (api.isOpen()) api.close(); else api.open(); },
     isOpen: () => panel.style.display !== "none",

@@ -142,3 +142,116 @@ test("cardStringForUid: page -> [[Title]], block -> ((uid)), unknown -> null", (
   assert.equal(host.cardStringForUid("zzz"), null);
   assert.equal(host.cardStringForUid(""), null);
 });
+
+function seedLibrary(fake) {
+  fake.seedPage({ title: "Zeta", children: [
+    { uid: "bz", string: "{{[[diagram]]:Zed board}}", props: { plexus: { v: 2 } }, children: [
+      { uid: "bz1", string: "a" }, { uid: "bz2", string: "b" },
+      { uid: "bze", string: "Connections", props: { plexus: { type: "edges" } } },
+    ] },
+  ] });
+  fake.seedPage({ title: "Alpha", children: [
+    { uid: "ba2", string: "{{[[diagram]]:Beta}}", props: { plexus: { v: 2 } } },
+    { uid: "ba1", string: "{{diagram:Aardvark}}", props: { plexus: { v: 2 } } },
+    { uid: "bn", string: "{{[[diagram]]:Native}}" },
+    { uid: "bo", string: "{{[[diagram]]:Old}}", props: { plexus: { v: 1 } } },
+    { uid: "bu", string: "{{[[diagram]]:}}", props: { plexus: { v: 2 } } },
+  ] });
+}
+const libraryRows = [["bz", "{{[[diagram]]:Zed board}}", "Zeta", "pz"], ["ba2", "{{[[diagram]]:Beta}}", "Alpha", "pa"],
+  ["ba1", "{{diagram:Aardvark}}", "Alpha", "pa"], ["bn", "{{[[diagram]]:Native}}", "Alpha", "pa"],
+  ["bo", "{{[[diagram]]:Old}}", "Alpha", "pa"], ["bu", "{{[[diagram]]:}}", "Alpha", "pa"]];
+
+test("listBoards keeps only plexus v2 boards, sorts, counts children minus Connections", () => {
+  const { fake, host } = setup();
+  seedLibrary(fake);
+  const route = fake.onQuery(/re-pattern/, () => libraryRows);
+  fake.clearLog();
+  const boards = host.listBoards();
+  assert.equal(route.calls.length, 1);
+  assert.deepEqual(boards.map((b) => b.uid), ["ba1", "ba2", "bu", "bz"]);
+  assert.deepEqual(boards.map((b) => b.title), ["Aardvark", "Beta", "Untitled board", "Zed board"]);
+  const z = boards[3];
+  assert.equal(z.pageTitle, "Zeta");
+  assert.equal(z.pageUid, "pz");
+  assert.equal(z.count, 2);
+  assert.equal(z.edited, null);
+  assert.equal(host.stats.writes, 0);
+  assert.equal(fake.writesLog().length, 0);
+});
+
+test("listBoards honours limit and null rows", () => {
+  const { fake, host } = setup();
+  seedLibrary(fake);
+  fake.onQuery(/re-pattern/, () => libraryRows);
+  assert.deepEqual(host.listBoards({ limit: 2 }).map((b) => b.uid), ["ba1", "ba2"]);
+  const { fake: f2, host: h2 } = setup();
+  f2.setQ(() => null);
+  assert.deepEqual(h2.listBoards(), []);
+});
+
+test("cardStats maps counts to page:/uid: keys with at most four queries", () => {
+  const { fake, host } = setup();
+  const alphaUid = fake.seedPage({ title: "Alpha" });
+  fake.seedPage({ title: "TODO" });
+  fake.seedPage({ title: "DONE" });
+  fake.seedBoard({ uid: "b1", children: [{ uid: "c1", string: "x" }] });
+  const eA = host.resolveEid({ title: "Alpha" });
+  const eC = host.resolveEid({ uid: "c1" });
+  const eB = host.resolveEid({ uid: "b1" });
+  const calls = [];
+  fake.onQuery(/./, (query, ...inputs) => {
+    calls.push([query, inputs]);
+    if (/:block\/parents \?board\]\) \[\(not=/.test(query) && !/re-pattern/.test(query)) return [[eA, 1], [eA, 2], [eA, 2], [eC, 9]];
+    if (/re-pattern/.test(query)) return [[eA, 50], [eA, 51]];
+    if (inputs[1] === host.resolveEid({ title: "TODO" })) return [[eA, 7], [eC, 8], [eC, 9]];
+    return [[eA, 5]];
+  });
+  fake.clearLog();
+  const stats = host.cardStats(
+    [{ kind: "page", title: "Alpha" }, { kind: "block", uid: "c1" }, { kind: "self", uid: "c1" }, { kind: "page", title: "Nope" }, { kind: "block", uid: "zzz" }],
+    { boardUid: "b1" },
+  );
+  assert.equal(calls.length, 4);
+  for (const [query, inputs] of calls) {
+    assert.match(query, /\[\?t \.\.\.\]/);
+    assert.deepEqual(inputs[0].sort(), [eA, eC].sort());
+  }
+  assert.equal(calls[0][1][1], eB);
+  assert.deepEqual(stats.get("page:Alpha"), { refs: 2, boards: 2, open: 1, done: 1 });
+  assert.deepEqual(stats.get("uid:c1"), { refs: 1, boards: 0, open: 2, done: 0 });
+  assert.deepEqual(stats.get("page:Nope"), { refs: 0, boards: 0, open: 0, done: 0 });
+  assert.deepEqual(stats.get("uid:zzz"), { refs: 0, boards: 0, open: 0, done: 0 });
+  assert.equal(stats.size, 4);
+  assert.equal(alphaUid.length > 0, true);
+  assert.equal(host.stats.writes, 0);
+  assert.equal(fake.writesLog().length, 0);
+});
+
+test("cardStats runs no queries when nothing resolves and skips status queries without TODO/DONE pages", () => {
+  const { fake, host } = setup();
+  const route = fake.onQuery(/./, () => []);
+  assert.equal(host.cardStats([]).size, 0);
+  assert.equal(host.cardStats([{ kind: "page", title: "Nope" }]).size, 1);
+  assert.equal(route.calls.length, 0);
+  fake.seedPage({ title: "Alpha" });
+  host.cardStats([{ kind: "page", title: "Alpha" }]);
+  assert.equal(route.calls.length, 2);
+});
+
+test("uploadFile: string and {url} results, counts a write; absent throws", async () => {
+  const { fake, host } = setup();
+  await assert.rejects(host.uploadFile({}), /upload-unavailable/);
+  assert.equal(host.stats.writes, 0);
+  const file = { name: "a.png" };
+  let got;
+  fake.setUpload(async (arg) => { got = arg; return "https://x/a.png"; });
+  assert.equal(await host.uploadFile(file), "https://x/a.png");
+  assert.equal(got.file, file);
+  fake.setUpload(async () => ({ url: "https://x/b.png" }));
+  assert.equal(await host.uploadFile(file), "https://x/b.png");
+  assert.equal(host.stats.writes, 2);
+  fake.setUpload(async () => ({}));
+  await assert.rejects(host.uploadFile(file), /upload-failed/);
+  assert.equal(host.stats.writes, 2);
+});

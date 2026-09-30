@@ -36,6 +36,8 @@ export function createFakeRoam({ echoDelay = 5, writeDelay = 0, echoMode = "fres
   let eidCounter = 100;
   let uidCounter = 0;
   let qHandler = () => [];
+  const qRoutes = [];
+  let uploadStub = null;
 
   const fake = {
     echoDelay,
@@ -196,12 +198,17 @@ export function createFakeRoam({ echoDelay = 5, writeDelay = 0, echoMode = "fres
     });
   }
 
+  const runQ = (query, ...inputs) => {
+    for (const r of qRoutes) if (r.match.test(String(query))) { r.calls.push([query, ...inputs]); return r.fn(query, ...inputs); }
+    return qHandler(query, ...inputs);
+  };
+
   const api = {
     util: { generateUID: () => fake.generateUid() },
     data: {
       pull,
-      q: (...args) => qHandler(...args),
-      fast: { q: (...args) => qHandler(...args) },
+      q: (...args) => runQ(...args),
+      fast: { q: (...args) => runQ(...args) },
       addPullWatch(pattern, entity, cb) {
         const { value } = parseEntity(entity);
         watches.push({ pattern, entity, cb, uid: value });
@@ -261,6 +268,7 @@ export function createFakeRoam({ echoDelay = 5, writeDelay = 0, echoMode = "fres
       undo() { fake.calls.push(["undo"]); return Promise.resolve(); },
       redo() { fake.calls.push(["redo"]); return Promise.resolve(); },
     },
+    get file() { return uploadStub ? { upload: uploadStub } : undefined; },
     ui: {
       rightSidebar: { addWindow: (arg) => { fake.calls.push(["addWindow", arg]); return Promise.resolve(); } },
       mainWindow: { openBlock: (arg) => { fake.calls.push(["openBlock", arg]); return Promise.resolve(); } },
@@ -288,6 +296,9 @@ export function createFakeRoam({ echoDelay = 5, writeDelay = 0, echoMode = "fres
   fake.api = api;
   fake.generateUid = () => `gen${String(++uidCounter).padStart(6, "0")}`;
   fake.setQ = (fn) => { qHandler = fn; };
+  // Route q calls whose query text matches `match` (RegExp) to fn; returns {calls} for asserting.
+  fake.onQuery = (match, fn) => { const r = { match, fn, calls: [] }; qRoutes.push(r); return r; };
+  fake.setUpload = (fn) => { uploadStub = fn; };
   fake.watchCount = () => watches.length;
   fake.pull = (uid) => pull("[*]", [":block/uid", uid]);
   fake.block = (uid) => {

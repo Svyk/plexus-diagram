@@ -1,4 +1,4 @@
-import { attrNameOf, mergePropsForWrite, plainKeys } from "../model/schema.js";
+import { attrNameOf, mergePropsForWrite, parseBoardTitle, plainKeys } from "../model/schema.js";
 
 export const BOARD_PATTERN = `[:block/uid :block/string :block/order :block/heading :block/open :block/props
  {:block/children [:block/uid :block/string :block/order :block/heading :block/props
@@ -9,6 +9,9 @@ const ciPattern = (text) => `(?i)${String(text).replace(/[.*+?^${}()|[\]\\]/g, "
 
 export const NATIVE_PATTERN = `[{:diagram/nodes [:db/id :diagram.node/data {:diagram.node/block [:block/uid :block/string]} {:diagram.node/parent-node [:db/id]}]}
  {:diagram/edges [{:diagram.edge/source [:db/id]} {:diagram.edge/target [:db/id]} :diagram.edge/data]}]`;
+
+const DIAGRAM_RE = "^\\{\\{(\\[\\[)?diagram";
+const BOARD_META_PATTERN = "[:block/props :edit/time {:block/children [:block/props]}]";
 
 const eidKey = (uid) => [":block/uid", uid];
 const watchEntity = (uid) => `[:block/uid "${String(uid).replace(/["\\]/g, "")}"]`;
@@ -307,6 +310,95 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
 
     q(query, ...inputs) {
       return data.fast?.q ? data.fast.q(query, ...inputs) : data.q(query, ...inputs);
+    },
+
+    // Boards library: every enhanced (plexus.v === 2) board block in the graph. Read-only.
+    listBoards({ limit = 200 } = {}) {
+      const rows = host.q(
+        `[:find ?u ?s ?pt ?pu :in $ ?pat :where [?b :block/string ?s] [(re-pattern ?pat) ?re] [(re-find ?re ?s)]
+ [?b :block/uid ?u] [?b :block/page ?p] [?p :node/title ?pt] [?p :block/uid ?pu]]`,
+        DIAGRAM_RE,
+      ) || [];
+      const out = [];
+      for (const [uid, string, pageTitle, pageUid] of rows) {
+        let res;
+        try { res = pull(BOARD_META_PATTERN, eidKey(uid)); } catch { continue; }
+        const props = res?.[":block/props"];
+        if (!props || typeof props !== "object" || plainKeys(props)?.plexus?.v !== 2) continue;
+        const kids = Array.isArray(res[":block/children"]) ? res[":block/children"] : [];
+        const count = kids.filter((k) => {
+          const kp = k?.[":block/props"];
+          return !(kp && typeof kp === "object" && plainKeys(kp)?.plexus?.type === "edges");
+        }).length;
+        const edited = res[":edit/time"];
+        out.push({
+          uid,
+          title: parseBoardTitle(string) || "Untitled board",
+          pageTitle,
+          pageUid,
+          count,
+          edited: Number.isFinite(edited) ? edited : null,
+        });
+      }
+      out.sort((a, b) => String(a.pageTitle).localeCompare(String(b.pageTitle)) || a.title.localeCompare(b.title));
+      return out.slice(0, limit);
+    },
+
+    // Card footer stats for many targets in at most four datalog queries.
+    cardStats(targets, { boardUid } = {}) {
+      const result = new Map();
+      const byEid = new Map();
+      for (const t of targets || []) {
+        if (!t) continue;
+        const ref = t.kind === "page" ? (t.title ? { title: t.title } : null) : t.uid ? { uid: t.uid } : null;
+        if (!ref) continue;
+        const key = t.kind === "page" ? `page:${t.title}` : `uid:${t.uid}`;
+        if (result.has(key)) continue;
+        result.set(key, { refs: 0, boards: 0, open: 0, done: 0 });
+        const eid = host.resolveEid(ref);
+        if (eid == null) continue;
+        if (!byEid.has(eid)) byEid.set(eid, []);
+        byEid.get(eid).push(key);
+      }
+      if (!byEid.size) return result;
+      const eids = [...byEid.keys()];
+      const boardEid = boardUid ? host.resolveEid({ uid: boardUid }) ?? -1 : -1;
+      const tally = (rows, field) => {
+        const seen = new Map();
+        for (const [t, x] of rows || []) {
+          if (!seen.has(t)) seen.set(t, new Set());
+          seen.get(t).add(x);
+        }
+        for (const [t, set] of seen) for (const key of byEid.get(t) ?? []) result.get(key)[field] = set.size;
+      };
+      tally(host.q(
+        `[:find ?t ?b :in $ [?t ...] ?board :where [?b :block/refs ?t] (not [?b :block/parents ?board]) [(not= ?b ?board)]]`,
+        eids, boardEid,
+      ), "refs");
+      tally(host.q(
+        `[:find ?t ?d :in $ [?t ...] ?board ?pat :where [?b :block/refs ?t] [?b :block/parents ?d] [?d :block/string ?s]
+ [(re-pattern ?pat) ?re] [(re-find ?re ?s)] [(not= ?d ?board)]]`,
+        eids, boardEid, DIAGRAM_RE,
+      ), "boards");
+      const todoEid = host.resolveEid({ title: "TODO" });
+      const doneEid = host.resolveEid({ title: "DONE" });
+      const listFor = (statusEid) => host.q(
+        `[:find ?t ?x :in $ [?t ...] ?status :where [?x :block/refs ?status] (or [?x :block/parents ?t] [?x :block/page ?t])]`,
+        eids, statusEid,
+      );
+      if (todoEid != null) tally(listFor(todoEid), "open");
+      if (doneEid != null) tally(listFor(doneEid), "done");
+      return result;
+    },
+
+    async uploadFile(file) {
+      const upload = api.file?.upload;
+      if (typeof upload !== "function") throw new Error("upload-unavailable");
+      const res = await upload.call(api.file, { file });
+      const url = typeof res === "string" ? res : res?.url;
+      if (typeof url !== "string" || !url) throw new Error("upload-failed");
+      stats.writes++;
+      return url;
     },
 
     searchPages(text, limit = 40) {

@@ -20,6 +20,8 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
   let wire = null;
   let marquee = null;
   const guideEls = [];
+  const ghostEls = [];
+  let focusSet = null;
   let zoomCache = 1;
   let editingLabel = null;
   const listeners = [];
@@ -71,6 +73,8 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     return rec;
   };
 
+  const dimmed = (e) => Boolean(focusSet) && !(focusSet.has(e.from) && focusSet.has(e.to));
+
   const paintEdge = (board, edge, rec, { covered, selected }) => {
     const cls = ["pxd-edge"];
     if (edge.color) cls.push(`pxd-c-${edge.color}`);
@@ -79,8 +83,12 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     if (selected) cls.push("pxd-edge--selected");
     if (covered) cls.push("pxd-edge--covered");
     if (!edge.valid) cls.push("pxd-edge--invalid");
+    rec.from = edge.from;
+    rec.to = edge.to;
+    const dim = dimmed(edge);
+    if (dim) cls.push("pxd-edge--dim");
     setClass(rec.g, cls.join(" "));
-    rec.label.className = `pxd-label${edge.color ? ` pxd-c-${edge.color}` : ""}${edge.label ? "" : " pxd-label--empty"}${selected ? " pxd-label--selected" : ""}`;
+    rec.label.className = `pxd-label${edge.color ? ` pxd-c-${edge.color}` : ""}${edge.label ? "" : " pxd-label--empty"}${selected ? " pxd-label--selected" : ""}${dim ? " pxd-label--dim" : ""}`;
     if (editingLabel?.uid !== edge.uid) rec.label.textContent = edge.label || "";
     rec.dir = edge.dir;
     rec.weight = edge.weight;
@@ -137,8 +145,11 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
   const placeLink = (link, rec, rects, zoom, selected) => {
     const a = rects.get(link.from);
     const b = rects.get(link.to);
-    setClass(rec.g, `pxd-link pxd-c-${link.color || "gray"}${selected ? " pxd-link--selected" : ""}`);
-    rec.label.className = `pxd-label pxd-label--link pxd-c-${link.color || "gray"}${selected ? " pxd-label--selected" : ""}`;
+    rec.from = link.from;
+    rec.to = link.to;
+    const dim = dimmed(link);
+    setClass(rec.g, `pxd-link pxd-c-${link.color || "gray"}${selected ? " pxd-link--selected" : ""}${dim ? " pxd-edge--dim" : ""}`);
+    rec.label.className = `pxd-label pxd-label--link pxd-c-${link.color || "gray"}${selected ? " pxd-label--selected" : ""}${dim ? " pxd-label--dim" : ""}`;
     rec.label.textContent = link.labels?.[0] || "mentions";
     if (!a || !b) { rec.g.setAttribute("display", "none"); rec.label.style.display = "none"; return; }
     rec.g.removeAttribute("display");
@@ -263,6 +274,30 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     marquee.setAttribute("height", String(rect.h));
   };
 
+  // Alt+drag duplicate preview: dashed world-space rects in the overlay svg. null/[] clears.
+  const setGhosts = (list) => {
+    const rects = list || [];
+    while (ghostEls.length > rects.length) ghostEls.pop().remove();
+    while (ghostEls.length < rects.length) ghostEls.push(mk("rect", "pxd-ghost", overlaySvg));
+    rects.forEach((r, i) => {
+      const el = ghostEls[i];
+      el.setAttribute("x", String(r.x));
+      el.setAttribute("y", String(r.y));
+      el.setAttribute("width", String(r.w));
+      el.setAttribute("height", String(r.h));
+    });
+  };
+
+  // Focus mode: connections and derived links not fully inside `set` are dimmed. null clears.
+  const setFocus = (set) => {
+    focusSet = set && set.size !== undefined ? set : null;
+    for (const rec of [...edgeEls.values(), ...linkEls.values()]) {
+      const dim = dimmed(rec);
+      rec.g.classList.toggle("pxd-edge--dim", dim);
+      rec.label.classList.toggle("pxd-label--dim", dim);
+    }
+  };
+
   // Inline label editing on the pill (contenteditable). Commit on Enter / blur, cancel on Esc.
   const editLabel = (uid) => {
     const rec = edgeEls.get(uid);
@@ -318,6 +353,8 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     setTempWire(null);
     setGuides([]);
     setMarquee(null);
+    setGhosts(null);
+    focusSet = null;
     listeners.splice(0).forEach((off) => off());
     editingLabel = null;
   };
@@ -329,6 +366,8 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     setTempWire,
     setGuides,
     setMarquee,
+    setGhosts,
+    setFocus,
     editLabel,
     isEditingLabel: () => Boolean(editingLabel),
     geometryOf,

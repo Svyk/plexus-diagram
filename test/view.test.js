@@ -66,6 +66,7 @@ function fakeSession(board) {
   const handlers = new Map();
   const mutations = [];
   const rec = (name) => (...args) => { mutations.push([name, ...args]); return Promise.resolve(`${name}-uid`); };
+  const recList = (name) => (...args) => { mutations.push([name, ...args]); return Promise.resolve([`${name}-uid`]); };
   const session = {
     uid: board.uid,
     board,
@@ -110,6 +111,23 @@ function fakeSession(board) {
     flipEdge: rec("flipEdge"),
     undo: rec("undo"),
     redo: rec("redo"),
+    // 1.2 session methods the view calls (recording stubs)
+    setCollapsedMany: rec("setCollapsedMany"),
+    collapseAll: rec("collapseAll"),
+    setPinned: rec("setPinned"),
+    setBoardBackground: rec("setBoardBackground"),
+    setFit: rec("setFit"),
+    fitSection: rec("fitSection"),
+    tidyItems: rec("tidyItems"),
+    sameSize: rec("sameSize"),
+    resetSize: rec("resetSize"),
+    fitToContent: rec("fitToContent"),
+    duplicateItems: recList("duplicateItems"),
+    pasteItems: recList("pasteItems"),
+    pasteText: recList("pasteText"),
+    addDailyCards: recList("addDailyCards"),
+    sendToBoard: (...args) => { mutations.push(["sendToBoard", ...args]); return Promise.resolve({ added: args[0].length, title: "Inner" }); },
+    expandOutline: (...args) => { mutations.push(["expandOutline", ...args]); return Promise.resolve({ added: 2, edges: 2 }); },
   };
   return session;
 }
@@ -176,6 +194,10 @@ test("mount builds the documented DOM and a shell for every item", async () => {
     assert.ok(root.querySelector(".pxd-minimap"));
     assert.ok(root.querySelector(".pxd-search"));
     assert.ok(root.querySelector(".pxd-toast"));
+    assert.ok(root.querySelector(".pxd-popover--bg"), "background popover is part of the chrome");
+    assert.ok(root.querySelector(".pxd-backtocontent"), "back-to-content button is part of the chrome");
+    assert.equal(root.querySelector(".pxd-backtocontent").style.display, "none", "hidden while content is in view");
+    assert.ok(world.querySelector(".pxd-grid--dots") || viewport.querySelector(".pxd-grid--dots"), "default pattern is dots");
     assert.equal(root.querySelector(".pxd-badge").textContent, "v1.0.0");
     assert.ok(root.querySelector(".pxd-sync"));
     assert.equal(root.querySelector(".pxd-tool--active").dataset.tool, "select");
@@ -696,6 +718,38 @@ test("CSS contract: card header rules, LOD, editing strip and text font variable
   assert.match(css, /\.pxd-item--text \.pxd-item__editor \{[^}]*font-size: var\(--pxd-text-fs/);
 });
 
+test("CSS contract (1.2): map tile clamp, overview tier, bare header, pin, focus and badges", async () => {
+  const { readFileSync } = await import("node:fs");
+  const css = readFileSync(new URL("../src/extension.css", import.meta.url), "utf8");
+  const rule = (selector) => {
+    const at = css.indexOf(`${selector} {`);
+    assert.ok(at >= 0, `rule ${selector}`);
+    return css.slice(at, css.indexOf("}", at));
+  };
+  assert.match(rule(".pxd-root.pxd-lod-map .pxd-item.pxd-item--card:not(.pxd-item--editing)"), /container-type: size/);
+  const header = rule(".pxd-root.pxd-lod-map .pxd-item.pxd-item--card:not(.pxd-item--editing) > .pxd-item__header");
+  for (const decl of ["flex: 1 1 auto", "min-height: 0", "overflow: hidden", "display: -webkit-box", "-webkit-box-orient: vertical", "-webkit-line-clamp: 3", "overflow-wrap: anywhere", "text-overflow: ellipsis"]) assert.ok(header.includes(decl), decl);
+  assert.match(header, /font-size: min\(var\(--pxd-map-font\), calc\(\(100cqh - 12px\) \/ 3\.8\)\)/);
+  assert.doesNotMatch(rule(".pxd-item"), /overflow:\s*hidden/, "ports sit across the card edge");
+  assert.match(rule(".pxd-item__header"), /max-height: 100%;[^}]*overflow: hidden/);
+  assert.match(rule(".pxd-lod-map .pxd-item--board .pxd-item__body"), /display: block/);
+  assert.match(rule(".pxd-lod-overview .pxd-item--board .pxd-item__body"), /display: none/);
+  assert.match(rule(".pxd-root.pxd-lod-overview .pxd-item--card > .pxd-item__header"), /visibility: hidden/);
+  assert.match(rule(".pxd-root.pxd-lod-overview .pxd-section__title"), /font-size: var\(--pxd-overview-font, 40px\)/);
+  const pill = rule(".pxd-section__title");
+  assert.match(pill, /border: 1px solid var\(--pxd-line/);
+  assert.match(pill, /border-radius: 6px/);
+  assert.match(pill, /font-weight: 700/);
+  assert.match(pill, /text-overflow: ellipsis/);
+  assert.match(rule(".pxd-root .pxd-item.pxd-item--card.pxd-item--bare > .pxd-item__header"), /display: block/);
+  assert.match(rule(".pxd-root .pxd-item.pxd-item--pinned > .pxd-grip,\n.pxd-root .pxd-section.pxd-section--pinned > .pxd-grip"), /display: none/);
+  assert.match(rule(".pxd-root .pxd-item.pxd-item--focus-dim,\n.pxd-root .pxd-section.pxd-section--focus-dim"), /opacity: 0\.18/);
+  assert.match(rule(".pxd-root .pxd-item__badges"), /pointer-events: none/);
+  assert.match(rule(".pxd-root .pxd-badge-chip.pxd-badge-chip--boards"), /pointer-events: auto/);
+  assert.doesNotMatch(rule(".pxd-board-preview"), /accent-soft/);
+  assert.match(rule(".pxd-board-preview__canvas"), /width: 100%;\s*height: 100%/);
+});
+
 // ---- nested boards ----------------------------------------------------------------------------
 
 const boardCardChildren = () => [
@@ -727,10 +781,14 @@ test("F5: a board card shows its title, a mini map of the child, the item count 
     assert.equal(card.querySelector(".pxd-item__header").textContent, "Roadmap");
     assert.equal(card.querySelector(".pxd-item__header").classList.contains("pxd-item__header--muted"), false);
     assert.equal(card.querySelectorAll(".pxd-mini").length, 2);
-    assert.ok(card.querySelector(".pxd-board-preview__canvas").style.aspectRatio);
+    const canvas = card.querySelector(".pxd-board-preview__canvas");
+    assert.ok(canvas, "the canvas fills the holder");
+    assert.equal(canvas.style.aspectRatio, undefined, "no aspect box: the thumbnail frame is padded to the holder");
     const teal = card.querySelector(".pxd-mini.pxd-c-teal");
-    assert.equal(teal.style.left, "0%");
-    assert.equal(teal.style.width, "33.33%");
+    const pctOf = (v) => parseFloat(v);
+    assert.ok(pctOf(teal.style.left) > 5, "the frame is padded, so a mini never touches the edge");
+    assert.ok(pctOf(teal.style.width) < 50, "a mini is a small part of the frame, not one white box");
+    assert.equal(teal.querySelector(".pxd-mini__title").textContent, "one");
     assert.equal(card.querySelector(".pxd-item__board-count").textContent, "2 items");
     assert.equal(card.querySelector(".pxd-item__board-name"), null, "a titled board has no name field");
     const open = card.querySelector(".pxd-item__open");
@@ -738,7 +796,9 @@ test("F5: a board card shows its title, a mini map of the child, the item count 
     assert.deepEqual(opened, ["nbCard001"]);
     assert.equal(f.session.mutations.length, 0);
     const empty = f.view.root.querySelector("[data-uid=nbUntitl1]");
-    assert.equal(empty.querySelector(".pxd-item__board-count").textContent, "Empty board");
+    assert.equal(empty.querySelector(".pxd-board-preview__empty").textContent, "Empty board");
+    assert.equal(empty.querySelector(".pxd-mini"), null);
+    assert.equal(empty.querySelector(".pxd-item__board-count").textContent, "0 items");
     assert.equal(empty.querySelector(".pxd-item__header").classList.contains("pxd-item__header--muted"), true);
   } finally {
     f.view.dispose();
@@ -833,7 +893,7 @@ test("F5: changing a layout inside the child board refreshes the card preview", 
     f.stub.flushIdle();
     const after = f.view.root.querySelector("[data-uid=nbCard001] .pxd-mini.pxd-c-teal");
     assert.notEqual(after, before, "the preview was rebuilt");
-    assert.equal(after.style.width, "66.67%");
+    assert.ok(parseFloat(after.style.width) > parseFloat(before.style.width), "the wider layout draws a wider mini");
   } finally {
     f.view.dispose();
     f.restore();

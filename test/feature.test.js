@@ -217,9 +217,10 @@ function setup({ enhanced = [], legacy = null, settings = {}, hash = "" } = {}) 
     setOpen: async (uid, open) => { writes.setOpen.push([uid, open]); },
   };
 
-  const sessions = { acquired: 0, released: 0, enhance: 0, restore: 0, live: new Map(), made: [] };
-  const acquireSession = (uid) => {
+  const sessions = { acquired: 0, released: 0, enhance: 0, restore: 0, live: new Map(), made: [], options: [] };
+  const acquireSession = (uid, options) => {
     sessions.acquired += 1;
+    sessions.options.push(options);
     sessions.live.set(uid, (sessions.live.get(uid) || 0) + 1);
     const handlers = new Set();
     const goneHandlers = new Set();
@@ -285,7 +286,7 @@ function setup({ enhanced = [], legacy = null, settings = {}, hash = "" } = {}) 
     }
   };
   return {
-    env, doc, host, props, strings, writes, sessions, views, commands, storage, storageMap, lifecycle, tick, restore,
+    env, doc, host, extensionAPI, props, strings, writes, sessions, views, commands, storage, storageMap, lifecycle, tick, restore,
     install: () => installPlexusDiagram({ extensionAPI, lifecycle, version: "x", mountView, host, acquireSession, storage }),
     setHash(next) { globalThis.location = { hash: next }; for (const fn of [...(listeners.get("hashchange") || [])]) fn(); },
     listeners,
@@ -326,7 +327,7 @@ test("an enhanced diagram mounts exactly once and hides the native surfaces", as
     assert.equal(t.views[0].args.nativeEl, native);
     assert.equal(t.views[0].args.version, PACKAGE_VERSION);
     assert.equal(t.views[0].args.settings["graph-links"], "all");
-    assert.deepEqual(t.env.win.__plexusDiagram.mounts(), [{ uid: "boardAAA1", current: "boardAAA1", crumbs: ["boardAAA1"], fullscreen: false, connected: true }]);
+    assert.deepEqual(t.env.win.__plexusDiagram.mounts(), [{ uid: "boardAAA1", current: "boardAAA1", crumbs: ["boardAAA1"], fullscreen: false, connected: true, state: null }]);
     assert.equal(t.env.win.__plexusDiagram.version, PACKAGE_VERSION);
     assert.equal(t.env.win.__plexusDiagram.stats, t.host.stats);
     assert.match(t.doc.getElementById(PREPAINT_STYLE_ID).textContent, /boardAAA1/);
@@ -416,7 +417,7 @@ test("commands register in palette and slash, the context menu gets Enhance, and
   const t = setup();
   try {
     await t.install();
-    const labels = ["Plexus: Enhance this diagram", "Plexus: New whiteboard here", "Plexus: Restore native diagram", "Plexus: Fullscreen this diagram"];
+    const labels = ["Plexus: Enhance this diagram", "Plexus: New whiteboard here", "Plexus: Restore native diagram", "Plexus: Fullscreen this diagram", "Plexus: Export board as SVG", "Plexus: Copy board as text"];
     assert.deepEqual([...t.commands.palette.keys()], labels);
     assert.deepEqual([...t.commands.slash.keys()], labels);
     assert.deepEqual([...t.commands.context.keys()], ["Plexus: Enhance"]);
@@ -425,7 +426,7 @@ test("commands register in palette and slash, the context menu gets Enhance, and
     assert.equal(context["display-conditional"]({ "block-string": "plain" }), false);
     await t.lifecycle.dispose();
     assert.equal(t.commands.palette.size + t.commands.slash.size + t.commands.context.size, 0);
-    assert.equal(t.commands.removed.length, 9);
+    assert.equal(t.commands.removed.length, 13);
   } finally {
     t.restore();
   }
@@ -629,6 +630,93 @@ test("settings changes reach mounted views through setSettings, else remount", a
   });
 });
 
+test("sessions read settings live: a change reaches an already-acquired session without a remount", async () => {
+  const { createSettingsPanel } = await import("../src/settings.js");
+  await withEnv({ enhanced: ["boardAAA1"] }, async (t) => {
+    addNative(t.doc, "boardAAA1");
+    await t.install();
+    t.tick();
+    const acquired = t.sessions.options[0].settings;
+    assert.equal(typeof acquired.get, "function", "sessions get an accessor, not a snapshot");
+    assert.notEqual(acquired.get("auto-fit-sections"), false);
+    t.views[0].setSettings = () => {};
+    const rows = Object.fromEntries(createSettingsPanel().settings.map((row) => [row.id, row]));
+    rows["auto-fit-sections"].action.onChange({ target: { checked: false } });
+    assert.equal(acquired.get("auto-fit-sections"), false, "the same accessor now answers with the new value");
+    assert.equal(t.sessions.acquired, 1, "no second session was needed");
+  });
+});
+
+test("onSetDefaults writes settings and reaches setSettings on every mount that has it", async () => {
+  await withEnv({ enhanced: ["boardAAA1", "boardCCC1"] }, async (t) => {
+    addNative(t.doc, "boardAAA1");
+    addNative(t.doc, "boardCCC1");
+    const saved = [];
+    t.extensionAPI.settings.set = async (id, value) => { saved.push([id, value]); };
+    await t.install();
+    t.tick();
+    assert.equal(t.views.length, 2);
+    t.views[0].setSettings = (value) => { t.views[0].received = value; };
+    await t.views[1].args.onSetDefaults({ grid: "grid", "board-tone": "teal" });
+    assert.deepEqual(saved, [["grid", "grid"], ["board-tone", "teal"]]);
+    assert.equal(t.views[0].received.grid, "grid");
+    assert.equal(t.views[0].received["board-tone"], "teal");
+    assert.equal(t.views.length, 2, "a view without setSettings is not remounted");
+    assert.equal(t.views[1].received, undefined);
+  });
+});
+
+test("onSetDefaults ignores a failing settings.set and still updates the mounts", async () => {
+  await withEnv({ enhanced: ["boardAAA1"] }, async (t) => {
+    addNative(t.doc, "boardAAA1");
+    t.extensionAPI.settings.set = async () => { throw new Error("nope"); };
+    await t.install();
+    t.tick();
+    t.views[0].setSettings = (value) => { t.views[0].received = value; };
+    const warn = console.warn;
+    console.warn = () => {};
+    try {
+      await t.views[0].args.onSetDefaults({ "map-zoom": "0.6" });
+    } finally {
+      console.warn = warn;
+    }
+    assert.equal(t.views[0].received["map-zoom"], "0.6");
+  });
+});
+
+test("Export as SVG and Copy as text commands call the current view and skip when disabled", async () => {
+  await withEnv({ enhanced: ["boardAAA1"] }, async (t) => {
+    addNative(t.doc, "boardAAA1");
+    await t.install();
+    t.tick();
+    const calls = [];
+    t.views[0].exportSvg = (opts) => { calls.push(["svg", opts]); };
+    t.views[0].copyOutline = () => { calls.push(["text"]); };
+    t.strings.set("boardAAA1", "{{[[diagram]]}}");
+    t.env.focused = { "block-uid": "boardAAA1" };
+    for (const kind of ["palette", "slash"]) {
+      await t.commands[kind].get("Plexus: Export board as SVG").callback({});
+      await t.commands[kind].get("Plexus: Copy board as text").callback({});
+    }
+    assert.deepEqual(calls, [["svg", { download: true }], ["text"], ["svg", { download: true }], ["text"]]);
+    const { createSettingsPanel } = await import("../src/settings.js");
+    createSettingsPanel().settings.find((row) => row.id === "enabled").action.onChange(false);
+    await t.commands.palette.get("Plexus: Export board as SVG").callback({});
+    assert.equal(calls.length, 4);
+  });
+});
+
+test("mounts() reports the live view state", async () => {
+  await withEnv({ enhanced: ["boardAAA1"] }, async (t) => {
+    addNative(t.doc, "boardAAA1");
+    await t.install();
+    t.tick();
+    assert.equal(t.env.win.__plexusDiagram.mounts()[0].state, null);
+    t.views[0].state = () => ({ lod: "map", pattern: "grid", tone: "teal", focus: false });
+    assert.deepEqual(t.env.win.__plexusDiagram.mounts()[0].state, { lod: "map", pattern: "grid", tone: "teal", focus: false });
+  });
+});
+
 // ---- nested boards ----------------------------------------------------------------------------
 
 const settle = () => new Promise((resolve) => setImmediate(resolve));
@@ -662,7 +750,7 @@ test("F5 onOpenBoard swaps the view and session in place: same mount, old view d
     assert.deepEqual(second.args.crumbs, [{ uid: "boardAAA1", title: "Root" }, { uid: "childBBB1", title: "Child" }]);
     assert.ok(native.classList.contains("pxd-native-hidden"));
     assert.equal(t.doc.root.querySelectorAll(".pxd-mount").length, 1);
-    assert.deepEqual(t.env.win.__plexusDiagram.mounts(), [{ uid: "boardAAA1", current: "childBBB1", crumbs: ["boardAAA1", "childBBB1"], fullscreen: false, connected: true }]);
+    assert.deepEqual(t.env.win.__plexusDiagram.mounts(), [{ uid: "boardAAA1", current: "childBBB1", crumbs: ["boardAAA1", "childBBB1"], fullscreen: false, connected: true, state: null }]);
     assert.equal(t.writes.createBlock.length + t.sessions.enhance, 0, "navigation writes nothing");
   });
 });

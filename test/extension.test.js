@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import extension from "../src/extension.js";
-import { createSettingsPanel, readSettings, settingsDefaults, onSettingsChange } from "../src/settings.js";
+import { createSettingsPanel, initializeSettings, normalizeSetting, readSettings, settingsDefaults, onSettingsChange } from "../src/settings.js";
 
 function stubDeps() {
   return {
@@ -53,7 +53,8 @@ test("settings panel follows spec section 6 ids, defaults and row types", () => 
   assert.deepEqual(ids.sort(), [
     "collapse-outline", "default-card-height", "default-card-width", "disable-on-mobile", "enable-shortcuts", "enabled",
     "fullscreen-on-zoom", "graph-links", "grid", "show-minimap", "show-version-badge", "snap-guides", "wheel",
-  ]);
+    "auto-fit-sections", "board-tone", "map-zoom", "show-card-badges", "space-out",
+  ].sort());
   const byId = Object.fromEntries(panel.settings.map((row) => [row.id, row]));
   assert.equal(byId["graph-links"].action.type, "select");
   assert.deepEqual(byId["graph-links"].action.items, ["all", "attributes", "off"]);
@@ -81,6 +82,45 @@ test("readSettings coerces stored values and falls back to defaults", () => {
   assert.equal(settings.enabled, true);
 });
 
+test("1.2 settings: defaults, normalization and panel rows", () => {
+  const defaults = settingsDefaults();
+  assert.equal(defaults["board-tone"], "none");
+  assert.equal(defaults["map-zoom"], "0.45");
+  assert.equal(defaults["auto-fit-sections"], true);
+  assert.equal(defaults["space-out"], false);
+  assert.equal(defaults["show-card-badges"], true);
+  assert.equal(normalizeSetting("grid", "grid"), "grid");
+  assert.equal(normalizeSetting("grid", "bogus"), "dots");
+  assert.equal(normalizeSetting("board-tone", "teal"), "teal");
+  assert.equal(normalizeSetting("board-tone", "mauve"), "none");
+  assert.equal(normalizeSetting("map-zoom", "0.6"), "0.6");
+  assert.equal(normalizeSetting("map-zoom", 0.3), "0.3");
+  assert.equal(normalizeSetting("map-zoom", "0.9"), "0.45");
+  assert.equal(normalizeSetting("auto-fit-sections", "false"), false);
+  assert.equal(normalizeSetting("space-out", "true"), true);
+  assert.equal(normalizeSetting("show-card-badges", "nope"), true);
+  const rows = Object.fromEntries(createSettingsPanel().settings.map((row) => [row.id, row]));
+  assert.equal(rows["board-tone"].action.type, "select");
+  assert.equal(rows["board-tone"].action.items.length, 12);
+  assert.deepEqual(rows["map-zoom"].action.items, ["0.3", "0.45", "0.6"]);
+  assert.match(rows["map-zoom"].name, /Map view below/);
+  assert.deepEqual(rows.grid.action.items, ["dots", "lines", "grid", "plain"]);
+  assert.match(rows.grid.name, /Default board background: pattern/);
+  assert.equal(rows["auto-fit-sections"].action.type, "switch");
+  assert.equal(rows["space-out"].action.type, "switch");
+  assert.equal(rows["show-card-badges"].action.type, "switch");
+});
+
+test("initializeSettings seeds the 1.2 defaults", async () => {
+  const store = new Map();
+  await initializeSettings({ settings: { get: (id) => store.get(id) ?? null, set: async (id, v) => { store.set(id, v); } } });
+  assert.equal(store.get("board-tone"), "none");
+  assert.equal(store.get("map-zoom"), "0.45");
+  assert.equal(store.get("auto-fit-sections"), true);
+  assert.equal(store.get("space-out"), false);
+  assert.equal(store.get("show-card-badges"), true);
+});
+
 test("every settings row fires onSettingsChange with its id and value", () => {
   const seen = [];
   const off = onSettingsChange((id, value) => seen.push([id, value]));
@@ -104,7 +144,7 @@ test("extension exports the Roam lifecycle contract and survives repeated unload
   await extension.onunload();
   await extension.onunload();
 
-  const labels = ["Plexus: Enhance this diagram", "Plexus: New whiteboard here", "Plexus: Restore native diagram", "Plexus: Fullscreen this diagram"];
+  const labels = ["Plexus: Enhance this diagram", "Plexus: New whiteboard here", "Plexus: Restore native diagram", "Plexus: Fullscreen this diagram", "Plexus: Export board as SVG", "Plexus: Copy board as text"];
   for (const label of labels) {
     for (const kind of ["command", "slash"]) {
       assert.ok(api.calls.some(([name, l]) => name === `${kind}:add` && l === label), `${kind}:add ${label}`);

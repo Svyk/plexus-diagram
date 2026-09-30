@@ -1,0 +1,346 @@
+/* Plexus Diagram 1.2 backgrounds: the grid pattern (minor + major lines) and board tones. Rules are
+   scoped .pxd-root .pxd-x or .pxd-root.pxd-bg-x (two classes at least). Tones only set --pxd-surface,
+   which .pxd-root already paints; palette tones mix the palette line into the base surface at ~9%
+   (light) / ~7% (dark). The dark variants are written out for all five signals plus the
+   prefers-color-scheme guard, so they out-rank the dark token block in extension.css. */
+
+/* ------------------------------------------------------------------ grid pattern
+   Minor lines come from the grid element itself (size and offset set inline by the view, exactly like
+   dots and lines). Major lines are drawn by ::before, sized by --pxd-grid-major and offset by
+   --pxd-grid-major-x / --pxd-grid-major-y, all set by the view on the grid element. */
+
+.pxd-root .pxd-grid--grid {
+  --pxd-grid-major: 120px;
+  --pxd-grid-major-x: 0px;
+  --pxd-grid-major-y: 0px;
+  background-image:
+    linear-gradient(var(--pxd-grid-dot) 1px, transparent 1px),
+    linear-gradient(90deg, var(--pxd-grid-dot) 1px, transparent 1px);
+}
+
+.pxd-root .pxd-grid--grid::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background-image:
+    linear-gradient(var(--pxd-grid-major-line, var(--pxd-border-strong)) 1px, transparent 1px),
+    linear-gradient(90deg, var(--pxd-grid-major-line, var(--pxd-border-strong)) 1px, transparent 1px);
+  background-size: var(--pxd-grid-major) var(--pxd-grid-major);
+  background-position: var(--pxd-grid-major-x) var(--pxd-grid-major-y);
+  opacity: 0.55;
+}
+
+/* ------------------------------------------------------------------ tones (light) */
+
+.pxd-root.pxd-bg-paper {
+  --pxd-surface: #eeeded;
+}
+
+.pxd-root.pxd-bg-gray {
+  --pxd-surface: color-mix(in srgb, var(--pxd-gray-line) 9%, var(--bc-main, #ffffff));
+}
+
+.pxd-root.pxd-bg-red {
+  --pxd-surface: color-mix(in srgb, var(--pxd-red-line) 9%, var(--bc-main, #ffffff));
+}
+
+.pxd-root.pxd-bg-orange {
+  --pxd-surface: color-mix(in srgb, var(--pxd-orange-line) 9%, var(--bc-main, #ffffff));
+}
+
+.pxd-root.pxd-bg-yellow {
+  --pxd-surface: color-mix(in srgb, var(--pxd-yellow-line) 9%, var(--bc-main, #ffffff));
+}
+
+.pxd-root.pxd-bg-green {
+  --pxd-surface: color-mix(in srgb, var(--pxd-green-line) 9%, var(--bc-main, #ffffff));
+}
+
+.pxd-root.pxd-bg-teal {
+  --pxd-surface: color-mix(in srgb, var(--pxd-teal-line) 9%, var(--bc-main, #ffffff));
+}
+
+.pxd-root.pxd-bg-blue {
+  --pxd-surface: color-mix(in srgb, var(--pxd-blue-line) 9%, var(--bc-main, #ffffff));
+}
+
+.pxd-root.pxd-bg-indigo {
+  --pxd-surface: color-mix(in srgb, var(--pxd-indigo-line) 9%, var(--bc-main, #ffffff));
+}
+
+.pxd-root.pxd-bg-purple {
+  --pxd-surface: color-mix(in srgb, var(--pxd-purple-line) 9%, var(--bc-main, #ffffff));
+}
+
+.pxd-root.pxd-bg-pink {
+  --pxd-surface: color-mix(in srgb, var(--pxd-pink-line) 9%, var(--bc-main, #ffffff));
+}
+
+/* ------------------------------------------------------------------ tones (dark, five signals) */
+
+.bp3-dark .pxd-root.pxd-bg-paper {
+  --pxd-surface: #191919;
+}
+
+.bp3-dark .pxd-root.pxd-bg-gray {
+  --pxd-surface: color-mix(in srgb, var(--pxd-gray-line) 7%, var(--bc-main, #1e2a35));
+}
+
+.bp3-dark .pxd-root.pxd-bg-red {
+  --pxd-surface: color-mix(in srgb, var(--pxd-red-line) 7%, var(--bc-main, #1e2a35));
+}
+
+.bp3-dark .pxd-root.pxd-bg-orange {
+  --pxd-surface: color-mix(in srgb, var(--pxd-orange-line) 7%, var(--bc-main, #1e2a35));
+}
+
+.bp3-dark .pxd-root.pxd-bg-yellow {
+  --pxd-surface: color-mix(in srgb, var(--pxd-yellow-line) 7%, var(--bc-main, #1e2a35));
+}
+
+.bp3-dark .pxd-root.pxd-bg-green {
+  --pxd-surface: color-mix(in srgb, var(--pxd-green-line) 7%, var(--bc-main, #1e2a35));
+}
+
+.bp3-dark .pxd-root.pxd-bg-teal {
+  --pxd-surface: color-mix(in srgb, var(--pxd-teal-line) 7%, var(--bc-main, #1e2a35));
+}
+
+.bp3-dark .pxd-root.pxd-bg-blue {
+  --pxd-surface: color-mix(in srgb, var(--pxd-blue-line) 7%, var(--bc-main, #1e2a35));
+}
+
+.bp3-dark .pxd-root.pxd-bg-indigo {
+  --pxd-surface: color-mix(in srgb, var(--pxd-indigo-line) 7%, var(--bc-main, #1e2a35));
+}
+
+.bp3-dark .pxd-root.pxd-bg-purple {
+  --pxd-surface: color-mix(in srgb, var(--pxd-purple-line) 7%, var(--bc-main, #1e2a35));
+}
+
+.bp3-dark .pxd-root.pxd-bg-pink {
+  --pxd-surface: color-mix(in srgb, var(--pxd-pink-line) 7%, var(--bc-main, #1e2a35));
+}
+
+body.bt-theme-dark .pxd-root.pxd-bg-paper {
+  --pxd-surface: #191919;
+}
+
+body.bt-theme-dark .pxd-root.pxd-bg-gray {
+  --pxd-surface: color-mix(in srgb, var(--pxd-gray-line) 7%, var(--bc-main, #1e2a35));
+}
+
+body.bt-theme-dark .pxd-root.pxd-bg-red {
+  --pxd-surface: color-mix(in srgb, var(--pxd-red-line) 7%, var(--bc-main, #1e2a35));
+}
+
+body.bt-theme-dark .pxd-root.pxd-bg-orange {
+  --pxd-surface: color-mix(in srgb, var(--pxd-orange-line) 7%, var(--bc-main, #1e2a35));
+}
+
+body.bt-theme-dark .pxd-root.pxd-bg-yellow {
+  --pxd-surface: color-mix(in srgb, var(--pxd-yellow-line) 7%, var(--bc-main, #1e2a35));
+}
+
+body.bt-theme-dark .pxd-root.pxd-bg-green {
+  --pxd-surface: color-mix(in srgb, var(--pxd-green-line) 7%, var(--bc-main, #1e2a35));
+}
+
+body.bt-theme-dark .pxd-root.pxd-bg-teal {
+  --pxd-surface: color-mix(in srgb, var(--pxd-teal-line) 7%, var(--bc-main, #1e2a35));
+}
+
+body.bt-theme-dark .pxd-root.pxd-bg-blue {
+  --pxd-surface: color-mix(in srgb, var(--pxd-blue-line) 7%, var(--bc-main, #1e2a35));
+}
+
+body.bt-theme-dark .pxd-root.pxd-bg-indigo {
+  --pxd-surface: color-mix(in srgb, var(--pxd-indigo-line) 7%, var(--bc-main, #1e2a35));
+}
+
+body.bt-theme-dark .pxd-root.pxd-bg-purple {
+  --pxd-surface: color-mix(in srgb, var(--pxd-purple-line) 7%, var(--bc-main, #1e2a35));
+}
+
+body.bt-theme-dark .pxd-root.pxd-bg-pink {
+  --pxd-surface: color-mix(in srgb, var(--pxd-pink-line) 7%, var(--bc-main, #1e2a35));
+}
+
+.rm-dark-theme .pxd-root.pxd-bg-paper {
+  --pxd-surface: #191919;
+}
+
+.rm-dark-theme .pxd-root.pxd-bg-gray {
+  --pxd-surface: color-mix(in srgb, var(--pxd-gray-line) 7%, var(--bc-main, #1e2a35));
+}
+
+.rm-dark-theme .pxd-root.pxd-bg-red {
+  --pxd-surface: color-mix(in srgb, var(--pxd-red-line) 7%, var(--bc-main, #1e2a35));
+}
+
+.rm-dark-theme .pxd-root.pxd-bg-orange {
+  --pxd-surface: color-mix(in srgb, var(--pxd-orange-line) 7%, var(--bc-main, #1e2a35));
+}
+
+.rm-dark-theme .pxd-root.pxd-bg-yellow {
+  --pxd-surface: color-mix(in srgb, var(--pxd-yellow-line) 7%, var(--bc-main, #1e2a35));
+}
+
+.rm-dark-theme .pxd-root.pxd-bg-green {
+  --pxd-surface: color-mix(in srgb, var(--pxd-green-line) 7%, var(--bc-main, #1e2a35));
+}
+
+.rm-dark-theme .pxd-root.pxd-bg-teal {
+  --pxd-surface: color-mix(in srgb, var(--pxd-teal-line) 7%, var(--bc-main, #1e2a35));
+}
+
+.rm-dark-theme .pxd-root.pxd-bg-blue {
+  --pxd-surface: color-mix(in srgb, var(--pxd-blue-line) 7%, var(--bc-main, #1e2a35));
+}
+
+.rm-dark-theme .pxd-root.pxd-bg-indigo {
+  --pxd-surface: color-mix(in srgb, var(--pxd-indigo-line) 7%, var(--bc-main, #1e2a35));
+}
+
+.rm-dark-theme .pxd-root.pxd-bg-purple {
+  --pxd-surface: color-mix(in srgb, var(--pxd-purple-line) 7%, var(--bc-main, #1e2a35));
+}
+
+.rm-dark-theme .pxd-root.pxd-bg-pink {
+  --pxd-surface: color-mix(in srgb, var(--pxd-pink-line) 7%, var(--bc-main, #1e2a35));
+}
+
+body.roam-body.dark .pxd-root.pxd-bg-paper {
+  --pxd-surface: #191919;
+}
+
+body.roam-body.dark .pxd-root.pxd-bg-gray {
+  --pxd-surface: color-mix(in srgb, var(--pxd-gray-line) 7%, var(--bc-main, #1e2a35));
+}
+
+body.roam-body.dark .pxd-root.pxd-bg-red {
+  --pxd-surface: color-mix(in srgb, var(--pxd-red-line) 7%, var(--bc-main, #1e2a35));
+}
+
+body.roam-body.dark .pxd-root.pxd-bg-orange {
+  --pxd-surface: color-mix(in srgb, var(--pxd-orange-line) 7%, var(--bc-main, #1e2a35));
+}
+
+body.roam-body.dark .pxd-root.pxd-bg-yellow {
+  --pxd-surface: color-mix(in srgb, var(--pxd-yellow-line) 7%, var(--bc-main, #1e2a35));
+}
+
+body.roam-body.dark .pxd-root.pxd-bg-green {
+  --pxd-surface: color-mix(in srgb, var(--pxd-green-line) 7%, var(--bc-main, #1e2a35));
+}
+
+body.roam-body.dark .pxd-root.pxd-bg-teal {
+  --pxd-surface: color-mix(in srgb, var(--pxd-teal-line) 7%, var(--bc-main, #1e2a35));
+}
+
+body.roam-body.dark .pxd-root.pxd-bg-blue {
+  --pxd-surface: color-mix(in srgb, var(--pxd-blue-line) 7%, var(--bc-main, #1e2a35));
+}
+
+body.roam-body.dark .pxd-root.pxd-bg-indigo {
+  --pxd-surface: color-mix(in srgb, var(--pxd-indigo-line) 7%, var(--bc-main, #1e2a35));
+}
+
+body.roam-body.dark .pxd-root.pxd-bg-purple {
+  --pxd-surface: color-mix(in srgb, var(--pxd-purple-line) 7%, var(--bc-main, #1e2a35));
+}
+
+body.roam-body.dark .pxd-root.pxd-bg-pink {
+  --pxd-surface: color-mix(in srgb, var(--pxd-pink-line) 7%, var(--bc-main, #1e2a35));
+}
+
+.pxd-root.pxd-root--dark.pxd-bg-paper {
+  --pxd-surface: #191919;
+}
+
+.pxd-root.pxd-root--dark.pxd-bg-gray {
+  --pxd-surface: color-mix(in srgb, var(--pxd-gray-line) 7%, var(--bc-main, #1e2a35));
+}
+
+.pxd-root.pxd-root--dark.pxd-bg-red {
+  --pxd-surface: color-mix(in srgb, var(--pxd-red-line) 7%, var(--bc-main, #1e2a35));
+}
+
+.pxd-root.pxd-root--dark.pxd-bg-orange {
+  --pxd-surface: color-mix(in srgb, var(--pxd-orange-line) 7%, var(--bc-main, #1e2a35));
+}
+
+.pxd-root.pxd-root--dark.pxd-bg-yellow {
+  --pxd-surface: color-mix(in srgb, var(--pxd-yellow-line) 7%, var(--bc-main, #1e2a35));
+}
+
+.pxd-root.pxd-root--dark.pxd-bg-green {
+  --pxd-surface: color-mix(in srgb, var(--pxd-green-line) 7%, var(--bc-main, #1e2a35));
+}
+
+.pxd-root.pxd-root--dark.pxd-bg-teal {
+  --pxd-surface: color-mix(in srgb, var(--pxd-teal-line) 7%, var(--bc-main, #1e2a35));
+}
+
+.pxd-root.pxd-root--dark.pxd-bg-blue {
+  --pxd-surface: color-mix(in srgb, var(--pxd-blue-line) 7%, var(--bc-main, #1e2a35));
+}
+
+.pxd-root.pxd-root--dark.pxd-bg-indigo {
+  --pxd-surface: color-mix(in srgb, var(--pxd-indigo-line) 7%, var(--bc-main, #1e2a35));
+}
+
+.pxd-root.pxd-root--dark.pxd-bg-purple {
+  --pxd-surface: color-mix(in srgb, var(--pxd-purple-line) 7%, var(--bc-main, #1e2a35));
+}
+
+.pxd-root.pxd-root--dark.pxd-bg-pink {
+  --pxd-surface: color-mix(in srgb, var(--pxd-pink-line) 7%, var(--bc-main, #1e2a35));
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not(.bp3-light) .pxd-root.pxd-bg-paper {
+    --pxd-surface: #191919;
+  }
+
+  :root:not(.bp3-light) .pxd-root.pxd-bg-gray {
+    --pxd-surface: color-mix(in srgb, var(--pxd-gray-line) 7%, var(--bc-main, #1e2a35));
+  }
+
+  :root:not(.bp3-light) .pxd-root.pxd-bg-red {
+    --pxd-surface: color-mix(in srgb, var(--pxd-red-line) 7%, var(--bc-main, #1e2a35));
+  }
+
+  :root:not(.bp3-light) .pxd-root.pxd-bg-orange {
+    --pxd-surface: color-mix(in srgb, var(--pxd-orange-line) 7%, var(--bc-main, #1e2a35));
+  }
+
+  :root:not(.bp3-light) .pxd-root.pxd-bg-yellow {
+    --pxd-surface: color-mix(in srgb, var(--pxd-yellow-line) 7%, var(--bc-main, #1e2a35));
+  }
+
+  :root:not(.bp3-light) .pxd-root.pxd-bg-green {
+    --pxd-surface: color-mix(in srgb, var(--pxd-green-line) 7%, var(--bc-main, #1e2a35));
+  }
+
+  :root:not(.bp3-light) .pxd-root.pxd-bg-teal {
+    --pxd-surface: color-mix(in srgb, var(--pxd-teal-line) 7%, var(--bc-main, #1e2a35));
+  }
+
+  :root:not(.bp3-light) .pxd-root.pxd-bg-blue {
+    --pxd-surface: color-mix(in srgb, var(--pxd-blue-line) 7%, var(--bc-main, #1e2a35));
+  }
+
+  :root:not(.bp3-light) .pxd-root.pxd-bg-indigo {
+    --pxd-surface: color-mix(in srgb, var(--pxd-indigo-line) 7%, var(--bc-main, #1e2a35));
+  }
+
+  :root:not(.bp3-light) .pxd-root.pxd-bg-purple {
+    --pxd-surface: color-mix(in srgb, var(--pxd-purple-line) 7%, var(--bc-main, #1e2a35));
+  }
+
+  :root:not(.bp3-light) .pxd-root.pxd-bg-pink {
+    --pxd-surface: color-mix(in srgb, var(--pxd-pink-line) 7%, var(--bc-main, #1e2a35));
+  }
+}

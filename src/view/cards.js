@@ -2,7 +2,7 @@
 // and edit mode (spec 3.2). Roam content only ever comes from host.renderString /
 // renderBlock / renderPage; we never build <img> or fake editors.
 
-import { DEFAULT_SIZES, firstLine, isUntitledBoard, parseBoardTitle, plainText } from "../model/schema.js";
+import { DEFAULT_SIZES, attrNameOf, classifyString, firstLine, isUntitledBoard, parseBoardTitle, plainText } from "../model/schema.js";
 import { boardPreview, descendantsOf } from "../model/board.js";
 import { lodForZoom, rectsIntersect } from "../model/geometry.js";
 
@@ -15,6 +15,12 @@ const CONTENT_LIMIT = 12;
 const CONTENT_DEPTH = 2;
 const GROW_CAP = 900;
 const HEADER_H = 32;
+const META_H = 28;
+const REF_TITLE_MAX = 120;
+const HEADER_TEXT_MAX = 160;
+const TINY_MINI_PX = 28;
+const ATTR_CHIPS_MAX = 3;
+const SVG_NS = "http://www.w3.org/2000/svg";
 const BOARD_KEY_DEPTH = 3;
 const BOARD_KEY_NODES = 400;
 
@@ -105,6 +111,7 @@ const childProps = (c) => c?.[":block/props"] ?? c?.props;
 
 function contentKeyOf(item) {
   const parts = [item.kind, item.enhanced ? "e" : "", item.string, item.collapsed ? "c" : "", item.fontSize || ""];
+  if (item.kind === "board") parts.push(item.w, item.h);
   if (item.kind === "board") {
     // The mini preview draws the child board's layout, so a layout-only change inside it must refresh the card.
     let budget = BOARD_KEY_NODES;
@@ -137,12 +144,17 @@ export function createItemRenderer({
   onGrow,
   onRenameCommit,
   onEditChange,
+  onEditResize,
   onOpenBoard,
   onRenameBoard,
+  onBadgeClick,
 } = {}) {
   const shells = new Map(); // uid → rec
   const mounted = new Map(); // uid → lastWanted (LRU order = insertion order)
   let lod = "detail";
+  let focusSet = null;
+  let badgeMap = new Map();
+  let showBadges = false;
   let zoomCache = 1;
   let paused = false;
   let editing = null;
@@ -212,7 +224,7 @@ export function createItemRenderer({
   };
 
   const buildShell = (item) => {
-    const rec = { uid: item.uid, type: item.type, roots: [], contentKey: null, rect: null };
+    const rec = { uid: item.uid, type: item.type, roots: [], contentKey: null, rect: null, bare: item.type === "card" };
     if (item.type === "section") {
       const node = el("div", "pxd-section", null);
       rec.el = node;
@@ -236,6 +248,20 @@ export function createItemRenderer({
 
   const paintShell = (rec, item) => {
     const node = rec.el;
+    if (item.type !== "section") {
+      // A block-ref card's title lives in the referenced block; resolve it here so map LOD and collapsed cards keep a header.
+      rec.refString = null;
+      rec.refBoard = false;
+      if (item.kind === "block" && item.target?.uid) {
+        const refString = host?.blockString?.(item.target.uid);
+        if (typeof refString === "string") {
+          rec.refString = refString;
+          rec.refBoard = classifyString(refString).kind === "board";
+        }
+        if (rec.refBoard) rec.refTitle = parseBoardTitle(rec.refString) || "Untitled board";
+        else rec.refTitle = typeof refString === "string" ? firstLine(refString).slice(0, REF_TITLE_MAX) : "";
+      } else rec.refTitle = "";
+    }
     const base = item.type === "section" ? "pxd-section" : `pxd-item pxd-item--${item.type} pxd-item--${item.kind}`;
     const cls = [base];
     if (item.color) cls.push(`pxd-c-${item.color}`);
@@ -245,6 +271,12 @@ export function createItemRenderer({
     if (rec.selected) cls.push(item.type === "section" ? "pxd-section--selected" : "pxd-item--selected");
     if (rec.hover) cls.push("pxd-item--drop");
     if (editing?.uid === item.uid) cls.push("pxd-item--editing");
+    if (item.pinned) cls.push(item.type === "section" ? "pxd-section--pinned" : "pxd-item--pinned");
+    if (focusSet && !focusSet.has(item.uid)) cls.push(item.type === "section" ? "pxd-section--focus-dim" : "pxd-item--focus-dim");
+    if (item.type !== "section") {
+      if (rec.bare) cls.push("pxd-item--bare");
+      if (rec.refBoard) cls.push("pxd-item--wb");
+    }
     node.className = cls.join(" ");
     if (item.type === "section") {
       if (!rec.titleRendered || rec.titleString !== item.string) {
@@ -253,12 +285,7 @@ export function createItemRenderer({
         rec.titleRendered = false;
       }
     } else {
-      // A block-ref card's title lives in the referenced block; resolve it here so map LOD and collapsed cards keep a header.
-      if (item.kind === "block" && item.target?.uid) {
-        const refString = host?.blockString?.(item.target.uid);
-        rec.refTitle = typeof refString === "string" ? firstLine(refString) : "";
-      } else rec.refTitle = "";
-      if (editing?.uid !== item.uid && !rec.renaming) rec.header.textContent = item.type === "text" ? "" : (rec.refTitle || item.title || "");
+      if (editing?.uid !== item.uid && !rec.renaming) rec.header.textContent = item.type === "text" ? "" : String(rec.refTitle || item.title || "").slice(0, HEADER_TEXT_MAX);
       if (item.type === "text") rec.header.style.display = "none";
       rec.header.classList.toggle("pxd-item__header--muted", item.kind === "board" && isUntitledBoard(item.title));
     }
@@ -311,7 +338,9 @@ export function createItemRenderer({
           rec.contentKey = null;
           mounted.delete(uid);
           rec.titleRendered = false;
+          if (rec.type === "card") { rec.bare = true; rec.el.classList.add("pxd-item--bare"); }
         }
+        if (showBadges) renderBadges(rec);
       } else if (rect && (!rec.rect || rec.rect.x !== rect.x || rec.rect.y !== rect.y || rec.rect.w !== rect.w || rec.rect.h !== rect.h)) {
         position(rec, rect);
       }
@@ -346,24 +375,56 @@ export function createItemRenderer({
   const openBoard = (uid) => { if (onOpenBoard) onOpenBoard(uid); else host?.openBlock?.(uid); };
   const commitBoardName = (uid, name) => (onRenameBoard || ((u, n) => session?.renameBoard?.(u, n)))(uid, name);
 
-  // Board card body: a mini map of the child board's items, the item count and, while untitled, a name field.
-  const mountBoardBody = (body, item) => {
-    const preview = boardPreview(item);
+  // Board card body: a thumbnail of the child board (padded frame, titled minis, section frames, hairline connections),
+  // the item count and, while untitled, a name field. `openUid` is the board the Open button navigates to.
+  const mountBoardBody = (body, item, { openUid = item.uid } = {}) => {
+    const innerW = Math.max(1, (Number(item.w) || 0) - 24);
+    const preview = boardPreview(item, { aspect: innerW / Math.max(40, (Number(item.h) || 0) - HEADER_H - META_H) });
     const wrap = el("div", "pxd-item__board", body);
     const holder = el("div", "pxd-board-preview", wrap);
-    const canvas = el("div", "pxd-board-preview__canvas", holder);
-    canvas.style.aspectRatio = String(preview.aspect);
-    const pct = (n) => `${Math.round(n * 10000) / 100}%`;
-    for (const r of preview.rects) {
-      const cls = ["pxd-mini"];
-      if (r.type === "section") cls.push("pxd-mini--section");
-      else if (r.type === "text") cls.push("pxd-mini--text");
-      if (r.color) cls.push(`pxd-c-${r.color}`);
-      const mini = el("div", cls.join(" "), canvas);
-      mini.style.left = pct(r.x);
-      mini.style.top = pct(r.y);
-      mini.style.width = pct(r.w);
-      mini.style.height = pct(r.h);
+    if (preview.empty) {
+      el("div", "pxd-board-preview__empty", holder).textContent = "Empty board";
+    } else {
+      const canvas = el("div", "pxd-board-preview__canvas", holder);
+      const pct = (n) => `${Math.round(n * 10000) / 100}%`;
+      const addMini = (r) => {
+        const cls = ["pxd-mini"];
+        if (r.type === "section") cls.push("pxd-mini--section");
+        else if (r.type === "text") cls.push("pxd-mini--text");
+        if (r.color) cls.push(`pxd-c-${r.color}`);
+        if (r.w * innerW < TINY_MINI_PX) cls.push("pxd-mini--tiny");
+        const mini = el("div", cls.join(" "), canvas);
+        mini.style.left = pct(r.x);
+        mini.style.top = pct(r.y);
+        mini.style.width = pct(r.w);
+        mini.style.height = pct(r.h);
+        // Ref and image cards have no text of their own: use the referenced block's first line, or the kind.
+        let title = r.title;
+        if (!title && r.ref) {
+          const text = host?.blockString?.(r.ref);
+          if (typeof text === "string") title = firstLine(text).slice(0, REF_TITLE_MAX);
+        }
+        if (!title && r.kind === "image") title = "Image";
+        if (title) el("div", "pxd-mini__title", mini).textContent = title;
+      };
+      // Sections first, then the connection hairlines, then cards on top (rects arrive sections-first).
+      for (const r of preview.rects) if (r.type === "section") addMini(r);
+      if (preview.edges.length) {
+        const svg = doc.createElementNS(SVG_NS, "svg");
+        svg.setAttribute("class", "pxd-board-preview__edges");
+        svg.setAttribute("viewBox", "0 0 1 1");
+        svg.setAttribute("preserveAspectRatio", "none");
+        for (const e of preview.edges) {
+          const line = doc.createElementNS(SVG_NS, "line");
+          line.setAttribute("x1", String(e.x1));
+          line.setAttribute("y1", String(e.y1));
+          line.setAttribute("x2", String(e.x2));
+          line.setAttribute("y2", String(e.y2));
+          svg.append(line);
+        }
+        canvas.append(svg);
+      }
+      for (const r of preview.rects) if (r.type !== "section") addMini(r);
     }
     if (item.enhanced && isUntitledBoard(item.title)) {
       const input = el("input", "pxd-input pxd-item__board-name", wrap);
@@ -387,19 +448,21 @@ export function createItemRenderer({
       input.addEventListener("blur", commit);
     }
     const meta = el("div", "pxd-item__board-meta", wrap);
-    el("span", "pxd-item__board-count", meta).textContent = preview.count ? `${preview.count} ${preview.count === 1 ? "item" : "items"}` : "Empty board";
+    el("span", "pxd-item__board-count", meta).textContent = `${preview.count} ${preview.count === 1 ? "item" : "items"}`;
     const open = el("button", "pxd-btn pxd-item__open", meta);
     open.type = "button";
     open.textContent = "Open";
     open.dataset.action = "open";
     for (const type of ["pointerdown", "mousedown", "dblclick"]) open.addEventListener(type, stopEvent);
-    open.addEventListener("click", (event) => { event.stopPropagation(); openBoard(item.uid); });
+    open.addEventListener("click", (event) => { event.stopPropagation(); openBoard(openUid); });
   };
 
   const mountContent = (rec, item) => {
     const body = rec.body;
     unmountRoots(rec);
     body.replaceChildren();
+    rec.bare = false;
+    rec.el.classList.remove("pxd-item--bare");
     const budget = { n: 0, roots: [] };
     if (item.collapsed) {
       rec.contentKey = contentKeyOf(item);
@@ -428,19 +491,35 @@ export function createItemRenderer({
     } else if (item.kind === "block") {
       const ref = item.target.uid;
       const refString = host?.blockString?.(ref);
-      rec.refTitle = typeof refString === "string" ? firstLine(refString) : "";
-      if (editing?.uid !== item.uid) rec.header.textContent = rec.refTitle || item.title || "";
-      if (typeof refString === "string" && refString.trim()) budget.roots.push(renderRoot(body, refString, "pxd-rs pxd-item__string"));
-      const tree = host?.pullTree?.(ref, CONTENT_DEPTH, CONTENT_LIMIT);
-      const apply = (blocks, sync = false) => {
-        if (disposed || !body.isConnected || (!sync && rec.contentKey !== contentKeyOf(item))) return;
-        if (!refString?.trim() && !blocks?.length) el("div", "pxd-item__placeholder", body).textContent = "Empty card";
-        const b = { n: 0, roots: [] };
-        renderBlocks(body, blocks || [], 1, b);
-        rec.roots.push(...b.roots);
-      };
-      if (tree && typeof tree.then === "function") tree.then((t) => apply(t)).catch(() => {});
-      else apply(tree, true);
+      const isBoardRef = typeof refString === "string" && classifyString(refString).kind === "board";
+      if (isBoardRef) rec.refTitle = parseBoardTitle(refString) || "Untitled board";
+      else rec.refTitle = typeof refString === "string" ? firstLine(refString).slice(0, REF_TITLE_MAX) : "";
+      if (editing?.uid !== item.uid) rec.header.textContent = String(rec.refTitle || item.title || "").slice(0, HEADER_TEXT_MAX);
+      if (isBoardRef) {
+        // Whiteboard shortcut: the same thumbnail from the referenced board's children. Never renderString (a nested overlay).
+        const pulled = host?.pullBoard?.(ref);
+        mountBoardBody(body, {
+          uid: ref,
+          string: refString,
+          content: pulled?.[":block/children"] ?? pulled?.children ?? [],
+          w: item.w,
+          h: item.h,
+          title: rec.refTitle,
+          enhanced: false,
+        }, { openUid: ref });
+      } else {
+        if (typeof refString === "string" && refString.trim()) budget.roots.push(renderRoot(body, refString, "pxd-rs pxd-item__string"));
+        const tree = host?.pullTree?.(ref, CONTENT_DEPTH, CONTENT_LIMIT);
+        const apply = (blocks, sync = false) => {
+          if (disposed || !body.isConnected || (!sync && rec.contentKey !== contentKeyOf(item))) return;
+          if (!refString?.trim() && !blocks?.length) el("div", "pxd-item__placeholder", body).textContent = "Empty card";
+          const b = { n: 0, roots: [] };
+          renderBlocks(body, blocks || [], 1, b);
+          rec.roots.push(...b.roots);
+        };
+        if (tree && typeof tree.then === "function") tree.then((t) => apply(t)).catch(() => {});
+        else apply(tree, true);
+      }
     } else {
       if (item.string?.trim()) budget.roots.push(renderRoot(body, item.string, "pxd-rs pxd-item__string"));
       renderBlocks(body, item.content || [], 1, budget);
@@ -472,6 +551,7 @@ export function createItemRenderer({
       rec.titleRendered = false;
     } else {
       rec.body?.replaceChildren?.();
+      if (rec.type === "card") { rec.bare = true; rec.el.classList.add("pxd-item--bare"); }
     }
     rec.contentKey = null;
     mounted.delete(uid);
@@ -526,20 +606,21 @@ export function createItemRenderer({
   };
 
   // Decide which items need content for the current viewport; mount in idle chunks.
-  const scheduleContent = ({ visibleRect, zoom = zoomCache }) => {
+  const scheduleContent = ({ visibleRect, zoom = zoomCache, tier = null }) => {
     zoomCache = zoom;
     if (!lastBoard || !lastRects) return;
     const next = new Set();
-    if (lodForZoom(zoom) === "detail") {
+    if ((tier ?? lodForZoom(zoom)) === "detail") {
       for (const [uid, rec] of shells) {
         const r = lastRects.get(uid);
         if (r && rectsIntersect(r, visibleRect)) next.add(uid);
       }
     } else {
-      // map LOD: section titles and text items stay rendered (they are the board's headings); card bodies unmount later
+      // map / overview LOD: section titles, text items and board thumbnails (plain divs) stay rendered; card bodies unmount later
       for (const [uid, rec] of shells) {
         const r = lastRects.get(uid);
-        if ((rec.type === "section" || rec.type === "text") && r && rectsIntersect(r, visibleRect)) next.add(uid);
+        const keep = rec.type === "section" || rec.type === "text" || lastBoard.items.get(uid)?.kind === "board";
+        if (keep && r && rectsIntersect(r, visibleRect)) next.add(uid);
       }
     }
     wanted = next;
@@ -557,8 +638,10 @@ export function createItemRenderer({
   };
 
   const setLod = (nextLod, zoom) => {
-    lod = nextLod;
+    const prev = lod;
+    lod = nextLod === "map" || nextLod === "overview" ? nextLod : "detail";
     zoomCache = zoom;
+    if (showBadges && (prev === "detail") !== (lod === "detail")) for (const rec of shells.values()) renderBadges(rec);
   };
 
   // ---------------------------------------------------------------- preview during gestures
@@ -585,6 +668,110 @@ export function createItemRenderer({
       live.set(r.uid, { x: r.x, y: r.y, w: r.w, h: r.h });
     }
     return live;
+  };
+
+  // Sections only: live auto-fit growth during a drag positions section shells and nothing else.
+  const previewSectionRects = (list) => {
+    const live = new Map();
+    for (const r of list || []) {
+      const rec = shells.get(r.uid);
+      if (!rec || rec.type !== "section") continue;
+      position(rec, { x: r.x, y: r.y, w: r.w, h: r.h });
+      live.set(r.uid, { x: r.x, y: r.y, w: r.w, h: r.h });
+    }
+    return live;
+  };
+  // Snap shells back to the model rects (a cancelled or refused gesture).
+  const resetRects = (rectsMap, uids = null) => {
+    for (const uid of uids ? [...uids] : [...shells.keys()]) {
+      const rec = shells.get(uid);
+      const r = rectsMap?.get?.(uid);
+      if (rec && r) position(rec, { x: r.x, y: r.y, w: r.w, h: r.h });
+    }
+  };
+  // World-unit height of a mounted card's header plus body content; null when there is nothing to measure.
+  const measureContent = (uid) => {
+    const rec = shells.get(uid);
+    if (!rec || rec.type === "section" || lod !== "detail" || !mounted.has(uid) || rec.bare) return null;
+    // The body is a flex child of a fixed-height card, so its scrollHeight is clamped to the box. Let it take its
+    // natural height for the read (a one-off user action), then put the inline styles back.
+    const body = rec.body;
+    const st = body?.style;
+    const saved = st ? { flex: st.flex, height: st.height } : null;
+    if (st) { st.flex = "0 0 auto"; st.height = "auto"; }
+    const natural = Number(body?.scrollHeight) || 0;
+    if (st && saved) { st.flex = saved.flex; st.height = saved.height; }
+    const h = (Number(rec.header?.offsetHeight) || 0) + natural;
+    return h > 0 ? h : null;
+  };
+
+  // ---------------------------------------------------------------- badges and focus (read-only, never touch the model)
+  const attrChipsOf = (rec, item) => {
+    if (item.kind === "board") return [];
+    const lines = [];
+    const own = item.kind === "block" ? rec.refString : item.string;
+    if (typeof own === "string") lines.push(...own.split("\n"));
+    for (const c of item.content || []) lines.push(...String(childString(c)).split("\n"));
+    const out = [];
+    for (const line of lines) {
+      if (out.length >= ATTR_CHIPS_MAX) break;
+      const name = attrNameOf(line);
+      if (!name) continue;
+      const value = plainText(line.slice(line.indexOf("::") + 2), 40);
+      if (value) out.push(`${plainText(name, 24)}: ${value}`);
+    }
+    return out;
+  };
+
+  const renderBadges = (rec) => {
+    const item = lastBoard?.items.get(rec.uid);
+    const visible = showBadges && lod === "detail" && rec.type === "card" && item && editing?.uid !== rec.uid;
+    const clear = () => { if (rec.badgeEl) { rec.badgeEl.remove(); rec.badgeEl = null; } rec.badgeKey = null; };
+    if (!visible) return clear();
+    const info = badgeMap?.get?.(rec.uid) || null;
+    const chips = [];
+    if (info?.refs > 0) chips.push({ cls: "refs", text: `${info.refs} refs`, title: `${info.refs} references to this card` });
+    if (info?.boards > 0) chips.push({ cls: "boards", text: `on ${info.boards} boards`, title: "Shown on other boards", action: "boards" });
+    if (info && (info.open > 0 || info.done > 0)) chips.push({ cls: "todo", text: `${info.open || 0}/${info.done || 0}`, title: `${info.open || 0} open, ${info.done || 0} done` });
+    for (const text of attrChipsOf(rec, item)) chips.push({ cls: "attr", text });
+    if (!chips.length) return clear();
+    const key = JSON.stringify(chips);
+    if (rec.badgeEl && rec.badgeKey === key) return;
+    clear();
+    const row = el("div", "pxd-item__badges", rec.el);
+    for (const chip of chips) {
+      const node = el(chip.action ? "button" : "span", `pxd-badge-chip pxd-badge-chip--${chip.cls}`, row);
+      node.textContent = chip.text;
+      if (chip.title) node.title = chip.title;
+      if (chip.action) {
+        node.type = "button";
+        for (const type of ["pointerdown", "mousedown", "dblclick"]) node.addEventListener(type, stopEvent);
+        node.addEventListener("click", (event) => { event.stopPropagation(); onBadgeClick?.(rec.uid, chip.action); });
+      }
+    }
+    rec.badgeEl = row;
+    rec.badgeKey = key;
+  };
+
+  const setBadges = (map) => {
+    badgeMap = map instanceof Map ? map : new Map();
+    if (showBadges) for (const rec of shells.values()) renderBadges(rec);
+  };
+  const setShowBadges = (on) => {
+    const next = Boolean(on);
+    if (next === showBadges) return;
+    showBadges = next;
+    for (const rec of shells.values()) renderBadges(rec);
+  };
+
+  const setFocus = (uids) => {
+    focusSet = uids ? new Set(uids) : null;
+    for (const [uid, rec] of shells) {
+      const on = Boolean(focusSet && !focusSet.has(uid));
+      if (rec.focusDim === on) continue;
+      rec.focusDim = on;
+      rec.el.classList.toggle(rec.type === "section" ? "pxd-section--focus-dim" : "pxd-item--focus-dim", on);
+    }
   };
 
   const setSelection = (uids) => {
@@ -703,10 +890,18 @@ export function createItemRenderer({
       mo = new MO(() => { if (editing === e && e.ready && focusLost(doc.activeElement)) armFloor(); });
       try { mo.observe(e.editor, { childList: true, subtree: true }); } catch { /* stub */ }
     }
+    // The editing card grows with its text: report its live height so the view can grow the section around it.
+    const RO = doc.defaultView?.ResizeObserver || globalThis.ResizeObserver;
+    let ro = null;
+    if (typeof RO === "function" && onEditResize) {
+      ro = new RO(() => { if (editing === e) onEditResize(e.uid, Number(e.rec.el?.offsetHeight) || 0); });
+      try { ro.observe(e.editor); } catch { /* stub */ }
+    }
     floorTeardown = () => {
       e.editor.removeEventListener("focusin", onIn);
       e.editor.removeEventListener("focusout", onOut);
       mo?.disconnect();
+      ro?.disconnect();
       floor?.cancel?.();
       floor = null;
     };
@@ -718,7 +913,7 @@ export function createItemRenderer({
   const enterEdit = async (uid) => {
     const rec = shells.get(uid);
     const item = lastBoard?.items.get(uid);
-    if (!rec || !item || rec.type === "section" || item.kind === "board") return false;
+    if (!rec || !item || rec.type === "section" || item.kind === "board" || rec.refBoard) return false;
     if (editing?.uid === uid) return true;
     if (editing) await exitEdit();
     if (!host?.renderBlock) { host?.openBlock?.(uid); return false; }
@@ -732,6 +927,7 @@ export function createItemRenderer({
     for (const type of ["pointerdown", "pointerup", "click", "dblclick", "wheel", "mousedown", "mouseup"]) editor.addEventListener(type, stopEvent);
     editing = { uid, rec, editor, targetUid, item, ready: false };
     rec.el.classList.add("pxd-item--editing");
+    renderBadges(rec);
     if (rec.rect) rec.el.style.minHeight = `${rec.rect.h}px`;
     lastOutsideDown = -Infinity;
     attachFocusGuard();
@@ -770,12 +966,14 @@ export function createItemRenderer({
     rec.el.style.minHeight = "";
     rec.contentKey = null;
     mounted.delete(uid);
+    if (rec.type === "card") { rec.bare = true; rec.el.classList.add("pxd-item--bare"); }
     if (!silent && !disposed) {
       const live = lastBoard?.items.get(uid) || item;
       if (live && shells.has(uid)) {
         mountContent(rec, live);
         paintShell(rec, live);
         mounted.set(uid, now());
+        renderBadges(rec);
       }
       onEditChange?.(null);
       const need = contentH + (["page", "board"].includes(item.kind) || item.collapsed ? HEADER_H : 0) + 20;
@@ -901,6 +1099,12 @@ export function createItemRenderer({
     setLod,
     previewMove,
     previewRects,
+    previewSectionRects,
+    resetRects,
+    measureContent,
+    setBadges,
+    setShowBadges,
+    setFocus,
     setSelection,
     setHover,
     enterEdit,

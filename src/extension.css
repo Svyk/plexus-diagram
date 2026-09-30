@@ -319,6 +319,7 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   font-weight: 600;
   color: var(--pxd-text-c, var(--pxd-text));
   white-space: nowrap;
+  max-height: 100%;
   overflow: hidden;
   text-overflow: ellipsis;
   cursor: grab;
@@ -568,21 +569,22 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   box-shadow: 0 0 0 2px var(--pxd-accent-soft);
 }
 
-/* Heptabase-style: the title sits outside the frame, on its top edge, so it never covers member cards
-   (in map LOD it grows upward with --pxd-map-font). */
+/* Heptabase-style pill: the title floats on the frame's top edge, outside it, so it never covers member cards
+   (in map LOD it grows upward with --pxd-map-font). Dark mode keeps the colored border + text and no tinted fill. */
 .pxd-section__title {
   position: absolute;
   left: -2px;
-  bottom: 100%;
+  bottom: calc(100% + 4px);
   max-width: calc(100% + 4px);
   box-sizing: border-box;
   padding: 2px 10px 3px;
   font-size: 15px;
-  font-weight: 600;
+  font-weight: 700;
   line-height: 20px;
   color: var(--pxd-text-c, var(--pxd-muted));
-  border-radius: 6px 6px 0 0;
-  background: var(--pxd-fill, transparent);
+  border: 1px solid var(--pxd-line, var(--pxd-border-strong));
+  border-radius: 6px;
+  background: var(--pxd-fill, var(--pxd-surface));
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -607,15 +609,26 @@ body.pxd-has-fullscreen .breadcrumbs-content {
 .pxd-section__edge--l { top: 0; bottom: 0; left: -4px; width: 8px; }
 .pxd-section__edge--r { top: 0; bottom: 0; right: -4px; width: 8px; }
 
-/* ------------------------------------------------------------------ LOD (map) */
+/* ------------------------------------------------------------------ LOD (map / overview) */
 
-.pxd-lod-map .pxd-item__body {
+.pxd-lod-map .pxd-item__body,
+.pxd-lod-overview .pxd-item__body {
   display: none;
 }
 
 .pxd-lod-map .pxd-item--editing .pxd-item__body,
-.pxd-lod-map .pxd-item--text .pxd-item__body {
+.pxd-lod-map .pxd-item--text .pxd-item__body,
+.pxd-lod-overview .pxd-item--text .pxd-item__body {
   display: block;
+}
+
+/* Board thumbnails are plain divs, so they stay at map zoom; the overview tier hides them (cards read as blocks). */
+.pxd-lod-map .pxd-item--board .pxd-item__body {
+  display: block;
+}
+
+.pxd-lod-overview .pxd-item--board .pxd-item__body {
+  display: none;
 }
 
 .pxd-lod-map .pxd-item__header {
@@ -626,6 +639,42 @@ body.pxd-has-fullscreen .breadcrumbs-content {
 
 .pxd-lod-map .pxd-section__title {
   font-size: var(--pxd-map-font);
+  line-height: 1.2;
+}
+
+/* Map tile: a title-only card. The card is a size container, so the title font is capped by the tile's own height
+   and the text clamps to three lines instead of spilling below the box. No overflow:hidden on .pxd-item (ports sit
+   across the edge); the header alone clips. */
+.pxd-root.pxd-lod-map .pxd-item.pxd-item--card:not(.pxd-item--editing) {
+  container-type: size;
+  background-image: linear-gradient(180deg, transparent 0%, var(--pxd-fill, transparent) 100%);
+}
+
+.pxd-root.pxd-lod-map .pxd-item.pxd-item--card:not(.pxd-item--editing) > .pxd-item__header {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 3;
+  overflow-wrap: anywhere;
+  text-overflow: ellipsis;
+  font-size: min(var(--pxd-map-font), calc((100cqh - 12px) / 3.8));
+}
+
+/* A board card keeps its thumbnail under a one-line title. */
+.pxd-root.pxd-lod-map .pxd-item.pxd-item--card.pxd-item--board:not(.pxd-item--editing) > .pxd-item__header {
+  flex: 0 0 auto;
+  -webkit-line-clamp: 1;
+}
+
+/* Overview tier: cards read as colored blocks; section titles grow to stay legible. */
+.pxd-root.pxd-lod-overview .pxd-item--card > .pxd-item__header {
+  visibility: hidden;
+}
+
+.pxd-root.pxd-lod-overview .pxd-section__title {
+  font-size: var(--pxd-overview-font, 40px);
   line-height: 1.2;
 }
 
@@ -1216,6 +1265,11 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   display: block;
 }
 
+/* A card whose body is empty or unmounted keeps its header, so a detail switch mid-gesture never shows a blank tile. */
+.pxd-root .pxd-item.pxd-item--card.pxd-item--bare > .pxd-item__header {
+  display: block;
+}
+
 /* renderPage brings Roam's editable page title; keep it editable but at card-header size. */
 .pxd-item__editor .rm-title-display {
   margin: 0 0 6px;
@@ -1295,19 +1349,50 @@ body.pxd-has-fullscreen .breadcrumbs-content {
 .pxd-board-preview {
   flex: 1 1 auto;
   min-height: 60px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  position: relative;
   overflow: hidden;
   border-radius: 6px;
-  background: var(--pxd-accent-soft);
+  background-color: var(--pxd-surface);
+  background-image: radial-gradient(circle, var(--pxd-grid-dot) 1px, transparent 1.3px);
+  background-size: 12px 12px;
 }
 
 .pxd-board-preview__canvas {
-  position: relative;
-  max-width: 100%;
-  max-height: 100%;
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
   height: 100%;
+}
+
+.pxd-root .pxd-board-preview__edges {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.pxd-root .pxd-board-preview__edges line {
+  stroke: var(--pxd-edge);
+  stroke-width: 1;
+  vector-effect: non-scaling-stroke;
+  opacity: 0.75;
+}
+
+.pxd-root .pxd-board-preview__empty {
+  position: absolute;
+  left: 0;
+  top: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--pxd-muted);
+  font-size: 12px;
 }
 
 .pxd-mini {
@@ -1315,18 +1400,45 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   box-sizing: border-box;
   border: 1px solid var(--pxd-line, var(--pxd-border-strong));
   border-radius: 2px;
-  background: var(--pxd-fill, var(--pxd-card));
+  background-color: var(--pxd-card);
+  background-image: linear-gradient(var(--pxd-fill, transparent), var(--pxd-fill, transparent));
+  box-shadow: 0 1px 2px rgba(17, 20, 24, 0.18);
+  overflow: hidden;
 }
 
+.pxd-mini .pxd-mini__title {
+  padding: 1px 3px;
+  font-size: 9px;
+  line-height: 11px;
+  font-weight: 600;
+  color: var(--pxd-text-c, var(--pxd-text));
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pxd-mini.pxd-mini--tiny > .pxd-mini__title {
+  display: none;
+}
+
+/* Sections draw as tinted frames with a title strip. */
 .pxd-mini.pxd-mini--section {
-  border-style: dashed;
-  background: transparent;
+  background-color: transparent;
+  background-image: linear-gradient(var(--pxd-fill, rgba(127, 140, 152, 0.1)), var(--pxd-fill, rgba(127, 140, 152, 0.1)));
+  box-shadow: none;
+}
+
+.pxd-mini.pxd-mini--section > .pxd-mini__title {
+  border-bottom: 1px solid var(--pxd-line, var(--pxd-border-strong));
+  color: var(--pxd-text-c, var(--pxd-muted));
+  font-weight: 700;
 }
 
 .pxd-mini.pxd-mini--text {
   border-color: transparent;
-  background: var(--pxd-border-strong);
-  opacity: 0.6;
+  background-color: transparent;
+  background-image: none;
+  box-shadow: none;
 }
 
 .pxd-root .pxd-input.pxd-item__board-name {
@@ -1348,4 +1460,96 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   user-select: text;
   -webkit-user-select: text;
   text-overflow: clip;
+}
+
+/* A block-ref card whose target is a board (a whiteboard shortcut) keeps its header and board glyph in detail view. */
+.pxd-root .pxd-item.pxd-item--card.pxd-item--block.pxd-item--wb > .pxd-item__header {
+  display: block;
+}
+
+.pxd-item--wb .pxd-item__header::before {
+  content: "▦ ";
+  color: var(--pxd-muted);
+}
+
+.pxd-root .pxd-item.pxd-item--card.pxd-item--wb > .pxd-item__body {
+  padding-top: 0;
+}
+
+/* ------------------------------------------------------------------ badges, pin, focus (1.2) */
+
+.pxd-root .pxd-item__badges {
+  position: absolute;
+  left: 6px;
+  right: 6px;
+  bottom: 4px;
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 4px;
+  overflow: hidden;
+  pointer-events: none;
+  z-index: 1;
+}
+
+.pxd-root .pxd-item:has(> .pxd-item__badges) > .pxd-item__body {
+  padding-bottom: 24px;
+}
+
+.pxd-root .pxd-badge-chip {
+  flex: 0 1 auto;
+  min-width: 0;
+  box-sizing: border-box;
+  padding: 0 6px;
+  border: 1px solid var(--pxd-border);
+  border-radius: 999px;
+  background: var(--pxd-card);
+  color: var(--pxd-muted);
+  font-size: 10px;
+  line-height: 14px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  pointer-events: none;
+}
+
+.pxd-root .pxd-badge-chip.pxd-badge-chip--boards {
+  pointer-events: auto;
+  cursor: pointer;
+  border-color: var(--pxd-accent);
+  color: var(--pxd-accent);
+}
+
+.pxd-root .pxd-badge-chip.pxd-badge-chip--todo {
+  color: var(--pxd-text);
+}
+
+.pxd-root.pxd-lod-map .pxd-item__badges,
+.pxd-root.pxd-lod-overview .pxd-item__badges {
+  display: none;
+}
+
+/* Pinned items cannot be moved or resized: no grips, a small pin mark instead. */
+.pxd-root .pxd-item.pxd-item--pinned > .pxd-grip,
+.pxd-root .pxd-section.pxd-section--pinned > .pxd-grip {
+  display: none;
+}
+
+.pxd-root .pxd-item.pxd-item--pinned::after,
+.pxd-root .pxd-section.pxd-section--pinned::after {
+  content: "";
+  position: absolute;
+  top: 5px;
+  right: 6px;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  border: 2px solid var(--pxd-muted);
+  box-sizing: content-box;
+  pointer-events: none;
+}
+
+/* Focus mode dims everything outside the focused set (class-only, no per-frame style work). */
+.pxd-root .pxd-item.pxd-item--focus-dim,
+.pxd-root .pxd-section.pxd-section--focus-dim {
+  opacity: 0.18;
 }

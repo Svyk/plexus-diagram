@@ -1,0 +1,154 @@
+/* Overlays: Quick Look, presentation HUD, Alt+drag ghosts, focus dimming.
+   Borders carry the semantics; fills stay on the chrome token (no tinted fills in dark). */
+
+.pxd-root .pxd-quicklook {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 30;
+  transform: translate(-50%, -50%);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  width: min(640px, calc(100% - 32px));
+  max-height: 70%;
+  padding: 12px 16px;
+  border: 1px solid var(--pxd-border-strong);
+  border-radius: 10px;
+  background: var(--pxd-chrome-bg);
+  color: var(--pxd-text);
+  box-shadow: var(--pxd-shadow);
+  cursor: default;
+  user-select: text;
+}
+
+.pxd-root .pxd-quicklook .pxd-ql__head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding-bottom: 8px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--pxd-border);
+}
+
+.pxd-root .pxd-quicklook .pxd-ql__title {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 16px;
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pxd-root .pxd-quicklook .pxd-ql__refs {
+  flex: none;
+  padding: 0 6px;
+  border: 1px solid var(--pxd-border-strong);
+  border-radius: 999px;
+  color: var(--pxd-muted);
+  font-size: 11px;
+}
+
+.pxd-root .pxd-quicklook .pxd-ql__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
+.pxd-root .pxd-quicklook .pxd-ql__children {
+  margin-left: 16px;
+  padding-left: 8px;
+  border-left: 1px solid var(--pxd-border);
+}
+
+.pxd-root .pxd-quicklook .pxd-ql__block {
+  margin: 2px 0;
+}
+
+.pxd-root .pxd-quicklook .pxd-ql__summary,
+.pxd-root .pxd-quicklook .pxd-ql__placeholder {
+  color: var(--pxd-muted);
+  font-size: 13px;
+}
+
+.pxd-root .pxd-present-hud {
+  position: absolute;
+  left: 50%;
+  bottom: 16px;
+  z-index: 30;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  max-width: calc(100% - 32px);
+  padding: 6px 10px;
+  border: 1px solid var(--pxd-border-strong);
+  border-radius: 10px;
+  background: var(--pxd-chrome-bg);
+  color: var(--pxd-text);
+  box-shadow: var(--pxd-shadow);
+}
+
+.pxd-root .pxd-present-hud .pxd-present-hud__title {
+  min-width: 0;
+  max-width: 320px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.pxd-root .pxd-present-hud .pxd-present-hud__count {
+  color: var(--pxd-muted);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.pxd-root .pxd-present-hud .pxd-btn[disabled] {
+  opacity: 0.45;
+  cursor: default;
+}
+
+.pxd-root .pxd-ghost {
+  fill: none;
+  stroke: var(--pxd-accent);
+  stroke-width: 2px;
+  stroke-dasharray: 6 4;
+  vector-effect: non-scaling-stroke;
+  pointer-events: none;
+}
+
+.pxd-root .pxd-edge.pxd-edge--dim,
+.pxd-root .pxd-link.pxd-edge--dim {
+  opacity: 0.18;
+}
+
+.pxd-root .pxd-label.pxd-label--dim {
+  opacity: 0.18;
+}
+
+.bp3-dark .pxd-root .pxd-quicklook,
+body.bt-theme-dark .pxd-root .pxd-quicklook,
+.rm-dark-theme .pxd-root .pxd-quicklook,
+body.roam-body.dark .pxd-root .pxd-quicklook,
+.pxd-root--dark .pxd-quicklook,
+.bp3-dark .pxd-root .pxd-present-hud,
+body.bt-theme-dark .pxd-root .pxd-present-hud,
+.rm-dark-theme .pxd-root .pxd-present-hud,
+body.roam-body.dark .pxd-root .pxd-present-hud,
+.pxd-root--dark .pxd-present-hud {
+  border-color: var(--pxd-border-strong);
+  background: var(--pxd-chrome-bg);
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not(.bp3-light) .pxd-root .pxd-quicklook,
+  :root:not(.bp3-light) .pxd-root .pxd-present-hud {
+    border-color: var(--pxd-border-strong);
+    background: var(--pxd-chrome-bg);
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);
+  }
+}

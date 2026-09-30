@@ -104,6 +104,8 @@ export async function installPlexusDiagram({
   const acquireSession = injectedAcquire;
 
   let settings = readSettings(extensionAPI);
+  // Sessions outlive a settings change (they are ref-counted and kept), so they read through this accessor.
+  const liveSettings = { get: (id) => settings[id] };
   let stopped = false;
   const mounts = new Map(); // native element -> record
   const trusted = new Set(); // uids confirmed enhanced by this runtime (command results)
@@ -255,7 +257,28 @@ export async function installPlexusDiagram({
       autofocus,
       onOpenBoard: (child) => navigate(rec, [...rec.crumbs, { uid: child, title: boardTitle(host.blockString?.(child)) }]),
       onCrumb: (index) => navigate(rec, rec.crumbs.slice(0, index + 1)),
+      onSetDefaults: (patch) => setDefaults(patch),
     });
+  }
+
+  async function setDefaults(patch) {
+    if (stopped || !patch || typeof patch !== "object") return;
+    for (const [id, value] of Object.entries(patch)) {
+      try {
+        await extensionAPI.settings?.set?.(id, value);
+      } catch (error) {
+        console.warn("[plexus-diagram] Could not save setting", id, error);
+      }
+      if (stopped) return;
+      settings = { ...settings, [id]: normalizeSetting(id, value) };
+    }
+    for (const rec of [...mounts.values()]) {
+      try {
+        if (typeof rec.view?.setSettings === "function") rec.view.setSettings(settings);
+      } catch (error) {
+        console.warn("[plexus-diagram] Settings propagation failed", error);
+      }
+    }
   }
 
   function watchRec(rec) {
@@ -291,7 +314,7 @@ export async function installPlexusDiagram({
       }
       let session;
       try {
-        session = acquireSession(target, { host, settings });
+        session = acquireSession(target, { host, settings: liveSettings });
       } catch (error) {
         console.warn("[plexus-diagram] Could not open the nested board", error);
         return;
@@ -341,7 +364,7 @@ export async function installPlexusDiagram({
     native.after(mountEl);
     mounts.set(native, rec);
     try {
-      rec.session = acquireSession(currentUid(rec), { host, settings });
+      rec.session = acquireSession(currentUid(rec), { host, settings: liveSettings });
       rec.fullscreen = settings[SETTING_IDS.fullscreenOnZoom] !== false
         && !routeLeftZoomedDiagram(uid);
       rec.view = mountRecView(rec);
@@ -505,7 +528,7 @@ export async function installPlexusDiagram({
       console.info("[plexus-diagram] Focus a {{[[diagram]]}} block first");
       return;
     }
-    const session = acquireSession(uid, { host, settings });
+    const session = acquireSession(uid, { host, settings: liveSettings });
     try {
       await session.enhance();
     } finally {
@@ -518,7 +541,7 @@ export async function installPlexusDiagram({
   async function restoreCommand(context) {
     const uid = resolveBoardUid(context);
     if (!uid) return;
-    const session = acquireSession(uid, { host, settings });
+    const session = acquireSession(uid, { host, settings: liveSettings });
     try {
       await session.restoreNative();
     } finally {
@@ -554,12 +577,29 @@ export async function installPlexusDiagram({
     if (rec) setFullscreen(rec, !rec.fullscreen);
   }
 
+  function targetView(context) {
+    const uid = resolveBoardUid(context);
+    const recs = [...mounts.values()].filter((rec) => !uid || rec.uid === uid);
+    const rec = recs.find((r) => r.native.isConnected !== false) || recs[0];
+    return rec?.view ?? null;
+  }
+
+  function exportSvgCommand(context) {
+    return targetView(context)?.exportSvg?.({ download: true });
+  }
+
+  function copyOutlineCommand(context) {
+    return targetView(context)?.copyOutline?.();
+  }
+
   async function registerCommands() {
     const commands = [
       ["Plexus: Enhance this diagram", enhanceCommand],
       ["Plexus: New whiteboard here", newWhiteboardCommand],
       ["Plexus: Restore native diagram", restoreCommand],
       ["Plexus: Fullscreen this diagram", fullscreenCommand],
+      ["Plexus: Export board as SVG", exportSvgCommand],
+      ["Plexus: Copy board as text", copyOutlineCommand],
     ];
     for (const [label, fn] of commands) {
       const callback = (context) => {
@@ -623,6 +663,7 @@ export async function installPlexusDiagram({
       crumbs: rec.crumbs.map((c) => c.uid),
       fullscreen: rec.fullscreen,
       connected: rec.native.isConnected !== false && rec.mountEl.isConnected !== false,
+      state: rec.view?.state?.() ?? null,
     })),
   };
   win.__plexusDiagram = api;

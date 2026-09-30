@@ -1,7 +1,7 @@
 // Screen-space chrome: toolbar (spec 3.5), context bar (spec 3.4), toast, board search,
 // minimap, version badge, sync dot. Everything lives inside .pxd-root; no portals.
 
-import { PALETTE, FONT_SIZES } from "../model/schema.js";
+import { PALETTE, FONT_SIZES, BOARD_PATTERNS } from "../model/schema.js";
 
 const CTX_GAP = 12;
 const CTX_EDGE_CLEARANCE = 28;
@@ -23,6 +23,10 @@ const TOOL_LIST = [
 ];
 
 const MAX_CRUMBS = 4;
+const POPOVER_GAP = 6;
+const POPOVER_MARGIN = 8;
+const PATTERN_LABELS = { dots: "Dots", lines: "Lines", grid: "Grid", plain: "Plain" };
+const NOTE_KINDS = ["note", "block", "page"];
 
 export function createChrome({ doc = globalThis.document, root, version = "", settings, timers, on = {}, crumbs = [] } = {}) {
   const setting = (k) => (typeof settings?.get === "function" ? settings.get(k) : settings?.[k]);
@@ -47,14 +51,20 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
     listen(b, "dblclick", (event) => event.stopPropagation());
     return b;
   };
-  const swatches = (parent, onPick) => {
+  const swatches = (parent, onPick, { key = "color", paper = false } = {}) => {
     const wrap = el("div", "pxd-swatches", parent);
-    const none = button(wrap, "pxd-swatch pxd-swatch--none", "", "No color", () => onPick(null));
-    none.dataset.color = "";
+    const none = button(wrap, "pxd-swatch pxd-swatch--none", "", key === "tone" ? "Default" : "No color", () => onPick(null));
+    none.dataset[key] = "";
+    if (key !== "color") none.setAttribute(`data-${key}`, "");
+    if (paper) {
+      const p = button(wrap, "pxd-swatch pxd-swatch--paper", "", "Paper", () => onPick("paper"));
+      p.dataset[key] = "paper";
+      p.setAttribute(`data-${key}`, "paper");
+    }
     for (const c of PALETTE) {
       const s = button(wrap, `pxd-swatch pxd-c-${c}`, "", c, () => onPick(c));
-      s.dataset.color = c;
-      s.setAttribute("data-color", c);
+      s.dataset[key] = c;
+      s.setAttribute(`data-${key}`, c);
     }
     return wrap;
   };
@@ -124,6 +134,14 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
   const group2 = el("div", "pxd-toolbar__group", toolbar);
   const addBtn = button(group2, "pxd-toolbar__add", "Add", "Add cards from the graph", () => on.togglePanel?.());
   const linksBtn = button(group2, "pxd-toolbar__links", LINK_LABELS.all, "Graph links (L)", () => on.cycleLinks?.());
+  const groupView = el("div", "pxd-toolbar__group", toolbar);
+  const bgBtn = button(groupView, "pxd-toolbar__bg", "Background", "Background pattern and tone", () => (popover.isOpen() ? popover.close() : popover.open()));
+  const focusBtn = button(groupView, "pxd-toolbar__focus", "Focus", "Focus mode: fade everything but the selection", () => on.toggleFocus?.());
+  button(groupView, "pxd-toolbar__present", "Present", "Present this board", () => on.present?.());
+  const moreBtn = button(groupView, "pxd-toolbar__more", "More", "More board actions", () => {
+    const r = moreBtn.getBoundingClientRect();
+    on.openMore?.({ x: r.left, y: r.bottom, w: r.width, h: r.height });
+  });
   const group3 = el("div", "pxd-toolbar__group", toolbar);
   button(group3, "pxd-toolbar__zoom-out", "−", "Zoom out (Cmd −)", () => on.zoomOut?.());
   const zoomLabel = button(group3, "pxd-toolbar__zoom", "100%", "Zoom to 100% (Shift 0)", () => on.zoomReset?.());
@@ -154,6 +172,91 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
     setFullscreen(on) { fullBtn.textContent = on ? "Exit fullscreen" : "Fullscreen"; fullBtn.classList.toggle("pxd-btn--active", Boolean(on)); },
     setPanel(open) { addBtn.classList.toggle("pxd-btn--active", Boolean(open)); },
     setMinimap(open) { minimapBtn.classList.toggle("pxd-btn--active", Boolean(open)); },
+    setFocus(active) { focusBtn.classList.toggle("pxd-btn--active", Boolean(active)); },
+    setBackground(state) { popover.setState(state); },
+    bgButton: bgBtn,
+  };
+
+  // ---------------------------------------------------------------- background popover
+  const popEl = el("div", "pxd-popover pxd-popover--bg pxd-chrome", root);
+  popEl.style.display = "none";
+  popEl.setAttribute("role", "dialog");
+  popEl.setAttribute("aria-label", "Background");
+  stopAll(popEl);
+  el("div", "pxd-popover__title", popEl, "Background");
+  el("div", "pxd-popover__label", popEl, "Pattern");
+  const patternSeg = el("div", "pxd-seg pxd-bg__pattern", popEl);
+  const patternButtons = new Map();
+  for (const pattern of BOARD_PATTERNS) {
+    const b = button(patternSeg, "pxd-seg__btn", PATTERN_LABELS[pattern] || pattern, PATTERN_LABELS[pattern] || pattern, () => on.setBackground?.({ bg: pattern }));
+    b.dataset.value = pattern;
+    b.setAttribute("data-value", pattern);
+    patternButtons.set(pattern, b);
+  }
+  el("div", "pxd-popover__label", popEl, "Tone");
+  const toneWrap = swatches(popEl, (tone) => on.setBackground?.({ bgColor: tone }), { key: "tone", paper: true });
+  toneWrap.classList.add("pxd-bg__tones");
+  const popFoot = el("div", "pxd-popover__foot", popEl);
+  button(popFoot, "pxd-bg__default", "Use as default", "Use this pattern and tone for every board", () => on.useBackgroundAsDefault?.());
+  const resetBtn = button(popFoot, "pxd-bg__reset", "Reset", "Clear this board's override", () => on.setBackground?.({ bg: null, bgColor: null }));
+  let bgOffs = [];
+  const popover = {
+    el: popEl,
+    isOpen: () => popEl.style.display !== "none",
+    open() {
+      if (popover.isOpen()) return;
+      popEl.style.display = "";
+      const rootRect = root.getBoundingClientRect();
+      const b = bgBtn.getBoundingClientRect();
+      const w = popEl.offsetWidth || 240;
+      const h = popEl.offsetHeight || 200;
+      const left = Math.max(POPOVER_MARGIN, Math.min(b.left - rootRect.left, (rootRect.width || 0) - w - POPOVER_MARGIN));
+      let top = b.bottom - rootRect.top + POPOVER_GAP;
+      if (rootRect.height && top + h > rootRect.height - POPOVER_MARGIN) top = Math.max(POPOVER_MARGIN, rootRect.height - h - POPOVER_MARGIN);
+      popEl.style.left = `${Math.round(left)}px`;
+      popEl.style.top = `${Math.round(top)}px`;
+      bgBtn.classList.add("pxd-btn--active");
+      const onDown = (event) => {
+        if (popEl.contains(event.target) || bgBtn.contains(event.target)) return;
+        popover.close();
+      };
+      const onKey = (event) => {
+        if (event.key !== "Escape") return;
+        event.preventDefault?.();
+        event.stopPropagation?.();
+        popover.close();
+      };
+      doc.addEventListener("pointerdown", onDown, true);
+      doc.addEventListener("keydown", onKey, true);
+      bgOffs = [() => doc.removeEventListener("pointerdown", onDown, true), () => doc.removeEventListener("keydown", onKey, true)];
+    },
+    close() {
+      bgOffs.splice(0).forEach((off) => off());
+      popEl.style.display = "none";
+      bgBtn.classList.remove("pxd-btn--active");
+    },
+    setState({ pattern, tone, override } = {}) {
+      bgState = { pattern: pattern ?? null, tone: tone ?? null, override: Boolean(override) };
+      for (const [id, b] of patternButtons) b.classList.toggle("pxd-seg__btn--on", id === bgState.pattern);
+      for (const s of toneWrap.querySelectorAll(".pxd-swatch")) {
+        const value = s.dataset.tone ?? s.getAttribute("data-tone") ?? "";
+        s.classList.toggle("pxd-swatch--on", value === (bgState.tone || ""));
+      }
+      resetBtn.classList.toggle("pxd-bg__reset--idle", !bgState.override);
+      popEl.classList.toggle("pxd-popover--override", bgState.override);
+    },
+  };
+  let bgState = { pattern: null, tone: null, override: false };
+  popover.setState(bgState);
+
+  // ---------------------------------------------------------------- back to content
+  const backEl = button(root, "pxd-backtocontent pxd-chrome", "Back to content", "Fit the view back to your cards", () => on.backToContent?.());
+  backEl.style.display = "none";
+  for (const type of ["pointerup", "wheel", "keydown", "keyup", "contextmenu"]) listen(backEl, type, (event) => event.stopPropagation());
+  const backToContent = {
+    el: backEl,
+    setVisible(visible) { backEl.style.display = visible ? "" : "none"; },
+    isVisible: () => backEl.style.display !== "none",
   };
 
   // ---------------------------------------------------------------- context bar
@@ -176,6 +279,11 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
       }
       return wrap;
     };
+    // Optional 1.2 buttons: each is skipped when its callback is missing.
+    const opt = (name, cls, label, title, fn) => { if (typeof on[name] === "function") btn(cls, label, title, fn); };
+    const optSeg = (name, cls, options, fn) => { if (typeof on[name] === "function") seg(cls, options, null, fn); };
+    const pinButton = (pinned) => opt("pin", "pxd-ctx__pin-toggle", pinned ? "Unpin" : "Pin", pinned ? "Unpin: allow moving and resizing again" : "Pin: lock position and size", () => on.pin(!pinned));
+    const TIDY = [["grid", "Grid", "Tidy into a grid"], ["row", "Row", "Tidy into a row"], ["column", "Column", "Tidy into a column"]];
     switch (kind) {
       case "card":
       case "cards": {
@@ -185,11 +293,22 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
           btn("pxd-ctx__sidebar", "Open in sidebar", "Open in the right sidebar", () => on.openSidebar?.());
           btn("pxd-ctx__collapse", model?.collapsed ? "Expand" : "Collapse", "Collapse to title", () => on.collapse?.());
           btn("pxd-ctx__related", "Related…", "Show related pages and blocks", () => on.related?.());
+          pinButton(Boolean(model?.pinned));
+          opt("fitHeight", "pxd-ctx__fit-height", "Fit height", "Grow or shrink the card to its text", () => on.fitHeight());
+          opt("copyRef", "pxd-ctx__copy-ref", "Copy ref", "Copy a block or page reference", () => on.copyRef());
+          opt("duplicate", "pxd-ctx__duplicate", "Duplicate", "Duplicate (Cmd D)", () => on.duplicate());
+          opt("sendTo", "pxd-ctx__send-to", "Send to board…", "Move into another board", () => on.sendTo());
+          if (NOTE_KINDS.includes(model?.kind)) opt("expandOutline", "pxd-ctx__mindmap", "Mind map", "Expand the children as a mind map", () => on.expandOutline());
         } else {
           seg("pxd-ctx__align", [["left", "L", "Align left"], ["center", "C", "Align centers"], ["right", "R", "Align right"], ["top", "T", "Align top"], ["middle", "M", "Align middles"], ["bottom", "B", "Align bottom"]], null, (v) => on.align?.(v));
           seg("pxd-ctx__distribute", [["h", "H", "Distribute horizontally"], ["v", "V", "Distribute vertically"]], null, (v) => on.distribute?.(v));
           btn("pxd-ctx__wrap", "Wrap in section", "Wrap in a new section (Cmd G)", () => on.wrap?.());
           btn("pxd-ctx__wrap-board", "Move into new board", "Move the selection into a new nested board", () => on.wrapBoard?.());
+          optSeg("tidy", "pxd-ctx__tidy", TIDY, (v) => on.tidy(v));
+          optSeg("sameSize", "pxd-ctx__same-size", [["width", "W", "Same width"], ["height", "H", "Same height"], ["both", "WH", "Same width and height"]], (v) => on.sameSize(v));
+          opt("fold", "pxd-ctx__fold", model?.anyCollapsed ? "Unfold" : "Fold", model?.anyCollapsed ? "Expand the collapsed cards" : "Collapse the cards to titles", () => on.fold(!model?.anyCollapsed));
+          pinButton(Boolean(model?.allPinned));
+          opt("duplicate", "pxd-ctx__duplicate", "Duplicate", "Duplicate (Cmd D)", () => on.duplicate());
         }
         btn("pxd-ctx__delete pxd-btn--danger", "Delete", "Delete (Del)", () => on.delete?.());
         break;
@@ -205,6 +324,11 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
         swatches(row, (c) => on.setColor?.(c));
         btn("pxd-ctx__rename", "Rename", "Rename (Enter)", () => on.rename?.());
         btn("pxd-ctx__contents", "Select contents", "Select the section's members", () => on.selectContents?.());
+        opt("fitSection", "pxd-ctx__fit-section", "Fit to contents", "Resize the section around its cards", () => on.fitSection());
+        opt("toggleFit", "pxd-ctx__auto-fit", model?.autofit ? "Auto-fit: on" : "Auto-fit: off", "Keep the section sized to its cards", () => on.toggleFit());
+        optSeg("tidy", "pxd-ctx__tidy", TIDY, (v) => on.tidy(v));
+        opt("foldAll", "pxd-ctx__fold-all", "Fold all", "Collapse every card in the section", () => on.foldAll(true));
+        pinButton(Boolean(model?.pinned));
         btn("pxd-ctx__delete pxd-btn--danger", "Delete frame", "Delete the frame, keep the cards (Del). Shift+Del deletes contents too", () => on.delete?.());
         break;
       case "text":
@@ -403,11 +527,12 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
   const dispose = () => {
     toastTimer?.();
     mmFrame?.();
+    bgOffs.splice(0).forEach((off) => off());
     listeners.splice(0).forEach((off) => off());
-    for (const node of [toolbar, ctx, toast, search, minimap]) node.remove();
+    for (const node of [toolbar, popEl, backEl, ctx, toast, search, minimap]) node.remove();
   };
 
-  return { toolbar: toolbarApi, ctx: ctxApi, toast: toastApi, search: searchApi, minimap: minimapApi, badge, sync, dispose };
+  return { toolbar: toolbarApi, ctx: ctxApi, toast: toastApi, search: searchApi, minimap: minimapApi, popover, backToContent, badge, sync, dispose };
 }
 
 export { LINK_MODES, CTX_GAP, CTX_EDGE_CLEARANCE };

@@ -1,5 +1,5 @@
 import { build as esbuild } from "esbuild";
-import { copyFile, mkdir, readFile, rm, watch, writeFile } from "node:fs/promises";
+import { copyFile, mkdir, readFile, readdir, rm, watch, writeFile } from "node:fs/promises";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -43,12 +43,27 @@ export async function bundleEntry({
   return output.text;
 }
 
+export async function readCss(rootDirectory = defaultRoot) {
+  const root = resolve(rootDirectory);
+  const parts = [await readFile(resolve(root, "src/extension.css"), "utf8")];
+  let names = [];
+  try {
+    names = await readdir(resolve(root, "src/css"));
+  } catch (error) {
+    if (error?.code !== "ENOENT") throw error;
+  }
+  for (const name of names.filter((n) => n.endsWith(".css")).sort()) {
+    parts.push(await readFile(resolve(root, "src/css", name), "utf8"));
+  }
+  return parts.join("\n");
+}
+
 export async function renderArtifacts(rootDirectory = defaultRoot) {
   const packageMetadata = JSON.parse(await readFile(resolve(rootDirectory, "package.json"), "utf8"));
   const banner = `/* Plexus Diagram v${packageMetadata.version} | MIT | generated; edit src/ */`;
   return {
     javascript: await bundleEntry({ rootDirectory, banner }),
-    css: await readFile(resolve(rootDirectory, "src/extension.css"), "utf8"),
+    css: await readCss(rootDirectory),
   };
 }
 

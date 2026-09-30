@@ -4,7 +4,7 @@ import {
   screenToWorld, worldToScreen, clampZoom, zoomAt, fitViewport, visibleWorldRect, lodForZoom,
   center, inflate, unionRect, rectsIntersect, rectContains, pointInRect,
   sidePoint, nearestSide, autoSides, edgePath, arrowHeadPath, arrowSize,
-  snapMove, alignRects, distributeRects, gridBackground,
+  snapMove, alignRects, distributeRects, gridBackground, lodTier, lodFonts, nearestInDirection,
 } from "../src/model/geometry.js";
 
 const near = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) < eps, `${a} != ${b}`);
@@ -242,11 +242,82 @@ test("distributeRects equal gaps with unsorted input", () => {
 
 test("gridBackground", () => {
   assert.equal(gridBackground({ x: 5, y: 5, zoom: 1 }, "plain"), null);
-  for (const style of ["dots", "lines"]) {
+  for (const style of ["dots", "lines", "grid"]) {
     const g = gridBackground({ x: 50, y: -10, zoom: 2 }, style);
     near(g.size, 48);
     near(g.x, 2);
     near(g.y, 38);
+    near(g.major, 240);
   }
   assert.equal(gridBackground({ x: 0, y: 0, zoom: 1 }, "dots", 10).size, 10);
+});
+
+test("lodTier hysteresis when zooming out then in", () => {
+  let tier = "detail";
+  const seq = [];
+  for (const z of [1, 0.5, 0.46, 0.44, 0.3, 0.21, 0.19, 0.225, 0.24, 0.3, 0.48, 0.5, 0.6]) {
+    tier = lodTier(z, tier);
+    seq.push(tier);
+  }
+  assert.deepEqual(seq, [
+    "detail", "detail", "detail", "map", "map", "map", "overview", "overview", "map", "map", "map", "detail", "detail",
+  ]);
+});
+
+test("lodTier does not flicker around each threshold", () => {
+  assert.equal(lodTier(0.46, "map"), "map");
+  assert.equal(lodTier(0.5, "map"), "detail");
+  assert.equal(lodTier(0.44, "detail"), "map");
+  assert.equal(lodTier(0.44, "map"), "map");
+  assert.equal(lodTier(0.21, "overview"), "overview");
+  assert.equal(lodTier(0.24, "overview"), "map");
+  assert.equal(lodTier(0.19, "map"), "overview");
+  assert.equal(lodTier(0.19, "detail"), "overview", "detail below overview goes straight to overview");
+  assert.equal(lodTier(0.6, "overview"), "detail");
+  assert.equal(lodTier(0.3), "map");
+  assert.equal(lodTier(0.3, "detail", { threshold: 0.25, overview: 0.1 }), "detail");
+  assert.equal(lodForZoom(0.44), "map");
+});
+
+test("lodFonts keeps text readable and bounded", () => {
+  assert.deepEqual(lodFonts(1), { map: 14, section: 16, ui: 1 });
+  near(lodFonts(0.4).map, 32.5);
+  near(lodFonts(0.4).section, 40);
+  near(lodFonts(0.4).ui, 2.5);
+  assert.deepEqual(lodFonts(0.1), { map: 42, section: 160, ui: 4 });
+  assert.deepEqual(lodFonts(4), { map: 14, section: 15, ui: 1 });
+});
+
+test("nearestInDirection picks the closest in a cone, with deterministic ties", () => {
+  const box = (x, y) => ({ x, y, w: 100, h: 100 });
+  const rects = new Map([
+    ["src", box(0, 0)],
+    ["r1", box(200, 0)],
+    ["r2", box(400, 0)],
+    ["rlow", box(200, 300)],
+    ["l1", box(-200, 10)],
+    ["u1", box(0, -200)],
+    ["d1", box(20, 250)],
+  ]);
+  assert.equal(nearestInDirection(rects, "src", "right"), "r1");
+  assert.equal(nearestInDirection(rects, "src", "left"), "l1");
+  assert.equal(nearestInDirection(rects, "src", "up"), "u1");
+  assert.equal(nearestInDirection(rects, "src", "down"), "d1");
+  assert.equal(nearestInDirection(rects, "r2", "right"), null);
+  assert.equal(nearestInDirection(rects, "nope", "right"), null);
+  assert.equal(nearestInDirection(rects, "src", "right", { candidates: ["r2", "rlow"] }), "r2");
+  assert.equal(nearestInDirection(rects, "src", "right", { candidates: ["src"] }), null);
+  // tie: mirrored offsets score equally, the smaller uid wins
+  const tie = new Map([["src", box(0, 0)], ["b", box(200, -50)], ["a", box(200, 50)]]);
+  assert.equal(nearestInDirection(tie, "src", "right"), "a");
+});
+
+test("nearestInDirection prefers the cone, falls back to the half-plane", () => {
+  const box = (x, y) => ({ x, y, w: 100, h: 100 });
+  // "steep" is nearer by score but outside the 68 degree cone; "far" is inside it
+  const rects = new Map([["src", box(0, 0)], ["steep", box(30, 300)], ["far", box(1000, 100)]]);
+  assert.equal(nearestInDirection(rects, "src", "right"), "far");
+  const only = new Map([["src", box(0, 0)], ["steep", box(30, 300)]]);
+  assert.equal(nearestInDirection(only, "src", "right"), "steep");
+  assert.equal(nearestInDirection(only, "src", "left"), null);
 });

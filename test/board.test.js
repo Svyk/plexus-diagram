@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   boardPreview, boundsOf, buildBoard, containerAt, descendantsOf, diffBoards, edgesTouching, findEdge, hitTest,
-  itemsInRect, membershipPlan, sectionAdoptPlan, toRelative, topLevelOf, worldRect, worldRects,
+  itemsInRect, membershipPlan, outlineOrder, sectionAdoptPlan, sectionFitPlan, toRelative, topLevelOf, worldRect, worldRects,
 } from "../src/model/board.js";
+
+const near = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) < eps, `${a} != ${b}`);
 
 const blk = (uid, order, string, plexus, extra = {}) => ({
   ":block/uid": uid,
@@ -357,24 +359,266 @@ test("hitTest exclude skips the given uids in both passes", () => {
   assert.equal(hitTest(b, title, rects, { exclude: new Set(["s1"]) }), null);
 });
 
-test("boardPreview returns fractions of the child bounds, a count, an aspect and a cap", () => {
+const previewOf = (kids, opts) => {
+  const b = buildBoard({ ":block/uid": "r", ":block/string": "{{[[diagram]]}}", ":block/children": [{ ...boardCard(), ":block/children": kids }] });
+  return boardPreview(b.items.get("nb1"), opts);
+};
+
+test("boardPreview returns fractions of a padded frame, a count, an aspect and a cap", () => {
   const b = buildBoard({ ":block/uid": "r", ":block/string": "{{[[diagram]]}}", ":block/children": [boardCard()] });
   const pv = boardPreview(b.items.get("nb1"));
   assert.equal(pv.count, 3);
+  assert.equal(pv.empty, false);
   assert.deepEqual(pv.bounds, { x: 0, y: 0, w: 700, h: 500 });
-  assert.equal(pv.aspect, 700 / 500);
+  // pad = max(24, 0.12 * 700) = 84, so the frame is 868 x 668 centered on the bounds
+  const fw = 868;
+  const fh = 668;
+  near(pv.aspect, fw / fh);
   assert.equal(pv.rects[0].type, "section", "sections draw first");
-  assert.deepEqual([pv.rects[0].x, pv.rects[0].y, pv.rects[0].w, pv.rects[0].h], [0, 0, 1, 1]);
+  assert.equal(pv.rects[0].title, "Frame");
+  near(pv.rects[0].x, 84 / fw);
+  near(pv.rects[0].y, 84 / fh);
+  near(pv.rects[0].w, 700 / fw);
+  near(pv.rects[0].h, 500 / fh);
   const k1 = pv.rects.find((r) => r.color === "teal");
-  assert.deepEqual([k1.x, k1.y, k1.w, k1.h], [100 / 700, 100 / 500, 200 / 700, 100 / 500]);
+  near(k1.x, 184 / fw);
+  near(k1.y, 184 / fh);
+  near(k1.w, 200 / fw);
+  near(k1.h, 100 / fh);
+  assert.equal(k1.title, "kid one");
+  assert.equal(k1.type, "card");
+  assert.equal(k1.kind, "note");
   assert.ok(pv.rects.every((r) => r.x >= 0 && r.x + r.w <= 1.000001 && r.y >= 0 && r.y + r.h <= 1.000001));
   assert.equal(boardPreview(b.items.get("nb1"), { max: 2 }).rects.length, 2);
   assert.equal(boardPreview(b.items.get("nb1"), { max: 2 }).count, 3);
 });
 
-test("boardPreview of an empty board card and an extreme aspect", () => {
-  const empty = buildBoard({ ":block/uid": "r", ":block/string": "{{[[diagram]]}}", ":block/children": [{ ...boardCard(), ":block/children": [] }] });
-  assert.deepEqual(boardPreview(empty.items.get("nb1")), { count: 0, aspect: 1.5, rects: [], bounds: null });
-  const wide = buildBoard({ ":block/uid": "r", ":block/string": "{{[[diagram]]}}", ":block/children": [{ ...boardCard(), ":block/children": [blk("w1", 0, "a", { x: 0, y: 0, w: 1000, h: 10 })] }] });
-  assert.equal(boardPreview(wide.items.get("nb1")).aspect, 4);
+test("boardPreview edges are child-edge center fractions", () => {
+  const pv = previewOf(boardCard()[":block/children"]);
+  assert.equal(pv.edges.length, 1);
+  // k1 center (200,150) -> k2 center (550,350) in a frame starting at (-84,-84), 868 x 668
+  near(pv.edges[0].x1, 284 / 868);
+  near(pv.edges[0].y1, 234 / 668);
+  near(pv.edges[0].x2, 634 / 868);
+  near(pv.edges[0].y2, 434 / 668);
+  const dangling = previewOf([
+    blk("k1", 0, "one", { x: 0, y: 0 }),
+    blk("ke", 1, "Connections", { type: "edges" }, { ":block/children": [blk("kx", 0, "x", { type: "edge", from: "k1", to: "gone" })] }),
+  ]);
+  assert.deepEqual(dangling.edges, []);
+});
+
+test("boardPreview of a single card is a small tile inside a padded frame, not 100% of it", () => {
+  const pv = previewOf([blk("only", 0, "Solo card\nsecond line", { x: 1000, y: 2000 })]);
+  assert.equal(pv.count, 1);
+  assert.deepEqual(pv.bounds, { x: 1000, y: 2000, w: 280, h: 160 });
+  const r = pv.rects[0];
+  assert.ok(r.w < 0.5 && r.h < 0.5, `single tile is ${r.w} x ${r.h}`);
+  assert.equal(r.title, "Solo card");
+  // frame grows to 560 x 320 plus pad max(24, 0.12 * 280) = 33.6 per side, centered on the card
+  near(r.w, 280 / (560 + 67.2));
+  near(r.x + r.w / 2, 0.5);
+  near(r.y + r.h / 2, 0.5);
+});
+
+test("boardPreview truncates titles to 40 characters and uses the board title for board cards", () => {
+  const long = "x".repeat(80);
+  const pv = previewOf([
+    blk("a", 0, long, { x: 0, y: 0 }),
+    blk("t", 1, "Plain text", { type: "text", x: 300, y: 0 }),
+    blk("nb", 2, "{{[[diagram]]:Deep}}", { x: 600, y: 0, v: 2 }),
+  ]);
+  assert.equal(pv.rects.find((r) => r.type === "text").title, "Plain text");
+  assert.equal(pv.rects.filter((r) => r.type === "card").map((r) => r.title).sort()[1].length, 40);
+  assert.equal(pv.rects.find((r) => r.kind === "board").title, "Deep");
+});
+
+test("boardPreview of an empty board card", () => {
+  assert.deepEqual(previewOf([]), { count: 0, aspect: 1.6, rects: [], edges: [], bounds: null, empty: true });
+});
+
+test("boardPreview clamps a wide aspect and expands (never shrinks) to a target aspect", () => {
+  const wide = previewOf([blk("w1", 0, "a", { x: 0, y: 0, w: 8000, h: 10 })]);
+  near(wide.aspect, 4);
+  assert.ok(wide.rects[0].w <= 1 && wide.rects[0].h > 0);
+  const tall = previewOf([blk("w1", 0, "a", { x: 0, y: 0, w: 10, h: 8000 })]);
+  near(tall.aspect, 0.25);
+  const target = previewOf(boardCard()[":block/children"], { aspect: 2 });
+  near(target.aspect, 2);
+  assert.deepEqual(target.bounds, { x: 0, y: 0, w: 700, h: 500 });
+  // frame expanded to 2:1 around the same center: height stays 668, width becomes 1336
+  const sec = target.rects[0];
+  near(sec.w, 700 / 1336);
+  near(sec.h, 500 / 668);
+  near(sec.x + sec.w / 2, 0.5);
+  const tallTarget = previewOf(boardCard()[":block/children"], { aspect: 0.5 });
+  near(tallTarget.rects[0].w, 700 / 868);
+  near(tallTarget.rects[0].h, 500 / 1736);
+});
+
+test("boardPreview pad option widens the frame", () => {
+  const a = previewOf(boardCard()[":block/children"], { pad: 0.12 });
+  const b = previewOf(boardCard()[":block/children"], { pad: 0.3 });
+  assert.ok(b.rects[0].w < a.rects[0].w);
+});
+
+test("buildBoard exposes pinned, autofit and the board background", () => {
+  const b = buildBoard({
+    ":block/uid": "r",
+    ":block/string": "{{[[diagram]]}}",
+    ":block/props": { ":plexus": { ":v": 2, ":bg": "grid", ":bgColor": "indigo" } },
+    ":block/children": [
+      blk("p", 0, "pinned card", { x: 0, y: 0, pinned: true }),
+      blk("q", 1, "plain card", { x: 0, y: 0, pinned: false }),
+      blk("s", 2, "Locked", { type: "section", x: 0, y: 0, fit: false }),
+      blk("s2", 3, "Auto", { type: "section", x: 0, y: 0 }),
+      blk("c", 4, "card with fit false", { x: 0, y: 0, fit: false }),
+    ],
+  });
+  assert.deepEqual(b.background, { pattern: "grid", tone: "indigo" });
+  assert.equal(b.items.get("p").pinned, true);
+  assert.equal(b.items.get("q").pinned, false);
+  assert.equal(b.items.get("s").autofit, false);
+  assert.equal(b.items.get("s2").autofit, true);
+  assert.equal(b.items.get("c").autofit, true);
+  assert.deepEqual(buildBoard(fixture()).background, { pattern: null, tone: null });
+  const bad = buildBoard({ ":block/uid": "r", ":block/string": "", ":block/props": { ":plexus": { ":bg": "neon", ":bgColor": "puce" } } });
+  assert.deepEqual(bad.background, { pattern: null, tone: null });
+});
+
+function fitBoard() {
+  return buildBoard({
+    ":block/uid": "fitboard",
+    ":block/string": "{{[[diagram]]}}",
+    ":block/children": [
+      blk("outer", 0, "Outer", { type: "section", x: 0, y: 0, w: 1000, h: 800 }, {
+        ":block/children": [
+          blk("mid", 0, "Mid", { type: "section", x: 100, y: 100, w: 600, h: 400 }, {
+            ":block/children": [
+              blk("k1", 0, "one", { x: 50, y: 50, w: 200, h: 100 }),
+              blk("k2", 1, "two", { x: 300, y: 50, w: 200, h: 100 }),
+            ],
+          }),
+          blk("free", 1, "free", { x: 40, y: 600, w: 100, h: 100 }),
+        ],
+      }),
+      blk("locked", 1, "Locked", { type: "section", x: 2000, y: 0, w: 300, h: 300, fit: false }, {
+        ":block/children": [blk("lk", 0, "in locked", { x: 10, y: 10, w: 100, h: 100 })],
+      }),
+      blk("top", 2, "Top", { x: 3000, y: 0, w: 100, h: 100 }),
+    ],
+  });
+}
+
+const planOf = (plan) => Object.fromEntries(plan.map((p) => [p.uid, p.rect]));
+
+test("sectionFitPlan is a no-op for a member inside its section", () => {
+  const b = fitBoard();
+  const rects = worldRects(b);
+  assert.deepEqual(sectionFitPlan(b, rects, ["k1", "free", "top", "outer"]), []);
+});
+
+test("sectionFitPlan stops at a pinned section: it never grows, and neither does anything above it", () => {
+  const b = fitBoard();
+  b.items.get("mid").pinned = true;
+  const base = worldRects(b);
+  const plan = sectionFitPlan(b, new Map([...base, ["k1", { x: 60, y: 200, w: 300, h: 100 }]]), ["k1"]);
+  assert.deepEqual(plan, [], "the pinned section stays put and the card overhangs it");
+  b.items.get("mid").pinned = false;
+  b.items.get("outer").pinned = true;
+  const inner = planOf(sectionFitPlan(b, new Map([...base, ["k1", { x: 500, y: 200, w: 400, h: 100 }]]), ["k1"]));
+  assert.ok(inner.mid, "an unpinned section still grows");
+  assert.equal(inner.outer, undefined, "a pinned ancestor is not grown by the chain");
+});
+
+test("sectionFitPlan grows a section to the right, bottom, left and top with padding", () => {
+  const b = fitBoard();
+  const base = worldRects(b);
+  const midRect = base.get("mid"); // world 100,100 600x400
+  const grow = (r) => planOf(sectionFitPlan(b, new Map([...base, ["k1", r]]), ["k1"]));
+
+  const right = grow({ x: 500, y: 200, w: 300, h: 100 }); // right edge 800 > 700
+  assert.deepEqual(right.mid, { x: 100, y: 100, w: 724, h: 400 });
+  assert.equal(right.outer, undefined, "outer still contains mid");
+
+  const bottom = grow({ x: 200, y: 450, w: 100, h: 200 }); // bottom 650 > 500
+  assert.deepEqual(bottom.mid, { x: 100, y: 100, w: 600, h: 574 });
+
+  const left = grow({ x: 60, y: 200, w: 100, h: 100 }); // left 60 < 100
+  assert.deepEqual(left.mid, { x: 36, y: 100, w: 664, h: 400 });
+
+  const top = grow({ x: 200, y: 40, w: 100, h: 100 });
+  assert.deepEqual(top.mid, { x: 100, y: 16, w: 600, h: 484 });
+  assert.deepEqual(midRect, { x: 100, y: 100, w: 600, h: 400 });
+});
+
+test("sectionFitPlan cascades through two nested sections, deepest first", () => {
+  const b = fitBoard();
+  const rects = new Map(worldRects(b));
+  rects.set("k2", { x: 900, y: 200, w: 200, h: 100 }); // right edge 1100 > mid 700 and outer 1000
+  const plan = sectionFitPlan(b, rects, ["k2"]);
+  assert.deepEqual(plan.map((p) => p.uid), ["mid", "outer"]);
+  const by = planOf(plan);
+  assert.deepEqual(by.mid, { x: 100, y: 100, w: 1024, h: 400 });
+  assert.deepEqual(by.outer, { x: 0, y: 0, w: 1148, h: 800 });
+});
+
+test("sectionFitPlan stops at autofit=false, skip, the board and non-sections", () => {
+  const b = fitBoard();
+  const rects = new Map(worldRects(b));
+  rects.set("lk", { x: 2500, y: 10, w: 100, h: 100 });
+  assert.deepEqual(sectionFitPlan(b, rects, ["lk"]), []);
+
+  const r2 = new Map(worldRects(b));
+  r2.set("k2", { x: 900, y: 200, w: 200, h: 100 });
+  assert.deepEqual(planOf(sectionFitPlan(b, r2, ["k2"], { skip: new Set(["mid"]) })), {});
+  assert.deepEqual(sectionFitPlan(b, r2, ["k2"], { skip: new Set(["outer"]) }).map((p) => p.uid), ["mid"]);
+
+  const r3 = new Map(worldRects(b));
+  r3.set("top", { x: -500, y: -500, w: 100, h: 100 });
+  assert.deepEqual(sectionFitPlan(b, r3, ["top"]), [], "a root item has no section to grow");
+  assert.deepEqual(sectionFitPlan(b, r3, ["nope"]), []);
+});
+
+test("sectionFitPlan parentOf override lets a live drag target a different section", () => {
+  const b = fitBoard();
+  const rects = new Map(worldRects(b));
+  rects.set("top", { x: 1200, y: 100, w: 100, h: 100 });
+  assert.deepEqual(sectionFitPlan(b, rects, ["top"]), []);
+  const plan = sectionFitPlan(b, rects, ["top"], { parentOf: (u) => (u === "top" ? "outer" : b.items.get(u)?.parentUid) });
+  assert.deepEqual(planOf(plan), { outer: { x: 0, y: 0, w: 1324, h: 800 } });
+});
+
+test("sectionFitPlan: two touched siblings share one grown rect and it never shrinks", () => {
+  const b = fitBoard();
+  const rects = new Map(worldRects(b));
+  rects.set("k1", { x: 500, y: 200, w: 300, h: 100 }); // right 800
+  rects.set("k2", { x: 200, y: 450, w: 100, h: 200 }); // bottom 650
+  const plan = sectionFitPlan(b, rects, ["k1", "k2"]);
+  assert.equal(plan.filter((p) => p.uid === "mid").length, 1);
+  assert.deepEqual(planOf(plan).mid, { x: 100, y: 100, w: 724, h: 574 });
+  const shrunk = new Map(worldRects(b));
+  shrunk.set("k1", { x: 150, y: 150, w: 10, h: 10 });
+  shrunk.set("k2", { x: 160, y: 160, w: 10, h: 10 });
+  assert.deepEqual(sectionFitPlan(b, shrunk, ["k1", "k2"]), []);
+});
+
+test("sectionFitPlan honors a custom pad", () => {
+  const b = fitBoard();
+  const rects = new Map(worldRects(b));
+  rects.set("k1", { x: 500, y: 200, w: 300, h: 100 });
+  assert.deepEqual(planOf(sectionFitPlan(b, rects, ["k1"], { pad: 0 })).mid, { x: 100, y: 100, w: 700, h: 400 });
+});
+
+test("outlineOrder is depth first by block order", () => {
+  const b = buildBoard(fixture());
+  const order = outlineOrder(b);
+  assert.deepEqual(order, ["c1", "c2", "c3", "s1", "m1", "m2", "s2", "m3", "t1", "h1", "hc1", "nb"]);
+  assert.equal(new Set(order).size, b.items.size);
+  const shuffled = buildBoard({
+    ":block/uid": "r",
+    ":block/string": "",
+    ":block/children": [blk("b", 1, "b", { x: 0, y: 0 }), blk("a", 0, "a", { x: 0, y: 0 })],
+  });
+  assert.deepEqual(outlineOrder(shuffled), ["a", "b"]);
 });

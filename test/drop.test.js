@@ -72,7 +72,7 @@ test("getData throwing yields empty", () => {
 // ---- view
 const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
 
-function mount() {
+function mount(hostOverrides = {}) {
   const stub = createDomStub();
   const restore = stub.install();
   stub.localStorage.setItem("plexus-diagram:vp:Svy:board0001", JSON.stringify({ x: 0, y: 0, zoom: 1 }));
@@ -96,11 +96,12 @@ function mount() {
     pagePreview: () => null, pullTree: () => [], blockString: () => null, pageUid: () => null,
     openBlock() {}, openInSidebar() {}, searchPages: () => [], searchBlocks: () => [], related: () => [],
     cardStringForUid: resolveUid,
+    ...hostOverrides,
   };
   const mountEl = stub.document.createElement("div");
   stub.document.body.append(mountEl);
   const view = mountBoardView({ host, session, mountEl, settings: { get: () => undefined }, version: "1.1.0" });
-  return { stub, restore, session, view, mutations };
+  return { stub, restore, session, view, mutations, host };
 }
 
 test("view: dropping two uids stacks cards centred on the drop point", async () => {
@@ -148,3 +149,49 @@ test("view: drop inside an editor is left to Roam", () => {
 });
 
 function stubFlush(f) { f.stub.flushFrames(); }
+
+// 1.2: an image file dropped from the desktop is uploaded through the host and becomes an image card at the drop point.
+test("view: dropping image files uploads them and adds one image ref card each at the drop point", async () => {
+  const uploaded = [];
+  const f = mount({ uploadFile: async (file) => { uploaded.push(file.name); return `https://files.test/${file.name}`; } });
+  try {
+    stubFlush(f);
+    const files = [{ type: "image/png", name: "a.png" }, { type: "image/gif", name: "b.gif" }, { type: "text/plain", name: "notes.txt" }];
+    const d = dt({}, { effectAllowed: "all", files });
+    const ev = f.stub.dispatch(f.view.root, "drop", { clientX: 400, clientY: 300, dataTransfer: d });
+    assert.ok(ev.defaultPrevented);
+    await tick(5);
+    assert.deepEqual(uploaded, ["a.png", "b.gif"], "only image files are uploaded");
+    const [, list] = f.mutations[0];
+    assert.deepEqual(list.map((c) => c.string), ["![](https://files.test/a.png)", "![](https://files.test/b.gif)"]);
+    assert.equal(list[0].x, 400);
+    assert.equal(list[0].y, 300);
+    assert.equal(list[1].y - list[0].y, DEFAULT_SIZES.card.h + 24);
+    assert.equal(f.view.root.querySelector(".pxd-toast__text").textContent, "Added 2 images");
+    assert.deepEqual(f.view.controller.getSelection().items, ["n1", "n2"], "the new cards are selected");
+  } finally { f.view.dispose(); f.restore(); }
+});
+
+test("view: dropping an image where uploads are unavailable says so and adds nothing", async () => {
+  const f = mount({ uploadFile: async () => { throw new Error("upload-unavailable"); } });
+  try {
+    stubFlush(f);
+    const d = dt({}, { effectAllowed: "all", files: [{ type: "image/png", name: "a.png" }] });
+    f.stub.dispatch(f.view.root, "drop", { clientX: 10, clientY: 10, dataTransfer: d });
+    await tick(5);
+    assert.equal(f.mutations.length, 0);
+    assert.match(f.view.root.querySelector(".pxd-toast__text").textContent, /not available/);
+  } finally { f.view.dispose(); f.restore(); }
+});
+
+test("view: a drop with image files and no host upload also stays a no-op with a toast", async () => {
+  const f = mount();
+  try {
+    stubFlush(f);
+    const d = dt({}, { effectAllowed: "all", files: [{ type: "image/webp", name: "c.webp" }] });
+    f.stub.dispatch(f.view.root, "drop", { clientX: 10, clientY: 10, dataTransfer: d });
+    await tick(5);
+    assert.equal(f.mutations.length, 0);
+    assert.match(f.view.root.querySelector(".pxd-toast__text").textContent, /not available/);
+  } finally { f.view.dispose(); f.restore(); }
+});

@@ -318,3 +318,165 @@ Roam lists an enhanced board's child blocks as an outline under it. The extensio
 - `session.restoreNative()` leaves the open state alone.
 - Setting `collapse-outline` (switch, default true): "Collapse board blocks in the outline (expand the bullet to see them)". It replaces the unreleased `show-outline`.
 - Zoomed parent pages still render children under the overlay, so `.rm-diagram` elements inside an enhanced ancestor board's rendered children are never mounted (they get `pxd-outline-native` so the pre-paint guard leaves them alone), and an already-mounted nested one is unmounted when the parent mounts.
+
+## 1.2 additions
+
+Everything below is in the merged 1.2 code. Nothing in the 1.0 or 1.1 sections changed meaning, except that the plain Arrow keys select instead of nudge (see interactions).
+
+### schema.js
+
+```js
+BOARD_PATTERNS = ["dots","lines","grid","plain"] ; BOARD_TONES = ["paper", ...PALETTE] ; FIT_PAD = 24
+dailyPageTitle(date) → "September 29th, 2026"    // local date, Roam daily-note title
+```
+`BOARD_BACKGROUNDS` is gone. Props keys (all under `plexus`):
+
+| key | on | meaning | serialized when |
+|---|---|---|---|
+| `pinned` | any item | locked: cannot move, resize, tidy, same-size, reset or be deleted (without `force`) | `true` only |
+| `fit` | section | `false` opts the section out of auto-fit | `false` only, sections only |
+| `bg` | board (board block or nested board card) | pattern, one of `BOARD_PATTERNS` | valid value |
+| `bgColor` | board | tone, one of `BOARD_TONES` | valid value |
+
+`normalizeItemLayout` returns `pinned` (boolean) and `fit` (`false` or `undefined`). `withBoardMarker(plexus, false)` now deletes `v`, `bg` and `bgColor`.
+
+### model/board.js
+
+```js
+item.pinned : boolean ; item.autofit : boolean   // autofit is false only for a section with fit:false
+board.background = { pattern: string|null, tone: string|null }   // this board's own values, null = not set
+sectionFitPlan(board, rects, touchedUids, {pad=FIT_PAD, skip=Set, parentOf}) → [{uid, rect}]
+boardPreview(item, {max=60, aspect=null, pad=0.12}) → {count, aspect, rects, edges, bounds, empty}
+outlineOrder(board) → uid[]
+```
+`sectionFitPlan` is grow-only. Each touched uid walks up its section chain; a section grows to `unionRect(section, inflate(child, pad))`, and a grown section counts as touched for its own parent (the cascade). It stops at the first ancestor that does not change, is not a section, has `autofit === false`, is `pinned` (a pinned frame never grows or moves), or is in `skip`. `rects` are world rects and may hold live drag rects. The result is sorted deepest first, one entry per grown section.
+
+`boardPreview` v2: `rects` are `{x,y,w,h,type,kind,color,title,ref?}` (`ref` = the referenced block uid of an untitled ((ref)) card, so the card view can title the mini) as fractions of a padded frame (`max(24, pad*max(bw,bh))` around the child bounds, grown to at least 560x320 first, aspect clamped 0.25..4 unless `aspect` is given). `edges` are `{x1,y1,x2,y2}` centre-to-centre fractions of valid connections. `bounds` stays the unpadded absolute child bounds. Titles are the first line cut at 40 characters (a board card with no text uses the board title). `empty:true` with `count:0` for a board with no items.
+`outlineOrder` is depth first, siblings by block order (the Tab order and the Outline tab order).
+
+### model/geometry.js
+
+```js
+lodTier(zoom, prev="detail", {threshold=0.45, overview=0.2}) → "detail"|"map"|"overview"
+lodFonts(zoom) → {map, section, ui}       // world-unit sizes: map clamp(13/z,14,42), section clamp(16/z,15,160), ui clamp(1/z,1,4)
+nearestInDirection(rects, fromUid, dir, {candidates}) → uid|null
+gridBackground(vp, style, base=24) → {size, x, y, major}|null      // null only for "plain"; major = 5 cells
+```
+`lodTier` has hysteresis: leaving `detail` needs zoom below the threshold, coming back needs 1.1x the threshold; `overview` is left at 1.15x its cutoff. `lodForZoom` is unchanged. `nearestInDirection` takes the candidate with the lowest `primary + 2*|orthogonal|` inside a 68 degree cone, falls back to the best candidate beyond the source centre on that axis, ties break by uid; `dir` is `left|right|up|down`.
+
+### model/layout.js (new, pure)
+
+```js
+tidyRects(list, mode, {gap=24, columns=null, order=null}) → [{uid,x,y}]     // mode: row|column|grid|outline (order = uid list for outline)
+spaceOut(rects:Map, movedUids, {gap=16, maxPasses=8, fixed=Set}) → [{uid,x,y}] // displaced rects only; moved uids never move; `fixed` (pinned cards) are never displaced and never push
+sameSize(list, primaryUid, mode="both") → [{uid,w,h}]                       // mode: width|height|both
+mindMapLayout(root, {direction="right", hGap=80, vGap=24}) → Map uid → {x,y} // root {uid,w,h,children[]}; right|down|balanced, root at 0,0
+```
+
+### model/clipboard.js (new, pure)
+
+```js
+PLEXUS_MIME = "application/x-plexus-cards"
+copyPayload(board, uids, rects) → {mime, text}     // mime = JSON {v:1, board, bounds, items:[{uid,type,kind,string,target,x,y,w,h,color}], snapshot?}; a cut adds `snapshot` (see session.snapshotItems) (top-level items, world rects); text = one semantic ref per line
+parseClipboard(dataTransfer) → {kind:"plexus", data} | {kind:"images", files} | {kind:"text", entries:[{string}]} | null
+parsePastedText(text) → [{string}]                 // one entry per non-empty line, leading "- "/"* " stripped, max 50
+refCardStrings(data, at) → [{string,x,y,w,h,color}] // ref cards placed relative to `at`
+planSubtreeClone(node, {genUid, parentUid, order, plexusPatch, uidMap}) → {creates, uidMap}   // creates: [{uid,parent,order,string,props,open}], ((uid)) inside the subtree rewritten
+planEdgeClones(edges, uidMap, {genUid, containerUid, refOfNew}) → creates              // only edges whose both ends were cloned
+```
+`parseClipboard` order: the plexus MIME (valid `v:1` JSON with `items`), then image files, then `text/plain` lines.
+
+### model/export.js (new, pure)
+
+```js
+boardToSvg(board, rects, {dark=false, padding=48, maxItems=500}) → string   // standalone SVG, no external refs
+boardToMarkdown(board, rects) → string                                     // sections become headings (depth), cards bullets, then connections
+```
+
+### session.js
+
+```js
+extendSession(fn(session, api)) → unregister()
+```
+Every session created afterwards runs `fn` once before it is returned; a throwing extension is logged and skipped. `api` = `{uid, host, settings, txn, rawNode, ix, kidsOf, rawPlexus, itemPlexus, edgePlexus, insertOrder, ensureContainer, edgeStringFor, refOf, applyFit, board(), rects(), queue, isGone(), setting, clone, round1, emit}`.
+
+Settings read by the session (through `setting()`, boolean or `"true"`/`"false"`): `auto-fit-sections` (default true), `space-out` (default false).
+
+**applyFit(t, touched, {skip})** runs inside the caller's transaction, after `t.sync()`: it takes `sectionFitPlan`, writes each grown section once (relative to its parent's final rect) and rebases direct members of a section whose origin moved so their world positions stay put. Off when `auto-fit-sections` is false. Write counts: a move, resize, create, tidy, same-size, reset-size, fit-to-content, grow-to-fit, paste or daily-card action that pushes past a section adds one props write per grown section (plus one per member of a section whose origin moved). It is one transaction, so one undo step. A section the user just resized is in `skip` (`commitRects`). A pinned item never moves or resizes but can still make its section grow.
+
+New and changed methods:
+
+```js
+session.fitSection(uid, {shrink=true}) → boolean    // tight fit (members' bounds + FIT_PAD, origin may move inward); shrink:false unions with the current rect; skips no-op writes
+session.setFit(uid, on)                              // sections; off writes fit:false, on removes the key
+session.setPinned(uids, on)                          // pinned:true / key removed
+session.setBoardBackground({bg, bgColor}) → boolean  // undefined leaves the key, null removes it, invalid value or non-enhanced board → false
+session.setCollapsedMany(uids, value) → count        // cards only
+session.collapseAll(value, {within, except}) → count
+session.tidyItems(uids, mode="grid", {gap}) → count  // row|column|grid|outline; a lone section tidies its members; writes x,y only; skips pinned
+session.sameSize(uids, primaryUid, mode="both") → count ; session.resetSize(uids) → count   // skip pinned; resetSize uses DEFAULT_BOARD_CARD for board cards
+session.fitToContent(uid, contentHeight)             // sets h from measured content, shrinks as well as grows (growToFit only grows), cap 900
+session.addDailyCards(dates, {x, y}) → uids          // [[<dailyPageTitle>]] cards, skips pages already on the board; dates are Date or "YYYY-MM-DD"
+session.deleteItems(uids, {withContents, force})     // pinned items are skipped unless force; with contents also skips a section holding a pinned member
+```
+`commitMove` and `commitRects` skip pinned items, then run `applyFit` and (moves only, when `space-out` is on) `spaceOut` for the moved items' siblings: sections only take part when a section moved, pinned siblings never move, displaced cards are written and `applyFit` runs again. `createCard`, `createText`, `createBoard`, `wrapInBoard`, `moveIntoBoard`, `addRefCards` and `growToFit` also end with `applyFit`. `ITEM_KEYS` now include `pinned` and `fit`, so other keys and unknown plexus keys are preserved on write.
+
+### session-clip.js (new; registers through extendSession, imported first by extension.js)
+
+Each method is one transaction with `applyFit` at the end.
+```js
+session.duplicateItems(uids, {dx=24, dy=24, asRef=false}) → uids   // clones the subtrees (blocks, children, props minus pinned); asRef makes ((ref)) cards; nested boards clone with their inner edges remapped; a native (non-enhanced) diagram is skipped
+session.snapshotItems(uids) → rawBoardTree|null                       // detached copy of the top-level items, their subtrees and the connections between them; a cut stores it in the clipboard payload before the blocks are deleted
+session.pasteItems(data, {x, y, mode="refs"|"clone"}) → uids        // data = parseClipboard result or its .data; a payload with `snapshot` (a cut) is always cloned from the snapshot, never pasted as ((ref)) cards to the deleted blocks; clone mode also clones the connections between the pasted items and reads another board through host.pullBoard
+session.pasteText(textOrEntries, {x, y}) → uids                     // one card per entry, stacked 24 apart below each default-height card
+session.sendToBoard(uids, targetBoardUid) → {added, title}|null      // ref cards right of the target's content; null for itself, a missing uid or a non-enhanced/non-board block; a board outside this tree is written through the host queue
+session.expandOutline(cardUid, {direction="right", max=40}) → {added, edges}   // child blocks of a note/block/page card become ref cards laid out by mindMapLayout, plus one connection per parent -> child; depth <= 3; blocks already on the board are reused
+```
+
+### host/roam.js
+
+```js
+host.listBoards({limit=200}) → [{uid, title, pageTitle, pageUid, count, edited}]   // every enhanced board block (props.plexus.v === 2), sorted by page then title; count excludes the Connections block; read-only
+host.cardStats(targets, {boardUid}) → Map key → {refs, boards, open, done}          // key "page:<title>" or "uid:<uid>"; at most 4 datalog queries (the view runs it in idle slots, 12 targets at a time, cached 2 minutes); targets = [{kind, uid?, title?}]
+host.uploadFile(file) → Promise<url>                                                 // api.file.upload; throws "upload-unavailable" or "upload-failed"; bumps stats.writes on success
+```
+`refs` counts blocks elsewhere that reference the target (not under this board), `boards` the diagram blocks that contain such a block, `open`/`done` the TODO/DONE blocks under or on the target page.
+
+### view
+
+```js
+mountBoardView({ ..., onSetDefaults(patch) })        // patch is a settings map, e.g. {grid, "board-tone"}; wired to feature.setDefaults
+view.setSettings(settings)                           // swap the settings object; re-applies background, LOD, minimap and badges without a remount
+view.state() → {zoom, lod, pattern, tone, focus, present, selection, mounted, menuOpen}
+view.exportSvg({download=true}) → Promise<string>    // boardToSvg; download offers <title>.svg through a temporary link
+view.copyOutline() → Promise<string>                 // boardToMarkdown to the clipboard, toast "Outline copied"
+```
+Background resolution: the board's own `bg`/`bgColor`, else the `grid` and `board-tone` settings. Image files pasted or dropped are uploaded with `host.uploadFile` and added as `![](url)` cards; a drop onto an editing card is still left to Roam.
+
+**cards.js** (`createItemRenderer`) adds: `setLod(tier, zoom)` (`detail|map|overview`; only map and overview change what is mounted: titles, text, board shells), header caps (ref titles 120 characters, header text 160), the `pxd-item--bare` class while a card has no mounted body, the board thumbnail (`.pxd-mini`, `.pxd-mini__title`, `svg.pxd-board-preview__edges`, `.pxd-board-preview__empty`), whiteboard shortcut cards (a `((ref))` to a board block renders the thumbnail from `host.pullBoard`, class `pxd-item--wb`, Open calls `onOpenBoard(refUid)`, never `renderString`), `previewSectionRects(list)`, `resetRects(rects, uids)`, `measureContent(uid)` (natural content height: the body is unclamped for the read, so Fit height can shrink a card), `onEditResize(uid, height)` option (the editing card's live height; the view previews the section growing around it), `setBadges(map)`, `setShowBadges(bool)`, `setFocus(uids|null)`. Pinned items get `pxd-item--pinned` / `pxd-section--pinned`.
+
+**edges.js**: `setGhosts([{x,y,w,h}]|null)` (dashed Alt-drag duplicate previews) and `setFocus(Set|null)` (dims connections and links not fully inside the set; re-applied on render and update).
+
+**interactions.js** actions added (all optional): `openMenu({kind, uid, screen, world, selection})`, `showGhosts`, `duplicateItems(uids, {dx,dy,asRef})`, `cancelPreview`, `foldSelection`, `toggleFocus`, `quickLook`, `present`, `expandOutline(uid)`, `presentActive`, `presentNext`, `presentPrev`, `closeQuickLook`, `exitPresent`, `exitFocus` (each of the last three returns true when it closed something), `fitHeight(uid)`, `fitSection(uid)` (bottom-grip double-click on a section), `isBoardCard(uid)` (true for a nested board or a whiteboard-shortcut card: double-click and Enter open it instead of editing). Keydown events may carry `tabOwned:false` (focus is not on the board itself); Tab is then not handled. `resetSize(uids)`. Escape order: gesture, quick look, presentation, edit, focus, selection, popBoard, fullscreen.
+
+Keys: Alt+drag duplicates (Alt+Shift+drag makes ref cards; the drop never goes through `moveIntoBoard`), Cmd/Ctrl+D duplicates by 24,24, right-click opens the menu, plain Arrow nudges the selection 1 px (Shift+Arrow 10 px, pinned items stay put), **Alt+Arrow selects the nearest item in that direction (Alt+Shift+Arrow adds)**, Tab / Shift+Tab walk `outlineOrder` (wrapping), F focus, Q quick look, P present, M expand a note, block or page card into a mind map, Cmd/Ctrl+Alt+Enter fold. Double-click a bottom or corner grip fits or resets the height. Pinned items ignore move, resize and grip gestures; in a multi-selection only the unpinned ones move.
+
+**chrome.js** adds toolbar buttons Background (popover), Focus, Present and More, `chrome.toolbar.setBackground({pattern, tone, override})`, `chrome.popover`, `chrome.backToContent`, and the ctx-bar buttons Pin (`.pxd-ctx__pin-toggle`), Fit height, Reset size, Fit section, Auto-fit toggle, Fold, Same size, Tidy, Send to, Expand outline. Callbacks: `setBackground({bg?, bgColor?})` (Reset sends `{bg:null, bgColor:null}`, the default swatch `{bgColor:null}`), `useBackgroundAsDefault()`, `toggleFocus`, `present`, `openMore({x,y,w,h})` (client coordinates of the button's left and bottom edge), `backToContent`, `pin`, `toggleFit`, `fitSection`, `fitHeight`, `fold`, `foldAll`, `sameSize`, `tidy`, `sendTo`, `expandOutline`, `align`, `distribute`.
+
+**panel.js** tabs: Search, Related, Boards, Outline. Callbacks `listBoards()` (Promise of `host.listBoards` rows), `openBoardByUid(uid)`, `addBoardCard(uid)`, `getOutline()` (sections only: `{uid,title,depth,count,color}`), `outlineClick(uid)`, `opened(bool)`; `panel.open(tab)`, `panel.refreshOutline()`. "Send to board" opens the Boards tab; the next board row click calls `session.sendToBoard`.
+
+**menu.js / menu-model.js**: `createMenu({doc, root, on:{pick(id), closed()}})` with `open({x,y,items})` in client coordinates; Esc or Tab closes it. A menu taller than the board gets `pxd-menu--scroll` (max-height, scrolls; submenus are then pinned beside their row). `buildMenu(kind, ctx)` for `MENU_KINDS = canvas|card|section|text|edge|multi|board-menu` returns `{id, label, hint?, disabled?, checked?, danger?, children?}` or `{id:"sep-N", separator:true}`; `flattenMenu(items)` lists every non-separator item. Item ids: canvas `new-card new-text new-section new-board paste paste-clone add-today add-week select-all fit-all fold-all unfold-all background export-svg copy-outline`; card `edit open open-sidebar copy copy-ref copy-link duplicate duplicate-ref color:<name> fold|unfold fit-height reset-size pin|unpin mind-map (note, block and page cards) send-to related delete` (a board card relabels Edit as Rename board and Open as Open board); section `rename select-contents fit-section toggle-fit tidy tidy:grid|row|column|outline fold-all-in unfold-all-in color:<name> pin|unpin duplicate copy-ref delete-frame delete-contents`; text `edit color:<name> size:16|24|32|48 duplicate pin|unpin copy delete`; edge `dir:none|one|two flip route:curve|straight|elbow dash:solid|dashed color label notes write-to-graph delete`; multi `copy duplicate color align:left|center|right|top|middle|bottom distribute:h|v tidy:* same-size:width|height|both fold unfold pin unpin wrap-section wrap-board send-to delete`; board-menu `export-svg copy-outline fold-all unfold-all add-today add-week background tidy:grid`.
+
+**quicklook.js**: `createQuickLook({doc, root, host, timers, on:{close, getRefCount}})` → `{open(item), close(), toggle(item), isOpen(), dispose()}`. Renders the block and its children (depth 3, 24 rows) through `host.renderString`; a board card shows its item count; swallows pointer, wheel and key events.
+**present.js**: `createPresenter({doc, root, timers, on:{step, exit}})` → `{start(board, rects), next(), prev(), goto(i), stop(), isActive(), index(), total(), dispose()}`; steps are the top-level sections in outline order, or the whole board when there are none; `on.step` receives the rect and the member set the view dims around.
+**clipboard-io.js**: `createClipboardIO({doc, root, ownsKeyboard, isTextEntry, on:{getPayload, cutDone, pastePlexus, pasteImages, pasteText}, now})` wires capture-phase copy, cut and paste while the board owns the keyboard and no text field is focused; Cmd/Ctrl+Shift+V within 400 ms of the keydown pastes as clones. Also exports `writeClipboard({text, mime, data})` and `filesFromDataTransfer(dt)` (images only, max 10). `on.pasteText` receives the parsed entries.
+
+### CSS and build
+
+`src/extension.css` is the base. `src/css/*.css` (`background.css`: grid pattern and board tones, `chrome.css`: popover, menu, back-to-content, panel lists, `overlays.css`: quick look, presenter HUD, ghosts, focus dim) are appended in name order by `readCss()` in `build.mjs`; without a `src/css` directory the output is unchanged. Rules stay scoped under `.pxd-root` or `.pxd-portal` with at least two classes. Root classes: `pxd-lod-map`, `pxd-lod-overview`, `pxd-bg-<tone>`.
+
+### settings.js and feature.js
+
+New setting ids (defaults): `board-tone` ("none"; none, paper or a palette name), `map-zoom` ("0.45"; "0.3", "0.45" or "0.6"), `auto-fit-sections` (true), `space-out` (false), `show-card-badges` (true). `grid` now also accepts `"grid"`, and its panel row is "Default board background: pattern". Enum values are stringified before matching, so a numeric `0.3` becomes `"0.3"`. `initializeSettings` seeds the new ids.
+
+Commands added: "Plexus: Export board as SVG" (`view.exportSvg`) and "Plexus: Copy board as text" (`view.copyOutline`), in the palette and the slash list under the same guard as the others; both resolve the target like Fullscreen (`resolveBoardUid`, then the connected mount). Sessions are given `{get: id => settings[id]}` (never a snapshot), so `auto-fit-sections`, `space-out` and the default card size change on open boards without a remount. `feature.setDefaults(patch)` saves each setting, warns on failure, updates the settings object and calls `setSettings` once on every mount that has it (no remount). `window.__plexusDiagram.mounts()` entries gain `state` (the view's `state()` or `null`).

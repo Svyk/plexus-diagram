@@ -9,18 +9,24 @@ import {
   findEdge,
   itemsInRect,
   membershipPlan,
+  outlineOrder,
   sectionAdoptPlan,
+  sectionFitPlan,
   toRelative,
   topLevelOf,
   worldRects,
 } from "./model/board.js";
 import {
+  BOARD_PATTERNS,
+  BOARD_TONES,
   DEFAULT_BOARD_CARD,
   DEFAULT_SIZES,
+  FIT_PAD,
   MIN_SIZES,
   SCHEMA_VERSION,
   attrNameOf,
   boardString,
+  dailyPageTitle,
   edgeString,
   mergePropsForWrite,
   normalizeEdge,
@@ -32,6 +38,8 @@ import {
   setBoardTitle,
   withBoardMarker,
 } from "./model/schema.js";
+import { inflate, unionRect } from "./model/geometry.js";
+import { sameSize as sameSizeRects, spaceOut as spaceOutRects, tidyRects } from "./model/layout.js";
 import { coveredBy, filterLinks, linksQuery, reduceLinks } from "./model/links.js";
 import { createEchoLedger, createWriteQueue } from "./host/roam.js";
 import { executeImport, planImport, readNative, readV06Entry } from "./host/migrate.js";
@@ -44,11 +52,23 @@ const PROPS = ":block/props";
 const OPEN = ":block/open";
 
 const LINK_MODES = ["off", "attributes", "all"];
-const ITEM_KEYS = ["type", "x", "y", "w", "h", "color", "collapsed", "fontSize"];
+const ITEM_KEYS = ["type", "x", "y", "w", "h", "color", "collapsed", "fontSize", "pinned", "fit"];
 const EDGE_KEYS = ["type", "from", "to", "fromSide", "toSide", "dir", "route", "dash", "weight", "color"];
 const MAX_PARENT_STRINGS = 200;
 
 const registry = new Map();
+const extensions = [];
+
+// Registers fn(session, api); every session created afterwards runs it once before it is returned.
+// Returns a function that removes the registration.
+export function extendSession(fn) {
+  if (typeof fn !== "function") return () => {};
+  extensions.push(fn);
+  return () => {
+    const at = extensions.indexOf(fn);
+    if (at >= 0) extensions.splice(at, 1);
+  };
+}
 
 const clone = (v) => (v == null ? v : JSON.parse(JSON.stringify(v)));
 const round1 = (n) => Math.round(n * 10) / 10;
@@ -150,6 +170,18 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
   let linkFingerprint = "";
   const initialMode = typeof settings?.get === "function" ? settings.get("graph-links") : settings?.["graph-links"];
   let linkMode = LINK_MODES.includes(initialMode) ? initialMode : "all";
+  const setting = (name, fallback) => {
+    const v = typeof settings?.get === "function" ? settings.get(name) : settings?.[name];
+    return v == null || v === "" ? fallback : v;
+  };
+  const flag = (name, fallback) => {
+    const v = setting(name, fallback);
+    return v === true || v === "true" ? true : v === false || v === "false" ? false : fallback;
+  };
+  const sizeSetting = (name, fallback) => {
+    const n = Number(setting(name, fallback));
+    return Number.isFinite(n) && n >= 40 ? n : fallback;
+  };
   const collapseOutline = () => (typeof settings?.get === "function" ? settings.get("collapse-outline") : settings?.["collapse-outline"]) !== false;
 
   // ---- raw tree helpers (optimistic model) ----
@@ -432,6 +464,16 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
     h: Math.max(MIN_SIZES[type]?.h ?? 1, h),
   });
 
+  // A section never goes below its members: keeps the frame's origin and grows the size to their padded far edges.
+  const sectionFloor = (id, size) => {
+    const item = board.items.get(id);
+    const own = rects.get(id);
+    if (item?.type !== "section" || !own || !item.members.length) return size;
+    const b = boundsOf(item.members.map((m) => rects.get(m)).filter(Boolean));
+    if (!b) return size;
+    return { w: Math.max(size.w, b.x + b.w + FIT_PAD - own.x), h: Math.max(size.h, b.y + b.h + FIT_PAD - own.y) };
+  };
+
   function ensureContainer(t) {
     if (board.containerUid) return board.containerUid;
     const existing = kidsOf(raw).find((k) => readPlexus(k[PROPS])?.type === "edges");
@@ -447,6 +489,80 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
   function edgeStringFor(from, to, dir, label) {
     return edgeString({ srcRef: refOf(from), dstRef: refOf(to), dir, label });
   }
+
+  // ---- auto-fit ----
+  // Grows auto-fit sections around the touched items (grow only), all inside the caller's txn. Grown sections
+  // are written relative to their parent's final rect; direct members of a section whose origin moved are
+  // rebased so their world positions stay put (this overwrites their earlier write in the same txn).
+  function applyFit(t, touched, { skip } = {}) {
+    if (!flag("auto-fit-sections", true)) return;
+    const list = [...(touched ?? [])];
+    if (!list.length) return;
+    t.sync();
+    const plan = sectionFitPlan(board, rects, list, skip ? { skip: new Set(skip) } : {});
+    if (!plan.length) return;
+    const grown = new Map(plan.map((p) => [p.uid, p.rect]));
+    const finalWorld = new Map(rects);
+    for (const [sid, r] of grown) finalWorld.set(sid, r);
+    const originOf = (pid) => (pid === uid ? { x: 0, y: 0 } : finalWorld.get(pid) ?? { x: 0, y: 0 });
+    for (const [sid, r] of grown) {
+      const p = originOf(board.items.get(sid).parentUid);
+      t.props(sid, itemPlexus(sid, { x: round1(r.x - p.x), y: round1(r.y - p.y), w: round1(r.w), h: round1(r.h) }));
+    }
+    for (const [sid, r] of grown) {
+      const old = rects.get(sid);
+      if (Math.abs(r.x - old.x) < 0.01 && Math.abs(r.y - old.y) < 0.01) continue;
+      for (const m of board.items.get(sid).members) {
+        if (grown.has(m)) continue;
+        const mr = rects.get(m);
+        t.props(m, itemPlexus(m, { x: round1(mr.x - r.x), y: round1(mr.y - r.y) }));
+      }
+    }
+  }
+
+  // Pushes overlapping siblings of just-moved items apart. Sections only take part when a section moved.
+  function spaceOutAfter(t, moved) {
+    t.sync();
+    const byParent = new Map();
+    for (const id of moved) {
+      const it = board.items.get(id);
+      if (!it) continue;
+      if (!byParent.has(it.parentUid)) byParent.set(it.parentUid, []);
+      byParent.get(it.parentUid).push(id);
+    }
+    const displacedIds = [];
+    for (const [pid, here] of byParent) {
+      const sibs = pid === uid ? board.roots : board.items.get(pid)?.members ?? [];
+      const withSections = here.some((id) => board.items.get(id).type === "section");
+      const map = new Map();
+      const pinned = new Set();
+      for (const s of sibs) {
+        const it = board.items.get(s);
+        if (!it || (it.type === "section" && !withSections)) continue;
+        map.set(s, rects.get(s));
+        if (it.pinned && !here.includes(s)) pinned.add(s);
+      }
+      const origin = pid === uid ? { x: 0, y: 0 } : rects.get(pid) ?? { x: 0, y: 0 };
+      for (const d of spaceOutRects(map, new Set(here), { fixed: pinned })) {
+        t.props(d.uid, itemPlexus(d.uid, { x: round1(d.x - origin.x), y: round1(d.y - origin.y) }));
+        displacedIds.push(d.uid);
+      }
+    }
+    applyFit(t, displacedIds);
+  }
+
+  const cardAt = (t, string, x, y) => {
+    const parent = containerAt(board, { x: x + DEFAULT_SIZES.card.w / 2, y: y + DEFAULT_SIZES.card.h / 2 }, { rects });
+    const rel = toRelative(board, parent, { x, y }, rects);
+    return t.create({ parent, string, plexus: serializeItemLayout({ x: rel.x, y: rel.y }) });
+  };
+
+  const defaultSizeFor = (item) => {
+    if (item.type === "section") return DEFAULT_SIZES.section;
+    if (item.type === "text") return DEFAULT_SIZES.text;
+    if (item.kind === "board") return DEFAULT_BOARD_CARD;
+    return { w: sizeSetting("default-card-width", DEFAULT_SIZES.card.w), h: sizeSetting("default-card-height", DEFAULT_SIZES.card.h) };
+  };
 
   // ---- links ----
   function recomputeLinks(force) {
@@ -547,7 +663,7 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
     commitMove(uids, dx, dy) {
       if (!board || (!dx && !dy)) return Promise.resolve();
       return txn((t) => {
-        const top = topLevelOf(board, uids);
+        const top = topLevelOf(board, uids).filter((id) => !board.items.get(id).pinned);
         if (!top.length) return;
         const moved = new Map(rects);
         for (const id of top) {
@@ -565,6 +681,8 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
             t.props(id, itemPlexus(id, { x: item.x + dx, y: item.y + dy }));
           }
         }
+        applyFit(t, top);
+        if (flag("space-out", false)) spaceOutAfter(t, top);
       });
     },
 
@@ -572,9 +690,11 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
       if (!board || !list?.length) return Promise.resolve();
       return txn((t) => {
         const changedSections = [];
+        const fitTouched = [];
         for (const r of list) {
           const item = board.items.get(r.uid);
-          if (!item) continue;
+          if (!item || item.pinned) continue;
+          fitTouched.push(r.uid);
           const parentRect = item.parentUid === uid ? { x: 0, y: 0 } : rects.get(item.parentUid) ?? { x: 0, y: 0 };
           const size = clampSize(item.type, r.w ?? item.w, r.h ?? item.h);
           t.props(r.uid, itemPlexus(r.uid, {
@@ -585,16 +705,18 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
           }));
           if (item.type === "section") changedSections.push(r.uid);
         }
-        if (!changedSections.length) return;
-        t.sync();
-        for (const sid of changedSections) {
-          const plan = sectionAdoptPlan(board, sid, rects);
-          for (const p of plan) {
-            t.move(p.uid, p.toParent, "last");
-            t.props(p.uid, itemPlexus(p.uid, { x: p.x, y: p.y }));
+        if (changedSections.length) {
+          t.sync();
+          for (const sid of changedSections) {
+            const plan = sectionAdoptPlan(board, sid, rects);
+            for (const p of plan) {
+              t.move(p.uid, p.toParent, "last");
+              t.props(p.uid, itemPlexus(p.uid, { x: p.x, y: p.y }));
+            }
+            if (plan.length) t.sync();
           }
-          if (plan.length) t.sync();
         }
+        applyFit(t, fitTouched, { skip: changedSections });
       });
     },
 
@@ -606,7 +728,9 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
         const layout = { x: rel.x, y: rel.y };
         if (w !== undefined) layout.w = w;
         if (h !== undefined) layout.h = h;
-        return t.create({ parent, string, plexus: serializeItemLayout(layout) });
+        const id = t.create({ parent, string, plexus: serializeItemLayout(layout) });
+        applyFit(t, [id]);
+        return id;
       });
     },
 
@@ -614,7 +738,9 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
       return txn((t) => {
         const parent = containerAt(board, { x: x + DEFAULT_SIZES.text.w / 2, y: y + DEFAULT_SIZES.text.h / 2 }, { rects });
         const rel = toRelative(board, parent, { x, y }, rects);
-        return t.create({ parent, string, plexus: serializeItemLayout({ type: "text", x: rel.x, y: rel.y }) });
+        const id = t.create({ parent, string, plexus: serializeItemLayout({ type: "text", x: rel.x, y: rel.y }) });
+        applyFit(t, [id]);
+        return id;
       });
     },
 
@@ -638,7 +764,9 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
         const d = DEFAULT_BOARD_CARD;
         const r = { x: rect?.x ?? 0, y: rect?.y ?? 0, w: rect?.w ?? d.w, h: rect?.h ?? d.h };
         const size = clampSize("card", r.w, r.h);
-        return makeBoard(t, { x: r.x, y: r.y, w: size.w, h: size.h }, title, undefined);
+        const id = makeBoard(t, { x: r.x, y: r.y, w: size.w, h: size.h }, title, undefined);
+        applyFit(t, [id]);
+        return id;
       });
     },
 
@@ -650,6 +778,7 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
         const card = { x: b.x, y: b.y, w: Math.min(480, Math.max(240, b.w)), h: Math.min(360, Math.max(180, b.h)) };
         const boardUid = makeBoard(t, card, "", new Set(top), b);
         moveItemsInto(t, top, boardUid, { x: b.x, y: b.y }, { x: 0, y: 0 });
+        applyFit(t, [boardUid]);
         return boardUid;
       });
     },
@@ -674,6 +803,7 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
       const info = { createdContainer: null };
       return txn((t) => {
         moveItemsInto(t, top, boardUid, origin, place, { moved, undoEdges, info });
+        applyFit(t, [boardUid]);
         return {
           moved: top.slice(),
           title: target.title,
@@ -709,16 +839,18 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
     },
 
     addRefCards(list) {
-      return txn((t) => (list ?? []).map(({ string, x, y }) => {
-        const parent = containerAt(board, { x: x + DEFAULT_SIZES.card.w / 2, y: y + DEFAULT_SIZES.card.h / 2 }, { rects });
-        const rel = toRelative(board, parent, { x, y }, rects);
-        return t.create({ parent, string, plexus: serializeItemLayout({ x: rel.x, y: rel.y }) });
-      }));
+      return txn((t) => {
+        const ids = (list ?? []).map(({ string, x, y }) => cardAt(t, string, x, y));
+        applyFit(t, ids);
+        return ids;
+      });
     },
 
-    deleteItems(uids, { withContents = false } = {}) {
+    deleteItems(uids, { withContents = false, force = false } = {}) {
       return txn((t) => {
-        const set = new Set([...uids].filter((id) => board.items.has(id)));
+        const protectedItem = (id) => board.items.get(id).pinned
+          || (withContents && [...descendantsOf(board, id)].some((d) => board.items.get(d).pinned));
+        const set = new Set([...uids].filter((id) => board.items.has(id) && (force || !protectedItem(id))));
         if (!set.size) return;
         let edgeSet;
         if (withContents) {
@@ -782,6 +914,203 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
         const target = Math.min(900, Math.ceil(contentHeight));
         if (!(target > item.h)) return;
         t.props(id, itemPlexus(id, { h: target }));
+        applyFit(t, [id]);
+      });
+    },
+
+    fitSection(id, { shrink = true } = {}) {
+      return txn((t) => {
+        const item = board.items.get(id);
+        if (!item || item.type !== "section" || !item.members.length) return false;
+        const own = rects.get(id);
+        const bounds = boundsOf(item.members.map((m) => rects.get(m)));
+        let next = inflate(bounds, FIT_PAD);
+        if (!shrink) next = unionRect(own, next);
+        const size = clampSize("section", next.w, next.h);
+        next = { x: round1(next.x), y: round1(next.y), w: round1(size.w), h: round1(size.h) };
+        const origin = item.parentUid === uid ? { x: 0, y: 0 } : rects.get(item.parentUid) ?? { x: 0, y: 0 };
+        const write = (target, patch) => {
+          const plexus = itemPlexus(target, patch);
+          if (stable(plexus) !== stable(rawPlexus(target))) t.props(target, plexus);
+        };
+        write(id, { x: round1(next.x - origin.x), y: round1(next.y - origin.y), w: next.w, h: next.h });
+        for (const m of item.members) {
+          const mr = rects.get(m);
+          write(m, { x: round1(mr.x - next.x), y: round1(mr.y - next.y) });
+        }
+        applyFit(t, [id]);
+        return true;
+      });
+    },
+
+    setFit(id, on) {
+      return txn((t) => {
+        const item = board.items.get(id);
+        if (!item || item.type !== "section") return;
+        const want = on === false ? false : undefined;
+        if ((item.autofit === false) === (want === false)) return;
+        t.props(id, itemPlexus(id, { fit: want }));
+      });
+    },
+
+    setPinned(uids, on) {
+      return txn((t) => {
+        for (const id of new Set(uids ?? [])) {
+          const item = board.items.get(id);
+          if (!item || item.pinned === Boolean(on)) continue;
+          t.props(id, itemPlexus(id, { pinned: on ? true : undefined }));
+        }
+      });
+    },
+
+    // bg / bgColor: undefined leaves the key, null removes it, otherwise it must be a known pattern / tone.
+    // Resolves true when applied (or already equal), false when rejected.
+    setBoardBackground({ bg, bgColor } = {}) {
+      return txn((t) => {
+        if (!board.enhanced) return false;
+        if (bg != null && !BOARD_PATTERNS.includes(bg)) return false;
+        if (bgColor != null && !BOARD_TONES.includes(bgColor)) return false;
+        const base = rawPlexus(uid);
+        const next = { ...base };
+        for (const [key, value] of [["bg", bg], ["bgColor", bgColor]]) {
+          if (value === undefined) continue;
+          if (value === null) delete next[key];
+          else next[key] = value;
+        }
+        if (stable(next) !== stable(base)) t.props(uid, next);
+        return true;
+      });
+    },
+
+    setCollapsedMany(uids, value) {
+      return txn((t) => {
+        let count = 0;
+        for (const id of new Set(uids ?? [])) {
+          const item = board.items.get(id);
+          if (!item || item.type !== "card" || item.collapsed === Boolean(value)) continue;
+          t.props(id, itemPlexus(id, { collapsed: value ? true : undefined }));
+          count++;
+        }
+        return count;
+      });
+    },
+
+    collapseAll(value, { within = null, except = [] } = {}) {
+      return txn((t) => {
+        const skipIds = new Set(except ?? []);
+        const pool = within ? [...descendantsOf(board, within)] : [...board.items.keys()];
+        let count = 0;
+        for (const id of pool) {
+          const item = board.items.get(id);
+          if (!item || item.type !== "card" || skipIds.has(id) || item.collapsed === Boolean(value)) continue;
+          t.props(id, itemPlexus(id, { collapsed: value ? true : undefined }));
+          count++;
+        }
+        return count;
+      });
+    },
+
+    // Modes: row, column, grid, outline. A lone selected section tidies its members; otherwise each parent's
+    // selected items are tidied among themselves. Writes only x and y. Resolves the number of items moved.
+    tidyItems(uids, mode = "grid", { gap } = {}) {
+      return txn((t) => {
+        const top = topLevelOf(board, uids ?? []);
+        const groups = new Map();
+        if (top.length === 1 && board.items.get(top[0]).type === "section") {
+          groups.set(top[0], board.items.get(top[0]).members.filter((m) => !board.items.get(m).pinned));
+        } else {
+          for (const id of top) {
+            const it = board.items.get(id);
+            if (it.pinned) continue;
+            if (!groups.has(it.parentUid)) groups.set(it.parentUid, []);
+            groups.get(it.parentUid).push(id);
+          }
+        }
+        const opts = gap !== undefined ? { gap } : {};
+        if (mode === "outline") opts.order = outlineOrder(board);
+        const moved = [];
+        for (const ids of groups.values()) {
+          if (ids.length < 2) continue;
+          const list = ids.map((id) => {
+            const it = board.items.get(id);
+            return { uid: id, x: it.x, y: it.y, w: it.w, h: it.h };
+          });
+          for (const p of tidyRects(list, mode, opts)) {
+            const it = board.items.get(p.uid);
+            if (Math.abs(p.x - it.x) < 0.05 && Math.abs(p.y - it.y) < 0.05) continue;
+            t.props(p.uid, itemPlexus(p.uid, { x: round1(p.x), y: round1(p.y) }));
+            moved.push(p.uid);
+          }
+        }
+        applyFit(t, moved);
+        return moved.length;
+      });
+    },
+
+    sameSize(uids, primaryUid, mode = "both") {
+      return txn((t) => {
+        const ids = [...new Set([...(uids ?? []), primaryUid])].filter((id) => board.items.has(id));
+        const list = ids.map((id) => ({ uid: id, w: board.items.get(id).w, h: board.items.get(id).h }));
+        const changed = [];
+        for (const c of sameSizeRects(list, primaryUid, mode)) {
+          const item = board.items.get(c.uid);
+          if (item.pinned) continue;
+          const size = sectionFloor(c.uid, clampSize(item.type, c.w, c.h));
+          if (round1(size.w) === item.w && round1(size.h) === item.h) continue;
+          t.props(c.uid, itemPlexus(c.uid, { w: round1(size.w), h: round1(size.h) }));
+          changed.push(c.uid);
+        }
+        applyFit(t, changed);
+        return changed.length;
+      });
+    },
+
+    resetSize(uids) {
+      return txn((t) => {
+        const changed = [];
+        for (const id of new Set(uids ?? [])) {
+          const item = board.items.get(id);
+          if (!item || item.pinned) continue;
+          const d = sectionFloor(id, defaultSizeFor(item));
+          const w = round1(d.w);
+          const h = round1(d.h);
+          if (item.w === w && item.h === h) continue;
+          t.props(id, itemPlexus(id, { w, h }));
+          changed.push(id);
+        }
+        applyFit(t, changed);
+        return changed.length;
+      });
+    },
+
+    // Sets the height from measured content, shrinking as well as growing (growToFit only grows).
+    fitToContent(id, contentHeight) {
+      return txn((t) => {
+        const item = board.items.get(id);
+        if (!item || item.type === "section" || !Number.isFinite(contentHeight)) return;
+        const target = Math.min(900, Math.max(MIN_SIZES[item.type]?.h ?? 1, Math.ceil(contentHeight)));
+        if (target === item.h) return;
+        t.props(id, itemPlexus(id, { h: target }));
+        applyFit(t, [id]);
+      });
+    },
+
+    addDailyCards(dates, { x = 0, y = 0 } = {}) {
+      return txn((t) => {
+        const have = new Set();
+        for (const item of board.items.values()) if (item.kind === "page") have.add(item.target.title);
+        const made = [];
+        for (const d of dates ?? []) {
+          const date = typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d)
+            ? new Date(Number(d.slice(0, 4)), Number(d.slice(5, 7)) - 1, Number(d.slice(8, 10)))
+            : d;
+          const title = dailyPageTitle(date);
+          if (have.has(title)) continue;
+          have.add(title);
+          made.push(cardAt(t, `[[${title}]]`, x + made.length * 300, y));
+        }
+        applyFit(t, made);
+        return made;
       });
     },
 
@@ -1010,6 +1339,35 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
   }
 
   if (linkMode !== "off" && board) refreshLinks();
+
+  const api = {
+    uid,
+    host,
+    settings,
+    txn,
+    rawNode,
+    ix,
+    kidsOf,
+    rawPlexus,
+    itemPlexus,
+    edgePlexus,
+    insertOrder,
+    ensureContainer,
+    edgeStringFor,
+    refOf,
+    applyFit,
+    board: () => board,
+    rects: () => rects,
+    queue,
+    isGone: () => gone || destroyed,
+    setting,
+    clone,
+    round1,
+    emit,
+  };
+  for (const fn of [...extensions]) {
+    try { fn(session, api); } catch (err) { console.error("[plexus session] extension", err); }
+  }
   return session;
 }
 

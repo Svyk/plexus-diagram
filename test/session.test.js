@@ -89,12 +89,12 @@ test("commitMove preserves other props keys on the card", async () => {
 
 test("commitMove into a section: one move + one props write with relative coords", async () => {
   const { fake, session } = setup();
-  await session.commitMove(["c2"], -300, 300);
+  await session.commitMove(["c2"], -280, 340);
   const log = fake.writesLog();
   assert.equal(log.length, 2);
   assert.deepEqual(log[0], ["move", "c2", "s1", "last"]);
   assert.equal(log[1][0], "update");
-  assert.deepEqual(fake.props("c2").plexus, { x: 100, y: 0, w: 280, h: 160 });
+  assert.deepEqual(fake.props("c2").plexus, { x: 120, y: 40, w: 280, h: 160 });
   assert.equal(session.board.items.get("c2").parentUid, "s1");
 });
 

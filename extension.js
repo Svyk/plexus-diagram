@@ -1,114 +1,357 @@
-/* Plexus Diagram v1.1.0 | MIT | generated; edit src/ */
+/* Plexus Diagram v1.2.0 | MIT | generated; edit src/ */
 
-// src/lifecycle.js
-function isPromiseLike(value) {
-  return value != null && typeof value.then === "function";
+// src/model/geometry.js
+var num = (n) => {
+  const r = Math.round(n * 1e3) / 1e3;
+  return Object.is(r, -0) ? 0 : r;
+};
+function screenToWorld(vp, p) {
+  return { x: (p.x - vp.x) / vp.zoom, y: (p.y - vp.y) / vp.zoom };
 }
-async function callSafely(disposer) {
-  const result = disposer();
-  if (isPromiseLike(result)) await result;
+function worldToScreen(vp, p) {
+  return { x: p.x * vp.zoom + vp.x, y: p.y * vp.zoom + vp.y };
 }
-function createLifecycle() {
-  let disposed = false;
-  const disposers = [];
-  const add = (disposer) => {
-    if (typeof disposer !== "function") throw new TypeError("A disposer must be a function");
-    if (disposed) {
-      void callSafely(disposer).catch((error) => console.error("[plexus-diagram] Late cleanup failed", error));
-      return disposer;
+function clampZoom(z, min = 0.1, max = 4) {
+  return Math.min(max, Math.max(min, z));
+}
+function zoomAt(vp, screenPoint, factor, { min = 0.1, max = 4 } = {}) {
+  const zoom = clampZoom(vp.zoom * factor, min, max);
+  const w = screenToWorld(vp, screenPoint);
+  return { x: screenPoint.x - w.x * zoom, y: screenPoint.y - w.y * zoom, zoom };
+}
+function fitViewport(bounds, size, { padding = 64, maxZoom = 1.5, minZoom = 0.1 } = {}) {
+  if (!bounds) return { x: size.width / 2, y: size.height / 2, zoom: 1 };
+  const availW = size.width - 2 * padding;
+  const availH = size.height - 2 * padding;
+  let zoom = Math.min(bounds.w > 0 ? availW / bounds.w : Infinity, bounds.h > 0 ? availH / bounds.h : Infinity);
+  if (!Number.isFinite(zoom)) zoom = maxZoom;
+  zoom = clampZoom(zoom, minZoom, maxZoom);
+  const c = center(bounds);
+  return { x: size.width / 2 - c.x * zoom, y: size.height / 2 - c.y * zoom, zoom };
+}
+function visibleWorldRect(vp, size, margin = 0) {
+  const mw = size.width * margin;
+  const mh = size.height * margin;
+  return {
+    x: (-vp.x - mw) / vp.zoom,
+    y: (-vp.y - mh) / vp.zoom,
+    w: (size.width + 2 * mw) / vp.zoom,
+    h: (size.height + 2 * mh) / vp.zoom
+  };
+}
+function lodForZoom(zoom) {
+  return zoom < 0.45 ? "map" : "detail";
+}
+var clampNum = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+function lodTier(zoom, prev = "detail", { threshold = 0.45, overview = 0.2 } = {}) {
+  if (prev === "overview") {
+    if (zoom >= overview * 1.15) return zoom >= threshold * 1.1 ? "detail" : "map";
+    return "overview";
+  }
+  if (prev === "map") {
+    if (zoom < overview) return "overview";
+    return zoom >= threshold * 1.1 ? "detail" : "map";
+  }
+  if (zoom < overview) return "overview";
+  return zoom < threshold ? "map" : "detail";
+}
+function lodFonts(zoom) {
+  return {
+    map: clampNum(13 / zoom, 14, 42),
+    section: clampNum(16 / zoom, 15, 160),
+    ui: clampNum(1 / zoom, 1, 4)
+  };
+}
+var CONE = 68 * Math.PI / 180;
+function nearestInDirection(rects, fromUid, dir, { candidates = null } = {}) {
+  const src = rects.get(fromUid);
+  if (!src) return null;
+  const c = { x: src.x + src.w / 2, y: src.y + src.h / 2 };
+  const list = candidates ? [...candidates] : [...rects.keys()];
+  let best = null;
+  let bestScore = Infinity;
+  let fallback = null;
+  let fallbackScore = Infinity;
+  for (const uid of list) {
+    if (uid === fromUid) continue;
+    const r = rects.get(uid);
+    if (!r) continue;
+    const dx = r.x + r.w / 2 - c.x;
+    const dy = r.y + r.h / 2 - c.y;
+    let primary;
+    let ortho;
+    if (dir === "right") {
+      primary = dx;
+      ortho = dy;
+    } else if (dir === "left") {
+      primary = -dx;
+      ortho = dy;
+    } else if (dir === "down") {
+      primary = dy;
+      ortho = dx;
+    } else if (dir === "up") {
+      primary = -dy;
+      ortho = dx;
+    } else return null;
+    if (primary <= 0) continue;
+    const score = primary + 2 * Math.abs(ortho);
+    const better = (cur, curUid) => score < cur || score === cur && (curUid === null || uid < curUid);
+    if (Math.atan2(Math.abs(ortho), primary) <= CONE && better(bestScore, best)) {
+      best = uid;
+      bestScore = score;
     }
-    disposers.push(disposer);
-    return disposer;
+    if (better(fallbackScore, fallback)) {
+      fallback = uid;
+      fallbackScore = score;
+    }
+  }
+  return best ?? fallback;
+}
+function center(r) {
+  return { x: r.x + r.w / 2, y: r.y + r.h / 2 };
+}
+function inflate(r, n) {
+  return { x: r.x - n, y: r.y - n, w: r.w + 2 * n, h: r.h + 2 * n };
+}
+function unionRect(a, b) {
+  const x = Math.min(a.x, b.x);
+  const y = Math.min(a.y, b.y);
+  return { x, y, w: Math.max(a.x + a.w, b.x + b.w) - x, h: Math.max(a.y + a.h, b.y + b.h) - y };
+}
+function rectsIntersect(a, b) {
+  return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+}
+function sidePoint(rect, side) {
+  switch (side) {
+    case "top":
+      return { x: rect.x + rect.w / 2, y: rect.y };
+    case "bottom":
+      return { x: rect.x + rect.w / 2, y: rect.y + rect.h };
+    case "left":
+      return { x: rect.x, y: rect.y + rect.h / 2 };
+    default:
+      return { x: rect.x + rect.w, y: rect.y + rect.h / 2 };
+  }
+}
+var SIDES = ["top", "right", "bottom", "left"];
+function nearestSide(rect, point) {
+  let best = "top";
+  let bestD = Infinity;
+  for (const s of SIDES) {
+    const p = sidePoint(rect, s);
+    const d = (p.x - point.x) ** 2 + (p.y - point.y) ** 2;
+    if (d < bestD) {
+      bestD = d;
+      best = s;
+    }
+  }
+  return best;
+}
+function autoSides(a, b) {
+  const ca = center(a);
+  const cb = center(b);
+  const dx = cb.x - ca.x;
+  const dy = cb.y - ca.y;
+  if (Math.abs(dx) >= Math.abs(dy)) {
+    return dx >= 0 ? { fromSide: "right", toSide: "left" } : { fromSide: "left", toSide: "right" };
+  }
+  return dy >= 0 ? { fromSide: "bottom", toSide: "top" } : { fromSide: "top", toSide: "bottom" };
+}
+var NORMALS = {
+  top: { x: 0, y: -1 },
+  right: { x: 1, y: 0 },
+  bottom: { x: 0, y: 1 },
+  left: { x: -1, y: 0 }
+};
+function edgePath({ a, b, fromSide = "auto", toSide = "auto", route = "curve", offset = 0 }) {
+  if (fromSide === "auto" || toSide === "auto") {
+    const auto = autoSides(a, b);
+    if (fromSide === "auto") fromSide = auto.fromSide;
+    if (toSide === "auto") toSide = auto.toSide;
+  }
+  const start = sidePoint(a, fromSide);
+  const end = sidePoint(b, toSide);
+  const nf = NORMALS[fromSide];
+  const nt = NORMALS[toSide];
+  const dist = Math.hypot(end.x - start.x, end.y - start.y);
+  if (route === "straight") {
+    const angle = Math.atan2(end.y - start.y, end.x - start.x);
+    return {
+      d: `M${num(start.x)} ${num(start.y)}L${num(end.x)} ${num(end.y)}`,
+      start,
+      end,
+      mid: { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 },
+      startAngle: angle,
+      endAngle: angle,
+      fromSide,
+      toSide
+    };
+  }
+  if (route === "elbow") {
+    const STUB = 24;
+    const s1 = { x: start.x + nf.x * STUB, y: start.y + nf.y * STUB };
+    const e1 = { x: end.x + nt.x * STUB, y: end.y + nt.y * STUB };
+    const fromH = nf.y === 0;
+    const toH = nt.y === 0;
+    const pts = [start, s1];
+    if (fromH && toH) {
+      const mx = (s1.x + e1.x) / 2;
+      pts.push({ x: mx, y: s1.y }, { x: mx, y: e1.y });
+    } else if (!fromH && !toH) {
+      const my = (s1.y + e1.y) / 2;
+      pts.push({ x: s1.x, y: my }, { x: e1.x, y: my });
+    } else if (fromH) {
+      pts.push({ x: e1.x, y: s1.y });
+    } else {
+      pts.push({ x: s1.x, y: e1.y });
+    }
+    pts.push(e1, end);
+    const poly = pts.filter((p, i) => i === 0 || p.x !== pts[i - 1].x || p.y !== pts[i - 1].y);
+    const lens = [];
+    let total = 0;
+    for (let i = 1; i < poly.length; i++) {
+      const l = Math.hypot(poly[i].x - poly[i - 1].x, poly[i].y - poly[i - 1].y);
+      lens.push(l);
+      total += l;
+    }
+    let mid2 = { ...start };
+    let acc = 0;
+    for (let i = 0; i < lens.length; i++) {
+      if (acc + lens[i] >= total / 2) {
+        const t = lens[i] === 0 ? 0 : (total / 2 - acc) / lens[i];
+        mid2 = {
+          x: poly[i].x + (poly[i + 1].x - poly[i].x) * t,
+          y: poly[i].y + (poly[i + 1].y - poly[i].y) * t
+        };
+        break;
+      }
+      acc += lens[i];
+    }
+    const last = poly[poly.length - 1];
+    const prev = poly[poly.length - 2] || start;
+    const second = poly[1] || end;
+    return {
+      d: poly.map((p, i) => `${i === 0 ? "M" : "L"}${num(p.x)} ${num(p.y)}`).join(""),
+      start,
+      end,
+      mid: mid2,
+      startAngle: Math.atan2(second.y - start.y, second.x - start.x),
+      endAngle: Math.atan2(last.y - prev.y, last.x - prev.x),
+      fromSide,
+      toSide
+    };
+  }
+  const k = Math.max(40, 0.4 * dist);
+  let px = 0;
+  let py = 0;
+  if (offset && dist > 0) {
+    px = -(end.y - start.y) / dist * offset;
+    py = (end.x - start.x) / dist * offset;
+  }
+  const c1 = { x: start.x + nf.x * k + px, y: start.y + nf.y * k + py };
+  const c2 = { x: end.x + nt.x * k + px, y: end.y + nt.y * k + py };
+  const mid = {
+    x: (start.x + 3 * c1.x + 3 * c2.x + end.x) / 8,
+    y: (start.y + 3 * c1.y + 3 * c2.y + end.y) / 8
   };
   return {
-    get disposed() {
-      return disposed;
-    },
-    add,
-    async command(commandApi, config) {
-      if (!commandApi?.addCommand || !commandApi?.removeCommand) {
-        throw new TypeError("A command API with addCommand/removeCommand is required");
-      }
-      await commandApi.addCommand(config);
-      add(() => commandApi.removeCommand({ label: config.label }));
-    },
-    event(target, type, listener, options) {
-      target.addEventListener(type, listener, options);
-      add(() => target.removeEventListener(type, listener, options));
-      return listener;
-    },
-    interval(callback, delay, ...args) {
-      const id = globalThis.setInterval(callback, delay, ...args);
-      add(() => globalThis.clearInterval(id));
-      return id;
-    },
-    timeout(callback, delay, ...args) {
-      const id = globalThis.setTimeout(callback, delay, ...args);
-      add(() => globalThis.clearTimeout(id));
-      return id;
-    },
-    observer(observer, target, options) {
-      observer.observe(target, options);
-      add(() => observer.disconnect());
-      return observer;
-    },
-    node(node, parent = globalThis.document?.body) {
-      if (!parent) throw new Error("A parent node is required outside the browser");
-      parent.append(node);
-      add(() => node.remove());
-      return node;
-    },
-    pullWatch(dataApi, pattern, entity, callback) {
-      if (!dataApi?.addPullWatch || !dataApi?.removePullWatch) {
-        throw new TypeError("A Roam data API with addPullWatch/removePullWatch is required");
-      }
-      dataApi.addPullWatch(pattern, entity, callback);
-      add(() => dataApi.removePullWatch(pattern, entity, callback));
-      return callback;
-    },
-    async settingsPanel(extensionAPI, config) {
-      await extensionAPI.settings.panel.create(config);
-    },
-    async dispose() {
-      if (disposed) return;
-      disposed = true;
-      const errors = [];
-      for (const disposer of disposers.splice(0).reverse()) {
-        try {
-          await callSafely(disposer);
-        } catch (error) {
-          errors.push(error);
-        }
-      }
-      if (errors.length) throw new AggregateError(errors, "One or more extension cleanups failed");
-    }
+    d: `M${num(start.x)} ${num(start.y)}C${num(c1.x)} ${num(c1.y)} ${num(c2.x)} ${num(c2.y)} ${num(end.x)} ${num(end.y)}`,
+    start,
+    end,
+    mid,
+    startAngle: Math.atan2(c1.y - start.y, c1.x - start.x),
+    endAngle: Math.atan2(end.y - c2.y, end.x - c2.x),
+    fromSide,
+    toSide
   };
 }
-
-// package.json
-var package_default = {
-  name: "plexus-diagram",
-  version: "1.1.0",
-  private: true,
-  description: "Heptabase-style whiteboard for Roam {{[[diagram]]}} blocks: cards, colored sections, and connections that are real Roam blocks and links",
-  type: "module",
-  main: "extension.js",
-  scripts: {
-    build: "node build.mjs",
-    dev: "node build.mjs --watch",
-    "scan:secrets": "node scripts/scan-secrets.mjs",
-    test: "node --test test/*.test.js",
-    "verify:generated": "node scripts/verify-generated.mjs",
-    check: "npm run build && npm run scan:secrets && node --check extension.js && npm test && npm run verify:generated"
-  },
-  engines: {
-    node: ">=20"
-  },
-  devDependencies: {
-    esbuild: "0.28.1"
-  },
-  license: "MIT"
-};
+function arrowHeadPath(point, angle, size) {
+  const dx = Math.cos(angle);
+  const dy = Math.sin(angle);
+  const bx = point.x - dx * size;
+  const by = point.y - dy * size;
+  const hw = size * 0.45;
+  const p1 = { x: bx - dy * hw, y: by + dx * hw };
+  const p2 = { x: bx + dy * hw, y: by - dx * hw };
+  return `M${num(point.x)} ${num(point.y)}L${num(p1.x)} ${num(p1.y)}L${num(p2.x)} ${num(p2.y)}Z`;
+}
+function arrowSize(zoom, weight = 1) {
+  return Math.max(8 + 2 * weight, 6 / zoom);
+}
+function bestSnap(values, targets, threshold) {
+  let best = null;
+  for (const v of values) {
+    for (const t of targets) {
+      const diff = t - v;
+      if (Math.abs(diff) <= threshold && (best === null || Math.abs(diff) < Math.abs(best))) best = diff;
+    }
+  }
+  return best ?? 0;
+}
+var xs = (r) => [r.x, r.x + r.w / 2, r.x + r.w];
+var ys = (r) => [r.y, r.y + r.h / 2, r.y + r.h];
+var EPS = 1e-6;
+function snapMove(moving, others, threshold) {
+  const dx = bestSnap(xs(moving), others.flatMap(xs), threshold);
+  const dy = bestSnap(ys(moving), others.flatMap(ys), threshold);
+  const m = { x: moving.x + dx, y: moving.y + dy, w: moving.w, h: moving.h };
+  const guides = [];
+  for (const o of others) {
+    for (const mx of xs(m)) {
+      if (xs(o).some((ox) => Math.abs(ox - mx) < EPS)) {
+        guides.push({ x1: mx, y1: Math.min(m.y, o.y), x2: mx, y2: Math.max(m.y + m.h, o.y + o.h) });
+      }
+    }
+    for (const my of ys(m)) {
+      if (ys(o).some((oy) => Math.abs(oy - my) < EPS)) {
+        guides.push({ x1: Math.min(m.x, o.x), y1: my, x2: Math.max(m.x + m.w, o.x + o.w), y2: my });
+      }
+    }
+  }
+  return { dx, dy, guides };
+}
+function alignRects(list, mode) {
+  if (!list.length) return [];
+  const minX = Math.min(...list.map((r) => r.x));
+  const maxX = Math.max(...list.map((r) => r.x + r.w));
+  const minY = Math.min(...list.map((r) => r.y));
+  const maxY = Math.max(...list.map((r) => r.y + r.h));
+  return list.map((r) => {
+    let x = r.x;
+    let y = r.y;
+    if (mode === "left") x = minX;
+    else if (mode === "right") x = maxX - r.w;
+    else if (mode === "center") x = (minX + maxX) / 2 - r.w / 2;
+    else if (mode === "top") y = minY;
+    else if (mode === "bottom") y = maxY - r.h;
+    else if (mode === "middle") y = (minY + maxY) / 2 - r.h / 2;
+    return { uid: r.uid, x, y };
+  });
+}
+function distributeRects(list, axis) {
+  const h = axis === "h";
+  const pos = h ? "x" : "y";
+  const dim = h ? "w" : "h";
+  const sorted = [...list].sort((p, q) => p[pos] - q[pos]);
+  if (sorted.length < 3) return sorted.map((r) => ({ uid: r.uid, x: r.x, y: r.y }));
+  const first = sorted[0];
+  const last = sorted[sorted.length - 1];
+  const span = last[pos] + last[dim] - first[pos];
+  const total = sorted.reduce((s, r) => s + r[dim], 0);
+  const gap = (span - total) / (sorted.length - 1);
+  let cursor = first[pos];
+  return sorted.map((r, i) => {
+    const p = i === sorted.length - 1 ? last[pos] : cursor;
+    cursor += r[dim] + gap;
+    return h ? { uid: r.uid, x: p, y: r.y } : { uid: r.uid, x: r.x, y: p };
+  });
+}
+function gridBackground(vp, style, base = 24) {
+  if (style === "plain") return null;
+  const size = base * vp.zoom;
+  const mod = (v) => (v % size + size) % size;
+  return { size, x: mod(vp.x), y: mod(vp.y), major: size * 5 };
+}
 
 // src/model/schema.js
 var PLEXUS_KEY = "plexus";
@@ -121,10 +364,12 @@ var DEFAULT_BOARD_CARD = { w: 320, h: 220 };
 var UNTITLED_BOARD = "Untitled board";
 var FONT_SIZES = [16, 24, 32, 48];
 var EDGE_DEFAULTS = { fromSide: "auto", toSide: "auto", dir: "one", route: "curve", dash: "solid", weight: 1 };
-var SIDES = ["auto", "top", "right", "bottom", "left"];
+var SIDES2 = ["auto", "top", "right", "bottom", "left"];
 var ARROWS = { one: "→", two: "↔", none: "—" };
+var BOARD_PATTERNS = ["dots", "lines", "grid", "plain"];
+var BOARD_TONES = ["paper", ...PALETTE];
+var FIT_PAD = 24;
 var ARROW_TOKENS = Object.values(ARROWS);
-var BOARD_BACKGROUNDS = ["dots", "lines", "plain"];
 var ROUTES = ["curve", "straight", "elbow"];
 var DASHES = ["solid", "dashed"];
 var DIRS = ["one", "two", "none"];
@@ -154,16 +399,18 @@ function mergePropsForWrite(props, plexus) {
 }
 function normalizeItemLayout(plexus) {
   const p = isObject(plexus) ? plexus : {};
-  const num2 = (v) => isNum(v) ? v : void 0;
+  const num3 = (v) => isNum(v) ? v : void 0;
   return {
     type: ITEM_TYPES.includes(p.type) ? p.type : "card",
-    x: num2(p.x),
-    y: num2(p.y),
-    w: num2(p.w),
-    h: num2(p.h),
+    x: num3(p.x),
+    y: num3(p.y),
+    w: num3(p.w),
+    h: num3(p.h),
     color: PALETTE.includes(p.color) ? p.color : void 0,
     collapsed: p.collapsed === true ? true : p.collapsed === false ? false : void 0,
-    fontSize: FONT_SIZES.includes(p.fontSize) ? p.fontSize : void 0
+    fontSize: FONT_SIZES.includes(p.fontSize) ? p.fontSize : void 0,
+    pinned: p.pinned === true,
+    fit: p.fit === false ? false : void 0
   };
 }
 var round1 = (n) => Math.round(n * 10) / 10;
@@ -176,7 +423,10 @@ function serializeItemLayout(layout) {
   if (l.collapsed === true) out.collapsed = true;
   if (l.type === "text" && FONT_SIZES.includes(l.fontSize)) out.fontSize = l.fontSize;
   if (l.v === SCHEMA_VERSION) out.v = SCHEMA_VERSION;
-  if (BOARD_BACKGROUNDS.includes(l.bg)) out.bg = l.bg;
+  if (l.pinned === true) out.pinned = true;
+  if (l.type === "section" && l.fit === false) out.fit = false;
+  if (BOARD_PATTERNS.includes(l.bg)) out.bg = l.bg;
+  if (BOARD_TONES.includes(l.bgColor)) out.bgColor = l.bgColor;
   return out;
 }
 function withBoardMarker(plexus, on) {
@@ -184,7 +434,15 @@ function withBoardMarker(plexus, on) {
   if (on) return { ...base, v: SCHEMA_VERSION };
   delete base.v;
   delete base.bg;
+  delete base.bgColor;
   return Object.keys(base).length ? base : null;
+}
+var MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+function dailyPageTitle(date) {
+  const d = date instanceof Date ? date : new Date(date);
+  const day = d.getDate();
+  const suffix = day >= 11 && day <= 13 ? "th" : { 1: "st", 2: "nd", 3: "rd" }[day % 10] ?? "th";
+  return `${MONTHS[d.getMonth()]} ${day}${suffix}, ${d.getFullYear()}`;
 }
 function normalizeEdge(plexus) {
   const p = isObject(plexus) ? plexus : {};
@@ -192,8 +450,8 @@ function normalizeEdge(plexus) {
   return {
     from: typeof p.from === "string" ? p.from : "",
     to: typeof p.to === "string" ? p.to : "",
-    fromSide: pick(p.fromSide, SIDES, EDGE_DEFAULTS.fromSide),
-    toSide: pick(p.toSide, SIDES, EDGE_DEFAULTS.toSide),
+    fromSide: pick(p.fromSide, SIDES2, EDGE_DEFAULTS.fromSide),
+    toSide: pick(p.toSide, SIDES2, EDGE_DEFAULTS.toSide),
     dir: pick(p.dir, DIRS, EDGE_DEFAULTS.dir),
     route: pick(p.route, ROUTES, EDGE_DEFAULTS.route),
     dash: pick(p.dash, DASHES, EDGE_DEFAULTS.dash),
@@ -330,6 +588,855 @@ function attrNameOf(s) {
   return name ? name : null;
 }
 
+// src/model/board.js
+var AUTO_GAP = 40;
+var AUTO_OFFSET = 48;
+var AUTO_ROWS = 4;
+var TITLE_BAND = 32;
+var BORDER_BAND = 8;
+var isNum2 = (v) => typeof v === "number" && Number.isFinite(v);
+function sortedChildren(node) {
+  const kids = Array.isArray(node?.[":block/children"]) ? node[":block/children"] : [];
+  return kids.map((c, i) => ({ c, i })).sort((a, b) => (a.c[":block/order"] ?? a.i) - (b.c[":block/order"] ?? b.i) || a.i - b.i).map(({ c }) => c);
+}
+function rectOf(o) {
+  return { x: o.x, y: o.y, w: o.w, h: o.h };
+}
+function unionRect2(a, b) {
+  const x = Math.min(a.x, b.x);
+  const y = Math.min(a.y, b.y);
+  return { x, y, w: Math.max(a.x + a.w, b.x + b.w) - x, h: Math.max(a.y + a.h, b.y + b.h) - y };
+}
+function contains(r, p) {
+  return p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
+}
+function containsRect(outer, inner) {
+  return inner.x >= outer.x && inner.y >= outer.y && inner.x + inner.w <= outer.x + outer.w && inner.y + inner.h <= outer.y + outer.h;
+}
+function intersects(a, b) {
+  return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
+}
+function centerOf(r) {
+  return { x: r.x + r.w / 2, y: r.y + r.h / 2 };
+}
+function autoPlace(siblings) {
+  const placed = siblings.filter((s) => s.hasLayout);
+  const loose = siblings.filter((s) => !s.hasLayout);
+  if (!loose.length) return;
+  let startX = 0;
+  let startY = 0;
+  if (placed.length) {
+    const u = placed.map(rectOf).reduce(unionRect2);
+    startX = u.x + u.w + AUTO_OFFSET;
+    startY = u.y;
+  }
+  let colX = startX;
+  let colW = 0;
+  let y = startY;
+  loose.forEach((item, i) => {
+    const row = i % AUTO_ROWS;
+    if (i > 0 && row === 0) {
+      colX += colW + AUTO_GAP;
+      colW = 0;
+      y = startY;
+    }
+    item.x = colX;
+    item.y = y;
+    y += item.h + AUTO_GAP;
+    colW = Math.max(colW, item.w);
+  });
+}
+function buildBoard(pulled, { defaults } = {}) {
+  if (!pulled || typeof pulled !== "object") return null;
+  const uid = pulled[":block/uid"];
+  const string = pulled[":block/string"] ?? "";
+  const plexus = readPlexus(pulled[":block/props"]);
+  const sizes = { ...DEFAULT_SIZES, card: defaults?.card ?? DEFAULT_SIZES.card };
+  const items = /* @__PURE__ */ new Map();
+  const edges = /* @__PURE__ */ new Map();
+  const roots = [];
+  const preorder = [];
+  let containerUid = null;
+  let containerIndex = -1;
+  const boardKids = sortedChildren(pulled);
+  boardKids.forEach((child, index) => {
+    if (containerUid === null && readPlexus(child[":block/props"])?.type === "edges") {
+      containerUid = child[":block/uid"];
+      containerIndex = index;
+    }
+  });
+  const walk = (children, parentUid, depth) => {
+    const siblings = [];
+    for (const child of children) {
+      const cuid = child[":block/uid"];
+      if (cuid === containerUid) continue;
+      const cplexus = readPlexus(child[":block/props"]);
+      const cstring = child[":block/string"] ?? "";
+      const heading = child[":block/heading"] || 0;
+      const kids = sortedChildren(child);
+      const layout = normalizeItemLayout(cplexus);
+      let type = layout.type;
+      if (!cplexus && heading > 0 && kids.length) type = "section";
+      const cls = classifyString(cstring);
+      const kind = type === "section" ? "section" : type === "text" ? "text" : cls.kind;
+      const size = sizes[type];
+      const hasLayout = isNum2(layout.x) && isNum2(layout.y);
+      let title;
+      if (kind === "page") title = cls.title;
+      else if (kind === "board") title = parseBoardTitle(cstring) || "Untitled board";
+      else title = firstLine(cstring);
+      let target;
+      if (kind === "page") target = { kind: "page", title: cls.title };
+      else if (kind === "block") target = { kind: "block", uid: cls.refUid };
+      else target = { kind: "self", uid: cuid };
+      const item = {
+        uid: cuid,
+        type,
+        kind,
+        string: cstring,
+        heading,
+        parentUid,
+        order: child[":block/order"] ?? siblings.length,
+        depth,
+        x: hasLayout ? layout.x : 0,
+        y: hasLayout ? layout.y : 0,
+        w: layout.w ?? size.w,
+        h: layout.h ?? size.h,
+        hasLayout,
+        color: layout.color,
+        collapsed: layout.collapsed === true,
+        fontSize: layout.fontSize,
+        pinned: layout.pinned,
+        autofit: !(type === "section" && layout.fit === false),
+        title,
+        target,
+        enhanced: kind === "board" && cplexus?.v === 2,
+        members: [],
+        content: type === "section" ? [] : kids
+      };
+      items.set(cuid, item);
+      preorder.push(cuid);
+      siblings.push(item);
+      if (type === "section") {
+        item.members = walk(kids, cuid, depth + 1).map((m) => m.uid);
+      }
+    }
+    autoPlace(siblings);
+    return siblings;
+  };
+  for (const item of walk(boardKids, uid, 0)) roots.push(item.uid);
+  const sections = preorder.filter((u) => items.get(u).type === "section");
+  const rest = preorder.filter((u) => items.get(u).type !== "section");
+  sections.sort((a, b) => items.get(a).depth - items.get(b).depth);
+  const order = [...sections, ...rest];
+  if (containerUid !== null) {
+    const container = boardKids[containerIndex];
+    for (const e of sortedChildren(container)) {
+      const eplexus = readPlexus(e[":block/props"]);
+      if (eplexus?.type !== "edge") continue;
+      const euid = e[":block/uid"];
+      const estring = e[":block/string"] ?? "";
+      const n = normalizeEdge(eplexus);
+      const a = items.get(n.from);
+      const b = items.get(n.to);
+      edges.set(euid, {
+        uid: euid,
+        string: estring,
+        ...n,
+        label: parseEdgeLabel(estring, a ? semanticRef(a) : "", b ? semanticRef(b) : ""),
+        valid: Boolean(a && b)
+      });
+    }
+  }
+  return {
+    uid,
+    string,
+    title: parseBoardTitle(string),
+    plexus,
+    enhanced: plexus?.v === 2,
+    background: {
+      pattern: BOARD_PATTERNS.includes(plexus?.bg) ? plexus.bg : null,
+      tone: BOARD_TONES.includes(plexus?.bgColor) ? plexus.bgColor : null
+    },
+    items,
+    roots,
+    order,
+    containerUid,
+    containerIndex,
+    childCount: boardKids.length,
+    edges
+  };
+}
+function worldRects(board) {
+  const rects = /* @__PURE__ */ new Map();
+  for (const item of board.items.values()) {
+    const p = item.parentUid === board.uid ? null : rects.get(item.parentUid);
+    rects.set(item.uid, { x: item.x + (p?.x ?? 0), y: item.y + (p?.y ?? 0), w: item.w, h: item.h });
+  }
+  return rects;
+}
+function worldRect(board, uid, rects) {
+  if (rects) return rects.get(uid) ?? null;
+  const item = board.items.get(uid);
+  if (!item) return null;
+  let x = item.x;
+  let y = item.y;
+  let parent = board.items.get(item.parentUid);
+  while (parent) {
+    x += parent.x;
+    y += parent.y;
+    parent = board.items.get(parent.parentUid);
+  }
+  return { x, y, w: item.w, h: item.h };
+}
+function descendantsOf(board, uid) {
+  const out = /* @__PURE__ */ new Set();
+  const stack = [...board.items.get(uid)?.members ?? []];
+  while (stack.length) {
+    const u = stack.pop();
+    if (out.has(u)) continue;
+    out.add(u);
+    stack.push(...board.items.get(u)?.members ?? []);
+  }
+  return out;
+}
+function hasAncestorIn(board, uid, set) {
+  let p = board.items.get(uid)?.parentUid;
+  while (p && p !== board.uid) {
+    if (set.has(p)) return true;
+    p = board.items.get(p)?.parentUid;
+  }
+  return false;
+}
+function topLevelOf(board, uids) {
+  const list = [...uids].filter((u) => board.items.has(u));
+  const set = new Set(list);
+  return list.filter((u) => !hasAncestorIn(board, u, set));
+}
+function containerAt(board, point, { exclude = /* @__PURE__ */ new Set(), rects } = {}) {
+  const r = rects ?? worldRects(board);
+  const ex = exclude instanceof Set ? exclude : new Set(exclude);
+  let best = null;
+  for (const uid of board.order) {
+    const item = board.items.get(uid);
+    if (item.type !== "section" || ex.has(uid) || hasAncestorIn(board, uid, ex)) continue;
+    if (!contains(r.get(uid), point)) continue;
+    if (!best || item.depth >= best.depth) best = item;
+  }
+  return best ? best.uid : board.uid;
+}
+function toRelative(board, containerUid, worldPoint, rects) {
+  if (containerUid === board.uid) return { x: worldPoint.x, y: worldPoint.y };
+  const c = worldRect(board, containerUid, rects);
+  return { x: worldPoint.x - c.x, y: worldPoint.y - c.y };
+}
+function hitTest(board, point, rects, { sectionInterior = false, exclude = null } = {}) {
+  for (let i = board.order.length - 1; i >= 0; i--) {
+    const item = board.items.get(board.order[i]);
+    if (item.type === "section" || exclude?.has(item.uid)) continue;
+    if (contains(rects.get(item.uid), point)) return { uid: item.uid, part: "body" };
+  }
+  for (let i = board.order.length - 1; i >= 0; i--) {
+    const item = board.items.get(board.order[i]);
+    if (item.type !== "section" || exclude?.has(item.uid)) continue;
+    const r = rects.get(item.uid);
+    if (!contains(r, point)) continue;
+    if (point.y - r.y <= TITLE_BAND) return { uid: item.uid, part: "title" };
+    const edge = Math.min(point.x - r.x, r.x + r.w - point.x, point.y - r.y, r.y + r.h - point.y);
+    if (edge <= BORDER_BAND) return { uid: item.uid, part: "border" };
+    if (sectionInterior) return { uid: item.uid, part: "interior" };
+  }
+  return null;
+}
+function boundsOf(rectList) {
+  const list = [...rectList];
+  return list.length ? list.reduce(unionRect2) : null;
+}
+var clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+var PREVIEW_MIN = { w: DEFAULT_SIZES.card.w * 2, h: DEFAULT_SIZES.card.h * 2 };
+var PREVIEW_TITLE = 40;
+function boardPreview(item, { max = 60, aspect = null, pad = 0.12 } = {}) {
+  const empty = { count: 0, aspect: 1.6, rects: [], edges: [], bounds: null, empty: true };
+  const child = buildBoard({
+    ":block/uid": item?.uid,
+    ":block/string": item?.string ?? "",
+    ":block/children": item?.content ?? []
+  });
+  if (!child) return empty;
+  const world = worldRects(child);
+  const bounds = boundsOf([...world.values()]);
+  if (!bounds) return empty;
+  const bw = bounds.w || 1;
+  const bh = bounds.h || 1;
+  let w = Math.max(bw, PREVIEW_MIN.w);
+  let h = Math.max(bh, PREVIEW_MIN.h);
+  const p = Math.max(FIT_PAD, pad * Math.max(bw, bh));
+  const cx = bounds.x + bounds.w / 2;
+  const cy = bounds.y + bounds.h / 2;
+  w += 2 * p;
+  h += 2 * p;
+  const target = isNum2(aspect) && aspect > 0 ? aspect : clamp(w / h, 0.25, 4);
+  if (w / h < target) w = h * target;
+  else h = w / target;
+  const fx = cx - w / 2;
+  const fy = cy - h / 2;
+  const rects = [];
+  for (const uid of child.order) {
+    if (rects.length >= max) break;
+    const r = world.get(uid);
+    const it = child.items.get(uid);
+    let title;
+    if (it.type === "section") title = it.title;
+    else title = firstLine(it.string).slice(0, PREVIEW_TITLE) || (it.kind === "board" ? it.title.slice(0, PREVIEW_TITLE) : "");
+    rects.push({
+      x: (r.x - fx) / w,
+      y: (r.y - fy) / h,
+      w: r.w / w,
+      h: r.h / h,
+      type: it.type,
+      kind: it.kind,
+      color: it.color,
+      title,
+      ...!title && it.kind === "block" && it.target?.uid ? { ref: it.target.uid } : {}
+    });
+  }
+  const edges = [];
+  for (const e of child.edges.values()) {
+    if (!e.valid) continue;
+    const a = centerOf(world.get(e.from));
+    const b = centerOf(world.get(e.to));
+    edges.push({ x1: (a.x - fx) / w, y1: (a.y - fy) / h, x2: (b.x - fx) / w, y2: (b.y - fy) / h });
+  }
+  return { count: child.items.size, aspect: target, rects, edges, bounds, empty: false };
+}
+function sectionFitPlan(board, rects, touchedUids, {
+  pad = FIT_PAD,
+  skip = /* @__PURE__ */ new Set(),
+  parentOf = (u) => board.items.get(u)?.parentUid
+} = {}) {
+  const work = /* @__PURE__ */ new Map();
+  const same = (a, b) => Math.abs(a.x - b.x) < 0.01 && Math.abs(a.y - b.y) < 0.01 && Math.abs(a.w - b.w) < 0.01 && Math.abs(a.h - b.h) < 0.01;
+  for (const touched of touchedUids) {
+    let cur = touched;
+    for (let guard = 0; guard < 256; guard++) {
+      const pid = parentOf(cur);
+      if (!pid || pid === board.uid) break;
+      const sec = board.items.get(pid);
+      if (!sec || sec.type !== "section" || sec.autofit === false || sec.pinned || skip.has(pid)) break;
+      const secRect = work.get(pid) ?? rects.get(pid);
+      const childRect = work.get(cur) ?? rects.get(cur);
+      if (!secRect || !childRect) break;
+      const need = unionRect2(secRect, inflate(childRect, pad));
+      if (same(need, secRect)) break;
+      work.set(pid, need);
+      cur = pid;
+    }
+  }
+  const depthOf = (u) => {
+    let d = 0;
+    let cur = u;
+    for (let i = 0; i < 256; i++) {
+      const pid = parentOf(cur);
+      if (!pid || pid === board.uid) break;
+      d++;
+      cur = pid;
+    }
+    return d;
+  };
+  return [...work.entries()].map(([uid, rect]) => ({ uid, rect, depth: depthOf(uid) })).sort((a, b) => b.depth - a.depth).map(({ uid, rect }) => ({ uid, rect }));
+}
+function outlineOrder(board) {
+  const byOrder = (uids) => uids.map((u, i) => ({ u, i, o: board.items.get(u)?.order ?? i })).sort((a, b) => a.o - b.o || a.i - b.i).map(({ u }) => u);
+  const out = [];
+  const visit = (uid) => {
+    out.push(uid);
+    for (const m of byOrder(board.items.get(uid).members)) visit(m);
+  };
+  for (const uid of byOrder(board.roots)) visit(uid);
+  return out;
+}
+function itemsInRect(board, rect, rects, { mode = "contain" } = {}) {
+  const test = mode === "intersect" ? intersects : (r, a) => containsRect(r, a);
+  const hits = [];
+  for (const uid of board.order) {
+    const r = rects.get(uid);
+    if (r && test(rect, r)) hits.push(uid);
+  }
+  return topLevelOf(board, hits);
+}
+function membershipPlan(board, movedUids, rects) {
+  const moved = topLevelOf(board, movedUids);
+  const exclude = new Set(moved);
+  const plan = [];
+  for (const uid of moved) {
+    const item = board.items.get(uid);
+    const r = rects.get(uid);
+    const toParent = containerAt(board, centerOf(r), { exclude, rects });
+    if (toParent === item.parentUid) continue;
+    const rel = toRelative(board, toParent, { x: r.x, y: r.y }, rects);
+    plan.push({ uid, fromParent: item.parentUid, toParent, x: rel.x, y: rel.y });
+  }
+  return plan;
+}
+function sectionAdoptPlan(board, sectionUid, rects) {
+  const section = board.items.get(sectionUid);
+  if (!section) return [];
+  const sr = rects.get(sectionUid);
+  const parentUid = section.parentUid;
+  const siblings = parentUid === board.uid ? board.roots : board.items.get(parentUid).members;
+  const plan = [];
+  for (const uid of siblings) {
+    if (uid === sectionUid) continue;
+    const r = rects.get(uid);
+    if (!contains(sr, centerOf(r))) continue;
+    const rel = toRelative(board, sectionUid, { x: r.x, y: r.y }, rects);
+    plan.push({ uid, toParent: sectionUid, x: rel.x, y: rel.y });
+  }
+  for (const uid of section.members) {
+    const r = rects.get(uid);
+    if (contains(sr, centerOf(r))) continue;
+    const rel = toRelative(board, parentUid, { x: r.x, y: r.y }, rects);
+    plan.push({ uid, toParent: parentUid, x: rel.x, y: rel.y });
+  }
+  return plan;
+}
+function edgesTouching(board, uidSet) {
+  const full = new Set(uidSet);
+  for (const u of uidSet) for (const d of descendantsOf(board, u)) full.add(d);
+  const out = /* @__PURE__ */ new Set();
+  for (const e of board.edges.values()) if (full.has(e.from) || full.has(e.to)) out.add(e.uid);
+  return out;
+}
+function findEdge(board, from, to) {
+  for (const e of board.edges.values()) if (e.from === from && e.to === to) return e;
+  return null;
+}
+function diffBoards(prev, next) {
+  if (!prev || !next) {
+    const dirty2 = /* @__PURE__ */ new Set();
+    if (next) {
+      for (const u of next.items.keys()) dirty2.add(u);
+      for (const u of next.edges.keys()) dirty2.add(u);
+    }
+    return { structural: true, dirty: dirty2 };
+  }
+  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  let structural = prev.containerUid !== next.containerUid || prev.items.size !== next.items.size || prev.edges.size !== next.edges.size || !same(prev.roots, next.roots) || !same(prev.order, next.order);
+  const dirty = /* @__PURE__ */ new Set();
+  if (prev.string !== next.string || !same(prev.plexus, next.plexus)) dirty.add(next.uid);
+  for (const [uid, item] of next.items) {
+    const old = prev.items.get(uid);
+    if (!old) {
+      structural = true;
+      dirty.add(uid);
+      continue;
+    }
+    if (old.parentUid !== item.parentUid || !same(old.members, item.members)) structural = true;
+    if (!same(old, item)) dirty.add(uid);
+  }
+  for (const [uid, edge] of next.edges) {
+    const old = prev.edges.get(uid);
+    if (!old) {
+      structural = true;
+      dirty.add(uid);
+      continue;
+    }
+    if (!same(old, edge)) dirty.add(uid);
+  }
+  return { structural, dirty };
+}
+
+// src/model/clipboard.js
+var PLEXUS_MIME = "application/x-plexus-cards";
+var MAX_PASTED_LINES = 50;
+function copyPayload(board, uids, rects) {
+  const top = topLevelOf(board, [...uids]);
+  const items = [];
+  const boxes = [];
+  for (const uid of top) {
+    const item = board.items.get(uid);
+    const r = rects.get(uid);
+    if (!item || !r) continue;
+    boxes.push(r);
+    items.push({
+      uid,
+      type: item.type,
+      kind: item.kind,
+      string: item.string,
+      target: item.target,
+      x: r.x,
+      y: r.y,
+      w: r.w,
+      h: r.h,
+      color: item.color
+    });
+  }
+  const bounds = boundsOf(boxes);
+  return {
+    mime: JSON.stringify({ v: 1, board: board.uid, bounds, items }),
+    text: items.map((i) => semanticRef(i)).join("\n")
+  };
+}
+function parsePastedText(text) {
+  const out = [];
+  for (const raw of String(text ?? "").split(/\r?\n/)) {
+    const line = raw.trim().replace(/^[-*]\s+/, "").trim();
+    if (!line) continue;
+    out.push({ string: line });
+    if (out.length >= MAX_PASTED_LINES) break;
+  }
+  return out;
+}
+function parseClipboard(data) {
+  const get = (type) => {
+    try {
+      return data?.getData?.(type) ?? "";
+    } catch {
+      return "";
+    }
+  };
+  const raw = get(PLEXUS_MIME);
+  if (raw) {
+    try {
+      const parsed = JSON.parse(raw);
+      if (parsed && parsed.v === 1 && Array.isArray(parsed.items)) return { kind: "plexus", data: parsed };
+    } catch {
+    }
+  }
+  const files = [...data?.files ?? []].filter((f) => typeof f?.type === "string" && f.type.startsWith("image/"));
+  if (files.length) return { kind: "images", files };
+  const entries = parsePastedText(get("text/plain"));
+  return entries.length ? { kind: "text", entries } : null;
+}
+function refCardStrings(data, at) {
+  const items = data?.items ?? [];
+  if (!items.length) return [];
+  const bounds = data.bounds ?? boundsOf(items) ?? { x: 0, y: 0 };
+  return items.map((i) => ({
+    string: semanticRef(i),
+    x: at.x + (i.x - bounds.x),
+    y: at.y + (i.y - bounds.y),
+    w: i.w,
+    h: i.h,
+    color: i.color
+  }));
+}
+var REF = /\(\(([\w-]+)\)\)/g;
+var rewriteRefs = (string, uidMap) => String(string ?? "").replace(REF, (m, uid) => uidMap.has(uid) ? `((${uidMap.get(uid)}))` : m);
+function sortedKids(node) {
+  const kids = Array.isArray(node?.[":block/children"]) ? node[":block/children"] : [];
+  return kids.map((c, i) => ({ c, i })).sort((a, b) => (a.c[":block/order"] ?? a.i) - (b.c[":block/order"] ?? b.i) || a.i - b.i).map(({ c }) => c);
+}
+function planSubtreeClone(node, { genUid, parentUid, order = "last", plexusPatch = null, uidMap = /* @__PURE__ */ new Map() } = {}) {
+  const assign = (n) => {
+    uidMap.set(n[":block/uid"], genUid());
+    for (const c of sortedKids(n)) assign(c);
+  };
+  assign(node);
+  const creates = [];
+  const emit2 = (n, parent, ord, isRoot) => {
+    const props = n[":block/props"] == null ? null : plainKeys(n[":block/props"]);
+    let outProps = props;
+    if (isRoot && plexusPatch) {
+      outProps = { ...props ?? {} };
+      outProps[PLEXUS_KEY] = { ...outProps[PLEXUS_KEY] ?? {}, ...plexusPatch };
+    }
+    const uid = uidMap.get(n[":block/uid"]);
+    creates.push({
+      uid,
+      parent,
+      order: ord,
+      string: rewriteRefs(n[":block/string"], uidMap),
+      props: outProps,
+      open: n[":block/open"] !== false
+    });
+    sortedKids(n).forEach((c, i) => emit2(c, uid, i, false));
+  };
+  emit2(node, parentUid, order, true);
+  return { creates, uidMap };
+}
+function planEdgeClones(edges, uidMap, { genUid, containerUid, refOfNew } = {}) {
+  const list = edges instanceof Map ? [...edges.values()] : [...edges ?? []];
+  const creates = [];
+  for (const edge of list) {
+    if (!uidMap.has(edge.from) || !uidMap.has(edge.to)) continue;
+    const from = uidMap.get(edge.from);
+    const to = uidMap.get(edge.to);
+    creates.push({
+      uid: genUid(),
+      parent: containerUid,
+      order: "last",
+      string: edgeString({ srcRef: refOfNew(from), dstRef: refOfNew(to), dir: edge.dir, label: edge.label }),
+      props: { [PLEXUS_KEY]: serializeEdge({ ...edge, from, to }) },
+      open: true
+    });
+  }
+  return creates;
+}
+
+// src/model/layout.js
+var num2 = (v, d) => typeof v === "number" && Number.isFinite(v) ? v : d;
+var norm = (n) => n + 0;
+function unionOf(list) {
+  let x0 = Infinity;
+  let y0 = Infinity;
+  for (const r of list) {
+    x0 = Math.min(x0, r.x);
+    y0 = Math.min(y0, r.y);
+  }
+  return { x: x0, y: y0 };
+}
+function gridPlace(items, origin, gap, columns) {
+  const n = items.length;
+  const cols = Math.max(1, Math.min(n, Math.floor(num2(columns, 0)) || Math.ceil(Math.sqrt(n))));
+  const colW = new Array(cols).fill(0);
+  const rowH = [];
+  items.forEach((r, i) => {
+    const c = i % cols;
+    const row = Math.floor(i / cols);
+    colW[c] = Math.max(colW[c], r.w);
+    rowH[row] = Math.max(rowH[row] ?? 0, r.h);
+  });
+  const colX = [];
+  let x = origin.x;
+  for (let c = 0; c < cols; c++) {
+    colX[c] = x;
+    x += colW[c] + gap;
+  }
+  const rowY = [];
+  let y = origin.y;
+  for (let row = 0; row < rowH.length; row++) {
+    rowY[row] = y;
+    y += rowH[row] + gap;
+  }
+  return items.map((r, i) => ({ uid: r.uid, x: norm(colX[i % cols]), y: norm(rowY[Math.floor(i / cols)]) }));
+}
+function tidyRects(list, mode, { gap = 24, columns = null, order = null } = {}) {
+  const rects = (list ?? []).map((r, i) => ({ ...r, i }));
+  if (!rects.length) return [];
+  const origin = unionOf(rects);
+  if (mode === "row") {
+    const sorted = [...rects].sort((a, b) => a.x - b.x || a.y - b.y || a.i - b.i);
+    let x = origin.x;
+    return sorted.map((r) => {
+      const out = { uid: r.uid, x: norm(x), y: norm(origin.y) };
+      x += r.w + gap;
+      return out;
+    });
+  }
+  if (mode === "column") {
+    const sorted = [...rects].sort((a, b) => a.y - b.y || a.x - b.x || a.i - b.i);
+    let y = origin.y;
+    return sorted.map((r) => {
+      const out = { uid: r.uid, x: norm(origin.x), y: norm(y) };
+      y += r.h + gap;
+      return out;
+    });
+  }
+  const reading = [...rects].sort((a, b) => a.y - b.y || a.x - b.x || a.i - b.i);
+  if (mode === "outline") {
+    const byUid = new Map(rects.map((r) => [r.uid, r]));
+    const seen = /* @__PURE__ */ new Set();
+    const ordered = [];
+    for (const uid of order ?? []) {
+      const r = byUid.get(uid);
+      if (r && !seen.has(uid)) {
+        seen.add(uid);
+        ordered.push(r);
+      }
+    }
+    for (const r of reading) if (!seen.has(r.uid)) ordered.push(r);
+    return gridPlace(ordered, origin, gap, columns);
+  }
+  return gridPlace(reading, origin, gap, columns);
+}
+var overlapX = (a, b) => Math.min(a.x + a.w, b.x + b.w) - Math.max(a.x, b.x);
+var overlapY = (a, b) => Math.min(a.y + a.h, b.y + b.h) - Math.max(a.y, b.y);
+function spaceOut(rects, movedUids, { gap = 16, maxPasses = 8, fixed = null } = {}) {
+  const moved = movedUids instanceof Set ? movedUids : new Set(movedUids ?? []);
+  const anchored = fixed instanceof Set ? fixed : new Set(fixed ?? []);
+  const cur = /* @__PURE__ */ new Map();
+  for (const [uid, r] of rects) cur.set(uid, { x: r.x, y: r.y, w: r.w, h: r.h });
+  const displaced = /* @__PURE__ */ new Map();
+  const pushers = [...cur.keys()].filter((u) => moved.has(u));
+  for (let pass = 0; pass < maxPasses; pass++) {
+    let changed = false;
+    for (const [uid, r] of cur) {
+      if (moved.has(uid) || anchored.has(uid)) continue;
+      const myOrder = displaced.has(uid) ? displaced.get(uid) : Infinity;
+      for (const puid of pushers) {
+        if (puid === uid) continue;
+        if (!moved.has(puid) && displaced.get(puid) >= myOrder) continue;
+        const p = cur.get(puid);
+        const ox = overlapX(r, p);
+        const oy = overlapY(r, p);
+        if (ox <= 0 || oy <= 0) continue;
+        if (ox <= oy) {
+          r.x = r.x + r.w / 2 < p.x + p.w / 2 ? p.x - gap - r.w : p.x + p.w + gap;
+        } else {
+          r.y = r.y + r.h / 2 < p.y + p.h / 2 ? p.y - gap - r.h : p.y + p.h + gap;
+        }
+        if (!displaced.has(uid)) {
+          displaced.set(uid, displaced.size);
+          pushers.push(uid);
+        }
+        changed = true;
+      }
+    }
+    if (!changed) break;
+  }
+  return [...displaced.keys()].map((uid) => ({ uid, x: norm(cur.get(uid).x), y: norm(cur.get(uid).y) }));
+}
+function sameSize(list, primaryUid, mode = "both") {
+  const primary = (list ?? []).find((r) => r.uid === primaryUid);
+  if (!primary) return [];
+  const out = [];
+  for (const r of list) {
+    if (r.uid === primaryUid) continue;
+    const w = mode === "height" ? r.w : primary.w;
+    const h = mode === "width" ? r.h : primary.h;
+    if (w !== r.w || h !== r.h) out.push({ uid: r.uid, w, h });
+  }
+  return out;
+}
+function subtree(node, sizeOf, levelGap, sibGap) {
+  const { dd, bb } = sizeOf(node);
+  const kids = (node.children ?? []).map((c) => ({ c, s: subtree(c, sizeOf, levelGap, sibGap), size: sizeOf(c) }));
+  if (!kids.length) return { extent: bb, nodeB: 0, places: [{ uid: node.uid, d: 0, b: 0 }] };
+  let cursor = 0;
+  const offs = kids.map((k) => {
+    const o = cursor;
+    cursor += k.s.extent + sibGap;
+    return o;
+  });
+  const childrenExtent = cursor - sibGap;
+  const centerOf3 = (i) => offs[i] + kids[i].s.nodeB + kids[i].size.bb / 2;
+  const parentB = (centerOf3(0) + centerOf3(kids.length - 1)) / 2 - bb / 2;
+  const min = Math.min(0, parentB);
+  const max = Math.max(childrenExtent, parentB + bb);
+  const places = [{ uid: node.uid, d: 0, b: parentB - min }];
+  kids.forEach((k, i) => {
+    for (const p of k.s.places) places.push({ uid: p.uid, d: dd + levelGap + p.d, b: offs[i] - min + p.b });
+  });
+  return { extent: max - min, nodeB: parentB - min, places };
+}
+function mindMapLayout(root, { direction = "right", hGap = 80, vGap = 24 } = {}) {
+  const out = /* @__PURE__ */ new Map();
+  if (!root) return out;
+  const down = direction === "down";
+  const sizeOf = down ? (n) => ({ dd: n.h, bb: n.w }) : (n) => ({ dd: n.w, bb: n.h });
+  const toXY = (d, b) => down ? { x: norm(b), y: norm(d) } : { x: norm(d), y: norm(b) };
+  const groupPlaces = (kids2) => {
+    const s = subtree({ ...root, children: kids2 }, sizeOf, hGap, vGap);
+    return s.places.map((p) => ({ uid: p.uid, d: p.d, b: p.b - s.nodeB }));
+  };
+  const kids = root.children ?? [];
+  if (direction === "balanced") {
+    const rootDd = sizeOf(root).dd;
+    const right = kids.filter((_, i) => i % 2 === 0);
+    const left = kids.filter((_, i) => i % 2 === 1);
+    out.set(root.uid, { x: 0, y: 0 });
+    for (const p of groupPlaces(right)) if (p.uid !== root.uid) out.set(p.uid, toXY(p.d, p.b));
+    for (const p of groupPlaces(left)) {
+      if (p.uid === root.uid) continue;
+      const w = sizeOf(findNode(root, p.uid)).dd;
+      out.set(p.uid, toXY(rootDd - (p.d + w), p.b));
+    }
+    return out;
+  }
+  for (const p of groupPlaces(kids)) out.set(p.uid, toXY(p.d, p.b));
+  return out;
+}
+function findNode(node, uid) {
+  if (node.uid === uid) return node;
+  for (const c of node.children ?? []) {
+    const f = findNode(c, uid);
+    if (f) return f;
+  }
+  return null;
+}
+
+// src/model/links.js
+var MAX_SOURCES = 20;
+function linksQuery() {
+  return `[:find ?a ?b ?su ?ss
+ :in $ ?board [?a ...] [?b ...]
+ :where
+ [?src :block/refs ?b]
+ (or [?src :block/page ?a] [?src :block/parents ?a] [(= ?src ?a)])
+ [(not= ?a ?b)]
+ (not [?src :block/parents ?board])
+ [(not= ?src ?board)]
+ [?src :block/uid ?su]
+ [?src :block/string ?ss]]`;
+}
+function isBareAttr(s) {
+  return typeof s === "string" && /^\s*[^:\n]{1,60}::\s*$/.test(s);
+}
+function reduceLinks(rows, { eidToItems, parentStrings = /* @__PURE__ */ new Map() } = {}) {
+  const byKey = /* @__PURE__ */ new Map();
+  for (const [aEid, bEid, su, ss] of rows) {
+    const froms = eidToItems.get(aEid) || [];
+    const tos = eidToItems.get(bEid) || [];
+    if (!froms.length || !tos.length) continue;
+    let label = attrNameOf(ss);
+    if (label == null) {
+      const ps = parentStrings.get(su);
+      if (isBareAttr(ps)) label = attrNameOf(ps);
+    }
+    const isAttr = label != null;
+    if (!isAttr) label = "mentions";
+    for (const from of froms) {
+      for (const to of tos) {
+        if (from === to) continue;
+        const key = `${from}->${to}`;
+        let link = byKey.get(key);
+        if (!link) {
+          link = { key, from, to, kind: "ref", labels: [], sources: [], color: "gray" };
+          byKey.set(key, link);
+        }
+        if (isAttr) link.kind = "attr";
+        if (!link.labels.includes(label)) link.labels.push(label);
+        if (link.sources.length < MAX_SOURCES && !link.sources.some((s) => s.uid === su)) {
+          link.sources.push({ uid: su, string: ss });
+        }
+      }
+    }
+  }
+  const out = [];
+  for (const link of byKey.values()) {
+    link.labels = [
+      ...link.labels.filter((l) => l !== "mentions"),
+      ...link.labels.filter((l) => l === "mentions")
+    ];
+    link.color = colorForLabel(link.labels[0]);
+    out.push(link);
+  }
+  return out;
+}
+function filterLinks(links, mode) {
+  if (mode === "off") return [];
+  if (mode === "attributes") return links.filter((l) => l.kind === "attr");
+  return links;
+}
+function coveredBy(links, board) {
+  const pairs = /* @__PURE__ */ new Map();
+  for (const [uid, e] of board.edges) {
+    for (const k of [`${e.from}->${e.to}`, `${e.to}->${e.from}`]) {
+      if (!pairs.has(k)) pairs.set(k, []);
+      pairs.get(k).push(uid);
+    }
+  }
+  const visible = [];
+  const coveredEdges = /* @__PURE__ */ new Set();
+  for (const l of links) {
+    const hit = pairs.get(`${l.from}->${l.to}`);
+    if (hit) hit.forEach((u) => coveredEdges.add(u));
+    else visible.push(l);
+  }
+  return { visible, coveredEdges };
+}
+
 // src/host/roam.js
 var BOARD_PATTERN = `[:block/uid :block/string :block/order :block/heading :block/open :block/props
  {:block/children [:block/uid :block/string :block/order :block/heading :block/props
@@ -338,16 +1445,18 @@ var BOARD_PATTERN = `[:block/uid :block/string :block/order :block/heading :bloc
 var ciPattern = (text) => `(?i)${String(text).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`;
 var NATIVE_PATTERN = `[{:diagram/nodes [:db/id :diagram.node/data {:diagram.node/block [:block/uid :block/string]} {:diagram.node/parent-node [:db/id]}]}
  {:diagram/edges [{:diagram.edge/source [:db/id]} {:diagram.edge/target [:db/id]} :diagram.edge/data]}]`;
+var DIAGRAM_RE = "^\\{\\{(\\[\\[)?diagram";
+var BOARD_META_PATTERN = "[:block/props :edit/time {:block/children [:block/props]}]";
 var eidKey = (uid) => [":block/uid", uid];
 var watchEntity = (uid) => `[:block/uid "${String(uid).replace(/["\\]/g, "")}"]`;
-function sortedKids(node) {
+function sortedKids2(node) {
   const kids = Array.isArray(node?.[":block/children"]) ? node[":block/children"] : [];
   return kids.map((c, i) => ({ c, i })).sort((a, b) => (a.c[":block/order"] ?? a.i) - (b.c[":block/order"] ?? b.i) || a.i - b.i).map(({ c }) => c);
 }
 function trimTree(node, depth, budget) {
   const out = [];
   if (depth < 1) return out;
-  for (const c of sortedKids(node)) {
+  for (const c of sortedKids2(node)) {
     if (budget.left <= 0) break;
     budget.left--;
     out.push({
@@ -649,6 +1758,100 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
     q(query, ...inputs) {
       return data.fast?.q ? data.fast.q(query, ...inputs) : data.q(query, ...inputs);
     },
+    // Boards library: every enhanced (plexus.v === 2) board block in the graph. Read-only.
+    listBoards({ limit = 200 } = {}) {
+      const rows = host.q(
+        `[:find ?u ?s ?pt ?pu :in $ ?pat :where [?b :block/string ?s] [(re-pattern ?pat) ?re] [(re-find ?re ?s)]
+ [?b :block/uid ?u] [?b :block/page ?p] [?p :node/title ?pt] [?p :block/uid ?pu]]`,
+        DIAGRAM_RE
+      ) || [];
+      const out = [];
+      for (const [uid, string, pageTitle, pageUid] of rows) {
+        let res;
+        try {
+          res = pull(BOARD_META_PATTERN, eidKey(uid));
+        } catch {
+          continue;
+        }
+        const props = res?.[":block/props"];
+        if (!props || typeof props !== "object" || plainKeys(props)?.plexus?.v !== 2) continue;
+        const kids = Array.isArray(res[":block/children"]) ? res[":block/children"] : [];
+        const count = kids.filter((k) => {
+          const kp = k?.[":block/props"];
+          return !(kp && typeof kp === "object" && plainKeys(kp)?.plexus?.type === "edges");
+        }).length;
+        const edited = res[":edit/time"];
+        out.push({
+          uid,
+          title: parseBoardTitle(string) || "Untitled board",
+          pageTitle,
+          pageUid,
+          count,
+          edited: Number.isFinite(edited) ? edited : null
+        });
+      }
+      out.sort((a, b) => String(a.pageTitle).localeCompare(String(b.pageTitle)) || a.title.localeCompare(b.title));
+      return out.slice(0, limit);
+    },
+    // Card footer stats for many targets in at most four datalog queries.
+    cardStats(targets, { boardUid } = {}) {
+      const result = /* @__PURE__ */ new Map();
+      const byEid = /* @__PURE__ */ new Map();
+      for (const t of targets || []) {
+        if (!t) continue;
+        const ref = t.kind === "page" ? t.title ? { title: t.title } : null : t.uid ? { uid: t.uid } : null;
+        if (!ref) continue;
+        const key = t.kind === "page" ? `page:${t.title}` : `uid:${t.uid}`;
+        if (result.has(key)) continue;
+        result.set(key, { refs: 0, boards: 0, open: 0, done: 0 });
+        const eid = host.resolveEid(ref);
+        if (eid == null) continue;
+        if (!byEid.has(eid)) byEid.set(eid, []);
+        byEid.get(eid).push(key);
+      }
+      if (!byEid.size) return result;
+      const eids = [...byEid.keys()];
+      const boardEid = boardUid ? host.resolveEid({ uid: boardUid }) ?? -1 : -1;
+      const tally = (rows, field) => {
+        const seen = /* @__PURE__ */ new Map();
+        for (const [t, x] of rows || []) {
+          if (!seen.has(t)) seen.set(t, /* @__PURE__ */ new Set());
+          seen.get(t).add(x);
+        }
+        for (const [t, set] of seen) for (const key of byEid.get(t) ?? []) result.get(key)[field] = set.size;
+      };
+      tally(host.q(
+        `[:find ?t ?b :in $ [?t ...] ?board :where [?b :block/refs ?t] (not [?b :block/parents ?board]) [(not= ?b ?board)]]`,
+        eids,
+        boardEid
+      ), "refs");
+      tally(host.q(
+        `[:find ?t ?d :in $ [?t ...] ?board ?pat :where [?b :block/refs ?t] [?b :block/parents ?d] [?d :block/string ?s]
+ [(re-pattern ?pat) ?re] [(re-find ?re ?s)] [(not= ?d ?board)]]`,
+        eids,
+        boardEid,
+        DIAGRAM_RE
+      ), "boards");
+      const todoEid = host.resolveEid({ title: "TODO" });
+      const doneEid = host.resolveEid({ title: "DONE" });
+      const listFor = (statusEid) => host.q(
+        `[:find ?t ?x :in $ [?t ...] ?status :where [?x :block/refs ?status] (or [?x :block/parents ?t] [?x :block/page ?t])]`,
+        eids,
+        statusEid
+      );
+      if (todoEid != null) tally(listFor(todoEid), "open");
+      if (doneEid != null) tally(listFor(doneEid), "done");
+      return result;
+    },
+    async uploadFile(file) {
+      const upload = api.file?.upload;
+      if (typeof upload !== "function") throw new Error("upload-unavailable");
+      const res = await upload.call(api.file, { file });
+      const url = typeof res === "string" ? res : res?.url;
+      if (typeof url !== "string" || !url) throw new Error("upload-failed");
+      stats.writes++;
+      return url;
+    },
     searchPages(text, limit = 40) {
       const needle = String(text ?? "").toLowerCase();
       if (!needle) return [];
@@ -723,460 +1926,9 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
   return host;
 }
 
-// src/model/board.js
-var AUTO_GAP = 40;
-var AUTO_OFFSET = 48;
-var AUTO_ROWS = 4;
-var TITLE_BAND = 32;
-var BORDER_BAND = 8;
-var isNum2 = (v) => typeof v === "number" && Number.isFinite(v);
-function sortedChildren(node) {
-  const kids = Array.isArray(node?.[":block/children"]) ? node[":block/children"] : [];
-  return kids.map((c, i) => ({ c, i })).sort((a, b) => (a.c[":block/order"] ?? a.i) - (b.c[":block/order"] ?? b.i) || a.i - b.i).map(({ c }) => c);
-}
-function rectOf(o) {
-  return { x: o.x, y: o.y, w: o.w, h: o.h };
-}
-function unionRect(a, b) {
-  const x = Math.min(a.x, b.x);
-  const y = Math.min(a.y, b.y);
-  return { x, y, w: Math.max(a.x + a.w, b.x + b.w) - x, h: Math.max(a.y + a.h, b.y + b.h) - y };
-}
-function contains(r, p) {
-  return p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
-}
-function containsRect(outer, inner) {
-  return inner.x >= outer.x && inner.y >= outer.y && inner.x + inner.w <= outer.x + outer.w && inner.y + inner.h <= outer.y + outer.h;
-}
-function intersects(a, b) {
-  return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
-}
-function centerOf(r) {
-  return { x: r.x + r.w / 2, y: r.y + r.h / 2 };
-}
-function autoPlace(siblings) {
-  const placed = siblings.filter((s) => s.hasLayout);
-  const loose = siblings.filter((s) => !s.hasLayout);
-  if (!loose.length) return;
-  let startX = 0;
-  let startY = 0;
-  if (placed.length) {
-    const u = placed.map(rectOf).reduce(unionRect);
-    startX = u.x + u.w + AUTO_OFFSET;
-    startY = u.y;
-  }
-  let colX = startX;
-  let colW = 0;
-  let y = startY;
-  loose.forEach((item, i) => {
-    const row = i % AUTO_ROWS;
-    if (i > 0 && row === 0) {
-      colX += colW + AUTO_GAP;
-      colW = 0;
-      y = startY;
-    }
-    item.x = colX;
-    item.y = y;
-    y += item.h + AUTO_GAP;
-    colW = Math.max(colW, item.w);
-  });
-}
-function buildBoard(pulled, { defaults } = {}) {
-  if (!pulled || typeof pulled !== "object") return null;
-  const uid = pulled[":block/uid"];
-  const string = pulled[":block/string"] ?? "";
-  const plexus = readPlexus(pulled[":block/props"]);
-  const sizes = { ...DEFAULT_SIZES, card: defaults?.card ?? DEFAULT_SIZES.card };
-  const items = /* @__PURE__ */ new Map();
-  const edges = /* @__PURE__ */ new Map();
-  const roots = [];
-  const preorder = [];
-  let containerUid = null;
-  let containerIndex = -1;
-  const boardKids = sortedChildren(pulled);
-  boardKids.forEach((child, index) => {
-    if (containerUid === null && readPlexus(child[":block/props"])?.type === "edges") {
-      containerUid = child[":block/uid"];
-      containerIndex = index;
-    }
-  });
-  const walk = (children, parentUid, depth) => {
-    const siblings = [];
-    for (const child of children) {
-      const cuid = child[":block/uid"];
-      if (cuid === containerUid) continue;
-      const cplexus = readPlexus(child[":block/props"]);
-      const cstring = child[":block/string"] ?? "";
-      const heading = child[":block/heading"] || 0;
-      const kids = sortedChildren(child);
-      const layout = normalizeItemLayout(cplexus);
-      let type = layout.type;
-      if (!cplexus && heading > 0 && kids.length) type = "section";
-      const cls = classifyString(cstring);
-      const kind = type === "section" ? "section" : type === "text" ? "text" : cls.kind;
-      const size = sizes[type];
-      const hasLayout = isNum2(layout.x) && isNum2(layout.y);
-      let title;
-      if (kind === "page") title = cls.title;
-      else if (kind === "board") title = parseBoardTitle(cstring) || "Untitled board";
-      else title = firstLine(cstring);
-      let target;
-      if (kind === "page") target = { kind: "page", title: cls.title };
-      else if (kind === "block") target = { kind: "block", uid: cls.refUid };
-      else target = { kind: "self", uid: cuid };
-      const item = {
-        uid: cuid,
-        type,
-        kind,
-        string: cstring,
-        heading,
-        parentUid,
-        order: child[":block/order"] ?? siblings.length,
-        depth,
-        x: hasLayout ? layout.x : 0,
-        y: hasLayout ? layout.y : 0,
-        w: layout.w ?? size.w,
-        h: layout.h ?? size.h,
-        hasLayout,
-        color: layout.color,
-        collapsed: layout.collapsed === true,
-        fontSize: layout.fontSize,
-        title,
-        target,
-        enhanced: kind === "board" && cplexus?.v === 2,
-        members: [],
-        content: type === "section" ? [] : kids
-      };
-      items.set(cuid, item);
-      preorder.push(cuid);
-      siblings.push(item);
-      if (type === "section") {
-        item.members = walk(kids, cuid, depth + 1).map((m) => m.uid);
-      }
-    }
-    autoPlace(siblings);
-    return siblings;
-  };
-  for (const item of walk(boardKids, uid, 0)) roots.push(item.uid);
-  const sections = preorder.filter((u) => items.get(u).type === "section");
-  const rest = preorder.filter((u) => items.get(u).type !== "section");
-  sections.sort((a, b) => items.get(a).depth - items.get(b).depth);
-  const order = [...sections, ...rest];
-  if (containerUid !== null) {
-    const container = boardKids[containerIndex];
-    for (const e of sortedChildren(container)) {
-      const eplexus = readPlexus(e[":block/props"]);
-      if (eplexus?.type !== "edge") continue;
-      const euid = e[":block/uid"];
-      const estring = e[":block/string"] ?? "";
-      const n = normalizeEdge(eplexus);
-      const a = items.get(n.from);
-      const b = items.get(n.to);
-      edges.set(euid, {
-        uid: euid,
-        string: estring,
-        ...n,
-        label: parseEdgeLabel(estring, a ? semanticRef(a) : "", b ? semanticRef(b) : ""),
-        valid: Boolean(a && b)
-      });
-    }
-  }
-  return {
-    uid,
-    string,
-    title: parseBoardTitle(string),
-    plexus,
-    enhanced: plexus?.v === 2,
-    items,
-    roots,
-    order,
-    containerUid,
-    containerIndex,
-    childCount: boardKids.length,
-    edges
-  };
-}
-function worldRects(board) {
-  const rects = /* @__PURE__ */ new Map();
-  for (const item of board.items.values()) {
-    const p = item.parentUid === board.uid ? null : rects.get(item.parentUid);
-    rects.set(item.uid, { x: item.x + (p?.x ?? 0), y: item.y + (p?.y ?? 0), w: item.w, h: item.h });
-  }
-  return rects;
-}
-function worldRect(board, uid, rects) {
-  if (rects) return rects.get(uid) ?? null;
-  const item = board.items.get(uid);
-  if (!item) return null;
-  let x = item.x;
-  let y = item.y;
-  let parent = board.items.get(item.parentUid);
-  while (parent) {
-    x += parent.x;
-    y += parent.y;
-    parent = board.items.get(parent.parentUid);
-  }
-  return { x, y, w: item.w, h: item.h };
-}
-function descendantsOf(board, uid) {
-  const out = /* @__PURE__ */ new Set();
-  const stack = [...board.items.get(uid)?.members ?? []];
-  while (stack.length) {
-    const u = stack.pop();
-    if (out.has(u)) continue;
-    out.add(u);
-    stack.push(...board.items.get(u)?.members ?? []);
-  }
-  return out;
-}
-function hasAncestorIn(board, uid, set) {
-  let p = board.items.get(uid)?.parentUid;
-  while (p && p !== board.uid) {
-    if (set.has(p)) return true;
-    p = board.items.get(p)?.parentUid;
-  }
-  return false;
-}
-function topLevelOf(board, uids) {
-  const list = [...uids].filter((u) => board.items.has(u));
-  const set = new Set(list);
-  return list.filter((u) => !hasAncestorIn(board, u, set));
-}
-function containerAt(board, point, { exclude = /* @__PURE__ */ new Set(), rects } = {}) {
-  const r = rects ?? worldRects(board);
-  const ex = exclude instanceof Set ? exclude : new Set(exclude);
-  let best = null;
-  for (const uid of board.order) {
-    const item = board.items.get(uid);
-    if (item.type !== "section" || ex.has(uid) || hasAncestorIn(board, uid, ex)) continue;
-    if (!contains(r.get(uid), point)) continue;
-    if (!best || item.depth >= best.depth) best = item;
-  }
-  return best ? best.uid : board.uid;
-}
-function toRelative(board, containerUid, worldPoint, rects) {
-  if (containerUid === board.uid) return { x: worldPoint.x, y: worldPoint.y };
-  const c = worldRect(board, containerUid, rects);
-  return { x: worldPoint.x - c.x, y: worldPoint.y - c.y };
-}
-function hitTest(board, point, rects, { sectionInterior = false, exclude = null } = {}) {
-  for (let i = board.order.length - 1; i >= 0; i--) {
-    const item = board.items.get(board.order[i]);
-    if (item.type === "section" || exclude?.has(item.uid)) continue;
-    if (contains(rects.get(item.uid), point)) return { uid: item.uid, part: "body" };
-  }
-  for (let i = board.order.length - 1; i >= 0; i--) {
-    const item = board.items.get(board.order[i]);
-    if (item.type !== "section" || exclude?.has(item.uid)) continue;
-    const r = rects.get(item.uid);
-    if (!contains(r, point)) continue;
-    if (point.y - r.y <= TITLE_BAND) return { uid: item.uid, part: "title" };
-    const edge = Math.min(point.x - r.x, r.x + r.w - point.x, point.y - r.y, r.y + r.h - point.y);
-    if (edge <= BORDER_BAND) return { uid: item.uid, part: "border" };
-    if (sectionInterior) return { uid: item.uid, part: "interior" };
-  }
-  return null;
-}
-function boundsOf(rectList) {
-  const list = [...rectList];
-  return list.length ? list.reduce(unionRect) : null;
-}
-function boardPreview(item, { max = 60 } = {}) {
-  const child = buildBoard({
-    ":block/uid": item?.uid,
-    ":block/string": item?.string ?? "",
-    ":block/children": item?.content ?? []
-  });
-  if (!child) return { count: 0, aspect: 1.5, rects: [], bounds: null };
-  const world = worldRects(child);
-  const bounds = boundsOf([...world.values()]);
-  if (!bounds) return { count: 0, aspect: 1.5, rects: [], bounds: null };
-  const bw = bounds.w || 1;
-  const bh = bounds.h || 1;
-  const rects = [];
-  for (const uid of child.order) {
-    if (rects.length >= max) break;
-    const r = world.get(uid);
-    const it = child.items.get(uid);
-    rects.push({ x: (r.x - bounds.x) / bw, y: (r.y - bounds.y) / bh, w: r.w / bw, h: r.h / bh, type: it.type, color: it.color });
-  }
-  return { count: child.items.size, aspect: Math.min(4, Math.max(0.25, bw / bh)), rects, bounds };
-}
-function itemsInRect(board, rect, rects, { mode = "contain" } = {}) {
-  const test = mode === "intersect" ? intersects : (r, a) => containsRect(r, a);
-  const hits = [];
-  for (const uid of board.order) {
-    const r = rects.get(uid);
-    if (r && test(rect, r)) hits.push(uid);
-  }
-  return topLevelOf(board, hits);
-}
-function membershipPlan(board, movedUids, rects) {
-  const moved = topLevelOf(board, movedUids);
-  const exclude = new Set(moved);
-  const plan = [];
-  for (const uid of moved) {
-    const item = board.items.get(uid);
-    const r = rects.get(uid);
-    const toParent = containerAt(board, centerOf(r), { exclude, rects });
-    if (toParent === item.parentUid) continue;
-    const rel = toRelative(board, toParent, { x: r.x, y: r.y }, rects);
-    plan.push({ uid, fromParent: item.parentUid, toParent, x: rel.x, y: rel.y });
-  }
-  return plan;
-}
-function sectionAdoptPlan(board, sectionUid, rects) {
-  const section = board.items.get(sectionUid);
-  if (!section) return [];
-  const sr = rects.get(sectionUid);
-  const parentUid = section.parentUid;
-  const siblings = parentUid === board.uid ? board.roots : board.items.get(parentUid).members;
-  const plan = [];
-  for (const uid of siblings) {
-    if (uid === sectionUid) continue;
-    const r = rects.get(uid);
-    if (!contains(sr, centerOf(r))) continue;
-    const rel = toRelative(board, sectionUid, { x: r.x, y: r.y }, rects);
-    plan.push({ uid, toParent: sectionUid, x: rel.x, y: rel.y });
-  }
-  for (const uid of section.members) {
-    const r = rects.get(uid);
-    if (contains(sr, centerOf(r))) continue;
-    const rel = toRelative(board, parentUid, { x: r.x, y: r.y }, rects);
-    plan.push({ uid, toParent: parentUid, x: rel.x, y: rel.y });
-  }
-  return plan;
-}
-function edgesTouching(board, uidSet) {
-  const full = new Set(uidSet);
-  for (const u of uidSet) for (const d of descendantsOf(board, u)) full.add(d);
-  const out = /* @__PURE__ */ new Set();
-  for (const e of board.edges.values()) if (full.has(e.from) || full.has(e.to)) out.add(e.uid);
-  return out;
-}
-function findEdge(board, from, to) {
-  for (const e of board.edges.values()) if (e.from === from && e.to === to) return e;
-  return null;
-}
-function diffBoards(prev, next) {
-  if (!prev || !next) {
-    const dirty2 = /* @__PURE__ */ new Set();
-    if (next) {
-      for (const u of next.items.keys()) dirty2.add(u);
-      for (const u of next.edges.keys()) dirty2.add(u);
-    }
-    return { structural: true, dirty: dirty2 };
-  }
-  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
-  let structural = prev.containerUid !== next.containerUid || prev.items.size !== next.items.size || prev.edges.size !== next.edges.size || !same(prev.roots, next.roots) || !same(prev.order, next.order);
-  const dirty = /* @__PURE__ */ new Set();
-  if (prev.string !== next.string || !same(prev.plexus, next.plexus)) dirty.add(next.uid);
-  for (const [uid, item] of next.items) {
-    const old = prev.items.get(uid);
-    if (!old) {
-      structural = true;
-      dirty.add(uid);
-      continue;
-    }
-    if (old.parentUid !== item.parentUid || !same(old.members, item.members)) structural = true;
-    if (!same(old, item)) dirty.add(uid);
-  }
-  for (const [uid, edge] of next.edges) {
-    const old = prev.edges.get(uid);
-    if (!old) {
-      structural = true;
-      dirty.add(uid);
-      continue;
-    }
-    if (!same(old, edge)) dirty.add(uid);
-  }
-  return { structural, dirty };
-}
-
-// src/model/links.js
-var MAX_SOURCES = 20;
-function linksQuery() {
-  return `[:find ?a ?b ?su ?ss
- :in $ ?board [?a ...] [?b ...]
- :where
- [?src :block/refs ?b]
- (or [?src :block/page ?a] [?src :block/parents ?a] [(= ?src ?a)])
- [(not= ?a ?b)]
- (not [?src :block/parents ?board])
- [(not= ?src ?board)]
- [?src :block/uid ?su]
- [?src :block/string ?ss]]`;
-}
-function isBareAttr(s) {
-  return typeof s === "string" && /^\s*[^:\n]{1,60}::\s*$/.test(s);
-}
-function reduceLinks(rows, { eidToItems, parentStrings = /* @__PURE__ */ new Map() } = {}) {
-  const byKey = /* @__PURE__ */ new Map();
-  for (const [aEid, bEid, su, ss] of rows) {
-    const froms = eidToItems.get(aEid) || [];
-    const tos = eidToItems.get(bEid) || [];
-    if (!froms.length || !tos.length) continue;
-    let label = attrNameOf(ss);
-    if (label == null) {
-      const ps = parentStrings.get(su);
-      if (isBareAttr(ps)) label = attrNameOf(ps);
-    }
-    const isAttr = label != null;
-    if (!isAttr) label = "mentions";
-    for (const from of froms) {
-      for (const to of tos) {
-        if (from === to) continue;
-        const key = `${from}->${to}`;
-        let link = byKey.get(key);
-        if (!link) {
-          link = { key, from, to, kind: "ref", labels: [], sources: [], color: "gray" };
-          byKey.set(key, link);
-        }
-        if (isAttr) link.kind = "attr";
-        if (!link.labels.includes(label)) link.labels.push(label);
-        if (link.sources.length < MAX_SOURCES && !link.sources.some((s) => s.uid === su)) {
-          link.sources.push({ uid: su, string: ss });
-        }
-      }
-    }
-  }
-  const out = [];
-  for (const link of byKey.values()) {
-    link.labels = [
-      ...link.labels.filter((l) => l !== "mentions"),
-      ...link.labels.filter((l) => l === "mentions")
-    ];
-    link.color = colorForLabel(link.labels[0]);
-    out.push(link);
-  }
-  return out;
-}
-function filterLinks(links, mode) {
-  if (mode === "off") return [];
-  if (mode === "attributes") return links.filter((l) => l.kind === "attr");
-  return links;
-}
-function coveredBy(links, board) {
-  const pairs = /* @__PURE__ */ new Map();
-  for (const [uid, e] of board.edges) {
-    for (const k of [`${e.from}->${e.to}`, `${e.to}->${e.from}`]) {
-      if (!pairs.has(k)) pairs.set(k, []);
-      pairs.get(k).push(uid);
-    }
-  }
-  const visible = [];
-  const coveredEdges = /* @__PURE__ */ new Set();
-  for (const l of links) {
-    const hit = pairs.get(`${l.from}->${l.to}`);
-    if (hit) hit.forEach((u) => coveredEdges.add(u));
-    else visible.push(l);
-  }
-  return { visible, coveredEdges };
-}
-
 // src/host/migrate.js
 var METADATA_PAGE = "plexus-diagram/metadata";
-function sortedKids2(node) {
+function sortedKids3(node) {
   const kids = Array.isArray(node?.[":block/children"]) ? node[":block/children"] : [];
   return kids.map((c, i) => ({ c, i })).sort((a, b) => (a.c[":block/order"] ?? a.i) - (b.c[":block/order"] ?? b.i) || a.i - b.i).map(({ c }) => c);
 }
@@ -1193,12 +1945,12 @@ var DIRS2 = { oneWay: "one", twoWay: "two", none: "none" };
 function readV06Entry(host, boardUid) {
   const page = host.pullPage(METADATA_PAGE);
   if (!page) return null;
-  const root = sortedKids2(page).find((c) => str(c) === "enhanced::");
+  const root = sortedKids3(page).find((c) => str(c) === "enhanced::");
   if (!root) return null;
-  const entryNode = sortedKids2(root).find((c) => str(c) === boardUid);
+  const entryNode = sortedKids3(root).find((c) => str(c) === boardUid);
   if (!entryNode) return null;
   const out = { nodes: /* @__PURE__ */ new Map(), sections: [], edges: [], viewport: null, entryUid: entryNode[":block/uid"], migrated: false };
-  for (const child of sortedKids2(entryNode)) {
+  for (const child of sortedKids3(entryNode)) {
     const line = str(child);
     const vp = prop(line, "viewport");
     if (vp !== null) {
@@ -1213,7 +1965,7 @@ function readV06Entry(host, boardUid) {
     if (line.startsWith("node ")) {
       const uid = line.slice(5).trim();
       const node = { x: void 0, y: void 0, w: void 0, h: void 0, color: void 0 };
-      for (const k of sortedKids2(child)) {
+      for (const k of sortedKids3(child)) {
         const l = str(k);
         const pos = prop(l, "pos");
         const size = prop(l, "size");
@@ -1241,7 +1993,7 @@ function readV06Entry(host, boardUid) {
       const m = /^(.+)->(.+)$/.exec(line.slice(5).trim());
       if (!m) continue;
       const edge = { from: m[1].trim(), to: m[2].trim(), route: "curve", label: "", fromSide: "auto", toSide: "auto", dir: "one", color: void 0 };
-      for (const k of sortedKids2(child)) {
+      for (const k of sortedKids3(child)) {
         const l = str(k);
         const kind = prop(l, "kind");
         const label = prop(l, "label");
@@ -1251,8 +2003,8 @@ function readV06Entry(host, boardUid) {
         const color = prop(l, "color");
         if (kind !== null) edge.route = ROUTES2[kind] ?? "curve";
         if (label !== null) edge.label = label;
-        if (from !== null && SIDES.includes(from)) edge.fromSide = from;
-        if (to !== null && SIDES.includes(to)) edge.toSide = to;
+        if (from !== null && SIDES2.includes(from)) edge.fromSide = from;
+        if (to !== null && SIDES2.includes(to)) edge.toSide = to;
         if (dir !== null && DIRS2[dir]) edge.dir = DIRS2[dir];
         if (color !== null && PALETTE.includes(color)) edge.color = color;
       }
@@ -1261,7 +2013,7 @@ function readV06Entry(host, boardUid) {
     }
     if (line.startsWith("section ")) {
       const sec = { id: line.slice(8).trim(), x: void 0, y: void 0, w: void 0, h: void 0, title: "", color: void 0 };
-      for (const k of sortedKids2(child)) {
+      for (const k of sortedKids3(child)) {
         const l = str(k);
         const pos = prop(l, "pos");
         const size = prop(l, "size");
@@ -1566,10 +2318,20 @@ var KIDS = ":block/children";
 var PROPS = ":block/props";
 var OPEN = ":block/open";
 var LINK_MODES = ["off", "attributes", "all"];
-var ITEM_KEYS = ["type", "x", "y", "w", "h", "color", "collapsed", "fontSize"];
+var ITEM_KEYS = ["type", "x", "y", "w", "h", "color", "collapsed", "fontSize", "pinned", "fit"];
 var EDGE_KEYS = ["type", "from", "to", "fromSide", "toSide", "dir", "route", "dash", "weight", "color"];
 var MAX_PARENT_STRINGS = 200;
 var registry = /* @__PURE__ */ new Map();
+var extensions = [];
+function extendSession(fn) {
+  if (typeof fn !== "function") return () => {
+  };
+  extensions.push(fn);
+  return () => {
+    const at = extensions.indexOf(fn);
+    if (at >= 0) extensions.splice(at, 1);
+  };
+}
 var clone = (v) => v == null ? v : JSON.parse(JSON.stringify(v));
 var round13 = (n) => Math.round(n * 10) / 10;
 function sortKeys(v) {
@@ -1664,6 +2426,18 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
   let linkFingerprint = "";
   const initialMode = typeof settings?.get === "function" ? settings.get("graph-links") : settings?.["graph-links"];
   let linkMode = LINK_MODES.includes(initialMode) ? initialMode : "all";
+  const setting = (name, fallback) => {
+    const v = typeof settings?.get === "function" ? settings.get(name) : settings?.[name];
+    return v == null || v === "" ? fallback : v;
+  };
+  const flag = (name, fallback) => {
+    const v = setting(name, fallback);
+    return v === true || v === "true" ? true : v === false || v === "false" ? false : fallback;
+  };
+  const sizeSetting = (name, fallback) => {
+    const n = Number(setting(name, fallback));
+    return Number.isFinite(n) && n >= 40 ? n : fallback;
+  };
   const collapseOutline = () => (typeof settings?.get === "function" ? settings.get("collapse-outline") : settings?.["collapse-outline"]) !== false;
   const rawNode = (id) => id === uid ? raw : ix().get(id)?.node ?? null;
   const insertOrder = (parentUid) => {
@@ -1960,6 +2734,14 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
     w: Math.max(MIN_SIZES[type]?.w ?? 1, w),
     h: Math.max(MIN_SIZES[type]?.h ?? 1, h)
   });
+  const sectionFloor = (id, size) => {
+    const item = board.items.get(id);
+    const own = rects.get(id);
+    if (item?.type !== "section" || !own || !item.members.length) return size;
+    const b = boundsOf(item.members.map((m) => rects.get(m)).filter(Boolean));
+    if (!b) return size;
+    return { w: Math.max(size.w, b.x + b.w + FIT_PAD - own.x), h: Math.max(size.h, b.y + b.h + FIT_PAD - own.y) };
+  };
   function ensureContainer(t) {
     if (board.containerUid) return board.containerUid;
     const existing = kidsOf(raw).find((k) => readPlexus(k[PROPS])?.type === "edges");
@@ -1973,6 +2755,71 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
   function edgeStringFor(from, to, dir, label) {
     return edgeString({ srcRef: refOf2(from), dstRef: refOf2(to), dir, label });
   }
+  function applyFit(t, touched, { skip } = {}) {
+    if (!flag("auto-fit-sections", true)) return;
+    const list = [...touched ?? []];
+    if (!list.length) return;
+    t.sync();
+    const plan = sectionFitPlan(board, rects, list, skip ? { skip: new Set(skip) } : {});
+    if (!plan.length) return;
+    const grown = new Map(plan.map((p) => [p.uid, p.rect]));
+    const finalWorld = new Map(rects);
+    for (const [sid, r] of grown) finalWorld.set(sid, r);
+    const originOf = (pid) => pid === uid ? { x: 0, y: 0 } : finalWorld.get(pid) ?? { x: 0, y: 0 };
+    for (const [sid, r] of grown) {
+      const p = originOf(board.items.get(sid).parentUid);
+      t.props(sid, itemPlexus(sid, { x: round13(r.x - p.x), y: round13(r.y - p.y), w: round13(r.w), h: round13(r.h) }));
+    }
+    for (const [sid, r] of grown) {
+      const old = rects.get(sid);
+      if (Math.abs(r.x - old.x) < 0.01 && Math.abs(r.y - old.y) < 0.01) continue;
+      for (const m of board.items.get(sid).members) {
+        if (grown.has(m)) continue;
+        const mr = rects.get(m);
+        t.props(m, itemPlexus(m, { x: round13(mr.x - r.x), y: round13(mr.y - r.y) }));
+      }
+    }
+  }
+  function spaceOutAfter(t, moved) {
+    t.sync();
+    const byParent = /* @__PURE__ */ new Map();
+    for (const id of moved) {
+      const it = board.items.get(id);
+      if (!it) continue;
+      if (!byParent.has(it.parentUid)) byParent.set(it.parentUid, []);
+      byParent.get(it.parentUid).push(id);
+    }
+    const displacedIds = [];
+    for (const [pid, here] of byParent) {
+      const sibs = pid === uid ? board.roots : board.items.get(pid)?.members ?? [];
+      const withSections = here.some((id) => board.items.get(id).type === "section");
+      const map = /* @__PURE__ */ new Map();
+      const pinned = /* @__PURE__ */ new Set();
+      for (const s of sibs) {
+        const it = board.items.get(s);
+        if (!it || it.type === "section" && !withSections) continue;
+        map.set(s, rects.get(s));
+        if (it.pinned && !here.includes(s)) pinned.add(s);
+      }
+      const origin = pid === uid ? { x: 0, y: 0 } : rects.get(pid) ?? { x: 0, y: 0 };
+      for (const d of spaceOut(map, new Set(here), { fixed: pinned })) {
+        t.props(d.uid, itemPlexus(d.uid, { x: round13(d.x - origin.x), y: round13(d.y - origin.y) }));
+        displacedIds.push(d.uid);
+      }
+    }
+    applyFit(t, displacedIds);
+  }
+  const cardAt = (t, string, x, y) => {
+    const parent = containerAt(board, { x: x + DEFAULT_SIZES.card.w / 2, y: y + DEFAULT_SIZES.card.h / 2 }, { rects });
+    const rel = toRelative(board, parent, { x, y }, rects);
+    return t.create({ parent, string, plexus: serializeItemLayout({ x: rel.x, y: rel.y }) });
+  };
+  const defaultSizeFor = (item) => {
+    if (item.type === "section") return DEFAULT_SIZES.section;
+    if (item.type === "text") return DEFAULT_SIZES.text;
+    if (item.kind === "board") return DEFAULT_BOARD_CARD;
+    return { w: sizeSetting("default-card-width", DEFAULT_SIZES.card.w), h: sizeSetting("default-card-height", DEFAULT_SIZES.card.h) };
+  };
   function recomputeLinks(force) {
     if (!board) return;
     const filtered = filterLinks(allLinks, linkMode);
@@ -2087,7 +2934,7 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
     commitMove(uids, dx, dy) {
       if (!board || !dx && !dy) return Promise.resolve();
       return txn((t) => {
-        const top = topLevelOf(board, uids);
+        const top = topLevelOf(board, uids).filter((id) => !board.items.get(id).pinned);
         if (!top.length) return;
         const moved = new Map(rects);
         for (const id of top) {
@@ -2105,15 +2952,19 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
             t.props(id, itemPlexus(id, { x: item.x + dx, y: item.y + dy }));
           }
         }
+        applyFit(t, top);
+        if (flag("space-out", false)) spaceOutAfter(t, top);
       });
     },
     commitRects(list) {
       if (!board || !list?.length) return Promise.resolve();
       return txn((t) => {
         const changedSections = [];
+        const fitTouched = [];
         for (const r of list) {
           const item = board.items.get(r.uid);
-          if (!item) continue;
+          if (!item || item.pinned) continue;
+          fitTouched.push(r.uid);
           const parentRect = item.parentUid === uid ? { x: 0, y: 0 } : rects.get(item.parentUid) ?? { x: 0, y: 0 };
           const size = clampSize(item.type, r.w ?? item.w, r.h ?? item.h);
           t.props(r.uid, itemPlexus(r.uid, {
@@ -2124,16 +2975,18 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
           }));
           if (item.type === "section") changedSections.push(r.uid);
         }
-        if (!changedSections.length) return;
-        t.sync();
-        for (const sid of changedSections) {
-          const plan = sectionAdoptPlan(board, sid, rects);
-          for (const p of plan) {
-            t.move(p.uid, p.toParent, "last");
-            t.props(p.uid, itemPlexus(p.uid, { x: p.x, y: p.y }));
+        if (changedSections.length) {
+          t.sync();
+          for (const sid of changedSections) {
+            const plan = sectionAdoptPlan(board, sid, rects);
+            for (const p of plan) {
+              t.move(p.uid, p.toParent, "last");
+              t.props(p.uid, itemPlexus(p.uid, { x: p.x, y: p.y }));
+            }
+            if (plan.length) t.sync();
           }
-          if (plan.length) t.sync();
         }
+        applyFit(t, fitTouched, { skip: changedSections });
       });
     },
     createCard({ x, y, string = "", w, h } = {}) {
@@ -2144,14 +2997,18 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
         const layout = { x: rel.x, y: rel.y };
         if (w !== void 0) layout.w = w;
         if (h !== void 0) layout.h = h;
-        return t.create({ parent, string, plexus: serializeItemLayout(layout) });
+        const id = t.create({ parent, string, plexus: serializeItemLayout(layout) });
+        applyFit(t, [id]);
+        return id;
       });
     },
     createText({ x, y, string = "" } = {}) {
       return txn((t) => {
         const parent = containerAt(board, { x: x + DEFAULT_SIZES.text.w / 2, y: y + DEFAULT_SIZES.text.h / 2 }, { rects });
         const rel = toRelative(board, parent, { x, y }, rects);
-        return t.create({ parent, string, plexus: serializeItemLayout({ type: "text", x: rel.x, y: rel.y }) });
+        const id = t.create({ parent, string, plexus: serializeItemLayout({ type: "text", x: rel.x, y: rel.y }) });
+        applyFit(t, [id]);
+        return id;
       });
     },
     createSection({ rect, title = "Section", color } = {}) {
@@ -2172,7 +3029,9 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
         const d = DEFAULT_BOARD_CARD;
         const r = { x: rect?.x ?? 0, y: rect?.y ?? 0, w: rect?.w ?? d.w, h: rect?.h ?? d.h };
         const size = clampSize("card", r.w, r.h);
-        return makeBoard(t, { x: r.x, y: r.y, w: size.w, h: size.h }, title, void 0);
+        const id = makeBoard(t, { x: r.x, y: r.y, w: size.w, h: size.h }, title, void 0);
+        applyFit(t, [id]);
+        return id;
       });
     },
     wrapInBoard(uids) {
@@ -2183,6 +3042,7 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
         const card = { x: b.x, y: b.y, w: Math.min(480, Math.max(240, b.w)), h: Math.min(360, Math.max(180, b.h)) };
         const boardUid = makeBoard(t, card, "", new Set(top), b);
         moveItemsInto(t, top, boardUid, { x: b.x, y: b.y }, { x: 0, y: 0 });
+        applyFit(t, [boardUid]);
         return boardUid;
       });
     },
@@ -2206,6 +3066,7 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
       const info = { createdContainer: null };
       return txn((t) => {
         moveItemsInto(t, top, boardUid, origin, place, { moved, undoEdges, info });
+        applyFit(t, [boardUid]);
         return {
           moved: top.slice(),
           title: target.title,
@@ -2239,15 +3100,16 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
       });
     },
     addRefCards(list) {
-      return txn((t) => (list ?? []).map(({ string, x, y }) => {
-        const parent = containerAt(board, { x: x + DEFAULT_SIZES.card.w / 2, y: y + DEFAULT_SIZES.card.h / 2 }, { rects });
-        const rel = toRelative(board, parent, { x, y }, rects);
-        return t.create({ parent, string, plexus: serializeItemLayout({ x: rel.x, y: rel.y }) });
-      }));
-    },
-    deleteItems(uids, { withContents = false } = {}) {
       return txn((t) => {
-        const set = new Set([...uids].filter((id) => board.items.has(id)));
+        const ids = (list ?? []).map(({ string, x, y }) => cardAt(t, string, x, y));
+        applyFit(t, ids);
+        return ids;
+      });
+    },
+    deleteItems(uids, { withContents = false, force = false } = {}) {
+      return txn((t) => {
+        const protectedItem = (id) => board.items.get(id).pinned || withContents && [...descendantsOf(board, id)].some((d) => board.items.get(d).pinned);
+        const set = new Set([...uids].filter((id) => board.items.has(id) && (force || !protectedItem(id))));
         if (!set.size) return;
         let edgeSet;
         if (withContents) {
@@ -2306,6 +3168,190 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
         const target = Math.min(900, Math.ceil(contentHeight));
         if (!(target > item.h)) return;
         t.props(id, itemPlexus(id, { h: target }));
+        applyFit(t, [id]);
+      });
+    },
+    fitSection(id, { shrink = true } = {}) {
+      return txn((t) => {
+        const item = board.items.get(id);
+        if (!item || item.type !== "section" || !item.members.length) return false;
+        const own = rects.get(id);
+        const bounds = boundsOf(item.members.map((m) => rects.get(m)));
+        let next = inflate(bounds, FIT_PAD);
+        if (!shrink) next = unionRect(own, next);
+        const size = clampSize("section", next.w, next.h);
+        next = { x: round13(next.x), y: round13(next.y), w: round13(size.w), h: round13(size.h) };
+        const origin = item.parentUid === uid ? { x: 0, y: 0 } : rects.get(item.parentUid) ?? { x: 0, y: 0 };
+        const write = (target, patch) => {
+          const plexus = itemPlexus(target, patch);
+          if (stable(plexus) !== stable(rawPlexus(target))) t.props(target, plexus);
+        };
+        write(id, { x: round13(next.x - origin.x), y: round13(next.y - origin.y), w: next.w, h: next.h });
+        for (const m of item.members) {
+          const mr = rects.get(m);
+          write(m, { x: round13(mr.x - next.x), y: round13(mr.y - next.y) });
+        }
+        applyFit(t, [id]);
+        return true;
+      });
+    },
+    setFit(id, on) {
+      return txn((t) => {
+        const item = board.items.get(id);
+        if (!item || item.type !== "section") return;
+        const want = on === false ? false : void 0;
+        if (item.autofit === false === (want === false)) return;
+        t.props(id, itemPlexus(id, { fit: want }));
+      });
+    },
+    setPinned(uids, on) {
+      return txn((t) => {
+        for (const id of new Set(uids ?? [])) {
+          const item = board.items.get(id);
+          if (!item || item.pinned === Boolean(on)) continue;
+          t.props(id, itemPlexus(id, { pinned: on ? true : void 0 }));
+        }
+      });
+    },
+    // bg / bgColor: undefined leaves the key, null removes it, otherwise it must be a known pattern / tone.
+    // Resolves true when applied (or already equal), false when rejected.
+    setBoardBackground({ bg, bgColor } = {}) {
+      return txn((t) => {
+        if (!board.enhanced) return false;
+        if (bg != null && !BOARD_PATTERNS.includes(bg)) return false;
+        if (bgColor != null && !BOARD_TONES.includes(bgColor)) return false;
+        const base = rawPlexus(uid);
+        const next = { ...base };
+        for (const [key, value] of [["bg", bg], ["bgColor", bgColor]]) {
+          if (value === void 0) continue;
+          if (value === null) delete next[key];
+          else next[key] = value;
+        }
+        if (stable(next) !== stable(base)) t.props(uid, next);
+        return true;
+      });
+    },
+    setCollapsedMany(uids, value) {
+      return txn((t) => {
+        let count = 0;
+        for (const id of new Set(uids ?? [])) {
+          const item = board.items.get(id);
+          if (!item || item.type !== "card" || item.collapsed === Boolean(value)) continue;
+          t.props(id, itemPlexus(id, { collapsed: value ? true : void 0 }));
+          count++;
+        }
+        return count;
+      });
+    },
+    collapseAll(value, { within = null, except = [] } = {}) {
+      return txn((t) => {
+        const skipIds = new Set(except ?? []);
+        const pool = within ? [...descendantsOf(board, within)] : [...board.items.keys()];
+        let count = 0;
+        for (const id of pool) {
+          const item = board.items.get(id);
+          if (!item || item.type !== "card" || skipIds.has(id) || item.collapsed === Boolean(value)) continue;
+          t.props(id, itemPlexus(id, { collapsed: value ? true : void 0 }));
+          count++;
+        }
+        return count;
+      });
+    },
+    // Modes: row, column, grid, outline. A lone selected section tidies its members; otherwise each parent's
+    // selected items are tidied among themselves. Writes only x and y. Resolves the number of items moved.
+    tidyItems(uids, mode = "grid", { gap } = {}) {
+      return txn((t) => {
+        const top = topLevelOf(board, uids ?? []);
+        const groups = /* @__PURE__ */ new Map();
+        if (top.length === 1 && board.items.get(top[0]).type === "section") {
+          groups.set(top[0], board.items.get(top[0]).members.filter((m) => !board.items.get(m).pinned));
+        } else {
+          for (const id of top) {
+            const it = board.items.get(id);
+            if (it.pinned) continue;
+            if (!groups.has(it.parentUid)) groups.set(it.parentUid, []);
+            groups.get(it.parentUid).push(id);
+          }
+        }
+        const opts = gap !== void 0 ? { gap } : {};
+        if (mode === "outline") opts.order = outlineOrder(board);
+        const moved = [];
+        for (const ids of groups.values()) {
+          if (ids.length < 2) continue;
+          const list = ids.map((id) => {
+            const it = board.items.get(id);
+            return { uid: id, x: it.x, y: it.y, w: it.w, h: it.h };
+          });
+          for (const p of tidyRects(list, mode, opts)) {
+            const it = board.items.get(p.uid);
+            if (Math.abs(p.x - it.x) < 0.05 && Math.abs(p.y - it.y) < 0.05) continue;
+            t.props(p.uid, itemPlexus(p.uid, { x: round13(p.x), y: round13(p.y) }));
+            moved.push(p.uid);
+          }
+        }
+        applyFit(t, moved);
+        return moved.length;
+      });
+    },
+    sameSize(uids, primaryUid, mode = "both") {
+      return txn((t) => {
+        const ids = [.../* @__PURE__ */ new Set([...uids ?? [], primaryUid])].filter((id) => board.items.has(id));
+        const list = ids.map((id) => ({ uid: id, w: board.items.get(id).w, h: board.items.get(id).h }));
+        const changed = [];
+        for (const c of sameSize(list, primaryUid, mode)) {
+          const item = board.items.get(c.uid);
+          if (item.pinned) continue;
+          const size = sectionFloor(c.uid, clampSize(item.type, c.w, c.h));
+          if (round13(size.w) === item.w && round13(size.h) === item.h) continue;
+          t.props(c.uid, itemPlexus(c.uid, { w: round13(size.w), h: round13(size.h) }));
+          changed.push(c.uid);
+        }
+        applyFit(t, changed);
+        return changed.length;
+      });
+    },
+    resetSize(uids) {
+      return txn((t) => {
+        const changed = [];
+        for (const id of new Set(uids ?? [])) {
+          const item = board.items.get(id);
+          if (!item || item.pinned) continue;
+          const d = sectionFloor(id, defaultSizeFor(item));
+          const w = round13(d.w);
+          const h = round13(d.h);
+          if (item.w === w && item.h === h) continue;
+          t.props(id, itemPlexus(id, { w, h }));
+          changed.push(id);
+        }
+        applyFit(t, changed);
+        return changed.length;
+      });
+    },
+    // Sets the height from measured content, shrinking as well as growing (growToFit only grows).
+    fitToContent(id, contentHeight) {
+      return txn((t) => {
+        const item = board.items.get(id);
+        if (!item || item.type === "section" || !Number.isFinite(contentHeight)) return;
+        const target = Math.min(900, Math.max(MIN_SIZES[item.type]?.h ?? 1, Math.ceil(contentHeight)));
+        if (target === item.h) return;
+        t.props(id, itemPlexus(id, { h: target }));
+        applyFit(t, [id]);
+      });
+    },
+    addDailyCards(dates, { x = 0, y = 0 } = {}) {
+      return txn((t) => {
+        const have = /* @__PURE__ */ new Set();
+        for (const item of board.items.values()) if (item.kind === "page") have.add(item.target.title);
+        const made = [];
+        for (const d of dates ?? []) {
+          const date = typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d) ? new Date(Number(d.slice(0, 4)), Number(d.slice(5, 7)) - 1, Number(d.slice(8, 10))) : d;
+          const title = dailyPageTitle(date);
+          if (have.has(title)) continue;
+          have.add(title);
+          made.push(cardAt(t, `[[${title}]]`, x + made.length * 300, y));
+        }
+        applyFit(t, made);
+        return made;
       });
     },
     addEdge({ from, to, fromSide, toSide, label = "", dir = "one" } = {}) {
@@ -2531,6 +3577,38 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
     return sectionUid;
   }
   if (linkMode !== "off" && board) refreshLinks();
+  const api = {
+    uid,
+    host,
+    settings,
+    txn,
+    rawNode,
+    ix,
+    kidsOf,
+    rawPlexus,
+    itemPlexus,
+    edgePlexus,
+    insertOrder,
+    ensureContainer,
+    edgeStringFor,
+    refOf: refOf2,
+    applyFit,
+    board: () => board,
+    rects: () => rects,
+    queue,
+    isGone: () => gone || destroyed,
+    setting,
+    clone,
+    round1: round13,
+    emit: emit2
+  };
+  for (const fn of [...extensions]) {
+    try {
+      fn(session, api);
+    } catch (err) {
+      console.error("[plexus session] extension", err);
+    }
+  }
   return session;
 }
 function acquireSession(boardUid, options = {}) {
@@ -2558,284 +3636,553 @@ function acquireSession(boardUid, options = {}) {
   return session;
 }
 
-// src/model/geometry.js
-var num = (n) => {
-  const r = Math.round(n * 1e3) / 1e3;
-  return Object.is(r, -0) ? 0 : r;
-};
-function screenToWorld(vp, p) {
-  return { x: (p.x - vp.x) / vp.zoom, y: (p.y - vp.y) / vp.zoom };
+// src/session-clip.js
+var UID2 = ":block/uid";
+var STR2 = ":block/string";
+var KIDS2 = ":block/children";
+var PROPS2 = ":block/props";
+var STACK_GAP = 24;
+var OUTLINE_CARD = { w: 240, h: 72 };
+var OUTLINE_DEPTH = 3;
+var OUTLINE_DIRECTIONS = ["right", "down", "balanced"];
+function findNode2(node, uid) {
+  if (!node) return null;
+  if (node[UID2] === uid) return node;
+  for (const c of node[KIDS2] ?? []) {
+    const hit = findNode2(c, uid);
+    if (hit) return hit;
+  }
+  return null;
 }
-function worldToScreen(vp, p) {
-  return { x: p.x * vp.zoom + vp.x, y: p.y * vp.zoom + vp.y };
+var isEnhancedBoardNode = (node) => Boolean(node) && readPlexus(node[PROPS2])?.v === 2 && classifyString(node[STR2]).kind === "board";
+extendSession((session, api) => {
+  const { host } = api;
+  const gen = () => host.generateUid();
+  function placeCard(t, string, x, y, { w, h, color } = {}, exclude) {
+    const board = api.board();
+    const rects = api.rects();
+    const cw = w ?? DEFAULT_SIZES.card.w;
+    const ch = h ?? DEFAULT_SIZES.card.h;
+    const parent = containerAt(board, { x: x + cw / 2, y: y + ch / 2 }, { rects, exclude });
+    const rel = toRelative(board, parent, { x, y }, rects);
+    const layout = { x: rel.x, y: rel.y };
+    if (w !== void 0) layout.w = w;
+    if (h !== void 0) layout.h = h;
+    if (color) layout.color = color;
+    return t.create({ parent, string, plexus: serializeItemLayout(layout) });
+  }
+  function cloneSet(t, src, entries, exclude) {
+    const board = api.board();
+    const rects = api.rects();
+    const at = new Map(entries.map((e) => [e.uid, e]));
+    const uidMap = /* @__PURE__ */ new Map();
+    const tops = [];
+    for (const id of topLevelOf(src.board, entries.map((e) => e.uid))) {
+      const e = at.get(id);
+      const item = src.board.items.get(id);
+      const node = src.node(id);
+      if (!item || !node) continue;
+      if (item.kind === "board" && !item.enhanced) continue;
+      const parent = containerAt(board, { x: e.x + item.w / 2, y: e.y + item.h / 2 }, { rects, exclude });
+      const rel = toRelative(board, parent, { x: e.x, y: e.y }, rects);
+      const x = api.round1(rel.x);
+      const y = api.round1(rel.y);
+      const simple = item.type === "text" || ["page", "block", "image"].includes(item.kind);
+      if (simple) {
+        const plexus = { ...readPlexus(node[PROPS2]) ?? {}, x, y };
+        delete plexus.pinned;
+        const fresh = gen();
+        uidMap.set(id, fresh);
+        t.create({ parent, uid: fresh, string: node[STR2] ?? "", plexus });
+        tops.push(fresh);
+        continue;
+      }
+      const patch = { x, y };
+      if (item.type === "section") Object.assign(patch, { type: "section", w: item.w, h: item.h });
+      const plan = planSubtreeClone(node, { genUid: gen, parentUid: parent, order: api.insertOrder(parent), plexusPatch: patch, uidMap });
+      const oldOf = new Map([...uidMap].map(([o, n]) => [n, o]));
+      for (const c of plan.creates) {
+        const plexus = c.props?.[PLEXUS_KEY] ? { ...c.props[PLEXUS_KEY] } : null;
+        if (plexus) {
+          if (src.board.items.has(oldOf.get(c.uid))) delete plexus.pinned;
+          if (plexus.type === "edge") {
+            if (uidMap.has(plexus.from)) plexus.from = uidMap.get(plexus.from);
+            if (uidMap.has(plexus.to)) plexus.to = uidMap.get(plexus.to);
+          }
+        }
+        t.create({
+          parent: c.parent,
+          uid: c.uid,
+          string: c.string,
+          plexus: plexus && Object.keys(plexus).length ? plexus : void 0,
+          order: c.order,
+          open: c.open === false ? false : void 0
+        });
+      }
+      tops.push(plan.creates[0].uid);
+    }
+    const edges = [...src.board.edges.values()].filter((edge) => edge.valid && uidMap.has(edge.from) && uidMap.has(edge.to));
+    if (edges.length) {
+      const refs = /* @__PURE__ */ new Map();
+      for (const [old, fresh] of uidMap) {
+        const it = src.board.items.get(old);
+        refs.set(fresh, it && (it.kind === "page" || it.kind === "block") ? semanticRef(it) : `((${fresh}))`);
+      }
+      const containerUid = api.ensureContainer(t);
+      for (const c of planEdgeClones(edges, uidMap, { genUid: gen, containerUid, refOfNew: (fresh) => refs.get(fresh) })) {
+        t.create({ parent: c.parent, uid: c.uid, string: c.string, plexus: c.props[PLEXUS_KEY], order: "last" });
+      }
+    }
+    return tops;
+  }
+  const stackAt = (list, x, y) => list.map((string, i) => ({ string, x, y: y + i * (DEFAULT_SIZES.card.h + STACK_GAP) }));
+  const outlineOrigin = (preview) => preview.bounds ? { x: preview.bounds.x + preview.bounds.w + 48, y: preview.bounds.y } : { x: 0, y: 0 };
+  Object.assign(session, {
+    // New top-level uids. asRef=true makes ref cards instead. The pinned flag is not copied.
+    duplicateItems(uids, { dx = 24, dy = 24, asRef = false } = {}) {
+      return api.txn((t) => {
+        const board = api.board();
+        const rects = api.rects();
+        const top = topLevelOf(board, uids ?? []);
+        if (!top.length) return [];
+        const exclude = new Set(top);
+        let made;
+        if (asRef) {
+          made = top.map((id) => {
+            const r = rects.get(id);
+            return placeCard(t, api.refOf(id), r.x + dx, r.y + dy, {}, exclude);
+          });
+        } else {
+          const entries = top.map((id) => ({ uid: id, x: rects.get(id).x + dx, y: rects.get(id).y + dy }));
+          made = cloneSet(t, { board, node: api.rawNode }, entries, exclude);
+        }
+        api.applyFit(t, made);
+        return made;
+      }).then((made) => made ?? []);
+    },
+    // A detached copy of the items (and their subtrees and the connections between them) as a synthetic board
+    // tree. A cut puts it in the clipboard payload, so the paste no longer depends on the deleted blocks.
+    snapshotItems(uids) {
+      const board = api.board();
+      if (!board) return null;
+      const top = topLevelOf(board, uids ?? []);
+      if (!top.length) return null;
+      const set = new Set(top);
+      for (const id of top) for (const d of descendantsOf(board, id)) set.add(d);
+      const copy = (id) => JSON.parse(JSON.stringify(api.rawNode(id) ?? null));
+      const nodes = top.map(copy).filter(Boolean);
+      if (!nodes.length) return null;
+      const edgeNodes = [...board.edges.values()].filter((e) => e.valid && set.has(e.from) && set.has(e.to)).map((e) => copy(e.uid)).filter(Boolean);
+      if (edgeNodes.length) nodes.push({ [UID2]: "plexus-cut-edges", [STR2]: "Connections", [PROPS2]: { [PLEXUS_KEY]: { type: "edges" } }, [KIDS2]: edgeNodes });
+      return { [UID2]: session.uid, [STR2]: "", [KIDS2]: nodes };
+    },
+    // data comes from parseClipboard (the `plexus` payload or its `.data`). mode 'refs' makes ref cards,
+    // 'clone' clones the copied items (from this board or, for another board, from its pulled tree). A payload
+    // with a `snapshot` (a cut) is always cloned from the snapshot: the source blocks are gone.
+    pasteItems(data, { x = 0, y = 0, mode = "refs" } = {}) {
+      const payload = data?.kind === "plexus" ? data.data : data;
+      if (!payload || !Array.isArray(payload.items) || !payload.items.length) return Promise.resolve([]);
+      if (payload.snapshot && typeof payload.snapshot === "object") mode = "clone";
+      return api.txn((t) => {
+        let made;
+        if (mode === "clone") {
+          let src;
+          if (payload.snapshot && typeof payload.snapshot === "object") {
+            const board = buildBoard(payload.snapshot);
+            if (!board) return [];
+            src = { board, node: (id) => findNode2(payload.snapshot, id) };
+          } else if (payload.board === session.uid) src = { board: api.board(), node: api.rawNode };
+          else {
+            const pulled = host.pullBoard(payload.board);
+            const board = pulled ? buildBoard(pulled) : null;
+            if (!board) return [];
+            src = { board, node: (id) => findNode2(pulled, id) };
+          }
+          const bounds = payload.bounds ?? boundsOf(payload.items) ?? { x: 0, y: 0 };
+          const entries = payload.items.map((i) => ({ uid: i.uid, x: x + (i.x - bounds.x), y: y + (i.y - bounds.y) }));
+          made = cloneSet(t, src, entries);
+        } else {
+          made = refCardStrings(payload, { x, y }).map((c) => placeCard(t, c.string, c.x, c.y, { w: c.w, h: c.h, color: c.color }));
+        }
+        api.applyFit(t, made);
+        return made;
+      }).then((made) => made ?? []);
+    },
+    // text: raw clipboard text or the entries parsePastedText returned.
+    pasteText(text, { x = 0, y = 0 } = {}) {
+      const list = (Array.isArray(text) ? text : parsePastedText(text)).map((e) => typeof e === "string" ? e : e?.string).filter((s) => typeof s === "string" && s.trim() !== "");
+      if (!list.length) return Promise.resolve([]);
+      return api.txn((t) => {
+        const made = stackAt(list, x, y).map((c) => placeCard(t, c.string, c.x, c.y));
+        api.applyFit(t, made);
+        return made;
+      }).then((made) => made ?? []);
+    },
+    // Adds ref cards for the items to the right of the target board's content. Resolves {added, title} or null.
+    sendToBoard(uids, targetUid) {
+      const board = api.board();
+      if (!board || !targetUid || targetUid === session.uid) return Promise.resolve(null);
+      const top = topLevelOf(board, uids ?? []).filter((id) => id !== targetUid);
+      if (!top.length) return Promise.resolve(null);
+      const node = api.rawNode(targetUid);
+      if (node) {
+        if (!isEnhancedBoardNode(node)) return Promise.resolve(null);
+        const origin2 = outlineOrigin(boardPreview({ uid: targetUid, string: node[STR2], content: node[KIDS2] ?? [] }));
+        const title = parseBoardTitle(node[STR2]) || UNTITLED_BOARD;
+        return api.txn((t) => {
+          for (const c of stackAt(top.map((id) => api.refOf(id)), origin2.x, origin2.y)) {
+            t.create({ parent: targetUid, string: c.string, plexus: serializeItemLayout({ x: c.x, y: c.y }) });
+          }
+          return { added: top.length, title };
+        }).then((res) => res ?? null);
+      }
+      const pulled = host.pullBoard(targetUid);
+      if (!isEnhancedBoardNode(pulled)) return Promise.resolve(null);
+      const target = buildBoard(pulled);
+      const origin = outlineOrigin(boardPreview({ uid: targetUid, string: pulled[STR2], content: pulled[KIDS2] ?? [] }));
+      const cards = stackAt(top.map((id) => api.refOf(id)), origin.x, origin.y);
+      return api.queue.run(async () => {
+        for (let i = 0; i < cards.length; i++) {
+          await host.createBlock({
+            parentUid: targetUid,
+            order: target.containerIndex >= 0 ? target.containerIndex + i : "last",
+            string: cards[i].string,
+            props: { [PLEXUS_KEY]: serializeItemLayout({ x: cards[i].x, y: cards[i].y }) }
+          });
+        }
+        return { added: cards.length, title: target.title || UNTITLED_BOARD };
+      }).catch((err) => {
+        console.error("[plexus session] sendToBoard", err);
+        api.emit("toast", { message: "Couldn't send the cards to that board." });
+        return null;
+      });
+    },
+    // The source card's child blocks become a mind map of ref cards (blocks stay canonical in Roam) plus one
+    // connection per parent -> child. Children that already have a card on this board are reused, not moved.
+    expandOutline(cardUid, { direction = "right", max = 40 } = {}) {
+      const none = { added: 0, edges: 0 };
+      const board = api.board();
+      const item = board?.items.get(cardUid);
+      if (!item || item.type !== "card") return Promise.resolve(none);
+      const plain = (list) => list.filter((n) => n?.uid).map((n) => ({ uid: n.uid, children: plain(n.children ?? []) }));
+      const rawTree = (list) => list.filter((n) => n?.[UID2]).map((n) => ({ uid: n[UID2], children: rawTree(api.kidsOf(n)) }));
+      let tree;
+      if (item.kind === "note") tree = rawTree(api.kidsOf({ [KIDS2]: item.content }));
+      else if (item.kind === "block") tree = plain(host.pullTree(item.target.uid, OUTLINE_DEPTH, max) ?? []);
+      else if (item.kind === "page") tree = plain(host.pagePreview(item.target.title, OUTLINE_DEPTH, max)?.blocks ?? []);
+      else return Promise.resolve(none);
+      const flat = [];
+      const walk = (list, depth, parent) => {
+        for (const n of list) {
+          if (depth > OUTLINE_DEPTH || flat.some((f) => f.uid === n.uid)) continue;
+          const entry = { uid: n.uid, depth, parent, at: flat.length };
+          flat.push(entry);
+          walk(n.children, depth + 1, n.uid);
+        }
+      };
+      walk(tree, 1, null);
+      const chosen = new Set([...flat].sort((a, b) => a.depth - b.depth || a.at - b.at).slice(0, Math.max(0, max)).map((f) => f.uid));
+      const picked = flat.filter((f) => chosen.has(f.uid));
+      if (!picked.length) return Promise.resolve(none);
+      const rects = api.rects();
+      const own = rects.get(cardUid);
+      const onBoard = /* @__PURE__ */ new Map();
+      for (const it of board.items.values()) {
+        if (it.uid !== cardUid && it.kind === "block" && !onBoard.has(it.target.uid)) onBoard.set(it.target.uid, it.uid);
+      }
+      const nodes = new Map(picked.map((f) => {
+        const have = onBoard.get(f.uid);
+        const r = have ? rects.get(have) : null;
+        return [f.uid, { uid: f.uid, w: r?.w ?? OUTLINE_CARD.w, h: r?.h ?? OUTLINE_CARD.h, children: [] }];
+      }));
+      const root = { uid: cardUid, w: own.w, h: own.h, children: [] };
+      for (const f of picked) (f.parent && nodes.has(f.parent) ? nodes.get(f.parent) : root).children.push(nodes.get(f.uid));
+      const layout = mindMapLayout(root, { direction: OUTLINE_DIRECTIONS.includes(direction) ? direction : "right" });
+      return api.txn((t) => {
+        const cardOf = /* @__PURE__ */ new Map();
+        const refOfCard = /* @__PURE__ */ new Map([[cardUid, api.refOf(cardUid)]]);
+        const created = [];
+        for (const f of picked) {
+          const have = onBoard.get(f.uid);
+          if (have) {
+            cardOf.set(f.uid, have);
+            refOfCard.set(have, api.refOf(have));
+            continue;
+          }
+          const p = layout.get(f.uid);
+          const id = placeCard(t, `((${f.uid}))`, own.x + p.x, own.y + p.y, OUTLINE_CARD);
+          cardOf.set(f.uid, id);
+          refOfCard.set(id, `((${f.uid}))`);
+          created.push(id);
+        }
+        let edges = 0;
+        let container = null;
+        for (const f of picked) {
+          const from = f.parent && cardOf.has(f.parent) ? cardOf.get(f.parent) : cardUid;
+          const to = cardOf.get(f.uid);
+          if (from === to || findEdge(board, from, to)) continue;
+          container ?? (container = api.ensureContainer(t));
+          t.create({
+            parent: container,
+            order: "last",
+            string: edgeString({ srcRef: refOfCard.get(from), dstRef: refOfCard.get(to), dir: "one", label: "" }),
+            plexus: serializeEdge({ from, to, dir: "one" })
+          });
+          edges++;
+        }
+        api.applyFit(t, created);
+        return { added: created.length, edges };
+      }).then((res) => res ?? none);
+    }
+  });
+});
+
+// src/lifecycle.js
+function isPromiseLike(value) {
+  return value != null && typeof value.then === "function";
 }
-function clampZoom(z, min = 0.1, max = 4) {
-  return Math.min(max, Math.max(min, z));
+async function callSafely(disposer) {
+  const result = disposer();
+  if (isPromiseLike(result)) await result;
 }
-function zoomAt(vp, screenPoint, factor, { min = 0.1, max = 4 } = {}) {
-  const zoom = clampZoom(vp.zoom * factor, min, max);
-  const w = screenToWorld(vp, screenPoint);
-  return { x: screenPoint.x - w.x * zoom, y: screenPoint.y - w.y * zoom, zoom };
-}
-function fitViewport(bounds, size, { padding = 64, maxZoom = 1.5, minZoom = 0.1 } = {}) {
-  if (!bounds) return { x: size.width / 2, y: size.height / 2, zoom: 1 };
-  const availW = size.width - 2 * padding;
-  const availH = size.height - 2 * padding;
-  let zoom = Math.min(bounds.w > 0 ? availW / bounds.w : Infinity, bounds.h > 0 ? availH / bounds.h : Infinity);
-  if (!Number.isFinite(zoom)) zoom = maxZoom;
-  zoom = clampZoom(zoom, minZoom, maxZoom);
-  const c = center(bounds);
-  return { x: size.width / 2 - c.x * zoom, y: size.height / 2 - c.y * zoom, zoom };
-}
-function visibleWorldRect(vp, size, margin = 0) {
-  const mw = size.width * margin;
-  const mh = size.height * margin;
+function createLifecycle() {
+  let disposed = false;
+  const disposers = [];
+  const add = (disposer) => {
+    if (typeof disposer !== "function") throw new TypeError("A disposer must be a function");
+    if (disposed) {
+      void callSafely(disposer).catch((error) => console.error("[plexus-diagram] Late cleanup failed", error));
+      return disposer;
+    }
+    disposers.push(disposer);
+    return disposer;
+  };
   return {
-    x: (-vp.x - mw) / vp.zoom,
-    y: (-vp.y - mh) / vp.zoom,
-    w: (size.width + 2 * mw) / vp.zoom,
-    h: (size.height + 2 * mh) / vp.zoom
+    get disposed() {
+      return disposed;
+    },
+    add,
+    async command(commandApi, config) {
+      if (!commandApi?.addCommand || !commandApi?.removeCommand) {
+        throw new TypeError("A command API with addCommand/removeCommand is required");
+      }
+      await commandApi.addCommand(config);
+      add(() => commandApi.removeCommand({ label: config.label }));
+    },
+    event(target, type, listener, options) {
+      target.addEventListener(type, listener, options);
+      add(() => target.removeEventListener(type, listener, options));
+      return listener;
+    },
+    interval(callback, delay, ...args) {
+      const id = globalThis.setInterval(callback, delay, ...args);
+      add(() => globalThis.clearInterval(id));
+      return id;
+    },
+    timeout(callback, delay, ...args) {
+      const id = globalThis.setTimeout(callback, delay, ...args);
+      add(() => globalThis.clearTimeout(id));
+      return id;
+    },
+    observer(observer, target, options) {
+      observer.observe(target, options);
+      add(() => observer.disconnect());
+      return observer;
+    },
+    node(node, parent = globalThis.document?.body) {
+      if (!parent) throw new Error("A parent node is required outside the browser");
+      parent.append(node);
+      add(() => node.remove());
+      return node;
+    },
+    pullWatch(dataApi, pattern, entity, callback) {
+      if (!dataApi?.addPullWatch || !dataApi?.removePullWatch) {
+        throw new TypeError("A Roam data API with addPullWatch/removePullWatch is required");
+      }
+      dataApi.addPullWatch(pattern, entity, callback);
+      add(() => dataApi.removePullWatch(pattern, entity, callback));
+      return callback;
+    },
+    async settingsPanel(extensionAPI, config) {
+      await extensionAPI.settings.panel.create(config);
+    },
+    async dispose() {
+      if (disposed) return;
+      disposed = true;
+      const errors = [];
+      for (const disposer of disposers.splice(0).reverse()) {
+        try {
+          await callSafely(disposer);
+        } catch (error) {
+          errors.push(error);
+        }
+      }
+      if (errors.length) throw new AggregateError(errors, "One or more extension cleanups failed");
+    }
   };
 }
-function lodForZoom(zoom) {
-  return zoom < 0.45 ? "map" : "detail";
-}
-function center(r) {
-  return { x: r.x + r.w / 2, y: r.y + r.h / 2 };
-}
-function rectsIntersect(a, b) {
-  return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
-}
-function sidePoint(rect, side) {
-  switch (side) {
-    case "top":
-      return { x: rect.x + rect.w / 2, y: rect.y };
-    case "bottom":
-      return { x: rect.x + rect.w / 2, y: rect.y + rect.h };
-    case "left":
-      return { x: rect.x, y: rect.y + rect.h / 2 };
-    default:
-      return { x: rect.x + rect.w, y: rect.y + rect.h / 2 };
-  }
-}
-var SIDES2 = ["top", "right", "bottom", "left"];
-function nearestSide(rect, point) {
-  let best = "top";
-  let bestD = Infinity;
-  for (const s of SIDES2) {
-    const p = sidePoint(rect, s);
-    const d = (p.x - point.x) ** 2 + (p.y - point.y) ** 2;
-    if (d < bestD) {
-      bestD = d;
-      best = s;
-    }
-  }
-  return best;
-}
-function autoSides(a, b) {
-  const ca = center(a);
-  const cb = center(b);
-  const dx = cb.x - ca.x;
-  const dy = cb.y - ca.y;
-  if (Math.abs(dx) >= Math.abs(dy)) {
-    return dx >= 0 ? { fromSide: "right", toSide: "left" } : { fromSide: "left", toSide: "right" };
-  }
-  return dy >= 0 ? { fromSide: "bottom", toSide: "top" } : { fromSide: "top", toSide: "bottom" };
-}
-var NORMALS = {
-  top: { x: 0, y: -1 },
-  right: { x: 1, y: 0 },
-  bottom: { x: 0, y: 1 },
-  left: { x: -1, y: 0 }
+
+// package.json
+var package_default = {
+  name: "plexus-diagram",
+  version: "1.2.0",
+  private: true,
+  description: "Heptabase-style whiteboard for Roam {{[[diagram]]}} blocks: cards, colored sections, and connections that are real Roam blocks and links",
+  type: "module",
+  main: "extension.js",
+  scripts: {
+    build: "node build.mjs",
+    dev: "node build.mjs --watch",
+    "scan:secrets": "node scripts/scan-secrets.mjs",
+    test: "node --test test/*.test.js",
+    "verify:generated": "node scripts/verify-generated.mjs",
+    check: "npm run build && npm run scan:secrets && node --check extension.js && npm test && npm run verify:generated"
+  },
+  engines: {
+    node: ">=20"
+  },
+  devDependencies: {
+    esbuild: "0.28.1"
+  },
+  license: "MIT"
 };
-function edgePath({ a, b, fromSide = "auto", toSide = "auto", route = "curve", offset = 0 }) {
-  if (fromSide === "auto" || toSide === "auto") {
-    const auto = autoSides(a, b);
-    if (fromSide === "auto") fromSide = auto.fromSide;
-    if (toSide === "auto") toSide = auto.toSide;
+
+// src/model/export.js
+var HEX = {
+  light: {
+    gray: ["#6b7280", "#f3f4f6", "#374151"],
+    red: ["#dc2626", "#fef2f2", "#991b1b"],
+    orange: ["#ea580c", "#fff7ed", "#9a3412"],
+    yellow: ["#ca8a04", "#fefce8", "#854d0e"],
+    green: ["#16a34a", "#f0fdf4", "#166534"],
+    teal: ["#0d9488", "#f0fdfa", "#115e59"],
+    blue: ["#2563eb", "#eff6ff", "#1e40af"],
+    indigo: ["#4f46e5", "#eef2ff", "#3730a3"],
+    purple: ["#9333ea", "#faf5ff", "#6b21a8"],
+    pink: ["#db2777", "#fdf2f8", "#9d174d"]
+  },
+  dark: {
+    gray: ["#9ca3af", "#2b3540", "#d1d5db"],
+    red: ["#f87171", "#3a2a30", "#fca5a5"],
+    orange: ["#fb923c", "#3a3028", "#fdba74"],
+    yellow: ["#facc15", "#38351f", "#fde047"],
+    green: ["#4ade80", "#22392e", "#86efac"],
+    teal: ["#2dd4bf", "#1f3a3a", "#5eead4"],
+    blue: ["#60a5fa", "#232f45", "#93c5fd"],
+    indigo: ["#818cf8", "#2a2f4a", "#a5b4fc"],
+    purple: ["#c084fc", "#35284a", "#d8b4fe"],
+    pink: ["#f472b6", "#3f2838", "#f9a8d4"]
   }
-  const start = sidePoint(a, fromSide);
-  const end = sidePoint(b, toSide);
-  const nf = NORMALS[fromSide];
-  const nt = NORMALS[toSide];
-  const dist = Math.hypot(end.x - start.x, end.y - start.y);
-  if (route === "straight") {
-    const angle = Math.atan2(end.y - start.y, end.x - start.x);
-    return {
-      d: `M${num(start.x)} ${num(start.y)}L${num(end.x)} ${num(end.y)}`,
-      start,
-      end,
-      mid: { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 },
-      startAngle: angle,
-      endAngle: angle,
-      fromSide,
-      toSide
-    };
+};
+var THEME = {
+  light: { bg: "#ffffff", card: "#ffffff", border: "#d0d7de", text: "#1f2937", muted: "#5f6b7c", edge: "#6b7a8a" },
+  dark: { bg: "#1e2a35", card: "#26333f", border: "#3b4b58", text: "#e6edf3", muted: "#a7b6c2", edge: "#a7b6c2" }
+};
+var esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
+var n1 = (n) => Math.round(n * 10) / 10;
+var titleOf = (item) => item.title || item.string || "Untitled";
+function boardToSvg(board, rects, { dark = false, padding = 48, maxItems = 500 } = {}) {
+  const mode = dark ? "dark" : "light";
+  const theme = THEME[mode];
+  const hex = (color) => HEX[mode][PALETTE.includes(color) ? color : "gray"];
+  const included = [];
+  for (const uid of board.order) {
+    if (included.length >= maxItems) break;
+    if (rects.get(uid)) included.push(board.items.get(uid));
   }
-  if (route === "elbow") {
-    const STUB = 24;
-    const s1 = { x: start.x + nf.x * STUB, y: start.y + nf.y * STUB };
-    const e1 = { x: end.x + nt.x * STUB, y: end.y + nt.y * STUB };
-    const fromH = nf.y === 0;
-    const toH = nt.y === 0;
-    const pts = [start, s1];
-    if (fromH && toH) {
-      const mx = (s1.x + e1.x) / 2;
-      pts.push({ x: mx, y: s1.y }, { x: mx, y: e1.y });
-    } else if (!fromH && !toH) {
-      const my = (s1.y + e1.y) / 2;
-      pts.push({ x: s1.x, y: my }, { x: e1.x, y: my });
-    } else if (fromH) {
-      pts.push({ x: e1.x, y: s1.y });
+  const inSet = new Set(included.map((i) => i.uid));
+  const bounds = boundsOf(included.map((i) => rects.get(i.uid))) ?? { x: 0, y: 0, w: 0, h: 0 };
+  const vx = bounds.x - padding;
+  const vy = bounds.y - padding;
+  const vw = Math.max(1, bounds.w + padding * 2);
+  const vh = Math.max(1, bounds.h + padding * 2);
+  const out = [];
+  out.push(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="${n1(vx)} ${n1(vy)} ${n1(vw)} ${n1(vh)}" width="${n1(vw)}" height="${n1(vh)}" font-family="system-ui, -apple-system, Segoe UI, sans-serif">`);
+  out.push(`<title>${esc(board.title || "Board")}</title>`);
+  out.push(`<rect x="${n1(vx)}" y="${n1(vy)}" width="${n1(vw)}" height="${n1(vh)}" fill="${theme.bg}"/>`);
+  const defs = [];
+  const body = [];
+  included.forEach((item, index) => {
+    const r = rects.get(item.uid);
+    const [line, fill, text] = hex(item.color);
+    if (item.type === "section") {
+      body.push(`<rect x="${n1(r.x)}" y="${n1(r.y)}" width="${n1(r.w)}" height="${n1(r.h)}" rx="12" fill="${fill}" fill-opacity="${dark ? 0.6 : 1}" stroke="${line}" stroke-width="2"/>`);
+      body.push(`<text x="${n1(r.x + 4)}" y="${n1(r.y - 10)}" font-size="16" font-weight="700" fill="${text}">${esc(titleOf(item))}</text>`);
+    } else if (item.type === "text") {
+      const size = item.fontSize || 16;
+      body.push(`<text x="${n1(r.x)}" y="${n1(r.y + size)}" font-size="${size}" fill="${theme.text}">${esc(titleOf(item))}</text>`);
     } else {
-      pts.push({ x: s1.x, y: e1.y });
+      const clip = `pxd-clip-${index}`;
+      defs.push(`<clipPath id="${clip}"><rect x="${n1(r.x + 10)}" y="${n1(r.y)}" width="${n1(Math.max(1, r.w - 20))}" height="${n1(r.h)}"/></clipPath>`);
+      body.push(`<rect x="${n1(r.x)}" y="${n1(r.y)}" width="${n1(r.w)}" height="${n1(r.h)}" rx="8" fill="${theme.card}" stroke="${item.color ? line : theme.border}" stroke-width="${item.color ? 2 : 1}"/>`);
+      body.push(`<text x="${n1(r.x + 12)}" y="${n1(r.y + 26)}" font-size="14" font-weight="600" fill="${theme.text}" clip-path="url(#${clip})">${esc(titleOf(item))}</text>`);
     }
-    pts.push(e1, end);
-    const poly = pts.filter((p, i) => i === 0 || p.x !== pts[i - 1].x || p.y !== pts[i - 1].y);
-    const lens = [];
-    let total = 0;
-    for (let i = 1; i < poly.length; i++) {
-      const l = Math.hypot(poly[i].x - poly[i - 1].x, poly[i].y - poly[i - 1].y);
-      lens.push(l);
-      total += l;
-    }
-    let mid2 = { ...start };
-    let acc = 0;
-    for (let i = 0; i < lens.length; i++) {
-      if (acc + lens[i] >= total / 2) {
-        const t = lens[i] === 0 ? 0 : (total / 2 - acc) / lens[i];
-        mid2 = {
-          x: poly[i].x + (poly[i + 1].x - poly[i].x) * t,
-          y: poly[i].y + (poly[i + 1].y - poly[i].y) * t
-        };
-        break;
-      }
-      acc += lens[i];
-    }
-    const last = poly[poly.length - 1];
-    const prev = poly[poly.length - 2] || start;
-    const second = poly[1] || end;
-    return {
-      d: poly.map((p, i) => `${i === 0 ? "M" : "L"}${num(p.x)} ${num(p.y)}`).join(""),
-      start,
-      end,
-      mid: mid2,
-      startAngle: Math.atan2(second.y - start.y, second.x - start.x),
-      endAngle: Math.atan2(last.y - prev.y, last.x - prev.x),
-      fromSide,
-      toSide
-    };
-  }
-  const k = Math.max(40, 0.4 * dist);
-  let px = 0;
-  let py = 0;
-  if (offset && dist > 0) {
-    px = -(end.y - start.y) / dist * offset;
-    py = (end.x - start.x) / dist * offset;
-  }
-  const c1 = { x: start.x + nf.x * k + px, y: start.y + nf.y * k + py };
-  const c2 = { x: end.x + nt.x * k + px, y: end.y + nt.y * k + py };
-  const mid = {
-    x: (start.x + 3 * c1.x + 3 * c2.x + end.x) / 8,
-    y: (start.y + 3 * c1.y + 3 * c2.y + end.y) / 8
-  };
-  return {
-    d: `M${num(start.x)} ${num(start.y)}C${num(c1.x)} ${num(c1.y)} ${num(c2.x)} ${num(c2.y)} ${num(end.x)} ${num(end.y)}`,
-    start,
-    end,
-    mid,
-    startAngle: Math.atan2(c1.y - start.y, c1.x - start.x),
-    endAngle: Math.atan2(end.y - c2.y, end.x - c2.x),
-    fromSide,
-    toSide
-  };
-}
-function arrowHeadPath(point, angle, size) {
-  const dx = Math.cos(angle);
-  const dy = Math.sin(angle);
-  const bx = point.x - dx * size;
-  const by = point.y - dy * size;
-  const hw = size * 0.45;
-  const p1 = { x: bx - dy * hw, y: by + dx * hw };
-  const p2 = { x: bx + dy * hw, y: by - dx * hw };
-  return `M${num(point.x)} ${num(point.y)}L${num(p1.x)} ${num(p1.y)}L${num(p2.x)} ${num(p2.y)}Z`;
-}
-function arrowSize(zoom, weight = 1) {
-  return Math.max(8 + 2 * weight, 6 / zoom);
-}
-function bestSnap(values, targets, threshold) {
-  let best = null;
-  for (const v of values) {
-    for (const t of targets) {
-      const diff = t - v;
-      if (Math.abs(diff) <= threshold && (best === null || Math.abs(diff) < Math.abs(best))) best = diff;
-    }
-  }
-  return best ?? 0;
-}
-var xs = (r) => [r.x, r.x + r.w / 2, r.x + r.w];
-var ys = (r) => [r.y, r.y + r.h / 2, r.y + r.h];
-var EPS = 1e-6;
-function snapMove(moving, others, threshold) {
-  const dx = bestSnap(xs(moving), others.flatMap(xs), threshold);
-  const dy = bestSnap(ys(moving), others.flatMap(ys), threshold);
-  const m = { x: moving.x + dx, y: moving.y + dy, w: moving.w, h: moving.h };
-  const guides = [];
-  for (const o of others) {
-    for (const mx of xs(m)) {
-      if (xs(o).some((ox) => Math.abs(ox - mx) < EPS)) {
-        guides.push({ x1: mx, y1: Math.min(m.y, o.y), x2: mx, y2: Math.max(m.y + m.h, o.y + o.h) });
-      }
-    }
-    for (const my of ys(m)) {
-      if (ys(o).some((oy) => Math.abs(oy - my) < EPS)) {
-        guides.push({ x1: Math.min(m.x, o.x), y1: my, x2: Math.max(m.x + m.w, o.x + o.w), y2: my });
-      }
-    }
-  }
-  return { dx, dy, guides };
-}
-function alignRects(list, mode) {
-  if (!list.length) return [];
-  const minX = Math.min(...list.map((r) => r.x));
-  const maxX = Math.max(...list.map((r) => r.x + r.w));
-  const minY = Math.min(...list.map((r) => r.y));
-  const maxY = Math.max(...list.map((r) => r.y + r.h));
-  return list.map((r) => {
-    let x = r.x;
-    let y = r.y;
-    if (mode === "left") x = minX;
-    else if (mode === "right") x = maxX - r.w;
-    else if (mode === "center") x = (minX + maxX) / 2 - r.w / 2;
-    else if (mode === "top") y = minY;
-    else if (mode === "bottom") y = maxY - r.h;
-    else if (mode === "middle") y = (minY + maxY) / 2 - r.h / 2;
-    return { uid: r.uid, x, y };
   });
+  if (defs.length) out.push(`<defs>${defs.join("")}</defs>`);
+  out.push(...body);
+  for (const edge of board.edges.values()) {
+    if (!edge.valid || !inSet.has(edge.from) || !inSet.has(edge.to)) continue;
+    const a = rects.get(edge.from);
+    const b = rects.get(edge.to);
+    const path = edgePath({ a, b, fromSide: edge.fromSide, toSide: edge.toSide, route: edge.route });
+    const stroke = edge.color ? hex(edge.color)[0] : theme.edge;
+    const dash = edge.dash === "dashed" ? ' stroke-dasharray="6 4"' : "";
+    out.push(`<path d="${path.d}" fill="none" stroke="${stroke}" stroke-width="${edge.weight}"${dash}/>`);
+    const size = arrowSize(1, edge.weight);
+    if (edge.dir === "one" || edge.dir === "two") {
+      out.push(`<path d="${arrowHeadPath(path.end, path.endAngle, size)}" fill="${stroke}" stroke="${stroke}" stroke-linejoin="round"/>`);
+    }
+    if (edge.dir === "two") {
+      out.push(`<path d="${arrowHeadPath(path.start, path.startAngle + Math.PI, size)}" fill="${stroke}" stroke="${stroke}" stroke-linejoin="round"/>`);
+    }
+    if (edge.label) {
+      const width = edge.label.length * 6.6 + 12;
+      out.push(`<rect x="${n1(path.mid.x - width / 2)}" y="${n1(path.mid.y - 10)}" width="${n1(width)}" height="20" rx="4" fill="${theme.bg}" stroke="${stroke}" stroke-width="1"/>`);
+      out.push(`<text x="${n1(path.mid.x)}" y="${n1(path.mid.y + 4)}" font-size="12" text-anchor="middle" fill="${theme.muted}">${esc(edge.label)}</text>`);
+    }
+  }
+  out.push("</svg>");
+  return out.join("\n");
 }
-function distributeRects(list, axis) {
-  const h = axis === "h";
-  const pos = h ? "x" : "y";
-  const dim = h ? "w" : "h";
-  const sorted = [...list].sort((p, q) => p[pos] - q[pos]);
-  if (sorted.length < 3) return sorted.map((r) => ({ uid: r.uid, x: r.x, y: r.y }));
-  const first = sorted[0];
-  const last = sorted[sorted.length - 1];
-  const span = last[pos] + last[dim] - first[pos];
-  const total = sorted.reduce((s, r) => s + r[dim], 0);
-  const gap = (span - total) / (sorted.length - 1);
-  let cursor = first[pos];
-  return sorted.map((r, i) => {
-    const p = i === sorted.length - 1 ? last[pos] : cursor;
-    cursor += r[dim] + gap;
-    return h ? { uid: r.uid, x: p, y: r.y } : { uid: r.uid, x: r.x, y: p };
-  });
-}
-function gridBackground(vp, style, base = 24) {
-  if (style === "plain") return null;
-  const size = base * vp.zoom;
-  const mod = (v) => (v % size + size) % size;
-  return { size, x: mod(vp.x), y: mod(vp.y) };
+var oneLine = (s) => String(s ?? "").replace(/\s+/g, " ").trim();
+function boardToMarkdown(board, rects) {
+  const lines = [];
+  const readingOrder = (uids) => uids.map((uid, i) => ({ uid, i, r: rects.get(uid) })).sort((a, b) => (a.r?.y ?? 0) - (b.r?.y ?? 0) || (a.r?.x ?? 0) - (b.r?.x ?? 0) || a.i - b.i).map((e) => e.uid);
+  const content = (children, depth) => {
+    for (const c of children ?? []) {
+      const s = oneLine(c[":block/string"]);
+      if (s) lines.push(`${"  ".repeat(depth)}- ${s}`);
+      content(c[":block/children"], depth + 1);
+    }
+  };
+  const walk = (uids) => {
+    for (const uid of readingOrder(uids)) {
+      const item = board.items.get(uid);
+      if (!item) continue;
+      if (item.type === "section") {
+        if (lines.length) lines.push("");
+        lines.push(`${"#".repeat(Math.min(6, item.depth + 1))} ${oneLine(titleOf(item))}`);
+        walk(item.members);
+      } else {
+        lines.push(`- ${oneLine(titleOf(item))}`);
+        const kids = [...item.content ?? []].sort((a, b) => (a[":block/order"] ?? 0) - (b[":block/order"] ?? 0));
+        content(kids, 1);
+      }
+    }
+  };
+  walk(board.roots);
+  const edges = [...board.edges.values()].filter((e) => e.valid);
+  if (edges.length) {
+    if (lines.length) lines.push("");
+    lines.push("## Connections");
+    for (const e of edges) {
+      const a = oneLine(titleOf(board.items.get(e.from)));
+      const b = oneLine(titleOf(board.items.get(e.to)));
+      lines.push(e.label ? `${a} -> ${e.label} -> ${b}` : `${a} -> ${b}`);
+    }
+  }
+  return `${lines.join("\n")}
+`;
 }
 
 // src/view/interactions.js
@@ -2916,12 +4263,16 @@ function createInteractions({ actions, settings } = {}) {
     call("showGuides", []);
     call("showTempWire", null);
     call("onHover", null);
+    call("showGhosts", null);
+    call("cancelPreview");
     call("setGesturing", false, { moved });
   };
-  const movingSet = () => {
+  const isPinned = (uid) => Boolean(board()?.items.get(uid)?.pinned);
+  const movingSet = (dup = false) => {
     const b = board();
     if (!b) return [];
-    return topLevelOf(b, state.selection);
+    const uids = dup ? [...state.selection] : [...state.selection].filter((u) => !isPinned(u));
+    return topLevelOf(b, uids);
   };
   const movingBounds = (uids) => {
     const r = rects();
@@ -2965,7 +4316,7 @@ function createInteractions({ actions, settings } = {}) {
         if (t.uid) beginConnect(t.uid, t.side || "right", ev.world);
         return;
       case "grip": {
-        if (!t.uid || !r?.get(t.uid)) return;
+        if (!t.uid || !r?.get(t.uid) || isPinned(t.uid)) return;
         if (!state.selection.has(t.uid)) selectItems([t.uid]);
         begin({ kind: "resize", uid: t.uid, part: t.part || "corner", start: ev.world, rect0: { ...r.get(t.uid) } });
         return;
@@ -2987,7 +4338,8 @@ function createInteractions({ actions, settings } = {}) {
         }
         if (state.tool !== "select") break;
         let deferred = false;
-        if (ev.shift) {
+        const dup = Boolean(ev.alt);
+        if (ev.shift && !dup) {
           const next = new Set(state.selection);
           if (next.has(t.uid)) next.delete(t.uid);
           else next.add(t.uid);
@@ -3000,8 +4352,8 @@ function createInteractions({ actions, settings } = {}) {
           selectItems([t.uid]);
         }
         if (!state.selection.has(t.uid)) return;
-        const uids = movingSet();
-        begin({ kind: "move", uids, start: ev.screen, target: t.uid, deferred, bounds: movingBounds(uids), others: setting("snap-guides", true) ? otherRects(uids) : [] });
+        const uids = movingSet(dup);
+        begin({ kind: "move", uids, dup, asRef: dup && Boolean(ev.shift), start: ev.screen, target: t.uid, deferred, bounds: movingBounds(uids), others: setting("snap-guides", true) ? otherRects(uids) : [] });
         return;
       }
       default:
@@ -3061,11 +4413,16 @@ function createInteractions({ actions, settings } = {}) {
       }
       g.dx = dx;
       g.dy = dy;
-      call("previewMove", g.uids, dx, dy);
+      if (g.dup) {
+        const r0 = rects();
+        call("showGhosts", g.uids.map((u) => r0?.get(u)).filter(Boolean).map((q) => ({ x: q.x + dx, y: q.y + dy, w: q.w, h: q.h })));
+      } else if (g.uids.length) {
+        call("previewMove", g.uids, dx, dy);
+      }
       call("showGuides", guides);
       const b = board();
       const r = rects();
-      if (b && r) {
+      if (b && r && !g.dup && g.uids.length) {
         if (!g.exclude) {
           g.exclude = new Set(g.uids);
           for (const u of g.uids) for (const d of descendantsOf(b, u)) g.exclude.add(d);
@@ -3170,10 +4527,12 @@ function createInteractions({ actions, settings } = {}) {
         break;
       }
       case "move":
-        if (g.moved && g.drop) {
+        if (g.moved && g.dup) {
+          call("duplicateItems", g.uids, { dx: g.dx || 0, dy: g.dy || 0, asRef: Boolean(g.asRef) });
+        } else if (g.moved && g.drop) {
           call("moveIntoBoard", g.uids, g.drop, g.dx || 0, g.dy || 0);
         } else if (g.moved) {
-          call("commitMove", g.uids, g.dx || 0, g.dy || 0);
+          if (g.uids.length) call("commitMove", g.uids, g.dx || 0, g.dy || 0);
         } else if (g.deferred) {
           selectItems([g.target]);
         }
@@ -3219,7 +4578,7 @@ function createInteractions({ actions, settings } = {}) {
   const onPointerCancel = () => {
     if (!state.gesture) return;
     const g = state.gesture;
-    if (g.kind === "move") call("previewMove", g.uids, 0, 0);
+    if (g.kind === "move" && !g.dup && g.uids.length) call("previewMove", g.uids, 0, 0);
     if (g.kind === "resize") call("previewRects", []);
     end();
   };
@@ -3230,10 +4589,17 @@ function createInteractions({ actions, settings } = {}) {
     if (t.kind === "item" && t.uid) {
       const item = b?.items.get(t.uid);
       if (!item) return;
-      if (item.kind === "board") call("openBoard", t.uid);
+      if (item.kind === "board" || call("isBoardCard", t.uid)) call("openBoard", t.uid);
       else if (editingUid() !== t.uid) {
         selectItems([t.uid]);
         call("enterEdit", t.uid);
+      }
+      return;
+    }
+    if (t.kind === "grip") {
+      if (t.uid && b?.items.has(t.uid) && !isPinned(t.uid)) {
+        if (t.part === "bottom") call(b.items.get(t.uid).type === "section" ? "fitSection" : "fitHeight", t.uid);
+        else if (t.part === "corner" || !t.part) call("resetSize", [t.uid]);
       }
       return;
     }
@@ -3247,7 +4613,7 @@ function createInteractions({ actions, settings } = {}) {
       call("editLabel", t.uid);
       return;
     }
-    if (t.kind === "section-border" || t.kind === "port" || t.kind === "grip" || t.kind === "link") return;
+    if (t.kind === "section-border" || t.kind === "port" || t.kind === "link") return;
     if (state.tool !== "select") return;
     const d = DEFAULT_SIZES.card;
     Promise.resolve(call("createCard", { x: ev.world.x - d.w / 2, y: ev.world.y - d.h / 2 })).then((uid) => {
@@ -3257,6 +4623,35 @@ function createInteractions({ actions, settings } = {}) {
       }
     }).catch(() => {
     });
+  };
+  const onContextMenu = (ev) => {
+    const t = ev.target || { kind: "empty" };
+    if (t.kind === "chrome") return false;
+    const b = board();
+    const editing = editingUid();
+    if (editing && t.kind === "item" && t.uid === editing && t.part !== "header") return false;
+    let kind = "canvas";
+    let uid = null;
+    if ((t.kind === "item" || t.kind === "section-title" || t.kind === "section-border") && t.uid && b?.items.has(t.uid)) {
+      const item = b.items.get(t.uid);
+      uid = t.uid;
+      if (editing && editing !== uid) call("exitEdit");
+      if (state.selection.has(uid) && state.selection.size > 1) kind = "multi";
+      else {
+        if (!state.selection.has(uid) || state.edge || state.link) selectItems([uid]);
+        kind = item.type === "section" ? "section" : item.type === "text" ? "text" : "card";
+      }
+    } else if ((t.kind === "edge" || t.kind === "label") && t.uid) {
+      kind = "edge";
+      uid = t.uid;
+      if (state.edge !== uid) selectEdge(uid);
+    } else if (t.kind === "link" && (t.key || t.uid)) {
+      kind = "link";
+      uid = t.key || t.uid;
+      if (state.link !== uid) selectLink(uid);
+    }
+    call("openMenu", { kind, uid, screen: ev.screen, world: ev.world, selection: [...state.selection] });
+    return true;
   };
   const onWheel = (ev) => {
     const t = ev.target || { kind: "empty" };
@@ -3292,10 +4687,46 @@ function createInteractions({ actions, settings } = {}) {
       return true;
     }
     if (!state.selection.size) return false;
-    const uids = [...state.selection];
-    selectItems([]);
+    const b = board();
+    const all = [...state.selection];
+    const blocked = (u) => isPinned(u) || Boolean(withContents) && Boolean(b) && [...descendantsOf(b, u)].some(isPinned);
+    const uids = all.filter((u) => !blocked(u));
+    const kept = all.filter(blocked);
+    if (kept.length) call("toast", { message: "Pinned items were not deleted. Unpin first." });
+    if (!uids.length) return true;
+    selectItems(kept);
     call("deleteItems", uids, { withContents: Boolean(withContents) });
     call("toast", { message: "Deleted", action: { label: "Undo", run: () => call("undo") } });
+    return true;
+  };
+  const lastSelected = () => {
+    let last = null;
+    for (const u of state.selection) last = u;
+    return last;
+  };
+  const selectNearest = (dir, add) => {
+    const b = board();
+    const r = rects();
+    const from = lastSelected();
+    if (!b || !r || !from || !b.items.has(from)) return;
+    const parent = b.items.get(from).parentUid;
+    const candidates = [];
+    for (const [uid, item] of b.items) if (item.parentUid === parent && (uid === from || !state.selection.has(uid))) candidates.push(uid);
+    const next = nearestInDirection(r, from, dir, { candidates });
+    if (!next) return;
+    selectItems(add ? [...state.selection, next] : [next]);
+  };
+  const selectOutline = (back) => {
+    const b = board();
+    if (!b) return false;
+    const order = outlineOrder(b);
+    if (!order.length) return false;
+    const from = lastSelected();
+    const i = from ? order.indexOf(from) : -1;
+    let next;
+    if (i < 0) next = back ? order[order.length - 1] : order[0];
+    else next = order[(i + (back ? order.length - 1 : 1)) % order.length];
+    selectItems([next]);
     return true;
   };
   const escape = () => {
@@ -3303,10 +4734,13 @@ function createInteractions({ actions, settings } = {}) {
       onPointerCancel();
       return true;
     }
+    if (call("closeQuickLook")) return true;
+    if (call("exitPresent")) return true;
     if (isEditing()) {
       call("exitEdit");
       return true;
     }
+    if (call("exitFocus")) return true;
     if (clearSelection()) return true;
     if (call("popBoard")) return true;
     if (call("isFullscreen")) {
@@ -3324,6 +4758,16 @@ function createInteractions({ actions, settings } = {}) {
         return true;
       }
       return false;
+    }
+    if (call("presentActive") && !mod && !ev.alt) {
+      if (key === "ArrowRight" || key === "ArrowDown" || key === "PageDown" || ev.code === "Space" || key === " ") {
+        call("presentNext");
+        return true;
+      }
+      if (key === "ArrowLeft" || key === "ArrowUp" || key === "PageUp") {
+        call("presentPrev");
+        return true;
+      }
     }
     if (ev.code === "Space" || key === " ") {
       if (!state.space) {
@@ -3343,6 +4787,15 @@ function createInteractions({ actions, settings } = {}) {
       }
       if (k === "g") {
         if (state.selection.size) call("wrapInSection", [...state.selection]);
+        return true;
+      }
+      if (k === "d" && !ev.alt) {
+        if (!state.selection.size) return false;
+        call("duplicateItems", [...state.selection], { dx: 24, dy: 24, asRef: false });
+        return true;
+      }
+      if (k === "enter" && ev.alt) {
+        call("foldSelection");
         return true;
       }
       if (k === "z") {
@@ -3379,7 +4832,7 @@ function createInteractions({ actions, settings } = {}) {
       if (state.selection.size === 1) {
         const uid = [...state.selection][0];
         const item = b?.items.get(uid);
-        if (item?.kind === "board") call("openBoard", uid);
+        if (item?.kind === "board" || item && call("isBoardCard", uid)) call("openBoard", uid);
         else if (item?.type === "section") call("renameSection", uid);
         else call("enterEdit", uid);
         return true;
@@ -3388,12 +4841,19 @@ function createInteractions({ actions, settings } = {}) {
     }
     if (key.startsWith("Arrow")) {
       if (!state.selection.size) return false;
+      if (ev.alt) {
+        const dir = key === "ArrowLeft" ? "left" : key === "ArrowRight" ? "right" : key === "ArrowUp" ? "up" : key === "ArrowDown" ? "down" : null;
+        if (dir) selectNearest(dir, ev.shift);
+        return true;
+      }
       const step = ev.shift ? 10 : 1;
       const dx = key === "ArrowLeft" ? -step : key === "ArrowRight" ? step : 0;
       const dy = key === "ArrowUp" ? -step : key === "ArrowDown" ? step : 0;
-      call("commitMove", movingSet(), dx, dy);
+      const uids = movingSet();
+      if (uids.length) call("commitMove", uids, dx, dy);
       return true;
     }
+    if (key === "Tab" && !ev.alt) return ev.tabOwned === false ? false : selectOutline(ev.shift);
     if (ev.alt) return false;
     const lower = key.toLowerCase();
     if (TOOL_KEYS[lower]) {
@@ -3406,6 +4866,26 @@ function createInteractions({ actions, settings } = {}) {
     }
     if (key === "/") {
       call("openSearch");
+      return true;
+    }
+    if (lower === "f") {
+      call("toggleFocus");
+      return true;
+    }
+    if (lower === "q") {
+      call("quickLook");
+      return true;
+    }
+    if (lower === "p") {
+      call("present");
+      return true;
+    }
+    if (lower === "m") {
+      if (state.selection.size !== 1) return false;
+      const uid = lastSelected();
+      const item = b?.items.get(uid);
+      if (!item || item.type !== "card" || item.kind === "board") return false;
+      call("expandOutline", uid);
       return true;
     }
     return false;
@@ -3432,6 +4912,8 @@ function createInteractions({ actions, settings } = {}) {
         return onPointerCancel(ev);
       case "dblclick":
         return onDblClick(ev);
+      case "contextmenu":
+        return onContextMenu(ev);
       case "wheel":
         return onWheel(ev);
       case "keydown":
@@ -3485,6 +4967,12 @@ var CONTENT_LIMIT = 12;
 var CONTENT_DEPTH = 2;
 var GROW_CAP = 900;
 var HEADER_H = 32;
+var META_H = 28;
+var REF_TITLE_MAX = 120;
+var HEADER_TEXT_MAX = 160;
+var TINY_MINI_PX = 28;
+var ATTR_CHIPS_MAX = 3;
+var SVG_NS = "http://www.w3.org/2000/svg";
 var BOARD_KEY_DEPTH = 3;
 var BOARD_KEY_NODES = 400;
 var now = () => globalThis.performance?.now ? globalThis.performance.now() : Date.now();
@@ -3578,6 +5066,7 @@ var childUid = (c) => c?.[":block/uid"] ?? c?.uid ?? "";
 var childProps = (c) => c?.[":block/props"] ?? c?.props;
 function contentKeyOf(item) {
   const parts = [item.kind, item.enhanced ? "e" : "", item.string, item.collapsed ? "c" : "", item.fontSize || ""];
+  if (item.kind === "board") parts.push(item.w, item.h);
   if (item.kind === "board") {
     let budget = BOARD_KEY_NODES;
     const walkBoard = (kids, depth) => {
@@ -3611,12 +5100,17 @@ function createItemRenderer({
   onGrow,
   onRenameCommit,
   onEditChange,
+  onEditResize,
   onOpenBoard,
-  onRenameBoard
+  onRenameBoard,
+  onBadgeClick
 } = {}) {
   const shells = /* @__PURE__ */ new Map();
   const mounted = /* @__PURE__ */ new Map();
   let lod = "detail";
+  let focusSet = null;
+  let badgeMap = /* @__PURE__ */ new Map();
+  let showBadges = false;
   let zoomCache = 1;
   let paused = false;
   let editing = null;
@@ -3690,7 +5184,7 @@ function createItemRenderer({
     }
   };
   const buildShell = (item) => {
-    const rec = { uid: item.uid, type: item.type, roots: [], contentKey: null, rect: null };
+    const rec = { uid: item.uid, type: item.type, roots: [], contentKey: null, rect: null, bare: item.type === "card" };
     if (item.type === "section") {
       const node = el("div", "pxd-section", null);
       rec.el = node;
@@ -3713,6 +5207,19 @@ function createItemRenderer({
   };
   const paintShell = (rec, item) => {
     const node = rec.el;
+    if (item.type !== "section") {
+      rec.refString = null;
+      rec.refBoard = false;
+      if (item.kind === "block" && item.target?.uid) {
+        const refString = host?.blockString?.(item.target.uid);
+        if (typeof refString === "string") {
+          rec.refString = refString;
+          rec.refBoard = classifyString(refString).kind === "board";
+        }
+        if (rec.refBoard) rec.refTitle = parseBoardTitle(rec.refString) || "Untitled board";
+        else rec.refTitle = typeof refString === "string" ? firstLine(refString).slice(0, REF_TITLE_MAX) : "";
+      } else rec.refTitle = "";
+    }
     const base = item.type === "section" ? "pxd-section" : `pxd-item pxd-item--${item.type} pxd-item--${item.kind}`;
     const cls = [base];
     if (item.color) cls.push(`pxd-c-${item.color}`);
@@ -3722,6 +5229,12 @@ function createItemRenderer({
     if (rec.selected) cls.push(item.type === "section" ? "pxd-section--selected" : "pxd-item--selected");
     if (rec.hover) cls.push("pxd-item--drop");
     if (editing?.uid === item.uid) cls.push("pxd-item--editing");
+    if (item.pinned) cls.push(item.type === "section" ? "pxd-section--pinned" : "pxd-item--pinned");
+    if (focusSet && !focusSet.has(item.uid)) cls.push(item.type === "section" ? "pxd-section--focus-dim" : "pxd-item--focus-dim");
+    if (item.type !== "section") {
+      if (rec.bare) cls.push("pxd-item--bare");
+      if (rec.refBoard) cls.push("pxd-item--wb");
+    }
     node.className = cls.join(" ");
     if (item.type === "section") {
       if (!rec.titleRendered || rec.titleString !== item.string) {
@@ -3730,11 +5243,7 @@ function createItemRenderer({
         rec.titleRendered = false;
       }
     } else {
-      if (item.kind === "block" && item.target?.uid) {
-        const refString = host?.blockString?.(item.target.uid);
-        rec.refTitle = typeof refString === "string" ? firstLine(refString) : "";
-      } else rec.refTitle = "";
-      if (editing?.uid !== item.uid && !rec.renaming) rec.header.textContent = item.type === "text" ? "" : rec.refTitle || item.title || "";
+      if (editing?.uid !== item.uid && !rec.renaming) rec.header.textContent = item.type === "text" ? "" : String(rec.refTitle || item.title || "").slice(0, HEADER_TEXT_MAX);
       if (item.type === "text") rec.header.style.display = "none";
       rec.header.classList.toggle("pxd-item__header--muted", item.kind === "board" && isUntitledBoard(item.title));
     }
@@ -3784,7 +5293,12 @@ function createItemRenderer({
           rec.contentKey = null;
           mounted.delete(uid);
           rec.titleRendered = false;
+          if (rec.type === "card") {
+            rec.bare = true;
+            rec.el.classList.add("pxd-item--bare");
+          }
         }
+        if (showBadges) renderBadges(rec);
       } else if (rect && (!rec.rect || rec.rect.x !== rect.x || rec.rect.y !== rect.y || rec.rect.w !== rect.w || rec.rect.h !== rect.h)) {
         position(rec, rect);
       }
@@ -3818,23 +5332,52 @@ function createItemRenderer({
     else host?.openBlock?.(uid);
   };
   const commitBoardName = (uid, name) => (onRenameBoard || ((u, n) => session?.renameBoard?.(u, n)))(uid, name);
-  const mountBoardBody = (body, item) => {
-    const preview = boardPreview(item);
+  const mountBoardBody = (body, item, { openUid = item.uid } = {}) => {
+    const innerW = Math.max(1, (Number(item.w) || 0) - 24);
+    const preview = boardPreview(item, { aspect: innerW / Math.max(40, (Number(item.h) || 0) - HEADER_H - META_H) });
     const wrap = el("div", "pxd-item__board", body);
     const holder = el("div", "pxd-board-preview", wrap);
-    const canvas = el("div", "pxd-board-preview__canvas", holder);
-    canvas.style.aspectRatio = String(preview.aspect);
-    const pct = (n) => `${Math.round(n * 1e4) / 100}%`;
-    for (const r of preview.rects) {
-      const cls = ["pxd-mini"];
-      if (r.type === "section") cls.push("pxd-mini--section");
-      else if (r.type === "text") cls.push("pxd-mini--text");
-      if (r.color) cls.push(`pxd-c-${r.color}`);
-      const mini = el("div", cls.join(" "), canvas);
-      mini.style.left = pct(r.x);
-      mini.style.top = pct(r.y);
-      mini.style.width = pct(r.w);
-      mini.style.height = pct(r.h);
+    if (preview.empty) {
+      el("div", "pxd-board-preview__empty", holder).textContent = "Empty board";
+    } else {
+      const canvas = el("div", "pxd-board-preview__canvas", holder);
+      const pct = (n) => `${Math.round(n * 1e4) / 100}%`;
+      const addMini = (r) => {
+        const cls = ["pxd-mini"];
+        if (r.type === "section") cls.push("pxd-mini--section");
+        else if (r.type === "text") cls.push("pxd-mini--text");
+        if (r.color) cls.push(`pxd-c-${r.color}`);
+        if (r.w * innerW < TINY_MINI_PX) cls.push("pxd-mini--tiny");
+        const mini = el("div", cls.join(" "), canvas);
+        mini.style.left = pct(r.x);
+        mini.style.top = pct(r.y);
+        mini.style.width = pct(r.w);
+        mini.style.height = pct(r.h);
+        let title = r.title;
+        if (!title && r.ref) {
+          const text = host?.blockString?.(r.ref);
+          if (typeof text === "string") title = firstLine(text).slice(0, REF_TITLE_MAX);
+        }
+        if (!title && r.kind === "image") title = "Image";
+        if (title) el("div", "pxd-mini__title", mini).textContent = title;
+      };
+      for (const r of preview.rects) if (r.type === "section") addMini(r);
+      if (preview.edges.length) {
+        const svg = doc.createElementNS(SVG_NS, "svg");
+        svg.setAttribute("class", "pxd-board-preview__edges");
+        svg.setAttribute("viewBox", "0 0 1 1");
+        svg.setAttribute("preserveAspectRatio", "none");
+        for (const e of preview.edges) {
+          const line = doc.createElementNS(SVG_NS, "line");
+          line.setAttribute("x1", String(e.x1));
+          line.setAttribute("y1", String(e.y1));
+          line.setAttribute("x2", String(e.x2));
+          line.setAttribute("y2", String(e.y2));
+          svg.append(line);
+        }
+        canvas.append(svg);
+      }
+      for (const r of preview.rects) if (r.type !== "section") addMini(r);
     }
     if (item.enhanced && isUntitledBoard(item.title)) {
       const input = el("input", "pxd-input pxd-item__board-name", wrap);
@@ -3865,7 +5408,7 @@ function createItemRenderer({
       input.addEventListener("blur", commit);
     }
     const meta = el("div", "pxd-item__board-meta", wrap);
-    el("span", "pxd-item__board-count", meta).textContent = preview.count ? `${preview.count} ${preview.count === 1 ? "item" : "items"}` : "Empty board";
+    el("span", "pxd-item__board-count", meta).textContent = `${preview.count} ${preview.count === 1 ? "item" : "items"}`;
     const open = el("button", "pxd-btn pxd-item__open", meta);
     open.type = "button";
     open.textContent = "Open";
@@ -3873,13 +5416,15 @@ function createItemRenderer({
     for (const type of ["pointerdown", "mousedown", "dblclick"]) open.addEventListener(type, stopEvent);
     open.addEventListener("click", (event) => {
       event.stopPropagation();
-      openBoard(item.uid);
+      openBoard(openUid);
     });
   };
   const mountContent = (rec, item) => {
     const body = rec.body;
     unmountRoots(rec);
     body.replaceChildren();
+    rec.bare = false;
+    rec.el.classList.remove("pxd-item--bare");
     const budget = { n: 0, roots: [] };
     if (item.collapsed) {
       rec.contentKey = contentKeyOf(item);
@@ -3911,20 +5456,35 @@ function createItemRenderer({
     } else if (item.kind === "block") {
       const ref = item.target.uid;
       const refString = host?.blockString?.(ref);
-      rec.refTitle = typeof refString === "string" ? firstLine(refString) : "";
-      if (editing?.uid !== item.uid) rec.header.textContent = rec.refTitle || item.title || "";
-      if (typeof refString === "string" && refString.trim()) budget.roots.push(renderRoot(body, refString, "pxd-rs pxd-item__string"));
-      const tree = host?.pullTree?.(ref, CONTENT_DEPTH, CONTENT_LIMIT);
-      const apply = (blocks, sync2 = false) => {
-        if (disposed || !body.isConnected || !sync2 && rec.contentKey !== contentKeyOf(item)) return;
-        if (!refString?.trim() && !blocks?.length) el("div", "pxd-item__placeholder", body).textContent = "Empty card";
-        const b = { n: 0, roots: [] };
-        renderBlocks(body, blocks || [], 1, b);
-        rec.roots.push(...b.roots);
-      };
-      if (tree && typeof tree.then === "function") tree.then((t) => apply(t)).catch(() => {
-      });
-      else apply(tree, true);
+      const isBoardRef = typeof refString === "string" && classifyString(refString).kind === "board";
+      if (isBoardRef) rec.refTitle = parseBoardTitle(refString) || "Untitled board";
+      else rec.refTitle = typeof refString === "string" ? firstLine(refString).slice(0, REF_TITLE_MAX) : "";
+      if (editing?.uid !== item.uid) rec.header.textContent = String(rec.refTitle || item.title || "").slice(0, HEADER_TEXT_MAX);
+      if (isBoardRef) {
+        const pulled = host?.pullBoard?.(ref);
+        mountBoardBody(body, {
+          uid: ref,
+          string: refString,
+          content: pulled?.[":block/children"] ?? pulled?.children ?? [],
+          w: item.w,
+          h: item.h,
+          title: rec.refTitle,
+          enhanced: false
+        }, { openUid: ref });
+      } else {
+        if (typeof refString === "string" && refString.trim()) budget.roots.push(renderRoot(body, refString, "pxd-rs pxd-item__string"));
+        const tree = host?.pullTree?.(ref, CONTENT_DEPTH, CONTENT_LIMIT);
+        const apply = (blocks, sync2 = false) => {
+          if (disposed || !body.isConnected || !sync2 && rec.contentKey !== contentKeyOf(item)) return;
+          if (!refString?.trim() && !blocks?.length) el("div", "pxd-item__placeholder", body).textContent = "Empty card";
+          const b = { n: 0, roots: [] };
+          renderBlocks(body, blocks || [], 1, b);
+          rec.roots.push(...b.roots);
+        };
+        if (tree && typeof tree.then === "function") tree.then((t) => apply(t)).catch(() => {
+        });
+        else apply(tree, true);
+      }
     } else {
       if (item.string?.trim()) budget.roots.push(renderRoot(body, item.string, "pxd-rs pxd-item__string"));
       renderBlocks(body, item.content || [], 1, budget);
@@ -3954,6 +5514,10 @@ function createItemRenderer({
       rec.titleRendered = false;
     } else {
       rec.body?.replaceChildren?.();
+      if (rec.type === "card") {
+        rec.bare = true;
+        rec.el.classList.add("pxd-item--bare");
+      }
     }
     rec.contentKey = null;
     mounted.delete(uid);
@@ -4003,11 +5567,11 @@ function createItemRenderer({
       if ([...mounted.keys()].some((u) => !wanted.has(u))) scheduleUnmounts();
     }, UNMOUNT_AFTER_MS);
   };
-  const scheduleContent = ({ visibleRect, zoom = zoomCache }) => {
+  const scheduleContent = ({ visibleRect, zoom = zoomCache, tier = null }) => {
     zoomCache = zoom;
     if (!lastBoard || !lastRects) return;
     const next = /* @__PURE__ */ new Set();
-    if (lodForZoom(zoom) === "detail") {
+    if ((tier ?? lodForZoom(zoom)) === "detail") {
       for (const [uid, rec] of shells) {
         const r = lastRects.get(uid);
         if (r && rectsIntersect(r, visibleRect)) next.add(uid);
@@ -4015,7 +5579,8 @@ function createItemRenderer({
     } else {
       for (const [uid, rec] of shells) {
         const r = lastRects.get(uid);
-        if ((rec.type === "section" || rec.type === "text") && r && rectsIntersect(r, visibleRect)) next.add(uid);
+        const keep = rec.type === "section" || rec.type === "text" || lastBoard.items.get(uid)?.kind === "board";
+        if (keep && r && rectsIntersect(r, visibleRect)) next.add(uid);
       }
     }
     wanted = next;
@@ -4034,8 +5599,10 @@ function createItemRenderer({
     if (!paused && queue.length && !idleHandle) idleHandle = idle(pump);
   };
   const setLod = (nextLod, zoom) => {
-    lod = nextLod;
+    const prev = lod;
+    lod = nextLod === "map" || nextLod === "overview" ? nextLod : "detail";
     zoomCache = zoom;
+    if (showBadges && prev === "detail" !== (lod === "detail")) for (const rec of shells.values()) renderBadges(rec);
   };
   const previewMove = (uids, dx, dy, board, rects) => {
     const set = new Set(uids);
@@ -4060,6 +5627,114 @@ function createItemRenderer({
       live.set(r.uid, { x: r.x, y: r.y, w: r.w, h: r.h });
     }
     return live;
+  };
+  const previewSectionRects = (list) => {
+    const live = /* @__PURE__ */ new Map();
+    for (const r of list || []) {
+      const rec = shells.get(r.uid);
+      if (!rec || rec.type !== "section") continue;
+      position(rec, { x: r.x, y: r.y, w: r.w, h: r.h });
+      live.set(r.uid, { x: r.x, y: r.y, w: r.w, h: r.h });
+    }
+    return live;
+  };
+  const resetRects = (rectsMap, uids = null) => {
+    for (const uid of uids ? [...uids] : [...shells.keys()]) {
+      const rec = shells.get(uid);
+      const r = rectsMap?.get?.(uid);
+      if (rec && r) position(rec, { x: r.x, y: r.y, w: r.w, h: r.h });
+    }
+  };
+  const measureContent = (uid) => {
+    const rec = shells.get(uid);
+    if (!rec || rec.type === "section" || lod !== "detail" || !mounted.has(uid) || rec.bare) return null;
+    const body = rec.body;
+    const st = body?.style;
+    const saved = st ? { flex: st.flex, height: st.height } : null;
+    if (st) {
+      st.flex = "0 0 auto";
+      st.height = "auto";
+    }
+    const natural = Number(body?.scrollHeight) || 0;
+    if (st && saved) {
+      st.flex = saved.flex;
+      st.height = saved.height;
+    }
+    const h = (Number(rec.header?.offsetHeight) || 0) + natural;
+    return h > 0 ? h : null;
+  };
+  const attrChipsOf = (rec, item) => {
+    if (item.kind === "board") return [];
+    const lines = [];
+    const own = item.kind === "block" ? rec.refString : item.string;
+    if (typeof own === "string") lines.push(...own.split("\n"));
+    for (const c of item.content || []) lines.push(...String(childString(c)).split("\n"));
+    const out = [];
+    for (const line of lines) {
+      if (out.length >= ATTR_CHIPS_MAX) break;
+      const name = attrNameOf(line);
+      if (!name) continue;
+      const value = plainText(line.slice(line.indexOf("::") + 2), 40);
+      if (value) out.push(`${plainText(name, 24)}: ${value}`);
+    }
+    return out;
+  };
+  const renderBadges = (rec) => {
+    const item = lastBoard?.items.get(rec.uid);
+    const visible = showBadges && lod === "detail" && rec.type === "card" && item && editing?.uid !== rec.uid;
+    const clear = () => {
+      if (rec.badgeEl) {
+        rec.badgeEl.remove();
+        rec.badgeEl = null;
+      }
+      rec.badgeKey = null;
+    };
+    if (!visible) return clear();
+    const info = badgeMap?.get?.(rec.uid) || null;
+    const chips = [];
+    if (info?.refs > 0) chips.push({ cls: "refs", text: `${info.refs} refs`, title: `${info.refs} references to this card` });
+    if (info?.boards > 0) chips.push({ cls: "boards", text: `on ${info.boards} boards`, title: "Shown on other boards", action: "boards" });
+    if (info && (info.open > 0 || info.done > 0)) chips.push({ cls: "todo", text: `${info.open || 0}/${info.done || 0}`, title: `${info.open || 0} open, ${info.done || 0} done` });
+    for (const text of attrChipsOf(rec, item)) chips.push({ cls: "attr", text });
+    if (!chips.length) return clear();
+    const key = JSON.stringify(chips);
+    if (rec.badgeEl && rec.badgeKey === key) return;
+    clear();
+    const row = el("div", "pxd-item__badges", rec.el);
+    for (const chip of chips) {
+      const node = el(chip.action ? "button" : "span", `pxd-badge-chip pxd-badge-chip--${chip.cls}`, row);
+      node.textContent = chip.text;
+      if (chip.title) node.title = chip.title;
+      if (chip.action) {
+        node.type = "button";
+        for (const type of ["pointerdown", "mousedown", "dblclick"]) node.addEventListener(type, stopEvent);
+        node.addEventListener("click", (event) => {
+          event.stopPropagation();
+          onBadgeClick?.(rec.uid, chip.action);
+        });
+      }
+    }
+    rec.badgeEl = row;
+    rec.badgeKey = key;
+  };
+  const setBadges = (map) => {
+    badgeMap = map instanceof Map ? map : /* @__PURE__ */ new Map();
+    if (showBadges) for (const rec of shells.values()) renderBadges(rec);
+  };
+  const setShowBadges = (on) => {
+    const next = Boolean(on);
+    if (next === showBadges) return;
+    showBadges = next;
+    for (const rec of shells.values()) renderBadges(rec);
+  };
+  const setFocus = (uids) => {
+    focusSet = uids ? new Set(uids) : null;
+    for (const [uid, rec] of shells) {
+      const on = Boolean(focusSet && !focusSet.has(uid));
+      if (rec.focusDim === on) continue;
+      rec.focusDim = on;
+      rec.el.classList.toggle(rec.type === "section" ? "pxd-section--focus-dim" : "pxd-item--focus-dim", on);
+    }
   };
   const setSelection = (uids) => {
     const set = new Set(uids);
@@ -4188,10 +5863,22 @@ function createItemRenderer({
       } catch {
       }
     }
+    const RO = doc.defaultView?.ResizeObserver || globalThis.ResizeObserver;
+    let ro = null;
+    if (typeof RO === "function" && onEditResize) {
+      ro = new RO(() => {
+        if (editing === e) onEditResize(e.uid, Number(e.rec.el?.offsetHeight) || 0);
+      });
+      try {
+        ro.observe(e.editor);
+      } catch {
+      }
+    }
     floorTeardown = () => {
       e.editor.removeEventListener("focusin", onIn);
       e.editor.removeEventListener("focusout", onOut);
       mo?.disconnect();
+      ro?.disconnect();
       floor?.cancel?.();
       floor = null;
     };
@@ -4201,7 +5888,7 @@ function createItemRenderer({
   const enterEdit = async (uid) => {
     const rec = shells.get(uid);
     const item = lastBoard?.items.get(uid);
-    if (!rec || !item || rec.type === "section" || item.kind === "board") return false;
+    if (!rec || !item || rec.type === "section" || item.kind === "board" || rec.refBoard) return false;
     if (editing?.uid === uid) return true;
     if (editing) await exitEdit();
     if (!host?.renderBlock) {
@@ -4217,6 +5904,7 @@ function createItemRenderer({
     for (const type of ["pointerdown", "pointerup", "click", "dblclick", "wheel", "mousedown", "mouseup"]) editor.addEventListener(type, stopEvent);
     editing = { uid, rec, editor, targetUid, item, ready: false };
     rec.el.classList.add("pxd-item--editing");
+    renderBadges(rec);
     if (rec.rect) rec.el.style.minHeight = `${rec.rect.h}px`;
     lastOutsideDown = -Infinity;
     attachFocusGuard();
@@ -4262,12 +5950,17 @@ function createItemRenderer({
     rec.el.style.minHeight = "";
     rec.contentKey = null;
     mounted.delete(uid);
+    if (rec.type === "card") {
+      rec.bare = true;
+      rec.el.classList.add("pxd-item--bare");
+    }
     if (!silent && !disposed) {
       const live = lastBoard?.items.get(uid) || item;
       if (live && shells.has(uid)) {
         mountContent(rec, live);
         paintShell(rec, live);
         mounted.set(uid, now());
+        renderBadges(rec);
       }
       onEditChange?.(null);
       const need = contentH + (["page", "board"].includes(item.kind) || item.collapsed ? HEADER_H : 0) + 20;
@@ -4430,6 +6123,12 @@ function createItemRenderer({
     setLod,
     previewMove,
     previewRects,
+    previewSectionRects,
+    resetRects,
+    measureContent,
+    setBadges,
+    setShowBadges,
+    setFocus,
     setSelection,
     setHover,
     enterEdit,
@@ -4450,7 +6149,7 @@ function createItemRenderer({
 }
 
 // src/view/edges.js
-var SVG_NS = "http://www.w3.org/2000/svg";
+var SVG_NS2 = "http://www.w3.org/2000/svg";
 var PAIR_OFFSET = 18;
 var LABEL_HIDE_ZOOM = 0.3;
 var setClass = (el, name) => {
@@ -4463,11 +6162,13 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
   let wire = null;
   let marquee = null;
   const guideEls = [];
+  const ghostEls = [];
+  let focusSet = null;
   let zoomCache = 1;
   let editingLabel = null;
   const listeners2 = [];
   const mk = (tag, cls, parent) => {
-    const el = doc.createElementNS(SVG_NS, tag);
+    const el = doc.createElementNS(SVG_NS2, tag);
     setClass(el, cls);
     parent?.append(el);
     return el;
@@ -4509,6 +6210,7 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     edgeEls.set(edge.uid, rec);
     return rec;
   };
+  const dimmed = (e) => Boolean(focusSet) && !(focusSet.has(e.from) && focusSet.has(e.to));
   const paintEdge = (board, edge, rec, { covered, selected }) => {
     const cls = ["pxd-edge"];
     if (edge.color) cls.push(`pxd-c-${edge.color}`);
@@ -4517,8 +6219,12 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     if (selected) cls.push("pxd-edge--selected");
     if (covered) cls.push("pxd-edge--covered");
     if (!edge.valid) cls.push("pxd-edge--invalid");
+    rec.from = edge.from;
+    rec.to = edge.to;
+    const dim = dimmed(edge);
+    if (dim) cls.push("pxd-edge--dim");
     setClass(rec.g, cls.join(" "));
-    rec.label.className = `pxd-label${edge.color ? ` pxd-c-${edge.color}` : ""}${edge.label ? "" : " pxd-label--empty"}${selected ? " pxd-label--selected" : ""}`;
+    rec.label.className = `pxd-label${edge.color ? ` pxd-c-${edge.color}` : ""}${edge.label ? "" : " pxd-label--empty"}${selected ? " pxd-label--selected" : ""}${dim ? " pxd-label--dim" : ""}`;
     if (editingLabel?.uid !== edge.uid) rec.label.textContent = edge.label || "";
     rec.dir = edge.dir;
     rec.weight = edge.weight;
@@ -4572,8 +6278,11 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
   const placeLink = (link, rec, rects, zoom, selected) => {
     const a = rects.get(link.from);
     const b = rects.get(link.to);
-    setClass(rec.g, `pxd-link pxd-c-${link.color || "gray"}${selected ? " pxd-link--selected" : ""}`);
-    rec.label.className = `pxd-label pxd-label--link pxd-c-${link.color || "gray"}${selected ? " pxd-label--selected" : ""}`;
+    rec.from = link.from;
+    rec.to = link.to;
+    const dim = dimmed(link);
+    setClass(rec.g, `pxd-link pxd-c-${link.color || "gray"}${selected ? " pxd-link--selected" : ""}${dim ? " pxd-edge--dim" : ""}`);
+    rec.label.className = `pxd-label pxd-label--link pxd-c-${link.color || "gray"}${selected ? " pxd-label--selected" : ""}${dim ? " pxd-label--dim" : ""}`;
     rec.label.textContent = link.labels?.[0] || "mentions";
     if (!a || !b) {
       rec.g.setAttribute("display", "none");
@@ -4692,6 +6401,26 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     marquee.setAttribute("width", String(rect.w));
     marquee.setAttribute("height", String(rect.h));
   };
+  const setGhosts = (list) => {
+    const rects = list || [];
+    while (ghostEls.length > rects.length) ghostEls.pop().remove();
+    while (ghostEls.length < rects.length) ghostEls.push(mk("rect", "pxd-ghost", overlaySvg));
+    rects.forEach((r, i) => {
+      const el = ghostEls[i];
+      el.setAttribute("x", String(r.x));
+      el.setAttribute("y", String(r.y));
+      el.setAttribute("width", String(r.w));
+      el.setAttribute("height", String(r.h));
+    });
+  };
+  const setFocus = (set) => {
+    focusSet = set && set.size !== void 0 ? set : null;
+    for (const rec of [...edgeEls.values(), ...linkEls.values()]) {
+      const dim = dimmed(rec);
+      rec.g.classList.toggle("pxd-edge--dim", dim);
+      rec.label.classList.toggle("pxd-label--dim", dim);
+    }
+  };
   const editLabel = (uid) => {
     const rec = edgeEls.get(uid);
     if (!rec || editingLabel) return false;
@@ -4761,6 +6490,8 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     setTempWire(null);
     setGuides([]);
     setMarquee(null);
+    setGhosts(null);
+    focusSet = null;
     listeners2.splice(0).forEach((off) => off());
     editingLabel = null;
   };
@@ -4771,6 +6502,8 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     setTempWire,
     setGuides,
     setMarquee,
+    setGhosts,
+    setFocus,
     editLabel,
     isEditingLabel: () => Boolean(editingLabel),
     geometryOf,
@@ -4802,6 +6535,10 @@ var TOOL_LIST = [
   ["connect", "Connect", "C"]
 ];
 var MAX_CRUMBS = 4;
+var POPOVER_GAP = 6;
+var POPOVER_MARGIN = 8;
+var PATTERN_LABELS = { dots: "Dots", lines: "Lines", grid: "Grid", plain: "Plain" };
+var NOTE_KINDS = ["note", "block", "page"];
 function createChrome({ doc = globalThis.document, root, version = "", settings, timers, on = {}, crumbs = [] } = {}) {
   const setting = (k) => typeof settings?.get === "function" ? settings.get(k) : settings?.[k];
   const listeners2 = [];
@@ -4829,14 +6566,20 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     listen(b, "dblclick", (event) => event.stopPropagation());
     return b;
   };
-  const swatches = (parent, onPick) => {
+  const swatches = (parent, onPick, { key = "color", paper = false } = {}) => {
     const wrap = el("div", "pxd-swatches", parent);
-    const none = button(wrap, "pxd-swatch pxd-swatch--none", "", "No color", () => onPick(null));
-    none.dataset.color = "";
+    const none = button(wrap, "pxd-swatch pxd-swatch--none", "", key === "tone" ? "Default" : "No color", () => onPick(null));
+    none.dataset[key] = "";
+    if (key !== "color") none.setAttribute(`data-${key}`, "");
+    if (paper) {
+      const p = button(wrap, "pxd-swatch pxd-swatch--paper", "", "Paper", () => onPick("paper"));
+      p.dataset[key] = "paper";
+      p.setAttribute(`data-${key}`, "paper");
+    }
     for (const c of PALETTE) {
       const s = button(wrap, `pxd-swatch pxd-c-${c}`, "", c, () => onPick(c));
-      s.dataset.color = c;
-      s.setAttribute("data-color", c);
+      s.dataset[key] = c;
+      s.setAttribute(`data-${key}`, c);
     }
     return wrap;
   };
@@ -4907,6 +6650,14 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
   const group2 = el("div", "pxd-toolbar__group", toolbar);
   const addBtn = button(group2, "pxd-toolbar__add", "Add", "Add cards from the graph", () => on.togglePanel?.());
   const linksBtn = button(group2, "pxd-toolbar__links", LINK_LABELS.all, "Graph links (L)", () => on.cycleLinks?.());
+  const groupView = el("div", "pxd-toolbar__group", toolbar);
+  const bgBtn = button(groupView, "pxd-toolbar__bg", "Background", "Background pattern and tone", () => popover.isOpen() ? popover.close() : popover.open());
+  const focusBtn = button(groupView, "pxd-toolbar__focus", "Focus", "Focus mode: fade everything but the selection", () => on.toggleFocus?.());
+  button(groupView, "pxd-toolbar__present", "Present", "Present this board", () => on.present?.());
+  const moreBtn = button(groupView, "pxd-toolbar__more", "More", "More board actions", () => {
+    const r = moreBtn.getBoundingClientRect();
+    on.openMore?.({ x: r.left, y: r.bottom, w: r.width, h: r.height });
+  });
   const group3 = el("div", "pxd-toolbar__group", toolbar);
   button(group3, "pxd-toolbar__zoom-out", "−", "Zoom out (Cmd −)", () => on.zoomOut?.());
   const zoomLabel = button(group3, "pxd-toolbar__zoom", "100%", "Zoom to 100% (Shift 0)", () => on.zoomReset?.());
@@ -4946,7 +6697,94 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     },
     setMinimap(open) {
       minimapBtn.classList.toggle("pxd-btn--active", Boolean(open));
+    },
+    setFocus(active) {
+      focusBtn.classList.toggle("pxd-btn--active", Boolean(active));
+    },
+    setBackground(state) {
+      popover.setState(state);
+    },
+    bgButton: bgBtn
+  };
+  const popEl = el("div", "pxd-popover pxd-popover--bg pxd-chrome", root);
+  popEl.style.display = "none";
+  popEl.setAttribute("role", "dialog");
+  popEl.setAttribute("aria-label", "Background");
+  stopAll(popEl);
+  el("div", "pxd-popover__title", popEl, "Background");
+  el("div", "pxd-popover__label", popEl, "Pattern");
+  const patternSeg = el("div", "pxd-seg pxd-bg__pattern", popEl);
+  const patternButtons = /* @__PURE__ */ new Map();
+  for (const pattern of BOARD_PATTERNS) {
+    const b = button(patternSeg, "pxd-seg__btn", PATTERN_LABELS[pattern] || pattern, PATTERN_LABELS[pattern] || pattern, () => on.setBackground?.({ bg: pattern }));
+    b.dataset.value = pattern;
+    b.setAttribute("data-value", pattern);
+    patternButtons.set(pattern, b);
+  }
+  el("div", "pxd-popover__label", popEl, "Tone");
+  const toneWrap = swatches(popEl, (tone) => on.setBackground?.({ bgColor: tone }), { key: "tone", paper: true });
+  toneWrap.classList.add("pxd-bg__tones");
+  const popFoot = el("div", "pxd-popover__foot", popEl);
+  button(popFoot, "pxd-bg__default", "Use as default", "Use this pattern and tone for every board", () => on.useBackgroundAsDefault?.());
+  const resetBtn = button(popFoot, "pxd-bg__reset", "Reset", "Clear this board's override", () => on.setBackground?.({ bg: null, bgColor: null }));
+  let bgOffs = [];
+  const popover = {
+    el: popEl,
+    isOpen: () => popEl.style.display !== "none",
+    open() {
+      if (popover.isOpen()) return;
+      popEl.style.display = "";
+      const rootRect = root.getBoundingClientRect();
+      const b = bgBtn.getBoundingClientRect();
+      const w = popEl.offsetWidth || 240;
+      const h = popEl.offsetHeight || 200;
+      const left = Math.max(POPOVER_MARGIN, Math.min(b.left - rootRect.left, (rootRect.width || 0) - w - POPOVER_MARGIN));
+      let top = b.bottom - rootRect.top + POPOVER_GAP;
+      if (rootRect.height && top + h > rootRect.height - POPOVER_MARGIN) top = Math.max(POPOVER_MARGIN, rootRect.height - h - POPOVER_MARGIN);
+      popEl.style.left = `${Math.round(left)}px`;
+      popEl.style.top = `${Math.round(top)}px`;
+      bgBtn.classList.add("pxd-btn--active");
+      const onDown = (event) => {
+        if (popEl.contains(event.target) || bgBtn.contains(event.target)) return;
+        popover.close();
+      };
+      const onKey = (event) => {
+        if (event.key !== "Escape") return;
+        event.preventDefault?.();
+        event.stopPropagation?.();
+        popover.close();
+      };
+      doc.addEventListener("pointerdown", onDown, true);
+      doc.addEventListener("keydown", onKey, true);
+      bgOffs = [() => doc.removeEventListener("pointerdown", onDown, true), () => doc.removeEventListener("keydown", onKey, true)];
+    },
+    close() {
+      bgOffs.splice(0).forEach((off) => off());
+      popEl.style.display = "none";
+      bgBtn.classList.remove("pxd-btn--active");
+    },
+    setState({ pattern, tone, override } = {}) {
+      bgState = { pattern: pattern ?? null, tone: tone ?? null, override: Boolean(override) };
+      for (const [id, b] of patternButtons) b.classList.toggle("pxd-seg__btn--on", id === bgState.pattern);
+      for (const s of toneWrap.querySelectorAll(".pxd-swatch")) {
+        const value = s.dataset.tone ?? s.getAttribute("data-tone") ?? "";
+        s.classList.toggle("pxd-swatch--on", value === (bgState.tone || ""));
+      }
+      resetBtn.classList.toggle("pxd-bg__reset--idle", !bgState.override);
+      popEl.classList.toggle("pxd-popover--override", bgState.override);
     }
+  };
+  let bgState = { pattern: null, tone: null, override: false };
+  popover.setState(bgState);
+  const backEl = button(root, "pxd-backtocontent pxd-chrome", "Back to content", "Fit the view back to your cards", () => on.backToContent?.());
+  backEl.style.display = "none";
+  for (const type of ["pointerup", "wheel", "keydown", "keyup", "contextmenu"]) listen(backEl, type, (event) => event.stopPropagation());
+  const backToContent = {
+    el: backEl,
+    setVisible(visible) {
+      backEl.style.display = visible ? "" : "none";
+    },
+    isVisible: () => backEl.style.display !== "none"
   };
   const ctx = el("div", "pxd-ctx pxd-chrome", root);
   ctx.style.display = "none";
@@ -4966,6 +6804,14 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
       }
       return wrap;
     };
+    const opt = (name, cls, label, title, fn) => {
+      if (typeof on[name] === "function") btn(cls, label, title, fn);
+    };
+    const optSeg = (name, cls, options, fn) => {
+      if (typeof on[name] === "function") seg(cls, options, null, fn);
+    };
+    const pinButton = (pinned) => opt("pin", "pxd-ctx__pin-toggle", pinned ? "Unpin" : "Pin", pinned ? "Unpin: allow moving and resizing again" : "Pin: lock position and size", () => on.pin(!pinned));
+    const TIDY = [["grid", "Grid", "Tidy into a grid"], ["row", "Row", "Tidy into a row"], ["column", "Column", "Tidy into a column"]];
     switch (kind) {
       case "card":
       case "cards": {
@@ -4975,11 +6821,22 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
           btn("pxd-ctx__sidebar", "Open in sidebar", "Open in the right sidebar", () => on.openSidebar?.());
           btn("pxd-ctx__collapse", model?.collapsed ? "Expand" : "Collapse", "Collapse to title", () => on.collapse?.());
           btn("pxd-ctx__related", "Related…", "Show related pages and blocks", () => on.related?.());
+          pinButton(Boolean(model?.pinned));
+          opt("fitHeight", "pxd-ctx__fit-height", "Fit height", "Grow or shrink the card to its text", () => on.fitHeight());
+          opt("copyRef", "pxd-ctx__copy-ref", "Copy ref", "Copy a block or page reference", () => on.copyRef());
+          opt("duplicate", "pxd-ctx__duplicate", "Duplicate", "Duplicate (Cmd D)", () => on.duplicate());
+          opt("sendTo", "pxd-ctx__send-to", "Send to board…", "Move into another board", () => on.sendTo());
+          if (NOTE_KINDS.includes(model?.kind)) opt("expandOutline", "pxd-ctx__mindmap", "Mind map", "Expand the children as a mind map", () => on.expandOutline());
         } else {
           seg("pxd-ctx__align", [["left", "L", "Align left"], ["center", "C", "Align centers"], ["right", "R", "Align right"], ["top", "T", "Align top"], ["middle", "M", "Align middles"], ["bottom", "B", "Align bottom"]], null, (v) => on.align?.(v));
           seg("pxd-ctx__distribute", [["h", "H", "Distribute horizontally"], ["v", "V", "Distribute vertically"]], null, (v) => on.distribute?.(v));
           btn("pxd-ctx__wrap", "Wrap in section", "Wrap in a new section (Cmd G)", () => on.wrap?.());
           btn("pxd-ctx__wrap-board", "Move into new board", "Move the selection into a new nested board", () => on.wrapBoard?.());
+          optSeg("tidy", "pxd-ctx__tidy", TIDY, (v) => on.tidy(v));
+          optSeg("sameSize", "pxd-ctx__same-size", [["width", "W", "Same width"], ["height", "H", "Same height"], ["both", "WH", "Same width and height"]], (v) => on.sameSize(v));
+          opt("fold", "pxd-ctx__fold", model?.anyCollapsed ? "Unfold" : "Fold", model?.anyCollapsed ? "Expand the collapsed cards" : "Collapse the cards to titles", () => on.fold(!model?.anyCollapsed));
+          pinButton(Boolean(model?.allPinned));
+          opt("duplicate", "pxd-ctx__duplicate", "Duplicate", "Duplicate (Cmd D)", () => on.duplicate());
         }
         btn("pxd-ctx__delete pxd-btn--danger", "Delete", "Delete (Del)", () => on.delete?.());
         break;
@@ -4995,6 +6852,11 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
         swatches(row, (c) => on.setColor?.(c));
         btn("pxd-ctx__rename", "Rename", "Rename (Enter)", () => on.rename?.());
         btn("pxd-ctx__contents", "Select contents", "Select the section's members", () => on.selectContents?.());
+        opt("fitSection", "pxd-ctx__fit-section", "Fit to contents", "Resize the section around its cards", () => on.fitSection());
+        opt("toggleFit", "pxd-ctx__auto-fit", model?.autofit ? "Auto-fit: on" : "Auto-fit: off", "Keep the section sized to its cards", () => on.toggleFit());
+        optSeg("tidy", "pxd-ctx__tidy", TIDY, (v) => on.tidy(v));
+        opt("foldAll", "pxd-ctx__fold-all", "Fold all", "Collapse every card in the section", () => on.foldAll(true));
+        pinButton(Boolean(model?.pinned));
         btn("pxd-ctx__delete pxd-btn--danger", "Delete frame", "Delete the frame, keep the cards (Del). Shift+Del deletes contents too", () => on.delete?.());
         break;
       case "text":
@@ -5235,10 +7097,11 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
   const dispose = () => {
     toastTimer?.();
     mmFrame?.();
+    bgOffs.splice(0).forEach((off) => off());
     listeners2.splice(0).forEach((off) => off());
-    for (const node of [toolbar, ctx, toast, search, minimap]) node.remove();
+    for (const node of [toolbar, popEl, backEl, ctx, toast, search, minimap]) node.remove();
   };
-  return { toolbar: toolbarApi, ctx: ctxApi, toast: toastApi, search: searchApi, minimap: minimapApi, badge, sync, dispose };
+  return { toolbar: toolbarApi, ctx: ctxApi, toast: toastApi, search: searchApi, minimap: minimapApi, popover, backToContent, badge, sync, dispose };
 }
 
 // src/view/panel.js
@@ -5327,8 +7190,14 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {} } 
   const tabs = el("div", "pxd-panel__tabs", head);
   const tabSearch = el("button", "pxd-btn pxd-panel__tab pxd-panel__tab--on", tabs, "Search");
   const tabRelated = el("button", "pxd-btn pxd-panel__tab", tabs, "Related");
-  tabSearch.type = "button";
-  tabRelated.type = "button";
+  const tabBoards = el("button", "pxd-btn pxd-panel__tab", tabs, "Boards");
+  const tabOutline = el("button", "pxd-btn pxd-panel__tab", tabs, "Outline");
+  const tabButtons = { search: tabSearch, related: tabRelated, boards: tabBoards, outline: tabOutline };
+  for (const [name, b] of Object.entries(tabButtons)) {
+    b.type = "button";
+    b.dataset.tab = name;
+    b.setAttribute("data-tab", name);
+  }
   const closeBtn = el("button", "pxd-btn pxd-panel__close", head, "×");
   closeBtn.type = "button";
   closeBtn.title = "Close";
@@ -5346,6 +7215,16 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {} } 
   addAll.type = "button";
   addAll.style.display = "none";
   const relatedList = el("div", "pxd-panel__list", relatedPane);
+  const boardsPane = el("div", "pxd-panel__pane pxd-panel__pane--boards", panel);
+  boardsPane.style.display = "none";
+  const boardsFilter = el("input", "pxd-input pxd-panel__input pxd-panel__boards-filter", boardsPane);
+  boardsFilter.type = "text";
+  boardsFilter.placeholder = "Filter boards…";
+  boardsFilter.setAttribute("placeholder", "Filter boards…");
+  const boardsList = el("div", "pxd-panel__list pxd-panel__boards", boardsPane);
+  const outlinePane = el("div", "pxd-panel__pane pxd-panel__pane--outline", panel);
+  outlinePane.style.display = "none";
+  const outlineList = el("div", "pxd-panel__list pxd-panel__outline", outlinePane);
   let tab = "search";
   let debounce = null;
   let selected = null;
@@ -5426,14 +7305,16 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {} } 
   });
   const setTab = (next) => {
     tab = next;
-    tabSearch.classList.toggle("pxd-panel__tab--on", tab === "search");
-    tabRelated.classList.toggle("pxd-panel__tab--on", tab === "related");
+    for (const [name, b] of Object.entries(tabButtons)) b.classList.toggle("pxd-panel__tab--on", tab === name);
     searchPane.style.display = tab === "search" ? "" : "none";
     relatedPane.style.display = tab === "related" ? "" : "none";
+    boardsPane.style.display = tab === "boards" ? "" : "none";
+    outlinePane.style.display = tab === "outline" ? "" : "none";
     if (tab === "related") void loadRelated();
+    if (tab === "boards") void loadBoards();
+    if (tab === "outline") renderOutline();
   };
-  listen(tabSearch, "click", () => setTab("search"));
-  listen(tabRelated, "click", () => setTab("related"));
+  for (const [name, b] of Object.entries(tabButtons)) listen(b, "click", () => setTab(name));
   listen(closeBtn, "click", () => api.close());
   listen(addAll, "click", () => {
     const strings = relatedRows.map((r) => r.string).filter((s) => !on.isOnBoard?.(s));
@@ -5469,19 +7350,113 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {} } 
     if (!list.length) el("div", "pxd-panel__empty", relatedList, "Nothing related yet");
     addAll.style.display = list.length ? "" : "none";
   };
+  let boardRows = [];
+  const renderBoards = () => {
+    boardsList.replaceChildren();
+    const q = String(boardsFilter.value || "").trim().toLowerCase();
+    const shown = boardRows.filter((b) => !q || `${b.title || ""}
+${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
+    if (!shown.length) {
+      el("div", "pxd-panel__empty", boardsList, boardRows.length ? "No matching boards" : "No boards found");
+      return;
+    }
+    for (const b of shown) {
+      const r = el("div", "pxd-panel__board-row", boardsList);
+      r.dataset.uid = b.uid;
+      r.setAttribute("data-uid", b.uid);
+      const text = el("div", "pxd-panel__board-text", r);
+      el("span", "pxd-panel__board-title", text, b.title || "Untitled board");
+      const page = b.page || b.pageTitle;
+      if (page) el("span", "pxd-panel__board-page", text, page);
+      const n = b.count ?? b.itemCount ?? b.items;
+      if (Number.isFinite(n)) el("span", "pxd-panel__board-count", r, `${n} ${n === 1 ? "item" : "items"}`);
+      const add = el("button", "pxd-btn pxd-panel__board-add", r, "Add shortcut");
+      add.type = "button";
+      add.title = "Add a card for this board to the current board";
+    }
+  };
+  listen(boardsList, "click", (event) => {
+    const row2 = event.target?.closest?.(".pxd-panel__board-row");
+    const uid = row2?.dataset?.uid ?? row2?.getAttribute?.("data-uid");
+    if (!uid) return;
+    event.preventDefault?.();
+    event.stopPropagation();
+    if (event.target.closest(".pxd-panel__board-add")) on.addBoardCard?.(uid);
+    else on.openBoardByUid?.(uid);
+  });
+  const loadBoards = async () => {
+    const id = queryId += 1;
+    boardsList.replaceChildren();
+    el("div", "pxd-panel__empty", boardsList, "Loading boards…");
+    let rows = [];
+    try {
+      rows = await Promise.resolve(on.listBoards?.()) || [];
+    } catch {
+      rows = [];
+    }
+    if (id !== queryId || tab !== "boards") return;
+    boardRows = Array.isArray(rows) ? rows.filter((b) => b && b.uid) : [];
+    renderBoards();
+  };
+  listen(boardsFilter, "input", () => renderBoards());
+  listen(boardsFilter, "keydown", (event) => {
+    event.stopPropagation();
+    if (event.key === "Escape") {
+      event.preventDefault();
+      api.close();
+    }
+  });
+  const renderOutline = () => {
+    outlineList.replaceChildren();
+    let rows = [];
+    try {
+      rows = on.getOutline?.() || [];
+    } catch {
+      rows = [];
+    }
+    if (!Array.isArray(rows) || !rows.length) {
+      el("div", "pxd-panel__empty", outlineList, "Nothing on this board yet");
+      return;
+    }
+    for (const o of rows) {
+      const depth = Math.max(0, Number(o.depth) || 0);
+      const r = el("div", "pxd-panel__outline-row", outlineList);
+      r.dataset.uid = o.uid;
+      r.setAttribute("data-uid", o.uid);
+      r.dataset.depth = String(depth);
+      r.setAttribute("data-depth", String(depth));
+      r.style.paddingLeft = `${8 + depth * 14}px`;
+      const dot = el("span", `pxd-panel__outline-dot${o.color ? ` pxd-c-${o.color}` : ""}`, r);
+      dot.setAttribute("aria-hidden", "true");
+      el("span", "pxd-panel__outline-title", r, o.title || "Untitled");
+      if (Number.isFinite(o.count) && o.count > 0) el("span", "pxd-panel__outline-count", r, String(o.count));
+    }
+  };
+  listen(outlineList, "click", (event) => {
+    const row2 = event.target?.closest?.(".pxd-panel__outline-row");
+    const uid = row2?.dataset?.uid ?? row2?.getAttribute?.("data-uid");
+    if (!uid) return;
+    event.stopPropagation();
+    on.outlineClick?.(uid);
+  });
   const api = {
     el: panel,
     open(which = tab) {
       panel.style.display = "";
       setTab(which);
       on.opened?.(true);
-      if (which === "search") {
+      const focusTarget = which === "search" ? input : which === "boards" ? boardsFilter : null;
+      if (focusTarget) {
         try {
-          input.focus({ preventScroll: true });
+          focusTarget.focus({ preventScroll: true });
         } catch {
-          input.focus?.();
+          focusTarget.focus?.();
         }
       }
+    },
+    currentTab: () => tab,
+    refreshOutline() {
+      if (api.isOpen() && tab === "outline") renderOutline();
     },
     close() {
       panel.style.display = "none";
@@ -5510,6 +7485,835 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {} } 
     }
   };
   return api;
+}
+
+// src/view/menu.js
+var MARGIN = 4;
+var ROW_HEIGHT = 28;
+var MENU_WIDTH = 200;
+var STOP_EVENTS = ["pointerdown", "pointerup", "click", "dblclick", "wheel", "contextmenu", "keydown"];
+function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
+  let menuEl = null;
+  let offs = [];
+  const entries = /* @__PURE__ */ new Map();
+  const levels = [];
+  let disposed = false;
+  const el = (tag, cls, parent, text) => {
+    const node = doc.createElement(tag);
+    node.className = cls;
+    if (text !== void 0) node.textContent = text;
+    parent?.append(node);
+    return node;
+  };
+  const on_ = (target, type, fn, capture) => {
+    target.addEventListener(type, fn, capture);
+    offs.push(() => target.removeEventListener(type, fn, capture));
+  };
+  const selectable = (level) => level.rows.filter((row) => !entries.get(row).item.disabled);
+  const setActive = (level, row) => {
+    for (const r of level.rows) r.classList.toggle("pxd-menu__item--active", r === row);
+    level.active = row || null;
+    if (row && level.depth === 0 && menuEl?.classList?.contains("pxd-menu--scroll")) row.scrollIntoView?.({ block: "nearest" });
+  };
+  const closeFrom = (depth) => {
+    while (levels.length > depth) {
+      const level = levels.pop();
+      level.container.style.display = "none";
+      level.container.classList?.remove("pxd-menu__sub--open");
+      setActive(level, null);
+    }
+  };
+  const placeSub = (sub, row) => {
+    const rootRect = root.getBoundingClientRect();
+    sub.classList.remove("pxd-menu__sub--left");
+    sub.style.top = "0px";
+    const r = row.getBoundingClientRect();
+    const w = sub.offsetWidth || MENU_WIDTH;
+    const h = sub.offsetHeight || 0;
+    if (menuEl?.classList?.contains("pxd-menu--scroll")) {
+      const fitsRight = !rootRect.width || r.right + w <= rootRect.right - MARGIN;
+      const top = rootRect.height ? Math.max(rootRect.top + MARGIN, Math.min(r.top, rootRect.bottom - MARGIN - h)) : r.top;
+      sub.style.left = `${Math.round(fitsRight ? r.right + 2 : r.left - w - 2)}px`;
+      sub.style.top = `${Math.round(top)}px`;
+      return;
+    }
+    if (rootRect.width && r.right + w > rootRect.right - MARGIN) sub.classList.add("pxd-menu__sub--left");
+    if (rootRect.height && h && r.top + h > rootRect.bottom - MARGIN) {
+      sub.style.top = `${Math.round(Math.min(0, rootRect.bottom - MARGIN - (r.top + h)))}px`;
+    }
+  };
+  const openSub = (row) => {
+    const entry = entries.get(row);
+    if (!entry?.sub || entry.item.disabled) return null;
+    closeFrom(entry.level + 1);
+    entry.sub.container.style.display = "";
+    entry.sub.container.classList.add("pxd-menu__sub--open");
+    levels.push(entry.sub);
+    placeSub(entry.sub.container, row);
+    return entry.sub;
+  };
+  const build = (items, parent, depth) => {
+    const level = { container: parent, rows: [], active: null, depth };
+    for (const item of items) {
+      if (item.separator) {
+        el("div", "pxd-menu__sep", parent);
+        continue;
+      }
+      let cls = "pxd-menu__item";
+      if (item.disabled) cls += " pxd-menu__item--disabled";
+      if (item.danger) cls += " pxd-menu__item--danger";
+      if (item.checked) cls += " pxd-menu__item--checked";
+      if (item.children?.length) cls += " pxd-menu__item--parent";
+      const row = el("div", cls, parent);
+      row.setAttribute("role", item.checked ? "menuitemradio" : "menuitem");
+      if (item.checked) row.setAttribute("aria-checked", "true");
+      if (item.disabled) row.setAttribute("aria-disabled", "true");
+      row.setAttribute("data-id", item.id);
+      row.dataset.id = item.id;
+      el("span", "pxd-menu__label", row, item.label);
+      if (item.hint) el("span", "pxd-menu__hint", row, item.hint);
+      const entry = { item, level: depth, sub: null };
+      entries.set(row, entry);
+      level.rows.push(row);
+      if (item.children?.length) {
+        el("span", "pxd-menu__arrow", row, "›");
+        const container = el("div", "pxd-menu__sub", row);
+        container.style.display = "none";
+        container.setAttribute("role", "menu");
+        entry.sub = build(item.children, container, depth + 1);
+      }
+    }
+    return level;
+  };
+  const close = () => {
+    if (!menuEl) return;
+    offs.splice(0).forEach((off) => off());
+    menuEl.remove();
+    menuEl = null;
+    entries.clear();
+    levels.length = 0;
+    on.closed?.();
+  };
+  const pick = (row) => {
+    const entry = entries.get(row);
+    if (!entry || entry.item.disabled) return;
+    if (entry.sub) {
+      const sub = openSub(row);
+      if (sub) setActive(sub, selectable(sub)[0] || null);
+      return;
+    }
+    const { item } = entry;
+    try {
+      on.pick?.(item.id, item);
+    } finally {
+      close();
+    }
+  };
+  const current = () => levels[levels.length - 1];
+  const move = (step) => {
+    const level = current();
+    const rows = selectable(level);
+    if (!rows.length) return;
+    const i = rows.indexOf(level.active);
+    const next = i < 0 ? step > 0 ? 0 : rows.length - 1 : (i + step + rows.length) % rows.length;
+    setActive(level, rows[next]);
+  };
+  const onKey = (event) => {
+    const key = event.key;
+    if (!["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Enter", "Escape", " ", "Home", "End", "Tab"].includes(key)) return;
+    event.preventDefault?.();
+    event.stopPropagation?.();
+    const level = current();
+    if (key === "Escape" || key === "Tab") return close();
+    if (key === "ArrowDown") return move(1);
+    if (key === "ArrowUp") return move(-1);
+    if (key === "Home" || key === "End") {
+      const rows = selectable(level);
+      return setActive(level, key === "Home" ? rows[0] : rows[rows.length - 1]);
+    }
+    if (key === "ArrowRight") {
+      if (level.active && entries.get(level.active)?.sub) pick(level.active);
+      return void 0;
+    }
+    if (key === "ArrowLeft") {
+      if (levels.length > 1) closeFrom(levels.length - 1);
+      return void 0;
+    }
+    if (level.active) pick(level.active);
+    return void 0;
+  };
+  const rowOf = (event) => event.target?.closest?.(".pxd-menu__item") || null;
+  const api = {
+    el: null,
+    open({ x = 0, y = 0, items = [] } = {}) {
+      if (disposed) return false;
+      close();
+      const list = Array.isArray(items) ? items : [];
+      if (!list.some((item) => !item.separator)) return false;
+      menuEl = el("div", "pxd-menu pxd-chrome", root);
+      api.el = menuEl;
+      menuEl.setAttribute("role", "menu");
+      menuEl.style.left = "0px";
+      menuEl.style.top = "0px";
+      for (const type of STOP_EVENTS) on_(menuEl, type, (event) => event.stopPropagation());
+      on_(menuEl, "contextmenu", (event) => event.preventDefault?.());
+      levels.push(build(list, menuEl, 0));
+      on_(menuEl, "click", (event) => {
+        const row = rowOf(event);
+        if (!row) return;
+        event.preventDefault?.();
+        pick(row);
+      });
+      on_(menuEl, "pointerover", (event) => {
+        const row = rowOf(event);
+        if (!row) return;
+        const entry = entries.get(row);
+        const level = levels[entry.level];
+        if (!level) return;
+        closeFrom(entry.level + 1);
+        if (entry.item.disabled) {
+          setActive(level, null);
+          return;
+        }
+        setActive(level, row);
+        if (entry.sub) openSub(row);
+      });
+      const win = doc.defaultView || doc;
+      on_(doc, "pointerdown", (event) => {
+        if (menuEl && !menuEl.contains(event.target)) close();
+      }, true);
+      on_(win, "keydown", onKey, true);
+      const rootRect = root.getBoundingClientRect();
+      const rows = list.filter((item) => !item.separator).length;
+      const w = menuEl.offsetWidth || MENU_WIDTH;
+      let h = menuEl.offsetHeight || rows * ROW_HEIGHT;
+      const W = rootRect.width || 0;
+      const H = rootRect.height || 0;
+      if (H && h > H - 2 * MARGIN) {
+        h = Math.max(ROW_HEIGHT * 3, H - 2 * MARGIN);
+        menuEl.classList.add("pxd-menu--scroll");
+        menuEl.style.maxHeight = `${Math.round(h)}px`;
+      }
+      let left = x - (rootRect.left || 0);
+      let top = y - (rootRect.top || 0);
+      if (W) left = Math.max(MARGIN, Math.min(left, W - w - MARGIN));
+      if (H) top = Math.max(MARGIN, Math.min(top, H - h - MARGIN));
+      menuEl.style.left = `${Math.round(left)}px`;
+      menuEl.style.top = `${Math.round(top)}px`;
+      return true;
+    },
+    close,
+    isOpen: () => Boolean(menuEl),
+    dispose() {
+      close();
+      disposed = true;
+      api.el = null;
+    }
+  };
+  return api;
+}
+
+// src/view/menu-model.js
+var SIZE_LABELS = { 16: "Small", 24: "Medium", 32: "Large", 48: "Extra large" };
+var cap = (word) => word.charAt(0).toUpperCase() + word.slice(1);
+var make = (id, label, extra = {}) => {
+  const out = { id, label };
+  for (const [key, value] of Object.entries(extra)) {
+    if (value === void 0 || value === false) continue;
+    out[key] = value;
+  }
+  return out;
+};
+function buildMenu(kind, ctx = {}) {
+  const c = ctx || {};
+  const count = Number.isFinite(c.count) ? c.count : null;
+  const item = c.item || null;
+  const empty = count === 0;
+  let separators = 0;
+  const sep = () => ({ id: `sep-${separators += 1}`, separator: true });
+  const colorMenu = () => {
+    const current = item?.color || null;
+    return make("color", "Color", {
+      children: [
+        make("color:none", "No color", { checked: !current }),
+        ...PALETTE.map((name) => make(`color:${name}`, cap(name), { checked: current === name }))
+      ]
+    });
+  };
+  const pinItem = (pinned) => pinned ? make("unpin", "Unpin") : make("pin", "Pin");
+  const foldItem = (folded) => folded ? make("unfold", "Unfold", { hint: "Cmd Alt Enter" }) : make("fold", "Fold", { hint: "Cmd Alt Enter" });
+  const tidyMenu = (disabled) => make("tidy", "Tidy", {
+    disabled,
+    children: [
+      make("tidy:grid", "Grid"),
+      make("tidy:row", "Row"),
+      make("tidy:column", "Column"),
+      make("tidy:outline", "Outline order")
+    ]
+  });
+  switch (kind) {
+    case "canvas":
+      return [
+        make("new-card", "New card", { hint: "N" }),
+        make("new-text", "New text", { hint: "T" }),
+        make("new-section", "New section", { hint: "G" }),
+        make("new-board", "New board", { hint: "W" }),
+        sep(),
+        make("paste", "Paste", { hint: "Cmd V", disabled: !c.canPaste }),
+        make("paste-clone", "Paste as copies", { disabled: !c.canPaste }),
+        sep(),
+        make("add-today", "Add today's journal"),
+        make("add-week", "Add this week's journals"),
+        sep(),
+        make("select-all", "Select all", { hint: "Cmd A" }),
+        make("fit-all", "Fit all", { hint: "Shift 1" }),
+        make("fold-all", "Fold all cards"),
+        make("unfold-all", "Unfold all cards"),
+        sep(),
+        make("background", "Background…"),
+        make("export-svg", "Export as SVG"),
+        make("copy-outline", "Copy as outline")
+      ];
+    case "card": {
+      const folded = Boolean(c.collapsed);
+      const out = [
+        make("edit", c.isBoard ? "Rename board" : "Edit", { hint: "Enter" }),
+        make("open", c.isBoard ? "Open board" : "Open"),
+        make("open-sidebar", "Open in sidebar", { hint: "Shift Click" }),
+        sep(),
+        make("copy", "Copy", { hint: "Cmd C" }),
+        make("copy-ref", "Copy ref"),
+        make("copy-link", "Copy link"),
+        make("duplicate", "Duplicate", { hint: "Cmd D" }),
+        make("duplicate-ref", "Duplicate as ref"),
+        sep(),
+        colorMenu(),
+        foldItem(folded),
+        make("fit-height", "Fit height", { disabled: folded }),
+        make("reset-size", "Reset size", { disabled: folded }),
+        pinItem(Boolean(c.pinned))
+      ];
+      if (c.hasOutline) out.push(make("mind-map", "Expand as mind map"));
+      out.push(
+        make("send-to", "Send to board…"),
+        make("related", "Related…"),
+        sep(),
+        make("delete", "Delete", { hint: "Del", danger: true })
+      );
+      return out;
+    }
+    case "section":
+      return [
+        make("rename", "Rename", { hint: "Enter" }),
+        make("select-contents", "Select contents", { disabled: empty }),
+        sep(),
+        make("fit-section", "Fit to contents", { disabled: empty }),
+        make("toggle-fit", "Auto-fit", { checked: Boolean(c.fitOn) }),
+        tidyMenu(empty),
+        make("fold-all-in", "Fold all inside", { disabled: empty }),
+        make("unfold-all-in", "Unfold all inside", { disabled: empty }),
+        sep(),
+        colorMenu(),
+        pinItem(Boolean(c.pinned)),
+        make("duplicate", "Duplicate", { hint: "Cmd D" }),
+        make("copy-ref", "Copy ref"),
+        sep(),
+        make("delete-frame", "Delete frame", { hint: "Del", danger: true }),
+        make("delete-contents", "Delete frame and contents", { hint: "Shift Del", danger: true, disabled: empty })
+      ];
+    case "text":
+      return [
+        make("edit", "Edit", { hint: "Enter" }),
+        colorMenu(),
+        make("size", "Size", {
+          children: FONT_SIZES.map((px) => make(`size:${px}`, `${SIZE_LABELS[px] || px} (${px}px)`, { checked: item?.fontSize === px }))
+        }),
+        make("duplicate", "Duplicate", { hint: "Cmd D" }),
+        pinItem(Boolean(c.pinned)),
+        make("copy", "Copy", { hint: "Cmd C" }),
+        sep(),
+        make("delete", "Delete", { hint: "Del", danger: true })
+      ];
+    case "edge":
+      return [
+        make("dir", "Direction", {
+          children: [
+            make("dir:one", "One way", { checked: c.dir === "one" }),
+            make("dir:two", "Two way", { checked: c.dir === "two" }),
+            make("dir:none", "No arrow", { checked: c.dir === "none" })
+          ]
+        }),
+        make("flip", "Flip direction"),
+        make("route", "Route", {
+          children: [
+            make("route:curve", "Curve", { checked: c.route === "curve" }),
+            make("route:straight", "Straight", { checked: c.route === "straight" }),
+            make("route:elbow", "Elbow", { checked: c.route === "elbow" })
+          ]
+        }),
+        make("dash", "Line", {
+          children: [
+            make("dash:solid", "Solid", { checked: c.dash === "solid" }),
+            make("dash:dashed", "Dashed", { checked: c.dash === "dashed" })
+          ]
+        }),
+        colorMenu(),
+        sep(),
+        make("label", "Label"),
+        make("notes", "Notes"),
+        make("write-to-graph", "Write to graph"),
+        sep(),
+        make("delete", "Delete", { hint: "Del", danger: true })
+      ];
+    case "multi": {
+      const few = count !== null && count < 2;
+      return [
+        make("copy", "Copy", { hint: "Cmd C" }),
+        make("duplicate", "Duplicate", { hint: "Cmd D" }),
+        colorMenu(),
+        sep(),
+        make("align", "Align", {
+          disabled: few,
+          children: ["left", "center", "right", "top", "middle", "bottom"].map((side) => make(`align:${side}`, cap(side)))
+        }),
+        make("distribute", "Distribute", {
+          disabled: count !== null && count < 3,
+          children: [make("distribute:h", "Horizontally"), make("distribute:v", "Vertically")]
+        }),
+        tidyMenu(false),
+        make("same-size", "Same size", {
+          disabled: few,
+          children: [make("same-size:width", "Width"), make("same-size:height", "Height"), make("same-size:both", "Width and height")]
+        }),
+        foldItem(Boolean(c.anyCollapsed)),
+        pinItem(Boolean(c.allPinned)),
+        sep(),
+        make("wrap-section", "Wrap in section", { hint: "Cmd G" }),
+        make("wrap-board", "Move into new board"),
+        make("send-to", "Send to board…"),
+        sep(),
+        make("delete", "Delete", { hint: "Del", danger: true })
+      ];
+    }
+    case "board-menu":
+      return [
+        make("export-svg", "Export as SVG"),
+        make("copy-outline", "Copy as outline"),
+        sep(),
+        make("fold-all", "Fold all cards"),
+        make("unfold-all", "Unfold all cards"),
+        sep(),
+        make("add-today", "Add today's journal"),
+        make("add-week", "Add this week's journals"),
+        sep(),
+        make("background", "Background…"),
+        make("tidy:grid", "Tidy into a grid")
+      ];
+    default:
+      return [];
+  }
+}
+
+// src/view/quicklook.js
+var DEPTH = 3;
+var LIMIT2 = 24;
+var STOP_EVENTS2 = ["pointerdown", "pointerup", "mousedown", "mouseup", "click", "dblclick", "wheel", "keydown", "keyup", "contextmenu"];
+var childString2 = (c) => c?.[":block/string"] ?? c?.string ?? "";
+var childKids2 = (c) => c?.[":block/children"] ?? c?.children ?? [];
+function createQuickLook({ doc = globalThis.document, root, host, timers, on = {} } = {}) {
+  let node = null;
+  let roots = [];
+  let current = null;
+  let cancelPending = null;
+  let disposed = false;
+  const offs = [];
+  const el = (tag, cls, parent, text) => {
+    const n = doc.createElement(tag);
+    n.className = cls;
+    if (text !== void 0) n.textContent = text;
+    parent?.append(n);
+    return n;
+  };
+  const renderRoot = (parent, string, cls) => {
+    const n = el("div", cls, parent);
+    roots.push(n);
+    if (!string) return n;
+    try {
+      if (host?.renderString) host.renderString(n, string);
+      else n.textContent = string;
+    } catch {
+      n.textContent = string;
+    }
+    return n;
+  };
+  const renderBlocks = (parent, blocks, depth, budget) => {
+    for (const b of blocks || []) {
+      if (budget.n >= LIMIT2 * 4) return;
+      budget.n += 1;
+      const row = el("div", "pxd-ql__block", parent);
+      renderRoot(row, childString2(b), "pxd-rs pxd-ql__text");
+      const kids = childKids2(b);
+      if (kids.length && depth < DEPTH) renderBlocks(el("div", "pxd-ql__children", row), kids, depth + 1, budget);
+    }
+  };
+  const unmountRoots = () => {
+    for (const n of roots) {
+      try {
+        host?.unmount?.(n);
+      } catch {
+      }
+    }
+    roots = [];
+  };
+  const close = () => {
+    if (!node) return false;
+    cancelPending?.();
+    cancelPending = null;
+    unmountRoots();
+    node.remove();
+    node = null;
+    current = null;
+    offs.splice(0).forEach((off) => off());
+    on.close?.();
+    return true;
+  };
+  const listen = (target, type, fn, opts) => {
+    target.addEventListener(type, fn, opts);
+    offs.push(() => target.removeEventListener(type, fn, opts));
+  };
+  const fill = (body, item) => {
+    const blocksInto = (result) => {
+      if (!node || !body.parentElement) return;
+      const budget = { n: 0 };
+      renderBlocks(body, result || [], 1, budget);
+    };
+    const settle = (result, apply) => {
+      if (result && typeof result.then === "function") {
+        result.then((r) => {
+          if (node && current === item) apply(r);
+        }).catch(() => {
+        });
+      } else apply(result);
+    };
+    if (item.kind === "board") {
+      let count = 0;
+      try {
+        count = boardPreview(item)?.count ?? 0;
+      } catch {
+        count = 0;
+      }
+      el("div", "pxd-ql__summary", body, `${count} ${count === 1 ? "item" : "items"}`);
+    } else if (item.kind === "page") {
+      settle(host?.pagePreview?.(item.title, DEPTH, LIMIT2), (p) => {
+        if (!p?.exists) {
+          el("div", "pxd-ql__placeholder", body, "Empty page");
+          return;
+        }
+        blocksInto(p.blocks);
+      });
+    } else if (item.kind === "block") {
+      const ref = item.target?.uid;
+      const s = host?.blockString?.(ref);
+      if (typeof s === "string" && s.trim()) renderRoot(body, s, "pxd-rs pxd-ql__string");
+      settle(host?.pullTree?.(ref, DEPTH, LIMIT2), (t) => {
+        if (!(typeof s === "string" && s.trim()) && !(t || []).length) el("div", "pxd-ql__placeholder", body, "Empty card");
+        blocksInto(t);
+      });
+    } else {
+      if (item.string?.trim()) renderRoot(body, item.string, "pxd-rs pxd-ql__string");
+      const kids = item.content?.length ? item.content : null;
+      if (kids) blocksInto(kids);
+      else settle(host?.pullTree?.(item.uid, DEPTH, LIMIT2), (t) => {
+        if (!item.string?.trim() && !(t || []).length) el("div", "pxd-ql__placeholder", body, "Empty card");
+        blocksInto(t);
+      });
+    }
+  };
+  const open = (item) => {
+    if (disposed || !item) return false;
+    close();
+    current = item;
+    node = el("div", "pxd-quicklook pxd-chrome", root);
+    node.setAttribute("role", "dialog");
+    node.setAttribute("aria-label", "Quick Look");
+    for (const type of STOP_EVENTS2) listen(node, type, (event) => event.stopPropagation());
+    const head = el("div", "pxd-ql__head", node);
+    el("div", "pxd-ql__title", head, item.kind === "board" ? item.title : item.title || item.string || "");
+    let refs = null;
+    try {
+      refs = on.getRefCount?.(item);
+    } catch {
+      refs = null;
+    }
+    if (typeof refs === "number" && refs > 0) el("span", "pxd-ql__refs", head, String(refs));
+    const body = el("div", "pxd-ql__body", node);
+    fill(body, item);
+    listen(doc, "pointerdown", (event) => {
+      if (node && !node.contains(event.target)) close();
+    }, true);
+    listen(doc, "keydown", (event) => {
+      if (event.key === "Escape" && node) {
+        event.preventDefault?.();
+        event.stopPropagation?.();
+        close();
+      }
+    }, true);
+    return true;
+  };
+  return {
+    open,
+    close,
+    toggle(item) {
+      if (node) {
+        close();
+        return false;
+      }
+      return open(item);
+    },
+    isOpen: () => Boolean(node),
+    dispose() {
+      close();
+      disposed = true;
+    }
+  };
+}
+
+// src/view/present.js
+var collectMembers = (board, uid) => {
+  const out = /* @__PURE__ */ new Set();
+  const stack = [uid];
+  while (stack.length) {
+    const u = stack.pop();
+    if (out.has(u)) continue;
+    out.add(u);
+    stack.push(...board.items.get(u)?.members ?? []);
+  }
+  return out;
+};
+function createPresenter({ doc = globalThis.document, root, timers, on = {} } = {}) {
+  let steps = [];
+  let index = -1;
+  let active = false;
+  let hud = null;
+  let titleEl = null;
+  let countEl = null;
+  let prevBtn = null;
+  let nextBtn = null;
+  const offs = [];
+  const el = (tag, cls, parent, text) => {
+    const n = doc.createElement(tag);
+    n.className = cls;
+    if (text !== void 0) n.textContent = text;
+    parent?.append(n);
+    return n;
+  };
+  const button = (parent, cls, label, fn) => {
+    const b = el("button", `pxd-btn ${cls}`, parent, label);
+    b.type = "button";
+    const click = (event) => {
+      event.preventDefault?.();
+      event.stopPropagation?.();
+      fn();
+    };
+    const stop2 = (event) => event.stopPropagation?.();
+    b.addEventListener("click", click);
+    b.addEventListener("pointerdown", stop2);
+    b.addEventListener("dblclick", stop2);
+    offs.push(() => {
+      b.removeEventListener("click", click);
+      b.removeEventListener("pointerdown", stop2);
+      b.removeEventListener("dblclick", stop2);
+    });
+    return b;
+  };
+  const paint = () => {
+    const s = steps[index];
+    if (!hud || !s) return;
+    titleEl.textContent = s.title || "";
+    countEl.textContent = `${index + 1} / ${steps.length}`;
+    prevBtn.disabled = index <= 0;
+    nextBtn.disabled = index >= steps.length - 1;
+    prevBtn.setAttribute("aria-disabled", String(index <= 0));
+    nextBtn.setAttribute("aria-disabled", String(index >= steps.length - 1));
+  };
+  const goto = (i) => {
+    if (!active || !steps.length) return false;
+    const next = Math.max(0, Math.min(steps.length - 1, Math.trunc(Number(i))));
+    if (!Number.isFinite(next)) return false;
+    index = next;
+    paint();
+    const s = steps[index];
+    on.step?.({ index, total: steps.length, uid: s.uid, rect: s.rect, title: s.title, members: s.members });
+    return true;
+  };
+  const teardown = () => {
+    offs.splice(0).forEach((off) => off());
+    hud?.remove();
+    hud = titleEl = countEl = prevBtn = nextBtn = null;
+  };
+  const stop = () => {
+    if (!active) return false;
+    active = false;
+    teardown();
+    steps = [];
+    index = -1;
+    on.exit?.();
+    return true;
+  };
+  const start = (board, rects) => {
+    if (!board) return false;
+    if (active) {
+      teardown();
+      active = false;
+    }
+    const rootSet = new Set(board.roots);
+    const sections = outlineOrder(board).filter((u) => rootSet.has(u) && board.items.get(u)?.type === "section" && rects.get(u));
+    steps = sections.map((uid) => ({
+      uid,
+      rect: rects.get(uid),
+      title: board.items.get(uid).title || "",
+      members: collectMembers(board, uid)
+    }));
+    if (!steps.length) {
+      const all = [...board.items.keys()].filter((u) => rects.get(u));
+      if (!all.length) return false;
+      steps = [{ uid: null, rect: boundsOf(all.map((u) => rects.get(u))), title: board.title || "", members: new Set(all) }];
+    }
+    active = true;
+    hud = el("div", "pxd-present-hud pxd-chrome", root);
+    titleEl = el("span", "pxd-present-hud__title", hud);
+    countEl = el("span", "pxd-present-hud__count", hud);
+    prevBtn = button(hud, "pxd-present-hud__prev", "Prev", () => goto(index - 1));
+    nextBtn = button(hud, "pxd-present-hud__next", "Next", () => goto(index + 1));
+    button(hud, "pxd-present-hud__exit", "Exit", () => stop());
+    goto(0);
+    return true;
+  };
+  return {
+    start,
+    next: () => goto(index + 1),
+    prev: () => goto(index - 1),
+    goto,
+    stop,
+    isActive: () => active,
+    index: () => index,
+    total: () => steps.length,
+    dispose() {
+      if (active) stop();
+      else teardown();
+    }
+  };
+}
+
+// src/view/clipboard-io.js
+var CLONE_WINDOW_MS = 400;
+var MAX_IMAGES = 10;
+var defaultTextEntry = (node) => {
+  if (!node || node.nodeType !== 1) return false;
+  const tag = String(node.tagName || "").toLowerCase();
+  if (tag === "input" || tag === "textarea" || tag === "select") return true;
+  return node.isContentEditable === true || node.getAttribute?.("contenteditable") === "true" || node.getAttribute?.("contenteditable") === "";
+};
+function filesFromDataTransfer(dt) {
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  const add = (f) => {
+    if (!f || typeof f.type !== "string" || !f.type.startsWith("image/") || seen.has(f) || out.length >= MAX_IMAGES) return;
+    seen.add(f);
+    out.push(f);
+  };
+  for (const f of dt?.files ?? []) add(f);
+  for (const item of dt?.items ?? []) {
+    if (item?.kind === "file") {
+      try {
+        add(item.getAsFile?.());
+      } catch {
+      }
+    }
+  }
+  return out;
+}
+async function writeClipboard({ text = "", mime = null, data = null } = {}) {
+  const nav = globalThis.navigator;
+  try {
+    if (nav?.clipboard?.writeText) {
+      await nav.clipboard.writeText(String(text));
+      return true;
+    }
+  } catch {
+  }
+  const doc = globalThis.document;
+  if (!doc?.body) return false;
+  const area = doc.createElement("textarea");
+  area.value = String(text);
+  area.setAttribute("readonly", "");
+  area.style.position = "fixed";
+  area.style.opacity = "0";
+  doc.body.append(area);
+  const onCopy = (event) => {
+    if (mime && data != null) {
+      try {
+        event.clipboardData?.setData(mime, typeof data === "string" ? data : JSON.stringify(data));
+      } catch {
+      }
+    }
+  };
+  doc.addEventListener("copy", onCopy, true);
+  let ok = false;
+  try {
+    area.focus?.();
+    area.select?.();
+    ok = Boolean(doc.execCommand?.("copy"));
+  } catch {
+    ok = false;
+  }
+  doc.removeEventListener("copy", onCopy, true);
+  area.remove();
+  return ok;
+}
+function createClipboardIO({ doc = globalThis.document, root, ownsKeyboard, isTextEntry, on = {}, now: now2 = () => Date.now() } = {}) {
+  const offs = [];
+  const win = doc.defaultView ?? globalThis.window;
+  let lastCloneKey = -Infinity;
+  const listen = (target, type, fn, opts) => {
+    if (!target?.addEventListener) return;
+    target.addEventListener(type, fn, opts);
+    offs.push(() => target.removeEventListener(type, fn, opts));
+  };
+  const inText = (event) => {
+    const test = (n) => Boolean(isTextEntry?.(n)) || defaultTextEntry(n);
+    return test(event.target) || test(doc.activeElement);
+  };
+  const active = (event) => Boolean(ownsKeyboard?.()) && !inText(event);
+  const copy = (event, cut = false) => {
+    const payload = on.getPayload?.({ cut });
+    if (!payload || !event.clipboardData) return false;
+    event.clipboardData.setData(PLEXUS_MIME, payload.mime);
+    event.clipboardData.setData("text/plain", payload.text);
+    event.preventDefault();
+    return true;
+  };
+  listen(doc, "copy", (event) => {
+    if (active(event)) copy(event);
+  }, true);
+  listen(doc, "cut", (event) => {
+    if (active(event) && copy(event, true)) on.cutDone?.();
+  }, true);
+  listen(win, "keydown", (event) => {
+    if ((event.metaKey || event.ctrlKey) && event.shiftKey && String(event.key).toLowerCase() === "v") lastCloneKey = now2();
+  }, true);
+  listen(doc, "paste", (event) => {
+    if (!active(event)) return;
+    const parsed = parseClipboard(event.clipboardData);
+    if (!parsed) return;
+    event.preventDefault();
+    if (parsed.kind === "plexus") on.pastePlexus?.(parsed.data, { clone: now2() - lastCloneKey <= CLONE_WINDOW_MS });
+    else if (parsed.kind === "images") on.pasteImages?.(parsed.files);
+    else on.pasteText?.(parsed.entries);
+  }, true);
+  return { dispose() {
+    offs.splice(0).forEach((off) => off());
+  } };
 }
 
 // src/discovery.js
@@ -5768,12 +8572,17 @@ function watchRouteExit({ boardUid, onExit, win = globalThis.window } = {}) {
 }
 
 // src/view/board-view.js
-var SVG_NS2 = "http://www.w3.org/2000/svg";
+var SVG_NS3 = "http://www.w3.org/2000/svg";
 var DEFAULT_HEIGHT = 560;
 var MIN_HEIGHT = 240;
 var RESUME_MS = 120;
 var VP_PERSIST_MS = 500;
 var CULL_MARGIN = 0.5;
+var BADGE_TTL_MS = 12e4;
+var BADGE_CHUNK = 12;
+var NATIVE_MENU_TARGETS = ".rm-page-ref, .rm-block-ref, [data-link-uid], a[href], img";
+var BADGE_MAX = 60;
+var NOTE_KINDS2 = ["note", "block", "page"];
 function createTimers() {
   const active = /* @__PURE__ */ new Set();
   const later = (fn, ms) => {
@@ -5916,13 +8725,21 @@ function mountBoardView({
   onOpenBoard = null,
   onCrumb = null,
   routeUid = session.uid,
-  autofocus = false
+  autofocus = false,
+  onSetDefaults = null
 } = {}) {
   const doc = globalThis.document;
   const win = globalThis.window;
+  let settingsRef = settings;
+  const readSetting = (k) => typeof settingsRef?.get === "function" ? settingsRef.get(k) : settingsRef?.[k];
+  const settingsProxy = { get: readSetting };
   const setting = (k, d) => {
-    const v = typeof settings?.get === "function" ? settings.get(k) : settings?.[k];
+    const v = readSetting(k);
     return v === void 0 || v === null ? d : v;
+  };
+  const flag = (k, d) => {
+    const v = setting(k, d);
+    return v === false || v === "false" ? false : v === true || v === "true" ? true : Boolean(v);
   };
   const timers = createTimers();
   const listeners2 = [];
@@ -5941,7 +8758,7 @@ function mountBoardView({
     return node;
   };
   const svg = (cls, parent) => {
-    const node = doc.createElementNS(SVG_NS2, "svg");
+    const node = doc.createElementNS(SVG_NS3, "svg");
     node.setAttribute("class", cls);
     if (node.classList && !node.classList.contains(cls)) node.className = cls;
     parent?.append(node);
@@ -5982,6 +8799,22 @@ function mountBoardView({
   let linkMode = setting("graph-links", "all");
   let selection = { items: [], edge: null, link: null };
   let liveRects = null;
+  let grown = /* @__PURE__ */ new Set();
+  let tier = "detail";
+  let bgPattern;
+  let bgTone;
+  let bgOverride = false;
+  let focusOn = false;
+  let focusKey = null;
+  let presentSet = null;
+  let sendPending = null;
+  let menuCtx = null;
+  let lastPayload = null;
+  let lastPointer = null;
+  let backVisible = false;
+  let badgeTimer = null;
+  const badgeCache = /* @__PURE__ */ new Map();
+  const badgePending = /* @__PURE__ */ new Set();
   let resumeTimer = null;
   let settleTimer = null;
   let searchMatches = [];
@@ -5991,7 +8824,7 @@ function mountBoardView({
   };
   let routeOff = () => {
   };
-  const dirty = { viewport: false, items: /* @__PURE__ */ new Set(), edges: /* @__PURE__ */ new Set(), structural: false, all: true, selection: false, links: false, ctx: false };
+  const dirty = { viewport: false, items: /* @__PURE__ */ new Set(), edges: /* @__PURE__ */ new Set(), structural: false, all: true, selection: false, links: false, ctx: false, minimap: false };
   const board = () => session.board;
   const rects = () => session.rects || worldRects(board());
   const effectiveRects = () => {
@@ -6014,11 +8847,26 @@ function mountBoardView({
     timers,
     onEditChange: (uid) => {
       root.classList.toggle("pxd-root--editing", Boolean(uid));
+      if (!uid && grown.size) {
+        liveRects = null;
+        resetGrown();
+      }
+    },
+    onEditResize: (uid, h) => {
+      const r = board() && rects().get(uid);
+      if (disposed || !r) return;
+      liveRects = /* @__PURE__ */ new Map();
+      if (h > r.h) liveRects.set(uid, { ...r, h });
+      previewFit([uid]);
     },
     onOpenBoard: (uid) => {
       void openBoard(uid);
     },
-    onRenameBoard: (uid, title) => session.renameBoard?.(uid, title)
+    onRenameBoard: (uid, title) => session.renameBoard?.(uid, title),
+    onBadgeClick: (uid) => {
+      ctl.select([uid]);
+      panel.open("related");
+    }
   });
   const edgesR = createEdgeLayer({
     doc,
@@ -6062,17 +8910,119 @@ function mountBoardView({
   const centerOn = (worldPoint) => {
     setViewport({ x: size.width / 2 - worldPoint.x * vp.zoom, y: size.height / 2 - worldPoint.y * vp.zoom, zoom: vp.zoom });
   };
+  const mapThreshold = () => {
+    const n = Number(setting("map-zoom", "0.45"));
+    return Number.isFinite(n) && n > 0 ? n : 0.45;
+  };
+  const paintTier = () => {
+    root.classList.toggle("pxd-lod-map", tier !== "detail");
+    root.classList.toggle("pxd-lod-overview", tier === "overview");
+    const f = lodFonts(vp.zoom);
+    root.style.setProperty("--pxd-map-font", `${f.map}px`);
+    root.style.setProperty("--pxd-ui", String(f.ui));
+    root.style.setProperty("--pxd-overview-font", `${f.section}px`);
+    itemsR.setLod(tier, vp.zoom);
+  };
   const applyLod = () => {
-    const z = vp.zoom;
-    const lod = lodForZoom(z);
-    root.classList.toggle("pxd-lod-map", lod === "map");
-    root.style.setProperty("--pxd-map-font", `${Math.min(42, Math.max(14, 13 / z))}px`);
-    root.style.setProperty("--pxd-ui", String(Math.min(4, Math.max(1, 1 / z))));
-    itemsR.setLod(lod, z);
+    tier = lodTier(vp.zoom, tier, { threshold: mapThreshold() });
+    paintTier();
   };
   const scheduleContent = () => {
     if (disposed || gesturing || !board()) return;
-    itemsR.scheduleContent({ visibleRect: visibleWorldRect(vp, size, CULL_MARGIN), zoom: vp.zoom });
+    itemsR.scheduleContent({ visibleRect: visibleWorldRect(vp, size, CULL_MARGIN), zoom: vp.zoom, tier });
+  };
+  const updateBackToContent = () => {
+    if (disposed) return;
+    let show = false;
+    if (size.width && size.height) {
+      const r = rects();
+      if (r.size) {
+        const view2 = visibleWorldRect(vp, size, 0);
+        show = true;
+        for (const rect of r.values()) if (rectsIntersect(rect, view2)) {
+          show = false;
+          break;
+        }
+      }
+    }
+    if (show === backVisible) return;
+    backVisible = show;
+    chrome.backToContent.setVisible(show);
+  };
+  const badgeKeyOf = (item) => item.target.kind === "page" ? `page:${item.target.title}` : `uid:${item.target.uid || item.uid}`;
+  const badgeTargetOf = (item) => item.target.kind === "page" ? { kind: "page", title: item.target.title } : { kind: "block", uid: item.target.uid || item.uid };
+  const visibleBadgeItems = () => {
+    const b = board();
+    if (!b) return [];
+    const view2 = visibleWorldRect(vp, size, 0);
+    const r = rects();
+    const out = [];
+    for (const item of b.items.values()) {
+      if (out.length >= BADGE_MAX) break;
+      if (item.type !== "card" || item.kind === "board" || item.kind === "image") continue;
+      const rect = r.get(item.uid);
+      if (rect && rectsIntersect(rect, view2)) out.push(item);
+    }
+    return out;
+  };
+  const applyBadges = () => {
+    if (disposed) return;
+    const map = /* @__PURE__ */ new Map();
+    for (const item of visibleBadgeItems()) {
+      const hit = badgeCache.get(badgeKeyOf(item));
+      if (hit) map.set(item.uid, hit.stats);
+    }
+    itemsR.setBadges(map);
+  };
+  const refreshBadges = () => {
+    if (disposed || gesturing || !board()) return;
+    itemsR.setShowBadges(flag("show-card-badges", true));
+    if (!flag("show-card-badges", true) || tier !== "detail" || typeof host?.cardStats !== "function") return;
+    const items = visibleBadgeItems();
+    const now2 = Date.now();
+    const misses = [];
+    const seen = /* @__PURE__ */ new Set();
+    for (const item of items) {
+      const key = badgeKeyOf(item);
+      const hit = badgeCache.get(key);
+      if (hit && now2 - hit.at < BADGE_TTL_MS || seen.has(key) || badgePending.has(key)) continue;
+      seen.add(key);
+      misses.push({ key, target: badgeTargetOf(item) });
+    }
+    if (!misses.length) {
+      applyBadges();
+      return;
+    }
+    for (const m of misses) badgePending.add(m.key);
+    const runChunk = (list) => {
+      if (disposed) return;
+      const chunk = list.slice(0, BADGE_CHUNK);
+      const rest = list.slice(BADGE_CHUNK);
+      let res;
+      try {
+        res = host.cardStats(chunk.map((m) => m.target), { boardUid });
+      } catch {
+        res = void 0;
+      }
+      const at = Date.now();
+      for (const m of chunk) {
+        badgePending.delete(m.key);
+        if (res === void 0) continue;
+        const stats = res instanceof Map ? res.get(m.key) : res?.[m.key];
+        badgeCache.set(m.key, { at, stats: stats || { refs: 0, boards: 0, open: 0, done: 0 } });
+      }
+      applyBadges();
+      if (rest.length) timers.idle(() => runChunk(rest));
+    };
+    timers.idle(() => runChunk(misses));
+  };
+  const scheduleBadges = (ms = 0) => {
+    if (disposed) return;
+    badgeTimer?.();
+    badgeTimer = timers.later(() => {
+      badgeTimer = null;
+      refreshBadges();
+    }, ms);
   };
   const settle = () => {
     settleTimer?.();
@@ -6085,6 +9035,8 @@ function mountBoardView({
       dirty.edges = new Set(board()?.edges.keys() || []);
       dirty.links = true;
       schedule();
+      updateBackToContent();
+      refreshBadges();
     }, RESUME_MS);
   };
   const selectedItems = () => selection.items.map((u) => board()?.items.get(u)).filter(Boolean);
@@ -6134,7 +9086,10 @@ function mountBoardView({
     }
     const items = selectedItems();
     if (!items.length) return chrome.ctx.hide();
-    if (items.length > 1) return chrome.ctx.show("cards", null, ctxAnchor);
+    if (items.length > 1) {
+      const model = { count: items.length, allPinned: items.every((i) => i.pinned), anyCollapsed: items.some((i) => i.type === "card" && i.collapsed) };
+      return chrome.ctx.show("cards", model, ctxAnchor);
+    }
     const it = items[0];
     return chrome.ctx.show(it.type === "section" ? "section" : it.type === "text" ? "text" : it.kind === "board" ? "board" : "card", it, ctxAnchor);
   };
@@ -6180,13 +9135,20 @@ function mountBoardView({
     return false;
   };
   const crumbList = Array.isArray(crumbs) ? crumbs : [];
-  const openBoard = async (uid) => {
+  const boardTargetOf = (uid) => {
     const item = board()?.items.get(uid);
-    if (!item || item.kind !== "board") return;
+    if (item?.kind === "board") return uid;
+    const ref = item ? item.kind === "block" ? item.target?.uid : null : uid;
+    if (!ref || typeof host?.blockString !== "function") return null;
+    return classifyString(host.blockString(ref)).kind === "board" ? ref : null;
+  };
+  const openBoard = async (uid) => {
+    const target = boardTargetOf(uid);
+    if (!target) return;
     if (itemsR.isEditing()) await exitEdit();
     if (disposed) return;
-    if (onOpenBoard) onOpenBoard(uid);
-    else host?.openBlock?.(uid);
+    if (onOpenBoard) onOpenBoard(target);
+    else host?.openBlock?.(target);
   };
   const goCrumb = async (index) => {
     if (itemsR.isEditing()) await exitEdit();
@@ -6200,11 +9162,541 @@ function mountBoardView({
     }
     return false;
   };
+  const toast = (message, undo = false) => chrome.toast.show({ message, action: undo ? { label: "Undo", run: () => session.undo?.() } : void 0 });
+  const lastSelected = () => selection.items[selection.items.length - 1] ?? null;
+  const viewCenterWorld = () => screenToWorld(vp, { x: size.width / 2, y: size.height / 2 });
+  const cardsIn = (uids) => {
+    const b = board();
+    const out = /* @__PURE__ */ new Set();
+    if (!b) return [];
+    for (const uid of uids) {
+      const it = b.items.get(uid);
+      if (!it) continue;
+      if (it.type === "card") out.add(uid);
+      else if (it.type === "section") {
+        for (const d of descendantsOf(b, uid)) if (b.items.get(d)?.type === "card") out.add(d);
+      }
+    }
+    return [...out];
+  };
+  const afterCreate = (label) => (res) => {
+    if (disposed) return;
+    const list = Array.isArray(res) ? res : [];
+    if (list.length) {
+      ctl.select(list);
+      toast(`${label} ${list.length} ${list.length === 1 ? "card" : "cards"}`, true);
+    }
+  };
+  const copyText = (text, message) => {
+    void writeClipboard({ text }).then((ok) => {
+      if (!disposed) toast(ok ? message : "Copy failed");
+    });
+  };
+  const openItem = (item) => {
+    if (!item) return;
+    if (item.kind === "board" || boardTargetOf(item.uid)) {
+      void openBoard(item.uid);
+      return;
+    }
+    if (item.target.kind === "page") {
+      const uid = host?.pageUid?.(item.target.title);
+      if (uid) {
+        if (host?.api?.ui?.mainWindow?.openPage) host.api.ui.mainWindow.openPage({ page: { uid } });
+        else host?.openBlock?.(uid);
+      }
+      return;
+    }
+    host?.openBlock?.(item.target.uid || item.uid);
+  };
+  const applyBackground = () => {
+    const b = board();
+    const own = b?.plexus;
+    const ownPattern = BOARD_PATTERNS.includes(own?.bg) ? own.bg : null;
+    const ownTone = BOARD_TONES.includes(own?.bgColor) ? own.bgColor : null;
+    const defPattern = setting("grid", "dots");
+    const defTone = setting("board-tone", "none");
+    const pattern = ownPattern ?? (BOARD_PATTERNS.includes(defPattern) ? defPattern : "dots");
+    const tone = ownTone ?? (BOARD_TONES.includes(defTone) ? defTone : null);
+    const override = ownPattern !== null || ownTone !== null;
+    if (pattern === bgPattern && tone === bgTone && override === bgOverride) return;
+    if (pattern !== bgPattern) {
+      grid.className = `pxd-grid pxd-grid--${pattern}`;
+      if (bgPattern === "grid") for (const v of ["--pxd-grid-major", "--pxd-grid-major-x", "--pxd-grid-major-y"]) grid.style.removeProperty?.(v);
+      bgPattern = pattern;
+      dirty.viewport = true;
+      schedule();
+    }
+    if (tone !== bgTone) {
+      if (bgTone) root.classList.remove(`pxd-bg-${bgTone}`);
+      if (tone) root.classList.add(`pxd-bg-${tone}`);
+      bgTone = tone;
+    }
+    bgOverride = override;
+    chrome.toolbar.setBackground({ pattern, tone, override });
+  };
+  const focusSetNow = () => {
+    const b = board();
+    if (presentSet) return presentSet;
+    if (!focusOn || !b || !selection.items.length) return null;
+    const sel = new Set(selection.items);
+    const set = new Set(sel);
+    for (const e of b.edges.values()) {
+      if (!e.valid) continue;
+      if (sel.has(e.from)) set.add(e.to);
+      if (sel.has(e.to)) set.add(e.from);
+    }
+    for (const l of session.links || []) {
+      if (sel.has(l.from)) set.add(l.to);
+      if (sel.has(l.to)) set.add(l.from);
+    }
+    return set;
+  };
+  const applyFocus = () => {
+    if (disposed) return;
+    const set = focusSetNow();
+    const key = set ? [...set].sort().join("|") : null;
+    root.classList.toggle("pxd-root--focus", Boolean(set) || focusOn);
+    chrome.toolbar.setFocus(focusOn);
+    if (key === focusKey) return;
+    focusKey = key;
+    itemsR.setFocus(set);
+    edgesR.setFocus(set);
+  };
+  const toggleFocus = () => {
+    if (focusOn) {
+      focusOn = false;
+      applyFocus();
+      return;
+    }
+    if (!selection.items.length) {
+      toast("Select a card to focus on it");
+      return;
+    }
+    focusOn = true;
+    applyFocus();
+  };
+  const exitFocus = () => {
+    if (!focusOn) return false;
+    focusOn = false;
+    applyFocus();
+    return true;
+  };
+  const setFolded = (uids, value) => {
+    const cards = cardsIn(uids);
+    if (cards.length) void session.setCollapsedMany?.(cards, value);
+  };
+  const foldSelection = () => {
+    const cards = cardsIn(selection.items);
+    if (!cards.length) return;
+    const b = board();
+    void session.setCollapsedMany?.(cards, cards.some((u) => !b.items.get(u).collapsed));
+  };
+  const alignSel = (mode, uids = selection.items) => {
+    const r = rects();
+    const b = board();
+    const list = uids.filter((uid) => !b?.items.get(uid)?.pinned).map((uid) => ({ uid, ...r.get(uid) })).filter((x) => Number.isFinite(x.x));
+    const moved = alignRects(list, mode).map((m) => ({ ...m, w: r.get(m.uid).w, h: r.get(m.uid).h }));
+    void session.commitRects?.(moved);
+  };
+  const distributeSel = (axis, uids = selection.items) => {
+    const r = rects();
+    const b = board();
+    const list = uids.filter((uid) => !b?.items.get(uid)?.pinned).map((uid) => ({ uid, ...r.get(uid) })).filter((x) => Number.isFinite(x.x));
+    const moved = distributeRects(list, axis).map((m) => ({ ...m, w: r.get(m.uid).w, h: r.get(m.uid).h }));
+    void session.commitRects?.(moved);
+  };
+  const wrapBoardSel = (uids = selection.items) => {
+    if (!uids.length) return;
+    Promise.resolve(session.wrapInBoard?.(uids)).then((uid) => {
+      if (uid) ctl.select([uid]);
+    }).catch(() => {
+    });
+  };
+  const writeEdgeToGraph = async () => {
+    if (!selection.edge) return;
+    const r = await session.writeToGraph?.(selection.edge);
+    chrome.toast.show({ message: r?.ok ? "Written to the graph" : `Not written: ${r?.reason || "unknown"}` });
+  };
+  const duplicate = (uids, { dx = 24, dy = 24, asRef = false } = {}) => {
+    if (!uids.length) return;
+    Promise.resolve(session.duplicateItems?.(uids, { dx, dy, asRef })).then(afterCreate("Duplicated")).catch(() => {
+    });
+  };
+  const expandOutline = (uid) => {
+    Promise.resolve(session.expandOutline?.(uid)).then((res) => {
+      if (disposed || !res || typeof res !== "object") return;
+      if (res.added > 0) toast(`Added ${res.added} ${res.added === 1 ? "card" : "cards"} as a mind map`, true);
+      else toast("Nothing to expand");
+    }).catch(() => {
+    });
+  };
+  const fitHeight = (uid) => {
+    const h = itemsR.measureContent(uid);
+    if (h) void session.fitToContent?.(uid, h);
+    else toast("Zoom in to measure the card");
+  };
+  const startSendTo = (uids = selection.items) => {
+    const list = uids.slice();
+    if (!list.length) return;
+    sendPending = list;
+    panel.open("boards");
+    toast(`Pick a board to send ${list.length} ${list.length === 1 ? "card" : "cards"} to`);
+  };
+  const finishSend = (uids, target) => {
+    Promise.resolve(session.sendToBoard?.(uids, target)).then((res) => {
+      if (disposed) return;
+      if (res) {
+        toast(`Added ${res.added} ${res.added === 1 ? "card" : "cards"} to ${res.title}`);
+        panel.close();
+      } else toast("Couldn't send the cards to that board");
+    }).catch(() => {
+    });
+  };
+  const weekDates = () => {
+    const d = /* @__PURE__ */ new Date();
+    const monday = d.getDate() - (d.getDay() + 6) % 7;
+    return Array.from({ length: 7 }, (_, i) => new Date(d.getFullYear(), d.getMonth(), monday + i));
+  };
+  const addDaily = (dates, at) => {
+    Promise.resolve(session.addDailyCards?.(dates, { x: at.x, y: at.y })).then((made) => {
+      if (disposed) return;
+      if (Array.isArray(made) && made.length) ctl.select(made);
+      else toast("Already on this board");
+    }).catch(() => {
+    });
+  };
+  const outline = () => {
+    const b = board();
+    const out = [];
+    if (!b) return out;
+    for (const uid of outlineOrder(b)) {
+      const it = b.items.get(uid);
+      if (!it || it.type !== "section") continue;
+      out.push({ uid, title: plainText(it.title || it.string, 80) || "Section", depth: it.depth, count: it.members.length, color: it.color || null });
+    }
+    return out;
+  };
+  const pastePoint = () => {
+    if (!size.width) measure();
+    return screenToWorld(vp, pointerInside && lastPointer ? lastPointer : { x: size.width / 2, y: size.height / 2 });
+  };
+  const doCopy = (uids) => {
+    const b = board();
+    if (!b || !uids.length) return;
+    const payload = copyPayload(b, uids, rects());
+    if (!payload.text) return;
+    lastPayload = payload;
+    void writeClipboard({ text: payload.text, mime: PLEXUS_MIME, data: payload.mime }).then((ok) => {
+      if (!disposed) toast(ok ? "Copied" : "Copy failed");
+    });
+  };
+  const pastePlexus = (data, { clone: clone2 = false } = {}, at = pastePoint()) => {
+    Promise.resolve(session.pasteItems?.(data, { x: at.x, y: at.y, mode: clone2 ? "clone" : "refs" })).then(afterCreate("Pasted")).catch(() => {
+    });
+  };
+  const pasteEntries = (entries, at = pastePoint()) => {
+    Promise.resolve(session.pasteText?.(entries, { x: at.x, y: at.y })).then(afterCreate("Pasted")).catch(() => {
+    });
+  };
+  const pasteFromMenu = async (at, clone2) => {
+    let text = null;
+    try {
+      text = await globalThis.navigator?.clipboard?.readText?.();
+    } catch {
+      text = null;
+    }
+    if (disposed) return;
+    if (lastPayload && (text == null || text === lastPayload.text)) {
+      let data = null;
+      try {
+        data = JSON.parse(lastPayload.mime);
+      } catch {
+        data = null;
+      }
+      if (data && Array.isArray(data.items)) {
+        pastePlexus(data, { clone: clone2 }, at);
+        return;
+      }
+    }
+    const entries = parsePastedText(text ?? "");
+    if (entries.length) pasteEntries(entries, at);
+    else toast("Nothing to paste");
+  };
+  const pasteImages = async (files, at = pastePoint()) => {
+    if (!files?.length) return;
+    if (typeof host?.uploadFile !== "function") {
+      toast("Image upload is not available here");
+      return;
+    }
+    const urls = [];
+    let failed = 0;
+    for (const file of files) {
+      try {
+        urls.push(await host.uploadFile(file));
+      } catch (err) {
+        if (err?.message === "upload-unavailable") {
+          if (!disposed) toast("Image upload is not available here");
+          return;
+        }
+        failed += 1;
+      }
+      if (disposed) return;
+    }
+    if (failed && !urls.length) {
+      toast("Couldn't upload the image");
+      return;
+    }
+    if (!urls.length) return;
+    const h = Number(setting("default-card-height", DEFAULT_SIZES.card.h)) || DEFAULT_SIZES.card.h;
+    const made = await Promise.resolve(session.addRefCards?.(stackAt(urls.map((u) => `![](${u})`), at.x, at.y, h))).catch(() => null);
+    if (disposed) return;
+    if (Array.isArray(made) && made.length) {
+      ctl.select(made);
+      toast(failed ? `Added ${made.length} of ${files.length} images` : `Added ${made.length} ${made.length === 1 ? "image" : "images"}`, true);
+    }
+  };
+  const menuContext = (kind, uid) => {
+    const b = board();
+    const item = uid ? b?.items.get(uid) : null;
+    switch (kind) {
+      case "canvas":
+        return { canPaste: true };
+      case "card":
+        return { item, isBoard: item?.kind === "board", collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS2.includes(item?.kind) };
+      case "section":
+        return { item, count: item?.members?.length ?? 0, fitOn: item?.autofit !== false, pinned: Boolean(item?.pinned) };
+      case "text":
+        return { item, pinned: Boolean(item?.pinned) };
+      case "edge": {
+        const e = uid ? b?.edges.get(uid) : null;
+        return { item: e, dir: e?.dir, route: e?.route, dash: e?.dash };
+      }
+      case "multi": {
+        const items = selection.items.map((u) => b?.items.get(u)).filter(Boolean);
+        return { count: items.length, allPinned: items.length > 0 && items.every((i) => i.pinned), anyCollapsed: items.some((i) => i.type === "card" && i.collapsed) };
+      }
+      default:
+        return {};
+    }
+  };
+  const openMenuAt = (kind, uid, client, world2) => {
+    if (!board()) return false;
+    const items = buildMenu(kind, menuContext(kind, uid));
+    const ok = menu.open({ x: client.x, y: client.y, items });
+    if (ok) menuCtx = { kind, uid, world: world2, selection: selection.items.slice() };
+    return ok;
+  };
+  const createAt = async (type, world2) => {
+    const d = DEFAULT_SIZES[type];
+    const at = { x: world2.x - d.w / 2, y: world2.y - d.h / 2 };
+    const uid = await (type === "text" ? actions.createText(at) : actions.createCard(at));
+    if (uid && !disposed) {
+      ctl.select([uid]);
+      void enterEdit(uid);
+    }
+  };
+  const onMenuPick = (id) => {
+    const b = board();
+    if (!b || disposed) return;
+    const mc = menuCtx || { kind: "canvas", uid: null, world: viewCenterWorld(), selection: [] };
+    const world2 = mc.world || viewCenterWorld();
+    const uids = mc.kind === "multi" ? selection.items.slice() : mc.uid && b.items.has(mc.uid) ? [mc.uid] : selection.items.slice();
+    const item = uids.length === 1 ? b.items.get(uids[0]) ?? null : null;
+    const edgeUid = mc.kind === "edge" ? mc.uid : selection.edge;
+    const at = id.indexOf(":");
+    const head = at < 0 ? id : id.slice(0, at);
+    const arg = at < 0 ? null : id.slice(at + 1);
+    switch (head) {
+      case "new-card":
+        void createAt("card", world2);
+        break;
+      case "new-text":
+        void createAt("text", world2);
+        break;
+      case "new-section": {
+        const d = DEFAULT_SIZES.section;
+        Promise.resolve(session.createSection?.({ rect: { x: world2.x - d.w / 2, y: world2.y - d.h / 2, w: d.w, h: d.h } })).then((uid) => {
+          if (uid && !disposed) ctl.select([uid]);
+        }).catch(() => {
+        });
+        break;
+      }
+      case "new-board": {
+        const d = DEFAULT_BOARD_CARD;
+        Promise.resolve(session.createBoard?.({ rect: { x: world2.x - d.w / 2, y: world2.y - d.h / 2, w: d.w, h: d.h } })).then((uid) => {
+          if (uid && !disposed) ctl.select([uid]);
+        }).catch(() => {
+        });
+        break;
+      }
+      case "paste":
+        void pasteFromMenu(world2, false);
+        break;
+      case "paste-clone":
+        void pasteFromMenu(world2, true);
+        break;
+      case "select-all":
+        ctl.select([...b.items.keys()]);
+        break;
+      case "fit-all":
+        fitAll();
+        break;
+      case "fold-all":
+        void session.collapseAll?.(true);
+        break;
+      case "unfold-all":
+        void session.collapseAll?.(false);
+        break;
+      case "add-today":
+        addDaily([/* @__PURE__ */ new Date()], world2);
+        break;
+      case "add-week":
+        addDaily(weekDates(), world2);
+        break;
+      case "background":
+        chrome.popover.open();
+        break;
+      case "export-svg":
+        void view.exportSvg({ download: true });
+        break;
+      case "copy-outline":
+        void view.copyOutline();
+        break;
+      case "edit":
+        if (item) {
+          if (item.kind === "board") itemsR.renameBoard(item.uid);
+          else void enterEdit(item.uid);
+        }
+        break;
+      case "open":
+        openItem(item);
+        break;
+      case "open-sidebar":
+        openItemInSidebar(item);
+        break;
+      case "copy":
+        doCopy(uids);
+        break;
+      case "copy-ref":
+        if (item) copyText(`((${item.uid}))`, "Reference copied");
+        break;
+      case "copy-link":
+        if (item) copyText(semanticRef(item), "Link copied");
+        break;
+      case "duplicate":
+        duplicate(uids);
+        break;
+      case "duplicate-ref":
+        duplicate(uids, { asRef: true });
+        break;
+      case "color": {
+        const target = mc.kind === "edge" && edgeUid ? [edgeUid] : uids;
+        if (target.length) void session.setColor?.(target, arg === "none" ? null : arg);
+        break;
+      }
+      case "fold":
+        setFolded(uids, true);
+        break;
+      case "unfold":
+        setFolded(uids, false);
+        break;
+      case "fit-height":
+        if (item) fitHeight(item.uid);
+        break;
+      case "reset-size":
+        void session.resetSize?.(uids);
+        break;
+      case "pin":
+        void session.setPinned?.(uids, true);
+        break;
+      case "unpin":
+        void session.setPinned?.(uids, false);
+        break;
+      case "mind-map":
+        if (item) expandOutline(item.uid);
+        break;
+      case "send-to":
+        startSendTo(uids);
+        break;
+      case "related":
+        panel.open("related");
+        break;
+      case "delete":
+      case "delete-frame":
+        ctl.deleteSelection(false);
+        break;
+      case "delete-contents":
+        ctl.deleteSelection(true);
+        break;
+      case "rename":
+        if (item) itemsR.renameSection(item.uid);
+        break;
+      case "select-contents":
+        if (item?.members?.length) ctl.select(item.members);
+        break;
+      case "fit-section":
+        if (item) void session.fitSection?.(item.uid);
+        break;
+      case "toggle-fit":
+        if (item) void session.setFit?.(item.uid, item.autofit === false);
+        break;
+      case "tidy":
+        void session.tidyItems?.(mc.kind === "board-menu" ? b.roots : uids, arg);
+        break;
+      case "fold-all-in":
+        if (item) void session.collapseAll?.(true, { within: item.uid });
+        break;
+      case "unfold-all-in":
+        if (item) void session.collapseAll?.(false, { within: item.uid });
+        break;
+      case "size":
+        if (item) void session.setFontSize?.(item.uid, Number(arg));
+        break;
+      case "dir":
+        if (edgeUid) void session.updateEdge?.(edgeUid, { dir: arg });
+        break;
+      case "route":
+        if (edgeUid) void session.updateEdge?.(edgeUid, { route: arg });
+        break;
+      case "dash":
+        if (edgeUid) void session.updateEdge?.(edgeUid, { dash: arg });
+        break;
+      case "flip":
+        if (edgeUid) void session.flipEdge?.(edgeUid);
+        break;
+      case "label":
+        if (edgeUid) edgesR.editLabel(edgeUid);
+        break;
+      case "notes":
+        if (edgeUid) host?.openInSidebar?.(edgeUid, "block");
+        break;
+      case "write-to-graph":
+        void writeEdgeToGraph();
+        break;
+      case "align":
+        alignSel(arg, uids);
+        break;
+      case "distribute":
+        distributeSel(arg, uids);
+        break;
+      case "same-size":
+        if (uids.length) void session.sameSize?.(uids, uids[uids.length - 1], arg);
+        break;
+      case "wrap-section":
+        if (uids.length) void session.wrapInSection?.(uids);
+        break;
+      case "wrap-board":
+        wrapBoardSel(uids);
+        break;
+      default:
+        break;
+    }
+  };
   const chrome = createChrome({
     doc,
     root,
     version,
-    settings,
+    settings: settingsProxy,
     timers,
     crumbs: crumbList,
     on: {
@@ -6219,13 +9711,7 @@ function mountBoardView({
       crumb: (index) => {
         void goCrumb(index);
       },
-      wrapBoard: () => {
-        if (!selection.items.length) return;
-        Promise.resolve(session.wrapInBoard?.(selection.items)).then((uid) => {
-          if (uid) ctl.select([uid]);
-        }).catch(() => {
-        });
-      },
+      wrapBoard: () => wrapBoardSel(),
       setTool: (tool, lock) => ctl.setTool(tool, lock),
       togglePanel: () => panel.toggle(),
       cycleLinks: () => cycleLinks(),
@@ -6283,11 +9769,7 @@ function mountBoardView({
       notes: () => {
         if (selection.edge) host?.openInSidebar?.(selection.edge, "block");
       },
-      writeToGraph: async () => {
-        if (!selection.edge) return;
-        const r = await session.writeToGraph?.(selection.edge);
-        chrome.toast.show({ message: r?.ok ? "Written to the graph" : `Not written: ${r?.reason || "unknown"}` });
-      },
+      writeToGraph: () => writeEdgeToGraph(),
       pinLink: () => {
         const link = (session.links || []).find((l) => l.key === selection.link);
         if (link) Promise.resolve(session.pinLink?.(link)).then((uid) => {
@@ -6296,18 +9778,8 @@ function mountBoardView({
         });
       },
       openSource: (uid) => host?.openInSidebar?.(uid, "block"),
-      align: (mode) => {
-        const r = rects();
-        const list = selection.items.map((uid) => ({ uid, ...r.get(uid) })).filter((x) => Number.isFinite(x.x));
-        const moved = alignRects(list, mode).map((m) => ({ ...m, w: r.get(m.uid).w, h: r.get(m.uid).h }));
-        void session.commitRects?.(moved);
-      },
-      distribute: (axis) => {
-        const r = rects();
-        const list = selection.items.map((uid) => ({ uid, ...r.get(uid) })).filter((x) => Number.isFinite(x.x));
-        const moved = distributeRects(list, axis).map((m) => ({ ...m, w: r.get(m.uid).w, h: r.get(m.uid).h }));
-        void session.commitRects?.(moved);
-      },
+      align: (mode) => alignSel(mode),
+      distribute: (axis) => distributeSel(axis),
       wrap: () => {
         if (selection.items.length) void session.wrapInSection?.(selection.items);
       },
@@ -6319,6 +9791,60 @@ function mountBoardView({
           root.focus({ preventScroll: true });
         } catch {
         }
+      },
+      // 1.2
+      pin: (on) => {
+        if (selection.items.length) void session.setPinned?.(selection.items, Boolean(on));
+      },
+      fitHeight: () => {
+        const it = singleItem();
+        if (it) fitHeight(it.uid);
+      },
+      copyRef: () => {
+        const it = singleItem();
+        if (it) copyText(`((${it.uid}))`, "Reference copied");
+      },
+      duplicate: () => duplicate(selection.items),
+      sendTo: () => startSendTo(),
+      expandOutline: () => {
+        const it = singleItem();
+        if (it) expandOutline(it.uid);
+      },
+      fitSection: () => {
+        const it = singleItem();
+        if (it) void session.fitSection?.(it.uid);
+      },
+      toggleFit: () => {
+        const it = singleItem();
+        if (it) void session.setFit?.(it.uid, it.autofit === false);
+      },
+      tidy: (mode) => {
+        if (selection.items.length) void session.tidyItems?.(selection.items, mode);
+      },
+      foldAll: (value) => {
+        const it = singleItem();
+        if (it) void session.collapseAll?.(Boolean(value), { within: it.uid });
+      },
+      fold: (value) => setFolded(selection.items, Boolean(value)),
+      sameSize: (mode) => {
+        if (selection.items.length) void session.sameSize?.(selection.items, lastSelected(), mode);
+      },
+      toggleFocus: () => toggleFocus(),
+      present: () => startPresent(),
+      openMore: ({ x, y } = {}) => {
+        openMenuAt("board-menu", null, { x: x ?? 0, y: y ?? 0 }, viewCenterWorld());
+      },
+      backToContent: () => fitAll(),
+      setBackground: (patch) => {
+        Promise.resolve(session.setBoardBackground?.(patch)).then((ok) => {
+          if (ok === false && !disposed) toast("This board can't store a background");
+        }).catch(() => {
+        });
+      },
+      useBackgroundAsDefault: () => {
+        if (typeof onSetDefaults !== "function") return;
+        onSetDefaults({ grid: bgPattern, "board-tone": bgTone || "none" });
+        toast("Saved as the default background");
       }
     }
   });
@@ -6331,12 +9857,62 @@ function mountBoardView({
       addBeside: (string) => addStringsBeside([string]),
       addMany: (strings) => addStringsBeside(strings),
       isOnBoard,
-      opened: (open) => chrome.toolbar.setPanel(open)
+      opened: (open) => {
+        chrome.toolbar.setPanel(open);
+        if (!open) sendPending = null;
+      },
+      listBoards: () => Promise.resolve(host?.listBoards?.()).then((rows) => rows || []),
+      openBoardByUid: (uid) => {
+        if (sendPending) {
+          const list = sendPending;
+          sendPending = null;
+          finishSend(list, uid);
+          return;
+        }
+        host?.openBlock?.(uid);
+      },
+      addBoardCard: (uid) => addStringsBeside([`((${uid}))`]),
+      getOutline: () => outline(),
+      outlineClick: (uid) => {
+        fitSelection([uid]);
+        ctl.select([uid]);
+      }
     }
   });
+  const menu = createMenu({ doc, root, on: { pick: (id) => onMenuPick(id), closed: () => {
+    menuCtx = null;
+  } } });
+  const quicklook = createQuickLook({
+    doc,
+    root,
+    host,
+    timers,
+    on: {
+      getRefCount: (item) => badgeCache.get(badgeKeyOf(item))?.stats?.refs
+    }
+  });
+  const presenter = createPresenter({
+    doc,
+    root,
+    timers,
+    on: {
+      step: (s) => {
+        presentSet = s.members;
+        fitTo(s.rect, { maxZoom: 1.2 });
+        applyFocus();
+      },
+      exit: () => {
+        presentSet = null;
+        applyFocus();
+      }
+    }
+  });
+  const startPresent = () => {
+    quicklook.close();
+    if (!presenter.start(board(), rects())) toast("Nothing to present");
+  };
   chrome.minimap.setVisible(setting("show-minimap", true) !== false);
   chrome.toolbar.setLinkMode(linkMode);
-  grid.className = `pxd-grid pxd-grid--${setting("grid", "dots")}`;
   const cycleLinks = () => {
     linkMode = LINK_MODES2[(LINK_MODES2.indexOf(linkMode) + 1) % LINK_MODES2.length];
     chrome.toolbar.setLinkMode(linkMode);
@@ -6367,7 +9943,7 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
   };
   const enterEdit = async (uid) => {
     ctl.select([uid]);
-    if (lodForZoom(vp.zoom) === "map") {
+    if (tier !== "detail") {
       fitSelection([uid]);
       applyLod();
     }
@@ -6451,6 +10027,24 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
     doc.addEventListener("pointermove", onHeightMove, true);
     doc.addEventListener("pointerup", onHeightUp, true);
   });
+  const resetGrown = () => {
+    if (!grown.size) return;
+    const ids = [...grown];
+    grown = /* @__PURE__ */ new Set();
+    itemsR.resetRects(rects(), ids);
+  };
+  const previewFit = (touched, { parentOf, skip } = {}) => {
+    const b = board();
+    if (!b || !flag("auto-fit-sections", true)) return;
+    const plan = touched.length ? sectionFitPlan(b, effectiveRects(), touched, { parentOf, skip }) : [];
+    const next = new Set(plan.map((p) => p.uid));
+    const stale = [...grown].filter((u) => !next.has(u));
+    if (stale.length) itemsR.resetRects(rects(), stale);
+    const live = itemsR.previewSectionRects(plan.map(({ uid, rect }) => ({ uid, x: rect.x, y: rect.y, w: rect.w, h: rect.h })));
+    if (!liveRects) liveRects = /* @__PURE__ */ new Map();
+    for (const [uid, rect] of live) liveRects.set(uid, rect);
+    grown = next;
+  };
   const actions = {
     board,
     rects,
@@ -6480,6 +10074,7 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
         resumeTimer = null;
         itemsR.setPaused(true);
         chrome.ctx.hide();
+        menu.close();
       } else {
         if (info?.moved) {
           suppressClick = true;
@@ -6490,6 +10085,7 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
           }, 0);
         }
         liveRects = null;
+        resetGrown();
         resumeTimer = timers.later(() => {
           resumeTimer = null;
           itemsR.setPaused(false);
@@ -6498,6 +10094,8 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
           vpStore.set(boardUid, vp);
           dirty.selection = true;
           schedule();
+          updateBackToContent();
+          refreshBadges();
         }, RESUME_MS);
       }
     },
@@ -6509,17 +10107,58 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
       liveRects = itemsR.previewMove(uids, dx, dy, b, rects());
       const set = new Set(uids);
       for (const u of uids) for (const d of descendantsOf(b, u)) set.add(d);
+      const top = new Set(uids);
+      const eff = effectiveRects();
+      previewFit(uids, {
+        parentOf: (u) => top.has(u) && eff.get(u) ? containerAt(b, center(eff.get(u)), { exclude: set, rects: eff }) : b.items.get(u)?.parentUid
+      });
+      for (const u of grown) set.add(u);
       const linkKeys = new Set((session.links || []).filter((l) => set.has(l.from) || set.has(l.to)).map((l) => l.key));
       edgesR.update({ board: b, edgeUids: edgesTouching(b, set), rects: effectiveRects(), zoom: vp.zoom, linkKeys, links: session.links || [] });
+      dirty.minimap = true;
+      schedule();
     },
     previewRects: (list) => {
       const b = board();
       if (!b) return;
       liveRects = itemsR.previewRects(list);
       const set = new Set(list.map((r) => r.uid));
+      previewFit(list.map((r) => r.uid), { skip: new Set(list.filter((r) => b.items.get(r.uid)?.type === "section").map((r) => r.uid)) });
+      for (const u of grown) set.add(u);
       const linkKeys = new Set((session.links || []).filter((l) => set.has(l.from) || set.has(l.to)).map((l) => l.key));
       edgesR.update({ board: b, edgeUids: edgesTouching(b, set), rects: effectiveRects(), zoom: vp.zoom, linkKeys, links: session.links || [] });
+      dirty.minimap = true;
+      schedule();
     },
+    cancelPreview: () => resetGrown(),
+    showGhosts: (list) => edgesR.setGhosts(list),
+    duplicateItems: (uids, opts) => duplicate(uids, opts),
+    openMenu: ({ kind, uid, screen, world: world2 }) => {
+      const at = screen || { x: 0, y: 0 };
+      return openMenuAt(kind, uid, { x: rootRect.left + at.x, y: rootRect.top + at.y }, world2 || screenToWorld(vp, at));
+    },
+    foldSelection,
+    toggleFocus,
+    exitFocus,
+    quickLook: () => {
+      if (quicklook.isOpen()) {
+        quicklook.close();
+        return;
+      }
+      const uid = lastSelected();
+      const it = uid ? board()?.items.get(uid) : null;
+      if (it && it.type !== "section") quicklook.open(it);
+    },
+    closeQuickLook: () => quicklook.close(),
+    present: () => startPresent(),
+    presentActive: () => presenter.isActive(),
+    presentNext: () => presenter.next(),
+    presentPrev: () => presenter.prev(),
+    exitPresent: () => presenter.stop(),
+    expandOutline: (uid) => expandOutline(uid),
+    fitHeight: (uid) => fitHeight(uid),
+    fitSection: (uid) => session.fitSection?.(uid),
+    resetSize: (uids) => session.resetSize?.(uids),
     showTempWire: (spec) => edgesR.setTempWire(spec, rects(), vp.zoom),
     commitMove: (uids, dx, dy) => session.commitMove?.(uids, dx, dy),
     commitRects: (list) => session.commitRects?.(list),
@@ -6542,6 +10181,7 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
       chrome.toast.show({ message: `Moved into ${res.title}`, action: { label: "Undo", run: () => res.undo() } });
     },
     openBoard: (uid) => openBoard(uid),
+    isBoardCard: (uid) => Boolean(boardTargetOf(uid)),
     popBoard,
     wrapInSection: (uids) => session.wrapInSection?.(uids),
     deleteItems: (uids, opts) => session.deleteItems?.(uids, opts),
@@ -6719,7 +10359,17 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
     }
   }, { passive: false });
   listen(root, "contextmenu", (event) => {
-    if (!event.target?.closest?.(".pxd-chrome")) event.stopPropagation();
+    if (event.target?.closest?.(".pxd-chrome")) return;
+    event.stopPropagation();
+    if (event.defaultPrevented) return;
+    const native = event.target?.closest?.(NATIVE_MENU_TARGETS);
+    if (native && native.closest?.(".pxd-item__body")) return;
+    measure();
+    const handled = ctl.handle(normalize(event, "contextmenu"));
+    if (handled) event.preventDefault();
+  });
+  listen(root, "pointermove", (event) => {
+    lastPointer = { x: (event.clientX || 0) - rootRect.left, y: (event.clientY || 0) - rootRect.top };
   });
   listen(root, "pointerenter", () => {
     pointerInside = true;
@@ -6748,10 +10398,15 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
     event.preventDefault();
     event.stopPropagation();
     measure();
+    const p = screenToWorld(vp, { x: event.clientX - rootRect.left, y: event.clientY - rootRect.top });
+    const files = filesFromDataTransfer(event.dataTransfer);
+    if (files.length) {
+      void pasteImages(files, p);
+      return;
+    }
     const resolveUid = (u) => host?.cardStringForUid ? host.cardStringForUid(u) : `((${u}))`;
     const list = parseDropPayload(event.dataTransfer, { resolveUid });
     if (!list.length) return;
-    const p = screenToWorld(vp, { x: event.clientX - rootRect.left, y: event.clientY - rootRect.top });
     const w = Number(setting("default-card-width", DEFAULT_SIZES.card.w)) || DEFAULT_SIZES.card.w;
     const h = Number(setting("default-card-height", DEFAULT_SIZES.card.h)) || DEFAULT_SIZES.card.h;
     const made = session.addRefCards?.(stackAt(list.map((x) => x.string), p.x - w / 2, p.y - h / 2, h));
@@ -6762,6 +10417,15 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
   });
   const ownsKeyboard = () => pointerInside || isFullscreen || root.contains?.(doc.activeElement);
   const onKeyDown = (event) => {
+    if (menu.isOpen()) return;
+    if (event.key === "Escape" && chrome.popover.isOpen()) {
+      chrome.popover.close();
+      event.preventDefault();
+      event.stopPropagation();
+      return;
+    }
+    if (quicklook.isOpen() && event.key !== "Escape" && String(event.key).toLowerCase() !== "q") return;
+    if (presenter.isActive() && !["Escape", "ArrowRight", "ArrowLeft", "ArrowDown", "ArrowUp", "PageDown", "PageUp", " ", "p", "P"].includes(event.key)) return;
     const inputFocused = isTextEntryTarget(event.target) || isTextEntryTarget(doc.activeElement);
     if (inputFocused) {
       const inside2 = root.contains?.(event.target) || root.contains?.(doc.activeElement);
@@ -6773,7 +10437,9 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
       itemsR.recoverFocus();
       return;
     }
-    const handled = ctl.handle({ type: "keydown", key: event.key, code: event.code, shift: event.shiftKey, alt: event.altKey, meta: event.metaKey, ctrl: event.ctrlKey, inputFocused });
+    const focused = doc.activeElement;
+    const tabOwned = Boolean(focused) && (focused === root || Boolean(root.contains?.(focused)) && !focused.closest?.(".pxd-chrome"));
+    const handled = ctl.handle({ type: "keydown", key: event.key, code: event.code, shift: event.shiftKey, alt: event.altKey, meta: event.metaKey, ctrl: event.ctrlKey, inputFocused, tabOwned });
     if (handled) {
       event.preventDefault();
       event.stopPropagation();
@@ -6784,6 +10450,39 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
   };
   listen(win, "keydown", onKeyDown, true);
   listen(win, "keyup", onKeyUp, true);
+  const clip = createClipboardIO({
+    doc,
+    root,
+    ownsKeyboard,
+    isTextEntry: isTextEntryTarget,
+    on: {
+      getPayload: ({ cut = false } = {}) => {
+        const b = board();
+        if (!b || !selection.items.length) return null;
+        const payload = copyPayload(b, selection.items, rects());
+        if (!payload.text) return null;
+        if (cut) {
+          const snapshot = session.snapshotItems?.(selection.items);
+          if (snapshot) {
+            try {
+              payload.mime = JSON.stringify({ ...JSON.parse(payload.mime), snapshot });
+            } catch {
+            }
+          }
+        }
+        lastPayload = payload;
+        return payload;
+      },
+      cutDone: () => {
+        ctl.deleteSelection(true);
+      },
+      pastePlexus: (data, opts) => pastePlexus(data, opts),
+      pasteText: (entries) => pasteEntries(entries),
+      pasteImages: (files) => {
+        void pasteImages(files);
+      }
+    }
+  });
   subs.push(session.on("change", ({ dirty: d, structural } = {}) => {
     if (disposed) return;
     const b = board();
@@ -6802,6 +10501,7 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
         else dirty.items.add(uid);
       }
     } else dirty.all = true;
+    if (!d || d.has?.(boardUid)) applyBackground();
     ctl.reconcile();
     dirty.selection = true;
     schedule();
@@ -6851,10 +10551,21 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
     }
     if (dirty.viewport) {
       world.style.transform = `translate(${vp.x}px, ${vp.y}px) scale(${vp.zoom})`;
-      const g = gridBackground(vp, setting("grid", "dots"));
+      const nextTier = lodTier(vp.zoom, tier, { threshold: mapThreshold() });
+      if (nextTier !== tier) {
+        tier = nextTier;
+        paintTier();
+      }
+      const g = gridBackground(vp, bgPattern);
       if (g) {
         grid.style.backgroundSize = `${g.size}px ${g.size}px`;
         grid.style.backgroundPosition = `${g.x}px ${g.y}px`;
+        if (bgPattern === "grid") {
+          const mod = (v) => (v % g.major + g.major) % g.major;
+          grid.style.setProperty("--pxd-grid-major", `${g.major}px`);
+          grid.style.setProperty("--pxd-grid-major-x", `${mod(vp.x)}px`);
+          grid.style.setProperty("--pxd-grid-major-y", `${mod(vp.y)}px`);
+        }
       }
       chrome.toolbar.setZoom(vp.zoom);
     }
@@ -6863,12 +10574,19 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
       edgesR.setSelection({ edge: selection.edge, link: selection.link });
       if (!gesturing && !itemsR.isEditing()) showCtx();
       else chrome.ctx.hide();
+      if (focusOn) applyFocus();
     } else if (dirty.viewport && chrome.ctx.isOpen()) {
       chrome.ctx.reposition();
     }
-    if (dirty.viewport || itemsChanged) chrome.minimap.update({ board: b, rects: r, vp, size });
-    if (itemsChanged && !gesturing) scheduleContent();
+    if (dirty.viewport || itemsChanged || dirty.minimap) chrome.minimap.update({ board: b, rects: effectiveRects(), vp, size });
+    if (itemsChanged && !gesturing) {
+      scheduleContent();
+      updateBackToContent();
+      panel.refreshOutline();
+      if (dirty.all || dirty.structural) scheduleBadges(50);
+    }
     if (searchMatches.length || root.classList.contains("pxd-root--searching")) panel.refreshMarks();
+    dirty.minimap = false;
     dirty.viewport = false;
     dirty.items = /* @__PURE__ */ new Set();
     dirty.edges = /* @__PURE__ */ new Set();
@@ -6890,11 +10608,16 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
     const r = b ? rects() : /* @__PURE__ */ new Map();
     vp = fitViewport(boundsOf([...r.values()]), size.width && size.height ? size : { width: 800, height: 560 }, { padding: 64, maxZoom: 1 });
   }
+  applyBackground();
   applyLod();
+  itemsR.setShowBadges(flag("show-card-badges", true));
   dirty.viewport = true;
   markAll();
   timers.later(() => {
-    if (!disposed) scheduleContent();
+    if (!disposed) {
+      scheduleContent();
+      updateBackToContent();
+    }
   }, 0);
   const view = {
     root,
@@ -6904,6 +10627,63 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
     },
     fit() {
       fitAll();
+    },
+    // Swap the settings object (feature.js calls this when a setting changes) and re-apply what depends on it.
+    setSettings(next) {
+      if (disposed) return;
+      const minimapBefore = setting("show-minimap", true) !== false;
+      settingsRef = next;
+      applyBackground();
+      applyLod();
+      const minimapNow = setting("show-minimap", true) !== false;
+      if (minimapNow !== minimapBefore) chrome.minimap.setVisible(minimapNow);
+      itemsR.setShowBadges(flag("show-card-badges", true));
+      scheduleContent();
+      scheduleBadges(0);
+      dirty.viewport = true;
+      schedule();
+    },
+    state() {
+      return {
+        zoom: vp.zoom,
+        lod: tier,
+        pattern: bgPattern,
+        tone: bgTone ?? null,
+        focus: focusOn,
+        present: presenter.isActive(),
+        selection: [...selection.items],
+        mounted: itemsR.mountedCount(),
+        menuOpen: menu.isOpen()
+      };
+    },
+    // Serializes the board to SVG text; with download it also offers the file through a temporary link.
+    async exportSvg({ download = true } = {}) {
+      const b = board();
+      if (!b) return "";
+      const text = boardToSvg(b, rects(), { dark: root.classList.contains("pxd-root--dark") });
+      if (download) {
+        try {
+          const blob = new Blob([text], { type: "image/svg+xml" });
+          const url = URL.createObjectURL(blob);
+          const a = doc.createElement("a");
+          a.href = url;
+          a.download = `${String(b.title || UNTITLED_BOARD).replace(/[\\/:*?"<>|]+/g, "-").trim() || "board"}.svg`;
+          doc.body.append(a);
+          a.click();
+          a.remove();
+          timers.later(() => URL.revokeObjectURL(url), 4e3);
+        } catch {
+        }
+      }
+      return text;
+    },
+    async copyOutline() {
+      const b = board();
+      if (!b) return "";
+      const text = boardToMarkdown(b, rects());
+      const ok = await writeClipboard({ text });
+      if (!disposed) toast(ok ? "Outline copied" : "Copy failed");
+      return text;
     },
     stats() {
       return { timers: timers.count(), listeners: listeners2.length + (captured ? 3 : 0), observers: observers.length, mounted: itemsR.mountedCount(), shells: itemsR.shellCount() };
@@ -6927,6 +10707,11 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
       resumeTimer?.();
       settleTimer?.();
       frameHandle?.();
+      badgeTimer?.();
+      menu.dispose();
+      quicklook.dispose();
+      presenter.dispose();
+      clip.dispose();
       itemsR.dispose();
       edgesR.dispose();
       panel.dispose();
@@ -6955,7 +10740,12 @@ var SETTING_IDS = Object.freeze({
   enableShortcuts: "enable-shortcuts",
   showVersionBadge: "show-version-badge",
   disableOnMobile: "disable-on-mobile",
-  collapseOutline: "collapse-outline"
+  collapseOutline: "collapse-outline",
+  boardTone: "board-tone",
+  mapZoom: "map-zoom",
+  autoFitSections: "auto-fit-sections",
+  spaceOut: "space-out",
+  showCardBadges: "show-card-badges"
 });
 var DEFAULTS = Object.freeze({
   [SETTING_IDS.enabled]: true,
@@ -6970,12 +10760,21 @@ var DEFAULTS = Object.freeze({
   [SETTING_IDS.enableShortcuts]: true,
   [SETTING_IDS.showVersionBadge]: true,
   [SETTING_IDS.disableOnMobile]: true,
-  [SETTING_IDS.collapseOutline]: true
+  [SETTING_IDS.collapseOutline]: true,
+  [SETTING_IDS.boardTone]: "none",
+  [SETTING_IDS.mapZoom]: "0.45",
+  [SETTING_IDS.autoFitSections]: true,
+  [SETTING_IDS.spaceOut]: false,
+  [SETTING_IDS.showCardBadges]: true
 });
+var BOARD_TONES2 = ["none", "paper", "gray", "red", "orange", "yellow", "green", "teal", "blue", "indigo", "purple", "pink"];
+var MAP_ZOOMS = ["0.3", "0.45", "0.6"];
 var ENUMS = Object.freeze({
   [SETTING_IDS.graphLinks]: ["off", "attributes", "all"],
   [SETTING_IDS.wheel]: ["pan", "zoom"],
-  [SETTING_IDS.grid]: ["dots", "lines", "plain"]
+  [SETTING_IDS.grid]: ["dots", "lines", "grid", "plain"],
+  [SETTING_IDS.boardTone]: BOARD_TONES2,
+  [SETTING_IDS.mapZoom]: MAP_ZOOMS
 });
 var NUMBERS = /* @__PURE__ */ new Set([SETTING_IDS.defaultCardWidth, SETTING_IDS.defaultCardHeight]);
 function settingsDefaults() {
@@ -6994,7 +10793,10 @@ function normalizeSetting(id, value) {
     const n = Number(value);
     return Number.isFinite(n) && n >= 40 ? n : fallback;
   }
-  if (ENUMS[id]) return ENUMS[id].includes(value) ? value : fallback;
+  if (ENUMS[id]) {
+    const text = typeof value === "number" ? String(value) : value;
+    return ENUMS[id].includes(text) ? text : fallback;
+  }
   return value;
 }
 function readSettings(extensionAPI) {
@@ -7066,7 +10868,12 @@ function createSettingsPanel() {
       selectRow(SETTING_IDS.wheel, "Mouse wheel", "What the mouse wheel does on the board. Pinch always zooms.", ["pan", "zoom"]),
       switchRow(SETTING_IDS.showMinimap, "Show minimap", "Show the minimap."),
       switchRow(SETTING_IDS.snapGuides, "Snap guides", "Align dragged cards to neighbours and show guides."),
-      selectRow(SETTING_IDS.grid, "Grid", "Board background.", ["dots", "lines", "plain"]),
+      selectRow(SETTING_IDS.grid, "Default board background: pattern", "Background pattern for boards that do not set their own. A board can override it from the Background button.", ["dots", "lines", "grid", "plain"]),
+      selectRow(SETTING_IDS.boardTone, "Default board background: tone", "Background tone for boards that do not set their own.", BOARD_TONES2),
+      selectRow(SETTING_IDS.mapZoom, "Map view below (zoom)", "Below this zoom level cards collapse to title-only tiles.", MAP_ZOOMS),
+      switchRow(SETTING_IDS.autoFitSections, "Auto-fit sections", "Grow a section to contain a card moved or resized past its edge."),
+      switchRow(SETTING_IDS.spaceOut, "Space out cards", "Push overlapping cards apart after a move."),
+      switchRow(SETTING_IDS.showCardBadges, "Show card badges", "Show reference, task and child counts on cards."),
       inputRow(SETTING_IDS.defaultCardWidth, "Default card width", "Width in pixels for new cards."),
       inputRow(SETTING_IDS.defaultCardHeight, "Default card height", "Height in pixels for new cards."),
       switchRow(SETTING_IDS.enableShortcuts, "Enable shortcuts", "Enable board keyboard shortcuts."),
@@ -7147,6 +10954,7 @@ async function installPlexusDiagram({
   const host = injectedHost;
   const acquireSession2 = injectedAcquire;
   let settings = readSettings(extensionAPI);
+  const liveSettings = { get: (id) => settings[id] };
   let stopped = false;
   const mounts = /* @__PURE__ */ new Map();
   const trusted = /* @__PURE__ */ new Set();
@@ -7273,8 +11081,28 @@ async function installPlexusDiagram({
       routeUid: rec.uid,
       autofocus,
       onOpenBoard: (child) => navigate(rec, [...rec.crumbs, { uid: child, title: boardTitle(host.blockString?.(child)) }]),
-      onCrumb: (index) => navigate(rec, rec.crumbs.slice(0, index + 1))
+      onCrumb: (index) => navigate(rec, rec.crumbs.slice(0, index + 1)),
+      onSetDefaults: (patch) => setDefaults(patch)
     });
+  }
+  async function setDefaults(patch) {
+    if (stopped || !patch || typeof patch !== "object") return;
+    for (const [id, value] of Object.entries(patch)) {
+      try {
+        await extensionAPI.settings?.set?.(id, value);
+      } catch (error) {
+        console.warn("[plexus-diagram] Could not save setting", id, error);
+      }
+      if (stopped) return;
+      settings = { ...settings, [id]: normalizeSetting(id, value) };
+    }
+    for (const rec of [...mounts.values()]) {
+      try {
+        if (typeof rec.view?.setSettings === "function") rec.view.setSettings(settings);
+      } catch (error) {
+        console.warn("[plexus-diagram] Settings propagation failed", error);
+      }
+    }
   }
   function watchRec(rec) {
     const session = rec.session;
@@ -7311,7 +11139,7 @@ async function installPlexusDiagram({
       }
       let session;
       try {
-        session = acquireSession2(target, { host, settings });
+        session = acquireSession2(target, { host, settings: liveSettings });
       } catch (error) {
         console.warn("[plexus-diagram] Could not open the nested board", error);
         return;
@@ -7371,7 +11199,7 @@ async function installPlexusDiagram({
     native.after(mountEl);
     mounts.set(native, rec);
     try {
-      rec.session = acquireSession2(currentUid(rec), { host, settings });
+      rec.session = acquireSession2(currentUid(rec), { host, settings: liveSettings });
       rec.fullscreen = settings[SETTING_IDS.fullscreenOnZoom] !== false && !routeLeftZoomedDiagram(uid);
       rec.view = mountRecView(rec);
       rec.off = watchRec(rec);
@@ -7521,7 +11349,7 @@ async function installPlexusDiagram({
       console.info("[plexus-diagram] Focus a {{[[diagram]]}} block first");
       return;
     }
-    const session = acquireSession2(uid, { host, settings });
+    const session = acquireSession2(uid, { host, settings: liveSettings });
     try {
       await session.enhance();
     } finally {
@@ -7533,7 +11361,7 @@ async function installPlexusDiagram({
   async function restoreCommand(context) {
     const uid = resolveBoardUid(context);
     if (!uid) return;
-    const session = acquireSession2(uid, { host, settings });
+    const session = acquireSession2(uid, { host, settings: liveSettings });
     try {
       await session.restoreNative();
     } finally {
@@ -7566,12 +11394,26 @@ async function installPlexusDiagram({
     const rec = recs.find((r) => r.native.isConnected !== false) || recs[0];
     if (rec) setFullscreen(rec, !rec.fullscreen);
   }
+  function targetView(context) {
+    const uid = resolveBoardUid(context);
+    const recs = [...mounts.values()].filter((rec2) => !uid || rec2.uid === uid);
+    const rec = recs.find((r) => r.native.isConnected !== false) || recs[0];
+    return rec?.view ?? null;
+  }
+  function exportSvgCommand(context) {
+    return targetView(context)?.exportSvg?.({ download: true });
+  }
+  function copyOutlineCommand(context) {
+    return targetView(context)?.copyOutline?.();
+  }
   async function registerCommands() {
     const commands = [
       ["Plexus: Enhance this diagram", enhanceCommand],
       ["Plexus: New whiteboard here", newWhiteboardCommand],
       ["Plexus: Restore native diagram", restoreCommand],
-      ["Plexus: Fullscreen this diagram", fullscreenCommand]
+      ["Plexus: Fullscreen this diagram", fullscreenCommand],
+      ["Plexus: Export board as SVG", exportSvgCommand],
+      ["Plexus: Copy board as text", copyOutlineCommand]
     ];
     for (const [label, fn] of commands) {
       const callback = (context) => {
@@ -7628,7 +11470,8 @@ async function installPlexusDiagram({
       current: currentUid(rec),
       crumbs: rec.crumbs.map((c) => c.uid),
       fullscreen: rec.fullscreen,
-      connected: rec.native.isConnected !== false && rec.mountEl.isConnected !== false
+      connected: rec.native.isConnected !== false && rec.mountEl.isConnected !== false,
+      state: rec.view?.state?.() ?? null
     }))
   };
   win.__plexusDiagram = api;

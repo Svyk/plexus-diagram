@@ -30,7 +30,7 @@ function pulled() {
   };
 }
 
-function harness({ vp = { x: 0, y: 0, zoom: 1 }, settings = {}, editing = null, canPop = false } = {}) {
+function harness({ vp = { x: 0, y: 0, zoom: 1 }, settings = {}, editing = null, canPop = false, extra = {} } = {}) {
   const board = buildBoard(pulled());
   const rects = worldRects(board);
   const calls = [];
@@ -82,6 +82,21 @@ function harness({ vp = { x: 0, y: 0, zoom: 1 }, settings = {}, editing = null, 
     setSpace: rec("setSpace"),
     fitAll: rec("fitAll"),
     fitSelection: rec("fitSelection"),
+    openMenu: rec("openMenu"),
+    showGhosts: rec("showGhosts"),
+    duplicateItems: rec("duplicateItems"),
+    cancelPreview: rec("cancelPreview"),
+    foldSelection: rec("foldSelection"),
+    toggleFocus: rec("toggleFocus"),
+    quickLook: rec("quickLook"),
+    present: rec("present"),
+    expandOutline: rec("expandOutline"),
+    presentNext: rec("presentNext"),
+    presentPrev: rec("presentPrev"),
+    fitHeight: rec("fitHeight"),
+    fitSection: rec("fitSection"),
+    resetSize: rec("resetSize"),
+    ...extra,
   };
   const ctl = createInteractions({ actions, settings: { get: (k) => settings[k] } });
   const named = (name) => calls.filter((c) => c[0] === name);
@@ -523,4 +538,427 @@ test("plain-object settings are honored as well as settings.get", () => {
   });
   ctl.handle(h.ev("wheel", { x: 100, y: 100 }, { deltaY: 30 }));
   assert.ok(calls[0].zoom !== 1, "wheel setting 'zoom' read from a plain object zooms");
+});
+
+const CARD = { kind: "item", uid: "cardAAAA1", part: "body" };
+const key = (h, k, extra = {}) => h.ctl.handle({ type: "keydown", key: k, ...extra });
+
+// ---------------------------------------------------------------- context menu
+test("contextmenu: selects the hit item, reports its kind and consumes the event", () => {
+  const h = harness();
+  const cases = [
+    [{ kind: "item", uid: "cardAAAA1", part: "body" }, "card"],
+    [{ kind: "item", uid: "boardGGGG7", part: "body" }, "card"],
+    [{ kind: "section-title", uid: "sectCCCC3" }, "section"],
+    [{ kind: "section-border", uid: "sectCCCC3" }, "section"],
+  ];
+  for (const [target, kind] of cases) {
+    assert.equal(h.ctl.handle(h.ev("contextmenu", { x: 5, y: 6 }, { target, button: 2 })), true);
+    const m = h.named("openMenu").at(-1)[1];
+    assert.equal(m.kind, kind);
+    assert.equal(m.uid, target.uid);
+    assert.deepEqual(m.selection, [target.uid]);
+    assert.deepEqual(h.ctl.getSelection().items, [target.uid]);
+  }
+  const m = h.named("openMenu").at(-1)[1];
+  assert.deepEqual(m.screen, { x: 5, y: 6 });
+  assert.deepEqual(m.world, { x: 5, y: 6 });
+});
+
+test("contextmenu: text items, edges, links and empty canvas", () => {
+  const h = harness();
+  h.board.items.get("cardBBBB2").type = "text";
+  h.ctl.handle(h.ev("contextmenu", { x: 0, y: 0 }, { target: { kind: "item", uid: "cardBBBB2", part: "body" } }));
+  assert.equal(h.named("openMenu").at(-1)[1].kind, "text");
+  h.ctl.handle(h.ev("contextmenu", { x: 0, y: 0 }, { target: { kind: "edge", uid: "edgeFFFF6" } }));
+  assert.equal(h.named("openMenu").at(-1)[1].kind, "edge");
+  assert.equal(h.ctl.getSelection().edge, "edgeFFFF6");
+  assert.deepEqual(h.ctl.getSelection().items, []);
+  h.ctl.handle(h.ev("contextmenu", { x: 0, y: 0 }, { target: { kind: "link", key: "k1" } }));
+  assert.equal(h.named("openMenu").at(-1)[1].kind, "link");
+  assert.equal(h.ctl.getSelection().link, "k1");
+  h.ctl.select(["cardAAAA1"]);
+  const sel = h.named("onSelection").length;
+  h.ctl.handle(h.ev("contextmenu", { x: 900, y: 900 }));
+  const m = h.named("openMenu").at(-1)[1];
+  assert.equal(m.kind, "canvas");
+  assert.equal(m.uid, null);
+  assert.equal(h.named("onSelection").length, sel, "canvas menu leaves the selection alone");
+});
+
+test("contextmenu: a hit inside a multi-selection keeps it and reports 'multi'; outside it replaces it", () => {
+  const h = harness();
+  h.ctl.select(["cardAAAA1", "cardBBBB2"]);
+  const sel = h.named("onSelection").length;
+  h.ctl.handle(h.ev("contextmenu", { x: 0, y: 0 }, { target: CARD }));
+  const m = h.named("openMenu").at(-1)[1];
+  assert.equal(m.kind, "multi");
+  assert.equal(m.uid, "cardAAAA1");
+  assert.deepEqual(m.selection, ["cardAAAA1", "cardBBBB2"]);
+  assert.equal(h.named("onSelection").length, sel, "selection untouched");
+  h.ctl.handle(h.ev("contextmenu", { x: 0, y: 0 }, { target: { kind: "section-title", uid: "sectCCCC3" } }));
+  assert.equal(h.named("openMenu").at(-1)[1].kind, "section");
+  assert.deepEqual(h.ctl.getSelection().items, ["sectCCCC3"]);
+});
+
+test("contextmenu: chrome is not handled; pointerdown button 2 still does nothing", () => {
+  const h = harness();
+  assert.equal(h.ctl.handle(h.ev("contextmenu", { x: 0, y: 0 }, { target: { kind: "chrome" } })), false);
+  assert.equal(h.named("openMenu").length, 0);
+  h.ctl.handle(h.ev("pointerdown", { x: 10, y: 10 }, { target: CARD, button: 2 }));
+  assert.equal(h.ctl.isGesturing(), false);
+  assert.deepEqual(h.ctl.getSelection().items, []);
+});
+
+// ---------------------------------------------------------------- duplicate
+test("alt-drag: ghosts preview, originals stay put, one duplicateItems on drop instead of commitMove", () => {
+  const h = harness();
+  h.ctl.handle(h.ev("pointerdown", { x: 10, y: 10 }, { target: CARD, alt: true }));
+  assert.equal(h.ctl.gestureKind(), "move");
+  h.ctl.handle(h.ev("pointermove", { x: 60, y: 30 }, { target: CARD, alt: true }));
+  h.ctl.handle(h.ev("pointermove", { x: 110, y: 50 }, { target: CARD, alt: true }));
+  assert.equal(h.named("previewMove").length, 0, "originals are not previewed");
+  assert.deepEqual(h.named("showGhosts").at(-1)[1], [{ x: 100, y: 40, w: 200, h: 100 }]);
+  h.ctl.handle(h.ev("pointerup", { x: 110, y: 50 }, { target: CARD, alt: true }));
+  assert.equal(h.named("commitMove").length, 0);
+  const dups = h.named("duplicateItems");
+  assert.equal(dups.length, 1);
+  assert.deepEqual(dups[0].slice(1), [["cardAAAA1"], { dx: 100, dy: 40, asRef: false }]);
+  assert.equal(h.named("showGhosts").at(-1)[1], null, "ghosts cleared at the end");
+  assert.deepEqual(h.ctl.getSelection().items, ["cardAAAA1"]);
+});
+
+test("alt+shift drag duplicates as references; a selected item stays selected instead of toggling", () => {
+  const h = harness();
+  h.ctl.select(["cardAAAA1", "cardBBBB2"]);
+  h.ctl.handle(h.ev("pointerdown", { x: 10, y: 10 }, { target: CARD, alt: true, shift: true }));
+  h.ctl.handle(h.ev("pointermove", { x: 60, y: 60 }, { target: CARD, alt: true, shift: true }));
+  assert.equal(h.named("showGhosts").at(-1)[1].length, 2);
+  h.ctl.handle(h.ev("pointerup", { x: 60, y: 60 }, { target: CARD, alt: true, shift: true }));
+  const d = h.named("duplicateItems")[0];
+  assert.deepEqual(d[1], ["cardAAAA1", "cardBBBB2"]);
+  assert.equal(d[2].asRef, true);
+});
+
+test("alt-click without movement behaves as a plain click; cancel clears ghosts without duplicating", () => {
+  const h = harness();
+  h.ctl.handle(h.ev("pointerdown", { x: 10, y: 10 }, { target: CARD, alt: true }));
+  h.ctl.handle(h.ev("pointerup", { x: 11, y: 11 }, { target: CARD, alt: true }));
+  assert.equal(h.named("duplicateItems").length, 0);
+  assert.equal(h.named("commitMove").length, 0);
+  assert.deepEqual(h.ctl.getSelection().items, ["cardAAAA1"]);
+  h.ctl.handle(h.ev("pointerdown", { x: 10, y: 10 }, { target: CARD, alt: true }));
+  h.ctl.handle(h.ev("pointermove", { x: 90, y: 90 }, { target: CARD, alt: true }));
+  h.ctl.handle({ type: "pointercancel" });
+  assert.equal(h.named("duplicateItems").length, 0);
+  assert.equal(h.named("showGhosts").at(-1)[1], null);
+  assert.equal(h.named("previewMove").length, 0);
+});
+
+test("alt-drag over a board card does not drop into it", () => {
+  const h = harness();
+  h.ctl.handle(h.ev("pointerdown", { x: 10, y: 10 }, { target: CARD, alt: true }));
+  h.ctl.handle(h.ev("pointermove", { x: 1400, y: 500 }, { target: CARD, alt: true }));
+  h.ctl.handle(h.ev("pointerup", { x: 1450, y: 520 }, { target: CARD, alt: true }));
+  assert.equal(h.named("moveIntoBoard").length, 0);
+  assert.equal(h.named("duplicateItems").length, 1);
+});
+
+test("Cmd/Ctrl+D duplicates the selection offset by 24; without a selection it is left to the browser", () => {
+  const h = harness();
+  assert.equal(key(h, "d", { meta: true }), false);
+  h.ctl.select(["cardAAAA1", "cardBBBB2"]);
+  assert.equal(key(h, "d", { meta: true }), true);
+  assert.equal(key(h, "D", { ctrl: true }), true);
+  const dups = h.named("duplicateItems");
+  assert.equal(dups.length, 2);
+  assert.deepEqual(dups[0].slice(1), [["cardAAAA1", "cardBBBB2"], { dx: 24, dy: 24, asRef: false }]);
+});
+
+// ---------------------------------------------------------------- keyboard
+test("Alt+Arrow selects the nearest same-level object; Alt+Shift+Arrow adds it; plain arrows with no selection are not consumed", () => {
+  const h = harness();
+  assert.equal(key(h, "ArrowRight"), false);
+  assert.equal(key(h, "ArrowRight", { alt: true }), false);
+  h.ctl.select(["cardAAAA1"]);
+  assert.equal(key(h, "ArrowRight", { alt: true }), true);
+  assert.deepEqual(h.ctl.getSelection().items, ["cardBBBB2"]);
+  assert.equal(h.named("commitMove").length, 0);
+  key(h, "ArrowLeft", { alt: true });
+  assert.deepEqual(h.ctl.getSelection().items, ["cardAAAA1"]);
+  const sel = h.named("onSelection").length;
+  key(h, "ArrowDown", { alt: true });
+  assert.deepEqual(h.ctl.getSelection().items, ["sectCCCC3"], "the section, not the card nested inside it");
+  assert.equal(h.named("onSelection").length, sel + 1, "one selection event per key");
+  h.ctl.select(["cardAAAA1"]);
+  key(h, "ArrowRight", { alt: true, shift: true });
+  assert.deepEqual(h.ctl.getSelection().items, ["cardAAAA1", "cardBBBB2"]);
+});
+
+test("arrows inside a section only consider its members; an edge-only selection is not consumed", () => {
+  const h = harness();
+  h.ctl.select(["cardDDDD4"]);
+  key(h, "ArrowRight", { alt: true });
+  assert.deepEqual(h.ctl.getSelection().items, ["cardDDDD4"], "no sibling: selection stays");
+  h.ctl.selectEdge("edgeFFFF6");
+  assert.equal(key(h, "ArrowRight", { alt: true }), false);
+  assert.equal(key(h, "ArrowRight"), false);
+});
+
+test("Arrow nudges 1px, Shift+Arrow 10px through commitMove", () => {
+  const h = harness();
+  h.ctl.select(["cardAAAA1"]);
+  assert.equal(key(h, "ArrowDown"), true);
+  assert.deepEqual(h.named("commitMove").at(-1).slice(1), [["cardAAAA1"], 0, 1]);
+  key(h, "ArrowLeft", { shift: true });
+  assert.deepEqual(h.named("commitMove").at(-1).slice(1), [["cardAAAA1"], -10, 0]);
+  assert.deepEqual(h.ctl.getSelection().items, ["cardAAAA1"], "nudging never changes the selection");
+});
+
+test("Tab / Shift+Tab walk the outline order and wrap; Tab with no selection picks the first", () => {
+  const h = harness();
+  assert.equal(key(h, "Tab"), true);
+  assert.deepEqual(h.ctl.getSelection().items, ["cardAAAA1"]);
+  key(h, "Tab");
+  assert.deepEqual(h.ctl.getSelection().items, ["cardBBBB2"]);
+  key(h, "Tab");
+  key(h, "Tab");
+  assert.deepEqual(h.ctl.getSelection().items, ["cardDDDD4"], "section members follow their section");
+  key(h, "Tab");
+  key(h, "Tab");
+  assert.deepEqual(h.ctl.getSelection().items, ["cardAAAA1"], "wraps to the start");
+  key(h, "Tab", { shift: true });
+  assert.deepEqual(h.ctl.getSelection().items, ["boardGGGG7"]);
+  key(h, "Tab", { shift: true });
+  assert.deepEqual(h.ctl.getSelection().items, ["cardDDDD4"]);
+  const h2 = harness();
+  key(h2, "Tab", { shift: true });
+  assert.deepEqual(h2.ctl.getSelection().items, ["boardGGGG7"], "Shift+Tab with nothing selected starts from the end");
+  assert.equal(key(h2, "Tab", { meta: true }), false, "browser tab switching is left alone");
+});
+
+test("Tab is left alone when the view reports focus is not on the board (tabOwned false)", () => {
+  const h = harness();
+  assert.equal(key(h, "Tab", { tabOwned: false }), false);
+  assert.deepEqual(h.ctl.getSelection().items, []);
+  assert.equal(key(h, "Tab", { tabOwned: true }), true);
+  assert.deepEqual(h.ctl.getSelection().items, ["cardAAAA1"]);
+});
+
+test("dblclick on a section's bottom grip fits its contents; the corner grip still resets the size", () => {
+  const h = harness();
+  h.ctl.handle(h.ev("dblclick", { x: 200, y: 600 }, { target: { kind: "grip", uid: "sectCCCC3", part: "bottom" } }));
+  assert.deepEqual(h.named("fitSection")[0].slice(1), ["sectCCCC3"]);
+  assert.equal(h.named("fitHeight").length, 0, "no 'Zoom in to measure' path for a section");
+  h.ctl.handle(h.ev("dblclick", { x: 400, y: 600 }, { target: { kind: "grip", uid: "sectCCCC3", part: "corner" } }));
+  assert.deepEqual(h.named("resetSize")[0].slice(1), [["sectCCCC3"]]);
+});
+
+test("double-click and Enter open a card the view reports as a board shortcut, instead of editing it", () => {
+  const h = harness({ extra: { isBoardCard: (uid) => uid === "cardBBBB2" } });
+  h.ctl.handle(h.ev("dblclick", { x: 350, y: 50 }, { target: { kind: "item", uid: "cardBBBB2", part: "body" } }));
+  assert.deepEqual(h.named("openBoard")[0].slice(1), ["cardBBBB2"]);
+  assert.equal(h.named("enterEdit").length, 0);
+  h.ctl.select(["cardBBBB2"]);
+  key(h, "Enter");
+  assert.equal(h.named("openBoard").length, 2);
+  assert.equal(h.named("enterEdit").length, 0);
+  h.ctl.select(["cardAAAA1"]);
+  key(h, "Enter");
+  assert.equal(h.named("enterEdit").length, 1, "an ordinary card still edits");
+});
+
+test("Cmd+Alt+Enter folds; F focus, Q quick look, P present; M expands only a single selected card", () => {
+  const h = harness();
+  h.ctl.select(["cardAAAA1"]);
+  assert.equal(key(h, "Enter", { meta: true, alt: true }), true);
+  assert.equal(h.named("foldSelection").length, 1);
+  assert.equal(h.named("enterEdit").length, 0);
+  assert.equal(key(h, "f"), true);
+  assert.equal(key(h, "q"), true);
+  assert.equal(key(h, "p"), true);
+  assert.equal(h.named("toggleFocus").length, 1);
+  assert.equal(h.named("quickLook").length, 1);
+  assert.equal(h.named("present").length, 1);
+  assert.equal(key(h, "m"), true);
+  assert.deepEqual(h.named("expandOutline")[0].slice(1), ["cardAAAA1"]);
+  h.ctl.select(["cardAAAA1", "cardBBBB2"]);
+  assert.equal(key(h, "m"), false);
+  h.ctl.select(["sectCCCC3"]);
+  assert.equal(key(h, "m"), false);
+  h.ctl.select([]);
+  assert.equal(key(h, "m"), false);
+  assert.equal(h.named("expandOutline").length, 1);
+  assert.equal(h.ctl.getTool(), "select", "no tool key is bound to these letters");
+});
+
+test("Cmd/Ctrl+C, X and V are not consumed so the browser clipboard events still fire", () => {
+  const h = harness();
+  h.ctl.select(["cardAAAA1"]);
+  for (const k of ["c", "x", "v"]) {
+    assert.equal(key(h, k, { meta: true }), false);
+    assert.equal(key(h, k, { ctrl: true }), false);
+  }
+  assert.equal(h.ctl.getTool(), "select", "Cmd+C is not the connect tool");
+  assert.equal(h.named("deleteItems").length, 0);
+});
+
+test("present mode: paging keys take precedence over space-pan and arrow selection", () => {
+  let active = true;
+  const h = harness({ extra: { presentActive: () => active } });
+  h.ctl.select(["cardAAAA1"]);
+  for (const k of ["ArrowRight", "ArrowDown", "PageDown"]) assert.equal(key(h, k), true);
+  assert.equal(key(h, " ", { code: "Space" }), true);
+  assert.equal(h.named("presentNext").length, 4);
+  for (const k of ["ArrowLeft", "ArrowUp", "PageUp"]) assert.equal(key(h, k), true);
+  assert.equal(h.named("presentPrev").length, 3);
+  assert.deepEqual(h.ctl.getSelection().items, ["cardAAAA1"], "arrows did not select");
+  assert.equal(h.named("setSpace").length, 0, "space did not start a pan");
+  active = false;
+  key(h, " ", { code: "Space" });
+  assert.equal(h.named("setSpace").length, 1);
+  assert.equal(h.named("presentNext").length, 4);
+  key(h, "ArrowRight", { alt: true });
+  assert.deepEqual(h.ctl.getSelection().items, ["cardBBBB2"]);
+});
+
+test("Escape order: gesture, quick look, present, edit, focus, selection, popBoard, fullscreen", () => {
+  const flags = { quick: true, present: true, focus: true, editing: false };
+  let fullscreen = true;
+  let pops = 1;
+  let calls = [];
+  const once = (name) => () => { calls.push(name); const was = flags[name]; flags[name] = false; return was; };
+  const h = harness({
+    extra: {
+      closeQuickLook: once("quick"),
+      exitPresent: once("present"),
+      exitFocus: once("focus"),
+      isEditing: () => flags.editing,
+      editingUid: () => (flags.editing ? "cardAAAA1" : null),
+      exitEdit: () => { calls.push("edit"); flags.editing = false; },
+      isFullscreen: () => fullscreen,
+      popBoard: () => { calls.push("pop"); return (pops -= 1) >= 0; },
+      setFullscreen: () => { calls.push("fullscreen"); fullscreen = false; },
+    },
+  });
+  h.ctl.select(["cardBBBB2"]);
+  h.ctl.handle(h.ev("pointerdown", { x: 200, y: 50 }, { target: { kind: "port", uid: "cardBBBB2", side: "right" } }));
+  flags.editing = true;
+  const esc = () => { calls = []; return h.ctl.handle({ type: "keydown", key: "Escape" }); };
+  assert.equal(esc(), true);
+  assert.equal(h.ctl.isGesturing(), false);
+  assert.deepEqual(calls, [], "the gesture ends first");
+  esc();
+  assert.deepEqual(calls, ["quick"]);
+  esc();
+  assert.deepEqual(calls, ["quick", "present"]);
+  esc();
+  assert.deepEqual(calls, ["quick", "present", "edit"]);
+  esc();
+  assert.deepEqual(calls, ["quick", "present", "focus"]);
+  assert.deepEqual(h.ctl.getSelection().items, ["cardBBBB2"]);
+  esc();
+  assert.deepEqual(h.ctl.getSelection().items, [], "selection clears after focus");
+  assert.deepEqual(calls, ["quick", "present", "focus"]);
+  esc();
+  assert.deepEqual(calls, ["quick", "present", "focus", "pop"]);
+  esc();
+  assert.deepEqual(calls, ["quick", "present", "focus", "pop", "fullscreen"], "fullscreen last, once the board cannot go up");
+});
+
+// ---------------------------------------------------------------- pinned
+test("pinned: drag does nothing but still selects; mixed selections move only the unpinned items", () => {
+  const h = harness();
+  h.board.items.get("cardAAAA1").pinned = true;
+  h.ctl.handle(h.ev("pointerdown", { x: 10, y: 10 }, { target: CARD }));
+  h.ctl.handle(h.ev("pointermove", { x: 110, y: 50 }, { target: CARD }));
+  h.ctl.handle(h.ev("pointerup", { x: 110, y: 50 }, { target: CARD }));
+  assert.deepEqual(h.ctl.getSelection().items, ["cardAAAA1"]);
+  assert.equal(h.named("previewMove").length, 0);
+  assert.equal(h.named("commitMove").length, 0);
+  h.ctl.select(["cardAAAA1", "cardBBBB2"]);
+  h.ctl.handle(h.ev("pointerdown", { x: 410, y: 10 }, { target: { kind: "item", uid: "cardBBBB2", part: "body" } }));
+  h.ctl.handle(h.ev("pointermove", { x: 460, y: 10 }, { target: { kind: "item", uid: "cardBBBB2", part: "body" } }));
+  h.ctl.handle(h.ev("pointerup", { x: 460, y: 10 }, { target: { kind: "item", uid: "cardBBBB2", part: "body" } }));
+  assert.deepEqual(h.named("commitMove").at(-1).slice(1), [["cardBBBB2"], 50, 0]);
+});
+
+test("pinned: arrow nudge and resize grips are ignored, marquee still selects, selecting works", () => {
+  const h = harness();
+  h.board.items.get("cardAAAA1").pinned = true;
+  h.ctl.select(["cardAAAA1"]);
+  key(h, "ArrowRight");
+  assert.equal(h.named("commitMove").length, 0);
+  h.ctl.select([]);
+  const grip = { kind: "grip", uid: "cardAAAA1", part: "corner" };
+  h.ctl.handle(h.ev("pointerdown", { x: 200, y: 100 }, { target: grip }));
+  assert.equal(h.ctl.isGesturing(), false);
+  assert.deepEqual(h.ctl.getSelection().items, []);
+  h.ctl.handle(h.ev("pointermove", { x: 300, y: 300 }, { target: grip }));
+  h.ctl.handle(h.ev("pointerup", { x: 300, y: 300 }, { target: grip }));
+  assert.equal(h.named("commitRects").length, 0);
+  h.ctl.handle(h.ev("pointerdown", { x: -50, y: -50 }));
+  h.ctl.handle(h.ev("pointermove", { x: 700, y: 150 }));
+  h.ctl.handle(h.ev("pointerup", { x: 700, y: 150 }));
+  assert.deepEqual(h.ctl.getSelection().items.sort(), ["cardAAAA1", "cardBBBB2"]);
+});
+
+test("pinned: Delete keeps pinned items and toasts; an all-pinned selection deletes nothing", () => {
+  const h = harness();
+  h.board.items.get("cardAAAA1").pinned = true;
+  h.ctl.select(["cardAAAA1", "cardBBBB2"]);
+  assert.equal(key(h, "Delete"), true);
+  assert.deepEqual(h.named("deleteItems")[0].slice(1), [["cardBBBB2"], { withContents: false }]);
+  assert.ok(h.named("toast").some((c) => c[1].message === "Pinned items were not deleted. Unpin first."));
+  assert.equal(h.named("toast").at(-1)[1].message, "Deleted", "the Undo toast is the last one");
+  assert.deepEqual(h.ctl.getSelection().items, ["cardAAAA1"], "the pinned item stays selected");
+  h.ctl.select(["cardAAAA1"]);
+  key(h, "Backspace");
+  assert.equal(h.named("deleteItems").length, 1, "nothing more deleted");
+  assert.equal(h.named("toast").at(-1)[1].message, "Pinned items were not deleted. Unpin first.");
+  h.ctl.select(["sectCCCC3"]);
+  h.board.items.get("cardDDDD4").pinned = true;
+  key(h, "Delete", { shift: true });
+  assert.equal(h.named("deleteItems").length, 1, "a section holding a pinned member is not deleted with its contents");
+  key(h, "Delete");
+  assert.equal(h.named("deleteItems").length, 2, "without contents the section itself can go");
+});
+
+test("pinned items can still be duplicated", () => {
+  const h = harness();
+  h.board.items.get("cardAAAA1").pinned = true;
+  h.ctl.handle(h.ev("pointerdown", { x: 10, y: 10 }, { target: CARD, alt: true }));
+  h.ctl.handle(h.ev("pointermove", { x: 110, y: 50 }, { target: CARD, alt: true }));
+  h.ctl.handle(h.ev("pointerup", { x: 110, y: 50 }, { target: CARD, alt: true }));
+  assert.deepEqual(h.named("duplicateItems")[0][1], ["cardAAAA1"]);
+});
+
+// ---------------------------------------------------------------- fit gestures and previews
+test("dblclick: bottom grip fits height, corner grip resets size, right grip does nothing", () => {
+  const h = harness();
+  h.ctl.handle(h.ev("dblclick", { x: 100, y: 100 }, { target: { kind: "grip", uid: "cardAAAA1", part: "bottom" } }));
+  assert.deepEqual(h.named("fitHeight")[0].slice(1), ["cardAAAA1"]);
+  h.ctl.handle(h.ev("dblclick", { x: 200, y: 100 }, { target: { kind: "grip", uid: "cardAAAA1", part: "corner" } }));
+  assert.deepEqual(h.named("resetSize")[0].slice(1), [["cardAAAA1"]]);
+  h.ctl.handle(h.ev("dblclick", { x: 200, y: 50 }, { target: { kind: "grip", uid: "cardAAAA1", part: "right" } }));
+  assert.equal(h.named("fitHeight").length, 1);
+  assert.equal(h.named("resetSize").length, 1);
+  assert.equal(h.named("createCard").length, 0);
+  assert.equal(h.named("enterEdit").length, 0);
+});
+
+test("cancelPreview runs at every gesture end and on pointercancel", () => {
+  const h = harness();
+  h.ctl.handle(h.ev("pointerdown", { x: 10, y: 10 }, { target: CARD }));
+  h.ctl.handle(h.ev("pointermove", { x: 110, y: 50 }, { target: CARD }));
+  assert.equal(h.named("cancelPreview").length, 0);
+  h.ctl.handle(h.ev("pointerup", { x: 110, y: 50 }, { target: CARD }));
+  assert.equal(h.named("cancelPreview").length, 1);
+  assert.equal(h.named("showGhosts").at(-1)[1], null);
+  const grip = { kind: "grip", uid: "cardAAAA1", part: "corner" };
+  h.ctl.handle(h.ev("pointerdown", { x: 200, y: 100 }, { target: grip }));
+  h.ctl.handle(h.ev("pointermove", { x: 300, y: 200 }, { target: grip }));
+  h.ctl.handle({ type: "pointercancel" });
+  assert.equal(h.named("cancelPreview").length, 2);
+  assert.deepEqual(h.named("previewRects").at(-1)[1], []);
 });

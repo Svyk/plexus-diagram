@@ -12,6 +12,11 @@ export const SETTING_IDS = Object.freeze({
   showVersionBadge: "show-version-badge",
   disableOnMobile: "disable-on-mobile",
   collapseOutline: "collapse-outline",
+  boardTone: "board-tone",
+  mapZoom: "map-zoom",
+  autoFitSections: "auto-fit-sections",
+  spaceOut: "space-out",
+  showCardBadges: "show-card-badges",
 });
 
 const DEFAULTS = Object.freeze({
@@ -28,12 +33,22 @@ const DEFAULTS = Object.freeze({
   [SETTING_IDS.showVersionBadge]: true,
   [SETTING_IDS.disableOnMobile]: true,
   [SETTING_IDS.collapseOutline]: true,
+  [SETTING_IDS.boardTone]: "none",
+  [SETTING_IDS.mapZoom]: "0.45",
+  [SETTING_IDS.autoFitSections]: true,
+  [SETTING_IDS.spaceOut]: false,
+  [SETTING_IDS.showCardBadges]: true,
 });
+
+const BOARD_TONES = ["none", "paper", "gray", "red", "orange", "yellow", "green", "teal", "blue", "indigo", "purple", "pink"];
+const MAP_ZOOMS = ["0.3", "0.45", "0.6"];
 
 const ENUMS = Object.freeze({
   [SETTING_IDS.graphLinks]: ["off", "attributes", "all"],
   [SETTING_IDS.wheel]: ["pan", "zoom"],
-  [SETTING_IDS.grid]: ["dots", "lines", "plain"],
+  [SETTING_IDS.grid]: ["dots", "lines", "grid", "plain"],
+  [SETTING_IDS.boardTone]: BOARD_TONES,
+  [SETTING_IDS.mapZoom]: MAP_ZOOMS,
 });
 
 const NUMBERS = new Set([SETTING_IDS.defaultCardWidth, SETTING_IDS.defaultCardHeight]);
@@ -56,7 +71,10 @@ export function normalizeSetting(id, value) {
     const n = Number(value);
     return Number.isFinite(n) && n >= 40 ? n : fallback;
   }
-  if (ENUMS[id]) return ENUMS[id].includes(value) ? value : fallback;
+  if (ENUMS[id]) {
+    const text = typeof value === "number" ? String(value) : value;
+    return ENUMS[id].includes(text) ? text : fallback;
+  }
   return value;
 }
 
@@ -137,7 +155,12 @@ export function createSettingsPanel() {
       selectRow(SETTING_IDS.wheel, "Mouse wheel", "What the mouse wheel does on the board. Pinch always zooms.", ["pan", "zoom"]),
       switchRow(SETTING_IDS.showMinimap, "Show minimap", "Show the minimap."),
       switchRow(SETTING_IDS.snapGuides, "Snap guides", "Align dragged cards to neighbours and show guides."),
-      selectRow(SETTING_IDS.grid, "Grid", "Board background.", ["dots", "lines", "plain"]),
+      selectRow(SETTING_IDS.grid, "Default board background: pattern", "Background pattern for boards that do not set their own. A board can override it from the Background button.", ["dots", "lines", "grid", "plain"]),
+      selectRow(SETTING_IDS.boardTone, "Default board background: tone", "Background tone for boards that do not set their own.", BOARD_TONES),
+      selectRow(SETTING_IDS.mapZoom, "Map view below (zoom)", "Below this zoom level cards collapse to title-only tiles.", MAP_ZOOMS),
+      switchRow(SETTING_IDS.autoFitSections, "Auto-fit sections", "Grow a section to contain a card moved or resized past its edge."),
+      switchRow(SETTING_IDS.spaceOut, "Space out cards", "Push overlapping cards apart after a move."),
+      switchRow(SETTING_IDS.showCardBadges, "Show card badges", "Show reference, task and child counts on cards."),
       inputRow(SETTING_IDS.defaultCardWidth, "Default card width", "Width in pixels for new cards."),
       inputRow(SETTING_IDS.defaultCardHeight, "Default card height", "Height in pixels for new cards."),
       switchRow(SETTING_IDS.enableShortcuts, "Enable shortcuts", "Enable board keyboard shortcuts."),

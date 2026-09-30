@@ -37,9 +37,10 @@ test("build emits deterministic, matching browser ESM artifacts with a default e
   assert.doesNotMatch(rootJs, /sourceMappingURL/);
   assert.doesNotMatch(rootJs, /^import\s/m);
   assert.match(rootJs, /export\s*\{[\s\S]*default/);
+  const { version } = JSON.parse(await readFile(resolve(rootPath, "package.json"), "utf8"));
   const rebuilt = await bundleEntry({
     rootDirectory: rootPath,
-    banner: "/* Plexus Diagram v1.1.0 | MIT | generated; edit src/ */",
+    banner: `/* Plexus Diagram v${version} | MIT | generated; edit src/ */`,
   });
   assert.equal(rebuilt, rootJs);
 

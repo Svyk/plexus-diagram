@@ -4,6 +4,7 @@ import {
   ARROWS, PALETTE, attrNameOf, classifyString, colorForLabel, edgeString, firstLine,
   mergePropsForWrite, normalizeEdge, normalizeItemLayout, parseBoardTitle, parseEdgeLabel,
   plainKeys, plainText, readPlexus, semanticRef, serializeEdge, serializeItemLayout,
+  BOARD_PATTERNS, BOARD_TONES, FIT_PAD, dailyPageTitle,
   DEFAULT_BOARD_CARD, UNTITLED_BOARD, boardString, isUntitledBoard, setBoardTitle, withBoardMarker,
 } from "../src/model/schema.js";
 
@@ -181,4 +182,55 @@ test("withBoardMarker adds v:2 or strips v and bg without touching layout", () =
   assert.deepEqual(withBoardMarker({ ":x": 1, ":v": 2, ":bg": "dots" }, false), { x: 1 });
   assert.equal(withBoardMarker({ v: 2, bg: "dots" }, false), null);
   assert.equal(withBoardMarker(null, false), null);
+});
+
+test("BOARD_PATTERNS, BOARD_TONES and FIT_PAD", () => {
+  assert.deepEqual(BOARD_PATTERNS, ["dots", "lines", "grid", "plain"]);
+  assert.deepEqual(BOARD_TONES, ["paper", ...PALETTE]);
+  assert.equal(FIT_PAD, 24);
+});
+
+test("pinned and fit round trip through normalize and serialize", () => {
+  assert.equal(normalizeItemLayout({ pinned: true }).pinned, true);
+  assert.equal(normalizeItemLayout({ pinned: "yes" }).pinned, false);
+  assert.equal(normalizeItemLayout(null).pinned, false);
+  assert.equal(normalizeItemLayout({ fit: false }).fit, false);
+  assert.equal(normalizeItemLayout({ fit: true }).fit, undefined);
+  assert.equal(normalizeItemLayout({}).fit, undefined);
+  assert.deepEqual(serializeItemLayout({ x: 1, pinned: true }), { x: 1, pinned: true });
+  assert.deepEqual(serializeItemLayout({ x: 1, pinned: false }), { x: 1 });
+  assert.deepEqual(serializeItemLayout({ type: "section", x: 1, fit: false }), { type: "section", x: 1, fit: false });
+  assert.deepEqual(serializeItemLayout({ type: "card", x: 1, fit: false }), { x: 1 });
+  assert.deepEqual(serializeItemLayout({ type: "section", x: 1, fit: true }), { type: "section", x: 1 });
+  const layout = { type: "section", x: 1, y: 2, w: 3, h: 4, pinned: true, fit: false };
+  assert.deepEqual(serializeItemLayout(normalizeItemLayout(serializeItemLayout(layout))), serializeItemLayout(layout));
+});
+
+test("bg and bgColor are kept only when valid, and grid is a pattern", () => {
+  assert.deepEqual(serializeItemLayout({ x: 1, bg: "grid" }), { x: 1, bg: "grid" });
+  assert.deepEqual(serializeItemLayout({ x: 1, bg: "dots", bgColor: "paper" }), { x: 1, bg: "dots", bgColor: "paper" });
+  assert.deepEqual(serializeItemLayout({ x: 1, bgColor: "indigo" }), { x: 1, bgColor: "indigo" });
+  assert.deepEqual(serializeItemLayout({ x: 1, bgColor: "puce", bg: "neon" }), { x: 1 });
+});
+
+test("withBoardMarker off also removes bgColor", () => {
+  assert.deepEqual(withBoardMarker({ x: 1, v: 2, bg: "grid", bgColor: "teal" }, false), { x: 1 });
+  assert.equal(withBoardMarker({ v: 2, bgColor: "teal" }, false), null);
+  assert.deepEqual(withBoardMarker({ x: 1, bgColor: "teal" }, true), { x: 1, bgColor: "teal", v: 2 });
+});
+
+test("dailyPageTitle uses English month names and ordinal suffixes", () => {
+  const t = (y, m, d) => dailyPageTitle(new Date(y, m - 1, d, 23, 59));
+  assert.equal(t(2026, 9, 1), "September 1st, 2026");
+  assert.equal(t(2026, 9, 2), "September 2nd, 2026");
+  assert.equal(t(2026, 9, 3), "September 3rd, 2026");
+  assert.equal(t(2026, 9, 4), "September 4th, 2026");
+  assert.equal(t(2026, 9, 11), "September 11th, 2026");
+  assert.equal(t(2026, 9, 12), "September 12th, 2026");
+  assert.equal(t(2026, 9, 13), "September 13th, 2026");
+  assert.equal(t(2026, 9, 21), "September 21st, 2026");
+  assert.equal(t(2026, 9, 22), "September 22nd, 2026");
+  assert.equal(t(2026, 9, 29), "September 29th, 2026");
+  assert.equal(t(2026, 1, 31), "January 31st, 2026");
+  assert.equal(t(2026, 12, 23), "December 23rd, 2026");
 });

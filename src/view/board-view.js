@@ -1,25 +1,39 @@
 // Board view: DOM root, layers, render scheduler, culling, LOD (spec 3.2). One rAF loop that
 // runs only when dirty; pan/zoom write one transform on .pxd-world plus the grid background.
-// Entry used by feature.js: mountBoardView(...) → { root, setFullscreen, fit, dispose, stats }.
+// Entry used by feature.js: mountBoardView(...) → { root, setFullscreen, fit, dispose, stats, setSettings,
+// state, exportSvg, copyOutline }.
+//
+// 1.2 wiring: three-tier LOD flipped by class during a gesture, board backgrounds (pattern + tone), live
+// section auto-fit preview, context menu, clipboard, focus, presentation, card badges, back-to-content.
 
-import { DEFAULT_SIZES, UNTITLED_BOARD, semanticRef, plainText } from "../model/schema.js";
-import { boundsOf, descendantsOf, edgesTouching, worldRects } from "../model/board.js";
+import { BOARD_PATTERNS, BOARD_TONES, DEFAULT_BOARD_CARD, DEFAULT_SIZES, UNTITLED_BOARD, classifyString, semanticRef, plainText } from "../model/schema.js";
+import { boundsOf, containerAt, descendantsOf, edgesTouching, outlineOrder, sectionFitPlan, worldRects } from "../model/board.js";
 import {
   alignRects,
+  center,
   distributeRects,
   fitViewport,
   gridBackground,
-  lodForZoom,
+  lodFonts,
+  lodTier,
+  rectsIntersect,
   screenToWorld,
   visibleWorldRect,
   worldToScreen,
   zoomAt,
 } from "../model/geometry.js";
+import { PLEXUS_MIME, copyPayload, parsePastedText } from "../model/clipboard.js";
+import { boardToMarkdown, boardToSvg } from "../model/export.js";
 import { createInteractions } from "./interactions.js";
 import { createItemRenderer, isTextEntryTarget } from "./cards.js";
 import { createEdgeLayer } from "./edges.js";
 import { createChrome, LINK_MODES } from "./chrome.js";
 import { createPanel, parseDropPayload } from "./panel.js";
+import { createMenu } from "./menu.js";
+import { buildMenu } from "./menu-model.js";
+import { createQuickLook } from "./quicklook.js";
+import { createPresenter } from "./present.js";
+import { createClipboardIO, filesFromDataTransfer, writeClipboard } from "./clipboard-io.js";
 import { applyFullscreenChrome, watchRouteExit } from "./fullscreen.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -28,6 +42,11 @@ const MIN_HEIGHT = 240;
 const RESUME_MS = 120;
 const VP_PERSIST_MS = 500;
 const CULL_MARGIN = 0.5;
+const BADGE_TTL_MS = 120000;
+const BADGE_CHUNK = 12;
+const NATIVE_MENU_TARGETS = ".rm-page-ref, .rm-block-ref, [data-link-uid], a[href], img";
+const BADGE_MAX = 60;
+const NOTE_KINDS = ["note", "block", "page"];
 
 function createTimers() {
   const active = new Set();
@@ -123,12 +142,21 @@ export function mountBoardView({
   onCrumb = null,
   routeUid = session.uid,
   autofocus = false,
+  onSetDefaults = null,
 } = {}) {
   const doc = globalThis.document;
   const win = globalThis.window;
+  // The settings object can be swapped (setSettings); chrome and the controller read through a stable proxy.
+  let settingsRef = settings;
+  const readSetting = (k) => (typeof settingsRef?.get === "function" ? settingsRef.get(k) : settingsRef?.[k]);
+  const settingsProxy = { get: readSetting };
   const setting = (k, d) => {
-    const v = typeof settings?.get === "function" ? settings.get(k) : settings?.[k];
+    const v = readSetting(k);
     return v === undefined || v === null ? d : v;
+  };
+  const flag = (k, d) => {
+    const v = setting(k, d);
+    return v === false || v === "false" ? false : v === true || v === "true" ? true : Boolean(v);
   };
   const timers = createTimers();
   const listeners = [];
@@ -194,6 +222,22 @@ export function mountBoardView({
   let linkMode = setting("graph-links", "all");
   let selection = { items: [], edge: null, link: null };
   let liveRects = null; // Map override during move/resize preview
+  let grown = new Set(); // section uids whose shells show a live auto-fit preview
+  let tier = "detail"; // 'detail' | 'map' | 'overview'
+  let bgPattern; // effective board pattern / tone; undefined until applyBackground() runs
+  let bgTone;
+  let bgOverride = false;
+  let focusOn = false;
+  let focusKey = null;
+  let presentSet = null;
+  let sendPending = null; // uids waiting for a target board picked in the Boards tab
+  let menuCtx = null;
+  let lastPayload = null; // last copy payload, so a menu paste can restore the plexus items
+  let lastPointer = null; // root-space pointer position, for paste
+  let backVisible = false;
+  let badgeTimer = null;
+  const badgeCache = new Map(); // key -> { at, stats }
+  const badgePending = new Set(); // keys with a stats query queued or running
   let resumeTimer = null;
   let settleTimer = null;
   let searchMatches = [];
@@ -201,7 +245,7 @@ export function mountBoardView({
   let frameHandle = null;
   let fsDispose = () => {};
   let routeOff = () => {};
-  const dirty = { viewport: false, items: new Set(), edges: new Set(), structural: false, all: true, selection: false, links: false, ctx: false };
+  const dirty = { viewport: false, items: new Set(), edges: new Set(), structural: false, all: true, selection: false, links: false, ctx: false, minimap: false };
 
   const board = () => session.board;
   const rects = () => session.rects || worldRects(board());
@@ -226,9 +270,21 @@ export function mountBoardView({
     itemsLayer,
     sectionsLayer,
     timers,
-    onEditChange: (uid) => { root.classList.toggle("pxd-root--editing", Boolean(uid)); },
+    onEditChange: (uid) => {
+      root.classList.toggle("pxd-root--editing", Boolean(uid));
+      if (!uid && grown.size) { liveRects = null; resetGrown(); } // the edit ended: the commit (growToFit) takes over
+    },
+    onEditResize: (uid, h) => {
+      const r = board() && rects().get(uid);
+      if (disposed || !r) return;
+      // Preview only: the card's live height grows the section around it while typing; nothing is written.
+      liveRects = new Map();
+      if (h > r.h) liveRects.set(uid, { ...r, h });
+      previewFit([uid]);
+    },
     onOpenBoard: (uid) => { void openBoard(uid); },
     onRenameBoard: (uid, title) => session.renameBoard?.(uid, title),
+    onBadgeClick: (uid) => { ctl.select([uid]); panel.open("related"); },
   });
   const edgesR = createEdgeLayer({
     doc,
@@ -267,18 +323,114 @@ export function mountBoardView({
     setViewport({ x: size.width / 2 - worldPoint.x * vp.zoom, y: size.height / 2 - worldPoint.y * vp.zoom, zoom: vp.zoom });
   };
 
+  // ------------------------------------------------------------ LOD
+  const mapThreshold = () => {
+    const n = Number(setting("map-zoom", "0.45"));
+    return Number.isFinite(n) && n > 0 ? n : 0.45;
+  };
+  // Classes and font variables are written only when the tier changes (renderFrame) or a viewport settles.
+  const paintTier = () => {
+    root.classList.toggle("pxd-lod-map", tier !== "detail");
+    root.classList.toggle("pxd-lod-overview", tier === "overview");
+    const f = lodFonts(vp.zoom);
+    root.style.setProperty("--pxd-map-font", `${f.map}px`);
+    root.style.setProperty("--pxd-ui", String(f.ui));
+    root.style.setProperty("--pxd-overview-font", `${f.section}px`);
+    itemsR.setLod(tier, vp.zoom);
+  };
   const applyLod = () => {
-    const z = vp.zoom;
-    const lod = lodForZoom(z);
-    root.classList.toggle("pxd-lod-map", lod === "map");
-    root.style.setProperty("--pxd-map-font", `${Math.min(42, Math.max(14, 13 / z))}px`);
-    root.style.setProperty("--pxd-ui", String(Math.min(4, Math.max(1, 1 / z))));
-    itemsR.setLod(lod, z);
+    tier = lodTier(vp.zoom, tier, { threshold: mapThreshold() });
+    paintTier();
   };
   const scheduleContent = () => {
     if (disposed || gesturing || !board()) return;
-    itemsR.scheduleContent({ visibleRect: visibleWorldRect(vp, size, CULL_MARGIN), zoom: vp.zoom });
+    itemsR.scheduleContent({ visibleRect: visibleWorldRect(vp, size, CULL_MARGIN), zoom: vp.zoom, tier });
   };
+  // "Back to content": shown when no item intersects the visible world rect.
+  const updateBackToContent = () => {
+    if (disposed) return;
+    let show = false;
+    if (size.width && size.height) {
+      const r = rects();
+      if (r.size) {
+        const view = visibleWorldRect(vp, size, 0);
+        show = true;
+        for (const rect of r.values()) if (rectsIntersect(rect, view)) { show = false; break; }
+      }
+    }
+    if (show === backVisible) return;
+    backVisible = show;
+    chrome.backToContent.setVisible(show);
+  };
+
+  // ------------------------------------------------------------ card badges (read-only)
+  const badgeKeyOf = (item) => (item.target.kind === "page" ? `page:${item.target.title}` : `uid:${item.target.uid || item.uid}`);
+  const badgeTargetOf = (item) => (item.target.kind === "page" ? { kind: "page", title: item.target.title } : { kind: "block", uid: item.target.uid || item.uid });
+  const visibleBadgeItems = () => {
+    const b = board();
+    if (!b) return [];
+    const view = visibleWorldRect(vp, size, 0);
+    const r = rects();
+    const out = [];
+    for (const item of b.items.values()) {
+      if (out.length >= BADGE_MAX) break;
+      if (item.type !== "card" || item.kind === "board" || item.kind === "image") continue;
+      const rect = r.get(item.uid);
+      if (rect && rectsIntersect(rect, view)) out.push(item);
+    }
+    return out;
+  };
+  const applyBadges = () => {
+    if (disposed) return;
+    const map = new Map();
+    for (const item of visibleBadgeItems()) {
+      const hit = badgeCache.get(badgeKeyOf(item));
+      if (hit) map.set(item.uid, hit.stats);
+    }
+    itemsR.setBadges(map);
+  };
+  const refreshBadges = () => {
+    if (disposed || gesturing || !board()) return;
+    itemsR.setShowBadges(flag("show-card-badges", true));
+    if (!flag("show-card-badges", true) || tier !== "detail" || typeof host?.cardStats !== "function") return;
+    const items = visibleBadgeItems();
+    const now = Date.now();
+    const misses = [];
+    const seen = new Set();
+    for (const item of items) {
+      const key = badgeKeyOf(item);
+      const hit = badgeCache.get(key);
+      if ((hit && now - hit.at < BADGE_TTL_MS) || seen.has(key) || badgePending.has(key)) continue;
+      seen.add(key);
+      misses.push({ key, target: badgeTargetOf(item) });
+    }
+    if (!misses.length) { applyBadges(); return; }
+    // The stats queries scan the graph on the main thread: run them in idle slots, a few cards at a time.
+    for (const m of misses) badgePending.add(m.key);
+    const runChunk = (list) => {
+      if (disposed) return;
+      const chunk = list.slice(0, BADGE_CHUNK);
+      const rest = list.slice(BADGE_CHUNK);
+      let res;
+      try { res = host.cardStats(chunk.map((m) => m.target), { boardUid }); } catch { res = undefined; }
+      const at = Date.now();
+      for (const m of chunk) {
+        badgePending.delete(m.key);
+        if (res === undefined) continue;
+        const stats = res instanceof Map ? res.get(m.key) : res?.[m.key];
+        badgeCache.set(m.key, { at, stats: stats || { refs: 0, boards: 0, open: 0, done: 0 } });
+      }
+      applyBadges();
+      if (rest.length) timers.idle(() => runChunk(rest));
+    };
+    timers.idle(() => runChunk(misses));
+  };
+  const scheduleBadges = (ms = 0) => {
+    if (disposed) return;
+    badgeTimer?.();
+    badgeTimer = timers.later(() => { badgeTimer = null; refreshBadges(); }, ms);
+  };
+
   const settle = () => {
     settleTimer?.();
     settleTimer = timers.later(() => {
@@ -290,6 +442,8 @@ export function mountBoardView({
       dirty.edges = new Set(board()?.edges.keys() || []); // arrow sizes depend on zoom
       dirty.links = true;
       schedule();
+      updateBackToContent();
+      refreshBadges();
     }, RESUME_MS);
   };
 
@@ -342,7 +496,10 @@ export function mountBoardView({
     }
     const items = selectedItems();
     if (!items.length) return chrome.ctx.hide();
-    if (items.length > 1) return chrome.ctx.show("cards", null, ctxAnchor);
+    if (items.length > 1) {
+      const model = { count: items.length, allPinned: items.every((i) => i.pinned), anyCollapsed: items.some((i) => i.type === "card" && i.collapsed) };
+      return chrome.ctx.show("cards", model, ctxAnchor);
+    }
     const it = items[0];
     return chrome.ctx.show(it.type === "section" ? "section" : it.type === "text" ? "text" : it.kind === "board" ? "board" : "card", it, ctxAnchor);
   };
@@ -385,13 +542,22 @@ export function mountBoardView({
   // ------------------------------------------------------------ nested boards
   // `crumbs` entries are shared with the feature's record, so a rename shows up in both.
   const crumbList = Array.isArray(crumbs) ? crumbs : [];
-  const openBoard = async (uid) => {
+  // The board block a card opens: the card itself (nested board), or the target of a whiteboard-shortcut
+  // card (a ((ref)) to a {{[[diagram]]}} block). `uid` is an item uid, or a referenced uid the card renderer passes.
+  const boardTargetOf = (uid) => {
     const item = board()?.items.get(uid);
-    if (!item || item.kind !== "board") return;
+    if (item?.kind === "board") return uid;
+    const ref = item ? (item.kind === "block" ? item.target?.uid : null) : uid;
+    if (!ref || typeof host?.blockString !== "function") return null;
+    return classifyString(host.blockString(ref)).kind === "board" ? ref : null;
+  };
+  const openBoard = async (uid) => {
+    const target = boardTargetOf(uid);
+    if (!target) return;
     if (itemsR.isEditing()) await exitEdit();
     if (disposed) return;
-    if (onOpenBoard) onOpenBoard(uid);
-    else host?.openBlock?.(uid);
+    if (onOpenBoard) onOpenBoard(target);
+    else host?.openBlock?.(target);
   };
   const goCrumb = async (index) => {
     if (itemsR.isEditing()) await exitEdit();
@@ -403,22 +569,373 @@ export function mountBoardView({
     return false;
   };
 
+  // ------------------------------------------------------------ 1.2 helpers
+  const toast = (message, undo = false) => chrome.toast.show({ message, action: undo ? { label: "Undo", run: () => session.undo?.() } : undefined });
+  const lastSelected = () => selection.items[selection.items.length - 1] ?? null;
+  const viewCenterWorld = () => screenToWorld(vp, { x: size.width / 2, y: size.height / 2 });
+  const cardsIn = (uids) => {
+    const b = board();
+    const out = new Set();
+    if (!b) return [];
+    for (const uid of uids) {
+      const it = b.items.get(uid);
+      if (!it) continue;
+      if (it.type === "card") out.add(uid);
+      else if (it.type === "section") for (const d of descendantsOf(b, uid)) if (b.items.get(d)?.type === "card") out.add(d);
+    }
+    return [...out];
+  };
+  const afterCreate = (label) => (res) => {
+    if (disposed) return;
+    const list = Array.isArray(res) ? res : [];
+    if (list.length) { ctl.select(list); toast(`${label} ${list.length} ${list.length === 1 ? "card" : "cards"}`, true); }
+  };
+  const copyText = (text, message) => { void writeClipboard({ text }).then((ok) => { if (!disposed) toast(ok ? message : "Copy failed"); }); };
+  const openItem = (item) => {
+    if (!item) return;
+    if (item.kind === "board" || boardTargetOf(item.uid)) { void openBoard(item.uid); return; }
+    if (item.target.kind === "page") {
+      const uid = host?.pageUid?.(item.target.title);
+      if (uid) { if (host?.api?.ui?.mainWindow?.openPage) host.api.ui.mainWindow.openPage({ page: { uid } }); else host?.openBlock?.(uid); }
+      return;
+    }
+    host?.openBlock?.(item.target.uid || item.uid);
+  };
+
+  // ------------------------------------------------------------ background (pattern + tone)
+  const applyBackground = () => {
+    const b = board();
+    const own = b?.plexus;
+    const ownPattern = BOARD_PATTERNS.includes(own?.bg) ? own.bg : null;
+    const ownTone = BOARD_TONES.includes(own?.bgColor) ? own.bgColor : null;
+    const defPattern = setting("grid", "dots");
+    const defTone = setting("board-tone", "none");
+    const pattern = ownPattern ?? (BOARD_PATTERNS.includes(defPattern) ? defPattern : "dots");
+    const tone = ownTone ?? (BOARD_TONES.includes(defTone) ? defTone : null);
+    const override = ownPattern !== null || ownTone !== null;
+    if (pattern === bgPattern && tone === bgTone && override === bgOverride) return;
+    if (pattern !== bgPattern) {
+      grid.className = `pxd-grid pxd-grid--${pattern}`;
+      if (bgPattern === "grid") for (const v of ["--pxd-grid-major", "--pxd-grid-major-x", "--pxd-grid-major-y"]) grid.style.removeProperty?.(v);
+      bgPattern = pattern;
+      dirty.viewport = true;
+      schedule();
+    }
+    if (tone !== bgTone) {
+      if (bgTone) root.classList.remove(`pxd-bg-${bgTone}`);
+      if (tone) root.classList.add(`pxd-bg-${tone}`);
+      bgTone = tone;
+    }
+    bgOverride = override;
+    chrome.toolbar.setBackground({ pattern, tone, override });
+  };
+
+  // ------------------------------------------------------------ focus mode
+  const focusSetNow = () => {
+    const b = board();
+    if (presentSet) return presentSet;
+    if (!focusOn || !b || !selection.items.length) return null;
+    const sel = new Set(selection.items);
+    const set = new Set(sel);
+    for (const e of b.edges.values()) {
+      if (!e.valid) continue;
+      if (sel.has(e.from)) set.add(e.to);
+      if (sel.has(e.to)) set.add(e.from);
+    }
+    for (const l of session.links || []) {
+      if (sel.has(l.from)) set.add(l.to);
+      if (sel.has(l.to)) set.add(l.from);
+    }
+    return set;
+  };
+  const applyFocus = () => {
+    if (disposed) return;
+    const set = focusSetNow();
+    const key = set ? [...set].sort().join("|") : null;
+    root.classList.toggle("pxd-root--focus", Boolean(set) || focusOn);
+    chrome.toolbar.setFocus(focusOn);
+    if (key === focusKey) return;
+    focusKey = key;
+    itemsR.setFocus(set);
+    edgesR.setFocus(set);
+  };
+  const toggleFocus = () => {
+    if (focusOn) { focusOn = false; applyFocus(); return; }
+    if (!selection.items.length) { toast("Select a card to focus on it"); return; }
+    focusOn = true;
+    applyFocus();
+  };
+  const exitFocus = () => {
+    if (!focusOn) return false;
+    focusOn = false;
+    applyFocus();
+    return true;
+  };
+
+  // ------------------------------------------------------------ session actions shared by chrome and the menu
+  const setFolded = (uids, value) => {
+    const cards = cardsIn(uids);
+    if (cards.length) void session.setCollapsedMany?.(cards, value);
+  };
+  const foldSelection = () => {
+    const cards = cardsIn(selection.items);
+    if (!cards.length) return;
+    const b = board();
+    void session.setCollapsedMany?.(cards, cards.some((u) => !b.items.get(u).collapsed));
+  };
+  const alignSel = (mode, uids = selection.items) => {
+    const r = rects();
+    const b = board();
+    const list = uids.filter((uid) => !b?.items.get(uid)?.pinned).map((uid) => ({ uid, ...r.get(uid) })).filter((x) => Number.isFinite(x.x));
+    const moved = alignRects(list, mode).map((m) => ({ ...m, w: r.get(m.uid).w, h: r.get(m.uid).h }));
+    void session.commitRects?.(moved);
+  };
+  const distributeSel = (axis, uids = selection.items) => {
+    const r = rects();
+    const b = board();
+    const list = uids.filter((uid) => !b?.items.get(uid)?.pinned).map((uid) => ({ uid, ...r.get(uid) })).filter((x) => Number.isFinite(x.x));
+    const moved = distributeRects(list, axis).map((m) => ({ ...m, w: r.get(m.uid).w, h: r.get(m.uid).h }));
+    void session.commitRects?.(moved);
+  };
+  const wrapBoardSel = (uids = selection.items) => {
+    if (!uids.length) return;
+    Promise.resolve(session.wrapInBoard?.(uids)).then((uid) => { if (uid) ctl.select([uid]); }).catch(() => {});
+  };
+  const writeEdgeToGraph = async () => {
+    if (!selection.edge) return;
+    const r = await session.writeToGraph?.(selection.edge);
+    chrome.toast.show({ message: r?.ok ? "Written to the graph" : `Not written: ${r?.reason || "unknown"}` });
+  };
+  const duplicate = (uids, { dx = 24, dy = 24, asRef = false } = {}) => {
+    if (!uids.length) return;
+    Promise.resolve(session.duplicateItems?.(uids, { dx, dy, asRef })).then(afterCreate("Duplicated")).catch(() => {});
+  };
+  const expandOutline = (uid) => {
+    Promise.resolve(session.expandOutline?.(uid)).then((res) => {
+      if (disposed || !res || typeof res !== "object") return;
+      if (res.added > 0) toast(`Added ${res.added} ${res.added === 1 ? "card" : "cards"} as a mind map`, true);
+      else toast("Nothing to expand");
+    }).catch(() => {});
+  };
+  const fitHeight = (uid) => {
+    const h = itemsR.measureContent(uid);
+    if (h) void session.fitToContent?.(uid, h);
+    else toast("Zoom in to measure the card");
+  };
+  const startSendTo = (uids = selection.items) => {
+    const list = uids.slice();
+    if (!list.length) return;
+    sendPending = list;
+    panel.open("boards");
+    toast(`Pick a board to send ${list.length} ${list.length === 1 ? "card" : "cards"} to`);
+  };
+  const finishSend = (uids, target) => {
+    Promise.resolve(session.sendToBoard?.(uids, target)).then((res) => {
+      if (disposed) return;
+      if (res) { toast(`Added ${res.added} ${res.added === 1 ? "card" : "cards"} to ${res.title}`); panel.close(); }
+      else toast("Couldn't send the cards to that board");
+    }).catch(() => {});
+  };
+  const weekDates = () => {
+    const d = new Date();
+    const monday = d.getDate() - ((d.getDay() + 6) % 7);
+    return Array.from({ length: 7 }, (_, i) => new Date(d.getFullYear(), d.getMonth(), monday + i));
+  };
+  const addDaily = (dates, at) => {
+    Promise.resolve(session.addDailyCards?.(dates, { x: at.x, y: at.y })).then((made) => {
+      if (disposed) return;
+      if (Array.isArray(made) && made.length) ctl.select(made);
+      else toast("Already on this board");
+    }).catch(() => {});
+  };
+  const outline = () => {
+    const b = board();
+    const out = [];
+    if (!b) return out;
+    for (const uid of outlineOrder(b)) {
+      const it = b.items.get(uid);
+      if (!it || it.type !== "section") continue;
+      out.push({ uid, title: plainText(it.title || it.string, 80) || "Section", depth: it.depth, count: it.members.length, color: it.color || null });
+    }
+    return out;
+  };
+
+  // ------------------------------------------------------------ clipboard actions
+  const pastePoint = () => {
+    if (!size.width) measure();
+    return screenToWorld(vp, pointerInside && lastPointer ? lastPointer : { x: size.width / 2, y: size.height / 2 });
+  };
+  const doCopy = (uids) => {
+    const b = board();
+    if (!b || !uids.length) return;
+    const payload = copyPayload(b, uids, rects());
+    if (!payload.text) return;
+    lastPayload = payload;
+    void writeClipboard({ text: payload.text, mime: PLEXUS_MIME, data: payload.mime }).then((ok) => { if (!disposed) toast(ok ? "Copied" : "Copy failed"); });
+  };
+  const pastePlexus = (data, { clone = false } = {}, at = pastePoint()) => {
+    Promise.resolve(session.pasteItems?.(data, { x: at.x, y: at.y, mode: clone ? "clone" : "refs" })).then(afterCreate("Pasted")).catch(() => {});
+  };
+  const pasteEntries = (entries, at = pastePoint()) => {
+    Promise.resolve(session.pasteText?.(entries, { x: at.x, y: at.y })).then(afterCreate("Pasted")).catch(() => {});
+  };
+  const pasteFromMenu = async (at, clone) => {
+    let text = null;
+    try { text = await globalThis.navigator?.clipboard?.readText?.(); } catch { text = null; }
+    if (disposed) return;
+    if (lastPayload && (text == null || text === lastPayload.text)) {
+      let data = null;
+      try { data = JSON.parse(lastPayload.mime); } catch { data = null; }
+      if (data && Array.isArray(data.items)) { pastePlexus(data, { clone }, at); return; }
+    }
+    const entries = parsePastedText(text ?? "");
+    if (entries.length) pasteEntries(entries, at);
+    else toast("Nothing to paste");
+  };
+  const pasteImages = async (files, at = pastePoint()) => {
+    if (!files?.length) return;
+    if (typeof host?.uploadFile !== "function") { toast("Image upload is not available here"); return; }
+    const urls = [];
+    let failed = 0;
+    for (const file of files) {
+      try {
+        urls.push(await host.uploadFile(file));
+      } catch (err) {
+        if (err?.message === "upload-unavailable") { if (!disposed) toast("Image upload is not available here"); return; }
+        failed += 1;
+      }
+      if (disposed) return;
+    }
+    if (failed && !urls.length) { toast("Couldn't upload the image"); return; }
+    if (!urls.length) return;
+    const h = Number(setting("default-card-height", DEFAULT_SIZES.card.h)) || DEFAULT_SIZES.card.h;
+    const made = await Promise.resolve(session.addRefCards?.(stackAt(urls.map((u) => `![](${u})`), at.x, at.y, h))).catch(() => null);
+    if (disposed) return;
+    if (Array.isArray(made) && made.length) { ctl.select(made); toast(failed ? `Added ${made.length} of ${files.length} images` : `Added ${made.length} ${made.length === 1 ? "image" : "images"}`, true); }
+  };
+
+  // ------------------------------------------------------------ context menu
+  const menuContext = (kind, uid) => {
+    const b = board();
+    const item = uid ? b?.items.get(uid) : null;
+    switch (kind) {
+      case "canvas": return { canPaste: true };
+      case "card": return { item, isBoard: item?.kind === "board", collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS.includes(item?.kind) };
+      case "section": return { item, count: item?.members?.length ?? 0, fitOn: item?.autofit !== false, pinned: Boolean(item?.pinned) };
+      case "text": return { item, pinned: Boolean(item?.pinned) };
+      case "edge": { const e = uid ? b?.edges.get(uid) : null; return { item: e, dir: e?.dir, route: e?.route, dash: e?.dash }; }
+      case "multi": {
+        const items = selection.items.map((u) => b?.items.get(u)).filter(Boolean);
+        return { count: items.length, allPinned: items.length > 0 && items.every((i) => i.pinned), anyCollapsed: items.some((i) => i.type === "card" && i.collapsed) };
+      }
+      default: return {};
+    }
+  };
+  const openMenuAt = (kind, uid, client, world) => {
+    if (!board()) return false;
+    const items = buildMenu(kind, menuContext(kind, uid));
+    const ok = menu.open({ x: client.x, y: client.y, items });
+    if (ok) menuCtx = { kind, uid, world, selection: selection.items.slice() };
+    return ok;
+  };
+  const createAt = async (type, world) => {
+    const d = DEFAULT_SIZES[type];
+    const at = { x: world.x - d.w / 2, y: world.y - d.h / 2 };
+    const uid = await (type === "text" ? actions.createText(at) : actions.createCard(at));
+    if (uid && !disposed) { ctl.select([uid]); void enterEdit(uid); }
+  };
+  const onMenuPick = (id) => {
+    const b = board();
+    if (!b || disposed) return;
+    const mc = menuCtx || { kind: "canvas", uid: null, world: viewCenterWorld(), selection: [] };
+    const world = mc.world || viewCenterWorld();
+    const uids = mc.kind === "multi" ? selection.items.slice() : mc.uid && b.items.has(mc.uid) ? [mc.uid] : selection.items.slice();
+    const item = uids.length === 1 ? b.items.get(uids[0]) ?? null : null;
+    const edgeUid = mc.kind === "edge" ? mc.uid : selection.edge;
+    const at = id.indexOf(":");
+    const head = at < 0 ? id : id.slice(0, at);
+    const arg = at < 0 ? null : id.slice(at + 1);
+    switch (head) {
+      case "new-card": void createAt("card", world); break;
+      case "new-text": void createAt("text", world); break;
+      case "new-section": {
+        const d = DEFAULT_SIZES.section;
+        Promise.resolve(session.createSection?.({ rect: { x: world.x - d.w / 2, y: world.y - d.h / 2, w: d.w, h: d.h } })).then((uid) => { if (uid && !disposed) ctl.select([uid]); }).catch(() => {});
+        break;
+      }
+      case "new-board": {
+        const d = DEFAULT_BOARD_CARD;
+        Promise.resolve(session.createBoard?.({ rect: { x: world.x - d.w / 2, y: world.y - d.h / 2, w: d.w, h: d.h } })).then((uid) => { if (uid && !disposed) ctl.select([uid]); }).catch(() => {});
+        break;
+      }
+      case "paste": void pasteFromMenu(world, false); break;
+      case "paste-clone": void pasteFromMenu(world, true); break;
+      case "select-all": ctl.select([...b.items.keys()]); break;
+      case "fit-all": fitAll(); break;
+      case "fold-all": void session.collapseAll?.(true); break;
+      case "unfold-all": void session.collapseAll?.(false); break;
+      case "add-today": addDaily([new Date()], world); break;
+      case "add-week": addDaily(weekDates(), world); break;
+      case "background": chrome.popover.open(); break;
+      case "export-svg": void view.exportSvg({ download: true }); break;
+      case "copy-outline": void view.copyOutline(); break;
+      case "edit": if (item) { if (item.kind === "board") itemsR.renameBoard(item.uid); else void enterEdit(item.uid); } break;
+      case "open": openItem(item); break;
+      case "open-sidebar": openItemInSidebar(item); break;
+      case "copy": doCopy(uids); break;
+      case "copy-ref": if (item) copyText(`((${item.uid}))`, "Reference copied"); break;
+      case "copy-link": if (item) copyText(semanticRef(item), "Link copied"); break;
+      case "duplicate": duplicate(uids); break;
+      case "duplicate-ref": duplicate(uids, { asRef: true }); break;
+      case "color": { const target = mc.kind === "edge" && edgeUid ? [edgeUid] : uids; if (target.length) void session.setColor?.(target, arg === "none" ? null : arg); break; }
+      case "fold": setFolded(uids, true); break;
+      case "unfold": setFolded(uids, false); break;
+      case "fit-height": if (item) fitHeight(item.uid); break;
+      case "reset-size": void session.resetSize?.(uids); break;
+      case "pin": void session.setPinned?.(uids, true); break;
+      case "unpin": void session.setPinned?.(uids, false); break;
+      case "mind-map": if (item) expandOutline(item.uid); break;
+      case "send-to": startSendTo(uids); break;
+      case "related": panel.open("related"); break;
+      case "delete": case "delete-frame": ctl.deleteSelection(false); break;
+      case "delete-contents": ctl.deleteSelection(true); break;
+      case "rename": if (item) itemsR.renameSection(item.uid); break;
+      case "select-contents": if (item?.members?.length) ctl.select(item.members); break;
+      case "fit-section": if (item) void session.fitSection?.(item.uid); break;
+      case "toggle-fit": if (item) void session.setFit?.(item.uid, item.autofit === false); break;
+      case "tidy": void session.tidyItems?.(mc.kind === "board-menu" ? b.roots : uids, arg); break;
+      case "fold-all-in": if (item) void session.collapseAll?.(true, { within: item.uid }); break;
+      case "unfold-all-in": if (item) void session.collapseAll?.(false, { within: item.uid }); break;
+      case "size": if (item) void session.setFontSize?.(item.uid, Number(arg)); break;
+      case "dir": if (edgeUid) void session.updateEdge?.(edgeUid, { dir: arg }); break;
+      case "route": if (edgeUid) void session.updateEdge?.(edgeUid, { route: arg }); break;
+      case "dash": if (edgeUid) void session.updateEdge?.(edgeUid, { dash: arg }); break;
+      case "flip": if (edgeUid) void session.flipEdge?.(edgeUid); break;
+      case "label": if (edgeUid) edgesR.editLabel(edgeUid); break;
+      case "notes": if (edgeUid) host?.openInSidebar?.(edgeUid, "block"); break;
+      case "write-to-graph": void writeEdgeToGraph(); break;
+      case "align": alignSel(arg, uids); break;
+      case "distribute": distributeSel(arg, uids); break;
+      case "same-size": if (uids.length) void session.sameSize?.(uids, uids[uids.length - 1], arg); break;
+      case "wrap-section": if (uids.length) void session.wrapInSection?.(uids); break;
+      case "wrap-board": wrapBoardSel(uids); break;
+      default: break;
+    }
+  };
+
   // ------------------------------------------------------------ chrome + panel
   const chrome = createChrome({
     doc,
     root,
     version,
-    settings,
+    settings: settingsProxy,
     timers,
     crumbs: crumbList,
     on: {
       openBoard: () => { const it = singleItem(); if (it) void openBoard(it.uid); },
       renameBoard: () => { const it = singleItem(); if (it) itemsR.renameBoard(it.uid); },
       crumb: (index) => { void goCrumb(index); },
-      wrapBoard: () => {
-        if (!selection.items.length) return;
-        Promise.resolve(session.wrapInBoard?.(selection.items)).then((uid) => { if (uid) ctl.select([uid]); }).catch(() => {});
-      },
+      wrapBoard: () => wrapBoardSel(),
       setTool: (tool, lock) => ctl.setTool(tool, lock),
       togglePanel: () => panel.toggle(),
       cycleLinks: () => cycleLinks(),
@@ -444,33 +961,44 @@ export function mountBoardView({
       weight: (weight) => { if (selection.edge) void session.updateEdge?.(selection.edge, { weight }); },
       label: () => { if (selection.edge) edgesR.editLabel(selection.edge); },
       notes: () => { if (selection.edge) host?.openInSidebar?.(selection.edge, "block"); },
-      writeToGraph: async () => {
-        if (!selection.edge) return;
-        const r = await session.writeToGraph?.(selection.edge);
-        chrome.toast.show({ message: r?.ok ? "Written to the graph" : `Not written: ${r?.reason || "unknown"}` });
-      },
+      writeToGraph: () => writeEdgeToGraph(),
       pinLink: () => {
         const link = (session.links || []).find((l) => l.key === selection.link);
         if (link) Promise.resolve(session.pinLink?.(link)).then((uid) => { if (uid) ctl.selectEdge(uid); }).catch(() => {});
       },
       openSource: (uid) => host?.openInSidebar?.(uid, "block"),
-      align: (mode) => {
-        const r = rects();
-        const list = selection.items.map((uid) => ({ uid, ...r.get(uid) })).filter((x) => Number.isFinite(x.x));
-        const moved = alignRects(list, mode).map((m) => ({ ...m, w: r.get(m.uid).w, h: r.get(m.uid).h }));
-        void session.commitRects?.(moved);
-      },
-      distribute: (axis) => {
-        const r = rects();
-        const list = selection.items.map((uid) => ({ uid, ...r.get(uid) })).filter((x) => Number.isFinite(x.x));
-        const moved = distributeRects(list, axis).map((m) => ({ ...m, w: r.get(m.uid).w, h: r.get(m.uid).h }));
-        void session.commitRects?.(moved);
-      },
+      align: (mode) => alignSel(mode),
+      distribute: (axis) => distributeSel(axis),
       wrap: () => { if (selection.items.length) void session.wrapInSection?.(selection.items); },
       navigate: (worldPoint) => centerOn(worldPoint),
       searchFilter: (text) => searchFilter(text),
       searchNext: (dir) => searchNext(dir),
       searchClosed: () => { try { root.focus({ preventScroll: true }); } catch { /* stub */ } },
+      // 1.2
+      pin: (on) => { if (selection.items.length) void session.setPinned?.(selection.items, Boolean(on)); },
+      fitHeight: () => { const it = singleItem(); if (it) fitHeight(it.uid); },
+      copyRef: () => { const it = singleItem(); if (it) copyText(`((${it.uid}))`, "Reference copied"); },
+      duplicate: () => duplicate(selection.items),
+      sendTo: () => startSendTo(),
+      expandOutline: () => { const it = singleItem(); if (it) expandOutline(it.uid); },
+      fitSection: () => { const it = singleItem(); if (it) void session.fitSection?.(it.uid); },
+      toggleFit: () => { const it = singleItem(); if (it) void session.setFit?.(it.uid, it.autofit === false); },
+      tidy: (mode) => { if (selection.items.length) void session.tidyItems?.(selection.items, mode); },
+      foldAll: (value) => { const it = singleItem(); if (it) void session.collapseAll?.(Boolean(value), { within: it.uid }); },
+      fold: (value) => setFolded(selection.items, Boolean(value)),
+      sameSize: (mode) => { if (selection.items.length) void session.sameSize?.(selection.items, lastSelected(), mode); },
+      toggleFocus: () => toggleFocus(),
+      present: () => startPresent(),
+      openMore: ({ x, y } = {}) => { openMenuAt("board-menu", null, { x: x ?? 0, y: y ?? 0 }, viewCenterWorld()); },
+      backToContent: () => fitAll(),
+      setBackground: (patch) => {
+        Promise.resolve(session.setBoardBackground?.(patch)).then((ok) => { if (ok === false && !disposed) toast("This board can't store a background"); }).catch(() => {});
+      },
+      useBackgroundAsDefault: () => {
+        if (typeof onSetDefaults !== "function") return;
+        onSetDefaults({ grid: bgPattern, "board-tone": bgTone || "none" });
+        toast("Saved as the default background");
+      },
     },
   });
   const panel = createPanel({
@@ -482,12 +1010,42 @@ export function mountBoardView({
       addBeside: (string) => addStringsBeside([string]),
       addMany: (strings) => addStringsBeside(strings),
       isOnBoard,
-      opened: (open) => chrome.toolbar.setPanel(open),
+      opened: (open) => { chrome.toolbar.setPanel(open); if (!open) sendPending = null; },
+      listBoards: () => Promise.resolve(host?.listBoards?.()).then((rows) => rows || []),
+      openBoardByUid: (uid) => {
+        if (sendPending) { const list = sendPending; sendPending = null; finishSend(list, uid); return; }
+        host?.openBlock?.(uid);
+      },
+      addBoardCard: (uid) => addStringsBeside([`((${uid}))`]),
+      getOutline: () => outline(),
+      outlineClick: (uid) => { fitSelection([uid]); ctl.select([uid]); },
     },
   });
+  const menu = createMenu({ doc, root, on: { pick: (id) => onMenuPick(id), closed: () => { menuCtx = null; } } });
+  const quicklook = createQuickLook({
+    doc,
+    root,
+    host,
+    timers,
+    on: {
+      getRefCount: (item) => badgeCache.get(badgeKeyOf(item))?.stats?.refs,
+    },
+  });
+  const presenter = createPresenter({
+    doc,
+    root,
+    timers,
+    on: {
+      step: (s) => { presentSet = s.members; fitTo(s.rect, { maxZoom: 1.2 }); applyFocus(); },
+      exit: () => { presentSet = null; applyFocus(); },
+    },
+  });
+  const startPresent = () => {
+    quicklook.close();
+    if (!presenter.start(board(), rects())) toast("Nothing to present");
+  };
   chrome.minimap.setVisible(setting("show-minimap", true) !== false);
   chrome.toolbar.setLinkMode(linkMode);
-  grid.className = `pxd-grid pxd-grid--${setting("grid", "dots")}`;
 
   const cycleLinks = () => {
     linkMode = LINK_MODES[(LINK_MODES.indexOf(linkMode) + 1) % LINK_MODES.length];
@@ -523,7 +1081,7 @@ export function mountBoardView({
   const enterEdit = async (uid) => {
     ctl.select([uid]);
     // Editing at map zoom is unreadable: bring the card to a working zoom first.
-    if (lodForZoom(vp.zoom) === "map") { fitSelection([uid]); applyLod(); }
+    if (tier !== "detail") { fitSelection([uid]); applyLod(); }
     const ok = await itemsR.enterEdit(uid);
     if (ok) chrome.ctx.hide();
     return ok;
@@ -592,6 +1150,28 @@ export function mountBoardView({
     doc.addEventListener("pointerup", onHeightUp, true);
   });
 
+  // ------------------------------------------------------------ section auto-fit preview
+  // While items are dragged or resized, sections that must grow around them are shown grown (shells only).
+  // Nothing is written: the commit runs the real fit in one transaction, cancel snaps the shells back.
+  const resetGrown = () => {
+    if (!grown.size) return;
+    const ids = [...grown];
+    grown = new Set();
+    itemsR.resetRects(rects(), ids);
+  };
+  const previewFit = (touched, { parentOf, skip } = {}) => {
+    const b = board();
+    if (!b || !flag("auto-fit-sections", true)) return;
+    const plan = touched.length ? sectionFitPlan(b, effectiveRects(), touched, { parentOf, skip }) : [];
+    const next = new Set(plan.map((p) => p.uid));
+    const stale = [...grown].filter((u) => !next.has(u));
+    if (stale.length) itemsR.resetRects(rects(), stale);
+    const live = itemsR.previewSectionRects(plan.map(({ uid, rect }) => ({ uid, x: rect.x, y: rect.y, w: rect.w, h: rect.h })));
+    if (!liveRects) liveRects = new Map();
+    for (const [uid, rect] of live) liveRects.set(uid, rect);
+    grown = next;
+  };
+
   // ------------------------------------------------------------ controller
   const actions = {
     board,
@@ -622,6 +1202,7 @@ export function mountBoardView({
         resumeTimer = null;
         itemsR.setPaused(true);
         chrome.ctx.hide();
+        menu.close();
       } else {
         // Only a gesture that actually moved swallows its click; a plain click must reach links and chrome.
         if (info?.moved) {
@@ -630,6 +1211,7 @@ export function mountBoardView({
           timers.later(() => { suppressClick = false; swallowMouseUp = false; }, 0);
         }
         liveRects = null;
+        resetGrown();
         resumeTimer = timers.later(() => {
           resumeTimer = null;
           itemsR.setPaused(false);
@@ -638,6 +1220,8 @@ export function mountBoardView({
           vpStore.set(boardUid, vp);
           dirty.selection = true;
           schedule();
+          updateBackToContent();
+          refreshBadges();
         }, RESUME_MS);
       }
     },
@@ -649,17 +1233,56 @@ export function mountBoardView({
       liveRects = itemsR.previewMove(uids, dx, dy, b, rects());
       const set = new Set(uids);
       for (const u of uids) for (const d of descendantsOf(b, u)) set.add(d);
+      // A moved item joins the section under its center; that section grows around it (preview only).
+      const top = new Set(uids);
+      const eff = effectiveRects();
+      previewFit(uids, {
+        parentOf: (u) => (top.has(u) && eff.get(u) ? containerAt(b, center(eff.get(u)), { exclude: set, rects: eff }) : b.items.get(u)?.parentUid),
+      });
+      for (const u of grown) set.add(u);
       const linkKeys = new Set((session.links || []).filter((l) => set.has(l.from) || set.has(l.to)).map((l) => l.key));
       edgesR.update({ board: b, edgeUids: edgesTouching(b, set), rects: effectiveRects(), zoom: vp.zoom, linkKeys, links: session.links || [] });
+      dirty.minimap = true;
+      schedule();
     },
     previewRects: (list) => {
       const b = board();
       if (!b) return;
       liveRects = itemsR.previewRects(list);
       const set = new Set(list.map((r) => r.uid));
+      previewFit(list.map((r) => r.uid), { skip: new Set(list.filter((r) => b.items.get(r.uid)?.type === "section").map((r) => r.uid)) });
+      for (const u of grown) set.add(u);
       const linkKeys = new Set((session.links || []).filter((l) => set.has(l.from) || set.has(l.to)).map((l) => l.key));
       edgesR.update({ board: b, edgeUids: edgesTouching(b, set), rects: effectiveRects(), zoom: vp.zoom, linkKeys, links: session.links || [] });
+      dirty.minimap = true;
+      schedule();
     },
+    cancelPreview: () => resetGrown(),
+    showGhosts: (list) => edgesR.setGhosts(list),
+    duplicateItems: (uids, opts) => duplicate(uids, opts),
+    openMenu: ({ kind, uid, screen, world }) => {
+      const at = screen || { x: 0, y: 0 };
+      return openMenuAt(kind, uid, { x: rootRect.left + at.x, y: rootRect.top + at.y }, world || screenToWorld(vp, at));
+    },
+    foldSelection,
+    toggleFocus,
+    exitFocus,
+    quickLook: () => {
+      if (quicklook.isOpen()) { quicklook.close(); return; }
+      const uid = lastSelected();
+      const it = uid ? board()?.items.get(uid) : null;
+      if (it && it.type !== "section") quicklook.open(it);
+    },
+    closeQuickLook: () => quicklook.close(),
+    present: () => startPresent(),
+    presentActive: () => presenter.isActive(),
+    presentNext: () => presenter.next(),
+    presentPrev: () => presenter.prev(),
+    exitPresent: () => presenter.stop(),
+    expandOutline: (uid) => expandOutline(uid),
+    fitHeight: (uid) => fitHeight(uid),
+    fitSection: (uid) => session.fitSection?.(uid),
+    resetSize: (uids) => session.resetSize?.(uids),
     showTempWire: (spec) => edgesR.setTempWire(spec, rects(), vp.zoom),
     commitMove: (uids, dx, dy) => session.commitMove?.(uids, dx, dy),
     commitRects: (list) => session.commitRects?.(list),
@@ -673,6 +1296,7 @@ export function mountBoardView({
       chrome.toast.show({ message: `Moved into ${res.title}`, action: { label: "Undo", run: () => res.undo() } });
     },
     openBoard: (uid) => openBoard(uid),
+    isBoardCard: (uid) => Boolean(boardTargetOf(uid)),
     popBoard,
     wrapInSection: (uids) => session.wrapInSection?.(uids),
     deleteItems: (uids, opts) => session.deleteItems?.(uids, opts),
@@ -846,7 +1470,20 @@ export function mountBoardView({
     const handled = ctl.handle(normalize(event, "wheel"));
     if (handled) { event.preventDefault(); event.stopPropagation(); settle(); }
   }, { passive: false });
-  listen(root, "contextmenu", (event) => { if (!event.target?.closest?.(".pxd-chrome")) event.stopPropagation(); });
+  // Right-click: the controller decides what was hit and asks us to open the menu; an editing card keeps the
+  // browser's own menu (the controller returns false there).
+  listen(root, "contextmenu", (event) => {
+    if (event.target?.closest?.(".pxd-chrome")) return;
+    event.stopPropagation();
+    // Roam's own menu for a ref / tag already handled this (its React root ran first); links and images keep the browser's.
+    if (event.defaultPrevented) return;
+    const native = event.target?.closest?.(NATIVE_MENU_TARGETS);
+    if (native && native.closest?.(".pxd-item__body")) return;
+    measure();
+    const handled = ctl.handle(normalize(event, "contextmenu"));
+    if (handled) event.preventDefault();
+  });
+  listen(root, "pointermove", (event) => { lastPointer = { x: (event.clientX || 0) - rootRect.left, y: (event.clientY || 0) - rootRect.top }; });
   listen(root, "pointerenter", () => { pointerInside = true; });
   listen(root, "pointerleave", () => { pointerInside = false; });
   const acceptsDrop = (event) => !event.target?.closest?.(".pxd-item__editor");
@@ -870,10 +1507,12 @@ export function mountBoardView({
     event.preventDefault();
     event.stopPropagation();
     measure();
+    const p = screenToWorld(vp, { x: event.clientX - rootRect.left, y: event.clientY - rootRect.top });
+    const files = filesFromDataTransfer(event.dataTransfer);
+    if (files.length) { void pasteImages(files, p); return; }
     const resolveUid = (u) => (host?.cardStringForUid ? host.cardStringForUid(u) : `((${u}))`);
     const list = parseDropPayload(event.dataTransfer, { resolveUid });
     if (!list.length) return;
-    const p = screenToWorld(vp, { x: event.clientX - rootRect.left, y: event.clientY - rootRect.top });
     const w = Number(setting("default-card-width", DEFAULT_SIZES.card.w)) || DEFAULT_SIZES.card.w;
     const h = Number(setting("default-card-height", DEFAULT_SIZES.card.h)) || DEFAULT_SIZES.card.h;
     const made = session.addRefCards?.(stackAt(list.map((x) => x.string), p.x - w / 2, p.y - h / 2, h));
@@ -882,6 +1521,12 @@ export function mountBoardView({
 
   const ownsKeyboard = () => pointerInside || isFullscreen || root.contains?.(doc.activeElement);
   const onKeyDown = (event) => {
+    // The open menu owns the keyboard; Quick Look and a presentation only let their own keys through.
+    if (menu.isOpen()) return;
+    // Escape closes the Background popover before the controller's chain (selection, up a level, fullscreen) runs.
+    if (event.key === "Escape" && chrome.popover.isOpen()) { chrome.popover.close(); event.preventDefault(); event.stopPropagation(); return; }
+    if (quicklook.isOpen() && event.key !== "Escape" && String(event.key).toLowerCase() !== "q") return;
+    if (presenter.isActive() && !["Escape", "ArrowRight", "ArrowLeft", "ArrowDown", "ArrowUp", "PageDown", "PageUp", " ", "p", "P"].includes(event.key)) return;
     const inputFocused = isTextEntryTarget(event.target) || isTextEntryTarget(doc.activeElement);
     if (inputFocused) {
       const inside = root.contains?.(event.target) || root.contains?.(doc.activeElement);
@@ -891,7 +1536,10 @@ export function mountBoardView({
     }
     // Roam dropped focus to <body> mid-edit: put it back on the editor instead of running a board shortcut.
     if (!inputFocused && itemsR.isEditing() && event.key !== "Escape") { itemsR.recoverFocus(); return; }
-    const handled = ctl.handle({ type: "keydown", key: event.key, code: event.code, shift: event.shiftKey, alt: event.altKey, meta: event.metaKey, ctrl: event.ctrlKey, inputFocused });
+    // Tab walks the outline only while focus is on the board itself: not for a resting pointer, and not on a toolbar control.
+    const focused = doc.activeElement;
+    const tabOwned = Boolean(focused) && (focused === root || (Boolean(root.contains?.(focused)) && !focused.closest?.(".pxd-chrome")));
+    const handled = ctl.handle({ type: "keydown", key: event.key, code: event.code, shift: event.shiftKey, alt: event.altKey, meta: event.metaKey, ctrl: event.ctrlKey, inputFocused, tabOwned });
     if (handled) { event.preventDefault(); event.stopPropagation(); }
   };
   const onKeyUp = (event) => { ctl.handle({ type: "keyup", key: event.key, code: event.code }); };
@@ -899,6 +1547,35 @@ export function mountBoardView({
   // before a bubble listener on window. onKeyDown returns early for any text input outside the board.
   listen(win, "keydown", onKeyDown, true);
   listen(win, "keyup", onKeyUp, true);
+
+  // ------------------------------------------------------------ clipboard
+  const clip = createClipboardIO({
+    doc,
+    root,
+    ownsKeyboard,
+    isTextEntry: isTextEntryTarget,
+    on: {
+      getPayload: ({ cut = false } = {}) => {
+        const b = board();
+        if (!b || !selection.items.length) return null;
+        const payload = copyPayload(b, selection.items, rects());
+        if (!payload.text) return null;
+        // A cut deletes the blocks, so the payload carries a snapshot of them for the paste to clone from.
+        if (cut) {
+          const snapshot = session.snapshotItems?.(selection.items);
+          if (snapshot) {
+            try { payload.mime = JSON.stringify({ ...JSON.parse(payload.mime), snapshot }); } catch { /* keep refs */ }
+          }
+        }
+        lastPayload = payload;
+        return payload;
+      },
+      cutDone: () => { ctl.deleteSelection(true); },
+      pastePlexus: (data, opts) => pastePlexus(data, opts),
+      pasteText: (entries) => pasteEntries(entries),
+      pasteImages: (files) => { void pasteImages(files); },
+    },
+  });
 
   // ------------------------------------------------------------ session events
   subs.push(session.on("change", ({ dirty: d, structural } = {}) => {
@@ -915,6 +1592,7 @@ export function mountBoardView({
         if (b.edges.has(uid)) dirty.edges.add(uid); else dirty.items.add(uid);
       }
     } else dirty.all = true;
+    if (!d || d.has?.(boardUid)) applyBackground();
     ctl.reconcile();
     dirty.selection = true;
     schedule();
@@ -959,10 +1637,19 @@ export function mountBoardView({
     }
     if (dirty.viewport) {
       world.style.transform = `translate(${vp.x}px, ${vp.y}px) scale(${vp.zoom})`;
-      const g = gridBackground(vp, setting("grid", "dots"));
+      // The tier flips (classes + font variables, once) the moment the zoom crosses the threshold, mid-gesture too.
+      const nextTier = lodTier(vp.zoom, tier, { threshold: mapThreshold() });
+      if (nextTier !== tier) { tier = nextTier; paintTier(); }
+      const g = gridBackground(vp, bgPattern);
       if (g) {
         grid.style.backgroundSize = `${g.size}px ${g.size}px`;
         grid.style.backgroundPosition = `${g.x}px ${g.y}px`;
+        if (bgPattern === "grid") {
+          const mod = (v) => ((v % g.major) + g.major) % g.major;
+          grid.style.setProperty("--pxd-grid-major", `${g.major}px`);
+          grid.style.setProperty("--pxd-grid-major-x", `${mod(vp.x)}px`);
+          grid.style.setProperty("--pxd-grid-major-y", `${mod(vp.y)}px`);
+        }
       }
       chrome.toolbar.setZoom(vp.zoom);
     }
@@ -970,12 +1657,19 @@ export function mountBoardView({
       itemsR.setSelection(selection.items);
       edgesR.setSelection({ edge: selection.edge, link: selection.link });
       if (!gesturing && !itemsR.isEditing()) showCtx(); else chrome.ctx.hide();
+      if (focusOn) applyFocus();
     } else if (dirty.viewport && chrome.ctx.isOpen()) {
       chrome.ctx.reposition();
     }
-    if (dirty.viewport || itemsChanged) chrome.minimap.update({ board: b, rects: r, vp, size });
-    if (itemsChanged && !gesturing) scheduleContent();
+    if (dirty.viewport || itemsChanged || dirty.minimap) chrome.minimap.update({ board: b, rects: effectiveRects(), vp, size });
+    if (itemsChanged && !gesturing) {
+      scheduleContent();
+      updateBackToContent();
+      panel.refreshOutline();
+      if (dirty.all || dirty.structural) scheduleBadges(50);
+    }
     if (searchMatches.length || root.classList.contains("pxd-root--searching")) panel.refreshMarks();
+    dirty.minimap = false;
     dirty.viewport = false;
     dirty.items = new Set();
     dirty.edges = new Set();
@@ -994,10 +1688,12 @@ export function mountBoardView({
     const r = b ? rects() : new Map();
     vp = fitViewport(boundsOf([...r.values()]), size.width && size.height ? size : { width: 800, height: 560 }, { padding: 64, maxZoom: 1 });
   }
+  applyBackground();
   applyLod();
+  itemsR.setShowBadges(flag("show-card-badges", true));
   dirty.viewport = true;
   markAll();
-  timers.later(() => { if (!disposed) scheduleContent(); }, 0);
+  timers.later(() => { if (!disposed) { scheduleContent(); updateBackToContent(); } }, 0);
 
   // ------------------------------------------------------------ API
   const view = {
@@ -1005,6 +1701,62 @@ export function mountBoardView({
     controller: ctl,
     setFullscreen(on) { if (Boolean(on) !== isFullscreen) applyFullscreen(on); },
     fit() { fitAll(); },
+    // Swap the settings object (feature.js calls this when a setting changes) and re-apply what depends on it.
+    setSettings(next) {
+      if (disposed) return;
+      const minimapBefore = setting("show-minimap", true) !== false;
+      settingsRef = next;
+      applyBackground();
+      applyLod();
+      const minimapNow = setting("show-minimap", true) !== false;
+      if (minimapNow !== minimapBefore) chrome.minimap.setVisible(minimapNow);
+      itemsR.setShowBadges(flag("show-card-badges", true));
+      scheduleContent();
+      scheduleBadges(0);
+      dirty.viewport = true;
+      schedule();
+    },
+    state() {
+      return {
+        zoom: vp.zoom,
+        lod: tier,
+        pattern: bgPattern,
+        tone: bgTone ?? null,
+        focus: focusOn,
+        present: presenter.isActive(),
+        selection: [...selection.items],
+        mounted: itemsR.mountedCount(),
+        menuOpen: menu.isOpen(),
+      };
+    },
+    // Serializes the board to SVG text; with download it also offers the file through a temporary link.
+    async exportSvg({ download = true } = {}) {
+      const b = board();
+      if (!b) return "";
+      const text = boardToSvg(b, rects(), { dark: root.classList.contains("pxd-root--dark") });
+      if (download) {
+        try {
+          const blob = new Blob([text], { type: "image/svg+xml" });
+          const url = URL.createObjectURL(blob);
+          const a = doc.createElement("a");
+          a.href = url;
+          a.download = `${String(b.title || UNTITLED_BOARD).replace(/[\\/:*?"<>|]+/g, "-").trim() || "board"}.svg`;
+          doc.body.append(a);
+          a.click();
+          a.remove();
+          timers.later(() => URL.revokeObjectURL(url), 4000);
+        } catch { /* no Blob / URL in this environment: the text is still returned */ }
+      }
+      return text;
+    },
+    async copyOutline() {
+      const b = board();
+      if (!b) return "";
+      const text = boardToMarkdown(b, rects());
+      const ok = await writeClipboard({ text });
+      if (!disposed) toast(ok ? "Outline copied" : "Copy failed");
+      return text;
+    },
     stats() {
       return { timers: timers.count(), listeners: listeners.length + (captured ? 3 : 0), observers: observers.length, mounted: itemsR.mountedCount(), shells: itemsR.shellCount() };
     },
@@ -1022,6 +1774,11 @@ export function mountBoardView({
       resumeTimer?.();
       settleTimer?.();
       frameHandle?.();
+      badgeTimer?.();
+      menu.dispose();
+      quicklook.dispose();
+      presenter.dispose();
+      clip.dispose();
       itemsR.dispose();
       edgesR.dispose();
       panel.dispose();

@@ -1,5 +1,9 @@
+import { inflate } from "./geometry.js";
 import {
+  BOARD_PATTERNS,
+  BOARD_TONES,
   DEFAULT_SIZES,
+  FIT_PAD,
   classifyString,
   firstLine,
   normalizeEdge,
@@ -129,6 +133,8 @@ export function buildBoard(pulled, { defaults } = {}) {
         color: layout.color,
         collapsed: layout.collapsed === true,
         fontSize: layout.fontSize,
+        pinned: layout.pinned,
+        autofit: !(type === "section" && layout.fit === false),
         title,
         target,
         enhanced: kind === "board" && cplexus?.v === 2,
@@ -179,6 +185,10 @@ export function buildBoard(pulled, { defaults } = {}) {
     title: parseBoardTitle(string),
     plexus,
     enhanced: plexus?.v === 2,
+    background: {
+      pattern: BOARD_PATTERNS.includes(plexus?.bg) ? plexus.bg : null,
+      tone: BOARD_TONES.includes(plexus?.bgColor) ? plexus.bgColor : null,
+    },
     items,
     roots,
     order,
@@ -283,28 +293,119 @@ export function boundsOf(rectList) {
   return list.length ? list.reduce(unionRect) : null;
 }
 
-// Mini map of a nested board card: the child's items as fractions of their bounds. Built from the card's
-// already pulled subtree, so it needs no extra read.
-export function boardPreview(item, { max = 60 } = {}) {
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+const PREVIEW_MIN = { w: DEFAULT_SIZES.card.w * 2, h: DEFAULT_SIZES.card.h * 2 };
+const PREVIEW_TITLE = 40;
+
+// Thumbnail of a nested board card: the child's items as fractions of a padded frame around their bounds.
+// Built from the card's already pulled subtree, so it needs no extra read. `bounds` stays the unpadded
+// absolute child bounds (moveIntoBoard uses it); `rects`/`edges` are relative to the drawn frame.
+export function boardPreview(item, { max = 60, aspect = null, pad = 0.12 } = {}) {
+  const empty = { count: 0, aspect: 1.6, rects: [], edges: [], bounds: null, empty: true };
   const child = buildBoard({
     ":block/uid": item?.uid,
     ":block/string": item?.string ?? "",
     ":block/children": item?.content ?? [],
   });
-  if (!child) return { count: 0, aspect: 1.5, rects: [], bounds: null };
+  if (!child) return empty;
   const world = worldRects(child);
   const bounds = boundsOf([...world.values()]);
-  if (!bounds) return { count: 0, aspect: 1.5, rects: [], bounds: null };
+  if (!bounds) return empty;
   const bw = bounds.w || 1;
   const bh = bounds.h || 1;
+  let w = Math.max(bw, PREVIEW_MIN.w);
+  let h = Math.max(bh, PREVIEW_MIN.h);
+  const p = Math.max(FIT_PAD, pad * Math.max(bw, bh));
+  const cx = bounds.x + bounds.w / 2;
+  const cy = bounds.y + bounds.h / 2;
+  w += 2 * p;
+  h += 2 * p;
+  const target = isNum(aspect) && aspect > 0 ? aspect : clamp(w / h, 0.25, 4);
+  if (w / h < target) w = h * target;
+  else h = w / target;
+  const fx = cx - w / 2;
+  const fy = cy - h / 2;
   const rects = [];
   for (const uid of child.order) {
     if (rects.length >= max) break;
     const r = world.get(uid);
     const it = child.items.get(uid);
-    rects.push({ x: (r.x - bounds.x) / bw, y: (r.y - bounds.y) / bh, w: r.w / bw, h: r.h / bh, type: it.type, color: it.color });
+    let title;
+    if (it.type === "section") title = it.title;
+    else title = firstLine(it.string).slice(0, PREVIEW_TITLE) || (it.kind === "board" ? it.title.slice(0, PREVIEW_TITLE) : "");
+    rects.push({
+      x: (r.x - fx) / w, y: (r.y - fy) / h, w: r.w / w, h: r.h / h,
+      type: it.type, kind: it.kind, color: it.color, title,
+      ...(!title && it.kind === "block" && it.target?.uid ? { ref: it.target.uid } : {}),
+    });
   }
-  return { count: child.items.size, aspect: Math.min(4, Math.max(0.25, bw / bh)), rects, bounds };
+  const edges = [];
+  for (const e of child.edges.values()) {
+    if (!e.valid) continue;
+    const a = centerOf(world.get(e.from));
+    const b = centerOf(world.get(e.to));
+    edges.push({ x1: (a.x - fx) / w, y1: (a.y - fy) / h, x2: (b.x - fx) / w, y2: (b.y - fy) / h });
+  }
+  return { count: child.items.size, aspect: target, rects, edges, bounds, empty: false };
+}
+
+// Grow-only plan that keeps auto-fit sections around their members. `rects` are world rects (may hold live
+// drag rects); touched uids walk up their section chain and each section grows to contain the padded child.
+// A pinned section never grows (the walk stops at it).
+export function sectionFitPlan(board, rects, touchedUids, {
+  pad = FIT_PAD,
+  skip = new Set(),
+  parentOf = (u) => board.items.get(u)?.parentUid,
+} = {}) {
+  const work = new Map();
+  const same = (a, b) => Math.abs(a.x - b.x) < 0.01 && Math.abs(a.y - b.y) < 0.01
+    && Math.abs(a.w - b.w) < 0.01 && Math.abs(a.h - b.h) < 0.01;
+  for (const touched of touchedUids) {
+    let cur = touched;
+    for (let guard = 0; guard < 256; guard++) {
+      const pid = parentOf(cur);
+      if (!pid || pid === board.uid) break;
+      const sec = board.items.get(pid);
+      if (!sec || sec.type !== "section" || sec.autofit === false || sec.pinned || skip.has(pid)) break;
+      const secRect = work.get(pid) ?? rects.get(pid);
+      const childRect = work.get(cur) ?? rects.get(cur);
+      if (!secRect || !childRect) break;
+      const need = unionRect(secRect, inflate(childRect, pad));
+      if (same(need, secRect)) break;
+      work.set(pid, need);
+      cur = pid;
+    }
+  }
+  const depthOf = (u) => {
+    let d = 0;
+    let cur = u;
+    for (let i = 0; i < 256; i++) {
+      const pid = parentOf(cur);
+      if (!pid || pid === board.uid) break;
+      d++;
+      cur = pid;
+    }
+    return d;
+  };
+  return [...work.entries()]
+    .map(([uid, rect]) => ({ uid, rect, depth: depthOf(uid) }))
+    .sort((a, b) => b.depth - a.depth)
+    .map(({ uid, rect }) => ({ uid, rect }));
+}
+
+// Item uids in Roam outline order (depth first, siblings by block order): the Tab traversal order.
+export function outlineOrder(board) {
+  const byOrder = (uids) => uids
+    .map((u, i) => ({ u, i, o: board.items.get(u)?.order ?? i }))
+    .sort((a, b) => a.o - b.o || a.i - b.i)
+    .map(({ u }) => u);
+  const out = [];
+  const visit = (uid) => {
+    out.push(uid);
+    for (const m of byOrder(board.items.get(uid).members)) visit(m);
+  };
+  for (const uid of byOrder(board.roots)) visit(uid);
+  return out;
 }
 
 export function itemsInRect(board, rect, rects, { mode = "contain" } = {}) {

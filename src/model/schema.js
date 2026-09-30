@@ -10,9 +10,11 @@ export const FONT_SIZES = [16, 24, 32, 48];
 export const EDGE_DEFAULTS = { fromSide: "auto", toSide: "auto", dir: "one", route: "curve", dash: "solid", weight: 1 };
 export const SIDES = ["auto", "top", "right", "bottom", "left"];
 export const ARROWS = { one: "→", two: "↔", none: "—" };
+export const BOARD_PATTERNS = ["dots", "lines", "grid", "plain"];
+export const BOARD_TONES = ["paper", ...PALETTE];
+export const FIT_PAD = 24;
 
 const ARROW_TOKENS = Object.values(ARROWS);
-const BOARD_BACKGROUNDS = ["dots", "lines", "plain"];
 const ROUTES = ["curve", "straight", "elbow"];
 const DASHES = ["solid", "dashed"];
 const DIRS = ["one", "two", "none"];
@@ -57,6 +59,8 @@ export function normalizeItemLayout(plexus) {
     color: PALETTE.includes(p.color) ? p.color : undefined,
     collapsed: p.collapsed === true ? true : p.collapsed === false ? false : undefined,
     fontSize: FONT_SIZES.includes(p.fontSize) ? p.fontSize : undefined,
+    pinned: p.pinned === true,
+    fit: p.fit === false ? false : undefined,
   };
 }
 
@@ -71,7 +75,10 @@ export function serializeItemLayout(layout) {
   if (l.collapsed === true) out.collapsed = true;
   if (l.type === "text" && FONT_SIZES.includes(l.fontSize)) out.fontSize = l.fontSize;
   if (l.v === SCHEMA_VERSION) out.v = SCHEMA_VERSION;
-  if (BOARD_BACKGROUNDS.includes(l.bg)) out.bg = l.bg;
+  if (l.pinned === true) out.pinned = true;
+  if (l.type === "section" && l.fit === false) out.fit = false;
+  if (BOARD_PATTERNS.includes(l.bg)) out.bg = l.bg;
+  if (BOARD_TONES.includes(l.bgColor)) out.bgColor = l.bgColor;
   return out;
 }
 
@@ -81,7 +88,18 @@ export function withBoardMarker(plexus, on) {
   if (on) return { ...base, v: SCHEMA_VERSION };
   delete base.v;
   delete base.bg;
+  delete base.bgColor;
   return Object.keys(base).length ? base : null;
+}
+
+const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+// Roam daily-note page title for a local date, e.g. "September 29th, 2026".
+export function dailyPageTitle(date) {
+  const d = date instanceof Date ? date : new Date(date);
+  const day = d.getDate();
+  const suffix = day >= 11 && day <= 13 ? "th" : ({ 1: "st", 2: "nd", 3: "rd" }[day % 10] ?? "th");
+  return `${MONTHS[d.getMonth()]} ${day}${suffix}, ${d.getFullYear()}`;
 }
 
 export function normalizeEdge(plexus) {

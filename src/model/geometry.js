@@ -47,6 +47,65 @@ export function lodForZoom(zoom) {
   return zoom < 0.45 ? "map" : "detail";
 }
 
+const clampNum = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+
+// Three-tier level of detail with hysteresis so the tier does not flicker at a threshold.
+export function lodTier(zoom, prev = "detail", { threshold = 0.45, overview = 0.2 } = {}) {
+  if (prev === "overview") {
+    if (zoom >= overview * 1.15) return zoom >= threshold * 1.1 ? "detail" : "map";
+    return "overview";
+  }
+  if (prev === "map") {
+    if (zoom < overview) return "overview";
+    return zoom >= threshold * 1.1 ? "detail" : "map";
+  }
+  if (zoom < overview) return "overview";
+  return zoom < threshold ? "map" : "detail";
+}
+
+// World-unit font sizes that keep on-screen text readable at low zoom.
+export function lodFonts(zoom) {
+  return {
+    map: clampNum(13 / zoom, 14, 42),
+    section: clampNum(16 / zoom, 15, 160),
+    ui: clampNum(1 / zoom, 1, 4),
+  };
+}
+
+const CONE = (68 * Math.PI) / 180;
+
+// Arrow-key navigation: the closest rect beyond the source center along `dir`, preferring a 68-degree cone.
+export function nearestInDirection(rects, fromUid, dir, { candidates = null } = {}) {
+  const src = rects.get(fromUid);
+  if (!src) return null;
+  const c = { x: src.x + src.w / 2, y: src.y + src.h / 2 };
+  const list = candidates ? [...candidates] : [...rects.keys()];
+  let best = null;
+  let bestScore = Infinity;
+  let fallback = null;
+  let fallbackScore = Infinity;
+  for (const uid of list) {
+    if (uid === fromUid) continue;
+    const r = rects.get(uid);
+    if (!r) continue;
+    const dx = r.x + r.w / 2 - c.x;
+    const dy = r.y + r.h / 2 - c.y;
+    let primary;
+    let ortho;
+    if (dir === "right") { primary = dx; ortho = dy; }
+    else if (dir === "left") { primary = -dx; ortho = dy; }
+    else if (dir === "down") { primary = dy; ortho = dx; }
+    else if (dir === "up") { primary = -dy; ortho = dx; }
+    else return null;
+    if (primary <= 0) continue;
+    const score = primary + 2 * Math.abs(ortho);
+    const better = (cur, curUid) => score < cur || (score === cur && (curUid === null || uid < curUid));
+    if (Math.atan2(Math.abs(ortho), primary) <= CONE && better(bestScore, best)) { best = uid; bestScore = score; }
+    if (better(fallbackScore, fallback)) { fallback = uid; fallbackScore = score; }
+  }
+  return best ?? fallback;
+}
+
 export function center(r) {
   return { x: r.x + r.w / 2, y: r.y + r.h / 2 };
 }
@@ -319,5 +378,5 @@ export function gridBackground(vp, style, base = 24) {
   if (style === "plain") return null;
   const size = base * vp.zoom;
   const mod = (v) => ((v % size) + size) % size;
-  return { size, x: mod(vp.x), y: mod(vp.y) };
+  return { size, x: mod(vp.x), y: mod(vp.y), major: size * 5 };
 }

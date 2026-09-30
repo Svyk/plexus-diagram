@@ -83,7 +83,7 @@ body.roam-body.dark .pxd-root,
 }
 
 @media (prefers-color-scheme: dark) {
-  :root:not(.bp3-light) .pxd-root {
+  :root:not(.bp3-light) .pxd-root:not(.pxd-root--light) {
     --pxd-surface: var(--bc-main, #1e2a35);
     --pxd-card: #26333f;
     --pxd-border: #3b4b58;
@@ -623,11 +623,13 @@ body.pxd-has-fullscreen .breadcrumbs-content {
 }
 
 /* Board thumbnails are plain divs, so they stay at map zoom; the overview tier hides them (cards read as blocks). */
-.pxd-lod-map .pxd-item--board .pxd-item__body {
+.pxd-lod-map .pxd-item--board .pxd-item__body,
+.pxd-lod-map .pxd-item--wb .pxd-item__body {
   display: block;
 }
 
-.pxd-lod-overview .pxd-item--board .pxd-item__body {
+.pxd-lod-overview .pxd-item--board .pxd-item__body,
+.pxd-lod-overview .pxd-item--wb .pxd-item__body {
   display: none;
 }
 
@@ -651,8 +653,12 @@ body.pxd-has-fullscreen .breadcrumbs-content {
 }
 
 .pxd-root.pxd-lod-map .pxd-item.pxd-item--card:not(.pxd-item--editing) > .pxd-item__header {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-height: 0;
+  padding-bottom: 0;
+  margin-bottom: 6px;
+  line-height: 1.2;
+  max-height: calc(3 * 1.2em + 6px);
   overflow: hidden;
   display: -webkit-box;
   -webkit-box-orient: vertical;
@@ -663,14 +669,30 @@ body.pxd-has-fullscreen .breadcrumbs-content {
 }
 
 /* A board card keeps its thumbnail under a one-line title. */
-.pxd-root.pxd-lod-map .pxd-item.pxd-item--card.pxd-item--board:not(.pxd-item--editing) > .pxd-item__header {
+.pxd-root.pxd-lod-map .pxd-item.pxd-item--card.pxd-item--board:not(.pxd-item--editing) > .pxd-item__header,
+.pxd-root.pxd-lod-map .pxd-item.pxd-item--card.pxd-item--wb:not(.pxd-item--editing) > .pxd-item__header {
   flex: 0 0 auto;
+  max-height: calc(1.2em + 6px);
   -webkit-line-clamp: 1;
+}
+
+/* The Roam-rendered title is a child block, so it (not the pill) has to own the ellipsis. */
+.pxd-section__title > .pxd-section__title-text {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 /* Overview tier: cards read as colored blocks; section titles grow to stay legible. */
 .pxd-root.pxd-lod-overview .pxd-item--card > .pxd-item__header {
   visibility: hidden;
+}
+
+/* Palette fills are near-white at 100%; at overview scale a colored card reads by its line color. */
+.pxd-root.pxd-lod-overview .pxd-item.pxd-item--card[class*="pxd-c-"] {
+  background-image: linear-gradient(color-mix(in srgb, var(--pxd-line) 42%, transparent), color-mix(in srgb, var(--pxd-line) 42%, transparent));
 }
 
 .pxd-root.pxd-lod-overview .pxd-section__title {

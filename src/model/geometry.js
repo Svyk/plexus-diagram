@@ -21,15 +21,21 @@ export function zoomAt(vp, screenPoint, factor, { min = 0.1, max = 4 } = {}) {
   return { x: screenPoint.x - w.x * zoom, y: screenPoint.y - w.y * zoom, zoom };
 }
 
-export function fitViewport(bounds, size, { padding = 64, maxZoom = 1.5, minZoom = 0.1 } = {}) {
-  if (!bounds) return { x: size.width / 2, y: size.height / 2, zoom: 1 };
-  const availW = size.width - 2 * padding;
-  const availH = size.height - 2 * padding;
+// `insets` are screen strips the content must stay out of (toolbar on top, an open side panel on the right).
+export function fitViewport(bounds, size, { padding = 64, maxZoom = 1.5, minZoom = 0.1, insets = null } = {}) {
+  const inset = { top: 0, right: 0, bottom: 0, left: 0, ...(insets || {}) };
+  const areaW = Math.max(1, size.width - inset.left - inset.right);
+  const areaH = Math.max(1, size.height - inset.top - inset.bottom);
+  const cx = inset.left + areaW / 2;
+  const cy = inset.top + areaH / 2;
+  if (!bounds) return { x: cx, y: cy, zoom: 1 };
+  const availW = Math.max(1, areaW - 2 * padding);
+  const availH = Math.max(1, areaH - 2 * padding);
   let zoom = Math.min(bounds.w > 0 ? availW / bounds.w : Infinity, bounds.h > 0 ? availH / bounds.h : Infinity);
   if (!Number.isFinite(zoom)) zoom = maxZoom;
   zoom = clampZoom(zoom, minZoom, maxZoom);
   const c = center(bounds);
-  return { x: size.width / 2 - c.x * zoom, y: size.height / 2 - c.y * zoom, zoom };
+  return { x: cx - c.x * zoom, y: cy - c.y * zoom, zoom };
 }
 
 export function visibleWorldRect(vp, size, margin = 0) {
@@ -374,9 +380,13 @@ export function distributeRects(list, axis) {
   });
 }
 
+const MIN_GRID_PITCH = 8;
+
 export function gridBackground(vp, style, base = 24) {
   if (style === "plain") return null;
-  const size = base * vp.zoom;
+  // Zoomed far out the pitch collapses into a grey moire; coarsen it by 5x steps (a lattice of the same world grid).
+  let size = base * vp.zoom;
+  while (size > 0 && size < MIN_GRID_PITCH) size *= 5;
   const mod = (v) => ((v % size) + size) % size;
   return { size, x: mod(vp.x), y: mod(vp.y), major: size * 5 };
 }

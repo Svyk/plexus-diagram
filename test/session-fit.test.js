@@ -408,6 +408,17 @@ test("addDailyCards creates a row of daily-page cards 300 apart and skips titles
   assert.deepEqual(await session.addDailyCards(["2026-09-30"], { x: 0, y: 0 }), []);
 });
 
+test("addDailyCards never lands a new card on top of an existing one (Add this week over today's card)", async () => {
+  const { fake, session } = setup([{ uid: "d29", string: "[[September 29th, 2026]]", props: { plexus: { x: 133, y: 802, w: 280, h: 160 } } }]);
+  const ids = await session.addDailyCards(["2026-09-28", "2026-09-29", "2026-09-30", "2026-10-01"], { x: 133, y: 802 });
+  assert.equal(ids.length, 3, "today's card is skipped");
+  const xs = ids.map((id) => plexus(fake, id).x);
+  assert.ok(xs.every((x) => x >= 133 + 280), `none overlaps the card at x=133 (${xs})`);
+  assert.equal(new Set(xs).size, 3, "and none overlaps another new card");
+  const sorted = [...xs].sort((a, b) => a - b);
+  for (let i = 1; i < sorted.length; i += 1) assert.ok(sorted[i] - sorted[i - 1] >= 280);
+});
+
 test("extendSession hands every new session the api and the new methods exist on the session", async () => {
   const seen = [];
   const off = extendSession((session, api) => { seen.push({ session, api }); });
@@ -464,4 +475,17 @@ test("applyFit from the extension api grows a section for touched uids inside th
   });
   assert.equal(plexus(fake, "S").w, 604);
   assert.equal(session.rects.get("a").x, 380);
+});
+
+test("one drag past a section edge is one undo step (card + section writes grouped)", async () => {
+  const { fake, host, session } = setup(basic());
+  await session.commitMove(["a"], 250, 0);
+  assert.equal(updates(fake).length, 2);
+  fake.calls.length = 0;
+  await session.undo();
+  assert.deepEqual(fake.calls.filter((c) => c[0] === "undo" || c[0] === "redo").map((c) => c[0]), ["undo", "undo"], "both writes are undone by one Cmd+Z");
+  fake.calls.length = 0;
+  await session.redo();
+  assert.deepEqual(fake.calls.filter((c) => c[0] === "redo").length, 2);
+  assert.ok(host.stats.writes >= 2);
 });

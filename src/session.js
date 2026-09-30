@@ -38,7 +38,7 @@ import {
   setBoardTitle,
   withBoardMarker,
 } from "./model/schema.js";
-import { inflate, unionRect } from "./model/geometry.js";
+import { inflate, rectsIntersect, unionRect } from "./model/geometry.js";
 import { sameSize as sameSizeRects, spaceOut as spaceOutRects, tidyRects } from "./model/layout.js";
 import { coveredBy, filterLinks, linksQuery, reduceLinks } from "./model/links.js";
 import { createEchoLedger, createWriteQueue } from "./host/roam.js";
@@ -55,9 +55,18 @@ const LINK_MODES = ["off", "attributes", "all"];
 const ITEM_KEYS = ["type", "x", "y", "w", "h", "color", "collapsed", "fontSize", "pinned", "fit"];
 const EDGE_KEYS = ["type", "from", "to", "fromSide", "toSide", "dir", "route", "dash", "weight", "color"];
 const MAX_PARENT_STRINGS = 200;
+const DAILY_GAP = 20;
 
 const registry = new Map();
 const extensions = [];
+
+// Roam's undo stack holds 50 changes, so one bulk add stays under it: past 45 cards only the first 45 are made.
+export const BULK_CARD_CAP = 45;
+export function capBulk(list, emit) {
+  if (list.length <= BULK_CARD_CAP) return list;
+  emit("toast", { message: `Added ${BULK_CARD_CAP} of ${list.length} (Roam undo holds 50 changes)` });
+  return list.slice(0, BULK_CARD_CAP);
+}
 
 // Registers fn(session, api); every session created afterwards runs it once before it is returned.
 // Returns a function that removes the registration.
@@ -220,12 +229,13 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
 
   const publish = () => {
     rebuild();
-    if (!board) return;
+    if (!board) return null;
     const diff = diffBoards(emitted, board);
     emitted = board;
     if (diff.structural || diff.dirty.size) emit("change", diff);
     recomputeLinks(false);
     if (diff.structural) refreshLinks();
+    return diff;
   };
 
   // The board block itself vanished (deleted, or undone away): tell the owner once so it can pop out.
@@ -304,7 +314,11 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
     const incoming = clone(latest);
     latest = null;
     raw = rebase(incoming);
-    publish();
+    const diff = publish();
+    // Our own writes and their echoes are already in the optimistic model: a change that still shows up once the
+    // queue is idle is someone else's edit, so the host's grouped undo log no longer maps onto Roam's stack (the host
+    // ignores the call inside its own echo window).
+    if (diff && (diff.structural || diff.dirty.size) && !queue.pending) host.invalidateUndo?.();
   };
   const unwatch = raw
     ? host.watchBoard(uid, (after) => {
@@ -398,12 +412,15 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
     repull();
   }
 
+  // One user operation is one Roam undo step: the host groups the writes of a transaction.
+  const grouped = (fn) => (host.group ? host.group(fn) : fn());
+
   function commit(ops, result) {
     if (!ops.length) return Promise.resolve(result);
     const list = coalesce(ops);
     for (const op of list) for (const [f, v] of fieldsOf(op)) ledger.expect(op.uid, f, v);
     publish();
-    return queue.run(() => execute(list)).then(() => result, (err) => { handleFailure(err); return result; });
+    return queue.run(() => grouped(() => execute(list))).then(() => result, (err) => { handleFailure(err); return result; });
   }
 
   function txn(fn) {
@@ -839,8 +856,9 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
     },
 
     addRefCards(list) {
+      const items = capBulk(list ?? [], emit);
       return txn((t) => {
-        const ids = (list ?? []).map(({ string, x, y }) => cardAt(t, string, x, y));
+        const ids = items.map(({ string, x, y }) => cardAt(t, string, x, y));
         applyFit(t, ids);
         return ids;
       });
@@ -1100,6 +1118,18 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
         const have = new Set();
         for (const item of board.items.values()) if (item.kind === "page") have.add(item.target.title);
         const made = [];
+        // Cards land in a row from the click point, skipping any spot an existing (or just placed) card occupies.
+        const size = defaultSizeFor({ type: "card", kind: "page" });
+        const occupied = [...board.items.values()].filter((it) => it.type !== "section").map((it) => rects.get(it.uid)).filter(Boolean);
+        let slotX = x;
+        const freeSlot = () => {
+          const at = () => ({ x: slotX, y, w: size.w, h: size.h });
+          while (occupied.some((r) => rectsIntersect(r, at()))) slotX += size.w + DAILY_GAP;
+          const spot = at();
+          occupied.push(spot);
+          slotX += size.w + DAILY_GAP;
+          return spot.x;
+        };
         for (const d of dates ?? []) {
           const date = typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d)
             ? new Date(Number(d.slice(0, 4)), Number(d.slice(5, 7)) - 1, Number(d.slice(8, 10)))
@@ -1107,7 +1137,7 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
           const title = dailyPageTitle(date);
           if (have.has(title)) continue;
           have.add(title);
-          made.push(cardAt(t, `[[${title}]]`, x + made.length * 300, y));
+          made.push(cardAt(t, `[[${title}]]`, freeSlot(), y));
         }
         applyFit(t, made);
         return made;
@@ -1224,12 +1254,12 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
       const collapse = collapseOutline() && raw?.[OPEN] !== false;
       let counts = null;
       try {
-        counts = await queue.run(async () => {
+        counts = await queue.run(() => grouped(async () => {
           ledger.clear();
           const done = await executeImport(plan, host, board);
           if (collapse) await host.setOpen(uid, false);
           return done;
-        });
+        }));
       } catch (err) {
         handleFailure(err);
         return { enhanced: false, reason: "write-failed" };

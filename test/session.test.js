@@ -819,3 +819,15 @@ test("session emits gone once when the board block disappears, and stops writing
   assert.equal(session.gone, true);
   assert.equal(await session.commitMove?.("c1", { x: 5, y: 5 }), undefined);
 });
+
+test("a foreign edit that arrives while the queue is idle asks the host to drop its undo log; our own echo does not", async () => {
+  const { fake, host, session } = setup({ echoDelay: 5 });
+  let invalidated = 0;
+  host.invalidateUndo = () => { invalidated += 1; };
+  await session.commitMove(["c1"], 10, 0);
+  await sleep(50);
+  assert.equal(invalidated, 0, "the echo of our own write is already in the optimistic model");
+  await fake.api.data.block.update({ block: { uid: "c2", props: { plexus: { x: 555, y: 0 } } } });
+  await sleep(50);
+  assert.ok(invalidated >= 1, "an edit made elsewhere in Roam is a foreign change");
+});

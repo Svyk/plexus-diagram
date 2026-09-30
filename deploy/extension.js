@@ -19,15 +19,20 @@ function zoomAt(vp, screenPoint, factor, { min = 0.1, max = 4 } = {}) {
   const w = screenToWorld(vp, screenPoint);
   return { x: screenPoint.x - w.x * zoom, y: screenPoint.y - w.y * zoom, zoom };
 }
-function fitViewport(bounds, size, { padding = 64, maxZoom = 1.5, minZoom = 0.1 } = {}) {
-  if (!bounds) return { x: size.width / 2, y: size.height / 2, zoom: 1 };
-  const availW = size.width - 2 * padding;
-  const availH = size.height - 2 * padding;
+function fitViewport(bounds, size, { padding = 64, maxZoom = 1.5, minZoom = 0.1, insets = null } = {}) {
+  const inset = { top: 0, right: 0, bottom: 0, left: 0, ...insets || {} };
+  const areaW = Math.max(1, size.width - inset.left - inset.right);
+  const areaH = Math.max(1, size.height - inset.top - inset.bottom);
+  const cx = inset.left + areaW / 2;
+  const cy = inset.top + areaH / 2;
+  if (!bounds) return { x: cx, y: cy, zoom: 1 };
+  const availW = Math.max(1, areaW - 2 * padding);
+  const availH = Math.max(1, areaH - 2 * padding);
   let zoom = Math.min(bounds.w > 0 ? availW / bounds.w : Infinity, bounds.h > 0 ? availH / bounds.h : Infinity);
   if (!Number.isFinite(zoom)) zoom = maxZoom;
   zoom = clampZoom(zoom, minZoom, maxZoom);
   const c = center(bounds);
-  return { x: size.width / 2 - c.x * zoom, y: size.height / 2 - c.y * zoom, zoom };
+  return { x: cx - c.x * zoom, y: cy - c.y * zoom, zoom };
 }
 function visibleWorldRect(vp, size, margin = 0) {
   const mw = size.width * margin;
@@ -346,9 +351,11 @@ function distributeRects(list, axis) {
     return h ? { uid: r.uid, x: p, y: r.y } : { uid: r.uid, x: r.x, y: p };
   });
 }
+var MIN_GRID_PITCH = 8;
 function gridBackground(vp, style, base = 24) {
   if (style === "plain") return null;
-  const size = base * vp.zoom;
+  let size = base * vp.zoom;
+  while (size > 0 && size < MIN_GRID_PITCH) size *= 5;
   const mod = (v) => (v % size + size) % size;
   return { size, x: mod(vp.x), y: mod(vp.y), major: size * 5 };
 }
@@ -1618,6 +1625,28 @@ function createViewportStore({ storage = globalThis.localStorage, graph = "", no
 function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localStorage, graph } = {}) {
   const stats = { writes: 0, watches: 0, renders: 0 };
   const data = api.data;
+  const undoLog = [];
+  const redoLog = [];
+  const UNDO_LOG_MAX = 200;
+  const MAX_GROUP_WRITES = 45;
+  const UNDO_ECHO_MS = 900;
+  let openGroup = null;
+  let lastWriteAt = -Infinity;
+  const noteWrite = () => {
+    lastWriteAt = Date.now();
+    redoLog.length = 0;
+    if (openGroup) {
+      if (openGroup.n >= MAX_GROUP_WRITES) {
+        undoLog.push(openGroup);
+        if (undoLog.length > UNDO_LOG_MAX) undoLog.shift();
+        openGroup = { n: 0 };
+      }
+      openGroup.n++;
+      return;
+    }
+    undoLog.push({ n: 1 });
+    if (undoLog.length > UNDO_LOG_MAX) undoLog.shift();
+  };
   const pull = (pattern, entity) => data.pull(pattern, entity);
   const gname = graph ?? graphName();
   const host = {
@@ -1705,34 +1734,89 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
       if (open !== void 0) block.open = open;
       stats.writes++;
       await data.block.create({ location: { "parent-uid": parentUid, order }, block });
+      noteWrite();
       return id;
     },
     async updateString(uid, string) {
       stats.writes++;
       await data.block.update({ block: { uid, string } });
+      noteWrite();
     },
     async updateProps(uid, plexus) {
       const merged = mergePropsForWrite(host.pullProps(uid), plexus);
       stats.writes++;
       await data.block.update({ block: { uid, props: merged } });
+      noteWrite();
     },
     async moveBlock(uid, parentUid, order = "last") {
       stats.writes++;
       await data.block.move({ location: { "parent-uid": parentUid, order }, block: { uid } });
+      noteWrite();
     },
     async deleteBlock(uid) {
       stats.writes++;
       await data.block.delete({ block: { uid } });
+      noteWrite();
     },
     async setOpen(uid, open) {
       stats.writes++;
       await data.block.update({ block: { uid, open } });
+      noteWrite();
     },
-    undo() {
-      return data.undo();
+    // Runs fn (a serialized write sequence) as one undo step. Groups do not nest; the write queue serializes callers.
+    async group(fn) {
+      if (openGroup) return fn();
+      openGroup = { n: 0 };
+      try {
+        return await fn();
+      } finally {
+        const g = openGroup;
+        openGroup = null;
+        if (g.n) {
+          undoLog.push(g);
+          if (undoLog.length > UNDO_LOG_MAX) undoLog.shift();
+        }
+      }
     },
-    redo() {
-      return data.redo();
+    // Undo/redo step over a whole recorded group; with nothing recorded (or after invalidateUndo) it is Roam's single step.
+    async undo() {
+      lastWriteAt = Date.now();
+      const entry = undoLog.pop();
+      const n = entry?.n ?? 1;
+      let done = 0;
+      try {
+        for (; done < n; done++) await data.undo();
+      } finally {
+        lastWriteAt = Date.now();
+        if (entry) {
+          if (done >= n) redoLog.push(entry);
+          else {
+            if (done > 0) redoLog.push({ n: done });
+            undoLog.push({ n: n - done });
+          }
+        }
+      }
+    },
+    async redo() {
+      lastWriteAt = Date.now();
+      const entry = redoLog.pop();
+      const n = entry?.n ?? 1;
+      let done = 0;
+      try {
+        for (; done < n; done++) await data.redo();
+      } finally {
+        lastWriteAt = Date.now();
+        if (entry) {
+          if (done > 0) undoLog.push(done >= n ? entry : { n: done });
+          if (done < n) redoLog.push({ n: n - done });
+        }
+      }
+    },
+    // Something else (a typed edit, another tool) touched the graph: the log no longer maps 1:1 onto Roam's stack.
+    invalidateUndo() {
+      if (openGroup || Date.now() - lastWriteAt < UNDO_ECHO_MS) return;
+      undoLog.length = 0;
+      redoLog.length = 0;
     },
     openInSidebar(uid, type = "block") {
       return api.ui.rightSidebar.addWindow({ window: { type, "block-uid": uid } });
@@ -1847,7 +1931,9 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
       const upload = api.file?.upload;
       if (typeof upload !== "function") throw new Error("upload-unavailable");
       const res = await upload.call(api.file, { file });
-      const url = typeof res === "string" ? res : res?.url;
+      const raw = typeof res === "string" ? res : res?.url;
+      const md = typeof raw === "string" ? /^\s*!\[[^\]]*\]\((.+)\)\s*$/s.exec(raw) : null;
+      const url = md ? md[1] : raw;
       if (typeof url !== "string" || !url) throw new Error("upload-failed");
       stats.writes++;
       return url;
@@ -2321,8 +2407,15 @@ var LINK_MODES = ["off", "attributes", "all"];
 var ITEM_KEYS = ["type", "x", "y", "w", "h", "color", "collapsed", "fontSize", "pinned", "fit"];
 var EDGE_KEYS = ["type", "from", "to", "fromSide", "toSide", "dir", "route", "dash", "weight", "color"];
 var MAX_PARENT_STRINGS = 200;
+var DAILY_GAP = 20;
 var registry = /* @__PURE__ */ new Map();
 var extensions = [];
+var BULK_CARD_CAP = 45;
+function capBulk(list, emit2) {
+  if (list.length <= BULK_CARD_CAP) return list;
+  emit2("toast", { message: `Added ${BULK_CARD_CAP} of ${list.length} (Roam undo holds 50 changes)` });
+  return list.slice(0, BULK_CARD_CAP);
+}
 function extendSession(fn) {
   if (typeof fn !== "function") return () => {
   };
@@ -2475,12 +2568,13 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
   };
   const publish = () => {
     rebuild();
-    if (!board) return;
+    if (!board) return null;
     const diff = diffBoards(emitted, board);
     emitted = board;
     if (diff.structural || diff.dirty.size) emit2("change", diff);
     recomputeLinks(false);
     if (diff.structural) refreshLinks();
+    return diff;
   };
   let gone = false;
   const markGone = () => {
@@ -2556,7 +2650,8 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
     const incoming = clone(latest);
     latest = null;
     raw = rebase(incoming);
-    publish();
+    const diff = publish();
+    if (diff && (diff.structural || diff.dirty.size) && !queue.pending) host.invalidateUndo?.();
   };
   const unwatch = raw ? host.watchBoard(uid, (after) => {
     if (destroyed) return;
@@ -2672,12 +2767,13 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
     emit2("toast", { message: "Couldn't save changes to Roam. Reloaded the board from the graph." });
     repull();
   }
+  const grouped = (fn) => host.group ? host.group(fn) : fn();
   function commit(ops, result) {
     if (!ops.length) return Promise.resolve(result);
     const list = coalesce(ops);
     for (const op of list) for (const [f, v] of fieldsOf(op)) ledger.expect(op.uid, f, v);
     publish();
-    return queue.run(() => execute(list)).then(() => result, (err) => {
+    return queue.run(() => grouped(() => execute(list))).then(() => result, (err) => {
       handleFailure(err);
       return result;
     });
@@ -3100,8 +3196,9 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
       });
     },
     addRefCards(list) {
+      const items = capBulk(list ?? [], emit2);
       return txn((t) => {
-        const ids = (list ?? []).map(({ string, x, y }) => cardAt(t, string, x, y));
+        const ids = items.map(({ string, x, y }) => cardAt(t, string, x, y));
         applyFit(t, ids);
         return ids;
       });
@@ -3343,12 +3440,23 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
         const have = /* @__PURE__ */ new Set();
         for (const item of board.items.values()) if (item.kind === "page") have.add(item.target.title);
         const made = [];
+        const size = defaultSizeFor({ type: "card", kind: "page" });
+        const occupied = [...board.items.values()].filter((it) => it.type !== "section").map((it) => rects.get(it.uid)).filter(Boolean);
+        let slotX = x;
+        const freeSlot = () => {
+          const at = () => ({ x: slotX, y, w: size.w, h: size.h });
+          while (occupied.some((r) => rectsIntersect(r, at()))) slotX += size.w + DAILY_GAP;
+          const spot = at();
+          occupied.push(spot);
+          slotX += size.w + DAILY_GAP;
+          return spot.x;
+        };
         for (const d of dates ?? []) {
           const date = typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d) ? new Date(Number(d.slice(0, 4)), Number(d.slice(5, 7)) - 1, Number(d.slice(8, 10))) : d;
           const title = dailyPageTitle(date);
           if (have.has(title)) continue;
           have.add(title);
-          made.push(cardAt(t, `[[${title}]]`, x + made.length * 300, y));
+          made.push(cardAt(t, `[[${title}]]`, freeSlot(), y));
         }
         applyFit(t, made);
         return made;
@@ -3465,12 +3573,12 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
       const collapse = collapseOutline() && raw?.[OPEN] !== false;
       let counts = null;
       try {
-        counts = await queue.run(async () => {
+        counts = await queue.run(() => grouped(async () => {
           ledger.clear();
           const done = await executeImport(plan, host, board);
           if (collapse) await host.setOpen(uid, false);
           return done;
-        });
+        }));
       } catch (err) {
         handleFailure(err);
         return { enhanced: false, reason: "write-failed" };
@@ -3802,7 +3910,7 @@ extendSession((session, api) => {
           const entries = payload.items.map((i) => ({ uid: i.uid, x: x + (i.x - bounds.x), y: y + (i.y - bounds.y) }));
           made = cloneSet(t, src, entries);
         } else {
-          made = refCardStrings(payload, { x, y }).map((c) => placeCard(t, c.string, c.x, c.y, { w: c.w, h: c.h, color: c.color }));
+          made = capBulk(refCardStrings(payload, { x, y }), api.emit).map((c) => placeCard(t, c.string, c.x, c.y, { w: c.w, h: c.h, color: c.color }));
         }
         api.applyFit(t, made);
         return made;
@@ -3813,7 +3921,7 @@ extendSession((session, api) => {
       const list = (Array.isArray(text) ? text : parsePastedText(text)).map((e) => typeof e === "string" ? e : e?.string).filter((s) => typeof s === "string" && s.trim() !== "");
       if (!list.length) return Promise.resolve([]);
       return api.txn((t) => {
-        const made = stackAt(list, x, y).map((c) => placeCard(t, c.string, c.x, c.y));
+        const made = capBulk(stackAt(list, x, y), api.emit).map((c) => placeCard(t, c.string, c.x, c.y));
         api.applyFit(t, made);
         return made;
       }).then((made) => made ?? []);
@@ -3859,7 +3967,7 @@ extendSession((session, api) => {
     },
     // The source card's child blocks become a mind map of ref cards (blocks stay canonical in Roam) plus one
     // connection per parent -> child. Children that already have a card on this board are reused, not moved.
-    expandOutline(cardUid, { direction = "right", max = 40 } = {}) {
+    expandOutline(cardUid, { direction = "right", max = 24 } = {}) {
       const none = { added: 0, edges: 0 };
       const board = api.board();
       const item = board?.items.get(cardUid);
@@ -3902,15 +4010,20 @@ extendSession((session, api) => {
         const cardOf = /* @__PURE__ */ new Map();
         const refOfCard = /* @__PURE__ */ new Map([[cardUid, api.refOf(cardUid)]]);
         const created = [];
+        const shift = /* @__PURE__ */ new Map();
         for (const f of picked) {
+          const p = layout.get(f.uid);
           const have = onBoard.get(f.uid);
           if (have) {
+            const r = rects.get(have);
+            shift.set(f.uid, r ? { dx: r.x - (own.x + p.x), dy: r.y - (own.y + p.y) } : { dx: 0, dy: 0 });
             cardOf.set(f.uid, have);
             refOfCard.set(have, api.refOf(have));
             continue;
           }
-          const p = layout.get(f.uid);
-          const id = placeCard(t, `((${f.uid}))`, own.x + p.x, own.y + p.y, OUTLINE_CARD);
+          const inherited = shift.get(f.parent) ?? { dx: 0, dy: 0 };
+          shift.set(f.uid, inherited);
+          const id = placeCard(t, `((${f.uid}))`, own.x + p.x + inherited.dx, own.y + p.y + inherited.dy, OUTLINE_CARD);
           cardOf.set(f.uid, id);
           refOfCard.set(id, `((${f.uid}))`);
           created.push(id);
@@ -3931,7 +4044,8 @@ extendSession((session, api) => {
           edges++;
         }
         api.applyFit(t, created);
-        return { added: created.length, edges };
+        const skipped = flat.length - picked.length;
+        return skipped > 0 ? { added: created.length, edges, skipped, total: flat.length } : { added: created.length, edges };
       }).then((res) => res ?? none);
     }
   });
@@ -4603,6 +4717,10 @@ function createInteractions({ actions, settings } = {}) {
       }
       return;
     }
+    if (t.kind === "port" && t.side === "bottom") {
+      if (t.uid && b?.items.has(t.uid) && !isPinned(t.uid)) call(b.items.get(t.uid).type === "section" ? "fitSection" : "fitHeight", t.uid);
+      return;
+    }
     if (t.kind === "section-title" && t.uid) {
       selectItems([t.uid]);
       call("renameSection", t.uid);
@@ -5122,6 +5240,7 @@ function createItemRenderer({
   let focusGuard = null;
   let floorTeardown = null;
   let floor = null;
+  let floorRetry = null;
   let recoveries = [];
   let lastOutsideDown = -Infinity;
   let disposed = false;
@@ -5579,7 +5698,7 @@ function createItemRenderer({
     } else {
       for (const [uid, rec] of shells) {
         const r = lastRects.get(uid);
-        const keep = rec.type === "section" || rec.type === "text" || lastBoard.items.get(uid)?.kind === "board";
+        const keep = rec.type === "section" || rec.type === "text" || rec.refBoard || lastBoard.items.get(uid)?.kind === "board";
         if (keep && r && rectsIntersect(r, visibleRect)) next.add(uid);
       }
     }
@@ -5835,7 +5954,15 @@ function createItemRenderer({
     if (!e || disposed || !e.ready || floor) return false;
     const t = now();
     recoveries = recoveries.filter((x) => t - x < FLOOR_SPAN_MS);
-    if (recoveries.length >= FLOOR_MAX) return false;
+    if (recoveries.length >= FLOOR_MAX) {
+      if (!floorRetry) {
+        floorRetry = later(() => {
+          floorRetry = null;
+          if (editing === e && !disposed && focusLost(doc.activeElement)) armFloor();
+        }, FLOOR_SPAN_MS - (t - recoveries[0]) + 20);
+      }
+      return false;
+    }
     floor = { start: t, cancel: null };
     floor.cancel = frameLater(() => floorTick(e));
     return true;
@@ -5881,10 +6008,13 @@ function createItemRenderer({
       ro?.disconnect();
       floor?.cancel?.();
       floor = null;
+      floorRetry?.();
+      floorRetry = null;
     };
   };
   const recoverFocus = () => armFloor();
   const stopEvent = (event) => event.stopPropagation();
+  const EDITOR_STOPPED = ["pointerdown", "pointerup", "click", "dblclick", "wheel", "mousedown"];
   const enterEdit = async (uid) => {
     const rec = shells.get(uid);
     const item = lastBoard?.items.get(uid);
@@ -5901,7 +6031,7 @@ function createItemRenderer({
     rec.contentKey = null;
     mounted.delete(uid);
     const editor = el("div", "pxd-item__editor", rec.body);
-    for (const type of ["pointerdown", "pointerup", "click", "dblclick", "wheel", "mousedown", "mouseup"]) editor.addEventListener(type, stopEvent);
+    for (const type of EDITOR_STOPPED) editor.addEventListener(type, stopEvent);
     editing = { uid, rec, editor, targetUid, item, ready: false };
     rec.el.classList.add("pxd-item--editing");
     renderBadges(rec);
@@ -5940,7 +6070,7 @@ function createItemRenderer({
     detachFocusGuard();
     const { rec, editor, uid, item } = e;
     const contentH = Number(editor.scrollHeight) || 0;
-    for (const type of ["pointerdown", "pointerup", "click", "dblclick", "wheel", "mousedown", "mouseup"]) editor.removeEventListener(type, stopEvent);
+    for (const type of EDITOR_STOPPED) editor.removeEventListener(type, stopEvent);
     try {
       host?.unmount?.(editor);
     } catch {
@@ -6093,7 +6223,7 @@ function createItemRenderer({
       const e = editing;
       editing = null;
       detachFocusGuard();
-      for (const type of ["pointerdown", "pointerup", "click", "dblclick", "wheel", "mousedown", "mouseup"]) e.editor.removeEventListener(type, stopEvent);
+      for (const type of EDITOR_STOPPED) e.editor.removeEventListener(type, stopEvent);
       try {
         host?.unmount?.(e.editor);
       } catch {
@@ -6520,6 +6650,7 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
 var CTX_GAP = 12;
 var CTX_EDGE_CLEARANCE = 28;
 var CTX_MARGIN = 8;
+var CTX_MIN_WIDTH = 180;
 var TOAST_MS = 6e3;
 var MINIMAP_W = 180;
 var MINIMAP_H = 120;
@@ -6692,8 +6823,10 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
       fullBtn.textContent = on2 ? "Exit fullscreen" : "Fullscreen";
       fullBtn.classList.toggle("pxd-btn--active", Boolean(on2));
     },
+    // Called on every panel open/close: a floating context bar re-clears the panel now, not at the next pan.
     setPanel(open) {
       addBtn.classList.toggle("pxd-btn--active", Boolean(open));
+      positionCtx();
     },
     setMinimap(open) {
       minimapBtn.classList.toggle("pxd-btn--active", Boolean(open));
@@ -6899,14 +7032,22 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     const rootRect = root.getBoundingClientRect();
     const W = rootRect.width || 0;
     const H = rootRect.height || 0;
+    const gap = a.kind === "edge" ? CTX_EDGE_CLEARANCE : CTX_GAP;
+    const tb = toolbar.getBoundingClientRect();
+    const topLimit = tb.height ? Math.max(CTX_MARGIN, tb.bottom - (rootRect.top || 0) + CTX_MARGIN) : CTX_MARGIN;
+    const panelEl = root.querySelector?.(".pxd-panel");
+    const pr = panelEl && panelEl.style?.display !== "none" ? panelEl.getBoundingClientRect() : null;
+    const room = pr?.width ? Math.min(W, pr.left - (rootRect.left || 0)) : W;
+    ctx.style.maxWidth = pr?.width && room > 0 ? `${Math.max(CTX_MIN_WIDTH, Math.round(room - 2 * CTX_MARGIN))}px` : "";
     const barW = ctx.offsetWidth || 320;
     const barH = ctx.offsetHeight || 36;
-    const gap = a.kind === "edge" ? CTX_EDGE_CLEARANCE : CTX_GAP;
+    const rightLimit = pr?.width ? Math.max(barW + CTX_MARGIN, room) : W;
     let top = a.rect.y - gap - barH;
-    if (top < CTX_MARGIN) top = a.rect.y + a.rect.h + gap;
-    if (top + barH > H - CTX_MARGIN && a.rect.y - gap - barH >= 0) top = a.rect.y - gap - barH;
+    if (top < topLimit) top = a.rect.y + a.rect.h + gap;
+    if (top + barH > H - CTX_MARGIN && a.rect.y - gap - barH >= topLimit) top = a.rect.y - gap - barH;
+    top = Math.max(top, topLimit);
     let left = a.rect.x + a.rect.w / 2 - barW / 2;
-    left = Math.max(CTX_MARGIN, Math.min(left, W - barW - CTX_MARGIN));
+    left = Math.max(CTX_MARGIN, Math.min(left, rightLimit - barW - CTX_MARGIN));
     ctx.style.left = `${Math.round(left)}px`;
     ctx.style.top = `${Math.round(top)}px`;
     ctx.classList.toggle("pxd-ctx--below", top > a.rect.y);
@@ -8577,6 +8718,7 @@ var DEFAULT_HEIGHT = 560;
 var MIN_HEIGHT = 240;
 var RESUME_MS = 120;
 var VP_PERSIST_MS = 500;
+var SECTION_TITLE_ALLOWANCE = 32;
 var CULL_MARGIN = 0.5;
 var BADGE_TTL_MS = 12e4;
 var BADGE_CHUNK = 12;
@@ -8664,6 +8806,27 @@ function isDarkHost(root, doc = globalThis.document) {
   const html = doc?.documentElement;
   if (has(html, "bp3-dark") || has(body, "bt-theme-dark") || has(body, "bp3-dark") || has(body, "rm-dark-theme")) return true;
   if (has(body, "roam-body") && has(body, "dark")) return true;
+  return false;
+}
+var rgbOf = (value) => {
+  const m = /^rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)(?:\s*[,/]\s*([\d.]+)(%)?)?\s*\)$/.exec(String(value ?? "").trim());
+  if (!m) return null;
+  const a = m[4] == null ? 1 : Number(m[4]) / (m[5] ? 100 : 1);
+  return { r: Number(m[1]), g: Number(m[2]), b: Number(m[3]), a };
+};
+function isLightHost(root, doc = globalThis.document, win = globalThis.window) {
+  if (isDarkHost(root, doc)) return false;
+  if (typeof win?.getComputedStyle !== "function") return false;
+  for (let node = root; node; node = node.parentElement) {
+    let color;
+    try {
+      color = rgbOf(win.getComputedStyle(node)?.backgroundColor);
+    } catch {
+      return false;
+    }
+    if (!color || color.a < 0.5) continue;
+    return (0.2126 * color.r + 0.7152 * color.g + 0.0722 * color.b) / 255 > 0.6;
+  }
   return false;
 }
 function graphName2(win = globalThis.window) {
@@ -8785,7 +8948,12 @@ function mountBoardView({
   const overlaySvg = svg("pxd-overlay", world);
   const resizeGrip = el("div", "pxd-resize-grip pxd-chrome", root);
   resizeGrip.title = "Drag to resize the board";
-  if (isDarkHost(mountEl, doc)) root.classList.add("pxd-root--dark");
+  const applyTheme = () => {
+    const dark = isDarkHost(mountEl, doc);
+    root.classList.toggle("pxd-root--dark", dark);
+    root.classList.toggle("pxd-root--light", !dark && isLightHost(mountEl, doc, globalThis.window));
+  };
+  applyTheme();
   let vp = vpStore.get(boardUid);
   let size = { width: 0, height: 0 };
   let rootRect = { left: 0, top: 0, width: 0, height: 0 };
@@ -8897,9 +9065,21 @@ function mountBoardView({
     markViewport();
     if (!gesturing) settle();
   };
+  const fitInsets = (bounds) => {
+    const rr = root.getBoundingClientRect?.() || rootRect;
+    const tb = chrome.toolbar.el?.getBoundingClientRect?.();
+    const pel = panel.el?.style?.display !== "none" ? panel.el?.getBoundingClientRect?.() : null;
+    const b = board();
+    const r = b ? rects() : null;
+    const titled = Boolean(bounds && b && [...b.items.values()].some((it) => it.type === "section" && r.get(it.uid) && r.get(it.uid).y <= bounds.y + 0.5));
+    return {
+      top: (tb?.height ? Math.max(0, tb.bottom - (rr.top || 0)) : 0) + (titled ? SECTION_TITLE_ALLOWANCE : 0),
+      right: pel?.width ? Math.max(0, Math.min(size.width, (rr.left || 0) + size.width - pel.left)) : 0
+    };
+  };
   const fitTo = (bounds, opts = {}) => {
     if (!size.width || !size.height) measure();
-    setViewport(fitViewport(bounds, size, { padding: 64, maxZoom: opts.maxZoom ?? 1.5 }));
+    setViewport(fitViewport(bounds, size, { padding: 64, maxZoom: opts.maxZoom ?? 1.5, insets: fitInsets(bounds) }));
   };
   const fitAll = () => fitTo(boundsOf([...rects().values()]));
   const fitSelection = (uids) => {
@@ -9182,10 +9362,11 @@ function mountBoardView({
   const afterCreate = (label) => (res) => {
     if (disposed) return;
     const list = Array.isArray(res) ? res : [];
-    if (list.length) {
-      ctl.select(list);
-      toast(`${label} ${list.length} ${list.length === 1 ? "card" : "cards"}`, true);
-    }
+    if (!list.length) return;
+    ctl.select(list);
+    const types = new Set(list.map((u) => board()?.items.get(u)?.type ?? "card"));
+    const noun = types.size === 1 && (types.has("card") || types.has("section")) ? [...types][0] : "item";
+    toast(`${label} ${list.length} ${list.length === 1 ? noun : `${noun}s`}`, true);
   };
   const copyText = (text, message) => {
     void writeClipboard({ text }).then((ok) => {
@@ -9325,8 +9506,10 @@ function mountBoardView({
   const expandOutline = (uid) => {
     Promise.resolve(session.expandOutline?.(uid)).then((res) => {
       if (disposed || !res || typeof res !== "object") return;
-      if (res.added > 0) toast(`Added ${res.added} ${res.added === 1 ? "card" : "cards"} as a mind map`, true);
-      else toast("Nothing to expand");
+      if (res.added > 0) {
+        if (res.skipped > 0) toast(`Mind map: ${res.total - res.skipped} of ${res.total} branches (cap)`, true);
+        else toast(`Added ${res.added} ${res.added === 1 ? "card" : "cards"} as a mind map`, true);
+      } else toast("Nothing to expand");
     }).catch(() => {
     });
   };
@@ -9377,8 +9560,9 @@ function mountBoardView({
     return out;
   };
   const pastePoint = () => {
-    if (!size.width) measure();
-    return screenToWorld(vp, pointerInside && lastPointer ? lastPointer : { x: size.width / 2, y: size.height / 2 });
+    measure();
+    const screen = pointerInside && lastPointer ? { x: lastPointer.x - rootRect.left, y: lastPointer.y - rootRect.top } : { x: size.width / 2, y: size.height / 2 };
+    return screenToWorld(vp, screen);
   };
   const doCopy = (uids) => {
     const b = board();
@@ -10347,10 +10531,12 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
     if (event.target?.closest?.(".pxd-chrome")) return;
     event.stopPropagation();
     event.preventDefault();
+    measure();
     ctl.handle(normalize(event, "dblclick"));
   });
   listen(root, "wheel", (event) => {
     if (event.target?.closest?.(".pxd-chrome")) return;
+    measure();
     const handled = ctl.handle(normalize(event, "wheel"));
     if (handled) {
       event.preventDefault();
@@ -10369,7 +10555,7 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
     if (handled) event.preventDefault();
   });
   listen(root, "pointermove", (event) => {
-    lastPointer = { x: (event.clientX || 0) - rootRect.left, y: (event.clientY || 0) - rootRect.top };
+    lastPointer = { x: event.clientX || 0, y: event.clientY || 0 };
   });
   listen(root, "pointerenter", () => {
     pointerInside = true;
@@ -10448,6 +10634,9 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
   const onKeyUp = (event) => {
     ctl.handle({ type: "keyup", key: event.key, code: event.code });
   };
+  listen(doc, "input", (event) => {
+    if (!root.contains?.(event.target)) host?.invalidateUndo?.();
+  }, true);
   listen(win, "keydown", onKeyDown, true);
   listen(win, "keyup", onKeyUp, true);
   const clip = createClipboardIO({
@@ -10525,6 +10714,31 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
     } catch {
     }
   }
+  const MO = globalThis.MutationObserver;
+  if (typeof MO === "function") {
+    try {
+      let settle2 = null;
+      const mo = new MO(() => {
+        if (disposed) return;
+        applyTheme();
+        settle2?.();
+        settle2 = timers.later(() => {
+          settle2 = null;
+          applyTheme();
+        }, 300);
+      });
+      for (const node of [doc.documentElement, doc.body]) if (node) mo.observe(node, { attributes: true, attributeFilter: ["class"] });
+      observers.push(mo);
+    } catch {
+    }
+  }
+  try {
+    const mq = win?.matchMedia?.("(prefers-color-scheme: dark)");
+    if (mq?.addEventListener) listen(mq, "change", () => {
+      if (!disposed) applyTheme();
+    });
+  } catch {
+  }
   routeOff = watchRouteExit({ boardUid: routeUid, onExit: () => {
     if (isFullscreen) requestFullscreen(false);
   }, win });
@@ -10535,7 +10749,7 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
     const r = rects();
     let itemsChanged = false;
     if (dirty.all || dirty.structural || dirty.items.size) {
-      itemsR.sync({ board: b, rects: r, dirty: dirty.all ? null : dirty.items, structural: dirty.structural });
+      itemsR.sync({ board: b, rects: effectiveRects(), dirty: dirty.all ? null : dirty.items, structural: dirty.structural });
       itemsChanged = true;
     }
     if (dirty.all || dirty.structural || dirty.links || dirty.edges.size) {

@@ -166,6 +166,7 @@ export function createItemRenderer({
   let focusGuard = null;
   let floorTeardown = null;
   let floor = null; // { start, cancel } while a focus recovery is pending
+  let floorRetry = null; // cancel handle for the re-arm scheduled when the recovery cap refused a floor
   let recoveries = [];
   let lastOutsideDown = -Infinity;
   let disposed = false;
@@ -616,10 +617,10 @@ export function createItemRenderer({
         if (r && rectsIntersect(r, visibleRect)) next.add(uid);
       }
     } else {
-      // map / overview LOD: section titles, text items and board thumbnails (plain divs) stay rendered; card bodies unmount later
+      // map / overview LOD: section titles, text items and board thumbnails, including whiteboard-shortcut cards (plain divs) stay rendered; card bodies unmount later
       for (const [uid, rec] of shells) {
         const r = lastRects.get(uid);
-        const keep = rec.type === "section" || rec.type === "text" || lastBoard.items.get(uid)?.kind === "board";
+        const keep = rec.type === "section" || rec.type === "text" || rec.refBoard || lastBoard.items.get(uid)?.kind === "board";
         if (keep && r && rectsIntersect(r, visibleRect)) next.add(uid);
       }
     }
@@ -869,7 +870,17 @@ export function createItemRenderer({
     if (!e || disposed || !e.ready || floor) return false;
     const t = now();
     recoveries = recoveries.filter((x) => t - x < FLOOR_SPAN_MS);
-    if (recoveries.length >= FLOOR_MAX) return false;
+    if (recoveries.length >= FLOOR_MAX) {
+      // The cap only rate-limits a focus ping-pong with Roam; it must not strand the editor on <body> (typing then goes
+      // nowhere). Nothing else re-arms after the burst, so look again once the oldest recovery has aged out.
+      if (!floorRetry) {
+        floorRetry = later(() => {
+          floorRetry = null;
+          if (editing === e && !disposed && focusLost(doc.activeElement)) armFloor();
+        }, FLOOR_SPAN_MS - (t - recoveries[0]) + 20);
+      }
+      return false;
+    }
     floor = { start: t, cancel: null };
     floor.cancel = frameLater(() => floorTick(e));
     return true;
@@ -904,11 +915,18 @@ export function createItemRenderer({
       ro?.disconnect();
       floor?.cancel?.();
       floor = null;
+      floorRetry?.();
+      floorRetry = null;
     };
   };
   const recoverFocus = () => armFloor();
 
   const stopEvent = (event) => event.stopPropagation();
+  // Rule 19.1: keep these off the diagram block's ancestors. mouseup is NOT listed on purpose: Roam arms
+  // block drag-select on the mousedown it gets from the editor and disarms it only in a document-level
+  // bubble mouseup listener. Stopping mouseup leaves that state armed, and the next block that appears
+  // under the resting pointer (the one Enter creates) turns the text edit into a block selection.
+  const EDITOR_STOPPED = ["pointerdown", "pointerup", "click", "dblclick", "wheel", "mousedown"];
 
   const enterEdit = async (uid) => {
     const rec = shells.get(uid);
@@ -924,7 +942,7 @@ export function createItemRenderer({
     mounted.delete(uid);
     const editor = el("div", "pxd-item__editor", rec.body);
     // Rule 19.1: stop pointer/wheel at the overlay boundary BEFORE the synthetic focus click.
-    for (const type of ["pointerdown", "pointerup", "click", "dblclick", "wheel", "mousedown", "mouseup"]) editor.addEventListener(type, stopEvent);
+    for (const type of EDITOR_STOPPED) editor.addEventListener(type, stopEvent);
     editing = { uid, rec, editor, targetUid, item, ready: false };
     rec.el.classList.add("pxd-item--editing");
     renderBadges(rec);
@@ -959,7 +977,7 @@ export function createItemRenderer({
     detachFocusGuard();
     const { rec, editor, uid, item } = e;
     const contentH = Number(editor.scrollHeight) || 0;
-    for (const type of ["pointerdown", "pointerup", "click", "dblclick", "wheel", "mousedown", "mouseup"]) editor.removeEventListener(type, stopEvent);
+    for (const type of EDITOR_STOPPED) editor.removeEventListener(type, stopEvent);
     try { host?.unmount?.(editor); } catch { /* not mounted */ }
     editor.remove();
     rec.el.classList.remove("pxd-item--editing");
@@ -1077,7 +1095,7 @@ export function createItemRenderer({
       const e = editing;
       editing = null;
       detachFocusGuard();
-      for (const type of ["pointerdown", "pointerup", "click", "dblclick", "wheel", "mousedown", "mouseup"]) e.editor.removeEventListener(type, stopEvent);
+      for (const type of EDITOR_STOPPED) e.editor.removeEventListener(type, stopEvent);
       try { host?.unmount?.(e.editor); } catch { /* not mounted */ }
     }
     if (idleHandle) { idleHandle(); idleHandle = null; }

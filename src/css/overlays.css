@@ -145,8 +145,8 @@ body.roam-body.dark .pxd-root .pxd-present-hud,
 }
 
 @media (prefers-color-scheme: dark) {
-  :root:not(.bp3-light) .pxd-root .pxd-quicklook,
-  :root:not(.bp3-light) .pxd-root .pxd-present-hud {
+  :root:not(.bp3-light) .pxd-root:not(.pxd-root--light) .pxd-quicklook,
+  :root:not(.bp3-light) .pxd-root:not(.pxd-root--light) .pxd-present-hud {
     border-color: var(--pxd-border-strong);
     background: var(--pxd-chrome-bg);
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);

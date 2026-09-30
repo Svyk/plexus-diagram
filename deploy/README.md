@@ -33,14 +33,14 @@ Boards enhanced with 0.6 upgrade to the 1.0 format once, the first time they are
 | Drag from Roam | Drag any bullet from the outline or sidebar onto the board to add it as a `((ref))` card |
 | Right-click menu | Right-click empty board, a card, section, text, connection, or a multi-selection. The board menu (toolbar More) has export, fold all, journals, background |
 | Duplicate | Alt+drag (Alt+Shift+drag makes `((ref))` cards) or Cmd+D |
-| Copy / paste | Cmd+C, Cmd+V paste as `((ref))` cards, Cmd+Shift+V as copies (also from another board); pasted text becomes cards; pasted images upload and become cards |
+| Copy / paste | Cmd+C, Cmd+V paste as `((ref))` cards, Cmd+Shift+V as copies (also from another board); pasted text becomes cards (bulk adds stop at 45 cards, so Roam's 50-change undo can reach them); pasted images upload and become cards |
 | Move by keyboard | Arrows nudge the selection 1 px (Shift+Arrow 10 px); Alt+Arrow selects the nearest card in that direction (Alt+Shift+Arrow adds); Tab and Shift+Tab step through the outline order |
 | Fold | Cmd/Ctrl+Alt+Enter folds or unfolds the selected cards |
 | Pin | Pin (context bar or menu) locks a card, section, or text in place |
 | Focus | F fades everything except the selection and its connections; Esc leaves |
 | Quick look | Q shows the selected card and its children in an overlay |
 | Present | P steps through the sections in outline order (arrows or Space, Esc to exit) |
-| Mind map | M on a note, block, or page card turns its child blocks into `((ref))` cards with connections |
+| Mind map | M on a note, block, or page card turns its child blocks into `((ref))` cards with connections (up to 24 branches) |
 | Background | The Background button picks a pattern (dots, lines, grid, plain) and a tone for this board; Use as default saves it for every board |
 | Delete | Delete/Backspace. The toast offers Undo; Cmd+Z / Shift+Cmd+Z are Roam's own undo and redo |
 | Search | `/` filters the board and steps through matches |

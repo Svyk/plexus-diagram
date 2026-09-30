@@ -16,7 +16,7 @@ import {
   serializeEdge,
   serializeItemLayout,
 } from "./model/schema.js";
-import { extendSession } from "./session.js";
+import { capBulk, extendSession } from "./session.js";
 
 const UID = ":block/uid";
 const STR = ":block/string";
@@ -201,7 +201,7 @@ extendSession((session, api) => {
           const entries = payload.items.map((i) => ({ uid: i.uid, x: x + (i.x - bounds.x), y: y + (i.y - bounds.y) }));
           made = cloneSet(t, src, entries);
         } else {
-          made = refCardStrings(payload, { x, y }).map((c) => placeCard(t, c.string, c.x, c.y, { w: c.w, h: c.h, color: c.color }));
+          made = capBulk(refCardStrings(payload, { x, y }), api.emit).map((c) => placeCard(t, c.string, c.x, c.y, { w: c.w, h: c.h, color: c.color }));
         }
         api.applyFit(t, made);
         return made;
@@ -215,7 +215,7 @@ extendSession((session, api) => {
         .filter((s) => typeof s === "string" && s.trim() !== "");
       if (!list.length) return Promise.resolve([]);
       return api.txn((t) => {
-        const made = stackAt(list, x, y).map((c) => placeCard(t, c.string, c.x, c.y));
+        const made = capBulk(stackAt(list, x, y), api.emit).map((c) => placeCard(t, c.string, c.x, c.y));
         api.applyFit(t, made);
         return made;
       }).then((made) => made ?? []);
@@ -263,7 +263,7 @@ extendSession((session, api) => {
 
     // The source card's child blocks become a mind map of ref cards (blocks stay canonical in Roam) plus one
     // connection per parent -> child. Children that already have a card on this board are reused, not moved.
-    expandOutline(cardUid, { direction = "right", max = 40 } = {}) {
+    expandOutline(cardUid, { direction = "right", max = 24 } = {}) {
       const none = { added: 0, edges: 0 };
       const board = api.board();
       const item = board?.items.get(cardUid);
@@ -310,15 +310,22 @@ extendSession((session, api) => {
         const cardOf = new Map();
         const refOfCard = new Map([[cardUid, api.refOf(cardUid)]]);
         const created = [];
+        // A reused card stays where it is, so its descendants are laid out relative to where it really sits (its own
+        // slot is ignored): shift is the slot -> actual offset each new card inherits from its nearest reused ancestor.
+        const shift = new Map();
         for (const f of picked) {
+          const p = layout.get(f.uid);
           const have = onBoard.get(f.uid);
           if (have) {
+            const r = rects.get(have);
+            shift.set(f.uid, r ? { dx: r.x - (own.x + p.x), dy: r.y - (own.y + p.y) } : { dx: 0, dy: 0 });
             cardOf.set(f.uid, have);
             refOfCard.set(have, api.refOf(have));
             continue;
           }
-          const p = layout.get(f.uid);
-          const id = placeCard(t, `((${f.uid}))`, own.x + p.x, own.y + p.y, OUTLINE_CARD);
+          const inherited = shift.get(f.parent) ?? { dx: 0, dy: 0 };
+          shift.set(f.uid, inherited);
+          const id = placeCard(t, `((${f.uid}))`, own.x + p.x + inherited.dx, own.y + p.y + inherited.dy, OUTLINE_CARD);
           cardOf.set(f.uid, id);
           refOfCard.set(id, `((${f.uid}))`);
           created.push(id);
@@ -339,7 +346,8 @@ extendSession((session, api) => {
           edges++;
         }
         api.applyFit(t, created);
-        return { added: created.length, edges };
+        const skipped = flat.length - picked.length; // beyond the node cap (deeper than the depth limit is not counted)
+        return skipped > 0 ? { added: created.length, edges, skipped, total: flat.length } : { added: created.length, edges };
       }).then((res) => res ?? none);
     },
   });

@@ -620,6 +620,32 @@ test("R2: focus floor refocuses Roam's new textarea after focus falls to body", 
   }
 });
 
+test("X3: the editor never stops mouseup, so Roam's document-level mouseup can disarm drag-select", async () => {
+  const f = mountFixture();
+  try {
+    await f.flush();
+    const alpha = await startEdit(f);
+    const editor = alpha.querySelector(".pxd-item__editor");
+    const input = editor.querySelector("textarea");
+    assert.equal(editor.listeners.get("mouseup")?.size ?? 0, 0, "no stopEvent registered for mouseup");
+    for (const type of ["pointerdown", "pointerup", "click", "dblclick", "wheel", "mousedown"]) {
+      assert.equal(editor.listeners.get(type)?.size, 1, `${type} stays stopped at the editor`);
+    }
+    const seen = [];
+    const onUp = (ev) => seen.push(ev.type);
+    f.stub.document.addEventListener("mouseup", onUp);
+    const down = f.stub.dispatch(input, "mousedown", { target: input });
+    const up = f.stub.dispatch(input, "mouseup", { target: input });
+    f.stub.document.removeEventListener("mouseup", onUp);
+    assert.equal(down.propagationStopped, true, "mousedown is still contained");
+    assert.equal(up.propagationStopped, false);
+    assert.deepEqual(seen, ["mouseup"], "document-level bubble mouseup listener fires");
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
 test("R2: floor stands down for outside pointerdown, outside focus targets, and gives up after 600 ms", async () => {
   const f = mountFixture();
   try {
@@ -655,6 +681,47 @@ test("R2: floor stands down for outside pointerdown, outside focus targets, and 
     await tick(650);
     f.stub.flushFrames();
     assert.equal(f.stub.frames.length, 0, "floor gave up");
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("R2: a refused recovery (burst cap) is retried once the burst ages out, so typing never goes to <body> for good", async () => {
+  const f = mountFixture();
+  try {
+    await f.flush();
+    const alpha = await startEdit(f);
+    await tick(1000); // let enterEdit finish hydrating: its own late focus would otherwise mask a missing retry
+    f.stub.flushFrames();
+    const editor = alpha.querySelector(".pxd-item__editor");
+    const doc = f.stub.document;
+    let current = editor.querySelector("textarea");
+    current.focus();
+    f.stub.dispatch(editor, "focusin", { target: current });
+    const dropFocus = () => {
+      current.blur();
+      current.remove();
+      f.stub.dispatch(editor, "focusout", { target: current, relatedTarget: null });
+      f.stub.flushFrames();
+    };
+    const roamRerender = () => {
+      current = doc.createElement("textarea");
+      current.className = "rm-block__input";
+      editor.append(current);
+      f.stub.flushFrames();
+    };
+    for (let i = 0; i < 4; i += 1) {
+      dropFocus();
+      roamRerender();
+      assert.ok(doc.activeElement === current, `recovery ${i + 1} refocuses the new textarea`);
+    }
+    dropFocus();
+    roamRerender();
+    assert.ok(doc.activeElement === doc.body, "the fifth loss inside the burst window is rate-limited");
+    await tick(1600);
+    f.stub.flushFrames();
+    assert.ok(doc.activeElement === current, "the deferred retry recovered focus after the burst aged out");
   } finally {
     f.view.dispose();
     f.restore();
@@ -728,12 +795,16 @@ test("CSS contract (1.2): map tile clamp, overview tier, bare header, pin, focus
   };
   assert.match(rule(".pxd-root.pxd-lod-map .pxd-item.pxd-item--card:not(.pxd-item--editing)"), /container-type: size/);
   const header = rule(".pxd-root.pxd-lod-map .pxd-item.pxd-item--card:not(.pxd-item--editing) > .pxd-item__header");
-  for (const decl of ["flex: 1 1 auto", "min-height: 0", "overflow: hidden", "display: -webkit-box", "-webkit-box-orient: vertical", "-webkit-line-clamp: 3", "overflow-wrap: anywhere", "text-overflow: ellipsis"]) assert.ok(header.includes(decl), decl);
+  for (const decl of ["flex: 0 1 auto", "min-height: 0", "padding-bottom: 0", "max-height: calc(3 * 1.2em + 6px)", "line-height: 1.2", "overflow: hidden", "display: -webkit-box", "-webkit-box-orient: vertical", "-webkit-line-clamp: 3", "overflow-wrap: anywhere", "text-overflow: ellipsis"]) assert.ok(header.includes(decl), decl);
+  assert.doesNotMatch(header, /flex:\s*1 1 auto/, "a stretched -webkit-box paints lines after the clamp");
+  assert.match(rule(".pxd-root.pxd-lod-map .pxd-item.pxd-item--card.pxd-item--wb:not(.pxd-item--editing) > .pxd-item__header"), /max-height: calc\(1\.2em \+ 6px\)/);
   assert.match(header, /font-size: min\(var\(--pxd-map-font\), calc\(\(100cqh - 12px\) \/ 3\.8\)\)/);
   assert.doesNotMatch(rule(".pxd-item"), /overflow:\s*hidden/, "ports sit across the card edge");
   assert.match(rule(".pxd-item__header"), /max-height: 100%;[^}]*overflow: hidden/);
-  assert.match(rule(".pxd-lod-map .pxd-item--board .pxd-item__body"), /display: block/);
-  assert.match(rule(".pxd-lod-overview .pxd-item--board .pxd-item__body"), /display: none/);
+  assert.match(css, /\.pxd-lod-map \.pxd-item--board \.pxd-item__body,\s*\.pxd-lod-map \.pxd-item--wb \.pxd-item__body \{\s*display: block/, "whiteboard-shortcut cards keep their thumbnail at map zoom");
+  assert.match(css, /\.pxd-lod-overview \.pxd-item--board \.pxd-item__body,\s*\.pxd-lod-overview \.pxd-item--wb \.pxd-item__body \{\s*display: none/);
+  assert.match(rule(".pxd-section__title > .pxd-section__title-text"), /text-overflow: ellipsis/, "the rendered title child owns the ellipsis");
+  assert.match(rule('.pxd-root.pxd-lod-overview .pxd-item.pxd-item--card[class*="pxd-c-"]'), /color-mix\(in srgb, var\(--pxd-line\) 42%/);
   assert.match(rule(".pxd-root.pxd-lod-overview .pxd-item--card > .pxd-item__header"), /visibility: hidden/);
   assert.match(rule(".pxd-root.pxd-lod-overview .pxd-section__title"), /font-size: var\(--pxd-overview-font, 40px\)/);
   const pill = rule(".pxd-section__title");

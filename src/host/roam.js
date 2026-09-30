@@ -170,6 +170,33 @@ export function createViewportStore({ storage = globalThis.localStorage, graph =
 export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localStorage, graph } = {}) {
   const stats = { writes: 0, watches: 0, renders: 0 };
   const data = api.data;
+  // Every data.block.* call is its own Roam undo entry. The log groups the calls of one session transaction
+  // (host.group) so one undo()/redo() steps over the whole user operation. A write outside a group is its own step.
+  // A group holds at most MAX_GROUP_WRITES writes: a larger transaction is split into consecutive groups (one plexus
+  // undo entry, so one Cmd+Z, per chunk) so every entry stays inside Roam's own undo depth and undo never has to
+  // clean up with deletes (those would land on Roam's stack and resurrect blocks on the next Cmd+Z).
+  const undoLog = [];
+  const redoLog = [];
+  const UNDO_LOG_MAX = 200;
+  const MAX_GROUP_WRITES = 45; // under Roam's undo depth (50)
+  const UNDO_ECHO_MS = 900; // Roam echoes our own writes back through the pull watch; those are not foreign edits
+  let openGroup = null;
+  let lastWriteAt = -Infinity;
+  const noteWrite = () => {
+    lastWriteAt = Date.now();
+    redoLog.length = 0;
+    if (openGroup) {
+      if (openGroup.n >= MAX_GROUP_WRITES) {
+        undoLog.push(openGroup);
+        if (undoLog.length > UNDO_LOG_MAX) undoLog.shift();
+        openGroup = { n: 0 };
+      }
+      openGroup.n++;
+      return;
+    }
+    undoLog.push({ n: 1 });
+    if (undoLog.length > UNDO_LOG_MAX) undoLog.shift();
+  };
   const pull = (pattern, entity) => data.pull(pattern, entity);
   const gname = graph ?? graphName();
 
@@ -266,37 +293,97 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       if (open !== undefined) block.open = open;
       stats.writes++;
       await data.block.create({ location: { "parent-uid": parentUid, order }, block });
+      noteWrite();
       return id;
     },
 
     async updateString(uid, string) {
       stats.writes++;
       await data.block.update({ block: { uid, string } });
+      noteWrite();
     },
 
     async updateProps(uid, plexus) {
       const merged = mergePropsForWrite(host.pullProps(uid), plexus);
       stats.writes++;
       await data.block.update({ block: { uid, props: merged } });
+      noteWrite();
     },
 
     async moveBlock(uid, parentUid, order = "last") {
       stats.writes++;
       await data.block.move({ location: { "parent-uid": parentUid, order }, block: { uid } });
+      noteWrite();
     },
 
     async deleteBlock(uid) {
       stats.writes++;
       await data.block.delete({ block: { uid } });
+      noteWrite();
     },
 
     async setOpen(uid, open) {
       stats.writes++;
       await data.block.update({ block: { uid, open } });
+      noteWrite();
     },
 
-    undo() { return data.undo(); },
-    redo() { return data.redo(); },
+    // Runs fn (a serialized write sequence) as one undo step. Groups do not nest; the write queue serializes callers.
+    async group(fn) {
+      if (openGroup) return fn();
+      openGroup = { n: 0 };
+      try {
+        return await fn();
+      } finally {
+        const g = openGroup; // the last chunk when the transaction rolled over
+        openGroup = null;
+        if (g.n) {
+          undoLog.push(g);
+          if (undoLog.length > UNDO_LOG_MAX) undoLog.shift();
+        }
+      }
+    },
+
+    // Undo/redo step over a whole recorded group; with nothing recorded (or after invalidateUndo) it is Roam's single step.
+    async undo() {
+      lastWriteAt = Date.now();
+      const entry = undoLog.pop();
+      const n = entry?.n ?? 1;
+      let done = 0;
+      try {
+        for (; done < n; done++) await data.undo();
+      } finally {
+        lastWriteAt = Date.now();
+        if (entry) {
+          if (done >= n) redoLog.push(entry);
+          else {
+            if (done > 0) redoLog.push({ n: done });
+            undoLog.push({ n: n - done }); // a failed step leaves the rest of the group undoable
+          }
+        }
+      }
+    },
+    async redo() {
+      lastWriteAt = Date.now();
+      const entry = redoLog.pop();
+      const n = entry?.n ?? 1;
+      let done = 0;
+      try {
+        for (; done < n; done++) await data.redo();
+      } finally {
+        lastWriteAt = Date.now();
+        if (entry) {
+          if (done > 0) undoLog.push(done >= n ? entry : { n: done });
+          if (done < n) redoLog.push({ n: n - done });
+        }
+      }
+    },
+    // Something else (a typed edit, another tool) touched the graph: the log no longer maps 1:1 onto Roam's stack.
+    invalidateUndo() {
+      if (openGroup || Date.now() - lastWriteAt < UNDO_ECHO_MS) return;
+      undoLog.length = 0;
+      redoLog.length = 0;
+    },
 
     openInSidebar(uid, type = "block") {
       return api.ui.rightSidebar.addWindow({ window: { type, "block-uid": uid } });
@@ -395,7 +482,10 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       const upload = api.file?.upload;
       if (typeof upload !== "function") throw new Error("upload-unavailable");
       const res = await upload.call(api.file, { file });
-      const url = typeof res === "string" ? res : res?.url;
+      const raw = typeof res === "string" ? res : res?.url;
+      // Roam's file.upload resolves to a ready-made markdown image (`![](url)`); callers want the bare URL.
+      const md = typeof raw === "string" ? /^\s*!\[[^\]]*\]\((.+)\)\s*$/s.exec(raw) : null;
+      const url = md ? md[1] : raw;
       if (typeof url !== "string" || !url) throw new Error("upload-failed");
       stats.writes++;
       return url;

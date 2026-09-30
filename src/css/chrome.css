@@ -329,9 +329,9 @@ body.roam-body.dark .pxd-root .pxd-panel__outline-row:hover {
 }
 
 @media (prefers-color-scheme: dark) {
-  :root:not(.bp3-light) .pxd-root .pxd-menu__item--active,
-  :root:not(.bp3-light) .pxd-root .pxd-panel__board-row:hover,
-  :root:not(.bp3-light) .pxd-root .pxd-panel__outline-row:hover {
+  :root:not(.bp3-light) .pxd-root:not(.pxd-root--light) .pxd-menu__item--active,
+  :root:not(.bp3-light) .pxd-root:not(.pxd-root--light) .pxd-panel__board-row:hover,
+  :root:not(.bp3-light) .pxd-root:not(.pxd-root--light) .pxd-panel__outline-row:hover {
     background: transparent;
   }
 }

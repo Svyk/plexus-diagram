@@ -6,10 +6,11 @@ import test from "node:test";
 
 import { buildBoard, worldRects } from "../src/model/board.js";
 import { PLEXUS_MIME } from "../src/model/clipboard.js";
-import { mountBoardView } from "../src/view/board-view.js";
+import { isLightHost, mountBoardView } from "../src/view/board-view.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
 
 const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
+const near = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) < eps, `${a} != ${b}`);
 
 function pulled({ extra = [], rootPlexus = {} } = {}) {
   const item = (uid, string, plexus, order, children = []) => ({
@@ -1431,6 +1432,232 @@ test("editing a card near a section edge grows the section live (preview only) a
     f.view.controller.handle({ type: "keydown", key: "Escape", inputFocused: true });
     for (let i = 0; i < 3; i += 1) { f.stub.flushFrames(); await tick(); }
     assert.equal(section.style.height, "300px", "the preview is reset when the edit ends");
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+// ------------------------------------------------------------------ stale root rect (wheel zoom pivot, paste point)
+
+const worldTransform = (f) => {
+  const m = /translate\(([-\d.]+)px, ([-\d.]+)px\) scale\(([-\d.]+)\)/.exec(f.root.querySelector(".pxd-world").style.transform);
+  return { x: Number(m[1]), y: Number(m[2]), zoom: Number(m[3]) };
+};
+
+test("ctrl-wheel pivots about the cursor after the Roam page scrolled (root rect re-measured, not cached)", async () => {
+  const f = mountFixture();
+  try {
+    await f.flush();
+    // the outer page scrolled: the board now sits 451px higher than when it was measured
+    f.root._rect = { left: 0, top: -451, width: 800, height: 600, right: 800, bottom: 149, x: 0, y: -451 };
+    const before = { x: 300, y: 200 };
+    f.stub.dispatch(f.root.querySelector(".pxd-viewport"), "wheel", { ctrlKey: true, deltaY: -30, clientX: before.x, clientY: before.y });
+    f.stub.flushFrames();
+    const vp = worldTransform(f);
+    const screen = { x: before.x, y: before.y + 451 }; // root-space cursor
+    const world = { x: screen.x, y: screen.y }; // identity viewport before the wheel
+    assert.ok(vp.zoom > 1, "zoomed in");
+    near(vp.x + world.x * vp.zoom, screen.x, 0.01);
+    near(vp.y + world.y * vp.zoom, screen.y, 0.01);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("paste lands at the cursor after the Roam page scrolled without a pointer event on the board", async () => {
+  const f = mountFixture();
+  try {
+    await f.flush();
+    f.stub.dispatch(f.root, "pointerenter");
+    f.stub.dispatch(f.root, "pointermove", { clientX: 300, clientY: 220 });
+    f.root._rect = { left: 0, top: -115, width: 800, height: 600, right: 800, bottom: 485, x: 0, y: -115 };
+    f.stub.dispatch(f.stub.document, "paste", { clipboardData: clipboardData({ "text/plain": "x" }) });
+    await tick();
+    assert.deepEqual(f.session.mutations[0], ["pasteText", [{ string: "x" }], { x: 300, y: 335 }]);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("a session change for the card being edited (autosave echo) does not snap the grown section preview back", async () => {
+  const f = mountFixture({ hostOverrides: { renderBlock(el) { const t = globalThis.document.createElement("textarea"); t.className = "rm-block__input"; el.append(t); } } });
+  try {
+    await f.flush();
+    const inside = shell(f, "cardDDDD4");
+    const section = shell(f, "sectCCCC3");
+    f.stub.dispatch(inside, "dblclick", { clientX: 60, clientY: 380 });
+    for (let i = 0; i < 4; i += 1) { f.stub.flushFrames(); await tick(); }
+    await tick(300);
+    f.stub.flushFrames();
+    const ro = [...f.stub.observers].filter((o) => o.active && o.cb);
+    Object.defineProperty(inside, "offsetHeight", { configurable: true, get: () => 400 });
+    for (const o of ro) o.cb([]);
+    const grownHeight = parseFloat(section.style.height);
+    assert.ok(grownHeight > 300);
+    f.session.emit("change", { dirty: new Set(["cardDDDD4"]), structural: false });
+    f.stub.flushFrames();
+    assert.equal(parseFloat(section.style.height), grownHeight, "the section keeps its live-fit height while the edit is open");
+    f.view.controller.handle({ type: "keydown", key: "Escape", inputFocused: true });
+    for (let i = 0; i < 3; i += 1) { f.stub.flushFrames(); await tick(); }
+    assert.equal(section.style.height, "300px");
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("isLightHost: a measurably light host opts out of the OS color-scheme rules; dark markers and unmeasurable hosts do not", () => {
+  const node = (bg, parent = null, classes = []) => ({ bg, parentElement: parent, classList: { contains: (c) => classes.includes(c) } });
+  const win = { getComputedStyle: (n) => ({ backgroundColor: n.bg }) };
+  const doc = { body: null, documentElement: null };
+  // Roam paints only <body>: the wrappers are transparent, the first opaque ancestor decides
+  const bodyLight = node("rgb(255, 255, 255)");
+  const wrapper = node("rgba(0, 0, 0, 0)", bodyLight);
+  assert.equal(isLightHost(node("rgba(0, 0, 0, 0)", wrapper), doc, win), true);
+  assert.equal(isLightHost(node("rgba(0, 0, 0, 0)", node("rgb(30, 42, 53)")), doc, win), false, "a dark host is not light");
+  assert.equal(isLightHost(node("rgba(0, 0, 0, 0)", node("rgb(255, 255, 255)", null, ["bp3-dark"])), doc, win), false, "a dark marker wins over the measured color");
+  assert.equal(isLightHost(node("rgba(0, 0, 0, 0)", node("color(srgb 1 1 1)")), doc, win), false, "unparseable colors assert nothing");
+  assert.equal(isLightHost(node("rgb(255, 255, 255)"), doc, {}), false, "no getComputedStyle asserts nothing");
+});
+
+test("CSS contract: every prefers-color-scheme dark rule skips a confirmed-light host", async () => {
+  const { readFileSync, readdirSync } = await import("node:fs");
+  const dir = new URL("../src/css/", import.meta.url);
+  const files = [new URL("../src/extension.css", import.meta.url), ...readdirSync(dir).filter((n) => n.endsWith(".css")).map((n) => new URL(n, dir))];
+  let seen = 0;
+  for (const file of files) {
+    const css = readFileSync(file, "utf8");
+    for (const m of css.matchAll(/:root:not\(\.bp3-light\) \.pxd-root([^\s{,]*)/g)) {
+      seen += 1;
+      assert.match(m[1], /:not\(\.pxd-root--light\)$/, `${file.pathname}: ${m[0]}`);
+    }
+  }
+  assert.ok(seen > 15);
+});
+
+test("the context bar clears the toolbar and an open panel; Fit keeps content below the toolbar and left of the panel", async () => {
+  const f = mountFixture({ vp: { x: 0, y: 60, zoom: 1 } });
+  try {
+    await f.flush();
+    const rect = (l, t, w, h) => ({ left: l, top: t, width: w, height: h, right: l + w, bottom: t + h, x: l, y: t });
+    f.root.querySelector(".pxd-toolbar")._rect = rect(0, 0, 800, 76);
+    f.view.controller.select(["cardAAAA1"]);
+    f.stub.flushFrames();
+    const ctx = f.root.querySelector(".pxd-ctx");
+    assert.ok(parseFloat(ctx.style.top) >= 76, `ctx top ${ctx.style.top} is below the toolbar (it would have sat above the card, over the toolbar)`);
+    // Fit: the content top edge leaves the toolbar strip clear
+    f.stub.dispatch(f.root.querySelector(".pxd-toolbar__fit"), "click");
+    f.stub.flushFrames();
+    const t = worldTransform(f);
+    const top = t.y + Math.min(...[...f.session.rects.values()].map((r) => r.y)) * t.zoom;
+    assert.ok(top >= 76, `content top ${top} is below the toolbar bottom (76)`);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("the context bar never sits over the toolbar when its card is panned under it, and wraps to stay left of an open panel", async () => {
+  const f = mountFixture({ vp: { x: 0, y: 0, zoom: 1 } });
+  try {
+    await f.flush();
+    const rect = (l, t, w, h) => ({ left: l, top: t, width: w, height: h, right: l + w, bottom: t + h, x: l, y: t });
+    f.root.querySelector(".pxd-toolbar")._rect = rect(0, 54, 800, 68);
+    f.view.controller.select(["cardAAAA1"]); // world 0,0 200x100: its bottom edge is under the toolbar
+    f.stub.flushFrames();
+    const ctx = f.root.querySelector(".pxd-ctx");
+    assert.ok(parseFloat(ctx.style.top) >= 122, `ctx top ${ctx.style.top} clears the toolbar bottom (122) with the card under it`);
+    // an open panel: the bar is limited to the space left of it, so it wraps instead of floating over the panel
+    f.stub.dispatch(f.root.querySelector(".pxd-toolbar__add"), "click");
+    f.stub.flushFrames();
+    const panel = f.root.querySelector(".pxd-panel");
+    assert.notEqual(panel.style.display, "none", "the panel is open");
+    panel._rect = rect(500, 0, 300, 400);
+    Object.defineProperty(ctx, "offsetWidth", { configurable: true, get: () => Math.min(660, parseFloat(ctx.style.maxWidth) || 660) });
+    f.view.controller.select(["cardBBBB2"]);
+    f.stub.flushFrames();
+    assert.equal(ctx.style.maxWidth, "484px", "max width = space left of the panel minus both margins");
+    assert.ok(parseFloat(ctx.style.left) + ctx.offsetWidth <= 500, "the bar ends left of the panel");
+    panel._rect = null;
+    f.view.controller.select(["cardAAAA1"]);
+    f.stub.flushFrames();
+    assert.equal(ctx.style.maxWidth, "", "no panel: the stylesheet's own max width applies");
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("mind map: hitting the node cap is said out loud, not silent", async () => {
+  const f = mountFixture();
+  try {
+    await f.flush();
+    f.session.expandOutline = () => Promise.resolve({ added: 24, edges: 24, skipped: 21, total: 45 });
+    f.view.controller.select(["cardBBBB2"]);
+    key(f, "m");
+    await tick();
+    assert.equal(toastText(f), "Mind map: 24 of 45 branches (cap)");
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("duplicate toast names what was duplicated: a section is not 'a card'", async () => {
+  const f = mountFixture();
+  try {
+    await f.flush();
+    f.session.duplicateItems = () => Promise.resolve(["sectCCCC3"]);
+    f.view.controller.select(["sectCCCC3"]);
+    f.stub.dispatch(f.stub.window, "keydown", { key: "d", metaKey: true });
+    await tick();
+    assert.equal(toastText(f), "Duplicated 1 section");
+    f.session.duplicateItems = () => Promise.resolve(["cardAAAA1", "sectCCCC3"]);
+    f.stub.dispatch(f.stub.window, "keydown", { key: "d", metaKey: true });
+    await tick();
+    assert.equal(toastText(f), "Duplicated 2 items");
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("a typed edit outside the board invalidates the host's grouped undo log; typing inside the board does not", async () => {
+  let calls = 0;
+  const f = mountFixture({ hostOverrides: { invalidateUndo: () => { calls += 1; } } });
+  try {
+    await f.flush();
+    const outside = f.stub.document.createElement("textarea");
+    f.stub.document.body.append(outside);
+    f.stub.dispatch(outside, "input");
+    assert.equal(calls, 1);
+    const inside = f.stub.document.createElement("textarea");
+    f.root.append(inside);
+    f.stub.dispatch(inside, "input");
+    assert.equal(calls, 1);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("the dark/light class follows the host live: a dark marker added or removed after mount flips the board", async () => {
+  const f = mountFixture();
+  try {
+    const poke = () => { for (const o of [...f.stub.observers].filter((x) => x.active && x.cb)) o.cb([]); };
+    assert.equal(f.root.classList.contains("pxd-root--dark"), false);
+    f.stub.document.documentElement.classList.add("bp3-dark");
+    poke();
+    assert.equal(f.root.classList.contains("pxd-root--dark"), true, "host went dark after mount");
+    f.stub.document.documentElement.classList.remove("bp3-dark");
+    poke();
+    assert.equal(f.root.classList.contains("pxd-root--dark"), false, "host went light again (Roam auto theme): the dark class is dropped");
+    f.stub.document.body.classList.add("bt-theme-dark");
+    poke();
+    assert.equal(f.root.classList.contains("pxd-root--dark"), true);
   } finally {
     f.view.dispose();
     f.restore();

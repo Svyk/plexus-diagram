@@ -6,6 +6,7 @@ import { PALETTE, FONT_SIZES, BOARD_PATTERNS } from "../model/schema.js";
 const CTX_GAP = 12;
 const CTX_EDGE_CLEARANCE = 28;
 const CTX_MARGIN = 8;
+const CTX_MIN_WIDTH = 180;
 const TOAST_MS = 6000;
 const MINIMAP_W = 180;
 const MINIMAP_H = 120;
@@ -170,7 +171,8 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
       sync.title = pending ? "Saving…" : "Synced";
     },
     setFullscreen(on) { fullBtn.textContent = on ? "Exit fullscreen" : "Fullscreen"; fullBtn.classList.toggle("pxd-btn--active", Boolean(on)); },
-    setPanel(open) { addBtn.classList.toggle("pxd-btn--active", Boolean(open)); },
+    // Called on every panel open/close: a floating context bar re-clears the panel now, not at the next pan.
+    setPanel(open) { addBtn.classList.toggle("pxd-btn--active", Boolean(open)); positionCtx(); },
     setMinimap(open) { minimapBtn.classList.toggle("pxd-btn--active", Boolean(open)); },
     setFocus(active) { focusBtn.classList.toggle("pxd-btn--active", Boolean(active)); },
     setBackground(state) { popover.setState(state); },
@@ -369,14 +371,24 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
     const rootRect = root.getBoundingClientRect();
     const W = rootRect.width || 0;
     const H = rootRect.height || 0;
+    const gap = a.kind === "edge" ? CTX_EDGE_CLEARANCE : CTX_GAP;
+    // The bar never covers the toolbar (two rows tall) or an open side panel: it flips below / stays left of them.
+    const tb = toolbar.getBoundingClientRect();
+    const topLimit = tb.height ? Math.max(CTX_MARGIN, tb.bottom - (rootRect.top || 0) + CTX_MARGIN) : CTX_MARGIN;
+    const panelEl = root.querySelector?.(".pxd-panel");
+    const pr = panelEl && panelEl.style?.display !== "none" ? panelEl.getBoundingClientRect() : null;
+    const room = pr?.width ? Math.min(W, pr.left - (rootRect.left || 0)) : W;
+    // A bar wider than the space left of the panel wraps into more rows instead of floating over the panel.
+    ctx.style.maxWidth = pr?.width && room > 0 ? `${Math.max(CTX_MIN_WIDTH, Math.round(room - 2 * CTX_MARGIN))}px` : "";
     const barW = ctx.offsetWidth || 320;
     const barH = ctx.offsetHeight || 36;
-    const gap = a.kind === "edge" ? CTX_EDGE_CLEARANCE : CTX_GAP;
+    const rightLimit = pr?.width ? Math.max(barW + CTX_MARGIN, room) : W;
     let top = a.rect.y - gap - barH;
-    if (top < CTX_MARGIN) top = a.rect.y + a.rect.h + gap; // flip below near the top edge
-    if (top + barH > H - CTX_MARGIN && a.rect.y - gap - barH >= 0) top = a.rect.y - gap - barH;
+    if (top < topLimit) top = a.rect.y + a.rect.h + gap; // flip below near the top edge
+    if (top + barH > H - CTX_MARGIN && a.rect.y - gap - barH >= topLimit) top = a.rect.y - gap - barH;
+    top = Math.max(top, topLimit); // a card panned under the toolbar: the bar sits at the toolbar's edge, never over it
     let left = a.rect.x + a.rect.w / 2 - barW / 2;
-    left = Math.max(CTX_MARGIN, Math.min(left, W - barW - CTX_MARGIN));
+    left = Math.max(CTX_MARGIN, Math.min(left, rightLimit - barW - CTX_MARGIN));
     ctx.style.left = `${Math.round(left)}px`;
     ctx.style.top = `${Math.round(top)}px`;
     ctx.classList.toggle("pxd-ctx--below", top > a.rect.y);

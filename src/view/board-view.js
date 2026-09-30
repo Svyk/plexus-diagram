@@ -41,6 +41,7 @@ const DEFAULT_HEIGHT = 560;
 const MIN_HEIGHT = 240;
 const RESUME_MS = 120;
 const VP_PERSIST_MS = 500;
+const SECTION_TITLE_ALLOWANCE = 32; // px: section title pill (20 + padding) plus its 4px lift, fits above the frame
 const CULL_MARGIN = 0.5;
 const BADGE_TTL_MS = 120000;
 const BADGE_CHUNK = 12;
@@ -97,6 +98,28 @@ export function isDarkHost(root, doc = globalThis.document) {
   const html = doc?.documentElement;
   if (has(html, "bp3-dark") || has(body, "bt-theme-dark") || has(body, "bp3-dark") || has(body, "rm-dark-theme")) return true;
   if (has(body, "roam-body") && has(body, "dark")) return true;
+  return false;
+}
+
+const rgbOf = (value) => {
+  const m = /^rgba?\(\s*([\d.]+)[,\s]+([\d.]+)[,\s]+([\d.]+)(?:\s*[,/]\s*([\d.]+)(%)?)?\s*\)$/.exec(String(value ?? "").trim());
+  if (!m) return null;
+  const a = m[4] == null ? 1 : Number(m[4]) / (m[5] ? 100 : 1);
+  return { r: Number(m[1]), g: Number(m[2]), b: Number(m[3]), a };
+};
+
+// True only when the host is measurably light: no dark marker, and the first opaque background up the chain
+// (Roam paints only <body>; the app wrappers are transparent) has high luminance. The OS color-scheme hint must not
+// darken a board that sits on a light host, so a confirmed-light host opts out of the prefers-color-scheme rules.
+export function isLightHost(root, doc = globalThis.document, win = globalThis.window) {
+  if (isDarkHost(root, doc)) return false;
+  if (typeof win?.getComputedStyle !== "function") return false;
+  for (let node = root; node; node = node.parentElement) {
+    let color;
+    try { color = rgbOf(win.getComputedStyle(node)?.backgroundColor); } catch { return false; }
+    if (!color || color.a < 0.5) continue;
+    return (0.2126 * color.r + 0.7152 * color.g + 0.0722 * color.b) / 255 > 0.6;
+  }
   return false;
 }
 
@@ -206,7 +229,14 @@ export function mountBoardView({
   const overlaySvg = svg("pxd-overlay", world);
   const resizeGrip = el("div", "pxd-resize-grip pxd-chrome", root);
   resizeGrip.title = "Drag to resize the board";
-  if (isDarkHost(mountEl, doc)) root.classList.add("pxd-root--dark");
+  // The dark/light class follows the host: decided at mount, then again whenever the host flips (Roam's auto theme
+  // follows the OS, and the theme extensions toggle their marker classes on <html>/<body>).
+  const applyTheme = () => {
+    const dark = isDarkHost(mountEl, doc);
+    root.classList.toggle("pxd-root--dark", dark);
+    root.classList.toggle("pxd-root--light", !dark && isLightHost(mountEl, doc, globalThis.window));
+  };
+  applyTheme();
 
   // ------------------------------------------------------------ state
   let vp = vpStore.get(boardUid);
@@ -233,7 +263,7 @@ export function mountBoardView({
   let sendPending = null; // uids waiting for a target board picked in the Boards tab
   let menuCtx = null;
   let lastPayload = null; // last copy payload, so a menu paste can restore the plexus items
-  let lastPointer = null; // root-space pointer position, for paste
+  let lastPointer = null; // last pointer position in client coords, converted with a fresh measure() at paste time
   let backVisible = false;
   let badgeTimer = null;
   const badgeCache = new Map(); // key -> { at, stats }
@@ -309,9 +339,23 @@ export function mountBoardView({
     // Buttons, Fit, search and edit-zoom change the viewport outside a gesture: re-evaluate LOD + content.
     if (!gesturing) settle();
   };
+  // Screen strips a fit must keep content out of: the toolbar, an open side panel, and the title pill that floats
+  // above a section sitting on the top edge of the fitted bounds.
+  const fitInsets = (bounds) => {
+    const rr = root.getBoundingClientRect?.() || rootRect;
+    const tb = chrome.toolbar.el?.getBoundingClientRect?.();
+    const pel = panel.el?.style?.display !== "none" ? panel.el?.getBoundingClientRect?.() : null;
+    const b = board();
+    const r = b ? rects() : null;
+    const titled = Boolean(bounds && b && [...b.items.values()].some((it) => it.type === "section" && r.get(it.uid) && r.get(it.uid).y <= bounds.y + 0.5));
+    return {
+      top: (tb?.height ? Math.max(0, tb.bottom - (rr.top || 0)) : 0) + (titled ? SECTION_TITLE_ALLOWANCE : 0),
+      right: pel?.width ? Math.max(0, Math.min(size.width, (rr.left || 0) + size.width - pel.left)) : 0,
+    };
+  };
   const fitTo = (bounds, opts = {}) => {
     if (!size.width || !size.height) measure();
-    setViewport(fitViewport(bounds, size, { padding: 64, maxZoom: opts.maxZoom ?? 1.5 }));
+    setViewport(fitViewport(bounds, size, { padding: 64, maxZoom: opts.maxZoom ?? 1.5, insets: fitInsets(bounds) }));
   };
   const fitAll = () => fitTo(boundsOf([...rects().values()]));
   const fitSelection = (uids) => {
@@ -588,7 +632,11 @@ export function mountBoardView({
   const afterCreate = (label) => (res) => {
     if (disposed) return;
     const list = Array.isArray(res) ? res : [];
-    if (list.length) { ctl.select(list); toast(`${label} ${list.length} ${list.length === 1 ? "card" : "cards"}`, true); }
+    if (!list.length) return;
+    ctl.select(list);
+    const types = new Set(list.map((u) => board()?.items.get(u)?.type ?? "card"));
+    const noun = types.size === 1 && (types.has("card") || types.has("section")) ? [...types][0] : "item";
+    toast(`${label} ${list.length} ${list.length === 1 ? noun : `${noun}s`}`, true);
   };
   const copyText = (text, message) => { void writeClipboard({ text }).then((ok) => { if (!disposed) toast(ok ? message : "Copy failed"); }); };
   const openItem = (item) => {
@@ -713,7 +761,10 @@ export function mountBoardView({
   const expandOutline = (uid) => {
     Promise.resolve(session.expandOutline?.(uid)).then((res) => {
       if (disposed || !res || typeof res !== "object") return;
-      if (res.added > 0) toast(`Added ${res.added} ${res.added === 1 ? "card" : "cards"} as a mind map`, true);
+      if (res.added > 0) {
+        if (res.skipped > 0) toast(`Mind map: ${res.total - res.skipped} of ${res.total} branches (cap)`, true);
+        else toast(`Added ${res.added} ${res.added === 1 ? "card" : "cards"} as a mind map`, true);
+      }
       else toast("Nothing to expand");
     }).catch(() => {});
   };
@@ -762,8 +813,9 @@ export function mountBoardView({
 
   // ------------------------------------------------------------ clipboard actions
   const pastePoint = () => {
-    if (!size.width) measure();
-    return screenToWorld(vp, pointerInside && lastPointer ? lastPointer : { x: size.width / 2, y: size.height / 2 });
+    measure(); // the Roam page may have scrolled since the last measure
+    const screen = pointerInside && lastPointer ? { x: lastPointer.x - rootRect.left, y: lastPointer.y - rootRect.top } : { x: size.width / 2, y: size.height / 2 };
+    return screenToWorld(vp, screen);
   };
   const doCopy = (uids) => {
     const b = board();
@@ -1463,10 +1515,12 @@ export function mountBoardView({
     if (event.target?.closest?.(".pxd-chrome")) return;
     event.stopPropagation();
     event.preventDefault();
+    measure();
     ctl.handle(normalize(event, "dblclick"));
   });
   listen(root, "wheel", (event) => {
     if (event.target?.closest?.(".pxd-chrome")) return;
+    measure(); // the outer Roam page scrolls without any pointer event on the board
     const handled = ctl.handle(normalize(event, "wheel"));
     if (handled) { event.preventDefault(); event.stopPropagation(); settle(); }
   }, { passive: false });
@@ -1483,7 +1537,7 @@ export function mountBoardView({
     const handled = ctl.handle(normalize(event, "contextmenu"));
     if (handled) event.preventDefault();
   });
-  listen(root, "pointermove", (event) => { lastPointer = { x: (event.clientX || 0) - rootRect.left, y: (event.clientY || 0) - rootRect.top }; });
+  listen(root, "pointermove", (event) => { lastPointer = { x: event.clientX || 0, y: event.clientY || 0 }; });
   listen(root, "pointerenter", () => { pointerInside = true; });
   listen(root, "pointerleave", () => { pointerInside = false; });
   const acceptsDrop = (event) => !event.target?.closest?.(".pxd-item__editor");
@@ -1543,6 +1597,10 @@ export function mountBoardView({
     if (handled) { event.preventDefault(); event.stopPropagation(); }
   };
   const onKeyUp = (event) => { ctl.handle({ type: "keyup", key: event.key, code: event.code }); };
+  // A typed edit anywhere else in Roam lands on Roam's undo stack: the grouped undo log no longer maps onto it.
+  listen(doc, "input", (event) => {
+    if (!root.contains?.(event.target)) host?.invalidateUndo?.();
+  }, true);
   // Capture phase: Roam's document-level shortcuts (Delete/Backspace on block selection, etc.) stop propagation
   // before a bubble listener on window. onKeyDown returns early for any text input outside the board.
   listen(win, "keydown", onKeyDown, true);
@@ -1610,6 +1668,24 @@ export function mountBoardView({
       observers.push(ro);
     } catch { /* stub */ }
   }
+  const MO = globalThis.MutationObserver;
+  if (typeof MO === "function") {
+    try {
+      let settle = null;
+      const mo = new MO(() => {
+        if (disposed) return;
+        applyTheme();
+        settle?.(); // a host background may still be transitioning when its marker class flips: measure once more after it
+        settle = timers.later(() => { settle = null; applyTheme(); }, 300);
+      });
+      for (const node of [doc.documentElement, doc.body]) if (node) mo.observe(node, { attributes: true, attributeFilter: ["class"] });
+      observers.push(mo);
+    } catch { /* stub */ }
+  }
+  try {
+    const mq = win?.matchMedia?.("(prefers-color-scheme: dark)");
+    if (mq?.addEventListener) listen(mq, "change", () => { if (!disposed) applyTheme(); });
+  } catch { /* no matchMedia */ }
   routeOff = watchRouteExit({ boardUid: routeUid, onExit: () => { if (isFullscreen) requestFullscreen(false); }, win });
 
   // ------------------------------------------------------------ render frame
@@ -1620,7 +1696,8 @@ export function mountBoardView({
     const r = rects();
     let itemsChanged = false;
     if (dirty.all || dirty.structural || dirty.items.size) {
-      itemsR.sync({ board: b, rects: r, dirty: dirty.all ? null : dirty.items, structural: dirty.structural });
+      // Live preview rects (edit growth, drag fit) ride along: a sync for a dirty card must not snap grown section shells back.
+      itemsR.sync({ board: b, rects: effectiveRects(), dirty: dirty.all ? null : dirty.items, structural: dirty.structural });
       itemsChanged = true;
     }
     if (dirty.all || dirty.structural || dirty.links || dirty.edges.size) {

@@ -83,7 +83,7 @@ body.roam-body.dark .pxd-root,
 }
 
 @media (prefers-color-scheme: dark) {
-  :root:not(.bp3-light) .pxd-root {
+  :root:not(.bp3-light) .pxd-root:not(.pxd-root--light) {
     --pxd-surface: var(--bc-main, #1e2a35);
     --pxd-card: #26333f;
     --pxd-border: #3b4b58;
@@ -623,11 +623,13 @@ body.pxd-has-fullscreen .breadcrumbs-content {
 }
 
 /* Board thumbnails are plain divs, so they stay at map zoom; the overview tier hides them (cards read as blocks). */
-.pxd-lod-map .pxd-item--board .pxd-item__body {
+.pxd-lod-map .pxd-item--board .pxd-item__body,
+.pxd-lod-map .pxd-item--wb .pxd-item__body {
   display: block;
 }
 
-.pxd-lod-overview .pxd-item--board .pxd-item__body {
+.pxd-lod-overview .pxd-item--board .pxd-item__body,
+.pxd-lod-overview .pxd-item--wb .pxd-item__body {
   display: none;
 }
 
@@ -651,8 +653,12 @@ body.pxd-has-fullscreen .breadcrumbs-content {
 }
 
 .pxd-root.pxd-lod-map .pxd-item.pxd-item--card:not(.pxd-item--editing) > .pxd-item__header {
-  flex: 1 1 auto;
+  flex: 0 1 auto;
   min-height: 0;
+  padding-bottom: 0;
+  margin-bottom: 6px;
+  line-height: 1.2;
+  max-height: calc(3 * 1.2em + 6px);
   overflow: hidden;
   display: -webkit-box;
   -webkit-box-orient: vertical;
@@ -663,14 +669,30 @@ body.pxd-has-fullscreen .breadcrumbs-content {
 }
 
 /* A board card keeps its thumbnail under a one-line title. */
-.pxd-root.pxd-lod-map .pxd-item.pxd-item--card.pxd-item--board:not(.pxd-item--editing) > .pxd-item__header {
+.pxd-root.pxd-lod-map .pxd-item.pxd-item--card.pxd-item--board:not(.pxd-item--editing) > .pxd-item__header,
+.pxd-root.pxd-lod-map .pxd-item.pxd-item--card.pxd-item--wb:not(.pxd-item--editing) > .pxd-item__header {
   flex: 0 0 auto;
+  max-height: calc(1.2em + 6px);
   -webkit-line-clamp: 1;
+}
+
+/* The Roam-rendered title is a child block, so it (not the pill) has to own the ellipsis. */
+.pxd-section__title > .pxd-section__title-text {
+  display: block;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
 }
 
 /* Overview tier: cards read as colored blocks; section titles grow to stay legible. */
 .pxd-root.pxd-lod-overview .pxd-item--card > .pxd-item__header {
   visibility: hidden;
+}
+
+/* Palette fills are near-white at 100%; at overview scale a colored card reads by its line color. */
+.pxd-root.pxd-lod-overview .pxd-item.pxd-item--card[class*="pxd-c-"] {
+  background-image: linear-gradient(color-mix(in srgb, var(--pxd-line) 42%, transparent), color-mix(in srgb, var(--pxd-line) 42%, transparent));
 }
 
 .pxd-root.pxd-lod-overview .pxd-section__title {
@@ -1856,47 +1878,47 @@ body.roam-body.dark .pxd-root.pxd-bg-pink {
 }
 
 @media (prefers-color-scheme: dark) {
-  :root:not(.bp3-light) .pxd-root.pxd-bg-paper {
+  :root:not(.bp3-light) .pxd-root.pxd-bg-paper:not(.pxd-root--light) {
     --pxd-surface: #191919;
   }
 
-  :root:not(.bp3-light) .pxd-root.pxd-bg-gray {
+  :root:not(.bp3-light) .pxd-root.pxd-bg-gray:not(.pxd-root--light) {
     --pxd-surface: color-mix(in srgb, var(--pxd-gray-line) 7%, var(--bc-main, #1e2a35));
   }
 
-  :root:not(.bp3-light) .pxd-root.pxd-bg-red {
+  :root:not(.bp3-light) .pxd-root.pxd-bg-red:not(.pxd-root--light) {
     --pxd-surface: color-mix(in srgb, var(--pxd-red-line) 7%, var(--bc-main, #1e2a35));
   }
 
-  :root:not(.bp3-light) .pxd-root.pxd-bg-orange {
+  :root:not(.bp3-light) .pxd-root.pxd-bg-orange:not(.pxd-root--light) {
     --pxd-surface: color-mix(in srgb, var(--pxd-orange-line) 7%, var(--bc-main, #1e2a35));
   }
 
-  :root:not(.bp3-light) .pxd-root.pxd-bg-yellow {
+  :root:not(.bp3-light) .pxd-root.pxd-bg-yellow:not(.pxd-root--light) {
     --pxd-surface: color-mix(in srgb, var(--pxd-yellow-line) 7%, var(--bc-main, #1e2a35));
   }
 
-  :root:not(.bp3-light) .pxd-root.pxd-bg-green {
+  :root:not(.bp3-light) .pxd-root.pxd-bg-green:not(.pxd-root--light) {
     --pxd-surface: color-mix(in srgb, var(--pxd-green-line) 7%, var(--bc-main, #1e2a35));
   }
 
-  :root:not(.bp3-light) .pxd-root.pxd-bg-teal {
+  :root:not(.bp3-light) .pxd-root.pxd-bg-teal:not(.pxd-root--light) {
     --pxd-surface: color-mix(in srgb, var(--pxd-teal-line) 7%, var(--bc-main, #1e2a35));
   }
 
-  :root:not(.bp3-light) .pxd-root.pxd-bg-blue {
+  :root:not(.bp3-light) .pxd-root.pxd-bg-blue:not(.pxd-root--light) {
     --pxd-surface: color-mix(in srgb, var(--pxd-blue-line) 7%, var(--bc-main, #1e2a35));
   }
 
-  :root:not(.bp3-light) .pxd-root.pxd-bg-indigo {
+  :root:not(.bp3-light) .pxd-root.pxd-bg-indigo:not(.pxd-root--light) {
     --pxd-surface: color-mix(in srgb, var(--pxd-indigo-line) 7%, var(--bc-main, #1e2a35));
   }
 
-  :root:not(.bp3-light) .pxd-root.pxd-bg-purple {
+  :root:not(.bp3-light) .pxd-root.pxd-bg-purple:not(.pxd-root--light) {
     --pxd-surface: color-mix(in srgb, var(--pxd-purple-line) 7%, var(--bc-main, #1e2a35));
   }
 
-  :root:not(.bp3-light) .pxd-root.pxd-bg-pink {
+  :root:not(.bp3-light) .pxd-root.pxd-bg-pink:not(.pxd-root--light) {
     --pxd-surface: color-mix(in srgb, var(--pxd-pink-line) 7%, var(--bc-main, #1e2a35));
   }
 }
@@ -2232,9 +2254,9 @@ body.roam-body.dark .pxd-root .pxd-panel__outline-row:hover {
 }
 
 @media (prefers-color-scheme: dark) {
-  :root:not(.bp3-light) .pxd-root .pxd-menu__item--active,
-  :root:not(.bp3-light) .pxd-root .pxd-panel__board-row:hover,
-  :root:not(.bp3-light) .pxd-root .pxd-panel__outline-row:hover {
+  :root:not(.bp3-light) .pxd-root:not(.pxd-root--light) .pxd-menu__item--active,
+  :root:not(.bp3-light) .pxd-root:not(.pxd-root--light) .pxd-panel__board-row:hover,
+  :root:not(.bp3-light) .pxd-root:not(.pxd-root--light) .pxd-panel__outline-row:hover {
     background: transparent;
   }
 }
@@ -2386,8 +2408,8 @@ body.roam-body.dark .pxd-root .pxd-present-hud,
 }
 
 @media (prefers-color-scheme: dark) {
-  :root:not(.bp3-light) .pxd-root .pxd-quicklook,
-  :root:not(.bp3-light) .pxd-root .pxd-present-hud {
+  :root:not(.bp3-light) .pxd-root:not(.pxd-root--light) .pxd-quicklook,
+  :root:not(.bp3-light) .pxd-root:not(.pxd-root--light) .pxd-present-hud {
     border-color: var(--pxd-border-strong);
     background: var(--pxd-chrome-bg);
     box-shadow: 0 4px 16px rgba(0, 0, 0, 0.4);

@@ -300,47 +300,47 @@ body.roam-body.dark .pxd-root.pxd-bg-pink {
 }
 
 @media (prefers-color-scheme: dark) {
-  :root:not(.bp3-light) .pxd-root.pxd-bg-paper {
+  :root:not(.bp3-light) .pxd-root.pxd-bg-paper:not(.pxd-root--light) {
     --pxd-surface: #191919;
   }
 
-  :root:not(.bp3-light) .pxd-root.pxd-bg-gray {
+  :root:not(.bp3-light) .pxd-root.pxd-bg-gray:not(.pxd-root--light) {
     --pxd-surface: color-mix(in srgb, var(--pxd-gray-line) 7%, var(--bc-main, #1e2a35));
   }
 
-  :root:not(.bp3-light) .pxd-root.pxd-bg-red {
+  :root:not(.bp3-light) .pxd-root.pxd-bg-red:not(.pxd-root--light) {
     --pxd-surface: color-mix(in srgb, var(--pxd-red-line) 7%, var(--bc-main, #1e2a35));
   }
 
-  :root:not(.bp3-light) .pxd-root.pxd-bg-orange {
+  :root:not(.bp3-light) .pxd-root.pxd-bg-orange:not(.pxd-root--light) {
     --pxd-surface: color-mix(in srgb, var(--pxd-orange-line) 7%, var(--bc-main, #1e2a35));
   }
 
-  :root:not(.bp3-light) .pxd-root.pxd-bg-yellow {
+  :root:not(.bp3-light) .pxd-root.pxd-bg-yellow:not(.pxd-root--light) {
     --pxd-surface: color-mix(in srgb, var(--pxd-yellow-line) 7%, var(--bc-main, #1e2a35));
   }
 
-  :root:not(.bp3-light) .pxd-root.pxd-bg-green {
+  :root:not(.bp3-light) .pxd-root.pxd-bg-green:not(.pxd-root--light) {
     --pxd-surface: color-mix(in srgb, var(--pxd-green-line) 7%, var(--bc-main, #1e2a35));
   }
 
-  :root:not(.bp3-light) .pxd-root.pxd-bg-teal {
+  :root:not(.bp3-light) .pxd-root.pxd-bg-teal:not(.pxd-root--light) {
     --pxd-surface: color-mix(in srgb, var(--pxd-teal-line) 7%, var(--bc-main, #1e2a35));
   }
 
-  :root:not(.bp3-light) .pxd-root.pxd-bg-blue {
+  :root:not(.bp3-light) .pxd-root.pxd-bg-blue:not(.pxd-root--light) {
     --pxd-surface: color-mix(in srgb, var(--pxd-blue-line) 7%, var(--bc-main, #1e2a35));
   }
 
-  :root:not(.bp3-light) .pxd-root.pxd-bg-indigo {
+  :root:not(.bp3-light) .pxd-root.pxd-bg-indigo:not(.pxd-root--light) {
     --pxd-surface: color-mix(in srgb, var(--pxd-indigo-line) 7%, var(--bc-main, #1e2a35));
   }
 
-  :root:not(.bp3-light) .pxd-root.pxd-bg-purple {
+  :root:not(.bp3-light) .pxd-root.pxd-bg-purple:not(.pxd-root--light) {
     --pxd-surface: color-mix(in srgb, var(--pxd-purple-line) 7%, var(--bc-main, #1e2a35));
   }
 
-  :root:not(.bp3-light) .pxd-root.pxd-bg-pink {
+  :root:not(.bp3-light) .pxd-root.pxd-bg-pink:not(.pxd-root--light) {
     --pxd-surface: color-mix(in srgb, var(--pxd-pink-line) 7%, var(--bc-main, #1e2a35));
   }
 }

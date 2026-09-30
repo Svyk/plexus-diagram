@@ -347,3 +347,19 @@ test("chrome.css covers popover, menu, back-to-content and panel classes the JS 
     assert.ok(css.includes(signal), signal);
   }
 });
+
+test("toolbar.setPanel (panel open/close) repositions an open context bar, and is a no-op with none", (t) => {
+  const f = setup();
+  t.after(f.restore);
+  f.chrome.toolbar.setPanel(true); // no bar: nothing to place, no throw
+  let anchored = 0;
+  f.chrome.ctx.show("card", { kind: "block" }, () => { anchored++; return { kind: "card", rect: { x: 100, y: 100, w: 100, h: 50 } }; });
+  const shown = anchored;
+  f.chrome.toolbar.setPanel(true);
+  assert.equal(anchored, shown + 1, "panel open re-anchors the bar");
+  f.chrome.toolbar.setPanel(false);
+  assert.equal(anchored, shown + 2, "panel close re-anchors the bar");
+  f.chrome.ctx.hide();
+  f.chrome.toolbar.setPanel(true);
+  assert.equal(anchored, shown + 2, "a hidden bar is left alone");
+});

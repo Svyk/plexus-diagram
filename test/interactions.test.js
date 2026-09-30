@@ -934,6 +934,17 @@ test("pinned items can still be duplicated", () => {
 });
 
 // ---------------------------------------------------------------- fit gestures and previews
+test("dblclick on the bottom connection port (it covers the bottom grip's center) fits like the grip; other ports do nothing", () => {
+  const h = harness();
+  h.ctl.handle(h.ev("dblclick", { x: 100, y: 100 }, { target: { kind: "port", uid: "cardAAAA1", side: "bottom" } }));
+  assert.deepEqual(h.named("fitHeight")[0].slice(1), ["cardAAAA1"]);
+  h.ctl.handle(h.ev("dblclick", { x: 200, y: 50 }, { target: { kind: "port", uid: "cardAAAA1", side: "right" } }));
+  assert.equal(h.named("fitHeight").length, 1);
+  assert.equal(h.named("createCard").length, 0);
+  h.ctl.handle(h.ev("dblclick", { x: 200, y: 600 }, { target: { kind: "port", uid: "sectCCCC3", side: "bottom" } }));
+  assert.deepEqual(h.named("fitSection")[0].slice(1), ["sectCCCC3"]);
+});
+
 test("dblclick: bottom grip fits height, corner grip resets size, right grip does nothing", () => {
   const h = harness();
   h.ctl.handle(h.ev("dblclick", { x: 100, y: 100 }, { target: { kind: "grip", uid: "cardAAAA1", part: "bottom" } }));

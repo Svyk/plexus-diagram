@@ -250,6 +250,10 @@ test("gridBackground", () => {
     near(g.major, 240);
   }
   assert.equal(gridBackground({ x: 0, y: 0, zoom: 1 }, "dots", 10).size, 10);
+  const far = gridBackground({ x: 0, y: 0, zoom: 0.12 }, "dots");
+  assert.ok(far.size >= 8, "a 2.9px pitch coarsens instead of painting a moire");
+  near(far.size, 24 * 0.12 * 5, 1e-9);
+  near(gridBackground({ x: 0, y: 0, zoom: 0.4 }, "dots").size, 9.6);
 });
 
 test("lodTier hysteresis when zooming out then in", () => {
@@ -320,4 +324,18 @@ test("nearestInDirection prefers the cone, falls back to the half-plane", () => 
   const only = new Map([["src", box(0, 0)], ["steep", box(30, 300)]]);
   assert.equal(nearestInDirection(only, "src", "right"), "steep");
   assert.equal(nearestInDirection(only, "src", "left"), null);
+});
+
+test("fitViewport keeps content out of insets (toolbar on top, side panel on the right)", () => {
+  const size = { width: 1000, height: 600 };
+  const b = { x: 0, y: 0, w: 400, h: 200 };
+  const vp = fitViewport(b, size, { insets: { top: 80, right: 340 } });
+  const a = worldToScreen(vp, { x: b.x, y: b.y });
+  const z = worldToScreen(vp, { x: b.x + b.w, y: b.y + b.h });
+  assert.ok(a.y >= 80 + 64 - 1e-6, `content top ${a.y} stays below the toolbar plus padding`);
+  assert.ok(z.x <= 1000 - 340 - 64 + 1e-6, `content right ${z.x} stays left of the panel plus padding`);
+  const c = worldToScreen(vp, center(b));
+  near(c.x, (1000 - 340) / 2);
+  near(c.y, 80 + (600 - 80) / 2);
+  assert.deepEqual(fitViewport(null, size, { insets: { top: 100 } }), { x: 500, y: 350, zoom: 1 });
 });

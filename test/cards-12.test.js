@@ -283,6 +283,35 @@ test("whiteboard shortcut: a block-ref card to a board draws the same thumbnail 
   }
 });
 
+test("whiteboard shortcut: the thumbnail is mounted at map and overview zoom, and survives the unmount sweep", () => {
+  const pulled = {
+    ":block/uid": "wbTarget1",
+    ":block/string": "{{[[diagram]]:Whiteboard}}",
+    ":block/children": [blk("wbKid0001", "first", { ":x": 0, ":y": 0, ":w": 100, ":h": 50 }, 0)],
+  };
+  const h = harness({
+    children: [
+      blk("refWB0001", "((wbTarget1))", CARD, 0),
+      blk("refPLAIN1", "((plainUid1))", { ":x": 300, ":y": 0, ":w": 200, ":h": 100 }, 1),
+    ],
+    hostOverrides: {
+      blockString: (uid) => (uid === "wbTarget1" ? "{{[[diagram]]:Whiteboard}}" : uid === "plainUid1" ? "plain text" : null),
+      pullBoard: (uid) => (uid === "wbTarget1" ? pulled : null),
+    },
+  });
+  try {
+    for (const tier of ["map", "overview"]) {
+      h.show(tier);
+      assert.equal(h.shell("refWB0001").querySelectorAll(".pxd-mini").length, 1, `${tier}: the shortcut shows its thumbnail on first paint`);
+      assert.equal(h.shell("refPLAIN1").querySelector(".pxd-item__string"), null, `${tier}: a plain ref card stays title-only`);
+    }
+    for (const t of h.laterQueue.splice(0)) t.fn();
+    assert.equal(h.shell("refWB0001").querySelectorAll(".pxd-mini").length, 1, "the unmount sweep keeps the shortcut thumbnail");
+  } finally {
+    h.done();
+  }
+});
+
 test("whiteboard shortcut: a missing target shows the empty state; a plain block ref still renders its string", () => {
   const h = harness({
     children: [

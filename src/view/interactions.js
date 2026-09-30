@@ -449,6 +449,12 @@ export function createInteractions({ actions, settings } = {}) {
       }
       return;
     }
+    // The bottom connection port sits on the middle of the bottom grip, so the natural double-click target
+    // (the middle of the bottom edge) lands on it: it means the same as the grip beside it.
+    if (t.kind === "port" && t.side === "bottom") {
+      if (t.uid && b?.items.has(t.uid) && !isPinned(t.uid)) call(b.items.get(t.uid).type === "section" ? "fitSection" : "fitHeight", t.uid);
+      return;
+    }
     if (t.kind === "section-title" && t.uid) { selectItems([t.uid]); call("renameSection", t.uid); return; }
     if ((t.kind === "label" || t.kind === "edge") && t.uid) { selectEdge(t.uid); call("editLabel", t.uid); return; }
     if (t.kind === "section-border" || t.kind === "port" || t.kind === "link") return;

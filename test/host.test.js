@@ -255,3 +255,107 @@ test("uploadFile: string and {url} results, counts a write; absent throws", asyn
   await assert.rejects(host.uploadFile(file), /upload-failed/);
   assert.equal(host.stats.writes, 2);
 });
+
+test("uploadFile unwraps the markdown image Roam's file.upload returns, so the card string is not double-wrapped", async () => {
+  const { fake, host } = setup();
+  const file = { name: "a.png" };
+  const url = "https://firebasestorage.googleapis.com/v0/b/x/o/a.png?alt=media&token=t(1)";
+  fake.setUpload(async () => `![](${url})`);
+  assert.equal(await host.uploadFile(file), url);
+  fake.setUpload(async () => ({ url: `![alt text](${url})` }));
+  assert.equal(await host.uploadFile(file), url);
+});
+
+const undoCalls = (fake) => fake.calls.filter((c) => c[0] === "undo" || c[0] === "redo").map((c) => c[0]);
+
+test("undo: a grouped write sequence is one step (N Roam undos), a lone write is one", async () => {
+  const { fake, host } = setup();
+  fake.seedBoard({ uid: "b1", children: [{ uid: "c1", string: "a" }] });
+  await host.updateString("c1", "solo");
+  await host.group(async () => {
+    await host.updateProps("c1", { x: 1 });
+    await host.createBlock({ parentUid: "b1", string: "n" });
+    await host.moveBlock("c1", "b1", "last");
+  });
+  await host.undo(); // the grouped operation: three Roam undos
+  assert.deepEqual(undoCalls(fake), ["undo", "undo", "undo"]);
+  await host.undo(); // the lone write
+  assert.equal(undoCalls(fake).length, 4);
+  await host.undo(); // nothing recorded: Roam's single step
+  assert.equal(undoCalls(fake).length, 5);
+});
+
+test("redo replays a whole undone group, and a fresh write clears the redo log", async () => {
+  const { fake, host } = setup();
+  fake.seedBoard({ uid: "b1", children: [{ uid: "c1", string: "a" }] });
+  await host.group(async () => {
+    await host.updateProps("c1", { x: 1 });
+    await host.updateProps("c1", { x: 2 });
+  });
+  await host.undo();
+  fake.calls.length = 0;
+  await host.redo();
+  assert.deepEqual(undoCalls(fake), ["redo", "redo"]);
+  await host.undo();
+  await host.updateString("c1", "later");
+  fake.calls.length = 0;
+  await host.redo(); // the log was cleared by the new write: Roam's single step
+  assert.deepEqual(undoCalls(fake), ["redo"]);
+});
+
+test("invalidateUndo drops the log after the echo window, not inside it or inside a group", async () => {
+  const { fake, host } = setup();
+  fake.seedBoard({ uid: "b1", children: [{ uid: "c1", string: "a" }] });
+  const grouped = async () => host.group(async () => {
+    await host.updateProps("c1", { x: 1 });
+    await host.updateProps("c1", { x: 2 });
+  });
+  await grouped();
+  host.invalidateUndo(); // our own echo, just written: ignored
+  await host.undo();
+  assert.equal(undoCalls(fake).length, 2);
+  fake.calls.length = 0;
+  await grouped();
+  await sleep(950);
+  host.invalidateUndo(); // a foreign edit after the echo window
+  await host.undo();
+  assert.deepEqual(undoCalls(fake), ["undo"], "falls back to Roam's own single step");
+});
+
+test("undo: a transaction over 45 writes is split into consecutive groups, one Cmd+Z per chunk, and undo never deletes", async () => {
+  const { fake, host } = setup();
+  fake.seedBoard({ uid: "b1", children: [{ uid: "c1", string: "a" }] });
+  await host.updateProps("c1", { x: 1 }); // a prior operation
+  const uids = [];
+  await host.group(async () => {
+    for (let i = 0; i < 81; i++) uids.push(await host.createBlock({ parentUid: "b1", string: `n${i}` }));
+  });
+  fake.calls.length = 0;
+  await host.undo(); // newest chunk: 36 writes
+  assert.equal(undoCalls(fake).length, 36);
+  await host.undo(); // first chunk: 45 writes
+  assert.equal(undoCalls(fake).length, 36 + 45);
+  assert.deepEqual([...new Set(undoCalls(fake))], ["undo"]);
+  assert.ok(!fake.calls.some((c) => c[0] === "delete" || c[0] === "deleteBlock" || /delete/i.test(String(c[0]))), "undo issues no deletes");
+  fake.calls.length = 0;
+  await host.undo(); // the prior 1-write move is the next Cmd+Z
+  assert.deepEqual(undoCalls(fake), ["undo"]);
+});
+
+test("redo replays a split transaction chunk by chunk", async () => {
+  const { fake, host } = setup();
+  fake.seedBoard({ uid: "b1" });
+  await host.group(async () => {
+    for (let i = 0; i < 81; i++) await host.createBlock({ parentUid: "b1", string: `n${i}` });
+  });
+  await host.undo();
+  await host.undo();
+  fake.calls.length = 0;
+  await host.redo();
+  assert.equal(undoCalls(fake).length, 45);
+  await host.redo();
+  assert.equal(undoCalls(fake).length, 81);
+  fake.calls.length = 0;
+  await host.undo();
+  assert.equal(undoCalls(fake).length, 36, "the redone transaction undoes newest chunk first again");
+});

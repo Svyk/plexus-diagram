@@ -259,6 +259,20 @@ test("pasteItems in clone mode pulls another board, skips missing uids and creat
   assert.deepEqual(fake.children("b2"), ["X", "Y", "EC2"], "the source board is untouched");
 });
 
+test("pasteText and addRefCards stop at 45 cards so Roam's 50-entry undo can reach them", async () => {
+  const { session } = setup();
+  const toasts = [];
+  session.on("toast", (t) => toasts.push(t.message));
+  const many = Array.from({ length: 50 }, (_, i) => `idea ${i}`).join("\n");
+  assert.equal((await session.pasteText(many, { x: 0, y: 0 })).length, 45);
+  assert.deepEqual(toasts, ["Added 45 of 50 (Roam undo holds 50 changes)"]);
+  const refs = Array.from({ length: 46 }, (_, i) => ({ string: `((r${i}))`, x: 0, y: 0 }));
+  assert.equal((await session.addRefCards(refs)).length, 45);
+  assert.equal(toasts.length, 2);
+  assert.equal((await session.addRefCards(refs.slice(0, 45))).length, 45);
+  assert.equal(toasts.length, 2, "45 exactly is not capped");
+});
+
 test("pasteText stacks one card per line and keeps refs as refs", async () => {
   const { fake, session } = setup();
   const made = await session.pasteText("- first idea\n\n[[Some Page]]\n((abc123))\n", { x: 2000, y: 100 });
@@ -391,10 +405,23 @@ test("expandOutline reuses children that already have a card and never moves the
   assert.equal(fake.writesLog().length, 0);
 });
 
+test("expandOutline lays a reused card's descendants out around where that card really sits", async () => {
+  const { fake, session } = setup(outlineBoard([card("A1c", "((A1))", 400, 900, 240, 72)]));
+  await session.expandOutline("X");
+  assert.deepEqual(plexus(fake, "A1c"), { x: 400, y: 900, w: 240, h: 72 }, "the reused card never moves");
+  const cards = fake.children("b1").filter((u) => u !== "X" && u !== "A1c" && fake.block(u).string.startsWith("(("));
+  const byRef = Object.fromEntries(cards.map((u) => [fake.block(u).string, u]));
+  const deep = plexus(fake, byRef["((A1a))"]);
+  const reused = plexus(fake, "A1c");
+  assert.equal(deep.x, reused.x + 240 + 80, "A1a sits one column right of A1's real position, not of its slot");
+  assert.equal(deep.y, reused.y, "and on the same row (a single child stays level with its parent)");
+  assert.notEqual(plexus(fake, byRef["((A))"]).x, reused.x, "A itself is still laid out by the plan");
+});
+
 test("expandOutline caps the node count with the shallow levels first", async () => {
   const { fake, session } = setup(outlineBoard());
   const res = await session.expandOutline("X", { max: 2 });
-  assert.deepEqual(res, { added: 2, edges: 2 });
+  assert.deepEqual(res, { added: 2, edges: 2, skipped: 4, total: 6 }, "the cap reports how many nodes it left out");
   const strs = fake.children("b1").map((u) => fake.block(u).string);
   assert.ok(strs.includes("((A))") && strs.includes("((B))") && !strs.includes("((C))") && !strs.includes("((A1))"));
 });

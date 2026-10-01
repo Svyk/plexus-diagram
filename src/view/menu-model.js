@@ -210,6 +210,7 @@ export function buildMenu(kind, ctx = {}) {
         make("export-svg", "Export as SVG"),
         make("export-png", "Export as PNG"),
         make("copy-outline", "Copy as outline"),
+        make("open-outline", "Open outline in sidebar"),
         sep(),
         make("fold-all", "Fold all cards"),
         make("unfold-all", "Unfold all cards"),

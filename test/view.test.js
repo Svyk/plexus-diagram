@@ -1329,6 +1329,60 @@ test("F5: a plain-object settings map is honored by the view", async () => {
   }
 });
 
+test("NP-6: a sidebar mount defaults to the outline and does not open the block", async () => {
+  const prep = createDomStub();
+  const undoPrep = prep.install();
+  const sidebar = prep.document.createElement("div");
+  sidebar.className = "rm-sidebar-window";
+  const nativeEl = prep.document.createElement("div");
+  sidebar.append(nativeEl);
+  undoPrep();
+  const rendered = [];
+  const f = mountFixture({
+    viewOptions: { nativeEl },
+    hostOverrides: {
+      renderBlock(el, uid) { rendered.push(uid); },
+    },
+  });
+  try {
+    await f.flush();
+    const root = f.view.root;
+    assert.ok(root.classList.contains("pxd-root--sidebar"));
+    assert.ok(root.classList.contains("pxd-root--outline"));
+    const want = ["cardAAAA1", "cardBBBB2", "cardFAR03", "cardFAR04", "textTTTT5", "sectCCCC3", "edgesEEE5"];
+    assert.deepEqual([...root.querySelectorAll(".pxd-sidebar-outline__row")].map((r) => r.dataset.uid), want);
+    assert.deepEqual(rendered, want);
+    assert.equal(root.querySelector(".pxd-mode__outline").classList.contains("pxd-mode__btn--on"), true);
+    assert.equal(f.session.mutations.some((m) => m[0] === "setBlockOpen"), false);
+    f.session.emit("change", { dirty: new Set(["cardAAAA1"]) });
+    assert.deepEqual(rendered, want, "a string echo does not rebuild the outline");
+    root.querySelector(".pxd-mode__board").click();
+    assert.equal(root.classList.contains("pxd-root--outline"), false);
+    assert.equal(root.querySelectorAll(".pxd-sidebar-outline__row").length, 0);
+    assert.equal(f.host.calls.unmount, want.length);
+    assert.equal(f.session.mutations.some((m) => m[0] === "setBlockOpen"), false);
+    root.querySelector(".pxd-mode__outline").click();
+    assert.ok(root.classList.contains("pxd-root--outline"));
+    assert.deepEqual(rendered, [...want, ...want]);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("NP-6: a page mount has no sidebar mode bar", async () => {
+  const f = mountFixture();
+  try {
+    await f.flush();
+    assert.equal(f.view.root.querySelector(".pxd-mode"), null);
+    assert.equal(f.view.root.classList.contains("pxd-root--sidebar"), false);
+    assert.equal(f.view.root.classList.contains("pxd-root--outline"), false);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
 test("R2 guard: a key pressed while editing with focus on <body> recovers focus instead of running a board shortcut", async () => {
   const f = mountFixture({ viewOptions: { autofocus: true } });
   try {

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   boardPreview, boundsOf, buildBoard, containerAt, descendantsOf, diffBoards, edgesTouching, findEdge, hitTest,
-  itemsInRect, membershipPlan, outlineOrder, sectionAdoptPlan, sectionFitPlan, toRelative, topLevelOf, worldRect, worldRects,
+  itemsInRect, membershipPlan, outlineOrder, sectionAdoptPlan, sectionFitPlan, sidebarOutlineUids, toRelative, topLevelOf, worldRect, worldRects,
 } from "../src/model/board.js";
 
 const near = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) < eps, `${a} != ${b}`);
@@ -625,4 +625,9 @@ test("outlineOrder is depth first by block order", () => {
     ":block/children": [blk("b", 1, "b", { x: 0, y: 0 }), blk("a", 0, "a", { x: 0, y: 0 })],
   });
   assert.deepEqual(outlineOrder(shuffled), ["a", "b"]);
+});
+
+test("sidebarOutlineUids lists roots then the Connections block", () => {
+  assert.deepEqual(sidebarOutlineUids(build()), ["c1", "c2", "c3", "s1", "t1", "h1", "nb", "ex"]);
+  assert.deepEqual(sidebarOutlineUids(null), []);
 });

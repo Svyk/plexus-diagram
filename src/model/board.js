@@ -410,6 +410,15 @@ export function sectionFitPlan(board, rects, touchedUids, {
     .map(({ uid, rect }) => ({ uid, rect }));
 }
 
+// Top-level cards and sections, then the Connections block. Nested members stay inside their parent
+// render, so the sidebar outline does not list them twice and does not write :block/open.
+export function sidebarOutlineUids(board) {
+  if (!board) return [];
+  const uids = [...(board.roots || [])];
+  if (board.containerUid) uids.push(board.containerUid);
+  return uids;
+}
+
 // Item uids in Roam outline order (depth first, siblings by block order): the Tab traversal order.
 export function outlineOrder(board) {
   const byOrder = (uids) => uids

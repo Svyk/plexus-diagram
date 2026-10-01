@@ -1072,6 +1072,12 @@ function sectionFitPlan(board, rects, touchedUids, {
   };
   return [...work.entries()].map(([uid, rect]) => ({ uid, rect, depth: depthOf(uid) })).sort((a, b) => b.depth - a.depth).map(({ uid, rect }) => ({ uid, rect }));
 }
+function sidebarOutlineUids(board) {
+  if (!board) return [];
+  const uids = [...board.roots || []];
+  if (board.containerUid) uids.push(board.containerUid);
+  return uids;
+}
 function outlineOrder(board) {
   const byOrder = (uids) => uids.map((u, i) => ({ u, i, o: board.items.get(u)?.order ?? i })).sort((a, b) => a.o - b.o || a.i - b.i).map(({ u }) => u);
   const out = [];
@@ -8832,6 +8838,7 @@ function buildMenu(kind, ctx = {}) {
         make("export-svg", "Export as SVG"),
         make("export-png", "Export as PNG"),
         make("copy-outline", "Copy as outline"),
+        make("open-outline", "Open outline in sidebar"),
         sep(),
         make("fold-all", "Fold all cards"),
         make("unfold-all", "Unfold all cards"),
@@ -9850,6 +9857,68 @@ function mountBoardView({
   };
   const dirty = { viewport: false, items: /* @__PURE__ */ new Set(), edges: /* @__PURE__ */ new Set(), structural: false, all: true, selection: false, links: false, ctx: false, minimap: false };
   const board = () => session.board;
+  const inSidebar = Boolean(nativeEl?.closest?.(".rm-sidebar-window"));
+  let outlineMode = false;
+  let outlineHost = null;
+  let outlineKey = "";
+  let outlineBtn = null;
+  let boardBtn = null;
+  const clearOutline = () => {
+    if (!outlineHost) return;
+    for (const row of [...outlineHost.children]) {
+      try {
+        host?.unmount?.(row);
+      } catch {
+      }
+    }
+    outlineHost.replaceChildren();
+  };
+  const syncOutline = (force = false) => {
+    if (!outlineMode || !outlineHost || disposed) return;
+    const key = sidebarOutlineUids(board()).join("\n");
+    if (!force && key === outlineKey) return;
+    outlineKey = key;
+    clearOutline();
+    if (typeof host?.renderBlock !== "function") return;
+    for (const uid of sidebarOutlineUids(board())) {
+      const row = el("div", "pxd-sidebar-outline__row", outlineHost);
+      row.dataset.uid = uid;
+      row.setAttribute("data-uid", uid);
+      try {
+        host.renderBlock(row, uid);
+      } catch {
+      }
+    }
+  };
+  const setOutline = (on) => {
+    outlineMode = Boolean(on);
+    root.classList.toggle("pxd-root--outline", outlineMode);
+    outlineBtn?.classList.toggle("pxd-mode__btn--on", outlineMode);
+    boardBtn?.classList.toggle("pxd-mode__btn--on", !outlineMode);
+    if (outlineMode) syncOutline(true);
+    else {
+      outlineKey = "";
+      clearOutline();
+    }
+  };
+  if (inSidebar) {
+    root.classList.add("pxd-root--sidebar");
+    const modeBar = el("div", "pxd-mode pxd-chrome", root);
+    modeBar.setAttribute("role", "group");
+    modeBar.setAttribute("aria-label", "Sidebar view");
+    const modeBtn = (cls, label, on) => {
+      const b = doc.createElement("button");
+      b.type = "button";
+      b.className = `pxd-mode__btn ${cls}`;
+      b.textContent = label;
+      modeBar.append(b);
+      listen(b, "click", on);
+      return b;
+    };
+    outlineBtn = modeBtn("pxd-mode__outline", "Outline", () => setOutline(true));
+    boardBtn = modeBtn("pxd-mode__board", "Board", () => setOutline(false));
+    outlineHost = el("div", "pxd-sidebar-outline pxd-chrome", root);
+  }
   const rects = () => session.rects || worldRects(board());
   const effectiveRects = () => {
     if (!liveRects) return rects();
@@ -10164,6 +10233,10 @@ function mountBoardView({
     if (item.target?.kind === "page") return host?.pageUid?.(item.target.title) || null;
     if (item.target?.kind === "block") return item.target.uid || null;
     return item.uid;
+  };
+  const openBoardOutline = () => {
+    const uid = board()?.uid;
+    if (uid) host?.openInSidebar?.(uid, "outline");
   };
   const openItemInSidebar = (item) => {
     if (!item) return;
@@ -10654,6 +10727,9 @@ function mountBoardView({
       case "copy-outline":
         void view.copyOutline();
         break;
+      case "open-outline":
+        openBoardOutline();
+        break;
       case "edit":
         if (item) {
           if (item.kind === "board") itemsR.renameBoard(item.uid);
@@ -10822,10 +10898,7 @@ function mountBoardView({
       savePng: () => {
         void exportPng();
       },
-      openOutline: () => {
-        const uid = board()?.uid;
-        if (uid) host?.openInSidebar?.(uid, "outline");
-      },
+      openOutline: () => openBoardOutline(),
       setColor: (c) => {
         const uids = targetUids();
         if (uids.length) void session.setColor?.(uids, c);
@@ -11711,6 +11784,7 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
     ctl.reconcile();
     dirty.selection = true;
     schedule();
+    if (outlineMode) syncOutline();
   }));
   subs.push(session.on("links", () => {
     dirty.links = true;
@@ -11718,6 +11792,7 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
   }));
   subs.push(session.on("busy", (busy) => chrome.toolbar.setSync(Boolean(busy))));
   subs.push(session.on("toast", (t) => chrome.toast.show(t)));
+  if (inSidebar) setOutline(true);
   const RO = globalThis.ResizeObserver;
   if (typeof RO === "function") {
     try {
@@ -12025,6 +12100,7 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
     dispose() {
       if (disposed) return;
       disposed = true;
+      clearOutline();
       ctl.cancel();
       releaseCapture();
       if (heightDrag) onHeightUp();

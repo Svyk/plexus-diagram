@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { buildBoard, worldRects } from "../src/model/board.js";
-import { freshCardIsBlank, mountBoardView } from "../src/view/board-view.js";
+import { freshCardIsBlank, mountBoardView, sidebarMountKind } from "../src/view/board-view.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
 
 const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
@@ -1365,6 +1365,99 @@ test("NP-6: a sidebar mount defaults to the outline and does not open the block"
     assert.ok(root.classList.contains("pxd-root--outline"));
     assert.deepEqual(rendered, [...want, ...want]);
   } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("NP-7: sidebar mount kind comes from the window id", () => {
+  const stub = createDomStub();
+  const restore = stub.install();
+  try {
+    const make = (id) => {
+      const win = stub.document.createElement("div");
+      win.className = "rm-sidebar-window";
+      if (id) win.id = id;
+      const native = stub.document.createElement("div");
+      win.append(native);
+      return native;
+    };
+    assert.equal(sidebarMountKind(null), "main");
+    assert.equal(sidebarMountKind(make("")), "block");
+    assert.equal(sidebarMountKind(make("sidebar-window-sidebar-block-abc")), "block");
+    assert.equal(sidebarMountKind(make("sidebar-window-sidebar-outline-abc")), "outline");
+    assert.equal(sidebarMountKind(make("sidebar-window-sidebar-mentions-abc")), "mentions");
+  } finally {
+    restore();
+  }
+});
+
+test("NP-7: a sidebar board keeps its own viewport, keys, and fullscreen", async () => {
+  const f = mountFixture();
+  const sidebar = f.stub.document.createElement("div");
+  sidebar.id = "sidebar-window-sidebar-block-board0001";
+  sidebar.className = "rm-sidebar-window";
+  const nativeEl = f.stub.document.createElement("div");
+  const mountEl = f.stub.document.createElement("div");
+  sidebar.append(nativeEl, mountEl);
+  f.stub.document.body.append(sidebar);
+  const side = mountBoardView({
+    host: f.host,
+    session: f.session,
+    mountEl,
+    nativeEl,
+    settings: { get: () => undefined },
+  });
+  try {
+    await f.flush();
+    const outlineKey = f.stub.dispatch(f.stub.window, "keydown", { key: "n" });
+    assert.equal(outlineKey.propagationStopped, false, "outline mode does not swallow a key");
+    assert.equal(side.root.dataset.tool, "select");
+    side.root.querySelector(".pxd-mode__board").click();
+    const mainWorld = f.view.root.querySelector(".pxd-world");
+    const sideWorld = side.root.querySelector(".pxd-world");
+    const mainBefore = mainWorld.style.transform;
+    f.stub.dispatch(side.root.querySelector(".pxd-viewport"), "pointerdown", { button: 1, buttons: 4, clientX: 100, clientY: 100, pointerId: 9 });
+    f.stub.dispatch(f.stub.document, "pointermove", { clientX: 140, clientY: 130, pointerId: 9 });
+    f.stub.flushFrames();
+    f.stub.dispatch(f.stub.document, "pointerup", { clientX: 140, clientY: 130, pointerId: 9 });
+    assert.notEqual(sideWorld.style.transform, mainBefore, "the sidebar board pans");
+    assert.equal(mainWorld.style.transform, mainBefore, "the main board stays put");
+    // Gesture end waits 120ms, then the viewport store waits another 500ms. Both are real timers.
+    await tick(700);
+    const sideRaw = f.stub.localStorage.getItem("plexus-diagram:vp:Svy:board0001:block");
+    const mainRaw = f.stub.localStorage.getItem("plexus-diagram:vp:Svy:board0001");
+    assert.equal(JSON.parse(mainRaw).zoom, 1, "the main viewport key is unchanged");
+    assert.ok(sideRaw, "missing sidebar viewport");
+    const sideVp = JSON.parse(sideRaw);
+    assert.notDeepEqual(sideVp, JSON.parse(mainRaw), "the sidebar viewport is its own key");
+    f.view.root.focus();
+    f.stub.dispatch(f.stub.window, "keydown", { key: "g" });
+    assert.equal(f.view.root.dataset.tool, "section");
+    assert.equal(side.root.dataset.tool, "select", "a key in the main board does not change the sidebar tool");
+    side.root.focus();
+    f.stub.dispatch(f.stub.window, "keydown", { key: "h" });
+    assert.equal(side.root.dataset.tool, "hand");
+    assert.equal(f.view.root.dataset.tool, "section", "a key in the sidebar board does not change the main tool");
+    side.root.querySelector(".pxd-rail__fullscreen").click();
+    assert.ok(side.root.classList.contains("pxd-root--fullscreen"), side.root.className);
+    assert.equal(f.view.root.classList.contains("pxd-root--fullscreen"), false);
+    const card = f.board.items.get("cardAAAA1");
+    card.x = 80;
+    f.session.rects = worldRects(f.board);
+    f.session.emit("change", { dirty: new Set(["cardAAAA1"]) });
+    await f.flush();
+    const moved = "translate(80px, 0px)";
+    assert.equal(f.view.root.querySelector(".pxd-item[data-uid=cardAAAA1]").style.transform, moved);
+    assert.equal(side.root.querySelector(".pxd-item[data-uid=cardAAAA1]").style.transform, moved);
+    const zoomBefore = sideVp.zoom;
+    f.stub.dispatch(side.root.querySelector(".pxd-viewport"), "wheel", { ctrlKey: true, deltaY: -80, clientX: 200, clientY: 200 });
+    await tick(700);
+    const zoomed = JSON.parse(f.stub.localStorage.getItem("plexus-diagram:vp:Svy:board0001:block"));
+    assert.ok(zoomed.zoom > zoomBefore, "a pinch on the sidebar stores its own zoom");
+    assert.equal(JSON.parse(f.stub.localStorage.getItem("plexus-diagram:vp:Svy:board0001")).zoom, 1);
+  } finally {
+    side.dispose();
     f.view.dispose();
     f.restore();
   }

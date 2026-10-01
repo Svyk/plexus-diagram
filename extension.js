@@ -9513,6 +9513,15 @@ function watchRouteExit({ boardUid, onExit, win = globalThis.window } = {}) {
 
 // src/view/board-view.js
 var SVG_NS3 = "http://www.w3.org/2000/svg";
+var pointerBoard = null;
+function sidebarMountKind(nativeEl) {
+  const win = nativeEl?.closest?.(".rm-sidebar-window");
+  if (!win) return "main";
+  const id = String(win.id || "");
+  if (id.includes("mentions")) return "mentions";
+  if (id.includes("outline")) return "outline";
+  return "block";
+}
 var DEFAULT_HEIGHT = 560;
 function rasterizeSvg(doc, svg) {
   return new Promise((resolve, reject) => {
@@ -9816,7 +9825,10 @@ function mountBoardView({
     root.classList.toggle("pxd-root--light", !dark && isLightHost(mountEl, doc, globalThis.window));
   };
   applyTheme();
-  let vp = vpStore.get(boardUid);
+  const mountKind = sidebarMountKind(nativeEl);
+  const inSidebar = mountKind !== "main";
+  const vpId = inSidebar ? `${boardUid}:${mountKind}` : boardUid;
+  let vp = vpStore.get(vpId);
   let size = { width: 0, height: 0 };
   let rootRect = { left: 0, top: 0, width: 0, height: 0 };
   let disposed = false;
@@ -9857,7 +9869,6 @@ function mountBoardView({
   };
   const dirty = { viewport: false, items: /* @__PURE__ */ new Set(), edges: /* @__PURE__ */ new Set(), structural: false, all: true, selection: false, links: false, ctx: false, minimap: false };
   const board = () => session.board;
-  const inSidebar = Boolean(nativeEl?.closest?.(".rm-sidebar-window"));
   let outlineMode = false;
   let outlineHost = null;
   let outlineKey = "";
@@ -10136,7 +10147,7 @@ function mountBoardView({
       if (gesturing) return;
       applyLod();
       scheduleContent();
-      vpStore.set(boardUid, vp);
+      vpStore.set(vpId, vp);
       dirty.edges = new Set(board()?.edges.keys() || []);
       dirty.links = true;
       schedule();
@@ -11330,7 +11341,7 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
           itemsR.setPaused(false);
           applyLod();
           scheduleContent();
-          vpStore.set(boardUid, vp);
+          vpStore.set(vpId, vp);
           dirty.selection = true;
           schedule();
           updateBackToContent();
@@ -11649,9 +11660,11 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
   });
   listen(root, "pointerenter", () => {
     pointerInside = true;
+    pointerBoard = root;
   });
   listen(root, "pointerleave", () => {
     pointerInside = false;
+    if (pointerBoard === root) pointerBoard = null;
   });
   const acceptsDrop = (event) => !event.target?.closest?.(".pxd-item__editor");
   const dropEffectFor = (effectAllowed) => {
@@ -11691,8 +11704,15 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
     }).catch(() => {
     });
   });
-  const ownsKeyboard = () => pointerInside || isFullscreen || root.contains?.(doc.activeElement);
+  const ownsKeyboard = () => {
+    const active = doc.activeElement;
+    const activeRoot = active?.closest?.(".pxd-root");
+    if (activeRoot) return activeRoot === root;
+    if (pointerBoard) return pointerBoard === root;
+    return isFullscreen;
+  };
   const onKeyDown = (event) => {
+    if (outlineMode && !event.target?.closest?.(".pxd-mode")) return;
     if (menu.isOpen()) return;
     if (event.key === "Escape" && chrome.popover.isOpen()) {
       chrome.popover.close();
@@ -12100,6 +12120,7 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
     dispose() {
       if (disposed) return;
       disposed = true;
+      if (pointerBoard === root) pointerBoard = null;
       clearOutline();
       ctl.cancel();
       releaseCapture();

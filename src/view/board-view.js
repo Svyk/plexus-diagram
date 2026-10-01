@@ -38,6 +38,19 @@ import { createClipboardIO, filesFromDataTransfer, writeClipboard } from "./clip
 import { applyFullscreenChrome, watchRouteExit } from "./fullscreen.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
+
+// The board under the pointer. Focus inside a board wins over this; fullscreen does not.
+let pointerBoard = null;
+
+// Sidebar window ids look like sidebar-window-sidebar-block-<uid> or sidebar-outline- / mentions.
+export function sidebarMountKind(nativeEl) {
+  const win = nativeEl?.closest?.(".rm-sidebar-window");
+  if (!win) return "main";
+  const id = String(win.id || "");
+  if (id.includes("mentions")) return "mentions";
+  if (id.includes("outline")) return "outline";
+  return "block";
+}
 const DEFAULT_HEIGHT = 560;
 
 function rasterizeSvg(doc, svg) {
@@ -282,7 +295,11 @@ export function mountBoardView({
   applyTheme();
 
   // ------------------------------------------------------------ state
-  let vp = vpStore.get(boardUid);
+  // Main keeps the 1.2 key. A sidebar copy adds the window kind so the two viewports do not share a pan.
+  const mountKind = sidebarMountKind(nativeEl);
+  const inSidebar = mountKind !== "main";
+  const vpId = inSidebar ? `${boardUid}:${mountKind}` : boardUid;
+  let vp = vpStore.get(vpId);
   let size = { width: 0, height: 0 };
   let rootRect = { left: 0, top: 0, width: 0, height: 0 };
   let disposed = false;
@@ -325,7 +342,6 @@ export function mountBoardView({
 
   // A sidebar root has no enhanced ancestor, so the collapsed board mounts here as a canvas.
   // Outline renders each top-level block (and Connections) without writing :block/open.
-  const inSidebar = Boolean(nativeEl?.closest?.(".rm-sidebar-window"));
   let outlineMode = false;
   let outlineHost = null;
   let outlineKey = "";
@@ -583,7 +599,7 @@ export function mountBoardView({
       if (gesturing) return;
       applyLod();
       scheduleContent();
-      vpStore.set(boardUid, vp);
+      vpStore.set(vpId, vp);
       dirty.edges = new Set(board()?.edges.keys() || []); // arrow sizes depend on zoom
       dirty.links = true;
       schedule();
@@ -1464,7 +1480,7 @@ export function mountBoardView({
           itemsR.setPaused(false);
           applyLod();
           scheduleContent();
-          vpStore.set(boardUid, vp);
+          vpStore.set(vpId, vp);
           dirty.selection = true;
           schedule();
           updateBackToContent();
@@ -1758,8 +1774,8 @@ export function mountBoardView({
     const node = event.target?.closest?.(".pxd-item--card");
     showHover(node?.getAttribute?.("data-uid") || node?.dataset?.uid || null);
   });
-  listen(root, "pointerenter", () => { pointerInside = true; });
-  listen(root, "pointerleave", () => { pointerInside = false; });
+  listen(root, "pointerenter", () => { pointerInside = true; pointerBoard = root; });
+  listen(root, "pointerleave", () => { pointerInside = false; if (pointerBoard === root) pointerBoard = null; });
   const acceptsDrop = (event) => !event.target?.closest?.(".pxd-item__editor");
   const dropEffectFor = (effectAllowed) => {
     const a = String(effectAllowed || "uninitialized");
@@ -1793,8 +1809,16 @@ export function mountBoardView({
     Promise.resolve(made).then((uids) => { if (Array.isArray(uids) && uids.length) ctl.select(uids); }).catch(() => {});
   });
 
-  const ownsKeyboard = () => pointerInside || isFullscreen || root.contains?.(doc.activeElement);
+  const ownsKeyboard = () => {
+    const active = doc.activeElement;
+    const activeRoot = active?.closest?.(".pxd-root");
+    if (activeRoot) return activeRoot === root;
+    if (pointerBoard) return pointerBoard === root;
+    return isFullscreen;
+  };
   const onKeyDown = (event) => {
+    // Outline mode is real Roam blocks. Canvas shortcuts stay off so a key there is not a board command.
+    if (outlineMode && !event.target?.closest?.(".pxd-mode")) return;
     // The open menu owns the keyboard; Quick Look and a presentation only let their own keys through.
     if (menu.isOpen()) return;
     // Escape closes the Background popover before the controller's chain (selection, up a level, fullscreen) runs.
@@ -2144,6 +2168,7 @@ export function mountBoardView({
     dispose() {
       if (disposed) return;
       disposed = true;
+      if (pointerBoard === root) pointerBoard = null;
       clearOutline();
       ctl.cancel();
       releaseCapture();

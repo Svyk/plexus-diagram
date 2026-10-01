@@ -137,7 +137,7 @@ Order matters: P1 and P2 are the user's direct requests. Within a phase, do task
 - [x] **ED-8 Undo inside the editor** (S) — done 2026-10-01, `3c6b0e8`: on 1jO4wJ0i3, Q after keep became keep on Cmd+Z and x stayed 3.6; after Esc a drag set x 80 and Cmd+Z restored x 3.6 with string keep (.live/shots/ED-8.png). — Cmd+Z while editing goes to Roam's text undo; Cmd+Z outside an editor undoes the last board action. Accept: type, Cmd+Z, Esc, move card, Cmd+Z → each undoes the right thing.
 - [x] **ED-9 Click targets** (S) — done 2026-10-01, `d97a135`: on 4ehTC0Mym a click selected, double-click edited and Esc kept the string, Shift-click opened the sidebar, the checkbox became DONE, and the image opened Roam's viewer (.live/shots/ED-9.png). — Not editing: single click selects, double click edits, link click navigates (Shift opens in sidebar), checkbox click toggles TODO without entering edit, image click opens Roam's image viewer. Accept: each on the fixture.
 - [x] **ED-10 Card title field for page cards** (S) — done 2026-10-01, `b97c32d`: F2 renamed a page under 10 refs and Cmd+Z restored it; 12 refs showed the toast, Rename wrote the new title, and Cmd+Z restored the page, card, and ref (.live/shots/ED-10.png). — Rename a page card in place (F2 or double-click the title) renames the Roam page (`data.page.update`), with a confirmation if the page has more than 10 references. Accept: rename and undo.
-- [ ] **ED-11 Gate** — standing gate plus the ED-6 matrix.
+- [!] **ED-11 Gate** — blocked: typing on Test Lab was +7.61 ms/key (41.60 injected, 33.99 unloaded, 200 keys, 9 roots, unload left 0 nodes). `npm run check` passed 677 tests. The ED-6 matrix is `test/live-matrix.md`. Unblock when that delta is at most +0.1 ms/key. — standing gate plus the ED-6 matrix.
 
 ### P3: Navigate and organize — Heptabase wave 2a (1.5.0)
 
@@ -249,6 +249,7 @@ AI agent features inside the board, SuperTag-style typed schemas or class tags, 
 
 Fill in as phases run. Keep the newest at the top of each list.
 
+- ED-11, 2026-10-01: Test Lab typing +7.61 ms/key with 9 roots (5332 pxd nodes). Unload left 0. `npm run check` 677 pass.
 - NP-4, 2026-10-01: Named picks store the palette name. Native, darker, lighter, and HEX store lowercase hex. A missing section titleSize still paints 15px. Edge dash and color paint on an edge-only frame. Collapse is localStorage `pxd-props-collapsed`. The 1.2 Background menu stays.
 - NP-5, 2026-10-01: file.get returns a File, PNG inlines data URLs only, and the SVG download stays text. The live 3222×1552 PNG shows the image and "causes", and Roam rendered the clipboard PNG on the Test Lab block. The anchor click opened a blob window and did not write Downloads.
 - NP-3, 2026-09-30: Maximized native diagram `2ZkxxgO7I` titles, top to bottom: zoom in, zoom out, fit view, Toggle Minimap, Save PNG, Open outline in sidebar, Minimize. Inline titles are Edit Block and Maximize. `addWindow` type `outline` for board `7XhQbTmMo` came back as `sidebar-block-7XhQbTmMo` (type block).

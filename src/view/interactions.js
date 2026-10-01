@@ -441,6 +441,7 @@ export function createInteractions({ actions, settings } = {}) {
     if (t.kind === "item" && t.uid) {
       const item = b?.items.get(t.uid);
       if (!item) return;
+      if (item.kind === "page" && t.part === "header") { selectItems([t.uid]); call("renamePage", t.uid); return; }
       if (item.kind === "board" || call("isBoardCard", t.uid)) call("openBoard", t.uid);
       else if (editingUid() !== t.uid) { selectItems([t.uid]); call("enterEdit", t.uid); }
       return;
@@ -631,6 +632,14 @@ export function createInteractions({ actions, settings } = {}) {
       if (ev.code === "Digit0" || key === ")") { zoomTo(1); return true; }
     }
     if (key === "Delete" || key === "Backspace") return deleteSelection(ev.shift);
+    if (key === "F2") {
+      if (state.selection.size !== 1) return false;
+      const uid = [...state.selection][0];
+      const item = b?.items.get(uid);
+      if (item?.kind !== "page") return false;
+      call("renamePage", uid);
+      return true;
+    }
     if (key === "Enter") {
       if (state.selection.size === 1) {
         const uid = [...state.selection][0];

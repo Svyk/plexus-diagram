@@ -153,6 +153,7 @@ export function createItemRenderer({
   onEditResize,
   onOpenBoard,
   onRenameBoard,
+  onRenamePage,
   onBadgeClick,
 } = {}) {
   const shells = new Map(); // uid → rec
@@ -1290,6 +1291,51 @@ export function createItemRenderer({
     return true;
   };
 
+  // Page title on the card header. Commits through onRenamePage, which confirms past ten references.
+  const renamePage = (uid) => {
+    const rec = shells.get(uid);
+    const item = lastBoard?.items.get(uid);
+    if (!rec || !item || item.kind !== "page" || !rec.header || rec.renaming) return false;
+    const h = rec.header;
+    const seed = String(item.title || "").trim();
+    rec.renaming = true;
+    h.textContent = seed;
+    h.classList.add("pxd-item__header--editing");
+    h.contentEditable = "true";
+    h.setAttribute("contenteditable", "true");
+    const win = doc.defaultView;
+    const finish = (commit) => {
+      if (!rec.renaming) return;
+      rec.renaming = false;
+      h.contentEditable = "false";
+      h.removeAttribute("contenteditable");
+      h.classList.remove("pxd-item__header--editing");
+      win?.removeEventListener("keydown", onKey, true);
+      h.removeEventListener("blur", onBlur);
+      h.removeEventListener("pointerdown", stopEvent);
+      h.removeEventListener("dblclick", stopEvent);
+      const next = String(h.textContent || "").trim();
+      const live = lastBoard?.items.get(uid) || item;
+      h.textContent = String(live.title || seed).slice(0, HEADER_TEXT_MAX);
+      if (commit && next && next !== seed) onRenamePage?.(seed, next);
+    };
+    // Window capture: Roam's document listener takes Enter before a bubble listener on the header.
+    const onKey = (event) => {
+      const here = event.target === h || h.contains?.(event.target);
+      if (!here) return;
+      if (event.key === "Enter") { event.preventDefault(); event.stopPropagation(); finish(true); }
+      else if (event.key === "Escape") { event.preventDefault(); event.stopPropagation(); finish(false); }
+    };
+    const onBlur = () => finish(true);
+    win?.addEventListener("keydown", onKey, true);
+    h.addEventListener("blur", onBlur);
+    h.addEventListener("pointerdown", stopEvent);
+    h.addEventListener("dblclick", stopEvent);
+    try { h.focus({ preventScroll: true }); } catch { h.focus?.(); }
+    try { const d = h.ownerDocument; const r = d.createRange(); r.selectNodeContents(h); const s = d.getSelection(); s.removeAllRanges(); s.addRange(r); } catch { /* no selection API */ }
+    return true;
+  };
+
   const dispose = () => {
     disposed = true;
     doc.removeEventListener?.("pointerup", onMenuPointer, true);
@@ -1341,6 +1387,7 @@ export function createItemRenderer({
     autocompleteOpen,
     renameSection,
     renameBoard,
+    renamePage,
     shellOf: (uid) => shells.get(uid)?.el ?? null,
     mountedCount: () => mounted.size,
     mountedUids: () => [...mounted.keys()],

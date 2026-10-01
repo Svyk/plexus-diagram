@@ -264,6 +264,19 @@ export function createFakeRoam({ echoDelay = 5, writeDelay = 0, echoMode = "fres
             pages.set(uid, { uid, title: page.title, children: [], eid: ++eidCounter });
           }, ["page-create", page.uid ?? "?", page.title]);
         },
+        update(arg) {
+          const page = arg?.page || {};
+          const nextTitle = arg?.new?.title ?? (page.uid ? page.title : undefined);
+          return write(page.uid || page.title, () => {
+            let found = null;
+            for (const p of pages.values()) {
+              if (page.uid && p.uid === page.uid) found = p;
+              else if (!page.uid && page.title && p.title === page.title) found = p;
+            }
+            if (!found) throw new Error(`fake-roam: page update unknown ${page.uid || page.title}`);
+            if (nextTitle !== undefined) found.title = nextTitle;
+          }, ["page-update", page.uid || page.title, nextTitle]);
+        },
       },
       undo() { fake.calls.push(["undo"]); return Promise.resolve(); },
       redo() { fake.calls.push(["redo"]); return Promise.resolve(); },

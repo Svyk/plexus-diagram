@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { buildBoard, worldRects } from "../src/model/board.js";
-import { freshCardIsBlank, mountBoardView, sidebarMountKind, toggleTodoAt } from "../src/view/board-view.js";
+import { freshCardIsBlank, mountBoardView, pageRenameNeedsConfirm, sidebarMountKind, toggleTodoAt } from "../src/view/board-view.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
 
 const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
@@ -2305,6 +2305,94 @@ test("ED-2: 100 pull-watch echoes while editing leave every item render count un
   } finally {
     try { f.view.dispose(); } catch { /* already disposed */ }
     resetSessions();
+    f.restore();
+  }
+});
+
+test("pageRenameNeedsConfirm asks only past ten references", () => {
+  assert.equal(pageRenameNeedsConfirm(10), false);
+  assert.equal(pageRenameNeedsConfirm(11), true);
+  assert.equal(pageRenameNeedsConfirm(0), false);
+  assert.equal(pageRenameNeedsConfirm("11"), true);
+});
+
+test("ED-10: a page title renames in place, waits past ten references, and Escape cancels", async () => {
+  const renamed = [];
+  let refs = 4;
+  const f = mountFixture({
+    hostOverrides: {
+      pageRefCount: (title) => (title === "Beta" ? refs : 0),
+      renamePage: (from, to) => { renamed.push([from, to]); return Promise.resolve(true); },
+    },
+  });
+  const renamedN = () => renamed.length;
+  try {
+    await f.flush();
+    const card = f.view.root.querySelector("[data-uid=cardBBBB2]");
+    const header = card.querySelector(".pxd-item__header");
+    const body = card.querySelector(".pxd-item__body");
+    assert.equal(header.textContent, "Beta");
+    f.stub.dispatch(body, "dblclick", { clientX: 320, clientY: 40 });
+    assert.equal(header.getAttribute("contenteditable"), null);
+    assert.equal(renamedN(), 0);
+    assert.ok(card.classList.contains("pxd-item--editing"), "the page body still opens the editor");
+    f.view.root.focus();
+    f.stub.dispatch(f.view.root, "keydown", { key: "Escape" });
+    await tick(300);
+    f.stub.flushFrames();
+    f.stub.flushTimers();
+    assert.equal(card.classList.contains("pxd-item--editing"), false);
+
+    f.stub.dispatch(header, "dblclick", { clientX: 320, clientY: 8 });
+    assert.equal(header.getAttribute("contenteditable"), "true");
+    header.textContent = "Gamma";
+    const steal = (event) => { if (event.key === "Enter") header.textContent = "STOLEN"; };
+    f.stub.document.addEventListener("keydown", steal, true);
+    f.stub.dispatch(header, "keydown", { key: "Enter" });
+    f.stub.document.removeEventListener("keydown", steal, true);
+    await tick();
+    assert.deepEqual(renamed, [["Beta", "Gamma"]]);
+    assert.equal(f.view.root.querySelector(".pxd-toast").style.display, "none");
+
+    refs = 11;
+    f.view.root.focus();
+    f.view.controller.select(["cardBBBB2"]);
+    f.stub.dispatch(f.view.root, "keydown", { key: "F2" });
+    assert.equal(header.getAttribute("contenteditable"), "true");
+    header.textContent = "Delta";
+    f.stub.dispatch(header, "keydown", { key: "Enter" });
+    await tick();
+    assert.equal(renamedN(), 1, "eleven references do not write yet");
+    const toast = f.view.root.querySelector(".pxd-toast");
+    assert.equal(toast.style.display, "");
+    assert.equal(toast.querySelector(".pxd-toast__text").textContent, "11 blocks link to Beta. Rename it to Delta?");
+    assert.equal(renamedN(), 1, "the toast stays until Rename is clicked");
+    toast.querySelector(".pxd-toast__action").click();
+    await tick();
+    assert.deepEqual(renamed, [["Beta", "Gamma"], ["Beta", "Delta"]]);
+    assert.equal(toast.style.display, "none");
+
+    f.view.root.focus();
+    f.view.controller.select(["cardBBBB2"]);
+    f.stub.dispatch(f.view.root, "keydown", { key: "F2" });
+    header.textContent = "Nope";
+    f.stub.dispatch(header, "keydown", { key: "Escape" });
+    assert.equal(header.textContent, "Beta");
+    assert.equal(header.getAttribute("contenteditable"), null);
+    assert.equal(renamedN(), 2);
+
+    f.stub.dispatch(header, "dblclick", { clientX: 320, clientY: 8 });
+    header.textContent = "   ";
+    f.stub.dispatch(header, "keydown", { key: "Enter" });
+    assert.equal(renamedN(), 2, "an empty title does not write");
+
+    f.view.root.focus();
+    f.view.controller.select(["cardAAAA1"]);
+    const noteHeader = f.view.root.querySelector("[data-uid=cardAAAA1] .pxd-item__header");
+    f.stub.dispatch(f.view.root, "keydown", { key: "F2" });
+    assert.notEqual(noteHeader.getAttribute("contenteditable"), "true");
+  } finally {
+    f.view.dispose();
     f.restore();
   }
 });

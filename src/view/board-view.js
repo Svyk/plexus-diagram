@@ -141,6 +141,11 @@ function nativeClickKind(node) {
 }
 
 // renderString draws a checkbox with no block of its own, so the click has to flip the card string.
+// A page linked from more than ten blocks asks before data.page.update rewrites every reference.
+export function pageRenameNeedsConfirm(refCount) {
+  return Number(refCount) > 10;
+}
+
 export function toggleTodoAt(string, index = 0) {
   if (typeof string !== "string") return null;
   const marks = [...string.matchAll(/\{\{\[\[(?:TODO|DONE)\]\]\}\}/g)];
@@ -478,6 +483,16 @@ export function mountBoardView({
     },
     onOpenBoard: (uid) => { void openBoard(uid); },
     onRenameBoard: (uid, title) => session.renameBoard?.(uid, title),
+    onRenamePage: (from, to) => {
+      const n = Number(host?.pageRefCount?.(from)) || 0;
+      const go = () => host?.renamePage?.(from, to);
+      if (!pageRenameNeedsConfirm(n)) return go();
+      chrome.toast.show({
+        message: `${n} blocks link to ${from}. Rename it to ${to}?`,
+        action: { label: "Rename", run: () => { void go(); } },
+      });
+      return false;
+    },
     onBadgeClick: (uid) => { ctl.select([uid]); panel.open("related"); },
   });
   const edgesR = createEdgeLayer({
@@ -1749,6 +1764,7 @@ export function mountBoardView({
     editingUid: () => itemsR.editingUid(),
     autocompleteOpen: () => itemsR.autocompleteOpen(),
     renameSection: (uid) => itemsR.renameSection(uid),
+    renamePage: (uid) => itemsR.renamePage(uid),
     editLabel: (uid) => edgesR.editLabel(uid),
     openBlock: (uid) => host?.openBlock?.(uid),
     toast: (t) => chrome.toast.show(t),

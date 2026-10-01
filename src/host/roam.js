@@ -256,6 +256,33 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       return res?.[":block/uid"] ?? null;
     },
 
+    // Blocks that link to the page. The card's own [[title]] counts as one.
+    pageRefCount(title) {
+      const name = String(title ?? "");
+      if (!name) return 0;
+      let rows;
+      try {
+        rows = host.q("[:find (count ?b) :in $ ?t :where [?p :node/title ?t] [?b :block/refs ?p]]", name);
+      } catch { return 0; }
+      const n = Array.isArray(rows) ? rows[0]?.[0] : 0;
+      const count = Number(n);
+      return Number.isFinite(count) ? count : 0;
+    },
+
+    // One Roam undo step. Roam rewrites every [[old]] reference, including the card.
+    // page.update takes the uid and the new title on the same page object.
+    async renamePage(from, to) {
+      const oldTitle = String(from ?? "").trim();
+      const newTitle = String(to ?? "").trim();
+      if (!oldTitle || !newTitle || oldTitle === newTitle) return false;
+      const uid = host.pageUid(oldTitle);
+      if (!uid) return false;
+      stats.writes++;
+      await data.page.update({ page: { uid, title: newTitle } });
+      noteWrite();
+      return true;
+    },
+
     cardStringForUid(uid) {
       const id = String(uid ?? "").trim();
       if (!id) return null;

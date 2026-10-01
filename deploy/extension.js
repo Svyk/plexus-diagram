@@ -1867,6 +1867,33 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
       const res = pull("[:block/uid]", [":node/title", title]);
       return res?.[":block/uid"] ?? null;
     },
+    // Blocks that link to the page. The card's own [[title]] counts as one.
+    pageRefCount(title) {
+      const name = String(title ?? "");
+      if (!name) return 0;
+      let rows;
+      try {
+        rows = host.q("[:find (count ?b) :in $ ?t :where [?p :node/title ?t] [?b :block/refs ?p]]", name);
+      } catch {
+        return 0;
+      }
+      const n = Array.isArray(rows) ? rows[0]?.[0] : 0;
+      const count = Number(n);
+      return Number.isFinite(count) ? count : 0;
+    },
+    // One Roam undo step. Roam rewrites every [[old]] reference, including the card.
+    // page.update takes the uid and the new title on the same page object.
+    async renamePage(from, to) {
+      const oldTitle = String(from ?? "").trim();
+      const newTitle = String(to ?? "").trim();
+      if (!oldTitle || !newTitle || oldTitle === newTitle) return false;
+      const uid = host.pageUid(oldTitle);
+      if (!uid) return false;
+      stats.writes++;
+      await data.page.update({ page: { uid, title: newTitle } });
+      noteWrite();
+      return true;
+    },
     cardStringForUid(uid) {
       const id = String(uid ?? "").trim();
       if (!id) return null;
@@ -5199,6 +5226,11 @@ function createInteractions({ actions, settings } = {}) {
     if (t.kind === "item" && t.uid) {
       const item = b?.items.get(t.uid);
       if (!item) return;
+      if (item.kind === "page" && t.part === "header") {
+        selectItems([t.uid]);
+        call("renamePage", t.uid);
+        return;
+      }
       if (item.kind === "board" || call("isBoardCard", t.uid)) call("openBoard", t.uid);
       else if (editingUid() !== t.uid) {
         selectItems([t.uid]);
@@ -5442,6 +5474,14 @@ function createInteractions({ actions, settings } = {}) {
       }
     }
     if (key === "Delete" || key === "Backspace") return deleteSelection(ev.shift);
+    if (key === "F2") {
+      if (state.selection.size !== 1) return false;
+      const uid = [...state.selection][0];
+      const item = b?.items.get(uid);
+      if (item?.kind !== "page") return false;
+      call("renamePage", uid);
+      return true;
+    }
     if (key === "Enter") {
       if (state.selection.size === 1) {
         const uid = [...state.selection][0];
@@ -5941,6 +5981,7 @@ function createItemRenderer({
   onEditResize,
   onOpenBoard,
   onRenameBoard,
+  onRenamePage,
   onBadgeClick
 } = {}) {
   const shells = /* @__PURE__ */ new Map();
@@ -7127,6 +7168,67 @@ function createItemRenderer({
     }
     return true;
   };
+  const renamePage = (uid) => {
+    const rec = shells.get(uid);
+    const item = lastBoard?.items.get(uid);
+    if (!rec || !item || item.kind !== "page" || !rec.header || rec.renaming) return false;
+    const h = rec.header;
+    const seed = String(item.title || "").trim();
+    rec.renaming = true;
+    h.textContent = seed;
+    h.classList.add("pxd-item__header--editing");
+    h.contentEditable = "true";
+    h.setAttribute("contenteditable", "true");
+    const win = doc.defaultView;
+    const finish = (commit) => {
+      if (!rec.renaming) return;
+      rec.renaming = false;
+      h.contentEditable = "false";
+      h.removeAttribute("contenteditable");
+      h.classList.remove("pxd-item__header--editing");
+      win?.removeEventListener("keydown", onKey, true);
+      h.removeEventListener("blur", onBlur);
+      h.removeEventListener("pointerdown", stopEvent);
+      h.removeEventListener("dblclick", stopEvent);
+      const next = String(h.textContent || "").trim();
+      const live = lastBoard?.items.get(uid) || item;
+      h.textContent = String(live.title || seed).slice(0, HEADER_TEXT_MAX);
+      if (commit && next && next !== seed) onRenamePage?.(seed, next);
+    };
+    const onKey = (event) => {
+      const here = event.target === h || h.contains?.(event.target);
+      if (!here) return;
+      if (event.key === "Enter") {
+        event.preventDefault();
+        event.stopPropagation();
+        finish(true);
+      } else if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        finish(false);
+      }
+    };
+    const onBlur = () => finish(true);
+    win?.addEventListener("keydown", onKey, true);
+    h.addEventListener("blur", onBlur);
+    h.addEventListener("pointerdown", stopEvent);
+    h.addEventListener("dblclick", stopEvent);
+    try {
+      h.focus({ preventScroll: true });
+    } catch {
+      h.focus?.();
+    }
+    try {
+      const d = h.ownerDocument;
+      const r = d.createRange();
+      r.selectNodeContents(h);
+      const s = d.getSelection();
+      s.removeAllRanges();
+      s.addRange(r);
+    } catch {
+    }
+    return true;
+  };
   const dispose = () => {
     disposed = true;
     doc.removeEventListener?.("pointerup", onMenuPointer, true);
@@ -7186,6 +7288,7 @@ function createItemRenderer({
     autocompleteOpen,
     renameSection,
     renameBoard,
+    renamePage,
     shellOf: (uid) => shells.get(uid)?.el ?? null,
     mountedCount: () => mounted.size,
     mountedUids: () => [...mounted.keys()],
@@ -10243,6 +10346,9 @@ function nativeClickKind(node) {
   if (node.closest("[data-link-uid], .rm-page-ref, .rm-block-ref")) return "ref";
   return null;
 }
+function pageRenameNeedsConfirm(refCount) {
+  return Number(refCount) > 10;
+}
 function toggleTodoAt(string, index = 0) {
   if (typeof string !== "string") return null;
   const marks = [...string.matchAll(/\{\{\[\[(?:TODO|DONE)\]\]\}\}/g)];
@@ -10624,6 +10730,18 @@ function mountBoardView({
       void openBoard(uid);
     },
     onRenameBoard: (uid, title) => session.renameBoard?.(uid, title),
+    onRenamePage: (from, to) => {
+      const n = Number(host?.pageRefCount?.(from)) || 0;
+      const go = () => host?.renamePage?.(from, to);
+      if (!pageRenameNeedsConfirm(n)) return go();
+      chrome.toast.show({
+        message: `${n} blocks link to ${from}. Rename it to ${to}?`,
+        action: { label: "Rename", run: () => {
+          void go();
+        } }
+      });
+      return false;
+    },
     onBadgeClick: (uid) => {
       ctl.select([uid]);
       panel.open("related");
@@ -12262,6 +12380,7 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
     editingUid: () => itemsR.editingUid(),
     autocompleteOpen: () => itemsR.autocompleteOpen(),
     renameSection: (uid) => itemsR.renameSection(uid),
+    renamePage: (uid) => itemsR.renamePage(uid),
     editLabel: (uid) => edgesR.editLabel(uid),
     openBlock: (uid) => host?.openBlock?.(uid),
     toast: (t) => chrome.toast.show(t),

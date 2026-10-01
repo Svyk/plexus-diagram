@@ -356,6 +356,39 @@ test("undo: a transaction over 45 writes is split into consecutive groups, one C
   assert.deepEqual(undoCalls(fake), ["undo"]);
 });
 
+test("renamePage updates the title as one undo step and clears a pending redo", async () => {
+  const { fake, host } = setup();
+  fake.seedPage({ title: "Beta", uid: "pgBeta" });
+  fake.seedBoard({ uid: "b1", children: [{ uid: "c1", string: "a" }] });
+  fake.onQuery(/block\/refs/, () => [[4]]);
+  assert.equal(host.pageRefCount("Beta"), 4);
+  assert.equal(host.pageRefCount(""), 0);
+  assert.equal(await host.renamePage("Beta", "Beta"), false);
+  assert.equal(await host.renamePage("  ", "Gamma"), false);
+  assert.equal(await host.renamePage("Missing", "Nope"), false);
+  assert.equal(host.stats.writes, 0);
+  assert.equal(await host.renamePage("Beta", "Gamma"), true);
+  assert.equal(host.stats.writes, 1);
+  assert.equal(host.pageUid("Gamma"), "pgBeta");
+  assert.equal(host.pageUid("Beta"), null);
+  assert.deepEqual(fake.writesLog().filter((e) => e[0] === "page-update"), [["page-update", "pgBeta", "Gamma"]]);
+  // A grouped redo is sitting on the log. renamePage notes its write, so that redo is dropped
+  // and the next redo is Roam's single step. Without noteWrite the group would redo twice.
+  await host.group(async () => {
+    await host.updateProps("c1", { x: 1 });
+    await host.updateProps("c1", { x: 2 });
+  });
+  await host.undo();
+  assert.equal(await host.renamePage("Gamma", "Beta"), true);
+  fake.calls.length = 0;
+  await host.redo();
+  assert.deepEqual(undoCalls(fake), ["redo"]);
+  fake.calls.length = 0;
+  await host.undo();
+  await host.redo();
+  assert.deepEqual(undoCalls(fake), ["undo", "redo"]);
+});
+
 test("redo replays a split transaction chunk by chunk", async () => {
   const { fake, host } = setup();
   fake.seedBoard({ uid: "b1" });

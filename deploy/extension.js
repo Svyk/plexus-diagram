@@ -5145,9 +5145,6 @@ function createInteractions({ actions, settings } = {}) {
           if (g.uids.length) call("commitMove", g.uids, g.dx || 0, g.dy || 0);
         } else if (g.deferred) {
           selectItems([g.target]);
-        } else if (!g.dup && !g.multi && state.selection.size === 1 && state.selection.has(g.target)) {
-          const item = b?.items.get(g.target);
-          if (item?.type === "card" && item.look === "block" && item.kind !== "board") call("enterEdit", g.target);
         }
         break;
       case "resize":
@@ -10231,6 +10228,29 @@ var CULL_MARGIN = 0.5;
 var BADGE_TTL_MS = 12e4;
 var BADGE_CHUNK = 12;
 var NATIVE_MENU_TARGETS = ".rm-page-ref, .rm-block-ref, [data-link-uid], a[href], img";
+function nativeClickKind(node) {
+  if (!node || typeof node.closest !== "function") return null;
+  if (node.closest("img")) return "image";
+  const box = node.closest("input, label, .check-container");
+  if (box) {
+    const tag = String(box.tagName || "").toLowerCase();
+    if (tag === "input") {
+      if (String(box.getAttribute?.("type") || "").toLowerCase() === "checkbox") return "checkbox";
+    } else if (box.classList?.contains("check-container") || box.querySelector?.('input[type="checkbox"]')) {
+      return "checkbox";
+    }
+  }
+  if (node.closest("[data-link-uid], .rm-page-ref, .rm-block-ref")) return "ref";
+  return null;
+}
+function toggleTodoAt(string, index = 0) {
+  if (typeof string !== "string") return null;
+  const marks = [...string.matchAll(/\{\{\[\[(?:TODO|DONE)\]\]\}\}/g)];
+  const mark = marks[index];
+  if (!mark) return null;
+  const next = mark[0].includes("TODO") ? "{{[[DONE]]}}" : "{{[[TODO]]}}";
+  return string.slice(0, mark.index) + next + string.slice(mark.index + mark[0].length);
+}
 var BADGE_MAX = 60;
 var NOTE_KINDS2 = ["note", "block", "page"];
 function createTimers() {
@@ -12311,6 +12331,7 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
   const onDocUp = (event) => {
     if (!ctl.isGesturing()) return releaseCapture();
     ctl.handle(normalize(event, "pointerup"));
+    if (nativeClickKind(event.target) === "ref" && !suppressClick) openRefFromClick(event);
     releaseCapture();
   };
   const onDocCancel = () => {
@@ -12324,14 +12345,32 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
     doc.removeEventListener("pointerup", onDocUp, true);
     doc.removeEventListener("pointercancel", onDocCancel, true);
   };
+  const toggleClickedTodo = (node) => {
+    const card = node?.closest?.(".pxd-item");
+    const uid = card?.getAttribute?.("data-uid") || card?.dataset?.uid;
+    if (!uid) return;
+    const stringRoot = node.closest?.(".pxd-item__string") || card;
+    const boxes = [...stringRoot.querySelectorAll('input[type="checkbox"]')];
+    const hit = node.closest?.("input, label, .check-container");
+    const input = String(hit?.tagName || "").toLowerCase() === "input" ? hit : hit?.querySelector?.('input[type="checkbox"]');
+    const index = input ? boxes.indexOf(input) : 0;
+    const next = toggleTodoAt(board()?.items?.get(uid)?.string, index < 0 ? 0 : index);
+    if (next == null) return;
+    session.setString?.(uid, next);
+  };
   listen(root, "pointerdown", (event) => {
     if (event.target?.closest?.(".pxd-chrome")) return;
+    if (nativeClickKind(event.target) === "checkbox") {
+      toggleClickedTodo(event.target);
+      return;
+    }
     measure();
     const ev = normalize(event, "pointerdown");
     const editingUid = itemsR.editingUid();
+    const native = nativeClickKind(event.target);
     if (!(editingUid && ev.target.kind === "item" && ev.target.uid === editingUid && ev.target.part !== "header")) {
       event.stopPropagation();
-      if (ev.target.kind !== "label" && ev.target.kind !== "section-title") event.preventDefault();
+      if (native !== "image" && ev.target.kind !== "label" && ev.target.kind !== "section-title") event.preventDefault();
     }
     ctl.handle(ev);
     if (ctl.isGesturing() && !captured) {
@@ -12354,6 +12393,8 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
   for (const type of ["mousedown", "mouseup"]) {
     listen(root, type, (event) => {
       if (event.target?.closest?.(".pxd-chrome")) return;
+      const native = nativeClickKind(event.target);
+      if (native === "checkbox" || native === "image") return;
       const editing = itemsR.editingUid();
       if (editing && event.target?.closest?.(".pxd-item--editing")) return;
       event.stopPropagation();
@@ -12374,6 +12415,8 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
       event.preventDefault();
     }
   }, true);
+  let lastRefKey = "";
+  let lastRefAt = 0;
   const openRefFromClick = (event) => {
     const t = event.target;
     if (!t?.closest || !t.closest(".pxd-item") || t.closest(".pxd-item--editing")) return false;
@@ -12382,16 +12425,24 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
     const block = t.closest(".rm-block-ref[data-uid]");
     const uid = page?.getAttribute("data-link-uid") || block?.getAttribute("data-uid");
     if (!uid || !api?.ui) return false;
+    const key = `${uid}:${event.shiftKey ? 1 : 0}`;
+    const now2 = Date.now();
+    if (key === lastRefKey && now2 - lastRefAt < 500) return true;
+    lastRefKey = key;
+    lastRefAt = now2;
     if (event.shiftKey) api.ui.rightSidebar?.addWindow?.({ window: { type: page ? "outline" : "block", "block-uid": uid } });
     else if (page) api.ui.mainWindow?.openPage?.({ page: { uid } });
     else api.ui.mainWindow?.openBlock?.({ block: { uid } });
     return true;
   };
   listen(root, "click", (event) => {
+    const kind = nativeClickKind(event.target);
+    if (kind === "image" || kind === "checkbox") return;
     if (!event.target?.closest?.(".pxd-chrome")) event.stopPropagation();
   });
   listen(root, "dblclick", (event) => {
     if (event.target?.closest?.(".pxd-chrome")) return;
+    if (nativeClickKind(event.target)) return;
     event.stopPropagation();
     event.preventDefault();
     measure();

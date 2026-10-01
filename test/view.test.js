@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { buildBoard, worldRects } from "../src/model/board.js";
-import { freshCardIsBlank, mountBoardView, sidebarMountKind } from "../src/view/board-view.js";
+import { freshCardIsBlank, mountBoardView, sidebarMountKind, toggleTodoAt } from "../src/view/board-view.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
 
 const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
@@ -296,12 +296,17 @@ test("selection shows a context bar above the selection and never over it", asyn
     await f.flush();
     const root = f.view.root;
     const alpha = root.querySelector("[data-uid=cardAAAA1]");
-    // A click on a block-look note selects and edits, so the context bar stays hidden until Esc.
+    // A click selects. Double-click edits, and the context bar stays hidden until Esc.
     f.stub.dispatch(alpha, "pointerdown", { button: 0, clientX: 50, clientY: 50, pointerId: 1 });
     f.stub.dispatch(f.stub.document, "pointerup", { clientX: 50, clientY: 50, pointerId: 1 });
     await tick(300);
     f.stub.flushFrames();
     assert.ok(alpha.classList.contains("pxd-item--selected"));
+    assert.equal(alpha.classList.contains("pxd-item--editing"), false);
+    f.stub.dispatch(alpha, "dblclick", { clientX: 50, clientY: 50 });
+    for (let i = 0; i < 4; i += 1) { f.stub.flushFrames(); await tick(); }
+    await tick(300);
+    f.stub.flushFrames();
     assert.ok(alpha.classList.contains("pxd-item--editing"));
     const ctx = root.querySelector(".pxd-ctx");
     assert.equal(ctx.style.display, "none");
@@ -2157,6 +2162,99 @@ test("ED-8: Cmd+Z in the editor is left to Roam; Cmd+Z on the board undoes", asy
     const again = f.stub.dispatch(f.view.root, "keydown", { key: "z", metaKey: true, shiftKey: true });
     assert.equal(again.defaultPrevented, true);
     assert.equal(redos(), 1);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("toggleTodoAt flips the nth TODO or DONE token", () => {
+  assert.equal(toggleTodoAt("{{[[TODO]]}} a", 0), "{{[[DONE]]}} a");
+  assert.equal(toggleTodoAt("{{[[DONE]]}} a", 0), "{{[[TODO]]}} a");
+  assert.equal(toggleTodoAt("{{[[TODO]]}} a {{[[DONE]]}} b", 1), "{{[[TODO]]}} a {{[[TODO]]}} b");
+  assert.equal(toggleTodoAt("plain", 0), null);
+  assert.equal(toggleTodoAt("{{[[TODO]]}}", 1), null);
+});
+
+test("ED-9: click selects, double-click edits, a ref navigates, a checkbox and an image keep their click", async () => {
+  const opened = [];
+  const f = mountFixture({
+    hostOverrides: {
+      renderString(el, string) {
+        this.calls.renderString += 1;
+        const doc = el.ownerDocument || globalThis.document;
+        if (!String(string).startsWith("Alpha")) { el.textContent = string; return; }
+        const label = doc.createElement("label");
+        label.className = "check-container";
+        const input = doc.createElement("input");
+        input.setAttribute("type", "checkbox");
+        label.append(input);
+        const img = doc.createElement("img");
+        const link = doc.createElement("span");
+        link.setAttribute("data-link-uid", "pageUID01");
+        el.append(label, img, link);
+      },
+      api: {
+        ui: {
+          mainWindow: {
+            openPage: (arg) => opened.push(["page", arg]),
+            openBlock: (arg) => opened.push(["block", arg]),
+          },
+          rightSidebar: { addWindow: (arg) => opened.push(["side", arg]) },
+        },
+      },
+    },
+  });
+  const up = (node, extra = {}) => {
+    f.stub.dispatch(node, "pointerdown", { button: 0, clientX: 30, clientY: 40, pointerId: 4, ...extra });
+    return f.stub.dispatch(f.stub.document, "pointerup", { clientX: 30, clientY: 40, pointerId: 4, ...extra });
+  };
+  try {
+    await f.flush();
+    const card = f.view.root.querySelector("[data-uid=cardAAAA1]");
+    f.stub.dispatch(card, "pointerdown", { button: 0, clientX: 12, clientY: 12, pointerId: 1 });
+    f.stub.dispatch(f.stub.document, "pointerup", { clientX: 12, clientY: 12, pointerId: 1 });
+    f.stub.flushFrames();
+    await tick();
+    assert.ok(card.classList.contains("pxd-item--selected"));
+    assert.equal(card.classList.contains("pxd-item--editing"), false);
+    f.stub.dispatch(card, "dblclick", { clientX: 12, clientY: 12 });
+    for (let i = 0; i < 4; i += 1) { f.stub.flushFrames(); await tick(); }
+    await tick(300);
+    f.stub.flushFrames();
+    assert.ok(card.classList.contains("pxd-item--editing"));
+    f.stub.dispatch(f.stub.window, "keydown", { key: "Escape" });
+    await tick(30);
+    f.stub.flushFrames();
+    assert.equal(card.classList.contains("pxd-item--editing"), false);
+    f.board.items.get("cardAAAA1").string = "{{[[TODO]]}} Alpha {{[[TODO]]}} rest";
+    const box = card.querySelector(".check-container")?.querySelector("input");
+    assert.ok(box, "the card renders a checkbox");
+    const boxDown = f.stub.dispatch(box, "pointerdown", { button: 0, clientX: 30, clientY: 40, pointerId: 2 });
+    assert.equal(boxDown.defaultPrevented, false);
+    const boxClick = f.stub.dispatch(box, "click", { button: 0 });
+    assert.equal(boxClick.defaultPrevented, false);
+    assert.equal(card.classList.contains("pxd-item--editing"), false);
+    assert.deepEqual(
+      f.session.mutations.filter((m) => m[0] === "setString"),
+      [["setString", "cardAAAA1", "{{[[DONE]]}} Alpha {{[[TODO]]}} rest"]],
+    );
+    const img = card.querySelector("img");
+    const imgDown = f.stub.dispatch(img, "pointerdown", { button: 0, clientX: 36, clientY: 44, pointerId: 3 });
+    assert.equal(imgDown.defaultPrevented, false);
+    f.stub.dispatch(f.stub.document, "pointerup", { clientX: 36, clientY: 44, pointerId: 3 });
+    const imgClick = f.stub.dispatch(img, "click", { button: 0 });
+    assert.equal(imgClick.defaultPrevented, false);
+    assert.equal(card.classList.contains("pxd-item--editing"), false);
+    const link = card.querySelector("[data-link-uid]");
+    up(link);
+    f.stub.dispatch(link, "click", { button: 0 });
+    assert.deepEqual(opened, [["page", { page: { uid: "pageUID01" } }]]);
+    assert.equal(card.classList.contains("pxd-item--editing"), false);
+    up(link, { shiftKey: true });
+    f.stub.dispatch(link, "click", { button: 0, shiftKey: true });
+    assert.deepEqual(opened[1], ["side", { window: { type: "outline", "block-uid": "pageUID01" } }]);
+    assert.equal(opened.length, 2);
   } finally {
     f.view.dispose();
     f.restore();

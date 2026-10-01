@@ -121,6 +121,34 @@ const CULL_MARGIN = 0.5;
 const BADGE_TTL_MS = 120000;
 const BADGE_CHUNK = 12;
 const NATIVE_MENU_TARGETS = ".rm-page-ref, .rm-block-ref, [data-link-uid], a[href], img";
+
+// A checkbox toggles and an image opens Roam's viewer. A page or block ref navigates.
+// These must not be turned into "enter edit" by the card's own click.
+function nativeClickKind(node) {
+  if (!node || typeof node.closest !== "function") return null;
+  if (node.closest("img")) return "image";
+  const box = node.closest("input, label, .check-container");
+  if (box) {
+    const tag = String(box.tagName || "").toLowerCase();
+    if (tag === "input") {
+      if (String(box.getAttribute?.("type") || "").toLowerCase() === "checkbox") return "checkbox";
+    } else if (box.classList?.contains("check-container") || box.querySelector?.('input[type="checkbox"]')) {
+      return "checkbox";
+    }
+  }
+  if (node.closest("[data-link-uid], .rm-page-ref, .rm-block-ref")) return "ref";
+  return null;
+}
+
+// renderString draws a checkbox with no block of its own, so the click has to flip the card string.
+export function toggleTodoAt(string, index = 0) {
+  if (typeof string !== "string") return null;
+  const marks = [...string.matchAll(/\{\{\[\[(?:TODO|DONE)\]\]\}\}/g)];
+  const mark = marks[index];
+  if (!mark) return null;
+  const next = mark[0].includes("TODO") ? "{{[[DONE]]}}" : "{{[[TODO]]}}";
+  return string.slice(0, mark.index) + next + string.slice(mark.index + mark[0].length);
+}
 const BADGE_MAX = 60;
 const NOTE_KINDS = ["note", "block", "page"];
 
@@ -1791,6 +1819,9 @@ export function mountBoardView({
   const onDocUp = (event) => {
     if (!ctl.isGesturing()) return releaseCapture();
     ctl.handle(normalize(event, "pointerup"));
+    // preventDefault on pointerdown suppresses the click, so a stationary ref opens here.
+    // A drag sets suppressClick before this line and must not navigate.
+    if (nativeClickKind(event.target) === "ref" && !suppressClick) openRefFromClick(event);
     releaseCapture();
   };
   const onDocCancel = () => { ctl.handle({ type: "pointercancel" }); releaseCapture(); };
@@ -1801,17 +1832,33 @@ export function mountBoardView({
     doc.removeEventListener("pointerup", onDocUp, true);
     doc.removeEventListener("pointercancel", onDocCancel, true);
   };
+  const toggleClickedTodo = (node) => {
+    const card = node?.closest?.(".pxd-item");
+    const uid = card?.getAttribute?.("data-uid") || card?.dataset?.uid;
+    if (!uid) return;
+    const stringRoot = node.closest?.(".pxd-item__string") || card;
+    const boxes = [...stringRoot.querySelectorAll('input[type="checkbox"]')];
+    const hit = node.closest?.("input, label, .check-container");
+    const input = String(hit?.tagName || "").toLowerCase() === "input" ? hit : hit?.querySelector?.('input[type="checkbox"]');
+    const index = input ? boxes.indexOf(input) : 0;
+    const next = toggleTodoAt(board()?.items?.get(uid)?.string, index < 0 ? 0 : index);
+    if (next == null) return;
+    session.setString?.(uid, next);
+  };
   listen(root, "pointerdown", (event) => {
     if (event.target?.closest?.(".pxd-chrome")) return;
+    // A rendered checkbox is not a Roam block control. Flip that TODO and leave the card alone.
+    if (nativeClickKind(event.target) === "checkbox") { toggleClickedTodo(event.target); return; }
     measure();
     const ev = normalize(event, "pointerdown");
     const editingUid = itemsR.editingUid();
+    const native = nativeClickKind(event.target);
     // Keep Roam's block handlers out of the overlay. Cancelling pointerdown also suppresses the compat
-    // mousedown that Roam's page refs navigate on, so a drag that starts on a [[link]] moves the card;
-    // a plain click on a link is routed by the click handler below (openRefFromClick).
+    // mousedown that Roam's page refs navigate on, so a drag that starts on a [[link]] moves the card.
+    // An image must keep its click so Roam can open the viewer. A ref is opened from pointerup.
     if (!(editingUid && ev.target.kind === "item" && ev.target.uid === editingUid && ev.target.part !== "header")) {
       event.stopPropagation();
-      if (ev.target.kind !== "label" && ev.target.kind !== "section-title") event.preventDefault();
+      if (native !== "image" && ev.target.kind !== "label" && ev.target.kind !== "section-title") event.preventDefault();
     }
     ctl.handle(ev);
     if (ctl.isGesturing() && !captured) {
@@ -1835,6 +1882,8 @@ export function mountBoardView({
   for (const type of ["mousedown", "mouseup"]) {
     listen(root, type, (event) => {
       if (event.target?.closest?.(".pxd-chrome")) return;
+      const native = nativeClickKind(event.target);
+      if (native === "checkbox" || native === "image") return;
       const editing = itemsR.editingUid();
       if (editing && event.target?.closest?.(".pxd-item--editing")) return;
       event.stopPropagation();
@@ -1854,6 +1903,9 @@ export function mountBoardView({
   }, true);
   // Static card content: [[page]] / #tag / attr refs carry data-link-uid, ((block)) refs .rm-block-ref[data-uid].
   // Click opens them (Shift: right sidebar), matching Roam; editing cards keep Roam's own handling.
+  // pointerup and the click that follows are one gesture, so the second call is a no-op.
+  let lastRefKey = "";
+  let lastRefAt = 0;
   const openRefFromClick = (event) => {
     const t = event.target;
     if (!t?.closest || !t.closest(".pxd-item") || t.closest(".pxd-item--editing")) return false;
@@ -1862,16 +1914,24 @@ export function mountBoardView({
     const block = t.closest(".rm-block-ref[data-uid]");
     const uid = page?.getAttribute("data-link-uid") || block?.getAttribute("data-uid");
     if (!uid || !api?.ui) return false;
+    const key = `${uid}:${event.shiftKey ? 1 : 0}`;
+    const now = Date.now();
+    if (key === lastRefKey && now - lastRefAt < 500) return true;
+    lastRefKey = key;
+    lastRefAt = now;
     if (event.shiftKey) api.ui.rightSidebar?.addWindow?.({ window: { type: page ? "outline" : "block", "block-uid": uid } });
     else if (page) api.ui.mainWindow?.openPage?.({ page: { uid } });
     else api.ui.mainWindow?.openBlock?.({ block: { uid } });
     return true;
   };
   listen(root, "click", (event) => {
+    const kind = nativeClickKind(event.target);
+    if (kind === "image" || kind === "checkbox") return;
     if (!event.target?.closest?.(".pxd-chrome")) event.stopPropagation();
   });
   listen(root, "dblclick", (event) => {
     if (event.target?.closest?.(".pxd-chrome")) return;
+    if (nativeClickKind(event.target)) return;
     event.stopPropagation();
     event.preventDefault();
     measure();

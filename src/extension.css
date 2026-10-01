@@ -392,6 +392,14 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   line-height: 1.4;
 }
 
+.pxd-rs { position: relative; }
+
+.pxd-embed-shield {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+}
+
 .pxd-item--text .pxd-item__body {
   padding: 4px 8px;
   color: var(--pxd-text-c, var(--pxd-text));

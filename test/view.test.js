@@ -1507,6 +1507,89 @@ test("NP-8: every direction, decoration, and type paints, including weight 4", a
   }
 });
 
+test("NP-9: native embeds keep a shield until edit, and a drag still moves the card", async () => {
+  const native = [
+    ["np9img001", "![shot](https://example.com/a.png)", 520, 0],
+    ["np9hl0001", "{{pdf-highlight: quoted passage}}", 520, 90],
+    ["np9pdf001", "{{[[pdf]]: https://example.com/a.pdf}}", 520, 180],
+    ["np9vid001", "{{[[video]]: https://example.com/a.mp4}}", 680, 0],
+    ["np9tw0001", "{{tweet: https://twitter.com/jack/status/20}}", 680, 90],
+    ["np9yt0001", "{{[[youtube]]: dQw4w9WgXcQ}}", 680, 180],
+  ];
+  const extra = native.map(([uid, string, x, y], i) => ({
+    ":block/uid": uid,
+    ":block/string": string,
+    ":block/order": 20 + i,
+    ":block/props": { ":plexus": { ":x": x, ":y": y, ":w": 150, ":h": 80 } },
+    ":block/children": [],
+  }));
+  const f = mountFixture({
+    extraChildren: extra,
+    hostOverrides: {
+      renderString(el, string) {
+        this.calls.renderString += 1;
+        const doc = globalThis.document;
+        const add = (tag, cls) => {
+          const node = doc.createElement(tag);
+          if (cls) node.className = cls;
+          el.append(node);
+        };
+        if (string.startsWith("![")) add("img", "rm-inline-img");
+        else if (string.includes("pdf-highlight")) add("div", "rm-pdf-highlight");
+        else if (string.includes("{{[[pdf]]")) add("div", "rm-pdf-container");
+        else if (string.includes("{{[[video]]")) add("video");
+        else if (string.includes("{{tweet:")) add("button", "rm-xparser-default-tweet");
+        else if (string.includes("{{[[youtube]]")) return;
+        else el.textContent = string;
+      },
+    },
+  });
+  const drag = (node) => {
+    f.stub.dispatch(node, "pointerdown", { button: 0, clientX: 40, clientY: 40, pointerId: 1 });
+    f.stub.dispatch(f.stub.document, "pointermove", { clientX: 80, clientY: 90, pointerId: 1 });
+    f.stub.dispatch(f.stub.document, "pointerup", { clientX: 80, clientY: 90, pointerId: 1 });
+  };
+  try {
+    await f.flush();
+    const root = f.view.root;
+    const expectShield = ["np9hl0001", "np9pdf001", "np9vid001", "np9tw0001"];
+    for (const uid of expectShield) {
+      const card = root.querySelector(`[data-uid=${uid}]`);
+      assert.ok(card.querySelector(".pxd-embed-shield"), uid);
+      drag(card.querySelector(".pxd-embed-shield"));
+    }
+    const img = root.querySelector("[data-uid=np9img001] img");
+    assert.equal(root.querySelector("[data-uid=np9img001] .pxd-embed-shield"), null);
+    drag(img);
+    const yt = root.querySelector("[data-uid=np9yt0001]");
+    assert.equal(yt.querySelector(".pxd-embed-shield"), null);
+    yt.querySelector(".pxd-rs__live").append(f.stub.document.createElement("iframe"));
+    for (const o of f.stub.observers) if (o.active) o.cb([]);
+    const shield = yt.querySelector(".pxd-embed-shield");
+    assert.ok(shield, "a late iframe grows a shield");
+    drag(shield);
+    const moved = f.session.mutations.filter((m) => m[0] === "commitMove").map((m) => m[1][0]);
+    assert.deepEqual(moved, ["np9hl0001", "np9pdf001", "np9vid001", "np9tw0001", "np9img001", "np9yt0001"]);
+    f.stub.dispatch(shield, "dblclick", { clientX: 40, clientY: 40 });
+    for (let i = 0; i < 4; i += 1) { f.stub.flushFrames(); await tick(); }
+    await tick(300);
+    f.stub.flushFrames();
+    assert.ok(yt.classList.contains("pxd-item--editing"));
+    assert.equal(yt.querySelector(".pxd-embed-shield"), null);
+    assert.equal(f.host.calls.renderBlock, 1);
+    f.stub.dispatch(yt.querySelector(".rm-block__input"), "keydown", { key: "Escape" });
+    await tick();
+    assert.equal(yt.classList.contains("pxd-item--editing"), false);
+    assert.equal(yt.querySelector(".pxd-embed-shield"), null);
+    yt.querySelector(".pxd-rs__live").append(f.stub.document.createElement("iframe"));
+    for (const o of f.stub.observers) if (o.active) o.cb([]);
+    assert.ok(yt.querySelector(".pxd-embed-shield"), "the shield returns when the embed mounts again");
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
 test("NP-6: a page mount has no sidebar mode bar", async () => {
   const f = mountFixture();
   try {

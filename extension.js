@@ -5599,22 +5599,54 @@ function createItemRenderer({
     parent?.append(node);
     return node;
   };
+  const EMBED_SEL = "iframe, video, .rm-pdf-highlight, .rm-pdf-container, .twitter-tweet, .rm-xparser-default-tweet";
+  const embedLive = (node) => {
+    for (const child of node.children || []) if (child.classList?.contains("pxd-rs__live")) return child;
+    return node;
+  };
+  const armEmbedShield = (node, live) => {
+    const syncShield = () => {
+      const hit = live.querySelector?.(EMBED_SEL);
+      let shield = null;
+      for (const child of node.children || []) if (child.classList?.contains("pxd-embed-shield")) shield = child;
+      if (hit && !shield) {
+        const cover = el("div", "pxd-embed-shield", node);
+        cover.setAttribute("aria-hidden", "true");
+      } else if (!hit && shield) shield.remove();
+    };
+    syncShield();
+    const MO = doc.defaultView?.MutationObserver || globalThis.MutationObserver;
+    if (typeof MO !== "function") return;
+    const mo = new MO(() => syncShield());
+    try {
+      mo.observe(live, { childList: true, subtree: true });
+    } catch {
+      return;
+    }
+    node.__pxdEmbedMo = mo;
+  };
   const renderRoot = (parent, string, cls = "pxd-rs") => {
     const node = el("div", cls, parent);
     if (!string) return node;
+    const live = el("div", "pxd-rs__live", node);
     try {
-      if (host?.renderString) host.renderString(node, string);
-      else node.textContent = plainText(string);
+      if (host?.renderString) host.renderString(live, string);
+      else live.textContent = plainText(string);
     } catch {
-      node.textContent = plainText(string);
+      live.textContent = plainText(string);
     }
+    armEmbedShield(node, live);
     return node;
   };
   const unmountRoots = (rec) => {
     if (!rec.roots?.length) return;
     for (const node of rec.roots) {
       try {
-        host?.unmount?.(node);
+        node.__pxdEmbedMo?.disconnect();
+      } catch {
+      }
+      try {
+        host?.unmount?.(embedLive(node));
       } catch {
       }
     }
@@ -5942,7 +5974,7 @@ function createItemRenderer({
         }
         const b = { n: 0, roots: [] };
         renderBlocks(holder, p.blocks || [], 1, b);
-        rec.roots.push(...b.roots);
+        budget.roots.push(...b.roots);
       };
       if (preview && typeof preview.then === "function") preview.then((p) => apply(p)).catch(() => {
       });
@@ -5983,7 +6015,7 @@ function createItemRenderer({
           if (!refString?.trim() && !blocks?.length) el("div", "pxd-item__placeholder", body).textContent = "Empty card";
           const b = { n: 0, roots: [] };
           renderBlocks(body, blocks || [], 1, b);
-          rec.roots.push(...b.roots);
+          budget.roots.push(...b.roots);
         };
         if (tree && typeof tree.then === "function") tree.then((t) => apply(t)).catch(() => {
         });

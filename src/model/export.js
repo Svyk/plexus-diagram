@@ -1,7 +1,7 @@
 // Pure exporters: a standalone SVG picture of a board and a Markdown outline. No DOM, no external refs.
 import { arrowHeadPath, arrowSize, edgePath } from "./geometry.js";
 import { boundsOf } from "./board.js";
-import { PALETTE } from "./schema.js";
+import { PALETTE, UNTITLED_BOARD } from "./schema.js";
 
 const HEX = {
   light: {
@@ -28,9 +28,65 @@ const esc = (s) => String(s ?? "")
   .replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
   .replace(/"/g, "&quot;").replace(/'/g, "&apos;");
 const n1 = (n) => Math.round(n * 10) / 10;
-const titleOf = (item) => item.title || item.string || "Untitled";
+const titleOf = (item) => {
+  if (item.title) return item.title;
+  if (item.kind === "image") return "Image";
+  return item.string || "Untitled";
+};
 
-export function boardToSvg(board, rects, { dark = false, padding = 48, maxItems = 500 } = {}) {
+// First markdown image in a block string. Empty when the block is not an image.
+export function imageSrc(string) {
+  const m = /!\[[^\]]*\]\(([^)]*)\)/.exec(String(string ?? "").trim());
+  return m ? m[1].trim() : "";
+}
+
+// Download name. A real board title wins. An empty or "Untitled board" title uses the page title.
+export function pngFileName({ boardTitle = "", pageTitle = "", date = "" } = {}) {
+  const board = String(boardTitle ?? "").trim();
+  const page = String(pageTitle ?? "").trim();
+  const named = board && board.toLowerCase() !== UNTITLED_BOARD.toLowerCase();
+  const raw = (named ? board : page) || board || "board";
+  const name = raw.replace(/[\\/:*?"<>|]+/g, "-").replace(/\s+/g, " ").trim() || "board";
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(String(date)) ? String(date) : "1970-01-01";
+  return `${name} ${day}.png`;
+}
+
+// Items in `uids`, plus edges whose both ends are in that set. Rects stay the caller's map.
+export function sliceBoard(board, uids) {
+  const want = new Set(uids || []);
+  const items = new Map();
+  const order = [];
+  for (const uid of board?.order || []) {
+    if (!want.has(uid)) continue;
+    const item = board.items.get(uid);
+    if (!item) continue;
+    items.set(uid, item);
+    order.push(uid);
+  }
+  const edges = new Map();
+  for (const [uid, edge] of board?.edges || []) {
+    if (edge?.valid && want.has(edge.from) && want.has(edge.to)) edges.set(uid, edge);
+  }
+  return { ...board, items, order, edges };
+}
+
+// A canvas taints on any non-data image. Drop those tags; data URLs stay.
+export function dropExternalImages(svg) {
+  return String(svg ?? "").replace(/<image\b[^>]*\/>/g, (tag) => {
+    const href = /\shref="([^"]*)"/.exec(tag);
+    if (!href) return tag;
+    const value = href[1].replace(/&amp;/g, "&");
+    return value.startsWith("data:") ? tag : "";
+  });
+}
+
+const imageHrefOf = (item, imageHrefs) => {
+  if (!imageHrefs || item.kind !== "image") return "";
+  const href = typeof imageHrefs.get === "function" ? imageHrefs.get(item.uid) : imageHrefs[item.uid];
+  return typeof href === "string" && href.startsWith("data:") ? href : "";
+};
+
+export function boardToSvg(board, rects, { dark = false, padding = 48, maxItems = 500, imageHrefs = null } = {}) {
   const mode = dark ? "dark" : "light";
   const theme = THEME[mode];
   const hex = (color) => (typeof color === "string" && /^#[0-9a-f]{6}$/.test(color) ? [color, color, color] : HEX[mode][PALETTE.includes(color) ? color : "gray"]);
@@ -65,7 +121,14 @@ export function boardToSvg(board, rects, { dark = false, padding = 48, maxItems 
       const clip = `pxd-clip-${index}`;
       defs.push(`<clipPath id="${clip}"><rect x="${n1(r.x + 10)}" y="${n1(r.y)}" width="${n1(Math.max(1, r.w - 20))}" height="${n1(r.h)}"/></clipPath>`);
       body.push(`<rect x="${n1(r.x)}" y="${n1(r.y)}" width="${n1(r.w)}" height="${n1(r.h)}" rx="8" fill="${theme.card}" stroke="${item.color ? line : theme.border}" stroke-width="${item.color ? 2 : 1}"/>`);
-      body.push(`<text x="${n1(r.x + 12)}" y="${n1(r.y + 26)}" font-size="14" font-weight="600" fill="${theme.text}" clip-path="url(#${clip})">${esc(titleOf(item))}</text>`);
+      const picture = imageHrefOf(item, imageHrefs);
+      if (picture) {
+        const ix = r.x + 8;
+        const iy = r.y + 8;
+        body.push(`<image href="${esc(picture)}" x="${n1(ix)}" y="${n1(iy)}" width="${n1(Math.max(1, r.w - 16))}" height="${n1(Math.max(1, r.h - 16))}" preserveAspectRatio="xMidYMid meet"/>`);
+      } else {
+        body.push(`<text x="${n1(r.x + 12)}" y="${n1(r.y + 26)}" font-size="14" font-weight="600" fill="${theme.text}" clip-path="url(#${clip})">${esc(titleOf(item))}</text>`);
+      }
     }
   });
   if (defs.length) out.push(`<defs>${defs.join("")}</defs>`);

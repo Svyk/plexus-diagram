@@ -256,6 +256,20 @@ test("uploadFile: string and {url} results, counts a write; absent throws", asyn
   assert.equal(host.stats.writes, 2);
 });
 
+test("getFile calls file.get and returns null when it is missing or throws; it is not a write", async () => {
+  const { fake, host } = setup();
+  assert.equal(await host.getFile("https://x/a.png"), null);
+  assert.equal(host.stats.writes, 0);
+  let got;
+  fake.setFileGet(async (arg) => { got = arg; return { size: 4, type: "image/png" }; });
+  assert.deepEqual(await host.getFile(" https://x/a.png "), { size: 4, type: "image/png" });
+  assert.deepEqual(got, { url: "https://x/a.png" });
+  assert.equal(host.stats.writes, 0);
+  fake.setFileGet(async () => { throw new Error("decrypt"); });
+  assert.equal(await host.getFile("https://x/a.png"), null);
+  assert.equal(await host.getFile(""), null);
+});
+
 test("uploadFile unwraps the markdown image Roam's file.upload returns, so the card string is not double-wrapped", async () => {
   const { fake, host } = setup();
   const file = { name: "a.png" };

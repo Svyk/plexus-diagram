@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import { buildBoard, worldRects } from "../src/model/board.js";
-import { boardToMarkdown, boardToSvg } from "../src/model/export.js";
+import { boardToMarkdown, boardToSvg, dropExternalImages, imageSrc, pngFileName, sliceBoard } from "../src/model/export.js";
 
 const blk = (uid, order, string, plexus, extra = {}) => ({
   ":block/uid": uid,
@@ -71,6 +71,52 @@ test("boardToSvg honors maxItems and handles an empty board", () => {
   const empty = buildBoard({ ":block/uid": "e", ":block/string": "", ":block/children": [] });
   const out = boardToSvg(empty, worldRects(empty));
   assert.match(out, /viewBox="-48 -48 96 96"/);
+});
+
+test("png names use the board title, then the page title, and strip path characters", () => {
+  assert.equal(pngFileName({ boardTitle: "P1 fixture", pageTitle: "Plexus Diagram/Test Lab", date: "2026-10-01" }), "P1 fixture 2026-10-01.png");
+  assert.equal(pngFileName({ boardTitle: "", pageTitle: "Plexus Diagram/Test Lab", date: "2026-10-01" }), "Plexus Diagram-Test Lab 2026-10-01.png");
+  assert.equal(pngFileName({ boardTitle: "Untitled board", pageTitle: "Notes: today", date: "2026-10-01" }), "Notes- today 2026-10-01.png");
+  assert.equal(pngFileName({ boardTitle: "", pageTitle: "", date: "nope" }), "board 1970-01-01.png");
+});
+
+test("image cards embed a data URL and never a remote href", () => {
+  const src = "https://firebasestorage.googleapis.com/v0/b/x/o/a.png?alt=media&token=t";
+  assert.equal(imageSrc(`![](${src})`), src);
+  const b = buildBoard({
+    ":block/uid": "boardimg",
+    ":block/string": "{{[[diagram]]:Pics}}",
+    ":block/children": [
+      blk("img", 0, `![](${src})`, { x: 10, y: 20, w: 120, h: 80 }),
+      blk("note", 1, "beside", { x: 200, y: 20, w: 80, h: 40 }),
+    ],
+  });
+  const rects = worldRects(b);
+  const plain = boardToSvg(b, rects);
+  assert.match(plain, />Image</);
+  assert.doesNotMatch(plain, /firebasestorage|<image|href=/);
+  const png = boardToSvg(b, rects, { imageHrefs: new Map([["img", "data:image/png;base64,aaaa"]]) });
+  assert.match(png, /<image href="data:image\/png;base64,aaaa"/);
+  assert.doesNotMatch(png, /firebasestorage/);
+  const rejected = boardToSvg(b, rects, { imageHrefs: new Map([["img", src]]) });
+  assert.doesNotMatch(rejected, /<image|firebasestorage/);
+  const tainted = `<image href="${src}" x="0" y="0" width="10" height="10"/>`;
+  assert.equal(dropExternalImages(`${tainted}<image href="data:image/png;base64,aa" x="1" y="1" width="2" height="2"/>`), `<image href="data:image/png;base64,aa" x="1" y="1" width="2" height="2"/>`);
+});
+
+test("sliceBoard keeps the selection and the edge between its ends", () => {
+  const b = board();
+  const slice = sliceBoard(b, ["c1", "m1"]);
+  assert.deepEqual([...slice.items.keys()], ["c1", "m1"]);
+  assert.equal(slice.edges.size, 1);
+  const edge = [...slice.edges.values()][0];
+  assert.equal(edge.from, "c1");
+  assert.equal(edge.to, "m1");
+  const svg = boardToSvg(slice, worldRects(b));
+  assert.match(svg, /Alpha/);
+  assert.match(svg, /First/);
+  assert.doesNotMatch(svg, /Second/);
+  assert.equal(sliceBoard(b, []).edges.size, 0);
 });
 
 test("boardToMarkdown builds headings, bullets, indented content, and connections", () => {

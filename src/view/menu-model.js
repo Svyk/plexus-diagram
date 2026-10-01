@@ -69,6 +69,7 @@ export function buildMenu(kind, ctx = {}) {
         sep(),
         make("background", "Background…"),
         make("export-svg", "Export as SVG"),
+        make("export-png", "Export as PNG"),
         make("copy-outline", "Copy as outline"),
       ];
 
@@ -80,6 +81,7 @@ export function buildMenu(kind, ctx = {}) {
         make("open-sidebar", "Open in sidebar", { hint: "Shift Click" }),
         sep(),
         make("copy", "Copy", { hint: "Cmd C" }),
+        make("copy-png", "Copy selection as PNG"),
         make("copy-ref", "Copy ref"),
         make("copy-link", "Copy link"),
         make("duplicate", "Duplicate", { hint: "Cmd D" }),
@@ -117,6 +119,7 @@ export function buildMenu(kind, ctx = {}) {
         pinItem(Boolean(c.pinned)),
         make("duplicate", "Duplicate", { hint: "Cmd D" }),
         make("copy-ref", "Copy ref"),
+        make("copy-png", "Copy selection as PNG"),
         sep(),
         make("delete-frame", "Delete frame", { hint: "Del", danger: true }),
         make("delete-contents", "Delete frame and contents", { hint: "Shift Del", danger: true, disabled: empty }),
@@ -132,6 +135,7 @@ export function buildMenu(kind, ctx = {}) {
         make("duplicate", "Duplicate", { hint: "Cmd D" }),
         pinItem(Boolean(c.pinned)),
         make("copy", "Copy", { hint: "Cmd C" }),
+        make("copy-png", "Copy selection as PNG"),
         sep(),
         make("delete", "Delete", { hint: "Del", danger: true }),
       ];
@@ -165,6 +169,7 @@ export function buildMenu(kind, ctx = {}) {
         make("notes", "Notes"),
         make("write-to-graph", "Write to graph"),
         sep(),
+        make("copy-png", "Copy selection as PNG"),
         make("delete", "Delete", { hint: "Del", danger: true }),
       ];
 
@@ -172,6 +177,7 @@ export function buildMenu(kind, ctx = {}) {
       const few = count !== null && count < 2;
       return [
         make("copy", "Copy", { hint: "Cmd C" }),
+        make("copy-png", "Copy selection as PNG"),
         make("duplicate", "Duplicate", { hint: "Cmd D" }),
         colorMenu(),
         sep(),
@@ -202,6 +208,7 @@ export function buildMenu(kind, ctx = {}) {
     case "board-menu":
       return [
         make("export-svg", "Export as SVG"),
+        make("export-png", "Export as PNG"),
         make("copy-outline", "Copy as outline"),
         sep(),
         make("fold-all", "Fold all cards"),

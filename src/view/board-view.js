@@ -23,7 +23,7 @@ import {
   zoomAt,
 } from "../model/geometry.js";
 import { PLEXUS_MIME, copyPayload, parsePastedText } from "../model/clipboard.js";
-import { boardToMarkdown, boardToSvg } from "../model/export.js";
+import { boardToMarkdown, boardToSvg, dropExternalImages, imageSrc, pngFileName, sliceBoard } from "../model/export.js";
 import { createInteractions } from "./interactions.js";
 import { createItemRenderer, isTextEntryTarget } from "./cards.js";
 import { createEdgeLayer } from "./edges.js";
@@ -1010,6 +1010,16 @@ export function mountBoardView({
       case "add-week": addDaily(weekDates(), world); break;
       case "background": chrome.popover.open(); break;
       case "export-svg": void view.exportSvg({ download: true }); break;
+      case "export-png": void exportPng(); break;
+      case "copy-png": {
+        let ids = uids;
+        if ((!ids || !ids.length) && mc.kind === "edge" && edgeUid) {
+          const edge = b.edges.get(edgeUid);
+          if (edge) ids = [edge.from, edge.to];
+        }
+        void copySelectionPng(ids);
+        break;
+      }
       case "copy-outline": void view.copyOutline(); break;
       case "edit": if (item) { if (item.kind === "board") itemsR.renameBoard(item.uid); else void enterEdit(item.uid); } break;
       case "open": openItem(item); break;
@@ -1923,20 +1933,59 @@ export function mountBoardView({
   timers.later(() => { if (!disposed) { scheduleContent(); updateBackToContent(); } }, 0);
 
   // ------------------------------------------------------------ API
+  const localDay = (date = new Date()) => {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, "0");
+    const d = String(date.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  };
+  const blobToDataUrl = (blob) => new Promise((resolve) => {
+    const Reader = globalThis.FileReader;
+    if (typeof Reader !== "function" || !blob) { resolve(""); return; }
+    const reader = new Reader();
+    reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
+    reader.onerror = () => resolve("");
+    try { reader.readAsDataURL(blob); } catch { resolve(""); }
+  });
+  const dataUrlFor = async (src) => {
+    if (typeof src !== "string" || !src) return "";
+    if (src.startsWith("data:")) return src;
+    if (typeof host?.getFile !== "function") return "";
+    try {
+      const file = await host.getFile(src);
+      const data = await blobToDataUrl(file);
+      return data.startsWith("data:") ? data : "";
+    } catch { return ""; }
+  };
+  const svgOf = async (b, uids = null) => {
+    const pictured = uids ? sliceBoard(b, uids) : b;
+    const hrefs = new Map();
+    for (const item of pictured.items.values()) {
+      if (item.kind !== "image") continue;
+      const data = await dataUrlFor(imageSrc(item.string));
+      if (data) hrefs.set(item.uid, data);
+    }
+    const text = boardToSvg(pictured, rects(), { dark: root.classList.contains("pxd-root--dark"), imageHrefs: hrefs });
+    return dropExternalImages(text);
+  };
+  const pngName = (b) => {
+    let pageTitle = "";
+    try { pageTitle = host?.pageTitleOf?.(b.uid) || ""; } catch { pageTitle = ""; }
+    return pngFileName({ boardTitle: b.title || UNTITLED_BOARD, pageTitle, date: localDay() });
+  };
+  async function pngBlob(b, uids = null) {
+    return rasterizeSvg(doc, await svgOf(b, uids));
+  }
   async function exportPng() {
     const b = board();
     if (!b) return false;
-    const text = boardToSvg(b, rects(), { dark: root.classList.contains("pxd-root--dark") });
-    const name = `${String(b.title || UNTITLED_BOARD).replace(/[\\/:*?"<>|]+/g, "-").trim() || "board"}`;
-    const now = new Date();
-    const day = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
     try {
-      const blob = await rasterizeSvg(doc, text);
+      const blob = await pngBlob(b);
       if (!blob) { if (!disposed) toast("PNG failed"); return false; }
       const url = URL.createObjectURL(blob);
       const a = doc.createElement("a");
       a.href = url;
-      a.download = `${name} ${day}.png`;
+      a.download = pngName(b);
       doc.body.append(a);
       a.click();
       a.remove();
@@ -1945,6 +1994,22 @@ export function mountBoardView({
       return true;
     } catch {
       if (!disposed) toast("PNG failed");
+      return false;
+    }
+  }
+  async function copySelectionPng(uids) {
+    const b = board();
+    if (!b || !uids?.length) { if (!disposed) toast("PNG failed"); return false; }
+    try {
+      const blob = await pngBlob(b, uids);
+      const Item = globalThis.ClipboardItem;
+      const write = globalThis.navigator?.clipboard?.write;
+      if (!blob || typeof Item !== "function" || typeof write !== "function") { if (!disposed) toast("Copy failed"); return false; }
+      await write.call(globalThis.navigator.clipboard, [new Item({ "image/png": blob })]);
+      if (!disposed) toast("Copied PNG");
+      return true;
+    } catch {
+      if (!disposed) toast("Copy failed");
       return false;
     }
   }

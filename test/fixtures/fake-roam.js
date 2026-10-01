@@ -268,7 +268,13 @@ export function createFakeRoam({ echoDelay = 5, writeDelay = 0, echoMode = "fres
       undo() { fake.calls.push(["undo"]); return Promise.resolve(); },
       redo() { fake.calls.push(["redo"]); return Promise.resolve(); },
     },
-    get file() { return uploadStub ? { upload: uploadStub } : undefined; },
+    get file() {
+      if (!uploadStub && !fileGetStub) return undefined;
+      const file = {};
+      if (uploadStub) file.upload = uploadStub;
+      if (fileGetStub) file.get = fileGetStub;
+      return file;
+    },
     ui: {
       rightSidebar: { addWindow: (arg) => { fake.calls.push(["addWindow", arg]); return Promise.resolve(); } },
       mainWindow: { openBlock: (arg) => { fake.calls.push(["openBlock", arg]); return Promise.resolve(); } },
@@ -298,7 +304,9 @@ export function createFakeRoam({ echoDelay = 5, writeDelay = 0, echoMode = "fres
   fake.setQ = (fn) => { qHandler = fn; };
   // Route q calls whose query text matches `match` (RegExp) to fn; returns {calls} for asserting.
   fake.onQuery = (match, fn) => { const r = { match, fn, calls: [] }; qRoutes.push(r); return r; };
+  let fileGetStub = null;
   fake.setUpload = (fn) => { uploadStub = fn; };
+  fake.setFileGet = (fn) => { fileGetStub = fn; };
   fake.watchCount = () => watches.length;
   fake.pull = (uid) => pull("[*]", [":block/uid", uid]);
   fake.block = (uid) => {

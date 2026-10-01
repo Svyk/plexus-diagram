@@ -270,6 +270,28 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       return typeof res?.[":block/string"] === "string" ? res[":block/string"] : null;
     },
 
+    // Page that owns a block. Empty when the block is missing or is itself a page.
+    pageTitleOf(uid) {
+      const res = pull("[{:block/page [:node/title]}]", eidKey(uid));
+      const page = res?.[":block/page"];
+      const node = Array.isArray(page) ? page[0] : page;
+      const title = node?.[":node/title"];
+      return typeof title === "string" ? title : "";
+    },
+
+    // Bytes for a graph file. Encrypted graphs only decrypt through file.get; the URL itself taints a canvas.
+    async getFile(url) {
+      const get = api.file?.get;
+      if (typeof get !== "function") return null;
+      const src = String(url ?? "").trim();
+      if (!src) return null;
+      try {
+        return await get.call(api.file, { url: src });
+      } catch {
+        return null;
+      }
+    },
+
     parentString(uid) {
       const res = pull("[{:block/_children [:block/string]}]", eidKey(uid));
       const p = res?.[":block/_children"];

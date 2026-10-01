@@ -1832,6 +1832,26 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
       const res = pull("[:block/string]", eidKey(uid));
       return typeof res?.[":block/string"] === "string" ? res[":block/string"] : null;
     },
+    // Page that owns a block. Empty when the block is missing or is itself a page.
+    pageTitleOf(uid) {
+      const res = pull("[{:block/page [:node/title]}]", eidKey(uid));
+      const page = res?.[":block/page"];
+      const node = Array.isArray(page) ? page[0] : page;
+      const title = node?.[":node/title"];
+      return typeof title === "string" ? title : "";
+    },
+    // Bytes for a graph file. Encrypted graphs only decrypt through file.get; the URL itself taints a canvas.
+    async getFile(url) {
+      const get = api.file?.get;
+      if (typeof get !== "function") return null;
+      const src = String(url ?? "").trim();
+      if (!src) return null;
+      try {
+        return await get.call(api.file, { url: src });
+      } catch {
+        return null;
+      }
+    },
     parentString(uid) {
       const res = pull("[{:block/_children [:block/string]}]", eidKey(uid));
       const p = res?.[":block/_children"];
@@ -4430,8 +4450,55 @@ var THEME = {
 };
 var esc = (s) => String(s ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&apos;");
 var n1 = (n) => Math.round(n * 10) / 10;
-var titleOf = (item) => item.title || item.string || "Untitled";
-function boardToSvg(board, rects, { dark = false, padding = 48, maxItems = 500 } = {}) {
+var titleOf = (item) => {
+  if (item.title) return item.title;
+  if (item.kind === "image") return "Image";
+  return item.string || "Untitled";
+};
+function imageSrc(string) {
+  const m = /!\[[^\]]*\]\(([^)]*)\)/.exec(String(string ?? "").trim());
+  return m ? m[1].trim() : "";
+}
+function pngFileName({ boardTitle: boardTitle2 = "", pageTitle = "", date = "" } = {}) {
+  const board = String(boardTitle2 ?? "").trim();
+  const page = String(pageTitle ?? "").trim();
+  const named = board && board.toLowerCase() !== UNTITLED_BOARD.toLowerCase();
+  const raw = (named ? board : page) || board || "board";
+  const name = raw.replace(/[\\/:*?"<>|]+/g, "-").replace(/\s+/g, " ").trim() || "board";
+  const day = /^\d{4}-\d{2}-\d{2}$/.test(String(date)) ? String(date) : "1970-01-01";
+  return `${name} ${day}.png`;
+}
+function sliceBoard(board, uids) {
+  const want = new Set(uids || []);
+  const items = /* @__PURE__ */ new Map();
+  const order = [];
+  for (const uid of board?.order || []) {
+    if (!want.has(uid)) continue;
+    const item = board.items.get(uid);
+    if (!item) continue;
+    items.set(uid, item);
+    order.push(uid);
+  }
+  const edges = /* @__PURE__ */ new Map();
+  for (const [uid, edge] of board?.edges || []) {
+    if (edge?.valid && want.has(edge.from) && want.has(edge.to)) edges.set(uid, edge);
+  }
+  return { ...board, items, order, edges };
+}
+function dropExternalImages(svg) {
+  return String(svg ?? "").replace(/<image\b[^>]*\/>/g, (tag) => {
+    const href = /\shref="([^"]*)"/.exec(tag);
+    if (!href) return tag;
+    const value = href[1].replace(/&amp;/g, "&");
+    return value.startsWith("data:") ? tag : "";
+  });
+}
+var imageHrefOf = (item, imageHrefs) => {
+  if (!imageHrefs || item.kind !== "image") return "";
+  const href = typeof imageHrefs.get === "function" ? imageHrefs.get(item.uid) : imageHrefs[item.uid];
+  return typeof href === "string" && href.startsWith("data:") ? href : "";
+};
+function boardToSvg(board, rects, { dark = false, padding = 48, maxItems = 500, imageHrefs = null } = {}) {
   const mode = dark ? "dark" : "light";
   const theme = THEME[mode];
   const hex = (color) => typeof color === "string" && /^#[0-9a-f]{6}$/.test(color) ? [color, color, color] : HEX[mode][PALETTE.includes(color) ? color : "gray"];
@@ -4465,7 +4532,14 @@ function boardToSvg(board, rects, { dark = false, padding = 48, maxItems = 500 }
       const clip = `pxd-clip-${index}`;
       defs.push(`<clipPath id="${clip}"><rect x="${n1(r.x + 10)}" y="${n1(r.y)}" width="${n1(Math.max(1, r.w - 20))}" height="${n1(r.h)}"/></clipPath>`);
       body.push(`<rect x="${n1(r.x)}" y="${n1(r.y)}" width="${n1(r.w)}" height="${n1(r.h)}" rx="8" fill="${theme.card}" stroke="${item.color ? line : theme.border}" stroke-width="${item.color ? 2 : 1}"/>`);
-      body.push(`<text x="${n1(r.x + 12)}" y="${n1(r.y + 26)}" font-size="14" font-weight="600" fill="${theme.text}" clip-path="url(#${clip})">${esc(titleOf(item))}</text>`);
+      const picture = imageHrefOf(item, imageHrefs);
+      if (picture) {
+        const ix = r.x + 8;
+        const iy = r.y + 8;
+        body.push(`<image href="${esc(picture)}" x="${n1(ix)}" y="${n1(iy)}" width="${n1(Math.max(1, r.w - 16))}" height="${n1(Math.max(1, r.h - 16))}" preserveAspectRatio="xMidYMid meet"/>`);
+      } else {
+        body.push(`<text x="${n1(r.x + 12)}" y="${n1(r.y + 26)}" font-size="14" font-weight="600" fill="${theme.text}" clip-path="url(#${clip})">${esc(titleOf(item))}</text>`);
+      }
     }
   });
   if (defs.length) out.push(`<defs>${defs.join("")}</defs>`);
@@ -8623,6 +8697,7 @@ function buildMenu(kind, ctx = {}) {
         sep(),
         make("background", "Background…"),
         make("export-svg", "Export as SVG"),
+        make("export-png", "Export as PNG"),
         make("copy-outline", "Copy as outline")
       ];
     case "card": {
@@ -8633,6 +8708,7 @@ function buildMenu(kind, ctx = {}) {
         make("open-sidebar", "Open in sidebar", { hint: "Shift Click" }),
         sep(),
         make("copy", "Copy", { hint: "Cmd C" }),
+        make("copy-png", "Copy selection as PNG"),
         make("copy-ref", "Copy ref"),
         make("copy-link", "Copy link"),
         make("duplicate", "Duplicate", { hint: "Cmd D" }),
@@ -8669,6 +8745,7 @@ function buildMenu(kind, ctx = {}) {
         pinItem(Boolean(c.pinned)),
         make("duplicate", "Duplicate", { hint: "Cmd D" }),
         make("copy-ref", "Copy ref"),
+        make("copy-png", "Copy selection as PNG"),
         sep(),
         make("delete-frame", "Delete frame", { hint: "Del", danger: true }),
         make("delete-contents", "Delete frame and contents", { hint: "Shift Del", danger: true, disabled: empty })
@@ -8683,6 +8760,7 @@ function buildMenu(kind, ctx = {}) {
         make("duplicate", "Duplicate", { hint: "Cmd D" }),
         pinItem(Boolean(c.pinned)),
         make("copy", "Copy", { hint: "Cmd C" }),
+        make("copy-png", "Copy selection as PNG"),
         sep(),
         make("delete", "Delete", { hint: "Del", danger: true })
       ];
@@ -8715,12 +8793,14 @@ function buildMenu(kind, ctx = {}) {
         make("notes", "Notes"),
         make("write-to-graph", "Write to graph"),
         sep(),
+        make("copy-png", "Copy selection as PNG"),
         make("delete", "Delete", { hint: "Del", danger: true })
       ];
     case "multi": {
       const few = count !== null && count < 2;
       return [
         make("copy", "Copy", { hint: "Cmd C" }),
+        make("copy-png", "Copy selection as PNG"),
         make("duplicate", "Duplicate", { hint: "Cmd D" }),
         colorMenu(),
         sep(),
@@ -8750,6 +8830,7 @@ function buildMenu(kind, ctx = {}) {
     case "board-menu":
       return [
         make("export-svg", "Export as SVG"),
+        make("export-png", "Export as PNG"),
         make("copy-outline", "Copy as outline"),
         sep(),
         make("fold-all", "Fold all cards"),
@@ -10558,6 +10639,18 @@ function mountBoardView({
       case "export-svg":
         void view.exportSvg({ download: true });
         break;
+      case "export-png":
+        void exportPng();
+        break;
+      case "copy-png": {
+        let ids = uids;
+        if ((!ids || !ids.length) && mc.kind === "edge" && edgeUid) {
+          const edge = b.edges.get(edgeUid);
+          if (edge) ids = [edge.from, edge.to];
+        }
+        void copySelectionPng(ids);
+        break;
+      }
       case "copy-outline":
         void view.copyOutline();
         break;
@@ -11754,15 +11847,67 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
       updateBackToContent();
     }
   }, 0);
+  const localDay = (date = /* @__PURE__ */ new Date()) => {
+    const y = date.getFullYear();
+    const m = String(date.getMonth() + 1).padStart(2, "0");
+    const d = String(date.getDate()).padStart(2, "0");
+    return `${y}-${m}-${d}`;
+  };
+  const blobToDataUrl = (blob) => new Promise((resolve) => {
+    const Reader = globalThis.FileReader;
+    if (typeof Reader !== "function" || !blob) {
+      resolve("");
+      return;
+    }
+    const reader = new Reader();
+    reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : "");
+    reader.onerror = () => resolve("");
+    try {
+      reader.readAsDataURL(blob);
+    } catch {
+      resolve("");
+    }
+  });
+  const dataUrlFor = async (src) => {
+    if (typeof src !== "string" || !src) return "";
+    if (src.startsWith("data:")) return src;
+    if (typeof host?.getFile !== "function") return "";
+    try {
+      const file = await host.getFile(src);
+      const data = await blobToDataUrl(file);
+      return data.startsWith("data:") ? data : "";
+    } catch {
+      return "";
+    }
+  };
+  const svgOf = async (b, uids = null) => {
+    const pictured = uids ? sliceBoard(b, uids) : b;
+    const hrefs = /* @__PURE__ */ new Map();
+    for (const item of pictured.items.values()) {
+      if (item.kind !== "image") continue;
+      const data = await dataUrlFor(imageSrc(item.string));
+      if (data) hrefs.set(item.uid, data);
+    }
+    const text = boardToSvg(pictured, rects(), { dark: root.classList.contains("pxd-root--dark"), imageHrefs: hrefs });
+    return dropExternalImages(text);
+  };
+  const pngName = (b) => {
+    let pageTitle = "";
+    try {
+      pageTitle = host?.pageTitleOf?.(b.uid) || "";
+    } catch {
+      pageTitle = "";
+    }
+    return pngFileName({ boardTitle: b.title || UNTITLED_BOARD, pageTitle, date: localDay() });
+  };
+  async function pngBlob(b, uids = null) {
+    return rasterizeSvg(doc, await svgOf(b, uids));
+  }
   async function exportPng() {
     const b = board();
     if (!b) return false;
-    const text = boardToSvg(b, rects(), { dark: root.classList.contains("pxd-root--dark") });
-    const name = `${String(b.title || UNTITLED_BOARD).replace(/[\\/:*?"<>|]+/g, "-").trim() || "board"}`;
-    const now2 = /* @__PURE__ */ new Date();
-    const day = `${now2.getFullYear()}-${String(now2.getMonth() + 1).padStart(2, "0")}-${String(now2.getDate()).padStart(2, "0")}`;
     try {
-      const blob = await rasterizeSvg(doc, text);
+      const blob = await pngBlob(b);
       if (!blob) {
         if (!disposed) toast("PNG failed");
         return false;
@@ -11770,7 +11915,7 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
       const url = URL.createObjectURL(blob);
       const a = doc.createElement("a");
       a.href = url;
-      a.download = `${name} ${day}.png`;
+      a.download = pngName(b);
       doc.body.append(a);
       a.click();
       a.remove();
@@ -11779,6 +11924,28 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
       return true;
     } catch {
       if (!disposed) toast("PNG failed");
+      return false;
+    }
+  }
+  async function copySelectionPng(uids) {
+    const b = board();
+    if (!b || !uids?.length) {
+      if (!disposed) toast("PNG failed");
+      return false;
+    }
+    try {
+      const blob = await pngBlob(b, uids);
+      const Item = globalThis.ClipboardItem;
+      const write = globalThis.navigator?.clipboard?.write;
+      if (!blob || typeof Item !== "function" || typeof write !== "function") {
+        if (!disposed) toast("Copy failed");
+        return false;
+      }
+      await write.call(globalThis.navigator.clipboard, [new Item({ "image/png": blob })]);
+      if (!disposed) toast("Copied PNG");
+      return true;
+    } catch {
+      if (!disposed) toast("Copy failed");
       return false;
     }
   }

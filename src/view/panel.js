@@ -74,7 +74,11 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
   const panel = el("aside", "pxd-panel pxd-chrome", root);
   panel.style.display = "none";
   for (const type of ["pointerdown", "pointerup", "click", "dblclick", "wheel", "keydown", "keyup"]) {
-    listen(panel, type, (event) => event.stopPropagation());
+    listen(panel, type, (event) => {
+      // The fullscreen editor is a real Roam block. Its keys have to reach Roam (undo, indent).
+      if ((type === "keydown" || type === "keyup") && event.target?.closest?.(".pxd-panel__info-mount")) return;
+      event.stopPropagation();
+    });
   }
   const head = el("div", "pxd-panel__head", panel);
   const tabs = el("div", "pxd-panel__tabs", head);
@@ -82,7 +86,8 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
   const tabRelated = el("button", "pxd-btn pxd-panel__tab", tabs, "Related");
   const tabBoards = el("button", "pxd-btn pxd-panel__tab", tabs, "Boards");
   const tabOutline = el("button", "pxd-btn pxd-panel__tab", tabs, "Outline");
-  const tabButtons = { search: tabSearch, related: tabRelated, boards: tabBoards, outline: tabOutline };
+  const tabInfo = el("button", "pxd-btn pxd-panel__tab", tabs, "Info");
+  const tabButtons = { search: tabSearch, related: tabRelated, boards: tabBoards, outline: tabOutline, info: tabInfo };
   for (const [name, b] of Object.entries(tabButtons)) {
     b.type = "button";
     b.dataset.tab = name;
@@ -115,6 +120,9 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
   const outlinePane = el("div", "pxd-panel__pane pxd-panel__pane--outline", panel);
   outlinePane.style.display = "none";
   const outlineList = el("div", "pxd-panel__list pxd-panel__outline", outlinePane);
+  const infoPane = el("div", "pxd-panel__pane pxd-panel__pane--info", panel);
+  infoPane.style.display = "none";
+  const infoScroll = el("div", "pxd-panel__info", infoPane);
 
   let tab = "search";
   let debounce = null;
@@ -179,15 +187,18 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
   });
 
   const setTab = (next) => {
+    if (tab === "info" && next !== "info") unmountInfo();
     tab = next;
     for (const [name, b] of Object.entries(tabButtons)) b.classList.toggle("pxd-panel__tab--on", tab === name);
     searchPane.style.display = tab === "search" ? "" : "none";
     relatedPane.style.display = tab === "related" ? "" : "none";
     boardsPane.style.display = tab === "boards" ? "" : "none";
     outlinePane.style.display = tab === "outline" ? "" : "none";
+    infoPane.style.display = tab === "info" ? "" : "none";
     if (tab === "related") void loadRelated();
     if (tab === "boards") void loadBoards();
     if (tab === "outline") renderOutline();
+    if (tab === "info") void loadInfo();
   };
   for (const [name, b] of Object.entries(tabButtons)) listen(b, "click", () => setTab(name));
   listen(closeBtn, "click", () => api.close());
@@ -296,6 +307,100 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     on.outlineClick?.(uid);
   });
 
+  // Inline boards are too narrow for a second editor. Fullscreen mounts Roam's renderer in the panel.
+  let infoMounted = false;
+  const unmountInfo = () => {
+    if (!infoMounted) return;
+    infoMounted = false;
+    const prev = infoScroll.querySelector(".pxd-panel__info-mount");
+    if (prev) {
+      try { host?.unmount?.(prev); } catch { /* already gone */ }
+    }
+  };
+  const infoSection = (label) => {
+    const section = el("section", "pxd-panel__info-sec", infoScroll);
+    el("div", "pxd-panel__info-h", section, label);
+    return section;
+  };
+  const loadInfo = async () => {
+    const id = queryId += 1;
+    unmountInfo();
+    infoScroll.replaceChildren();
+    if (!selected || selected.type === "section") {
+      el("div", "pxd-panel__empty", infoScroll, "Select a card");
+      return;
+    }
+    let info = null;
+    try { info = await Promise.resolve(host?.cardInfo?.(selected)) ?? null; } catch { info = null; }
+    if (id !== queryId || tab !== "info") return;
+    unmountInfo();
+    infoScroll.replaceChildren();
+    if (!info) {
+      el("div", "pxd-panel__empty", infoScroll, "Nothing to show");
+      return;
+    }
+    const bodySec = infoSection("Card");
+    el("div", "pxd-panel__info-body", bodySec, info.body || "");
+    const mount = el("div", "pxd-panel__info-mount", bodySec);
+    if (on.isFullscreen?.()) {
+      try {
+        if (info.kind === "page" && info.pageUid && host?.renderPage) {
+          host.renderPage(mount, info.pageUid);
+          infoMounted = true;
+        } else if (info.uid && host?.renderBlock) {
+          host.renderBlock(mount, info.uid);
+          infoMounted = true;
+        }
+      } catch { /* render failed */ }
+    } else {
+      el("div", "pxd-panel__info-note", mount, "Editing in the right sidebar");
+      try { on.openSidebarEditor?.(selected); } catch { /* sidebar unavailable */ }
+    }
+    const attrSec = infoSection("Attributes");
+    if (!info.attributes?.length) el("div", "pxd-panel__empty", attrSec, "No attributes");
+    else for (const attr of info.attributes) {
+      const row = el("div", "pxd-panel__info-attr", attrSec);
+      el("span", "pxd-panel__info-name", row, attr.name);
+      el("span", "pxd-panel__info-value", row, attr.value);
+    }
+    const refSec = infoSection("Linked references");
+    if (!info.refs?.length) el("div", "pxd-panel__empty", refSec, "No linked references");
+    else for (const ref of info.refs) {
+      const row = el("button", "pxd-btn pxd-panel__info-ref", refSec, ref.string || ref.uid);
+      row.type = "button";
+      row.dataset.uid = ref.uid;
+      row.setAttribute("data-uid", ref.uid);
+      if (ref.pageTitle) row.title = ref.pageTitle;
+    }
+    const boardSec = infoSection("On boards");
+    if (!info.boards?.length) el("div", "pxd-panel__empty", boardSec, "Not on another board");
+    else for (const board of info.boards) {
+      const row = el("button", "pxd-btn pxd-panel__info-board", boardSec);
+      row.type = "button";
+      row.dataset.uid = board.uid;
+      row.setAttribute("data-uid", board.uid);
+      el("span", "pxd-panel__info-board-title", row, board.title || "Untitled board");
+      if (board.pageTitle) el("span", "pxd-panel__info-board-page", row, board.pageTitle);
+    }
+    const tagSec = infoSection("Tags");
+    if (!info.tags?.length) el("div", "pxd-panel__empty", tagSec, "No tags");
+    else {
+      const wrap = el("div", "pxd-panel__info-tags", tagSec);
+      for (const name of info.tags) el("span", "pxd-panel__info-tag", wrap, name);
+    }
+  };
+  listen(infoScroll, "click", (event) => {
+    const board = event.target?.closest?.(".pxd-panel__info-board");
+    const ref = event.target?.closest?.(".pxd-panel__info-ref");
+    const node = board || ref;
+    const uid = node?.dataset?.uid ?? node?.getAttribute?.("data-uid");
+    if (!uid) return;
+    event.preventDefault?.();
+    event.stopPropagation();
+    if (board) on.openBoardByUid?.(uid);
+    else on.openRef?.(uid);
+  });
+
   const api = {
     el: panel,
     open(which = tab) {
@@ -307,12 +412,17 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     },
     currentTab: () => tab,
     refreshOutline() { if (api.isOpen() && tab === "outline") renderOutline(); },
-    close() { panel.style.display = "none"; on.opened?.(false); },
+    close() {
+      if (tab === "info") unmountInfo();
+      panel.style.display = "none";
+      on.opened?.(false);
+    },
     toggle() { if (api.isOpen()) api.close(); else api.open(); },
     isOpen: () => panel.style.display !== "none",
     setSelection(item) {
       selected = item && item.type !== "section" ? item : null;
       if (api.isOpen() && tab === "related") void loadRelated();
+      if (api.isOpen() && tab === "info") void loadInfo();
     },
     refreshMarks() {
       for (const r of panel.querySelectorAll(".pxd-panel__row")) {
@@ -323,6 +433,7 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     dispose() {
       debounce?.();
       queryId += 1;
+      unmountInfo();
       listeners.splice(0).forEach((off) => off());
       panel.remove();
     },

@@ -1,3 +1,4 @@
+import { attributeRows, boardsFromRows, tagNames } from "../model/info.js";
 import { attrNameOf, mergePropsForWrite, parseBoardTitle, plainKeys } from "../model/schema.js";
 
 export const BOARD_PATTERN = `[:block/uid :block/string :block/order :block/heading :block/open :block/props
@@ -623,6 +624,94 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         .sort((a, b) => b[1].count - a[1].count || a[0].localeCompare(b[0]))
         .map(([pt, g]) => ({ relation: "linked from", target: { kind: "page", title: pt }, text: g.count > 1 ? `${pt} (${g.count})` : pt }));
       return [...attrs, ...links, ...linkedFrom].slice(0, limit);
+    },
+
+    // Info panel. Page-card attributes come from the page's children, not the [[title]] card.
+    // Two board queries: diagrams that parent the card, and diagrams that parent a block which refs the target.
+    cardInfo(item, { refLimit = 20, boardLimit = 20 } = {}) {
+      if (!item || item.type === "section") return null;
+      const kind = item.target?.kind || "self";
+      const cardUid = String(item.uid ?? "");
+      const targetUid = kind === "block" ? String(item.target?.uid || cardUid) : cardUid;
+      const pageTitle = kind === "page" ? String(item.target?.title || item.title || "") : "";
+      let pageUid = null;
+      let body = String(item.string ?? "");
+      let attrSource = [];
+      if (pageTitle) {
+        const page = host.pullPage(pageTitle);
+        pageUid = page?.[":block/uid"] ?? null;
+        const kids = Array.isArray(page?.[":block/children"]) ? page[":block/children"] : [];
+        attrSource = kids.map((k) => k?.[":block/string"] ?? "");
+        body = pageTitle;
+      } else if (targetUid) {
+        let res = null;
+        try { res = pull("[:block/string {:block/children [:block/string]}]", eidKey(targetUid)); } catch { res = null; }
+        if (res) {
+          body = res[":block/string"] ?? body;
+          const kids = Array.isArray(res[":block/children"]) ? res[":block/children"] : [];
+          attrSource = kids.map((k) => k?.[":block/string"] ?? "");
+        }
+      }
+      const parentRows = cardUid
+        ? host.q(
+          `[:find ?u ?s ?pt :in $ ?uid ?pat :where [?c :block/uid ?uid] [?c :block/parents ?d] [?d :block/uid ?u] [?d :block/string ?s]
+ [(re-pattern ?pat) ?re] [(re-find ?re ?s)] [?d :block/page ?p] [?p :node/title ?pt]]`,
+          cardUid,
+          DIAGRAM_RE,
+        ) || []
+        : [];
+      const viaRows = (pageTitle || targetUid)
+        ? host.q(
+          pageTitle
+            ? `[:find ?u ?s ?pt :in $ ?title ?pat :where [?t :node/title ?title] [?b :block/refs ?t] [?b :block/parents ?d] [?d :block/uid ?u] [?d :block/string ?s]
+ [(re-pattern ?pat) ?re] [(re-find ?re ?s)] [?d :block/page ?p] [?p :node/title ?pt]]`
+            : `[:find ?u ?s ?pt :in $ ?uid ?pat :where [?c :block/uid ?uid] [?b :block/refs ?c] [?b :block/parents ?d] [?d :block/uid ?u] [?d :block/string ?s]
+ [(re-pattern ?pat) ?re] [(re-find ?re ?s)] [?d :block/page ?p] [?p :node/title ?pt]]`,
+          pageTitle || targetUid,
+          DIAGRAM_RE,
+        ) || []
+        : [];
+      const refRows = (pageTitle || targetUid)
+        ? host.q(
+          pageTitle
+            ? `[:find ?u ?ss ?pt :in $ ?title :where [?p :node/title ?title] [?b :block/refs ?p] [?b :block/uid ?u] [?b :block/string ?ss] [?b :block/page ?pg] [?pg :node/title ?pt]]`
+            : `[:find ?u ?ss ?pt :in $ ?uid :where [?c :block/uid ?uid] [?b :block/refs ?c] [?b :block/uid ?u] [?b :block/string ?ss] [?b :block/page ?pg] [?pg :node/title ?pt]]`,
+          pageTitle || targetUid,
+        ) || []
+        : [];
+      const rawBoards = [];
+      for (const [uid, string, pt] of [...parentRows, ...viaRows]) {
+        if (!uid) continue;
+        let props = {};
+        try { props = host.pullProps(uid); } catch { continue; }
+        if (props?.plexus?.v !== 2) continue;
+        rawBoards.push({
+          uid,
+          title: parseBoardTitle(string) || "Untitled board",
+          pageTitle: pt || "",
+          v: 2,
+        });
+      }
+      const refs = [];
+      const seenRef = new Set();
+      for (const [uid, string, pt] of refRows) {
+        if (!uid || uid === cardUid || seenRef.has(uid)) continue;
+        seenRef.add(uid);
+        refs.push({ uid, string: String(string ?? "").slice(0, 160), pageTitle: pt || "" });
+        if (refs.length >= refLimit) break;
+      }
+      return {
+        kind,
+        uid: pageTitle ? pageUid : targetUid,
+        cardUid,
+        pageUid,
+        title: item.title || pageTitle || "",
+        body,
+        attributes: attributeRows(attrSource),
+        refs,
+        boards: boardsFromRows(rawBoards, { limit: boardLimit }),
+        tags: tagNames([body, ...attrSource].join("\n")),
+      };
     },
   };
   return host;

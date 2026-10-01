@@ -135,6 +135,7 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
   }
   const group2 = el("div", "pxd-toolbar__group", toolbar);
   const addBtn = button(group2, "pxd-toolbar__add", "Add", "Add cards from the graph", () => on.togglePanel?.());
+  button(group2, "pxd-toolbar__info", "Info", "Card info (I)", () => on.openInfo?.());
   const linksBtn = button(group2, "pxd-toolbar__links", LINK_LABELS.all, "Graph links (L)", () => on.cycleLinks?.());
   const groupView = el("div", "pxd-toolbar__group", toolbar);
   const bgBtn = button(groupView, "pxd-toolbar__bg", "Background", "Background pattern and tone", () => (popover.isOpen() ? popover.close() : popover.open()));

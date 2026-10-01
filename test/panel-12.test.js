@@ -29,11 +29,11 @@ const BOARDS = [
   { uid: "b3", title: "Scratch", page: "Daily", count: 0 },
 ];
 
-test("the panel has Search, Related, Boards and Outline tabs in that order", (t) => {
+test("the panel has Search, Related, Boards, Outline and Info tabs in that order", (t) => {
   const f = setup();
   t.after(f.restore);
-  assert.deepEqual(tabs(f).map((b) => b.textContent), ["Search", "Related", "Boards", "Outline"]);
-  assert.deepEqual(tabs(f).map((b) => b.dataset.tab), ["search", "related", "boards", "outline"]);
+  assert.deepEqual(tabs(f).map((b) => b.textContent), ["Search", "Related", "Boards", "Outline", "Info"]);
+  assert.deepEqual(tabs(f).map((b) => b.dataset.tab), ["search", "related", "boards", "outline", "info"]);
   assert.deepEqual(shown(f), ["pxd-panel__pane--search"]);
   assert.deepEqual(tabs(f).filter((b) => classes(b).includes("pxd-panel__tab--on")).map((b) => b.dataset.tab), ["search"]);
 });
@@ -42,7 +42,7 @@ test("clicking a tab shows only its pane and marks it on", (t) => {
   const f = setup({ listBoards: () => Promise.resolve([]), getOutline: () => [] });
   t.after(f.restore);
   f.panel.open();
-  for (const [name, pane] of [["boards", "boards"], ["outline", "outline"], ["related", "related"], ["search", "search"]]) {
+  for (const [name, pane] of [["boards", "boards"], ["outline", "outline"], ["related", "related"], ["info", "info"], ["search", "search"]]) {
     tab(f, name).click();
     assert.deepEqual(shown(f), [`pxd-panel__pane--${pane}`], name);
     assert.deepEqual(tabs(f).filter((b) => classes(b).includes("pxd-panel__tab--on")).map((b) => b.dataset.tab), [name]);
@@ -202,4 +202,104 @@ test("1.0 behavior stays: search rows, tab classes and stopPropagation", async (
   assert.deepEqual(added, ["[[Beta]]"]);
   const ev = f.stub.dispatch(q(f.root, ".pxd-panel__tabs"), "pointerdown");
   assert.equal(ev.propagationStopped, true);
+});
+
+const INFO = {
+  kind: "self",
+  uid: "note1",
+  title: "Field",
+  body: "Field note #hb1",
+  attributes: [{ name: "Status", value: "green" }],
+  refs: [{ uid: "ref1", string: "mentions the note", pageTitle: "Lab" }],
+  boards: [{ uid: "board2", title: "Other", pageTitle: "Notes" }],
+  tags: ["hb1"],
+};
+
+test("Info shows every section, and a board row opens that board", async (t) => {
+  const calls = [];
+  const f = setup({
+    openBoardByUid: (uid) => calls.push(["board", uid]),
+    openRef: (uid) => calls.push(["ref", uid]),
+    openSidebarEditor: (item) => calls.push(["side", item.uid]),
+    isFullscreen: () => false,
+  }, {
+    cardInfo: async (item) => {
+      calls.push(["info", item.uid]);
+      return INFO;
+    },
+  });
+  t.after(f.restore);
+  f.panel.setSelection({ uid: "note1", type: "card", title: "Field", target: { kind: "self", uid: "note1" } });
+  f.panel.open("info");
+  await tick();
+  assert.deepEqual(
+    [...f.root.querySelectorAll(".pxd-panel__info-h")].map((n) => n.textContent),
+    ["Card", "Attributes", "Linked references", "On boards", "Tags"],
+  );
+  assert.equal(q(f.root, ".pxd-panel__info-body").textContent, "Field note #hb1");
+  assert.equal(q(f.root, ".pxd-panel__info-name").textContent, "Status");
+  assert.equal(q(f.root, ".pxd-panel__info-value").textContent, "green");
+  assert.equal(q(f.root, ".pxd-panel__info-ref").textContent, "mentions the note");
+  assert.equal(q(f.root, ".pxd-panel__info-board-title").textContent, "Other");
+  assert.equal(q(f.root, ".pxd-panel__info-board-page").textContent, "Notes");
+  assert.equal(q(f.root, ".pxd-panel__info-tag").textContent, "hb1");
+  assert.equal(q(f.root, ".pxd-panel__info-note").textContent, "Editing in the right sidebar");
+  assert.equal(f.root.querySelector(".pxd-panel__info-mount").querySelector(".rm-block"), null);
+  q(f.root, ".pxd-panel__info-board-title").click();
+  q(f.root, ".pxd-panel__info-ref").click();
+  assert.deepEqual(calls.filter((c) => c[0] !== "info"), [["side", "note1"], ["board", "board2"], ["ref", "ref1"]]);
+});
+
+test("fullscreen Info mounts renderBlock, a page mounts renderPage, and close unmounts", async (t) => {
+  let full = false;
+  const mounted = [];
+  const unmounted = [];
+  const f = setup({ isFullscreen: () => full }, {
+    cardInfo: (item) => (item.target.kind === "page"
+      ? { kind: "page", uid: null, pageUid: "page1", title: "Alpha", body: "Alpha", attributes: [], refs: [], boards: [], tags: [] }
+      : { kind: "self", uid: item.uid, title: "Field", body: "Field", attributes: [], refs: [], boards: [], tags: [] }),
+    renderBlock(el, uid) { mounted.push(["block", uid]); el.textContent = "block-editor"; },
+    renderPage(el, uid) { mounted.push(["page", uid]); el.textContent = "page-editor"; },
+    unmount(el) { unmounted.push(el.textContent); },
+  });
+  t.after(f.restore);
+  full = true;
+  f.panel.setSelection({ uid: "note1", type: "card", target: { kind: "self", uid: "note1" } });
+  f.panel.open("info");
+  await tick();
+  assert.equal(q(f.root, ".pxd-panel__info-note"), null);
+  assert.deepEqual(mounted, [["block", "note1"]]);
+  const mount = q(f.root, ".pxd-panel__info-mount");
+  const area = f.stub.document.createElement("textarea");
+  mount.append(area);
+  const typed = f.stub.dispatch(area, "keydown", { key: "z", metaKey: true });
+  assert.equal(typed.propagationStopped, false);
+  const pressed = f.stub.dispatch(mount, "pointerdown");
+  assert.equal(pressed.propagationStopped, true);
+  const search = f.stub.dispatch(q(f.root, ".pxd-panel__input"), "keydown", { key: "i" });
+  assert.equal(search.propagationStopped, true);
+  f.panel.setSelection({ uid: "cardP", type: "card", kind: "page", title: "Alpha", target: { kind: "page", title: "Alpha" } });
+  await tick();
+  assert.deepEqual(mounted, [["block", "note1"], ["page", "page1"]]);
+  assert.deepEqual(unmounted, ["block-editor"]);
+  f.panel.close();
+  assert.deepEqual(unmounted, ["block-editor", "page-editor"]);
+});
+
+test("Info ignores a stale cardInfo and shows an empty card", async (t) => {
+  let resolve;
+  const f = setup({}, {
+    cardInfo: () => new Promise((r) => { resolve = r; }),
+  });
+  t.after(f.restore);
+  f.panel.setSelection({ uid: "note1", type: "card", target: { kind: "self", uid: "note1" } });
+  f.panel.open("info");
+  tab(f, "search").click();
+  resolve({ kind: "self", uid: "note1", body: "late", attributes: [], refs: [], boards: [], tags: [] });
+  await tick();
+  assert.equal(q(f.root, ".pxd-panel__info-body"), null);
+  f.panel.open("info");
+  f.panel.setSelection(null);
+  await tick();
+  assert.equal(q(f.root, ".pxd-panel__info .pxd-panel__empty").textContent, "Select a card");
 });

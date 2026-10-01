@@ -1301,6 +1301,8 @@ export function mountBoardView({
   };
 
   // ------------------------------------------------------------ chrome + panel
+  // Chrome is built before the panel, so Info is bound after createPanel.
+  let openInfo = () => {};
   const chrome = createChrome({
     doc,
     root,
@@ -1315,6 +1317,7 @@ export function mountBoardView({
       wrapBoard: () => wrapBoardSel(),
       setTool: (tool, lock) => ctl.setTool(tool, lock),
       togglePanel: () => panel.toggle(),
+      openInfo: () => openInfo(),
       cycleLinks: () => cycleLinks(),
       zoomIn: () => setViewport(zoomAt(vp, { x: size.width / 2, y: size.height / 2 }, 1.2)),
       zoomOut: () => setViewport(zoomAt(vp, { x: size.width / 2, y: size.height / 2 }, 1 / 1.2)),
@@ -1405,8 +1408,12 @@ export function mountBoardView({
       addBoardCard: (uid) => addStringsBeside([`((${uid}))`]),
       getOutline: () => outline(),
       outlineClick: (uid) => { fitSelection([uid]); ctl.select([uid]); },
+      isFullscreen: () => isFullscreen,
+      openSidebarEditor: (item) => openItemInSidebar(item),
+      openRef: (uid) => host?.openInSidebar?.(uid, "block"),
     },
   });
+  openInfo = () => panel.open("info");
   const propsPanel = createPropsPanel({
     doc,
     root,
@@ -1769,6 +1776,7 @@ export function mountBoardView({
     openBlock: (uid) => host?.openBlock?.(uid),
     toast: (t) => chrome.toast.show(t),
     openSearch: () => chrome.search.open(),
+    openInfo: () => openInfo(),
     cycleLinks,
     isFullscreen: () => isFullscreen,
     setFullscreen: (on) => requestFullscreen(on),

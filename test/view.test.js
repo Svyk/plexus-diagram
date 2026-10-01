@@ -523,6 +523,85 @@ test("Edit Block opens the board block editor and Esc returns to the board", asy
   }
 });
 
+test("I and the Info button open card info; fullscreen edits in the panel", async () => {
+  const side = [];
+  const opened = [];
+  const mounted = [];
+  const unmounted = [];
+  const f = mountFixture({
+    viewOptions: { autofocus: true },
+    hostOverrides: {
+      cardInfo(item) {
+        if (item.target?.kind === "page") {
+          return {
+            kind: "page",
+            uid: null,
+            pageUid: "pgBeta001",
+            title: item.title,
+            body: "Beta",
+            attributes: [{ name: "Role", value: "tester" }],
+            refs: [],
+            boards: [],
+            tags: [],
+          };
+        }
+        return {
+          kind: "self",
+          uid: item.uid,
+          title: item.title,
+          body: "Alpha #live",
+          attributes: [{ name: "Status", value: "green" }],
+          refs: [{ uid: "ref111111", string: "mentions alpha", pageTitle: "Test Lab" }],
+          boards: [{ uid: "boardZZZZ", title: "Other board", pageTitle: "Test Lab" }],
+          tags: ["live"],
+        };
+      },
+      renderBlock(el, uid) { mounted.push(["block", uid]); el.textContent = "block-editor"; },
+      renderPage(el, uid) { mounted.push(["page", uid]); el.textContent = "page-editor"; },
+      unmount(el) { unmounted.push(el.textContent); },
+      openInSidebar(uid, type) { side.push([uid, type]); },
+      openBlock(uid) { opened.push(uid); },
+    },
+  });
+  try {
+    await f.flush();
+    const root = f.view.root;
+    f.view.controller.select(["cardAAAA1"]);
+    f.stub.dispatch(f.stub.window, "keydown", { key: "I" });
+    await f.flush();
+    assert.equal(root.querySelector(".pxd-panel__pane--info").style.display, "");
+    assert.deepEqual(
+      [...root.querySelectorAll(".pxd-panel__info-h")].map((n) => n.textContent),
+      ["Card", "Attributes", "Linked references", "On boards", "Tags"],
+    );
+    assert.equal(root.querySelector(".pxd-panel__info-body").textContent, "Alpha #live");
+    assert.equal(root.querySelector(".pxd-panel__info-value").textContent, "green");
+    assert.equal(root.querySelector(".pxd-panel__info-ref").textContent, "mentions alpha");
+    assert.equal(root.querySelector(".pxd-panel__info-board-title").textContent, "Other board");
+    assert.equal(root.querySelector(".pxd-panel__info-tag").textContent, "live");
+    assert.equal(root.querySelector(".pxd-panel__info-note").textContent, "Editing in the right sidebar");
+    assert.deepEqual(side, [["cardAAAA1", "block"]]);
+    assert.deepEqual(mounted, []);
+    root.querySelector(".pxd-panel__info-board").click();
+    assert.deepEqual(opened, ["boardZZZZ"]);
+    f.view.setFullscreen(true);
+    root.querySelector(".pxd-toolbar__info").click();
+    await f.flush();
+    assert.equal(root.querySelector(".pxd-panel__info-note"), null);
+    assert.deepEqual(mounted, [["block", "cardAAAA1"]]);
+    f.view.controller.select(["cardBBBB2"]);
+    await f.flush();
+    assert.deepEqual(mounted, [["block", "cardAAAA1"], ["page", "pgBeta001"]]);
+    assert.equal(root.querySelector(".pxd-panel__info-value").textContent, "tester");
+    assert.deepEqual(unmounted, ["block-editor"]);
+    root.querySelector(".pxd-panel__close").click();
+    assert.deepEqual(unmounted, ["block-editor", "page-editor"]);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
 test("session change re-renders only dirty uids; structural change reconciles shells by uid", async () => {
   const f = mountFixture();
   try {

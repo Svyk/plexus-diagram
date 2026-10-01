@@ -1185,6 +1185,7 @@ body.pxd-has-fullscreen .breadcrumbs-content {
 
 .pxd-panel__tabs {
   display: flex;
+  flex-wrap: wrap;
   gap: 2px;
 }
 
@@ -1271,6 +1272,84 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   color: var(--pxd-muted);
   font-size: 12px;
   padding: 8px;
+}
+
+.pxd-panel__info {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.pxd-panel__info-sec {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pxd-panel__info-h {
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--pxd-muted);
+}
+
+.pxd-panel__info-body {
+  font-size: 13px;
+  white-space: pre-wrap;
+}
+
+.pxd-panel__info-note {
+  font-size: 12px;
+  color: var(--pxd-muted);
+}
+
+.pxd-panel__info-mount {
+  min-height: 24px;
+}
+
+.pxd-panel__info-attr,
+.pxd-panel__info-ref,
+.pxd-panel__info-board {
+  display: flex;
+  gap: 6px;
+  align-items: baseline;
+  text-align: left;
+  font-size: 13px;
+}
+
+.pxd-panel__info-name {
+  flex: 0 0 auto;
+  color: var(--pxd-muted);
+}
+
+.pxd-panel__info-value,
+.pxd-panel__info-board-title,
+.pxd-panel__info-ref {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pxd-panel__info-board-page {
+  flex: 0 0 auto;
+  font-size: 11px;
+  color: var(--pxd-muted);
+}
+
+.pxd-panel__info-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.pxd-panel__info-tag {
+  font-size: 12px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  background: var(--pxd-accent-soft);
 }
 
 /* ------------------------------------------------------------------ portal (reserved) */

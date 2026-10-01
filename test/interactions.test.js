@@ -76,6 +76,7 @@ function harness({ vp = { x: 0, y: 0, zoom: 1 }, settings = {}, editing = null, 
     openBlock: rec("openBlock"),
     toast: rec("toast"),
     openSearch: rec("openSearch"),
+    openInfo: rec("openInfo"),
     cycleLinks: rec("cycleLinks"),
     isFullscreen: () => false,
     setFullscreen: rec("setFullscreen"),
@@ -384,6 +385,10 @@ test("keyboard map: tools, fit, zoom, links, search, wrap, undo/redo, Enter edit
   assert.equal(h.named("cycleLinks").length, 1);
   h.ctl.handle({ type: "keydown", key: "/" });
   assert.equal(h.named("openSearch").length, 1);
+  h.ctl.handle({ type: "keydown", key: "I" });
+  assert.equal(h.named("openInfo").length, 1);
+  h.ctl.handle({ type: "keydown", key: "i", inputFocused: true });
+  assert.equal(h.named("openInfo").length, 1);
   h.ctl.select(["cardAAAA1", "cardBBBB2"]);
   h.ctl.handle({ type: "keydown", key: "g", meta: true });
   assert.deepEqual(h.named("wrapInSection")[0][1], ["cardAAAA1", "cardBBBB2"]);

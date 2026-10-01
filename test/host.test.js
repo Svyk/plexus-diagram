@@ -406,3 +406,106 @@ test("redo replays a split transaction chunk by chunk", async () => {
   await host.undo();
   assert.equal(undoCalls(fake).length, 36, "the redone transaction undoes newest chunk first again");
 });
+
+test("cardInfo reads page attributes, tags, refs, and v2 boards", () => {
+  const { fake, host } = setup();
+  fake.seedPage({
+    title: "Alpha",
+    children: [
+      { uid: "good", string: "Role:: tester" },
+      { uid: "tagb", string: "hello #[[Tag Page]] #alpha" },
+    ],
+  });
+  fake.seedBoard({
+    uid: "boardV2",
+    string: "{{[[diagram]]:Fixture}}",
+    props: { plexus: { v: 2 } },
+    children: [{ uid: "cardP", string: "[[Alpha]]", children: [{ uid: "bad", string: "Nope:: x" }] }],
+  });
+  fake.seedBoard({ uid: "native1", string: "{{[[diagram]]}}", props: { plexus: { v: 1 } } });
+  fake.setQ((query) => {
+    const q = String(query);
+    if (q.includes(":block/parents")) assert.match(q, /:find \?u \?s \?pt[\s\S]*\[\?d :block\/uid \?u\]/);
+    if (q.includes(":block/refs") && q.includes(":block/parents")) {
+      return [["boardV2", "{{[[diagram]]:Fixture}}", "Lab"]];
+    }
+    if (q.includes(":block/parents")) {
+      return [
+        ["boardV2", "{{[[diagram]]:Fixture}}", "Lab"],
+        ["native1", "{{[[diagram]]}}", "Lab"],
+      ];
+    }
+    if (q.includes(":block/refs")) {
+      return [
+        ["cardP", "[[Alpha]]", "Lab"],
+        ["other1", "see Alpha", "Notes"],
+      ];
+    }
+    return [];
+  });
+  const info = host.cardInfo({
+    uid: "cardP",
+    type: "card",
+    kind: "page",
+    title: "Alpha",
+    string: "[[Alpha]]",
+    target: { kind: "page", title: "Alpha" },
+  });
+  assert.deepEqual(info.attributes, [{ name: "Role", value: "tester" }]);
+  assert.deepEqual(info.tags, ["Tag Page", "alpha"]);
+  assert.deepEqual(info.refs, [{ uid: "other1", string: "see Alpha", pageTitle: "Notes" }]);
+  assert.deepEqual(info.boards, [{ uid: "boardV2", title: "Fixture", pageTitle: "Lab" }]);
+  assert.equal(info.kind, "page");
+  assert.equal(info.pageUid, host.pageUid("Alpha"));
+  assert.equal(host.cardInfo({ uid: "s1", type: "section", target: { kind: "self", uid: "s1" } }), null);
+});
+
+test("cardInfo reads a note's own children and the block a ref card points at", () => {
+  const { fake, host } = setup();
+  fake.seedBoard({
+    uid: "boardV2",
+    string: "{{[[diagram]]:Fixture}}",
+    props: { plexus: { v: 2 } },
+    children: [{
+      uid: "note1",
+      string: "Field note #hb1",
+      children: [{ uid: "st", string: "Status:: green" }],
+    }],
+  });
+  fake.seedBoard({
+    uid: "boardRef",
+    string: "{{[[diagram]]:Other}}",
+    props: { plexus: { v: 2 } },
+  });
+  fake.setQ((query, ...inputs) => {
+    const q = String(query);
+    if (q.includes(":block/parents")) assert.match(q, /:find \?u \?s \?pt[\s\S]*\[\?d :block\/uid \?u\]/);
+    if (q.includes(":block/refs") && q.includes(":block/parents")) {
+      assert.equal(inputs[0], "note1");
+      return [["boardRef", "{{[[diagram]]:Other}}", "Notes"]];
+    }
+    if (q.includes(":block/parents")) {
+      assert.equal(inputs[0], "refcard");
+      return [["boardV2", "{{[[diagram]]:Fixture}}", "Lab"]];
+    }
+    if (q.includes(":block/refs")) {
+      assert.equal(inputs[0], "note1");
+      return [["mention1", "points here", "Notes"]];
+    }
+    return [];
+  });
+  const info = host.cardInfo({
+    uid: "refcard",
+    type: "card",
+    kind: "block",
+    title: "Field note",
+    string: "((note1))",
+    target: { kind: "block", uid: "note1" },
+  });
+  assert.equal(info.body, "Field note #hb1");
+  assert.deepEqual(info.attributes, [{ name: "Status", value: "green" }]);
+  assert.deepEqual(info.tags, ["hb1"]);
+  assert.deepEqual(info.refs, [{ uid: "mention1", string: "points here", pageTitle: "Notes" }]);
+  assert.deepEqual(info.boards.map((b) => b.uid), ["boardV2", "boardRef"]);
+  assert.equal(info.uid, "note1");
+});

@@ -671,6 +671,7 @@ export function createInteractions({ actions, settings } = {}) {
     if (TOOL_KEYS[lower]) { setTool(TOOL_KEYS[lower]); return true; }
     if (lower === "l") { call("cycleLinks"); return true; }
     if (key === "/") { call("openSearch"); return true; }
+    if (lower === "i") { call("openInfo"); return true; }
     if (lower === "f") { call("toggleFocus"); return true; }
     if (lower === "q") { call("quickLook"); return true; }
     if (lower === "p") { call("present"); return true; }

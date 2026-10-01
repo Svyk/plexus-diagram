@@ -1615,6 +1615,47 @@ function coveredBy(links, board) {
   return { visible, coveredEdges };
 }
 
+// src/model/info.js
+function attributeRows(strings) {
+  const out = [];
+  for (const raw of strings || []) {
+    const name = attrNameOf(raw);
+    if (!name) continue;
+    const text = String(raw);
+    const cut = text.indexOf("::");
+    out.push({ name, value: cut >= 0 ? text.slice(cut + 2).trim() : "" });
+  }
+  return out;
+}
+function tagNames(text) {
+  const out = [];
+  const re = /#\[\[([^\]\n]+)\]\]|#([^\s#[\]()]+)/g;
+  let match;
+  const source = String(text ?? "");
+  while (match = re.exec(source)) {
+    const name = String(match[1] || match[2] || "").trim();
+    if (name && !out.includes(name)) out.push(name);
+  }
+  return out;
+}
+function boardsFromRows(rows, { limit = 20 } = {}) {
+  const seen = /* @__PURE__ */ new Set();
+  const out = [];
+  const cap2 = Number.isFinite(limit) && limit > 0 ? limit : 20;
+  for (const row of rows || []) {
+    if (!row?.uid || seen.has(row.uid)) continue;
+    if (row.v != null && row.v !== 2) continue;
+    seen.add(row.uid);
+    out.push({
+      uid: row.uid,
+      title: row.title || "Untitled board",
+      pageTitle: row.pageTitle || ""
+    });
+    if (out.length >= cap2) break;
+  }
+  return out;
+}
+
 // src/host/roam.js
 var BOARD_PATTERN = `[:block/uid :block/string :block/order :block/heading :block/open :block/props
  {:block/children [:block/uid :block/string :block/order :block/heading :block/open :block/props
@@ -2226,6 +2267,91 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
       }
       const linkedFrom = [...pages.entries()].sort((a, b) => b[1].count - a[1].count || a[0].localeCompare(b[0])).map(([pt, g]) => ({ relation: "linked from", target: { kind: "page", title: pt }, text: g.count > 1 ? `${pt} (${g.count})` : pt }));
       return [...attrs, ...links, ...linkedFrom].slice(0, limit);
+    },
+    // Info panel. Page-card attributes come from the page's children, not the [[title]] card.
+    // Two board queries: diagrams that parent the card, and diagrams that parent a block which refs the target.
+    cardInfo(item, { refLimit = 20, boardLimit = 20 } = {}) {
+      if (!item || item.type === "section") return null;
+      const kind = item.target?.kind || "self";
+      const cardUid = String(item.uid ?? "");
+      const targetUid = kind === "block" ? String(item.target?.uid || cardUid) : cardUid;
+      const pageTitle = kind === "page" ? String(item.target?.title || item.title || "") : "";
+      let pageUid = null;
+      let body = String(item.string ?? "");
+      let attrSource = [];
+      if (pageTitle) {
+        const page = host.pullPage(pageTitle);
+        pageUid = page?.[":block/uid"] ?? null;
+        const kids = Array.isArray(page?.[":block/children"]) ? page[":block/children"] : [];
+        attrSource = kids.map((k) => k?.[":block/string"] ?? "");
+        body = pageTitle;
+      } else if (targetUid) {
+        let res = null;
+        try {
+          res = pull("[:block/string {:block/children [:block/string]}]", eidKey(targetUid));
+        } catch {
+          res = null;
+        }
+        if (res) {
+          body = res[":block/string"] ?? body;
+          const kids = Array.isArray(res[":block/children"]) ? res[":block/children"] : [];
+          attrSource = kids.map((k) => k?.[":block/string"] ?? "");
+        }
+      }
+      const parentRows = cardUid ? host.q(
+        `[:find ?u ?s ?pt :in $ ?uid ?pat :where [?c :block/uid ?uid] [?c :block/parents ?d] [?d :block/uid ?u] [?d :block/string ?s]
+ [(re-pattern ?pat) ?re] [(re-find ?re ?s)] [?d :block/page ?p] [?p :node/title ?pt]]`,
+        cardUid,
+        DIAGRAM_RE
+      ) || [] : [];
+      const viaRows = pageTitle || targetUid ? host.q(
+        pageTitle ? `[:find ?u ?s ?pt :in $ ?title ?pat :where [?t :node/title ?title] [?b :block/refs ?t] [?b :block/parents ?d] [?d :block/uid ?u] [?d :block/string ?s]
+ [(re-pattern ?pat) ?re] [(re-find ?re ?s)] [?d :block/page ?p] [?p :node/title ?pt]]` : `[:find ?u ?s ?pt :in $ ?uid ?pat :where [?c :block/uid ?uid] [?b :block/refs ?c] [?b :block/parents ?d] [?d :block/uid ?u] [?d :block/string ?s]
+ [(re-pattern ?pat) ?re] [(re-find ?re ?s)] [?d :block/page ?p] [?p :node/title ?pt]]`,
+        pageTitle || targetUid,
+        DIAGRAM_RE
+      ) || [] : [];
+      const refRows = pageTitle || targetUid ? host.q(
+        pageTitle ? `[:find ?u ?ss ?pt :in $ ?title :where [?p :node/title ?title] [?b :block/refs ?p] [?b :block/uid ?u] [?b :block/string ?ss] [?b :block/page ?pg] [?pg :node/title ?pt]]` : `[:find ?u ?ss ?pt :in $ ?uid :where [?c :block/uid ?uid] [?b :block/refs ?c] [?b :block/uid ?u] [?b :block/string ?ss] [?b :block/page ?pg] [?pg :node/title ?pt]]`,
+        pageTitle || targetUid
+      ) || [] : [];
+      const rawBoards = [];
+      for (const [uid, string, pt] of [...parentRows, ...viaRows]) {
+        if (!uid) continue;
+        let props = {};
+        try {
+          props = host.pullProps(uid);
+        } catch {
+          continue;
+        }
+        if (props?.plexus?.v !== 2) continue;
+        rawBoards.push({
+          uid,
+          title: parseBoardTitle(string) || "Untitled board",
+          pageTitle: pt || "",
+          v: 2
+        });
+      }
+      const refs = [];
+      const seenRef = /* @__PURE__ */ new Set();
+      for (const [uid, string, pt] of refRows) {
+        if (!uid || uid === cardUid || seenRef.has(uid)) continue;
+        seenRef.add(uid);
+        refs.push({ uid, string: String(string ?? "").slice(0, 160), pageTitle: pt || "" });
+        if (refs.length >= refLimit) break;
+      }
+      return {
+        kind,
+        uid: pageTitle ? pageUid : targetUid,
+        cardUid,
+        pageUid,
+        title: item.title || pageTitle || "",
+        body,
+        attributes: attributeRows(attrSource),
+        refs,
+        boards: boardsFromRows(rawBoards, { limit: boardLimit }),
+        tags: tagNames([body, ...attrSource].join("\n"))
+      };
     }
   };
   return host;
@@ -5522,6 +5648,10 @@ function createInteractions({ actions, settings } = {}) {
       call("openSearch");
       return true;
     }
+    if (lower === "i") {
+      call("openInfo");
+      return true;
+    }
     if (lower === "f") {
       call("toggleFocus");
       return true;
@@ -7951,6 +8081,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
   }
   const group2 = el("div", "pxd-toolbar__group", toolbar);
   const addBtn = button(group2, "pxd-toolbar__add", "Add", "Add cards from the graph", () => on.togglePanel?.());
+  button(group2, "pxd-toolbar__info", "Info", "Card info (I)", () => on.openInfo?.());
   const linksBtn = button(group2, "pxd-toolbar__links", LINK_LABELS.all, "Graph links (L)", () => on.cycleLinks?.());
   const groupView = el("div", "pxd-toolbar__group", toolbar);
   const bgBtn = button(groupView, "pxd-toolbar__bg", "Background", "Background pattern and tone", () => popover.isOpen() ? popover.close() : popover.open());
@@ -8816,7 +8947,10 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {} } 
   const panel = el("aside", "pxd-panel pxd-chrome", root);
   panel.style.display = "none";
   for (const type of ["pointerdown", "pointerup", "click", "dblclick", "wheel", "keydown", "keyup"]) {
-    listen(panel, type, (event) => event.stopPropagation());
+    listen(panel, type, (event) => {
+      if ((type === "keydown" || type === "keyup") && event.target?.closest?.(".pxd-panel__info-mount")) return;
+      event.stopPropagation();
+    });
   }
   const head = el("div", "pxd-panel__head", panel);
   const tabs = el("div", "pxd-panel__tabs", head);
@@ -8824,7 +8958,8 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {} } 
   const tabRelated = el("button", "pxd-btn pxd-panel__tab", tabs, "Related");
   const tabBoards = el("button", "pxd-btn pxd-panel__tab", tabs, "Boards");
   const tabOutline = el("button", "pxd-btn pxd-panel__tab", tabs, "Outline");
-  const tabButtons = { search: tabSearch, related: tabRelated, boards: tabBoards, outline: tabOutline };
+  const tabInfo = el("button", "pxd-btn pxd-panel__tab", tabs, "Info");
+  const tabButtons = { search: tabSearch, related: tabRelated, boards: tabBoards, outline: tabOutline, info: tabInfo };
   for (const [name, b] of Object.entries(tabButtons)) {
     b.type = "button";
     b.dataset.tab = name;
@@ -8857,6 +8992,9 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {} } 
   const outlinePane = el("div", "pxd-panel__pane pxd-panel__pane--outline", panel);
   outlinePane.style.display = "none";
   const outlineList = el("div", "pxd-panel__list pxd-panel__outline", outlinePane);
+  const infoPane = el("div", "pxd-panel__pane pxd-panel__pane--info", panel);
+  infoPane.style.display = "none";
+  const infoScroll = el("div", "pxd-panel__info", infoPane);
   let tab = "search";
   let debounce = null;
   let selected = null;
@@ -8936,15 +9074,18 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {} } 
     }
   });
   const setTab = (next) => {
+    if (tab === "info" && next !== "info") unmountInfo();
     tab = next;
     for (const [name, b] of Object.entries(tabButtons)) b.classList.toggle("pxd-panel__tab--on", tab === name);
     searchPane.style.display = tab === "search" ? "" : "none";
     relatedPane.style.display = tab === "related" ? "" : "none";
     boardsPane.style.display = tab === "boards" ? "" : "none";
     outlinePane.style.display = tab === "outline" ? "" : "none";
+    infoPane.style.display = tab === "info" ? "" : "none";
     if (tab === "related") void loadRelated();
     if (tab === "boards") void loadBoards();
     if (tab === "outline") renderOutline();
+    if (tab === "info") void loadInfo();
   };
   for (const [name, b] of Object.entries(tabButtons)) listen(b, "click", () => setTab(name));
   listen(closeBtn, "click", () => api.close());
@@ -9071,6 +9212,109 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
     event.stopPropagation();
     on.outlineClick?.(uid);
   });
+  let infoMounted = false;
+  const unmountInfo = () => {
+    if (!infoMounted) return;
+    infoMounted = false;
+    const prev = infoScroll.querySelector(".pxd-panel__info-mount");
+    if (prev) {
+      try {
+        host?.unmount?.(prev);
+      } catch {
+      }
+    }
+  };
+  const infoSection = (label) => {
+    const section = el("section", "pxd-panel__info-sec", infoScroll);
+    el("div", "pxd-panel__info-h", section, label);
+    return section;
+  };
+  const loadInfo = async () => {
+    const id = queryId += 1;
+    unmountInfo();
+    infoScroll.replaceChildren();
+    if (!selected || selected.type === "section") {
+      el("div", "pxd-panel__empty", infoScroll, "Select a card");
+      return;
+    }
+    let info = null;
+    try {
+      info = await Promise.resolve(host?.cardInfo?.(selected)) ?? null;
+    } catch {
+      info = null;
+    }
+    if (id !== queryId || tab !== "info") return;
+    unmountInfo();
+    infoScroll.replaceChildren();
+    if (!info) {
+      el("div", "pxd-panel__empty", infoScroll, "Nothing to show");
+      return;
+    }
+    const bodySec = infoSection("Card");
+    el("div", "pxd-panel__info-body", bodySec, info.body || "");
+    const mount = el("div", "pxd-panel__info-mount", bodySec);
+    if (on.isFullscreen?.()) {
+      try {
+        if (info.kind === "page" && info.pageUid && host?.renderPage) {
+          host.renderPage(mount, info.pageUid);
+          infoMounted = true;
+        } else if (info.uid && host?.renderBlock) {
+          host.renderBlock(mount, info.uid);
+          infoMounted = true;
+        }
+      } catch {
+      }
+    } else {
+      el("div", "pxd-panel__info-note", mount, "Editing in the right sidebar");
+      try {
+        on.openSidebarEditor?.(selected);
+      } catch {
+      }
+    }
+    const attrSec = infoSection("Attributes");
+    if (!info.attributes?.length) el("div", "pxd-panel__empty", attrSec, "No attributes");
+    else for (const attr of info.attributes) {
+      const row2 = el("div", "pxd-panel__info-attr", attrSec);
+      el("span", "pxd-panel__info-name", row2, attr.name);
+      el("span", "pxd-panel__info-value", row2, attr.value);
+    }
+    const refSec = infoSection("Linked references");
+    if (!info.refs?.length) el("div", "pxd-panel__empty", refSec, "No linked references");
+    else for (const ref of info.refs) {
+      const row2 = el("button", "pxd-btn pxd-panel__info-ref", refSec, ref.string || ref.uid);
+      row2.type = "button";
+      row2.dataset.uid = ref.uid;
+      row2.setAttribute("data-uid", ref.uid);
+      if (ref.pageTitle) row2.title = ref.pageTitle;
+    }
+    const boardSec = infoSection("On boards");
+    if (!info.boards?.length) el("div", "pxd-panel__empty", boardSec, "Not on another board");
+    else for (const board of info.boards) {
+      const row2 = el("button", "pxd-btn pxd-panel__info-board", boardSec);
+      row2.type = "button";
+      row2.dataset.uid = board.uid;
+      row2.setAttribute("data-uid", board.uid);
+      el("span", "pxd-panel__info-board-title", row2, board.title || "Untitled board");
+      if (board.pageTitle) el("span", "pxd-panel__info-board-page", row2, board.pageTitle);
+    }
+    const tagSec = infoSection("Tags");
+    if (!info.tags?.length) el("div", "pxd-panel__empty", tagSec, "No tags");
+    else {
+      const wrap = el("div", "pxd-panel__info-tags", tagSec);
+      for (const name of info.tags) el("span", "pxd-panel__info-tag", wrap, name);
+    }
+  };
+  listen(infoScroll, "click", (event) => {
+    const board = event.target?.closest?.(".pxd-panel__info-board");
+    const ref = event.target?.closest?.(".pxd-panel__info-ref");
+    const node = board || ref;
+    const uid = node?.dataset?.uid ?? node?.getAttribute?.("data-uid");
+    if (!uid) return;
+    event.preventDefault?.();
+    event.stopPropagation();
+    if (board) on.openBoardByUid?.(uid);
+    else on.openRef?.(uid);
+  });
   const api = {
     el: panel,
     open(which = tab) {
@@ -9091,6 +9335,7 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
       if (api.isOpen() && tab === "outline") renderOutline();
     },
     close() {
+      if (tab === "info") unmountInfo();
       panel.style.display = "none";
       on.opened?.(false);
     },
@@ -9102,6 +9347,7 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
     setSelection(item) {
       selected = item && item.type !== "section" ? item : null;
       if (api.isOpen() && tab === "related") void loadRelated();
+      if (api.isOpen() && tab === "info") void loadInfo();
     },
     refreshMarks() {
       for (const r of panel.querySelectorAll(".pxd-panel__row")) {
@@ -9112,6 +9358,7 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
     dispose() {
       debounce?.();
       queryId += 1;
+      unmountInfo();
       listeners2.splice(0).forEach((off) => off());
       panel.remove();
     }
@@ -11770,6 +12017,8 @@ function mountBoardView({
         break;
     }
   };
+  let openInfo = () => {
+  };
   const chrome = createChrome({
     doc,
     root,
@@ -11792,6 +12041,7 @@ function mountBoardView({
       wrapBoard: () => wrapBoardSel(),
       setTool: (tool, lock) => ctl.setTool(tool, lock),
       togglePanel: () => panel.toggle(),
+      openInfo: () => openInfo(),
       cycleLinks: () => cycleLinks(),
       zoomIn: () => setViewport(zoomAt(vp, { x: size.width / 2, y: size.height / 2 }, 1.2)),
       zoomOut: () => setViewport(zoomAt(vp, { x: size.width / 2, y: size.height / 2 }, 1 / 1.2)),
@@ -11968,9 +12218,13 @@ function mountBoardView({
       outlineClick: (uid) => {
         fitSelection([uid]);
         ctl.select([uid]);
-      }
+      },
+      isFullscreen: () => isFullscreen,
+      openSidebarEditor: (item) => openItemInSidebar(item),
+      openRef: (uid) => host?.openInSidebar?.(uid, "block")
     }
   });
+  openInfo = () => panel.open("info");
   const propsPanel = createPropsPanel({
     doc,
     root,
@@ -12385,6 +12639,7 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
     openBlock: (uid) => host?.openBlock?.(uid),
     toast: (t) => chrome.toast.show(t),
     openSearch: () => chrome.search.open(),
+    openInfo: () => openInfo(),
     cycleLinks,
     isFullscreen: () => isFullscreen,
     setFullscreen: (on) => requestFullscreen(on),

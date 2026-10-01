@@ -7154,6 +7154,65 @@ function createItemRenderer({
   };
 }
 
+// src/view/editor-keys.js
+var UID3 = /^[A-Za-z0-9_-]{9,15}$/;
+function blockUidFromNode(node) {
+  let el = node;
+  while (el && el.nodeType === 1) {
+    const id = String(el.id || el.getAttribute?.("id") || "");
+    if (id.startsWith("block-input-")) {
+      const rest = id.slice("block-input-".length);
+      if (UID3.test(rest)) return rest;
+    }
+    if (UID3.test(id)) return id;
+    const data = el.dataset?.uid || el.getAttribute?.("data-uid") || "";
+    if (UID3.test(data)) return data;
+    el = el.parentElement;
+  }
+  return null;
+}
+var inside2 = (node, ancestor) => {
+  let el = node;
+  while (el && el.nodeType === 1) {
+    if (el === ancestor) return true;
+    el = el.parentElement;
+  }
+  return false;
+};
+function inputBlockRole(node, rootUid) {
+  const uid = blockUidFromNode(node);
+  const editor = node?.closest?.(".pxd-item__editor") || null;
+  const nest = node?.closest?.(".rm-block-children") || null;
+  if (nest && inside2(nest, editor)) return { role: "child", uid };
+  if (uid && rootUid && uid !== rootUid) return { role: "child", uid };
+  return { role: "root", uid: uid || rootUid || null };
+}
+function editorKeyAction({
+  key,
+  shift = false,
+  meta = false,
+  ctrl = false,
+  alt = false,
+  autocomplete = false,
+  isRoot = false,
+  fresh = false,
+  value = "",
+  selectionStart = 0,
+  selectionEnd = 0
+} = {}) {
+  if (autocomplete) return { type: "roam" };
+  const mod = Boolean(meta || ctrl);
+  if (key === "Tab" && !alt) return { type: "roam" };
+  if (key === "Enter" && mod && !shift && !alt) return { type: "roam" };
+  if (key === "Backspace" && isRoot && fresh && !mod && !alt) {
+    const text = String(value ?? "");
+    const start = Math.min(selectionStart, selectionEnd);
+    const end = Math.max(selectionStart, selectionEnd);
+    if (!text.trim() && start === end) return { type: "delete-card" };
+  }
+  return { type: "roam" };
+}
+
 // src/view/edges.js
 var SVG_NS2 = "http://www.w3.org/2000/svg";
 var PAIR_OFFSET = 18;
@@ -12279,14 +12338,40 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
     if (presenter.isActive() && !["Escape", "ArrowRight", "ArrowLeft", "ArrowDown", "ArrowUp", "PageDown", "PageUp", " ", "p", "P"].includes(event.key)) return;
     const inputFocused = isTextEntryTarget(event.target) || isTextEntryTarget(doc.activeElement);
     if (inputFocused) {
-      const inside2 = root.contains?.(event.target) || root.contains?.(doc.activeElement);
-      if (!inside2 && !itemsR.isEditing()) return;
+      const inside3 = root.contains?.(event.target) || root.contains?.(doc.activeElement);
+      if (!inside3 && !itemsR.isEditing()) return;
     } else if (!ownsKeyboard()) {
       return;
     }
     if (!inputFocused && itemsR.isEditing() && event.key !== "Escape") {
       itemsR.recoverFocus();
       return;
+    }
+    if (inputFocused && itemsR.isEditing()) {
+      const ta = String(event.target?.tagName || "").toLowerCase() === "textarea" ? event.target : doc.activeElement;
+      if (ta && String(ta.tagName || "").toLowerCase() === "textarea") {
+        const uid = itemsR.editingUid();
+        const role = inputBlockRole(ta, uid);
+        const action = editorKeyAction({
+          key: event.key,
+          shift: event.shiftKey,
+          meta: event.metaKey,
+          ctrl: event.ctrlKey,
+          alt: event.altKey,
+          autocomplete: itemsR.autocompleteOpen(),
+          isRoot: role.role === "root",
+          fresh: freshItems.has(uid),
+          value: ta.value || "",
+          selectionStart: Number.isFinite(ta.selectionStart) ? ta.selectionStart : 0,
+          selectionEnd: Number.isFinite(ta.selectionEnd) ? ta.selectionEnd : Number.isFinite(ta.selectionStart) ? ta.selectionStart : 0
+        });
+        if (action.type === "delete-card") {
+          event.preventDefault();
+          event.stopPropagation();
+          void exitEdit();
+          return;
+        }
+      }
     }
     const focused = doc.activeElement;
     const tabOwned = Boolean(focused) && (focused === root || Boolean(root.contains?.(focused)) && !focused.closest?.(".pxd-chrome"));

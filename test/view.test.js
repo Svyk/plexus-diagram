@@ -825,7 +825,9 @@ test("R2: floor stands down for outside pointerdown, outside focus targets, and 
     await tick(320);
     lose();
     await tick(650);
-    f.stub.flushFrames();
+    // The floor has stopped. The editor-menu watcher still holds one rAF until
+    // twelve empty frames; drain those and then require a quiet queue.
+    for (let i = 0; i < 20 && f.stub.frames.length; i += 1) f.stub.flushFrames();
     assert.equal(f.stub.frames.length, 0, "floor gave up");
   } finally {
     f.view.dispose();
@@ -1872,6 +1874,115 @@ test("ED-5: editing at 2x lays the editor out in screen pixels", async () => {
     const ta = editor.querySelector("textarea");
     assert.ok(Math.abs(parseFloat(ta?.style?.["font-size"]) - 14 * zoom) < 0.05, ta?.style?.["font-size"]);
     assert.equal(ta?.style?.height, "auto");
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("ED-6: Enter, Tab, and Cmd+Enter stay with Roam while the card is editing", async () => {
+  const created = [];
+  const updates = [];
+  const f = mountFixture({
+    hostOverrides: {
+      renderBlock(el, uid) {
+        const doc = el.ownerDocument || globalThis.document;
+        const block = doc.createElement("div");
+        block.className = "rm-block";
+        block.id = uid;
+        const ta = doc.createElement("textarea");
+        ta.className = "rm-block__input";
+        ta.value = "Alpha";
+        block.append(ta);
+        const kids = doc.createElement("div");
+        kids.className = "rm-block-children";
+        const child = doc.createElement("div");
+        child.id = "kidAAAA01";
+        const cta = doc.createElement("textarea");
+        cta.className = "rm-block__input";
+        cta.value = "child one";
+        child.append(cta);
+        kids.append(child);
+        block.append(kids);
+        el.append(block);
+      },
+      createBlock(spec) { created.push(spec); return Promise.resolve("childNEW01"); },
+      updateString(uid, string) { updates.push([uid, string]); return Promise.resolve(); },
+      group(fn) { return fn(); },
+    },
+  });
+  try {
+    await f.flush();
+    const card = await startEdit(f, "cardAAAA1");
+    const editor = card.querySelector(".pxd-item__editor");
+    const ta = editor.querySelector("textarea");
+    ta.selectionStart = ta.value.length;
+    ta.selectionEnd = ta.value.length;
+    const end = f.stub.dispatch(ta, "keydown", { key: "Enter", code: "Enter" });
+    assert.equal(end.defaultPrevented, false);
+    await tick();
+    assert.equal(created.length, 0);
+    assert.equal(updates.length, 0);
+    const cta = editor.querySelector(".rm-block-children textarea");
+    cta.selectionStart = cta.value.length;
+    cta.selectionEnd = cta.value.length;
+    const nested = f.stub.dispatch(cta, "keydown", { key: "Enter" });
+    assert.equal(nested.defaultPrevented, false);
+    assert.equal(created.length, 0);
+    const sel = f.view.state().selection.slice();
+    const tab = f.stub.dispatch(ta, "keydown", { key: "Tab" });
+    assert.equal(tab.defaultPrevented, false);
+    assert.deepEqual(f.view.state().selection, sel);
+    const todo = f.stub.dispatch(ta, "keydown", { key: "Enter", metaKey: true });
+    assert.equal(todo.defaultPrevented, false);
+    assert.equal(created.length, 0);
+    ta.value = "Alpha";
+    ta.selectionStart = 2;
+    ta.selectionEnd = 2;
+    const mid = f.stub.dispatch(ta, "keydown", { key: "Enter" });
+    assert.equal(mid.defaultPrevented, false);
+    assert.equal(created.length, 0);
+    assert.equal(updates.length, 0);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("ED-6: Backspace in an empty fresh card deletes it once", async () => {
+  const f = mountFixture({
+    extraChildren: [extraCard("emptyCrd1", "", 8, { ":x": 20, ":y": 500 })],
+    hostOverrides: {
+      renderBlock(el) {
+        const doc = el.ownerDocument || globalThis.document;
+        const ta = doc.createElement("textarea");
+        ta.className = "rm-block__input";
+        ta.value = "";
+        el.append(ta);
+      },
+      blockString: () => "",
+    },
+  });
+  try {
+    await f.flush();
+    f.session.createCard = () => Promise.resolve("emptyCrd1");
+    const viewport = f.view.root.querySelector(".pxd-viewport");
+    f.stub.dispatch(viewport, "dblclick", { clientX: 700, clientY: 200 });
+    for (let i = 0; i < 6; i += 1) { f.stub.flushFrames(); await tick(); }
+    await tick(300);
+    f.stub.flushFrames();
+    const card = f.view.root.querySelector("[data-uid=emptyCrd1]");
+    assert.ok(card.classList.contains("pxd-item--editing"), "the new card is open");
+    const ta = card.querySelector("textarea");
+    ta.value = "";
+    ta.selectionStart = 0;
+    ta.selectionEnd = 0;
+    const ev = f.stub.dispatch(ta, "keydown", { key: "Backspace" });
+    assert.equal(ev.defaultPrevented, true);
+    await tick();
+    const deleted = f.session.mutations.filter((row) => row[0] === "deleteItems");
+    assert.equal(deleted.length, 1);
+    assert.deepEqual(deleted[0][1], ["emptyCrd1"]);
   } finally {
     f.view.dispose();
     f.restore();

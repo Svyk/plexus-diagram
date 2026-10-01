@@ -26,6 +26,7 @@ import { PLEXUS_MIME, copyPayload, parsePastedText } from "../model/clipboard.js
 import { boardToMarkdown, boardToSvg, dropExternalImages, imageSrc, pngFileName, sliceBoard } from "../model/export.js";
 import { createInteractions } from "./interactions.js";
 import { createItemRenderer, isTextEntryTarget } from "./cards.js";
+import { editorKeyAction, inputBlockRole } from "./editor-keys.js";
 import { createEdgeLayer } from "./edges.js";
 import { createChrome, LINK_MODES } from "./chrome.js";
 import { createPropsPanel } from "./props-panel.js";
@@ -1885,6 +1886,32 @@ export function mountBoardView({
     }
     // Roam dropped focus to <body> mid-edit: put it back on the editor instead of running a board shortcut.
     if (!inputFocused && itemsR.isEditing() && event.key !== "Escape") { itemsR.recoverFocus(); return; }
+    if (inputFocused && itemsR.isEditing()) {
+      const ta = String(event.target?.tagName || "").toLowerCase() === "textarea" ? event.target : doc.activeElement;
+      if (ta && String(ta.tagName || "").toLowerCase() === "textarea") {
+        const uid = itemsR.editingUid();
+        const role = inputBlockRole(ta, uid);
+        const action = editorKeyAction({
+          key: event.key,
+          shift: event.shiftKey,
+          meta: event.metaKey,
+          ctrl: event.ctrlKey,
+          alt: event.altKey,
+          autocomplete: itemsR.autocompleteOpen(),
+          isRoot: role.role === "root",
+          fresh: freshItems.has(uid),
+          value: ta.value || "",
+          selectionStart: Number.isFinite(ta.selectionStart) ? ta.selectionStart : 0,
+          selectionEnd: Number.isFinite(ta.selectionEnd) ? ta.selectionEnd : (Number.isFinite(ta.selectionStart) ? ta.selectionStart : 0),
+        });
+        if (action.type === "delete-card") {
+          event.preventDefault();
+          event.stopPropagation();
+          void exitEdit();
+          return;
+        }
+      }
+    }
     // Tab walks the outline only while focus is on the board itself: not for a resting pointer, and not on a toolbar control.
     const focused = doc.activeElement;
     const tabOwned = Boolean(focused) && (focused === root || (Boolean(root.contains?.(focused)) && !focused.closest?.(".pxd-chrome")));

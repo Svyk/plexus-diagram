@@ -196,16 +196,28 @@ test("createCard stores look block on a note and omits it on a page ref; setLook
 
 test("setBlockOpen writes Roam open on the card and leaves plexus props alone", async () => {
   const { fake, session } = setup();
+  await fake.api.data.block.create({
+    location: { "parent-uid": "c4", order: "last" },
+    block: { uid: "kidOPEN1", string: "child", open: false },
+  });
+  await sleep(40);
+  const childOpen = () => fake.block("kidOPEN1").open;
+  assert.equal(childOpen(), false);
   assert.equal(session.board.items.get("c4").open, true);
+  const before = fake.block("c4").open;
   await session.setBlockOpen("c4", false);
   await sleep(30);
   assert.equal(fake.block("c4").open, false);
   assert.equal(session.board.items.get("c4").open, false);
+  assert.equal(childOpen(), false);
   assert.equal(fake.props("c4").plexus.x, 800);
   await session.setBlockOpen("c4", true);
   await sleep(30);
-  assert.equal(fake.block("c4").open, true);
+  assert.equal(fake.block("c4").open, before);
   assert.equal(session.board.items.get("c4").open, true);
+  assert.equal(childOpen(), false);
+  const writes = fake.writesLog().filter((e) => e[0] === "update" && e[1] === "kidOPEN1");
+  assert.equal(writes.length, 0);
   assert.equal(await session.setBlockOpen("s1", false), false);
   assert.notEqual(fake.block("s1").open, false);
 });

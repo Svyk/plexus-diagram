@@ -20,3 +20,14 @@ Input steps: `move {x,y}`, `down {x,y,mods?}`, `up {x,y,mods?}`, `click {x,y,cou
 Guards: `inject` refuses a window that already runs an installed Plexus (`window.__plexusDiagram` without `window.__pxdLive`), and `plexus-live.mjs` refuses the window titled `plx typing bench` for every command (the two `cdp-*` helpers do not check; pass the Svy or Readwisenotes target id).
 
 Settings for the injected build persist in that window's `localStorage["pxd-live-settings"]`.
+
+```bash
+node tools/live/ledger.mjs add <uid> "<why>" [--page TITLE] [--graph NAME]
+node tools/live/ledger.mjs list
+node tools/live/ledger.mjs cleanup "Svy - "          # deletes ledger uids on test pages, newest first
+node tools/live/ledger.mjs roundtrip "Svy - "        # create, list, cleanup on Test Lab
+node tools/live/fixture.mjs <phase> ["Readwisenotes - Daily Notes"] [--cards N]
+node tools/live/bench.mjs ["Readwisenotes - "]          # 200 real keys, injected vs unloaded
+```
+
+`cleanup` deletes only blocks whose page is `Plexus Diagram/Test Lab` or `diagram testing`, and only in the window's graph. Page uids and every other page are left in the ledger. `fixture` builds `P<phase> fixture` through `window.__plexusDiagram.session(uid)` (the caller releases). A second run reuses the page and adds a new board.

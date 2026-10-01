@@ -665,6 +665,11 @@ export async function installPlexusDiagram({
       connected: rec.native.isConnected !== false && rec.mountEl.isConnected !== false,
       state: rec.view?.state?.() ?? null,
     })),
+    // Caller must release(). A second acquire of the same board shares the session.
+    session(uid) {
+      if (!uid) return null;
+      return acquireSession(uid, { host, settings: liveSettings });
+    },
   };
   win.__plexusDiagram = api;
   lifecycle.add(() => {

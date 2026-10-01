@@ -77,7 +77,7 @@ Native diagrams are React Flow (`.react-flow`, nodes `.react-flow__node-block`).
 
 | Phase | Theme | Version | Status |
 |---|---|---|---|
-| P0 | Preflight: harness, fixtures, baselines | — | todo |
+| P0 | Preflight: harness, fixtures, baselines | — | done 2026-09-30. Injected-build checks ran on Readwisenotes (Svy refused: installed 1.2.0, not 1.1.0). PRE-2 and PRE-5 ran on Svy Test Lab. |
 | P1 | Native parity: add, never take away | 1.3.0 | todo |
 | P2 | Card editing feels like Roam | 1.4.0 | todo |
 | P3 | Navigate and organize (Heptabase wave 2a) | 1.5.0 | todo |
@@ -94,10 +94,10 @@ Order matters: P1 and P2 are the user's direct requests. Within a phase, do task
 ### P0: Preflight
 
 - [x] **PRE-1 Harness in the repo** (S) — done 2026-09-30 (roadmap commit): `eval "Svy - " 1+1` → 2; `inject "Svy - "` correctly refused (installed 1.1.0 running); `.live/` gitignored; README written. Original task: `tools/live/plexus-live.mjs`, `cdp-drag.mjs`, `cdp-logs.mjs` are copies of the 1.2 harness with two guards (refuses `plx typing bench`; refuses to inject over an installed Plexus). Add `.live/` to `.gitignore`. Add `tools/live/README.md` with every command and step type (`move`, `down`, `up`, `click`, `drag`, `key`, `text`, `wait`, `wheel`). Accept: `node tools/live/plexus-live.mjs eval "Svy - " "1+1"` prints 2.
-- [ ] **PRE-2 Ledger helpers** (S) — `tools/live/ledger.mjs`: `add <uid> <why>`, `list`, `cleanup` (deletes ledger uids in reverse creation order through `roamAlphaAPI.data.block.delete`, skipping any uid whose page is not a test page). Accept: create, list, cleanup round trip on Test Lab.
-- [ ] **PRE-3 Fixture builder** (M) — `tools/live/fixture.mjs <phase>` builds `Plexus Diagram/Test Lab` → `P<n> fixture` board through the extension's own session API (enhance, then add 6 cards: note, page ref, block ref, image, TODO, nested board; 2 sections; 3 connections, one labelled). Every uid goes to the ledger. Accept: the board renders on the injected build; a second run reuses the page and creates a fresh board.
-- [ ] **PRE-4 Baselines** (S) — Record in this file under section 8: typing bench delta, open time for a 6-card and a 120-card board, unload counts, number of palette commands, bundle size of `extension.js` and `extension.css`.
-- [ ] **PRE-5 Re-verify the screenshot bugs on 1.2** (S) — On the injected 1.2 build in Svy: new card shows a bullet and a child outline (expected: still true, fixed in NP-1); Enter in a card keeps typing (expected fixed in 1.2); zoomed-out text clamps (expected fixed). Record results here.
+- [x] **PRE-2 Ledger helpers** (S) — done 2026-09-30: Svy roundtrip created Test Lab `gbXs7Std6`, listed scratch `h7p1upqwc`, cleanup deleted it (`scratchGone: true`) and skipped the page.
+- [x] **PRE-3 Fixture builder** (M) — done 2026-09-30: Readwisenotes (Svy inject refused). `session()` enhance then 6 cards, 2 sections, 3 edges. First board `7XhQbTmMo` renders (`.live/shots/PRE-3.png`). Second run `createdPage: false`, new board `XMncUB_km`.
+- [x] **PRE-4 Baselines** (S) — done 2026-09-30: numbers in section 8. Typing delta −0.39 ms/key on Readwisenotes (no board mounted). 6-card open 216 ms, 120-card open 146 ms.
+- [x] **PRE-5 Re-verify the screenshot bugs on 1.2** (S) — done 2026-09-30, installed 1.2.0 on Svy board `UZFdVYL7X` (inject refused). View mode has no bullet element (header span + child span). Edit mode shows two Roam bullets (root and child), `.live/shots/PRE-5-edit.png`. Enter created child `beta` and left the editor open. At 10% zoom the card stays a tile, no spill (`.live/shots/PRE-5-zoom.png`).
 
 ### P1: Native parity — add, never take away (1.3.0)
 
@@ -249,7 +249,8 @@ AI agent features inside the board, SuperTag-style typed schemas or class tags, 
 
 Fill in as phases run. Keep the newest at the top of each list.
 
-- Baselines (PRE-4): _pending_
+- Baselines (PRE-4), Readwisenotes, 2026-09-30: typing delta −0.39 ms/key (33.79 injected, 34.18 unloaded, 200 keys, no board mounted). Open 6-card `7XhQbTmMo` 216 ms; 120-card `rw4_lPoOm` 146 ms. Unload of that board: 1472 `.pxd-*` nodes to 0, 1 watch to 0. No-board listeners: window 108 to 106, document stayed 140. Palette commands: 6, plus context `Plexus: Enhance`. Bundle: extension.js 441713, extension.css 61452.
+- PRE-5, installed 1.2.0 on Svy `UZFdVYL7X`: view mode has no bullet node. Edit mode shows the root bullet and the child bullet. Enter left the editor open on child `beta`. At 10% the card is a tile with no spill.
 - NP-6 sidebar spike: _pending_
 - NP-13 keyboard parity table: _pending_
 - PF-2 300-card numbers: _pending_

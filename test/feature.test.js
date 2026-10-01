@@ -305,6 +305,19 @@ async function withEnv(options, fn) {
 
 // ---- tests ------------------------------------------------------------------------------------
 
+test("session() acquires a board session and the caller releases it", async () => {
+  await withEnv({ enhanced: ["boardAAA1"] }, async (t) => {
+    await t.install();
+    const before = t.sessions.acquired;
+    const session = t.env.win.__plexusDiagram.session("boardAAA1");
+    assert.equal(session.uid, "boardAAA1");
+    assert.equal(t.sessions.acquired, before + 1);
+    assert.equal(t.env.win.__plexusDiagram.session(""), null);
+    session.release();
+    assert.equal(t.sessions.released, 1);
+  });
+});
+
 test("PACKAGE_VERSION comes from package.json", async () => {
   const { readFile } = await import("node:fs/promises");
   const pkg = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));

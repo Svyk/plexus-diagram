@@ -422,7 +422,7 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
         btn("pxd-ctx__flip", "Flip", "Swap endpoints", () => on.flip?.());
         seg("pxd-ctx__route", [["curve", "Curve"], ["straight", "Straight"], ["elbow", "Elbow"]], model?.route, (v) => on.route?.(v));
         seg("pxd-ctx__dash", [["solid", "Solid"], ["dashed", "Dashed"], ["animated", "Animated"]], model?.dash, (v) => on.dash?.(v));
-        seg("pxd-ctx__weight", [[1, "1"], [2, "2"], [3, "3"]], model?.weight, (v) => on.weight?.(v));
+        seg("pxd-ctx__weight", [[1, "1"], [2, "2"], [3, "3"], [4, "4"]], model?.weight, (v) => on.weight?.(v));
         swatches(row, (c) => on.setColor?.(c));
         btn("pxd-ctx__label", "Label", "Edit the label", () => on.label?.());
         btn("pxd-ctx__notes", "Notes", "Open the connection block in the sidebar", () => on.notes?.());

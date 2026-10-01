@@ -827,12 +827,21 @@ export function mountBoardView({
       bgTone = tone;
     }
     if (ownHex !== bgHex) {
-      if (ownHex) root.style.backgroundColor = ownHex;
-      else root.style.backgroundColor = "";
+      if (ownHex) {
+        root.style.backgroundColor = ownHex;
+        root.style.setProperty("--pxd-label-bg", ownHex);
+      } else {
+        root.style.backgroundColor = "";
+        root.style.removeProperty("--pxd-label-bg");
+      }
       bgHex = ownHex;
     }
     bgOverride = override;
     chrome.toolbar.setBackground({ pattern, tone: ownHex || tone, override });
+  };
+  const applyMotion = () => {
+    const motion = setting("motion", "full");
+    root.classList.toggle("pxd-root--motion-off", motion === "reduced" || motion === "none");
   };
 
   // ------------------------------------------------------------ focus mode
@@ -1261,7 +1270,7 @@ export function mountBoardView({
       setSectionStyle: (patch) => { if (selection.items.length) void session.setSectionStyle?.(selection.items, patch); },
       resetSections: () => { if (selection.items.length) void session.resetSectionStyle?.(selection.items); },
       setEdge: (patch) => { if (selection.edge) void session.updateEdge?.(selection.edge, patch); },
-      resetEdge: () => { if (selection.edge) void session.updateEdge?.(selection.edge, { dir: "one", route: "curve", dash: "solid", color: null }); },
+      resetEdge: () => { if (selection.edge) void session.updateEdge?.(selection.edge, { dir: "one", route: "curve", dash: "solid", weight: 1, color: null }); },
       setDefaults: (patch) => { void session.setSectionDefaults?.(patch); },
       resetDefaults: () => { void session.resetSectionDefaults?.(); },
       setBackground: (patch) => {
@@ -2011,6 +2020,7 @@ export function mountBoardView({
     vp = fitViewport(boundsOf([...r.values()]), size.width && size.height ? size : { width: 800, height: 560 }, { padding: 64, maxZoom: 1 });
   }
   applyBackground();
+  applyMotion();
   applyLod();
   itemsR.setShowBadges(flag("show-card-badges", true));
   dirty.viewport = true;
@@ -2110,6 +2120,7 @@ export function mountBoardView({
       const minimapBefore = setting("show-minimap", true) !== false;
       settingsRef = next;
       applyBackground();
+      applyMotion();
       applyLod();
       const minimapNow = setting("show-minimap", true) !== false;
       if (minimapNow !== minimapBefore) chrome.minimap.setVisible(minimapNow);

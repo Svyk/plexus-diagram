@@ -150,8 +150,10 @@ export function createPropsPanel({ doc = globalThis.document, root, storage, on 
     choice(g, DASH_LABELS, edge.dash || "solid", (v) => on.setEdge?.({ dash: v }));
     el("span", "pxd-props__label", g, "Type");
     choice(g, ROUTE_LABELS, ROUTES.includes(edge.route) ? edge.route : "curve", (v) => on.setEdge?.({ route: v }));
+    el("span", "pxd-props__label", g, "Weight");
+    choice(g, [[1, "1"], [2, "2"], [3, "3"], [4, "4"]], [1, 2, 3, 4].includes(edge.weight) ? edge.weight : 1, (v) => on.setEdge?.({ weight: v }));
     colorField(g, "Color", edge.color, (c) => on.setEdge?.({ color: c }));
-    button(g, "pxd-props__reset", "Reset", "Remove direction, decoration, type, and color", () => on.resetEdge?.());
+    button(g, "pxd-props__reset", "Reset", "Remove direction, decoration, type, weight, and color", () => on.resetEdge?.());
   };
 
   const sectionGroup = (items, title, key, write, resetLabel, reset) => {

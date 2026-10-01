@@ -379,6 +379,7 @@ var SECTION_TITLE_MAX = 48;
 var SECTION_TITLE_DEFAULT = 18;
 var ALIGNS = ["left", "center", "right", "justify"];
 var EDGE_DEFAULTS = { fromSide: "auto", toSide: "auto", dir: "one", route: "curve", dash: "solid", weight: 1 };
+var EDGE_WEIGHTS = [1, 2, 3, 4];
 var SIDES2 = ["auto", "top", "right", "bottom", "left"];
 var ARROWS = { one: "→", two: "↔", none: "—" };
 var DIRS = ["one", "two", "none"];
@@ -568,7 +569,7 @@ function normalizeEdge(plexus) {
     dir: pick(p.dir, DIRS, EDGE_DEFAULTS.dir),
     route: pick(p.route, ROUTES, EDGE_DEFAULTS.route),
     dash: pick(p.dash, DASHES, EDGE_DEFAULTS.dash),
-    weight: [1, 2, 3].includes(p.weight) ? p.weight : EDGE_DEFAULTS.weight,
+    weight: EDGE_WEIGHTS.includes(p.weight) ? p.weight : EDGE_DEFAULTS.weight,
     color: styleColor(p.color)
   };
 }
@@ -7550,7 +7551,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
         btn("pxd-ctx__flip", "Flip", "Swap endpoints", () => on.flip?.());
         seg("pxd-ctx__route", [["curve", "Curve"], ["straight", "Straight"], ["elbow", "Elbow"]], model?.route, (v) => on.route?.(v));
         seg("pxd-ctx__dash", [["solid", "Solid"], ["dashed", "Dashed"], ["animated", "Animated"]], model?.dash, (v) => on.dash?.(v));
-        seg("pxd-ctx__weight", [[1, "1"], [2, "2"], [3, "3"]], model?.weight, (v) => on.weight?.(v));
+        seg("pxd-ctx__weight", [[1, "1"], [2, "2"], [3, "3"], [4, "4"]], model?.weight, (v) => on.weight?.(v));
         swatches(row, (c) => on.setColor?.(c));
         btn("pxd-ctx__label", "Label", "Edit the label", () => on.label?.());
         btn("pxd-ctx__notes", "Notes", "Open the connection block in the sidebar", () => on.notes?.());
@@ -7953,8 +7954,10 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
     choice(g, DASH_LABELS, edge.dash || "solid", (v) => on.setEdge?.({ dash: v }));
     el("span", "pxd-props__label", g, "Type");
     choice(g, ROUTE_LABELS, ROUTES.includes(edge.route) ? edge.route : "curve", (v) => on.setEdge?.({ route: v }));
+    el("span", "pxd-props__label", g, "Weight");
+    choice(g, [[1, "1"], [2, "2"], [3, "3"], [4, "4"]], [1, 2, 3, 4].includes(edge.weight) ? edge.weight : 1, (v) => on.setEdge?.({ weight: v }));
     colorField(g, "Color", edge.color, (c) => on.setEdge?.({ color: c }));
-    button(g, "pxd-props__reset", "Reset", "Remove direction, decoration, type, and color", () => on.resetEdge?.());
+    button(g, "pxd-props__reset", "Reset", "Remove direction, decoration, type, weight, and color", () => on.resetEdge?.());
   };
   const sectionGroup = (items, title, key, write, resetLabel, reset) => {
     const g = group(title, key);
@@ -10388,12 +10391,21 @@ function mountBoardView({
       bgTone = tone;
     }
     if (ownHex !== bgHex) {
-      if (ownHex) root.style.backgroundColor = ownHex;
-      else root.style.backgroundColor = "";
+      if (ownHex) {
+        root.style.backgroundColor = ownHex;
+        root.style.setProperty("--pxd-label-bg", ownHex);
+      } else {
+        root.style.backgroundColor = "";
+        root.style.removeProperty("--pxd-label-bg");
+      }
       bgHex = ownHex;
     }
     bgOverride = override;
     chrome.toolbar.setBackground({ pattern, tone: ownHex || tone, override });
+  };
+  const applyMotion = () => {
+    const motion = setting("motion", "full");
+    root.classList.toggle("pxd-root--motion-off", motion === "reduced" || motion === "none");
   };
   const focusSetNow = () => {
     const b = board();
@@ -11098,7 +11110,7 @@ function mountBoardView({
         if (selection.edge) void session.updateEdge?.(selection.edge, patch);
       },
       resetEdge: () => {
-        if (selection.edge) void session.updateEdge?.(selection.edge, { dir: "one", route: "curve", dash: "solid", color: null });
+        if (selection.edge) void session.updateEdge?.(selection.edge, { dir: "one", route: "curve", dash: "solid", weight: 1, color: null });
       },
       setDefaults: (patch) => {
         void session.setSectionDefaults?.(patch);
@@ -11932,6 +11944,7 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
     vp = fitViewport(boundsOf([...r.values()]), size.width && size.height ? size : { width: 800, height: 560 }, { padding: 64, maxZoom: 1 });
   }
   applyBackground();
+  applyMotion();
   applyLod();
   itemsR.setShowBadges(flag("show-card-badges", true));
   dirty.viewport = true;
@@ -12059,6 +12072,7 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
       const minimapBefore = setting("show-minimap", true) !== false;
       settingsRef = next;
       applyBackground();
+      applyMotion();
       applyLod();
       const minimapNow = setting("show-minimap", true) !== false;
       if (minimapNow !== minimapBefore) chrome.minimap.setVisible(minimapNow);

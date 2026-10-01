@@ -16,6 +16,7 @@ export const SECTION_TITLE_MAX = 48;
 export const SECTION_TITLE_DEFAULT = 18;
 export const ALIGNS = ["left", "center", "right", "justify"];
 export const EDGE_DEFAULTS = { fromSide: "auto", toSide: "auto", dir: "one", route: "curve", dash: "solid", weight: 1 };
+export const EDGE_WEIGHTS = [1, 2, 3, 4];
 export const SIDES = ["auto", "top", "right", "bottom", "left"];
 export const ARROWS = { one: "→", two: "↔", none: "—" };
 export const DIRS = ["one", "two", "none"];
@@ -227,7 +228,7 @@ export function normalizeEdge(plexus) {
     dir: pick(p.dir, DIRS, EDGE_DEFAULTS.dir),
     route: pick(p.route, ROUTES, EDGE_DEFAULTS.route),
     dash: pick(p.dash, DASHES, EDGE_DEFAULTS.dash),
-    weight: [1, 2, 3].includes(p.weight) ? p.weight : EDGE_DEFAULTS.weight,
+    weight: EDGE_WEIGHTS.includes(p.weight) ? p.weight : EDGE_DEFAULTS.weight,
     color: styleColor(p.color),
   };
 }

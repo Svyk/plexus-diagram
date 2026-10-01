@@ -67,6 +67,8 @@ test("normalizeEdge / serializeEdge", () => {
   assert.deepEqual(e, { from: "a", to: "b", fromSide: "left", toSide: "auto", dir: "one", route: "elbow", dash: "solid", weight: 1, color: "pink" });
   assert.deepEqual(serializeEdge(e), { type: "edge", from: "a", to: "b", fromSide: "left", route: "elbow", color: "pink" });
   assert.deepEqual(serializeEdge(normalizeEdge({ from: "a", to: "b" })), { type: "edge", from: "a", to: "b" });
+  assert.equal(normalizeEdge({ from: "a", to: "b", weight: 4 }).weight, 4);
+  assert.equal(serializeEdge(normalizeEdge({ from: "a", to: "b", weight: 4 })).weight, 4);
 });
 
 test("classifyString", () => {

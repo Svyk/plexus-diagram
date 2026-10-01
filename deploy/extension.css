@@ -729,6 +729,7 @@ body.pxd-has-fullscreen .breadcrumbs-content {
 
 .pxd-edge--w2 .pxd-edge__line { stroke-width: 3px; }
 .pxd-edge--w3 .pxd-edge__line { stroke-width: 4.5px; }
+.pxd-edge--w4 .pxd-edge__line { stroke-width: 6px; }
 
 .pxd-edge--dashed .pxd-edge__line {
   stroke-dasharray: 8 6;
@@ -756,6 +757,9 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   stroke: var(--pxd-accent);
   stroke-width: 3px;
 }
+
+.pxd-edge--selected.pxd-edge--w3 .pxd-edge__line { stroke-width: 4.5px; }
+.pxd-edge--selected.pxd-edge--w4 .pxd-edge__line { stroke-width: 6px; }
 
 .pxd-edge--selected .pxd-edge__head {
   fill: var(--pxd-accent);
@@ -810,7 +814,7 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   padding: 2px 8px;
   border: 1px solid var(--pxd-line, var(--pxd-border-strong));
   border-radius: 999px;
-  background: var(--pxd-card);
+  background: var(--pxd-label-bg, var(--pxd-surface));
   color: var(--pxd-text-c, var(--pxd-text));
   font-size: 11px;
   line-height: 1.3;
@@ -2768,6 +2772,10 @@ body.roam-body.dark .pxd-root .pxd-present-hud,
   .pxd-root .pxd-edge--animated .pxd-edge__line {
     animation: none;
   }
+}
+
+.pxd-root.pxd-root--motion-off .pxd-edge--animated .pxd-edge__line {
+  animation: none;
 }
 
 /* Plus marks, one per grid cell. The view sets background-size to the pitch, which scales the tile. */

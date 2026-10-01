@@ -1463,6 +1463,50 @@ test("NP-7: a sidebar board keeps its own viewport, keys, and fullscreen", async
   }
 });
 
+test("NP-8: every direction, decoration, and type paints, including weight 4", async () => {
+  const f = mountFixture({ settings: { motion: "reduced" } });
+  try {
+    await f.flush();
+    assert.ok(f.view.root.classList.contains("pxd-root--motion-off"));
+    const edge = f.board.edges.get("edgeFFFF6");
+    const dirs = ["one", "none", "two"];
+    const dashes = ["solid", "dashed", "animated"];
+    const routes = ["straight", "elbow", "curve"];
+    let n = 0;
+    for (const dir of dirs) {
+      for (const dash of dashes) {
+        for (const route of routes) {
+          edge.dir = dir;
+          edge.dash = dash;
+          edge.route = route;
+          edge.weight = 4;
+          f.session.emit("change", { dirty: new Set(["edgeFFFF6"]) });
+          await f.flush();
+          const g = f.view.root.querySelector(".pxd-edge[data-uid=edgeFFFF6]");
+          assert.ok(g.querySelector(".pxd-edge__line").getAttribute("d"), `${dir} ${dash} ${route}`);
+          assert.ok(g.classList.contains("pxd-edge--w4"));
+          assert.equal(g.classList.contains("pxd-edge--dashed"), dash === "dashed");
+          assert.equal(g.classList.contains("pxd-edge--animated"), dash === "animated");
+          const heads = [...g.querySelectorAll(".pxd-edge__head")];
+          const head = heads.find((el) => !el.classList.contains("pxd-edge__tail")).getAttribute("display") !== "none";
+          const tail = heads.find((el) => el.classList.contains("pxd-edge__tail")).getAttribute("display") !== "none";
+          assert.equal(head, dir !== "none", dir);
+          assert.equal(tail, dir === "two", dir);
+          n += 1;
+        }
+      }
+    }
+    assert.equal(n, 27);
+    f.board.plexus.bgColor = "#112233";
+    f.session.emit("change", {});
+    await f.flush();
+    assert.equal(f.view.root.style["--pxd-label-bg"], "#112233");
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
 test("NP-6: a page mount has no sidebar mode bar", async () => {
   const f = mountFixture();
   try {

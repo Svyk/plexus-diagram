@@ -15,6 +15,15 @@ Palette and slash commands also include **Plexus: Export board as SVG** and **Pl
 
 Boards enhanced with 0.6 upgrade to the 1.0 format once, the first time they are opened.
 
+## 1.3 native parity
+
+An enhanced board keeps Roam's diagram controls and adds to them.
+
+- The right rail is zoom in, zoom out, fit view, Toggle Minimap, Save PNG, Open outline in sidebar, Edit Block, then Maximize.
+- Edit Block opens the diagram block's text. Esc returns to the board.
+- The Properties panel edits text, fill, border, edges, sections, and the background.
+- A note card is a plain block. Hover shows Color, Expand, and References.
+
 ## Using the board
 
 | Do | How |

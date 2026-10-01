@@ -1,5 +1,9 @@
 # Changelog
 
+## 1.3.0 — 2026-10-01
+
+- Native parity on an enhanced board: plain block cards, a node hover toolbar, a right-hand control rail, a properties panel, PNG export, outline in the sidebar, boards in the sidebar, edge styles, native embeds, style import on Enhance, per-card expand, minimap drag, keyboard parity, and Edit Block.
+
 ## 1.2.0 — 2026-09-29
 
 Fixes from the second round of testing on 1.1.0:

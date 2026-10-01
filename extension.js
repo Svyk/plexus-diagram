@@ -1,4 +1,4 @@
-/* Plexus Diagram v1.2.0 | MIT | generated; edit src/ */
+/* Plexus Diagram v1.3.0 | MIT | generated; edit src/ */
 
 // src/model/geometry.js
 var num = (n) => {
@@ -4536,7 +4536,7 @@ function createLifecycle() {
 // package.json
 var package_default = {
   name: "plexus-diagram",
-  version: "1.2.0",
+  version: "1.3.0",
   private: true,
   description: "Heptabase-style whiteboard for Roam {{[[diagram]]}} blocks: cards, colored sections, and connections that are real Roam blocks and links",
   type: "module",

@@ -1,0 +1,26 @@
+/* NP-2. The three native node tools sit in the context bar. Hit target is 28px. */
+
+.pxd-root .pxd-ctx .pxd-ctx__btn.pxd-ctx__color,
+.pxd-root .pxd-ctx .pxd-ctx__btn.pxd-ctx__expand,
+.pxd-root .pxd-ctx .pxd-ctx__btn.pxd-ctx__refs {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  box-sizing: border-box;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  min-height: 28px;
+  padding: 0;
+}
+
+.pxd-root .pxd-ctx .pxd-ctx__btn.pxd-ctx__refs {
+  width: auto;
+  padding: 0 6px;
+}
+
+.pxd-root .pxd-ctx .pxd-ctx__picker {
+  display: flex;
+  margin-top: 4px;
+}

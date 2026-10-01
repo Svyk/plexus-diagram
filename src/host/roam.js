@@ -1,8 +1,8 @@
 import { attrNameOf, mergePropsForWrite, parseBoardTitle, plainKeys } from "../model/schema.js";
 
 export const BOARD_PATTERN = `[:block/uid :block/string :block/order :block/heading :block/open :block/props
- {:block/children [:block/uid :block/string :block/order :block/heading :block/props
-   {:block/children [:block/uid :block/string :block/order :block/heading :block/props
+ {:block/children [:block/uid :block/string :block/order :block/heading :block/open :block/props
+   {:block/children [:block/uid :block/string :block/order :block/heading :block/open :block/props
      {:block/children ...}]}]}]`;
 
 const ciPattern = (text) => `(?i)${String(text).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`;

@@ -542,6 +542,19 @@ export function mountBoardView({
     const bounds = boundsOf(selection.items.map((u) => r.get(u)).filter(Boolean));
     return bounds ? { kind: "items", rect: toScreenRect(bounds) } : null;
   };
+  const refCountOf = (item) => {
+    if (!item || item.type !== "card") return 0;
+    const key = badgeKeyOf(item);
+    const hit = badgeCache.get(key);
+    if (hit) return Number(hit.stats?.refs) || 0;
+    if (typeof host?.cardStats !== "function") return 0;
+    let res;
+    try { res = host.cardStats([badgeTargetOf(item)], { boardUid }); } catch { return 0; }
+    const stats = (res instanceof Map ? res.get(key) : res?.[key]) || { refs: 0, boards: 0, open: 0, done: 0 };
+    badgeCache.set(key, { at: Date.now(), stats });
+    return Number(stats.refs) || 0;
+  };
+  const cardModel = (item) => (item?.type === "card" ? { ...item, refs: refCountOf(item) } : item);
   const showCtx = () => {
     const b = board();
     if (!b) return chrome.ctx.hide();
@@ -560,12 +573,29 @@ export function mountBoardView({
       return chrome.ctx.show("cards", model, ctxAnchor);
     }
     const it = items[0];
-    return chrome.ctx.show(it.type === "section" ? "section" : it.type === "text" ? "text" : it.kind === "board" ? "board" : "card", it, ctxAnchor);
+    return chrome.ctx.show(it.type === "section" ? "section" : it.type === "text" ? "text" : it.kind === "board" ? "board" : "card", cardModel(it), ctxAnchor);
   };
 
   // ------------------------------------------------------------ session mutations used by chrome
   const targetUids = () => (selection.edge ? [selection.edge] : selection.items);
   const singleItem = () => (selection.items.length === 1 ? board()?.items.get(selection.items[0]) : null);
+  let hoverUid = null;
+  const selectionOwnsBar = () => Boolean(selection.edge || selection.link || selection.items.length);
+  const barCard = () => {
+    const sel = singleItem();
+    if (sel?.type === "card") return sel;
+    if (!selectionOwnsBar() && hoverUid) {
+      const it = board()?.items.get(hoverUid);
+      if (it?.type === "card") return it;
+    }
+    return null;
+  };
+  const mentionsUid = (item) => {
+    if (!item) return null;
+    if (item.target?.kind === "page") return host?.pageUid?.(item.target.title) || null;
+    if (item.target?.kind === "block") return item.target.uid || null;
+    return item.uid;
+  };
   const openItemInSidebar = (item) => {
     if (!item) return;
     if (item.target.kind === "page") {
@@ -1018,6 +1048,12 @@ export function mountBoardView({
       edit: () => { const it = singleItem(); if (it) void enterEdit(it.uid); },
       openSidebar: () => openItemInSidebar(singleItem()),
       collapse: () => { const it = singleItem(); if (it) void session.setCollapsed?.(it.uid, !it.collapsed); },
+      toggleOpen: () => { const it = barCard(); if (it) void session.setBlockOpen?.(it.uid, it.open === false); },
+      showRefs: () => {
+        const it = barCard();
+        const uid = mentionsUid(it);
+        if (uid) host?.openInSidebar?.(uid, "mentions");
+      },
       related: () => panel.open("related"),
       delete: () => ctl.deleteSelection(false),
       rename: () => { const it = singleItem(); if (it) itemsR.renameSection(it.uid); },
@@ -1560,7 +1596,32 @@ export function mountBoardView({
     const handled = ctl.handle(normalize(event, "contextmenu"));
     if (handled) event.preventDefault();
   });
-  listen(root, "pointermove", (event) => { lastPointer = { x: event.clientX || 0, y: event.clientY || 0 }; });
+  const showHover = (uid) => {
+    if (gesturing || itemsR.isEditing()) { hoverUid = null; return; }
+    if (selectionOwnsBar()) { hoverUid = null; return; }
+    if (!uid) {
+      if (hoverUid) { hoverUid = null; chrome.ctx.hide(); }
+      return;
+    }
+    if (uid === hoverUid && chrome.ctx.isOpen()) return;
+    const it = board()?.items.get(uid);
+    if (!it || it.type !== "card") {
+      if (hoverUid) { hoverUid = null; chrome.ctx.hide(); }
+      return;
+    }
+    hoverUid = uid;
+    const anchor = () => {
+      const r = rects().get(uid);
+      return r ? { kind: "items", rect: toScreenRect(r) } : null;
+    };
+    chrome.ctx.show(it.kind === "board" ? "board" : "card", cardModel(it), anchor);
+  };
+  listen(root, "pointermove", (event) => {
+    lastPointer = { x: event.clientX || 0, y: event.clientY || 0 };
+    if (event.target?.closest?.(".pxd-chrome")) return;
+    const node = event.target?.closest?.(".pxd-item--card");
+    showHover(node?.getAttribute?.("data-uid") || node?.dataset?.uid || null);
+  });
   listen(root, "pointerenter", () => { pointerInside = true; });
   listen(root, "pointerleave", () => { pointerInside = false; });
   const acceptsDrop = (event) => !event.target?.closest?.(".pxd-item__editor");

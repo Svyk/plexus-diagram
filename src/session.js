@@ -917,6 +917,22 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
       });
     },
 
+    // Roam :block/open on the card block only. Fold stays on plexus collapsed.
+    setBlockOpen(id, open) {
+      const item = board?.items.get(id);
+      if (!item || item.type !== "card") return Promise.resolve(false);
+      const node = rawNode(id);
+      if (!node) return Promise.resolve(false);
+      const next = open !== false;
+      if ((node[OPEN] !== false) === next) return Promise.resolve(false);
+      node[OPEN] = next;
+      publish();
+      return queue.run(async () => {
+        await host.setOpen(id, next);
+        return true;
+      }).catch((err) => { handleFailure(err); return false; });
+    },
+
     setFontSize(id, size) {
       return txn((t) => {
         if (board.items.has(id)) t.props(id, itemPlexus(id, { fontSize: size }));

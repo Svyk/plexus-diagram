@@ -110,7 +110,7 @@ const childUid = (c) => c?.[":block/uid"] ?? c?.uid ?? "";
 const childProps = (c) => c?.[":block/props"] ?? c?.props;
 
 function contentKeyOf(item) {
-  const parts = [item.kind, item.enhanced ? "e" : "", item.string, item.collapsed ? "c" : "", item.fontSize || ""];
+  const parts = [item.kind, item.enhanced ? "e" : "", item.string, item.collapsed ? "c" : "", item.open === false ? "x" : "", item.fontSize || ""];
   if (item.kind === "board") parts.push(item.w, item.h);
   if (item.kind === "board") {
     // The mini preview draws the child board's layout, so a layout-only change inside it must refresh the card.
@@ -478,6 +478,11 @@ export function createItemRenderer({
     } else if (item.kind === "board") {
       mountBoardBody(body, item);
     } else if (item.kind === "page") {
+      if (item.open === false) {
+        rec.roots = [];
+        rec.contentKey = contentKeyOf(item);
+        return;
+      }
       const holder = el("div", "pxd-item__page", body);
       const preview = host?.pagePreview?.(item.title, CONTENT_DEPTH, CONTENT_LIMIT);
       // contentKey is stamped after mountContent returns, so only the async path can be stale.
@@ -498,6 +503,11 @@ export function createItemRenderer({
       else rec.refTitle = typeof refString === "string" ? firstLine(refString).slice(0, REF_TITLE_MAX) : "";
       if (editing?.uid !== item.uid) rec.header.textContent = String(rec.refTitle || item.title || "").slice(0, HEADER_TEXT_MAX);
       if (isBoardRef) {
+        if (item.open === false) {
+          rec.roots = budget.roots;
+          rec.contentKey = contentKeyOf(item);
+          return;
+        }
         // Whiteboard shortcut: the same thumbnail from the referenced board's children. Never renderString (a nested overlay).
         const pulled = host?.pullBoard?.(ref);
         mountBoardBody(body, {
@@ -511,6 +521,11 @@ export function createItemRenderer({
         }, { openUid: ref });
       } else {
         if (typeof refString === "string" && refString.trim()) budget.roots.push(renderRoot(body, refString, "pxd-rs pxd-item__string"));
+        if (item.open === false) {
+          rec.roots = budget.roots;
+          rec.contentKey = contentKeyOf(item);
+          return;
+        }
         const tree = host?.pullTree?.(ref, CONTENT_DEPTH, CONTENT_LIMIT);
         const apply = (blocks, sync = false) => {
           if (disposed || !body.isConnected || (!sync && rec.contentKey !== contentKeyOf(item))) return;
@@ -524,7 +539,7 @@ export function createItemRenderer({
       }
     } else {
       if (item.string?.trim()) budget.roots.push(renderRoot(body, item.string, "pxd-rs pxd-item__string"));
-      renderBlocks(body, item.content || [], 1, budget);
+      if (item.open !== false) renderBlocks(body, item.content || [], 1, budget);
       if (!item.string?.trim() && !(item.content || []).length) {
         el("div", "pxd-item__placeholder", body).textContent = "Empty card";
       }

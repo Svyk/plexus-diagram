@@ -726,6 +726,7 @@ function buildBoard(pulled, { defaults } = {}) {
         fontSize: layout.fontSize,
         pinned: layout.pinned,
         look: type === "card" ? cardLook(kind, layout.look) : void 0,
+        open: type === "card" ? child[":block/open"] !== false : void 0,
         autofit: !(type === "section" && layout.fit === false),
         title,
         target,
@@ -1458,8 +1459,8 @@ function coveredBy(links, board) {
 
 // src/host/roam.js
 var BOARD_PATTERN = `[:block/uid :block/string :block/order :block/heading :block/open :block/props
- {:block/children [:block/uid :block/string :block/order :block/heading :block/props
-   {:block/children [:block/uid :block/string :block/order :block/heading :block/props
+ {:block/children [:block/uid :block/string :block/order :block/heading :block/open :block/props
+   {:block/children [:block/uid :block/string :block/order :block/heading :block/open :block/props
      {:block/children ...}]}]}]`;
 var ciPattern = (text) => `(?i)${String(text).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`;
 var NATIVE_PATTERN = `[{:diagram/nodes [:db/id :diagram.node/data {:diagram.node/block [:block/uid :block/string]} {:diagram.node/parent-node [:db/id]}]}
@@ -3260,6 +3261,24 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
     setCollapsed(id, value) {
       return txn((t) => {
         if (board.items.has(id)) t.props(id, itemPlexus(id, { collapsed: value ? true : void 0 }));
+      });
+    },
+    // Roam :block/open on the card block only. Fold stays on plexus collapsed.
+    setBlockOpen(id, open) {
+      const item = board?.items.get(id);
+      if (!item || item.type !== "card") return Promise.resolve(false);
+      const node = rawNode(id);
+      if (!node) return Promise.resolve(false);
+      const next = open !== false;
+      if (node[OPEN] !== false === next) return Promise.resolve(false);
+      node[OPEN] = next;
+      publish();
+      return queue.run(async () => {
+        await host.setOpen(id, next);
+        return true;
+      }).catch((err) => {
+        handleFailure(err);
+        return false;
       });
     },
     setFontSize(id, size) {
@@ -5212,7 +5231,7 @@ var childKids = (c) => c?.[":block/children"] ?? c?.children ?? [];
 var childUid = (c) => c?.[":block/uid"] ?? c?.uid ?? "";
 var childProps = (c) => c?.[":block/props"] ?? c?.props;
 function contentKeyOf(item) {
-  const parts = [item.kind, item.enhanced ? "e" : "", item.string, item.collapsed ? "c" : "", item.fontSize || ""];
+  const parts = [item.kind, item.enhanced ? "e" : "", item.string, item.collapsed ? "c" : "", item.open === false ? "x" : "", item.fontSize || ""];
   if (item.kind === "board") parts.push(item.w, item.h);
   if (item.kind === "board") {
     let budget = BOARD_KEY_NODES;
@@ -5587,6 +5606,11 @@ function createItemRenderer({
     } else if (item.kind === "board") {
       mountBoardBody(body, item);
     } else if (item.kind === "page") {
+      if (item.open === false) {
+        rec.roots = [];
+        rec.contentKey = contentKeyOf(item);
+        return;
+      }
       const holder = el("div", "pxd-item__page", body);
       const preview = host?.pagePreview?.(item.title, CONTENT_DEPTH, CONTENT_LIMIT);
       const apply = (p, sync2 = false) => {
@@ -5610,6 +5634,11 @@ function createItemRenderer({
       else rec.refTitle = typeof refString === "string" ? firstLine(refString).slice(0, REF_TITLE_MAX) : "";
       if (editing?.uid !== item.uid) rec.header.textContent = String(rec.refTitle || item.title || "").slice(0, HEADER_TEXT_MAX);
       if (isBoardRef) {
+        if (item.open === false) {
+          rec.roots = budget.roots;
+          rec.contentKey = contentKeyOf(item);
+          return;
+        }
         const pulled = host?.pullBoard?.(ref);
         mountBoardBody(body, {
           uid: ref,
@@ -5622,6 +5651,11 @@ function createItemRenderer({
         }, { openUid: ref });
       } else {
         if (typeof refString === "string" && refString.trim()) budget.roots.push(renderRoot(body, refString, "pxd-rs pxd-item__string"));
+        if (item.open === false) {
+          rec.roots = budget.roots;
+          rec.contentKey = contentKeyOf(item);
+          return;
+        }
         const tree = host?.pullTree?.(ref, CONTENT_DEPTH, CONTENT_LIMIT);
         const apply = (blocks, sync2 = false) => {
           if (disposed || !body.isConnected || !sync2 && rec.contentKey !== contentKeyOf(item)) return;
@@ -5636,7 +5670,7 @@ function createItemRenderer({
       }
     } else {
       if (item.string?.trim()) budget.roots.push(renderRoot(body, item.string, "pxd-rs pxd-item__string"));
-      renderBlocks(body, item.content || [], 1, budget);
+      if (item.open !== false) renderBlocks(body, item.content || [], 1, budget);
       if (!item.string?.trim() && !(item.content || []).length) {
         el("div", "pxd-item__placeholder", body).textContent = "Empty card";
       }
@@ -6975,9 +7009,42 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     };
     const pinButton = (pinned) => opt("pin", "pxd-ctx__pin-toggle", pinned ? "Unpin" : "Pin", pinned ? "Unpin: allow moving and resizing again" : "Pin: lock position and size", () => on.pin(!pinned));
     const TIDY = [["grid", "Grid", "Tidy into a grid"], ["row", "Row", "Tidy into a row"], ["column", "Column", "Tidy into a column"]];
+    const iconBtn = (cls, icon, label, title, fn) => {
+      const b = btn(cls, "", title, fn);
+      b.setAttribute("aria-label", label);
+      const i = el("span", `bp3-icon bp3-icon-${icon}`, b);
+      i.setAttribute("aria-hidden", "true");
+      return b;
+    };
     switch (kind) {
       case "card":
       case "cards": {
+        if (kind === "card") {
+          const picker = el("div", "pxd-ctx__picker", ctx);
+          picker.style.display = "none";
+          let pickerBuilt = false;
+          iconBtn("pxd-ctx__color", "tint", "Color", "Color", () => {
+            if (!pickerBuilt) {
+              swatches(picker, (c) => {
+                on.setColor?.(c);
+                picker.style.display = "none";
+              });
+              pickerBuilt = true;
+            }
+            picker.style.display = picker.style.display === "none" ? "" : "none";
+          });
+          const closed = model?.open === false;
+          iconBtn(
+            "pxd-ctx__expand",
+            closed ? "expand-all" : "collapse-all",
+            closed ? "Expand children" : "Collapse children",
+            closed ? "Show children" : "Hide children",
+            () => on.toggleOpen?.()
+          );
+          const n = Number(model?.refs) || 0;
+          const refs = iconBtn("pxd-ctx__refs", "link", "References", `${n} ${n === 1 ? "reference" : "references"}`, () => on.showRefs?.());
+          el("span", "pxd-ctx__refs-count", refs, String(n));
+        }
         swatches(row, (c) => on.setColor?.(c));
         if (kind === "card") {
           btn("pxd-ctx__edit", "Edit", "Edit (Enter)", () => on.edit?.());
@@ -9295,6 +9362,23 @@ function mountBoardView({
     const bounds = boundsOf(selection.items.map((u) => r.get(u)).filter(Boolean));
     return bounds ? { kind: "items", rect: toScreenRect(bounds) } : null;
   };
+  const refCountOf = (item) => {
+    if (!item || item.type !== "card") return 0;
+    const key = badgeKeyOf(item);
+    const hit = badgeCache.get(key);
+    if (hit) return Number(hit.stats?.refs) || 0;
+    if (typeof host?.cardStats !== "function") return 0;
+    let res;
+    try {
+      res = host.cardStats([badgeTargetOf(item)], { boardUid });
+    } catch {
+      return 0;
+    }
+    const stats = (res instanceof Map ? res.get(key) : res?.[key]) || { refs: 0, boards: 0, open: 0, done: 0 };
+    badgeCache.set(key, { at: Date.now(), stats });
+    return Number(stats.refs) || 0;
+  };
+  const cardModel = (item) => item?.type === "card" ? { ...item, refs: refCountOf(item) } : item;
   const showCtx = () => {
     const b = board();
     if (!b) return chrome.ctx.hide();
@@ -9313,10 +9397,27 @@ function mountBoardView({
       return chrome.ctx.show("cards", model, ctxAnchor);
     }
     const it = items[0];
-    return chrome.ctx.show(it.type === "section" ? "section" : it.type === "text" ? "text" : it.kind === "board" ? "board" : "card", it, ctxAnchor);
+    return chrome.ctx.show(it.type === "section" ? "section" : it.type === "text" ? "text" : it.kind === "board" ? "board" : "card", cardModel(it), ctxAnchor);
   };
   const targetUids = () => selection.edge ? [selection.edge] : selection.items;
   const singleItem = () => selection.items.length === 1 ? board()?.items.get(selection.items[0]) : null;
+  let hoverUid = null;
+  const selectionOwnsBar = () => Boolean(selection.edge || selection.link || selection.items.length);
+  const barCard = () => {
+    const sel = singleItem();
+    if (sel?.type === "card") return sel;
+    if (!selectionOwnsBar() && hoverUid) {
+      const it = board()?.items.get(hoverUid);
+      if (it?.type === "card") return it;
+    }
+    return null;
+  };
+  const mentionsUid = (item) => {
+    if (!item) return null;
+    if (item.target?.kind === "page") return host?.pageUid?.(item.target.title) || null;
+    if (item.target?.kind === "block") return item.target.uid || null;
+    return item.uid;
+  };
   const openItemInSidebar = (item) => {
     if (!item) return;
     if (item.target.kind === "page") {
@@ -9966,6 +10067,15 @@ function mountBoardView({
         const it = singleItem();
         if (it) void session.setCollapsed?.(it.uid, !it.collapsed);
       },
+      toggleOpen: () => {
+        const it = barCard();
+        if (it) void session.setBlockOpen?.(it.uid, it.open === false);
+      },
+      showRefs: () => {
+        const it = barCard();
+        const uid = mentionsUid(it);
+        if (uid) host?.openInSidebar?.(uid, "mentions");
+      },
       related: () => panel.open("related"),
       delete: () => ctl.deleteSelection(false),
       rename: () => {
@@ -10608,8 +10718,43 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
     const handled = ctl.handle(normalize(event, "contextmenu"));
     if (handled) event.preventDefault();
   });
+  const showHover = (uid) => {
+    if (gesturing || itemsR.isEditing()) {
+      hoverUid = null;
+      return;
+    }
+    if (selectionOwnsBar()) {
+      hoverUid = null;
+      return;
+    }
+    if (!uid) {
+      if (hoverUid) {
+        hoverUid = null;
+        chrome.ctx.hide();
+      }
+      return;
+    }
+    if (uid === hoverUid && chrome.ctx.isOpen()) return;
+    const it = board()?.items.get(uid);
+    if (!it || it.type !== "card") {
+      if (hoverUid) {
+        hoverUid = null;
+        chrome.ctx.hide();
+      }
+      return;
+    }
+    hoverUid = uid;
+    const anchor = () => {
+      const r = rects().get(uid);
+      return r ? { kind: "items", rect: toScreenRect(r) } : null;
+    };
+    chrome.ctx.show(it.kind === "board" ? "board" : "card", cardModel(it), anchor);
+  };
   listen(root, "pointermove", (event) => {
     lastPointer = { x: event.clientX || 0, y: event.clientY || 0 };
+    if (event.target?.closest?.(".pxd-chrome")) return;
+    const node = event.target?.closest?.(".pxd-item--card");
+    showHover(node?.getAttribute?.("data-uid") || node?.dataset?.uid || null);
   });
   listen(root, "pointerenter", () => {
     pointerInside = true;

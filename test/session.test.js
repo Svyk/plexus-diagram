@@ -194,6 +194,22 @@ test("createCard stores look block on a note and omits it on a page ref; setLook
   assert.equal(fake.props(note).plexus.look, "block");
 });
 
+test("setBlockOpen writes Roam open on the card and leaves plexus props alone", async () => {
+  const { fake, session } = setup();
+  assert.equal(session.board.items.get("c4").open, true);
+  await session.setBlockOpen("c4", false);
+  await sleep(30);
+  assert.equal(fake.block("c4").open, false);
+  assert.equal(session.board.items.get("c4").open, false);
+  assert.equal(fake.props("c4").plexus.x, 800);
+  await session.setBlockOpen("c4", true);
+  await sleep(30);
+  assert.equal(fake.block("c4").open, true);
+  assert.equal(session.board.items.get("c4").open, true);
+  assert.equal(await session.setBlockOpen("s1", false), false);
+  assert.notEqual(fake.block("s1").open, false);
+});
+
 test("default-card-look card writes look card on a new note", async () => {
   const { fake, session } = setup({}, { settings: { "default-card-look": "card" } });
   const note = await session.createCard({ x: 1000, y: 1000, string: "alpha" });

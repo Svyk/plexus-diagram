@@ -286,9 +286,39 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
     const optSeg = (name, cls, options, fn) => { if (typeof on[name] === "function") seg(cls, options, null, fn); };
     const pinButton = (pinned) => opt("pin", "pxd-ctx__pin-toggle", pinned ? "Unpin" : "Pin", pinned ? "Unpin: allow moving and resizing again" : "Pin: lock position and size", () => on.pin(!pinned));
     const TIDY = [["grid", "Grid", "Tidy into a grid"], ["row", "Row", "Tidy into a row"], ["column", "Column", "Tidy into a column"]];
+    const iconBtn = (cls, icon, label, title, fn) => {
+      const b = btn(cls, "", title, fn);
+      b.setAttribute("aria-label", label);
+      const i = el("span", `bp3-icon bp3-icon-${icon}`, b);
+      i.setAttribute("aria-hidden", "true");
+      return b;
+    };
     switch (kind) {
       case "card":
       case "cards": {
+        if (kind === "card") {
+          const picker = el("div", "pxd-ctx__picker", ctx);
+          picker.style.display = "none";
+          let pickerBuilt = false;
+          iconBtn("pxd-ctx__color", "tint", "Color", "Color", () => {
+            if (!pickerBuilt) {
+              swatches(picker, (c) => { on.setColor?.(c); picker.style.display = "none"; });
+              pickerBuilt = true;
+            }
+            picker.style.display = picker.style.display === "none" ? "" : "none";
+          });
+          const closed = model?.open === false;
+          iconBtn(
+            "pxd-ctx__expand",
+            closed ? "expand-all" : "collapse-all",
+            closed ? "Expand children" : "Collapse children",
+            closed ? "Show children" : "Hide children",
+            () => on.toggleOpen?.(),
+          );
+          const n = Number(model?.refs) || 0;
+          const refs = iconBtn("pxd-ctx__refs", "link", "References", `${n} ${n === 1 ? "reference" : "references"}`, () => on.showRefs?.());
+          el("span", "pxd-ctx__refs-count", refs, String(n));
+        }
         swatches(row, (c) => on.setColor?.(c));
         if (kind === "card") {
           btn("pxd-ctx__edit", "Edit", "Edit (Enter)", () => on.edit?.());

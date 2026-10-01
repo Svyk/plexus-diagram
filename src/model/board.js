@@ -136,6 +136,7 @@ export function buildBoard(pulled, { defaults } = {}) {
         fontSize: layout.fontSize,
         pinned: layout.pinned,
         look: type === "card" ? cardLook(kind, layout.look) : undefined,
+        open: type === "card" ? child[":block/open"] !== false : undefined,
         autofit: !(type === "section" && layout.fit === false),
         title,
         target,

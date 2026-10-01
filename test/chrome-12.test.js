@@ -176,7 +176,7 @@ test("card ctx bar gains Pin, Fit height, Copy ref, Duplicate, Send to board", (
   const f = setup(on);
   t.after(f.restore);
   const ctx = showCtx(f, "card", { kind: "block", pinned: false, collapsed: false });
-  assert.deepEqual(labels(ctx), ["Edit", "Open in sidebar", "Collapse", "Related…", "Pin", "Fit height", "Copy ref", "Duplicate", "Send to board…", "Mind map", "Delete"]);
+  assert.deepEqual(labels(ctx), ["", "", "", "Edit", "Open in sidebar", "Collapse", "Related…", "Pin", "Fit height", "Copy ref", "Duplicate", "Send to board…", "Mind map", "Delete"]);
   for (const cls of [".pxd-ctx__pin-toggle", ".pxd-ctx__fit-height", ".pxd-ctx__copy-ref", ".pxd-ctx__duplicate", ".pxd-ctx__send-to", ".pxd-ctx__mindmap"]) q(ctx, cls).click();
   assert.deepEqual(calls, [["pin", true], ["fitHeight"], ["copyRef"], ["duplicate"], ["sendTo"], ["expandOutline"]]);
 });
@@ -203,7 +203,7 @@ test("Mind map only shows for note, block and page cards", (t) => {
 test("missing callbacks are skipped, so the 1.0 card ctx bar is unchanged", (t) => {
   const f = setup({});
   t.after(f.restore);
-  assert.deepEqual(labels(showCtx(f, "card", { kind: "note" })), ["Edit", "Open in sidebar", "Collapse", "Related…", "Delete"]);
+  assert.deepEqual(labels(showCtx(f, "card", { kind: "note" })), ["", "", "", "Edit", "Open in sidebar", "Collapse", "Related…", "Delete"]);
   assert.deepEqual(labels(showCtx(f, "section", {})), ["Rename", "Select contents", "Delete frame"]);
   assert.deepEqual(labels(showCtx(f, "cards", null)), ["Wrap in section", "Move into new board", "Delete"]);
 });

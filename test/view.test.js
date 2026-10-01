@@ -103,6 +103,7 @@ function fakeSession(board) {
     deleteEdges: rec("deleteEdges"),
     setColor: rec("setColor"),
     setCollapsed: rec("setCollapsed"),
+    setBlockOpen: rec("setBlockOpen"),
     setFontSize: rec("setFontSize"),
     setString: rec("setString"),
     growToFit: rec("growToFit"),
@@ -132,11 +133,13 @@ function fakeSession(board) {
   return session;
 }
 
-function mountFixture({ vp = { x: 0, y: 0, zoom: 1 }, settings = {}, extraChildren = [], hostOverrides = {}, viewOptions = {} } = {}) {
+function mountFixture({ vp = { x: 0, y: 0, zoom: 1 }, settings = {}, extraChildren = [], hostOverrides = {}, viewOptions = {}, cardOpen } = {}) {
   const stub = createDomStub();
   const restore = stub.install();
   stub.localStorage.setItem(`plexus-diagram:vp:Svy:board0001`, JSON.stringify(vp));
-  const board = buildBoard(pulled(extraChildren));
+  const tree = pulled(extraChildren);
+  if (cardOpen === false) tree[":block/children"][0][":block/open"] = false;
+  const board = buildBoard(tree);
   const session = fakeSession(board);
   const host = fakeHost(hostOverrides);
   const mountEl = stub.document.createElement("div");
@@ -302,13 +305,29 @@ test("selection shows a context bar above the selection and never over it", asyn
     assert.ok(alpha.classList.contains("pxd-item--editing"));
     const ctx = root.querySelector(".pxd-ctx");
     assert.equal(ctx.style.display, "none");
+    f.stub.dispatch(alpha, "pointermove", { clientX: 40, clientY: 40 });
+    assert.equal(ctx.style.display, "none", "hover while editing does not cover the text");
     f.stub.dispatch(f.stub.window, "keydown", { key: "Escape" });
     await tick();
     f.stub.flushFrames();
     assert.equal(alpha.classList.contains("pxd-item--editing"), false);
     assert.equal(ctx.style.display, "");
     assert.equal(ctx.dataset.kind, "card");
-    assert.equal(ctx.querySelectorAll(".pxd-swatch").length, 11);
+    const rowKids = [...ctx.querySelector(".pxd-ctx__row").children].map((n) => n.className);
+    assert.equal(rowKids[0].includes("pxd-ctx__color"), true);
+    assert.equal(rowKids[1].includes("pxd-ctx__expand"), true);
+    assert.equal(rowKids[2].includes("pxd-ctx__refs"), true);
+    assert.equal(rowKids[3].includes("pxd-swatches"), true);
+    assert.deepEqual(
+      [".pxd-ctx__color", ".pxd-ctx__expand", ".pxd-ctx__refs"].map((s) => ctx.querySelector(s).getAttribute("aria-label")),
+      ["Color", "Collapse children", "References"],
+    );
+    assert.equal(ctx.querySelector(".pxd-ctx__color .bp3-icon-tint") != null, true);
+    assert.equal(ctx.querySelectorAll(".pxd-ctx__row .pxd-swatch").length, 11);
+    f.stub.dispatch(ctx.querySelector(".pxd-ctx__color"), "click");
+    const picker = ctx.querySelector(".pxd-ctx__picker");
+    assert.equal(picker.style.display, "");
+    assert.equal(picker.querySelectorAll(".pxd-swatch").length, 11);
     // card occupies y 0..100 at the top edge: bar must flip BELOW (y >= 112), never overlapping
     const top = Number.parseInt(ctx.style.top, 10);
     assert.ok(top >= 112, `context bar below the card when there is no room above (top=${top})`);
@@ -325,6 +344,76 @@ test("selection shows a context bar above the selection and never over it", asyn
     f.stub.flushFrames();
     assert.equal(ctx.style.display, "none");
     assert.equal(f.session.mutations.length, 0, "select and deselect write nothing");
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("hover toolbar works on a note, a page and a block ref", async () => {
+  const calls = [];
+  const f = mountFixture({
+    extraChildren: [{
+      ":block/uid": "refRRRR01",
+      ":block/string": "((abcDEF123))",
+      ":block/order": 8,
+      ":block/props": { ":plexus": { ":x": 0, ":y": 160, ":w": 200, ":h": 100 } },
+      ":block/children": [],
+    }],
+    hostOverrides: {
+      openInSidebar(uid, type) { calls.push([uid, type]); },
+      blockString: () => "referenced",
+      pullTree: () => [{ uid: "kidref01", string: "ref child", children: [] }],
+      cardStats(targets) {
+        const map = new Map();
+        for (const t of targets) {
+          const key = t.kind === "page" ? `page:${t.title}` : `uid:${t.uid}`;
+          map.set(key, { refs: t.kind === "page" ? 2 : 4, boards: 0, open: 0, done: 0 });
+        }
+        return map;
+      },
+    },
+  });
+  try {
+    await f.flush();
+    const root = f.view.root;
+    const show = (uid) => {
+      f.stub.dispatch(root.querySelector(`[data-uid=${uid}]`), "pointermove", { clientX: 20, clientY: 20 });
+      return root.querySelector(".pxd-ctx");
+    };
+    const note = show("cardAAAA1");
+    assert.equal(note.style.display, "");
+    assert.equal(note.querySelector(".pxd-ctx__refs-count").textContent, "4");
+    f.stub.dispatch(note.querySelector(".pxd-ctx__expand"), "click");
+    assert.deepEqual(f.session.mutations.at(-1), ["setBlockOpen", "cardAAAA1", false]);
+    f.stub.dispatch(note.querySelector(".pxd-ctx__refs"), "click");
+    assert.deepEqual(calls.at(-1), ["cardAAAA1", "mentions"]);
+    const page = show("cardBBBB2");
+    assert.equal(page.querySelector(".pxd-ctx__refs-count").textContent, "2");
+    f.stub.dispatch(page.querySelector(".pxd-ctx__refs"), "click");
+    assert.deepEqual(calls.at(-1), ["pgBeta001", "mentions"]);
+    const ref = show("refRRRR01");
+    assert.equal(ref.querySelector(".bp3-icon-collapse-all") != null, true);
+    f.stub.dispatch(ref.querySelector(".pxd-ctx__refs"), "click");
+    assert.deepEqual(calls.at(-1), ["abcDEF123", "mentions"]);
+    assert.match(root.querySelector("[data-uid=refRRRR01]").textContent, /ref child/);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("a closed card keeps its own text and hides children", async () => {
+  const f = mountFixture({ cardOpen: false });
+  try {
+    await f.flush();
+    const alpha = f.view.root.querySelector("[data-uid=cardAAAA1]");
+    const beta = f.view.root.querySelector("[data-uid=cardBBBB2]");
+    assert.match(alpha.textContent, /Alpha/);
+    assert.equal(alpha.textContent.includes("child one"), false);
+    assert.match(beta.textContent, /page block/);
+    assert.equal(f.board.items.get("cardAAAA1").open, false);
+    assert.equal(f.board.items.get("cardBBBB2").open, true);
   } finally {
     f.view.dispose();
     f.restore();
@@ -787,6 +876,14 @@ test("R3: editing card keeps min-height and a frozen header; both restore on exi
     f.view.dispose();
     f.restore();
   }
+});
+
+test("CSS contract: node toolbar buttons are 28px targets", async () => {
+  const { readFileSync } = await import("node:fs");
+  const css = readFileSync(new URL("../src/css/ctx-toolbar.css", import.meta.url), "utf8");
+  assert.match(css, /\.pxd-root \.pxd-ctx \.pxd-ctx__btn\.pxd-ctx__color[\s\S]*min-width: 28px;[\s\S]*height: 28px/);
+  assert.match(css, /\.pxd-ctx__expand/);
+  assert.match(css, /\.pxd-ctx__refs/);
 });
 
 test("CSS contract: block-look cards hide the root bullet and use 14px text", async () => {

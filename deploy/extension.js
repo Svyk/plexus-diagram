@@ -5681,6 +5681,64 @@ function watchEditorMenus(doc, getAnchor, onIdle) {
   };
 }
 
+// src/view/editor-scale.js
+var nearOne = (z) => Math.abs(z - 1) < 1e-3;
+function editorCounterScale(zoom, baseFont = 14) {
+  const z = Number(zoom);
+  if (!(z > 0) || !Number.isFinite(z) || nearOne(z)) return null;
+  const font = Number(baseFont);
+  const base = font > 0 && Number.isFinite(font) ? font : 14;
+  return {
+    z,
+    width: `${z * 100}%`,
+    height: `${z * 100}%`,
+    transform: `scale(${1 / z})`,
+    fontPx: base * z
+  };
+}
+var paint = (style, name, value) => {
+  if (!style) return;
+  if (value) style.setProperty?.(name, value);
+  else style.removeProperty?.(name);
+};
+function applyEditorCounterScale(editor, zoom, baseFont = 14) {
+  const style = editor?.style;
+  if (!style?.setProperty) return false;
+  const next = editorCounterScale(zoom, baseFont);
+  const body = editor.parentElement;
+  if (!next) {
+    for (const name of ["position", "left", "top", "width", "height", "transform", "transform-origin"]) paint(style, name, "");
+    style.removeProperty?.("--pxd-ed-z");
+    for (const node of editor.querySelectorAll?.("textarea, .rm-block__input") || []) {
+      node.style?.removeProperty?.("font-size");
+      node.style?.removeProperty?.("height");
+    }
+    if (body?.dataset?.pxdScreen === "1" && body.style) {
+      body.style.position = "";
+      delete body.dataset.pxdScreen;
+    }
+    return false;
+  }
+  if (body?.style) {
+    body.style.position = "relative";
+    if (body.dataset) body.dataset.pxdScreen = "1";
+  }
+  paint(style, "position", "absolute");
+  paint(style, "left", "0");
+  paint(style, "top", "0");
+  paint(style, "width", next.width);
+  paint(style, "height", next.height);
+  paint(style, "transform", next.transform);
+  paint(style, "transform-origin", "top left");
+  style.setProperty("--pxd-ed-z", String(next.z));
+  const font = `${next.fontPx}px`;
+  for (const node of editor.querySelectorAll?.("textarea, .rm-block__input") || []) {
+    node.style?.setProperty?.("font-size", font, "important");
+    node.style?.setProperty?.("height", "auto", "important");
+  }
+  return true;
+}
+
 // src/view/cards.js
 var SIDES3 = ["top", "right", "bottom", "left"];
 var CHUNK_MS = 8;
@@ -6443,10 +6501,15 @@ function createItemRenderer({
     }
     if (!paused && queue.length && !idleHandle) idleHandle = idle(pump);
   };
+  const setZoom = (zoom) => {
+    const next = Number(zoom);
+    zoomCache = next > 0 && Number.isFinite(next) ? next : 1;
+    if (editing?.editor) applyEditorCounterScale(editing.editor, zoomCache);
+  };
   const setLod = (nextLod, zoom) => {
     const prev = lod;
     lod = nextLod === "map" || nextLod === "overview" ? nextLod : "detail";
-    zoomCache = zoom;
+    setZoom(zoom);
     if (showBadges && prev === "detail" !== (lod === "detail")) for (const rec of shells.values()) renderBadges(rec);
   };
   const previewMove = (uids, dx, dy, board, rects) => {
@@ -6851,7 +6914,12 @@ function createItemRenderer({
     await waitHydrateQuiet(editor, HYDRATE_CAP_MS);
     if (disposed || editing?.uid !== uid) return false;
     const input = editor.querySelector?.(".rm-block__input") || editor.querySelector?.("textarea");
+    applyEditorCounterScale(editor, zoomCache);
     if (input) focusRoamInput(input);
+    applyEditorCounterScale(editor, zoomCache);
+    frameLater(() => {
+      if (editing?.uid === uid) applyEditorCounterScale(editor, zoomCache);
+    });
     if (editing?.uid === uid && editor.contains?.(doc.activeElement)) editing.ready = true;
     stopMenus?.();
     stopMenus = null;
@@ -6868,6 +6936,7 @@ function createItemRenderer({
     clearEditFade(e);
     detachFocusGuard();
     const { rec, editor, uid, item } = e;
+    applyEditorCounterScale(editor, 1);
     const contentH = Number(editor.scrollHeight) || 0;
     for (const type of EDITOR_STOPPED) editor.removeEventListener(type, stopEvent);
     dropStaticLayer(rec);
@@ -7057,6 +7126,7 @@ function createItemRenderer({
     scheduleContent,
     setPaused,
     setLod,
+    setZoom,
     previewMove,
     previewRects,
     previewSectionRects,
@@ -7511,7 +7581,7 @@ function buildColorPicker(doc, onPick, listen) {
   input.placeholder = "#rrggbb";
   input.setAttribute("aria-label", "Hex color");
   input.spellcheck = false;
-  const paint = () => {
+  const paint2 = () => {
     const hex = hexColor(input.value);
     preview.style.background = hex || "transparent";
     input.classList.toggle("pxd-picker__input--bad", input.value.trim() !== "" && !hex);
@@ -7520,7 +7590,7 @@ function buildColorPicker(doc, onPick, listen) {
     const hex = hexColor(input.value);
     if (hex) onPick?.(hex);
   };
-  on(input, "input", paint);
+  on(input, "input", paint2);
   on(input, "change", commit);
   on(input, "keydown", (event) => {
     event.stopPropagation?.();
@@ -9494,7 +9564,7 @@ function createPresenter({ doc = globalThis.document, root, timers, on = {} } = 
     });
     return b;
   };
-  const paint = () => {
+  const paint2 = () => {
     const s = steps[index];
     if (!hud || !s) return;
     titleEl.textContent = s.title || "";
@@ -9509,7 +9579,7 @@ function createPresenter({ doc = globalThis.document, root, timers, on = {} } = 
     const next = Math.max(0, Math.min(steps.length - 1, Math.trunc(Number(i))));
     if (!Number.isFinite(next)) return false;
     index = next;
-    paint();
+    paint2();
     const s = steps[index];
     on.step?.({ index, total: steps.length, uid: s.uid, rect: s.rect, title: s.title, members: s.members });
     return true;
@@ -12357,6 +12427,7 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
     }
     if (dirty.viewport) {
       world.style.transform = `translate(${vp.x}px, ${vp.y}px) scale(${vp.zoom})`;
+      itemsR.setZoom(vp.zoom);
       const nextTier = lodTier(vp.zoom, tier, { threshold: mapThreshold() });
       if (nextTier !== tier) {
         tier = nextTier;

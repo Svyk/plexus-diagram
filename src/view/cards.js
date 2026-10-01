@@ -6,6 +6,7 @@ import { DEFAULT_SIZES, FONT_SIZES, PALETTE, attrNameOf, classifyString, cssColo
 import { boardPreview, descendantsOf } from "../model/board.js";
 import { lodForZoom, rectsIntersect } from "../model/geometry.js";
 import { watchEditorMenus } from "./editor-menus.js";
+import { applyEditorCounterScale } from "./editor-scale.js";
 
 const SIDES = ["top", "right", "bottom", "left"];
 const CHUNK_MS = 8;
@@ -751,10 +752,16 @@ export function createItemRenderer({
     if (!paused && queue.length && !idleHandle) idleHandle = idle(pump);
   };
 
+  const setZoom = (zoom) => {
+    const next = Number(zoom);
+    zoomCache = next > 0 && Number.isFinite(next) ? next : 1;
+    if (editing?.editor) applyEditorCounterScale(editing.editor, zoomCache);
+  };
+
   const setLod = (nextLod, zoom) => {
     const prev = lod;
     lod = nextLod === "map" || nextLod === "overview" ? nextLod : "detail";
-    zoomCache = zoom;
+    setZoom(zoom);
     if (showBadges && (prev === "detail") !== (lod === "detail")) for (const rec of shells.values()) renderBadges(rec);
   };
 
@@ -1145,7 +1152,12 @@ export function createItemRenderer({
     await waitHydrateQuiet(editor, HYDRATE_CAP_MS);
     if (disposed || editing?.uid !== uid) return false;
     const input = editor.querySelector?.(".rm-block__input") || editor.querySelector?.("textarea");
+    applyEditorCounterScale(editor, zoomCache);
     if (input) focusRoamInput(input);
+    // Roam writes an explicit textarea height when the editor focuses. Apply again
+    // after that, and once more on the next frame, so the screen font is not clipped.
+    applyEditorCounterScale(editor, zoomCache);
+    frameLater(() => { if (editing?.uid === uid) applyEditorCounterScale(editor, zoomCache); });
     if (editing?.uid === uid && editor.contains?.(doc.activeElement)) editing.ready = true;
     stopMenus?.();
     stopMenus = null;
@@ -1163,6 +1175,7 @@ export function createItemRenderer({
     clearEditFade(e);
     detachFocusGuard();
     const { rec, editor, uid, item } = e;
+    applyEditorCounterScale(editor, 1);
     const contentH = Number(editor.scrollHeight) || 0;
     for (const type of EDITOR_STOPPED) editor.removeEventListener(type, stopEvent);
     dropStaticLayer(rec);
@@ -1309,6 +1322,7 @@ export function createItemRenderer({
     scheduleContent,
     setPaused,
     setLod,
+    setZoom,
     previewMove,
     previewRects,
     previewSectionRects,

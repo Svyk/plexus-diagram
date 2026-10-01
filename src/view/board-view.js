@@ -2008,6 +2008,7 @@ export function mountBoardView({
     }
     if (dirty.viewport) {
       world.style.transform = `translate(${vp.x}px, ${vp.y}px) scale(${vp.zoom})`;
+      itemsR.setZoom(vp.zoom);
       // The tier flips (classes + font variables, once) the moment the zoom crosses the threshold, mid-gesture too.
       const nextTier = lodTier(vp.zoom, tier, { threshold: mapThreshold() });
       if (nextTier !== tier) { tier = nextTier; paintTier(); }

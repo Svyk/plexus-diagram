@@ -9,7 +9,7 @@
 }
 
 .pxd-root .pxd-card--block .pxd-item__editor :is(textarea.rm-block-input, textarea.rm-block__input, .rm-block__input, .rm-block-text) {
-  font-size: 14px;
+  font-size: calc(14px * var(--pxd-ed-z, 1));
 }
 
 /* Root bullet only. renderBlock nests it as editor > .rm-api-render--block > .rm-block > .rm-block-main. Children live under .rm-block-children. */

@@ -1842,6 +1842,42 @@ test("ED-4: editing pins a page menu to the textarea and lifts it out of the boa
   }
 });
 
+test("ED-5: editing at 2x lays the editor out in screen pixels", async () => {
+  const f = mountFixture();
+  try {
+    await f.flush();
+    const atOne = await startEdit(f, "cardAAAA1");
+    const editorAtOne = atOne.querySelector(".pxd-item__editor");
+    assert.equal(editorAtOne.style.transform || "", "", "zoom 1 leaves the editor in the card's own box");
+    assert.equal(editorAtOne.style.position || "", "");
+    f.stub.dispatch(editorAtOne.querySelector("textarea"), "keydown", { key: "Escape" });
+    await tick(30);
+    f.stub.flushFrames();
+    const viewport = f.view.root.querySelector(".pxd-viewport");
+    f.stub.dispatch(viewport, "wheel", { ctrlKey: true, deltaY: -Math.log(2) / 0.01, clientX: 400, clientY: 300 });
+    f.stub.flushFrames();
+    await tick(160);
+    f.stub.flushFrames();
+    const zoom = f.view.state().zoom;
+    assert.ok(Math.abs(zoom - 2) < 0.02, `zoom ${zoom}`);
+    const card = await startEdit(f, "cardAAAA1");
+    await tick();
+    f.stub.flushFrames();
+    const editor = card.querySelector(".pxd-item__editor");
+    const scale = Number(String(editor.style.transform || "").replace("scale(", "").replace(")", ""));
+    assert.ok(Math.abs(scale - (1 / zoom)) < 1e-9, `transform ${editor.style.transform} zoom ${zoom} scale ${scale}`);
+    assert.equal(editor.style.position, "absolute");
+    assert.ok(Math.abs(parseFloat(editor.style.width) - zoom * 100) < 0.05, editor.style.width);
+    assert.equal(editor.parentElement?.style?.position, "relative");
+    const ta = editor.querySelector("textarea");
+    assert.ok(Math.abs(parseFloat(ta?.style?.["font-size"]) - 14 * zoom) < 0.05, ta?.style?.["font-size"]);
+    assert.equal(ta?.style?.height, "auto");
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
 test("ED-2: 100 pull-watch echoes while editing leave every item render count unchanged", async () => {
   const f = mountReal();
   try {

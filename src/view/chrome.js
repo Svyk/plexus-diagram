@@ -143,7 +143,7 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
     const r = moreBtn.getBoundingClientRect();
     on.openMore?.({ x: r.left, y: r.bottom, w: r.width, h: r.height });
   });
-  const group3 = el("div", "pxd-toolbar__group", toolbar);
+  const group3 = el("div", "pxd-toolbar__group pxd-toolbar__zoom", toolbar);
   button(group3, "pxd-toolbar__zoom-out", "−", "Zoom out (Cmd −)", () => on.zoomOut?.());
   const zoomLabel = button(group3, "pxd-toolbar__zoom", "100%", "Zoom to 100% (Shift 0)", () => on.zoomReset?.());
   button(group3, "pxd-toolbar__zoom-in", "+", "Zoom in (Cmd =)", () => on.zoomIn?.());
@@ -151,9 +151,41 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
   const minimapBtn = button(group3, "pxd-toolbar__minimap", "Minimap", "Toggle minimap", () => on.toggleMinimap?.());
   const fullBtn = button(group3, "pxd-toolbar__fullscreen", "Fullscreen", "Fullscreen this board", () => on.toggleFullscreen?.());
   const badge = el("span", "pxd-badge", toolbar, version ? `v${version}` : "");
-  if (setting("show-version-badge") === false) badge.style.display = "none";
   const sync = el("span", "pxd-sync", toolbar);
   sync.title = "Synced";
+
+  // Native order and title text, measured on an unenhanced diagram 2026-09-30.
+  const railEl = el("div", "pxd-rail pxd-chrome", root);
+  stopAll(railEl);
+  railEl.setAttribute("role", "toolbar");
+  railEl.setAttribute("aria-label", "Diagram controls");
+  const railBtn = (cls, icon, title, fn) => {
+    const b = button(railEl, `pxd-rail__btn ${cls}`, "", title, fn);
+    b.setAttribute("aria-label", title);
+    const i = el("span", `bp3-icon bp3-icon-${icon}`, b);
+    i.setAttribute("aria-hidden", "true");
+    return b;
+  };
+  railBtn("pxd-rail__zoom-in", "plus", "zoom in", () => on.zoomIn?.());
+  railBtn("pxd-rail__zoom-out", "minus", "zoom out", () => on.zoomOut?.());
+  railBtn("pxd-rail__fit", "zoom-to-fit", "fit view", () => on.fit?.());
+  const railMinimap = railBtn("pxd-rail__minimap", "eye-open", "Toggle Minimap", () => on.toggleMinimap?.());
+  railBtn("pxd-rail__png", "media", "Save PNG", () => on.savePng?.());
+  railBtn("pxd-rail__outline", "list", "Open outline in sidebar", () => on.openOutline?.());
+  const railFull = railBtn("pxd-rail__fullscreen", "maximize", "Maximize", () => on.toggleFullscreen?.());
+  const railExtra = el("div", "pxd-rail__extra", railEl);
+  const railZoom = button(railExtra, "pxd-rail__zoom", "100%", "Zoom to 100% (Shift 0)", () => on.zoomReset?.());
+  const railBadge = el("span", "pxd-badge pxd-rail__badge", railExtra, version ? `v${version}` : "");
+  const applyControls = () => {
+    const rail = setting("controls-position") !== "bar";
+    root.classList.toggle("pxd-root--rail", rail);
+    railEl.style.display = rail ? "" : "none";
+    group3.style.display = rail ? "none" : "";
+    const showBadge = setting("show-version-badge") !== false;
+    badge.style.display = !rail && showBadge ? "" : "none";
+    railBadge.style.display = rail && showBadge ? "" : "none";
+  };
+  applyControls();
 
   const toolbarApi = {
     el: toolbar,
@@ -164,16 +196,32 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
         b.classList.toggle("pxd-tool--locked", id === tool && Boolean(locked));
       }
     },
-    setZoom(z) { zoomLabel.textContent = `${Math.round((z || 1) * 100)}%`; },
+    setZoom(z) {
+      const label = `${Math.round((z || 1) * 100)}%`;
+      zoomLabel.textContent = label;
+      railZoom.textContent = label;
+    },
     setLinkMode(mode) { linksBtn.textContent = LINK_LABELS[mode] || LINK_LABELS.all; },
     setSync(pending) {
       sync.classList.toggle("pxd-sync--pending", Boolean(pending));
       sync.title = pending ? "Saving…" : "Synced";
     },
-    setFullscreen(on) { fullBtn.textContent = on ? "Exit fullscreen" : "Fullscreen"; fullBtn.classList.toggle("pxd-btn--active", Boolean(on)); },
+    setFullscreen(on) {
+      fullBtn.textContent = on ? "Exit fullscreen" : "Fullscreen";
+      fullBtn.classList.toggle("pxd-btn--active", Boolean(on));
+      const title = on ? "Minimize" : "Maximize";
+      railFull.title = title;
+      railFull.setAttribute("aria-label", title);
+      const icon = railFull.querySelector(".bp3-icon");
+      if (icon) icon.className = `bp3-icon bp3-icon-${on ? "minimize" : "maximize"}`;
+    },
+    applyControls,
     // Called on every panel open/close: a floating context bar re-clears the panel now, not at the next pan.
     setPanel(open) { addBtn.classList.toggle("pxd-btn--active", Boolean(open)); positionCtx(); },
-    setMinimap(open) { minimapBtn.classList.toggle("pxd-btn--active", Boolean(open)); },
+    setMinimap(open) {
+      minimapBtn.classList.toggle("pxd-btn--active", Boolean(open));
+      railMinimap.classList.toggle("pxd-btn--active", Boolean(open));
+    },
     setFocus(active) { focusBtn.classList.toggle("pxd-btn--active", Boolean(active)); },
     setBackground(state) { popover.setState(state); },
     bgButton: bgBtn,
@@ -405,6 +453,8 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
     // The bar never covers the toolbar (two rows tall) or an open side panel: it flips below / stays left of them.
     const tb = toolbar.getBoundingClientRect();
     const topLimit = tb.height ? Math.max(CTX_MARGIN, tb.bottom - (rootRect.top || 0) + CTX_MARGIN) : CTX_MARGIN;
+    const railBox = railEl.style.display !== "none" ? railEl.getBoundingClientRect() : null;
+    const railClear = railBox?.width ? Math.max(0, rootRect.right - railBox.left) : 0;
     const panelEl = root.querySelector?.(".pxd-panel");
     const pr = panelEl && panelEl.style?.display !== "none" ? panelEl.getBoundingClientRect() : null;
     const room = pr?.width ? Math.min(W, pr.left - (rootRect.left || 0)) : W;
@@ -412,7 +462,7 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
     ctx.style.maxWidth = pr?.width && room > 0 ? `${Math.max(CTX_MIN_WIDTH, Math.round(room - 2 * CTX_MARGIN))}px` : "";
     const barW = ctx.offsetWidth || 320;
     const barH = ctx.offsetHeight || 36;
-    const rightLimit = pr?.width ? Math.max(barW + CTX_MARGIN, room) : W;
+    const rightLimit = pr?.width ? Math.max(barW + CTX_MARGIN, room) : Math.max(barW + CTX_MARGIN, W - railClear);
     let top = a.rect.y - gap - barH;
     if (top < topLimit) top = a.rect.y + a.rect.h + gap; // flip below near the top edge
     if (top + barH > H - CTX_MARGIN && a.rect.y - gap - barH >= topLimit) top = a.rect.y - gap - barH;
@@ -571,7 +621,7 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
     mmFrame?.();
     bgOffs.splice(0).forEach((off) => off());
     listeners.splice(0).forEach((off) => off());
-    for (const node of [toolbar, popEl, backEl, ctx, toast, search, minimap]) node.remove();
+    for (const node of [toolbar, railEl, popEl, backEl, ctx, toast, search, minimap]) node.remove();
   };
 
   return { toolbar: toolbarApi, ctx: ctxApi, toast: toastApi, search: searchApi, minimap: minimapApi, popover, backToContent, badge, sync, dispose };

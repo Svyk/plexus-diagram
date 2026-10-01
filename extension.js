@@ -6853,7 +6853,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     const r = moreBtn.getBoundingClientRect();
     on.openMore?.({ x: r.left, y: r.bottom, w: r.width, h: r.height });
   });
-  const group3 = el("div", "pxd-toolbar__group", toolbar);
+  const group3 = el("div", "pxd-toolbar__group pxd-toolbar__zoom", toolbar);
   button(group3, "pxd-toolbar__zoom-out", "−", "Zoom out (Cmd −)", () => on.zoomOut?.());
   const zoomLabel = button(group3, "pxd-toolbar__zoom", "100%", "Zoom to 100% (Shift 0)", () => on.zoomReset?.());
   button(group3, "pxd-toolbar__zoom-in", "+", "Zoom in (Cmd =)", () => on.zoomIn?.());
@@ -6861,9 +6861,39 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
   const minimapBtn = button(group3, "pxd-toolbar__minimap", "Minimap", "Toggle minimap", () => on.toggleMinimap?.());
   const fullBtn = button(group3, "pxd-toolbar__fullscreen", "Fullscreen", "Fullscreen this board", () => on.toggleFullscreen?.());
   const badge = el("span", "pxd-badge", toolbar, version ? `v${version}` : "");
-  if (setting("show-version-badge") === false) badge.style.display = "none";
   const sync = el("span", "pxd-sync", toolbar);
   sync.title = "Synced";
+  const railEl = el("div", "pxd-rail pxd-chrome", root);
+  stopAll(railEl);
+  railEl.setAttribute("role", "toolbar");
+  railEl.setAttribute("aria-label", "Diagram controls");
+  const railBtn = (cls, icon, title, fn) => {
+    const b = button(railEl, `pxd-rail__btn ${cls}`, "", title, fn);
+    b.setAttribute("aria-label", title);
+    const i = el("span", `bp3-icon bp3-icon-${icon}`, b);
+    i.setAttribute("aria-hidden", "true");
+    return b;
+  };
+  railBtn("pxd-rail__zoom-in", "plus", "zoom in", () => on.zoomIn?.());
+  railBtn("pxd-rail__zoom-out", "minus", "zoom out", () => on.zoomOut?.());
+  railBtn("pxd-rail__fit", "zoom-to-fit", "fit view", () => on.fit?.());
+  const railMinimap = railBtn("pxd-rail__minimap", "eye-open", "Toggle Minimap", () => on.toggleMinimap?.());
+  railBtn("pxd-rail__png", "media", "Save PNG", () => on.savePng?.());
+  railBtn("pxd-rail__outline", "list", "Open outline in sidebar", () => on.openOutline?.());
+  const railFull = railBtn("pxd-rail__fullscreen", "maximize", "Maximize", () => on.toggleFullscreen?.());
+  const railExtra = el("div", "pxd-rail__extra", railEl);
+  const railZoom = button(railExtra, "pxd-rail__zoom", "100%", "Zoom to 100% (Shift 0)", () => on.zoomReset?.());
+  const railBadge = el("span", "pxd-badge pxd-rail__badge", railExtra, version ? `v${version}` : "");
+  const applyControls = () => {
+    const rail = setting("controls-position") !== "bar";
+    root.classList.toggle("pxd-root--rail", rail);
+    railEl.style.display = rail ? "" : "none";
+    group3.style.display = rail ? "none" : "";
+    const showBadge = setting("show-version-badge") !== false;
+    badge.style.display = !rail && showBadge ? "" : "none";
+    railBadge.style.display = rail && showBadge ? "" : "none";
+  };
+  applyControls();
   const toolbarApi = {
     el: toolbar,
     setCrumbs: renderCrumbs,
@@ -6874,7 +6904,9 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
       }
     },
     setZoom(z) {
-      zoomLabel.textContent = `${Math.round((z || 1) * 100)}%`;
+      const label = `${Math.round((z || 1) * 100)}%`;
+      zoomLabel.textContent = label;
+      railZoom.textContent = label;
     },
     setLinkMode(mode) {
       linksBtn.textContent = LINK_LABELS[mode] || LINK_LABELS.all;
@@ -6886,7 +6918,13 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     setFullscreen(on2) {
       fullBtn.textContent = on2 ? "Exit fullscreen" : "Fullscreen";
       fullBtn.classList.toggle("pxd-btn--active", Boolean(on2));
+      const title = on2 ? "Minimize" : "Maximize";
+      railFull.title = title;
+      railFull.setAttribute("aria-label", title);
+      const icon = railFull.querySelector(".bp3-icon");
+      if (icon) icon.className = `bp3-icon bp3-icon-${on2 ? "minimize" : "maximize"}`;
     },
+    applyControls,
     // Called on every panel open/close: a floating context bar re-clears the panel now, not at the next pan.
     setPanel(open) {
       addBtn.classList.toggle("pxd-btn--active", Boolean(open));
@@ -6894,6 +6932,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     },
     setMinimap(open) {
       minimapBtn.classList.toggle("pxd-btn--active", Boolean(open));
+      railMinimap.classList.toggle("pxd-btn--active", Boolean(open));
     },
     setFocus(active) {
       focusBtn.classList.toggle("pxd-btn--active", Boolean(active));
@@ -7132,13 +7171,15 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     const gap = a.kind === "edge" ? CTX_EDGE_CLEARANCE : CTX_GAP;
     const tb = toolbar.getBoundingClientRect();
     const topLimit = tb.height ? Math.max(CTX_MARGIN, tb.bottom - (rootRect.top || 0) + CTX_MARGIN) : CTX_MARGIN;
+    const railBox = railEl.style.display !== "none" ? railEl.getBoundingClientRect() : null;
+    const railClear = railBox?.width ? Math.max(0, rootRect.right - railBox.left) : 0;
     const panelEl = root.querySelector?.(".pxd-panel");
     const pr = panelEl && panelEl.style?.display !== "none" ? panelEl.getBoundingClientRect() : null;
     const room = pr?.width ? Math.min(W, pr.left - (rootRect.left || 0)) : W;
     ctx.style.maxWidth = pr?.width && room > 0 ? `${Math.max(CTX_MIN_WIDTH, Math.round(room - 2 * CTX_MARGIN))}px` : "";
     const barW = ctx.offsetWidth || 320;
     const barH = ctx.offsetHeight || 36;
-    const rightLimit = pr?.width ? Math.max(barW + CTX_MARGIN, room) : W;
+    const rightLimit = pr?.width ? Math.max(barW + CTX_MARGIN, room) : Math.max(barW + CTX_MARGIN, W - railClear);
     let top = a.rect.y - gap - barH;
     if (top < topLimit) top = a.rect.y + a.rect.h + gap;
     if (top + barH > H - CTX_MARGIN && a.rect.y - gap - barH >= topLimit) top = a.rect.y - gap - barH;
@@ -7337,7 +7378,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     mmFrame?.();
     bgOffs.splice(0).forEach((off) => off());
     listeners2.splice(0).forEach((off) => off());
-    for (const node of [toolbar, popEl, backEl, ctx, toast, search, minimap]) node.remove();
+    for (const node of [toolbar, railEl, popEl, backEl, ctx, toast, search, minimap]) node.remove();
   };
   return { toolbar: toolbarApi, ctx: ctxApi, toast: toastApi, search: searchApi, minimap: minimapApi, popover, backToContent, badge, sync, dispose };
 }
@@ -8813,6 +8854,58 @@ function watchRouteExit({ boardUid, onExit, win = globalThis.window } = {}) {
 // src/view/board-view.js
 var SVG_NS3 = "http://www.w3.org/2000/svg";
 var DEFAULT_HEIGHT = 560;
+function rasterizeSvg(doc, svg) {
+  return new Promise((resolve, reject) => {
+    const Img = doc.defaultView?.Image || globalThis.Image;
+    if (typeof Img !== "function" || typeof URL === "undefined" || typeof Blob === "undefined") {
+      resolve(null);
+      return;
+    }
+    const img = new Img();
+    let url = "";
+    try {
+      url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" }));
+    } catch {
+      resolve(null);
+      return;
+    }
+    img.onload = () => {
+      try {
+        const canvas = doc.createElement("canvas");
+        const w = img.naturalWidth || img.width || 1;
+        const h = img.naturalHeight || img.height || 1;
+        canvas.width = Math.max(1, Math.round(w * 2));
+        canvas.height = Math.max(1, Math.round(h * 2));
+        const g = canvas.getContext?.("2d");
+        if (!g || typeof canvas.toBlob !== "function") {
+          URL.revokeObjectURL(url);
+          resolve(null);
+          return;
+        }
+        g.setTransform(2, 0, 0, 2, 0, 0);
+        g.drawImage(img, 0, 0, w, h);
+        canvas.toBlob((blob) => {
+          URL.revokeObjectURL(url);
+          resolve(blob);
+        }, "image/png");
+      } catch (err) {
+        try {
+          URL.revokeObjectURL(url);
+        } catch {
+        }
+        reject(err);
+      }
+    };
+    img.onerror = () => {
+      try {
+        URL.revokeObjectURL(url);
+      } catch {
+      }
+      resolve(null);
+    };
+    img.src = url;
+  });
+}
 function freshCardIsBlank({ blockString, itemString, contentCount = 0, editorText = "" } = {}) {
   if (contentCount > 0) return false;
   return ![blockString, itemString, editorText].some((s) => String(s ?? "").trim());
@@ -10054,6 +10147,13 @@ function mountBoardView({
       fit: () => fitAll(),
       toggleMinimap: () => chrome.minimap.setVisible(!chrome.minimap.isVisible()),
       toggleFullscreen: () => requestFullscreen(!isFullscreen),
+      savePng: () => {
+        void exportPng();
+      },
+      openOutline: () => {
+        const uid = board()?.uid;
+        if (uid) host?.openInSidebar?.(uid, "outline");
+      },
       setColor: (c) => {
         const uids = targetUids();
         if (uids.length) void session.setColor?.(uids, c);
@@ -11032,6 +11132,34 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
       updateBackToContent();
     }
   }, 0);
+  async function exportPng() {
+    const b = board();
+    if (!b) return false;
+    const text = boardToSvg(b, rects(), { dark: root.classList.contains("pxd-root--dark") });
+    const name = `${String(b.title || UNTITLED_BOARD).replace(/[\\/:*?"<>|]+/g, "-").trim() || "board"}`;
+    const now2 = /* @__PURE__ */ new Date();
+    const day = `${now2.getFullYear()}-${String(now2.getMonth() + 1).padStart(2, "0")}-${String(now2.getDate()).padStart(2, "0")}`;
+    try {
+      const blob = await rasterizeSvg(doc, text);
+      if (!blob) {
+        if (!disposed) toast("PNG failed");
+        return false;
+      }
+      const url = URL.createObjectURL(blob);
+      const a = doc.createElement("a");
+      a.href = url;
+      a.download = `${name} ${day}.png`;
+      doc.body.append(a);
+      a.click();
+      a.remove();
+      timers.later(() => URL.revokeObjectURL(url), 4e3);
+      if (!disposed) toast("Saved PNG");
+      return true;
+    } catch {
+      if (!disposed) toast("PNG failed");
+      return false;
+    }
+  }
   const view = {
     root,
     controller: ctl,
@@ -11050,6 +11178,7 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
       applyLod();
       const minimapNow = setting("show-minimap", true) !== false;
       if (minimapNow !== minimapBefore) chrome.minimap.setVisible(minimapNow);
+      chrome.toolbar.applyControls?.();
       itemsR.setShowBadges(flag("show-card-badges", true));
       scheduleContent();
       scheduleBadges(0);
@@ -11089,6 +11218,9 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
         }
       }
       return text;
+    },
+    async exportPng() {
+      return exportPng();
     },
     async copyOutline() {
       const b = board();
@@ -11146,6 +11278,7 @@ var SETTING_IDS = Object.freeze({
   graphLinks: "graph-links",
   wheel: "wheel",
   showMinimap: "show-minimap",
+  controlsPosition: "controls-position",
   snapGuides: "snap-guides",
   grid: "grid",
   defaultCardWidth: "default-card-width",
@@ -11167,6 +11300,7 @@ var DEFAULTS = Object.freeze({
   [SETTING_IDS.graphLinks]: "all",
   [SETTING_IDS.wheel]: "pan",
   [SETTING_IDS.showMinimap]: true,
+  [SETTING_IDS.controlsPosition]: "rail",
   [SETTING_IDS.snapGuides]: true,
   [SETTING_IDS.grid]: "dots",
   [SETTING_IDS.defaultCardWidth]: 280,
@@ -11187,6 +11321,7 @@ var MAP_ZOOMS = ["0.3", "0.45", "0.6"];
 var ENUMS = Object.freeze({
   [SETTING_IDS.graphLinks]: ["off", "attributes", "all"],
   [SETTING_IDS.wheel]: ["pan", "zoom"],
+  [SETTING_IDS.controlsPosition]: ["rail", "bar"],
   [SETTING_IDS.grid]: ["dots", "lines", "grid", "plain"],
   [SETTING_IDS.defaultCardLook]: ["block", "card"],
   [SETTING_IDS.boardTone]: BOARD_TONES2,
@@ -11283,6 +11418,7 @@ function createSettingsPanel() {
       selectRow(SETTING_IDS.graphLinks, "Graph links", "Show links between cards derived from page references and attributes.", ["all", "attributes", "off"]),
       selectRow(SETTING_IDS.wheel, "Mouse wheel", "What the mouse wheel does on the board. Pinch always zooms.", ["pan", "zoom"]),
       switchRow(SETTING_IDS.showMinimap, "Show minimap", "Show the minimap."),
+      selectRow(SETTING_IDS.controlsPosition, "Controls", "Rail is the vertical control stack. Bar is the 1.2 horizontal zoom group.", ["rail", "bar"]),
       switchRow(SETTING_IDS.snapGuides, "Snap guides", "Align dragged cards to neighbours and show guides."),
       selectRow(SETTING_IDS.grid, "Default board background: pattern", "Background pattern for boards that do not set their own. A board can override it from the Background button.", ["dots", "lines", "grid", "plain"]),
       selectRow(SETTING_IDS.boardTone, "Default board background: tone", "Background tone for boards that do not set their own.", BOARD_TONES2),

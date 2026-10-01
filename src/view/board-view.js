@@ -39,6 +39,33 @@ import { applyFullscreenChrome, watchRouteExit } from "./fullscreen.js";
 const SVG_NS = "http://www.w3.org/2000/svg";
 const DEFAULT_HEIGHT = 560;
 
+function rasterizeSvg(doc, svg) {
+  return new Promise((resolve, reject) => {
+    const Img = doc.defaultView?.Image || globalThis.Image;
+    if (typeof Img !== "function" || typeof URL === "undefined" || typeof Blob === "undefined") { resolve(null); return; }
+    const img = new Img();
+    let url = "";
+    try { url = URL.createObjectURL(new Blob([svg], { type: "image/svg+xml" })); }
+    catch { resolve(null); return; }
+    img.onload = () => {
+      try {
+        const canvas = doc.createElement("canvas");
+        const w = img.naturalWidth || img.width || 1;
+        const h = img.naturalHeight || img.height || 1;
+        canvas.width = Math.max(1, Math.round(w * 2));
+        canvas.height = Math.max(1, Math.round(h * 2));
+        const g = canvas.getContext?.("2d");
+        if (!g || typeof canvas.toBlob !== "function") { URL.revokeObjectURL(url); resolve(null); return; }
+        g.setTransform(2, 0, 0, 2, 0, 0);
+        g.drawImage(img, 0, 0, w, h);
+        canvas.toBlob((blob) => { URL.revokeObjectURL(url); resolve(blob); }, "image/png");
+      } catch (err) { try { URL.revokeObjectURL(url); } catch { /* already revoked */ } reject(err); }
+    };
+    img.onerror = () => { try { URL.revokeObjectURL(url); } catch { /* already revoked */ } resolve(null); };
+    img.src = url;
+  });
+}
+
 // A card made by a gesture is junk only when the block, the model and the open editor are all blank.
 // Roam debounces the block string, so the editor text is what the user actually typed.
 export function freshCardIsBlank({ blockString, itemString, contentCount = 0, editorText = "" } = {}) {
@@ -1044,6 +1071,11 @@ export function mountBoardView({
       fit: () => fitAll(),
       toggleMinimap: () => chrome.minimap.setVisible(!chrome.minimap.isVisible()),
       toggleFullscreen: () => requestFullscreen(!isFullscreen),
+      savePng: () => { void exportPng(); },
+      openOutline: () => {
+        const uid = board()?.uid;
+        if (uid) host?.openInSidebar?.(uid, "outline");
+      },
       setColor: (c) => { const uids = targetUids(); if (uids.length) void session.setColor?.(uids, c); },
       edit: () => { const it = singleItem(); if (it) void enterEdit(it.uid); },
       openSidebar: () => openItemInSidebar(singleItem()),
@@ -1857,6 +1889,32 @@ export function mountBoardView({
   timers.later(() => { if (!disposed) { scheduleContent(); updateBackToContent(); } }, 0);
 
   // ------------------------------------------------------------ API
+  async function exportPng() {
+    const b = board();
+    if (!b) return false;
+    const text = boardToSvg(b, rects(), { dark: root.classList.contains("pxd-root--dark") });
+    const name = `${String(b.title || UNTITLED_BOARD).replace(/[\\/:*?"<>|]+/g, "-").trim() || "board"}`;
+    const now = new Date();
+    const day = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}-${String(now.getDate()).padStart(2, "0")}`;
+    try {
+      const blob = await rasterizeSvg(doc, text);
+      if (!blob) { if (!disposed) toast("PNG failed"); return false; }
+      const url = URL.createObjectURL(blob);
+      const a = doc.createElement("a");
+      a.href = url;
+      a.download = `${name} ${day}.png`;
+      doc.body.append(a);
+      a.click();
+      a.remove();
+      timers.later(() => URL.revokeObjectURL(url), 4000);
+      if (!disposed) toast("Saved PNG");
+      return true;
+    } catch {
+      if (!disposed) toast("PNG failed");
+      return false;
+    }
+  }
+
   const view = {
     root,
     controller: ctl,
@@ -1871,6 +1929,7 @@ export function mountBoardView({
       applyLod();
       const minimapNow = setting("show-minimap", true) !== false;
       if (minimapNow !== minimapBefore) chrome.minimap.setVisible(minimapNow);
+      chrome.toolbar.applyControls?.();
       itemsR.setShowBadges(flag("show-card-badges", true));
       scheduleContent();
       scheduleBadges(0);
@@ -1910,6 +1969,7 @@ export function mountBoardView({
       }
       return text;
     },
+    async exportPng() { return exportPng(); },
     async copyOutline() {
       const b = board();
       if (!b) return "";

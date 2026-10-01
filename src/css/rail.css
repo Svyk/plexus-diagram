@@ -1,0 +1,47 @@
+.pxd-root .pxd-rail {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 11;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  max-height: calc(100% - 16px);
+  overflow: auto;
+  padding: 4px;
+  border: 1px solid var(--pxd-border);
+  border-radius: 8px;
+  background: var(--pxd-chrome-bg);
+  box-shadow: var(--pxd-shadow);
+}
+
+.pxd-root .pxd-rail__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+}
+
+.pxd-root .pxd-rail__extra {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+}
+
+.pxd-root .pxd-rail__zoom {
+  min-width: 28px;
+  padding: 2px 4px;
+  font-size: 10px;
+}
+
+.pxd-root.pxd-root--rail .pxd-toolbar {
+  max-width: calc(100% - 60px);
+}
+
+.pxd-root.pxd-root--rail .pxd-minimap {
+  right: 52px;
+}

@@ -169,7 +169,7 @@ export function createViewportStore({ storage = globalThis.localStorage, graph =
 }
 
 export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localStorage, graph } = {}) {
-  const stats = { writes: 0, watches: 0, renders: 0 };
+  const stats = { writes: 0, watches: 0, renders: 0, items: {} };
   const data = api.data;
   // Every data.block.* call is its own Roam undo entry. The log groups the calls of one session transaction
   // (host.group) so one undo()/redo() steps over the whole user operation. A write outside a group is its own step.

@@ -1769,3 +1769,51 @@ test("R2 guard: a key pressed while editing with focus on <body> recovers focus 
     f.restore();
   }
 });
+
+test("ED-2: 100 pull-watch echoes while editing leave every item render count unchanged", async () => {
+  const f = mountReal();
+  try {
+    f.stub.flushFrames();
+    await tick(5);
+    f.stub.flushIdle();
+    f.stub.flushFrames();
+    const counts = () => ({ ...f.host.stats.items });
+    const echo = async (string) => {
+      await f.fake.api.data.block.update({ block: { uid: "c4", string } });
+      await tick(15);
+      f.stub.flushFrames();
+      f.stub.flushFrames();
+    };
+    const before = counts();
+    assert.ok(before.c4 > 0, "opening paints the note");
+    await echo("a note changed");
+    const painted = counts();
+    assert.ok(painted.c4 > before.c4, "a string echo repaints the card when it is not being edited");
+    for (const uid of Object.keys(before)) {
+      if (uid !== "c4") assert.equal(painted[uid], before[uid], `${uid} stays put when another card's text changes`);
+    }
+    const card = f.view.root.querySelector("[data-uid=c4]");
+    f.stub.dispatch(card, "dblclick", { clientX: 40, clientY: 40 });
+    for (let i = 0; i < 6; i += 1) { f.stub.flushFrames(); await tick(); }
+    await tick(20);
+    f.stub.flushFrames();
+    const editor = card.querySelector(".pxd-item__editor");
+    assert.ok(editor, "editor mounted");
+    assert.ok(card.classList.contains("pxd-item--editing"));
+    const snap = counts();
+    let text = "a note changed";
+    for (let i = 0; i < 100; i += 1) {
+      text += "x";
+      await echo(text);
+    }
+    const after = counts();
+    for (const uid of new Set([...Object.keys(snap), ...Object.keys(after)])) {
+      assert.equal(after[uid] || 0, snap[uid] || 0, `${uid} render delta during 100 echoes`);
+    }
+    assert.equal(card.querySelector(".pxd-item__editor"), editor, "Roam keeps the same editor node");
+  } finally {
+    try { f.view.dispose(); } catch { /* already disposed */ }
+    resetSessions();
+    f.restore();
+  }
+});

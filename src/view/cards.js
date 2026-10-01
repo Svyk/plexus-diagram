@@ -155,6 +155,13 @@ export function createItemRenderer({
 } = {}) {
   const shells = new Map(); // uid → rec
   const mounted = new Map(); // uid → lastWanted (LRU order = insertion order)
+  // ED-2: per-item board renders, on the same object as window.__plexusDiagram.stats.
+  const noteRender = (uid) => {
+    const bag = host?.stats;
+    if (!bag || typeof bag !== "object") return;
+    if (!bag.items || typeof bag.items !== "object") bag.items = {};
+    bag.items[uid] = (Number(bag.items[uid]) || 0) + 1;
+  };
   let lod = "detail";
   let focusSet = null;
   let badgeMap = new Map();
@@ -396,19 +403,25 @@ export function createItemRenderer({
       if (!rec) { rec = buildShell(item); orderChanged = true; }
       const rect = rects.get(uid);
       if (fresh || !dirty || dirty.has(uid)) {
-        paintShell(rec, item);
-        if (rect) position(rec, rect);
-        const key = contentKeyOf(item);
-        if (rec.contentKey !== null && rec.contentKey !== key && editing?.uid !== uid) {
-          // content changed under a mounted shell → remount on the next content pass
-          unmountRoots(rec);
-          rec.body?.replaceChildren?.();
-          rec.contentKey = null;
-          mounted.delete(uid);
-          rec.titleRendered = false;
-          if (rec.type === "card") { rec.bare = true; rec.el.classList.add("pxd-item--bare"); }
+        // Roam owns the open editor. A pull-watch echo of its text must not repaint this card or remount it.
+        if (!fresh && editing?.uid === uid) {
+          if (rect && (!rec.rect || rec.rect.x !== rect.x || rec.rect.y !== rect.y || rec.rect.w !== rect.w || rec.rect.h !== rect.h)) position(rec, rect);
+        } else {
+          noteRender(uid);
+          paintShell(rec, item);
+          if (rect) position(rec, rect);
+          const key = contentKeyOf(item);
+          if (rec.contentKey !== null && rec.contentKey !== key && editing?.uid !== uid) {
+            // content changed under a mounted shell → remount on the next content pass
+            unmountRoots(rec);
+            rec.body?.replaceChildren?.();
+            rec.contentKey = null;
+            mounted.delete(uid);
+            rec.titleRendered = false;
+            if (rec.type === "card") { rec.bare = true; rec.el.classList.add("pxd-item--bare"); }
+          }
+          if (showBadges) renderBadges(rec);
         }
-        if (showBadges) renderBadges(rec);
       } else if (rect && (!rec.rect || rec.rect.x !== rect.x || rec.rect.y !== rect.y || rec.rect.w !== rect.w || rec.rect.h !== rect.h)) {
         position(rec, rect);
       }
@@ -526,6 +539,7 @@ export function createItemRenderer({
   };
 
   const mountContent = (rec, item) => {
+    noteRender(item.uid);
     const body = rec.body;
     unmountRoots(rec);
     body.replaceChildren();
@@ -615,6 +629,7 @@ export function createItemRenderer({
   };
 
   const mountSectionTitle = (rec, item) => {
+    noteRender(item.uid);
     unmountRoots(rec);
     rec.title.replaceChildren();
     const node = renderRoot(rec.title, item.string || "Section", "pxd-rs pxd-section__title-text");

@@ -5908,10 +5908,7 @@ function createItemRenderer({
   const position = (rec, rect) => {
     const prev = rec.rect;
     rec.rect = rect;
-    if (editing?.uid === rec.uid) {
-      if (prev && prev.x === rect.x && prev.y === rect.y && prev.w === rect.w && prev.h === rect.h) return;
-      rec.el.style.minHeight = `${rect.h}px`;
-    }
+    if (editing?.uid === rec.uid && prev && prev.x === rect.x && prev.y === rect.y && prev.w === rect.w && prev.h === rect.h) return;
     rec.el.style.transform = `translate(${rect.x}px, ${rect.y}px)`;
     rec.el.style.width = `${rect.w}px`;
     rec.el.style.height = `${rect.h}px`;
@@ -6567,6 +6564,39 @@ function createItemRenderer({
   const recoverFocus = () => armFloor();
   const stopEvent = (event) => event.stopPropagation();
   const EDITOR_STOPPED = ["pointerdown", "pointerup", "click", "dblclick", "wheel", "mousedown"];
+  const EDIT_FADE_MS = 80;
+  const boxHeight = (node) => {
+    const h = Number(node?.offsetHeight) || 0;
+    return h > 0 ? h : 0;
+  };
+  const prefersReducedMotion = () => {
+    const mq = doc.defaultView?.matchMedia;
+    if (typeof mq !== "function") return false;
+    try {
+      return Boolean(mq.call(doc.defaultView, "(prefers-reduced-motion: reduce)")?.matches);
+    } catch {
+      return false;
+    }
+  };
+  const clearEditFade = (e) => {
+    e?.fadeCancel?.();
+    e?.releaseCancel?.();
+    if (e) {
+      e.fadeCancel = null;
+      e.releaseCancel = null;
+    }
+  };
+  const dropStaticLayer = (rec) => {
+    unmountRoots(rec);
+    rec.ghost?.remove();
+    rec.ghost = null;
+  };
+  const releaseEditLock = (rec) => {
+    if (!rec?.el) return;
+    rec.el.style.minHeight = "";
+    if (rec.body?.style) rec.body.style.minHeight = "";
+    rec.el.classList.remove("pxd-item--xfade");
+  };
   const enterEdit = async (uid) => {
     const rec = shells.get(uid);
     const item = lastBoard?.items.get(uid);
@@ -6578,16 +6608,24 @@ function createItemRenderer({
       return false;
     }
     const targetUid = item.target.kind === "block" ? item.target.uid : item.uid;
-    unmountRoots(rec);
-    rec.body.replaceChildren();
+    const contentH = boxHeight(rec.body);
+    const lockH = boxHeight(rec.el) || contentH || Number(rec.rect?.h) || 0;
+    const reduced = prefersReducedMotion();
+    const ghost = el("div", "pxd-item__ghost");
+    ghost.setAttribute("aria-hidden", "true");
+    for (const node of [...rec.body.children || []]) ghost.append(node);
+    rec.body.append(ghost);
+    rec.ghost = ghost;
     rec.contentKey = null;
     mounted.delete(uid);
     const editor = el("div", "pxd-item__editor", rec.body);
     for (const type of EDITOR_STOPPED) editor.addEventListener(type, stopEvent);
-    editing = { uid, rec, editor, targetUid, item, ready: false };
+    editing = { uid, rec, editor, targetUid, item, ready: false, fadeCancel: null, releaseCancel: null };
     rec.el.classList.add("pxd-item--editing");
     renderBadges(rec);
-    if (rec.rect) rec.el.style.minHeight = `${rec.rect.h}px`;
+    if (lockH > 0) rec.el.style.minHeight = `${lockH}px`;
+    if (reduced) dropStaticLayer(rec);
+    else rec.el.classList.add("pxd-item--xfade");
     lastOutsideDown = -Infinity;
     attachFocusGuard();
     attachFloor(editing);
@@ -6608,6 +6646,31 @@ function createItemRenderer({
       await exitEdit({ silent: true });
       return false;
     }
+    const releaseIfFilled = () => {
+      if (editing?.uid !== uid) return;
+      const editorH = boxHeight(editor);
+      if (!(editorH > 0 && editorH + 1 >= lockH)) return;
+      releaseEditLock(rec);
+    };
+    if (reduced) {
+      editing.releaseCancel = frameLater(() => {
+        if (editing?.uid !== uid) return;
+        editing.releaseCancel = null;
+        releaseIfFilled();
+      });
+    } else {
+      editing.fadeCancel = later(() => {
+        if (editing?.uid !== uid) return;
+        editing.fadeCancel = null;
+        rec.el.classList.remove("pxd-item--xfade");
+        dropStaticLayer(rec);
+        editing.releaseCancel = frameLater(() => {
+          if (editing?.uid !== uid) return;
+          editing.releaseCancel = null;
+          releaseIfFilled();
+        });
+      }, EDIT_FADE_MS);
+    }
     await waitHydrateQuiet(editor, HYDRATE_CAP_MS);
     if (disposed || editing?.uid !== uid) return false;
     const input = editor.querySelector?.(".rm-block__input") || editor.querySelector?.("textarea");
@@ -6619,17 +6682,19 @@ function createItemRenderer({
     const e = editing;
     if (!e) return;
     editing = null;
+    clearEditFade(e);
     detachFocusGuard();
     const { rec, editor, uid, item } = e;
     const contentH = Number(editor.scrollHeight) || 0;
     for (const type of EDITOR_STOPPED) editor.removeEventListener(type, stopEvent);
+    dropStaticLayer(rec);
     try {
       host?.unmount?.(editor);
     } catch {
     }
     editor.remove();
     rec.el.classList.remove("pxd-item--editing");
-    rec.el.style.minHeight = "";
+    releaseEditLock(rec);
     rec.contentKey = null;
     mounted.delete(uid);
     if (rec.type === "card") {
@@ -6773,9 +6838,12 @@ function createItemRenderer({
     disposed = true;
     if (editing) {
       const e = editing;
+      clearEditFade(e);
       editing = null;
       detachFocusGuard();
       for (const type of EDITOR_STOPPED) e.editor.removeEventListener(type, stopEvent);
+      e.rec.ghost?.remove();
+      e.rec.ghost = null;
       try {
         host?.unmount?.(e.editor);
       } catch {

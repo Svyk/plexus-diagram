@@ -453,6 +453,15 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   min-height: 24px;
 }
 
+/* ED-1: Roam first mounts a view div (.rm-block__input--view), then swaps in a textarea.
+   Both use margin-top -1px and padding-top 4px. The static line sits ~2px into the same
+   box. Text items keep their own line-height. */
+.pxd-root .pxd-item:not(.pxd-item--text) .pxd-item__editor :is(textarea.rm-block-input, textarea.rm-block__input, .rm-block__input, .rm-block__input--view) {
+  margin-top: 0 !important;
+  padding-top: 1px !important;
+  line-height: 1.4 !important;
+}
+
 .pxd-item__editor .rm-block-main,
 .pxd-item__editor .roam-block-container {
   width: 100%;
@@ -1280,6 +1289,43 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   z-index: 3;
 }
 
+/* ED-1: static layer and the editor share one cell so the swap does not move text. 80ms, none under reduced motion. */
+.pxd-item.pxd-item--editing.pxd-item--xfade > .pxd-item__body {
+  display: grid;
+}
+
+.pxd-item.pxd-item--editing.pxd-item--xfade > .pxd-item__body > .pxd-item__ghost,
+.pxd-item.pxd-item--editing.pxd-item--xfade > .pxd-item__body > .pxd-item__editor {
+  grid-area: 1 / 1;
+  min-height: 0;
+}
+
+.pxd-item.pxd-item--editing.pxd-item--xfade > .pxd-item__body > .pxd-item__ghost {
+  pointer-events: none;
+  animation: pxd-edit-out 80ms linear forwards;
+}
+
+.pxd-item.pxd-item--editing.pxd-item--xfade > .pxd-item__body > .pxd-item__editor {
+  opacity: 0;
+  animation: pxd-edit-in 80ms linear forwards;
+}
+
+@keyframes pxd-edit-in {
+  to { opacity: 1; }
+}
+
+@keyframes pxd-edit-out {
+  to { opacity: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pxd-item.pxd-item--editing.pxd-item--xfade > .pxd-item__body > .pxd-item__ghost,
+  .pxd-item.pxd-item--editing.pxd-item--xfade > .pxd-item__body > .pxd-item__editor {
+    animation: none;
+    opacity: 1;
+  }
+}
+
 /* Detail view: note, block-ref and image cards show their whole content in the body, not a header echo. */
 .pxd-root .pxd-item.pxd-item--card.pxd-item--note > .pxd-item__header,
 .pxd-root .pxd-item.pxd-item--card.pxd-item--block > .pxd-item__header,
@@ -1327,11 +1373,16 @@ body.pxd-has-fullscreen .breadcrumbs-content {
 /* Editing: the header is an 8px grab strip with no text (Roam's editor shows the live text). */
 .pxd-root .pxd-item.pxd-item--editing > .pxd-item__header {
   display: block;
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
   height: 8px;
   min-height: 8px;
   padding: 0;
   font-size: 0;
   overflow: hidden;
+  z-index: 2;
 }
 
 /* ------------------------------------------------------------------ nested boards (1.1) */

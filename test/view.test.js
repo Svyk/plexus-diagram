@@ -896,7 +896,7 @@ test("R2: dispose during a pending floor leaves no frames or listeners", async (
   }
 });
 
-test("R3: editing card keeps min-height and a frozen header; both restore on exit", async () => {
+test("R3: editing card keeps the measured floor and a frozen header; both restore on exit", async () => {
   const f = mountFixture();
   try {
     await f.flush();
@@ -919,6 +919,112 @@ test("R3: editing card keeps min-height and a frozen header; both restore on exi
     f.view.dispose();
     f.restore();
   }
+});
+
+const contentBox = (height, width = 200) => ({ left: 0, top: 0, width, height, right: width, bottom: height, x: 0, y: 0 });
+
+test("ED-1: enter locks the measured content box and keeps the static layer for an 80ms crossfade", async () => {
+  const f = mountFixture();
+  try {
+    await f.flush();
+    const alpha = f.view.root.querySelector("[data-uid=cardAAAA1]");
+    const body = alpha.querySelector(".pxd-item__body");
+    const staticText = body.querySelector(".pxd-item__string");
+    body._rect = contentBox(140);
+    f.stub.dispatch(alpha, "dblclick", { clientX: 50, clientY: 50 });
+    assert.equal(alpha.style.minHeight, "140px", "min-height is the measured content box, not the stored 100px");
+    assert.ok(alpha.classList.contains("pxd-item--xfade"));
+    const ghost = body.querySelector(".pxd-item__ghost");
+    assert.ok(ghost?.contains(staticText), "static text stays until the editor is opaque");
+    const editor = body.querySelector(".pxd-item__editor");
+    assert.ok(editor);
+    f.stub.flushFrames();
+    assert.equal(alpha.style.minHeight, "140px", "one frame does not end the fade");
+    assert.ok(body.querySelector(".pxd-item__ghost"));
+    editor._rect = contentBox(180);
+    await tick(100);
+    assert.equal(body.querySelector(".pxd-item__ghost"), null, "static layer leaves after 80ms");
+    assert.equal(alpha.classList.contains("pxd-item--xfade"), false);
+    assert.equal(alpha.style.minHeight, "140px", "lock holds for the editor's first in-flow frame");
+    f.stub.flushFrames();
+    assert.equal(alpha.style.minHeight, "", "released once the editor fills the measured box");
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("ED-1: a shorter editor keeps the measured floor so the card cannot collapse", async () => {
+  const f = mountFixture();
+  try {
+    await f.flush();
+    const alpha = f.view.root.querySelector("[data-uid=cardAAAA1]");
+    const body = alpha.querySelector(".pxd-item__body");
+    body._rect = contentBox(140);
+    f.stub.dispatch(alpha, "dblclick", { clientX: 50, clientY: 50 });
+    body.querySelector(".pxd-item__editor")._rect = contentBox(40);
+    await tick(100);
+    f.stub.flushFrames();
+    assert.equal(alpha.style.minHeight, "140px");
+    f.stub.dispatch(body.querySelector("textarea"), "keydown", { key: "Escape" });
+    await tick();
+    assert.equal(alpha.style.minHeight, "");
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("ED-1: a 0 content box falls back to the stored height", async () => {
+  const f = mountFixture();
+  try {
+    await f.flush();
+    const alpha = f.view.root.querySelector("[data-uid=cardAAAA1]");
+    f.stub.dispatch(alpha, "dblclick", { clientX: 50, clientY: 50 });
+    assert.equal(alpha.style.minHeight, "100px");
+    assert.ok(alpha.classList.contains("pxd-item--xfade"));
+    await tick(100);
+    f.stub.flushFrames();
+    assert.equal(alpha.style.minHeight, "100px", "an empty editor does not drop the floor");
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("ED-1: reduced motion skips the crossfade and releases a filled editor on the next frame", async () => {
+  const f = mountFixture();
+  try {
+    await f.flush();
+    f.stub.window.matchMedia = (query) => ({ matches: String(query).includes("prefers-reduced-motion"), media: String(query) });
+    const alpha = f.view.root.querySelector("[data-uid=cardAAAA1]");
+    const body = alpha.querySelector(".pxd-item__body");
+    body._rect = contentBox(140);
+    f.stub.dispatch(alpha, "dblclick", { clientX: 50, clientY: 50 });
+    assert.equal(alpha.style.minHeight, "140px");
+    assert.equal(alpha.classList.contains("pxd-item--xfade"), false);
+    assert.equal(body.querySelector(".pxd-item__ghost"), null);
+    const editor = body.querySelector(".pxd-item__editor");
+    assert.ok(editor);
+    editor._rect = contentBox(140);
+    f.stub.flushFrames();
+    assert.equal(alpha.style.minHeight, "");
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("ED-1: crossfade is 80ms and absent under reduced motion", async () => {
+  const { readFileSync } = await import("node:fs");
+  const css = readFileSync(new URL("../src/extension.css", import.meta.url), "utf8");
+  assert.match(css, /\.pxd-root \.pxd-item:not\(\.pxd-item--text\) \.pxd-item__editor :is\([^)]*\.rm-block__input--view[^)]*\) \{\s*margin-top: 0 !important;\s*padding-top: 1px !important;\s*line-height: 1\.4 !important;/);
+  assert.match(css, /animation: pxd-edit-in 80ms linear forwards/);
+  assert.match(css, /animation: pxd-edit-out 80ms linear forwards/);
+  assert.match(css, /@keyframes pxd-edit-in \{[^}]*to \{ opacity: 1; \}/);
+  assert.match(css, /@keyframes pxd-edit-out \{[^}]*to \{ opacity: 0; \}/);
+  const reduced = css.slice(css.indexOf("@media (prefers-reduced-motion: reduce)"));
+  assert.match(reduced, /pxd-item--xfade[\s\S]*animation: none/);
 });
 
 test("CSS contract: node toolbar buttons are 28px targets", async () => {

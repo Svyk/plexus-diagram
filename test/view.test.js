@@ -1801,6 +1801,47 @@ test("ED-3: a taller edit previews the section and Esc writes the card height on
   }
 });
 
+test("ED-4: editing pins a page menu to the textarea and lifts it out of the board", async () => {
+  const f = mountFixture();
+  try {
+    await f.flush();
+    const card = await startEdit(f, "cardAAAA1");
+    const editor = card.querySelector(".pxd-item__editor");
+    const input = editor.querySelector("textarea");
+    input._rect = { x: 100, y: 200, left: 100, top: 200, width: 180, height: 24, right: 280, bottom: 224 };
+    const menu = f.stub.document.createElement("div");
+    menu.className = "rm-autocomplete__results";
+    menu._rect = { x: 10, y: 10, left: 10, top: 10, width: 280, height: 80, right: 290, bottom: 90 };
+    editor.append(menu);
+    const renders = f.host.calls.renderBlock;
+    // Hydrate resolves on a microtask after the last flushed frame. Yield once so the watcher starts.
+    await tick();
+    f.stub.flushFrames();
+    assert.equal(menu.parentElement === f.stub.document.body, true);
+    assert.equal(menu.closest(".pxd-viewport") === null, true);
+    assert.equal(menu.style.position, "fixed");
+    assert.equal(menu.style.transform, "none");
+    assert.equal(menu.style.left, "100px");
+    assert.equal(menu.style.top, "226px");
+    f.stub.flushFrames();
+    assert.equal(f.host.calls.renderBlock, renders, "pinning a menu does not re-render the card");
+    menu.remove();
+    input.focus();
+    f.stub.dispatch(input, "keydown", { key: "Escape" });
+    await tick(30);
+    f.stub.flushFrames();
+    const late = f.stub.document.createElement("div");
+    late.className = "rm-autocomplete__results";
+    late._rect = { x: 10, y: 10, left: 10, top: 10, width: 280, height: 80, right: 290, bottom: 90 };
+    f.stub.document.body.append(late);
+    f.stub.flushFrames();
+    assert.equal(late.style.position || "", "", "the pin stops when the editor closes");
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
 test("ED-2: 100 pull-watch echoes while editing leave every item render count unchanged", async () => {
   const f = mountReal();
   try {

@@ -5,6 +5,7 @@
 import { DEFAULT_SIZES, FONT_SIZES, PALETTE, attrNameOf, classifyString, cssColor, firstLine, hexColor, isUntitledBoard, parseBoardTitle, plainText } from "../model/schema.js";
 import { boardPreview, descendantsOf } from "../model/board.js";
 import { lodForZoom, rectsIntersect } from "../model/geometry.js";
+import { watchEditorMenus } from "./editor-menus.js";
 
 const SIDES = ["top", "right", "bottom", "left"];
 const CHUNK_MS = 8;
@@ -169,6 +170,7 @@ export function createItemRenderer({
   let zoomCache = 1;
   let paused = false;
   let editing = null;
+  let stopMenus = null;
   let queue = [];
   let idleHandle = null;
   let wanted = new Set();
@@ -181,6 +183,20 @@ export function createItemRenderer({
   let recoveries = [];
   let lastOutsideDown = -Infinity;
   let disposed = false;
+
+  // `.rm-block__input` is also the read-only block view. The caret lives on the textarea.
+  const menuAnchor = () => doc.querySelector?.(".pxd-item--editing textarea")
+    || doc.querySelector?.(".pxd-root .bp3-popover-open")
+    || null;
+  const ensureMenus = (getAnchor = menuAnchor) => {
+    if (disposed || stopMenus) return;
+    const stop = watchEditorMenus(doc, getAnchor, () => {
+      if (stopMenus === stop) stopMenus = null;
+    });
+    stopMenus = stop;
+  };
+  const onMenuPointer = () => { if (!disposed) ensureMenus(); };
+  doc.addEventListener?.("pointerup", onMenuPointer, true);
 
   const later = (fn, ms) => (timers?.later ? timers.later(fn, ms) : (() => { const t = setTimeout(fn, ms); return () => clearTimeout(t); })());
   const idle = (fn) => {
@@ -1131,10 +1147,16 @@ export function createItemRenderer({
     const input = editor.querySelector?.(".rm-block__input") || editor.querySelector?.("textarea");
     if (input) focusRoamInput(input);
     if (editing?.uid === uid && editor.contains?.(doc.activeElement)) editing.ready = true;
+    stopMenus?.();
+    stopMenus = null;
+    if (editing?.uid === uid) ensureMenus(() => editor.querySelector?.("textarea"));
     return true;
   };
 
   const exitEdit = async ({ silent = false } = {}) => {
+    stopMenus?.();
+    stopMenus = null;
+    if (doc.querySelector?.(".pxd-root .bp3-popover-open")) ensureMenus();
     const e = editing;
     if (!e) return;
     editing = null;
@@ -1257,6 +1279,9 @@ export function createItemRenderer({
 
   const dispose = () => {
     disposed = true;
+    doc.removeEventListener?.("pointerup", onMenuPointer, true);
+    stopMenus?.();
+    stopMenus = null;
     if (editing) {
       const e = editing;
       clearEditFade(e);

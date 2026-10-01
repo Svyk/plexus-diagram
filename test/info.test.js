@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { attributeRows, boardsFromRows, tagNames } from "../src/model/info.js";
+import { attributeRows, boardsFromRows, closeInfoTab, infoTabList, nextPanelWidth, tagNames } from "../src/model/info.js";
 
 test("attributeRows keeps Name:: values and skips everything else", () => {
   assert.deepEqual(attributeRows([
@@ -36,4 +36,27 @@ test("boardsFromRows drops non-v2 rows, dedupes, and caps", () => {
     { uid: "a", title: "Fixture", pageTitle: "Lab" },
     { uid: "b", title: "Untitled board", pageTitle: "" },
   ]);
+});
+
+test("info tabs add, switch, and close without keeping a closed card", () => {
+  let state = infoTabList([], "a", { add: true });
+  state = infoTabList(state.tabs, "b", { add: true });
+  state = infoTabList(state.tabs, "c", { add: true });
+  assert.deepEqual(state.tabs.map((t) => t.uid), ["a", "b", "c"]);
+  state = infoTabList(state.tabs, "a");
+  assert.equal(state.current, "a");
+  assert.equal(state.tabs.length, 3);
+  state = closeInfoTab(state.tabs, "a", "a");
+  assert.deepEqual(state.tabs.map((t) => t.uid), ["b", "c"]);
+  assert.equal(state.current, "b");
+  state = closeInfoTab(state.tabs, "b", "c");
+  assert.equal(state.current, "b");
+  assert.deepEqual(state.tabs.map((t) => t.uid), ["b"]);
+});
+
+test("panel width grows when the left edge moves left and stays in range", () => {
+  assert.equal(nextPanelWidth(340, 40), 380);
+  assert.equal(nextPanelWidth(340, -1000), 260);
+  assert.equal(nextPanelWidth(340, 1000), 640);
+  assert.equal(nextPanelWidth("nope", 0), 340);
 });

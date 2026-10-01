@@ -30,6 +30,7 @@ import { editorKeyAction, inputBlockRole } from "./editor-keys.js";
 import { createEdgeLayer } from "./edges.js";
 import { createChrome, LINK_MODES } from "./chrome.js";
 import { createPropsPanel } from "./props-panel.js";
+import { PANEL_WIDTH_DEFAULT, nextPanelWidth } from "../model/info.js";
 import { createPanel, parseDropPayload } from "./panel.js";
 import { createMenu } from "./menu.js";
 import { buildMenu } from "./menu-model.js";
@@ -1390,11 +1391,18 @@ export function mountBoardView({
       },
     },
   });
+  const PANEL_WIDTH_KEY = "plexus-diagram:panel-width";
+  let panelWidth = PANEL_WIDTH_DEFAULT;
+  try {
+    const stored = Number(storage?.getItem?.(PANEL_WIDTH_KEY));
+    if (Number.isFinite(stored)) panelWidth = nextPanelWidth(stored, 0);
+  } catch { /* private mode */ }
   const panel = createPanel({
     doc,
     root,
     host,
     timers,
+    width: panelWidth,
     on: {
       addBeside: (string) => addStringsBeside([string]),
       addMany: (strings) => addStringsBeside(strings),
@@ -1411,9 +1419,15 @@ export function mountBoardView({
       isFullscreen: () => isFullscreen,
       openSidebarEditor: (item) => openItemInSidebar(item),
       openRef: (uid) => host?.openInSidebar?.(uid, "block"),
+      focusInfoTab: (uid) => ctl.select([uid]),
+      rememberWidth: (w) => { try { storage?.setItem?.(PANEL_WIDTH_KEY, String(w)); } catch { /* private mode */ } },
     },
   });
-  openInfo = () => panel.open("info");
+  openInfo = () => {
+    const it = singleItem();
+    if (it && it.type !== "section") panel.addInfoTab(it);
+    else panel.open("info");
+  };
   const propsPanel = createPropsPanel({
     doc,
     root,
@@ -1777,6 +1791,10 @@ export function mountBoardView({
     toast: (t) => chrome.toast.show(t),
     openSearch: () => chrome.search.open(),
     openInfo: () => openInfo(),
+    addInfoTab: (uid) => {
+      const item = board()?.items.get(uid);
+      if (item && item.type !== "section") panel.addInfoTab(item);
+    },
     cycleLinks,
     isFullscreen: () => isFullscreen,
     setFullscreen: (on) => requestFullscreen(on),

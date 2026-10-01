@@ -77,6 +77,7 @@ function harness({ vp = { x: 0, y: 0, zoom: 1 }, settings = {}, editing = null, 
     toast: rec("toast"),
     openSearch: rec("openSearch"),
     openInfo: rec("openInfo"),
+    addInfoTab: rec("addInfoTab"),
     cycleLinks: rec("cycleLinks"),
     isFullscreen: () => false,
     setFullscreen: rec("setFullscreen"),
@@ -683,6 +684,22 @@ test("alt-drag: ghosts preview, originals stay put, one duplicateItems on drop i
   assert.deepEqual(dups[0].slice(1), [["cardAAAA1"], { dx: 100, dy: 40, asRef: false }]);
   assert.equal(h.named("showGhosts").at(-1)[1], null, "ghosts cleared at the end");
   assert.deepEqual(h.ctl.getSelection().items, ["cardAAAA1"]);
+});
+
+test("shift-click adds an info tab; a plain click and a shift-drag do not", () => {
+  const h = harness();
+  const cardB = { kind: "item", uid: "cardBBBB2", part: "body" };
+  h.ctl.handle(h.ev("pointerdown", { x: 10, y: 10 }, { target: CARD, shift: true }));
+  h.ctl.handle(h.ev("pointerup", { x: 10, y: 10 }, { target: CARD, shift: true }));
+  assert.deepEqual(h.named("addInfoTab").map((c) => c[1]), ["cardAAAA1"]);
+  h.ctl.handle(h.ev("pointerdown", { x: 410, y: 10 }, { target: cardB }));
+  h.ctl.handle(h.ev("pointerup", { x: 410, y: 10 }, { target: cardB }));
+  assert.equal(h.named("addInfoTab").length, 1);
+  h.ctl.handle(h.ev("pointerdown", { x: 10, y: 10 }, { target: CARD, shift: true }));
+  h.ctl.handle(h.ev("pointermove", { x: 80, y: 40 }, { target: CARD, shift: true }));
+  h.ctl.handle(h.ev("pointerup", { x: 80, y: 40 }, { target: CARD, shift: true }));
+  assert.equal(h.named("addInfoTab").length, 1);
+  assert.equal(h.named("commitMove").length, 1);
 });
 
 test("alt+shift drag duplicates as references; a selected item stays selected instead of toggling", () => {

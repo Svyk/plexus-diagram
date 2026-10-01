@@ -2,6 +2,41 @@
 
 import { attrNameOf } from "./schema.js";
 
+export const PANEL_WIDTH_MIN = 260;
+export const PANEL_WIDTH_MAX = 640;
+export const PANEL_WIDTH_DEFAULT = 340;
+
+// Dragging the panel's left edge. A negative screen delta widens it. The result stays in range.
+export function nextPanelWidth(current, delta, { min = PANEL_WIDTH_MIN, max = PANEL_WIDTH_MAX } = {}) {
+  const base = Number(current);
+  const d = Number(delta);
+  const start = Number.isFinite(base) ? base : PANEL_WIDTH_DEFAULT;
+  const next = start + (Number.isFinite(d) ? d : 0);
+  return Math.min(max, Math.max(min, Math.round(next)));
+}
+
+// Session list of open info cards. `add` appends a new uid; an existing uid only becomes current.
+export function infoTabList(tabs, uid, { add = false } = {}) {
+  const id = String(uid || "");
+  const list = (tabs || []).filter((t) => t && t.uid).map((t) => ({ uid: String(t.uid) }));
+  if (!id) return { tabs: list, current: list[0]?.uid || null };
+  if (list.some((t) => t.uid === id)) return { tabs: list, current: id };
+  if (!add) return { tabs: list, current: list[0]?.uid || null };
+  const next = list.concat([{ uid: id }]);
+  return { tabs: next, current: id };
+}
+
+// Drop one tab. Closing the current tab selects the neighbor that slides into its place.
+export function closeInfoTab(tabs, current, uid) {
+  const list = (tabs || []).filter((t) => t && t.uid && t.uid !== uid);
+  let cur = current === uid ? null : current;
+  if (!cur || !list.some((t) => t.uid === cur)) {
+    const idx = (tabs || []).findIndex((t) => t && t.uid === uid);
+    cur = list[idx]?.uid || list[idx - 1]?.uid || null;
+  }
+  return { tabs: list, current: cur };
+}
+
 // Direct child strings of the form `Name:: value`. The page card's own `[[title]]` is not an attribute.
 export function attributeRows(strings) {
   const out = [];

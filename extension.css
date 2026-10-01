@@ -1274,6 +1274,42 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   padding: 8px;
 }
 
+.pxd-panel__resize {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -3px;
+  width: 6px;
+  cursor: ew-resize;
+}
+
+.pxd-panel__infotabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  padding: 6px 8px 0;
+}
+
+.pxd-panel__infotab {
+  display: inline-flex;
+  align-items: center;
+  max-width: 100%;
+  border: 1px solid var(--pxd-border);
+  border-radius: 6px;
+}
+
+.pxd-panel__infotab--on {
+  border-color: var(--pxd-accent);
+  background: var(--pxd-accent-soft);
+}
+
+.pxd-panel__infotab-name {
+  max-width: 140px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .pxd-panel__info {
   flex: 1 1 auto;
   min-height: 0;

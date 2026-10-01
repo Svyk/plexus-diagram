@@ -1616,6 +1616,34 @@ function coveredBy(links, board) {
 }
 
 // src/model/info.js
+var PANEL_WIDTH_MIN = 260;
+var PANEL_WIDTH_MAX = 640;
+var PANEL_WIDTH_DEFAULT = 340;
+function nextPanelWidth(current, delta, { min = PANEL_WIDTH_MIN, max = PANEL_WIDTH_MAX } = {}) {
+  const base = Number(current);
+  const d = Number(delta);
+  const start = Number.isFinite(base) ? base : PANEL_WIDTH_DEFAULT;
+  const next = start + (Number.isFinite(d) ? d : 0);
+  return Math.min(max, Math.max(min, Math.round(next)));
+}
+function infoTabList(tabs, uid, { add = false } = {}) {
+  const id = String(uid || "");
+  const list = (tabs || []).filter((t) => t && t.uid).map((t) => ({ uid: String(t.uid) }));
+  if (!id) return { tabs: list, current: list[0]?.uid || null };
+  if (list.some((t) => t.uid === id)) return { tabs: list, current: id };
+  if (!add) return { tabs: list, current: list[0]?.uid || null };
+  const next = list.concat([{ uid: id }]);
+  return { tabs: next, current: id };
+}
+function closeInfoTab(tabs, current, uid) {
+  const list = (tabs || []).filter((t) => t && t.uid && t.uid !== uid);
+  let cur = current === uid ? null : current;
+  if (!cur || !list.some((t) => t.uid === cur)) {
+    const idx = (tabs || []).findIndex((t) => t && t.uid === uid);
+    cur = list[idx]?.uid || list[idx - 1]?.uid || null;
+  }
+  return { tabs: list, current: cur };
+}
 function attributeRows(strings) {
   const out = [];
   for (const raw of strings || []) {
@@ -5299,6 +5327,9 @@ function createInteractions({ actions, settings } = {}) {
         } else if (g.deferred) {
           selectItems([g.target]);
         }
+        if (!g.moved && ev.shift && !ev.alt && !g.dup && g.target && b?.items.get(g.target)?.type !== "section") {
+          call("addInfoTab", g.target);
+        }
         break;
       case "resize":
         if (g.moved && g.rect) call("commitRects", [g.rect]);
@@ -8931,7 +8962,7 @@ function parseDropPayload(dataTransfer, { resolveUid } = {}) {
   }
   return [];
 }
-function createPanel({ doc = globalThis.document, root, host, timers, on = {} } = {}) {
+function createPanel({ doc = globalThis.document, root, host, timers, on = {}, width } = {}) {
   const listeners2 = [];
   const listen = (el2, type, fn, opts) => {
     el2.addEventListener(type, fn, opts);
@@ -8946,12 +8977,38 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {} } 
   };
   const panel = el("aside", "pxd-panel pxd-chrome", root);
   panel.style.display = "none";
+  if (Number.isFinite(Number(width))) panel.style.width = `${nextPanelWidth(width, 0)}px`;
+  const resize = el("div", "pxd-panel__resize", panel);
+  resize.title = "Resize";
   for (const type of ["pointerdown", "pointerup", "click", "dblclick", "wheel", "keydown", "keyup"]) {
     listen(panel, type, (event) => {
       if ((type === "keydown" || type === "keyup") && event.target?.closest?.(".pxd-panel__info-mount")) return;
       event.stopPropagation();
     });
   }
+  let resizing = null;
+  listen(resize, "pointerdown", (event) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    const measured = panel.getBoundingClientRect?.().width;
+    const styled = parseFloat(panel.style.width);
+    resizing = { x: event.clientX, w: measured || styled || PANEL_WIDTH_DEFAULT };
+    try {
+      resize.setPointerCapture?.(event.pointerId);
+    } catch {
+    }
+  });
+  listen(resize, "pointermove", (event) => {
+    if (!resizing) return;
+    panel.style.width = `${nextPanelWidth(resizing.w, resizing.x - event.clientX)}px`;
+  });
+  listen(resize, "pointerup", (event) => {
+    if (!resizing) return;
+    const next = nextPanelWidth(resizing.w, resizing.x - event.clientX);
+    resizing = null;
+    panel.style.width = `${next}px`;
+    on.rememberWidth?.(next);
+  });
   const head = el("div", "pxd-panel__head", panel);
   const tabs = el("div", "pxd-panel__tabs", head);
   const tabSearch = el("button", "pxd-btn pxd-panel__tab pxd-panel__tab--on", tabs, "Search");
@@ -8994,6 +9051,7 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {} } 
   const outlineList = el("div", "pxd-panel__list pxd-panel__outline", outlinePane);
   const infoPane = el("div", "pxd-panel__pane pxd-panel__pane--info", panel);
   infoPane.style.display = "none";
+  const infoTabsBar = el("div", "pxd-panel__infotabs", infoPane);
   const infoScroll = el("div", "pxd-panel__info", infoPane);
   let tab = "search";
   let debounce = null;
@@ -9212,6 +9270,25 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
     event.stopPropagation();
     on.outlineClick?.(uid);
   });
+  let cardTabs = [];
+  const cardItems = /* @__PURE__ */ new Map();
+  let cardCurrent = null;
+  let followInfoSelection = true;
+  const renderCardTabs = () => {
+    infoTabsBar.replaceChildren();
+    for (const t of cardTabs) {
+      const row2 = el("span", t.uid === cardCurrent ? "pxd-panel__infotab pxd-panel__infotab--on" : "pxd-panel__infotab", infoTabsBar);
+      const name = el("button", "pxd-btn pxd-panel__infotab-name", row2, cardItems.get(t.uid)?.title || "Untitled");
+      name.type = "button";
+      name.dataset.uid = t.uid;
+      name.setAttribute("data-uid", t.uid);
+      const closer = el("button", "pxd-btn pxd-panel__infotab-x", row2, "×");
+      closer.type = "button";
+      closer.title = "Close";
+      closer.dataset.uid = t.uid;
+      closer.setAttribute("data-uid", t.uid);
+    }
+  };
   let infoMounted = false;
   const unmountInfo = () => {
     if (!infoMounted) return;
@@ -9233,13 +9310,15 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
     const id = queryId += 1;
     unmountInfo();
     infoScroll.replaceChildren();
-    if (!selected || selected.type === "section") {
+    const tabItem = cardCurrent ? cardItems.get(cardCurrent) || null : null;
+    const subject = followInfoSelection ? selected : tabItem || selected;
+    if (!subject || subject.type === "section") {
       el("div", "pxd-panel__empty", infoScroll, "Select a card");
       return;
     }
     let info = null;
     try {
-      info = await Promise.resolve(host?.cardInfo?.(selected)) ?? null;
+      info = await Promise.resolve(host?.cardInfo?.(subject)) ?? null;
     } catch {
       info = null;
     }
@@ -9267,7 +9346,7 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
     } else {
       el("div", "pxd-panel__info-note", mount, "Editing in the right sidebar");
       try {
-        on.openSidebarEditor?.(selected);
+        on.openSidebarEditor?.(subject);
       } catch {
       }
     }
@@ -9315,6 +9394,30 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
     if (board) on.openBoardByUid?.(uid);
     else on.openRef?.(uid);
   });
+  listen(infoTabsBar, "click", (event) => {
+    const closer = event.target?.closest?.(".pxd-panel__infotab-x");
+    const name = event.target?.closest?.(".pxd-panel__infotab-name");
+    const node = closer || name;
+    const uid = node?.dataset?.uid ?? node?.getAttribute?.("data-uid");
+    if (!uid) return;
+    event.preventDefault?.();
+    event.stopPropagation();
+    if (closer) {
+      const next = closeInfoTab(cardTabs, cardCurrent, uid);
+      cardTabs = next.tabs;
+      if (!next.tabs.some((t) => t.uid === uid)) cardItems.delete(uid);
+      cardCurrent = next.current;
+      followInfoSelection = false;
+      renderCardTabs();
+      void loadInfo();
+      return;
+    }
+    cardCurrent = uid;
+    followInfoSelection = false;
+    renderCardTabs();
+    on.focusInfoTab?.(uid);
+    void loadInfo();
+  });
   const api = {
     el: panel,
     open(which = tab) {
@@ -9346,9 +9449,31 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
     isOpen: () => panel.style.display !== "none",
     setSelection(item) {
       selected = item && item.type !== "section" ? item : null;
+      followInfoSelection = true;
+      if (selected && cardItems.has(selected.uid)) cardCurrent = selected.uid;
       if (api.isOpen() && tab === "related") void loadRelated();
-      if (api.isOpen() && tab === "info") void loadInfo();
+      if (api.isOpen() && tab === "info") {
+        renderCardTabs();
+        void loadInfo();
+      }
     },
+    addInfoTab(item) {
+      if (!item?.uid || item.type === "section") return cardTabs.map((t) => t.uid);
+      const title = item.title || String(item.string || "").split("\n")[0].slice(0, 48) || "Untitled";
+      cardItems.set(item.uid, { ...item, title });
+      const next = infoTabList(cardTabs, item.uid, { add: true });
+      cardTabs = next.tabs;
+      cardCurrent = next.current;
+      followInfoSelection = false;
+      panel.style.display = "";
+      setTab("info");
+      on.opened?.(true);
+      renderCardTabs();
+      void loadInfo();
+      return cardTabs.map((t) => t.uid);
+    },
+    infoTabs: () => cardTabs.map((t) => t.uid),
+    infoCurrent: () => cardCurrent,
     refreshMarks() {
       for (const r of panel.querySelectorAll(".pxd-panel__row")) {
         const s = r.dataset?.string || r.getAttribute("data-string");
@@ -12190,11 +12315,19 @@ function mountBoardView({
       }
     }
   });
+  const PANEL_WIDTH_KEY = "plexus-diagram:panel-width";
+  let panelWidth = PANEL_WIDTH_DEFAULT;
+  try {
+    const stored = Number(storage?.getItem?.(PANEL_WIDTH_KEY));
+    if (Number.isFinite(stored)) panelWidth = nextPanelWidth(stored, 0);
+  } catch {
+  }
   const panel = createPanel({
     doc,
     root,
     host,
     timers,
+    width: panelWidth,
     on: {
       addBeside: (string) => addStringsBeside([string]),
       addMany: (strings) => addStringsBeside(strings),
@@ -12221,10 +12354,21 @@ function mountBoardView({
       },
       isFullscreen: () => isFullscreen,
       openSidebarEditor: (item) => openItemInSidebar(item),
-      openRef: (uid) => host?.openInSidebar?.(uid, "block")
+      openRef: (uid) => host?.openInSidebar?.(uid, "block"),
+      focusInfoTab: (uid) => ctl.select([uid]),
+      rememberWidth: (w) => {
+        try {
+          storage?.setItem?.(PANEL_WIDTH_KEY, String(w));
+        } catch {
+        }
+      }
     }
   });
-  openInfo = () => panel.open("info");
+  openInfo = () => {
+    const it = singleItem();
+    if (it && it.type !== "section") panel.addInfoTab(it);
+    else panel.open("info");
+  };
   const propsPanel = createPropsPanel({
     doc,
     root,
@@ -12640,6 +12784,10 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
     toast: (t) => chrome.toast.show(t),
     openSearch: () => chrome.search.open(),
     openInfo: () => openInfo(),
+    addInfoTab: (uid) => {
+      const item = board()?.items.get(uid);
+      if (item && item.type !== "section") panel.addInfoTab(item);
+    },
     cycleLinks,
     isFullscreen: () => isFullscreen,
     setFullscreen: (on) => requestFullscreen(on),

@@ -2,6 +2,8 @@
 // board in the graph) and Outline (the board's cards as an indented tree).
 // Rows click-add beside the selection and drag onto the board with a custom MIME.
 
+import { closeInfoTab, infoTabList, nextPanelWidth, PANEL_WIDTH_DEFAULT } from "../model/info.js";
+
 export const CARD_MIME = "application/x-plexus-card";
 const DEBOUNCE_MS = 150;
 const LIMIT = 40;
@@ -57,7 +59,7 @@ export function parseDropPayload(dataTransfer, { resolveUid } = {}) {
   return [];
 }
 
-export function createPanel({ doc = globalThis.document, root, host, timers, on = {} } = {}) {
+export function createPanel({ doc = globalThis.document, root, host, timers, on = {}, width } = {}) {
   const listeners = [];
   const listen = (el, type, fn, opts) => {
     el.addEventListener(type, fn, opts);
@@ -73,6 +75,9 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
 
   const panel = el("aside", "pxd-panel pxd-chrome", root);
   panel.style.display = "none";
+  if (Number.isFinite(Number(width))) panel.style.width = `${nextPanelWidth(width, 0)}px`;
+  const resize = el("div", "pxd-panel__resize", panel);
+  resize.title = "Resize";
   for (const type of ["pointerdown", "pointerup", "click", "dblclick", "wheel", "keydown", "keyup"]) {
     listen(panel, type, (event) => {
       // The fullscreen editor is a real Roam block. Its keys have to reach Roam (undo, indent).
@@ -80,6 +85,26 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
       event.stopPropagation();
     });
   }
+  let resizing = null;
+  listen(resize, "pointerdown", (event) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    const measured = panel.getBoundingClientRect?.().width;
+    const styled = parseFloat(panel.style.width);
+    resizing = { x: event.clientX, w: measured || styled || PANEL_WIDTH_DEFAULT };
+    try { resize.setPointerCapture?.(event.pointerId); } catch { /* no capture */ }
+  });
+  listen(resize, "pointermove", (event) => {
+    if (!resizing) return;
+    panel.style.width = `${nextPanelWidth(resizing.w, resizing.x - event.clientX)}px`;
+  });
+  listen(resize, "pointerup", (event) => {
+    if (!resizing) return;
+    const next = nextPanelWidth(resizing.w, resizing.x - event.clientX);
+    resizing = null;
+    panel.style.width = `${next}px`;
+    on.rememberWidth?.(next);
+  });
   const head = el("div", "pxd-panel__head", panel);
   const tabs = el("div", "pxd-panel__tabs", head);
   const tabSearch = el("button", "pxd-btn pxd-panel__tab pxd-panel__tab--on", tabs, "Search");
@@ -122,6 +147,7 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
   const outlineList = el("div", "pxd-panel__list pxd-panel__outline", outlinePane);
   const infoPane = el("div", "pxd-panel__pane pxd-panel__pane--info", panel);
   infoPane.style.display = "none";
+  const infoTabsBar = el("div", "pxd-panel__infotabs", infoPane);
   const infoScroll = el("div", "pxd-panel__info", infoPane);
 
   let tab = "search";
@@ -307,6 +333,26 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     on.outlineClick?.(uid);
   });
 
+  // Card tabs are session state. A new panel starts empty; only the width is remembered.
+  let cardTabs = [];
+  const cardItems = new Map();
+  let cardCurrent = null;
+  let followInfoSelection = true;
+  const renderCardTabs = () => {
+    infoTabsBar.replaceChildren();
+    for (const t of cardTabs) {
+      const row = el("span", t.uid === cardCurrent ? "pxd-panel__infotab pxd-panel__infotab--on" : "pxd-panel__infotab", infoTabsBar);
+      const name = el("button", "pxd-btn pxd-panel__infotab-name", row, cardItems.get(t.uid)?.title || "Untitled");
+      name.type = "button";
+      name.dataset.uid = t.uid;
+      name.setAttribute("data-uid", t.uid);
+      const closer = el("button", "pxd-btn pxd-panel__infotab-x", row, "×");
+      closer.type = "button";
+      closer.title = "Close";
+      closer.dataset.uid = t.uid;
+      closer.setAttribute("data-uid", t.uid);
+    }
+  };
   // Inline boards are too narrow for a second editor. Fullscreen mounts Roam's renderer in the panel.
   let infoMounted = false;
   const unmountInfo = () => {
@@ -326,12 +372,14 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     const id = queryId += 1;
     unmountInfo();
     infoScroll.replaceChildren();
-    if (!selected || selected.type === "section") {
+    const tabItem = cardCurrent ? cardItems.get(cardCurrent) || null : null;
+    const subject = followInfoSelection ? selected : (tabItem || selected);
+    if (!subject || subject.type === "section") {
       el("div", "pxd-panel__empty", infoScroll, "Select a card");
       return;
     }
     let info = null;
-    try { info = await Promise.resolve(host?.cardInfo?.(selected)) ?? null; } catch { info = null; }
+    try { info = await Promise.resolve(host?.cardInfo?.(subject)) ?? null; } catch { info = null; }
     if (id !== queryId || tab !== "info") return;
     unmountInfo();
     infoScroll.replaceChildren();
@@ -354,7 +402,7 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
       } catch { /* render failed */ }
     } else {
       el("div", "pxd-panel__info-note", mount, "Editing in the right sidebar");
-      try { on.openSidebarEditor?.(selected); } catch { /* sidebar unavailable */ }
+      try { on.openSidebarEditor?.(subject); } catch { /* sidebar unavailable */ }
     }
     const attrSec = infoSection("Attributes");
     if (!info.attributes?.length) el("div", "pxd-panel__empty", attrSec, "No attributes");
@@ -400,6 +448,30 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     if (board) on.openBoardByUid?.(uid);
     else on.openRef?.(uid);
   });
+  listen(infoTabsBar, "click", (event) => {
+    const closer = event.target?.closest?.(".pxd-panel__infotab-x");
+    const name = event.target?.closest?.(".pxd-panel__infotab-name");
+    const node = closer || name;
+    const uid = node?.dataset?.uid ?? node?.getAttribute?.("data-uid");
+    if (!uid) return;
+    event.preventDefault?.();
+    event.stopPropagation();
+    if (closer) {
+      const next = closeInfoTab(cardTabs, cardCurrent, uid);
+      cardTabs = next.tabs;
+      if (!next.tabs.some((t) => t.uid === uid)) cardItems.delete(uid);
+      cardCurrent = next.current;
+      followInfoSelection = false;
+      renderCardTabs();
+      void loadInfo();
+      return;
+    }
+    cardCurrent = uid;
+    followInfoSelection = false;
+    renderCardTabs();
+    on.focusInfoTab?.(uid);
+    void loadInfo();
+  });
 
   const api = {
     el: panel,
@@ -421,9 +493,31 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     isOpen: () => panel.style.display !== "none",
     setSelection(item) {
       selected = item && item.type !== "section" ? item : null;
+      followInfoSelection = true;
+      if (selected && cardItems.has(selected.uid)) cardCurrent = selected.uid;
       if (api.isOpen() && tab === "related") void loadRelated();
-      if (api.isOpen() && tab === "info") void loadInfo();
+      if (api.isOpen() && tab === "info") {
+        renderCardTabs();
+        void loadInfo();
+      }
     },
+    addInfoTab(item) {
+      if (!item?.uid || item.type === "section") return cardTabs.map((t) => t.uid);
+      const title = item.title || String(item.string || "").split("\n")[0].slice(0, 48) || "Untitled";
+      cardItems.set(item.uid, { ...item, title });
+      const next = infoTabList(cardTabs, item.uid, { add: true });
+      cardTabs = next.tabs;
+      cardCurrent = next.current;
+      followInfoSelection = false;
+      panel.style.display = "";
+      setTab("info");
+      on.opened?.(true);
+      renderCardTabs();
+      void loadInfo();
+      return cardTabs.map((t) => t.uid);
+    },
+    infoTabs: () => cardTabs.map((t) => t.uid),
+    infoCurrent: () => cardCurrent,
     refreshMarks() {
       for (const r of panel.querySelectorAll(".pxd-panel__row")) {
         const s = r.dataset?.string || r.getAttribute("data-string");

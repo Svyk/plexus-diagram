@@ -389,6 +389,9 @@ export function createInteractions({ actions, settings } = {}) {
         } else if (g.deferred) {
           selectItems([g.target]);
         }
+        if (!g.moved && ev.shift && !ev.alt && !g.dup && g.target && b?.items.get(g.target)?.type !== "section") {
+          call("addInfoTab", g.target);
+        }
         break;
       case "resize":
         if (g.moved && g.rect) call("commitRects", [g.rect]);

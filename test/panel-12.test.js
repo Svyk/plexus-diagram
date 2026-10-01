@@ -303,3 +303,48 @@ test("Info ignores a stale cardInfo and shows an empty card", async (t) => {
   await tick();
   assert.equal(q(f.root, ".pxd-panel__info .pxd-panel__empty").textContent, "Select a card");
 });
+
+test("Info keeps three session tabs, and the width is the only thing remembered", async (t) => {
+  const seen = [];
+  const widths = [];
+  const f = setup({
+    focusInfoTab: (uid) => seen.push(uid),
+    rememberWidth: (w) => widths.push(w),
+    isFullscreen: () => true,
+  }, {
+    cardInfo: async (item) => ({
+      kind: "self", uid: item.uid, title: item.title, body: item.title,
+      attributes: [], refs: [], boards: [], tags: [],
+    }),
+  });
+  t.after(f.restore);
+  const card = (uid, title) => ({ uid, type: "card", title, target: { kind: "self", uid } });
+  f.panel.addInfoTab(card("a", "Alpha"));
+  f.panel.addInfoTab(card("b", "Beta"));
+  f.panel.addInfoTab(card("c", "Gamma"));
+  await tick();
+  assert.deepEqual(f.panel.infoTabs(), ["a", "b", "c"]);
+  assert.equal(f.panel.infoCurrent(), "c");
+  assert.equal(q(f.root, ".pxd-panel__info-body").textContent, "Gamma");
+  q(f.root, ".pxd-panel__infotab-name").click();
+  await tick();
+  assert.deepEqual(seen, ["a"]);
+  assert.equal(f.panel.infoCurrent(), "a");
+  assert.equal(q(f.root, ".pxd-panel__info-body").textContent, "Alpha");
+  q(f.root, ".pxd-panel__infotab-x").click();
+  await tick();
+  assert.deepEqual(f.panel.infoTabs(), ["b", "c"]);
+  assert.equal(f.panel.infoCurrent(), "b");
+  f.panel.el.style.width = "400px";
+  f.panel.el._rect = { left: 0, top: 0, width: 400, height: 200, right: 400, bottom: 200, x: 0, y: 0 };
+  const grip = q(f.root, ".pxd-panel__resize");
+  f.stub.dispatch(grip, "pointerdown", { button: 0, clientX: 100 });
+  f.stub.dispatch(grip, "pointermove", { clientX: 60 });
+  f.stub.dispatch(grip, "pointerup", { clientX: 60 });
+  assert.deepEqual(widths, [440]);
+  assert.equal(f.panel.el.style.width, "440px");
+  f.panel.dispose();
+  const fresh = createPanel({ doc: f.stub.document, root: f.root, host: {}, timers, on: {} });
+  assert.deepEqual(fresh.infoTabs(), []);
+  fresh.dispose();
+});

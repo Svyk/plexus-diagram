@@ -184,6 +184,44 @@ test("marquee selects contained items and a plain click on empty clears selectio
   assert.equal(h.named("setViewport").length, 0, "marquee never pans");
 });
 
+test("Cmd or Ctrl click toggles selection membership and does not edit", () => {
+  const h = harness();
+  const a = { kind: "item", uid: "cardAAAA1", part: "body" };
+  const b = { kind: "item", uid: "cardBBBB2", part: "body" };
+  h.ctl.handle(h.ev("pointerdown", { x: 10, y: 10 }, { target: a }));
+  h.ctl.handle(h.ev("pointerup", { x: 10, y: 10 }, { target: a }));
+  h.ctl.handle(h.ev("pointerdown", { x: 410, y: 10 }, { target: b, meta: true }));
+  h.ctl.handle(h.ev("pointerup", { x: 410, y: 10 }, { target: b, meta: true }));
+  assert.deepEqual(h.ctl.getSelection().items.sort(), ["cardAAAA1", "cardBBBB2"]);
+  assert.equal(h.named("enterEdit").length, 1, "the modifier click does not edit");
+  h.ctl.handle(h.ev("pointerdown", { x: 410, y: 10 }, { target: b, ctrl: true }));
+  h.ctl.handle(h.ev("pointerup", { x: 410, y: 10 }, { target: b, ctrl: true }));
+  assert.deepEqual(h.ctl.getSelection().items, ["cardAAAA1"]);
+});
+
+test("Shift-drag marquee keeps cards already selected", () => {
+  const h = harness();
+  h.ctl.select(["cardDDDD4"]);
+  h.ctl.handle(h.ev("pointerdown", { x: -50, y: -50 }, { shift: true }));
+  h.ctl.handle(h.ev("pointermove", { x: 250, y: 150 }, { shift: true }));
+  h.ctl.handle(h.ev("pointerup", { x: 250, y: 150 }, { shift: true }));
+  const items = h.ctl.getSelection().items;
+  assert.ok(items.includes("cardAAAA1"));
+  assert.ok(items.includes("cardDDDD4"));
+  assert.equal(items.includes("cardBBBB2"), false);
+});
+
+test("Cmd-A selects every item and an arrow nudges by one pixel", () => {
+  const h = harness();
+  h.ctl.handle({ type: "keydown", key: "a", meta: true });
+  for (const uid of ["cardAAAA1", "cardBBBB2", "sectCCCC3"]) assert.ok(h.ctl.getSelection().items.includes(uid));
+  h.ctl.select(["cardAAAA1"]);
+  h.ctl.handle({ type: "keydown", key: "ArrowRight" });
+  assert.deepEqual(h.named("commitMove").at(-1).slice(1), [["cardAAAA1"], 1, 0]);
+  h.ctl.handle({ type: "keydown", key: "Backspace" });
+  assert.equal(h.named("deleteItems").at(-1)[2].withContents, false);
+});
+
 test("move: no commit under the 4 px threshold, exactly one commitMove after a drag, guides during", () => {
   const h = harness();
   const item = { kind: "item", uid: "cardAAAA1", part: "body" };

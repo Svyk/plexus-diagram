@@ -200,7 +200,10 @@ export function createInteractions({ actions, settings } = {}) {
         if (state.tool !== "select") break; // creation tools treat items as empty space
         let deferred = false;
         const dup = Boolean(ev.alt);
-        if (ev.shift && !dup) { // Alt+Shift means duplicate-as-reference, not a selection toggle
+        // Cmd/Ctrl-click adds (React Flow multiSelectionKey). Shift-click does the same.
+        // Alt+Shift stays duplicate-as-reference.
+        const multi = !dup && (ev.shift || ev.meta || ev.ctrl);
+        if (multi) {
           const next = new Set(state.selection);
           if (next.has(t.uid)) next.delete(t.uid); else next.add(t.uid);
           selectItems(next);
@@ -213,7 +216,7 @@ export function createInteractions({ actions, settings } = {}) {
         }
         if (!state.selection.has(t.uid)) return;
         const uids = movingSet(dup);
-        begin({ kind: "move", uids, dup, asRef: dup && Boolean(ev.shift), start: ev.screen, target: t.uid, deferred, bounds: movingBounds(uids), others: setting("snap-guides", true) ? otherRects(uids) : [] });
+        begin({ kind: "move", uids, dup, multi, asRef: dup && Boolean(ev.shift), start: ev.screen, target: t.uid, deferred, bounds: movingBounds(uids), others: setting("snap-guides", true) ? otherRects(uids) : [] });
         return;
       }
       default:
@@ -385,7 +388,7 @@ export function createInteractions({ actions, settings } = {}) {
           if (g.uids.length) call("commitMove", g.uids, g.dx || 0, g.dy || 0);
         } else if (g.deferred) {
           selectItems([g.target]);
-        } else if (!g.dup && state.selection.size === 1 && state.selection.has(g.target)) {
+        } else if (!g.dup && !g.multi && state.selection.size === 1 && state.selection.has(g.target)) {
           const item = b?.items.get(g.target);
           if (item?.type === "card" && item.look === "block" && item.kind !== "board") call("enterEdit", g.target);
         }

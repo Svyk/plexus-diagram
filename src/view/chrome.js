@@ -150,6 +150,7 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
   button(group3, "pxd-toolbar__zoom-in", "+", "Zoom in (Cmd =)", () => on.zoomIn?.());
   button(group3, "pxd-toolbar__fit", "Fit", "Fit all (Shift 1)", () => on.fit?.());
   const minimapBtn = button(group3, "pxd-toolbar__minimap", "Minimap", "Toggle minimap", () => on.toggleMinimap?.());
+  const editBtn = button(group3, "pxd-toolbar__edit", "Edit Block", "Edit the diagram block", () => on.editBlock?.());
   const fullBtn = button(group3, "pxd-toolbar__fullscreen", "Fullscreen", "Fullscreen this board", () => on.toggleFullscreen?.());
   const badge = el("span", "pxd-badge", toolbar, version ? `v${version}` : "");
   const sync = el("span", "pxd-sync", toolbar);
@@ -173,6 +174,7 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
   const railMinimap = railBtn("pxd-rail__minimap", "eye-open", "Toggle Minimap", () => on.toggleMinimap?.());
   railBtn("pxd-rail__png", "media", "Save PNG", () => on.savePng?.());
   railBtn("pxd-rail__outline", "list", "Open outline in sidebar", () => on.openOutline?.());
+  const railEdit = railBtn("pxd-rail__edit", "edit", "Edit Block", () => on.editBlock?.());
   const railFull = railBtn("pxd-rail__fullscreen", "maximize", "Maximize", () => on.toggleFullscreen?.());
   const railExtra = el("div", "pxd-rail__extra", railEl);
   const railZoom = button(railExtra, "pxd-rail__zoom", "100%", "Zoom to 100% (Shift 0)", () => on.zoomReset?.());
@@ -208,6 +210,8 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
       sync.title = pending ? "Saving…" : "Synced";
     },
     setFullscreen(on) {
+      editBtn.style.display = on ? "none" : "";
+      railEdit.style.display = on ? "none" : "";
       fullBtn.textContent = on ? "Exit fullscreen" : "Fullscreen";
       fullBtn.classList.toggle("pxd-btn--active", Boolean(on));
       const title = on ? "Minimize" : "Maximize";

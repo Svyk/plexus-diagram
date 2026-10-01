@@ -475,6 +475,49 @@ test("edit mode mounts renderBlock into the card, exits on Esc, and typed text n
   }
 });
 
+test("Edit Block opens the board block editor and Esc returns to the board", async () => {
+  const rendered = [];
+  const f = mountFixture({
+    hostOverrides: {
+      renderBlock(el, uid) {
+        rendered.push(uid);
+        const native = globalThis.document.createElement("button");
+        native.setAttribute("title", "Edit Block");
+        native.addEventListener("click", () => {
+          const input = globalThis.document.createElement("textarea");
+          input.className = "rm-block__input";
+          input.value = "{{[[diagram]]:board}}";
+          el.append(input);
+        });
+        el.append(native);
+      },
+    },
+  });
+  try {
+    await f.flush();
+    const root = f.view.root;
+    const btn = root.querySelector(".pxd-rail__edit");
+    assert.equal(btn.getAttribute("aria-label"), "Edit Block");
+    const buttons = [...root.querySelectorAll(".pxd-rail__btn")];
+    assert.equal(buttons.indexOf(btn) + 1, buttons.indexOf(root.querySelector(".pxd-rail__fullscreen")));
+    btn.click();
+    const editor = root.querySelector(".pxd-block-edit");
+    assert.ok(editor);
+    assert.deepEqual(rendered, ["board0001"]);
+    assert.ok(editor.querySelector(".rm-block__input"));
+    assert.equal(f.session.mutations.length, 0);
+    const input = editor.querySelector(".rm-block__input");
+    input.focus();
+    f.stub.dispatch(input, "keydown", { key: "Escape" });
+    assert.equal(root.querySelector(".pxd-block-edit"), null);
+    assert.ok(root.querySelector(".pxd-world"));
+    assert.equal(f.session.mutations.length, 0);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
 test("session change re-renders only dirty uids; structural change reconciles shells by uid", async () => {
   const f = mountFixture();
   try {

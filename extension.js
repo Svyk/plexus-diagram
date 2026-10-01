@@ -7439,6 +7439,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
   button(group3, "pxd-toolbar__zoom-in", "+", "Zoom in (Cmd =)", () => on.zoomIn?.());
   button(group3, "pxd-toolbar__fit", "Fit", "Fit all (Shift 1)", () => on.fit?.());
   const minimapBtn = button(group3, "pxd-toolbar__minimap", "Minimap", "Toggle minimap", () => on.toggleMinimap?.());
+  const editBtn = button(group3, "pxd-toolbar__edit", "Edit Block", "Edit the diagram block", () => on.editBlock?.());
   const fullBtn = button(group3, "pxd-toolbar__fullscreen", "Fullscreen", "Fullscreen this board", () => on.toggleFullscreen?.());
   const badge = el("span", "pxd-badge", toolbar, version ? `v${version}` : "");
   const sync = el("span", "pxd-sync", toolbar);
@@ -7460,6 +7461,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
   const railMinimap = railBtn("pxd-rail__minimap", "eye-open", "Toggle Minimap", () => on.toggleMinimap?.());
   railBtn("pxd-rail__png", "media", "Save PNG", () => on.savePng?.());
   railBtn("pxd-rail__outline", "list", "Open outline in sidebar", () => on.openOutline?.());
+  const railEdit = railBtn("pxd-rail__edit", "edit", "Edit Block", () => on.editBlock?.());
   const railFull = railBtn("pxd-rail__fullscreen", "maximize", "Maximize", () => on.toggleFullscreen?.());
   const railExtra = el("div", "pxd-rail__extra", railEl);
   const railZoom = button(railExtra, "pxd-rail__zoom", "100%", "Zoom to 100% (Shift 0)", () => on.zoomReset?.());
@@ -7496,6 +7498,8 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
       sync.title = pending ? "Saving…" : "Synced";
     },
     setFullscreen(on2) {
+      editBtn.style.display = on2 ? "none" : "";
+      railEdit.style.display = on2 ? "none" : "";
       fullBtn.textContent = on2 ? "Exit fullscreen" : "Fullscreen";
       fullBtn.classList.toggle("pxd-btn--active", Boolean(on2));
       const title = on2 ? "Minimize" : "Maximize";
@@ -11085,6 +11089,7 @@ function mountBoardView({
       fit: () => fitAll(),
       toggleMinimap: () => chrome.minimap.setVisible(!chrome.minimap.isVisible()),
       toggleFullscreen: () => requestFullscreen(!isFullscreen),
+      editBlock: () => editBoardBlock(),
       savePng: () => {
         void exportPng();
       },
@@ -11414,6 +11419,47 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
   const requestFullscreen = (on) => {
     applyFullscreen(on);
     onRequestFullscreen?.(Boolean(on));
+  };
+  let blockEdit = null;
+  const closeBlockEdit = () => {
+    if (!blockEdit) return;
+    const node = blockEdit;
+    blockEdit = null;
+    node.remove();
+    try {
+      host?.unmount?.(node);
+    } catch {
+    }
+  };
+  const editBoardBlock = () => {
+    if (blockEdit || disposed) return;
+    const node = el("div", "pxd-block-edit pxd-chrome", root);
+    for (const type of ["pointerdown", "pointerup", "mousedown", "click", "dblclick", "wheel"]) {
+      node.addEventListener(type, (event) => event.stopPropagation());
+    }
+    blockEdit = node;
+    try {
+      host?.renderBlock?.(node, boardUid);
+    } catch {
+      closeBlockEdit();
+      return;
+    }
+    openRawBlockEditor(node);
+  };
+  const openRawBlockEditor = (node) => {
+    if (node.querySelector?.("textarea")) return;
+    const buttons = [...node.querySelectorAll?.("button") || []];
+    const native = buttons.find((b) => (b.getAttribute?.("title") || b.title) === "Edit Block");
+    if (!native) return;
+    native.click?.();
+    if (node.querySelector?.("textarea")) return;
+    const propsKey = Object.keys(native).find((k) => k.startsWith("__reactProps"));
+    const onClick = propsKey && native[propsKey]?.onClick;
+    if (typeof onClick === "function") {
+      onClick({ preventDefault() {
+      }, stopPropagation() {
+      }, target: native, currentTarget: native });
+    }
   };
   const readHeight = () => {
     try {
@@ -11893,6 +11939,12 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
   const onKeyDown = (event) => {
     if (outlineMode && !event.target?.closest?.(".pxd-mode")) return;
     if (menu.isOpen()) return;
+    if (event.key === "Escape" && blockEdit && !doc.querySelector?.(".rm-autocomplete__results")) {
+      event.preventDefault();
+      event.stopPropagation();
+      closeBlockEdit();
+      return;
+    }
     if (event.key === "Escape" && chrome.popover.isOpen()) {
       chrome.popover.close();
       event.preventDefault();
@@ -12301,6 +12353,7 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
     dispose() {
       if (disposed) return;
       disposed = true;
+      closeBlockEdit();
       if (pointerBoard === root) pointerBoard = null;
       clearOutline();
       ctl.cancel();

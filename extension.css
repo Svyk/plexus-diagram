@@ -1969,6 +1969,20 @@ body.roam-body.dark .pxd-root.pxd-bg-pink {
   flex: 0 0 auto;
 }
 
+.pxd-root .pxd-block-edit {
+  position: absolute;
+  z-index: 20;
+  left: 8px;
+  right: 56px;
+  top: 8px;
+  box-sizing: border-box;
+  min-height: 36px;
+  padding: 6px;
+  border: 1px solid var(--pxd-border);
+  border-radius: 8px;
+  background: var(--pxd-chrome-bg);
+}
+
 /* ------------------------------------------------------------------ background popover */
 
 .pxd-root .pxd-popover {

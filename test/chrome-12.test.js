@@ -357,6 +357,7 @@ test("control rail uses native titles and the bar setting restores the zoom grou
     toggleMinimap: () => calls.push("map"),
     savePng: () => calls.push("png"),
     openOutline: () => calls.push("outline"),
+    editBlock: () => calls.push("edit"),
     toggleFullscreen: () => calls.push("full"),
     zoomReset: () => calls.push("reset"),
   });
@@ -364,11 +365,13 @@ test("control rail uses native titles and the bar setting restores the zoom grou
   assert.ok(f.root.classList.contains("pxd-root--rail"));
   assert.equal(q(f.root, ".pxd-toolbar__zoom").style.display, "none");
   const titles = [...f.root.querySelectorAll(".pxd-rail__btn")].map((b) => b.title);
-  assert.deepEqual(titles, ["zoom in", "zoom out", "fit view", "Toggle Minimap", "Save PNG", "Open outline in sidebar", "Maximize"]);
+  assert.deepEqual(titles, ["zoom in", "zoom out", "fit view", "Toggle Minimap", "Save PNG", "Open outline in sidebar", "Edit Block", "Maximize"]);
   for (const b of f.root.querySelectorAll(".pxd-rail__btn")) b.click();
   q(f.root, ".pxd-rail__zoom").click();
-  assert.deepEqual(calls, ["in", "out", "fit", "map", "png", "outline", "full", "reset"]);
+  assert.deepEqual(calls, ["in", "out", "fit", "map", "png", "outline", "edit", "full", "reset"]);
   f.chrome.toolbar.setFullscreen(true);
+  assert.equal(q(f.root, ".pxd-rail__edit").style.display, "none");
+  assert.equal(q(f.root, ".pxd-toolbar__edit").style.display, "none");
   assert.equal(q(f.root, ".pxd-rail__fullscreen").title, "Minimize");
   f.chrome.toolbar.setZoom(1.25);
   assert.equal(q(f.root, ".pxd-rail__zoom").textContent, "125%");

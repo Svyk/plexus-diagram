@@ -1176,6 +1176,7 @@ export function mountBoardView({
       fit: () => fitAll(),
       toggleMinimap: () => chrome.minimap.setVisible(!chrome.minimap.isVisible()),
       toggleFullscreen: () => requestFullscreen(!isFullscreen),
+      editBlock: () => editBoardBlock(),
       savePng: () => { void exportPng(); },
       openOutline: () => openBoardOutline(),
       setColor: (c) => { const uids = targetUids(); if (uids.length) void session.setColor?.(uids, c); },
@@ -1388,6 +1389,41 @@ export function mountBoardView({
   const requestFullscreen = (on) => {
     applyFullscreen(on);
     onRequestFullscreen?.(Boolean(on));
+  };
+
+  // Inline "Edit Block": the raw {{[[diagram]]}} textarea. Esc unmounts it and the canvas is still here.
+  let blockEdit = null;
+  const closeBlockEdit = () => {
+    if (!blockEdit) return;
+    const node = blockEdit;
+    blockEdit = null;
+    node.remove();
+    try { host?.unmount?.(node); } catch { /* not mounted */ }
+  };
+  const editBoardBlock = () => {
+    if (blockEdit || disposed) return;
+    const node = el("div", "pxd-block-edit pxd-chrome", root);
+    for (const type of ["pointerdown", "pointerup", "mousedown", "click", "dblclick", "wheel"]) {
+      node.addEventListener(type, (event) => event.stopPropagation());
+    }
+    blockEdit = node;
+    try { host?.renderBlock?.(node, boardUid); }
+    catch { closeBlockEdit(); return; }
+    openRawBlockEditor(node);
+  };
+  // renderBlock shows the diagram. Native's own Edit Block control turns that into the raw textarea.
+  const openRawBlockEditor = (node) => {
+    if (node.querySelector?.("textarea")) return;
+    const buttons = [...(node.querySelectorAll?.("button") || [])];
+    const native = buttons.find((b) => (b.getAttribute?.("title") || b.title) === "Edit Block");
+    if (!native) return;
+    native.click?.();
+    if (node.querySelector?.("textarea")) return;
+    const propsKey = Object.keys(native).find((k) => k.startsWith("__reactProps"));
+    const onClick = propsKey && native[propsKey]?.onClick;
+    if (typeof onClick === "function") {
+      onClick({ preventDefault() {}, stopPropagation() {}, target: native, currentTarget: native });
+    }
   };
 
   // ------------------------------------------------------------ inline height
@@ -1830,6 +1866,12 @@ export function mountBoardView({
     if (outlineMode && !event.target?.closest?.(".pxd-mode")) return;
     // The open menu owns the keyboard; Quick Look and a presentation only let their own keys through.
     if (menu.isOpen()) return;
+    if (event.key === "Escape" && blockEdit && !doc.querySelector?.(".rm-autocomplete__results")) {
+      event.preventDefault();
+      event.stopPropagation();
+      closeBlockEdit();
+      return;
+    }
     // Escape closes the Background popover before the controller's chain (selection, up a level, fullscreen) runs.
     if (event.key === "Escape" && chrome.popover.isOpen()) { chrome.popover.close(); event.preventDefault(); event.stopPropagation(); return; }
     if (quicklook.isOpen() && event.key !== "Escape" && String(event.key).toLowerCase() !== "q") return;
@@ -2179,6 +2221,7 @@ export function mountBoardView({
     dispose() {
       if (disposed) return;
       disposed = true;
+      closeBlockEdit();
       if (pointerBoard === root) pointerBoard = null;
       clearOutline();
       ctl.cancel();

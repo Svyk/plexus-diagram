@@ -1242,6 +1242,50 @@ function parseClipboard(data) {
   const entries = parsePastedText(get("text/plain"));
   return entries.length ? { kind: "text", entries } : null;
 }
+var MAX_EDITOR_LINES = 45;
+function editorPastePlan({
+  text = "",
+  imageCount = 0,
+  value = "",
+  selectionStart = 0,
+  selectionEnd = 0,
+  isRoot = false
+} = {}) {
+  if ((Number(imageCount) || 0) > 0) return { type: "images" };
+  if (!isRoot) return { type: "roam" };
+  const raw = String(text ?? "").replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  if (!raw.includes("\n")) return { type: "roam" };
+  let lines = raw.split("\n");
+  if (lines.length && lines[lines.length - 1] === "") lines.pop();
+  if (lines.length <= 1) return { type: "roam" };
+  if (lines.length > MAX_EDITOR_LINES) lines = lines.slice(0, MAX_EDITOR_LINES);
+  const v = String(value ?? "");
+  let a = Number(selectionStart);
+  let b = Number(selectionEnd);
+  if (!Number.isFinite(a)) a = v.length;
+  if (!Number.isFinite(b)) b = a;
+  const start = Math.max(0, Math.min(Math.min(a, b), v.length));
+  const end = Math.max(start, Math.min(Math.max(a, b), v.length));
+  return {
+    type: "blocks",
+    string: v.slice(0, start) + lines[0] + v.slice(end),
+    children: lines.slice(1)
+  };
+}
+function inlineAtCaret(value, selectionStart, selectionEnd, insert) {
+  const v = String(value ?? "");
+  const chunk = String(insert ?? "");
+  let a = Number(selectionStart);
+  let b = Number(selectionEnd);
+  if (!Number.isFinite(a)) a = v.length;
+  if (!Number.isFinite(b)) b = a;
+  const start = Math.max(0, Math.min(Math.min(a, b), v.length));
+  const end = Math.max(start, Math.min(Math.max(a, b), v.length));
+  return { string: v.slice(0, start) + chunk + v.slice(end), caret: start + chunk.length };
+}
+function imageMarkdown(urls) {
+  return [...urls ?? []].filter((u) => typeof u === "string" && u).map((u) => `![](${u})`).join("");
+}
 function refCardStrings(data, at) {
   const items = data?.items ?? [];
   if (!items.length) return [];
@@ -9777,9 +9821,16 @@ function createClipboardIO({ doc = globalThis.document, root, ownsKeyboard, isTe
     target.addEventListener(type, fn, opts);
     offs.push(() => target.removeEventListener(type, fn, opts));
   };
-  const inText = (event) => {
-    const test = (n) => Boolean(isTextEntry?.(n)) || defaultTextEntry(n);
-    return test(event.target) || test(doc.activeElement);
+  const textNode = (node) => Boolean(isTextEntry?.(node)) || defaultTextEntry(node);
+  const inText = (event) => textNode(event.target) || textNode(doc.activeElement);
+  const editorNode = (event) => {
+    const node = event.target?.nodeType === 1 ? event.target : null;
+    const hit = textNode(node) ? node : textNode(doc.activeElement) ? doc.activeElement : null;
+    if (!hit || typeof hit.closest !== "function") return null;
+    const editor = hit.closest(".pxd-item__editor");
+    if (!editor) return null;
+    if (root && typeof root.contains === "function" && !root.contains(editor)) return null;
+    return hit;
   };
   const active = (event) => Boolean(ownsKeyboard?.()) && !inText(event);
   const copy = (event, cut = false) => {
@@ -9799,7 +9850,15 @@ function createClipboardIO({ doc = globalThis.document, root, ownsKeyboard, isTe
   listen(win, "keydown", (event) => {
     if ((event.metaKey || event.ctrlKey) && event.shiftKey && String(event.key).toLowerCase() === "v") lastCloneKey = now2();
   }, true);
+  listen(win, "paste", (event) => {
+    if (!editorNode(event)) return;
+    if (on.editorPaste?.(event)) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  }, true);
   listen(doc, "paste", (event) => {
+    if (editorNode(event)) return;
     if (!active(event)) return;
     const parsed = parseClipboard(event.clipboardData);
     if (!parsed) return;
@@ -10142,6 +10201,27 @@ function editingPlainText(root) {
   const areas = typeof editor.querySelectorAll === "function" ? [...editor.querySelectorAll("textarea")] : [];
   if (areas.length) return areas.map((t) => t.value || "").join("\n");
   return typeof editor.textContent === "string" ? editor.textContent : "";
+}
+function commitTextareaValue(el, value) {
+  if (!el) return;
+  const view = el.ownerDocument?.defaultView || globalThis;
+  const Proto = view.HTMLTextAreaElement;
+  const set = Proto && Object.getOwnPropertyDescriptor(Proto.prototype, "value")?.set;
+  if (typeof set === "function") {
+    try {
+      set.call(el, value);
+    } catch {
+      el.value = value;
+    }
+  } else el.value = value;
+  try {
+    const Ev = view.Event || globalThis.Event;
+    if (typeof Ev === "function" && typeof el.dispatchEvent === "function") {
+      el.dispatchEvent(new Ev("input", { bubbles: true }));
+      el.dispatchEvent(new Ev("change", { bubbles: true }));
+    }
+  } catch {
+  }
 }
 var MIN_HEIGHT = 240;
 var RESUME_MS = 120;
@@ -11184,6 +11264,115 @@ function mountBoardView({
       ctl.select(made);
       toast(failed ? `Added ${made.length} of ${files.length} images` : `Added ${made.length} ${made.length === 1 ? "image" : "images"}`, true);
     }
+  };
+  const editorTextarea = (node) => {
+    if (!node) return null;
+    if (String(node.tagName || "").toLowerCase() === "textarea") return node;
+    const editor = node.closest?.(".pxd-item__editor");
+    if (!editor) return null;
+    const active = doc.activeElement;
+    if (active && editor.contains?.(active) && String(active.tagName || "").toLowerCase() === "textarea") return active;
+    return editor.querySelector?.("textarea") || null;
+  };
+  const remountEditor = async (cardUid) => {
+    if (!cardUid || itemsR.editingUid?.() !== cardUid || disposed) return;
+    await itemsR.exitEdit({ silent: true });
+    if (disposed || !session.board?.items?.has?.(cardUid)) return;
+    await itemsR.enterEdit(cardUid);
+  };
+  const pasteEditorImages = async (ta, blockUid, files) => {
+    if (!files?.length || !blockUid) return;
+    if (typeof host?.uploadFile !== "function") {
+      toast("Image upload is not available here");
+      return;
+    }
+    const snap = { value: ta?.value ?? "", start: ta?.selectionStart, end: ta?.selectionEnd };
+    const cardUid = itemsR.editingUid?.();
+    const urls = [];
+    let failed = 0;
+    for (const file of files) {
+      try {
+        urls.push(await host.uploadFile(file));
+      } catch (err) {
+        if (err?.message === "upload-unavailable") {
+          if (!disposed) toast("Image upload is not available here");
+          return;
+        }
+        failed += 1;
+      }
+      if (disposed) return;
+    }
+    if (!urls.length) {
+      if (!disposed) toast("Couldn't upload the image");
+      return;
+    }
+    const placed = inlineAtCaret(snap.value, snap.start, snap.end, imageMarkdown(urls));
+    if (ta) {
+      commitTextareaValue(ta, placed.string);
+      try {
+        ta.setSelectionRange?.(placed.caret, placed.caret);
+      } catch {
+      }
+    }
+    try {
+      const write = () => host.updateString(blockUid, placed.string);
+      if (host.group) await host.group(write);
+      else await write();
+    } catch {
+      if (!disposed) toast("Couldn't upload the image");
+      return;
+    }
+    if (disposed) return;
+    if (failed) toast(`Added ${urls.length} of ${files.length} images`);
+    await remountEditor(cardUid);
+  };
+  const pasteEditorBlocks = async (ta, blockUid, plan) => {
+    if (!blockUid || plan?.type !== "blocks") return;
+    if (typeof host?.updateString !== "function" || typeof host?.createBlock !== "function") return;
+    const cardUid = itemsR.editingUid?.();
+    if (ta) commitTextareaValue(ta, plan.string);
+    try {
+      const write = async () => {
+        await host.updateString(blockUid, plan.string);
+        for (const line of plan.children) await host.createBlock({ parentUid: blockUid, order: "last", string: line });
+      };
+      if (host.group) await host.group(write);
+      else await write();
+    } catch {
+      return;
+    }
+    if (disposed) return;
+    await remountEditor(cardUid);
+  };
+  const editorPaste = (event) => {
+    const ta = editorTextarea(event.target) || editorTextarea(doc.activeElement);
+    if (!ta || !root.contains?.(ta)) return false;
+    const files = filesFromDataTransfer(event.clipboardData);
+    let text = "";
+    try {
+      text = event.clipboardData?.getData?.("text/plain") ?? "";
+    } catch {
+      text = "";
+    }
+    const cardUid = itemsR.editingUid?.();
+    const role = inputBlockRole(ta, cardUid);
+    const plan = editorPastePlan({
+      text,
+      imageCount: files.length,
+      value: ta.value ?? "",
+      selectionStart: ta.selectionStart,
+      selectionEnd: ta.selectionEnd,
+      isRoot: role.role === "root"
+    });
+    if (!plan || plan.type === "roam") return false;
+    const blockUid = role.uid || cardUid;
+    if (!blockUid) return false;
+    if (plan.type === "images") {
+      void pasteEditorImages(ta, blockUid, files);
+      return true;
+    }
+    void pasteEditorBlocks(ta, blockUid, plan);
+    return true;
   };
   const menuContext = (kind, uid) => {
     const b = board();
@@ -12274,7 +12463,6 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
     pointerInside = false;
     if (pointerBoard === root) pointerBoard = null;
   });
-  const acceptsDrop = (event) => !event.target?.closest?.(".pxd-item__editor");
   const dropEffectFor = (effectAllowed) => {
     const a = String(effectAllowed || "uninitialized");
     if (a === "all" || a === "uninitialized" || /copy/i.test(a)) return "copy";
@@ -12283,7 +12471,14 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
     return "copy";
   };
   const onDragAccept = (event) => {
-    if (!acceptsDrop(event)) return;
+    const editor = event.target?.closest?.(".pxd-item__editor");
+    if (editor) {
+      if (!filesFromDataTransfer(event.dataTransfer).length) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+      return;
+    }
     event.preventDefault();
     event.stopPropagation();
     if (event.dataTransfer) event.dataTransfer.dropEffect = dropEffectFor(event.dataTransfer.effectAllowed);
@@ -12291,7 +12486,18 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
   listen(root, "dragenter", onDragAccept);
   listen(root, "dragover", onDragAccept);
   listen(root, "drop", (event) => {
-    if (!acceptsDrop(event)) return;
+    const editor = event.target?.closest?.(".pxd-item__editor");
+    if (editor) {
+      const files2 = filesFromDataTransfer(event.dataTransfer);
+      if (!files2.length) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const ta = editorTextarea(event.target) || editorTextarea(editor);
+      const cardUid = itemsR.editingUid?.();
+      const role = inputBlockRole(ta || event.target, cardUid);
+      void pasteEditorImages(ta, role.uid || cardUid, files2);
+      return;
+    }
     event.preventDefault();
     event.stopPropagation();
     measure();
@@ -12419,7 +12625,8 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
       pasteText: (entries) => pasteEntries(entries),
       pasteImages: (files) => {
         void pasteImages(files);
-      }
+      },
+      editorPaste
     }
   });
   subs.push(session.on("change", ({ dirty: d, structural } = {}) => {

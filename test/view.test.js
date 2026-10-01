@@ -1989,6 +1989,134 @@ test("ED-6: Backspace in an empty fresh card deletes it once", async () => {
   }
 });
 
+test("ED-7: a multi-line paste in the card root becomes children, not board cards", async () => {
+  const created = [];
+  const updates = [];
+  const groups = [];
+  const f = mountFixture({
+    hostOverrides: {
+      renderBlock(el, uid) {
+        const doc = el.ownerDocument || globalThis.document;
+        const block = doc.createElement("div");
+        block.className = "rm-block";
+        block.id = uid;
+        const ta = doc.createElement("textarea");
+        ta.className = "rm-block__input";
+        ta.value = "HelloWorld";
+        block.append(ta);
+        const kids = doc.createElement("div");
+        kids.className = "rm-block-children";
+        const child = doc.createElement("div");
+        child.id = "kidAAAA01";
+        const cta = doc.createElement("textarea");
+        cta.className = "rm-block__input";
+        cta.value = "child one";
+        child.append(cta);
+        kids.append(child);
+        block.append(kids);
+        el.append(block);
+      },
+      createBlock(spec) { created.push(spec); return Promise.resolve("new"); },
+      updateString(uid, string) { updates.push([uid, string]); return Promise.resolve(); },
+      group(fn) { groups.push(1); return fn(); },
+      uploadFile(file) { return Promise.resolve(`https://files.test/${file.name}`); },
+    },
+  });
+  const clip = (data = {}, files = []) => ({ getData: (t) => data[t] ?? "", files });
+  const settle = async () => {
+    await tick();
+    f.stub.flushFrames();
+    await tick(300);
+    f.stub.flushFrames();
+    await tick();
+  };
+  try {
+    await f.flush();
+    const card = await startEdit(f, "cardAAAA1");
+    const ta = card.querySelector(".pxd-item__editor textarea");
+    ta.value = "HelloWorld";
+    ta.selectionStart = 5;
+    ta.selectionEnd = 5;
+    const one = f.stub.dispatch(ta, "paste", { clipboardData: clip({ "text/plain": "hello" }) });
+    assert.equal(one.defaultPrevented, false);
+    await tick();
+    assert.equal(created.length, 0);
+    assert.equal(updates.length, 0);
+    assert.equal(f.session.mutations.filter((row) => row[0] === "pasteText").length, 0);
+    const multi = f.stub.dispatch(ta, "paste", { clipboardData: clip({ "text/plain": "A\nB\nC\n" }) });
+    assert.equal(multi.defaultPrevented, true);
+    await settle();
+    assert.deepEqual(updates, [["cardAAAA1", "HelloAWorld"]]);
+    assert.deepEqual(created, [
+      { parentUid: "cardAAAA1", order: "last", string: "B" },
+      { parentUid: "cardAAAA1", order: "last", string: "C" },
+    ]);
+    assert.equal(groups.length, 1);
+    assert.equal(f.session.mutations.filter((row) => row[0] === "pasteText" || row[0] === "addRefCards").length, 0);
+    const cta = card.querySelector(".rm-block-children textarea") || f.view.root.querySelector(".rm-block-children textarea");
+    const nested = f.stub.dispatch(cta, "paste", { clipboardData: clip({ "text/plain": "x\ny" }) });
+    assert.equal(nested.defaultPrevented, false);
+    await tick();
+    assert.equal(created.length, 2);
+    const png = { type: "image/png", name: "shot.png" };
+    const rootTa = card.querySelector(".pxd-item__editor textarea");
+    rootTa.value = "X";
+    rootTa.selectionStart = 1;
+    rootTa.selectionEnd = 1;
+    const img = f.stub.dispatch(rootTa, "paste", { clipboardData: clip({ "text/plain": "nope\nnope" }, [png]) });
+    assert.equal(img.defaultPrevented, true);
+    await settle();
+    assert.deepEqual(updates.at(-1), ["cardAAAA1", "X![](https://files.test/shot.png)"]);
+    assert.equal(created.length, 2, "an image is inlined, not a child block or a new card");
+    assert.equal(f.session.mutations.filter((row) => row[0] === "addRefCards").length, 0);
+    const live = card.querySelector(".pxd-item__editor textarea");
+    live.value = updates.at(-1)[1];
+    live.selectionStart = live.value.length;
+    live.selectionEnd = live.value.length;
+    const dropped = f.stub.dispatch(live, "drop", { dataTransfer: clip({}, [{ type: "image/png", name: "drop.png" }]) });
+    assert.equal(dropped.defaultPrevented, true);
+    await settle();
+    assert.equal(updates.at(-1)[1], "X![](https://files.test/shot.png)![](https://files.test/drop.png)");
+    assert.equal(f.session.mutations.filter((row) => row[0] === "addRefCards").length, 0);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("ED-7: an unavailable upload does not write the block", async () => {
+  const updates = [];
+  const f = mountFixture({
+    hostOverrides: {
+      renderBlock(el) {
+        const doc = el.ownerDocument || globalThis.document;
+        const ta = doc.createElement("textarea");
+        ta.className = "rm-block__input";
+        el.append(ta);
+      },
+      updateString(uid, string) { updates.push([uid, string]); return Promise.resolve(); },
+      uploadFile() { return Promise.reject(new Error("upload-unavailable")); },
+      group(fn) { return fn(); },
+    },
+  });
+  try {
+    await f.flush();
+    const card = await startEdit(f, "cardAAAA1");
+    const ta = card.querySelector("textarea");
+    ta.value = "keep";
+    const ev = f.stub.dispatch(ta, "paste", { clipboardData: { getData: () => "", files: [{ type: "image/png", name: "a.png" }] } });
+    assert.equal(ev.defaultPrevented, true);
+    await tick();
+    f.stub.flushFrames();
+    await tick(20);
+    assert.equal(updates.length, 0);
+    assert.match(f.view.root.querySelector(".pxd-toast__text").textContent, /not available/);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
 test("ED-2: 100 pull-watch echoes while editing leave every item render count unchanged", async () => {
   const f = mountReal();
   try {

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import { buildBoard, worldRects } from "../src/model/board.js";
 import {
-  PLEXUS_MIME, copyPayload, parseClipboard, parsePastedText, planEdgeClones, planSubtreeClone, refCardStrings,
+  PLEXUS_MIME, copyPayload, editorPastePlan, imageMarkdown, inlineAtCaret, parseClipboard, parsePastedText, planEdgeClones, planSubtreeClone, refCardStrings,
 } from "../src/model/clipboard.js";
 
 const blk = (uid, order, string, plexus, extra = {}) => ({
@@ -74,6 +74,30 @@ test("parseClipboard order: plexus, then images, then text, else null", () => {
   assert.equal(parseClipboard(fakeData({ [PLEXUS_MIME]: "{not json", "text/plain": "hi" })).kind, "text");
   assert.equal(parseClipboard(fakeData({})), null);
   assert.equal(parseClipboard(fakeData({ "text/plain": "  \n " })), null);
+});
+
+test("editorPastePlan keeps one line with Roam and turns a root paste into children", () => {
+  assert.deepEqual(editorPastePlan({ text: "hello", value: "X", isRoot: true }), { type: "roam" });
+  assert.deepEqual(editorPastePlan({ text: "a\nb", isRoot: false }), { type: "roam" });
+  assert.deepEqual(editorPastePlan({ text: "a\n", value: "", isRoot: true }), { type: "roam" });
+  assert.deepEqual(
+    editorPastePlan({ text: "A\nB\nC\n", value: "HelloWorld", selectionStart: 5, selectionEnd: 5, isRoot: true }),
+    { type: "blocks", string: "HelloAWorld", children: ["B", "C"] },
+  );
+  assert.deepEqual(
+    editorPastePlan({ text: "- a\n- b", value: "", isRoot: true }),
+    { type: "blocks", string: "- a", children: ["- b"] },
+  );
+  const many = Array.from({ length: 60 }, (_, i) => `L${i}`).join("\n");
+  const capped = editorPastePlan({ text: many, value: "", isRoot: true });
+  assert.equal(capped.type, "blocks");
+  assert.equal(capped.string, "L0");
+  assert.equal(capped.children.length, 44);
+  assert.equal(capped.children[43], "L44");
+  assert.equal(editorPastePlan({ text: "a\nb", imageCount: 1, isRoot: true }).type, "images");
+  assert.equal(imageMarkdown(["https://x/a.png", "", "https://x/b.png"]), "![](https://x/a.png)![](https://x/b.png)");
+  assert.deepEqual(inlineAtCaret("Hello", 5, 5, "![](u)"), { string: "Hello![](u)", caret: 11 });
+  assert.deepEqual(inlineAtCaret("Hello", 1, 4, "i"), { string: "Hio", caret: 2 });
 });
 
 test("parsePastedText strips bullets, skips blanks, keeps refs, caps at 50", () => {

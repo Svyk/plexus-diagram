@@ -22,7 +22,7 @@ import {
   worldToScreen,
   zoomAt,
 } from "../model/geometry.js";
-import { PLEXUS_MIME, copyPayload, parsePastedText } from "../model/clipboard.js";
+import { PLEXUS_MIME, copyPayload, editorPastePlan, imageMarkdown, inlineAtCaret, parsePastedText } from "../model/clipboard.js";
 import { boardToMarkdown, boardToSvg, dropExternalImages, imageSrc, pngFileName, sliceBoard } from "../model/export.js";
 import { createInteractions } from "./interactions.js";
 import { createItemRenderer, isTextEntryTarget } from "./cards.js";
@@ -94,6 +94,24 @@ function editingPlainText(root) {
   const areas = typeof editor.querySelectorAll === "function" ? [...editor.querySelectorAll("textarea")] : [];
   if (areas.length) return areas.map((t) => t.value || "").join("\n");
   return typeof editor.textContent === "string" ? editor.textContent : "";
+}
+
+// Roam's textarea is controlled. A DOM write only sticks when the native setter fires input.
+function commitTextareaValue(el, value) {
+  if (!el) return;
+  const view = el.ownerDocument?.defaultView || globalThis;
+  const Proto = view.HTMLTextAreaElement;
+  const set = Proto && Object.getOwnPropertyDescriptor(Proto.prototype, "value")?.set;
+  if (typeof set === "function") {
+    try { set.call(el, value); } catch { el.value = value; }
+  } else el.value = value;
+  try {
+    const Ev = view.Event || globalThis.Event;
+    if (typeof Ev === "function" && typeof el.dispatchEvent === "function") {
+      el.dispatchEvent(new Ev("input", { bubbles: true }));
+      el.dispatchEvent(new Ev("change", { bubbles: true }));
+    }
+  } catch { /* stub event */ }
 }
 const MIN_HEIGHT = 240;
 const RESUME_MS = 120;
@@ -1032,6 +1050,90 @@ export function mountBoardView({
     if (disposed) return;
     if (Array.isArray(made) && made.length) { ctl.select(made); toast(failed ? `Added ${made.length} of ${files.length} images` : `Added ${made.length} ${made.length === 1 ? "image" : "images"}`, true); }
   };
+  const editorTextarea = (node) => {
+    if (!node) return null;
+    if (String(node.tagName || "").toLowerCase() === "textarea") return node;
+    const editor = node.closest?.(".pxd-item__editor");
+    if (!editor) return null;
+    const active = doc.activeElement;
+    if (active && editor.contains?.(active) && String(active.tagName || "").toLowerCase() === "textarea") return active;
+    return editor.querySelector?.("textarea") || null;
+  };
+  const remountEditor = async (cardUid) => {
+    if (!cardUid || itemsR.editingUid?.() !== cardUid || disposed) return;
+    await itemsR.exitEdit({ silent: true });
+    if (disposed || !session.board?.items?.has?.(cardUid)) return;
+    await itemsR.enterEdit(cardUid);
+  };
+  const pasteEditorImages = async (ta, blockUid, files) => {
+    if (!files?.length || !blockUid) return;
+    if (typeof host?.uploadFile !== "function") { toast("Image upload is not available here"); return; }
+    const snap = { value: ta?.value ?? "", start: ta?.selectionStart, end: ta?.selectionEnd };
+    const cardUid = itemsR.editingUid?.();
+    const urls = [];
+    let failed = 0;
+    for (const file of files) {
+      try { urls.push(await host.uploadFile(file)); }
+      catch (err) {
+        if (err?.message === "upload-unavailable") { if (!disposed) toast("Image upload is not available here"); return; }
+        failed += 1;
+      }
+      if (disposed) return;
+    }
+    if (!urls.length) { if (!disposed) toast("Couldn't upload the image"); return; }
+    const placed = inlineAtCaret(snap.value, snap.start, snap.end, imageMarkdown(urls));
+    if (ta) {
+      commitTextareaValue(ta, placed.string);
+      try { ta.setSelectionRange?.(placed.caret, placed.caret); } catch { /* caret */ }
+    }
+    try {
+      const write = () => host.updateString(blockUid, placed.string);
+      if (host.group) await host.group(write);
+      else await write();
+    } catch { if (!disposed) toast("Couldn't upload the image"); return; }
+    if (disposed) return;
+    if (failed) toast(`Added ${urls.length} of ${files.length} images`);
+    await remountEditor(cardUid);
+  };
+  const pasteEditorBlocks = async (ta, blockUid, plan) => {
+    if (!blockUid || plan?.type !== "blocks") return;
+    if (typeof host?.updateString !== "function" || typeof host?.createBlock !== "function") return;
+    const cardUid = itemsR.editingUid?.();
+    if (ta) commitTextareaValue(ta, plan.string);
+    try {
+      const write = async () => {
+        await host.updateString(blockUid, plan.string);
+        for (const line of plan.children) await host.createBlock({ parentUid: blockUid, order: "last", string: line });
+      };
+      if (host.group) await host.group(write);
+      else await write();
+    } catch { return; }
+    if (disposed) return;
+    await remountEditor(cardUid);
+  };
+  const editorPaste = (event) => {
+    const ta = editorTextarea(event.target) || editorTextarea(doc.activeElement);
+    if (!ta || !root.contains?.(ta)) return false;
+    const files = filesFromDataTransfer(event.clipboardData);
+    let text = "";
+    try { text = event.clipboardData?.getData?.("text/plain") ?? ""; } catch { text = ""; }
+    const cardUid = itemsR.editingUid?.();
+    const role = inputBlockRole(ta, cardUid);
+    const plan = editorPastePlan({
+      text,
+      imageCount: files.length,
+      value: ta.value ?? "",
+      selectionStart: ta.selectionStart,
+      selectionEnd: ta.selectionEnd,
+      isRoot: role.role === "root",
+    });
+    if (!plan || plan.type === "roam") return false;
+    const blockUid = role.uid || cardUid;
+    if (!blockUid) return false;
+    if (plan.type === "images") { void pasteEditorImages(ta, blockUid, files); return true; }
+    void pasteEditorBlocks(ta, blockUid, plan);
+    return true;
+  };
 
   // ------------------------------------------------------------ context menu
   const menuContext = (kind, uid) => {
@@ -1822,7 +1924,6 @@ export function mountBoardView({
   });
   listen(root, "pointerenter", () => { pointerInside = true; pointerBoard = root; });
   listen(root, "pointerleave", () => { pointerInside = false; if (pointerBoard === root) pointerBoard = null; });
-  const acceptsDrop = (event) => !event.target?.closest?.(".pxd-item__editor");
   const dropEffectFor = (effectAllowed) => {
     const a = String(effectAllowed || "uninitialized");
     if (a === "all" || a === "uninitialized" || /copy/i.test(a)) return "copy";
@@ -1831,7 +1932,14 @@ export function mountBoardView({
     return "copy";
   };
   const onDragAccept = (event) => {
-    if (!acceptsDrop(event)) return;
+    const editor = event.target?.closest?.(".pxd-item__editor");
+    if (editor) {
+      if (!filesFromDataTransfer(event.dataTransfer).length) return;
+      event.preventDefault();
+      event.stopPropagation();
+      if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
+      return;
+    }
     event.preventDefault();
     event.stopPropagation();
     if (event.dataTransfer) event.dataTransfer.dropEffect = dropEffectFor(event.dataTransfer.effectAllowed);
@@ -1839,7 +1947,18 @@ export function mountBoardView({
   listen(root, "dragenter", onDragAccept);
   listen(root, "dragover", onDragAccept);
   listen(root, "drop", (event) => {
-    if (!acceptsDrop(event)) return;
+    const editor = event.target?.closest?.(".pxd-item__editor");
+    if (editor) {
+      const files = filesFromDataTransfer(event.dataTransfer);
+      if (!files.length) return;
+      event.preventDefault();
+      event.stopPropagation();
+      const ta = editorTextarea(event.target) || editorTextarea(editor);
+      const cardUid = itemsR.editingUid?.();
+      const role = inputBlockRole(ta || event.target, cardUid);
+      void pasteEditorImages(ta, role.uid || cardUid, files);
+      return;
+    }
     event.preventDefault();
     event.stopPropagation();
     measure();
@@ -1954,6 +2073,7 @@ export function mountBoardView({
       pastePlexus: (data, opts) => pastePlexus(data, opts),
       pasteText: (entries) => pasteEntries(entries),
       pasteImages: (files) => { void pasteImages(files); },
+      editorPaste,
     },
   });
 

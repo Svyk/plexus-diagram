@@ -67,9 +67,16 @@ export function createClipboardIO({ doc = globalThis.document, root, ownsKeyboar
     offs.push(() => target.removeEventListener(type, fn, opts));
   };
 
-  const inText = (event) => {
-    const test = (n) => Boolean(isTextEntry?.(n)) || defaultTextEntry(n);
-    return test(event.target) || test(doc.activeElement);
+  const textNode = (node) => Boolean(isTextEntry?.(node)) || defaultTextEntry(node);
+  const inText = (event) => textNode(event.target) || textNode(doc.activeElement);
+  const editorNode = (event) => {
+    const node = event.target?.nodeType === 1 ? event.target : null;
+    const hit = textNode(node) ? node : (textNode(doc.activeElement) ? doc.activeElement : null);
+    if (!hit || typeof hit.closest !== "function") return null;
+    const editor = hit.closest(".pxd-item__editor");
+    if (!editor) return null;
+    if (root && typeof root.contains === "function" && !root.contains(editor)) return null;
+    return hit;
   };
   const active = (event) => Boolean(ownsKeyboard?.()) && !inText(event);
 
@@ -87,7 +94,17 @@ export function createClipboardIO({ doc = globalThis.document, root, ownsKeyboar
   listen(win, "keydown", (event) => {
     if ((event.metaKey || event.ctrlKey) && event.shiftKey && String(event.key).toLowerCase() === "v") lastCloneKey = now();
   }, true);
+  // Window capture runs before Roam's document paste handler. stopPropagation here
+  // keeps a card-root paste from becoming board siblings.
+  listen(win, "paste", (event) => {
+    if (!editorNode(event)) return;
+    if (on.editorPaste?.(event)) {
+      event.preventDefault();
+      event.stopPropagation();
+    }
+  }, true);
   listen(doc, "paste", (event) => {
+    if (editorNode(event)) return;
     if (!active(event)) return;
     const parsed = parseClipboard(event.clipboardData);
     if (!parsed) return;

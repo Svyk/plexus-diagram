@@ -2,6 +2,7 @@
 // minimap, version badge, sync dot. Everything lives inside .pxd-root; no portals.
 
 import { PALETTE, FONT_SIZES, BOARD_PATTERNS } from "../model/schema.js";
+import { buildColorPicker } from "./color-picker.js";
 
 const CTX_GAP = 12;
 const CTX_EDGE_CLEARANCE = 28;
@@ -26,7 +27,7 @@ const TOOL_LIST = [
 const MAX_CRUMBS = 4;
 const POPOVER_GAP = 6;
 const POPOVER_MARGIN = 8;
-const PATTERN_LABELS = { dots: "Dots", lines: "Lines", grid: "Grid", plain: "Plain" };
+const PATTERN_LABELS = { dots: "Dots", lines: "Lines", cross: "Cross", grid: "Grid", plain: "Plain" };
 const NOTE_KINDS = ["note", "block", "page"];
 
 export function createChrome({ doc = globalThis.document, root, version = "", settings, timers, on = {}, crumbs = [] } = {}) {
@@ -350,7 +351,7 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
           let pickerBuilt = false;
           iconBtn("pxd-ctx__color", "tint", "Color", "Color", () => {
             if (!pickerBuilt) {
-              swatches(picker, (c) => { on.setColor?.(c); picker.style.display = "none"; });
+              picker.append(buildColorPicker(doc, (c) => { on.setColor?.(c); picker.style.display = "none"; }, listen));
               pickerBuilt = true;
             }
             picker.style.display = picker.style.display === "none" ? "" : "none";
@@ -420,7 +421,7 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
         seg("pxd-ctx__dir", [["one", "→", "One way"], ["two", "↔", "Two way"], ["none", "—", "No arrow"]], model?.dir, (v) => on.edgeDir?.(v));
         btn("pxd-ctx__flip", "Flip", "Swap endpoints", () => on.flip?.());
         seg("pxd-ctx__route", [["curve", "Curve"], ["straight", "Straight"], ["elbow", "Elbow"]], model?.route, (v) => on.route?.(v));
-        seg("pxd-ctx__dash", [["solid", "Solid"], ["dashed", "Dashed"]], model?.dash, (v) => on.dash?.(v));
+        seg("pxd-ctx__dash", [["solid", "Solid"], ["dashed", "Dashed"], ["animated", "Animated"]], model?.dash, (v) => on.dash?.(v));
         seg("pxd-ctx__weight", [[1, "1"], [2, "2"], [3, "3"]], model?.weight, (v) => on.weight?.(v));
         swatches(row, (c) => on.setColor?.(c));
         btn("pxd-ctx__label", "Label", "Edit the label", () => on.label?.());
@@ -452,6 +453,10 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
     const gap = a.kind === "edge" ? CTX_EDGE_CLEARANCE : CTX_GAP;
     // The bar never covers the toolbar (two rows tall) or an open side panel: it flips below / stays left of them.
     const tb = toolbar.getBoundingClientRect();
+    const propsEl = root.querySelector?.(".pxd-props");
+    const propsBox = propsEl ? propsEl.getBoundingClientRect() : null;
+    const propsRight = propsBox?.width ? propsBox.right - (rootRect.left || 0) : 0;
+    const propsBot = propsBox?.height ? propsBox.bottom - (rootRect.top || 0) : 0;
     const topLimit = tb.height ? Math.max(CTX_MARGIN, tb.bottom - (rootRect.top || 0) + CTX_MARGIN) : CTX_MARGIN;
     const railBox = railEl.style.display !== "none" ? railEl.getBoundingClientRect() : null;
     const railClear = railBox?.width ? Math.max(0, rootRect.right - railBox.left) : 0;
@@ -469,6 +474,12 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
     top = Math.max(top, topLimit); // a card panned under the toolbar: the bar sits at the toolbar's edge, never over it
     let left = a.rect.x + a.rect.w / 2 - barW / 2;
     left = Math.max(CTX_MARGIN, Math.min(left, rightLimit - barW - CTX_MARGIN));
+    // An open Properties panel sits under the toolbar on the left. Push the bar below it, or to its right.
+    if (propsBox?.height && left < propsRight && top < propsBot) {
+      const below = propsBot + CTX_MARGIN;
+      if (below + barH <= H - CTX_MARGIN) top = Math.max(top, below);
+      else left = Math.max(left, propsRight + CTX_MARGIN);
+    }
     ctx.style.left = `${Math.round(left)}px`;
     ctx.style.top = `${Math.round(top)}px`;
     ctx.classList.toggle("pxd-ctx--below", top > a.rect.y);

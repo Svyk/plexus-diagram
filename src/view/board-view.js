@@ -6,7 +6,7 @@
 // 1.2 wiring: three-tier LOD flipped by class during a gesture, board backgrounds (pattern + tone), live
 // section auto-fit preview, context menu, clipboard, focus, presentation, card badges, back-to-content.
 
-import { BOARD_PATTERNS, BOARD_TONES, DEFAULT_BOARD_CARD, DEFAULT_SIZES, UNTITLED_BOARD, classifyString, semanticRef, plainText } from "../model/schema.js";
+import { BOARD_PATTERNS, BOARD_TONES, DEFAULT_BOARD_CARD, DEFAULT_SIZES, UNTITLED_BOARD, classifyString, hexColor, semanticRef, plainText } from "../model/schema.js";
 import { boundsOf, containerAt, descendantsOf, edgesTouching, outlineOrder, sectionFitPlan, worldRects } from "../model/board.js";
 import {
   alignRects,
@@ -28,6 +28,7 @@ import { createInteractions } from "./interactions.js";
 import { createItemRenderer, isTextEntryTarget } from "./cards.js";
 import { createEdgeLayer } from "./edges.js";
 import { createChrome, LINK_MODES } from "./chrome.js";
+import { createPropsPanel } from "./props-panel.js";
 import { createPanel, parseDropPayload } from "./panel.js";
 import { createMenu } from "./menu.js";
 import { buildMenu } from "./menu-model.js";
@@ -298,6 +299,7 @@ export function mountBoardView({
   let tier = "detail"; // 'detail' | 'map' | 'overview'
   let bgPattern; // effective board pattern / tone; undefined until applyBackground() runs
   let bgTone;
+  let bgHex = null;
   let bgOverride = false;
   let focusOn = false;
   let focusKey = null;
@@ -727,13 +729,14 @@ export function mountBoardView({
     const b = board();
     const own = b?.plexus;
     const ownPattern = BOARD_PATTERNS.includes(own?.bg) ? own.bg : null;
-    const ownTone = BOARD_TONES.includes(own?.bgColor) ? own.bgColor : null;
+    const ownHex = hexColor(own?.bgColor) || null;
+    const ownTone = ownHex ? null : (BOARD_TONES.includes(own?.bgColor) ? own.bgColor : null);
     const defPattern = setting("grid", "dots");
     const defTone = setting("board-tone", "none");
     const pattern = ownPattern ?? (BOARD_PATTERNS.includes(defPattern) ? defPattern : "dots");
-    const tone = ownTone ?? (BOARD_TONES.includes(defTone) ? defTone : null);
-    const override = ownPattern !== null || ownTone !== null;
-    if (pattern === bgPattern && tone === bgTone && override === bgOverride) return;
+    const tone = ownHex ? null : (ownTone ?? (BOARD_TONES.includes(defTone) ? defTone : null));
+    const override = ownPattern !== null || ownTone !== null || ownHex !== null;
+    if (pattern === bgPattern && tone === bgTone && ownHex === bgHex && override === bgOverride) return;
     if (pattern !== bgPattern) {
       grid.className = `pxd-grid pxd-grid--${pattern}`;
       if (bgPattern === "grid") for (const v of ["--pxd-grid-major", "--pxd-grid-major-x", "--pxd-grid-major-y"]) grid.style.removeProperty?.(v);
@@ -746,8 +749,13 @@ export function mountBoardView({
       if (tone) root.classList.add(`pxd-bg-${tone}`);
       bgTone = tone;
     }
+    if (ownHex !== bgHex) {
+      if (ownHex) root.style.backgroundColor = ownHex;
+      else root.style.backgroundColor = "";
+      bgHex = ownHex;
+    }
     bgOverride = override;
-    chrome.toolbar.setBackground({ pattern, tone, override });
+    chrome.toolbar.setBackground({ pattern, tone: ownHex || tone, override });
   };
 
   // ------------------------------------------------------------ focus mode
@@ -1158,6 +1166,33 @@ export function mountBoardView({
       outlineClick: (uid) => { fitSelection([uid]); ctl.select([uid]); },
     },
   });
+  const propsPanel = createPropsPanel({
+    doc,
+    root,
+    storage,
+    on: {
+      setItemStyle: (patch) => { if (selection.items.length) void session.setItemStyle?.(selection.items, patch); },
+      resetItems: () => { if (selection.items.length) void session.resetItemStyle?.(selection.items); },
+      setSectionStyle: (patch) => { if (selection.items.length) void session.setSectionStyle?.(selection.items, patch); },
+      resetSections: () => { if (selection.items.length) void session.resetSectionStyle?.(selection.items); },
+      setEdge: (patch) => { if (selection.edge) void session.updateEdge?.(selection.edge, patch); },
+      resetEdge: () => { if (selection.edge) void session.updateEdge?.(selection.edge, { dir: "one", route: "curve", dash: "solid", color: null }); },
+      setDefaults: (patch) => { void session.setSectionDefaults?.(patch); },
+      resetDefaults: () => { void session.resetSectionDefaults?.(); },
+      setBackground: (patch) => {
+        Promise.resolve(session.setBoardBackground?.(patch)).then((ok) => { if (ok === false && !disposed) toast("This board can't store a background"); }).catch(() => {});
+      },
+    },
+  });
+  const syncProps = () => {
+    const b = board();
+    if (!b) return;
+    propsPanel.refresh({
+      items: selection.items.map((id) => b.items.get(id)).filter(Boolean),
+      edge: selection.edge ? b.edges.get(selection.edge) : null,
+      board: b,
+    });
+  };
   const menu = createMenu({ doc, root, on: { pick: (id) => onMenuPick(id), closed: () => { menuCtx = null; } } });
   const quicklook = createQuickLook({
     doc,
@@ -1817,12 +1852,9 @@ export function mountBoardView({
       itemsChanged = true;
     }
     if (dirty.all || dirty.structural || dirty.links || dirty.edges.size) {
-      const partial = !dirty.all && !dirty.structural && !dirty.links && !dirty.items.size;
-      if (partial) {
-        edgesR.update({ board: b, edgeUids: dirty.edges, rects: r, zoom: vp.zoom });
-      } else {
-        edgesR.render({ board: b, rects: r, links: session.links || [], coveredEdges: session.coveredEdges || new Set(), selection, zoom: vp.zoom, dirty: dirty.all || dirty.structural || dirty.links ? null : dirty.edges });
-      }
+      // An edge-only change used to call update(), which moves the path and skips
+      // paintEdge, so dash and color never reached the DOM until a full render.
+      edgesR.render({ board: b, rects: r, links: session.links || [], coveredEdges: session.coveredEdges || new Set(), selection, zoom: vp.zoom, dirty: dirty.all || dirty.structural || dirty.links ? null : dirty.edges });
       // edges touching dirty items move with them
       if (dirty.items.size && !dirty.all && !dirty.structural) {
         edgesR.update({ board: b, edgeUids: edgesTouching(b, dirty.items), rects: r, zoom: vp.zoom, linkKeys: new Set((session.links || []).map((l) => l.key)), links: session.links || [] });
@@ -1845,11 +1877,13 @@ export function mountBoardView({
         }
       }
       chrome.toolbar.setZoom(vp.zoom);
+      propsPanel.place();
     }
     if (dirty.selection || itemsChanged) {
       itemsR.setSelection(selection.items);
       edgesR.setSelection({ edge: selection.edge, link: selection.link });
       if (!gesturing && !itemsR.isEditing()) showCtx(); else chrome.ctx.hide();
+      syncProps();
       if (focusOn) applyFocus();
     } else if (dirty.viewport && chrome.ctx.isOpen()) {
       chrome.ctx.reposition();
@@ -2003,6 +2037,7 @@ export function mountBoardView({
       itemsR.dispose();
       edgesR.dispose();
       panel.dispose();
+      propsPanel.dispose();
       chrome.dispose();
       listeners.splice(0).forEach((off) => off());
       observers.splice(0).forEach((o) => o.disconnect());

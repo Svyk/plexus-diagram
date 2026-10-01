@@ -40,12 +40,12 @@ test("background button toggles a popover inside the root", (t) => {
   assert.ok(!classes(btn).includes("pxd-btn--active"));
 });
 
-test("popover has a four-way pattern control and 12 tone swatches with data-tone", (t) => {
+test("popover has a pattern control including cross and 12 tone swatches with data-tone", (t) => {
   const f = setup();
   t.after(f.restore);
   const pop = q(f.root, ".pxd-popover--bg");
   const patterns = pop.querySelectorAll(".pxd-bg__pattern .pxd-seg__btn").map((b) => b.dataset.value);
-  assert.deepEqual(patterns, ["dots", "lines", "grid", "plain"]);
+  assert.deepEqual(patterns, ["dots", "lines", "cross", "grid", "plain"]);
   const swatches = pop.querySelectorAll(".pxd-bg__tones .pxd-swatch");
   assert.deepEqual(swatches.map((s) => s.getAttribute("data-tone")), ["", "paper", ...PALETTE]);
   assert.ok(pop.querySelector(".pxd-bg__default"));

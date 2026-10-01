@@ -8,17 +8,71 @@ export const DEFAULT_BOARD_CARD = { w: 320, h: 220 };
 export const UNTITLED_BOARD = "Untitled board";
 export const FONT_SIZES = [16, 24, 32, 48];
 export const CARD_LOOKS = ["block", "card"];
+export const CARD_FONT_MIN = 10;
+export const CARD_FONT_MAX = 48;
+export const CARD_FONT_DEFAULT = 14;
+export const SECTION_TITLE_MIN = 10;
+export const SECTION_TITLE_MAX = 48;
+export const SECTION_TITLE_DEFAULT = 18;
+export const ALIGNS = ["left", "center", "right", "justify"];
 export const EDGE_DEFAULTS = { fromSide: "auto", toSide: "auto", dir: "one", route: "curve", dash: "solid", weight: 1 };
 export const SIDES = ["auto", "top", "right", "bottom", "left"];
 export const ARROWS = { one: "→", two: "↔", none: "—" };
-export const BOARD_PATTERNS = ["dots", "lines", "grid", "plain"];
+export const DIRS = ["one", "two", "none"];
+export const ROUTES = ["curve", "straight", "elbow"];
+export const DASHES = ["solid", "dashed", "animated"];
+export const BOARD_PATTERNS = ["dots", "lines", "cross", "grid", "plain"];
 export const BOARD_TONES = ["paper", ...PALETTE];
 export const FIT_PAD = 24;
+// Native diagram swatches, stored as lowercase hex. Named 1.2 colors stay names.
+export const NATIVE_SWATCHES = [
+  "#000000", "#a7b6c2", "#ffffff", "#f55656", "#ff66a1", "#c274c2",
+  "#ad99ff", "#48aff0", "#2ee6d6", "#3dcc91", "#ffb366", "#f2b824", "#c99765",
+];
+export const ITEM_STYLE_KEYS = ["fontSize", "textColor", "align", "fill", "border"];
+export const SECTION_STYLE_KEYS = ["titleSize", "titleColor", "titleFill", "areaFill", "border"];
 
 const ARROW_TOKENS = Object.values(ARROWS);
-const ROUTES = ["curve", "straight", "elbow"];
-const DASHES = ["solid", "dashed"];
-const DIRS = ["one", "two", "none"];
+const HEX_RE = /^#[0-9a-f]{6}$/;
+
+const intIn = (v, lo, hi) => (Number.isInteger(v) && v >= lo && v <= hi ? v : undefined);
+
+// Lowercase #rrggbb only. Shorthand, alpha, and named CSS colors are rejected.
+export function hexColor(v) {
+  if (typeof v !== "string") return undefined;
+  const s = v.trim().toLowerCase();
+  return HEX_RE.test(s) ? s : undefined;
+}
+
+// A 1.2 palette name, or a lowercase hex. Anything else is dropped.
+export function styleColor(v) {
+  if (PALETTE.includes(v)) return v;
+  return hexColor(v);
+}
+
+// Board tone: a 1.2 tone name, or a lowercase hex.
+export function boardColor(v) {
+  if (BOARD_TONES.includes(v)) return v;
+  return hexColor(v);
+}
+
+// CSS color for a stored style value. Palette names use the existing tokens.
+export function cssColor(value, role = "line") {
+  if (PALETTE.includes(value)) {
+    const part = role === "text" ? "text" : role === "fill" ? "fill" : "line";
+    return `var(--pxd-${value}-${part})`;
+  }
+  return hexColor(value);
+}
+
+// amount < 0 darkens toward black, amount > 0 lightens toward white. Result is lowercase hex.
+export function shadeHex(hex, amount) {
+  const h = hexColor(hex);
+  if (!h || typeof amount !== "number" || !Number.isFinite(amount)) return undefined;
+  const mix = (c) => (amount >= 0 ? c + (255 - c) * amount : c * (1 + amount));
+  const chan = (i) => Math.max(0, Math.min(255, Math.round(mix(parseInt(h.slice(i, i + 2), 16)))));
+  return `#${[1, 3, 5].map((i) => chan(i).toString(16).padStart(2, "0")).join("")}`;
+}
 
 const isObject = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
 const isNum = (v) => typeof v === "number" && Number.isFinite(v);
@@ -51,19 +105,43 @@ export function mergePropsForWrite(props, plexus) {
 export function normalizeItemLayout(plexus) {
   const p = isObject(plexus) ? plexus : {};
   const num = (v) => (isNum(v) ? v : undefined);
+  const type = ITEM_TYPES.includes(p.type) ? p.type : "card";
+  const section = type === "section";
   return {
-    type: ITEM_TYPES.includes(p.type) ? p.type : "card",
+    type,
     x: num(p.x),
     y: num(p.y),
     w: num(p.w),
     h: num(p.h),
-    color: PALETTE.includes(p.color) ? p.color : undefined,
+    color: styleColor(p.color),
     collapsed: p.collapsed === true ? true : p.collapsed === false ? false : undefined,
-    fontSize: FONT_SIZES.includes(p.fontSize) ? p.fontSize : undefined,
+    // Sections use titleSize. Cards and text take an integer 10–48 (text used to be the four steps only).
+    fontSize: section ? undefined : intIn(p.fontSize, CARD_FONT_MIN, CARD_FONT_MAX),
     pinned: p.pinned === true,
     fit: p.fit === false ? false : undefined,
     look: CARD_LOOKS.includes(p.look) ? p.look : undefined,
+    textColor: section ? undefined : styleColor(p.textColor),
+    align: section || !ALIGNS.includes(p.align) ? undefined : p.align,
+    fill: section ? undefined : styleColor(p.fill),
+    border: styleColor(p.border),
+    titleSize: section ? intIn(p.titleSize, SECTION_TITLE_MIN, SECTION_TITLE_MAX) : undefined,
+    titleColor: section ? styleColor(p.titleColor) : undefined,
+    titleFill: section ? styleColor(p.titleFill) : undefined,
+    areaFill: section ? styleColor(p.areaFill) : undefined,
   };
+}
+
+// Board-level section defaults. titleSize 18 is the default and is omitted. Unknown keys are dropped.
+export function normalizeSectionDefaults(raw) {
+  const p = isObject(raw) ? raw : {};
+  const out = {};
+  const ts = intIn(p.titleSize, SECTION_TITLE_MIN, SECTION_TITLE_MAX);
+  if (ts !== undefined && ts !== SECTION_TITLE_DEFAULT) out.titleSize = ts;
+  for (const k of ["titleColor", "titleFill", "areaFill", "border"]) {
+    const c = styleColor(p[k]);
+    if (c) out[k] = c;
+  }
+  return out;
 }
 
 // Notes with no stored look are plain blocks. Page, ref, image and board cards stay cards.
@@ -85,15 +163,36 @@ export function serializeItemLayout(layout) {
   const out = {};
   if (l.type && l.type !== "card") out.type = l.type;
   for (const k of ["x", "y", "w", "h"]) if (isNum(l[k])) out[k] = round1(l[k]);
-  if (PALETTE.includes(l.color)) out.color = l.color;
+  const color = styleColor(l.color);
+  if (color) out.color = color;
   if (l.collapsed === true) out.collapsed = true;
-  if (l.type === "text" && FONT_SIZES.includes(l.fontSize)) out.fontSize = l.fontSize;
+  const type = ITEM_TYPES.includes(l.type) ? l.type : "card";
+  if (type === "section") {
+    const ts = intIn(l.titleSize, SECTION_TITLE_MIN, SECTION_TITLE_MAX);
+    if (ts !== undefined && ts !== SECTION_TITLE_DEFAULT) out.titleSize = ts;
+    for (const k of ["titleColor", "titleFill", "areaFill", "border"]) {
+      const c = styleColor(l[k]);
+      if (c) out[k] = c;
+    }
+  } else {
+    const fs = intIn(l.fontSize, CARD_FONT_MIN, CARD_FONT_MAX);
+    // 14 is the card default, so a card with no custom size stores nothing. Text keeps every size, including 24.
+    if (fs !== undefined && !(type === "card" && fs === CARD_FONT_DEFAULT)) out.fontSize = fs;
+    const textColor = styleColor(l.textColor);
+    if (textColor) out.textColor = textColor;
+    if (ALIGNS.includes(l.align)) out.align = l.align;
+    const fill = styleColor(l.fill);
+    if (fill) out.fill = fill;
+    const border = styleColor(l.border);
+    if (border) out.border = border;
+  }
   if (l.v === SCHEMA_VERSION) out.v = SCHEMA_VERSION;
   if (l.pinned === true) out.pinned = true;
   if (l.type === "section" && l.fit === false) out.fit = false;
   if (CARD_LOOKS.includes(l.look)) out.look = l.look;
   if (BOARD_PATTERNS.includes(l.bg)) out.bg = l.bg;
-  if (BOARD_TONES.includes(l.bgColor)) out.bgColor = l.bgColor;
+  const tone = boardColor(l.bgColor);
+  if (tone) out.bgColor = tone;
   return out;
 }
 
@@ -129,7 +228,7 @@ export function normalizeEdge(plexus) {
     route: pick(p.route, ROUTES, EDGE_DEFAULTS.route),
     dash: pick(p.dash, DASHES, EDGE_DEFAULTS.dash),
     weight: [1, 2, 3].includes(p.weight) ? p.weight : EDGE_DEFAULTS.weight,
-    color: PALETTE.includes(p.color) ? p.color : undefined,
+    color: styleColor(p.color),
   };
 }
 
@@ -139,7 +238,8 @@ export function serializeEdge(edge) {
   for (const k of ["fromSide", "toSide", "dir", "route", "dash", "weight"]) {
     if (e[k] !== undefined && e[k] !== EDGE_DEFAULTS[k]) out[k] = e[k];
   }
-  if (PALETTE.includes(e.color)) out.color = e.color;
+  const color = styleColor(e.color);
+  if (color) out.color = color;
   return out;
 }
 

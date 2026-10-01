@@ -33,7 +33,7 @@ const titleOf = (item) => item.title || item.string || "Untitled";
 export function boardToSvg(board, rects, { dark = false, padding = 48, maxItems = 500 } = {}) {
   const mode = dark ? "dark" : "light";
   const theme = THEME[mode];
-  const hex = (color) => HEX[mode][PALETTE.includes(color) ? color : "gray"];
+  const hex = (color) => (typeof color === "string" && /^#[0-9a-f]{6}$/.test(color) ? [color, color, color] : HEX[mode][PALETTE.includes(color) ? color : "gray"]);
   const included = [];
   for (const uid of board.order) {
     if (included.length >= maxItems) break;
@@ -77,7 +77,7 @@ export function boardToSvg(board, rects, { dark = false, padding = 48, maxItems 
     const b = rects.get(edge.to);
     const path = edgePath({ a, b, fromSide: edge.fromSide, toSide: edge.toSide, route: edge.route });
     const stroke = edge.color ? hex(edge.color)[0] : theme.edge;
-    const dash = edge.dash === "dashed" ? ' stroke-dasharray="6 4"' : "";
+    const dash = edge.dash === "dashed" || edge.dash === "animated" ? ' stroke-dasharray="6 4"' : "";
     out.push(`<path d="${path.d}" fill="none" stroke="${stroke}" stroke-width="${edge.weight}"${dash}/>`);
     const size = arrowSize(1, edge.weight);
     if (edge.dir === "one" || edge.dir === "two") {

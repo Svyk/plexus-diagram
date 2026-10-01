@@ -18,12 +18,15 @@ import {
 } from "./model/board.js";
 import {
   BOARD_PATTERNS,
-  BOARD_TONES,
   DEFAULT_BOARD_CARD,
   DEFAULT_SIZES,
   FIT_PAD,
+  ITEM_STYLE_KEYS,
   MIN_SIZES,
   SCHEMA_VERSION,
+  SECTION_STYLE_KEYS,
+  boardColor,
+  normalizeSectionDefaults,
   attrNameOf,
   boardString,
   dailyPageTitle,
@@ -53,7 +56,7 @@ const PROPS = ":block/props";
 const OPEN = ":block/open";
 
 const LINK_MODES = ["off", "attributes", "all"];
-const ITEM_KEYS = ["type", "x", "y", "w", "h", "color", "collapsed", "fontSize", "pinned", "fit", "look"];
+const ITEM_KEYS = ["type", "x", "y", "w", "h", "color", "collapsed", "fontSize", "pinned", "fit", "look", "textColor", "align", "fill", "border", "titleSize", "titleColor", "titleFill", "areaFill"];
 const EDGE_KEYS = ["type", "from", "to", "fromSide", "toSide", "dir", "route", "dash", "weight", "color"];
 const MAX_PARENT_STRINGS = 200;
 const DAILY_GAP = 20;
@@ -939,6 +942,86 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
       });
     },
 
+    // One undo step. Cards and text only. null clears a key. Invalid values are dropped by serialize.
+    setItemStyle(uids, patch = {}) {
+      return txn((t) => {
+        const ids = capBulk([...new Set(uids ?? [])].filter((id) => {
+          const item = board.items.get(id);
+          return item && item.type !== "section";
+        }), emit);
+        let n = 0;
+        for (const id of ids) {
+          const nextPatch = {};
+          for (const k of ITEM_STYLE_KEYS) {
+            if (!Object.prototype.hasOwnProperty.call(patch, k)) continue;
+            nextPatch[k] = patch[k] == null ? undefined : patch[k];
+          }
+          const next = itemPlexus(id, nextPatch);
+          if (stable(next) !== stable(rawPlexus(id))) { t.props(id, next); n++; }
+        }
+        return n;
+      });
+    },
+
+    resetItemStyle(uids) {
+      const patch = {};
+      for (const k of ITEM_STYLE_KEYS) patch[k] = null;
+      return this.setItemStyle(uids, patch);
+    },
+
+    setSectionStyle(uids, patch = {}) {
+      return txn((t) => {
+        const ids = capBulk([...new Set(uids ?? [])].filter((id) => board.items.get(id)?.type === "section"), emit);
+        let n = 0;
+        for (const id of ids) {
+          const nextPatch = {};
+          for (const k of SECTION_STYLE_KEYS) {
+            if (!Object.prototype.hasOwnProperty.call(patch, k)) continue;
+            nextPatch[k] = patch[k] == null ? undefined : patch[k];
+          }
+          const next = itemPlexus(id, nextPatch);
+          if (stable(next) !== stable(rawPlexus(id))) { t.props(id, next); n++; }
+        }
+        return n;
+      });
+    },
+
+    resetSectionStyle(uids) {
+      const patch = {};
+      for (const k of SECTION_STYLE_KEYS) patch[k] = null;
+      return this.setSectionStyle(uids, patch);
+    },
+
+    // Board-level section defaults on plexus.defaults.section. null removes a key.
+    setSectionDefaults(patch = {}) {
+      return txn((t) => {
+        if (!board.enhanced) return false;
+        const base = rawPlexus(uid);
+        const prevDefaults = base.defaults && typeof base.defaults === "object" && !Array.isArray(base.defaults) ? base.defaults : {};
+        const section = prevDefaults.section && typeof prevDefaults.section === "object" ? { ...prevDefaults.section } : {};
+        for (const k of SECTION_STYLE_KEYS) {
+          if (!Object.prototype.hasOwnProperty.call(patch, k)) continue;
+          if (patch[k] == null) delete section[k];
+          else section[k] = patch[k];
+        }
+        const clean = normalizeSectionDefaults(section);
+        const next = { ...base, defaults: { ...prevDefaults } };
+        if (Object.keys(clean).length) next.defaults.section = clean;
+        else {
+          delete next.defaults.section;
+          if (!Object.keys(next.defaults).length) delete next.defaults;
+        }
+        if (stable(next) !== stable(base)) t.props(uid, next);
+        return true;
+      });
+    },
+
+    resetSectionDefaults() {
+      const patch = {};
+      for (const k of SECTION_STYLE_KEYS) patch[k] = null;
+      return this.setSectionDefaults(patch);
+    },
+
     setLook(id, look) {
       return txn((t) => {
         const item = board.items.get(id);
@@ -1012,16 +1095,20 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
       });
     },
 
-    // bg / bgColor: undefined leaves the key, null removes it, otherwise it must be a known pattern / tone.
+    // bg / bgColor: undefined leaves the key, null removes it. bg is a pattern. bgColor is a tone name or #rrggbb.
     // Resolves true when applied (or already equal), false when rejected.
     setBoardBackground({ bg, bgColor } = {}) {
       return txn((t) => {
         if (!board.enhanced) return false;
+        let tone = bgColor;
         if (bg != null && !BOARD_PATTERNS.includes(bg)) return false;
-        if (bgColor != null && !BOARD_TONES.includes(bgColor)) return false;
+        if (tone != null) {
+          tone = boardColor(tone);
+          if (!tone) return false;
+        }
         const base = rawPlexus(uid);
         const next = { ...base };
-        for (const [key, value] of [["bg", bg], ["bgColor", bgColor]]) {
+        for (const [key, value] of [["bg", bg], ["bgColor", tone]]) {
           if (value === undefined) continue;
           if (value === null) delete next[key];
           else next[key] = value;

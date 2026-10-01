@@ -1,0 +1,254 @@
+/* NP-4. Properties panel, custom style keys, cross texture, animated dashes.
+   Every rule is scoped under .pxd-root. A missing style key sets no variable, so 1.2 boards stay as they are. */
+
+.pxd-root .pxd-props {
+  position: absolute;
+  left: 8px;
+  top: 52px;
+  z-index: 12;
+  box-sizing: border-box;
+  width: min(220px, calc(100% - 248px));
+  max-height: calc(100% - 180px);
+  display: flex;
+  flex-direction: column;
+  border: 1px solid var(--pxd-border);
+  border-radius: 8px;
+  background: var(--pxd-chrome-bg);
+  color: var(--pxd-text);
+  box-shadow: var(--pxd-shadow);
+  overflow: hidden;
+}
+
+.pxd-root .pxd-props__toggle {
+  flex: 0 0 auto;
+  width: 100%;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  text-align: left;
+  font-weight: 600;
+}
+
+.pxd-root .pxd-props__body {
+  overflow: auto;
+  padding: 0 8px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.pxd-root .pxd-props__heading {
+  margin: 0 0 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--pxd-muted);
+}
+
+.pxd-root .pxd-props__group {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 4px;
+  padding-top: 6px;
+  border-top: 1px solid var(--pxd-border);
+}
+
+.pxd-root .pxd-props__label {
+  font-size: 11px;
+  color: var(--pxd-muted);
+}
+
+.pxd-root .pxd-props__field {
+  display: flex;
+  flex: 0 0 auto;
+  flex-direction: column;
+  gap: 3px;
+}
+
+.pxd-root .pxd-props__step {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 4px;
+  align-items: center;
+  max-width: 100%;
+}
+
+/* .pxd-input's 220px min-width is for the board-name field. A 360px board
+   leaves this panel about 110px wide, so the stepper must be allowed to shrink. */
+.pxd-root .pxd-props__num {
+  flex: 1 1 48px;
+  width: 48px;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 2px 4px;
+  border: 1px solid var(--pxd-border);
+  border-radius: 6px;
+  background: var(--pxd-surface, transparent);
+  color: var(--pxd-text);
+  font-size: 12px;
+}
+
+.pxd-root .pxd-props__dec,
+.pxd-root .pxd-props__inc {
+  min-width: 28px;
+  height: 28px;
+  padding: 0;
+}
+
+/* Block flow, not a nested flex row. A wrapping flex item inside the column
+   collapses to one line and the next control paints over the wrapped buttons. */
+.pxd-root .pxd-props__choices {
+  display: block;
+  flex: 0 0 auto;
+  width: 100%;
+  overflow: visible;
+  border: 0;
+}
+
+.pxd-root .pxd-props__choices .pxd-seg__btn {
+  display: inline-flex;
+  margin: 0 4px 4px 0;
+  border: 1px solid var(--pxd-border);
+  border-radius: 6px;
+}
+
+.pxd-root .pxd-props__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 28px;
+}
+
+.pxd-root .pxd-props__chip-swatch {
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  border: 1px solid var(--pxd-border-strong);
+  background: transparent;
+}
+
+.pxd-root .pxd-props__chip-swatch--empty {
+  background:
+    linear-gradient(135deg, transparent 45%, var(--pxd-red-line, #c00) 45% 55%, transparent 55%);
+}
+
+.pxd-root .pxd-props__reset {
+  align-self: flex-start;
+  margin-top: 2px;
+}
+
+.pxd-root .pxd-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 4px;
+}
+
+.pxd-root .pxd-picker__cap {
+  font-size: 10px;
+  color: var(--pxd-muted);
+}
+
+.pxd-root .pxd-picker__swatches {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 3px;
+}
+
+.pxd-root .pxd-picker__swatch {
+  width: 16px;
+  height: 16px;
+  min-height: 16px;
+  padding: 0;
+}
+
+.pxd-root .pxd-picker__hex {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pxd-root .pxd-picker__preview {
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  border: 1px solid var(--pxd-border-strong);
+  background: transparent;
+}
+
+.pxd-root .pxd-picker__input {
+  flex: 1 1 72px;
+  width: 72px;
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 2px 6px;
+  border: 1px solid var(--pxd-border);
+  border-radius: 6px;
+  background: var(--pxd-surface, transparent);
+  color: var(--pxd-text);
+  font-size: 12px;
+}
+
+.pxd-root .pxd-picker__input--bad {
+  border-color: var(--pxd-red-line, #c00);
+}
+
+.pxd-root .pxd-ctx__picker .pxd-picker {
+  padding: 6px;
+}
+
+/* Custom card size. Absent fontSize keeps the 1.2 sizes (14px block, 13px card header). */
+.pxd-root .pxd-item.pxd-fs > .pxd-item__header,
+.pxd-root .pxd-item.pxd-fs > .pxd-item__body,
+.pxd-root .pxd-item.pxd-fs.pxd-card--block > .pxd-item__body,
+.pxd-root .pxd-item.pxd-fs.pxd-card--block .pxd-item__editor :is(textarea.rm-block-input, textarea.rm-block__input, .rm-block__input, .rm-block-text) {
+  font-size: var(--pxd-card-fs, 14px);
+}
+
+.pxd-root .pxd-item.pxd-has-textc,
+.pxd-root .pxd-item.pxd-has-textc .pxd-item__header,
+.pxd-root .pxd-item.pxd-has-textc .pxd-item__body {
+  color: var(--pxd-text-c, var(--pxd-text));
+}
+
+.pxd-root .pxd-item--text.pxd-text-paint {
+  border-color: var(--pxd-line, transparent);
+  background: var(--pxd-fill, transparent);
+}
+
+.pxd-root .pxd-item--card {
+  text-align: inherit;
+}
+
+/* A chosen edge color stays visible while the edge is selected. Uncolored selection stays the accent. */
+.pxd-root .pxd-edge--selected .pxd-edge__line {
+  stroke: var(--pxd-line, var(--pxd-accent));
+}
+
+.pxd-root .pxd-edge--selected .pxd-edge__head {
+  fill: var(--pxd-line, var(--pxd-accent));
+}
+
+.pxd-root .pxd-edge--animated .pxd-edge__line {
+  stroke-dasharray: 8 6;
+  animation: pxd-dash 0.6s linear infinite;
+}
+
+@keyframes pxd-dash {
+  to { stroke-dashoffset: -28; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pxd-root .pxd-edge--animated .pxd-edge__line {
+    animation: none;
+  }
+}
+
+/* Plus marks, one per grid cell. The view sets background-size to the pitch, which scales the tile. */
+.pxd-root .pxd-grid--cross {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Cpath d='M11.15 8.2h1.7v7.6h-1.7zM8.2 11.15h7.6v1.7H8.2z' fill='%235f6b7c' fill-opacity='0.55'/%3E%3C/svg%3E");
+}

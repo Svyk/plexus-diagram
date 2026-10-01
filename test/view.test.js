@@ -327,7 +327,7 @@ test("selection shows a context bar above the selection and never over it", asyn
     f.stub.dispatch(ctx.querySelector(".pxd-ctx__color"), "click");
     const picker = ctx.querySelector(".pxd-ctx__picker");
     assert.equal(picker.style.display, "");
-    assert.equal(picker.querySelectorAll(".pxd-swatch").length, 11);
+    assert.equal(picker.querySelectorAll(".pxd-swatch").length, 49);
     // card occupies y 0..100 at the top edge: bar must flip BELOW (y >= 112), never overlapping
     const top = Number.parseInt(ctx.style.top, 10);
     assert.ok(top >= 112, `context bar below the card when there is no room above (top=${top})`);

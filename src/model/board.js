@@ -7,8 +7,10 @@ import {
   cardLook,
   classifyString,
   firstLine,
+  hexColor,
   normalizeEdge,
   normalizeItemLayout,
+  normalizeSectionDefaults,
   parseBoardTitle,
   parseEdgeLabel,
   readPlexus,
@@ -93,6 +95,8 @@ export function buildBoard(pulled, { defaults } = {}) {
     }
   });
 
+  const sectionDefaults = normalizeSectionDefaults(plexus?.defaults?.section);
+
   const walk = (children, parentUid, depth) => {
     const siblings = [];
     for (const child of children) {
@@ -134,6 +138,15 @@ export function buildBoard(pulled, { defaults } = {}) {
         color: layout.color,
         collapsed: layout.collapsed === true,
         fontSize: layout.fontSize,
+        textColor: type === "section" ? undefined : layout.textColor,
+        align: type === "section" ? undefined : layout.align,
+        fill: type === "section" ? undefined : layout.fill,
+        border: layout.border,
+        titleSize: type === "section" ? layout.titleSize : undefined,
+        titleColor: type === "section" ? layout.titleColor : undefined,
+        titleFill: type === "section" ? layout.titleFill : undefined,
+        areaFill: type === "section" ? layout.areaFill : undefined,
+        sectionDefaults: type === "section" ? sectionDefaults : undefined,
         pinned: layout.pinned,
         look: type === "card" ? cardLook(kind, layout.look) : undefined,
         open: type === "card" ? child[":block/open"] !== false : undefined,
@@ -190,8 +203,9 @@ export function buildBoard(pulled, { defaults } = {}) {
     enhanced: plexus?.v === 2,
     background: {
       pattern: BOARD_PATTERNS.includes(plexus?.bg) ? plexus.bg : null,
-      tone: BOARD_TONES.includes(plexus?.bgColor) ? plexus.bgColor : null,
+      tone: BOARD_TONES.includes(plexus?.bgColor) ? plexus.bgColor : (hexColor(plexus?.bgColor) || null),
     },
+    defaults: { section: sectionDefaults },
     items,
     roots,
     order,

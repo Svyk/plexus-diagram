@@ -2,7 +2,7 @@
 // and edit mode (spec 3.2). Roam content only ever comes from host.renderString /
 // renderBlock / renderPage; we never build <img> or fake editors.
 
-import { DEFAULT_SIZES, attrNameOf, classifyString, firstLine, isUntitledBoard, parseBoardTitle, plainText } from "../model/schema.js";
+import { DEFAULT_SIZES, FONT_SIZES, PALETTE, attrNameOf, classifyString, cssColor, firstLine, hexColor, isUntitledBoard, parseBoardTitle, plainText } from "../model/schema.js";
 import { boardPreview, descendantsOf } from "../model/board.js";
 import { lodForZoom, rectsIntersect } from "../model/geometry.js";
 
@@ -110,7 +110,11 @@ const childUid = (c) => c?.[":block/uid"] ?? c?.uid ?? "";
 const childProps = (c) => c?.[":block/props"] ?? c?.props;
 
 function contentKeyOf(item) {
-  const parts = [item.kind, item.enhanced ? "e" : "", item.string, item.collapsed ? "c" : "", item.open === false ? "x" : "", item.fontSize || ""];
+  const parts = [
+    item.kind, item.enhanced ? "e" : "", item.string, item.collapsed ? "c" : "", item.open === false ? "x" : "",
+    item.fontSize || "", item.textColor || "", item.align || "", item.fill || "", item.border || "",
+    item.titleSize || "", item.titleColor || "", item.titleFill || "", item.areaFill || "",
+  ];
   if (item.kind === "board") parts.push(item.w, item.h);
   if (item.kind === "board") {
     // The mini preview draws the child board's layout, so a layout-only change inside it must refresh the card.
@@ -247,6 +251,38 @@ export function createItemRenderer({
     return rec;
   };
 
+  const setVar = (el, name, value) => {
+    if (value) el.style.setProperty(name, value);
+    else el.style.removeProperty(name);
+  };
+  // Inline variables only when a key is present, so a 1.2 board with no style keys keeps its look.
+  const applyStyle = (rec, item) => {
+    const node = rec.el;
+    if (item.type === "section") {
+      const d = item.sectionDefaults || {};
+      const area = item.areaFill ?? d.areaFill;
+      const border = item.border ?? d.border;
+      const titleSize = item.titleSize ?? d.titleSize;
+      const titleColor = item.titleColor ?? d.titleColor;
+      const titleFill = item.titleFill ?? d.titleFill;
+      setVar(node, "--pxd-fill", cssColor(area, "fill"));
+      setVar(node, "--pxd-line", cssColor(border, "line") || hexColor(item.color) || "");
+      if (rec.title) {
+        rec.title.style.fontSize = titleSize ? `${titleSize}px` : "";
+        rec.title.style.color = cssColor(titleColor, "text") || "";
+        rec.title.style.background = cssColor(titleFill, "fill") || "";
+      }
+      return;
+    }
+    const accent = hexColor(item.color);
+    setVar(node, "--pxd-card-fs", item.fontSize ? `${item.fontSize}px` : "");
+    setVar(node, "--pxd-text-fs", item.type === "text" && item.fontSize ? `${item.fontSize}px` : "");
+    setVar(node, "--pxd-text-c", cssColor(item.textColor, "text") || accent || "");
+    setVar(node, "--pxd-fill", cssColor(item.fill, "fill") || accent || "");
+    setVar(node, "--pxd-line", cssColor(item.border, "line") || accent || "");
+    node.style.textAlign = item.align || "";
+  };
+
   const paintShell = (rec, item) => {
     const node = rec.el;
     if (item.type !== "section") {
@@ -265,10 +301,13 @@ export function createItemRenderer({
     }
     const base = item.type === "section" ? "pxd-section" : `pxd-item pxd-item--${item.type} pxd-item--${item.kind}`;
     const cls = [base];
-    if (item.color) cls.push(`pxd-c-${item.color}`);
+    if (PALETTE.includes(item.color)) cls.push(`pxd-c-${item.color}`);
     if (item.collapsed) cls.push("pxd-item--collapsed");
     if (!item.string?.trim()) cls.push("pxd-item--empty");
-    if (item.type === "text" && item.fontSize) cls.push(`pxd-item--fs${item.fontSize}`);
+    if (item.type === "text" && FONT_SIZES.includes(item.fontSize)) cls.push(`pxd-item--fs${item.fontSize}`);
+    if (item.type !== "section" && item.fontSize) cls.push("pxd-fs");
+    if (item.textColor) cls.push("pxd-has-textc");
+    if (item.type === "text" && (item.fill || item.border)) cls.push("pxd-text-paint");
     if (rec.selected) cls.push(item.type === "section" ? "pxd-section--selected" : "pxd-item--selected");
     if (rec.hover) cls.push("pxd-item--drop");
     if (editing?.uid === item.uid) cls.push("pxd-item--editing");
@@ -280,6 +319,7 @@ export function createItemRenderer({
       if (item.look === "block") cls.push("pxd-card--block");
     }
     node.className = cls.join(" ");
+    applyStyle(rec, item);
     if (item.type === "section") {
       if (!rec.titleRendered || rec.titleString !== item.string) {
         rec.title.textContent = item.title || "Section";

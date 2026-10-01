@@ -371,16 +371,69 @@ var DEFAULT_BOARD_CARD = { w: 320, h: 220 };
 var UNTITLED_BOARD = "Untitled board";
 var FONT_SIZES = [16, 24, 32, 48];
 var CARD_LOOKS = ["block", "card"];
+var CARD_FONT_MIN = 10;
+var CARD_FONT_MAX = 48;
+var CARD_FONT_DEFAULT = 14;
+var SECTION_TITLE_MIN = 10;
+var SECTION_TITLE_MAX = 48;
+var SECTION_TITLE_DEFAULT = 18;
+var ALIGNS = ["left", "center", "right", "justify"];
 var EDGE_DEFAULTS = { fromSide: "auto", toSide: "auto", dir: "one", route: "curve", dash: "solid", weight: 1 };
 var SIDES2 = ["auto", "top", "right", "bottom", "left"];
 var ARROWS = { one: "→", two: "↔", none: "—" };
-var BOARD_PATTERNS = ["dots", "lines", "grid", "plain"];
+var DIRS = ["one", "two", "none"];
+var ROUTES = ["curve", "straight", "elbow"];
+var DASHES = ["solid", "dashed", "animated"];
+var BOARD_PATTERNS = ["dots", "lines", "cross", "grid", "plain"];
 var BOARD_TONES = ["paper", ...PALETTE];
 var FIT_PAD = 24;
+var NATIVE_SWATCHES = [
+  "#000000",
+  "#a7b6c2",
+  "#ffffff",
+  "#f55656",
+  "#ff66a1",
+  "#c274c2",
+  "#ad99ff",
+  "#48aff0",
+  "#2ee6d6",
+  "#3dcc91",
+  "#ffb366",
+  "#f2b824",
+  "#c99765"
+];
+var ITEM_STYLE_KEYS = ["fontSize", "textColor", "align", "fill", "border"];
+var SECTION_STYLE_KEYS = ["titleSize", "titleColor", "titleFill", "areaFill", "border"];
 var ARROW_TOKENS = Object.values(ARROWS);
-var ROUTES = ["curve", "straight", "elbow"];
-var DASHES = ["solid", "dashed"];
-var DIRS = ["one", "two", "none"];
+var HEX_RE = /^#[0-9a-f]{6}$/;
+var intIn = (v, lo, hi) => Number.isInteger(v) && v >= lo && v <= hi ? v : void 0;
+function hexColor(v) {
+  if (typeof v !== "string") return void 0;
+  const s = v.trim().toLowerCase();
+  return HEX_RE.test(s) ? s : void 0;
+}
+function styleColor(v) {
+  if (PALETTE.includes(v)) return v;
+  return hexColor(v);
+}
+function boardColor(v) {
+  if (BOARD_TONES.includes(v)) return v;
+  return hexColor(v);
+}
+function cssColor(value, role = "line") {
+  if (PALETTE.includes(value)) {
+    const part = role === "text" ? "text" : role === "fill" ? "fill" : "line";
+    return `var(--pxd-${value}-${part})`;
+  }
+  return hexColor(value);
+}
+function shadeHex(hex, amount) {
+  const h = hexColor(hex);
+  if (!h || typeof amount !== "number" || !Number.isFinite(amount)) return void 0;
+  const mix = (c) => amount >= 0 ? c + (255 - c) * amount : c * (1 + amount);
+  const chan = (i) => Math.max(0, Math.min(255, Math.round(mix(parseInt(h.slice(i, i + 2), 16)))));
+  return `#${[1, 3, 5].map((i) => chan(i).toString(16).padStart(2, "0")).join("")}`;
+}
 var isObject = (v) => v !== null && typeof v === "object" && !Array.isArray(v);
 var isNum = (v) => typeof v === "number" && Number.isFinite(v);
 function plainKeys(value) {
@@ -408,19 +461,41 @@ function mergePropsForWrite(props, plexus) {
 function normalizeItemLayout(plexus) {
   const p = isObject(plexus) ? plexus : {};
   const num3 = (v) => isNum(v) ? v : void 0;
+  const type = ITEM_TYPES.includes(p.type) ? p.type : "card";
+  const section = type === "section";
   return {
-    type: ITEM_TYPES.includes(p.type) ? p.type : "card",
+    type,
     x: num3(p.x),
     y: num3(p.y),
     w: num3(p.w),
     h: num3(p.h),
-    color: PALETTE.includes(p.color) ? p.color : void 0,
+    color: styleColor(p.color),
     collapsed: p.collapsed === true ? true : p.collapsed === false ? false : void 0,
-    fontSize: FONT_SIZES.includes(p.fontSize) ? p.fontSize : void 0,
+    // Sections use titleSize. Cards and text take an integer 10–48 (text used to be the four steps only).
+    fontSize: section ? void 0 : intIn(p.fontSize, CARD_FONT_MIN, CARD_FONT_MAX),
     pinned: p.pinned === true,
     fit: p.fit === false ? false : void 0,
-    look: CARD_LOOKS.includes(p.look) ? p.look : void 0
+    look: CARD_LOOKS.includes(p.look) ? p.look : void 0,
+    textColor: section ? void 0 : styleColor(p.textColor),
+    align: section || !ALIGNS.includes(p.align) ? void 0 : p.align,
+    fill: section ? void 0 : styleColor(p.fill),
+    border: styleColor(p.border),
+    titleSize: section ? intIn(p.titleSize, SECTION_TITLE_MIN, SECTION_TITLE_MAX) : void 0,
+    titleColor: section ? styleColor(p.titleColor) : void 0,
+    titleFill: section ? styleColor(p.titleFill) : void 0,
+    areaFill: section ? styleColor(p.areaFill) : void 0
   };
+}
+function normalizeSectionDefaults(raw) {
+  const p = isObject(raw) ? raw : {};
+  const out = {};
+  const ts = intIn(p.titleSize, SECTION_TITLE_MIN, SECTION_TITLE_MAX);
+  if (ts !== void 0 && ts !== SECTION_TITLE_DEFAULT) out.titleSize = ts;
+  for (const k of ["titleColor", "titleFill", "areaFill", "border"]) {
+    const c = styleColor(p[k]);
+    if (c) out[k] = c;
+  }
+  return out;
 }
 function cardLook(kind, stored) {
   if (CARD_LOOKS.includes(stored)) return stored;
@@ -436,15 +511,35 @@ function serializeItemLayout(layout) {
   const out = {};
   if (l.type && l.type !== "card") out.type = l.type;
   for (const k of ["x", "y", "w", "h"]) if (isNum(l[k])) out[k] = round1(l[k]);
-  if (PALETTE.includes(l.color)) out.color = l.color;
+  const color = styleColor(l.color);
+  if (color) out.color = color;
   if (l.collapsed === true) out.collapsed = true;
-  if (l.type === "text" && FONT_SIZES.includes(l.fontSize)) out.fontSize = l.fontSize;
+  const type = ITEM_TYPES.includes(l.type) ? l.type : "card";
+  if (type === "section") {
+    const ts = intIn(l.titleSize, SECTION_TITLE_MIN, SECTION_TITLE_MAX);
+    if (ts !== void 0 && ts !== SECTION_TITLE_DEFAULT) out.titleSize = ts;
+    for (const k of ["titleColor", "titleFill", "areaFill", "border"]) {
+      const c = styleColor(l[k]);
+      if (c) out[k] = c;
+    }
+  } else {
+    const fs = intIn(l.fontSize, CARD_FONT_MIN, CARD_FONT_MAX);
+    if (fs !== void 0 && !(type === "card" && fs === CARD_FONT_DEFAULT)) out.fontSize = fs;
+    const textColor = styleColor(l.textColor);
+    if (textColor) out.textColor = textColor;
+    if (ALIGNS.includes(l.align)) out.align = l.align;
+    const fill = styleColor(l.fill);
+    if (fill) out.fill = fill;
+    const border = styleColor(l.border);
+    if (border) out.border = border;
+  }
   if (l.v === SCHEMA_VERSION) out.v = SCHEMA_VERSION;
   if (l.pinned === true) out.pinned = true;
   if (l.type === "section" && l.fit === false) out.fit = false;
   if (CARD_LOOKS.includes(l.look)) out.look = l.look;
   if (BOARD_PATTERNS.includes(l.bg)) out.bg = l.bg;
-  if (BOARD_TONES.includes(l.bgColor)) out.bgColor = l.bgColor;
+  const tone = boardColor(l.bgColor);
+  if (tone) out.bgColor = tone;
   return out;
 }
 function withBoardMarker(plexus, on) {
@@ -474,7 +569,7 @@ function normalizeEdge(plexus) {
     route: pick(p.route, ROUTES, EDGE_DEFAULTS.route),
     dash: pick(p.dash, DASHES, EDGE_DEFAULTS.dash),
     weight: [1, 2, 3].includes(p.weight) ? p.weight : EDGE_DEFAULTS.weight,
-    color: PALETTE.includes(p.color) ? p.color : void 0
+    color: styleColor(p.color)
   };
 }
 function serializeEdge(edge) {
@@ -483,7 +578,8 @@ function serializeEdge(edge) {
   for (const k of ["fromSide", "toSide", "dir", "route", "dash", "weight"]) {
     if (e[k] !== void 0 && e[k] !== EDGE_DEFAULTS[k]) out[k] = e[k];
   }
-  if (PALETTE.includes(e.color)) out.color = e.color;
+  const color = styleColor(e.color);
+  if (color) out.color = color;
   return out;
 }
 function isSingleWikiRef(s) {
@@ -683,6 +779,7 @@ function buildBoard(pulled, { defaults } = {}) {
       containerIndex = index;
     }
   });
+  const sectionDefaults = normalizeSectionDefaults(plexus?.defaults?.section);
   const walk = (children, parentUid, depth) => {
     const siblings = [];
     for (const child of children) {
@@ -724,6 +821,15 @@ function buildBoard(pulled, { defaults } = {}) {
         color: layout.color,
         collapsed: layout.collapsed === true,
         fontSize: layout.fontSize,
+        textColor: type === "section" ? void 0 : layout.textColor,
+        align: type === "section" ? void 0 : layout.align,
+        fill: type === "section" ? void 0 : layout.fill,
+        border: layout.border,
+        titleSize: type === "section" ? layout.titleSize : void 0,
+        titleColor: type === "section" ? layout.titleColor : void 0,
+        titleFill: type === "section" ? layout.titleFill : void 0,
+        areaFill: type === "section" ? layout.areaFill : void 0,
+        sectionDefaults: type === "section" ? sectionDefaults : void 0,
         pinned: layout.pinned,
         look: type === "card" ? cardLook(kind, layout.look) : void 0,
         open: type === "card" ? child[":block/open"] !== false : void 0,
@@ -776,8 +882,9 @@ function buildBoard(pulled, { defaults } = {}) {
     enhanced: plexus?.v === 2,
     background: {
       pattern: BOARD_PATTERNS.includes(plexus?.bg) ? plexus.bg : null,
-      tone: BOARD_TONES.includes(plexus?.bgColor) ? plexus.bgColor : null
+      tone: BOARD_TONES.includes(plexus?.bgColor) ? plexus.bgColor : hexColor(plexus?.bgColor) || null
     },
+    defaults: { section: sectionDefaults },
     items,
     roots,
     order,
@@ -2417,7 +2524,7 @@ var KIDS = ":block/children";
 var PROPS = ":block/props";
 var OPEN = ":block/open";
 var LINK_MODES = ["off", "attributes", "all"];
-var ITEM_KEYS = ["type", "x", "y", "w", "h", "color", "collapsed", "fontSize", "pinned", "fit", "look"];
+var ITEM_KEYS = ["type", "x", "y", "w", "h", "color", "collapsed", "fontSize", "pinned", "fit", "look", "textColor", "align", "fill", "border", "titleSize", "titleColor", "titleFill", "areaFill"];
 var EDGE_KEYS = ["type", "from", "to", "fromSide", "toSide", "dir", "route", "dash", "weight", "color"];
 var MAX_PARENT_STRINGS = 200;
 var DAILY_GAP = 20;
@@ -3286,6 +3393,86 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
         if (board.items.has(id)) t.props(id, itemPlexus(id, { fontSize: size }));
       });
     },
+    // One undo step. Cards and text only. null clears a key. Invalid values are dropped by serialize.
+    setItemStyle(uids, patch = {}) {
+      return txn((t) => {
+        const ids = capBulk([...new Set(uids ?? [])].filter((id) => {
+          const item = board.items.get(id);
+          return item && item.type !== "section";
+        }), emit2);
+        let n = 0;
+        for (const id of ids) {
+          const nextPatch = {};
+          for (const k of ITEM_STYLE_KEYS) {
+            if (!Object.prototype.hasOwnProperty.call(patch, k)) continue;
+            nextPatch[k] = patch[k] == null ? void 0 : patch[k];
+          }
+          const next = itemPlexus(id, nextPatch);
+          if (stable(next) !== stable(rawPlexus(id))) {
+            t.props(id, next);
+            n++;
+          }
+        }
+        return n;
+      });
+    },
+    resetItemStyle(uids) {
+      const patch = {};
+      for (const k of ITEM_STYLE_KEYS) patch[k] = null;
+      return this.setItemStyle(uids, patch);
+    },
+    setSectionStyle(uids, patch = {}) {
+      return txn((t) => {
+        const ids = capBulk([...new Set(uids ?? [])].filter((id) => board.items.get(id)?.type === "section"), emit2);
+        let n = 0;
+        for (const id of ids) {
+          const nextPatch = {};
+          for (const k of SECTION_STYLE_KEYS) {
+            if (!Object.prototype.hasOwnProperty.call(patch, k)) continue;
+            nextPatch[k] = patch[k] == null ? void 0 : patch[k];
+          }
+          const next = itemPlexus(id, nextPatch);
+          if (stable(next) !== stable(rawPlexus(id))) {
+            t.props(id, next);
+            n++;
+          }
+        }
+        return n;
+      });
+    },
+    resetSectionStyle(uids) {
+      const patch = {};
+      for (const k of SECTION_STYLE_KEYS) patch[k] = null;
+      return this.setSectionStyle(uids, patch);
+    },
+    // Board-level section defaults on plexus.defaults.section. null removes a key.
+    setSectionDefaults(patch = {}) {
+      return txn((t) => {
+        if (!board.enhanced) return false;
+        const base = rawPlexus(uid);
+        const prevDefaults = base.defaults && typeof base.defaults === "object" && !Array.isArray(base.defaults) ? base.defaults : {};
+        const section = prevDefaults.section && typeof prevDefaults.section === "object" ? { ...prevDefaults.section } : {};
+        for (const k of SECTION_STYLE_KEYS) {
+          if (!Object.prototype.hasOwnProperty.call(patch, k)) continue;
+          if (patch[k] == null) delete section[k];
+          else section[k] = patch[k];
+        }
+        const clean = normalizeSectionDefaults(section);
+        const next = { ...base, defaults: { ...prevDefaults } };
+        if (Object.keys(clean).length) next.defaults.section = clean;
+        else {
+          delete next.defaults.section;
+          if (!Object.keys(next.defaults).length) delete next.defaults;
+        }
+        if (stable(next) !== stable(base)) t.props(uid, next);
+        return true;
+      });
+    },
+    resetSectionDefaults() {
+      const patch = {};
+      for (const k of SECTION_STYLE_KEYS) patch[k] = null;
+      return this.setSectionDefaults(patch);
+    },
     setLook(id, look) {
       return txn((t) => {
         const item = board.items.get(id);
@@ -3353,16 +3540,20 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
         }
       });
     },
-    // bg / bgColor: undefined leaves the key, null removes it, otherwise it must be a known pattern / tone.
+    // bg / bgColor: undefined leaves the key, null removes it. bg is a pattern. bgColor is a tone name or #rrggbb.
     // Resolves true when applied (or already equal), false when rejected.
     setBoardBackground({ bg, bgColor } = {}) {
       return txn((t) => {
         if (!board.enhanced) return false;
+        let tone = bgColor;
         if (bg != null && !BOARD_PATTERNS.includes(bg)) return false;
-        if (bgColor != null && !BOARD_TONES.includes(bgColor)) return false;
+        if (tone != null) {
+          tone = boardColor(tone);
+          if (!tone) return false;
+        }
         const base = rawPlexus(uid);
         const next = { ...base };
-        for (const [key, value] of [["bg", bg], ["bgColor", bgColor]]) {
+        for (const [key, value] of [["bg", bg], ["bgColor", tone]]) {
           if (value === void 0) continue;
           if (value === null) delete next[key];
           else next[key] = value;
@@ -4243,7 +4434,7 @@ var titleOf = (item) => item.title || item.string || "Untitled";
 function boardToSvg(board, rects, { dark = false, padding = 48, maxItems = 500 } = {}) {
   const mode = dark ? "dark" : "light";
   const theme = THEME[mode];
-  const hex = (color) => HEX[mode][PALETTE.includes(color) ? color : "gray"];
+  const hex = (color) => typeof color === "string" && /^#[0-9a-f]{6}$/.test(color) ? [color, color, color] : HEX[mode][PALETTE.includes(color) ? color : "gray"];
   const included = [];
   for (const uid of board.order) {
     if (included.length >= maxItems) break;
@@ -4285,7 +4476,7 @@ function boardToSvg(board, rects, { dark = false, padding = 48, maxItems = 500 }
     const b = rects.get(edge.to);
     const path = edgePath({ a, b, fromSide: edge.fromSide, toSide: edge.toSide, route: edge.route });
     const stroke = edge.color ? hex(edge.color)[0] : theme.edge;
-    const dash = edge.dash === "dashed" ? ' stroke-dasharray="6 4"' : "";
+    const dash = edge.dash === "dashed" || edge.dash === "animated" ? ' stroke-dasharray="6 4"' : "";
     out.push(`<path d="${path.d}" fill="none" stroke="${stroke}" stroke-width="${edge.weight}"${dash}/>`);
     const size = arrowSize(1, edge.weight);
     if (edge.dir === "one" || edge.dir === "two") {
@@ -5231,7 +5422,22 @@ var childKids = (c) => c?.[":block/children"] ?? c?.children ?? [];
 var childUid = (c) => c?.[":block/uid"] ?? c?.uid ?? "";
 var childProps = (c) => c?.[":block/props"] ?? c?.props;
 function contentKeyOf(item) {
-  const parts = [item.kind, item.enhanced ? "e" : "", item.string, item.collapsed ? "c" : "", item.open === false ? "x" : "", item.fontSize || ""];
+  const parts = [
+    item.kind,
+    item.enhanced ? "e" : "",
+    item.string,
+    item.collapsed ? "c" : "",
+    item.open === false ? "x" : "",
+    item.fontSize || "",
+    item.textColor || "",
+    item.align || "",
+    item.fill || "",
+    item.border || "",
+    item.titleSize || "",
+    item.titleColor || "",
+    item.titleFill || "",
+    item.areaFill || ""
+  ];
   if (item.kind === "board") parts.push(item.w, item.h);
   if (item.kind === "board") {
     let budget = BOARD_KEY_NODES;
@@ -5372,6 +5578,36 @@ function createItemRenderer({
     shells.set(item.uid, rec);
     return rec;
   };
+  const setVar = (el2, name, value) => {
+    if (value) el2.style.setProperty(name, value);
+    else el2.style.removeProperty(name);
+  };
+  const applyStyle = (rec, item) => {
+    const node = rec.el;
+    if (item.type === "section") {
+      const d = item.sectionDefaults || {};
+      const area = item.areaFill ?? d.areaFill;
+      const border = item.border ?? d.border;
+      const titleSize = item.titleSize ?? d.titleSize;
+      const titleColor = item.titleColor ?? d.titleColor;
+      const titleFill = item.titleFill ?? d.titleFill;
+      setVar(node, "--pxd-fill", cssColor(area, "fill"));
+      setVar(node, "--pxd-line", cssColor(border, "line") || hexColor(item.color) || "");
+      if (rec.title) {
+        rec.title.style.fontSize = titleSize ? `${titleSize}px` : "";
+        rec.title.style.color = cssColor(titleColor, "text") || "";
+        rec.title.style.background = cssColor(titleFill, "fill") || "";
+      }
+      return;
+    }
+    const accent = hexColor(item.color);
+    setVar(node, "--pxd-card-fs", item.fontSize ? `${item.fontSize}px` : "");
+    setVar(node, "--pxd-text-fs", item.type === "text" && item.fontSize ? `${item.fontSize}px` : "");
+    setVar(node, "--pxd-text-c", cssColor(item.textColor, "text") || accent || "");
+    setVar(node, "--pxd-fill", cssColor(item.fill, "fill") || accent || "");
+    setVar(node, "--pxd-line", cssColor(item.border, "line") || accent || "");
+    node.style.textAlign = item.align || "";
+  };
   const paintShell = (rec, item) => {
     const node = rec.el;
     if (item.type !== "section") {
@@ -5389,10 +5625,13 @@ function createItemRenderer({
     }
     const base = item.type === "section" ? "pxd-section" : `pxd-item pxd-item--${item.type} pxd-item--${item.kind}`;
     const cls = [base];
-    if (item.color) cls.push(`pxd-c-${item.color}`);
+    if (PALETTE.includes(item.color)) cls.push(`pxd-c-${item.color}`);
     if (item.collapsed) cls.push("pxd-item--collapsed");
     if (!item.string?.trim()) cls.push("pxd-item--empty");
-    if (item.type === "text" && item.fontSize) cls.push(`pxd-item--fs${item.fontSize}`);
+    if (item.type === "text" && FONT_SIZES.includes(item.fontSize)) cls.push(`pxd-item--fs${item.fontSize}`);
+    if (item.type !== "section" && item.fontSize) cls.push("pxd-fs");
+    if (item.textColor) cls.push("pxd-has-textc");
+    if (item.type === "text" && (item.fill || item.border)) cls.push("pxd-text-paint");
     if (rec.selected) cls.push(item.type === "section" ? "pxd-section--selected" : "pxd-item--selected");
     if (rec.hover) cls.push("pxd-item--drop");
     if (editing?.uid === item.uid) cls.push("pxd-item--editing");
@@ -5404,6 +5643,7 @@ function createItemRenderer({
       if (item.look === "block") cls.push("pxd-card--block");
     }
     node.className = cls.join(" ");
+    applyStyle(rec, item);
     if (item.type === "section") {
       if (!rec.titleRendered || rec.titleString !== item.string) {
         rec.title.textContent = item.title || "Section";
@@ -6407,8 +6647,11 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
   const dimmed = (e) => Boolean(focusSet) && !(focusSet.has(e.from) && focusSet.has(e.to));
   const paintEdge = (board, edge, rec, { covered, selected }) => {
     const cls = ["pxd-edge"];
-    if (edge.color) cls.push(`pxd-c-${edge.color}`);
+    const named = PALETTE.includes(edge.color);
+    const hex = hexColor(edge.color);
+    if (named) cls.push(`pxd-c-${edge.color}`);
     if (edge.dash === "dashed") cls.push("pxd-edge--dashed");
+    if (edge.dash === "animated") cls.push("pxd-edge--animated");
     if (edge.weight > 1) cls.push(`pxd-edge--w${edge.weight}`);
     if (selected) cls.push("pxd-edge--selected");
     if (covered) cls.push("pxd-edge--covered");
@@ -6418,7 +6661,10 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     const dim = dimmed(edge);
     if (dim) cls.push("pxd-edge--dim");
     setClass(rec.g, cls.join(" "));
-    rec.label.className = `pxd-label${edge.color ? ` pxd-c-${edge.color}` : ""}${edge.label ? "" : " pxd-label--empty"}${selected ? " pxd-label--selected" : ""}${dim ? " pxd-label--dim" : ""}`;
+    if (hex) rec.g.style.setProperty("--pxd-line", hex);
+    else rec.g.style.removeProperty("--pxd-line");
+    rec.label.className = `pxd-label${named ? ` pxd-c-${edge.color}` : ""}${edge.label ? "" : " pxd-label--empty"}${selected ? " pxd-label--selected" : ""}${dim ? " pxd-label--dim" : ""}`;
+    rec.label.style.color = hex || "";
     if (editingLabel?.uid !== edge.uid) rec.label.textContent = edge.label || "";
     rec.dir = edge.dir;
     rec.weight = edge.weight;
@@ -6710,6 +6956,92 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
   };
 }
 
+// src/view/color-picker.js
+var DARKER = -0.28;
+var LIGHTER = 0.4;
+function buildColorPicker(doc, onPick, listen) {
+  const box = doc.createElement("div");
+  box.className = "pxd-picker";
+  const on = (node, type, fn) => {
+    if (listen) listen(node, type, fn);
+    else node.addEventListener(type, fn);
+  };
+  const stop = (event) => {
+    event.preventDefault?.();
+    event.stopPropagation?.();
+  };
+  const row = (label, colors, named) => {
+    const wrap = doc.createElement("div");
+    wrap.className = "pxd-picker__row";
+    const cap2 = doc.createElement("div");
+    cap2.className = "pxd-picker__cap";
+    cap2.textContent = label;
+    wrap.append(cap2);
+    const swatches = doc.createElement("div");
+    swatches.className = "pxd-picker__swatches";
+    for (const color of colors) {
+      if (!color) continue;
+      const b = doc.createElement("button");
+      b.type = "button";
+      b.className = named ? `pxd-swatch pxd-picker__swatch pxd-c-${color}` : "pxd-swatch pxd-picker__swatch";
+      b.title = color;
+      b.setAttribute("data-color", color);
+      if (!named) b.style.background = color;
+      on(b, "click", (event) => {
+        stop(event);
+        onPick?.(color);
+      });
+      swatches.append(b);
+    }
+    wrap.append(swatches);
+    box.append(wrap);
+  };
+  row("Colors", NATIVE_SWATCHES, false);
+  row("Darker", NATIVE_SWATCHES.map((h) => shadeHex(h, DARKER)), false);
+  row("Lighter", NATIVE_SWATCHES.map((h) => shadeHex(h, LIGHTER)), false);
+  const hexRow = doc.createElement("div");
+  hexRow.className = "pxd-picker__hex";
+  const preview = doc.createElement("span");
+  preview.className = "pxd-picker__preview";
+  const input = doc.createElement("input");
+  input.type = "text";
+  input.className = "pxd-input pxd-picker__input";
+  input.placeholder = "#rrggbb";
+  input.setAttribute("aria-label", "Hex color");
+  input.spellcheck = false;
+  const paint = () => {
+    const hex = hexColor(input.value);
+    preview.style.background = hex || "transparent";
+    input.classList.toggle("pxd-picker__input--bad", input.value.trim() !== "" && !hex);
+  };
+  const commit = () => {
+    const hex = hexColor(input.value);
+    if (hex) onPick?.(hex);
+  };
+  on(input, "input", paint);
+  on(input, "change", commit);
+  on(input, "keydown", (event) => {
+    event.stopPropagation?.();
+    if (event.key === "Enter") {
+      event.preventDefault?.();
+      commit();
+    }
+  });
+  hexRow.append(preview, input);
+  box.append(hexRow);
+  row("Named", PALETTE, true);
+  const clear = doc.createElement("button");
+  clear.type = "button";
+  clear.className = "pxd-btn pxd-picker__clear";
+  clear.textContent = "No color";
+  on(clear, "click", (event) => {
+    stop(event);
+    onPick?.(null);
+  });
+  box.append(clear);
+  return box;
+}
+
 // src/view/chrome.js
 var CTX_GAP = 12;
 var CTX_EDGE_CLEARANCE = 28;
@@ -6732,7 +7064,7 @@ var TOOL_LIST = [
 var MAX_CRUMBS = 4;
 var POPOVER_GAP = 6;
 var POPOVER_MARGIN = 8;
-var PATTERN_LABELS = { dots: "Dots", lines: "Lines", grid: "Grid", plain: "Plain" };
+var PATTERN_LABELS = { dots: "Dots", lines: "Lines", cross: "Cross", grid: "Grid", plain: "Plain" };
 var NOTE_KINDS = ["note", "block", "page"];
 function createChrome({ doc = globalThis.document, root, version = "", settings, timers, on = {}, crumbs = [] } = {}) {
   const setting = (k) => typeof settings?.get === "function" ? settings.get(k) : settings?.[k];
@@ -7064,10 +7396,10 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
           let pickerBuilt = false;
           iconBtn("pxd-ctx__color", "tint", "Color", "Color", () => {
             if (!pickerBuilt) {
-              swatches(picker, (c) => {
+              picker.append(buildColorPicker(doc, (c) => {
                 on.setColor?.(c);
                 picker.style.display = "none";
-              });
+              }, listen));
               pickerBuilt = true;
             }
             picker.style.display = picker.style.display === "none" ? "" : "none";
@@ -7137,7 +7469,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
         seg("pxd-ctx__dir", [["one", "→", "One way"], ["two", "↔", "Two way"], ["none", "—", "No arrow"]], model?.dir, (v) => on.edgeDir?.(v));
         btn("pxd-ctx__flip", "Flip", "Swap endpoints", () => on.flip?.());
         seg("pxd-ctx__route", [["curve", "Curve"], ["straight", "Straight"], ["elbow", "Elbow"]], model?.route, (v) => on.route?.(v));
-        seg("pxd-ctx__dash", [["solid", "Solid"], ["dashed", "Dashed"]], model?.dash, (v) => on.dash?.(v));
+        seg("pxd-ctx__dash", [["solid", "Solid"], ["dashed", "Dashed"], ["animated", "Animated"]], model?.dash, (v) => on.dash?.(v));
         seg("pxd-ctx__weight", [[1, "1"], [2, "2"], [3, "3"]], model?.weight, (v) => on.weight?.(v));
         swatches(row, (c) => on.setColor?.(c));
         btn("pxd-ctx__label", "Label", "Edit the label", () => on.label?.());
@@ -7170,6 +7502,10 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     const H = rootRect.height || 0;
     const gap = a.kind === "edge" ? CTX_EDGE_CLEARANCE : CTX_GAP;
     const tb = toolbar.getBoundingClientRect();
+    const propsEl = root.querySelector?.(".pxd-props");
+    const propsBox = propsEl ? propsEl.getBoundingClientRect() : null;
+    const propsRight = propsBox?.width ? propsBox.right - (rootRect.left || 0) : 0;
+    const propsBot = propsBox?.height ? propsBox.bottom - (rootRect.top || 0) : 0;
     const topLimit = tb.height ? Math.max(CTX_MARGIN, tb.bottom - (rootRect.top || 0) + CTX_MARGIN) : CTX_MARGIN;
     const railBox = railEl.style.display !== "none" ? railEl.getBoundingClientRect() : null;
     const railClear = railBox?.width ? Math.max(0, rootRect.right - railBox.left) : 0;
@@ -7186,6 +7522,11 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     top = Math.max(top, topLimit);
     let left = a.rect.x + a.rect.w / 2 - barW / 2;
     left = Math.max(CTX_MARGIN, Math.min(left, rightLimit - barW - CTX_MARGIN));
+    if (propsBox?.height && left < propsRight && top < propsBot) {
+      const below = propsBot + CTX_MARGIN;
+      if (below + barH <= H - CTX_MARGIN) top = Math.max(top, below);
+      else left = Math.max(left, propsRight + CTX_MARGIN);
+    }
     ctx.style.left = `${Math.round(left)}px`;
     ctx.style.top = `${Math.round(top)}px`;
     ctx.classList.toggle("pxd-ctx--below", top > a.rect.y);
@@ -7381,6 +7722,237 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     for (const node of [toolbar, railEl, popEl, backEl, ctx, toast, search, minimap]) node.remove();
   };
   return { toolbar: toolbarApi, ctx: ctxApi, toast: toastApi, search: searchApi, minimap: minimapApi, popover, backToContent, badge, sync, dispose };
+}
+
+// src/view/props-panel.js
+var STORAGE_KEY = "pxd-props-collapsed";
+var PATTERN_LABELS2 = { dots: "Dots", lines: "Lines", cross: "Cross", grid: "Grid", plain: "Plain" };
+var DIR_LABELS = [["one", "Directed"], ["none", "Undirected"], ["two", "Bidirected"]];
+var DASH_LABELS = [["solid", "Solid"], ["dashed", "Dashed"], ["animated", "Animated"]];
+var ROUTE_LABELS = [["straight", "Straight"], ["elbow", "Smooth step"], ["curve", "Curve"]];
+function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } = {}) {
+  const listeners2 = [];
+  const listen = (el2, type, fn) => {
+    el2.addEventListener(type, fn);
+    listeners2.push(() => el2.removeEventListener(type, fn));
+  };
+  const el = (tag, cls, parent, text) => {
+    const node = doc.createElement(tag);
+    node.className = cls;
+    if (text !== void 0) node.textContent = text;
+    parent?.append(node);
+    return node;
+  };
+  const button = (parent, cls, label, title, fn) => {
+    const b = el("button", `pxd-btn ${cls}`, parent, label);
+    b.type = "button";
+    if (title) b.title = title;
+    listen(b, "click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      fn?.(event);
+    });
+    return b;
+  };
+  let collapsed = storage?.getItem?.(STORAGE_KEY) === "1";
+  const panel = el("div", "pxd-props pxd-chrome", root);
+  panel.setAttribute("role", "region");
+  panel.setAttribute("aria-label", "Properties");
+  for (const type of ["pointerdown", "pointerup", "click", "dblclick", "wheel", "contextmenu"]) {
+    listen(panel, type, (event) => event.stopPropagation());
+  }
+  listen(panel, "keydown", (event) => event.stopPropagation());
+  const head = button(panel, "pxd-props__toggle", "Properties", "Properties", () => {
+    collapsed = !collapsed;
+    storage?.setItem?.(STORAGE_KEY, collapsed ? "1" : "0");
+    paintCollapsed();
+    place();
+  });
+  head.setAttribute("aria-expanded", collapsed ? "false" : "true");
+  const body = el("div", "pxd-props__body", panel);
+  const paintCollapsed = () => {
+    panel.classList.toggle("pxd-props--collapsed", collapsed);
+    body.style.display = collapsed ? "none" : "";
+    head.setAttribute("aria-expanded", collapsed ? "false" : "true");
+  };
+  const place = () => {
+    const tb = root.querySelector?.(".pxd-toolbar");
+    const h = tb?.offsetHeight || 0;
+    panel.style.top = `${8 + (h ? h + 6 : 44)}px`;
+  };
+  const choice = (parent, options, current, fn) => {
+    const wrap = el("div", "pxd-seg pxd-props__choices", parent);
+    for (const [value, label] of options) {
+      const b = button(wrap, `pxd-seg__btn${value === current ? " pxd-seg__btn--on" : ""}`, label, label, () => fn(value));
+      b.setAttribute("data-value", value);
+    }
+    return wrap;
+  };
+  const stepper = (parent, { value, fallback, min, max, aria, onCommit }) => {
+    const shown = Number.isInteger(value) ? value : fallback;
+    const row = el("div", "pxd-props__step", parent);
+    const input = el("input", "pxd-input pxd-props__num", row);
+    input.type = "number";
+    input.min = String(min);
+    input.max = String(max);
+    input.value = String(shown);
+    input.setAttribute("aria-label", aria);
+    const commit = (n) => {
+      const v = Number(n);
+      if (!Number.isInteger(v) || v < min || v > max) {
+        input.value = String(shown);
+        return;
+      }
+      onCommit(v);
+    };
+    const dec = button(row, "pxd-props__dec", "−", "Smaller", () => commit(shown - 1));
+    row.insertBefore(dec, input);
+    button(row, "pxd-props__inc", "+", "Larger", () => commit(shown + 1));
+    listen(input, "change", () => commit(input.value));
+    listen(input, "keydown", (event) => {
+      event.stopPropagation();
+      if (event.key === "Enter") {
+        event.preventDefault();
+        commit(input.value);
+      }
+    });
+  };
+  const colorField = (parent, label, value, fn) => {
+    const row = el("div", "pxd-props__field", parent);
+    el("span", "pxd-props__label", row, label);
+    const chip = button(row, "pxd-props__chip", "", label, () => {
+      const open = row.querySelector(".pxd-picker");
+      if (open) {
+        open.remove();
+        return;
+      }
+      const picker = buildColorPicker(doc, (c) => fn(c), listen);
+      row.append(picker);
+    });
+    chip.setAttribute("aria-label", label);
+    const sw = el("span", "pxd-props__chip-swatch", chip);
+    const painted = value === "paper" ? "#eeeded" : cssColor(value, "fill") || "";
+    if (painted) sw.style.background = painted;
+    else sw.classList.add("pxd-props__chip-swatch--empty");
+  };
+  const group = (title, key) => {
+    const g = el("section", "pxd-props__group", body);
+    g.setAttribute("data-group", key);
+    el("h3", "pxd-props__heading", g, title);
+    return g;
+  };
+  const blocks = (items) => {
+    const g = group("Blocks", "blocks");
+    const cards = items.filter((it) => it.type !== "text");
+    const text = items.filter((it) => it.type === "text");
+    const sample = cards[0] || text[0];
+    const fallback = sample?.type === "text" ? 24 : CARD_FONT_DEFAULT;
+    const same = items.every((it) => (it.fontSize ?? fallback) === (sample.fontSize ?? fallback));
+    el("span", "pxd-props__label", g, "Text size");
+    stepper(g, {
+      value: same ? sample.fontSize : void 0,
+      fallback,
+      min: CARD_FONT_MIN,
+      max: CARD_FONT_MAX,
+      aria: "Text size",
+      onCommit: (v) => on.setItemStyle?.({ fontSize: v })
+    });
+    colorField(g, "Text color", same ? sample.textColor : void 0, (c) => on.setItemStyle?.({ textColor: c }));
+    el("span", "pxd-props__label", g, "Align");
+    const align = same ? sample.align || "" : "";
+    choice(g, [["", "Default"], ...ALIGNS.map((a) => [a, a[0].toUpperCase() + a.slice(1)])], align, (v) => on.setItemStyle?.({ align: v || null }));
+    colorField(g, "Fill", same ? sample.fill : void 0, (c) => on.setItemStyle?.({ fill: c }));
+    colorField(g, "Border", same ? sample.border : void 0, (c) => on.setItemStyle?.({ border: c }));
+    button(g, "pxd-props__reset", "Reset selected", "Remove text size, color, align, fill, and border", () => on.resetItems?.());
+  };
+  const edgeGroup = (edge) => {
+    const g = group("Connection", "edge");
+    el("span", "pxd-props__label", g, "Direction");
+    choice(g, DIR_LABELS, DIRS.includes(edge.dir) ? edge.dir : "one", (v) => on.setEdge?.({ dir: v }));
+    el("span", "pxd-props__label", g, "Decoration");
+    choice(g, DASH_LABELS, edge.dash || "solid", (v) => on.setEdge?.({ dash: v }));
+    el("span", "pxd-props__label", g, "Type");
+    choice(g, ROUTE_LABELS, ROUTES.includes(edge.route) ? edge.route : "curve", (v) => on.setEdge?.({ route: v }));
+    colorField(g, "Color", edge.color, (c) => on.setEdge?.({ color: c }));
+    button(g, "pxd-props__reset", "Reset", "Remove direction, decoration, type, and color", () => on.resetEdge?.());
+  };
+  const sectionGroup = (items, title, key, write, resetLabel, reset) => {
+    const g = group(title, key);
+    const sample = items[0];
+    const defs = key === "group" ? sample.sectionDefaults || {} : {};
+    const pick = (field, fallback) => {
+      const values = items.map((it) => it[field] ?? defs[field] ?? fallback);
+      return values.every((v) => v === values[0]) ? values[0] : void 0;
+    };
+    el("span", "pxd-props__label", g, "Title size");
+    stepper(g, {
+      value: sample.titleSize ?? defs.titleSize,
+      fallback: SECTION_TITLE_DEFAULT,
+      min: SECTION_TITLE_MIN,
+      max: SECTION_TITLE_MAX,
+      aria: "Title size",
+      onCommit: (v) => write({ titleSize: v })
+    });
+    colorField(g, "Title color", pick("titleColor"), (c) => write({ titleColor: c }));
+    colorField(g, "Title fill", pick("titleFill"), (c) => write({ titleFill: c }));
+    colorField(g, "Area fill", pick("areaFill"), (c) => write({ areaFill: c }));
+    colorField(g, "Border", pick("border"), (c) => write({ border: c }));
+    button(g, "pxd-props__reset", resetLabel, resetLabel, reset);
+  };
+  const defaultsGroup = (board) => {
+    const stored = board?.defaults?.section || {};
+    sectionGroup(
+      [{ ...stored, sectionDefaults: {} }],
+      "Default groups",
+      "defaults",
+      (patch) => on.setDefaults?.(patch),
+      "Reset default",
+      () => on.resetDefaults?.()
+    );
+  };
+  const diagram = (board) => {
+    const g = group("Diagram", "diagram");
+    const bg = board?.plexus || {};
+    colorField(g, "Background", bg.bgColor, (c) => on.setBackground?.({ bgColor: c }));
+    el("span", "pxd-props__label", g, "Texture");
+    const pattern = BOARD_PATTERNS.includes(bg.bg) ? bg.bg : "";
+    choice(g, [["", "Default"], ...BOARD_PATTERNS.map((p) => [p, PATTERN_LABELS2[p] || p])], pattern, (v) => on.setBackground?.({ bg: v || null }));
+    button(g, "pxd-props__reset", "Reset default", "Clear this board's background", () => on.setBackground?.({ bg: null, bgColor: null }));
+  };
+  let last = null;
+  const refresh = (state) => {
+    last = state || last;
+    const active = doc.activeElement;
+    if (active && panel.contains(active) && String(active.tagName).toLowerCase() === "input") return;
+    body.replaceChildren();
+    const items = (last?.items || []).filter(Boolean);
+    const edge = last?.edge || null;
+    const board = last?.board;
+    if (edge) edgeGroup(edge);
+    else {
+      const blocksItems = items.filter((it) => it.type === "card" || it.type === "text");
+      const sections = items.filter((it) => it.type === "section");
+      if (blocksItems.length) blocks(blocksItems);
+      if (sections.length) {
+        sectionGroup(sections, "Group", "group", (patch) => on.setSectionStyle?.(patch), "Reset", () => on.resetSections?.());
+      }
+      if (!blocksItems.length && !sections.length) defaultsGroup(board);
+    }
+    diagram(board);
+    place();
+  };
+  paintCollapsed();
+  place();
+  return {
+    el: panel,
+    refresh,
+    place,
+    isCollapsed: () => collapsed,
+    dispose() {
+      listeners2.splice(0).forEach((off) => off());
+      panel.remove();
+    }
+  };
 }
 
 // src/view/panel.js
@@ -9173,6 +9745,7 @@ function mountBoardView({
   let tier = "detail";
   let bgPattern;
   let bgTone;
+  let bgHex = null;
   let bgOverride = false;
   let focusOn = false;
   let focusKey = null;
@@ -9629,13 +10202,14 @@ function mountBoardView({
     const b = board();
     const own = b?.plexus;
     const ownPattern = BOARD_PATTERNS.includes(own?.bg) ? own.bg : null;
-    const ownTone = BOARD_TONES.includes(own?.bgColor) ? own.bgColor : null;
+    const ownHex = hexColor(own?.bgColor) || null;
+    const ownTone = ownHex ? null : BOARD_TONES.includes(own?.bgColor) ? own.bgColor : null;
     const defPattern = setting("grid", "dots");
     const defTone = setting("board-tone", "none");
     const pattern = ownPattern ?? (BOARD_PATTERNS.includes(defPattern) ? defPattern : "dots");
-    const tone = ownTone ?? (BOARD_TONES.includes(defTone) ? defTone : null);
-    const override = ownPattern !== null || ownTone !== null;
-    if (pattern === bgPattern && tone === bgTone && override === bgOverride) return;
+    const tone = ownHex ? null : ownTone ?? (BOARD_TONES.includes(defTone) ? defTone : null);
+    const override = ownPattern !== null || ownTone !== null || ownHex !== null;
+    if (pattern === bgPattern && tone === bgTone && ownHex === bgHex && override === bgOverride) return;
     if (pattern !== bgPattern) {
       grid.className = `pxd-grid pxd-grid--${pattern}`;
       if (bgPattern === "grid") for (const v of ["--pxd-grid-major", "--pxd-grid-major-x", "--pxd-grid-major-y"]) grid.style.removeProperty?.(v);
@@ -9648,8 +10222,13 @@ function mountBoardView({
       if (tone) root.classList.add(`pxd-bg-${tone}`);
       bgTone = tone;
     }
+    if (ownHex !== bgHex) {
+      if (ownHex) root.style.backgroundColor = ownHex;
+      else root.style.backgroundColor = "";
+      bgHex = ownHex;
+    }
     bgOverride = override;
-    chrome.toolbar.setBackground({ pattern, tone, override });
+    chrome.toolbar.setBackground({ pattern, tone: ownHex || tone, override });
   };
   const focusSetNow = () => {
     const b = board();
@@ -10321,6 +10900,52 @@ function mountBoardView({
       }
     }
   });
+  const propsPanel = createPropsPanel({
+    doc,
+    root,
+    storage,
+    on: {
+      setItemStyle: (patch) => {
+        if (selection.items.length) void session.setItemStyle?.(selection.items, patch);
+      },
+      resetItems: () => {
+        if (selection.items.length) void session.resetItemStyle?.(selection.items);
+      },
+      setSectionStyle: (patch) => {
+        if (selection.items.length) void session.setSectionStyle?.(selection.items, patch);
+      },
+      resetSections: () => {
+        if (selection.items.length) void session.resetSectionStyle?.(selection.items);
+      },
+      setEdge: (patch) => {
+        if (selection.edge) void session.updateEdge?.(selection.edge, patch);
+      },
+      resetEdge: () => {
+        if (selection.edge) void session.updateEdge?.(selection.edge, { dir: "one", route: "curve", dash: "solid", color: null });
+      },
+      setDefaults: (patch) => {
+        void session.setSectionDefaults?.(patch);
+      },
+      resetDefaults: () => {
+        void session.resetSectionDefaults?.();
+      },
+      setBackground: (patch) => {
+        Promise.resolve(session.setBoardBackground?.(patch)).then((ok) => {
+          if (ok === false && !disposed) toast("This board can't store a background");
+        }).catch(() => {
+        });
+      }
+    }
+  });
+  const syncProps = () => {
+    const b = board();
+    if (!b) return;
+    propsPanel.refresh({
+      items: selection.items.map((id) => b.items.get(id)).filter(Boolean),
+      edge: selection.edge ? b.edges.get(selection.edge) : null,
+      board: b
+    });
+  };
   const menu = createMenu({ doc, root, on: { pick: (id) => onMenuPick(id), closed: () => {
     menuCtx = null;
   } } });
@@ -11052,12 +11677,7 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
       itemsChanged = true;
     }
     if (dirty.all || dirty.structural || dirty.links || dirty.edges.size) {
-      const partial = !dirty.all && !dirty.structural && !dirty.links && !dirty.items.size;
-      if (partial) {
-        edgesR.update({ board: b, edgeUids: dirty.edges, rects: r, zoom: vp.zoom });
-      } else {
-        edgesR.render({ board: b, rects: r, links: session.links || [], coveredEdges: session.coveredEdges || /* @__PURE__ */ new Set(), selection, zoom: vp.zoom, dirty: dirty.all || dirty.structural || dirty.links ? null : dirty.edges });
-      }
+      edgesR.render({ board: b, rects: r, links: session.links || [], coveredEdges: session.coveredEdges || /* @__PURE__ */ new Set(), selection, zoom: vp.zoom, dirty: dirty.all || dirty.structural || dirty.links ? null : dirty.edges });
       if (dirty.items.size && !dirty.all && !dirty.structural) {
         edgesR.update({ board: b, edgeUids: edgesTouching(b, dirty.items), rects: r, zoom: vp.zoom, linkKeys: new Set((session.links || []).map((l) => l.key)), links: session.links || [] });
       }
@@ -11081,12 +11701,14 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
         }
       }
       chrome.toolbar.setZoom(vp.zoom);
+      propsPanel.place();
     }
     if (dirty.selection || itemsChanged) {
       itemsR.setSelection(selection.items);
       edgesR.setSelection({ edge: selection.edge, link: selection.link });
       if (!gesturing && !itemsR.isEditing()) showCtx();
       else chrome.ctx.hide();
+      syncProps();
       if (focusOn) applyFocus();
     } else if (dirty.viewport && chrome.ctx.isOpen()) {
       chrome.ctx.reposition();
@@ -11260,6 +11882,7 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
       itemsR.dispose();
       edgesR.dispose();
       panel.dispose();
+      propsPanel.dispose();
       chrome.dispose();
       listeners2.splice(0).forEach((off) => off());
       observers.splice(0).forEach((o) => o.disconnect());

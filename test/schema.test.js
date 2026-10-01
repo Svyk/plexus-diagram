@@ -6,6 +6,7 @@ import {
   mergePropsForWrite, normalizeEdge, normalizeItemLayout, parseBoardTitle, parseEdgeLabel,
   plainKeys, plainText, readPlexus, semanticRef, serializeEdge, serializeItemLayout,
   BOARD_PATTERNS, BOARD_TONES, FIT_PAD, dailyPageTitle,
+  NATIVE_SWATCHES, hexColor, shadeHex, styleColor, normalizeSectionDefaults, cssColor,
   DEFAULT_BOARD_CARD, UNTITLED_BOARD, boardString, isUntitledBoard, setBoardTitle, withBoardMarker,
 } from "../src/model/schema.js";
 
@@ -40,7 +41,7 @@ test("normalizeItemLayout / serializeItemLayout", () => {
   assert.equal(n.y, undefined);
   assert.equal(n.w, undefined);
   assert.equal(n.color, "teal");
-  assert.equal(n.fontSize, undefined);
+  assert.equal(n.fontSize, 20);
   assert.equal(normalizeItemLayout({ color: "mauve" }).color, undefined);
   assert.equal(normalizeItemLayout(null).type, "card");
   assert.deepEqual(serializeItemLayout({ type: "card", x: 1.26, y: -2.04, w: 280, h: 160 }), { x: 1.3, y: -2, w: 280, h: 160 });
@@ -198,7 +199,7 @@ test("withBoardMarker adds v:2 or strips v and bg without touching layout", () =
 });
 
 test("BOARD_PATTERNS, BOARD_TONES and FIT_PAD", () => {
-  assert.deepEqual(BOARD_PATTERNS, ["dots", "lines", "grid", "plain"]);
+  assert.deepEqual(BOARD_PATTERNS, ["dots", "lines", "cross", "grid", "plain"]);
   assert.deepEqual(BOARD_TONES, ["paper", ...PALETTE]);
   assert.equal(FIT_PAD, 24);
 });
@@ -230,6 +231,42 @@ test("withBoardMarker off also removes bgColor", () => {
   assert.deepEqual(withBoardMarker({ x: 1, v: 2, bg: "grid", bgColor: "teal" }, false), { x: 1 });
   assert.equal(withBoardMarker({ v: 2, bgColor: "teal" }, false), null);
   assert.deepEqual(withBoardMarker({ x: 1, bgColor: "teal" }, true), { x: 1, bgColor: "teal", v: 2 });
+});
+
+test("style keys: card font 10-48, section title, hex, animated dash, defaults", () => {
+  assert.equal(normalizeItemLayout({ fontSize: 9 }).fontSize, undefined);
+  assert.equal(normalizeItemLayout({ fontSize: 48.5 }).fontSize, undefined);
+  assert.equal(normalizeItemLayout({ fontSize: 14 }).fontSize, 14);
+  assert.equal(normalizeItemLayout({ type: "section", fontSize: 24, titleSize: 18 }).fontSize, undefined);
+  assert.equal(normalizeItemLayout({ type: "section", titleSize: 18 }).titleSize, 18);
+  assert.equal(normalizeItemLayout({ type: "text", fontSize: 20 }).fontSize, 20);
+  assert.equal(normalizeItemLayout({ textColor: "#F55656", align: "center", fill: "red", border: "nope" }).textColor, "#f55656");
+  assert.equal(normalizeItemLayout({ align: "center" }).align, "center");
+  assert.equal(normalizeItemLayout({ align: "default" }).align, undefined);
+  assert.equal(normalizeItemLayout({ fill: "red" }).fill, "red");
+  assert.equal(normalizeItemLayout({ border: "#abc" }).border, undefined);
+  assert.deepEqual(serializeItemLayout({ type: "card", x: 1, fontSize: 14, textColor: "#F55656", align: "left" }), { x: 1, textColor: "#f55656", align: "left" });
+  assert.deepEqual(serializeItemLayout({ type: "card", x: 1, fontSize: 20 }), { x: 1, fontSize: 20 });
+  assert.deepEqual(serializeItemLayout({ type: "section", x: 1, titleSize: 18, titleColor: "teal", areaFill: "#112233" }), { type: "section", x: 1, titleColor: "teal", areaFill: "#112233" });
+  assert.deepEqual(serializeItemLayout({ type: "section", x: 1, titleSize: 22 }), { type: "section", x: 1, titleSize: 22 });
+  assert.deepEqual(serializeItemLayout({ x: 1, bg: "cross", bgColor: "#ABCDEF" }), { x: 1, bg: "cross", bgColor: "#abcdef" });
+  assert.deepEqual(serializeItemLayout({ x: 1, bgColor: "puce" }), { x: 1 });
+  const animated = normalizeEdge({ from: "a", to: "b", dash: "animated", color: "#F55656" });
+  assert.equal(animated.dash, "animated");
+  assert.equal(animated.color, "#f55656");
+  assert.deepEqual(serializeEdge(animated), { type: "edge", from: "a", to: "b", dash: "animated", color: "#f55656" });
+  assert.equal(normalizeEdge({ from: "a", to: "b", dash: "wavy" }).dash, "solid");
+  assert.equal(hexColor("#F55656"), "#f55656");
+  assert.equal(hexColor("#fff"), undefined);
+  assert.equal(hexColor("red"), undefined);
+  assert.equal(styleColor("red"), "red");
+  assert.deepEqual(normalizeSectionDefaults({ titleSize: 18, titleColor: "#F55656", junk: 1 }), { titleColor: "#f55656" });
+  assert.deepEqual(normalizeSectionDefaults({ titleSize: 22, border: "blue" }), { titleSize: 22, border: "blue" });
+  assert.equal(NATIVE_SWATCHES.length, 13);
+  assert.equal(shadeHex("#f55656", -0.28), "#b03e3e");
+  assert.equal(shadeHex("#000000", -0.28), "#000000");
+  assert.equal(cssColor("red", "fill"), "var(--pxd-red-fill)");
+  assert.equal(cssColor("#f55656", "line"), "#f55656");
 });
 
 test("dailyPageTitle uses English month names and ordinal suffixes", () => {

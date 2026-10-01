@@ -4,6 +4,7 @@
 // recomputed during a drag.
 
 import { arrowHeadPath, arrowSize, edgePath, sidePoint } from "../model/geometry.js";
+import { PALETTE, hexColor } from "../model/schema.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const PAIR_OFFSET = 18;
@@ -77,8 +78,11 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
 
   const paintEdge = (board, edge, rec, { covered, selected }) => {
     const cls = ["pxd-edge"];
-    if (edge.color) cls.push(`pxd-c-${edge.color}`);
+    const named = PALETTE.includes(edge.color);
+    const hex = hexColor(edge.color);
+    if (named) cls.push(`pxd-c-${edge.color}`);
     if (edge.dash === "dashed") cls.push("pxd-edge--dashed");
+    if (edge.dash === "animated") cls.push("pxd-edge--animated");
     if (edge.weight > 1) cls.push(`pxd-edge--w${edge.weight}`);
     if (selected) cls.push("pxd-edge--selected");
     if (covered) cls.push("pxd-edge--covered");
@@ -88,7 +92,10 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     const dim = dimmed(edge);
     if (dim) cls.push("pxd-edge--dim");
     setClass(rec.g, cls.join(" "));
-    rec.label.className = `pxd-label${edge.color ? ` pxd-c-${edge.color}` : ""}${edge.label ? "" : " pxd-label--empty"}${selected ? " pxd-label--selected" : ""}${dim ? " pxd-label--dim" : ""}`;
+    if (hex) rec.g.style.setProperty("--pxd-line", hex);
+    else rec.g.style.removeProperty("--pxd-line");
+    rec.label.className = `pxd-label${named ? ` pxd-c-${edge.color}` : ""}${edge.label ? "" : " pxd-label--empty"}${selected ? " pxd-label--selected" : ""}${dim ? " pxd-label--dim" : ""}`;
+    rec.label.style.color = hex || "";
     if (editingLabel?.uid !== edge.uid) rec.label.textContent = edge.label || "";
     rec.dir = edge.dir;
     rec.weight = edge.weight;

@@ -1577,7 +1577,8 @@ var BOARD_PATTERN = `[:block/uid :block/string :block/order :block/heading :bloc
    {:block/children [:block/uid :block/string :block/order :block/heading :block/open :block/props
      {:block/children ...}]}]}]`;
 var ciPattern = (text) => `(?i)${String(text).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`;
-var NATIVE_PATTERN = `[{:diagram/nodes [:db/id :diagram.node/data {:diagram.node/block [:block/uid :block/string]} {:diagram.node/parent-node [:db/id]}]}
+var NATIVE_PATTERN = `[:block/props
+ {:diagram/nodes [:db/id :diagram.node/data {:diagram.node/block [:block/uid :block/string]} {:diagram.node/parent-node [:db/id]}]}
  {:diagram/edges [{:diagram.edge/source [:db/id]} {:diagram.edge/target [:db/id]} :diagram.edge/data]}]`;
 var DIAGRAM_RE = "^\\{\\{(\\[\\[)?diagram";
 var BOARD_META_PATTERN = "[:block/props :edit/time {:block/children [:block/props]}]";
@@ -2285,10 +2286,124 @@ function parseData(raw) {
   return raw && typeof raw === "object" ? plainKeys(raw) : {};
 }
 var finite = (v) => typeof v === "number" && Number.isFinite(v) ? v : void 0;
+var asMap = (v) => v && typeof v === "object" && !Array.isArray(v) ? v : {};
+var NATIVE_STYLE = {
+  block: {
+    "block-font-size": "fontSize",
+    "block-text-color": "textColor",
+    "block-text-align": "align",
+    "block-fill-color": "fill",
+    "block-border-color": "border"
+  },
+  group: {
+    "group-title-font-size": "titleSize",
+    "group-title-text-color": "titleColor",
+    "group-title-fill-color": "titleFill",
+    "group-area-fill-color": "areaFill",
+    "group-border-color": "border"
+  },
+  edge: {
+    "edge-direction-type": "dir",
+    "edge-decoration": "dash",
+    "edge-type": "route",
+    "edge-stroke-color": "color"
+  },
+  board: {
+    "diagram-background-color": "bgColor",
+    "diagram-background-texture": "bg"
+  }
+};
+var NATIVE_DIR = { directed: "one", undirected: "none", bidirected: "two" };
+var NATIVE_DASH = { solid: "solid", dashed: "dashed", animated: "animated" };
+var NATIVE_ROUTE = {
+  "floating-straight": "straight",
+  straight: "straight",
+  "floating-smooth-step": "elbow",
+  smoothstep: "elbow",
+  step: "elbow",
+  "floating-bezier": "curve",
+  bezier: "curve",
+  default: "curve"
+};
+var NATIVE_ALIGN = { left: "left", center: "center", right: "right", justify: "justify" };
+var CSS_NAMED = { black: "#000000", white: "#ffffff" };
+function nativeColor(value) {
+  if (typeof value !== "string") return void 0;
+  const s = value.trim().toLowerCase();
+  if (CSS_NAMED[s]) return CSS_NAMED[s];
+  if (PALETTE.includes(s)) return s;
+  let hex = s;
+  if (/^#[0-9a-f]{3}$/.test(hex)) hex = `#${[...hex.slice(1)].map((c) => c + c).join("")}`;
+  else if (/^#[0-9a-f]{8}$/.test(hex)) hex = hex.slice(0, 7);
+  if (/^#[0-9a-f]{6}$/.test(hex)) return styleColor(hex);
+  const rgb = /^rgba?\(\s*(\d{1,3})\s*,\s*(\d{1,3})\s*,\s*(\d{1,3})/.exec(s);
+  if (!rgb) return void 0;
+  const ch = (n) => Math.max(0, Math.min(255, Number(n))).toString(16).padStart(2, "0");
+  return styleColor(`#${ch(rgb[1])}${ch(rgb[2])}${ch(rgb[3])}`);
+}
+function styleBags(data) {
+  const top = asMap(data);
+  const inner = asMap(top.data);
+  return { top, inner, inferred: asMap(inner["inferred-defaults"]) };
+}
+function pickStyle(bags, defaults, key) {
+  if (bags.inner[key] !== void 0) return bags.inner[key];
+  if (bags.top[key] !== void 0) return bags.top[key];
+  if (bags.inferred[key] !== void 0) return bags.inferred[key];
+  if (defaults && defaults[key] !== void 0) return defaults[key];
+  return void 0;
+}
+function mapNodeStyle(data, kind, defaults) {
+  const bags = styleBags(data);
+  const spec = kind === "group" ? NATIVE_STYLE.group : NATIVE_STYLE.block;
+  const out = {};
+  for (const [from, to] of Object.entries(spec)) {
+    const raw = pickStyle(bags, defaults, from);
+    if (raw === void 0) continue;
+    if (to === "fontSize" || to === "titleSize") {
+      const n = Math.round(Number(raw));
+      if (!Number.isFinite(n)) continue;
+      out[to] = Math.max(CARD_FONT_MIN, Math.min(CARD_FONT_MAX, n));
+    } else if (to === "align") {
+      if (NATIVE_ALIGN[raw]) out.align = NATIVE_ALIGN[raw];
+    } else {
+      const color = nativeColor(raw);
+      if (color) out[to] = color;
+    }
+  }
+  return out;
+}
+function mapEdgeStyle(data) {
+  const bags = styleBags(data);
+  const pick = (key) => bags.inner[key] !== void 0 ? bags.inner[key] : bags.top[key];
+  const out = { dir: "one", dash: "solid", route: "straight" };
+  const dir = NATIVE_DIR[pick("edge-direction-type")];
+  if (dir) out.dir = dir;
+  const dash = NATIVE_DASH[pick("edge-decoration")];
+  if (dash) out.dash = dash;
+  else if (bags.top.animated === true || bags.inner.animated === true) out.dash = "animated";
+  else if (bags.top.style?.strokeDasharray || bags.inner.style?.strokeDasharray) out.dash = "dashed";
+  out.route = NATIVE_ROUTE[pick("edge-type")] ?? NATIVE_ROUTE[bags.top.type] ?? "straight";
+  const color = nativeColor(pick("edge-stroke-color")) ?? nativeColor(bags.inner.style?.stroke) ?? nativeColor(bags.top.style?.stroke);
+  if (color) out.color = color;
+  return out;
+}
+function readDiagramStyle(pulled) {
+  const props = plainKeys(pulled?.[":block/props"]);
+  const rf = asMap(props?.["rf-diagram"]);
+  const bag = { ...rf, ...asMap(rf["diagram-property-data"]) };
+  const boardStyle = {};
+  if (BOARD_PATTERNS.includes(bag["diagram-background-texture"])) boardStyle.bg = bag["diagram-background-texture"];
+  const bg = nativeColor(bag["diagram-background-color"]);
+  if (bg) boardStyle.bgColor = bg;
+  const over = asMap(rf["overridden-data-defaults"]);
+  return { boardStyle, blockDefaults: asMap(over.block), groupDefaults: asMap(over.group) };
+}
 function readNative(host, boardUid) {
   const pulled = host.pullNative(boardUid);
   const rawNodes = Array.isArray(pulled?.[":diagram/nodes"]) ? pulled[":diagram/nodes"] : [];
   const rawEdges = Array.isArray(pulled?.[":diagram/edges"]) ? pulled[":diagram/edges"] : [];
+  const { boardStyle, blockDefaults, groupDefaults } = readDiagramStyle(pulled);
   const keyById = /* @__PURE__ */ new Map();
   const nodes = rawNodes.map((n) => {
     const id = n[":db/id"];
@@ -2298,6 +2413,7 @@ function readNative(host, boardUid) {
     const data = parseData(n[":diagram.node/data"]);
     const abs = data.positionAbsolute && finite(data.positionAbsolute.x) !== void 0 ? data.positionAbsolute : null;
     const pos = abs ?? data.position ?? {};
+    const type = data.type === "group" ? "group" : "node";
     return {
       key,
       blockUid,
@@ -2307,8 +2423,9 @@ function readNative(host, boardUid) {
       h: finite(data.height) ?? finite(data.measured?.height),
       absolute: Boolean(abs),
       parentId: n[":diagram.node/parent-node"]?.[":db/id"],
-      type: data.type === "group" ? "group" : "node",
-      title: n[":diagram.node/block"]?.[":block/string"] ?? ""
+      type,
+      title: n[":diagram.node/block"]?.[":block/string"] ?? "",
+      style: mapNodeStyle(data, type, type === "group" ? groupDefaults : blockDefaults)
     };
   });
   for (const n of nodes) {
@@ -2321,9 +2438,10 @@ function readNative(host, boardUid) {
     const to = keyById.get(e[":diagram.edge/target"]?.[":db/id"]);
     if (!from || !to) continue;
     const data = parseData(e[":diagram.edge/data"]);
-    edges.push({ from, to, label: typeof data.label === "string" ? data.label : "" });
+    const style = mapEdgeStyle(data);
+    edges.push({ from, to, label: typeof data.label === "string" ? data.label : typeof data.data?.label === "string" ? data.data.label : "", ...style });
   }
-  return { nodes, edges };
+  return { nodes, edges, boardStyle };
 }
 var round12 = (n) => Math.round(n * 10) / 10;
 var centerOf2 = (r) => ({ x: r.x + r.w / 2, y: r.y + r.h / 2 });
@@ -2442,7 +2560,14 @@ function planNative(board, source, gen) {
     const parent = g.parentNode ? sectionOf.get(g.parentNode) : null;
     const base = parent ? { x: parent.abs.x, y: parent.abs.y } : { x: 0, y: 0 };
     s.entry.parent = parent ? parent.uid : null;
-    s.entry.layout = { type: "section", x: round12(s.abs.x - base.x), y: round12(s.abs.y - base.y), w: round12(s.abs.w), h: round12(s.abs.h) };
+    s.entry.layout = {
+      type: "section",
+      x: round12(s.abs.x - base.x),
+      y: round12(s.abs.y - base.y),
+      w: round12(s.abs.w),
+      h: round12(s.abs.h),
+      ...g.style || {}
+    };
     plan.sections.push(s.entry);
   }
   const sectionUids = new Set(plan.sections.map((s) => s.uid));
@@ -2458,7 +2583,8 @@ function planNative(board, source, gen) {
     const layout = {
       type: item.type,
       w: Math.max(MIN_SIZES.card.w, Math.round((n.w ?? item.w / scale) * scale)),
-      h: Math.max(MIN_SIZES.card.h, Math.round((n.h ?? item.h / scale) * scale))
+      h: Math.max(MIN_SIZES.card.h, Math.round((n.h ?? item.h / scale) * scale)),
+      ...n.style || {}
     };
     const sec = n.parentNode ? sectionOf.get(n.parentNode) : null;
     if (sec) {
@@ -2472,8 +2598,14 @@ function planNative(board, source, gen) {
     const from = uidOfKey.get(e.from);
     const to = uidOfKey.get(e.to);
     if (!from || !to || from === to) continue;
-    plan.edges.push(edgePlan(board, sectionUids, from, to, e.label ?? ""));
+    plan.edges.push(edgePlan(board, sectionUids, from, to, e.label ?? "", {
+      dir: e.dir,
+      route: e.route,
+      dash: e.dash,
+      color: e.color
+    }));
   }
+  if (source.boardStyle && Object.keys(source.boardStyle).length) plan.boardStyle = source.boardStyle;
   return plan;
 }
 function planImport(board, source, { gen = defaultGen() } = {}) {
@@ -2539,7 +2671,9 @@ async function executeImport(plan, host, board) {
     host.viewports?.set(board.uid, plan.viewport);
     host.viewports?.flushAll?.();
   }
-  await host.updateProps(board.uid, withBoardMarker(board.plexus, true));
+  const markerBase = { ...board.plexus || {} };
+  if (plan.boardStyle && Object.keys(plan.boardStyle).length) Object.assign(markerBase, plan.boardStyle);
+  await host.updateProps(board.uid, withBoardMarker(markerBase, true));
   return counts;
 }
 

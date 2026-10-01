@@ -7,7 +7,8 @@ export const BOARD_PATTERN = `[:block/uid :block/string :block/order :block/head
 
 const ciPattern = (text) => `(?i)${String(text).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`;
 
-export const NATIVE_PATTERN = `[{:diagram/nodes [:db/id :diagram.node/data {:diagram.node/block [:block/uid :block/string]} {:diagram.node/parent-node [:db/id]}]}
+export const NATIVE_PATTERN = `[:block/props
+ {:diagram/nodes [:db/id :diagram.node/data {:diagram.node/block [:block/uid :block/string]} {:diagram.node/parent-node [:db/id]}]}
  {:diagram/edges [{:diagram.edge/source [:db/id]} {:diagram.edge/target [:db/id]} :diagram.edge/data]}]`;
 
 const DIAGRAM_RE = "^\\{\\{(\\[\\[)?diagram";

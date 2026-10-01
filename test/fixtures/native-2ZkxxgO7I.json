@@ -1,0 +1,99 @@
+{
+  ":block/uid": "2ZkxxgO7I",
+  ":block/string": "{{[[diagram]]:Native capture}}",
+  ":block/props": {
+    ":rf-diagram": {}
+  },
+  ":diagram/nodes": [
+    {
+      ":db/id": 26202,
+      ":diagram.node/data": {
+        ":width": 334,
+        ":type": "block",
+        ":positionAbsolute": {
+          ":x": 73.0592041015625,
+          ":y": 575.9983177185059
+        },
+        ":position": {
+          ":x": 73.0592041015625,
+          ":y": 575.9983177185059
+        },
+        ":height": 280,
+        ":data": {
+          ":width": 334,
+          ":height": 277
+        }
+      },
+      ":diagram.node/block": {
+        ":block/uid": "b0U1aGvkN",
+        ":block/string": "Node 1"
+      },
+      ":diagram.node/parent-node": null
+    },
+    {
+      ":db/id": 26203,
+      ":diagram.node/data": {
+        ":width": 873,
+        ":type": "block",
+        ":positionAbsolute": {
+          ":x": -6.8207958984374955,
+          ":y": -130.81132806363524
+        },
+        ":position": {
+          ":x": -6.8207958984374955,
+          ":y": -130.81132806363524
+        },
+        ":height": 288,
+        ":data": {
+          ":width": 873.44,
+          ":height": 282.04373924280105
+        }
+      },
+      ":diagram.node/block": {
+        ":block/uid": "djnPeF1zP",
+        ":block/string": "Node 2"
+      },
+      ":diagram.node/parent-node": null
+    },
+    {
+      ":db/id": 26207,
+      ":diagram.node/data": {
+        ":width": 327,
+        ":type": "block",
+        ":positionAbsolute": {
+          ":x": -92.42079589843742,
+          ":y": 209.6560979613442
+        },
+        ":position": {
+          ":x": -92.42079589843742,
+          ":y": 209.6560979613442
+        },
+        ":height": 204,
+        ":data": {
+          ":width": 326.87999999999994,
+          ":height": 204.47999999999996
+        }
+      },
+      ":diagram.node/block": {
+        ":block/uid": "3nMhsYFxi",
+        ":block/string": "Node 3"
+      },
+      ":diagram.node/parent-node": null
+    }
+  ],
+  ":diagram/edges": [
+    {
+      ":db/id": 26208,
+      ":diagram.edge/uid": null,
+      ":diagram.edge/data": {
+        ":style": {}
+      },
+      ":diagram.edge/source": {
+        ":db/id": 26203
+      },
+      ":diagram.edge/target": {
+        ":db/id": 26207
+      }
+    }
+  ]
+}

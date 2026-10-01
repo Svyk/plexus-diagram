@@ -1,9 +1,10 @@
 import test from "node:test";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { createFakeRoam } from "./fixtures/fake-roam.js";
 import { createHost } from "../src/host/roam.js";
 import { buildBoard } from "../src/model/board.js";
-import { executeImport, planImport, readNative, readV06Entry } from "../src/host/migrate.js";
+import { executeImport, nativeColor, planImport, readNative, readV06Entry } from "../src/host/migrate.js";
 
 function setup() {
   const fake = createFakeRoam({ echoDelay: 1 });
@@ -135,7 +136,7 @@ test("readNative parses nodes, groups, and edges", () => {
   assert.equal(src.nodes.find((n) => n.blockUid === "g").type, "group");
   assert.equal(src.nodes.find((n) => n.blockUid === "in").parentNode, "g");
   assert.equal(src.nodes.find((n) => n.blockUid === "b").x, 300);
-  assert.deepEqual(src.edges, [{ from: "a", to: "b", label: "leads to" }]);
+  assert.deepEqual(src.edges, [{ from: "a", to: "b", label: "leads to", dir: "one", dash: "solid", route: "straight" }]);
 });
 
 test("planImport native scales positions by 240/width and nests groups", () => {
@@ -213,4 +214,123 @@ test("executeImport keeps the v marker on an already enhanced child board", asyn
   await executeImport(plan, host, board);
   assert.equal(fake.props("kid").plexus.v, 2);
   assert.equal(fake.props("kid").plexus.x, 5);
+});
+
+const capturedNative = JSON.parse(readFileSync(new URL("./fixtures/native-2ZkxxgO7I.json", import.meta.url), "utf8"));
+
+test("nativeColor keeps palette and hex, and drops anything else", () => {
+  assert.equal(nativeColor("black"), "#000000");
+  assert.equal(nativeColor("white"), "#ffffff");
+  assert.equal(nativeColor("#F55656"), "#f55656");
+  assert.equal(nativeColor("#abc"), "#aabbcc");
+  assert.equal(nativeColor("#A7B6C23F"), "#a7b6c2");
+  assert.equal(nativeColor("rgb(72, 175, 240)"), "#48aff0");
+  assert.equal(nativeColor("rgba(225, 232, 237, 0.2)"), "#e1e8ed");
+  assert.equal(nativeColor("teal"), "teal");
+  assert.equal(nativeColor("var(--x)"), undefined);
+  assert.equal(nativeColor("not-a-color"), undefined);
+});
+
+test("readNative on the captured unstyled diagram invents no colors", () => {
+  const src = readNative({ pullNative: () => capturedNative }, "2ZkxxgO7I");
+  assert.equal(src.nodes.length, 3);
+  assert.equal(src.edges.length, 1);
+  assert.deepEqual(src.boardStyle, {});
+  for (const n of src.nodes) assert.deepEqual(n.style, {});
+  const byUid = Object.fromEntries(src.nodes.map((n) => [n.blockUid, n]));
+  assert.equal(byUid.b0U1aGvkN.x, 73.0592041015625);
+  assert.equal(byUid.b0U1aGvkN.y, 575.9983177185059);
+  assert.equal(byUid.b0U1aGvkN.w, 334);
+  assert.equal(byUid.b0U1aGvkN.h, 280);
+  assert.equal(byUid.djnPeF1zP.w, 873);
+  assert.equal(byUid["3nMhsYFxi"].h, 204);
+  assert.deepEqual(src.edges[0], {
+    from: "djnPeF1zP", to: "3nMhsYFxi", label: "", dir: "one", dash: "solid", route: "straight",
+  });
+  assert.equal(src.edges[0].color, undefined);
+});
+
+test("executeImport maps stored native styles and leaves :diagram data untouched", async () => {
+  const { fake, host } = setup();
+  fake.seedBoard({
+    uid: "s1",
+    children: [
+      { uid: "a", string: "[[A]]" },
+      { uid: "b", string: "[[B]]" },
+      { uid: "g", string: "Group" },
+      { uid: "in", string: "[[Inner]]" },
+    ],
+    props: {
+      "rf-diagram": {
+        "diagram-property-data": {
+          "diagram-background-color": "#112233",
+          "diagram-background-texture": "lines",
+        },
+        "overridden-data-defaults": { block: { "block-text-align": "center" } },
+      },
+    },
+    diagram: {
+      nodes: [
+        { id: 1, blockUid: "a", data: { position: { x: 0, y: 0 }, width: 120, height: 60, data: {
+          "block-font-size": 20, "block-text-color": "black", "block-text-align": "left",
+          "block-fill-color": "#F55656", "block-border-color": "rgb(72, 175, 240)",
+        } } },
+        { id: 2, blockUid: "b", data: { position: { x: 300, y: 0 }, width: 120, height: 60, data: { "block-font-size": 14 } } },
+        { id: 3, blockUid: "g", data: { position: { x: 0, y: 300 }, width: 400, height: 300, type: "group", data: {
+          "group-title-font-size": 22, "group-title-text-color": "white", "group-title-fill-color": "#A7B6C23F",
+          "group-area-fill-color": "rgba(225, 232, 237, 0.2)", "group-border-color": "teal",
+        } } },
+        { id: 4, blockUid: "in", data: { position: { x: 20, y: 40 }, width: 120, height: 60, data: {
+          "block-font-size": 4, "block-text-align": "start", "block-fill-color": "var(--blue)",
+        } }, parentId: 3 },
+      ],
+      edges: [
+        { source: 1, target: 2, data: { label: "styled", data: {
+          "edge-direction-type": "bidirected", "edge-decoration": "animated",
+          "edge-type": "floating-bezier", "edge-stroke-color": "#F55656",
+        } } },
+        { source: 1, target: 3, data: { type: "floating-smooth-step", animated: true, style: { stroke: "#00ff00" } } },
+      ],
+    },
+  });
+  const before = host.pullNative("s1");
+  const board = buildBoard(host.pullBoard("s1"));
+  const src = readNative(host, "s1");
+  assert.equal(src.nodes.find((n) => n.blockUid === "b").style.align, "center");
+  assert.equal(src.nodes.find((n) => n.blockUid === "a").style.align, "left");
+  assert.deepEqual(src.boardStyle, { bg: "lines", bgColor: "#112233" });
+  const plan = planImport(board, src, { gen: () => "x" });
+  await executeImport(plan, host, board);
+  const after = host.pullNative("s1");
+  assert.deepEqual(after[":diagram/nodes"], before[":diagram/nodes"]);
+  assert.deepEqual(after[":diagram/edges"], before[":diagram/edges"]);
+  assert.deepEqual(after[":block/props"][":rf-diagram"], before[":block/props"][":rf-diagram"]);
+  assert.equal(fake.props("s1").plexus.v, 2);
+  assert.equal(fake.props("s1").plexus.bg, "lines");
+  assert.equal(fake.props("s1").plexus.bgColor, "#112233");
+  assert.deepEqual(
+    (({ fontSize, textColor, align, fill, border }) => ({ fontSize, textColor, align, fill, border }))(fake.props("a").plexus),
+    { fontSize: 20, textColor: "#000000", align: "left", fill: "#f55656", border: "#48aff0" },
+  );
+  assert.equal(fake.props("b").plexus.align, "center");
+  assert.equal(fake.props("b").plexus.fontSize, undefined);
+  assert.deepEqual(
+    (({ titleSize, titleColor, titleFill, areaFill, border }) => ({ titleSize, titleColor, titleFill, areaFill, border }))(fake.props("g").plexus),
+    { titleSize: 22, titleColor: "#ffffff", titleFill: "#a7b6c2", areaFill: "#e1e8ed", border: "teal" },
+  );
+  assert.equal(fake.props("in").plexus.fontSize, 10);
+  assert.equal(fake.props("in").plexus.align, undefined);
+  assert.equal(fake.props("in").plexus.fill, undefined);
+  const box = fake.children("s1").map((u) => fake.block(u)).find((b) => b.string === "Connections");
+  const edges = fake.children(box.uid).map((u) => fake.props(u).plexus);
+  const styled = edges.find((e) => e.to === "b");
+  const fallback = edges.find((e) => e.to === "g");
+  assert.equal(styled.dir, "two");
+  assert.equal(styled.dash, "animated");
+  assert.equal(styled.route, undefined);
+  assert.equal(styled.color, "#f55656");
+  assert.equal(fallback.dir, undefined);
+  assert.equal(fallback.dash, "animated");
+  assert.equal(fallback.route, "elbow");
+  assert.equal(fallback.color, "#00ff00");
 });

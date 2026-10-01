@@ -33,6 +33,7 @@ import {
   plainKeys,
   readPlexus,
   semanticRef,
+  lookForNewString,
   serializeEdge,
   serializeItemLayout,
   setBoardTitle,
@@ -52,7 +53,7 @@ const PROPS = ":block/props";
 const OPEN = ":block/open";
 
 const LINK_MODES = ["off", "attributes", "all"];
-const ITEM_KEYS = ["type", "x", "y", "w", "h", "color", "collapsed", "fontSize", "pinned", "fit"];
+const ITEM_KEYS = ["type", "x", "y", "w", "h", "color", "collapsed", "fontSize", "pinned", "fit", "look"];
 const EDGE_KEYS = ["type", "from", "to", "fromSide", "toSide", "dir", "route", "dash", "weight", "color"];
 const MAX_PARENT_STRINGS = 200;
 const DAILY_GAP = 20;
@@ -568,10 +569,15 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
     applyFit(t, displacedIds);
   }
 
+  const withCardLook = (layout, string) => {
+    const look = lookForNewString(string, setting("default-card-look", "block"));
+    return look ? { ...layout, look } : layout;
+  };
+
   const cardAt = (t, string, x, y) => {
     const parent = containerAt(board, { x: x + DEFAULT_SIZES.card.w / 2, y: y + DEFAULT_SIZES.card.h / 2 }, { rects });
     const rel = toRelative(board, parent, { x, y }, rects);
-    return t.create({ parent, string, plexus: serializeItemLayout({ x: rel.x, y: rel.y }) });
+    return t.create({ parent, string, plexus: serializeItemLayout(withCardLook({ x: rel.x, y: rel.y }, string)) });
   };
 
   const defaultSizeFor = (item) => {
@@ -742,7 +748,7 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
         const size = { w: w ?? DEFAULT_SIZES.card.w, h: h ?? DEFAULT_SIZES.card.h };
         const parent = containerAt(board, { x: x + size.w / 2, y: y + size.h / 2 }, { rects });
         const rel = toRelative(board, parent, { x, y }, rects);
-        const layout = { x: rel.x, y: rel.y };
+        const layout = withCardLook({ x: rel.x, y: rel.y }, string);
         if (w !== undefined) layout.w = w;
         if (h !== undefined) layout.h = h;
         const id = t.create({ parent, string, plexus: serializeItemLayout(layout) });
@@ -914,6 +920,15 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
     setFontSize(id, size) {
       return txn((t) => {
         if (board.items.has(id)) t.props(id, itemPlexus(id, { fontSize: size }));
+      });
+    },
+
+    setLook(id, look) {
+      return txn((t) => {
+        const item = board.items.get(id);
+        if (!item || item.type !== "card") return;
+        if (look !== "block" && look !== "card") return;
+        t.props(id, itemPlexus(id, { look }));
       });
     },
 

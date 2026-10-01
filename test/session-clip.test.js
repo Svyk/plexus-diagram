@@ -278,7 +278,7 @@ test("pasteText stacks one card per line and keeps refs as refs", async () => {
   const made = await session.pasteText("- first idea\n\n[[Some Page]]\n((abc123))\n", { x: 2000, y: 100 });
   assert.equal(made.length, 3);
   assert.deepEqual(strings(fake, made), ["first idea", "[[Some Page]]", "((abc123))"]);
-  assert.deepEqual(made.map((u) => plexus(fake, u)), [{ x: 2000, y: 100 }, { x: 2000, y: 284 }, { x: 2000, y: 468 }]);
+  assert.deepEqual(made.map((u) => plexus(fake, u)), [{ x: 2000, y: 100, look: "block" }, { x: 2000, y: 284 }, { x: 2000, y: 468 }]);
   assert.equal(creates(fake).length, 3);
   assert.deepEqual(await session.pasteText("   \n\n", { x: 0, y: 0 }), []);
   const again = await session.pasteText([{ string: "from entries" }], { x: 0, y: 900 });

@@ -126,7 +126,11 @@ if (cmd === "input") {
   const steps = JSON.parse(arg.trim().startsWith("[") ? arg : await rf(arg, "utf8"));
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const mods = (m = []) => (m.includes("alt") ? 1 : 0) | (m.includes("ctrl") ? 2 : 0) | (m.includes("meta") ? 4 : 0) | (m.includes("shift") ? 8 : 0);
-  const mouse = (type, x, y, extra = {}) => rpc(ws, "Input.dispatchMouseEvent", { type, x, y, button: "left", buttons: type === "mouseReleased" ? 0 : 1, clickCount: 1, ...extra });
+  const mouse = (type, x, y, extra = {}) => {
+    const button = extra.button || "left";
+    const mask = button === "right" ? 2 : button === "middle" ? 4 : 1;
+    return rpc(ws, "Input.dispatchMouseEvent", { type, x, y, button, buttons: type === "mouseReleased" ? 0 : mask, clickCount: 1, ...extra, button });
+  };
   for (const s of steps) {
     if (s.t === "move") await rpc(ws, "Input.dispatchMouseEvent", { type: "mouseMoved", x: s.x, y: s.y, button: "none", buttons: 0 });
     else if (s.t === "down") await mouse("mousePressed", s.x, s.y, { modifiers: mods(s.mods) });
@@ -134,8 +138,8 @@ if (cmd === "input") {
     else if (s.t === "click") {
       const count = s.count || 1;
       for (let c = 1; c <= count; c += 1) {
-        await mouse("mousePressed", s.x, s.y, { clickCount: c, modifiers: mods(s.mods) });
-        await mouse("mouseReleased", s.x, s.y, { clickCount: c, modifiers: mods(s.mods) });
+        await mouse("mousePressed", s.x, s.y, { clickCount: c, modifiers: mods(s.mods), button: s.button || "left" });
+        await mouse("mouseReleased", s.x, s.y, { clickCount: c, modifiers: mods(s.mods), button: s.button || "left" });
         await sleep(30);
       }
     } else if (s.t === "drag") {

@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   ARROWS, PALETTE, attrNameOf, classifyString, colorForLabel, edgeString, firstLine,
+  cardLook, lookForNewString,
   mergePropsForWrite, normalizeEdge, normalizeItemLayout, parseBoardTitle, parseEdgeLabel,
   plainKeys, plainText, readPlexus, semanticRef, serializeEdge, serializeItemLayout,
   BOARD_PATTERNS, BOARD_TONES, FIT_PAD, dailyPageTitle,
@@ -46,6 +47,18 @@ test("normalizeItemLayout / serializeItemLayout", () => {
   assert.deepEqual(serializeItemLayout({ type: "section", x: 0, y: 0, w: 1, h: 1, color: "red", collapsed: true, fontSize: 24 }),
     { type: "section", x: 0, y: 0, w: 1, h: 1, color: "red", collapsed: true });
   assert.deepEqual(serializeItemLayout({ type: "text", x: 0, y: 0, fontSize: 32, collapsed: false }), { type: "text", x: 0, y: 0, fontSize: 32 });
+  assert.equal(normalizeItemLayout({ look: "block" }).look, "block");
+  assert.equal(normalizeItemLayout({ look: "card" }).look, "card");
+  assert.equal(normalizeItemLayout({ look: "tile" }).look, undefined);
+  assert.deepEqual(serializeItemLayout({ x: 1, look: "block" }), { x: 1, look: "block" });
+  assert.deepEqual(serializeItemLayout({ x: 1, look: "nope" }), { x: 1 });
+  assert.equal(cardLook("note"), "block");
+  assert.equal(cardLook("page"), "card");
+  assert.equal(cardLook("note", "card"), "card");
+  assert.equal(lookForNewString("alpha", "block"), "block");
+  assert.equal(lookForNewString("alpha", "card"), "card");
+  assert.equal(lookForNewString("[[Page]]", "block"), undefined);
+  assert.equal(lookForNewString("((abc))", "card"), undefined);
 });
 
 test("normalizeEdge / serializeEdge", () => {

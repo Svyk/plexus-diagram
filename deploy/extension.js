@@ -370,6 +370,7 @@ var MIN_SIZES = { card: { w: 200, h: 80 }, section: { w: 160, h: 100 }, text: { 
 var DEFAULT_BOARD_CARD = { w: 320, h: 220 };
 var UNTITLED_BOARD = "Untitled board";
 var FONT_SIZES = [16, 24, 32, 48];
+var CARD_LOOKS = ["block", "card"];
 var EDGE_DEFAULTS = { fromSide: "auto", toSide: "auto", dir: "one", route: "curve", dash: "solid", weight: 1 };
 var SIDES2 = ["auto", "top", "right", "bottom", "left"];
 var ARROWS = { one: "→", two: "↔", none: "—" };
@@ -417,8 +418,17 @@ function normalizeItemLayout(plexus) {
     collapsed: p.collapsed === true ? true : p.collapsed === false ? false : void 0,
     fontSize: FONT_SIZES.includes(p.fontSize) ? p.fontSize : void 0,
     pinned: p.pinned === true,
-    fit: p.fit === false ? false : void 0
+    fit: p.fit === false ? false : void 0,
+    look: CARD_LOOKS.includes(p.look) ? p.look : void 0
   };
+}
+function cardLook(kind, stored) {
+  if (CARD_LOOKS.includes(stored)) return stored;
+  return kind === "note" ? "block" : "card";
+}
+function lookForNewString(string, preferred) {
+  if (classifyString(string).kind !== "note") return void 0;
+  return preferred === "card" ? "card" : "block";
 }
 var round1 = (n) => Math.round(n * 10) / 10;
 function serializeItemLayout(layout) {
@@ -432,6 +442,7 @@ function serializeItemLayout(layout) {
   if (l.v === SCHEMA_VERSION) out.v = SCHEMA_VERSION;
   if (l.pinned === true) out.pinned = true;
   if (l.type === "section" && l.fit === false) out.fit = false;
+  if (CARD_LOOKS.includes(l.look)) out.look = l.look;
   if (BOARD_PATTERNS.includes(l.bg)) out.bg = l.bg;
   if (BOARD_TONES.includes(l.bgColor)) out.bgColor = l.bgColor;
   return out;
@@ -714,6 +725,7 @@ function buildBoard(pulled, { defaults } = {}) {
         collapsed: layout.collapsed === true,
         fontSize: layout.fontSize,
         pinned: layout.pinned,
+        look: type === "card" ? cardLook(kind, layout.look) : void 0,
         autofit: !(type === "section" && layout.fit === false),
         title,
         target,
@@ -2404,7 +2416,7 @@ var KIDS = ":block/children";
 var PROPS = ":block/props";
 var OPEN = ":block/open";
 var LINK_MODES = ["off", "attributes", "all"];
-var ITEM_KEYS = ["type", "x", "y", "w", "h", "color", "collapsed", "fontSize", "pinned", "fit"];
+var ITEM_KEYS = ["type", "x", "y", "w", "h", "color", "collapsed", "fontSize", "pinned", "fit", "look"];
 var EDGE_KEYS = ["type", "from", "to", "fromSide", "toSide", "dir", "route", "dash", "weight", "color"];
 var MAX_PARENT_STRINGS = 200;
 var DAILY_GAP = 20;
@@ -2905,10 +2917,14 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
     }
     applyFit(t, displacedIds);
   }
+  const withCardLook = (layout, string) => {
+    const look = lookForNewString(string, setting("default-card-look", "block"));
+    return look ? { ...layout, look } : layout;
+  };
   const cardAt = (t, string, x, y) => {
     const parent = containerAt(board, { x: x + DEFAULT_SIZES.card.w / 2, y: y + DEFAULT_SIZES.card.h / 2 }, { rects });
     const rel = toRelative(board, parent, { x, y }, rects);
-    return t.create({ parent, string, plexus: serializeItemLayout({ x: rel.x, y: rel.y }) });
+    return t.create({ parent, string, plexus: serializeItemLayout(withCardLook({ x: rel.x, y: rel.y }, string)) });
   };
   const defaultSizeFor = (item) => {
     if (item.type === "section") return DEFAULT_SIZES.section;
@@ -3090,7 +3106,7 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
         const size = { w: w ?? DEFAULT_SIZES.card.w, h: h ?? DEFAULT_SIZES.card.h };
         const parent = containerAt(board, { x: x + size.w / 2, y: y + size.h / 2 }, { rects });
         const rel = toRelative(board, parent, { x, y }, rects);
-        const layout = { x: rel.x, y: rel.y };
+        const layout = withCardLook({ x: rel.x, y: rel.y }, string);
         if (w !== void 0) layout.w = w;
         if (h !== void 0) layout.h = h;
         const id = t.create({ parent, string, plexus: serializeItemLayout(layout) });
@@ -3249,6 +3265,14 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
     setFontSize(id, size) {
       return txn((t) => {
         if (board.items.has(id)) t.props(id, itemPlexus(id, { fontSize: size }));
+      });
+    },
+    setLook(id, look) {
+      return txn((t) => {
+        const item = board.items.get(id);
+        if (!item || item.type !== "card") return;
+        if (look !== "block" && look !== "card") return;
+        t.props(id, itemPlexus(id, { look }));
       });
     },
     setString(id, string) {
@@ -3777,6 +3801,8 @@ extendSession((session, api) => {
     if (w !== void 0) layout.w = w;
     if (h !== void 0) layout.h = h;
     if (color) layout.color = color;
+    const look = lookForNewString(string, api.setting("default-card-look", "block"));
+    if (look) layout.look = look;
     return t.create({ parent, string, plexus: serializeItemLayout(layout) });
   }
   function cloneSet(t, src, entries, exclude) {
@@ -4649,6 +4675,9 @@ function createInteractions({ actions, settings } = {}) {
           if (g.uids.length) call("commitMove", g.uids, g.dx || 0, g.dy || 0);
         } else if (g.deferred) {
           selectItems([g.target]);
+        } else if (!g.dup && state.selection.size === 1 && state.selection.has(g.target)) {
+          const item = b?.items.get(g.target);
+          if (item?.type === "card" && item.look === "block" && item.kind !== "board") call("enterEdit", g.target);
         }
         break;
       case "resize":
@@ -5353,6 +5382,7 @@ function createItemRenderer({
     if (item.type !== "section") {
       if (rec.bare) cls.push("pxd-item--bare");
       if (rec.refBoard) cls.push("pxd-item--wb");
+      if (item.look === "block") cls.push("pxd-card--block");
     }
     node.className = cls.join(" ");
     if (item.type === "section") {
@@ -7929,6 +7959,7 @@ function buildMenu(kind, ctx = {}) {
         make("duplicate-ref", "Duplicate as ref"),
         sep(),
         colorMenu(),
+        item?.look === "card" ? make("show-as-block", "Show as block") : make("show-as-card", "Show as card"),
         foldItem(folded),
         make("fit-height", "Fit height", { disabled: folded }),
         make("reset-size", "Reset size", { disabled: folded }),
@@ -8715,6 +8746,17 @@ function watchRouteExit({ boardUid, onExit, win = globalThis.window } = {}) {
 // src/view/board-view.js
 var SVG_NS3 = "http://www.w3.org/2000/svg";
 var DEFAULT_HEIGHT = 560;
+function freshCardIsBlank({ blockString, itemString, contentCount = 0, editorText = "" } = {}) {
+  if (contentCount > 0) return false;
+  return ![blockString, itemString, editorText].some((s) => String(s ?? "").trim());
+}
+function editingPlainText(root) {
+  const editor = root.querySelector?.(".pxd-item--editing .pxd-item__editor");
+  if (!editor) return "";
+  const areas = typeof editor.querySelectorAll === "function" ? [...editor.querySelectorAll("textarea")] : [];
+  if (areas.length) return areas.map((t) => t.value || "").join("\n");
+  return typeof editor.textContent === "string" ? editor.textContent : "";
+}
 var MIN_HEIGHT = 240;
 var RESUME_MS = 120;
 var VP_PERSIST_MS = 500;
@@ -9778,6 +9820,12 @@ function mountBoardView({
         if (target.length) void session.setColor?.(target, arg === "none" ? null : arg);
         break;
       }
+      case "show-as-card":
+        if (item) void session.setLook?.(item.uid, "card");
+        break;
+      case "show-as-block":
+        if (item) void session.setLook?.(item.uid, "block");
+        break;
       case "fold":
         setFolded(uids, true);
         break;
@@ -10138,11 +10186,17 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
   const freshItems = /* @__PURE__ */ new Set();
   const exitEdit = async () => {
     const uid = itemsR.editingUid?.();
+    const editorText = editingPlainText(root);
     await itemsR.exitEdit();
     if (uid && freshItems.delete(uid)) {
       const item = session.board?.items?.get(uid);
       const text = host?.blockString?.(uid);
-      if (item && !String(text ?? item.string ?? "").trim() && !(item.content || []).length) {
+      if (item && freshCardIsBlank({
+        blockString: text,
+        itemString: item.string,
+        contentCount: (item.content || []).length,
+        editorText
+      })) {
         await session.deleteItems?.([uid]);
       }
     }
@@ -10951,6 +11005,7 @@ var SETTING_IDS = Object.freeze({
   grid: "grid",
   defaultCardWidth: "default-card-width",
   defaultCardHeight: "default-card-height",
+  defaultCardLook: "default-card-look",
   enableShortcuts: "enable-shortcuts",
   showVersionBadge: "show-version-badge",
   disableOnMobile: "disable-on-mobile",
@@ -10971,6 +11026,7 @@ var DEFAULTS = Object.freeze({
   [SETTING_IDS.grid]: "dots",
   [SETTING_IDS.defaultCardWidth]: 280,
   [SETTING_IDS.defaultCardHeight]: 160,
+  [SETTING_IDS.defaultCardLook]: "block",
   [SETTING_IDS.enableShortcuts]: true,
   [SETTING_IDS.showVersionBadge]: true,
   [SETTING_IDS.disableOnMobile]: true,
@@ -10987,6 +11043,7 @@ var ENUMS = Object.freeze({
   [SETTING_IDS.graphLinks]: ["off", "attributes", "all"],
   [SETTING_IDS.wheel]: ["pan", "zoom"],
   [SETTING_IDS.grid]: ["dots", "lines", "grid", "plain"],
+  [SETTING_IDS.defaultCardLook]: ["block", "card"],
   [SETTING_IDS.boardTone]: BOARD_TONES2,
   [SETTING_IDS.mapZoom]: MAP_ZOOMS
 });
@@ -11088,6 +11145,7 @@ function createSettingsPanel() {
       switchRow(SETTING_IDS.autoFitSections, "Auto-fit sections", "Grow a section to contain a card moved or resized past its edge."),
       switchRow(SETTING_IDS.spaceOut, "Space out cards", "Push overlapping cards apart after a move."),
       switchRow(SETTING_IDS.showCardBadges, "Show card badges", "Show reference, task and child counts on cards."),
+      selectRow(SETTING_IDS.defaultCardLook, "Default card look", "New note cards. Block is a plain Roam block. Card keeps the title row.", ["block", "card"]),
       inputRow(SETTING_IDS.defaultCardWidth, "Default card width", "Width in pixels for new cards."),
       inputRow(SETTING_IDS.defaultCardHeight, "Default card height", "Height in pixels for new cards."),
       switchRow(SETTING_IDS.enableShortcuts, "Enable shortcuts", "Enable board keyboard shortcuts."),

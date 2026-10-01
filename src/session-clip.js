@@ -14,6 +14,7 @@ import {
   readPlexus,
   semanticRef,
   serializeEdge,
+  lookForNewString,
   serializeItemLayout,
 } from "./model/schema.js";
 import { capBulk, extendSession } from "./session.js";
@@ -58,6 +59,8 @@ extendSession((session, api) => {
     if (w !== undefined) layout.w = w;
     if (h !== undefined) layout.h = h;
     if (color) layout.color = color;
+    const look = lookForNewString(string, api.setting("default-card-look", "block"));
+    if (look) layout.look = look;
     return t.create({ parent, string, plexus: serializeItemLayout(layout) });
   }
 

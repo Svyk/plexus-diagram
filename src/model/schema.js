@@ -7,6 +7,7 @@ export const MIN_SIZES = { card: { w: 200, h: 80 }, section: { w: 160, h: 100 },
 export const DEFAULT_BOARD_CARD = { w: 320, h: 220 };
 export const UNTITLED_BOARD = "Untitled board";
 export const FONT_SIZES = [16, 24, 32, 48];
+export const CARD_LOOKS = ["block", "card"];
 export const EDGE_DEFAULTS = { fromSide: "auto", toSide: "auto", dir: "one", route: "curve", dash: "solid", weight: 1 };
 export const SIDES = ["auto", "top", "right", "bottom", "left"];
 export const ARROWS = { one: "→", two: "↔", none: "—" };
@@ -61,7 +62,20 @@ export function normalizeItemLayout(plexus) {
     fontSize: FONT_SIZES.includes(p.fontSize) ? p.fontSize : undefined,
     pinned: p.pinned === true,
     fit: p.fit === false ? false : undefined,
+    look: CARD_LOOKS.includes(p.look) ? p.look : undefined,
   };
+}
+
+// Notes with no stored look are plain blocks. Page, ref, image and board cards stay cards.
+export function cardLook(kind, stored) {
+  if (CARD_LOOKS.includes(stored)) return stored;
+  return kind === "note" ? "block" : "card";
+}
+
+// New note cards record the setting. Other kinds omit look and stay cards.
+export function lookForNewString(string, preferred) {
+  if (classifyString(string).kind !== "note") return undefined;
+  return preferred === "card" ? "card" : "block";
 }
 
 const round1 = (n) => Math.round(n * 10) / 10;
@@ -77,6 +91,7 @@ export function serializeItemLayout(layout) {
   if (l.v === SCHEMA_VERSION) out.v = SCHEMA_VERSION;
   if (l.pinned === true) out.pinned = true;
   if (l.type === "section" && l.fit === false) out.fit = false;
+  if (CARD_LOOKS.includes(l.look)) out.look = l.look;
   if (BOARD_PATTERNS.includes(l.bg)) out.bg = l.bg;
   if (BOARD_TONES.includes(l.bgColor)) out.bgColor = l.bgColor;
   return out;

@@ -1923,6 +1923,25 @@ body.roam-body.dark .pxd-root.pxd-bg-pink {
   }
 }
 
+/* NP-1. A block-look card is a plain Roam block: no title row, 14px text, root bullet hidden. */
+
+.pxd-root:not(.pxd-lod-map) .pxd-item.pxd-card--block:not(.pxd-item--collapsed):not(.pxd-item--bare) > .pxd-item__header {
+  display: none;
+}
+
+.pxd-root .pxd-card--block > .pxd-item__body {
+  font-size: 14px;
+}
+
+.pxd-root .pxd-card--block .pxd-item__editor :is(textarea.rm-block-input, textarea.rm-block__input, .rm-block__input, .rm-block-text) {
+  font-size: 14px;
+}
+
+/* Root bullet only. renderBlock nests it as editor > .rm-api-render--block > .rm-block > .rm-block-main. Children live under .rm-block-children. */
+.pxd-root .pxd-card--block > .pxd-item__body > .pxd-item__editor > .rm-api-render--block > .rm-block > .rm-block-main > .controls {
+  display: none;
+}
+
 /* Plexus Diagram 1.2 chrome: background popover, context menu, back-to-content, panel tabs. Every
    rule is scoped .pxd-root .pxd-x (two classes at least) so Roam normalize and Blueprint (0,1,1)
    cannot win. Colors come from the .pxd-root tokens, which already flip for dark. The rules that

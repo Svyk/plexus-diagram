@@ -38,6 +38,21 @@ import { applyFullscreenChrome, watchRouteExit } from "./fullscreen.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const DEFAULT_HEIGHT = 560;
+
+// A card made by a gesture is junk only when the block, the model and the open editor are all blank.
+// Roam debounces the block string, so the editor text is what the user actually typed.
+export function freshCardIsBlank({ blockString, itemString, contentCount = 0, editorText = "" } = {}) {
+  if (contentCount > 0) return false;
+  return ![blockString, itemString, editorText].some((s) => String(s ?? "").trim());
+}
+
+function editingPlainText(root) {
+  const editor = root.querySelector?.(".pxd-item--editing .pxd-item__editor");
+  if (!editor) return "";
+  const areas = typeof editor.querySelectorAll === "function" ? [...editor.querySelectorAll("textarea")] : [];
+  if (areas.length) return areas.map((t) => t.value || "").join("\n");
+  return typeof editor.textContent === "string" ? editor.textContent : "";
+}
 const MIN_HEIGHT = 240;
 const RESUME_MS = 120;
 const VP_PERSIST_MS = 500;
@@ -940,6 +955,8 @@ export function mountBoardView({
       case "duplicate": duplicate(uids); break;
       case "duplicate-ref": duplicate(uids, { asRef: true }); break;
       case "color": { const target = mc.kind === "edge" && edgeUid ? [edgeUid] : uids; if (target.length) void session.setColor?.(target, arg === "none" ? null : arg); break; }
+      case "show-as-card": if (item) void session.setLook?.(item.uid, "card"); break;
+      case "show-as-block": if (item) void session.setLook?.(item.uid, "block"); break;
       case "fold": setFolded(uids, true); break;
       case "unfold": setFolded(uids, false); break;
       case "fit-height": if (item) fitHeight(item.uid); break;
@@ -1142,11 +1159,17 @@ export function mountBoardView({
   const freshItems = new Set();
   const exitEdit = async () => {
     const uid = itemsR.editingUid?.();
+    const editorText = editingPlainText(root);
     await itemsR.exitEdit();
     if (uid && freshItems.delete(uid)) {
       const item = session.board?.items?.get(uid);
       const text = host?.blockString?.(uid);
-      if (item && !String(text ?? item.string ?? "").trim() && !(item.content || []).length) {
+      if (item && freshCardIsBlank({
+        blockString: text,
+        itemString: item.string,
+        contentCount: (item.content || []).length,
+        editorText,
+      })) {
         await session.deleteItems?.([uid]);
       }
     }

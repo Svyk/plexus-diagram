@@ -179,6 +179,28 @@ test("wrapInSection pads bounds by 32", async () => {
   assert.equal(fake.block("c1").parent, uid);
 });
 
+test("createCard stores look block on a note and omits it on a page ref; setLook round-trips", async () => {
+  const { fake, session } = setup();
+  const note = await session.createCard({ x: 1000, y: 1000, string: "alpha" });
+  assert.equal(fake.props(note).plexus.look, "block");
+  const page = await session.createCard({ x: 1000, y: 1200, string: "[[Page]]" });
+  assert.equal(fake.props(page).plexus.look, undefined);
+  await session.setLook(note, "card");
+  assert.equal(fake.props(note).plexus.look, "card");
+  assert.equal(session.board.items.get(note).look, "card");
+  await session.setLook(note, "block");
+  assert.equal(fake.props(note).plexus.look, "block");
+  await session.setLook(note, "nope");
+  assert.equal(fake.props(note).plexus.look, "block");
+});
+
+test("default-card-look card writes look card on a new note", async () => {
+  const { fake, session } = setup({}, { settings: { "default-card-look": "card" } });
+  const note = await session.createCard({ x: 1000, y: 1000, string: "alpha" });
+  assert.equal(fake.props(note).plexus.look, "card");
+  assert.equal(session.board.items.get(note).look, "card");
+});
+
 test("createCard lands in the container under the point, position relative", async () => {
   const { fake, session } = setup();
   const uid = await session.createCard({ x: 40, y: 340, string: "[[New]]" });

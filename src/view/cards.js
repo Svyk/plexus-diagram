@@ -277,6 +277,7 @@ export function createItemRenderer({
     if (item.type !== "section") {
       if (rec.bare) cls.push("pxd-item--bare");
       if (rec.refBoard) cls.push("pxd-item--wb");
+      if (item.look === "block") cls.push("pxd-card--block");
     }
     node.className = cls.join(" ");
     if (item.type === "section") {

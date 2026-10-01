@@ -86,6 +86,7 @@ export function buildMenu(kind, ctx = {}) {
         make("duplicate-ref", "Duplicate as ref"),
         sep(),
         colorMenu(),
+        item?.look === "card" ? make("show-as-block", "Show as block") : make("show-as-card", "Show as card"),
         foldItem(folded),
         make("fit-height", "Fit height", { disabled: folded }),
         make("reset-size", "Reset size", { disabled: folded }),

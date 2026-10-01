@@ -94,6 +94,8 @@ test("buildBoard: items, kinds, targets, titles", () => {
   assert.deepEqual([c1.parentUid, c1.depth, c1.w, c1.h], ["board0001", 0, 280, 160]);
   const c2 = b.items.get("c2");
   assert.equal(c2.kind, "note");
+  assert.equal(c2.look, "block");
+  assert.equal(c1.look, "card");
   assert.equal(c2.title, "note text");
   assert.deepEqual(c2.target, { kind: "self", uid: "c2" });
   assert.deepEqual(c2.content.map((c) => c[":block/uid"]), ["cc0", "cc1"]);

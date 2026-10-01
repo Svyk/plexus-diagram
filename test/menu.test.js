@@ -45,6 +45,9 @@ test("card menu: ids, color submenu with checked, fold/unfold, pin/unpin, mind-m
   assert.equal(byId(menu, "delete").danger, true);
   assert.equal(byId(menu, "fit-height").disabled, true, "a folded card has no body to fit");
   assert.equal(byId(buildMenu("card", {}), "fit-height").disabled, undefined);
+  assert.equal(byId(buildMenu("card", { item: { look: "block" } }), "show-as-card").label, "Show as card");
+  assert.equal(byId(buildMenu("card", { item: { look: "card" } }), "show-as-block").label, "Show as block");
+  assert.ok(!ids(buildMenu("card", { item: { look: "card" } })).includes("show-as-card"));
 });
 
 test("card menu on a board card says board", () => {

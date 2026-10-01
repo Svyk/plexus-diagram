@@ -192,6 +192,7 @@ test("move: no commit under the 4 px threshold, exactly one commitMove after a d
   h.ctl.handle(h.ev("pointerup", { x: 12, y: 12 }, { target: item }));
   assert.equal(h.named("commitMove").length, 0);
   assert.equal(h.named("previewMove").length, 0);
+  assert.deepEqual(h.named("enterEdit").at(-1)[1], "cardAAAA1", "a click on a block-look note edits");
   assert.deepEqual(h.ctl.getSelection().items, ["cardAAAA1"]);
 
   h.ctl.handle(h.ev("pointerdown", { x: 10, y: 10 }, { target: item }));
@@ -203,9 +204,22 @@ test("move: no commit under the 4 px threshold, exactly one commitMove after a d
   assert.deepEqual(commits[0][1], ["cardAAAA1"]);
   assert.equal(commits[0][2], 100);
   assert.equal(commits[0][3], 40);
+  assert.equal(h.named("enterEdit").length, 1, "a drag does not edit again");
   assert.ok(h.named("previewMove").length >= 2);
   const guides = h.named("showGuides");
   assert.ok(guides.some((c) => c[1].length > 0), "alignment guides appear when top edges align (y=0 vs y=40? snapped to Beta top)");
+});
+
+test("a page card click does not edit; look card keeps double-click edit", () => {
+  const h = harness();
+  const page = { kind: "item", uid: "cardBBBB2", part: "body" };
+  h.ctl.handle(h.ev("pointerdown", { x: 410, y: 20 }, { target: page }));
+  h.ctl.handle(h.ev("pointerup", { x: 410, y: 20 }, { target: page }));
+  assert.equal(h.named("enterEdit").length, 0);
+  h.board.items.get("cardAAAA1").look = "card";
+  h.ctl.handle(h.ev("pointerdown", { x: 10, y: 10 }, { target: CARD }));
+  h.ctl.handle(h.ev("pointerup", { x: 10, y: 10 }, { target: CARD }));
+  assert.equal(h.named("enterEdit").length, 0);
 });
 
 test("move snaps to a neighbour edge within 6 screen px", () => {

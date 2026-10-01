@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { buildBoard, worldRects } from "../src/model/board.js";
-import { mountBoardView } from "../src/view/board-view.js";
+import { freshCardIsBlank, mountBoardView } from "../src/view/board-view.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
 
 const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
@@ -159,6 +159,14 @@ function mountFixture({ vp = { x: 0, y: 0, zoom: 1 }, settings = {}, extraChildr
   return { stub, restore, board, session, host, mountEl, view, flush };
 }
 
+test("fresh card stays when the editor has text Roam has not saved yet", () => {
+  assert.equal(freshCardIsBlank({ blockString: "", itemString: "", editorText: "alpha" }), false);
+  assert.equal(freshCardIsBlank({ blockString: null, itemString: "", contentCount: 1 }), false);
+  assert.equal(freshCardIsBlank({ blockString: "alpha" }), false);
+  assert.equal(freshCardIsBlank({ blockString: "", itemString: "", editorText: "  " }), true);
+  assert.equal(freshCardIsBlank({}), true);
+});
+
 test("mount builds the documented DOM and a shell for every item", async () => {
   const f = mountFixture();
   try {
@@ -285,13 +293,19 @@ test("selection shows a context bar above the selection and never over it", asyn
     await f.flush();
     const root = f.view.root;
     const alpha = root.querySelector("[data-uid=cardAAAA1]");
-    // pointerdown/up on the item = select
+    // A click on a block-look note selects and edits, so the context bar stays hidden until Esc.
     f.stub.dispatch(alpha, "pointerdown", { button: 0, clientX: 50, clientY: 50, pointerId: 1 });
     f.stub.dispatch(f.stub.document, "pointerup", { clientX: 50, clientY: 50, pointerId: 1 });
-    await tick(140);
+    await tick(300);
     f.stub.flushFrames();
     assert.ok(alpha.classList.contains("pxd-item--selected"));
+    assert.ok(alpha.classList.contains("pxd-item--editing"));
     const ctx = root.querySelector(".pxd-ctx");
+    assert.equal(ctx.style.display, "none");
+    f.stub.dispatch(f.stub.window, "keydown", { key: "Escape" });
+    await tick();
+    f.stub.flushFrames();
+    assert.equal(alpha.classList.contains("pxd-item--editing"), false);
     assert.equal(ctx.style.display, "");
     assert.equal(ctx.dataset.kind, "card");
     assert.equal(ctx.querySelectorAll(".pxd-swatch").length, 11);
@@ -322,9 +336,7 @@ test("keyboard shortcuts are ignored while a Roam editor / input has focus", asy
   try {
     await f.flush();
     const root = f.view.root;
-    const alpha = root.querySelector("[data-uid=cardAAAA1]");
-    f.stub.dispatch(alpha, "pointerdown", { button: 0, clientX: 50, clientY: 50, pointerId: 1 });
-    f.stub.dispatch(f.stub.document, "pointerup", { clientX: 50, clientY: 50, pointerId: 1 });
+    f.view.controller.select(["cardAAAA1"]);
     const textarea = f.stub.document.createElement("textarea");
     textarea.className = "rm-block__input";
     f.stub.document.body.append(textarea);
@@ -583,6 +595,8 @@ test("R1: note and block cards render the whole string in the body; header stays
     assert.match(root.querySelector("[data-uid=refEMPTY1] .pxd-item__placeholder").textContent, /Empty card/);
     const page = root.querySelector("[data-uid=cardBBBB2]");
     assert.ok(page, "page card still present");
+    assert.ok(alpha.classList.contains("pxd-card--block"), "a note with no stored look is a plain block");
+    assert.equal(page.classList.contains("pxd-card--block"), false, "a page card keeps the card look");
     const before = f.host.calls.renderString;
     f.session.emit("change", { dirty: new Set(["cardAAAA1"]), structural: false });
     await f.flush();
@@ -773,6 +787,14 @@ test("R3: editing card keeps min-height and a frozen header; both restore on exi
     f.view.dispose();
     f.restore();
   }
+});
+
+test("CSS contract: block-look cards hide the root bullet and use 14px text", async () => {
+  const { readFileSync } = await import("node:fs");
+  const css = readFileSync(new URL("../src/css/block-card.css", import.meta.url), "utf8");
+  assert.match(css, /\.pxd-root \.pxd-card--block > \.pxd-item__body > \.pxd-item__editor > \.rm-api-render--block > \.rm-block > \.rm-block-main > \.controls \{\s*display: none/);
+  assert.match(css, /\.pxd-root \.pxd-card--block > \.pxd-item__body \{\s*font-size: 14px/);
+  assert.match(css, /\.pxd-root:not\(\.pxd-lod-map\) \.pxd-item\.pxd-card--block:not\(\.pxd-item--collapsed\):not\(\.pxd-item--bare\) > \.pxd-item__header \{\s*display: none/);
 });
 
 test("CSS contract: card header rules, LOD, editing strip and text font variable", async () => {

@@ -1770,6 +1770,37 @@ test("R2 guard: a key pressed while editing with focus on <body> recovers focus 
   }
 });
 
+test("ED-3: a taller edit previews the section and Esc writes the card height once", async () => {
+  const f = mountFixture();
+  try {
+    await f.flush();
+    const card = await startEdit(f, "cardDDDD4");
+    const section = f.view.root.querySelector("[data-uid=sectCCCC3]");
+    const sectionH = () => parseFloat(section.style.height);
+    const beforeH = sectionH();
+    assert.equal(f.session.mutations.filter((m) => m[0] === "growToFit").length, 0);
+    card._rect = { x: 20, y: 360, width: 200, height: 280, left: 20, top: 360, right: 220, bottom: 640 };
+    for (const obs of f.stub.observers) if (obs.active) obs.cb();
+    f.stub.flushFrames();
+    assert.ok(sectionH() > beforeH, `section grew while editing (${beforeH} -> ${sectionH()})`);
+    assert.equal(f.session.mutations.filter((m) => m[0] === "growToFit").length, 0, "typing writes no height");
+    const editor = card.querySelector(".pxd-item__editor");
+    editor.scrollHeight = 260;
+    const input = editor.querySelector("textarea");
+    input.focus();
+    f.stub.dispatch(input, "keydown", { key: "Escape" });
+    await tick(30);
+    f.stub.flushFrames();
+    const grows = f.session.mutations.filter((m) => m[0] === "growToFit");
+    assert.equal(grows.length, 1, `one height write (${JSON.stringify(grows)})`);
+    assert.equal(grows[0][1], "cardDDDD4");
+    assert.ok(grows[0][2] > 100, `new height ${grows[0][2]}`);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
 test("ED-2: 100 pull-watch echoes while editing leave every item render count unchanged", async () => {
   const f = mountReal();
   try {

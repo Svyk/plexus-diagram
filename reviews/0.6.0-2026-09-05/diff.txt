@@ -1,0 +1,2602 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 596a5db..477a922 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -1,5 +1,13 @@
+ # Changelog
+ 
++## 0.6.0 — 2026-09-05
++
++- **Visible arrows** — connector stroke and marker fill are resolved colors, not `var()` in SVG attributes. Marker ids are unique per canvas. Heads scale with zoom (`clamp(10 / zoom, 6, 24)`).
++- **Ports** — drag from a card handle stores `from::` / `to::` (`auto|top|right|bottom|left`). Click-click and connect-to-empty still work.
++- **Per-edge direction** — `direction::` `oneWay|twoWay|none` on `edge A->B`. Global Arrowheads is the default for new edges only.
++- **Inspector** — click a line for a floating cluster: direction, Flip (disabled if the reverse exists), Route, Label, color, Delete. Mutations `await flushLayout()`.
++- **Schema** — optional `from::` `to::` `direction::` `color::` children under the existing edge row. `[[plexus-diagram/metadata]]` only. No `:diagram/*` / `:harc/*`.
++
+ ## 0.5.0 — 2026-08-29
+ 
+ - **Connect two-click + temp wire** — Connect stays on after an edge. Click-click or drag; the rubber-band lives on `.pxd-edges-temp` above the cards and follows the cursor immediately. Handles are a 12px disc with a larger hit target.
+diff --git a/README.md b/README.md
+index 576384f..063d2a4 100644
+--- a/README.md
++++ b/README.md
+@@ -17,7 +17,7 @@ Native-first Heptabase-like overlay for Roam `{{[[diagram]]}}` blocks. Roam's di
+ - **Add a card:** double-click empty space, pick the `Card` tool and click, or drop a page/block from the left sidebar onto the board (`[[Title]]` or a Roam uid).
+ - **Edit a card:** double-click it. Roam's native block editor mounts in place; click away or press Esc to commit. Cards show `renderString` output otherwise.
+ - **Move / resize:** drag a card; drag the bottom-right corner to resize (min 240×140). Shift-click to multi-select and drag together.
+-- **Connect:** click-click or drag from a card's edge dot (or from anywhere with the Connect tool) onto another card, or onto empty board to pull out a new card and link it. The wire follows the cursor; the Connect tool stays on after an edge. Double-click a connector (or click its midpoint pill) to add a note on the line — that does not create a card.
++- **Connect:** drag from a card handle (or click-click / Connect tool) onto another card, or onto empty board to pull out a new card and link it. The wire shows a head while dragging. Click a connector for the inspector (direction, flip, route, color, delete). Double-click the line or the midpoint pill to add a note (`label::` on the edge, not a new card). Settings → Arrowheads is the default for new edges only.
+ - **Sections:** frames are visible (solid border, light fill). Drag to move, resize the corner, click the title to rename. Color swatches in the toolbar apply to the selected card or section.
+ - **Nested diagrams:** double-click a nested card body to open it in place (hash stays on the parent page; fullscreen and crumbs stay). The toolbar shows Heptabase-style crumbs (`Parent › Current`); click a parent crumb or press Esc to pop one level. Nested cards show the parsed board name, or an inline "Name this board…" field when the block is only `{{[[diagram]]}}`.
+ - **Library:** the searchable drawer portals onto `document.body` (not the scaled world) so type stays readable.
+diff --git a/docs/plan-heptabase-arrows.md b/docs/plan-heptabase-arrows.md
+new file mode 100644
+index 0000000..f0cfd81
+--- /dev/null
++++ b/docs/plan-heptabase-arrows.md
+@@ -0,0 +1,156 @@
++# Plan — Heptabase-style arrows for Plexus Diagram 0.6.0
++
++Target: `docs/plan-heptabase-arrows.md`. Bump `package.json` 0.5.0 → 0.6.0. Repo at `bf60226`. Do not expand after approve.
++
++## Context
++
++User 2026-09-05: arrows still do not work after the 0.5.0 connect pass. The 2026-08-29 learning closed only the temp wire. Cards stay diagram children. Layout lives on `[[plexus-diagram/metadata]]`. Zero runtime deps. Not a Heptabase clone.
++
++Verified at `bf60226`:
++
++1. `renderEdges` (`src/canvas.js:1060`) sets `stroke="var(--pxd-edge)"`. `.pxd-edge` CSS is pointer-events only (`src/extension.css:138-141`). `.pxd-edge--temp` has a CSS stroke (`199-206`) and that wire paints. Leading hypothesis: Chromium does not resolve `var()` in SVG presentation attributes. Not measured in-repo; the fix does not depend on which cause is true.
++2. `ensureDefs` (`934-945`) injects markers via `innerHTML` with `fill="var(--pxd-edge)"`.
++3. Marker ids are global `pxd-arrow-end` / `pxd-arrow-start`. `arrowheadMarkerId` (`src/edges.js:65`) exists and is unused.
++4. `markerUnits="userSpaceOnUse"`, 8×8, inside CSS-scaled `.pxd-world`. Native fit-views hover around zoom 0.4 (`src/model.js:112-113`).
++5. `addEdge` stores `{source, target, kind, label}` only. Four handles set `dataset.side`; `onPointerDown` (`1657-1665`) never reads it. Clicking a line returns early.
++
++Outcome: drag from a port, see a directional head at any zoom, click the line, restyle from a floating inspector. New fields persist as optional `from::` `to::` `direction::` `color::` children of `edge A->B`. No `:diagram/*` or `:harc/*`.
++
++## Approach
++
++Paint first, then schema, then ports, then inspector. Each unit is one spawn. `npm run check` stays green.
++
++- **Paint (U2).** No `var()` in SVG attributes. Scoped CSS `.pxd-root .pxd-edge { stroke: var(--pxd-edge) }` plus inline resolved literals from `resolveEdgeColor`. Markers via `createElementNS`. Unique ids `arrowheadMarkerId(kind, canvasId, colorId)`. Heads `arrowheadSize(zoom) = clamp(10 / zoom, 6, 24)`. `applyTransform` calls `syncMarkerScale` when `shouldRescaleMarkers` (5 percent). Temp-wire marker lives in `tempSvg` defs; `clearTempEdge` wipes children so `setTempEdge` re-ensures defs. `window.getComputedStyle(root)` for `--pxd-edge`; `isDarkHost` matches all four dark selectors (`src/extension.css:827-830`).
++- **Schema (U3).** Edge `{source, target, kind, label, from, to, direction, color}`. `from`/`to` ∈ `auto|top|right|bottom|left`. `direction` ∈ `oneWay|twoWay|none`; absent falls back to global `arrowheads` (`end→oneWay`, `both→twoWay`, `none→none`). Serialize only non-default. `addEdge(..., extra = {})` so 3-arg call sites stay valid (`src/session.js:125`, `src/view.js:69-73`, `src/canvas.js:1801`). `applyPull` incoming-new copies the four fields; live views keep in-memory values like `kind` today. `METADATA_SCHEMA_VERSION` stays 1.
++- **Ports (U4).** Pointerdown reads `dataset.side` into `fromSide`. Pointerup computes `toSide` from the handle under the point. `armConnect(uid, side)` second arg optional (existing `armConnect("card-a")` stays). `edgeEndpoints(src, tgt, from, to)` uses `sidePoint`. Temp wire starts at the armed handle.
++- **Inspector (U5a then U5b).** Click the line → `selectEdge(key)` on the canvas instance (same shape as `completeConnect`). Floating `.pxd-edge-inspector` on `root`, screen-space midpoint, skip `.pxd-toolbar` / `.pxd-edge-inspector`. Buttons: direction cycle, Flip (disabled if reverse key exists), Route, Label (reuse `openEdgeLabelEditor`), color dots, Delete. Mutations: mutate → `markLayoutDirty()` → **`await flushLayout()`** (not `void`) → `renderEdges()`. Dismiss: Esc when overlay owns pointer (toggle via existing `pointerenter`/`pointerleave` at `2036-2037`); pan-click; select; `attachSession`; `dispose`.
++
++## Files
++
++| File | Change |
++|---|---|
++| `src/edges.js` | `sidePoint`, port-aware `edgeEndpoints`, `bezierPath` exit dirs, `arrowheadMarkerId(kind, canvasId, colorId)`, `arrowheadSize`, `shouldRescaleMarkers`, `effectiveDirection`, `directionToPoints` |
++| `src/canvas.js` | `canvasId`, `resolveEdgeColor`, `isDarkHost`, `ensureDefs(svg, …)` via `createElementNS`, `syncMarkerScale`, port gesture, inspector, exported instance methods `selectEdge` / `clearEdgeSelection` / `getSelectedEdgeKey` |
++| `src/model.js` | `addEdge(..., extra = {})`; `applyPull` incoming-new |
++| `src/metadata.js` | parse/serialize/patch four props via `syncPropChild`; tests go through `MetadataStore.set` (359), never unexported `patchDiagramBlock` (246) |
++| `src/view.js` | forward `from` on connect-to-empty |
++| `src/session.js` | untouched |
++| `src/extension.css` | stroke/fill rules, selected edge, inspector; dark = borders only |
++| `src/settings.js` | Arrowheads copy: default for new connections |
++| `src/feature.js` | `version: "0.6.0"` (37) and fallback (536) |
++| `test/edges.test.js`, `test/canvas.test.js`, `test/metadata.test.js`, `test/model.test.js`, `test/sync-silence.test.js`, `test/build.test.js` | see Tests |
++| `package.json`, `CHANGELOG.md`, `README.md` (Connect bullet), `docs/spec-plexus-0.6.md`, this file | 0.6.0 |
++| `extension.js`, `extension.css`, `deploy/*` | `npm run build` |
++
++`docs/spec-plexus-0.4.md` stays as history. `docs/spec-plexus-0.6.md` supersedes the connection section of 0.4 only.
++
++Not in 0.6.0: nest stack / `nestedOpenUid`, lasso, section endpoints, ghost nodes, scratch ownership.
++
++## Reuse
++
++- `arrowheadPoints` / `arrowheadMarkerId` (`src/edges.js:65-73`)
++- `COLOR_SWATCHES` / `colorHex` (`src/canvas.js:346-361`); palette loop (`736-750`)
++- `openEdgeLabelEditor` (`965-1025`); `positionEdgeChrome` (`946`); `edgeKeyFromTarget` (`1099`)
++- `overlayOwnsPointer` (`1934`); `isTextEntryTarget` (`332-338`)
++- `markLayoutDirty` / `flushLayout`; `completeConnect` persist-then-rollback (`1798-1828`)
++- `syncPropChild` (`src/metadata.js:219`); `MetadataStore.set` (`359`)
++- `createDomStub` (`test/canvas.test.js:11`); `cardSession` (`285`); `findByClass` (`276`); `installMutableMetadataRoamMock` (`test/sync-silence.test.js:468-535`)
++- roam-plugin-dev rules 5, 10–11, 19; `dispose` (`2066`) removes inspector and document listeners
++
++## Tests
++
++`npm run check` is the gate.
++
++**U2 stub first** (`createDomStub`): attribute map; `querySelectorAll` walker; `innerHTML` setter that clears `children`; listener registry on elements, `document`, and `window` plus `dispatch`; `window.getComputedStyle(el)` (also assign `globalThis.getComputedStyle` if production uses the free global); settable `document.elementsFromPoint`; `replaceChildren`. Existing tests stay green.
++
++`test/edges.test.js`
++
++- [ ] `edgeEndpoints(src, tgt, "right", "left")` hits those midpoints; `("top", "auto")` starts at source top-center
++- [ ] `bezierPath` from `top` has first control above start
++- [ ] `arrowheadMarkerId("end", "pxdA", "teal")` is `pxd-arrow-end-pxdA-teal`; canvasIds never collide
++- [ ] `arrowheadSize(0.4)` = 24; `(1)` = 10; `(3)` = 6
++- [ ] `shouldRescaleMarkers(1, 1.03)` false; `(1, 1.06)` true
++- [ ] `effectiveDirection({}, "end")` is `oneWay`; explicit `none` wins
++
++`test/canvas.test.js`
++
++- [ ] CSS tripwire: `.pxd-root .pxd-edge` sets `stroke: var(--pxd-edge)` (pattern `108-114`)
++- [ ] After render, marker path `style.fill` is `/^#[0-9a-f]{6}$/`; no attribute contains `var(`
++- [ ] Theme `--pxd-edge: #a7b6c2` → fill `#a7b6c2`; `body.bt-theme-dark` fallback `#a7b6c2`; light `#738694`
++- [ ] Default `marker-end` unique per canvas; `twoWay` both heads; `none` neither
++- [ ] Two roots → disjoint marker ids
++- [ ] Temp path `marker-end` points inside `tempSvg`
++- [ ] Zoom 1 → 0.4 rewrites `markerWidth` to 24; 1 → 1.03 leaves it
++- [ ] **Port capture:** `pointerdown` on `.pxd-handle` `dataset.side="right"` of card-a, `event.button === 0`, then `pointerup` on document (`beginGesture` at **1563**); `getConnectArm()` equals `{ uid: "card-a", side: "right" }`
++- [ ] `completeConnect({ fromSide: "right", toSide: "left" })` stores those sides
++- [ ] Existing connect tests `672`, `740`, `771` still pass (`armConnect` 1-arg still works)
++- [ ] `selectEdge("card-a->card-b")` → selected class + inspector in `root.children`; `clearEdgeSelection` removes both
++- [ ] `pointerenter` then Esc dismisses; `pointerleave` + focus outside + Esc keeps selection
++- [ ] `attachSession` and `dispose` clear inspector
++- [ ] U5b: each mutation `await flushLayout`; persist-once; Flip disabled when reverse exists
++- [ ] `enterEdit` scratch test (`365`) unchanged
++- [ ] Six `version: "0.5.0"` literals (`724, 749, 780, 819, 848, 878`) left alone
++
++`test/metadata.test.js`
++
++- [ ] Round-trip `from::` `to::` `direction::` `color::`; defaults omitted
++
++`test/sync-silence.test.js`
++
++- [ ] `MetadataStore.set` direction-only change: one create, zero unrelated deletes; revert to default: one delete
++
++`test/model.test.js`
++
++- [ ] `addEdge` extra stores fields; duplicate key returns null; `applyPull` adopts new, leaves live in-memory
++
++`test/build.test.js`
++
++- [ ] Banner `v0.6.0`
++
++Manual (not CI): Roam Desktop CDP `:9223`, Svy `1IIx5sG4L`. Probe computed stroke/fill; draw port-to-port; reload; inspector flip; badge `v0.6.0` after remove-and-re-add `https://svyk.github.io/plexus-diagram`. Record which paint hypothesis the probe confirms.
++
++## Units
++
++Each unit: one `/tmp/wo/` work order, author `Svyatoslav Kleshchev <svyk@icloud.com>` via `git -c`, verify `git log -1 --format="%an <%ae>"`, `npm run check` green.
++
++| # | Unit | Lane | Done |
++|---|---|---|---|
++| U1 | Edge geometry and marker helpers (`src/edges.js` + `test/edges.test.js`). Pure functions. | mechanical | [x] |
++| U2 | Stub upgrade, then visible unique zoom-stable arrows (`src/canvas.js`, `src/extension.css`, `test/canvas.test.js`). Depends on U1. | tough | [x] |
++| U3 | Per-edge schema (`src/model.js`, `src/metadata.js`, model/metadata/sync-silence tests). Parallel with U1. | mechanical | [x] |
++| U4 | Port capture end to end (gesture + `view.js` + pointer-registry test). Depends on U1, U2, U3. | mechanical | [x] |
++| U5a | Edge selection and inspector chrome. Exported instance methods. Depends on U2–U4 merged. | tough | [x] |
++| U5b | Inspector mutations + `await flushLayout` persist-once. Depends on U5a. | mechanical | [x] |
++| U6 | Version, changelog, spec addendum, README, `src/feature.js` 37/536, `test/build.test.js:42`, `npm run build`. Depends on U5b. Then `/prose-clean`. | writing | [x] |
++
++Order: U1 ∥ U3 → U2 → U4 → U5a → U5b → U6. CDP gate after U6.
++
++U5a/U5b do not start until U2–U4 are merged. U6 does not `npm run build` until U5b is merged.
++
++Deferred 0.6.1: per-mount nest stack + `nestedOpenUid`; Shift+drag lasso; sections as endpoints; ghost nodes; scratch ownership.
++
++## Assumptions
++
++- Literal fill + scoped CSS covers both `var()`-in-attribute and marker-inheritance hypotheses.
++- Missing `direction::` falls back to global `arrowheads`; no metadata migration.
++- Inspector is unscaled on `root`.
++- Flip A→B to B→A is one delete + one create; disabled when B→A exists (`addEdge` null is never reached from Flip).
++- Theme switch repaints on next `renderEdges`.
++- `.pxd-world` CSS transform stays.
++- No live Roam in CI.
++
++## Open questions
++
++Locked 2026-09-05 ("Approved do recommended"):
++
++1. Per-edge `direction`; global Arrowheads = default for new edges.
++2. Floating inspector at the midpoint, skip `.pxd-toolbar`.
++3. 0.6.0 is arrows only; U7/U8/U9 to 0.6.1.
++4. U1 mechanical; U2 tough.
++
++## Sign-off
++
++- Claude Max Fable 5.1 (`claude-run.sh --plan`): draft complete (`/tmp/orch/t3-plan-draft-plexus-heptabase.out.md`)
++- Grok-on-Cursor facts: first pass Approve=no (stub, exports, U5 size, U6 version files); after Fable amend Approve=yes (`/tmp/orch/t3-plan-grok2-plexus-heptabase.out.md`). Remaining: line nits folded above; no fact-blockers.
++- Cursor Fable (`claude-fable-5-1-thinking-medium`): Verdict amend, Sign-off yes
++- User preferences: locked
+diff --git a/docs/spec-plexus-0.6.md b/docs/spec-plexus-0.6.md
+new file mode 100644
+index 0000000..068582e
+--- /dev/null
++++ b/docs/spec-plexus-0.6.md
+@@ -0,0 +1,27 @@
++# Plexus Diagram v0.6.0 — connections addendum
++
++Supersedes the connection section of `docs/spec-plexus-0.4.md`. Everything else in 0.4 still applies. Native-first: cards stay diagram children. Layout lives on `[[plexus-diagram/metadata]]`. Do not write `:diagram/*` or `:harc/*`. Zero runtime deps.
++
++## Edge row
++
++`edge A->B` on the diagram's metadata block. Optional children, omitted when default:
++
++- `kind::` `bezier` (default) | `straight` | `elbow`
++- `label::` note on the line
++- `from::` / `to::` `auto` (default) | `top` | `right` | `bottom` | `left`
++- `direction::` `oneWay` | `twoWay` | `none` — absent falls back to the global Arrowheads setting (`end→oneWay`, `both→twoWay`, `none→none`)
++- `color::` swatch id
++
++`METADATA_SCHEMA_VERSION` stays 1.
++
++## Paint
++
++No `var()` in SVG presentation attributes. Stroke and marker fill are resolved literals plus scoped CSS `.pxd-root .pxd-edge` / `.pxd-arrow`. Marker ids are unique per canvas. Head size `clamp(10 / zoom, 6, 24)`.
++
++## Interaction
++
++Drag from a handle stores that side. Click-click and connect-to-empty unchanged. Click the line for a floating inspector (direction, Flip, Route, Label, color, Delete). Flip is disabled when `B->A` already exists. Esc dismisses only when the overlay owns the pointer.
++
++## Ship
++
++`npm run check`. Source + generated together. Author Svyatoslav Kleshchev `<svyk@icloud.com>`. After Pages, remove-and-re-add `https://svyk.github.io/plexus-diagram`. Badge `v0.6.0`. Live CDP on `:9223` against Svy `1IIx5sG4L` is the paint gate.
+diff --git a/package.json b/package.json
+index d008dd8..22eab39 100644
+--- a/package.json
++++ b/package.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "plexus-diagram",
+-  "version": "0.5.0",
++  "version": "0.6.0",
+   "private": true,
+   "description": "Native-first Heptabase-like overlay for Roam {{[[diagram]]}} blocks",
+   "type": "module",
+diff --git a/src/canvas.js b/src/canvas.js
+index 00fb6a7..735b4dc 100644
+--- a/src/canvas.js
++++ b/src/canvas.js
+@@ -1,5 +1,13 @@
+ import { diagramUidFromLocation } from "./discovery.js";
+-import { buildEdgePath, arrowheadPoints, edgeMidpoint } from "./edges.js";
++import {
++  buildEdgePath,
++  edgeMidpoint,
++  arrowheadMarkerId,
++  arrowheadSize,
++  shouldRescaleMarkers,
++  effectiveDirection,
++  directionToPoints,
++} from "./edges.js";
+ import {
+   acquireScratch,
+   blankScratch,
+@@ -360,8 +368,72 @@ function colorHex(id) {
+   return row?.[2] || "";
+ }
+ 
++let canvasCounter = 0;
++const DARK_EDGE = "#a7b6c2";
++const LIGHT_EDGE = "#738694";
++const DARK_ACTIVE = "#48aff0";
++const LIGHT_ACTIVE = "#2d72d2";
++
++const hasClass = (el, name) => Boolean(el?.classList?.contains?.(name));
++
++/** Mirrors the dark selectors in extension.css (.bp3-dark, body.bt-theme-dark, body.roam-body.dark, .rm-dark-theme). */
++export function isDarkHost(root) {
++  let node = root;
++  while (node) {
++    if (hasClass(node, "bp3-dark") || hasClass(node, "rm-dark-theme") || hasClass(node, "bt-theme-dark")) return true;
++    if (hasClass(node, "roam-body") && hasClass(node, "dark")) return true;
++    node = node.parentElement;
++  }
++  const body = globalThis.document?.body;
++  if (hasClass(body, "bt-theme-dark") || hasClass(body, "bp3-dark") || hasClass(body, "rm-dark-theme")) return true;
++  if (hasClass(body, "roam-body") && hasClass(body, "dark")) return true;
++  return false;
++}
++
++function computedVar(root, name) {
++  const gcs = globalThis.window?.getComputedStyle || globalThis.getComputedStyle;
++  if (typeof gcs !== "function") return "";
++  try {
++    const value = String(gcs(root)?.getPropertyValue?.(name) || "").trim();
++    return value.includes("var(") ? "" : value;
++  } catch {
++    return "";
++  }
++}
++
++/** Literal color for SVG presentation: swatch hex, else the host's --pxd-edge, else a theme fallback. */
++export function resolveEdgeColor(root, colorId) {
++  const swatch = colorHex(colorId);
++  if (swatch) return swatch;
++  return computedVar(root, "--pxd-edge") || (isDarkHost(root) ? DARK_EDGE : LIGHT_EDGE);
++}
++
++function resolveActiveColor(root) {
++  return computedVar(root, "--pxd-active") || (isDarkHost(root) ? DARK_ACTIVE : LIGHT_ACTIVE);
++}
++
++function markerGeometry(kind, zoom) {
++  const size = Number(arrowheadSize(zoom || 1).toFixed(2));
++  const half = Number((size / 2).toFixed(2));
++  const tip = Number((size - 1).toFixed(2));
++  if (kind === "start") {
++    return { size, refX: 1, refY: half, d: `M${size},0 L0,${half} L${size},${size} Z` };
++  }
++  return { size, refX: tip, refY: half, d: `M0,0 L${size},${half} L0,${size} Z` };
++}
++
++function applyMarkerGeometry(marker, geometry) {
++  marker.setAttribute("markerWidth", String(geometry.size));
++  marker.setAttribute("markerHeight", String(geometry.size));
++  marker.setAttribute("refX", String(geometry.refX));
++  marker.setAttribute("refY", String(geometry.refY));
++  const path = marker.querySelector?.("path") || marker.children?.[0];
++  path?.setAttribute?.("d", geometry.d);
++}
++
+ export function createCanvasRoot({ session, settings, version, onPersist, nestStack: nestStackOption }) {
+   let currentSession = session;
++  const canvasId = `pxd${canvasCounter += 1}`;
+   const crumbs = nestStackOption !== undefined ? nestStackOption : nestStack;
+   const root = document.createElement("div");
+   root.className = "pxd-root";
+@@ -419,6 +491,16 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
+     const wy = (clientY - rect.top - y) / (zoom || 1);
+     return snapped ? { x: snap(wx), y: snap(wy) } : { x: wx, y: wy };
+   };
++  const worldToScreen = (wx, wy) => {
++    const rect = rootRect();
++    const { x, y, zoom } = model().viewport;
++    const z = zoom || 1;
++    return {
++      clientX: rect.left + x + wx * z,
++      clientY: rect.top + y + wy * z,
++    };
++  };
++  let positionEdgeInspector = () => {};
+   const mountEl = () => root.closest?.(".pxd-mount") || null;
+   const isFullscreen = () => Boolean(mountEl()?.classList?.contains?.("pxd-mount--fullscreen"));
+ 
+@@ -530,14 +612,26 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
+     });
+   };
+ 
++  let markerZoom = 1;
++  const syncMarkerScale = (zoom) => {
++    markerZoom = zoom || 1;
++    for (const svg of [edgesSvg, tempSvg]) {
++      for (const marker of svg.querySelectorAll?.("marker") || []) {
++        applyMarkerGeometry(marker, markerGeometry(marker.dataset?.pxdKind || "end", markerZoom));
++      }
++    }
++  };
++
+   const applyTransform = () => {
+     const { x, y, zoom } = model().viewport;
+     world.style.transform = `translate(${x}px, ${y}px) scale(${zoom})`;
++    if (shouldRescaleMarkers(markerZoom, zoom || 1)) syncMarkerScale(zoom || 1);
+     const gridPx = getGridSize() * (zoom || 1);
+     grid.style.setProperty("--pxd-grid-size", `${gridPx}px`);
+     grid.style.backgroundPosition = `${x}px ${y}px`;
+     zoomLabel.textContent = `${Math.round((zoom || 1) * 100)}%`;
+     scheduleMinimap();
++    positionEdgeInspector();
+   };
+ 
+   const clampZoom = (zoom) => {
+@@ -924,6 +1018,86 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
+   let tempEdge = null;
+   let editingEdgeKey = null;
+   let edgeEditorEl = null;
++  let selectedEdgeKey = null;
++  let edgeInspectorEl = null;
++  let edgeInspectorControls = null;
++  const ROUTE_KINDS = ["straight", "bezier", "elbow"];
++  const nextDirection = (edge) => {
++    const current = effectiveDirection(edge, settings.get("arrowheads") || "end");
++    if (current === "none") return "oneWay";
++    if (current === "oneWay") return "twoWay";
++    return "none";
++  };
++  const nextRouteKind = (kind) => {
++    const idx = ROUTE_KINDS.indexOf(kind || "bezier");
++    return ROUTE_KINDS[(idx + 1) % ROUTE_KINDS.length];
++  };
++  const syncEdgeInspector = () => {
++    if (!edgeInspectorControls || !selectedEdgeKey) return;
++    const edge = findEdgeByKey(selectedEdgeKey);
++    if (!edge) return;
++    const reverseExists = Boolean(findEdgeByKey(`${edge.target}->${edge.source}`));
++    edgeInspectorControls.flip.disabled = reverseExists;
++    edgeInspectorControls.flip.title = reverseExists ? "Reverse connection already exists" : "Flip";
++  };
++  const persistEdgeMutation = async (mutator) => {
++    if (!selectedEdgeKey) return;
++    const edge = findEdgeByKey(selectedEdgeKey);
++    if (!edge) return;
++    mutator(edge);
++    markLayoutDirty();
++    await flushLayout();
++    renderEdges();
++    syncEdgeInspector();
++  };
++  const flipSelectedEdge = async () => {
++    if (!selectedEdgeKey || edgeInspectorControls?.flip?.disabled) return;
++    const edge = findEdgeByKey(selectedEdgeKey);
++    if (!edge) return;
++    const reverseKey = `${edge.target}->${edge.source}`;
++    if (findEdgeByKey(reverseKey)) return;
++    const snapshot = {
++      source: edge.source,
++      target: edge.target,
++      kind: edge.kind,
++      label: edge.label,
++      from: edge.from,
++      to: edge.to,
++      direction: edge.direction,
++      color: edge.color,
++    };
++    model().removeEdge(snapshot.source, snapshot.target);
++    const added = model().addEdge(snapshot.target, snapshot.source, snapshot.kind, snapshot.label, {
++      from: snapshot.to || "auto",
++      to: snapshot.from || "auto",
++      direction: snapshot.direction || "",
++      color: snapshot.color || "",
++    });
++    if (!added) {
++      model().addEdge(snapshot.source, snapshot.target, snapshot.kind, snapshot.label, {
++        from: snapshot.from || "auto",
++        to: snapshot.to || "auto",
++        direction: snapshot.direction || "",
++        color: snapshot.color || "",
++      });
++      return;
++    }
++    selectedEdgeKey = reverseKey;
++    markLayoutDirty();
++    await flushLayout();
++    renderEdges();
++    syncEdgeInspector();
++  };
++  const deleteSelectedEdge = async () => {
++    if (!selectedEdgeKey) return;
++    const edge = findEdgeByKey(selectedEdgeKey);
++    if (!edge) return;
++    model().removeEdge(edge.source, edge.target);
++    clearEdgeSelection();
++    markLayoutDirty();
++    await flushLayout();
++    renderEdges();
++  };
+   const cardRect = (contentUid) => {
+     const node = model().nodes.get(contentUid);
+     if (!node) return null;
+@@ -931,18 +1105,42 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
+   };
+   const edgeKey = (edge) => `${edge.source}->${edge.target}`;
+   const findEdgeByKey = (key) => model().edges.find((edge) => edgeKey(edge) === key) || null;
+-  const ensureDefs = () => {
+-    if (edgesSvg.querySelector?.("defs")) return;
+-    const defs = document.createElementNS(SVG_NS, "defs");
+-    defs.innerHTML = `
+-        <marker id="pxd-arrow-end" markerWidth="8" markerHeight="8" refX="7" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+-          <path d="M0,0 L8,4 L0,8 Z" fill="var(--pxd-edge)" />
+-        </marker>
+-        <marker id="pxd-arrow-start" markerWidth="8" markerHeight="8" refX="1" refY="4" orient="auto" markerUnits="userSpaceOnUse">
+-          <path d="M8,0 L0,4 L8,8 Z" fill="var(--pxd-edge)" />
+-        </marker>`;
+-    edgesSvg.prepend(defs);
+-  };
++  /**
++   * Markers carry literal fills: Chromium does not resolve var() inside SVG presentation
++   * attributes, so every color is resolved to a hex/rgb string before it hits the DOM.
++   * One helper serves edgesSvg and tempSvg; ids are unique per canvas via canvasId.
++   */
++  const ensureDefs = (svg, entries) => {
++    let defs = svg.querySelector?.("defs");
++    if (!defs) {
++      defs = document.createElementNS(SVG_NS, "defs");
++      svg.prepend(defs);
++    }
++    const zoom = model().viewport.zoom || 1;
++    for (const entry of entries) {
++      if (defs.querySelector?.(`#${entry.id}`)) continue;
++      const marker = document.createElementNS(SVG_NS, "marker");
++      marker.setAttribute("id", entry.id);
++      marker.setAttribute("orient", "auto");
++      marker.setAttribute("markerUnits", "userSpaceOnUse");
++      marker.dataset.pxdKind = entry.kind;
++      const head = document.createElementNS(SVG_NS, "path");
++      head.classList.add("pxd-arrow");
++      head.style.fill = entry.fill;
++      head.style.stroke = "none";
++      marker.append(head);
++      applyMarkerGeometry(marker, markerGeometry(entry.kind, zoom));
++      defs.append(marker);
++    }
++    markerZoom = zoom;
++  };
++  const edgeColorId = (edge) => (colorHex(edge?.color) ? edge.color : "default");
++  const edgeMarkerId = (kind, colorId) => {
++    const id = arrowheadMarkerId(kind, canvasId, colorId);
++    ensureDefs(edgesSvg, [{ id, kind, fill: resolveEdgeColor(root, colorId === "default" ? "" : colorId) }]);
++    return id;
++  };
++  const tempMarkerId = () => `pxd-arrow-temp-${canvasId}`;
+   const positionEdgeChrome = (edge, path, pill) => {
+     const source = cardRect(edge.source);
+     const target = cardRect(edge.target);
+@@ -959,6 +1157,7 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
+       edgeEditorEl.style.left = `${mid.x}px`;
+       edgeEditorEl.style.top = `${mid.y}px`;
+     }
++    if (selectedEdgeKey === edgeKey(edge)) positionEdgeInspector();
+     return d;
+   };
+   const updateEdgePath = (edge, path) => positionEdgeChrome(edge, path, edgePills.get(edgeKey(edge)));
+@@ -1023,6 +1222,102 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
+     labelsLayer.append(editor);
+     editor.focus?.();
+   };
++  const paintSelectedEdge = () => {
++    for (const [key, { path }] of edgePaths) {
++      path.classList.toggle("pxd-edge--selected", key === selectedEdgeKey);
++    }
++  };
++  positionEdgeInspector = () => {
++    if (!edgeInspectorEl || !selectedEdgeKey) return;
++    const edge = findEdgeByKey(selectedEdgeKey);
++    if (!edge) return;
++    const source = cardRect(edge.source);
++    const target = cardRect(edge.target);
++    if (!source || !target) return;
++    const mid = edgeMidpoint(source, target);
++    const screen = worldToScreen(mid.x, mid.y);
++    const rect = rootRect();
++    edgeInspectorEl.style.left = `${screen.clientX - rect.left}px`;
++    edgeInspectorEl.style.top = `${screen.clientY - rect.top}px`;
++  };
++  const ensureEdgeInspector = () => {
++    if (edgeInspectorEl) return edgeInspectorEl;
++    const inspector = document.createElement("div");
++    inspector.className = "pxd-edge-inspector";
++    const makeBtn = (label, onClick) => {
++      const button = document.createElement("button");
++      button.type = "button";
++      button.className = "pxd-edge-inspector__btn";
++      button.textContent = label;
++      button.addEventListener("click", (event) => {
++        event.preventDefault();
++        event.stopPropagation();
++        void onClick?.(event);
++      });
++      return button;
++    };
++    const directionBtn = makeBtn("Direction", () => persistEdgeMutation((edge) => {
++      edge.direction = nextDirection(edge);
++    }));
++    const flipBtn = makeBtn("Flip", () => flipSelectedEdge());
++    flipBtn.title = "Flip";
++    const routeBtn = makeBtn("Route", () => persistEdgeMutation((edge) => {
++      edge.kind = nextRouteKind(edge.kind);
++    }));
++    inspector.append(
++      directionBtn,
++      flipBtn,
++      routeBtn,
++      makeBtn("Label", () => {
++        if (selectedEdgeKey) openEdgeLabelEditor(selectedEdgeKey);
++      }),
++    );
++    for (const [id, label, hex] of COLOR_SWATCHES) {
++      const swatch = document.createElement("button");
++      swatch.type = "button";
++      swatch.className = "pxd-swatch";
++      swatch.dataset.color = id;
++      swatch.title = label;
++      if (hex) swatch.style.background = hex;
++      else swatch.classList.add("pxd-swatch--default");
++      swatch.addEventListener("click", (event) => {
++        event.preventDefault();
++        event.stopPropagation();
++        void persistEdgeMutation((edge) => {
++          edge.color = id;
++        });
++      });
++      inspector.append(swatch);
++    }
++    const deleteBtn = makeBtn("Delete", () => deleteSelectedEdge());
++    inspector.append(deleteBtn);
++    edgeInspectorControls = { direction: directionBtn, flip: flipBtn, route: routeBtn, delete: deleteBtn };
++    root.append(inspector);
++    edgeInspectorEl = inspector;
++    return inspector;
++  };
++  const clearEdgeSelection = () => {
++    selectedEdgeKey = null;
++    paintSelectedEdge();
++    edgeInspectorEl?.remove?.();
++    edgeInspectorEl = null;
++    edgeInspectorControls = null;
++  };
++  const selectEdge = (key) => {
++    if (!key || !findEdgeByKey(key)) {
++      clearEdgeSelection();
++      return;
++    }
++    model().selected.clear();
++    selectedSectionId = null;
++    syncSelection();
++    selectedEdgeKey = key;
++    ensureEdgeInspector();
++    syncEdgeInspector();
++    paintSelectedEdge();
++    positionEdgeInspector();
++  };
++  const getSelectedEdgeKey = () => selectedEdgeKey;
+   const renderEdges = () => {
+     const keepEditor = editingEdgeKey && edgeEditorEl;
+     edgesSvg.innerHTML = "";
+@@ -1036,10 +1331,9 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
+       labelsLayer.querySelectorAll?.(".pxd-edge-label")?.forEach?.((node) => node.remove());
+       edgePills.clear();
+     }
+-    ensureDefs();
+     const width = num("edge-width", 2);
+     const animated = settings.get("edge-animated");
+-    const arrowheads = arrowheadPoints(settings.get("arrowheads") || "end");
++    const arrowSetting = settings.get("arrowheads") || "end";
+     const showLabels = settings.get("show-edge-labels") !== false;
+     for (const edge of model().edges) {
+       if (edge.label == null) edge.label = "";
+@@ -1057,7 +1351,8 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
+       hit.dataset.edgeKey = key;
+       path.classList.add("pxd-edge");
+       path.setAttribute("fill", "none");
+-      path.setAttribute("stroke", "var(--pxd-edge)");
++      const colorId = edgeColorId(edge);
++      path.style.stroke = resolveEdgeColor(root, colorId === "default" ? "" : colorId);
+       path.setAttribute("stroke-width", String(width));
+       path.setAttribute("stroke-linecap", "round");
+       path.setAttribute("title", edge.label || "add note");
+@@ -1066,8 +1361,9 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
+       hint.textContent = edge.label || "add note";
+       path.append(hint);
+       if (animated) path.classList.add("pxd-edge--animated");
+-      if (arrowheads.end) path.setAttribute("marker-end", "url(#pxd-arrow-end)");
+-      if (arrowheads.start) path.setAttribute("marker-start", "url(#pxd-arrow-start)");
++      const points = directionToPoints(effectiveDirection(edge, arrowSetting));
++      if (points.end) path.setAttribute("marker-end", `url(#${edgeMarkerId("end", colorId)})`);
++      if (points.start) path.setAttribute("marker-start", `url(#${edgeMarkerId("start", colorId)})`);
+       edgesSvg.append(hit, path);
+       edgePaths.set(key, { edge, path, hit });
+       if (showLabels && edge.label && !(keepEditor && key === editingEdgeKey)) {
+@@ -1087,6 +1383,12 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
+         edgePills.set(key, pill);
+       }
+     }
++    if (selectedEdgeKey && !edgePaths.has(selectedEdgeKey)) clearEdgeSelection();
++    else if (selectedEdgeKey) {
++      paintSelectedEdge();
++      syncEdgeInspector();
++      positionEdgeInspector();
++    }
+   };
+   const updateEdgesFor = (uids) => {
+     for (const { edge, path, hit } of edgePaths.values()) {
+@@ -1101,21 +1403,25 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
+     const tagged = target.closest?.(".pxd-edge, .pxd-edge-hit, .pxd-edge-label, .pxd-edge-label-editor");
+     return tagged?.dataset?.edgeKey || target.dataset?.edgeKey || null;
+   };
+-  const setTempEdge = (from, worldPoint) => {
++  const setTempEdge = (from, worldPoint, fromSide = "auto") => {
+     const source = cardRect(from);
+     if (!source) return;
+     if (!tempEdge) {
++      const active = resolveActiveColor(root);
++      ensureDefs(tempSvg, [{ id: tempMarkerId(), kind: "end", fill: active }]);
+       tempEdge = document.createElementNS(SVG_NS, "path");
+       tempEdge.classList.add("pxd-edge--temp");
+       tempEdge.setAttribute("fill", "none");
+-      tempEdge.setAttribute("stroke", "var(--pxd-active)");
++      tempEdge.style.stroke = active;
++      tempEdge.setAttribute("marker-end", `url(#${tempMarkerId()})`);
+       tempEdge.setAttribute("stroke-width", "3");
+       tempEdge.setAttribute("stroke-dasharray", "6 4");
+       tempEdge.style.pointerEvents = "none";
+       tempSvg.append(tempEdge);
+     }
+     const target = { x: worldPoint.x, y: worldPoint.y, width: 1, height: 1 };
+-    tempEdge.setAttribute("d", buildEdgePath(settings.get("connector-style") || "bezier", source, target));
++    const style = settings.get("connector-style") || "bezier";
++    tempEdge.setAttribute("d", buildEdgePath(style, source, target, fromSide || "auto", "auto"));
+   };
+   const clearTempEdge = () => {
+     tempEdge?.remove?.();
+@@ -1128,11 +1434,11 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
+   let connectArm = null;
+   const onConnectArmMove = (event) => {
+     if (!connectArm) return;
+-    setTempEdge(connectArm.uid, screenToWorld(event.clientX, event.clientY, false));
++    setTempEdge(connectArm.uid, screenToWorld(event.clientX, event.clientY, false), connectArm.side);
+   };
+-  const armConnect = (uid) => {
++  const armConnect = (uid, side) => {
+     if (!uid) return;
+-    connectArm = { uid };
++    connectArm = { uid, side };
+     document.addEventListener("pointermove", onConnectArmMove, true);
+   };
+   const clearConnectArm = () => {
+@@ -1519,6 +1825,7 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
+     if (!nextSession || nextSession === currentSession) return;
+     void exitEdit(false);
+     if (editingEdgeKey) closeEdgeEditor(false);
++    clearEdgeSelection();
+     endGesture();
+     clearConnectArm();
+     clearMountedCards();
+@@ -1573,18 +1880,29 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
+     if (!connectArm) clearTempEdge();
+   };
+ 
+-  const cardFromPoint = (clientX, clientY) => {
+-    let stack = [];
++  const hitStackFromPoint = (clientX, clientY) => {
+     if (typeof document.elementsFromPoint === "function") {
+-      stack = document.elementsFromPoint(clientX, clientY) || [];
+-    } else {
+-      const el = document.elementFromPoint?.(clientX, clientY);
+-      if (el) stack = [el];
++      return document.elementsFromPoint(clientX, clientY) || [];
++    }
++    const el = document.elementFromPoint?.(clientX, clientY);
++    return el ? [el] : [];
++  };
++  const cardFromPoint = (clientX, clientY) => cardUidFromHitStack(hitStackFromPoint(clientX, clientY), cardsLayer);
++  const connectSideFromPoint = (clientX, clientY, targetUid) => {
++    if (!targetUid) return "auto";
++    for (const el of hitStackFromPoint(clientX, clientY)) {
++      if (!el) continue;
++      const handle = elementHasClass(el, "pxd-handle") ? el : el.closest?.(".pxd-handle");
++      if (!handle) continue;
++      const card = handle.closest?.(".pxd-card");
++      if (!card || card.dataset?.uid !== targetUid) continue;
++      return handle.dataset?.side || "auto";
+     }
+-    return cardUidFromHitStack(stack, cardsLayer);
++    return "auto";
+   };
+ 
+   const selectCard = (uid, additive) => {
++    clearEdgeSelection();
+     selectedSectionId = null;
+     const selected = model().selected;
+     if (additive) {
+@@ -1598,6 +1916,7 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
+   };
+ 
+   const selectSection = (sectionId) => {
++    clearEdgeSelection();
+     selectedSectionId = sectionId;
+     model().selected.clear();
+     syncSelection();
+@@ -1606,7 +1925,7 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
+   const onPointerDown = (event) => {
+     if (event.button !== 0 && event.button !== 1) return;
+     const target = event.target;
+-    if (target?.closest?.(".pxd-toolbar") || target?.closest?.(".pxd-library-drawer") || target?.closest?.(".pxd-minimap")) return;
++    if (target?.closest?.(".pxd-toolbar") || target?.closest?.(".pxd-edge-inspector") || target?.closest?.(".pxd-library-drawer") || target?.closest?.(".pxd-minimap")) return;
+     if (target?.closest?.(".pxd-edge-label-editor")) return;
+     dismissHint();
+     const cardEl = target?.closest?.(".pxd-card");
+@@ -1616,10 +1935,20 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
+ 
+     if (editingUid && editingUid !== uid) void exitEdit();
+     if (editingUid && editingUid === uid) return; // Roam owns the caret inside an editing card.
+-    if (target?.closest?.(".pxd-edge-label") || edgeKeyFromTarget(target)) {
++    if (target?.closest?.(".pxd-edge-label")) {
+       if (editingEdgeKey && edgeKeyFromTarget(target) !== editingEdgeKey) closeEdgeEditor(true);
+       return;
+     }
++    const edgeHit = target?.closest?.(".pxd-edge") || target?.closest?.(".pxd-edge-hit");
++    if (edgeHit) {
++      const key = edgeKeyFromTarget(target);
++      if (key) {
++        if (editingEdgeKey && editingEdgeKey !== key) closeEdgeEditor(true);
++        selectEdge(key);
++        event.preventDefault();
++        return;
++      }
++    }
+ 
+     const sectionEl = !uid && !panRequested ? target?.closest?.(".pxd-section") : null;
+     if (sectionEl && !connectArm) {
+@@ -1654,11 +1983,13 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
+         event.preventDefault();
+         return;
+       }
++      const handleEl = target.closest?.(".pxd-handle");
+       const connectFrom = connectArm?.uid
+-        || ((target.closest(".pxd-handle") || tool === "connect") ? uid : null);
++        || ((handleEl || tool === "connect") ? uid : null);
+       if (connectFrom) {
+-        beginGesture({ kind: "connect", uid: connectFrom, start, moved: false });
+-        setTempEdge(connectFrom, screenToWorld(event.clientX, event.clientY, false));
++        const fromSide = connectArm?.side ?? handleEl?.dataset?.side;
++        beginGesture({ kind: "connect", uid: connectFrom, start, moved: false, fromSide });
++        setTempEdge(connectFrom, screenToWorld(event.clientX, event.clientY, false), fromSide);
+         try { root.setPointerCapture?.(event.pointerId); } catch { /* unsupported */ }
+         event.preventDefault();
+         return;
+@@ -1691,13 +2022,13 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
+ 
+   const onPointerMove = (event) => {
+     if (connectArm && (!gesture || gesture.kind === "connect")) {
+-      setTempEdge(connectArm.uid, screenToWorld(event.clientX, event.clientY, false));
++      setTempEdge(connectArm.uid, screenToWorld(event.clientX, event.clientY, false), connectArm.side);
+     }
+     if (!gesture) return;
+     const dx = event.clientX - gesture.start.x;
+     const dy = event.clientY - gesture.start.y;
+     if (gesture.kind === "connect") {
+-      setTempEdge(gesture.uid, screenToWorld(event.clientX, event.clientY, false));
++      setTempEdge(gesture.uid, screenToWorld(event.clientX, event.clientY, false), gesture.fromSide);
+       if (!gesture.moved && Math.hypot(dx, dy) >= DRAG_THRESHOLD_PX) gesture.moved = true;
+       return;
+     }
+@@ -1764,10 +2095,13 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
+     endGesture();
+     if (active.kind === "pan") {
+       if (active.moved) markViewportDirty();
+-      else if (model().activeTool === "select" && !event.shiftKey && (model().selected.size || selectedSectionId)) {
+-        model().selected.clear();
+-        selectedSectionId = null;
+-        syncSelection();
++      else if (model().activeTool === "select" && !event.shiftKey) {
++        if (model().selected.size || selectedSectionId) {
++          model().selected.clear();
++          selectedSectionId = null;
++          syncSelection();
++        }
++        clearEdgeSelection();
+       }
+       return;
+     }
+@@ -1778,27 +2112,43 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
+     if (active.kind === "connect") {
+       const targetUid = cardFromPoint(event.clientX, event.clientY);
+       if (!active.moved && targetUid && targetUid === active.uid && !connectArm) {
+-        armConnect(active.uid);
+-        setTempEdge(active.uid, screenToWorld(event.clientX, event.clientY, false));
++        armConnect(active.uid, active.fromSide);
++        setTempEdge(active.uid, screenToWorld(event.clientX, event.clientY, false), active.fromSide);
+         return;
+       }
+       if (!active.moved && connectArm && targetUid === connectArm.uid) {
+         return;
+       }
++      const fromSide = active.fromSide ?? connectArm?.side;
++      const toSide = connectSideFromPoint(event.clientX, event.clientY, targetUid);
+       await completeConnect({
+         moved: active.moved,
+         sourceUid: active.uid,
+         targetUid,
+         clientX: event.clientX,
+         clientY: event.clientY,
++        fromSide,
++        toSide,
+       });
+     }
+   };
+ 
+-  const completeConnect = async ({ moved, sourceUid, targetUid, clientX, clientY }) => {
++  const completeConnect = async ({ moved, sourceUid, targetUid, clientX, clientY, fromSide, toSide }) => {
++    const resolvedFrom = fromSide ?? connectArm?.side;
++    const resolvedTo = toSide ?? connectSideFromPoint(clientX, clientY, targetUid);
++    const edgeExtra = {
++      from: resolvedFrom || "auto",
++      to: resolvedTo || "auto",
++    };
+     try {
+       if (targetUid && targetUid !== sourceUid) {
+-        const added = model().addEdge(sourceUid, targetUid, settings.get("connector-style") || "bezier");
++        const added = model().addEdge(
++          sourceUid,
++          targetUid,
++          settings.get("connector-style") || "bezier",
++          "",
++          edgeExtra,
++        );
+         renderEdges();
+         if (added) {
+           try {
+@@ -1814,12 +2164,14 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
+       if (!targetUid && (moved || connectArm)) {
+         const point = screenToWorld(clientX, clientY);
+         const size = defaultCardSize();
++        const addEdge = { source: sourceUid };
++        if (resolvedFrom && resolvedFrom !== "auto") addEdge.from = resolvedFrom;
+         await onPersist?.({
+           addCard: {
+             x: snap(point.x - size.width / 2),
+             y: snap(point.y - size.height / 2),
+           },
+-          addEdge: { source: sourceUid },
++          addEdge,
+         });
+       }
+     } catch { /* connect-to-empty or persist failed — no dangling edge */ } finally {
+@@ -1829,7 +2181,7 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
+ 
+   const onDoubleClick = (event) => {
+     const target = event.target;
+-    if (target?.closest?.(".pxd-toolbar") || target?.closest?.(".pxd-library-drawer") || target?.closest?.(".pxd-minimap")) return;
++    if (target?.closest?.(".pxd-toolbar") || target?.closest?.(".pxd-edge-inspector") || target?.closest?.(".pxd-library-drawer") || target?.closest?.(".pxd-minimap")) return;
+     const edgeKeyHit = edgeKeyFromTarget(target);
+     if (edgeKeyHit) {
+       event.preventDefault();
+@@ -1865,7 +2217,7 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
+   const onClick = (event) => {
+     const target = event.target;
+     if (target?.closest?.(".pxd-palette") || target?.closest?.(".pxd-swatch")) return;
+-    if (target?.closest?.(".pxd-card") || target?.closest?.(".pxd-toolbar")) return;
++    if (target?.closest?.(".pxd-card") || target?.closest?.(".pxd-toolbar") || target?.closest?.(".pxd-edge-inspector")) return;
+     if (target?.closest?.(".pxd-library-drawer") || target?.closest?.(".pxd-minimap")) return;
+     if (target?.closest?.(".pxd-edge-label-editor")) return;
+     const sectionLabel = target?.closest?.(".pxd-section__label");
+@@ -1969,6 +2321,11 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
+         void exitEdit();
+         return;
+       }
++      if (selectedEdgeKey && owns) {
++        event.preventDefault();
++        clearEdgeSelection();
++        return;
++      }
+       if (crumbs.length && owns) {
+         event.preventDefault();
+         const parent = crumbs[crumbs.length - 1];
+@@ -1990,6 +2347,11 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
+     if (editingUid || editingEdgeKey) return;
+     if (isTextEntryTarget(event.target)) return;
+     if (!overlayOwnsPointer()) return;
++    if ((event.key === "Delete" || event.key === "Backspace") && selectedEdgeKey) {
++      event.preventDefault();
++      void deleteSelectedEdge();
++      return;
++    }
+     const key = String(event.key || "").toLowerCase();
+     if (key === "v") {
+       event.preventDefault();
+@@ -2059,6 +2421,9 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
+     armConnect,
+     clearConnectArm,
+     getConnectArm,
++    selectEdge,
++    clearEdgeSelection,
++    getSelectedEdgeKey,
+     setLibraryOpen(open) {
+       toolButtons.get("library")?.classList.toggle("pxd-toolbar__btn--active", Boolean(open));
+     },
+@@ -2069,6 +2434,7 @@ export function createCanvasRoot({ session, settings, version, onPersist, nestSt
+       minimapScheduled?.();
+       cancelFullscreenPlace?.();
+       if (editingEdgeKey) closeEdgeEditor(false);
++      clearEdgeSelection();
+       if (editingUid) void exitEdit(false);
+       detachFocusGuard();
+       clearConnectArm();
+diff --git a/src/edges.js b/src/edges.js
+index a81a375..335a153 100644
+--- a/src/edges.js
++++ b/src/edges.js
+@@ -1,6 +1,41 @@
+ /** SVG path helpers for diagram connections. */
+ 
+-export function edgeEndpoints(sourceRect, targetRect, side = "auto") {
++const SIDE_NORMALS = {
++  top: { x: 0, y: -1 },
++  right: { x: 1, y: 0 },
++  bottom: { x: 0, y: 1 },
++  left: { x: -1, y: 0 },
++};
++
++export function sidePoint(rect, side) {
++  const cx = rect.x + rect.width / 2;
++  const cy = rect.y + rect.height / 2;
++  if (side === "auto") return { x: cx, y: cy };
++  if (side === "top") return { x: cx, y: rect.y };
++  if (side === "right") return { x: rect.x + rect.width, y: cy };
++  if (side === "bottom") return { x: cx, y: rect.y + rect.height };
++  if (side === "left") return { x: rect.x, y: cy };
++  return { x: cx, y: cy };
++}
++
++function facingSide(rect, point) {
++  let best = "left";
++  let bestDot = -Infinity;
++  for (const side of ["top", "right", "bottom", "left"]) {
++    const sp = sidePoint(rect, side);
++    const nx = point.x - sp.x;
++    const ny = point.y - sp.y;
++    const normal = SIDE_NORMALS[side];
++    const dot = normal.x * nx + normal.y * ny;
++    if (dot > bestDot) {
++      bestDot = dot;
++      best = side;
++    }
++  }
++  return best;
++}
++
++function autoEndpoints(sourceRect, targetRect) {
+   const scx = sourceRect.x + sourceRect.width / 2;
+   const scy = sourceRect.y + sourceRect.height / 2;
+   const tcx = targetRect.x + targetRect.width / 2;
+@@ -11,38 +46,93 @@ export function edgeEndpoints(sourceRect, targetRect, side = "auto") {
+   let sy = scy;
+   let tx = tcx;
+   let ty = tcy;
+-  if (side === "auto" || side === "sides") {
+-    if (Math.abs(dx) > Math.abs(dy)) {
+-      sx = dx > 0 ? sourceRect.x + sourceRect.width : sourceRect.x;
+-      tx = dx > 0 ? targetRect.x : targetRect.x + targetRect.width;
+-      sy = scy;
+-      ty = tcy;
+-    } else {
+-      sy = dy > 0 ? sourceRect.y + sourceRect.height : sourceRect.y;
+-      ty = dy > 0 ? targetRect.y : targetRect.y + targetRect.height;
+-      sx = scx;
+-      tx = tcx;
+-    }
++  if (Math.abs(dx) > Math.abs(dy)) {
++    sx = dx > 0 ? sourceRect.x + sourceRect.width : sourceRect.x;
++    tx = dx > 0 ? targetRect.x : targetRect.x + targetRect.width;
++    sy = scy;
++    ty = tcy;
++  } else {
++    sy = dy > 0 ? sourceRect.y + sourceRect.height : sourceRect.y;
++    ty = dy > 0 ? targetRect.y : targetRect.y + targetRect.height;
++    sx = scx;
++    tx = tcx;
+   }
+   return { sx, sy, tx, ty };
+ }
+ 
++export function edgeEndpoints(sourceRect, targetRect, from = "auto", to = "auto") {
++  if (from === "sides") {
++    from = "auto";
++    to = "auto";
++  }
++
++  if (from === "auto" && to === "auto") {
++    return autoEndpoints(sourceRect, targetRect);
++  }
++
++  if (from !== "auto" && to !== "auto") {
++    const sp = sidePoint(sourceRect, from);
++    const tp = sidePoint(targetRect, to);
++    return { sx: sp.x, sy: sp.y, tx: tp.x, ty: tp.y };
++  }
++
++  if (from !== "auto") {
++    const sp = sidePoint(sourceRect, from);
++    const tp = sidePoint(targetRect, facingSide(targetRect, sp));
++    return { sx: sp.x, sy: sp.y, tx: tp.x, ty: tp.y };
++  }
++
++  const tp = sidePoint(targetRect, to);
++  const sp = sidePoint(sourceRect, facingSide(sourceRect, tp));
++  return { sx: sp.x, sy: sp.y, tx: tp.x, ty: tp.y };
++}
++
+ export function straightPath(sx, sy, tx, ty) {
+   return `M ${sx} ${sy} L ${tx} ${ty}`;
+ }
+ 
+-export function bezierPath(sx, sy, tx, ty) {
++export function bezierPath(sx, sy, tx, ty, from = "auto", to = "auto") {
+   const dx = Math.abs(tx - sx);
+   const dy = Math.abs(ty - sy);
+   const offset = Math.max(40, Math.min(dx, dy) * 0.5);
+-  if (Math.abs(tx - sx) > Math.abs(ty - sy)) {
+-    const c1x = sx + (tx > sx ? offset : -offset);
+-    const c2x = tx + (tx > sx ? -offset : offset);
+-    return `M ${sx} ${sy} C ${c1x} ${sy}, ${c2x} ${ty}, ${tx} ${ty}`;
++
++  if (from === "auto" && to === "auto") {
++    if (Math.abs(tx - sx) > Math.abs(ty - sy)) {
++      const c1x = sx + (tx > sx ? offset : -offset);
++      const c2x = tx + (tx > sx ? -offset : offset);
++      return `M ${sx} ${sy} C ${c1x} ${sy}, ${c2x} ${ty}, ${tx} ${ty}`;
++    }
++    const c1y = sy + (ty > sy ? offset : -offset);
++    const c2y = ty + (ty > sy ? -offset : offset);
++    return `M ${sx} ${sy} C ${sx} ${c1y}, ${tx} ${c2y}, ${tx} ${ty}`;
++  }
++
++  let c1x = sx;
++  let c1y = sy;
++  let c2x = tx;
++  let c2y = ty;
++
++  if (from === "top") c1y = sy - offset;
++  else if (from === "bottom") c1y = sy + offset;
++  else if (from === "right") c1x = sx + offset;
++  else if (from === "left") c1x = sx - offset;
++  else if (Math.abs(tx - sx) > Math.abs(ty - sy)) {
++    c1x = sx + (tx > sx ? offset : -offset);
++  } else {
++    c1y = sy + (ty > sy ? offset : -offset);
+   }
+-  const c1y = sy + (ty > sy ? offset : -offset);
+-  const c2y = ty + (ty > sy ? -offset : offset);
+-  return `M ${sx} ${sy} C ${sx} ${c1y}, ${tx} ${c2y}, ${tx} ${ty}`;
++
++  if (to === "top") c2y = ty - offset;
++  else if (to === "bottom") c2y = ty + offset;
++  else if (to === "right") c2x = tx + offset;
++  else if (to === "left") c2x = tx - offset;
++  else if (Math.abs(tx - sx) > Math.abs(ty - sy)) {
++    c2x = tx + (tx > sx ? -offset : offset);
++  } else {
++    c2y = ty + (ty > sy ? -offset : offset);
++  }
++
++  return `M ${sx} ${sy} C ${c1x} ${c1y}, ${c2x} ${c2y}, ${tx} ${ty}`;
+ }
+ 
+ export function elbowPath(sx, sy, tx, ty) {
+@@ -50,20 +140,45 @@ export function elbowPath(sx, sy, tx, ty) {
+   return `M ${sx} ${sy} L ${midX} ${sy} L ${midX} ${ty} L ${tx} ${ty}`;
+ }
+ 
+-export function buildEdgePath(style, sourceRect, targetRect) {
+-  const { sx, sy, tx, ty } = edgeEndpoints(sourceRect, targetRect);
++export function buildEdgePath(style, sourceRect, targetRect, from = "auto", to = "auto") {
++  const { sx, sy, tx, ty } = edgeEndpoints(sourceRect, targetRect, from, to);
+   if (style === "straight") return straightPath(sx, sy, tx, ty);
+   if (style === "elbow") return elbowPath(sx, sy, tx, ty);
+-  return bezierPath(sx, sy, tx, ty);
++  return bezierPath(sx, sy, tx, ty, from, to);
+ }
+ 
+-export function edgeMidpoint(sourceRect, targetRect) {
+-  const { sx, sy, tx, ty } = edgeEndpoints(sourceRect, targetRect);
++export function edgeMidpoint(sourceRect, targetRect, from = "auto", to = "auto") {
++  const { sx, sy, tx, ty } = edgeEndpoints(sourceRect, targetRect, from, to);
+   return { x: (sx + tx) / 2, y: (sy + ty) / 2 };
+ }
+ 
+-export function arrowheadMarkerId(kind) {
+-  return `pxd-arrow-${kind}`;
++export function arrowheadMarkerId(kind, canvasId = "", colorId = "default") {
++  return `pxd-arrow-${kind}-${canvasId}-${colorId || "default"}`;
++}
++
++export function arrowheadSize(zoom) {
++  return Math.min(24, Math.max(6, 10 / zoom));
++}
++
++export function shouldRescaleMarkers(prev, next) {
++  if (!Number.isFinite(prev) || !Number.isFinite(next) || prev === 0) return false;
++  return Math.abs(next - prev) / Math.abs(prev) >= 0.05;
++}
++
++export function directionToPoints(direction) {
++  if (direction === "twoWay") return { start: true, end: true };
++  if (direction === "none") return { start: false, end: false };
++  return { start: false, end: true };
++}
++
++export function effectiveDirection(edge, setting) {
++  const direction = edge?.direction;
++  if (direction === "oneWay" || direction === "twoWay" || direction === "none") {
++    return direction;
++  }
++  if (setting === "both") return "twoWay";
++  if (setting === "none") return "none";
++  return "oneWay";
+ }
+ 
+ export function arrowheadPoints(arrowheads) {
+diff --git a/src/extension.css b/src/extension.css
+index 6dc20b4..2442de5 100644
+--- a/src/extension.css
++++ b/src/extension.css
+@@ -140,6 +140,18 @@ body.pxd-has-fullscreen .breadcrumbs-content {
+   pointer-events: stroke;
+ }
+ 
++/* Scoped fallbacks; canvas.js also writes resolved literals inline because var() does not
++   resolve inside SVG presentation attributes. */
++.pxd-root .pxd-edge {
++  stroke: var(--pxd-edge);
++  fill: none;
++}
++
++.pxd-root .pxd-arrow {
++  fill: var(--pxd-edge);
++  stroke: none;
++}
++
+ .pxd-edge-hit {
+   fill: none;
+   stroke: transparent;
+@@ -205,6 +217,47 @@ body.pxd-has-fullscreen .breadcrumbs-content {
+   pointer-events: none !important;
+ }
+ 
++.pxd-root .pxd-edge--selected {
++  stroke: var(--pxd-active);
++  stroke-width: 3.5px;
++}
++
++.pxd-edge-inspector {
++  position: absolute;
++  z-index: 6;
++  display: flex;
++  flex-direction: row;
++  flex-wrap: nowrap;
++  align-items: center;
++  gap: 2px;
++  padding: 3px 6px;
++  border: 1px solid var(--pxd-border-strong);
++  border-radius: 8px;
++  background: var(--pxd-card-bg);
++  box-shadow: var(--pxd-shadow);
++  transform: translate(-50%, -50%);
++  pointer-events: auto;
++}
++
++.pxd-edge-inspector__btn {
++  width: auto;
++  min-height: 24px;
++  padding: 3px 6px;
++  border: 1px solid var(--pxd-border-strong);
++  background: var(--pxd-card-bg);
++  color: var(--pxd-text);
++  border-radius: 6px;
++  cursor: pointer;
++  font-size: 11px;
++  font-weight: 500;
++  line-height: 1;
++  white-space: nowrap;
++}
++
++.pxd-edge-inspector__btn:hover {
++  border-color: var(--pxd-active);
++}
++
+ @keyframes pxd-edge-flow {
+   to { stroke-dashoffset: -10; }
+ }
+diff --git a/src/feature.js b/src/feature.js
+index a60fff1..8b9589d 100644
+--- a/src/feature.js
++++ b/src/feature.js
+@@ -34,7 +34,7 @@ export const runtime = {
+   lifecycle: null,
+   metadata: null,
+   settings: null,
+-  version: "0.5.0",
++  version: "0.6.0",
+   enhancedUids: new Set(),
+   activeDiagramUid: null,
+   guardStyle: null,
+@@ -533,7 +533,7 @@ async function registerSlashAndContext(lifecycle, extensionAPI) {
+ export async function installPlexusDiagram({ extensionAPI, lifecycle, version }) {
+   runtime.extensionAPI = extensionAPI;
+   runtime.lifecycle = lifecycle;
+-  runtime.version = version || "0.5.0";
++  runtime.version = version || "0.6.0";
+   runtime.settings = createSettingsReader(extensionAPI);
+   runtime.enhancedUids = readEnhancedUidCache();
+   installGuard(runtime.enhancedUids);
+diff --git a/src/metadata.js b/src/metadata.js
+index 3612ac3..2f93073 100644
+--- a/src/metadata.js
++++ b/src/metadata.js
+@@ -130,11 +130,24 @@ export function parseMetadataTree(tree) {
+         const edgeKey = line.slice("edge ".length).trim();
+         const match = edgeKey.match(/^(.+)->(.+)$/);
+         if (!match) continue;
+-        const edge = { source: match[1].trim(), target: match[2].trim(), kind: "bezier", label: "" };
++        const edge = {
++          source: match[1].trim(),
++          target: match[2].trim(),
++          kind: "bezier",
++          label: "",
++          from: "auto",
++          to: "auto",
++          direction: "",
++          color: "",
++        };
+         for (const prop of child.children || []) {
+           const propLine = prop.string.trim();
+           if (propLine.startsWith("kind::")) edge.kind = propLine.slice("kind::".length).trim() || "bezier";
+           if (propLine.startsWith("label::")) edge.label = propLine.slice("label::".length).trim();
++          if (propLine.startsWith("from::")) edge.from = propLine.slice("from::".length).trim() || "auto";
++          if (propLine.startsWith("to::")) edge.to = propLine.slice("to::".length).trim() || "auto";
++          if (propLine.startsWith("direction::")) edge.direction = propLine.slice("direction::".length).trim();
++          if (propLine.startsWith("color::")) edge.color = propLine.slice("color::".length).trim();
+         }
+         entry.edges.push(edge);
+         continue;
+@@ -172,6 +185,12 @@ export function serializeDiagramMetadata(diagramUid, layout) {
+     lines.push(`  edge ${edge.source}->${edge.target}`);
+     if (edge.kind && edge.kind !== "bezier") lines.push(`    kind:: ${edge.kind}`);
+     if (edge.label) lines.push(`    label:: ${edge.label}`);
++    if (edge.from && edge.from !== "auto") lines.push(`    from:: ${edge.from}`);
++    if (edge.to && edge.to !== "auto") lines.push(`    to:: ${edge.to}`);
++    if (edge.direction === "oneWay" || edge.direction === "twoWay" || edge.direction === "none") {
++      lines.push(`    direction:: ${edge.direction}`);
++    }
++    if (edge.color) lines.push(`    color:: ${edge.color}`);
+   }
+   for (const [sectionId, section] of layout.sections || new Map()) {
+     lines.push(`  section ${sectionId}`);
+@@ -281,8 +300,18 @@ async function patchDiagramBlock(blockUid, diagramUid, layout) {
+     const props = indexPropChildren(existing?.children);
+     const kindString = edge.kind && edge.kind !== "bezier" ? `kind:: ${edge.kind}` : null;
+     const labelString = edge.label ? `label:: ${edge.label}` : null;
++    const fromString = edge.from && edge.from !== "auto" ? `from:: ${edge.from}` : null;
++    const toString = edge.to && edge.to !== "auto" ? `to:: ${edge.to}` : null;
++    const directionString = edge.direction === "oneWay" || edge.direction === "twoWay" || edge.direction === "none"
++      ? `direction:: ${edge.direction}`
++      : null;
++    const colorString = edge.color ? `color:: ${edge.color}` : null;
+     await syncPropChild(rowUid, props.kind, kindString);
+     await syncPropChild(rowUid, props.label, labelString);
++    await syncPropChild(rowUid, props.from, fromString);
++    await syncPropChild(rowUid, props.to, toString);
++    await syncPropChild(rowUid, props.direction, directionString);
++    await syncPropChild(rowUid, props.color, colorString);
+   }
+   for (const [key, row] of indexed.edges) {
+     if (!wantedEdges.has(key)) await deleteBlock(row.uid);
+diff --git a/src/model.js b/src/model.js
+index 7af1432..17c07b8 100644
+--- a/src/model.js
++++ b/src/model.js
+@@ -275,14 +275,23 @@ export class DiagramModel {
+     };
+   }
+ 
+-  addEdge(source, target, kind = "bezier", label = "") {
++  addEdge(source, target, kind = "bezier", label = "", extra = {}) {
+     const key = `${source}->${target}`;
+     const existing = this.edges.find((edge) => `${edge.source}->${edge.target}` === key);
+     if (existing) {
+       if (existing.label == null) existing.label = "";
+       return null;
+     }
+-    const edge = { source, target, kind, label: label || "" };
++    const edge = {
++      source,
++      target,
++      kind,
++      label: label || "",
++      from: extra.from || "auto",
++      to: extra.to || "auto",
++      direction: extra.direction || "",
++      color: extra.color || "",
++    };
+     this.edges.push(edge);
+     return edge;
+   }
+@@ -332,7 +341,16 @@ export class DiagramModel {
+         if (!existing.label && edge.label) existing.label = edge.label;
+         continue;
+       }
+-      const incoming = { source: edge.source, target: edge.target, kind: edge.kind || "bezier", label: edge.label || "" };
++      const incoming = {
++        source: edge.source,
++        target: edge.target,
++        kind: edge.kind || "bezier",
++        label: edge.label || "",
++        from: edge.from || "auto",
++        to: edge.to || "auto",
++        direction: edge.direction || "",
++        color: edge.color || "",
++      };
+       this.edges.push(incoming);
+       known.set(key, incoming);
+     }
+diff --git a/src/settings.js b/src/settings.js
+index c5f0129..2e98fe1 100644
+--- a/src/settings.js
++++ b/src/settings.js
+@@ -165,7 +165,7 @@ export function createSettingsPanel() {
+         ["Straight", "straight"],
+         ["Elbow", "elbow"],
+       ]),
+-      selectRow(SETTING_IDS.arrowheads, "Arrowheads", "Arrowhead placement.", [
++      selectRow(SETTING_IDS.arrowheads, "Arrowheads", "Default for new connections; the inspector overrides per connection.", [
+         ["End", "end"],
+         ["Both", "both"],
+         ["None", "none"],
+diff --git a/src/view.js b/src/view.js
+index 2a4635f..6676871 100644
+--- a/src/view.js
++++ b/src/view.js
+@@ -66,10 +66,14 @@ export function mountDiagramView({ nativeElement, session, settings, version, li
+       if (action.addCard) {
+         const uid = await current.addCard(action.string ?? "", action.addCard);
+         if (uid && action.addEdge?.source) {
++          const edgeExtra = {};
++          if (action.addEdge.from) edgeExtra.from = action.addEdge.from;
+           current.model.addEdge(
+             action.addEdge.source,
+             uid,
+             action.addEdge.kind || settings.get("connector-style") || "bezier",
++            "",
++            edgeExtra,
+           );
+           try {
+             await current.persistLayout();
+diff --git a/test/build.test.js b/test/build.test.js
+index d33a325..b9a9c17 100644
+--- a/test/build.test.js
++++ b/test/build.test.js
+@@ -39,7 +39,7 @@ test("build emits deterministic, matching browser ESM artifacts with a default e
+   assert.match(rootJs, /export\s*\{[\s\S]*default/);
+   const rebuilt = await bundleEntry({
+     rootDirectory: rootPath,
+-    banner: "/* Plexus Diagram v0.5.0 | MIT | generated; edit src/ */",
++    banner: "/* Plexus Diagram v0.6.0 | MIT | generated; edit src/ */",
+   });
+   assert.equal(rebuilt, rootJs);
+ 
+diff --git a/test/canvas.test.js b/test/canvas.test.js
+index 8839f40..ba8c0bd 100644
+--- a/test/canvas.test.js
++++ b/test/canvas.test.js
+@@ -1,7 +1,7 @@
+ import assert from "node:assert/strict";
+ import test from "node:test";
+ 
+-import { createCanvasRoot, shouldCommitPulledString, topbarOffset, sidebarOffset, applyFullscreenChrome, fullscreenInsets, cardUidFromHitStack, parseDropPayload, parseDiagramTitle, focusRoamInput } from "../src/canvas.js";
++import { createCanvasRoot, isDarkHost, resolveEdgeColor, shouldCommitPulledString, topbarOffset, sidebarOffset, applyFullscreenChrome, fullscreenInsets, cardUidFromHitStack, parseDropPayload, parseDiagramTitle, focusRoamInput } from "../src/canvas.js";
+ import { settingsDefaults } from "../src/settings.js";
+ import { releaseScratch } from "../src/metadata.js";
+ import { readFile } from "node:fs/promises";
+@@ -10,8 +10,41 @@ import { dirname, resolve } from "node:path";
+ 
+ function createDomStub() {
+   const elements = new Map();
++  const theme = {};
+   let id = 0;
++  const matchSimple = (node, token) => {
++    const s = String(token || "");
++    if (s.startsWith(".")) return Boolean(node.classList?.contains?.(s.slice(1).split(/[\s.#[]/)[0]));
++    if (s.startsWith("#")) return node.id === s.slice(1);
++    if (s.startsWith("[")) return Boolean(node.hasAttribute?.(s.slice(1).split(/[=\]]/)[0]));
++    return String(node.tagName || "").toLowerCase() === s.toLowerCase();
++  };
++  // Supports comma lists and descendant chains ("A B C"); each token is one simple selector.
++  const matchSelector = (node, sel) => String(sel || "").split(",").some((part) => {
++    const tokens = part.trim().split(/\s+/).filter(Boolean);
++    if (!tokens.length || !matchSimple(node, tokens[tokens.length - 1])) return false;
++    let ancestor = node.parentElement;
++    for (let i = tokens.length - 2; i >= 0; i -= 1) {
++      while (ancestor && !matchSimple(ancestor, tokens[i])) ancestor = ancestor.parentElement;
++      if (!ancestor) return false;
++      ancestor = ancestor.parentElement;
++    }
++    return true;
++  });
++  const makeListeners = (target) => {
++    const registry = new Map();
++    target.listeners = registry;
++    target.addEventListener = (type, fn) => {
++      if (!registry.has(type)) registry.set(type, new Set());
++      registry.get(type).add(fn);
++    };
++    target.removeEventListener = (type, fn) => {
++      registry.get(type)?.delete(fn);
++    };
++  };
+   const makeEl = (tag) => {
++    let html = "";
++    const attrs = new Map();
+     const el = {
+       tagName: tag.toUpperCase(),
+       className: "",
+@@ -27,31 +60,45 @@ function createDomStub() {
+         },
+       },
+       style: {
+-        setProperty() {},
++        setProperty(name, value) { el.style[name] = value; },
+       },
+       dataset: {},
+       children: [],
+       append(...nodes) { el.children.push(...nodes); nodes.forEach((n) => { n.parentElement = el; }); },
+       appendChild(node) { el.append(node); },
+       prepend(node) { el.children.unshift(node); node.parentElement = el; },
+-      addEventListener() {},
+-      removeEventListener() {},
+-      remove() { el.isConnected = false; },
++      replaceChildren(...nodes) {
++        el.children.forEach((child) => { child.parentElement = null; });
++        el.children = [];
++        el.append(...nodes);
++      },
++      remove() {
++        el.isConnected = false;
++        const parent = el.parentElement;
++        if (parent) {
++          parent.children = parent.children.filter((child) => child !== el);
++          el.parentElement = null;
++        }
++      },
+       querySelector(sel) {
+-        const match = (node) => {
+-          const s = String(sel || "");
+-          if (s.startsWith(".")) return node.classList?.contains?.(s.slice(1).split(/[\s.#[]/)[0]);
+-          if (s.startsWith("#")) return node.id === s.slice(1);
+-          return String(node.tagName || "").toLowerCase() === s.toLowerCase();
+-        };
+         for (const child of el.children || []) {
+-          if (match(child)) return child;
++          if (matchSelector(child, sel)) return child;
+           const found = child.querySelector?.(sel);
+           if (found) return found;
+         }
+         return null;
+       },
+-      querySelectorAll() { return []; },
++      querySelectorAll(sel) {
++        const out = [];
++        const walk = (node) => {
++          for (const child of node.children || []) {
++            if (matchSelector(child, sel)) out.push(child);
++            walk(child);
++          }
++        };
++        walk(el);
++        return out;
++      },
+       closest(sel) {
+         const name = String(sel || "").startsWith(".") ? String(sel).slice(1).split(/[\s.#[]/)[0] : "";
+         let node = el;
+@@ -62,14 +109,29 @@ function createDomStub() {
+         return null;
+       },
+       getBoundingClientRect: () => ({ left: 0, top: 0, width: 800, height: 600 }),
+-      setAttribute() {},
+-      getAttribute() { return null; },
++      attributes: attrs,
++      setAttribute(name, value) {
++        attrs.set(String(name), String(value));
++        if (name === "id") el.id = String(value);
++      },
++      getAttribute(name) { return attrs.has(String(name)) ? attrs.get(String(name)) : null; },
++      hasAttribute(name) { return attrs.has(String(name)); },
++      removeAttribute(name) { attrs.delete(String(name)); },
+       textContent: "",
+-      innerHTML: "",
+       isConnected: true,
+       parentElement: null,
+       id: `el-${id += 1}`,
+     };
++    Object.defineProperty(el, "innerHTML", {
++      get() { return html; },
++      set(value) {
++        html = String(value ?? "");
++        el.children.forEach((child) => { child.parentElement = null; });
++        el.children = [];
++      },
++      enumerable: true,
++    });
++    makeListeners(el);
+     if (tag === "button") el.type = "button";
+     return el;
+   };
+@@ -84,16 +146,48 @@ function createDomStub() {
+       return makeEl(tag);
+     },
+     querySelector() { return null; },
+-    addEventListener() {},
+-    removeEventListener() {},
++    querySelectorAll() { return []; },
++    elementsFromPoint: null,
+   };
++  document.body = makeEl("body");
++  makeListeners(document);
++
++  const getComputedStyle = (el) => ({
++    getPropertyValue(name) {
++      const own = el?.style?.[name];
++      if (own != null && own !== "") return String(own);
++      return theme[name] ?? "";
++    },
++  });
++  const window = { getComputedStyle };
++  makeListeners(window);
+ 
+-  const window = {
+-    addEventListener() {},
+-    removeEventListener() {},
++  const dispatch = (target, type, event = {}) => {
++    const ev = {
++      type,
++      button: 0,
++      target,
++      defaultPrevented: false,
++      propagationStopped: false,
++      preventDefault() { ev.defaultPrevented = true; },
++      stopPropagation() { ev.propagationStopped = true; },
++      stopImmediatePropagation() { ev.propagationStopped = true; },
++      ...event,
++    };
++    let node = target;
++    while (node) {
++      ev.currentTarget = node;
++      for (const fn of [...(node.listeners?.get(type) || [])]) {
++        if (typeof fn === "function") fn(ev);
++        else fn?.handleEvent?.(ev);
++      }
++      if (ev.propagationStopped) break;
++      node = node === document || node === window ? null : node.parentElement;
++    }
++    return ev;
+   };
+ 
+-  return { document, window, elements };
++  return { document, window, elements, theme, dispatch, getComputedStyle };
+ }
+ 
+ test("shouldCommitPulledString refuses empty pulls over known card text", () => {
+@@ -308,9 +402,18 @@ function cardSession(edges = [], extras = {}) {
+         nodes.set(uid, node);
+         return node;
+       },
+-      addEdge(source, target, kind = "bezier") {
++      addEdge(source, target, kind = "bezier", label = "", extra = {}) {
+         if (this.edges.some((edge) => edge.source === source && edge.target === target)) return null;
+-        const edge = { source, target, kind, label: "" };
++        const edge = {
++          source,
++          target,
++          kind,
++          label: label || "",
++          from: extra.from || "auto",
++          to: extra.to || "auto",
++          direction: extra.direction || "",
++          color: extra.color || "",
++        };
+         this.edges.push(edge);
+         return edge;
+       },
+@@ -768,6 +871,67 @@ test("completeConnect card to card adds an edge and a .pxd-edge", async () => {
+   }
+ });
+ 
++test("port capture: pointerdown on handle arms connect with side", () => {
++  const { document, window, dispatch } = createDomStub();
++  const previousDocument = globalThis.document;
++  const previousWindow = globalThis.window;
++  globalThis.document = document;
++  globalThis.window = window;
++  try {
++    const session = cardSession([]);
++    const settings = { get: (key) => settingsDefaults()[key] };
++    const canvas = createCanvasRoot({ session, settings, version: "0.5.0", nestStack: [] });
++    try {
++      const cards = findByClass(canvas.root, "pxd-cards");
++      const cardEl = cards.children.find((child) => child.dataset?.uid === "card-a");
++      const handle = cardEl.children.find((child) => child.className?.includes("pxd-handle--right"));
++      assert.ok(handle);
++      handle.dataset.side = "right";
++      document.elementsFromPoint = () => [handle, cardEl];
++      dispatch(handle, "pointerdown", { button: 0 });
++      dispatch(document, "pointerup", { button: 0, clientX: 0, clientY: 0 });
++      assert.deepEqual(canvas.getConnectArm(), { uid: "card-a", side: "right" });
++    } finally {
++      canvas.dispose();
++    }
++  } finally {
++    globalThis.document = previousDocument;
++    globalThis.window = previousWindow;
++  }
++});
++
++test("completeConnect stores fromSide and toSide on the model edge", async () => {
++  const { document, window } = createDomStub();
++  const previousDocument = globalThis.document;
++  const previousWindow = globalThis.window;
++  globalThis.document = document;
++  globalThis.window = window;
++  try {
++    const session = cardSession([]);
++    const settings = { get: (key) => settingsDefaults()[key] };
++    const canvas = createCanvasRoot({ session, settings, version: "0.5.0", nestStack: [] });
++    try {
++      await canvas.completeConnect({
++        moved: true,
++        sourceUid: "card-a",
++        targetUid: "card-b",
++        clientX: 400,
++        clientY: 80,
++        fromSide: "right",
++        toSide: "left",
++      });
++      assert.equal(session.model.edges.length, 1);
++      assert.equal(session.model.edges[0].from, "right");
++      assert.equal(session.model.edges[0].to, "left");
++    } finally {
++      canvas.dispose();
++    }
++  } finally {
++    globalThis.document = previousDocument;
++    globalThis.window = previousWindow;
++  }
++});
++
+ test("armConnect then completeConnect to another card creates an edge", async () => {
+   const { document, window } = createDomStub();
+   const previousDocument = globalThis.document;
+@@ -889,3 +1053,551 @@ test("named nested card shows the parsed title, not the raw macro", () => {
+     globalThis.window = previousWindow;
+   }
+ });
++
++// ------------------------------------------------------------- U2 arrows
++
++function withStubDom(stub, fn) {
++  const previousDocument = globalThis.document;
++  const previousWindow = globalThis.window;
++  globalThis.document = stub.document;
++  globalThis.window = stub.window;
++  try {
++    return fn();
++  } finally {
++    globalThis.document = previousDocument;
++    globalThis.window = previousWindow;
++  }
++}
++
++function svgLayer(canvas, className) {
++  return findByClass(canvas.root, className);
++}
++
++function walkAll(el, out = []) {
++  for (const child of el?.children || []) {
++    out.push(child);
++    walkAll(child, out);
++  }
++  return out;
++}
++
++const defaultSettings = () => ({ get: (key) => settingsDefaults()[key] });
++
++test("edge CSS is scoped to .pxd-root and sets stroke/fill from --pxd-edge", async () => {
++  const css = await readFile(resolve(dirname(fileURLToPath(import.meta.url)), "../src/extension.css"), "utf8");
++  assert.match(css, /\.pxd-root \.pxd-edge\s*\{[^}]*stroke:\s*var\(--pxd-edge\)/s);
++  assert.match(css, /\.pxd-root \.pxd-arrow\s*\{[^}]*fill:\s*var\(--pxd-edge\)/s);
++});
++
++test("rendered edges and markers carry literal colors, never var()", () => {
++  const stub = createDomStub();
++  withStubDom(stub, () => {
++    const session = cardSession([{ source: "card-a", target: "card-b", kind: "bezier", label: "" }]);
++    const canvas = createCanvasRoot({ session, settings: defaultSettings(), version: "0.5.0", nestStack: [] });
++    try {
++      const edges = svgLayer(canvas, "pxd-edges");
++      const arrow = findByClass(edges, "pxd-arrow");
++      assert.ok(arrow, "marker path rendered");
++      assert.match(arrow.style.fill, /^#[0-9a-f]{6}$/);
++      const edge = findByClass(edges, "pxd-edge");
++      assert.match(edge.style.stroke, /^#[0-9a-f]{6}$/);
++      assert.equal(edge.getAttribute("stroke"), null, "stroke lives in style, not a presentation attribute");
++      for (const node of walkAll(edges)) {
++        for (const [name, value] of node.attributes) {
++          assert.ok(!String(value).includes("var("), `${node.tagName} ${name} must not use var()`);
++        }
++        for (const value of Object.values(node.style)) {
++          if (typeof value === "string") assert.ok(!value.includes("var("), "inline style must not use var()");
++        }
++      }
++    } finally {
++      canvas.dispose();
++    }
++  });
++});
++
++test("edge color follows the host --pxd-edge, then dark/light fallbacks", () => {
++  const themed = createDomStub();
++  themed.theme["--pxd-edge"] = "#a7b6c2";
++  withStubDom(themed, () => {
++    const canvas = createCanvasRoot({
++      session: cardSession([{ source: "card-a", target: "card-b", kind: "bezier", label: "" }]),
++      settings: defaultSettings(),
++      version: "0.5.0",
++      nestStack: [],
++    });
++    try {
++      assert.equal(findByClass(canvas.root, "pxd-arrow").style.fill, "#a7b6c2");
++      assert.equal(findByClass(canvas.root, "pxd-edge").style.stroke, "#a7b6c2");
++    } finally {
++      canvas.dispose();
++    }
++  });
++
++  const dark = createDomStub();
++  dark.document.body.classList.add("bt-theme-dark");
++  withStubDom(dark, () => {
++    const canvas = createCanvasRoot({
++      session: cardSession([{ source: "card-a", target: "card-b", kind: "bezier", label: "" }]),
++      settings: defaultSettings(),
++      version: "0.5.0",
++      nestStack: [],
++    });
++    try {
++      assert.equal(findByClass(canvas.root, "pxd-arrow").style.fill, "#a7b6c2");
++    } finally {
++      canvas.dispose();
++    }
++  });
++
++  const light = createDomStub();
++  withStubDom(light, () => {
++    const canvas = createCanvasRoot({
++      session: cardSession([{ source: "card-a", target: "card-b", kind: "bezier", label: "" }]),
++      settings: defaultSettings(),
++      version: "0.5.0",
++      nestStack: [],
++    });
++    try {
++      assert.equal(findByClass(canvas.root, "pxd-arrow").style.fill, "#738694");
++      assert.equal(findByClass(canvas.root, "pxd-edge").style.stroke, "#738694");
++    } finally {
++      canvas.dispose();
++    }
++  });
++});
++
++test("isDarkHost matches every dark selector and swatch colors win over the theme", () => {
++  const stub = createDomStub();
++  withStubDom(stub, () => {
++    const plain = stub.document.createElement("div");
++    assert.equal(isDarkHost(plain), false);
++    for (const marker of ["bp3-dark", "rm-dark-theme", "bt-theme-dark"]) {
++      const host = stub.document.createElement("div");
++      host.classList.add(marker);
++      const child = stub.document.createElement("div");
++      host.append(child);
++      assert.equal(isDarkHost(child), true, marker);
++    }
++    const roamBody = stub.document.createElement("div");
++    roamBody.classList.add("roam-body", "dark");
++    const inner = stub.document.createElement("div");
++    roamBody.append(inner);
++    assert.equal(isDarkHost(inner), true);
++    assert.equal(resolveEdgeColor(plain, "teal"), "#00b3a4");
++    assert.equal(resolveEdgeColor(plain, ""), "#738694");
++    stub.theme["--pxd-edge"] = "rgb(1, 2, 3)";
++    assert.equal(resolveEdgeColor(plain, ""), "rgb(1, 2, 3)");
++    assert.equal(resolveEdgeColor(plain, "teal"), "#00b3a4");
++  });
++});
++
++test("edge.direction drives marker-start/marker-end with canvas-scoped ids", () => {
++  const stub = createDomStub();
++  withStubDom(stub, () => {
++    const session = cardSession([
++      { source: "card-a", target: "card-b", kind: "bezier", label: "", direction: "twoWay" },
++    ]);
++    const canvas = createCanvasRoot({ session, settings: defaultSettings(), version: "0.5.0", nestStack: [] });
++    try {
++      const edgeOf = () => findByClass(canvas.root, "pxd-edge");
++      let edge = edgeOf();
++      assert.match(edge.getAttribute("marker-end"), /^url\(#pxd-arrow-end-pxd\d+-default\)$/);
++      assert.match(edge.getAttribute("marker-start"), /^url\(#pxd-arrow-start-pxd\d+-default\)$/);
++      const endId = edge.getAttribute("marker-end").slice(5, -1);
++      const defs = svgLayer(canvas, "pxd-edges").querySelector("defs");
++      assert.ok(defs.querySelector(`#${endId}`), "marker-end resolves inside this canvas defs");
++
++      session.model.edges[0].direction = "none";
++      canvas.render();
++      edge = edgeOf();
++      assert.equal(edge.getAttribute("marker-end"), null);
++      assert.equal(edge.getAttribute("marker-start"), null);
++
++      delete session.model.edges[0].direction;
++      canvas.render();
++      edge = edgeOf();
++      assert.match(edge.getAttribute("marker-end"), /^url\(#pxd-arrow-end-pxd\d+-default\)$/);
++      assert.equal(edge.getAttribute("marker-start"), null, "default arrowheads setting is end-only");
++
++      session.model.edges[0].color = "teal";
++      canvas.render();
++      edge = edgeOf();
++      assert.match(edge.getAttribute("marker-end"), /^url\(#pxd-arrow-end-pxd\d+-teal\)$/);
++      assert.equal(edge.style.stroke, "#00b3a4");
++      const tealId = edge.getAttribute("marker-end").slice(5, -1);
++      const tealMarker = svgLayer(canvas, "pxd-edges").querySelector("defs").querySelector(`#${tealId}`);
++      assert.equal(findByClass(tealMarker, "pxd-arrow").style.fill, "#00b3a4");
++    } finally {
++      canvas.dispose();
++    }
++  });
++});
++
++test("two canvas roots use disjoint marker ids", () => {
++  const stub = createDomStub();
++  withStubDom(stub, () => {
++    const make = () => createCanvasRoot({
++      session: cardSession([{ source: "card-a", target: "card-b", kind: "bezier", label: "" }]),
++      settings: defaultSettings(),
++      version: "0.5.0",
++      nestStack: [],
++    });
++    const first = make();
++    const second = make();
++    try {
++      const a = findByClass(first.root, "pxd-edge").getAttribute("marker-end");
++      const b = findByClass(second.root, "pxd-edge").getAttribute("marker-end");
++      assert.match(a, /^url\(#pxd-arrow-end-/);
++      assert.match(b, /^url\(#pxd-arrow-end-/);
++      assert.notEqual(a, b);
++      const idsA = walkAll(svgLayer(first, "pxd-edges")).filter((n) => n.tagName === "MARKER").map((n) => n.id);
++      const idsB = walkAll(svgLayer(second, "pxd-edges")).filter((n) => n.tagName === "MARKER").map((n) => n.id);
++      assert.ok(idsA.length && idsB.length);
++      assert.equal(idsA.filter((id) => idsB.includes(id)).length, 0, "no shared marker ids");
++    } finally {
++      first.dispose();
++      second.dispose();
++    }
++  });
++});
++
++test("temp wire points its marker-end at a marker inside tempSvg", () => {
++  const stub = createDomStub();
++  withStubDom(stub, () => {
++    const canvas = createCanvasRoot({ session: cardSession([]), settings: defaultSettings(), version: "0.5.0", nestStack: [] });
++    try {
++      canvas.armConnect("card-a");
++      stub.dispatch(stub.document, "pointermove", { clientX: 500, clientY: 200 });
++      const temp = svgLayer(canvas, "pxd-edges-temp");
++      const wire = findByClass(temp, "pxd-edge--temp");
++      assert.ok(wire, "temp wire painted");
++      assert.equal(wire.getAttribute("stroke"), null);
++      assert.match(wire.style.stroke, /^#[0-9a-f]{6}$/);
++      const markerRef = wire.getAttribute("marker-end");
++      assert.match(markerRef, /^url\(#pxd-arrow-temp-pxd\d+\)$/);
++      const markerId = markerRef.slice(5, -1);
++      const marker = temp.querySelector("defs")?.querySelector(`#${markerId}`);
++      assert.ok(marker, "temp marker lives in tempSvg defs");
++      assert.match(findByClass(marker, "pxd-arrow").style.fill, /^#[0-9a-f]{6}$/);
++      assert.equal(svgLayer(canvas, "pxd-edges").querySelector("defs")?.querySelector(`#${markerId}`) ?? null, null);
++
++      canvas.clearConnectArm();
++      assert.equal(temp.children.length, 0, "clearTempEdge wipes tempSvg including defs");
++      canvas.armConnect("card-a");
++      stub.dispatch(stub.document, "pointermove", { clientX: 520, clientY: 220 });
++      assert.ok(temp.querySelector("defs")?.querySelector(`#${markerId}`), "defs re-ensured after clear");
++    } finally {
++      canvas.dispose();
++    }
++  });
++});
++
++test("markers rescale on zoom changes of 5 percent or more", () => {
++  const stub = createDomStub();
++  withStubDom(stub, () => {
++    const session = cardSession([{ source: "card-a", target: "card-b", kind: "bezier", label: "" }]);
++    const canvas = createCanvasRoot({ session, settings: defaultSettings(), version: "0.5.0", nestStack: [] });
++    try {
++      const marker = () => walkAll(svgLayer(canvas, "pxd-edges")).find((n) => n.tagName === "MARKER");
++      assert.equal(marker().getAttribute("markerWidth"), "10");
++      session.model.viewport.zoom = 1.03;
++      canvas.applyTransform();
++      assert.equal(marker().getAttribute("markerWidth"), "10", "3 percent change leaves markers alone");
++      session.model.viewport.zoom = 0.4;
++      canvas.applyTransform();
++      assert.equal(marker().getAttribute("markerWidth"), "24");
++      assert.equal(marker().getAttribute("markerHeight"), "24");
++      assert.equal(marker().getAttribute("refY"), "12");
++      assert.match(findByClass(marker(), "pxd-arrow").getAttribute("d"), /L24,12/);
++      session.model.viewport.zoom = 3;
++      canvas.applyTransform();
++      assert.equal(marker().getAttribute("markerWidth"), "6");
++    } finally {
++      canvas.dispose();
++    }
++  });
++});
++
++// ------------------------------------------------------------- U5a inspector chrome
++
++function inspectorOnRoot(root) {
++  return root.children.find((child) => String(child.className || "").split(/\s+/).includes("pxd-edge-inspector"));
++}
++
++test("selectEdge selects the path, mounts inspector on root, and clearEdgeSelection removes both", () => {
++  const stub = createDomStub();
++  withStubDom(stub, () => {
++    const session = cardSession([{ source: "card-a", target: "card-b", kind: "bezier", label: "" }]);
++    const canvas = createCanvasRoot({ session, settings: defaultSettings(), version: "0.5.0", nestStack: [] });
++    try {
++      canvas.selectEdge("card-a->card-b");
++      const path = findByClass(canvas.root, "pxd-edge");
++      assert.ok(path.classList.contains("pxd-edge--selected"));
++      assert.ok(inspectorOnRoot(canvas.root), ".pxd-edge-inspector is a root child");
++      assert.equal(canvas.getSelectedEdgeKey(), "card-a->card-b");
++      canvas.clearEdgeSelection();
++      assert.ok(!path.classList.contains("pxd-edge--selected"));
++      assert.equal(inspectorOnRoot(canvas.root), undefined);
++      assert.equal(canvas.getSelectedEdgeKey(), null);
++    } finally {
++      canvas.dispose();
++    }
++  });
++});
++
++test("Esc dismisses edge selection when the overlay has the pointer, not when focus is outside", () => {
++  const stub = createDomStub();
++  withStubDom(stub, () => {
++    const session = cardSession([{ source: "card-a", target: "card-b", kind: "bezier", label: "" }]);
++    const canvas = createCanvasRoot({ session, settings: defaultSettings(), version: "0.5.0", nestStack: [] });
++    try {
++      canvas.selectEdge("card-a->card-b");
++      stub.dispatch(canvas.root, "pointerenter");
++      stub.dispatch(stub.window, "keydown", { key: "Escape" });
++      assert.equal(canvas.getSelectedEdgeKey(), null, "Esc after pointerenter dismisses");
++      assert.equal(inspectorOnRoot(canvas.root), undefined);
++
++      canvas.selectEdge("card-a->card-b");
++      stub.dispatch(canvas.root, "pointerleave");
++      stub.document.activeElement = stub.document.body;
++      stub.dispatch(stub.window, "keydown", { key: "Escape" });
++      assert.equal(canvas.getSelectedEdgeKey(), "card-a->card-b", "Esc with focus outside keeps selection");
++      assert.ok(inspectorOnRoot(canvas.root));
++    } finally {
++      canvas.dispose();
++    }
++  });
++});
++
++test("attachSession clears edge selection; dispose removes the inspector element", () => {
++  const stub = createDomStub();
++  withStubDom(stub, () => {
++    const session = cardSession([{ source: "card-a", target: "card-b", kind: "bezier", label: "" }]);
++    const other = cardSession([], {
++      children: [{ uid: "card-c", string: "Other diagram" }],
++      nodes: new Map([["card-c", { pos: { x: 10, y: 10 }, size: { width: 280, height: 160 } }]]),
++    });
++    const canvas = createCanvasRoot({ session, settings: defaultSettings(), version: "0.5.0", nestStack: [] });
++    try {
++      canvas.selectEdge("card-a->card-b");
++      assert.ok(inspectorOnRoot(canvas.root));
++      canvas.attachSession(other);
++      assert.equal(canvas.getSelectedEdgeKey(), null);
++      assert.equal(inspectorOnRoot(canvas.root), undefined);
++
++      canvas.attachSession(session);
++      canvas.selectEdge("card-a->card-b");
++      const inspector = inspectorOnRoot(canvas.root);
++      assert.ok(inspector);
++      canvas.dispose();
++      assert.equal(inspector.isConnected, false);
++      assert.equal(inspector.parentElement, null);
++    } finally {
++      /* dispose already ran */
++    }
++  });
++});
++
++// ------------------------------------------------------------- U5b inspector mutations
++
++function inspectorButton(inspector, label) {
++  return inspector.children.find((child) => child.textContent === label);
++}
++
++async function clickInspectorButton(stub, button) {
++  stub.dispatch(button, "click");
++  await new Promise((resolve) => setTimeout(resolve, 0));
++}
++
++function persistLayoutCalls(actions) {
++  return actions.filter((action) => action.persistLayout);
++}
++
++test("inspector direction button cycles direction and persists once", async () => {
++  const stub = createDomStub();
++  const previousDocument = globalThis.document;
++  const previousWindow = globalThis.window;
++  globalThis.document = stub.document;
++  globalThis.window = stub.window;
++  try {
++    const session = cardSession([{ source: "card-a", target: "card-b", kind: "bezier", label: "" }]);
++    const persists = [];
++    const canvas = createCanvasRoot({
++      session,
++      settings: defaultSettings(),
++      version: "0.5.0",
++      nestStack: [],
++      onPersist: async (action) => { persists.push(action); },
++    });
++    try {
++      canvas.selectEdge("card-a->card-b");
++      stub.dispatch(canvas.root, "pointerenter");
++      const inspector = inspectorOnRoot(canvas.root);
++      await clickInspectorButton(stub, inspectorButton(inspector, "Direction"));
++      assert.equal(session.model.edges[0].direction, "twoWay");
++      assert.equal(persistLayoutCalls(persists).length, 1);
++      await clickInspectorButton(stub, inspectorButton(inspector, "Direction"));
++      assert.equal(session.model.edges[0].direction, "none");
++      assert.equal(persistLayoutCalls(persists).length, 2);
++      await clickInspectorButton(stub, inspectorButton(inspector, "Direction"));
++      assert.equal(session.model.edges[0].direction, "oneWay");
++      assert.equal(persistLayoutCalls(persists).length, 3);
++    } finally {
++      canvas.dispose();
++    }
++  } finally {
++    globalThis.document = previousDocument;
++    globalThis.window = previousWindow;
++  }
++});
++
++test("inspector Flip swaps endpoints and keeps label; disabled when reverse exists", async () => {
++  const stub = createDomStub();
++  const previousDocument = globalThis.document;
++  const previousWindow = globalThis.window;
++  globalThis.document = stub.document;
++  globalThis.window = stub.window;
++  try {
++    const session = cardSession([{
++      source: "card-a",
++      target: "card-b",
++      kind: "bezier",
++      label: "keep",
++      from: "right",
++      to: "left",
++      direction: "oneWay",
++      color: "teal",
++    }]);
++    const persists = [];
++    const canvas = createCanvasRoot({
++      session,
++      settings: defaultSettings(),
++      version: "0.5.0",
++      nestStack: [],
++      onPersist: async (action) => { persists.push(action); },
++    });
++    try {
++      canvas.selectEdge("card-a->card-b");
++      stub.dispatch(canvas.root, "pointerenter");
++      const inspector = inspectorOnRoot(canvas.root);
++      const flipBtn = inspectorButton(inspector, "Flip");
++      assert.equal(flipBtn.disabled, false);
++      await clickInspectorButton(stub, flipBtn);
++      assert.equal(session.model.edges.length, 1);
++      const flipped = session.model.edges[0];
++      assert.equal(flipped.source, "card-b");
++      assert.equal(flipped.target, "card-a");
++      assert.equal(flipped.from, "left");
++      assert.equal(flipped.to, "right");
++      assert.equal(flipped.label, "keep");
++      assert.equal(flipped.kind, "bezier");
++      assert.equal(flipped.direction, "oneWay");
++      assert.equal(flipped.color, "teal");
++      assert.equal(canvas.getSelectedEdgeKey(), "card-b->card-a");
++      assert.equal(persistLayoutCalls(persists).length, 1);
++
++      session.model.edges.push({
++        source: "card-a",
++        target: "card-b",
++        kind: "bezier",
++        label: "",
++        from: "auto",
++        to: "auto",
++        direction: "",
++        color: "",
++      });
++      canvas.selectEdge("card-b->card-a");
++      const blockedFlip = inspectorButton(inspectorOnRoot(canvas.root), "Flip");
++      assert.equal(blockedFlip.disabled, true);
++      assert.equal(blockedFlip.title, "Reverse connection already exists");
++      const edgeCount = session.model.edges.length;
++      await clickInspectorButton(stub, blockedFlip);
++      assert.equal(session.model.edges.length, edgeCount);
++      assert.equal(persistLayoutCalls(persists).length, 1);
++    } finally {
++      canvas.dispose();
++    }
++  } finally {
++    globalThis.document = previousDocument;
++    globalThis.window = previousWindow;
++  }
++});
++
++test("inspector Route and color swatch mutate the edge with one persist each", async () => {
++  const stub = createDomStub();
++  const previousDocument = globalThis.document;
++  const previousWindow = globalThis.window;
++  globalThis.document = stub.document;
++  globalThis.window = stub.window;
++  try {
++    const session = cardSession([{ source: "card-a", target: "card-b", kind: "bezier", label: "" }]);
++    const persists = [];
++    const canvas = createCanvasRoot({
++      session,
++      settings: defaultSettings(),
++      version: "0.5.0",
++      nestStack: [],
++      onPersist: async (action) => { persists.push(action); },
++    });
++    try {
++      canvas.selectEdge("card-a->card-b");
++      stub.dispatch(canvas.root, "pointerenter");
++      const inspector = inspectorOnRoot(canvas.root);
++      await clickInspectorButton(stub, inspectorButton(inspector, "Route"));
++      assert.equal(session.model.edges[0].kind, "elbow");
++      assert.equal(persistLayoutCalls(persists).length, 1);
++      const tealSwatch = inspector.children.find((child) => child.dataset?.color === "teal");
++      await clickInspectorButton(stub, tealSwatch);
++      assert.equal(session.model.edges[0].color, "teal");
++      assert.equal(persistLayoutCalls(persists).length, 2);
++    } finally {
++      canvas.dispose();
++    }
++  } finally {
++    globalThis.document = previousDocument;
++    globalThis.window = previousWindow;
++  }
++});
++
++test("inspector Delete and keyboard Delete remove the edge and clear selection", async () => {
++  const stub = createDomStub();
++  const previousDocument = globalThis.document;
++  const previousWindow = globalThis.window;
++  globalThis.document = stub.document;
++  globalThis.window = stub.window;
++  try {
++    const session = cardSession([{ source: "card-a", target: "card-b", kind: "bezier", label: "" }]);
++    const persists = [];
++    const canvas = createCanvasRoot({
++      session,
++      settings: defaultSettings(),
++      version: "0.5.0",
++      nestStack: [],
++      onPersist: async (action) => { persists.push(action); },
++    });
++    try {
++      canvas.selectEdge("card-a->card-b");
++      stub.dispatch(canvas.root, "pointerenter");
++      await clickInspectorButton(stub, inspectorButton(inspectorOnRoot(canvas.root), "Delete"));
++      assert.equal(session.model.edges.length, 0);
++      assert.equal(canvas.getSelectedEdgeKey(), null);
++      assert.equal(inspectorOnRoot(canvas.root), undefined);
++      assert.equal(persistLayoutCalls(persists).length, 1);
++
++      session.model.edges.push({ source: "card-a", target: "card-b", kind: "bezier", label: "" });
++      canvas.render();
++      canvas.selectEdge("card-a->card-b");
++      stub.dispatch(stub.window, "keydown", { key: "Delete" });
++      await new Promise((resolve) => setTimeout(resolve, 0));
++      assert.equal(session.model.edges.length, 0);
++      assert.equal(canvas.getSelectedEdgeKey(), null);
++      assert.equal(persistLayoutCalls(persists).length, 2);
++    } finally {
++      canvas.dispose();
++    }
++  } finally {
++    globalThis.document = previousDocument;
++    globalThis.window = previousWindow;
++  }
++});
+diff --git a/test/edges.test.js b/test/edges.test.js
+index c0069de..6196312 100644
+--- a/test/edges.test.js
++++ b/test/edges.test.js
+@@ -1,7 +1,20 @@
+ import assert from "node:assert/strict";
+ import test from "node:test";
+ 
+-import { arrowheadPoints, bezierPath, buildEdgePath, elbowPath, edgeMidpoint, straightPath } from "../src/edges.js";
++import {
++  arrowheadMarkerId,
++  arrowheadPoints,
++  arrowheadSize,
++  bezierPath,
++  buildEdgePath,
++  directionToPoints,
++  edgeEndpoints,
++  edgeMidpoint,
++  effectiveDirection,
++  elbowPath,
++  shouldRescaleMarkers,
++  straightPath,
++} from "../src/edges.js";
+ 
+ const source = { x: 0, y: 0, width: 100, height: 80 };
+ const target = { x: 200, y: 120, width: 100, height: 80 };
+@@ -31,3 +44,53 @@ test("edgeMidpoint is the midpoint of the connector endpoints", () => {
+   assert.ok(mid.x > source.x);
+   assert.ok(mid.x < target.x + target.width);
+ });
++
++test("edgeEndpoints uses port sides", () => {
++  const endpoints = edgeEndpoints(source, target, "right", "left");
++  assert.equal(endpoints.sx, 100);
++  assert.equal(endpoints.sy, 40);
++  assert.equal(endpoints.tx, 200);
++  assert.equal(endpoints.ty, 160);
++
++  const topAuto = edgeEndpoints(source, target, "top", "auto");
++  assert.equal(topAuto.sx, 50);
++  assert.equal(topAuto.sy, 0);
++  assert.equal(topAuto.tx, 200);
++  assert.equal(topAuto.ty, 160);
++});
++
++test("bezierPath from top exits upward", () => {
++  const path = bezierPath(50, 0, 200, 160, "top", "left");
++  const match = path.match(/^M (\S+) (\S+) C (\S+) (\S+),/);
++  assert.ok(match);
++  const sy = Number(match[2]);
++  const c1y = Number(match[4]);
++  assert.ok(c1y < sy);
++});
++
++test("arrowheadMarkerId is scoped per canvas", () => {
++  assert.equal(arrowheadMarkerId("end", "pxdA", "teal"), "pxd-arrow-end-pxdA-teal");
++  assert.notEqual(arrowheadMarkerId("end", "pxdA", "teal"), arrowheadMarkerId("end", "pxdB", "teal"));
++});
++
++test("arrowheadSize clamps with zoom", () => {
++  assert.equal(arrowheadSize(0.4), 24);
++  assert.equal(arrowheadSize(1), 10);
++  assert.equal(arrowheadSize(3), 6);
++});
++
++test("shouldRescaleMarkers at 5 percent threshold", () => {
++  assert.equal(shouldRescaleMarkers(1, 1.03), false);
++  assert.equal(shouldRescaleMarkers(1, 1.06), true);
++});
++
++test("effectiveDirection prefers explicit edge direction", () => {
++  assert.equal(effectiveDirection({}, "end"), "oneWay");
++  assert.equal(effectiveDirection({ direction: "none" }, "end"), "none");
++});
++
++test("directionToPoints maps direction to marker sides", () => {
++  assert.deepEqual(directionToPoints("oneWay"), { start: false, end: true });
++  assert.deepEqual(directionToPoints("twoWay"), { start: true, end: true });
++  assert.deepEqual(directionToPoints("none"), { start: false, end: false });
++});
+diff --git a/test/metadata.test.js b/test/metadata.test.js
+index 80ece3e..218325d 100644
+--- a/test/metadata.test.js
++++ b/test/metadata.test.js
+@@ -97,6 +97,60 @@ test("parse/serialize round-trip of edge label::", () => {
+   assert.equal(roundTrip.diagrams.get("diagram-1").edges[0].label, "because it follows");
+ });
+ 
++test("parse/serialize round-trip of edge from/to/direction/color", () => {
++  const tree = {
++    uid: "page",
++    string: "",
++    children: [
++      { uid: "schema", string: "schema-version:: 1", children: [] },
++      {
++        uid: "enhanced",
++        string: "enhanced::",
++        children: [{
++          uid: "d1",
++          string: "diagram-1",
++          children: [
++            {
++              uid: "e1",
++              string: "edge a->b",
++              children: [
++                { uid: "from", string: "from:: right", children: [] },
++                { uid: "to", string: "to:: left", children: [] },
++                { uid: "dir", string: "direction:: twoWay", children: [] },
++                { uid: "col", string: "color:: teal", children: [] },
++              ],
++            },
++          ],
++        }],
++      },
++    ],
++  };
++  const parsed = parseMetadataTree(tree);
++  const edge = parsed.diagrams.get("diagram-1").edges[0];
++  assert.equal(edge.source, "a");
++  assert.equal(edge.target, "b");
++  assert.equal(edge.from, "right");
++  assert.equal(edge.to, "left");
++  assert.equal(edge.direction, "twoWay");
++  assert.equal(edge.color, "teal");
++  const serialized = serializeDiagramMetadata("diagram-1", parsed.diagrams.get("diagram-1"));
++  assert.match(serialized, /from:: right/);
++  assert.match(serialized, /to:: left/);
++  assert.match(serialized, /direction:: twoWay/);
++  assert.match(serialized, /color:: teal/);
++  const defaultsLayout = {
++    viewport: null,
++    nodes: new Map(),
++    edges: [{ source: "a", target: "b", kind: "bezier", label: "", from: "auto", to: "auto", direction: "", color: "" }],
++    sections: new Map(),
++  };
++  const defaultsSerialized = serializeDiagramMetadata("diagram-1", defaultsLayout);
++  assert.doesNotMatch(defaultsSerialized, /from::/);
++  assert.doesNotMatch(defaultsSerialized, /to::/);
++  assert.doesNotMatch(defaultsSerialized, /direction::/);
++  assert.doesNotMatch(defaultsSerialized, /color::/);
++});
++
+ test("parse/serialize round-trip of node and section color::", () => {
+   const tree = {
+     uid: "page",
+diff --git a/test/model.test.js b/test/model.test.js
+index c7b76c9..70d7ca5 100644
+--- a/test/model.test.js
++++ b/test/model.test.js
+@@ -84,6 +84,91 @@ test("applyPull does not drop an in-memory label for a known edge", () => {
+   assert.equal(model.edges[0].label, "kept");
+ });
+ 
++test("addEdge stores from/to/direction/color from extra argument", () => {
++  const model = new DiagramModel({
++    diagramUid: "d1",
++    tree: { uid: "d1", string: "{{[[diagram]]}}", children: [], props: {}, diagramNodes: [], diagramEdges: [] },
++    metadataLayout: null,
++  });
++  const edge = model.addEdge("a", "b", "bezier", "", {
++    from: "right",
++    to: "left",
++    direction: "twoWay",
++    color: "teal",
++  });
++  assert.equal(edge.from, "right");
++  assert.equal(edge.to, "left");
++  assert.equal(edge.direction, "twoWay");
++  assert.equal(edge.color, "teal");
++  assert.equal(model.addEdge("a", "b", "bezier", "", { direction: "oneWay" }), null);
++});
++
++test("applyPull adopts from/to/direction/color for new edges but not existing", () => {
++  const tree = {
++    uid: "d1",
++    string: "{{[[diagram]]}}",
++    children: [
++      { uid: "a", string: "A", order: 0 },
++      { uid: "b", string: "B", order: 1 },
++      { uid: "c", string: "C", order: 2 },
++    ],
++    props: {},
++    diagramNodes: [],
++    diagramEdges: [],
++  };
++  const model = new DiagramModel({
++    diagramUid: "d1",
++    tree,
++    metadataLayout: {
++      nodes: new Map(),
++      edges: [{
++        source: "a",
++        target: "b",
++        kind: "bezier",
++        label: "",
++        from: "auto",
++        to: "auto",
++        direction: "oneWay",
++        color: "",
++      }],
++      sections: new Map(),
++    },
++  });
++  assert.equal(model.edges[0].direction, "oneWay");
++  model.applyPull(tree, {
++    nodes: new Map(),
++    edges: [
++      {
++        source: "a",
++        target: "b",
++        kind: "bezier",
++        label: "",
++        from: "right",
++        to: "left",
++        direction: "twoWay",
++        color: "teal",
++      },
++      {
++        source: "b",
++        target: "c",
++        kind: "bezier",
++        label: "",
++        from: "top",
++        to: "bottom",
++        direction: "none",
++        color: "rose",
++      },
++    ],
++    sections: new Map(),
++  });
++  assert.equal(model.edges[0].direction, "oneWay");
++  const newEdge = model.edges.find((edge) => edge.source === "b" && edge.target === "c");
++  assert.equal(newEdge.from, "top");
++  assert.equal(newEdge.to, "bottom");
++  assert.equal(newEdge.direction, "none");
++  assert.equal(newEdge.color, "rose");
++});
++
+ test("importNativeLayout does not clobber metadata positions", () => {
+   const tree = parsePullResult({
+     ":block/uid": "d1",
+diff --git a/test/sync-silence.test.js b/test/sync-silence.test.js
+index cd8e9b6..e1a636a 100644
+--- a/test/sync-silence.test.js
++++ b/test/sync-silence.test.js
+@@ -465,6 +465,40 @@ function twoNodePageTree() {
+   };
+ }
+ 
++function twoNodePageTreeWithEdge() {
++  const tree = twoNodePageTree();
++  tree.children[1].children[0].children.push({
++    uid: "edge-1",
++    string: "edge card-1->card-2",
++    children: [
++      { uid: "kind-1", string: "kind:: straight", children: [] },
++      { uid: "label-1", string: "label:: because", children: [] },
++    ],
++  });
++  return tree;
++}
++
++function twoNodeLayoutWithEdge(direction = "") {
++  return {
++    viewport: { x: 100, y: 200, zoom: 1.25 },
++    nodes: new Map([
++      ["card-1", { pos: { x: 10, y: 20 }, size: { width: 280, height: 160 }, color: "" }],
++      ["card-2", { pos: { x: 400, y: 50 }, size: { width: 280, height: 160 }, color: "" }],
++    ]),
++    edges: [{
++      source: "card-1",
++      target: "card-2",
++      kind: "straight",
++      label: "because",
++      from: "auto",
++      to: "auto",
++      direction,
++      color: "",
++    }],
++    sections: new Map(),
++  };
++}
++
+ function installMutableMetadataRoamMock(pageTree) {
+   const blocks = new Map();
+   const counts = { create: 0, update: 0, delete: 0, deletedUids: [], updated: [] };
+@@ -562,3 +596,34 @@ test("persistLayout that moves one node does not delete unrelated node children"
+   assert.equal(counts.updated[0].string, "pos:: 40,20");
+   assert.equal(blocks.get("node-2")?.string, "node card-2");
+ });
++
++test("MetadataStore.set direction-only change creates one child and reverts cleanly", async () => {
++  const { counts, blocks } = installMutableMetadataRoamMock(twoNodePageTreeWithEdge());
++  const store = new MetadataStore();
++  store.pageUid = "meta-page";
++  store.reload();
++  store.diagrams.set("diagram-1", twoNodeLayoutWithEdge());
++  store.diagramBlockUids.set("diagram-1", "diagram-block");
++
++  const wrote = await store.set("diagram-1", twoNodeLayoutWithEdge("twoWay"));
++  assert.equal(wrote, true);
++  assert.equal(counts.create, 1);
++  assert.equal(counts.delete, 0);
++  assert.equal(counts.update, 0);
++  assert.ok(blocks.has("kind-1"));
++  assert.ok(blocks.has("label-1"));
++  const directionChild = [...blocks.values()].find((block) => block.string === "direction:: twoWay");
++  assert.ok(directionChild);
++
++  counts.create = 0;
++  counts.delete = 0;
++  counts.update = 0;
++  const reverted = await store.set("diagram-1", twoNodeLayoutWithEdge());
++  assert.equal(reverted, true);
++  assert.equal(counts.create, 0);
++  assert.equal(counts.delete, 1);
++  assert.equal(counts.update, 0);
++  assert.ok(blocks.has("kind-1"));
++  assert.ok(blocks.has("label-1"));
++  assert.equal([...blocks.values()].some((block) => block.string.startsWith("direction::")), false);
++});

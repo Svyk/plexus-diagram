@@ -1,0 +1,1276 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index d86587e..5267b6b 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -1,5 +1,13 @@
+ # Changelog
+ 
++## 0.4.2 — 2026-08-28
++
++- **Svy Beam caret** — overlay inputs use native `caret-color` and `cursor: text` (higher specificity than Beam's custom hotspot cursor). `focus({ preventScroll: true })` plus a capture-phase guard stop Roam from scrolling the outline copy of an editing card into view.
++- **Right sidebar inset** — fullscreen also ResizeObserves the right sidebar and re-places on the next two animation frames after the article class changes. When the article's right edge is within 8px of the viewport, the overlay `right` inset is 0.
++- **Library portal** — the drawer mounts on `document.body` (fixed, 320px, 14px) so it is not scaled by `.pxd-world`. Items are opaque `#f5f8fa` / `#182026`. Empty search hides `roam/js/` and `roam/css` pages.
++- **Nested crumbs** — opening a nested board pushes the parent onto a crumb stack (`Parent › Current`). Clicking a crumb opens that block (or page). Nested cards show the parsed name; unnamed boards get an inline "Name this board…" field.
++- **Connect to empty** — dragging a handle onto empty board creates a card at the drop point, links it, and enters edit (Heptabase pull-from-port). Handles are 14px. An existing edge is kept if you connect the same pair again.
++
+ ## 0.4.1 — 2026-08-28
+ 
+ - **Pending-changes patch** — layout persist no longer delete-all/recreates the metadata tree. Existing diagram blocks are patched in place: only changed `pos::` / `size::` / `color::` / edge / section rows are written, identical strings are skipped, and gone ids are the only deletes. Viewport persist is still the one-line `setViewport` path.
+diff --git a/README.md b/README.md
+index 8a0e3cf..bdf6d1f 100644
+--- a/README.md
++++ b/README.md
+@@ -17,10 +17,12 @@ Native-first Heptabase-like overlay for Roam `{{[[diagram]]}}` blocks. Roam's di
+ - **Add a card:** double-click empty space, pick the `Card` tool and click, or drop a page/block from the left sidebar onto the board (`[[Title]]` or a Roam uid).
+ - **Edit a card:** double-click it. Roam's native block editor mounts in place; click away or press Esc to commit. Cards show `renderString` output otherwise.
+ - **Move / resize:** drag a card; drag the bottom-right corner to resize (min 240×140). Shift-click to multi-select and drag together.
+-- **Connect:** drag from a card's edge dot onto another card, or use the `Connect` tool and drag from anywhere on a card. Double-click a connector (or click its midpoint pill) to add a note on the line — that does not create a card.
++- **Connect:** drag from a card's edge dot onto another card, or onto empty board to pull out a new card and link it. Use the `Connect` tool and drag from anywhere on a card. Double-click a connector (or click its midpoint pill) to add a note on the line — that does not create a card.
+ - **Sections:** frames are visible (solid border, light fill). Drag to move, resize the corner, double-click the label to rename.
+-- **Nested diagrams:** double-click a nested card to open it in the Plexus overlay fullscreen (`fullscreen-on-zoom`), not native Empty Roam Diagram.
+-- **Fullscreen:** `Fullscreen` button or **Plexus Diagram: Fullscreen this diagram**. Esc exits edit, then fullscreen. Zoomed diagram pages (`#/app/<graph>/page/<uid>`) open full screen by default (`fullscreen-on-zoom`). Fullscreen hides RoamJS breadcrumbs, sits below the remaining topbar, and follows `.rm-article-wrapper` so the overlay shrinks with the left sidebar instead of covering it.
++- **Nested diagrams:** double-click a nested card body to open it in the Plexus overlay fullscreen (`fullscreen-on-zoom`), not native Empty Roam Diagram. The toolbar shows Heptabase-style crumbs (`Parent › Current`); click a parent crumb to go back. Nested cards show the parsed board name, or an inline "Name this board…" field when the block is only `{{[[diagram]]}}`.
++- **Library:** the searchable drawer portals onto `document.body` (not the scaled world) so type stays readable.
++- **Fullscreen:** `Fullscreen` button or **Plexus Diagram: Fullscreen this diagram**. Esc exits edit, then fullscreen. Zoomed diagram pages (`#/app/<graph>/page/<uid>`) open full screen by default (`fullscreen-on-zoom`). Fullscreen hides RoamJS breadcrumbs, sits below the remaining topbar, and follows `.rm-article-wrapper` so the overlay shrinks with the left and right sidebars instead of covering them.
++- **Caret:** overlay editors opt out of Svy Beam's custom cursor/caret overlay (`caret-color` + `cursor: text`) so the beam does not jump at zoom.
+ - **Shortcuts** (when `enable-shortcuts` is on and the overlay has the pointer): `V` select, `C` connect, `N` add a card at view center, `F` fit. Ignored while typing in a card or edge-label editor.
+ - Viewport and layout persist on pointer-up / wheel-end, not per pixel. A viewport imported from the native diagram that would paint cards under 140px is replaced by a fit on first paint.
+ 
+diff --git a/package.json b/package.json
+index 1dd1621..7dbd4f3 100644
+--- a/package.json
++++ b/package.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "plexus-diagram",
+-  "version": "0.4.1",
++  "version": "0.4.2",
+   "private": true,
+   "description": "Native-first Heptabase-like overlay for Roam {{[[diagram]]}} blocks",
+   "type": "module",
+diff --git a/src/canvas.js b/src/canvas.js
+index 6925199..1c2a28d 100644
+--- a/src/canvas.js
++++ b/src/canvas.js
+@@ -1,3 +1,4 @@
++import { diagramUidFromLocation } from "./discovery.js";
+ import { buildEdgePath, arrowheadPoints, edgeMidpoint } from "./edges.js";
+ import {
+   acquireScratch,
+@@ -13,6 +14,16 @@ import {
+   viewportNeedsFit,
+ } from "./model.js";
+ 
++export const nestStack = [];
++
++/** `{{[[diagram]]:Foo}}` → Foo; `{{[[diagram]]}}` → ""; other strings → trimmed without the macro. */
++export function parseDiagramTitle(string) {
++  const raw = String(string ?? "");
++  const named = raw.match(/\{\{\s*\[\[diagram\]\]\s*:\s*([^}]+)\}\}/i);
++  if (named) return named[1].trim();
++  return raw.replace(/\{\{\s*\[\[diagram\]\]\s*\}\}/gi, "").trim();
++}
++
+ const SVG_NS = "http://www.w3.org/2000/svg";
+ const DRAG_THRESHOLD_PX = 4;
+ const PERSIST_DEBOUNCE_MS = 150;
+@@ -48,6 +59,17 @@ export function topbarOffset(root = globalThis.document) {
+ }
+ 
+ const SIDEBAR_SELECTORS = [".roam-sidebar-container", ".rm-left-sidebar", "#roam-sidebar-container"];
++const RIGHT_SIDEBAR_SELECTORS = ["#right-sidebar", ".rm-right-sidebar", "[class*=\"right-sidebar\"]"];
++const RIGHT_INSET_COLLAPSE_PX = 8;
++
++function firstMatch(root, selectors) {
++  if (!root?.querySelector) return null;
++  for (const selector of selectors) {
++    const el = root.querySelector(selector);
++    if (el) return el;
++  }
++  return null;
++}
+ 
+ export function sidebarOffset(root = globalThis.document) {
+   if (!root?.querySelector) return 0;
+@@ -68,7 +90,7 @@ function chromeRootBody(root) {
+   return root?.body || globalThis.document?.body || null;
+ }
+ 
+-function fullscreenInsets(root = globalThis.document) {
++export function fullscreenInsets(root = globalThis.document) {
+   const topbarBottom = topbarOffset(root);
+   const article = root?.querySelector?.(".rm-article-wrapper");
+   if (!article?.getBoundingClientRect) {
+@@ -82,7 +104,8 @@ function fullscreenInsets(root = globalThis.document) {
+   const vh = Number(view.innerHeight);
+   let right = 0;
+   if (Number.isFinite(Number(rect.right)) && Number.isFinite(vw) && vw > 0) {
+-    right = Math.max(0, Math.round(vw - rect.right));
++    const gap = vw - rect.right;
++    right = gap <= RIGHT_INSET_COLLAPSE_PX ? 0 : Math.max(0, Math.round(gap));
+   }
+   let bottom = 0;
+   if (Number.isFinite(Number(rect.bottom)) && Number.isFinite(vh) && vh > 0) {
+@@ -103,8 +126,9 @@ export function applyFullscreenChrome(mount, on, root = globalThis.document) {
+     }
+     return () => {};
+   }
++  let chromeAlive = true;
+   const place = () => {
+-    if (!mount?.style) return;
++    if (!chromeAlive || !mount?.style) return;
+     const box = fullscreenInsets(root);
+     mount.style.top = `${box.top}px`;
+     mount.style.left = `${box.left}px`;
+@@ -114,33 +138,37 @@ export function applyFullscreenChrome(mount, on, root = globalThis.document) {
+     mount.style.height = "auto";
+     mount.style.minHeight = "0";
+   };
++  const placeAfterSidebarAnim = () => {
++    place();
++    raf(() => {
++      place();
++      raf(place);
++    });
++  };
+   place();
+   const disconnects = [];
+   const article = root?.querySelector?.(".rm-article-wrapper");
+-  let sidebar = null;
+-  if (root?.querySelector) {
+-    for (const selector of SIDEBAR_SELECTORS) {
+-      sidebar = root.querySelector(selector);
+-      if (sidebar) break;
+-    }
+-  }
++  const sidebar = firstMatch(root, SIDEBAR_SELECTORS);
++  const rightSidebar = firstMatch(root, RIGHT_SIDEBAR_SELECTORS);
+   if (typeof ResizeObserver === "function") {
+     try {
+       const ro = new ResizeObserver(() => place());
+       if (article) ro.observe(article);
+       if (sidebar) ro.observe(sidebar);
++      if (rightSidebar && rightSidebar !== sidebar && rightSidebar !== article) ro.observe(rightSidebar);
+       disconnects.push(() => ro.disconnect());
+     } catch { /* stub articles are not Elements */ }
+   }
+   if (typeof MutationObserver === "function" && article) {
+     try {
+-      const mo = new MutationObserver(() => place());
++      const mo = new MutationObserver(() => placeAfterSidebarAnim());
+       mo.observe(article, { attributes: true, attributeFilter: ["class"] });
+       disconnects.push(() => mo.disconnect());
+     } catch { /* stub articles are not Nodes */ }
+   }
+   const cancelRaf = raf(place);
+   return () => {
++    chromeAlive = false;
+     cancelRaf();
+     for (const disconnect of disconnects) disconnect();
+   };
+@@ -263,6 +291,28 @@ function synthesizeBlockClick(host) {
+   return true;
+ }
+ 
++/** Focus a Roam textarea without scrolling the outline copy into view. */
++export function focusRoamInput(el) {
++  if (!el) return false;
++  try {
++    el.focus?.({ preventScroll: true });
++  } catch {
++    try { el.focus?.(); } catch { /* unfocused */ }
++  }
++  synthesizeBlockClick(el);
++  return true;
++}
++
++function roamBlockInputUid(el) {
++  if (!el) return null;
++  const host = typeof el.closest === "function" ? el.closest("[data-uid]") : null;
++  const fromData = host?.dataset?.uid || host?.getAttribute?.("data-uid");
++  if (fromData) return fromData;
++  const id = String(el.id || "");
++  const match = id.match(/([A-Za-z0-9_-]{9})$/);
++  return match ? match[1] : null;
++}
++
+ function scratchTextareaFocused() {
+   const el = globalThis.document?.activeElement;
+   if (!el) return false;
+@@ -290,7 +340,8 @@ function isTextEntryTarget(target) {
+  * for structural change — add/remove card, tool change, session pull — and reconciles
+  * card elements by uid so a card being edited is never torn down under the caret.
+  */
+-export function createCanvasRoot({ session, settings, version, onPersist }) {
++export function createCanvasRoot({ session, settings, version, onPersist, nestStack: nestStackOption }) {
++  const crumbs = nestStackOption !== undefined ? nestStackOption : nestStack;
+   const root = document.createElement("div");
+   root.className = "pxd-root";
+   const grid = document.createElement("div");
+@@ -554,7 +605,7 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
+   const tools = [
+     ["select", "Select", "Select, drag, and pan (V)"],
+     ["card", "Card", "Click the board to add a card"],
+-    ["connect", "Connect", "Drag from one card to another"],
++    ["connect", "Connect", "Drag from a card onto another card or empty space"],
+     ["section", "Section", "Click the board to add a section frame"],
+     ["nested", "Nested", "Click the board to add a nested diagram card"],
+     ["library", "Library", "Place existing pages as cards"],
+@@ -593,6 +644,48 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
+   }
+   toolbar.append(toolGroup);
+ 
++  const crumbRow = document.createElement("div");
++  crumbRow.className = "pxd-crumb";
++  const renderCrumbs = () => {
++    if (Array.isArray(crumbRow.children)) crumbRow.children.length = 0;
++    crumbRow.innerHTML = "";
++    if (!crumbs.length) {
++      crumbRow.classList.add("pxd-crumb--empty");
++      crumbRow.textContent = "";
++      return;
++    }
++    crumbRow.classList.remove("pxd-crumb--empty");
++    const currentTitle = parseDiagramTitle(model().tree?.string || "") || "Diagram";
++    for (let i = 0; i < crumbs.length; i += 1) {
++      if (i > 0) {
++        const sep = document.createElement("span");
++        sep.className = "pxd-crumb__sep";
++        sep.textContent = " › ";
++        crumbRow.append(sep);
++      }
++      const item = crumbs[i];
++      const button = document.createElement("button");
++      button.type = "button";
++      button.className = "pxd-crumb__item";
++      button.textContent = item.title || "Diagram";
++      button.addEventListener("click", () => {
++        crumbs.length = i;
++        void onPersist?.({ openCrumb: item.uid });
++      });
++      crumbRow.append(button);
++    }
++    const currentSep = document.createElement("span");
++    currentSep.className = "pxd-crumb__sep";
++    currentSep.textContent = " › ";
++    crumbRow.append(currentSep);
++    const current = document.createElement("span");
++    current.className = "pxd-crumb__current";
++    current.textContent = currentTitle;
++    crumbRow.append(current);
++  };
++  renderCrumbs();
++  if (crumbs.length) toolbar.append(crumbRow);
++
+   const viewGroup = document.createElement("div");
+   viewGroup.className = "pxd-toolbar__group";
+   const zoomOutBtn = makeButton("Zoom-", "Zoom out", "pxd-toolbar__btn--zoom");
+@@ -950,11 +1043,38 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
+   const cardEls = new Map();
+   let editingUid = null;
+   let editOpenedAt = 0;
++  let stealListening = false;
++
++  const onEditingFocusSteal = (event) => {
++    if (!editingUid) return;
++    if (!root.classList.contains("pxd-root--editing")) return;
++    const target = event.target;
++    if (!target || root.contains?.(target)) return;
++    const isInput = elementHasClass(target, "rm-block__input")
++      || String(target.tagName || "").toLowerCase() === "textarea";
++    if (!isInput) return;
++    if (roamBlockInputUid(target) !== editingUid) return;
++    event.preventDefault?.();
++    event.stopPropagation?.();
++    event.stopImmediatePropagation?.();
++  };
++  const attachFocusGuard = () => {
++    if (stealListening || typeof document.addEventListener !== "function") return;
++    document.addEventListener("focus", onEditingFocusSteal, true);
++    document.addEventListener("scroll", onEditingFocusSteal, true);
++    stealListening = true;
++  };
++  const detachFocusGuard = () => {
++    if (!stealListening || typeof document.removeEventListener !== "function") return;
++    document.removeEventListener("focus", onEditingFocusSteal, true);
++    document.removeEventListener("scroll", onEditingFocusSteal, true);
++    stealListening = false;
++  };
+ 
+   const cardTitleText = (child) => {
++    if (model().isNestedDiagram(child.uid)) return parseDiagramTitle(child.string) || "";
+     const cleaned = String(child.string || "").replace(/\{\{.*?\}\}/, "").trim();
+     if (cleaned) return cleaned;
+-    if (model().isNestedDiagram(child.uid)) return "Nested diagram";
+     return String(child.string || "").slice(0, 48);
+   };
+ 
+@@ -982,13 +1102,48 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
+     body.innerHTML = "";
+     card.classList.remove("pxd-card--empty");
+     if (model().isNestedDiagram(child.uid)) {
+-      const label = document.createElement("div");
+-      label.className = "pxd-card__nested-label";
+-      label.textContent = cardTitleText(child);
+-      const sub = document.createElement("div");
+-      sub.className = "pxd-card__placeholder";
+-      sub.textContent = "Double-click to open";
+-      body.append(label, sub);
++      const parsed = parseDiagramTitle(child.string);
++      if (parsed) {
++        const label = document.createElement("div");
++        label.className = "pxd-card__nested-label";
++        label.textContent = parsed;
++        const sub = document.createElement("div");
++        sub.className = "pxd-card__placeholder";
++        sub.textContent = "Double-click to open";
++        body.append(label, sub);
++      } else {
++        const input = document.createElement("input");
++        input.type = "text";
++        input.className = "pxd-card__nested-name";
++        input.placeholder = "Name this board…";
++        input.value = "";
++        input.addEventListener("pointerdown", (event) => event.stopPropagation());
++        input.addEventListener("click", (event) => event.stopPropagation());
++        input.addEventListener("dblclick", (event) => {
++          event.preventDefault();
++          event.stopPropagation();
++        });
++        let nameTimer = null;
++        input.addEventListener("input", () => {
++          if (diagramUidFromLocation() === child.uid) return;
++          if (nameTimer) clearTimeout(nameTimer);
++          nameTimer = setTimeout(() => {
++            nameTimer = null;
++            const name = String(input.value || "").trim();
++            const next = name ? `{{[[diagram]]:${name}}}` : "{{[[diagram]]}}";
++            void updateBlock(child.uid, next).then(() => {
++              const live = model().getCard(child.uid);
++              if (live) live.string = next;
++              child.string = next;
++              card._pxdString = next;
++            }).catch(() => {});
++          }, 150);
++        });
++        const sub = document.createElement("div");
++        sub.className = "pxd-card__placeholder";
++        sub.textContent = "Double-click to open";
++        body.append(input, sub);
++      }
+     } else if (!child.string.trim()) {
+       card.classList.add("pxd-card--empty");
+       const placeholder = document.createElement("div");
+@@ -1006,6 +1161,7 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
+     if (!uid) return;
+     editingUid = null;
+     editOpenedAt = 0;
++    detachFocusGuard();
+     const card = cardEls.get(uid);
+     root.classList.remove("pxd-root--editing");
+     const scratchUid = peekScratch()?.uid;
+@@ -1055,10 +1211,11 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
+     }
+     editingUid = uid;
+     editOpenedAt = Date.now();
++    root.classList.add("pxd-root--editing");
++    attachFocusGuard();
+     model().selected = new Set([uid]);
+     syncSelection();
+     card.classList.add("pxd-card--editing");
+-    root.classList.add("pxd-root--editing");
+     const body = card._pxdBody;
+     unmountRoam(body);
+     const fallback = document.createElement("div");
+@@ -1085,7 +1242,7 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
+       || body.querySelector?.(".pxd-card__editor .rm-block__input, .pxd-card__editor textarea");
+     if (input) {
+       body.querySelector?.(".pxd-card__edit-fallback")?.remove?.();
+-      synthesizeBlockClick(input);
++      focusRoamInput(input);
+     }
+     syncHint();
+   };
+@@ -1171,6 +1328,7 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
+     renderSections();
+     renderCards();
+     renderEdges();
++    renderCrumbs();
+     syncHint();
+     scheduleMinimap();
+   };
+@@ -1377,16 +1535,41 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
+     }
+     if (active.kind === "connect") {
+       const targetUid = cardFromPoint(event.clientX, event.clientY);
+-      if (!active.moved || !targetUid || targetUid === active.uid) {
+-        if (!active.moved) selectCard(active.uid, event.shiftKey);
+-        return;
+-      }
+-      const added = model().addEdge(active.uid, targetUid, settings.get("connector-style") || "bezier");
++      await completeConnect({
++        moved: active.moved,
++        sourceUid: active.uid,
++        targetUid,
++        clientX: event.clientX,
++        clientY: event.clientY,
++        shiftKey: event.shiftKey,
++      });
++    }
++  };
++
++  const completeConnect = async ({ moved, sourceUid, targetUid, clientX, clientY, shiftKey }) => {
++    if (!moved) {
++      selectCard(sourceUid, shiftKey);
++      return;
++    }
++    if (targetUid && targetUid !== sourceUid) {
++      const added = model().addEdge(sourceUid, targetUid, settings.get("connector-style") || "bezier");
++      renderEdges();
+       if (added) {
+-        renderEdges();
+         layoutDirty = true;
+         await flushLayout();
+       }
++      return;
++    }
++    if (!targetUid) {
++      const point = screenToWorld(clientX, clientY);
++      const size = defaultCardSize();
++      await onPersist?.({
++        addCard: {
++          x: snap(point.x - size.width / 2),
++          y: snap(point.y - size.height / 2),
++        },
++        addEdge: { source: sourceUid },
++      });
+     }
+   };
+ 
+@@ -1409,6 +1592,7 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
+     const cardEl = target?.closest?.(".pxd-card");
+     const uid = cardEl?.dataset?.uid;
+     if (uid) {
++      if (target?.closest?.(".pxd-card__nested-name")) return;
+       if (editingUid === uid) return;
+       event.preventDefault();
+       if (model().isNestedDiagram(uid)) onPersist?.({ openNested: uid });
+@@ -1594,6 +1778,7 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
+     applyTransform,
+     fitToView,
+     editCard: enterEdit,
++    completeConnect,
+     setLibraryOpen(open) {
+       toolButtons.get("library")?.classList.toggle("pxd-toolbar__btn--active", Boolean(open));
+     },
+@@ -1605,6 +1790,7 @@ export function createCanvasRoot({ session, settings, version, onPersist }) {
+       cancelFullscreenPlace?.();
+       if (editingEdgeKey) closeEdgeEditor(false);
+       if (editingUid) void exitEdit(false);
++      detachFocusGuard();
+       endGesture();
+       if (viewportTimer) {
+         clearTimeout(viewportTimer);
+diff --git a/src/extension.css b/src/extension.css
+index 4e54e2a..62203b1 100644
+--- a/src/extension.css
++++ b/src/extension.css
+@@ -23,10 +23,27 @@
+   border-radius: 6px;
+   touch-action: none;
+   cursor: default;
++  caret-color: #1c2127 !important;
+   font-size: 14px;
+   line-height: 1.45;
+ }
+ 
++/* Native caret + OS text cursor so Svy Beam's fixed overlay (hotspot 16,16)
++   cannot mis-scale inside `.pxd-world { transform: scale() }`. Beat
++   `:root:not(.svy-off-beam) textarea { cursor: url(...) 16 16, text }`. */
++.pxd-root textarea,
++.pxd-root .rm-block__input,
++.pxd-root [contenteditable],
++:root .pxd-root textarea,
++:root .pxd-root .rm-block__input,
++:root .pxd-root [contenteditable],
++:root:not(.svy-off-beam) .pxd-root textarea,
++:root:not(.svy-off-beam) .pxd-root .rm-block__input,
++:root:not(.svy-off-beam) .pxd-root [contenteditable] {
++  caret-color: #1c2127 !important;
++  cursor: text !important;
++}
++
+ .pxd-root--gesturing,
+ .pxd-root--gesturing * {
+   user-select: none !important;
+@@ -352,6 +369,21 @@ body.roam-body.dark .pxd-section,
+   margin-bottom: 4px;
+ }
+ 
++.pxd-card__nested-name {
++  display: block;
++  width: 100%;
++  box-sizing: border-box;
++  margin-bottom: 6px;
++  padding: 4px 6px;
++  border: 1px solid var(--pxd-border-strong);
++  border-radius: 4px;
++  background: var(--pxd-bg);
++  color: var(--pxd-text);
++  font-size: 13px;
++  line-height: 1.4;
++  cursor: text;
++}
++
+ /* Roam chrome that has no place on a card. */
+ .pxd-card .rm-block__controls,
+ .pxd-card .rm-bullet,
+@@ -377,8 +409,8 @@ body.roam-body.dark .pxd-section,
+ 
+ .pxd-handle {
+   position: absolute;
+-  width: 12px;
+-  height: 12px;
++  width: 14px;
++  height: 14px;
+   border-radius: 50%;
+   border: 2px solid var(--pxd-active);
+   background: var(--pxd-card-bg);
+@@ -400,10 +432,10 @@ body.roam-body.dark .pxd-section,
+   pointer-events: none;
+ }
+ 
+-.pxd-handle--top { top: -6px; left: 50%; transform: translateX(-50%); }
+-.pxd-handle--right { right: -6px; top: 50%; transform: translateY(-50%); }
+-.pxd-handle--bottom { bottom: -6px; left: 50%; transform: translateX(-50%); }
+-.pxd-handle--left { left: -6px; top: 50%; transform: translateY(-50%); }
++.pxd-handle--top { top: -7px; left: 50%; transform: translateX(-50%); }
++.pxd-handle--right { right: -7px; top: 50%; transform: translateY(-50%); }
++.pxd-handle--bottom { bottom: -7px; left: 50%; transform: translateX(-50%); }
++.pxd-handle--left { left: -7px; top: 50%; transform: translateY(-50%); }
+ 
+ .pxd-card__resize {
+   position: absolute;
+@@ -505,6 +537,56 @@ body.roam-body.dark .pxd-section,
+   padding: 2px 4px;
+ }
+ 
++.pxd-crumb {
++  display: flex;
++  align-items: center;
++  flex-wrap: nowrap;
++  gap: 2px;
++  padding: 2px 8px;
++  min-height: 24px;
++  border: 1px solid var(--pxd-border-strong);
++  border-radius: 8px;
++  background: var(--pxd-card-bg);
++  box-shadow: var(--pxd-shadow);
++  font-size: 12px;
++  line-height: 1.3;
++  color: var(--pxd-text);
++  white-space: nowrap;
++  max-width: 40%;
++  overflow: hidden;
++}
++
++.pxd-crumb--empty {
++  display: none;
++}
++
++.pxd-crumb__item {
++  border: 0;
++  background: transparent;
++  color: var(--pxd-active);
++  cursor: pointer;
++  font-size: 12px;
++  padding: 2px 4px;
++  border-radius: 4px;
++}
++
++.pxd-crumb__item:hover {
++  text-decoration: underline;
++}
++
++.pxd-crumb__sep {
++  color: var(--pxd-muted);
++  padding: 0 2px;
++}
++
++.pxd-crumb__current {
++  color: var(--pxd-text);
++  font-weight: 600;
++  padding: 2px 4px;
++  overflow: hidden;
++  text-overflow: ellipsis;
++}
++
+ /* ------------------------------------------------------------------ hint + minimap */
+ 
+ .pxd-hint {
+@@ -577,13 +659,16 @@ body.roam-body.dark .pxd-section,
+   display: block;
+   width: 100%;
+   text-align: left;
+-  border: 1px solid var(--pxd-border);
+-  background: transparent;
+-  color: #1c2127;
++  border: 1px solid #d3d8de;
++  background: #f5f8fa;
++  color: #182026;
+   padding: 6px 8px;
+   border-radius: 4px;
+   cursor: pointer;
+   box-sizing: border-box;
++  min-height: 36px;
++  font-size: 14px;
++  line-height: 1.4;
+ }
+ 
+ .pxd-library__item:hover {
+@@ -591,19 +676,21 @@ body.roam-body.dark .pxd-section,
+ }
+ 
+ .pxd-library-drawer {
+-  position: absolute;
+-  top: 8px;
+-  right: 8px;
+-  width: 240px;
++  position: fixed;
++  top: 56px;
++  right: 16px;
++  width: 320px;
+   max-height: 60vh;
+-  z-index: 8;
++  z-index: 50;
+   background: #ffffff;
+-  color: #1c2127;
++  color: #182026;
+   border: 1px solid var(--pxd-border-strong);
+   border-radius: 6px;
+   overflow: auto;
+   box-shadow: var(--pxd-shadow);
+   isolation: isolate;
++  font-size: 14px;
++  line-height: 1.4;
+ }
+ 
+ .bp3-dark .pxd-library-drawer,
+@@ -614,11 +701,26 @@ body.roam-body.dark .pxd-library-drawer,
+   color: #f5f8fa;
+ }
+ 
++.bp3-dark .pxd-library-drawer__search,
++.bp3-dark .pxd-library-drawer__close,
++body.bt-theme-dark .pxd-library-drawer__search,
++body.bt-theme-dark .pxd-library-drawer__close,
++body.roam-body.dark .pxd-library-drawer__search,
++body.roam-body.dark .pxd-library-drawer__close,
++.rm-dark-theme .pxd-library-drawer__search,
++.rm-dark-theme .pxd-library-drawer__close {
++  background: #252a31;
++  color: #f5f8fa;
++  border-color: #3b4b58;
++}
++
+ .bp3-dark .pxd-library__item,
+ body.bt-theme-dark .pxd-library__item,
+ body.roam-body.dark .pxd-library__item,
+ .rm-dark-theme .pxd-library__item {
++  background: #252a31;
+   color: #f5f8fa;
++  border-color: #3b4b58;
+ }
+ 
+ .pxd-library-drawer__header {
+@@ -633,22 +735,22 @@ body.roam-body.dark .pxd-library__item,
+   flex: 1;
+   min-width: 0;
+   padding: 4px 8px;
+-  border: 1px solid var(--pxd-border-strong);
++  border: 1px solid #d3d8de;
+   border-radius: 4px;
+-  background: var(--pxd-card-bg);
+-  color: var(--pxd-text);
+-  font-size: 12px;
++  background: #ffffff;
++  color: #182026;
++  font-size: 14px;
+ }
+ 
+ .pxd-library-drawer__close {
+   flex-shrink: 0;
+   padding: 4px 8px;
+-  border: 1px solid var(--pxd-border-strong);
++  border: 1px solid #d3d8de;
+   border-radius: 4px;
+-  background: var(--pxd-card-bg);
+-  color: var(--pxd-text);
++  background: #ffffff;
++  color: #182026;
+   cursor: pointer;
+-  font-size: 12px;
++  font-size: 14px;
+ }
+ 
+ /* ------------------------------------------------------------------ native guard */
+@@ -666,7 +768,8 @@ body.roam-body.dark .pxd-library__item,
+ 
+ .bp3-dark .pxd-root,
+ body.bt-theme-dark .pxd-root,
+-body.roam-body.dark .pxd-root {
++body.roam-body.dark .pxd-root,
++.rm-dark-theme .pxd-root {
+   --pxd-border: var(--bc-menu, #3b4b58);
+   --pxd-border-strong: #6b7f91;
+   --pxd-bg: var(--bc-main, #293742);
+@@ -677,4 +780,20 @@ body.roam-body.dark .pxd-root {
+   --pxd-edge: #a7b6c2;
+   --pxd-grid-dot: rgba(167, 182, 194, 0.22);
+   --pxd-shadow: 0 1px 3px rgba(0, 0, 0, 0.35), 0 4px 12px rgba(0, 0, 0, 0.3);
++  caret-color: #f5f8fa !important;
++}
++
++.bp3-dark .pxd-root textarea,
++.bp3-dark .pxd-root .rm-block__input,
++.bp3-dark .pxd-root [contenteditable],
++body.bt-theme-dark .pxd-root textarea,
++body.bt-theme-dark .pxd-root .rm-block__input,
++body.bt-theme-dark .pxd-root [contenteditable],
++body.roam-body.dark .pxd-root textarea,
++body.roam-body.dark .pxd-root .rm-block__input,
++body.roam-body.dark .pxd-root [contenteditable],
++.rm-dark-theme .pxd-root textarea,
++.rm-dark-theme .pxd-root .rm-block__input,
++.rm-dark-theme .pxd-root [contenteditable] {
++  caret-color: #f5f8fa !important;
+ }
+diff --git a/src/feature.js b/src/feature.js
+index e0a37f1..4183601 100644
+--- a/src/feature.js
++++ b/src/feature.js
+@@ -18,7 +18,7 @@ import {
+ import { MetadataStore, releaseScratch } from "./metadata.js";
+ import { createLibrarySidebar } from "./library.js";
+ import { createSettingsReader, SETTING_IDS } from "./settings.js";
+-import { viewportCenterPosition } from "./canvas.js";
++import { viewportCenterPosition, nestStack, parseDiagramTitle } from "./canvas.js";
+ import {
+   allSessions,
+   disposeSession,
+@@ -34,7 +34,7 @@ export const runtime = {
+   lifecycle: null,
+   metadata: null,
+   settings: null,
+-  version: "0.4.1",
++  version: "0.4.2",
+   enhancedUids: new Set(),
+   activeDiagramUid: null,
+   guardStyle: null,
+@@ -142,6 +142,9 @@ async function enhanceDiagram(uid, nativeElement) {
+         if (action.type === "nested" && action.uid) {
+           await openNestedDiagram(action.uid);
+         }
++        if (action.type === "crumb" && action.uid) {
++          await openCrumb(action.uid);
++        }
+         if (action.type === "open-block" && action.uid) {
+           globalThis.roamAlphaAPI?.ui?.rightSidebar?.addWindow?.({ window: { type: "block", "block-uid": action.uid } });
+         }
+@@ -230,10 +233,36 @@ async function enhanceByUid(uid) {
+ 
+ async function openNestedDiagram(uid) {
+   if (!uid) return;
++  const parentUid = runtime.activeDiagramUid;
++  if (parentUid && parentUid !== uid) {
++    const title = parseDiagramTitle(blockStringForUid(parentUid)) || "Diagram";
++    nestStack.push({ uid: parentUid, title });
++  }
+   await markEnhanced(uid);
+   await globalThis.roamAlphaAPI?.ui?.mainWindow?.openBlock?.({ block: { uid } });
+ }
+ 
++async function openCrumb(uid) {
++  if (!uid) return;
++  const pull = globalThis.roamAlphaAPI?.data?.pull?.(
++    "[:node/title :block/string]",
++    [":block/uid", uid],
++  );
++  const pageTitle = pull?.[":node/title"] ?? pull?.title;
++  if (pageTitle) {
++    await globalThis.roamAlphaAPI?.ui?.mainWindow?.openPage?.({ page: { uid } });
++    return;
++  }
++  await globalThis.roamAlphaAPI?.ui?.mainWindow?.openBlock?.({ block: { uid } });
++}
++
++export function syncNestStackOnNavigate(hash = globalThis.location?.hash || "") {
++  const openUid = diagramUidFromLocation(hash);
++  if (nestStack.length && nestStack[nestStack.length - 1].uid === openUid) {
++    nestStack.pop();
++  }
++}
++
+ let activeLibrary = null;
+ 
+ async function toggleLibrary(mountRoot, canvas) {
+@@ -251,7 +280,7 @@ async function toggleLibrary(mountRoot, canvas) {
+     lifecycle: runtime.lifecycle,
+     settings: runtime.settings,
+     session,
+-    mountRoot: root,
++    mountRoot: globalThis.document?.body || root,
+     onClose: () => {
+       activeLibrary = null;
+       canvas?.setLibraryOpen?.(false);
+@@ -377,6 +406,7 @@ function installReconcile(lifecycle) {
+     void reconcileVisibleDiagrams().catch((error) => console.warn("[plexus-diagram] Reconcile failed", error));
+   };
+   const onNavigate = () => {
++    syncNestStackOnNavigate();
+     exitFullscreenOnNavigate();
+     trigger();
+   };
+@@ -439,7 +469,7 @@ async function registerSlashAndContext(lifecycle, extensionAPI) {
+ export async function installPlexusDiagram({ extensionAPI, lifecycle, version }) {
+   runtime.extensionAPI = extensionAPI;
+   runtime.lifecycle = lifecycle;
+-  runtime.version = version || "0.4.1";
++  runtime.version = version || "0.4.2";
+   runtime.settings = createSettingsReader(extensionAPI);
+   runtime.enhancedUids = readEnhancedUidCache();
+   installGuard(runtime.enhancedUids);
+@@ -454,6 +484,7 @@ export async function installPlexusDiagram({ extensionAPI, lifecycle, version })
+       for (const uid of [...allSessions().keys()]) disposeSession(uid);
+     }
+     await releaseScratch();
++    nestStack.length = 0;
+     runtime.metadata = null;
+     runtime.guardStyle?.remove?.();
+   });
+@@ -468,4 +499,6 @@ export {
+   readEnhancedUidCache,
+   writeEnhancedUidCache,
+   openNestedDiagram,
++  nestStack,
++  parseDiagramTitle,
+ };
+diff --git a/src/library.js b/src/library.js
+index 023c114..475427a 100644
+--- a/src/library.js
++++ b/src/library.js
+@@ -1,20 +1,39 @@
+ export function filterLibraryTitles(titles, query) {
+   const q = String(query || "").trim().toLowerCase();
+   const roamJs = /^roam\/js\//;
++  const roamCss = /^roam\/css/;
+   return (titles || [])
+     .filter((title) => title && String(title).trim())
+     .filter((title) => {
+       const text = String(title);
+-      if (!q && roamJs.test(text)) return false;
++      if (!q && (roamJs.test(text) || roamCss.test(text))) return false;
+       if (q && !text.toLowerCase().includes(q)) return false;
+       return true;
+     })
+     .slice(0, 30);
+ }
+ 
++export function placeLibraryDrawer(drawer, root = globalThis.document) {
++  if (!drawer?.style) return;
++  const toolbar = root?.querySelector?.(".pxd-toolbar");
++  const rect = toolbar?.getBoundingClientRect?.();
++  const overlay = root?.querySelector?.(".pxd-mount--fullscreen") || root?.querySelector?.(".pxd-mount");
++  const overlayRect = overlay?.getBoundingClientRect?.();
++  const view = root?.defaultView || globalThis;
++  const vw = Number(view.innerWidth);
++  let overlayRight = 0;
++  if (overlayRect && Number.isFinite(Number(overlayRect.right)) && Number.isFinite(vw) && vw > 0) {
++    overlayRight = Math.max(0, vw - overlayRect.right);
++  }
++  drawer.style.position = "fixed";
++  drawer.style.top = rect && Number.isFinite(Number(rect.top)) ? `${Math.round(rect.top)}px` : "56px";
++  drawer.style.right = `${Math.max(16, overlayRight + 16)}px`;
++  drawer.style.left = "auto";
++}
++
+ export function createLibrarySidebar({ lifecycle, settings, session, onPlacePage, mountRoot, onClose }) {
+-  const parent = mountRoot || document.body;
+-  parent.querySelector(".pxd-library-drawer")?.remove();
++  const parent = (typeof document !== "undefined" && document.body) || mountRoot;
++  parent.querySelector?.(".pxd-library-drawer")?.remove();
+ 
+   const drawer = document.createElement("div");
+   drawer.className = "pxd-library-drawer";
+@@ -40,6 +59,7 @@ export function createLibrarySidebar({ lifecycle, settings, session, onPlacePage
+   list.className = "pxd-library";
+   drawer.append(header, list);
+   lifecycle.node(drawer, parent);
++  placeLibraryDrawer(drawer);
+ 
+   let titles = [];
+ 
+diff --git a/src/view.js b/src/view.js
+index 6cd6047..9b0c6c9 100644
+--- a/src/view.js
++++ b/src/view.js
+@@ -39,9 +39,18 @@ export function mountDiagramView({ nativeElement, session, settings, version, li
+       if (action.persistViewport) await session.persistViewport();
+       if (action.toggleLibrary) onAction?.({ type: "library" });
+       if (action.openNested) onAction?.({ type: "nested", uid: action.openNested });
++      if (action.openCrumb) onAction?.({ type: "crumb", uid: action.openCrumb });
+       if (action.openBlock) onAction?.({ type: "open-block", uid: action.openBlock });
+       if (action.addCard) {
+         const uid = await session.addCard(action.string ?? "", action.addCard);
++        if (uid && action.addEdge?.source) {
++          session.model.addEdge(
++            action.addEdge.source,
++            uid,
++            action.addEdge.kind || settings.get("connector-style") || "bezier",
++          );
++          await session.persistLayout();
++        }
+         canvas.render();
+         if (uid && !action.string) canvas.editCard?.(uid);
+       }
+diff --git a/test/build.test.js b/test/build.test.js
+index 822ffd3..e6cfc5d 100644
+--- a/test/build.test.js
++++ b/test/build.test.js
+@@ -39,7 +39,7 @@ test("build emits deterministic, matching browser ESM artifacts with a default e
+   assert.match(rootJs, /export\s*\{[\s\S]*default/);
+   const rebuilt = await bundleEntry({
+     rootDirectory: rootPath,
+-    banner: "/* Plexus Diagram v0.4.1 | MIT | generated; edit src/ */",
++    banner: "/* Plexus Diagram v0.4.2 | MIT | generated; edit src/ */",
+   });
+   assert.equal(rebuilt, rootJs);
+ 
+diff --git a/test/canvas.test.js b/test/canvas.test.js
+index 85864e4..931397c 100644
+--- a/test/canvas.test.js
++++ b/test/canvas.test.js
+@@ -1,7 +1,7 @@
+ import assert from "node:assert/strict";
+ import test from "node:test";
+ 
+-import { createCanvasRoot, shouldCommitPulledString, topbarOffset, sidebarOffset, applyFullscreenChrome, cardUidFromHitStack, parseDropPayload } from "../src/canvas.js";
++import { createCanvasRoot, shouldCommitPulledString, topbarOffset, sidebarOffset, applyFullscreenChrome, fullscreenInsets, cardUidFromHitStack, parseDropPayload, parseDiagramTitle, focusRoamInput } from "../src/canvas.js";
+ import { settingsDefaults } from "../src/settings.js";
+ import { releaseScratch } from "../src/metadata.js";
+ import { readFile } from "node:fs/promises";
+@@ -84,6 +84,8 @@ function createDomStub() {
+       return makeEl(tag);
+     },
+     querySelector() { return null; },
++    addEventListener() {},
++    removeEventListener() {},
+   };
+ 
+   const window = {
+@@ -298,6 +300,7 @@ function cardSession(edges = [], extras = {}) {
+       edges,
+       sections: extras.sections || new Map(),
+       selected: new Set(),
++      tree: extras.tree || { string: "{{[[diagram]]}}", children },
+       getCard(uid) { return children.find((child) => child.uid === uid) || null; },
+       ensureNode(uid, defaults) {
+         if (nodes.has(uid)) return nodes.get(uid);
+@@ -471,7 +474,7 @@ test("renderSections emits a Section label even when title is empty", () => {
+   }
+ });
+ 
+-test("nested card paint path uses Nested diagram when the string is only the macro", () => {
++test("nested card with only the macro shows a name field, not Nested diagram", () => {
+   const { document, window } = createDomStub();
+   const previousDocument = globalThis.document;
+   const previousWindow = globalThis.window;
+@@ -486,10 +489,10 @@ test("nested card paint path uses Nested diagram when the string is only the mac
+     const settings = { get: (key) => settingsDefaults()[key] };
+     const canvas = createCanvasRoot({ session, settings, version: "0.4.1" });
+     try {
+-      const label = findByClass(canvas.root, "pxd-card__nested-label");
+-      assert.ok(label, "nested card should paint a nested label");
+-      assert.equal(label.textContent, "Nested diagram");
+-      assert.notEqual(label.textContent, "{{[[diagram]]}}");
++      const name = findByClass(canvas.root, "pxd-card__nested-name");
++      assert.ok(name, "unnamed nested card should paint an inline name field");
++      assert.equal(name.placeholder, "Name this board…");
++      assert.equal(findByClass(canvas.root, "pxd-card__nested-label"), null);
+     } finally {
+       canvas.dispose();
+     }
+@@ -544,3 +547,161 @@ test("parseDropPayload reads [[page]] and block uids", () => {
+   assert.deepEqual(parseDropPayload({ getData: (type) => (type === "text/html" ? "((abcdefgh))" : ""), types: ["text/html"] }).string, "((abcdefgh))");
+   assert.equal(parseDropPayload({ getData: () => "", types: [] }), null);
+ });
++
++test("parseDiagramTitle reads named macros and strips unnamed ones", () => {
++  assert.equal(parseDiagramTitle("{{[[diagram]]:Foo}}"), "Foo");
++  assert.equal(parseDiagramTitle("{{[[diagram]]: Board name }}"), "Board name");
++  assert.equal(parseDiagramTitle("{{[[diagram]]}}"), "");
++  assert.equal(parseDiagramTitle("  Hello cards  "), "Hello cards");
++  assert.equal(parseDiagramTitle("{{[[diagram]]}} leftover"), "leftover");
++});
++
++test("focusRoamInput uses preventScroll so the outline copy does not jump", () => {
++  const calls = [];
++  const el = {
++    focus(opts) { calls.push(opts); },
++    dispatchEvent() { return true; },
++    getBoundingClientRect: () => ({ left: 0, top: 0, height: 20 }),
++  };
++  assert.equal(focusRoamInput(el), true);
++  assert.deepEqual(calls[0], { preventScroll: true });
++});
++
++test("overlay CSS sets caret-color under .pxd-root and 14px connect handles", async () => {
++  const css = await readFile(resolve(dirname(fileURLToPath(import.meta.url)), "../src/extension.css"), "utf8");
++  assert.match(css, /\.pxd-root[^{]*\{[^}]*caret-color:\s*#1c2127/s);
++  assert.match(css, /\.pxd-handle\s*\{[^}]*width:\s*14px/s);
++});
++
++test("fullscreenInsets right is the sidebar gap, or 0 when the article is flush", () => {
++  const open = {
++    defaultView: { innerWidth: 1382, innerHeight: 900 },
++    querySelector(sel) {
++      if (sel === ".rm-topbar") return { getBoundingClientRect: () => ({ bottom: 45 }) };
++      if (sel === ".rm-article-wrapper") {
++        return { getBoundingClientRect: () => ({ top: 45, left: 0, right: 1100, bottom: 900 }) };
++      }
++      return null;
++    },
++  };
++  assert.equal(fullscreenInsets(open).right, 282);
++  const collapsed = {
++    defaultView: { innerWidth: 1382, innerHeight: 900 },
++    querySelector(sel) {
++      if (sel === ".rm-topbar") return { getBoundingClientRect: () => ({ bottom: 45 }) };
++      if (sel === ".rm-article-wrapper") {
++        return { getBoundingClientRect: () => ({ top: 45, left: 0, right: 1382, bottom: 900 }) };
++      }
++      return null;
++    },
++  };
++  assert.equal(fullscreenInsets(collapsed).right, 0);
++  const mount = { classList: { toggle() {} }, style: {} };
++  applyFullscreenChrome(mount, true, open);
++  assert.equal(mount.style.right, "282px");
++  applyFullscreenChrome(mount, true, collapsed);
++  assert.equal(mount.style.right, "0px");
++});
++
++test("crumb row appears when nest stack has a parent", () => {
++  const { document, window } = createDomStub();
++  const previousDocument = globalThis.document;
++  const previousWindow = globalThis.window;
++  globalThis.document = document;
++  globalThis.window = window;
++  try {
++    const session = cardSession([], { tree: { string: "{{[[diagram]]:Child}}" } });
++    const settings = { get: (key) => settingsDefaults()[key] };
++    const canvas = createCanvasRoot({
++      session,
++      settings,
++      version: "0.4.2",
++      nestStack: [{ uid: "parent-uid", title: "Parent board" }],
++    });
++    try {
++      const crumb = findByClass(canvas.root, "pxd-crumb");
++      assert.ok(crumb, "crumb row should render when the nest stack is non-empty");
++      assert.ok(!String(crumb.className).includes("pxd-crumb--empty"));
++      const texts = [];
++      const walk = (el) => {
++        if (el?.textContent) texts.push(el.textContent);
++        for (const child of el?.children || []) walk(child);
++      };
++      walk(crumb);
++      assert.ok(texts.some((text) => String(text).includes("Parent board")));
++      assert.ok(texts.some((text) => String(text).includes("Child")));
++    } finally {
++      canvas.dispose();
++    }
++  } finally {
++    globalThis.document = previousDocument;
++    globalThis.window = previousWindow;
++  }
++});
++
++test("connect-to-empty invokes onPersist addCard and addEdge", async () => {
++  const { document, window } = createDomStub();
++  const previousDocument = globalThis.document;
++  const previousWindow = globalThis.window;
++  globalThis.document = document;
++  globalThis.window = window;
++  try {
++    const session = cardSession([], {
++      children: [{ uid: "card-a", string: "Hello card" }],
++      nodes: new Map([["card-a", { pos: { x: 0, y: 0 }, size: { width: 280, height: 160 } }]]),
++    });
++    const settings = { get: (key) => settingsDefaults()[key] };
++    const actions = [];
++    const canvas = createCanvasRoot({
++      session,
++      settings,
++      version: "0.4.2",
++      nestStack: [],
++      onPersist: async (action) => { actions.push(action); },
++    });
++    try {
++      await canvas.completeConnect({
++        moved: true,
++        sourceUid: "card-a",
++        targetUid: null,
++        clientX: 500,
++        clientY: 300,
++      });
++      assert.equal(actions.length, 1);
++      assert.ok(actions[0].addCard, "connect-to-empty should add a card at the drop point");
++      assert.equal(actions[0].addEdge?.source, "card-a");
++    } finally {
++      canvas.dispose();
++    }
++  } finally {
++    globalThis.document = previousDocument;
++    globalThis.window = previousWindow;
++  }
++});
++
++test("named nested card shows the parsed title, not the raw macro", () => {
++  const { document, window } = createDomStub();
++  const previousDocument = globalThis.document;
++  const previousWindow = globalThis.window;
++  globalThis.document = document;
++  globalThis.window = window;
++  try {
++    const session = cardSession([], {
++      children: [{ uid: "nested-1", string: "{{[[diagram]]:Research}}" }],
++      nodes: new Map([["nested-1", { pos: { x: 0, y: 0 }, size: { width: 280, height: 160 } }]]),
++    });
++    const settings = { get: (key) => settingsDefaults()[key] };
++    const canvas = createCanvasRoot({ session, settings, version: "0.4.2", nestStack: [] });
++    try {
++      const label = findByClass(canvas.root, "pxd-card__nested-label");
++      assert.ok(label);
++      assert.equal(label.textContent, "Research");
++      assert.notEqual(label.textContent, "{{[[diagram]]:Research}}");
++    } finally {
++      canvas.dispose();
++    }
++  } finally {
++    globalThis.document = previousDocument;
++    globalThis.window = previousWindow;
++  }
++});
+diff --git a/test/feature.test.js b/test/feature.test.js
+index 90c3a0b..bf5ddb1 100644
+--- a/test/feature.test.js
++++ b/test/feature.test.js
+@@ -1,7 +1,7 @@
+ import assert from "node:assert/strict";
+ import test from "node:test";
+ 
+-import { openNestedDiagram, runtime } from "../src/feature.js";
++import { openNestedDiagram, runtime, nestStack, syncNestStackOnNavigate } from "../src/feature.js";
+ 
+ function roamStub(order) {
+   return {
+@@ -53,11 +53,16 @@ test("openNestedDiagram calls markEnhanced before openBlock", async () => {
+   globalThis.roamAlphaAPI = roamStub(order);
+   runtime.metadata = null;
+   runtime.enhancedUids = new Set();
++  runtime.activeDiagramUid = null;
++  nestStack.length = 0;
+   try {
+     await openNestedDiagram("nested-uid");
+     assert.deepEqual(order, ["openBlock"]);
+     assert.ok(runtime.enhancedUids.has("nested-uid"));
++    assert.equal(nestStack.length, 0);
+   } finally {
++    nestStack.length = 0;
++    runtime.activeDiagramUid = null;
+     runtime.metadata = previousMetadata;
+     runtime.enhancedUids = previousUids;
+     globalThis.roamAlphaAPI = previousRoam;
+@@ -91,6 +96,8 @@ test("openNestedDiagram ignores parent .rm-diagram and does not wait", async ()
+   globalThis.roamAlphaAPI = roamStub(order);
+   runtime.metadata = null;
+   runtime.enhancedUids = new Set();
++  runtime.activeDiagramUid = null;
++  nestStack.length = 0;
+   try {
+     await openNestedDiagram("nested-uid");
+     assert.ok(Date.now() - start < 500, "must finish well under 500ms without parent wait");
+@@ -98,7 +105,47 @@ test("openNestedDiagram ignores parent .rm-diagram and does not wait", async ()
+     assert.ok(runtime.enhancedUids.has("nested-uid"));
+     assert.ok(!parentClasses.has("pxd-native-hidden"), "parent canvas must not be enhanced");
+     assert.equal(parentDiagram.nextElementSibling, null, "parent canvas must not receive a mount");
++    assert.equal(nestStack.length, 0);
+   } finally {
++    nestStack.length = 0;
++    runtime.activeDiagramUid = null;
++    runtime.metadata = previousMetadata;
++    runtime.enhancedUids = previousUids;
++    globalThis.roamAlphaAPI = previousRoam;
++    globalThis.document = previousDocument;
++  }
++});
++
++test("openNestedDiagram pushes the parent uid+title onto the nest stack", async () => {
++  const previousRoam = globalThis.roamAlphaAPI;
++  const previousDocument = globalThis.document;
++  const previousUids = runtime.enhancedUids;
++  const previousMetadata = runtime.metadata;
++  const previousActive = runtime.activeDiagramUid;
++  const order = [];
++  globalThis.document = undefined;
++  const api = roamStub(order);
++  const innerPull = api.data.pull;
++  api.data.pull = (_pattern, ref) => {
++    const uid = Array.isArray(ref) ? ref[1] : ref;
++    if (uid === "parent-uid") return { ":block/string": "{{[[diagram]]:Alpha}}" };
++    return innerPull(_pattern, ref);
++  };
++  globalThis.roamAlphaAPI = api;
++  runtime.metadata = null;
++  runtime.enhancedUids = new Set();
++  runtime.activeDiagramUid = "parent-uid";
++  nestStack.length = 0;
++  try {
++    await openNestedDiagram("nested-uid");
++    assert.equal(nestStack.length, 1);
++    assert.equal(nestStack[0].uid, "parent-uid");
++    assert.equal(nestStack[0].title, "Alpha");
++    syncNestStackOnNavigate("#/app/graph/page/parent-uid");
++    assert.equal(nestStack.length, 0);
++  } finally {
++    nestStack.length = 0;
++    runtime.activeDiagramUid = previousActive;
+     runtime.metadata = previousMetadata;
+     runtime.enhancedUids = previousUids;
+     globalThis.roamAlphaAPI = previousRoam;
+diff --git a/test/library.test.js b/test/library.test.js
+index faa63c6..e519536 100644
+--- a/test/library.test.js
++++ b/test/library.test.js
+@@ -6,15 +6,16 @@ import { dirname, resolve } from "node:path";
+ 
+ import { filterLibraryTitles } from "../src/library.js";
+ 
+-test("library drawer CSS contains an opaque #ffffff background", async () => {
++test("library drawer CSS is 320px / 14px with opaque item color #182026", async () => {
+   const css = await readFile(resolve(dirname(fileURLToPath(import.meta.url)), "../src/extension.css"), "utf8");
+   assert.match(css, /\.pxd-library-drawer\s*\{[^}]*background:\s*#ffffff/s);
++  assert.match(css, /320px|#182026|font-size:\s*14px/);
+ });
+ 
+-test("filterLibraryTitles skips roam/js titles when query is empty and includes them when query is non-empty", () => {
+-  const titles = ["Inbox", "roam/js/settings", "Daily notes"];
++test("filterLibraryTitles skips roam/js and roam/css titles when query is empty and includes them when query is non-empty", () => {
++  const titles = ["Inbox", "roam/js/settings", "roam/css", "Daily notes"];
+   assert.deepEqual(filterLibraryTitles(titles, ""), ["Inbox", "Daily notes"]);
+-  assert.deepEqual(filterLibraryTitles(titles, "roam"), ["roam/js/settings"]);
++  assert.deepEqual(filterLibraryTitles(titles, "roam"), ["roam/js/settings", "roam/css"]);
+   assert.deepEqual(filterLibraryTitles(titles, "inbox"), ["Inbox"]);
+ });
+ 

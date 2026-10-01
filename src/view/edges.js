@@ -23,6 +23,7 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
   const guideEls = [];
   const ghostEls = [];
   let focusSet = null;
+  let searchEdges = null;
   let zoomCache = 1;
   let editingLabel = null;
   const listeners = [];
@@ -89,8 +90,10 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     if (!edge.valid) cls.push("pxd-edge--invalid");
     rec.from = edge.from;
     rec.to = edge.to;
-    const dim = dimmed(edge);
+    const searchOn = Boolean(searchEdges?.has(edge.uid));
+    const dim = dimmed(edge) || (searchEdges ? !searchOn : false);
     if (dim) cls.push("pxd-edge--dim");
+    if (searchOn) cls.push("pxd-edge--hit");
     setClass(rec.g, cls.join(" "));
     if (hex) rec.g.style.setProperty("--pxd-line", hex);
     else rec.g.style.removeProperty("--pxd-line");
@@ -296,10 +299,23 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
   };
 
   // Focus mode: connections and derived links not fully inside `set` are dimmed. null clears.
+  const applySearchClasses = () => {
+    for (const [uid, rec] of edgeEls) {
+      const on = Boolean(searchEdges?.has(uid));
+      const dim = dimmed(rec) || (searchEdges ? !on : false);
+      rec.g.classList.toggle("pxd-edge--hit", on);
+      rec.g.classList.toggle("pxd-edge--dim", dim);
+      rec.label.classList.toggle("pxd-label--dim", dim);
+    }
+  };
+  const setSearch = (uids) => {
+    searchEdges = uids instanceof Set ? uids : null;
+    applySearchClasses();
+  };
   const setFocus = (set) => {
     focusSet = set && set.size !== undefined ? set : null;
     for (const rec of [...edgeEls.values(), ...linkEls.values()]) {
-      const dim = dimmed(rec);
+      const dim = dimmed(rec) || (searchEdges ? !searchEdges.has(rec.g?.dataset?.uid) : false);
       rec.g.classList.toggle("pxd-edge--dim", dim);
       rec.label.classList.toggle("pxd-label--dim", dim);
     }
@@ -362,6 +378,7 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     setMarquee(null);
     setGhosts(null);
     focusSet = null;
+    searchEdges = null;
     listeners.splice(0).forEach((off) => off());
     editingLabel = null;
   };
@@ -375,6 +392,7 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     setMarquee,
     setGhosts,
     setFocus,
+    setSearch,
     editLabel,
     isEditingLabel: () => Boolean(editingLabel),
     geometryOf,

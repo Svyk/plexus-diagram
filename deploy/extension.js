@@ -4783,6 +4783,36 @@ var package_default = {
   license: "MIT"
 };
 
+// src/model/find.js
+function hayOf(item) {
+  const bits = [item?.title, plainText(item?.string, 2e3)];
+  const kids = Array.isArray(item?.content) ? item.content : [];
+  for (const kid of kids) bits.push(plainText(kid?.[":block/string"] ?? kid?.string ?? "", 500));
+  return bits.filter(Boolean).join("\n").toLowerCase();
+}
+function findOnBoard(board, query, nested = []) {
+  const q = String(query || "").trim().toLowerCase();
+  if (!q || !board?.items) return [];
+  const hits = [];
+  for (const item of board.items.values()) {
+    if (!hayOf(item).includes(q)) continue;
+    hits.push({ uid: item.uid, focus: item.uid, kind: item.type === "section" ? "section" : "card" });
+  }
+  for (const edge of board.edges?.values?.() || []) {
+    const label = `${edge.label || ""}
+${plainText(edge.string, 500)}`.toLowerCase();
+    if (!label.includes(q)) continue;
+    hits.push({ uid: edge.uid, focus: edge.from, kind: "edge" });
+  }
+  for (const nest of nested || []) {
+    if (!nest?.board || !nest.parentUid) continue;
+    for (const hit of findOnBoard(nest.board, query)) {
+      hits.push({ uid: hit.uid, focus: nest.parentUid, kind: "nested", via: nest.parentUid });
+    }
+  }
+  return hits;
+}
+
 // src/model/export.js
 var HEX = {
   light: {
@@ -5604,6 +5634,10 @@ function createInteractions({ actions, settings } = {}) {
       if (k === "z") {
         if (ev.shift) call("redo");
         else call("undo");
+        return true;
+      }
+      if (k === "f") {
+        call("openSearch");
         return true;
       }
       if (k === "=" || k === "+") {
@@ -7534,6 +7568,7 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
   const guideEls = [];
   const ghostEls = [];
   let focusSet = null;
+  let searchEdges = null;
   let zoomCache = 1;
   let editingLabel = null;
   const listeners2 = [];
@@ -7594,8 +7629,10 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     if (!edge.valid) cls.push("pxd-edge--invalid");
     rec.from = edge.from;
     rec.to = edge.to;
-    const dim = dimmed(edge);
+    const searchOn = Boolean(searchEdges?.has(edge.uid));
+    const dim = dimmed(edge) || (searchEdges ? !searchOn : false);
     if (dim) cls.push("pxd-edge--dim");
+    if (searchOn) cls.push("pxd-edge--hit");
     setClass(rec.g, cls.join(" "));
     if (hex) rec.g.style.setProperty("--pxd-line", hex);
     else rec.g.style.removeProperty("--pxd-line");
@@ -7789,10 +7826,23 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
       el.setAttribute("height", String(r.h));
     });
   };
+  const applySearchClasses = () => {
+    for (const [uid, rec] of edgeEls) {
+      const on = Boolean(searchEdges?.has(uid));
+      const dim = dimmed(rec) || (searchEdges ? !on : false);
+      rec.g.classList.toggle("pxd-edge--hit", on);
+      rec.g.classList.toggle("pxd-edge--dim", dim);
+      rec.label.classList.toggle("pxd-label--dim", dim);
+    }
+  };
+  const setSearch = (uids) => {
+    searchEdges = uids instanceof Set ? uids : null;
+    applySearchClasses();
+  };
   const setFocus = (set) => {
     focusSet = set && set.size !== void 0 ? set : null;
     for (const rec of [...edgeEls.values(), ...linkEls.values()]) {
-      const dim = dimmed(rec);
+      const dim = dimmed(rec) || (searchEdges ? !searchEdges.has(rec.g?.dataset?.uid) : false);
       rec.g.classList.toggle("pxd-edge--dim", dim);
       rec.label.classList.toggle("pxd-label--dim", dim);
     }
@@ -7868,6 +7918,7 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     setMarquee(null);
     setGhosts(null);
     focusSet = null;
+    searchEdges = null;
     listeners2.splice(0).forEach((off) => off());
     editingLabel = null;
   };
@@ -7880,6 +7931,7 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     setMarquee,
     setGhosts,
     setFocus,
+    setSearch,
     editLabel,
     isEditingLabel: () => Boolean(editingLabel),
     geometryOf,
@@ -12454,28 +12506,61 @@ function mountBoardView({
     chrome.toolbar.setLinkMode(linkMode);
     session.setLinkMode?.(linkMode);
   };
+  const nestedBoards = (b) => {
+    const out = [];
+    if (!b || typeof host?.pullBoard !== "function") return out;
+    const seen = /* @__PURE__ */ new Set();
+    for (const item of b.items.values()) {
+      const target = item.kind === "board" ? item.uid : item.kind === "block" ? boardTargetOf(item.uid) : null;
+      if (!target || target === b.uid || seen.has(target)) continue;
+      seen.add(target);
+      let raw = null;
+      try {
+        raw = host.pullBoard(target);
+      } catch {
+        raw = null;
+      }
+      if (!raw) continue;
+      let child = null;
+      try {
+        child = buildBoard(raw);
+      } catch {
+        child = null;
+      }
+      if (child?.items) out.push({ parentUid: item.uid, board: child });
+    }
+    return out;
+  };
+  const paintSearch = (b, hits, q) => {
+    const bright = new Set((hits || []).map((h) => h.focus));
+    for (const item of b?.items.values() || []) {
+      const shell = itemsR.shellOf(item.uid);
+      const on = Boolean(q) && bright.has(item.uid);
+      shell?.classList.toggle("pxd-item--dim", Boolean(q) && !on);
+      shell?.classList.toggle("pxd-item--hit", on);
+    }
+    const edges = q ? new Set((hits || []).filter((h) => h.kind === "edge").map((h) => h.uid)) : null;
+    edgesR.setSearch(edges);
+  };
   const searchFilter = (text) => {
     const b = board();
     const q = String(text || "").trim().toLowerCase();
-    searchMatches = [];
     searchIndex = -1;
     root.classList.toggle("pxd-root--searching", Boolean(q));
-    if (!b) return 0;
-    for (const item of b.items.values()) {
-      const hay = `${item.title}
-${plainText(item.string, 2e3)}`.toLowerCase();
-      const hit = q && hay.includes(q);
-      if (hit) searchMatches.push(item.uid);
-      itemsR.shellOf(item.uid)?.classList.toggle("pxd-item--dim", Boolean(q) && !hit);
-    }
+    searchMatches = b && q ? findOnBoard(b, q, nestedBoards(b)) : [];
+    paintSearch(b, searchMatches, q);
     return searchMatches.length;
   };
   const searchNext = (dir = 1) => {
     if (!searchMatches.length) return;
     searchIndex = (searchIndex + dir + searchMatches.length) % searchMatches.length;
-    const uid = searchMatches[searchIndex];
-    ctl.select([uid]);
-    fitSelection([uid]);
+    const hit = searchMatches[searchIndex];
+    if (hit?.focus && board()?.items.has(hit.focus)) {
+      ctl.select([hit.focus]);
+      fitSelection([hit.focus]);
+    }
+    const countEl = root.querySelector(".pxd-search__count");
+    if (countEl) countEl.textContent = `${searchIndex + 1}/${searchMatches.length}`;
   };
   const enterEdit = async (uid) => {
     ctl.select([uid]);
@@ -13115,6 +13200,14 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
     }
     if (quicklook.isOpen() && event.key !== "Escape" && String(event.key).toLowerCase() !== "q") return;
     if (presenter.isActive() && !["Escape", "ArrowRight", "ArrowLeft", "ArrowDown", "ArrowUp", "PageDown", "PageUp", " ", "p", "P"].includes(event.key)) return;
+    const findKey = (event.metaKey || event.ctrlKey) && !event.altKey && String(event.key).toLowerCase() === "f";
+    const findInSearch = event.target?.closest?.(".pxd-search") || doc.activeElement?.closest?.(".pxd-search");
+    if (findKey && findInSearch && root.contains?.(findInSearch)) {
+      event.preventDefault();
+      event.stopPropagation();
+      chrome.search.open();
+      return;
+    }
     const inputFocused = isTextEntryTarget(event.target) || isTextEntryTarget(doc.activeElement);
     if (inputFocused) {
       const inside3 = root.contains?.(event.target) || root.contains?.(doc.activeElement);

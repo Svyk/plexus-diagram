@@ -625,6 +625,7 @@ export function createInteractions({ actions, settings } = {}) {
       }
       if (k === "enter" && ev.alt) { call("foldSelection"); return true; }
       if (k === "z") { if (ev.shift) call("redo"); else call("undo"); return true; }
+      if (k === "f") { call("openSearch"); return true; }
       if (k === "=" || k === "+") { zoomBy(1.2); return true; }
       if (k === "-" || k === "_") { zoomBy(1 / 1.2); return true; }
       return false;

@@ -303,6 +303,15 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   opacity: 0.25;
 }
 
+.pxd-item--hit {
+  outline: 2px solid var(--pxd-accent);
+  outline-offset: 1px;
+}
+
+.pxd-edge--hit .pxd-edge__line {
+  stroke: var(--pxd-accent);
+}
+
 .pxd-item--editing {
   border-color: var(--pxd-accent);
   box-shadow: 0 0 0 2px var(--pxd-accent-soft), var(--pxd-shadow);

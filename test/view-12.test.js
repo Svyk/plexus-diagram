@@ -1663,3 +1663,70 @@ test("the dark/light class follows the host live: a dark marker added or removed
     f.restore();
   }
 });
+
+test("HB-3: Cmd+F finds three hits, cycles them, and does nothing when the board is not focused", async () => {
+  const nested = {
+    ":block/uid": "nestCARD9",
+    ":block/string": "{{[[diagram]]:Inner}}",
+    ":block/props": { ":plexus": { ":v": 2 } },
+    ":block/children": [
+      blockish("deepCARD1", "nested pebble", 0),
+    ],
+  };
+  const f = mountFixture({
+    extra: [{
+      ":block/uid": "nestCARD9",
+      ":block/string": "{{[[diagram]]:Inner}}",
+      ":block/order": 8,
+      ":block/props": { ":plexus": { ":v": 2, ":x": 800, ":y": 0, ":w": 220, ":h": 120 } },
+      ":block/children": [],
+    }],
+    hostOverrides: { pullBoard: (uid) => (uid === "nestCARD9" ? nested : null) },
+  });
+  try {
+    await f.flush();
+    const search = f.root.querySelector(".pxd-search");
+    assert.equal(search.style.display, "none");
+    f.root.blur();
+    f.stub.dispatch(f.root, "pointerleave", {});
+    key(f, "f", { metaKey: true });
+    assert.equal(search.style.display, "none", "Cmd+F outside the board stays with Roam");
+    f.root.focus();
+    key(f, "f", { metaKey: true });
+    assert.equal(search.style.display, "");
+    const input = f.root.querySelector(".pxd-search__input");
+    input.value = "e";
+    f.stub.dispatch(input, "input", {});
+    const n = Number(f.root.querySelector(".pxd-search__count").textContent);
+    assert.ok(n >= 3, `expected at least 3 hits, got ${n}`);
+    assert.equal(shell(f, "cardAAAA1").classList.contains("pxd-item--hit"), true);
+    assert.equal(shell(f, "cardBBBB2").classList.contains("pxd-item--dim"), false);
+    f.stub.dispatch(input, "keydown", { key: "Enter" });
+    const first = f.view.state().selection[0];
+    f.stub.dispatch(input, "keydown", { key: "Enter" });
+    const second = f.view.state().selection[0];
+    assert.notEqual(second, first);
+    f.stub.dispatch(input, "keydown", { key: "Enter", shiftKey: true });
+    assert.equal(f.view.state().selection[0], first);
+    assert.match(f.root.querySelector(".pxd-search__count").textContent, /^\d+\/\d+$/);
+    input.value = "pebble";
+    f.stub.dispatch(input, "input", {});
+    assert.equal(f.root.querySelector(".pxd-search__count").textContent, "1");
+    assert.equal(shell(f, "nestCARD9").classList.contains("pxd-item--hit"), true);
+    assert.equal(shell(f, "cardAAAA1").classList.contains("pxd-item--dim"), true);
+    assert.equal(f.root.querySelector("[data-uid=edgeFFFF6]").classList.contains("pxd-edge--dim"), true);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+function blockish(uid, string, order) {
+  return {
+    ":block/uid": uid,
+    ":block/string": string,
+    ":block/order": order,
+    ":block/props": { ":plexus": { ":x": 10, ":y": 10, ":w": 180, ":h": 80 } },
+    ":block/children": [],
+  };
+}

@@ -386,6 +386,10 @@ test("keyboard map: tools, fit, zoom, links, search, wrap, undo/redo, Enter edit
   assert.equal(h.named("cycleLinks").length, 1);
   h.ctl.handle({ type: "keydown", key: "/" });
   assert.equal(h.named("openSearch").length, 1);
+  h.ctl.handle({ type: "keydown", key: "f", meta: true });
+  assert.equal(h.named("openSearch").length, 2);
+  h.ctl.handle({ type: "keydown", key: "f", meta: true, inputFocused: true });
+  assert.equal(h.named("openSearch").length, 2);
   h.ctl.handle({ type: "keydown", key: "I" });
   assert.equal(h.named("openInfo").length, 1);
   h.ctl.handle({ type: "keydown", key: "i", inputFocused: true });

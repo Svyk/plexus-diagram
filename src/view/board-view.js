@@ -7,7 +7,8 @@
 // section auto-fit preview, context menu, clipboard, focus, presentation, card badges, back-to-content.
 
 import { BOARD_PATTERNS, BOARD_TONES, DEFAULT_BOARD_CARD, DEFAULT_SIZES, UNTITLED_BOARD, classifyString, hexColor, semanticRef, plainText } from "../model/schema.js";
-import { boundsOf, containerAt, descendantsOf, edgesTouching, outlineOrder, sectionFitPlan, sidebarOutlineUids, worldRects } from "../model/board.js";
+import { boundsOf, buildBoard, containerAt, descendantsOf, edgesTouching, outlineOrder, sectionFitPlan, sidebarOutlineUids, worldRects } from "../model/board.js";
+import { findOnBoard } from "../model/find.js";
 import {
   alignRects,
   center,
@@ -1488,27 +1489,53 @@ export function mountBoardView({
   };
 
   // ------------------------------------------------------------ board search
+  const nestedBoards = (b) => {
+    const out = [];
+    if (!b || typeof host?.pullBoard !== "function") return out;
+    const seen = new Set();
+    for (const item of b.items.values()) {
+      const target = item.kind === "board" ? item.uid : (item.kind === "block" ? boardTargetOf(item.uid) : null);
+      if (!target || target === b.uid || seen.has(target)) continue;
+      seen.add(target);
+      let raw = null;
+      try { raw = host.pullBoard(target); } catch { raw = null; }
+      if (!raw) continue;
+      let child = null;
+      try { child = buildBoard(raw); } catch { child = null; }
+      if (child?.items) out.push({ parentUid: item.uid, board: child });
+    }
+    return out;
+  };
+  const paintSearch = (b, hits, q) => {
+    const bright = new Set((hits || []).map((h) => h.focus));
+    for (const item of b?.items.values() || []) {
+      const shell = itemsR.shellOf(item.uid);
+      const on = Boolean(q) && bright.has(item.uid);
+      shell?.classList.toggle("pxd-item--dim", Boolean(q) && !on);
+      shell?.classList.toggle("pxd-item--hit", on);
+    }
+    const edges = q ? new Set((hits || []).filter((h) => h.kind === "edge").map((h) => h.uid)) : null;
+    edgesR.setSearch(edges);
+  };
   const searchFilter = (text) => {
     const b = board();
     const q = String(text || "").trim().toLowerCase();
-    searchMatches = [];
     searchIndex = -1;
     root.classList.toggle("pxd-root--searching", Boolean(q));
-    if (!b) return 0;
-    for (const item of b.items.values()) {
-      const hay = `${item.title}\n${plainText(item.string, 2000)}`.toLowerCase();
-      const hit = q && hay.includes(q);
-      if (hit) searchMatches.push(item.uid);
-      itemsR.shellOf(item.uid)?.classList.toggle("pxd-item--dim", Boolean(q) && !hit);
-    }
+    searchMatches = b && q ? findOnBoard(b, q, nestedBoards(b)) : [];
+    paintSearch(b, searchMatches, q);
     return searchMatches.length;
   };
   const searchNext = (dir = 1) => {
     if (!searchMatches.length) return;
     searchIndex = (searchIndex + dir + searchMatches.length) % searchMatches.length;
-    const uid = searchMatches[searchIndex];
-    ctl.select([uid]);
-    fitSelection([uid]);
+    const hit = searchMatches[searchIndex];
+    if (hit?.focus && board()?.items.has(hit.focus)) {
+      ctl.select([hit.focus]);
+      fitSelection([hit.focus]);
+    }
+    const countEl = root.querySelector(".pxd-search__count");
+    if (countEl) countEl.textContent = `${searchIndex + 1}/${searchMatches.length}`;
   };
 
   // ------------------------------------------------------------ editing
@@ -2098,6 +2125,14 @@ export function mountBoardView({
     if (event.key === "Escape" && chrome.popover.isOpen()) { chrome.popover.close(); event.preventDefault(); event.stopPropagation(); return; }
     if (quicklook.isOpen() && event.key !== "Escape" && String(event.key).toLowerCase() !== "q") return;
     if (presenter.isActive() && !["Escape", "ArrowRight", "ArrowLeft", "ArrowDown", "ArrowUp", "PageDown", "PageUp", " ", "p", "P"].includes(event.key)) return;
+    const findKey = (event.metaKey || event.ctrlKey) && !event.altKey && String(event.key).toLowerCase() === "f";
+    const findInSearch = event.target?.closest?.(".pxd-search") || doc.activeElement?.closest?.(".pxd-search");
+    if (findKey && findInSearch && root.contains?.(findInSearch)) {
+      event.preventDefault();
+      event.stopPropagation();
+      chrome.search.open();
+      return;
+    }
     const inputFocused = isTextEntryTarget(event.target) || isTextEntryTarget(doc.activeElement);
     if (inputFocused) {
       const inside = root.contains?.(event.target) || root.contains?.(doc.activeElement);

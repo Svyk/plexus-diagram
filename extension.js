@@ -12546,6 +12546,7 @@ ${plainText(item.string, 2e3)}`.toLowerCase();
     if (inputFocused) {
       const inside3 = root.contains?.(event.target) || root.contains?.(doc.activeElement);
       if (!inside3 && !itemsR.isEditing()) return;
+      if ((event.metaKey || event.ctrlKey) && !event.altKey && String(event.key).toLowerCase() === "z") return;
     } else if (!ownsKeyboard()) {
       return;
     }

@@ -2117,6 +2117,52 @@ test("ED-7: an unavailable upload does not write the block", async () => {
   }
 });
 
+test("ED-8: Cmd+Z in the editor is left to Roam; Cmd+Z on the board undoes", async () => {
+  const f = mountFixture({
+    hostOverrides: {
+      renderBlock(el) {
+        const doc = el.ownerDocument || globalThis.document;
+        const ta = doc.createElement("textarea");
+        ta.className = "rm-block__input";
+        ta.value = "Alpha";
+        el.append(ta);
+      },
+    },
+  });
+  const undos = () => f.session.mutations.filter((row) => row[0] === "undo").length;
+  const redos = () => f.session.mutations.filter((row) => row[0] === "redo").length;
+  try {
+    await f.flush();
+    const card = await startEdit(f, "cardAAAA1");
+    const ta = card.querySelector(".pxd-item__editor textarea");
+    ta.focus();
+    const typed = f.stub.dispatch(ta, "keydown", { key: "z", metaKey: true });
+    assert.equal(typed.defaultPrevented, false);
+    assert.equal(undos(), 0);
+    const redo = f.stub.dispatch(ta, "keydown", { key: "Z", metaKey: true, shiftKey: true });
+    assert.equal(redo.defaultPrevented, false);
+    assert.equal(redos(), 0);
+    const ctrl = f.stub.dispatch(ta, "keydown", { key: "z", ctrlKey: true });
+    assert.equal(ctrl.defaultPrevented, false);
+    assert.equal(undos(), 0);
+    f.stub.dispatch(ta, "keydown", { key: "Escape" });
+    await tick(30);
+    f.stub.flushFrames();
+    assert.equal(f.view.root.classList.contains("pxd-root--editing"), false);
+    f.view.root.focus();
+    f.view.controller.select(["cardAAAA1"]);
+    const board = f.stub.dispatch(f.view.root, "keydown", { key: "z", metaKey: true });
+    assert.equal(board.defaultPrevented, true);
+    assert.equal(undos(), 1);
+    const again = f.stub.dispatch(f.view.root, "keydown", { key: "z", metaKey: true, shiftKey: true });
+    assert.equal(again.defaultPrevented, true);
+    assert.equal(redos(), 1);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
 test("ED-2: 100 pull-watch echoes while editing leave every item render count unchanged", async () => {
   const f = mountReal();
   try {

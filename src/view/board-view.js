@@ -2000,6 +2000,8 @@ export function mountBoardView({
     if (inputFocused) {
       const inside = root.contains?.(event.target) || root.contains?.(doc.activeElement);
       if (!inside && !itemsR.isEditing()) return;
+      // Cmd+Z and Cmd+Shift+Z belong to the focused editor. Board undo runs only when focus is on the board.
+      if ((event.metaKey || event.ctrlKey) && !event.altKey && String(event.key).toLowerCase() === "z") return;
     } else if (!ownsKeyboard()) {
       return;
     }

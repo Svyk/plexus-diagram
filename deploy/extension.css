@@ -2725,6 +2725,89 @@ body.roam-body.dark .pxd-root .pxd-panel__outline-row:hover {
   pointer-events: none;
 }
 
+.pxd-root .pxd-kanban {
+  display: none;
+}
+
+.pxd-root.pxd-root--kanban .pxd-kanban {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  position: absolute;
+  z-index: 7;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  box-sizing: border-box;
+  overflow: auto;
+  padding: 8px 12px 12px;
+  background: var(--pxd-bg);
+  color: var(--pxd-text);
+}
+
+.pxd-root .pxd-kanban__bar {
+  display: flex;
+  flex: none;
+  gap: 8px;
+  align-items: center;
+}
+
+.pxd-root .pxd-kanban__field {
+  min-width: 0;
+  max-width: 100%;
+  padding: 2px 8px;
+  border: 1px solid var(--pxd-border);
+  border-radius: 6px;
+  background: var(--pxd-chrome-bg);
+  color: var(--pxd-text);
+  font: inherit;
+}
+
+.pxd-root .pxd-kanban__columns {
+  display: flex;
+  flex: none;
+  gap: 8px;
+  align-items: flex-start;
+}
+
+.pxd-root .pxd-kanban__column {
+  flex: 1 1 140px;
+  min-width: 120px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--pxd-border);
+  border-radius: 8px;
+  background: var(--pxd-chrome-bg);
+}
+
+.pxd-root .pxd-kanban__heading {
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.pxd-root .pxd-kanban__card {
+  padding: 6px 8px;
+  border: 1px solid var(--pxd-border);
+  border-radius: 6px;
+  background: var(--pxd-card);
+  cursor: grab;
+}
+
+.pxd-root.pxd-root--kanban .pxd-viewport,
+.pxd-root.pxd-root--kanban .pxd-rail,
+.pxd-root.pxd-root--kanban .pxd-resize-grip,
+.pxd-root.pxd-root--kanban .pxd-props,
+.pxd-root.pxd-root--kanban .pxd-panel,
+.pxd-root.pxd-root--kanban .pxd-minimap,
+.pxd-root.pxd-root--kanban .pxd-ctx {
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .pxd-root.pxd-root--outline .pxd-viewport,
 .pxd-root.pxd-root--outline .pxd-rail,
 .pxd-root.pxd-root--outline .pxd-toolbar,

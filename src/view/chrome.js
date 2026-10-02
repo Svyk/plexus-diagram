@@ -174,6 +174,8 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
   const groupView = el("div", "pxd-toolbar__group", toolbar);
   const tableBtn = button(groupView, "pxd-toolbar__table", "Table", "Table view", () => on.toggleTable?.());
   tableBtn.setAttribute("aria-pressed", "false");
+  const kanbanBtn = button(groupView, "pxd-toolbar__kanban", "Kanban", "Kanban view", () => on.toggleKanban?.());
+  kanbanBtn.setAttribute("aria-pressed", "false");
   const bgBtn = button(groupView, "pxd-toolbar__bg", "Background", "Background pattern and tone", () => (popover.isOpen() ? popover.close() : popover.open()));
   const focusBtn = button(groupView, "pxd-toolbar__focus", "Focus", "Focus mode: fade everything but the selection", () => on.toggleFocus?.());
   button(groupView, "pxd-toolbar__present", "Present", "Present this board", () => on.present?.());
@@ -271,6 +273,13 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
       tableBtn.textContent = active ? "Board" : "Table";
       tableBtn.title = active ? "Board view" : "Table view";
       tableBtn.setAttribute("aria-pressed", active ? "true" : "false");
+    },
+    setKanban(on) {
+      const active = Boolean(on);
+      kanbanBtn.classList.toggle("pxd-btn--active", active);
+      kanbanBtn.textContent = active ? "Board" : "Kanban";
+      kanbanBtn.title = active ? "Board view" : "Kanban view";
+      kanbanBtn.setAttribute("aria-pressed", active ? "true" : "false");
     },
     setBackground(state) { popover.setState(state); },
     bgButton: bgBtn,

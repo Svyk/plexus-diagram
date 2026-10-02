@@ -9114,6 +9114,8 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
   const groupView = el("div", "pxd-toolbar__group", toolbar);
   const tableBtn = button(groupView, "pxd-toolbar__table", "Table", "Table view", () => on.toggleTable?.());
   tableBtn.setAttribute("aria-pressed", "false");
+  const kanbanBtn = button(groupView, "pxd-toolbar__kanban", "Kanban", "Kanban view", () => on.toggleKanban?.());
+  kanbanBtn.setAttribute("aria-pressed", "false");
   const bgBtn = button(groupView, "pxd-toolbar__bg", "Background", "Background pattern and tone", () => popover.isOpen() ? popover.close() : popover.open());
   const focusBtn = button(groupView, "pxd-toolbar__focus", "Focus", "Focus mode: fade everything but the selection", () => on.toggleFocus?.());
   button(groupView, "pxd-toolbar__present", "Present", "Present this board", () => on.present?.());
@@ -9215,6 +9217,13 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
       tableBtn.textContent = active ? "Board" : "Table";
       tableBtn.title = active ? "Board view" : "Table view";
       tableBtn.setAttribute("aria-pressed", active ? "true" : "false");
+    },
+    setKanban(on2) {
+      const active = Boolean(on2);
+      kanbanBtn.classList.toggle("pxd-btn--active", active);
+      kanbanBtn.textContent = active ? "Board" : "Kanban";
+      kanbanBtn.title = active ? "Board view" : "Kanban view";
+      kanbanBtn.setAttribute("aria-pressed", active ? "true" : "false");
     },
     setBackground(state) {
       popover.setState(state);
@@ -10051,6 +10060,235 @@ function mountTable({ doc = globalThis.document, root, host, getBoard } = {}) {
     dispose() {
       open = false;
       closeEditors();
+      try {
+        resizeObs?.disconnect();
+      } catch {
+      }
+      paintOffs.splice(0).forEach((off) => off());
+      offs.splice(0).forEach((off) => off());
+      box.remove();
+    }
+  };
+}
+
+// src/model/kanban.js
+var TODO_FIELD = "To do";
+var DONE_COLUMN = "Done";
+var MARK = /\{\{\[\[(TODO|DONE)\]\]\}\}/;
+function todoState(string) {
+  const hit = MARK.exec(String(string || ""));
+  if (!hit) return "";
+  return hit[1] === "DONE" ? DONE_COLUMN : TODO_FIELD;
+}
+function kanbanRows(board2) {
+  const items = board2?.items;
+  return tableRows(board2).map((row2) => {
+    const item = items?.get?.(row2.uid);
+    return { ...row2, string: item?.string ?? row2.title ?? "" };
+  });
+}
+function kanbanFields(rows) {
+  const names = [];
+  for (const row2 of rows || []) {
+    for (const attr of row2.attrs || []) {
+      if (attr?.name && columnNameOk(attr.name) && !names.includes(attr.name)) names.push(attr.name);
+    }
+  }
+  return [TODO_FIELD, ...names];
+}
+function columnOf(row2, field) {
+  if (field === TODO_FIELD) return todoState(row2?.string);
+  const hit = (row2?.attrs || []).find((attr) => attr.name === field);
+  return hit ? String(hit.value ?? "") : "";
+}
+function kanbanColumns(rows, field) {
+  const list = rows || [];
+  if (field === TODO_FIELD) {
+    const columns2 = [
+      { name: TODO_FIELD, cards: [] },
+      { name: DONE_COLUMN, cards: [] }
+    ];
+    const extra = [];
+    for (const row2 of list) {
+      const name = columnOf(row2, field);
+      if (name === TODO_FIELD) columns2[0].cards.push(row2);
+      else if (name === DONE_COLUMN) columns2[1].cards.push(row2);
+      else extra.push(row2);
+    }
+    if (extra.length) columns2.push({ name: "", cards: extra });
+    return columns2;
+  }
+  if (!columnNameOk(field)) return [];
+  const columns = [];
+  const byName = /* @__PURE__ */ new Map();
+  for (const row2 of list) {
+    const name = columnOf(row2, field);
+    if (!byName.has(name)) {
+      const column = { name, cards: [] };
+      byName.set(name, column);
+      columns.push(column);
+    }
+    byName.get(name).cards.push(row2);
+  }
+  return columns;
+}
+function withMarker(string, column) {
+  const mark = column === DONE_COLUMN ? "{{[[DONE]]}}" : "{{[[TODO]]}}";
+  const current = String(string || "");
+  if (MARK.test(current)) return current.replace(MARK, mark);
+  return current.trim() ? `${mark} ${current}` : mark;
+}
+function planKanbanMove({ field, column, row: row2 } = {}) {
+  if (!row2?.uid || column == null || column === "") return null;
+  if (field === TODO_FIELD) {
+    if (column !== TODO_FIELD && column !== DONE_COLUMN) return null;
+    if (todoState(row2.string) === column) return null;
+    const string = withMarker(row2.string, column);
+    if (string === String(row2.string || "")) return null;
+    return { op: "string", uid: row2.uid, string };
+  }
+  if (!columnNameOk(field)) return null;
+  const attr = (row2.attrs || []).find((item) => item.name === field);
+  if (String(attr?.value ?? "") === column) return null;
+  const plan = planAttrCell({
+    name: field,
+    value: column,
+    blockUid: attr?.uid || null,
+    parentUid: row2.uid
+  });
+  if (!plan) return null;
+  if (plan.op === "update") return { op: "string", uid: plan.uid, string: plan.string };
+  return plan;
+}
+
+// src/view/kanban-view.js
+function mountKanban({ doc = globalThis.document, root, host, getBoard } = {}) {
+  const box = doc.createElement("div");
+  box.className = "pxd-kanban pxd-chrome";
+  root?.append(box);
+  const bar = doc.createElement("div");
+  bar.className = "pxd-kanban__bar";
+  box.append(bar);
+  const label = doc.createElement("span");
+  label.className = "pxd-kanban__label";
+  label.textContent = "Group by";
+  bar.append(label);
+  const select = doc.createElement("select");
+  select.className = "pxd-kanban__field";
+  select.setAttribute("aria-label", "Group by");
+  bar.append(select);
+  const columnsEl = doc.createElement("div");
+  columnsEl.className = "pxd-kanban__columns";
+  box.append(columnsEl);
+  const offs = [];
+  const paintOffs = [];
+  const listen = (el, type, fn, bucket = offs) => {
+    el.addEventListener(type, fn);
+    bucket.push(() => el.removeEventListener(type, fn));
+  };
+  const stop = (event) => event.stopPropagation();
+  for (const type of ["pointerdown", "pointerup", "click", "dblclick", "wheel", "contextmenu"]) {
+    listen(box, type, stop);
+  }
+  let open = false;
+  let field = TODO_FIELD;
+  let dragUid = null;
+  const place = () => {
+    const toolbar2 = root?.querySelector?.(".pxd-toolbar");
+    if (!toolbar2 || typeof toolbar2.getBoundingClientRect !== "function" || typeof root.getBoundingClientRect !== "function") return;
+    const top = toolbar2.getBoundingClientRect().bottom - root.getBoundingClientRect().top;
+    if (top > 0) box.style.top = `${Math.ceil(top)}px`;
+  };
+  const commit = async (plan) => {
+    try {
+      if (plan.op === "string" && typeof host?.updateString === "function") {
+        const write = () => host.updateString(plan.uid, plan.string);
+        if (typeof host.group === "function") await host.group(write);
+        else await write();
+      } else if (plan.op === "create" && typeof host?.createBlock === "function") {
+        const write = () => host.createBlock({ parentUid: plan.parent, order: "last", string: plan.string });
+        if (typeof host.group === "function") await host.group(write);
+        else await write();
+      }
+    } catch {
+    }
+    paint2();
+  };
+  const paint2 = () => {
+    if (!open) return;
+    paintOffs.splice(0).forEach((off) => off());
+    const rows = kanbanRows(getBoard?.() || null);
+    const fields = kanbanFields(rows);
+    if (!fields.includes(field)) field = TODO_FIELD;
+    select.replaceChildren();
+    for (const name of fields) {
+      const option = doc.createElement("option");
+      option.value = name;
+      option.textContent = name;
+      if (name === field) option.selected = true;
+      select.append(option);
+    }
+    select.value = field;
+    columnsEl.replaceChildren();
+    for (const column of kanbanColumns(rows, field)) {
+      const col = doc.createElement("section");
+      col.className = "pxd-kanban__column";
+      col.setAttribute("data-column", column.name);
+      const title = doc.createElement("h3");
+      title.className = "pxd-kanban__heading";
+      title.textContent = column.name || "None";
+      col.append(title);
+      for (const card2 of column.cards) {
+        const item = doc.createElement("div");
+        item.className = "pxd-kanban__card";
+        item.setAttribute("data-uid", card2.uid);
+        item.textContent = card2.title || card2.uid;
+        listen(item, "pointerdown", (event) => {
+          dragUid = card2.uid;
+          event.stopPropagation();
+        }, paintOffs);
+        col.append(item);
+      }
+      listen(col, "pointerup", () => {
+        const uid = dragUid;
+        dragUid = null;
+        if (!uid || column.name === "") return;
+        const row2 = rows.find((item) => item.uid === uid);
+        const plan = planKanbanMove({ field, column: column.name, row: row2 });
+        if (plan) void commit(plan);
+      }, paintOffs);
+      columnsEl.append(col);
+    }
+  };
+  listen(select, "change", () => {
+    field = select.value || TODO_FIELD;
+    paint2();
+  });
+  let resizeObs = null;
+  const toolbar = root?.querySelector?.(".pxd-toolbar");
+  if (toolbar && typeof globalThis.ResizeObserver === "function") {
+    resizeObs = new globalThis.ResizeObserver(() => {
+      if (open) place();
+    });
+    resizeObs.observe(toolbar);
+  }
+  return {
+    el: box,
+    open() {
+      open = true;
+      place();
+      paint2();
+    },
+    close() {
+      open = false;
+      dragUid = null;
+    },
+    refresh() {
+      if (open) paint2();
+    },
+    dispose() {
+      open = false;
+      dragUid = null;
       try {
         resizeObs?.disconnect();
       } catch {
@@ -12535,25 +12773,44 @@ function mountBoardView({
   }, refresh() {
   }, dispose() {
   } };
+  let kanbanMode = false;
+  let kanbanCtl = { open() {
+  }, close() {
+  }, refresh() {
+  }, dispose() {
+  } };
+  const leaveOutline = () => {
+    outlineMode = false;
+    root.classList.remove("pxd-root--outline");
+    outlineBtn?.classList.toggle("pxd-mode__btn--on", false);
+    boardBtn?.classList.toggle("pxd-mode__btn--on", true);
+    outlineKey = "";
+    clearOutline();
+  };
   const setTable = (on) => {
     const next = Boolean(on);
-    if (next && outlineMode) {
-      outlineMode = false;
-      root.classList.remove("pxd-root--outline");
-      outlineBtn?.classList.toggle("pxd-mode__btn--on", false);
-      boardBtn?.classList.toggle("pxd-mode__btn--on", true);
-      outlineKey = "";
-      clearOutline();
-    }
+    if (next && outlineMode) leaveOutline();
+    if (next && kanbanMode) setKanban(false);
     tableMode = next;
     root.classList.toggle("pxd-root--table", tableMode);
     chrome?.toolbar?.setTable?.(tableMode);
     if (tableMode) tableCtl.open();
     else tableCtl.close();
   };
+  const setKanban = (on) => {
+    const next = Boolean(on);
+    if (next && outlineMode) leaveOutline();
+    if (next && tableMode) setTable(false);
+    kanbanMode = next;
+    root.classList.toggle("pxd-root--kanban", kanbanMode);
+    chrome?.toolbar?.setKanban?.(kanbanMode);
+    if (kanbanMode) kanbanCtl.open();
+    else kanbanCtl.close();
+  };
   const setOutline = (on) => {
     outlineMode = Boolean(on);
     if (outlineMode && tableMode) setTable(false);
+    if (outlineMode && kanbanMode) setKanban(false);
     root.classList.toggle("pxd-root--outline", outlineMode);
     outlineBtn?.classList.toggle("pxd-mode__btn--on", outlineMode);
     boardBtn?.classList.toggle("pxd-mode__btn--on", !outlineMode);
@@ -13771,6 +14028,7 @@ function mountBoardView({
       openInfo: () => openInfo(),
       cycleLinks: () => cycleLinks(),
       toggleTable: () => setTable(!tableMode),
+      toggleKanban: () => setKanban(!kanbanMode),
       zoomIn: () => setViewport(zoomAt(vp, { x: size.width / 2, y: size.height / 2 }, 1.2)),
       zoomOut: () => setViewport(zoomAt(vp, { x: size.width / 2, y: size.height / 2 }, 1 / 1.2)),
       zoomReset: () => setViewport(zoomAt(vp, { x: size.width / 2, y: size.height / 2 }, 1 / vp.zoom)),
@@ -14773,6 +15031,7 @@ function mountBoardView({
   const onKeyDown = (event) => {
     if (outlineMode && !event.target?.closest?.(".pxd-mode")) return;
     if (tableMode && !event.target?.closest?.(".pxd-toolbar__table")) return;
+    if (kanbanMode && !event.target?.closest?.(".pxd-toolbar__kanban")) return;
     if (menu.isOpen()) return;
     if (event.key === "Escape" && blockEdit && !doc.querySelector?.(".rm-autocomplete__results")) {
       event.preventDefault();
@@ -14908,6 +15167,7 @@ function mountBoardView({
     schedule();
     if (outlineMode) syncOutline();
     if (tableMode) tableCtl.refresh();
+    if (kanbanMode) kanbanCtl.refresh();
   }));
   subs.push(session.on("links", () => {
     dirty.links = true;
@@ -14916,6 +15176,12 @@ function mountBoardView({
   subs.push(session.on("busy", (busy) => chrome.toolbar.setSync(Boolean(busy))));
   subs.push(session.on("toast", (t) => chrome.toast.show(t)));
   tableCtl = mountTable({
+    doc,
+    root,
+    host,
+    getBoard: board2
+  });
+  kanbanCtl = mountKanban({
     doc,
     root,
     host,
@@ -15278,6 +15544,7 @@ function mountBoardView({
       if (pointerBoard === root) pointerBoard = null;
       clearOutline();
       tableCtl.dispose();
+      kanbanCtl.dispose();
       ctl.cancel();
       releaseCapture();
       if (heightDrag) onHeightUp();

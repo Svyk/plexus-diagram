@@ -14,6 +14,7 @@ import { neighborLayout } from "../src/model/neighbors.js";
 import { queryResultLayout } from "../src/model/query.js";
 import { linkedRefCard, linkedRefLabel } from "../src/model/refs.js";
 import { isLightHost, mountBoardView } from "../src/view/board-view.js";
+import { SHORTCUTS } from "../src/view/shortcuts.js";
 import { CARD_MIME } from "../src/view/panel.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
 
@@ -1677,6 +1678,32 @@ test("UI-7: tab reaches the rail, the panel, a card, its toolbar, and the menu",
     assert.match(css, /\.pxd-root button:focus-visible/);
     assert.match(css, /\.pxd-item:focus-visible/);
     assert.match(css, /\.pxd-menu__item:focus-visible/);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("UI-8: ? opens the shortcut sheet from the one shortcut table", async () => {
+  const f = mountFixture({ viewOptions: { autofocus: false } });
+  try {
+    await f.flush();
+    f.root.focus();
+    const opened = key(f, "?", { shiftKey: true, code: "Slash" });
+    assert.equal(opened.defaultPrevented, true);
+    const sheet = f.root.querySelector(".pxd-sheet");
+    assert.ok(sheet);
+    assert.equal(sheet.getAttribute("role"), "dialog");
+    assert.equal(sheet.getAttribute("aria-label"), "Shortcuts");
+    const text = sheet.textContent;
+    for (const row of SHORTCUTS) assert.ok(text.includes(row.keys), row.keys);
+    for (const row of SHORTCUTS) assert.ok(text.includes(row.label), row.label);
+    const tool = f.root.querySelector(".pxd-palette__btn--on")?.getAttribute("aria-label");
+    key(f, "v");
+    assert.equal(f.root.querySelector(".pxd-palette__btn--on")?.getAttribute("aria-label"), tool, "keys behind the sheet do not run");
+    assert.ok(f.root.querySelector(".pxd-sheet"));
+    key(f, "Escape");
+    assert.equal(f.root.querySelector(".pxd-sheet"), null);
   } finally {
     f.view.dispose();
     f.restore();

@@ -3,6 +3,7 @@ import test from "node:test";
 
 import { buildBoard, worldRects } from "../src/model/board.js";
 import { createInteractions } from "../src/view/interactions.js";
+import { SHORTCUTS, findShortcut } from "../src/view/shortcuts.js";
 
 function pulled() {
   const item = (uid, string, plexus, children = []) => ({
@@ -99,6 +100,8 @@ function harness({ vp = { x: 0, y: 0, zoom: 1 }, settings = {}, editing = null, 
     expandOutline: rec("expandOutline"),
     presentNext: rec("presentNext"),
     presentPrev: rec("presentPrev"),
+    renamePage: rec("renamePage"),
+    toggleShortcuts: rec("toggleShortcuts"),
     fitHeight: rec("fitHeight"),
     fitSection: rec("fitSection"),
     resetSize: rec("resetSize"),
@@ -1177,4 +1180,69 @@ test("UI-3: each palette tool places or switches", async () => {
   select.ctl.setTool("hand");
   select.ctl.handle({ type: "keydown", key: "v" });
   assert.equal(select.ctl.getTool(), "select");
+});
+
+test("UI-8: every shortcut in the sheet runs from that same table", () => {
+  for (const row of SHORTCUTS) {
+    for (const event of row.events) {
+      assert.equal(findShortcut(event, row.mode || "normal"), row, row.keys);
+    }
+  }
+  const needsCard = new Set(["nudge", "nearest", "duplicate", "wrap", "delete", "enter", "outline", "expand", "escape", "fitSelection"]);
+  for (const row of SHORTCUTS) {
+    if (row.mode === "view") continue;
+    const h = harness({
+      extra: row.mode === "present" ? { presentActive: () => true } : {},
+    });
+    if (row.action === "zoomReset") h.ctl.handle({ type: "keydown", key: "=", meta: true });
+    for (const event of row.events) {
+      if (needsCard.has(row.action)) h.ctl.select(["cardAAAA1"]);
+      if (row.action === "renamePage") h.ctl.select(["cardBBBB2"]);
+      const handled = h.ctl.handle({ type: "keydown", ...event });
+      assert.equal(handled, true, `${row.keys} ${event.key}`);
+      if (row.action === "tool") assert.equal(h.ctl.getTool(), row.tool);
+      if (row.action === "nearest" && event.key === "ArrowRight") assert.ok(h.ctl.getSelection().items.includes("cardBBBB2"));
+      if (row.action === "nudge") {
+        const step = event.shift ? 10 : 1;
+        const dx = event.key === "ArrowLeft" ? -step : event.key === "ArrowRight" ? step : 0;
+        const dy = event.key === "ArrowUp" ? -step : event.key === "ArrowDown" ? step : 0;
+        assert.deepEqual(h.named("commitMove").at(-1).slice(1), [["cardAAAA1"], dx, dy]);
+      }
+      if (row.action === "delete") {
+        const opts = h.named("deleteItems").at(-1)[2];
+        assert.equal(Boolean(opts.withContents), Boolean(event.shift));
+      }
+    }
+    if (row.action === "search") assert.equal(h.named("openSearch").length, row.events.length);
+    if (row.action === "undo") assert.equal(h.named("undo").length, 1);
+    if (row.action === "redo") assert.equal(h.named("redo").length, 1);
+    if (row.action === "zoomIn") assert.ok(h.vp.zoom > 1);
+    if (row.action === "zoomOut") assert.ok(h.vp.zoom < 1);
+    if (row.action === "zoomReset") assert.ok(Math.abs(h.vp.zoom - 1) < 1e-9);
+    if (row.action === "fitAll") assert.equal(h.named("fitAll").length, 1);
+    if (row.action === "fitSelection") assert.equal(h.named("fitSelection").length, 1);
+    if (row.action === "links") assert.equal(h.named("cycleLinks").length, 1);
+    if (row.action === "info") assert.equal(h.named("openInfo").length, row.events.length);
+    if (row.action === "focus") assert.equal(h.named("toggleFocus").length, 1);
+    if (row.action === "quickLook") assert.equal(h.named("quickLook").length, 1);
+    if (row.action === "present") assert.equal(h.named("present").length, 1);
+    if (row.action === "help") assert.equal(h.named("toggleShortcuts").length, 1);
+    if (row.action === "duplicate") assert.equal(h.named("duplicateItems").length, 1);
+    if (row.action === "wrap") assert.equal(h.named("wrapInSection").length, 1);
+    if (row.action === "fold") assert.equal(h.named("foldSelection").length, 1);
+    if (row.action === "back") assert.equal(h.named("historyBack").length, 1);
+    if (row.action === "forward") assert.equal(h.named("historyForward").length, 1);
+    if (row.action === "selectAll") assert.ok(h.ctl.getSelection().items.length > 1);
+    if (row.action === "renamePage") assert.deepEqual(h.named("renamePage").at(-1)[1], "cardBBBB2");
+    if (row.action === "enter") assert.deepEqual(h.named("enterEdit").at(-1)[1], "cardAAAA1");
+    if (row.action === "expand") assert.deepEqual(h.named("expandOutline").at(-1)[1], "cardAAAA1");
+    if (row.action === "space") assert.deepEqual(h.named("setSpace").at(-1)[1], true);
+    if (row.action === "escape") assert.deepEqual(h.ctl.getSelection().items, []);
+    if (row.action === "outline") assert.notDeepEqual(h.ctl.getSelection().items, ["cardAAAA1"]);
+    if (row.action === "presentNext") {
+      assert.equal(h.named("presentNext").length, row.events.length);
+      assert.equal(h.named("setSpace").length, 0);
+    }
+    if (row.action === "presentPrev") assert.equal(h.named("presentPrev").length, row.events.length);
+  }
 });

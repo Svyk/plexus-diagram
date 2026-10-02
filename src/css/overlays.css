@@ -1,6 +1,71 @@
 /* Overlays: Quick Look, presentation HUD, Alt+drag ghosts, focus dimming.
    Borders carry the semantics; fills stay on the chrome token (no tinted fills in dark). */
 
+.pxd-root .pxd-sheet {
+  position: absolute;
+  left: 50%;
+  top: 24px;
+  z-index: 34;
+  transform: translateX(-50%);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  width: min(560px, calc(100% - 24px));
+  max-height: calc(100% - 40px);
+  padding: 12px 14px;
+  border: 1px solid var(--pxd-border-strong);
+  border-radius: 10px;
+  background: var(--pxd-chrome-bg);
+  color: var(--pxd-text);
+  box-shadow: var(--pxd-shadow);
+  cursor: default;
+}
+
+.pxd-root .pxd-sheet__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+
+.pxd-root .pxd-sheet__title {
+  font-size: 14px;
+  font-weight: 650;
+}
+
+.pxd-root .pxd-sheet__grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px 20px;
+  overflow: auto;
+}
+
+.pxd-root .pxd-sheet__group {
+  min-width: 160px;
+}
+
+.pxd-root .pxd-sheet__group-title {
+  margin: 0 0 4px;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.pxd-root .pxd-sheet__row {
+  display: flex;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 2px 0;
+  font-size: 12px;
+}
+
+.pxd-root .pxd-sheet__keys {
+  color: var(--pxd-text-dim, var(--pxd-text));
+  white-space: nowrap;
+}
+
 .pxd-root .pxd-quicklook {
   position: absolute;
   left: 50%;

@@ -34,8 +34,9 @@
 import { DEFAULT_BOARD_CARD, DEFAULT_SIZES, MIN_SIZES, STICKY_SIZE } from "../model/schema.js";
 import { descendantsOf, findEdge, hitTest, itemsInPolygon, itemsInRect, outlineOrder, topLevelOf, boundsOf } from "../model/board.js";
 import { GRID_PITCH, nearestInDirection, nearestSide, snapMove, snapToGrid, zoomAt } from "../model/geometry.js";
+import { SHORTCUTS, findShortcut } from "./shortcuts.js";
 
-export const TOOL_KEYS = { v: "select", h: "hand", n: "card", t: "text", s: "sticky", r: "shape", g: "section", w: "board", c: "connect" };
+export const TOOL_KEYS = Object.fromEntries(SHORTCUTS.filter((row) => row.letter).map((row) => [row.letter, row.tool]));
 export const TOOLS = ["select", "hand", "card", "text", "sticky", "shape", "section", "board", "connect"];
 const SHAPE_PLACE = { w: 160, h: 100 };
 export const DRAG_THRESHOLD_PX = 4;
@@ -650,6 +651,86 @@ export function createInteractions({ actions, settings } = {}) {
     return false;
   };
 
+  const runShortcut = (row, ev) => {
+    const key = ev.key || "";
+    const b = board();
+    switch (row.action) {
+      case "tool": setTool(row.tool); return true;
+      case "space":
+        if (!state.space) { state.space = true; call("setSpace", true); }
+        return true;
+      case "escape": return escape();
+      case "presentNext": call("presentNext"); return true;
+      case "presentPrev": call("presentPrev"); return true;
+      case "selectAll": if (b) selectItems([...b.items.keys()]); return true;
+      case "wrap": if (state.selection.size) call("wrapInSection", [...state.selection]); return true;
+      case "duplicate":
+        if (!state.selection.size) return false;
+        call("duplicateItems", [...state.selection], { dx: 24, dy: 24, asRef: false });
+        return true;
+      case "fold": call("foldSelection"); return true;
+      case "undo": call("undo"); return true;
+      case "redo": call("redo"); return true;
+      case "search": call("openSearch"); return true;
+      case "zoomIn": zoomBy(1.2); return true;
+      case "zoomOut": zoomBy(1 / 1.2); return true;
+      case "back": call("historyBack"); return true;
+      case "forward": call("historyForward"); return true;
+      case "fitAll": call("fitAll"); return true;
+      case "fitSelection": if (state.selection.size) call("fitSelection", [...state.selection]); return true;
+      case "zoomReset": zoomTo(1); return true;
+      case "delete": return deleteSelection(ev.shift);
+      case "renamePage": {
+        if (state.selection.size !== 1) return false;
+        const uid = [...state.selection][0];
+        const item = b?.items.get(uid);
+        if (item?.kind !== "page") return false;
+        call("renamePage", uid);
+        return true;
+      }
+      case "enter": {
+        if (state.selection.size !== 1) return false;
+        const uid = [...state.selection][0];
+        const item = b?.items.get(uid);
+        if (item?.kind === "board" || (item && call("isBoardCard", uid))) call("openBoard", uid);
+        else if (item?.type === "section") call("renameSection", uid);
+        else call("enterEdit", uid);
+        return true;
+      }
+      case "nearest": {
+        if (!state.selection.size) return false;
+        const dir = key === "ArrowLeft" ? "left" : key === "ArrowRight" ? "right" : key === "ArrowUp" ? "up" : key === "ArrowDown" ? "down" : null;
+        if (dir) selectNearest(dir, ev.shift);
+        return true;
+      }
+      case "nudge": {
+        if (!state.selection.size) return false;
+        const step = ev.shift ? 10 : 1;
+        const dx = key === "ArrowLeft" ? -step : key === "ArrowRight" ? step : 0;
+        const dy = key === "ArrowUp" ? -step : key === "ArrowDown" ? step : 0;
+        const uids = movingSet();
+        if (uids.length) call("commitMove", uids, dx, dy);
+        return true;
+      }
+      case "outline": return ev.tabOwned === false ? false : selectOutline(ev.shift);
+      case "links": call("cycleLinks"); return true;
+      case "info": call("openInfo"); return true;
+      case "focus": call("toggleFocus"); return true;
+      case "quickLook": call("quickLook"); return true;
+      case "present": call("present"); return true;
+      case "help": call("toggleShortcuts"); return true;
+      case "expand": {
+        if (state.selection.size !== 1) return false;
+        const uid = lastSelected();
+        const item = b?.items.get(uid);
+        if (!item || item.type !== "card" || item.kind === "board") return false;
+        call("expandOutline", uid);
+        return true;
+      }
+      default: return false;
+    }
+  };
+
   const onKeyDown = (ev) => {
     const key = ev.key || "";
     const mod = Boolean(ev.meta || ev.ctrl);
@@ -660,92 +741,15 @@ export function createInteractions({ actions, settings } = {}) {
       return false;
     }
     if (call("presentActive") && !mod && !ev.alt) {
-      if (key === "ArrowRight" || key === "ArrowDown" || key === "PageDown" || ev.code === "Space" || key === " ") { call("presentNext"); return true; }
-      if (key === "ArrowLeft" || key === "ArrowUp" || key === "PageUp") { call("presentPrev"); return true; }
+      const present = findShortcut(ev, "present");
+      if (present) return runShortcut(present, ev);
     }
-    if (ev.code === "Space" || key === " ") {
-      if (!state.space) { state.space = true; call("setSpace", true); }
-      return true;
-    }
-    if (key === "Escape") return escape();
+    const always = findShortcut(ev, "always");
+    if (always) return runShortcut(always, ev);
     if (setting("enable-shortcuts", true) === false) return false;
-    const b = board();
-    if (mod) {
-      const k = key.toLowerCase();
-      if (k === "a") { if (b) selectItems([...b.items.keys()]); return true; }
-      if (k === "g") { if (state.selection.size) call("wrapInSection", [...state.selection]); return true; }
-      if (k === "d" && !ev.alt) {
-        if (!state.selection.size) return false;
-        call("duplicateItems", [...state.selection], { dx: 24, dy: 24, asRef: false });
-        return true;
-      }
-      if (k === "enter" && ev.alt) { call("foldSelection"); return true; }
-      if (k === "z") { if (ev.shift) call("redo"); else call("undo"); return true; }
-      if (k === "f") { call("openSearch"); return true; }
-      if (k === "=" || k === "+") { zoomBy(1.2); return true; }
-      if (k === "-" || k === "_") { zoomBy(1 / 1.2); return true; }
-      if (!ev.shift && !ev.alt && (ev.code === "BracketLeft" || key === "[")) { call("historyBack"); return true; }
-      if (!ev.shift && !ev.alt && (ev.code === "BracketRight" || key === "]")) { call("historyForward"); return true; }
-      return false;
-    }
-    if (ev.shift) {
-      if (ev.code === "Digit1" || key === "!") { call("fitAll"); return true; }
-      if (ev.code === "Digit2" || key === "@") { if (state.selection.size) call("fitSelection", [...state.selection]); return true; }
-      if (ev.code === "Digit0" || key === ")") { zoomTo(1); return true; }
-    }
-    if (key === "Delete" || key === "Backspace") return deleteSelection(ev.shift);
-    if (key === "F2") {
-      if (state.selection.size !== 1) return false;
-      const uid = [...state.selection][0];
-      const item = b?.items.get(uid);
-      if (item?.kind !== "page") return false;
-      call("renamePage", uid);
-      return true;
-    }
-    if (key === "Enter") {
-      if (state.selection.size === 1) {
-        const uid = [...state.selection][0];
-        const item = b?.items.get(uid);
-        if (item?.kind === "board" || (item && call("isBoardCard", uid))) call("openBoard", uid);
-        else if (item?.type === "section") call("renameSection", uid);
-        else call("enterEdit", uid);
-        return true;
-      }
-      return false;
-    }
-    if (key.startsWith("Arrow")) {
-      if (!state.selection.size) return false;
-      if (ev.alt) {
-        const dir = key === "ArrowLeft" ? "left" : key === "ArrowRight" ? "right" : key === "ArrowUp" ? "up" : key === "ArrowDown" ? "down" : null;
-        if (dir) selectNearest(dir, ev.shift);
-        return true;
-      }
-      const step = ev.shift ? 10 : 1;
-      const dx = key === "ArrowLeft" ? -step : key === "ArrowRight" ? step : 0;
-      const dy = key === "ArrowUp" ? -step : key === "ArrowDown" ? step : 0;
-      const uids = movingSet();
-      if (uids.length) call("commitMove", uids, dx, dy);
-      return true;
-    }
-    if (key === "Tab" && !ev.alt) return ev.tabOwned === false ? false : selectOutline(ev.shift);
-    if (ev.alt) return false;
-    const lower = key.toLowerCase();
-    if (TOOL_KEYS[lower]) { setTool(TOOL_KEYS[lower]); return true; }
-    if (lower === "l") { call("cycleLinks"); return true; }
-    if (key === "/") { call("openSearch"); return true; }
-    if (lower === "i") { call("openInfo"); return true; }
-    if (lower === "f") { call("toggleFocus"); return true; }
-    if (lower === "q") { call("quickLook"); return true; }
-    if (lower === "p") { call("present"); return true; }
-    if (lower === "m") {
-      if (state.selection.size !== 1) return false;
-      const uid = lastSelected();
-      const item = b?.items.get(uid);
-      if (!item || item.type !== "card" || item.kind === "board") return false;
-      call("expandOutline", uid);
-      return true;
-    }
-    return false;
+    const row = findShortcut(ev, "normal");
+    if (!row) return false;
+    return runShortcut(row, ev);
   };
 
   const onKeyUp = (ev) => {

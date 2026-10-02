@@ -1916,9 +1916,9 @@ function subtree(node2, sizeOf, levelGap, sibGap) {
 function mindMapLayout(root, { direction = "right", hGap = 80, vGap = 24 } = {}) {
   const out = /* @__PURE__ */ new Map();
   if (!root) return out;
-  const down = direction === "down";
-  const sizeOf = down ? (n2) => ({ dd: n2.h, bb: n2.w }) : (n2) => ({ dd: n2.w, bb: n2.h });
-  const toXY = (d, b) => down ? { x: norm(b), y: norm(d) } : { x: norm(d), y: norm(b) };
+  const down2 = direction === "down";
+  const sizeOf = down2 ? (n2) => ({ dd: n2.h, bb: n2.w }) : (n2) => ({ dd: n2.w, bb: n2.h });
+  const toXY = (d, b) => down2 ? { x: norm(b), y: norm(d) } : { x: norm(d), y: norm(b) };
   const groupPlaces = (kids2) => {
     const s = subtree({ ...root, children: kids2 }, sizeOf, hGap, vGap);
     return s.places.map((p) => ({ uid: p.uid, d: p.d, b: p.b - s.nodeB }));
@@ -6723,8 +6723,73 @@ function boardToMarkdown(board2, rects) {
 `;
 }
 
+// src/view/shortcuts.js
+var down = (ev) => String(ev.key || "").toLowerCase();
+var hasMod = (ev) => Boolean(ev.meta || ev.ctrl);
+var letter = (ev, ch) => !hasMod(ev) && !ev.alt && down(ev) === ch;
+function arrow(ev, { alt, shift }) {
+  return !hasMod(ev) && Boolean(ev.alt) === alt && Boolean(ev.shift) === shift && String(ev.key || "").startsWith("Arrow");
+}
+function removeKey(ev, shift) {
+  return !hasMod(ev) && !ev.alt && Boolean(ev.shift) === shift && (ev.key === "Delete" || ev.key === "Backspace");
+}
+var ARROWS2 = [{ key: "ArrowLeft" }, { key: "ArrowRight" }, { key: "ArrowUp" }, { key: "ArrowDown" }];
+var ARROWS_SHIFT = ARROWS2.map((ev) => ({ ...ev, shift: true }));
+var ARROWS_ALT = ARROWS2.map((ev) => ({ ...ev, alt: true }));
+var ARROWS_BOTH = ARROWS2.map((ev) => ({ ...ev, alt: true, shift: true }));
+var SHORTCUTS = [
+  { group: "Tools", keys: "V", label: "Select", action: "tool", tool: "select", letter: "v", events: [{ key: "v" }], match: (ev) => letter(ev, "v") },
+  { group: "Tools", keys: "H", label: "Hand", action: "tool", tool: "hand", letter: "h", events: [{ key: "h" }], match: (ev) => letter(ev, "h") },
+  { group: "Tools", keys: "N", label: "Card", action: "tool", tool: "card", letter: "n", events: [{ key: "n" }], match: (ev) => letter(ev, "n") },
+  { group: "Tools", keys: "T", label: "Text", action: "tool", tool: "text", letter: "t", events: [{ key: "t" }], match: (ev) => letter(ev, "t") },
+  { group: "Tools", keys: "S", label: "Sticky", action: "tool", tool: "sticky", letter: "s", events: [{ key: "s" }], match: (ev) => letter(ev, "s") },
+  { group: "Tools", keys: "R", label: "Shape", action: "tool", tool: "shape", letter: "r", events: [{ key: "r" }], match: (ev) => letter(ev, "r") },
+  { group: "Tools", keys: "G", label: "Section", action: "tool", tool: "section", letter: "g", events: [{ key: "g" }], match: (ev) => letter(ev, "g") },
+  { group: "Tools", keys: "W", label: "Board", action: "tool", tool: "board", letter: "w", events: [{ key: "w" }], match: (ev) => letter(ev, "w") },
+  { group: "Tools", keys: "C", label: "Connect", action: "tool", tool: "connect", letter: "c", events: [{ key: "c" }], match: (ev) => letter(ev, "c") },
+  { group: "Edit", keys: "Enter", label: "Edit, open, or rename", action: "enter", events: [{ key: "Enter" }], match: (ev) => !hasMod(ev) && !ev.alt && !ev.shift && ev.key === "Enter" },
+  { group: "Edit", keys: "F2", label: "Rename page", action: "renamePage", events: [{ key: "F2" }], match: (ev) => !hasMod(ev) && !ev.alt && ev.key === "F2" },
+  { group: "Edit", keys: "⌘D", label: "Duplicate", action: "duplicate", events: [{ key: "d", meta: true }], match: (ev) => hasMod(ev) && !ev.alt && down(ev) === "d" },
+  { group: "Edit", keys: "Delete", label: "Delete", action: "delete", events: [{ key: "Delete" }, { key: "Backspace" }], match: (ev) => removeKey(ev, false) },
+  { group: "Edit", keys: "Shift+Delete", label: "Delete with contents", action: "delete", events: [{ key: "Delete", shift: true }, { key: "Backspace", shift: true }], match: (ev) => removeKey(ev, true) },
+  { group: "Edit", keys: "⌘Z", label: "Undo", action: "undo", events: [{ key: "z", meta: true }], match: (ev) => hasMod(ev) && !ev.alt && !ev.shift && down(ev) === "z" },
+  { group: "Edit", keys: "⌘⇧Z", label: "Redo", action: "redo", events: [{ key: "z", meta: true, shift: true }], match: (ev) => hasMod(ev) && !ev.alt && ev.shift && down(ev) === "z" },
+  { group: "Edit", keys: "⌘⌥Enter", label: "Fold selection", action: "fold", events: [{ key: "Enter", meta: true, alt: true }], match: (ev) => hasMod(ev) && ev.alt && down(ev) === "enter" },
+  { group: "Edit", keys: "⌘G", label: "Wrap in a section", action: "wrap", events: [{ key: "g", meta: true }], match: (ev) => hasMod(ev) && !ev.alt && down(ev) === "g" },
+  { group: "Select", keys: "⌘A", label: "Select all", action: "selectAll", events: [{ key: "a", meta: true }], match: (ev) => hasMod(ev) && !ev.alt && down(ev) === "a" },
+  { group: "Select", keys: "Tab", label: "Next in outline", action: "outline", events: [{ key: "Tab" }], match: (ev) => ev.key === "Tab" && !ev.alt && !ev.shift && !hasMod(ev) },
+  { group: "Select", keys: "Shift+Tab", label: "Previous in outline", action: "outline", events: [{ key: "Tab", shift: true }], match: (ev) => ev.key === "Tab" && !ev.alt && ev.shift && !hasMod(ev) },
+  { group: "Select", keys: "⌥+arrows", label: "Select nearest", action: "nearest", events: ARROWS_ALT, match: (ev) => arrow(ev, { alt: true, shift: false }) },
+  { group: "Select", keys: "Shift+⌥+arrows", label: "Add nearest", action: "nearest", events: ARROWS_BOTH, match: (ev) => arrow(ev, { alt: true, shift: true }) },
+  { group: "Select", keys: "Shift+F10", label: "Card menu", action: "cardMenu", mode: "view", events: [{ key: "F10", shift: true }, { key: "ContextMenu" }], match: (ev) => !hasMod(ev) && !ev.alt && (ev.key === "ContextMenu" || ev.shift && ev.key === "F10") },
+  { group: "Select", keys: "M", label: "Expand outline", action: "expand", events: [{ key: "m" }], match: (ev) => letter(ev, "m") },
+  { group: "View", keys: "Space", label: "Hold to pan", action: "space", mode: "always", events: [{ key: " ", code: "Space" }], match: (ev) => ev.code === "Space" || ev.key === " " },
+  { group: "View", keys: "⌘+", label: "Zoom in", action: "zoomIn", events: [{ key: "=", meta: true }, { key: "+", meta: true }], match: (ev) => hasMod(ev) && !ev.alt && (ev.key === "=" || ev.key === "+") },
+  { group: "View", keys: "⌘-", label: "Zoom out", action: "zoomOut", events: [{ key: "-", meta: true }, { key: "_", meta: true }], match: (ev) => hasMod(ev) && !ev.alt && (ev.key === "-" || ev.key === "_") },
+  { group: "View", keys: "⇧0", label: "Zoom to 100%", action: "zoomReset", events: [{ key: ")", code: "Digit0", shift: true }], match: (ev) => !hasMod(ev) && !ev.alt && ev.shift && (ev.code === "Digit0" || ev.key === ")") },
+  { group: "View", keys: "⇧1", label: "Fit all", action: "fitAll", events: [{ key: "!", code: "Digit1", shift: true }], match: (ev) => !hasMod(ev) && !ev.alt && ev.shift && (ev.code === "Digit1" || ev.key === "!") },
+  { group: "View", keys: "⇧2", label: "Fit selection", action: "fitSelection", events: [{ key: "@", code: "Digit2", shift: true }], match: (ev) => !hasMod(ev) && !ev.alt && ev.shift && (ev.code === "Digit2" || ev.key === "@") },
+  { group: "View", keys: "Arrows", label: "Nudge", action: "nudge", events: ARROWS2, match: (ev) => arrow(ev, { alt: false, shift: false }) },
+  { group: "View", keys: "Shift+arrows", label: "Nudge by 10", action: "nudge", events: ARROWS_SHIFT, match: (ev) => arrow(ev, { alt: false, shift: true }) },
+  { group: "View", keys: "L", label: "Cycle links", action: "links", events: [{ key: "l" }], match: (ev) => letter(ev, "l") },
+  { group: "View", keys: "/ or ⌘F", label: "Find on board", action: "search", events: [{ key: "/" }, { key: "f", meta: true }], match: (ev) => !ev.alt && (ev.key === "/" && !hasMod(ev) || hasMod(ev) && down(ev) === "f") },
+  { group: "View", keys: "I", label: "Info", action: "info", events: [{ key: "i" }, { key: "I" }], match: (ev) => letter(ev, "i") },
+  { group: "View", keys: "F", label: "Focus", action: "focus", events: [{ key: "f" }], match: (ev) => letter(ev, "f") },
+  { group: "View", keys: "Q", label: "Quick Look", action: "quickLook", events: [{ key: "q" }], match: (ev) => letter(ev, "q") },
+  { group: "View", keys: "P", label: "Present", action: "present", events: [{ key: "p" }], match: (ev) => letter(ev, "p") },
+  { group: "View", keys: "?", label: "Shortcuts", action: "help", events: [{ key: "?", shift: true, code: "Slash" }], match: (ev) => !hasMod(ev) && !ev.alt && (ev.key === "?" || ev.code === "Slash" && ev.shift) },
+  { group: "View", keys: "Escape", label: "Close or step back", action: "escape", mode: "always", events: [{ key: "Escape" }], match: (ev) => ev.key === "Escape" },
+  { group: "Navigate", keys: "⌘[", label: "Back", action: "back", events: [{ key: "[", meta: true, code: "BracketLeft" }], match: (ev) => hasMod(ev) && !ev.shift && !ev.alt && (ev.code === "BracketLeft" || ev.key === "[") },
+  { group: "Navigate", keys: "⌘]", label: "Forward", action: "forward", events: [{ key: "]", meta: true, code: "BracketRight" }], match: (ev) => hasMod(ev) && !ev.shift && !ev.alt && (ev.code === "BracketRight" || ev.key === "]") },
+  { group: "Present", keys: "→ ↓ Space", label: "Next", action: "presentNext", mode: "present", events: [{ key: "ArrowRight" }, { key: "ArrowDown" }, { key: "PageDown" }, { key: " ", code: "Space" }], match: (ev) => !hasMod(ev) && !ev.alt && (ev.key === "ArrowRight" || ev.key === "ArrowDown" || ev.key === "PageDown" || ev.code === "Space" || ev.key === " ") },
+  { group: "Present", keys: "← ↑", label: "Previous", action: "presentPrev", mode: "present", events: [{ key: "ArrowLeft" }, { key: "ArrowUp" }, { key: "PageUp" }], match: (ev) => !hasMod(ev) && !ev.alt && (ev.key === "ArrowLeft" || ev.key === "ArrowUp" || ev.key === "PageUp") }
+];
+function findShortcut(ev, mode = "normal") {
+  return SHORTCUTS.find((row2) => (row2.mode || "normal") === mode && row2.match(ev)) || null;
+}
+
 // src/view/interactions.js
-var TOOL_KEYS = { v: "select", h: "hand", n: "card", t: "text", s: "sticky", r: "shape", g: "section", w: "board", c: "connect" };
+var TOOL_KEYS = Object.fromEntries(SHORTCUTS.filter((row2) => row2.letter).map((row2) => [row2.letter, row2.tool]));
 var TOOLS = ["select", "hand", "card", "text", "sticky", "shape", "section", "board", "connect"];
 var SHAPE_PLACE = { w: 160, h: 100 };
 var DRAG_THRESHOLD_PX = 4;
@@ -7353,6 +7418,136 @@ function createInteractions({ actions, settings } = {}) {
     }
     return false;
   };
+  const runShortcut = (row2, ev) => {
+    const key = ev.key || "";
+    const b = board2();
+    switch (row2.action) {
+      case "tool":
+        setTool(row2.tool);
+        return true;
+      case "space":
+        if (!state.space) {
+          state.space = true;
+          call("setSpace", true);
+        }
+        return true;
+      case "escape":
+        return escape();
+      case "presentNext":
+        call("presentNext");
+        return true;
+      case "presentPrev":
+        call("presentPrev");
+        return true;
+      case "selectAll":
+        if (b) selectItems([...b.items.keys()]);
+        return true;
+      case "wrap":
+        if (state.selection.size) call("wrapInSection", [...state.selection]);
+        return true;
+      case "duplicate":
+        if (!state.selection.size) return false;
+        call("duplicateItems", [...state.selection], { dx: 24, dy: 24, asRef: false });
+        return true;
+      case "fold":
+        call("foldSelection");
+        return true;
+      case "undo":
+        call("undo");
+        return true;
+      case "redo":
+        call("redo");
+        return true;
+      case "search":
+        call("openSearch");
+        return true;
+      case "zoomIn":
+        zoomBy(1.2);
+        return true;
+      case "zoomOut":
+        zoomBy(1 / 1.2);
+        return true;
+      case "back":
+        call("historyBack");
+        return true;
+      case "forward":
+        call("historyForward");
+        return true;
+      case "fitAll":
+        call("fitAll");
+        return true;
+      case "fitSelection":
+        if (state.selection.size) call("fitSelection", [...state.selection]);
+        return true;
+      case "zoomReset":
+        zoomTo(1);
+        return true;
+      case "delete":
+        return deleteSelection(ev.shift);
+      case "renamePage": {
+        if (state.selection.size !== 1) return false;
+        const uid = [...state.selection][0];
+        const item = b?.items.get(uid);
+        if (item?.kind !== "page") return false;
+        call("renamePage", uid);
+        return true;
+      }
+      case "enter": {
+        if (state.selection.size !== 1) return false;
+        const uid = [...state.selection][0];
+        const item = b?.items.get(uid);
+        if (item?.kind === "board" || item && call("isBoardCard", uid)) call("openBoard", uid);
+        else if (item?.type === "section") call("renameSection", uid);
+        else call("enterEdit", uid);
+        return true;
+      }
+      case "nearest": {
+        if (!state.selection.size) return false;
+        const dir = key === "ArrowLeft" ? "left" : key === "ArrowRight" ? "right" : key === "ArrowUp" ? "up" : key === "ArrowDown" ? "down" : null;
+        if (dir) selectNearest(dir, ev.shift);
+        return true;
+      }
+      case "nudge": {
+        if (!state.selection.size) return false;
+        const step = ev.shift ? 10 : 1;
+        const dx = key === "ArrowLeft" ? -step : key === "ArrowRight" ? step : 0;
+        const dy = key === "ArrowUp" ? -step : key === "ArrowDown" ? step : 0;
+        const uids = movingSet();
+        if (uids.length) call("commitMove", uids, dx, dy);
+        return true;
+      }
+      case "outline":
+        return ev.tabOwned === false ? false : selectOutline(ev.shift);
+      case "links":
+        call("cycleLinks");
+        return true;
+      case "info":
+        call("openInfo");
+        return true;
+      case "focus":
+        call("toggleFocus");
+        return true;
+      case "quickLook":
+        call("quickLook");
+        return true;
+      case "present":
+        call("present");
+        return true;
+      case "help":
+        call("toggleShortcuts");
+        return true;
+      case "expand": {
+        if (state.selection.size !== 1) return false;
+        const uid = lastSelected();
+        const item = b?.items.get(uid);
+        if (!item || item.type !== "card" || item.kind === "board") return false;
+        call("expandOutline", uid);
+        return true;
+      }
+      default:
+        return false;
+    }
+  };
   const onKeyDown = (ev) => {
     const key = ev.key || "";
     const mod = Boolean(ev.meta || ev.ctrl);
@@ -7364,159 +7559,15 @@ function createInteractions({ actions, settings } = {}) {
       return false;
     }
     if (call("presentActive") && !mod && !ev.alt) {
-      if (key === "ArrowRight" || key === "ArrowDown" || key === "PageDown" || ev.code === "Space" || key === " ") {
-        call("presentNext");
-        return true;
-      }
-      if (key === "ArrowLeft" || key === "ArrowUp" || key === "PageUp") {
-        call("presentPrev");
-        return true;
-      }
+      const present = findShortcut(ev, "present");
+      if (present) return runShortcut(present, ev);
     }
-    if (ev.code === "Space" || key === " ") {
-      if (!state.space) {
-        state.space = true;
-        call("setSpace", true);
-      }
-      return true;
-    }
-    if (key === "Escape") return escape();
+    const always = findShortcut(ev, "always");
+    if (always) return runShortcut(always, ev);
     if (setting("enable-shortcuts", true) === false) return false;
-    const b = board2();
-    if (mod) {
-      const k = key.toLowerCase();
-      if (k === "a") {
-        if (b) selectItems([...b.items.keys()]);
-        return true;
-      }
-      if (k === "g") {
-        if (state.selection.size) call("wrapInSection", [...state.selection]);
-        return true;
-      }
-      if (k === "d" && !ev.alt) {
-        if (!state.selection.size) return false;
-        call("duplicateItems", [...state.selection], { dx: 24, dy: 24, asRef: false });
-        return true;
-      }
-      if (k === "enter" && ev.alt) {
-        call("foldSelection");
-        return true;
-      }
-      if (k === "z") {
-        if (ev.shift) call("redo");
-        else call("undo");
-        return true;
-      }
-      if (k === "f") {
-        call("openSearch");
-        return true;
-      }
-      if (k === "=" || k === "+") {
-        zoomBy(1.2);
-        return true;
-      }
-      if (k === "-" || k === "_") {
-        zoomBy(1 / 1.2);
-        return true;
-      }
-      if (!ev.shift && !ev.alt && (ev.code === "BracketLeft" || key === "[")) {
-        call("historyBack");
-        return true;
-      }
-      if (!ev.shift && !ev.alt && (ev.code === "BracketRight" || key === "]")) {
-        call("historyForward");
-        return true;
-      }
-      return false;
-    }
-    if (ev.shift) {
-      if (ev.code === "Digit1" || key === "!") {
-        call("fitAll");
-        return true;
-      }
-      if (ev.code === "Digit2" || key === "@") {
-        if (state.selection.size) call("fitSelection", [...state.selection]);
-        return true;
-      }
-      if (ev.code === "Digit0" || key === ")") {
-        zoomTo(1);
-        return true;
-      }
-    }
-    if (key === "Delete" || key === "Backspace") return deleteSelection(ev.shift);
-    if (key === "F2") {
-      if (state.selection.size !== 1) return false;
-      const uid = [...state.selection][0];
-      const item = b?.items.get(uid);
-      if (item?.kind !== "page") return false;
-      call("renamePage", uid);
-      return true;
-    }
-    if (key === "Enter") {
-      if (state.selection.size === 1) {
-        const uid = [...state.selection][0];
-        const item = b?.items.get(uid);
-        if (item?.kind === "board" || item && call("isBoardCard", uid)) call("openBoard", uid);
-        else if (item?.type === "section") call("renameSection", uid);
-        else call("enterEdit", uid);
-        return true;
-      }
-      return false;
-    }
-    if (key.startsWith("Arrow")) {
-      if (!state.selection.size) return false;
-      if (ev.alt) {
-        const dir = key === "ArrowLeft" ? "left" : key === "ArrowRight" ? "right" : key === "ArrowUp" ? "up" : key === "ArrowDown" ? "down" : null;
-        if (dir) selectNearest(dir, ev.shift);
-        return true;
-      }
-      const step = ev.shift ? 10 : 1;
-      const dx = key === "ArrowLeft" ? -step : key === "ArrowRight" ? step : 0;
-      const dy = key === "ArrowUp" ? -step : key === "ArrowDown" ? step : 0;
-      const uids = movingSet();
-      if (uids.length) call("commitMove", uids, dx, dy);
-      return true;
-    }
-    if (key === "Tab" && !ev.alt) return ev.tabOwned === false ? false : selectOutline(ev.shift);
-    if (ev.alt) return false;
-    const lower = key.toLowerCase();
-    if (TOOL_KEYS[lower]) {
-      setTool(TOOL_KEYS[lower]);
-      return true;
-    }
-    if (lower === "l") {
-      call("cycleLinks");
-      return true;
-    }
-    if (key === "/") {
-      call("openSearch");
-      return true;
-    }
-    if (lower === "i") {
-      call("openInfo");
-      return true;
-    }
-    if (lower === "f") {
-      call("toggleFocus");
-      return true;
-    }
-    if (lower === "q") {
-      call("quickLook");
-      return true;
-    }
-    if (lower === "p") {
-      call("present");
-      return true;
-    }
-    if (lower === "m") {
-      if (state.selection.size !== 1) return false;
-      const uid = lastSelected();
-      const item = b?.items.get(uid);
-      if (!item || item.type !== "card" || item.kind === "board") return false;
-      call("expandOutline", uid);
-      return true;
-    }
-    return false;
+    const row2 = findShortcut(ev, "normal");
+    if (!row2) return false;
+    return runShortcut(row2, ev);
   };
   const onKeyUp = (ev) => {
     if (ev.code === "Space" || ev.key === " ") {
@@ -12735,6 +12786,83 @@ function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
   return api;
 }
 
+// src/view/shortcut-sheet.js
+function createShortcutSheet({ doc = globalThis.document, root, shortcuts = SHORTCUTS } = {}) {
+  let sheet = null;
+  const close = () => {
+    sheet?.remove();
+    sheet = null;
+  };
+  const open = () => {
+    if (sheet) return;
+    sheet = doc.createElement("div");
+    sheet.className = "pxd-sheet pxd-chrome";
+    sheet.setAttribute("role", "dialog");
+    sheet.setAttribute("aria-modal", "true");
+    sheet.setAttribute("aria-label", "Shortcuts");
+    const head = doc.createElement("div");
+    head.className = "pxd-sheet__head";
+    const title = doc.createElement("div");
+    title.className = "pxd-sheet__title";
+    title.textContent = "Shortcuts";
+    const closeBtn = doc.createElement("button");
+    closeBtn.type = "button";
+    closeBtn.className = "pxd-btn pxd-sheet__close";
+    closeBtn.setAttribute("aria-label", "Close");
+    closeBtn.textContent = "Close";
+    closeBtn.addEventListener("click", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      close();
+    });
+    head.append(title, closeBtn);
+    const grid = doc.createElement("div");
+    grid.className = "pxd-sheet__grid";
+    let groupEl = null;
+    let groupName = "";
+    for (const row2 of shortcuts) {
+      if (row2.group !== groupName) {
+        groupName = row2.group;
+        groupEl = doc.createElement("section");
+        groupEl.className = "pxd-sheet__group";
+        const heading = doc.createElement("h2");
+        heading.className = "pxd-sheet__group-title";
+        heading.textContent = row2.group;
+        groupEl.append(heading);
+        grid.append(groupEl);
+      }
+      const line = doc.createElement("div");
+      line.className = "pxd-sheet__row";
+      const keys = doc.createElement("span");
+      keys.className = "pxd-sheet__keys";
+      keys.textContent = row2.keys;
+      const label = doc.createElement("span");
+      label.className = "pxd-sheet__label";
+      label.textContent = row2.label;
+      line.append(keys, label);
+      groupEl.append(line);
+    }
+    sheet.append(head, grid);
+    sheet.addEventListener("pointerdown", (event) => event.stopPropagation());
+    sheet.addEventListener("keydown", (event) => event.stopPropagation());
+    root.append(sheet);
+    try {
+      closeBtn.focus({ preventScroll: true });
+    } catch {
+      closeBtn.focus?.();
+    }
+  };
+  return {
+    open,
+    close,
+    toggle() {
+      if (sheet) close();
+      else open();
+    },
+    isOpen: () => Boolean(sheet)
+  };
+}
+
 // src/view/menu-model.js
 var SIZE_LABELS = { 16: "Small", 24: "Medium", 32: "Large", 48: "Extra large" };
 var SHAPE_LABELS = {
@@ -16376,6 +16504,7 @@ function mountBoardView({
     for (const [uid, rect] of live) liveRects.set(uid, rect);
     grown = next;
   };
+  const shortcutSheet = createShortcutSheet({ doc, root });
   const actions = {
     board: board2,
     rects,
@@ -16546,6 +16675,7 @@ function mountBoardView({
     openBlock: (uid) => host?.openBlock?.(uid),
     toast: (t) => chrome.toast.show(t),
     openSearch: () => chrome.search.open(),
+    toggleShortcuts: () => shortcutSheet.toggle(),
     openInfo: () => openInfo(),
     addInfoTab: (uid) => {
       const item = board2()?.items.get(uid);
@@ -16901,8 +17031,17 @@ function mountBoardView({
       return;
     }
     if (menu.isOpen()) return;
+    if (shortcutSheet.isOpen()) {
+      if (event.key === "Escape" || event.key === "?") {
+        event.preventDefault();
+        event.stopPropagation();
+        shortcutSheet.close();
+      }
+      return;
+    }
     const cardHost = doc.activeElement?.closest?.(".pxd-item, .pxd-section");
-    if (cardHost && root.contains(cardHost) && (event.key === "ContextMenu" || event.shiftKey && event.key === "F10")) {
+    const chord = { key: event.key, code: event.code, shift: event.shiftKey, alt: event.altKey, meta: event.metaKey, ctrl: event.ctrlKey };
+    if (cardHost && root.contains(cardHost) && findShortcut(chord, "view")?.action === "cardMenu") {
       event.preventDefault();
       event.stopPropagation();
       openFocusedCardMenu(cardHost);

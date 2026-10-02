@@ -45,6 +45,8 @@ import { createPropsPanel } from "./props-panel.js";
 import { PANEL_WIDTH_DEFAULT, nextPanelWidth } from "../model/info.js";
 import { createPanel, parseDropPayload } from "./panel.js";
 import { createMenu } from "./menu.js";
+import { createShortcutSheet } from "./shortcut-sheet.js";
+import { findShortcut } from "./shortcuts.js";
 import { buildMenu } from "./menu-model.js";
 import { createQuickLook } from "./quicklook.js";
 import { createPresenter } from "./present.js";
@@ -2102,6 +2104,7 @@ export function mountBoardView({
   };
 
   // ------------------------------------------------------------ controller
+  const shortcutSheet = createShortcutSheet({ doc, root });
   const actions = {
     board,
     rects,
@@ -2259,6 +2262,7 @@ export function mountBoardView({
     openBlock: (uid) => host?.openBlock?.(uid),
     toast: (t) => chrome.toast.show(t),
     openSearch: () => chrome.search.open(),
+    toggleShortcuts: () => shortcutSheet.toggle(),
     openInfo: () => openInfo(),
     addInfoTab: (uid) => {
       const item = board()?.items.get(uid);
@@ -2596,8 +2600,17 @@ export function mountBoardView({
     }
     // The open menu owns the keyboard; Quick Look and a presentation only let their own keys through.
     if (menu.isOpen()) return;
+    if (shortcutSheet.isOpen()) {
+      if (event.key === "Escape" || event.key === "?") {
+        event.preventDefault();
+        event.stopPropagation();
+        shortcutSheet.close();
+      }
+      return;
+    }
     const cardHost = doc.activeElement?.closest?.(".pxd-item, .pxd-section");
-    if (cardHost && root.contains(cardHost) && (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10"))) {
+    const chord = { key: event.key, code: event.code, shift: event.shiftKey, alt: event.altKey, meta: event.metaKey, ctrl: event.ctrlKey };
+    if (cardHost && root.contains(cardHost) && findShortcut(chord, "view")?.action === "cardMenu") {
       event.preventDefault();
       event.stopPropagation();
       openFocusedCardMenu(cardHost);

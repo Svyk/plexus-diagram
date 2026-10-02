@@ -103,7 +103,7 @@ function fakeSession(board) {
   for (const name of ["commitMove", "commitRects", "createCard", "createText", "createSection", "wrapInSection", "createBoard", "wrapInBoard",
     "renameBoard", "addRefCards", "deleteItems", "deleteEdges", "setColor", "setCollapsed", "setFontSize", "setString", "growToFit",
     "addEdge", "updateEdge", "flipEdge", "undo", "redo", "setCollapsedMany", "collapseAll", "setPinned", "setBoardBackground", "setFit",
-    "fitSection", "tidyItems", "sameSize", "resetSize", "fitToContent", "writeToGraph", "setItemStyle"]) session[name] = rec(name);
+    "fitSection", "tidyItems", "sortOutline", "sameSize", "resetSize", "fitToContent", "writeToGraph", "setItemStyle"]) session[name] = rec(name);
   for (const name of ["duplicateItems", "pasteItems", "pasteText", "addDailyCards"]) session[name] = recList(name);
   session.sendToBoard = (...args) => { mutations.push(["sendToBoard", ...args]); return Promise.resolve({ added: args[0].length, title: "Inner" }); };
   session.expandOutline = (...args) => { mutations.push(["expandOutline", ...args]); return Promise.resolve({ added: 2, edges: 2 }); };
@@ -843,6 +843,10 @@ test("More button opens the board menu at the button and picks run", async () =>
     pickRow(f, "tidy:grid");
     await tick();
     assert.deepEqual(f.session.mutations[0], ["tidyItems", ["cardAAAA1", "cardBBBB2", "textTTTT5", "sectCCCC3"], "grid"]);
+    f.root.querySelector(".pxd-toolbar__more").click();
+    pickRow(f, "sort-outline");
+    await tick();
+    assert.equal(f.session.mutations.at(-1)[0], "sortOutline");
   } finally {
     f.view.dispose();
     f.restore();

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   boardPreview, boundsOf, buildBoard, containerAt, descendantsOf, diffBoards, edgesTouching, findEdge, hitTest,
-  connectedUids, itemsInPolygon, itemsInRect, membershipPlan, outlineOrder, pointInPolygon, sameColorUids, sectionAdoptPlan, sectionAllUids, sectionFitPlan, sidebarOutlineUids, toRelative, topLevelOf, worldRect, worldRects,
+  connectedUids, itemsInPolygon, itemsInRect, membershipPlan, outlineOrder, pointInPolygon, readingOrder, sameColorUids, sectionAdoptPlan, sectionAllUids, sectionFitPlan, sidebarOutlineUids, toRelative, topLevelOf, worldRect, worldRects,
 } from "../src/model/board.js";
 
 const near = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) < eps, `${a} != ${b}`);
@@ -656,6 +656,33 @@ test("outlineOrder is depth first by block order", () => {
     ":block/children": [blk("b", 1, "b", { x: 0, y: 0 }), blk("a", 0, "a", { x: 0, y: 0 })],
   });
   assert.deepEqual(outlineOrder(shuffled), ["a", "b"]);
+});
+
+test("RG-6: reading order is top to bottom, then left to right, and a section keeps its cards", () => {
+  const board = {
+    uid: "b",
+    roots: ["low", "sec", "high"],
+    items: new Map([
+      ["low", { type: "card", y: 0, x: 0 }],
+      ["high", { type: "card" }],
+      ["sec", { type: "section", members: ["inRight", "inLeft"] }],
+      ["inRight", { type: "card" }],
+      ["inLeft", { type: "card" }],
+    ]),
+  };
+  const rects = new Map([
+    ["low", { x: 10, y: 200 }],
+    ["high", { x: 300, y: 10 }],
+    ["sec", { x: 40, y: 80 }],
+    ["same", { x: 0, y: 0 }],
+    ["inRight", { x: 400, y: 90 }],
+    ["inLeft", { x: 20, y: 90 }],
+  ]);
+  assert.deepEqual(readingOrder(board, rects), [
+    { parent: "b", uids: ["high", "sec", "low"] },
+    { parent: "sec", uids: ["inLeft", "inRight"] },
+  ]);
+  assert.deepEqual(readingOrder(null, rects), []);
 });
 
 test("sidebarOutlineUids lists roots then the Connections block", () => {

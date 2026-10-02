@@ -267,6 +267,31 @@ test("tidyItems tidies selected items per parent and writes only x and y", async
   assert.deepEqual([plexus(fake, "m1").y, plexus(fake, "m2").y], [100, 100]);
 });
 
+test("RG-6: sortOutline matches the visual order and a second pass writes nothing", async () => {
+  const tree = [
+    card("low", 10, 240, 100, 80),
+    card("high", 300, 10, 100, 80),
+    section("S", 0, 80, 500, 140, [card("right", 300, 20, 80, 40), card("left", 20, 20, 80, 40)]),
+  ];
+  const { fake, session } = setup(tree);
+  const before = {
+    low: plexus(fake, "low"),
+    high: plexus(fake, "high"),
+    left: plexus(fake, "left"),
+  };
+  const moves = await session.sortOutline();
+  assert.equal(moves > 0, true);
+  assert.deepEqual(fake.children("b1"), ["high", "S", "low"]);
+  assert.deepEqual(fake.children("S"), ["left", "right"]);
+  assert.deepEqual(plexus(fake, "low"), before.low);
+  assert.deepEqual(plexus(fake, "high"), before.high);
+  assert.deepEqual(plexus(fake, "left"), before.left);
+  assert.equal(await session.sortOutline(), 0);
+  const undos = () => fake.calls.filter((row) => row[0] === "undo").length;
+  await session.undo();
+  assert.equal(undos(), moves, "the sort is one undo step, chunked with the other grouped writes");
+});
+
 test("tidyItems on one selected section tidies its members; outline follows block order", async () => {
   const tree = [section("S", 0, 0, 800, 600, [card("m1", 300, 300, 100, 80), card("m2", 40, 40, 100, 80), card("m3", 500, 40, 100, 80)])];
   const { fake, session } = setup(tree);

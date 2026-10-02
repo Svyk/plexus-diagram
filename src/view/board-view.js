@@ -1480,6 +1480,7 @@ export function mountBoardView({
       case "fit-section": if (item) void session.fitSection?.(item.uid); break;
       case "toggle-fit": if (item) void session.setFit?.(item.uid, item.autofit === false); break;
       case "tidy": void session.tidyItems?.(mc.kind === "board-menu" ? b.roots : uids, arg); break;
+      case "sort-outline": void session.sortOutline?.(); break;
       case "fold-all-in": if (item) void session.collapseAll?.(true, { within: item.uid }); break;
       case "unfold-all-in": if (item) void session.collapseAll?.(false, { within: item.uid }); break;
       case "collapse-section": if (item?.type === "section") void session.setCollapsed?.(item.uid, !item.collapsed); break;

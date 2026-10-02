@@ -1382,6 +1382,31 @@ function sidebarOutlineUids(board2) {
   if (board2.containerUid) uids.push(board2.containerUid);
   return uids;
 }
+function readingOrder(board2, rects) {
+  if (!board2) return [];
+  const key = (uid) => {
+    const r = rects?.get?.(uid);
+    const item = board2.items.get(uid);
+    return { y: r?.y ?? item?.y ?? 0, x: r?.x ?? item?.x ?? 0 };
+  };
+  const byPos = (uids) => [...uids || []].sort((a, b) => {
+    const pa = key(a);
+    const pb = key(b);
+    return pa.y - pb.y || pa.x - pb.x || (a < b ? -1 : a > b ? 1 : 0);
+  });
+  const groups = [];
+  const visit = (parent, uids) => {
+    const sorted = byPos(uids);
+    if (!sorted.length) return;
+    groups.push({ parent, uids: sorted });
+    for (const uid of sorted) {
+      const item = board2.items.get(uid);
+      if (item?.type === "section") visit(uid, item.members);
+    }
+  };
+  visit(board2.uid, board2.roots);
+  return groups;
+}
 function outlineOrder(board2) {
   const byOrder = (uids) => uids.map((u, i) => ({ u, i, o: board2.items.get(u)?.order ?? i })).sort((a, b) => a.o - b.o || a.i - b.i).map(({ u }) => u);
   const out = [];
@@ -5134,6 +5159,23 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
         return count;
       });
     },
+    // Reorder each parent's blocks so the outline matches the board. Positions stay. Moves go through the
+    // host group, which splits a long run into chunks of 45 so one undo step stays inside Roam's depth.
+    sortOutline() {
+      return txn((t) => {
+        let moves = 0;
+        for (const group of readingOrder(board2, rects)) {
+          group.uids.forEach((id, index) => {
+            const kids = kidsOf(rawNode(group.parent));
+            const at = kids.findIndex((k) => k[UID] === id);
+            if (at < 0 || at === index) return;
+            t.move(id, group.parent, index);
+            moves += 1;
+          });
+        }
+        return moves;
+      });
+    },
     // Modes: row, column, grid, outline. A lone selected section tidies its members; otherwise each parent's
     // selected items are tidied among themselves. Writes only x and y. Resolves the number of items moved.
     tidyItems(uids, mode = "grid", { gap } = {}) {
@@ -6503,7 +6545,7 @@ function boardToSvg(board2, rects, { dark = false, padding = 48, maxItems = 500,
 var oneLine = (s) => String(s ?? "").replace(/\s+/g, " ").trim();
 function boardToMarkdown(board2, rects) {
   const lines = [];
-  const readingOrder = (uids) => uids.map((uid, i) => ({ uid, i, r: rects.get(uid) })).sort((a, b) => (a.r?.y ?? 0) - (b.r?.y ?? 0) || (a.r?.x ?? 0) - (b.r?.x ?? 0) || a.i - b.i).map((e) => e.uid);
+  const readingOrder2 = (uids) => uids.map((uid, i) => ({ uid, i, r: rects.get(uid) })).sort((a, b) => (a.r?.y ?? 0) - (b.r?.y ?? 0) || (a.r?.x ?? 0) - (b.r?.x ?? 0) || a.i - b.i).map((e) => e.uid);
   const content = (children, depth) => {
     for (const c of children ?? []) {
       const s = oneLine(c[":block/string"]);
@@ -6512,7 +6554,7 @@ function boardToMarkdown(board2, rects) {
     }
   };
   const walk = (uids) => {
-    for (const uid of readingOrder(uids)) {
+    for (const uid of readingOrder2(uids)) {
       const item = board2.items.get(uid);
       if (!item) continue;
       if (item.type === "section") {
@@ -12597,6 +12639,7 @@ function buildMenu(kind, ctx = {}) {
         make("export-svg", "Export as SVG"),
         make("export-png", "Export as PNG"),
         make("copy-outline", "Copy as outline"),
+        make("sort-outline", "Sort outline by position"),
         make("open-outline", "Open outline in sidebar"),
         sep(),
         make("fold-all", "Fold all cards"),
@@ -15022,6 +15065,9 @@ function mountBoardView({
         break;
       case "tidy":
         void session.tidyItems?.(mc.kind === "board-menu" ? b.roots : uids, arg);
+        break;
+      case "sort-outline":
+        void session.sortOutline?.();
         break;
       case "fold-all-in":
         if (item) void session.collapseAll?.(true, { within: item.uid });

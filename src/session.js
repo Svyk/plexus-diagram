@@ -10,6 +10,7 @@ import {
   itemsInRect,
   membershipPlan,
   outlineOrder,
+  readingOrder,
   sectionAdoptPlan,
   sectionFitPlan,
   toRelative,
@@ -1187,6 +1188,24 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
           count++;
         }
         return count;
+      });
+    },
+
+    // Reorder each parent's blocks so the outline matches the board. Positions stay. Moves go through the
+    // host group, which splits a long run into chunks of 45 so one undo step stays inside Roam's depth.
+    sortOutline() {
+      return txn((t) => {
+        let moves = 0;
+        for (const group of readingOrder(board, rects)) {
+          group.uids.forEach((id, index) => {
+            const kids = kidsOf(rawNode(group.parent));
+            const at = kids.findIndex((k) => k[UID] === id);
+            if (at < 0 || at === index) return;
+            t.move(id, group.parent, index);
+            moves += 1;
+          });
+        }
+        return moves;
       });
     },
 

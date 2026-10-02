@@ -501,6 +501,34 @@ export function sidebarOutlineUids(board) {
   return uids;
 }
 
+// Desired sibling order so the outline reads like the board: top to bottom, then left to right.
+// A section stays a parent. Its cards are ordered inside it, not lifted up next to it.
+export function readingOrder(board, rects) {
+  if (!board) return [];
+  const key = (uid) => {
+    const r = rects?.get?.(uid);
+    const item = board.items.get(uid);
+    return { y: r?.y ?? item?.y ?? 0, x: r?.x ?? item?.x ?? 0 };
+  };
+  const byPos = (uids) => [...(uids || [])].sort((a, b) => {
+    const pa = key(a);
+    const pb = key(b);
+    return pa.y - pb.y || pa.x - pb.x || (a < b ? -1 : a > b ? 1 : 0);
+  });
+  const groups = [];
+  const visit = (parent, uids) => {
+    const sorted = byPos(uids);
+    if (!sorted.length) return;
+    groups.push({ parent, uids: sorted });
+    for (const uid of sorted) {
+      const item = board.items.get(uid);
+      if (item?.type === "section") visit(uid, item.members);
+    }
+  };
+  visit(board.uid, board.roots);
+  return groups;
+}
+
 // Item uids in Roam outline order (depth first, siblings by block order): the Tab traversal order.
 export function outlineOrder(board) {
   const byOrder = (uids) => uids

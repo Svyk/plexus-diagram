@@ -178,7 +178,7 @@ Order matters: P1 and P2 are the user's direct requests. Within a phase, do task
 - [x] **RG-8 Tag lenses** (S) — done 2026-10-02, `941406a`: Tag lens on Test Lab kept #rg8a bright, dimmed #rg8b, and focus intersected it, with no writes (.live/shots/RG-8.png). — Pick a tag; cards whose block or page carries it stay bright and everything else dims (no writes). Combine with focus mode. Accept: on fixture with 2 tags.
 - [x] **RG-9 Namespace sections** (S) — done 2026-10-02, `538dd79`: Group under Pxdrg9 on Test Lab put Pxdrg9/Alpha and Pxdrg9/Beta in one section, then undo restored the board (.live/shots/RG-9.png). — Dropping a namespaced page (`Project/Sub`) offers "Group under Project" which creates or reuses a section titled `Project`. Accept: two namespaced pages end up in one section.
 - [x] **RG-10 Board embeds** (S) — done 2026-10-02, `3b1b337`: two embeds of vc8Skaj5K on Test Lab kept their own cameras while the original stayed, then the temps were deleted (.live/shots/RG-10.png). — `{{[[embed]]: ((boardUid))}}` and the 1.2 shortcut card both mount correctly (read-write in an embed, the shortcut stays a thumbnail). No double mount when the same board is visible twice; each mount has its own viewport. Accept: the same board embedded twice on Test Lab plus the original, all three live.
-- [ ] **RG-11 Gate** — standing gate.
+- [!] **RG-11 Gate** — blocked: typing on Test Lab was +95.68 ms/key (140.80 injected, 45.12 unloaded, 200 keys, 13 roots). `npm run check` passed 810 tests. Unload left 0 `.pxd-*` nodes and listeners fell from 316 window / 442 document to 188 / 310. Unblock when that delta is at most +0.1 ms/key. — standing gate.
 
 ### P6: Performance and reliability (1.8.0)
 

@@ -191,7 +191,7 @@ Order matters: P1 and P2 are the user's direct requests. Within a phase, do task
 - [x] **PF-7 Undo grouping** — done 2026-10-02, `0f37b72`: on CbErrnIPJ one undo restored a 2-card move, an align, a distribute, a 3-line paste, a SWOT insert, and a 2-node mind map. — (M) — Every single user gesture is one Roam undo step where Roam allows it (move of N cards, align, distribute, paste, mind map, template insert chunk). Document any gesture that needs more than one step. Accept: a table in section 8 with gesture → undo steps.
 - [x] **PF-8 Write-queue health** — done 2026-10-02, `dd9d95d`: a failing props write stayed optimistic through 3 retries, then reverted and toasted, and the dot titles are Synced, Saving…, Retrying…, and Couldn't save. — (S) — The status dot shows idle / writing / retrying / failed with a tooltip; a failed write keeps the optimistic state, retries 3 times, then reverts and toasts. Accept: simulate a failing write in a unit test.
 - [x] **PF-9 Bundle size** — done 2026-10-02, `dd9d95d`: extension.js is 695696 bytes, v1.2.0 was 441504, and the 25% cap is 551880. The extra 143816 bytes are the surfaces shipped after 1.2 (board view, host, cards, panel, table, kanban, templates, props). — (S) — Keep `extension.js` under its 1.2 size plus 25% after all P1-P5 work, or explain the growth in section 8.
-- [ ] **PF-10 Gate** — standing gate.
+- [!] **PF-10 Gate** — blocked: typing on Test Lab was +9501.72 ms/key (11395.91 injected, 1894.19 unloaded, 200 keys, 22 roots). `npm run check` passed 817 tests. Unload left 0 `.pxd-*` nodes and listeners fell from 504 window / 682 document to 312 / 496. Unblock when that delta is at most +0.1 ms/key. — standing gate.
 
 ### P7: Look, feel and accessibility (1.9.0)
 
@@ -290,3 +290,4 @@ Fill in as phases run. Keep the newest at the top of each list.
 | Save board as template | 1 per chunk of 45 creates |
 | Send to another board | 1 per card. Those creates are not grouped |
 - PF-9, 2026-10-02: extension.js is 695696 bytes against 441504 at v1.2.0, which is 143816 bytes over the 25% cap.
+- PF-10, 2026-10-02: Typing on Test Lab was +9501.72 ms/key (11395.91 injected, 1894.19 unloaded, 200 keys, 22 roots).

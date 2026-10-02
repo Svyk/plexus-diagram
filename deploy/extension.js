@@ -473,7 +473,7 @@ function normalizeItemLayout(plexus) {
   const p = isObject(plexus) ? plexus : {};
   const num3 = (v) => isNum(v) ? v : void 0;
   const type = ITEM_TYPES.includes(p.type) ? p.type : "card";
-  const section = type === "section";
+  const section2 = type === "section";
   return {
     type,
     x: num3(p.x),
@@ -483,18 +483,18 @@ function normalizeItemLayout(plexus) {
     color: styleColor(p.color),
     collapsed: p.collapsed === true ? true : p.collapsed === false ? false : void 0,
     // Sections use titleSize. Cards and text take an integer 10–48 (text used to be the four steps only).
-    fontSize: section ? void 0 : intIn(p.fontSize, CARD_FONT_MIN, CARD_FONT_MAX),
+    fontSize: section2 ? void 0 : intIn(p.fontSize, CARD_FONT_MIN, CARD_FONT_MAX),
     pinned: p.pinned === true,
     fit: p.fit === false ? false : void 0,
     look: type === "text" ? TEXT_LOOKS.includes(p.look) ? p.look : void 0 : CARD_LOOKS.includes(p.look) ? p.look : void 0,
-    textColor: section ? void 0 : styleColor(p.textColor),
-    align: section || !ALIGNS.includes(p.align) ? void 0 : p.align,
-    fill: section ? void 0 : styleColor(p.fill),
+    textColor: section2 ? void 0 : styleColor(p.textColor),
+    align: section2 || !ALIGNS.includes(p.align) ? void 0 : p.align,
+    fill: section2 ? void 0 : styleColor(p.fill),
     border: styleColor(p.border),
-    titleSize: section ? intIn(p.titleSize, SECTION_TITLE_MIN, SECTION_TITLE_MAX) : void 0,
-    titleColor: section ? styleColor(p.titleColor) : void 0,
-    titleFill: section ? styleColor(p.titleFill) : void 0,
-    areaFill: section ? styleColor(p.areaFill) : void 0
+    titleSize: section2 ? intIn(p.titleSize, SECTION_TITLE_MIN, SECTION_TITLE_MAX) : void 0,
+    titleColor: section2 ? styleColor(p.titleColor) : void 0,
+    titleFill: section2 ? styleColor(p.titleFill) : void 0,
+    areaFill: section2 ? styleColor(p.areaFill) : void 0
   };
 }
 function normalizeSectionDefaults(raw) {
@@ -722,8 +722,8 @@ var AUTO_ROWS = 4;
 var TITLE_BAND = 32;
 var BORDER_BAND = 8;
 var isNum2 = (v) => typeof v === "number" && Number.isFinite(v);
-function sortedChildren(node) {
-  const kids = Array.isArray(node?.[":block/children"]) ? node[":block/children"] : [];
+function sortedChildren(node2) {
+  const kids = Array.isArray(node2?.[":block/children"]) ? node2[":block/children"] : [];
   return kids.map((c, i) => ({ c, i })).sort((a, b) => (a.c[":block/order"] ?? a.i) - (b.c[":block/order"] ?? b.i) || a.i - b.i).map(({ c }) => c);
 }
 function rectOf(o) {
@@ -762,8 +762,8 @@ function autoPlace(siblings) {
   let colW = 0;
   let y = startY;
   loose.forEach((item, i) => {
-    const row = i % AUTO_ROWS;
-    if (i > 0 && row === 0) {
+    const row2 = i % AUTO_ROWS;
+    if (i > 0 && row2 === 0) {
       colX += colW + AUTO_GAP;
       colW = 0;
       y = startY;
@@ -909,126 +909,126 @@ function buildBoard(pulled, { defaults } = {}) {
   };
 }
 var COLLAPSED_SECTION_H = 8;
-function anchorUid(board, uid) {
-  const start = board?.items.get(uid);
+function anchorUid(board2, uid) {
+  const start = board2?.items.get(uid);
   if (!start) return uid;
   let cur = uid;
   if (start.type === "text" && start.look === "section-note") {
-    const parent = board.items.get(start.parentUid);
+    const parent = board2.items.get(start.parentUid);
     if (parent?.type === "section") cur = parent.uid;
   }
   let collapsed = null;
   let walk = cur;
-  while (walk && walk !== board.uid) {
-    const item = board.items.get(walk);
+  while (walk && walk !== board2.uid) {
+    const item = board2.items.get(walk);
     if (!item) break;
     if (item.type === "section" && item.collapsed) collapsed = item.uid;
     walk = item.parentUid;
   }
   return collapsed || cur;
 }
-function sectionNoteUid(board, sectionUid) {
-  const item = board?.items.get(sectionUid);
+function sectionNoteUid(board2, sectionUid) {
+  const item = board2?.items.get(sectionUid);
   if (!item || item.type !== "section") return null;
   for (const m of item.members || []) {
-    const kid = board.items.get(m);
+    const kid = board2.items.get(m);
     if (kid?.type === "text" && kid.look === "section-note") return kid.uid;
   }
   return null;
 }
-function displayRects(board, stored) {
-  const base = stored ?? (board ? worldRects(board) : /* @__PURE__ */ new Map());
-  if (!board) return new Map(base);
+function displayRects(board2, stored) {
+  const base = stored ?? (board2 ? worldRects(board2) : /* @__PURE__ */ new Map());
+  if (!board2) return new Map(base);
   const out = /* @__PURE__ */ new Map();
   for (const [uid, r] of base) {
-    if (!r || anchorUid(board, uid) !== uid) continue;
-    const item = board.items.get(uid);
+    if (!r || anchorUid(board2, uid) !== uid) continue;
+    const item = board2.items.get(uid);
     if (item?.type === "section" && item.collapsed) out.set(uid, { x: r.x, y: r.y, w: r.w, h: COLLAPSED_SECTION_H });
     else out.set(uid, { x: r.x, y: r.y, w: r.w, h: r.h });
   }
   return out;
 }
-function routedEdge(board, edge, rects) {
-  if (!board || !edge) return null;
-  const from = anchorUid(board, edge.from);
-  const to = anchorUid(board, edge.to);
+function routedEdge(board2, edge, rects) {
+  if (!board2 || !edge) return null;
+  const from = anchorUid(board2, edge.from);
+  const to = anchorUid(board2, edge.to);
   if (!from || !to || from === to) return null;
   const a = rects?.get(from);
   const b = rects?.get(to);
   if (!a || !b) return null;
   return { from, to, a, b };
 }
-function worldRects(board) {
+function worldRects(board2) {
   const rects = /* @__PURE__ */ new Map();
-  for (const item of board.items.values()) {
-    const p = item.parentUid === board.uid ? null : rects.get(item.parentUid);
+  for (const item of board2.items.values()) {
+    const p = item.parentUid === board2.uid ? null : rects.get(item.parentUid);
     rects.set(item.uid, { x: item.x + (p?.x ?? 0), y: item.y + (p?.y ?? 0), w: item.w, h: item.h });
   }
   return rects;
 }
-function worldRect(board, uid, rects) {
+function worldRect(board2, uid, rects) {
   if (rects) return rects.get(uid) ?? null;
-  const item = board.items.get(uid);
+  const item = board2.items.get(uid);
   if (!item) return null;
   let x = item.x;
   let y = item.y;
-  let parent = board.items.get(item.parentUid);
+  let parent = board2.items.get(item.parentUid);
   while (parent) {
     x += parent.x;
     y += parent.y;
-    parent = board.items.get(parent.parentUid);
+    parent = board2.items.get(parent.parentUid);
   }
   return { x, y, w: item.w, h: item.h };
 }
-function descendantsOf(board, uid) {
+function descendantsOf(board2, uid) {
   const out = /* @__PURE__ */ new Set();
-  const stack = [...board.items.get(uid)?.members ?? []];
+  const stack = [...board2.items.get(uid)?.members ?? []];
   while (stack.length) {
     const u = stack.pop();
     if (out.has(u)) continue;
     out.add(u);
-    stack.push(...board.items.get(u)?.members ?? []);
+    stack.push(...board2.items.get(u)?.members ?? []);
   }
   return out;
 }
-function hasAncestorIn(board, uid, set) {
-  let p = board.items.get(uid)?.parentUid;
-  while (p && p !== board.uid) {
+function hasAncestorIn(board2, uid, set) {
+  let p = board2.items.get(uid)?.parentUid;
+  while (p && p !== board2.uid) {
     if (set.has(p)) return true;
-    p = board.items.get(p)?.parentUid;
+    p = board2.items.get(p)?.parentUid;
   }
   return false;
 }
-function topLevelOf(board, uids) {
-  const list = [...uids].filter((u) => board.items.has(u));
+function topLevelOf(board2, uids) {
+  const list = [...uids].filter((u) => board2.items.has(u));
   const set = new Set(list);
-  return list.filter((u) => !hasAncestorIn(board, u, set));
+  return list.filter((u) => !hasAncestorIn(board2, u, set));
 }
-function containerAt(board, point, { exclude = /* @__PURE__ */ new Set(), rects } = {}) {
-  const r = rects ?? worldRects(board);
+function containerAt(board2, point, { exclude = /* @__PURE__ */ new Set(), rects } = {}) {
+  const r = rects ?? worldRects(board2);
   const ex = exclude instanceof Set ? exclude : new Set(exclude);
   let best = null;
-  for (const uid of board.order) {
-    const item = board.items.get(uid);
-    if (item.type !== "section" || ex.has(uid) || hasAncestorIn(board, uid, ex)) continue;
+  for (const uid of board2.order) {
+    const item = board2.items.get(uid);
+    if (item.type !== "section" || ex.has(uid) || hasAncestorIn(board2, uid, ex)) continue;
     if (!contains(r.get(uid), point)) continue;
     if (!best || item.depth >= best.depth) best = item;
   }
-  return best ? best.uid : board.uid;
+  return best ? best.uid : board2.uid;
 }
-function toRelative(board, containerUid, worldPoint, rects) {
-  if (containerUid === board.uid) return { x: worldPoint.x, y: worldPoint.y };
-  const c = worldRect(board, containerUid, rects);
+function toRelative(board2, containerUid, worldPoint, rects) {
+  if (containerUid === board2.uid) return { x: worldPoint.x, y: worldPoint.y };
+  const c = worldRect(board2, containerUid, rects);
   return { x: worldPoint.x - c.x, y: worldPoint.y - c.y };
 }
-function hitTest(board, point, rects, { sectionInterior = false, exclude = null } = {}) {
-  for (let i = board.order.length - 1; i >= 0; i--) {
-    const item = board.items.get(board.order[i]);
+function hitTest(board2, point, rects, { sectionInterior = false, exclude = null } = {}) {
+  for (let i = board2.order.length - 1; i >= 0; i--) {
+    const item = board2.items.get(board2.order[i]);
     if (item.type === "section" || exclude?.has(item.uid)) continue;
     if (contains(rects.get(item.uid), point)) return { uid: item.uid, part: "body" };
   }
-  for (let i = board.order.length - 1; i >= 0; i--) {
-    const item = board.items.get(board.order[i]);
+  for (let i = board2.order.length - 1; i >= 0; i--) {
+    const item = board2.items.get(board2.order[i]);
     if (item.type !== "section" || exclude?.has(item.uid)) continue;
     const r = rects.get(item.uid);
     if (!contains(r, point)) continue;
@@ -1100,10 +1100,10 @@ function boardPreview(item, { max = 60, aspect = null, pad = 0.12 } = {}) {
   }
   return { count: child.items.size, aspect: target, rects, edges, bounds, empty: false };
 }
-function sectionFitPlan(board, rects, touchedUids, {
+function sectionFitPlan(board2, rects, touchedUids, {
   pad = FIT_PAD,
   skip = /* @__PURE__ */ new Set(),
-  parentOf = (u) => board.items.get(u)?.parentUid
+  parentOf = (u) => board2.items.get(u)?.parentUid
 } = {}) {
   const work = /* @__PURE__ */ new Map();
   const same = (a, b) => Math.abs(a.x - b.x) < 0.01 && Math.abs(a.y - b.y) < 0.01 && Math.abs(a.w - b.w) < 0.01 && Math.abs(a.h - b.h) < 0.01;
@@ -1111,8 +1111,8 @@ function sectionFitPlan(board, rects, touchedUids, {
     let cur = touched;
     for (let guard = 0; guard < 256; guard++) {
       const pid = parentOf(cur);
-      if (!pid || pid === board.uid) break;
-      const sec = board.items.get(pid);
+      if (!pid || pid === board2.uid) break;
+      const sec = board2.items.get(pid);
       if (!sec || sec.type !== "section" || sec.autofit === false || sec.pinned || skip.has(pid)) break;
       const secRect = work.get(pid) ?? rects.get(pid);
       const childRect = work.get(cur) ?? rects.get(cur);
@@ -1128,7 +1128,7 @@ function sectionFitPlan(board, rects, touchedUids, {
     let cur = u;
     for (let i = 0; i < 256; i++) {
       const pid = parentOf(cur);
-      if (!pid || pid === board.uid) break;
+      if (!pid || pid === board2.uid) break;
       d++;
       cur = pid;
     }
@@ -1136,30 +1136,30 @@ function sectionFitPlan(board, rects, touchedUids, {
   };
   return [...work.entries()].map(([uid, rect]) => ({ uid, rect, depth: depthOf(uid) })).sort((a, b) => b.depth - a.depth).map(({ uid, rect }) => ({ uid, rect }));
 }
-function sidebarOutlineUids(board) {
-  if (!board) return [];
-  const uids = [...board.roots || []];
-  if (board.containerUid) uids.push(board.containerUid);
+function sidebarOutlineUids(board2) {
+  if (!board2) return [];
+  const uids = [...board2.roots || []];
+  if (board2.containerUid) uids.push(board2.containerUid);
   return uids;
 }
-function outlineOrder(board) {
-  const byOrder = (uids) => uids.map((u, i) => ({ u, i, o: board.items.get(u)?.order ?? i })).sort((a, b) => a.o - b.o || a.i - b.i).map(({ u }) => u);
+function outlineOrder(board2) {
+  const byOrder = (uids) => uids.map((u, i) => ({ u, i, o: board2.items.get(u)?.order ?? i })).sort((a, b) => a.o - b.o || a.i - b.i).map(({ u }) => u);
   const out = [];
   const visit = (uid) => {
     out.push(uid);
-    for (const m of byOrder(board.items.get(uid).members)) visit(m);
+    for (const m of byOrder(board2.items.get(uid).members)) visit(m);
   };
-  for (const uid of byOrder(board.roots)) visit(uid);
+  for (const uid of byOrder(board2.roots)) visit(uid);
   return out;
 }
-function itemsInRect(board, rect, rects, { mode = "contain" } = {}) {
+function itemsInRect(board2, rect, rects, { mode = "contain" } = {}) {
   const test = mode === "intersect" ? intersects : (r, a) => containsRect(r, a);
   const hits = [];
-  for (const uid of board.order) {
+  for (const uid of board2.order) {
     const r = rects.get(uid);
     if (r && test(rect, r)) hits.push(uid);
   }
-  return topLevelOf(board, hits);
+  return topLevelOf(board2, hits);
 }
 function onSegment(a, b, p) {
   const cross = (p.x - a.x) * (b.y - a.y) - (p.y - a.y) * (b.x - a.x);
@@ -1186,38 +1186,38 @@ function pointInPolygon(point, polygon) {
   }
   return inside3;
 }
-function itemsInPolygon(board, polygon, rects) {
-  if (!board || !Array.isArray(polygon) || polygon.length < 3) return [];
-  const r = rects ?? worldRects(board);
+function itemsInPolygon(board2, polygon, rects) {
+  if (!board2 || !Array.isArray(polygon) || polygon.length < 3) return [];
+  const r = rects ?? worldRects(board2);
   const hits = [];
-  for (const uid of board.order) {
+  for (const uid of board2.order) {
     const rect = r.get(uid);
     if (rect && pointInPolygon(centerOf(rect), polygon)) hits.push(uid);
   }
-  return topLevelOf(board, hits);
+  return topLevelOf(board2, hits);
 }
-function sameColorUids(board, uid) {
-  const seed = board?.items.get(uid);
+function sameColorUids(board2, uid) {
+  const seed = board2?.items.get(uid);
   if (!seed) return [];
   const color = seed.color || null;
   const out = [];
-  for (const id of board.order) {
-    const item = board.items.get(id);
+  for (const id of board2.order) {
+    const item = board2.items.get(id);
     if ((item.color || null) === color) out.push(id);
   }
   return out;
 }
-function connectedUids(board, uid) {
-  if (!board?.items.has(uid)) return [];
+function connectedUids(board2, uid) {
+  if (!board2?.items.has(uid)) return [];
   const adj = /* @__PURE__ */ new Map();
   const link = (a, b) => {
-    if (!board.items.has(a) || !board.items.has(b) || a === b) return;
+    if (!board2.items.has(a) || !board2.items.has(b) || a === b) return;
     if (!adj.has(a)) adj.set(a, []);
     if (!adj.has(b)) adj.set(b, []);
     adj.get(a).push(b);
     adj.get(b).push(a);
   };
-  for (const edge of board.edges.values()) {
+  for (const edge of board2.edges.values()) {
     if (!edge.valid) continue;
     link(edge.from, edge.to);
   }
@@ -1235,57 +1235,57 @@ function connectedUids(board, uid) {
   }
   return out;
 }
-function sectionAllUids(board, uid) {
-  const item = board?.items.get(uid);
+function sectionAllUids(board2, uid) {
+  const item = board2?.items.get(uid);
   if (!item || item.type !== "section") return [];
-  const kids = descendantsOf(board, uid);
-  return board.order.filter((id) => kids.has(id));
+  const kids = descendantsOf(board2, uid);
+  return board2.order.filter((id) => kids.has(id));
 }
-function membershipPlan(board, movedUids, rects) {
-  const moved = topLevelOf(board, movedUids);
+function membershipPlan(board2, movedUids, rects) {
+  const moved = topLevelOf(board2, movedUids);
   const exclude = new Set(moved);
   const plan = [];
   for (const uid of moved) {
-    const item = board.items.get(uid);
+    const item = board2.items.get(uid);
     const r = rects.get(uid);
-    const toParent = containerAt(board, centerOf(r), { exclude, rects });
+    const toParent = containerAt(board2, centerOf(r), { exclude, rects });
     if (toParent === item.parentUid) continue;
-    const rel = toRelative(board, toParent, { x: r.x, y: r.y }, rects);
+    const rel = toRelative(board2, toParent, { x: r.x, y: r.y }, rects);
     plan.push({ uid, fromParent: item.parentUid, toParent, x: rel.x, y: rel.y });
   }
   return plan;
 }
-function sectionAdoptPlan(board, sectionUid, rects) {
-  const section = board.items.get(sectionUid);
-  if (!section) return [];
+function sectionAdoptPlan(board2, sectionUid, rects) {
+  const section2 = board2.items.get(sectionUid);
+  if (!section2) return [];
   const sr = rects.get(sectionUid);
-  const parentUid = section.parentUid;
-  const siblings = parentUid === board.uid ? board.roots : board.items.get(parentUid).members;
+  const parentUid = section2.parentUid;
+  const siblings = parentUid === board2.uid ? board2.roots : board2.items.get(parentUid).members;
   const plan = [];
   for (const uid of siblings) {
     if (uid === sectionUid) continue;
     const r = rects.get(uid);
     if (!contains(sr, centerOf(r))) continue;
-    const rel = toRelative(board, sectionUid, { x: r.x, y: r.y }, rects);
+    const rel = toRelative(board2, sectionUid, { x: r.x, y: r.y }, rects);
     plan.push({ uid, toParent: sectionUid, x: rel.x, y: rel.y });
   }
-  for (const uid of section.members) {
+  for (const uid of section2.members) {
     const r = rects.get(uid);
     if (contains(sr, centerOf(r))) continue;
-    const rel = toRelative(board, parentUid, { x: r.x, y: r.y }, rects);
+    const rel = toRelative(board2, parentUid, { x: r.x, y: r.y }, rects);
     plan.push({ uid, toParent: parentUid, x: rel.x, y: rel.y });
   }
   return plan;
 }
-function edgesTouching(board, uidSet) {
+function edgesTouching(board2, uidSet) {
   const full = new Set(uidSet);
-  for (const u of uidSet) for (const d of descendantsOf(board, u)) full.add(d);
+  for (const u of uidSet) for (const d of descendantsOf(board2, u)) full.add(d);
   const out = /* @__PURE__ */ new Set();
-  for (const e of board.edges.values()) if (full.has(e.from) || full.has(e.to)) out.add(e.uid);
+  for (const e of board2.edges.values()) if (full.has(e.from) || full.has(e.to)) out.add(e.uid);
   return out;
 }
-function findEdge(board, from, to) {
-  for (const e of board.edges.values()) if (e.from === from && e.to === to) return e;
+function findEdge(board2, from, to) {
+  for (const e of board2.edges.values()) if (e.from === from && e.to === to) return e;
   return null;
 }
 function diffBoards(prev, next) {
@@ -1326,12 +1326,12 @@ function diffBoards(prev, next) {
 // src/model/clipboard.js
 var PLEXUS_MIME = "application/x-plexus-cards";
 var MAX_PASTED_LINES = 50;
-function copyPayload(board, uids, rects) {
-  const top = topLevelOf(board, [...uids]);
+function copyPayload(board2, uids, rects) {
+  const top = topLevelOf(board2, [...uids]);
   const items = [];
   const boxes = [];
   for (const uid of top) {
-    const item = board.items.get(uid);
+    const item = board2.items.get(uid);
     const r = rects.get(uid);
     if (!item || !r) continue;
     boxes.push(r);
@@ -1350,7 +1350,7 @@ function copyPayload(board, uids, rects) {
   }
   const bounds = boundsOf(boxes);
   return {
-    mime: JSON.stringify({ v: 1, board: board.uid, bounds, items }),
+    mime: JSON.stringify({ v: 1, board: board2.uid, bounds, items }),
     text: items.map((i) => semanticRef(i)).join("\n")
   };
 }
@@ -1444,16 +1444,16 @@ function refCardStrings(data, at) {
 }
 var REF = /\(\(([\w-]+)\)\)/g;
 var rewriteRefs = (string, uidMap) => String(string ?? "").replace(REF, (m, uid) => uidMap.has(uid) ? `((${uidMap.get(uid)}))` : m);
-function sortedKids(node) {
-  const kids = Array.isArray(node?.[":block/children"]) ? node[":block/children"] : [];
+function sortedKids(node2) {
+  const kids = Array.isArray(node2?.[":block/children"]) ? node2[":block/children"] : [];
   return kids.map((c, i) => ({ c, i })).sort((a, b) => (a.c[":block/order"] ?? a.i) - (b.c[":block/order"] ?? b.i) || a.i - b.i).map(({ c }) => c);
 }
-function planSubtreeClone(node, { genUid, parentUid, order = "last", plexusPatch = null, uidMap = /* @__PURE__ */ new Map() } = {}) {
+function planSubtreeClone(node2, { genUid, parentUid, order = "last", plexusPatch = null, uidMap = /* @__PURE__ */ new Map() } = {}) {
   const assign = (n) => {
     uidMap.set(n[":block/uid"], genUid());
     for (const c of sortedKids(n)) assign(c);
   };
-  assign(node);
+  assign(node2);
   const creates = [];
   const emit2 = (n, parent, ord, isRoot) => {
     const props = n[":block/props"] == null ? null : plainKeys(n[":block/props"]);
@@ -1473,7 +1473,7 @@ function planSubtreeClone(node, { genUid, parentUid, order = "last", plexusPatch
     });
     sortedKids(n).forEach((c, i) => emit2(c, uid, i, false));
   };
-  emit2(node, parentUid, order, true);
+  emit2(node2, parentUid, order, true);
   return { creates, uidMap };
 }
 function planEdgeClones(edges, uidMap, { genUid, containerUid, refOfNew } = {}) {
@@ -1514,9 +1514,9 @@ function gridPlace(items, origin, gap, columns) {
   const rowH = [];
   items.forEach((r, i) => {
     const c = i % cols;
-    const row = Math.floor(i / cols);
+    const row2 = Math.floor(i / cols);
     colW[c] = Math.max(colW[c], r.w);
-    rowH[row] = Math.max(rowH[row] ?? 0, r.h);
+    rowH[row2] = Math.max(rowH[row2] ?? 0, r.h);
   });
   const colX = [];
   let x = origin.x;
@@ -1526,9 +1526,9 @@ function gridPlace(items, origin, gap, columns) {
   }
   const rowY = [];
   let y = origin.y;
-  for (let row = 0; row < rowH.length; row++) {
-    rowY[row] = y;
-    y += rowH[row] + gap;
+  for (let row2 = 0; row2 < rowH.length; row2++) {
+    rowY[row2] = y;
+    y += rowH[row2] + gap;
   }
   return items.map((r, i) => ({ uid: r.uid, x: norm(colX[i % cols]), y: norm(rowY[Math.floor(i / cols)]) }));
 }
@@ -1620,10 +1620,10 @@ function sameSize(list, primaryUid, mode = "both") {
   }
   return out;
 }
-function subtree(node, sizeOf, levelGap, sibGap) {
-  const { dd, bb } = sizeOf(node);
-  const kids = (node.children ?? []).map((c) => ({ c, s: subtree(c, sizeOf, levelGap, sibGap), size: sizeOf(c) }));
-  if (!kids.length) return { extent: bb, nodeB: 0, places: [{ uid: node.uid, d: 0, b: 0 }] };
+function subtree(node2, sizeOf, levelGap, sibGap) {
+  const { dd, bb } = sizeOf(node2);
+  const kids = (node2.children ?? []).map((c) => ({ c, s: subtree(c, sizeOf, levelGap, sibGap), size: sizeOf(c) }));
+  if (!kids.length) return { extent: bb, nodeB: 0, places: [{ uid: node2.uid, d: 0, b: 0 }] };
   let cursor = 0;
   const offs = kids.map((k) => {
     const o = cursor;
@@ -1635,7 +1635,7 @@ function subtree(node, sizeOf, levelGap, sibGap) {
   const parentB = (centerOf3(0) + centerOf3(kids.length - 1)) / 2 - bb / 2;
   const min = Math.min(0, parentB);
   const max = Math.max(childrenExtent, parentB + bb);
-  const places = [{ uid: node.uid, d: 0, b: parentB - min }];
+  const places = [{ uid: node2.uid, d: 0, b: parentB - min }];
   kids.forEach((k, i) => {
     for (const p of k.s.places) places.push({ uid: p.uid, d: dd + levelGap + p.d, b: offs[i] - min + p.b });
   });
@@ -1668,9 +1668,9 @@ function mindMapLayout(root, { direction = "right", hGap = 80, vGap = 24 } = {})
   for (const p of groupPlaces(kids)) out.set(p.uid, toXY(p.d, p.b));
   return out;
 }
-function findNode(node, uid) {
-  if (node.uid === uid) return node;
-  for (const c of node.children ?? []) {
+function findNode(node2, uid) {
+  if (node2.uid === uid) return node2;
+  for (const c of node2.children ?? []) {
     const f = findNode(c, uid);
     if (f) return f;
   }
@@ -1740,9 +1740,9 @@ function filterLinks(links, mode) {
   if (mode === "attributes") return links.filter((l) => l.kind === "attr");
   return links;
 }
-function coveredBy(links, board) {
+function coveredBy(links, board2) {
   const pairs = /* @__PURE__ */ new Map();
-  for (const [uid, e] of board.edges) {
+  for (const [uid, e] of board2.edges) {
     for (const k of [`${e.from}->${e.to}`, `${e.to}->${e.from}`]) {
       if (!pairs.has(k)) pairs.set(k, []);
       pairs.get(k).push(uid);
@@ -1783,9 +1783,9 @@ function graphFromDeepLink(hash) {
 function cardDeepLink({ graph, pageUid, cardUid } = {}) {
   const g = String(graph ?? "").trim();
   const page = String(pageUid ?? "").trim();
-  const card = String(cardUid ?? "").trim();
-  if (!g || !UID_RE.test(page) || !UID_RE.test(card)) return "";
-  return `#/app/${encodeURIComponent(g)}/page/${encodeURIComponent(page)}?pxd=${encodeURIComponent(card)}`;
+  const card2 = String(cardUid ?? "").trim();
+  if (!g || !UID_RE.test(page) || !UID_RE.test(card2)) return "";
+  return `#/app/${encodeURIComponent(g)}/page/${encodeURIComponent(page)}?pxd=${encodeURIComponent(card2)}`;
 }
 function hashFromUrl(url) {
   const text = String(url ?? "");
@@ -1796,14 +1796,14 @@ function pxdTarget(hash) {
   const text = String(hash ?? "");
   const q = text.indexOf("?");
   if (q < 0) return null;
-  let card = "";
+  let card2 = "";
   try {
-    card = new URLSearchParams(text.slice(q + 1).split("#")[0]).get("pxd") || "";
+    card2 = new URLSearchParams(text.slice(q + 1).split("#")[0]).get("pxd") || "";
   } catch {
     return null;
   }
-  if (!UID_RE.test(card)) return null;
-  return { cardUid: card, pageUid: pageUidFromHash(text), graph: graphFromDeepLink(text) };
+  if (!UID_RE.test(card2)) return null;
+  return { cardUid: card2, pageUid: pageUidFromHash(text), graph: graphFromDeepLink(text) };
 }
 function copyLinkText(item, { graph, pageUid, cardUid } = {}) {
   const ref = semanticRef(item);
@@ -1816,12 +1816,12 @@ function locateShowTarget(uid, placements) {
   if (!id) return null;
   const hits = [];
   const seen = /* @__PURE__ */ new Set();
-  for (const row of placements || []) {
-    const boardUid = String(row?.boardUid ?? "").trim();
-    const cardUid = String(row?.cardUid ?? "").trim();
-    const pageUid = String(row?.pageUid ?? "").trim();
+  for (const row2 of placements || []) {
+    const boardUid = String(row2?.boardUid ?? "").trim();
+    const cardUid = String(row2?.cardUid ?? "").trim();
+    const pageUid = String(row2?.pageUid ?? "").trim();
     if (!boardUid || !cardUid) continue;
-    const refs = Array.isArray(row.refUids) ? row.refUids.map((r) => String(r)) : [];
+    const refs = Array.isArray(row2.refUids) ? row2.refUids.map((r) => String(r)) : [];
     if (cardUid !== id && !refs.includes(id)) continue;
     const key = `${boardUid}
 ${cardUid}`;
@@ -1901,14 +1901,14 @@ function boardsFromRows(rows, { limit = 20 } = {}) {
   const seen = /* @__PURE__ */ new Set();
   const out = [];
   const cap2 = Number.isFinite(limit) && limit > 0 ? limit : 20;
-  for (const row of rows || []) {
-    if (!row?.uid || seen.has(row.uid)) continue;
-    if (row.v != null && row.v !== 2) continue;
-    seen.add(row.uid);
+  for (const row2 of rows || []) {
+    if (!row2?.uid || seen.has(row2.uid)) continue;
+    if (row2.v != null && row2.v !== 2) continue;
+    seen.add(row2.uid);
     out.push({
-      uid: row.uid,
-      title: row.title || "Untitled board",
-      pageTitle: row.pageTitle || ""
+      uid: row2.uid,
+      title: row2.title || "Untitled board",
+      pageTitle: row2.pageTitle || ""
     });
     if (out.length >= cap2) break;
   }
@@ -1964,46 +1964,46 @@ function editedSince(edited, days, now2 = Date.now()) {
   const t = now2 instanceof Date ? now2.getTime() : Number(now2);
   return Number.isFinite(edited) && edited > t - n * DAY_MS;
 }
-function libraryKind(row) {
-  if (row?.kind === "board") return "board";
-  if (row?.kind === "block") return "block";
-  const title = row?.title ?? "";
-  if (row?.kind === "daily" || isDailyTitle(title)) return "daily";
+function libraryKind(row2) {
+  if (row2?.kind === "board") return "board";
+  if (row2?.kind === "block") return "block";
+  const title = row2?.title ?? "";
+  if (row2?.kind === "daily" || isDailyTitle(title)) return "daily";
   return "page";
 }
 function narrowLibrary(rows, filter, now2 = Date.now()) {
   const f = normalizeLibraryFilter(filter);
   const needle = f.text.toLowerCase();
-  return (Array.isArray(rows) ? rows : []).filter((row) => {
-    const kind = libraryKind(row);
+  return (Array.isArray(rows) ? rows : []).filter((row2) => {
+    const kind = libraryKind(row2);
     if (f.type !== "all" && kind !== f.type) return false;
     if (f.tag) {
-      const tags = Array.isArray(row?.tags) ? row.tags : [];
+      const tags = Array.isArray(row2?.tags) ? row2.tags : [];
       if (!tags.includes(f.tag)) return false;
     }
     if (needle) {
-      const hay = [row?.title, row?.string, row?.text].filter((v) => v != null).join("\n").toLowerCase();
+      const hay = [row2?.title, row2?.string, row2?.text].filter((v) => v != null).join("\n").toLowerCase();
       if (!hay.includes(needle)) return false;
     }
-    if (f.days && !editedSince(row?.edited, f.days, now2)) return false;
-    if (f.orphan && (kind === "board" || row?.onBoard)) return false;
+    if (f.days && !editedSince(row2?.edited, f.days, now2)) return false;
+    if (f.orphan && (kind === "board" || row2?.onBoard)) return false;
     return true;
   });
 }
-function libraryCard(row) {
-  const kind = libraryKind(row);
+function libraryCard(row2) {
+  const kind = libraryKind(row2);
   if (kind === "page" || kind === "daily") {
-    const title = String(row?.title ?? row?.text ?? "");
+    const title = String(row2?.title ?? row2?.text ?? "");
     return { string: `[[${title}]]`, text: title, kind, label: kind === "daily" ? "daily" : "page" };
   }
-  const uid = String(row?.uid ?? "");
+  const uid = String(row2?.uid ?? "");
   if (kind === "board") {
-    const title = String(row?.title || "Untitled board");
-    const label2 = row?.pageTitle ? `board · ${row.pageTitle}` : "board";
+    const title = String(row2?.title || "Untitled board");
+    const label2 = row2?.pageTitle ? `board · ${row2.pageTitle}` : "board";
     return { string: `((${uid}))`, text: title, kind, label: label2 };
   }
-  const label = row?.pageTitle ? `in ${row.pageTitle}` : "block";
-  return { string: `((${uid}))`, text: String(row?.string ?? row?.text ?? "").slice(0, 120), kind, label };
+  const label = row2?.pageTitle ? `in ${row2.pageTitle}` : "block";
+  return { string: `((${uid}))`, text: String(row2?.string ?? row2?.text ?? "").slice(0, 120), kind, label };
 }
 function recentDailyTitles(days = 14, now2 = /* @__PURE__ */ new Date()) {
   const n = Math.max(1, Math.min(366, Math.floor(Number(days) || 14)));
@@ -2041,14 +2041,14 @@ var SHOW_REF_QUERY = `[:find ?board ?page ?card :in $ ?uid ?pat :where
 var BOARD_META_PATTERN = "[:block/props :edit/time {:block/children [:block/props]}]";
 var eidKey = (uid) => [":block/uid", uid];
 var watchEntity = (uid) => `[:block/uid "${String(uid).replace(/["\\]/g, "")}"]`;
-function sortedKids2(node) {
-  const kids = Array.isArray(node?.[":block/children"]) ? node[":block/children"] : [];
+function sortedKids2(node2) {
+  const kids = Array.isArray(node2?.[":block/children"]) ? node2[":block/children"] : [];
   return kids.map((c, i) => ({ c, i })).sort((a, b) => (a.c[":block/order"] ?? a.i) - (b.c[":block/order"] ?? b.i) || a.i - b.i).map(({ c }) => c);
 }
-function trimTree(node, depth, budget) {
+function trimTree(node2, depth, budget) {
   const out = [];
   if (depth < 1) return out;
-  for (const c of sortedKids2(node)) {
+  for (const c of sortedKids2(node2)) {
     if (budget.left <= 0) break;
     budget.left--;
     out.push({
@@ -2280,6 +2280,17 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
       const res = pull("[:block/uid]", [":node/title", title]);
       return res?.[":block/uid"] ?? null;
     },
+    // The templates page is created once. A second call returns the existing uid.
+    async ensurePage(title) {
+      const name = String(title ?? "").trim();
+      if (!name) return null;
+      const existing = host.pageUid(name);
+      if (existing) return existing;
+      stats.writes++;
+      await data.page.create({ page: { title: name } });
+      noteWrite();
+      return host.pageUid(name);
+    },
     // Blocks that link to the page. The card's own [[title]] counts as one.
     pageRefCount(title) {
       const name = String(title ?? "");
@@ -2333,16 +2344,16 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
         return "";
       }
       const page = res?.[":block/page"];
-      const node = Array.isArray(page) ? page[0] : page;
-      const id = node?.[":block/uid"];
+      const node2 = Array.isArray(page) ? page[0] : page;
+      const id = node2?.[":block/uid"];
       return typeof id === "string" ? id : "";
     },
     // Page that owns a block. Empty when the block is missing or is itself a page.
     pageTitleOf(uid) {
       const res = pull("[{:block/page [:node/title]}]", eidKey(uid));
       const page = res?.[":block/page"];
-      const node = Array.isArray(page) ? page[0] : page;
-      const title = node?.[":node/title"];
+      const node2 = Array.isArray(page) ? page[0] : page;
+      const title = node2?.[":node/title"];
       return typeof title === "string" ? title : "";
     },
     // Bytes for a graph file. Encrypted graphs only decrypt through file.get; the URL itself taints a canvas.
@@ -2617,12 +2628,12 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
       const cap2 = libraryCap();
       const candidates = [];
       const seen = /* @__PURE__ */ new Set();
-      const push = (row) => {
+      const push = (row2) => {
         if (candidates.length >= cap2) return false;
-        const key = `${row.kind}:${row.uid || row.title}`;
+        const key = `${row2.kind}:${row2.uid || row2.title}`;
         if (seen.has(key)) return false;
         seen.add(key);
-        candidates.push(row);
+        candidates.push(row2);
         return true;
       };
       const timed = (name, fn) => {
@@ -2817,8 +2828,8 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
         }
       }
       if (f.orphan) {
-        const blockUids = candidates.filter((row) => row.kind === "block" && row.uid).map((row) => row.uid);
-        const pageTitles = candidates.filter((row) => row.kind === "page" && row.title).map((row) => row.title);
+        const blockUids = candidates.filter((row2) => row2.kind === "block" && row2.uid).map((row2) => row2.uid);
+        const pageTitles = candidates.filter((row2) => row2.kind === "page" && row2.title).map((row2) => row2.title);
         const onUid = /* @__PURE__ */ new Set();
         const onTitle = /* @__PURE__ */ new Set();
         if (blockUids.length) {
@@ -2845,10 +2856,10 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
           ));
           for (const rec of via) if (rec?.[0]) onTitle.add(rec[0]);
         }
-        for (const row of candidates) {
-          if (row.kind === "board") row.onBoard = true;
-          else if (row.kind === "block") row.onBoard = onUid.has(row.uid);
-          else row.onBoard = onTitle.has(row.title);
+        for (const row2 of candidates) {
+          if (row2.kind === "board") row2.onBoard = true;
+          else if (row2.kind === "block") row2.onBoard = onUid.has(row2.uid);
+          else row2.onBoard = onTitle.has(row2.title);
         }
       }
       const rows = narrowLibrary(candidates, f, nowMs).slice(0, lim).map(libraryCard);
@@ -3011,17 +3022,17 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
         return boardOk.get(boardUid);
       };
       const placements = [];
-      for (const row of direct) {
-        const boardUid = row?.[0];
-        const pageUid = row?.[1];
+      for (const row2 of direct) {
+        const boardUid = row2?.[0];
+        const pageUid = row2?.[1];
         if (!boardUid || !pageUid || !enhanced(boardUid)) continue;
         if (!isShowableCard(propsOf(id)?.plexus)) continue;
         placements.push({ boardUid, pageUid, cardUid: id, refUids: [] });
       }
-      for (const row of via) {
-        const boardUid = row?.[0];
-        const pageUid = row?.[1];
-        const cardUid = row?.[2];
+      for (const row2 of via) {
+        const boardUid = row2?.[0];
+        const pageUid = row2?.[1];
+        const cardUid = row2?.[2];
         if (!boardUid || !pageUid || !cardUid || cardUid === id || !enhanced(boardUid)) continue;
         if (!isShowableCard(propsOf(cardUid)?.plexus)) continue;
         placements.push({ boardUid, pageUid, cardUid, refUids: [id] });
@@ -3034,8 +3045,8 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
 
 // src/host/migrate.js
 var METADATA_PAGE = "plexus-diagram/metadata";
-function sortedKids3(node) {
-  const kids = Array.isArray(node?.[":block/children"]) ? node[":block/children"] : [];
+function sortedKids3(node2) {
+  const kids = Array.isArray(node2?.[":block/children"]) ? node2[":block/children"] : [];
   return kids.map((c, i) => ({ c, i })).sort((a, b) => (a.c[":block/order"] ?? a.i) - (b.c[":block/order"] ?? b.i) || a.i - b.i).map(({ c }) => c);
 }
 var str = (n) => String(n?.[":block/string"] ?? "").trim();
@@ -3070,7 +3081,7 @@ function readV06Entry(host, boardUid) {
     }
     if (line.startsWith("node ")) {
       const uid = line.slice(5).trim();
-      const node = { x: void 0, y: void 0, w: void 0, h: void 0, color: void 0 };
+      const node2 = { x: void 0, y: void 0, w: void 0, h: void 0, color: void 0 };
       for (const k of sortedKids3(child)) {
         const l = str(k);
         const pos = prop(l, "pos");
@@ -3079,20 +3090,20 @@ function readV06Entry(host, boardUid) {
         if (pos !== null) {
           const p = pair(pos);
           if (p) {
-            node.x = p.a;
-            node.y = p.b;
+            node2.x = p.a;
+            node2.y = p.b;
           }
         }
         if (size !== null) {
           const p = pair(size);
           if (p) {
-            node.w = p.a;
-            node.h = p.b;
+            node2.w = p.a;
+            node2.h = p.b;
           }
         }
-        if (color !== null && PALETTE.includes(color)) node.color = color;
+        if (color !== null && PALETTE.includes(color)) node2.color = color;
       }
-      out.nodes.set(uid, node);
+      out.nodes.set(uid, node2);
       continue;
     }
     if (line.startsWith("edge ")) {
@@ -3322,22 +3333,22 @@ function defaultGen() {
   let n = 0;
   return () => `imp${String(++n).padStart(6, "0")}`;
 }
-function refOf(board, uid, sectionUids) {
-  const item = board.items.get(uid);
+function refOf(board2, uid, sectionUids) {
+  const item = board2.items.get(uid);
   if (item && !sectionUids.has(uid)) return semanticRef(item);
   return `((${uid}))`;
 }
-function edgePlan(board, sectionUids, from, to, label, extra = {}) {
+function edgePlan(board2, sectionUids, from, to, label, extra = {}) {
   const dir = extra.dir ?? "one";
   return {
     from,
     to,
     label,
-    string: edgeString({ srcRef: refOf(board, from, sectionUids), dstRef: refOf(board, to, sectionUids), dir, label }),
+    string: edgeString({ srcRef: refOf(board2, from, sectionUids), dstRef: refOf(board2, to, sectionUids), dir, label }),
     props: serializeEdge({ from, to, dir, ...extra, type: void 0 })
   };
 }
-function planV06(board, source, gen) {
+function planV06(board2, source, gen) {
   const plan = { itemLayouts: [], sections: [], memberLayouts: [], edges: [], viewport: source.viewport ?? null, markMigratedUid: source.entryUid ?? null };
   const secs = source.sections.map((s) => {
     const uid = gen();
@@ -3352,14 +3363,14 @@ function planV06(board, source, gen) {
   });
   plan.sections = secs.map((s) => s.entry);
   const sectionUids = new Set(plan.sections.map((s) => s.uid));
-  for (const [uid, node] of source.nodes) {
-    const item = board.items.get(uid);
+  for (const [uid, node2] of source.nodes) {
+    const item = board2.items.get(uid);
     if (!item || item.type === "section") continue;
     const abs = {
-      x: node.x ?? item.x,
-      y: node.y ?? item.y,
-      w: node.w ?? item.w,
-      h: node.h ?? item.h
+      x: node2.x ?? item.x,
+      y: node2.y ?? item.y,
+      w: node2.w ?? item.w,
+      h: node2.h ?? item.h
     };
     const c = centerOf2(abs);
     let best = null;
@@ -3367,7 +3378,7 @@ function planV06(board, source, gen) {
       if (!inside(s.abs, c)) continue;
       if (!best || s.abs.w * s.abs.h < best.abs.w * best.abs.h) best = s;
     }
-    const layout = { type: item.type, w: abs.w, h: abs.h, color: node.color };
+    const layout = { type: item.type, w: abs.w, h: abs.h, color: node2.color };
     if (best) {
       best.entry.members.push(uid);
       plan.memberLayouts.push({ uid, layout: { ...layout, x: round12(abs.x - best.abs.x), y: round12(abs.y - best.abs.y) } });
@@ -3376,8 +3387,8 @@ function planV06(board, source, gen) {
     }
   }
   for (const e of source.edges) {
-    if (!board.items.has(e.from) || !board.items.has(e.to) || e.from === e.to) continue;
-    plan.edges.push(edgePlan(board, sectionUids, e.from, e.to, e.label ?? "", {
+    if (!board2.items.has(e.from) || !board2.items.has(e.to) || e.from === e.to) continue;
+    plan.edges.push(edgePlan(board2, sectionUids, e.from, e.to, e.label ?? "", {
       fromSide: e.fromSide,
       toSide: e.toSide,
       dir: e.dir,
@@ -3387,7 +3398,7 @@ function planV06(board, source, gen) {
   }
   return plan;
 }
-function planNative(board, source, gen) {
+function planNative(board2, source, gen) {
   const plan = { itemLayouts: [], sections: [], memberLayouts: [], edges: [], viewport: null, markMigratedUid: null };
   const nodes = source.nodes;
   const byKey = new Map(nodes.map((n) => [n.key, n]));
@@ -3412,7 +3423,7 @@ function planNative(board, source, gen) {
   const sectionOf = /* @__PURE__ */ new Map();
   const groups = nodes.filter((n) => n.type === "group");
   for (const g of groups) {
-    const existing = g.blockUid && board.items.has(g.blockUid);
+    const existing = g.blockUid && board2.items.has(g.blockUid);
     const uid = existing ? g.blockUid : gen();
     const a = absOf(g);
     const abs = {
@@ -3424,7 +3435,7 @@ function planNative(board, source, gen) {
     sectionOf.set(g.key, {
       uid,
       abs,
-      entry: { uid, title: g.title || board.items.get(uid)?.title || "Section", layout: null, members: [], parent: null, existing: Boolean(existing) }
+      entry: { uid, title: g.title || board2.items.get(uid)?.title || "Section", layout: null, members: [], parent: null, existing: Boolean(existing) }
     });
   }
   for (const g of groups) {
@@ -3447,7 +3458,7 @@ function planNative(board, source, gen) {
   for (const g of groups) uidOfKey.set(g.key, sectionOf.get(g.key).uid);
   for (const n of nodes) {
     if (n.type === "group") continue;
-    const item = n.blockUid ? board.items.get(n.blockUid) : null;
+    const item = n.blockUid ? board2.items.get(n.blockUid) : null;
     if (!item || item.type === "section") continue;
     uidOfKey.set(n.key, item.uid);
     const a = absOf(n);
@@ -3470,7 +3481,7 @@ function planNative(board, source, gen) {
     const from = uidOfKey.get(e.from);
     const to = uidOfKey.get(e.to);
     if (!from || !to || from === to) continue;
-    plan.edges.push(edgePlan(board, sectionUids, from, to, e.label ?? "", {
+    plan.edges.push(edgePlan(board2, sectionUids, from, to, e.label ?? "", {
       dir: e.dir,
       route: e.route,
       dash: e.dash,
@@ -3480,11 +3491,11 @@ function planNative(board, source, gen) {
   if (source.boardStyle && Object.keys(source.boardStyle).length) plan.boardStyle = source.boardStyle;
   return plan;
 }
-function planImport(board, source, { gen = defaultGen() } = {}) {
+function planImport(board2, source, { gen = defaultGen() } = {}) {
   if (!source) return { itemLayouts: [], sections: [], memberLayouts: [], edges: [], viewport: null, markMigratedUid: null };
-  return source.nodes instanceof Map ? planV06(board, source, gen) : planNative(board, source, gen);
+  return source.nodes instanceof Map ? planV06(board2, source, gen) : planNative(board2, source, gen);
 }
-async function executeImport(plan, host, board) {
+async function executeImport(plan, host, board2) {
   const counts = { sections: 0, members: 0, items: 0, edges: 0 };
   const layoutProps = (layout) => serializeItemLayout(layout);
   const keepMarker = (uid, layout) => {
@@ -3495,7 +3506,7 @@ async function executeImport(plan, host, board) {
     if (s.existing) await host.updateProps(s.uid, keepMarker(s.uid, { ...s.layout, type: "section" }));
     else {
       await host.createBlock({
-        parentUid: board.uid,
+        parentUid: board2.uid,
         order: "last",
         uid: s.uid,
         string: s.title,
@@ -3521,10 +3532,10 @@ async function executeImport(plan, host, board) {
     counts.items++;
   }
   if (plan.edges.length) {
-    let containerUid = board.containerUid;
+    let containerUid = board2.containerUid;
     if (!containerUid) {
       containerUid = await host.createBlock({
-        parentUid: board.uid,
+        parentUid: board2.uid,
         order: "last",
         string: "Connections",
         props: { plexus: { type: "edges" } },
@@ -3540,12 +3551,12 @@ async function executeImport(plan, host, board) {
     await host.createBlock({ parentUid: plan.markMigratedUid, order: "last", string: "migrated:: 2" });
   }
   if (plan.viewport) {
-    host.viewports?.set(board.uid, plan.viewport);
+    host.viewports?.set(board2.uid, plan.viewport);
     host.viewports?.flushAll?.();
   }
-  const markerBase = { ...board.plexus || {} };
+  const markerBase = { ...board2.plexus || {} };
   if (plan.boardStyle && Object.keys(plan.boardStyle).length) Object.assign(markerBase, plan.boardStyle);
-  await host.updateProps(board.uid, withBoardMarker(markerBase, true));
+  await host.updateProps(board2.uid, withBoardMarker(markerBase, true));
   return counts;
 }
 
@@ -3590,15 +3601,15 @@ function sortKeys(v) {
   return v;
 }
 var stable = (v) => v == null ? "null" : JSON.stringify(sortKeys(v));
-function kidsOf(node) {
-  const kids = Array.isArray(node?.[KIDS]) ? node[KIDS] : [];
+function kidsOf(node2) {
+  const kids = Array.isArray(node2?.[KIDS]) ? node2[KIDS] : [];
   return kids.map((c, i) => ({ c, i })).sort((a, b) => (a.c[ORD] ?? a.i) - (b.c[ORD] ?? b.i) || a.i - b.i).map(({ c }) => c);
 }
 function indexTree(root) {
   const map = /* @__PURE__ */ new Map();
-  const walk = (node, parent) => {
-    map.set(node[UID], { node, parent });
-    for (const c of node[KIDS] ?? []) walk(c, node);
+  const walk = (node2, parent) => {
+    map.set(node2[UID], { node: node2, parent });
+    for (const c of node2[KIDS] ?? []) walk(c, node2);
   };
   if (root) walk(root, null);
   return map;
@@ -3611,10 +3622,10 @@ function detach(idx, uid) {
   if (at >= 0) kids.splice(at, 1);
   return hit;
 }
-function attach(parentNode, node, order) {
+function attach(parentNode, node2, order) {
   const kids = kidsOf(parentNode);
-  if (order === "last" || typeof order !== "number") kids.push(node);
-  else kids.splice(Math.max(0, Math.min(order, kids.length)), 0, node);
+  if (order === "last" || typeof order !== "number") kids.push(node2);
+  else kids.splice(Math.max(0, Math.min(order, kids.length)), 0, node2);
   kids.forEach((k, i) => {
     k[ORD] = i;
   });
@@ -3654,18 +3665,18 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
   const ledger = createEchoLedger({ graceMs, now: now2 });
   let destroyed = false;
   let raw = clone(host.pullBoard(uid));
-  let board = null;
+  let board2 = null;
   let rects = /* @__PURE__ */ new Map();
   let emitted = null;
   let rix = null;
   const ix = () => rix ?? (rix = indexTree(raw));
   const rebuild = () => {
     rix = null;
-    board = raw ? buildBoard(raw) : null;
-    rects = board ? worldRects(board) : /* @__PURE__ */ new Map();
+    board2 = raw ? buildBoard(raw) : null;
+    rects = board2 ? worldRects(board2) : /* @__PURE__ */ new Map();
   };
   rebuild();
-  emitted = board;
+  emitted = board2;
   let allLinks = [];
   let visibleLinks = [];
   let covered = /* @__PURE__ */ new Set();
@@ -3687,15 +3698,15 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
   const collapseOutline = () => (typeof settings?.get === "function" ? settings.get("collapse-outline") : settings?.["collapse-outline"]) !== false;
   const rawNode = (id) => id === uid ? raw : ix().get(id)?.node ?? null;
   const insertOrder = (parentUid) => {
-    const node = raw ? rawNode(parentUid) : null;
-    if (!node) return "last";
-    const at = kidsOf(node).findIndex((k) => readPlexus(k[PROPS])?.type === "edges");
+    const node2 = raw ? rawNode(parentUid) : null;
+    if (!node2) return "last";
+    const at = kidsOf(node2).findIndex((k) => readPlexus(k[PROPS])?.type === "edges");
     return at >= 0 ? at : "last";
   };
-  const rawInsert = (parentUid, node, order) => {
+  const rawInsert = (parentUid, node2, order) => {
     const parent = rawNode(parentUid);
     if (!parent) return;
-    attach(parent, node, order);
+    attach(parent, node2, order);
     rix = null;
   };
   const rawMove = (id, parentUid, order) => {
@@ -3712,18 +3723,18 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
     rix = null;
   };
   const rawProps = (id, plexus) => {
-    const node = rawNode(id);
-    if (node) node[PROPS] = mergePropsForWrite(node[PROPS], plexus);
+    const node2 = rawNode(id);
+    if (node2) node2[PROPS] = mergePropsForWrite(node2[PROPS], plexus);
   };
   const rawString = (id, string) => {
-    const node = rawNode(id);
-    if (node) node[STR] = string;
+    const node2 = rawNode(id);
+    if (node2) node2[STR] = string;
   };
   const publish = () => {
     rebuild();
-    if (!board) return null;
-    const diff = diffBoards(emitted, board);
-    emitted = board;
+    if (!board2) return null;
+    const diff = diffBoards(emitted, board2);
+    emitted = board2;
     if (diff.structural || diff.dirty.size) emit2("change", diff);
     recomputeLinks(false);
     if (diff.structural) refreshLinks();
@@ -3765,9 +3776,9 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
         } else if (!theirs) {
           const target = myParent === incUid ? incoming : inc.get(myParent)?.node;
           if (!target) continue;
-          const node = { ...mine.node, [KIDS]: [] };
-          target[KIDS] = [...target[KIDS] ?? [], node];
-          inc.set(id, { node, parent: target });
+          const node2 = { ...mine.node, [KIDS]: [] };
+          target[KIDS] = [...target[KIDS] ?? [], node2];
+          inc.set(id, { node: node2, parent: target });
         } else {
           const target = myParent === incUid ? incoming : inc.get(myParent)?.node;
           if (!target) continue;
@@ -3932,16 +3943,16 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
     });
   }
   function txn(fn) {
-    if (!board || destroyed || gone) return Promise.resolve(void 0);
+    if (!board2 || destroyed || gone) return Promise.resolve(void 0);
     const ops = [];
     const t = {
       create({ parent, uid: id, string = "", plexus, open, order }) {
         const newUid = id ?? host.generateUid();
         const ord = order ?? insertOrder(parent);
-        const node = { [UID]: newUid, [STR]: string, [ORD]: 0, [KIDS]: [] };
-        if (plexus) node[PROPS] = { plexus: plainKeys(plexus) };
-        if (open !== void 0) node[OPEN] = open;
-        rawInsert(parent, node, ord);
+        const node2 = { [UID]: newUid, [STR]: string, [ORD]: 0, [KIDS]: [] };
+        if (plexus) node2[PROPS] = { plexus: plainKeys(plexus) };
+        if (open !== void 0) node2[OPEN] = open;
+        rawInsert(parent, node2, ord);
         ops.push({ op: "create", uid: newUid, parent, order: ord, string, props: plexus ? { plexus } : void 0, open });
         return newUid;
       },
@@ -3968,7 +3979,7 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
   }
   const rawPlexus = (id) => readPlexus(rawNode(id)?.[PROPS]) ?? {};
   function itemPlexus(id, patch) {
-    const item = board.items.get(id);
+    const item = board2.items.get(id);
     const base = rawPlexus(id);
     const merged = { ...base, type: item?.type ?? base.type, ...patch };
     const known = serializeItemLayout(merged);
@@ -3984,7 +3995,7 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
     h: Math.max(MIN_SIZES[type]?.h ?? 1, h)
   });
   const sectionFloor = (id, size) => {
-    const item = board.items.get(id);
+    const item = board2.items.get(id);
     const own = rects.get(id);
     if (item?.type !== "section" || !own || !item.members.length) return size;
     const b = boundsOf(item.members.map((m) => rects.get(m)).filter(Boolean));
@@ -3992,13 +4003,13 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
     return { w: Math.max(size.w, b.x + b.w + FIT_PAD - own.x), h: Math.max(size.h, b.y + b.h + FIT_PAD - own.y) };
   };
   function ensureContainer(t) {
-    if (board.containerUid) return board.containerUid;
+    if (board2.containerUid) return board2.containerUid;
     const existing = kidsOf(raw).find((k) => readPlexus(k[PROPS])?.type === "edges");
     if (existing) return existing[UID];
     return t.create({ parent: uid, order: "last", string: "Connections", plexus: { type: "edges" }, open: false });
   }
   function refOf2(id) {
-    const item = board.items.get(id);
+    const item = board2.items.get(id);
     return item ? semanticRef(item) : `((${id}))`;
   }
   function edgeStringFor(from, to, dir, label) {
@@ -4009,20 +4020,20 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
     const list = [...touched ?? []];
     if (!list.length) return;
     t.sync();
-    const plan = sectionFitPlan(board, rects, list, skip ? { skip: new Set(skip) } : {});
+    const plan = sectionFitPlan(board2, rects, list, skip ? { skip: new Set(skip) } : {});
     if (!plan.length) return;
     const grown = new Map(plan.map((p) => [p.uid, p.rect]));
     const finalWorld = new Map(rects);
     for (const [sid, r] of grown) finalWorld.set(sid, r);
     const originOf = (pid) => pid === uid ? { x: 0, y: 0 } : finalWorld.get(pid) ?? { x: 0, y: 0 };
     for (const [sid, r] of grown) {
-      const p = originOf(board.items.get(sid).parentUid);
+      const p = originOf(board2.items.get(sid).parentUid);
       t.props(sid, itemPlexus(sid, { x: round13(r.x - p.x), y: round13(r.y - p.y), w: round13(r.w), h: round13(r.h) }));
     }
     for (const [sid, r] of grown) {
       const old = rects.get(sid);
       if (Math.abs(r.x - old.x) < 0.01 && Math.abs(r.y - old.y) < 0.01) continue;
-      for (const m of board.items.get(sid).members) {
+      for (const m of board2.items.get(sid).members) {
         if (grown.has(m)) continue;
         const mr = rects.get(m);
         t.props(m, itemPlexus(m, { x: round13(mr.x - r.x), y: round13(mr.y - r.y) }));
@@ -4033,19 +4044,19 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
     t.sync();
     const byParent = /* @__PURE__ */ new Map();
     for (const id of moved) {
-      const it = board.items.get(id);
+      const it = board2.items.get(id);
       if (!it) continue;
       if (!byParent.has(it.parentUid)) byParent.set(it.parentUid, []);
       byParent.get(it.parentUid).push(id);
     }
     const displacedIds = [];
     for (const [pid, here] of byParent) {
-      const sibs = pid === uid ? board.roots : board.items.get(pid)?.members ?? [];
-      const withSections = here.some((id) => board.items.get(id).type === "section");
+      const sibs = pid === uid ? board2.roots : board2.items.get(pid)?.members ?? [];
+      const withSections = here.some((id) => board2.items.get(id).type === "section");
       const map = /* @__PURE__ */ new Map();
       const pinned = /* @__PURE__ */ new Set();
       for (const s of sibs) {
-        const it = board.items.get(s);
+        const it = board2.items.get(s);
         if (!it || it.type === "section" && !withSections) continue;
         map.set(s, rects.get(s));
         if (it.pinned && !here.includes(s)) pinned.add(s);
@@ -4063,8 +4074,8 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
     return look ? { ...layout, look } : layout;
   };
   const cardAt = (t, string, x, y) => {
-    const parent = containerAt(board, { x: x + DEFAULT_SIZES.card.w / 2, y: y + DEFAULT_SIZES.card.h / 2 }, { rects });
-    const rel = toRelative(board, parent, { x, y }, rects);
+    const parent = containerAt(board2, { x: x + DEFAULT_SIZES.card.w / 2, y: y + DEFAULT_SIZES.card.h / 2 }, { rects });
+    const rel = toRelative(board2, parent, { x, y }, rects);
     return t.create({ parent, string, plexus: serializeItemLayout(withCardLook({ x: rel.x, y: rel.y }, string)) });
   };
   const defaultSizeFor = (item) => {
@@ -4074,9 +4085,9 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
     return { w: sizeSetting("default-card-width", DEFAULT_SIZES.card.w), h: sizeSetting("default-card-height", DEFAULT_SIZES.card.h) };
   };
   function recomputeLinks(force) {
-    if (!board) return;
+    if (!board2) return;
     const filtered = filterLinks(allLinks, linkMode);
-    const res = coveredBy(filtered, board);
+    const res = coveredBy(filtered, board2);
     const fp = `${linkMode}|${res.visible.map((l) => l.key).join(",")}|${[...res.coveredEdges].sort().join(",")}`;
     const changed = fp !== linkFingerprint;
     visibleLinks = res.visible;
@@ -4085,10 +4096,10 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
     if (changed || force) emit2("links", { links: visibleLinks, coveredEdges: covered });
   }
   function computeLinks() {
-    if (!board) return;
+    if (!board2) return;
     const boardEid = host.resolveEid({ uid });
     const eidToItems = /* @__PURE__ */ new Map();
-    for (const item of board.items.values()) {
+    for (const item of board2.items.values()) {
       if (item.type !== "card") continue;
       const t = item.target;
       const ref = t.kind === "page" ? { title: t.title } : { uid: t.uid };
@@ -4105,9 +4116,9 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
     const rows = host.q(linksQuery(), boardEid, eids, eids) || [];
     const parentStrings = /* @__PURE__ */ new Map();
     let budget = MAX_PARENT_STRINGS;
-    for (const row of rows) {
-      const su = row[2];
-      const ss = row[3];
+    for (const row2 of rows) {
+      const su = row2[2];
+      const ss = row2[3];
       if (budget <= 0) break;
       if (attrNameOf(ss) == null && !parentStrings.has(su)) {
         budget--;
@@ -4151,7 +4162,7 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
     host,
     settings,
     get board() {
-      return board;
+      return board2;
     },
     get gone() {
       return gone;
@@ -4185,18 +4196,18 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
     },
     refreshLinks,
     commitMove(uids, dx, dy) {
-      if (!board || !dx && !dy) return Promise.resolve();
+      if (!board2 || !dx && !dy) return Promise.resolve();
       return txn((t) => {
-        const top = topLevelOf(board, uids).filter((id) => !board.items.get(id).pinned);
+        const top = topLevelOf(board2, uids).filter((id) => !board2.items.get(id).pinned);
         if (!top.length) return;
         const moved = new Map(rects);
         for (const id of top) {
           const r = rects.get(id);
           moved.set(id, { ...r, x: r.x + dx, y: r.y + dy });
         }
-        const plan = new Map(membershipPlan(board, top, moved).map((p) => [p.uid, p]));
+        const plan = new Map(membershipPlan(board2, top, moved).map((p) => [p.uid, p]));
         for (const id of top) {
-          const item = board.items.get(id);
+          const item = board2.items.get(id);
           const p = plan.get(id);
           if (p) {
             t.move(id, p.toParent, "last");
@@ -4210,12 +4221,12 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
       });
     },
     commitRects(list) {
-      if (!board || !list?.length) return Promise.resolve();
+      if (!board2 || !list?.length) return Promise.resolve();
       return txn((t) => {
         const changedSections = [];
         const fitTouched = [];
         for (const r of list) {
-          const item = board.items.get(r.uid);
+          const item = board2.items.get(r.uid);
           if (!item || item.pinned) continue;
           fitTouched.push(r.uid);
           const parentRect = item.parentUid === uid ? { x: 0, y: 0 } : rects.get(item.parentUid) ?? { x: 0, y: 0 };
@@ -4231,7 +4242,7 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
         if (changedSections.length) {
           t.sync();
           for (const sid of changedSections) {
-            const plan = sectionAdoptPlan(board, sid, rects);
+            const plan = sectionAdoptPlan(board2, sid, rects);
             for (const p of plan) {
               t.move(p.uid, p.toParent, "last");
               t.props(p.uid, itemPlexus(p.uid, { x: p.x, y: p.y }));
@@ -4245,8 +4256,8 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
     createCard({ x, y, string = "", w, h } = {}) {
       return txn((t) => {
         const size = { w: w ?? DEFAULT_SIZES.card.w, h: h ?? DEFAULT_SIZES.card.h };
-        const parent = containerAt(board, { x: x + size.w / 2, y: y + size.h / 2 }, { rects });
-        const rel = toRelative(board, parent, { x, y }, rects);
+        const parent = containerAt(board2, { x: x + size.w / 2, y: y + size.h / 2 }, { rects });
+        const rel = toRelative(board2, parent, { x, y }, rects);
         const layout = withCardLook({ x: rel.x, y: rel.y }, string);
         if (w !== void 0) layout.w = w;
         if (h !== void 0) layout.h = h;
@@ -4257,8 +4268,8 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
     },
     createText({ x, y, string = "" } = {}) {
       return txn((t) => {
-        const parent = containerAt(board, { x: x + DEFAULT_SIZES.text.w / 2, y: y + DEFAULT_SIZES.text.h / 2 }, { rects });
-        const rel = toRelative(board, parent, { x, y }, rects);
+        const parent = containerAt(board2, { x: x + DEFAULT_SIZES.text.w / 2, y: y + DEFAULT_SIZES.text.h / 2 }, { rects });
+        const rel = toRelative(board2, parent, { x, y }, rects);
         const id = t.create({ parent, string, plexus: serializeItemLayout({ type: "text", x: rel.x, y: rel.y }) });
         applyFit(t, [id]);
         return id;
@@ -4269,7 +4280,7 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
     },
     wrapInSection(uids) {
       return txn((t) => {
-        const top = topLevelOf(board, uids);
+        const top = topLevelOf(board2, uids);
         const b = boundsOf(top.map((id) => rects.get(id)));
         if (!b) return null;
         const pad = 32;
@@ -4289,28 +4300,28 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
     },
     wrapInBoard(uids) {
       return txn((t) => {
-        const top = topLevelOf(board, uids);
+        const top = topLevelOf(board2, uids);
         const b = boundsOf(top.map((id) => rects.get(id)));
         if (!b) return null;
-        const card = { x: b.x, y: b.y, w: Math.min(480, Math.max(240, b.w)), h: Math.min(360, Math.max(180, b.h)) };
-        const boardUid = makeBoard(t, card, "", new Set(top), b);
+        const card2 = { x: b.x, y: b.y, w: Math.min(480, Math.max(240, b.w)), h: Math.min(360, Math.max(180, b.h)) };
+        const boardUid = makeBoard(t, card2, "", new Set(top), b);
         moveItemsInto(t, top, boardUid, { x: b.x, y: b.y }, { x: 0, y: 0 });
         applyFit(t, [boardUid]);
         return boardUid;
       });
     },
     moveIntoBoard(uids, boardUid) {
-      if (!board || destroyed) return Promise.resolve(null);
-      const target = board.items.get(boardUid);
+      if (!board2 || destroyed) return Promise.resolve(null);
+      const target = board2.items.get(boardUid);
       if (!target || target.kind !== "board" || !target.enhanced) return Promise.resolve(null);
-      const top = topLevelOf(board, uids).filter((id) => id !== boardUid && !descendantsOf(board, id).has(boardUid));
+      const top = topLevelOf(board2, uids).filter((id) => id !== boardUid && !descendantsOf(board2, id).has(boardUid));
       if (!top.length) return Promise.resolve(null);
       const preview = boardPreview(target);
       const cb = preview.bounds;
       const place = cb ? { x: cb.x + cb.w + 48, y: cb.y } : { x: 0, y: 0 };
       const origin = boundsOf(top.map((id) => rects.get(id)));
       const moved = new Set(top);
-      for (const id of top) for (const d of descendantsOf(board, id)) moved.add(d);
+      for (const id of top) for (const d of descendantsOf(board2, id)) moved.add(d);
       const undoItems = top.map((id) => {
         const hit = ix().get(id);
         return { uid: id, parentUid: hit.parent[UID], order: kidsOf(hit.parent).indexOf(hit.node), plexus: clone(readPlexus(hit.node[PROPS])) };
@@ -4344,7 +4355,7 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
     },
     renameBoard(id, title) {
       return txn((t) => {
-        const cur0 = board.items.get(id);
+        const cur0 = board2.items.get(id);
         if (cur0?.kind !== "board" || !cur0.enhanced) return;
         const cur = rawNode(id)?.[STR];
         if (cur === void 0) return;
@@ -4362,56 +4373,56 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
     },
     deleteItems(uids, { withContents = false, force = false } = {}) {
       return txn((t) => {
-        const protectedItem = (id) => board.items.get(id).pinned || withContents && [...descendantsOf(board, id)].some((d) => board.items.get(d).pinned);
-        const set = new Set([...uids].filter((id) => board.items.has(id) && (force || !protectedItem(id))));
+        const protectedItem = (id) => board2.items.get(id).pinned || withContents && [...descendantsOf(board2, id)].some((d) => board2.items.get(d).pinned);
+        const set = new Set([...uids].filter((id) => board2.items.has(id) && (force || !protectedItem(id))));
         if (!set.size) return;
         let edgeSet;
         if (withContents) {
-          edgeSet = edgesTouching(board, set);
+          edgeSet = edgesTouching(board2, set);
         } else {
           edgeSet = /* @__PURE__ */ new Set();
-          for (const e of board.edges.values()) if (set.has(e.from) || set.has(e.to)) edgeSet.add(e.uid);
+          for (const e of board2.edges.values()) if (set.has(e.from) || set.has(e.to)) edgeSet.add(e.uid);
           for (const id of set) {
-            const item = board.items.get(id);
+            const item = board2.items.get(id);
             if (item.type !== "section") continue;
             let survivor = item.parentUid;
-            while (survivor !== uid && set.has(survivor)) survivor = board.items.get(survivor).parentUid;
+            while (survivor !== uid && set.has(survivor)) survivor = board2.items.get(survivor).parentUid;
             for (const m of item.members) {
               if (set.has(m)) continue;
               const r = rects.get(m);
-              const rel = toRelative(board, survivor, { x: r.x, y: r.y }, rects);
+              const rel = toRelative(board2, survivor, { x: r.x, y: r.y }, rects);
               t.move(m, survivor, "last");
               t.props(m, itemPlexus(m, { x: rel.x, y: rel.y }));
             }
           }
         }
         for (const id of edgeSet) t.del(id);
-        const explicit = withContents ? topLevelOf(board, set) : [...set].filter((id) => !set.has(board.items.get(id).parentUid));
+        const explicit = withContents ? topLevelOf(board2, set) : [...set].filter((id) => !set.has(board2.items.get(id).parentUid));
         for (const id of explicit) t.del(id);
       });
     },
     setColor(uids, color) {
       return txn((t) => {
         for (const id of uids) {
-          if (board.items.has(id)) t.props(id, itemPlexus(id, { color: color ?? void 0 }));
-          else if (board.edges.has(id)) t.props(id, edgePlexus(id, { color: color ?? void 0 }));
+          if (board2.items.has(id)) t.props(id, itemPlexus(id, { color: color ?? void 0 }));
+          else if (board2.edges.has(id)) t.props(id, edgePlexus(id, { color: color ?? void 0 }));
         }
       });
     },
     setCollapsed(id, value) {
       return txn((t) => {
-        if (board.items.has(id)) t.props(id, itemPlexus(id, { collapsed: value ? true : void 0 }));
+        if (board2.items.has(id)) t.props(id, itemPlexus(id, { collapsed: value ? true : void 0 }));
       });
     },
     // Roam :block/open on the card block only. Fold stays on plexus collapsed.
     setBlockOpen(id, open) {
-      const item = board?.items.get(id);
+      const item = board2?.items.get(id);
       if (!item || item.type !== "card") return Promise.resolve(false);
-      const node = rawNode(id);
-      if (!node) return Promise.resolve(false);
+      const node2 = rawNode(id);
+      if (!node2) return Promise.resolve(false);
       const next = open !== false;
-      if (node[OPEN] !== false === next) return Promise.resolve(false);
-      node[OPEN] = next;
+      if (node2[OPEN] !== false === next) return Promise.resolve(false);
+      node2[OPEN] = next;
       publish();
       return queue.run(async () => {
         await host.setOpen(id, next);
@@ -4423,14 +4434,14 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
     },
     setFontSize(id, size) {
       return txn((t) => {
-        if (board.items.has(id)) t.props(id, itemPlexus(id, { fontSize: size }));
+        if (board2.items.has(id)) t.props(id, itemPlexus(id, { fontSize: size }));
       });
     },
     // One undo step. Cards and text only. null clears a key. Invalid values are dropped by serialize.
     setItemStyle(uids, patch = {}) {
       return txn((t) => {
         const ids = capBulk([...new Set(uids ?? [])].filter((id) => {
-          const item = board.items.get(id);
+          const item = board2.items.get(id);
           return item && item.type !== "section";
         }), emit2);
         let n = 0;
@@ -4456,7 +4467,7 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
     },
     setSectionStyle(uids, patch = {}) {
       return txn((t) => {
-        const ids = capBulk([...new Set(uids ?? [])].filter((id) => board.items.get(id)?.type === "section"), emit2);
+        const ids = capBulk([...new Set(uids ?? [])].filter((id) => board2.items.get(id)?.type === "section"), emit2);
         let n = 0;
         for (const id of ids) {
           const nextPatch = {};
@@ -4481,16 +4492,16 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
     // Board-level section defaults on plexus.defaults.section. null removes a key.
     setSectionDefaults(patch = {}) {
       return txn((t) => {
-        if (!board.enhanced) return false;
+        if (!board2.enhanced) return false;
         const base = rawPlexus(uid);
         const prevDefaults = base.defaults && typeof base.defaults === "object" && !Array.isArray(base.defaults) ? base.defaults : {};
-        const section = prevDefaults.section && typeof prevDefaults.section === "object" ? { ...prevDefaults.section } : {};
+        const section2 = prevDefaults.section && typeof prevDefaults.section === "object" ? { ...prevDefaults.section } : {};
         for (const k of SECTION_STYLE_KEYS) {
           if (!Object.prototype.hasOwnProperty.call(patch, k)) continue;
-          if (patch[k] == null) delete section[k];
-          else section[k] = patch[k];
+          if (patch[k] == null) delete section2[k];
+          else section2[k] = patch[k];
         }
-        const clean = normalizeSectionDefaults(section);
+        const clean = normalizeSectionDefaults(section2);
         const next = { ...base, defaults: { ...prevDefaults } };
         if (Object.keys(clean).length) next.defaults.section = clean;
         else {
@@ -4508,7 +4519,7 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
     },
     setLook(id, look) {
       return txn((t) => {
-        const item = board.items.get(id);
+        const item = board2.items.get(id);
         if (!item || item.type !== "card") return;
         if (look !== "block" && look !== "card") return;
         t.props(id, itemPlexus(id, { look }));
@@ -4523,7 +4534,7 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
     },
     growToFit(id, contentHeight) {
       return txn((t) => {
-        const item = board.items.get(id);
+        const item = board2.items.get(id);
         if (!item || item.type === "section") return;
         const target = Math.min(900, Math.ceil(contentHeight));
         if (!(target > item.h)) return;
@@ -4533,7 +4544,7 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
     },
     fitSection(id, { shrink = true } = {}) {
       return txn((t) => {
-        const item = board.items.get(id);
+        const item = board2.items.get(id);
         if (!item || item.type !== "section" || !item.members.length) return false;
         const own = rects.get(id);
         const bounds = boundsOf(item.members.map((m) => rects.get(m)));
@@ -4557,7 +4568,7 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
     },
     setFit(id, on) {
       return txn((t) => {
-        const item = board.items.get(id);
+        const item = board2.items.get(id);
         if (!item || item.type !== "section") return;
         const want = on === false ? false : void 0;
         if (item.autofit === false === (want === false)) return;
@@ -4567,7 +4578,7 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
     setPinned(uids, on) {
       return txn((t) => {
         for (const id of new Set(uids ?? [])) {
-          const item = board.items.get(id);
+          const item = board2.items.get(id);
           if (!item || item.pinned === Boolean(on)) continue;
           t.props(id, itemPlexus(id, { pinned: on ? true : void 0 }));
         }
@@ -4575,18 +4586,18 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
     },
     // One undo step. Pins or unpins the section and everything inside it. Does not write x/y/w/h.
     lockSection(id, on = true) {
-      const item = board?.items.get(id);
+      const item = board2?.items.get(id);
       if (!item || item.type !== "section") return Promise.resolve(false);
-      return this.setPinned([id, ...descendantsOf(board, id)], Boolean(on));
+      return this.setPinned([id, ...descendantsOf(board2, id)], Boolean(on));
     },
     // Adds the description line, or deletes it. The block is a text child with look section-note.
     // No auto-fit: the section's stored size stays put.
     toggleSectionNote(id, string = "Description") {
       return txn((t) => {
-        const item = board.items.get(id);
+        const item = board2.items.get(id);
         if (!item || item.type !== "section") return null;
         const existing = item.members.find((m) => {
-          const kid = board.items.get(m);
+          const kid = board2.items.get(m);
           return kid?.type === "text" && kid.look === "section-note";
         });
         if (existing) {
@@ -4605,7 +4616,7 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
     // Resolves true when applied (or already equal), false when rejected.
     setBoardBackground({ bg, bgColor } = {}) {
       return txn((t) => {
-        if (!board.enhanced) return false;
+        if (!board2.enhanced) return false;
         let tone = bgColor;
         if (bg != null && !BOARD_PATTERNS.includes(bg)) return false;
         if (tone != null) {
@@ -4627,7 +4638,7 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
       return txn((t) => {
         let count = 0;
         for (const id of new Set(uids ?? [])) {
-          const item = board.items.get(id);
+          const item = board2.items.get(id);
           if (!item || item.type !== "card" || item.collapsed === Boolean(value)) continue;
           t.props(id, itemPlexus(id, { collapsed: value ? true : void 0 }));
           count++;
@@ -4638,10 +4649,10 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
     collapseAll(value, { within = null, except = [] } = {}) {
       return txn((t) => {
         const skipIds = new Set(except ?? []);
-        const pool = within ? [...descendantsOf(board, within)] : [...board.items.keys()];
+        const pool = within ? [...descendantsOf(board2, within)] : [...board2.items.keys()];
         let count = 0;
         for (const id of pool) {
-          const item = board.items.get(id);
+          const item = board2.items.get(id);
           if (!item || item.type !== "card" || skipIds.has(id) || item.collapsed === Boolean(value)) continue;
           t.props(id, itemPlexus(id, { collapsed: value ? true : void 0 }));
           count++;
@@ -4653,29 +4664,29 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
     // selected items are tidied among themselves. Writes only x and y. Resolves the number of items moved.
     tidyItems(uids, mode = "grid", { gap } = {}) {
       return txn((t) => {
-        const top = topLevelOf(board, uids ?? []);
+        const top = topLevelOf(board2, uids ?? []);
         const groups = /* @__PURE__ */ new Map();
-        if (top.length === 1 && board.items.get(top[0]).type === "section") {
-          groups.set(top[0], board.items.get(top[0]).members.filter((m) => !board.items.get(m).pinned));
+        if (top.length === 1 && board2.items.get(top[0]).type === "section") {
+          groups.set(top[0], board2.items.get(top[0]).members.filter((m) => !board2.items.get(m).pinned));
         } else {
           for (const id of top) {
-            const it = board.items.get(id);
+            const it = board2.items.get(id);
             if (it.pinned) continue;
             if (!groups.has(it.parentUid)) groups.set(it.parentUid, []);
             groups.get(it.parentUid).push(id);
           }
         }
         const opts = gap !== void 0 ? { gap } : {};
-        if (mode === "outline") opts.order = outlineOrder(board);
+        if (mode === "outline") opts.order = outlineOrder(board2);
         const moved = [];
         for (const ids of groups.values()) {
           if (ids.length < 2) continue;
           const list = ids.map((id) => {
-            const it = board.items.get(id);
+            const it = board2.items.get(id);
             return { uid: id, x: it.x, y: it.y, w: it.w, h: it.h };
           });
           for (const p of tidyRects(list, mode, opts)) {
-            const it = board.items.get(p.uid);
+            const it = board2.items.get(p.uid);
             if (Math.abs(p.x - it.x) < 0.05 && Math.abs(p.y - it.y) < 0.05) continue;
             t.props(p.uid, itemPlexus(p.uid, { x: round13(p.x), y: round13(p.y) }));
             moved.push(p.uid);
@@ -4687,11 +4698,11 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
     },
     sameSize(uids, primaryUid, mode = "both") {
       return txn((t) => {
-        const ids = [.../* @__PURE__ */ new Set([...uids ?? [], primaryUid])].filter((id) => board.items.has(id));
-        const list = ids.map((id) => ({ uid: id, w: board.items.get(id).w, h: board.items.get(id).h }));
+        const ids = [.../* @__PURE__ */ new Set([...uids ?? [], primaryUid])].filter((id) => board2.items.has(id));
+        const list = ids.map((id) => ({ uid: id, w: board2.items.get(id).w, h: board2.items.get(id).h }));
         const changed = [];
         for (const c of sameSize(list, primaryUid, mode)) {
-          const item = board.items.get(c.uid);
+          const item = board2.items.get(c.uid);
           if (item.pinned) continue;
           const size = sectionFloor(c.uid, clampSize(item.type, c.w, c.h));
           if (round13(size.w) === item.w && round13(size.h) === item.h) continue;
@@ -4706,7 +4717,7 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
       return txn((t) => {
         const changed = [];
         for (const id of new Set(uids ?? [])) {
-          const item = board.items.get(id);
+          const item = board2.items.get(id);
           if (!item || item.pinned) continue;
           const d = sectionFloor(id, defaultSizeFor(item));
           const w = round13(d.w);
@@ -4722,7 +4733,7 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
     // Sets the height from measured content, shrinking as well as growing (growToFit only grows).
     fitToContent(id, contentHeight) {
       return txn((t) => {
-        const item = board.items.get(id);
+        const item = board2.items.get(id);
         if (!item || item.type === "section" || !Number.isFinite(contentHeight)) return;
         const target = Math.min(900, Math.max(MIN_SIZES[item.type]?.h ?? 1, Math.ceil(contentHeight)));
         if (target === item.h) return;
@@ -4733,10 +4744,10 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
     addDailyCards(dates, { x = 0, y = 0 } = {}) {
       return txn((t) => {
         const have = /* @__PURE__ */ new Set();
-        for (const item of board.items.values()) if (item.kind === "page") have.add(item.target.title);
+        for (const item of board2.items.values()) if (item.kind === "page") have.add(item.target.title);
         const made = [];
         const size = defaultSizeFor({ type: "card", kind: "page" });
-        const occupied = [...board.items.values()].filter((it) => it.type !== "section").map((it) => rects.get(it.uid)).filter(Boolean);
+        const occupied = [...board2.items.values()].filter((it) => it.type !== "section").map((it) => rects.get(it.uid)).filter(Boolean);
         let slotX = x;
         const freeSlot = () => {
           const at = () => ({ x: slotX, y, w: size.w, h: size.h });
@@ -4759,8 +4770,8 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
     },
     addEdge({ from, to, fromSide, toSide, label = "", dir = "one" } = {}) {
       return txn((t) => {
-        if (!from || !to || from === to || !board.items.has(from) || !board.items.has(to)) return null;
-        const existing = findEdge(board, from, to);
+        if (!from || !to || from === to || !board2.items.has(from) || !board2.items.has(to)) return null;
+        const existing = findEdge(board2, from, to);
         if (existing && existing.dir === dir) return existing.uid;
         const container = ensureContainer(t);
         const props = serializeEdge({ from, to, dir, fromSide, toSide });
@@ -4769,7 +4780,7 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
     },
     updateEdge(id, patch = {}) {
       return txn((t) => {
-        const edge = board.edges.get(id);
+        const edge = board2.edges.get(id);
         if (!edge) return;
         const { label, ...rest } = patch;
         const next = edgePlexus(id, rest);
@@ -4783,7 +4794,7 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
     },
     flipEdge(id) {
       return txn((t) => {
-        const edge = board.edges.get(id);
+        const edge = board2.edges.get(id);
         if (!edge) return;
         t.props(id, edgePlexus(id, { from: edge.to, to: edge.from, fromSide: edge.toSide, toSide: edge.fromSide }));
         t.string(id, edgeStringFor(edge.to, edge.from, edge.dir, edge.label));
@@ -4791,7 +4802,7 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
     },
     deleteEdges(uids) {
       return txn((t) => {
-        for (const id of uids) if (board.edges.has(id)) t.del(id);
+        for (const id of uids) if (board2.edges.has(id)) t.del(id);
       });
     },
     pinLink(link) {
@@ -4800,15 +4811,15 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
       return session.addEdge({ from: link.from, to: link.to, label, dir: "one" });
     },
     async writeToGraph(edgeUid) {
-      const edge = board?.edges.get(edgeUid);
+      const edge = board2?.edges.get(edgeUid);
       if (!edge) return { ok: false, reason: "unresolved" };
       const label = String(edge.label ?? "").trim();
       if (!label) return { ok: false, reason: "empty-label" };
       if (label.includes("::")) return { ok: false, reason: "invalid-label" };
       if (/^BT_attr/i.test(label)) return { ok: false, reason: "reserved-label" };
       if (label.length > 60) return { ok: false, reason: "too-long" };
-      const src = board.items.get(edge.from);
-      const dst = board.items.get(edge.to);
+      const src = board2.items.get(edge.from);
+      const dst = board2.items.get(edge.to);
       if (!src || !dst) return { ok: false, reason: "unresolved" };
       const dstRef = semanticRef(dst);
       try {
@@ -4855,8 +4866,8 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
       }
     },
     async enhance() {
-      if (!board) return { enhanced: false, reason: "no-board" };
-      if (board.enhanced) return { enhanced: false, reason: "already" };
+      if (!board2) return { enhanced: false, reason: "no-board" };
+      if (board2.enhanced) return { enhanced: false, reason: "already" };
       let source = readV06Entry(host, uid);
       let kind = "v06";
       if (!source) {
@@ -4864,13 +4875,13 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
         source = native.nodes.length ? native : null;
         kind = source ? "native" : "none";
       }
-      const plan = planImport(board, source, { gen: () => host.generateUid() });
+      const plan = planImport(board2, source, { gen: () => host.generateUid() });
       const collapse = collapseOutline() && raw?.[OPEN] !== false;
       let counts = null;
       try {
         counts = await queue.run(() => grouped(async () => {
           ledger.clear();
-          const done = await executeImport(plan, host, board);
+          const done = await executeImport(plan, host, board2);
           if (collapse) await host.setOpen(uid, false);
           return done;
         }));
@@ -4902,8 +4913,8 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
     }
   };
   function makeBoard(t, rect, title, exclude, centerOf3 = rect) {
-    const parent = containerAt(board, { x: centerOf3.x + centerOf3.w / 2, y: centerOf3.y + centerOf3.h / 2 }, { rects, exclude });
-    const rel = toRelative(board, parent, { x: rect.x, y: rect.y }, rects);
+    const parent = containerAt(board2, { x: centerOf3.x + centerOf3.w / 2, y: centerOf3.y + centerOf3.h / 2 }, { rects, exclude });
+    const rel = toRelative(board2, parent, { x: rect.x, y: rect.y }, rects);
     return t.create({
       parent,
       string: boardString(title),
@@ -4912,7 +4923,7 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
     });
   }
   function moveItemsInto(t, top, boardUid, origin, place, track = {}) {
-    const moved = track.moved ?? new Set([...top].flatMap((id) => [id, ...descendantsOf(board, id)]));
+    const moved = track.moved ?? new Set([...top].flatMap((id) => [id, ...descendantsOf(board2, id)]));
     for (const id of top) {
       const r = rects.get(id);
       t.move(id, boardUid, insertOrder(boardUid));
@@ -4931,7 +4942,7 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
       return childContainer;
     };
     const taken = /* @__PURE__ */ new Set();
-    const touched = [...board.edges.values()].filter((e) => moved.has(e.from) || moved.has(e.to));
+    const touched = [...board2.edges.values()].filter((e) => moved.has(e.from) || moved.has(e.to));
     const snapshots = /* @__PURE__ */ new Map();
     for (const e of touched) {
       const hit = ix().get(e.uid);
@@ -4949,7 +4960,7 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
       }
       const from = moved.has(e.from) ? boardUid : e.from;
       const to = moved.has(e.to) ? boardUid : e.to;
-      const dup = findEdge(board, from, to);
+      const dup = findEdge(board2, from, to);
       const key = `${from}>${to}`;
       if (from === to || dup && dup.uid !== e.uid || taken.has(key)) {
         if (snapshot) snapshot.deleted = true;
@@ -4962,9 +4973,9 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
     }
   }
   function makeSection(t, rect, title, color, adopt) {
-    const parent = containerAt(board, { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 }, { rects });
-    const rel = toRelative(board, parent, { x: rect.x, y: rect.y }, rects);
-    const members = adopt ?? itemsInRect(board, rect, rects, { mode: "contain" });
+    const parent = containerAt(board2, { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 }, { rects });
+    const rel = toRelative(board2, parent, { x: rect.x, y: rect.y }, rects);
+    const members = adopt ?? itemsInRect(board2, rect, rects, { mode: "contain" });
     const size = clampSize("section", rect.w, rect.h);
     const sectionUid = t.create({
       parent,
@@ -4979,7 +4990,7 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
     }
     return sectionUid;
   }
-  if (linkMode !== "off" && board) refreshLinks();
+  if (linkMode !== "off" && board2) refreshLinks();
   const api = {
     uid,
     host,
@@ -4996,7 +5007,7 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
     edgeStringFor,
     refOf: refOf2,
     applyFit,
-    board: () => board,
+    board: () => board2,
     rects: () => rects,
     queue,
     isGone: () => gone || destroyed,
@@ -5048,26 +5059,26 @@ var STACK_GAP = 24;
 var OUTLINE_CARD = { w: 240, h: 72 };
 var OUTLINE_DEPTH = 3;
 var OUTLINE_DIRECTIONS = ["right", "down", "balanced"];
-function findNode2(node, uid) {
-  if (!node) return null;
-  if (node[UID2] === uid) return node;
-  for (const c of node[KIDS2] ?? []) {
+function findNode2(node2, uid) {
+  if (!node2) return null;
+  if (node2[UID2] === uid) return node2;
+  for (const c of node2[KIDS2] ?? []) {
     const hit = findNode2(c, uid);
     if (hit) return hit;
   }
   return null;
 }
-var isEnhancedBoardNode = (node) => Boolean(node) && readPlexus(node[PROPS2])?.v === 2 && classifyString(node[STR2]).kind === "board";
+var isEnhancedBoardNode = (node2) => Boolean(node2) && readPlexus(node2[PROPS2])?.v === 2 && classifyString(node2[STR2]).kind === "board";
 extendSession((session, api) => {
   const { host } = api;
   const gen = () => host.generateUid();
   function placeCard(t, string, x, y, { w, h, color } = {}, exclude) {
-    const board = api.board();
+    const board2 = api.board();
     const rects = api.rects();
     const cw = w ?? DEFAULT_SIZES.card.w;
     const ch = h ?? DEFAULT_SIZES.card.h;
-    const parent = containerAt(board, { x: x + cw / 2, y: y + ch / 2 }, { rects, exclude });
-    const rel = toRelative(board, parent, { x, y }, rects);
+    const parent = containerAt(board2, { x: x + cw / 2, y: y + ch / 2 }, { rects, exclude });
+    const rel = toRelative(board2, parent, { x, y }, rects);
     const layout = { x: rel.x, y: rel.y };
     if (w !== void 0) layout.w = w;
     if (h !== void 0) layout.h = h;
@@ -5077,7 +5088,7 @@ extendSession((session, api) => {
     return t.create({ parent, string, plexus: serializeItemLayout(layout) });
   }
   function cloneSet(t, src, entries, exclude) {
-    const board = api.board();
+    const board2 = api.board();
     const rects = api.rects();
     const at = new Map(entries.map((e) => [e.uid, e]));
     const uidMap = /* @__PURE__ */ new Map();
@@ -5085,26 +5096,26 @@ extendSession((session, api) => {
     for (const id of topLevelOf(src.board, entries.map((e) => e.uid))) {
       const e = at.get(id);
       const item = src.board.items.get(id);
-      const node = src.node(id);
-      if (!item || !node) continue;
+      const node2 = src.node(id);
+      if (!item || !node2) continue;
       if (item.kind === "board" && !item.enhanced) continue;
-      const parent = containerAt(board, { x: e.x + item.w / 2, y: e.y + item.h / 2 }, { rects, exclude });
-      const rel = toRelative(board, parent, { x: e.x, y: e.y }, rects);
+      const parent = containerAt(board2, { x: e.x + item.w / 2, y: e.y + item.h / 2 }, { rects, exclude });
+      const rel = toRelative(board2, parent, { x: e.x, y: e.y }, rects);
       const x = api.round1(rel.x);
       const y = api.round1(rel.y);
       const simple = item.type === "text" || ["page", "block", "image"].includes(item.kind);
       if (simple) {
-        const plexus = { ...readPlexus(node[PROPS2]) ?? {}, x, y };
+        const plexus = { ...readPlexus(node2[PROPS2]) ?? {}, x, y };
         delete plexus.pinned;
         const fresh = gen();
         uidMap.set(id, fresh);
-        t.create({ parent, uid: fresh, string: node[STR2] ?? "", plexus });
+        t.create({ parent, uid: fresh, string: node2[STR2] ?? "", plexus });
         tops.push(fresh);
         continue;
       }
       const patch = { x, y };
       if (item.type === "section") Object.assign(patch, { type: "section", w: item.w, h: item.h });
-      const plan = planSubtreeClone(node, { genUid: gen, parentUid: parent, order: api.insertOrder(parent), plexusPatch: patch, uidMap });
+      const plan = planSubtreeClone(node2, { genUid: gen, parentUid: parent, order: api.insertOrder(parent), plexusPatch: patch, uidMap });
       const oldOf = new Map([...uidMap].map(([o, n]) => [n, o]));
       for (const c of plan.creates) {
         const plexus = c.props?.[PLEXUS_KEY] ? { ...c.props[PLEXUS_KEY] } : null;
@@ -5146,9 +5157,9 @@ extendSession((session, api) => {
     // New top-level uids. asRef=true makes ref cards instead. The pinned flag is not copied.
     duplicateItems(uids, { dx = 24, dy = 24, asRef = false } = {}) {
       return api.txn((t) => {
-        const board = api.board();
+        const board2 = api.board();
         const rects = api.rects();
-        const top = topLevelOf(board, uids ?? []);
+        const top = topLevelOf(board2, uids ?? []);
         if (!top.length) return [];
         const exclude = new Set(top);
         let made;
@@ -5159,7 +5170,7 @@ extendSession((session, api) => {
           });
         } else {
           const entries = top.map((id) => ({ uid: id, x: rects.get(id).x + dx, y: rects.get(id).y + dy }));
-          made = cloneSet(t, { board, node: api.rawNode }, entries, exclude);
+          made = cloneSet(t, { board: board2, node: api.rawNode }, entries, exclude);
         }
         api.applyFit(t, made);
         return made;
@@ -5168,16 +5179,16 @@ extendSession((session, api) => {
     // A detached copy of the items (and their subtrees and the connections between them) as a synthetic board
     // tree. A cut puts it in the clipboard payload, so the paste no longer depends on the deleted blocks.
     snapshotItems(uids) {
-      const board = api.board();
-      if (!board) return null;
-      const top = topLevelOf(board, uids ?? []);
+      const board2 = api.board();
+      if (!board2) return null;
+      const top = topLevelOf(board2, uids ?? []);
       if (!top.length) return null;
       const set = new Set(top);
-      for (const id of top) for (const d of descendantsOf(board, id)) set.add(d);
+      for (const id of top) for (const d of descendantsOf(board2, id)) set.add(d);
       const copy = (id) => JSON.parse(JSON.stringify(api.rawNode(id) ?? null));
       const nodes = top.map(copy).filter(Boolean);
       if (!nodes.length) return null;
-      const edgeNodes = [...board.edges.values()].filter((e) => e.valid && set.has(e.from) && set.has(e.to)).map((e) => copy(e.uid)).filter(Boolean);
+      const edgeNodes = [...board2.edges.values()].filter((e) => e.valid && set.has(e.from) && set.has(e.to)).map((e) => copy(e.uid)).filter(Boolean);
       if (edgeNodes.length) nodes.push({ [UID2]: "plexus-cut-edges", [STR2]: "Connections", [PROPS2]: { [PLEXUS_KEY]: { type: "edges" } }, [KIDS2]: edgeNodes });
       return { [UID2]: session.uid, [STR2]: "", [KIDS2]: nodes };
     },
@@ -5193,15 +5204,15 @@ extendSession((session, api) => {
         if (mode === "clone") {
           let src;
           if (payload.snapshot && typeof payload.snapshot === "object") {
-            const board = buildBoard(payload.snapshot);
-            if (!board) return [];
-            src = { board, node: (id) => findNode2(payload.snapshot, id) };
+            const board2 = buildBoard(payload.snapshot);
+            if (!board2) return [];
+            src = { board: board2, node: (id) => findNode2(payload.snapshot, id) };
           } else if (payload.board === session.uid) src = { board: api.board(), node: api.rawNode };
           else {
             const pulled = host.pullBoard(payload.board);
-            const board = pulled ? buildBoard(pulled) : null;
-            if (!board) return [];
-            src = { board, node: (id) => findNode2(pulled, id) };
+            const board2 = pulled ? buildBoard(pulled) : null;
+            if (!board2) return [];
+            src = { board: board2, node: (id) => findNode2(pulled, id) };
           }
           const bounds = payload.bounds ?? boundsOf(payload.items) ?? { x: 0, y: 0 };
           const entries = payload.items.map((i) => ({ uid: i.uid, x: x + (i.x - bounds.x), y: y + (i.y - bounds.y) }));
@@ -5225,15 +5236,15 @@ extendSession((session, api) => {
     },
     // Adds ref cards for the items to the right of the target board's content. Resolves {added, title} or null.
     sendToBoard(uids, targetUid) {
-      const board = api.board();
-      if (!board || !targetUid || targetUid === session.uid) return Promise.resolve(null);
-      const top = topLevelOf(board, uids ?? []).filter((id) => id !== targetUid);
+      const board2 = api.board();
+      if (!board2 || !targetUid || targetUid === session.uid) return Promise.resolve(null);
+      const top = topLevelOf(board2, uids ?? []).filter((id) => id !== targetUid);
       if (!top.length) return Promise.resolve(null);
-      const node = api.rawNode(targetUid);
-      if (node) {
-        if (!isEnhancedBoardNode(node)) return Promise.resolve(null);
-        const origin2 = outlineOrigin(boardPreview({ uid: targetUid, string: node[STR2], content: node[KIDS2] ?? [] }));
-        const title = parseBoardTitle(node[STR2]) || UNTITLED_BOARD;
+      const node2 = api.rawNode(targetUid);
+      if (node2) {
+        if (!isEnhancedBoardNode(node2)) return Promise.resolve(null);
+        const origin2 = outlineOrigin(boardPreview({ uid: targetUid, string: node2[STR2], content: node2[KIDS2] ?? [] }));
+        const title = parseBoardTitle(node2[STR2]) || UNTITLED_BOARD;
         return api.txn((t) => {
           for (const c of stackAt(top.map((id) => api.refOf(id)), origin2.x, origin2.y)) {
             t.create({ parent: targetUid, string: c.string, plexus: serializeItemLayout({ x: c.x, y: c.y }) });
@@ -5266,8 +5277,8 @@ extendSession((session, api) => {
     // connection per parent -> child. Children that already have a card on this board are reused, not moved.
     expandOutline(cardUid, { direction = "right", max = 24 } = {}) {
       const none = { added: 0, edges: 0 };
-      const board = api.board();
-      const item = board?.items.get(cardUid);
+      const board2 = api.board();
+      const item = board2?.items.get(cardUid);
       if (!item || item.type !== "card") return Promise.resolve(none);
       const plain = (list) => list.filter((n) => n?.uid).map((n) => ({ uid: n.uid, children: plain(n.children ?? []) }));
       const rawTree = (list) => list.filter((n) => n?.[UID2]).map((n) => ({ uid: n[UID2], children: rawTree(api.kidsOf(n)) }));
@@ -5292,7 +5303,7 @@ extendSession((session, api) => {
       const rects = api.rects();
       const own = rects.get(cardUid);
       const onBoard = /* @__PURE__ */ new Map();
-      for (const it of board.items.values()) {
+      for (const it of board2.items.values()) {
         if (it.uid !== cardUid && it.kind === "block" && !onBoard.has(it.target.uid)) onBoard.set(it.target.uid, it.uid);
       }
       const nodes = new Map(picked.map((f) => {
@@ -5330,7 +5341,7 @@ extendSession((session, api) => {
         for (const f of picked) {
           const from = f.parent && cardOf.has(f.parent) ? cardOf.get(f.parent) : cardUid;
           const to = cardOf.get(f.uid);
-          if (from === to || findEdge(board, from, to)) continue;
+          if (from === to || findEdge(board2, from, to)) continue;
           container ?? (container = api.ensureContainer(t));
           t.create({
             parent: container,
@@ -5346,6 +5357,153 @@ extendSession((session, api) => {
       }).then((res) => res ?? none);
     }
   });
+});
+
+// src/model/templates.js
+var TEMPLATE_PAGE = "Plexus Diagram/Templates";
+var TEMPLATE_WRITE_CAP = 45;
+var node = (id, string, plexus, children = [], open = false) => ({
+  ":block/uid": id,
+  ":block/string": string,
+  ":block/props": plexus ? { plexus } : void 0,
+  ":block/children": children,
+  ":block/open": open
+});
+var card = (id, string, x, y, w = 260, h = 140) => node(id, string, { type: "card", x, y, w, h, v: 2 });
+var section = (id, title, x, y, w = 300, h = 220) => node(id, title, { type: "section", x, y, w, h, v: 2 });
+var board = (id, title, children) => node(id, boardString(title), { v: 2 }, children, false);
+function flow(steps) {
+  const cards = steps.map((title, i) => card(`s${i}`, title, 40 + i * 300, 80, 240, 120));
+  const edges = steps.slice(1).map((_, i) => node(
+    `e${i}`,
+    edgeString({ srcRef: `((s${i}))`, dstRef: `((s${i + 1}))`, dir: "one" }),
+    { type: "edge", from: `s${i}`, to: `s${i + 1}`, dir: "one" }
+  ));
+  return [...cards, node("edges", "Connections", { type: "edges" }, edges, false)];
+}
+var row = (labels, y = 40, w = 300, h = 360, gap = 24) => labels.map((title, i) => section(
+  `c${i}`,
+  title,
+  40 + i * (w + gap),
+  y,
+  w,
+  h
+));
+var STARTERS = [
+  { id: "five-why", title: "5-Why", tree: board("root", "5-Why", [1, 2, 3, 4, 5].map((n) => card(`w${n}`, `Why ${n}`, 40, 40 + (n - 1) * 160))) },
+  { id: "fishbone", title: "Fishbone (6M)", tree: board("root", "Fishbone (6M)", row(["Man", "Machine", "Method", "Material", "Measurement", "Environment"], 40, 240, 280, 16)) },
+  { id: "8d", title: "8D", tree: board("root", "8D", row(["D1 Team", "D2 Problem", "D3 Containment", "D4 Root cause", "D5 Action", "D6 Implement", "D7 Prevent", "D8 Congratulate"], 40, 220, 240, 16)) },
+  { id: "swot", title: "SWOT", tree: board("root", "SWOT", row(["Strengths", "Weaknesses", "Opportunities", "Threats"])) },
+  { id: "kanban", title: "Kanban", tree: board("root", "Kanban", row(["To do", "Doing", "Done"])) },
+  { id: "timeline", title: "Timeline", tree: board("root", "Timeline", ["Start", "Middle", "Next", "End"].map((title, i) => card(`t${i}`, title, 40 + i * 300, 80, 240, 120))) },
+  { id: "process", title: "Process flow", tree: board("root", "Process flow", flow(["Receiving", "Storage", "Blending", "Filling", "Packing"])) },
+  { id: "meeting", title: "Meeting notes", tree: board("root", "Meeting notes", row(["Agenda", "Notes", "Actions"])) },
+  { id: "retro", title: "Retro", tree: board("root", "Retro", row(["Went well", "To improve", "Actions"])) }
+];
+function starterById(id) {
+  return STARTERS.find((s) => s.id === id) ?? null;
+}
+function rewriteEdgeEnds(creates, uidMap) {
+  return creates.map((op) => {
+    const px = op.props?.plexus;
+    if (!px || px.type !== "edge") return op;
+    const from = uidMap.has(px.from) ? uidMap.get(px.from) : px.from;
+    const to = uidMap.has(px.to) ? uidMap.get(px.to) : px.to;
+    return { ...op, props: { ...op.props, plexus: { ...px, from, to } } };
+  });
+}
+function chunkCreates(creates, cap2 = TEMPLATE_WRITE_CAP) {
+  const size = cap2 > 0 ? cap2 : TEMPLATE_WRITE_CAP;
+  const chunks = [];
+  for (let i = 0; i < creates.length; i += size) chunks.push(creates.slice(i, i + size));
+  return chunks;
+}
+function planCopy(tree, { genUid, parentUid, plexusPatch = null } = {}) {
+  const plan = planSubtreeClone(tree, { genUid, parentUid, plexusPatch });
+  const creates = rewriteEdgeEnds(plan.creates, plan.uidMap);
+  return { rootUid: creates[0]?.uid ?? null, creates, chunks: chunkCreates(creates), uidMap: plan.uidMap };
+}
+function planTemplate(id, opts) {
+  const starter = starterById(id);
+  if (!starter) return null;
+  return { ...planCopy(starter.tree, opts), id: starter.id, title: starter.title };
+}
+
+// src/templates.js
+var round14 = (n) => Math.round(n * 10) / 10;
+async function writeChunks(chunks, write, toast) {
+  for (let i = 0; i < chunks.length; i += 1) {
+    await write(chunks[i]);
+    if (chunks.length > 1) toast(`Template ${i + 1} of ${chunks.length}`);
+  }
+}
+extendSession((session, api) => {
+  const { host } = api;
+  session.insertTemplate = (id, rect) => {
+    const starter = starterById(id);
+    const board2 = api.board();
+    if (!starter || !board2) return Promise.resolve(null);
+    const d = DEFAULT_BOARD_CARD;
+    const r = { x: rect?.x ?? 0, y: rect?.y ?? 0, w: rect?.w ?? d.w, h: rect?.h ?? d.h };
+    const parent = containerAt(board2, { x: r.x + r.w / 2, y: r.y + r.h / 2 }, { rects: api.rects() });
+    const rel = toRelative(board2, parent, { x: r.x, y: r.y }, api.rects());
+    const plan = planTemplate(id, {
+      genUid: () => host.generateUid(),
+      parentUid: parent,
+      plexusPatch: { x: round14(rel.x), y: round14(rel.y), w: r.w, h: r.h, v: 2 }
+    });
+    if (!plan?.creates.length) return Promise.resolve(null);
+    const rootUid = plan.rootUid;
+    return writeChunks(plan.chunks, (chunk) => api.txn((t) => {
+      for (const op of chunk) {
+        t.create({
+          uid: op.uid,
+          parent: op.parent,
+          order: op.order,
+          string: op.string,
+          plexus: op.props?.plexus,
+          open: op.open
+        });
+      }
+    }), (message) => api.emit("toast", { message })).then(() => {
+      api.emit("toast", {
+        message: `Inserted ${starter.title}`,
+        action: { label: "Undo", run: () => api.txn((t) => t.del(rootUid)) }
+      });
+      return rootUid;
+    });
+  };
+  session.saveAsTemplate = async () => {
+    const tree = api.rawNode(api.uid);
+    if (!tree) return null;
+    const pageUid = await host.ensurePage?.(TEMPLATE_PAGE);
+    if (!pageUid) {
+      api.emit("toast", { message: "Couldn't open the templates page." });
+      return null;
+    }
+    const plan = planCopy(tree, { genUid: () => host.generateUid(), parentUid: pageUid });
+    if (!plan.creates.length) return null;
+    const rootUid = plan.rootUid;
+    await writeChunks(plan.chunks, async (chunk) => {
+      await host.group(async () => {
+        for (const op of chunk) {
+          await host.createBlock({
+            parentUid: op.parent,
+            order: op.order,
+            uid: op.uid,
+            string: op.string,
+            props: op.props,
+            open: op.open
+          });
+        }
+      });
+    }, (message) => api.emit("toast", { message }));
+    api.emit("toast", {
+      message: "Saved board as template",
+      action: { label: "Undo", run: () => host.deleteBlock(rootUid) }
+    });
+    return rootUid;
+  };
 });
 
 // src/lifecycle.js
@@ -5400,11 +5558,11 @@ function createLifecycle() {
       add(() => observer.disconnect());
       return observer;
     },
-    node(node, parent = globalThis.document?.body) {
+    node(node2, parent = globalThis.document?.body) {
       if (!parent) throw new Error("A parent node is required outside the browser");
-      parent.append(node);
-      add(() => node.remove());
-      return node;
+      parent.append(node2);
+      add(() => node2.remove());
+      return node2;
     },
     pullWatch(dataApi, pattern, entity, callback) {
       if (!dataApi?.addPullWatch || !dataApi?.removePullWatch) {
@@ -5465,15 +5623,15 @@ function hayOf(item) {
   for (const kid of kids) bits.push(plainText(kid?.[":block/string"] ?? kid?.string ?? "", 500));
   return bits.filter(Boolean).join("\n").toLowerCase();
 }
-function findOnBoard(board, query, nested = []) {
+function findOnBoard(board2, query, nested = []) {
   const q = String(query || "").trim().toLowerCase();
-  if (!q || !board?.items) return [];
+  if (!q || !board2?.items) return [];
   const hits = [];
-  for (const item of board.items.values()) {
+  for (const item of board2.items.values()) {
     if (!hayOf(item).includes(q)) continue;
     hits.push({ uid: item.uid, focus: item.uid, kind: item.type === "section" ? "section" : "card" });
   }
-  for (const edge of board.edges?.values?.() || []) {
+  for (const edge of board2.edges?.values?.() || []) {
     const label = `${edge.label || ""}
 ${plainText(edge.string, 500)}`.toLowerCase();
     if (!label.includes(q)) continue;
@@ -5531,30 +5689,30 @@ function imageSrc(string) {
   return m ? m[1].trim() : "";
 }
 function pngFileName({ boardTitle: boardTitle2 = "", pageTitle = "", date = "" } = {}) {
-  const board = String(boardTitle2 ?? "").trim();
+  const board2 = String(boardTitle2 ?? "").trim();
   const page = String(pageTitle ?? "").trim();
-  const named = board && board.toLowerCase() !== UNTITLED_BOARD.toLowerCase();
-  const raw = (named ? board : page) || board || "board";
+  const named = board2 && board2.toLowerCase() !== UNTITLED_BOARD.toLowerCase();
+  const raw = (named ? board2 : page) || board2 || "board";
   const name = raw.replace(/[\\/:*?"<>|]+/g, "-").replace(/\s+/g, " ").trim() || "board";
   const day = /^\d{4}-\d{2}-\d{2}$/.test(String(date)) ? String(date) : "1970-01-01";
   return `${name} ${day}.png`;
 }
-function sliceBoard(board, uids) {
+function sliceBoard(board2, uids) {
   const want = new Set(uids || []);
   const items = /* @__PURE__ */ new Map();
   const order = [];
-  for (const uid of board?.order || []) {
+  for (const uid of board2?.order || []) {
     if (!want.has(uid)) continue;
-    const item = board.items.get(uid);
+    const item = board2.items.get(uid);
     if (!item) continue;
     items.set(uid, item);
     order.push(uid);
   }
   const edges = /* @__PURE__ */ new Map();
-  for (const [uid, edge] of board?.edges || []) {
+  for (const [uid, edge] of board2?.edges || []) {
     if (edge?.valid && want.has(edge.from) && want.has(edge.to)) edges.set(uid, edge);
   }
-  return { ...board, items, order, edges };
+  return { ...board2, items, order, edges };
 }
 function dropExternalImages(svg) {
   return String(svg ?? "").replace(/<image\b[^>]*\/>/g, (tag) => {
@@ -5569,14 +5727,14 @@ var imageHrefOf = (item, imageHrefs) => {
   const href = typeof imageHrefs.get === "function" ? imageHrefs.get(item.uid) : imageHrefs[item.uid];
   return typeof href === "string" && href.startsWith("data:") ? href : "";
 };
-function boardToSvg(board, rects, { dark = false, padding = 48, maxItems = 500, imageHrefs = null } = {}) {
+function boardToSvg(board2, rects, { dark = false, padding = 48, maxItems = 500, imageHrefs = null } = {}) {
   const mode = dark ? "dark" : "light";
   const theme = THEME[mode];
   const hex = (color) => typeof color === "string" && /^#[0-9a-f]{6}$/.test(color) ? [color, color, color] : HEX[mode][PALETTE.includes(color) ? color : "gray"];
   const included = [];
-  for (const uid of board.order) {
+  for (const uid of board2.order) {
     if (included.length >= maxItems) break;
-    if (rects.get(uid)) included.push(board.items.get(uid));
+    if (rects.get(uid)) included.push(board2.items.get(uid));
   }
   const inSet = new Set(included.map((i) => i.uid));
   const bounds = boundsOf(included.map((i) => rects.get(i.uid))) ?? { x: 0, y: 0, w: 0, h: 0 };
@@ -5586,7 +5744,7 @@ function boardToSvg(board, rects, { dark = false, padding = 48, maxItems = 500, 
   const vh = Math.max(1, bounds.h + padding * 2);
   const out = [];
   out.push(`<svg xmlns="http://www.w3.org/2000/svg" viewBox="${n1(vx)} ${n1(vy)} ${n1(vw)} ${n1(vh)}" width="${n1(vw)}" height="${n1(vh)}" font-family="system-ui, -apple-system, Segoe UI, sans-serif">`);
-  out.push(`<title>${esc(board.title || "Board")}</title>`);
+  out.push(`<title>${esc(board2.title || "Board")}</title>`);
   out.push(`<rect x="${n1(vx)}" y="${n1(vy)}" width="${n1(vw)}" height="${n1(vh)}" fill="${theme.bg}"/>`);
   const defs = [];
   const body = [];
@@ -5615,7 +5773,7 @@ function boardToSvg(board, rects, { dark = false, padding = 48, maxItems = 500, 
   });
   if (defs.length) out.push(`<defs>${defs.join("")}</defs>`);
   out.push(...body);
-  for (const edge of board.edges.values()) {
+  for (const edge of board2.edges.values()) {
     if (!edge.valid || !inSet.has(edge.from) || !inSet.has(edge.to)) continue;
     const a = rects.get(edge.from);
     const b = rects.get(edge.to);
@@ -5640,7 +5798,7 @@ function boardToSvg(board, rects, { dark = false, padding = 48, maxItems = 500, 
   return out.join("\n");
 }
 var oneLine = (s) => String(s ?? "").replace(/\s+/g, " ").trim();
-function boardToMarkdown(board, rects) {
+function boardToMarkdown(board2, rects) {
   const lines = [];
   const readingOrder = (uids) => uids.map((uid, i) => ({ uid, i, r: rects.get(uid) })).sort((a, b) => (a.r?.y ?? 0) - (b.r?.y ?? 0) || (a.r?.x ?? 0) - (b.r?.x ?? 0) || a.i - b.i).map((e) => e.uid);
   const content = (children, depth) => {
@@ -5652,7 +5810,7 @@ function boardToMarkdown(board, rects) {
   };
   const walk = (uids) => {
     for (const uid of readingOrder(uids)) {
-      const item = board.items.get(uid);
+      const item = board2.items.get(uid);
       if (!item) continue;
       if (item.type === "section") {
         if (lines.length) lines.push("");
@@ -5665,14 +5823,14 @@ function boardToMarkdown(board, rects) {
       }
     }
   };
-  walk(board.roots);
-  const edges = [...board.edges.values()].filter((e) => e.valid);
+  walk(board2.roots);
+  const edges = [...board2.edges.values()].filter((e) => e.valid);
   if (edges.length) {
     if (lines.length) lines.push("");
     lines.push("## Connections");
     for (const e of edges) {
-      const a = oneLine(titleOf(board.items.get(e.from)));
-      const b = oneLine(titleOf(board.items.get(e.to)));
+      const a = oneLine(titleOf(board2.items.get(e.from)));
+      const b = oneLine(titleOf(board2.items.get(e.to)));
       lines.push(e.label ? `${a} -> ${e.label} -> ${b}` : `${a} -> ${b}`);
     }
   }
@@ -5708,7 +5866,7 @@ function createInteractions({ actions, settings } = {}) {
     space: false,
     hover: null
   };
-  const board = () => call("board");
+  const board2 = () => call("board");
   const rects = () => call("rects");
   const hitRects = () => call("hitRects") || rects();
   const vp = () => call("viewport") || { x: 0, y: 0, zoom: 1 };
@@ -5764,9 +5922,9 @@ function createInteractions({ actions, settings } = {}) {
     call("cancelPreview");
     call("setGesturing", false, { moved });
   };
-  const isPinned = (uid) => Boolean(board()?.items.get(uid)?.pinned);
+  const isPinned = (uid) => Boolean(board2()?.items.get(uid)?.pinned);
   const movingSet = (dup = false) => {
-    const b = board();
+    const b = board2();
     if (!b) return [];
     const uids = dup ? [...state.selection] : [...state.selection].filter((u) => !isPinned(u));
     return topLevelOf(b, uids);
@@ -5776,7 +5934,7 @@ function createInteractions({ actions, settings } = {}) {
     return boundsOf(uids.map((u) => r.get(u)).filter(Boolean));
   };
   const otherRects = (uids) => {
-    const b = board();
+    const b = board2();
     const r = rects();
     const skip = new Set(uids);
     for (const u of uids) for (const d of descendantsOf(b, u)) skip.add(d);
@@ -5806,7 +5964,7 @@ function createInteractions({ actions, settings } = {}) {
       return;
     }
     if (ev.button !== 0) return;
-    const b = board();
+    const b = board2();
     const r = rects();
     switch (t.kind) {
       case "port":
@@ -5885,7 +6043,7 @@ function createInteractions({ actions, settings } = {}) {
     const g = state.gesture;
     if (!g) return;
     if (g.kind === "connect") {
-      const b = board();
+      const b = board2();
       const r = hitRects();
       call("showTempWire", { from: g.from, fromSide: g.fromSide, point: ev.world });
       const hit = b && r ? hitTest(b, ev.world, r, { sectionInterior: true }) : null;
@@ -5937,7 +6095,7 @@ function createInteractions({ actions, settings } = {}) {
         call("previewMove", g.uids, dx, dy);
       }
       call("showGuides", guides);
-      const b = board();
+      const b = board2();
       const r = hitRects();
       if (b && r && !g.dup && g.uids.length) {
         if (!g.exclude) {
@@ -5963,7 +6121,7 @@ function createInteractions({ actions, settings } = {}) {
       const dy = ev.world.y - last.y;
       if (dx * dx + dy * dy >= 0.25) g.points.push({ x: ev.world.x, y: ev.world.y });
       call("showLasso", g.points);
-      const b = board();
+      const b = board2();
       const r = hitRects();
       if (b && r) {
         const hits = g.points.length >= 3 ? itemsInPolygon(b, g.points, r) : [];
@@ -5980,7 +6138,7 @@ function createInteractions({ actions, settings } = {}) {
       const rect = normRect(g.start, ev.world);
       g.rect = rect;
       call("showMarquee", rect, "select");
-      const b = board();
+      const b = board2();
       const r = hitRects();
       if (b && r) {
         const hits = itemsInRect(b, rect, r, { mode: "contain" });
@@ -5999,7 +6157,7 @@ function createInteractions({ actions, settings } = {}) {
       return;
     }
     if (g.kind === "resize") {
-      const b = board();
+      const b = board2();
       const item = b?.items.get(g.uid);
       if (!item) return;
       const min = MIN_SIZES[item.type] || MIN_SIZES.card;
@@ -6014,7 +6172,7 @@ function createInteractions({ actions, settings } = {}) {
   const onPointerUp = (ev) => {
     const g = state.gesture;
     if (!g) return;
-    const b = board();
+    const b = board2();
     const r = rects();
     switch (g.kind) {
       case "pan":
@@ -6126,7 +6284,7 @@ function createInteractions({ actions, settings } = {}) {
   const onDblClick = (ev) => {
     const t = ev.target || { kind: "empty" };
     if (t.kind === "chrome") return;
-    const b = board();
+    const b = board2();
     if (t.kind === "item" && t.uid) {
       const item = b?.items.get(t.uid);
       if (!item) return;
@@ -6177,7 +6335,7 @@ function createInteractions({ actions, settings } = {}) {
   const onContextMenu = (ev) => {
     const t = ev.target || { kind: "empty" };
     if (t.kind === "chrome") return false;
-    const b = board();
+    const b = board2();
     const editing = editingUid();
     if (editing && t.kind === "item" && t.uid === editing && t.part !== "header") return false;
     let kind = "canvas";
@@ -6237,7 +6395,7 @@ function createInteractions({ actions, settings } = {}) {
       return true;
     }
     if (!state.selection.size) return false;
-    const b = board();
+    const b = board2();
     const all = [...state.selection];
     const blocked = (u) => isPinned(u) || Boolean(withContents) && Boolean(b) && [...descendantsOf(b, u)].some(isPinned);
     const uids = all.filter((u) => !blocked(u));
@@ -6255,7 +6413,7 @@ function createInteractions({ actions, settings } = {}) {
     return last;
   };
   const selectNearest = (dir, add) => {
-    const b = board();
+    const b = board2();
     const r = hitRects();
     const from = lastSelected();
     if (!b || !r || !from || !b.items.has(from)) return;
@@ -6270,7 +6428,7 @@ function createInteractions({ actions, settings } = {}) {
     selectItems(add ? [...state.selection, next] : [next]);
   };
   const selectOutline = (back) => {
-    const b = board();
+    const b = board2();
     if (!b) return false;
     const order = outlineOrder(b);
     if (!order.length) return false;
@@ -6331,7 +6489,7 @@ function createInteractions({ actions, settings } = {}) {
     }
     if (key === "Escape") return escape();
     if (setting("enable-shortcuts", true) === false) return false;
-    const b = board();
+    const b = board2();
     if (mod) {
       const k = key.toLowerCase();
       if (k === "a") {
@@ -6518,7 +6676,7 @@ function createInteractions({ actions, settings } = {}) {
     cancel: onPointerCancel,
     // Model changed under us: drop selection entries that no longer exist.
     reconcile() {
-      const b = board();
+      const b = board2();
       if (!b) return;
       let changed = false;
       for (const u of [...state.selection]) if (!b.items.has(u)) {
@@ -6537,20 +6695,20 @@ function createInteractions({ actions, settings } = {}) {
 // src/view/editor-menus.js
 var MENU_SELECTOR = ".rm-autocomplete__results, .bp3-datepicker, .rm-date-picker";
 var claimed = /* @__PURE__ */ new WeakSet();
-var computedTransform = (node) => {
-  if (!node) return "";
-  const view = node.ownerDocument?.defaultView || globalThis;
-  const cs = view.getComputedStyle?.(node);
-  if (!cs) return node.style?.transform || "";
+var computedTransform = (node2) => {
+  if (!node2) return "";
+  const view = node2.ownerDocument?.defaultView || globalThis;
+  const cs = view.getComputedStyle?.(node2);
+  if (!cs) return node2.style?.transform || "";
   if (typeof cs.transform === "string" && cs.transform) return cs.transform;
   const raw = typeof cs.getPropertyValue === "function" ? cs.getPropertyValue("transform") : "";
   return raw || "";
 };
 var portalShift = (menu) => {
-  let node = menu?.parentElement;
+  let node2 = menu?.parentElement;
   const stop = menu?.ownerDocument?.body;
-  while (node && node !== stop) {
-    const tf = computedTransform(node);
+  while (node2 && node2 !== stop) {
+    const tf = computedTransform(node2);
     const parts = /matrix\(([^)]+)\)/.exec(tf || "");
     if (parts) {
       const n = parts[1].split(",").map((s) => Number(s.trim()));
@@ -6558,21 +6716,21 @@ var portalShift = (menu) => {
       const y = n[5] || 0;
       if (Math.abs(x) > 1 || Math.abs(y) > 1) return { x, y };
     }
-    node = node.parentElement;
+    node2 = node2.parentElement;
   }
   return null;
 };
 var releaseAncestorTransforms = (menu) => {
-  let node = menu?.parentElement;
+  let node2 = menu?.parentElement;
   const stop = menu?.ownerDocument?.body;
-  while (node && node !== stop) {
-    if (computedTransform(node) && computedTransform(node) !== "none") {
-      node.style?.setProperty?.("transform", "none", "important");
+  while (node2 && node2 !== stop) {
+    if (computedTransform(node2) && computedTransform(node2) !== "none") {
+      node2.style?.setProperty?.("transform", "none", "important");
     }
-    if (typeof node.matches === "function" && node.matches(".bp3-overlay, .bp3-transition-container, .bp3-portal")) {
-      node.style?.setProperty?.("pointer-events", "none", "important");
+    if (typeof node2.matches === "function" && node2.matches(".bp3-overlay, .bp3-transition-container, .bp3-portal")) {
+      node2.style?.setProperty?.("pointer-events", "none", "important");
     }
-    node = node.parentElement;
+    node2 = node2.parentElement;
   }
   menu?.style?.setProperty?.("pointer-events", "auto", "important");
 };
@@ -6713,9 +6871,9 @@ function applyEditorCounterScale(editor, zoom, baseFont = 14) {
   if (!next) {
     for (const name of ["position", "left", "top", "width", "height", "transform", "transform-origin"]) paint(style, name, "");
     style.removeProperty?.("--pxd-ed-z");
-    for (const node of editor.querySelectorAll?.("textarea, .rm-block__input") || []) {
-      node.style?.removeProperty?.("font-size");
-      node.style?.removeProperty?.("height");
+    for (const node2 of editor.querySelectorAll?.("textarea, .rm-block__input") || []) {
+      node2.style?.removeProperty?.("font-size");
+      node2.style?.removeProperty?.("height");
     }
     if (body?.dataset?.pxdScreen === "1" && body.style) {
       body.style.position = "";
@@ -6736,9 +6894,9 @@ function applyEditorCounterScale(editor, zoom, baseFont = 14) {
   paint(style, "transform-origin", "top left");
   style.setProperty("--pxd-ed-z", String(next.z));
   const font = `${next.fontPx}px`;
-  for (const node of editor.querySelectorAll?.("textarea, .rm-block__input") || []) {
-    node.style?.setProperty?.("font-size", font, "important");
-    node.style?.setProperty?.("height", "auto", "important");
+  for (const node2 of editor.querySelectorAll?.("textarea, .rm-block__input") || []) {
+    node2.style?.setProperty?.("font-size", font, "important");
+    node2.style?.setProperty?.("height", "auto", "important");
   }
   return true;
 }
@@ -6962,23 +7120,23 @@ function createItemRenderer({
     return () => clearTimeout(t);
   };
   const el = (tag, cls, parent) => {
-    const node = doc.createElement(tag);
-    node.className = cls;
-    parent?.append(node);
-    return node;
+    const node2 = doc.createElement(tag);
+    node2.className = cls;
+    parent?.append(node2);
+    return node2;
   };
   const EMBED_SEL = "iframe, video, .rm-pdf-highlight, .rm-pdf-container, .twitter-tweet, .rm-xparser-default-tweet";
-  const embedLive = (node) => {
-    for (const child of node.children || []) if (child.classList?.contains("pxd-rs__live")) return child;
-    return node;
+  const embedLive = (node2) => {
+    for (const child of node2.children || []) if (child.classList?.contains("pxd-rs__live")) return child;
+    return node2;
   };
-  const armEmbedShield = (node, live) => {
+  const armEmbedShield = (node2, live) => {
     const syncShield = () => {
       const hit = live.querySelector?.(EMBED_SEL);
       let shield = null;
-      for (const child of node.children || []) if (child.classList?.contains("pxd-embed-shield")) shield = child;
+      for (const child of node2.children || []) if (child.classList?.contains("pxd-embed-shield")) shield = child;
       if (hit && !shield) {
-        const cover = el("div", "pxd-embed-shield", node);
+        const cover = el("div", "pxd-embed-shield", node2);
         cover.setAttribute("aria-hidden", "true");
       } else if (!hit && shield) shield.remove();
     };
@@ -6991,30 +7149,30 @@ function createItemRenderer({
     } catch {
       return;
     }
-    node.__pxdEmbedMo = mo;
+    node2.__pxdEmbedMo = mo;
   };
   const renderRoot = (parent, string, cls = "pxd-rs") => {
-    const node = el("div", cls, parent);
-    if (!string) return node;
-    const live = el("div", "pxd-rs__live", node);
+    const node2 = el("div", cls, parent);
+    if (!string) return node2;
+    const live = el("div", "pxd-rs__live", node2);
     try {
       if (host?.renderString) host.renderString(live, string);
       else live.textContent = plainText(string);
     } catch {
       live.textContent = plainText(string);
     }
-    armEmbedShield(node, live);
-    return node;
+    armEmbedShield(node2, live);
+    return node2;
   };
   const unmountRoots = (rec) => {
     if (!rec.roots?.length) return;
-    for (const node of rec.roots) {
+    for (const node2 of rec.roots) {
       try {
-        node.__pxdEmbedMo?.disconnect();
+        node2.__pxdEmbedMo?.disconnect();
       } catch {
       }
       try {
-        host?.unmount?.(embedLive(node));
+        host?.unmount?.(embedLive(node2));
       } catch {
       }
     }
@@ -7040,20 +7198,20 @@ function createItemRenderer({
   const buildShell = (item) => {
     const rec = { uid: item.uid, type: item.type, roots: [], contentKey: null, rect: null, bare: item.type === "card" };
     if (item.type === "section") {
-      const node = el("div", "pxd-section", null);
-      rec.el = node;
-      rec.title = el("div", "pxd-section__title", node);
-      rec.note = el("div", "pxd-section__note", node);
-      for (const side of ["t", "r", "b", "l"]) el("div", `pxd-section__edge pxd-section__edge--${side}`, node);
-      buildGrips(node);
-      buildPorts(node);
+      const node2 = el("div", "pxd-section", null);
+      rec.el = node2;
+      rec.title = el("div", "pxd-section__title", node2);
+      rec.note = el("div", "pxd-section__note", node2);
+      for (const side of ["t", "r", "b", "l"]) el("div", `pxd-section__edge pxd-section__edge--${side}`, node2);
+      buildGrips(node2);
+      buildPorts(node2);
     } else {
-      const node = el("div", `pxd-item pxd-item--${item.type}`, null);
-      rec.el = node;
-      rec.header = el("div", "pxd-item__header", node);
-      rec.body = el("div", "pxd-item__body", node);
-      buildPorts(node);
-      buildGrips(node);
+      const node2 = el("div", `pxd-item pxd-item--${item.type}`, null);
+      rec.el = node2;
+      rec.header = el("div", "pxd-item__header", node2);
+      rec.body = el("div", "pxd-item__body", node2);
+      buildPorts(node2);
+      buildGrips(node2);
     }
     rec.el.dataset.uid = item.uid;
     rec.el.setAttribute("data-uid", item.uid);
@@ -7065,7 +7223,7 @@ function createItemRenderer({
     else el2.style.removeProperty(name);
   };
   const applyStyle = (rec, item) => {
-    const node = rec.el;
+    const node2 = rec.el;
     if (item.type === "section") {
       const d = item.sectionDefaults || {};
       const area = item.areaFill ?? d.areaFill;
@@ -7073,8 +7231,8 @@ function createItemRenderer({
       const titleSize = item.titleSize ?? d.titleSize;
       const titleColor = item.titleColor ?? d.titleColor;
       const titleFill = item.titleFill ?? d.titleFill;
-      setVar(node, "--pxd-fill", cssColor(area, "fill"));
-      setVar(node, "--pxd-line", cssColor(border, "line") || hexColor(item.color) || "");
+      setVar(node2, "--pxd-fill", cssColor(area, "fill"));
+      setVar(node2, "--pxd-line", cssColor(border, "line") || hexColor(item.color) || "");
       if (rec.title) {
         rec.title.style.fontSize = titleSize ? `${titleSize}px` : "";
         rec.title.style.color = cssColor(titleColor, "text") || "";
@@ -7083,15 +7241,15 @@ function createItemRenderer({
       return;
     }
     const accent = hexColor(item.color);
-    setVar(node, "--pxd-card-fs", item.fontSize ? `${item.fontSize}px` : "");
-    setVar(node, "--pxd-text-fs", item.type === "text" && item.fontSize ? `${item.fontSize}px` : "");
-    setVar(node, "--pxd-text-c", cssColor(item.textColor, "text") || accent || "");
-    setVar(node, "--pxd-fill", cssColor(item.fill, "fill") || accent || "");
-    setVar(node, "--pxd-line", cssColor(item.border, "line") || accent || "");
-    node.style.textAlign = item.align || "";
+    setVar(node2, "--pxd-card-fs", item.fontSize ? `${item.fontSize}px` : "");
+    setVar(node2, "--pxd-text-fs", item.type === "text" && item.fontSize ? `${item.fontSize}px` : "");
+    setVar(node2, "--pxd-text-c", cssColor(item.textColor, "text") || accent || "");
+    setVar(node2, "--pxd-fill", cssColor(item.fill, "fill") || accent || "");
+    setVar(node2, "--pxd-line", cssColor(item.border, "line") || accent || "");
+    node2.style.textAlign = item.align || "";
   };
   const paintShell = (rec, item) => {
-    const node = rec.el;
+    const node2 = rec.el;
     if (item.type !== "section") {
       rec.refString = null;
       rec.refBoard = false;
@@ -7125,7 +7283,7 @@ function createItemRenderer({
       if (rec.refBoard) cls.push("pxd-item--wb");
       if (item.look === "block") cls.push("pxd-card--block");
     }
-    node.className = cls.join(" ");
+    node2.className = cls.join(" ");
     applyStyle(rec, item);
     if (item.type === "section") {
       if (!rec.titleRendered || rec.titleString !== item.string) {
@@ -7146,7 +7304,7 @@ function createItemRenderer({
       if (item.type === "text") rec.header.style.display = "none";
       rec.header.classList.toggle("pxd-item__header--muted", item.kind === "board" && isUntitledBoard(item.title));
     }
-    node.title = "";
+    node2.title = "";
   };
   const position = (rec, rect) => {
     const prev = rec.rect;
@@ -7165,13 +7323,13 @@ function createItemRenderer({
     shells.delete(uid);
     mounted.delete(uid);
   };
-  const sync = ({ board, rects, dirty = null, structural = false }) => {
-    lastBoard = board;
+  const sync = ({ board: board2, rects, dirty = null, structural = false }) => {
+    lastBoard = board2;
     lastRects = rects;
-    for (const uid of [...shells.keys()]) if (!board.items.has(uid)) removeShell(uid);
+    for (const uid of [...shells.keys()]) if (!board2.items.has(uid)) removeShell(uid);
     let orderChanged = structural;
-    for (const uid of board.order) {
-      const item = board.items.get(uid);
+    for (const uid of board2.order) {
+      const item = board2.items.get(uid);
       let rec = shells.get(uid);
       const fresh = !rec;
       if (!rec) {
@@ -7206,7 +7364,7 @@ function createItemRenderer({
       }
     }
     if (orderChanged) {
-      for (const uid of board.order) {
+      for (const uid of board2.order) {
         const rec = shells.get(uid);
         const layer = rec.type === "section" ? sectionsLayer : itemsLayer;
         if (rec.el.parentElement !== layer || layer.lastChild !== rec.el) layer.append(rec.el);
@@ -7217,14 +7375,14 @@ function createItemRenderer({
     for (const b of blocks) {
       if (budget.n >= CONTENT_LIMIT) return;
       budget.n += 1;
-      const row = el("div", "pxd-block", parent);
-      row.dataset.uid = childUid(b);
+      const row2 = el("div", "pxd-block", parent);
+      row2.dataset.uid = childUid(b);
       const s = childString(b);
-      const node = renderRoot(row, s, "pxd-rs pxd-block__text");
-      budget.roots.push(node);
+      const node2 = renderRoot(row2, s, "pxd-rs pxd-block__text");
+      budget.roots.push(node2);
       const kids = childKids(b);
       if (kids.length && depth < CONTENT_DEPTH) {
-        const wrap = el("div", "pxd-block__children", row);
+        const wrap = el("div", "pxd-block__children", row2);
         renderBlocks(wrap, kids, depth + 1, budget);
       }
     }
@@ -7417,9 +7575,9 @@ function createItemRenderer({
     noteRender(item.uid);
     unmountRoots(rec);
     rec.title.replaceChildren();
-    const node = renderRoot(rec.title, item.string || "Section", "pxd-rs pxd-section__title-text");
-    if (!item.string) node.textContent = "Section";
-    rec.roots = [node];
+    const node2 = renderRoot(rec.title, item.string || "Section", "pxd-rs pxd-section__title-text");
+    if (!item.string) node2.textContent = "Section";
+    rec.roots = [node2];
     rec.titleRendered = true;
     rec.contentKey = contentKeyOf(item);
   };
@@ -7528,9 +7686,9 @@ function createItemRenderer({
     setZoom(zoom);
     if (showBadges && prev === "detail" !== (lod === "detail")) for (const rec of shells.values()) renderBadges(rec);
   };
-  const previewMove = (uids, dx, dy, board, rects) => {
+  const previewMove = (uids, dx, dy, board2, rects) => {
     const set = new Set(uids);
-    for (const u of uids) for (const d of descendantsOf(board, u)) set.add(d);
+    for (const u of uids) for (const d of descendantsOf(board2, u)) set.add(d);
     const live = /* @__PURE__ */ new Map();
     for (const uid of set) {
       const rec = shells.get(uid);
@@ -7624,21 +7782,21 @@ function createItemRenderer({
     const key = JSON.stringify(chips);
     if (rec.badgeEl && rec.badgeKey === key) return;
     clear();
-    const row = el("div", "pxd-item__badges", rec.el);
+    const row2 = el("div", "pxd-item__badges", rec.el);
     for (const chip of chips) {
-      const node = el(chip.action ? "button" : "span", `pxd-badge-chip pxd-badge-chip--${chip.cls}`, row);
-      node.textContent = chip.text;
-      if (chip.title) node.title = chip.title;
+      const node2 = el(chip.action ? "button" : "span", `pxd-badge-chip pxd-badge-chip--${chip.cls}`, row2);
+      node2.textContent = chip.text;
+      if (chip.title) node2.title = chip.title;
       if (chip.action) {
-        node.type = "button";
-        for (const type of ["pointerdown", "mousedown", "dblclick"]) node.addEventListener(type, stopEvent);
-        node.addEventListener("click", (event) => {
+        node2.type = "button";
+        for (const type of ["pointerdown", "mousedown", "dblclick"]) node2.addEventListener(type, stopEvent);
+        node2.addEventListener("click", (event) => {
           event.stopPropagation();
           onBadgeClick?.(rec.uid, chip.action);
         });
       }
     }
-    rec.badgeEl = row;
+    rec.badgeEl = row2;
     rec.badgeKey = key;
   };
   const setBadges = (map) => {
@@ -7821,8 +7979,8 @@ function createItemRenderer({
   const stopEvent = (event) => event.stopPropagation();
   const EDITOR_STOPPED = ["pointerdown", "pointerup", "click", "dblclick", "wheel", "mousedown"];
   const EDIT_FADE_MS = 80;
-  const boxHeight = (node) => {
-    const h = Number(node?.offsetHeight) || 0;
+  const boxHeight = (node2) => {
+    const h = Number(node2?.offsetHeight) || 0;
     return h > 0 ? h : 0;
   };
   const prefersReducedMotion = () => {
@@ -7869,7 +8027,7 @@ function createItemRenderer({
     const reduced = prefersReducedMotion();
     const ghost = el("div", "pxd-item__ghost");
     ghost.setAttribute("aria-hidden", "true");
-    for (const node of [...rec.body.children || []]) ghost.append(node);
+    for (const node2 of [...rec.body.children || []]) ghost.append(node2);
     rec.body.append(ghost);
     rec.ghost = ghost;
     rec.contentKey = null;
@@ -8234,8 +8392,8 @@ function createItemRenderer({
 
 // src/view/editor-keys.js
 var UID3 = /^[A-Za-z0-9_-]{9,15}$/;
-function blockUidFromNode(node) {
-  let el = node;
+function blockUidFromNode(node2) {
+  let el = node2;
   while (el && el.nodeType === 1) {
     const id = String(el.id || el.getAttribute?.("id") || "");
     if (id.startsWith("block-input-")) {
@@ -8249,18 +8407,18 @@ function blockUidFromNode(node) {
   }
   return null;
 }
-var inside2 = (node, ancestor) => {
-  let el = node;
+var inside2 = (node2, ancestor) => {
+  let el = node2;
   while (el && el.nodeType === 1) {
     if (el === ancestor) return true;
     el = el.parentElement;
   }
   return false;
 };
-function inputBlockRole(node, rootUid) {
-  const uid = blockUidFromNode(node);
-  const editor = node?.closest?.(".pxd-item__editor") || null;
-  const nest = node?.closest?.(".rm-block-children") || null;
+function inputBlockRole(node2, rootUid) {
+  const uid = blockUidFromNode(node2);
+  const editor = node2?.closest?.(".pxd-item__editor") || null;
+  const nest = node2?.closest?.(".rm-block-children") || null;
   if (nest && inside2(nest, editor)) return { role: "child", uid };
   if (uid && rootUid && uid !== rootUid) return { role: "child", uid };
   return { role: "root", uid: uid || rootUid || null };
@@ -8322,18 +8480,18 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     el.addEventListener(type, fn, opts);
     listeners2.push(() => el.removeEventListener(type, fn, opts));
   };
-  const pairOffset = (board, edge) => {
-    for (const other of board.edges.values()) {
+  const pairOffset = (board2, edge) => {
+    for (const other of board2.edges.values()) {
       if (other.uid !== edge.uid && other.from === edge.to && other.to === edge.from) {
         return edge.uid < other.uid ? PAIR_OFFSET : -PAIR_OFFSET;
       }
     }
     return 0;
   };
-  const geometryFor = (board, edge, rects) => {
-    const routed = routedEdge(board, edge, rects);
+  const geometryFor = (board2, edge, rects) => {
+    const routed = routedEdge(board2, edge, rects);
     if (!routed) return null;
-    return edgePath({ a: routed.a, b: routed.b, fromSide: edge.fromSide, toSide: edge.toSide, route: edge.route, offset: pairOffset(board, edge) });
+    return edgePath({ a: routed.a, b: routed.b, fromSide: edge.fromSide, toSide: edge.toSide, route: edge.route, offset: pairOffset(board2, edge) });
   };
   const buildEdge = (edge) => {
     const g = mk("g", "pxd-edge", svg);
@@ -8355,7 +8513,7 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     return rec;
   };
   const dimmed = (e) => Boolean(focusSet) && !(focusSet.has(e.from) && focusSet.has(e.to));
-  const paintEdge = (board, edge, rec, { covered, selected }) => {
+  const paintEdge = (board2, edge, rec, { covered, selected }) => {
     const cls = ["pxd-edge"];
     const named = PALETTE.includes(edge.color);
     const hex = hexColor(edge.color);
@@ -8381,8 +8539,8 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     rec.dir = edge.dir;
     rec.weight = edge.weight;
   };
-  const placeEdge = (board, edge, rec, rects, zoom) => {
-    const geo = geometryFor(board, edge, rects);
+  const placeEdge = (board2, edge, rec, rects, zoom) => {
+    const geo = geometryFor(board2, edge, rects);
     rec.geo = geo;
     if (!geo) {
       rec.g.setAttribute("display", "none");
@@ -8464,16 +8622,16 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     rec.label.remove();
     linkEls.delete(key);
   };
-  const render = ({ board, rects, links = [], coveredEdges = /* @__PURE__ */ new Set(), selection = {}, zoom = 1, dirty = null }) => {
+  const render = ({ board: board2, rects, links = [], coveredEdges = /* @__PURE__ */ new Set(), selection = {}, zoom = 1, dirty = null }) => {
     zoomCache = zoom;
-    for (const uid of [...edgeEls.keys()]) if (!board.edges.has(uid)) removeEdge(uid);
-    for (const edge of board.edges.values()) {
+    for (const uid of [...edgeEls.keys()]) if (!board2.edges.has(uid)) removeEdge(uid);
+    for (const edge of board2.edges.values()) {
       let rec = edgeEls.get(edge.uid);
       const fresh = !rec;
       if (!rec) rec = buildEdge(edge);
       if (fresh || !dirty || dirty.has(edge.uid)) {
-        paintEdge(board, edge, rec, { covered: coveredEdges.has(edge.uid), selected: selection.edge === edge.uid });
-        placeEdge(board, edge, rec, rects, zoom);
+        paintEdge(board2, edge, rec, { covered: coveredEdges.has(edge.uid), selected: selection.edge === edge.uid });
+        placeEdge(board2, edge, rec, rects, zoom);
       }
     }
     const keys = new Set(links.map((l) => l.key));
@@ -8484,11 +8642,11 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     }
     labelsLayer?.classList.toggle("pxd-labels--hidden", zoom < LABEL_HIDE_ZOOM);
   };
-  const update = ({ board, edgeUids, rects, zoom = zoomCache, linkKeys = null, links = [] }) => {
+  const update = ({ board: board2, edgeUids, rects, zoom = zoomCache, linkKeys = null, links = [] }) => {
     for (const uid of edgeUids) {
-      const edge = board.edges.get(uid);
+      const edge = board2.edges.get(uid);
       const rec = edgeEls.get(uid);
-      if (edge && rec) placeEdge(board, edge, rec, rects, zoom);
+      if (edge && rec) placeEdge(board2, edge, rec, rects, zoom);
     }
     if (linkKeys) {
       for (const link of links) {
@@ -8700,15 +8858,15 @@ var LIGHTER = 0.4;
 function buildColorPicker(doc, onPick, listen) {
   const box = doc.createElement("div");
   box.className = "pxd-picker";
-  const on = (node, type, fn) => {
-    if (listen) listen(node, type, fn);
-    else node.addEventListener(type, fn);
+  const on = (node2, type, fn) => {
+    if (listen) listen(node2, type, fn);
+    else node2.addEventListener(type, fn);
   };
   const stop = (event) => {
     event.preventDefault?.();
     event.stopPropagation?.();
   };
-  const row = (label, colors, named) => {
+  const row2 = (label, colors, named) => {
     const wrap = doc.createElement("div");
     wrap.className = "pxd-picker__row";
     const cap2 = doc.createElement("div");
@@ -8734,9 +8892,9 @@ function buildColorPicker(doc, onPick, listen) {
     wrap.append(swatches);
     box.append(wrap);
   };
-  row("Colors", NATIVE_SWATCHES, false);
-  row("Darker", NATIVE_SWATCHES.map((h) => shadeHex(h, DARKER)), false);
-  row("Lighter", NATIVE_SWATCHES.map((h) => shadeHex(h, LIGHTER)), false);
+  row2("Colors", NATIVE_SWATCHES, false);
+  row2("Darker", NATIVE_SWATCHES.map((h) => shadeHex(h, DARKER)), false);
+  row2("Lighter", NATIVE_SWATCHES.map((h) => shadeHex(h, LIGHTER)), false);
   const hexRow = doc.createElement("div");
   hexRow.className = "pxd-picker__hex";
   const preview = doc.createElement("span");
@@ -8767,7 +8925,7 @@ function buildColorPicker(doc, onPick, listen) {
   });
   hexRow.append(preview, input);
   box.append(hexRow);
-  row("Named", PALETTE, true);
+  row2("Named", PALETTE, true);
   const clear = doc.createElement("button");
   clear.type = "button";
   clear.className = "pxd-btn pxd-picker__clear";
@@ -8812,11 +8970,11 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     listeners2.push(() => el2.removeEventListener(type, fn, opts));
   };
   const el = (tag, cls, parent, text) => {
-    const node = doc.createElement(tag);
-    node.className = cls;
-    if (text !== void 0) node.textContent = text;
-    parent?.append(node);
-    return node;
+    const node2 = doc.createElement(tag);
+    node2.className = cls;
+    if (text !== void 0) node2.textContent = text;
+    parent?.append(node2);
+    return node2;
   };
   const button = (parent, cls, label, title, onClick) => {
     const b = el("button", `pxd-btn ${cls}`, parent, label);
@@ -8848,9 +9006,9 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     }
     return wrap;
   };
-  const stopAll = (node) => {
+  const stopAll = (node2) => {
     for (const type of ["pointerdown", "pointerup", "click", "dblclick", "wheel", "keydown", "keyup", "contextmenu"]) {
-      listen(node, type, (event) => event.stopPropagation());
+      listen(node2, type, (event) => event.stopPropagation());
     }
   };
   const toolbar = el("div", "pxd-toolbar pxd-chrome", root);
@@ -9142,10 +9300,10 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     ctx.replaceChildren();
     ctx.dataset.kind = kind;
     ctx.setAttribute("data-kind", kind);
-    const row = el("div", "pxd-ctx__row", ctx);
-    const btn = (cls, label, title, fn) => button(row, `pxd-ctx__btn ${cls}`, label, title, fn);
+    const row2 = el("div", "pxd-ctx__row", ctx);
+    const btn = (cls, label, title, fn) => button(row2, `pxd-ctx__btn ${cls}`, label, title, fn);
     const seg = (cls, options, current, fn) => {
-      const wrap = el("div", `pxd-seg ${cls}`, row);
+      const wrap = el("div", `pxd-seg ${cls}`, row2);
       for (const [value, label, title] of options) {
         const b = button(wrap, `pxd-seg__btn${value === current ? " pxd-seg__btn--on" : ""}`, label, title || label, () => fn(value));
         b.dataset.value = String(value);
@@ -9196,7 +9354,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
           const refs = iconBtn("pxd-ctx__refs", "link", "References", `${n} ${n === 1 ? "reference" : "references"}`, () => on.showRefs?.());
           el("span", "pxd-ctx__refs-count", refs, String(n));
         }
-        swatches(row, (c) => on.setColor?.(c));
+        swatches(row2, (c) => on.setColor?.(c));
         if (kind === "card") {
           btn("pxd-ctx__edit", "Edit", "Edit (Enter)", () => on.edit?.());
           btn("pxd-ctx__sidebar", "Open in sidebar", "Open in the right sidebar", () => on.openSidebar?.());
@@ -9225,7 +9383,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
         break;
       }
       case "board":
-        swatches(row, (c) => on.setColor?.(c));
+        swatches(row2, (c) => on.setColor?.(c));
         btn("pxd-ctx__open-board", "Open", "Open this board (Enter)", () => on.openBoard?.());
         opt("openOwnPage", "pxd-ctx__own-page", "Own page", "Open nested board in its own page", () => on.openOwnPage());
         if (model?.enhanced) btn("pxd-ctx__rename-board", "Rename board", "Rename the board", () => on.renameBoard?.());
@@ -9233,7 +9391,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
         btn("pxd-ctx__delete pxd-btn--danger", "Delete", "Delete (Del)", () => on.delete?.());
         break;
       case "section":
-        swatches(row, (c) => on.setColor?.(c));
+        swatches(row2, (c) => on.setColor?.(c));
         btn("pxd-ctx__rename", "Rename", "Rename (Enter)", () => on.rename?.());
         btn("pxd-ctx__contents", "Select contents", "Select the section's members", () => on.selectContents?.());
         opt("selectAllInSection", "pxd-ctx__all-in-section", "Select all in section", "Select everything inside the section", () => on.selectAllInSection());
@@ -9251,7 +9409,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
         btn("pxd-ctx__delete pxd-btn--danger", "Delete frame", "Delete the frame, keep the cards (Del). Shift+Del deletes contents too", () => on.delete?.());
         break;
       case "text":
-        swatches(row, (c) => on.setColor?.(c));
+        swatches(row2, (c) => on.setColor?.(c));
         seg("pxd-ctx__size", FONT_SIZES.map((s, i) => [s, ["S", "M", "L", "XL"][i], `${s}px`]), model?.fontSize || 24, (v) => on.setFontSize?.(v));
         btn("pxd-ctx__delete pxd-btn--danger", "Delete", "Delete (Del)", () => on.delete?.());
         break;
@@ -9261,14 +9419,14 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
         seg("pxd-ctx__route", [["curve", "Curve"], ["straight", "Straight"], ["elbow", "Elbow"]], model?.route, (v) => on.route?.(v));
         seg("pxd-ctx__dash", [["solid", "Solid"], ["dashed", "Dashed"], ["animated", "Animated"]], model?.dash, (v) => on.dash?.(v));
         seg("pxd-ctx__weight", [[1, "1"], [2, "2"], [3, "3"], [4, "4"]], model?.weight, (v) => on.weight?.(v));
-        swatches(row, (c) => on.setColor?.(c));
+        swatches(row2, (c) => on.setColor?.(c));
         btn("pxd-ctx__label", "Label", "Edit the label", () => on.label?.());
         btn("pxd-ctx__notes", "Notes", "Open the connection block in the sidebar", () => on.notes?.());
         btn("pxd-ctx__write", "Write to graph", "Create an attribute on the source", () => on.writeToGraph?.());
         btn("pxd-ctx__delete pxd-btn--danger", "Delete", "Delete (Del)", () => on.delete?.());
         break;
       case "link": {
-        const list = el("div", "pxd-ctx__sources", row);
+        const list = el("div", "pxd-ctx__sources", row2);
         for (const s of model?.sources || []) {
           const b = button(list, "pxd-ctx__source", (s.string || s.uid || "").slice(0, 60), "Open in the sidebar", () => on.openSource?.(s.uid));
           b.dataset.uid = s.uid;
@@ -9440,7 +9598,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     mmFrame = null;
     if (!mmDirty || !mmState || minimap.style.display === "none") return;
     mmDirty = false;
-    const { board, rects, vp, size } = mmState;
+    const { board: board2, rects, vp, size } = mmState;
     const g = canvas.getContext?.("2d");
     if (!g) return;
     const sc = computeScale(rects, size, vp);
@@ -9448,8 +9606,8 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     g.clearRect(0, 0, MINIMAP_W, MINIMAP_H);
     if (!sc) return;
     const colors = mmColors();
-    for (const uid of board.order) {
-      const item = board.items.get(uid);
+    for (const uid of board2.order) {
+      const item = board2.items.get(uid);
       const r = rects.get(uid);
       if (!r) continue;
       g.fillStyle = item.type === "section" ? colors.section : colors.item;
@@ -9509,7 +9667,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     mmFrame?.();
     bgOffs.splice(0).forEach((off) => off());
     listeners2.splice(0).forEach((off) => off());
-    for (const node of [toolbar, railEl, popEl, backEl, ctx, toast, search, minimap]) node.remove();
+    for (const node2 of [toolbar, railEl, popEl, backEl, ctx, toast, search, minimap]) node2.remove();
   };
   return { toolbar: toolbarApi, ctx: ctxApi, toast: toastApi, search: searchApi, minimap: minimapApi, popover, backToContent, badge, sync, dispose };
 }
@@ -9527,11 +9685,11 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
     listeners2.push(() => el2.removeEventListener(type, fn));
   };
   const el = (tag, cls, parent, text) => {
-    const node = doc.createElement(tag);
-    node.className = cls;
-    if (text !== void 0) node.textContent = text;
-    parent?.append(node);
-    return node;
+    const node2 = doc.createElement(tag);
+    node2.className = cls;
+    if (text !== void 0) node2.textContent = text;
+    parent?.append(node2);
+    return node2;
   };
   const button = (parent, cls, label, title, fn) => {
     const b = el("button", `pxd-btn ${cls}`, parent, label);
@@ -9580,8 +9738,8 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
   };
   const stepper = (parent, { value, fallback, min, max, aria, onCommit }) => {
     const shown = Number.isInteger(value) ? value : fallback;
-    const row = el("div", "pxd-props__step", parent);
-    const input = el("input", "pxd-input pxd-props__num", row);
+    const row2 = el("div", "pxd-props__step", parent);
+    const input = el("input", "pxd-input pxd-props__num", row2);
     input.type = "number";
     input.min = String(min);
     input.max = String(max);
@@ -9595,9 +9753,9 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
       }
       onCommit(v);
     };
-    const dec = button(row, "pxd-props__dec", "−", "Smaller", () => commit(shown - 1));
-    row.insertBefore(dec, input);
-    button(row, "pxd-props__inc", "+", "Larger", () => commit(shown + 1));
+    const dec = button(row2, "pxd-props__dec", "−", "Smaller", () => commit(shown - 1));
+    row2.insertBefore(dec, input);
+    button(row2, "pxd-props__inc", "+", "Larger", () => commit(shown + 1));
     listen(input, "change", () => commit(input.value));
     listen(input, "keydown", (event) => {
       event.stopPropagation();
@@ -9608,16 +9766,16 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
     });
   };
   const colorField = (parent, label, value, fn) => {
-    const row = el("div", "pxd-props__field", parent);
-    el("span", "pxd-props__label", row, label);
-    const chip = button(row, "pxd-props__chip", "", label, () => {
-      const open = row.querySelector(".pxd-picker");
+    const row2 = el("div", "pxd-props__field", parent);
+    el("span", "pxd-props__label", row2, label);
+    const chip = button(row2, "pxd-props__chip", "", label, () => {
+      const open = row2.querySelector(".pxd-picker");
       if (open) {
         open.remove();
         return;
       }
       const picker = buildColorPicker(doc, (c) => fn(c), listen);
-      row.append(picker);
+      row2.append(picker);
     });
     chip.setAttribute("aria-label", label);
     const sw = el("span", "pxd-props__chip-swatch", chip);
@@ -9691,8 +9849,8 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
     colorField(g, "Border", pick("border"), (c) => write({ border: c }));
     button(g, "pxd-props__reset", resetLabel, resetLabel, reset);
   };
-  const defaultsGroup = (board) => {
-    const stored = board?.defaults?.section || {};
+  const defaultsGroup = (board2) => {
+    const stored = board2?.defaults?.section || {};
     sectionGroup(
       [{ ...stored, sectionDefaults: {} }],
       "Default groups",
@@ -9702,9 +9860,9 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
       () => on.resetDefaults?.()
     );
   };
-  const diagram = (board) => {
+  const diagram = (board2) => {
     const g = group("Diagram", "diagram");
-    const bg = board?.plexus || {};
+    const bg = board2?.plexus || {};
     colorField(g, "Background", bg.bgColor, (c) => on.setBackground?.({ bgColor: c }));
     el("span", "pxd-props__label", g, "Texture");
     const pattern = BOARD_PATTERNS.includes(bg.bg) ? bg.bg : "";
@@ -9719,7 +9877,7 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
     body.replaceChildren();
     const items = (last?.items || []).filter(Boolean);
     const edge = last?.edge || null;
-    const board = last?.board;
+    const board2 = last?.board;
     if (edge) edgeGroup(edge);
     else {
       const blocksItems = items.filter((it) => it.type === "card" || it.type === "text");
@@ -9728,9 +9886,9 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
       if (sections.length) {
         sectionGroup(sections, "Group", "group", (patch) => on.setSectionStyle?.(patch), "Reset", () => on.resetSections?.());
       }
-      if (!blocksItems.length && !sections.length) defaultsGroup(board);
+      if (!blocksItems.length && !sections.length) defaultsGroup(board2);
     }
-    diagram(board);
+    diagram(board2);
     place();
   };
   paintCollapsed();
@@ -9818,11 +9976,11 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     listeners2.push(() => el2.removeEventListener(type, fn, opts));
   };
   const el = (tag, cls, parent, text) => {
-    const node = doc.createElement(tag);
-    node.className = cls;
-    if (text !== void 0) node.textContent = text;
-    parent?.append(node);
-    return node;
+    const node2 = doc.createElement(tag);
+    node2.className = cls;
+    if (text !== void 0) node2.textContent = text;
+    parent?.append(node2);
+    return node2;
   };
   const panel = el("aside", "pxd-panel pxd-chrome", root);
   panel.style.display = "none";
@@ -9932,7 +10090,7 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
   let selected = null;
   let relatedRows = [];
   let queryId = 0;
-  const row = (parent, { string, label, text, kind }) => {
+  const row2 = (parent, { string, label, text, kind }) => {
     const r = el("div", "pxd-panel__row", parent);
     r.setAttribute("draggable", "true");
     r.draggable = true;
@@ -10006,7 +10164,7 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
       el("div", "pxd-panel__empty", results, "No matches");
       return;
     }
-    rows.forEach((r) => row(results, r));
+    rows.forEach((r) => row2(results, r));
   };
   const scheduleSearch = () => {
     debounce?.();
@@ -10089,7 +10247,7 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
       const string = t.kind === "page" ? `[[${t.title}]]` : `((${t.uid}))`;
       const text = rel.text || (t.kind === "page" ? t.title : t.uid) || "";
       relatedRows.push({ string });
-      row(relatedList, { string, label: rel.relation || "related", text, kind: t.kind });
+      row2(relatedList, { string, label: rel.relation || "related", text, kind: t.kind });
     }
     if (!list.length) el("div", "pxd-panel__empty", relatedList, "Nothing related yet");
     addAll.style.display = list.length ? "" : "none";
@@ -10120,8 +10278,8 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
     }
   };
   listen(boardsList, "click", (event) => {
-    const row2 = event.target?.closest?.(".pxd-panel__board-row");
-    const uid = row2?.dataset?.uid ?? row2?.getAttribute?.("data-uid");
+    const row3 = event.target?.closest?.(".pxd-panel__board-row");
+    const uid = row3?.dataset?.uid ?? row3?.getAttribute?.("data-uid");
     if (!uid) return;
     event.preventDefault?.();
     event.stopPropagation();
@@ -10177,8 +10335,8 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
     }
   };
   listen(outlineList, "click", (event) => {
-    const row2 = event.target?.closest?.(".pxd-panel__outline-row");
-    const uid = row2?.dataset?.uid ?? row2?.getAttribute?.("data-uid");
+    const row3 = event.target?.closest?.(".pxd-panel__outline-row");
+    const uid = row3?.dataset?.uid ?? row3?.getAttribute?.("data-uid");
     if (!uid) return;
     event.stopPropagation();
     on.outlineClick?.(uid);
@@ -10190,12 +10348,12 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
   const renderCardTabs = () => {
     infoTabsBar.replaceChildren();
     for (const t of cardTabs) {
-      const row2 = el("span", t.uid === cardCurrent ? "pxd-panel__infotab pxd-panel__infotab--on" : "pxd-panel__infotab", infoTabsBar);
-      const name = el("button", "pxd-btn pxd-panel__infotab-name", row2, cardItems.get(t.uid)?.title || "Untitled");
+      const row3 = el("span", t.uid === cardCurrent ? "pxd-panel__infotab pxd-panel__infotab--on" : "pxd-panel__infotab", infoTabsBar);
+      const name = el("button", "pxd-btn pxd-panel__infotab-name", row3, cardItems.get(t.uid)?.title || "Untitled");
       name.type = "button";
       name.dataset.uid = t.uid;
       name.setAttribute("data-uid", t.uid);
-      const closer = el("button", "pxd-btn pxd-panel__infotab-x", row2, "×");
+      const closer = el("button", "pxd-btn pxd-panel__infotab-x", row3, "×");
       closer.type = "button";
       closer.title = "Close";
       closer.dataset.uid = t.uid;
@@ -10215,9 +10373,9 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
     }
   };
   const infoSection = (label) => {
-    const section = el("section", "pxd-panel__info-sec", infoScroll);
-    el("div", "pxd-panel__info-h", section, label);
-    return section;
+    const section2 = el("section", "pxd-panel__info-sec", infoScroll);
+    el("div", "pxd-panel__info-h", section2, label);
+    return section2;
   };
   const loadInfo = async () => {
     const id = queryId += 1;
@@ -10266,28 +10424,28 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
     const attrSec = infoSection("Attributes");
     if (!info.attributes?.length) el("div", "pxd-panel__empty", attrSec, "No attributes");
     else for (const attr of info.attributes) {
-      const row2 = el("div", "pxd-panel__info-attr", attrSec);
-      el("span", "pxd-panel__info-name", row2, attr.name);
-      el("span", "pxd-panel__info-value", row2, attr.value);
+      const row3 = el("div", "pxd-panel__info-attr", attrSec);
+      el("span", "pxd-panel__info-name", row3, attr.name);
+      el("span", "pxd-panel__info-value", row3, attr.value);
     }
     const refSec = infoSection("Linked references");
     if (!info.refs?.length) el("div", "pxd-panel__empty", refSec, "No linked references");
     else for (const ref of info.refs) {
-      const row2 = el("button", "pxd-btn pxd-panel__info-ref", refSec, ref.string || ref.uid);
-      row2.type = "button";
-      row2.dataset.uid = ref.uid;
-      row2.setAttribute("data-uid", ref.uid);
-      if (ref.pageTitle) row2.title = ref.pageTitle;
+      const row3 = el("button", "pxd-btn pxd-panel__info-ref", refSec, ref.string || ref.uid);
+      row3.type = "button";
+      row3.dataset.uid = ref.uid;
+      row3.setAttribute("data-uid", ref.uid);
+      if (ref.pageTitle) row3.title = ref.pageTitle;
     }
     const boardSec = infoSection("On boards");
     if (!info.boards?.length) el("div", "pxd-panel__empty", boardSec, "Not on another board");
-    else for (const board of info.boards) {
-      const row2 = el("button", "pxd-btn pxd-panel__info-board", boardSec);
-      row2.type = "button";
-      row2.dataset.uid = board.uid;
-      row2.setAttribute("data-uid", board.uid);
-      el("span", "pxd-panel__info-board-title", row2, board.title || "Untitled board");
-      if (board.pageTitle) el("span", "pxd-panel__info-board-page", row2, board.pageTitle);
+    else for (const board2 of info.boards) {
+      const row3 = el("button", "pxd-btn pxd-panel__info-board", boardSec);
+      row3.type = "button";
+      row3.dataset.uid = board2.uid;
+      row3.setAttribute("data-uid", board2.uid);
+      el("span", "pxd-panel__info-board-title", row3, board2.title || "Untitled board");
+      if (board2.pageTitle) el("span", "pxd-panel__info-board-page", row3, board2.pageTitle);
     }
     const tagSec = infoSection("Tags");
     if (!info.tags?.length) el("div", "pxd-panel__empty", tagSec, "No tags");
@@ -10297,21 +10455,21 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
     }
   };
   listen(infoScroll, "click", (event) => {
-    const board = event.target?.closest?.(".pxd-panel__info-board");
+    const board2 = event.target?.closest?.(".pxd-panel__info-board");
     const ref = event.target?.closest?.(".pxd-panel__info-ref");
-    const node = board || ref;
-    const uid = node?.dataset?.uid ?? node?.getAttribute?.("data-uid");
+    const node2 = board2 || ref;
+    const uid = node2?.dataset?.uid ?? node2?.getAttribute?.("data-uid");
     if (!uid) return;
     event.preventDefault?.();
     event.stopPropagation();
-    if (board) on.openBoardByUid?.(uid);
+    if (board2) on.openBoardByUid?.(uid);
     else on.openRef?.(uid);
   });
   listen(infoTabsBar, "click", (event) => {
     const closer = event.target?.closest?.(".pxd-panel__infotab-x");
     const name = event.target?.closest?.(".pxd-panel__infotab-name");
-    const node = closer || name;
-    const uid = node?.dataset?.uid ?? node?.getAttribute?.("data-uid");
+    const node2 = closer || name;
+    const uid = node2?.dataset?.uid ?? node2?.getAttribute?.("data-uid");
     if (!uid) return;
     event.preventDefault?.();
     event.stopPropagation();
@@ -10416,21 +10574,21 @@ function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
   const levels = [];
   let disposed = false;
   const el = (tag, cls, parent, text) => {
-    const node = doc.createElement(tag);
-    node.className = cls;
-    if (text !== void 0) node.textContent = text;
-    parent?.append(node);
-    return node;
+    const node2 = doc.createElement(tag);
+    node2.className = cls;
+    if (text !== void 0) node2.textContent = text;
+    parent?.append(node2);
+    return node2;
   };
   const on_ = (target, type, fn, capture) => {
     target.addEventListener(type, fn, capture);
     offs.push(() => target.removeEventListener(type, fn, capture));
   };
-  const selectable = (level) => level.rows.filter((row) => !entries.get(row).item.disabled);
-  const setActive = (level, row) => {
-    for (const r of level.rows) r.classList.toggle("pxd-menu__item--active", r === row);
-    level.active = row || null;
-    if (row && level.depth === 0 && menuEl?.classList?.contains("pxd-menu--scroll")) row.scrollIntoView?.({ block: "nearest" });
+  const selectable = (level) => level.rows.filter((row2) => !entries.get(row2).item.disabled);
+  const setActive = (level, row2) => {
+    for (const r of level.rows) r.classList.toggle("pxd-menu__item--active", r === row2);
+    level.active = row2 || null;
+    if (row2 && level.depth === 0 && menuEl?.classList?.contains("pxd-menu--scroll")) row2.scrollIntoView?.({ block: "nearest" });
   };
   const closeFrom = (depth) => {
     while (levels.length > depth) {
@@ -10440,11 +10598,11 @@ function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
       setActive(level, null);
     }
   };
-  const placeSub = (sub, row) => {
+  const placeSub = (sub, row2) => {
     const rootRect = root.getBoundingClientRect();
     sub.classList.remove("pxd-menu__sub--left");
     sub.style.top = "0px";
-    const r = row.getBoundingClientRect();
+    const r = row2.getBoundingClientRect();
     const w = sub.offsetWidth || MENU_WIDTH;
     const h = sub.offsetHeight || 0;
     if (menuEl?.classList?.contains("pxd-menu--scroll")) {
@@ -10459,14 +10617,14 @@ function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
       sub.style.top = `${Math.round(Math.min(0, rootRect.bottom - MARGIN - (r.top + h)))}px`;
     }
   };
-  const openSub = (row) => {
-    const entry = entries.get(row);
+  const openSub = (row2) => {
+    const entry = entries.get(row2);
     if (!entry?.sub || entry.item.disabled) return null;
     closeFrom(entry.level + 1);
     entry.sub.container.style.display = "";
     entry.sub.container.classList.add("pxd-menu__sub--open");
     levels.push(entry.sub);
-    placeSub(entry.sub.container, row);
+    placeSub(entry.sub.container, row2);
     return entry.sub;
   };
   const build = (items, parent, depth) => {
@@ -10481,20 +10639,20 @@ function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
       if (item.danger) cls += " pxd-menu__item--danger";
       if (item.checked) cls += " pxd-menu__item--checked";
       if (item.children?.length) cls += " pxd-menu__item--parent";
-      const row = el("div", cls, parent);
-      row.setAttribute("role", item.checked ? "menuitemradio" : "menuitem");
-      if (item.checked) row.setAttribute("aria-checked", "true");
-      if (item.disabled) row.setAttribute("aria-disabled", "true");
-      row.setAttribute("data-id", item.id);
-      row.dataset.id = item.id;
-      el("span", "pxd-menu__label", row, item.label);
-      if (item.hint) el("span", "pxd-menu__hint", row, item.hint);
+      const row2 = el("div", cls, parent);
+      row2.setAttribute("role", item.checked ? "menuitemradio" : "menuitem");
+      if (item.checked) row2.setAttribute("aria-checked", "true");
+      if (item.disabled) row2.setAttribute("aria-disabled", "true");
+      row2.setAttribute("data-id", item.id);
+      row2.dataset.id = item.id;
+      el("span", "pxd-menu__label", row2, item.label);
+      if (item.hint) el("span", "pxd-menu__hint", row2, item.hint);
       const entry = { item, level: depth, sub: null };
-      entries.set(row, entry);
-      level.rows.push(row);
+      entries.set(row2, entry);
+      level.rows.push(row2);
       if (item.children?.length) {
-        el("span", "pxd-menu__arrow", row, "›");
-        const container = el("div", "pxd-menu__sub", row);
+        el("span", "pxd-menu__arrow", row2, "›");
+        const container = el("div", "pxd-menu__sub", row2);
         container.style.display = "none";
         container.setAttribute("role", "menu");
         entry.sub = build(item.children, container, depth + 1);
@@ -10511,11 +10669,11 @@ function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
     levels.length = 0;
     on.closed?.();
   };
-  const pick = (row) => {
-    const entry = entries.get(row);
+  const pick = (row2) => {
+    const entry = entries.get(row2);
     if (!entry || entry.item.disabled) return;
     if (entry.sub) {
-      const sub = openSub(row);
+      const sub = openSub(row2);
       if (sub) setActive(sub, selectable(sub)[0] || null);
       return;
     }
@@ -10576,15 +10734,15 @@ function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
       on_(menuEl, "contextmenu", (event) => event.preventDefault?.());
       levels.push(build(list, menuEl, 0));
       on_(menuEl, "click", (event) => {
-        const row = rowOf(event);
-        if (!row) return;
+        const row2 = rowOf(event);
+        if (!row2) return;
         event.preventDefault?.();
-        pick(row);
+        pick(row2);
       });
       on_(menuEl, "pointerover", (event) => {
-        const row = rowOf(event);
-        if (!row) return;
-        const entry = entries.get(row);
+        const row2 = rowOf(event);
+        if (!row2) return;
+        const entry = entries.get(row2);
         const level = levels[entry.level];
         if (!level) return;
         closeFrom(entry.level + 1);
@@ -10592,8 +10750,8 @@ function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
           setActive(level, null);
           return;
         }
-        setActive(level, row);
-        if (entry.sub) openSub(row);
+        setActive(level, row2);
+        if (entry.sub) openSub(row2);
       });
       const win = doc.defaultView || doc;
       on_(doc, "pointerdown", (event) => {
@@ -10648,6 +10806,9 @@ function buildMenu(kind, ctx = {}) {
   const empty = count === 0;
   let separators = 0;
   const sep = () => ({ id: `sep-${separators += 1}`, separator: true });
+  const templateMenu = () => make("template", "New board from template…", {
+    children: STARTERS.map((s) => make(`template:${s.id}`, s.title))
+  });
   const colorMenu = () => {
     const current = item?.color || null;
     return make("color", "Color", {
@@ -10675,6 +10836,8 @@ function buildMenu(kind, ctx = {}) {
         make("new-text", "New text", { hint: "T" }),
         make("new-section", "New section", { hint: "G" }),
         make("new-board", "New board", { hint: "W" }),
+        templateMenu(),
+        make("save-template", "Save board as template"),
         sep(),
         make("paste", "Paste", { hint: "Cmd V", disabled: !c.canPaste }),
         make("paste-clone", "Paste as copies", { disabled: !c.canPaste }),
@@ -10831,6 +10994,9 @@ function buildMenu(kind, ctx = {}) {
     }
     case "board-menu":
       return [
+        templateMenu(),
+        make("save-template", "Save board as template"),
+        sep(),
         make("export-svg", "Export as SVG"),
         make("export-png", "Export as PNG"),
         make("copy-outline", "Copy as outline"),
@@ -10857,7 +11023,7 @@ var STOP_EVENTS2 = ["pointerdown", "pointerup", "mousedown", "mouseup", "click",
 var childString2 = (c) => c?.[":block/string"] ?? c?.string ?? "";
 var childKids2 = (c) => c?.[":block/children"] ?? c?.children ?? [];
 function createQuickLook({ doc = globalThis.document, root, host, timers, on = {} } = {}) {
-  let node = null;
+  let node2 = null;
   let roots = [];
   let current = null;
   let cancelPending = null;
@@ -10886,10 +11052,10 @@ function createQuickLook({ doc = globalThis.document, root, host, timers, on = {
     for (const b of blocks || []) {
       if (budget.n >= LIMIT2 * 4) return;
       budget.n += 1;
-      const row = el("div", "pxd-ql__block", parent);
-      renderRoot(row, childString2(b), "pxd-rs pxd-ql__text");
+      const row2 = el("div", "pxd-ql__block", parent);
+      renderRoot(row2, childString2(b), "pxd-rs pxd-ql__text");
       const kids = childKids2(b);
-      if (kids.length && depth < DEPTH) renderBlocks(el("div", "pxd-ql__children", row), kids, depth + 1, budget);
+      if (kids.length && depth < DEPTH) renderBlocks(el("div", "pxd-ql__children", row2), kids, depth + 1, budget);
     }
   };
   const unmountRoots = () => {
@@ -10902,12 +11068,12 @@ function createQuickLook({ doc = globalThis.document, root, host, timers, on = {
     roots = [];
   };
   const close = () => {
-    if (!node) return false;
+    if (!node2) return false;
     cancelPending?.();
     cancelPending = null;
     unmountRoots();
-    node.remove();
-    node = null;
+    node2.remove();
+    node2 = null;
     current = null;
     offs.splice(0).forEach((off) => off());
     on.close?.();
@@ -10919,14 +11085,14 @@ function createQuickLook({ doc = globalThis.document, root, host, timers, on = {
   };
   const fill = (body, item) => {
     const blocksInto = (result) => {
-      if (!node || !body.parentElement) return;
+      if (!node2 || !body.parentElement) return;
       const budget = { n: 0 };
       renderBlocks(body, result || [], 1, budget);
     };
     const settle = (result, apply) => {
       if (result && typeof result.then === "function") {
         result.then((r) => {
-          if (node && current === item) apply(r);
+          if (node2 && current === item) apply(r);
         }).catch(() => {
         });
       } else apply(result);
@@ -10969,11 +11135,11 @@ function createQuickLook({ doc = globalThis.document, root, host, timers, on = {
     if (disposed || !item) return false;
     close();
     current = item;
-    node = el("div", "pxd-quicklook pxd-chrome", root);
-    node.setAttribute("role", "dialog");
-    node.setAttribute("aria-label", "Quick Look");
-    for (const type of STOP_EVENTS2) listen(node, type, (event) => event.stopPropagation());
-    const head = el("div", "pxd-ql__head", node);
+    node2 = el("div", "pxd-quicklook pxd-chrome", root);
+    node2.setAttribute("role", "dialog");
+    node2.setAttribute("aria-label", "Quick Look");
+    for (const type of STOP_EVENTS2) listen(node2, type, (event) => event.stopPropagation());
+    const head = el("div", "pxd-ql__head", node2);
     el("div", "pxd-ql__title", head, item.kind === "board" ? item.title : item.title || item.string || "");
     let refs = null;
     try {
@@ -10982,13 +11148,13 @@ function createQuickLook({ doc = globalThis.document, root, host, timers, on = {
       refs = null;
     }
     if (typeof refs === "number" && refs > 0) el("span", "pxd-ql__refs", head, String(refs));
-    const body = el("div", "pxd-ql__body", node);
+    const body = el("div", "pxd-ql__body", node2);
     fill(body, item);
     listen(doc, "pointerdown", (event) => {
-      if (node && !node.contains(event.target)) close();
+      if (node2 && !node2.contains(event.target)) close();
     }, true);
     listen(doc, "keydown", (event) => {
-      if (event.key === "Escape" && node) {
+      if (event.key === "Escape" && node2) {
         event.preventDefault?.();
         event.stopPropagation?.();
         close();
@@ -11000,13 +11166,13 @@ function createQuickLook({ doc = globalThis.document, root, host, timers, on = {
     open,
     close,
     toggle(item) {
-      if (node) {
+      if (node2) {
         close();
         return false;
       }
       return open(item);
     },
-    isOpen: () => Boolean(node),
+    isOpen: () => Boolean(node2),
     dispose() {
       close();
       disposed = true;
@@ -11015,14 +11181,14 @@ function createQuickLook({ doc = globalThis.document, root, host, timers, on = {
 }
 
 // src/view/present.js
-var collectMembers = (board, uid) => {
+var collectMembers = (board2, uid) => {
   const out = /* @__PURE__ */ new Set();
   const stack = [uid];
   while (stack.length) {
     const u = stack.pop();
     if (out.has(u)) continue;
     out.add(u);
-    stack.push(...board.items.get(u)?.members ?? []);
+    stack.push(...board2.items.get(u)?.members ?? []);
   }
   return out;
 };
@@ -11096,32 +11262,32 @@ function createPresenter({ doc = globalThis.document, root, timers, on = {} } = 
     on.exit?.();
     return true;
   };
-  const start = (board, rects, opts) => {
-    if (!board) return false;
+  const start = (board2, rects, opts) => {
+    if (!board2) return false;
     if (active) {
       teardown();
       active = false;
     }
     const only = opts && typeof opts === "object" ? opts.only : null;
     if (only) {
-      const item = board.items.get(only);
+      const item = board2.items.get(only);
       const rect = rects?.get(only);
       if (!item || item.type !== "section" || !rect) return false;
-      steps = [{ uid: only, rect, title: item.title || "", members: collectMembers(board, only) }];
+      steps = [{ uid: only, rect, title: item.title || "", members: collectMembers(board2, only) }];
     } else {
-      const rootSet = new Set(board.roots);
-      const sections = outlineOrder(board).filter((u) => rootSet.has(u) && board.items.get(u)?.type === "section" && rects.get(u));
+      const rootSet = new Set(board2.roots);
+      const sections = outlineOrder(board2).filter((u) => rootSet.has(u) && board2.items.get(u)?.type === "section" && rects.get(u));
       steps = sections.map((uid) => ({
         uid,
         rect: rects.get(uid),
-        title: board.items.get(uid).title || "",
-        members: collectMembers(board, uid)
+        title: board2.items.get(uid).title || "",
+        members: collectMembers(board2, uid)
       }));
     }
     if (!steps.length) {
-      const all = [...board.items.keys()].filter((u) => rects.get(u));
+      const all = [...board2.items.keys()].filter((u) => rects.get(u));
       if (!all.length) return false;
-      steps = [{ uid: null, rect: boundsOf(all.map((u) => rects.get(u))), title: board.title || "", members: new Set(all) }];
+      steps = [{ uid: null, rect: boundsOf(all.map((u) => rects.get(u))), title: board2.title || "", members: new Set(all) }];
     }
     active = true;
     hud = el("div", "pxd-present-hud pxd-chrome", root);
@@ -11152,11 +11318,11 @@ function createPresenter({ doc = globalThis.document, root, timers, on = {} } = 
 // src/view/clipboard-io.js
 var CLONE_WINDOW_MS = 400;
 var MAX_IMAGES = 10;
-var defaultTextEntry = (node) => {
-  if (!node || node.nodeType !== 1) return false;
-  const tag = String(node.tagName || "").toLowerCase();
+var defaultTextEntry = (node2) => {
+  if (!node2 || node2.nodeType !== 1) return false;
+  const tag = String(node2.tagName || "").toLowerCase();
   if (tag === "input" || tag === "textarea" || tag === "select") return true;
-  return node.isContentEditable === true || node.getAttribute?.("contenteditable") === "true" || node.getAttribute?.("contenteditable") === "";
+  return node2.isContentEditable === true || node2.getAttribute?.("contenteditable") === "true" || node2.getAttribute?.("contenteditable") === "";
 };
 function filesFromDataTransfer(dt) {
   const out = [];
@@ -11224,11 +11390,11 @@ function createClipboardIO({ doc = globalThis.document, root, ownsKeyboard, isTe
     target.addEventListener(type, fn, opts);
     offs.push(() => target.removeEventListener(type, fn, opts));
   };
-  const textNode = (node) => Boolean(isTextEntry?.(node)) || defaultTextEntry(node);
+  const textNode = (node2) => Boolean(isTextEntry?.(node2)) || defaultTextEntry(node2);
   const inText = (event) => textNode(event.target) || textNode(doc.activeElement);
   const editorNode = (event) => {
-    const node = event.target?.nodeType === 1 ? event.target : null;
-    const hit = textNode(node) ? node : textNode(doc.activeElement) ? doc.activeElement : null;
+    const node2 = event.target?.nodeType === 1 ? event.target : null;
+    const hit = textNode(node2) ? node2 : textNode(doc.activeElement) ? doc.activeElement : null;
     if (!hit || typeof hit.closest !== "function") return null;
     const editor = hit.closest(".pxd-item__editor");
     if (!editor) return null;
@@ -11634,10 +11800,10 @@ var CULL_MARGIN = 0.5;
 var BADGE_TTL_MS = 12e4;
 var BADGE_CHUNK = 12;
 var NATIVE_MENU_TARGETS = ".rm-page-ref, .rm-block-ref, [data-link-uid], a[href], img";
-function nativeClickKind(node) {
-  if (!node || typeof node.closest !== "function") return null;
-  if (node.closest("img")) return "image";
-  const box = node.closest("input, label, .check-container");
+function nativeClickKind(node2) {
+  if (!node2 || typeof node2.closest !== "function") return null;
+  if (node2.closest("img")) return "image";
+  const box = node2.closest("input, label, .check-container");
   if (box) {
     const tag = String(box.tagName || "").toLowerCase();
     if (tag === "input") {
@@ -11646,7 +11812,7 @@ function nativeClickKind(node) {
       return "checkbox";
     }
   }
-  if (node.closest("[data-link-uid], .rm-page-ref, .rm-block-ref")) return "ref";
+  if (node2.closest("[data-link-uid], .rm-page-ref, .rm-block-ref")) return "ref";
   return null;
 }
 function pageRenameNeedsConfirm(refCount) {
@@ -11733,11 +11899,11 @@ function createTimers() {
 }
 function isDarkHost(root, doc = globalThis.document) {
   const has = (el, name) => Boolean(el?.classList?.contains?.(name));
-  let node = root;
-  while (node) {
-    if (has(node, "bp3-dark") || has(node, "rm-dark-theme") || has(node, "bt-theme-dark")) return true;
-    if (has(node, "roam-body") && has(node, "dark")) return true;
-    node = node.parentElement;
+  let node2 = root;
+  while (node2) {
+    if (has(node2, "bp3-dark") || has(node2, "rm-dark-theme") || has(node2, "bt-theme-dark")) return true;
+    if (has(node2, "roam-body") && has(node2, "dark")) return true;
+    node2 = node2.parentElement;
   }
   const body = doc?.body;
   const html = doc?.documentElement;
@@ -11754,10 +11920,10 @@ var rgbOf = (value) => {
 function isLightHost(root, doc = globalThis.document, win = globalThis.window) {
   if (isDarkHost(root, doc)) return false;
   if (typeof win?.getComputedStyle !== "function") return false;
-  for (let node = root; node; node = node.parentElement) {
+  for (let node2 = root; node2; node2 = node2.parentElement) {
     let color;
     try {
-      color = rgbOf(win.getComputedStyle(node)?.backgroundColor);
+      color = rgbOf(win.getComputedStyle(node2)?.backgroundColor);
     } catch {
       return false;
     }
@@ -11855,17 +12021,17 @@ function mountBoardView({
     return off;
   };
   const el = (tag, cls, parent) => {
-    const node = doc.createElement(tag);
-    node.className = cls;
-    parent?.append(node);
-    return node;
+    const node2 = doc.createElement(tag);
+    node2.className = cls;
+    parent?.append(node2);
+    return node2;
   };
   const svg = (cls, parent) => {
-    const node = doc.createElementNS(SVG_NS3, "svg");
-    node.setAttribute("class", cls);
-    if (node.classList && !node.classList.contains(cls)) node.className = cls;
-    parent?.append(node);
-    return node;
+    const node2 = doc.createElementNS(SVG_NS3, "svg");
+    node2.setAttribute("class", cls);
+    if (node2.classList && !node2.classList.contains(cls)) node2.className = cls;
+    parent?.append(node2);
+    return node2;
   };
   const boardUid = session.uid;
   const graph = host?.graph || graphName2(win);
@@ -11940,7 +12106,7 @@ function mountBoardView({
   let routeOff = () => {
   };
   const dirty = { viewport: false, items: /* @__PURE__ */ new Set(), edges: /* @__PURE__ */ new Set(), structural: false, all: true, selection: false, links: false, ctx: false, minimap: false };
-  const board = () => session.board;
+  const board2 = () => session.board;
   let outlineMode = false;
   let outlineHost = null;
   let outlineKey = "";
@@ -11948,9 +12114,9 @@ function mountBoardView({
   let boardBtn = null;
   const clearOutline = () => {
     if (!outlineHost) return;
-    for (const row of [...outlineHost.children]) {
+    for (const row2 of [...outlineHost.children]) {
       try {
-        host?.unmount?.(row);
+        host?.unmount?.(row2);
       } catch {
       }
     }
@@ -11958,17 +12124,17 @@ function mountBoardView({
   };
   const syncOutline = (force = false) => {
     if (!outlineMode || !outlineHost || disposed) return;
-    const key = sidebarOutlineUids(board()).join("\n");
+    const key = sidebarOutlineUids(board2()).join("\n");
     if (!force && key === outlineKey) return;
     outlineKey = key;
     clearOutline();
     if (typeof host?.renderBlock !== "function") return;
-    for (const uid of sidebarOutlineUids(board())) {
-      const row = el("div", "pxd-sidebar-outline__row", outlineHost);
-      row.dataset.uid = uid;
-      row.setAttribute("data-uid", uid);
+    for (const uid of sidebarOutlineUids(board2())) {
+      const row2 = el("div", "pxd-sidebar-outline__row", outlineHost);
+      row2.dataset.uid = uid;
+      row2.setAttribute("data-uid", uid);
       try {
-        host.renderBlock(row, uid);
+        host.renderBlock(row2, uid);
       } catch {
       }
     }
@@ -12002,7 +12168,7 @@ function mountBoardView({
     boardBtn = modeBtn("pxd-mode__board", "Board", () => setOutline(false));
     outlineHost = el("div", "pxd-sidebar-outline pxd-chrome", root);
   }
-  const rects = () => session.rects || worldRects(board());
+  const rects = () => session.rects || worldRects(board2());
   const effectiveRects = () => {
     if (!liveRects) return rects();
     const merged = new Map(rects());
@@ -12010,7 +12176,7 @@ function mountBoardView({
     return merged;
   };
   const paintRects = () => {
-    const b = board();
+    const b = board2();
     const base = effectiveRects();
     return b ? displayRects(b, base) : base;
   };
@@ -12034,7 +12200,7 @@ function mountBoardView({
       }
     },
     onEditResize: (uid, h) => {
-      const r = board() && rects().get(uid);
+      const r = board2() && rects().get(uid);
       if (disposed || !r) return;
       liveRects = /* @__PURE__ */ new Map();
       if (h > r.h) liveRects.set(uid, { ...r, h });
@@ -12094,7 +12260,7 @@ function mountBoardView({
     const rr = root.getBoundingClientRect?.() || rootRect;
     const tb = chrome.toolbar.el?.getBoundingClientRect?.();
     const pel = panel.el?.style?.display !== "none" ? panel.el?.getBoundingClientRect?.() : null;
-    const b = board();
+    const b = board2();
     const r = b ? rects() : null;
     const titled = Boolean(bounds && b && [...b.items.values()].some((it) => it.type === "section" && r.get(it.uid) && r.get(it.uid).y <= bounds.y + 0.5));
     return {
@@ -12133,7 +12299,7 @@ function mountBoardView({
     paintTier();
   };
   const scheduleContent = () => {
-    if (disposed || gesturing || !board()) return;
+    if (disposed || gesturing || !board2()) return;
     itemsR.scheduleContent({ visibleRect: visibleWorldRect(vp, size, CULL_MARGIN), zoom: vp.zoom, tier });
   };
   const updateBackToContent = () => {
@@ -12157,7 +12323,7 @@ function mountBoardView({
   const badgeKeyOf = (item) => item.target.kind === "page" ? `page:${item.target.title}` : `uid:${item.target.uid || item.uid}`;
   const badgeTargetOf = (item) => item.target.kind === "page" ? { kind: "page", title: item.target.title } : { kind: "block", uid: item.target.uid || item.uid };
   const visibleBadgeItems = () => {
-    const b = board();
+    const b = board2();
     if (!b) return [];
     const view2 = visibleWorldRect(vp, size, 0);
     const r = rects();
@@ -12180,7 +12346,7 @@ function mountBoardView({
     itemsR.setBadges(map);
   };
   const refreshBadges = () => {
-    if (disposed || gesturing || !board()) return;
+    if (disposed || gesturing || !board2()) return;
     itemsR.setShowBadges(flag("show-card-badges", true));
     if (!flag("show-card-badges", true) || tier !== "detail" || typeof host?.cardStats !== "function") return;
     const items = visibleBadgeItems();
@@ -12237,14 +12403,14 @@ function mountBoardView({
       applyLod();
       scheduleContent();
       vpStore.set(vpId, vp);
-      dirty.edges = new Set(board()?.edges.keys() || []);
+      dirty.edges = new Set(board2()?.edges.keys() || []);
       dirty.links = true;
       schedule();
       updateBackToContent();
       refreshBadges();
     }, RESUME_MS);
   };
-  const selectedItems = () => selection.items.map((u) => board()?.items.get(u)).filter(Boolean);
+  const selectedItems = () => selection.items.map((u) => board2()?.items.get(u)).filter(Boolean);
   const toScreenRect = (r) => {
     const p = worldToScreen(vp, { x: r.x, y: r.y });
     return { x: p.x, y: p.y, w: r.w * vp.zoom, h: r.h * vp.zoom };
@@ -12259,7 +12425,7 @@ function mountBoardView({
     return { x, y, w: Math.max(...xs2) - x, h: Math.max(...ys2) - y };
   };
   const ctxAnchor = () => {
-    const b = board();
+    const b = board2();
     if (!b) return null;
     if (selection.edge) {
       const edge = b.edges.get(selection.edge);
@@ -12296,7 +12462,7 @@ function mountBoardView({
   };
   const cardModel = (item) => item?.type === "card" ? { ...item, refs: refCountOf(item) } : item;
   const sectionModel = (item) => {
-    const b = board();
+    const b = board2();
     const uids = b ? [item.uid, ...descendantsOf(b, item.uid)] : [item.uid];
     return {
       ...item,
@@ -12305,7 +12471,7 @@ function mountBoardView({
     };
   };
   const showCtx = () => {
-    const b = board();
+    const b = board2();
     if (!b) return chrome.ctx.hide();
     if (selection.edge) {
       const edge = b.edges.get(selection.edge);
@@ -12327,14 +12493,14 @@ function mountBoardView({
     return chrome.ctx.show(kind, model, ctxAnchor);
   };
   const targetUids = () => selection.edge ? [selection.edge] : selection.items;
-  const singleItem = () => selection.items.length === 1 ? board()?.items.get(selection.items[0]) : null;
+  const singleItem = () => selection.items.length === 1 ? board2()?.items.get(selection.items[0]) : null;
   let hoverUid = null;
   const selectionOwnsBar = () => Boolean(selection.edge || selection.link || selection.items.length);
   const barCard = () => {
     const sel = singleItem();
     if (sel?.type === "card") return sel;
     if (!selectionOwnsBar() && hoverUid) {
-      const it = board()?.items.get(hoverUid);
+      const it = board2()?.items.get(hoverUid);
       if (it?.type === "card") return it;
     }
     return null;
@@ -12346,7 +12512,7 @@ function mountBoardView({
     return item.uid;
   };
   const openBoardOutline = () => {
-    const uid = board()?.uid;
+    const uid = board2()?.uid;
     if (uid) host?.openInSidebar?.(uid, "outline");
   };
   const openItemInSidebar = (item) => {
@@ -12360,7 +12526,7 @@ function mountBoardView({
   };
   const stackAt = (strings, x, y, h) => strings.map((string, i) => ({ string, x, y: y + i * (h + 24) }));
   const addStringsBeside = (strings) => {
-    const b = board();
+    const b = board2();
     if (!b || !strings.length) return;
     const r = rects();
     const sel = singleItem();
@@ -12380,7 +12546,7 @@ function mountBoardView({
     void session.addRefCards?.(stackAt(strings, x, y, h));
   };
   const isOnBoard = (string) => {
-    const b = board();
+    const b = board2();
     if (!b) return false;
     const s = String(string || "").trim();
     for (const item of b.items.values()) {
@@ -12390,7 +12556,7 @@ function mountBoardView({
   };
   const crumbList = Array.isArray(crumbs) ? crumbs : [];
   const boardTargetOf = (uid) => {
-    const item = board()?.items.get(uid);
+    const item = board2()?.items.get(uid);
     if (item?.kind === "board") return uid;
     const ref = item ? item.kind === "block" ? item.target?.uid : null : uid;
     if (!ref || typeof host?.blockString !== "function") return null;
@@ -12424,7 +12590,7 @@ function mountBoardView({
   const lastSelected = () => selection.items[selection.items.length - 1] ?? null;
   const viewCenterWorld = () => screenToWorld(vp, { x: size.width / 2, y: size.height / 2 });
   const cardsIn = (uids) => {
-    const b = board();
+    const b = board2();
     const out = /* @__PURE__ */ new Set();
     if (!b) return [];
     for (const uid of uids) {
@@ -12442,7 +12608,7 @@ function mountBoardView({
     const list = Array.isArray(res) ? res : [];
     if (!list.length) return;
     ctl.select(list);
-    const types = new Set(list.map((u) => board()?.items.get(u)?.type ?? "card"));
+    const types = new Set(list.map((u) => board2()?.items.get(u)?.type ?? "card"));
     const noun = types.size === 1 && (types.has("card") || types.has("section")) ? [...types][0] : "item";
     toast(`${label} ${list.length} ${list.length === 1 ? noun : `${noun}s`}`, true);
   };
@@ -12468,7 +12634,7 @@ function mountBoardView({
     host?.openBlock?.(item.target.uid || item.uid);
   };
   const applyBackground = () => {
-    const b = board();
+    const b = board2();
     const own = b?.plexus;
     const ownPattern = BOARD_PATTERNS.includes(own?.bg) ? own.bg : null;
     const ownHex = hexColor(own?.bgColor) || null;
@@ -12509,7 +12675,7 @@ function mountBoardView({
     root.classList.toggle("pxd-root--motion-off", motion === "reduced" || motion === "none");
   };
   const focusSetNow = () => {
-    const b = board();
+    const b = board2();
     if (presentSet) return presentSet;
     if (!focusOn || !b || !selection.items.length) return null;
     const sel = new Set(selection.items);
@@ -12562,19 +12728,19 @@ function mountBoardView({
   const foldSelection = () => {
     const cards = cardsIn(selection.items);
     if (!cards.length) return;
-    const b = board();
+    const b = board2();
     void session.setCollapsedMany?.(cards, cards.some((u) => !b.items.get(u).collapsed));
   };
   const alignSel = (mode, uids = selection.items) => {
     const r = rects();
-    const b = board();
+    const b = board2();
     const list = uids.filter((uid) => !b?.items.get(uid)?.pinned).map((uid) => ({ uid, ...r.get(uid) })).filter((x) => Number.isFinite(x.x));
     const moved = alignRects(list, mode).map((m) => ({ ...m, w: r.get(m.uid).w, h: r.get(m.uid).h }));
     void session.commitRects?.(moved);
   };
   const distributeSel = (axis, uids = selection.items) => {
     const r = rects();
-    const b = board();
+    const b = board2();
     const list = uids.filter((uid) => !b?.items.get(uid)?.pinned).map((uid) => ({ uid, ...r.get(uid) })).filter((x) => Number.isFinite(x.x));
     const moved = distributeRects(list, axis).map((m) => ({ ...m, w: r.get(m.uid).w, h: r.get(m.uid).h }));
     void session.commitRects?.(moved);
@@ -12642,7 +12808,7 @@ function mountBoardView({
     });
   };
   const outline = () => {
-    const b = board();
+    const b = board2();
     const out = [];
     if (!b) return out;
     for (const uid of outlineOrder(b)) {
@@ -12658,7 +12824,7 @@ function mountBoardView({
     return screenToWorld(vp, screen);
   };
   const doCopy = (uids) => {
-    const b = board();
+    const b = board2();
     if (!b || !uids.length) return;
     const payload = copyPayload(b, uids, rects());
     if (!payload.text) return;
@@ -12732,10 +12898,10 @@ function mountBoardView({
       toast(failed ? `Added ${made.length} of ${files.length} images` : `Added ${made.length} ${made.length === 1 ? "image" : "images"}`, true);
     }
   };
-  const editorTextarea = (node) => {
-    if (!node) return null;
-    if (String(node.tagName || "").toLowerCase() === "textarea") return node;
-    const editor = node.closest?.(".pxd-item__editor");
+  const editorTextarea = (node2) => {
+    if (!node2) return null;
+    if (String(node2.tagName || "").toLowerCase() === "textarea") return node2;
+    const editor = node2.closest?.(".pxd-item__editor");
     if (!editor) return null;
     const active = doc.activeElement;
     if (active && editor.contains?.(active) && String(active.tagName || "").toLowerCase() === "textarea") return active;
@@ -12842,7 +13008,7 @@ function mountBoardView({
     return true;
   };
   const menuContext = (kind, uid) => {
-    const b = board();
+    const b = board2();
     const item = uid ? b?.items.get(uid) : null;
     switch (kind) {
       case "canvas":
@@ -12876,7 +13042,7 @@ function mountBoardView({
     }
   };
   const openMenuAt = (kind, uid, client, world2) => {
-    if (!board()) return false;
+    if (!board2()) return false;
     const items = buildMenu(kind, menuContext(kind, uid));
     const ok = menu.open({ x: client.x, y: client.y, items });
     if (ok) menuCtx = { kind, uid, world: world2, selection: selection.items.slice() };
@@ -12892,7 +13058,7 @@ function mountBoardView({
     }
   };
   const onMenuPick = (id) => {
-    const b = board();
+    const b = board2();
     if (!b || disposed) return;
     const mc = menuCtx || { kind: "canvas", uid: null, world: viewCenterWorld(), selection: [] };
     const world2 = mc.world || viewCenterWorld();
@@ -12925,6 +13091,19 @@ function mountBoardView({
         });
         break;
       }
+      case "template": {
+        const d = DEFAULT_BOARD_CARD;
+        const rect = { x: world2.x - d.w / 2, y: world2.y - d.h / 2, w: d.w, h: d.h };
+        Promise.resolve(session.insertTemplate?.(arg, rect)).then((uid) => {
+          if (uid && !disposed) ctl.select([uid]);
+        }).catch(() => {
+        });
+        break;
+      }
+      case "save-template":
+        Promise.resolve(session.saveAsTemplate?.()).catch(() => {
+        });
+        break;
       case "paste":
         void pasteFromMenu(world2, false);
         break;
@@ -13223,17 +13402,17 @@ function mountBoardView({
       },
       selectAllInSection: () => {
         const it = singleItem();
-        const all = it ? sectionAllUids(board(), it.uid) : [];
+        const all = it ? sectionAllUids(board2(), it.uid) : [];
         if (all.length) ctl.select(all);
       },
       selectSameColor: () => {
         const it = singleItem();
-        const same = it ? sameColorUids(board(), it.uid) : [];
+        const same = it ? sameColorUids(board2(), it.uid) : [];
         if (same.length) ctl.select(same);
       },
       selectConnected: () => {
         const it = singleItem();
-        const linked = it ? connectedUids(board(), it.uid) : [];
+        const linked = it ? connectedUids(board2(), it.uid) : [];
         if (linked.length) ctl.select(linked);
       },
       setFontSize: (n) => {
@@ -13448,7 +13627,7 @@ function mountBoardView({
     }
   });
   const syncProps = () => {
-    const b = board();
+    const b = board2();
     if (!b) return;
     propsPanel.refresh({
       items: selection.items.map((id) => b.items.get(id)).filter(Boolean),
@@ -13487,7 +13666,7 @@ function mountBoardView({
   const startPresent = (only) => {
     quicklook.close();
     const opts = only ? { only } : void 0;
-    if (!presenter.start(board(), rects(), opts)) toast("Nothing to present");
+    if (!presenter.start(board2(), rects(), opts)) toast("Nothing to present");
   };
   chrome.minimap.setVisible(setting("show-minimap", true) !== false);
   chrome.toolbar.setLinkMode(linkMode);
@@ -13533,7 +13712,7 @@ function mountBoardView({
     edgesR.setSearch(edges);
   };
   const searchFilter = (text) => {
-    const b = board();
+    const b = board2();
     const q = String(text || "").trim().toLowerCase();
     searchIndex = -1;
     root.classList.toggle("pxd-root--searching", Boolean(q));
@@ -13545,7 +13724,7 @@ function mountBoardView({
     if (!searchMatches.length) return;
     searchIndex = (searchIndex + dir + searchMatches.length) % searchMatches.length;
     const hit = searchMatches[searchIndex];
-    if (hit?.focus && board()?.items.has(hit.focus)) {
+    if (hit?.focus && board2()?.items.has(hit.focus)) {
       ctl.select([hit.focus]);
       fitSelection([hit.focus]);
     }
@@ -13606,36 +13785,36 @@ function mountBoardView({
   let blockEdit = null;
   const closeBlockEdit = () => {
     if (!blockEdit) return;
-    const node = blockEdit;
+    const node2 = blockEdit;
     blockEdit = null;
-    node.remove();
+    node2.remove();
     try {
-      host?.unmount?.(node);
+      host?.unmount?.(node2);
     } catch {
     }
   };
   const editBoardBlock = () => {
     if (blockEdit || disposed) return;
-    const node = el("div", "pxd-block-edit pxd-chrome", root);
+    const node2 = el("div", "pxd-block-edit pxd-chrome", root);
     for (const type of ["pointerdown", "pointerup", "mousedown", "click", "dblclick", "wheel"]) {
-      node.addEventListener(type, (event) => event.stopPropagation());
+      node2.addEventListener(type, (event) => event.stopPropagation());
     }
-    blockEdit = node;
+    blockEdit = node2;
     try {
-      host?.renderBlock?.(node, boardUid);
+      host?.renderBlock?.(node2, boardUid);
     } catch {
       closeBlockEdit();
       return;
     }
-    openRawBlockEditor(node);
+    openRawBlockEditor(node2);
   };
-  const openRawBlockEditor = (node) => {
-    if (node.querySelector?.("textarea")) return;
-    const buttons = [...node.querySelectorAll?.("button") || []];
+  const openRawBlockEditor = (node2) => {
+    if (node2.querySelector?.("textarea")) return;
+    const buttons = [...node2.querySelectorAll?.("button") || []];
     const native = buttons.find((b) => (b.getAttribute?.("title") || b.title) === "Edit Block");
     if (!native) return;
     native.click?.();
-    if (node.querySelector?.("textarea")) return;
+    if (node2.querySelector?.("textarea")) return;
     const propsKey = Object.keys(native).find((k) => k.startsWith("__reactProps"));
     const onClick = propsKey && native[propsKey]?.onClick;
     if (typeof onClick === "function") {
@@ -13692,7 +13871,7 @@ function mountBoardView({
     itemsR.resetRects(rects(), ids);
   };
   const previewFit = (touched, { parentOf, skip } = {}) => {
-    const b = board();
+    const b = board2();
     if (!b || !flag("auto-fit-sections", true)) return;
     const plan = touched.length ? sectionFitPlan(b, effectiveRects(), touched, { parentOf, skip }) : [];
     const next = new Set(plan.map((p) => p.uid));
@@ -13704,7 +13883,7 @@ function mountBoardView({
     grown = next;
   };
   const actions = {
-    board,
+    board: board2,
     rects,
     hitRects: () => paintRects(),
     viewport: () => vp,
@@ -13762,7 +13941,7 @@ function mountBoardView({
     showLasso: (points) => edgesR.setLasso(points),
     showGuides: (guides) => edgesR.setGuides(guides),
     previewMove: (uids, dx, dy) => {
-      const b = board();
+      const b = board2();
       if (!b) return;
       liveRects = itemsR.previewMove(uids, dx, dy, b, rects());
       const set = new Set(uids);
@@ -13779,7 +13958,7 @@ function mountBoardView({
       schedule();
     },
     previewRects: (list) => {
-      const b = board();
+      const b = board2();
       if (!b) return;
       liveRects = itemsR.previewRects(list);
       const set = new Set(list.map((r) => r.uid));
@@ -13806,7 +13985,7 @@ function mountBoardView({
         return;
       }
       const uid = lastSelected();
-      const it = uid ? board()?.items.get(uid) : null;
+      const it = uid ? board2()?.items.get(uid) : null;
       if (it && it.type !== "section") quicklook.open(it);
     },
     closeQuickLook: () => quicklook.close(),
@@ -13864,7 +14043,7 @@ function mountBoardView({
     openSearch: () => chrome.search.open(),
     openInfo: () => openInfo(),
     addInfoTab: (uid) => {
-      const item = board()?.items.get(uid);
+      const item = board2()?.items.get(uid);
       if (item && item.type !== "section") panel.addInfoTab(item);
     },
     cycleLinks,
@@ -13946,16 +14125,16 @@ function mountBoardView({
     doc.removeEventListener("pointerup", onDocUp, true);
     doc.removeEventListener("pointercancel", onDocCancel, true);
   };
-  const toggleClickedTodo = (node) => {
-    const card = node?.closest?.(".pxd-item");
-    const uid = card?.getAttribute?.("data-uid") || card?.dataset?.uid;
+  const toggleClickedTodo = (node2) => {
+    const card2 = node2?.closest?.(".pxd-item");
+    const uid = card2?.getAttribute?.("data-uid") || card2?.dataset?.uid;
     if (!uid) return;
-    const stringRoot = node.closest?.(".pxd-item__string") || card;
+    const stringRoot = node2.closest?.(".pxd-item__string") || card2;
     const boxes = [...stringRoot.querySelectorAll('input[type="checkbox"]')];
-    const hit = node.closest?.("input, label, .check-container");
+    const hit = node2.closest?.("input, label, .check-container");
     const input = String(hit?.tagName || "").toLowerCase() === "input" ? hit : hit?.querySelector?.('input[type="checkbox"]');
     const index = input ? boxes.indexOf(input) : 0;
-    const next = toggleTodoAt(board()?.items?.get(uid)?.string, index < 0 ? 0 : index);
+    const next = toggleTodoAt(board2()?.items?.get(uid)?.string, index < 0 ? 0 : index);
     if (next == null) return;
     session.setString?.(uid, next);
   };
@@ -14086,7 +14265,7 @@ function mountBoardView({
       return;
     }
     if (uid === hoverUid && chrome.ctx.isOpen()) return;
-    const it = board()?.items.get(uid);
+    const it = board2()?.items.get(uid);
     if (!it || it.type !== "card") {
       if (hoverUid) {
         hoverUid = null;
@@ -14104,8 +14283,8 @@ function mountBoardView({
   listen(root, "pointermove", (event) => {
     lastPointer = { x: event.clientX || 0, y: event.clientY || 0 };
     if (event.target?.closest?.(".pxd-chrome")) return;
-    const node = event.target?.closest?.(".pxd-item--card");
-    showHover(node?.getAttribute?.("data-uid") || node?.dataset?.uid || null);
+    const node2 = event.target?.closest?.(".pxd-item--card");
+    showHover(node2?.getAttribute?.("data-uid") || node2?.dataset?.uid || null);
   });
   listen(root, "pointerenter", () => {
     pointerInside = true;
@@ -14263,7 +14442,7 @@ function mountBoardView({
     isTextEntry: isTextEntryTarget,
     on: {
       getPayload: ({ cut = false } = {}) => {
-        const b = board();
+        const b = board2();
         if (!b || !selection.items.length) return null;
         const payload = copyPayload(b, selection.items, rects());
         if (!payload.text) return null;
@@ -14292,7 +14471,7 @@ function mountBoardView({
   });
   subs.push(session.on("change", ({ dirty: d, structural } = {}) => {
     if (disposed) return;
-    const b = board();
+    const b = board2();
     const current = crumbList[crumbList.length - 1];
     if (current && b) {
       const title = b.title || UNTITLED_BOARD;
@@ -14347,7 +14526,7 @@ function mountBoardView({
           applyTheme();
         }, 300);
       });
-      for (const node of [doc.documentElement, doc.body]) if (node) mo.observe(node, { attributes: true, attributeFilter: ["class"] });
+      for (const node2 of [doc.documentElement, doc.body]) if (node2) mo.observe(node2, { attributes: true, attributeFilter: ["class"] });
       observers.push(mo);
     } catch {
     }
@@ -14364,7 +14543,7 @@ function mountBoardView({
   }, win });
   const renderFrame = () => {
     if (disposed) return;
-    const b = board();
+    const b = board2();
     if (!b) return;
     let itemsChanged = false;
     if (dirty.all || dirty.structural || dirty.items.size) {
@@ -14446,7 +14625,7 @@ function mountBoardView({
     if (disposed) return false;
     const target = pxdTarget(hash);
     if (!target?.cardUid) return false;
-    const b = board();
+    const b = board2();
     if (!b?.items?.has(target.cardUid)) return false;
     let pageUid = "";
     try {
@@ -14476,7 +14655,7 @@ function mountBoardView({
     }
   }
   if (!vp) {
-    const b = board();
+    const b = board2();
     const r = b ? rects() : /* @__PURE__ */ new Map();
     vp = fitViewport(boundsOf([...r.values()]), size.width && size.height ? size : { width: 800, height: 560 }, { padding: 64, maxZoom: 1 });
   }
@@ -14550,7 +14729,7 @@ function mountBoardView({
     return rasterizeSvg(doc, await svgOf(b, uids));
   }
   async function exportPng() {
-    const b = board();
+    const b = board2();
     if (!b) return false;
     try {
       const blob = await pngBlob(b);
@@ -14574,7 +14753,7 @@ function mountBoardView({
     }
   }
   async function copySelectionPng(uids) {
-    const b = board();
+    const b = board2();
     if (!b || !uids?.length) {
       if (!disposed) toast("PNG failed");
       return false;
@@ -14637,7 +14816,7 @@ function mountBoardView({
     },
     // Serializes the board to SVG text; with download it also offers the file through a temporary link.
     async exportSvg({ download = true } = {}) {
-      const b = board();
+      const b = board2();
       if (!b) return "";
       const text = boardToSvg(b, rects(), { dark: root.classList.contains("pxd-root--dark") });
       if (download) {
@@ -14660,7 +14839,7 @@ function mountBoardView({
       return exportPng();
     },
     async copyOutline() {
-      const b = board();
+      const b = board2();
       if (!b) return "";
       const text = boardToMarkdown(b, rects());
       const ok = await writeClipboard({ text });
@@ -14921,14 +15100,14 @@ function graphFromHash(hash = globalThis.location?.hash || "") {
   const match = String(hash).match(/#\/app\/([^/]+)/);
   return match ? match[1] : "unknown";
 }
-function pulledString(node) {
-  return String(node?.[":block/string"] ?? node?.string ?? "");
+function pulledString(node2) {
+  return String(node2?.[":block/string"] ?? node2?.string ?? "");
 }
-function pulledChildren(node) {
-  return node?.[":block/children"] ?? node?.children ?? [];
+function pulledChildren(node2) {
+  return node2?.[":block/children"] ?? node2?.children ?? [];
 }
-function hasMigratedMark(node) {
-  for (const child of pulledChildren(node)) {
+function hasMigratedMark(node2) {
+  for (const child of pulledChildren(node2)) {
     if (/^migrated::\s*2\b/i.test(pulledString(child).trim()) || hasMigratedMark(child)) return true;
   }
   return false;
@@ -15367,18 +15546,18 @@ async function installPlexusDiagram({
     }
     mount(uid, native, options);
   }
-  function scanAdded(node) {
-    for (const diagram of diagramsWithin(node)) consider(diagram);
+  function scanAdded(node2) {
+    for (const diagram of diagramsWithin(node2)) consider(diagram);
   }
   function reconcile() {
     if (stopped) return;
     for (const rec of [...mounts.values()]) {
       if (rec.native.isConnected === false || rec.mountEl.isConnected === false) unmount(rec);
     }
-    for (const [node, observer] of portalObservers) {
-      if (node.isConnected === false) {
+    for (const [node2, observer] of portalObservers) {
+      if (node2.isConnected === false) {
         observer.disconnect();
-        portalObservers.delete(node);
+        portalObservers.delete(node2);
       }
     }
     if (!active()) {
@@ -15406,10 +15585,10 @@ async function installPlexusDiagram({
     if (isDiagramString(host.blockString?.(uid))) return uid;
     try {
       const rows = host.q?.(PARENTS_QUERY, uid) || [];
-      const hits = rows.filter((row) => isDiagramString(row[1])).map((row) => row[0]);
+      const hits = rows.filter((row2) => isDiagramString(row2[1])).map((row2) => row2[0]);
       if (hits.length < 2) return hits[0] ?? null;
       const deepest = hits.find((cand) => {
-        const above = new Set((host.q?.(PARENTS_QUERY, cand) || []).map((row) => row[0]));
+        const above = new Set((host.q?.(PARENTS_QUERY, cand) || []).map((row2) => row2[0]));
         return hits.every((other) => other === cand || above.has(other));
       });
       return deepest ?? hits[0];
@@ -15605,8 +15784,8 @@ async function installPlexusDiagram({
   if (doc && typeof globalThis.MutationObserver === "function") {
     const onAdded = (records) => {
       for (const record of records) {
-        for (const node of record.addedNodes || []) {
-          if (node.nodeType === 1) scanAdded(node);
+        for (const node2 of record.addedNodes || []) {
+          if (node2.nodeType === 1) scanAdded(node2);
         }
       }
     };
@@ -15615,12 +15794,12 @@ async function installPlexusDiagram({
     if (doc.body) {
       lifecycle.observer(new MutationObserver((records) => {
         for (const record of records) {
-          for (const node of record.addedNodes || []) {
-            if (node.nodeType !== 1 || !node.classList?.contains("bp3-portal") || portalObservers.has(node)) continue;
+          for (const node2 of record.addedNodes || []) {
+            if (node2.nodeType !== 1 || !node2.classList?.contains("bp3-portal") || portalObservers.has(node2)) continue;
             const observer = new MutationObserver(onAdded);
-            observer.observe(node, { childList: true, subtree: true });
-            portalObservers.set(node, observer);
-            scanAdded(node);
+            observer.observe(node2, { childList: true, subtree: true });
+            portalObservers.set(node2, observer);
+            scanAdded(node2);
           }
         }
       }), doc.body, { childList: true });

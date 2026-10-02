@@ -20,7 +20,7 @@ test("buildMenu knows all seven kinds and returns [] for an unknown one", () => 
 });
 
 test("canvas menu ids, in order, with paste gated by canPaste", () => {
-  const want = ["new-card", "new-text", "new-section", "new-board", "paste", "paste-clone", "add-today", "add-week", "select-all", "fit-all", "fold-all", "unfold-all", "background", "export-svg", "export-png", "copy-outline"];
+  const want = ["new-card", "new-text", "new-section", "new-board", "template", "save-template", "paste", "paste-clone", "add-today", "add-week", "select-all", "fit-all", "fold-all", "unfold-all", "background", "export-svg", "export-png", "copy-outline"];
   assert.deepEqual(ids(buildMenu("canvas", {})), want);
   assert.equal(byId(buildMenu("canvas", { canPaste: false }), "paste").disabled, true);
   assert.equal(byId(buildMenu("canvas", { canPaste: false }), "paste-clone").disabled, true);
@@ -115,7 +115,7 @@ test("multi menu: align/distribute/tidy/same-size submenus, fold and pin follow 
 });
 
 test("board-menu ids", () => {
-  assert.deepEqual(ids(buildMenu("board-menu", {})), ["export-svg", "export-png", "copy-outline", "open-outline", "fold-all", "unfold-all", "add-today", "add-week", "background", "tidy:grid"]);
+  assert.deepEqual(ids(buildMenu("board-menu", {})), ["template", "save-template", "export-svg", "export-png", "copy-outline", "open-outline", "fold-all", "unfold-all", "add-today", "add-week", "background", "tidy:grid"]);
   assert.equal(byId(buildMenu("board-menu", {}), "open-outline").label, "Open outline in sidebar");
   assert.equal(byId(buildMenu("board-menu", {}), "export-png").label, "Export as PNG");
   for (const kind of ["card", "section", "text", "edge", "multi"]) {

@@ -276,6 +276,18 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       return res?.[":block/uid"] ?? null;
     },
 
+    // The templates page is created once. A second call returns the existing uid.
+    async ensurePage(title) {
+      const name = String(title ?? "").trim();
+      if (!name) return null;
+      const existing = host.pageUid(name);
+      if (existing) return existing;
+      stats.writes++;
+      await data.page.create({ page: { title: name } });
+      noteWrite();
+      return host.pageUid(name);
+    },
+
     // Blocks that link to the page. The card's own [[title]] counts as one.
     pageRefCount(title) {
       const name = String(title ?? "");

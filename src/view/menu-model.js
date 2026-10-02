@@ -3,6 +3,7 @@
 // No DOM here: everything is data so the ids, disabled and checked logic can be tested directly.
 
 import { PALETTE, FONT_SIZES } from "../model/schema.js";
+import { STARTERS } from "../model/templates.js";
 
 export const MENU_KINDS = ["canvas", "card", "section", "text", "edge", "multi", "board-menu"];
 
@@ -26,6 +27,10 @@ export function buildMenu(kind, ctx = {}) {
   const empty = count === 0;
   let separators = 0;
   const sep = () => ({ id: `sep-${separators += 1}`, separator: true });
+
+  const templateMenu = () => make("template", "New board from template…", {
+    children: STARTERS.map((s) => make(`template:${s.id}`, s.title)),
+  });
 
   const colorMenu = () => {
     const current = item?.color || null;
@@ -55,6 +60,8 @@ export function buildMenu(kind, ctx = {}) {
         make("new-text", "New text", { hint: "T" }),
         make("new-section", "New section", { hint: "G" }),
         make("new-board", "New board", { hint: "W" }),
+        templateMenu(),
+        make("save-template", "Save board as template"),
         sep(),
         make("paste", "Paste", { hint: "Cmd V", disabled: !c.canPaste }),
         make("paste-clone", "Paste as copies", { disabled: !c.canPaste }),
@@ -217,6 +224,9 @@ export function buildMenu(kind, ctx = {}) {
 
     case "board-menu":
       return [
+        templateMenu(),
+        make("save-template", "Save board as template"),
+        sep(),
         make("export-svg", "Export as SVG"),
         make("export-png", "Export as PNG"),
         make("copy-outline", "Copy as outline"),

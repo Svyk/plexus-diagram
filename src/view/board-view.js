@@ -1279,6 +1279,15 @@ export function mountBoardView({
         Promise.resolve(session.createBoard?.({ rect: { x: world.x - d.w / 2, y: world.y - d.h / 2, w: d.w, h: d.h } })).then((uid) => { if (uid && !disposed) ctl.select([uid]); }).catch(() => {});
         break;
       }
+      case "template": {
+        const d = DEFAULT_BOARD_CARD;
+        const rect = { x: world.x - d.w / 2, y: world.y - d.h / 2, w: d.w, h: d.h };
+        Promise.resolve(session.insertTemplate?.(arg, rect)).then((uid) => { if (uid && !disposed) ctl.select([uid]); }).catch(() => {});
+        break;
+      }
+      case "save-template":
+        Promise.resolve(session.saveAsTemplate?.()).catch(() => {});
+        break;
       case "paste": void pasteFromMenu(world, false); break;
       case "paste-clone": void pasteFromMenu(world, true); break;
       case "select-all": ctl.select([...b.items.keys()]); break;

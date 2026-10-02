@@ -316,6 +316,15 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   outline-offset: 1px;
 }
 
+.pxd-root:focus-visible,
+.pxd-root button:focus-visible,
+.pxd-root .pxd-item:focus-visible,
+.pxd-root .pxd-section:focus-visible,
+.pxd-root .pxd-menu__item:focus-visible {
+  outline: 2px solid var(--pxd-accent);
+  outline-offset: 2px;
+}
+
 @keyframes pxd-pulse {
   0% { outline-offset: 0; }
   100% { outline-offset: 12px; }

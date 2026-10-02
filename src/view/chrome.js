@@ -61,6 +61,8 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
     const b = el("button", `pxd-btn ${cls}`, parent, label);
     b.type = "button";
     if (title) b.title = title;
+    const name = String(label || "").trim() || title || "";
+    if (name) b.setAttribute("aria-label", name);
     listen(b, "click", (event) => { event.preventDefault(); event.stopPropagation(); onClick?.(event); });
     listen(b, "pointerdown", (event) => event.stopPropagation());
     listen(b, "dblclick", (event) => event.stopPropagation());
@@ -117,6 +119,7 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
       const b = el("button", "pxd-btn pxd-crumb", crumbMenu, entry.title);
       b.type = "button";
       b.title = entry.title;
+      b.setAttribute("aria-label", entry.title);
       b.dataset.index = String(entry.index);
       b.setAttribute("data-index", String(entry.index));
     }
@@ -178,6 +181,7 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
       const b = el("button", "pxd-btn pxd-crumb", crumbsEl, c.title);
       b.type = "button";
       b.title = c.title;
+      b.setAttribute("aria-label", c.title);
       b.dataset.index = String(i);
       b.setAttribute("data-index", String(i));
       el("span", "pxd-crumb__sep", crumbsEl, "›");
@@ -640,6 +644,7 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
   stopAll(search);
   const searchInput = el("input", "pxd-input pxd-search__input", search);
   searchInput.type = "text";
+  searchInput.setAttribute("aria-label", "Search this board");
   searchInput.placeholder = "Search this board…";
   searchInput.setAttribute("placeholder", "Search this board…");
   const searchCount = el("span", "pxd-search__count", search, "");

@@ -27,6 +27,8 @@ export function createPropsPanel({ doc = globalThis.document, root, storage, on 
     const b = el("button", `pxd-btn ${cls}`, parent, label);
     b.type = "button";
     if (title) b.title = title;
+    const name = String(label || "").trim() || title || "";
+    if (name) b.setAttribute("aria-label", name);
     listen(b, "click", (event) => { event.preventDefault(); event.stopPropagation(); fn?.(event); });
     return b;
   };

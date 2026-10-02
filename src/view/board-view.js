@@ -355,6 +355,9 @@ export function mountBoardView({
   const root = el("div", "pxd-root", mountEl);
   root.tabIndex = 0;
   root.setAttribute("tabindex", "0");
+  root.setAttribute("role", "region");
+  root.setAttribute("aria-roledescription", "whiteboard");
+  root.setAttribute("aria-label", "Diagram");
   root.dataset.tool = "select";
   root.setAttribute("data-tool", "select");
   root.dataset.board = boardUid;
@@ -525,6 +528,7 @@ export function mountBoardView({
       b.type = "button";
       b.className = `pxd-mode__btn ${cls}`;
       b.textContent = label;
+      b.setAttribute("aria-label", label);
       modeBar.append(b);
       listen(b, "click", on);
       return b;
@@ -1708,6 +1712,7 @@ export function mountBoardView({
     const all = el("button", `pxd-lens__row${lensTag ? "" : " is-on"}`, lensPop);
     all.type = "button";
     all.textContent = "All cards";
+    all.setAttribute("aria-label", "All cards");
     all.dataset.tag = "";
     all.setAttribute("data-tag", "");
     if (!catalog.tags.length) {
@@ -1718,6 +1723,7 @@ export function mountBoardView({
       const row = el("button", `pxd-lens__row${tag === lensTag ? " is-on" : ""}`, lensPop);
       row.type = "button";
       row.textContent = `#${tag}`;
+      row.setAttribute("aria-label", `#${tag}`);
       row.dataset.tag = tag;
       row.setAttribute("data-tag", tag);
     }
@@ -1885,6 +1891,7 @@ export function mountBoardView({
       btn.setAttribute("data-attr", row.name);
       btn.setAttribute("aria-pressed", row.on ? "true" : "false");
       btn.title = row.on ? `Hide ${row.name}` : `Show ${row.name}`;
+      btn.setAttribute("aria-label", btn.title);
       btn.textContent = row.name;
       legend.append(btn);
     }
@@ -2553,6 +2560,18 @@ export function mountBoardView({
     }).catch(() => {});
   });
 
+  const openFocusedCardMenu = (hostEl) => {
+    const uid = hostEl.dataset?.uid || hostEl.getAttribute?.("data-uid");
+    const item = uid ? board()?.items.get(uid) : null;
+    if (!item) return false;
+    const kind = item.type === "section" ? "section" : item.type === "text" ? "text" : "card";
+    const rect = hostEl.getBoundingClientRect();
+    const box = root.getBoundingClientRect();
+    const screen = { x: (rect.left || 0) - (box.left || 0), y: (rect.bottom || 0) - (box.top || 0) };
+    const ok = openMenuAt(kind, uid, { x: rect.left || 0, y: rect.bottom || 0 }, screenToWorld(vp, screen));
+    if (ok) menu.focusFirst?.();
+    return ok;
+  };
   const ownsKeyboard = () => {
     const active = doc.activeElement;
     const activeRoot = active?.closest?.(".pxd-root");
@@ -2577,6 +2596,13 @@ export function mountBoardView({
     }
     // The open menu owns the keyboard; Quick Look and a presentation only let their own keys through.
     if (menu.isOpen()) return;
+    const cardHost = doc.activeElement?.closest?.(".pxd-item, .pxd-section");
+    if (cardHost && root.contains(cardHost) && (event.key === "ContextMenu" || (event.shiftKey && event.key === "F10"))) {
+      event.preventDefault();
+      event.stopPropagation();
+      openFocusedCardMenu(cardHost);
+      return;
+    }
     if (event.key === "Escape" && blockEdit && !doc.querySelector?.(".rm-autocomplete__results")) {
       event.preventDefault();
       event.stopPropagation();
@@ -2634,7 +2660,18 @@ export function mountBoardView({
     }
     // Tab walks the outline only while focus is on the board itself: not for a resting pointer, and not on a toolbar control.
     const focused = doc.activeElement;
-    const tabOwned = Boolean(focused) && (focused === root || (Boolean(root.contains?.(focused)) && !focused.closest?.(".pxd-chrome")));
+    const onCard = Boolean(focused?.closest?.(".pxd-item, .pxd-section"));
+    const onChrome = Boolean(focused?.closest?.(".pxd-chrome"));
+    const tabOwned = Boolean(focused) && !onCard && (focused === root || (Boolean(root.contains?.(focused)) && !onChrome));
+    // Enter and Space belong to the focused control. They must not rename the selection.
+    // Roam cancels Enter before a button's own activation, so Enter clicks that button here. Space still does.
+    if (onChrome && root.contains(focused) && (event.key === "Enter" || event.key === " ")) {
+      if (event.key === "Enter" && String(focused.tagName || "").toLowerCase() === "button" && !focused.disabled) {
+        event.preventDefault();
+        focused.click();
+      }
+      return;
+    }
     const handled = ctl.handle({ type: "keydown", key: event.key, code: event.code, shift: event.shiftKey, alt: event.altKey, meta: event.metaKey, ctrl: event.ctrlKey, inputFocused, tabOwned });
     if (handled) { event.preventDefault(); event.stopPropagation(); }
   };

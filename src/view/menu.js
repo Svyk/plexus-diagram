@@ -103,6 +103,8 @@ export function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
       if (item.children?.length) cls += " pxd-menu__item--parent";
       const row = el("div", cls, parent);
       row.setAttribute("role", item.checked ? "menuitemradio" : "menuitem");
+      row.setAttribute("aria-label", item.label || item.id);
+      row.tabIndex = item.disabled ? -1 : 0;
       if (item.checked) row.setAttribute("aria-checked", "true");
       if (item.disabled) row.setAttribute("aria-disabled", "true");
       row.setAttribute("data-id", item.id);
@@ -136,7 +138,13 @@ export function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
   const pick = (row) => {
     const entry = entries.get(row);
     if (!entry || entry.item.disabled) return;
-    if (entry.sub) { const sub = openSub(row); if (sub) setActive(sub, selectable(sub)[0] || null); return; }
+    if (entry.sub) {
+      const sub = openSub(row);
+      const first = sub ? selectable(sub)[0] || null : null;
+      if (sub) setActive(sub, first);
+      first?.focus?.();
+      return;
+    }
     const { item } = entry;
     try { on.pick?.(item.id, item); } finally { close(); }
   };
@@ -149,20 +157,42 @@ export function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
     const i = rows.indexOf(level.active);
     const next = i < 0 ? (step > 0 ? 0 : rows.length - 1) : (i + step + rows.length) % rows.length;
     setActive(level, rows[next]);
+    rows[next].focus?.();
+  };
+
+  const onTab = (event) => {
+    if (!menuEl?.contains?.(doc.activeElement)) return;
+    const level = current();
+    const rows = selectable(level);
+    const focused = doc.activeElement?.closest?.(".pxd-menu__item");
+    const from = rows.indexOf(level.active) >= 0 ? rows.indexOf(level.active) : rows.indexOf(focused);
+    const nextIndex = event.shiftKey ? from - 1 : from + 1;
+    if (from >= 0 && nextIndex >= 0 && nextIndex < rows.length) {
+      event.preventDefault?.();
+      event.stopPropagation?.();
+      setActive(level, rows[nextIndex]);
+      rows[nextIndex].focus?.();
+      return;
+    }
+    close();
   };
 
   const onKey = (event) => {
     const key = event.key;
     if (!["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Enter", "Escape", " ", "Home", "End", "Tab"].includes(key)) return;
+    if (key === "Tab") return onTab(event);
     event.preventDefault?.();
     event.stopPropagation?.();
     const level = current();
-    if (key === "Escape" || key === "Tab") return close();
+    if (key === "Escape") return close();
     if (key === "ArrowDown") return move(1);
     if (key === "ArrowUp") return move(-1);
     if (key === "Home" || key === "End") {
       const rows = selectable(level);
-      return setActive(level, key === "Home" ? rows[0] : rows[rows.length - 1]);
+      const row = key === "Home" ? rows[0] : rows[rows.length - 1];
+      setActive(level, row);
+      row?.focus?.();
+      return undefined;
     }
     if (key === "ArrowRight") {
       if (level.active && entries.get(level.active)?.sub) pick(level.active);
@@ -236,6 +266,13 @@ export function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
     },
     close,
     isOpen: () => Boolean(menuEl),
+    focusFirst() {
+      const level = current();
+      const row = level ? selectable(level)[0] || null : null;
+      if (!row) return;
+      setActive(level, row);
+      row.focus?.();
+    },
     dispose() { close(); disposed = true; api.el = null; },
   };
   return api;

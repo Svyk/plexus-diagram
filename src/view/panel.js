@@ -135,6 +135,7 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
   relatedPane.style.display = "none";
   const input = el("input", "pxd-input pxd-panel__input", searchPane);
   input.type = "text";
+  input.setAttribute("aria-label", "Search pages and blocks");
   input.placeholder = "Search pages and blocks…";
   input.setAttribute("placeholder", "Search pages and blocks…");
   const filters = el("div", "pxd-panel__filters", searchPane);
@@ -161,18 +162,21 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
   const orphanLabel = el("label", "pxd-panel__orphan", filters);
   const orphanBox = el("input", "pxd-panel__orphan-box", orphanLabel);
   orphanBox.type = "checkbox";
+  orphanBox.setAttribute("aria-label", "Not on any board");
   orphanLabel.append("Not on any board");
   const results = el("div", "pxd-panel__list", searchPane);
   const relatedHead = el("div", "pxd-panel__related-head", relatedPane);
   const relatedTitle = el("span", "pxd-panel__related-title", relatedHead, "Select a card");
   const addAll = el("button", "pxd-btn pxd-panel__add-all", relatedHead, "Add all");
   addAll.type = "button";
+  addAll.setAttribute("aria-label", "Add all");
   addAll.style.display = "none";
   const relatedList = el("div", "pxd-panel__list", relatedPane);
   const boardsPane = el("div", "pxd-panel__pane pxd-panel__pane--boards", panel);
   boardsPane.style.display = "none";
   const boardsFilter = el("input", "pxd-input pxd-panel__input pxd-panel__boards-filter", boardsPane);
   boardsFilter.type = "text";
+  boardsFilter.setAttribute("aria-label", "Filter boards");
   boardsFilter.placeholder = "Filter boards…";
   boardsFilter.setAttribute("placeholder", "Filter boards…");
   const boardsList = el("div", "pxd-panel__list pxd-panel__boards", boardsPane);
@@ -346,6 +350,7 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
       const add = el("button", "pxd-btn pxd-panel__board-add", r, "Add shortcut");
       add.type = "button";
       add.title = "Add a card for this board to the current board";
+      add.setAttribute("aria-label", "Add shortcut");
     }
   };
   // One delegated listener: re-rendering the list never adds listeners.
@@ -413,11 +418,13 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
       const row = el("span", t.uid === cardCurrent ? "pxd-panel__infotab pxd-panel__infotab--on" : "pxd-panel__infotab", infoTabsBar);
       const name = el("button", "pxd-btn pxd-panel__infotab-name", row, cardItems.get(t.uid)?.title || "Untitled");
       name.type = "button";
+      name.setAttribute("aria-label", name.textContent || "Untitled");
       name.dataset.uid = t.uid;
       name.setAttribute("data-uid", t.uid);
       const closer = el("button", "pxd-btn pxd-panel__infotab-x", row, "×");
       closer.type = "button";
       closer.title = "Close";
+      closer.setAttribute("aria-label", "Close");
       closer.dataset.uid = t.uid;
       closer.setAttribute("data-uid", t.uid);
     }
@@ -485,6 +492,7 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     else for (const ref of info.refs) {
       const row = el("button", "pxd-btn pxd-panel__info-ref", refSec, ref.string || ref.uid);
       row.type = "button";
+      row.setAttribute("aria-label", ref.string || ref.uid);
       row.dataset.uid = ref.uid;
       row.setAttribute("data-uid", ref.uid);
       if (ref.pageTitle) row.title = ref.pageTitle;
@@ -494,6 +502,7 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     else for (const board of info.boards) {
       const row = el("button", "pxd-btn pxd-panel__info-board", boardSec);
       row.type = "button";
+      row.setAttribute("aria-label", board.title || "Untitled board");
       row.dataset.uid = board.uid;
       row.setAttribute("data-uid", board.uid);
       el("span", "pxd-panel__info-board-title", row, board.title || "Untitled board");

@@ -732,6 +732,7 @@ export async function installPlexusDiagram({
       row.type = "button";
       row.className = "pxd-commands__row";
       row.textContent = label.replace(/^Plexus: /, "");
+      row.setAttribute("aria-label", row.textContent);
       row.onclick = () => {
         closeCommandSheet();
         if (!active()) return;

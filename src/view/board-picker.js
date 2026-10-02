@@ -29,6 +29,7 @@ export function openAddToBoard({ doc = globalThis.document, listBoards, onPick }
   el("div", "pxd-addboard__title", box, "Add to board");
   const filter = el("input", "pxd-addboard__filter", box);
   filter.type = "text";
+  filter.setAttribute("aria-label", "Filter boards");
   filter.placeholder = "Filter boards…";
   filter.setAttribute("placeholder", "Filter boards…");
   const list = el("div", "pxd-addboard__list", box);

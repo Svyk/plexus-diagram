@@ -7768,6 +7768,7 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
   relatedPane.style.display = "none";
   const input = el("input", "pxd-input pxd-panel__input", searchPane);
   input.type = "text";
+  input.setAttribute("aria-label", "Search pages and blocks");
   input.placeholder = "Search pages and blocks…";
   input.setAttribute("placeholder", "Search pages and blocks…");
   const filters = el("div", "pxd-panel__filters", searchPane);
@@ -7794,18 +7795,21 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
   const orphanLabel = el("label", "pxd-panel__orphan", filters);
   const orphanBox = el("input", "pxd-panel__orphan-box", orphanLabel);
   orphanBox.type = "checkbox";
+  orphanBox.setAttribute("aria-label", "Not on any board");
   orphanLabel.append("Not on any board");
   const results = el("div", "pxd-panel__list", searchPane);
   const relatedHead = el("div", "pxd-panel__related-head", relatedPane);
   const relatedTitle = el("span", "pxd-panel__related-title", relatedHead, "Select a card");
   const addAll = el("button", "pxd-btn pxd-panel__add-all", relatedHead, "Add all");
   addAll.type = "button";
+  addAll.setAttribute("aria-label", "Add all");
   addAll.style.display = "none";
   const relatedList = el("div", "pxd-panel__list", relatedPane);
   const boardsPane = el("div", "pxd-panel__pane pxd-panel__pane--boards", panel);
   boardsPane.style.display = "none";
   const boardsFilter = el("input", "pxd-input pxd-panel__input pxd-panel__boards-filter", boardsPane);
   boardsFilter.type = "text";
+  boardsFilter.setAttribute("aria-label", "Filter boards");
   boardsFilter.placeholder = "Filter boards…";
   boardsFilter.setAttribute("placeholder", "Filter boards…");
   const boardsList = el("div", "pxd-panel__list pxd-panel__boards", boardsPane);
@@ -8006,6 +8010,7 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
       const add = el("button", "pxd-btn pxd-panel__board-add", r, "Add shortcut");
       add.type = "button";
       add.title = "Add a card for this board to the current board";
+      add.setAttribute("aria-label", "Add shortcut");
     }
   };
   listen(boardsList, "click", (event) => {
@@ -8082,11 +8087,13 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
       const row3 = el("span", t.uid === cardCurrent ? "pxd-panel__infotab pxd-panel__infotab--on" : "pxd-panel__infotab", infoTabsBar);
       const name = el("button", "pxd-btn pxd-panel__infotab-name", row3, cardItems.get(t.uid)?.title || "Untitled");
       name.type = "button";
+      name.setAttribute("aria-label", name.textContent || "Untitled");
       name.dataset.uid = t.uid;
       name.setAttribute("data-uid", t.uid);
       const closer = el("button", "pxd-btn pxd-panel__infotab-x", row3, "×");
       closer.type = "button";
       closer.title = "Close";
+      closer.setAttribute("aria-label", "Close");
       closer.dataset.uid = t.uid;
       closer.setAttribute("data-uid", t.uid);
     }
@@ -8164,6 +8171,7 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
     else for (const ref of info.refs) {
       const row3 = el("button", "pxd-btn pxd-panel__info-ref", refSec, ref.string || ref.uid);
       row3.type = "button";
+      row3.setAttribute("aria-label", ref.string || ref.uid);
       row3.dataset.uid = ref.uid;
       row3.setAttribute("data-uid", ref.uid);
       if (ref.pageTitle) row3.title = ref.pageTitle;
@@ -8173,6 +8181,7 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
     else for (const board2 of info.boards) {
       const row3 = el("button", "pxd-btn pxd-panel__info-board", boardSec);
       row3.type = "button";
+      row3.setAttribute("aria-label", board2.title || "Untitled board");
       row3.dataset.uid = board2.uid;
       row3.setAttribute("data-uid", board2.uid);
       el("span", "pxd-panel__info-board-title", row3, board2.title || "Untitled board");
@@ -8816,6 +8825,7 @@ function createItemRenderer({
     const toggle = el("button", "pxd-refs__toggle", wrap);
     toggle.type = "button";
     toggle.textContent = linkedRefLabel(refs.length);
+    toggle.setAttribute("aria-label", toggle.textContent);
     toggle.setAttribute("aria-expanded", "false");
     const list = el("div", "pxd-refs__list", wrap);
     setHidden(list, true);
@@ -8842,6 +8852,7 @@ function createItemRenderer({
     const open = el("button", "pxd-btn pxd-render-chip__open", chip);
     open.type = "button";
     open.textContent = "Open";
+    open.setAttribute("aria-label", "Open");
     for (const type of ["pointerdown", "mousedown", "dblclick", "click"]) {
       open.addEventListener(type, (event) => {
         stopEvent(event);
@@ -8947,6 +8958,9 @@ function createItemRenderer({
     }
     rec.el.dataset.uid = item.uid;
     rec.el.setAttribute("data-uid", item.uid);
+    rec.el.setAttribute("role", "group");
+    rec.el.tabIndex = -1;
+    rec.tabStop = -1;
     shells.set(item.uid, rec);
     return rec;
   };
@@ -9077,6 +9091,8 @@ function createItemRenderer({
       rec.header.classList.toggle("pxd-item__header--muted", item.kind === "board" && isUntitledBoard(item.title));
     }
     node2.title = "";
+    const announced = item.type === "section" ? item.title || "Section" : String(rec.refTitle || item.title || "Untitled");
+    node2.setAttribute("aria-label", `${announced}, ${item.type}`);
   };
   const position = (rec, rect) => {
     const prev = rec.rect;
@@ -9216,6 +9232,7 @@ function createItemRenderer({
     if (item.enhanced && isUntitledBoard(item.title)) {
       const input = el("input", "pxd-input pxd-item__board-name", wrap);
       input.type = "text";
+      input.setAttribute("aria-label", "Board name");
       input.placeholder = "Name this board…";
       input.setAttribute("placeholder", "Name this board…");
       for (const type of ["pointerdown", "mousedown", "click", "dblclick"]) input.addEventListener(type, stopEvent);
@@ -9246,6 +9263,7 @@ function createItemRenderer({
     const open = el("button", "pxd-btn pxd-item__open", meta);
     open.type = "button";
     open.textContent = "Open";
+    open.setAttribute("aria-label", "Open");
     open.dataset.action = "open";
     for (const type of ["pointerdown", "mousedown", "dblclick"]) open.addEventListener(type, stopEvent);
     open.addEventListener("click", (event) => {
@@ -9572,6 +9590,7 @@ function createItemRenderer({
       if (chip.title) node2.title = chip.title;
       if (chip.action) {
         node2.type = "button";
+        node2.setAttribute("aria-label", chip.title || chip.text);
         for (const type of ["pointerdown", "mousedown", "dblclick"]) node2.addEventListener(type, stopEvent);
         node2.addEventListener("click", (event) => {
           event.stopPropagation();
@@ -9602,12 +9621,26 @@ function createItemRenderer({
     }
   };
   const setSelection = (uids) => {
-    const set = new Set(uids);
+    const list = Array.isArray(uids) ? uids : [];
+    const set = new Set(list);
+    let primary = null;
+    for (let i = list.length - 1; i >= 0; i -= 1) {
+      if (shells.has(list[i])) {
+        primary = list[i];
+        break;
+      }
+    }
     for (const [uid, rec] of shells) {
       const on = set.has(uid);
-      if (rec.selected === on) continue;
-      rec.selected = on;
-      rec.el.classList.toggle(rec.type === "section" ? "pxd-section--selected" : "pxd-item--selected", on);
+      if (rec.selected !== on) {
+        rec.selected = on;
+        rec.el.classList.toggle(rec.type === "section" ? "pxd-section--selected" : "pxd-item--selected", on);
+      }
+      const tab = uid === primary ? 0 : -1;
+      if (rec.tabStop !== tab) {
+        rec.tabStop = tab;
+        rec.el.tabIndex = tab;
+      }
     }
   };
   const setHover = (uid) => {
@@ -10665,6 +10698,7 @@ function buildColorPicker(doc, onPick, listen) {
       b.type = "button";
       b.className = named ? `pxd-swatch pxd-picker__swatch pxd-c-${color}` : "pxd-swatch pxd-picker__swatch";
       b.title = color;
+      b.setAttribute("aria-label", color);
       b.setAttribute("data-color", color);
       if (!named) b.style.background = color;
       on(b, "click", (event) => {
@@ -10714,6 +10748,7 @@ function buildColorPicker(doc, onPick, listen) {
   clear.type = "button";
   clear.className = "pxd-btn pxd-picker__clear";
   clear.textContent = "No color";
+  clear.setAttribute("aria-label", "No color");
   on(clear, "click", (event) => {
     stop(event);
     onPick?.(null);
@@ -10776,6 +10811,8 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     const b = el("button", `pxd-btn ${cls}`, parent, label);
     b.type = "button";
     if (title) b.title = title;
+    const name = String(label || "").trim() || title || "";
+    if (name) b.setAttribute("aria-label", name);
     listen(b, "click", (event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -10837,6 +10874,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
       const b = el("button", "pxd-btn pxd-crumb", crumbMenu, entry.title);
       b.type = "button";
       b.title = entry.title;
+      b.setAttribute("aria-label", entry.title);
       b.dataset.index = String(entry.index);
       b.setAttribute("data-index", String(entry.index));
     }
@@ -10897,6 +10935,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
       const b = el("button", "pxd-btn pxd-crumb", crumbsEl, c.title);
       b.type = "button";
       b.title = c.title;
+      b.setAttribute("aria-label", c.title);
       b.dataset.index = String(i);
       b.setAttribute("data-index", String(i));
       el("span", "pxd-crumb__sep", crumbsEl, "›");
@@ -11379,6 +11418,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
   stopAll(search);
   const searchInput = el("input", "pxd-input pxd-search__input", search);
   searchInput.type = "text";
+  searchInput.setAttribute("aria-label", "Search this board");
   searchInput.placeholder = "Search this board…";
   searchInput.setAttribute("placeholder", "Search this board…");
   const searchCount = el("span", "pxd-search__count", search, "");
@@ -11707,6 +11747,7 @@ function mountTable({ doc = globalThis.document, root, host, getBoard } = {}) {
   addBtn.type = "button";
   addBtn.className = "pxd-btn pxd-table__add";
   addBtn.textContent = "Add column";
+  addBtn.setAttribute("aria-label", "Add column");
   bar.append(addBtn);
   const grid = doc.createElement("table");
   grid.className = "pxd-table__grid";
@@ -11824,6 +11865,7 @@ function mountTable({ doc = globalThis.document, root, host, getBoard } = {}) {
       button.setAttribute("data-col", column);
       const mark = sortColumn === column ? sortDir === "desc" ? " ↓" : " ↑" : "";
       button.textContent = `${column}${mark}`;
+      button.setAttribute("aria-label", `Sort by ${column}`);
       listen(button, "click", () => {
         if (sortColumn === column) sortDir = sortDir === "asc" ? "desc" : "asc";
         else {
@@ -11852,6 +11894,7 @@ function mountTable({ doc = globalThis.document, root, host, getBoard } = {}) {
           button.type = "button";
           button.className = "pxd-btn pxd-table__value";
           button.textContent = cellText(row2, column);
+          button.setAttribute("aria-label", `${column} for ${row2.title || row2.uid}`);
           listen(button, "click", () => openEditor(td, attr.uid), paintOffs);
           td.append(button);
         } else if (pendingValue != null) {
@@ -12205,6 +12248,8 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
     const b = el("button", `pxd-btn ${cls}`, parent, label);
     b.type = "button";
     if (title) b.title = title;
+    const name = String(label || "").trim() || title || "";
+    if (name) b.setAttribute("aria-label", name);
     listen(b, "click", (event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -12511,6 +12556,8 @@ function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
       if (item.children?.length) cls += " pxd-menu__item--parent";
       const row2 = el("div", cls, parent);
       row2.setAttribute("role", item.checked ? "menuitemradio" : "menuitem");
+      row2.setAttribute("aria-label", item.label || item.id);
+      row2.tabIndex = item.disabled ? -1 : 0;
       if (item.checked) row2.setAttribute("aria-checked", "true");
       if (item.disabled) row2.setAttribute("aria-disabled", "true");
       row2.setAttribute("data-id", item.id);
@@ -12544,7 +12591,9 @@ function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
     if (!entry || entry.item.disabled) return;
     if (entry.sub) {
       const sub = openSub(row2);
-      if (sub) setActive(sub, selectable(sub)[0] || null);
+      const first = sub ? selectable(sub)[0] || null : null;
+      if (sub) setActive(sub, first);
+      first?.focus?.();
       return;
     }
     const { item } = entry;
@@ -12562,19 +12611,40 @@ function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
     const i = rows.indexOf(level.active);
     const next = i < 0 ? step > 0 ? 0 : rows.length - 1 : (i + step + rows.length) % rows.length;
     setActive(level, rows[next]);
+    rows[next].focus?.();
+  };
+  const onTab = (event) => {
+    if (!menuEl?.contains?.(doc.activeElement)) return;
+    const level = current2();
+    const rows = selectable(level);
+    const focused = doc.activeElement?.closest?.(".pxd-menu__item");
+    const from = rows.indexOf(level.active) >= 0 ? rows.indexOf(level.active) : rows.indexOf(focused);
+    const nextIndex = event.shiftKey ? from - 1 : from + 1;
+    if (from >= 0 && nextIndex >= 0 && nextIndex < rows.length) {
+      event.preventDefault?.();
+      event.stopPropagation?.();
+      setActive(level, rows[nextIndex]);
+      rows[nextIndex].focus?.();
+      return;
+    }
+    close();
   };
   const onKey = (event) => {
     const key = event.key;
     if (!["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Enter", "Escape", " ", "Home", "End", "Tab"].includes(key)) return;
+    if (key === "Tab") return onTab(event);
     event.preventDefault?.();
     event.stopPropagation?.();
     const level = current2();
-    if (key === "Escape" || key === "Tab") return close();
+    if (key === "Escape") return close();
     if (key === "ArrowDown") return move(1);
     if (key === "ArrowUp") return move(-1);
     if (key === "Home" || key === "End") {
       const rows = selectable(level);
-      return setActive(level, key === "Home" ? rows[0] : rows[rows.length - 1]);
+      const row2 = key === "Home" ? rows[0] : rows[rows.length - 1];
+      setActive(level, row2);
+      row2?.focus?.();
+      return void 0;
     }
     if (key === "ArrowRight") {
       if (level.active && entries.get(level.active)?.sub) pick(level.active);
@@ -12649,6 +12719,13 @@ function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
     },
     close,
     isOpen: () => Boolean(menuEl),
+    focusFirst() {
+      const level = current2();
+      const row2 = level ? selectable(level)[0] || null : null;
+      if (!row2) return;
+      setActive(level, row2);
+      row2.focus?.();
+    },
     dispose() {
       close();
       disposed = true;
@@ -13151,6 +13228,7 @@ function createPresenter({ doc = globalThis.document, root, timers, on = {} } = 
   const button = (parent, cls, label, fn) => {
     const b = el("button", `pxd-btn ${cls}`, parent, label);
     b.type = "button";
+    if (label) b.setAttribute("aria-label", label);
     const click = (event) => {
       event.preventDefault?.();
       event.stopPropagation?.();
@@ -14097,6 +14175,9 @@ function mountBoardView({
   const root = el("div", "pxd-root", mountEl);
   root.tabIndex = 0;
   root.setAttribute("tabindex", "0");
+  root.setAttribute("role", "region");
+  root.setAttribute("aria-roledescription", "whiteboard");
+  root.setAttribute("aria-label", "Diagram");
   root.dataset.tool = "select";
   root.setAttribute("data-tool", "select");
   root.dataset.board = boardUid;
@@ -14274,6 +14355,7 @@ function mountBoardView({
       b.type = "button";
       b.className = `pxd-mode__btn ${cls}`;
       b.textContent = label;
+      b.setAttribute("aria-label", label);
       modeBar.append(b);
       listen(b, "click", on);
       return b;
@@ -15841,6 +15923,7 @@ function mountBoardView({
     const all = el("button", `pxd-lens__row${lensTag ? "" : " is-on"}`, lensPop);
     all.type = "button";
     all.textContent = "All cards";
+    all.setAttribute("aria-label", "All cards");
     all.dataset.tag = "";
     all.setAttribute("data-tag", "");
     if (!catalog.tags.length) {
@@ -15851,6 +15934,7 @@ function mountBoardView({
       const row2 = el("button", `pxd-lens__row${tag === lensTag ? " is-on" : ""}`, lensPop);
       row2.type = "button";
       row2.textContent = `#${tag}`;
+      row2.setAttribute("aria-label", `#${tag}`);
       row2.dataset.tag = tag;
       row2.setAttribute("data-tag", tag);
     }
@@ -16062,6 +16146,7 @@ function mountBoardView({
       btn.setAttribute("data-attr", row2.name);
       btn.setAttribute("aria-pressed", row2.on ? "true" : "false");
       btn.title = row2.on ? `Hide ${row2.name}` : `Show ${row2.name}`;
+      btn.setAttribute("aria-label", btn.title);
       btn.textContent = row2.name;
       legend.append(btn);
     }
@@ -16783,6 +16868,18 @@ function mountBoardView({
     }).catch(() => {
     });
   });
+  const openFocusedCardMenu = (hostEl) => {
+    const uid = hostEl.dataset?.uid || hostEl.getAttribute?.("data-uid");
+    const item = uid ? board2()?.items.get(uid) : null;
+    if (!item) return false;
+    const kind = item.type === "section" ? "section" : item.type === "text" ? "text" : "card";
+    const rect = hostEl.getBoundingClientRect();
+    const box2 = root.getBoundingClientRect();
+    const screen = { x: (rect.left || 0) - (box2.left || 0), y: (rect.bottom || 0) - (box2.top || 0) };
+    const ok = openMenuAt(kind, uid, { x: rect.left || 0, y: rect.bottom || 0 }, screenToWorld(vp, screen));
+    if (ok) menu.focusFirst?.();
+    return ok;
+  };
   const ownsKeyboard = () => {
     const active = doc.activeElement;
     const activeRoot = active?.closest?.(".pxd-root");
@@ -16804,6 +16901,13 @@ function mountBoardView({
       return;
     }
     if (menu.isOpen()) return;
+    const cardHost = doc.activeElement?.closest?.(".pxd-item, .pxd-section");
+    if (cardHost && root.contains(cardHost) && (event.key === "ContextMenu" || event.shiftKey && event.key === "F10")) {
+      event.preventDefault();
+      event.stopPropagation();
+      openFocusedCardMenu(cardHost);
+      return;
+    }
     if (event.key === "Escape" && blockEdit && !doc.querySelector?.(".rm-autocomplete__results")) {
       event.preventDefault();
       event.stopPropagation();
@@ -16865,7 +16969,16 @@ function mountBoardView({
       }
     }
     const focused = doc.activeElement;
-    const tabOwned = Boolean(focused) && (focused === root || Boolean(root.contains?.(focused)) && !focused.closest?.(".pxd-chrome"));
+    const onCard = Boolean(focused?.closest?.(".pxd-item, .pxd-section"));
+    const onChrome = Boolean(focused?.closest?.(".pxd-chrome"));
+    const tabOwned = Boolean(focused) && !onCard && (focused === root || Boolean(root.contains?.(focused)) && !onChrome);
+    if (onChrome && root.contains(focused) && (event.key === "Enter" || event.key === " ")) {
+      if (event.key === "Enter" && String(focused.tagName || "").toLowerCase() === "button" && !focused.disabled) {
+        event.preventDefault();
+        focused.click();
+      }
+      return;
+    }
     const handled = ctl.handle({ type: "keydown", key: event.key, code: event.code, shift: event.shiftKey, alt: event.altKey, meta: event.metaKey, ctrl: event.ctrlKey, inputFocused, tabOwned });
     if (handled) {
       event.preventDefault();
@@ -17395,6 +17508,7 @@ function openAddToBoard({ doc = globalThis.document, listBoards, onPick } = {}) 
   el("div", "pxd-addboard__title", box2, "Add to board");
   const filter = el("input", "pxd-addboard__filter", box2);
   filter.type = "text";
+  filter.setAttribute("aria-label", "Filter boards");
   filter.placeholder = "Filter boards…";
   filter.setAttribute("placeholder", "Filter boards…");
   const list = el("div", "pxd-addboard__list", box2);
@@ -18316,6 +18430,7 @@ async function installPlexusDiagram({
       row2.type = "button";
       row2.className = "pxd-commands__row";
       row2.textContent = label.replace(/^Plexus: /, "");
+      row2.setAttribute("aria-label", row2.textContent);
       row2.onclick = () => {
         closeCommandSheet();
         if (!active()) return;

@@ -30,6 +30,7 @@ export function buildColorPicker(doc, onPick, listen) {
       b.type = "button";
       b.className = named ? `pxd-swatch pxd-picker__swatch pxd-c-${color}` : "pxd-swatch pxd-picker__swatch";
       b.title = color;
+      b.setAttribute("aria-label", color);
       b.setAttribute("data-color", color);
       if (!named) b.style.background = color;
       on(b, "click", (event) => { stop(event); onPick?.(color); });
@@ -77,6 +78,7 @@ export function buildColorPicker(doc, onPick, listen) {
   clear.type = "button";
   clear.className = "pxd-btn pxd-picker__clear";
   clear.textContent = "No color";
+  clear.setAttribute("aria-label", "No color");
   on(clear, "click", (event) => { stop(event); onPick?.(null); });
   box.append(clear);
   return box;

@@ -37,6 +37,7 @@ export function createPresenter({ doc = globalThis.document, root, timers, on = 
   const button = (parent, cls, label, fn) => {
     const b = el("button", `pxd-btn ${cls}`, parent, label);
     b.type = "button";
+    if (label) b.setAttribute("aria-label", label);
     const click = (event) => { event.preventDefault?.(); event.stopPropagation?.(); fn(); };
     const stop = (event) => event.stopPropagation?.();
     b.addEventListener("click", click);

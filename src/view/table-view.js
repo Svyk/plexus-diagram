@@ -41,6 +41,7 @@ export function mountTable({ doc = globalThis.document, root, host, getBoard } =
   addBtn.type = "button";
   addBtn.className = "pxd-btn pxd-table__add";
   addBtn.textContent = "Add column";
+  addBtn.setAttribute("aria-label", "Add column");
   bar.append(addBtn);
   const grid = doc.createElement("table");
   grid.className = "pxd-table__grid";
@@ -156,6 +157,7 @@ export function mountTable({ doc = globalThis.document, root, host, getBoard } =
       button.setAttribute("data-col", column);
       const mark = sortColumn === column ? (sortDir === "desc" ? " ↓" : " ↑") : "";
       button.textContent = `${column}${mark}`;
+      button.setAttribute("aria-label", `Sort by ${column}`);
       listen(button, "click", () => {
         if (sortColumn === column) sortDir = sortDir === "asc" ? "desc" : "asc";
         else { sortColumn = column; sortDir = "asc"; }
@@ -181,6 +183,7 @@ export function mountTable({ doc = globalThis.document, root, host, getBoard } =
           button.type = "button";
           button.className = "pxd-btn pxd-table__value";
           button.textContent = cellText(row, column);
+          button.setAttribute("aria-label", `${column} for ${row.title || row.uid}`);
           listen(button, "click", () => openEditor(td, attr.uid), paintOffs);
           td.append(button);
         } else if (pendingValue != null) {

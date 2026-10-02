@@ -1619,6 +1619,70 @@ test("Tab is left to Roam and the browser unless focus is on the board itself", 
   }
 });
 
+test("UI-7: tab reaches the rail, the panel, a card, its toolbar, and the menu", async () => {
+  const f = mountFixture({ viewOptions: { autofocus: false } });
+  try {
+    await f.flush();
+    assert.equal(f.root.getAttribute("role"), "region");
+    assert.equal(f.root.getAttribute("aria-roledescription"), "whiteboard");
+    assert.equal(f.root.tabIndex, 0);
+    const alpha = shell(f, "cardAAAA1");
+    const section = shell(f, "sectCCCC3");
+    assert.equal(alpha.getAttribute("role"), "group");
+    assert.equal(alpha.getAttribute("aria-label"), "Alpha, card");
+    assert.equal(section.getAttribute("aria-label"), "Evidence, section");
+    assert.equal(alpha.tabIndex, -1);
+    f.root.focus();
+    const onBoard = key(f, "Tab");
+    f.stub.flushFrames();
+    assert.equal(onBoard.defaultPrevented, true, "Tab on the board still walks the outline");
+    const stops = [...f.root.querySelectorAll(".pxd-item, .pxd-section")].filter((node) => node.tabIndex === 0);
+    assert.equal(stops.length, 1, "only the selected card is a tab stop");
+    const card = stops[0];
+    card.focus();
+    const onCard = key(f, "Tab");
+    assert.equal(onCard.defaultPrevented, false, "Tab on a card moves to the next control");
+    const rail = f.root.querySelector(".pxd-rail__zoom-in");
+    rail.focus();
+    assert.equal(key(f, "Tab").defaultPrevented, false, "Tab on the rail stays with the browser");
+    f.root.querySelector(".pxd-toolbar__add").focus();
+    const onAdd = key(f, "Enter");
+    assert.equal(onAdd.defaultPrevented, true, "Enter activates the Add button");
+    assert.equal(f.root.querySelector(".pxd-item--editing, .pxd-section__title--editing"), null);
+    await f.flush();
+    const panelTab = f.root.querySelector(".pxd-panel__tab");
+    assert.equal(f.root.querySelector(".pxd-panel").style.display, "");
+    panelTab.focus();
+    assert.equal(key(f, "Tab").defaultPrevented, false, "Tab on the panel stays with the browser");
+    const ctx = f.root.querySelector(".pxd-ctx");
+    assert.notEqual(ctx.style.display, "none", "the card toolbar is open");
+    const ctxButtons = [...ctx.querySelectorAll("button")];
+    assert.ok(ctxButtons.length > 0, "the card toolbar has actions");
+    assert.ok(ctxButtons.every((button) => button.getAttribute("aria-label")), "the card toolbar names every button");
+    const unlabeled = [...f.root.querySelectorAll("button, input, select, textarea")].filter((node) => !node.getAttribute("aria-label"));
+    assert.deepEqual(unlabeled.map((node) => node.className), []);
+    card.focus();
+    const opened = key(f, "F10", { shiftKey: true });
+    assert.equal(opened.defaultPrevented, true);
+    assert.equal(f.view.state().menuOpen, true);
+    const first = f.stub.document.activeElement;
+    assert.equal(first.classList.contains("pxd-menu__item"), true);
+    assert.ok(first.getAttribute("aria-label"));
+    key(f, "Tab");
+    const second = f.stub.document.activeElement;
+    assert.equal(second.classList.contains("pxd-menu__item"), true);
+    assert.notEqual(second, first);
+    assert.equal(f.view.state().menuOpen, true);
+    const css = readFileSync(new URL("../src/extension.css", import.meta.url), "utf8");
+    assert.match(css, /\.pxd-root button:focus-visible/);
+    assert.match(css, /\.pxd-item:focus-visible/);
+    assert.match(css, /\.pxd-menu__item:focus-visible/);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
 test("badges: stats queries run in idle chunks and a failing query is retried, not cached", async () => {
   const calls = [];
   let fail = true;

@@ -304,6 +304,7 @@ export function createItemRenderer({
     const toggle = el("button", "pxd-refs__toggle", wrap);
     toggle.type = "button";
     toggle.textContent = linkedRefLabel(refs.length);
+    toggle.setAttribute("aria-label", toggle.textContent);
     toggle.setAttribute("aria-expanded", "false");
     const list = el("div", "pxd-refs__list", wrap);
     setHidden(list, true);
@@ -332,6 +333,7 @@ export function createItemRenderer({
     const open = el("button", "pxd-btn pxd-render-chip__open", chip);
     open.type = "button";
     open.textContent = "Open";
+    open.setAttribute("aria-label", "Open");
     for (const type of ["pointerdown", "mousedown", "dblclick", "click"]) {
       open.addEventListener(type, (event) => {
         stopEvent(event);
@@ -425,6 +427,9 @@ export function createItemRenderer({
     }
     rec.el.dataset.uid = item.uid;
     rec.el.setAttribute("data-uid", item.uid);
+    rec.el.setAttribute("role", "group");
+    rec.el.tabIndex = -1;
+    rec.tabStop = -1;
     shells.set(item.uid, rec);
     return rec;
   };
@@ -558,6 +563,8 @@ export function createItemRenderer({
       rec.header.classList.toggle("pxd-item__header--muted", item.kind === "board" && isUntitledBoard(item.title));
     }
     node.title = "";
+    const announced = item.type === "section" ? (item.title || "Section") : String(rec.refTitle || item.title || "Untitled");
+    node.setAttribute("aria-label", `${announced}, ${item.type}`);
   };
 
   const position = (rec, rect) => {
@@ -704,6 +711,7 @@ export function createItemRenderer({
     if (item.enhanced && isUntitledBoard(item.title)) {
       const input = el("input", "pxd-input pxd-item__board-name", wrap);
       input.type = "text";
+      input.setAttribute("aria-label", "Board name");
       input.placeholder = "Name this board…";
       input.setAttribute("placeholder", "Name this board…");
       for (const type of ["pointerdown", "mousedown", "click", "dblclick"]) input.addEventListener(type, stopEvent);
@@ -727,6 +735,7 @@ export function createItemRenderer({
     const open = el("button", "pxd-btn pxd-item__open", meta);
     open.type = "button";
     open.textContent = "Open";
+    open.setAttribute("aria-label", "Open");
     open.dataset.action = "open";
     for (const type of ["pointerdown", "mousedown", "dblclick"]) open.addEventListener(type, stopEvent);
     open.addEventListener("click", (event) => { event.stopPropagation(); openBoard(openUid); });
@@ -1052,6 +1061,7 @@ export function createItemRenderer({
       if (chip.title) node.title = chip.title;
       if (chip.action) {
         node.type = "button";
+        node.setAttribute("aria-label", chip.title || chip.text);
         for (const type of ["pointerdown", "mousedown", "dblclick"]) node.addEventListener(type, stopEvent);
         node.addEventListener("click", (event) => { event.stopPropagation(); onBadgeClick?.(rec.uid, chip.action); });
       }
@@ -1082,12 +1092,23 @@ export function createItemRenderer({
   };
 
   const setSelection = (uids) => {
-    const set = new Set(uids);
+    const list = Array.isArray(uids) ? uids : [];
+    const set = new Set(list);
+    let primary = null;
+    for (let i = list.length - 1; i >= 0; i -= 1) {
+      if (shells.has(list[i])) { primary = list[i]; break; }
+    }
     for (const [uid, rec] of shells) {
       const on = set.has(uid);
-      if (rec.selected === on) continue;
-      rec.selected = on;
-      rec.el.classList.toggle(rec.type === "section" ? "pxd-section--selected" : "pxd-item--selected", on);
+      if (rec.selected !== on) {
+        rec.selected = on;
+        rec.el.classList.toggle(rec.type === "section" ? "pxd-section--selected" : "pxd-item--selected", on);
+      }
+      const tab = uid === primary ? 0 : -1;
+      if (rec.tabStop !== tab) {
+        rec.tabStop = tab;
+        rec.el.tabIndex = tab;
+      }
     }
   };
   const setHover = (uid) => {

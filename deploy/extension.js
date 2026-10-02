@@ -11527,6 +11527,22 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
   return { toolbar: toolbarApi, ctx: ctxApi, toast: toastApi, search: searchApi, minimap: minimapApi, popover, backToContent, badge, sync, dispose };
 }
 
+// src/view/empty-hint.js
+var EMPTY_HINT = "Double-click to add a block · drag bullets from the outline · press ? for shortcuts";
+function boardIsEmpty(board2) {
+  return (board2?.items?.size || 0) === 0;
+}
+function syncEmptyHint(node2, board2) {
+  if (!node2) return false;
+  const show = boardIsEmpty(board2);
+  node2.hidden = !show;
+  if (show) {
+    node2.removeAttribute?.("hidden");
+    if (node2.textContent !== EMPTY_HINT) node2.textContent = EMPTY_HINT;
+  } else node2.setAttribute?.("hidden", "");
+  return show;
+}
+
 // src/model/table.js
 var FIXED = ["Title", "Section", "Type", "Edited"];
 function cleanName(name) {
@@ -14052,6 +14068,7 @@ function mountBoardView({
   const labelsLayer = el("div", "pxd-labels", world);
   const itemsLayer = el("div", "pxd-items", world);
   const overlaySvg = svg("pxd-overlay", world);
+  const emptyHint = el("div", "pxd-empty pxd-chrome", root);
   const resizeGrip = el("div", "pxd-resize-grip pxd-chrome", root);
   resizeGrip.title = "Drag to resize the board";
   const applyTheme = () => {
@@ -16924,6 +16941,7 @@ function mountBoardView({
     let itemsChanged = false;
     if (dirty.all || dirty.structural || dirty.items.size) {
       itemsR.sync({ board: b, rects: paintRects(), dirty: dirty.all ? null : dirty.items, structural: dirty.structural });
+      syncEmptyHint(emptyHint, b);
       itemsChanged = true;
     }
     const edgesDue = dirty.all || dirty.structural || dirty.links || dirty.edges.size;

@@ -37,6 +37,7 @@ import { createItemRenderer, isTextEntryTarget } from "./cards.js";
 import { editorKeyAction, inputBlockRole } from "./editor-keys.js";
 import { createEdgeLayer } from "./edges.js";
 import { createChrome, LINK_MODES } from "./chrome.js";
+import { syncEmptyHint } from "./empty-hint.js";
 import { mountTable } from "./table-view.js";
 import { mountKanban } from "./kanban-view.js";
 import { createPropsPanel } from "./props-panel.js";
@@ -360,6 +361,7 @@ export function mountBoardView({
   const labelsLayer = el("div", "pxd-labels", world);
   const itemsLayer = el("div", "pxd-items", world);
   const overlaySvg = svg("pxd-overlay", world);
+  const emptyHint = el("div", "pxd-empty pxd-chrome", root);
   const resizeGrip = el("div", "pxd-resize-grip pxd-chrome", root);
   resizeGrip.title = "Drag to resize the board";
   // The dark/light class follows the host: decided at mount, then again whenever the host flips (Roam's auto theme
@@ -2730,6 +2732,7 @@ export function mountBoardView({
     if (dirty.all || dirty.structural || dirty.items.size) {
       // Live preview rects (edit growth, drag fit) ride along: a sync for a dirty card must not snap grown section shells back.
       itemsR.sync({ board: b, rects: paintRects(), dirty: dirty.all ? null : dirty.items, structural: dirty.structural });
+      syncEmptyHint(emptyHint, b);
       itemsChanged = true;
     }
     const edgesDue = dirty.all || dirty.structural || dirty.links || dirty.edges.size;

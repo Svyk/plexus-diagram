@@ -2941,6 +2941,7 @@ body.roam-body.dark .pxd-root .pxd-panel__outline-row:hover {
 .pxd-root.pxd-root--table .pxd-panel,
 .pxd-root.pxd-root--table .pxd-minimap,
 .pxd-root.pxd-root--table .pxd-palette,
+.pxd-root.pxd-root--table .pxd-empty,
 .pxd-root.pxd-root--table .pxd-ctx {
   visibility: hidden;
   pointer-events: none;
@@ -3025,6 +3026,7 @@ body.roam-body.dark .pxd-root .pxd-panel__outline-row:hover {
 .pxd-root.pxd-root--kanban .pxd-panel,
 .pxd-root.pxd-root--kanban .pxd-minimap,
 .pxd-root.pxd-root--kanban .pxd-palette,
+.pxd-root.pxd-root--kanban .pxd-empty,
 .pxd-root.pxd-root--kanban .pxd-ctx {
   visibility: hidden;
   pointer-events: none;
@@ -3035,7 +3037,8 @@ body.roam-body.dark .pxd-root .pxd-panel__outline-row:hover {
 .pxd-root.pxd-root--outline .pxd-toolbar,
 .pxd-root.pxd-root--outline .pxd-resize-grip,
 .pxd-root.pxd-root--outline .pxd-props,
-.pxd-root.pxd-root--outline .pxd-palette {
+.pxd-root.pxd-root--outline .pxd-palette,
+.pxd-root.pxd-root--outline .pxd-empty {
   visibility: hidden;
   pointer-events: none;
 }
@@ -3087,6 +3090,21 @@ body.roam-body.dark .pxd-root .pxd-panel__outline-row:hover {
 .pxd-root .pxd-palette__btn.pxd-palette__btn--on {
   background: var(--pxd-accent-soft);
   color: var(--pxd-accent);
+}
+
+.pxd-root .pxd-empty {
+  position: absolute;
+  left: 64px;
+  right: 64px;
+  top: 46%;
+  z-index: 2;
+  margin: 0;
+  text-align: center;
+  color: var(--pxd-muted);
+  font-size: 13px;
+  line-height: 1.45;
+  pointer-events: none;
+  user-select: none;
 }
 
 /* "Plexus: Commands…" list. On document.body, outside .pxd-root, because

@@ -1359,6 +1359,30 @@ test("back to content: hidden for an empty board", async () => {
 
 // ------------------------------------------------------------------ settings, state, export
 
+test("UI-10: setSettings applies graph links, the palette, and the control rail on the same board", async () => {
+  const f = mountFixture();
+  try {
+    await f.flush();
+    const root = f.root;
+    const modes = [];
+    f.session.setLinkMode = (mode) => { modes.push(mode); };
+    f.view.setSettings({
+      get: (k) => ({ "graph-links": "off", "show-palette": false, "controls-position": "bar", "show-version-badge": false })[k],
+    });
+    f.stub.flushFrames();
+    assert.equal(f.root, root);
+    assert.equal(f.root.isConnected, true);
+    assert.deepEqual(modes, ["off"]);
+    assert.equal(f.root.querySelector(".pxd-palette").style.display, "none");
+    assert.equal(f.root.querySelector(".pxd-rail").style.display, "none");
+    assert.equal(f.root.classList.contains("pxd-root--rail"), false);
+    assert.equal(f.session.mutations.length, 0);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
 test("setSettings: swaps pattern, tone, map threshold, minimap and badge visibility without remounting", async () => {
   const f = mountFixture({ vp: { x: 0, y: 0, zoom: 0.5 } });
   try {

@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import extension from "../src/extension.js";
-import { createSettingsPanel, initializeSettings, normalizeSetting, readSettings, settingsDefaults, onSettingsChange } from "../src/settings.js";
+import { createSettingsPanel, initializeSettings, normalizeSetting, readSettings, resetPlexusSettings, settingsDefaults, onSettingsChange } from "../src/settings.js";
 
 function stubDeps() {
   return {
@@ -49,8 +49,9 @@ test("settings panel follows spec section 6 ids, defaults and row types", () => 
   const panel = createSettingsPanel();
   assert.equal(panel.tabTitle, "Plexus Diagram");
   const ids = panel.settings.map((row) => row.id);
-  assert.deepEqual(ids.sort(), Object.keys(settingsDefaults()).sort());
-  assert.deepEqual(ids.sort(), [
+  const settingIds = ids.filter((id) => Object.hasOwn(settingsDefaults(), id));
+  assert.deepEqual(settingIds.sort(), Object.keys(settingsDefaults()).sort());
+  assert.deepEqual(settingIds.sort(), [
     "attr-styles", "collapse-outline", "default-card-height", "default-card-look", "default-card-width", "disable-on-mobile", "enable-shortcuts", "enabled",
     "controls-position", "fullscreen-on-zoom", "graph-links", "grid", "show-minimap", "show-version-badge", "snap-grid", "snap-guides", "wheel",
     "auto-fit-sections", "board-tone", "map-zoom", "motion", "show-card-badges", "show-palette", "space-out",
@@ -135,6 +136,57 @@ test("every settings row fires onSettingsChange with its id and value", () => {
   off();
   rows.enabled.action.onChange({ target: { checked: true } });
   assert.deepEqual(seen, [["enabled", false], ["wheel", "zoom"], ["default-card-width", "300"]]);
+});
+
+test("UI-10: settings are grouped, described in plain language, and reset applies every default", async () => {
+  const panel = createSettingsPanel();
+  const defaults = settingsDefaults();
+  const groups = [];
+  const members = {};
+  let current = null;
+  for (const row of panel.settings) {
+    assert.equal(typeof row.description, "string");
+    assert.match(row.description, /[a-z]/);
+    assert.equal(row.description.includes("1.2"), false);
+    if (row.id.startsWith("group-")) {
+      current = row.name;
+      groups.push(current);
+      members[current] = [];
+      assert.equal(row.action.type, "reactComponent");
+    } else if (row.id === "reset-plexus-settings") {
+      assert.equal(current, "Performance");
+      assert.equal(row.action.type, "button");
+      assert.equal(row.action.content, "Reset Plexus settings");
+    } else {
+      members[current].push(row.id);
+    }
+  }
+  assert.deepEqual(groups, ["Cards", "Sections", "Connections", "Board", "Performance"]);
+  assert.deepEqual(members.Cards, ["default-card-look", "default-card-width", "default-card-height", "show-card-badges", "space-out"]);
+  assert.deepEqual(members.Sections, ["auto-fit-sections"]);
+  assert.deepEqual(members.Connections, ["graph-links", "attr-styles"]);
+  assert.ok(members.Board.includes("enabled"));
+  assert.ok(members.Performance.includes("motion"));
+  assert.deepEqual([...members.Cards, ...members.Sections, ...members.Connections, ...members.Board, ...members.Performance].sort(), Object.keys(defaults).sort());
+
+  const saved = [];
+  const seen = [];
+  await initializeSettings({
+    settings: {
+      get: () => true,
+      set: async (id, value) => { saved.push([id, value]); },
+    },
+  });
+  const off = onSettingsChange((id, value) => seen.push([id, value]));
+  try {
+    await resetPlexusSettings();
+  } finally {
+    off();
+  }
+  assert.deepEqual(saved.map(([id]) => id).sort(), Object.keys(defaults).sort());
+  assert.deepEqual(seen.map(([id]) => id).sort(), Object.keys(defaults).sort());
+  for (const [id, value] of saved) assert.equal(value, defaults[id]);
+  for (const [id, value] of seen) assert.equal(value, defaults[id]);
 });
 
 test("extension exports the Roam lifecycle contract and survives repeated unload", async () => {

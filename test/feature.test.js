@@ -744,6 +744,33 @@ test("settings changes reach mounted views through setSettings, else remount", a
   });
 });
 
+test("UI-10: every setting and reset reach setSettings without remounting", async () => {
+  const { createSettingsPanel, settingsDefaults } = await import("../src/settings.js");
+  await withEnv({ enhanced: ["boardAAA1"] }, async (t) => {
+    addNative(t.doc, "boardAAA1");
+    await t.install();
+    t.tick();
+    const view = t.views[0];
+    let applied = 0;
+    view.setSettings = () => { applied += 1; };
+    const defaults = settingsDefaults();
+    const rows = Object.fromEntries(createSettingsPanel().settings.map((row) => [row.id, row]));
+    for (const [id, value] of Object.entries(defaults)) {
+      const action = rows[id].action;
+      if (action.type === "switch") action.onChange({ target: { checked: value } });
+      else if (action.type === "input") action.onChange({ target: { value: String(value) } });
+      else action.onChange(value);
+    }
+    assert.equal(t.views.length, 1);
+    assert.equal(t.views[0], view);
+    assert.equal(applied, Object.keys(defaults).length);
+    await rows["reset-plexus-settings"].action.onClick();
+    assert.equal(t.views.length, 1);
+    assert.equal(t.views[0], view);
+    assert.equal(applied, Object.keys(defaults).length * 2);
+  });
+});
+
 test("sessions read settings live: a change reaches an already-acquired session without a remount", async () => {
   const { createSettingsPanel } = await import("../src/settings.js");
   await withEnv({ enhanced: ["boardAAA1"] }, async (t) => {

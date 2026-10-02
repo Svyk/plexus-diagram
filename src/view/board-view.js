@@ -3021,6 +3021,12 @@ export function mountBoardView({
       if (disposed) return;
       const minimapBefore = setting("show-minimap", true) !== false;
       settingsRef = next;
+      const nextLinks = setting("graph-links", "all");
+      if (nextLinks !== linkMode && LINK_MODES.includes(nextLinks)) {
+        linkMode = nextLinks;
+        chrome.toolbar.setLinkMode(linkMode);
+        session.setLinkMode?.(linkMode);
+      }
       applyBackground();
       applyMotion();
       applyLod();

@@ -17559,6 +17559,12 @@ function mountBoardView({
       if (disposed) return;
       const minimapBefore = setting("show-minimap", true) !== false;
       settingsRef = next;
+      const nextLinks = setting("graph-links", "all");
+      if (nextLinks !== linkMode && LINK_MODES2.includes(nextLinks)) {
+        linkMode = nextLinks;
+        chrome.toolbar.setLinkMode(linkMode);
+        session.setLinkMode?.(linkMode);
+      }
       applyBackground();
       applyMotion();
       applyLod();
@@ -17880,7 +17886,9 @@ function readSettings(extensionAPI) {
   }
   return out;
 }
+var settingsStore = null;
 async function initializeSettings(extensionAPI) {
+  settingsStore = extensionAPI ?? null;
   if (extensionAPI.settings.canSet === false) return;
   for (const [id, value] of Object.entries(DEFAULTS)) {
     if (extensionAPI.settings.get(id) == null) {
@@ -17926,36 +17934,100 @@ function selectRow(id, name, description, items) {
     action: { type: "select", items, onChange: (value) => emit(id, value?.target?.value ?? value) }
   };
 }
-function createSettingsPanel() {
+function groupRow(id, name, description) {
   return {
-    tabTitle: "Plexus Diagram",
-    settings: [
-      switchRow(SETTING_IDS.enabled, "Enabled", "Master overlay toggle."),
-      switchRow(SETTING_IDS.fullscreenOnZoom, "Fullscreen on zoom", "Open enhanced diagrams full screen when zoomed into the diagram block. Esc exits."),
-      selectRow(SETTING_IDS.graphLinks, "Graph links", "Show links between cards derived from page references and attributes.", ["all", "attributes", "off"]),
-      inputRow(SETTING_IDS.attrStyles, "Attribute styles", "JSON map of attribute name to color and dash. Colors are palette names. Dash is solid, dashed, or dotted."),
-      selectRow(SETTING_IDS.wheel, "Mouse wheel", "What the mouse wheel does on the board. Pinch always zooms.", ["pan", "zoom"]),
-      switchRow(SETTING_IDS.showMinimap, "Show minimap", "Show the minimap."),
-      switchRow(SETTING_IDS.showPalette, "Show tool palette", "Show the tool palette along the bottom of the board."),
-      selectRow(SETTING_IDS.motion, "Motion", "Full, reduced, or none. A system reduced-motion setting shortens Full.", ["full", "reduced", "none"]),
-      selectRow(SETTING_IDS.controlsPosition, "Controls", "Rail is the vertical control stack. Bar is the 1.2 horizontal zoom group.", ["rail", "bar"]),
-      switchRow(SETTING_IDS.snapGuides, "Snap guides", "Align dragged cards to neighbours and show guides."),
-      switchRow(SETTING_IDS.snapGrid, "Snap to grid", "Snap a dragged card to the 24px grid. Off unless you turn it on. Alt while dragging skips both snaps."),
-      selectRow(SETTING_IDS.grid, "Default board background: pattern", "Background pattern for boards that do not set their own. A board can override it from the Background button.", ["dots", "lines", "grid", "plain"]),
-      selectRow(SETTING_IDS.boardTone, "Default board background: tone", "Background tone for boards that do not set their own.", BOARD_TONES2),
-      selectRow(SETTING_IDS.mapZoom, "Map view below (zoom)", "Below this zoom level cards collapse to title-only tiles.", MAP_ZOOMS),
-      switchRow(SETTING_IDS.autoFitSections, "Auto-fit sections", "Grow a section to contain a card moved or resized past its edge."),
-      switchRow(SETTING_IDS.spaceOut, "Space out cards", "Push overlapping cards apart after a move."),
-      switchRow(SETTING_IDS.showCardBadges, "Show card badges", "Show reference, task and child counts on cards."),
-      selectRow(SETTING_IDS.defaultCardLook, "Default card look", "New note cards. Block is a plain Roam block. Card keeps the title row.", ["block", "card"]),
-      inputRow(SETTING_IDS.defaultCardWidth, "Default card width", "Width in pixels for new cards."),
-      inputRow(SETTING_IDS.defaultCardHeight, "Default card height", "Height in pixels for new cards."),
-      switchRow(SETTING_IDS.enableShortcuts, "Enable shortcuts", "Enable board keyboard shortcuts."),
-      switchRow(SETTING_IDS.showVersionBadge, "Show version badge", "Show the extension version in the toolbar."),
-      switchRow(SETTING_IDS.disableOnMobile, "Disable on mobile", "Skip mounting on mobile clients."),
-      switchRow(SETTING_IDS.collapseOutline, "Collapse board blocks in the outline (expand the bullet to see them)", "Collapses an enhanced board block once, so Roam does not list every card, section and connection as bullets under it. Expanding the bullet is remembered.")
-    ]
+    id,
+    name,
+    description,
+    action: { type: "reactComponent", component: () => null }
   };
+}
+async function resetPlexusSettings() {
+  const defaults = settingsDefaults();
+  for (const [id, value] of Object.entries(defaults)) {
+    try {
+      await settingsStore?.settings?.set?.(id, value);
+    } catch (error) {
+      console.warn("[plexus-diagram] Could not reset setting", id, error);
+    }
+    emit(id, value);
+  }
+}
+var SETTING_ROWS = {
+  [SETTING_IDS.enabled]: () => switchRow(SETTING_IDS.enabled, "Enabled", "Turn the diagram overlay on or off."),
+  [SETTING_IDS.fullscreenOnZoom]: () => switchRow(SETTING_IDS.fullscreenOnZoom, "Fullscreen on zoom", "Open a diagram full screen when you zoom into its block. Esc leaves it."),
+  [SETTING_IDS.graphLinks]: () => selectRow(SETTING_IDS.graphLinks, "Graph links", "Show lines between cards that share a page reference or an attribute.", ["all", "attributes", "off"]),
+  [SETTING_IDS.attrStyles]: () => inputRow(SETTING_IDS.attrStyles, "Attribute styles", "One JSON object. Each attribute name gets a palette color and a line: solid, dashed, or dotted."),
+  [SETTING_IDS.wheel]: () => selectRow(SETTING_IDS.wheel, "Mouse wheel", "What the mouse wheel does on the board. Pinch still zooms.", ["pan", "zoom"]),
+  [SETTING_IDS.showMinimap]: () => switchRow(SETTING_IDS.showMinimap, "Show minimap", "Show the small map of the whole board."),
+  [SETTING_IDS.showPalette]: () => switchRow(SETTING_IDS.showPalette, "Show tool palette", "Show the tool palette along the bottom of the board."),
+  [SETTING_IDS.motion]: () => selectRow(SETTING_IDS.motion, "Motion", "Full, reduced, or none. A system reduced-motion setting shortens Full.", ["full", "reduced", "none"]),
+  [SETTING_IDS.controlsPosition]: () => selectRow(SETTING_IDS.controlsPosition, "Controls", "Rail is the vertical stack on the right. Bar is the horizontal zoom group.", ["rail", "bar"]),
+  [SETTING_IDS.snapGuides]: () => switchRow(SETTING_IDS.snapGuides, "Snap guides", "Line a dragged card up with its neighbours and show the guides."),
+  [SETTING_IDS.snapGrid]: () => switchRow(SETTING_IDS.snapGrid, "Snap to grid", "Snap a dragged card to the 24 pixel grid. Hold Alt while dragging to skip snapping."),
+  [SETTING_IDS.grid]: () => selectRow(SETTING_IDS.grid, "Default board background: pattern", "Pattern for boards that do not set their own. A board can override it from Background.", ["dots", "lines", "grid", "plain"]),
+  [SETTING_IDS.boardTone]: () => selectRow(SETTING_IDS.boardTone, "Default board background: tone", "Color wash for boards that do not set their own.", BOARD_TONES2),
+  [SETTING_IDS.mapZoom]: () => selectRow(SETTING_IDS.mapZoom, "Map view below (zoom)", "Below this zoom, cards show only their title.", MAP_ZOOMS),
+  [SETTING_IDS.autoFitSections]: () => switchRow(SETTING_IDS.autoFitSections, "Auto-fit sections", "Grow a section when a card is moved or resized past its edge."),
+  [SETTING_IDS.spaceOut]: () => switchRow(SETTING_IDS.spaceOut, "Space out cards", "After a move, push cards apart when they overlap."),
+  [SETTING_IDS.showCardBadges]: () => switchRow(SETTING_IDS.showCardBadges, "Show card badges", "Show how many references, tasks, and children a card has."),
+  [SETTING_IDS.defaultCardLook]: () => selectRow(SETTING_IDS.defaultCardLook, "Default card look", "New note cards. Block is a plain Roam block. Card keeps a title row.", ["block", "card"]),
+  [SETTING_IDS.defaultCardWidth]: () => inputRow(SETTING_IDS.defaultCardWidth, "Default card width", "Width of a new card, in pixels."),
+  [SETTING_IDS.defaultCardHeight]: () => inputRow(SETTING_IDS.defaultCardHeight, "Default card height", "Height of a new card, in pixels."),
+  [SETTING_IDS.enableShortcuts]: () => switchRow(SETTING_IDS.enableShortcuts, "Enable shortcuts", "Use keyboard shortcuts on the board."),
+  [SETTING_IDS.showVersionBadge]: () => switchRow(SETTING_IDS.showVersionBadge, "Show version badge", "Show the version on the board."),
+  [SETTING_IDS.disableOnMobile]: () => switchRow(SETTING_IDS.disableOnMobile, "Disable on mobile", "Do not open diagrams on a phone."),
+  [SETTING_IDS.collapseOutline]: () => switchRow(SETTING_IDS.collapseOutline, "Collapse the outline", "Fold an enhanced board once, so the outline does not list every card. Opening the bullet is remembered.")
+};
+var SETTING_GROUPS = [
+  ["group-cards", "Cards", "How new cards look, and the marks on them.", [
+    SETTING_IDS.defaultCardLook,
+    SETTING_IDS.defaultCardWidth,
+    SETTING_IDS.defaultCardHeight,
+    SETTING_IDS.showCardBadges,
+    SETTING_IDS.spaceOut
+  ]],
+  ["group-sections", "Sections", "How a section grows around its cards.", [
+    SETTING_IDS.autoFitSections
+  ]],
+  ["group-connections", "Connections", "Lines drawn from page references and attributes.", [
+    SETTING_IDS.graphLinks,
+    SETTING_IDS.attrStyles
+  ]],
+  ["group-board", "Board", "The canvas, the controls, and how you move around.", [
+    SETTING_IDS.enabled,
+    SETTING_IDS.fullscreenOnZoom,
+    SETTING_IDS.wheel,
+    SETTING_IDS.showMinimap,
+    SETTING_IDS.showPalette,
+    SETTING_IDS.controlsPosition,
+    SETTING_IDS.snapGuides,
+    SETTING_IDS.snapGrid,
+    SETTING_IDS.grid,
+    SETTING_IDS.boardTone,
+    SETTING_IDS.mapZoom,
+    SETTING_IDS.enableShortcuts,
+    SETTING_IDS.showVersionBadge
+  ]],
+  ["group-performance", "Performance", "Motion, and when the overlay stays off.", [
+    SETTING_IDS.motion,
+    SETTING_IDS.disableOnMobile,
+    SETTING_IDS.collapseOutline
+  ]]
+];
+function createSettingsPanel() {
+  const settings = [];
+  for (const [id, name, description, members] of SETTING_GROUPS) {
+    settings.push(groupRow(id, name, description));
+    for (const member of members) settings.push(SETTING_ROWS[member]());
+  }
+  settings.push({
+    id: "reset-plexus-settings",
+    name: "Reset",
+    description: "Put every Plexus setting back to its default. Open boards update right away.",
+    action: { type: "button", content: "Reset Plexus settings", onClick: () => resetPlexusSettings() }
+  });
+  return { tabTitle: "Plexus Diagram", settings };
 }
 
 // src/feature.js

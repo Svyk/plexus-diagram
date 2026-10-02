@@ -11,7 +11,9 @@ import { fitViewport, zoomAt } from "../src/model/geometry.js";
 import { cardDeepLink } from "../src/model/deeplink.js";
 import { PLEXUS_MIME } from "../src/model/clipboard.js";
 import { queryResultLayout } from "../src/model/query.js";
+import { linkedRefCard, linkedRefLabel } from "../src/model/refs.js";
 import { isLightHost, mountBoardView } from "../src/view/board-view.js";
+import { CARD_MIME } from "../src/view/panel.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
 
 const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
@@ -2098,6 +2100,92 @@ test("RG-1: a query card mounts renderBlock and Add results places those blocks"
     assert.ok(call, "addRefCards ran");
     assert.deepEqual(call[1], queryResultLayout({ x: 520, y: 0, w: 280, h: 160 }, ["resultAA1", "resultBB2"]));
     assert.match(toastText(f), /Added 2 cards from the query/);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("RG-2: a page card drawer drags one mention out and the source string stays", async () => {
+  const source = "original mention";
+  const strings = new Map([["srcBlock1", source]]);
+  const rendered = [];
+  const unmounted = [];
+  const f = mountFixture({
+    extra: [{
+      ":block/uid": "pageGAM01",
+      ":block/string": "[[Gamma]]",
+      ":block/order": 6,
+      ":block/props": { ":plexus": { ":x": 520, ":y": 0, ":w": 200, ":h": 140 } },
+      ":block/children": [],
+    }],
+    hostOverrides: {
+      linkedRefs(item) {
+        if (item.title === "Beta") return [{ uid: "srcBlock1", string: strings.get("srcBlock1") }];
+        return [];
+      },
+      blockString(uid) { return strings.has(uid) ? strings.get(uid) : null; },
+      renderBlock(el, uid) {
+        rendered.push(uid);
+        const doc = el.ownerDocument || globalThis.document;
+        const node = doc.createElement("div");
+        node.setAttribute("id", `mention-${uid}`);
+        node.textContent = strings.get(uid) || "";
+        el.append(node);
+      },
+      unmount(el) { unmounted.push(el); },
+    },
+  });
+  const transfer = () => {
+    const data = {};
+    return {
+      effectAllowed: "uninitialized",
+      dropEffect: "none",
+      getData: (type) => data[type] || "",
+      setData: (type, value) => { data[type] = String(value); },
+    };
+  };
+  try {
+    await f.flush();
+    assert.equal(shell(f, "cardAAAA1").querySelector(".pxd-refs"), null);
+    const gamma = shell(f, "pageGAM01").querySelector(".pxd-refs__toggle");
+    assert.equal(gamma.textContent, linkedRefLabel(0));
+    const page = shell(f, "cardBBBB2");
+    const toggle = page.querySelector(".pxd-refs__toggle");
+    assert.equal(toggle.textContent, linkedRefLabel(1));
+    assert.equal(toggle.getAttribute("aria-expanded"), "false");
+    assert.equal(rendered.includes("srcBlock1"), false);
+    f.stub.dispatch(toggle, "click");
+    assert.equal(toggle.getAttribute("aria-expanded"), "true");
+    assert.equal(page.querySelector(".pxd-refs").classList.contains("pxd-refs--open"), true);
+    assert.equal(rendered.includes("srcBlock1"), true);
+    const row = page.querySelector(".pxd-refs__row");
+    const live = row.querySelector(".pxd-rs__live");
+    const dt = transfer();
+    const drag = f.stub.dispatch(live, "dragstart", { dataTransfer: dt });
+    assert.equal(drag.defaultPrevented, false);
+    assert.equal(dt.getData(CARD_MIME), linkedRefCard("srcBlock1"));
+    assert.equal(dt.getData("text/plain"), linkedRefCard("srcBlock1"));
+    assert.equal(dt.effectAllowed, "copy");
+    const down = f.stub.dispatch(live, "pointerdown", { button: 0, clientX: 12, clientY: 12, pointerId: 7 });
+    assert.equal(down.defaultPrevented, false);
+    pointerMove(f, 80, 80);
+    pointerUp(f, 80, 80);
+    assert.equal(f.session.mutations.some((row) => row[0] === "commitMove"), false);
+    const noteDrag = f.stub.dispatch(shell(f, "cardAAAA1").querySelector(".pxd-item__body"), "dragstart", { dataTransfer: transfer() });
+    assert.equal(noteDrag.defaultPrevented, true);
+    f.stub.dispatch(f.root, "drop", { dataTransfer: dt, clientX: 40, clientY: 40 });
+    await tick();
+    const call = f.session.mutations.find((row) => row[0] === "addRefCards");
+    assert.ok(call, "addRefCards ran");
+    assert.equal(call[1][0].string, linkedRefCard("srcBlock1"));
+    assert.equal(typeof call[1][0].x, "number");
+    assert.equal(typeof call[1][0].y, "number");
+    assert.equal(f.session.mutations.some((row) => row[0] === "setString"), false);
+    assert.equal(f.host.blockString("srcBlock1"), source);
+    assert.equal(strings.get("srcBlock1"), source);
+    f.view.dispose();
+    assert.ok(unmounted.includes(live));
   } finally {
     f.view.dispose();
     f.restore();

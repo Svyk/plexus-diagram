@@ -2132,6 +2132,11 @@ export function mountBoardView({
   };
   listen(root, "pointerdown", (event) => {
     if (event.target?.closest?.(".pxd-chrome")) return;
+    // The linked-references drawer drags a mention out. preventDefault would cancel that drag and move the card.
+    if (event.target?.closest?.(".pxd-refs")) {
+      event.stopPropagation();
+      return;
+    }
     // A rendered checkbox is not a Roam block control. Flip that TODO and leave the card alone.
     if (nativeClickKind(event.target) === "checkbox") { toggleClickedTodo(event.target); return; }
     measure();
@@ -2175,7 +2180,7 @@ export function mountBoardView({
     });
   }
   listen(root, "dragstart", (event) => {
-    if (event.target?.closest?.(".pxd-chrome, .pxd-item--editing")) return;
+    if (event.target?.closest?.(".pxd-chrome, .pxd-item--editing, .pxd-refs__row")) return;
     event.preventDefault();
   });
   // Capture phase only cancels the click that ends a drag. Shielding Roam's block-edit handlers happens in
@@ -2215,7 +2220,7 @@ export function mountBoardView({
     if (!event.target?.closest?.(".pxd-chrome")) event.stopPropagation();
   });
   listen(root, "dblclick", (event) => {
-    if (event.target?.closest?.(".pxd-chrome")) return;
+    if (event.target?.closest?.(".pxd-chrome, .pxd-refs")) return;
     if (nativeClickKind(event.target)) return;
     event.stopPropagation();
     event.preventDefault();

@@ -4,7 +4,9 @@
 
 import { DEFAULT_SIZES, FONT_SIZES, PALETTE, attrNameOf, classifyString, cssColor, firstLine, hexColor, isUntitledBoard, parseBoardTitle, plainText } from "../model/schema.js";
 import { isQueryString } from "../model/query.js";
+import { LINKED_REF_CAP, linkedRefCard, linkedRefLabel } from "../model/refs.js";
 import { boardPreview, descendantsOf, sectionNoteUid } from "../model/board.js";
+import { CARD_MIME } from "./panel.js";
 import { lodForZoom, rectsIntersect } from "../model/geometry.js";
 import { SHAPES, shapePath } from "../model/shapes.js";
 import { watchEditorMenus } from "./editor-menus.js";
@@ -250,6 +252,75 @@ export function createItemRenderer({
     return live;
   };
 
+  const setHidden = (node, hidden) => {
+    node.hidden = hidden;
+    if (hidden) node.setAttribute("hidden", "");
+    else node.removeAttribute("hidden");
+  };
+
+  const addRefRow = (list, rec, ref, on) => {
+    const payload = linkedRefCard(ref?.uid);
+    if (!payload) return;
+    const row = el("div", "pxd-refs__row", list);
+    row.draggable = true;
+    row.setAttribute("draggable", "true");
+    row.dataset.uid = ref.uid;
+    row.setAttribute("data-uid", ref.uid);
+    const liveWrap = el("div", "pxd-rs", row);
+    const live = el("div", "pxd-rs__live", liveWrap);
+    try {
+      if (host?.renderBlock) host.renderBlock(live, ref.uid);
+      else live.textContent = String(ref.string || "");
+    } catch {
+      live.textContent = String(ref.string || "");
+    }
+    armEmbedShield(liveWrap, live);
+    rec.roots.push(liveWrap);
+    for (const type of ["pointerdown", "mousedown", "dblclick"]) on(row, type, stopEvent);
+    on(row, "dragstart", (event) => {
+      event.stopPropagation();
+      try {
+        event.dataTransfer?.setData?.(CARD_MIME, payload);
+        event.dataTransfer?.setData?.("text/plain", payload);
+        if (event.dataTransfer) event.dataTransfer.effectAllowed = "copy";
+      } catch { /* the drag still leaves the source block alone */ }
+    });
+  };
+
+  const mountLinkedRefs = (body, rec, item) => {
+    let refs = [];
+    try {
+      const got = host?.linkedRefs?.(item, { limit: LINKED_REF_CAP });
+      if (Array.isArray(got)) refs = got.slice(0, LINKED_REF_CAP);
+    } catch { refs = []; }
+    const offs = [];
+    const on = (node, type, fn) => {
+      node.addEventListener(type, fn);
+      offs.push(() => node.removeEventListener(type, fn));
+    };
+    rec.refOff = () => { for (const off of offs.splice(0)) off(); };
+    const wrap = el("div", "pxd-refs", body);
+    const toggle = el("button", "pxd-refs__toggle", wrap);
+    toggle.type = "button";
+    toggle.textContent = linkedRefLabel(refs.length);
+    toggle.setAttribute("aria-expanded", "false");
+    const list = el("div", "pxd-refs__list", wrap);
+    setHidden(list, true);
+    for (const type of ["pointerdown", "mousedown", "dblclick"]) on(toggle, type, stopEvent);
+    let filled = false;
+    on(toggle, "click", (event) => {
+      event.stopPropagation();
+      event.preventDefault();
+      const open = toggle.getAttribute("aria-expanded") !== "true";
+      toggle.setAttribute("aria-expanded", open ? "true" : "false");
+      wrap.classList.toggle("pxd-refs--open", open);
+      setHidden(list, !open);
+      if (!open || filled) return;
+      filled = true;
+      for (const ref of refs) addRefRow(list, rec, ref, on);
+    });
+  };
+
   const renderRoot = (parent, string, cls = "pxd-rs") => {
     const node = el("div", cls, parent);
     if (!string) return node;
@@ -265,6 +336,8 @@ export function createItemRenderer({
   };
 
   const unmountRoots = (rec) => {
+    try { rec.refOff?.(); } catch { /* already off */ }
+    rec.refOff = null;
     if (!rec.roots?.length) return;
     for (const node of rec.roots) {
       try { node.__pxdEmbedMo?.disconnect(); } catch { /* already gone */ }
@@ -653,6 +726,7 @@ export function createItemRenderer({
       };
       if (preview && typeof preview.then === "function") preview.then((p) => apply(p)).catch(() => {});
       else apply(preview, true);
+      mountLinkedRefs(body, rec, item);
     } else if (item.kind === "block") {
       const ref = item.target.uid;
       const refString = host?.blockString?.(ref);

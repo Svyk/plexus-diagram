@@ -415,6 +415,26 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   min-height: 48px;
 }
 
+.pxd-refs { margin-top: 8px; }
+.pxd-refs__toggle {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 4px 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.pxd-refs__list[hidden] { display: none; }
+.pxd-refs__row {
+  cursor: grab;
+  padding: 4px 0;
+  border-top: 1px solid var(--pxd-border);
+}
+
 .pxd-rs { position: relative; }
 
 .pxd-embed-shield {

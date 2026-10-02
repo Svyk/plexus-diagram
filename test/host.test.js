@@ -511,6 +511,61 @@ test("cardInfo reads a note's own children and the block a ref card points at", 
   assert.equal(info.uid, "note1");
 });
 
+test("linkedRefs lists mentions and skips the card itself", () => {
+  const { fake, host } = setup();
+  fake.setQ((query, input) => {
+    const q = String(query);
+    assert.equal(q.includes(":block/parents"), false);
+    assert.match(q, /:block\/refs/);
+    assert.equal(input, "Alpha");
+    return [
+      ["cardP0001", "[[Alpha]]", "Lab"],
+      ["srcBlock1", "original mention", "Notes"],
+      ["srcBlock1", "original mention", "Notes"],
+      ["otherMent", "second mention", "Notes"],
+    ];
+  });
+  const refs = host.linkedRefs({
+    uid: "cardP0001",
+    type: "card",
+    kind: "page",
+    title: "Alpha",
+    string: "[[Alpha]]",
+    target: { kind: "page", title: "Alpha" },
+  });
+  assert.deepEqual(refs, [
+    { uid: "srcBlock1", string: "original mention", pageTitle: "Notes" },
+    { uid: "otherMent", string: "second mention", pageTitle: "Notes" },
+  ]);
+  fake.setQ((query, input) => {
+    assert.match(String(query), /\?uid/);
+    assert.equal(input, "note10001");
+    return [
+      ["note10001", "self", "Lab"],
+      ["backlink1", "points here", "Notes"],
+      ["backlink2", "also here", "Notes"],
+    ];
+  });
+  const capped = host.linkedRefs({
+    uid: "refcard01",
+    type: "card",
+    kind: "block",
+    title: "Field",
+    string: "((note10001))",
+    target: { kind: "block", uid: "note10001" },
+  }, { limit: 1 });
+  assert.deepEqual(capped, [{ uid: "backlink1", string: "points here", pageTitle: "Notes" }]);
+  fake.setQ(() => { throw new Error("query down"); });
+  assert.deepEqual(host.linkedRefs({
+    uid: "cardP0001",
+    type: "card",
+    kind: "page",
+    title: "Alpha",
+    target: { kind: "page", title: "Alpha" },
+  }), []);
+  assert.deepEqual(host.linkedRefs({ uid: "s1", type: "section", target: { kind: "self", uid: "s1" } }), []);
+});
+
 test("showOnBoard returns the placed v2 card, or the card that refs the block", () => {
   const { fake, host } = setup();
   const placed = { plexus: { x: 10, y: 20, w: 80, h: 40 } };

@@ -9,6 +9,7 @@ import {
   normalizeLibraryFilter,
   recentDailyTitles,
 } from "../model/library.js";
+import { LINKED_REF_CAP } from "../model/refs.js";
 import { attrNameOf, mergePropsForWrite, parseBoardTitle, plainKeys } from "../model/schema.js";
 
 export const BOARD_PATTERN = `[:block/uid :block/string :block/order :block/heading :block/open :block/props
@@ -918,6 +919,39 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         .sort((a, b) => b[1].count - a[1].count || a[0].localeCompare(b[0]))
         .map(([pt, g]) => ({ relation: "linked from", target: { kind: "page", title: pt }, text: g.count > 1 ? `${pt} (${g.count})` : pt }));
       return [...attrs, ...links, ...linkedFrom].slice(0, limit);
+    },
+
+    // Mentions of a page or block. The info panel's cardInfo also asks which boards
+    // contain the card; this query does not, so a page card can list references on mount.
+    linkedRefs(item, { limit = LINKED_REF_CAP } = {}) {
+      if (!item || item.type === "section") return [];
+      const kind = item.target?.kind || item.kind || "self";
+      const cardUid = String(item.uid ?? "");
+      const pageTitle = kind === "page" ? String(item.target?.title || item.title || "") : "";
+      const targetUid = kind === "block" ? String(item.target?.uid || "") : (pageTitle ? "" : cardUid);
+      if (!pageTitle && !targetUid) return [];
+      const cap = Number.isFinite(Number(limit)) ? Math.max(0, Math.floor(Number(limit))) : LINKED_REF_CAP;
+      let rows = [];
+      try {
+        rows = host.q(
+          pageTitle
+            ? `[:find ?u ?ss ?pt :in $ ?title :where [?p :node/title ?title] [?b :block/refs ?p] [?b :block/uid ?u] [?b :block/string ?ss] [?b :block/page ?pg] [?pg :node/title ?pt]]`
+            : `[:find ?u ?ss ?pt :in $ ?uid :where [?c :block/uid ?uid] [?b :block/refs ?c] [?b :block/uid ?u] [?b :block/string ?ss] [?b :block/page ?pg] [?pg :node/title ?pt]]`,
+          pageTitle || targetUid,
+        ) || [];
+      } catch {
+        return [];
+      }
+      const refs = [];
+      const seen = new Set();
+      for (const row of rows) {
+        const uid = row?.[0];
+        if (!uid || uid === cardUid || (targetUid && uid === targetUid) || seen.has(uid)) continue;
+        seen.add(uid);
+        refs.push({ uid, string: String(row?.[1] ?? ""), pageTitle: row?.[2] || "" });
+        if (refs.length >= cap) break;
+      }
+      return refs;
     },
 
     // Info panel. Page-card attributes come from the page's children, not the [[title]] card.

@@ -2341,6 +2341,18 @@ function libraryCap() {
   return LIBRARY_CAP;
 }
 
+// src/model/refs.js
+var LINKED_REF_CAP = 20;
+var UID_RE3 = /^[A-Za-z0-9_-]{9}$/;
+function linkedRefLabel(count) {
+  const n2 = Number.isFinite(count) ? Math.max(0, Math.floor(count)) : 0;
+  return n2 === 1 ? "1 linked reference" : `${n2} linked references`;
+}
+function linkedRefCard(uid) {
+  const s = String(uid ?? "");
+  return UID_RE3.test(s) ? `((${s}))` : null;
+}
+
 // src/host/roam.js
 var BOARD_PATTERN = `[:block/uid :block/string :block/order :block/heading :block/open :block/props
  {:block/children [:block/uid :block/string :block/order :block/heading :block/open :block/props
@@ -3233,6 +3245,36 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
       }
       const linkedFrom = [...pages.entries()].sort((a, b) => b[1].count - a[1].count || a[0].localeCompare(b[0])).map(([pt, g]) => ({ relation: "linked from", target: { kind: "page", title: pt }, text: g.count > 1 ? `${pt} (${g.count})` : pt }));
       return [...attrs, ...links, ...linkedFrom].slice(0, limit);
+    },
+    // Mentions of a page or block. The info panel's cardInfo also asks which boards
+    // contain the card; this query does not, so a page card can list references on mount.
+    linkedRefs(item, { limit = LINKED_REF_CAP } = {}) {
+      if (!item || item.type === "section") return [];
+      const kind = item.target?.kind || item.kind || "self";
+      const cardUid = String(item.uid ?? "");
+      const pageTitle = kind === "page" ? String(item.target?.title || item.title || "") : "";
+      const targetUid = kind === "block" ? String(item.target?.uid || "") : pageTitle ? "" : cardUid;
+      if (!pageTitle && !targetUid) return [];
+      const cap2 = Number.isFinite(Number(limit)) ? Math.max(0, Math.floor(Number(limit))) : LINKED_REF_CAP;
+      let rows = [];
+      try {
+        rows = host.q(
+          pageTitle ? `[:find ?u ?ss ?pt :in $ ?title :where [?p :node/title ?title] [?b :block/refs ?p] [?b :block/uid ?u] [?b :block/string ?ss] [?b :block/page ?pg] [?pg :node/title ?pt]]` : `[:find ?u ?ss ?pt :in $ ?uid :where [?c :block/uid ?uid] [?b :block/refs ?c] [?b :block/uid ?u] [?b :block/string ?ss] [?b :block/page ?pg] [?pg :node/title ?pt]]`,
+          pageTitle || targetUid
+        ) || [];
+      } catch {
+        return [];
+      }
+      const refs = [];
+      const seen = /* @__PURE__ */ new Set();
+      for (const row2 of rows) {
+        const uid = row2?.[0];
+        if (!uid || uid === cardUid || targetUid && uid === targetUid || seen.has(uid)) continue;
+        seen.add(uid);
+        refs.push({ uid, string: String(row2?.[1] ?? ""), pageTitle: row2?.[2] || "" });
+        if (refs.length >= cap2) break;
+      }
+      return refs;
     },
     // Info panel. Page-card attributes come from the page's children, not the [[title]] card.
     // Two board queries: diagrams that parent the card, and diagrams that parent a block which refs the target.
@@ -7187,6 +7229,663 @@ function createInteractions({ actions, settings } = {}) {
   };
 }
 
+// src/view/panel.js
+var CARD_MIME = "application/x-plexus-card";
+var DEBOUNCE_MS = 150;
+var LIMIT = 40;
+var MAX_DROP = 50;
+function parseDropPayload(dataTransfer, { resolveUid } = {}) {
+  if (!dataTransfer) return [];
+  const take = (type) => {
+    try {
+      return String(dataTransfer.getData?.(type) || "");
+    } catch {
+      return "";
+    }
+  };
+  const resolve = typeof resolveUid === "function" ? resolveUid : (uid) => `((${uid}))`;
+  const own = take(CARD_MIME).trim();
+  if (own) return [{ string: own }];
+  const tokens = (text2) => text2.split(/\s+/).filter((t) => /^[\w-]+$/.test(t));
+  let uids = tokens(take("roam/block-uid-list-only-parents"));
+  if (!uids.length) uids = tokens(take("roam/block-uid-list"));
+  if (!uids.length) {
+    for (const type of ["roam/roam-uri-list", "text/uri-list"]) {
+      for (const line of take(type).split(/\r?\n/)) {
+        if (!line.trim() || line.startsWith("#")) continue;
+        const m = line.match(/\/page\/([\w-]+)/);
+        if (m) uids.push(m[1]);
+      }
+      if (uids.length) break;
+    }
+  }
+  if (uids.length) {
+    const out = [];
+    for (const uid of [...new Set(uids)].slice(0, MAX_DROP)) {
+      let string = null;
+      try {
+        string = resolve(uid);
+      } catch {
+        string = null;
+      }
+      if (typeof string === "string" && string.trim()) out.push({ string });
+    }
+    if (out.length) return out;
+  }
+  const chunks = [take("text/plain"), take("text/html")];
+  const types = dataTransfer.types;
+  if (types) for (const type of types) chunks.push(take(type));
+  const blob = chunks.join("\n");
+  if (!blob.trim()) return [];
+  const page = blob.match(/\[\[([^\]]+)\]\]/);
+  if (page) return [{ string: `[[${page[1]}]]` }];
+  const blockRef = blob.match(/\(\(([^)]+)\)\)/);
+  if (blockRef) return [{ string: `((${blockRef[1]}))` }];
+  const plain = take("text/plain").trim();
+  if (/^[A-Za-z0-9_-]{9}$/.test(plain)) {
+    let string = null;
+    try {
+      string = resolve(plain);
+    } catch {
+      string = null;
+    }
+    if (typeof string === "string" && string.trim()) return [{ string }];
+  }
+  return [];
+}
+function createPanel({ doc = globalThis.document, root, host, timers, on = {}, width } = {}) {
+  const listeners2 = [];
+  const listen = (el2, type, fn, opts) => {
+    el2.addEventListener(type, fn, opts);
+    listeners2.push(() => el2.removeEventListener(type, fn, opts));
+  };
+  const el = (tag, cls, parent, text2) => {
+    const node2 = doc.createElement(tag);
+    node2.className = cls;
+    if (text2 !== void 0) node2.textContent = text2;
+    parent?.append(node2);
+    return node2;
+  };
+  const panel = el("aside", "pxd-panel pxd-chrome", root);
+  panel.style.display = "none";
+  if (Number.isFinite(Number(width))) panel.style.width = `${nextPanelWidth(width, 0)}px`;
+  const resize = el("div", "pxd-panel__resize", panel);
+  resize.title = "Resize";
+  for (const type of ["pointerdown", "pointerup", "click", "dblclick", "wheel", "keydown", "keyup"]) {
+    listen(panel, type, (event) => {
+      if ((type === "keydown" || type === "keyup") && event.target?.closest?.(".pxd-panel__info-mount")) return;
+      event.stopPropagation();
+    });
+  }
+  let resizing = null;
+  listen(resize, "pointerdown", (event) => {
+    if (event.button !== 0) return;
+    event.preventDefault();
+    const measured = panel.getBoundingClientRect?.().width;
+    const styled = parseFloat(panel.style.width);
+    resizing = { x: event.clientX, w: measured || styled || PANEL_WIDTH_DEFAULT };
+    try {
+      resize.setPointerCapture?.(event.pointerId);
+    } catch {
+    }
+  });
+  listen(resize, "pointermove", (event) => {
+    if (!resizing) return;
+    panel.style.width = `${nextPanelWidth(resizing.w, resizing.x - event.clientX)}px`;
+  });
+  listen(resize, "pointerup", (event) => {
+    if (!resizing) return;
+    const next = nextPanelWidth(resizing.w, resizing.x - event.clientX);
+    resizing = null;
+    panel.style.width = `${next}px`;
+    on.rememberWidth?.(next);
+  });
+  const head = el("div", "pxd-panel__head", panel);
+  const tabs = el("div", "pxd-panel__tabs", head);
+  const tabSearch = el("button", "pxd-btn pxd-panel__tab pxd-panel__tab--on", tabs, "Search");
+  const tabRelated = el("button", "pxd-btn pxd-panel__tab", tabs, "Related");
+  const tabBoards = el("button", "pxd-btn pxd-panel__tab", tabs, "Boards");
+  const tabOutline = el("button", "pxd-btn pxd-panel__tab", tabs, "Outline");
+  const tabInfo = el("button", "pxd-btn pxd-panel__tab", tabs, "Info");
+  const tabButtons = { search: tabSearch, related: tabRelated, boards: tabBoards, outline: tabOutline, info: tabInfo };
+  for (const [name, b] of Object.entries(tabButtons)) {
+    b.type = "button";
+    b.dataset.tab = name;
+    b.setAttribute("data-tab", name);
+  }
+  const closeBtn = el("button", "pxd-btn pxd-panel__close", head, "×");
+  closeBtn.type = "button";
+  closeBtn.title = "Close";
+  const searchPane = el("div", "pxd-panel__pane pxd-panel__pane--search", panel);
+  const relatedPane = el("div", "pxd-panel__pane pxd-panel__pane--related", panel);
+  relatedPane.style.display = "none";
+  const input = el("input", "pxd-input pxd-panel__input", searchPane);
+  input.type = "text";
+  input.placeholder = "Search pages and blocks…";
+  input.setAttribute("placeholder", "Search pages and blocks…");
+  const filters = el("div", "pxd-panel__filters", searchPane);
+  const typeSel = el("select", "pxd-panel__type", filters);
+  typeSel.setAttribute("aria-label", "Type");
+  const typeLabels = { all: "All", page: "Pages", block: "Blocks", board: "Boards", daily: "Dailies" };
+  for (const value of LIBRARY_TYPES) {
+    const opt = el("option", "pxd-panel__type-opt", typeSel, typeLabels[value]);
+    opt.value = value;
+    opt.setAttribute("value", value);
+  }
+  typeSel.value = "all";
+  const tagInput = el("input", "pxd-panel__tag", filters);
+  tagInput.type = "text";
+  tagInput.placeholder = "#tag";
+  tagInput.setAttribute("placeholder", "#tag");
+  tagInput.setAttribute("aria-label", "Tag");
+  const daysInput = el("input", "pxd-panel__days", filters);
+  daysInput.type = "number";
+  daysInput.min = "0";
+  daysInput.placeholder = "days";
+  daysInput.setAttribute("placeholder", "days");
+  daysInput.setAttribute("aria-label", "Edited in the last N days");
+  const orphanLabel = el("label", "pxd-panel__orphan", filters);
+  const orphanBox = el("input", "pxd-panel__orphan-box", orphanLabel);
+  orphanBox.type = "checkbox";
+  orphanLabel.append("Not on any board");
+  const results = el("div", "pxd-panel__list", searchPane);
+  const relatedHead = el("div", "pxd-panel__related-head", relatedPane);
+  const relatedTitle = el("span", "pxd-panel__related-title", relatedHead, "Select a card");
+  const addAll = el("button", "pxd-btn pxd-panel__add-all", relatedHead, "Add all");
+  addAll.type = "button";
+  addAll.style.display = "none";
+  const relatedList = el("div", "pxd-panel__list", relatedPane);
+  const boardsPane = el("div", "pxd-panel__pane pxd-panel__pane--boards", panel);
+  boardsPane.style.display = "none";
+  const boardsFilter = el("input", "pxd-input pxd-panel__input pxd-panel__boards-filter", boardsPane);
+  boardsFilter.type = "text";
+  boardsFilter.placeholder = "Filter boards…";
+  boardsFilter.setAttribute("placeholder", "Filter boards…");
+  const boardsList = el("div", "pxd-panel__list pxd-panel__boards", boardsPane);
+  const outlinePane = el("div", "pxd-panel__pane pxd-panel__pane--outline", panel);
+  outlinePane.style.display = "none";
+  const outlineList = el("div", "pxd-panel__list pxd-panel__outline", outlinePane);
+  const infoPane = el("div", "pxd-panel__pane pxd-panel__pane--info", panel);
+  infoPane.style.display = "none";
+  const infoTabsBar = el("div", "pxd-panel__infotabs", infoPane);
+  const infoScroll = el("div", "pxd-panel__info", infoPane);
+  let tab = "search";
+  let debounce = null;
+  let selected = null;
+  let relatedRows = [];
+  let queryId = 0;
+  const row2 = (parent, { string, label, text: text2, kind }) => {
+    const r = el("div", "pxd-panel__row", parent);
+    r.setAttribute("draggable", "true");
+    r.draggable = true;
+    r.dataset.string = string;
+    r.setAttribute("data-string", string);
+    if (label) el("span", "pxd-panel__row-label", r, label);
+    el("span", `pxd-panel__row-text pxd-panel__row-text--${kind || "page"}`, r, text2);
+    if (on.isOnBoard?.(string)) {
+      r.classList.add("pxd-panel__row--on");
+      el("span", "pxd-panel__row-on", r, "on board");
+    }
+    listen(r, "click", (event) => {
+      event.stopPropagation();
+      on.addBeside?.(string);
+      r.classList.add("pxd-panel__row--on");
+    });
+    listen(r, "dragstart", (event) => {
+      try {
+        event.dataTransfer?.setData?.(CARD_MIME, string);
+        event.dataTransfer?.setData?.("text/plain", string);
+        if (event.dataTransfer) event.dataTransfer.effectAllowed = "copy";
+      } catch {
+      }
+    });
+    return r;
+  };
+  const readFilter = () => ({
+    text: input.value,
+    type: typeSel.value || "all",
+    tag: tagInput.value,
+    days: daysInput.value,
+    orphan: orphanBox.checked === true
+  });
+  const runSearch = async () => {
+    const filter = readFilter();
+    const id = queryId += 1;
+    results.replaceChildren();
+    if (!libraryFilterActive(filter)) return;
+    let pack = null;
+    try {
+      if (typeof host?.librarySearch === "function") {
+        pack = await Promise.resolve(host.librarySearch(filter, LIMIT));
+      } else {
+        const q = String(filter.text || "").trim();
+        if (!q) return;
+        const [pages, blocks] = await Promise.all([
+          Promise.resolve(host?.searchPages?.(q, LIMIT) || []),
+          Promise.resolve(host?.searchBlocks?.(q, LIMIT) || [])
+        ]);
+        pack = {
+          rows: [
+            ...(pages || []).map((p) => ({ string: `[[${p.title}]]`, text: p.title, kind: "page", label: "page" })),
+            ...(blocks || []).map((b) => ({ string: `((${b.uid}))`, text: `${b.string || ""}`.slice(0, 120), kind: "block", label: b.pageTitle ? `in ${b.pageTitle}` : "block" }))
+          ].slice(0, LIMIT),
+          queries: []
+        };
+      }
+    } catch {
+    }
+    if (id !== queryId) return;
+    const queries = Array.isArray(pack?.queries) ? pack.queries : [];
+    const ms = queries.reduce((max, q) => Math.max(max, Number(q?.ms) || 0), 0);
+    results.dataset.queryMs = String(ms);
+    results.setAttribute("data-query-ms", String(ms));
+    const log = JSON.stringify(queries.map((q) => ({ name: q.name, ms: Math.round((Number(q.ms) || 0) * 10) / 10 })));
+    results.dataset.queryLog = log;
+    results.setAttribute("data-query-log", log);
+    const rows = (Array.isArray(pack?.rows) ? pack.rows : []).slice(0, LIMIT);
+    results.replaceChildren();
+    if (!rows.length) {
+      el("div", "pxd-panel__empty", results, "No matches");
+      return;
+    }
+    rows.forEach((r) => row2(results, r));
+  };
+  const scheduleSearch = () => {
+    debounce?.();
+    debounce = timers.later(() => {
+      debounce = null;
+      void runSearch();
+    }, DEBOUNCE_MS);
+  };
+  const searchNow = () => {
+    debounce?.();
+    debounce = null;
+    void runSearch();
+  };
+  listen(input, "input", scheduleSearch);
+  listen(tagInput, "input", scheduleSearch);
+  listen(daysInput, "input", scheduleSearch);
+  listen(typeSel, "change", searchNow);
+  listen(orphanBox, "change", searchNow);
+  listen(input, "keydown", (event) => {
+    event.stopPropagation();
+    if (event.key === "Escape") {
+      event.preventDefault();
+      api.close();
+    }
+    if (event.key === "Enter") {
+      event.preventDefault();
+      searchNow();
+    }
+  });
+  for (const field of [tagInput, daysInput]) {
+    listen(field, "keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        searchNow();
+      }
+    });
+  }
+  const setTab = (next) => {
+    if (tab === "info" && next !== "info") unmountInfo();
+    tab = next;
+    for (const [name, b] of Object.entries(tabButtons)) b.classList.toggle("pxd-panel__tab--on", tab === name);
+    searchPane.style.display = tab === "search" ? "" : "none";
+    relatedPane.style.display = tab === "related" ? "" : "none";
+    boardsPane.style.display = tab === "boards" ? "" : "none";
+    outlinePane.style.display = tab === "outline" ? "" : "none";
+    infoPane.style.display = tab === "info" ? "" : "none";
+    if (tab === "related") void loadRelated();
+    if (tab === "boards") void loadBoards();
+    if (tab === "outline") renderOutline();
+    if (tab === "info") void loadInfo();
+  };
+  for (const [name, b] of Object.entries(tabButtons)) listen(b, "click", () => setTab(name));
+  listen(closeBtn, "click", () => api.close());
+  listen(addAll, "click", () => {
+    const strings = relatedRows.map((r) => r.string).filter((s) => !on.isOnBoard?.(s));
+    if (strings.length) on.addMany?.(strings);
+  });
+  const loadRelated = async () => {
+    relatedList.replaceChildren();
+    relatedRows = [];
+    addAll.style.display = "none";
+    if (!selected || !host?.related) {
+      relatedTitle.textContent = "Select a card";
+      return;
+    }
+    const target = selected.target;
+    const key = target.kind === "page" ? { kind: "page", title: target.title } : { kind: "block", uid: target.uid };
+    relatedTitle.textContent = selected.title || "Related";
+    const id = queryId += 1;
+    let list = [];
+    try {
+      list = await Promise.resolve(host.related(key, 60, { boardUid: root?.dataset?.board })) || [];
+    } catch {
+      list = [];
+    }
+    if (id !== queryId || tab !== "related") return;
+    relatedList.replaceChildren();
+    for (const rel of list) {
+      const t = rel.target || {};
+      const string = t.kind === "page" ? `[[${t.title}]]` : `((${t.uid}))`;
+      const text2 = rel.text || (t.kind === "page" ? t.title : t.uid) || "";
+      relatedRows.push({ string });
+      row2(relatedList, { string, label: rel.relation || "related", text: text2, kind: t.kind });
+    }
+    if (!list.length) el("div", "pxd-panel__empty", relatedList, "Nothing related yet");
+    addAll.style.display = list.length ? "" : "none";
+  };
+  let boardRows = [];
+  const renderBoards = () => {
+    boardsList.replaceChildren();
+    const q = String(boardsFilter.value || "").trim().toLowerCase();
+    const shown = boardRows.filter((b) => !q || `${b.title || ""}
+${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
+    if (!shown.length) {
+      el("div", "pxd-panel__empty", boardsList, boardRows.length ? "No matching boards" : "No boards found");
+      return;
+    }
+    for (const b of shown) {
+      const r = el("div", "pxd-panel__board-row", boardsList);
+      r.dataset.uid = b.uid;
+      r.setAttribute("data-uid", b.uid);
+      const text2 = el("div", "pxd-panel__board-text", r);
+      el("span", "pxd-panel__board-title", text2, b.title || "Untitled board");
+      const page = b.page || b.pageTitle;
+      if (page) el("span", "pxd-panel__board-page", text2, page);
+      const n2 = b.count ?? b.itemCount ?? b.items;
+      if (Number.isFinite(n2)) el("span", "pxd-panel__board-count", r, `${n2} ${n2 === 1 ? "item" : "items"}`);
+      const add = el("button", "pxd-btn pxd-panel__board-add", r, "Add shortcut");
+      add.type = "button";
+      add.title = "Add a card for this board to the current board";
+    }
+  };
+  listen(boardsList, "click", (event) => {
+    const row3 = event.target?.closest?.(".pxd-panel__board-row");
+    const uid = row3?.dataset?.uid ?? row3?.getAttribute?.("data-uid");
+    if (!uid) return;
+    event.preventDefault?.();
+    event.stopPropagation();
+    if (event.target.closest(".pxd-panel__board-add")) on.addBoardCard?.(uid);
+    else on.openBoardByUid?.(uid);
+  });
+  const loadBoards = async () => {
+    const id = queryId += 1;
+    boardsList.replaceChildren();
+    el("div", "pxd-panel__empty", boardsList, "Loading boards…");
+    let rows = [];
+    try {
+      rows = await Promise.resolve(on.listBoards?.()) || [];
+    } catch {
+      rows = [];
+    }
+    if (id !== queryId || tab !== "boards") return;
+    boardRows = Array.isArray(rows) ? rows.filter((b) => b && b.uid) : [];
+    renderBoards();
+  };
+  listen(boardsFilter, "input", () => renderBoards());
+  listen(boardsFilter, "keydown", (event) => {
+    event.stopPropagation();
+    if (event.key === "Escape") {
+      event.preventDefault();
+      api.close();
+    }
+  });
+  const renderOutline = () => {
+    outlineList.replaceChildren();
+    let rows = [];
+    try {
+      rows = on.getOutline?.() || [];
+    } catch {
+      rows = [];
+    }
+    if (!Array.isArray(rows) || !rows.length) {
+      el("div", "pxd-panel__empty", outlineList, "Nothing on this board yet");
+      return;
+    }
+    for (const o of rows) {
+      const depth = Math.max(0, Number(o.depth) || 0);
+      const r = el("div", "pxd-panel__outline-row", outlineList);
+      r.dataset.uid = o.uid;
+      r.setAttribute("data-uid", o.uid);
+      r.dataset.depth = String(depth);
+      r.setAttribute("data-depth", String(depth));
+      r.style.paddingLeft = `${8 + depth * 14}px`;
+      const dot = el("span", `pxd-panel__outline-dot${o.color ? ` pxd-c-${o.color}` : ""}`, r);
+      dot.setAttribute("aria-hidden", "true");
+      el("span", "pxd-panel__outline-title", r, o.title || "Untitled");
+      if (Number.isFinite(o.count) && o.count > 0) el("span", "pxd-panel__outline-count", r, String(o.count));
+    }
+  };
+  listen(outlineList, "click", (event) => {
+    const row3 = event.target?.closest?.(".pxd-panel__outline-row");
+    const uid = row3?.dataset?.uid ?? row3?.getAttribute?.("data-uid");
+    if (!uid) return;
+    event.stopPropagation();
+    on.outlineClick?.(uid);
+  });
+  let cardTabs = [];
+  const cardItems = /* @__PURE__ */ new Map();
+  let cardCurrent = null;
+  let followInfoSelection = true;
+  const renderCardTabs = () => {
+    infoTabsBar.replaceChildren();
+    for (const t of cardTabs) {
+      const row3 = el("span", t.uid === cardCurrent ? "pxd-panel__infotab pxd-panel__infotab--on" : "pxd-panel__infotab", infoTabsBar);
+      const name = el("button", "pxd-btn pxd-panel__infotab-name", row3, cardItems.get(t.uid)?.title || "Untitled");
+      name.type = "button";
+      name.dataset.uid = t.uid;
+      name.setAttribute("data-uid", t.uid);
+      const closer = el("button", "pxd-btn pxd-panel__infotab-x", row3, "×");
+      closer.type = "button";
+      closer.title = "Close";
+      closer.dataset.uid = t.uid;
+      closer.setAttribute("data-uid", t.uid);
+    }
+  };
+  let infoMounted = false;
+  const unmountInfo = () => {
+    if (!infoMounted) return;
+    infoMounted = false;
+    const prev = infoScroll.querySelector(".pxd-panel__info-mount");
+    if (prev) {
+      try {
+        host?.unmount?.(prev);
+      } catch {
+      }
+    }
+  };
+  const infoSection = (label) => {
+    const section2 = el("section", "pxd-panel__info-sec", infoScroll);
+    el("div", "pxd-panel__info-h", section2, label);
+    return section2;
+  };
+  const loadInfo = async () => {
+    const id = queryId += 1;
+    unmountInfo();
+    infoScroll.replaceChildren();
+    const tabItem = cardCurrent ? cardItems.get(cardCurrent) || null : null;
+    const subject = followInfoSelection ? selected : tabItem || selected;
+    if (!subject || subject.type === "section") {
+      el("div", "pxd-panel__empty", infoScroll, "Select a card");
+      return;
+    }
+    let info = null;
+    try {
+      info = await Promise.resolve(host?.cardInfo?.(subject)) ?? null;
+    } catch {
+      info = null;
+    }
+    if (id !== queryId || tab !== "info") return;
+    unmountInfo();
+    infoScroll.replaceChildren();
+    if (!info) {
+      el("div", "pxd-panel__empty", infoScroll, "Nothing to show");
+      return;
+    }
+    const bodySec = infoSection("Card");
+    el("div", "pxd-panel__info-body", bodySec, info.body || "");
+    const mount = el("div", "pxd-panel__info-mount", bodySec);
+    if (on.isFullscreen?.()) {
+      try {
+        if (info.kind === "page" && info.pageUid && host?.renderPage) {
+          host.renderPage(mount, info.pageUid);
+          infoMounted = true;
+        } else if (info.uid && host?.renderBlock) {
+          host.renderBlock(mount, info.uid);
+          infoMounted = true;
+        }
+      } catch {
+      }
+    } else {
+      el("div", "pxd-panel__info-note", mount, "Editing in the right sidebar");
+      try {
+        on.openSidebarEditor?.(subject);
+      } catch {
+      }
+    }
+    const attrSec = infoSection("Attributes");
+    if (!info.attributes?.length) el("div", "pxd-panel__empty", attrSec, "No attributes");
+    else for (const attr of info.attributes) {
+      const row3 = el("div", "pxd-panel__info-attr", attrSec);
+      el("span", "pxd-panel__info-name", row3, attr.name);
+      el("span", "pxd-panel__info-value", row3, attr.value);
+    }
+    const refSec = infoSection("Linked references");
+    if (!info.refs?.length) el("div", "pxd-panel__empty", refSec, "No linked references");
+    else for (const ref of info.refs) {
+      const row3 = el("button", "pxd-btn pxd-panel__info-ref", refSec, ref.string || ref.uid);
+      row3.type = "button";
+      row3.dataset.uid = ref.uid;
+      row3.setAttribute("data-uid", ref.uid);
+      if (ref.pageTitle) row3.title = ref.pageTitle;
+    }
+    const boardSec = infoSection("On boards");
+    if (!info.boards?.length) el("div", "pxd-panel__empty", boardSec, "Not on another board");
+    else for (const board2 of info.boards) {
+      const row3 = el("button", "pxd-btn pxd-panel__info-board", boardSec);
+      row3.type = "button";
+      row3.dataset.uid = board2.uid;
+      row3.setAttribute("data-uid", board2.uid);
+      el("span", "pxd-panel__info-board-title", row3, board2.title || "Untitled board");
+      if (board2.pageTitle) el("span", "pxd-panel__info-board-page", row3, board2.pageTitle);
+    }
+    const tagSec = infoSection("Tags");
+    if (!info.tags?.length) el("div", "pxd-panel__empty", tagSec, "No tags");
+    else {
+      const wrap = el("div", "pxd-panel__info-tags", tagSec);
+      for (const name of info.tags) el("span", "pxd-panel__info-tag", wrap, name);
+    }
+  };
+  listen(infoScroll, "click", (event) => {
+    const board2 = event.target?.closest?.(".pxd-panel__info-board");
+    const ref = event.target?.closest?.(".pxd-panel__info-ref");
+    const node2 = board2 || ref;
+    const uid = node2?.dataset?.uid ?? node2?.getAttribute?.("data-uid");
+    if (!uid) return;
+    event.preventDefault?.();
+    event.stopPropagation();
+    if (board2) on.openBoardByUid?.(uid);
+    else on.openRef?.(uid);
+  });
+  listen(infoTabsBar, "click", (event) => {
+    const closer = event.target?.closest?.(".pxd-panel__infotab-x");
+    const name = event.target?.closest?.(".pxd-panel__infotab-name");
+    const node2 = closer || name;
+    const uid = node2?.dataset?.uid ?? node2?.getAttribute?.("data-uid");
+    if (!uid) return;
+    event.preventDefault?.();
+    event.stopPropagation();
+    if (closer) {
+      const next = closeInfoTab(cardTabs, cardCurrent, uid);
+      cardTabs = next.tabs;
+      if (!next.tabs.some((t) => t.uid === uid)) cardItems.delete(uid);
+      cardCurrent = next.current;
+      followInfoSelection = false;
+      renderCardTabs();
+      void loadInfo();
+      return;
+    }
+    cardCurrent = uid;
+    followInfoSelection = false;
+    renderCardTabs();
+    on.focusInfoTab?.(uid);
+    void loadInfo();
+  });
+  const api = {
+    el: panel,
+    open(which = tab) {
+      panel.style.display = "";
+      setTab(which);
+      on.opened?.(true);
+      const focusTarget = which === "search" ? input : which === "boards" ? boardsFilter : null;
+      if (focusTarget) {
+        try {
+          focusTarget.focus({ preventScroll: true });
+        } catch {
+          focusTarget.focus?.();
+        }
+      }
+    },
+    currentTab: () => tab,
+    refreshOutline() {
+      if (api.isOpen() && tab === "outline") renderOutline();
+    },
+    close() {
+      if (tab === "info") unmountInfo();
+      panel.style.display = "none";
+      on.opened?.(false);
+    },
+    toggle() {
+      if (api.isOpen()) api.close();
+      else api.open();
+    },
+    isOpen: () => panel.style.display !== "none",
+    setSelection(item) {
+      selected = item && item.type !== "section" ? item : null;
+      followInfoSelection = true;
+      if (selected && cardItems.has(selected.uid)) cardCurrent = selected.uid;
+      if (api.isOpen() && tab === "related") void loadRelated();
+      if (api.isOpen() && tab === "info") {
+        renderCardTabs();
+        void loadInfo();
+      }
+    },
+    addInfoTab(item) {
+      if (!item?.uid || item.type === "section") return cardTabs.map((t) => t.uid);
+      const title = item.title || String(item.string || "").split("\n")[0].slice(0, 48) || "Untitled";
+      cardItems.set(item.uid, { ...item, title });
+      const next = infoTabList(cardTabs, item.uid, { add: true });
+      cardTabs = next.tabs;
+      cardCurrent = next.current;
+      followInfoSelection = false;
+      panel.style.display = "";
+      setTab("info");
+      on.opened?.(true);
+      renderCardTabs();
+      void loadInfo();
+      return cardTabs.map((t) => t.uid);
+    },
+    infoTabs: () => cardTabs.map((t) => t.uid),
+    infoCurrent: () => cardCurrent,
+    refreshMarks() {
+      for (const r of panel.querySelectorAll(".pxd-panel__row")) {
+        const s = r.dataset?.string || r.getAttribute("data-string");
+        r.classList.toggle("pxd-panel__row--on", Boolean(on.isOnBoard?.(s)));
+      }
+    },
+    dispose() {
+      debounce?.();
+      queryId += 1;
+      unmountInfo();
+      listeners2.splice(0).forEach((off) => off());
+      panel.remove();
+    }
+  };
+  return api;
+}
+
 // src/view/editor-menus.js
 var MENU_SELECTOR = ".rm-autocomplete__results, .bp3-datepicker, .rm-date-picker";
 var claimed = /* @__PURE__ */ new WeakSet();
@@ -7656,6 +8355,77 @@ function createItemRenderer({
     }
     return live;
   };
+  const setHidden = (node2, hidden) => {
+    node2.hidden = hidden;
+    if (hidden) node2.setAttribute("hidden", "");
+    else node2.removeAttribute("hidden");
+  };
+  const addRefRow = (list, rec, ref, on) => {
+    const payload = linkedRefCard(ref?.uid);
+    if (!payload) return;
+    const row2 = el("div", "pxd-refs__row", list);
+    row2.draggable = true;
+    row2.setAttribute("draggable", "true");
+    row2.dataset.uid = ref.uid;
+    row2.setAttribute("data-uid", ref.uid);
+    const liveWrap = el("div", "pxd-rs", row2);
+    const live = el("div", "pxd-rs__live", liveWrap);
+    try {
+      if (host?.renderBlock) host.renderBlock(live, ref.uid);
+      else live.textContent = String(ref.string || "");
+    } catch {
+      live.textContent = String(ref.string || "");
+    }
+    armEmbedShield(liveWrap, live);
+    rec.roots.push(liveWrap);
+    for (const type of ["pointerdown", "mousedown", "dblclick"]) on(row2, type, stopEvent);
+    on(row2, "dragstart", (event) => {
+      event.stopPropagation();
+      try {
+        event.dataTransfer?.setData?.(CARD_MIME, payload);
+        event.dataTransfer?.setData?.("text/plain", payload);
+        if (event.dataTransfer) event.dataTransfer.effectAllowed = "copy";
+      } catch {
+      }
+    });
+  };
+  const mountLinkedRefs = (body, rec, item) => {
+    let refs = [];
+    try {
+      const got = host?.linkedRefs?.(item, { limit: LINKED_REF_CAP });
+      if (Array.isArray(got)) refs = got.slice(0, LINKED_REF_CAP);
+    } catch {
+      refs = [];
+    }
+    const offs = [];
+    const on = (node2, type, fn) => {
+      node2.addEventListener(type, fn);
+      offs.push(() => node2.removeEventListener(type, fn));
+    };
+    rec.refOff = () => {
+      for (const off of offs.splice(0)) off();
+    };
+    const wrap = el("div", "pxd-refs", body);
+    const toggle = el("button", "pxd-refs__toggle", wrap);
+    toggle.type = "button";
+    toggle.textContent = linkedRefLabel(refs.length);
+    toggle.setAttribute("aria-expanded", "false");
+    const list = el("div", "pxd-refs__list", wrap);
+    setHidden(list, true);
+    for (const type of ["pointerdown", "mousedown", "dblclick"]) on(toggle, type, stopEvent);
+    let filled = false;
+    on(toggle, "click", (event) => {
+      event.stopPropagation();
+      event.preventDefault();
+      const open = toggle.getAttribute("aria-expanded") !== "true";
+      toggle.setAttribute("aria-expanded", open ? "true" : "false");
+      wrap.classList.toggle("pxd-refs--open", open);
+      setHidden(list, !open);
+      if (!open || filled) return;
+      filled = true;
+      for (const ref of refs) addRefRow(list, rec, ref, on);
+    });
+  };
   const renderRoot = (parent, string, cls = "pxd-rs") => {
     const node2 = el("div", cls, parent);
     if (!string) return node2;
@@ -7670,6 +8440,11 @@ function createItemRenderer({
     return node2;
   };
   const unmountRoots = (rec) => {
+    try {
+      rec.refOff?.();
+    } catch {
+    }
+    rec.refOff = null;
     if (!rec.roots?.length) return;
     for (const node2 of rec.roots) {
       try {
@@ -8064,6 +8839,7 @@ function createItemRenderer({
       if (preview && typeof preview.then === "function") preview.then((p) => apply(p)).catch(() => {
       });
       else apply(preview, true);
+      mountLinkedRefs(body, rec, item);
     } else if (item.kind === "block") {
       const ref = item.target.uid;
       const refString = host?.blockString?.(ref);
@@ -11081,663 +11857,6 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
       panel.remove();
     }
   };
-}
-
-// src/view/panel.js
-var CARD_MIME = "application/x-plexus-card";
-var DEBOUNCE_MS = 150;
-var LIMIT = 40;
-var MAX_DROP = 50;
-function parseDropPayload(dataTransfer, { resolveUid } = {}) {
-  if (!dataTransfer) return [];
-  const take = (type) => {
-    try {
-      return String(dataTransfer.getData?.(type) || "");
-    } catch {
-      return "";
-    }
-  };
-  const resolve = typeof resolveUid === "function" ? resolveUid : (uid) => `((${uid}))`;
-  const own = take(CARD_MIME).trim();
-  if (own) return [{ string: own }];
-  const tokens = (text2) => text2.split(/\s+/).filter((t) => /^[\w-]+$/.test(t));
-  let uids = tokens(take("roam/block-uid-list-only-parents"));
-  if (!uids.length) uids = tokens(take("roam/block-uid-list"));
-  if (!uids.length) {
-    for (const type of ["roam/roam-uri-list", "text/uri-list"]) {
-      for (const line of take(type).split(/\r?\n/)) {
-        if (!line.trim() || line.startsWith("#")) continue;
-        const m = line.match(/\/page\/([\w-]+)/);
-        if (m) uids.push(m[1]);
-      }
-      if (uids.length) break;
-    }
-  }
-  if (uids.length) {
-    const out = [];
-    for (const uid of [...new Set(uids)].slice(0, MAX_DROP)) {
-      let string = null;
-      try {
-        string = resolve(uid);
-      } catch {
-        string = null;
-      }
-      if (typeof string === "string" && string.trim()) out.push({ string });
-    }
-    if (out.length) return out;
-  }
-  const chunks = [take("text/plain"), take("text/html")];
-  const types = dataTransfer.types;
-  if (types) for (const type of types) chunks.push(take(type));
-  const blob = chunks.join("\n");
-  if (!blob.trim()) return [];
-  const page = blob.match(/\[\[([^\]]+)\]\]/);
-  if (page) return [{ string: `[[${page[1]}]]` }];
-  const blockRef = blob.match(/\(\(([^)]+)\)\)/);
-  if (blockRef) return [{ string: `((${blockRef[1]}))` }];
-  const plain = take("text/plain").trim();
-  if (/^[A-Za-z0-9_-]{9}$/.test(plain)) {
-    let string = null;
-    try {
-      string = resolve(plain);
-    } catch {
-      string = null;
-    }
-    if (typeof string === "string" && string.trim()) return [{ string }];
-  }
-  return [];
-}
-function createPanel({ doc = globalThis.document, root, host, timers, on = {}, width } = {}) {
-  const listeners2 = [];
-  const listen = (el2, type, fn, opts) => {
-    el2.addEventListener(type, fn, opts);
-    listeners2.push(() => el2.removeEventListener(type, fn, opts));
-  };
-  const el = (tag, cls, parent, text2) => {
-    const node2 = doc.createElement(tag);
-    node2.className = cls;
-    if (text2 !== void 0) node2.textContent = text2;
-    parent?.append(node2);
-    return node2;
-  };
-  const panel = el("aside", "pxd-panel pxd-chrome", root);
-  panel.style.display = "none";
-  if (Number.isFinite(Number(width))) panel.style.width = `${nextPanelWidth(width, 0)}px`;
-  const resize = el("div", "pxd-panel__resize", panel);
-  resize.title = "Resize";
-  for (const type of ["pointerdown", "pointerup", "click", "dblclick", "wheel", "keydown", "keyup"]) {
-    listen(panel, type, (event) => {
-      if ((type === "keydown" || type === "keyup") && event.target?.closest?.(".pxd-panel__info-mount")) return;
-      event.stopPropagation();
-    });
-  }
-  let resizing = null;
-  listen(resize, "pointerdown", (event) => {
-    if (event.button !== 0) return;
-    event.preventDefault();
-    const measured = panel.getBoundingClientRect?.().width;
-    const styled = parseFloat(panel.style.width);
-    resizing = { x: event.clientX, w: measured || styled || PANEL_WIDTH_DEFAULT };
-    try {
-      resize.setPointerCapture?.(event.pointerId);
-    } catch {
-    }
-  });
-  listen(resize, "pointermove", (event) => {
-    if (!resizing) return;
-    panel.style.width = `${nextPanelWidth(resizing.w, resizing.x - event.clientX)}px`;
-  });
-  listen(resize, "pointerup", (event) => {
-    if (!resizing) return;
-    const next = nextPanelWidth(resizing.w, resizing.x - event.clientX);
-    resizing = null;
-    panel.style.width = `${next}px`;
-    on.rememberWidth?.(next);
-  });
-  const head = el("div", "pxd-panel__head", panel);
-  const tabs = el("div", "pxd-panel__tabs", head);
-  const tabSearch = el("button", "pxd-btn pxd-panel__tab pxd-panel__tab--on", tabs, "Search");
-  const tabRelated = el("button", "pxd-btn pxd-panel__tab", tabs, "Related");
-  const tabBoards = el("button", "pxd-btn pxd-panel__tab", tabs, "Boards");
-  const tabOutline = el("button", "pxd-btn pxd-panel__tab", tabs, "Outline");
-  const tabInfo = el("button", "pxd-btn pxd-panel__tab", tabs, "Info");
-  const tabButtons = { search: tabSearch, related: tabRelated, boards: tabBoards, outline: tabOutline, info: tabInfo };
-  for (const [name, b] of Object.entries(tabButtons)) {
-    b.type = "button";
-    b.dataset.tab = name;
-    b.setAttribute("data-tab", name);
-  }
-  const closeBtn = el("button", "pxd-btn pxd-panel__close", head, "×");
-  closeBtn.type = "button";
-  closeBtn.title = "Close";
-  const searchPane = el("div", "pxd-panel__pane pxd-panel__pane--search", panel);
-  const relatedPane = el("div", "pxd-panel__pane pxd-panel__pane--related", panel);
-  relatedPane.style.display = "none";
-  const input = el("input", "pxd-input pxd-panel__input", searchPane);
-  input.type = "text";
-  input.placeholder = "Search pages and blocks…";
-  input.setAttribute("placeholder", "Search pages and blocks…");
-  const filters = el("div", "pxd-panel__filters", searchPane);
-  const typeSel = el("select", "pxd-panel__type", filters);
-  typeSel.setAttribute("aria-label", "Type");
-  const typeLabels = { all: "All", page: "Pages", block: "Blocks", board: "Boards", daily: "Dailies" };
-  for (const value of LIBRARY_TYPES) {
-    const opt = el("option", "pxd-panel__type-opt", typeSel, typeLabels[value]);
-    opt.value = value;
-    opt.setAttribute("value", value);
-  }
-  typeSel.value = "all";
-  const tagInput = el("input", "pxd-panel__tag", filters);
-  tagInput.type = "text";
-  tagInput.placeholder = "#tag";
-  tagInput.setAttribute("placeholder", "#tag");
-  tagInput.setAttribute("aria-label", "Tag");
-  const daysInput = el("input", "pxd-panel__days", filters);
-  daysInput.type = "number";
-  daysInput.min = "0";
-  daysInput.placeholder = "days";
-  daysInput.setAttribute("placeholder", "days");
-  daysInput.setAttribute("aria-label", "Edited in the last N days");
-  const orphanLabel = el("label", "pxd-panel__orphan", filters);
-  const orphanBox = el("input", "pxd-panel__orphan-box", orphanLabel);
-  orphanBox.type = "checkbox";
-  orphanLabel.append("Not on any board");
-  const results = el("div", "pxd-panel__list", searchPane);
-  const relatedHead = el("div", "pxd-panel__related-head", relatedPane);
-  const relatedTitle = el("span", "pxd-panel__related-title", relatedHead, "Select a card");
-  const addAll = el("button", "pxd-btn pxd-panel__add-all", relatedHead, "Add all");
-  addAll.type = "button";
-  addAll.style.display = "none";
-  const relatedList = el("div", "pxd-panel__list", relatedPane);
-  const boardsPane = el("div", "pxd-panel__pane pxd-panel__pane--boards", panel);
-  boardsPane.style.display = "none";
-  const boardsFilter = el("input", "pxd-input pxd-panel__input pxd-panel__boards-filter", boardsPane);
-  boardsFilter.type = "text";
-  boardsFilter.placeholder = "Filter boards…";
-  boardsFilter.setAttribute("placeholder", "Filter boards…");
-  const boardsList = el("div", "pxd-panel__list pxd-panel__boards", boardsPane);
-  const outlinePane = el("div", "pxd-panel__pane pxd-panel__pane--outline", panel);
-  outlinePane.style.display = "none";
-  const outlineList = el("div", "pxd-panel__list pxd-panel__outline", outlinePane);
-  const infoPane = el("div", "pxd-panel__pane pxd-panel__pane--info", panel);
-  infoPane.style.display = "none";
-  const infoTabsBar = el("div", "pxd-panel__infotabs", infoPane);
-  const infoScroll = el("div", "pxd-panel__info", infoPane);
-  let tab = "search";
-  let debounce = null;
-  let selected = null;
-  let relatedRows = [];
-  let queryId = 0;
-  const row2 = (parent, { string, label, text: text2, kind }) => {
-    const r = el("div", "pxd-panel__row", parent);
-    r.setAttribute("draggable", "true");
-    r.draggable = true;
-    r.dataset.string = string;
-    r.setAttribute("data-string", string);
-    if (label) el("span", "pxd-panel__row-label", r, label);
-    el("span", `pxd-panel__row-text pxd-panel__row-text--${kind || "page"}`, r, text2);
-    if (on.isOnBoard?.(string)) {
-      r.classList.add("pxd-panel__row--on");
-      el("span", "pxd-panel__row-on", r, "on board");
-    }
-    listen(r, "click", (event) => {
-      event.stopPropagation();
-      on.addBeside?.(string);
-      r.classList.add("pxd-panel__row--on");
-    });
-    listen(r, "dragstart", (event) => {
-      try {
-        event.dataTransfer?.setData?.(CARD_MIME, string);
-        event.dataTransfer?.setData?.("text/plain", string);
-        if (event.dataTransfer) event.dataTransfer.effectAllowed = "copy";
-      } catch {
-      }
-    });
-    return r;
-  };
-  const readFilter = () => ({
-    text: input.value,
-    type: typeSel.value || "all",
-    tag: tagInput.value,
-    days: daysInput.value,
-    orphan: orphanBox.checked === true
-  });
-  const runSearch = async () => {
-    const filter = readFilter();
-    const id = queryId += 1;
-    results.replaceChildren();
-    if (!libraryFilterActive(filter)) return;
-    let pack = null;
-    try {
-      if (typeof host?.librarySearch === "function") {
-        pack = await Promise.resolve(host.librarySearch(filter, LIMIT));
-      } else {
-        const q = String(filter.text || "").trim();
-        if (!q) return;
-        const [pages, blocks] = await Promise.all([
-          Promise.resolve(host?.searchPages?.(q, LIMIT) || []),
-          Promise.resolve(host?.searchBlocks?.(q, LIMIT) || [])
-        ]);
-        pack = {
-          rows: [
-            ...(pages || []).map((p) => ({ string: `[[${p.title}]]`, text: p.title, kind: "page", label: "page" })),
-            ...(blocks || []).map((b) => ({ string: `((${b.uid}))`, text: `${b.string || ""}`.slice(0, 120), kind: "block", label: b.pageTitle ? `in ${b.pageTitle}` : "block" }))
-          ].slice(0, LIMIT),
-          queries: []
-        };
-      }
-    } catch {
-    }
-    if (id !== queryId) return;
-    const queries = Array.isArray(pack?.queries) ? pack.queries : [];
-    const ms = queries.reduce((max, q) => Math.max(max, Number(q?.ms) || 0), 0);
-    results.dataset.queryMs = String(ms);
-    results.setAttribute("data-query-ms", String(ms));
-    const log = JSON.stringify(queries.map((q) => ({ name: q.name, ms: Math.round((Number(q.ms) || 0) * 10) / 10 })));
-    results.dataset.queryLog = log;
-    results.setAttribute("data-query-log", log);
-    const rows = (Array.isArray(pack?.rows) ? pack.rows : []).slice(0, LIMIT);
-    results.replaceChildren();
-    if (!rows.length) {
-      el("div", "pxd-panel__empty", results, "No matches");
-      return;
-    }
-    rows.forEach((r) => row2(results, r));
-  };
-  const scheduleSearch = () => {
-    debounce?.();
-    debounce = timers.later(() => {
-      debounce = null;
-      void runSearch();
-    }, DEBOUNCE_MS);
-  };
-  const searchNow = () => {
-    debounce?.();
-    debounce = null;
-    void runSearch();
-  };
-  listen(input, "input", scheduleSearch);
-  listen(tagInput, "input", scheduleSearch);
-  listen(daysInput, "input", scheduleSearch);
-  listen(typeSel, "change", searchNow);
-  listen(orphanBox, "change", searchNow);
-  listen(input, "keydown", (event) => {
-    event.stopPropagation();
-    if (event.key === "Escape") {
-      event.preventDefault();
-      api.close();
-    }
-    if (event.key === "Enter") {
-      event.preventDefault();
-      searchNow();
-    }
-  });
-  for (const field of [tagInput, daysInput]) {
-    listen(field, "keydown", (event) => {
-      if (event.key === "Enter") {
-        event.preventDefault();
-        searchNow();
-      }
-    });
-  }
-  const setTab = (next) => {
-    if (tab === "info" && next !== "info") unmountInfo();
-    tab = next;
-    for (const [name, b] of Object.entries(tabButtons)) b.classList.toggle("pxd-panel__tab--on", tab === name);
-    searchPane.style.display = tab === "search" ? "" : "none";
-    relatedPane.style.display = tab === "related" ? "" : "none";
-    boardsPane.style.display = tab === "boards" ? "" : "none";
-    outlinePane.style.display = tab === "outline" ? "" : "none";
-    infoPane.style.display = tab === "info" ? "" : "none";
-    if (tab === "related") void loadRelated();
-    if (tab === "boards") void loadBoards();
-    if (tab === "outline") renderOutline();
-    if (tab === "info") void loadInfo();
-  };
-  for (const [name, b] of Object.entries(tabButtons)) listen(b, "click", () => setTab(name));
-  listen(closeBtn, "click", () => api.close());
-  listen(addAll, "click", () => {
-    const strings = relatedRows.map((r) => r.string).filter((s) => !on.isOnBoard?.(s));
-    if (strings.length) on.addMany?.(strings);
-  });
-  const loadRelated = async () => {
-    relatedList.replaceChildren();
-    relatedRows = [];
-    addAll.style.display = "none";
-    if (!selected || !host?.related) {
-      relatedTitle.textContent = "Select a card";
-      return;
-    }
-    const target = selected.target;
-    const key = target.kind === "page" ? { kind: "page", title: target.title } : { kind: "block", uid: target.uid };
-    relatedTitle.textContent = selected.title || "Related";
-    const id = queryId += 1;
-    let list = [];
-    try {
-      list = await Promise.resolve(host.related(key, 60, { boardUid: root?.dataset?.board })) || [];
-    } catch {
-      list = [];
-    }
-    if (id !== queryId || tab !== "related") return;
-    relatedList.replaceChildren();
-    for (const rel of list) {
-      const t = rel.target || {};
-      const string = t.kind === "page" ? `[[${t.title}]]` : `((${t.uid}))`;
-      const text2 = rel.text || (t.kind === "page" ? t.title : t.uid) || "";
-      relatedRows.push({ string });
-      row2(relatedList, { string, label: rel.relation || "related", text: text2, kind: t.kind });
-    }
-    if (!list.length) el("div", "pxd-panel__empty", relatedList, "Nothing related yet");
-    addAll.style.display = list.length ? "" : "none";
-  };
-  let boardRows = [];
-  const renderBoards = () => {
-    boardsList.replaceChildren();
-    const q = String(boardsFilter.value || "").trim().toLowerCase();
-    const shown = boardRows.filter((b) => !q || `${b.title || ""}
-${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
-    if (!shown.length) {
-      el("div", "pxd-panel__empty", boardsList, boardRows.length ? "No matching boards" : "No boards found");
-      return;
-    }
-    for (const b of shown) {
-      const r = el("div", "pxd-panel__board-row", boardsList);
-      r.dataset.uid = b.uid;
-      r.setAttribute("data-uid", b.uid);
-      const text2 = el("div", "pxd-panel__board-text", r);
-      el("span", "pxd-panel__board-title", text2, b.title || "Untitled board");
-      const page = b.page || b.pageTitle;
-      if (page) el("span", "pxd-panel__board-page", text2, page);
-      const n2 = b.count ?? b.itemCount ?? b.items;
-      if (Number.isFinite(n2)) el("span", "pxd-panel__board-count", r, `${n2} ${n2 === 1 ? "item" : "items"}`);
-      const add = el("button", "pxd-btn pxd-panel__board-add", r, "Add shortcut");
-      add.type = "button";
-      add.title = "Add a card for this board to the current board";
-    }
-  };
-  listen(boardsList, "click", (event) => {
-    const row3 = event.target?.closest?.(".pxd-panel__board-row");
-    const uid = row3?.dataset?.uid ?? row3?.getAttribute?.("data-uid");
-    if (!uid) return;
-    event.preventDefault?.();
-    event.stopPropagation();
-    if (event.target.closest(".pxd-panel__board-add")) on.addBoardCard?.(uid);
-    else on.openBoardByUid?.(uid);
-  });
-  const loadBoards = async () => {
-    const id = queryId += 1;
-    boardsList.replaceChildren();
-    el("div", "pxd-panel__empty", boardsList, "Loading boards…");
-    let rows = [];
-    try {
-      rows = await Promise.resolve(on.listBoards?.()) || [];
-    } catch {
-      rows = [];
-    }
-    if (id !== queryId || tab !== "boards") return;
-    boardRows = Array.isArray(rows) ? rows.filter((b) => b && b.uid) : [];
-    renderBoards();
-  };
-  listen(boardsFilter, "input", () => renderBoards());
-  listen(boardsFilter, "keydown", (event) => {
-    event.stopPropagation();
-    if (event.key === "Escape") {
-      event.preventDefault();
-      api.close();
-    }
-  });
-  const renderOutline = () => {
-    outlineList.replaceChildren();
-    let rows = [];
-    try {
-      rows = on.getOutline?.() || [];
-    } catch {
-      rows = [];
-    }
-    if (!Array.isArray(rows) || !rows.length) {
-      el("div", "pxd-panel__empty", outlineList, "Nothing on this board yet");
-      return;
-    }
-    for (const o of rows) {
-      const depth = Math.max(0, Number(o.depth) || 0);
-      const r = el("div", "pxd-panel__outline-row", outlineList);
-      r.dataset.uid = o.uid;
-      r.setAttribute("data-uid", o.uid);
-      r.dataset.depth = String(depth);
-      r.setAttribute("data-depth", String(depth));
-      r.style.paddingLeft = `${8 + depth * 14}px`;
-      const dot = el("span", `pxd-panel__outline-dot${o.color ? ` pxd-c-${o.color}` : ""}`, r);
-      dot.setAttribute("aria-hidden", "true");
-      el("span", "pxd-panel__outline-title", r, o.title || "Untitled");
-      if (Number.isFinite(o.count) && o.count > 0) el("span", "pxd-panel__outline-count", r, String(o.count));
-    }
-  };
-  listen(outlineList, "click", (event) => {
-    const row3 = event.target?.closest?.(".pxd-panel__outline-row");
-    const uid = row3?.dataset?.uid ?? row3?.getAttribute?.("data-uid");
-    if (!uid) return;
-    event.stopPropagation();
-    on.outlineClick?.(uid);
-  });
-  let cardTabs = [];
-  const cardItems = /* @__PURE__ */ new Map();
-  let cardCurrent = null;
-  let followInfoSelection = true;
-  const renderCardTabs = () => {
-    infoTabsBar.replaceChildren();
-    for (const t of cardTabs) {
-      const row3 = el("span", t.uid === cardCurrent ? "pxd-panel__infotab pxd-panel__infotab--on" : "pxd-panel__infotab", infoTabsBar);
-      const name = el("button", "pxd-btn pxd-panel__infotab-name", row3, cardItems.get(t.uid)?.title || "Untitled");
-      name.type = "button";
-      name.dataset.uid = t.uid;
-      name.setAttribute("data-uid", t.uid);
-      const closer = el("button", "pxd-btn pxd-panel__infotab-x", row3, "×");
-      closer.type = "button";
-      closer.title = "Close";
-      closer.dataset.uid = t.uid;
-      closer.setAttribute("data-uid", t.uid);
-    }
-  };
-  let infoMounted = false;
-  const unmountInfo = () => {
-    if (!infoMounted) return;
-    infoMounted = false;
-    const prev = infoScroll.querySelector(".pxd-panel__info-mount");
-    if (prev) {
-      try {
-        host?.unmount?.(prev);
-      } catch {
-      }
-    }
-  };
-  const infoSection = (label) => {
-    const section2 = el("section", "pxd-panel__info-sec", infoScroll);
-    el("div", "pxd-panel__info-h", section2, label);
-    return section2;
-  };
-  const loadInfo = async () => {
-    const id = queryId += 1;
-    unmountInfo();
-    infoScroll.replaceChildren();
-    const tabItem = cardCurrent ? cardItems.get(cardCurrent) || null : null;
-    const subject = followInfoSelection ? selected : tabItem || selected;
-    if (!subject || subject.type === "section") {
-      el("div", "pxd-panel__empty", infoScroll, "Select a card");
-      return;
-    }
-    let info = null;
-    try {
-      info = await Promise.resolve(host?.cardInfo?.(subject)) ?? null;
-    } catch {
-      info = null;
-    }
-    if (id !== queryId || tab !== "info") return;
-    unmountInfo();
-    infoScroll.replaceChildren();
-    if (!info) {
-      el("div", "pxd-panel__empty", infoScroll, "Nothing to show");
-      return;
-    }
-    const bodySec = infoSection("Card");
-    el("div", "pxd-panel__info-body", bodySec, info.body || "");
-    const mount = el("div", "pxd-panel__info-mount", bodySec);
-    if (on.isFullscreen?.()) {
-      try {
-        if (info.kind === "page" && info.pageUid && host?.renderPage) {
-          host.renderPage(mount, info.pageUid);
-          infoMounted = true;
-        } else if (info.uid && host?.renderBlock) {
-          host.renderBlock(mount, info.uid);
-          infoMounted = true;
-        }
-      } catch {
-      }
-    } else {
-      el("div", "pxd-panel__info-note", mount, "Editing in the right sidebar");
-      try {
-        on.openSidebarEditor?.(subject);
-      } catch {
-      }
-    }
-    const attrSec = infoSection("Attributes");
-    if (!info.attributes?.length) el("div", "pxd-panel__empty", attrSec, "No attributes");
-    else for (const attr of info.attributes) {
-      const row3 = el("div", "pxd-panel__info-attr", attrSec);
-      el("span", "pxd-panel__info-name", row3, attr.name);
-      el("span", "pxd-panel__info-value", row3, attr.value);
-    }
-    const refSec = infoSection("Linked references");
-    if (!info.refs?.length) el("div", "pxd-panel__empty", refSec, "No linked references");
-    else for (const ref of info.refs) {
-      const row3 = el("button", "pxd-btn pxd-panel__info-ref", refSec, ref.string || ref.uid);
-      row3.type = "button";
-      row3.dataset.uid = ref.uid;
-      row3.setAttribute("data-uid", ref.uid);
-      if (ref.pageTitle) row3.title = ref.pageTitle;
-    }
-    const boardSec = infoSection("On boards");
-    if (!info.boards?.length) el("div", "pxd-panel__empty", boardSec, "Not on another board");
-    else for (const board2 of info.boards) {
-      const row3 = el("button", "pxd-btn pxd-panel__info-board", boardSec);
-      row3.type = "button";
-      row3.dataset.uid = board2.uid;
-      row3.setAttribute("data-uid", board2.uid);
-      el("span", "pxd-panel__info-board-title", row3, board2.title || "Untitled board");
-      if (board2.pageTitle) el("span", "pxd-panel__info-board-page", row3, board2.pageTitle);
-    }
-    const tagSec = infoSection("Tags");
-    if (!info.tags?.length) el("div", "pxd-panel__empty", tagSec, "No tags");
-    else {
-      const wrap = el("div", "pxd-panel__info-tags", tagSec);
-      for (const name of info.tags) el("span", "pxd-panel__info-tag", wrap, name);
-    }
-  };
-  listen(infoScroll, "click", (event) => {
-    const board2 = event.target?.closest?.(".pxd-panel__info-board");
-    const ref = event.target?.closest?.(".pxd-panel__info-ref");
-    const node2 = board2 || ref;
-    const uid = node2?.dataset?.uid ?? node2?.getAttribute?.("data-uid");
-    if (!uid) return;
-    event.preventDefault?.();
-    event.stopPropagation();
-    if (board2) on.openBoardByUid?.(uid);
-    else on.openRef?.(uid);
-  });
-  listen(infoTabsBar, "click", (event) => {
-    const closer = event.target?.closest?.(".pxd-panel__infotab-x");
-    const name = event.target?.closest?.(".pxd-panel__infotab-name");
-    const node2 = closer || name;
-    const uid = node2?.dataset?.uid ?? node2?.getAttribute?.("data-uid");
-    if (!uid) return;
-    event.preventDefault?.();
-    event.stopPropagation();
-    if (closer) {
-      const next = closeInfoTab(cardTabs, cardCurrent, uid);
-      cardTabs = next.tabs;
-      if (!next.tabs.some((t) => t.uid === uid)) cardItems.delete(uid);
-      cardCurrent = next.current;
-      followInfoSelection = false;
-      renderCardTabs();
-      void loadInfo();
-      return;
-    }
-    cardCurrent = uid;
-    followInfoSelection = false;
-    renderCardTabs();
-    on.focusInfoTab?.(uid);
-    void loadInfo();
-  });
-  const api = {
-    el: panel,
-    open(which = tab) {
-      panel.style.display = "";
-      setTab(which);
-      on.opened?.(true);
-      const focusTarget = which === "search" ? input : which === "boards" ? boardsFilter : null;
-      if (focusTarget) {
-        try {
-          focusTarget.focus({ preventScroll: true });
-        } catch {
-          focusTarget.focus?.();
-        }
-      }
-    },
-    currentTab: () => tab,
-    refreshOutline() {
-      if (api.isOpen() && tab === "outline") renderOutline();
-    },
-    close() {
-      if (tab === "info") unmountInfo();
-      panel.style.display = "none";
-      on.opened?.(false);
-    },
-    toggle() {
-      if (api.isOpen()) api.close();
-      else api.open();
-    },
-    isOpen: () => panel.style.display !== "none",
-    setSelection(item) {
-      selected = item && item.type !== "section" ? item : null;
-      followInfoSelection = true;
-      if (selected && cardItems.has(selected.uid)) cardCurrent = selected.uid;
-      if (api.isOpen() && tab === "related") void loadRelated();
-      if (api.isOpen() && tab === "info") {
-        renderCardTabs();
-        void loadInfo();
-      }
-    },
-    addInfoTab(item) {
-      if (!item?.uid || item.type === "section") return cardTabs.map((t) => t.uid);
-      const title = item.title || String(item.string || "").split("\n")[0].slice(0, 48) || "Untitled";
-      cardItems.set(item.uid, { ...item, title });
-      const next = infoTabList(cardTabs, item.uid, { add: true });
-      cardTabs = next.tabs;
-      cardCurrent = next.current;
-      followInfoSelection = false;
-      panel.style.display = "";
-      setTab("info");
-      on.opened?.(true);
-      renderCardTabs();
-      void loadInfo();
-      return cardTabs.map((t) => t.uid);
-    },
-    infoTabs: () => cardTabs.map((t) => t.uid),
-    infoCurrent: () => cardCurrent,
-    refreshMarks() {
-      for (const r of panel.querySelectorAll(".pxd-panel__row")) {
-        const s = r.dataset?.string || r.getAttribute("data-string");
-        r.classList.toggle("pxd-panel__row--on", Boolean(on.isOnBoard?.(s)));
-      }
-    },
-    dispose() {
-      debounce?.();
-      queryId += 1;
-      unmountInfo();
-      listeners2.splice(0).forEach((off) => off());
-      panel.remove();
-    }
-  };
-  return api;
 }
 
 // src/view/menu.js
@@ -15543,6 +15662,10 @@ function mountBoardView({
   };
   listen(root, "pointerdown", (event) => {
     if (event.target?.closest?.(".pxd-chrome")) return;
+    if (event.target?.closest?.(".pxd-refs")) {
+      event.stopPropagation();
+      return;
+    }
     if (nativeClickKind(event.target) === "checkbox") {
       toggleClickedTodo(event.target);
       return;
@@ -15584,7 +15707,7 @@ function mountBoardView({
     });
   }
   listen(root, "dragstart", (event) => {
-    if (event.target?.closest?.(".pxd-chrome, .pxd-item--editing")) return;
+    if (event.target?.closest?.(".pxd-chrome, .pxd-item--editing, .pxd-refs__row")) return;
     event.preventDefault();
   });
   listen(root, "click", (event) => {
@@ -15624,7 +15747,7 @@ function mountBoardView({
     if (!event.target?.closest?.(".pxd-chrome")) event.stopPropagation();
   });
   listen(root, "dblclick", (event) => {
-    if (event.target?.closest?.(".pxd-chrome")) return;
+    if (event.target?.closest?.(".pxd-chrome, .pxd-refs")) return;
     if (nativeClickKind(event.target)) return;
     event.stopPropagation();
     event.preventDefault();

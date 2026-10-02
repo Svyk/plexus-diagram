@@ -1,0 +1,27 @@
+.pxd-root .pxd-lens {
+  width: 200px;
+}
+
+.pxd-root .pxd-lens__row {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 4px 8px;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pxd-root .pxd-lens__row.is-on {
+  background: var(--pxd-accent-soft);
+}
+
+.pxd-root .pxd-lens__empty {
+  padding: 4px 8px;
+  color: var(--pxd-muted);
+  font-size: 12px;
+}

@@ -6361,6 +6361,50 @@ function attrLegend(links, hidden, styles) {
   return rows;
 }
 
+// src/model/lens.js
+function tagsForCard(item, extra = "") {
+  const parts = [];
+  if (item?.string) parts.push(String(item.string));
+  for (const kid of item?.content || []) {
+    const text2 = kid?.[":block/string"] ?? kid?.string ?? "";
+    if (text2) parts.push(String(text2));
+  }
+  if (extra) parts.push(String(extra));
+  return tagNames(parts.join("\n"));
+}
+function lensCatalog(cards) {
+  const tags = [];
+  const seen = /* @__PURE__ */ new Set();
+  const byUid = /* @__PURE__ */ new Map();
+  for (const card2 of cards || []) {
+    if (!card2?.uid) continue;
+    const list = [];
+    for (const tag of card2.tags || []) {
+      const name = String(tag || "").trim();
+      if (!name || list.includes(name)) continue;
+      list.push(name);
+      if (!seen.has(name)) {
+        seen.add(name);
+        tags.push(name);
+      }
+    }
+    byUid.set(card2.uid, list);
+  }
+  return { tags, byUid };
+}
+function lensBright(byUid, tag, focusSet = null) {
+  const name = String(tag || "").trim();
+  if (!name) return focusSet ? new Set(focusSet) : null;
+  const bright = /* @__PURE__ */ new Set();
+  for (const [uid, tags] of byUid || []) {
+    if ((tags || []).includes(name)) bright.add(uid);
+  }
+  if (!focusSet) return bright;
+  const both = /* @__PURE__ */ new Set();
+  for (const uid of bright) if (focusSet.has(uid)) both.add(uid);
+  return both;
+}
+
 // src/model/export.js
 var HEX = {
   light: {
@@ -10713,6 +10757,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
   const kanbanBtn = button(groupView, "pxd-toolbar__kanban", "Kanban", "Kanban view", () => on.toggleKanban?.());
   kanbanBtn.setAttribute("aria-pressed", "false");
   const bgBtn = button(groupView, "pxd-toolbar__bg", "Background", "Background pattern and tone", () => popover.isOpen() ? popover.close() : popover.open());
+  const lensBtn = button(groupView, "pxd-toolbar__lens", "Tags", "Tag lens: keep cards with one tag bright", () => on.toggleLens?.());
   const focusBtn = button(groupView, "pxd-toolbar__focus", "Focus", "Focus mode: fade everything but the selection", () => on.toggleFocus?.());
   button(groupView, "pxd-toolbar__present", "Present", "Present this board", () => on.present?.());
   const moreBtn = button(groupView, "pxd-toolbar__more", "More", "More board actions", () => {
@@ -10807,6 +10852,10 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     setFocus(active) {
       focusBtn.classList.toggle("pxd-btn--active", Boolean(active));
     },
+    setLens(active) {
+      lensBtn.classList.toggle("pxd-btn--active", Boolean(active));
+    },
+    lensButton: lensBtn,
     setTable(on2) {
       const active = Boolean(on2);
       tableBtn.classList.toggle("pxd-btn--active", active);
@@ -13740,6 +13789,8 @@ function mountBoardView({
   let bgOverride = false;
   let focusOn = false;
   let focusKey = null;
+  let lensTag = null;
+  let lensIndex = /* @__PURE__ */ new Map();
   let presentSet = null;
   let sendPending = null;
   let menuCtx = null;
@@ -14386,12 +14437,35 @@ function mountBoardView({
     }
     return set;
   };
+  const extraTagText = (item) => {
+    try {
+      if (item?.kind === "page" && item.target?.title) {
+        const page = host?.pullPage?.(item.target.title);
+        return (page?.[":block/children"] || []).map((kid) => kid?.[":block/string"] || "").filter(Boolean).join("\n");
+      }
+      if (item?.kind === "block" && item.target?.uid) return host?.blockString?.(item.target.uid) || "";
+    } catch {
+    }
+    return "";
+  };
+  const rebuildLens = () => {
+    const cards = [];
+    for (const item of board2()?.items.values() || []) {
+      if (!item || item.type === "section") continue;
+      cards.push({ uid: item.uid, tags: tagsForCard(item, extraTagText(item)) });
+    }
+    const catalog = lensCatalog(cards);
+    lensIndex = catalog.byUid;
+    return catalog;
+  };
   const applyFocus = () => {
     if (disposed) return;
-    const set = focusSetNow();
-    const key = set ? [...set].sort().join("|") : null;
-    root.classList.toggle("pxd-root--focus", Boolean(set) || focusOn);
+    const focus = focusSetNow();
+    const set = lensTag ? lensBright(lensIndex, lensTag, focus) : focus;
+    const key = `${lensTag || ""}|${set ? [...set].sort().join("|") : ""}`;
+    root.classList.toggle("pxd-root--focus", Boolean(set) || focusOn || Boolean(lensTag));
     chrome.toolbar.setFocus(focusOn);
+    chrome.toolbar.setLens?.(Boolean(lensTag));
     if (key === focusKey) return;
     focusKey = key;
     itemsR.setFocus(set);
@@ -15338,6 +15412,7 @@ function mountBoardView({
         if (selection.items.length) void session.sameSize?.(selection.items, lastSelected(), mode);
       },
       toggleFocus: () => toggleFocus(),
+      toggleLens: () => toggleLens(),
       present: () => startPresent(),
       openMore: ({ x, y } = {}) => {
         openMenuAt("board-menu", null, { x: x ?? 0, y: y ?? 0 }, viewCenterWorld());
@@ -15355,6 +15430,81 @@ function mountBoardView({
         toast("Saved as the default background");
       }
     }
+  });
+  const lensPop = el("div", "pxd-popover pxd-lens pxd-chrome", root);
+  lensPop.style.display = "none";
+  lensPop.setAttribute("role", "dialog");
+  lensPop.setAttribute("aria-label", "Tag lens");
+  let lensOffs = [];
+  const closeLens = () => {
+    lensOffs.splice(0).forEach((off) => off());
+    lensPop.style.display = "none";
+  };
+  const paintLens = () => {
+    const catalog = rebuildLens();
+    lensPop.replaceChildren();
+    const title = el("div", "pxd-popover__title", lensPop);
+    title.textContent = "Tag lens";
+    const all = el("button", `pxd-lens__row${lensTag ? "" : " is-on"}`, lensPop);
+    all.type = "button";
+    all.textContent = "All cards";
+    all.dataset.tag = "";
+    all.setAttribute("data-tag", "");
+    if (!catalog.tags.length) {
+      const empty = el("div", "pxd-lens__empty", lensPop);
+      empty.textContent = "No tags on this board";
+    }
+    for (const tag of catalog.tags) {
+      const row2 = el("button", `pxd-lens__row${tag === lensTag ? " is-on" : ""}`, lensPop);
+      row2.type = "button";
+      row2.textContent = `#${tag}`;
+      row2.dataset.tag = tag;
+      row2.setAttribute("data-tag", tag);
+    }
+  };
+  const openLens = () => {
+    if (lensPop.style.display !== "none") {
+      closeLens();
+      return;
+    }
+    paintLens();
+    lensPop.style.display = "";
+    const btn = chrome.toolbar.lensButton;
+    const rootRect2 = root.getBoundingClientRect();
+    const b = btn?.getBoundingClientRect?.() || { left: rootRect2.left, bottom: rootRect2.top };
+    const w = lensPop.offsetWidth || 200;
+    const h = lensPop.offsetHeight || 120;
+    const left = Math.max(8, Math.min(b.left - rootRect2.left, (rootRect2.width || 0) - w - 8));
+    let top = b.bottom - rootRect2.top + 6;
+    if (rootRect2.height && top + h > rootRect2.height - 8) top = Math.max(8, rootRect2.height - h - 8);
+    lensPop.style.left = `${Math.round(left)}px`;
+    lensPop.style.top = `${Math.round(top)}px`;
+    const onDown = (event) => {
+      if (lensPop.contains(event.target) || btn?.contains?.(event.target)) return;
+      closeLens();
+    };
+    const onKey = (event) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault?.();
+      event.stopPropagation?.();
+      closeLens();
+    };
+    doc.addEventListener("pointerdown", onDown, true);
+    doc.addEventListener("keydown", onKey, true);
+    lensOffs = [() => doc.removeEventListener("pointerdown", onDown, true), () => doc.removeEventListener("keydown", onKey, true)];
+  };
+  const toggleLens = () => openLens();
+  listen(lensPop, "click", (event) => {
+    const row2 = event.target?.closest?.(".pxd-lens__row");
+    if (!row2 || disposed) return;
+    event.preventDefault?.();
+    event.stopPropagation?.();
+    const tag = row2.dataset?.tag || row2.getAttribute?.("data-tag") || "";
+    lensTag = tag || null;
+    if (lensTag) rebuildLens();
+    closeLens();
+    focusKey = null;
+    applyFocus();
   });
   const PANEL_WIDTH_KEY = "plexus-diagram:panel-width";
   let panelWidth = PANEL_WIDTH_DEFAULT;
@@ -16496,7 +16646,8 @@ function mountBoardView({
       if (!gesturing && !itemsR.isEditing()) showCtx();
       else chrome.ctx.hide();
       syncProps();
-      if (focusOn) applyFocus();
+      if (lensTag && dirty.structural) rebuildLens();
+      if (focusOn || lensTag) applyFocus();
     } else if (dirty.viewport && chrome.ctx.isOpen()) {
       chrome.ctx.reposition();
     }
@@ -16716,6 +16867,7 @@ function mountBoardView({
         pattern: bgPattern,
         tone: bgTone ?? null,
         focus: focusOn,
+        lens: lensTag,
         present: presenter.isActive(),
         selection: [...selection.items],
         mounted: itemsR.mountedCount(),
@@ -16760,6 +16912,7 @@ function mountBoardView({
     dispose() {
       if (disposed) return;
       disposed = true;
+      closeLens();
       closeBlockEdit();
       if (pointerBoard === root) pointerBoard = null;
       clearOutline();

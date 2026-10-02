@@ -177,6 +177,7 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
   const kanbanBtn = button(groupView, "pxd-toolbar__kanban", "Kanban", "Kanban view", () => on.toggleKanban?.());
   kanbanBtn.setAttribute("aria-pressed", "false");
   const bgBtn = button(groupView, "pxd-toolbar__bg", "Background", "Background pattern and tone", () => (popover.isOpen() ? popover.close() : popover.open()));
+  const lensBtn = button(groupView, "pxd-toolbar__lens", "Tags", "Tag lens: keep cards with one tag bright", () => on.toggleLens?.());
   const focusBtn = button(groupView, "pxd-toolbar__focus", "Focus", "Focus mode: fade everything but the selection", () => on.toggleFocus?.());
   button(groupView, "pxd-toolbar__present", "Present", "Present this board", () => on.present?.());
   const moreBtn = button(groupView, "pxd-toolbar__more", "More", "More board actions", () => {
@@ -267,6 +268,8 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
       railMinimap.classList.toggle("pxd-btn--active", Boolean(open));
     },
     setFocus(active) { focusBtn.classList.toggle("pxd-btn--active", Boolean(active)); },
+    setLens(active) { lensBtn.classList.toggle("pxd-btn--active", Boolean(active)); },
+    lensButton: lensBtn,
     setTable(on) {
       const active = Boolean(on);
       tableBtn.classList.toggle("pxd-btn--active", active);

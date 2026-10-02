@@ -1106,6 +1106,50 @@ test("focus: the set is the selection plus its connection neighbours; Esc leaves
   }
 });
 
+test("RG-8: a tag lens dims untagged cards, intersects focus, and writes nothing", async () => {
+  const f = mountFixture({
+    extra: [{
+      ":block/uid": "cardRG8A01",
+      ":block/string": "kept #rg8a",
+      ":block/order": 6,
+      ":block/props": { ":plexus": { ":x": 0, ":y": 700, ":w": 200, ":h": 100 } },
+      ":block/children": [],
+    }],
+    hostOverrides: {
+      pullPage: (title) => (title === "Beta" ? { ":block/children": [{ ":block/string": "on the page #rg8b" }] } : null),
+    },
+  });
+  try {
+    await f.flush();
+    const before = f.session.mutations.length;
+    const dim = (uid) => shell(f, uid).classList.contains("pxd-item--focus-dim");
+    f.root.querySelector(".pxd-toolbar__lens").click();
+    const labels = [...f.root.querySelectorAll(".pxd-lens__row")].map((node) => node.textContent);
+    assert.deepEqual(labels, ["All cards", "#rg8b", "#rg8a"]);
+    [...f.root.querySelectorAll(".pxd-lens__row")].find((node) => node.getAttribute("data-tag") === "rg8b").click();
+    assert.equal(f.view.state().lens, "rg8b");
+    assert.equal(dim("cardBBBB2"), false);
+    assert.equal(dim("cardRG8A01"), true);
+    assert.equal(dim("cardAAAA1"), true);
+    f.view.controller.select(["cardAAAA1"]);
+    f.stub.flushFrames();
+    f.root.querySelector(".pxd-toolbar__focus").click();
+    assert.equal(f.view.state().focus, true);
+    assert.equal(dim("cardBBBB2"), false, "the tagged neighbour stays bright");
+    assert.equal(dim("cardAAAA1"), true, "focus would keep this card; the lens dims it");
+    f.root.querySelector(".pxd-toolbar__lens").click();
+    [...f.root.querySelectorAll(".pxd-lens__row")].find((node) => node.textContent === "All cards").click();
+    assert.equal(f.view.state().lens, null);
+    assert.equal(dim("cardAAAA1"), false);
+    assert.equal(dim("cardBBBB2"), false);
+    assert.equal(dim("textTTTT5"), true);
+    assert.equal(f.session.mutations.length, before, "a lens writes nothing");
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
 test("Quick Look: Q opens a preview of the selected card, other board keys are inert, Esc closes it before touching the selection", async () => {
   const f = mountFixture();
   try {
@@ -1352,7 +1396,8 @@ test("state(): zoom, tier, background, focus, present, selection, mounted count 
     f.stub.flushIdle();
     f.view.controller.select(["cardAAAA1"]);
     const s = f.view.state();
-    assert.deepEqual(Object.keys(s).sort(), ["focus", "lod", "menuOpen", "mounted", "pattern", "present", "selection", "tone", "zoom"]);
+    assert.deepEqual(Object.keys(s).sort(), ["focus", "lens", "lod", "menuOpen", "mounted", "pattern", "present", "selection", "tone", "zoom"]);
+    assert.equal(s.lens, null);
     assert.equal(s.zoom, 1);
     assert.equal(s.lod, "detail");
     assert.equal(s.pattern, "grid");

@@ -2638,6 +2638,93 @@ body.roam-body.dark .pxd-root .pxd-panel__outline-row:hover {
   background: var(--pxd-bg);
 }
 
+/* Table view covers the canvas. The toolbar stays so Board can bring it back. */
+.pxd-root .pxd-table {
+  display: none;
+}
+
+.pxd-root.pxd-root--table .pxd-table {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  position: absolute;
+  z-index: 7;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  box-sizing: border-box;
+  overflow: auto;
+  padding: 8px 12px 12px;
+  background: var(--pxd-bg);
+  color: var(--pxd-text);
+}
+
+.pxd-root .pxd-table__bar {
+  display: flex;
+  flex: none;
+  flex-wrap: wrap;
+  gap: 6px;
+  align-items: center;
+}
+
+.pxd-root .pxd-table__filter,
+.pxd-root .pxd-table__colname,
+.pxd-root .pxd-table__fill {
+  margin: 0;
+  min-width: 0;
+  width: 9em;
+  max-width: 100%;
+  padding: 2px 8px;
+  border: 1px solid var(--pxd-border);
+  border-radius: 6px;
+  background: var(--pxd-chrome-bg);
+  color: var(--pxd-text);
+  font: inherit;
+  font-size: 13px;
+  line-height: 18px;
+}
+
+.pxd-root .pxd-table__grid {
+  flex: none;
+  border-collapse: collapse;
+  width: max-content;
+  min-width: 100%;
+}
+
+.pxd-root .pxd-table__grid th,
+.pxd-root .pxd-table__grid td {
+  border: 1px solid var(--pxd-border);
+  padding: 4px 8px;
+  text-align: left;
+  vertical-align: top;
+  font-size: 13px;
+  font-weight: 400;
+}
+
+.pxd-root .pxd-table__sort,
+.pxd-root .pxd-table__value {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pxd-root.pxd-root--table .pxd-viewport,
+.pxd-root.pxd-root--table .pxd-rail,
+.pxd-root.pxd-root--table .pxd-resize-grip,
+.pxd-root.pxd-root--table .pxd-props,
+.pxd-root.pxd-root--table .pxd-panel,
+.pxd-root.pxd-root--table .pxd-minimap,
+.pxd-root.pxd-root--table .pxd-ctx {
+  visibility: hidden;
+  pointer-events: none;
+}
+
 .pxd-root.pxd-root--outline .pxd-viewport,
 .pxd-root.pxd-root--outline .pxd-rail,
 .pxd-root.pxd-root--outline .pxd-toolbar,

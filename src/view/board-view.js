@@ -31,6 +31,7 @@ import { createItemRenderer, isTextEntryTarget } from "./cards.js";
 import { editorKeyAction, inputBlockRole } from "./editor-keys.js";
 import { createEdgeLayer } from "./edges.js";
 import { createChrome, LINK_MODES } from "./chrome.js";
+import { mountTable } from "./table-view.js";
 import { createPropsPanel } from "./props-panel.js";
 import { PANEL_WIDTH_DEFAULT, nextPanelWidth } from "../model/info.js";
 import { createPanel, parseDropPayload } from "./panel.js";
@@ -435,8 +436,27 @@ export function mountBoardView({
       try { host.renderBlock(row, uid); } catch { /* render failed */ }
     }
   };
+  let tableMode = false;
+  let tableCtl = { open() {}, close() {}, refresh() {}, dispose() {} };
+  const setTable = (on) => {
+    const next = Boolean(on);
+    if (next && outlineMode) {
+      outlineMode = false;
+      root.classList.remove("pxd-root--outline");
+      outlineBtn?.classList.toggle("pxd-mode__btn--on", false);
+      boardBtn?.classList.toggle("pxd-mode__btn--on", true);
+      outlineKey = "";
+      clearOutline();
+    }
+    tableMode = next;
+    root.classList.toggle("pxd-root--table", tableMode);
+    chrome?.toolbar?.setTable?.(tableMode);
+    if (tableMode) tableCtl.open();
+    else tableCtl.close();
+  };
   const setOutline = (on) => {
     outlineMode = Boolean(on);
+    if (outlineMode && tableMode) setTable(false);
     root.classList.toggle("pxd-root--outline", outlineMode);
     outlineBtn?.classList.toggle("pxd-mode__btn--on", outlineMode);
     boardBtn?.classList.toggle("pxd-mode__btn--on", !outlineMode);
@@ -1404,6 +1424,7 @@ export function mountBoardView({
       togglePanel: () => panel.toggle(),
       openInfo: () => openInfo(),
       cycleLinks: () => cycleLinks(),
+      toggleTable: () => setTable(!tableMode),
       zoomIn: () => setViewport(zoomAt(vp, { x: size.width / 2, y: size.height / 2 }, 1.2)),
       zoomOut: () => setViewport(zoomAt(vp, { x: size.width / 2, y: size.height / 2 }, 1 / 1.2)),
       zoomReset: () => setViewport(zoomAt(vp, { x: size.width / 2, y: size.height / 2 }, 1 / vp.zoom)),
@@ -2220,6 +2241,7 @@ export function mountBoardView({
   const onKeyDown = (event) => {
     // Outline mode is real Roam blocks. Canvas shortcuts stay off so a key there is not a board command.
     if (outlineMode && !event.target?.closest?.(".pxd-mode")) return;
+    if (tableMode && !event.target?.closest?.(".pxd-toolbar__table")) return;
     // The open menu owns the keyboard; Quick Look and a presentation only let their own keys through.
     if (menu.isOpen()) return;
     if (event.key === "Escape" && blockEdit && !doc.querySelector?.(".rm-autocomplete__results")) {
@@ -2343,10 +2365,17 @@ export function mountBoardView({
     dirty.selection = true;
     schedule();
     if (outlineMode) syncOutline();
+    if (tableMode) tableCtl.refresh();
   }));
   subs.push(session.on("links", () => { dirty.links = true; schedule(); }));
   subs.push(session.on("busy", (busy) => chrome.toolbar.setSync(Boolean(busy))));
   subs.push(session.on("toast", (t) => chrome.toast.show(t)));
+  tableCtl = mountTable({
+    doc,
+    root,
+    host,
+    getBoard: board,
+  });
   if (inSidebar) setOutline(true);
 
   // ------------------------------------------------------------ observers
@@ -2655,6 +2684,7 @@ export function mountBoardView({
       closeBlockEdit();
       if (pointerBoard === root) pointerBoard = null;
       clearOutline();
+      tableCtl.dispose();
       ctl.cancel();
       releaseCapture();
       if (heightDrag) onHeightUp();

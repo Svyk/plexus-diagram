@@ -172,6 +172,8 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
   button(group2, "pxd-toolbar__info", "Info", "Card info (I)", () => on.openInfo?.());
   const linksBtn = button(group2, "pxd-toolbar__links", LINK_LABELS.all, "Graph links (L)", () => on.cycleLinks?.());
   const groupView = el("div", "pxd-toolbar__group", toolbar);
+  const tableBtn = button(groupView, "pxd-toolbar__table", "Table", "Table view", () => on.toggleTable?.());
+  tableBtn.setAttribute("aria-pressed", "false");
   const bgBtn = button(groupView, "pxd-toolbar__bg", "Background", "Background pattern and tone", () => (popover.isOpen() ? popover.close() : popover.open()));
   const focusBtn = button(groupView, "pxd-toolbar__focus", "Focus", "Focus mode: fade everything but the selection", () => on.toggleFocus?.());
   button(groupView, "pxd-toolbar__present", "Present", "Present this board", () => on.present?.());
@@ -263,6 +265,13 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
       railMinimap.classList.toggle("pxd-btn--active", Boolean(open));
     },
     setFocus(active) { focusBtn.classList.toggle("pxd-btn--active", Boolean(active)); },
+    setTable(on) {
+      const active = Boolean(on);
+      tableBtn.classList.toggle("pxd-btn--active", active);
+      tableBtn.textContent = active ? "Board" : "Table";
+      tableBtn.title = active ? "Board view" : "Table view";
+      tableBtn.setAttribute("aria-pressed", active ? "true" : "false");
+    },
     setBackground(state) { popover.setState(state); },
     bgButton: bgBtn,
   };

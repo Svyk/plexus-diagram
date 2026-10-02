@@ -9112,6 +9112,8 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
   button(group2, "pxd-toolbar__info", "Info", "Card info (I)", () => on.openInfo?.());
   const linksBtn = button(group2, "pxd-toolbar__links", LINK_LABELS.all, "Graph links (L)", () => on.cycleLinks?.());
   const groupView = el("div", "pxd-toolbar__group", toolbar);
+  const tableBtn = button(groupView, "pxd-toolbar__table", "Table", "Table view", () => on.toggleTable?.());
+  tableBtn.setAttribute("aria-pressed", "false");
   const bgBtn = button(groupView, "pxd-toolbar__bg", "Background", "Background pattern and tone", () => popover.isOpen() ? popover.close() : popover.open());
   const focusBtn = button(groupView, "pxd-toolbar__focus", "Focus", "Focus mode: fade everything but the selection", () => on.toggleFocus?.());
   button(groupView, "pxd-toolbar__present", "Present", "Present this board", () => on.present?.());
@@ -9206,6 +9208,13 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     },
     setFocus(active) {
       focusBtn.classList.toggle("pxd-btn--active", Boolean(active));
+    },
+    setTable(on2) {
+      const active = Boolean(on2);
+      tableBtn.classList.toggle("pxd-btn--active", active);
+      tableBtn.textContent = active ? "Board" : "Table";
+      tableBtn.title = active ? "Board view" : "Table view";
+      tableBtn.setAttribute("aria-pressed", active ? "true" : "false");
     },
     setBackground(state) {
       popover.setState(state);
@@ -9670,6 +9679,387 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     for (const node2 of [toolbar, railEl, popEl, backEl, ctx, toast, search, minimap]) node2.remove();
   };
   return { toolbar: toolbarApi, ctx: ctxApi, toast: toastApi, search: searchApi, minimap: minimapApi, popover, backToContent, badge, sync, dispose };
+}
+
+// src/model/table.js
+var FIXED = ["Title", "Section", "Type", "Edited"];
+function cleanName(name) {
+  if (name == null) return "";
+  const attr = String(name).trim();
+  if (!attr || attr.startsWith("BT_attr") || FIXED.includes(attr)) return "";
+  return attr;
+}
+function columnNameOk(name) {
+  return Boolean(cleanName(name));
+}
+function isTableRow(item) {
+  if (!item) return false;
+  if (item.type === "section" || item.type === "text") return false;
+  if (item.type === "card") return true;
+  return item.kind === "card" || item.kind === "board";
+}
+function tableColumns(rows) {
+  const names = [];
+  for (const row2 of rows || []) {
+    for (const attr of row2.attrs || []) {
+      if (attr?.name && !names.includes(attr.name)) names.push(attr.name);
+    }
+  }
+  return FIXED.concat(names);
+}
+function cellText(row2, column) {
+  if (!row2) return "";
+  if (column === "Title") return String(row2.title ?? "");
+  if (column === "Section") return String(row2.section ?? "");
+  if (column === "Type") return String(row2.type ?? "");
+  if (column === "Edited") return row2.edited == null ? "" : String(row2.edited);
+  const hit = (row2.attrs || []).find((attr) => attr.name === column);
+  return hit ? String(hit.value ?? "") : "";
+}
+function filterRows(rows, text) {
+  const needle = String(text ?? "").trim().toLowerCase();
+  if (!needle) return (rows || []).slice();
+  const cols = tableColumns(rows);
+  return (rows || []).filter((row2) => cols.some((column) => cellText(row2, column).toLowerCase().includes(needle)));
+}
+function sortRows(rows, column, dir = "asc") {
+  const sign = dir === "desc" ? -1 : 1;
+  const list = (rows || []).slice();
+  list.sort((a, b) => {
+    if (column === "Edited") {
+      const av = Number(a.edited) || 0;
+      const bv = Number(b.edited) || 0;
+      return (av - bv) * sign;
+    }
+    return cellText(a, column).localeCompare(cellText(b, column)) * sign;
+  });
+  return list;
+}
+function planAttrCell({ name, value, blockUid = null, parentUid = null } = {}) {
+  const attr = cleanName(name);
+  if (!attr) return null;
+  const text = String(value ?? "").trim();
+  const string = text ? `${attr}:: ${text}` : `${attr}::`;
+  if (blockUid) return { op: "update", uid: blockUid, string };
+  if (!text || !parentUid) return null;
+  return { op: "create", parent: parentUid, string };
+}
+function tableRows(board2) {
+  const items = board2?.items;
+  if (!items || typeof items.get !== "function") return [];
+  const order = Array.isArray(board2.order) ? board2.order : [...items.keys()];
+  const rows = [];
+  for (const uid of order) {
+    const item = items.get(uid);
+    if (!isTableRow(item)) continue;
+    const parent = items.get(item.parentUid);
+    const section2 = parent?.type === "section" ? String(parent.title || "") : "";
+    const attrs = [];
+    for (const child of item.content || []) {
+      const string = child?.[":block/string"] ?? child?.string ?? "";
+      const name = cleanName(attrNameOf(String(string)));
+      if (!name) continue;
+      const text = String(string);
+      const cut = text.indexOf("::");
+      attrs.push({
+        name,
+        value: cut >= 0 ? text.slice(cut + 2).trim() : "",
+        uid: child?.[":block/uid"] ?? child?.uid ?? null
+      });
+    }
+    rows.push({
+      uid: item.uid,
+      kind: item.kind,
+      title: item.title || "",
+      section: section2,
+      type: item.kind || "",
+      edited: item.edited ?? null,
+      attrs
+    });
+  }
+  return rows;
+}
+
+// src/view/table-view.js
+var EDITED_QUERY = "[:find ?u ?e :in $ [?u ...] :where [?b :block/uid ?u] [?b :edit/time ?e]]";
+function editedLabel(value) {
+  const n = Number(value);
+  if (!Number.isFinite(n) || n <= 0) return "";
+  if (n < 1e11) return String(n);
+  try {
+    const d = new Date(n);
+    return Number.isNaN(d.getTime()) ? String(n) : d.toLocaleString();
+  } catch {
+    return String(n);
+  }
+}
+function mountTable({ doc = globalThis.document, root, host, getBoard } = {}) {
+  const box = doc.createElement("div");
+  box.className = "pxd-table pxd-chrome";
+  root?.append(box);
+  const bar = doc.createElement("div");
+  bar.className = "pxd-table__bar";
+  box.append(bar);
+  const filter = doc.createElement("input");
+  filter.type = "text";
+  filter.className = "pxd-input pxd-table__filter";
+  filter.placeholder = "Filter";
+  filter.setAttribute("aria-label", "Filter rows");
+  bar.append(filter);
+  const colName = doc.createElement("input");
+  colName.type = "text";
+  colName.className = "pxd-input pxd-table__colname";
+  colName.placeholder = "Column name";
+  colName.setAttribute("aria-label", "New column name");
+  bar.append(colName);
+  const addBtn = doc.createElement("button");
+  addBtn.type = "button";
+  addBtn.className = "pxd-btn pxd-table__add";
+  addBtn.textContent = "Add column";
+  bar.append(addBtn);
+  const grid = doc.createElement("table");
+  grid.className = "pxd-table__grid";
+  const thead = doc.createElement("thead");
+  const tbody = doc.createElement("tbody");
+  grid.append(thead, tbody);
+  box.append(grid);
+  const offs = [];
+  const paintOffs = [];
+  const listen = (el, type, fn, bucket = offs) => {
+    el.addEventListener(type, fn);
+    bucket.push(() => el.removeEventListener(type, fn));
+  };
+  const stop = (event) => event.stopPropagation();
+  for (const type of ["pointerdown", "pointerup", "click", "dblclick", "wheel", "contextmenu"]) {
+    listen(box, type, stop);
+  }
+  let open = false;
+  let filterText = "";
+  let sortColumn = null;
+  let sortDir = "asc";
+  const pending = [];
+  const filled = /* @__PURE__ */ new Map();
+  const inflight = /* @__PURE__ */ new Set();
+  const edited = /* @__PURE__ */ new Map();
+  let paintQueued = false;
+  const editing = () => {
+    const active = doc.activeElement;
+    return Boolean(active && box.contains(active) && active.closest?.(".pxd-table__edit"));
+  };
+  const closeEditors = () => {
+    for (const cell of [...box.querySelectorAll(".pxd-table__edit")]) {
+      try {
+        host?.unmount?.(cell);
+      } catch {
+      }
+      cell.classList.remove("pxd-table__edit");
+    }
+  };
+  const sourceRows = () => {
+    const rows = tableRows(getBoard?.() || null);
+    const missing = rows.map((row2) => row2.uid).filter((uid) => !edited.has(uid));
+    if (missing.length && typeof host?.q === "function") {
+      let found = [];
+      try {
+        found = host.q(EDITED_QUERY, missing) || [];
+      } catch {
+        found = [];
+      }
+      for (const hit of found) {
+        if (Array.isArray(hit) && hit.length >= 2) edited.set(hit[0], hit[1]);
+      }
+    }
+    for (const row2 of rows) {
+      if (edited.has(row2.uid)) row2.edited = edited.get(row2.uid);
+      for (const attr of row2.attrs || []) filled.delete(`${row2.uid}\0${attr.name}`);
+    }
+    return rows;
+  };
+  const columnsOf = (rows) => {
+    const cols = tableColumns(rows);
+    for (const name of pending) if (!cols.includes(name)) cols.push(name);
+    return cols;
+  };
+  const shownRows = (rows) => {
+    const filtered = filterRows(rows, filterText);
+    return sortColumn ? sortRows(filtered, sortColumn, sortDir) : filtered;
+  };
+  const commitFill = async (row2, column, raw) => {
+    const key = `${row2.uid}\0${column}`;
+    if (inflight.has(key) || filled.has(key)) return;
+    const plan = planAttrCell({ name: column, value: raw, parentUid: row2.uid });
+    if (!plan || plan.op !== "create") return;
+    if (typeof host?.createBlock !== "function") return;
+    inflight.add(key);
+    try {
+      const write = () => host.createBlock({ parentUid: plan.parent, order: "last", string: plan.string });
+      if (typeof host.group === "function") await host.group(write);
+      else await write();
+      filled.set(key, String(raw).trim());
+    } catch {
+    } finally {
+      inflight.delete(key);
+    }
+    paint2();
+  };
+  const openEditor = (cell, blockUid) => {
+    if (!blockUid || typeof host?.renderBlock !== "function") return;
+    closeEditors();
+    cell.classList.add("pxd-table__edit");
+    cell.replaceChildren();
+    try {
+      host.renderBlock(cell, blockUid);
+    } catch {
+    }
+  };
+  const paint2 = () => {
+    if (!open) return;
+    if (editing()) {
+      paintQueued = true;
+      return;
+    }
+    paintQueued = false;
+    paintOffs.splice(0).forEach((off) => off());
+    const rows = sourceRows();
+    const cols = columnsOf(rows);
+    const body = shownRows(rows);
+    thead.replaceChildren();
+    const head = doc.createElement("tr");
+    for (const column of cols) {
+      const th = doc.createElement("th");
+      const button = doc.createElement("button");
+      button.type = "button";
+      button.className = "pxd-btn pxd-table__sort";
+      button.setAttribute("data-col", column);
+      const mark = sortColumn === column ? sortDir === "desc" ? " ↓" : " ↑" : "";
+      button.textContent = `${column}${mark}`;
+      listen(button, "click", () => {
+        if (sortColumn === column) sortDir = sortDir === "asc" ? "desc" : "asc";
+        else {
+          sortColumn = column;
+          sortDir = "asc";
+        }
+        paint2();
+      }, paintOffs);
+      th.append(button);
+      head.append(th);
+    }
+    thead.append(head);
+    tbody.replaceChildren();
+    for (const row2 of body) {
+      const tr = doc.createElement("tr");
+      tr.className = "pxd-table__row";
+      tr.setAttribute("data-uid", row2.uid);
+      for (const column of cols) {
+        const td = doc.createElement("td");
+        td.className = "pxd-table__cell";
+        td.setAttribute("data-col", column);
+        const attr = (row2.attrs || []).find((item) => item.name === column);
+        const pendingValue = filled.get(`${row2.uid}\0${column}`);
+        if (attr?.uid) {
+          const button = doc.createElement("button");
+          button.type = "button";
+          button.className = "pxd-btn pxd-table__value";
+          button.textContent = cellText(row2, column);
+          listen(button, "click", () => openEditor(td, attr.uid), paintOffs);
+          td.append(button);
+        } else if (pendingValue != null) {
+          const span = doc.createElement("span");
+          span.className = "pxd-table__text";
+          span.textContent = pendingValue;
+          td.append(span);
+        } else if (column !== "Title" && column !== "Section" && column !== "Type" && column !== "Edited") {
+          const input = doc.createElement("input");
+          input.type = "text";
+          input.className = "pxd-input pxd-table__fill";
+          input.setAttribute("aria-label", `${column} for ${row2.title || row2.uid}`);
+          const commit = () => {
+            void commitFill(row2, column, input.value);
+          };
+          listen(input, "keydown", (event) => {
+            if (event.key !== "Enter") return;
+            event.preventDefault();
+            commit();
+          }, paintOffs);
+          listen(input, "blur", commit, paintOffs);
+          td.append(input);
+        } else {
+          const span = doc.createElement("span");
+          span.className = "pxd-table__text";
+          span.textContent = column === "Edited" ? editedLabel(row2.edited) : cellText(row2, column);
+          td.append(span);
+        }
+        tr.append(td);
+      }
+      tbody.append(tr);
+    }
+  };
+  listen(filter, "input", () => {
+    filterText = filter.value;
+    paint2();
+  });
+  const addColumn = () => {
+    const name = colName.value.trim();
+    if (!columnNameOk(name)) return;
+    const rows = sourceRows();
+    if (!tableColumns(rows).includes(name) && !pending.includes(name)) pending.push(name);
+    colName.value = "";
+    paint2();
+  };
+  listen(addBtn, "click", addColumn);
+  listen(colName, "keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault();
+    addColumn();
+  });
+  listen(box, "focusout", () => {
+    if (!paintQueued) return;
+    const later = () => {
+      if (open && paintQueued && !editing()) paint2();
+    };
+    if (typeof doc.defaultView?.setTimeout === "function") doc.defaultView.setTimeout(later, 0);
+    else later();
+  });
+  const place = () => {
+    const toolbar2 = root?.querySelector?.(".pxd-toolbar");
+    if (!toolbar2 || typeof toolbar2.getBoundingClientRect !== "function" || typeof root.getBoundingClientRect !== "function") return;
+    const top = toolbar2.getBoundingClientRect().bottom - root.getBoundingClientRect().top;
+    if (top > 0) box.style.top = `${Math.ceil(top)}px`;
+  };
+  let resizeObs = null;
+  const toolbar = root?.querySelector?.(".pxd-toolbar");
+  if (toolbar && typeof globalThis.ResizeObserver === "function") {
+    resizeObs = new globalThis.ResizeObserver(() => {
+      if (open) place();
+    });
+    resizeObs.observe(toolbar);
+  }
+  return {
+    el: box,
+    open() {
+      open = true;
+      place();
+      paint2();
+    },
+    close() {
+      open = false;
+      closeEditors();
+    },
+    refresh() {
+      if (open) paint2();
+    },
+    dispose() {
+      open = false;
+      closeEditors();
+      try {
+        resizeObs?.disconnect();
+      } catch {
+      }
+      paintOffs.splice(0).forEach((off) => off());
+      offs.splice(0).forEach((off) => off());
+      box.remove();
+    }
+  };
 }
 
 // src/view/props-panel.js
@@ -12139,8 +12529,31 @@ function mountBoardView({
       }
     }
   };
+  let tableMode = false;
+  let tableCtl = { open() {
+  }, close() {
+  }, refresh() {
+  }, dispose() {
+  } };
+  const setTable = (on) => {
+    const next = Boolean(on);
+    if (next && outlineMode) {
+      outlineMode = false;
+      root.classList.remove("pxd-root--outline");
+      outlineBtn?.classList.toggle("pxd-mode__btn--on", false);
+      boardBtn?.classList.toggle("pxd-mode__btn--on", true);
+      outlineKey = "";
+      clearOutline();
+    }
+    tableMode = next;
+    root.classList.toggle("pxd-root--table", tableMode);
+    chrome?.toolbar?.setTable?.(tableMode);
+    if (tableMode) tableCtl.open();
+    else tableCtl.close();
+  };
   const setOutline = (on) => {
     outlineMode = Boolean(on);
+    if (outlineMode && tableMode) setTable(false);
     root.classList.toggle("pxd-root--outline", outlineMode);
     outlineBtn?.classList.toggle("pxd-mode__btn--on", outlineMode);
     boardBtn?.classList.toggle("pxd-mode__btn--on", !outlineMode);
@@ -13357,6 +13770,7 @@ function mountBoardView({
       togglePanel: () => panel.toggle(),
       openInfo: () => openInfo(),
       cycleLinks: () => cycleLinks(),
+      toggleTable: () => setTable(!tableMode),
       zoomIn: () => setViewport(zoomAt(vp, { x: size.width / 2, y: size.height / 2 }, 1.2)),
       zoomOut: () => setViewport(zoomAt(vp, { x: size.width / 2, y: size.height / 2 }, 1 / 1.2)),
       zoomReset: () => setViewport(zoomAt(vp, { x: size.width / 2, y: size.height / 2 }, 1 / vp.zoom)),
@@ -14358,6 +14772,7 @@ function mountBoardView({
   };
   const onKeyDown = (event) => {
     if (outlineMode && !event.target?.closest?.(".pxd-mode")) return;
+    if (tableMode && !event.target?.closest?.(".pxd-toolbar__table")) return;
     if (menu.isOpen()) return;
     if (event.key === "Escape" && blockEdit && !doc.querySelector?.(".rm-autocomplete__results")) {
       event.preventDefault();
@@ -14492,6 +14907,7 @@ function mountBoardView({
     dirty.selection = true;
     schedule();
     if (outlineMode) syncOutline();
+    if (tableMode) tableCtl.refresh();
   }));
   subs.push(session.on("links", () => {
     dirty.links = true;
@@ -14499,6 +14915,12 @@ function mountBoardView({
   }));
   subs.push(session.on("busy", (busy) => chrome.toolbar.setSync(Boolean(busy))));
   subs.push(session.on("toast", (t) => chrome.toast.show(t)));
+  tableCtl = mountTable({
+    doc,
+    root,
+    host,
+    getBoard: board2
+  });
   if (inSidebar) setOutline(true);
   const RO = globalThis.ResizeObserver;
   if (typeof RO === "function") {
@@ -14855,6 +15277,7 @@ function mountBoardView({
       closeBlockEdit();
       if (pointerBoard === root) pointerBoard = null;
       clearOutline();
+      tableCtl.dispose();
       ctl.cancel();
       releaseCapture();
       if (heightDrag) onHeightUp();

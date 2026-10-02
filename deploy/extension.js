@@ -442,7 +442,9 @@ var DEFAULT_BOARD_CARD = { w: 320, h: 220 };
 var UNTITLED_BOARD = "Untitled board";
 var FONT_SIZES = [16, 24, 32, 48];
 var CARD_LOOKS = ["block", "card"];
-var TEXT_LOOKS = ["section-note"];
+var TEXT_LOOKS = ["section-note", "sticky"];
+var STICKY_SIZE = { w: 200, h: 200 };
+var STICKY_COLOR = "yellow";
 var CARD_FONT_MIN = 10;
 var CARD_FONT_MAX = 48;
 var CARD_FONT_DEFAULT = 14;
@@ -4524,11 +4526,22 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
         return id;
       });
     },
-    createText({ x, y, string = "" } = {}) {
+    createText({ x, y, string = "", look, w, h, color } = {}) {
       return txn((t) => {
-        const parent = containerAt(board2, { x: x + DEFAULT_SIZES.text.w / 2, y: y + DEFAULT_SIZES.text.h / 2 }, { rects });
+        const sticky = look === "sticky";
+        const dw = sticky ? STICKY_SIZE.w : DEFAULT_SIZES.text.w;
+        const dh = sticky ? STICKY_SIZE.h : DEFAULT_SIZES.text.h;
+        const size = { w: typeof w === "number" ? w : dw, h: typeof h === "number" ? h : dh };
+        const parent = containerAt(board2, { x: x + size.w / 2, y: y + size.h / 2 }, { rects });
         const rel = toRelative(board2, parent, { x, y }, rects);
-        const id = t.create({ parent, string, plexus: serializeItemLayout({ type: "text", x: rel.x, y: rel.y }) });
+        const layout = { type: "text", x: rel.x, y: rel.y };
+        if (sticky || typeof w === "number") layout.w = size.w;
+        if (sticky || typeof h === "number") layout.h = size.h;
+        if (sticky) {
+          layout.look = "sticky";
+          layout.color = styleColor(color) || STICKY_COLOR;
+        }
+        const id = t.create({ parent, string, plexus: serializeItemLayout(layout) });
         applyFit(t, [id]);
         return id;
       });
@@ -6146,6 +6159,14 @@ function boardToSvg(board2, rects, { dark = false, padding = 48, maxItems = 500,
         const ink = item.textColor ? hex(item.textColor)[2] : theme.text;
         body.push(`<path d="${shapePath(r, item.shape)}" fill="${paint2}" stroke="${stroke}" stroke-width="2"/>`);
         body.push(`<text x="${n1(r.x + r.w / 2)}" y="${n1(r.y + r.h / 2)}" font-size="${size}" text-anchor="middle" dominant-baseline="central" fill="${ink}">${esc(titleOf(item))}</text>`);
+      } else if (item.look === "sticky") {
+        const paper = item.fill ? hex(item.fill)[1] : item.color ? fill : hex("yellow")[1];
+        const ink = item.textColor ? hex(item.textColor)[2] : item.color ? text2 : hex("yellow")[2];
+        if (!defs.some((d) => d.includes("pxd-sticky-shadow"))) {
+          defs.push(`<filter id="pxd-sticky-shadow" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="2" stdDeviation="1.5" flood-color="#1c1917" flood-opacity="0.22"/></filter>`);
+        }
+        body.push(`<rect x="${n1(r.x)}" y="${n1(r.y)}" width="${n1(r.w)}" height="${n1(r.h)}" rx="2" fill="${paper}" filter="url(#pxd-sticky-shadow)"/>`);
+        body.push(`<text x="${n1(r.x + 12)}" y="${n1(r.y + size + 8)}" font-size="${size}" fill="${ink}">${esc(titleOf(item))}</text>`);
       } else {
         body.push(`<text x="${n1(r.x)}" y="${n1(r.y + size)}" font-size="${size}" fill="${theme.text}">${esc(titleOf(item))}</text>`);
       }
@@ -7635,6 +7656,8 @@ function createItemRenderer({
     setVar(node2, "--pxd-fill", cssColor(item.fill, "fill") || accent || "");
     setVar(node2, "--pxd-line", cssColor(item.border, "line") || accent || "");
     node2.style.textAlign = item.align || "";
+    const stickyHex = item.type === "text" && item.look === "sticky" && !item.shape ? hexColor(item.fill) || accent || "" : "";
+    node2.style.backgroundColor = stickyHex;
   };
   const syncShape = (rec, item, size) => {
     const name = item?.type === "text" && SHAPES.includes(item.shape) ? item.shape : "";
@@ -7694,6 +7717,7 @@ function createItemRenderer({
     if (item.type !== "section" && item.fontSize) cls.push("pxd-fs");
     if (item.textColor) cls.push("pxd-has-textc");
     if (item.type === "text" && item.shape) cls.push("pxd-item--shape", `pxd-item--shape-${item.shape}`);
+    else if (item.type === "text" && item.look === "sticky") cls.push("pxd-item--sticky");
     else if (item.type === "text" && (item.fill || item.border)) cls.push("pxd-text-paint");
     if (rec.selected) cls.push(item.type === "section" ? "pxd-section--selected" : "pxd-item--selected");
     if (rec.hover) cls.push("pxd-item--drop");
@@ -11954,6 +11978,7 @@ function buildMenu(kind, ctx = {}) {
       return [
         make("new-card", "New card", { hint: "N" }),
         make("new-text", "New text", { hint: "T" }),
+        make("new-sticky", "New sticky"),
         make("new-section", "New section", { hint: "G" }),
         make("new-board", "New board", { hint: "W" }),
         templateMenu(),
@@ -14222,6 +14247,15 @@ function mountBoardView({
     return ok;
   };
   const createAt = async (type, world2) => {
+    if (type === "sticky") {
+      const d2 = STICKY_SIZE;
+      const uid2 = await actions.createText({ x: world2.x - d2.w / 2, y: world2.y - d2.h / 2, look: "sticky" });
+      if (uid2 && !disposed) {
+        ctl.select([uid2]);
+        void enterEdit(uid2);
+      }
+      return;
+    }
     const d = DEFAULT_SIZES[type];
     const at = { x: world2.x - d.w / 2, y: world2.y - d.h / 2 };
     const uid = await (type === "text" ? actions.createText(at) : actions.createCard(at));
@@ -14247,6 +14281,9 @@ function mountBoardView({
         break;
       case "new-text":
         void createAt("text", world2);
+        break;
+      case "new-sticky":
+        void createAt("sticky", world2);
         break;
       case "new-section": {
         const d = DEFAULT_SIZES.section;
@@ -15217,10 +15254,17 @@ function mountBoardView({
       if (uid) freshItems.add(uid);
       return uid;
     }),
-    createText: (p) => Promise.resolve(session.createText?.({ x: p.x, y: p.y })).then((uid) => {
-      if (uid) freshItems.add(uid);
-      return uid;
-    }),
+    createText: (p) => {
+      const spec = { x: p.x, y: p.y };
+      if (p.look) spec.look = p.look;
+      if (typeof p.w === "number") spec.w = p.w;
+      if (typeof p.h === "number") spec.h = p.h;
+      if (p.color) spec.color = p.color;
+      return Promise.resolve(session.createText?.(spec)).then((uid) => {
+        if (uid) freshItems.add(uid);
+        return uid;
+      });
+    },
     createSection: (p) => session.createSection?.({ rect: p.rect }),
     createBoard: (p) => session.createBoard?.({ rect: p.rect }),
     moveIntoBoard: async (uids, boardUid2, dx = 0, dy = 0) => {

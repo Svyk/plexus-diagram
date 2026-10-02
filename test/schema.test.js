@@ -60,6 +60,11 @@ test("normalizeItemLayout / serializeItemLayout", () => {
   assert.equal(lookForNewString("alpha", "card"), "card");
   assert.equal(lookForNewString("[[Page]]", "block"), undefined);
   assert.equal(lookForNewString("((abc))", "card"), undefined);
+  assert.equal(normalizeItemLayout({ type: "text", look: "sticky" }).look, "sticky");
+  assert.equal(serializeItemLayout({ type: "text", x: 1, look: "sticky", w: 200, h: 200, color: "yellow" }).look, "sticky");
+  assert.equal(normalizeItemLayout({ type: "card", look: "sticky" }).look, undefined);
+  assert.equal(serializeItemLayout({ type: "card", x: 1, look: "sticky" }).look, undefined);
+  assert.equal(normalizeItemLayout({ type: "text", look: "note" }).look, undefined);
 });
 
 test("normalizeEdge / serializeEdge", () => {

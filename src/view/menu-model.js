@@ -111,6 +111,7 @@ export function buildMenu(kind, ctx = {}) {
       return [
         make("new-card", "New card", { hint: "N" }),
         make("new-text", "New text", { hint: "T" }),
+        make("new-sticky", "New sticky"),
         make("new-section", "New section", { hint: "G" }),
         make("new-board", "New board", { hint: "W" }),
         templateMenu(),

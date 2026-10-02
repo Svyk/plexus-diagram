@@ -23,6 +23,8 @@ import {
   FIT_PAD,
   ITEM_STYLE_KEYS,
   MIN_SIZES,
+  STICKY_COLOR,
+  STICKY_SIZE,
   SCHEMA_VERSION,
   SECTION_STYLE_KEYS,
   boardColor,
@@ -36,6 +38,7 @@ import {
   plainKeys,
   readPlexus,
   semanticRef,
+  styleColor,
   lookForNewString,
   serializeEdge,
   serializeItemLayout,
@@ -760,11 +763,22 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
       });
     },
 
-    createText({ x, y, string = "" } = {}) {
+    createText({ x, y, string = "", look, w, h, color } = {}) {
       return txn((t) => {
-        const parent = containerAt(board, { x: x + DEFAULT_SIZES.text.w / 2, y: y + DEFAULT_SIZES.text.h / 2 }, { rects });
+        const sticky = look === "sticky";
+        const dw = sticky ? STICKY_SIZE.w : DEFAULT_SIZES.text.w;
+        const dh = sticky ? STICKY_SIZE.h : DEFAULT_SIZES.text.h;
+        const size = { w: typeof w === "number" ? w : dw, h: typeof h === "number" ? h : dh };
+        const parent = containerAt(board, { x: x + size.w / 2, y: y + size.h / 2 }, { rects });
         const rel = toRelative(board, parent, { x, y }, rects);
-        const id = t.create({ parent, string, plexus: serializeItemLayout({ type: "text", x: rel.x, y: rel.y }) });
+        const layout = { type: "text", x: rel.x, y: rel.y };
+        if (sticky || typeof w === "number") layout.w = size.w;
+        if (sticky || typeof h === "number") layout.h = size.h;
+        if (sticky) {
+          layout.look = "sticky";
+          layout.color = styleColor(color) || STICKY_COLOR;
+        }
+        const id = t.create({ parent, string, plexus: serializeItemLayout(layout) });
         applyFit(t, [id]);
         return id;
       });

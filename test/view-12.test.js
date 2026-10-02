@@ -2,6 +2,7 @@
 // presentation, badges, back-to-content, setSettings, state, export. Everything runs against the DOM stub
 // with a recording fake session, so "writes nothing" assertions are exact.
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import { boundsOf, buildBoard, worldRects } from "../src/model/board.js";
@@ -433,6 +434,43 @@ test("context menu: canvas, card, text, section, edge and multi selections each 
   }
 });
 
+test("sticky paper tokens stay opaque when dark mode clears palette fills", () => {
+  const css = readFileSync(new URL("../src/css/props.css", import.meta.url), "utf8");
+  assert.match(css, /--pxd-sticky-yellow: #fefce8/);
+  assert.match(css, /--pxd-sticky-yellow: #38351f/);
+  assert.match(css, /--pxd-sticky-blue: #232f45/);
+  assert.doesNotMatch(css, /--pxd-sticky-[a-z]+:\s*transparent/);
+});
+
+test("a sticky note paints the sticky class and keeps it when the color changes", async () => {
+  const f = mountFixture();
+  try {
+    await f.flush();
+    const plain = shell(f, "textTTTT5");
+    assert.equal(plain.classList.contains("pxd-item--sticky"), false);
+    const item = f.session.board.items.get("textTTTT5");
+    item.look = "sticky";
+    item.color = "yellow";
+    item.w = 200;
+    item.h = 200;
+    f.session.emit("change", { dirty: new Set(["textTTTT5"]), structural: false });
+    await f.flush();
+    const node = shell(f, "textTTTT5");
+    assert.ok(node.classList.contains("pxd-item--sticky"));
+    assert.ok(node.classList.contains("pxd-c-yellow"));
+    item.color = "pink";
+    f.session.emit("change", { dirty: new Set(["textTTTT5"]), structural: false });
+    await f.flush();
+    const colored = shell(f, "textTTTT5");
+    assert.ok(colored.classList.contains("pxd-item--sticky"));
+    assert.ok(colored.classList.contains("pxd-c-pink"));
+    assert.equal(colored.classList.contains("pxd-c-yellow"), false);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
 test("a text shape paints an svg outline and a plain text item does not", async () => {
   const f = mountFixture();
   try {
@@ -502,6 +540,8 @@ test("context menu: pick dispatch maps every kind's ids onto session calls", asy
     // canvas: creation lands centered on the click
     let m = await run(viewport, "new-text");
     assert.deepEqual(m[0], ["createText", { x: 180, y: 236 }]);
+    m = await run(viewport, "new-sticky");
+    assert.deepEqual(m[0], ["createText", { x: 200, y: 160, look: "sticky" }]);
     m = await run(viewport, "new-card");
     assert.deepEqual(m[0], ["createCard", { x: 160, y: 180 }]);
     m = await run(viewport, "new-section");

@@ -20,7 +20,7 @@ test("buildMenu knows all seven kinds and returns [] for an unknown one", () => 
 });
 
 test("canvas menu ids, in order, with paste gated by canPaste", () => {
-  const want = ["new-card", "new-text", "new-section", "new-board", "template", "save-template", "save-snapshot", "restore-snapshot", "paste", "paste-clone", "add-today", "add-week", "select-all", "fit-all", "fold-all", "unfold-all", "background", "export-svg", "export-png", "copy-outline"];
+  const want = ["new-card", "new-text", "new-sticky", "new-section", "new-board", "template", "save-template", "save-snapshot", "restore-snapshot", "paste", "paste-clone", "add-today", "add-week", "select-all", "fit-all", "fold-all", "unfold-all", "background", "export-svg", "export-png", "copy-outline"];
   assert.deepEqual(ids(buildMenu("canvas", {})), want);
   assert.equal(byId(buildMenu("canvas", { canPaste: false }), "paste").disabled, true);
   assert.equal(byId(buildMenu("canvas", { canPaste: false }), "paste-clone").disabled, true);

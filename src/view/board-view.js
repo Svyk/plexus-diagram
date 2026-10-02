@@ -6,7 +6,7 @@
 // 1.2 wiring: three-tier LOD flipped by class during a gesture, board backgrounds (pattern + tone), live
 // section auto-fit preview, context menu, clipboard, focus, presentation, card badges, back-to-content.
 
-import { BOARD_PATTERNS, BOARD_TONES, DEFAULT_BOARD_CARD, DEFAULT_SIZES, UNTITLED_BOARD, classifyString, hexColor, semanticRef, plainText } from "../model/schema.js";
+import { BOARD_PATTERNS, BOARD_TONES, DEFAULT_BOARD_CARD, DEFAULT_SIZES, STICKY_SIZE, UNTITLED_BOARD, classifyString, hexColor, semanticRef, plainText } from "../model/schema.js";
 import { boundsOf, buildBoard, connectedUids, containerAt, descendantsOf, displayRects, edgesTouching, outlineOrder, sameColorUids, sectionAllUids, sectionFitPlan, sectionNoteUid, sidebarOutlineUids, worldRects } from "../model/board.js";
 import { copyLinkText, hashFromUrl, pageUidFromHash, pxdTarget } from "../model/deeplink.js";
 import { findOnBoard } from "../model/find.js";
@@ -1289,6 +1289,12 @@ export function mountBoardView({
     return ok;
   };
   const createAt = async (type, world) => {
+    if (type === "sticky") {
+      const d = STICKY_SIZE;
+      const uid = await actions.createText({ x: world.x - d.w / 2, y: world.y - d.h / 2, look: "sticky" });
+      if (uid && !disposed) { ctl.select([uid]); void enterEdit(uid); }
+      return;
+    }
     const d = DEFAULT_SIZES[type];
     const at = { x: world.x - d.w / 2, y: world.y - d.h / 2 };
     const uid = await (type === "text" ? actions.createText(at) : actions.createCard(at));
@@ -1308,6 +1314,7 @@ export function mountBoardView({
     switch (head) {
       case "new-card": void createAt("card", world); break;
       case "new-text": void createAt("text", world); break;
+      case "new-sticky": void createAt("sticky", world); break;
       case "new-section": {
         const d = DEFAULT_SIZES.section;
         Promise.resolve(session.createSection?.({ rect: { x: world.x - d.w / 2, y: world.y - d.h / 2, w: d.w, h: d.h } })).then((uid) => { if (uid && !disposed) ctl.select([uid]); }).catch(() => {});
@@ -1956,7 +1963,14 @@ export function mountBoardView({
     commitMove: (uids, dx, dy) => session.commitMove?.(uids, dx, dy),
     commitRects: (list) => session.commitRects?.(list),
     createCard: (p) => Promise.resolve(session.createCard?.({ x: p.x, y: p.y })).then((uid) => { if (uid) freshItems.add(uid); return uid; }),
-    createText: (p) => Promise.resolve(session.createText?.({ x: p.x, y: p.y })).then((uid) => { if (uid) freshItems.add(uid); return uid; }),
+    createText: (p) => {
+      const spec = { x: p.x, y: p.y };
+      if (p.look) spec.look = p.look;
+      if (typeof p.w === "number") spec.w = p.w;
+      if (typeof p.h === "number") spec.h = p.h;
+      if (p.color) spec.color = p.color;
+      return Promise.resolve(session.createText?.(spec)).then((uid) => { if (uid) freshItems.add(uid); return uid; });
+    },
     createSection: (p) => session.createSection?.({ rect: p.rect }),
     createBoard: (p) => session.createBoard?.({ rect: p.rect }),
     moveIntoBoard: async (uids, boardUid, dx = 0, dy = 0) => {

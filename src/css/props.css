@@ -220,6 +220,74 @@
   background: var(--pxd-fill, transparent);
 }
 
+/* Sticky paper stays opaque. Dark mode clears --pxd-*-fill (cards use a border only). */
+.pxd-root {
+  --pxd-sticky-gray: #f3f4f6;
+  --pxd-sticky-red: #fef2f2;
+  --pxd-sticky-orange: #fff7ed;
+  --pxd-sticky-yellow: #fefce8;
+  --pxd-sticky-green: #f0fdf4;
+  --pxd-sticky-teal: #f0fdfa;
+  --pxd-sticky-blue: #eff6ff;
+  --pxd-sticky-indigo: #eef2ff;
+  --pxd-sticky-purple: #faf5ff;
+  --pxd-sticky-pink: #fdf2f8;
+}
+
+.bp3-dark .pxd-root,
+body.bt-theme-dark .pxd-root,
+.rm-dark-theme .pxd-root,
+body.roam-body.dark .pxd-root,
+.pxd-root--dark {
+  --pxd-sticky-gray: #2b3540;
+  --pxd-sticky-red: #3a2a30;
+  --pxd-sticky-orange: #3a3028;
+  --pxd-sticky-yellow: #38351f;
+  --pxd-sticky-green: #22392e;
+  --pxd-sticky-teal: #1f3a3a;
+  --pxd-sticky-blue: #232f45;
+  --pxd-sticky-indigo: #2a2f4a;
+  --pxd-sticky-purple: #35284a;
+  --pxd-sticky-pink: #3f2838;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not(.bp3-light) .pxd-root:not(.pxd-root--light) {
+    --pxd-sticky-gray: #2b3540;
+    --pxd-sticky-red: #3a2a30;
+    --pxd-sticky-orange: #3a3028;
+    --pxd-sticky-yellow: #38351f;
+    --pxd-sticky-green: #22392e;
+    --pxd-sticky-teal: #1f3a3a;
+    --pxd-sticky-blue: #232f45;
+    --pxd-sticky-indigo: #2a2f4a;
+    --pxd-sticky-purple: #35284a;
+    --pxd-sticky-pink: #3f2838;
+  }
+}
+
+.pxd-root .pxd-item--sticky.pxd-c-gray { --pxd-sticky-paper: var(--pxd-sticky-gray); }
+.pxd-root .pxd-item--sticky.pxd-c-red { --pxd-sticky-paper: var(--pxd-sticky-red); }
+.pxd-root .pxd-item--sticky.pxd-c-orange { --pxd-sticky-paper: var(--pxd-sticky-orange); }
+.pxd-root .pxd-item--sticky.pxd-c-yellow { --pxd-sticky-paper: var(--pxd-sticky-yellow); }
+.pxd-root .pxd-item--sticky.pxd-c-green { --pxd-sticky-paper: var(--pxd-sticky-green); }
+.pxd-root .pxd-item--sticky.pxd-c-teal { --pxd-sticky-paper: var(--pxd-sticky-teal); }
+.pxd-root .pxd-item--sticky.pxd-c-blue { --pxd-sticky-paper: var(--pxd-sticky-blue); }
+.pxd-root .pxd-item--sticky.pxd-c-indigo { --pxd-sticky-paper: var(--pxd-sticky-indigo); }
+.pxd-root .pxd-item--sticky.pxd-c-purple { --pxd-sticky-paper: var(--pxd-sticky-purple); }
+.pxd-root .pxd-item--sticky.pxd-c-pink { --pxd-sticky-paper: var(--pxd-sticky-pink); }
+
+.pxd-root .pxd-item--text.pxd-item--sticky {
+  background-color: var(--pxd-sticky-paper, #fefce8);
+  border-color: transparent;
+  border-radius: 2px;
+  box-shadow: 0 1px 2px rgba(28, 25, 23, 0.18), 0 3px 8px rgba(28, 25, 23, 0.12);
+}
+
+.pxd-root .pxd-item--text.pxd-item--sticky.pxd-item--selected {
+  box-shadow: 0 0 0 2px var(--pxd-accent-soft), 0 1px 2px rgba(28, 25, 23, 0.18), 0 3px 8px rgba(28, 25, 23, 0.12);
+}
+
 .pxd-root .pxd-item--text.pxd-item--shape {
   background: transparent;
   border-color: transparent;

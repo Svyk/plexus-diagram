@@ -237,6 +237,37 @@ test("createCard lands in the container under the point, position relative", asy
   assert.equal(kinds(fake, "create").length, 1);
 });
 
+test("createText sticky is 200 by 200 yellow and plain text keeps the text default", async () => {
+  const { fake, session } = setup();
+  const plain = await session.createText({ x: 1000, y: 1000, string: "hi" });
+  assert.deepEqual(fake.props(plain).plexus, { type: "text", x: 1000, y: 1000 });
+  assert.equal(session.board.items.get(plain).w, 240);
+  assert.equal(session.board.items.get(plain).h, 48);
+  assert.equal(session.board.items.get(plain).look, undefined);
+
+  const sticky = await session.createText({ x: 1200, y: 40, string: "Note", look: "sticky" });
+  assert.deepEqual(fake.props(sticky).plexus, {
+    type: "text", x: 1200, y: 40, w: 200, h: 200, color: "yellow", look: "sticky",
+  });
+  assert.equal(session.board.items.get(sticky).look, "sticky");
+
+  await session.setColor([sticky], "blue");
+  assert.equal(fake.props(sticky).plexus.color, "blue");
+  assert.equal(fake.props(sticky).plexus.look, "sticky");
+  assert.equal(fake.props(sticky).plexus.w, 200);
+
+  await session.setColor([sticky], "#ff66a1");
+  assert.equal(fake.props(sticky).plexus.color, "#ff66a1");
+  assert.equal(fake.props(sticky).plexus.look, "sticky");
+
+  await session.commitRects([{ uid: sticky, x: 1200, y: 40, w: 260, h: 180 }]);
+  const after = fake.props(sticky).plexus;
+  assert.equal(after.w, 260);
+  assert.equal(after.h, 180);
+  assert.equal(after.look, "sticky");
+  assert.equal(after.color, "#ff66a1");
+});
+
 test("new root cards are inserted before the connections container", async () => {
   const { fake, session } = setup();
   const e = await session.addEdge({ from: "c1", to: "c2" });

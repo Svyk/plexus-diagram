@@ -148,6 +148,14 @@ export function boardToSvg(board, rects, { dark = false, padding = 48, maxItems 
         const ink = item.textColor ? hex(item.textColor)[2] : theme.text;
         body.push(`<path d="${shapePath(r, item.shape)}" fill="${paint}" stroke="${stroke}" stroke-width="2"/>`);
         body.push(`<text x="${n1(r.x + r.w / 2)}" y="${n1(r.y + r.h / 2)}" font-size="${size}" text-anchor="middle" dominant-baseline="central" fill="${ink}">${esc(titleOf(item))}</text>`);
+      } else if (item.look === "sticky") {
+        const paper = item.fill ? hex(item.fill)[1] : (item.color ? fill : hex("yellow")[1]);
+        const ink = item.textColor ? hex(item.textColor)[2] : (item.color ? text : hex("yellow")[2]);
+        if (!defs.some((d) => d.includes("pxd-sticky-shadow"))) {
+          defs.push(`<filter id="pxd-sticky-shadow" x="-30%" y="-30%" width="160%" height="160%"><feDropShadow dx="0" dy="2" stdDeviation="1.5" flood-color="#1c1917" flood-opacity="0.22"/></filter>`);
+        }
+        body.push(`<rect x="${n1(r.x)}" y="${n1(r.y)}" width="${n1(r.w)}" height="${n1(r.h)}" rx="2" fill="${paper}" filter="url(#pxd-sticky-shadow)"/>`);
+        body.push(`<text x="${n1(r.x + 12)}" y="${n1(r.y + size + 8)}" font-size="${size}" fill="${ink}">${esc(titleOf(item))}</text>`);
       } else {
         body.push(`<text x="${n1(r.x)}" y="${n1(r.y + size)}" font-size="${size}" fill="${theme.text}">${esc(titleOf(item))}</text>`);
       }

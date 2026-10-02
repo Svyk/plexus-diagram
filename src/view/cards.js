@@ -337,6 +337,10 @@ export function createItemRenderer({
     setVar(node, "--pxd-fill", cssColor(item.fill, "fill") || accent || "");
     setVar(node, "--pxd-line", cssColor(item.border, "line") || accent || "");
     node.style.textAlign = item.align || "";
+    const stickyHex = item.type === "text" && item.look === "sticky" && !item.shape
+      ? (hexColor(item.fill) || accent || "")
+      : "";
+    node.style.backgroundColor = stickyHex;
   };
 
   const syncShape = (rec, item, size) => {
@@ -395,6 +399,7 @@ export function createItemRenderer({
     if (item.type !== "section" && item.fontSize) cls.push("pxd-fs");
     if (item.textColor) cls.push("pxd-has-textc");
     if (item.type === "text" && item.shape) cls.push("pxd-item--shape", `pxd-item--shape-${item.shape}`);
+    else if (item.type === "text" && item.look === "sticky") cls.push("pxd-item--sticky");
     else if (item.type === "text" && (item.fill || item.border)) cls.push("pxd-text-paint");
     if (rec.selected) cls.push(item.type === "section" ? "pxd-section--selected" : "pxd-item--selected");
     if (rec.hover) cls.push("pxd-item--drop");

@@ -199,3 +199,52 @@ test("TP-6: a six-shape flow exports each outline and the Yes/No labels", () => 
   assert.equal(card.items.get("c").shape, undefined);
   assert.equal(worldRects(card).get("c").shape, undefined);
 });
+
+test("TP-7: a sticky note exports a colored sheet and a shadow", () => {
+  const b = buildBoard({
+    ":block/uid": "b",
+    ":block/string": "{{[[diagram]]:Notes}}",
+    ":block/children": [
+      blk("s", 0, "Hold", { type: "text", look: "sticky", x: 10, y: 20, w: 200, h: 200, color: "yellow" }),
+      blk("t", 1, "Plain", { type: "text", x: 300, y: 20, w: 80, h: 24 }),
+    ],
+  });
+  const sticky = b.items.get("s");
+  assert.equal(sticky.look, "sticky");
+  assert.equal(sticky.w, 200);
+  assert.equal(sticky.h, 200);
+  assert.equal(sticky.color, "yellow");
+  const svg = boardToSvg(b, worldRects(b));
+  assert.match(svg, /id="pxd-sticky-shadow"/);
+  assert.match(svg, /<rect[^>]*width="200"[^>]*height="200"[^>]*fill="#fefce8"[^>]*filter="url\(#pxd-sticky-shadow\)"/);
+  assert.match(svg, />Hold</);
+  const plainTag = svg.match(/<text[^>]*>Plain<\/text>/)[0];
+  assert.doesNotMatch(plainTag, /filter=/);
+  assert.equal(svg.match(/pxd-sticky-shadow/g).length, 2);
+
+  const blue = buildBoard({
+    ":block/uid": "b",
+    ":block/string": "{{[[diagram]]:Notes}}",
+    ":block/children": [blk("s", 0, "Cool", { type: "text", look: "sticky", x: 0, y: 0, w: 180, h: 140, color: "blue" })],
+  });
+  const blueSvg = boardToSvg(blue, worldRects(blue));
+  assert.match(blueSvg, /fill="#eff6ff"/);
+  assert.match(blueSvg, /width="180"/);
+  assert.match(blueSvg, /height="140"/);
+
+  const hex = buildBoard({
+    ":block/uid": "b",
+    ":block/string": "{{[[diagram]]:Notes}}",
+    ":block/children": [blk("s", 0, "Hex", { type: "text", look: "sticky", x: 0, y: 0, w: 200, h: 200, color: "#ffb366" })],
+  });
+  assert.match(boardToSvg(hex, worldRects(hex)), /fill="#ffb366"/);
+
+  const shaped = buildBoard({
+    ":block/uid": "b",
+    ":block/string": "{{[[diagram]]:Notes}}",
+    ":block/children": [blk("s", 0, "Gem", { type: "text", look: "sticky", shape: "diamond", x: 0, y: 0, w: 200, h: 200, color: "yellow" })],
+  });
+  const shapedSvg = boardToSvg(shaped, worldRects(shaped));
+  assert.match(shapedSvg, /<path /);
+  assert.doesNotMatch(shapedSvg, /pxd-sticky-shadow/);
+});

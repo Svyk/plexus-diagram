@@ -1,5 +1,14 @@
 import { isShowableCard, locateShowTarget } from "../model/deeplink.js";
 import { attributeRows, boardsFromRows, tagNames } from "../model/info.js";
+import {
+  isDailyTitle,
+  libraryCap,
+  libraryCard,
+  librarySelective,
+  narrowLibrary,
+  normalizeLibraryFilter,
+  recentDailyTitles,
+} from "../model/library.js";
 import { attrNameOf, mergePropsForWrite, parseBoardTitle, plainKeys } from "../model/schema.js";
 
 export const BOARD_PATTERN = `[:block/uid :block/string :block/order :block/heading :block/open :block/props
@@ -14,6 +23,7 @@ export const NATIVE_PATTERN = `[:block/props
  {:diagram/edges [{:diagram.edge/source [:db/id]} {:diagram.edge/target [:db/id]} :diagram.edge/data]}]`;
 
 const DIAGRAM_RE = "^\\{\\{(\\[\\[)?diagram";
+const DIAGRAM_STRING = /^\s*\{\{(?:\[\[)?diagram/i;
 const SHOW_DIRECT_QUERY = `[:find ?board ?page :in $ ?uid ?pat :where
  [?block :block/uid ?uid] [?block :block/parents ?diagram] [?diagram :block/uid ?board]
  [?diagram :block/string ?s] [(re-pattern ?pat) ?re] [(re-find ?re ?s)]
@@ -592,6 +602,259 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         .filter(([, , t]) => typeof t === "string" && !t.startsWith("roam/"))
         .slice(0, limit)
         .map(([s, u, t]) => ({ uid: u, string: s, pageTitle: t }));
+    },
+
+    // Add-panel filters. Read-only. Each query is timed. Days and orphan never scan the graph alone.
+    librarySearch(filter, limit = 40) {
+      const f = normalizeLibraryFilter(filter);
+      const queries = [];
+      const lim = Math.max(1, Math.floor(Number(limit) || 40));
+      if (!librarySelective(f)) return { rows: [], queries };
+      const nowMs = Date.now();
+      const since = f.days ? nowMs - f.days * 86400000 : null;
+      const cap = libraryCap();
+      const candidates = [];
+      const seen = new Set();
+      const push = (row) => {
+        if (candidates.length >= cap) return false;
+        const key = `${row.kind}:${row.uid || row.title}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        candidates.push(row);
+        return true;
+      };
+      const timed = (name, fn) => {
+        const t0 = performance.now();
+        let out = [];
+        try {
+          const res = fn();
+          out = Array.isArray(res) ? res : [];
+        } catch {
+          out = [];
+        }
+        queries.push({ name, ms: performance.now() - t0 });
+        return out;
+      };
+      const wantPage = f.type === "all" || f.type === "page";
+      const wantBlock = f.type === "all" || f.type === "block";
+      const wantBoard = f.type === "all" || f.type === "board";
+      const wantDaily = f.type === "daily";
+      const editedOf = (value) => (Number.isFinite(value) ? value : null);
+
+      if ((wantPage && (f.text || f.tag)) || (wantDaily && f.tag)) {
+        const find = ["?t", "?u"];
+        const inputs = ["$"];
+        const where = [];
+        const args = [];
+        if (f.tag) {
+          inputs.push("?name");
+          args.push(f.tag);
+          where.push("[?tag :node/title ?name]", "[?b :block/refs ?tag]", "[?b :block/page ?p]");
+        }
+        where.push("[?p :node/title ?t]");
+        if (f.text) {
+          inputs.push("?pat");
+          args.push(ciPattern(f.text));
+          where.push("[(re-pattern ?pat) ?re]", "[(re-find ?re ?t)]");
+        }
+        where.push("[?p :block/uid ?u]");
+        if (since != null) {
+          inputs.push("?since");
+          args.push(since);
+          find.push("?e");
+          where.push("[?p :edit/time ?e]", "[(> ?e ?since)]");
+        }
+        const found = timed("pages", () => host.q(
+          `[:find ${find.join(" ")} :in ${inputs.join(" ")} :where ${where.join(" ")}]`,
+          ...args,
+        ));
+        const needle = f.text.toLowerCase();
+        const ranked = found.slice().sort((a, b) => {
+          const at = String(a?.[0] ?? "");
+          const bt = String(b?.[0] ?? "");
+          const ap = needle && at.toLowerCase().startsWith(needle) ? 0 : 1;
+          const bp = needle && bt.toLowerCase().startsWith(needle) ? 0 : 1;
+          return ap - bp || at.length - bt.length || at.localeCompare(bt);
+        });
+        for (const rec of ranked) {
+          const title = rec?.[0];
+          const uid = rec?.[1];
+          if (typeof title !== "string" || title.startsWith("roam/") || !uid) continue;
+          if (!push({
+            kind: "page",
+            title,
+            uid: String(uid),
+            edited: editedOf(rec?.[2]),
+            tags: f.tag ? [f.tag] : [],
+            onBoard: false,
+          })) break;
+        }
+      }
+
+      if (wantBlock && (f.text || f.tag)) {
+        const find = ["?s", "?u", "?t"];
+        const inputs = ["$"];
+        const where = [];
+        const args = [];
+        if (f.tag) {
+          inputs.push("?name");
+          args.push(f.tag);
+          where.push("[?tag :node/title ?name]", "[?b :block/refs ?tag]");
+        }
+        where.push("[?b :block/string ?s]");
+        if (f.text) {
+          inputs.push("?pat");
+          args.push(ciPattern(f.text));
+          where.push("[(re-pattern ?pat) ?re]", "[(re-find ?re ?s)]");
+        }
+        where.push("[?b :block/uid ?u]", "[?b :block/page ?p]", "[?p :node/title ?t]");
+        if (since != null) {
+          inputs.push("?since");
+          args.push(since);
+          find.push("?e");
+          where.push("[?b :edit/time ?e]", "[(> ?e ?since)]");
+        }
+        const found = timed("blocks", () => host.q(
+          `[:find ${find.join(" ")} :in ${inputs.join(" ")} :where ${where.join(" ")}]`,
+          ...args,
+        ));
+        for (const rec of found) {
+          const string = rec?.[0];
+          const uid = rec?.[1];
+          const pageTitle = rec?.[2];
+          if (typeof string !== "string" || !uid) continue;
+          if (DIAGRAM_STRING.test(string)) continue;
+          if (typeof pageTitle === "string" && pageTitle.startsWith("roam/")) continue;
+          const edited = since != null ? editedOf(rec?.[3]) : null;
+          if (!push({
+            kind: "block",
+            uid: String(uid),
+            string,
+            pageTitle: typeof pageTitle === "string" ? pageTitle : "",
+            edited,
+            tags: f.tag ? [f.tag] : [],
+            onBoard: false,
+          })) break;
+        }
+      }
+
+      if (wantBoard && (f.type === "board" || f.text || f.tag)) {
+        let found;
+        if (f.tag) {
+          found = timed("boards", () => host.q(
+            `[:find ?u ?s ?pt :in $ ?name ?pat :where [?tag :node/title ?name] [?child :block/refs ?tag]
+ [?child :block/parents ?d] [?d :block/string ?s] [(re-pattern ?pat) ?re] [(re-find ?re ?s)]
+ [?d :block/uid ?u] [?d :block/page ?p] [?p :node/title ?pt]]`,
+            f.tag,
+            DIAGRAM_RE,
+          ));
+        } else {
+          found = timed("boards", () => host.q(
+            `[:find ?u ?s ?pt :in $ ?pat :where [?b :block/string ?s] [(re-pattern ?pat) ?re] [(re-find ?re ?s)]
+ [?b :block/uid ?u] [?b :block/page ?p] [?p :node/title ?pt]]`,
+            DIAGRAM_RE,
+          ));
+        }
+        for (const rec of found) {
+          if (candidates.length >= cap) break;
+          const uid = rec?.[0];
+          const string = rec?.[1];
+          const pageTitle = rec?.[2];
+          if (!uid || typeof string !== "string") continue;
+          const title = parseBoardTitle(string) || "Untitled board";
+          if (f.text && !title.toLowerCase().includes(f.text.toLowerCase())) continue;
+          let edited = null;
+          let props = {};
+          try {
+            const res = pull("[:block/props :edit/time]", eidKey(uid));
+            const raw = res?.[":block/props"];
+            props = raw && typeof raw === "object" ? plainKeys(raw) : {};
+            edited = editedOf(res?.[":edit/time"]);
+          } catch { continue; }
+          if (props?.plexus?.v !== 2) continue;
+          push({
+            kind: "board",
+            uid: String(uid),
+            title,
+            string,
+            pageTitle: typeof pageTitle === "string" ? pageTitle : "",
+            edited,
+            tags: f.tag ? [f.tag] : [],
+            onBoard: true,
+          });
+        }
+      }
+
+      if (wantDaily && !f.tag) {
+        let titles = recentDailyTitles(f.days || 14, nowMs);
+        if (f.text && isDailyTitle(f.text) && !titles.includes(f.text)) titles = titles.concat(f.text);
+        if (titles.length) {
+          const find = "?t ?u ?e";
+          const inputs = "$ [?t ...]";
+          const where = ["[?p :node/title ?t]", "[?p :block/uid ?u]", "[?p :edit/time ?e]"];
+          const args = [titles];
+          if (since != null) {
+            where.push("[(> ?e ?since)]");
+            args.push(since);
+          }
+          const found = timed("dailies", () => host.q(
+            `[:find ${find} :in ${since != null ? `${inputs} ?since` : inputs} :where ${where.join(" ")}]`,
+            ...args,
+          ));
+          for (const rec of found) {
+            const title = rec?.[0];
+            const uid = rec?.[1];
+            if (typeof title !== "string" || !uid) continue;
+            push({
+              kind: "page",
+              title,
+              uid: String(uid),
+              edited: editedOf(rec?.[2]),
+              tags: [],
+              onBoard: false,
+            });
+          }
+        }
+      }
+
+      if (f.orphan) {
+        const blockUids = candidates.filter((row) => row.kind === "block" && row.uid).map((row) => row.uid);
+        const pageTitles = candidates.filter((row) => row.kind === "page" && row.title).map((row) => row.title);
+        const onUid = new Set();
+        const onTitle = new Set();
+        if (blockUids.length) {
+          const direct = timed("orphan-parents", () => host.q(
+            `[:find ?u :in $ [?u ...] ?pat :where [?b :block/uid ?u] [?b :block/parents ?d] [?d :block/string ?s]
+ [(re-pattern ?pat) ?re] [(re-find ?re ?s)]]`,
+            blockUids,
+            DIAGRAM_RE,
+          ));
+          const via = timed("orphan-refs", () => host.q(
+            `[:find ?u :in $ [?u ...] ?pat :where [?b :block/uid ?u] [?card :block/refs ?b] [?card :block/parents ?d]
+ [?d :block/string ?s] [(re-pattern ?pat) ?re] [(re-find ?re ?s)]]`,
+            blockUids,
+            DIAGRAM_RE,
+          ));
+          for (const rec of [...direct, ...via]) if (rec?.[0]) onUid.add(rec[0]);
+        }
+        if (pageTitles.length) {
+          const via = timed("orphan-pages", () => host.q(
+            `[:find ?t :in $ [?t ...] ?pat :where [?p :node/title ?t] [?card :block/refs ?p] [?card :block/parents ?d]
+ [?d :block/string ?s] [(re-pattern ?pat) ?re] [(re-find ?re ?s)]]`,
+            pageTitles,
+            DIAGRAM_RE,
+          ));
+          for (const rec of via) if (rec?.[0]) onTitle.add(rec[0]);
+        }
+        for (const row of candidates) {
+          if (row.kind === "board") row.onBoard = true;
+          else if (row.kind === "block") row.onBoard = onUid.has(row.uid);
+          else row.onBoard = onTitle.has(row.title);
+        }
+      }
+
+      const rows = narrowLibrary(candidates, f, nowMs).slice(0, lim).map(libraryCard);
+      return { rows, queries };
     },
 
     // Graph neighbours of a card target, ordered for the Related panel:

@@ -2,6 +2,7 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { createFakeRoam } from "./fixtures/fake-roam.js";
 import { createEchoLedger, createHost, createWriteQueue } from "../src/host/roam.js";
+import { dailyPageTitle } from "../src/model/schema.js";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -562,4 +563,123 @@ test("blockPageUid reads the owning page and showOnBoard stays empty without row
   assert.equal(host.blockPageUid("missing"), "");
   assert.equal(host.showOnBoard("card1"), null);
   assert.equal(host.stats.writes, 0);
+});
+
+test("librarySearch narrows type, tag, days and orphans without writing", () => {
+  const { fake, host } = setup();
+  fake.seedBoard({ uid: "board1", string: "{{[[diagram]]:P1 fixture}}", props: { plexus: { v: 2 } } });
+  fake.seedBoard({ uid: "boardV1", string: "{{[[diagram]]:fixture native}}", props: { plexus: { v: 1 } } });
+  fake.seedBoard({ uid: "boardOld", string: "{{[[diagram]]:Old}}", props: { plexus: { v: 1 } } });
+  const calls = [];
+  fake.onQuery(/:find/, (query, ...inputs) => {
+    calls.push({ query, inputs });
+    if (query.includes("[?card :block/refs ?b]")) return [["blkOn"]];
+    if (query.includes("[?u ...]") && query.includes("[?b :block/parents ?d]")) return [["blkOn"]];
+    if (query.includes("[?card :block/refs ?p]")) return [["Plexus Notes"]];
+    if (query.includes("[?t ...]")) return [[inputs[0][0], "day1", Date.now()]];
+    if (query.includes("[?child :block/parents ?d]")) return [["board1", "{{[[diagram]]:P1 fixture}}", "Lab"]];
+    if (query.includes("[?tag :node/title ?name]") && query.includes("[?b :block/string ?s]")) return [["fixture tagged", "tag1", "Lab"]];
+    if (query.includes("[?tag :node/title ?name]") && query.includes("[?p :node/title ?t]")) return [["Plexus Notes", "pg1"], ["Other", "pg2"]];
+    if (query.includes("[?p :node/title ?pt]")) {
+      return [
+        ["board1", "{{[[diagram]]:P1 fixture}}", "Lab"],
+        ["boardV1", "{{[[diagram]]:fixture native}}", "Lab"],
+        ["boardOld", "{{[[diagram]]:Old}}", "Lab"],
+      ];
+    }
+    if (query.includes("[?b :block/string ?s]")) {
+      if (query.includes("?e")) {
+        return [
+          ["fixture alpha", "blkOff", "Lab", Date.now()],
+          ["fixture old", "blkOld", "Lab", 1],
+          ["{{[[diagram]]:P1 fixture}}", "board1", "Lab", Date.now()],
+          ["secret", "blkSecret", "roam/js", Date.now()],
+        ];
+      }
+      return [
+        ["fixture alpha", "blkOff", "Lab"],
+        ["fixture placed", "blkOn", "Lab"],
+        ["{{[[diagram]]:Skip}}", "board1", "Lab"],
+        ["nope", "blkNo", "Lab"],
+      ];
+    }
+    if (query.includes("[?p :node/title ?t]")) {
+      if (query.includes("?e")) {
+        return [
+          ["Plexus Notes", "pg1", Date.now()],
+          ["Old Plexus", "pgOld", 1],
+          ["roam/css", "r1", Date.now()],
+        ];
+      }
+      return [
+        ["Plexus Notes", "pg1"],
+        ["roam/css", "r1"],
+        ["October 1st, 2026", "day1"],
+        ["Alphabet", "pg2"],
+      ];
+    }
+    return [];
+  });
+  fake.clearLog();
+
+  const pages = host.librarySearch({ text: "plex", type: "page" }, 40);
+  assert.deepEqual(pages.rows.map((r) => r.string), ["[[Plexus Notes]]"]);
+  assert.equal(pages.rows[0].kind, "page");
+  assert.equal(pages.queries.length, 1);
+  assert.equal(pages.queries[0].name, "pages");
+  assert.equal(typeof pages.queries[0].ms, "number");
+
+  const blocks = host.librarySearch({ text: "fixture", type: "block", orphan: true }, 40);
+  assert.deepEqual(blocks.rows.map((r) => r.string), ["((blkOff))"]);
+  assert.deepEqual(blocks.queries.map((q) => q.name), ["blocks", "orphan-parents", "orphan-refs"]);
+
+  const marked = calls.length;
+  const before = Date.now();
+  const recent = host.librarySearch({ text: "plex", type: "page", days: 2 }, 40);
+  const after = Date.now();
+  const dayCall = calls.slice(marked).find((c) => c.query.includes("[(> ?e ?since)]"));
+  const since = dayCall.inputs.at(-1);
+  assert.ok(since >= before - 2 * 86400000);
+  assert.ok(since <= after - 2 * 86400000);
+  assert.deepEqual(recent.rows.map((r) => r.string), ["[[Plexus Notes]]"]);
+
+  const tagged = host.librarySearch({ tag: "#TODO", type: "block" }, 40);
+  assert.equal(calls.at(-1).inputs[0], "TODO");
+  assert.deepEqual(tagged.rows.map((r) => r.string), ["((tag1))"]);
+  const lower = host.librarySearch({ tag: "todo", type: "block" }, 40);
+  assert.equal(calls.at(-1).inputs[0], "todo");
+  assert.deepEqual(lower.rows.map((r) => r.string), ["((tag1))"]);
+
+  const boards = host.librarySearch({ type: "board", text: "fixture" }, 40);
+  assert.equal(calls.at(-1).inputs[0], "^\\{\\{(\\[\\[)?diagram");
+  assert.deepEqual(boards.rows.map((r) => [r.string, r.kind, r.text]), [["((board1))", "board", "P1 fixture"]]);
+
+  const dailies = host.librarySearch({ type: "daily" }, 40);
+  const dailyCall = calls.at(-1);
+  assert.ok(dailyCall.inputs[0].includes(dailyPageTitle(new Date())));
+  assert.deepEqual(dailies.rows[0], {
+    string: `[[${dailyCall.inputs[0][0]}]]`,
+    text: dailyCall.inputs[0][0],
+    kind: "daily",
+    label: "daily",
+  });
+
+  const quiet = calls.length;
+  assert.deepEqual(host.librarySearch({ orphan: true }).rows, []);
+  assert.deepEqual(host.librarySearch({ days: 4 }).queries, []);
+  assert.deepEqual(host.librarySearch({ type: "block" }).rows, []);
+  assert.equal(calls.length, quiet);
+
+  const mixed = host.librarySearch({ type: "all", text: "fixture" }, 40);
+  assert.deepEqual(mixed.rows.map((r) => r.string), ["((blkOff))", "((blkOn))", "((board1))"]);
+  assert.ok(mixed.queries.every((q) => Number.isFinite(q.ms) && q.ms >= 0));
+
+  const orphanPages = host.librarySearch({ text: "plex", type: "page", orphan: true }, 40);
+  assert.deepEqual(orphanPages.rows, []);
+  assert.ok(orphanPages.queries.some((q) => q.name === "orphan-pages"));
+  for (const call of calls) {
+    for (const input of call.inputs) if (Array.isArray(input)) assert.ok(input.length > 0);
+  }
+  assert.equal(host.stats.writes, 0);
+  assert.equal(fake.writesLog().length, 0);
 });

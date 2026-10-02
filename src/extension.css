@@ -1226,6 +1226,47 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   width: 100%;
 }
 
+.pxd-panel__filters {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+}
+
+.pxd-root .pxd-panel__type,
+.pxd-root .pxd-panel__tag,
+.pxd-root .pxd-panel__days {
+  box-sizing: border-box;
+  min-width: 0;
+  padding: 4px 6px;
+  border: 1px solid var(--pxd-border);
+  border-radius: 6px;
+  background: var(--pxd-card);
+  color: var(--pxd-text);
+  font-size: 12px;
+  outline: none;
+}
+
+.pxd-root .pxd-panel__tag {
+  flex: 1 1 72px;
+  width: auto;
+}
+
+.pxd-root .pxd-panel__days {
+  width: 64px;
+}
+
+.pxd-panel__orphan {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: auto;
+  font-size: 12px;
+  color: var(--pxd-muted);
+}
+
 .pxd-panel__list {
   flex: 1 1 auto;
   min-height: 0;

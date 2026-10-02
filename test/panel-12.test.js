@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { libraryCard, narrowLibrary } from "../src/model/library.js";
 import { createPanel } from "../src/view/panel.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
 
@@ -202,6 +203,79 @@ test("1.0 behavior stays: search rows, tab classes and stopPropagation", async (
   assert.deepEqual(added, ["[[Beta]]"]);
   const ev = f.stub.dispatch(q(f.root, ".pxd-panel__tabs"), "pointerdown");
   assert.equal(ev.propagationStopped, true);
+});
+
+const LIB_NOW = Date.parse("2026-10-01T19:00:00Z");
+const LIB_ROWS = [
+  { uid: "p1", kind: "page", title: "Plexus Notes", edited: LIB_NOW, tags: ["TODO"], onBoard: false },
+  { uid: "d1", kind: "page", title: "October 1st, 2026", edited: LIB_NOW, tags: [], onBoard: false },
+  { uid: "k1", kind: "block", string: "fixture alpha", pageTitle: "Lab", edited: LIB_NOW - 86400000, tags: ["TODO"], onBoard: true },
+  { uid: "k2", kind: "block", string: "fixture orphan", pageTitle: "Lab", edited: LIB_NOW - 10 * 86400000, tags: [], onBoard: false },
+  { uid: "bd", kind: "board", title: "P1 fixture", pageTitle: "Lab", edited: LIB_NOW, tags: ["TODO"], onBoard: true },
+];
+
+test("Add panel filters narrow through librarySearch", async (t) => {
+  const f = setup({}, {
+    librarySearch(filter, limit) {
+      const rows = narrowLibrary(LIB_ROWS, filter, LIB_NOW).slice(0, limit).map(libraryCard);
+      return { rows, queries: [{ name: "stub", ms: 3 }] };
+    },
+  });
+  t.after(f.restore);
+  f.panel.open("search");
+  const input = q(f.root, ".pxd-panel__input");
+  assert.equal(input.placeholder, "Search pages and blocks…");
+  const type = q(f.root, ".pxd-panel__type");
+  const tag = q(f.root, ".pxd-panel__tag");
+  const days = q(f.root, ".pxd-panel__days");
+  const orphan = q(f.root, ".pxd-panel__orphan input");
+  const list = q(f.root, ".pxd-panel__pane--search .pxd-panel__list");
+  const strings = () => [...f.root.querySelectorAll(".pxd-panel__pane--search .pxd-panel__row")].map((r) => r.dataset.string);
+  const expectRows = (filter) => narrowLibrary(LIB_ROWS, filter, LIB_NOW).map(libraryCard).map((r) => r.string);
+
+  input.value = "fixture";
+  f.stub.dispatch(input, "keydown", { key: "Enter" });
+  await tick();
+  const base = strings();
+  assert.deepEqual(base, expectRows({ text: "fixture", type: "all", tag: "", days: "", orphan: false }));
+  assert.ok(base.length >= 2);
+
+  type.value = "block";
+  f.stub.dispatch(type, "change");
+  await tick();
+  const blocks = strings();
+  assert.ok(blocks.length < base.length);
+  assert.ok(blocks.every((s) => base.includes(s)));
+  assert.deepEqual(blocks, expectRows({ text: "fixture", type: "block", tag: "", days: "", orphan: false }));
+
+  type.value = "board";
+  f.stub.dispatch(type, "change");
+  await tick();
+  const boards = strings();
+  assert.ok(boards.length < base.length);
+  assert.ok(boards.every((s) => base.includes(s)));
+
+  type.value = "all";
+  orphan.checked = true;
+  f.stub.dispatch(orphan, "change");
+  await tick();
+  const orphans = strings();
+  assert.ok(orphans.length < base.length);
+  assert.ok(orphans.every((s) => base.includes(s)));
+  assert.deepEqual(orphans, expectRows({ text: "fixture", type: "all", tag: "", days: "", orphan: true }));
+
+  orphan.checked = false;
+  tag.value = "#TODO";
+  days.value = "3";
+  f.stub.dispatch(input, "keydown", { key: "Enter" });
+  await tick();
+  const tagged = strings();
+  assert.ok(tagged.length < base.length);
+  assert.ok(tagged.every((s) => base.includes(s)));
+  assert.deepEqual(tagged, expectRows({ text: "fixture", type: "all", tag: "#TODO", days: "3", orphan: false }));
+  assert.equal(list.dataset.queryMs, "3");
+  assert.deepEqual(JSON.parse(list.dataset.queryLog), [{ name: "stub", ms: 3 }]);
+  assert.equal(q(f.root, ".pxd-panel__orphan").textContent, "Not on any board");
 });
 
 const INFO = {

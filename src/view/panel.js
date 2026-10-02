@@ -3,6 +3,7 @@
 // Rows click-add beside the selection and drag onto the board with a custom MIME.
 
 import { closeInfoTab, infoTabList, nextPanelWidth, PANEL_WIDTH_DEFAULT } from "../model/info.js";
+import { LIBRARY_TYPES, libraryFilterActive } from "../model/library.js";
 
 export const CARD_MIME = "application/x-plexus-card";
 const DEBOUNCE_MS = 150;
@@ -128,6 +129,31 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
   input.type = "text";
   input.placeholder = "Search pages and blocks…";
   input.setAttribute("placeholder", "Search pages and blocks…");
+  const filters = el("div", "pxd-panel__filters", searchPane);
+  const typeSel = el("select", "pxd-panel__type", filters);
+  typeSel.setAttribute("aria-label", "Type");
+  const typeLabels = { all: "All", page: "Pages", block: "Blocks", board: "Boards", daily: "Dailies" };
+  for (const value of LIBRARY_TYPES) {
+    const opt = el("option", "pxd-panel__type-opt", typeSel, typeLabels[value]);
+    opt.value = value;
+    opt.setAttribute("value", value);
+  }
+  typeSel.value = "all";
+  const tagInput = el("input", "pxd-panel__tag", filters);
+  tagInput.type = "text";
+  tagInput.placeholder = "#tag";
+  tagInput.setAttribute("placeholder", "#tag");
+  tagInput.setAttribute("aria-label", "Tag");
+  const daysInput = el("input", "pxd-panel__days", filters);
+  daysInput.type = "number";
+  daysInput.min = "0";
+  daysInput.placeholder = "days";
+  daysInput.setAttribute("placeholder", "days");
+  daysInput.setAttribute("aria-label", "Edited in the last N days");
+  const orphanLabel = el("label", "pxd-panel__orphan", filters);
+  const orphanBox = el("input", "pxd-panel__orphan-box", orphanLabel);
+  orphanBox.type = "checkbox";
+  orphanLabel.append("Not on any board");
   const results = el("div", "pxd-panel__list", searchPane);
   const relatedHead = el("div", "pxd-panel__related-head", relatedPane);
   const relatedTitle = el("span", "pxd-panel__related-title", relatedHead, "Select a card");
@@ -179,38 +205,73 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     return r;
   };
 
+  const readFilter = () => ({
+    text: input.value,
+    type: typeSel.value || "all",
+    tag: tagInput.value,
+    days: daysInput.value,
+    orphan: orphanBox.checked === true,
+  });
+
   const runSearch = async () => {
-    const q = String(input.value || "").trim();
+    const filter = readFilter();
     const id = queryId += 1;
     results.replaceChildren();
-    if (!q) return;
-    let pages = [];
-    let blocks = [];
+    if (!libraryFilterActive(filter)) return;
+    let pack = null;
     try {
-      [pages, blocks] = await Promise.all([
-        Promise.resolve(host?.searchPages?.(q, LIMIT) || []),
-        Promise.resolve(host?.searchBlocks?.(q, LIMIT) || []),
-      ]);
+      if (typeof host?.librarySearch === "function") {
+        pack = await Promise.resolve(host.librarySearch(filter, LIMIT));
+      } else {
+        const q = String(filter.text || "").trim();
+        if (!q) return;
+        const [pages, blocks] = await Promise.all([
+          Promise.resolve(host?.searchPages?.(q, LIMIT) || []),
+          Promise.resolve(host?.searchBlocks?.(q, LIMIT) || []),
+        ]);
+        pack = {
+          rows: [
+            ...(pages || []).map((p) => ({ string: `[[${p.title}]]`, text: p.title, kind: "page", label: "page" })),
+            ...(blocks || []).map((b) => ({ string: `((${b.uid}))`, text: `${b.string || ""}`.slice(0, 120), kind: "block", label: b.pageTitle ? `in ${b.pageTitle}` : "block" })),
+          ].slice(0, LIMIT),
+          queries: [],
+        };
+      }
     } catch { /* search failed; show nothing */ }
     if (id !== queryId) return;
-    const rows = [
-      ...pages.map((p) => ({ string: `[[${p.title}]]`, text: p.title, kind: "page", label: "page" })),
-      ...blocks.map((b) => ({ string: `((${b.uid}))`, text: `${b.string || ""}`.slice(0, 120), kind: "block", label: b.pageTitle ? `in ${b.pageTitle}` : "block" })),
-    ].slice(0, LIMIT);
+    const queries = Array.isArray(pack?.queries) ? pack.queries : [];
+    const ms = queries.reduce((max, q) => Math.max(max, Number(q?.ms) || 0), 0);
+    results.dataset.queryMs = String(ms);
+    results.setAttribute("data-query-ms", String(ms));
+    const log = JSON.stringify(queries.map((q) => ({ name: q.name, ms: Math.round((Number(q.ms) || 0) * 10) / 10 })));
+    results.dataset.queryLog = log;
+    results.setAttribute("data-query-log", log);
+    const rows = (Array.isArray(pack?.rows) ? pack.rows : []).slice(0, LIMIT);
     results.replaceChildren();
     if (!rows.length) { el("div", "pxd-panel__empty", results, "No matches"); return; }
     rows.forEach((r) => row(results, r));
   };
 
-  listen(input, "input", () => {
+  const scheduleSearch = () => {
     debounce?.();
     debounce = timers.later(() => { debounce = null; void runSearch(); }, DEBOUNCE_MS);
-  });
+  };
+  const searchNow = () => { debounce?.(); debounce = null; void runSearch(); };
+  listen(input, "input", scheduleSearch);
+  listen(tagInput, "input", scheduleSearch);
+  listen(daysInput, "input", scheduleSearch);
+  listen(typeSel, "change", searchNow);
+  listen(orphanBox, "change", searchNow);
   listen(input, "keydown", (event) => {
     event.stopPropagation();
     if (event.key === "Escape") { event.preventDefault(); api.close(); }
-    if (event.key === "Enter") { event.preventDefault(); debounce?.(); debounce = null; void runSearch(); }
+    if (event.key === "Enter") { event.preventDefault(); searchNow(); }
   });
+  for (const field of [tagInput, daysInput]) {
+    listen(field, "keydown", (event) => {
+      if (event.key === "Enter") { event.preventDefault(); searchNow(); }
+    });
+  }
 
   const setTab = (next) => {
     if (tab === "info" && next !== "info") unmountInfo();

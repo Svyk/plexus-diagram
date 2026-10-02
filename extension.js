@@ -1772,6 +1772,110 @@ function boardsFromRows(rows, { limit = 20 } = {}) {
   return out;
 }
 
+// src/model/library.js
+var LIBRARY_TYPES = ["all", "page", "block", "board", "daily"];
+var LIBRARY_CAP = 80;
+var DAY_MS = 864e5;
+var MONTHS2 = "January|February|March|April|May|June|July|August|September|October|November|December";
+var DAILY_RE = new RegExp(`^(${MONTHS2}) (\\d{1,2})(st|nd|rd|th), (\\d{4})$`);
+function isDailyTitle(title) {
+  const m = DAILY_RE.exec(String(title ?? ""));
+  if (!m) return false;
+  const day = Number(m[2]);
+  if (day < 1 || day > 31) return false;
+  const suffix = day >= 11 && day <= 13 ? "th" : { 1: "st", 2: "nd", 3: "rd" }[day % 10] ?? "th";
+  return m[3] === suffix;
+}
+function cleanTag(raw) {
+  let tag = String(raw ?? "").trim();
+  if (tag.startsWith("#")) tag = tag.slice(1).trim();
+  const wiki = /^\[\[([\s\S]+)\]\]$/.exec(tag);
+  if (wiki) tag = wiki[1].trim();
+  return tag;
+}
+function normalizeLibraryFilter(raw = {}) {
+  const src = raw && typeof raw === "object" ? raw : {};
+  const type = LIBRARY_TYPES.includes(src.type) ? src.type : "all";
+  const daysN = Number(src.days);
+  const days = Number.isFinite(daysN) ? Math.max(0, Math.floor(daysN)) : 0;
+  return {
+    type,
+    tag: cleanTag(src.tag),
+    days,
+    orphan: src.orphan === true,
+    text: String(src.text ?? "").trim()
+  };
+}
+function libraryFilterActive(filter) {
+  const f = normalizeLibraryFilter(filter);
+  return Boolean(f.text || f.tag || f.days || f.orphan || f.type !== "all");
+}
+function librarySelective(filter) {
+  const f = normalizeLibraryFilter(filter);
+  if (f.text || f.tag) return true;
+  return f.type === "board" || f.type === "daily";
+}
+function editedSince(edited, days, now2 = Date.now()) {
+  const n = Math.max(0, Math.floor(Number(days) || 0));
+  if (!n) return true;
+  const t = now2 instanceof Date ? now2.getTime() : Number(now2);
+  return Number.isFinite(edited) && edited > t - n * DAY_MS;
+}
+function libraryKind(row) {
+  if (row?.kind === "board") return "board";
+  if (row?.kind === "block") return "block";
+  const title = row?.title ?? "";
+  if (row?.kind === "daily" || isDailyTitle(title)) return "daily";
+  return "page";
+}
+function narrowLibrary(rows, filter, now2 = Date.now()) {
+  const f = normalizeLibraryFilter(filter);
+  const needle = f.text.toLowerCase();
+  return (Array.isArray(rows) ? rows : []).filter((row) => {
+    const kind = libraryKind(row);
+    if (f.type !== "all" && kind !== f.type) return false;
+    if (f.tag) {
+      const tags = Array.isArray(row?.tags) ? row.tags : [];
+      if (!tags.includes(f.tag)) return false;
+    }
+    if (needle) {
+      const hay = [row?.title, row?.string, row?.text].filter((v) => v != null).join("\n").toLowerCase();
+      if (!hay.includes(needle)) return false;
+    }
+    if (f.days && !editedSince(row?.edited, f.days, now2)) return false;
+    if (f.orphan && (kind === "board" || row?.onBoard)) return false;
+    return true;
+  });
+}
+function libraryCard(row) {
+  const kind = libraryKind(row);
+  if (kind === "page" || kind === "daily") {
+    const title = String(row?.title ?? row?.text ?? "");
+    return { string: `[[${title}]]`, text: title, kind, label: kind === "daily" ? "daily" : "page" };
+  }
+  const uid = String(row?.uid ?? "");
+  if (kind === "board") {
+    const title = String(row?.title || "Untitled board");
+    const label2 = row?.pageTitle ? `board · ${row.pageTitle}` : "board";
+    return { string: `((${uid}))`, text: title, kind, label: label2 };
+  }
+  const label = row?.pageTitle ? `in ${row.pageTitle}` : "block";
+  return { string: `((${uid}))`, text: String(row?.string ?? row?.text ?? "").slice(0, 120), kind, label };
+}
+function recentDailyTitles(days = 14, now2 = /* @__PURE__ */ new Date()) {
+  const n = Math.max(1, Math.min(366, Math.floor(Number(days) || 14)));
+  const base = now2 instanceof Date ? now2 : new Date(now2);
+  const titles = [];
+  for (let i = 0; i < n; i += 1) {
+    const d = new Date(base.getFullYear(), base.getMonth(), base.getDate() - i, 12, 0, 0, 0);
+    titles.push(dailyPageTitle(d));
+  }
+  return titles;
+}
+function libraryCap() {
+  return LIBRARY_CAP;
+}
+
 // src/host/roam.js
 var BOARD_PATTERN = `[:block/uid :block/string :block/order :block/heading :block/open :block/props
  {:block/children [:block/uid :block/string :block/order :block/heading :block/open :block/props
@@ -1782,6 +1886,7 @@ var NATIVE_PATTERN = `[:block/props
  {:diagram/nodes [:db/id :diagram.node/data {:diagram.node/block [:block/uid :block/string]} {:diagram.node/parent-node [:db/id]}]}
  {:diagram/edges [{:diagram.edge/source [:db/id]} {:diagram.edge/target [:db/id]} :diagram.edge/data]}]`;
 var DIAGRAM_RE = "^\\{\\{(\\[\\[)?diagram";
+var DIAGRAM_STRING = /^\s*\{\{(?:\[\[)?diagram/i;
 var SHOW_DIRECT_QUERY = `[:find ?board ?page :in $ ?uid ?pat :where
  [?block :block/uid ?uid] [?block :block/parents ?diagram] [?diagram :block/uid ?board]
  [?diagram :block/string ?s] [(re-pattern ?pat) ?re] [(re-find ?re ?s)]
@@ -2357,6 +2462,254 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
         ciPattern(needle)
       ) || [];
       return rows.filter(([, , t]) => typeof t === "string" && !t.startsWith("roam/")).slice(0, limit).map(([s, u, t]) => ({ uid: u, string: s, pageTitle: t }));
+    },
+    // Add-panel filters. Read-only. Each query is timed. Days and orphan never scan the graph alone.
+    librarySearch(filter, limit = 40) {
+      const f = normalizeLibraryFilter(filter);
+      const queries = [];
+      const lim = Math.max(1, Math.floor(Number(limit) || 40));
+      if (!librarySelective(f)) return { rows: [], queries };
+      const nowMs = Date.now();
+      const since = f.days ? nowMs - f.days * 864e5 : null;
+      const cap2 = libraryCap();
+      const candidates = [];
+      const seen = /* @__PURE__ */ new Set();
+      const push = (row) => {
+        if (candidates.length >= cap2) return false;
+        const key = `${row.kind}:${row.uid || row.title}`;
+        if (seen.has(key)) return false;
+        seen.add(key);
+        candidates.push(row);
+        return true;
+      };
+      const timed = (name, fn) => {
+        const t0 = performance.now();
+        let out = [];
+        try {
+          const res = fn();
+          out = Array.isArray(res) ? res : [];
+        } catch {
+          out = [];
+        }
+        queries.push({ name, ms: performance.now() - t0 });
+        return out;
+      };
+      const wantPage = f.type === "all" || f.type === "page";
+      const wantBlock = f.type === "all" || f.type === "block";
+      const wantBoard = f.type === "all" || f.type === "board";
+      const wantDaily = f.type === "daily";
+      const editedOf = (value) => Number.isFinite(value) ? value : null;
+      if (wantPage && (f.text || f.tag) || wantDaily && f.tag) {
+        const find = ["?t", "?u"];
+        const inputs = ["$"];
+        const where = [];
+        const args = [];
+        if (f.tag) {
+          inputs.push("?name");
+          args.push(f.tag);
+          where.push("[?tag :node/title ?name]", "[?b :block/refs ?tag]", "[?b :block/page ?p]");
+        }
+        where.push("[?p :node/title ?t]");
+        if (f.text) {
+          inputs.push("?pat");
+          args.push(ciPattern(f.text));
+          where.push("[(re-pattern ?pat) ?re]", "[(re-find ?re ?t)]");
+        }
+        where.push("[?p :block/uid ?u]");
+        if (since != null) {
+          inputs.push("?since");
+          args.push(since);
+          find.push("?e");
+          where.push("[?p :edit/time ?e]", "[(> ?e ?since)]");
+        }
+        const found = timed("pages", () => host.q(
+          `[:find ${find.join(" ")} :in ${inputs.join(" ")} :where ${where.join(" ")}]`,
+          ...args
+        ));
+        const needle = f.text.toLowerCase();
+        const ranked = found.slice().sort((a, b) => {
+          const at = String(a?.[0] ?? "");
+          const bt = String(b?.[0] ?? "");
+          const ap = needle && at.toLowerCase().startsWith(needle) ? 0 : 1;
+          const bp = needle && bt.toLowerCase().startsWith(needle) ? 0 : 1;
+          return ap - bp || at.length - bt.length || at.localeCompare(bt);
+        });
+        for (const rec of ranked) {
+          const title = rec?.[0];
+          const uid = rec?.[1];
+          if (typeof title !== "string" || title.startsWith("roam/") || !uid) continue;
+          if (!push({
+            kind: "page",
+            title,
+            uid: String(uid),
+            edited: editedOf(rec?.[2]),
+            tags: f.tag ? [f.tag] : [],
+            onBoard: false
+          })) break;
+        }
+      }
+      if (wantBlock && (f.text || f.tag)) {
+        const find = ["?s", "?u", "?t"];
+        const inputs = ["$"];
+        const where = [];
+        const args = [];
+        if (f.tag) {
+          inputs.push("?name");
+          args.push(f.tag);
+          where.push("[?tag :node/title ?name]", "[?b :block/refs ?tag]");
+        }
+        where.push("[?b :block/string ?s]");
+        if (f.text) {
+          inputs.push("?pat");
+          args.push(ciPattern(f.text));
+          where.push("[(re-pattern ?pat) ?re]", "[(re-find ?re ?s)]");
+        }
+        where.push("[?b :block/uid ?u]", "[?b :block/page ?p]", "[?p :node/title ?t]");
+        if (since != null) {
+          inputs.push("?since");
+          args.push(since);
+          find.push("?e");
+          where.push("[?b :edit/time ?e]", "[(> ?e ?since)]");
+        }
+        const found = timed("blocks", () => host.q(
+          `[:find ${find.join(" ")} :in ${inputs.join(" ")} :where ${where.join(" ")}]`,
+          ...args
+        ));
+        for (const rec of found) {
+          const string = rec?.[0];
+          const uid = rec?.[1];
+          const pageTitle = rec?.[2];
+          if (typeof string !== "string" || !uid) continue;
+          if (DIAGRAM_STRING.test(string)) continue;
+          if (typeof pageTitle === "string" && pageTitle.startsWith("roam/")) continue;
+          const edited = since != null ? editedOf(rec?.[3]) : null;
+          if (!push({
+            kind: "block",
+            uid: String(uid),
+            string,
+            pageTitle: typeof pageTitle === "string" ? pageTitle : "",
+            edited,
+            tags: f.tag ? [f.tag] : [],
+            onBoard: false
+          })) break;
+        }
+      }
+      if (wantBoard && (f.type === "board" || f.text || f.tag)) {
+        let found;
+        if (f.tag) {
+          found = timed("boards", () => host.q(
+            `[:find ?u ?s ?pt :in $ ?name ?pat :where [?tag :node/title ?name] [?child :block/refs ?tag]
+ [?child :block/parents ?d] [?d :block/string ?s] [(re-pattern ?pat) ?re] [(re-find ?re ?s)]
+ [?d :block/uid ?u] [?d :block/page ?p] [?p :node/title ?pt]]`,
+            f.tag,
+            DIAGRAM_RE
+          ));
+        } else {
+          found = timed("boards", () => host.q(
+            `[:find ?u ?s ?pt :in $ ?pat :where [?b :block/string ?s] [(re-pattern ?pat) ?re] [(re-find ?re ?s)]
+ [?b :block/uid ?u] [?b :block/page ?p] [?p :node/title ?pt]]`,
+            DIAGRAM_RE
+          ));
+        }
+        for (const rec of found) {
+          if (candidates.length >= cap2) break;
+          const uid = rec?.[0];
+          const string = rec?.[1];
+          const pageTitle = rec?.[2];
+          if (!uid || typeof string !== "string") continue;
+          const title = parseBoardTitle(string) || "Untitled board";
+          if (f.text && !title.toLowerCase().includes(f.text.toLowerCase())) continue;
+          let edited = null;
+          let props = {};
+          try {
+            const res = pull("[:block/props :edit/time]", eidKey(uid));
+            const raw = res?.[":block/props"];
+            props = raw && typeof raw === "object" ? plainKeys(raw) : {};
+            edited = editedOf(res?.[":edit/time"]);
+          } catch {
+            continue;
+          }
+          if (props?.plexus?.v !== 2) continue;
+          push({
+            kind: "board",
+            uid: String(uid),
+            title,
+            string,
+            pageTitle: typeof pageTitle === "string" ? pageTitle : "",
+            edited,
+            tags: f.tag ? [f.tag] : [],
+            onBoard: true
+          });
+        }
+      }
+      if (wantDaily && !f.tag) {
+        let titles = recentDailyTitles(f.days || 14, nowMs);
+        if (f.text && isDailyTitle(f.text) && !titles.includes(f.text)) titles = titles.concat(f.text);
+        if (titles.length) {
+          const find = "?t ?u ?e";
+          const inputs = "$ [?t ...]";
+          const where = ["[?p :node/title ?t]", "[?p :block/uid ?u]", "[?p :edit/time ?e]"];
+          const args = [titles];
+          if (since != null) {
+            where.push("[(> ?e ?since)]");
+            args.push(since);
+          }
+          const found = timed("dailies", () => host.q(
+            `[:find ${find} :in ${since != null ? `${inputs} ?since` : inputs} :where ${where.join(" ")}]`,
+            ...args
+          ));
+          for (const rec of found) {
+            const title = rec?.[0];
+            const uid = rec?.[1];
+            if (typeof title !== "string" || !uid) continue;
+            push({
+              kind: "page",
+              title,
+              uid: String(uid),
+              edited: editedOf(rec?.[2]),
+              tags: [],
+              onBoard: false
+            });
+          }
+        }
+      }
+      if (f.orphan) {
+        const blockUids = candidates.filter((row) => row.kind === "block" && row.uid).map((row) => row.uid);
+        const pageTitles = candidates.filter((row) => row.kind === "page" && row.title).map((row) => row.title);
+        const onUid = /* @__PURE__ */ new Set();
+        const onTitle = /* @__PURE__ */ new Set();
+        if (blockUids.length) {
+          const direct = timed("orphan-parents", () => host.q(
+            `[:find ?u :in $ [?u ...] ?pat :where [?b :block/uid ?u] [?b :block/parents ?d] [?d :block/string ?s]
+ [(re-pattern ?pat) ?re] [(re-find ?re ?s)]]`,
+            blockUids,
+            DIAGRAM_RE
+          ));
+          const via = timed("orphan-refs", () => host.q(
+            `[:find ?u :in $ [?u ...] ?pat :where [?b :block/uid ?u] [?card :block/refs ?b] [?card :block/parents ?d]
+ [?d :block/string ?s] [(re-pattern ?pat) ?re] [(re-find ?re ?s)]]`,
+            blockUids,
+            DIAGRAM_RE
+          ));
+          for (const rec of [...direct, ...via]) if (rec?.[0]) onUid.add(rec[0]);
+        }
+        if (pageTitles.length) {
+          const via = timed("orphan-pages", () => host.q(
+            `[:find ?t :in $ [?t ...] ?pat :where [?p :node/title ?t] [?card :block/refs ?p] [?card :block/parents ?d]
+ [?d :block/string ?s] [(re-pattern ?pat) ?re] [(re-find ?re ?s)]]`,
+            pageTitles,
+            DIAGRAM_RE
+          ));
+          for (const rec of via) if (rec?.[0]) onTitle.add(rec[0]);
+        }
+        for (const row of candidates) {
+          if (row.kind === "board") row.onBoard = true;
+          else if (row.kind === "block") row.onBoard = onUid.has(row.uid);
+          else row.onBoard = onTitle.has(row.title);
+        }
+      }
+      const rows = narrowLibrary(candidates, f, nowMs).slice(0, lim).map(libraryCard);
+      return { rows, queries };
     },
     // Graph neighbours of a card target, ordered for the Related panel:
     // attribute relations (both directions) → pages it links to → pages that link to it (grouped, counted).
@@ -9235,6 +9588,31 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
   input.type = "text";
   input.placeholder = "Search pages and blocks…";
   input.setAttribute("placeholder", "Search pages and blocks…");
+  const filters = el("div", "pxd-panel__filters", searchPane);
+  const typeSel = el("select", "pxd-panel__type", filters);
+  typeSel.setAttribute("aria-label", "Type");
+  const typeLabels = { all: "All", page: "Pages", block: "Blocks", board: "Boards", daily: "Dailies" };
+  for (const value of LIBRARY_TYPES) {
+    const opt = el("option", "pxd-panel__type-opt", typeSel, typeLabels[value]);
+    opt.value = value;
+    opt.setAttribute("value", value);
+  }
+  typeSel.value = "all";
+  const tagInput = el("input", "pxd-panel__tag", filters);
+  tagInput.type = "text";
+  tagInput.placeholder = "#tag";
+  tagInput.setAttribute("placeholder", "#tag");
+  tagInput.setAttribute("aria-label", "Tag");
+  const daysInput = el("input", "pxd-panel__days", filters);
+  daysInput.type = "number";
+  daysInput.min = "0";
+  daysInput.placeholder = "days";
+  daysInput.setAttribute("placeholder", "days");
+  daysInput.setAttribute("aria-label", "Edited in the last N days");
+  const orphanLabel = el("label", "pxd-panel__orphan", filters);
+  const orphanBox = el("input", "pxd-panel__orphan-box", orphanLabel);
+  orphanBox.type = "checkbox";
+  orphanLabel.append("Not on any board");
   const results = el("div", "pxd-panel__list", searchPane);
   const relatedHead = el("div", "pxd-panel__related-head", relatedPane);
   const relatedTitle = el("span", "pxd-panel__related-title", relatedHead, "Select a card");
@@ -9288,25 +9666,48 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     });
     return r;
   };
+  const readFilter = () => ({
+    text: input.value,
+    type: typeSel.value || "all",
+    tag: tagInput.value,
+    days: daysInput.value,
+    orphan: orphanBox.checked === true
+  });
   const runSearch = async () => {
-    const q = String(input.value || "").trim();
+    const filter = readFilter();
     const id = queryId += 1;
     results.replaceChildren();
-    if (!q) return;
-    let pages = [];
-    let blocks = [];
+    if (!libraryFilterActive(filter)) return;
+    let pack = null;
     try {
-      [pages, blocks] = await Promise.all([
-        Promise.resolve(host?.searchPages?.(q, LIMIT) || []),
-        Promise.resolve(host?.searchBlocks?.(q, LIMIT) || [])
-      ]);
+      if (typeof host?.librarySearch === "function") {
+        pack = await Promise.resolve(host.librarySearch(filter, LIMIT));
+      } else {
+        const q = String(filter.text || "").trim();
+        if (!q) return;
+        const [pages, blocks] = await Promise.all([
+          Promise.resolve(host?.searchPages?.(q, LIMIT) || []),
+          Promise.resolve(host?.searchBlocks?.(q, LIMIT) || [])
+        ]);
+        pack = {
+          rows: [
+            ...(pages || []).map((p) => ({ string: `[[${p.title}]]`, text: p.title, kind: "page", label: "page" })),
+            ...(blocks || []).map((b) => ({ string: `((${b.uid}))`, text: `${b.string || ""}`.slice(0, 120), kind: "block", label: b.pageTitle ? `in ${b.pageTitle}` : "block" }))
+          ].slice(0, LIMIT),
+          queries: []
+        };
+      }
     } catch {
     }
     if (id !== queryId) return;
-    const rows = [
-      ...pages.map((p) => ({ string: `[[${p.title}]]`, text: p.title, kind: "page", label: "page" })),
-      ...blocks.map((b) => ({ string: `((${b.uid}))`, text: `${b.string || ""}`.slice(0, 120), kind: "block", label: b.pageTitle ? `in ${b.pageTitle}` : "block" }))
-    ].slice(0, LIMIT);
+    const queries = Array.isArray(pack?.queries) ? pack.queries : [];
+    const ms = queries.reduce((max, q) => Math.max(max, Number(q?.ms) || 0), 0);
+    results.dataset.queryMs = String(ms);
+    results.setAttribute("data-query-ms", String(ms));
+    const log = JSON.stringify(queries.map((q) => ({ name: q.name, ms: Math.round((Number(q.ms) || 0) * 10) / 10 })));
+    results.dataset.queryLog = log;
+    results.setAttribute("data-query-log", log);
+    const rows = (Array.isArray(pack?.rows) ? pack.rows : []).slice(0, LIMIT);
     results.replaceChildren();
     if (!rows.length) {
       el("div", "pxd-panel__empty", results, "No matches");
@@ -9314,13 +9715,23 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     }
     rows.forEach((r) => row(results, r));
   };
-  listen(input, "input", () => {
+  const scheduleSearch = () => {
     debounce?.();
     debounce = timers.later(() => {
       debounce = null;
       void runSearch();
     }, DEBOUNCE_MS);
-  });
+  };
+  const searchNow = () => {
+    debounce?.();
+    debounce = null;
+    void runSearch();
+  };
+  listen(input, "input", scheduleSearch);
+  listen(tagInput, "input", scheduleSearch);
+  listen(daysInput, "input", scheduleSearch);
+  listen(typeSel, "change", searchNow);
+  listen(orphanBox, "change", searchNow);
   listen(input, "keydown", (event) => {
     event.stopPropagation();
     if (event.key === "Escape") {
@@ -9329,11 +9740,17 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     }
     if (event.key === "Enter") {
       event.preventDefault();
-      debounce?.();
-      debounce = null;
-      void runSearch();
+      searchNow();
     }
   });
+  for (const field of [tagInput, daysInput]) {
+    listen(field, "keydown", (event) => {
+      if (event.key === "Enter") {
+        event.preventDefault();
+        searchNow();
+      }
+    });
+  }
   const setTab = (next) => {
     if (tab === "info" && next !== "info") unmountInfo();
     tab = next;

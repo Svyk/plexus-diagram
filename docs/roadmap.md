@@ -182,7 +182,7 @@ Order matters: P1 and P2 are the user's direct requests. Within a phase, do task
 
 ### P6: Performance and reliability (1.8.0)
 
-- [ ] **PF-1 Command budget** (S) — 1.2 registers 6 palette commands (`Enhance this diagram`, `New whiteboard here`, `Restore native diagram`, `Fullscreen this diagram`, `Export board as SVG`, `Copy board as text`) plus slash and block-context entries. Cut the palette to at most 2 entries ("Plexus: Commands…", which opens a list of every action and keeps the focused block, and "Plexus: New whiteboard here"). Measure the typing bench before and after. Accept: delta at most +0.1 ms/key.
+- [!] **PF-1 Command budget** — blocked: palette is Commands… and New whiteboard here. Typing after the cut was +213.88 ms/key (260.93 injected, 47.05 unloaded, 200 keys, 13 roots), from +95.68 before. `npm run check` passed 812 tests. Unload left 0 `.pxd-*` nodes and listeners fell from 316 window / 442 document to 188 / 310. Unblock when that delta is at most +0.1 ms/key. — (S) — 1.2 registers 6 palette commands (`Enhance this diagram`, `New whiteboard here`, `Restore native diagram`, `Fullscreen this diagram`, `Export board as SVG`, `Copy board as text`) plus slash and block-context entries. Cut the palette to at most 2 entries ("Plexus: Commands…", which opens a list of every action and keeps the focused block, and "Plexus: New whiteboard here"). Measure the typing bench before and after. Accept: delta at most +0.1 ms/key.
 - [ ] **PF-2 300-card board** (M) — Fixture with 300 cards, 20 sections, 150 connections (built in chunks via the ledger). Open under 400 ms to first paint, pan and zoom at 60 fps (trace with `Tracing.start` over CDP), LOD switches without a long task over 50 ms. Accept: numbers recorded in section 8.
 - [ ] **PF-3 Offscreen virtualization** (M) — Cards outside the viewport plus one screen of margin do not hold a `renderString` or `renderBlock` mount; they render a cheap placeholder until scrolled near. Accept: on the 300-card board, mounted Roam renders at most the visible count plus margin.
 - [ ] **PF-4 Leak test** (S) — Open and close the fixture board 50 times, toggle fullscreen 50 times, reload the extension 10 times. Listener counts, `.pxd-*` nodes and pull watches return to baseline. Accept: counts in section 8.
@@ -249,6 +249,7 @@ AI agent features inside the board, SuperTag-style typed schemas or class tags, 
 
 Fill in as phases run. Keep the newest at the top of each list.
 
+- PF-1, 2026-10-02: palette cut to Commands… and New whiteboard here. Typing after the cut was +213.88 ms/key (260.93 injected, 47.05 unloaded, 200 keys, 13 roots). Before the cut it was +95.68. Unload left 0. `npm run check` 812 pass.
 - TP-9, 2026-10-01: Test Lab typing +64.51 ms/key with 13 roots (8401 pxd nodes). Unload left 0. `npm run check` 769 pass.
 - HB-7, 2026-10-01: On vc8Skaj5K the context bar's eight align and distribute buttons each moved SwK9l7wCD, Or6gEkteS, and kTpG_g1yi, and one Cmd+Z put the three props back. Section h stayed 241.1.
 - HB-6, 2026-10-01: On vc8Skaj5K a held drag snapped SwK9l7wCD onto the note card's top and drew 9 guides. The block's edit time did not change until Escape cancelled the drag. Snap to grid is off unless the setting is on. Alt during a drag skips both snaps. `npm run check` 713 pass.

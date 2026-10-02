@@ -2,6 +2,7 @@ import {
   boardPreview,
   boundsOf,
   buildBoard,
+  cardAtCenter,
   containerAt,
   descendantsOf,
   diffBoards,
@@ -886,6 +887,13 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
         applyFit(t, ids);
         return ids;
       });
+    },
+
+    // One ref card, centered on the board's content (the origin when nothing is placed yet).
+    addBlockRef(blockUid) {
+      if (!blockUid || !board) return Promise.resolve(null);
+      const at = cardAtCenter(boundsOf([...rects.values()]), DEFAULT_SIZES.card);
+      return this.addRefCards([{ string: `((${blockUid}))`, x: at.x, y: at.y }]).then((ids) => ids?.[0] ?? null);
     },
 
     deleteItems(uids, { withContents = false, force = false } = {}) {

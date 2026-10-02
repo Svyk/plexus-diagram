@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   boardPreview, boundsOf, buildBoard, containerAt, descendantsOf, diffBoards, edgesTouching, findEdge, hitTest,
-  connectedUids, itemsInPolygon, itemsInRect, membershipPlan, outlineOrder, pointInPolygon, readingOrder, sameColorUids, sectionAdoptPlan, sectionAllUids, sectionFitPlan, sidebarOutlineUids, toRelative, topLevelOf, worldRect, worldRects,
+  cardAtCenter, connectedUids, itemsInPolygon, itemsInRect, membershipPlan, outlineOrder, pointInPolygon, readingOrder, sameColorUids, sectionAdoptPlan, sectionAllUids, sectionFitPlan, sidebarOutlineUids, toRelative, topLevelOf, worldRect, worldRects,
 } from "../src/model/board.js";
 
 const near = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) < eps, `${a} != ${b}`);
@@ -683,6 +683,11 @@ test("RG-6: reading order is top to bottom, then left to right, and a section ke
     { parent: "sec", uids: ["inLeft", "inRight"] },
   ]);
   assert.deepEqual(readingOrder(null, rects), []);
+});
+
+test("RG-7: a card at the board center uses the content center, and an empty board uses the origin", () => {
+  assert.deepEqual(cardAtCenter({ x: 0, y: 0, w: 400, h: 200 }, { w: 280, h: 160 }), { x: 60, y: 20 });
+  assert.deepEqual(cardAtCenter(null, { w: 280, h: 160 }), { x: -140, y: -80 });
 });
 
 test("sidebarOutlineUids lists roots then the Connections block", () => {

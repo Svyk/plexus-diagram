@@ -1283,6 +1283,13 @@ function boundsOf(rectList) {
   const list = [...rectList];
   return list.length ? list.reduce(unionRect2) : null;
 }
+function cardAtCenter(bounds, size) {
+  const w = size?.w || 0;
+  const h = size?.h || 0;
+  const cx = bounds ? bounds.x + bounds.w / 2 : 0;
+  const cy = bounds ? bounds.y + bounds.h / 2 : 0;
+  return { x: cx - w / 2, y: cy - h / 2 };
+}
 var clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 var PREVIEW_MIN = { w: DEFAULT_SIZES.card.w * 2, h: DEFAULT_SIZES.card.h * 2 };
 var PREVIEW_TITLE = 40;
@@ -1490,9 +1497,9 @@ function connectedUids(board2, uid) {
   const seen = /* @__PURE__ */ new Set([uid]);
   const queue = [uid];
   while (queue.length) {
-    const current = queue.shift();
-    out.push(current);
-    for (const next of adj.get(current) || []) {
+    const current2 = queue.shift();
+    out.push(current2);
+    for (const next of adj.get(current2) || []) {
       if (seen.has(next)) continue;
       seen.add(next);
       queue.push(next);
@@ -2197,8 +2204,8 @@ function assignDeepLink(loc, { graph, pageUid, cardUid } = {}, onSame) {
 var PANEL_WIDTH_MIN = 260;
 var PANEL_WIDTH_MAX = 640;
 var PANEL_WIDTH_DEFAULT = 340;
-function nextPanelWidth(current, delta, { min = PANEL_WIDTH_MIN, max = PANEL_WIDTH_MAX } = {}) {
-  const base = Number(current);
+function nextPanelWidth(current2, delta, { min = PANEL_WIDTH_MIN, max = PANEL_WIDTH_MAX } = {}) {
+  const base = Number(current2);
   const d = Number(delta);
   const start = Number.isFinite(base) ? base : PANEL_WIDTH_DEFAULT;
   const next = start + (Number.isFinite(d) ? d : 0);
@@ -2213,9 +2220,9 @@ function infoTabList(tabs, uid, { add = false } = {}) {
   const next = list.concat([{ uid: id }]);
   return { tabs: next, current: id };
 }
-function closeInfoTab(tabs, current, uid) {
+function closeInfoTab(tabs, current2, uid) {
   const list = (tabs || []).filter((t) => t && t.uid && t.uid !== uid);
-  let cur = current === uid ? null : current;
+  let cur = current2 === uid ? null : current2;
   if (!cur || !list.some((t) => t.uid === cur)) {
     const idx = (tabs || []).findIndex((t) => t && t.uid === uid);
     cur = list[idx]?.uid || list[idx - 1]?.uid || null;
@@ -4869,6 +4876,12 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
         applyFit(t, ids);
         return ids;
       });
+    },
+    // One ref card, centered on the board's content (the origin when nothing is placed yet).
+    addBlockRef(blockUid) {
+      if (!blockUid || !board2) return Promise.resolve(null);
+      const at = cardAtCenter(boundsOf([...rects.values()]), DEFAULT_SIZES.card);
+      return this.addRefCards([{ string: `((${blockUid}))`, x: at.x, y: at.y }]).then((ids) => ids?.[0] ?? null);
     },
     deleteItems(uids, { withContents = false, force = false } = {}) {
       return txn((t) => {
@@ -10903,10 +10916,10 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     ctx.setAttribute("data-kind", kind);
     const row2 = el("div", "pxd-ctx__row", ctx);
     const btn = (cls, label, title, fn) => button(row2, `pxd-ctx__btn ${cls}`, label, title, fn);
-    const seg = (cls, options, current, fn) => {
+    const seg = (cls, options, current2, fn) => {
       const wrap = el("div", `pxd-seg ${cls}`, row2);
       for (const [value, label, title] of options) {
-        const b = button(wrap, `pxd-seg__btn${value === current ? " pxd-seg__btn--on" : ""}`, label, title || label, () => fn(value));
+        const b = button(wrap, `pxd-seg__btn${value === current2 ? " pxd-seg__btn--on" : ""}`, label, title || label, () => fn(value));
         b.dataset.value = String(value);
       }
       return wrap;
@@ -11717,9 +11730,9 @@ function kanbanColumns(rows, field) {
 }
 function withMarker(string, column) {
   const mark = column === DONE_COLUMN ? "{{[[DONE]]}}" : "{{[[TODO]]}}";
-  const current = String(string || "");
-  if (MARK.test(current)) return current.replace(MARK, mark);
-  return current.trim() ? `${mark} ${current}` : mark;
+  const current2 = String(string || "");
+  if (MARK.test(current2)) return current2.replace(MARK, mark);
+  return current2.trim() ? `${mark} ${current2}` : mark;
 }
 function planKanbanMove({ field, column, row: row2 } = {}) {
   if (!row2?.uid || column == null || column === "") return null;
@@ -11939,10 +11952,10 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
     const h = tb?.offsetHeight || 0;
     panel.style.top = `${8 + (h ? h + 6 : 44)}px`;
   };
-  const choice = (parent, options, current, fn) => {
+  const choice = (parent, options, current2, fn) => {
     const wrap = el("div", "pxd-seg pxd-props__choices", parent);
     for (const [value, label] of options) {
-      const b = button(wrap, `pxd-seg__btn${value === current ? " pxd-seg__btn--on" : ""}`, label, label, () => fn(value));
+      const b = button(wrap, `pxd-seg__btn${value === current2 ? " pxd-seg__btn--on" : ""}`, label, label, () => fn(value));
       b.setAttribute("data-value", value);
     }
     return wrap;
@@ -12255,9 +12268,9 @@ function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
       close();
     }
   };
-  const current = () => levels[levels.length - 1];
+  const current2 = () => levels[levels.length - 1];
   const move = (step) => {
-    const level = current();
+    const level = current2();
     const rows = selectable(level);
     if (!rows.length) return;
     const i = rows.indexOf(level.active);
@@ -12269,7 +12282,7 @@ function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
     if (!["ArrowUp", "ArrowDown", "ArrowLeft", "ArrowRight", "Enter", "Escape", " ", "Home", "End", "Tab"].includes(key)) return;
     event.preventDefault?.();
     event.stopPropagation?.();
-    const level = current();
+    const level = current2();
     if (key === "Escape" || key === "Tab") return close();
     if (key === "ArrowDown") return move(1);
     if (key === "ArrowUp") return move(-1);
@@ -12432,11 +12445,11 @@ function buildMenu(kind, ctx = {}) {
     return items;
   };
   const colorMenu = () => {
-    const current = item?.color || null;
+    const current2 = item?.color || null;
     return make("color", "Color", {
       children: [
-        make("color:none", "No color", { checked: !current }),
-        ...PALETTE.map((name) => make(`color:${name}`, cap(name), { checked: current === name }))
+        make("color:none", "No color", { checked: !current2 }),
+        ...PALETTE.map((name) => make(`color:${name}`, cap(name), { checked: current2 === name }))
       ]
     });
   };
@@ -12665,7 +12678,7 @@ var childKids2 = (c) => c?.[":block/children"] ?? c?.children ?? [];
 function createQuickLook({ doc = globalThis.document, root, host, timers, on = {} } = {}) {
   let node2 = null;
   let roots = [];
-  let current = null;
+  let current2 = null;
   let cancelPending = null;
   let disposed = false;
   const offs = [];
@@ -12714,7 +12727,7 @@ function createQuickLook({ doc = globalThis.document, root, host, timers, on = {
     unmountRoots();
     node2.remove();
     node2 = null;
-    current = null;
+    current2 = null;
     offs.splice(0).forEach((off) => off());
     on.close?.();
     return true;
@@ -12732,7 +12745,7 @@ function createQuickLook({ doc = globalThis.document, root, host, timers, on = {
     const settle = (result, apply) => {
       if (result && typeof result.then === "function") {
         result.then((r) => {
-          if (node2 && current === item) apply(r);
+          if (node2 && current2 === item) apply(r);
         }).catch(() => {
         });
       } else apply(result);
@@ -12774,7 +12787,7 @@ function createQuickLook({ doc = globalThis.document, root, host, timers, on = {
   const open = (item) => {
     if (disposed || !item) return false;
     close();
-    current = item;
+    current2 = item;
     node2 = el("div", "pxd-quicklook pxd-chrome", root);
     node2.setAttribute("role", "dialog");
     node2.setAttribute("aria-label", "Quick Look");
@@ -15520,8 +15533,8 @@ function mountBoardView({
     if (hiddenAttrs.has(name)) hiddenAttrs.delete(name);
     else hiddenAttrs.add(name);
     if (selection.link) {
-      const current = (session.links || []).find((l) => l.key === selection.link);
-      const shown = current?.kind === "attr" ? current.labels?.[0] : "";
+      const current2 = (session.links || []).find((l) => l.key === selection.link);
+      const shown = current2?.kind === "attr" ? current2.labels?.[0] : "";
       if (shown && hiddenAttrs.has(shown)) selection.link = null;
     }
     dirty.links = true;
@@ -16226,6 +16239,15 @@ function mountBoardView({
     if (outlineMode && !event.target?.closest?.(".pxd-mode")) return;
     if (tableMode && !event.target?.closest?.(".pxd-toolbar__table")) return;
     if (kanbanMode && !event.target?.closest?.(".pxd-toolbar__kanban")) return;
+    const addBoard = doc.querySelector?.(".pxd-addboard");
+    if (addBoard) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        addBoard.dispatchEvent(new CustomEvent("pxd-close"));
+      }
+      return;
+    }
     if (menu.isOpen()) return;
     if (event.key === "Escape" && blockEdit && !doc.querySelector?.(".rm-autocomplete__results")) {
       event.preventDefault();
@@ -16340,11 +16362,11 @@ function mountBoardView({
   subs.push(session.on("change", ({ dirty: d, structural } = {}) => {
     if (disposed) return;
     const b = board2();
-    const current = crumbList[crumbList.length - 1];
-    if (current && b) {
+    const current2 = crumbList[crumbList.length - 1];
+    if (current2 && b) {
       const title = b.title || UNTITLED_BOARD;
-      if (current.title !== title) {
-        current.title = title;
+      if (current2.title !== title) {
+        current2.title = title;
         chrome.toolbar.setCrumbs(crumbList);
       }
     }
@@ -16783,6 +16805,114 @@ function mountBoardView({
   return view;
 }
 
+// src/view/board-picker.js
+function recentBoardRows(rows) {
+  return [...rows || []].filter((row2) => row2 && row2.uid).sort((a, b) => (Number(b.edited) || 0) - (Number(a.edited) || 0) || String(a.title || "").localeCompare(String(b.title || "")));
+}
+var current = null;
+function openAddToBoard({ doc = globalThis.document, listBoards, onPick } = {}) {
+  current?.close();
+  const offs = [];
+  const on = (target, type, fn, capture) => {
+    target.addEventListener(type, fn, capture);
+    offs.push(() => target.removeEventListener(type, fn, capture));
+  };
+  const el = (tag, cls, parent, text2) => {
+    const node2 = doc.createElement(tag);
+    node2.className = cls;
+    if (text2 !== void 0) node2.textContent = text2;
+    parent?.append(node2);
+    return node2;
+  };
+  const back = el("div", "pxd-addboard-back", doc.body);
+  const box2 = el("div", "pxd-addboard", doc.body);
+  el("div", "pxd-addboard__title", box2, "Add to board");
+  const filter = el("input", "pxd-addboard__filter", box2);
+  filter.type = "text";
+  filter.placeholder = "Filter boards…";
+  filter.setAttribute("placeholder", "Filter boards…");
+  const list = el("div", "pxd-addboard__list", box2);
+  el("div", "pxd-addboard__empty", list, "Loading boards…");
+  let rows = [];
+  let closed = false;
+  let busy = false;
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    if (current === api) current = null;
+    for (const off of offs) off();
+    back.remove();
+    box2.remove();
+  };
+  const api = { close };
+  current = api;
+  const render = () => {
+    list.replaceChildren();
+    const q = String(filter.value || "").trim().toLowerCase();
+    const shown = rows.filter((b) => !q || `${b.title || ""}
+${b.pageTitle || b.page || ""}`.toLowerCase().includes(q));
+    if (!shown.length) {
+      el("div", "pxd-addboard__empty", list, rows.length ? "No matching boards" : "No boards found");
+      return;
+    }
+    for (const b of shown) {
+      const row2 = el("div", "pxd-addboard__row", list);
+      row2.dataset.uid = b.uid;
+      row2.setAttribute("data-uid", b.uid);
+      const text2 = el("span", "pxd-addboard__text", row2);
+      el("span", "pxd-addboard__name", text2, b.title || "Untitled board");
+      const page = b.pageTitle || b.page;
+      if (page) el("span", "pxd-addboard__page", text2, page);
+    }
+  };
+  on(box2, "pxd-close", () => close());
+  on(back, "pointerdown", (event) => {
+    event.preventDefault?.();
+    event.stopPropagation?.();
+    close();
+  });
+  on(filter, "input", () => render());
+  on(filter, "keydown", (event) => {
+    event.stopPropagation?.();
+    if (event.key !== "Escape") return;
+    event.preventDefault?.();
+    close();
+  });
+  on(list, "click", (event) => {
+    const row2 = event.target?.closest?.(".pxd-addboard__row");
+    const uid = row2?.dataset?.uid || row2?.getAttribute?.("data-uid");
+    if (!uid || busy) return;
+    const board2 = rows.find((b) => b.uid === uid);
+    if (!board2) return;
+    event.preventDefault?.();
+    event.stopPropagation?.();
+    busy = true;
+    Promise.resolve(onPick?.(board2)).then((ok) => {
+      if (ok === false) {
+        busy = false;
+        return;
+      }
+      close();
+    }, () => {
+      busy = false;
+    });
+  });
+  Promise.resolve(typeof listBoards === "function" ? listBoards() : []).then((got) => {
+    if (closed) return;
+    rows = recentBoardRows(got);
+    render();
+  }, () => {
+    if (closed) return;
+    rows = [];
+    render();
+  });
+  try {
+    filter.focus();
+  } catch {
+  }
+  return api;
+}
+
 // src/settings.js
 var SETTING_IDS = Object.freeze({
   enabled: "enabled",
@@ -17048,6 +17178,8 @@ async function installPlexusDiagram({
   let settings = readSettings(extensionAPI);
   const liveSettings = { get: (id) => settings[id] };
   let stopped = false;
+  let closeAddToBoard = () => {
+  };
   const mounts = /* @__PURE__ */ new Map();
   const trusted = /* @__PURE__ */ new Set();
   const portalObservers = /* @__PURE__ */ new Map();
@@ -17624,6 +17756,41 @@ async function installPlexusDiagram({
           });
         }
       });
+      await lifecycle.command(extensionAPI.ui.blockContextMenu, {
+        label: "Add to board…",
+        "display-conditional": (event) => active() && Boolean(event?.["block-uid"]),
+        callback: (event) => {
+          if (!active()) return;
+          const blockUid = event?.["block-uid"];
+          if (!blockUid) return;
+          closeAddToBoard();
+          const picker = openAddToBoard({
+            doc,
+            blockUid,
+            listBoards: () => host.listBoards?.() ?? [],
+            onPick: async (board2) => {
+              if (!board2?.uid || board2.uid === blockUid) return false;
+              let session = null;
+              try {
+                session = acquireSession2(board2.uid, { host, settings: liveSettings });
+                const id = await session?.addBlockRef?.(blockUid);
+                return Boolean(id);
+              } catch (error) {
+                console.warn("[plexus-diagram] Add to board failed", error);
+                return false;
+              } finally {
+                session?.release?.();
+              }
+            }
+          });
+          closeAddToBoard = () => {
+            picker.close();
+            closeAddToBoard = () => {
+            };
+          };
+        }
+      });
+      lifecycle.add(() => closeAddToBoard());
     }
   }
   lifecycle.add(onSettingsChange((id, value) => {

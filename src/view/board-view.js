@@ -2407,6 +2407,16 @@ export function mountBoardView({
     if (outlineMode && !event.target?.closest?.(".pxd-mode")) return;
     if (tableMode && !event.target?.closest?.(".pxd-toolbar__table")) return;
     if (kanbanMode && !event.target?.closest?.(".pxd-toolbar__kanban")) return;
+    // The Add to board picker sits outside every root. Escape closes it; other keys stay with its filter.
+    const addBoard = doc.querySelector?.(".pxd-addboard");
+    if (addBoard) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        addBoard.dispatchEvent(new CustomEvent("pxd-close"));
+      }
+      return;
+    }
     // The open menu owns the keyboard; Quick Look and a presentation only let their own keys through.
     if (menu.isOpen()) return;
     if (event.key === "Escape" && blockEdit && !doc.querySelector?.(".rm-autocomplete__results")) {

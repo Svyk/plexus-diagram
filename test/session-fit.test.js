@@ -292,6 +292,21 @@ test("RG-6: sortOutline matches the visual order and a second pass writes nothin
   assert.equal(undos(), moves, "the sort is one undo step, chunked with the other grouped writes");
 });
 
+test("RG-7: addBlockRef places one ref card on the content center and leaves the other cards put", async () => {
+  const { fake, session } = setup([card("a", 0, 0, 100, 100), card("b", 300, 100, 100, 100)]);
+  const beforeA = plexus(fake, "a");
+  const id = await session.addBlockRef("srcBLOCK1");
+  assert.equal(fake.block(id).string, "((srcBLOCK1))");
+  assert.equal(fake.block(id).parent, "b1");
+  assert.equal(plexus(fake, id).x, 60);
+  assert.equal(plexus(fake, id).y, 20);
+  assert.deepEqual(plexus(fake, "a"), beforeA);
+  const undos = () => fake.calls.filter((row) => row[0] === "undo").length;
+  await session.undo();
+  assert.equal(undos(), 1);
+  assert.equal(await session.addBlockRef(""), null);
+});
+
 test("tidyItems on one selected section tidies its members; outline follows block order", async () => {
   const tree = [section("S", 0, 0, 800, 600, [card("m1", 300, 300, 100, 80), card("m2", 40, 40, 100, 80), card("m3", 500, 40, 100, 80)])];
   const { fake, session } = setup(tree);

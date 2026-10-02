@@ -392,6 +392,15 @@ export function boundsOf(rectList) {
   return list.length ? list.reduce(unionRect) : null;
 }
 
+// Top-left of a card whose center sits on the content center. An empty board uses the origin.
+export function cardAtCenter(bounds, size) {
+  const w = size?.w || 0;
+  const h = size?.h || 0;
+  const cx = bounds ? bounds.x + bounds.w / 2 : 0;
+  const cy = bounds ? bounds.y + bounds.h / 2 : 0;
+  return { x: cx - w / 2, y: cy - h / 2 };
+}
+
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 const PREVIEW_MIN = { w: DEFAULT_SIZES.card.w * 2, h: DEFAULT_SIZES.card.h * 2 };
 const PREVIEW_TITLE = 40;

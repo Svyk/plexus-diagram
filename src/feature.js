@@ -3,6 +3,7 @@ import { createHost } from "./host/roam.js";
 import { acquireSession as acquireSessionDefault } from "./session.js";
 import { mountBoardView } from "./view/board-view.js";
 import { assignDeepLink } from "./model/deeplink.js";
+import { openAddToBoard } from "./view/board-picker.js";
 import { parseBoardTitle, readPlexus, UNTITLED_BOARD } from "./model/schema.js";
 import {
   BLOCK_CONTAINER_SELECTOR,
@@ -132,6 +133,7 @@ export async function installPlexusDiagram({
   // Sessions outlive a settings change (they are ref-counted and kept), so they read through this accessor.
   const liveSettings = { get: (id) => settings[id] };
   let stopped = false;
+  let closeAddToBoard = () => {};
   const mounts = new Map(); // native element -> record
   const trusted = new Set(); // uids confirmed enhanced by this runtime (command results)
   const portalObservers = new Map(); // portal node -> its own added-nodes observer
@@ -728,6 +730,37 @@ export async function installPlexusDiagram({
           });
         },
       });
+      await lifecycle.command(extensionAPI.ui.blockContextMenu, {
+        label: "Add to board…",
+        "display-conditional": (event) => active() && Boolean(event?.["block-uid"]),
+        callback: (event) => {
+          if (!active()) return;
+          const blockUid = event?.["block-uid"];
+          if (!blockUid) return;
+          closeAddToBoard();
+          const picker = openAddToBoard({
+            doc,
+            blockUid,
+            listBoards: () => host.listBoards?.() ?? [],
+            onPick: async (board) => {
+              if (!board?.uid || board.uid === blockUid) return false;
+              let session = null;
+              try {
+                session = acquireSession(board.uid, { host, settings: liveSettings });
+                const id = await session?.addBlockRef?.(blockUid);
+                return Boolean(id);
+              } catch (error) {
+                console.warn("[plexus-diagram] Add to board failed", error);
+                return false;
+              } finally {
+                session?.release?.();
+              }
+            },
+          });
+          closeAddToBoard = () => { picker.close(); closeAddToBoard = () => {}; };
+        },
+      });
+      lifecycle.add(() => closeAddToBoard());
     }
   }
 

@@ -5,6 +5,7 @@ import { createLifecycle } from "../src/lifecycle.js";
 import { installPlexusDiagram, PACKAGE_VERSION } from "../src/feature.js";
 import { mergePropsForWrite } from "../src/model/schema.js";
 import { PREPAINT_STYLE_ID } from "../src/discovery.js";
+import { createDomStub } from "./fixtures/dom-stub.js";
 
 // ---- minimal DOM ------------------------------------------------------------------------------
 
@@ -433,16 +434,72 @@ test("commands register in palette and slash, the context menu gets Enhance, and
     const labels = ["Plexus: Enhance this diagram", "Plexus: New whiteboard here", "Plexus: Restore native diagram", "Plexus: Fullscreen this diagram", "Plexus: Export board as SVG", "Plexus: Copy board as text"];
     assert.deepEqual([...t.commands.palette.keys()], labels);
     assert.deepEqual([...t.commands.slash.keys()], labels);
-    assert.deepEqual([...t.commands.context.keys()], ["Plexus: Enhance", "Show on board"]);
+    assert.deepEqual([...t.commands.context.keys()], ["Plexus: Enhance", "Show on board", "Add to board…"]);
     const context = t.commands.context.get("Plexus: Enhance");
     assert.equal(context["display-conditional"]({ "block-string": "{{[[diagram]]}}" }), true);
     assert.equal(context["display-conditional"]({ "block-string": "plain" }), false);
     assert.equal(t.commands.context.get("Show on board")["display-conditional"]({ "block-uid": "plain" }), false);
+    const add = t.commands.context.get("Add to board…");
+    assert.equal(add["display-conditional"]({ "block-uid": "srcBLOCK1" }), true);
+    assert.equal(add["display-conditional"]({}), false);
+    assert.equal(t.commands.palette.has("Add to board…"), false);
+    assert.equal(t.commands.slash.has("Add to board…"), false);
     await t.lifecycle.dispose();
     assert.equal(t.commands.palette.size + t.commands.slash.size + t.commands.context.size, 0);
-    assert.equal(t.commands.removed.length, 14);
+    assert.equal(t.commands.removed.length, 15);
   } finally {
     t.restore();
+  }
+});
+
+test("RG-7: Add to board acquires the picked board with the live host and places the ref", async () => {
+  const dom = createDomStub();
+  dom.document.head = dom.document.createElement("head");
+  const restoreDom = dom.install();
+  const lifecycle = createLifecycle();
+  const calls = [];
+  const host = {
+    listBoards: () => [{ uid: "boardAAA1", title: "Fixture", edited: 4, pageTitle: "Lab" }],
+  };
+  const acquireSession = (uid, options) => {
+    calls.push({ uid, host: options?.host, hasSettings: typeof options?.settings?.get === "function" });
+    return {
+      addBlockRef: async (blockUid) => {
+        calls.push({ blockUid });
+        return "cardNEW01";
+      },
+      release: () => { calls.push("release"); },
+    };
+  };
+  const commands = { context: new Map() };
+  const extensionAPI = {
+    settings: { get: () => null },
+    ui: {
+      commandPalette: { addCommand: async () => {}, removeCommand: async () => {} },
+      slashCommand: { addCommand: async () => {}, removeCommand: async () => {} },
+      blockContextMenu: {
+        addCommand: async (config) => { commands.context.set(config.label, config); },
+        removeCommand: async ({ label }) => { commands.context.delete(label); },
+      },
+    },
+    platform: { isMobile: () => false },
+  };
+  try {
+    await installPlexusDiagram({ extensionAPI, lifecycle, host, acquireSession, mountView: () => ({ dispose() {} }) });
+    const add = commands.context.get("Add to board…");
+    add.callback({ "block-uid": "srcBLOCK1" });
+    await new Promise((resolve) => setImmediate(resolve));
+    dom.document.querySelector('[data-uid="boardAAA1"]').click();
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.deepEqual(calls, [
+      { uid: "boardAAA1", host, hasSettings: true },
+      { blockUid: "srcBLOCK1" },
+      "release",
+    ]);
+    assert.equal(dom.document.querySelector(".pxd-addboard"), null);
+  } finally {
+    await lifecycle.dispose().catch(() => {});
+    restoreDom();
   }
 });
 

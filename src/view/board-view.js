@@ -38,6 +38,7 @@ import { editorKeyAction, inputBlockRole } from "./editor-keys.js";
 import { createEdgeLayer } from "./edges.js";
 import { createChrome, LINK_MODES } from "./chrome.js";
 import { syncEmptyHint } from "./empty-hint.js";
+import { applyMotionClasses, motionProfile, resolveMotion } from "./motion.js";
 import { mountTable } from "./table-view.js";
 import { mountKanban } from "./kanban-view.js";
 import { createPropsPanel } from "./props-panel.js";
@@ -315,6 +316,10 @@ export function mountBoardView({
     const v = setting(k, d);
     return v === false || v === "false" ? false : v === true || v === "true" ? true : Boolean(v);
   };
+  let motionMq = null;
+  try { motionMq = win?.matchMedia?.("(prefers-reduced-motion: reduce)") || null; } catch { motionMq = null; }
+  const prefersReducedMotion = () => Boolean(motionMq?.matches);
+  const currentMotion = () => resolveMotion(setting("motion", "full"), prefersReducedMotion());
   const timers = createTimers();
   const listeners = [];
   const observers = [];
@@ -606,6 +611,25 @@ export function mountBoardView({
     // Buttons, Fit, search and edit-zoom change the viewport outside a gesture: re-evaluate LOD + content.
     if (!gesturing) settle();
   };
+  // Button zoom, Fit, and present steps ease the world transform. Pan and wheel do not:
+  // a transition on every pointer frame would lag the camera.
+  let zoomOff = null;
+  const clearZoomAnim = () => {
+    if (zoomOff) { zoomOff(); zoomOff = null; }
+    root.classList.remove("pxd-root--zooming");
+  };
+  const armZoomAnim = () => {
+    const ms = motionProfile(currentMotion()).zoomMs;
+    clearZoomAnim();
+    if (ms <= 0) return;
+    root.classList.add("pxd-root--zooming");
+    zoomOff = timers.later(() => {
+      zoomOff = null;
+      if (!disposed) root.classList.remove("pxd-root--zooming");
+    }, ms);
+  };
+  const animateViewport = (next) => { armZoomAnim(); setViewport(next); };
+  const moveViewport = (next) => { clearZoomAnim(); setViewport(next); };
   // Screen strips a fit must keep content out of: the toolbar, an open side panel, and the title pill that floats
   // above a section sitting on the top edge of the fitted bounds.
   const fitInsets = (bounds) => {
@@ -622,7 +646,7 @@ export function mountBoardView({
   };
   const fitTo = (bounds, opts = {}) => {
     if (!size.width || !size.height) measure();
-    setViewport(fitViewport(bounds, size, { padding: 64, maxZoom: opts.maxZoom ?? 1.5, insets: fitInsets(bounds) }));
+    animateViewport(fitViewport(bounds, size, { padding: 64, maxZoom: opts.maxZoom ?? 1.5, insets: fitInsets(bounds) }));
   };
   const fitAll = () => fitTo(boundsOf([...rects().values()]));
   const fitSelection = (uids) => {
@@ -631,7 +655,7 @@ export function mountBoardView({
     if (b) fitTo(b, { maxZoom: 1 });
   };
   const centerOn = (worldPoint) => {
-    setViewport({ x: size.width / 2 - worldPoint.x * vp.zoom, y: size.height / 2 - worldPoint.y * vp.zoom, zoom: vp.zoom });
+    moveViewport({ x: size.width / 2 - worldPoint.x * vp.zoom, y: size.height / 2 - worldPoint.y * vp.zoom, zoom: vp.zoom });
   };
 
   // ------------------------------------------------------------ LOD
@@ -1005,8 +1029,7 @@ export function mountBoardView({
     chrome.toolbar.setBackground({ pattern, tone: ownHex || tone, override });
   };
   const applyMotion = () => {
-    const motion = setting("motion", "full");
-    root.classList.toggle("pxd-root--motion-off", motion === "reduced" || motion === "none");
+    applyMotionClasses(root, currentMotion());
   };
 
   // ------------------------------------------------------------ focus mode
@@ -1577,9 +1600,9 @@ export function mountBoardView({
       cycleLinks: () => cycleLinks(),
       toggleTable: () => setTable(!tableMode),
       toggleKanban: () => setKanban(!kanbanMode),
-      zoomIn: () => setViewport(zoomAt(vp, { x: size.width / 2, y: size.height / 2 }, 1.2)),
-      zoomOut: () => setViewport(zoomAt(vp, { x: size.width / 2, y: size.height / 2 }, 1 / 1.2)),
-      zoomReset: () => setViewport(zoomAt(vp, { x: size.width / 2, y: size.height / 2 }, 1 / vp.zoom)),
+      zoomIn: () => animateViewport(zoomAt(vp, { x: size.width / 2, y: size.height / 2 }, 1.2)),
+      zoomOut: () => animateViewport(zoomAt(vp, { x: size.width / 2, y: size.height / 2 }, 1 / 1.2)),
+      zoomReset: () => animateViewport(zoomAt(vp, { x: size.width / 2, y: size.height / 2 }, 1 / vp.zoom)),
       fit: () => fitAll(),
       toggleMinimap: () => chrome.minimap.setVisible(!chrome.minimap.isVisible()),
       toggleFullscreen: () => requestFullscreen(!isFullscreen),
@@ -2078,7 +2101,8 @@ export function mountBoardView({
     hitRects: () => paintRects(),
     viewport: () => vp,
     size: () => size,
-    setViewport,
+    setViewport: moveViewport,
+    animateViewport,
     fitAll,
     fitSelection,
     onSelection: (sel) => {
@@ -2721,6 +2745,9 @@ export function mountBoardView({
     const mq = win?.matchMedia?.("(prefers-color-scheme: dark)");
     if (mq?.addEventListener) listen(mq, "change", () => { if (!disposed) applyTheme(); });
   } catch { /* no matchMedia */ }
+  try {
+    if (motionMq?.addEventListener) listen(motionMq, "change", () => { if (!disposed) applyMotion(); });
+  } catch { /* no matchMedia */ }
   routeOff = watchRouteExit({ boardUid: routeUid, onExit: () => { if (isFullscreen) requestFullscreen(false); }, win });
 
   // ------------------------------------------------------------ render frame
@@ -2802,14 +2829,15 @@ export function mountBoardView({
   };
 
   // ------------------------------------------------------------ deep link
-  const PULSE_MS = 1800;
   const pulseItem = (uid) => {
     const shell = itemsR.shellOf(uid);
     if (!shell) return;
+    const ms = motionProfile(currentMotion()).pulseMs;
     shell.classList.remove("pxd-item--pulse");
+    if (ms <= 0) return;
     void shell.offsetWidth;
     shell.classList.add("pxd-item--pulse");
-    timers.later(() => { if (!disposed) shell.classList.remove("pxd-item--pulse"); }, PULSE_MS);
+    timers.later(() => { if (!disposed) shell.classList.remove("pxd-item--pulse"); }, ms);
   };
   const consumeDeepLink = (hash = win?.location?.hash || "") => {
     if (disposed) return false;

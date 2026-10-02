@@ -574,12 +574,12 @@ export function createInteractions({ actions, settings } = {}) {
   // ------------------------------------------------------------------ keyboard
   const zoomBy = (factor) => {
     const s = call("size") || { width: 0, height: 0 };
-    call("setViewport", zoomAt(vp(), { x: s.width / 2, y: s.height / 2 }, factor));
+    call("animateViewport", zoomAt(vp(), { x: s.width / 2, y: s.height / 2 }, factor));
   };
   const zoomTo = (z) => {
     const s = call("size") || { width: 0, height: 0 };
     const v = vp();
-    call("setViewport", zoomAt(v, { x: s.width / 2, y: s.height / 2 }, z / (v.zoom || 1)));
+    call("animateViewport", zoomAt(v, { x: s.width / 2, y: s.height / 2 }, z / (v.zoom || 1)));
   };
 
   const deleteSelection = (withContents) => {

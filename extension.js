@@ -7272,12 +7272,12 @@ function createInteractions({ actions, settings } = {}) {
   };
   const zoomBy = (factor) => {
     const s = call("size") || { width: 0, height: 0 };
-    call("setViewport", zoomAt(vp(), { x: s.width / 2, y: s.height / 2 }, factor));
+    call("animateViewport", zoomAt(vp(), { x: s.width / 2, y: s.height / 2 }, factor));
   };
   const zoomTo = (z) => {
     const s = call("size") || { width: 0, height: 0 };
     const v = vp();
-    call("setViewport", zoomAt(v, { x: s.width / 2, y: s.height / 2 }, z / (v.zoom || 1)));
+    call("animateViewport", zoomAt(v, { x: s.width / 2, y: s.height / 2 }, z / (v.zoom || 1)));
   };
   const deleteSelection = (withContents) => {
     if (state.edge) {
@@ -11543,6 +11543,35 @@ function syncEmptyHint(node2, board2) {
   return show;
 }
 
+// src/view/motion.js
+var MOTION_LEVELS = Object.freeze(["full", "reduced", "none"]);
+var MOTION_PROFILE = Object.freeze({
+  full: Object.freeze({ zoomMs: 180, presentMs: 160, pulseMs: 1800, edges: true }),
+  reduced: Object.freeze({ zoomMs: 70, presentMs: 60, pulseMs: 400, edges: false }),
+  none: Object.freeze({ zoomMs: 0, presentMs: 0, pulseMs: 0, edges: false })
+});
+function resolveMotion(value, prefersReduced = false) {
+  const level = MOTION_LEVELS.includes(value) ? value : "full";
+  if (level === "none") return "none";
+  if (level === "reduced" || prefersReduced) return "reduced";
+  return "full";
+}
+function motionProfile(level) {
+  return MOTION_PROFILE[level] || MOTION_PROFILE.full;
+}
+function applyMotionClasses(root, level) {
+  const resolved = MOTION_LEVELS.includes(level) ? level : "full";
+  const profile = motionProfile(resolved);
+  root.classList.toggle("pxd-root--motion-off", resolved !== "full");
+  root.classList.toggle("pxd-root--motion-reduced", resolved === "reduced");
+  root.classList.toggle("pxd-root--motion-none", resolved === "none");
+  if (root.dataset) root.dataset.motion = resolved;
+  root.style?.setProperty?.("--pxd-zoom-ms", `${profile.zoomMs}ms`);
+  root.style?.setProperty?.("--pxd-present-ms", `${profile.presentMs}ms`);
+  root.style?.setProperty?.("--pxd-pulse-ms", `${profile.pulseMs}ms`);
+  return profile;
+}
+
 // src/model/table.js
 var FIXED = ["Title", "Section", "Type", "Edited"];
 function cleanName(name) {
@@ -13147,6 +13176,9 @@ function createPresenter({ doc = globalThis.document, root, timers, on = {} } = 
     nextBtn.disabled = index >= steps.length - 1;
     prevBtn.setAttribute("aria-disabled", String(index <= 0));
     nextBtn.setAttribute("aria-disabled", String(index >= steps.length - 1));
+    hud.classList.remove("pxd-present-hud--step");
+    void hud.offsetWidth;
+    hud.classList.add("pxd-present-hud--step");
   };
   const goto = (i) => {
     if (!active || !steps.length) return false;
@@ -14026,6 +14058,14 @@ function mountBoardView({
     const v = setting(k, d);
     return v === false || v === "false" ? false : v === true || v === "true" ? true : Boolean(v);
   };
+  let motionMq = null;
+  try {
+    motionMq = win?.matchMedia?.("(prefers-reduced-motion: reduce)") || null;
+  } catch {
+    motionMq = null;
+  }
+  const prefersReducedMotion = () => Boolean(motionMq?.matches);
+  const currentMotion = () => resolveMotion(setting("motion", "full"), prefersReducedMotion());
   const timers = createTimers();
   const listeners2 = [];
   const observers = [];
@@ -14330,6 +14370,32 @@ function mountBoardView({
     markViewport();
     if (!gesturing) settle();
   };
+  let zoomOff = null;
+  const clearZoomAnim = () => {
+    if (zoomOff) {
+      zoomOff();
+      zoomOff = null;
+    }
+    root.classList.remove("pxd-root--zooming");
+  };
+  const armZoomAnim = () => {
+    const ms = motionProfile(currentMotion()).zoomMs;
+    clearZoomAnim();
+    if (ms <= 0) return;
+    root.classList.add("pxd-root--zooming");
+    zoomOff = timers.later(() => {
+      zoomOff = null;
+      if (!disposed) root.classList.remove("pxd-root--zooming");
+    }, ms);
+  };
+  const animateViewport = (next) => {
+    armZoomAnim();
+    setViewport(next);
+  };
+  const moveViewport = (next) => {
+    clearZoomAnim();
+    setViewport(next);
+  };
   const fitInsets = (bounds) => {
     const rr = root.getBoundingClientRect?.() || rootRect;
     const tb = chrome.toolbar.el?.getBoundingClientRect?.();
@@ -14344,7 +14410,7 @@ function mountBoardView({
   };
   const fitTo = (bounds, opts = {}) => {
     if (!size.width || !size.height) measure();
-    setViewport(fitViewport(bounds, size, { padding: 64, maxZoom: opts.maxZoom ?? 1.5, insets: fitInsets(bounds) }));
+    animateViewport(fitViewport(bounds, size, { padding: 64, maxZoom: opts.maxZoom ?? 1.5, insets: fitInsets(bounds) }));
   };
   const fitAll = () => fitTo(boundsOf([...rects().values()]));
   const fitSelection = (uids) => {
@@ -14353,7 +14419,7 @@ function mountBoardView({
     if (b) fitTo(b, { maxZoom: 1 });
   };
   const centerOn = (worldPoint) => {
-    setViewport({ x: size.width / 2 - worldPoint.x * vp.zoom, y: size.height / 2 - worldPoint.y * vp.zoom, zoom: vp.zoom });
+    moveViewport({ x: size.width / 2 - worldPoint.x * vp.zoom, y: size.height / 2 - worldPoint.y * vp.zoom, zoom: vp.zoom });
   };
   const mapThreshold = () => {
     const n2 = Number(setting("map-zoom", "0.45"));
@@ -14745,8 +14811,7 @@ function mountBoardView({
     chrome.toolbar.setBackground({ pattern, tone: ownHex || tone, override });
   };
   const applyMotion = () => {
-    const motion = setting("motion", "full");
-    root.classList.toggle("pxd-root--motion-off", motion === "reduced" || motion === "none");
+    applyMotionClasses(root, currentMotion());
   };
   const focusSetNow = () => {
     const b = board2();
@@ -15580,9 +15645,9 @@ function mountBoardView({
       cycleLinks: () => cycleLinks(),
       toggleTable: () => setTable(!tableMode),
       toggleKanban: () => setKanban(!kanbanMode),
-      zoomIn: () => setViewport(zoomAt(vp, { x: size.width / 2, y: size.height / 2 }, 1.2)),
-      zoomOut: () => setViewport(zoomAt(vp, { x: size.width / 2, y: size.height / 2 }, 1 / 1.2)),
-      zoomReset: () => setViewport(zoomAt(vp, { x: size.width / 2, y: size.height / 2 }, 1 / vp.zoom)),
+      zoomIn: () => animateViewport(zoomAt(vp, { x: size.width / 2, y: size.height / 2 }, 1.2)),
+      zoomOut: () => animateViewport(zoomAt(vp, { x: size.width / 2, y: size.height / 2 }, 1 / 1.2)),
+      zoomReset: () => animateViewport(zoomAt(vp, { x: size.width / 2, y: size.height / 2 }, 1 / vp.zoom)),
       fit: () => fitAll(),
       toggleMinimap: () => chrome.minimap.setVisible(!chrome.minimap.isVisible()),
       toggleFullscreen: () => requestFullscreen(!isFullscreen),
@@ -16232,7 +16297,8 @@ function mountBoardView({
     hitRects: () => paintRects(),
     viewport: () => vp,
     size: () => size,
-    setViewport,
+    setViewport: moveViewport,
+    animateViewport,
     fitAll,
     fitSelection,
     onSelection: (sel) => {
@@ -16931,6 +16997,12 @@ function mountBoardView({
     });
   } catch {
   }
+  try {
+    if (motionMq?.addEventListener) listen(motionMq, "change", () => {
+      if (!disposed) applyMotion();
+    });
+  } catch {
+  }
   routeOff = watchRouteExit({ boardUid: routeUid, onExit: () => {
     if (isFullscreen) requestFullscreen(false);
   }, win });
@@ -17008,16 +17080,17 @@ function mountBoardView({
     dirty.selection = false;
     dirty.links = false;
   };
-  const PULSE_MS = 1800;
   const pulseItem = (uid) => {
     const shell = itemsR.shellOf(uid);
     if (!shell) return;
+    const ms = motionProfile(currentMotion()).pulseMs;
     shell.classList.remove("pxd-item--pulse");
+    if (ms <= 0) return;
     void shell.offsetWidth;
     shell.classList.add("pxd-item--pulse");
     timers.later(() => {
       if (!disposed) shell.classList.remove("pxd-item--pulse");
-    }, PULSE_MS);
+    }, ms);
   };
   const consumeDeepLink = (hash = win?.location?.hash || "") => {
     if (disposed) return false;
@@ -17430,7 +17503,8 @@ var SETTING_IDS = Object.freeze({
   autoFitSections: "auto-fit-sections",
   spaceOut: "space-out",
   showCardBadges: "show-card-badges",
-  showPalette: "show-palette"
+  showPalette: "show-palette",
+  motion: "motion"
 });
 var DEFAULTS = Object.freeze({
   [SETTING_IDS.enabled]: true,
@@ -17455,7 +17529,8 @@ var DEFAULTS = Object.freeze({
   [SETTING_IDS.autoFitSections]: true,
   [SETTING_IDS.spaceOut]: false,
   [SETTING_IDS.showCardBadges]: true,
-  [SETTING_IDS.showPalette]: true
+  [SETTING_IDS.showPalette]: true,
+  [SETTING_IDS.motion]: "full"
 });
 var BOARD_TONES2 = ["none", "paper", "gray", "red", "orange", "yellow", "green", "teal", "blue", "indigo", "purple", "pink"];
 var MAP_ZOOMS = ["0.3", "0.45", "0.6"];
@@ -17466,7 +17541,8 @@ var ENUMS = Object.freeze({
   [SETTING_IDS.grid]: ["dots", "lines", "grid", "plain"],
   [SETTING_IDS.defaultCardLook]: ["block", "card"],
   [SETTING_IDS.boardTone]: BOARD_TONES2,
-  [SETTING_IDS.mapZoom]: MAP_ZOOMS
+  [SETTING_IDS.mapZoom]: MAP_ZOOMS,
+  [SETTING_IDS.motion]: ["full", "reduced", "none"]
 });
 var NUMBERS = /* @__PURE__ */ new Set([SETTING_IDS.defaultCardWidth, SETTING_IDS.defaultCardHeight]);
 function settingsDefaults() {
@@ -17561,6 +17637,7 @@ function createSettingsPanel() {
       selectRow(SETTING_IDS.wheel, "Mouse wheel", "What the mouse wheel does on the board. Pinch always zooms.", ["pan", "zoom"]),
       switchRow(SETTING_IDS.showMinimap, "Show minimap", "Show the minimap."),
       switchRow(SETTING_IDS.showPalette, "Show tool palette", "Show the tool palette along the bottom of the board."),
+      selectRow(SETTING_IDS.motion, "Motion", "Full, reduced, or none. A system reduced-motion setting shortens Full.", ["full", "reduced", "none"]),
       selectRow(SETTING_IDS.controlsPosition, "Controls", "Rail is the vertical control stack. Bar is the 1.2 horizontal zoom group.", ["rail", "bar"]),
       switchRow(SETTING_IDS.snapGuides, "Snap guides", "Align dragged cards to neighbours and show guides."),
       switchRow(SETTING_IDS.snapGrid, "Snap to grid", "Snap a dragged card to the 24px grid. Off unless you turn it on. Alt while dragging skips both snaps."),

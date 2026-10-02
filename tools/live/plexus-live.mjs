@@ -61,12 +61,14 @@ if (cmd === "inject") {
   await evaluate(`(async () => {
     if (window.__plexusDiagram && !window.__pxdLive) return "REFUSED: an installed Plexus " + window.__plexusDiagram.version + " is running in this window. Remove its Developer Extension URL first, or use another window.";
     if (window.__pxdLive?.unload) { try { await window.__pxdLive.unload(); } catch (e) { console.error(e); } }
+    document.querySelectorAll("#pxd-live-css").forEach((node) => node.remove());
     const style = document.createElement("style"); style.id = "pxd-live-css"; style.textContent = ${JSON.stringify(css)}; document.head.append(style);
     const url = URL.createObjectURL(new Blob([${JSON.stringify(code)}], { type: "text/javascript" }));
     const mod = await import(url);
     const saved = JSON.parse(localStorage.getItem("pxd-live-settings") || "{}");
     const store = new Map(Object.entries(saved));
     const persist = () => localStorage.setItem("pxd-live-settings", JSON.stringify(Object.fromEntries(store)));
+    let panelConfig = null;
     const R = window.roamAlphaAPI.ui;
     const wrap = (ns) => ns ? { addCommand: (c) => ns.addCommand(c), removeCommand: (c) => ns.removeCommand(c) } : undefined;
     const extensionAPI = {
@@ -74,14 +76,14 @@ if (cmd === "inject") {
         get: (k) => store.has(k) ? store.get(k) : null,
         set: async (k, v) => { store.set(k, v); persist(); },
         getAll: () => Object.fromEntries(store),
-        panel: { create: async () => {} },
+        panel: { create: async (config) => { panelConfig = config; } },
       },
       ui: { commandPalette: wrap(R.commandPalette), slashCommand: wrap(R.slashCommand), blockContextMenu: wrap(R.blockContextMenu) },
     };
     const t0 = performance.now();
     await mod.default.onload({ extensionAPI, extension: { version: "live" } });
     const loadMs = Math.round(performance.now() - t0);
-    window.__pxdLive = { mod, extensionAPI, unload: async () => { await mod.default.onunload(); document.getElementById("pxd-live-css")?.remove(); URL.revokeObjectURL(url); } };
+    window.__pxdLive = { mod, extensionAPI, panel: () => panelConfig, unload: async () => { await mod.default.onunload(); document.querySelectorAll("#pxd-live-css").forEach((node) => node.remove()); URL.revokeObjectURL(url); } };
     return "injected in " + loadMs + " ms; version " + (window.__plexusDiagram?.version || "?");
   })()`);
 } else if (cmd === "unload") {

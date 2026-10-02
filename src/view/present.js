@@ -55,6 +55,9 @@ export function createPresenter({ doc = globalThis.document, root, timers, on = 
     nextBtn.disabled = index >= steps.length - 1;
     prevBtn.setAttribute("aria-disabled", String(index <= 0));
     nextBtn.setAttribute("aria-disabled", String(index >= steps.length - 1));
+    hud.classList.remove("pxd-present-hud--step");
+    void hud.offsetWidth;
+    hud.classList.add("pxd-present-hud--step");
   };
 
   const goto = (i) => {

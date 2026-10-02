@@ -799,6 +799,8 @@ body.pxd-has-fullscreen .breadcrumbs-content {
 .pxd-root.pxd-lod-overview .pxd-section__title {
   font-size: var(--pxd-overview-font, 40px);
   line-height: 1.2;
+  /* Above cards (auto). Under an editing card (3), ports (4), and the overlay (5). */
+  z-index: 1;
 }
 
 .pxd-labels--hidden {

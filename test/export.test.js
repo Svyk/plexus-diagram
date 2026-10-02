@@ -200,6 +200,41 @@ test("TP-6: a six-shape flow exports each outline and the Yes/No labels", () => 
   assert.equal(worldRects(card).get("c").shape, undefined);
 });
 
+test("TP-8: the HACCP flow is three lanes and the six shapes keep their world positions", () => {
+  const b = buildBoard(starterById("process").tree);
+  const lanes = [...b.items.values()].filter((item) => item.look === "lane");
+  assert.deepEqual(lanes.map((item) => [item.title, item.axis, item.w, item.h]), [
+    ["Warehouse", "vertical", 480, 360],
+    ["Process", "vertical", 280, 360],
+    ["Pack", "vertical", 540, 360],
+  ]);
+  const rects = worldRects(b);
+  const at = (title) => {
+    const item = [...b.items.values()].find((it) => it.title === title);
+    const r = rects.get(item.uid);
+    return [r.x, r.y, r.w, r.h, b.items.get(item.parentUid).title];
+  };
+  assert.deepEqual(at("Receiving"), [40, 40, 200, 110, "Warehouse"]);
+  assert.deepEqual(at("Storage"), [300, 40, 200, 110, "Warehouse"]);
+  assert.deepEqual(at("In spec?"), [560, 20, 200, 150, "Process"]);
+  assert.deepEqual(at("Blending"), [560, 230, 200, 110, "Process"]);
+  assert.deepEqual(at("Filling"), [820, 230, 200, 110, "Pack"]);
+  assert.deepEqual(at("Packing"), [1080, 230, 200, 110, "Pack"]);
+  const svg = boardToSvg(b, rects);
+  assert.match(svg, />Warehouse</);
+  assert.match(svg, />Process</);
+  assert.match(svg, />Pack</);
+  assert.match(svg, /rx="0"/);
+
+  const row = buildBoard({
+    ":block/uid": "b",
+    ":block/string": "{{[[diagram]]:Lanes}}",
+    ":block/children": [blk("h", 0, "Incoming", { type: "section", look: "lane", axis: "horizontal", x: 0, y: 40, w: 640, h: 160 })],
+  });
+  const rowSvg = boardToSvg(row, worldRects(row));
+  assert.match(rowSvg, /<text x="12" y="120"[^>]*>Incoming<\/text>/);
+});
+
 test("TP-7: a sticky note exports a colored sheet and a shadow", () => {
   const b = buildBoard({
     ":block/uid": "b",

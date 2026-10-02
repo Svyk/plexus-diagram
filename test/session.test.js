@@ -160,6 +160,22 @@ test("createSection via rect: one create, contained members move in (one move + 
   assert.equal(session.board.items.get("c2").parentUid, "b1");
 });
 
+test("TP-8: a lane adopts a card inside it and keeps the lane look", async () => {
+  const { fake, session } = setup();
+  const uid = await session.createSection({
+    rect: { x: -20, y: -20, w: 400, h: 220 },
+    title: "Warehouse",
+    look: "lane",
+    axis: "vertical",
+  });
+  assert.deepEqual(fake.props(uid).plexus, { type: "section", x: -20, y: -20, w: 400, h: 220, look: "lane", axis: "vertical" });
+  assert.equal(session.board.items.get(uid).look, "lane");
+  assert.equal(session.board.items.get(uid).axis, "vertical");
+  assert.equal(session.board.items.get("c1").parentUid, uid);
+  assert.equal(session.board.items.get("c2").parentUid, "b1");
+  assert.deepEqual(fake.props("c1").plexus, { x: 20, y: 20, w: 280, h: 160 });
+});
+
 test("createSection concurrent with another mutation yields one section", async () => {
   const { fake, session } = setup();
   const [uid] = await Promise.all([

@@ -445,6 +445,8 @@ var CARD_LOOKS = ["block", "card"];
 var TEXT_LOOKS = ["section-note", "sticky"];
 var STICKY_SIZE = { w: 200, h: 200 };
 var STICKY_COLOR = "yellow";
+var SECTION_LOOKS = ["lane"];
+var LANE_SIZE = { horizontal: { w: 960, h: 180 }, vertical: { w: 240, h: 640 } };
 var CARD_FONT_MIN = 10;
 var CARD_FONT_MAX = 48;
 var CARD_FONT_DEFAULT = 14;
@@ -550,7 +552,8 @@ function normalizeItemLayout(plexus) {
     fontSize: section2 ? void 0 : intIn(p.fontSize, CARD_FONT_MIN, CARD_FONT_MAX),
     pinned: p.pinned === true,
     fit: p.fit === false ? false : void 0,
-    look: type === "text" ? TEXT_LOOKS.includes(p.look) ? p.look : void 0 : CARD_LOOKS.includes(p.look) ? p.look : void 0,
+    look: type === "text" ? TEXT_LOOKS.includes(p.look) ? p.look : void 0 : type === "section" ? SECTION_LOOKS.includes(p.look) ? p.look : void 0 : CARD_LOOKS.includes(p.look) ? p.look : void 0,
+    axis: type === "section" && SECTION_LOOKS.includes(p.look) ? p.axis === "vertical" ? "vertical" : "horizontal" : void 0,
     textColor: section2 ? void 0 : styleColor(p.textColor),
     align: section2 || !ALIGNS.includes(p.align) ? void 0 : p.align,
     fill: section2 ? void 0 : styleColor(p.fill),
@@ -615,6 +618,9 @@ function serializeItemLayout(layout) {
   if (type === "text") {
     if (TEXT_LOOKS.includes(l.look)) out.look = l.look;
     if (SHAPES.includes(l.shape)) out.shape = l.shape;
+  } else if (type === "section" && SECTION_LOOKS.includes(l.look)) {
+    out.look = l.look;
+    out.axis = l.axis === "vertical" ? "vertical" : "horizontal";
   } else if (CARD_LOOKS.includes(l.look)) out.look = l.look;
   if (BOARD_PATTERNS.includes(l.bg)) out.bg = l.bg;
   const tone = boardColor(l.bgColor);
@@ -1015,7 +1021,8 @@ function buildBoard(pulled, { defaults } = {}) {
         areaFill: type === "section" ? layout.areaFill : void 0,
         sectionDefaults: type === "section" ? sectionDefaults : void 0,
         pinned: layout.pinned,
-        look: type === "card" ? cardLook(kind, layout.look) : type === "text" ? layout.look : void 0,
+        look: type === "card" ? cardLook(kind, layout.look) : type === "text" || type === "section" ? layout.look : void 0,
+        ...type === "section" && layout.look === "lane" ? { axis: layout.axis || "horizontal" } : {},
         ...type === "text" && layout.shape ? { shape: layout.shape } : {},
         open: type === "card" ? child[":block/open"] !== false : void 0,
         autofit: !(type === "section" && layout.fit === false),
@@ -3828,7 +3835,7 @@ var KIDS = ":block/children";
 var PROPS = ":block/props";
 var OPEN = ":block/open";
 var LINK_MODES = ["off", "attributes", "all"];
-var ITEM_KEYS = ["type", "x", "y", "w", "h", "color", "collapsed", "fontSize", "pinned", "fit", "look", "textColor", "align", "fill", "border", "titleSize", "titleColor", "titleFill", "areaFill", "shape"];
+var ITEM_KEYS = ["type", "x", "y", "w", "h", "color", "collapsed", "fontSize", "pinned", "fit", "look", "axis", "textColor", "align", "fill", "border", "titleSize", "titleColor", "titleFill", "areaFill", "shape"];
 var EDGE_KEYS = ["type", "from", "to", "fromSide", "toSide", "dir", "route", "dash", "weight", "color"];
 var MAX_PARENT_STRINGS = 200;
 var DAILY_GAP = 20;
@@ -4546,8 +4553,8 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
         return id;
       });
     },
-    createSection({ rect, title = "Section", color } = {}) {
-      return txn((t) => makeSection(t, rect, title, color, null));
+    createSection({ rect, title = "Section", color, look, axis } = {}) {
+      return txn((t) => makeSection(t, rect, title, color, null, { look, axis }));
     },
     wrapInSection(uids) {
       return txn((t) => {
@@ -5243,15 +5250,20 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
       t.string(e.uid, edgeStringFor(from, to, e.dir, e.label));
     }
   }
-  function makeSection(t, rect, title, color, adopt) {
+  function makeSection(t, rect, title, color, adopt, lane2) {
     const parent = containerAt(board2, { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 }, { rects });
     const rel = toRelative(board2, parent, { x: rect.x, y: rect.y }, rects);
     const members = adopt ?? itemsInRect(board2, rect, rects, { mode: "contain" });
     const size = clampSize("section", rect.w, rect.h);
+    const layout = { type: "section", x: rel.x, y: rel.y, w: size.w, h: size.h, color };
+    if (lane2?.look === "lane") {
+      layout.look = "lane";
+      layout.axis = lane2.axis === "vertical" ? "vertical" : "horizontal";
+    }
     const sectionUid = t.create({
       parent,
       string: title,
-      plexus: serializeItemLayout({ type: "section", x: rel.x, y: rel.y, w: size.w, h: size.h, color })
+      plexus: serializeItemLayout(layout)
     });
     for (const id of members) {
       if (id === sectionUid) continue;
@@ -5671,14 +5683,27 @@ var card = (id, string, x, y, w = 260, h = 140) => node(id, string, { type: "car
 var section = (id, title, x, y, w = 300, h = 220) => node(id, title, { type: "section", x, y, w, h, v: 2 });
 var board = (id, title, children) => node(id, boardString(title), { v: 2 }, children, false);
 var text = (id, string, x, y, shape, w = 200, h = 110) => node(id, string, { type: "text", x, y, w, h, shape, fontSize: 16, v: 2 });
+var lane = (id, title, x, y, w, h, axis, children) => node(
+  id,
+  title,
+  { type: "section", look: "lane", axis, x, y, w, h, v: 2 },
+  children,
+  true
+);
 function flow() {
-  const items = [
-    text("recv", "Receiving", 40, 40, "parallelogram"),
-    text("store", "Storage", 300, 40, "cylinder"),
-    text("spec", "In spec?", 560, 20, "diamond", 200, 150),
-    text("blend", "Blending", 560, 230, "rectangle"),
-    text("fill", "Filling", 820, 230, "rounded"),
-    text("pack", "Packing", 1080, 230, "ellipse")
+  const lanes = [
+    lane("in", "Warehouse", 0, 0, 480, 360, "vertical", [
+      text("recv", "Receiving", 40, 40, "parallelogram"),
+      text("store", "Storage", 300, 40, "cylinder")
+    ]),
+    lane("make", "Process", 480, 0, 280, 360, "vertical", [
+      text("spec", "In spec?", 80, 20, "diamond", 200, 150),
+      text("blend", "Blending", 80, 230, "rectangle")
+    ]),
+    lane("out", "Pack", 760, 0, 540, 360, "vertical", [
+      text("fill", "Filling", 60, 230, "rounded"),
+      text("pack", "Packing", 320, 230, "ellipse")
+    ])
   ];
   const link = (id, from, to, label = "", sides = {}) => node(
     id,
@@ -5693,7 +5718,7 @@ function flow() {
     link("e4", "blend", "fill"),
     link("e5", "fill", "pack")
   ];
-  return [...items, node("edges", "Connections", { type: "edges" }, edges, false)];
+  return [...lanes, node("edges", "Connections", { type: "edges" }, edges, false)];
 }
 var row = (labels, y = 40, w = 300, h = 360, gap = 24) => labels.map((title, i) => section(
   `c${i}`,
@@ -6149,8 +6174,14 @@ function boardToSvg(board2, rects, { dark = false, padding = 48, maxItems = 500,
     const r = rects.get(item.uid);
     const [line, fill, text2] = hex(item.color);
     if (item.type === "section") {
-      body.push(`<rect x="${n1(r.x)}" y="${n1(r.y)}" width="${n1(r.w)}" height="${n1(r.h)}" rx="12" fill="${fill}" fill-opacity="${dark ? 0.6 : 1}" stroke="${line}" stroke-width="2"/>`);
-      body.push(`<text x="${n1(r.x + 4)}" y="${n1(r.y - 10)}" font-size="16" font-weight="700" fill="${text2}">${esc(titleOf(item))}</text>`);
+      const lane2 = item.look === "lane";
+      const rx = lane2 ? 0 : 12;
+      body.push(`<rect x="${n1(r.x)}" y="${n1(r.y)}" width="${n1(r.w)}" height="${n1(r.h)}" rx="${rx}" fill="${fill}" fill-opacity="${dark ? 0.6 : 1}" stroke="${line}" stroke-width="2"/>`);
+      if (lane2 && item.axis !== "vertical") {
+        body.push(`<text x="${n1(r.x + 12)}" y="${n1(r.y + r.h / 2)}" font-size="16" font-weight="700" dominant-baseline="central" fill="${text2}">${esc(titleOf(item))}</text>`);
+      } else {
+        body.push(`<text x="${n1(r.x + 4)}" y="${n1(r.y - 10)}" font-size="16" font-weight="700" fill="${text2}">${esc(titleOf(item))}</text>`);
+      }
     } else if (item.type === "text") {
       const size = item.fontSize || 16;
       if (SHAPES.includes(item.shape)) {
@@ -7712,6 +7743,7 @@ function createItemRenderer({
     if (PALETTE.includes(item.color)) cls.push(`pxd-c-${item.color}`);
     if (item.collapsed && item.type !== "section") cls.push("pxd-item--collapsed");
     if (item.type === "section" && item.collapsed) cls.push("pxd-section--collapsed");
+    if (item.type === "section" && item.look === "lane") cls.push("pxd-section--lane", item.axis === "vertical" ? "pxd-lane-v" : "pxd-lane-h");
     if (!item.string?.trim()) cls.push("pxd-item--empty");
     if (item.type === "text" && FONT_SIZES.includes(item.fontSize)) cls.push(`pxd-item--fs${item.fontSize}`);
     if (item.type !== "section" && item.fontSize) cls.push("pxd-fs");
@@ -11980,6 +12012,8 @@ function buildMenu(kind, ctx = {}) {
         make("new-text", "New text", { hint: "T" }),
         make("new-sticky", "New sticky"),
         make("new-section", "New section", { hint: "G" }),
+        make("new-lane-h", "Horizontal lane"),
+        make("new-lane-v", "Vertical lane"),
         make("new-board", "New board", { hint: "W" }),
         templateMenu(),
         make("save-template", "Save board as template"),
@@ -14288,6 +14322,21 @@ function mountBoardView({
       case "new-section": {
         const d = DEFAULT_SIZES.section;
         Promise.resolve(session.createSection?.({ rect: { x: world2.x - d.w / 2, y: world2.y - d.h / 2, w: d.w, h: d.h } })).then((uid) => {
+          if (uid && !disposed) ctl.select([uid]);
+        }).catch(() => {
+        });
+        break;
+      }
+      case "new-lane-h":
+      case "new-lane-v": {
+        const vertical = head === "new-lane-v";
+        const d = vertical ? LANE_SIZE.vertical : LANE_SIZE.horizontal;
+        Promise.resolve(session.createSection?.({
+          rect: { x: world2.x - d.w / 2, y: world2.y - d.h / 2, w: d.w, h: d.h },
+          title: "Lane",
+          look: "lane",
+          axis: vertical ? "vertical" : "horizontal"
+        })).then((uid) => {
           if (uid && !disposed) ctl.select([uid]);
         }).catch(() => {
         });

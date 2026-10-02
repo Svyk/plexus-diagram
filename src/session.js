@@ -59,7 +59,7 @@ const PROPS = ":block/props";
 const OPEN = ":block/open";
 
 const LINK_MODES = ["off", "attributes", "all"];
-const ITEM_KEYS = ["type", "x", "y", "w", "h", "color", "collapsed", "fontSize", "pinned", "fit", "look", "textColor", "align", "fill", "border", "titleSize", "titleColor", "titleFill", "areaFill", "shape"];
+const ITEM_KEYS = ["type", "x", "y", "w", "h", "color", "collapsed", "fontSize", "pinned", "fit", "look", "axis", "textColor", "align", "fill", "border", "titleSize", "titleColor", "titleFill", "areaFill", "shape"];
 const EDGE_KEYS = ["type", "from", "to", "fromSide", "toSide", "dir", "route", "dash", "weight", "color"];
 const MAX_PARENT_STRINGS = 200;
 const DAILY_GAP = 20;
@@ -784,8 +784,8 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
       });
     },
 
-    createSection({ rect, title = "Section", color } = {}) {
-      return txn((t) => makeSection(t, rect, title, color, null));
+    createSection({ rect, title = "Section", color, look, axis } = {}) {
+      return txn((t) => makeSection(t, rect, title, color, null, { look, axis }));
     },
 
     wrapInSection(uids) {
@@ -1511,15 +1511,20 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
     }
   }
 
-  function makeSection(t, rect, title, color, adopt) {
+  function makeSection(t, rect, title, color, adopt, lane) {
     const parent = containerAt(board, { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 }, { rects });
     const rel = toRelative(board, parent, { x: rect.x, y: rect.y }, rects);
     const members = adopt ?? itemsInRect(board, rect, rects, { mode: "contain" });
     const size = clampSize("section", rect.w, rect.h);
+    const layout = { type: "section", x: rel.x, y: rel.y, w: size.w, h: size.h, color };
+    if (lane?.look === "lane") {
+      layout.look = "lane";
+      layout.axis = lane.axis === "vertical" ? "vertical" : "horizontal";
+    }
     const sectionUid = t.create({
       parent,
       string: title,
-      plexus: serializeItemLayout({ type: "section", x: rel.x, y: rel.y, w: size.w, h: size.h, color }),
+      plexus: serializeItemLayout(layout),
     });
     for (const id of members) {
       if (id === sectionUid) continue;

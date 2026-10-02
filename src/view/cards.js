@@ -394,6 +394,7 @@ export function createItemRenderer({
     if (PALETTE.includes(item.color)) cls.push(`pxd-c-${item.color}`);
     if (item.collapsed && item.type !== "section") cls.push("pxd-item--collapsed");
     if (item.type === "section" && item.collapsed) cls.push("pxd-section--collapsed");
+    if (item.type === "section" && item.look === "lane") cls.push("pxd-section--lane", item.axis === "vertical" ? "pxd-lane-v" : "pxd-lane-h");
     if (!item.string?.trim()) cls.push("pxd-item--empty");
     if (item.type === "text" && FONT_SIZES.includes(item.fontSize)) cls.push(`pxd-item--fs${item.fontSize}`);
     if (item.type !== "section" && item.fontSize) cls.push("pxd-fs");

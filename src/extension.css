@@ -634,6 +634,27 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   outline: 1px solid var(--pxd-accent);
 }
 
+.pxd-section--lane {
+  border-radius: 0;
+}
+
+.pxd-section--lane.pxd-lane-h .pxd-section__title {
+  left: auto;
+  right: calc(100% + 8px);
+  top: 50%;
+  bottom: auto;
+  transform: translateY(-50%);
+  max-width: 160px;
+}
+
+.pxd-section--lane.pxd-lane-v .pxd-section__title {
+  left: 50%;
+  right: auto;
+  bottom: calc(100% + 4px);
+  transform: translateX(-50%);
+  max-width: calc(100% - 8px);
+}
+
 .pxd-section__edge {
   position: absolute;
   pointer-events: auto;

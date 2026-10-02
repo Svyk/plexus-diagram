@@ -65,6 +65,16 @@ test("normalizeItemLayout / serializeItemLayout", () => {
   assert.equal(normalizeItemLayout({ type: "card", look: "sticky" }).look, undefined);
   assert.equal(serializeItemLayout({ type: "card", x: 1, look: "sticky" }).look, undefined);
   assert.equal(normalizeItemLayout({ type: "text", look: "note" }).look, undefined);
+  const lane = normalizeItemLayout({ type: "section", look: "lane", axis: "vertical" });
+  assert.equal(lane.look, "lane");
+  assert.equal(lane.axis, "vertical");
+  assert.deepEqual(serializeItemLayout(lane), { type: "section", look: "lane", axis: "vertical" });
+  assert.equal(normalizeItemLayout({ type: "section", look: "lane" }).axis, "horizontal");
+  assert.equal(normalizeItemLayout({ type: "section", look: "lane", axis: "sideways" }).axis, "horizontal");
+  assert.equal(normalizeItemLayout({ type: "card", look: "lane", axis: "vertical" }).look, undefined);
+  assert.equal(normalizeItemLayout({ type: "card", look: "lane", axis: "vertical" }).axis, undefined);
+  assert.equal(serializeItemLayout({ type: "card", x: 1, look: "lane", axis: "vertical" }).look, undefined);
+  assert.equal(serializeItemLayout({ type: "section", x: 1, axis: "vertical" }).axis, undefined);
 });
 
 test("normalizeEdge / serializeEdge", () => {

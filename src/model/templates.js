@@ -22,14 +22,29 @@ const board = (id, title, children) => node(id, boardString(title), { v: 2 }, ch
 
 const text = (id, string, x, y, shape, w = 200, h = 110) => node(id, string, { type: "text", x, y, w, h, shape, fontSize: 16, v: 2 });
 
+const lane = (id, title, x, y, w, h, axis, children) => node(
+  id,
+  title,
+  { type: "section", look: "lane", axis, x, y, w, h, v: 2 },
+  children,
+  true,
+);
+
 function flow() {
-  const items = [
-    text("recv", "Receiving", 40, 40, "parallelogram"),
-    text("store", "Storage", 300, 40, "cylinder"),
-    text("spec", "In spec?", 560, 20, "diamond", 200, 150),
-    text("blend", "Blending", 560, 230, "rectangle"),
-    text("fill", "Filling", 820, 230, "rounded"),
-    text("pack", "Packing", 1080, 230, "ellipse"),
+  // World positions of the six shapes stay put. Each stored x/y is relative to its lane.
+  const lanes = [
+    lane("in", "Warehouse", 0, 0, 480, 360, "vertical", [
+      text("recv", "Receiving", 40, 40, "parallelogram"),
+      text("store", "Storage", 300, 40, "cylinder"),
+    ]),
+    lane("make", "Process", 480, 0, 280, 360, "vertical", [
+      text("spec", "In spec?", 80, 20, "diamond", 200, 150),
+      text("blend", "Blending", 80, 230, "rectangle"),
+    ]),
+    lane("out", "Pack", 760, 0, 540, 360, "vertical", [
+      text("fill", "Filling", 60, 230, "rounded"),
+      text("pack", "Packing", 320, 230, "ellipse"),
+    ]),
   ];
   const link = (id, from, to, label = "", sides = {}) => node(
     id,
@@ -44,7 +59,7 @@ function flow() {
     link("e4", "blend", "fill"),
     link("e5", "fill", "pack"),
   ];
-  return [...items, node("edges", "Connections", { type: "edges" }, edges, false)];
+  return [...lanes, node("edges", "Connections", { type: "edges" }, edges, false)];
 }
 
 const row = (labels, y = 40, w = 300, h = 360, gap = 24) => labels.map((title, i) => section(

@@ -113,6 +113,8 @@ export function buildMenu(kind, ctx = {}) {
         make("new-text", "New text", { hint: "T" }),
         make("new-sticky", "New sticky"),
         make("new-section", "New section", { hint: "G" }),
+        make("new-lane-h", "Horizontal lane"),
+        make("new-lane-v", "Vertical lane"),
         make("new-board", "New board", { hint: "W" }),
         templateMenu(),
         make("save-template", "Save board as template"),

@@ -138,8 +138,14 @@ export function boardToSvg(board, rects, { dark = false, padding = 48, maxItems 
     const r = rects.get(item.uid);
     const [line, fill, text] = hex(item.color);
     if (item.type === "section") {
-      body.push(`<rect x="${n1(r.x)}" y="${n1(r.y)}" width="${n1(r.w)}" height="${n1(r.h)}" rx="12" fill="${fill}" fill-opacity="${dark ? 0.6 : 1}" stroke="${line}" stroke-width="2"/>`);
-      body.push(`<text x="${n1(r.x + 4)}" y="${n1(r.y - 10)}" font-size="16" font-weight="700" fill="${text}">${esc(titleOf(item))}</text>`);
+      const lane = item.look === "lane";
+      const rx = lane ? 0 : 12;
+      body.push(`<rect x="${n1(r.x)}" y="${n1(r.y)}" width="${n1(r.w)}" height="${n1(r.h)}" rx="${rx}" fill="${fill}" fill-opacity="${dark ? 0.6 : 1}" stroke="${line}" stroke-width="2"/>`);
+      if (lane && item.axis !== "vertical") {
+        body.push(`<text x="${n1(r.x + 12)}" y="${n1(r.y + r.h / 2)}" font-size="16" font-weight="700" dominant-baseline="central" fill="${text}">${esc(titleOf(item))}</text>`);
+      } else {
+        body.push(`<text x="${n1(r.x + 4)}" y="${n1(r.y - 10)}" font-size="16" font-weight="700" fill="${text}">${esc(titleOf(item))}</text>`);
+      }
     } else if (item.type === "text") {
       const size = item.fontSize || 16;
       if (SHAPES.includes(item.shape)) {

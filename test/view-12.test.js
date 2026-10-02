@@ -471,6 +471,33 @@ test("a sticky note paints the sticky class and keeps it when the color changes"
   }
 });
 
+test("TP-8: a lane section paints the lane class and puts the label on the side", async () => {
+  const css = readFileSync(new URL("../src/extension.css", import.meta.url), "utf8");
+  assert.match(css, /\.pxd-section--lane\.pxd-lane-h \.pxd-section__title \{[^}]*right: calc\(100% \+ 8px\)/);
+  assert.match(css, /\.pxd-section--lane\.pxd-lane-v \.pxd-section__title \{[^}]*transform: translateX\(-50%\)/);
+  const f = mountFixture();
+  try {
+    await f.flush();
+    const item = f.session.board.items.get("sectCCCC3");
+    item.look = "lane";
+    item.axis = "vertical";
+    f.session.emit("change", { dirty: new Set(["sectCCCC3"]), structural: false });
+    await f.flush();
+    const vertical = shell(f, "sectCCCC3");
+    assert.ok(vertical.classList.contains("pxd-section--lane"));
+    assert.ok(vertical.classList.contains("pxd-lane-v"));
+    item.axis = "horizontal";
+    f.session.emit("change", { dirty: new Set(["sectCCCC3"]), structural: false });
+    await f.flush();
+    const horizontal = shell(f, "sectCCCC3");
+    assert.ok(horizontal.classList.contains("pxd-lane-h"));
+    assert.equal(horizontal.classList.contains("pxd-lane-v"), false);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
 test("a text shape paints an svg outline and a plain text item does not", async () => {
   const f = mountFixture();
   try {
@@ -546,6 +573,10 @@ test("context menu: pick dispatch maps every kind's ids onto session calls", asy
     assert.deepEqual(m[0], ["createCard", { x: 160, y: 180 }]);
     m = await run(viewport, "new-section");
     assert.deepEqual(m[0], ["createSection", { rect: { x: 60, y: 100, w: 480, h: 320 } }]);
+    m = await run(viewport, "new-lane-h");
+    assert.deepEqual(m[0], ["createSection", { rect: { x: -180, y: 170, w: 960, h: 180 }, title: "Lane", look: "lane", axis: "horizontal" }]);
+    m = await run(viewport, "new-lane-v");
+    assert.deepEqual(m[0], ["createSection", { rect: { x: 180, y: -60, w: 240, h: 640 }, title: "Lane", look: "lane", axis: "vertical" }]);
     m = await run(viewport, "new-board");
     assert.deepEqual(m[0], ["createBoard", { rect: { x: 140, y: 150, w: 320, h: 220 } }]);
     m = await run(viewport, "fold-all");

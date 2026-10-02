@@ -13,6 +13,9 @@ export const CARD_LOOKS = ["block", "card"];
 export const TEXT_LOOKS = ["section-note", "sticky"];
 export const STICKY_SIZE = { w: 200, h: 200 };
 export const STICKY_COLOR = "yellow";
+export const SECTION_LOOKS = ["lane"];
+export const LANE_AXES = ["horizontal", "vertical"];
+export const LANE_SIZE = { horizontal: { w: 960, h: 180 }, vertical: { w: 240, h: 640 } };
 export const CARD_FONT_MIN = 10;
 export const CARD_FONT_MAX = 48;
 export const CARD_FONT_DEFAULT = 14;
@@ -127,7 +130,12 @@ export function normalizeItemLayout(plexus) {
     fit: p.fit === false ? false : undefined,
     look: type === "text"
       ? (TEXT_LOOKS.includes(p.look) ? p.look : undefined)
-      : (CARD_LOOKS.includes(p.look) ? p.look : undefined),
+      : type === "section"
+        ? (SECTION_LOOKS.includes(p.look) ? p.look : undefined)
+        : (CARD_LOOKS.includes(p.look) ? p.look : undefined),
+    axis: type === "section" && SECTION_LOOKS.includes(p.look)
+      ? (p.axis === "vertical" ? "vertical" : "horizontal")
+      : undefined,
     textColor: section ? undefined : styleColor(p.textColor),
     align: section || !ALIGNS.includes(p.align) ? undefined : p.align,
     fill: section ? undefined : styleColor(p.fill),
@@ -201,6 +209,9 @@ export function serializeItemLayout(layout) {
   if (type === "text") {
     if (TEXT_LOOKS.includes(l.look)) out.look = l.look;
     if (SHAPES.includes(l.shape)) out.shape = l.shape;
+  } else if (type === "section" && SECTION_LOOKS.includes(l.look)) {
+    out.look = l.look;
+    out.axis = l.axis === "vertical" ? "vertical" : "horizontal";
   } else if (CARD_LOOKS.includes(l.look)) out.look = l.look;
   if (BOARD_PATTERNS.includes(l.bg)) out.bg = l.bg;
   const tone = boardColor(l.bgColor);

@@ -3,6 +3,7 @@
 // renderBlock / renderPage; we never build <img> or fake editors.
 
 import { DEFAULT_SIZES, FONT_SIZES, PALETTE, attrNameOf, classifyString, cssColor, firstLine, hexColor, isUntitledBoard, parseBoardTitle, plainText } from "../model/schema.js";
+import { isQueryString } from "../model/query.js";
 import { boardPreview, descendantsOf, sectionNoteUid } from "../model/board.js";
 import { lodForZoom, rectsIntersect } from "../model/geometry.js";
 import { SHAPES, shapePath } from "../model/shapes.js";
@@ -239,6 +240,14 @@ export function createItemRenderer({
     const mo = new MO(() => syncShield());
     try { mo.observe(live, { childList: true, subtree: true }); } catch { return; }
     node.__pxdEmbedMo = mo;
+  };
+
+  const mountQuery = (parent, uid) => {
+    const live = el("div", "pxd-rs pxd-item__query", parent);
+    const mount = el("div", "pxd-rs__live", live);
+    try { host.renderBlock(mount, uid); }
+    catch { mount.textContent = "Query"; }
+    return live;
   };
 
   const renderRoot = (parent, string, cls = "pxd-rs") => {
@@ -649,6 +658,7 @@ export function createItemRenderer({
       const refString = host?.blockString?.(ref);
       const isBoardRef = typeof refString === "string" && classifyString(refString).kind === "board";
       if (isBoardRef) rec.refTitle = parseBoardTitle(refString) || "Untitled board";
+      else if (typeof refString === "string" && isQueryString(refString)) rec.refTitle = "Query";
       else rec.refTitle = typeof refString === "string" ? firstLine(refString).slice(0, REF_TITLE_MAX) : "";
       if (editing?.uid !== item.uid) rec.header.textContent = String(rec.refTitle || item.title || "").slice(0, HEADER_TEXT_MAX);
       if (isBoardRef) {
@@ -668,6 +678,8 @@ export function createItemRenderer({
           title: rec.refTitle,
           enhanced: false,
         }, { openUid: ref });
+      } else if (typeof refString === "string" && isQueryString(refString) && host?.renderBlock) {
+        budget.roots.push(mountQuery(body, ref));
       } else {
         if (typeof refString === "string" && refString.trim()) budget.roots.push(renderRoot(body, refString, "pxd-rs pxd-item__string"));
         if (item.open === false) {
@@ -686,6 +698,8 @@ export function createItemRenderer({
         if (tree && typeof tree.then === "function") tree.then((t) => apply(t)).catch(() => {});
         else apply(tree, true);
       }
+    } else if (isQueryString(item.string) && host?.renderBlock) {
+      budget.roots.push(mountQuery(body, item.uid));
     } else {
       if (item.string?.trim()) budget.roots.push(renderRoot(body, item.string, "pxd-rs pxd-item__string"));
       if (item.open !== false) renderBlocks(body, item.content || [], 1, budget);

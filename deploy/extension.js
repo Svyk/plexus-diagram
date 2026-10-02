@@ -787,6 +787,60 @@ function attrNameOf(s) {
   return name ? name : null;
 }
 
+// src/model/query.js
+var QUERY_CARD_CAP = 45;
+var CARD_W = 280;
+var CARD_H = 160;
+var UID_RE = /^[A-Za-z0-9_-]{9}$/;
+function isQueryString(s) {
+  const t = String(s ?? "").trim();
+  return /^\{\{\s*\[\[query\]\]\s*(?::[\s\S]*)?\}\}$/.test(t) || /^\{\{\s*query\s*(?::[\s\S]*)?\}\}$/.test(t);
+}
+function blockUidFromDomId(id) {
+  const s = String(id || "");
+  if (UID_RE.test(s)) return s;
+  if (s.length < 10 || s.slice(-10, -9) !== "-") return null;
+  const uid = s.slice(-9);
+  return UID_RE.test(uid) ? uid : null;
+}
+function queryResultUids(root, skipUid) {
+  if (!root || typeof root.querySelectorAll !== "function") return [];
+  const seen = /* @__PURE__ */ new Set();
+  if (skipUid) seen.add(skipUid);
+  const out = [];
+  for (const node2 of root.querySelectorAll("[id]")) {
+    const uid = blockUidFromDomId(node2.id);
+    if (!uid || seen.has(uid)) continue;
+    seen.add(uid);
+    out.push(uid);
+  }
+  return out;
+}
+function queryResultLayout(rect, uids) {
+  if (!rect) return [];
+  const list = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const uid of uids || []) {
+    if (!uid || seen.has(uid)) continue;
+    seen.add(uid);
+    list.push(uid);
+    if (list.length >= QUERY_CARD_CAP) break;
+  }
+  const n2 = list.length;
+  if (!n2) return [];
+  const cx = rect.x + rect.w / 2;
+  const cy = rect.y + rect.h / 2;
+  const radius = Math.max(rect.w, rect.h) / 2 + 240;
+  return list.map((uid, i) => {
+    const angle = -Math.PI / 2 + (n2 === 1 ? 0 : i / n2 * Math.PI * 2);
+    return {
+      string: `((${uid}))`,
+      x: Math.round(cx + Math.cos(angle) * radius - CARD_W / 2),
+      y: Math.round(cy + Math.sin(angle) * radius - CARD_H / 2)
+    };
+  });
+}
+
 // src/model/snapshots.js
 var SNAPSHOTS_TITLE = "Snapshots";
 var SNAPSHOT_KEEP = 10;
@@ -989,6 +1043,7 @@ function buildBoard(pulled, { defaults } = {}) {
       let title;
       if (kind === "page") title = cls.title;
       else if (kind === "board") title = parseBoardTitle(cstring) || "Untitled board";
+      else if (isQueryString(cstring)) title = "Query";
       else title = firstLine(cstring);
       let target;
       if (kind === "page") target = { kind: "page", title: cls.title };
@@ -2026,7 +2081,7 @@ function coveredBy(links, board2) {
 }
 
 // src/model/deeplink.js
-var UID_RE = /^[\w-]{1,32}$/;
+var UID_RE2 = /^[\w-]{1,32}$/;
 function isShowableCard(plexus) {
   if (!plexus || typeof plexus !== "object") return false;
   if (plexus.type === "section" || plexus.type === "edges" || plexus.type === "edge") return false;
@@ -2051,7 +2106,7 @@ function cardDeepLink({ graph, pageUid, cardUid } = {}) {
   const g = String(graph ?? "").trim();
   const page = String(pageUid ?? "").trim();
   const card2 = String(cardUid ?? "").trim();
-  if (!g || !UID_RE.test(page) || !UID_RE.test(card2)) return "";
+  if (!g || !UID_RE2.test(page) || !UID_RE2.test(card2)) return "";
   return `#/app/${encodeURIComponent(g)}/page/${encodeURIComponent(page)}?pxd=${encodeURIComponent(card2)}`;
 }
 function hashFromUrl(url) {
@@ -2069,7 +2124,7 @@ function pxdTarget(hash) {
   } catch {
     return null;
   }
-  if (!UID_RE.test(card2)) return null;
+  if (!UID_RE2.test(card2)) return null;
   return { cardUid: card2, pageUid: pageUidFromHash(text2), graph: graphFromDeepLink(text2) };
 }
 function copyLinkText(item, { graph, pageUid, cardUid } = {}) {
@@ -7591,6 +7646,16 @@ function createItemRenderer({
     }
     node2.__pxdEmbedMo = mo;
   };
+  const mountQuery = (parent, uid) => {
+    const live = el("div", "pxd-rs pxd-item__query", parent);
+    const mount = el("div", "pxd-rs__live", live);
+    try {
+      host.renderBlock(mount, uid);
+    } catch {
+      mount.textContent = "Query";
+    }
+    return live;
+  };
   const renderRoot = (parent, string, cls = "pxd-rs") => {
     const node2 = el("div", cls, parent);
     if (!string) return node2;
@@ -8004,6 +8069,7 @@ function createItemRenderer({
       const refString = host?.blockString?.(ref);
       const isBoardRef = typeof refString === "string" && classifyString(refString).kind === "board";
       if (isBoardRef) rec.refTitle = parseBoardTitle(refString) || "Untitled board";
+      else if (typeof refString === "string" && isQueryString(refString)) rec.refTitle = "Query";
       else rec.refTitle = typeof refString === "string" ? firstLine(refString).slice(0, REF_TITLE_MAX) : "";
       if (editing?.uid !== item.uid) rec.header.textContent = String(rec.refTitle || item.title || "").slice(0, HEADER_TEXT_MAX);
       if (isBoardRef) {
@@ -8022,6 +8088,8 @@ function createItemRenderer({
           title: rec.refTitle,
           enhanced: false
         }, { openUid: ref });
+      } else if (typeof refString === "string" && isQueryString(refString) && host?.renderBlock) {
+        budget.roots.push(mountQuery(body, ref));
       } else {
         if (typeof refString === "string" && refString.trim()) budget.roots.push(renderRoot(body, refString, "pxd-rs pxd-item__string"));
         if (item.open === false) {
@@ -8041,6 +8109,8 @@ function createItemRenderer({
         });
         else apply(tree, true);
       }
+    } else if (isQueryString(item.string) && host?.renderBlock) {
+      budget.roots.push(mountQuery(body, item.uid));
     } else {
       if (item.string?.trim()) budget.roots.push(renderRoot(body, item.string, "pxd-rs pxd-item__string"));
       if (item.open !== false) renderBlocks(body, item.content || [], 1, budget);
@@ -12063,6 +12133,7 @@ function buildMenu(kind, ctx = {}) {
         out.push(make("mind-map", "Expand as mind map"));
         out.push(mindPresetMenu());
       }
+      if (c.isQuery) out.push(make("query-results", "Add results as cards"));
       out.push(
         make("send-to", "Send to board…"),
         make("related", "Related…"),
@@ -14245,8 +14316,17 @@ function mountBoardView({
         return { canPaste: true, snapshots: b?.snapshots || [] };
       case "board-menu":
         return { snapshots: b?.snapshots || [] };
-      case "card":
-        return { item, isBoard: item?.kind === "board", collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS2.includes(item?.kind), mindPreset: readMindPreset(storage) };
+      case "card": {
+        let queryText = item?.string || "";
+        if (!isQueryString(queryText) && item?.target?.kind === "block") {
+          try {
+            queryText = host?.blockString?.(item.target.uid) || "";
+          } catch {
+            queryText = "";
+          }
+        }
+        return { item, isBoard: item?.kind === "board", collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS2.includes(item?.kind), isQuery: isQueryString(queryText), mindPreset: readMindPreset(storage) };
+      }
       case "section": {
         const members = item && b ? [item.uid, ...descendantsOf(b, item.uid)] : [];
         return {
@@ -14501,6 +14581,24 @@ function mountBoardView({
       case "mind-map":
         if (item) expandOutline(item.uid);
         break;
+      case "query-results": {
+        if (!item) break;
+        const sourceUid = isQueryString(item.string) ? item.uid : item.target?.kind === "block" ? item.target.uid : item.uid;
+        const live = root.querySelector?.(`[data-uid="${item.uid}"] .pxd-item__query .pxd-rs__live`);
+        const list = queryResultLayout(rects().get(item.uid), queryResultUids(live, sourceUid));
+        if (!list.length) {
+          toast("No results in this query");
+          break;
+        }
+        const made = session.addRefCards?.(list);
+        Promise.resolve(made).then((ids) => {
+          if (disposed) return;
+          if (Array.isArray(ids) && ids.length) ctl.select(ids);
+          toast(`Added ${list.length} ${list.length === 1 ? "card" : "cards"} from the query`, true);
+        }).catch(() => {
+        });
+        break;
+      }
       case "mind-dir":
         if (item && arg) expandOutline(item.uid, { direction: arg });
         break;

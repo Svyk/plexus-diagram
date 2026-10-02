@@ -10,6 +10,7 @@ import { shapePath } from "../src/model/shapes.js";
 import { fitViewport, zoomAt } from "../src/model/geometry.js";
 import { cardDeepLink } from "../src/model/deeplink.js";
 import { PLEXUS_MIME } from "../src/model/clipboard.js";
+import { queryResultLayout } from "../src/model/query.js";
 import { isLightHost, mountBoardView } from "../src/view/board-view.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
 
@@ -2051,6 +2052,52 @@ test("HB-10: lasso, select all in section, same color, and connected each change
     assert.equal(f.root.querySelector(".pxd-lasso"), null);
     assert.deepEqual(sorted(), ["cardAAAA1"]);
     assert.equal(f.session.mutations.length, before, "lasso and the selection commands write nothing");
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("RG-1: a query card mounts renderBlock and Add results places those blocks", async () => {
+  const rendered = [];
+  const query = "{{[[query]]: {and: [[HACCP]]}}}";
+  const f = mountFixture({
+    extra: [{
+      ":block/uid": "queryCCC3",
+      ":block/string": query,
+      ":block/order": 6,
+      ":block/props": { ":plexus": { ":x": 520, ":y": 0, ":w": 280, ":h": 160 } },
+      ":block/children": [],
+    }],
+    hostOverrides: {
+      renderBlock(el, uid) {
+        rendered.push(uid);
+        const doc = el.ownerDocument || globalThis.document;
+        const stamp = (id) => {
+          const node = doc.createElement("div");
+          node.setAttribute("id", id);
+          el.append(node);
+        };
+        stamp("block-input-db-body-outline-pageUID01-queryCCC3");
+        stamp("block-input-db-body-outline-pageUID01-resultAA1");
+        stamp("block-input-db-body-outline-pageUID01-resultBB2");
+      },
+    },
+  });
+  try {
+    await f.flush();
+    const card = shell(f, "queryCCC3");
+    assert.equal(card.querySelector(".pxd-item__query") != null, true);
+    assert.equal(rendered.includes("queryCCC3"), true);
+    assert.equal(card.textContent.includes("[[query]]"), false);
+    rightClick(f, card);
+    assert.ok(menuIds(f).includes("query-results"));
+    pickRow(f, "query-results");
+    await tick();
+    const call = f.session.mutations.find((row) => row[0] === "addRefCards");
+    assert.ok(call, "addRefCards ran");
+    assert.deepEqual(call[1], queryResultLayout({ x: 520, y: 0, w: 280, h: 160 }, ["resultAA1", "resultBB2"]));
+    assert.match(toastText(f), /Added 2 cards from the query/);
   } finally {
     f.view.dispose();
     f.restore();

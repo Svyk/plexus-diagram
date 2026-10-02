@@ -16,6 +16,7 @@ import {
   readPlexus,
   semanticRef,
 } from "./schema.js";
+import { isQueryString } from "./query.js";
 import { listFromNodes } from "./snapshots.js";
 
 const AUTO_GAP = 40;
@@ -123,6 +124,7 @@ export function buildBoard(pulled, { defaults } = {}) {
       let title;
       if (kind === "page") title = cls.title;
       else if (kind === "board") title = parseBoardTitle(cstring) || "Untitled board";
+      else if (isQueryString(cstring)) title = "Query";
       else title = firstLine(cstring);
       let target;
       if (kind === "page") target = { kind: "page", title: cls.title };

@@ -11,6 +11,7 @@ import { boundsOf, buildBoard, connectedUids, containerAt, descendantsOf, displa
 import { copyLinkText, hashFromUrl, pageUidFromHash, pxdTarget } from "../model/deeplink.js";
 import { findOnBoard } from "../model/find.js";
 import { readMindPreset, writeMindPreset } from "../model/mindmap.js";
+import { isQueryString, queryResultLayout, queryResultUids } from "../model/query.js";
 import {
   alignRects,
   center,
@@ -1259,7 +1260,13 @@ export function mountBoardView({
     switch (kind) {
       case "canvas": return { canPaste: true, snapshots: b?.snapshots || [] };
       case "board-menu": return { snapshots: b?.snapshots || [] };
-      case "card": return { item, isBoard: item?.kind === "board", collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS.includes(item?.kind), mindPreset: readMindPreset(storage) };
+      case "card": {
+        let queryText = item?.string || "";
+        if (!isQueryString(queryText) && item?.target?.kind === "block") {
+          try { queryText = host?.blockString?.(item.target.uid) || ""; } catch { queryText = ""; }
+        }
+        return { item, isBoard: item?.kind === "board", collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS.includes(item?.kind), isQuery: isQueryString(queryText), mindPreset: readMindPreset(storage) };
+      }
       case "section": {
         const members = item && b ? [item.uid, ...descendantsOf(b, item.uid)] : [];
         return {
@@ -1409,6 +1416,20 @@ export function mountBoardView({
       case "pin": void session.setPinned?.(uids, true); break;
       case "unpin": void session.setPinned?.(uids, false); break;
       case "mind-map": if (item) expandOutline(item.uid); break;
+      case "query-results": {
+        if (!item) break;
+        const sourceUid = isQueryString(item.string) ? item.uid : (item.target?.kind === "block" ? item.target.uid : item.uid);
+        const live = root.querySelector?.(`[data-uid="${item.uid}"] .pxd-item__query .pxd-rs__live`);
+        const list = queryResultLayout(rects().get(item.uid), queryResultUids(live, sourceUid));
+        if (!list.length) { toast("No results in this query"); break; }
+        const made = session.addRefCards?.(list);
+        Promise.resolve(made).then((ids) => {
+          if (disposed) return;
+          if (Array.isArray(ids) && ids.length) ctl.select(ids);
+          toast(`Added ${list.length} ${list.length === 1 ? "card" : "cards"} from the query`, true);
+        }).catch(() => {});
+        break;
+      }
       case "mind-dir": if (item && arg) expandOutline(item.uid, { direction: arg }); break;
       case "mind-space": if (item && arg) expandOutline(item.uid, { spacing: arg }); break;
       case "mind-depth": if (item && arg) expandOutline(item.uid, { depth: Number(arg) }); break;

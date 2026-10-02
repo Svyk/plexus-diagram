@@ -411,6 +411,10 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   line-height: 1.4;
 }
 
+.pxd-item__query {
+  min-height: 48px;
+}
+
 .pxd-rs { position: relative; }
 
 .pxd-embed-shield {

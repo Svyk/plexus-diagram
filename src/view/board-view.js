@@ -2675,7 +2675,7 @@ export function mountBoardView({
     if (kanbanMode) kanbanCtl.refresh();
   }));
   subs.push(session.on("links", () => { dirty.links = true; schedule(); }));
-  subs.push(session.on("busy", (busy) => chrome.toolbar.setSync(Boolean(busy))));
+  subs.push(session.on("sync", (state) => chrome.toolbar.setSync(state)));
   subs.push(session.on("toast", (t) => chrome.toast.show(t)));
   tableCtl = mountTable({
     doc,

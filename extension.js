@@ -4179,6 +4179,13 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
     busy = b;
     emit2("busy", b);
   } });
+  const WRITE_ATTEMPTS = 4;
+  let syncState = "idle";
+  const setSyncState = (state) => {
+    if (syncState === state) return;
+    syncState = state;
+    emit2("sync", state);
+  };
   const ledger = createEchoLedger({ graceMs, now: now2 });
   let destroyed = false;
   let raw = clone(host.pullBoard(uid));
@@ -4383,13 +4390,27 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
         break;
     }
   }
+  async function runOpWithRetry(op) {
+    let last = null;
+    for (let attempt = 0; attempt < WRITE_ATTEMPTS; attempt += 1) {
+      setSyncState(attempt === 0 ? "writing" : "retrying");
+      try {
+        await runOp(op);
+        return;
+      } catch (err) {
+        last = err;
+      }
+    }
+    throw last;
+  }
   async function execute(list) {
     let i = 0;
     try {
       for (; i < list.length; i++) {
-        await runOp(list[i]);
+        await runOpWithRetry(list[i]);
         settleOp(list[i]);
       }
+      if (list.length) setSyncState("idle");
     } catch (err) {
       for (let j = i; j < list.length; j++) settleOp(list[j]);
       throw err;
@@ -4445,6 +4466,7 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
   function handleFailure(err) {
     console.error("[plexus session] write failed", err);
     ledger.clear();
+    setSyncState("failed");
     emit2("toast", { message: "Couldn't save changes to Roam. Reloaded the board from the graph." });
     repull();
   }
@@ -10930,8 +10952,13 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
       linksBtn.textContent = LINK_LABELS[mode] || LINK_LABELS.all;
     },
     setSync(pending) {
-      sync.classList.toggle("pxd-sync--pending", Boolean(pending));
-      sync.title = pending ? "Saving…" : "Synced";
+      const name = pending === true ? "writing" : pending === false || pending == null ? "idle" : pending;
+      const titles = { idle: "Synced", writing: "Saving…", retrying: "Retrying…", failed: "Couldn't save" };
+      const state = titles[name] ? name : "idle";
+      sync.classList.remove("pxd-sync--pending", "pxd-sync--writing", "pxd-sync--retrying", "pxd-sync--failed");
+      if (state === "writing") sync.classList.add("pxd-sync--pending", "pxd-sync--writing");
+      else if (state !== "idle") sync.classList.add(`pxd-sync--${state}`);
+      sync.title = titles[state];
     },
     setFullscreen(on2) {
       editBtn.style.display = on2 ? "none" : "";
@@ -16773,7 +16800,7 @@ function mountBoardView({
     dirty.links = true;
     schedule();
   }));
-  subs.push(session.on("busy", (busy) => chrome.toolbar.setSync(Boolean(busy))));
+  subs.push(session.on("sync", (state) => chrome.toolbar.setSync(state)));
   subs.push(session.on("toast", (t) => chrome.toast.show(t)));
   tableCtl = mountTable({
     doc,

@@ -418,3 +418,28 @@ test("toolbar.setPanel (panel open/close) repositions an open context bar, and i
   f.chrome.toolbar.setPanel(true);
   assert.equal(anchored, shown + 2, "a hidden bar is left alone");
 });
+
+test("PF-8: the status dot titles idle, writing, retrying, and failed", (t) => {
+  const f = setup();
+  t.after(f.restore);
+  const dot = q(f.root, ".pxd-sync");
+  assert.equal(dot.title, "Synced");
+  const cases = [
+    ["idle", "Synced", []],
+    ["writing", "Saving…", ["pxd-sync--pending", "pxd-sync--writing"]],
+    ["retrying", "Retrying…", ["pxd-sync--retrying"]],
+    ["failed", "Couldn't save", ["pxd-sync--failed"]],
+  ];
+  const all = ["pxd-sync--pending", "pxd-sync--writing", "pxd-sync--retrying", "pxd-sync--failed"];
+  for (const [state, title, on] of cases) {
+    f.chrome.toolbar.setSync(state);
+    assert.equal(dot.title, title, state);
+    for (const cls of all) assert.equal(dot.classList.contains(cls), on.includes(cls), `${state} ${cls}`);
+  }
+  f.chrome.toolbar.setSync(true);
+  assert.equal(dot.title, "Saving…");
+  assert.ok(dot.classList.contains("pxd-sync--writing"));
+  f.chrome.toolbar.setSync(false);
+  assert.equal(dot.title, "Synced");
+  assert.equal(dot.classList.contains("pxd-sync--writing"), false);
+});

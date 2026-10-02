@@ -626,10 +626,13 @@ test("session change re-renders only dirty uids; structural change reconciles sh
     f.stub.flushFrames();
     assert.equal(root.querySelector("[data-uid=cardFAR03]"), null);
     assert.equal(root.querySelectorAll(".pxd-item").length, 5);
-    f.session.emit("busy", true);
+    f.session.emit("sync", "writing");
     assert.ok(root.querySelector(".pxd-sync").classList.contains("pxd-sync--pending"));
-    f.session.emit("busy", false);
+    assert.ok(root.querySelector(".pxd-sync").classList.contains("pxd-sync--writing"));
+    assert.equal(root.querySelector(".pxd-sync").title, "Saving…");
+    f.session.emit("sync", "idle");
     assert.equal(root.querySelector(".pxd-sync").classList.contains("pxd-sync--pending"), false);
+    assert.equal(root.querySelector(".pxd-sync").title, "Synced");
   } finally {
     f.view.dispose();
     f.restore();

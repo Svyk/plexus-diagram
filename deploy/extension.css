@@ -1076,8 +1076,15 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   opacity: 0.5;
 }
 
-.pxd-sync--pending {
+.pxd-sync--pending,
+.pxd-sync--writing,
+.pxd-sync--retrying {
   background: var(--pxd-orange-line);
+  opacity: 1;
+}
+
+.pxd-sync--failed {
+  background: var(--pxd-red-line);
   opacity: 1;
 }
 

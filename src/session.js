@@ -165,6 +165,14 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
 
   let busy = false;
   const queue = createWriteQueue({ onBusy: (b) => { busy = b; emit("busy", b); } });
+  // First try plus three retries. The optimistic model stays until the last failure.
+  const WRITE_ATTEMPTS = 4;
+  let syncState = "idle";
+  const setSyncState = (state) => {
+    if (syncState === state) return;
+    syncState = state;
+    emit("sync", state);
+  };
   const ledger = createEchoLedger({ graceMs, now });
 
   let destroyed = false;
@@ -370,13 +378,28 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
     }
   }
 
+  async function runOpWithRetry(op) {
+    let last = null;
+    for (let attempt = 0; attempt < WRITE_ATTEMPTS; attempt += 1) {
+      setSyncState(attempt === 0 ? "writing" : "retrying");
+      try {
+        await runOp(op);
+        return;
+      } catch (err) {
+        last = err;
+      }
+    }
+    throw last;
+  }
+
   async function execute(list) {
     let i = 0;
     try {
       for (; i < list.length; i++) {
-        await runOp(list[i]);
+        await runOpWithRetry(list[i]);
         settleOp(list[i]);
       }
+      if (list.length) setSyncState("idle");
     } catch (err) {
       for (let j = i; j < list.length; j++) settleOp(list[j]);
       throw err;
@@ -418,6 +441,7 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
   function handleFailure(err) {
     console.error("[plexus session] write failed", err);
     ledger.clear();
+    setSyncState("failed");
     emit("toast", { message: "Couldn't save changes to Roam. Reloaded the board from the graph." });
     repull();
   }

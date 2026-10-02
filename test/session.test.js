@@ -486,14 +486,50 @@ test("pinLink creates an edge labeled with the first relation", async () => {
   assert.ok(fake.has(uid));
 });
 
-test("write failure emits a toast and repulls the board", async () => {
+test("PF-8: a failed write stays optimistic through 3 retries, then reverts", async () => {
+  const { fake, session } = setup();
+  const sync = [];
+  const toasts = [];
+  let during = null;
+  session.on("sync", (state) => {
+    sync.push(state);
+    if (state === "retrying" && during == null) during = session.board.items.get("c1").x;
+  });
+  session.on("toast", (t) => toasts.push(t.message));
+  const spy = console.error;
+  console.error = () => {};
+  fake.failNext = 4;
+  try {
+    await session.commitMove(["c1"], 50, 0);
+  } finally {
+    console.error = spy;
+  }
+  assert.equal(during, 50, "the card stays at the optimistic x while retrying");
+  assert.equal(session.board.items.get("c1").x, 0, "the last failure reloads the graph");
+  assert.equal(fake.props("c1").plexus.x, 0);
+  assert.deepEqual(toasts, ["Couldn't save changes to Roam. Reloaded the board from the graph."]);
+  assert.ok(sync.includes("writing"));
+  assert.ok(sync.includes("retrying"));
+  assert.equal(sync.filter((s) => s === "retrying").length, 1);
+  assert.equal(sync.at(-1), "failed");
+  assert.equal(fake.log.filter((row) => row[0] === "fail").length, 4);
+});
+
+test("PF-8: one failed attempt then a retry keeps the move", async () => {
   const { fake, session } = setup();
   const toasts = [];
   session.on("toast", (t) => toasts.push(t));
+  const spy = console.error;
+  console.error = () => {};
   fake.failNext = 1;
-  await session.commitMove(["c1"], 50, 0);
-  assert.equal(toasts.length, 1);
-  assert.equal(session.board.items.get("c1").x, 0);
+  try {
+    await session.commitMove(["c1"], 50, 0);
+  } finally {
+    console.error = spy;
+  }
+  assert.equal(toasts.length, 0);
+  assert.equal(session.board.items.get("c1").x, 50);
+  assert.equal(fake.props("c1").plexus.x, 50);
 });
 
 test("busy transitions are emitted around queued writes", async () => {

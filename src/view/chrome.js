@@ -246,8 +246,13 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
     },
     setLinkMode(mode) { linksBtn.textContent = LINK_LABELS[mode] || LINK_LABELS.all; },
     setSync(pending) {
-      sync.classList.toggle("pxd-sync--pending", Boolean(pending));
-      sync.title = pending ? "Saving…" : "Synced";
+      const name = pending === true ? "writing" : pending === false || pending == null ? "idle" : pending;
+      const titles = { idle: "Synced", writing: "Saving…", retrying: "Retrying…", failed: "Couldn't save" };
+      const state = titles[name] ? name : "idle";
+      sync.classList.remove("pxd-sync--pending", "pxd-sync--writing", "pxd-sync--retrying", "pxd-sync--failed");
+      if (state === "writing") sync.classList.add("pxd-sync--pending", "pxd-sync--writing");
+      else if (state !== "idle") sync.classList.add(`pxd-sync--${state}`);
+      sync.title = titles[state];
     },
     setFullscreen(on) {
       editBtn.style.display = on ? "none" : "";

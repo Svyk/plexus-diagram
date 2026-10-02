@@ -213,7 +213,7 @@ Order matters: P1 and P2 are the user's direct requests. Within a phase, do task
 - [x] **DOC-2 Spec 2.0** (M) — done 2026-10-02, `bc401fe`: the spec lists each prop key, the surfaces, native parity, the gap table, and non-goals. — `docs/spec-plexus-2.0.md`: data model with every prop key and its validation, every surface, the native parity table filled in, Heptabase gap table updated, non-goals.
 - [x] **DOC-3 API contracts** (S) — done 2026-10-02, `e1e9d02`: the 2.0 API file contracts each module the 1.0 file leaves out. — Update `docs/api-plexus-1.0.md` with each new module's contract or start `api-plexus-2.0.md`.
 - [x] **DOC-4 Roam Depot listing** (S) — done 2026-10-02, `8c2e6e1`: the Depot draft, three fixture shots, and the metadata file are in docs/depot, and the pull request is not opened. — Description, screenshots, and the Depot PR material ready in `docs/depot/` (do not open a PR; the user decides).
-- [ ] **HARD-1 Fuzz the schema** (S) — Property tests over random props (unknown keys, wrong types, huge numbers, NaN) for every item type; the board renders and nothing is written back unless the user edits.
+- [x] **HARD-1 Fuzz the schema** (S) — done 2026-10-02, `afbf941`: random junk props on card, section, and text still render, and the host log stays empty until a color edit. — Property tests over random props (unknown keys, wrong types, huge numbers, NaN) for every item type; the board renders and nothing is written back unless the user edits.
 - [ ] **HARD-2 Migration from every past version** (S) — Boards created by 0.4, 0.6, 1.0, 1.1 and 1.2 open on 2.0 with no writes on open. Accept: fixtures for each in tests.
 - [ ] **HARD-3 Restore native, full round trip** (S) — Enhance → edit heavily → Restore native diagram → the native diagram renders its original nodes; re-enhance restores the Plexus layout. Accept: live on Test Lab.
 - [ ] **REL-1 2.0 release** — standing gate, tag `v2.0.0`, GitHub release notes.
@@ -296,6 +296,7 @@ Fill in as phases run. Keep the newest at the top of each list.
 - UI-3, 2026-10-02: Nine palette tools switch or place, and the bar clears the minimap.
 - UI-4, 2026-10-02: The fixture follows svy-theme light and the dark token set, and sections stay an outline.
 - UI-5, 2026-10-02: An empty board shows the double-click hint, and the fixture hides it.
+- HARD-1, 2026-10-02: Random junk props on card, section, and text still render, and open writes nothing until a color edit.
 - DOC-4, 2026-10-02: The Depot draft, three fixture shots, and the metadata file are in docs/depot, and the pull request stays unopened.
 - DOC-3, 2026-10-02: The 2.0 API file contracts each module the 1.0 file leaves out.
 - DOC-2, 2026-10-02: The 2.0 spec lists each prop key, the surfaces, native parity, and the updated Heptabase gap.

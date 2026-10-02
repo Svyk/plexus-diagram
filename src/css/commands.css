@@ -1,0 +1,76 @@
+/* "Plexus: Commands…" list. On document.body, outside .pxd-root, because
+   .pxd-root uses contain:layout and would trap a fixed layer inside the board. */
+
+.pxd-commands-back {
+  position: fixed;
+  inset: 0;
+  z-index: 32;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+}
+
+.pxd-commands__box {
+  --pxd-surface: #ffffff;
+  --pxd-border: #d0d7de;
+  --pxd-text: #1f2937;
+  --pxd-muted: #5f6b7c;
+  --pxd-accent: hsl(175 80% 30%);
+  --pxd-accent-soft: hsl(175 70% 42% / 0.18);
+  --pxd-shadow: 0 1px 2px rgba(17, 20, 24, 0.10), 0 8px 24px rgba(17, 20, 24, 0.16);
+  position: fixed;
+  z-index: 33;
+  top: 72px;
+  left: 50%;
+  transform: translateX(-50%);
+  box-sizing: border-box;
+  width: 280px;
+  max-height: 420px;
+  display: flex;
+  flex-direction: column;
+  padding: 10px;
+  border: 1px solid var(--pxd-border);
+  border-radius: 8px;
+  background: var(--pxd-surface);
+  color: var(--pxd-text);
+  box-shadow: var(--pxd-shadow);
+  font-size: 13px;
+}
+
+.bp3-dark .pxd-commands__box,
+body.bt-theme-dark .pxd-commands__box,
+.rm-dark-theme .pxd-commands__box,
+body.roam-body.dark .pxd-commands__box {
+  --pxd-surface: #26333f;
+  --pxd-border: #3b4b58;
+  --pxd-text: #e6edf3;
+  --pxd-muted: #a7b6c2;
+  --pxd-accent: hsl(175 60% 55%);
+  --pxd-accent-soft: hsl(175 60% 55% / 0.22);
+  --pxd-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+}
+
+.pxd-commands__title {
+  font-weight: 600;
+  margin-bottom: 8px;
+}
+
+.pxd-commands__row {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 6px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pxd-commands__row:hover {
+  border-color: var(--pxd-accent);
+  background: var(--pxd-accent-soft);
+}

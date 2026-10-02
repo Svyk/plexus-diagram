@@ -148,16 +148,23 @@ test("extension exports the Roam lifecycle contract and survives repeated unload
   await extension.onunload();
   await extension.onunload();
 
-  const labels = ["Plexus: Enhance this diagram", "Plexus: New whiteboard here", "Plexus: Restore native diagram", "Plexus: Fullscreen this diagram", "Plexus: Export board as SVG", "Plexus: Copy board as text"];
-  for (const label of labels) {
-    for (const kind of ["command", "slash"]) {
-      assert.ok(api.calls.some(([name, l]) => name === `${kind}:add` && l === label), `${kind}:add ${label}`);
-      assert.ok(api.calls.some(([name, l]) => name === `${kind}:remove` && l === label), `${kind}:remove ${label}`);
+  const slashLabels = ["Plexus: Enhance this diagram", "Plexus: New whiteboard here", "Plexus: Restore native diagram", "Plexus: Fullscreen this diagram", "Plexus: Export board as SVG", "Plexus: Copy board as text"];
+  const paletteLabels = ["Plexus: Commands…", "Plexus: New whiteboard here"];
+  for (const label of paletteLabels) {
+    assert.ok(api.calls.some(([name, l]) => name === "command:add" && l === label), `command:add ${label}`);
+    assert.ok(api.calls.some(([name, l]) => name === "command:remove" && l === label), `command:remove ${label}`);
+  }
+  for (const label of slashLabels) {
+    assert.ok(api.calls.some(([name, l]) => name === "slash:add" && l === label), `slash:add ${label}`);
+    assert.ok(api.calls.some(([name, l]) => name === "slash:remove" && l === label), `slash:remove ${label}`);
+    if (label !== "Plexus: New whiteboard here") {
+      assert.equal(api.calls.some(([name, l]) => name === "command:add" && l === label), false, `palette keeps ${label} off`);
     }
   }
   assert.ok(api.calls.some(([name, label]) => name === "context:add" && label === "Plexus: Enhance"));
   assert.ok(api.calls.some(([name, label]) => name === "context:remove" && label === "Plexus: Enhance"));
-  assert.deepEqual(api.calls.filter(([name]) => name === "command:add").map(([, label]) => label), labels);
+  assert.deepEqual(api.calls.filter(([name]) => name === "command:add").map(([, label]) => label), paletteLabels);
+  assert.deepEqual(api.calls.filter(([name]) => name === "slash:add").map(([, label]) => label), slashLabels);
   assert.ok(api.calls.some(([name, title]) => name === "panel:create" && title === "Plexus Diagram"));
 });
 

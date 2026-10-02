@@ -304,6 +304,16 @@ async function withEnv(options, fn) {
   }
 }
 
+const settle = () => new Promise((resolve) => setImmediate(resolve));
+
+async function runPaletteAction(t, name) {
+  await t.commands.palette.get("Plexus: Commands…").callback({});
+  const row = t.doc.querySelectorAll(".pxd-commands__row").find((node) => node.textContent === name);
+  assert.ok(row, name);
+  row.onclick();
+  await settle();
+}
+
 // ---- tests ------------------------------------------------------------------------------------
 
 test("session() acquires a board session and the caller releases it", async () => {
@@ -373,8 +383,7 @@ test("restore unmounts, releases the session and removes only the plexus key", a
     const mountEl = t.views[0].args.mountEl;
     t.env.focused = { "block-uid": "boardAAA1" };
     t.strings.set("boardAAA1", "{{[[diagram]]:Board}}");
-    await t.commands.palette.get("Plexus: Restore native diagram").callback({});
-    await new Promise((resolve) => setImmediate(resolve));
+    await runPaletteAction(t, "Restore native diagram");
     assert.equal(t.sessions.restore, 1);
     assert.equal(t.views[0].disposed, 1);
     assert.equal(t.sessions.released, t.sessions.acquired);
@@ -432,7 +441,7 @@ test("commands register in palette and slash, the context menu gets Enhance, and
   try {
     await t.install();
     const labels = ["Plexus: Enhance this diagram", "Plexus: New whiteboard here", "Plexus: Restore native diagram", "Plexus: Fullscreen this diagram", "Plexus: Export board as SVG", "Plexus: Copy board as text"];
-    assert.deepEqual([...t.commands.palette.keys()], labels);
+    assert.deepEqual([...t.commands.palette.keys()], ["Plexus: Commands…", "Plexus: New whiteboard here"]);
     assert.deepEqual([...t.commands.slash.keys()], labels);
     assert.deepEqual([...t.commands.context.keys()], ["Plexus: Enhance", "Show on board", "Add to board…"]);
     const context = t.commands.context.get("Plexus: Enhance");
@@ -446,7 +455,7 @@ test("commands register in palette and slash, the context menu gets Enhance, and
     assert.equal(t.commands.slash.has("Add to board…"), false);
     await t.lifecycle.dispose();
     assert.equal(t.commands.palette.size + t.commands.slash.size + t.commands.context.size, 0);
-    assert.equal(t.commands.removed.length, 15);
+    assert.equal(t.commands.removed.length, 11);
   } finally {
     t.restore();
   }
@@ -546,8 +555,7 @@ test("Enhance runs session.enhance once, then mounts the diagram", async () => {
     assert.equal(t.views.length, 0);
     t.env.focused = { "block-uid": "plainBBB1" };
     t.strings.set("plainBBB1", "{{[[diagram]]:Plain}}");
-    await t.commands.palette.get("Plexus: Enhance this diagram").callback({});
-    await new Promise((resolve) => setImmediate(resolve));
+    await runPaletteAction(t, "Enhance this diagram");
     assert.equal(t.sessions.enhance, 1);
     assert.equal(t.views.length, 1);
     assert.ok(native.classList.contains("pxd-native-hidden"));
@@ -698,7 +706,7 @@ test("onRequestFullscreen and the Fullscreen command drive view.setFullscreen", 
     assert.deepEqual(t.views[0].fullscreen, [true]);
     t.strings.set("boardAAA1", "{{[[diagram]]}}");
     t.env.focused = { "block-uid": "boardAAA1" };
-    await t.commands.palette.get("Plexus: Fullscreen this diagram").callback({});
+    await runPaletteAction(t, "Fullscreen this diagram");
     assert.deepEqual(t.views[0].fullscreen, [true, false]);
   });
 });
@@ -800,14 +808,15 @@ test("Export as SVG and Copy as text commands call the current view and skip whe
     t.views[0].copyOutline = () => { calls.push(["text"]); };
     t.strings.set("boardAAA1", "{{[[diagram]]}}");
     t.env.focused = { "block-uid": "boardAAA1" };
-    for (const kind of ["palette", "slash"]) {
-      await t.commands[kind].get("Plexus: Export board as SVG").callback({});
-      await t.commands[kind].get("Plexus: Copy board as text").callback({});
-    }
+    await t.commands.slash.get("Plexus: Export board as SVG").callback({});
+    await t.commands.slash.get("Plexus: Copy board as text").callback({});
+    await runPaletteAction(t, "Export board as SVG");
+    await runPaletteAction(t, "Copy board as text");
     assert.deepEqual(calls, [["svg", { download: true }], ["text"], ["svg", { download: true }], ["text"]]);
     const { createSettingsPanel } = await import("../src/settings.js");
     createSettingsPanel().settings.find((row) => row.id === "enabled").action.onChange(false);
-    await t.commands.palette.get("Plexus: Export board as SVG").callback({});
+    await t.commands.palette.get("Plexus: Commands…").callback({});
+    assert.equal(t.doc.querySelector(".pxd-commands"), null);
     assert.equal(calls.length, 4);
   });
 });
@@ -823,9 +832,56 @@ test("mounts() reports the live view state", async () => {
   });
 });
 
+test("PF-1: Commands… lists every action and keeps the focused block after the palette clears it", async () => {
+  await withEnv({ enhanced: [] }, async (t) => {
+    addNative(t.doc, "plainBBB1");
+    await t.install();
+    t.strings.set("plainBBB1", "{{[[diagram]]:Plain}}");
+    t.env.focused = { "block-uid": "plainBBB1" };
+    await t.commands.palette.get("Plexus: Commands…").callback({});
+    assert.deepEqual(t.doc.querySelectorAll(".pxd-commands__row").map((node) => node.textContent), [
+      "Enhance this diagram",
+      "New whiteboard here",
+      "Restore native diagram",
+      "Fullscreen this diagram",
+      "Export board as SVG",
+      "Copy board as text",
+    ]);
+    t.env.focused = null;
+    const row = t.doc.querySelectorAll(".pxd-commands__row").find((node) => node.textContent === "Enhance this diagram");
+    row.onclick();
+    await settle();
+    assert.equal(t.sessions.enhance, 1);
+    assert.equal(t.views[0].args.session.uid, "plainBBB1");
+    assert.equal(t.doc.querySelector(".pxd-commands"), null);
+  });
+});
+
+test("PF-1: Escape and the backdrop close the sheet, and unload drops it", async () => {
+  const t = setup();
+  try {
+    await t.install();
+    await t.commands.palette.get("Plexus: Commands…").callback({});
+    const keys = t.doc.listeners.get("keydown");
+    assert.equal(keys.size, 1);
+    [...keys][0]({ key: "Escape", preventDefault() {} });
+    assert.equal(t.doc.querySelector(".pxd-commands"), null);
+    assert.equal(keys.size, 0);
+    await t.commands.palette.get("Plexus: Commands…").callback({});
+    assert.equal(t.doc.querySelectorAll(".pxd-commands").length, 1);
+    t.doc.querySelector(".pxd-commands-back").onclick();
+    assert.equal(t.doc.querySelector(".pxd-commands"), null);
+    await t.commands.palette.get("Plexus: Commands…").callback({});
+    await t.lifecycle.dispose();
+    assert.equal(t.doc.querySelector(".pxd-commands"), null);
+    assert.equal(t.doc.listeners.get("keydown")?.size || 0, 0);
+  } finally {
+    t.restore();
+  }
+});
+
 // ---- nested boards ----------------------------------------------------------------------------
 
-const settle = () => new Promise((resolve) => setImmediate(resolve));
 
 test("F5 onOpenBoard swaps the view and session in place: same mount, old view disposed once, old session released once", async () => {
   await withEnv({ enhanced: ["boardAAA1", "childBBB1"] }, async (t) => {

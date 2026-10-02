@@ -137,6 +137,7 @@ export async function installPlexusDiagram({
   const liveSettings = { get: (id) => settings[id] };
   let stopped = false;
   let closeAddToBoard = () => {};
+  let closeCommandSheet = () => {};
   const mounts = new Map(); // native element -> record
   const trusted = new Set(); // uids confirmed enhanced by this runtime (command results)
   const portalObservers = new Map(); // portal node -> its own added-nodes observer
@@ -691,26 +692,96 @@ export async function installPlexusDiagram({
     return targetView(context)?.copyOutline?.();
   }
 
+  const sheetActions = [
+    ["Plexus: Enhance this diagram", enhanceCommand],
+    ["Plexus: New whiteboard here", newWhiteboardCommand],
+    ["Plexus: Restore native diagram", restoreCommand],
+    ["Plexus: Fullscreen this diagram", fullscreenCommand],
+    ["Plexus: Export board as SVG", exportSvgCommand],
+    ["Plexus: Copy board as text", copyOutlineCommand],
+  ];
+
+  function runCommand(label, fn) {
+    return (context) => {
+      if (!active()) {
+        console.info("[plexus-diagram] Command skipped: extension disabled");
+        return;
+      }
+      Promise.resolve(fn(context)).catch((error) => console.warn(`[plexus-diagram] ${label} failed`, error));
+    };
+  }
+
+  // Roam's palette blurs the block as soon as a command runs, so the uid is captured first.
+  function openCommandSheet(capturedUid) {
+    closeCommandSheet();
+    const sheet = doc.createElement("div");
+    sheet.className = "pxd-commands";
+    const back = doc.createElement("button");
+    back.type = "button";
+    back.className = "pxd-commands-back";
+    back.setAttribute("aria-label", "Close commands");
+    const box = doc.createElement("div");
+    box.className = "pxd-commands__box";
+    box.setAttribute("role", "menu");
+    const title = doc.createElement("div");
+    title.className = "pxd-commands__title";
+    title.textContent = "Plexus";
+    box.append(title);
+    for (const [label, fn] of sheetActions) {
+      const row = doc.createElement("button");
+      row.type = "button";
+      row.className = "pxd-commands__row";
+      row.textContent = label.replace(/^Plexus: /, "");
+      row.onclick = () => {
+        closeCommandSheet();
+        if (!active()) return;
+        const context = capturedUid ? { "block-uid": capturedUid } : {};
+        Promise.resolve(fn(context)).catch((error) => console.warn(`[plexus-diagram] ${label} failed`, error));
+      };
+      box.append(row);
+    }
+    sheet.append(back);
+    sheet.append(box);
+    lifecycle.node(sheet, doc.body);
+    const onKey = (event) => {
+      if (event.key !== "Escape") return;
+      event.preventDefault?.();
+      closeCommandSheet();
+    };
+    if (typeof doc.addEventListener === "function") doc.addEventListener("keydown", onKey);
+    back.onclick = (event) => {
+      event?.preventDefault?.();
+      event?.stopPropagation?.();
+      closeCommandSheet();
+    };
+    let closed = false;
+    closeCommandSheet = () => {
+      if (closed) return;
+      closed = true;
+      if (typeof doc.removeEventListener === "function") doc.removeEventListener("keydown", onKey);
+      sheet.remove();
+      closeCommandSheet = () => {};
+    };
+  }
+
   async function registerCommands() {
-    const commands = [
-      ["Plexus: Enhance this diagram", enhanceCommand],
-      ["Plexus: New whiteboard here", newWhiteboardCommand],
-      ["Plexus: Restore native diagram", restoreCommand],
-      ["Plexus: Fullscreen this diagram", fullscreenCommand],
-      ["Plexus: Export board as SVG", exportSvgCommand],
-      ["Plexus: Copy board as text", copyOutlineCommand],
-    ];
-    for (const [label, fn] of commands) {
-      const callback = (context) => {
+    await lifecycle.command(extensionAPI.ui.commandPalette, {
+      label: "Plexus: Commands…",
+      callback: (context) => {
         if (!active()) {
           console.info("[plexus-diagram] Command skipped: extension disabled");
           return;
         }
-        Promise.resolve(fn(context)).catch((error) => console.warn(`[plexus-diagram] ${label} failed`, error));
-      };
-      await lifecycle.command(extensionAPI.ui.commandPalette, { label, callback });
-      if (extensionAPI.ui?.slashCommand?.addCommand) {
-        await lifecycle.command(extensionAPI.ui.slashCommand, { label, callback });
+        openCommandSheet(focusedUid(context));
+      },
+    });
+    await lifecycle.command(extensionAPI.ui.commandPalette, {
+      label: "Plexus: New whiteboard here",
+      callback: runCommand("Plexus: New whiteboard here", newWhiteboardCommand),
+    });
+    if (extensionAPI.ui?.slashCommand?.addCommand) {
+      for (const [label, fn] of sheetActions) {
+        await lifecycle.command(extensionAPI.ui.slashCommand, { label, callback: runCommand(label, fn) });
       }
     }
     if (extensionAPI.ui?.blockContextMenu?.addCommand) {
@@ -782,6 +853,7 @@ export async function installPlexusDiagram({
       });
       lifecycle.add(() => closeAddToBoard());
     }
+    lifecycle.add(() => closeCommandSheet());
   }
 
   // ---- settings -------------------------------------------------------------------------------

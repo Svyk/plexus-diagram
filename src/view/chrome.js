@@ -80,8 +80,30 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
   const toolbar = el("div", "pxd-toolbar pxd-chrome", root);
   stopAll(toolbar);
   const crumbsEl = el("div", "pxd-toolbar__group pxd-crumbs", toolbar);
+  let overflow = [];
+  let crumbMenu = null;
+  const closeCrumbMenu = () => { crumbMenu?.remove(); crumbMenu = null; };
+  const openCrumbMenu = () => {
+    closeCrumbMenu();
+    if (!overflow.length) return;
+    crumbMenu = el("div", "pxd-crumb-menu", crumbsEl);
+    for (const entry of overflow) {
+      const b = el("button", "pxd-btn pxd-crumb", crumbMenu, entry.title);
+      b.type = "button";
+      b.title = entry.title;
+      b.dataset.index = String(entry.index);
+      b.setAttribute("data-index", String(entry.index));
+    }
+  };
   // One delegated listener; re-rendering the row never adds listeners.
   listen(crumbsEl, "click", (event) => {
+    if (event.target?.closest?.(".pxd-crumb__more")) {
+      event.preventDefault?.();
+      event.stopPropagation();
+      if (crumbMenu) closeCrumbMenu();
+      else openCrumbMenu();
+      return;
+    }
     const hit = event.target?.closest?.(".pxd-crumb[data-index]");
     const raw = hit?.dataset?.index ?? hit?.getAttribute?.("data-index");
     if (raw == null) return;
@@ -89,24 +111,36 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
     if (!Number.isFinite(index)) return;
     event.preventDefault?.();
     event.stopPropagation();
+    closeCrumbMenu();
     on.crumb?.(index);
   });
+  listen(root, "pointerdown", (event) => {
+    if (!crumbMenu) return;
+    if (crumbMenu.contains(event.target)) return;
+    if (event.target?.closest?.(".pxd-crumb__more")) return;
+    closeCrumbMenu();
+  });
   const renderCrumbs = (list) => {
+    closeCrumbMenu();
     crumbsEl.replaceChildren();
+    overflow = [];
     const items = Array.isArray(list) ? list : [];
     crumbsEl.style.display = items.length < 2 ? "none" : "";
     if (items.length < 2) return;
     const last = items.length - 1;
     let shown = items.map((c, i) => i);
-    let hidden = [];
     if (items.length > MAX_CRUMBS) {
       shown = [0, last - 2, last - 1, last];
-      hidden = items.slice(1, last - 2);
+      overflow = [];
+      for (let i = 1; i < last - 2; i += 1) overflow.push({ index: i, title: items[i].title });
     }
     shown.forEach((i, n) => {
-      if (n === 1 && hidden.length) {
-        const more = el("span", "pxd-crumb__more", crumbsEl, "…");
-        more.title = hidden.map((c) => c.title).join(" › ");
+      if (n === 1 && overflow.length) {
+        const more = el("button", "pxd-crumb__more", crumbsEl, "…");
+        more.type = "button";
+        more.title = overflow.map((c) => c.title).join(" › ");
+        more.setAttribute("aria-label", "Hidden boards");
+        more.setAttribute("aria-haspopup", "menu");
         el("span", "pxd-crumb__sep", crumbsEl, "›");
       }
       const c = items[i];
@@ -404,6 +438,7 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
       case "board":
         swatches(row, (c) => on.setColor?.(c));
         btn("pxd-ctx__open-board", "Open", "Open this board (Enter)", () => on.openBoard?.());
+        opt("openOwnPage", "pxd-ctx__own-page", "Own page", "Open nested board in its own page", () => on.openOwnPage());
         if (model?.enhanced) btn("pxd-ctx__rename-board", "Rename board", "Rename the board", () => on.renameBoard?.());
         btn("pxd-ctx__sidebar", "Open in sidebar", "Open in the right sidebar", () => on.openSidebar?.());
         btn("pxd-ctx__delete pxd-btn--danger", "Delete", "Delete (Del)", () => on.delete?.());

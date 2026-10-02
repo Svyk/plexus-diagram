@@ -78,6 +78,7 @@ export function buildMenu(kind, ctx = {}) {
       const out = [
         make("edit", c.isBoard ? "Rename board" : "Edit", { hint: "Enter" }),
         make("open", c.isBoard ? "Open board" : "Open"),
+        ...(c.isBoard ? [make("open-own-page", "Open nested board in its own page")] : []),
         make("open-sidebar", "Open in sidebar", { hint: "Shift Click" }),
         sep(),
         make("copy", "Copy", { hint: "Cmd C" }),

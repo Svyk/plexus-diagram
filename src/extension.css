@@ -1591,6 +1591,7 @@ body.pxd-has-fullscreen .breadcrumbs-content {
 
 /* Breadcrumbs: Parent > Current, first in the toolbar; hidden by the view when there is no parent. */
 .pxd-root .pxd-crumbs {
+  position: relative;
   align-items: center;
   gap: 2px;
   max-width: 100%;
@@ -1620,6 +1621,35 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   color: var(--pxd-muted);
   font-size: 12px;
   user-select: none;
+}
+
+.pxd-root button.pxd-crumb__more {
+  background: none;
+  border: 0;
+  padding: 0 4px;
+  cursor: pointer;
+  font: inherit;
+}
+
+.pxd-root .pxd-crumb-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  z-index: 6;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 140px;
+  max-width: 240px;
+  padding: 4px;
+  background: var(--pxd-surface);
+  border: 1px solid var(--pxd-border);
+  border-radius: 8px;
+}
+
+.pxd-root .pxd-crumb-menu .pxd-crumb {
+  max-width: none;
+  text-align: left;
 }
 
 /* Board card body: mini map of the child board, name field while untitled, count and Open. */

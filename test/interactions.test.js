@@ -62,6 +62,8 @@ function harness({ vp = { x: 0, y: 0, zoom: 1 }, settings = {}, editing = null, 
     moveIntoBoard: rec("moveIntoBoard"),
     openBoard: rec("openBoard"),
     popBoard: () => { calls.push(["popBoard"]); return canPop; },
+    historyBack: rec("historyBack"),
+    historyForward: rec("historyForward"),
     deleteItems: rec("deleteItems"),
     deleteEdges: rec("deleteEdges"),
     addEdge: (p) => { calls.push(["addEdge", p]); return Promise.resolve(`edge${uidCounter += 1}`); },
@@ -120,6 +122,21 @@ function harness({ vp = { x: 0, y: 0, zoom: 1 }, settings = {}, editing = null, 
 }
 
 const tick = () => new Promise((r) => setTimeout(r, 0));
+
+test("HB-11: Cmd+[ goes back and Cmd+] goes forward, and neither fires while a card is being typed", () => {
+  const h = harness();
+  const key = (extra) => h.ctl.handle({ type: "keydown", meta: true, ctrl: false, shift: false, alt: false, ...extra });
+  key({ key: "[", code: "BracketLeft" });
+  key({ key: "]", code: "BracketRight" });
+  assert.equal(h.named("historyBack").length, 1);
+  assert.equal(h.named("historyForward").length, 1);
+  h.ctl.handle({ type: "keydown", key: "{", code: "BracketLeft", meta: true, shift: true, alt: false });
+  assert.equal(h.named("historyBack").length, 1, "shift stays with the browser");
+  const typing = harness({ editing: "cardAAAA1" });
+  typing.ctl.handle({ type: "keydown", key: "[", code: "BracketLeft", meta: true, inputFocused: true });
+  assert.equal(typing.named("historyBack").length, 0);
+  assert.equal(typing.named("exitEdit").length, 0);
+});
 
 test("section tool: one click creates exactly one default section centered on the click", async () => {
   const h = harness();

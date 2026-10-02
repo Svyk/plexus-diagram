@@ -10,6 +10,7 @@
 //   commitMove(uids, dx, dy) commitRects(list) createCard({x,y}) createText({x,y})
 //   createSection({rect}) wrapInSection(uids) deleteItems(uids, opts) deleteEdges(uids)
 //   createBoard({rect}) moveIntoBoard(uids, boardUid, dx, dy) openBoard(uid) popBoard() → true when it went up a level
+//   historyBack() historyForward() — Cmd/Ctrl+[ and Cmd/Ctrl+] through boards opened in place
 //   addEdge({from,to,fromSide,toSide}) undo() redo()
 //   enterEdit(uid) exitEdit() isEditing() editingUid() autocompleteOpen()
 //   renameSection(uid) editLabel(edgeUid) openBlock(uid)
@@ -675,6 +676,8 @@ export function createInteractions({ actions, settings } = {}) {
       if (k === "f") { call("openSearch"); return true; }
       if (k === "=" || k === "+") { zoomBy(1.2); return true; }
       if (k === "-" || k === "_") { zoomBy(1 / 1.2); return true; }
+      if (!ev.shift && !ev.alt && (ev.code === "BracketLeft" || key === "[")) { call("historyBack"); return true; }
+      if (!ev.shift && !ev.alt && (ev.code === "BracketRight" || key === "]")) { call("historyForward"); return true; }
       return false;
     }
     if (ev.shift) {

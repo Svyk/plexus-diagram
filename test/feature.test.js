@@ -827,6 +827,74 @@ test("F5 onCrumb goes back in place, and a click on the current crumb is a no-op
   });
 });
 
+test("HB-11: three nested boards, back and forward restore each camera", async () => {
+  await withEnv({ enhanced: ["boardAAA1", "childBBB1", "leafCCC01"] }, async (t) => {
+    addNative(t.doc, "boardAAA1");
+    t.strings.set("boardAAA1", "{{[[diagram]]:Root}}");
+    t.strings.set("childBBB1", "{{[[diagram]]:Middle}}");
+    t.strings.set("leafCCC01", "{{[[diagram]]:Leaf}}");
+    await t.install();
+    t.tick();
+    const cam = (x, y, zoom) => () => ({ x, y, zoom });
+    t.views[0].viewport = cam(10, 11, 1);
+    t.views[0].args.onOpenBoard("childBBB1");
+    await settle();
+    t.views[1].viewport = cam(20, 21, 1.2);
+    t.views[1].args.onOpenBoard("leafCCC01");
+    await settle();
+    assert.deepEqual(t.views[2].args.crumbs.map((c) => c.uid), ["boardAAA1", "childBBB1", "leafCCC01"]);
+    t.views[2].viewport = cam(30, 31, 1.5);
+    t.views[2].args.onHistoryBack();
+    await settle();
+    assert.equal(t.views[3].args.session.uid, "childBBB1");
+    assert.deepEqual(t.views[3].args.crumbs.map((c) => c.uid), ["boardAAA1", "childBBB1"]);
+    assert.deepEqual(t.views[3].args.initialViewport, { x: 20, y: 21, zoom: 1.2 });
+    t.views[3].viewport = cam(20, 21, 1.2);
+    t.views[3].args.onHistoryBack();
+    await settle();
+    assert.equal(t.views[4].args.session.uid, "boardAAA1");
+    assert.deepEqual(t.views[4].args.crumbs.map((c) => c.uid), ["boardAAA1"]);
+    assert.deepEqual(t.views[4].args.initialViewport, { x: 10, y: 11, zoom: 1 });
+    t.views[4].viewport = cam(10, 11, 1);
+    t.views[4].args.onHistoryForward();
+    await settle();
+    assert.equal(t.views[5].args.session.uid, "childBBB1");
+    assert.deepEqual(t.views[5].args.initialViewport, { x: 20, y: 21, zoom: 1.2 });
+    t.views[5].viewport = cam(20, 21, 1.2);
+    t.views[5].args.onHistoryForward();
+    await settle();
+    assert.equal(t.views[6].args.session.uid, "leafCCC01");
+    assert.deepEqual(t.views[6].args.crumbs.map((c) => c.title), ["Root", "Middle", "Leaf"]);
+    assert.deepEqual(t.views[6].args.initialViewport, { x: 30, y: 31, zoom: 1.5 });
+    t.views[6].viewport = cam(30, 31, 1.5);
+    t.views[6].args.onCrumb(1);
+    await settle();
+    assert.equal(t.views[7].args.session.uid, "childBBB1");
+    assert.deepEqual(t.views[7].args.initialViewport, { x: 20, y: 21, zoom: 1.2 });
+    t.views[7].viewport = cam(20, 21, 1.2);
+    t.views[7].args.onHistoryForward();
+    await settle();
+    assert.equal(t.views[8].args.session.uid, "leafCCC01");
+    assert.deepEqual(t.views[8].args.initialViewport, { x: 30, y: 31, zoom: 1.5 });
+    assert.equal(t.writes.createBlock.length + t.writes.openBlock.length, 0);
+  });
+});
+
+test("HB-11: a board that does not open leaves history empty", async () => {
+  await withEnv({ enhanced: ["boardAAA1"] }, async (t) => {
+    addNative(t.doc, "boardAAA1");
+    await t.install();
+    t.tick();
+    t.views[0].args.onOpenBoard("nativeCCC1");
+    await settle();
+    t.views[0].args.onHistoryBack();
+    await settle();
+    assert.equal(t.views.length, 1);
+    assert.equal(t.views[0].disposed, 0);
+    assert.deepEqual(t.writes.openBlock, ["nativeCCC1"]);
+  });
+});
+
 test("F5 opening a child that is not enhanced hands it to Roam and never enhances it", async () => {
   await withEnv({ enhanced: ["boardAAA1"] }, async (t) => {
     addNative(t.doc, "boardAAA1");

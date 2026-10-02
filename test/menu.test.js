@@ -54,6 +54,8 @@ test("card menu on a board card says board", () => {
   const menu = buildMenu("card", { isBoard: true });
   assert.equal(byId(menu, "open").label, "Open board");
   assert.equal(byId(menu, "edit").label, "Rename board");
+  assert.equal(byId(menu, "open-own-page").label, "Open nested board in its own page");
+  assert.ok(!ids(buildMenu("card", {})).includes("open-own-page"));
 });
 
 test("section menu: tidy submenu, auto-fit checked, empty sections disable content actions", () => {

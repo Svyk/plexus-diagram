@@ -6368,6 +6368,14 @@ function createInteractions({ actions, settings } = {}) {
         zoomBy(1 / 1.2);
         return true;
       }
+      if (!ev.shift && !ev.alt && (ev.code === "BracketLeft" || key === "[")) {
+        call("historyBack");
+        return true;
+      }
+      if (!ev.shift && !ev.alt && (ev.code === "BracketRight" || key === "]")) {
+        call("historyForward");
+        return true;
+      }
       return false;
     }
     if (ev.shift) {
@@ -8848,7 +8856,32 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
   const toolbar = el("div", "pxd-toolbar pxd-chrome", root);
   stopAll(toolbar);
   const crumbsEl = el("div", "pxd-toolbar__group pxd-crumbs", toolbar);
+  let overflow = [];
+  let crumbMenu = null;
+  const closeCrumbMenu = () => {
+    crumbMenu?.remove();
+    crumbMenu = null;
+  };
+  const openCrumbMenu = () => {
+    closeCrumbMenu();
+    if (!overflow.length) return;
+    crumbMenu = el("div", "pxd-crumb-menu", crumbsEl);
+    for (const entry of overflow) {
+      const b = el("button", "pxd-btn pxd-crumb", crumbMenu, entry.title);
+      b.type = "button";
+      b.title = entry.title;
+      b.dataset.index = String(entry.index);
+      b.setAttribute("data-index", String(entry.index));
+    }
+  };
   listen(crumbsEl, "click", (event) => {
+    if (event.target?.closest?.(".pxd-crumb__more")) {
+      event.preventDefault?.();
+      event.stopPropagation();
+      if (crumbMenu) closeCrumbMenu();
+      else openCrumbMenu();
+      return;
+    }
     const hit = event.target?.closest?.(".pxd-crumb[data-index]");
     const raw = hit?.dataset?.index ?? hit?.getAttribute?.("data-index");
     if (raw == null) return;
@@ -8856,24 +8889,36 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     if (!Number.isFinite(index)) return;
     event.preventDefault?.();
     event.stopPropagation();
+    closeCrumbMenu();
     on.crumb?.(index);
   });
+  listen(root, "pointerdown", (event) => {
+    if (!crumbMenu) return;
+    if (crumbMenu.contains(event.target)) return;
+    if (event.target?.closest?.(".pxd-crumb__more")) return;
+    closeCrumbMenu();
+  });
   const renderCrumbs = (list) => {
+    closeCrumbMenu();
     crumbsEl.replaceChildren();
+    overflow = [];
     const items = Array.isArray(list) ? list : [];
     crumbsEl.style.display = items.length < 2 ? "none" : "";
     if (items.length < 2) return;
     const last = items.length - 1;
     let shown = items.map((c, i) => i);
-    let hidden = [];
     if (items.length > MAX_CRUMBS) {
       shown = [0, last - 2, last - 1, last];
-      hidden = items.slice(1, last - 2);
+      overflow = [];
+      for (let i = 1; i < last - 2; i += 1) overflow.push({ index: i, title: items[i].title });
     }
     shown.forEach((i, n) => {
-      if (n === 1 && hidden.length) {
-        const more = el("span", "pxd-crumb__more", crumbsEl, "…");
-        more.title = hidden.map((c2) => c2.title).join(" › ");
+      if (n === 1 && overflow.length) {
+        const more = el("button", "pxd-crumb__more", crumbsEl, "…");
+        more.type = "button";
+        more.title = overflow.map((c2) => c2.title).join(" › ");
+        more.setAttribute("aria-label", "Hidden boards");
+        more.setAttribute("aria-haspopup", "menu");
         el("span", "pxd-crumb__sep", crumbsEl, "›");
       }
       const c = items[i];
@@ -9182,6 +9227,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
       case "board":
         swatches(row, (c) => on.setColor?.(c));
         btn("pxd-ctx__open-board", "Open", "Open this board (Enter)", () => on.openBoard?.());
+        opt("openOwnPage", "pxd-ctx__own-page", "Own page", "Open nested board in its own page", () => on.openOwnPage());
         if (model?.enhanced) btn("pxd-ctx__rename-board", "Rename board", "Rename the board", () => on.renameBoard?.());
         btn("pxd-ctx__sidebar", "Open in sidebar", "Open in the right sidebar", () => on.openSidebar?.());
         btn("pxd-ctx__delete pxd-btn--danger", "Delete", "Delete (Del)", () => on.delete?.());
@@ -10651,6 +10697,7 @@ function buildMenu(kind, ctx = {}) {
       const out = [
         make("edit", c.isBoard ? "Rename board" : "Edit", { hint: "Enter" }),
         make("open", c.isBoard ? "Open board" : "Open"),
+        ...c.isBoard ? [make("open-own-page", "Open nested board in its own page")] : [],
         make("open-sidebar", "Open in sidebar", { hint: "Shift Click" }),
         sep(),
         make("copy", "Copy", { hint: "Cmd C" }),
@@ -11777,6 +11824,9 @@ function mountBoardView({
   crumbs = null,
   onOpenBoard = null,
   onCrumb = null,
+  onHistoryBack = null,
+  onHistoryForward = null,
+  initialViewport = null,
   routeUid = session.uid,
   autofocus = false,
   onSetDefaults = null
@@ -11848,6 +11898,9 @@ function mountBoardView({
   const inSidebar = mountKind !== "main";
   const vpId = inSidebar ? `${boardUid}:${mountKind}` : boardUid;
   let vp = vpStore.get(vpId);
+  if (initialViewport && Number.isFinite(initialViewport.x) && Number.isFinite(initialViewport.y) && Number.isFinite(initialViewport.zoom) && initialViewport.zoom > 0) {
+    vp = { x: initialViewport.x, y: initialViewport.y, zoom: initialViewport.zoom };
+  }
   let size = { width: 0, height: 0 };
   let rootRect = { left: 0, top: 0, width: 0, height: 0 };
   let disposed = false;
@@ -12350,6 +12403,10 @@ function mountBoardView({
     if (disposed) return;
     if (onOpenBoard) onOpenBoard(target);
     else host?.openBlock?.(target);
+  };
+  const openOwnPage = (item) => {
+    const target = item ? boardTargetOf(item.uid) : null;
+    if (target) host?.openBlock?.(target);
   };
   const goCrumb = async (index) => {
     if (itemsR.isEditing()) await exitEdit();
@@ -12925,6 +12982,9 @@ function mountBoardView({
       case "open":
         openItem(item);
         break;
+      case "open-own-page":
+        openOwnPage(item);
+        break;
       case "open-sidebar":
         openItemInSidebar(item);
         break;
@@ -13105,6 +13165,7 @@ function mountBoardView({
         const it = singleItem();
         if (it) void openBoard(it.uid);
       },
+      openOwnPage: () => openOwnPage(singleItem()),
       renameBoard: () => {
         const it = singleItem();
         if (it) itemsR.renameBoard(it.uid);
@@ -13782,6 +13843,8 @@ function mountBoardView({
     openBoard: (uid) => openBoard(uid),
     isBoardCard: (uid) => Boolean(boardTargetOf(uid)),
     popBoard,
+    historyBack: () => onHistoryBack?.(),
+    historyForward: () => onHistoryForward?.(),
     wrapInSection: (uids) => session.wrapInSection?.(uids),
     deleteItems: (uids, opts) => session.deleteItems?.(uids, opts),
     deleteEdges: (uids) => session.deleteEdges?.(uids),
@@ -14541,6 +14604,7 @@ function mountBoardView({
     fit() {
       fitAll();
     },
+    viewport: () => ({ x: vp.x, y: vp.y, zoom: vp.zoom }),
     // Swap the settings object (feature.js calls this when a setting changes) and re-apply what depends on it.
     setSettings(next) {
       if (disposed) return;
@@ -14624,6 +14688,10 @@ function mountBoardView({
       routeOff();
       fsDispose();
       applyFullscreenChrome(mountEl, false, doc);
+      try {
+        vpStore.set(vpId, vp);
+      } catch {
+      }
       vpStore.flush?.();
       resumeTimer?.();
       settleTimer?.();
@@ -14827,6 +14895,27 @@ var NEW_BOARD_STRING = "{{[[diagram]]:Untitled board}}";
 var ANCESTORS_PATTERN = "[:block/uid :block/string {:block/parents [:block/uid :block/string :block/props {:block/parents [:db/id]}]}]";
 var boardTitle = (s) => parseBoardTitle(s) || UNTITLED_BOARD;
 var currentUid = (rec) => rec.crumbs[rec.crumbs.length - 1].uid;
+function crumbCopy(list) {
+  return (list || []).map((c) => ({ uid: c.uid, title: c.title }));
+}
+function sameTrail(a, b) {
+  if (!a || !b || a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) if (a[i].uid !== b[i].uid) return false;
+  return true;
+}
+function cameraOf(rec) {
+  try {
+    const v = rec.view?.viewport?.();
+    if (v && Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.zoom) && v.zoom > 0) {
+      return { x: v.x, y: v.y, zoom: v.zoom };
+    }
+  } catch {
+  }
+  return null;
+}
+function shot(rec) {
+  return { crumbs: crumbCopy(rec.crumbs), vp: cameraOf(rec) };
+}
 var PARENTS_QUERY = "[:find ?u ?s :in $ ?uid :where [?b :block/uid ?uid] [?b :block/parents ?p] [?p :block/uid ?u] [?p :block/string ?s]]";
 function graphFromHash(hash = globalThis.location?.hash || "") {
   const match = String(hash).match(/#\/app\/([^/]+)/);
@@ -15000,7 +15089,7 @@ async function installPlexusDiagram({
     if (state[":block/open"] === false) return;
     Promise.resolve().then(() => host.setOpen(uid, false)).catch((error) => console.warn("[plexus-diagram] Could not collapse the board block", uid, error));
   }
-  function mountRecView(rec, { autofocus = false } = {}) {
+  function mountRecView(rec, { autofocus = false, viewport = null } = {}) {
     return mountView({
       host,
       session: rec.session,
@@ -15013,8 +15102,11 @@ async function installPlexusDiagram({
       crumbs: rec.crumbs.slice(),
       routeUid: rec.uid,
       autofocus,
-      onOpenBoard: (child) => navigate(rec, [...rec.crumbs, { uid: child, title: boardTitle(host.blockString?.(child)) }]),
-      onCrumb: (index) => navigate(rec, rec.crumbs.slice(0, index + 1)),
+      initialViewport: viewport,
+      onOpenBoard: (child) => visit(rec, [...rec.crumbs, { uid: child, title: boardTitle(host.blockString?.(child)) }]),
+      onCrumb: (index) => visit(rec, rec.crumbs.slice(0, index + 1)),
+      onHistoryBack: () => historyMove(rec, "back"),
+      onHistoryForward: () => historyMove(rec, "forward"),
       onSetDefaults: (patch) => setDefaults(patch)
     });
   }
@@ -15040,13 +15132,13 @@ async function installPlexusDiagram({
   function watchRec(rec) {
     const session = rec.session;
     const offGone = session.on?.("gone", () => {
-      if (currentUid(rec) !== rec.uid) navigate(rec, rec.crumbs.slice(0, -1));
+      if (currentUid(rec) !== rec.uid) popSilent(rec);
       else unmount(rec);
     });
     const offChange = session.on?.("change", () => {
       if (!session.board || session.board.enhanced !== false) return;
       if (currentUid(rec) !== rec.uid) {
-        navigate(rec, rec.crumbs.slice(0, -1));
+        popSilent(rec);
       } else if (!legacyUids.has(rec.uid)) {
         markNative(rec.uid);
         unmount(rec);
@@ -15057,7 +15149,58 @@ async function installPlexusDiagram({
       offChange?.();
     };
   }
-  function navigate(rec, next) {
+  function forgetUid(rec, uid) {
+    const keep = (entry) => entry.crumbs[entry.crumbs.length - 1]?.uid !== uid;
+    rec.back = (rec.back || []).filter(keep);
+    rec.forward = (rec.forward || []).filter(keep);
+  }
+  function popSilent(rec) {
+    const gone = currentUid(rec);
+    if (gone === rec.uid) return;
+    forgetUid(rec, gone);
+    navigate(rec, rec.crumbs.slice(0, -1), null);
+  }
+  function visit(rec, next) {
+    if (stopped || mounts.get(rec.native) !== rec || !next?.length) return;
+    if (next[next.length - 1].uid === currentUid(rec)) return;
+    const backTop = rec.back?.[rec.back.length - 1];
+    const fore = rec.forward?.[rec.forward.length - 1];
+    let mode = "push";
+    let destVp = null;
+    if (backTop && sameTrail(backTop.crumbs, next)) {
+      mode = "back";
+      destVp = backTop.vp;
+    } else if (fore && sameTrail(fore.crumbs, next)) {
+      mode = "forward";
+      destVp = fore.vp;
+    }
+    const leaving = shot(rec);
+    navigate(rec, next, destVp, () => {
+      if (mode === "back") {
+        rec.forward.push(leaving);
+        rec.back.pop();
+      } else if (mode === "forward") {
+        rec.back.push(leaving);
+        rec.forward.pop();
+      } else {
+        rec.back.push(leaving);
+        rec.forward = [];
+      }
+    });
+  }
+  function historyMove(rec, dir) {
+    if (stopped || mounts.get(rec.native) !== rec) return false;
+    const from = dir === "back" ? rec.back : rec.forward;
+    if (!from?.length) return false;
+    const dest = from[from.length - 1];
+    const leaving = shot(rec);
+    navigate(rec, dest.crumbs, dest.vp, () => {
+      from.pop();
+      (dir === "back" ? rec.forward : rec.back).push(leaving);
+    });
+    return true;
+  }
+  function navigate(rec, next, viewport, commit) {
     queueMicrotask(() => {
       if (stopped || mounts.get(rec.native) !== rec || !next.length) return;
       const target = next[next.length - 1].uid;
@@ -15082,6 +15225,10 @@ async function installPlexusDiagram({
         return;
       }
       try {
+        commit?.();
+      } catch {
+      }
+      try {
         rec.off?.();
       } catch {
       }
@@ -15099,7 +15246,7 @@ async function installPlexusDiagram({
       rec.session = session;
       rec.crumbs = next;
       try {
-        rec.view = mountRecView(rec, { autofocus: true });
+        rec.view = mountRecView(rec, { autofocus: true, viewport: viewport || null });
         rec.off = watchRec(rec);
       } catch (error) {
         console.error("[plexus-diagram] Nested mount failed; native diagram restored", error);
@@ -15124,6 +15271,8 @@ async function installPlexusDiagram({
       session: null,
       view: null,
       crumbs: crumbs ?? seedCrumbs(uid),
+      back: [],
+      forward: [],
       fullscreen: false,
       off: null
     };

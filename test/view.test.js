@@ -1364,17 +1364,91 @@ test("F5: breadcrumbs render only with two or more entries and a click calls onC
 });
 
 test("F5: more than four crumbs collapse the middle into an ellipsis that names the hidden boards", async () => {
+  const clicked = [];
   const crumbs = ["A", "B", "C", "D", "E", "F"].map((t, i) => ({ uid: `crumb00${i}`, title: t }));
-  const f = mountFixture({ viewOptions: { crumbs, onCrumb() {} } });
+  const f = mountFixture({ viewOptions: { crumbs, onCrumb: (i) => clicked.push(i) } });
   try {
     await f.flush();
     const bar = f.view.root.querySelector(".pxd-crumbs");
-    assert.deepEqual(bar.querySelectorAll("button.pxd-crumb").map((b) => b.textContent), ["A", "D", "E"]);
+    const rowCrumbs = () => bar.querySelectorAll("button.pxd-crumb").filter((b) => b.parentElement === bar);
+    assert.deepEqual(rowCrumbs().map((b) => b.textContent), ["A", "D", "E"]);
     assert.equal(bar.querySelector(".pxd-crumb--current").textContent, "F");
     const more = bar.querySelector(".pxd-crumb__more");
     assert.equal(more.textContent, "…");
     assert.equal(more.title, "B › C");
-    assert.deepEqual(bar.querySelectorAll("button.pxd-crumb").map((b) => b.dataset.index), ["0", "3", "4"]);
+    assert.equal(more.tagName, "BUTTON");
+    assert.equal(bar.querySelector(".pxd-crumb-menu"), null);
+    assert.deepEqual(rowCrumbs().map((b) => b.dataset.index), ["0", "3", "4"]);
+    f.stub.dispatch(more, "click", { button: 0 });
+    const menu = bar.querySelector(".pxd-crumb-menu");
+    assert.deepEqual(menu.querySelectorAll("button.pxd-crumb").map((b) => b.textContent), ["B", "C"]);
+    assert.deepEqual(menu.querySelectorAll("button.pxd-crumb").map((b) => b.dataset.index), ["1", "2"]);
+    f.stub.dispatch(menu.querySelector("button.pxd-crumb"), "click", { button: 0 });
+    assert.deepEqual(clicked, [1]);
+    assert.equal(bar.querySelector(".pxd-crumb-menu"), null, "picking a hidden board closes the menu");
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("HB-11: a restored camera is applied and dispose writes it", async () => {
+  const f = mountFixture({ viewOptions: { initialViewport: { x: 40, y: -15, zoom: 1.25 } } });
+  try {
+    await f.flush();
+    assert.deepEqual(f.view.viewport(), { x: 40, y: -15, zoom: 1.25 });
+    assert.equal(f.view.state().zoom, 1.25);
+    assert.match(f.view.root.querySelector(".pxd-world").style.transform, /1\.25/);
+    assert.equal(f.session.mutations.length, 0);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+  const stored = JSON.parse(f.stub.localStorage.getItem("plexus-diagram:vp:Svy:board0001"));
+  assert.deepEqual(stored, { x: 40, y: -15, zoom: 1.25 });
+});
+
+test("HB-11: Cmd+[ and Cmd+] ask for history and write nothing", async () => {
+  const seen = [];
+  const f = mountFixture({
+    viewOptions: {
+      autofocus: true,
+      onHistoryBack: () => seen.push("back"),
+      onHistoryForward: () => seen.push("forward"),
+    },
+  });
+  try {
+    await f.flush();
+    f.stub.dispatch(f.stub.window, "keydown", { key: "[", code: "BracketLeft", metaKey: true });
+    f.stub.dispatch(f.stub.window, "keydown", { key: "]", code: "BracketRight", ctrlKey: true });
+    assert.deepEqual(seen, ["back", "forward"]);
+    assert.equal(f.session.mutations.length, 0);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("HB-11: Own page opens the nested board through the host and leaves the in-place board", async () => {
+  const inPlace = [];
+  const hostOpened = [];
+  const f = mountFixture({
+    extraChildren: boardCardChildren(),
+    viewOptions: { onOpenBoard: (uid) => inPlace.push(uid) },
+    hostOverrides: { openBlock: (uid) => hostOpened.push(uid) },
+  });
+  try {
+    await f.flush();
+    await tick(5);
+    f.stub.flushIdle();
+    await selectCard(f, "nbCard001");
+    const btn = f.view.root.querySelector(".pxd-ctx__own-page");
+    assert.equal(btn.textContent, "Own page");
+    assert.equal(btn.title, "Open nested board in its own page");
+    btn.click();
+    assert.deepEqual(hostOpened, ["nbCard001"]);
+    assert.deepEqual(inPlace, []);
+    assert.equal(f.session.mutations.length, 0);
   } finally {
     f.view.dispose();
     f.restore();

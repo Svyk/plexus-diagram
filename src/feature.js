@@ -34,6 +34,30 @@ const NEW_BOARD_STRING = "{{[[diagram]]:Untitled board}}";
 const ANCESTORS_PATTERN = "[:block/uid :block/string {:block/parents [:block/uid :block/string :block/props {:block/parents [:db/id]}]}]";
 const boardTitle = (s) => parseBoardTitle(s) || UNTITLED_BOARD;
 const currentUid = (rec) => rec.crumbs[rec.crumbs.length - 1].uid;
+
+function crumbCopy(list) {
+  return (list || []).map((c) => ({ uid: c.uid, title: c.title }));
+}
+
+function sameTrail(a, b) {
+  if (!a || !b || a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) if (a[i].uid !== b[i].uid) return false;
+  return true;
+}
+
+function cameraOf(rec) {
+  try {
+    const v = rec.view?.viewport?.();
+    if (v && Number.isFinite(v.x) && Number.isFinite(v.y) && Number.isFinite(v.zoom) && v.zoom > 0) {
+      return { x: v.x, y: v.y, zoom: v.zoom };
+    }
+  } catch { /* the view has no camera */ }
+  return null;
+}
+
+function shot(rec) {
+  return { crumbs: crumbCopy(rec.crumbs), vp: cameraOf(rec) };
+}
 const PARENTS_QUERY = "[:find ?u ?s :in $ ?uid :where [?b :block/uid ?uid] [?b :block/parents ?p] [?p :block/uid ?u] [?p :block/string ?s]]";
 
 function graphFromHash(hash = globalThis.location?.hash || "") {
@@ -243,7 +267,7 @@ export async function installPlexusDiagram({
       .catch((error) => console.warn("[plexus-diagram] Could not collapse the board block", uid, error));
   }
 
-  function mountRecView(rec, { autofocus = false } = {}) {
+  function mountRecView(rec, { autofocus = false, viewport = null } = {}) {
     return mountView({
       host,
       session: rec.session,
@@ -256,8 +280,11 @@ export async function installPlexusDiagram({
       crumbs: rec.crumbs.slice(),
       routeUid: rec.uid,
       autofocus,
-      onOpenBoard: (child) => navigate(rec, [...rec.crumbs, { uid: child, title: boardTitle(host.blockString?.(child)) }]),
-      onCrumb: (index) => navigate(rec, rec.crumbs.slice(0, index + 1)),
+      initialViewport: viewport,
+      onOpenBoard: (child) => visit(rec, [...rec.crumbs, { uid: child, title: boardTitle(host.blockString?.(child)) }]),
+      onCrumb: (index) => visit(rec, rec.crumbs.slice(0, index + 1)),
+      onHistoryBack: () => historyMove(rec, "back"),
+      onHistoryForward: () => historyMove(rec, "forward"),
       onSetDefaults: (patch) => setDefaults(patch),
     });
   }
@@ -285,14 +312,14 @@ export async function installPlexusDiagram({
   function watchRec(rec) {
     const session = rec.session;
     const offGone = session.on?.("gone", () => {
-      if (currentUid(rec) !== rec.uid) navigate(rec, rec.crumbs.slice(0, -1));
+      if (currentUid(rec) !== rec.uid) popSilent(rec);
       else unmount(rec);
     });
     const offChange = session.on?.("change", () => {
       // Restore (or an external props edit / undo) removed :plexus: give the native diagram back.
       if (!session.board || session.board.enhanced !== false) return;
       if (currentUid(rec) !== rec.uid) {
-        navigate(rec, rec.crumbs.slice(0, -1));
+        popSilent(rec);
       } else if (!legacyUids.has(rec.uid)) {
         markNative(rec.uid);
         unmount(rec);
@@ -301,9 +328,55 @@ export async function installPlexusDiagram({
     return () => { offGone?.(); offChange?.(); };
   }
 
+  function forgetUid(rec, uid) {
+    const keep = (entry) => entry.crumbs[entry.crumbs.length - 1]?.uid !== uid;
+    rec.back = (rec.back || []).filter(keep);
+    rec.forward = (rec.forward || []).filter(keep);
+  }
+
+  // A vanished nested board steps up without becoming a forward entry.
+  function popSilent(rec) {
+    const gone = currentUid(rec);
+    if (gone === rec.uid) return;
+    forgetUid(rec, gone);
+    navigate(rec, rec.crumbs.slice(0, -1), null);
+  }
+
+  // User navigation. History commits only after the target board actually opens.
+  function visit(rec, next) {
+    if (stopped || mounts.get(rec.native) !== rec || !next?.length) return;
+    if (next[next.length - 1].uid === currentUid(rec)) return;
+    const backTop = rec.back?.[rec.back.length - 1];
+    const fore = rec.forward?.[rec.forward.length - 1];
+    let mode = "push";
+    let destVp = null;
+    if (backTop && sameTrail(backTop.crumbs, next)) { mode = "back"; destVp = backTop.vp; }
+    else if (fore && sameTrail(fore.crumbs, next)) { mode = "forward"; destVp = fore.vp; }
+    const leaving = shot(rec);
+    navigate(rec, next, destVp, () => {
+      if (mode === "back") { rec.forward.push(leaving); rec.back.pop(); }
+      else if (mode === "forward") { rec.back.push(leaving); rec.forward.pop(); }
+      else { rec.back.push(leaving); rec.forward = []; }
+    });
+  }
+
+  function historyMove(rec, dir) {
+    if (stopped || mounts.get(rec.native) !== rec) return false;
+    const from = dir === "back" ? rec.back : rec.forward;
+    if (!from?.length) return false;
+    const dest = from[from.length - 1];
+    const leaving = shot(rec);
+    navigate(rec, dest.crumbs, dest.vp, () => {
+      from.pop();
+      (dir === "back" ? rec.forward : rec.back).push(leaving);
+    });
+    return true;
+  }
+
   // In-place navigation between nested boards: same mount element, native surface and fullscreen state,
   // only the view and session are swapped. Deferred so the old view's handler stack unwinds first.
-  function navigate(rec, next) {
+  // `commit` records history only once the target session is in hand.
+  function navigate(rec, next, viewport, commit) {
     queueMicrotask(() => {
       if (stopped || mounts.get(rec.native) !== rec || !next.length) return;
       const target = next[next.length - 1].uid;
@@ -324,6 +397,7 @@ export async function installPlexusDiagram({
         session?.release?.();
         return;
       }
+      try { commit?.(); } catch { /* history is optional */ }
       try { rec.off?.(); } catch { /* ignore */ }
       rec.off = null;
       try { rec.view?.dispose?.(); } catch (error) { console.warn("[plexus-diagram] view dispose failed", error); }
@@ -331,7 +405,7 @@ export async function installPlexusDiagram({
       rec.session = session;
       rec.crumbs = next;
       try {
-        rec.view = mountRecView(rec, { autofocus: true });
+        rec.view = mountRecView(rec, { autofocus: true, viewport: viewport || null });
         rec.off = watchRec(rec);
       } catch (error) {
         console.error("[plexus-diagram] Nested mount failed; native diagram restored", error);
@@ -357,6 +431,8 @@ export async function installPlexusDiagram({
       session: null,
       view: null,
       crumbs: crumbs ?? seedCrumbs(uid),
+      back: [],
+      forward: [],
       fullscreen: false,
       off: null,
     };

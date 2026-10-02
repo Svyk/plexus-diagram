@@ -274,6 +274,9 @@ export function mountBoardView({
   crumbs = null,
   onOpenBoard = null,
   onCrumb = null,
+  onHistoryBack = null,
+  onHistoryForward = null,
+  initialViewport = null,
   routeUid = session.uid,
   autofocus = false,
   onSetDefaults = null,
@@ -355,6 +358,15 @@ export function mountBoardView({
   const inSidebar = mountKind !== "main";
   const vpId = inSidebar ? `${boardUid}:${mountKind}` : boardUid;
   let vp = vpStore.get(vpId);
+  if (
+    initialViewport
+    && Number.isFinite(initialViewport.x)
+    && Number.isFinite(initialViewport.y)
+    && Number.isFinite(initialViewport.zoom)
+    && initialViewport.zoom > 0
+  ) {
+    vp = { x: initialViewport.x, y: initialViewport.y, zoom: initialViewport.zoom };
+  }
   let size = { width: 0, height: 0 };
   let rootRect = { left: 0, top: 0, width: 0, height: 0 };
   let disposed = false;
@@ -836,6 +848,10 @@ export function mountBoardView({
     if (onOpenBoard) onOpenBoard(target);
     else host?.openBlock?.(target);
   };
+  const openOwnPage = (item) => {
+    const target = item ? boardTargetOf(item.uid) : null;
+    if (target) host?.openBlock?.(target);
+  };
   const goCrumb = async (index) => {
     if (itemsR.isEditing()) await exitEdit();
     if (disposed) return;
@@ -1287,6 +1303,7 @@ export function mountBoardView({
       case "open-outline": openBoardOutline(); break;
       case "edit": if (item) { if (item.kind === "board") itemsR.renameBoard(item.uid); else void enterEdit(item.uid); } break;
       case "open": openItem(item); break;
+      case "open-own-page": openOwnPage(item); break;
       case "open-sidebar": openItemInSidebar(item); break;
       case "copy": doCopy(uids); break;
       case "copy-ref": if (item) copyText(`((${item.uid}))`, "Reference copied"); break;
@@ -1370,6 +1387,7 @@ export function mountBoardView({
     crumbs: crumbList,
     on: {
       openBoard: () => { const it = singleItem(); if (it) void openBoard(it.uid); },
+      openOwnPage: () => openOwnPage(singleItem()),
       renameBoard: () => { const it = singleItem(); if (it) itemsR.renameBoard(it.uid); },
       crumb: (index) => { void goCrumb(index); },
       wrapBoard: () => wrapBoardSel(),
@@ -1878,6 +1896,8 @@ export function mountBoardView({
     openBoard: (uid) => openBoard(uid),
     isBoardCard: (uid) => Boolean(boardTargetOf(uid)),
     popBoard,
+    historyBack: () => onHistoryBack?.(),
+    historyForward: () => onHistoryForward?.(),
     wrapInSection: (uids) => session.wrapInSection?.(uids),
     deleteItems: (uids, opts) => session.deleteItems?.(uids, opts),
     deleteEdges: (uids) => session.deleteEdges?.(uids),
@@ -2557,6 +2577,7 @@ export function mountBoardView({
     controller: ctl,
     setFullscreen(on) { if (Boolean(on) !== isFullscreen) applyFullscreen(on); },
     fit() { fitAll(); },
+    viewport: () => ({ x: vp.x, y: vp.y, zoom: vp.zoom }),
     // Swap the settings object (feature.js calls this when a setting changes) and re-apply what depends on it.
     setSettings(next) {
       if (disposed) return;
@@ -2632,6 +2653,7 @@ export function mountBoardView({
       routeOff();
       fsDispose();
       applyFullscreenChrome(mountEl, false, doc);
+      try { vpStore.set(vpId, vp); } catch { /* the store can refuse a write */ }
       vpStore.flush?.();
       resumeTimer?.();
       settleTimer?.();

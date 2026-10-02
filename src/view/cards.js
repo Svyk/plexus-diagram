@@ -322,17 +322,56 @@ export function createItemRenderer({
     });
   };
 
-  const renderRoot = (parent, string, cls = "pxd-rs") => {
+  // One log per uid for the life of this renderer. A later content pass must not log again.
+  const loggedRenderErrors = new Set();
+  const showRenderChip = (node, uid) => {
+    node.classList.add("pxd-item--error");
+    const chip = el("div", "pxd-render-chip", node);
+    el("span", "pxd-render-chip__label", chip).textContent = "Could not render";
+    el("span", "pxd-render-chip__uid", chip).textContent = uid;
+    const open = el("button", "pxd-btn pxd-render-chip__open", chip);
+    open.type = "button";
+    open.textContent = "Open";
+    for (const type of ["pointerdown", "mousedown", "dblclick", "click"]) {
+      open.addEventListener(type, (event) => {
+        stopEvent(event);
+        if (type === "click" && uid) host?.openBlock?.(uid);
+      });
+    }
+  };
+  // Roam's renderString catches a broken {{[[roam/render]]}} and writes this phrase instead of throwing.
+  const RENDER_FAIL = "Error rendering component";
+  const renderRoot = (parent, string, cls = "pxd-rs", uid = "") => {
     const node = el("div", cls, parent);
     if (!string) return node;
     const live = el("div", "pxd-rs__live", node);
+    const buffered = [];
+    const origError = console.error;
+    console.error = (...args) => { buffered.push(args); };
+    let thrown = null;
     try {
       if (host?.renderString) host.renderString(live, string);
       else live.textContent = plainText(string);
-    } catch {
-      live.textContent = plainText(string);
+    } catch (error) {
+      thrown = error;
+    } finally {
+      console.error = origError;
     }
-    armEmbedShield(node, live);
+    const renderedText = String(live.textContent || "");
+    const failed = Boolean(thrown) || renderedText.includes(RENDER_FAIL);
+    if (!failed) {
+      for (const args of buffered) origError.apply(console, args);
+      armEmbedShield(node, live);
+      return node;
+    }
+    try { host?.unmount?.(live); } catch { /* Roam had nothing to detach */ }
+    try { live.remove(); } catch { /* already gone */ }
+    showRenderChip(node, uid);
+    if (!loggedRenderErrors.has(uid)) {
+      loggedRenderErrors.add(uid);
+      const reported = thrown || buffered[0]?.[0] || new Error(renderedText.slice(0, 180));
+      origError.call(console, reported);
+    }
     return node;
   };
 
@@ -598,7 +637,7 @@ export function createItemRenderer({
       budget.n += 1;
       const row = el("div", "pxd-block", parent);
       row.dataset.uid = childUid(b);
-      const node = renderRoot(row, s, "pxd-rs pxd-block__text");
+      const node = renderRoot(row, s, "pxd-rs pxd-block__text", childUid(b));
       budget.roots.push(node);
       const kids = childKids(b);
       if (kids.length && depth < CONTENT_DEPTH) {
@@ -707,9 +746,9 @@ export function createItemRenderer({
       return;
     }
     if (item.type === "text") {
-      budget.roots.push(renderRoot(body, item.string, "pxd-rs pxd-item__text"));
+      budget.roots.push(renderRoot(body, item.string, "pxd-rs pxd-item__text", item.uid));
     } else if (item.kind === "image") {
-      budget.roots.push(renderRoot(el("div", "pxd-item__media", body), item.string));
+      budget.roots.push(renderRoot(el("div", "pxd-item__media", body), item.string, "pxd-rs", item.uid));
     } else if (item.kind === "board") {
       mountBoardBody(body, item);
     } else if (item.kind === "page") {
@@ -759,7 +798,7 @@ export function createItemRenderer({
       } else if (typeof refString === "string" && isQueryString(refString) && host?.renderBlock) {
         budget.roots.push(mountQuery(body, ref));
       } else {
-        if (typeof refString === "string" && refString.trim()) budget.roots.push(renderRoot(body, refString, "pxd-rs pxd-item__string"));
+        if (typeof refString === "string" && refString.trim()) budget.roots.push(renderRoot(body, refString, "pxd-rs pxd-item__string", ref));
         if (item.open === false) {
           rec.roots = budget.roots;
           rec.contentKey = contentKeyOf(item);
@@ -779,7 +818,7 @@ export function createItemRenderer({
     } else if (isQueryString(item.string) && host?.renderBlock) {
       budget.roots.push(mountQuery(body, item.uid));
     } else {
-      if (item.string?.trim()) budget.roots.push(renderRoot(body, item.string, "pxd-rs pxd-item__string"));
+      if (item.string?.trim()) budget.roots.push(renderRoot(body, item.string, "pxd-rs pxd-item__string", item.uid));
       if (item.open !== false) renderBlocks(body, item.content || [], 1, budget);
       if (!item.string?.trim() && !(item.content || []).length) {
         el("div", "pxd-item__placeholder", body).textContent = "Empty card";
@@ -793,7 +832,7 @@ export function createItemRenderer({
     noteRender(item.uid);
     unmountRoots(rec);
     rec.title.replaceChildren();
-    const node = renderRoot(rec.title, item.string || "Section", "pxd-rs pxd-section__title-text");
+    const node = renderRoot(rec.title, item.string || "Section", "pxd-rs pxd-section__title-text", item.uid);
     if (!item.string) node.textContent = "Section";
     rec.roots = [node];
     rec.titleRendered = true;

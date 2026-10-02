@@ -2636,3 +2636,103 @@ test("ED-10: a page title renames in place, waits past ten references, and Escap
     f.restore();
   }
 });
+
+test("PF-5: a throwing card render shows one Could not render chip", async () => {
+  const errors = [];
+  const orig = console.error;
+  console.error = (...args) => { errors.push(args); };
+  const opened = [];
+  const f = mountFixture({
+    hostOverrides: {
+      openBlock: (uid) => opened.push(uid),
+      renderString(el, string) {
+        this.calls.renderString += 1;
+        if (String(string).startsWith("Alpha")) throw new Error("render boom");
+        el.textContent = string;
+      },
+    },
+  });
+  try {
+    await f.flush();
+    const root = f.view.root;
+    const alpha = root.querySelector("[data-uid=cardAAAA1]");
+    const chip = alpha.querySelector(".pxd-render-chip");
+    assert.ok(chip, "the throwing card shows a chip");
+    assert.equal(chip.querySelector(".pxd-render-chip__label").textContent, "Could not render");
+    assert.equal(chip.querySelector(".pxd-render-chip__uid").textContent, "cardAAAA1");
+    assert.ok(alpha.querySelector(".pxd-item--error"));
+    assert.equal(alpha.querySelectorAll(".pxd-rs__live").length, 1, "the thrown root is removed; the child still renders");
+    assert.match(alpha.querySelector(".pxd-item__body").textContent, /child one/);
+    assert.equal(root.querySelectorAll(".pxd-render-chip").length, 1);
+    assert.equal(root.querySelectorAll(".pxd-item").length, 6);
+    assert.equal(root.querySelector("[data-uid=cardBBBB2] .pxd-render-chip"), null);
+    assert.equal(root.querySelector("[data-uid=cardBBBB2] .pxd-item__header").textContent, "Beta");
+    assert.match(root.querySelector("[data-uid=cardBBBB2]").textContent, /page block/);
+    chip.querySelector(".pxd-render-chip__open").click();
+    assert.deepEqual(opened, ["cardAAAA1"]);
+    assert.equal(errors.length, 1);
+    assert.equal(errors[0][0].message, "render boom");
+
+    const before = f.host.calls.renderString;
+    f.board.items.get("cardAAAA1").string = "Alpha\nbody line again";
+    f.session.emit("change", { dirty: new Set(["cardAAAA1"]), structural: false });
+    await f.flush();
+    assert.ok(f.host.calls.renderString > before, "the card renders again after its string changes");
+    assert.equal(errors.length, 1, "a second render of the same card does not log again");
+    const chip2 = root.querySelector("[data-uid=cardAAAA1] .pxd-render-chip");
+    assert.equal(chip2.querySelector(".pxd-render-chip__uid").textContent, "cardAAAA1");
+    assert.equal(root.querySelectorAll(".pxd-item").length, 6);
+  } finally {
+    console.error = orig;
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("PF-5: a swallowed roam render error becomes one chip", async () => {
+  const errors = [];
+  const orig = console.error;
+  console.error = (...args) => { errors.push(args); };
+  const f = mountFixture({
+    hostOverrides: {
+      renderString(el, string) {
+        this.calls.renderString += 1;
+        if (String(string).startsWith("Alpha")) {
+          console.error(new Error("Cannot read properties of null (reading 'F')"));
+          console.error(new Error("Cannot read properties of null (reading 'F')"));
+          console.error(new Error("Cannot read properties of null (reading 'F')"));
+          el.textContent = "Error rendering component: \"Cannot read properties of null (reading 'F')\"";
+          return;
+        }
+        el.textContent = string;
+      },
+    },
+  });
+  try {
+    await f.flush();
+    const root = f.view.root;
+    const alpha = root.querySelector("[data-uid=cardAAAA1]");
+    const chip = alpha.querySelector(".pxd-render-chip");
+    const textOf = (cls) => chip.children.find((c) => c.classList.contains(cls)).textContent;
+    assert.equal(textOf("pxd-render-chip__label"), "Could not render");
+    assert.equal(textOf("pxd-render-chip__uid"), "cardAAAA1");
+    assert.equal(textOf("pxd-render-chip__open"), "Open");
+    assert.equal(alpha.querySelectorAll(".pxd-rs__live").length, 1, "the failed root is gone; the child still renders");
+    assert.match(alpha.querySelector(".pxd-item__body").textContent, /child one/);
+    assert.equal(root.querySelectorAll(".pxd-render-chip").length, 1);
+    assert.equal(errors.length, 1);
+    assert.equal(errors[0][0].message, "Cannot read properties of null (reading 'F')");
+    const before = f.host.calls.renderString;
+    f.board.items.get("cardAAAA1").string = "Alpha again";
+    f.session.emit("change", { dirty: new Set(["cardAAAA1"]), structural: false });
+    await f.flush();
+    assert.ok(f.host.calls.renderString > before, "the card renders again after its string changes");
+    assert.equal(errors.length, 1, "a second render of the same card does not log again");
+    const chip2 = root.querySelector("[data-uid=cardAAAA1] .pxd-render-chip");
+    assert.equal(chip2.children.find((c) => c.classList.contains("pxd-render-chip__uid")).textContent, "cardAAAA1");
+  } finally {
+    console.error = orig;
+    f.view.dispose();
+    f.restore();
+  }
+});

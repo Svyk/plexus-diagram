@@ -2295,6 +2295,29 @@ body.roam-body.dark .pxd-root.pxd-bg-pink {
   display: none;
 }
 
+.pxd-root .pxd-render-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  max-width: 100%;
+  margin: 4px;
+  padding: 2px 6px;
+  border: 1px solid currentColor;
+  border-radius: 4px;
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.pxd-root .pxd-render-chip__uid {
+  font-family: ui-monospace, SFMono-Regular, monospace;
+  opacity: 0.75;
+}
+
+.pxd-root .pxd-render-chip__open {
+  font-size: 12px;
+  padding: 0 4px;
+}
+
 /* Add to board picker. It is mounted on document.body, outside .pxd-root, because
    .pxd-root uses contain:layout and would trap a fixed layer inside the board. */
 

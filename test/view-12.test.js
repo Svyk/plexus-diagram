@@ -4,7 +4,8 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { buildBoard, worldRects } from "../src/model/board.js";
+import { boundsOf, buildBoard, worldRects } from "../src/model/board.js";
+import { fitViewport, zoomAt } from "../src/model/geometry.js";
 import { cardDeepLink } from "../src/model/deeplink.js";
 import { PLEXUS_MIME } from "../src/model/clipboard.js";
 import { isLightHost, mountBoardView } from "../src/view/board-view.js";
@@ -1793,6 +1794,87 @@ test("HB-3: Cmd+F finds three hits, cycles them, and does nothing when the board
     assert.equal(shell(f, "nestCARD9").classList.contains("pxd-item--hit"), true);
     assert.equal(shell(f, "cardAAAA1").classList.contains("pxd-item--dim"), true);
     assert.equal(f.root.querySelector("[data-uid=edgeFFFF6]").classList.contains("pxd-edge--dim"), true);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("HB-9: zoom keys move the focused board and stay quiet while a card is being typed", async () => {
+  const f = mountFixture({ hostOverrides: { renderBlock(el) { const t = globalThis.document.createElement("textarea"); t.className = "rm-block__input"; el.append(t); } } });
+  const center = { x: 400, y: 300 };
+  const same = (a, b) => { near(a.x, b.x, 1e-6); near(a.y, b.y, 1e-6); near(a.zoom, b.zoom, 1e-6); };
+  const read = () => { f.stub.flushFrames(); return worldTransform(f); };
+  const tool = () => f.root.querySelector(".pxd-tool--active")?.dataset?.tool;
+  const press = (k, extra) => { key(f, k, extra); return read(); };
+  try {
+    await f.flush();
+    f.root.focus();
+    const writes = () => f.session.mutations.length;
+    const before = writes();
+    let vp = read();
+    vp = press("=", { code: "Equal", metaKey: true });
+    same(vp, zoomAt({ x: 0, y: 0, zoom: 1 }, center, 1.2));
+    vp = press("-", { code: "Minus", metaKey: true });
+    same(vp, zoomAt(zoomAt({ x: 0, y: 0, zoom: 1 }, center, 1.2), center, 1 / 1.2));
+    press("=", { code: "Equal", metaKey: true });
+    vp = press(")", { code: "Digit0", shiftKey: true });
+    same(vp, zoomAt(zoomAt({ x: 0, y: 0, zoom: 1 }, center, 1.2), center, 1 / 1.2));
+    vp = press("!", { code: "Digit1", shiftKey: true });
+    same(vp, fitViewport(boundsOf([...f.session.rects.values()]), { width: 800, height: 600 }, { padding: 64, maxZoom: 1.5, insets: { top: 0, right: 0 } }));
+    pointerDown(f, shell(f, "cardAAAA1"), 20, 20);
+    pointerUp(f, 20, 20);
+    assert.deepEqual(f.view.state().selection, ["cardAAAA1"]);
+    vp = press("@", { code: "Digit2", shiftKey: true });
+    const card = f.session.rects.get("cardAAAA1");
+    same(vp, fitViewport(boundsOf([card]), { width: 800, height: 600 }, { padding: 64, maxZoom: 1, insets: { top: 0, right: 0 } }));
+    key(f, "Escape");
+    f.stub.flushFrames();
+    const parked = read();
+    press("@", { code: "Digit2", shiftKey: true });
+    same(read(), parked);
+    press("h", { code: "KeyH" });
+    assert.equal(tool(), "hand");
+    press("v", { code: "KeyV" });
+    assert.equal(tool(), "select");
+    const panFrom = read();
+    key(f, " ", { code: "Space" });
+    assert.equal(f.root.classList.contains("pxd-root--space"), true);
+    pointerDown(f, f.root.querySelector(".pxd-viewport"), 600, 150);
+    pointerMove(f, 640, 200);
+    pointerUp(f, 640, 200);
+    f.stub.dispatch(f.stub.window, "keyup", { key: " ", code: "Space" });
+    same(read(), { x: panFrom.x + 40, y: panFrom.y + 50, zoom: panFrom.zoom });
+    assert.equal(f.root.classList.contains("pxd-root--space"), false);
+    assert.equal(writes(), before, "zoom, fit, and pan write nothing");
+
+    const cardEl = shell(f, "cardAAAA1");
+    f.stub.dispatch(cardEl, "dblclick", { clientX: 40, clientY: 40 });
+    for (let i = 0; i < 4; i += 1) { f.stub.flushFrames(); await tick(); }
+    assert.ok(cardEl.classList.contains("pxd-item--editing"));
+    const ta = cardEl.querySelector("textarea");
+    ta.focus();
+    const quiet = read();
+    const quietWrites = writes();
+    for (const spec of [
+      ["=", { code: "Equal", metaKey: true }],
+      ["-", { code: "Minus", metaKey: true }],
+      [")", { code: "Digit0", shiftKey: true }],
+      ["!", { code: "Digit1", shiftKey: true }],
+      ["@", { code: "Digit2", shiftKey: true }],
+      ["h", { code: "KeyH" }],
+      ["v", { code: "KeyV" }],
+      [" ", { code: "Space" }],
+    ]) f.stub.dispatch(ta, "keydown", { key: spec[0], ...spec[1] });
+    f.stub.flushFrames();
+    same(read(), quiet);
+    assert.equal(tool(), "select");
+    assert.equal(f.root.classList.contains("pxd-root--space"), false);
+    pointerDown(f, f.root.querySelector(".pxd-viewport"), 600, 150);
+    pointerMove(f, 680, 220);
+    pointerUp(f, 680, 220);
+    same(read(), quiet);
+    assert.equal(writes(), quietWrites, "the same keys while typing do not zoom, pan, or write");
   } finally {
     f.view.dispose();
     f.restore();

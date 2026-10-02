@@ -10,6 +10,7 @@ import { BOARD_PATTERNS, BOARD_TONES, DEFAULT_BOARD_CARD, DEFAULT_SIZES, UNTITLE
 import { boundsOf, buildBoard, connectedUids, containerAt, descendantsOf, displayRects, edgesTouching, outlineOrder, sameColorUids, sectionAllUids, sectionFitPlan, sectionNoteUid, sidebarOutlineUids, worldRects } from "../model/board.js";
 import { copyLinkText, hashFromUrl, pageUidFromHash, pxdTarget } from "../model/deeplink.js";
 import { findOnBoard } from "../model/find.js";
+import { readMindPreset, writeMindPreset } from "../model/mindmap.js";
 import {
   alignRects,
   center,
@@ -1058,8 +1059,9 @@ export function mountBoardView({
     if (!uids.length) return;
     Promise.resolve(session.duplicateItems?.(uids, { dx, dy, asRef })).then(afterCreate("Duplicated")).catch(() => {});
   };
-  const expandOutline = (uid) => {
-    Promise.resolve(session.expandOutline?.(uid)).then((res) => {
+  const expandOutline = (uid, patch) => {
+    const preset = patch ? writeMindPreset(storage, patch) : readMindPreset(storage);
+    Promise.resolve(session.expandOutline?.(uid, preset)).then((res) => {
       if (disposed || !res || typeof res !== "object") return;
       if (res.added > 0) {
         if (res.skipped > 0) toast(`Mind map: ${res.total - res.skipped} of ${res.total} branches (cap)`, true);
@@ -1257,7 +1259,7 @@ export function mountBoardView({
     switch (kind) {
       case "canvas": return { canPaste: true, snapshots: b?.snapshots || [] };
       case "board-menu": return { snapshots: b?.snapshots || [] };
-      case "card": return { item, isBoard: item?.kind === "board", collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS.includes(item?.kind) };
+      case "card": return { item, isBoard: item?.kind === "board", collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS.includes(item?.kind), mindPreset: readMindPreset(storage) };
       case "section": {
         const members = item && b ? [item.uid, ...descendantsOf(b, item.uid)] : [];
         return {
@@ -1388,6 +1390,11 @@ export function mountBoardView({
       case "pin": void session.setPinned?.(uids, true); break;
       case "unpin": void session.setPinned?.(uids, false); break;
       case "mind-map": if (item) expandOutline(item.uid); break;
+      case "mind-dir": if (item && arg) expandOutline(item.uid, { direction: arg }); break;
+      case "mind-space": if (item && arg) expandOutline(item.uid, { spacing: arg }); break;
+      case "mind-depth": if (item && arg) expandOutline(item.uid, { depth: Number(arg) }); break;
+      case "mind-refs": if (item && arg) expandOutline(item.uid, { includeRefs: arg !== "skip" }); break;
+      case "mind-color": if (item && arg) expandOutline(item.uid, { colorBranches: arg === "on" }); break;
       case "send-to": startSendTo(uids); break;
       case "related": panel.open("related"); break;
       case "delete": case "delete-frame": ctl.deleteSelection(false); break;

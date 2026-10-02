@@ -517,7 +517,12 @@ test("context menu: pick dispatch maps every kind's ids onto session calls", asy
     assert.match(toastText(f), /Zoom in to measure/, "no measurable content in the stub: the user is told, nothing is written");
     assert.deepEqual(m, []);
     m = await run(shell(f, "cardBBBB2"), "mind-map");
-    assert.deepEqual(m[0], ["expandOutline", "cardBBBB2"]);
+    assert.equal(m[0][0], "expandOutline");
+    assert.equal(m[0][1], "cardBBBB2");
+    assert.deepEqual(m[0][2], { direction: "right", spacing: "normal", depth: 3, includeRefs: true, colorBranches: false });
+    m = await run(shell(f, "cardBBBB2"), "mind-dir:radial");
+    assert.deepEqual(m[0][2], { direction: "radial", spacing: "normal", depth: 3, includeRefs: true, colorBranches: false });
+    assert.deepEqual(JSON.parse(f.stub.localStorage.getItem("plexus-diagram:mindmap-preset")), m[0][2]);
     await tick();
     assert.equal(toastText(f), "Added 2 cards as a mind map");
     // text

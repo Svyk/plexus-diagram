@@ -127,3 +127,28 @@ test("mindMapLayout balanced alternates children right and left with mirrored de
   assert.equal(m.get("a1").x, 360);
   assert.equal(m.get("b").y, 0);
 });
+
+test("mindMapLayout spacing changes the column gap and the default stays the normal gap", () => {
+  const tree = node("r", [node("a")]);
+  assert.equal(mindMapLayout(tree, { hGap: 40 }).get("a").x, 140);
+  assert.equal(mindMapLayout(tree, { hGap: 140 }).get("a").x, 240);
+  assert.equal(mindMapLayout(tree, {}).get("a").x, 180);
+});
+
+test("mindMapLayout radial keeps the root at the origin and places a grandchild further out", () => {
+  const tree = node("r", [node("a", [node("a1")]), node("b"), node("c"), node("d")]);
+  const m = mindMapLayout(tree, { direction: "radial", hGap: 80, vGap: 24 });
+  assert.deepEqual(m.get("r"), { x: 0, y: 0 });
+  const centerDist = (u) => {
+    const p = m.get(u);
+    return Math.hypot(p.x + 50 - 50, p.y + 25 - 25);
+  };
+  for (const u of ["a", "b", "c", "d"]) assert.ok(centerDist(u) > 80, `${u} leaves the root`);
+  assert.ok(centerDist("a1") > centerDist("a"), "a grandchild sits further from the root than its parent");
+  const xs = ["a", "b", "c", "d"].map((u) => m.get(u).x);
+  const ys = ["a", "b", "c", "d"].map((u) => m.get(u).y);
+  assert.ok(Math.max(...xs) - Math.min(...xs) > 40, "children are not stacked on one vertical line");
+  assert.ok(Math.max(...ys) - Math.min(...ys) > 40, "children are not stacked on one horizontal line");
+  const right = mindMapLayout(tree, { direction: "right", hGap: 80, vGap: 24 });
+  assert.notEqual(m.get("b").x, right.get("b").x);
+});

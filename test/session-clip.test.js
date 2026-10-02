@@ -434,6 +434,107 @@ test("expandOutline honours the direction", async () => {
   assert.ok(ys.every((y) => y >= 100 + 160), "every card sits below the source");
 });
 
+const branch = (uid, string, children = []) => ({ uid, string, children });
+
+// 20 descendants. D is a block ref, so "skip block refs" drops D and the two blocks under it.
+function outline20() {
+  return [
+    card("X", "Source note", 100, 100, 280, 160, {}, [
+      branch("A", "A", [
+        branch("A1", "A1", [branch("A1a", "A1a", [branch("A1ai", "A1ai")])]),
+        branch("A2", "A2", [branch("A2a", "A2a")]),
+        branch("A3", "A3"),
+      ]),
+      branch("B", "B", [
+        branch("B1", "B1", [branch("B1a", "B1a", [branch("B1ai", "B1ai")])]),
+        branch("B2", "B2"),
+      ]),
+      branch("C", "C", [
+        branch("C1", "C1", [branch("C1a", "C1a")]),
+        branch("C2", "C2", [branch("C2a", "C2a")]),
+      ]),
+      branch("D", "((XLE_xhX2y))", [
+        branch("D1", "D1"),
+        branch("D2", "D2"),
+      ]),
+    ]),
+  ];
+}
+
+const refCards = (fake) => fake.children("b1").filter((u) => u !== "X" && /^\(\(/.test(fake.block(u).string));
+const byRef = (fake) => Object.fromEntries(refCards(fake).map((u) => [fake.block(u).string, u]));
+
+test("expandOutline runs each preset on a 20-node outline inside one undo group", async () => {
+  const base = { depth: 4, spacing: "normal", includeRefs: true, colorBranches: false };
+  const placed = async (options) => {
+    const { fake, session } = setup(outline20());
+    const res = await session.expandOutline("X", options);
+    const at = byRef(fake);
+    const pos = Object.fromEntries(Object.entries(at).map(([ref, uid]) => [ref, plexus(fake, uid)]));
+    return { res, pos, writes: fake.writesLog().length, created: creates(fake).length };
+  };
+  const right = await placed({ ...base, direction: "right" });
+  assert.deepEqual(right.res, { added: 20, edges: 20 });
+  assert.equal(right.created, 41, "20 cards, 20 connections, and one Connections block");
+  assert.ok(right.writes <= 45, `the expand stays inside one undo group (${right.writes})`);
+  assert.equal(Object.keys(right.pos).length, 20);
+  assert.ok(right.pos["((A))"].x < right.pos["((A1))"].x && right.pos["((A1))"].x < right.pos["((A1a))"].x);
+  assert.equal(right.pos["((A))"].color, undefined);
+
+  const down = await placed({ ...base, direction: "down" });
+  assert.equal(down.res.added, 20);
+  assert.ok(Object.values(down.pos).every((p) => p.y >= 100 + 160));
+  assert.notEqual(down.pos["((A))"].y, right.pos["((A))"].y);
+
+  const balanced = await placed({ ...base, direction: "balanced" });
+  assert.equal(balanced.res.added, 20);
+  const bx = Object.values(balanced.pos).map((p) => p.x);
+  assert.ok(Math.min(...bx) < 100 && Math.max(...bx) > 100, "balanced puts branches on both sides of the source");
+
+  const radial = await placed({ ...base, direction: "radial" });
+  assert.equal(radial.res.added, 20);
+  const rx = Object.values(radial.pos).map((p) => p.x);
+  const ry = Object.values(radial.pos).map((p) => p.y);
+  assert.ok(Math.min(...rx) < 100 && Math.max(...ry) > 100 + 160, "radial is not a single row or column");
+  assert.notEqual(radial.pos["((B))"].x, right.pos["((B))"].x);
+
+  const compact = await placed({ ...base, direction: "right", spacing: "compact" });
+  const airy = await placed({ ...base, direction: "right", spacing: "airy" });
+  const gap = (pos) => pos["((A1))"].x - pos["((A))"].x;
+  assert.ok(gap(compact.pos) < gap(right.pos) && gap(right.pos) < gap(airy.pos));
+
+  const depth1 = await placed({ ...base, direction: "right", depth: 1 });
+  assert.deepEqual(depth1.res, { added: 4, edges: 4 });
+  const depth2 = await placed({ ...base, direction: "right", depth: 2 });
+  assert.equal(depth2.res.added, 13);
+  const depth3 = await placed({ ...base, direction: "right", depth: 3 });
+  assert.equal(depth3.res.added, 18);
+
+  const skipped = await placed({ ...base, direction: "right", includeRefs: false });
+  assert.equal(skipped.res.added, 17);
+  assert.equal(skipped.pos["((D))"], undefined);
+  assert.equal(skipped.pos["((D1))"], undefined);
+  assert.ok(skipped.pos["((A))"]);
+
+  const colored = await placed({ ...base, direction: "right", colorBranches: true });
+  assert.equal(colored.res.added, 20);
+  assert.equal(colored.pos["((A))"].color, colored.pos["((A1))"].color);
+  assert.equal(colored.pos["((A1))"].color, colored.pos["((A1ai))"].color);
+  assert.notEqual(colored.pos["((A))"].color, colored.pos["((B))"].color);
+  assert.notEqual(colored.pos["((B))"].color, colored.pos["((C))"].color);
+  assert.notEqual(colored.pos["((C))"].color, colored.pos["((D))"].color);
+  assert.equal(colored.pos["((D))"].color, colored.pos["((D1))"].color);
+  assert.equal(colored.writes <= 45, true, "branch color rides on the create, not a second write");
+});
+
+test("expandOutline depth 4 includes the node the default depth leaves out", async () => {
+  const { fake, session } = setup(outlineBoard());
+  const res = await session.expandOutline("X", { depth: 4 });
+  assert.deepEqual(res, { added: 7, edges: 7 });
+  const strs = fake.children("b1").map((u) => fake.block(u).string);
+  assert.ok(strs.includes("((tooDeep))"));
+});
+
 test("expandOutline reads the tree of a block card and of a page card from the graph", async () => {
   const seed = (fake) => {
     fake.seedPage({ title: "Src page", uid: "srcPage", children: [

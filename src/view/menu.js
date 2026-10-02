@@ -50,11 +50,29 @@ export function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
     const w = sub.offsetWidth || MENU_WIDTH;
     const h = sub.offsetHeight || 0;
     if (menuEl?.classList?.contains("pxd-menu--scroll")) {
-      // The scrolling menu would clip an absolutely placed submenu: pin it beside the row in viewport coordinates.
+      // .pxd-root has contain:layout, so this position:fixed submenu is positioned against the board, not the window.
+      // Cap it to the on-screen part of the board and scroll; otherwise the lower rows sit below the window.
       const fitsRight = !rootRect.width || r.right + w <= rootRect.right - MARGIN;
-      const top = rootRect.height ? Math.max(rootRect.top + MARGIN, Math.min(r.top, rootRect.bottom - MARGIN - h)) : r.top;
-      sub.style.left = `${Math.round(fitsRight ? r.right + 2 : r.left - w - 2)}px`;
-      sub.style.top = `${Math.round(top)}px`;
+      const viewH = doc.defaultView?.innerHeight || 0;
+      const viewTop = Math.max(rootRect.top || 0, 0);
+      const viewBottom = viewH ? Math.min(rootRect.bottom || viewH, viewH) : (rootRect.bottom || 0);
+      const visibleSpan = viewBottom > viewTop ? viewBottom - viewTop : (rootRect.height || 0);
+      const available = visibleSpan ? Math.max(ROW_HEIGHT * 3, visibleSpan - 2 * MARGIN) : h;
+      const used = h > available && available > 0 ? available : h;
+      if (h > available && available > 0) {
+        sub.style.maxHeight = `${Math.round(available)}px`;
+        sub.style.overflowY = "auto";
+        sub.style.overscrollBehavior = "contain";
+      } else {
+        sub.style.maxHeight = "";
+        sub.style.overflowY = "";
+        sub.style.overscrollBehavior = "";
+      }
+      const limitBottom = viewBottom || rootRect.bottom || 0;
+      const topVp = visibleSpan ? Math.max(viewTop + MARGIN, Math.min(r.top, limitBottom - MARGIN - used)) : r.top;
+      const leftVp = fitsRight ? r.right + 2 : r.left - w - 2;
+      sub.style.left = `${Math.round(leftVp - (rootRect.left || 0))}px`;
+      sub.style.top = `${Math.round(topVp - (rootRect.top || 0))}px`;
       return;
     }
     if (rootRect.width && r.right + w > rootRect.right - MARGIN) sub.classList.add("pxd-menu__sub--left");

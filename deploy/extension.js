@@ -1771,6 +1771,37 @@ function mindMapLayout(root, { direction = "right", hGap = 80, vGap = 24 } = {})
     }
     return out;
   }
+  if (direction === "radial") {
+    const radialSize = (n) => {
+      const span = Math.max(num2(n?.w, 0), num2(n?.h, 0), 1);
+      return { dd: span, bb: span };
+    };
+    const s = subtree({ ...root, children: kids }, radialSize, hGap, vGap);
+    const places = s.places.map((p) => ({ uid: p.uid, d: p.d, b: p.b - s.nodeB }));
+    let minB = Infinity;
+    let maxB = -Infinity;
+    for (const p of places) {
+      const bb = radialSize(findNode(root, p.uid) || root).bb;
+      if (p.b < minB) minB = p.b;
+      if (p.b + bb > maxB) maxB = p.b + bb;
+    }
+    const spanB = Math.max(maxB - minB, 1);
+    const cx = num2(root.w, 0) / 2;
+    const cy = num2(root.h, 0) / 2;
+    for (const p of places) {
+      if (p.uid === root.uid) {
+        out.set(p.uid, { x: 0, y: 0 });
+        continue;
+      }
+      const node2 = findNode(root, p.uid);
+      const mid = p.b + radialSize(node2).bb / 2;
+      const angle = (mid - minB) / spanB * Math.PI * 2 - Math.PI / 2;
+      const x = cx + p.d * Math.cos(angle) - num2(node2.w, 0) / 2;
+      const y = cy + p.d * Math.sin(angle) - num2(node2.h, 0) / 2;
+      out.set(p.uid, { x: norm(x), y: norm(y) });
+    }
+    return out;
+  }
   for (const p of groupPlaces(kids)) out.set(p.uid, toXY(p.d, p.b));
   return out;
 }
@@ -1781,6 +1812,57 @@ function findNode(node2, uid) {
     if (f) return f;
   }
   return null;
+}
+
+// src/model/mindmap.js
+var MIND_DIRECTIONS = Object.freeze(["right", "down", "balanced", "radial"]);
+var MIND_SPACINGS = Object.freeze(["compact", "normal", "airy"]);
+var MIND_DEPTH_MIN = 1;
+var MIND_DEPTH_MAX = 4;
+var MIND_PRESET_KEY = "plexus-diagram:mindmap-preset";
+var MIND_GAPS = Object.freeze({
+  compact: Object.freeze({ hGap: 40, vGap: 12 }),
+  normal: Object.freeze({ hGap: 80, vGap: 24 }),
+  airy: Object.freeze({ hGap: 140, vGap: 48 })
+});
+var DEFAULT_MIND_PRESET = Object.freeze({
+  direction: "right",
+  spacing: "normal",
+  depth: 3,
+  includeRefs: true,
+  colorBranches: false
+});
+function normalizeMindPreset(raw) {
+  const src = raw && typeof raw === "object" ? raw : {};
+  const depth = Number(src.depth);
+  return {
+    direction: MIND_DIRECTIONS.includes(src.direction) ? src.direction : DEFAULT_MIND_PRESET.direction,
+    spacing: MIND_SPACINGS.includes(src.spacing) ? src.spacing : DEFAULT_MIND_PRESET.spacing,
+    depth: Number.isInteger(depth) && depth >= MIND_DEPTH_MIN && depth <= MIND_DEPTH_MAX ? depth : DEFAULT_MIND_PRESET.depth,
+    includeRefs: src.includeRefs === false ? false : DEFAULT_MIND_PRESET.includeRefs,
+    colorBranches: src.colorBranches === true
+  };
+}
+function readMindPreset(storage) {
+  try {
+    const raw = storage?.getItem?.(MIND_PRESET_KEY);
+    if (!raw) return normalizeMindPreset(null);
+    return normalizeMindPreset(JSON.parse(raw));
+  } catch {
+    return normalizeMindPreset(null);
+  }
+}
+function writeMindPreset(storage, patch) {
+  const next = normalizeMindPreset({ ...readMindPreset(storage), ...patch && typeof patch === "object" ? patch : {} });
+  try {
+    storage?.setItem?.(MIND_PRESET_KEY, JSON.stringify(next));
+  } catch {
+  }
+  return next;
+}
+function branchColor(index) {
+  const i = Number.isInteger(index) && index >= 0 ? index : 0;
+  return PALETTE[i % PALETTE.length];
 }
 
 // src/model/links.js
@@ -5164,7 +5246,6 @@ var PROPS2 = ":block/props";
 var STACK_GAP = 24;
 var OUTLINE_CARD = { w: 240, h: 72 };
 var OUTLINE_DEPTH = 3;
-var OUTLINE_DIRECTIONS = ["right", "down", "balanced"];
 function findNode2(node2, uid) {
   if (!node2) return null;
   if (node2[UID2] === uid) return node2;
@@ -5381,22 +5462,42 @@ extendSession((session, api) => {
     },
     // The source card's child blocks become a mind map of ref cards (blocks stay canonical in Roam) plus one
     // connection per parent -> child. Children that already have a card on this board are reused, not moved.
-    expandOutline(cardUid, { direction = "right", max = 24 } = {}) {
+    // Options default to the pre-preset behavior: right, normal gaps, depth 3, refs included, no branch color.
+    expandOutline(cardUid, options = {}) {
       const none = { added: 0, edges: 0 };
+      const opts = options && typeof options === "object" ? options : {};
+      const max = Number.isFinite(opts.max) ? opts.max : 24;
+      const preset = normalizeMindPreset({
+        direction: opts.direction,
+        spacing: opts.spacing,
+        depth: opts.depth ?? OUTLINE_DEPTH,
+        includeRefs: opts.includeRefs,
+        colorBranches: opts.colorBranches
+      });
+      const gaps = MIND_GAPS[preset.spacing];
       const board2 = api.board();
       const item = board2?.items.get(cardUid);
       if (!item || item.type !== "card") return Promise.resolve(none);
-      const plain = (list) => list.filter((n) => n?.uid).map((n) => ({ uid: n.uid, children: plain(n.children ?? []) }));
-      const rawTree = (list) => list.filter((n) => n?.[UID2]).map((n) => ({ uid: n[UID2], children: rawTree(api.kidsOf(n)) }));
+      const plain = (list) => list.filter((n) => n?.uid).map((n) => ({
+        uid: n.uid,
+        string: n.string ?? "",
+        children: plain(n.children ?? [])
+      }));
+      const rawTree = (list) => list.filter((n) => n?.[UID2]).map((n) => ({
+        uid: n[UID2],
+        string: n[STR2] ?? "",
+        children: rawTree(api.kidsOf(n))
+      }));
       let tree;
       if (item.kind === "note") tree = rawTree(api.kidsOf({ [KIDS2]: item.content }));
-      else if (item.kind === "block") tree = plain(host.pullTree(item.target.uid, OUTLINE_DEPTH, max) ?? []);
-      else if (item.kind === "page") tree = plain(host.pagePreview(item.target.title, OUTLINE_DEPTH, max)?.blocks ?? []);
+      else if (item.kind === "block") tree = plain(host.pullTree(item.target.uid, preset.depth, max) ?? []);
+      else if (item.kind === "page") tree = plain(host.pagePreview(item.target.title, preset.depth, max)?.blocks ?? []);
       else return Promise.resolve(none);
       const flat = [];
       const walk = (list, depth, parent) => {
         for (const n of list) {
-          if (depth > OUTLINE_DEPTH || flat.some((f) => f.uid === n.uid)) continue;
+          if (depth > preset.depth || flat.some((f) => f.uid === n.uid)) continue;
+          if (!preset.includeRefs && classifyString(n.string).kind === "block") continue;
           const entry = { uid: n.uid, depth, parent, at: flat.length };
           flat.push(entry);
           walk(n.children, depth + 1, n.uid);
@@ -5419,7 +5520,15 @@ extendSession((session, api) => {
       }));
       const root = { uid: cardUid, w: own.w, h: own.h, children: [] };
       for (const f of picked) (f.parent && nodes.has(f.parent) ? nodes.get(f.parent) : root).children.push(nodes.get(f.uid));
-      const layout = mindMapLayout(root, { direction: OUTLINE_DIRECTIONS.includes(direction) ? direction : "right" });
+      const layout = mindMapLayout(root, { direction: preset.direction, hGap: gaps.hGap, vGap: gaps.vGap });
+      const colorOf = /* @__PURE__ */ new Map();
+      if (preset.colorBranches) {
+        let branch = 0;
+        for (const f of picked) {
+          if (f.parent && colorOf.has(f.parent)) colorOf.set(f.uid, colorOf.get(f.parent));
+          else colorOf.set(f.uid, branchColor(branch++));
+        }
+      }
       return api.txn((t) => {
         const cardOf = /* @__PURE__ */ new Map();
         const refOfCard = /* @__PURE__ */ new Map([[cardUid, api.refOf(cardUid)]]);
@@ -5436,8 +5545,8 @@ extendSession((session, api) => {
             continue;
           }
           const inherited = shift.get(f.parent) ?? { dx: 0, dy: 0 };
-          shift.set(f.uid, inherited);
-          const id = placeCard(t, `((${f.uid}))`, own.x + p.x + inherited.dx, own.y + p.y + inherited.dy, OUTLINE_CARD);
+          const spec = colorOf.has(f.uid) ? { ...OUTLINE_CARD, color: colorOf.get(f.uid) } : OUTLINE_CARD;
+          const id = placeCard(t, `((${f.uid}))`, own.x + p.x + inherited.dx, own.y + p.y + inherited.dy, spec);
           cardOf.set(f.uid, id);
           refOfCard.set(id, `((${f.uid}))`);
           created.push(id);
@@ -11399,9 +11508,26 @@ function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
     const h = sub.offsetHeight || 0;
     if (menuEl?.classList?.contains("pxd-menu--scroll")) {
       const fitsRight = !rootRect.width || r.right + w <= rootRect.right - MARGIN;
-      const top = rootRect.height ? Math.max(rootRect.top + MARGIN, Math.min(r.top, rootRect.bottom - MARGIN - h)) : r.top;
-      sub.style.left = `${Math.round(fitsRight ? r.right + 2 : r.left - w - 2)}px`;
-      sub.style.top = `${Math.round(top)}px`;
+      const viewH = doc.defaultView?.innerHeight || 0;
+      const viewTop = Math.max(rootRect.top || 0, 0);
+      const viewBottom = viewH ? Math.min(rootRect.bottom || viewH, viewH) : rootRect.bottom || 0;
+      const visibleSpan = viewBottom > viewTop ? viewBottom - viewTop : rootRect.height || 0;
+      const available = visibleSpan ? Math.max(ROW_HEIGHT * 3, visibleSpan - 2 * MARGIN) : h;
+      const used = h > available && available > 0 ? available : h;
+      if (h > available && available > 0) {
+        sub.style.maxHeight = `${Math.round(available)}px`;
+        sub.style.overflowY = "auto";
+        sub.style.overscrollBehavior = "contain";
+      } else {
+        sub.style.maxHeight = "";
+        sub.style.overflowY = "";
+        sub.style.overscrollBehavior = "";
+      }
+      const limitBottom = viewBottom || rootRect.bottom || 0;
+      const topVp = visibleSpan ? Math.max(viewTop + MARGIN, Math.min(r.top, limitBottom - MARGIN - used)) : r.top;
+      const leftVp = fitsRight ? r.right + 2 : r.left - w - 2;
+      sub.style.left = `${Math.round(leftVp - (rootRect.left || 0))}px`;
+      sub.style.top = `${Math.round(topVp - (rootRect.top || 0))}px`;
       return;
     }
     if (rootRect.width && r.right + w > rootRect.right - MARGIN) sub.classList.add("pxd-menu__sub--left");
@@ -11601,6 +11727,28 @@ function buildMenu(kind, ctx = {}) {
   const templateMenu = () => make("template", "New board from template…", {
     children: STARTERS.map((s) => make(`template:${s.id}`, s.title))
   });
+  const mindPresetMenu = () => {
+    const preset = normalizeMindPreset(c.mindPreset);
+    const dirs = MIND_DIRECTIONS.map((d) => make(`mind-dir:${d}`, cap(d), { checked: preset.direction === d }));
+    const spaces = MIND_SPACINGS.map((s) => make(`mind-space:${s}`, cap(s), { checked: preset.spacing === s }));
+    const depths = [];
+    for (let d = MIND_DEPTH_MIN; d <= MIND_DEPTH_MAX; d++) depths.push(make(`mind-depth:${d}`, `Depth ${d}`, { checked: preset.depth === d }));
+    return make("mind-preset", "Mind map preset…", {
+      children: [
+        ...dirs,
+        sep(),
+        ...spaces,
+        sep(),
+        ...depths,
+        sep(),
+        make("mind-refs:include", "Include block refs", { checked: preset.includeRefs }),
+        make("mind-refs:skip", "Skip block refs", { checked: !preset.includeRefs }),
+        sep(),
+        make("mind-color:on", "Color branches", { checked: preset.colorBranches }),
+        make("mind-color:off", "No branch color", { checked: !preset.colorBranches })
+      ]
+    });
+  };
   const snapshotMenus = () => {
     const parts = partitionSnapshots(c.snapshots);
     const items = [
@@ -11693,7 +11841,10 @@ function buildMenu(kind, ctx = {}) {
         make("select-same-color", "Select same color"),
         make("select-connected", "Select connected")
       ];
-      if (c.hasOutline) out.push(make("mind-map", "Expand as mind map"));
+      if (c.hasOutline) {
+        out.push(make("mind-map", "Expand as mind map"));
+        out.push(mindPresetMenu());
+      }
       out.push(
         make("send-to", "Send to board…"),
         make("related", "Related…"),
@@ -13619,8 +13770,9 @@ function mountBoardView({
     Promise.resolve(session.duplicateItems?.(uids, { dx, dy, asRef })).then(afterCreate("Duplicated")).catch(() => {
     });
   };
-  const expandOutline = (uid) => {
-    Promise.resolve(session.expandOutline?.(uid)).then((res) => {
+  const expandOutline = (uid, patch) => {
+    const preset = patch ? writeMindPreset(storage, patch) : readMindPreset(storage);
+    Promise.resolve(session.expandOutline?.(uid, preset)).then((res) => {
       if (disposed || !res || typeof res !== "object") return;
       if (res.added > 0) {
         if (res.skipped > 0) toast(`Mind map: ${res.total - res.skipped} of ${res.total} branches (cap)`, true);
@@ -13873,7 +14025,7 @@ function mountBoardView({
       case "board-menu":
         return { snapshots: b?.snapshots || [] };
       case "card":
-        return { item, isBoard: item?.kind === "board", collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS2.includes(item?.kind) };
+        return { item, isBoard: item?.kind === "board", collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS2.includes(item?.kind), mindPreset: readMindPreset(storage) };
       case "section": {
         const members = item && b ? [item.uid, ...descendantsOf(b, item.uid)] : [];
         return {
@@ -14100,6 +14252,21 @@ function mountBoardView({
         break;
       case "mind-map":
         if (item) expandOutline(item.uid);
+        break;
+      case "mind-dir":
+        if (item && arg) expandOutline(item.uid, { direction: arg });
+        break;
+      case "mind-space":
+        if (item && arg) expandOutline(item.uid, { spacing: arg });
+        break;
+      case "mind-depth":
+        if (item && arg) expandOutline(item.uid, { depth: Number(arg) });
+        break;
+      case "mind-refs":
+        if (item && arg) expandOutline(item.uid, { includeRefs: arg !== "skip" });
+        break;
+      case "mind-color":
+        if (item && arg) expandOutline(item.uid, { colorBranches: arg === "on" });
         break;
       case "send-to":
         startSendTo(uids);

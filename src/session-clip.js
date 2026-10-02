@@ -4,6 +4,7 @@
 import { boardPreview, boundsOf, buildBoard, containerAt, descendantsOf, findEdge, toRelative, topLevelOf } from "./model/board.js";
 import { parsePastedText, planEdgeClones, planSubtreeClone, refCardStrings } from "./model/clipboard.js";
 import { mindMapLayout } from "./model/layout.js";
+import { MIND_GAPS, branchColor, normalizeMindPreset } from "./model/mindmap.js";
 import {
   DEFAULT_SIZES,
   PLEXUS_KEY,
@@ -27,7 +28,6 @@ const PROPS = ":block/props";
 const STACK_GAP = 24;
 const OUTLINE_CARD = { w: 240, h: 72 };
 const OUTLINE_DEPTH = 3;
-const OUTLINE_DIRECTIONS = ["right", "down", "balanced"];
 
 function findNode(node, uid) {
   if (!node) return null;
@@ -266,24 +266,45 @@ extendSession((session, api) => {
 
     // The source card's child blocks become a mind map of ref cards (blocks stay canonical in Roam) plus one
     // connection per parent -> child. Children that already have a card on this board are reused, not moved.
-    expandOutline(cardUid, { direction = "right", max = 24 } = {}) {
+    // Options default to the pre-preset behavior: right, normal gaps, depth 3, refs included, no branch color.
+    expandOutline(cardUid, options = {}) {
       const none = { added: 0, edges: 0 };
+      const opts = options && typeof options === "object" ? options : {};
+      const max = Number.isFinite(opts.max) ? opts.max : 24;
+      const preset = normalizeMindPreset({
+        direction: opts.direction,
+        spacing: opts.spacing,
+        depth: opts.depth ?? OUTLINE_DEPTH,
+        includeRefs: opts.includeRefs,
+        colorBranches: opts.colorBranches,
+      });
+      const gaps = MIND_GAPS[preset.spacing];
       const board = api.board();
       const item = board?.items.get(cardUid);
       if (!item || item.type !== "card") return Promise.resolve(none);
-      const plain = (list) => list.filter((n) => n?.uid).map((n) => ({ uid: n.uid, children: plain(n.children ?? []) }));
-      const rawTree = (list) => list.filter((n) => n?.[UID]).map((n) => ({ uid: n[UID], children: rawTree(api.kidsOf(n)) }));
+      const plain = (list) => list.filter((n) => n?.uid).map((n) => ({
+        uid: n.uid,
+        string: n.string ?? "",
+        children: plain(n.children ?? []),
+      }));
+      const rawTree = (list) => list.filter((n) => n?.[UID]).map((n) => ({
+        uid: n[UID],
+        string: n[STR] ?? "",
+        children: rawTree(api.kidsOf(n)),
+      }));
       let tree;
       if (item.kind === "note") tree = rawTree(api.kidsOf({ [KIDS]: item.content }));
-      else if (item.kind === "block") tree = plain(host.pullTree(item.target.uid, OUTLINE_DEPTH, max) ?? []);
-      else if (item.kind === "page") tree = plain(host.pagePreview(item.target.title, OUTLINE_DEPTH, max)?.blocks ?? []);
+      else if (item.kind === "block") tree = plain(host.pullTree(item.target.uid, preset.depth, max) ?? []);
+      else if (item.kind === "page") tree = plain(host.pagePreview(item.target.title, preset.depth, max)?.blocks ?? []);
       else return Promise.resolve(none);
 
-      // Depth <= 3 and at most `max` nodes; shallow levels win when the cap bites.
+      // Depth limit and at most `max` nodes; shallow levels win when the cap bites.
+      // A skipped block ref is not counted (same as a node past the depth limit).
       const flat = [];
       const walk = (list, depth, parent) => {
         for (const n of list) {
-          if (depth > OUTLINE_DEPTH || flat.some((f) => f.uid === n.uid)) continue;
+          if (depth > preset.depth || flat.some((f) => f.uid === n.uid)) continue;
+          if (!preset.includeRefs && classifyString(n.string).kind === "block") continue;
           const entry = { uid: n.uid, depth, parent, at: flat.length };
           flat.push(entry);
           walk(n.children, depth + 1, n.uid);
@@ -307,7 +328,15 @@ extendSession((session, api) => {
       }));
       const root = { uid: cardUid, w: own.w, h: own.h, children: [] };
       for (const f of picked) (f.parent && nodes.has(f.parent) ? nodes.get(f.parent) : root).children.push(nodes.get(f.uid));
-      const layout = mindMapLayout(root, { direction: OUTLINE_DIRECTIONS.includes(direction) ? direction : "right" });
+      const layout = mindMapLayout(root, { direction: preset.direction, hGap: gaps.hGap, vGap: gaps.vGap });
+      const colorOf = new Map();
+      if (preset.colorBranches) {
+        let branch = 0;
+        for (const f of picked) {
+          if (f.parent && colorOf.has(f.parent)) colorOf.set(f.uid, colorOf.get(f.parent));
+          else colorOf.set(f.uid, branchColor(branch++));
+        }
+      }
 
       return api.txn((t) => {
         const cardOf = new Map();
@@ -327,8 +356,8 @@ extendSession((session, api) => {
             continue;
           }
           const inherited = shift.get(f.parent) ?? { dx: 0, dy: 0 };
-          shift.set(f.uid, inherited);
-          const id = placeCard(t, `((${f.uid}))`, own.x + p.x + inherited.dx, own.y + p.y + inherited.dy, OUTLINE_CARD);
+          const spec = colorOf.has(f.uid) ? { ...OUTLINE_CARD, color: colorOf.get(f.uid) } : OUTLINE_CARD;
+          const id = placeCard(t, `((${f.uid}))`, own.x + p.x + inherited.dx, own.y + p.y + inherited.dy, spec);
           cardOf.set(f.uid, id);
           refOfCard.set(id, `((${f.uid}))`);
           created.push(id);

@@ -2,6 +2,7 @@
 // component renders; item ids are the contract with the view, which maps them onto session calls.
 // No DOM here: everything is data so the ids, disabled and checked logic can be tested directly.
 
+import { MIND_DEPTH_MAX, MIND_DEPTH_MIN, MIND_DIRECTIONS, MIND_SPACINGS, normalizeMindPreset } from "../model/mindmap.js";
 import { PALETTE, FONT_SIZES } from "../model/schema.js";
 import { partitionSnapshots } from "../model/snapshots.js";
 import { STARTERS } from "../model/templates.js";
@@ -32,6 +33,30 @@ export function buildMenu(kind, ctx = {}) {
   const templateMenu = () => make("template", "New board from template…", {
     children: STARTERS.map((s) => make(`template:${s.id}`, s.title)),
   });
+
+  // Leaves, not a parent of Expand: picking Expand still runs the remembered preset.
+  const mindPresetMenu = () => {
+    const preset = normalizeMindPreset(c.mindPreset);
+    const dirs = MIND_DIRECTIONS.map((d) => make(`mind-dir:${d}`, cap(d), { checked: preset.direction === d }));
+    const spaces = MIND_SPACINGS.map((s) => make(`mind-space:${s}`, cap(s), { checked: preset.spacing === s }));
+    const depths = [];
+    for (let d = MIND_DEPTH_MIN; d <= MIND_DEPTH_MAX; d++) depths.push(make(`mind-depth:${d}`, `Depth ${d}`, { checked: preset.depth === d }));
+    return make("mind-preset", "Mind map preset…", {
+      children: [
+        ...dirs,
+        sep(),
+        ...spaces,
+        sep(),
+        ...depths,
+        sep(),
+        make("mind-refs:include", "Include block refs", { checked: preset.includeRefs }),
+        make("mind-refs:skip", "Skip block refs", { checked: !preset.includeRefs }),
+        sep(),
+        make("mind-color:on", "Color branches", { checked: preset.colorBranches }),
+        make("mind-color:off", "No branch color", { checked: !preset.colorBranches }),
+      ],
+    });
+  };
 
   const snapshotMenus = () => {
     const parts = partitionSnapshots(c.snapshots);
@@ -128,7 +153,10 @@ export function buildMenu(kind, ctx = {}) {
         make("select-same-color", "Select same color"),
         make("select-connected", "Select connected"),
       ];
-      if (c.hasOutline) out.push(make("mind-map", "Expand as mind map"));
+      if (c.hasOutline) {
+        out.push(make("mind-map", "Expand as mind map"));
+        out.push(mindPresetMenu());
+      }
       out.push(
         make("send-to", "Send to board…"),
         make("related", "Related…"),

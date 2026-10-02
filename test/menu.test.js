@@ -38,6 +38,27 @@ test("card menu: ids, color submenu with checked, fold/unfold, pin/unpin, mind-m
   assert.ok(got.includes("unfold") && !got.includes("fold"));
   assert.ok(got.includes("unpin") && !got.includes("pin"));
   assert.ok(got.includes("mind-map"));
+  assert.equal(byId(menu, "mind-map").children, undefined, "Expand stays a leaf so a click runs it");
+  const preset = byId(menu, "mind-preset");
+  assert.equal(preset.label, "Mind map preset…");
+  const presetIds = preset.children.filter((item) => !item.separator).map((item) => item.id);
+  assert.deepEqual(presetIds, [
+    "mind-dir:right", "mind-dir:down", "mind-dir:balanced", "mind-dir:radial",
+    "mind-space:compact", "mind-space:normal", "mind-space:airy",
+    "mind-depth:1", "mind-depth:2", "mind-depth:3", "mind-depth:4",
+    "mind-refs:include", "mind-refs:skip",
+    "mind-color:on", "mind-color:off",
+  ]);
+  assert.deepEqual(preset.children.filter((item) => item.checked).map((item) => item.id), [
+    "mind-dir:right", "mind-space:normal", "mind-depth:3", "mind-refs:include", "mind-color:off",
+  ]);
+  const remembered = byId(buildMenu("card", {
+    hasOutline: true,
+    mindPreset: { direction: "radial", spacing: "airy", depth: 2, includeRefs: false, colorBranches: true },
+  }), "mind-preset");
+  assert.deepEqual(remembered.children.filter((item) => item.checked).map((item) => item.id), [
+    "mind-dir:radial", "mind-space:airy", "mind-depth:2", "mind-refs:skip", "mind-color:on",
+  ]);
   const colors = byId(menu, "color").children;
   assert.deepEqual(colors.map((c) => c.id), ["color:none", ...PALETTE.map((p) => `color:${p}`)]);
   assert.deepEqual(colors.filter((c) => c.checked).map((c) => c.id), ["color:teal"]);
@@ -199,10 +220,46 @@ test("a menu taller than the board is capped and scrolls, and its submenus are p
   f.stub.dispatch(parent, "pointerover");
   const sub = q(parent, ".pxd-menu__sub");
   assert.equal(sub.style.display, "");
-  assert.match(sub.style.left, /^-?\d+px$/, "the submenu is positioned in viewport coordinates, not clipped by the scroller");
+  assert.match(sub.style.left, /^-?\d+px$/, "the submenu is positioned against the board, not clipped by the scroller");
   f.menu.close();
   f.menu.open({ x: 10, y: 10, items: SAMPLE() });
   assert.equal(classes(q(f.root, ".pxd-menu")).includes("pxd-menu--scroll"), false, "a menu that fits is untouched");
+});
+
+test("a submenu taller than the board scrolls instead of leaving rows outside it", (t) => {
+  const f = setup();
+  t.after(f.restore);
+  const kids = Array.from({ length: 20 }, (_, i) => ({ id: `s${i}`, label: `Sub ${i}` }));
+  const tall = Array.from({ length: 12 }, (_, i) => ({ id: `r${i}`, label: `Row ${i}` }));
+  const rect = { left: 0, top: 0, width: 800, height: 240, right: 800, bottom: 240, x: 0, y: 0 };
+  f.root.getBoundingClientRect = () => rect;
+  f.menu.open({ x: 10, y: 10, items: [...tall, { id: "sub", label: "More", children: kids }] });
+  const parent = rowFor(f.root, "sub");
+  const sub = q(parent, ".pxd-menu__sub");
+  sub.getBoundingClientRect = () => ({ left: 0, top: 0, width: 160, height: 600, right: 160, bottom: 600, x: 0, y: 0 });
+  f.stub.dispatch(parent, "pointerover");
+  assert.equal(sub.style.maxHeight, "232px");
+  assert.equal(sub.style.overflowY, "auto");
+});
+
+test("a scrolling submenu is positioned against the board and stays inside the window", (t) => {
+  const f = setup();
+  t.after(f.restore);
+  const kids = Array.from({ length: 20 }, (_, i) => ({ id: `s${i}`, label: `Sub ${i}` }));
+  const tall = Array.from({ length: 30 }, (_, i) => ({ id: `r${i}`, label: `Row ${i}` }));
+  const rect = { left: 100, top: 200, width: 400, height: 240, right: 500, bottom: 440, x: 100, y: 200 };
+  f.root.getBoundingClientRect = () => rect;
+  f.stub.window.innerHeight = 360;
+  f.menu.open({ x: 120, y: 220, items: [...tall, { id: "sub", label: "More", children: kids }] });
+  const parent = rowFor(f.root, "sub");
+  const sub = q(parent, ".pxd-menu__sub");
+  parent.getBoundingClientRect = () => ({ left: 120, top: 400, width: 180, height: 28, right: 300, bottom: 428, x: 120, y: 400 });
+  sub.getBoundingClientRect = () => ({ left: 0, top: 0, width: 160, height: 600, right: 160, bottom: 600, x: 0, y: 0 });
+  f.stub.dispatch(parent, "pointerover");
+  assert.equal(sub.style.maxHeight, "152px");
+  assert.equal(sub.style.overflowY, "auto");
+  assert.equal(sub.style.top, "4px");
+  assert.equal(sub.style.left, "202px");
 });
 
 test("open with no selectable items does nothing", (t) => {

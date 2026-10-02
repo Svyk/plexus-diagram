@@ -161,6 +161,37 @@ export function mindMapLayout(root, { direction = "right", hGap = 80, vGap = 24 
     }
     return out;
   }
+  if (direction === "radial") {
+    const radialSize = (n) => {
+      const span = Math.max(num(n?.w, 0), num(n?.h, 0), 1);
+      return { dd: span, bb: span };
+    };
+    const s = subtree({ ...root, children: kids }, radialSize, hGap, vGap);
+    const places = s.places.map((p) => ({ uid: p.uid, d: p.d, b: p.b - s.nodeB }));
+    let minB = Infinity;
+    let maxB = -Infinity;
+    for (const p of places) {
+      const bb = radialSize(findNode(root, p.uid) || root).bb;
+      if (p.b < minB) minB = p.b;
+      if (p.b + bb > maxB) maxB = p.b + bb;
+    }
+    const spanB = Math.max(maxB - minB, 1);
+    const cx = num(root.w, 0) / 2;
+    const cy = num(root.h, 0) / 2;
+    for (const p of places) {
+      if (p.uid === root.uid) {
+        out.set(p.uid, { x: 0, y: 0 });
+        continue;
+      }
+      const node = findNode(root, p.uid);
+      const mid = p.b + radialSize(node).bb / 2;
+      const angle = ((mid - minB) / spanB) * Math.PI * 2 - Math.PI / 2;
+      const x = cx + p.d * Math.cos(angle) - num(node.w, 0) / 2;
+      const y = cy + p.d * Math.sin(angle) - num(node.h, 0) / 2;
+      out.set(p.uid, { x: norm(x), y: norm(y) });
+    }
+    return out;
+  }
   for (const p of groupPlaces(kids)) out.set(p.uid, toXY(p.d, p.b));
   return out;
 }

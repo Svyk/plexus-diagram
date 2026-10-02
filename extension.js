@@ -2031,6 +2031,28 @@ function branchColor(index) {
   return PALETTE[i % PALETTE.length];
 }
 
+// src/model/namespace.js
+function namespaceParent(title) {
+  const name = String(title ?? "").trim();
+  const slash = name.indexOf("/");
+  if (slash <= 0 || slash >= name.length - 1) return null;
+  return name.slice(0, slash);
+}
+function dropNamespace(strings) {
+  const hits = [];
+  for (let i = 0; i < (strings || []).length; i++) {
+    const cls = classifyString(strings[i]);
+    if (cls.kind !== "page") continue;
+    const parent2 = namespaceParent(cls.title);
+    if (!parent2) continue;
+    hits.push({ i, parent: parent2 });
+  }
+  if (!hits.length) return null;
+  const parent = hits[0].parent;
+  if (hits.some((hit) => hit.parent !== parent)) return null;
+  return { parent, indexes: hits.map((hit) => hit.i) };
+}
+
 // src/model/links.js
 var MAX_SOURCES = 20;
 function linksQuery() {
@@ -4792,6 +4814,44 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
         const pad2 = 32;
         const rect = { x: b.x - pad2, y: b.y - pad2, w: b.w + pad2 * 2, h: b.h + pad2 * 2 };
         return makeSection(t, rect, "Section", void 0, top);
+      });
+    },
+    // One undo. Creates a section titled `name`, or moves the pages into the one that already has that title.
+    groupUnder(uids, title) {
+      const name = String(title || "").trim();
+      if (!name || !board2 || destroyed) return Promise.resolve(null);
+      const pages = capBulk(topLevelOf(board2, uids), emit2).filter((id) => {
+        const it = board2.items.get(id);
+        return it?.type !== "section" && it?.kind === "page" && namespaceParent(it.title) === name;
+      });
+      if (!pages.length) return Promise.resolve(null);
+      const existing = [...board2.items.values()].find((it) => it.type === "section" && it.title === name);
+      const moving = pages.filter((id) => board2.items.get(id).parentUid !== existing?.uid);
+      if (!moving.length) return Promise.resolve(existing?.uid ?? null);
+      return txn((t) => {
+        if (existing) {
+          const sec = rects.get(existing.uid);
+          let y = 24;
+          for (const member of existing.members) {
+            const r = rects.get(member);
+            if (!r || !sec) continue;
+            y = Math.max(y, round13(r.y - sec.y + r.h + 16));
+          }
+          let x = 24;
+          for (const id of moving) {
+            const r = rects.get(id);
+            t.move(id, existing.uid, "last");
+            t.props(id, itemPlexus(id, { x, y }));
+            x += round13((r?.w || DEFAULT_SIZES.card.w) + 16);
+          }
+          applyFit(t, [existing.uid]);
+          return existing.uid;
+        }
+        const b = boundsOf(moving.map((id) => rects.get(id)));
+        if (!b) return null;
+        const pad2 = 32;
+        const rect = { x: b.x - pad2, y: b.y - pad2, w: b.w + pad2 * 2, h: b.h + pad2 * 2 };
+        return makeSection(t, rect, name, void 0, moving);
       });
     },
     createBoard({ rect, title } = {}) {
@@ -16373,8 +16433,18 @@ function mountBoardView({
     const w = Number(setting("default-card-width", DEFAULT_SIZES.card.w)) || DEFAULT_SIZES.card.w;
     const h = Number(setting("default-card-height", DEFAULT_SIZES.card.h)) || DEFAULT_SIZES.card.h;
     const made = session.addRefCards?.(stackAt(list.map((x) => x.string), p.x - w / 2, p.y - h / 2, h));
+    const offer = dropNamespace(list.map((x) => x.string));
     Promise.resolve(made).then((uids) => {
       if (Array.isArray(uids) && uids.length) ctl.select(uids);
+      if (!offer || !Array.isArray(uids) || disposed) return;
+      const mine = offer.indexes.map((i) => uids[i]).filter(Boolean);
+      if (!mine.length) return;
+      chrome.toast.show({
+        message: `Group under ${offer.parent}`,
+        action: { label: `Group under ${offer.parent}`, run: () => {
+          void session.groupUnder?.(mine, offer.parent);
+        } }
+      });
     }).catch(() => {
     });
   });

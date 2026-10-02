@@ -195,6 +195,26 @@ test("wrapInSection pads bounds by 32", async () => {
   assert.equal(fake.block("c1").parent, uid);
 });
 
+test("RG-9: groupUnder creates a section titled with the parent and reuses it", async () => {
+  const { session } = setup();
+  const a = await session.createCard({ x: 40, y: 40, string: "[[Project/Sub]]" });
+  const b = await session.createCard({ x: 400, y: 40, string: "[[Project/Other]]" });
+  const note = await session.createCard({ x: 1400, y: 40, string: "not a page" });
+  const section = await session.groupUnder([a, b, note], "Project");
+  assert.equal(session.board.items.get(section).type, "section");
+  assert.equal(session.board.items.get(section).title, "Project");
+  assert.equal(session.board.items.get(a).parentUid, section);
+  assert.equal(session.board.items.get(b).parentUid, section);
+  assert.equal(session.board.items.get(note).parentUid, "b1");
+  const third = await session.createCard({ x: 800, y: 40, string: "[[Project/Third]]" });
+  const reused = await session.groupUnder([third], "Project");
+  assert.equal(reused, section);
+  assert.equal(session.board.items.get(third).parentUid, section);
+  const named = [...session.board.items.values()].filter((item) => item.type === "section" && item.title === "Project");
+  assert.equal(named.length, 1);
+  assert.equal(await session.groupUnder([third], "Project"), section);
+});
+
 test("createCard stores look block on a note and omits it on a page ref; setLook round-trips", async () => {
   const { fake, session } = setup();
   const note = await session.createCard({ x: 1000, y: 1000, string: "alpha" });

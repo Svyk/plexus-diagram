@@ -104,6 +104,28 @@ function mount(hostOverrides = {}) {
   return { stub, restore, session, view, mutations, host };
 }
 
+test("RG-9: dropping a namespaced page offers Group under its parent", async () => {
+  const f = mount();
+  const grouped = [];
+  f.session.groupUnder = (uids, title) => { grouped.push([uids, title]); return Promise.resolve("sec"); };
+  try {
+    stubFlush(f);
+    const d = dt({ "text/plain": "[[Project/Sub]]" });
+    f.stub.dispatch(f.view.root, "drop", { clientX: 400, clientY: 300, dataTransfer: d });
+    await tick();
+    const btn = [...f.view.root.querySelectorAll(".pxd-toast__action")].find((node) => node.textContent === "Group under Project");
+    assert.ok(btn);
+    btn.click();
+    assert.deepEqual(grouped, [[["n1"], "Project"]]);
+    const plain = dt({ "text/plain": "[[Plain]]" });
+    f.stub.dispatch(f.view.root, "drop", { clientX: 400, clientY: 300, dataTransfer: plain });
+    await tick();
+    const buttons = [...f.view.root.querySelectorAll(".pxd-toast__action")].map((node) => node.textContent);
+    assert.equal(buttons.includes("Group under Plain"), false);
+    assert.deepEqual(grouped, [[["n1"], "Project"]]);
+  } finally { f.view.dispose(); f.restore(); }
+});
+
 test("view: dropping two uids stacks cards centred on the drop point", async () => {
   const f = mount();
   try {

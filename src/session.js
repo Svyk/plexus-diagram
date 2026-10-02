@@ -1,3 +1,4 @@
+import { namespaceParent } from "./model/namespace.js";
 import {
   boardPreview,
   boundsOf,
@@ -798,6 +799,45 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
         const pad = 32;
         const rect = { x: b.x - pad, y: b.y - pad, w: b.w + pad * 2, h: b.h + pad * 2 };
         return makeSection(t, rect, "Section", undefined, top);
+      });
+    },
+
+    // One undo. Creates a section titled `name`, or moves the pages into the one that already has that title.
+    groupUnder(uids, title) {
+      const name = String(title || "").trim();
+      if (!name || !board || destroyed) return Promise.resolve(null);
+      const pages = capBulk(topLevelOf(board, uids), emit).filter((id) => {
+        const it = board.items.get(id);
+        return it?.type !== "section" && it?.kind === "page" && namespaceParent(it.title) === name;
+      });
+      if (!pages.length) return Promise.resolve(null);
+      const existing = [...board.items.values()].find((it) => it.type === "section" && it.title === name);
+      const moving = pages.filter((id) => board.items.get(id).parentUid !== existing?.uid);
+      if (!moving.length) return Promise.resolve(existing?.uid ?? null);
+      return txn((t) => {
+        if (existing) {
+          const sec = rects.get(existing.uid);
+          let y = 24;
+          for (const member of existing.members) {
+            const r = rects.get(member);
+            if (!r || !sec) continue;
+            y = Math.max(y, round1(r.y - sec.y + r.h + 16));
+          }
+          let x = 24;
+          for (const id of moving) {
+            const r = rects.get(id);
+            t.move(id, existing.uid, "last");
+            t.props(id, itemPlexus(id, { x, y }));
+            x += round1((r?.w || DEFAULT_SIZES.card.w) + 16);
+          }
+          applyFit(t, [existing.uid]);
+          return existing.uid;
+        }
+        const b = boundsOf(moving.map((id) => rects.get(id)));
+        if (!b) return null;
+        const pad = 32;
+        const rect = { x: b.x - pad, y: b.y - pad, w: b.w + pad * 2, h: b.h + pad * 2 };
+        return makeSection(t, rect, name, undefined, moving);
       });
     },
 

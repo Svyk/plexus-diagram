@@ -13,6 +13,7 @@ import { findOnBoard } from "../model/find.js";
 import { readMindPreset, writeMindPreset } from "../model/mindmap.js";
 import { attrLegend, parseAttrStyles, styleAttrLinks } from "../model/attr-styles.js";
 import { lensBright, lensCatalog, tagsForCard } from "../model/lens.js";
+import { dropNamespace } from "../model/namespace.js";
 import { neighborLayout } from "../model/neighbors.js";
 import { isQueryString, queryResultLayout, queryResultUids } from "../model/query.js";
 import {
@@ -2491,7 +2492,17 @@ export function mountBoardView({
     const w = Number(setting("default-card-width", DEFAULT_SIZES.card.w)) || DEFAULT_SIZES.card.w;
     const h = Number(setting("default-card-height", DEFAULT_SIZES.card.h)) || DEFAULT_SIZES.card.h;
     const made = session.addRefCards?.(stackAt(list.map((x) => x.string), p.x - w / 2, p.y - h / 2, h));
-    Promise.resolve(made).then((uids) => { if (Array.isArray(uids) && uids.length) ctl.select(uids); }).catch(() => {});
+    const offer = dropNamespace(list.map((x) => x.string));
+    Promise.resolve(made).then((uids) => {
+      if (Array.isArray(uids) && uids.length) ctl.select(uids);
+      if (!offer || !Array.isArray(uids) || disposed) return;
+      const mine = offer.indexes.map((i) => uids[i]).filter(Boolean);
+      if (!mine.length) return;
+      chrome.toast.show({
+        message: `Group under ${offer.parent}`,
+        action: { label: `Group under ${offer.parent}`, run: () => { void session.groupUnder?.(mine, offer.parent); } },
+      });
+    }).catch(() => {});
   });
 
   const ownsKeyboard = () => {

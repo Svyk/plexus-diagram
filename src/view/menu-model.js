@@ -166,6 +166,11 @@ export function buildMenu(kind, ctx = {}) {
         out.push(mindPresetMenu());
       }
       if (c.isQuery) out.push(make("query-results", "Add results as cards"));
+      if (c.canExpand) {
+        out.push(make("neighbors:out", "Add pages it links to"));
+        out.push(make("neighbors:in", "Add pages that link here"));
+        out.push(make("neighbors:attr", "Add attribute values"));
+      }
       out.push(
         make("send-to", "Send to board…"),
         make("related", "Related…"),

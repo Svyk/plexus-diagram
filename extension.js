@@ -2341,6 +2341,79 @@ function libraryCap() {
   return LIBRARY_CAP;
 }
 
+// src/model/neighbors.js
+var NEIGHBOR_CAP = 24;
+var CARD_W2 = 280;
+var CARD_H2 = 160;
+function pageRefString(title) {
+  const s = String(title ?? "").trim();
+  if (!s || s.includes("]]") || /[\n\r]/.test(s)) return null;
+  return `[[${s}]]`;
+}
+function splitNeighbors({ outgoing = [], incoming = [], selfTitle = "", selfUid = "" } = {}) {
+  const out = [];
+  const attr = [];
+  const counts = /* @__PURE__ */ new Map();
+  const seenOut = /* @__PURE__ */ new Set();
+  const seenAttr = /* @__PURE__ */ new Set();
+  for (const row2 of outgoing) {
+    const title = row2?.[0];
+    if (typeof title !== "string" || !title) continue;
+    const name = attrNameOf(row2?.[1]);
+    if (name && title === name) continue;
+    if (selfTitle && title === selfTitle) continue;
+    if (name) {
+      if (seenAttr.has(title)) continue;
+      seenAttr.add(title);
+      attr.push(title);
+    } else if (!seenOut.has(title)) {
+      seenOut.add(title);
+      out.push(title);
+    }
+  }
+  for (const row2 of incoming) {
+    const uid = row2?.[0];
+    const title = row2?.[2];
+    if (typeof title !== "string" || !title) continue;
+    if (selfUid && uid === selfUid) continue;
+    if (selfTitle && title === selfTitle) continue;
+    if (attrNameOf(row2?.[1])) continue;
+    counts.set(title, (counts.get(title) || 0) + 1);
+  }
+  const inn = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([title]) => title);
+  return {
+    out: out.slice(0, NEIGHBOR_CAP),
+    in: inn.slice(0, NEIGHBOR_CAP),
+    attr: attr.slice(0, NEIGHBOR_CAP)
+  };
+}
+function neighborLayout(rect, titles, { skip = [] } = {}) {
+  if (!rect) return [];
+  const skipSet = new Set(skip);
+  const list = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const title of titles || []) {
+    const string = pageRefString(title);
+    if (!string || seen.has(string) || skipSet.has(String(title).trim())) continue;
+    seen.add(string);
+    list.push(string);
+    if (list.length >= NEIGHBOR_CAP) break;
+  }
+  const n2 = list.length;
+  if (!n2) return [];
+  const cx = rect.x + rect.w / 2;
+  const cy = rect.y + rect.h / 2;
+  const radius = Math.max(rect.w, rect.h) / 2 + 240;
+  return list.map((string, i) => {
+    const angle = -Math.PI / 2 + (n2 === 1 ? 0 : i / n2 * Math.PI * 2);
+    return {
+      string,
+      x: Math.round(cx + Math.cos(angle) * radius - CARD_W2 / 2),
+      y: Math.round(cy + Math.sin(angle) * radius - CARD_H2 / 2)
+    };
+  });
+}
+
 // src/model/refs.js
 var LINKED_REF_CAP = 20;
 var UID_RE3 = /^[A-Za-z0-9_-]{9}$/;
@@ -3245,6 +3318,32 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
       }
       const linkedFrom = [...pages.entries()].sort((a, b) => b[1].count - a[1].count || a[0].localeCompare(b[0])).map(([pt, g]) => ({ relation: "linked from", target: { kind: "page", title: pt }, text: g.count > 1 ? `${pt} (${g.count})` : pt }));
       return [...attrs, ...links, ...linkedFrom].slice(0, limit);
+    },
+    // Pages around a card: outgoing refs, pages that mention it, or attribute values.
+    // Cards on this board are not backlinks. A throw yields nothing.
+    neighborPages(item, mode, { boardUid } = {}) {
+      if (!item || item.type === "section") return [];
+      if (mode !== "out" && mode !== "in" && mode !== "attr") return [];
+      const kind = item.target?.kind || item.kind || "self";
+      if (kind === "board" || item.kind === "board") return [];
+      const pageTitle = kind === "page" ? String(item.target?.title || item.title || "") : "";
+      const blockUid = pageTitle ? "" : String(item.target?.uid || item.uid || "");
+      if (!pageTitle && !blockUid) return [];
+      const byPage = Boolean(pageTitle);
+      const outQuery = byPage ? `[:find ?rt ?ss :in $ ?title :where [?p :node/title ?title] [?b :block/page ?p] [?b :block/refs ?r] [?r :node/title ?rt] [?b :block/string ?ss]]` : `[:find ?rt ?ss :in $ ?uid :where [?s :block/uid ?uid] (or [?b :block/parents ?s] [(= ?b ?s)]) [?b :block/refs ?r] [?r :node/title ?rt] [?b :block/string ?ss]]`;
+      const inQuery = byPage ? `[:find ?u ?ss ?pt :in $ ?title ?board :where [?p :node/title ?title] [?b :block/refs ?p] (not [?b :block/parents ?board]) [(not= ?b ?board)] [?b :block/uid ?u] [?b :block/string ?ss] [?b :block/page ?pg] [?pg :node/title ?pt]]` : `[:find ?u ?ss ?pt :in $ ?uid ?board :where [?s :block/uid ?uid] [?b :block/refs ?s] (not [?b :block/parents ?board]) [(not= ?b ?board)] [?b :block/uid ?u] [?b :block/string ?ss] [?b :block/page ?pg] [?pg :node/title ?pt]]`;
+      try {
+        if (mode === "in") {
+          const boardEid = boardUid ? host.resolveEid({ uid: boardUid }) ?? -1 : -1;
+          const incoming = host.q(inQuery, pageTitle || blockUid, boardEid) || [];
+          return splitNeighbors({ incoming, selfTitle: pageTitle, selfUid: blockUid }).in;
+        }
+        const outgoing = host.q(outQuery, pageTitle || blockUid) || [];
+        const split = splitNeighbors({ outgoing, selfTitle: pageTitle, selfUid: blockUid });
+        return mode === "attr" ? split.attr : split.out;
+      } catch {
+        return [];
+      }
     },
     // Mentions of a page or block. The info panel's cardInfo also asks which boards
     // contain the card; this query does not, so a page card can list references on mount.
@@ -12253,6 +12352,11 @@ function buildMenu(kind, ctx = {}) {
         out.push(mindPresetMenu());
       }
       if (c.isQuery) out.push(make("query-results", "Add results as cards"));
+      if (c.canExpand) {
+        out.push(make("neighbors:out", "Add pages it links to"));
+        out.push(make("neighbors:in", "Add pages that link here"));
+        out.push(make("neighbors:attr", "Add attribute values"));
+      }
       out.push(
         make("send-to", "Send to board…"),
         make("related", "Related…"),
@@ -14444,7 +14548,8 @@ function mountBoardView({
             queryText = "";
           }
         }
-        return { item, isBoard: item?.kind === "board", collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS2.includes(item?.kind), isQuery: isQueryString(queryText), mindPreset: readMindPreset(storage) };
+        const canExpand = item?.kind === "page" || item?.kind === "note" || item?.kind === "block";
+        return { item, isBoard: item?.kind === "board", collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS2.includes(item?.kind), isQuery: isQueryString(queryText), canExpand, mindPreset: readMindPreset(storage) };
       }
       case "section": {
         const members = item && b ? [item.uid, ...descendantsOf(b, item.uid)] : [];
@@ -14700,6 +14805,32 @@ function mountBoardView({
       case "mind-map":
         if (item) expandOutline(item.uid);
         break;
+      case "neighbors": {
+        if (!item || !arg) break;
+        let titles = [];
+        try {
+          titles = host?.neighborPages?.(item, arg, { boardUid }) || [];
+        } catch {
+          titles = [];
+        }
+        const have = [];
+        for (const other of b.items.values()) {
+          if (other.target?.kind === "page" && other.target.title) have.push(other.target.title);
+        }
+        const list = neighborLayout(rects().get(item.uid), titles, { skip: have });
+        if (!list.length) {
+          toast("No pages to add");
+          break;
+        }
+        const made = session.addRefCards?.(list);
+        Promise.resolve(made).then((ids) => {
+          if (disposed) return;
+          if (Array.isArray(ids) && ids.length) ctl.select(ids);
+          toast(`Added ${list.length} ${list.length === 1 ? "page" : "pages"}`, true);
+        }).catch(() => {
+        });
+        break;
+      }
       case "query-results": {
         if (!item) break;
         const sourceUid = isQueryString(item.string) ? item.uid : item.target?.kind === "block" ? item.target.uid : item.uid;

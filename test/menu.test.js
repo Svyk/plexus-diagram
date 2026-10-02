@@ -33,6 +33,11 @@ test("card menu: ids, color submenu with checked, fold/unfold, pin/unpin, mind-m
   for (const id of ["edit", "open", "open-sidebar", "copy", "copy-ref", "copy-link", "duplicate", "duplicate-ref", "color", "fold", "fit-height", "reset-size", "pin", "select-same-color", "select-connected", "send-to", "related", "delete"]) assert.ok(base.includes(id), id);
   assert.ok(!base.includes("mind-map"));
   assert.ok(!base.includes("query-results"));
+  assert.ok(!base.includes("neighbors:out"));
+  const expand = buildMenu("card", { canExpand: true });
+  assert.equal(byId(expand, "neighbors:out").label, "Add pages it links to");
+  assert.equal(byId(expand, "neighbors:in").label, "Add pages that link here");
+  assert.equal(byId(expand, "neighbors:attr").label, "Add attribute values");
   const queryMenu = buildMenu("card", { isQuery: true });
   assert.equal(byId(queryMenu, "query-results").label, "Add results as cards");
   assert.ok(!base.includes("unfold") && !base.includes("unpin"));

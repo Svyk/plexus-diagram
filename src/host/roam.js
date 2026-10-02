@@ -9,6 +9,7 @@ import {
   normalizeLibraryFilter,
   recentDailyTitles,
 } from "../model/library.js";
+import { splitNeighbors } from "../model/neighbors.js";
 import { LINKED_REF_CAP } from "../model/refs.js";
 import { attrNameOf, mergePropsForWrite, parseBoardTitle, plainKeys } from "../model/schema.js";
 
@@ -919,6 +920,37 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         .sort((a, b) => b[1].count - a[1].count || a[0].localeCompare(b[0]))
         .map(([pt, g]) => ({ relation: "linked from", target: { kind: "page", title: pt }, text: g.count > 1 ? `${pt} (${g.count})` : pt }));
       return [...attrs, ...links, ...linkedFrom].slice(0, limit);
+    },
+
+    // Pages around a card: outgoing refs, pages that mention it, or attribute values.
+    // Cards on this board are not backlinks. A throw yields nothing.
+    neighborPages(item, mode, { boardUid } = {}) {
+      if (!item || item.type === "section") return [];
+      if (mode !== "out" && mode !== "in" && mode !== "attr") return [];
+      const kind = item.target?.kind || item.kind || "self";
+      if (kind === "board" || item.kind === "board") return [];
+      const pageTitle = kind === "page" ? String(item.target?.title || item.title || "") : "";
+      const blockUid = pageTitle ? "" : String(item.target?.uid || item.uid || "");
+      if (!pageTitle && !blockUid) return [];
+      const byPage = Boolean(pageTitle);
+      const outQuery = byPage
+        ? `[:find ?rt ?ss :in $ ?title :where [?p :node/title ?title] [?b :block/page ?p] [?b :block/refs ?r] [?r :node/title ?rt] [?b :block/string ?ss]]`
+        : `[:find ?rt ?ss :in $ ?uid :where [?s :block/uid ?uid] (or [?b :block/parents ?s] [(= ?b ?s)]) [?b :block/refs ?r] [?r :node/title ?rt] [?b :block/string ?ss]]`;
+      const inQuery = byPage
+        ? `[:find ?u ?ss ?pt :in $ ?title ?board :where [?p :node/title ?title] [?b :block/refs ?p] (not [?b :block/parents ?board]) [(not= ?b ?board)] [?b :block/uid ?u] [?b :block/string ?ss] [?b :block/page ?pg] [?pg :node/title ?pt]]`
+        : `[:find ?u ?ss ?pt :in $ ?uid ?board :where [?s :block/uid ?uid] [?b :block/refs ?s] (not [?b :block/parents ?board]) [(not= ?b ?board)] [?b :block/uid ?u] [?b :block/string ?ss] [?b :block/page ?pg] [?pg :node/title ?pt]]`;
+      try {
+        if (mode === "in") {
+          const boardEid = boardUid ? host.resolveEid({ uid: boardUid }) ?? -1 : -1;
+          const incoming = host.q(inQuery, pageTitle || blockUid, boardEid) || [];
+          return splitNeighbors({ incoming, selfTitle: pageTitle, selfUid: blockUid }).in;
+        }
+        const outgoing = host.q(outQuery, pageTitle || blockUid) || [];
+        const split = splitNeighbors({ outgoing, selfTitle: pageTitle, selfUid: blockUid });
+        return mode === "attr" ? split.attr : split.out;
+      } catch {
+        return [];
+      }
     },
 
     // Mentions of a page or block. The info panel's cardInfo also asks which boards

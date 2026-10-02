@@ -566,6 +566,62 @@ test("linkedRefs lists mentions and skips the card itself", () => {
   assert.deepEqual(host.linkedRefs({ uid: "s1", type: "section", target: { kind: "self", uid: "s1" } }), []);
 });
 
+test("neighborPages lists outgoing pages, backlinks, and attribute values", () => {
+  const { fake, host } = setup();
+  fake.seedBoard({ uid: "boardAAA" });
+  const boardEid = host.resolveEid({ uid: "boardAAA" });
+  const page = {
+    uid: "cardP0001",
+    type: "card",
+    kind: "page",
+    title: "Alpha",
+    string: "[[Alpha]]",
+    target: { kind: "page", title: "Alpha" },
+  };
+  fake.setQ((query, title, eid) => {
+    const q = String(query);
+    assert.equal(title, "Alpha");
+    if (q.includes(":block/parents ?board")) {
+      assert.equal(eid, boardEid);
+      return [
+        ["selfblock", "me", "Notes"],
+        ["b1", "back", "Notes"],
+        ["b2", "back", "Zed"],
+        ["b3", "Role:: [[Alpha]]", "Delta"],
+        ["b4", "same", "Alpha"],
+      ];
+    }
+    assert.equal(eid, undefined);
+    assert.match(q, /:block\/page/);
+    return [
+      ["Alpha", "self"],
+      ["Causes", "Causes:: [[Beta]]"],
+      ["Beta", "Causes:: [[Beta]]"],
+      ["Gamma", "see [[Gamma]]"],
+      ["Gamma", "again"],
+    ];
+  });
+  assert.deepEqual(host.neighborPages(page, "out", { boardUid: "boardAAA" }), ["Gamma"]);
+  assert.deepEqual(host.neighborPages(page, "attr", { boardUid: "boardAAA" }), ["Beta"]);
+  assert.deepEqual(host.neighborPages(page, "in", { boardUid: "boardAAA" }), ["Notes", "Zed"]);
+  fake.setQ((query, uid) => {
+    assert.match(String(query), /:block\/parents \?s/);
+    assert.equal(uid, "note10001");
+    return [["Other", "see"]];
+  });
+  assert.deepEqual(host.neighborPages({
+    uid: "refcard01",
+    type: "card",
+    kind: "block",
+    string: "((note10001))",
+    target: { kind: "block", uid: "note10001" },
+  }, "out"), ["Other"]);
+  fake.setQ(() => { throw new Error("query down"); });
+  assert.deepEqual(host.neighborPages(page, "out"), []);
+  assert.deepEqual(host.neighborPages(page, "nope"), []);
+  assert.deepEqual(host.neighborPages({ uid: "s1", type: "section", kind: "section" }, "out"), []);
+});
+
 test("showOnBoard returns the placed v2 card, or the card that refs the block", () => {
   const { fake, host } = setup();
   const placed = { plexus: { x: 10, y: 20, w: 80, h: 40 } };

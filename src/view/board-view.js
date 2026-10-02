@@ -11,6 +11,7 @@ import { boundsOf, buildBoard, connectedUids, containerAt, descendantsOf, displa
 import { copyLinkText, hashFromUrl, pageUidFromHash, pxdTarget } from "../model/deeplink.js";
 import { findOnBoard } from "../model/find.js";
 import { readMindPreset, writeMindPreset } from "../model/mindmap.js";
+import { neighborLayout } from "../model/neighbors.js";
 import { isQueryString, queryResultLayout, queryResultUids } from "../model/query.js";
 import {
   alignRects,
@@ -1265,7 +1266,8 @@ export function mountBoardView({
         if (!isQueryString(queryText) && item?.target?.kind === "block") {
           try { queryText = host?.blockString?.(item.target.uid) || ""; } catch { queryText = ""; }
         }
-        return { item, isBoard: item?.kind === "board", collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS.includes(item?.kind), isQuery: isQueryString(queryText), mindPreset: readMindPreset(storage) };
+        const canExpand = item?.kind === "page" || item?.kind === "note" || item?.kind === "block";
+        return { item, isBoard: item?.kind === "board", collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS.includes(item?.kind), isQuery: isQueryString(queryText), canExpand, mindPreset: readMindPreset(storage) };
       }
       case "section": {
         const members = item && b ? [item.uid, ...descendantsOf(b, item.uid)] : [];
@@ -1416,6 +1418,24 @@ export function mountBoardView({
       case "pin": void session.setPinned?.(uids, true); break;
       case "unpin": void session.setPinned?.(uids, false); break;
       case "mind-map": if (item) expandOutline(item.uid); break;
+      case "neighbors": {
+        if (!item || !arg) break;
+        let titles = [];
+        try { titles = host?.neighborPages?.(item, arg, { boardUid }) || []; } catch { titles = []; }
+        const have = [];
+        for (const other of b.items.values()) {
+          if (other.target?.kind === "page" && other.target.title) have.push(other.target.title);
+        }
+        const list = neighborLayout(rects().get(item.uid), titles, { skip: have });
+        if (!list.length) { toast("No pages to add"); break; }
+        const made = session.addRefCards?.(list);
+        Promise.resolve(made).then((ids) => {
+          if (disposed) return;
+          if (Array.isArray(ids) && ids.length) ctl.select(ids);
+          toast(`Added ${list.length} ${list.length === 1 ? "page" : "pages"}`, true);
+        }).catch(() => {});
+        break;
+      }
       case "query-results": {
         if (!item) break;
         const sourceUid = isQueryString(item.string) ? item.uid : (item.target?.kind === "block" ? item.target.uid : item.uid);

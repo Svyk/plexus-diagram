@@ -10,6 +10,7 @@ import { shapePath } from "../src/model/shapes.js";
 import { fitViewport, zoomAt } from "../src/model/geometry.js";
 import { cardDeepLink } from "../src/model/deeplink.js";
 import { PLEXUS_MIME } from "../src/model/clipboard.js";
+import { neighborLayout } from "../src/model/neighbors.js";
 import { queryResultLayout } from "../src/model/query.js";
 import { linkedRefCard, linkedRefLabel } from "../src/model/refs.js";
 import { isLightHost, mountBoardView } from "../src/view/board-view.js";
@@ -2186,6 +2187,42 @@ test("RG-2: a page card drawer drags one mention out and the source string stays
     assert.equal(strings.get("srcBlock1"), source);
     f.view.dispose();
     assert.ok(unmounted.includes(live));
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("RG-3: expand neighbours places a ring of page cards and writes no edges", async () => {
+  const titles = ["N1", "N2", "N3", "N4", "N5", "Beta", "bad]]"];
+  const f = mountFixture({
+    hostOverrides: {
+      neighborPages(item, mode, opts) {
+        assert.equal(item.uid, "cardBBBB2");
+        assert.equal(mode, "out");
+        assert.equal(opts.boardUid, "board0001");
+        return titles;
+      },
+    },
+  });
+  try {
+    await f.flush();
+    rightClick(f, shell(f, "cardAAAA1"));
+    assert.ok(menuIds(f).includes("neighbors:out"), "a block card offers the neighbour actions");
+    key(f, "Escape");
+    rightClick(f, shell(f, "cardBBBB2"));
+    assert.ok(menuIds(f).includes("neighbors:in"));
+    assert.ok(menuIds(f).includes("neighbors:attr"));
+    const before = f.session.mutations.length;
+    pickRow(f, "neighbors:out");
+    await tick();
+    const added = f.session.mutations.slice(before);
+    assert.deepEqual(added.map((row) => row[0]), ["addRefCards"]);
+    assert.deepEqual(
+      added[0][1],
+      neighborLayout({ x: 300, y: 0, w: 200, h: 100 }, titles, { skip: ["Beta"] }),
+    );
+    assert.match(toastText(f), /Added 5 pages/);
   } finally {
     f.view.dispose();
     f.restore();

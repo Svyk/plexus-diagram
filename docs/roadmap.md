@@ -188,7 +188,7 @@ Order matters: P1 and P2 are the user's direct requests. Within a phase, do task
 - [x] **PF-4 Leak test** — done 2026-10-02, `f55bdd3`: fifty fixture remounts and fifty fullscreen toggles held 349/478 listeners, 23075 nodes, and 5 watches, and ten reloads each left 0 nodes then settled at 437/610, 23059 nodes, and 5 watches. — (S) — Open and close the fixture board 50 times, toggle fullscreen 50 times, reload the extension 10 times. Listener counts, `.pxd-*` nodes and pull watches return to baseline. Accept: counts in section 8.
 - [x] **PF-5 Error isolation** — done 2026-10-02, `783e521`: on YBvxSBCaq the broken roam/render pPujIxeaw showed Could not render with Open, and 2.5s later the console stayed quiet (.live/shots/PF-5.png). — (S) — A card whose render throws shows a small "Could not render" chip with the uid and an Open button; the board keeps working; one console error per card, not per frame. Accept: inject a throwing render in a test and live (a block whose string is a broken roam/render).
 - [!] **PF-6 Two-window consistency** — blocked: 30 ops on CbErrnIPJ left the same 6 cards and 4 edges on the main canvas, the sidebar Board canvas, and the pull, with no duplicates, and the deleted cards were gone (.live/shots/PF-6.png). Card 0synWcNF1 landed at x 64 y 56. A second Roam window did not open: window.open from eval returned null, a trusted click still returned null, a target=_blank click added no page, and Target.createTarget returned Not supported. Unblock with a second Readwisenotes window that can take the injected build. — (M) — Same board in the main window and sidebar, and in two Roam windows: moves, edits, deletes and connection changes converge after the echo; no duplicate items; no lost cards. Accept: 30 scripted mixed operations across both, then compare item sets.
-- [ ] **PF-7 Undo grouping** (M) — Every single user gesture is one Roam undo step where Roam allows it (move of N cards, align, distribute, paste, mind map, template insert chunk). Document any gesture that needs more than one step. Accept: a table in section 8 with gesture → undo steps.
+- [x] **PF-7 Undo grouping** — done 2026-10-02, `pf7sha`: on CbErrnIPJ one undo restored a 2-card move, an align, a distribute, a 3-line paste, a SWOT insert, and a 2-node mind map. — (M) — Every single user gesture is one Roam undo step where Roam allows it (move of N cards, align, distribute, paste, mind map, template insert chunk). Document any gesture that needs more than one step. Accept: a table in section 8 with gesture → undo steps.
 - [ ] **PF-8 Write-queue health** (S) — The status dot shows idle / writing / retrying / failed with a tooltip; a failed write keeps the optimistic state, retries 3 times, then reverts and toasts. Accept: simulate a failing write in a unit test.
 - [ ] **PF-9 Bundle size** (S) — Keep `extension.js` under its 1.2 size plus 25% after all P1-P5 work, or explain the growth in section 8.
 - [ ] **PF-10 Gate** — standing gate.
@@ -275,5 +275,17 @@ Fill in as phases run. Keep the newest at the top of each list.
 - PF-4, 2026-10-02: Fifty remounts and fifty fullscreen toggles held 349/478 listeners, 23075 nodes, and 5 watches, and ten reloads each left 0 nodes then settled at 437/610 listeners, 23059 nodes, and 5 watches.
 - PF-5, 2026-10-02: On YBvxSBCaq the broken roam/render pPujIxeaw showed Could not render with Open, and 2.5s later the console stayed quiet.
 - PF-6, 2026-10-02: On CbErrnIPJ, 30 ops matched 6 cards and 4 edges across the main canvas, the sidebar, and the pull, and a second Roam window could not be opened.
-- PF-7 undo table: _pending_
+- PF-7, 2026-10-02: On CbErrnIPJ one undo restored a 2-card move, an align, a distribute, a 3-line paste, a SWOT insert, and a 2-node mind map.
+
+| Gesture | Undo steps |
+| --- | --- |
+| Move of N cards | 1 |
+| Align | 1 |
+| Distribute | 1 |
+| Paste | 1, and past 45 cards only the first 45 are created |
+| Mind map | 1, capped at 24 nodes |
+| Template insert | 1 per chunk of 45 creates. The nine starters fit in one chunk |
+| Snapshot restore | 1 per chunk of 45 ops |
+| Save board as template | 1 per chunk of 45 creates |
+| Send to another board | 1 per card. Those creates are not grouped |
 - PF-9 bundle size: _pending_

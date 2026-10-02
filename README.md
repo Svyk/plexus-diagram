@@ -23,6 +23,20 @@ An enhanced board keeps Roam's diagram controls and adds to them.
 - The Properties panel edits text, fill, border, edges, sections, and the background.
 - A note card is a plain block. Hover shows Color, Expand, and References.
 
+## Surfaces
+
+![The fixture board in the light theme](docs/img/board-light.png)
+
+![The same board with the dark token set](docs/img/board-dark.png)
+
+- **Rail.** The vertical stack on the right (Settings can switch it to a horizontal bar): zoom in, zoom out, fit view, Toggle Minimap, Save PNG, Open outline in sidebar, Edit Block, Maximize, the zoom percent, and the version badge. The badge opens this version's changelog from the bundle. No network.
+- **Properties.** The panel on the canvas. It edits the selection: title size, title color, title fill, area fill, and border. Reset default clears that selection's overrides. Background, on the board, sets this board's pattern and tone.
+- **Toolbar.** The top row: breadcrumbs, the tools, Add, Info, graph links, Find, and More. A selection shows a context bar: colors, align, distribute, and, for a connection, direction, route, dash, weight, and label.
+- **Panel.** Add opens the side panel. Search finds pages and blocks. Related lists what the selected card links to and what links to it. Info (also the I key) shows the card or the board. The outline in the sidebar is the same canvas, not a second copy of the bullets.
+- **Palette.** The floating bar along the bottom, above the minimap. Select (V), Hand (H), Card (N), Text (T), Sticky (S), Shape (R), Section (G), Board (W), Connect (C). Hide it with Show tool palette.
+
+![The tool palette above the minimap](docs/img/palette.png)
+
 ## Using the board
 
 | Do | How |
@@ -48,7 +62,7 @@ An enhanced board keeps Roam's diagram controls and adds to them.
 | Focus | F fades everything except the selection and its connections; Esc leaves |
 | Quick look | Q shows the selected card and its children in an overlay |
 | Present | P steps through the sections in outline order (arrows or Space, Esc to exit) |
-| Mind map | M on a note, block, or page card turns its child blocks into `((ref))` cards with connections (up to 24 branches) |
+| Mind map | M (Expand outline) on one note, block, or page card lays its children out as a mind map, up to 24 branches. The card menu has the same action |
 | Background | The Background button picks a pattern (dots, lines, grid, plain) and a tone for this board; Use as default saves it for every board |
 | Delete | Delete/Backspace. The toast offers Undo; Cmd+Z / Shift+Cmd+Z are Roam's own undo and redo |
 | Search | `/` filters the board and steps through matches |
@@ -71,9 +85,94 @@ The context bar above a selection has 10 colors for cards, sections, text, and c
 | Badges | The small counts on a card (references, boards, open and done TODOs) are read from Roam and never written |
 | Pan and zoom | Stored per device in local storage. Opening, panning, and zooming write nothing to the graph |
 
+## Shortcuts
+
+`?` opens this same list on the board. ⌘ means Command on a Mac and Ctrl elsewhere. Present keys apply only while a presentation is running.
+
+| Group | Keys | Action |
+|---|---|---|
+| Tools | V | Select |
+| Tools | H | Hand |
+| Tools | N | Card |
+| Tools | T | Text |
+| Tools | S | Sticky |
+| Tools | R | Shape |
+| Tools | G | Section |
+| Tools | W | Board |
+| Tools | C | Connect |
+| Edit | Enter | Edit, open, or rename |
+| Edit | F2 | Rename page |
+| Edit | ⌘D | Duplicate |
+| Edit | Delete | Delete |
+| Edit | Shift+Delete | Delete with contents |
+| Edit | ⌘Z | Undo |
+| Edit | ⌘⇧Z | Redo |
+| Edit | ⌘⌥Enter | Fold selection |
+| Edit | ⌘G | Wrap in a section |
+| Select | ⌘A | Select all |
+| Select | Tab | Next in outline |
+| Select | Shift+Tab | Previous in outline |
+| Select | ⌥+arrows | Select nearest |
+| Select | Shift+⌥+arrows | Add nearest |
+| Select | Shift+F10 | Card menu |
+| Select | M | Expand outline |
+| View | Space | Hold to pan |
+| View | ⌘+ | Zoom in |
+| View | ⌘- | Zoom out |
+| View | ⇧0 | Zoom to 100% |
+| View | ⇧1 | Fit all |
+| View | ⇧2 | Fit selection |
+| View | Arrows | Nudge 1 px |
+| View | Shift+arrows | Nudge 10 px |
+| View | L | Cycle links |
+| View | / or ⌘F | Find on board |
+| View | I | Info |
+| View | F | Focus |
+| View | Q | Quick Look |
+| View | P | Present |
+| View | ? | Shortcuts |
+| View | Escape | Close or step back |
+| Navigate | ⌘[ | Back |
+| Navigate | ⌘] | Forward |
+| Present | → ↓ Space | Next |
+| Present | ← ↑ | Previous |
+
+## Limits
+
+- Roam's undo stack holds 50 changes. A move of many cards, an align, a distribute, a paste, a mind map, and a template insert are each one undo step.
+- A bulk add creates at most 45 cards, so that undo can still reach them.
+- A mind map adds at most 24 branches.
+
 ## Settings
 
-Settings → Extensions → Plexus Diagram: enabled, fullscreen-on-zoom, graph links default, wheel (pan or zoom), minimap, snap guides, default board background (pattern: dots / lines / grid / plain; tone: none, paper, or a color), map view below (zoom 0.3 / 0.45 / 0.6), auto-fit sections, space out cards, show card badges, default card size, collapse board blocks in the outline (on: the board's cards are not listed again as bullets under an inline board; expand the bullet to see them), keyboard shortcuts, version badge, disable on mobile.
+Settings → Extensions → Plexus Diagram. Each change applies on the open board. **Reset Plexus settings** puts every value back to its default.
+
+| Group | Setting | What it does |
+|---|---|---|
+| Cards | Default card look | New note cards. Block is a plain Roam block. Card keeps a title row. |
+| Cards | Default card width | Width of a new card, in pixels. |
+| Cards | Default card height | Height of a new card, in pixels. |
+| Cards | Show card badges | Show how many references, tasks, and children a card has. |
+| Cards | Space out cards | After a move, push cards apart when they overlap. |
+| Sections | Auto-fit sections | Grow a section when a card is moved or resized past its edge. |
+| Connections | Graph links | Show lines between cards that share a page reference or an attribute. All, attributes, or off. |
+| Connections | Attribute styles | One JSON object. Each attribute name gets a palette color and a line: solid, dashed, or dotted. |
+| Board | Enabled | Turn the diagram overlay on or off. |
+| Board | Fullscreen on zoom | Open a diagram full screen when you zoom into its block. Esc leaves it. |
+| Board | Mouse wheel | Pan or zoom. Pinch still zooms. |
+| Board | Show minimap | Show the small map of the whole board. |
+| Board | Show tool palette | Show the tool palette along the bottom of the board. |
+| Board | Controls | Rail is the vertical stack on the right. Bar is the horizontal zoom group. |
+| Board | Snap guides | Line a dragged card up with its neighbours and show the guides. |
+| Board | Snap to grid | Snap a dragged card to the 24 pixel grid. Hold Alt while dragging to skip snapping. |
+| Board | Default board background: pattern | Dots, lines, grid, or plain, for boards that do not set their own. |
+| Board | Default board background: tone | Color wash for boards that do not set their own. |
+| Board | Map view below (zoom) | Below 0.3, 0.45, or 0.6, cards show only their title. |
+| Board | Enable shortcuts | Use keyboard shortcuts on the board. |
+| Board | Show version badge | Show the version on the board. |
+| Performance | Motion | Full, reduced, or none. A system reduced-motion setting shortens Full. |
+| Performance | Disable on mobile | Do not open diagrams on a phone. |
+| Performance | Collapse the outline | Fold an enhanced board once, so the outline does not list every card. Opening the bullet is remembered. |
 
 ## Privacy
 
@@ -90,7 +189,9 @@ Design: `docs/spec-plexus-1.0.md` and `docs/spec-plexus-1.2.md`. Module contract
 
 ## Install
 
-Roam: **Settings → Roam Depot → Developer extensions → Load extension → URL** → `https://svyk.github.io/plexus-diagram`. To pick up a new version in an open tab, remove that URL entry and add it again.
+Roam: **Settings → Roam Depot → Developer extensions → Load extension → URL** → `https://svyk.github.io/plexus-diagram`.
+
+To update, remove that URL and add it again. The page serves the latest build from `main`. An open tab keeps the old bundle until you do that.
 
 ## License
 

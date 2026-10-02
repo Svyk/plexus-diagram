@@ -26,7 +26,10 @@ test("background button toggles a popover inside the root", (t) => {
   t.after(f.restore);
   const btn = q(f.root, ".pxd-toolbar__bg");
   assert.ok(btn, "Background button");
-  assert.equal(btn.textContent, "Background");
+  assert.equal(btn.getAttribute("aria-label"), "Background");
+  assert.equal(btn.title, "Background pattern and tone");
+  assert.ok(btn.querySelector(".bp3-icon-style"));
+  assert.equal(btn.textContent, "");
   const pop = q(f.root, ".pxd-popover.pxd-popover--bg");
   assert.ok(pop);
   assert.equal(pop.parentElement, f.root);
@@ -158,7 +161,7 @@ test("back-to-content button is hidden until asked and calls on.backToContent", 
   assert.equal(down.propagationStopped, true);
 });
 
-const labels = (ctx) => ctx.querySelectorAll(".pxd-ctx__btn").map((b) => b.textContent);
+const labels = (ctx) => ctx.querySelectorAll(".pxd-ctx__btn").map((b) => b.getAttribute("aria-label"));
 const showCtx = (f, kind, model) => {
   f.chrome.ctx.show(kind, model, () => ({ kind, rect: { x: 100, y: 100, w: 100, h: 50 } }));
   return q(f.root, ".pxd-ctx");
@@ -176,7 +179,8 @@ test("card ctx bar gains Pin, Fit height, Copy ref, Duplicate, Send to board", (
   const f = setup(on);
   t.after(f.restore);
   const ctx = showCtx(f, "card", { kind: "block", pinned: false, collapsed: false });
-  assert.deepEqual(labels(ctx), ["", "", "", "Edit", "Open in sidebar", "Collapse", "Related…", "Pin", "Fit height", "Copy ref", "Duplicate", "Send to board…", "Mind map", "Select same color", "Select connected", "Delete"]);
+  assert.deepEqual(labels(ctx), ["Color", "Collapse children", "References", "Edit", "Open in sidebar", "Collapse", "Related…", "Pin", "Fit height", "Copy ref", "Duplicate", "Send to board…", "Mind map", "Select same color", "Select connected", "Delete"]);
+  assert.ok([...ctx.querySelectorAll(".pxd-ctx__btn")].every((b) => b.querySelector(".bp3-icon") && b.title));
   for (const cls of [".pxd-ctx__pin-toggle", ".pxd-ctx__fit-height", ".pxd-ctx__copy-ref", ".pxd-ctx__duplicate", ".pxd-ctx__send-to", ".pxd-ctx__mindmap"]) q(ctx, cls).click();
   assert.deepEqual(calls, [["pin", true], ["fitHeight"], ["copyRef"], ["duplicate"], ["sendTo"], ["expandOutline"]]);
 });
@@ -187,7 +191,8 @@ test("card ctx Pin label follows model.pinned and unpins", (t) => {
   t.after(f.restore);
   const ctx = showCtx(f, "card", { kind: "page", pinned: true });
   const pin = q(ctx, ".pxd-ctx__pin-toggle");
-  assert.equal(pin.textContent, "Unpin");
+  assert.equal(pin.getAttribute("aria-label"), "Unpin");
+  assert.ok(pin.querySelector(".bp3-icon-unpin"));
   pin.click();
   assert.deepEqual(calls, [["pin", false]]);
 });
@@ -203,7 +208,7 @@ test("Mind map only shows for note, block and page cards", (t) => {
 test("missing callbacks are skipped, so the 1.0 card ctx bar is unchanged", (t) => {
   const f = setup({});
   t.after(f.restore);
-  assert.deepEqual(labels(showCtx(f, "card", { kind: "note" })), ["", "", "", "Edit", "Open in sidebar", "Collapse", "Related…", "Delete"]);
+  assert.deepEqual(labels(showCtx(f, "card", { kind: "note" })), ["Color", "Collapse children", "References", "Edit", "Open in sidebar", "Collapse", "Related…", "Delete"]);
   assert.deepEqual(labels(showCtx(f, "section", {})), ["Rename", "Select contents", "Delete frame"]);
   assert.deepEqual(labels(showCtx(f, "cards", null)), ["Wrap in section", "Move into new board", "Delete"]);
 });
@@ -222,8 +227,8 @@ test("section ctx bar gains Fit to contents, Auto-fit, Tidy, Fold all, Pin", (t)
   q(ctx, ".pxd-ctx__pin-toggle").click();
   assert.deepEqual(calls, [["fitSection"], ["toggleFit"], ["tidy", "row"], ["foldAll", true], ["pin", true]]);
   ctx = showCtx(f, "section", { autofit: false, pinned: true });
-  assert.equal(q(ctx, ".pxd-ctx__auto-fit").textContent, "Auto-fit: off");
-  assert.equal(q(ctx, ".pxd-ctx__pin-toggle").textContent, "Unpin");
+  assert.equal(q(ctx, ".pxd-ctx__auto-fit").getAttribute("aria-label"), "Auto-fit: off");
+  assert.equal(q(ctx, ".pxd-ctx__pin-toggle").getAttribute("aria-label"), "Unpin");
 });
 
 test("HB-10: section and card bars call select all, same color, and connected", (t) => {
@@ -262,8 +267,8 @@ test("multi ctx bar gains Tidy, Same size, Fold, Pin, Duplicate", (t) => {
   assert.deepEqual(calls, [["tidy", "grid"], ["sameSize", "both"], ["fold", true], ["pin", true], ["duplicate"]]);
   calls.length = 0;
   ctx = showCtx(f, "cards", { count: 2, allPinned: true, anyCollapsed: true });
-  assert.equal(q(ctx, ".pxd-ctx__fold").textContent, "Unfold");
-  assert.equal(q(ctx, ".pxd-ctx__pin-toggle").textContent, "Unpin");
+  assert.equal(q(ctx, ".pxd-ctx__fold").getAttribute("aria-label"), "Unfold");
+  assert.equal(q(ctx, ".pxd-ctx__pin-toggle").getAttribute("aria-label"), "Unpin");
   q(ctx, ".pxd-ctx__fold").click();
   q(ctx, ".pxd-ctx__pin-toggle").click();
   assert.deepEqual(calls, [["fold", false], ["pin", false]]);
@@ -274,7 +279,8 @@ test("link ctx keeps its own Pin as connection button", (t) => {
   const f = setup({ ...on, pinLink: () => {} });
   t.after(f.restore);
   const ctx = showCtx(f, "link", { sources: [] });
-  assert.equal(q(ctx, ".pxd-ctx__pin").textContent, "Pin as connection");
+  assert.equal(q(ctx, ".pxd-ctx__pin").getAttribute("aria-label"), "Pin as connection");
+  assert.ok(q(ctx, ".pxd-ctx__pin").querySelector(".bp3-icon-new-link"));
   assert.equal(q(ctx, ".pxd-ctx__pin-toggle"), null);
 });
 
@@ -401,6 +407,78 @@ test("control rail uses native titles and the bar setting restores the zoom grou
   assert.equal(bar.root.classList.contains("pxd-root--rail"), false);
   assert.equal(q(bar.root, ".pxd-rail").style.display, "none");
   assert.equal(q(bar.root, ".pxd-toolbar__zoom").style.display, "");
+});
+
+test("UI-2: toolbar actions are Blueprint icons with tooltips, and the zoom percent stays text", (t) => {
+  const f = setup();
+  t.after(f.restore);
+  const tool = (id) => [...f.root.querySelectorAll(".pxd-tool")].find((b) => b.dataset.tool === id);
+  const expect = [
+    [tool("select"), "Select", "select"],
+    [tool("hand"), "Hand", "hand"],
+    [tool("card"), "Card", "new-object"],
+    [tool("text"), "Text", "new-text-box"],
+    [tool("section"), "Section", "widget"],
+    [tool("board"), "Board", "grid-view"],
+    [tool("connect"), "Connect", "flows"],
+  ];
+  const byClass = [
+    [".pxd-toolbar__add", "Add", "plus"],
+    [".pxd-toolbar__info", "Info", "info-sign"],
+    [".pxd-toolbar__links", "Links: All", "graph"],
+    [".pxd-toolbar__table", "Table", "th"],
+    [".pxd-toolbar__kanban", "Kanban", "layout-auto"],
+    [".pxd-toolbar__lens", "Tags", "tag"],
+    [".pxd-toolbar__focus", "Focus", "eye-open"],
+    [".pxd-toolbar__present", "Present", "presentation"],
+    [".pxd-toolbar__more", "More", "more"],
+    [".pxd-toolbar__zoom-out", "Zoom out", "minus"],
+    [".pxd-toolbar__zoom-in", "Zoom in", "plus"],
+    [".pxd-toolbar__fit", "Fit", "zoom-to-fit"],
+    [".pxd-toolbar__minimap", "Minimap", "map"],
+    [".pxd-toolbar__edit", "Edit Block", "edit"],
+    [".pxd-toolbar__fullscreen", "Fullscreen", "fullscreen"],
+  ];
+  for (const [node, label, icon] of expect) {
+    assert.ok(node, label);
+    assert.equal(node.getAttribute("aria-label"), label);
+    assert.ok(node.title, label);
+    assert.ok(node.querySelector(`.bp3-icon-${icon}`), label);
+    assert.equal(node.textContent, "", label);
+  }
+  for (const [sel, label, icon] of byClass) {
+    const b = q(f.root, sel);
+    assert.ok(b, sel);
+    assert.equal(b.getAttribute("aria-label"), label, sel);
+    assert.ok(b.title, sel);
+    assert.ok(b.querySelector(`.bp3-icon-${icon}`), sel);
+    assert.equal(b.textContent, "", sel);
+  }
+  const pct = [...f.root.querySelectorAll("button.pxd-toolbar__zoom")].find((b) => b.textContent === "100%");
+  assert.ok(pct, "zoom percent stays a text button");
+  assert.equal(pct.querySelector(".bp3-icon"), null);
+  f.chrome.toolbar.setLinkMode("off");
+  assert.equal(q(f.root, ".pxd-toolbar__links").getAttribute("aria-label"), "Links: Off");
+  assert.ok(q(f.root, ".pxd-toolbar__links").querySelector(".bp3-icon-disable"));
+  f.chrome.toolbar.setLinkMode("attributes");
+  assert.ok(q(f.root, ".pxd-toolbar__links").querySelector(".bp3-icon-inheritance"));
+  assert.equal(q(f.root, ".pxd-toolbar__links").textContent, "");
+  f.chrome.toolbar.setTable(true);
+  assert.equal(q(f.root, ".pxd-toolbar__table").getAttribute("aria-label"), "Board");
+  assert.equal(q(f.root, ".pxd-toolbar__table").title, "Board view");
+  assert.ok(q(f.root, ".pxd-toolbar__table").querySelector(".bp3-icon-grid-view"));
+  assert.equal(q(f.root, ".pxd-toolbar__table").textContent, "");
+  f.chrome.toolbar.setKanban(true);
+  assert.equal(q(f.root, ".pxd-toolbar__kanban").getAttribute("aria-label"), "Board");
+  assert.ok(q(f.root, ".pxd-toolbar__kanban").querySelector(".bp3-icon-grid-view"));
+  f.chrome.toolbar.setFullscreen(true);
+  assert.equal(q(f.root, ".pxd-toolbar__fullscreen").getAttribute("aria-label"), "Exit fullscreen");
+  assert.ok(q(f.root, ".pxd-toolbar__fullscreen").querySelector(".bp3-icon-minimize"));
+  for (const b of f.root.querySelectorAll(".pxd-rail__btn")) {
+    assert.ok(b.querySelector(".bp3-icon"), b.title);
+    assert.ok(b.title);
+    assert.equal(b.textContent, "");
+  }
 });
 
 test("toolbar.setPanel (panel open/close) repositions an open context bar, and is a no-op with none", (t) => {

@@ -108,20 +108,28 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
   });
   const head = el("div", "pxd-panel__head", panel);
   const tabs = el("div", "pxd-panel__tabs", head);
-  const tabSearch = el("button", "pxd-btn pxd-panel__tab pxd-panel__tab--on", tabs, "Search");
-  const tabRelated = el("button", "pxd-btn pxd-panel__tab", tabs, "Related");
-  const tabBoards = el("button", "pxd-btn pxd-panel__tab", tabs, "Boards");
-  const tabOutline = el("button", "pxd-btn pxd-panel__tab", tabs, "Outline");
-  const tabInfo = el("button", "pxd-btn pxd-panel__tab", tabs, "Info");
-  const tabButtons = { search: tabSearch, related: tabRelated, boards: tabBoards, outline: tabOutline, info: tabInfo };
-  for (const [name, b] of Object.entries(tabButtons)) {
+  const tabBtn = (name, label, icon, on) => {
+    const b = el("button", `pxd-btn pxd-iconbtn pxd-panel__tab${on ? " pxd-panel__tab--on" : ""}`, tabs);
     b.type = "button";
+    b.title = label;
+    b.setAttribute("aria-label", label);
     b.dataset.tab = name;
     b.setAttribute("data-tab", name);
-  }
-  const closeBtn = el("button", "pxd-btn pxd-panel__close", head, "×");
+    const i = el("span", `bp3-icon bp3-icon-${icon}`, b);
+    i.setAttribute("aria-hidden", "true");
+    return b;
+  };
+  const tabSearch = tabBtn("search", "Search", "search", true);
+  const tabRelated = tabBtn("related", "Related", "diagram-tree");
+  const tabBoards = tabBtn("boards", "Boards", "applications");
+  const tabOutline = tabBtn("outline", "Outline", "list");
+  const tabInfo = tabBtn("info", "Info", "info-sign");
+  const tabButtons = { search: tabSearch, related: tabRelated, boards: tabBoards, outline: tabOutline, info: tabInfo };
+  const closeBtn = el("button", "pxd-btn pxd-iconbtn pxd-panel__close", head);
   closeBtn.type = "button";
   closeBtn.title = "Close";
+  closeBtn.setAttribute("aria-label", "Close");
+  el("span", "bp3-icon bp3-icon-small-cross", closeBtn).setAttribute("aria-hidden", "true");
   const searchPane = el("div", "pxd-panel__pane pxd-panel__pane--search", panel);
   const relatedPane = el("div", "pxd-panel__pane pxd-panel__pane--related", panel);
   relatedPane.style.display = "none";

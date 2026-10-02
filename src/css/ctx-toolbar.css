@@ -2,7 +2,9 @@
 
 .pxd-root .pxd-ctx .pxd-ctx__btn.pxd-ctx__color,
 .pxd-root .pxd-ctx .pxd-ctx__btn.pxd-ctx__expand,
-.pxd-root .pxd-ctx .pxd-ctx__btn.pxd-ctx__refs {
+.pxd-root .pxd-ctx .pxd-ctx__btn.pxd-ctx__refs,
+.pxd-root .pxd-ctx .pxd-ctx__btn,
+.pxd-root .pxd-ctx .pxd-seg__btn.pxd-iconbtn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -13,6 +15,12 @@
   height: 28px;
   min-height: 28px;
   padding: 0;
+}
+
+.pxd-root .pxd-ctx .pxd-ctx__btn .bp3-icon,
+.pxd-root .pxd-ctx .pxd-seg__btn .bp3-icon {
+  color: inherit;
+  font-size: 16px;
 }
 
 .pxd-root .pxd-ctx .pxd-ctx__btn.pxd-ctx__refs {

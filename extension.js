@@ -7732,20 +7732,28 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
   });
   const head = el("div", "pxd-panel__head", panel);
   const tabs = el("div", "pxd-panel__tabs", head);
-  const tabSearch = el("button", "pxd-btn pxd-panel__tab pxd-panel__tab--on", tabs, "Search");
-  const tabRelated = el("button", "pxd-btn pxd-panel__tab", tabs, "Related");
-  const tabBoards = el("button", "pxd-btn pxd-panel__tab", tabs, "Boards");
-  const tabOutline = el("button", "pxd-btn pxd-panel__tab", tabs, "Outline");
-  const tabInfo = el("button", "pxd-btn pxd-panel__tab", tabs, "Info");
-  const tabButtons = { search: tabSearch, related: tabRelated, boards: tabBoards, outline: tabOutline, info: tabInfo };
-  for (const [name, b] of Object.entries(tabButtons)) {
+  const tabBtn = (name, label, icon, on2) => {
+    const b = el("button", `pxd-btn pxd-iconbtn pxd-panel__tab${on2 ? " pxd-panel__tab--on" : ""}`, tabs);
     b.type = "button";
+    b.title = label;
+    b.setAttribute("aria-label", label);
     b.dataset.tab = name;
     b.setAttribute("data-tab", name);
-  }
-  const closeBtn = el("button", "pxd-btn pxd-panel__close", head, "×");
+    const i = el("span", `bp3-icon bp3-icon-${icon}`, b);
+    i.setAttribute("aria-hidden", "true");
+    return b;
+  };
+  const tabSearch = tabBtn("search", "Search", "search", true);
+  const tabRelated = tabBtn("related", "Related", "diagram-tree");
+  const tabBoards = tabBtn("boards", "Boards", "applications");
+  const tabOutline = tabBtn("outline", "Outline", "list");
+  const tabInfo = tabBtn("info", "Info", "info-sign");
+  const tabButtons = { search: tabSearch, related: tabRelated, boards: tabBoards, outline: tabOutline, info: tabInfo };
+  const closeBtn = el("button", "pxd-btn pxd-iconbtn pxd-panel__close", head);
   closeBtn.type = "button";
   closeBtn.title = "Close";
+  closeBtn.setAttribute("aria-label", "Close");
+  el("span", "bp3-icon bp3-icon-small-cross", closeBtn).setAttribute("aria-hidden", "true");
   const searchPane = el("div", "pxd-panel__pane pxd-panel__pane--search", panel);
   const relatedPane = el("div", "pxd-panel__pane pxd-panel__pane--related", panel);
   relatedPane.style.display = "none";
@@ -10715,14 +10723,15 @@ var MINIMAP_W = 180;
 var MINIMAP_H = 120;
 var LINK_MODES2 = ["off", "attributes", "all"];
 var LINK_LABELS = { off: "Links: Off", attributes: "Links: Attributes", all: "Links: All" };
+var LINK_ICONS = { off: "disable", attributes: "inheritance", all: "graph" };
 var TOOL_LIST = [
-  ["select", "Select", "V"],
-  ["hand", "Hand", "H"],
-  ["card", "Card", "N"],
-  ["text", "Text", "T"],
-  ["section", "Section", "G"],
-  ["board", "Board", "W"],
-  ["connect", "Connect", "C"]
+  ["select", "Select", "V", "select"],
+  ["hand", "Hand", "H", "hand"],
+  ["card", "Card", "N", "new-object"],
+  ["text", "Text", "T", "new-text-box"],
+  ["section", "Section", "G", "widget"],
+  ["board", "Board", "W", "grid-view"],
+  ["connect", "Connect", "C", "flows"]
 ];
 var MAX_CRUMBS = 4;
 var POPOVER_GAP = 6;
@@ -10755,6 +10764,19 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     listen(b, "pointerdown", (event) => event.stopPropagation());
     listen(b, "dblclick", (event) => event.stopPropagation());
     return b;
+  };
+  const iconButton = (parent, cls, icon, label, title, onClick) => {
+    const b = button(parent, `pxd-iconbtn ${cls}`, "", title || label, onClick);
+    b.setAttribute("aria-label", label);
+    const i = el("span", `bp3-icon bp3-icon-${icon}`, b);
+    i.setAttribute("aria-hidden", "true");
+    return b;
+  };
+  const setIcon = (node2, icon, label, title) => {
+    if (label) node2.setAttribute("aria-label", label);
+    if (title || label) node2.title = title || label;
+    const i = node2.querySelector(".bp3-icon");
+    if (i && icon) i.className = `bp3-icon bp3-icon-${icon}`;
   };
   const swatches = (parent, onPick, { key = "color", paper = false } = {}) => {
     const wrap = el("div", "pxd-swatches", parent);
@@ -10863,8 +10885,8 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
   renderCrumbs(crumbs);
   const toolGroup = el("div", "pxd-toolbar__group", toolbar);
   const toolButtons = /* @__PURE__ */ new Map();
-  for (const [id, label, key] of TOOL_LIST) {
-    const b = button(toolGroup, "pxd-tool", label, `${label} (${key}). Double-click to lock`, () => on.setTool?.(id, false));
+  for (const [id, label, key, icon] of TOOL_LIST) {
+    const b = iconButton(toolGroup, "pxd-tool", icon, label, `${label} (${key}). Double-click to lock`, () => on.setTool?.(id, false));
     b.dataset.tool = id;
     b.setAttribute("data-tool", id);
     listen(b, "dblclick", (event) => {
@@ -10875,30 +10897,30 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     toolButtons.set(id, b);
   }
   const group2 = el("div", "pxd-toolbar__group", toolbar);
-  const addBtn = button(group2, "pxd-toolbar__add", "Add", "Add cards from the graph", () => on.togglePanel?.());
-  button(group2, "pxd-toolbar__info", "Info", "Card info (I)", () => on.openInfo?.());
-  const linksBtn = button(group2, "pxd-toolbar__links", LINK_LABELS.all, "Graph links (L)", () => on.cycleLinks?.());
+  const addBtn = iconButton(group2, "pxd-toolbar__add", "plus", "Add", "Add cards from the graph", () => on.togglePanel?.());
+  iconButton(group2, "pxd-toolbar__info", "info-sign", "Info", "Card info (I)", () => on.openInfo?.());
+  const linksBtn = iconButton(group2, "pxd-toolbar__links", LINK_ICONS.all, LINK_LABELS.all, "Graph links (L)", () => on.cycleLinks?.());
   const groupView = el("div", "pxd-toolbar__group", toolbar);
-  const tableBtn = button(groupView, "pxd-toolbar__table", "Table", "Table view", () => on.toggleTable?.());
+  const tableBtn = iconButton(groupView, "pxd-toolbar__table", "th", "Table", "Table view", () => on.toggleTable?.());
   tableBtn.setAttribute("aria-pressed", "false");
-  const kanbanBtn = button(groupView, "pxd-toolbar__kanban", "Kanban", "Kanban view", () => on.toggleKanban?.());
+  const kanbanBtn = iconButton(groupView, "pxd-toolbar__kanban", "layout-auto", "Kanban", "Kanban view", () => on.toggleKanban?.());
   kanbanBtn.setAttribute("aria-pressed", "false");
-  const bgBtn = button(groupView, "pxd-toolbar__bg", "Background", "Background pattern and tone", () => popover.isOpen() ? popover.close() : popover.open());
-  const lensBtn = button(groupView, "pxd-toolbar__lens", "Tags", "Tag lens: keep cards with one tag bright", () => on.toggleLens?.());
-  const focusBtn = button(groupView, "pxd-toolbar__focus", "Focus", "Focus mode: fade everything but the selection", () => on.toggleFocus?.());
-  button(groupView, "pxd-toolbar__present", "Present", "Present this board", () => on.present?.());
-  const moreBtn = button(groupView, "pxd-toolbar__more", "More", "More board actions", () => {
+  const bgBtn = iconButton(groupView, "pxd-toolbar__bg", "style", "Background", "Background pattern and tone", () => popover.isOpen() ? popover.close() : popover.open());
+  const lensBtn = iconButton(groupView, "pxd-toolbar__lens", "tag", "Tags", "Tag lens: keep cards with one tag bright", () => on.toggleLens?.());
+  const focusBtn = iconButton(groupView, "pxd-toolbar__focus", "eye-open", "Focus", "Focus mode: fade everything but the selection", () => on.toggleFocus?.());
+  iconButton(groupView, "pxd-toolbar__present", "presentation", "Present", "Present this board", () => on.present?.());
+  const moreBtn = iconButton(groupView, "pxd-toolbar__more", "more", "More", "More board actions", () => {
     const r = moreBtn.getBoundingClientRect();
     on.openMore?.({ x: r.left, y: r.bottom, w: r.width, h: r.height });
   });
   const group3 = el("div", "pxd-toolbar__group pxd-toolbar__zoom", toolbar);
-  button(group3, "pxd-toolbar__zoom-out", "−", "Zoom out (Cmd −)", () => on.zoomOut?.());
+  iconButton(group3, "pxd-toolbar__zoom-out", "minus", "Zoom out", "Zoom out (Cmd −)", () => on.zoomOut?.());
   const zoomLabel = button(group3, "pxd-toolbar__zoom", "100%", "Zoom to 100% (Shift 0)", () => on.zoomReset?.());
-  button(group3, "pxd-toolbar__zoom-in", "+", "Zoom in (Cmd =)", () => on.zoomIn?.());
-  button(group3, "pxd-toolbar__fit", "Fit", "Fit all (Shift 1)", () => on.fit?.());
-  const minimapBtn = button(group3, "pxd-toolbar__minimap", "Minimap", "Toggle minimap", () => on.toggleMinimap?.());
-  const editBtn = button(group3, "pxd-toolbar__edit", "Edit Block", "Edit the diagram block", () => on.editBlock?.());
-  const fullBtn = button(group3, "pxd-toolbar__fullscreen", "Fullscreen", "Fullscreen this board", () => on.toggleFullscreen?.());
+  iconButton(group3, "pxd-toolbar__zoom-in", "plus", "Zoom in", "Zoom in (Cmd =)", () => on.zoomIn?.());
+  iconButton(group3, "pxd-toolbar__fit", "zoom-to-fit", "Fit", "Fit all (Shift 1)", () => on.fit?.());
+  const minimapBtn = iconButton(group3, "pxd-toolbar__minimap", "map", "Minimap", "Toggle minimap", () => on.toggleMinimap?.());
+  const editBtn = iconButton(group3, "pxd-toolbar__edit", "edit", "Edit Block", "Edit the diagram block", () => on.editBlock?.());
+  const fullBtn = iconButton(group3, "pxd-toolbar__fullscreen", "fullscreen", "Fullscreen", "Fullscreen this board", () => on.toggleFullscreen?.());
   const badge = el("span", "pxd-badge", toolbar, version ? `v${version}` : "");
   const sync = el("span", "pxd-sync", toolbar);
   sync.title = "Synced";
@@ -10949,7 +10971,8 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
       railZoom.textContent = label;
     },
     setLinkMode(mode) {
-      linksBtn.textContent = LINK_LABELS[mode] || LINK_LABELS.all;
+      const key = LINK_ICONS[mode] ? mode : "all";
+      setIcon(linksBtn, LINK_ICONS[key], LINK_LABELS[key], "Graph links (L)");
     },
     setSync(pending) {
       const name = pending === true ? "writing" : pending === false || pending == null ? "idle" : pending;
@@ -10963,7 +10986,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     setFullscreen(on2) {
       editBtn.style.display = on2 ? "none" : "";
       railEdit.style.display = on2 ? "none" : "";
-      fullBtn.textContent = on2 ? "Exit fullscreen" : "Fullscreen";
+      setIcon(fullBtn, on2 ? "minimize" : "fullscreen", on2 ? "Exit fullscreen" : "Fullscreen", on2 ? "Exit fullscreen" : "Fullscreen this board");
       fullBtn.classList.toggle("pxd-btn--active", Boolean(on2));
       const title = on2 ? "Minimize" : "Maximize";
       railFull.title = title;
@@ -10991,15 +11014,13 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     setTable(on2) {
       const active = Boolean(on2);
       tableBtn.classList.toggle("pxd-btn--active", active);
-      tableBtn.textContent = active ? "Board" : "Table";
-      tableBtn.title = active ? "Board view" : "Table view";
+      setIcon(tableBtn, active ? "grid-view" : "th", active ? "Board" : "Table", active ? "Board view" : "Table view");
       tableBtn.setAttribute("aria-pressed", active ? "true" : "false");
     },
     setKanban(on2) {
       const active = Boolean(on2);
       kanbanBtn.classList.toggle("pxd-btn--active", active);
-      kanbanBtn.textContent = active ? "Board" : "Kanban";
-      kanbanBtn.title = active ? "Board view" : "Kanban view";
+      setIcon(kanbanBtn, active ? "grid-view" : "layout-auto", active ? "Board" : "Kanban", active ? "Board view" : "Kanban view");
       kanbanBtn.setAttribute("aria-pressed", active ? "true" : "false");
     },
     setBackground(state) {
@@ -11096,30 +11117,29 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     ctx.dataset.kind = kind;
     ctx.setAttribute("data-kind", kind);
     const row2 = el("div", "pxd-ctx__row", ctx);
-    const btn = (cls, label, title, fn) => button(row2, `pxd-ctx__btn ${cls}`, label, title, fn);
+    const btn = (cls, icon, label, title, fn) => iconButton(row2, `pxd-ctx__btn ${cls}`, icon, label, title, fn);
     const seg = (cls, options, current2, fn) => {
       const wrap = el("div", `pxd-seg ${cls}`, row2);
-      for (const [value, label, title] of options) {
-        const b = button(wrap, `pxd-seg__btn${value === current2 ? " pxd-seg__btn--on" : ""}`, label, title || label, () => fn(value));
+      for (const [value, label, title, icon] of options) {
+        const b = button(wrap, `pxd-seg__btn${value === current2 ? " pxd-seg__btn--on" : ""}${icon ? " pxd-iconbtn" : ""}`, icon ? "" : label, title || label, () => fn(value));
+        if (icon) {
+          b.setAttribute("aria-label", title || label);
+          const i = el("span", `bp3-icon bp3-icon-${icon}`, b);
+          i.setAttribute("aria-hidden", "true");
+        }
         b.dataset.value = String(value);
       }
       return wrap;
     };
-    const opt = (name, cls, label, title, fn) => {
-      if (typeof on[name] === "function") btn(cls, label, title, fn);
+    const opt = (name, cls, icon, label, title, fn) => {
+      if (typeof on[name] === "function") btn(cls, icon, label, title, fn);
     };
     const optSeg = (name, cls, options, fn) => {
       if (typeof on[name] === "function") seg(cls, options, null, fn);
     };
-    const pinButton = (pinned) => opt("pin", "pxd-ctx__pin-toggle", pinned ? "Unpin" : "Pin", pinned ? "Unpin: allow moving and resizing again" : "Pin: lock position and size", () => on.pin(!pinned));
-    const TIDY = [["grid", "Grid", "Tidy into a grid"], ["row", "Row", "Tidy into a row"], ["column", "Column", "Tidy into a column"]];
-    const iconBtn = (cls, icon, label, title, fn) => {
-      const b = btn(cls, "", title, fn);
-      b.setAttribute("aria-label", label);
-      const i = el("span", `bp3-icon bp3-icon-${icon}`, b);
-      i.setAttribute("aria-hidden", "true");
-      return b;
-    };
+    const pinButton = (pinned) => opt("pin", "pxd-ctx__pin-toggle", pinned ? "unpin" : "pin", pinned ? "Unpin" : "Pin", pinned ? "Unpin: allow moving and resizing again" : "Pin: lock position and size", () => on.pin(!pinned));
+    const TIDY = [["grid", "Grid", "Tidy into a grid", "grid"], ["row", "Row", "Tidy into a row", "drag-handle-horizontal"], ["column", "Column", "Tidy into a column", "drag-handle-vertical"]];
+    const iconBtn = (cls, icon, label, title, fn) => btn(cls, icon, label, title, fn);
     switch (kind) {
       case "card":
       case "cards": {
@@ -11151,74 +11171,74 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
         }
         swatches(row2, (c) => on.setColor?.(c));
         if (kind === "card") {
-          btn("pxd-ctx__edit", "Edit", "Edit (Enter)", () => on.edit?.());
-          btn("pxd-ctx__sidebar", "Open in sidebar", "Open in the right sidebar", () => on.openSidebar?.());
-          btn("pxd-ctx__collapse", model?.collapsed ? "Expand" : "Collapse", "Collapse to title", () => on.collapse?.());
-          btn("pxd-ctx__related", "Related…", "Show related pages and blocks", () => on.related?.());
+          btn("pxd-ctx__edit", "edit", "Edit", "Edit (Enter)", () => on.edit?.());
+          btn("pxd-ctx__sidebar", "panel-stats", "Open in sidebar", "Open in the right sidebar", () => on.openSidebar?.());
+          btn("pxd-ctx__collapse", model?.collapsed ? "expand-all" : "collapse-all", model?.collapsed ? "Expand" : "Collapse", "Collapse to title", () => on.collapse?.());
+          btn("pxd-ctx__related", "diagram-tree", "Related…", "Show related pages and blocks", () => on.related?.());
           pinButton(Boolean(model?.pinned));
-          opt("fitHeight", "pxd-ctx__fit-height", "Fit height", "Grow or shrink the card to its text", () => on.fitHeight());
-          opt("copyRef", "pxd-ctx__copy-ref", "Copy ref", "Copy a block or page reference", () => on.copyRef());
-          opt("duplicate", "pxd-ctx__duplicate", "Duplicate", "Duplicate (Cmd D)", () => on.duplicate());
-          opt("sendTo", "pxd-ctx__send-to", "Send to board…", "Move into another board", () => on.sendTo());
-          if (NOTE_KINDS.includes(model?.kind)) opt("expandOutline", "pxd-ctx__mindmap", "Mind map", "Expand the children as a mind map", () => on.expandOutline());
-          opt("selectSameColor", "pxd-ctx__same-color", "Select same color", "Select every item of this color", () => on.selectSameColor());
-          opt("selectConnected", "pxd-ctx__connected", "Select connected", "Select items linked to this one", () => on.selectConnected());
+          opt("fitHeight", "pxd-ctx__fit-height", "arrows-vertical", "Fit height", "Grow or shrink the card to its text", () => on.fitHeight());
+          opt("copyRef", "pxd-ctx__copy-ref", "clipboard", "Copy ref", "Copy a block or page reference", () => on.copyRef());
+          opt("duplicate", "pxd-ctx__duplicate", "duplicate", "Duplicate", "Duplicate (Cmd D)", () => on.duplicate());
+          opt("sendTo", "pxd-ctx__send-to", "send-to", "Send to board…", "Move into another board", () => on.sendTo());
+          if (NOTE_KINDS.includes(model?.kind)) opt("expandOutline", "pxd-ctx__mindmap", "layout-hierarchy", "Mind map", "Expand the children as a mind map", () => on.expandOutline());
+          opt("selectSameColor", "pxd-ctx__same-color", "full-circle", "Select same color", "Select every item of this color", () => on.selectSameColor());
+          opt("selectConnected", "pxd-ctx__connected", "flows", "Select connected", "Select items linked to this one", () => on.selectConnected());
         } else {
-          seg("pxd-ctx__align", [["left", "L", "Align left"], ["center", "C", "Align centers"], ["right", "R", "Align right"], ["top", "T", "Align top"], ["middle", "M", "Align middles"], ["bottom", "B", "Align bottom"]], null, (v) => on.align?.(v));
-          seg("pxd-ctx__distribute", [["h", "H", "Distribute horizontally"], ["v", "V", "Distribute vertically"]], null, (v) => on.distribute?.(v));
-          btn("pxd-ctx__wrap", "Wrap in section", "Wrap in a new section (Cmd G)", () => on.wrap?.());
-          btn("pxd-ctx__wrap-board", "Move into new board", "Move the selection into a new nested board", () => on.wrapBoard?.());
+          seg("pxd-ctx__align", [["left", "L", "Align left", "alignment-left"], ["center", "C", "Align centers", "alignment-horizontal-center"], ["right", "R", "Align right", "alignment-right"], ["top", "T", "Align top", "alignment-top"], ["middle", "M", "Align middles", "alignment-vertical-center"], ["bottom", "B", "Align bottom", "alignment-bottom"]], null, (v) => on.align?.(v));
+          seg("pxd-ctx__distribute", [["h", "H", "Distribute horizontally", "horizontal-distribution"], ["v", "V", "Distribute vertically", "vertical-distribution"]], null, (v) => on.distribute?.(v));
+          btn("pxd-ctx__wrap", "group-objects", "Wrap in section", "Wrap in a new section (Cmd G)", () => on.wrap?.());
+          btn("pxd-ctx__wrap-board", "folder-new", "Move into new board", "Move the selection into a new nested board", () => on.wrapBoard?.());
           optSeg("tidy", "pxd-ctx__tidy", TIDY, (v) => on.tidy(v));
           optSeg("sameSize", "pxd-ctx__same-size", [["width", "W", "Same width"], ["height", "H", "Same height"], ["both", "WH", "Same width and height"]], (v) => on.sameSize(v));
-          opt("fold", "pxd-ctx__fold", model?.anyCollapsed ? "Unfold" : "Fold", model?.anyCollapsed ? "Expand the collapsed cards" : "Collapse the cards to titles", () => on.fold(!model?.anyCollapsed));
+          opt("fold", "pxd-ctx__fold", model?.anyCollapsed ? "expand-all" : "collapse-all", model?.anyCollapsed ? "Unfold" : "Fold", model?.anyCollapsed ? "Expand the collapsed cards" : "Collapse the cards to titles", () => on.fold(!model?.anyCollapsed));
           pinButton(Boolean(model?.allPinned));
-          opt("duplicate", "pxd-ctx__duplicate", "Duplicate", "Duplicate (Cmd D)", () => on.duplicate());
+          opt("duplicate", "pxd-ctx__duplicate", "duplicate", "Duplicate", "Duplicate (Cmd D)", () => on.duplicate());
         }
-        btn("pxd-ctx__delete pxd-btn--danger", "Delete", "Delete (Del)", () => on.delete?.());
+        btn("pxd-ctx__delete pxd-btn--danger", "trash", "Delete", "Delete (Del)", () => on.delete?.());
         break;
       }
       case "board":
         swatches(row2, (c) => on.setColor?.(c));
-        btn("pxd-ctx__open-board", "Open", "Open this board (Enter)", () => on.openBoard?.());
-        opt("openOwnPage", "pxd-ctx__own-page", "Own page", "Open nested board in its own page", () => on.openOwnPage());
-        if (model?.enhanced) btn("pxd-ctx__rename-board", "Rename board", "Rename the board", () => on.renameBoard?.());
-        btn("pxd-ctx__sidebar", "Open in sidebar", "Open in the right sidebar", () => on.openSidebar?.());
-        btn("pxd-ctx__delete pxd-btn--danger", "Delete", "Delete (Del)", () => on.delete?.());
+        btn("pxd-ctx__open-board", "document-open", "Open", "Open this board (Enter)", () => on.openBoard?.());
+        opt("openOwnPage", "pxd-ctx__own-page", "document", "Own page", "Open nested board in its own page", () => on.openOwnPage());
+        if (model?.enhanced) btn("pxd-ctx__rename-board", "edit", "Rename board", "Rename the board", () => on.renameBoard?.());
+        btn("pxd-ctx__sidebar", "panel-stats", "Open in sidebar", "Open in the right sidebar", () => on.openSidebar?.());
+        btn("pxd-ctx__delete pxd-btn--danger", "trash", "Delete", "Delete (Del)", () => on.delete?.());
         break;
       case "section":
         swatches(row2, (c) => on.setColor?.(c));
-        btn("pxd-ctx__rename", "Rename", "Rename (Enter)", () => on.rename?.());
-        btn("pxd-ctx__contents", "Select contents", "Select the section's members", () => on.selectContents?.());
-        opt("selectAllInSection", "pxd-ctx__all-in-section", "Select all in section", "Select everything inside the section", () => on.selectAllInSection());
-        opt("selectSameColor", "pxd-ctx__same-color", "Select same color", "Select every item of this color", () => on.selectSameColor());
-        opt("selectConnected", "pxd-ctx__connected", "Select connected", "Select items linked to this one", () => on.selectConnected());
-        opt("collapseSection", "pxd-ctx__collapse-section", model?.collapsed ? "Expand" : "Collapse", model?.collapsed ? "Expand the section" : "Collapse to the title", () => on.collapseSection?.());
-        opt("sectionNote", "pxd-ctx__section-note", model?.hasNote ? "Remove note" : "Description", model?.hasNote ? "Remove the section description" : "Add a description line", () => on.sectionNote?.());
-        opt("lockSection", "pxd-ctx__lock", model?.locked ? "Unlock" : "Lock", model?.locked ? "Unpin everything inside" : "Pin the section and everything inside", () => on.lockSection?.(!model?.locked));
-        opt("presentSection", "pxd-ctx__present-section", "Present", "Present this section", () => on.presentSection?.());
-        opt("fitSection", "pxd-ctx__fit-section", "Fit to contents", "Resize the section around its cards", () => on.fitSection());
-        opt("toggleFit", "pxd-ctx__auto-fit", model?.autofit ? "Auto-fit: on" : "Auto-fit: off", "Keep the section sized to its cards", () => on.toggleFit());
+        btn("pxd-ctx__rename", "edit", "Rename", "Rename (Enter)", () => on.rename?.());
+        btn("pxd-ctx__contents", "multi-select", "Select contents", "Select the section's members", () => on.selectContents?.());
+        opt("selectAllInSection", "pxd-ctx__all-in-section", "select", "Select all in section", "Select everything inside the section", () => on.selectAllInSection());
+        opt("selectSameColor", "pxd-ctx__same-color", "full-circle", "Select same color", "Select every item of this color", () => on.selectSameColor());
+        opt("selectConnected", "pxd-ctx__connected", "flows", "Select connected", "Select items linked to this one", () => on.selectConnected());
+        opt("collapseSection", "pxd-ctx__collapse-section", model?.collapsed ? "expand-all" : "collapse-all", model?.collapsed ? "Expand" : "Collapse", model?.collapsed ? "Expand the section" : "Collapse to the title", () => on.collapseSection?.());
+        opt("sectionNote", "pxd-ctx__section-note", model?.hasNote ? "cross" : "annotation", model?.hasNote ? "Remove note" : "Description", model?.hasNote ? "Remove the section description" : "Add a description line", () => on.sectionNote?.());
+        opt("lockSection", "pxd-ctx__lock", model?.locked ? "unlock" : "lock", model?.locked ? "Unlock" : "Lock", model?.locked ? "Unpin everything inside" : "Pin the section and everything inside", () => on.lockSection?.(!model?.locked));
+        opt("presentSection", "pxd-ctx__present-section", "presentation", "Present", "Present this section", () => on.presentSection?.());
+        opt("fitSection", "pxd-ctx__fit-section", "zoom-to-fit", "Fit to contents", "Resize the section around its cards", () => on.fitSection());
+        opt("toggleFit", "pxd-ctx__auto-fit", "automatic-updates", model?.autofit ? "Auto-fit: on" : "Auto-fit: off", "Keep the section sized to its cards", () => on.toggleFit());
         optSeg("tidy", "pxd-ctx__tidy", TIDY, (v) => on.tidy(v));
-        opt("foldAll", "pxd-ctx__fold-all", "Fold all", "Collapse every card in the section", () => on.foldAll(true));
+        opt("foldAll", "pxd-ctx__fold-all", "collapse-all", "Fold all", "Collapse every card in the section", () => on.foldAll(true));
         pinButton(Boolean(model?.pinned));
-        btn("pxd-ctx__delete pxd-btn--danger", "Delete frame", "Delete the frame, keep the cards (Del). Shift+Del deletes contents too", () => on.delete?.());
+        btn("pxd-ctx__delete pxd-btn--danger", "trash", "Delete frame", "Delete the frame, keep the cards (Del). Shift+Del deletes contents too", () => on.delete?.());
         break;
       case "text":
         swatches(row2, (c) => on.setColor?.(c));
         seg("pxd-ctx__size", FONT_SIZES.map((s, i) => [s, ["S", "M", "L", "XL"][i], `${s}px`]), model?.fontSize || 24, (v) => on.setFontSize?.(v));
-        btn("pxd-ctx__delete pxd-btn--danger", "Delete", "Delete (Del)", () => on.delete?.());
+        btn("pxd-ctx__delete pxd-btn--danger", "trash", "Delete", "Delete (Del)", () => on.delete?.());
         break;
       case "edge":
         seg("pxd-ctx__dir", [["one", "→", "One way"], ["two", "↔", "Two way"], ["none", "—", "No arrow"]], model?.dir, (v) => on.edgeDir?.(v));
-        btn("pxd-ctx__flip", "Flip", "Swap endpoints", () => on.flip?.());
-        seg("pxd-ctx__route", [["curve", "Curve"], ["straight", "Straight"], ["elbow", "Elbow"]], model?.route, (v) => on.route?.(v));
-        seg("pxd-ctx__dash", [["solid", "Solid"], ["dashed", "Dashed"], ["animated", "Animated"]], model?.dash, (v) => on.dash?.(v));
+        btn("pxd-ctx__flip", "swap-horizontal", "Flip", "Swap endpoints", () => on.flip?.());
+        seg("pxd-ctx__route", [["curve", "Curve", "Curve", "path"], ["straight", "Straight", "Straight", "flow-linear"], ["elbow", "Elbow", "Elbow", "step-chart"]], model?.route, (v) => on.route?.(v));
+        seg("pxd-ctx__dash", [["solid", "Solid", "Solid", "minus"], ["dashed", "Dashed", "Dashed", "slash"], ["animated", "Animated", "Animated", "pulse"]], model?.dash, (v) => on.dash?.(v));
         seg("pxd-ctx__weight", [[1, "1"], [2, "2"], [3, "3"], [4, "4"]], model?.weight, (v) => on.weight?.(v));
         swatches(row2, (c) => on.setColor?.(c));
-        btn("pxd-ctx__label", "Label", "Edit the label", () => on.label?.());
-        btn("pxd-ctx__notes", "Notes", "Open the connection block in the sidebar", () => on.notes?.());
-        btn("pxd-ctx__write", "Write to graph", "Create an attribute on the source", () => on.writeToGraph?.());
-        btn("pxd-ctx__delete pxd-btn--danger", "Delete", "Delete (Del)", () => on.delete?.());
+        btn("pxd-ctx__label", "tag", "Label", "Edit the label", () => on.label?.());
+        btn("pxd-ctx__notes", "annotation", "Notes", "Open the connection block in the sidebar", () => on.notes?.());
+        btn("pxd-ctx__write", "inheritance", "Write to graph", "Create an attribute on the source", () => on.writeToGraph?.());
+        btn("pxd-ctx__delete pxd-btn--danger", "trash", "Delete", "Delete (Del)", () => on.delete?.());
         break;
       case "link": {
         const list = el("div", "pxd-ctx__sources", row2);
@@ -11226,7 +11246,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
           const b = button(list, "pxd-ctx__source", (s.string || s.uid || "").slice(0, 60), "Open in the sidebar", () => on.openSource?.(s.uid));
           b.dataset.uid = s.uid;
         }
-        btn("pxd-ctx__pin", "Pin as connection", "Create a board connection from this link", () => on.pinLink?.());
+        btn("pxd-ctx__pin", "new-link", "Pin as connection", "Create a board connection from this link", () => on.pinLink?.());
         break;
       }
       default:

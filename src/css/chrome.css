@@ -13,6 +13,26 @@
   flex: 0 0 auto;
 }
 
+.pxd-root .pxd-toolbar .pxd-iconbtn,
+.pxd-root .pxd-panel__tab,
+.pxd-root .pxd-panel__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  padding: 0;
+}
+
+.pxd-root .pxd-iconbtn .bp3-icon,
+.pxd-root .pxd-panel__tab .bp3-icon,
+.pxd-root .pxd-panel__close .bp3-icon {
+  color: inherit;
+  font-size: 16px;
+}
+
 .pxd-root .pxd-block-edit {
   position: absolute;
   z-index: 20;

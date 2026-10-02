@@ -2438,6 +2438,26 @@ body.roam-body.dark .pxd-addboard {
   flex: 0 0 auto;
 }
 
+.pxd-root .pxd-toolbar .pxd-iconbtn,
+.pxd-root .pxd-panel__tab,
+.pxd-root .pxd-panel__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  width: 28px;
+  min-width: 28px;
+  height: 28px;
+  padding: 0;
+}
+
+.pxd-root .pxd-iconbtn .bp3-icon,
+.pxd-root .pxd-panel__tab .bp3-icon,
+.pxd-root .pxd-panel__close .bp3-icon {
+  color: inherit;
+  font-size: 16px;
+}
+
 .pxd-root .pxd-block-edit {
   position: absolute;
   z-index: 20;
@@ -3084,7 +3104,9 @@ body.roam-body.dark .pxd-commands__box {
 
 .pxd-root .pxd-ctx .pxd-ctx__btn.pxd-ctx__color,
 .pxd-root .pxd-ctx .pxd-ctx__btn.pxd-ctx__expand,
-.pxd-root .pxd-ctx .pxd-ctx__btn.pxd-ctx__refs {
+.pxd-root .pxd-ctx .pxd-ctx__btn.pxd-ctx__refs,
+.pxd-root .pxd-ctx .pxd-ctx__btn,
+.pxd-root .pxd-ctx .pxd-seg__btn.pxd-iconbtn {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -3095,6 +3117,12 @@ body.roam-body.dark .pxd-commands__box {
   height: 28px;
   min-height: 28px;
   padding: 0;
+}
+
+.pxd-root .pxd-ctx .pxd-ctx__btn .bp3-icon,
+.pxd-root .pxd-ctx .pxd-seg__btn .bp3-icon {
+  color: inherit;
+  font-size: 16px;
 }
 
 .pxd-root .pxd-ctx .pxd-ctx__btn.pxd-ctx__refs {

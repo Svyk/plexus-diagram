@@ -1283,7 +1283,7 @@ test("F5: the header rename commits the whole title on Enter and cancels on Esc"
     await selectCard(f, "nbCard001", { x: 560, y: 320 });
     const ctx = f.view.root.querySelector(".pxd-ctx");
     assert.equal(ctx.dataset.kind, "board");
-    const label = (n) => ctx.querySelectorAll(".pxd-btn").find((b) => b.textContent === n);
+    const label = (n) => ctx.querySelectorAll(".pxd-btn").find((b) => b.getAttribute("aria-label") === n);
     assert.ok(label("Rename board"), "context bar offers Rename board");
     assert.ok(label("Open"));
     label("Rename board").click();
@@ -1447,7 +1447,8 @@ test("HB-11: Own page opens the nested board through the host and leaves the in-
     f.stub.flushIdle();
     await selectCard(f, "nbCard001");
     const btn = f.view.root.querySelector(".pxd-ctx__own-page");
-    assert.equal(btn.textContent, "Own page");
+    assert.equal(btn.getAttribute("aria-label"), "Own page");
+    assert.ok(btn.querySelector(".bp3-icon-document"));
     assert.equal(btn.title, "Open nested board in its own page");
     btn.click();
     assert.deepEqual(hostOpened, ["nbCard001"]);
@@ -1509,7 +1510,7 @@ test("F5: multi-selection offers Move into new board, which selects the new card
     f.stub.flushFrames();
     const ctx = f.view.root.querySelector(".pxd-ctx");
     assert.equal(ctx.dataset.kind, "cards");
-    const btn = ctx.querySelectorAll(".pxd-btn").find((b) => b.textContent === "Move into new board");
+    const btn = ctx.querySelectorAll(".pxd-btn").find((b) => b.getAttribute("aria-label") === "Move into new board");
     assert.ok(btn);
     btn.click();
     await tick();

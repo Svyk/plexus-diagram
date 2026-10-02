@@ -164,7 +164,7 @@ Order matters: P1 and P2 are the user's direct requests. Within a phase, do task
 - [x] **TP-6 Shapes for flows** (M) — done 2026-10-01, `3f151ed`: six-shape Process flow exported to SVG and PNG with Yes/No and the return loop inside the frame, then the temp board was deleted (.live/shots/TP-6.png). — Text items gain `shape` (text `fontSize` today is one of `FONT_SIZES` = 16/24/32/48; keep that list for text items, cards get the free 10-48 stepper): rectangle, rounded, ellipse, diamond (decision), parallelogram (input/output), cylinder (storage). Connections attach to the shape outline. Used by the Process flow template. Accept: a 6-shape flow with Yes/No labels exports to SVG and PNG correctly.
 - [x] **TP-7 Sticky notes** (S) — done 2026-10-01, `c7c6cca`: created a 200×200 yellow sticky on vc8Skaj5K, recolored it blue, resized to 270×250, typed Hold, and exported SVG and PNG, then deleted the temp (.live/shots/TP-7.png). — Text item variant `sticky` (yellow default, any color), slight shadow, 200×200 default. Accept: create, color, resize, export.
 - [x] **TP-8 Swimlanes** (M) — done 2026-10-01, `e587049`: opened a 3-lane HACCP Process flow on vc8Skaj5K (Warehouse, Process, Pack; Receiving through Packing children), then deleted the temp (.live/shots/TP-8.png). — Section variant `lane`: full-width horizontal or vertical bands, label on the side, cards dropped in become children. Accept: 3-lane process flow from the HACCP starter.
-- [ ] **TP-9 Gate** — standing gate.
+- [!] **TP-9 Gate** — blocked: typing on Test Lab was +64.51 ms/key (109.72 injected, 45.21 unloaded, 200 keys, 13 roots). `npm run check` passed 769 tests. Unload left 0 `.pxd-*` nodes and listeners fell from 313 window / 438 document to 184 / 306. Unblock when that delta is at most +0.1 ms/key. — standing gate.
 
 ### P5: Roam graph superpowers (1.7.0)
 
@@ -249,6 +249,7 @@ AI agent features inside the board, SuperTag-style typed schemas or class tags, 
 
 Fill in as phases run. Keep the newest at the top of each list.
 
+- TP-9, 2026-10-01: Test Lab typing +64.51 ms/key with 13 roots (8401 pxd nodes). Unload left 0. `npm run check` 769 pass.
 - HB-7, 2026-10-01: On vc8Skaj5K the context bar's eight align and distribute buttons each moved SwK9l7wCD, Or6gEkteS, and kTpG_g1yi, and one Cmd+Z put the three props back. Section h stayed 241.1.
 - HB-6, 2026-10-01: On vc8Skaj5K a held drag snapped SwK9l7wCD onto the note card's top and drew 9 guides. The block's edit time did not change until Escape cancelled the drag. Snap to grid is off unless the setting is on. Alt during a drag skips both snaps. `npm run check` 713 pass.
 - HB-5, 2026-10-01: On vc8Skaj5K, fixture returned 29 rows. Page returned 0, block 22, board 7, daily 14. Orphan dropped that to 13. Days 30 dropped the orphans to 5. Tag TODO dropped the 29 to 7. Slowest query was blocks at 98.3 ms. Section h restored to 241.1. `npm run check` 710 pass.

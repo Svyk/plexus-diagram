@@ -2194,6 +2194,7 @@ export function mountBoardView({
       if (typeof p.w === "number") spec.w = p.w;
       if (typeof p.h === "number") spec.h = p.h;
       if (p.color) spec.color = p.color;
+      if (p.shape) spec.shape = p.shape;
       return Promise.resolve(session.createText?.(spec)).then((uid) => { if (uid) freshItems.add(uid); return uid; });
     },
     createSection: (p) => session.createSection?.({ rect: p.rect }),

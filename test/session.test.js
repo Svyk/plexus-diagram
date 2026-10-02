@@ -281,6 +281,12 @@ test("createText sticky is 200 by 200 yellow and plain text keeps the text defau
   assert.equal(session.board.items.get(plain).h, 48);
   assert.equal(session.board.items.get(plain).look, undefined);
 
+  const shaped = await session.createText({ x: 10, y: 20, w: 160, h: 100, shape: "rectangle" });
+  assert.equal(fake.props(shaped).plexus.shape, "rectangle");
+  assert.equal(fake.props(shaped).plexus.w, 160);
+  const rejected = await session.createText({ x: 10, y: 20, shape: "nope" });
+  assert.equal(fake.props(rejected).plexus.shape, undefined);
+
   const sticky = await session.createText({ x: 1200, y: 40, string: "Note", look: "sticky" });
   assert.deepEqual(fake.props(sticky).plexus, {
     type: "text", x: 1200, y: 40, w: 200, h: 200, color: "yellow", look: "sticky",

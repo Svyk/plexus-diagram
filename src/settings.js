@@ -21,6 +21,7 @@ export const SETTING_IDS = Object.freeze({
   autoFitSections: "auto-fit-sections",
   spaceOut: "space-out",
   showCardBadges: "show-card-badges",
+  showPalette: "show-palette",
 });
 
 const DEFAULTS = Object.freeze({
@@ -46,6 +47,7 @@ const DEFAULTS = Object.freeze({
   [SETTING_IDS.autoFitSections]: true,
   [SETTING_IDS.spaceOut]: false,
   [SETTING_IDS.showCardBadges]: true,
+  [SETTING_IDS.showPalette]: true,
 });
 
 const BOARD_TONES = ["none", "paper", "gray", "red", "orange", "yellow", "green", "teal", "blue", "indigo", "purple", "pink"];
@@ -165,6 +167,7 @@ export function createSettingsPanel() {
       inputRow(SETTING_IDS.attrStyles, "Attribute styles", "JSON map of attribute name to color and dash. Colors are palette names. Dash is solid, dashed, or dotted."),
       selectRow(SETTING_IDS.wheel, "Mouse wheel", "What the mouse wheel does on the board. Pinch always zooms.", ["pan", "zoom"]),
       switchRow(SETTING_IDS.showMinimap, "Show minimap", "Show the minimap."),
+      switchRow(SETTING_IDS.showPalette, "Show tool palette", "Show the tool palette along the bottom of the board."),
       selectRow(SETTING_IDS.controlsPosition, "Controls", "Rail is the vertical control stack. Bar is the 1.2 horizontal zoom group.", ["rail", "bar"]),
       switchRow(SETTING_IDS.snapGuides, "Snap guides", "Align dragged cards to neighbours and show guides."),
       switchRow(SETTING_IDS.snapGrid, "Snap to grid", "Snap a dragged card to the 24px grid. Off unless you turn it on. Alt while dragging skips both snaps."),

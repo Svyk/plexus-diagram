@@ -2926,6 +2926,7 @@ body.roam-body.dark .pxd-root .pxd-panel__outline-row:hover {
 .pxd-root.pxd-root--table .pxd-props,
 .pxd-root.pxd-root--table .pxd-panel,
 .pxd-root.pxd-root--table .pxd-minimap,
+.pxd-root.pxd-root--table .pxd-palette,
 .pxd-root.pxd-root--table .pxd-ctx {
   visibility: hidden;
   pointer-events: none;
@@ -3009,6 +3010,7 @@ body.roam-body.dark .pxd-root .pxd-panel__outline-row:hover {
 .pxd-root.pxd-root--kanban .pxd-props,
 .pxd-root.pxd-root--kanban .pxd-panel,
 .pxd-root.pxd-root--kanban .pxd-minimap,
+.pxd-root.pxd-root--kanban .pxd-palette,
 .pxd-root.pxd-root--kanban .pxd-ctx {
   visibility: hidden;
   pointer-events: none;
@@ -3018,9 +3020,59 @@ body.roam-body.dark .pxd-root .pxd-panel__outline-row:hover {
 .pxd-root.pxd-root--outline .pxd-rail,
 .pxd-root.pxd-root--outline .pxd-toolbar,
 .pxd-root.pxd-root--outline .pxd-resize-grip,
-.pxd-root.pxd-root--outline .pxd-props {
+.pxd-root.pxd-root--outline .pxd-props,
+.pxd-root.pxd-root--outline .pxd-palette {
   visibility: hidden;
   pointer-events: none;
+}
+
+.pxd-root .pxd-palette {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 136px;
+  z-index: 12;
+  display: flex;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.pxd-root.pxd-root--rail .pxd-palette {
+  right: 60px;
+}
+
+.pxd-root .pxd-palette.pxd-palette--wide {
+  bottom: 16px;
+}
+
+.pxd-root .pxd-palette__bar {
+  display: flex;
+  gap: 2px;
+  padding: 4px;
+  border: 1px solid var(--pxd-border);
+  border-radius: 8px;
+  background: var(--pxd-chrome-bg);
+  box-shadow: var(--pxd-shadow);
+  pointer-events: auto;
+}
+
+.pxd-root .pxd-palette__btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+}
+
+.pxd-root .pxd-palette__btn .bp3-icon {
+  color: inherit;
+  font-size: 16px;
+}
+
+.pxd-root .pxd-palette__btn.pxd-palette__btn--on {
+  background: var(--pxd-accent-soft);
+  color: var(--pxd-accent);
 }
 
 /* "Plexus: Commands…" list. On document.body, outside .pxd-root, because

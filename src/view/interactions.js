@@ -31,12 +31,13 @@
 // Keydown events may carry tabOwned:false (focus is not on the board itself); Tab is then left to Roam and the browser.
 // Escape order: gesture, quick look, presentation, edit, focus, selection, popBoard, fullscreen.
 
-import { DEFAULT_BOARD_CARD, DEFAULT_SIZES, MIN_SIZES } from "../model/schema.js";
+import { DEFAULT_BOARD_CARD, DEFAULT_SIZES, MIN_SIZES, STICKY_SIZE } from "../model/schema.js";
 import { descendantsOf, findEdge, hitTest, itemsInPolygon, itemsInRect, outlineOrder, topLevelOf, boundsOf } from "../model/board.js";
 import { GRID_PITCH, nearestInDirection, nearestSide, snapMove, snapToGrid, zoomAt } from "../model/geometry.js";
 
-export const TOOL_KEYS = { v: "select", h: "hand", n: "card", t: "text", g: "section", w: "board", c: "connect" };
-export const TOOLS = ["select", "hand", "card", "text", "section", "board", "connect"];
+export const TOOL_KEYS = { v: "select", h: "hand", n: "card", t: "text", s: "sticky", r: "shape", g: "section", w: "board", c: "connect" };
+export const TOOLS = ["select", "hand", "card", "text", "sticky", "shape", "section", "board", "connect"];
+const SHAPE_PLACE = { w: 160, h: 100 };
 export const DRAG_THRESHOLD_PX = 4;
 export const SNAP_PX = 6;
 const STICKY_TOOLS = new Set(["select", "hand"]);
@@ -234,7 +235,7 @@ export function createInteractions({ actions, settings } = {}) {
       begin({ kind: "board-draw", start: ev.world });
       return;
     }
-    if (state.tool === "card" || state.tool === "text") {
+    if (state.tool === "card" || state.tool === "text" || state.tool === "sticky" || state.tool === "shape") {
       begin({ kind: "place", tool: state.tool, start: ev.world });
       return;
     }
@@ -413,10 +414,17 @@ export function createInteractions({ actions, settings } = {}) {
       }
       case "place": {
         if (!g.moved) {
-          const d = DEFAULT_SIZES[g.tool];
-          const at = { x: g.start.x - d.w / 2, y: g.start.y - d.h / 2 };
+          let p;
+          if (g.tool === "sticky") {
+            p = call("createText", { x: g.start.x - STICKY_SIZE.w / 2, y: g.start.y - STICKY_SIZE.h / 2, w: STICKY_SIZE.w, h: STICKY_SIZE.h, look: "sticky" });
+          } else if (g.tool === "shape") {
+            p = call("createText", { x: g.start.x - SHAPE_PLACE.w / 2, y: g.start.y - SHAPE_PLACE.h / 2, w: SHAPE_PLACE.w, h: SHAPE_PLACE.h, shape: "rectangle" });
+          } else {
+            const d = DEFAULT_SIZES[g.tool];
+            const at = { x: g.start.x - d.w / 2, y: g.start.y - d.h / 2 };
+            p = g.tool === "text" ? call("createText", at) : call("createCard", at);
+          }
           end();
-          const p = g.tool === "text" ? call("createText", at) : call("createCard", at);
           Promise.resolve(p).then((uid) => { if (uid) { selectItems([uid]); call("enterEdit", uid); } }).catch(() => {});
           afterToolUse();
           return;

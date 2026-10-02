@@ -53,7 +53,7 @@ test("settings panel follows spec section 6 ids, defaults and row types", () => 
   assert.deepEqual(ids.sort(), [
     "attr-styles", "collapse-outline", "default-card-height", "default-card-look", "default-card-width", "disable-on-mobile", "enable-shortcuts", "enabled",
     "controls-position", "fullscreen-on-zoom", "graph-links", "grid", "show-minimap", "show-version-badge", "snap-grid", "snap-guides", "wheel",
-    "auto-fit-sections", "board-tone", "map-zoom", "show-card-badges", "space-out",
+    "auto-fit-sections", "board-tone", "map-zoom", "show-card-badges", "show-palette", "space-out",
   ].sort());
   const byId = Object.fromEntries(panel.settings.map((row) => [row.id, row]));
   assert.equal(byId["graph-links"].action.type, "select");

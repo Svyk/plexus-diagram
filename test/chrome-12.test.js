@@ -409,6 +409,33 @@ test("control rail uses native titles and the bar setting restores the zoom grou
   assert.equal(q(bar.root, ".pxd-toolbar__zoom").style.display, "");
 });
 
+test("UI-3: the palette lists nine tools, lifts above the minimap, and hides from the setting", async (t) => {
+  const tools = [];
+  const f = setup({ setTool: (id) => tools.push(id) });
+  t.after(f.restore);
+  const buttons = [...f.root.querySelectorAll(".pxd-palette__btn")];
+  assert.deepEqual(buttons.map((b) => b.getAttribute("aria-label")), ["Select", "Hand", "Card", "Text", "Sticky", "Shape", "Section", "Board", "Connect"]);
+  for (const b of buttons) {
+    assert.ok(b.querySelector(".bp3-icon"), b.getAttribute("aria-label"));
+    assert.ok(b.title);
+    assert.equal(b.textContent, "");
+  }
+  buttons.find((b) => b.dataset.tool === "sticky").click();
+  assert.deepEqual(tools, ["sticky"]);
+  f.chrome.toolbar.setTool("shape", false);
+  assert.equal(buttons.find((b) => b.dataset.tool === "shape").classList.contains("pxd-palette__btn--on"), true);
+  assert.equal(f.root.querySelector(".pxd-palette").classList.contains("pxd-palette--wide"), false);
+  f.chrome.minimap.setVisible(false);
+  assert.equal(f.root.querySelector(".pxd-palette").classList.contains("pxd-palette--wide"), true);
+  const hidden = setup({}, { settings: { get: (k) => (k === "show-palette" ? false : undefined) } });
+  t.after(hidden.restore);
+  assert.equal(hidden.root.querySelector(".pxd-palette").style.display, "none");
+  const css = await readFile(new URL("../src/css/chrome.css", import.meta.url), "utf8");
+  assert.match(css, /\.pxd-root \.pxd-palette \{[^}]*bottom: 136px/);
+  assert.match(css, /\.pxd-palette\.pxd-palette--wide \{[^}]*bottom: 16px/);
+  assert.ok(136 >= 120 + 8, "lift clears the minimap");
+});
+
 test("UI-2: toolbar actions are Blueprint icons with tooltips, and the zoom percent stays text", (t) => {
   const f = setup();
   t.after(f.restore);

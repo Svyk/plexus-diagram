@@ -25,6 +25,18 @@ const TOOL_LIST = [
   ["connect", "Connect", "C", "flows"],
 ];
 
+const PALETTE_LIST = [
+  ["select", "Select", "V", "select"],
+  ["hand", "Hand", "H", "hand"],
+  ["card", "Card", "N", "new-object"],
+  ["text", "Text", "T", "new-text-box"],
+  ["sticky", "Sticky", "S", "annotation"],
+  ["shape", "Shape", "R", "square"],
+  ["section", "Section", "G", "widget"],
+  ["board", "Board", "W", "grid-view"],
+  ["connect", "Connect", "C", "flows"],
+];
+
 const MAX_CRUMBS = 4;
 const POPOVER_GAP = 6;
 const POPOVER_MARGIN = 8;
@@ -233,6 +245,16 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
   const railExtra = el("div", "pxd-rail__extra", railEl);
   const railZoom = button(railExtra, "pxd-rail__zoom", "100%", "Zoom to 100% (Shift 0)", () => on.zoomReset?.());
   const railBadge = el("span", "pxd-badge pxd-rail__badge", railExtra, version ? `v${version}` : "");
+  const palette = el("div", "pxd-palette pxd-chrome", root);
+  const paletteBar = el("div", "pxd-palette__bar", palette);
+  const paletteButtons = new Map();
+  for (const [id, label, key, icon] of PALETTE_LIST) {
+    const b = iconButton(paletteBar, "pxd-palette__btn", icon, label, `${label} (${key})`, () => on.setTool?.(id, false));
+    b.dataset.tool = id;
+    b.setAttribute("data-tool", id);
+    listen(b, "dblclick", (event) => { event.preventDefault(); event.stopPropagation(); on.setTool?.(id, true); });
+    paletteButtons.set(id, b);
+  }
   const applyControls = () => {
     const rail = setting("controls-position") !== "bar";
     root.classList.toggle("pxd-root--rail", rail);
@@ -241,6 +263,7 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
     const showBadge = setting("show-version-badge") !== false;
     badge.style.display = !rail && showBadge ? "" : "none";
     railBadge.style.display = rail && showBadge ? "" : "none";
+    palette.style.display = setting("show-palette") === false ? "none" : "";
   };
   applyControls();
 
@@ -250,6 +273,10 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
     setTool(tool, locked) {
       for (const [id, b] of toolButtons) {
         b.classList.toggle("pxd-tool--active", id === tool);
+        b.classList.toggle("pxd-tool--locked", id === tool && Boolean(locked));
+      }
+      for (const [id, b] of paletteButtons) {
+        b.classList.toggle("pxd-palette__btn--on", id === tool);
         b.classList.toggle("pxd-tool--locked", id === tool && Boolean(locked));
       }
     },
@@ -711,7 +738,12 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
     el: minimap,
     // Called from inside the view's render frame: draw now, no extra rAF.
     update(state) { mmState = state; mmDirty = true; if (minimap.style.display !== "none") draw(); },
-    setVisible(on) { minimap.style.display = on ? "" : "none"; toolbarApi.setMinimap(on); if (on) { mmDirty = true; if (!mmFrame) mmFrame = timers.frame(draw); } },
+    setVisible(on) {
+      minimap.style.display = on ? "" : "none";
+      palette.classList.toggle("pxd-palette--wide", !on);
+      toolbarApi.setMinimap(on);
+      if (on) { mmDirty = true; if (!mmFrame) mmFrame = timers.frame(draw); }
+    },
     isVisible: () => minimap.style.display !== "none",
     draw,
   };
@@ -721,7 +753,7 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
     mmFrame?.();
     bgOffs.splice(0).forEach((off) => off());
     listeners.splice(0).forEach((off) => off());
-    for (const node of [toolbar, railEl, popEl, backEl, ctx, toast, search, minimap]) node.remove();
+    for (const node of [toolbar, railEl, palette, popEl, backEl, ctx, toast, search, minimap]) node.remove();
   };
 
   return { toolbar: toolbarApi, ctx: ctxApi, toast: toastApi, search: searchApi, minimap: minimapApi, popover, backToContent, badge, sync, dispose };

@@ -49,6 +49,7 @@ import {
   withBoardMarker,
 } from "./model/schema.js";
 import { inflate, rectsIntersect, unionRect } from "./model/geometry.js";
+import { SHAPES } from "./model/shapes.js";
 import { sameSize as sameSizeRects, spaceOut as spaceOutRects, tidyRects } from "./model/layout.js";
 import { coveredBy, filterLinks, linksQuery, reduceLinks } from "./model/links.js";
 import { createEchoLedger, createWriteQueue } from "./host/roam.js";
@@ -790,7 +791,7 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
       });
     },
 
-    createText({ x, y, string = "", look, w, h, color } = {}) {
+    createText({ x, y, string = "", look, w, h, color, shape } = {}) {
       return txn((t) => {
         const sticky = look === "sticky";
         const dw = sticky ? STICKY_SIZE.w : DEFAULT_SIZES.text.w;
@@ -805,6 +806,7 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
           layout.look = "sticky";
           layout.color = styleColor(color) || STICKY_COLOR;
         }
+        if (SHAPES.includes(shape)) layout.shape = shape;
         const id = t.create({ parent, string, plexus: serializeItemLayout(layout) });
         applyFit(t, [id]);
         return id;

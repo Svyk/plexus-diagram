@@ -4805,7 +4805,7 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
         return id;
       });
     },
-    createText({ x, y, string = "", look, w, h, color } = {}) {
+    createText({ x, y, string = "", look, w, h, color, shape } = {}) {
       return txn((t) => {
         const sticky = look === "sticky";
         const dw = sticky ? STICKY_SIZE.w : DEFAULT_SIZES.text.w;
@@ -4820,6 +4820,7 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
           layout.look = "sticky";
           layout.color = styleColor(color) || STICKY_COLOR;
         }
+        if (SHAPES.includes(shape)) layout.shape = shape;
         const id = t.create({ parent, string, plexus: serializeItemLayout(layout) });
         applyFit(t, [id]);
         return id;
@@ -6723,8 +6724,9 @@ function boardToMarkdown(board2, rects) {
 }
 
 // src/view/interactions.js
-var TOOL_KEYS = { v: "select", h: "hand", n: "card", t: "text", g: "section", w: "board", c: "connect" };
-var TOOLS = ["select", "hand", "card", "text", "section", "board", "connect"];
+var TOOL_KEYS = { v: "select", h: "hand", n: "card", t: "text", s: "sticky", r: "shape", g: "section", w: "board", c: "connect" };
+var TOOLS = ["select", "hand", "card", "text", "sticky", "shape", "section", "board", "connect"];
+var SHAPE_PLACE = { w: 160, h: 100 };
 var DRAG_THRESHOLD_PX = 4;
 var SNAP_PX = 6;
 var STICKY_TOOLS = /* @__PURE__ */ new Set(["select", "hand"]);
@@ -6907,7 +6909,7 @@ function createInteractions({ actions, settings } = {}) {
       begin({ kind: "board-draw", start: ev.world });
       return;
     }
-    if (state.tool === "card" || state.tool === "text") {
+    if (state.tool === "card" || state.tool === "text" || state.tool === "sticky" || state.tool === "shape") {
       begin({ kind: "place", tool: state.tool, start: ev.world });
       return;
     }
@@ -7089,10 +7091,17 @@ function createInteractions({ actions, settings } = {}) {
       }
       case "place": {
         if (!g.moved) {
-          const d = DEFAULT_SIZES[g.tool];
-          const at = { x: g.start.x - d.w / 2, y: g.start.y - d.h / 2 };
+          let p;
+          if (g.tool === "sticky") {
+            p = call("createText", { x: g.start.x - STICKY_SIZE.w / 2, y: g.start.y - STICKY_SIZE.h / 2, w: STICKY_SIZE.w, h: STICKY_SIZE.h, look: "sticky" });
+          } else if (g.tool === "shape") {
+            p = call("createText", { x: g.start.x - SHAPE_PLACE.w / 2, y: g.start.y - SHAPE_PLACE.h / 2, w: SHAPE_PLACE.w, h: SHAPE_PLACE.h, shape: "rectangle" });
+          } else {
+            const d = DEFAULT_SIZES[g.tool];
+            const at = { x: g.start.x - d.w / 2, y: g.start.y - d.h / 2 };
+            p = g.tool === "text" ? call("createText", at) : call("createCard", at);
+          }
           end();
-          const p = g.tool === "text" ? call("createText", at) : call("createCard", at);
           Promise.resolve(p).then((uid) => {
             if (uid) {
               selectItems([uid]);
@@ -10733,6 +10742,17 @@ var TOOL_LIST = [
   ["board", "Board", "W", "grid-view"],
   ["connect", "Connect", "C", "flows"]
 ];
+var PALETTE_LIST = [
+  ["select", "Select", "V", "select"],
+  ["hand", "Hand", "H", "hand"],
+  ["card", "Card", "N", "new-object"],
+  ["text", "Text", "T", "new-text-box"],
+  ["sticky", "Sticky", "S", "annotation"],
+  ["shape", "Shape", "R", "square"],
+  ["section", "Section", "G", "widget"],
+  ["board", "Board", "W", "grid-view"],
+  ["connect", "Connect", "C", "flows"]
+];
 var MAX_CRUMBS = 4;
 var POPOVER_GAP = 6;
 var POPOVER_MARGIN = 8;
@@ -10946,6 +10966,20 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
   const railExtra = el("div", "pxd-rail__extra", railEl);
   const railZoom = button(railExtra, "pxd-rail__zoom", "100%", "Zoom to 100% (Shift 0)", () => on.zoomReset?.());
   const railBadge = el("span", "pxd-badge pxd-rail__badge", railExtra, version ? `v${version}` : "");
+  const palette = el("div", "pxd-palette pxd-chrome", root);
+  const paletteBar = el("div", "pxd-palette__bar", palette);
+  const paletteButtons = /* @__PURE__ */ new Map();
+  for (const [id, label, key, icon] of PALETTE_LIST) {
+    const b = iconButton(paletteBar, "pxd-palette__btn", icon, label, `${label} (${key})`, () => on.setTool?.(id, false));
+    b.dataset.tool = id;
+    b.setAttribute("data-tool", id);
+    listen(b, "dblclick", (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      on.setTool?.(id, true);
+    });
+    paletteButtons.set(id, b);
+  }
   const applyControls = () => {
     const rail = setting("controls-position") !== "bar";
     root.classList.toggle("pxd-root--rail", rail);
@@ -10954,6 +10988,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     const showBadge = setting("show-version-badge") !== false;
     badge.style.display = !rail && showBadge ? "" : "none";
     railBadge.style.display = rail && showBadge ? "" : "none";
+    palette.style.display = setting("show-palette") === false ? "none" : "";
   };
   applyControls();
   const toolbarApi = {
@@ -10962,6 +10997,10 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     setTool(tool, locked) {
       for (const [id, b] of toolButtons) {
         b.classList.toggle("pxd-tool--active", id === tool);
+        b.classList.toggle("pxd-tool--locked", id === tool && Boolean(locked));
+      }
+      for (const [id, b] of paletteButtons) {
+        b.classList.toggle("pxd-palette__btn--on", id === tool);
         b.classList.toggle("pxd-tool--locked", id === tool && Boolean(locked));
       }
     },
@@ -11468,6 +11507,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     },
     setVisible(on2) {
       minimap.style.display = on2 ? "" : "none";
+      palette.classList.toggle("pxd-palette--wide", !on2);
       toolbarApi.setMinimap(on2);
       if (on2) {
         mmDirty = true;
@@ -11482,7 +11522,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     mmFrame?.();
     bgOffs.splice(0).forEach((off) => off());
     listeners2.splice(0).forEach((off) => off());
-    for (const node2 of [toolbar, railEl, popEl, backEl, ctx, toast, search, minimap]) node2.remove();
+    for (const node2 of [toolbar, railEl, palette, popEl, backEl, ctx, toast, search, minimap]) node2.remove();
   };
   return { toolbar: toolbarApi, ctx: ctxApi, toast: toastApi, search: searchApi, minimap: minimapApi, popover, backToContent, badge, sync, dispose };
 }
@@ -16300,6 +16340,7 @@ function mountBoardView({
       if (typeof p.w === "number") spec.w = p.w;
       if (typeof p.h === "number") spec.h = p.h;
       if (p.color) spec.color = p.color;
+      if (p.shape) spec.shape = p.shape;
       return Promise.resolve(session.createText?.(spec)).then((uid) => {
         if (uid) freshItems.add(uid);
         return uid;
@@ -17370,7 +17411,8 @@ var SETTING_IDS = Object.freeze({
   mapZoom: "map-zoom",
   autoFitSections: "auto-fit-sections",
   spaceOut: "space-out",
-  showCardBadges: "show-card-badges"
+  showCardBadges: "show-card-badges",
+  showPalette: "show-palette"
 });
 var DEFAULTS = Object.freeze({
   [SETTING_IDS.enabled]: true,
@@ -17394,7 +17436,8 @@ var DEFAULTS = Object.freeze({
   [SETTING_IDS.mapZoom]: "0.45",
   [SETTING_IDS.autoFitSections]: true,
   [SETTING_IDS.spaceOut]: false,
-  [SETTING_IDS.showCardBadges]: true
+  [SETTING_IDS.showCardBadges]: true,
+  [SETTING_IDS.showPalette]: true
 });
 var BOARD_TONES2 = ["none", "paper", "gray", "red", "orange", "yellow", "green", "teal", "blue", "indigo", "purple", "pink"];
 var MAP_ZOOMS = ["0.3", "0.45", "0.6"];
@@ -17499,6 +17542,7 @@ function createSettingsPanel() {
       inputRow(SETTING_IDS.attrStyles, "Attribute styles", "JSON map of attribute name to color and dash. Colors are palette names. Dash is solid, dashed, or dotted."),
       selectRow(SETTING_IDS.wheel, "Mouse wheel", "What the mouse wheel does on the board. Pinch always zooms.", ["pan", "zoom"]),
       switchRow(SETTING_IDS.showMinimap, "Show minimap", "Show the minimap."),
+      switchRow(SETTING_IDS.showPalette, "Show tool palette", "Show the tool palette along the bottom of the board."),
       selectRow(SETTING_IDS.controlsPosition, "Controls", "Rail is the vertical control stack. Bar is the 1.2 horizontal zoom group.", ["rail", "bar"]),
       switchRow(SETTING_IDS.snapGuides, "Snap guides", "Align dragged cards to neighbours and show guides."),
       switchRow(SETTING_IDS.snapGrid, "Snap to grid", "Snap a dragged card to the 24px grid. Off unless you turn it on. Alt while dragging skips both snaps."),

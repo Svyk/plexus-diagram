@@ -1133,3 +1133,47 @@ test("cancelPreview runs at every gesture end and on pointercancel", () => {
   assert.equal(h.named("cancelPreview").length, 2);
   assert.deepEqual(h.named("previewRects").at(-1)[1], []);
 });
+
+test("UI-3: each palette tool places or switches", async () => {
+  const place = async (key) => {
+    const h = harness();
+    h.ctl.handle({ type: "keydown", key });
+    h.ctl.handle(h.ev("pointerdown", { x: 400, y: 300 }));
+    h.ctl.handle(h.ev("pointerup", { x: 400, y: 300 }));
+    await tick();
+    return h;
+  };
+  const sticky = await place("s");
+  assert.equal(sticky.named("createText")[0][1].look, "sticky");
+  assert.equal(sticky.named("createText")[0][1].w, 200);
+  assert.equal(sticky.named("createCard").length, 0);
+  const shape = await place("r");
+  assert.equal(shape.named("createText")[0][1].shape, "rectangle");
+  assert.equal(shape.named("createText")[0][1].w, 160);
+  const card = await place("n");
+  assert.equal(card.named("createCard").length, 1);
+  const text = await place("t");
+  assert.equal(text.named("createText")[0][1].look, undefined);
+  assert.equal(text.named("createText")[0][1].shape, undefined);
+  const section = await place("g");
+  assert.equal(section.named("createSection").length, 1);
+  const board = await place("w");
+  assert.equal(board.named("createBoard").length, 1);
+  const connect = harness();
+  connect.ctl.handle({ type: "keydown", key: "c" });
+  assert.equal(connect.ctl.getTool(), "connect");
+  assert.equal(connect.named("addEdge").length, 0);
+  const hand = harness();
+  hand.ctl.handle({ type: "keydown", key: "h" });
+  hand.ctl.handle(hand.ev("pointerdown", { x: 10, y: 10 }));
+  hand.ctl.handle(hand.ev("pointermove", { x: 40, y: 30 }));
+  hand.ctl.handle(hand.ev("pointerup", { x: 40, y: 30 }));
+  assert.equal(hand.ctl.getTool(), "hand");
+  assert.equal(hand.named("createCard").length, 0);
+  assert.equal(hand.named("createText").length, 0);
+  assert.ok(hand.named("setViewport").length > 0);
+  const select = harness();
+  select.ctl.setTool("hand");
+  select.ctl.handle({ type: "keydown", key: "v" });
+  assert.equal(select.ctl.getTool(), "select");
+});

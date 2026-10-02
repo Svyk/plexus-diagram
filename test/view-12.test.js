@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { boundsOf, buildBoard, worldRects } from "../src/model/board.js";
+import { shapePath } from "../src/model/shapes.js";
 import { fitViewport, zoomAt } from "../src/model/geometry.js";
 import { cardDeepLink } from "../src/model/deeplink.js";
 import { PLEXUS_MIME } from "../src/model/clipboard.js";
@@ -97,7 +98,7 @@ function fakeSession(board) {
   for (const name of ["commitMove", "commitRects", "createCard", "createText", "createSection", "wrapInSection", "createBoard", "wrapInBoard",
     "renameBoard", "addRefCards", "deleteItems", "deleteEdges", "setColor", "setCollapsed", "setFontSize", "setString", "growToFit",
     "addEdge", "updateEdge", "flipEdge", "undo", "redo", "setCollapsedMany", "collapseAll", "setPinned", "setBoardBackground", "setFit",
-    "fitSection", "tidyItems", "sameSize", "resetSize", "fitToContent", "writeToGraph"]) session[name] = rec(name);
+    "fitSection", "tidyItems", "sameSize", "resetSize", "fitToContent", "writeToGraph", "setItemStyle"]) session[name] = rec(name);
   for (const name of ["duplicateItems", "pasteItems", "pasteText", "addDailyCards"]) session[name] = recList(name);
   session.sendToBoard = (...args) => { mutations.push(["sendToBoard", ...args]); return Promise.resolve({ added: args[0].length, title: "Inner" }); };
   session.expandOutline = (...args) => { mutations.push(["expandOutline", ...args]); return Promise.resolve({ added: 2, edges: 2 }); };
@@ -432,6 +433,37 @@ test("context menu: canvas, card, text, section, edge and multi selections each 
   }
 });
 
+test("a text shape paints an svg outline and a plain text item does not", async () => {
+  const f = mountFixture();
+  try {
+    await f.flush();
+    const plain = shell(f, "textTTTT5");
+    assert.equal(plain.querySelector(".pxd-shape"), null);
+    const item = f.session.board.items.get("textTTTT5");
+    item.shape = "diamond";
+    item.w = 200;
+    item.h = 100;
+    const rect = f.session.rects.get("textTTTT5");
+    rect.w = 200;
+    rect.h = 100;
+    f.session.emit("change", { dirty: new Set(["textTTTT5"]), structural: false });
+    await f.flush();
+    const node = shell(f, "textTTTT5");
+    assert.ok(node.classList.contains("pxd-item--shape"));
+    assert.ok(node.classList.contains("pxd-item--shape-diamond"));
+    const path = node.querySelector(".pxd-shape path");
+    assert.equal(path.getAttribute("d"), shapePath({ x: 0, y: 0, w: 200, h: 100 }, "diamond"));
+    item.shape = undefined;
+    delete item.shape;
+    f.session.emit("change", { dirty: new Set(["textTTTT5"]), structural: false });
+    await f.flush();
+    assert.equal(shell(f, "textTTTT5").querySelector(".pxd-shape"), null);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
 test("context menu: a right-click inside an editing card keeps the native menu", async () => {
   const f = mountFixture({ hostOverrides: { renderBlock(el) { const t = globalThis.document.createElement("textarea"); t.className = "rm-block__input"; el.append(t); } } });
   try {
@@ -528,6 +560,8 @@ test("context menu: pick dispatch maps every kind's ids onto session calls", asy
     // text
     m = await run(shell(f, "textTTTT5"), "size:32");
     assert.deepEqual(m[0], ["setFontSize", "textTTTT5", 32]);
+    m = await run(shell(f, "textTTTT5"), "shape:diamond");
+    assert.deepEqual(m[0], ["setItemStyle", ["textTTTT5"], { shape: "diamond" }]);
     // section
     const title = f.root.querySelector(".pxd-section__title");
     m = await run(title, "fit-section");

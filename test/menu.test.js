@@ -106,6 +106,10 @@ test("text menu: sizes 16/24/32/48 with the current one checked", () => {
   const menu = buildMenu("text", { item: { fontSize: 32, color: "red" }, pinned: true });
   assert.deepEqual(byId(menu, "size").children.map((c) => c.id), ["size:16", "size:24", "size:32", "size:48"]);
   assert.deepEqual(byId(menu, "size").children.filter((c) => c.checked).map((c) => c.id), ["size:32"]);
+  const shaped = buildMenu("text", { item: { shape: "diamond" } });
+  assert.deepEqual(byId(shaped, "shape").children.map((c) => c.id), ["shape:rectangle", "shape:rounded", "shape:ellipse", "shape:diamond", "shape:parallelogram", "shape:cylinder"]);
+  assert.deepEqual(byId(shaped, "shape").children.filter((c) => c.checked).map((c) => c.id), ["shape:diamond"]);
+  assert.equal(byId(menu, "shape").children.filter((c) => c.checked).length, 0);
   for (const id of ["edit", "color", "duplicate", "unpin", "copy", "delete"]) assert.ok(ids(menu).includes(id), id);
   assert.deepEqual(byId(menu, "color").children.filter((c) => c.checked).map((c) => c.id), ["color:red"]);
 });

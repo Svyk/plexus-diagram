@@ -38,6 +38,26 @@ test("setItemStyle writes font, color, align, fill, and border in one step and l
   assert.deepEqual(plexus(fake, "a"), { x: 10, y: 20, w: 200, h: 100, color: "teal", look: "block" });
 });
 
+test("setItemStyle writes and clears a text shape and does not store one on a card", async () => {
+  const text = (uid) => ({ uid, string: uid, props: { plexus: { type: "text", x: 0, y: 0, w: 200, h: 80 } } });
+  const { fake, session } = setup([text("t"), card("a", 10, 20, { color: "teal" })]);
+  const n = await session.setItemStyle(["t", "a"], { shape: "diamond" });
+  assert.equal(n, 1);
+  assert.equal(plexus(fake, "t").shape, "diamond");
+  assert.equal(plexus(fake, "a").shape, undefined);
+  assert.equal(plexus(fake, "a").color, "teal");
+  await session.setItemStyle(["t"], { shape: "hexagon" });
+  assert.equal(plexus(fake, "t").shape, undefined);
+  await session.setItemStyle(["t"], { shape: "cylinder" });
+  assert.equal(plexus(fake, "t").shape, "cylinder");
+  await session.setItemStyle(["t"], { shape: null });
+  assert.equal(plexus(fake, "t").shape, undefined);
+  await session.setItemStyle(["t"], { shape: "ellipse" });
+  await session.resetItemStyle(["t"]);
+  assert.equal(plexus(fake, "t").shape, undefined);
+  assert.equal(plexus(fake, "t").type, "text");
+});
+
 test("card fontSize 14 is omitted and a section style does not land on a card", async () => {
   const { fake, session } = setup([card("a", 1, 2), section("s", 0, 0, 400, 300)]);
   await session.setItemStyle(["a", "s"], { fontSize: 14, textColor: "#abcdef" });

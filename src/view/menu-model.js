@@ -4,12 +4,17 @@
 
 import { MIND_DEPTH_MAX, MIND_DEPTH_MIN, MIND_DIRECTIONS, MIND_SPACINGS, normalizeMindPreset } from "../model/mindmap.js";
 import { PALETTE, FONT_SIZES } from "../model/schema.js";
+import { SHAPES } from "../model/shapes.js";
 import { partitionSnapshots } from "../model/snapshots.js";
 import { STARTERS } from "../model/templates.js";
 
 export const MENU_KINDS = ["canvas", "card", "section", "text", "edge", "multi", "board-menu"];
 
 const SIZE_LABELS = { 16: "Small", 24: "Medium", 32: "Large", 48: "Extra large" };
+const SHAPE_LABELS = {
+  rectangle: "Rectangle", rounded: "Rounded", ellipse: "Ellipse",
+  diamond: "Diamond", parallelogram: "Parallelogram", cylinder: "Cylinder",
+};
 const cap = (word) => word.charAt(0).toUpperCase() + word.slice(1);
 
 // Optional keys are only written when set, so items compare cleanly and carry no undefined noise.
@@ -200,6 +205,9 @@ export function buildMenu(kind, ctx = {}) {
         colorMenu(),
         make("size", "Size", {
           children: FONT_SIZES.map((px) => make(`size:${px}`, `${SIZE_LABELS[px] || px} (${px}px)`, { checked: item?.fontSize === px })),
+        }),
+        make("shape", "Shape", {
+          children: SHAPES.map((name) => make(`shape:${name}`, SHAPE_LABELS[name] || name, { checked: item?.shape === name })),
         }),
         make("duplicate", "Duplicate", { hint: "Cmd D" }),
         pinItem(Boolean(c.pinned)),

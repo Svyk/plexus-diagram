@@ -20,14 +20,31 @@ const card = (id, string, x, y, w = 260, h = 140) => node(id, string, { type: "c
 const section = (id, title, x, y, w = 300, h = 220) => node(id, title, { type: "section", x, y, w, h, v: 2 });
 const board = (id, title, children) => node(id, boardString(title), { v: 2 }, children, false);
 
-function flow(steps) {
-  const cards = steps.map((title, i) => card(`s${i}`, title, 40 + i * 300, 80, 240, 120));
-  const edges = steps.slice(1).map((_, i) => node(
-    `e${i}`,
-    edgeString({ srcRef: `((s${i}))`, dstRef: `((s${i + 1}))`, dir: "one" }),
-    { type: "edge", from: `s${i}`, to: `s${i + 1}`, dir: "one" },
-  ));
-  return [...cards, node("edges", "Connections", { type: "edges" }, edges, false)];
+const text = (id, string, x, y, shape, w = 200, h = 110) => node(id, string, { type: "text", x, y, w, h, shape, fontSize: 16, v: 2 });
+
+function flow() {
+  const items = [
+    text("recv", "Receiving", 40, 40, "parallelogram"),
+    text("store", "Storage", 300, 40, "cylinder"),
+    text("spec", "In spec?", 560, 20, "diamond", 200, 150),
+    text("blend", "Blending", 560, 230, "rectangle"),
+    text("fill", "Filling", 820, 230, "rounded"),
+    text("pack", "Packing", 1080, 230, "ellipse"),
+  ];
+  const link = (id, from, to, label = "", sides = {}) => node(
+    id,
+    edgeString({ srcRef: `((${from}))`, dstRef: `((${to}))`, dir: "one", label }),
+    { type: "edge", from, to, dir: "one", ...sides },
+  );
+  const edges = [
+    link("e0", "recv", "store"),
+    link("e1", "store", "spec"),
+    link("ey", "spec", "blend", "Yes", { fromSide: "bottom", toSide: "top" }),
+    link("en", "spec", "recv", "No", { fromSide: "top", toSide: "top" }),
+    link("e4", "blend", "fill"),
+    link("e5", "fill", "pack"),
+  ];
+  return [...items, node("edges", "Connections", { type: "edges" }, edges, false)];
 }
 
 const row = (labels, y = 40, w = 300, h = 360, gap = 24) => labels.map((title, i) => section(
@@ -46,7 +63,7 @@ export const STARTERS = [
   { id: "swot", title: "SWOT", tree: board("root", "SWOT", row(["Strengths", "Weaknesses", "Opportunities", "Threats"])) },
   { id: "kanban", title: "Kanban", tree: board("root", "Kanban", row(["To do", "Doing", "Done"])) },
   { id: "timeline", title: "Timeline", tree: board("root", "Timeline", ["Start", "Middle", "Next", "End"].map((title, i) => card(`t${i}`, title, 40 + i * 300, 80, 240, 120))) },
-  { id: "process", title: "Process flow", tree: board("root", "Process flow", flow(["Receiving", "Storage", "Blending", "Filling", "Packing"])) },
+  { id: "process", title: "Process flow", tree: board("root", "Process flow", flow()) },
   { id: "meeting", title: "Meeting notes", tree: board("root", "Meeting notes", row(["Agenda", "Notes", "Actions"])) },
   { id: "retro", title: "Retro", tree: board("root", "Retro", row(["Went well", "To improve", "Actions"])) },
 ];

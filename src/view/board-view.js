@@ -1427,6 +1427,7 @@ export function mountBoardView({
       case "unlock-contents": if (item?.type === "section") void session.lockSection?.(item.uid, false); break;
       case "present-section": if (item?.type === "section") startPresent(item.uid); break;
       case "size": if (item) void session.setFontSize?.(item.uid, Number(arg)); break;
+      case "shape": if (item?.type === "text") void session.setItemStyle?.([item.uid], { shape: arg }); break;
       case "dir": if (edgeUid) void session.updateEdge?.(edgeUid, { dir: arg }); break;
       case "route": if (edgeUid) void session.updateEdge?.(edgeUid, { route: arg }); break;
       case "dash": if (edgeUid) void session.updateEdge?.(edgeUid, { dash: arg }); break;

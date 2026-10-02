@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { buildBoard, worldRects } from "../src/model/board.js";
+import { buildBoard, displayRects, worldRects } from "../src/model/board.js";
+import { sidePoint } from "../src/model/geometry.js";
 import { boardToMarkdown, boardToSvg, dropExternalImages, imageSrc, pngFileName, sliceBoard } from "../src/model/export.js";
+import { SHAPES, shapePath } from "../src/model/shapes.js";
+import { starterById } from "../src/model/templates.js";
 
 const blk = (uid, order, string, plexus, extra = {}) => ({
   ":block/uid": uid,
@@ -155,4 +158,44 @@ test("boardToMarkdown nests section headings by depth and labels connections", (
   });
   const md = boardToMarkdown(nested, worldRects(nested));
   assert.match(md, /^# Outer\n\n## Inner\n- A\n- B\n\n## Connections\nA -> .* -> B\n$/);
+});
+
+test("TP-6: a six-shape flow exports each outline and the Yes/No labels", () => {
+  const b = buildBoard(starterById("process").tree);
+  const rects = worldRects(b);
+  const shown = displayRects(b, rects);
+  const texts = [...b.items.values()].filter((item) => item.type === "text");
+  assert.deepEqual(texts.map((item) => item.shape).sort(), [...SHAPES].sort());
+  const svg = boardToSvg(b, rects);
+  for (const item of texts) {
+    const r = rects.get(item.uid);
+    assert.equal(r.shape, item.shape);
+    assert.equal(shown.get(item.uid).shape, item.shape);
+    assert.ok(svg.includes(shapePath(r, item.shape)), item.shape);
+    assert.ok(svg.includes(`>${item.title}<`), item.title);
+  }
+  assert.match(svg, />Yes</);
+  assert.match(svg, />No</);
+  const vb = svg.match(/viewBox="([^"]+)"/)[1].split(/\s+/).map(Number);
+  const noY = Number(svg.match(/y="([^"]+)"[^>]*>No</)[1]);
+  assert.ok(noY > vb[1] && noY < vb[1] + vb[3], `No label ${noY} outside ${vb.join(" ")}`);
+  const recv = texts.find((item) => item.title === "Receiving");
+  const anchor = sidePoint(rects.get(recv.uid), "right");
+  assert.ok(anchor.x < rects.get(recv.uid).x + rects.get(recv.uid).w - 1);
+  assert.ok(svg.includes(`M${anchor.x} ${anchor.y}`), `${anchor.x} ${anchor.y}`);
+  const plain = buildBoard({
+    ":block/uid": "b",
+    ":block/string": "{{[[diagram]]:Plain}}",
+    ":block/children": [blk("t", 0, "Just text", { type: "text", x: 0, y: 0, w: 80, h: 24 })],
+  });
+  const bare = boardToSvg(plain, worldRects(plain));
+  assert.match(bare, />Just text</);
+  assert.doesNotMatch(bare, /<path /);
+  const card = buildBoard({
+    ":block/uid": "b",
+    ":block/string": "{{[[diagram]]:Card}}",
+    ":block/children": [blk("c", 0, "Card", { type: "card", x: 0, y: 0, w: 80, h: 40, shape: "diamond" })],
+  });
+  assert.equal(card.items.get("c").shape, undefined);
+  assert.equal(worldRects(card).get("c").shape, undefined);
 });

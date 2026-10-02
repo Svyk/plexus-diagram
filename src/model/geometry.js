@@ -1,3 +1,5 @@
+import { SHAPES, shapePoint } from "./shapes.js";
+
 const num = (n) => {
   const r = Math.round(n * 1000) / 1000;
   return Object.is(r, -0) ? 0 : r;
@@ -144,6 +146,7 @@ export function pointInRect(p, r) {
 }
 
 export function sidePoint(rect, side) {
+  if (rect && SHAPES.includes(rect.shape)) return shapePoint(rect, rect.shape, side);
   switch (side) {
     case "top": return { x: rect.x + rect.w / 2, y: rect.y };
     case "bottom": return { x: rect.x + rect.w / 2, y: rect.y + rect.h };
@@ -205,6 +208,7 @@ export function edgePath({ a, b, fromSide = "auto", toSide = "auto", route = "cu
       start,
       end,
       mid: { x: (start.x + end.x) / 2, y: (start.y + end.y) / 2 },
+      points: [start, end],
       startAngle: angle,
       endAngle: angle,
       fromSide,
@@ -260,6 +264,7 @@ export function edgePath({ a, b, fromSide = "auto", toSide = "auto", route = "cu
       start,
       end,
       mid,
+      points: poly,
       startAngle: Math.atan2(second.y - start.y, second.x - start.x),
       endAngle: Math.atan2(last.y - prev.y, last.x - prev.x),
       fromSide,
@@ -285,6 +290,7 @@ export function edgePath({ a, b, fromSide = "auto", toSide = "auto", route = "cu
     start,
     end,
     mid,
+    points: [start, c1, c2, end],
     startAngle: Math.atan2(c1.y - start.y, c1.x - start.x),
     endAngle: Math.atan2(end.y - c2.y, end.x - c2.x),
     fromSide,

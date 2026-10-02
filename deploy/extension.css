@@ -3221,6 +3221,37 @@ body.roam-body.dark .pxd-root .pxd-present-hud,
   background: var(--pxd-fill, transparent);
 }
 
+.pxd-root .pxd-item--text.pxd-item--shape {
+  background: transparent;
+  border-color: transparent;
+}
+
+.pxd-root .pxd-item--shape > .pxd-shape {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  pointer-events: none;
+  overflow: visible;
+  z-index: 0;
+}
+
+.pxd-root .pxd-item--shape > .pxd-shape path {
+  fill: var(--pxd-fill, var(--pxd-card, #fff));
+  stroke: var(--pxd-line, var(--pxd-border, #8a96a3));
+  stroke-width: 1.5;
+}
+
+.pxd-root .pxd-item--text.pxd-item--shape > .pxd-item__body {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  background: transparent;
+}
+
 .pxd-root .pxd-item--card {
   text-align: inherit;
 }

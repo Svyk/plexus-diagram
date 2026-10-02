@@ -56,7 +56,7 @@ const PROPS = ":block/props";
 const OPEN = ":block/open";
 
 const LINK_MODES = ["off", "attributes", "all"];
-const ITEM_KEYS = ["type", "x", "y", "w", "h", "color", "collapsed", "fontSize", "pinned", "fit", "look", "textColor", "align", "fill", "border", "titleSize", "titleColor", "titleFill", "areaFill"];
+const ITEM_KEYS = ["type", "x", "y", "w", "h", "color", "collapsed", "fontSize", "pinned", "fit", "look", "textColor", "align", "fill", "border", "titleSize", "titleColor", "titleFill", "areaFill", "shape"];
 const EDGE_KEYS = ["type", "from", "to", "fromSide", "toSide", "dir", "route", "dash", "weight", "color"];
 const MAX_PARENT_STRINGS = 200;
 const DAILY_GAP = 20;

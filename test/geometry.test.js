@@ -91,6 +91,17 @@ test("sidePoint, nearestSide", () => {
   assert.equal(nearestSide(r, { x: 0, y: 220 }), "left");
   assert.equal(nearestSide(r, { x: 140, y: 0 }), "top");
   assert.equal(nearestSide(r, { x: 140, y: 500 }), "bottom");
+  const para = { x: 0, y: 0, w: 200, h: 80, shape: "parallelogram" };
+  const right = sidePoint(para, "right");
+  const skew = Math.min(para.w * 0.18, 28);
+  assert.equal(right.x, para.x + para.w - skew / 2);
+  assert.ok(right.x < para.x + para.w);
+  assert.equal(right.y, para.y + para.h / 2);
+  assert.deepEqual(sidePoint({ ...para, shape: "rectangle" }, "right"), { x: 200, y: 40 });
+  assert.deepEqual(sidePoint({ ...para, shape: "nope" }, "right"), { x: 200, y: 40 });
+  for (const shape of ["rectangle", "rounded", "ellipse", "diamond", "cylinder"]) {
+    assert.equal(sidePoint({ ...para, shape }, "right").x, 200, shape);
+  }
 });
 
 test("autoSides", () => {

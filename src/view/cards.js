@@ -5,6 +5,7 @@
 import { DEFAULT_SIZES, FONT_SIZES, PALETTE, attrNameOf, classifyString, cssColor, firstLine, hexColor, isUntitledBoard, parseBoardTitle, plainText } from "../model/schema.js";
 import { boardPreview, descendantsOf, sectionNoteUid } from "../model/board.js";
 import { lodForZoom, rectsIntersect } from "../model/geometry.js";
+import { SHAPES, shapePath } from "../model/shapes.js";
 import { watchEditorMenus } from "./editor-menus.js";
 import { applyEditorCounterScale } from "./editor-scale.js";
 
@@ -338,6 +339,36 @@ export function createItemRenderer({
     node.style.textAlign = item.align || "";
   };
 
+  const syncShape = (rec, item, size) => {
+    const name = item?.type === "text" && SHAPES.includes(item.shape) ? item.shape : "";
+    if (!name) {
+      if (rec.shapeEl) { rec.shapeEl.remove(); rec.shapeEl = null; rec.shapePath = null; }
+      rec.shapeName = "";
+      rec.shapeKey = "";
+      return;
+    }
+    if (!rec.shapeEl) {
+      const svg = doc.createElementNS(SVG_NS, "svg");
+      svg.setAttribute("class", "pxd-shape");
+      svg.setAttribute("aria-hidden", "true");
+      const path = doc.createElementNS(SVG_NS, "path");
+      svg.append(path);
+      const before = rec.body || null;
+      if (before) rec.el.insertBefore(svg, before);
+      else rec.el.append(svg);
+      rec.shapeEl = svg;
+      rec.shapePath = path;
+    }
+    const w = size?.w ?? item.w;
+    const h = size?.h ?? item.h;
+    const key = `${name}:${w}:${h}`;
+    rec.shapeName = name;
+    if (rec.shapeKey === key) return;
+    rec.shapeEl.setAttribute("viewBox", `0 0 ${w} ${h}`);
+    rec.shapePath.setAttribute("d", shapePath({ x: 0, y: 0, w, h }, name));
+    rec.shapeKey = key;
+  };
+
   const paintShell = (rec, item) => {
     const node = rec.el;
     if (item.type !== "section") {
@@ -363,7 +394,8 @@ export function createItemRenderer({
     if (item.type === "text" && FONT_SIZES.includes(item.fontSize)) cls.push(`pxd-item--fs${item.fontSize}`);
     if (item.type !== "section" && item.fontSize) cls.push("pxd-fs");
     if (item.textColor) cls.push("pxd-has-textc");
-    if (item.type === "text" && (item.fill || item.border)) cls.push("pxd-text-paint");
+    if (item.type === "text" && item.shape) cls.push("pxd-item--shape", `pxd-item--shape-${item.shape}`);
+    else if (item.type === "text" && (item.fill || item.border)) cls.push("pxd-text-paint");
     if (rec.selected) cls.push(item.type === "section" ? "pxd-section--selected" : "pxd-item--selected");
     if (rec.hover) cls.push("pxd-item--drop");
     if (editing?.uid === item.uid) cls.push("pxd-item--editing");
@@ -376,6 +408,7 @@ export function createItemRenderer({
     }
     node.className = cls.join(" ");
     applyStyle(rec, item);
+    if (item.type !== "section") syncShape(rec, item);
     if (item.type === "section") {
       if (!rec.titleRendered || rec.titleString !== item.string) {
         rec.title.textContent = item.title || "Section";
@@ -406,6 +439,7 @@ export function createItemRenderer({
     rec.el.style.transform = `translate(${rect.x}px, ${rect.y}px)`;
     rec.el.style.width = `${rect.w}px`;
     rec.el.style.height = `${rect.h}px`;
+    if (rec.shapeName) syncShape(rec, { type: "text", shape: rec.shapeName, w: rect.w, h: rect.h }, rect);
   };
 
   const removeShell = (uid) => {

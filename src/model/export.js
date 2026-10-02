@@ -2,6 +2,7 @@
 import { arrowHeadPath, arrowSize, edgePath } from "./geometry.js";
 import { boundsOf } from "./board.js";
 import { PALETTE, UNTITLED_BOARD } from "./schema.js";
+import { SHAPES, shapePath } from "./shapes.js";
 
 const HEX = {
   light: {
@@ -96,7 +97,32 @@ export function boardToSvg(board, rects, { dark = false, padding = 48, maxItems 
     if (rects.get(uid)) included.push(board.items.get(uid));
   }
   const inSet = new Set(included.map((i) => i.uid));
-  const bounds = boundsOf(included.map((i) => rects.get(i.uid))) ?? { x: 0, y: 0, w: 0, h: 0 };
+  const drawnEdges = [];
+  for (const edge of board.edges.values()) {
+    if (!edge.valid || !inSet.has(edge.from) || !inSet.has(edge.to)) continue;
+    const a = rects.get(edge.from);
+    const b = rects.get(edge.to);
+    if (!a || !b) continue;
+    drawnEdges.push({ edge, path: edgePath({ a, b, fromSide: edge.fromSide, toSide: edge.toSide, route: edge.route }) });
+  }
+  const rawBounds = boundsOf(included.map((i) => rects.get(i.uid))) ?? { x: 0, y: 0, w: 0, h: 0 };
+  const bounds = { x: rawBounds.x, y: rawBounds.y, w: rawBounds.w, h: rawBounds.h };
+  let minX = bounds.x;
+  let minY = bounds.y;
+  let maxX = bounds.x + bounds.w;
+  let maxY = bounds.y + bounds.h;
+  for (const { path } of drawnEdges) {
+    for (const p of path.points || [path.start, path.end, path.mid]) {
+      if (p.x < minX) minX = p.x;
+      if (p.y < minY) minY = p.y;
+      if (p.x > maxX) maxX = p.x;
+      if (p.y > maxY) maxY = p.y;
+    }
+  }
+  bounds.x = minX;
+  bounds.y = minY;
+  bounds.w = Math.max(0, maxX - minX);
+  bounds.h = Math.max(0, maxY - minY);
   const vx = bounds.x - padding;
   const vy = bounds.y - padding;
   const vw = Math.max(1, bounds.w + padding * 2);
@@ -116,7 +142,15 @@ export function boardToSvg(board, rects, { dark = false, padding = 48, maxItems 
       body.push(`<text x="${n1(r.x + 4)}" y="${n1(r.y - 10)}" font-size="16" font-weight="700" fill="${text}">${esc(titleOf(item))}</text>`);
     } else if (item.type === "text") {
       const size = item.fontSize || 16;
-      body.push(`<text x="${n1(r.x)}" y="${n1(r.y + size)}" font-size="${size}" fill="${theme.text}">${esc(titleOf(item))}</text>`);
+      if (SHAPES.includes(item.shape)) {
+        const paint = item.fill ? hex(item.fill)[1] : theme.card;
+        const stroke = item.border ? hex(item.border)[0] : (item.color ? line : theme.border);
+        const ink = item.textColor ? hex(item.textColor)[2] : theme.text;
+        body.push(`<path d="${shapePath(r, item.shape)}" fill="${paint}" stroke="${stroke}" stroke-width="2"/>`);
+        body.push(`<text x="${n1(r.x + r.w / 2)}" y="${n1(r.y + r.h / 2)}" font-size="${size}" text-anchor="middle" dominant-baseline="central" fill="${ink}">${esc(titleOf(item))}</text>`);
+      } else {
+        body.push(`<text x="${n1(r.x)}" y="${n1(r.y + size)}" font-size="${size}" fill="${theme.text}">${esc(titleOf(item))}</text>`);
+      }
     } else {
       const clip = `pxd-clip-${index}`;
       defs.push(`<clipPath id="${clip}"><rect x="${n1(r.x + 10)}" y="${n1(r.y)}" width="${n1(Math.max(1, r.w - 20))}" height="${n1(r.h)}"/></clipPath>`);
@@ -134,11 +168,7 @@ export function boardToSvg(board, rects, { dark = false, padding = 48, maxItems 
   if (defs.length) out.push(`<defs>${defs.join("")}</defs>`);
   out.push(...body);
 
-  for (const edge of board.edges.values()) {
-    if (!edge.valid || !inSet.has(edge.from) || !inSet.has(edge.to)) continue;
-    const a = rects.get(edge.from);
-    const b = rects.get(edge.to);
-    const path = edgePath({ a, b, fromSide: edge.fromSide, toSide: edge.toSide, route: edge.route });
+  for (const { edge, path } of drawnEdges) {
     const stroke = edge.color ? hex(edge.color)[0] : theme.edge;
     const dash = edge.dash === "dashed" || edge.dash === "animated" ? ' stroke-dasharray="6 4"' : "";
     out.push(`<path d="${path.d}" fill="none" stroke="${stroke}" stroke-width="${edge.weight}"${dash}/>`);

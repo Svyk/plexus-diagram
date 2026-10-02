@@ -1,3 +1,5 @@
+import { SHAPES } from "./shapes.js";
+
 export const PLEXUS_KEY = "plexus";
 export const SCHEMA_VERSION = 2;
 export const PALETTE = ["gray", "red", "orange", "yellow", "green", "teal", "blue", "indigo", "purple", "pink"];
@@ -31,7 +33,7 @@ export const NATIVE_SWATCHES = [
   "#000000", "#a7b6c2", "#ffffff", "#f55656", "#ff66a1", "#c274c2",
   "#ad99ff", "#48aff0", "#2ee6d6", "#3dcc91", "#ffb366", "#f2b824", "#c99765",
 ];
-export const ITEM_STYLE_KEYS = ["fontSize", "textColor", "align", "fill", "border"];
+export const ITEM_STYLE_KEYS = ["fontSize", "textColor", "align", "fill", "border", "shape"];
 export const SECTION_STYLE_KEYS = ["titleSize", "titleColor", "titleFill", "areaFill", "border"];
 
 const ARROW_TOKENS = Object.values(ARROWS);
@@ -132,6 +134,7 @@ export function normalizeItemLayout(plexus) {
     titleColor: section ? styleColor(p.titleColor) : undefined,
     titleFill: section ? styleColor(p.titleFill) : undefined,
     areaFill: section ? styleColor(p.areaFill) : undefined,
+    shape: type === "text" && SHAPES.includes(p.shape) ? p.shape : undefined,
   };
 }
 
@@ -195,6 +198,7 @@ export function serializeItemLayout(layout) {
   if (l.type === "section" && l.fit === false) out.fit = false;
   if (type === "text") {
     if (TEXT_LOOKS.includes(l.look)) out.look = l.look;
+    if (SHAPES.includes(l.shape)) out.shape = l.shape;
   } else if (CARD_LOOKS.includes(l.look)) out.look = l.look;
   if (BOARD_PATTERNS.includes(l.bg)) out.bg = l.bg;
   const tone = boardColor(l.bgColor);

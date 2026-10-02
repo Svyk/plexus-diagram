@@ -271,6 +271,17 @@ test("style keys: card font 10-48, section title, hex, animated dash, defaults",
   assert.equal(cssColor("#f55656", "line"), "#f55656");
 });
 
+test("shape is kept on text, and dropped for a card or an unknown name", () => {
+  assert.equal(normalizeItemLayout({ type: "text", shape: "diamond" }).shape, "diamond");
+  assert.equal(normalizeItemLayout({ type: "text", shape: "hexagon" }).shape, undefined);
+  assert.equal(normalizeItemLayout({ type: "card", shape: "diamond" }).shape, undefined);
+  assert.equal(normalizeItemLayout({ type: "section", shape: "ellipse" }).shape, undefined);
+  assert.equal(serializeItemLayout({ type: "text", x: 1, shape: "diamond" }).shape, "diamond");
+  assert.equal(serializeItemLayout({ type: "text", x: 1, shape: "hexagon" }).shape, undefined);
+  assert.equal(serializeItemLayout({ type: "card", x: 1, shape: "diamond" }).shape, undefined);
+  assert.equal(serializeItemLayout(normalizeItemLayout({ type: "text", shape: "cylinder" })).shape, "cylinder");
+});
+
 test("dailyPageTitle uses English month names and ordinal suffixes", () => {
   const t = (y, m, d) => dailyPageTitle(new Date(y, m - 1, d, 23, 59));
   assert.equal(t(2026, 9, 1), "September 1st, 2026");

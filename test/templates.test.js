@@ -43,13 +43,31 @@ test("TP-1: every starter clones under the write cap, keeps props, and rewrites 
         assert.ok(uids.has(px.from) && uids.has(px.to), `${id} edge ends`);
         assert.match(op.string, new RegExp(`\\(\\(${px.from}\\)\\).*\\(\\(${px.to}\\)\\)`));
       }
-      if (px?.type === "section" || px?.type === "card") {
+      if (px?.type === "section" || px?.type === "card" || px?.type === "text") {
         assert.equal(typeof px.x, "number");
         assert.equal(typeof px.y, "number");
       }
     }
     assert.deepEqual(templateUndo(plan.rootUid), { op: "delete", uid: plan.rootUid });
   }
+});
+
+test("TP-6: process flow is six shaped texts with Yes and No", () => {
+  seq = 0;
+  const plan = planTemplate("process", { genUid, parentUid: "page" });
+  const texts = plan.creates.filter((op) => op.props?.plexus?.type === "text");
+  assert.deepEqual(texts.map((op) => [op.string, op.props.plexus.shape]), [
+    ["Receiving", "parallelogram"],
+    ["Storage", "cylinder"],
+    ["In spec?", "diamond"],
+    ["Blending", "rectangle"],
+    ["Filling", "rounded"],
+    ["Packing", "ellipse"],
+  ]);
+  const edges = plan.creates.filter((op) => op.props?.plexus?.type === "edge").map((op) => op.string);
+  assert.ok(edges.some((s) => s.includes(" Yes ")), edges.join(" | "));
+  assert.ok(edges.some((s) => s.includes(" No ")), edges.join(" | "));
+  assert.equal(plan.creates[0].string, boardString("Process flow"));
 });
 
 test("TP-1: a template over 45 blocks is split, and an outside ref stays", () => {

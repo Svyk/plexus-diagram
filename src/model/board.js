@@ -156,6 +156,7 @@ export function buildBoard(pulled, { defaults } = {}) {
         sectionDefaults: type === "section" ? sectionDefaults : undefined,
         pinned: layout.pinned,
         look: type === "card" ? cardLook(kind, layout.look) : (type === "text" ? layout.look : undefined),
+        ...(type === "text" && layout.shape ? { shape: layout.shape } : {}),
         open: type === "card" ? child[":block/open"] !== false : undefined,
         autofit: !(type === "section" && layout.fit === false),
         title,
@@ -269,8 +270,11 @@ export function displayRects(board, stored) {
   for (const [uid, r] of base) {
     if (!r || anchorUid(board, uid) !== uid) continue;
     const item = board.items.get(uid);
-    if (item?.type === "section" && item.collapsed) out.set(uid, { x: r.x, y: r.y, w: r.w, h: COLLAPSED_SECTION_H });
-    else out.set(uid, { x: r.x, y: r.y, w: r.w, h: r.h });
+    const next = item?.type === "section" && item.collapsed
+      ? { x: r.x, y: r.y, w: r.w, h: COLLAPSED_SECTION_H }
+      : { x: r.x, y: r.y, w: r.w, h: r.h };
+    if (item?.type === "text" && item.shape) next.shape = item.shape;
+    out.set(uid, next);
   }
   return out;
 }
@@ -291,7 +295,9 @@ export function worldRects(board) {
   const rects = new Map();
   for (const item of board.items.values()) {
     const p = item.parentUid === board.uid ? null : rects.get(item.parentUid);
-    rects.set(item.uid, { x: item.x + (p?.x ?? 0), y: item.y + (p?.y ?? 0), w: item.w, h: item.h });
+    const rect = { x: item.x + (p?.x ?? 0), y: item.y + (p?.y ?? 0), w: item.w, h: item.h };
+    if (item.type === "text" && item.shape) rect.shape = item.shape;
+    rects.set(item.uid, rect);
   }
   return rects;
 }
@@ -308,7 +314,9 @@ export function worldRect(board, uid, rects) {
     y += parent.y;
     parent = board.items.get(parent.parentUid);
   }
-  return { x, y, w: item.w, h: item.h };
+  const rect = { x, y, w: item.w, h: item.h };
+  if (item.type === "text" && item.shape) rect.shape = item.shape;
+  return rect;
 }
 
 export function descendantsOf(board, uid) {

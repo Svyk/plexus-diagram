@@ -296,6 +296,15 @@ function bestSnap(values, targets, threshold) {
 var xs = (r) => [r.x, r.x + r.w / 2, r.x + r.w];
 var ys = (r) => [r.y, r.y + r.h / 2, r.y + r.h];
 var EPS = 1e-6;
+var GRID_PITCH = 24;
+function snapToGrid(rect, pitch = GRID_PITCH, threshold = pitch) {
+  const axis = (value) => {
+    if (!pitch) return 0;
+    const diff = Math.round(value / pitch) * pitch - value;
+    return Math.abs(diff) <= threshold ? diff : 0;
+  };
+  return { dx: axis(rect.x), dy: axis(rect.y) };
+}
 function snapMove(moving, others, threshold) {
   const dx = bestSnap(xs(moving), others.flatMap(xs), threshold);
   const dy = bestSnap(ys(moving), others.flatMap(ys), threshold);
@@ -352,7 +361,7 @@ function distributeRects(list, axis) {
   });
 }
 var MIN_GRID_PITCH = 8;
-function gridBackground(vp, style, base = 24) {
+function gridBackground(vp, style, base = GRID_PITCH) {
   if (style === "plain") return null;
   let size = base * vp.zoom;
   while (size > 0 && size < MIN_GRID_PITCH) size *= 5;
@@ -5729,12 +5738,21 @@ function createInteractions({ actions, settings } = {}) {
       let dx = sdx / z;
       let dy = sdy / z;
       let guides = [];
-      if (g.bounds && g.others.length) {
-        const moving = { x: g.bounds.x + dx, y: g.bounds.y + dy, w: g.bounds.w, h: g.bounds.h };
-        const snap = snapMove(moving, g.others, SNAP_PX / z);
-        dx += snap.dx;
-        dy += snap.dy;
-        guides = snap.guides;
+      if (!ev.alt && g.bounds) {
+        const threshold = SNAP_PX / z;
+        if (g.others.length) {
+          const moving = { x: g.bounds.x + dx, y: g.bounds.y + dy, w: g.bounds.w, h: g.bounds.h };
+          const snap = snapMove(moving, g.others, threshold);
+          dx += snap.dx;
+          dy += snap.dy;
+          guides = snap.guides;
+        }
+        if (setting("snap-grid", false)) {
+          const moving = { x: g.bounds.x + dx, y: g.bounds.y + dy, w: g.bounds.w, h: g.bounds.h };
+          const grid = snapToGrid(moving, GRID_PITCH, threshold);
+          if (!guides.some((line) => line.x1 === line.x2)) dx += grid.dx;
+          if (!guides.some((line) => line.y1 === line.y2)) dy += grid.dy;
+        }
       }
       g.dx = dx;
       g.dy = dy;
@@ -14299,6 +14317,7 @@ var SETTING_IDS = Object.freeze({
   showMinimap: "show-minimap",
   controlsPosition: "controls-position",
   snapGuides: "snap-guides",
+  snapGrid: "snap-grid",
   grid: "grid",
   defaultCardWidth: "default-card-width",
   defaultCardHeight: "default-card-height",
@@ -14321,6 +14340,7 @@ var DEFAULTS = Object.freeze({
   [SETTING_IDS.showMinimap]: true,
   [SETTING_IDS.controlsPosition]: "rail",
   [SETTING_IDS.snapGuides]: true,
+  [SETTING_IDS.snapGrid]: false,
   [SETTING_IDS.grid]: "dots",
   [SETTING_IDS.defaultCardWidth]: 280,
   [SETTING_IDS.defaultCardHeight]: 160,
@@ -14439,6 +14459,7 @@ function createSettingsPanel() {
       switchRow(SETTING_IDS.showMinimap, "Show minimap", "Show the minimap."),
       selectRow(SETTING_IDS.controlsPosition, "Controls", "Rail is the vertical control stack. Bar is the 1.2 horizontal zoom group.", ["rail", "bar"]),
       switchRow(SETTING_IDS.snapGuides, "Snap guides", "Align dragged cards to neighbours and show guides."),
+      switchRow(SETTING_IDS.snapGrid, "Snap to grid", "Snap a dragged card to the 24px grid. Off unless you turn it on. Alt while dragging skips both snaps."),
       selectRow(SETTING_IDS.grid, "Default board background: pattern", "Background pattern for boards that do not set their own. A board can override it from the Background button.", ["dots", "lines", "grid", "plain"]),
       selectRow(SETTING_IDS.boardTone, "Default board background: tone", "Background tone for boards that do not set their own.", BOARD_TONES2),
       selectRow(SETTING_IDS.mapZoom, "Map view below (zoom)", "Below this zoom level cards collapse to title-only tiles.", MAP_ZOOMS),

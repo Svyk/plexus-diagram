@@ -273,6 +273,33 @@ test("move snaps to a neighbour edge within 6 screen px", () => {
   assert.equal(dy, 0, "4 px vertical drift snaps back to Beta's top edge");
 });
 
+test("snap to grid is off by default and snaps a near corner when turned on", () => {
+  const item = { kind: "item", uid: "cardAAAA1", part: "body" };
+  const off = harness();
+  off.ctl.handle(off.ev("pointerdown", { x: 10, y: 10 }, { target: item }));
+  off.ctl.handle(off.ev("pointermove", { x: 10, y: 36 }, { target: item }));
+  assert.equal(off.named("commitMove").length, 0, "a drag writes nothing until pointerup");
+  off.ctl.handle(off.ev("pointerup", { x: 10, y: 36 }, { target: item }));
+  assert.deepEqual(off.named("commitMove")[0].slice(2), [0, 26]);
+
+  const on = harness({ settings: { "snap-grid": true } });
+  on.ctl.handle(on.ev("pointerdown", { x: 10, y: 10 }, { target: item }));
+  on.ctl.handle(on.ev("pointermove", { x: 10, y: 36 }, { target: item }));
+  assert.equal(on.named("commitMove").length, 0);
+  on.ctl.handle(on.ev("pointerup", { x: 10, y: 36 }, { target: item }));
+  assert.deepEqual(on.named("commitMove")[0].slice(2), [0, 24], "26px lands on the 24px grid");
+});
+
+test("Alt during a drag disables neighbour and grid snap", () => {
+  const item = { kind: "item", uid: "cardAAAA1", part: "body" };
+  const h = harness({ settings: { "snap-grid": true } });
+  h.ctl.handle(h.ev("pointerdown", { x: 10, y: 10 }, { target: item }));
+  h.ctl.handle(h.ev("pointermove", { x: 60, y: 14 }, { target: item, alt: true }));
+  h.ctl.handle(h.ev("pointerup", { x: 60, y: 14 }, { target: item, alt: true }));
+  assert.deepEqual(h.named("commitMove")[0].slice(2), [50, 4]);
+  assert.ok(h.named("showGuides").every((c) => c[1].length === 0));
+});
+
 test("connect: drop on another item adds one edge with sides; drop on the same pair selects the existing edge", async () => {
   const h = harness();
   h.ctl.handle(h.ev("pointerdown", { x: 200, y: 50 }, { target: { kind: "port", uid: "cardAAAA1", side: "right" } }));

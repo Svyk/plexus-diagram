@@ -32,7 +32,7 @@
 
 import { DEFAULT_BOARD_CARD, DEFAULT_SIZES, MIN_SIZES } from "../model/schema.js";
 import { descendantsOf, findEdge, hitTest, itemsInRect, outlineOrder, topLevelOf, boundsOf } from "../model/board.js";
-import { nearestInDirection, nearestSide, snapMove, zoomAt } from "../model/geometry.js";
+import { GRID_PITCH, nearestInDirection, nearestSide, snapMove, snapToGrid, zoomAt } from "../model/geometry.js";
 
 export const TOOL_KEYS = { v: "select", h: "hand", n: "card", t: "text", g: "section", w: "board", c: "connect" };
 export const TOOLS = ["select", "hand", "card", "text", "section", "board", "connect"];
@@ -266,12 +266,22 @@ export function createInteractions({ actions, settings } = {}) {
       let dx = sdx / z;
       let dy = sdy / z;
       let guides = [];
-      if (g.bounds && g.others.length) {
-        const moving = { x: g.bounds.x + dx, y: g.bounds.y + dy, w: g.bounds.w, h: g.bounds.h };
-        const snap = snapMove(moving, g.others, SNAP_PX / z);
-        dx += snap.dx;
-        dy += snap.dy;
-        guides = snap.guides;
+      // Alt while the drag is moving turns both snaps off. Alt at pointer-down is still duplicate.
+      if (!ev.alt && g.bounds) {
+        const threshold = SNAP_PX / z;
+        if (g.others.length) {
+          const moving = { x: g.bounds.x + dx, y: g.bounds.y + dy, w: g.bounds.w, h: g.bounds.h };
+          const snap = snapMove(moving, g.others, threshold);
+          dx += snap.dx;
+          dy += snap.dy;
+          guides = snap.guides;
+        }
+        if (setting("snap-grid", false)) {
+          const moving = { x: g.bounds.x + dx, y: g.bounds.y + dy, w: g.bounds.w, h: g.bounds.h };
+          const grid = snapToGrid(moving, GRID_PITCH, threshold);
+          if (!guides.some((line) => line.x1 === line.x2)) dx += grid.dx;
+          if (!guides.some((line) => line.y1 === line.y2)) dy += grid.dy;
+        }
       }
       g.dx = dx;
       g.dy = dy;

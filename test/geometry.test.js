@@ -4,7 +4,7 @@ import {
   screenToWorld, worldToScreen, clampZoom, zoomAt, fitViewport, visibleWorldRect, lodForZoom,
   center, inflate, unionRect, rectsIntersect, rectContains, pointInRect,
   sidePoint, nearestSide, autoSides, edgePath, arrowHeadPath, arrowSize,
-  snapMove, alignRects, distributeRects, gridBackground, lodTier, lodFonts, nearestInDirection,
+  snapMove, snapToGrid, alignRects, distributeRects, gridBackground, lodTier, lodFonts, nearestInDirection,
 } from "../src/model/geometry.js";
 
 const near = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) < eps, `${a} != ${b}`);
@@ -191,6 +191,15 @@ test("snapMove snaps within threshold, not beyond, and emits guides", () => {
   assert.ok(mid2.guides.some((g) => g.y1 === 225 && g.y2 === 225));
   const none = snapMove({ x: 0, y: 0, w: 10, h: 10 }, [], 6);
   assert.deepEqual(none, { dx: 0, dy: 0, guides: [] });
+});
+
+test("snapToGrid snaps a corner within threshold and leaves a far corner", () => {
+  const near = snapToGrid({ x: 20, y: 3, w: 80, h: 40 }, 24, 6);
+  assert.deepEqual(near, { dx: 4, dy: -3 });
+  const far = snapToGrid({ x: 10, y: 10, w: 80, h: 40 }, 24, 6);
+  assert.deepEqual(far, { dx: 0, dy: 0 });
+  const on = snapToGrid({ x: 48, y: 24, w: 10, h: 10 }, 24, 6);
+  assert.deepEqual(on, { dx: 0, dy: 0 });
 });
 
 test("alignRects each mode", () => {

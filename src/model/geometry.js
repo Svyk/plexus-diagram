@@ -322,6 +322,19 @@ const xs = (r) => [r.x, r.x + r.w / 2, r.x + r.w];
 const ys = (r) => [r.y, r.y + r.h / 2, r.y + r.h];
 const EPS = 1e-6;
 
+export const GRID_PITCH = 24;
+
+// Snap the top-left corner onto the world grid when it is already within threshold.
+// An axis farther than that stays where the drag put it.
+export function snapToGrid(rect, pitch = GRID_PITCH, threshold = pitch) {
+  const axis = (value) => {
+    if (!pitch) return 0;
+    const diff = Math.round(value / pitch) * pitch - value;
+    return Math.abs(diff) <= threshold ? diff : 0;
+  };
+  return { dx: axis(rect.x), dy: axis(rect.y) };
+}
+
 export function snapMove(moving, others, threshold) {
   const dx = bestSnap(xs(moving), others.flatMap(xs), threshold);
   const dy = bestSnap(ys(moving), others.flatMap(ys), threshold);
@@ -382,7 +395,7 @@ export function distributeRects(list, axis) {
 
 const MIN_GRID_PITCH = 8;
 
-export function gridBackground(vp, style, base = 24) {
+export function gridBackground(vp, style, base = GRID_PITCH) {
   if (style === "plain") return null;
   // Zoomed far out the pitch collapses into a grey moire; coarsen it by 5x steps (a lattice of the same world grid).
   let size = base * vp.zoom;

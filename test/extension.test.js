@@ -52,7 +52,7 @@ test("settings panel follows spec section 6 ids, defaults and row types", () => 
   assert.deepEqual(ids.sort(), Object.keys(settingsDefaults()).sort());
   assert.deepEqual(ids.sort(), [
     "collapse-outline", "default-card-height", "default-card-look", "default-card-width", "disable-on-mobile", "enable-shortcuts", "enabled",
-    "controls-position", "fullscreen-on-zoom", "graph-links", "grid", "show-minimap", "show-version-badge", "snap-guides", "wheel",
+    "controls-position", "fullscreen-on-zoom", "graph-links", "grid", "show-minimap", "show-version-badge", "snap-grid", "snap-guides", "wheel",
     "auto-fit-sections", "board-tone", "map-zoom", "show-card-badges", "space-out",
   ].sort());
   const byId = Object.fromEntries(panel.settings.map((row) => [row.id, row]));
@@ -70,6 +70,8 @@ test("settings panel follows spec section 6 ids, defaults and row types", () => 
   assert.equal(defaults["default-card-width"], 280);
   assert.equal(defaults["default-card-height"], 160);
   assert.equal(defaults["disable-on-mobile"], true);
+  assert.equal(defaults["snap-guides"], true);
+  assert.equal(defaults["snap-grid"], false);
 });
 
 test("readSettings coerces stored values and falls back to defaults", () => {

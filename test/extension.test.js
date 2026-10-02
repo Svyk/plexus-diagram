@@ -51,12 +51,13 @@ test("settings panel follows spec section 6 ids, defaults and row types", () => 
   const ids = panel.settings.map((row) => row.id);
   assert.deepEqual(ids.sort(), Object.keys(settingsDefaults()).sort());
   assert.deepEqual(ids.sort(), [
-    "collapse-outline", "default-card-height", "default-card-look", "default-card-width", "disable-on-mobile", "enable-shortcuts", "enabled",
+    "attr-styles", "collapse-outline", "default-card-height", "default-card-look", "default-card-width", "disable-on-mobile", "enable-shortcuts", "enabled",
     "controls-position", "fullscreen-on-zoom", "graph-links", "grid", "show-minimap", "show-version-badge", "snap-grid", "snap-guides", "wheel",
     "auto-fit-sections", "board-tone", "map-zoom", "show-card-badges", "space-out",
   ].sort());
   const byId = Object.fromEntries(panel.settings.map((row) => [row.id, row]));
   assert.equal(byId["graph-links"].action.type, "select");
+  assert.equal(byId["attr-styles"].action.type, "input");
   assert.deepEqual(byId["graph-links"].action.items, ["all", "attributes", "off"]);
   assert.equal(byId.wheel.action.type, "select");
   assert.equal(byId.grid.action.type, "select");
@@ -65,6 +66,7 @@ test("settings panel follows spec section 6 ids, defaults and row types", () => 
   const defaults = settingsDefaults();
   assert.equal(defaults["fullscreen-on-zoom"], true);
   assert.equal(defaults["graph-links"], "all");
+  assert.equal(defaults["attr-styles"], "");
   assert.equal(defaults.wheel, "pan");
   assert.equal(defaults.grid, "dots");
   assert.equal(defaults["default-card-width"], 280);

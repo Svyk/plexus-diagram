@@ -2193,6 +2193,58 @@ test("RG-2: a page card drawer drags one mention out and the source string stays
   }
 });
 
+test("RG-4: a Causes edge takes its style and the legend hides it without a write", async () => {
+  const f = mountFixture({
+    settings: { "attr-styles": '{"Causes":{"color":"red","dash":"solid"}}' },
+  });
+  try {
+    await f.flush();
+    const before = f.session.mutations.length;
+    f.session.links = [
+      {
+        key: "cardAAAA1->cardBBBB2",
+        from: "cardAAAA1",
+        to: "cardBBBB2",
+        kind: "attr",
+        labels: ["Causes"],
+        color: "teal",
+        sources: [{ uid: "src", string: "Causes:: [[Beta]]" }],
+      },
+      {
+        key: "cardAAAA1->cardDDDD4",
+        from: "cardAAAA1",
+        to: "cardDDDD4",
+        kind: "ref",
+        labels: ["mentions"],
+        color: "gray",
+        sources: [],
+      },
+    ];
+    f.session.emit("links");
+    await f.flush();
+    const nodes = () => [...f.root.querySelectorAll('[data-key="cardAAAA1->cardBBBB2"]')];
+    const line = nodes().find((n) => n.tagName === "G");
+    const label = nodes().find((n) => n.classList.contains("pxd-label--link"));
+    assert.ok(line?.classList.contains("pxd-c-red"));
+    assert.ok(line?.classList.contains("pxd-link--solid"));
+    assert.equal(label?.textContent, "Causes");
+    const row = f.root.querySelector('.pxd-legend__row[data-attr="Causes"]');
+    assert.equal(row?.textContent, "Causes");
+    assert.equal(row?.getAttribute("aria-pressed"), "true");
+    f.stub.dispatch(row, "click", { button: 0 });
+    await f.flush();
+    assert.equal(nodes().length, 0);
+    assert.ok(f.root.querySelector('[data-key="cardAAAA1->cardDDDD4"]'));
+    assert.equal(f.root.querySelector('.pxd-legend__row[data-attr="Causes"]')?.getAttribute("aria-pressed"), "false");
+    assert.equal(f.session.links[0].color, "teal");
+    assert.equal(f.session.mutations.length, before);
+    assert.equal(f.session.mutations.some((entry) => entry[0] === "writeToGraph"), false);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
 test("RG-3: expand neighbours places a ring of page cards and writes no edges", async () => {
   const titles = ["N1", "N2", "N3", "N4", "N5", "Beta", "bad]]"];
   const f = mountFixture({

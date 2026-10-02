@@ -11,6 +11,7 @@ import { boundsOf, buildBoard, connectedUids, containerAt, descendantsOf, displa
 import { copyLinkText, hashFromUrl, pageUidFromHash, pxdTarget } from "../model/deeplink.js";
 import { findOnBoard } from "../model/find.js";
 import { readMindPreset, writeMindPreset } from "../model/mindmap.js";
+import { attrLegend, parseAttrStyles, styleAttrLinks } from "../model/attr-styles.js";
 import { neighborLayout } from "../model/neighbors.js";
 import { isQueryString, queryResultLayout, queryResultUids } from "../model/query.js";
 import {
@@ -1713,6 +1714,53 @@ export function mountBoardView({
     session.setLinkMode?.(linkMode);
   };
 
+  // Legend visibility is view state. Hiding a name filters the paint; it does not write.
+  const hiddenAttrs = new Set();
+  const legend = el("div", "pxd-legend pxd-chrome", root);
+  legend.hidden = true;
+  legend.setAttribute("hidden", "");
+  const attrStyleMap = () => parseAttrStyles(setting("attr-styles", ""));
+  const paintedLinks = () => styleAttrLinks(session.links || [], attrStyleMap(), hiddenAttrs);
+  const paintLegend = () => {
+    const rows = attrLegend(session.links || [], hiddenAttrs, attrStyleMap());
+    legend.replaceChildren();
+    if (!rows.length) {
+      legend.hidden = true;
+      legend.setAttribute("hidden", "");
+      return;
+    }
+    legend.hidden = false;
+    legend.removeAttribute("hidden");
+    for (const row of rows) {
+      const btn = doc.createElement("button");
+      btn.type = "button";
+      btn.className = `pxd-legend__row pxd-c-${row.color}${row.on ? "" : " is-off"}`;
+      btn.setAttribute("data-attr", row.name);
+      btn.setAttribute("aria-pressed", row.on ? "true" : "false");
+      btn.title = row.on ? `Hide ${row.name}` : `Show ${row.name}`;
+      btn.textContent = row.name;
+      legend.append(btn);
+    }
+  };
+  listen(legend, "click", (ev) => {
+    const btn = ev.target?.closest?.(".pxd-legend__row");
+    if (!btn || disposed) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    const name = btn.getAttribute("data-attr") || "";
+    if (!name) return;
+    if (hiddenAttrs.has(name)) hiddenAttrs.delete(name);
+    else hiddenAttrs.add(name);
+    if (selection.link) {
+      const current = (session.links || []).find((l) => l.key === selection.link);
+      const shown = current?.kind === "attr" ? current.labels?.[0] : "";
+      if (shown && hiddenAttrs.has(shown)) selection.link = null;
+    }
+    dirty.links = true;
+    dirty.selection = true;
+    schedule();
+  });
+
   // ------------------------------------------------------------ board search
   const nestedBoards = (b) => {
     const out = [];
@@ -1969,8 +2017,9 @@ export function mountBoardView({
         parentOf: (u) => (top.has(u) && eff.get(u) ? containerAt(b, center(eff.get(u)), { exclude: set, rects: eff }) : b.items.get(u)?.parentUid),
       });
       for (const u of grown) set.add(u);
-      const linkKeys = new Set((session.links || []).filter((l) => set.has(l.from) || set.has(l.to)).map((l) => l.key));
-      edgesR.update({ board: b, edgeUids: edgesTouching(b, set), rects: paintRects(), zoom: vp.zoom, linkKeys, links: session.links || [] });
+      const links = paintedLinks();
+      const linkKeys = new Set(links.filter((l) => set.has(l.from) || set.has(l.to)).map((l) => l.key));
+      edgesR.update({ board: b, edgeUids: edgesTouching(b, set), rects: paintRects(), zoom: vp.zoom, linkKeys, links });
       dirty.minimap = true;
       schedule();
     },
@@ -1981,8 +2030,9 @@ export function mountBoardView({
       const set = new Set(list.map((r) => r.uid));
       previewFit(list.map((r) => r.uid), { skip: new Set(list.filter((r) => b.items.get(r.uid)?.type === "section").map((r) => r.uid)) });
       for (const u of grown) set.add(u);
-      const linkKeys = new Set((session.links || []).filter((l) => set.has(l.from) || set.has(l.to)).map((l) => l.key));
-      edgesR.update({ board: b, edgeUids: edgesTouching(b, set), rects: paintRects(), zoom: vp.zoom, linkKeys, links: session.links || [] });
+      const links = paintedLinks();
+      const linkKeys = new Set(links.filter((l) => set.has(l.from) || set.has(l.to)).map((l) => l.key));
+      edgesR.update({ board: b, edgeUids: edgesTouching(b, set), rects: paintRects(), zoom: vp.zoom, linkKeys, links });
       dirty.minimap = true;
       schedule();
     },
@@ -2548,10 +2598,13 @@ export function mountBoardView({
       if (edgesDue) {
         // An edge-only change used to call update(), which moves the path and skips
         // paintEdge, so dash and color never reached the DOM until a full render.
-        edgesR.render({ board: b, rects: shown, links: session.links || [], coveredEdges: session.coveredEdges || new Set(), selection, zoom: vp.zoom, dirty: dirty.all || dirty.structural || dirty.links ? null : dirty.edges });
+        const links = paintedLinks();
+        edgesR.render({ board: b, rects: shown, links, coveredEdges: session.coveredEdges || new Set(), selection, zoom: vp.zoom, dirty: dirty.all || dirty.structural || dirty.links ? null : dirty.edges });
+        paintLegend();
       }
       if (itemsMoveEdges) {
-        edgesR.update({ board: b, edgeUids: edgesTouching(b, dirty.items), rects: shown, zoom: vp.zoom, linkKeys: new Set((session.links || []).map((l) => l.key)), links: session.links || [] });
+        const links = paintedLinks();
+        edgesR.update({ board: b, edgeUids: edgesTouching(b, dirty.items), rects: shown, zoom: vp.zoom, linkKeys: new Set(links.map((l) => l.key)), links });
       }
     }
     if (dirty.viewport) {
@@ -2749,6 +2802,7 @@ export function mountBoardView({
       if (minimapNow !== minimapBefore) chrome.minimap.setVisible(minimapNow);
       chrome.toolbar.applyControls?.();
       itemsR.setShowBadges(flag("show-card-badges", true));
+      dirty.links = true;
       scheduleContent();
       scheduleBadges(0);
       dirty.viewport = true;

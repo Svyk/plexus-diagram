@@ -6239,6 +6239,73 @@ ${plainText(edge.string, 500)}`.toLowerCase();
   return hits;
 }
 
+// src/model/attr-styles.js
+var ATTR_DASHES = ["solid", "dashed", "dotted"];
+function parseAttrStyles(raw) {
+  let obj = raw;
+  if (typeof raw === "string") {
+    const text2 = raw.trim();
+    if (!text2) return {};
+    try {
+      obj = JSON.parse(text2);
+    } catch {
+      return {};
+    }
+  }
+  if (!obj || typeof obj !== "object" || Array.isArray(obj)) return {};
+  const out = {};
+  for (const [name, spec] of Object.entries(obj)) {
+    const key = String(name).trim();
+    if (!key || !spec || typeof spec !== "object" || Array.isArray(spec)) continue;
+    const row2 = {};
+    if (PALETTE.includes(spec.color)) row2.color = spec.color;
+    if (ATTR_DASHES.includes(spec.dash)) row2.dash = spec.dash;
+    if (row2.color || row2.dash) out[key] = row2;
+  }
+  return out;
+}
+function attrName(link) {
+  return link?.kind === "attr" ? link.labels?.[0] || "" : "";
+}
+function styleAttrLinks(links, styles, hidden) {
+  const hide = hidden instanceof Set ? hidden : new Set(hidden || []);
+  const map = styles && typeof styles === "object" && !Array.isArray(styles) ? styles : {};
+  const out = [];
+  for (const link of links || []) {
+    const name = attrName(link);
+    if (name && hide.has(name)) continue;
+    const spec = name ? map[name] : null;
+    if (!spec) {
+      out.push(link);
+      continue;
+    }
+    const next = { ...link };
+    if (spec.color) next.color = spec.color;
+    if (spec.dash) next.dash = spec.dash;
+    out.push(next);
+  }
+  return out;
+}
+function attrLegend(links, hidden, styles) {
+  const hide = hidden instanceof Set ? hidden : new Set(hidden || []);
+  const map = styles && typeof styles === "object" && !Array.isArray(styles) ? styles : {};
+  const seen = /* @__PURE__ */ new Set();
+  const rows = [];
+  for (const link of links || []) {
+    const name = attrName(link);
+    if (!name || seen.has(name)) continue;
+    seen.add(name);
+    const spec = map[name];
+    rows.push({
+      name,
+      color: spec?.color || link.color || "gray",
+      dash: spec?.dash || "dashed",
+      on: !hide.has(name)
+    });
+  }
+  return rows;
+}
+
 // src/model/export.js
 var HEX = {
   light: {
@@ -10016,7 +10083,8 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     rec.from = link.from;
     rec.to = link.to;
     const dim = dimmed(link);
-    setClass(rec.g, `pxd-link pxd-c-${link.color || "gray"}${selected ? " pxd-link--selected" : ""}${dim ? " pxd-edge--dim" : ""}`);
+    const dash = link.dash === "solid" || link.dash === "dashed" || link.dash === "dotted" ? ` pxd-link--${link.dash}` : "";
+    setClass(rec.g, `pxd-link pxd-c-${link.color || "gray"}${dash}${selected ? " pxd-link--selected" : ""}${dim ? " pxd-edge--dim" : ""}`);
     rec.label.className = `pxd-label pxd-label--link pxd-c-${link.color || "gray"}${selected ? " pxd-label--selected" : ""}${dim ? " pxd-label--dim" : ""}`;
     rec.label.textContent = link.labels?.[0] || "mentions";
     if (!a || !b) {
@@ -15321,6 +15389,51 @@ function mountBoardView({
     chrome.toolbar.setLinkMode(linkMode);
     session.setLinkMode?.(linkMode);
   };
+  const hiddenAttrs = /* @__PURE__ */ new Set();
+  const legend = el("div", "pxd-legend pxd-chrome", root);
+  legend.hidden = true;
+  legend.setAttribute("hidden", "");
+  const attrStyleMap = () => parseAttrStyles(setting("attr-styles", ""));
+  const paintedLinks = () => styleAttrLinks(session.links || [], attrStyleMap(), hiddenAttrs);
+  const paintLegend = () => {
+    const rows = attrLegend(session.links || [], hiddenAttrs, attrStyleMap());
+    legend.replaceChildren();
+    if (!rows.length) {
+      legend.hidden = true;
+      legend.setAttribute("hidden", "");
+      return;
+    }
+    legend.hidden = false;
+    legend.removeAttribute("hidden");
+    for (const row2 of rows) {
+      const btn = doc.createElement("button");
+      btn.type = "button";
+      btn.className = `pxd-legend__row pxd-c-${row2.color}${row2.on ? "" : " is-off"}`;
+      btn.setAttribute("data-attr", row2.name);
+      btn.setAttribute("aria-pressed", row2.on ? "true" : "false");
+      btn.title = row2.on ? `Hide ${row2.name}` : `Show ${row2.name}`;
+      btn.textContent = row2.name;
+      legend.append(btn);
+    }
+  };
+  listen(legend, "click", (ev) => {
+    const btn = ev.target?.closest?.(".pxd-legend__row");
+    if (!btn || disposed) return;
+    ev.preventDefault();
+    ev.stopPropagation();
+    const name = btn.getAttribute("data-attr") || "";
+    if (!name) return;
+    if (hiddenAttrs.has(name)) hiddenAttrs.delete(name);
+    else hiddenAttrs.add(name);
+    if (selection.link) {
+      const current = (session.links || []).find((l) => l.key === selection.link);
+      const shown = current?.kind === "attr" ? current.labels?.[0] : "";
+      if (shown && hiddenAttrs.has(shown)) selection.link = null;
+    }
+    dirty.links = true;
+    dirty.selection = true;
+    schedule();
+  });
   const nestedBoards = (b) => {
     const out = [];
     if (!b || typeof host?.pullBoard !== "function") return out;
@@ -15598,8 +15711,9 @@ function mountBoardView({
         parentOf: (u) => top.has(u) && eff.get(u) ? containerAt(b, center(eff.get(u)), { exclude: set, rects: eff }) : b.items.get(u)?.parentUid
       });
       for (const u of grown) set.add(u);
-      const linkKeys = new Set((session.links || []).filter((l) => set.has(l.from) || set.has(l.to)).map((l) => l.key));
-      edgesR.update({ board: b, edgeUids: edgesTouching(b, set), rects: paintRects(), zoom: vp.zoom, linkKeys, links: session.links || [] });
+      const links = paintedLinks();
+      const linkKeys = new Set(links.filter((l) => set.has(l.from) || set.has(l.to)).map((l) => l.key));
+      edgesR.update({ board: b, edgeUids: edgesTouching(b, set), rects: paintRects(), zoom: vp.zoom, linkKeys, links });
       dirty.minimap = true;
       schedule();
     },
@@ -15610,8 +15724,9 @@ function mountBoardView({
       const set = new Set(list.map((r) => r.uid));
       previewFit(list.map((r) => r.uid), { skip: new Set(list.filter((r) => b.items.get(r.uid)?.type === "section").map((r) => r.uid)) });
       for (const u of grown) set.add(u);
-      const linkKeys = new Set((session.links || []).filter((l) => set.has(l.from) || set.has(l.to)).map((l) => l.key));
-      edgesR.update({ board: b, edgeUids: edgesTouching(b, set), rects: paintRects(), zoom: vp.zoom, linkKeys, links: session.links || [] });
+      const links = paintedLinks();
+      const linkKeys = new Set(links.filter((l) => set.has(l.from) || set.has(l.to)).map((l) => l.key));
+      edgesR.update({ board: b, edgeUids: edgesTouching(b, set), rects: paintRects(), zoom: vp.zoom, linkKeys, links });
       dirty.minimap = true;
       schedule();
     },
@@ -16228,10 +16343,13 @@ function mountBoardView({
     if (edgesDue || itemsMoveEdges) {
       const shown = paintRects();
       if (edgesDue) {
-        edgesR.render({ board: b, rects: shown, links: session.links || [], coveredEdges: session.coveredEdges || /* @__PURE__ */ new Set(), selection, zoom: vp.zoom, dirty: dirty.all || dirty.structural || dirty.links ? null : dirty.edges });
+        const links = paintedLinks();
+        edgesR.render({ board: b, rects: shown, links, coveredEdges: session.coveredEdges || /* @__PURE__ */ new Set(), selection, zoom: vp.zoom, dirty: dirty.all || dirty.structural || dirty.links ? null : dirty.edges });
+        paintLegend();
       }
       if (itemsMoveEdges) {
-        edgesR.update({ board: b, edgeUids: edgesTouching(b, dirty.items), rects: shown, zoom: vp.zoom, linkKeys: new Set((session.links || []).map((l) => l.key)), links: session.links || [] });
+        const links = paintedLinks();
+        edgesR.update({ board: b, edgeUids: edgesTouching(b, dirty.items), rects: shown, zoom: vp.zoom, linkKeys: new Set(links.map((l) => l.key)), links });
       }
     }
     if (dirty.viewport) {
@@ -16469,6 +16587,7 @@ function mountBoardView({
       if (minimapNow !== minimapBefore) chrome.minimap.setVisible(minimapNow);
       chrome.toolbar.applyControls?.();
       itemsR.setShowBadges(flag("show-card-badges", true));
+      dirty.links = true;
       scheduleContent();
       scheduleBadges(0);
       dirty.viewport = true;
@@ -16575,6 +16694,7 @@ var SETTING_IDS = Object.freeze({
   enabled: "enabled",
   fullscreenOnZoom: "fullscreen-on-zoom",
   graphLinks: "graph-links",
+  attrStyles: "attr-styles",
   wheel: "wheel",
   showMinimap: "show-minimap",
   controlsPosition: "controls-position",
@@ -16598,6 +16718,7 @@ var DEFAULTS = Object.freeze({
   [SETTING_IDS.enabled]: true,
   [SETTING_IDS.fullscreenOnZoom]: true,
   [SETTING_IDS.graphLinks]: "all",
+  [SETTING_IDS.attrStyles]: "",
   [SETTING_IDS.wheel]: "pan",
   [SETTING_IDS.showMinimap]: true,
   [SETTING_IDS.controlsPosition]: "rail",
@@ -16717,6 +16838,7 @@ function createSettingsPanel() {
       switchRow(SETTING_IDS.enabled, "Enabled", "Master overlay toggle."),
       switchRow(SETTING_IDS.fullscreenOnZoom, "Fullscreen on zoom", "Open enhanced diagrams full screen when zoomed into the diagram block. Esc exits."),
       selectRow(SETTING_IDS.graphLinks, "Graph links", "Show links between cards derived from page references and attributes.", ["all", "attributes", "off"]),
+      inputRow(SETTING_IDS.attrStyles, "Attribute styles", "JSON map of attribute name to color and dash. Colors are palette names. Dash is solid, dashed, or dotted."),
       selectRow(SETTING_IDS.wheel, "Mouse wheel", "What the mouse wheel does on the board. Pinch always zooms.", ["pan", "zoom"]),
       switchRow(SETTING_IDS.showMinimap, "Show minimap", "Show the minimap."),
       selectRow(SETTING_IDS.controlsPosition, "Controls", "Rail is the vertical control stack. Bar is the 1.2 horizontal zoom group.", ["rail", "bar"]),

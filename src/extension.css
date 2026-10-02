@@ -891,6 +891,10 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   pointer-events: none;
 }
 
+.pxd-link--solid .pxd-link__line { stroke-dasharray: none; }
+.pxd-link--dashed .pxd-link__line { stroke-dasharray: 4 5; }
+.pxd-link--dotted .pxd-link__line { stroke-dasharray: 1 4; }
+
 .pxd-link__head {
   fill: var(--pxd-line, var(--pxd-edge));
   stroke: none;

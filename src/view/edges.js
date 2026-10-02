@@ -159,7 +159,8 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     rec.from = link.from;
     rec.to = link.to;
     const dim = dimmed(link);
-    setClass(rec.g, `pxd-link pxd-c-${link.color || "gray"}${selected ? " pxd-link--selected" : ""}${dim ? " pxd-edge--dim" : ""}`);
+    const dash = link.dash === "solid" || link.dash === "dashed" || link.dash === "dotted" ? ` pxd-link--${link.dash}` : "";
+    setClass(rec.g, `pxd-link pxd-c-${link.color || "gray"}${dash}${selected ? " pxd-link--selected" : ""}${dim ? " pxd-edge--dim" : ""}`);
     rec.label.className = `pxd-label pxd-label--link pxd-c-${link.color || "gray"}${selected ? " pxd-label--selected" : ""}${dim ? " pxd-label--dim" : ""}`;
     rec.label.textContent = link.labels?.[0] || "mentions";
     if (!a || !b) { rec.g.setAttribute("display", "none"); rec.label.style.display = "none"; return; }

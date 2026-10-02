@@ -1161,6 +1161,86 @@ function itemsInRect(board, rect, rects, { mode = "contain" } = {}) {
   }
   return topLevelOf(board, hits);
 }
+function onSegment(a, b, p) {
+  const cross = (p.x - a.x) * (b.y - a.y) - (p.y - a.y) * (b.x - a.x);
+  if (Math.abs(cross) > 1e-9) return false;
+  const dot = (p.x - a.x) * (b.x - a.x) + (p.y - a.y) * (b.y - a.y);
+  if (dot < -1e-9) return false;
+  const len2 = (b.x - a.x) ** 2 + (b.y - a.y) ** 2;
+  return dot <= len2 + 1e-9;
+}
+function pointInPolygon(point, polygon) {
+  const n = polygon?.length ?? 0;
+  if (!point || n < 3) return false;
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    if (onSegment(polygon[j], polygon[i], point)) return true;
+  }
+  let inside3 = false;
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    const yi = polygon[i].y;
+    const yj = polygon[j].y;
+    const xi = polygon[i].x;
+    const xj = polygon[j].x;
+    const intersect = yi > point.y !== yj > point.y && point.x < (xj - xi) * (point.y - yi) / (yj - yi) + xi;
+    if (intersect) inside3 = !inside3;
+  }
+  return inside3;
+}
+function itemsInPolygon(board, polygon, rects) {
+  if (!board || !Array.isArray(polygon) || polygon.length < 3) return [];
+  const r = rects ?? worldRects(board);
+  const hits = [];
+  for (const uid of board.order) {
+    const rect = r.get(uid);
+    if (rect && pointInPolygon(centerOf(rect), polygon)) hits.push(uid);
+  }
+  return topLevelOf(board, hits);
+}
+function sameColorUids(board, uid) {
+  const seed = board?.items.get(uid);
+  if (!seed) return [];
+  const color = seed.color || null;
+  const out = [];
+  for (const id of board.order) {
+    const item = board.items.get(id);
+    if ((item.color || null) === color) out.push(id);
+  }
+  return out;
+}
+function connectedUids(board, uid) {
+  if (!board?.items.has(uid)) return [];
+  const adj = /* @__PURE__ */ new Map();
+  const link = (a, b) => {
+    if (!board.items.has(a) || !board.items.has(b) || a === b) return;
+    if (!adj.has(a)) adj.set(a, []);
+    if (!adj.has(b)) adj.set(b, []);
+    adj.get(a).push(b);
+    adj.get(b).push(a);
+  };
+  for (const edge of board.edges.values()) {
+    if (!edge.valid) continue;
+    link(edge.from, edge.to);
+  }
+  const out = [];
+  const seen = /* @__PURE__ */ new Set([uid]);
+  const queue = [uid];
+  while (queue.length) {
+    const current = queue.shift();
+    out.push(current);
+    for (const next of adj.get(current) || []) {
+      if (seen.has(next)) continue;
+      seen.add(next);
+      queue.push(next);
+    }
+  }
+  return out;
+}
+function sectionAllUids(board, uid) {
+  const item = board?.items.get(uid);
+  if (!item || item.type !== "section") return [];
+  const kids = descendantsOf(board, uid);
+  return board.order.filter((id) => kids.has(id));
+}
 function membershipPlan(board, movedUids, rects) {
   const moved = topLevelOf(board, movedUids);
   const exclude = new Set(moved);
@@ -5676,6 +5756,7 @@ function createInteractions({ actions, settings } = {}) {
     const moved = Boolean(state.gesture?.moved);
     state.gesture = null;
     call("showMarquee", null);
+    call("showLasso", null);
     call("showGuides", []);
     call("showTempWire", null);
     call("onHover", null);
@@ -5788,6 +5869,16 @@ function createInteractions({ actions, settings } = {}) {
       begin({ kind: "place", tool: state.tool, start: ev.world });
       return;
     }
+    if (state.tool === "select" && ev.alt) {
+      begin({
+        kind: "lasso",
+        start: ev.world,
+        points: [{ x: ev.world.x, y: ev.world.y }],
+        base: ev.shift ? new Set(state.selection) : /* @__PURE__ */ new Set(),
+        shift: Boolean(ev.shift)
+      });
+      return;
+    }
     begin({ kind: "marquee", start: ev.world, base: ev.shift ? new Set(state.selection) : /* @__PURE__ */ new Set(), shift: ev.shift });
   };
   const onPointerMove = (ev) => {
@@ -5866,6 +5957,25 @@ function createInteractions({ actions, settings } = {}) {
     const wdy = ev.world.y - g.start.y;
     if (!g.moved && Math.hypot(wdx, wdy) * zoom() < DRAG_THRESHOLD_PX) return;
     g.moved = true;
+    if (g.kind === "lasso") {
+      const last = g.points[g.points.length - 1];
+      const dx = ev.world.x - last.x;
+      const dy = ev.world.y - last.y;
+      if (dx * dx + dy * dy >= 0.25) g.points.push({ x: ev.world.x, y: ev.world.y });
+      call("showLasso", g.points);
+      const b = board();
+      const r = hitRects();
+      if (b && r) {
+        const hits = g.points.length >= 3 ? itemsInPolygon(b, g.points, r) : [];
+        const next = new Set(g.base);
+        hits.forEach((u) => next.add(u));
+        state.selection = next;
+        state.edge = null;
+        state.link = null;
+        emitSelection();
+      }
+      return;
+    }
     if (g.kind === "marquee") {
       const rect = normRect(g.start, ev.world);
       g.rect = rect;
@@ -5910,6 +6020,7 @@ function createInteractions({ actions, settings } = {}) {
       case "pan":
         break;
       case "marquee":
+      case "lasso":
         if (!g.moved && !g.shift) clearSelection();
         break;
       case "section-draw": {
@@ -8185,6 +8296,7 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
   const linkEls = /* @__PURE__ */ new Map();
   let wire = null;
   let marquee = null;
+  let lasso = null;
   const guideEls = [];
   const ghostEls = [];
   let focusSet = null;
@@ -8433,6 +8545,15 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     marquee.setAttribute("width", String(rect.w));
     marquee.setAttribute("height", String(rect.h));
   };
+  const setLasso = (points) => {
+    if (!points || points.length < 2) {
+      lasso?.remove();
+      lasso = null;
+      return;
+    }
+    if (!lasso) lasso = mk("polygon", "pxd-lasso", overlaySvg);
+    lasso.setAttribute("points", points.map((p) => `${p.x},${p.y}`).join(" "));
+  };
   const setGhosts = (list) => {
     const rects = list || [];
     while (ghostEls.length > rects.length) ghostEls.pop().remove();
@@ -8535,6 +8656,7 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     setTempWire(null);
     setGuides([]);
     setMarquee(null);
+    setLasso(null);
     setGhosts(null);
     focusSet = null;
     searchEdges = null;
@@ -8548,6 +8670,7 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     setTempWire,
     setGuides,
     setMarquee,
+    setLasso,
     setGhosts,
     setFocus,
     setSearch,
@@ -9040,6 +9163,8 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
           opt("duplicate", "pxd-ctx__duplicate", "Duplicate", "Duplicate (Cmd D)", () => on.duplicate());
           opt("sendTo", "pxd-ctx__send-to", "Send to board…", "Move into another board", () => on.sendTo());
           if (NOTE_KINDS.includes(model?.kind)) opt("expandOutline", "pxd-ctx__mindmap", "Mind map", "Expand the children as a mind map", () => on.expandOutline());
+          opt("selectSameColor", "pxd-ctx__same-color", "Select same color", "Select every item of this color", () => on.selectSameColor());
+          opt("selectConnected", "pxd-ctx__connected", "Select connected", "Select items linked to this one", () => on.selectConnected());
         } else {
           seg("pxd-ctx__align", [["left", "L", "Align left"], ["center", "C", "Align centers"], ["right", "R", "Align right"], ["top", "T", "Align top"], ["middle", "M", "Align middles"], ["bottom", "B", "Align bottom"]], null, (v) => on.align?.(v));
           seg("pxd-ctx__distribute", [["h", "H", "Distribute horizontally"], ["v", "V", "Distribute vertically"]], null, (v) => on.distribute?.(v));
@@ -9065,6 +9190,9 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
         swatches(row, (c) => on.setColor?.(c));
         btn("pxd-ctx__rename", "Rename", "Rename (Enter)", () => on.rename?.());
         btn("pxd-ctx__contents", "Select contents", "Select the section's members", () => on.selectContents?.());
+        opt("selectAllInSection", "pxd-ctx__all-in-section", "Select all in section", "Select everything inside the section", () => on.selectAllInSection());
+        opt("selectSameColor", "pxd-ctx__same-color", "Select same color", "Select every item of this color", () => on.selectSameColor());
+        opt("selectConnected", "pxd-ctx__connected", "Select connected", "Select items linked to this one", () => on.selectConnected());
         opt("collapseSection", "pxd-ctx__collapse-section", model?.collapsed ? "Expand" : "Collapse", model?.collapsed ? "Expand the section" : "Collapse to the title", () => on.collapseSection?.());
         opt("sectionNote", "pxd-ctx__section-note", model?.hasNote ? "Remove note" : "Description", model?.hasNote ? "Remove the section description" : "Add a description line", () => on.sectionNote?.());
         opt("lockSection", "pxd-ctx__lock", model?.locked ? "Unlock" : "Lock", model?.locked ? "Unpin everything inside" : "Pin the section and everything inside", () => on.lockSection?.(!model?.locked));
@@ -10537,7 +10665,9 @@ function buildMenu(kind, ctx = {}) {
         foldItem(folded),
         make("fit-height", "Fit height", { disabled: folded }),
         make("reset-size", "Reset size", { disabled: folded }),
-        pinItem(Boolean(c.pinned))
+        pinItem(Boolean(c.pinned)),
+        make("select-same-color", "Select same color"),
+        make("select-connected", "Select connected")
       ];
       if (c.hasOutline) out.push(make("mind-map", "Expand as mind map"));
       out.push(
@@ -10552,6 +10682,9 @@ function buildMenu(kind, ctx = {}) {
       return [
         make("rename", "Rename", { hint: "Enter" }),
         make("select-contents", "Select contents", { disabled: empty }),
+        make("select-all-in-section", "Select all in section", { disabled: empty }),
+        make("select-same-color", "Select same color"),
+        make("select-connected", "Select connected"),
         make("collapse-section", c.collapsed ? "Expand" : "Collapse"),
         make("section-note", c.hasNote ? "Remove description" : "Add description"),
         c.locked ? make("unlock-contents", "Unlock") : make("lock-contents", "Lock"),
@@ -12870,6 +13003,21 @@ function mountBoardView({
       case "select-contents":
         if (item?.members?.length) ctl.select(item.members);
         break;
+      case "select-all-in-section": {
+        const all = item ? sectionAllUids(b, item.uid) : [];
+        if (all.length) ctl.select(all);
+        break;
+      }
+      case "select-same-color": {
+        const same = item ? sameColorUids(b, item.uid) : [];
+        if (same.length) ctl.select(same);
+        break;
+      }
+      case "select-connected": {
+        const linked = item ? connectedUids(b, item.uid) : [];
+        if (linked.length) ctl.select(linked);
+        break;
+      }
       case "fit-section":
         if (item) void session.fitSection?.(item.uid);
         break;
@@ -13011,6 +13159,21 @@ function mountBoardView({
       selectContents: () => {
         const it = singleItem();
         if (it?.members?.length) ctl.select(it.members);
+      },
+      selectAllInSection: () => {
+        const it = singleItem();
+        const all = it ? sectionAllUids(board(), it.uid) : [];
+        if (all.length) ctl.select(all);
+      },
+      selectSameColor: () => {
+        const it = singleItem();
+        const same = it ? sameColorUids(board(), it.uid) : [];
+        if (same.length) ctl.select(same);
+      },
+      selectConnected: () => {
+        const it = singleItem();
+        const linked = it ? connectedUids(board(), it.uid) : [];
+        if (linked.length) ctl.select(linked);
       },
       setFontSize: (n) => {
         const it = singleItem();
@@ -13535,6 +13698,7 @@ function mountBoardView({
       }
     },
     showMarquee: (rect, kind) => edgesR.setMarquee(rect, kind),
+    showLasso: (points) => edgesR.setLasso(points),
     showGuides: (guides) => edgesR.setGuides(guides),
     previewMove: (uids, dx, dy) => {
       const b = board();

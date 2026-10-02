@@ -385,6 +385,8 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
           opt("duplicate", "pxd-ctx__duplicate", "Duplicate", "Duplicate (Cmd D)", () => on.duplicate());
           opt("sendTo", "pxd-ctx__send-to", "Send to board…", "Move into another board", () => on.sendTo());
           if (NOTE_KINDS.includes(model?.kind)) opt("expandOutline", "pxd-ctx__mindmap", "Mind map", "Expand the children as a mind map", () => on.expandOutline());
+          opt("selectSameColor", "pxd-ctx__same-color", "Select same color", "Select every item of this color", () => on.selectSameColor());
+          opt("selectConnected", "pxd-ctx__connected", "Select connected", "Select items linked to this one", () => on.selectConnected());
         } else {
           seg("pxd-ctx__align", [["left", "L", "Align left"], ["center", "C", "Align centers"], ["right", "R", "Align right"], ["top", "T", "Align top"], ["middle", "M", "Align middles"], ["bottom", "B", "Align bottom"]], null, (v) => on.align?.(v));
           seg("pxd-ctx__distribute", [["h", "H", "Distribute horizontally"], ["v", "V", "Distribute vertically"]], null, (v) => on.distribute?.(v));
@@ -410,6 +412,9 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
         swatches(row, (c) => on.setColor?.(c));
         btn("pxd-ctx__rename", "Rename", "Rename (Enter)", () => on.rename?.());
         btn("pxd-ctx__contents", "Select contents", "Select the section's members", () => on.selectContents?.());
+        opt("selectAllInSection", "pxd-ctx__all-in-section", "Select all in section", "Select everything inside the section", () => on.selectAllInSection());
+        opt("selectSameColor", "pxd-ctx__same-color", "Select same color", "Select every item of this color", () => on.selectSameColor());
+        opt("selectConnected", "pxd-ctx__connected", "Select connected", "Select items linked to this one", () => on.selectConnected());
         opt("collapseSection", "pxd-ctx__collapse-section", model?.collapsed ? "Expand" : "Collapse", model?.collapsed ? "Expand the section" : "Collapse to the title", () => on.collapseSection?.());
         opt("sectionNote", "pxd-ctx__section-note", model?.hasNote ? "Remove note" : "Description", model?.hasNote ? "Remove the section description" : "Add a description line", () => on.sectionNote?.());
         opt("lockSection", "pxd-ctx__lock", model?.locked ? "Unlock" : "Lock", model?.locked ? "Unpin everything inside" : "Pin the section and everything inside", () => on.lockSection?.(!model?.locked));

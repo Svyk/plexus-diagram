@@ -167,7 +167,7 @@ const FULL = () => {
   const calls = [];
   const rec = (name) => (...a) => calls.push([name, ...a]);
   const on = {};
-  for (const name of ["pin", "fitHeight", "copyRef", "duplicate", "sendTo", "expandOutline", "fitSection", "toggleFit", "tidy", "foldAll", "sameSize", "fold", "collapseSection", "sectionNote", "lockSection", "presentSection"]) on[name] = rec(name);
+  for (const name of ["pin", "fitHeight", "copyRef", "duplicate", "sendTo", "expandOutline", "fitSection", "toggleFit", "tidy", "foldAll", "sameSize", "fold", "collapseSection", "sectionNote", "lockSection", "presentSection", "selectAllInSection", "selectSameColor", "selectConnected"]) on[name] = rec(name);
   return { on, calls };
 };
 
@@ -176,7 +176,7 @@ test("card ctx bar gains Pin, Fit height, Copy ref, Duplicate, Send to board", (
   const f = setup(on);
   t.after(f.restore);
   const ctx = showCtx(f, "card", { kind: "block", pinned: false, collapsed: false });
-  assert.deepEqual(labels(ctx), ["", "", "", "Edit", "Open in sidebar", "Collapse", "Related…", "Pin", "Fit height", "Copy ref", "Duplicate", "Send to board…", "Mind map", "Delete"]);
+  assert.deepEqual(labels(ctx), ["", "", "", "Edit", "Open in sidebar", "Collapse", "Related…", "Pin", "Fit height", "Copy ref", "Duplicate", "Send to board…", "Mind map", "Select same color", "Select connected", "Delete"]);
   for (const cls of [".pxd-ctx__pin-toggle", ".pxd-ctx__fit-height", ".pxd-ctx__copy-ref", ".pxd-ctx__duplicate", ".pxd-ctx__send-to", ".pxd-ctx__mindmap"]) q(ctx, cls).click();
   assert.deepEqual(calls, [["pin", true], ["fitHeight"], ["copyRef"], ["duplicate"], ["sendTo"], ["expandOutline"]]);
 });
@@ -213,7 +213,7 @@ test("section ctx bar gains Fit to contents, Auto-fit, Tidy, Fold all, Pin", (t)
   const f = setup(on);
   t.after(f.restore);
   let ctx = showCtx(f, "section", { autofit: true, pinned: false });
-  assert.deepEqual(labels(ctx), ["Rename", "Select contents", "Collapse", "Description", "Lock", "Present", "Fit to contents", "Auto-fit: on", "Fold all", "Pin", "Delete frame"]);
+  assert.deepEqual(labels(ctx), ["Rename", "Select contents", "Select all in section", "Select same color", "Select connected", "Collapse", "Description", "Lock", "Present", "Fit to contents", "Auto-fit: on", "Fold all", "Pin", "Delete frame"]);
   assert.deepEqual(ctx.querySelectorAll(".pxd-ctx__tidy .pxd-seg__btn").map((b) => b.dataset.value), ["grid", "row", "column"]);
   q(ctx, ".pxd-ctx__fit-section").click();
   q(ctx, ".pxd-ctx__auto-fit").click();
@@ -224,6 +224,27 @@ test("section ctx bar gains Fit to contents, Auto-fit, Tidy, Fold all, Pin", (t)
   ctx = showCtx(f, "section", { autofit: false, pinned: true });
   assert.equal(q(ctx, ".pxd-ctx__auto-fit").textContent, "Auto-fit: off");
   assert.equal(q(ctx, ".pxd-ctx__pin-toggle").textContent, "Unpin");
+});
+
+test("HB-10: section and card bars call select all, same color, and connected", (t) => {
+  const { on, calls } = FULL();
+  const f = setup(on);
+  t.after(f.restore);
+  const section = showCtx(f, "section", {});
+  q(section, ".pxd-ctx__all-in-section").click();
+  q(section, ".pxd-ctx__same-color").click();
+  q(section, ".pxd-ctx__connected").click();
+  const card = showCtx(f, "card", { kind: "block" });
+  assert.equal(q(card, ".pxd-ctx__all-in-section"), null);
+  q(card, ".pxd-ctx__same-color").click();
+  q(card, ".pxd-ctx__connected").click();
+  assert.deepEqual(calls, [
+    ["selectAllInSection"],
+    ["selectSameColor"],
+    ["selectConnected"],
+    ["selectSameColor"],
+    ["selectConnected"],
+  ]);
 });
 
 test("multi ctx bar gains Tidy, Same size, Fold, Pin, Duplicate", (t) => {

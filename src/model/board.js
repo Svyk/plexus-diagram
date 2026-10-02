@@ -509,6 +509,98 @@ export function itemsInRect(board, rect, rects, { mode = "contain" } = {}) {
   return topLevelOf(board, hits);
 }
 
+function onSegment(a, b, p) {
+  const cross = (p.x - a.x) * (b.y - a.y) - (p.y - a.y) * (b.x - a.x);
+  if (Math.abs(cross) > 1e-9) return false;
+  const dot = (p.x - a.x) * (b.x - a.x) + (p.y - a.y) * (b.y - a.y);
+  if (dot < -1e-9) return false;
+  const len2 = (b.x - a.x) ** 2 + (b.y - a.y) ** 2;
+  return dot <= len2 + 1e-9;
+}
+
+// Even-odd fill. A point on an edge counts as inside. Fewer than three vertices is never inside.
+export function pointInPolygon(point, polygon) {
+  const n = polygon?.length ?? 0;
+  if (!point || n < 3) return false;
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    if (onSegment(polygon[j], polygon[i], point)) return true;
+  }
+  let inside = false;
+  for (let i = 0, j = n - 1; i < n; j = i++) {
+    const yi = polygon[i].y;
+    const yj = polygon[j].y;
+    const xi = polygon[i].x;
+    const xj = polygon[j].x;
+    const intersect = (yi > point.y) !== (yj > point.y)
+      && point.x < ((xj - xi) * (point.y - yi)) / (yj - yi) + xi;
+    if (intersect) inside = !inside;
+  }
+  return inside;
+}
+
+// Item center inside the polygon, then the outermost selected ancestor, same rule as the rectangle marquee.
+export function itemsInPolygon(board, polygon, rects) {
+  if (!board || !Array.isArray(polygon) || polygon.length < 3) return [];
+  const r = rects ?? worldRects(board);
+  const hits = [];
+  for (const uid of board.order) {
+    const rect = r.get(uid);
+    if (rect && pointInPolygon(centerOf(rect), polygon)) hits.push(uid);
+  }
+  return topLevelOf(board, hits);
+}
+
+// Every item of the same stored color. A missing color matches the other uncolored items. Edges are not items.
+export function sameColorUids(board, uid) {
+  const seed = board?.items.get(uid);
+  if (!seed) return [];
+  const color = seed.color || null;
+  const out = [];
+  for (const id of board.order) {
+    const item = board.items.get(id);
+    if ((item.color || null) === color) out.push(id);
+  }
+  return out;
+}
+
+// Undirected component over valid edges. The seed is included. Invalid edges and missing endpoints are skipped.
+export function connectedUids(board, uid) {
+  if (!board?.items.has(uid)) return [];
+  const adj = new Map();
+  const link = (a, b) => {
+    if (!board.items.has(a) || !board.items.has(b) || a === b) return;
+    if (!adj.has(a)) adj.set(a, []);
+    if (!adj.has(b)) adj.set(b, []);
+    adj.get(a).push(b);
+    adj.get(b).push(a);
+  };
+  for (const edge of board.edges.values()) {
+    if (!edge.valid) continue;
+    link(edge.from, edge.to);
+  }
+  const out = [];
+  const seen = new Set([uid]);
+  const queue = [uid];
+  while (queue.length) {
+    const current = queue.shift();
+    out.push(current);
+    for (const next of adj.get(current) || []) {
+      if (seen.has(next)) continue;
+      seen.add(next);
+      queue.push(next);
+    }
+  }
+  return out;
+}
+
+// Everything nested in a section, including cards inside inner sections. Direct members stay on item.members.
+export function sectionAllUids(board, uid) {
+  const item = board?.items.get(uid);
+  if (!item || item.type !== "section") return [];
+  const kids = descendantsOf(board, uid);
+  return board.order.filter((id) => kids.has(id));
+}
+
 export function membershipPlan(board, movedUids, rects) {
   const moved = topLevelOf(board, movedUids);
   const exclude = new Set(moved);

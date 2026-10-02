@@ -21,6 +21,7 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
   const linkEls = new Map(); // key → {g, hit, line, head, label}
   let wire = null;
   let marquee = null;
+  let lasso = null;
   const guideEls = [];
   const ghostEls = [];
   let focusSet = null;
@@ -284,6 +285,16 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     marquee.setAttribute("height", String(rect.h));
   };
 
+  const setLasso = (points) => {
+    if (!points || points.length < 2) {
+      lasso?.remove();
+      lasso = null;
+      return;
+    }
+    if (!lasso) lasso = mk("polygon", "pxd-lasso", overlaySvg);
+    lasso.setAttribute("points", points.map((p) => `${p.x},${p.y}`).join(" "));
+  };
+
   // Alt+drag duplicate preview: dashed world-space rects in the overlay svg. null/[] clears.
   const setGhosts = (list) => {
     const rects = list || [];
@@ -376,6 +387,7 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     setTempWire(null);
     setGuides([]);
     setMarquee(null);
+    setLasso(null);
     setGhosts(null);
     focusSet = null;
     searchEdges = null;
@@ -390,6 +402,7 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     setTempWire,
     setGuides,
     setMarquee,
+    setLasso,
     setGhosts,
     setFocus,
     setSearch,

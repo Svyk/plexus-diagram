@@ -1881,6 +1881,72 @@ test("HB-9: zoom keys move the focused board and stay quiet while a card is bein
   }
 });
 
+test("HB-10: lasso, select all in section, same color, and connected each change the selection and write nothing", async () => {
+  const item = (uid, string, plexus, order, children = []) => ({
+    ":block/uid": uid,
+    ":block/string": string,
+    ":block/order": order,
+    ":block/props": { ":plexus": plexus },
+    ":block/children": children,
+  });
+  const extra = [
+    item("sectNEST01", "Nest", { ":type": "section", ":x": 900, ":y": 0, ":w": 400, ":h": 320 }, 8, [
+      item("cardDIRECT", "Direct", { ":x": 20, ":y": 40, ":w": 120, ":h": 60 }, 0),
+      item("sectINNER1", "Inner", { ":type": "section", ":x": 20, ":y": 140, ":w": 200, ":h": 140 }, 1, [
+        item("cardDEEP01", "Deep", { ":x": 10, ":y": 30, ":w": 80, ":h": 40 }, 0),
+      ]),
+    ]),
+    item("cardRED001", "Red one", { ":x": 0, ":y": 800, ":w": 100, ":h": 60, ":color": "red" }, 9),
+    item("cardRED002", "Red two", { ":x": 160, ":y": 800, ":w": 100, ":h": 60, ":color": "red" }, 10),
+  ];
+  const f = mountFixture({ extra });
+  const sorted = () => [...f.view.state().selection].sort();
+  try {
+    await f.flush();
+    const before = f.session.mutations.length;
+    f.view.controller.select(["sectNEST01"]);
+    await f.flush();
+    f.root.querySelector(".pxd-ctx__all-in-section").click();
+    await f.flush();
+    assert.deepEqual(sorted(), ["cardDEEP01", "cardDIRECT", "sectINNER1"]);
+    f.view.controller.select(["sectNEST01"]);
+    await f.flush();
+    f.root.querySelector(".pxd-ctx__contents").click();
+    await f.flush();
+    assert.deepEqual(sorted(), ["cardDIRECT", "sectINNER1"], "Select contents stays the direct members");
+
+    const title = shell(f, "sectNEST01").querySelector(".pxd-section__title");
+    rightClick(f, title);
+    assert.ok(menuIds(f).includes("select-all-in-section"));
+    pickRow(f, "select-all-in-section");
+    await f.flush();
+    assert.deepEqual(sorted(), ["cardDEEP01", "cardDIRECT", "sectINNER1"]);
+
+    rightClick(f, shell(f, "cardRED001"));
+    pickRow(f, "select-same-color");
+    await f.flush();
+    assert.deepEqual(sorted(), ["cardRED001", "cardRED002"]);
+    rightClick(f, shell(f, "cardAAAA1"));
+    pickRow(f, "select-connected");
+    await f.flush();
+    assert.deepEqual(sorted(), ["cardAAAA1", "cardBBBB2"]);
+
+    const viewport = f.root.querySelector(".pxd-viewport");
+    pointerDown(f, viewport, -30, 50, { altKey: true });
+    pointerMove(f, 230, -30, { altKey: true });
+    assert.ok(f.root.querySelector(".pxd-lasso"), "the free shape is drawn while dragging");
+    pointerMove(f, 100, 120, { altKey: true });
+    pointerUp(f, 100, 120, { altKey: true });
+    await f.flush();
+    assert.equal(f.root.querySelector(".pxd-lasso"), null);
+    assert.deepEqual(sorted(), ["cardAAAA1"]);
+    assert.equal(f.session.mutations.length, before, "lasso and the selection commands write nothing");
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
 function blockish(uid, string, order) {
   return {
     ":block/uid": uid,

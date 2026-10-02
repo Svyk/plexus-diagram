@@ -93,6 +93,8 @@ export function buildMenu(kind, ctx = {}) {
         make("fit-height", "Fit height", { disabled: folded }),
         make("reset-size", "Reset size", { disabled: folded }),
         pinItem(Boolean(c.pinned)),
+        make("select-same-color", "Select same color"),
+        make("select-connected", "Select connected"),
       ];
       if (c.hasOutline) out.push(make("mind-map", "Expand as mind map"));
       out.push(
@@ -108,6 +110,9 @@ export function buildMenu(kind, ctx = {}) {
       return [
         make("rename", "Rename", { hint: "Enter" }),
         make("select-contents", "Select contents", { disabled: empty }),
+        make("select-all-in-section", "Select all in section", { disabled: empty }),
+        make("select-same-color", "Select same color"),
+        make("select-connected", "Select connected"),
         make("collapse-section", c.collapsed ? "Expand" : "Collapse"),
         make("section-note", c.hasNote ? "Remove description" : "Add description"),
         c.locked ? make("unlock-contents", "Unlock") : make("lock-contents", "Lock"),

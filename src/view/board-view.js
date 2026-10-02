@@ -7,7 +7,7 @@
 // section auto-fit preview, context menu, clipboard, focus, presentation, card badges, back-to-content.
 
 import { BOARD_PATTERNS, BOARD_TONES, DEFAULT_BOARD_CARD, DEFAULT_SIZES, UNTITLED_BOARD, classifyString, hexColor, semanticRef, plainText } from "../model/schema.js";
-import { boundsOf, buildBoard, containerAt, descendantsOf, displayRects, edgesTouching, outlineOrder, sectionFitPlan, sectionNoteUid, sidebarOutlineUids, worldRects } from "../model/board.js";
+import { boundsOf, buildBoard, connectedUids, containerAt, descendantsOf, displayRects, edgesTouching, outlineOrder, sameColorUids, sectionAllUids, sectionFitPlan, sectionNoteUid, sidebarOutlineUids, worldRects } from "../model/board.js";
 import { copyLinkText, hashFromUrl, pageUidFromHash, pxdTarget } from "../model/deeplink.js";
 import { findOnBoard } from "../model/find.js";
 import {
@@ -1316,6 +1316,21 @@ export function mountBoardView({
       case "delete-contents": ctl.deleteSelection(true); break;
       case "rename": if (item) itemsR.renameSection(item.uid); break;
       case "select-contents": if (item?.members?.length) ctl.select(item.members); break;
+      case "select-all-in-section": {
+        const all = item ? sectionAllUids(b, item.uid) : [];
+        if (all.length) ctl.select(all);
+        break;
+      }
+      case "select-same-color": {
+        const same = item ? sameColorUids(b, item.uid) : [];
+        if (same.length) ctl.select(same);
+        break;
+      }
+      case "select-connected": {
+        const linked = item ? connectedUids(b, item.uid) : [];
+        if (linked.length) ctl.select(linked);
+        break;
+      }
       case "fit-section": if (item) void session.fitSection?.(item.uid); break;
       case "toggle-fit": if (item) void session.setFit?.(item.uid, item.autofit === false); break;
       case "tidy": void session.tidyItems?.(mc.kind === "board-menu" ? b.roots : uids, arg); break;
@@ -1385,6 +1400,21 @@ export function mountBoardView({
       delete: () => ctl.deleteSelection(false),
       rename: () => { const it = singleItem(); if (it) itemsR.renameSection(it.uid); },
       selectContents: () => { const it = singleItem(); if (it?.members?.length) ctl.select(it.members); },
+      selectAllInSection: () => {
+        const it = singleItem();
+        const all = it ? sectionAllUids(board(), it.uid) : [];
+        if (all.length) ctl.select(all);
+      },
+      selectSameColor: () => {
+        const it = singleItem();
+        const same = it ? sameColorUids(board(), it.uid) : [];
+        if (same.length) ctl.select(same);
+      },
+      selectConnected: () => {
+        const it = singleItem();
+        const linked = it ? connectedUids(board(), it.uid) : [];
+        if (linked.length) ctl.select(linked);
+      },
       setFontSize: (n) => { const it = singleItem(); if (it) void session.setFontSize?.(it.uid, n); },
       edgeDir: (dir) => { if (selection.edge) void session.updateEdge?.(selection.edge, { dir }); },
       flip: () => { if (selection.edge) void session.flipEdge?.(selection.edge); },
@@ -1775,6 +1805,7 @@ export function mountBoardView({
       }
     },
     showMarquee: (rect, kind) => edgesR.setMarquee(rect, kind),
+    showLasso: (points) => edgesR.setLasso(points),
     showGuides: (guides) => edgesR.setGuides(guides),
     previewMove: (uids, dx, dy) => {
       const b = board();

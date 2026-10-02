@@ -30,7 +30,7 @@ test("canvas menu ids, in order, with paste gated by canPaste", () => {
 
 test("card menu: ids, color submenu with checked, fold/unfold, pin/unpin, mind-map only with an outline", () => {
   const base = ids(buildMenu("card", {}));
-  for (const id of ["edit", "open", "open-sidebar", "copy", "copy-ref", "copy-link", "duplicate", "duplicate-ref", "color", "fold", "fit-height", "reset-size", "pin", "send-to", "related", "delete"]) assert.ok(base.includes(id), id);
+  for (const id of ["edit", "open", "open-sidebar", "copy", "copy-ref", "copy-link", "duplicate", "duplicate-ref", "color", "fold", "fit-height", "reset-size", "pin", "select-same-color", "select-connected", "send-to", "related", "delete"]) assert.ok(base.includes(id), id);
   assert.ok(!base.includes("mind-map"));
   assert.ok(!base.includes("unfold") && !base.includes("unpin"));
   const menu = buildMenu("card", { collapsed: true, pinned: true, hasOutline: true, item: { color: "teal" } });
@@ -58,7 +58,7 @@ test("card menu on a board card says board", () => {
 
 test("section menu: tidy submenu, auto-fit checked, empty sections disable content actions", () => {
   const menu = buildMenu("section", { count: 3, fitOn: true, pinned: false });
-  for (const id of ["rename", "select-contents", "collapse-section", "section-note", "lock-contents", "present-section", "fit-section", "toggle-fit", "tidy", "fold-all-in", "unfold-all-in", "color", "pin", "duplicate", "copy-ref", "delete-frame", "delete-contents"]) assert.ok(ids(menu).includes(id), id);
+  for (const id of ["rename", "select-contents", "select-all-in-section", "select-same-color", "select-connected", "collapse-section", "section-note", "lock-contents", "present-section", "fit-section", "toggle-fit", "tidy", "fold-all-in", "unfold-all-in", "color", "pin", "duplicate", "copy-ref", "delete-frame", "delete-contents"]) assert.ok(ids(menu).includes(id), id);
   assert.equal(byId(menu, "collapse-section").label, "Collapse");
   assert.equal(byId(menu, "section-note").label, "Add description");
   assert.equal(byId(menu, "present-section").label, "Present this section");
@@ -71,7 +71,9 @@ test("section menu: tidy submenu, auto-fit checked, empty sections disable conte
   assert.equal(byId(buildMenu("section", { count: 3 }), "toggle-fit").checked, undefined);
   assert.equal(byId(menu, "select-contents").disabled, undefined);
   const empty = buildMenu("section", { count: 0 });
-  for (const id of ["select-contents", "fit-section", "tidy", "fold-all-in", "unfold-all-in", "delete-contents"]) assert.equal(byId(empty, id).disabled, true, id);
+  for (const id of ["select-contents", "select-all-in-section", "fit-section", "tidy", "fold-all-in", "unfold-all-in", "delete-contents"]) assert.equal(byId(empty, id).disabled, true, id);
+  assert.equal(byId(empty, "select-same-color").disabled, undefined);
+  assert.equal(byId(empty, "select-connected").disabled, undefined);
   assert.equal(byId(empty, "delete-frame").disabled, undefined);
   assert.equal(byId(empty, "delete-frame").danger, true);
   assert.ok(ids(buildMenu("section", { pinned: true })).includes("unpin"));

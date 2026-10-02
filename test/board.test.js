@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   boardPreview, boundsOf, buildBoard, containerAt, descendantsOf, diffBoards, edgesTouching, findEdge, hitTest,
-  itemsInRect, membershipPlan, outlineOrder, sectionAdoptPlan, sectionFitPlan, sidebarOutlineUids, toRelative, topLevelOf, worldRect, worldRects,
+  connectedUids, itemsInPolygon, itemsInRect, membershipPlan, outlineOrder, pointInPolygon, sameColorUids, sectionAdoptPlan, sectionAllUids, sectionFitPlan, sidebarOutlineUids, toRelative, topLevelOf, worldRect, worldRects,
 } from "../src/model/board.js";
 
 const near = (a, b, eps = 1e-6) => assert.ok(Math.abs(a - b) < eps, `${a} != ${b}`);
@@ -239,6 +239,37 @@ test("itemsInRect contain vs intersect applies topLevelOf", () => {
   assert.deepEqual(itemsInRect(b, { x: 0, y: 0, w: 100, h: 100 }, rects, { mode: "intersect" }), ["c1"]);
   assert.deepEqual(itemsInRect(b, { x: 450, y: 280, w: 100, h: 100 }, rects, { mode: "intersect" }), ["s1", "nb"]);
   assert.deepEqual(itemsInRect(b, { x: 0, y: 0, w: 100, h: 100 }, rects), []);
+});
+
+test("HB-10: lasso uses the item center, same color matches the stored swatch, connected walks valid edges", () => {
+  const b = build();
+  const rects = worldRects(b);
+  const tri = [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 0, y: 10 }];
+  assert.equal(pointInPolygon({ x: 1, y: 1 }, tri), true);
+  assert.equal(pointInPolygon({ x: 9, y: 9 }, tri), false);
+  assert.equal(pointInPolygon({ x: 0, y: 0 }, tri), true, "a vertex is inside");
+  assert.equal(pointInPolygon({ x: 1, y: 1 }, tri.slice(0, 2)), false);
+  const notch = [{ x: 0, y: 0 }, { x: 30, y: 0 }, { x: 30, y: 30 }, { x: 15, y: 10 }, { x: 0, y: 30 }];
+  assert.equal(pointInPolygon({ x: 15, y: 5 }, notch), true);
+  assert.equal(pointInPolygon({ x: 15, y: 25 }, notch), false, "the notch is outside the free shape");
+  const aroundM1 = [{ x: 140, y: 410 }, { x: 180, y: 410 }, { x: 160, y: 450 }];
+  assert.deepEqual(itemsInPolygon(b, aroundM1, rects), ["m1"]);
+  const aroundSection = [{ x: -10, y: 290 }, { x: 520, y: 290 }, { x: 520, y: 720 }, { x: -10, y: 720 }];
+  const sectionHit = itemsInPolygon(b, aroundSection, rects);
+  assert.ok(sectionHit.includes("s1"));
+  assert.equal(sectionHit.includes("m1"), false, "a child whose section is also inside stays with the section");
+  assert.deepEqual(sameColorUids(b, "c1"), ["c1"]);
+  const plain = sameColorUids(b, "m1");
+  assert.equal(plain.includes("c1"), false);
+  assert.equal(plain.includes("m1"), true);
+  assert.equal(plain.includes("s1"), true);
+  assert.ok(plain.every((u) => !b.items.get(u).color));
+  assert.deepEqual(sameColorUids(b, "missing"), []);
+  assert.deepEqual(connectedUids(b, "c1").slice().sort(), ["c1", "c2", "m1"]);
+  assert.deepEqual(connectedUids(b, "t1"), ["t1"]);
+  assert.deepEqual(connectedUids(b, "nope"), []);
+  assert.deepEqual(sectionAllUids(b, "s1").slice().sort(), ["m1", "m2", "m3", "s2"]);
+  assert.deepEqual(sectionAllUids(b, "c1"), []);
 });
 
 test("membershipPlan moves a card into a section and out of one", () => {

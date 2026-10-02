@@ -5,7 +5,7 @@
 //   board() rects() viewport() size()                      — model + view state (required)
 //   setViewport(vp) fitAll() fitSelection(uids)
 //   onSelection({ items, edge, link }) onTool(tool, locked) onHover(uid|null)
-//   setGesturing(bool) showMarquee(rect|null, kind) showGuides(list) previewMove(uids, dx, dy)
+//   setGesturing(bool) showMarquee(rect|null, kind) showLasso(points|null) showGuides(list) previewMove(uids, dx, dy)
 //   previewRects(list) showTempWire({ from, fromSide, point }|null)
 //   commitMove(uids, dx, dy) commitRects(list) createCard({x,y}) createText({x,y})
 //   createSection({rect}) wrapInSection(uids) deleteItems(uids, opts) deleteEdges(uids)
@@ -31,7 +31,7 @@
 // Escape order: gesture, quick look, presentation, edit, focus, selection, popBoard, fullscreen.
 
 import { DEFAULT_BOARD_CARD, DEFAULT_SIZES, MIN_SIZES } from "../model/schema.js";
-import { descendantsOf, findEdge, hitTest, itemsInRect, outlineOrder, topLevelOf, boundsOf } from "../model/board.js";
+import { descendantsOf, findEdge, hitTest, itemsInPolygon, itemsInRect, outlineOrder, topLevelOf, boundsOf } from "../model/board.js";
 import { GRID_PITCH, nearestInDirection, nearestSide, snapMove, snapToGrid, zoomAt } from "../model/geometry.js";
 
 export const TOOL_KEYS = { v: "select", h: "hand", n: "card", t: "text", g: "section", w: "board", c: "connect" };
@@ -116,6 +116,7 @@ export function createInteractions({ actions, settings } = {}) {
     const moved = Boolean(state.gesture?.moved);
     state.gesture = null;
     call("showMarquee", null);
+    call("showLasso", null);
     call("showGuides", []);
     call("showTempWire", null);
     call("onHover", null);
@@ -236,6 +237,17 @@ export function createInteractions({ actions, settings } = {}) {
       begin({ kind: "place", tool: state.tool, start: ev.world });
       return;
     }
+    // Alt on an item is duplicate. Alt on empty space, in the select tool, is the freeform lasso.
+    if (state.tool === "select" && ev.alt) {
+      begin({
+        kind: "lasso",
+        start: ev.world,
+        points: [{ x: ev.world.x, y: ev.world.y }],
+        base: ev.shift ? new Set(state.selection) : new Set(),
+        shift: Boolean(ev.shift),
+      });
+      return;
+    }
     begin({ kind: "marquee", start: ev.world, base: ev.shift ? new Set(state.selection) : new Set(), shift: ev.shift });
   };
 
@@ -311,6 +323,25 @@ export function createInteractions({ actions, settings } = {}) {
     const wdy = ev.world.y - g.start.y;
     if (!g.moved && Math.hypot(wdx, wdy) * zoom() < DRAG_THRESHOLD_PX) return;
     g.moved = true;
+    if (g.kind === "lasso") {
+      const last = g.points[g.points.length - 1];
+      const dx = ev.world.x - last.x;
+      const dy = ev.world.y - last.y;
+      if (dx * dx + dy * dy >= 0.25) g.points.push({ x: ev.world.x, y: ev.world.y });
+      call("showLasso", g.points);
+      const b = board();
+      const r = hitRects();
+      if (b && r) {
+        const hits = g.points.length >= 3 ? itemsInPolygon(b, g.points, r) : [];
+        const next = new Set(g.base);
+        hits.forEach((u) => next.add(u));
+        state.selection = next;
+        state.edge = null;
+        state.link = null;
+        emitSelection();
+      }
+      return;
+    }
     if (g.kind === "marquee") {
       const rect = normRect(g.start, ev.world);
       g.rect = rect;
@@ -356,6 +387,7 @@ export function createInteractions({ actions, settings } = {}) {
       case "pan":
         break;
       case "marquee":
+      case "lasso":
         if (!g.moved && !g.shift) clearSelection();
         break;
       case "section-draw": {

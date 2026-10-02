@@ -47,6 +47,7 @@ function harness({ vp = { x: 0, y: 0, zoom: 1 }, settings = {}, editing = null, 
     onHover: rec("onHover"),
     setGesturing: rec("setGesturing"),
     showMarquee: rec("showMarquee"),
+    showLasso: rec("showLasso"),
     showGuides: rec("showGuides"),
     previewMove: rec("previewMove"),
     previewRects: rec("previewRects"),
@@ -184,6 +185,43 @@ test("marquee selects contained items and a plain click on empty clears selectio
   assert.deepEqual(h.ctl.getSelection().items, []);
   assert.equal(h.named("commitMove").length, 0);
   assert.equal(h.named("setViewport").length, 0, "marquee never pans");
+});
+
+test("HB-10: Alt-drag on empty space lassos by center and Alt-drag on a card still duplicates", () => {
+  const h = harness();
+  h.ctl.handle(h.ev("pointerdown", { x: -30, y: 50 }, { alt: true }));
+  h.ctl.handle(h.ev("pointermove", { x: 230, y: -30 }, { alt: true }));
+  h.ctl.handle(h.ev("pointermove", { x: 100, y: 120 }, { alt: true }));
+  assert.deepEqual(h.ctl.getSelection().items, ["cardAAAA1"]);
+  assert.ok(h.named("showLasso").some((c) => Array.isArray(c[1]) && c[1].length >= 3));
+  assert.equal(h.named("showMarquee").some((c) => c[1]), false, "the lasso does not draw the rectangle marquee");
+  h.ctl.handle(h.ev("pointerup", { x: 100, y: 120 }, { alt: true }));
+  assert.deepEqual(h.ctl.getSelection().items, ["cardAAAA1"]);
+  assert.equal(h.named("duplicateItems").length, 0);
+  assert.equal(h.named("commitMove").length, 0);
+
+  h.ctl.select(["cardBBBB2"]);
+  h.ctl.handle(h.ev("pointerdown", { x: -30, y: 50 }, { alt: true, shift: true }));
+  h.ctl.handle(h.ev("pointermove", { x: 230, y: -30 }, { alt: true, shift: true }));
+  h.ctl.handle(h.ev("pointermove", { x: 100, y: 120 }, { alt: true, shift: true }));
+  h.ctl.handle(h.ev("pointerup", { x: 100, y: 120 }, { alt: true, shift: true }));
+  const kept = h.ctl.getSelection().items;
+  assert.ok(kept.includes("cardAAAA1") && kept.includes("cardBBBB2"));
+
+  h.ctl.select(["cardAAAA1"]);
+  h.ctl.handle(h.ev("pointerdown", { x: 2000, y: 2000 }, { alt: true }));
+  h.ctl.handle(h.ev("pointermove", { x: 2100, y: 2000 }, { alt: true }));
+  h.ctl.handle(h.ev("pointerup", { x: 2100, y: 2000 }, { alt: true }));
+  assert.deepEqual(h.ctl.getSelection().items, [], "a line is not a lasso, so the selection is replaced with nothing");
+
+  const card = { kind: "item", uid: "cardAAAA1", part: "body" };
+  const lassos = () => h.named("showLasso").filter((c) => Array.isArray(c[1])).length;
+  const beforeCard = lassos();
+  h.ctl.handle(h.ev("pointerdown", { x: 10, y: 10 }, { target: card, alt: true }));
+  h.ctl.handle(h.ev("pointermove", { x: 80, y: 40 }, { target: card, alt: true }));
+  h.ctl.handle(h.ev("pointerup", { x: 80, y: 40 }, { target: card, alt: true }));
+  assert.equal(h.named("duplicateItems").length, 1);
+  assert.equal(lassos(), beforeCard, "the card drag did not start another lasso");
 });
 
 test("Cmd or Ctrl click toggles selection membership and does not edit", () => {

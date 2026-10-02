@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { buildBoard, worldRects } from "../src/model/board.js";
+import { cardDeepLink } from "../src/model/deeplink.js";
 import { PLEXUS_MIME } from "../src/model/clipboard.js";
 import { isLightHost, mountBoardView } from "../src/view/board-view.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
@@ -105,9 +106,10 @@ function fakeSession(board) {
   return session;
 }
 
-function mountFixture({ vp = { x: 0, y: 0, zoom: 1 }, settings = {}, extra = [], rootPlexus = {}, hostOverrides = {}, viewOptions = {} } = {}) {
+function mountFixture({ vp = { x: 0, y: 0, zoom: 1 }, settings = {}, extra = [], rootPlexus = {}, hostOverrides = {}, viewOptions = {}, hash = "" } = {}) {
   const stub = createDomStub();
   const restore = stub.install();
+  if (hash) stub.window.location.hash = hash;
   stub.localStorage.setItem("plexus-diagram:vp:Svy:board0001", JSON.stringify(vp));
   const board = buildBoard(pulled({ extra, rootPlexus }));
   const session = fakeSession(board);
@@ -611,7 +613,7 @@ test("context menu: copy-ref and copy-link put the right text on the clipboard; 
     rightClick(f, beta);
     pickRow(f, "copy-link");
     await tick();
-    assert.deepEqual(copied, ["((cardBBBB2))", "[[Beta]]"]);
+    assert.deepEqual(copied, ["((cardBBBB2))", "[[Beta]]\n#/app/Svy/page/board0001?pxd=cardBBBB2"]);
     assert.equal(toastText(f), "Link copied");
     // send-to: the Boards tab lists boards, the next row click sends instead of navigating
     rightClick(f, beta);
@@ -633,6 +635,82 @@ test("context menu: copy-ref and copy-link put the right text on the clipboard; 
     await tick();
     f.stub.dispatch(f.root.querySelector(".pxd-panel__board-row"), "click", { button: 0 });
     assert.equal(f.opened, true);
+  } finally {
+    restoreNav();
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("HB-4: ?pxd= zooms to the card and pulses it; copy link uses the board page", async () => {
+  const copied = [];
+  const restoreNav = stubNavigator({ clipboard: { writeText: async (t) => { copied.push(t); } } });
+  const page = { uid: "pageLAB99" };
+  const link = cardDeepLink({ graph: "Svy", pageUid: "pageLAB99", cardUid: "cardAAAA1" });
+  const f = mountFixture({ hash: link, hostOverrides: { blockPageUid: () => page.uid } });
+  try {
+    await f.flush();
+    const world = f.root.querySelector(".pxd-world");
+    const landed = world.style.transform;
+    assert.deepEqual(f.view.state().selection, ["cardAAAA1"]);
+    assert.notEqual(landed, "translate(0px, 0px) scale(1)");
+    assert.ok(shell(f, "cardAAAA1").classList.contains("pxd-item--pulse"));
+    assert.equal(f.session.mutations.length, 0, "opening a deep link writes nothing");
+
+    page.uid = "otherHOST";
+    rightClick(f, shell(f, "cardAAAA1"));
+    pickRow(f, "copy-link");
+    await tick();
+    rightClick(f, shell(f, "cardBBBB2"));
+    pickRow(f, "copy-link");
+    await tick();
+    assert.deepEqual(copied, [
+      "((cardAAAA1))\n#/app/Svy/page/otherHOST?pxd=cardAAAA1",
+      "[[Beta]]\n#/app/Svy/page/otherHOST?pxd=cardBBBB2",
+    ]);
+    page.uid = "pageLAB99";
+
+    f.stub.window.location.hash = cardDeepLink({ graph: "Svy", pageUid: "pageLAB99", cardUid: "cardBBBB2" });
+    f.stub.dispatch(f.stub.window, "hashchange", {});
+    f.stub.flushFrames();
+    assert.deepEqual(f.view.state().selection, ["cardBBBB2"]);
+    assert.notEqual(world.style.transform, landed);
+    assert.ok(shell(f, "cardBBBB2").classList.contains("pxd-item--pulse"));
+    await tick(1900);
+    assert.equal(shell(f, "cardBBBB2").classList.contains("pxd-item--pulse"), false, "the pulse class does not stay");
+    f.stub.dispatch(f.stub.window, "hashchange", {});
+    f.stub.flushFrames();
+    assert.ok(shell(f, "cardBBBB2").classList.contains("pxd-item--pulse"), "the same link pulses again");
+
+    const stayed = world.style.transform;
+    f.stub.window.location.hash = cardDeepLink({ graph: "Svy", pageUid: "otherPAGE", cardUid: "cardAAAA1" });
+    f.stub.dispatch(f.stub.window, "hashchange", {});
+    f.stub.flushFrames();
+    assert.equal(world.style.transform, stayed, "a link for another page does not move this board");
+    assert.deepEqual(f.view.state().selection, ["cardBBBB2"]);
+    f.stub.window.location.hash = cardDeepLink({ graph: "Svy", pageUid: "pageLAB99", cardUid: "missing99" });
+    f.stub.dispatch(f.stub.window, "hashchange", {});
+    f.stub.flushFrames();
+    assert.equal(world.style.transform, stayed);
+    assert.equal(f.session.mutations.length, 0);
+
+    // Roam drops ?pxd= from location.hash before listeners. newURL still has it.
+    f.stub.window.location.hash = "#/app/Svy/page/pageLAB99";
+    f.stub.dispatch(f.stub.window, "hashchange", {
+      newURL: "https://roamresearch.com/?server-port=3333#/app/Svy/page/pageLAB99?pxd=cardAAAA1",
+    });
+    f.stub.flushFrames();
+    assert.deepEqual(f.view.state().selection, ["cardAAAA1"]);
+    assert.notEqual(world.style.transform, stayed);
+    const zoomed = world.style.transform;
+    assert.ok(shell(f, "cardAAAA1").classList.contains("pxd-item--pulse"));
+    f.stub.dispatch(f.stub.window, "hashchange", {
+      newURL: "https://roamresearch.com/?server-port=3333#/app/Svy/page/pageLAB99",
+    });
+    f.stub.flushFrames();
+    assert.equal(world.style.transform, zoomed, "the follow-up strip does not move the board");
+    assert.deepEqual(f.view.state().selection, ["cardAAAA1"]);
+    assert.equal(f.session.mutations.length, 0);
   } finally {
     restoreNav();
     f.view.dispose();

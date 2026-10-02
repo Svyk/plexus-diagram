@@ -1615,6 +1615,94 @@ function coveredBy(links, board) {
   return { visible, coveredEdges };
 }
 
+// src/model/deeplink.js
+var UID_RE = /^[\w-]{1,32}$/;
+function isShowableCard(plexus) {
+  if (!plexus || typeof plexus !== "object") return false;
+  if (plexus.type === "section" || plexus.type === "edges" || plexus.type === "edge") return false;
+  return Number.isFinite(Number(plexus.x)) && Number.isFinite(Number(plexus.y));
+}
+function decodePart(value) {
+  try {
+    return decodeURIComponent(value);
+  } catch {
+    return value;
+  }
+}
+function pageUidFromHash(hash) {
+  const match = /#\/app\/[^/]+\/page\/([^/?#]+)/.exec(String(hash ?? ""));
+  return match ? decodePart(match[1]) : "";
+}
+function graphFromDeepLink(hash) {
+  const match = /#\/app\/([^/?#]+)/.exec(String(hash ?? ""));
+  return match ? decodePart(match[1]) : "";
+}
+function cardDeepLink({ graph, pageUid, cardUid } = {}) {
+  const g = String(graph ?? "").trim();
+  const page = String(pageUid ?? "").trim();
+  const card = String(cardUid ?? "").trim();
+  if (!g || !UID_RE.test(page) || !UID_RE.test(card)) return "";
+  return `#/app/${encodeURIComponent(g)}/page/${encodeURIComponent(page)}?pxd=${encodeURIComponent(card)}`;
+}
+function hashFromUrl(url) {
+  const text = String(url ?? "");
+  const mark = text.indexOf("#");
+  return mark >= 0 ? text.slice(mark) : "";
+}
+function pxdTarget(hash) {
+  const text = String(hash ?? "");
+  const q = text.indexOf("?");
+  if (q < 0) return null;
+  let card = "";
+  try {
+    card = new URLSearchParams(text.slice(q + 1).split("#")[0]).get("pxd") || "";
+  } catch {
+    return null;
+  }
+  if (!UID_RE.test(card)) return null;
+  return { cardUid: card, pageUid: pageUidFromHash(text), graph: graphFromDeepLink(text) };
+}
+function copyLinkText(item, { graph, pageUid, cardUid } = {}) {
+  const ref = semanticRef(item);
+  const url = cardDeepLink({ graph, pageUid, cardUid: cardUid || item?.uid });
+  return url ? `${ref}
+${url}` : ref;
+}
+function locateShowTarget(uid, placements) {
+  const id = String(uid ?? "").trim();
+  if (!id) return null;
+  const hits = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const row of placements || []) {
+    const boardUid = String(row?.boardUid ?? "").trim();
+    const cardUid = String(row?.cardUid ?? "").trim();
+    const pageUid = String(row?.pageUid ?? "").trim();
+    if (!boardUid || !cardUid) continue;
+    const refs = Array.isArray(row.refUids) ? row.refUids.map((r) => String(r)) : [];
+    if (cardUid !== id && !refs.includes(id)) continue;
+    const key = `${boardUid}
+${cardUid}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    hits.push({ boardUid, pageUid, cardUid });
+  }
+  if (!hits.length) return null;
+  const self = hits.filter((hit) => hit.cardUid === id);
+  const pool = self.length ? self : hits;
+  pool.sort((a, b) => a.boardUid.localeCompare(b.boardUid) || a.cardUid.localeCompare(b.cardUid));
+  return pool[0];
+}
+function assignDeepLink(loc, { graph, pageUid, cardUid } = {}, onSame) {
+  const link = cardDeepLink({ graph, pageUid, cardUid });
+  if (!link || !loc) return "";
+  if (loc.hash === link) {
+    if (typeof onSame === "function") onSame();
+    return link;
+  }
+  loc.hash = link;
+  return link;
+}
+
 // src/model/info.js
 var PANEL_WIDTH_MIN = 260;
 var PANEL_WIDTH_MAX = 640;
@@ -1694,6 +1782,14 @@ var NATIVE_PATTERN = `[:block/props
  {:diagram/nodes [:db/id :diagram.node/data {:diagram.node/block [:block/uid :block/string]} {:diagram.node/parent-node [:db/id]}]}
  {:diagram/edges [{:diagram.edge/source [:db/id]} {:diagram.edge/target [:db/id]} :diagram.edge/data]}]`;
 var DIAGRAM_RE = "^\\{\\{(\\[\\[)?diagram";
+var SHOW_DIRECT_QUERY = `[:find ?board ?page :in $ ?uid ?pat :where
+ [?block :block/uid ?uid] [?block :block/parents ?diagram] [?diagram :block/uid ?board]
+ [?diagram :block/string ?s] [(re-pattern ?pat) ?re] [(re-find ?re ?s)]
+ [?diagram :block/page ?p] [?p :block/uid ?page]]`;
+var SHOW_REF_QUERY = `[:find ?board ?page ?card :in $ ?uid ?pat :where
+ [?target :block/uid ?uid] [?cardblock :block/refs ?target] [?cardblock :block/uid ?card]
+ [?cardblock :block/parents ?diagram] [?diagram :block/uid ?board] [?diagram :block/string ?s]
+ [(re-pattern ?pat) ?re] [(re-find ?re ?s)] [?diagram :block/page ?p] [?p :block/uid ?page]]`;
 var BOARD_META_PATTERN = "[:block/props :edit/time {:block/children [:block/props]}]";
 var eidKey = (uid) => [":block/uid", uid];
 var watchEntity = (uid) => `[:block/uid "${String(uid).replace(/["\\]/g, "")}"]`;
@@ -1979,6 +2075,19 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
     blockString(uid) {
       const res = pull("[:block/string]", eidKey(uid));
       return typeof res?.[":block/string"] === "string" ? res[":block/string"] : null;
+    },
+    // Page uid that owns a block. Empty when the block is missing or is itself a page.
+    blockPageUid(uid) {
+      let res = null;
+      try {
+        res = pull("[{:block/page [:block/uid]}]", eidKey(uid));
+      } catch {
+        return "";
+      }
+      const page = res?.[":block/page"];
+      const node = Array.isArray(page) ? page[0] : page;
+      const id = node?.[":block/uid"];
+      return typeof id === "string" ? id : "";
     },
     // Page that owns a block. Empty when the block is missing or is itself a page.
     pageTitleOf(uid) {
@@ -2380,6 +2489,48 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
         boards: boardsFromRows(rawBoards, { limit: boardLimit }),
         tags: tagNames([body, ...attrSource].join("\n"))
       };
+    },
+    // Where "Show on board" should land. Read-only. A placed card on a v2 board wins over a card that merely refs the block.
+    showOnBoard(uid) {
+      const id = String(uid ?? "").trim();
+      if (!id) return null;
+      const propsOf = (blockUid) => {
+        try {
+          return host.pullProps(blockUid);
+        } catch {
+          return {};
+        }
+      };
+      let direct = [];
+      let via = [];
+      try {
+        direct = host.q(SHOW_DIRECT_QUERY, id, DIAGRAM_RE) || [];
+        via = host.q(SHOW_REF_QUERY, id, DIAGRAM_RE) || [];
+      } catch {
+        return null;
+      }
+      const boardOk = /* @__PURE__ */ new Map();
+      const enhanced = (boardUid) => {
+        if (!boardOk.has(boardUid)) boardOk.set(boardUid, propsOf(boardUid)?.plexus?.v === 2);
+        return boardOk.get(boardUid);
+      };
+      const placements = [];
+      for (const row of direct) {
+        const boardUid = row?.[0];
+        const pageUid = row?.[1];
+        if (!boardUid || !pageUid || !enhanced(boardUid)) continue;
+        if (!isShowableCard(propsOf(id)?.plexus)) continue;
+        placements.push({ boardUid, pageUid, cardUid: id, refUids: [] });
+      }
+      for (const row of via) {
+        const boardUid = row?.[0];
+        const pageUid = row?.[1];
+        const cardUid = row?.[2];
+        if (!boardUid || !pageUid || !cardUid || cardUid === id || !enhanced(boardUid)) continue;
+        if (!isShowableCard(propsOf(cardUid)?.plexus)) continue;
+        placements.push({ boardUid, pageUid, cardUid, refUids: [id] });
+      }
+      return locateShowTarget(id, placements);
     }
   };
   return host;
@@ -12076,9 +12227,18 @@ function mountBoardView({
       case "copy-ref":
         if (item) copyText(`((${item.uid}))`, "Reference copied");
         break;
-      case "copy-link":
-        if (item) copyText(semanticRef(item), "Link copied");
+      case "copy-link": {
+        if (!item) break;
+        let pageUid = "";
+        try {
+          pageUid = host?.blockPageUid?.(boardUid) || "";
+        } catch {
+          pageUid = "";
+        }
+        if (!pageUid) pageUid = pageUidFromHash(win?.location?.hash || "");
+        copyText(copyLinkText(item, { graph, pageUid }), "Link copied");
         break;
+      }
       case "duplicate":
         duplicate(uids);
         break;
@@ -13433,6 +13593,42 @@ function mountBoardView({
     dirty.selection = false;
     dirty.links = false;
   };
+  const PULSE_MS = 1800;
+  const pulseItem = (uid) => {
+    const shell = itemsR.shellOf(uid);
+    if (!shell) return;
+    shell.classList.remove("pxd-item--pulse");
+    void shell.offsetWidth;
+    shell.classList.add("pxd-item--pulse");
+    timers.later(() => {
+      if (!disposed) shell.classList.remove("pxd-item--pulse");
+    }, PULSE_MS);
+  };
+  const consumeDeepLink = (hash = win?.location?.hash || "") => {
+    if (disposed) return false;
+    const target = pxdTarget(hash);
+    if (!target?.cardUid) return false;
+    const b = board();
+    if (!b?.items?.has(target.cardUid)) return false;
+    let pageUid = "";
+    try {
+      pageUid = host?.blockPageUid?.(boardUid) || "";
+    } catch {
+      pageUid = "";
+    }
+    if (target.pageUid && pageUid && target.pageUid !== pageUid) return false;
+    ctl.select([target.cardUid]);
+    fitSelection([target.cardUid]);
+    if (itemsR.shellOf(target.cardUid)) pulseItem(target.cardUid);
+    else timers.frame(() => {
+      if (!disposed) pulseItem(target.cardUid);
+    });
+    return true;
+  };
+  listen(win, "hashchange", (event) => {
+    const fromEvent = hashFromUrl(event?.newURL);
+    consumeDeepLink(fromEvent || void 0);
+  });
   applyFullscreen(fullscreen);
   measure();
   if (autofocus) {
@@ -13452,6 +13648,7 @@ function mountBoardView({
   itemsR.setShowBadges(flag("show-card-badges", true));
   dirty.viewport = true;
   markAll();
+  consumeDeepLink();
   timers.later(() => {
     if (!disposed) {
       scheduleContent();
@@ -14393,6 +14590,41 @@ async function installPlexusDiagram({
         callback: (event) => {
           if (!active()) return;
           enhanceCommand(event).catch((error) => console.warn("[plexus-diagram] Enhance failed", error));
+        }
+      });
+      await lifecycle.command(extensionAPI.ui.blockContextMenu, {
+        label: "Show on board",
+        "display-conditional": (event) => {
+          if (!active()) return false;
+          const uid = event?.["block-uid"];
+          if (!uid || typeof host.showOnBoard !== "function") return false;
+          try {
+            const hit = host.showOnBoard(uid);
+            return Boolean(hit?.boardUid && hit?.cardUid && hit?.pageUid);
+          } catch {
+            return false;
+          }
+        },
+        callback: (event) => {
+          if (!active()) return;
+          const uid = event?.["block-uid"];
+          let hit = null;
+          try {
+            hit = uid ? host.showOnBoard?.(uid) : null;
+          } catch {
+            hit = null;
+          }
+          if (!hit?.pageUid || !hit?.cardUid) return;
+          assignDeepLink(globalThis.location, {
+            graph: host.graph || graphFromHash(),
+            pageUid: hit.pageUid,
+            cardUid: hit.cardUid
+          }, () => {
+            try {
+              win.dispatchEvent?.(new Event("hashchange"));
+            } catch {
+            }
+          });
         }
       });
     }

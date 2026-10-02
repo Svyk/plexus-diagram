@@ -509,3 +509,57 @@ test("cardInfo reads a note's own children and the block a ref card points at", 
   assert.deepEqual(info.boards.map((b) => b.uid), ["boardV2", "boardRef"]);
   assert.equal(info.uid, "note1");
 });
+
+test("showOnBoard returns the placed v2 card, or the card that refs the block", () => {
+  const { fake, host } = setup();
+  const placed = { plexus: { x: 10, y: 20, w: 80, h: 40 } };
+  fake.seedBoard({ uid: "boardAAA", props: { plexus: { v: 2 } } });
+  fake.seedBoard({ uid: "boardZZZ", props: { plexus: { v: 2 } } });
+  fake.seedBoard({ uid: "boardBBB", props: { plexus: { v: 2 } } });
+  fake.seedBoard({ uid: "boardOLD", props: { plexus: { v: 1 } } });
+  fake.seedBoard({ uid: "cardSELF", props: placed });
+  fake.seedBoard({ uid: "cardREF", props: placed });
+  fake.seedBoard({ uid: "sectONE", props: { plexus: { type: "section", x: 0, y: 0, w: 40, h: 40 } } });
+  fake.onQuery(/:block\/refs/, (_query, uid) => {
+    if (uid === "srcBLOCK") {
+      return [
+        ["boardBBB", "pageLAB1", "cardREF"],
+        ["boardOLD", "pageLAB1", "cardREF"],
+        ["boardAAA", "pageLAB1", "sectONE"],
+      ];
+    }
+    if (uid === "cardSELF") return [["board000", "pageLAB1", "cardREF"]];
+    return [];
+  });
+  fake.onQuery(/:block\/parents/, (_query, uid) => {
+    if (uid === "cardSELF") return [["boardZZZ", "pageLAB2"], ["boardAAA", "pageLAB1"]];
+    if (uid === "sectONE") return [["boardAAA", "pageLAB1"]];
+    return [];
+  });
+  assert.deepEqual(host.showOnBoard("cardSELF"), { boardUid: "boardAAA", pageUid: "pageLAB1", cardUid: "cardSELF" });
+  assert.deepEqual(host.showOnBoard("srcBLOCK"), { boardUid: "boardBBB", pageUid: "pageLAB1", cardUid: "cardREF" });
+  assert.equal(host.showOnBoard("sectONE"), null);
+  assert.equal(host.showOnBoard("plain99"), null);
+  assert.equal(host.showOnBoard(""), null);
+  assert.equal(host.stats.writes, 0);
+});
+
+test("blockPageUid reads the owning page and showOnBoard stays empty without rows", () => {
+  const storage = { getItem() { return null; }, setItem() {} };
+  const api = {
+    data: {
+      pull(pattern, entity) {
+        if (String(pattern).includes(":block/page") && entity[1] === "card1") {
+          return { ":block/page": { ":block/uid": "pageLAB1" } };
+        }
+        return null;
+      },
+      q() { return []; },
+    },
+  };
+  const host = createHost({ api, storage, graph: "Readwisenotes" });
+  assert.equal(host.blockPageUid("card1"), "pageLAB1");
+  assert.equal(host.blockPageUid("missing"), "");
+  assert.equal(host.showOnBoard("card1"), null);
+  assert.equal(host.stats.writes, 0);
+});

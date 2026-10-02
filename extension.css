@@ -308,6 +308,16 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   outline-offset: 1px;
 }
 
+@keyframes pxd-pulse {
+  0% { outline-offset: 0; }
+  100% { outline-offset: 12px; }
+}
+
+.pxd-item--pulse {
+  outline: 3px solid var(--pxd-accent);
+  animation: pxd-pulse 0.9s ease-out 2;
+}
+
 .pxd-edge--hit .pxd-edge__line {
   stroke: var(--pxd-accent);
 }

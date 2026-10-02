@@ -2,6 +2,7 @@ import pkg from "../package.json" with { type: "json" };
 import { createHost } from "./host/roam.js";
 import { acquireSession as acquireSessionDefault } from "./session.js";
 import { mountBoardView } from "./view/board-view.js";
+import { assignDeepLink } from "./model/deeplink.js";
 import { parseBoardTitle, readPlexus, UNTITLED_BOARD } from "./model/schema.js";
 import {
   BLOCK_CONTAINER_SELECTOR,
@@ -621,6 +622,34 @@ export async function installPlexusDiagram({
         callback: (event) => {
           if (!active()) return;
           enhanceCommand(event).catch((error) => console.warn("[plexus-diagram] Enhance failed", error));
+        },
+      });
+      await lifecycle.command(extensionAPI.ui.blockContextMenu, {
+        label: "Show on board",
+        "display-conditional": (event) => {
+          if (!active()) return false;
+          const uid = event?.["block-uid"];
+          if (!uid || typeof host.showOnBoard !== "function") return false;
+          try {
+            const hit = host.showOnBoard(uid);
+            return Boolean(hit?.boardUid && hit?.cardUid && hit?.pageUid);
+          } catch {
+            return false;
+          }
+        },
+        callback: (event) => {
+          if (!active()) return;
+          const uid = event?.["block-uid"];
+          let hit = null;
+          try { hit = uid ? host.showOnBoard?.(uid) : null; } catch { hit = null; }
+          if (!hit?.pageUid || !hit?.cardUid) return;
+          assignDeepLink(globalThis.location, {
+            graph: host.graph || graphFromHash(),
+            pageUid: hit.pageUid,
+            cardUid: hit.cardUid,
+          }, () => {
+            try { win.dispatchEvent?.(new Event("hashchange")); } catch { /* already on this card */ }
+          });
         },
       });
     }

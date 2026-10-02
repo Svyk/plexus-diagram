@@ -8,6 +8,7 @@
 
 import { BOARD_PATTERNS, BOARD_TONES, DEFAULT_BOARD_CARD, DEFAULT_SIZES, UNTITLED_BOARD, classifyString, hexColor, semanticRef, plainText } from "../model/schema.js";
 import { boundsOf, buildBoard, containerAt, descendantsOf, edgesTouching, outlineOrder, sectionFitPlan, sidebarOutlineUids, worldRects } from "../model/board.js";
+import { copyLinkText, hashFromUrl, pageUidFromHash, pxdTarget } from "../model/deeplink.js";
 import { findOnBoard } from "../model/find.js";
 import {
   alignRects,
@@ -1261,7 +1262,14 @@ export function mountBoardView({
       case "open-sidebar": openItemInSidebar(item); break;
       case "copy": doCopy(uids); break;
       case "copy-ref": if (item) copyText(`((${item.uid}))`, "Reference copied"); break;
-      case "copy-link": if (item) copyText(semanticRef(item), "Link copied"); break;
+      case "copy-link": {
+        if (!item) break;
+        let pageUid = "";
+        try { pageUid = host?.blockPageUid?.(boardUid) || ""; } catch { pageUid = ""; }
+        if (!pageUid) pageUid = pageUidFromHash(win?.location?.hash || "");
+        copyText(copyLinkText(item, { graph, pageUid }), "Link copied");
+        break;
+      }
       case "duplicate": duplicate(uids); break;
       case "duplicate-ref": duplicate(uids, { asRef: true }); break;
       case "color": { const target = mc.kind === "edge" && edgeUid ? [edgeUid] : uids; if (target.length) void session.setColor?.(target, arg === "none" ? null : arg); break; }
@@ -2339,6 +2347,36 @@ export function mountBoardView({
     dirty.links = false;
   };
 
+  // ------------------------------------------------------------ deep link
+  const PULSE_MS = 1800;
+  const pulseItem = (uid) => {
+    const shell = itemsR.shellOf(uid);
+    if (!shell) return;
+    shell.classList.remove("pxd-item--pulse");
+    void shell.offsetWidth;
+    shell.classList.add("pxd-item--pulse");
+    timers.later(() => { if (!disposed) shell.classList.remove("pxd-item--pulse"); }, PULSE_MS);
+  };
+  const consumeDeepLink = (hash = win?.location?.hash || "") => {
+    if (disposed) return false;
+    const target = pxdTarget(hash);
+    if (!target?.cardUid) return false;
+    const b = board();
+    if (!b?.items?.has(target.cardUid)) return false;
+    let pageUid = "";
+    try { pageUid = host?.blockPageUid?.(boardUid) || ""; } catch { pageUid = ""; }
+    if (target.pageUid && pageUid && target.pageUid !== pageUid) return false;
+    ctl.select([target.cardUid]);
+    fitSelection([target.cardUid]);
+    if (itemsR.shellOf(target.cardUid)) pulseItem(target.cardUid);
+    else timers.frame(() => { if (!disposed) pulseItem(target.cardUid); });
+    return true;
+  };
+  listen(win, "hashchange", (event) => {
+    const fromEvent = hashFromUrl(event?.newURL);
+    consumeDeepLink(fromEvent || undefined);
+  });
+
   // ------------------------------------------------------------ boot
   applyFullscreen(fullscreen);
   measure();
@@ -2354,6 +2392,7 @@ export function mountBoardView({
   itemsR.setShowBadges(flag("show-card-badges", true));
   dirty.viewport = true;
   markAll();
+  consumeDeepLink();
   timers.later(() => { if (!disposed) { scheduleContent(); updateBackToContent(); } }, 0);
 
   // ------------------------------------------------------------ API

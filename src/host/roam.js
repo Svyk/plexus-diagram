@@ -1,3 +1,4 @@
+import { isShowableCard, locateShowTarget } from "../model/deeplink.js";
 import { attributeRows, boardsFromRows, tagNames } from "../model/info.js";
 import { attrNameOf, mergePropsForWrite, parseBoardTitle, plainKeys } from "../model/schema.js";
 
@@ -13,6 +14,14 @@ export const NATIVE_PATTERN = `[:block/props
  {:diagram/edges [{:diagram.edge/source [:db/id]} {:diagram.edge/target [:db/id]} :diagram.edge/data]}]`;
 
 const DIAGRAM_RE = "^\\{\\{(\\[\\[)?diagram";
+const SHOW_DIRECT_QUERY = `[:find ?board ?page :in $ ?uid ?pat :where
+ [?block :block/uid ?uid] [?block :block/parents ?diagram] [?diagram :block/uid ?board]
+ [?diagram :block/string ?s] [(re-pattern ?pat) ?re] [(re-find ?re ?s)]
+ [?diagram :block/page ?p] [?p :block/uid ?page]]`;
+const SHOW_REF_QUERY = `[:find ?board ?page ?card :in $ ?uid ?pat :where
+ [?target :block/uid ?uid] [?cardblock :block/refs ?target] [?cardblock :block/uid ?card]
+ [?cardblock :block/parents ?diagram] [?diagram :block/uid ?board] [?diagram :block/string ?s]
+ [(re-pattern ?pat) ?re] [(re-find ?re ?s)] [?diagram :block/page ?p] [?p :block/uid ?page]]`;
 const BOARD_META_PATTERN = "[:block/props :edit/time {:block/children [:block/props]}]";
 
 const eidKey = (uid) => [":block/uid", uid];
@@ -297,6 +306,16 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     blockString(uid) {
       const res = pull("[:block/string]", eidKey(uid));
       return typeof res?.[":block/string"] === "string" ? res[":block/string"] : null;
+    },
+
+    // Page uid that owns a block. Empty when the block is missing or is itself a page.
+    blockPageUid(uid) {
+      let res = null;
+      try { res = pull("[{:block/page [:block/uid]}]", eidKey(uid)); } catch { return ""; }
+      const page = res?.[":block/page"];
+      const node = Array.isArray(page) ? page[0] : page;
+      const id = node?.[":block/uid"];
+      return typeof id === "string" ? id : "";
     },
 
     // Page that owns a block. Empty when the block is missing or is itself a page.
@@ -712,6 +731,45 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         boards: boardsFromRows(rawBoards, { limit: boardLimit }),
         tags: tagNames([body, ...attrSource].join("\n")),
       };
+    },
+
+    // Where "Show on board" should land. Read-only. A placed card on a v2 board wins over a card that merely refs the block.
+    showOnBoard(uid) {
+      const id = String(uid ?? "").trim();
+      if (!id) return null;
+      const propsOf = (blockUid) => {
+        try { return host.pullProps(blockUid); } catch { return {}; }
+      };
+      let direct = [];
+      let via = [];
+      try {
+        direct = host.q(SHOW_DIRECT_QUERY, id, DIAGRAM_RE) || [];
+        via = host.q(SHOW_REF_QUERY, id, DIAGRAM_RE) || [];
+      } catch {
+        return null;
+      }
+      const boardOk = new Map();
+      const enhanced = (boardUid) => {
+        if (!boardOk.has(boardUid)) boardOk.set(boardUid, propsOf(boardUid)?.plexus?.v === 2);
+        return boardOk.get(boardUid);
+      };
+      const placements = [];
+      for (const row of direct) {
+        const boardUid = row?.[0];
+        const pageUid = row?.[1];
+        if (!boardUid || !pageUid || !enhanced(boardUid)) continue;
+        if (!isShowableCard(propsOf(id)?.plexus)) continue;
+        placements.push({ boardUid, pageUid, cardUid: id, refUids: [] });
+      }
+      for (const row of via) {
+        const boardUid = row?.[0];
+        const pageUid = row?.[1];
+        const cardUid = row?.[2];
+        if (!boardUid || !pageUid || !cardUid || cardUid === id || !enhanced(boardUid)) continue;
+        if (!isShowableCard(propsOf(cardUid)?.plexus)) continue;
+        placements.push({ boardUid, pageUid, cardUid, refUids: [id] });
+      }
+      return locateShowTarget(id, placements);
     },
   };
   return host;

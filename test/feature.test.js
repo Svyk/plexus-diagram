@@ -433,14 +433,50 @@ test("commands register in palette and slash, the context menu gets Enhance, and
     const labels = ["Plexus: Enhance this diagram", "Plexus: New whiteboard here", "Plexus: Restore native diagram", "Plexus: Fullscreen this diagram", "Plexus: Export board as SVG", "Plexus: Copy board as text"];
     assert.deepEqual([...t.commands.palette.keys()], labels);
     assert.deepEqual([...t.commands.slash.keys()], labels);
-    assert.deepEqual([...t.commands.context.keys()], ["Plexus: Enhance"]);
+    assert.deepEqual([...t.commands.context.keys()], ["Plexus: Enhance", "Show on board"]);
     const context = t.commands.context.get("Plexus: Enhance");
     assert.equal(context["display-conditional"]({ "block-string": "{{[[diagram]]}}" }), true);
     assert.equal(context["display-conditional"]({ "block-string": "plain" }), false);
+    assert.equal(t.commands.context.get("Show on board")["display-conditional"]({ "block-uid": "plain" }), false);
     await t.lifecycle.dispose();
     assert.equal(t.commands.palette.size + t.commands.slash.size + t.commands.context.size, 0);
-    assert.equal(t.commands.removed.length, 13);
+    assert.equal(t.commands.removed.length, 14);
   } finally {
+    t.restore();
+  }
+});
+
+test("Show on board is hidden for an ordinary block and opens the card deep link", async () => {
+  const t = setup({ hash: "#/app/Readwisenotes/page/otherPAGE" });
+  const hits = {
+    cardAAAA1: { boardUid: "board0001", pageUid: "pageLAB99", cardUid: "cardAAAA1" },
+    srcBLOCK1: { boardUid: "boardZZZ9", pageUid: "pageLAB99", cardUid: "cardREF01" },
+  };
+  t.host.graph = "Readwisenotes";
+  t.host.showOnBoard = (uid) => hits[uid] || null;
+  let same = 0;
+  t.env.win.dispatchEvent = () => { same += 1; };
+  try {
+    await t.install();
+    const cmd = t.commands.context.get("Show on board");
+    t.host.showOnBoard = () => { throw new Error("query failed"); };
+    assert.equal(cmd["display-conditional"]({ "block-uid": "cardAAAA1" }), false);
+    t.host.showOnBoard = (uid) => hits[uid] || null;
+    assert.equal(cmd["display-conditional"]({ "block-uid": "cardAAAA1" }), true);
+    assert.equal(cmd["display-conditional"]({ "block-uid": "srcBLOCK1" }), true);
+    assert.equal(cmd["display-conditional"]({ "block-uid": "plainBLOCK" }), false);
+    assert.equal(cmd["display-conditional"]({}), false);
+    cmd.callback({ "block-uid": "srcBLOCK1" });
+    assert.equal(globalThis.location.hash, "#/app/Readwisenotes/page/pageLAB99?pxd=cardREF01");
+    assert.equal(same, 0);
+    cmd.callback({ "block-uid": "cardAAAA1" });
+    assert.equal(globalThis.location.hash, "#/app/Readwisenotes/page/pageLAB99?pxd=cardAAAA1");
+    cmd.callback({ "block-uid": "cardAAAA1" });
+    assert.equal(same, 1, "the same link asks the open board to pulse again");
+    cmd.callback({ "block-uid": "plainBLOCK" });
+    assert.equal(globalThis.location.hash, "#/app/Readwisenotes/page/pageLAB99?pxd=cardAAAA1");
+  } finally {
+    await t.lifecycle.dispose().catch(() => {});
     t.restore();
   }
 });

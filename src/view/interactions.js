@@ -67,6 +67,7 @@ export function createInteractions({ actions, settings } = {}) {
 
   const board = () => call("board");
   const rects = () => call("rects");
+  const hitRects = () => call("hitRects") || rects();
   const vp = () => call("viewport") || { x: 0, y: 0, zoom: 1 };
   const zoom = () => vp().zoom || 1;
 
@@ -243,7 +244,7 @@ export function createInteractions({ actions, settings } = {}) {
     if (!g) return;
     if (g.kind === "connect") {
       const b = board();
-      const r = rects();
+      const r = hitRects();
       call("showTempWire", { from: g.from, fromSide: g.fromSide, point: ev.world });
       const hit = b && r ? hitTest(b, ev.world, r, { sectionInterior: true }) : null;
       const hover = hit && hit.uid !== g.from ? hit.uid : null;
@@ -293,7 +294,7 @@ export function createInteractions({ actions, settings } = {}) {
       }
       call("showGuides", guides);
       const b = board();
-      const r = rects();
+      const r = hitRects();
       if (b && r && !g.dup && g.uids.length) {
         if (!g.exclude) {
           g.exclude = new Set(g.uids);
@@ -315,7 +316,7 @@ export function createInteractions({ actions, settings } = {}) {
       g.rect = rect;
       call("showMarquee", rect, "select");
       const b = board();
-      const r = rects();
+      const r = hitRects();
       if (b && r) {
         const hits = itemsInRect(b, rect, r, { mode: "contain" });
         const next = new Set(g.base);
@@ -407,7 +408,8 @@ export function createInteractions({ actions, settings } = {}) {
         if (g.moved && g.rect) call("commitRects", [g.rect]);
         break;
       case "connect": {
-        const hit = b && r ? hitTest(b, ev.world, r, { sectionInterior: true }) : null;
+        const hr = hitRects();
+        const hit = b && hr ? hitTest(b, ev.world, hr, { sectionInterior: true }) : null;
         end();
         if (hit && hit.uid === g.from) {
           selectItems([g.from]);
@@ -416,7 +418,7 @@ export function createInteractions({ actions, settings } = {}) {
           if (existing) {
             selectEdge(existing.uid);
           } else {
-            const toSide = nearestSide(r.get(hit.uid), ev.world);
+            const toSide = nearestSide(hr.get(hit.uid), ev.world);
             Promise.resolve(call("addEdge", { from: g.from, to: hit.uid, fromSide: g.fromSide, toSide }))
               .then((uid) => { if (uid) selectEdge(uid); }).catch(() => {});
           }
@@ -568,12 +570,15 @@ export function createInteractions({ actions, settings } = {}) {
   };
   const selectNearest = (dir, add) => {
     const b = board();
-    const r = rects();
+    const r = hitRects();
     const from = lastSelected();
     if (!b || !r || !from || !b.items.has(from)) return;
     const parent = b.items.get(from).parentUid;
     const candidates = [];
-    for (const [uid, item] of b.items) if (item.parentUid === parent && (uid === from || !state.selection.has(uid))) candidates.push(uid);
+    for (const [uid, item] of b.items) {
+      if (uid !== from && !r.get(uid)) continue;
+      if (item.parentUid === parent && (uid === from || !state.selection.has(uid))) candidates.push(uid);
+    }
     const next = nearestInDirection(r, from, dir, { candidates });
     if (!next) return;
     selectItems(add ? [...state.selection, next] : [next]);

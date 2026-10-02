@@ -3,7 +3,7 @@
 // renderBlock / renderPage; we never build <img> or fake editors.
 
 import { DEFAULT_SIZES, FONT_SIZES, PALETTE, attrNameOf, classifyString, cssColor, firstLine, hexColor, isUntitledBoard, parseBoardTitle, plainText } from "../model/schema.js";
-import { boardPreview, descendantsOf } from "../model/board.js";
+import { boardPreview, descendantsOf, sectionNoteUid } from "../model/board.js";
 import { lodForZoom, rectsIntersect } from "../model/geometry.js";
 import { watchEditorMenus } from "./editor-menus.js";
 import { applyEditorCounterScale } from "./editor-scale.js";
@@ -288,6 +288,7 @@ export function createItemRenderer({
       const node = el("div", "pxd-section", null);
       rec.el = node;
       rec.title = el("div", "pxd-section__title", node);
+      rec.note = el("div", "pxd-section__note", node);
       for (const side of ["t", "r", "b", "l"]) el("div", `pxd-section__edge pxd-section__edge--${side}`, node);
       buildGrips(node);
       buildPorts(node);
@@ -356,7 +357,8 @@ export function createItemRenderer({
     const base = item.type === "section" ? "pxd-section" : `pxd-item pxd-item--${item.type} pxd-item--${item.kind}`;
     const cls = [base];
     if (PALETTE.includes(item.color)) cls.push(`pxd-c-${item.color}`);
-    if (item.collapsed) cls.push("pxd-item--collapsed");
+    if (item.collapsed && item.type !== "section") cls.push("pxd-item--collapsed");
+    if (item.type === "section" && item.collapsed) cls.push("pxd-section--collapsed");
     if (!item.string?.trim()) cls.push("pxd-item--empty");
     if (item.type === "text" && FONT_SIZES.includes(item.fontSize)) cls.push(`pxd-item--fs${item.fontSize}`);
     if (item.type !== "section" && item.fontSize) cls.push("pxd-fs");
@@ -379,6 +381,14 @@ export function createItemRenderer({
         rec.title.textContent = item.title || "Section";
         rec.titleString = item.string;
         rec.titleRendered = false;
+      }
+      const noteUid = !item.collapsed && lastBoard ? sectionNoteUid(lastBoard, item.uid) : null;
+      const note = noteUid ? lastBoard.items.get(noteUid) : null;
+      if (rec.note) {
+        if (note) {
+          rec.note.style.display = "";
+          rec.note.textContent = firstLine(note.string || "");
+        } else rec.note.style.display = "none";
       }
     } else {
       if (editing?.uid !== item.uid && !rec.renaming) rec.header.textContent = item.type === "text" ? "" : String(rec.refTitle || item.title || "").slice(0, HEADER_TEXT_MAX);
@@ -420,6 +430,7 @@ export function createItemRenderer({
       const fresh = !rec;
       if (!rec) { rec = buildShell(item); orderChanged = true; }
       const rect = rects.get(uid);
+      rec.el.style.display = rect ? "" : "none";
       if (fresh || !dirty || dirty.has(uid)) {
         // Roam owns the open editor. A pull-watch echo of its text must not repaint this card or remount it.
         if (!fresh && editing?.uid === uid) {

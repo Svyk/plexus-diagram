@@ -84,9 +84,16 @@ export function createPresenter({ doc = globalThis.document, root, timers, on = 
     return true;
   };
 
-  const start = (board, rects) => {
+  const start = (board, rects, opts) => {
     if (!board) return false;
     if (active) { teardown(); active = false; }
+    const only = opts && typeof opts === "object" ? opts.only : null;
+    if (only) {
+      const item = board.items.get(only);
+      const rect = rects?.get(only);
+      if (!item || item.type !== "section" || !rect) return false;
+      steps = [{ uid: only, rect, title: item.title || "", members: collectMembers(board, only) }];
+    } else {
     const rootSet = new Set(board.roots);
     const sections = outlineOrder(board).filter((u) => rootSet.has(u) && board.items.get(u)?.type === "section" && rects.get(u));
     steps = sections.map((uid) => ({
@@ -95,6 +102,7 @@ export function createPresenter({ doc = globalThis.document, root, timers, on = 
       title: board.items.get(uid).title || "",
       members: collectMembers(board, uid),
     }));
+    }
     if (!steps.length) {
       const all = [...board.items.keys()].filter((u) => rects.get(u));
       if (!all.length) return false;

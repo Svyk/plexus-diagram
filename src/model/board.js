@@ -39,7 +39,10 @@ function unionRect(a, b) {
   const y = Math.min(a.y, b.y);
   return { x, y, w: Math.max(a.x + a.w, b.x + b.w) - x, h: Math.max(a.y + a.h, b.y + b.h) - y };
 }
-function contains(r, p) { return p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h; }
+function contains(r, p) {
+  if (!r || !p) return false;
+  return p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
+}
 function containsRect(outer, inner) {
   return inner.x >= outer.x && inner.y >= outer.y
     && inner.x + inner.w <= outer.x + outer.w && inner.y + inner.h <= outer.y + outer.h;
@@ -148,7 +151,7 @@ export function buildBoard(pulled, { defaults } = {}) {
         areaFill: type === "section" ? layout.areaFill : undefined,
         sectionDefaults: type === "section" ? sectionDefaults : undefined,
         pinned: layout.pinned,
-        look: type === "card" ? cardLook(kind, layout.look) : undefined,
+        look: type === "card" ? cardLook(kind, layout.look) : (type === "text" ? layout.look : undefined),
         open: type === "card" ? child[":block/open"] !== false : undefined,
         autofit: !(type === "section" && layout.fit === false),
         title,
@@ -214,6 +217,68 @@ export function buildBoard(pulled, { defaults } = {}) {
     childCount: boardKids.length,
     edges,
   };
+}
+
+// Visual height of a collapsed section. Stored :plexus h is left alone.
+export const COLLAPSED_SECTION_H = 8;
+
+// The item a connection should attach to. A section-note sticks to its section. Anything inside a
+// collapsed section sticks to the outermost collapsed section. A visible item sticks to itself.
+export function anchorUid(board, uid) {
+  const start = board?.items.get(uid);
+  if (!start) return uid;
+  let cur = uid;
+  if (start.type === "text" && start.look === "section-note") {
+    const parent = board.items.get(start.parentUid);
+    if (parent?.type === "section") cur = parent.uid;
+  }
+  let collapsed = null;
+  let walk = cur;
+  while (walk && walk !== board.uid) {
+    const item = board.items.get(walk);
+    if (!item) break;
+    if (item.type === "section" && item.collapsed) collapsed = item.uid;
+    walk = item.parentUid;
+  }
+  return collapsed || cur;
+}
+
+// First direct text child whose look is section-note. That block is the section's description line.
+export function sectionNoteUid(board, sectionUid) {
+  const item = board?.items.get(sectionUid);
+  if (!item || item.type !== "section") return null;
+  for (const m of item.members || []) {
+    const kid = board.items.get(m);
+    if (kid?.type === "text" && kid.look === "section-note") return kid.uid;
+  }
+  return null;
+}
+
+// Rects the view paints and hit-tests. Hidden members and section notes are omitted. A collapsed
+// section keeps its stored origin and width and uses COLLAPSED_SECTION_H. `stored` is not mutated.
+export function displayRects(board, stored) {
+  const base = stored ?? (board ? worldRects(board) : new Map());
+  if (!board) return new Map(base);
+  const out = new Map();
+  for (const [uid, r] of base) {
+    if (!r || anchorUid(board, uid) !== uid) continue;
+    const item = board.items.get(uid);
+    if (item?.type === "section" && item.collapsed) out.set(uid, { x: r.x, y: r.y, w: r.w, h: COLLAPSED_SECTION_H });
+    else out.set(uid, { x: r.x, y: r.y, w: r.w, h: r.h });
+  }
+  return out;
+}
+
+// Endpoints after collapse. Null when both ends land on the same visible item (no loop on the section).
+export function routedEdge(board, edge, rects) {
+  if (!board || !edge) return null;
+  const from = anchorUid(board, edge.from);
+  const to = anchorUid(board, edge.to);
+  if (!from || !to || from === to) return null;
+  const a = rects?.get(from);
+  const b = rects?.get(to);
+  if (!a || !b) return null;
+  return { from, to, a, b };
 }
 
 export function worldRects(board) {

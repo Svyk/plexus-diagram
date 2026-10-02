@@ -167,7 +167,7 @@ const FULL = () => {
   const calls = [];
   const rec = (name) => (...a) => calls.push([name, ...a]);
   const on = {};
-  for (const name of ["pin", "fitHeight", "copyRef", "duplicate", "sendTo", "expandOutline", "fitSection", "toggleFit", "tidy", "foldAll", "sameSize", "fold"]) on[name] = rec(name);
+  for (const name of ["pin", "fitHeight", "copyRef", "duplicate", "sendTo", "expandOutline", "fitSection", "toggleFit", "tidy", "foldAll", "sameSize", "fold", "collapseSection", "sectionNote", "lockSection", "presentSection"]) on[name] = rec(name);
   return { on, calls };
 };
 
@@ -213,7 +213,7 @@ test("section ctx bar gains Fit to contents, Auto-fit, Tidy, Fold all, Pin", (t)
   const f = setup(on);
   t.after(f.restore);
   let ctx = showCtx(f, "section", { autofit: true, pinned: false });
-  assert.deepEqual(labels(ctx), ["Rename", "Select contents", "Fit to contents", "Auto-fit: on", "Fold all", "Pin", "Delete frame"]);
+  assert.deepEqual(labels(ctx), ["Rename", "Select contents", "Collapse", "Description", "Lock", "Present", "Fit to contents", "Auto-fit: on", "Fold all", "Pin", "Delete frame"]);
   assert.deepEqual(ctx.querySelectorAll(".pxd-ctx__tidy .pxd-seg__btn").map((b) => b.dataset.value), ["grid", "row", "column"]);
   q(ctx, ".pxd-ctx__fit-section").click();
   q(ctx, ".pxd-ctx__auto-fit").click();

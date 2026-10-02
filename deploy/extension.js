@@ -380,6 +380,7 @@ var DEFAULT_BOARD_CARD = { w: 320, h: 220 };
 var UNTITLED_BOARD = "Untitled board";
 var FONT_SIZES = [16, 24, 32, 48];
 var CARD_LOOKS = ["block", "card"];
+var TEXT_LOOKS = ["section-note"];
 var CARD_FONT_MIN = 10;
 var CARD_FONT_MAX = 48;
 var CARD_FONT_DEFAULT = 14;
@@ -485,7 +486,7 @@ function normalizeItemLayout(plexus) {
     fontSize: section ? void 0 : intIn(p.fontSize, CARD_FONT_MIN, CARD_FONT_MAX),
     pinned: p.pinned === true,
     fit: p.fit === false ? false : void 0,
-    look: CARD_LOOKS.includes(p.look) ? p.look : void 0,
+    look: type === "text" ? TEXT_LOOKS.includes(p.look) ? p.look : void 0 : CARD_LOOKS.includes(p.look) ? p.look : void 0,
     textColor: section ? void 0 : styleColor(p.textColor),
     align: section || !ALIGNS.includes(p.align) ? void 0 : p.align,
     fill: section ? void 0 : styleColor(p.fill),
@@ -546,7 +547,9 @@ function serializeItemLayout(layout) {
   if (l.v === SCHEMA_VERSION) out.v = SCHEMA_VERSION;
   if (l.pinned === true) out.pinned = true;
   if (l.type === "section" && l.fit === false) out.fit = false;
-  if (CARD_LOOKS.includes(l.look)) out.look = l.look;
+  if (type === "text") {
+    if (TEXT_LOOKS.includes(l.look)) out.look = l.look;
+  } else if (CARD_LOOKS.includes(l.look)) out.look = l.look;
   if (BOARD_PATTERNS.includes(l.bg)) out.bg = l.bg;
   const tone = boardColor(l.bgColor);
   if (tone) out.bgColor = tone;
@@ -732,6 +735,7 @@ function unionRect2(a, b) {
   return { x, y, w: Math.max(a.x + a.w, b.x + b.w) - x, h: Math.max(a.y + a.h, b.y + b.h) - y };
 }
 function contains(r, p) {
+  if (!r || !p) return false;
   return p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
 }
 function containsRect(outer, inner) {
@@ -841,7 +845,7 @@ function buildBoard(pulled, { defaults } = {}) {
         areaFill: type === "section" ? layout.areaFill : void 0,
         sectionDefaults: type === "section" ? sectionDefaults : void 0,
         pinned: layout.pinned,
-        look: type === "card" ? cardLook(kind, layout.look) : void 0,
+        look: type === "card" ? cardLook(kind, layout.look) : type === "text" ? layout.look : void 0,
         open: type === "card" ? child[":block/open"] !== false : void 0,
         autofit: !(type === "section" && layout.fit === false),
         title,
@@ -903,6 +907,56 @@ function buildBoard(pulled, { defaults } = {}) {
     childCount: boardKids.length,
     edges
   };
+}
+var COLLAPSED_SECTION_H = 8;
+function anchorUid(board, uid) {
+  const start = board?.items.get(uid);
+  if (!start) return uid;
+  let cur = uid;
+  if (start.type === "text" && start.look === "section-note") {
+    const parent = board.items.get(start.parentUid);
+    if (parent?.type === "section") cur = parent.uid;
+  }
+  let collapsed = null;
+  let walk = cur;
+  while (walk && walk !== board.uid) {
+    const item = board.items.get(walk);
+    if (!item) break;
+    if (item.type === "section" && item.collapsed) collapsed = item.uid;
+    walk = item.parentUid;
+  }
+  return collapsed || cur;
+}
+function sectionNoteUid(board, sectionUid) {
+  const item = board?.items.get(sectionUid);
+  if (!item || item.type !== "section") return null;
+  for (const m of item.members || []) {
+    const kid = board.items.get(m);
+    if (kid?.type === "text" && kid.look === "section-note") return kid.uid;
+  }
+  return null;
+}
+function displayRects(board, stored) {
+  const base = stored ?? (board ? worldRects(board) : /* @__PURE__ */ new Map());
+  if (!board) return new Map(base);
+  const out = /* @__PURE__ */ new Map();
+  for (const [uid, r] of base) {
+    if (!r || anchorUid(board, uid) !== uid) continue;
+    const item = board.items.get(uid);
+    if (item?.type === "section" && item.collapsed) out.set(uid, { x: r.x, y: r.y, w: r.w, h: COLLAPSED_SECTION_H });
+    else out.set(uid, { x: r.x, y: r.y, w: r.w, h: r.h });
+  }
+  return out;
+}
+function routedEdge(board, edge, rects) {
+  if (!board || !edge) return null;
+  const from = anchorUid(board, edge.from);
+  const to = anchorUid(board, edge.to);
+  if (!from || !to || from === to) return null;
+  const a = rects?.get(from);
+  const b = rects?.get(to);
+  if (!a || !b) return null;
+  return { from, to, a, b };
 }
 function worldRects(board) {
   const rects = /* @__PURE__ */ new Map();
@@ -4439,6 +4493,34 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
         }
       });
     },
+    // One undo step. Pins or unpins the section and everything inside it. Does not write x/y/w/h.
+    lockSection(id, on = true) {
+      const item = board?.items.get(id);
+      if (!item || item.type !== "section") return Promise.resolve(false);
+      return this.setPinned([id, ...descendantsOf(board, id)], Boolean(on));
+    },
+    // Adds the description line, or deletes it. The block is a text child with look section-note.
+    // No auto-fit: the section's stored size stays put.
+    toggleSectionNote(id, string = "Description") {
+      return txn((t) => {
+        const item = board.items.get(id);
+        if (!item || item.type !== "section") return null;
+        const existing = item.members.find((m) => {
+          const kid = board.items.get(m);
+          return kid?.type === "text" && kid.look === "section-note";
+        });
+        if (existing) {
+          t.del(existing);
+          return null;
+        }
+        const w = Math.max(80, Math.min(360, item.w - 32));
+        return t.create({
+          parent: id,
+          string,
+          plexus: serializeItemLayout({ type: "text", look: "section-note", x: 16, y: 12, w, h: 32 })
+        });
+      });
+    },
     // bg / bgColor: undefined leaves the key, null removes it. bg is a pattern. bgColor is a tone name or #rrggbb.
     // Resolves true when applied (or already equal), false when rejected.
     setBoardBackground({ bg, bgColor } = {}) {
@@ -5548,6 +5630,7 @@ function createInteractions({ actions, settings } = {}) {
   };
   const board = () => call("board");
   const rects = () => call("rects");
+  const hitRects = () => call("hitRects") || rects();
   const vp = () => call("viewport") || { x: 0, y: 0, zoom: 1 };
   const zoom = () => vp().zoom || 1;
   const emitSelection = () => {
@@ -5712,7 +5795,7 @@ function createInteractions({ actions, settings } = {}) {
     if (!g) return;
     if (g.kind === "connect") {
       const b = board();
-      const r = rects();
+      const r = hitRects();
       call("showTempWire", { from: g.from, fromSide: g.fromSide, point: ev.world });
       const hit = b && r ? hitTest(b, ev.world, r, { sectionInterior: true }) : null;
       const hover = hit && hit.uid !== g.from ? hit.uid : null;
@@ -5764,7 +5847,7 @@ function createInteractions({ actions, settings } = {}) {
       }
       call("showGuides", guides);
       const b = board();
-      const r = rects();
+      const r = hitRects();
       if (b && r && !g.dup && g.uids.length) {
         if (!g.exclude) {
           g.exclude = new Set(g.uids);
@@ -5788,7 +5871,7 @@ function createInteractions({ actions, settings } = {}) {
       g.rect = rect;
       call("showMarquee", rect, "select");
       const b = board();
-      const r = rects();
+      const r = hitRects();
       if (b && r) {
         const hits = itemsInRect(b, rect, r, { mode: "contain" });
         const next = new Set(g.base);
@@ -5887,7 +5970,8 @@ function createInteractions({ actions, settings } = {}) {
         if (g.moved && g.rect) call("commitRects", [g.rect]);
         break;
       case "connect": {
-        const hit = b && r ? hitTest(b, ev.world, r, { sectionInterior: true }) : null;
+        const hr = hitRects();
+        const hit = b && hr ? hitTest(b, ev.world, hr, { sectionInterior: true }) : null;
         end();
         if (hit && hit.uid === g.from) {
           selectItems([g.from]);
@@ -5896,7 +5980,7 @@ function createInteractions({ actions, settings } = {}) {
           if (existing) {
             selectEdge(existing.uid);
           } else {
-            const toSide = nearestSide(r.get(hit.uid), ev.world);
+            const toSide = nearestSide(hr.get(hit.uid), ev.world);
             Promise.resolve(call("addEdge", { from: g.from, to: hit.uid, fromSide: g.fromSide, toSide })).then((uid) => {
               if (uid) selectEdge(uid);
             }).catch(() => {
@@ -6061,12 +6145,15 @@ function createInteractions({ actions, settings } = {}) {
   };
   const selectNearest = (dir, add) => {
     const b = board();
-    const r = rects();
+    const r = hitRects();
     const from = lastSelected();
     if (!b || !r || !from || !b.items.has(from)) return;
     const parent = b.items.get(from).parentUid;
     const candidates = [];
-    for (const [uid, item] of b.items) if (item.parentUid === parent && (uid === from || !state.selection.has(uid))) candidates.push(uid);
+    for (const [uid, item] of b.items) {
+      if (uid !== from && !r.get(uid)) continue;
+      if (item.parentUid === parent && (uid === from || !state.selection.has(uid))) candidates.push(uid);
+    }
     const next = nearestInDirection(r, from, dir, { candidates });
     if (!next) return;
     selectItems(add ? [...state.selection, next] : [next]);
@@ -6837,6 +6924,7 @@ function createItemRenderer({
       const node = el("div", "pxd-section", null);
       rec.el = node;
       rec.title = el("div", "pxd-section__title", node);
+      rec.note = el("div", "pxd-section__note", node);
       for (const side of ["t", "r", "b", "l"]) el("div", `pxd-section__edge pxd-section__edge--${side}`, node);
       buildGrips(node);
       buildPorts(node);
@@ -6901,7 +6989,8 @@ function createItemRenderer({
     const base = item.type === "section" ? "pxd-section" : `pxd-item pxd-item--${item.type} pxd-item--${item.kind}`;
     const cls = [base];
     if (PALETTE.includes(item.color)) cls.push(`pxd-c-${item.color}`);
-    if (item.collapsed) cls.push("pxd-item--collapsed");
+    if (item.collapsed && item.type !== "section") cls.push("pxd-item--collapsed");
+    if (item.type === "section" && item.collapsed) cls.push("pxd-section--collapsed");
     if (!item.string?.trim()) cls.push("pxd-item--empty");
     if (item.type === "text" && FONT_SIZES.includes(item.fontSize)) cls.push(`pxd-item--fs${item.fontSize}`);
     if (item.type !== "section" && item.fontSize) cls.push("pxd-fs");
@@ -6924,6 +7013,14 @@ function createItemRenderer({
         rec.title.textContent = item.title || "Section";
         rec.titleString = item.string;
         rec.titleRendered = false;
+      }
+      const noteUid = !item.collapsed && lastBoard ? sectionNoteUid(lastBoard, item.uid) : null;
+      const note = noteUid ? lastBoard.items.get(noteUid) : null;
+      if (rec.note) {
+        if (note) {
+          rec.note.style.display = "";
+          rec.note.textContent = firstLine(note.string || "");
+        } else rec.note.style.display = "none";
       }
     } else {
       if (editing?.uid !== item.uid && !rec.renaming) rec.header.textContent = item.type === "text" ? "" : String(rec.refTitle || item.title || "").slice(0, HEADER_TEXT_MAX);
@@ -6963,6 +7060,7 @@ function createItemRenderer({
         orderChanged = true;
       }
       const rect = rects.get(uid);
+      rec.el.style.display = rect ? "" : "none";
       if (fresh || !dirty || dirty.has(uid)) {
         if (!fresh && editing?.uid === uid) {
           if (rect && (!rec.rect || rec.rect.x !== rect.x || rec.rect.y !== rect.y || rec.rect.w !== rect.w || rec.rect.h !== rect.h)) position(rec, rect);
@@ -8113,10 +8211,9 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     return 0;
   };
   const geometryFor = (board, edge, rects) => {
-    const a = rects.get(edge.from);
-    const b = rects.get(edge.to);
-    if (!a || !b) return null;
-    return edgePath({ a, b, fromSide: edge.fromSide, toSide: edge.toSide, route: edge.route, offset: pairOffset(board, edge) });
+    const routed = routedEdge(board, edge, rects);
+    if (!routed) return null;
+    return edgePath({ a: routed.a, b: routed.b, fromSide: edge.fromSide, toSide: edge.toSide, route: edge.route, offset: pairOffset(board, edge) });
   };
   const buildEdge = (edge) => {
     const g = mk("g", "pxd-edge", svg);
@@ -8968,6 +9065,10 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
         swatches(row, (c) => on.setColor?.(c));
         btn("pxd-ctx__rename", "Rename", "Rename (Enter)", () => on.rename?.());
         btn("pxd-ctx__contents", "Select contents", "Select the section's members", () => on.selectContents?.());
+        opt("collapseSection", "pxd-ctx__collapse-section", model?.collapsed ? "Expand" : "Collapse", model?.collapsed ? "Expand the section" : "Collapse to the title", () => on.collapseSection?.());
+        opt("sectionNote", "pxd-ctx__section-note", model?.hasNote ? "Remove note" : "Description", model?.hasNote ? "Remove the section description" : "Add a description line", () => on.sectionNote?.());
+        opt("lockSection", "pxd-ctx__lock", model?.locked ? "Unlock" : "Lock", model?.locked ? "Unpin everything inside" : "Pin the section and everything inside", () => on.lockSection?.(!model?.locked));
+        opt("presentSection", "pxd-ctx__present-section", "Present", "Present this section", () => on.presentSection?.());
         opt("fitSection", "pxd-ctx__fit-section", "Fit to contents", "Resize the section around its cards", () => on.fitSection());
         opt("toggleFit", "pxd-ctx__auto-fit", model?.autofit ? "Auto-fit: on" : "Auto-fit: off", "Keep the section sized to its cards", () => on.toggleFit());
         optSeg("tidy", "pxd-ctx__tidy", TIDY, (v) => on.tidy(v));
@@ -10451,6 +10552,10 @@ function buildMenu(kind, ctx = {}) {
       return [
         make("rename", "Rename", { hint: "Enter" }),
         make("select-contents", "Select contents", { disabled: empty }),
+        make("collapse-section", c.collapsed ? "Expand" : "Collapse"),
+        make("section-note", c.hasNote ? "Remove description" : "Add description"),
+        c.locked ? make("unlock-contents", "Unlock") : make("lock-contents", "Lock"),
+        make("present-section", "Present this section"),
         sep(),
         make("fit-section", "Fit to contents", { disabled: empty }),
         make("toggle-fit", "Auto-fit", { checked: Boolean(c.fitOn) }),
@@ -10811,20 +10916,28 @@ function createPresenter({ doc = globalThis.document, root, timers, on = {} } = 
     on.exit?.();
     return true;
   };
-  const start = (board, rects) => {
+  const start = (board, rects, opts) => {
     if (!board) return false;
     if (active) {
       teardown();
       active = false;
     }
-    const rootSet = new Set(board.roots);
-    const sections = outlineOrder(board).filter((u) => rootSet.has(u) && board.items.get(u)?.type === "section" && rects.get(u));
-    steps = sections.map((uid) => ({
-      uid,
-      rect: rects.get(uid),
-      title: board.items.get(uid).title || "",
-      members: collectMembers(board, uid)
-    }));
+    const only = opts && typeof opts === "object" ? opts.only : null;
+    if (only) {
+      const item = board.items.get(only);
+      const rect = rects?.get(only);
+      if (!item || item.type !== "section" || !rect) return false;
+      steps = [{ uid: only, rect, title: item.title || "", members: collectMembers(board, only) }];
+    } else {
+      const rootSet = new Set(board.roots);
+      const sections = outlineOrder(board).filter((u) => rootSet.has(u) && board.items.get(u)?.type === "section" && rects.get(u));
+      steps = sections.map((uid) => ({
+        uid,
+        rect: rects.get(uid),
+        title: board.items.get(uid).title || "",
+        members: collectMembers(board, uid)
+      }));
+    }
     if (!steps.length) {
       const all = [...board.items.keys()].filter((u) => rects.get(u));
       if (!all.length) return false;
@@ -11710,6 +11823,11 @@ function mountBoardView({
     for (const [k, v] of liveRects) merged.set(k, v);
     return merged;
   };
+  const paintRects = () => {
+    const b = board();
+    const base = effectiveRects();
+    return b ? displayRects(b, base) : base;
+  };
   const measure = () => {
     const r = root.getBoundingClientRect();
     rootRect = { left: r.left || 0, top: r.top || 0, width: r.width || 0, height: r.height || 0 };
@@ -11970,7 +12088,7 @@ function mountBoardView({
       if (!geo) return null;
       return { kind: "edge", rect: pathScreenRect(geo, []) };
     }
-    const r = rects();
+    const r = paintRects();
     const bounds = boundsOf(selection.items.map((u) => r.get(u)).filter(Boolean));
     return bounds ? { kind: "items", rect: toScreenRect(bounds) } : null;
   };
@@ -11991,6 +12109,15 @@ function mountBoardView({
     return Number(stats.refs) || 0;
   };
   const cardModel = (item) => item?.type === "card" ? { ...item, refs: refCountOf(item) } : item;
+  const sectionModel = (item) => {
+    const b = board();
+    const uids = b ? [item.uid, ...descendantsOf(b, item.uid)] : [item.uid];
+    return {
+      ...item,
+      hasNote: Boolean(b && sectionNoteUid(b, item.uid)),
+      locked: Boolean(b) && uids.every((u) => b.items.get(u)?.pinned)
+    };
+  };
   const showCtx = () => {
     const b = board();
     if (!b) return chrome.ctx.hide();
@@ -12005,11 +12132,13 @@ function mountBoardView({
     const items = selectedItems();
     if (!items.length) return chrome.ctx.hide();
     if (items.length > 1) {
-      const model = { count: items.length, allPinned: items.every((i) => i.pinned), anyCollapsed: items.some((i) => i.type === "card" && i.collapsed) };
-      return chrome.ctx.show("cards", model, ctxAnchor);
+      const model2 = { count: items.length, allPinned: items.every((i) => i.pinned), anyCollapsed: items.some((i) => i.type === "card" && i.collapsed) };
+      return chrome.ctx.show("cards", model2, ctxAnchor);
     }
     const it = items[0];
-    return chrome.ctx.show(it.type === "section" ? "section" : it.type === "text" ? "text" : it.kind === "board" ? "board" : "card", cardModel(it), ctxAnchor);
+    const kind = it.type === "section" ? "section" : it.type === "text" ? "text" : it.kind === "board" ? "board" : "card";
+    const model = it.type === "section" ? sectionModel(it) : cardModel(it);
+    return chrome.ctx.show(kind, model, ctxAnchor);
   };
   const targetUids = () => selection.edge ? [selection.edge] : selection.items;
   const singleItem = () => selection.items.length === 1 ? board()?.items.get(selection.items[0]) : null;
@@ -12530,8 +12659,18 @@ function mountBoardView({
         return { canPaste: true };
       case "card":
         return { item, isBoard: item?.kind === "board", collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS2.includes(item?.kind) };
-      case "section":
-        return { item, count: item?.members?.length ?? 0, fitOn: item?.autofit !== false, pinned: Boolean(item?.pinned) };
+      case "section": {
+        const members = item && b ? [item.uid, ...descendantsOf(b, item.uid)] : [];
+        return {
+          item,
+          count: item?.members?.length ?? 0,
+          fitOn: item?.autofit !== false,
+          pinned: Boolean(item?.pinned),
+          collapsed: Boolean(item?.collapsed),
+          hasNote: Boolean(item && sectionNoteUid(b, item.uid)),
+          locked: members.length > 0 && members.every((u) => b.items.get(u)?.pinned)
+        };
+      }
       case "text":
         return { item, pinned: Boolean(item?.pinned) };
       case "edge": {
@@ -12746,6 +12885,21 @@ function mountBoardView({
       case "unfold-all-in":
         if (item) void session.collapseAll?.(false, { within: item.uid });
         break;
+      case "collapse-section":
+        if (item?.type === "section") void session.setCollapsed?.(item.uid, !item.collapsed);
+        break;
+      case "section-note":
+        if (item?.type === "section") void session.toggleSectionNote?.(item.uid);
+        break;
+      case "lock-contents":
+        if (item?.type === "section") void session.lockSection?.(item.uid, true);
+        break;
+      case "unlock-contents":
+        if (item?.type === "section") void session.lockSection?.(item.uid, false);
+        break;
+      case "present-section":
+        if (item?.type === "section") startPresent(item.uid);
+        break;
       case "size":
         if (item) void session.setFontSize?.(item.uid, Number(arg));
         break;
@@ -12939,6 +13093,22 @@ function mountBoardView({
         const it = singleItem();
         if (it) void session.collapseAll?.(Boolean(value), { within: it.uid });
       },
+      collapseSection: () => {
+        const it = singleItem();
+        if (it?.type === "section") void session.setCollapsed?.(it.uid, !it.collapsed);
+      },
+      sectionNote: () => {
+        const it = singleItem();
+        if (it?.type === "section") void session.toggleSectionNote?.(it.uid);
+      },
+      lockSection: (on) => {
+        const it = singleItem();
+        if (it?.type === "section") void session.lockSection?.(it.uid, on !== false);
+      },
+      presentSection: () => {
+        const it = singleItem();
+        if (it?.type === "section") startPresent(it.uid);
+      },
       fold: (value) => setFolded(selection.items, Boolean(value)),
       sameSize: (mode) => {
         if (selection.items.length) void session.sameSize?.(selection.items, lastSelected(), mode);
@@ -13090,9 +13260,10 @@ function mountBoardView({
       }
     }
   });
-  const startPresent = () => {
+  const startPresent = (only) => {
     quicklook.close();
-    if (!presenter.start(board(), rects())) toast("Nothing to present");
+    const opts = only ? { only } : void 0;
+    if (!presenter.start(board(), rects(), opts)) toast("Nothing to present");
   };
   chrome.minimap.setVisible(setting("show-minimap", true) !== false);
   chrome.toolbar.setLinkMode(linkMode);
@@ -13311,6 +13482,7 @@ function mountBoardView({
   const actions = {
     board,
     rects,
+    hitRects: () => paintRects(),
     viewport: () => vp,
     size: () => size,
     setViewport,
@@ -13377,7 +13549,7 @@ function mountBoardView({
       });
       for (const u of grown) set.add(u);
       const linkKeys = new Set((session.links || []).filter((l) => set.has(l.from) || set.has(l.to)).map((l) => l.key));
-      edgesR.update({ board: b, edgeUids: edgesTouching(b, set), rects: effectiveRects(), zoom: vp.zoom, linkKeys, links: session.links || [] });
+      edgesR.update({ board: b, edgeUids: edgesTouching(b, set), rects: paintRects(), zoom: vp.zoom, linkKeys, links: session.links || [] });
       dirty.minimap = true;
       schedule();
     },
@@ -13389,7 +13561,7 @@ function mountBoardView({
       previewFit(list.map((r) => r.uid), { skip: new Set(list.filter((r) => b.items.get(r.uid)?.type === "section").map((r) => r.uid)) });
       for (const u of grown) set.add(u);
       const linkKeys = new Set((session.links || []).filter((l) => set.has(l.from) || set.has(l.to)).map((l) => l.key));
-      edgesR.update({ board: b, edgeUids: edgesTouching(b, set), rects: effectiveRects(), zoom: vp.zoom, linkKeys, links: session.links || [] });
+      edgesR.update({ board: b, edgeUids: edgesTouching(b, set), rects: paintRects(), zoom: vp.zoom, linkKeys, links: session.links || [] });
       dirty.minimap = true;
       schedule();
     },
@@ -13967,16 +14139,20 @@ function mountBoardView({
     if (disposed) return;
     const b = board();
     if (!b) return;
-    const r = rects();
     let itemsChanged = false;
     if (dirty.all || dirty.structural || dirty.items.size) {
-      itemsR.sync({ board: b, rects: effectiveRects(), dirty: dirty.all ? null : dirty.items, structural: dirty.structural });
+      itemsR.sync({ board: b, rects: paintRects(), dirty: dirty.all ? null : dirty.items, structural: dirty.structural });
       itemsChanged = true;
     }
-    if (dirty.all || dirty.structural || dirty.links || dirty.edges.size) {
-      edgesR.render({ board: b, rects: r, links: session.links || [], coveredEdges: session.coveredEdges || /* @__PURE__ */ new Set(), selection, zoom: vp.zoom, dirty: dirty.all || dirty.structural || dirty.links ? null : dirty.edges });
-      if (dirty.items.size && !dirty.all && !dirty.structural) {
-        edgesR.update({ board: b, edgeUids: edgesTouching(b, dirty.items), rects: r, zoom: vp.zoom, linkKeys: new Set((session.links || []).map((l) => l.key)), links: session.links || [] });
+    const edgesDue = dirty.all || dirty.structural || dirty.links || dirty.edges.size;
+    const itemsMoveEdges = dirty.items.size && !dirty.all && !dirty.structural;
+    if (edgesDue || itemsMoveEdges) {
+      const shown = paintRects();
+      if (edgesDue) {
+        edgesR.render({ board: b, rects: shown, links: session.links || [], coveredEdges: session.coveredEdges || /* @__PURE__ */ new Set(), selection, zoom: vp.zoom, dirty: dirty.all || dirty.structural || dirty.links ? null : dirty.edges });
+      }
+      if (itemsMoveEdges) {
+        edgesR.update({ board: b, edgeUids: edgesTouching(b, dirty.items), rects: shown, zoom: vp.zoom, linkKeys: new Set((session.links || []).map((l) => l.key)), links: session.links || [] });
       }
     }
     if (dirty.viewport) {
@@ -14011,7 +14187,7 @@ function mountBoardView({
     } else if (dirty.viewport && chrome.ctx.isOpen()) {
       chrome.ctx.reposition();
     }
-    if (dirty.viewport || itemsChanged || dirty.minimap) chrome.minimap.update({ board: b, rects: effectiveRects(), vp, size });
+    if (dirty.viewport || itemsChanged || dirty.minimap) chrome.minimap.update({ board: b, rects: paintRects(), vp, size });
     if (itemsChanged && !gesturing) {
       scheduleContent();
       updateBackToContent();

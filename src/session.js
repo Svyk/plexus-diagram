@@ -1095,6 +1095,36 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
       });
     },
 
+    // One undo step. Pins or unpins the section and everything inside it. Does not write x/y/w/h.
+    lockSection(id, on = true) {
+      const item = board?.items.get(id);
+      if (!item || item.type !== "section") return Promise.resolve(false);
+      return this.setPinned([id, ...descendantsOf(board, id)], Boolean(on));
+    },
+
+    // Adds the description line, or deletes it. The block is a text child with look section-note.
+    // No auto-fit: the section's stored size stays put.
+    toggleSectionNote(id, string = "Description") {
+      return txn((t) => {
+        const item = board.items.get(id);
+        if (!item || item.type !== "section") return null;
+        const existing = item.members.find((m) => {
+          const kid = board.items.get(m);
+          return kid?.type === "text" && kid.look === "section-note";
+        });
+        if (existing) {
+          t.del(existing);
+          return null;
+        }
+        const w = Math.max(80, Math.min(360, item.w - 32));
+        return t.create({
+          parent: id,
+          string,
+          plexus: serializeItemLayout({ type: "text", look: "section-note", x: 16, y: 12, w, h: 32 }),
+        });
+      });
+    },
+
     // bg / bgColor: undefined leaves the key, null removes it. bg is a pattern. bgColor is a tone name or #rrggbb.
     // Resolves true when applied (or already equal), false when rejected.
     setBoardBackground({ bg, bgColor } = {}) {

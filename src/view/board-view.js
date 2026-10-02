@@ -7,7 +7,7 @@
 // section auto-fit preview, context menu, clipboard, focus, presentation, card badges, back-to-content.
 
 import { BOARD_PATTERNS, BOARD_TONES, DEFAULT_BOARD_CARD, DEFAULT_SIZES, UNTITLED_BOARD, classifyString, hexColor, semanticRef, plainText } from "../model/schema.js";
-import { boundsOf, buildBoard, containerAt, descendantsOf, edgesTouching, outlineOrder, sectionFitPlan, sidebarOutlineUids, worldRects } from "../model/board.js";
+import { boundsOf, buildBoard, containerAt, descendantsOf, displayRects, edgesTouching, outlineOrder, sectionFitPlan, sectionNoteUid, sidebarOutlineUids, worldRects } from "../model/board.js";
 import { copyLinkText, hashFromUrl, pageUidFromHash, pxdTarget } from "../model/deeplink.js";
 import { findOnBoard } from "../model/find.js";
 import {
@@ -457,6 +457,12 @@ export function mountBoardView({
     for (const [k, v] of liveRects) merged.set(k, v);
     return merged;
   };
+  // Paint and hit-test. Stored rects stay on `rects()` so a collapse never writes section h.
+  const paintRects = () => {
+    const b = board();
+    const base = effectiveRects();
+    return b ? displayRects(b, base) : base;
+  };
 
   const measure = () => {
     const r = root.getBoundingClientRect();
@@ -705,7 +711,7 @@ export function mountBoardView({
       if (!geo) return null;
       return { kind: "edge", rect: pathScreenRect(geo, []) };
     }
-    const r = rects();
+    const r = paintRects();
     const bounds = boundsOf(selection.items.map((u) => r.get(u)).filter(Boolean));
     return bounds ? { kind: "items", rect: toScreenRect(bounds) } : null;
   };
@@ -722,6 +728,15 @@ export function mountBoardView({
     return Number(stats.refs) || 0;
   };
   const cardModel = (item) => (item?.type === "card" ? { ...item, refs: refCountOf(item) } : item);
+  const sectionModel = (item) => {
+    const b = board();
+    const uids = b ? [item.uid, ...descendantsOf(b, item.uid)] : [item.uid];
+    return {
+      ...item,
+      hasNote: Boolean(b && sectionNoteUid(b, item.uid)),
+      locked: Boolean(b) && uids.every((u) => b.items.get(u)?.pinned),
+    };
+  };
   const showCtx = () => {
     const b = board();
     if (!b) return chrome.ctx.hide();
@@ -740,7 +755,9 @@ export function mountBoardView({
       return chrome.ctx.show("cards", model, ctxAnchor);
     }
     const it = items[0];
-    return chrome.ctx.show(it.type === "section" ? "section" : it.type === "text" ? "text" : it.kind === "board" ? "board" : "card", cardModel(it), ctxAnchor);
+    const kind = it.type === "section" ? "section" : it.type === "text" ? "text" : it.kind === "board" ? "board" : "card";
+    const model = it.type === "section" ? sectionModel(it) : cardModel(it);
+    return chrome.ctx.show(kind, model, ctxAnchor);
   };
 
   // ------------------------------------------------------------ session mutations used by chrome
@@ -1188,7 +1205,18 @@ export function mountBoardView({
     switch (kind) {
       case "canvas": return { canPaste: true };
       case "card": return { item, isBoard: item?.kind === "board", collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS.includes(item?.kind) };
-      case "section": return { item, count: item?.members?.length ?? 0, fitOn: item?.autofit !== false, pinned: Boolean(item?.pinned) };
+      case "section": {
+        const members = item && b ? [item.uid, ...descendantsOf(b, item.uid)] : [];
+        return {
+          item,
+          count: item?.members?.length ?? 0,
+          fitOn: item?.autofit !== false,
+          pinned: Boolean(item?.pinned),
+          collapsed: Boolean(item?.collapsed),
+          hasNote: Boolean(item && sectionNoteUid(b, item.uid)),
+          locked: members.length > 0 && members.every((u) => b.items.get(u)?.pinned),
+        };
+      }
       case "text": return { item, pinned: Boolean(item?.pinned) };
       case "edge": { const e = uid ? b?.edges.get(uid) : null; return { item: e, dir: e?.dir, route: e?.route, dash: e?.dash }; }
       case "multi": {
@@ -1293,6 +1321,11 @@ export function mountBoardView({
       case "tidy": void session.tidyItems?.(mc.kind === "board-menu" ? b.roots : uids, arg); break;
       case "fold-all-in": if (item) void session.collapseAll?.(true, { within: item.uid }); break;
       case "unfold-all-in": if (item) void session.collapseAll?.(false, { within: item.uid }); break;
+      case "collapse-section": if (item?.type === "section") void session.setCollapsed?.(item.uid, !item.collapsed); break;
+      case "section-note": if (item?.type === "section") void session.toggleSectionNote?.(item.uid); break;
+      case "lock-contents": if (item?.type === "section") void session.lockSection?.(item.uid, true); break;
+      case "unlock-contents": if (item?.type === "section") void session.lockSection?.(item.uid, false); break;
+      case "present-section": if (item?.type === "section") startPresent(item.uid); break;
       case "size": if (item) void session.setFontSize?.(item.uid, Number(arg)); break;
       case "dir": if (edgeUid) void session.updateEdge?.(edgeUid, { dir: arg }); break;
       case "route": if (edgeUid) void session.updateEdge?.(edgeUid, { route: arg }); break;
@@ -1384,6 +1417,10 @@ export function mountBoardView({
       toggleFit: () => { const it = singleItem(); if (it) void session.setFit?.(it.uid, it.autofit === false); },
       tidy: (mode) => { if (selection.items.length) void session.tidyItems?.(selection.items, mode); },
       foldAll: (value) => { const it = singleItem(); if (it) void session.collapseAll?.(Boolean(value), { within: it.uid }); },
+      collapseSection: () => { const it = singleItem(); if (it?.type === "section") void session.setCollapsed?.(it.uid, !it.collapsed); },
+      sectionNote: () => { const it = singleItem(); if (it?.type === "section") void session.toggleSectionNote?.(it.uid); },
+      lockSection: (on) => { const it = singleItem(); if (it?.type === "section") void session.lockSection?.(it.uid, on !== false); },
+      presentSection: () => { const it = singleItem(); if (it?.type === "section") startPresent(it.uid); },
       fold: (value) => setFolded(selection.items, Boolean(value)),
       sameSize: (mode) => { if (selection.items.length) void session.sameSize?.(selection.items, lastSelected(), mode); },
       toggleFocus: () => toggleFocus(),
@@ -1483,9 +1520,10 @@ export function mountBoardView({
       exit: () => { presentSet = null; applyFocus(); },
     },
   });
-  const startPresent = () => {
+  const startPresent = (only) => {
     quicklook.close();
-    if (!presenter.start(board(), rects())) toast("Nothing to present");
+    const opts = only ? { only } : undefined;
+    if (!presenter.start(board(), rects(), opts)) toast("Nothing to present");
   };
   chrome.minimap.setVisible(setting("show-minimap", true) !== false);
   chrome.toolbar.setLinkMode(linkMode);
@@ -1686,6 +1724,7 @@ export function mountBoardView({
   const actions = {
     board,
     rects,
+    hitRects: () => paintRects(),
     viewport: () => vp,
     size: () => size,
     setViewport,
@@ -1751,7 +1790,7 @@ export function mountBoardView({
       });
       for (const u of grown) set.add(u);
       const linkKeys = new Set((session.links || []).filter((l) => set.has(l.from) || set.has(l.to)).map((l) => l.key));
-      edgesR.update({ board: b, edgeUids: edgesTouching(b, set), rects: effectiveRects(), zoom: vp.zoom, linkKeys, links: session.links || [] });
+      edgesR.update({ board: b, edgeUids: edgesTouching(b, set), rects: paintRects(), zoom: vp.zoom, linkKeys, links: session.links || [] });
       dirty.minimap = true;
       schedule();
     },
@@ -1763,7 +1802,7 @@ export function mountBoardView({
       previewFit(list.map((r) => r.uid), { skip: new Set(list.filter((r) => b.items.get(r.uid)?.type === "section").map((r) => r.uid)) });
       for (const u of grown) set.add(u);
       const linkKeys = new Set((session.links || []).filter((l) => set.has(l.from) || set.has(l.to)).map((l) => l.key));
-      edgesR.update({ board: b, edgeUids: edgesTouching(b, set), rects: effectiveRects(), zoom: vp.zoom, linkKeys, links: session.links || [] });
+      edgesR.update({ board: b, edgeUids: edgesTouching(b, set), rects: paintRects(), zoom: vp.zoom, linkKeys, links: session.links || [] });
       dirty.minimap = true;
       schedule();
     },
@@ -2284,20 +2323,25 @@ export function mountBoardView({
     if (disposed) return;
     const b = board();
     if (!b) return;
-    const r = rects();
     let itemsChanged = false;
     if (dirty.all || dirty.structural || dirty.items.size) {
       // Live preview rects (edit growth, drag fit) ride along: a sync for a dirty card must not snap grown section shells back.
-      itemsR.sync({ board: b, rects: effectiveRects(), dirty: dirty.all ? null : dirty.items, structural: dirty.structural });
+      itemsR.sync({ board: b, rects: paintRects(), dirty: dirty.all ? null : dirty.items, structural: dirty.structural });
       itemsChanged = true;
     }
-    if (dirty.all || dirty.structural || dirty.links || dirty.edges.size) {
-      // An edge-only change used to call update(), which moves the path and skips
-      // paintEdge, so dash and color never reached the DOM until a full render.
-      edgesR.render({ board: b, rects: r, links: session.links || [], coveredEdges: session.coveredEdges || new Set(), selection, zoom: vp.zoom, dirty: dirty.all || dirty.structural || dirty.links ? null : dirty.edges });
-      // edges touching dirty items move with them
-      if (dirty.items.size && !dirty.all && !dirty.structural) {
-        edgesR.update({ board: b, edgeUids: edgesTouching(b, dirty.items), rects: r, zoom: vp.zoom, linkKeys: new Set((session.links || []).map((l) => l.key)), links: session.links || [] });
+    const edgesDue = dirty.all || dirty.structural || dirty.links || dirty.edges.size;
+    // A collapse dirties only the section. Edges into its members still have to move
+    // onto the short frame, even when no edge block itself changed.
+    const itemsMoveEdges = dirty.items.size && !dirty.all && !dirty.structural;
+    if (edgesDue || itemsMoveEdges) {
+      const shown = paintRects();
+      if (edgesDue) {
+        // An edge-only change used to call update(), which moves the path and skips
+        // paintEdge, so dash and color never reached the DOM until a full render.
+        edgesR.render({ board: b, rects: shown, links: session.links || [], coveredEdges: session.coveredEdges || new Set(), selection, zoom: vp.zoom, dirty: dirty.all || dirty.structural || dirty.links ? null : dirty.edges });
+      }
+      if (itemsMoveEdges) {
+        edgesR.update({ board: b, edgeUids: edgesTouching(b, dirty.items), rects: shown, zoom: vp.zoom, linkKeys: new Set((session.links || []).map((l) => l.key)), links: session.links || [] });
       }
     }
     if (dirty.viewport) {
@@ -2329,7 +2373,7 @@ export function mountBoardView({
     } else if (dirty.viewport && chrome.ctx.isOpen()) {
       chrome.ctx.reposition();
     }
-    if (dirty.viewport || itemsChanged || dirty.minimap) chrome.minimap.update({ board: b, rects: effectiveRects(), vp, size });
+    if (dirty.viewport || itemsChanged || dirty.minimap) chrome.minimap.update({ board: b, rects: paintRects(), vp, size });
     if (itemsChanged && !gesturing) {
       scheduleContent();
       updateBackToContent();

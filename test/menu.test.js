@@ -58,7 +58,14 @@ test("card menu on a board card says board", () => {
 
 test("section menu: tidy submenu, auto-fit checked, empty sections disable content actions", () => {
   const menu = buildMenu("section", { count: 3, fitOn: true, pinned: false });
-  for (const id of ["rename", "select-contents", "fit-section", "toggle-fit", "tidy", "fold-all-in", "unfold-all-in", "color", "pin", "duplicate", "copy-ref", "delete-frame", "delete-contents"]) assert.ok(ids(menu).includes(id), id);
+  for (const id of ["rename", "select-contents", "collapse-section", "section-note", "lock-contents", "present-section", "fit-section", "toggle-fit", "tidy", "fold-all-in", "unfold-all-in", "color", "pin", "duplicate", "copy-ref", "delete-frame", "delete-contents"]) assert.ok(ids(menu).includes(id), id);
+  assert.equal(byId(menu, "collapse-section").label, "Collapse");
+  assert.equal(byId(menu, "section-note").label, "Add description");
+  assert.equal(byId(menu, "present-section").label, "Present this section");
+  const folded = buildMenu("section", { count: 1, collapsed: true, hasNote: true, locked: true });
+  assert.equal(byId(folded, "collapse-section").label, "Expand");
+  assert.equal(byId(folded, "section-note").label, "Remove description");
+  assert.ok(ids(folded).includes("unlock-contents"));
   assert.deepEqual(byId(menu, "tidy").children.map((c) => c.id), ["tidy:grid", "tidy:row", "tidy:column", "tidy:outline"]);
   assert.equal(byId(menu, "toggle-fit").checked, true);
   assert.equal(byId(buildMenu("section", { count: 3 }), "toggle-fit").checked, undefined);

@@ -8,6 +8,7 @@ export const DEFAULT_BOARD_CARD = { w: 320, h: 220 };
 export const UNTITLED_BOARD = "Untitled board";
 export const FONT_SIZES = [16, 24, 32, 48];
 export const CARD_LOOKS = ["block", "card"];
+export const TEXT_LOOKS = ["section-note"];
 export const CARD_FONT_MIN = 10;
 export const CARD_FONT_MAX = 48;
 export const CARD_FONT_DEFAULT = 14;
@@ -120,7 +121,9 @@ export function normalizeItemLayout(plexus) {
     fontSize: section ? undefined : intIn(p.fontSize, CARD_FONT_MIN, CARD_FONT_MAX),
     pinned: p.pinned === true,
     fit: p.fit === false ? false : undefined,
-    look: CARD_LOOKS.includes(p.look) ? p.look : undefined,
+    look: type === "text"
+      ? (TEXT_LOOKS.includes(p.look) ? p.look : undefined)
+      : (CARD_LOOKS.includes(p.look) ? p.look : undefined),
     textColor: section ? undefined : styleColor(p.textColor),
     align: section || !ALIGNS.includes(p.align) ? undefined : p.align,
     fill: section ? undefined : styleColor(p.fill),
@@ -190,7 +193,9 @@ export function serializeItemLayout(layout) {
   if (l.v === SCHEMA_VERSION) out.v = SCHEMA_VERSION;
   if (l.pinned === true) out.pinned = true;
   if (l.type === "section" && l.fit === false) out.fit = false;
-  if (CARD_LOOKS.includes(l.look)) out.look = l.look;
+  if (type === "text") {
+    if (TEXT_LOOKS.includes(l.look)) out.look = l.look;
+  } else if (CARD_LOOKS.includes(l.look)) out.look = l.look;
   if (BOARD_PATTERNS.includes(l.bg)) out.bg = l.bg;
   const tone = boardColor(l.bgColor);
   if (tone) out.bgColor = tone;

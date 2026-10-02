@@ -3,6 +3,7 @@
 // group (never var() in presentation attributes), and only edges touching moving items are
 // recomputed during a drag.
 
+import { routedEdge } from "../model/board.js";
 import { arrowHeadPath, arrowSize, edgePath, sidePoint } from "../model/geometry.js";
 import { PALETTE, hexColor } from "../model/schema.js";
 
@@ -49,10 +50,9 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
   };
 
   const geometryFor = (board, edge, rects) => {
-    const a = rects.get(edge.from);
-    const b = rects.get(edge.to);
-    if (!a || !b) return null;
-    return edgePath({ a, b, fromSide: edge.fromSide, toSide: edge.toSide, route: edge.route, offset: pairOffset(board, edge) });
+    const routed = routedEdge(board, edge, rects);
+    if (!routed) return null;
+    return edgePath({ a: routed.a, b: routed.b, fromSide: edge.fromSide, toSide: edge.toSide, route: edge.route, offset: pairOffset(board, edge) });
   };
 
   const buildEdge = (edge) => {

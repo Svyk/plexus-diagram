@@ -108,6 +108,10 @@ export function buildMenu(kind, ctx = {}) {
       return [
         make("rename", "Rename", { hint: "Enter" }),
         make("select-contents", "Select contents", { disabled: empty }),
+        make("collapse-section", c.collapsed ? "Expand" : "Collapse"),
+        make("section-note", c.hasNote ? "Remove description" : "Add description"),
+        c.locked ? make("unlock-contents", "Unlock") : make("lock-contents", "Lock"),
+        make("present-section", "Present this section"),
         sep(),
         make("fit-section", "Fit to contents", { disabled: empty }),
         make("toggle-fit", "Auto-fit", { checked: Boolean(c.fitOn) }),

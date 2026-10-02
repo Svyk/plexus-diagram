@@ -410,6 +410,10 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
         swatches(row, (c) => on.setColor?.(c));
         btn("pxd-ctx__rename", "Rename", "Rename (Enter)", () => on.rename?.());
         btn("pxd-ctx__contents", "Select contents", "Select the section's members", () => on.selectContents?.());
+        opt("collapseSection", "pxd-ctx__collapse-section", model?.collapsed ? "Expand" : "Collapse", model?.collapsed ? "Expand the section" : "Collapse to the title", () => on.collapseSection?.());
+        opt("sectionNote", "pxd-ctx__section-note", model?.hasNote ? "Remove note" : "Description", model?.hasNote ? "Remove the section description" : "Add a description line", () => on.sectionNote?.());
+        opt("lockSection", "pxd-ctx__lock", model?.locked ? "Unlock" : "Lock", model?.locked ? "Unpin everything inside" : "Pin the section and everything inside", () => on.lockSection?.(!model?.locked));
+        opt("presentSection", "pxd-ctx__present-section", "Present", "Present this section", () => on.presentSection?.());
         opt("fitSection", "pxd-ctx__fit-section", "Fit to contents", "Resize the section around its cards", () => on.fitSection());
         opt("toggleFit", "pxd-ctx__auto-fit", model?.autofit ? "Auto-fit: on" : "Auto-fit: off", "Keep the section sized to its cards", () => on.toggleFit());
         optSeg("tidy", "pxd-ctx__tidy", TIDY, (v) => on.tidy(v));

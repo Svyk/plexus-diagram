@@ -645,6 +645,26 @@ body.pxd-has-fullscreen .breadcrumbs-content {
 .pxd-section__edge--l { top: 0; bottom: 0; left: -4px; width: 8px; }
 .pxd-section__edge--r { top: 0; bottom: 0; right: -4px; width: 8px; }
 
+.pxd-section__note {
+  position: absolute;
+  left: 12px;
+  right: 12px;
+  top: 8px;
+  font-size: 13px;
+  line-height: 18px;
+  color: var(--pxd-muted);
+  pointer-events: none;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.pxd-section--collapsed > .pxd-section__note,
+.pxd-section--collapsed > .pxd-grip,
+.pxd-section--collapsed > .pxd-ports {
+  display: none;
+}
+
 /* ------------------------------------------------------------------ LOD (map / overview) */
 
 .pxd-lod-map .pxd-item__body,

@@ -195,7 +195,7 @@ Order matters: P1 and P2 are the user's direct requests. Within a phase, do task
 
 ### P7: Look, feel and accessibility (1.9.0)
 
-- [ ] **UI-1 Overview-tier title collisions** (S) — Known 1.2 polish item: around 12% zoom a card can cover a section's title pill. Draw section titles above cards in the overview tier, or offset cards. Accept: screenshot at 12% and 8% on the 300-card board.
+- [x] **UI-1 Overview-tier title collisions** — done 2026-10-02, `92b47f1`: on PWtaSkuAX the 20 section titles stayed in the overview tier at 12% and at 8% (.live/shots/UI-1-12.png, .live/shots/UI-1-8.png). — (S) — Known 1.2 polish item: around 12% zoom a card can cover a section's title pill. Draw section titles above cards in the overview tier, or offset cards. Accept: screenshot at 12% and 8% on the 300-card board.
 - [ ] **UI-2 Icon toolbar** (M) — Replace text buttons with Blueprint icons plus tooltips everywhere (context bar, rail, panel tabs), matching Roam's own controls. Accept: screenshot of each surface in light and dark.
 - [ ] **UI-3 Tool palette** (M) — Heptabase-style floating tool palette, bottom center: Select (V), Hand (H), Card (N), Text (T), Sticky (S), Shape (R), Section (G), Board (W), Connect (C). Setting to hide it. Accept: each tool creates or acts; the palette never overlaps the minimap.
 - [ ] **UI-4 Light and dark themes** (M) — Check every surface in Roam light, Roam dark (`bp3-dark`), and the Blueprint theme the user runs. Colors from CSS variables only; dark mode uses borders for selection and section identity. Accept: screenshots of the fixture in both themes.
@@ -291,3 +291,4 @@ Fill in as phases run. Keep the newest at the top of each list.
 | Send to another board | 1 per card. Those creates are not grouped |
 - PF-9, 2026-10-02: extension.js is 695696 bytes against 441504 at v1.2.0, which is 143816 bytes over the 25% cap.
 - PF-10, 2026-10-02: Typing on Test Lab was +9501.72 ms/key (11395.91 injected, 1894.19 unloaded, 200 keys, 22 roots).
+- UI-1, 2026-10-02: On PWtaSkuAX, 20 section titles stayed in the overview tier at 12% and at 8%.

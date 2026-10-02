@@ -204,7 +204,7 @@ Order matters: P1 and P2 are the user's direct requests. Within a phase, do task
 - [x] **UI-7 Keyboard-only use** (M) — done 2026-10-02, `e1e4b76`: tab reached the rail, the panel, a card, its toolbar, and the menu on the fixture. Every action reachable by keyboard; visible focus rings; `aria-label` on every control; the board root is a focusable region with `aria-roledescription="whiteboard"`; cards announce title and type. Accept: tab through the rail, panel, a card, its toolbar and the menu without a mouse.
 - [x] **UI-8 Shortcut sheet** (S) — done 2026-10-02, `31ee1e7`: ? opened the sheet, and every listed key runs from that table. `?` opens a sheet of every shortcut grouped by area, generated from one table in code so it cannot drift. Accept: every key in the sheet works.
 - [x] **UI-9 Changelog popover** (S) — done 2026-10-02, `57bb750`: the v1.3.0 badge opened that version's bundled changelog entry. Clicking the version badge shows the bundled CHANGELOG entry for the running version (no network). Accept: shows the current entry.
-- [ ] **UI-10 Settings panel order** (S) — Group the Roam Depot settings into Cards, Sections, Connections, Board, Performance, with plain descriptions and a "Reset Plexus settings" button. Accept: every setting applies live (no remount).
+- [x] **UI-10 Settings panel order** (S) — done 2026-10-02, `d618b31`: grouped settings reset through setSettings, and the open board stays mounted. — Group the Roam Depot settings into Cards, Sections, Connections, Board, Performance, with plain descriptions and a "Reset Plexus settings" button. Accept: every setting applies live (no remount).
 - [ ] **UI-11 Gate** — standing gate plus light and dark screenshot set.
 
 ### P8: Docs, hardening and 2.0 (2.0.0)
@@ -296,6 +296,7 @@ Fill in as phases run. Keep the newest at the top of each list.
 - UI-3, 2026-10-02: Nine palette tools switch or place, and the bar clears the minimap.
 - UI-4, 2026-10-02: The fixture follows svy-theme light and the dark token set, and sections stay an outline.
 - UI-5, 2026-10-02: An empty board shows the double-click hint, and the fixture hides it.
+- UI-10, 2026-10-02: Depot settings are grouped, and reset applies each one on the open board.
 - UI-9, 2026-10-02: The version badge opens that version's changelog entry from the bundle.
 - UI-8, 2026-10-02: ? opens one shortcut sheet, and each listed key runs from that table.
 - UI-7, 2026-10-02: Tab reaches the rail, the panel, a card, its toolbar, and the menu.

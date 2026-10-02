@@ -16,6 +16,7 @@ import {
   readPlexus,
   semanticRef,
 } from "./schema.js";
+import { listFromNodes } from "./snapshots.js";
 
 const AUTO_GAP = 40;
 const AUTO_OFFSET = 48;
@@ -91,11 +92,14 @@ export function buildBoard(pulled, { defaults } = {}) {
   let containerIndex = -1;
 
   const boardKids = sortedChildren(pulled);
+  let snapshotsUid = null;
   boardKids.forEach((child, index) => {
-    if (containerUid === null && readPlexus(child[":block/props"])?.type === "edges") {
+    const marker = readPlexus(child[":block/props"])?.type;
+    if (containerUid === null && marker === "edges") {
       containerUid = child[":block/uid"];
       containerIndex = index;
     }
+    if (snapshotsUid === null && marker === "snapshots") snapshotsUid = child[":block/uid"];
   });
 
   const sectionDefaults = normalizeSectionDefaults(plexus?.defaults?.section);
@@ -104,7 +108,7 @@ export function buildBoard(pulled, { defaults } = {}) {
     const siblings = [];
     for (const child of children) {
       const cuid = child[":block/uid"];
-      if (cuid === containerUid) continue;
+      if (cuid === containerUid || cuid === snapshotsUid) continue;
       const cplexus = readPlexus(child[":block/props"]);
       const cstring = child[":block/string"] ?? "";
       const heading = child[":block/heading"] || 0;
@@ -214,6 +218,8 @@ export function buildBoard(pulled, { defaults } = {}) {
     order,
     containerUid,
     containerIndex,
+    snapshotsUid,
+    snapshots: listFromNodes(sortedChildren(snapshotsUid ? boardKids.find((child) => child[":block/uid"] === snapshotsUid) : null)),
     childCount: boardKids.length,
     edges,
   };

@@ -1,5 +1,6 @@
 import "./session-clip.js";
 import "./templates.js";
+import "./snapshots.js";
 import { createLifecycle } from "./lifecycle.js";
 import { installPlexusDiagram } from "./feature.js";
 import { createSettingsPanel, initializeSettings } from "./settings.js";

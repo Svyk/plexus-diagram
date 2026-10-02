@@ -1255,7 +1255,8 @@ export function mountBoardView({
     const b = board();
     const item = uid ? b?.items.get(uid) : null;
     switch (kind) {
-      case "canvas": return { canPaste: true };
+      case "canvas": return { canPaste: true, snapshots: b?.snapshots || [] };
+      case "board-menu": return { snapshots: b?.snapshots || [] };
       case "card": return { item, isBoard: item?.kind === "board", collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS.includes(item?.kind) };
       case "section": {
         const members = item && b ? [item.uid, ...descendantsOf(b, item.uid)] : [];
@@ -1323,6 +1324,21 @@ export function mountBoardView({
       }
       case "save-template":
         Promise.resolve(session.saveAsTemplate?.()).catch(() => {});
+        break;
+      case "save-snapshot":
+        Promise.resolve(session.saveSnapshot?.()).catch(() => {});
+        break;
+      case "snapshot": {
+        const snap = b.snapshots?.find((item) => item.uid === arg);
+        const title = snap?.title || "this snapshot";
+        chrome.toast.show({
+          message: `Restore ${title}? Layouts are rewritten in groups of 45.`,
+          action: { label: "Restore", run: () => { void session.restoreSnapshot?.(arg); } },
+        });
+        break;
+      }
+      case "delete-snapshot":
+        Promise.resolve(session.deleteSnapshot?.(arg)).catch(() => {});
         break;
       case "paste": void pasteFromMenu(world, false); break;
       case "paste-clone": void pasteFromMenu(world, true); break;

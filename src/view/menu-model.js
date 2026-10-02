@@ -3,6 +3,7 @@
 // No DOM here: everything is data so the ids, disabled and checked logic can be tested directly.
 
 import { PALETTE, FONT_SIZES } from "../model/schema.js";
+import { partitionSnapshots } from "../model/snapshots.js";
 import { STARTERS } from "../model/templates.js";
 
 export const MENU_KINDS = ["canvas", "card", "section", "text", "edge", "multi", "board-menu"];
@@ -31,6 +32,28 @@ export function buildMenu(kind, ctx = {}) {
   const templateMenu = () => make("template", "New board from template…", {
     children: STARTERS.map((s) => make(`template:${s.id}`, s.title)),
   });
+
+  const snapshotMenus = () => {
+    const parts = partitionSnapshots(c.snapshots);
+    const items = [
+      make("save-snapshot", "Save snapshot"),
+      make("restore-snapshot", "Restore snapshot…", {
+        disabled: parts.newest.length === 0,
+        children: parts.newest.map((snap) => make(`snapshot:${snap.uid}`, snap.title)),
+      }),
+    ];
+    if (parts.older.length) {
+      items.push(make("older-snapshots", "Older snapshots", {
+        children: parts.older.map((snap) => make(`older:${snap.uid}`, snap.title, {
+          children: [
+            make(`snapshot:${snap.uid}`, "Restore"),
+            make(`delete-snapshot:${snap.uid}`, "Delete", { danger: true }),
+          ],
+        })),
+      }));
+    }
+    return items;
+  };
 
   const colorMenu = () => {
     const current = item?.color || null;
@@ -62,6 +85,7 @@ export function buildMenu(kind, ctx = {}) {
         make("new-board", "New board", { hint: "W" }),
         templateMenu(),
         make("save-template", "Save board as template"),
+        ...snapshotMenus(),
         sep(),
         make("paste", "Paste", { hint: "Cmd V", disabled: !c.canPaste }),
         make("paste-clone", "Paste as copies", { disabled: !c.canPaste }),
@@ -226,6 +250,7 @@ export function buildMenu(kind, ctx = {}) {
       return [
         templateMenu(),
         make("save-template", "Save board as template"),
+        ...snapshotMenus(),
         sep(),
         make("export-svg", "Export as SVG"),
         make("export-png", "Export as PNG"),

@@ -715,6 +715,107 @@ function attrNameOf(s) {
   return name ? name : null;
 }
 
+// src/model/snapshots.js
+var SNAPSHOTS_TITLE = "Snapshots";
+var SNAPSHOT_KEEP = 10;
+var SNAPSHOT_CHUNK = 45;
+var pad = (n) => String(n).padStart(2, "0");
+function snapshotTitle(date) {
+  const d = date instanceof Date ? date : new Date(date);
+  if (Number.isNaN(d.getTime())) return "";
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+function captureLayout(board2) {
+  const items = [];
+  for (const uid of board2?.order || []) {
+    const item = board2.items?.get?.(uid);
+    if (!item) continue;
+    items.push({
+      uid,
+      x: item.x,
+      y: item.y,
+      w: item.w,
+      h: item.h,
+      color: item.color || null,
+      collapsed: item.collapsed === true,
+      parent: item.parentUid
+    });
+  }
+  return items;
+}
+function snapshotProps(items) {
+  return { type: "snapshot", json: JSON.stringify({ items: items || [] }) };
+}
+function parseSnapshot(plexus) {
+  if (!plexus || plexus.type !== "snapshot" || typeof plexus.json !== "string") return null;
+  try {
+    const data = JSON.parse(plexus.json);
+    if (!Array.isArray(data?.items)) return null;
+    return data.items.filter((item) => item && typeof item.uid === "string");
+  } catch {
+    return null;
+  }
+}
+function listFromNodes(nodes) {
+  const out = [];
+  for (const node2 of nodes || []) {
+    const items = parseSnapshot(readPlexus(node2?.[":block/props"]));
+    if (!items) continue;
+    out.push({
+      uid: node2[":block/uid"],
+      title: node2[":block/string"] || "",
+      items
+    });
+  }
+  return out;
+}
+function partitionSnapshots(list) {
+  const all = (list || []).filter((item) => item?.uid && item.title);
+  const olderCount = Math.max(0, all.length - SNAPSHOT_KEEP);
+  return {
+    newest: all.slice(olderCount).reverse(),
+    older: all.slice(0, olderCount).reverse()
+  };
+}
+function changed(item, entry) {
+  return item.x !== entry.x || item.y !== entry.y || item.w !== entry.w || item.h !== entry.h || (item.color || null) !== (entry.color || null) || item.collapsed !== (entry.collapsed === true);
+}
+function planRestore(entries, board2) {
+  const units = [];
+  for (const entry of entries || []) {
+    const item = board2?.items?.get?.(entry?.uid);
+    if (!item || !entry) continue;
+    const unit = [];
+    const parent = entry.parent;
+    const parentOk = parent === board2.uid || board2.items.get(parent)?.type === "section";
+    if (parentOk && parent !== item.parentUid) unit.push({ op: "move", uid: item.uid, parent });
+    if (changed(item, entry)) {
+      unit.push({
+        op: "props",
+        uid: item.uid,
+        x: entry.x,
+        y: entry.y,
+        w: entry.w,
+        h: entry.h,
+        color: entry.color || null,
+        collapsed: entry.collapsed === true
+      });
+    }
+    if (unit.length) units.push(unit);
+  }
+  const chunks = [];
+  let chunk = [];
+  for (const unit of units) {
+    if (chunk.length && chunk.length + unit.length > SNAPSHOT_CHUNK) {
+      chunks.push(chunk);
+      chunk = [];
+    }
+    chunk.push(...unit);
+  }
+  if (chunk.length) chunks.push(chunk);
+  return chunks;
+}
+
 // src/model/board.js
 var AUTO_GAP = 40;
 var AUTO_OFFSET = 48;
@@ -787,18 +888,21 @@ function buildBoard(pulled, { defaults } = {}) {
   let containerUid = null;
   let containerIndex = -1;
   const boardKids = sortedChildren(pulled);
+  let snapshotsUid = null;
   boardKids.forEach((child, index) => {
-    if (containerUid === null && readPlexus(child[":block/props"])?.type === "edges") {
+    const marker = readPlexus(child[":block/props"])?.type;
+    if (containerUid === null && marker === "edges") {
       containerUid = child[":block/uid"];
       containerIndex = index;
     }
+    if (snapshotsUid === null && marker === "snapshots") snapshotsUid = child[":block/uid"];
   });
   const sectionDefaults = normalizeSectionDefaults(plexus?.defaults?.section);
   const walk = (children, parentUid, depth) => {
     const siblings = [];
     for (const child of children) {
       const cuid = child[":block/uid"];
-      if (cuid === containerUid) continue;
+      if (cuid === containerUid || cuid === snapshotsUid) continue;
       const cplexus = readPlexus(child[":block/props"]);
       const cstring = child[":block/string"] ?? "";
       const heading = child[":block/heading"] || 0;
@@ -904,6 +1008,8 @@ function buildBoard(pulled, { defaults } = {}) {
     order,
     containerUid,
     containerIndex,
+    snapshotsUid,
+    snapshots: listFromNodes(sortedChildren(snapshotsUid ? boardKids.find((child) => child[":block/uid"] === snapshotsUid) : null)),
     childCount: boardKids.length,
     edges
   };
@@ -1046,7 +1152,7 @@ function boundsOf(rectList) {
 var clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 var PREVIEW_MIN = { w: DEFAULT_SIZES.card.w * 2, h: DEFAULT_SIZES.card.h * 2 };
 var PREVIEW_TITLE = 40;
-function boardPreview(item, { max = 60, aspect = null, pad = 0.12 } = {}) {
+function boardPreview(item, { max = 60, aspect = null, pad: pad2 = 0.12 } = {}) {
   const empty = { count: 0, aspect: 1.6, rects: [], edges: [], bounds: null, empty: true };
   const child = buildBoard({
     ":block/uid": item?.uid,
@@ -1061,7 +1167,7 @@ function boardPreview(item, { max = 60, aspect = null, pad = 0.12 } = {}) {
   const bh = bounds.h || 1;
   let w = Math.max(bw, PREVIEW_MIN.w);
   let h = Math.max(bh, PREVIEW_MIN.h);
-  const p = Math.max(FIT_PAD, pad * Math.max(bw, bh));
+  const p = Math.max(FIT_PAD, pad2 * Math.max(bw, bh));
   const cx = bounds.x + bounds.w / 2;
   const cy = bounds.y + bounds.h / 2;
   w += 2 * p;
@@ -1101,7 +1207,7 @@ function boardPreview(item, { max = 60, aspect = null, pad = 0.12 } = {}) {
   return { count: child.items.size, aspect: target, rects, edges, bounds, empty: false };
 }
 function sectionFitPlan(board2, rects, touchedUids, {
-  pad = FIT_PAD,
+  pad: pad2 = FIT_PAD,
   skip = /* @__PURE__ */ new Set(),
   parentOf = (u) => board2.items.get(u)?.parentUid
 } = {}) {
@@ -1117,7 +1223,7 @@ function sectionFitPlan(board2, rects, touchedUids, {
       const secRect = work.get(pid) ?? rects.get(pid);
       const childRect = work.get(cur) ?? rects.get(cur);
       if (!secRect || !childRect) break;
-      const need = unionRect2(secRect, inflate(childRect, pad));
+      const need = unionRect2(secRect, inflate(childRect, pad2));
       if (same(need, secRect)) break;
       work.set(pid, need);
       cur = pid;
@@ -1581,7 +1687,7 @@ function spaceOut(rects, movedUids, { gap = 16, maxPasses = 8, fixed = null } = 
   const displaced = /* @__PURE__ */ new Map();
   const pushers = [...cur.keys()].filter((u) => moved.has(u));
   for (let pass = 0; pass < maxPasses; pass++) {
-    let changed = false;
+    let changed2 = false;
     for (const [uid, r] of cur) {
       if (moved.has(uid) || anchored.has(uid)) continue;
       const myOrder = displaced.has(uid) ? displaced.get(uid) : Infinity;
@@ -1601,10 +1707,10 @@ function spaceOut(rects, movedUids, { gap = 16, maxPasses = 8, fixed = null } = 
           displaced.set(uid, displaced.size);
           pushers.push(uid);
         }
-        changed = true;
+        changed2 = true;
       }
     }
-    if (!changed) break;
+    if (!changed2) break;
   }
   return [...displaced.keys()].map((uid) => ({ uid, x: norm(cur.get(uid).x), y: norm(cur.get(uid).y) }));
 }
@@ -4089,11 +4195,11 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
     const filtered = filterLinks(allLinks, linkMode);
     const res = coveredBy(filtered, board2);
     const fp = `${linkMode}|${res.visible.map((l) => l.key).join(",")}|${[...res.coveredEdges].sort().join(",")}`;
-    const changed = fp !== linkFingerprint;
+    const changed2 = fp !== linkFingerprint;
     visibleLinks = res.visible;
     covered = res.coveredEdges;
     linkFingerprint = fp;
-    if (changed || force) emit2("links", { links: visibleLinks, coveredEdges: covered });
+    if (changed2 || force) emit2("links", { links: visibleLinks, coveredEdges: covered });
   }
   function computeLinks() {
     if (!board2) return;
@@ -4283,8 +4389,8 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
         const top = topLevelOf(board2, uids);
         const b = boundsOf(top.map((id) => rects.get(id)));
         if (!b) return null;
-        const pad = 32;
-        const rect = { x: b.x - pad, y: b.y - pad, w: b.w + pad * 2, h: b.h + pad * 2 };
+        const pad2 = 32;
+        const rect = { x: b.x - pad2, y: b.y - pad2, w: b.w + pad2 * 2, h: b.h + pad2 * 2 };
         return makeSection(t, rect, "Section", void 0, top);
       });
     },
@@ -4700,22 +4806,22 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
       return txn((t) => {
         const ids = [.../* @__PURE__ */ new Set([...uids ?? [], primaryUid])].filter((id) => board2.items.has(id));
         const list = ids.map((id) => ({ uid: id, w: board2.items.get(id).w, h: board2.items.get(id).h }));
-        const changed = [];
+        const changed2 = [];
         for (const c of sameSize(list, primaryUid, mode)) {
           const item = board2.items.get(c.uid);
           if (item.pinned) continue;
           const size = sectionFloor(c.uid, clampSize(item.type, c.w, c.h));
           if (round13(size.w) === item.w && round13(size.h) === item.h) continue;
           t.props(c.uid, itemPlexus(c.uid, { w: round13(size.w), h: round13(size.h) }));
-          changed.push(c.uid);
+          changed2.push(c.uid);
         }
-        applyFit(t, changed);
-        return changed.length;
+        applyFit(t, changed2);
+        return changed2.length;
       });
     },
     resetSize(uids) {
       return txn((t) => {
-        const changed = [];
+        const changed2 = [];
         for (const id of new Set(uids ?? [])) {
           const item = board2.items.get(id);
           if (!item || item.pinned) continue;
@@ -4724,10 +4830,10 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
           const h = round13(d.h);
           if (item.w === w && item.h === h) continue;
           t.props(id, itemPlexus(id, { w, h }));
-          changed.push(id);
+          changed2.push(id);
         }
-        applyFit(t, changed);
-        return changed.length;
+        applyFit(t, changed2);
+        return changed2.length;
       });
     },
     // Sets the height from measured content, shrinking as well as growing (growToFit only grows).
@@ -5504,6 +5610,64 @@ extendSession((session, api) => {
     });
     return rootUid;
   };
+});
+
+// src/snapshots.js
+extendSession((session, api) => {
+  session.saveSnapshot = (now2 = /* @__PURE__ */ new Date()) => {
+    const board2 = api.board();
+    if (!board2) return Promise.resolve(null);
+    const title = snapshotTitle(now2);
+    if (!title) return Promise.resolve(null);
+    const items = captureLayout(board2);
+    return api.txn((t) => {
+      let parent = board2.snapshotsUid;
+      if (!parent) {
+        parent = t.create({
+          parent: api.uid,
+          string: SNAPSHOTS_TITLE,
+          plexus: { type: "snapshots" },
+          open: false
+        });
+      }
+      return t.create({
+        parent,
+        string: title,
+        plexus: snapshotProps(items)
+      });
+    });
+  };
+  session.restoreSnapshot = async (snapUid) => {
+    const board2 = api.board();
+    const snap = board2?.snapshots?.find((item) => item.uid === snapUid);
+    if (!snap) return false;
+    const chunks = planRestore(snap.items, board2);
+    for (const chunk of chunks) {
+      await api.txn((t) => {
+        for (const op of chunk) {
+          if (op.op === "move") t.move(op.uid, op.parent);
+          else {
+            t.props(op.uid, api.itemPlexus(op.uid, {
+              x: op.x,
+              y: op.y,
+              w: op.w,
+              h: op.h,
+              color: op.color || void 0,
+              collapsed: op.collapsed ? true : void 0
+            }));
+          }
+        }
+      });
+    }
+    api.emit("toast", { message: `Restored ${snap.title}` });
+    return true;
+  };
+  session.deleteSnapshot = (snapUid) => api.txn((t) => {
+    const snap = api.board()?.snapshots?.find((item) => item.uid === snapUid);
+    if (!snap) return false;
+    t.del(snapUid);
+    return true;
+  });
 });
 
 // src/lifecycle.js
@@ -6678,16 +6842,16 @@ function createInteractions({ actions, settings } = {}) {
     reconcile() {
       const b = board2();
       if (!b) return;
-      let changed = false;
+      let changed2 = false;
       for (const u of [...state.selection]) if (!b.items.has(u)) {
         state.selection.delete(u);
-        changed = true;
+        changed2 = true;
       }
       if (state.edge && !b.edges.has(state.edge)) {
         state.edge = null;
-        changed = true;
+        changed2 = true;
       }
-      if (changed) emitSelection();
+      if (changed2) emitSelection();
     }
   };
 }
@@ -9604,11 +9768,11 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     const view = { x: -vp.x / vp.zoom, y: -vp.y / vp.zoom, w: size.width / vp.zoom, h: size.height / vp.zoom };
     add(view);
     if (!Number.isFinite(minX)) return null;
-    const pad = 40;
-    minX -= pad;
-    minY -= pad;
-    maxX += pad;
-    maxY += pad;
+    const pad2 = 40;
+    minX -= pad2;
+    minY -= pad2;
+    maxX += pad2;
+    maxY += pad2;
     const s = Math.min(MINIMAP_W / (maxX - minX), MINIMAP_H / (maxY - minY));
     return { s, ox: (MINIMAP_W - (maxX - minX) * s) / 2 - minX * s, oy: (MINIMAP_H - (maxY - minY) * s) / 2 - minY * s, view };
   };
@@ -11437,6 +11601,27 @@ function buildMenu(kind, ctx = {}) {
   const templateMenu = () => make("template", "New board from template…", {
     children: STARTERS.map((s) => make(`template:${s.id}`, s.title))
   });
+  const snapshotMenus = () => {
+    const parts = partitionSnapshots(c.snapshots);
+    const items = [
+      make("save-snapshot", "Save snapshot"),
+      make("restore-snapshot", "Restore snapshot…", {
+        disabled: parts.newest.length === 0,
+        children: parts.newest.map((snap) => make(`snapshot:${snap.uid}`, snap.title))
+      })
+    ];
+    if (parts.older.length) {
+      items.push(make("older-snapshots", "Older snapshots", {
+        children: parts.older.map((snap) => make(`older:${snap.uid}`, snap.title, {
+          children: [
+            make(`snapshot:${snap.uid}`, "Restore"),
+            make(`delete-snapshot:${snap.uid}`, "Delete", { danger: true })
+          ]
+        }))
+      }));
+    }
+    return items;
+  };
   const colorMenu = () => {
     const current = item?.color || null;
     return make("color", "Color", {
@@ -11466,6 +11651,7 @@ function buildMenu(kind, ctx = {}) {
         make("new-board", "New board", { hint: "W" }),
         templateMenu(),
         make("save-template", "Save board as template"),
+        ...snapshotMenus(),
         sep(),
         make("paste", "Paste", { hint: "Cmd V", disabled: !c.canPaste }),
         make("paste-clone", "Paste as copies", { disabled: !c.canPaste }),
@@ -11624,6 +11810,7 @@ function buildMenu(kind, ctx = {}) {
       return [
         templateMenu(),
         make("save-template", "Save board as template"),
+        ...snapshotMenus(),
         sep(),
         make("export-svg", "Export as SVG"),
         make("export-png", "Export as PNG"),
@@ -13682,7 +13869,9 @@ function mountBoardView({
     const item = uid ? b?.items.get(uid) : null;
     switch (kind) {
       case "canvas":
-        return { canPaste: true };
+        return { canPaste: true, snapshots: b?.snapshots || [] };
+      case "board-menu":
+        return { snapshots: b?.snapshots || [] };
       case "card":
         return { item, isBoard: item?.kind === "board", collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS2.includes(item?.kind) };
       case "section": {
@@ -13772,6 +13961,25 @@ function mountBoardView({
       }
       case "save-template":
         Promise.resolve(session.saveAsTemplate?.()).catch(() => {
+        });
+        break;
+      case "save-snapshot":
+        Promise.resolve(session.saveSnapshot?.()).catch(() => {
+        });
+        break;
+      case "snapshot": {
+        const snap = b.snapshots?.find((item2) => item2.uid === arg);
+        const title = snap?.title || "this snapshot";
+        chrome.toast.show({
+          message: `Restore ${title}? Layouts are rewritten in groups of 45.`,
+          action: { label: "Restore", run: () => {
+            void session.restoreSnapshot?.(arg);
+          } }
+        });
+        break;
+      }
+      case "delete-snapshot":
+        Promise.resolve(session.deleteSnapshot?.(arg)).catch(() => {
         });
         break;
       case "paste":

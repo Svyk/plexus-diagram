@@ -2,6 +2,8 @@
 // minimap, version badge, sync dot. Everything lives inside .pxd-root; no portals.
 
 import { PALETTE, FONT_SIZES, BOARD_PATTERNS } from "../model/schema.js";
+import { changelogEntry } from "../model/changelog.js";
+import { CHANGELOG_TEXT } from "../changelog-text.js";
 import { buildColorPicker } from "./color-picker.js";
 
 const CTX_GAP = 12;
@@ -222,7 +224,20 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
   const minimapBtn = iconButton(group3, "pxd-toolbar__minimap", "map", "Minimap", "Toggle minimap", () => on.toggleMinimap?.());
   const editBtn = iconButton(group3, "pxd-toolbar__edit", "edit", "Edit Block", "Edit the diagram block", () => on.editBlock?.());
   const fullBtn = iconButton(group3, "pxd-toolbar__fullscreen", "fullscreen", "Fullscreen", "Fullscreen this board", () => on.toggleFullscreen?.());
-  const badge = el("span", "pxd-badge", toolbar, version ? `v${version}` : "");
+  let logEl = null;
+  const closeLog = () => { logEl?.remove(); logEl = null; };
+  const toggleLog = () => {
+    if (logEl) { closeLog(); return; }
+    const ver = String(version || "").replace(/^v/, "");
+    const entry = changelogEntry(CHANGELOG_TEXT, ver);
+    logEl = el("div", "pxd-changelog pxd-chrome", root);
+    logEl.setAttribute("role", "dialog");
+    logEl.setAttribute("aria-label", "Changelog");
+    el("div", "pxd-changelog__title", logEl, ver ? `v${ver}` : "Changelog");
+    el("pre", "pxd-changelog__body", logEl, entry || "No changelog entry for this version.");
+    listen(logEl, "pointerdown", (event) => event.stopPropagation());
+  };
+  const badge = button(toolbar, "pxd-badge", version ? `v${version}` : "", "Show changelog", toggleLog);
   const sync = el("span", "pxd-sync", toolbar);
   sync.title = "Synced";
 
@@ -248,7 +263,7 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
   const railFull = railBtn("pxd-rail__fullscreen", "maximize", "Maximize", () => on.toggleFullscreen?.());
   const railExtra = el("div", "pxd-rail__extra", railEl);
   const railZoom = button(railExtra, "pxd-rail__zoom", "100%", "Zoom to 100% (Shift 0)", () => on.zoomReset?.());
-  const railBadge = el("span", "pxd-badge pxd-rail__badge", railExtra, version ? `v${version}` : "");
+  const railBadge = button(railExtra, "pxd-badge pxd-rail__badge", version ? `v${version}` : "", "Show changelog", toggleLog);
   const palette = el("div", "pxd-palette pxd-chrome", root);
   const paletteBar = el("div", "pxd-palette__bar", palette);
   const paletteButtons = new Map();
@@ -761,7 +776,7 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
     for (const node of [toolbar, railEl, palette, popEl, backEl, ctx, toast, search, minimap]) node.remove();
   };
 
-  return { toolbar: toolbarApi, ctx: ctxApi, toast: toastApi, search: searchApi, minimap: minimapApi, popover, backToContent, badge, sync, dispose };
+  return { toolbar: toolbarApi, ctx: ctxApi, toast: toastApi, search: searchApi, minimap: minimapApi, popover, changelog: { isOpen: () => Boolean(logEl), close: closeLog }, backToContent, badge, sync, dispose };
 }
 
 export { LINK_MODES, CTX_GAP, CTX_EDGE_CLEARANCE };

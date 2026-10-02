@@ -58,7 +58,18 @@ export async function readCss(rootDirectory = defaultRoot) {
   return parts.join("\n");
 }
 
+export async function syncChangelogText(rootDirectory = defaultRoot) {
+  const root = resolve(rootDirectory);
+  const text = await readFile(resolve(root, "CHANGELOG.md"), "utf8");
+  const out = `// Generated from CHANGELOG.md. build.mjs rewrites this file.\nexport const CHANGELOG_TEXT = ${JSON.stringify(text)};\n`;
+  const path = resolve(root, "src/changelog-text.js");
+  let prev = "";
+  try { prev = await readFile(path, "utf8"); } catch { /* first build */ }
+  if (prev !== out) await writeFile(path, out, "utf8");
+}
+
 export async function renderArtifacts(rootDirectory = defaultRoot) {
+  await syncChangelogText(rootDirectory);
   const packageMetadata = JSON.parse(await readFile(resolve(rootDirectory, "package.json"), "utf8"));
   const banner = `/* Plexus Diagram v${packageMetadata.version} | MIT | generated; edit src/ */`;
   return {

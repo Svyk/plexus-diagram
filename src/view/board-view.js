@@ -2624,6 +2624,7 @@ export function mountBoardView({
     }
     // Escape closes the Background popover before the controller's chain (selection, up a level, fullscreen) runs.
     if (event.key === "Escape" && chrome.popover.isOpen()) { chrome.popover.close(); event.preventDefault(); event.stopPropagation(); return; }
+    if (event.key === "Escape" && chrome.changelog?.isOpen()) { chrome.changelog.close(); event.preventDefault(); event.stopPropagation(); return; }
     if (quicklook.isOpen() && event.key !== "Escape" && String(event.key).toLowerCase() !== "q") return;
     if (presenter.isActive() && !["Escape", "ArrowRight", "ArrowLeft", "ArrowDown", "ArrowUp", "PageDown", "PageUp", " ", "p", "P"].includes(event.key)) return;
     const findKey = (event.metaKey || event.ctrlKey) && !event.altKey && String(event.key).toLowerCase() === "f";

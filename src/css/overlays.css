@@ -66,6 +66,35 @@
   white-space: nowrap;
 }
 
+.pxd-root .pxd-changelog {
+  position: absolute;
+  right: 56px;
+  bottom: 12px;
+  z-index: 35;
+  box-sizing: border-box;
+  width: min(320px, calc(100% - 70px));
+  max-height: 46%;
+  overflow: auto;
+  padding: 10px 12px;
+  border: 1px solid var(--pxd-border-strong);
+  border-radius: 10px;
+  background: var(--pxd-chrome-bg);
+  color: var(--pxd-text);
+  box-shadow: var(--pxd-shadow);
+}
+
+.pxd-root .pxd-changelog__title {
+  margin-bottom: 6px;
+  font-size: 13px;
+  font-weight: 650;
+}
+
+.pxd-root .pxd-changelog__body {
+  margin: 0;
+  font: inherit;
+  white-space: pre-wrap;
+}
+
 .pxd-root .pxd-quicklook {
   position: absolute;
   left: 50%;

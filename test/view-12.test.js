@@ -1684,6 +1684,26 @@ test("UI-7: tab reaches the rail, the panel, a card, its toolbar, and the menu",
   }
 });
 
+test("UI-9: the version badge shows the bundled changelog entry", async () => {
+  const f = mountFixture({ viewOptions: { autofocus: false, version: "1.3.0" } });
+  try {
+    await f.flush();
+    const badge = f.root.querySelector(".pxd-rail__badge");
+    assert.equal(badge.textContent, "v1.3.0");
+    badge.click();
+    const pop = f.root.querySelector(".pxd-changelog");
+    assert.equal(pop.getAttribute("role"), "dialog");
+    assert.match(pop.textContent, /Native parity on an enhanced board/);
+    assert.equal(pop.textContent.includes("## 1.2.0"), false);
+    assert.equal(pop.textContent.includes("0.6.4"), false);
+    key(f, "Escape");
+    assert.equal(f.root.querySelector(".pxd-changelog"), null);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
 test("UI-8: ? opens the shortcut sheet from the one shortcut table", async () => {
   const f = mountFixture({ viewOptions: { autofocus: false } });
   try {

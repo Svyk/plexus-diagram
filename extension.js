@@ -7395,6 +7395,49 @@ function createInteractions({ actions, settings } = {}) {
   };
 }
 
+// src/model/tasks.js
+var MONTHS3 = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+var DAILY_RE2 = new RegExp(`^(${MONTHS3.join("|")}) (\\d{1,2})(st|nd|rd|th), (\\d{4})$`);
+function parseRoamDay(title) {
+  const m = DAILY_RE2.exec(String(title ?? "").trim());
+  if (!m) return null;
+  const day = Number(m[2]);
+  const suffix = day >= 11 && day <= 13 ? "th" : { 1: "st", 2: "nd", 3: "rd" }[day % 10] ?? "th";
+  if (m[3] !== suffix || day < 1 || day > 31) return null;
+  const month = MONTHS3.indexOf(m[1]);
+  if (month < 0) return null;
+  return { y: Number(m[4]), m: month + 1, d: day };
+}
+function childString(child) {
+  return child?.[":block/string"] ?? child?.string ?? "";
+}
+function dayOf(value) {
+  if (value instanceof Date && !Number.isNaN(value.getTime())) {
+    return { y: value.getFullYear(), m: value.getMonth() + 1, d: value.getDate() };
+  }
+  return parseRoamDay(value);
+}
+function stamp(part) {
+  return part.y * 1e4 + part.m * 100 + part.d;
+}
+function dueChip(content, today = /* @__PURE__ */ new Date()) {
+  let raw = null;
+  let title = "";
+  for (const child of content || []) {
+    const text2 = String(childString(child));
+    if (attrNameOf(text2) !== "BT_attrDue") continue;
+    raw = text2;
+    const rest = text2.slice(text2.indexOf("::") + 2).trim();
+    const wiki = /^\[\[([\s\S]+)\]\]$/.exec(rest);
+    title = (wiki ? wiki[1] : rest).trim();
+    break;
+  }
+  if (raw == null || !title) return null;
+  const due = parseRoamDay(title);
+  const now2 = dayOf(today);
+  return { text: title, overdue: Boolean(due && now2 && stamp(due) < stamp(now2)), raw };
+}
+
 // src/view/panel.js
 var CARD_MIME = "application/x-plexus-card";
 var DEBOUNCE_MS = 150;
@@ -8364,7 +8407,7 @@ async function waitHydrateQuiet(el, capMs = HYDRATE_CAP_MS) {
     observer.disconnect();
   }
 }
-var childString = (c) => c?.[":block/string"] ?? c?.string ?? "";
+var childString2 = (c) => c?.[":block/string"] ?? c?.string ?? "";
 var childKids = (c) => c?.[":block/children"] ?? c?.children ?? [];
 var childUid = (c) => c?.[":block/uid"] ?? c?.uid ?? "";
 var childProps = (c) => c?.[":block/props"] ?? c?.props;
@@ -8392,7 +8435,7 @@ function contentKeyOf(item) {
       if (depth > BOARD_KEY_DEPTH) return;
       for (const c of kids) {
         if (budget-- <= 0) return;
-        parts.push(childUid(c), childString(c), JSON.stringify(childProps(c) ?? null));
+        parts.push(childUid(c), childString2(c), JSON.stringify(childProps(c) ?? null));
         walkBoard(childKids(c), depth + 1);
       }
     };
@@ -8402,7 +8445,7 @@ function contentKeyOf(item) {
   const walk = (kids, depth) => {
     if (depth > CONTENT_DEPTH) return;
     for (const c of kids) {
-      parts.push(childString(c));
+      parts.push(childString2(c));
       walk(childKids(c), depth + 1);
     }
   };
@@ -8766,6 +8809,7 @@ function createItemRenderer({
       if (rec.bare) cls.push("pxd-item--bare");
       if (rec.refBoard) cls.push("pxd-item--wb");
       if (item.look === "block") cls.push("pxd-card--block");
+      if (item.type === "card" && dueChip(item.content)?.overdue) cls.push("pxd-item--overdue");
     }
     node2.className = cls.join(" ");
     applyStyle(rec, item);
@@ -8860,10 +8904,11 @@ function createItemRenderer({
   const renderBlocks = (parent, blocks, depth, budget) => {
     for (const b of blocks) {
       if (budget.n >= CONTENT_LIMIT) return;
+      const s = childString2(b);
+      if (attrNameOf(s) === "BT_attrDue") continue;
       budget.n += 1;
       const row2 = el("div", "pxd-block", parent);
       row2.dataset.uid = childUid(b);
-      const s = childString(b);
       const node2 = renderRoot(row2, s, "pxd-rs pxd-block__text");
       budget.roots.push(node2);
       const kids = childKids(b);
@@ -9242,12 +9287,12 @@ function createItemRenderer({
     const lines = [];
     const own = item.kind === "block" ? rec.refString : item.string;
     if (typeof own === "string") lines.push(...own.split("\n"));
-    for (const c of item.content || []) lines.push(...String(childString(c)).split("\n"));
+    for (const c of item.content || []) lines.push(...String(childString2(c)).split("\n"));
     const out = [];
     for (const line of lines) {
       if (out.length >= ATTR_CHIPS_MAX) break;
       const name = attrNameOf(line);
-      if (!name) continue;
+      if (!name || name === "BT_attrDue") continue;
       const value = plainText(line.slice(line.indexOf("::") + 2), 40);
       if (value) out.push(`${plainText(name, 24)}: ${value}`);
     }
@@ -9269,6 +9314,8 @@ function createItemRenderer({
     if (info?.refs > 0) chips.push({ cls: "refs", text: `${info.refs} refs`, title: `${info.refs} references to this card` });
     if (info?.boards > 0) chips.push({ cls: "boards", text: `on ${info.boards} boards`, title: "Shown on other boards", action: "boards" });
     if (info && (info.open > 0 || info.done > 0)) chips.push({ cls: "todo", text: `${info.open || 0}/${info.done || 0}`, title: `${info.open || 0} open, ${info.done || 0} done` });
+    const due = item.type === "card" ? dueChip(item.content) : null;
+    if (due) chips.unshift({ cls: "due", text: due.text, title: "Due", overdue: due.overdue });
     for (const text2 of attrChipsOf(rec, item)) chips.push({ cls: "attr", text: text2 });
     if (!chips.length) return clear();
     const key = JSON.stringify(chips);
@@ -9278,6 +9325,7 @@ function createItemRenderer({
     for (const chip of chips) {
       const node2 = el(chip.action ? "button" : "span", `pxd-badge-chip pxd-badge-chip--${chip.cls}`, row2);
       node2.textContent = chip.text;
+      if (chip.overdue) node2.classList.add("pxd-badge-chip--overdue");
       if (chip.title) node2.title = chip.title;
       if (chip.action) {
         node2.type = "button";
@@ -12569,7 +12617,7 @@ function buildMenu(kind, ctx = {}) {
 var DEPTH = 3;
 var LIMIT2 = 24;
 var STOP_EVENTS2 = ["pointerdown", "pointerup", "mousedown", "mouseup", "click", "dblclick", "wheel", "keydown", "keyup", "contextmenu"];
-var childString2 = (c) => c?.[":block/string"] ?? c?.string ?? "";
+var childString3 = (c) => c?.[":block/string"] ?? c?.string ?? "";
 var childKids2 = (c) => c?.[":block/children"] ?? c?.children ?? [];
 function createQuickLook({ doc = globalThis.document, root, host, timers, on = {} } = {}) {
   let node2 = null;
@@ -12602,7 +12650,7 @@ function createQuickLook({ doc = globalThis.document, root, host, timers, on = {
       if (budget.n >= LIMIT2 * 4) return;
       budget.n += 1;
       const row2 = el("div", "pxd-ql__block", parent);
-      renderRoot(row2, childString2(b), "pxd-rs pxd-ql__text");
+      renderRoot(row2, childString3(b), "pxd-rs pxd-ql__text");
       const kids = childKids2(b);
       if (kids.length && depth < DEPTH) renderBlocks(el("div", "pxd-ql__children", row2), kids, depth + 1, budget);
     }

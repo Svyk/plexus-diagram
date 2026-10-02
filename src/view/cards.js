@@ -4,6 +4,7 @@
 
 import { DEFAULT_SIZES, FONT_SIZES, PALETTE, attrNameOf, classifyString, cssColor, firstLine, hexColor, isUntitledBoard, parseBoardTitle, plainText } from "../model/schema.js";
 import { isQueryString } from "../model/query.js";
+import { dueChip } from "../model/tasks.js";
 import { LINKED_REF_CAP, linkedRefCard, linkedRefLabel } from "../model/refs.js";
 import { boardPreview, descendantsOf, sectionNoteUid } from "../model/board.js";
 import { CARD_MIME } from "./panel.js";
@@ -493,6 +494,7 @@ export function createItemRenderer({
       if (rec.bare) cls.push("pxd-item--bare");
       if (rec.refBoard) cls.push("pxd-item--wb");
       if (item.look === "block") cls.push("pxd-card--block");
+      if (item.type === "card" && dueChip(item.content)?.overdue) cls.push("pxd-item--overdue");
     }
     node.className = cls.join(" ");
     applyStyle(rec, item);
@@ -590,10 +592,12 @@ export function createItemRenderer({
   const renderBlocks = (parent, blocks, depth, budget) => {
     for (const b of blocks) {
       if (budget.n >= CONTENT_LIMIT) return;
+      const s = childString(b);
+      // The due date is the chip. The BT_attrDue child stays in the block and is never rewritten.
+      if (attrNameOf(s) === "BT_attrDue") continue;
       budget.n += 1;
       const row = el("div", "pxd-block", parent);
       row.dataset.uid = childUid(b);
-      const s = childString(b);
       const node = renderRoot(row, s, "pxd-rs pxd-block__text");
       budget.roots.push(node);
       const kids = childKids(b);
@@ -977,7 +981,7 @@ export function createItemRenderer({
     for (const line of lines) {
       if (out.length >= ATTR_CHIPS_MAX) break;
       const name = attrNameOf(line);
-      if (!name) continue;
+      if (!name || name === "BT_attrDue") continue;
       const value = plainText(line.slice(line.indexOf("::") + 2), 40);
       if (value) out.push(`${plainText(name, 24)}: ${value}`);
     }
@@ -994,6 +998,8 @@ export function createItemRenderer({
     if (info?.refs > 0) chips.push({ cls: "refs", text: `${info.refs} refs`, title: `${info.refs} references to this card` });
     if (info?.boards > 0) chips.push({ cls: "boards", text: `on ${info.boards} boards`, title: "Shown on other boards", action: "boards" });
     if (info && (info.open > 0 || info.done > 0)) chips.push({ cls: "todo", text: `${info.open || 0}/${info.done || 0}`, title: `${info.open || 0} open, ${info.done || 0} done` });
+    const due = item.type === "card" ? dueChip(item.content) : null;
+    if (due) chips.unshift({ cls: "due", text: due.text, title: "Due", overdue: due.overdue });
     for (const text of attrChipsOf(rec, item)) chips.push({ cls: "attr", text });
     if (!chips.length) return clear();
     const key = JSON.stringify(chips);
@@ -1003,6 +1009,7 @@ export function createItemRenderer({
     for (const chip of chips) {
       const node = el(chip.action ? "button" : "span", `pxd-badge-chip pxd-badge-chip--${chip.cls}`, row);
       node.textContent = chip.text;
+      if (chip.overdue) node.classList.add("pxd-badge-chip--overdue");
       if (chip.title) node.title = chip.title;
       if (chip.action) {
         node.type = "button";

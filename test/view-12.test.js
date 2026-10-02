@@ -2193,6 +2193,59 @@ test("RG-2: a page card drawer drags one mention out and the source string stays
   }
 });
 
+test("RG-5: a due chip and overdue border stay read-only when the TODO flips", async () => {
+  const due = "BT_attrDue:: [[January 1st, 2020]]";
+  const f = mountFixture({
+    extra: [{
+      ":block/uid": "todoRG501",
+      ":block/string": "{{[[TODO]]}} ship rg5",
+      ":block/order": 6,
+      ":block/props": { ":plexus": { ":x": 520, ":y": 0, ":w": 280, ":h": 160 } },
+      ":block/children": [{
+        ":block/uid": "dueRG5011",
+        ":block/string": due,
+        ":block/order": 0,
+        ":block/props": {},
+        ":block/children": [],
+      }],
+    }],
+    hostOverrides: {
+      renderString(el, string) {
+        el.textContent = string;
+        if (!String(string).includes("{{[[TODO]]}}")) return;
+        const doc = el.ownerDocument || globalThis.document;
+        const label = doc.createElement("label");
+        label.className = "check-container";
+        const input = doc.createElement("input");
+        input.setAttribute("type", "checkbox");
+        label.append(input);
+        el.append(label);
+      },
+    },
+  });
+  try {
+    await f.flush();
+    const card = f.root.querySelector("[data-uid=todoRG501]");
+    assert.ok(card.classList.contains("pxd-item--overdue"));
+    const chip = card.querySelector(".pxd-badge-chip--due");
+    assert.equal(chip?.textContent, "January 1st, 2020");
+    assert.ok(chip.classList.contains("pxd-badge-chip--overdue"));
+    assert.equal(card.textContent.includes("BT_attrDue"), false);
+    const before = f.session.mutations.length;
+    const box = card.querySelector(".check-container")?.querySelector("input");
+    assert.ok(box, "the TODO renders a checkbox");
+    f.stub.dispatch(box, "pointerdown", { button: 0, clientX: 30, clientY: 40, pointerId: 2 });
+    assert.deepEqual(
+      f.session.mutations.slice(before),
+      [["setString", "todoRG501", "{{[[DONE]]}} ship rg5"]],
+    );
+    assert.equal(f.board.items.get("todoRG501").content[0][":block/string"], due);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
 test("RG-4: a Causes edge takes its style and the legend hides it without a write", async () => {
   const f = mountFixture({
     settings: { "attr-styles": '{"Causes":{"color":"red","dash":"solid"}}' },

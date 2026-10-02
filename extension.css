@@ -1889,6 +1889,15 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   color: var(--pxd-text);
 }
 
+.pxd-root .pxd-item--overdue {
+  outline: 2px solid var(--pxd-red-line, #c23030);
+  outline-offset: -2px;
+}
+
+.pxd-root .pxd-badge-chip.pxd-badge-chip--overdue {
+  color: var(--pxd-red-text, var(--pxd-red-line, #c23030));
+}
+
 .pxd-root.pxd-lod-map .pxd-item__badges,
 .pxd-root.pxd-lod-overview .pxd-item__badges {
   display: none;

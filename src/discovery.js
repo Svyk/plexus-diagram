@@ -114,6 +114,108 @@ export function blockContainerUid(container, isDiagramUid) {
   return uidFromBlockInputId(input?.id, isDiagramUid);
 }
 
+// Roam renders {{[[embed]]: ((uid))}} inside one of these. The nearest match is this copy.
+const EMBED_WRAP_SELECTORS = [".rm-embed-container", ".block-embed", ".rm-embed"];
+const EMBED_REF = /\{\{(?:\[\[embed\]\]|embed):\s*\(\(([A-Za-z0-9_-]+)\)\)/;
+
+// Block uids may contain "-". The owner is the longest suffix of the outline id
+// whose block string is the embed macro, not the last segment (`uyXFLc-bf` is one uid).
+function embedOwnerFromInputId(id, readString) {
+  const value = String(id || "");
+  if (!value.startsWith("block-input-")) return "";
+  const mark = "-body-outline-";
+  const at = value.lastIndexOf(mark);
+  if (at < 0) return "";
+  const tail = value.slice(at + mark.length);
+  if (!tail) return "";
+  const candidates = [];
+  for (let i = 0; i < tail.length; i += 1) {
+    if (i === 0 || tail[i - 1] === "-") candidates.push(tail.slice(i));
+  }
+  candidates.sort((a, b) => b.length - a.length);
+  if (typeof readString !== "function") return candidates[candidates.length - 1] || "";
+  for (const candidate of candidates) {
+    let string = "";
+    try { string = String(readString(candidate) ?? ""); } catch { string = ""; }
+    if (EMBED_REF.test(string)) return candidate;
+  }
+  return "";
+}
+
+function firstBlockInputId(root) {
+  const stack = [root];
+  while (stack.length) {
+    const node = stack.shift();
+    if (String(node?.id || "").startsWith("block-input-")) return node.id;
+    const kids = node?.children || [];
+    for (let i = 0; i < kids.length; i += 1) stack.push(kids[i]);
+  }
+  return "";
+}
+
+export function embedWrap(native) {
+  if (!native?.closest) return null;
+  for (const sel of EMBED_WRAP_SELECTORS) {
+    const hit = native.closest(sel);
+    if (hit) return hit;
+  }
+  return null;
+}
+
+// Uid of the block that holds the embed. Null when this diagram is the board itself.
+// A missing wrap still counts when an ancestor block's string is the embed macro,
+// so a copy Roam did not tag still gets its own viewport.
+export function embedOwnerUid(native, readString) {
+  const wrap = embedWrap(native);
+  if (wrap) {
+    let node = wrap.parentElement;
+    while (node) {
+      const uid = embedOwnerFromInputId(node.id, readString);
+      if (uid) return uid;
+      node = node.parentElement;
+    }
+    return "embed";
+  }
+  if (typeof readString !== "function") return null;
+  let node = native?.parentElement;
+  while (node) {
+    if (node.matches?.(".roam-block-container")) {
+      const uid = embedOwnerFromInputId(firstBlockInputId(node), readString);
+      if (uid) {
+        let string = "";
+        try { string = String(readString(uid) ?? ""); } catch { string = ""; }
+        if (EMBED_REF.test(string)) return uid;
+      }
+    }
+    node = node.parentElement;
+  }
+  return null;
+}
+
+// The element that means "this copy". Two diagrams in one copy share it.
+export function embedScope(native, readString) {
+  const wrap = embedWrap(native);
+  if (wrap) return wrap;
+  const owner = embedOwnerUid(native, readString);
+  if (!owner || owner === "embed") return null;
+  let node = native?.parentElement;
+  while (node) {
+    if (node.matches?.(".roam-block-container") && embedOwnerFromInputId(firstBlockInputId(node), readString) === owner) return node;
+    node = node.parentElement;
+  }
+  return null;
+}
+
+// Board uid named by the embed block. Null when this native is not an embed.
+export function embedBoardUid(native, readString) {
+  const owner = embedOwnerUid(native, readString);
+  if (!owner || owner === "embed" || typeof readString !== "function") return null;
+  let string = "";
+  try { string = String(readString(owner) ?? ""); } catch { return null; }
+  const match = EMBED_REF.exec(string);
+  return match ? match[1] : null;
+}
+
 export function findDiagramUidFromEl(element, isDiagramUid) {
   if (!element) return null;
   const ref = element.closest?.(".rm-block-ref[data-uid]");

@@ -13293,6 +13293,105 @@ function blockContainerUid(container, isDiagramUid) {
   const input = main?.querySelector?.('[id^="block-input-"]');
   return uidFromBlockInputId(input?.id, isDiagramUid);
 }
+var EMBED_WRAP_SELECTORS = [".rm-embed-container", ".block-embed", ".rm-embed"];
+var EMBED_REF = /\{\{(?:\[\[embed\]\]|embed):\s*\(\(([A-Za-z0-9_-]+)\)\)/;
+function embedOwnerFromInputId(id, readString) {
+  const value = String(id || "");
+  if (!value.startsWith("block-input-")) return "";
+  const mark = "-body-outline-";
+  const at = value.lastIndexOf(mark);
+  if (at < 0) return "";
+  const tail = value.slice(at + mark.length);
+  if (!tail) return "";
+  const candidates = [];
+  for (let i = 0; i < tail.length; i += 1) {
+    if (i === 0 || tail[i - 1] === "-") candidates.push(tail.slice(i));
+  }
+  candidates.sort((a, b) => b.length - a.length);
+  if (typeof readString !== "function") return candidates[candidates.length - 1] || "";
+  for (const candidate of candidates) {
+    let string = "";
+    try {
+      string = String(readString(candidate) ?? "");
+    } catch {
+      string = "";
+    }
+    if (EMBED_REF.test(string)) return candidate;
+  }
+  return "";
+}
+function firstBlockInputId(root) {
+  const stack = [root];
+  while (stack.length) {
+    const node2 = stack.shift();
+    if (String(node2?.id || "").startsWith("block-input-")) return node2.id;
+    const kids = node2?.children || [];
+    for (let i = 0; i < kids.length; i += 1) stack.push(kids[i]);
+  }
+  return "";
+}
+function embedWrap(native) {
+  if (!native?.closest) return null;
+  for (const sel of EMBED_WRAP_SELECTORS) {
+    const hit = native.closest(sel);
+    if (hit) return hit;
+  }
+  return null;
+}
+function embedOwnerUid(native, readString) {
+  const wrap = embedWrap(native);
+  if (wrap) {
+    let node3 = wrap.parentElement;
+    while (node3) {
+      const uid = embedOwnerFromInputId(node3.id, readString);
+      if (uid) return uid;
+      node3 = node3.parentElement;
+    }
+    return "embed";
+  }
+  if (typeof readString !== "function") return null;
+  let node2 = native?.parentElement;
+  while (node2) {
+    if (node2.matches?.(".roam-block-container")) {
+      const uid = embedOwnerFromInputId(firstBlockInputId(node2), readString);
+      if (uid) {
+        let string = "";
+        try {
+          string = String(readString(uid) ?? "");
+        } catch {
+          string = "";
+        }
+        if (EMBED_REF.test(string)) return uid;
+      }
+    }
+    node2 = node2.parentElement;
+  }
+  return null;
+}
+function embedScope(native, readString) {
+  const wrap = embedWrap(native);
+  if (wrap) return wrap;
+  const owner = embedOwnerUid(native, readString);
+  if (!owner || owner === "embed") return null;
+  let node2 = native?.parentElement;
+  while (node2) {
+    if (node2.matches?.(".roam-block-container") && embedOwnerFromInputId(firstBlockInputId(node2), readString) === owner) return node2;
+    node2 = node2.parentElement;
+  }
+  return null;
+}
+function embedBoardUid(native, readString) {
+  const owner = embedOwnerUid(native, readString);
+  if (!owner || owner === "embed" || typeof readString !== "function") return null;
+  let string = "";
+  try {
+    string = String(readString(owner) ?? "");
+  } catch {
+    return null;
+  }
+  const match = EMBED_REF.exec(string);
+  return match ? match[1] : null;
+}
 function findDiagramUidFromEl(element, isDiagramUid) {
   if (!element) return null;
   const ref = element.closest?.(".rm-block-ref[data-uid]");
@@ -13468,6 +13567,13 @@ function sidebarMountKind(nativeEl) {
   if (id.includes("mentions")) return "mentions";
   if (id.includes("outline")) return "outline";
   return "block";
+}
+function viewportStorageId(nativeEl, boardUid, readString) {
+  const kind = sidebarMountKind(nativeEl);
+  if (kind !== "main") return `${boardUid}:${kind}`;
+  const owner = embedOwnerUid(nativeEl, readString);
+  if (owner) return `${boardUid}:embed:${owner}`;
+  return boardUid;
 }
 var DEFAULT_HEIGHT = 560;
 function rasterizeSvg(doc, svg) {
@@ -13822,10 +13928,23 @@ function mountBoardView({
     root.classList.toggle("pxd-root--light", !dark && isLightHost(mountEl, doc, globalThis.window));
   };
   applyTheme();
-  const mountKind = sidebarMountKind(nativeEl);
-  const inSidebar = mountKind !== "main";
-  const vpId = inSidebar ? `${boardUid}:${mountKind}` : boardUid;
+  const readBlock = (id) => {
+    try {
+      return host?.blockString?.(id);
+    } catch {
+      return null;
+    }
+  };
+  const inSidebar = sidebarMountKind(nativeEl) !== "main";
+  const vpId = viewportStorageId(nativeEl, boardUid, readBlock);
+  const embedCopy = vpId !== boardUid && vpId.startsWith(`${boardUid}:embed:`);
   let vp = vpStore.get(vpId);
+  if (!vp && embedCopy) {
+    const main = vpStore.get(boardUid);
+    if (main && Number.isFinite(main.x) && Number.isFinite(main.y) && Number.isFinite(main.zoom) && main.zoom > 0) {
+      vp = { x: main.x, y: main.y, zoom: main.zoom };
+    }
+  }
   if (initialViewport && Number.isFinite(initialViewport.x) && Number.isFinite(initialViewport.y) && Number.isFinite(initialViewport.zoom) && initialViewport.zoom > 0) {
     vp = { x: initialViewport.x, y: initialViewport.y, zoom: initialViewport.zoom };
   }
@@ -17717,7 +17836,7 @@ async function installPlexusDiagram({
       return null;
     }
     unmountOutlineCopies(rec);
-    collapseOnce(uid, native);
+    if (!embedOwnerUid(native, (id) => host.blockString?.(id))) collapseOnce(uid, native);
     if (currentUid(rec) === uid) migrateLegacy(rec);
     return rec;
   }
@@ -17779,9 +17898,14 @@ async function installPlexusDiagram({
     if (stopped || !native || mounts.has(native) || native.isConnected === false) return;
     if (!active()) return;
     if (native.parentElement?.closest?.(".pxd-native-hidden, .pxd-root")) return;
+    const readString = (id) => host.blockString?.(id);
     let uid = uidByNative.get(native);
     if (uid === void 0) {
       uid = findDiagramUidFromEl(native, isDiagramUid) || null;
+      if (!uid || !isBoardEnhanced(uid)) {
+        const fromEmbed = embedBoardUid(native, readString);
+        if (fromEmbed && isBoardEnhanced(fromEmbed)) uid = fromEmbed;
+      }
       uidByNative.set(native, uid);
     }
     if (!uid || !isBoardEnhanced(uid)) return;
@@ -17789,6 +17913,15 @@ async function installPlexusDiagram({
       native.classList.add(OUTLINE_NATIVE_CLASS);
       titlePanelOf(native)?.classList.add(OUTLINE_NATIVE_CLASS);
       return;
+    }
+    const scope = embedScope(native, readString);
+    if (scope) {
+      for (const rec of mounts.values()) {
+        if (embedScope(rec.native, readString) === scope) {
+          native.classList.add(NATIVE_HIDDEN_CLASS);
+          return;
+        }
+      }
     }
     mount(uid, native, options);
   }

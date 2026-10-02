@@ -11,6 +11,9 @@ import {
   diagramsWithin,
   diagramUidFromLocation,
   enhancedUidGuardCss,
+  embedBoardUid,
+  embedOwnerUid,
+  embedScope,
   findDiagramUidFromEl,
   isDiagramString,
   NATIVE_HIDDEN_CLASS,
@@ -455,7 +458,8 @@ export async function installPlexusDiagram({
       return null;
     }
     unmountOutlineCopies(rec);
-    collapseOnce(uid, native);
+    // An embed must not collapse the board. The original mount still does, once.
+    if (!embedOwnerUid(native, (id) => host.blockString?.(id))) collapseOnce(uid, native);
     if (currentUid(rec) === uid) migrateLegacy(rec);
     return rec;
   }
@@ -516,9 +520,15 @@ export async function installPlexusDiagram({
     if (!active()) return;
     // A native diagram nested inside a hidden native (or inside our own overlay) is not a board of its own.
     if (native.parentElement?.closest?.(".pxd-native-hidden, .pxd-root")) return;
+    const readString = (id) => host.blockString?.(id);
     let uid = uidByNative.get(native);
     if (uid === undefined) {
       uid = findDiagramUidFromEl(native, isDiagramUid) || null;
+      // An embed's nearest block input is often the embed block, not the board.
+      if (!uid || !isBoardEnhanced(uid)) {
+        const fromEmbed = embedBoardUid(native, readString);
+        if (fromEmbed && isBoardEnhanced(fromEmbed)) uid = fromEmbed;
+      }
       uidByNative.set(native, uid);
     }
     if (!uid || !isBoardEnhanced(uid)) return;
@@ -527,6 +537,16 @@ export async function installPlexusDiagram({
       native.classList.add(OUTLINE_NATIVE_CLASS);
       titlePanelOf(native)?.classList.add(OUTLINE_NATIVE_CLASS);
       return;
+    }
+    // One plexus root per embed. A second .rm-diagram in that same copy stays native-hidden.
+    const scope = embedScope(native, readString);
+    if (scope) {
+      for (const rec of mounts.values()) {
+        if (embedScope(rec.native, readString) === scope) {
+          native.classList.add(NATIVE_HIDDEN_CLASS);
+          return;
+        }
+      }
     }
     mount(uid, native, options);
   }

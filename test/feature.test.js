@@ -1318,3 +1318,50 @@ test("1.1 a failing setOpen is logged and does not unmount or retry", async () =
     assert.equal(t.views.length, 1);
   });
 });
+
+function addEmbedCopy(doc, ownerUid, { parent = doc.app, tag = true } = {}) {
+  const owner = addBlock(doc, ownerUid, { parent });
+  const input = owner.main.children.find((child) => String(child.id || "").startsWith("block-input"));
+  const wrap = doc.createElement("div");
+  if (tag) wrap.cls.add("rm-embed-container");
+  input.append(wrap);
+  const native = doc.createElement("div");
+  native.cls.add("rm-diagram");
+  wrap.append(native);
+  native.closestMap['[id^="block-input-"]'] = { id: input.id };
+  if (tag) native.closestMap[".rm-embed-container"] = wrap;
+  const panel = doc.createElement("div");
+  panel.cls.add("rm-diagram-title-panel");
+  native.after(panel);
+  return { owner, wrap, native, panel };
+}
+
+test("RG-10 the original plus two embeds mount, a second diagram in one embed does not, and the outline copy does not", async () => {
+  await withEnv({ enhanced: ["boardAAA1", "childBBB1"], hash: "#/app/Svy" }, async (t) => {
+    t.strings.set("boardAAA1", "{{[[diagram]]}}");
+    t.strings.set("childBBB1", "{{[[diagram]]:Untitled board}}");
+    t.strings.set("embedOwn01", "{{[[embed]]: ((boardAAA1))}}");
+    t.strings.set("embedOwn02", "{{embed: ((boardAAA1))}}");
+    t.env.openState = { boardAAA1: { ":block/open": true, ":block/children": [{ ":block/uid": "cardCCC01" }] } };
+    const root = addBoardBlock(t.doc, "boardAAA1");
+    const outline = addOutlineBoard(t.doc, "childBBB1", root);
+    const first = addEmbedCopy(t.doc, "embedOwn01");
+    const duplicate = addEmbedCopy(t.doc, "embedOwn01");
+    duplicate.native.closestMap[".rm-embed-container"] = first.wrap;
+    duplicate.wrap = first.wrap;
+    const second = addEmbedCopy(t.doc, "embedOwn02", { tag: false });
+    await t.install();
+    t.tick();
+    await settle();
+    assert.equal(t.views.length, 3);
+    assert.deepEqual(t.env.win.__plexusDiagram.mounts().map((m) => m.uid), ["boardAAA1", "boardAAA1", "boardAAA1"]);
+    assert.equal(t.sessions.live.get("boardAAA1"), 3);
+    assert.equal(t.sessions.live.get("childBBB1"), undefined);
+    assert.ok(outline.native.classList.contains("pxd-outline-native"));
+    assert.equal(outline.native.classList.contains("pxd-native-hidden"), false);
+    assert.ok(duplicate.native.classList.contains("pxd-native-hidden"));
+    assert.equal(t.views.filter((view) => view.args.nativeEl === duplicate.native).length, 0);
+    assert.equal(t.views.filter((view) => view.args.nativeEl === second.native).length, 1);
+    assert.deepEqual(t.writes.setOpen, [["boardAAA1", false]]);
+  });
+});

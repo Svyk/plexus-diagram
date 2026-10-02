@@ -48,6 +48,7 @@ import { createQuickLook } from "./quicklook.js";
 import { createPresenter } from "./present.js";
 import { createClipboardIO, filesFromDataTransfer, writeClipboard } from "./clipboard-io.js";
 import { applyFullscreenChrome, watchRouteExit } from "./fullscreen.js";
+import { embedOwnerUid } from "../discovery.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -62,6 +63,16 @@ export function sidebarMountKind(nativeEl) {
   if (id.includes("mentions")) return "mentions";
   if (id.includes("outline")) return "outline";
   return "block";
+}
+
+// Main keeps the 1.2 key. A sidebar copy adds the window kind. An embed adds the
+// embed block uid, so two copies of one board do not share a pan or overwrite the main camera.
+export function viewportStorageId(nativeEl, boardUid, readString) {
+  const kind = sidebarMountKind(nativeEl);
+  if (kind !== "main") return `${boardUid}:${kind}`;
+  const owner = embedOwnerUid(nativeEl, readString);
+  if (owner) return `${boardUid}:embed:${owner}`;
+  return boardUid;
 }
 const DEFAULT_HEIGHT = 560;
 
@@ -361,11 +372,21 @@ export function mountBoardView({
   applyTheme();
 
   // ------------------------------------------------------------ state
-  // Main keeps the 1.2 key. A sidebar copy adds the window kind so the two viewports do not share a pan.
-  const mountKind = sidebarMountKind(nativeEl);
-  const inSidebar = mountKind !== "main";
-  const vpId = inSidebar ? `${boardUid}:${mountKind}` : boardUid;
+  // Main keeps the 1.2 key. A sidebar copy adds the window kind. An embed keeps its own key.
+  const readBlock = (id) => {
+    try { return host?.blockString?.(id); } catch { return null; }
+  };
+  const inSidebar = sidebarMountKind(nativeEl) !== "main";
+  const vpId = viewportStorageId(nativeEl, boardUid, readBlock);
+  const embedCopy = vpId !== boardUid && vpId.startsWith(`${boardUid}:embed:`);
   let vp = vpStore.get(vpId);
+  // Start from the main camera, but never write that key from this copy.
+  if (!vp && embedCopy) {
+    const main = vpStore.get(boardUid);
+    if (main && Number.isFinite(main.x) && Number.isFinite(main.y) && Number.isFinite(main.zoom) && main.zoom > 0) {
+      vp = { x: main.x, y: main.y, zoom: main.zoom };
+    }
+  }
   if (
     initialViewport
     && Number.isFinite(initialViewport.x)

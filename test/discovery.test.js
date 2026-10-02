@@ -4,6 +4,9 @@ import test from "node:test";
 import {
   diagramElForUid,
   diagramUidFromLocation,
+  embedBoardUid,
+  embedOwnerUid,
+  embedScope,
   enhancedUidGuardCss,
   findDiagramUidFromEl,
   isDiagramString,
@@ -167,4 +170,55 @@ test("readEnhanced pulls only :block/props synchronously and never throws", () =
   assert.equal(readEnhanced({ data: { pull() { throw new Error("boom"); } } }, "x"), false);
   assert.equal(readEnhanced(api, ""), false);
   assert.equal(readEnhanced(null, "x"), false);
+});
+
+function chain(className, extras = {}) {
+  const names = String(className || "").split(/\s+/).filter(Boolean);
+  const el = {
+    id: extras.id || "",
+    parentElement: null,
+    children: [],
+    classList: { contains: (name) => names.includes(name) },
+    matches(sel) { return sel.startsWith(".") && names.includes(sel.slice(1)); },
+    closest(sel) {
+      let node = this;
+      while (node) {
+        if (node.matches?.(sel)) return node;
+        node = node.parentElement;
+      }
+      return null;
+    },
+    append(child) {
+      child.parentElement = el;
+      el.children.push(child);
+      return child;
+    },
+  };
+  return el;
+}
+
+test("RG-10 embed owner is the block that holds the macro, not the board", () => {
+  const container = chain("roam-block-container");
+  const main = container.append(chain("rm-block-main"));
+  const input = main.append(chain("", { id: "block-input-win-body-outline-xxnGb6SEj-uyXFLc-bf" }));
+  const wrap = input.append(chain("rm-embed-container"));
+  const native = wrap.append(chain("rm-diagram"));
+  const read = (uid) => (uid === "uyXFLc-bf" ? "{{[[embed]]: ((boardAAA1))}}" : "");
+  assert.equal(embedOwnerUid(native, read), "uyXFLc-bf");
+  assert.equal(embedBoardUid(native, read), "boardAAA1");
+  assert.equal(embedScope(native, read), wrap);
+  const copy = wrap.append(chain("rm-diagram"));
+  assert.equal(embedScope(copy, read), wrap);
+  assert.equal(embedOwnerUid(chain("rm-diagram")), null);
+});
+
+test("RG-10 an untagged embed still resolves from the block string", () => {
+  const container = chain("roam-block-container");
+  const main = container.append(chain("rm-block-main"));
+  const input = main.append(chain("", { id: "block-input-win-body-outline-08-27-2026-Vjn-GoI5z" }));
+  const native = input.append(chain("rm-diagram"));
+  const read = (uid) => (uid === "Vjn-GoI5z" ? "{{embed: ((boardAAA1))}}" : "{{[[diagram]]}}");
+  assert.equal(embedOwnerUid(native, read), "Vjn-GoI5z");
+  assert.equal(embedBoardUid(native, read), "boardAAA1");
+  assert.equal(embedScope(native, read), container);
 });

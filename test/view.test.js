@@ -1772,6 +1772,93 @@ test("NP-7: a sidebar board keeps its own viewport, keys, and fullscreen", async
   }
 });
 
+test("RG-10: two embeds keep their own viewports and a shortcut card stays a thumbnail", async () => {
+  const vp = { x: 12.5, y: -3.25, zoom: 1 };
+  const f = mountFixture({
+    vp,
+    extraChildren: [{
+      ":block/uid": "wbCard001",
+      ":block/string": "((wbTarget1))",
+      ":block/order": 9,
+      ":block/props": { ":plexus": { ":x": 520, ":y": 40, ":w": 220, ":h": 140 } },
+      ":block/children": [],
+    }],
+    hostOverrides: {
+      blockString: (uid) => {
+        if (uid === "wbTarget1") return "{{[[diagram]]:Whiteboard}}";
+        if (uid === "uyXFLc-bf" || uid === "embedOwn02") return "{{[[embed]]: ((board0001))}}";
+        return null;
+      },
+      pullBoard: (uid) => (uid === "wbTarget1" ? { ":block/uid": "wbTarget1", ":block/string": "{{[[diagram]]:Whiteboard}}", ":block/children": [] } : null),
+    },
+  });
+  const exact = f.stub.localStorage.getItem("plexus-diagram:vp:Svy:board0001");
+  const make = (ownerUid) => {
+    const container = f.stub.document.createElement("div");
+    container.className = "roam-block-container";
+    const main = f.stub.document.createElement("div");
+    main.className = "rm-block-main";
+    const input = f.stub.document.createElement("div");
+    input.id = `block-input-w-body-outline-xxnGb6SEj-${ownerUid}`;
+    const wrap = f.stub.document.createElement("div");
+    wrap.className = "rm-embed-container";
+    const native = f.stub.document.createElement("div");
+    native.className = "rm-diagram";
+    const mountEl = f.stub.document.createElement("div");
+    wrap.append(native);
+    input.append(wrap);
+    main.append(input);
+    container.append(main);
+    f.stub.document.body.append(container, mountEl);
+    return mountBoardView({
+      host: f.host,
+      session: f.session,
+      mountEl,
+      nativeEl: native,
+      settings: { get: () => undefined },
+    });
+  };
+  const a = make("uyXFLc-bf");
+  const b = make("embedOwn02");
+  try {
+    await f.flush();
+    const mainWorld = f.view.root.querySelector(".pxd-world");
+    const aWorld = a.root.querySelector(".pxd-world");
+    const bWorld = b.root.querySelector(".pxd-world");
+    const before = mainWorld.style.transform;
+    assert.equal(aWorld.style.transform, before, "an embed starts from the main camera");
+    assert.equal(bWorld.style.transform, before);
+    const card = [...f.view.root.querySelectorAll(".pxd-item")].find((node) => node.getAttribute("data-uid") === "wbCard001");
+    assert.ok(card, "shortcut shell missing");
+    assert.ok(card.classList.contains("pxd-item--wb"), "the shortcut stays a thumbnail");
+    assert.equal(card.querySelector(".pxd-root"), null);
+    assert.equal(f.stub.document.querySelectorAll(".pxd-root").length, 3);
+    f.stub.dispatch(a.root.querySelector(".pxd-viewport"), "pointerdown", { button: 1, buttons: 4, clientX: 100, clientY: 100, pointerId: 8 });
+    f.stub.dispatch(f.stub.document, "pointermove", { clientX: 160, clientY: 140, pointerId: 8 });
+    f.stub.flushFrames();
+    f.stub.dispatch(f.stub.document, "pointerup", { clientX: 160, clientY: 140, pointerId: 8 });
+    assert.notEqual(aWorld.style.transform, before, "the panned embed moves");
+    assert.equal(mainWorld.style.transform, before, "the original stays");
+    assert.equal(bWorld.style.transform, before, "the other embed stays");
+    await tick(700);
+    assert.equal(f.stub.localStorage.getItem("plexus-diagram:vp:Svy:board0001"), exact);
+    const stored = f.stub.localStorage.getItem("plexus-diagram:vp:Svy:board0001:embed:uyXFLc-bf");
+    assert.equal(f.stub.localStorage.getItem("plexus-diagram:vp:Svy:board0001:embed:bf"), null);
+    assert.ok(stored);
+    assert.notEqual(stored, exact);
+    assert.equal(f.stub.localStorage.getItem("plexus-diagram:vp:Svy:board0001:embed:embedOwn02"), null);
+    a.dispose();
+    b.dispose();
+    assert.equal(f.stub.localStorage.getItem("plexus-diagram:vp:Svy:board0001"), exact);
+    assert.equal(f.stub.document.querySelectorAll(".pxd-root").length, 1);
+  } finally {
+    a.dispose();
+    b.dispose();
+    f.view.dispose();
+    f.restore();
+  }
+});
+
 test("NP-8: every direction, decoration, and type paints, including weight 4", async () => {
   const f = mountFixture({ settings: { motion: "reduced" } });
   try {

@@ -2530,6 +2530,20 @@ body.roam-body.dark .pxd-addboard {
   background: #eeeded;
 }
 
+.bp3-dark .pxd-root .pxd-bg__tones .pxd-swatch--paper,
+body.bt-theme-dark .pxd-root .pxd-bg__tones .pxd-swatch--paper,
+.rm-dark-theme .pxd-root .pxd-bg__tones .pxd-swatch--paper,
+body.roam-body.dark .pxd-root .pxd-bg__tones .pxd-swatch--paper,
+.pxd-root.pxd-root--dark .pxd-bg__tones .pxd-swatch--paper {
+  background: #191919;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not(.bp3-light) .pxd-root:not(.pxd-root--light) .pxd-bg__tones .pxd-swatch--paper {
+    background: #191919;
+  }
+}
+
 .pxd-root .pxd-bg__tones .pxd-swatch--on {
   box-shadow: 0 0 0 2px var(--pxd-chrome-bg), 0 0 0 4px var(--pxd-accent);
 }

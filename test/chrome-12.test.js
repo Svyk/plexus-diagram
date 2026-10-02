@@ -548,3 +548,32 @@ test("PF-8: the status dot titles idle, writing, retrying, and failed", (t) => {
   assert.equal(dot.title, "Synced");
   assert.equal(dot.classList.contains("pxd-sync--writing"), false);
 });
+
+test("UI-4: dark hosts keep border identity and the paper chip matches dark paper", async () => {
+  const tokens = await readFile(new URL("../src/extension.css", import.meta.url), "utf8");
+  const tokenRules = ruleList(tokens);
+  const dark = tokenRules.find((r) => r.selectors.includes(".bp3-dark .pxd-root") && r.selectors.includes(".pxd-root--dark"));
+  assert.ok(dark, "dark token block");
+  for (const signal of ["body.bt-theme-dark .pxd-root", ".rm-dark-theme .pxd-root", "body.roam-body.dark .pxd-root"]) {
+    assert.ok(dark.selectors.includes(signal), signal);
+  }
+  for (const tone of PALETTE) assert.match(dark.body, new RegExp(`--pxd-${tone}-fill:\\s*transparent`));
+  const selected = tokenRules.find((r) => r.selectors.length === 1 && r.selectors[0] === ".pxd-item--selected");
+  assert.match(selected.body, /border-color:\s*var\(--pxd-accent\)/);
+  assert.equal(/background/.test(selected.body), false);
+  const section = tokenRules.find((r) => r.selectors.length === 1 && r.selectors[0] === ".pxd-section");
+  assert.match(section.body, /border:[^;]*var\(--pxd-line/);
+  assert.match(section.body, /background:\s*var\(--pxd-fill,\s*transparent\)/);
+  const chrome = ruleList(await read("chrome.css"));
+  const chip = chrome.find((r) => r.selectors.includes(".pxd-root.pxd-root--dark .pxd-bg__tones .pxd-swatch--paper"));
+  assert.ok(chip, "dark paper chip");
+  for (const signal of [
+    ".bp3-dark .pxd-root .pxd-bg__tones .pxd-swatch--paper",
+    "body.bt-theme-dark .pxd-root .pxd-bg__tones .pxd-swatch--paper",
+    ".rm-dark-theme .pxd-root .pxd-bg__tones .pxd-swatch--paper",
+    "body.roam-body.dark .pxd-root .pxd-bg__tones .pxd-swatch--paper",
+  ]) assert.ok(chip.selectors.includes(signal), signal);
+  assert.match(chip.body, /background:\s*#191919/);
+  const guard = chrome.find((r) => r.media && r.selectors.includes(":root:not(.bp3-light) .pxd-root:not(.pxd-root--light) .pxd-bg__tones .pxd-swatch--paper"));
+  assert.match(guard.body, /background:\s*#191919/);
+});

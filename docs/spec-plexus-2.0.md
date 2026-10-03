@@ -1,6 +1,6 @@
 # Plexus Diagram 2.0
 
-The running package is 1.3.0. This file records the model and surfaces as built. It is not a release tag.
+The running package is 2.0.0. This file records the model and surfaces as built.
 
 Layout lives in `:block/props` under `plexus`. Reads drop bad values in memory. A write happens when the user edits. Open, pan, and zoom write nothing to the graph.
 

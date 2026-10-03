@@ -50,6 +50,6 @@ Fork `Roam-Research/roam-depot`, copy the JSON to `extensions/Svyk/plexus-diagra
 
 ## What the reviewer will build
 
-`build.sh` runs `npm ci --ignore-scripts --no-audit --no-fund` and then `node build.mjs`. The repo root has `README.md`, `extension.js`, `extension.css`, `CHANGELOG.md`, and `LICENSE` (MIT). The package version is 1.3.0.
+`build.sh` runs `npm ci --ignore-scripts --no-audit --no-fund` and then `node build.mjs`. The repo root has `README.md`, `extension.js`, `extension.css`, `CHANGELOG.md`, and `LICENSE` (MIT). The Depot draft was written against package 1.3.0. The tagged release is 2.0.0.
 
 Phase gates P2 through P7 are still blocked. This draft does not treat the listing as a release.

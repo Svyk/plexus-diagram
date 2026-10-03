@@ -1,6 +1,6 @@
 # Plexus Diagram 2.0 — module contracts
 
-Companion to `docs/api-plexus-1.0.md`. The running package is still 1.3.0 and this file is not a release tag.
+Companion to `docs/api-plexus-1.0.md`. The running package is 2.0.0.
 
 | Already in the 1.0 file | Stays there |
 |---|---|
@@ -20,7 +20,7 @@ Companion to `docs/api-plexus-1.0.md`. The running package is still 1.3.0 and th
 | session-clip.js | `expandOutline(cardUid, options)` default `max` is 24, not 40. An omitted `depth` is 3. |
 | board-view.js | `setSettings` calls `session.setLinkMode` only when `graph-links` actually changes. |
 | settings.js | The panel is grouped. Reset calls `resetPlexusSettings`. |
-| feature.js | `PACKAGE_VERSION` is `package.json`. The badge uses it first, so a live inject that passes `"live"` still shows 1.3.0. |
+| feature.js | `PACKAGE_VERSION` is `package.json`. The badge uses it first, so a live inject that passes `"live"` still shows 2.0.0. |
 
 | Export | Contract |
 |---|---|

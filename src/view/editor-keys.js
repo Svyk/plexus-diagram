@@ -1,6 +1,7 @@
 // Keys while a card's Roam editor is focused.
-// Enter on the root block would insert a sibling, and that sibling is a new board item.
-// It has to become a child of the card instead. Tab, Shift+Tab, and Cmd+Enter stay with Roam.
+// A native Roam diagram node is one block: Enter adds a line to it. That is the
+// default here too. The "child" setting hands Enter to Roam, which makes a child
+// of the card inside this embed. Tab, Shift+Tab, and Cmd+Enter stay with Roam.
 
 const UID = /^[A-Za-z0-9_-]{9,15}$/;
 
@@ -52,14 +53,16 @@ export function editorKeyAction({
   value = "",
   selectionStart = 0,
   selectionEnd = 0,
+  enterMode = "newline",
 } = {}) {
   if (autocomplete) return { type: "roam" };
   const mod = Boolean(meta || ctrl);
   if (key === "Tab" && !alt) return { type: "roam" };
   if (key === "Enter" && mod && !shift && !alt) return { type: "roam" };
-  // Enter stays with Roam. Inside this embed, Roam inserts the new block as a
-  // child of the card (not a board sibling) and repaints the outline. Writing
-  // the child through the API leaves a block the open editor never shows.
+  // In "child" mode Enter stays with Roam, which inserts the new block as a child
+  // of the card and repaints the outline. Writing the child through the API
+  // leaves a block the open editor never shows.
+  if (key === "Enter" && isRoot && !shift && !mod && !alt && enterMode !== "child") return { type: "newline" };
   if (key === "Backspace" && isRoot && fresh && !mod && !alt) {
     const text = String(value ?? "");
     const start = Math.min(selectionStart, selectionEnd);

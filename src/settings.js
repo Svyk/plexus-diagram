@@ -23,6 +23,7 @@ export const SETTING_IDS = Object.freeze({
   showCardBadges: "show-card-badges",
   showPalette: "show-palette",
   motion: "motion",
+  enterInCard: "enter-in-card",
 });
 
 const DEFAULTS = Object.freeze({
@@ -50,6 +51,7 @@ const DEFAULTS = Object.freeze({
   [SETTING_IDS.showCardBadges]: true,
   [SETTING_IDS.showPalette]: true,
   [SETTING_IDS.motion]: "full",
+  [SETTING_IDS.enterInCard]: "newline",
 });
 
 const BOARD_TONES = ["none", "paper", "gray", "red", "orange", "yellow", "green", "teal", "blue", "indigo", "purple", "pink"];
@@ -64,6 +66,7 @@ const ENUMS = Object.freeze({
   [SETTING_IDS.boardTone]: BOARD_TONES,
   [SETTING_IDS.mapZoom]: MAP_ZOOMS,
   [SETTING_IDS.motion]: ["full", "reduced", "none"],
+  [SETTING_IDS.enterInCard]: ["newline", "child"],
 });
 
 const NUMBERS = new Set([SETTING_IDS.defaultCardWidth, SETTING_IDS.defaultCardHeight]);
@@ -204,6 +207,7 @@ const SETTING_ROWS = {
   [SETTING_IDS.autoFitSections]: () => switchRow(SETTING_IDS.autoFitSections, "Auto-fit sections", "Grow a section when a card is moved or resized past its edge."),
   [SETTING_IDS.spaceOut]: () => switchRow(SETTING_IDS.spaceOut, "Space out cards", "After a move, push cards apart when they overlap."),
   [SETTING_IDS.showCardBadges]: () => switchRow(SETTING_IDS.showCardBadges, "Show card badges", "Show how many references, tasks, and children a card has."),
+  [SETTING_IDS.enterInCard]: () => selectRow(SETTING_IDS.enterInCard, "Enter in a card", "Newline adds a line to the card's block, like a native Roam diagram. Child makes a new child block inside the card.", ["newline", "child"]),
   [SETTING_IDS.defaultCardLook]: () => selectRow(SETTING_IDS.defaultCardLook, "Default card look", "New note cards. Block is a plain Roam block. Card keeps a title row.", ["block", "card"]),
   [SETTING_IDS.defaultCardWidth]: () => inputRow(SETTING_IDS.defaultCardWidth, "Default card width", "Width of a new card, in pixels."),
   [SETTING_IDS.defaultCardHeight]: () => inputRow(SETTING_IDS.defaultCardHeight, "Default card height", "Height of a new card, in pixels."),
@@ -215,7 +219,7 @@ const SETTING_ROWS = {
 
 const SETTING_GROUPS = [
   ["group-cards", "Cards", "How new cards look, and the marks on them.", [
-    SETTING_IDS.defaultCardLook, SETTING_IDS.defaultCardWidth, SETTING_IDS.defaultCardHeight, SETTING_IDS.showCardBadges, SETTING_IDS.spaceOut,
+    SETTING_IDS.defaultCardLook, SETTING_IDS.defaultCardWidth, SETTING_IDS.defaultCardHeight, SETTING_IDS.enterInCard, SETTING_IDS.showCardBadges, SETTING_IDS.spaceOut,
   ]],
   ["group-sections", "Sections", "How a section grows around its cards.", [
     SETTING_IDS.autoFitSections,

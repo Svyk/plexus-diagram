@@ -22,10 +22,23 @@ export function filesFromDataTransfer(dt) {
     out.push(f);
   };
   for (const f of dt?.files ?? []) add(f);
+  // Chromium lists a pasted image in both files and items, and getAsFile returns a new
+  // File each time, so identity cannot dedupe them. One paste uploaded the image twice.
+  if (out.length) return out;
   for (const item of dt?.items ?? []) {
     if (item?.kind === "file") { try { add(item.getAsFile?.()); } catch { /* ignore */ } }
   }
   return out;
+}
+
+// During dragenter/dragover the browser hides file contents (files is empty, getAsFile is
+// null) but still exposes each item's kind and type, so acceptance must be decided from those.
+export function dragHasImages(dt) {
+  if (filesFromDataTransfer(dt).length) return true;
+  for (const item of dt?.items ?? []) {
+    if (item?.kind === "file" && String(item.type || "").startsWith("image/")) return true;
+  }
+  return false;
 }
 
 export async function writeClipboard({ text = "", mime = null, data = null } = {}) {

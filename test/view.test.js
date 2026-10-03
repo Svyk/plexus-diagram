@@ -2130,10 +2130,59 @@ test("ED-5: editing at 2x lays the editor out in screen pixels", async () => {
   }
 });
 
-test("ED-6: Enter, Tab, and Cmd+Enter stay with Roam while the card is editing", async () => {
+test("Enter on a card's root adds a line to that block and writes nothing else", async () => {
   const created = [];
   const updates = [];
   const f = mountFixture({
+    hostOverrides: {
+      renderBlock(el, uid) {
+        const doc = el.ownerDocument || globalThis.document;
+        const block = doc.createElement("div");
+        block.className = "rm-block";
+        block.id = uid;
+        const ta = doc.createElement("textarea");
+        ta.className = "rm-block__input";
+        ta.value = "test";
+        block.append(ta);
+        el.append(block);
+      },
+      createBlock(spec) { created.push(spec); return Promise.resolve("childNEW01"); },
+      updateString(uid, string) { updates.push([uid, string]); return Promise.resolve(); },
+      group(fn) { return fn(); },
+    },
+  });
+  try {
+    await f.flush();
+    const card = await startEdit(f, "cardAAAA1");
+    const ta = card.querySelector(".pxd-item__editor textarea");
+    const roamSaw = [];
+    ta.addEventListener("keydown", (e) => roamSaw.push(`down:${e.key}`));
+    ta.addEventListener("keyup", (e) => roamSaw.push(`up:${e.key}`));
+    ta.selectionStart = 4;
+    ta.selectionEnd = 4;
+    const ev = f.stub.dispatch(ta, "keydown", { key: "Enter", code: "Enter" });
+    assert.equal(ev.defaultPrevented, false, "the browser still types the newline");
+    f.stub.dispatch(ta, "keyup", { key: "Enter", code: "Enter" });
+    assert.deepEqual(roamSaw, [], "Roam never sees the Enter, so it makes no child");
+    await tick();
+    assert.equal(created.length, 0);
+    assert.equal(updates.length, 0, "the open editor saves the string itself");
+    f.stub.dispatch(ta, "keyup", { key: "a" });
+    const shifted = f.stub.dispatch(ta, "keydown", { key: "Enter", shiftKey: true });
+    assert.equal(shifted.defaultPrevented, false);
+    f.stub.dispatch(ta, "keyup", { key: "Enter", shiftKey: true });
+    assert.deepEqual(roamSaw, ["up:a", "down:Enter", "up:Enter"], "Shift+Enter is still Roam's own newline");
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("ED-6: with Enter set to child, Enter, Tab, and Cmd+Enter stay with Roam while the card is editing", async () => {
+  const created = [];
+  const updates = [];
+  const f = mountFixture({
+    settings: { "enter-in-card": "child" },
     hostOverrides: {
       renderBlock(el, uid) {
         const doc = el.ownerDocument || globalThis.document;

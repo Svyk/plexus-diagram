@@ -206,6 +206,43 @@ test("view: dropping an image where uploads are unavailable says so and adds not
   } finally { f.view.dispose(); f.restore(); }
 });
 
+test("ED-7: an image dragged over a card is accepted although dragover hides the file", () => {
+  const f = mount();
+  try {
+    const editor = f.stub.document.createElement("div");
+    editor.className = "pxd-item__editor";
+    f.view.root.append(editor);
+    const d = dt({}, { files: [], items: [{ kind: "file", type: "image/png", getAsFile: () => null }], dropEffect: "none" });
+    const over = f.stub.dispatch(editor, "dragover", { dataTransfer: d });
+    assert.equal(over.defaultPrevented, true, "without this the browser never fires drop");
+    assert.equal(d.dropEffect, "copy");
+  } finally { f.view.dispose(); f.restore(); }
+});
+
+test("ED-7: an image dropped on a card that is not being edited is appended, never replacing its text", async () => {
+  const writes = [];
+  const f = mount({
+    uploadFile: async (file) => `https://files.test/${file.name}`,
+    blockString: (uid) => (uid === "cardaaaa1" ? "keep me" : null),
+    updateString: async (uid, s) => { writes.push([uid, s]); },
+  });
+  try {
+    const card = f.stub.document.createElement("div");
+    card.className = "pxd-item pxd-item--card";
+    card.setAttribute("data-uid", "cardaaaa1");
+    const editor = f.stub.document.createElement("div");
+    editor.className = "pxd-item__editor";
+    card.append(editor);
+    f.view.root.append(card);
+    const d = dt({}, { files: [{ type: "image/png", name: "d.png" }] });
+    const ev = f.stub.dispatch(editor, "drop", { clientX: 10, clientY: 10, dataTransfer: d });
+    assert.ok(ev.defaultPrevented);
+    await tick(5);
+    assert.deepEqual(writes, [["cardaaaa1", "keep me![](https://files.test/d.png)"]]);
+    assert.equal(f.mutations.length, 0, "no new card");
+  } finally { f.view.dispose(); f.restore(); }
+});
+
 test("view: a drop with image files and no host upload also stays a no-op with a toast", async () => {
   const f = mount();
   try {

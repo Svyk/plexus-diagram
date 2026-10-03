@@ -45,6 +45,8 @@ function fakeExtensionApi() {
   };
 }
 
+const byIdOf = (panel) => Object.fromEntries(panel.settings.map((row) => [row.id, row]));
+
 test("settings panel follows spec section 6 ids, defaults and row types", () => {
   const panel = createSettingsPanel();
   assert.equal(panel.tabTitle, "Plexus Diagram");
@@ -55,7 +57,10 @@ test("settings panel follows spec section 6 ids, defaults and row types", () => 
     "attr-styles", "collapse-outline", "default-card-height", "default-card-look", "default-card-width", "disable-on-mobile", "enable-shortcuts", "enabled",
     "controls-position", "fullscreen-on-zoom", "graph-links", "grid", "show-minimap", "show-version-badge", "snap-grid", "snap-guides", "wheel",
     "auto-fit-sections", "board-tone", "map-zoom", "motion", "show-card-badges", "show-palette", "space-out",
+    "enter-in-card",
   ].sort());
+  assert.equal(settingsDefaults()["enter-in-card"], "newline");
+  assert.deepEqual(byIdOf(panel)["enter-in-card"].action.items, ["newline", "child"]);
   const byId = Object.fromEntries(panel.settings.map((row) => [row.id, row]));
   assert.equal(byId["graph-links"].action.type, "select");
   assert.equal(byId["attr-styles"].action.type, "input");
@@ -162,7 +167,7 @@ test("UI-10: settings are grouped, described in plain language, and reset applie
     }
   }
   assert.deepEqual(groups, ["Cards", "Sections", "Connections", "Board", "Performance"]);
-  assert.deepEqual(members.Cards, ["default-card-look", "default-card-width", "default-card-height", "show-card-badges", "space-out"]);
+  assert.deepEqual(members.Cards, ["default-card-look", "default-card-width", "default-card-height", "enter-in-card", "show-card-badges", "space-out"]);
   assert.deepEqual(members.Sections, ["auto-fit-sections"]);
   assert.deepEqual(members.Connections, ["graph-links", "attr-styles"]);
   assert.ok(members.Board.includes("enabled"));

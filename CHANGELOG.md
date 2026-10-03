@@ -1,5 +1,12 @@
 # Changelog
 
+## Unreleased
+
+- Enter in a card adds a line to the card's block, like a node in a native Roam diagram. Settings, Cards, "Enter in a card" set to Child brings back the old behavior of making a child block.
+- An empty white panel with a Close button no longer covers boards.
+- Pasting one image into a card inserted it twice. It now inserts once.
+- Dragging an image onto a card that is being edited works. Dropping an image on a card adds it after the card's text instead of replacing the text.
+
 ## 2.0.0 — 2026-10-03
 
 - Card editing, outline navigation, templates, the table, snapshots, and the graph tools that landed after 1.3.0.

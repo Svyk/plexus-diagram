@@ -133,3 +133,9 @@ test("edge via and section looks persist", () => {
   assert.equal(calendar.look, "calendar");
   assert.equal(calendar.axis, undefined);
 });
+
+test("the later-views panel stays hidden until a view opens", async () => {
+  const { readFileSync } = await import("node:fs");
+  const css = readFileSync(new URL("../src/css/overlays.css", import.meta.url), "utf8");
+  assert.match(css, /\.pxd-root \.pxd-later\[hidden\]\s*\{\s*display:\s*none;/);
+});

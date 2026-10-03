@@ -294,6 +294,10 @@ body.roam-body.dark .pxd-root .pxd-present-hud,
   color: var(--pxd-text);
 }
 
+.pxd-root .pxd-later[hidden] {
+  display: none;
+}
+
 .pxd-root .pxd-later__bar,
 .pxd-root .pxd-later__body {
   display: flex;

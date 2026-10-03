@@ -4,7 +4,7 @@ import test from "node:test";
 import { buildBoard, worldRects } from "../src/model/board.js";
 import { PLEXUS_MIME } from "../src/model/clipboard.js";
 import { createEdgeLayer } from "../src/view/edges.js";
-import { createClipboardIO, filesFromDataTransfer } from "../src/view/clipboard-io.js";
+import { createClipboardIO, dragHasImages, filesFromDataTransfer } from "../src/view/clipboard-io.js";
 import { createPresenter } from "../src/view/present.js";
 import { createQuickLook } from "../src/view/quicklook.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
@@ -233,6 +233,13 @@ test("clipboard-io: dispose leaves no listeners; filesFromDataTransfer keeps ima
   const viaItems = { files: [], items: [{ kind: "file", getAsFile: () => ({ type: "image/jpeg" }) }, { kind: "string" }] };
   assert.equal(filesFromDataTransfer(viaItems).length, 1);
   assert.deepEqual(filesFromDataTransfer(null), []);
+  const one = { type: "image/png", name: "image.png" };
+  const both = { files: [one], items: [{ kind: "file", getAsFile: () => ({ type: "image/png", name: "image.png" }) }] };
+  assert.deepEqual(filesFromDataTransfer(both), [one], "one pasted image is one upload, not two");
+  const dragging = { files: [], items: [{ kind: "file", type: "image/png", getAsFile: () => null }] };
+  assert.equal(dragHasImages(dragging), true, "dragover hides file contents but still shows the image type");
+  assert.equal(dragHasImages({ files: [], items: [{ kind: "file", type: "application/pdf", getAsFile: () => null }] }), false);
+  assert.equal(dragHasImages({ files: [], items: [{ kind: "string", type: "text/plain" }] }), false);
 });
 
 const edgeBoard = () => buildBoard(blk("b1", "{{[[diagram]]:B}}", null, [

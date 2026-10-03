@@ -5,10 +5,15 @@ import { blockUidFromNode, editorKeyAction, inputBlockRole } from "../src/view/e
 
 const at = (over) => editorKeyAction({ key: "Enter", isRoot: true, value: "Note card", selectionStart: 9, selectionEnd: 9, ...over });
 
-test("ED-6: Enter on the root stays with Roam, at the end and in the middle", () => {
-  assert.equal(at().type, "roam");
-  assert.equal(at({ selectionStart: 4, selectionEnd: 4 }).type, "roam");
-  assert.equal(at({ selectionStart: 5, selectionEnd: 9 }).type, "roam");
+test("Enter on the root adds a line to the same block, like a native Roam diagram", () => {
+  assert.equal(at().type, "newline");
+  assert.equal(at({ selectionStart: 4, selectionEnd: 4 }).type, "newline");
+  assert.equal(at({ selectionStart: 5, selectionEnd: 9 }).type, "newline");
+});
+
+test("ED-6: with the child setting, Enter on the root stays with Roam", () => {
+  assert.equal(at({ enterMode: "child" }).type, "roam");
+  assert.equal(at({ enterMode: "child", selectionStart: 4, selectionEnd: 4 }).type, "roam");
 });
 
 test("ED-6: Enter in a child, Tab, and Cmd+Enter stay with Roam", () => {

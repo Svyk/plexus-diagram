@@ -50,7 +50,7 @@ import { findShortcut } from "./shortcuts.js";
 import { buildMenu } from "./menu-model.js";
 import { createQuickLook } from "./quicklook.js";
 import { createPresenter } from "./present.js";
-import { createClipboardIO, filesFromDataTransfer, writeClipboard } from "./clipboard-io.js";
+import { createClipboardIO, dragHasImages, filesFromDataTransfer, writeClipboard } from "./clipboard-io.js";
 import { applyFullscreenChrome, watchRouteExit } from "./fullscreen.js";
 import { embedOwnerUid } from "../discovery.js";
 import {
@@ -1345,6 +1345,15 @@ export function mountBoardView({
       if (disposed) return;
     }
     if (!urls.length) { if (!disposed) toast("Couldn't upload the image"); return; }
+    // A drop on a card that is not being edited has no textarea; appending to an empty
+    // snapshot would replace the block's text with the image.
+    if (!ta) {
+      let current = null;
+      try { current = host?.blockString?.(blockUid); } catch { current = null; }
+      if (typeof current !== "string") { if (!disposed) toast("Couldn't add the image to this card"); return; }
+      snap.value = current;
+      snap.start = snap.end = current.length;
+    }
     const placed = inlineAtCaret(snap.value, snap.start, snap.end, imageMarkdown(urls));
     if (ta) {
       commitTextareaValue(ta, placed.string);
@@ -2655,7 +2664,7 @@ export function mountBoardView({
   const onDragAccept = (event) => {
     const editor = event.target?.closest?.(".pxd-item__editor");
     if (editor) {
-      if (!filesFromDataTransfer(event.dataTransfer).length) return;
+      if (!dragHasImages(event.dataTransfer)) return;
       event.preventDefault();
       event.stopPropagation();
       if (event.dataTransfer) event.dataTransfer.dropEffect = "copy";
@@ -2725,6 +2734,7 @@ export function mountBoardView({
     return isFullscreen;
   };
   let outsideQuiet = null;
+  let swallowEnterUp = false;
   const onKeyDown = (event) => {
     // A keystroke outside the board is a Roam transaction. Drop live card renders first,
     // before any board lookup, and put them back shortly after typing stops.
@@ -2817,7 +2827,19 @@ export function mountBoardView({
           value: ta.value || "",
           selectionStart: Number.isFinite(ta.selectionStart) ? ta.selectionStart : 0,
           selectionEnd: Number.isFinite(ta.selectionEnd) ? ta.selectionEnd : (Number.isFinite(ta.selectionStart) ? ta.selectionStart : 0),
+          enterMode: setting("enter-in-card", "newline"),
         });
+        // Roam's own Enter handler never sees the key. The browser's default action
+        // still types the newline, so Roam's onChange records it as it does Shift+Enter.
+        // A scripted insert changed the textarea but Roam saved the old string.
+        // Roam must miss the matching keyup too: an Enter keyup with no keydown leaves
+        // its editor stale, and the next keystroke reset the text to the saved string.
+        if (action.type === "newline") {
+          event.stopPropagation();
+          event.stopImmediatePropagation?.();
+          swallowEnterUp = true;
+          return;
+        }
         if (action.type === "delete-card") {
           event.preventDefault();
           event.stopPropagation();
@@ -2843,7 +2865,15 @@ export function mountBoardView({
     const handled = ctl.handle({ type: "keydown", key: event.key, code: event.code, shift: event.shiftKey, alt: event.altKey, meta: event.metaKey, ctrl: event.ctrlKey, inputFocused, tabOwned });
     if (handled) { event.preventDefault(); event.stopPropagation(); }
   };
-  const onKeyUp = (event) => { ctl.handle({ type: "keyup", key: event.key, code: event.code }); };
+  const onKeyUp = (event) => {
+    if (swallowEnterUp && event.key === "Enter") {
+      swallowEnterUp = false;
+      event.stopPropagation();
+      event.stopImmediatePropagation?.();
+      return;
+    }
+    ctl.handle({ type: "keyup", key: event.key, code: event.code });
+  };
   // A typed edit anywhere else in Roam lands on Roam's undo stack: the grouped undo log no longer maps onto it.
   listen(doc, "input", (event) => {
     if (!root.contains?.(event.target)) host?.invalidateUndo?.();

@@ -11345,7 +11345,7 @@ function createItemRenderer({
       }
       onEditChange?.(null);
       const need = contentH + (["page", "board"].includes(item.kind) || item.collapsed ? HEADER_H : 0) + 20;
-      if (contentH > 0 && live && need > live.h) {
+      if (contentH > 0 && live && item.kind !== "page" && need > live.h) {
         const grow = Math.min(GROW_CAP, need);
         if (grow > live.h) (onGrow || ((u, h) => session?.growToFit?.(u, h)))(uid, grow);
       }

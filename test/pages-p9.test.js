@@ -86,7 +86,7 @@ function tree(levels, fan, prefix = "b") {
 }
 const flat = (blocks) => blocks.flatMap((b) => [b, ...flat(b.children)]);
 
-function harness({ pageBlocks = [], pages = {}, hostOverrides = {}, titles = ["Alpha"] } = {}) {
+function harness({ pageBlocks = [], pages = {}, hostOverrides = {}, titles = ["Alpha"], session = {} } = {}) {
   const stub = createDomStub();
   const restore = stub.install();
   const doc = stub.document;
@@ -125,7 +125,7 @@ function harness({ pageBlocks = [], pages = {}, hostOverrides = {}, titles = ["A
     idle(fn) { idleQueue.push(fn); return () => { const i = idleQueue.indexOf(fn); if (i >= 0) idleQueue.splice(i, 1); }; },
     later(fn, ms) { const t = { fn, ms }; laterQueue.push(t); return () => { const i = laterQueue.indexOf(t); if (i >= 0) laterQueue.splice(i, 1); }; },
   };
-  const r = createItemRenderer({ doc, host, session: {}, itemsLayer, sectionsLayer, timers });
+  const r = createItemRenderer({ doc, host, session, itemsLayer, sectionsLayer, timers });
   const board = buildBoard(rawBoard(titles.map((t, i) => blk(`pg${i}`.padEnd(9, "0"), `[[${t}]]`, { ...PAGE, ":x": i * 400 }, i))));
   const rects = worldRects(board);
   r.sync({ board, rects, dirty: null, structural: true });
@@ -291,6 +291,23 @@ test("PG-3: enterEdit with a row mounts renderPage and puts the caret in that bl
     assert.deepEqual(h.calls.renderPage, ["uid-Alpha"]);
     assert.equal(focused[0], target, "the clicked block, not the first one, takes focus");
     await h.r.exitEdit({ silent: true });
+  } finally { h.done(); }
+});
+
+test("PG-3 fix: leaving a page card edit never grows the card to the page height", async () => {
+  const grows = [];
+  const h = harness({ pageBlocks: tree(1, 5), session: { growToFit: (...a) => grows.push(a) } });
+  try {
+    h.host.renderPage = (el) => {
+      const input = h.doc.createElement("div");
+      input.className = "rm-block__input";
+      input.setAttribute("id", "block-input-w-first");
+      el.append(input);
+      for (let n = el; n; n = n.parentElement) n.scrollHeight = 2400;
+    };
+    assert.equal(await settle(h, h.r.enterEdit(h.uids[0], {})), true);
+    await h.r.exitEdit();
+    assert.deepEqual(grows, [], "a page card scrolls, it does not grow");
   } finally { h.done(); }
 });
 

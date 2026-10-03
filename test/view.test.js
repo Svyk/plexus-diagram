@@ -1161,8 +1161,8 @@ test("CSS contract (1.2): map tile clamp, overview tier, bare header, pin, focus
   assert.match(css, /\.pxd-lod-map \.pxd-item--board \.pxd-item__body,\s*\.pxd-lod-map \.pxd-item--wb \.pxd-item__body \{\s*display: block/, "whiteboard-shortcut cards keep their thumbnail at map zoom");
   assert.match(css, /\.pxd-lod-overview \.pxd-item--board \.pxd-item__body,\s*\.pxd-lod-overview \.pxd-item--wb \.pxd-item__body \{\s*display: none/);
   assert.match(rule(".pxd-section__title > .pxd-section__title-text"), /text-overflow: ellipsis/, "the rendered title child owns the ellipsis");
-  assert.match(rule('.pxd-root.pxd-lod-overview .pxd-item.pxd-item--card[class*="pxd-c-"]'), /color-mix\(in srgb, var\(--pxd-line\) 42%/);
-  assert.match(rule(".pxd-root.pxd-lod-overview .pxd-item--card > .pxd-item__header"), /visibility: hidden/);
+  assert.match(rule('.pxd-root.pxd-lod-overview .pxd-item.pxd-item--card[class*="pxd-c-"]'), /background-color: var\(--pxd-line\)/);
+  assert.match(rule(".pxd-root.pxd-lod-overview .pxd-item--card > .pxd-item__header"), /display: none/);
   assert.match(rule(".pxd-root.pxd-lod-overview .pxd-section__title"), /font-size: var\(--pxd-overview-font, 40px\)/);
   assert.match(rule(".pxd-root.pxd-lod-overview .pxd-section__title"), /z-index: 1/, "overview titles paint above cards");
   const pill = rule(".pxd-section__title");

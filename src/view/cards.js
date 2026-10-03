@@ -590,12 +590,74 @@ export function createItemRenderer({
   };
 
   // Structural or partial sync from the model.
-  const sync = ({ board, rects, dirty = null, structural = false }) => {
+  let shellQueue = [];
+  const placeShells = () => {
+    if (typeof doc.createDocumentFragment !== "function") {
+      for (const uid of lastBoard?.order || []) {
+        const rec = shells.get(uid);
+        if (!rec?.el) continue;
+        const layer = rec.type === "section" ? sectionsLayer : itemsLayer;
+        if (rec.el.parentElement !== layer || layer.lastChild !== rec.el) layer.append(rec.el);
+      }
+      return;
+    }
+    const sectionNodes = doc.createDocumentFragment();
+    const itemNodes = doc.createDocumentFragment();
+    for (const uid of lastBoard?.order || []) {
+      const rec = shells.get(uid);
+      if (!rec?.el) continue;
+      (rec.type === "section" ? sectionNodes : itemNodes).append(rec.el);
+    }
+    if (sectionNodes.childNodes.length) sectionsLayer.append(sectionNodes);
+    if (itemNodes.childNodes.length) itemsLayer.append(itemNodes);
+  };
+  const pumpShells = () => {
+    const chunk = shellQueue.splice(0, 40);
+    for (const uid of chunk) {
+      const item = lastBoard?.items.get(uid);
+      if (!item || shells.has(uid)) continue;
+      const rec = buildShell(item);
+      const rect = lastRects?.get(uid);
+      rec.el.style.display = rect ? "" : "none";
+      noteRender(uid);
+      paintShell(rec, item);
+      if (rect) position(rec, rect);
+    }
+    if (chunk.length) placeShells();
+    if (shellQueue.length && timers?.frame) timers.frame(pumpShells);
+  };
+  const sync = ({ board, rects, dirty = null, structural = false, view = null }) => {
     lastBoard = board;
     lastRects = rects;
+    // A full sync builds every missing shell itself. A partial sync must leave the
+    // open-time queue alone, or the cards past the first chunk never appear.
+    if (dirty == null) shellQueue = [];
     for (const uid of [...shells.keys()]) if (!board.items.has(uid)) removeShell(uid);
     let orderChanged = structural;
+    let defer = null;
+    if (!shells.size && board.order.length > 80 && typeof timers?.frame === "function") {
+      const now = [];
+      const later = [];
+      for (const uid of board.order) {
+        const rect = rects.get(uid);
+        if (view && rect && rectsIntersect(rect, view)) now.push(uid);
+        else later.push(uid);
+      }
+      // A camera over empty space used to build every shell in this frame.
+      if (!now.length && view) {
+        const cx = view.x + view.w / 2;
+        const cy = view.y + view.h / 2;
+        const dist = (uid) => {
+          const r = rects.get(uid);
+          return r ? (r.x + r.w / 2 - cx) ** 2 + (r.y + r.h / 2 - cy) ** 2 : Infinity;
+        };
+        later.sort((a, b) => dist(a) - dist(b));
+      }
+      if (!now.length) now.push(...later.splice(0, 24));
+      if (now.length && later.length) defer = new Set(later);
+    }
     for (const uid of board.order) {
+      if (defer?.has(uid)) continue;
       const item = board.items.get(uid);
       let rec = shells.get(uid);
       const fresh = !rec;
@@ -626,12 +688,10 @@ export function createItemRenderer({
         position(rec, rect);
       }
     }
-    if (orderChanged) {
-      for (const uid of board.order) {
-        const rec = shells.get(uid);
-        const layer = rec.type === "section" ? sectionsLayer : itemsLayer;
-        if (rec.el.parentElement !== layer || layer.lastChild !== rec.el) layer.append(rec.el);
-      }
+    if (orderChanged) placeShells();
+    if (defer?.size) {
+      shellQueue = [...defer];
+      timers.frame(pumpShells);
     }
   };
 
@@ -998,12 +1058,23 @@ export function createItemRenderer({
     setZoom(zoom);
     if (showBadges && (prev === "detail") !== (lod === "detail")) {
       if (lod !== "detail") {
-        for (const rec of shells.values()) {
-          if (!rec.badgeEl) continue;
-          rec.badgeEl.remove();
-          rec.badgeEl = null;
-          rec.badgeKey = null;
-        }
+        const pending = [];
+        for (const rec of shells.values()) if (rec.badgeEl) pending.push(rec);
+        const step = () => {
+          for (const rec of pending.splice(0, 40)) {
+            rec.badgeEl.remove();
+            rec.badgeEl = null;
+            rec.badgeKey = null;
+          }
+          if (pending.length) {
+            if (timers?.frame) timers.frame(step);
+            else step();
+          }
+        };
+        // The class flip is the frame the zoom crossed. Badge removal waits for the
+        // next frame when a frame timer exists, so the two do not share one long task.
+        if (timers?.frame) timers.frame(step);
+        else step();
       } else {
         for (const rec of shells.values()) renderBadges(rec);
       }

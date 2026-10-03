@@ -552,3 +552,96 @@ test("setFocus dims shells outside the set with a class only, and clears with nu
     h.done();
   }
 });
+
+test("a cold board over 80 cards paints the visible ones first", () => {
+  const stub = createDomStub();
+  const restore = stub.install();
+  const doc = stub.document;
+  const itemsLayer = doc.createElement("div");
+  const sectionsLayer = doc.createElement("div");
+  doc.body.append(itemsLayer, sectionsLayer);
+  const frames = [];
+  const timers = {
+    idle() { return () => {}; },
+    later() { return () => {}; },
+    frame(fn) { frames.push(fn); return () => {}; },
+  };
+  const host = {
+    renderString(node, string) { node.textContent = string; },
+    unmount() {},
+    blockString: () => null,
+    pullTree: () => [],
+    pullBoard: () => null,
+    pagePreview: () => ({ exists: false, blocks: [] }),
+  };
+  const r = createItemRenderer({ doc, host, session: {}, itemsLayer, sectionsLayer, timers });
+  const children = [];
+  for (let i = 0; i < 90; i += 1) {
+    children.push(blk(`c${String(i).padStart(8, "0")}`, `Card ${i}`, { ":x": i * 400, ":y": 0, ":w": 200, ":h": 100 }, i));
+  }
+  const board = buildBoard(rawBoard(children));
+  const rects = worldRects(board);
+  const view = { x: -10, y: -10, w: 220, h: 120 };
+  try {
+    r.sync({ board, rects, structural: true, view });
+    assert.ok(r.shellOf(board.order[0]), "the card in view is painted");
+    assert.equal(r.shellOf(board.order[89]), null, "a card outside the view waits");
+    assert.ok(frames.length >= 1);
+    let guard = 0;
+    while (frames.length && guard < 20) {
+      guard += 1;
+      frames.shift()();
+    }
+    assert.ok(r.shellOf(board.order[89]), "the rest arrive over later frames");
+    assert.equal(itemsLayer.querySelectorAll(".pxd-item").length, 90);
+  } finally {
+    r.dispose();
+    restore();
+  }
+});
+
+test("a cold board whose camera sees nothing still paints only a first handful", () => {
+  const stub = createDomStub();
+  const restore = stub.install();
+  const doc = stub.document;
+  const itemsLayer = doc.createElement("div");
+  const sectionsLayer = doc.createElement("div");
+  doc.body.append(itemsLayer, sectionsLayer);
+  const frames = [];
+  const timers = {
+    idle() { return () => {}; },
+    later() { return () => {}; },
+    frame(fn) { frames.push(fn); return () => {}; },
+  };
+  const host = {
+    renderString(node, string) { node.textContent = string; },
+    unmount() {},
+    blockString: () => null,
+    pullTree: () => [],
+    pullBoard: () => null,
+    pagePreview: () => ({ exists: false, blocks: [] }),
+  };
+  const r = createItemRenderer({ doc, host, session: {}, itemsLayer, sectionsLayer, timers });
+  const children = [];
+  for (let i = 0; i < 90; i += 1) {
+    children.push(blk(`d${String(i).padStart(8, "0")}`, `Card ${i}`, { ":x": i * 400, ":y": 0, ":w": 200, ":h": 100 }, i));
+  }
+  const board = buildBoard(rawBoard(children));
+  const rects = worldRects(board);
+  try {
+    r.sync({ board, rects, structural: true, view: { x: 1e9, y: 1e9, w: 100, h: 100 } });
+    const painted = board.order.filter((uid) => r.shellOf(uid)).length;
+    assert.equal(painted, 24);
+    assert.equal(r.shellOf(board.order[0]), null, "the far card waits");
+    assert.ok(r.shellOf(board.order[89]), "the card nearest the camera is in the first handful");
+    let guard = 0;
+    while (frames.length && guard < 20) {
+      guard += 1;
+      frames.shift()();
+    }
+    assert.equal(board.order.filter((uid) => r.shellOf(uid)).length, 90);
+  } finally {
+    r.dispose();
+    restore();
+  }
+});

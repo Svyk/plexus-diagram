@@ -2290,6 +2290,7 @@ export function mountBoardView({
           resumeTimer = null;
           itemsR.setPaused(false);
           applyLod();
+          propsPanel.place();
           scheduleContent();
           vpStore.set(vpId, vp);
           dirty.selection = true;
@@ -2969,7 +2970,13 @@ export function mountBoardView({
     let itemsChanged = false;
     if (dirty.all || dirty.structural || dirty.items.size) {
       // Live preview rects (edit growth, drag fit) ride along: a sync for a dirty card must not snap grown section shells back.
-      itemsR.sync({ board: b, rects: paintRects(), dirty: dirty.all ? null : dirty.items, structural: dirty.structural });
+      itemsR.sync({
+        board: b,
+        rects: paintRects(),
+        dirty: dirty.all ? null : dirty.items,
+        structural: dirty.structural,
+        view: size.width ? visibleWorldRect(vp, size, CULL_MARGIN) : null,
+      });
       syncEmptyHint(emptyHint, b);
       itemsChanged = true;
     }
@@ -2997,19 +3004,23 @@ export function mountBoardView({
       // The tier flips (classes + font variables, once) the moment the zoom crosses the threshold, mid-gesture too.
       const nextTier = lodTier(vp.zoom, tier, { threshold: mapThreshold() });
       if (nextTier !== tier) { tier = nextTier; paintTier(); }
-      const g = gridBackground(vp, bgPattern);
-      if (g) {
-        grid.style.backgroundSize = `${g.size}px ${g.size}px`;
-        grid.style.backgroundPosition = `${g.x}px ${g.y}px`;
-        if (bgPattern === "grid") {
-          const mod = (v) => ((v % g.major) + g.major) % g.major;
-          grid.style.setProperty("--pxd-grid-major", `${g.major}px`);
-          grid.style.setProperty("--pxd-grid-major-x", `${mod(vp.x)}px`);
-          grid.style.setProperty("--pxd-grid-major-y", `${mod(vp.y)}px`);
+      if (!gesturing) {
+        const g = gridBackground(vp, bgPattern);
+        if (g) {
+          grid.style.backgroundSize = `${g.size}px ${g.size}px`;
+          grid.style.backgroundPosition = `${g.x}px ${g.y}px`;
+          if (bgPattern === "grid") {
+            const mod = (v) => ((v % g.major) + g.major) % g.major;
+            grid.style.setProperty("--pxd-grid-major", `${g.major}px`);
+            grid.style.setProperty("--pxd-grid-major-x", `${mod(vp.x)}px`);
+            grid.style.setProperty("--pxd-grid-major-y", `${mod(vp.y)}px`);
+          }
         }
       }
       chrome.toolbar.setZoom(vp.zoom);
-      propsPanel.place();
+      // offsetHeight in place() forces layout. During a gesture the toolbar height
+      // does not change, and that read was the long task on a 300-card board.
+      if (!gesturing) propsPanel.place();
     }
     if (dirty.selection || itemsChanged) {
       itemsR.setSelection(selection.items);

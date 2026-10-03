@@ -822,12 +822,13 @@ body.pxd-has-fullscreen .breadcrumbs-content {
 
 /* Overview tier: cards read as colored blocks; section titles grow to stay legible. */
 .pxd-root.pxd-lod-overview .pxd-item--card > .pxd-item__header {
-  visibility: hidden;
+  display: none;
 }
 
 /* Palette fills are near-white at 100%; at overview scale a colored card reads by its line color. */
 .pxd-root.pxd-lod-overview .pxd-item.pxd-item--card[class*="pxd-c-"] {
-  background-image: linear-gradient(color-mix(in srgb, var(--pxd-line) 42%, transparent), color-mix(in srgb, var(--pxd-line) 42%, transparent));
+  background-color: var(--pxd-line);
+  background-image: none;
 }
 
 .pxd-root.pxd-lod-overview .pxd-section__title {

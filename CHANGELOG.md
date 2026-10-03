@@ -5,7 +5,7 @@
 - Card editing, outline navigation, templates, the table, snapshots, and the graph tools that landed after 1.3.0.
 - Gallery, timeline, and a read-only graph of the board. A section can lay cards out by date. Connections can bend or route around cards. Present shows a section's first child as notes, plus a laser and a pen that are dropped on exit.
 - A diagram in the right sidebar stays a gap until that window is on screen. Opening the sidebar parks the boards on the page.
-- A 300-card board paints its shells in about 0.9 seconds. Detail pan holds 60 fps. Overview pan is about 56 fps, and zooming across the detail threshold is about 44 to 55 fps, with a long task around 150 ms.
+- A 300-card board shows its first shells in about 1 second and finishes the rest over the following frames. Detail and overview pan hold 60 fps. Zooming across the detail threshold is about 57 to 59 fps, and that switch no longer produces a long task.
 - The same board in two Roam windows kept the same 6 cards and 4 connections across 30 moves.
 
 ## 1.3.0 — 2026-10-01

@@ -64,7 +64,7 @@ const PROPS = ":block/props";
 const OPEN = ":block/open";
 
 const LINK_MODES = ["off", "attributes", "all"];
-const ITEM_KEYS = ["type", "x", "y", "w", "h", "color", "collapsed", "fontSize", "pinned", "fit", "look", "axis", "textColor", "align", "fill", "border", "titleSize", "titleColor", "titleFill", "areaFill", "shape"];
+const ITEM_KEYS = ["type", "x", "y", "w", "h", "color", "collapsed", "fontSize", "pinned", "kids", "fit", "look", "axis", "textColor", "align", "fill", "border", "titleSize", "titleColor", "titleFill", "areaFill", "shape"];
 const EDGE_KEYS = ["type", "from", "to", "fromSide", "toSide", "dir", "route", "dash", "weight", "color", "fromBlock", "toBlock", "via"];
 const MAX_PARENT_STRINGS = 200;
 const DAILY_GAP = 20;
@@ -1036,6 +1036,21 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
         await host.setOpen(id, next);
         return true;
       }).catch((err) => { handleFailure(err); return false; });
+    },
+
+    // CH-1: show or hide a card's children inside it. One props write. Turning it on grows the card by `extraH`
+    // (the renderer's estimate of the outline) in the same write, so one Cmd+Z undoes both.
+    setKids(id, value, extraH = 0) {
+      return txn((t) => {
+        const item = board.items.get(id);
+        if (!item || item.type !== "card" || item.kind !== "note" && item.kind !== "block") return;
+        const on = value === true;
+        if (Boolean(item.kids) === on) return;
+        const patch = { kids: on ? true : undefined };
+        if (on && extraH > 0) patch.h = Math.min(900, Math.ceil(item.h + extraH));
+        t.props(id, itemPlexus(id, patch));
+        if (patch.h > item.h) applyFit(t, [id]);
+      });
     },
 
     setFontSize(id, size) {

@@ -28,6 +28,8 @@ const PROPS = ":block/props";
 const STACK_GAP = 24;
 const OUTLINE_CARD = { w: 240, h: 72 };
 const OUTLINE_DEPTH = 3;
+export const SPREAD_CAP = 22;
+const SPREAD_GAP = 40;
 
 function findNode(node, uid) {
   if (!node) return null;
@@ -262,6 +264,56 @@ extendSession((session, api) => {
         api.emit("toast", { message: "Couldn't send the cards to that board." });
         return null;
       });
+    },
+
+    // CH-4: one block-ref card per direct child in a column right of the card, an arrow from the card to each.
+    // Children already on the board as ref cards are skipped. Two writes per child, so the cap is 22.
+    spreadChildren(cardUid) {
+      const none = { added: 0, skipped: 0 };
+      const board = api.board();
+      const item = board?.items.get(cardUid);
+      if (!item || item.type !== "card") return Promise.resolve(none);
+      let kids;
+      if (item.kind === "note") kids = (item.content ?? []).map((n) => ({ uid: n[UID] ?? n.uid, string: n[STR] ?? n.string ?? "" }));
+      else if (item.kind === "block") kids = (host.pullTree(item.target.uid, 1, 60) ?? []).map((n) => ({ uid: n[UID] ?? n.uid, string: n[STR] ?? n.string ?? "" }));
+      else return Promise.resolve(none);
+      const onBoard = new Set();
+      for (const it of board.items.values()) if (it.kind === "block" && it.target?.uid) onBoard.add(it.target.uid);
+      const seen = new Set();
+      const fresh = [];
+      let skipped = 0;
+      for (const k of kids) {
+        if (!k.uid || seen.has(k.uid)) continue;
+        seen.add(k.uid);
+        if (/^BT_attrDue::/.test(String(k.string).trim())) continue;
+        if (onBoard.has(k.uid)) { skipped++; continue; }
+        fresh.push(k);
+      }
+      if (!fresh.length) return Promise.resolve({ added: 0, skipped });
+      const list = fresh.length > SPREAD_CAP ? fresh.slice(0, SPREAD_CAP) : fresh;
+      if (fresh.length > SPREAD_CAP) api.emit("toast", { message: `Added ${SPREAD_CAP} of ${fresh.length} (Roam undo holds 50 changes)` });
+      const own = api.rects().get(cardUid);
+      if (!own) return Promise.resolve(none);
+      const x = own.x + own.w + SPREAD_GAP;
+      return api.txn((t) => {
+        const refOfCard = api.refOf(cardUid);
+        const container = api.ensureContainer(t);
+        const made = [];
+        let y = own.y;
+        for (const k of list) {
+          const id = placeCard(t, `((${k.uid}))`, x, y);
+          made.push(id);
+          t.create({
+            parent: container,
+            order: "last",
+            string: edgeString({ srcRef: refOfCard, dstRef: `((${k.uid}))`, dir: "one", label: "" }),
+            plexus: serializeEdge({ from: cardUid, to: id, dir: "one" }),
+          });
+          y += DEFAULT_SIZES.card.h + STACK_GAP;
+        }
+        api.applyFit(t, made);
+        return { added: made.length, skipped, total: fresh.length };
+      }).then((res) => res ?? none);
     },
 
     // The source card's child blocks become a mind map of ref cards (blocks stay canonical in Roam) plus one

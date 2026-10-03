@@ -35,6 +35,11 @@ const ATTR_CHIPS_MAX = 3;
 const SVG_NS = "http://www.w3.org/2000/svg";
 const BOARD_KEY_DEPTH = 3;
 const BOARD_KEY_NODES = 400;
+const KID_ROW_H = 22;
+const PEEK_DELAY_MS = 400;
+const PEEK_TOP = 12;
+const PEEK_SUB = 4;
+const PEEK_TEXT_MAX = 140;
 
 const now = () => (globalThis.performance?.now ? globalThis.performance.now() : Date.now());
 
@@ -137,9 +142,24 @@ const childUid = (c) => c?.[":block/uid"] ?? c?.uid ?? "";
 
 const childProps = (c) => c?.[":block/props"] ?? c?.props;
 
+const KIDS_KINDS = ["note", "block"];
+const isKidsCard = (item) => item?.type === "card" && KIDS_KINDS.includes(item.kind);
+// Direct children that count as rows: the BT_attrDue child is the due chip, never a row.
+const visibleKids = (list) => (list || []).filter((c) => attrNameOf(childString(c)) !== "BT_attrDue");
+// Rows renderBlocks will draw for this list (same depth and row caps).
+function kidRowsOf(list, depth = 1, budget = { n: 0 }) {
+  for (const c of visibleKids(list)) {
+    if (budget.n >= CONTENT_LIMIT) break;
+    budget.n += 1;
+    const kids = childKids(c);
+    if (kids.length && depth < CONTENT_DEPTH) kidRowsOf(kids, depth + 1, budget);
+  }
+  return budget.n;
+}
+
 function contentKeyOf(item) {
   const parts = [
-    item.kind, item.enhanced ? "e" : "", item.string, item.collapsed ? "c" : "", item.open === false ? "x" : "",
+    item.kind, item.enhanced ? "e" : "", item.string, item.collapsed ? "c" : "", item.open === false ? "x" : "", item.kids ? "k" : "",
     item.fontSize || "", item.textColor || "", item.align || "", item.fill || "", item.border || "",
     item.titleSize || "", item.titleColor || "", item.titleFill || "", item.areaFill || "",
   ];
@@ -563,6 +583,7 @@ export function createItemRenderer({
     if (item.pinned) cls.push(item.type === "section" ? "pxd-section--pinned" : "pxd-item--pinned");
     if (focusSet && !focusSet.has(item.uid)) cls.push(item.type === "section" ? "pxd-section--focus-dim" : "pxd-item--focus-dim");
     if (item.type !== "section") {
+      if (isKidsCard(item)) cls.push(item.kids ? "pxd-item--kids" : "pxd-item--kidsoff");
       if (rec.bare) cls.push("pxd-item--bare");
       if (rec.refBoard) cls.push("pxd-item--wb");
       if (item.look === "block") cls.push("pxd-card--block");
@@ -722,6 +743,100 @@ export function createItemRenderer({
     }
   };
 
+
+  // ---------------------------------------------------------------- CH-1/CH-3: children badge and peek
+  let peek = null; // { node, rec, off }
+  let peekTimer = null;
+  const peekRoot = () => itemsLayer?.closest?.(".pxd-root") || null;
+  const closePeek = () => {
+    peekTimer?.();
+    peekTimer = null;
+    if (!peek) return;
+    const p = peek;
+    peek = null;
+    p.off?.();
+    try { p.node.remove(); } catch { /* already gone */ }
+  };
+  const peekRowsOf = (rec, item, done) => {
+    const take = (list) => done(visibleKids(list).slice(0, PEEK_TOP));
+    if (item.kind === "note") return take(item.content);
+    const tree = host?.pullTree?.(item.target.uid, 2, 200);
+    if (tree && typeof tree.then === "function") tree.then(take).catch(() => {});
+    else take(tree);
+  };
+  const openPeek = (rec) => {
+    peekTimer = null;
+    const item = lastBoard?.items.get(rec.uid);
+    const root = peekRoot();
+    if (disposed || peek || !root || !rec.kidsBtn || !item || !isKidsCard(item) || editing || paused) return;
+    peekRowsOf(rec, item, (rows) => {
+      if (disposed || peek || !rec.kidsBtn?.isConnected || !rows.length) return;
+      const node = el("div", "pxd-kids-peek", root);
+      node.setAttribute("role", "tooltip");
+      for (const c of rows) {
+        el("div", "pxd-kids-peek__row", node).textContent = plainText(childString(c), PEEK_TEXT_MAX);
+        for (const g of visibleKids(childKids(c)).slice(0, PEEK_SUB)) {
+          el("div", "pxd-kids-peek__row pxd-kids-peek__row--sub", node).textContent = plainText(childString(g), PEEK_TEXT_MAX);
+        }
+      }
+      const b = rec.kidsBtn.getBoundingClientRect();
+      const r = root.getBoundingClientRect();
+      node.style.left = `${Math.round(b.left - r.left)}px`;
+      node.style.top = `${Math.round(b.bottom - r.top + 6)}px`;
+      const close = () => closePeek();
+      doc.addEventListener?.("pointerdown", close, true);
+      doc.addEventListener?.("wheel", close, true);
+      peek = { node, rec, off: () => { doc.removeEventListener?.("pointerdown", close, true); doc.removeEventListener?.("wheel", close, true); } };
+    });
+  };
+  const dropKidsBadge = (rec) => {
+    if (!rec.kidsBtn) return;
+    if (peek?.rec === rec) closePeek();
+    for (const off of rec.kidsOffs || []) off();
+    rec.kidsOffs = [];
+    rec.kidsBtn.remove();
+    rec.kidsBtn = null;
+  };
+  const toggleKids = (uid) => {
+    const item = lastBoard?.items.get(uid);
+    if (!isKidsCard(item)) return false;
+    const rec = shells.get(uid);
+    const on = !item.kids;
+    const extra = on ? Math.ceil((Number(rec?.kidRows) || 0) * KID_ROW_H + 8) : 0;
+    void session?.setKids?.(uid, on, extra);
+    return true;
+  };
+  const syncKidsBadge = (rec, itemArg) => {
+    const item = itemArg || lastBoard?.items.get(rec.uid);
+    const want = Boolean(item) && isKidsCard(item) && lod === "detail" && editing?.uid !== rec.uid
+      && !item.collapsed && !rec.refBoard && !rec.bare && Number(rec.kidCount) > 0;
+    if (!want) return dropKidsBadge(rec);
+    const text = `${item.kids ? "\u25BE" : "\u25B8"} ${rec.kidCount}`;
+    if (!rec.kidsBtn) {
+      const btn = el("button", "pxd-kids", rec.el);
+      btn.type = "button";
+      rec.kidsOffs = [];
+      const on = (type, fn) => {
+        btn.addEventListener(type, fn);
+        rec.kidsOffs.push(() => btn.removeEventListener(type, fn));
+      };
+      for (const type of ["pointerdown", "mousedown", "dblclick"]) {
+        on(type, (event) => { stopEvent(event); peekTimer?.(); peekTimer = null; });
+      }
+      on("click", (event) => { stopEvent(event); closePeek(); toggleKids(rec.uid); });
+      on("mouseenter", (event) => {
+        if (event.buttons || peek || peekTimer) return;
+        peekTimer = later(() => openPeek(rec), PEEK_DELAY_MS);
+      });
+      on("mouseleave", () => closePeek());
+      rec.kidsBtn = btn;
+    }
+    rec.kidsBtn.textContent = text;
+    rec.kidsBtn.setAttribute("aria-expanded", item.kids ? "true" : "false");
+    rec.kidsBtn.setAttribute("aria-label", `${rec.kidCount} ${rec.kidCount === 1 ? "child" : "children"}`);
+    rec.kidsBtn.title = item.kids ? "Hide children" : "Show children";
+  };
+
   // ---------------------------------------------------------------- content
   const renderBlocks = (parent, blocks, depth, budget) => {
     for (const b of blocks) {
@@ -732,6 +847,7 @@ export function createItemRenderer({
       budget.n += 1;
       const row = el("div", "pxd-block", parent);
       row.dataset.uid = childUid(b);
+      row.setAttribute("data-pxd-row", childUid(b));
       const node = renderRoot(row, s, "pxd-rs pxd-block__text", childUid(b));
       budget.roots.push(node);
       const kids = childKids(b);
@@ -1011,8 +1127,10 @@ export function createItemRenderer({
     };
   };
 
-  const mountContent = (rec, item) => {
+  const mountContentBody = (rec, item) => {
     noteRender(item.uid);
+    rec.kidCount = 0;
+    rec.kidRows = 0;
     const body = rec.body;
     unmountRoots(rec);
     body.replaceChildren();
@@ -1085,18 +1203,19 @@ export function createItemRenderer({
         budget.roots.push(mountQuery(body, ref));
       } else {
         if (typeof refString === "string" && refString.trim()) budget.roots.push(renderRoot(body, refString, "pxd-rs pxd-item__string", ref));
-        if (item.open === false) {
-          rec.roots = budget.roots;
-          rec.contentKey = contentKeyOf(item);
-          return;
-        }
-        const tree = host?.pullTree?.(ref, CONTENT_DEPTH, CONTENT_LIMIT);
+        const tree = host?.pullTree?.(ref, item.kids ? CONTENT_DEPTH : 1, 200);
         const apply = (blocks, sync = false) => {
           if (disposed || !body.isConnected || (!sync && rec.contentKey !== contentKeyOf(item))) return;
           if (!refString?.trim() && !blocks?.length) el("div", "pxd-item__placeholder", body).textContent = "Empty card";
-          const b = { n: 0, roots: [] };
-          renderBlocks(body, blocks || [], 1, b);
-          budget.roots.push(...b.roots);
+          rec.kidCount = visibleKids(blocks).length;
+          rec.kidRows = kidRowsOf(blocks);
+          if (item.kids) {
+            const b = { n: 0, roots: [] };
+            renderBlocks(body, blocks || [], 1, b);
+            if (sync) budget.roots.push(...b.roots);
+            else rec.roots.push(...b.roots);
+          }
+          if (!sync) syncKidsBadge(rec, item);
         };
         if (tree && typeof tree.then === "function") tree.then((t) => apply(t)).catch(() => {});
         else apply(tree, true);
@@ -1105,13 +1224,20 @@ export function createItemRenderer({
       budget.roots.push(mountQuery(body, item.uid));
     } else {
       if (item.string?.trim()) budget.roots.push(renderRoot(body, item.string, "pxd-rs pxd-item__string", item.uid));
-      if (item.open !== false) renderBlocks(body, item.content || [], 1, budget);
+      rec.kidCount = visibleKids(item.content).length;
+      rec.kidRows = kidRowsOf(item.content);
+      if (item.kids) renderBlocks(body, item.content || [], 1, budget);
       if (!item.string?.trim() && !(item.content || []).length) {
         el("div", "pxd-item__placeholder", body).textContent = "Empty card";
       }
     }
     rec.roots = budget.roots;
     rec.contentKey = contentKeyOf(item);
+  };
+
+  const mountContent = (rec, item) => {
+    mountContentBody(rec, item);
+    syncKidsBadge(rec, item);
   };
 
   const mountSectionTitle = (rec, item) => {
@@ -1135,6 +1261,7 @@ export function createItemRenderer({
       rec.titleRendered = false;
     } else {
       rec.body?.replaceChildren?.();
+      dropKidsBadge(rec);
       if (rec.type === "card") { rec.bare = true; rec.el.classList.add("pxd-item--bare"); }
       onPageLayout?.(uid);
     }
@@ -1265,7 +1392,9 @@ export function createItemRenderer({
 
   const setZoom = (zoom) => {
     const next = Number(zoom);
+    const prevZoom = zoomCache;
     zoomCache = next > 0 && Number.isFinite(next) ? next : 1;
+    if (zoomCache !== prevZoom) closePeek();
     if (editing?.editor) applyEditorCounterScale(editing.editor, zoomCache);
   };
 
@@ -1273,6 +1402,8 @@ export function createItemRenderer({
     const prev = lod;
     lod = nextLod === "map" || nextLod === "overview" ? nextLod : "detail";
     setZoom(zoom);
+    closePeek();
+    if (prev !== lod) for (const rec of shells.values()) if (rec.kidsBtn || rec.kidCount > 0) syncKidsBadge(rec);
     if (showBadges && (prev === "detail") !== (lod === "detail")) {
       if (lod !== "detail") {
         const pending = [];
@@ -1642,7 +1773,7 @@ export function createItemRenderer({
     const lockH = boxHeight(rec.el) || contentH || Number(rec.rect?.h) || 0;
     const reduced = prefersReducedMotion();
     // PG-3: where the clicked row sits in the card, so the editor can put the same block back under the pointer.
-    const clickedRow = item.kind === "page" && row ? rec.body.querySelector?.(`[data-pxd-row="${row}"]`) : null;
+    const clickedRow = row ? rec.body.querySelector?.(`[data-pxd-row="${row}"]`) : null;
     const rowOffset = clickedRow
       ? (Number(clickedRow.getBoundingClientRect?.().top) || 0) - (Number(rec.body.getBoundingClientRect?.().top) || 0)
       : null;
@@ -1659,6 +1790,7 @@ export function createItemRenderer({
     editing = { uid, rec, editor, targetUid, item, ready: false, fadeCancel: null, releaseCancel: null };
     rec.el.classList.add("pxd-item--editing");
     renderBadges(rec);
+    syncKidsBadge(rec, item);
     if (lockH > 0) rec.el.style.minHeight = `${lockH}px`;
     if (reduced) dropStaticLayer(rec);
     else rec.el.classList.add("pxd-item--xfade");
@@ -1902,6 +2034,7 @@ export function createItemRenderer({
 
   const dispose = () => {
     disposed = true;
+    closePeek();
     doc.removeEventListener?.("pointerup", onMenuPointer, true);
     stopMenus?.();
     stopMenus = null;
@@ -1920,6 +2053,7 @@ export function createItemRenderer({
     for (const uid of [...shells.keys()]) {
       const rec = shells.get(uid);
       unmountRoots(rec);
+      dropKidsBadge(rec);
       rec.el.remove();
     }
     shells.clear();
@@ -1939,6 +2073,7 @@ export function createItemRenderer({
     previewSectionRects,
     resetRects,
     measureContent,
+    toggleKids,
     setBadges,
     setShowBadges,
     setFocus,

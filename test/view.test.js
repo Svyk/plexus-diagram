@@ -104,6 +104,7 @@ function fakeSession(board) {
     setColor: rec("setColor"),
     setCollapsed: rec("setCollapsed"),
     setBlockOpen: rec("setBlockOpen"),
+    setKids: rec("setKids"),
     setFontSize: rec("setFontSize"),
     setString: rec("setString"),
     growToFit: rec("growToFit"),
@@ -133,12 +134,13 @@ function fakeSession(board) {
   return session;
 }
 
-function mountFixture({ vp = { x: 0, y: 0, zoom: 1 }, settings = {}, extraChildren = [], hostOverrides = {}, viewOptions = {}, cardOpen } = {}) {
+function mountFixture({ vp = { x: 0, y: 0, zoom: 1 }, settings = {}, extraChildren = [], hostOverrides = {}, viewOptions = {}, cardOpen, kidsOn = [] } = {}) {
   const stub = createDomStub();
   const restore = stub.install();
   stub.localStorage.setItem(`plexus-diagram:vp:Svy:board0001`, JSON.stringify(vp));
   const tree = pulled(extraChildren);
   if (cardOpen === false) tree[":block/children"][0][":block/open"] = false;
+  for (const c of tree[":block/children"]) if (kidsOn.includes(c[":block/uid"])) c[":block/props"] = { ":plexus": { ...(c[":block/props"]?.[":plexus"] || {}), ":kids": true } };
   const board = buildBoard(tree);
   const session = fakeSession(board);
   const host = fakeHost(hostOverrides);
@@ -325,7 +327,7 @@ test("selection shows a context bar above the selection and never over it", asyn
     assert.equal(rowKids[3].includes("pxd-swatches"), true);
     assert.deepEqual(
       [".pxd-ctx__color", ".pxd-ctx__expand", ".pxd-ctx__refs"].map((s) => ctx.querySelector(s).getAttribute("aria-label")),
-      ["Color", "Collapse children", "References"],
+      ["Color", "Expand children", "References"],
     );
     assert.equal(ctx.querySelector(".pxd-ctx__color .bp3-icon-tint") != null, true);
     assert.equal(ctx.querySelectorAll(".pxd-ctx__row .pxd-swatch").length, 11);
@@ -362,7 +364,7 @@ test("hover toolbar works on a note, a page and a block ref", async () => {
       ":block/uid": "refRRRR01",
       ":block/string": "((abcDEF123))",
       ":block/order": 8,
-      ":block/props": { ":plexus": { ":x": 0, ":y": 160, ":w": 200, ":h": 100 } },
+      ":block/props": { ":plexus": { ":x": 0, ":y": 160, ":w": 200, ":h": 100, ":kids": true } },
       ":block/children": [],
     }],
     hostOverrides: {
@@ -390,7 +392,7 @@ test("hover toolbar works on a note, a page and a block ref", async () => {
     assert.equal(note.style.display, "");
     assert.equal(note.querySelector(".pxd-ctx__refs-count").textContent, "4");
     f.stub.dispatch(note.querySelector(".pxd-ctx__expand"), "click");
-    assert.deepEqual(f.session.mutations.at(-1), ["setBlockOpen", "cardAAAA1", false]);
+    assert.deepEqual(f.session.mutations.at(-1).slice(0, 3), ["setKids", "cardAAAA1", true]);
     f.stub.dispatch(note.querySelector(".pxd-ctx__refs"), "click");
     assert.deepEqual(calls.at(-1), ["cardAAAA1", "mentions"]);
     const page = show("cardBBBB2");
@@ -793,6 +795,7 @@ async function startEdit(f, uid = "cardAAAA1") {
 
 test("R1: note and block cards render the whole string in the body; header stays the first line", async () => {
   const f = mountFixture({
+    kidsOn: ["cardAAAA1"],
     extraChildren: [
       extraCard("refLONG01", "((longUid001))", 7, { ":h": 348, ":x": 500, ":y": 300 }),
       extraCard("emptyCrd1", "", 8, { ":x": 500, ":y": 500 }),
@@ -2697,6 +2700,7 @@ test("PF-5: a throwing card render shows one Could not render chip", async () =>
   console.error = (...args) => { errors.push(args); };
   const opened = [];
   const f = mountFixture({
+    kidsOn: ["cardAAAA1"],
     hostOverrides: {
       openBlock: (uid) => opened.push(uid),
       renderString(el, string) {
@@ -2748,6 +2752,7 @@ test("PF-5: a swallowed roam render error becomes one chip", async () => {
   const orig = console.error;
   console.error = (...args) => { errors.push(args); };
   const f = mountFixture({
+    kidsOn: ["cardAAAA1"],
     hostOverrides: {
       renderString(el, string) {
         this.calls.renderString += 1;

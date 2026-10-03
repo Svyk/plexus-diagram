@@ -1256,6 +1256,13 @@ export function mountBoardView({
       else toast("Nothing to expand");
     }).catch(() => {});
   };
+  const spreadChildren = (uid) => {
+    Promise.resolve(session.spreadChildren?.(uid)).then((res) => {
+      if (disposed || !res || typeof res !== "object") return;
+      if (res.added > 0) toast(`Spread ${res.added} ${res.added === 1 ? "child" : "children"} as cards`, true);
+      else toast(res.skipped > 0 ? "Every child is already on the board" : "No children to spread");
+    }).catch(() => {});
+  };
   const fitHeight = (uid) => {
     const h = itemsR.measureContent(uid);
     if (h) void session.fitToContent?.(uid, h);
@@ -1487,7 +1494,7 @@ export function mountBoardView({
           try { queryText = host?.blockString?.(item.target.uid) || ""; } catch { queryText = ""; }
         }
         const canExpand = item?.kind === "page" || item?.kind === "note" || item?.kind === "block";
-        return { item, isBoard: item?.kind === "board", collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS.includes(item?.kind), isQuery: isQueryString(queryText), canExpand, mindPreset: readMindPreset(storage) };
+        return { item, isBoard: item?.kind === "board", collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS.includes(item?.kind), canSpread: item?.kind === "note" || item?.kind === "block", isQuery: isQueryString(queryText), canExpand, mindPreset: readMindPreset(storage) };
       }
       case "section": {
         const members = item && b ? [item.uid, ...descendantsOf(b, item.uid)] : [];
@@ -1713,6 +1720,7 @@ export function mountBoardView({
       case "pin": void session.setPinned?.(uids, true); break;
       case "unpin": void session.setPinned?.(uids, false); break;
       case "mind-map": if (item) expandOutline(item.uid); break;
+      case "spread-children": if (item) spreadChildren(item.uid); break;
       case "neighbors": {
         if (!item || !arg) break;
         let titles = [];
@@ -1836,7 +1844,12 @@ export function mountBoardView({
       edit: () => { const it = singleItem(); if (it) void enterEdit(it.uid); },
       openSidebar: () => openItemInSidebar(singleItem()),
       collapse: () => { const it = singleItem(); if (it) void session.setCollapsed?.(it.uid, !it.collapsed); },
-      toggleOpen: () => { const it = barCard(); if (it) void session.setBlockOpen?.(it.uid, it.open === false); },
+      toggleOpen: () => {
+        const it = barCard();
+        if (!it) return;
+        if (it.kind === "note" || it.kind === "block") itemsR.toggleKids(it.uid);
+        else void session.setBlockOpen?.(it.uid, it.open === false);
+      },
       showRefs: () => {
         const it = barCard();
         const uid = mentionsUid(it);

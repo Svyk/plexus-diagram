@@ -157,6 +157,7 @@ export function buildBoard(pulled, { defaults } = {}) {
         areaFill: type === "section" ? layout.areaFill : undefined,
         sectionDefaults: type === "section" ? sectionDefaults : undefined,
         pinned: layout.pinned,
+        kids: type === "card" && layout.kids === true,
         look: type === "card" ? cardLook(kind, layout.look) : (type === "text" || type === "section" ? layout.look : undefined),
         ...(type === "section" && layout.look === "lane" ? { axis: layout.axis || "horizontal" } : {}),
         ...(type === "text" && layout.shape ? { shape: layout.shape } : {}),

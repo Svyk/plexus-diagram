@@ -1,0 +1,71 @@
+/* P9 CH-1..CH-3. Children badge on the bottom edge, outline rows, hover peek. All scoped under .pxd-root. */
+
+.pxd-root .pxd-kids {
+  position: absolute;
+  left: 12px;
+  bottom: -13px;
+  z-index: 3;
+  box-sizing: border-box;
+  min-width: 36px;
+  min-height: 26px;
+  margin: 0;
+  padding: 0 8px;
+  border: 1px solid var(--pxd-border-strong);
+  border-radius: 13px;
+  background: var(--pxd-card);
+  color: var(--pxd-muted);
+  font: inherit;
+  font-size: 12px;
+  line-height: 24px;
+  cursor: pointer;
+  pointer-events: auto;
+}
+
+.pxd-root .pxd-kids:hover,
+.pxd-root .pxd-kids:focus-visible {
+  border-color: var(--pxd-accent);
+  color: var(--pxd-text);
+  outline: none;
+}
+
+.pxd-root.pxd-lod-map .pxd-kids {
+  display: none;
+}
+
+.pxd-root .pxd-item--kids .pxd-item__body > .pxd-block {
+  cursor: text;
+}
+
+/* While editing a card whose children are hidden, hide the editor's own child outline too. */
+.pxd-root .pxd-item--kidsoff .pxd-item__editor > .rm-api-render--block > .rm-block > .rm-block-children {
+  display: none;
+}
+
+.pxd-root .pxd-kids-peek {
+  position: absolute;
+  z-index: 40;
+  box-sizing: border-box;
+  max-width: 320px;
+  max-height: 360px;
+  overflow: hidden;
+  padding: 6px 10px;
+  border: 1px solid var(--pxd-border-strong);
+  border-radius: 6px;
+  background: var(--pxd-card);
+  color: var(--pxd-text);
+  box-shadow: var(--pxd-shadow);
+  font-size: 12px;
+  line-height: 1.4;
+  pointer-events: none;
+}
+
+.pxd-root .pxd-kids-peek__row {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pxd-root .pxd-kids-peek__row--sub {
+  padding-left: 14px;
+  color: var(--pxd-muted);
+}

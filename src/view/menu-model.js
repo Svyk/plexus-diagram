@@ -174,6 +174,7 @@ export function buildMenu(kind, ctx = {}) {
         out.push(make("mind-map", "Expand as mind map"));
         out.push(mindPresetMenu());
       }
+      if (c.canSpread) out.push(make("spread-children", "Spread children as cards"));
       if (c.isQuery) out.push(make("query-results", "Add results as cards"));
       if (c.canExpand) {
         out.push(make("neighbors:out", "Add pages it links to"));

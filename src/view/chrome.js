@@ -481,7 +481,7 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
             }
             picker.style.display = picker.style.display === "none" ? "" : "none";
           });
-          const closed = model?.open === false;
+          const closed = model?.kind === "note" || model?.kind === "block" ? !model?.kids : model?.open === false;
           iconBtn(
             "pxd-ctx__expand",
             closed ? "expand-all" : "collapse-all",

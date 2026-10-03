@@ -242,6 +242,8 @@ export function createInteractions({ actions, settings } = {}) {
         // Cmd/Ctrl-click adds (React Flow multiSelectionKey). Shift-click does the same.
         // Alt+Shift stays duplicate-as-reference.
         const pageItem = b.items.get(t.uid)?.kind === "page";
+        const kidKind = b.items.get(t.uid)?.kind;
+        const rowItem = pageItem || ((kidKind === "note" || kidKind === "block") && Boolean(b.items.get(t.uid)?.kids));
         const pageHeader = pageItem && t.part === "header";
         const multi = !dup && (ev.meta || ev.ctrl || (ev.shift && !pageHeader));
         if (multi) {
@@ -257,7 +259,7 @@ export function createInteractions({ actions, settings } = {}) {
         }
         if (!state.selection.has(t.uid)) return;
         const uids = movingSet(dup);
-        begin({ kind: "move", uids, dup, multi, asRef: dup && Boolean(ev.shift), start: ev.screen, target: t.uid, deferred, pageHeader, pageRow: pageItem && t.part === "body" ? (t.row || "") : "", bounds: movingBounds(uids), others: setting("snap-guides", true) ? otherRects(uids) : [] });
+        begin({ kind: "move", uids, dup, multi, asRef: dup && Boolean(ev.shift), start: ev.screen, target: t.uid, deferred, pageHeader, pageRow: rowItem && t.part === "body" ? (t.row || "") : "", bounds: movingBounds(uids), others: setting("snap-guides", true) ? otherRects(uids) : [] });
         return;
       }
       default:

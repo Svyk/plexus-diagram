@@ -130,6 +130,7 @@ export function normalizeItemLayout(plexus) {
     // Sections use titleSize. Cards and text take an integer 10–48 (text used to be the four steps only).
     fontSize: section ? undefined : intIn(p.fontSize, CARD_FONT_MIN, CARD_FONT_MAX),
     pinned: p.pinned === true,
+    kids: type === "card" && p.kids === true ? true : undefined,
     fit: p.fit === false ? false : undefined,
     look: type === "text"
       ? (TEXT_LOOKS.includes(p.look) ? p.look : undefined)
@@ -208,6 +209,7 @@ export function serializeItemLayout(layout) {
   }
   if (l.v === SCHEMA_VERSION) out.v = SCHEMA_VERSION;
   if (l.pinned === true) out.pinned = true;
+  if (type === "card" && l.kids === true) out.kids = true;
   if (l.type === "section" && l.fit === false) out.fit = false;
   if (type === "text") {
     if (TEXT_LOOKS.includes(l.look)) out.look = l.look;

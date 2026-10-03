@@ -613,6 +613,7 @@ export function mountBoardView({
       return false;
     },
     onBadgeClick: (uid) => { ctl.select([uid]); panel.open("related"); },
+    onPageLayout: (uid) => { if (blockCards.has(uid)) scheduleAnchors(); },
   });
   const edgesR = createEdgeLayer({
     doc,
@@ -620,7 +621,44 @@ export function mountBoardView({
     labelsLayer,
     overlaySvg,
     onLabelCommit: (uid, label) => session.updateEdge?.(uid, { label }),
+    blockText: (uid) => host?.blockString?.(uid),
   });
+
+  // BA-3: block ends follow their row. Row offsets are measured only for edges that have block ends, in one
+  // batched frame, whenever the page body scrolls or re-renders, or the card moves, resizes or folds.
+  const blockCards = new Set();
+  let anchorFrame = false;
+  const refreshBlockCards = () => {
+    blockCards.clear();
+    const b = board();
+    if (!b) return false;
+    for (const e of b.edges.values()) {
+      if (e.fromBlock) blockCards.add(e.from);
+      if (e.toBlock) blockCards.add(e.to);
+    }
+    return blockCards.size > 0;
+  };
+  const runAnchors = () => {
+    anchorFrame = false;
+    const b = board();
+    if (disposed || !b) return;
+    refreshBlockCards();
+    const next = new Map();
+    for (const e of b.edges.values()) {
+      if (!e.fromBlock && !e.toBlock) continue;
+      const m = {};
+      if (e.fromBlock) { const x = itemsR.measureRow(e.from, e.fromBlock); if (x) m.from = x; }
+      if (e.toBlock) { const x = itemsR.measureRow(e.to, e.toBlock); if (x) m.to = x; }
+      if (m.from || m.to) next.set(e.uid, m);
+    }
+    const changed = edgesR.setMeasures(next);
+    if (changed.size) edgesR.update({ board: b, edgeUids: changed, rects: paintRects(), zoom: vp.zoom });
+  };
+  function scheduleAnchors() {
+    if (disposed || anchorFrame) return;
+    anchorFrame = true;
+    timers.frame(runAnchors);
+  }
 
   const schedule = () => {
     if (disposed || frameHandle) return;
@@ -1464,7 +1502,7 @@ export function mountBoardView({
         };
       }
       case "text": return { item, pinned: Boolean(item?.pinned) };
-      case "edge": { const e = uid ? b?.edges.get(uid) : null; return { item: e, dir: e?.dir, route: e?.route, dash: e?.dash }; }
+      case "edge": { const e = uid ? b?.edges.get(uid) : null; return { item: e, dir: e?.dir, route: e?.route, dash: e?.dash, blockEnd: Boolean(e?.fromBlock || e?.toBlock) }; }
       case "multi": {
         const items = selection.items.map((u) => b?.items.get(u)).filter(Boolean);
         return {
@@ -1750,6 +1788,7 @@ export function mountBoardView({
       case "route": if (edgeUid) void session.updateEdge?.(edgeUid, { route: arg }); break;
       case "dash": if (edgeUid) void session.updateEdge?.(edgeUid, { dash: arg }); break;
       case "flip": if (edgeUid) void session.flipEdge?.(edgeUid); break;
+      case "unblock": if (edgeUid) void session.updateEdge?.(edgeUid, { fromBlock: undefined, toBlock: undefined }); break;
       case "label": if (edgeUid) edgesR.editLabel(edgeUid); break;
       case "notes": if (edgeUid) host?.openInSidebar?.(edgeUid, "block"); break;
       case "write-to-graph": void writeEdgeToGraph(); break;
@@ -1825,6 +1864,7 @@ export function mountBoardView({
       setFontSize: (n) => { const it = singleItem(); if (it) void session.setFontSize?.(it.uid, n); },
       edgeDir: (dir) => { if (selection.edge) void session.updateEdge?.(selection.edge, { dir }); },
       flip: () => { if (selection.edge) void session.flipEdge?.(selection.edge); },
+      unblock: () => { if (selection.edge) void session.updateEdge?.(selection.edge, { fromBlock: undefined, toBlock: undefined }); },
       route: (route) => { if (selection.edge) void session.updateEdge?.(selection.edge, { route }); },
       dash: (dash) => { if (selection.edge) void session.updateEdge?.(selection.edge, { dash }); },
       weight: (weight) => { if (selection.edge) void session.updateEdge?.(selection.edge, { weight }); },
@@ -2364,6 +2404,7 @@ export function mountBoardView({
       const b = board();
       if (!b) return;
       liveRects = itemsR.previewRects(list);
+      if (blockCards.size) scheduleAnchors();
       const set = new Set(list.map((r) => r.uid));
       previewFit(list.map((r) => r.uid), { skip: new Set(list.filter((r) => b.items.get(r.uid)?.type === "section").map((r) => r.uid)) });
       for (const u of grown) set.add(u);
@@ -2400,6 +2441,10 @@ export function mountBoardView({
     fitSection: (uid) => session.fitSection?.(uid),
     resetSize: (uids) => session.resetSize?.(uids),
     showTempWire: (spec) => edgesR.setTempWire(spec, rects(), vp.zoom),
+    blockTarget: (pt) => blockTargetAt(pt),
+    clearBlockTarget: () => clearBlockTarget(),
+    revealBlockEnd: (edgeUid, end) => revealBlockEnd(edgeUid, end),
+    updateEdge: (uid, patch) => session.updateEdge?.(uid, patch),
     commitMove: (uids, dx, dy) => session.commitMove?.(uids, dx, dy),
     commitRects: (list) => session.commitRects?.(list),
     createCard: (p) => Promise.resolve(session.createCard?.({ x: p.x, y: p.y })).then((uid) => { if (uid) freshItems.add(uid); return uid; }),
@@ -2460,6 +2505,43 @@ export function mountBoardView({
     setFullscreen: (on) => requestFullscreen(on),
     setSpace: (on) => root.classList.toggle("pxd-root--space", Boolean(on)),
   };
+  // BA-2: highlight the page-card row (or title header) under the pointer while an arrow end is dragged.
+  let targetEl = null;
+  let targetCls = "";
+  const clearBlockTarget = () => {
+    if (!targetEl) return;
+    targetEl.classList.remove(targetCls);
+    targetEl = null;
+  };
+  const blockTargetAt = (pt) => {
+    clearBlockTarget();
+    if (!pt || typeof doc.elementsFromPoint !== "function") return null;
+    for (const node of doc.elementsFromPoint(pt.x, pt.y) || []) {
+      const card = node.closest?.(".pxd-item");
+      if (!card) continue;
+      if (!card.classList.contains("pxd-item--page") || card.closest?.(".pxd-root") !== root) return null;
+      const uid = card.dataset?.uid || card.getAttribute?.("data-uid");
+      const row = node.closest?.("[data-pxd-row]");
+      const header = row ? null : node.closest?.(".pxd-item__header");
+      targetEl = row || header || null;
+      targetCls = row ? "pxd-row--target" : "pxd-item__header--target";
+      targetEl?.classList.add(targetCls);
+      return { uid, row: row ? row.getAttribute?.("data-pxd-row") || row.dataset?.pxdRow || null : null, header: Boolean(header) };
+    }
+    return null;
+  };
+  // BA-3: a clamped marker scrolls the card body to the row and flashes it; a row that is not rendered opens the block.
+  const revealBlockEnd = (edgeUid, end) => {
+    const e = board()?.edges.get(edgeUid);
+    if (!e) return false;
+    const card = end === "from" ? e.from : e.to;
+    const block = end === "from" ? e.fromBlock : e.toBlock;
+    if (!block) return false;
+    if (itemsR.revealRow(card, block)) return true;
+    host?.openInSidebar?.(block, "block");
+    return false;
+  };
+
   const ctl = createInteractions({ actions, settings });
   ctl.setTool("select");
 
@@ -2477,6 +2559,10 @@ export function mountBoardView({
       const owner = grip.closest(".pxd-item, .pxd-section");
       return { kind: "grip", uid: owner?.dataset?.uid || owner?.getAttribute?.("data-uid"), part: grip.dataset?.part || grip.getAttribute?.("data-part") };
     }
+    const endHandle = t.closest(".pxd-edge__end");
+    if (endHandle) return { kind: "edge-end", uid: endHandle.closest(".pxd-edge")?.dataset?.uid || endHandle.closest(".pxd-edge")?.getAttribute?.("data-uid"), end: endHandle.dataset?.end || endHandle.getAttribute?.("data-end") };
+    const clamped = t.closest(".pxd-edge__bend--clamped");
+    if (clamped) return { kind: "edge-marker", uid: clamped.closest(".pxd-edge")?.dataset?.uid || clamped.closest(".pxd-edge")?.getAttribute?.("data-uid"), end: clamped.dataset?.end || clamped.getAttribute?.("data-end") };
     const label = t.closest(".pxd-label");
     if (label) {
       const key = label.dataset?.key || label.getAttribute?.("data-key");
@@ -2506,6 +2592,7 @@ export function mountBoardView({
     return {
       type,
       screen,
+      client: { x: event.clientX || 0, y: event.clientY || 0 },
       world: screenToWorld(vp, screen),
       target: targetOf(event.target),
       button: event.button ?? 0,
@@ -3122,6 +3209,10 @@ export function mountBoardView({
       updateBackToContent();
       panel.refreshOutline();
       if (dirty.all || dirty.structural) scheduleBadges(50);
+    }
+    if (edgesDue || itemsChanged || itemsMoveEdges) {
+      if (refreshBlockCards()) scheduleAnchors();
+      else edgesR.setMeasures(new Map());
     }
     if (searchMatches.length || root.classList.contains("pxd-root--searching")) panel.refreshMarks();
     dirty.minimap = false;

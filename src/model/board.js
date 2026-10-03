@@ -200,7 +200,7 @@ export function buildBoard(pulled, { defaults } = {}) {
         uid: euid,
         string: estring,
         ...n,
-        label: parseEdgeLabel(estring, a ? semanticRef(a) : "", b ? semanticRef(b) : ""),
+        label: parseEdgeLabel(estring, n.fromBlock ? `((${n.fromBlock}))` : a ? semanticRef(a) : "", n.toBlock ? `((${n.toBlock}))` : b ? semanticRef(b) : ""),
         valid: Boolean(a && b),
       });
     }

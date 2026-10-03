@@ -221,20 +221,31 @@ function autoSides(a, b) {
   }
   return dy >= 0 ? { fromSide: "bottom", toSide: "top" } : { fromSide: "top", toSide: "bottom" };
 }
+function blockAnchor({ rect, rowTop, rowHeight = 0, bodyTop = 0, bodyBottom, other } = {}) {
+  const right = !other || other.x >= rect.x + rect.w / 2;
+  const side = right ? "right" : "left";
+  const x = right ? rect.x + rect.w : rect.x;
+  const bottom = bodyBottom ?? rect.h;
+  if (rowTop == null) return { point: { x, y: rect.y + bodyTop }, side, clamped: "top" };
+  const cy = rowTop + rowHeight / 2;
+  if (cy < bodyTop) return { point: { x, y: rect.y }, side, clamped: "top" };
+  if (cy > bottom) return { point: { x, y: rect.y + rect.h }, side, clamped: "bottom" };
+  return { point: { x, y: rect.y + cy }, side, clamped: null };
+}
 var NORMALS = {
   top: { x: 0, y: -1 },
   right: { x: 1, y: 0 },
   bottom: { x: 0, y: 1 },
   left: { x: -1, y: 0 }
 };
-function edgePath({ a, b, fromSide = "auto", toSide = "auto", route = "curve", offset = 0, via } = {}) {
+function edgePath({ a, b, fromSide = "auto", toSide = "auto", route = "curve", offset = 0, via, fromPoint, toPoint } = {}) {
   if (fromSide === "auto" || toSide === "auto") {
     const auto = autoSides(a, b);
     if (fromSide === "auto") fromSide = auto.fromSide;
     if (toSide === "auto") toSide = auto.toSide;
   }
-  const start = sidePoint(a, fromSide);
-  const end = sidePoint(b, toSide);
+  const start = fromPoint ?? sidePoint(a, fromSide);
+  const end = toPoint ?? sidePoint(b, toSide);
   const bends = Array.isArray(via) ? via.filter((p) => p && Number.isFinite(p.x) && Number.isFinite(p.y)).slice(0, 8) : [];
   if (bends.length) {
     const pts = [start, ...bends, end];
@@ -501,6 +512,8 @@ var ITEM_STYLE_KEYS = ["fontSize", "textColor", "align", "fill", "border", "shap
 var SECTION_STYLE_KEYS = ["titleSize", "titleColor", "titleFill", "areaFill", "border"];
 var ARROW_TOKENS = Object.values(ARROWS);
 var HEX_RE = /^#[0-9a-f]{6}$/;
+var BLOCK_UID_RE = /^[\w-]{1,36}$/;
+var blockUid = (v) => typeof v === "string" && BLOCK_UID_RE.test(v) ? v : void 0;
 var intIn = (v, lo, hi) => Number.isInteger(v) && v >= lo && v <= hi ? v : void 0;
 function hexColor(v) {
   if (typeof v !== "string") return void 0;
@@ -688,6 +701,8 @@ function normalizeEdge(plexus) {
     dash: pick(p.dash, DASHES, EDGE_DEFAULTS.dash),
     weight: EDGE_WEIGHTS.includes(p.weight) ? p.weight : EDGE_DEFAULTS.weight,
     color: styleColor(p.color),
+    ...blockUid(p.fromBlock) ? { fromBlock: p.fromBlock } : {},
+    ...blockUid(p.toBlock) ? { toBlock: p.toBlock } : {},
     ...via.length ? { via } : {}
   };
 }
@@ -699,6 +714,8 @@ function serializeEdge(edge) {
   }
   const color = styleColor(e.color);
   if (color) out.color = color;
+  if (blockUid(e.fromBlock)) out.fromBlock = e.fromBlock;
+  if (blockUid(e.toBlock)) out.toBlock = e.toBlock;
   const via = cleanVia(e.via);
   if (via.length) out.via = via;
   return out;
@@ -776,7 +793,9 @@ function semanticRef(item) {
   if (t?.kind === "block") return `((${t.refUid ?? t.uid}))`;
   return `((${item?.uid}))`;
 }
-function edgeString({ srcRef, dstRef, dir = "one", label = "" }) {
+function edgeString({ srcRef, dstRef, dir = "one", label = "", srcBlock, dstBlock }) {
+  if (blockUid(srcBlock)) srcRef = `((${srcBlock}))`;
+  if (blockUid(dstBlock)) dstRef = `((${dstBlock}))`;
   const a = ARROWS[dir] ?? ARROWS.one;
   return label ? `${srcRef} ${a} ${label} ${a} ${dstRef}` : `${srcRef} ${a} ${dstRef}`;
 }
@@ -1152,7 +1171,7 @@ function buildBoard(pulled, { defaults } = {}) {
         uid: euid,
         string: estring,
         ...n2,
-        label: parseEdgeLabel(estring, a ? semanticRef(a) : "", b ? semanticRef(b) : ""),
+        label: parseEdgeLabel(estring, n2.fromBlock ? `((${n2.fromBlock}))` : a ? semanticRef(a) : "", n2.toBlock ? `((${n2.toBlock}))` : b ? semanticRef(b) : ""),
         valid: Boolean(a && b)
       });
     }
@@ -1795,7 +1814,7 @@ function planEdgeClones(edges, uidMap, { genUid, containerUid, refOfNew } = {}) 
       uid: genUid(),
       parent: containerUid,
       order: "last",
-      string: edgeString({ srcRef: refOfNew(from), dstRef: refOfNew(to), dir: edge.dir, label: edge.label }),
+      string: edgeString({ srcRef: refOfNew(from), dstRef: refOfNew(to), dir: edge.dir, label: edge.label, srcBlock: edge.fromBlock, dstBlock: edge.toBlock }),
       props: { [PLEXUS_KEY]: serializeEdge({ ...edge, from, to }) },
       open: true
     });
@@ -3719,19 +3738,19 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
       const kind = item.target?.kind || item.kind || "self";
       if (kind === "board" || item.kind === "board") return [];
       const pageTitle = kind === "page" ? String(item.target?.title || item.title || "") : "";
-      const blockUid = pageTitle ? "" : String(item.target?.uid || item.uid || "");
-      if (!pageTitle && !blockUid) return [];
+      const blockUid2 = pageTitle ? "" : String(item.target?.uid || item.uid || "");
+      if (!pageTitle && !blockUid2) return [];
       const byPage = Boolean(pageTitle);
       const outQuery = byPage ? `[:find ?rt ?ss :in $ ?title :where [?p :node/title ?title] [?b :block/page ?p] [?b :block/refs ?r] [?r :node/title ?rt] [?b :block/string ?ss]]` : `[:find ?rt ?ss :in $ ?uid :where [?s :block/uid ?uid] (or [?b :block/parents ?s] [(= ?b ?s)]) [?b :block/refs ?r] [?r :node/title ?rt] [?b :block/string ?ss]]`;
       const inQuery = byPage ? `[:find ?u ?ss ?pt :in $ ?title ?board :where [?p :node/title ?title] [?b :block/refs ?p] (not [?b :block/parents ?board]) [(not= ?b ?board)] [?b :block/uid ?u] [?b :block/string ?ss] [?b :block/page ?pg] [?pg :node/title ?pt]]` : `[:find ?u ?ss ?pt :in $ ?uid ?board :where [?s :block/uid ?uid] [?b :block/refs ?s] (not [?b :block/parents ?board]) [(not= ?b ?board)] [?b :block/uid ?u] [?b :block/string ?ss] [?b :block/page ?pg] [?pg :node/title ?pt]]`;
       try {
         if (mode === "in") {
           const boardEid = boardUid ? host.resolveEid({ uid: boardUid }) ?? -1 : -1;
-          const incoming = host.q(inQuery, pageTitle || blockUid, boardEid) || [];
-          return splitNeighbors({ incoming, selfTitle: pageTitle, selfUid: blockUid }).in;
+          const incoming = host.q(inQuery, pageTitle || blockUid2, boardEid) || [];
+          return splitNeighbors({ incoming, selfTitle: pageTitle, selfUid: blockUid2 }).in;
         }
-        const outgoing = host.q(outQuery, pageTitle || blockUid) || [];
-        const split = splitNeighbors({ outgoing, selfTitle: pageTitle, selfUid: blockUid });
+        const outgoing = host.q(outQuery, pageTitle || blockUid2) || [];
+        const split = splitNeighbors({ outgoing, selfTitle: pageTitle, selfUid: blockUid2 });
         return mode === "attr" ? split.attr : split.out;
       } catch {
         return [];
@@ -3856,9 +3875,9 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
     showOnBoard(uid) {
       const id = String(uid ?? "").trim();
       if (!id) return null;
-      const propsOf = (blockUid) => {
+      const propsOf = (blockUid2) => {
         try {
-          return host.pullProps(blockUid);
+          return host.pullProps(blockUid2);
         } catch {
           return {};
         }
@@ -4145,8 +4164,8 @@ function readNative(host, boardUid) {
   const keyById = /* @__PURE__ */ new Map();
   const nodes = rawNodes.map((n2) => {
     const id = n2[":db/id"];
-    const blockUid = n2[":diagram.node/block"]?.[":block/uid"] ?? null;
-    const key = blockUid ?? `n${id}`;
+    const blockUid2 = n2[":diagram.node/block"]?.[":block/uid"] ?? null;
+    const key = blockUid2 ?? `n${id}`;
     keyById.set(id, key);
     const data = parseData(n2[":diagram.node/data"]);
     const abs = data.positionAbsolute && finite(data.positionAbsolute.x) !== void 0 ? data.positionAbsolute : null;
@@ -4154,7 +4173,7 @@ function readNative(host, boardUid) {
     const type = data.type === "group" ? "group" : "node";
     return {
       key,
-      blockUid,
+      blockUid: blockUid2,
       x: finite(pos.x) ?? 0,
       y: finite(pos.y) ?? 0,
       w: finite(data.width) ?? finite(data.measured?.width),
@@ -4424,7 +4443,7 @@ var PROPS = ":block/props";
 var OPEN = ":block/open";
 var LINK_MODES = ["off", "attributes", "all"];
 var ITEM_KEYS = ["type", "x", "y", "w", "h", "color", "collapsed", "fontSize", "pinned", "fit", "look", "axis", "textColor", "align", "fill", "border", "titleSize", "titleColor", "titleFill", "areaFill", "shape"];
-var EDGE_KEYS = ["type", "from", "to", "fromSide", "toSide", "dir", "route", "dash", "weight", "color", "via"];
+var EDGE_KEYS = ["type", "from", "to", "fromSide", "toSide", "dir", "route", "dash", "weight", "color", "fromBlock", "toBlock", "via"];
 var MAX_PARENT_STRINGS = 200;
 var DAILY_GAP = 20;
 var registry = /* @__PURE__ */ new Map();
@@ -4896,8 +4915,8 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
     const item = board2.items.get(id);
     return item ? semanticRef(item) : `((${id}))`;
   }
-  function edgeStringFor(from, to, dir, label) {
-    return edgeString({ srcRef: refOf2(from), dstRef: refOf2(to), dir, label });
+  function edgeStringFor(from, to, dir, label, srcBlock, dstBlock) {
+    return edgeString({ srcRef: refOf2(from), dstRef: refOf2(to), dir, label, srcBlock, dstBlock });
   }
   function applyFit(t, touched, { skip } = {}) {
     if (!flag("auto-fit-sections", true)) return;
@@ -5309,10 +5328,10 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
       });
     },
     // One ref card, centered on the board's content (the origin when nothing is placed yet).
-    addBlockRef(blockUid) {
-      if (!blockUid || !board2) return Promise.resolve(null);
+    addBlockRef(blockUid2) {
+      if (!blockUid2 || !board2) return Promise.resolve(null);
       const at = cardAtCenter(boundsOf([...rects.values()]), DEFAULT_SIZES.card);
-      return this.addRefCards([{ string: `((${blockUid}))`, x: at.x, y: at.y }]).then((ids) => ids?.[0] ?? null);
+      return this.addRefCards([{ string: `((${blockUid2}))`, x: at.x, y: at.y }]).then((ids) => ids?.[0] ?? null);
     },
     deleteItems(uids, { withContents = false, force = false } = {}) {
       return txn((t) => {
@@ -5768,14 +5787,14 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
         return made;
       });
     },
-    addEdge({ from, to, fromSide, toSide, label = "", dir = "one" } = {}) {
+    addEdge({ from, to, fromSide, toSide, label = "", dir = "one", fromBlock, toBlock } = {}) {
       return txn((t) => {
         if (!from || !to || from === to || !board2.items.has(from) || !board2.items.has(to)) return null;
-        const existing = findEdge(board2, from, to);
+        const props = serializeEdge({ from, to, dir, fromSide, toSide, fromBlock, toBlock });
+        const existing = [...board2.edges.values()].find((e) => e.from === from && e.to === to && (e.fromBlock ?? "") === (props.fromBlock ?? "") && (e.toBlock ?? "") === (props.toBlock ?? ""));
         if (existing && existing.dir === dir) return existing.uid;
         const container = ensureContainer(t);
-        const props = serializeEdge({ from, to, dir, fromSide, toSide });
-        return t.create({ parent: container, order: "last", string: edgeStringFor(from, to, dir, label), plexus: props });
+        return t.create({ parent: container, order: "last", string: edgeStringFor(from, to, dir, label, props.fromBlock, props.toBlock), plexus: props });
       });
     },
     updateEdge(id, patch = {}) {
@@ -5787,8 +5806,12 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
         t.props(id, next);
         const dir = rest.dir ?? edge.dir;
         const nextLabel = label ?? edge.label;
-        if (rest.dir !== void 0 && rest.dir !== edge.dir || label !== void 0 && label !== edge.label) {
-          t.string(id, edgeStringFor(edge.from, edge.to, dir, nextLabel));
+        const nextFrom = rest.from ?? edge.from;
+        const nextTo = rest.to ?? edge.to;
+        const merged = normalizeEdge(next);
+        const blocksChanged = (merged.fromBlock ?? "") !== (edge.fromBlock ?? "") || (merged.toBlock ?? "") !== (edge.toBlock ?? "");
+        if (rest.dir !== void 0 && rest.dir !== edge.dir || label !== void 0 && label !== edge.label || blocksChanged || nextFrom !== edge.from || nextTo !== edge.to) {
+          t.string(id, edgeStringFor(nextFrom, nextTo, dir, nextLabel, merged.fromBlock, merged.toBlock));
         }
       });
     },
@@ -5796,8 +5819,8 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
       return txn((t) => {
         const edge = board2.edges.get(id);
         if (!edge) return;
-        t.props(id, edgePlexus(id, { from: edge.to, to: edge.from, fromSide: edge.toSide, toSide: edge.fromSide }));
-        t.string(id, edgeStringFor(edge.to, edge.from, edge.dir, edge.label));
+        t.props(id, edgePlexus(id, { from: edge.to, to: edge.from, fromSide: edge.toSide, toSide: edge.fromSide, fromBlock: edge.toBlock, toBlock: edge.fromBlock }));
+        t.string(id, edgeStringFor(edge.to, edge.from, edge.dir, edge.label, edge.toBlock, edge.fromBlock));
       });
     },
     deleteEdges(uids) {
@@ -5821,7 +5844,7 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
       const src = board2.items.get(edge.from);
       const dst = board2.items.get(edge.to);
       if (!src || !dst) return { ok: false, reason: "unresolved" };
-      const dstRef = semanticRef(dst);
+      const dstRef = edge.toBlock ? `((${edge.toBlock}))` : semanticRef(dst);
       try {
         if (src.kind === "page") {
           const page = host.pullPage(src.target.title);
@@ -5974,8 +5997,10 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
         continue;
       }
       taken.add(key);
-      t.props(e.uid, edgePlexus(e.uid, { from, to, fromSide: moved.has(e.from) ? "auto" : e.fromSide, toSide: moved.has(e.to) ? "auto" : e.toSide }));
-      t.string(e.uid, edgeStringFor(from, to, e.dir, e.label));
+      const fromBlock = moved.has(e.from) ? void 0 : e.fromBlock;
+      const toBlock = moved.has(e.to) ? void 0 : e.toBlock;
+      t.props(e.uid, edgePlexus(e.uid, { from, to, fromSide: moved.has(e.from) ? "auto" : e.fromSide, toSide: moved.has(e.to) ? "auto" : e.toSide, fromBlock, toBlock }));
+      t.string(e.uid, edgeStringFor(from, to, e.dir, e.label, fromBlock, toBlock));
     }
   }
   function makeSection(t, rect, title, color, adopt, lane2) {
@@ -7263,6 +7288,7 @@ function createInteractions({ actions, settings } = {}) {
     call("showGuides", []);
     call("showTempWire", null);
     call("onHover", null);
+    call("clearBlockTarget");
     call("showGhosts", null);
     call("cancelPreview");
     call("setGesturing", false, { moved });
@@ -7289,6 +7315,21 @@ function createInteractions({ actions, settings } = {}) {
   };
   const editingUid = () => call("editingUid") ?? null;
   const isEditing = () => Boolean(call("isEditing"));
+  const blockTargetFor = (ev, uid) => {
+    const item = uid ? board2()?.items.get(uid) : null;
+    if (!item || item.kind !== "page") {
+      call("clearBlockTarget");
+      return null;
+    }
+    const bt = call("blockTarget", ev.client || null);
+    return bt && bt.uid === uid ? bt : null;
+  };
+  const sameEdge = (b, from, to, fromBlock, toBlock) => {
+    for (const e of b.edges.values()) {
+      if (e.from === from && e.to === to && (e.fromBlock ?? "") === (fromBlock ?? "") && (e.toBlock ?? "") === (toBlock ?? "")) return e;
+    }
+    return null;
+  };
   const beginConnect = (uid, side, world) => {
     begin({ kind: "connect", from: uid, fromSide: side, start: world });
     call("showTempWire", { from: uid, fromSide: side, point: world });
@@ -7328,6 +7369,20 @@ function createInteractions({ actions, settings } = {}) {
         if (!t.uid || !r?.get(t.uid) || isPinned(t.uid)) return;
         if (!state.selection.has(t.uid)) selectItems([t.uid]);
         begin({ kind: "resize", uid: t.uid, part: t.part || "corner", start: ev.world, rect0: { ...r.get(t.uid) } });
+        return;
+      }
+      case "edge-marker":
+        if (t.uid) {
+          selectEdge(t.uid);
+          call("revealBlockEnd", t.uid, t.end);
+        }
+        return;
+      case "edge-end": {
+        const edge = t.uid ? b?.edges.get(t.uid) : null;
+        if (!edge || t.end !== "from" && t.end !== "to") return;
+        const other = t.end === "from" ? edge.to : edge.from;
+        begin({ kind: "edge-end", edge: t.uid, end: t.end, other, start: ev.world });
+        call("showTempWire", { from: other, fromSide: "auto", point: ev.world });
         return;
       }
       case "edge":
@@ -7409,6 +7464,21 @@ function createInteractions({ actions, settings } = {}) {
         call("onHover", hover);
       }
       if (!g.moved && Math.hypot(ev.world.x - g.start.x, ev.world.y - g.start.y) * zoom() >= DRAG_THRESHOLD_PX) g.moved = true;
+      blockTargetFor(ev, hover);
+      return;
+    }
+    if (g.kind === "edge-end") {
+      const b = board2();
+      const r = hitRects();
+      call("showTempWire", { from: g.other, fromSide: "auto", point: ev.world });
+      const hit = b && r ? hitTest(b, ev.world, r, { sectionInterior: true }) : null;
+      const hover = hit && hit.uid !== g.other ? hit.uid : null;
+      if (hover !== state.hover) {
+        state.hover = hover;
+        call("onHover", hover);
+      }
+      if (!g.moved && Math.hypot(ev.world.x - g.start.x, ev.world.y - g.start.y) * zoom() >= DRAG_THRESHOLD_PX) g.moved = true;
+      blockTargetFor(ev, hover);
       return;
     }
     const sdx = ev.screen.x - (g.start.x ?? 0);
@@ -7611,19 +7681,47 @@ function createInteractions({ actions, settings } = {}) {
       case "resize":
         if (g.moved && g.rect) call("commitRects", [g.rect]);
         break;
+      case "edge-end": {
+        const hr = hitRects();
+        const hit = b && hr ? hitTest(b, ev.world, hr, { sectionInterior: true }) : null;
+        const bt = hit && hit.uid !== g.other ? blockTargetFor(ev, hit.uid) : null;
+        end();
+        const edge = b?.edges.get(g.edge);
+        if (g.moved && edge && hit && hit.uid !== g.other) {
+          const key = g.end === "from" ? "from" : "to";
+          const blockKey = g.end === "from" ? "fromBlock" : "toBlock";
+          const nextBlock = bt?.row || void 0;
+          const sameCard = hit.uid === edge[key];
+          if (!sameCard || (edge[blockKey] ?? "") !== (nextBlock ?? "")) {
+            const next = { from: edge.from, to: edge.to, fromBlock: edge.fromBlock, toBlock: edge.toBlock, [key]: hit.uid, [blockKey]: nextBlock };
+            if (!sameEdge(b, next.from, next.to, next.fromBlock, next.toBlock)) {
+              const patch = { [blockKey]: nextBlock };
+              if (!sameCard) {
+                patch[key] = hit.uid;
+                patch[key === "from" ? "fromSide" : "toSide"] = nearestSide(hr.get(hit.uid), ev.world);
+              }
+              call("updateEdge", g.edge, patch);
+            }
+          }
+        }
+        afterToolUse();
+        return;
+      }
       case "connect": {
         const hr = hitRects();
         const hit = b && hr ? hitTest(b, ev.world, hr, { sectionInterior: true }) : null;
+        const bt = hit && hit.uid !== g.from ? blockTargetFor(ev, hit.uid) : null;
         end();
         if (hit && hit.uid === g.from) {
           selectItems([g.from]);
         } else if (hit) {
-          const existing = findEdge(b, g.from, hit.uid);
+          const toBlock = bt?.row || void 0;
+          const existing = sameEdge(b, g.from, hit.uid, void 0, toBlock);
           if (existing) {
             selectEdge(existing.uid);
           } else {
             const toSide = nearestSide(hr.get(hit.uid), ev.world);
-            Promise.resolve(call("addEdge", { from: g.from, to: hit.uid, fromSide: g.fromSide, toSide })).then((uid) => {
+            Promise.resolve(call("addEdge", { from: g.from, to: hit.uid, fromSide: g.fromSide, toSide, ...toBlock ? { toBlock } : {} })).then((uid) => {
               if (uid) selectEdge(uid);
             }).catch(() => {
             });
@@ -9402,7 +9500,8 @@ function createItemRenderer({
   onOpenBoard,
   onRenameBoard,
   onRenamePage,
-  onBadgeClick
+  onBadgeClick,
+  onPageLayout
 } = {}) {
   const shells = /* @__PURE__ */ new Map();
   const mounted = /* @__PURE__ */ new Map();
@@ -9644,6 +9743,8 @@ function createItemRenderer({
     rec.pageUnwatch = null;
     rec.pageRoots = [];
     rec.pageHolder = null;
+    rec.scrollOff?.();
+    rec.scrollOff = null;
     if (!rec.roots?.length) return;
     for (const node2 of rec.roots) {
       try {
@@ -10158,6 +10259,7 @@ function createItemRenderer({
         fold.setAttribute("aria-label", open ? "Fold" : "Unfold");
         row2.classList.toggle("pxd-prow--folded", !open);
         setHidden(wrap, !open);
+        onPageLayout?.(rec.uid);
       });
     }
   };
@@ -10180,6 +10282,7 @@ function createItemRenderer({
     if (!p?.exists) {
       rec.pageKey = "";
       el("div", "pxd-item__placeholder", holder).textContent = "Empty page";
+      onPageLayout?.(rec.uid);
       return [];
     }
     rec.pageUid = p.uid || null;
@@ -10189,7 +10292,36 @@ function createItemRenderer({
     if (!b.n) el("div", "pxd-item__placeholder", holder).textContent = "Empty page";
     if (b.more) moreRow(holder, b.more, rec.pageTitle, rec.pageUid);
     rec.pageRoots = [...b.roots];
+    onPageLayout?.(rec.uid);
     return b.roots;
+  };
+  const round15 = (n2) => Math.round(n2 * 10) / 10;
+  const measureRow = (uid, rowUid) => {
+    const rec = shells.get(uid);
+    const holder = rec?.pageHolder;
+    if (!rec?.body || !holder || holder.isConnected === false || editing?.uid === uid || !rec.pageKey) return null;
+    const z = zoomCache || 1;
+    const card2 = rec.el.getBoundingClientRect();
+    const body = rec.body.getBoundingClientRect();
+    const out = { bodyTop: round15((body.top - card2.top) / z), bodyBottom: round15((body.bottom - card2.top) / z) };
+    const row2 = holder.querySelector?.(`[data-pxd-row="${rowUid}"]`);
+    const r = row2 ? row2.getBoundingClientRect() : null;
+    if (!r || !r.width && !r.height) return { ...out, rowTop: null, rowHeight: 0, rendered: false };
+    return { ...out, rowTop: round15((r.top - card2.top) / z), rowHeight: round15(r.height / z), rendered: true };
+  };
+  const revealRow = (uid, rowUid) => {
+    const rec = shells.get(uid);
+    const row2 = rec?.pageHolder?.querySelector?.(`[data-pxd-row="${rowUid}"]`);
+    if (!rec?.body || !row2) return false;
+    const r = row2.getBoundingClientRect();
+    if (!r.width && !r.height) return false;
+    const body = rec.body.getBoundingClientRect();
+    const delta = (r.top + r.height / 2 - (body.top + body.height / 2)) / (zoomCache || 1);
+    rec.body.scrollTop = Math.max(0, (Number(rec.body.scrollTop) || 0) + delta);
+    row2.classList.add("pxd-row--flash");
+    later(() => row2.classList.remove("pxd-row--flash"), 600);
+    onPageLayout?.(uid);
+    return true;
   };
   let pageWatches = 0;
   const armPageWatch = (rec, item, holder) => {
@@ -10261,6 +10393,11 @@ function createItemRenderer({
       }
       const holder = el("div", "pxd-item__page", body);
       rec.pageHolder = holder;
+      if (onPageLayout && !rec.scrollOff) {
+        const onScroll = () => onPageLayout(rec.uid);
+        body.addEventListener("scroll", onScroll, { passive: true });
+        rec.scrollOff = () => body.removeEventListener("scroll", onScroll, { passive: true });
+      }
       rec.pageTitle = item.title;
       const preview = fetchPage(item.title);
       const apply = (p, sync2 = false) => {
@@ -10355,6 +10492,7 @@ function createItemRenderer({
         rec.bare = true;
         rec.el.classList.add("pxd-item--bare");
       }
+      onPageLayout?.(uid);
     }
     rec.contentKey = null;
     mounted.delete(uid);
@@ -11238,6 +11376,8 @@ function createItemRenderer({
     renameBoard,
     renamePage,
     shellOf: (uid) => shells.get(uid)?.el ?? null,
+    measureRow,
+    revealRow,
     expireContent(uids) {
       for (const uid of uids || []) {
         const rec = shells.get(uid);
@@ -11251,6 +11391,7 @@ function createItemRenderer({
           rec.bare = true;
           rec.el.classList.add("pxd-item--bare");
         }
+        onPageLayout?.(uid);
       }
       if (uids?.length && lastContent) fillContent(lastContent);
     },
@@ -11331,7 +11472,7 @@ var setClass = (el, name) => {
   el.setAttribute("class", name);
   if (el.classList && !el.classList.contains(name.split(" ")[0])) el.className = name;
 };
-function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlaySvg, onLabelCommit } = {}) {
+function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlaySvg, onLabelCommit, blockText } = {}) {
   const edgeEls = /* @__PURE__ */ new Map();
   const linkEls = /* @__PURE__ */ new Map();
   let wire = null;
@@ -11343,6 +11484,7 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
   let searchEdges = null;
   let zoomCache = 1;
   let editingLabel = null;
+  const measures = /* @__PURE__ */ new Map();
   const listeners2 = [];
   const mk = (tag, cls, parent) => {
     const el = doc.createElementNS(SVG_NS2, tag);
@@ -11375,7 +11517,35 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
       }
       via = routeAround(center(routed.a), center(routed.b), obstacles);
     }
-    return edgePath({ a: routed.a, b: routed.b, fromSide: edge.fromSide, toSide: edge.toSide, route: edge.route, offset: pairOffset(board2, edge), via });
+    let fromSide = edge.fromSide;
+    let toSide = edge.toSide;
+    let fromPoint;
+    let toPoint;
+    let fromClamp = null;
+    let toClamp = null;
+    const m = edge.fromBlock || edge.toBlock ? measures.get(edge.uid) : null;
+    if (m) {
+      if (m.from && edge.fromBlock && routed.from === edge.from) {
+        const an = blockAnchor({ rect: routed.a, ...m.from, other: center(routed.b) });
+        fromPoint = an.point;
+        fromSide = an.side;
+        fromClamp = an.clamped;
+      }
+      if (m.to && edge.toBlock && routed.to === edge.to) {
+        const an = blockAnchor({ rect: routed.b, ...m.to, other: center(routed.a) });
+        toPoint = an.point;
+        toSide = an.side;
+        toClamp = an.clamped;
+      }
+    }
+    const geo = edgePath({ a: routed.a, b: routed.b, fromSide, toSide, route: edge.route, offset: pairOffset(board2, edge), via, fromPoint, toPoint });
+    if (m) {
+      geo.fromClamp = fromClamp;
+      geo.toClamp = toClamp;
+      geo.fromBlockAnchored = Boolean(fromPoint);
+      geo.toBlockAnchored = Boolean(toPoint);
+    }
+    return geo;
   };
   const buildEdge = (edge) => {
     const g = mk("g", "pxd-edge", svg);
@@ -11395,6 +11565,73 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     const rec = { g, hit, line, head, tail, dot, label, geo: null };
     edgeEls.set(edge.uid, rec);
     return rec;
+  };
+  const bendOf = (rec, end) => {
+    if (rec.bends?.[end]) return rec.bends[end];
+    const g = mk("g", "pxd-edge__bend", rec.g);
+    g.setAttribute("data-end", end);
+    g.dataset.end = end;
+    mk("circle", "pxd-edge__bend-dot", g).setAttribute("r", "5");
+    mk("path", "pxd-edge__bend-chevron", g);
+    const title = doc.createElementNS(SVG_NS2, "title");
+    g.append(title);
+    rec.bends = { ...rec.bends || {}, [end]: { g, title, clamp: null } };
+    return rec.bends[end];
+  };
+  const dropBend = (rec, end) => {
+    const bend = rec.bends?.[end];
+    if (!bend) return;
+    bend.g.remove();
+    delete rec.bends[end];
+  };
+  const placeBend = (rec, end, point, clamp2, zoom) => {
+    const bend = bendOf(rec, end);
+    const scale = Math.min(3, Math.max(1, 1 / (zoom || 1)));
+    bend.g.setAttribute("transform", `translate(${point.x} ${point.y}) scale(${scale})`);
+    if (bend.clamp !== clamp2) {
+      bend.clamp = clamp2;
+      bend.g.setAttribute("class", `pxd-edge__bend${clamp2 ? " pxd-edge__bend--clamped" : ""}`);
+      bend.g.setAttribute("data-clamp", clamp2 || "");
+      bend.g.querySelector?.(".pxd-edge__bend-chevron")?.setAttribute("d", clamp2 === "bottom" ? "M-3 -1.5L0 1.5L3 -1.5" : "M-3 1.5L0 -1.5L3 1.5");
+    }
+  };
+  const bendTitle = (rec, end, uid) => {
+    const bend = rec.bends?.[end];
+    if (!bend) return;
+    let text2 = "";
+    try {
+      text2 = String(blockText?.(uid) ?? "").trim().slice(0, 120);
+    } catch {
+      text2 = "";
+    }
+    bend.title.textContent = text2 || "Block";
+  };
+  const placeEnds = (rec, geo) => {
+    if (!rec.ends || !geo) return;
+    for (const end of ["from", "to"]) {
+      const p = end === "from" ? geo.start : geo.end;
+      rec.ends[end].setAttribute("cx", String(p.x));
+      rec.ends[end].setAttribute("cy", String(p.y));
+    }
+  };
+  const syncEnds = (rec, on) => {
+    if (!on) {
+      if (!rec.ends) return;
+      rec.ends.from.remove();
+      rec.ends.to.remove();
+      rec.ends = null;
+      return;
+    }
+    if (rec.ends) return;
+    rec.ends = {};
+    for (const end of ["from", "to"]) {
+      const c = mk("circle", "pxd-edge__end", rec.g);
+      c.setAttribute("r", "6");
+      c.setAttribute("data-end", end);
+      c.dataset.end = end;
+      rec.ends[end] = c;
+    }
+    placeEnds(rec, rec.geo);
   };
   const dimmed = (e) => Boolean(focusSet) && !(focusSet.has(e.from) && focusSet.has(e.to));
   const paintEdge = (board2, edge, rec, { covered, selected }) => {
@@ -11422,6 +11659,15 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     if (editingLabel?.uid !== edge.uid) rec.label.textContent = edge.label || "";
     rec.dir = edge.dir;
     rec.weight = edge.weight;
+    for (const end of ["from", "to"]) {
+      const uid = end === "from" ? edge.fromBlock : edge.toBlock;
+      if (!uid) {
+        if (rec.bends?.[end]) dropBend(rec, end);
+        continue;
+      }
+      bendOf(rec, end);
+      bendTitle(rec, end, uid);
+    }
   };
   const placeEdge = (board2, edge, rec, rects, zoom) => {
     const geo = geometryFor(board2, edge, rects);
@@ -11451,6 +11697,20 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     }
     rec.dot.setAttribute("cx", String(geo.mid.x));
     rec.dot.setAttribute("cy", String(geo.mid.y));
+    if (edge.fromBlock || edge.toBlock || rec.bends) {
+      for (const end of ["from", "to"]) {
+        const anchored = end === "from" ? geo.fromBlockAnchored : geo.toBlockAnchored;
+        const uid = end === "from" ? edge.fromBlock : edge.toBlock;
+        if (!uid || !anchored) {
+          if (rec.bends?.[end]) rec.bends[end].g.setAttribute("display", "none");
+          continue;
+        }
+        const bend = bendOf(rec, end);
+        bend.g.removeAttribute("display");
+        placeBend(rec, end, end === "from" ? geo.start : geo.end, end === "from" ? geo.fromClamp : geo.toClamp, zoom);
+      }
+    }
+    placeEnds(rec, geo);
     rec.label.style.transform = `translate(${geo.mid.x}px, ${geo.mid.y}px) translate(-50%, -50%)`;
   };
   const buildLink = (link) => {
@@ -11547,6 +11807,7 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
       const cls = String(rec.g.getAttribute("class") || "").replace(/\s*pxd-edge--selected/g, "");
       setClass(rec.g, on ? `${cls} pxd-edge--selected` : cls);
       rec.label.classList.toggle("pxd-label--selected", on);
+      syncEnds(rec, on);
     }
     for (const [key, rec] of linkEls) {
       const on = key === link;
@@ -11695,6 +11956,14 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     }
     return true;
   };
+  const setMeasures = (next) => {
+    const changed2 = /* @__PURE__ */ new Set();
+    for (const uid of measures.keys()) if (!next.has(uid)) changed2.add(uid);
+    for (const [uid, m] of next) if (JSON.stringify(measures.get(uid) ?? null) !== JSON.stringify(m)) changed2.add(uid);
+    measures.clear();
+    for (const [uid, m] of next) measures.set(uid, m);
+    return changed2;
+  };
   const geometryOf = (uid) => edgeEls.get(uid)?.geo ?? null;
   const linkGeometryOf = (key) => linkEls.get(key)?.geo ?? null;
   const labelRect = (uid) => {
@@ -11725,6 +11994,7 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     setGhosts,
     setFocus,
     setSearch,
+    setMeasures,
     editLabel,
     isEditingLabel: () => Boolean(editingLabel),
     geometryOf,
@@ -12418,6 +12688,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
       case "edge":
         seg("pxd-ctx__dir", [["one", "→", "One way"], ["two", "↔", "Two way"], ["none", "—", "No arrow"]], model?.dir, (v) => on.edgeDir?.(v));
         btn("pxd-ctx__flip", "swap-horizontal", "Flip", "Swap endpoints", () => on.flip?.());
+        if (model?.fromBlock || model?.toBlock) btn("pxd-ctx__unblock", "document", "Page", "Connect to the page instead of a block", () => on.unblock?.());
         seg("pxd-ctx__route", [["curve", "Curve", "Curve", "path"], ["straight", "Straight", "Straight", "flow-linear"], ["elbow", "Elbow", "Elbow", "step-chart"]], model?.route, (v) => on.route?.(v));
         seg("pxd-ctx__dash", [["solid", "Solid", "Solid", "minus"], ["dashed", "Dashed", "Dashed", "slash"], ["animated", "Animated", "Animated", "pulse"]], model?.dash, (v) => on.dash?.(v));
         seg("pxd-ctx__weight", [[1, "1"], [2, "2"], [3, "3"], [4, "4"]], model?.weight, (v) => on.weight?.(v));
@@ -12775,12 +13046,12 @@ function sortRows(rows, column, dir = "asc") {
   });
   return list;
 }
-function planAttrCell({ name, value, blockUid = null, parentUid = null } = {}) {
+function planAttrCell({ name, value, blockUid: blockUid2 = null, parentUid = null } = {}) {
   const attr = cleanName(name);
   if (!attr) return null;
   const text2 = String(value ?? "").trim();
   const string = text2 ? `${attr}:: ${text2}` : `${attr}::`;
-  if (blockUid) return { op: "update", uid: blockUid, string };
+  if (blockUid2) return { op: "update", uid: blockUid2, string };
   if (!text2 || !parentUid) return null;
   return { op: "create", parent: parentUid, string };
 }
@@ -12943,13 +13214,13 @@ function mountTable({ doc = globalThis.document, root, host, getBoard } = {}) {
     }
     paint2();
   };
-  const openEditor = (cell, blockUid) => {
-    if (!blockUid || typeof host?.renderBlock !== "function") return;
+  const openEditor = (cell, blockUid2) => {
+    if (!blockUid2 || typeof host?.renderBlock !== "function") return;
     closeEditors();
     cell.classList.add("pxd-table__edit");
     cell.replaceChildren();
     try {
-      host.renderBlock(cell, blockUid);
+      host.renderBlock(cell, blockUid2);
     } catch {
     }
   };
@@ -14150,6 +14421,7 @@ function buildMenu(kind, ctx = {}) {
           ]
         }),
         make("flip", "Flip direction"),
+        ...c.blockEnd ? [make("unblock", "Connect to the page instead")] : [],
         make("route", "Route", {
           children: [
             make("route:curve", "Curve", { checked: c.route === "curve" }),
@@ -15851,6 +16123,9 @@ function mountBoardView({
     onBadgeClick: (uid) => {
       ctl.select([uid]);
       panel.open("related");
+    },
+    onPageLayout: (uid) => {
+      if (blockCards.has(uid)) scheduleAnchors();
     }
   });
   const edgesR = createEdgeLayer({
@@ -15858,8 +16133,48 @@ function mountBoardView({
     svg: edgesSvg,
     labelsLayer,
     overlaySvg,
-    onLabelCommit: (uid, label) => session.updateEdge?.(uid, { label })
+    onLabelCommit: (uid, label) => session.updateEdge?.(uid, { label }),
+    blockText: (uid) => host?.blockString?.(uid)
   });
+  const blockCards = /* @__PURE__ */ new Set();
+  let anchorFrame = false;
+  const refreshBlockCards = () => {
+    blockCards.clear();
+    const b = board2();
+    if (!b) return false;
+    for (const e of b.edges.values()) {
+      if (e.fromBlock) blockCards.add(e.from);
+      if (e.toBlock) blockCards.add(e.to);
+    }
+    return blockCards.size > 0;
+  };
+  const runAnchors = () => {
+    anchorFrame = false;
+    const b = board2();
+    if (disposed || !b) return;
+    refreshBlockCards();
+    const next = /* @__PURE__ */ new Map();
+    for (const e of b.edges.values()) {
+      if (!e.fromBlock && !e.toBlock) continue;
+      const m = {};
+      if (e.fromBlock) {
+        const x = itemsR.measureRow(e.from, e.fromBlock);
+        if (x) m.from = x;
+      }
+      if (e.toBlock) {
+        const x = itemsR.measureRow(e.to, e.toBlock);
+        if (x) m.to = x;
+      }
+      if (m.from || m.to) next.set(e.uid, m);
+    }
+    const changed2 = edgesR.setMeasures(next);
+    if (changed2.size) edgesR.update({ board: b, edgeUids: changed2, rects: paintRects(), zoom: vp.zoom });
+  };
+  function scheduleAnchors() {
+    if (disposed || anchorFrame) return;
+    anchorFrame = true;
+    timers.frame(runAnchors);
+  }
   const schedule = () => {
     if (disposed || frameHandle) return;
     frameHandle = timers.frame(() => {
@@ -16665,8 +16980,8 @@ function mountBoardView({
     if (disposed || !session.board?.items?.has?.(cardUid)) return;
     await itemsR.enterEdit(cardUid);
   };
-  const pasteEditorImages = async (ta, blockUid, files) => {
-    if (!files?.length || !blockUid) return;
+  const pasteEditorImages = async (ta, blockUid2, files) => {
+    if (!files?.length || !blockUid2) return;
     if (typeof host?.uploadFile !== "function") {
       toast("Image upload is not available here");
       return;
@@ -16694,7 +17009,7 @@ function mountBoardView({
     if (!ta) {
       let current2 = null;
       try {
-        current2 = host?.blockString?.(blockUid);
+        current2 = host?.blockString?.(blockUid2);
       } catch {
         current2 = null;
       }
@@ -16714,7 +17029,7 @@ function mountBoardView({
       }
     }
     try {
-      const write = () => host.updateString(blockUid, placed.string);
+      const write = () => host.updateString(blockUid2, placed.string);
       if (host.group) await host.group(write);
       else await write();
     } catch {
@@ -16725,15 +17040,15 @@ function mountBoardView({
     if (failed) toast(`Added ${urls.length} of ${files.length} images`);
     await remountEditor(cardUid);
   };
-  const pasteEditorBlocks = async (ta, blockUid, plan) => {
-    if (!blockUid || plan?.type !== "blocks") return;
+  const pasteEditorBlocks = async (ta, blockUid2, plan) => {
+    if (!blockUid2 || plan?.type !== "blocks") return;
     if (typeof host?.updateString !== "function" || typeof host?.createBlock !== "function") return;
     const cardUid = itemsR.editingUid?.();
     if (ta) commitTextareaValue(ta, plan.string);
     try {
       const write = async () => {
-        await host.updateString(blockUid, plan.string);
-        for (const line of plan.children) await host.createBlock({ parentUid: blockUid, order: "last", string: line });
+        await host.updateString(blockUid2, plan.string);
+        for (const line of plan.children) await host.createBlock({ parentUid: blockUid2, order: "last", string: line });
       };
       if (host.group) await host.group(write);
       else await write();
@@ -16764,13 +17079,13 @@ function mountBoardView({
       isRoot: role.role === "root"
     });
     if (!plan || plan.type === "roam") return false;
-    const blockUid = role.uid || cardUid;
-    if (!blockUid) return false;
+    const blockUid2 = role.uid || cardUid;
+    if (!blockUid2) return false;
     if (plan.type === "images") {
-      void pasteEditorImages(ta, blockUid, files);
+      void pasteEditorImages(ta, blockUid2, files);
       return true;
     }
-    void pasteEditorBlocks(ta, blockUid, plan);
+    void pasteEditorBlocks(ta, blockUid2, plan);
     return true;
   };
   const menuContext = (kind, uid) => {
@@ -16809,7 +17124,7 @@ function mountBoardView({
         return { item, pinned: Boolean(item?.pinned) };
       case "edge": {
         const e = uid ? b?.edges.get(uid) : null;
-        return { item: e, dir: e?.dir, route: e?.route, dash: e?.dash };
+        return { item: e, dir: e?.dir, route: e?.route, dash: e?.dash, blockEnd: Boolean(e?.fromBlock || e?.toBlock) };
       }
       case "multi": {
         const items = selection.items.map((u) => b?.items.get(u)).filter(Boolean);
@@ -17281,6 +17596,9 @@ function mountBoardView({
       case "flip":
         if (edgeUid) void session.flipEdge?.(edgeUid);
         break;
+      case "unblock":
+        if (edgeUid) void session.updateEdge?.(edgeUid, { fromBlock: void 0, toBlock: void 0 });
+        break;
       case "label":
         if (edgeUid) edgesR.editLabel(edgeUid);
         break;
@@ -17405,6 +17723,9 @@ function mountBoardView({
       },
       flip: () => {
         if (selection.edge) void session.flipEdge?.(selection.edge);
+      },
+      unblock: () => {
+        if (selection.edge) void session.updateEdge?.(selection.edge, { fromBlock: void 0, toBlock: void 0 });
       },
       route: (route) => {
         if (selection.edge) void session.updateEdge?.(selection.edge, { route });
@@ -18070,6 +18391,7 @@ function mountBoardView({
       const b = board2();
       if (!b) return;
       liveRects = itemsR.previewRects(list);
+      if (blockCards.size) scheduleAnchors();
       const set = new Set(list.map((r) => r.uid));
       previewFit(list.map((r) => r.uid), { skip: new Set(list.filter((r) => b.items.get(r.uid)?.type === "section").map((r) => r.uid)) });
       for (const u of grown) set.add(u);
@@ -18109,6 +18431,10 @@ function mountBoardView({
     fitSection: (uid) => session.fitSection?.(uid),
     resetSize: (uids) => session.resetSize?.(uids),
     showTempWire: (spec) => edgesR.setTempWire(spec, rects(), vp.zoom),
+    blockTarget: (pt) => blockTargetAt(pt),
+    clearBlockTarget: () => clearBlockTarget(),
+    revealBlockEnd: (edgeUid, end) => revealBlockEnd(edgeUid, end),
+    updateEdge: (uid, patch) => session.updateEdge?.(uid, patch),
     commitMove: (uids, dx, dy) => session.commitMove?.(uids, dx, dy),
     commitRects: (list) => session.commitRects?.(list),
     createCard: (p) => Promise.resolve(session.createCard?.({ x: p.x, y: p.y })).then((uid) => {
@@ -18178,6 +18504,40 @@ function mountBoardView({
     setFullscreen: (on) => requestFullscreen(on),
     setSpace: (on) => root.classList.toggle("pxd-root--space", Boolean(on))
   };
+  let targetEl = null;
+  let targetCls = "";
+  const clearBlockTarget = () => {
+    if (!targetEl) return;
+    targetEl.classList.remove(targetCls);
+    targetEl = null;
+  };
+  const blockTargetAt = (pt) => {
+    clearBlockTarget();
+    if (!pt || typeof doc.elementsFromPoint !== "function") return null;
+    for (const node2 of doc.elementsFromPoint(pt.x, pt.y) || []) {
+      const card2 = node2.closest?.(".pxd-item");
+      if (!card2) continue;
+      if (!card2.classList.contains("pxd-item--page") || card2.closest?.(".pxd-root") !== root) return null;
+      const uid = card2.dataset?.uid || card2.getAttribute?.("data-uid");
+      const row2 = node2.closest?.("[data-pxd-row]");
+      const header = row2 ? null : node2.closest?.(".pxd-item__header");
+      targetEl = row2 || header || null;
+      targetCls = row2 ? "pxd-row--target" : "pxd-item__header--target";
+      targetEl?.classList.add(targetCls);
+      return { uid, row: row2 ? row2.getAttribute?.("data-pxd-row") || row2.dataset?.pxdRow || null : null, header: Boolean(header) };
+    }
+    return null;
+  };
+  const revealBlockEnd = (edgeUid, end) => {
+    const e = board2()?.edges.get(edgeUid);
+    if (!e) return false;
+    const card2 = end === "from" ? e.from : e.to;
+    const block = end === "from" ? e.fromBlock : e.toBlock;
+    if (!block) return false;
+    if (itemsR.revealRow(card2, block)) return true;
+    host?.openInSidebar?.(block, "block");
+    return false;
+  };
   const ctl = createInteractions({ actions, settings });
   ctl.setTool("select");
   const targetOf = (t) => {
@@ -18193,6 +18553,10 @@ function mountBoardView({
       const owner = grip.closest(".pxd-item, .pxd-section");
       return { kind: "grip", uid: owner?.dataset?.uid || owner?.getAttribute?.("data-uid"), part: grip.dataset?.part || grip.getAttribute?.("data-part") };
     }
+    const endHandle = t.closest(".pxd-edge__end");
+    if (endHandle) return { kind: "edge-end", uid: endHandle.closest(".pxd-edge")?.dataset?.uid || endHandle.closest(".pxd-edge")?.getAttribute?.("data-uid"), end: endHandle.dataset?.end || endHandle.getAttribute?.("data-end") };
+    const clamped = t.closest(".pxd-edge__bend--clamped");
+    if (clamped) return { kind: "edge-marker", uid: clamped.closest(".pxd-edge")?.dataset?.uid || clamped.closest(".pxd-edge")?.getAttribute?.("data-uid"), end: clamped.dataset?.end || clamped.getAttribute?.("data-end") };
     const label = t.closest(".pxd-label");
     if (label) {
       const key = label.dataset?.key || label.getAttribute?.("data-key");
@@ -18221,6 +18585,7 @@ function mountBoardView({
     return {
       type,
       screen,
+      client: { x: event.clientX || 0, y: event.clientY || 0 },
       world: screenToWorld(vp, screen),
       target: targetOf(event.target),
       button: event.button ?? 0,
@@ -18880,6 +19245,10 @@ function mountBoardView({
       updateBackToContent();
       panel.refreshOutline();
       if (dirty.all || dirty.structural) scheduleBadges(50);
+    }
+    if (edgesDue || itemsChanged || itemsMoveEdges) {
+      if (refreshBlockCards()) scheduleAnchors();
+      else edgesR.setMeasures(/* @__PURE__ */ new Map());
     }
     if (searchMatches.length || root.classList.contains("pxd-root--searching")) panel.refreshMarks();
     dirty.minimap = false;
@@ -20291,19 +20660,19 @@ async function installPlexusDiagram({
         "display-conditional": (event) => active() && Boolean(event?.["block-uid"]),
         callback: (event) => {
           if (!active()) return;
-          const blockUid = event?.["block-uid"];
-          if (!blockUid) return;
+          const blockUid2 = event?.["block-uid"];
+          if (!blockUid2) return;
           closeAddToBoard();
           const picker = openAddToBoard({
             doc,
-            blockUid,
+            blockUid: blockUid2,
             listBoards: () => host.listBoards?.() ?? [],
             onPick: async (board2) => {
-              if (!board2?.uid || board2.uid === blockUid) return false;
+              if (!board2?.uid || board2.uid === blockUid2) return false;
               let session = null;
               try {
                 session = acquireSession2(board2.uid, { host, settings: liveSettings });
-                const id = await session?.addBlockRef?.(blockUid);
+                const id = await session?.addBlockRef?.(blockUid2);
                 return Boolean(id);
               } catch (error) {
                 console.warn("[plexus-diagram] Add to board failed", error);

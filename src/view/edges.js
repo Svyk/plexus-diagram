@@ -4,7 +4,7 @@
 // recomputed during a drag.
 
 import { routedEdge } from "../model/board.js";
-import { arrowHeadPath, arrowSize, center, edgePath, sidePoint } from "../model/geometry.js";
+import { arrowHeadPath, arrowSize, blockAnchor, center, edgePath, sidePoint } from "../model/geometry.js";
 import { routeAround } from "../model/section6.js";
 import { PALETTE, hexColor } from "../model/schema.js";
 
@@ -17,7 +17,7 @@ const setClass = (el, name) => {
   if (el.classList && !el.classList.contains(name.split(" ")[0])) el.className = name;
 };
 
-export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlaySvg, onLabelCommit } = {}) {
+export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlaySvg, onLabelCommit, blockText } = {}) {
   const edgeEls = new Map(); // uid → {g, hit, line, head, tail, dot, label}
   const linkEls = new Map(); // key → {g, hit, line, head, label}
   let wire = null;
@@ -29,6 +29,7 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
   let searchEdges = null;
   let zoomCache = 1;
   let editingLabel = null;
+  const measures = new Map(); // BA-3: edge uid → { from?, to? } row measurements, only for edges with block ends
   const listeners = [];
 
   const mk = (tag, cls, parent) => {
@@ -64,7 +65,30 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
       }
       via = routeAround(center(routed.a), center(routed.b), obstacles);
     }
-    return edgePath({ a: routed.a, b: routed.b, fromSide: edge.fromSide, toSide: edge.toSide, route: edge.route, offset: pairOffset(board, edge), via });
+    let fromSide = edge.fromSide;
+    let toSide = edge.toSide;
+    let fromPoint;
+    let toPoint;
+    let fromClamp = null;
+    let toClamp = null;
+    const m = edge.fromBlock || edge.toBlock ? measures.get(edge.uid) : null;
+    if (m) {
+      if (m.from && edge.fromBlock && routed.from === edge.from) {
+        const an = blockAnchor({ rect: routed.a, ...m.from, other: center(routed.b) });
+        fromPoint = an.point;
+        fromSide = an.side;
+        fromClamp = an.clamped;
+      }
+      if (m.to && edge.toBlock && routed.to === edge.to) {
+        const an = blockAnchor({ rect: routed.b, ...m.to, other: center(routed.a) });
+        toPoint = an.point;
+        toSide = an.side;
+        toClamp = an.clamped;
+      }
+    }
+    const geo = edgePath({ a: routed.a, b: routed.b, fromSide, toSide, route: edge.route, offset: pairOffset(board, edge), via, fromPoint, toPoint });
+    if (m) { geo.fromClamp = fromClamp; geo.toClamp = toClamp; geo.fromBlockAnchored = Boolean(fromPoint); geo.toBlockAnchored = Boolean(toPoint); }
+    return geo;
   };
 
   const buildEdge = (edge) => {
@@ -85,6 +109,74 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     const rec = { g, hit, line, head, tail, dot, label, geo: null };
     edgeEls.set(edge.uid, rec);
     return rec;
+  };
+
+  // BA-3/BA-4: a block end carries a small dot (tooltip = the block text) that becomes a marker with a chevron
+  // when the row is scrolled out of the card. Built only for edges that have block ends.
+  const bendOf = (rec, end) => {
+    if (rec.bends?.[end]) return rec.bends[end];
+    const g = mk("g", "pxd-edge__bend", rec.g);
+    g.setAttribute("data-end", end);
+    g.dataset.end = end;
+    mk("circle", "pxd-edge__bend-dot", g).setAttribute("r", "5");
+    mk("path", "pxd-edge__bend-chevron", g);
+    const title = doc.createElementNS(SVG_NS, "title");
+    g.append(title);
+    rec.bends = { ...(rec.bends || {}), [end]: { g, title, clamp: null } };
+    return rec.bends[end];
+  };
+  const dropBend = (rec, end) => {
+    const bend = rec.bends?.[end];
+    if (!bend) return;
+    bend.g.remove();
+    delete rec.bends[end];
+  };
+  const placeBend = (rec, end, point, clamp, zoom) => {
+    const bend = bendOf(rec, end);
+    const scale = Math.min(3, Math.max(1, 1 / (zoom || 1)));
+    bend.g.setAttribute("transform", `translate(${point.x} ${point.y}) scale(${scale})`);
+    if (bend.clamp !== clamp) {
+      bend.clamp = clamp;
+      bend.g.setAttribute("class", `pxd-edge__bend${clamp ? " pxd-edge__bend--clamped" : ""}`);
+      bend.g.setAttribute("data-clamp", clamp || "");
+      bend.g.querySelector?.(".pxd-edge__bend-chevron")?.setAttribute("d", clamp === "bottom" ? "M-3 -1.5L0 1.5L3 -1.5" : "M-3 1.5L0 -1.5L3 1.5");
+    }
+  };
+  const bendTitle = (rec, end, uid) => {
+    const bend = rec.bends?.[end];
+    if (!bend) return;
+    let text = "";
+    try { text = String(blockText?.(uid) ?? "").trim().slice(0, 120); } catch { text = ""; }
+    bend.title.textContent = text || "Block";
+  };
+
+  // Selected-edge end handles: dragging one re-targets that end (BA-2). Built lazily, only for the selected edge.
+  const placeEnds = (rec, geo) => {
+    if (!rec.ends || !geo) return;
+    for (const end of ["from", "to"]) {
+      const p = end === "from" ? geo.start : geo.end;
+      rec.ends[end].setAttribute("cx", String(p.x));
+      rec.ends[end].setAttribute("cy", String(p.y));
+    }
+  };
+  const syncEnds = (rec, on) => {
+    if (!on) {
+      if (!rec.ends) return;
+      rec.ends.from.remove();
+      rec.ends.to.remove();
+      rec.ends = null;
+      return;
+    }
+    if (rec.ends) return;
+    rec.ends = {};
+    for (const end of ["from", "to"]) {
+      const c = mk("circle", "pxd-edge__end", rec.g);
+      c.setAttribute("r", "6");
+      c.setAttribute("data-end", end);
+      c.dataset.end = end;
+      rec.ends[end] = c;
+    }
+    placeEnds(rec, rec.geo);
   };
 
   const dimmed = (e) => Boolean(focusSet) && !(focusSet.has(e.from) && focusSet.has(e.to));
@@ -114,6 +206,12 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     if (editingLabel?.uid !== edge.uid) rec.label.textContent = edge.label || "";
     rec.dir = edge.dir;
     rec.weight = edge.weight;
+    for (const end of ["from", "to"]) {
+      const uid = end === "from" ? edge.fromBlock : edge.toBlock;
+      if (!uid) { if (rec.bends?.[end]) dropBend(rec, end); continue; }
+      bendOf(rec, end);
+      bendTitle(rec, end, uid);
+    }
   };
 
   const placeEdge = (board, edge, rec, rects, zoom) => {
@@ -144,6 +242,17 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     }
     rec.dot.setAttribute("cx", String(geo.mid.x));
     rec.dot.setAttribute("cy", String(geo.mid.y));
+    if (edge.fromBlock || edge.toBlock || rec.bends) {
+      for (const end of ["from", "to"]) {
+        const anchored = end === "from" ? geo.fromBlockAnchored : geo.toBlockAnchored;
+        const uid = end === "from" ? edge.fromBlock : edge.toBlock;
+        if (!uid || !anchored) { if (rec.bends?.[end]) rec.bends[end].g.setAttribute("display", "none"); continue; }
+        const bend = bendOf(rec, end);
+        bend.g.removeAttribute("display");
+        placeBend(rec, end, end === "from" ? geo.start : geo.end, end === "from" ? geo.fromClamp : geo.toClamp, zoom);
+      }
+    }
+    placeEnds(rec, geo);
     rec.label.style.transform = `translate(${geo.mid.x}px, ${geo.mid.y}px) translate(-50%, -50%)`;
   };
 
@@ -244,6 +353,7 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
       const cls = String(rec.g.getAttribute("class") || "").replace(/\s*pxd-edge--selected/g, "");
       setClass(rec.g, on ? `${cls} pxd-edge--selected` : cls);
       rec.label.classList.toggle("pxd-label--selected", on);
+      syncEnds(rec, on);
     }
     for (const [key, rec] of linkEls) {
       const on = key === link;
@@ -386,6 +496,16 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     return true;
   };
 
+  // BA-3: replace the row measurements. Returns the edge uids whose block-end geometry changed.
+  const setMeasures = (next) => {
+    const changed = new Set();
+    for (const uid of measures.keys()) if (!next.has(uid)) changed.add(uid);
+    for (const [uid, m] of next) if (JSON.stringify(measures.get(uid) ?? null) !== JSON.stringify(m)) changed.add(uid);
+    measures.clear();
+    for (const [uid, m] of next) measures.set(uid, m);
+    return changed;
+  };
+
   const geometryOf = (uid) => edgeEls.get(uid)?.geo ?? null;
   const linkGeometryOf = (key) => linkEls.get(key)?.geo ?? null;
   const labelRect = (uid) => {
@@ -418,6 +538,7 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     setGhosts,
     setFocus,
     setSearch,
+    setMeasures,
     editLabel,
     isEditingLabel: () => Boolean(editingLabel),
     geometryOf,

@@ -181,6 +181,7 @@ export function createItemRenderer({
   onRenameBoard,
   onRenamePage,
   onBadgeClick,
+  onPageLayout,
 } = {}) {
   const shells = new Map(); // uid → rec
   const mounted = new Map(); // uid → lastWanted (LRU order = insertion order)
@@ -405,6 +406,8 @@ export function createItemRenderer({
     rec.pageUnwatch = null;
     rec.pageRoots = [];
     rec.pageHolder = null;
+    rec.scrollOff?.();
+    rec.scrollOff = null;
     if (!rec.roots?.length) return;
     for (const node of rec.roots) {
       try { node.__pxdEmbedMo?.disconnect(); } catch { /* already gone */ }
@@ -911,6 +914,7 @@ export function createItemRenderer({
         fold.setAttribute("aria-label", open ? "Fold" : "Unfold");
         row.classList.toggle("pxd-prow--folded", !open);
         setHidden(wrap, !open);
+        onPageLayout?.(rec.uid);
       });
     }
   };
@@ -928,6 +932,7 @@ export function createItemRenderer({
     if (!p?.exists) {
       rec.pageKey = "";
       el("div", "pxd-item__placeholder", holder).textContent = "Empty page";
+      onPageLayout?.(rec.uid);
       return [];
     }
     rec.pageUid = p.uid || null;
@@ -937,7 +942,40 @@ export function createItemRenderer({
     if (!b.n) el("div", "pxd-item__placeholder", holder).textContent = "Empty page";
     if (b.more) moreRow(holder, b.more, rec.pageTitle, rec.pageUid);
     rec.pageRoots = [...b.roots];
+    onPageLayout?.(rec.uid);
     return b.roots;
+  };
+
+  // BA-3: where a page card row sits, relative to the card top, in world px (screen px / zoom). Null when the card
+  // has no rendered outline to measure (not mounted, editing, map tier): the edge then keeps its plain side point.
+  const round1 = (n) => Math.round(n * 10) / 10;
+  const measureRow = (uid, rowUid) => {
+    const rec = shells.get(uid);
+    const holder = rec?.pageHolder;
+    if (!rec?.body || !holder || holder.isConnected === false || editing?.uid === uid || !rec.pageKey) return null;
+    const z = zoomCache || 1;
+    const card = rec.el.getBoundingClientRect();
+    const body = rec.body.getBoundingClientRect();
+    const out = { bodyTop: round1((body.top - card.top) / z), bodyBottom: round1((body.bottom - card.top) / z) };
+    const row = holder.querySelector?.(`[data-pxd-row="${rowUid}"]`);
+    const r = row ? row.getBoundingClientRect() : null;
+    if (!r || (!r.width && !r.height)) return { ...out, rowTop: null, rowHeight: 0, rendered: false };
+    return { ...out, rowTop: round1((r.top - card.top) / z), rowHeight: round1(r.height / z), rendered: true };
+  };
+  // Scrolls the body so the row is centered and flashes it. False when the row is not on screen to scroll to.
+  const revealRow = (uid, rowUid) => {
+    const rec = shells.get(uid);
+    const row = rec?.pageHolder?.querySelector?.(`[data-pxd-row="${rowUid}"]`);
+    if (!rec?.body || !row) return false;
+    const r = row.getBoundingClientRect();
+    if (!r.width && !r.height) return false;
+    const body = rec.body.getBoundingClientRect();
+    const delta = (r.top + r.height / 2 - (body.top + body.height / 2)) / (zoomCache || 1);
+    rec.body.scrollTop = Math.max(0, (Number(rec.body.scrollTop) || 0) + delta);
+    row.classList.add("pxd-row--flash");
+    later(() => row.classList.remove("pxd-row--flash"), 600);
+    onPageLayout?.(uid);
+    return true;
   };
   let pageWatches = 0;
   const armPageWatch = (rec, item, holder) => {
@@ -1000,6 +1038,11 @@ export function createItemRenderer({
       }
       const holder = el("div", "pxd-item__page", body);
       rec.pageHolder = holder;
+      if (onPageLayout && !rec.scrollOff) {
+        const onScroll = () => onPageLayout(rec.uid);
+        body.addEventListener("scroll", onScroll, { passive: true });
+        rec.scrollOff = () => body.removeEventListener("scroll", onScroll, { passive: true });
+      }
       rec.pageTitle = item.title;
       const preview = fetchPage(item.title);
       // contentKey is stamped after mountContent returns, so only the async path can be stale.
@@ -1093,6 +1136,7 @@ export function createItemRenderer({
     } else {
       rec.body?.replaceChildren?.();
       if (rec.type === "card") { rec.bare = true; rec.el.classList.add("pxd-item--bare"); }
+      onPageLayout?.(uid);
     }
     rec.contentKey = null;
     mounted.delete(uid);
@@ -1910,6 +1954,8 @@ export function createItemRenderer({
     renameBoard,
     renamePage,
     shellOf: (uid) => shells.get(uid)?.el ?? null,
+    measureRow,
+    revealRow,
     expireContent(uids) {
       for (const uid of uids || []) {
         const rec = shells.get(uid);
@@ -1920,6 +1966,7 @@ export function createItemRenderer({
         mounted.delete(uid);
         rec.titleRendered = false;
         if (rec.type === "card") { rec.bare = true; rec.el.classList.add("pxd-item--bare"); }
+        onPageLayout?.(uid);
       }
       if (uids?.length && lastContent) fillContent(lastContent);
     },

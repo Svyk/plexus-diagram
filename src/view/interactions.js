@@ -123,6 +123,7 @@ export function createInteractions({ actions, settings } = {}) {
     call("showGuides", []);
     call("showTempWire", null);
     call("onHover", null);
+    call("clearBlockTarget");
     call("showGhosts", null);
     call("cancelPreview");
     call("setGesturing", false, { moved });
@@ -152,6 +153,22 @@ export function createInteractions({ actions, settings } = {}) {
 
   const editingUid = () => call("editingUid") ?? null;
   const isEditing = () => Boolean(call("isEditing"));
+
+  // BA-2: the page-card row (or title header) under the pointer lights up while an arrow end is dragged over it.
+  // Returns the descriptor for the card the hit test chose, or null.
+  const blockTargetFor = (ev, uid) => {
+    const item = uid ? board()?.items.get(uid) : null;
+    if (!item || item.kind !== "page") { call("clearBlockTarget"); return null; }
+    const bt = call("blockTarget", ev.client || null);
+    return bt && bt.uid === uid ? bt : null;
+  };
+  // An arrow already ending on this row of this card, if any (a re-drop on the same spot selects it).
+  const sameEdge = (b, from, to, fromBlock, toBlock) => {
+    for (const e of b.edges.values()) {
+      if (e.from === from && e.to === to && (e.fromBlock ?? "") === (fromBlock ?? "") && (e.toBlock ?? "") === (toBlock ?? "")) return e;
+    }
+    return null;
+  };
 
   const beginConnect = (uid, side, world) => {
     begin({ kind: "connect", from: uid, fromSide: side, start: world });
@@ -191,6 +208,17 @@ export function createInteractions({ actions, settings } = {}) {
         if (!t.uid || !r?.get(t.uid) || isPinned(t.uid)) return;
         if (!state.selection.has(t.uid)) selectItems([t.uid]);
         begin({ kind: "resize", uid: t.uid, part: t.part || "corner", start: ev.world, rect0: { ...r.get(t.uid) } });
+        return;
+      }
+      case "edge-marker":
+        if (t.uid) { selectEdge(t.uid); call("revealBlockEnd", t.uid, t.end); }
+        return;
+      case "edge-end": {
+        const edge = t.uid ? b?.edges.get(t.uid) : null;
+        if (!edge || (t.end !== "from" && t.end !== "to")) return;
+        const other = t.end === "from" ? edge.to : edge.from;
+        begin({ kind: "edge-end", edge: t.uid, end: t.end, other, start: ev.world });
+        call("showTempWire", { from: other, fromSide: "auto", point: ev.world });
         return;
       }
       case "edge":
@@ -273,6 +301,18 @@ export function createInteractions({ actions, settings } = {}) {
       const hover = hit && hit.uid !== g.from ? hit.uid : null;
       if (hover !== state.hover) { state.hover = hover; call("onHover", hover); }
       if (!g.moved && Math.hypot(ev.world.x - g.start.x, ev.world.y - g.start.y) * zoom() >= DRAG_THRESHOLD_PX) g.moved = true;
+      blockTargetFor(ev, hover);
+      return;
+    }
+    if (g.kind === "edge-end") {
+      const b = board();
+      const r = hitRects();
+      call("showTempWire", { from: g.other, fromSide: "auto", point: ev.world });
+      const hit = b && r ? hitTest(b, ev.world, r, { sectionInterior: true }) : null;
+      const hover = hit && hit.uid !== g.other ? hit.uid : null;
+      if (hover !== state.hover) { state.hover = hover; call("onHover", hover); }
+      if (!g.moved && Math.hypot(ev.world.x - g.start.x, ev.world.y - g.start.y) * zoom() >= DRAG_THRESHOLD_PX) g.moved = true;
+      blockTargetFor(ev, hover);
       return;
     }
     const sdx = ev.screen.x - (g.start.x ?? 0);
@@ -466,19 +506,44 @@ export function createInteractions({ actions, settings } = {}) {
       case "resize":
         if (g.moved && g.rect) call("commitRects", [g.rect]);
         break;
+      case "edge-end": {
+        const hr = hitRects();
+        const hit = b && hr ? hitTest(b, ev.world, hr, { sectionInterior: true }) : null;
+        const bt = hit && hit.uid !== g.other ? blockTargetFor(ev, hit.uid) : null;
+        end();
+        const edge = b?.edges.get(g.edge);
+        if (g.moved && edge && hit && hit.uid !== g.other) {
+          const key = g.end === "from" ? "from" : "to";
+          const blockKey = g.end === "from" ? "fromBlock" : "toBlock";
+          const nextBlock = bt?.row || undefined;
+          const sameCard = hit.uid === edge[key];
+          if (!sameCard || (edge[blockKey] ?? "") !== (nextBlock ?? "")) {
+            const next = { from: edge.from, to: edge.to, fromBlock: edge.fromBlock, toBlock: edge.toBlock, [key]: hit.uid, [blockKey]: nextBlock };
+            if (!sameEdge(b, next.from, next.to, next.fromBlock, next.toBlock)) {
+              const patch = { [blockKey]: nextBlock };
+              if (!sameCard) { patch[key] = hit.uid; patch[key === "from" ? "fromSide" : "toSide"] = nearestSide(hr.get(hit.uid), ev.world); }
+              call("updateEdge", g.edge, patch);
+            }
+          }
+        }
+        afterToolUse();
+        return;
+      }
       case "connect": {
         const hr = hitRects();
         const hit = b && hr ? hitTest(b, ev.world, hr, { sectionInterior: true }) : null;
+        const bt = hit && hit.uid !== g.from ? blockTargetFor(ev, hit.uid) : null;
         end();
         if (hit && hit.uid === g.from) {
           selectItems([g.from]);
         } else if (hit) {
-          const existing = findEdge(b, g.from, hit.uid);
+          const toBlock = bt?.row || undefined;
+          const existing = sameEdge(b, g.from, hit.uid, undefined, toBlock);
           if (existing) {
             selectEdge(existing.uid);
           } else {
             const toSide = nearestSide(hr.get(hit.uid), ev.world);
-            Promise.resolve(call("addEdge", { from: g.from, to: hit.uid, fromSide: g.fromSide, toSide }))
+            Promise.resolve(call("addEdge", { from: g.from, to: hit.uid, fromSide: g.fromSide, toSide, ...(toBlock ? { toBlock } : {}) }))
               .then((uid) => { if (uid) selectEdge(uid); }).catch(() => {});
           }
         } else if (g.moved) {

@@ -181,7 +181,7 @@ export function planEdgeClones(edges, uidMap, { genUid, containerUid, refOfNew }
       uid: genUid(),
       parent: containerUid,
       order: "last",
-      string: edgeString({ srcRef: refOfNew(from), dstRef: refOfNew(to), dir: edge.dir, label: edge.label }),
+      string: edgeString({ srcRef: refOfNew(from), dstRef: refOfNew(to), dir: edge.dir, label: edge.label, srcBlock: edge.fromBlock, dstBlock: edge.toBlock }),
       props: { [PLEXUS_KEY]: serializeEdge({ ...edge, from, to }) },
       open: true,
     });

@@ -44,6 +44,8 @@ export const SECTION_STYLE_KEYS = ["titleSize", "titleColor", "titleFill", "area
 
 const ARROW_TOKENS = Object.values(ARROWS);
 const HEX_RE = /^#[0-9a-f]{6}$/;
+const BLOCK_UID_RE = /^[\w-]{1,36}$/;
+const blockUid = (v) => (typeof v === "string" && BLOCK_UID_RE.test(v) ? v : undefined);
 
 const intIn = (v, lo, hi) => (Number.isInteger(v) && v >= lo && v <= hi ? v : undefined);
 
@@ -269,6 +271,8 @@ export function normalizeEdge(plexus) {
     dash: pick(p.dash, DASHES, EDGE_DEFAULTS.dash),
     weight: EDGE_WEIGHTS.includes(p.weight) ? p.weight : EDGE_DEFAULTS.weight,
     color: styleColor(p.color),
+    ...(blockUid(p.fromBlock) ? { fromBlock: p.fromBlock } : {}),
+    ...(blockUid(p.toBlock) ? { toBlock: p.toBlock } : {}),
     ...(via.length ? { via } : {}),
   };
 }
@@ -281,6 +285,8 @@ export function serializeEdge(edge) {
   }
   const color = styleColor(e.color);
   if (color) out.color = color;
+  if (blockUid(e.fromBlock)) out.fromBlock = e.fromBlock;
+  if (blockUid(e.toBlock)) out.toBlock = e.toBlock;
   const via = cleanVia(e.via);
   if (via.length) out.via = via;
   return out;
@@ -372,7 +378,9 @@ export function semanticRef(item) {
   return `((${item?.uid}))`;
 }
 
-export function edgeString({ srcRef, dstRef, dir = "one", label = "" }) {
+export function edgeString({ srcRef, dstRef, dir = "one", label = "", srcBlock, dstBlock }) {
+  if (blockUid(srcBlock)) srcRef = `((${srcBlock}))`;
+  if (blockUid(dstBlock)) dstRef = `((${dstBlock}))`;
   const a = ARROWS[dir] ?? ARROWS.one;
   return label ? `${srcRef} ${a} ${label} ${a} ${dstRef}` : `${srcRef} ${a} ${dstRef}`;
 }

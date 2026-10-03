@@ -247,6 +247,7 @@ export function buildMenu(kind, ctx = {}) {
           ],
         }),
         make("flip", "Flip direction"),
+        ...(c.blockEnd ? [make("unblock", "Connect to the page instead")] : []),
         make("route", "Route", {
           children: [
             make("route:curve", "Curve", { checked: c.route === "curve" }),

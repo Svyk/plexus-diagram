@@ -1,0 +1,66 @@
+/* P9 block arrows: drop-target highlight, block-end markers, selected-edge end handles. */
+
+.pxd-root .pxd-row--target {
+  background: var(--pxd-accent-soft);
+  outline: 2px solid var(--pxd-accent);
+  outline-offset: -2px;
+  border-radius: 3px;
+}
+
+.pxd-root .pxd-item__header--target {
+  outline: 2px solid var(--pxd-accent);
+  outline-offset: -2px;
+}
+
+.pxd-root .pxd-row--flash {
+  animation: pxd-row-flash 600ms ease-out;
+}
+
+@keyframes pxd-row-flash {
+  0% { background: var(--pxd-accent-soft); outline: 2px solid var(--pxd-accent); outline-offset: -2px; }
+  100% { background: transparent; outline: 2px solid transparent; outline-offset: -2px; }
+}
+
+.pxd-root.pxd-root--motion-off .pxd-row--flash {
+  animation: none;
+  background: var(--pxd-accent-soft);
+}
+
+.pxd-root .pxd-edge__bend {
+  pointer-events: auto;
+}
+
+.pxd-root .pxd-edge__bend-dot {
+  fill: var(--pxd-card);
+  stroke: var(--pxd-line, var(--pxd-edge));
+  stroke-width: 2px;
+}
+
+.pxd-root .pxd-edge__bend-chevron {
+  display: none;
+  fill: none;
+  stroke: var(--pxd-line, var(--pxd-edge));
+  stroke-width: 1.6px;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.pxd-root .pxd-edge__bend--clamped {
+  cursor: pointer;
+}
+
+.pxd-root .pxd-edge__bend--clamped .pxd-edge__bend-dot {
+  r: 8px;
+}
+
+.pxd-root .pxd-edge__bend--clamped .pxd-edge__bend-chevron {
+  display: block;
+}
+
+.pxd-root .pxd-edge__end {
+  fill: var(--pxd-card);
+  stroke: var(--pxd-accent);
+  stroke-width: 2px;
+  cursor: grab;
+  pointer-events: all;
+}

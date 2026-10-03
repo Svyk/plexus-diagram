@@ -182,6 +182,22 @@ export function autoSides(a, b) {
   return dy >= 0 ? { fromSide: "bottom", toSide: "top" } : { fromSide: "top", toSide: "bottom" };
 }
 
+// BA-3: where a block end sits on a page card. `rowTop` / `rowHeight` are relative to the card's top and already
+// scroll-adjusted; `bodyTop` / `bodyBottom` are the visible body range in the same space; `other` is the far
+// end's center. A row inside the range gets its vertical center on the card side facing `other`. A row outside
+// it (or `rowTop == null`: not rendered) sticks to the card's top or bottom edge and reports `clamped`.
+export function blockAnchor({ rect, rowTop, rowHeight = 0, bodyTop = 0, bodyBottom, other } = {}) {
+  const right = !other || other.x >= rect.x + rect.w / 2;
+  const side = right ? "right" : "left";
+  const x = right ? rect.x + rect.w : rect.x;
+  const bottom = bodyBottom ?? rect.h;
+  if (rowTop == null) return { point: { x, y: rect.y + bodyTop }, side, clamped: "top" };
+  const cy = rowTop + rowHeight / 2;
+  if (cy < bodyTop) return { point: { x, y: rect.y }, side, clamped: "top" };
+  if (cy > bottom) return { point: { x, y: rect.y + rect.h }, side, clamped: "bottom" };
+  return { point: { x, y: rect.y + cy }, side, clamped: null };
+}
+
 const NORMALS = {
   top: { x: 0, y: -1 },
   right: { x: 1, y: 0 },
@@ -189,14 +205,14 @@ const NORMALS = {
   left: { x: -1, y: 0 },
 };
 
-export function edgePath({ a, b, fromSide = "auto", toSide = "auto", route = "curve", offset = 0, via } = {}) {
+export function edgePath({ a, b, fromSide = "auto", toSide = "auto", route = "curve", offset = 0, via, fromPoint, toPoint } = {}) {
   if (fromSide === "auto" || toSide === "auto") {
     const auto = autoSides(a, b);
     if (fromSide === "auto") fromSide = auto.fromSide;
     if (toSide === "auto") toSide = auto.toSide;
   }
-  const start = sidePoint(a, fromSide);
-  const end = sidePoint(b, toSide);
+  const start = fromPoint ?? sidePoint(a, fromSide);
+  const end = toPoint ?? sidePoint(b, toSide);
   const bends = Array.isArray(via) ? via.filter((p) => p && Number.isFinite(p.x) && Number.isFinite(p.y)).slice(0, 8) : [];
   if (bends.length) {
     const pts = [start, ...bends, end];

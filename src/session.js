@@ -65,7 +65,7 @@ const OPEN = ":block/open";
 
 const LINK_MODES = ["off", "attributes", "all"];
 const ITEM_KEYS = ["type", "x", "y", "w", "h", "color", "collapsed", "fontSize", "pinned", "fit", "look", "axis", "textColor", "align", "fill", "border", "titleSize", "titleColor", "titleFill", "areaFill", "shape"];
-const EDGE_KEYS = ["type", "from", "to", "fromSide", "toSide", "dir", "route", "dash", "weight", "color", "via"];
+const EDGE_KEYS = ["type", "from", "to", "fromSide", "toSide", "dir", "route", "dash", "weight", "color", "fromBlock", "toBlock", "via"];
 const MAX_PARENT_STRINGS = 200;
 const DAILY_GAP = 20;
 
@@ -548,8 +548,8 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
     return item ? semanticRef(item) : `((${id}))`;
   }
 
-  function edgeStringFor(from, to, dir, label) {
-    return edgeString({ srcRef: refOf(from), dstRef: refOf(to), dir, label });
+  function edgeStringFor(from, to, dir, label, srcBlock, dstBlock) {
+    return edgeString({ srcRef: refOf(from), dstRef: refOf(to), dir, label, srcBlock, dstBlock });
   }
 
   // ---- auto-fit ----
@@ -1455,14 +1455,14 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
       });
     },
 
-    addEdge({ from, to, fromSide, toSide, label = "", dir = "one" } = {}) {
+    addEdge({ from, to, fromSide, toSide, label = "", dir = "one", fromBlock, toBlock } = {}) {
       return txn((t) => {
         if (!from || !to || from === to || !board.items.has(from) || !board.items.has(to)) return null;
-        const existing = findEdge(board, from, to);
+        const props = serializeEdge({ from, to, dir, fromSide, toSide, fromBlock, toBlock });
+        const existing = [...board.edges.values()].find((e) => e.from === from && e.to === to && (e.fromBlock ?? "") === (props.fromBlock ?? "") && (e.toBlock ?? "") === (props.toBlock ?? ""));
         if (existing && existing.dir === dir) return existing.uid;
         const container = ensureContainer(t);
-        const props = serializeEdge({ from, to, dir, fromSide, toSide });
-        return t.create({ parent: container, order: "last", string: edgeStringFor(from, to, dir, label), plexus: props });
+        return t.create({ parent: container, order: "last", string: edgeStringFor(from, to, dir, label, props.fromBlock, props.toBlock), plexus: props });
       });
     },
 
@@ -1475,8 +1475,12 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
         t.props(id, next);
         const dir = rest.dir ?? edge.dir;
         const nextLabel = label ?? edge.label;
-        if (rest.dir !== undefined && rest.dir !== edge.dir || label !== undefined && label !== edge.label) {
-          t.string(id, edgeStringFor(edge.from, edge.to, dir, nextLabel));
+        const nextFrom = rest.from ?? edge.from;
+        const nextTo = rest.to ?? edge.to;
+        const merged = normalizeEdge(next);
+        const blocksChanged = (merged.fromBlock ?? "") !== (edge.fromBlock ?? "") || (merged.toBlock ?? "") !== (edge.toBlock ?? "");
+        if (rest.dir !== undefined && rest.dir !== edge.dir || label !== undefined && label !== edge.label || blocksChanged || nextFrom !== edge.from || nextTo !== edge.to) {
+          t.string(id, edgeStringFor(nextFrom, nextTo, dir, nextLabel, merged.fromBlock, merged.toBlock));
         }
       });
     },
@@ -1485,8 +1489,8 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
       return txn((t) => {
         const edge = board.edges.get(id);
         if (!edge) return;
-        t.props(id, edgePlexus(id, { from: edge.to, to: edge.from, fromSide: edge.toSide, toSide: edge.fromSide }));
-        t.string(id, edgeStringFor(edge.to, edge.from, edge.dir, edge.label));
+        t.props(id, edgePlexus(id, { from: edge.to, to: edge.from, fromSide: edge.toSide, toSide: edge.fromSide, fromBlock: edge.toBlock, toBlock: edge.fromBlock }));
+        t.string(id, edgeStringFor(edge.to, edge.from, edge.dir, edge.label, edge.toBlock, edge.fromBlock));
       });
     },
 
@@ -1513,7 +1517,7 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
       const src = board.items.get(edge.from);
       const dst = board.items.get(edge.to);
       if (!src || !dst) return { ok: false, reason: "unresolved" };
-      const dstRef = semanticRef(dst);
+      const dstRef = edge.toBlock ? `((${edge.toBlock}))` : semanticRef(dst);
       try {
         if (src.kind === "page") {
           const page = host.pullPage(src.target.title);
@@ -1660,8 +1664,10 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
         continue;
       }
       taken.add(key);
-      t.props(e.uid, edgePlexus(e.uid, { from, to, fromSide: moved.has(e.from) ? "auto" : e.fromSide, toSide: moved.has(e.to) ? "auto" : e.toSide }));
-      t.string(e.uid, edgeStringFor(from, to, e.dir, e.label));
+      const fromBlock = moved.has(e.from) ? undefined : e.fromBlock;
+      const toBlock = moved.has(e.to) ? undefined : e.toBlock;
+      t.props(e.uid, edgePlexus(e.uid, { from, to, fromSide: moved.has(e.from) ? "auto" : e.fromSide, toSide: moved.has(e.to) ? "auto" : e.toSide, fromBlock, toBlock }));
+      t.string(e.uid, edgeStringFor(from, to, e.dir, e.label, fromBlock, toBlock));
     }
   }
 

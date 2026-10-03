@@ -1150,12 +1150,12 @@ test("CSS contract (1.2): map tile clamp, overview tier, bare header, pin, focus
     assert.ok(at >= 0, `rule ${selector}`);
     return css.slice(at, css.indexOf("}", at));
   };
-  assert.match(rule(".pxd-root.pxd-lod-map .pxd-item.pxd-item--card:not(.pxd-item--editing)"), /container-type: size/);
+  assert.doesNotMatch(rule(".pxd-root.pxd-lod-map .pxd-item.pxd-item--card:not(.pxd-item--editing)"), /container-type:\s*size/);
   const header = rule(".pxd-root.pxd-lod-map .pxd-item.pxd-item--card:not(.pxd-item--editing) > .pxd-item__header");
   for (const decl of ["flex: 0 1 auto", "min-height: 0", "padding-bottom: 0", "max-height: calc(3 * 1.2em + 6px)", "line-height: 1.2", "overflow: hidden", "display: -webkit-box", "-webkit-box-orient: vertical", "-webkit-line-clamp: 3", "overflow-wrap: anywhere", "text-overflow: ellipsis"]) assert.ok(header.includes(decl), decl);
   assert.doesNotMatch(header, /flex:\s*1 1 auto/, "a stretched -webkit-box paints lines after the clamp");
   assert.match(rule(".pxd-root.pxd-lod-map .pxd-item.pxd-item--card.pxd-item--wb:not(.pxd-item--editing) > .pxd-item__header"), /max-height: calc\(1\.2em \+ 6px\)/);
-  assert.match(header, /font-size: min\(var\(--pxd-map-font\), calc\(\(100cqh - 12px\) \/ 3\.8\)\)/);
+  assert.match(header, /font-size: var\(--pxd-map-font\)/);
   assert.doesNotMatch(rule(".pxd-item"), /overflow:\s*hidden/, "ports sit across the card edge");
   assert.match(rule(".pxd-item__header"), /max-height: 100%;[^}]*overflow: hidden/);
   assert.match(css, /\.pxd-lod-map \.pxd-item--board \.pxd-item__body,\s*\.pxd-lod-map \.pxd-item--wb \.pxd-item__body \{\s*display: block/, "whiteboard-shortcut cards keep their thumbnail at map zoom");

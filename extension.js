@@ -9933,7 +9933,18 @@ function createItemRenderer({
     const prev = lod;
     lod = nextLod === "map" || nextLod === "overview" ? nextLod : "detail";
     setZoom(zoom);
-    if (showBadges && prev === "detail" !== (lod === "detail")) for (const rec of shells.values()) renderBadges(rec);
+    if (showBadges && prev === "detail" !== (lod === "detail")) {
+      if (lod !== "detail") {
+        for (const rec of shells.values()) {
+          if (!rec.badgeEl) continue;
+          rec.badgeEl.remove();
+          rec.badgeEl = null;
+          rec.badgeKey = null;
+        }
+      } else {
+        for (const rec of shells.values()) renderBadges(rec);
+      }
+    }
   };
   const previewMove = (uids, dx, dy, board2, rects) => {
     const set = new Set(uids);
@@ -15456,6 +15467,7 @@ function mountBoardView({
       vpStore.set(vpId, vp);
       dirty.edges = new Set(board2()?.edges.keys() || []);
       dirty.links = true;
+      dirty.minimap = true;
       schedule();
       updateBackToContent();
       refreshBadges();
@@ -18184,7 +18196,7 @@ function mountBoardView({
     } else if (dirty.viewport && chrome.ctx.isOpen()) {
       chrome.ctx.reposition();
     }
-    if (dirty.viewport || itemsChanged || dirty.minimap) chrome.minimap.update({ board: b, rects: paintRects(), vp, size });
+    if (itemsChanged || dirty.minimap || dirty.viewport && !gesturing) chrome.minimap.update({ board: b, rects: paintRects(), vp, size });
     if (itemsChanged && !gesturing) {
       scheduleContent();
       updateBackToContent();

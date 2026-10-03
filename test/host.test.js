@@ -251,10 +251,12 @@ test("uploadFile: string and {url} results, counts a write; absent throws", asyn
   assert.equal(got.file, file);
   fake.setUpload(async () => ({ url: "https://x/b.png" }));
   assert.equal(await host.uploadFile(file), "https://x/b.png");
-  assert.equal(host.stats.writes, 2);
+  fake.setUpload(async () => "![](https://example.com/imgs/app/Svy/pxd.png.enc?alt=media&token=00000000-0000-4000-8000-000000000000)");
+  assert.equal(await host.uploadFile(file), "https://example.com/imgs/app/Svy/pxd.png.enc?alt=media&token=00000000-0000-4000-8000-000000000000");
+  assert.equal(host.stats.writes, 3);
   fake.setUpload(async () => ({}));
   await assert.rejects(host.uploadFile(file), /upload-failed/);
-  assert.equal(host.stats.writes, 2);
+  assert.equal(host.stats.writes, 3);
 });
 
 test("getFile calls file.get and returns null when it is missing or throws; it is not a write", async () => {

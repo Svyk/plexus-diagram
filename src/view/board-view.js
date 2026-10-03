@@ -798,6 +798,7 @@ export function mountBoardView({
       vpStore.set(vpId, vp);
       dirty.edges = new Set(board()?.edges.keys() || []); // arrow sizes depend on zoom
       dirty.links = true;
+      dirty.minimap = true;
       schedule();
       updateBackToContent();
       refreshBadges();
@@ -3020,7 +3021,7 @@ export function mountBoardView({
     } else if (dirty.viewport && chrome.ctx.isOpen()) {
       chrome.ctx.reposition();
     }
-    if (dirty.viewport || itemsChanged || dirty.minimap) chrome.minimap.update({ board: b, rects: paintRects(), vp, size });
+    if (itemsChanged || dirty.minimap || (dirty.viewport && !gesturing)) chrome.minimap.update({ board: b, rects: paintRects(), vp, size });
     if (itemsChanged && !gesturing) {
       scheduleContent();
       updateBackToContent();

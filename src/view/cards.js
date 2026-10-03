@@ -996,7 +996,18 @@ export function createItemRenderer({
     const prev = lod;
     lod = nextLod === "map" || nextLod === "overview" ? nextLod : "detail";
     setZoom(zoom);
-    if (showBadges && (prev === "detail") !== (lod === "detail")) for (const rec of shells.values()) renderBadges(rec);
+    if (showBadges && (prev === "detail") !== (lod === "detail")) {
+      if (lod !== "detail") {
+        for (const rec of shells.values()) {
+          if (!rec.badgeEl) continue;
+          rec.badgeEl.remove();
+          rec.badgeEl = null;
+          rec.badgeKey = null;
+        }
+      } else {
+        for (const rec of shells.values()) renderBadges(rec);
+      }
+    }
   };
 
   // ---------------------------------------------------------------- preview during gestures

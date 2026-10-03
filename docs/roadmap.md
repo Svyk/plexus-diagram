@@ -86,6 +86,7 @@ Native diagrams are React Flow (`.react-flow`, nodes `.react-flow__node-block`).
 | P6 | Performance and reliability | 1.8.0 | PF-6 done 2026-10-03. PF-2 remeasured again the same day: pan is 60 fps and the LOD switch no longer makes a long task. Open and a locked 60 fps zoom are still short. |
 | P7 | Look, feel and accessibility | 1.9.0 | gate passed 2026-10-02, `7ffd95c` |
 | P8 | Docs, hardening and 2.0 | 2.0.0 | tagged `v2.0.0` on 2026-10-03. PF-2 stays a known limit. |
+| P9 | Whole pages, block arrows, card children | 2.1.0 | open |
 
 Order matters: P1 and P2 are the user's direct requests. Within a phase, do tasks in the listed order unless one is blocked.
 
@@ -217,6 +218,39 @@ Order matters: P1 and P2 are the user's direct requests. Within a phase, do task
 - [x] **HARD-2 Migration from every past version** (S) — done 2026-10-02, `b4b8252`: fixtures for 0.4, 0.6, 1.0, 1.1, and 1.2 open through the session and the view, and the host log stays empty. — Boards created by 0.4, 0.6, 1.0, 1.1 and 1.2 open on 2.0 with no writes on open. Accept: fixtures for each in tests.
 - [x] **HARD-3 Restore native, full round trip** (S) — done 2026-10-02, `6c7f31f`: Readwisenotes BNIFCZf8W imported two native nodes, then a move, teal, and section vb4eeZCwm survived Restore with the native nodes byte-identical (.live/shots/HARD-3-native.png) and came back on a second Enhance with kind kept (.live/shots/HARD-3-kept.png). — Enhance → edit heavily → Restore native diagram → the native diagram renders its original nodes; re-enhance restores the Plexus layout. Accept: live on Test Lab.
 - [x] **REL-1 2.0 release** — tagged `v2.0.0` on 2026-10-03. The badge reads 2.0.0. PF-6 is done. PF-2 is recorded as a known limit: shells in 894 ms, detail pan 60 fps, overview 56 fps, zoom 44–55 fps, LOD long task 152 ms. — standing gate, tag `v2.0.0`, GitHub release notes.
+
+### P9: Whole pages, block arrows, card children (2.1.0)
+
+Svyat's asks on 2026-10-03, approved as proposed ("build it all"), built in this order because block arrows need page cards:
+
+1. Full pages on the board: any page as a card with a title header and the whole outline, scrollable and editable like daily-page cards.
+2. Arrows to a single block or to the page: while dragging an arrow over a page card, the block under the pointer lights up; dropping there connects to that block, dropping on the title connects to the page. The connection block holds a real Roam ref to that block, so it shows in Roam's backlinks.
+3. A card shows only its own block by default. A "▸ N" badge unfolds the children as an outline under the card and is remembered per card (written only on click). Hovering the badge previews them. "Spread children as cards" makes one card per child with an arrow back.
+
+Pages:
+
+- [ ] **PG-1 Whole outline in page cards** (M) — A page card renders the full page outline, not the 2-level, 12-block preview: all levels, Roam-collapsed blocks shown folded, render cap 300 rows with a "+N more" row that opens the page. The body scrolls inside the card when it is taller than the card; a plain wheel over a scrollable page body scrolls the body until it hits an end, Cmd/Ctrl+wheel still zooms the board. Every rendered row carries `data-pxd-row="<block uid>"`. Content refreshes when the page changes outside the board without breaking the "one pull watch per mounted board" budget: reuse the existing refresh path, or watch at most 8 page cards that are on screen. Accept: a 40-block, 4-level page renders completely and scrolls; an outside edit shows up; the typing gate holds.
+- [ ] **PG-2 Title header** (S) — Page cards always show the page title as a header row (both looks). Click opens the page in the main window, Shift-click in the right sidebar; F2 rename (ED-10) is unchanged. Accept: each gesture live.
+- [ ] **PG-3 Edit where you click** (S) — Clicking a row of a page card enters the existing `renderPage` editor with the caret in that block and the body scrolled to the same place. Accept: click the 30th row of a long page, type, Esc; the text lands in that block.
+- [ ] **PG-4 Add page** (S) — "Add page…" in the Commands list (no new palette entry, PF-1) and the canvas context menu opens a page search and adds `[[Title]]` as a page card (360×480) at the cursor or the view center. An existing card for that page on the board is selected and pulsed instead of duplicated. Accept: add one page, add it again.
+- [ ] **PG-5 Drop pages from anywhere** (M) — Dropping a page from the left sidebar, a right-sidebar window, search results, or a page link inside a block creates a page card; a dropped block URL creates a block-ref card. Measure the real `dataTransfer` types for each source live first and record them in section 8; parse `#/app/<graph>/page/<uid>` URLs (page uid → title; block uid → ref card), `[[Title]]` text, and the existing `roam/block-uid-list`. Accept: each source live.
+- [ ] **PG-6 Gate** — standing gate.
+
+Block arrows:
+
+- [ ] **BA-1 Block ends in the model** (S) — Edge props `fromBlock` / `toBlock` (a block uid on the page of the card at that end; validated, unknown values dropped, serialized only when set). The connection block writes `((uid))` for a block end instead of `[[Page]]`, so the arrow shows in that block's references. Boards without the keys are unchanged (HARD-1 and HARD-2 fixtures still pass). Accept: unit tests for normalize, serialize, and the connection string.
+- [ ] **BA-2 Drop an arrow on a block** (M) — While dragging a new arrow or an existing arrow end over a page card, the row under the pointer highlights (`.pxd-row--target`) and the title header highlights for the page. Releasing on a row sets that block end; on the header or the card body it clears it. One write per drop, one Cmd+Z undoes it. Accept: connect a note card to the 3rd row of a page card, then move that end to the header.
+- [ ] **BA-3 Ends follow the row** (M) — A block end is drawn at the row's vertical center on the card side facing the other end, and follows card moves, body scroll, folding, resizing and re-render (batched per frame, no layout reads for edges without block ends). When the row is scrolled out of the card or hidden under a fold, the end sticks to the card's top or bottom edge with a small marker; clicking the marker scrolls the body to the row and flashes it, or opens the block in the right sidebar when it is not rendered. Accept: scroll the page card and watch the end move, then clamp with a marker; click the marker.
+- [ ] **BA-4 Menus and graph writes** (S) — The arrow menu gets "Connect to the page instead" for a block end, the end tooltip shows the block text, and "Write to graph" writes `label:: ((uid))` for block ends. Accept: live.
+- [ ] **BA-5 Gate** — standing gate.
+
+Card children:
+
+- [ ] **CH-1 Own block only, with a badge** (M) — A note card or block-ref card whose block has children shows only its own block unless its `plexus.kids` is true (new key, serialized only when true). A "▸ N" badge (N = direct children) sits on the bottom edge and reads "▾ N" when open; clicking it toggles `kids` with one props write that one Cmd+Z undoes. Nothing is written on open or render. While editing, children stay hidden by a class scoped to that card when `kids` is not true. The NP-2 toolbar Expand button toggles the same `kids` key. Accept: alpha with child beta shows only alpha and "▸ 1"; click shows beta; undo hides it; reopen the board and the state is kept.
+- [ ] **CH-2 Open children are an editable outline** (S) — With `kids` on, the children render as an outline under the card text inside the card; the card grows and its section auto-fits. Click a child to edit (caret in that child). Accept: edit a child in place.
+- [ ] **CH-3 Peek on hover** (S) — Hovering the badge 400 ms shows a read-only popover with up to 12 children, 2 levels; it closes on leave, never shows during a drag, and writes nothing. Accept: live.
+- [ ] **CH-4 Spread children as cards** (M) — Card menu "Spread children as cards": one block-ref card `((child))` per direct child, in a column to the right of the card (40 gap), each with an arrow from the card, capped at 22 children (2 writes each, under `BULK_CARD_CAP`) with the usual toast past the cap. Children already on the board as cards are skipped. One Cmd+Z per the existing bulk-undo pattern. Accept: spread a card with 3 children, undo.
+- [ ] **CH-5 Gate and release 2.1.0** — standing gate, README and CHANGELOG, tag `v2.1.0`.
 
 ## 6. Later (ideas not scheduled)
 

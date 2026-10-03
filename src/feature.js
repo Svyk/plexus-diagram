@@ -447,6 +447,17 @@ export async function installPlexusDiagram({
     if (titlePanel) titlePanel.style.display = "none";
     native.after(mountEl);
     mounts.set(native, rec);
+    // A diagram inside the right sidebar is a copy in a window the user may never scroll to.
+    // Leave a gap and let the viewport watcher build the canvas only when that window is on screen.
+    if (inRightSidebar(native) && typeof IntersectionObserver === "function") {
+      const h = native.getBoundingClientRect?.().height || 0;
+      rec.mountEl.style.minHeight = `${Math.max(160, Math.round(h))}px`;
+      rec.dormant = true;
+      ensureViewportWatch();
+      recByMount.set(mountEl, rec);
+      viewportWatch?.observe(mountEl);
+      return rec;
+    }
     try {
       rec.session = acquireSession(currentUid(rec), { host, settings: liveSettings });
       rec.fullscreen = settings[SETTING_IDS.fullscreenOnZoom] !== false
@@ -485,10 +496,19 @@ export async function installPlexusDiagram({
       .catch((error) => console.warn("[plexus-diagram] 0.6 import failed", uid, error));
   }
 
+  function inRightSidebar(node) {
+    for (let cur = node; cur; cur = cur.parentElement) {
+      if (cur.id === "right-sidebar") return true;
+      if (cur.classList?.contains?.("rm-sidebar-window") || cur.classList?.contains?.("rm-right-sidebar")) return true;
+    }
+    return false;
+  }
+
   // An offscreen board still holds its card shells, and a keystroke is a Roam transaction
   // that walks that DOM. Park the board as a sized gap and bring it back when it nears the viewport.
   const recByMount = new WeakMap();
   let viewportWatch = null;
+  let sidebarWatch = null;
   function ensureViewportWatch() {
     if (viewportWatch || typeof IntersectionObserver !== "function") return;
     viewportWatch = new IntersectionObserver((entries) => {
@@ -500,12 +520,12 @@ export async function installPlexusDiagram({
       }
     }, { rootMargin: "60px" });
   }
-  function hibernate(rec) {
+  function hibernate(rec, { force = false } = {}) {
     if (!rec || rec.dormant || rec.fullscreen || !rec.view) return;
     if (doc.activeElement && rec.mountEl.contains?.(doc.activeElement)) return;
     const height = rec.mountEl.getBoundingClientRect?.().height || 0;
-    if (height < 40) return;
-    rec.mountEl.style.minHeight = `${Math.round(height)}px`;
+    if (height < 40 && !force) return;
+    rec.mountEl.style.minHeight = `${Math.max(40, Math.round(height))}px`;
     try { rec.off?.(); } catch { /* ignore */ }
     rec.off = null;
     try { rec.view.dispose(); } catch (error) { console.warn("[plexus-diagram] hibernate failed", error); }
@@ -527,6 +547,8 @@ export async function installPlexusDiagram({
       }
       rec.view = mountRecView(rec);
       rec.off = watchRec(rec);
+      if (!embedOwnerUid(rec.native, (id) => host.blockString?.(id))) collapseOnce(currentUid(rec), rec.native);
+      if (currentUid(rec) === rec.uid) migrateLegacy(rec);
     } catch (error) {
       console.error("[plexus-diagram] Wake failed; native diagram restored", error);
       unmount(rec);
@@ -612,6 +634,7 @@ export async function installPlexusDiagram({
 
   function reconcile() {
     if (stopped) return;
+    ensureSidebarWatch();
     for (const rec of [...mounts.values()]) {
       if (rec.native.isConnected === false || rec.mountEl.isConnected === false) unmount(rec);
     }
@@ -1042,6 +1065,27 @@ export async function installPlexusDiagram({
       armWake();
     }, true);
   }
+  const parkMainForSidebar = () => {
+    for (const rec of mounts.values()) {
+      if (inRightSidebar(rec.native) || inRightSidebar(rec.mountEl)) continue;
+      hibernate(rec, { force: true });
+    }
+    armWake();
+  };
+  function ensureSidebarWatch() {
+    if (sidebarWatch || typeof MutationObserver !== "function") return;
+    const article = doc.querySelector?.(".rm-article-wrapper");
+    if (!article) return;
+    let open = article.classList?.contains?.("rm-spacing--right-sidebar-open");
+    sidebarWatch = new MutationObserver(() => {
+      const next = article.classList?.contains?.("rm-spacing--right-sidebar-open");
+      if (next && !open) parkMainForSidebar();
+      open = next;
+    });
+    sidebarWatch.observe(article, { attributes: true, attributeFilter: ["class"] });
+  }
+  ensureSidebarWatch();
+  lifecycle.add(() => { sidebarWatch?.disconnect(); sidebarWatch = null; });
   lifecycle.add(() => { if (wakeTimer) clearTimeout(wakeTimer); stopParkKeys(); });
   if (typeof win.addEventListener === "function") {
     lifecycle.event(win, "hashchange", onNavigate);

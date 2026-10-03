@@ -280,6 +280,7 @@ Fill in as phases run. Keep the newest at the top of each list.
 - PF-6, 2026-10-02: On CbErrnIPJ, 30 ops matched 6 cards and 4 edges across the main canvas, the sidebar, and the pull, and a second Roam window could not be opened.
 - PF-7, 2026-10-02: On CbErrnIPJ one undo restored a 2-card move, an align, a distribute, a 3-line paste, a SWOT insert, and a 2-node mind map.
 - PF-8, 2026-10-02: A failing props write stayed optimistic through 3 retries, then reverted and toasted.
+- Sidebar open, 2026-10-03: Test Lab's right sidebar held 143 windows and 9 diagram mounts. After the gap change, 1 mount was on screen (785 nodes) and 8 off-screen mounts stayed 160px gaps with no canvas. Opening the sidebar also parks the boards on the page until the scroll settles.
 
 | Gesture | Undo steps |
 | --- | --- |

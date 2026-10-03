@@ -329,6 +329,52 @@ test("session() acquires a board session and the caller releases it", async () =
   });
 });
 
+test("a diagram in the right sidebar stays a gap until it is on screen", async () => {
+  const prev = globalThis.IntersectionObserver;
+  globalThis.IntersectionObserver = class {
+    observe() {}
+    unobserve() {}
+    disconnect() {}
+  };
+  try {
+    await withEnv({ enhanced: ["boardAAA1"] }, async (t) => {
+      const side = t.doc.createElement("div");
+      side.id = "right-sidebar";
+      t.doc.body.append(side);
+      const { native } = addNative(t.doc, "boardAAA1", { parent: side });
+      await t.install();
+      t.tick();
+      assert.equal(t.views.length, 0, "the sidebar copy does not build a canvas");
+      assert.equal(t.sessions.acquired, 0);
+      assert.ok(native.classList.contains("pxd-native-hidden"));
+      const mountEl = native.parentElement.children[native.parentElement.children.indexOf(native) + 1];
+      assert.ok(mountEl.cls.has("pxd-mount"));
+      assert.equal(mountEl.style.minHeight, "160px");
+    });
+  } finally {
+    if (prev) globalThis.IntersectionObserver = prev;
+    else delete globalThis.IntersectionObserver;
+  }
+});
+
+test("opening the right sidebar parks the boards on the page", async () => {
+  await withEnv({ enhanced: ["boardAAA1"] }, async (t) => {
+    const article = t.doc.createElement("div");
+    article.cls.add("rm-article-wrapper");
+    t.doc.app.append(article);
+    addNative(t.doc, "boardAAA1", { parent: article });
+    await t.install();
+    t.tick();
+    assert.equal(t.views.length, 1);
+    const watch = [...t.env.observers].find((observer) => observer.target === article);
+    assert.ok(watch, "the article is watched for the sidebar class");
+    article.cls.add("rm-spacing--right-sidebar-open");
+    watch.callback();
+    assert.equal(t.views[0].disposed, 1);
+    assert.equal(t.sessions.released, 1);
+  });
+});
+
 test("PACKAGE_VERSION comes from package.json", async () => {
   const { readFile } = await import("node:fs/promises");
   const pkg = JSON.parse(await readFile(new URL("../package.json", import.meta.url), "utf8"));

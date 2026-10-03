@@ -85,7 +85,7 @@ Native diagrams are React Flow (`.react-flow`, nodes `.react-flow__node-block`).
 | P5 | Roam graph superpowers | 1.7.0 | todo |
 | P6 | Performance and reliability | 1.8.0 | todo |
 | P7 | Look, feel and accessibility | 1.9.0 | todo |
-| P8 | Docs, hardening and 2.0 | 2.0.0 | todo |
+| P8 | Docs, hardening and 2.0 | 2.0.0 | HARD-3 done 2026-10-02, `6c7f31f`. REL-1 blocked on the typing gate. |
 
 Order matters: P1 and P2 are the user's direct requests. Within a phase, do tasks in the listed order unless one is blocked.
 
@@ -215,8 +215,8 @@ Order matters: P1 and P2 are the user's direct requests. Within a phase, do task
 - [x] **DOC-4 Roam Depot listing** (S) — done 2026-10-02, `8c2e6e1`: the Depot draft, three fixture shots, and the metadata file are in docs/depot, and the pull request is not opened. — Description, screenshots, and the Depot PR material ready in `docs/depot/` (do not open a PR; the user decides).
 - [x] **HARD-1 Fuzz the schema** (S) — done 2026-10-02, `afbf941`: random junk props on card, section, and text still render, and the host log stays empty until a color edit. — Property tests over random props (unknown keys, wrong types, huge numbers, NaN) for every item type; the board renders and nothing is written back unless the user edits.
 - [x] **HARD-2 Migration from every past version** (S) — done 2026-10-02, `b4b8252`: fixtures for 0.4, 0.6, 1.0, 1.1, and 1.2 open through the session and the view, and the host log stays empty. — Boards created by 0.4, 0.6, 1.0, 1.1 and 1.2 open on 2.0 with no writes on open. Accept: fixtures for each in tests.
-- [ ] **HARD-3 Restore native, full round trip** (S) — Enhance → edit heavily → Restore native diagram → the native diagram renders its original nodes; re-enhance restores the Plexus layout. Accept: live on Test Lab.
-- [ ] **REL-1 2.0 release** — standing gate, tag `v2.0.0`, GitHub release notes.
+- [x] **HARD-3 Restore native, full round trip** (S) — done 2026-10-02, `6c7f31f`: Readwisenotes BNIFCZf8W imported two native nodes, then a move, teal, and section vb4eeZCwm survived Restore with the native nodes byte-identical (.live/shots/HARD-3-native.png) and came back on a second Enhance with kind kept (.live/shots/HARD-3-kept.png). — Enhance → edit heavily → Restore native diagram → the native diagram renders its original nodes; re-enhance restores the Plexus layout. Accept: live on Test Lab.
+- [!] **REL-1 2.0 release** — blocked: the standing typing gate is already failed (UI-11 was +3923.77 ms/key, PF-10 was +9501.72 ms/key). 2.0.0 is not tagged. Unblock when a no-board typing delta is at most +0.1 ms/key. — standing gate, tag `v2.0.0`, GitHub release notes.
 
 ## 6. Later (ideas not scheduled)
 
@@ -249,6 +249,7 @@ AI agent features inside the board, SuperTag-style typed schemas or class tags, 
 
 Fill in as phases run. Keep the newest at the top of each list.
 
+- HARD-3, 2026-10-02: On Readwisenotes BNIFCZf8W, Enhance imported 2 native nodes. A move, teal, and section vb4eeZCwm survived Restore with the native nodes byte-identical and the marker cleared, and a second Enhance returned kind kept with the same x, y, color, and section. `npm run check` 843 pass.
 - PF-1, 2026-10-02: palette cut to Commands… and New whiteboard here. Typing after the cut was +213.88 ms/key (260.93 injected, 47.05 unloaded, 200 keys, 13 roots). Before the cut it was +95.68. Unload left 0. `npm run check` 812 pass.
 - TP-9, 2026-10-01: Test Lab typing +64.51 ms/key with 13 roots (8401 pxd nodes). Unload left 0. `npm run check` 769 pass.
 - HB-7, 2026-10-01: On vc8Skaj5K the context bar's eight align and distribute buttons each moved SwK9l7wCD, Or6gEkteS, and kTpG_g1yi, and one Cmd+Z put the three props back. Section h stayed 241.1.

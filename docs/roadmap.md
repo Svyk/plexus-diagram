@@ -86,7 +86,7 @@ Native diagrams are React Flow (`.react-flow`, nodes `.react-flow__node-block`).
 | P6 | Performance and reliability | 1.8.0 | PF-6 done 2026-10-03. PF-2 remeasured again the same day: pan is 60 fps and the LOD switch no longer makes a long task. Open and a locked 60 fps zoom are still short. |
 | P7 | Look, feel and accessibility | 1.9.0 | gate passed 2026-10-02, `7ffd95c` |
 | P8 | Docs, hardening and 2.0 | 2.0.0 | tagged `v2.0.0` on 2026-10-03. PF-2 stays a known limit. |
-| P9 | Whole pages, block arrows, card children | 2.1.0 | done 2026-10-03, tagged `v2.1.0` |
+| P9 | Whole pages, block arrows, card children | 2.1.0 | done 2026-10-03, tagged `v2.1.0`, `08005e2` |
 
 Order matters: P1 and P2 are the user's direct requests. Within a phase, do tasks in the listed order unless one is blocked.
 
@@ -250,7 +250,7 @@ Card children:
 - [x] **CH-2 Open children are an editable outline** (S) — done 2026-10-03, `8739579`: clicked beta in the open outline: textarea for beta focused, typed Z, Esc wrote Zbeta; card grew to 150 px (.live/shots/CH-2.png). Original task: With `kids` on, the children render as an outline under the card text inside the card; the card grows and its section auto-fits. Click a child to edit (caret in that child). Accept: edit a child in place.
 - [x] **CH-3 Peek on hover** (S) — done 2026-10-03, `8739579`: hover 250 ms no popover, 750 ms showed the rows, mouse leave closed it, :edit/time unchanged (.live/shots/CH-3.png). Original task: Hovering the badge 400 ms shows a read-only popover with up to 12 children, 2 levels; it closes on leave, never shows during a drag, and writes nothing. Accept: live.
 - [x] **CH-4 Spread children as cards** (M) — done 2026-10-03, `8739579`: Spread on alpha (beta, gamma, delta) made 3 ref cards and 3 arrows in one column at +40, one Cmd+Z removed all of them (.live/shots/CH-4.png). Original task: Card menu "Spread children as cards": one block-ref card `((child))` per direct child, in a column to the right of the card (40 gap), each with an arrow from the card, capped at 22 children (2 writes each, under `BULK_CARD_CAP`) with the usual toast past the cap. Children already on the board as cards are skipped. One Cmd+Z per the existing bulk-undo pattern. Accept: spread a card with 3 children, undo.
-- [ ] **CH-5 Gate and release 2.1.0** — standing gate, README and CHANGELOG, tag `v2.1.0`.
+- [x] **CH-5 Gate and release 2.1.0** — done 2026-10-03, `08005e2`, tag `v2.1.0`: npm run check green (925 tests), Pages extension.js and extension.css cmp equal to the local build. Original task: standing gate, README and CHANGELOG, tag `v2.1.0`.
 
 ## 6. Later (ideas not scheduled)
 

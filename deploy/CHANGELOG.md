@@ -1,11 +1,16 @@
 # Changelog
 
-## Unreleased
+## 2.1.0 — 2026-10-03
 
 - Enter in a card adds a line to the card's block, like a node in a native Roam diagram. Settings, Cards, "Enter in a card" set to Child brings back the old behavior of making a child block.
 - An empty white panel with a Close button no longer covers boards.
 - Pasting one image into a card inserted it twice. It now inserts once.
 - Dragging an image onto a card that is being edited works. Dropping an image on a card adds it after the card's text instead of replacing the text.
+- Whole-page cards: a page card shows the page title as a header and the whole outline, scrolls inside the card, and edits where you click. Add page… in the canvas menu adds a page by search. Dropping a page from the left sidebar makes a page card.
+- Arrows to a single block. Drag an arrow end over a page card and the row under the pointer lights up; dropping there connects to that block with a real `((ref))`, so it shows in Roam's backlinks. Dropping on the title connects to the page. Ends follow their row as the card scrolls and clamp to the edge with a marker when the row is out of view. A selected arrow has end handles to re-aim it, and the arrow menu has Connect to the page instead.
+- Card children. A note, block or ref card shows only its own block. A ▸ N badge opens the children as an editable outline inside the card, remembered per card, and hovering the badge peeks at them. Spread children as cards makes one card per child with an arrow back.
+- Note: note and ref cards now show only their own block until the badge is opened.
+- A selected arrow's end handle could only be grabbed on the half outside the card it ends on. The whole handle now grabs.
 
 ## 2.0.0 — 2026-10-03
 

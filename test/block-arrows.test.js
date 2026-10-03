@@ -421,3 +421,17 @@ test("BA-4: Write to graph writes label:: ((uid)) when the target end is a block
   assert.deepEqual(res, { ok: true, reason: "created" });
   assert.equal(fake.block(fake.children("pageA").at(-1)).string, "cites:: ((row000003))");
 });
+
+test("edgeEndNear grabs a handle whose centre sits under a card", async () => {
+  const { edgeEndNear } = await import("../src/view/board-view.js");
+  const handle = (cx, cy, end) => ({
+    dataset: { end },
+    getBoundingClientRect: () => ({ left: cx - 6, top: cy - 6, width: 12, height: 12 }),
+    closest: () => ({ dataset: { uid: "eAB" } }),
+  });
+  const root = { querySelectorAll: () => [handle(400, 200, "to"), handle(100, 100, "from")] };
+  assert.deepEqual(edgeEndNear(root, 400, 200), { kind: "edge-end", uid: "eAB", end: "to" });
+  assert.deepEqual(edgeEndNear(root, 408, 200), { kind: "edge-end", uid: "eAB", end: "to" });
+  assert.equal(edgeEndNear(root, 420, 200), null);
+  assert.equal(edgeEndNear({ querySelectorAll: () => [] }, 400, 200), null);
+});

@@ -185,6 +185,23 @@ export function pageRenameNeedsConfirm(refCount) {
   return Number(refCount) > 10;
 }
 
+// An arrow end handle sits half under the card it ends on, so the card wins the browser hit-test there.
+// A pointer within `radius` px of a handle centre grabs the handle instead.
+export function edgeEndNear(root, x, y, radius = 10) {
+  const handles = root?.querySelectorAll?.(".pxd-edge__end");
+  if (!handles?.length) return null;
+  let best = null;
+  let bestD = radius;
+  for (const h of handles) {
+    const r = h.getBoundingClientRect();
+    const d = Math.hypot(r.left + r.width / 2 - x, r.top + r.height / 2 - y);
+    if (d <= bestD) { best = h; bestD = d; }
+  }
+  if (!best) return null;
+  const edge = best.closest?.(".pxd-edge");
+  return { kind: "edge-end", uid: edge?.dataset?.uid || edge?.getAttribute?.("data-uid"), end: best.dataset?.end || best.getAttribute?.("data-end") };
+}
+
 export function toggleTodoAt(string, index = 0) {
   if (typeof string !== "string") return null;
   const marks = [...string.matchAll(/\{\{\[\[(?:TODO|DONE)\]\]\}\}/g)];
@@ -2607,7 +2624,7 @@ export function mountBoardView({
       screen,
       client: { x: event.clientX || 0, y: event.clientY || 0 },
       world: screenToWorld(vp, screen),
-      target: targetOf(event.target),
+      target: edgeEndNear(root, event.clientX || 0, event.clientY || 0) || targetOf(event.target),
       button: event.button ?? 0,
       buttons: event.buttons ?? 0,
       shift: Boolean(event.shiftKey),

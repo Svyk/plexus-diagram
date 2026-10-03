@@ -1,6 +1,8 @@
 // PRE-4 baselines. Real CDP keys into one scratch block, then open-time of a board.
 //   node tools/live/bench.mjs [titleSubstring]
 import { writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { fileURLToPath } from "node:url";
 
 const PORT = process.env.CDP_PORT || 9223;
 const sel = process.argv[2] || "Readwisenotes - ";
@@ -127,16 +129,21 @@ async function main() {
     live = await evaluate(ws, `!!window.__pxdLive`);
   }
   const title = await evaluate(ws, `document.title`);
-  await evaluate(ws, `(async () => {
+  // Scratch block: made on Test Lab for this run and ledgered (ledger cleanup removes it afterwards).
+  const uid = await evaluate(ws, `(async () => {
     const api = window.roamAlphaAPI;
     const page = "Plexus Diagram/Test Lab";
     await api.ui.mainWindow.openPage({ page: { title: page } });
     await new Promise((r) => setTimeout(r, 400));
-    const uid = "SQo1XCFLi";
+    const pageUid = api.q('[:find ?u . :where [?p :node/title "' + page + '"] [?p :block/uid ?u]]');
+    const uid = api.util.generateUID();
+    await api.data.block.create({ location: { "parent-uid": pageUid, order: "last" }, block: { uid, string: "" } });
     await api.ui.mainWindow.openBlock({ block: { uid } });
     await new Promise((r) => setTimeout(r, 500));
-    return location.hash;
+    return uid;
   })()`);
+  const ledgerPath = fileURLToPath(new URL("./ledger.mjs", import.meta.url));
+  spawnSync(process.execPath, [ledgerPath, "add", uid, "bench scratch block", "--page", "Plexus Diagram/Test Lab"], { encoding: "utf8" });
   await clickEditor(ws);
   const injected = live ? await typeKeys(ws) : null;
 
@@ -155,8 +162,8 @@ async function main() {
 
   await evaluate(ws, `(async () => {
     const api = window.roamAlphaAPI;
-    await api.data.block.update({ block: { uid: "SQo1XCFLi", string: "" } });
-    await api.ui.mainWindow.openBlock({ block: { uid: "SQo1XCFLi" } });
+    await api.data.block.update({ block: { uid: ${JSON.stringify(uid)}, string: "" } });
+    await api.ui.mainWindow.openBlock({ block: { uid: ${JSON.stringify(uid)} } });
     await new Promise((r) => setTimeout(r, 400));
   })()`);
   await clickEditor(ws);

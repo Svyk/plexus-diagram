@@ -2099,6 +2099,12 @@ var ATTRIBUTE_TEMPLATE = [
 var FOCUS_MS = 25 * 60 * 1e3;
 var THUMBNAIL_CAP = 4;
 var VIA_CAP = 8;
+function cardLabel(item) {
+  const title = String(item?.title ?? "").trim();
+  if (title) return title;
+  const line = String(item?.string ?? "").split("\n").map((s) => s.trim()).find(Boolean) || "";
+  return line.slice(0, 80);
+}
 function highlightHits(string) {
   const out = [];
   const re = /\^\^([\s\S]*?)\^\^/g;
@@ -2120,7 +2126,7 @@ function galleryItems(board2) {
     if (item.type !== "card") continue;
     const src = item.kind === "image" ? imageSrcOf(item.string) : imageSrcOf(item.string);
     if (item.kind !== "image" && !src) continue;
-    out.push({ uid: item.uid, title: item.title || "", src });
+    out.push({ uid: item.uid, title: cardLabel(item), src });
   }
   return out;
 }
@@ -2182,7 +2188,7 @@ function timelineAxis(cards, { width = 800 } = {}) {
   const span = dated[dated.length - 1].t - min || 1;
   return dated.map((row2) => ({
     uid: row2.card.uid,
-    title: row2.card.title || "",
+    title: cardLabel(row2.card),
     t: row2.t,
     x: (row2.t - min) / span * width
   }));
@@ -14599,7 +14605,7 @@ function mountLater({ doc = globalThis.document, root, getBoard, onClose } = {})
       node2.className = "pxd-later__node";
       node2.style.left = `${Math.round(160 + p.x)}px`;
       node2.style.top = `${Math.round(120 + p.y)}px`;
-      node2.textContent = board2.items.get(uid)?.title || uid;
+      node2.textContent = cardLabel(board2.items.get(uid)) || uid;
       body.append(node2);
     }
   };

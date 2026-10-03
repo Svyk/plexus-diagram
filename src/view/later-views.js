@@ -1,6 +1,6 @@
 // Gallery, timeline, and derived-link graph. Read-only overlays. Nothing here writes the graph.
 
-import { derivedGraph, galleryGrid, galleryItems, graphLayout, printPages, timelineAxis } from "../model/section6.js";
+import { cardLabel, derivedGraph, galleryGrid, galleryItems, graphLayout, printPages, timelineAxis } from "../model/section6.js";
 
 const TITLES = { gallery: "Gallery", timeline: "Timeline", graph: "Graph" };
 
@@ -90,7 +90,7 @@ export function mountLater({ doc = globalThis.document, root, getBoard, onClose 
       node.className = "pxd-later__node";
       node.style.left = `${Math.round(160 + p.x)}px`;
       node.style.top = `${Math.round(120 + p.y)}px`;
-      node.textContent = board.items.get(uid)?.title || uid;
+      node.textContent = cardLabel(board.items.get(uid)) || uid;
       body.append(node);
     }
   };

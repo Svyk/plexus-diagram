@@ -8,6 +8,7 @@ import {
   commentCount,
   derivedGraph,
   galleryGrid,
+  cardLabel,
   galleryItems,
   graphLayout,
   highlightHits,
@@ -58,6 +59,7 @@ test("calendar, timeline, and read-only graph", () => {
   assert.deepEqual(slots.map((s) => s.uid), ["d1", "d2"]);
   assert.ok(slots[1].x > slots[0].x);
   const axis = timelineAxis(cards, { width: 100 });
+  assert.equal(cardLabel({ title: "", string: "Fixture source\nmore" }), "Fixture source");
   assert.equal(axis[0].uid, "d1");
   assert.equal(axis[0].x, 0);
   assert.equal(axis[1].x, 100);

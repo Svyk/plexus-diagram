@@ -226,7 +226,7 @@ Pick from here only when every phase above is done or blocked.
 - Gallery view of a board (image-first grid). Done 2026-10-03: canvas menu Gallery. Test `highlight marks and gallery grid`.
 - Calendar lane: a section that lays out daily-page cards by date. Done 2026-10-03: look `calendar`, menu "Lay out by date", one props write per card, cap 45. Test `calendar, timeline, and read-only graph`.
 - Timeline view: cards with a date attribute on a horizontal axis. Done 2026-10-03: canvas menu Timeline. Same test.
-- Graph view of a board's derived links (force layout, read-only). Done 2026-10-03: canvas menu Graph. Positions are not written. Same test.
+- Graph view of a board's derived links (force layout, read-only). Done 2026-10-03: canvas menu Graph. Positions are not written. Same test. Live on Test Lab the same day: Gallery showed 1 image, Timeline said "No dated cards", Graph drew 8 nodes, Highlight marks toggled off again. A card with no title uses the first line of its block.
 - Card version peek: Roam's block history for a card, if Roam exposes it. Done 2026-10-03: the menu asks `versionPeekRequest` and toasts that history is missing unless `api.block.history` or `api.ui.blockHistory` exists. No fake history.
 - Comments on cards via Roam's native comments (`add_comment` surface), shown as a count badge. Done 2026-10-03: `commentCount` paints a count chip. Test `comments, templates, notes, print, and versions`.
 - Highlight colors inside card text (Roam `^^highlight^^`) as a color filter. Done 2026-10-03: menu "Highlight marks" dims cards without `^^`. Test `highlight marks and gallery grid`.

@@ -14,6 +14,13 @@ export const FOCUS_MS = 25 * 60 * 1000;
 export const THUMBNAIL_CAP = 4;
 export const VIA_CAP = 8;
 
+export function cardLabel(item) {
+  const title = String(item?.title ?? "").trim();
+  if (title) return title;
+  const line = String(item?.string ?? "").split("\n").map((s) => s.trim()).find(Boolean) || "";
+  return line.slice(0, 80);
+}
+
 export function highlightHits(string) {
   const out = [];
   const re = /\^\^([\s\S]*?)\^\^/g;
@@ -37,7 +44,7 @@ export function galleryItems(board) {
     if (item.type !== "card") continue;
     const src = item.kind === "image" ? imageSrcOf(item.string) : imageSrcOf(item.string);
     if (item.kind !== "image" && !src) continue;
-    out.push({ uid: item.uid, title: item.title || "", src });
+    out.push({ uid: item.uid, title: cardLabel(item), src });
   }
   return out;
 }
@@ -106,7 +113,7 @@ export function timelineAxis(cards, { width = 800 } = {}) {
   const span = (dated[dated.length - 1].t - min) || 1;
   return dated.map((row) => ({
     uid: row.card.uid,
-    title: row.card.title || "",
+    title: cardLabel(row.card),
     t: row.t,
     x: ((row.t - min) / span) * width,
   }));

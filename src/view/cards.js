@@ -913,7 +913,29 @@ export function createItemRenderer({
   };
 
   // Decide which items need content for the current viewport; mount in idle chunks.
-  const scheduleContent = ({ visibleRect, zoom = zoomCache, tier = null }) => {
+  // `quieted` drops every live Roam root while the user types outside the board.
+  // A keystroke is a Roam transaction, and each renderString root re-renders on it.
+  let lastContent = null;
+  let quieted = false;
+  const holdQuiet = (rec, uid) => {
+    if (!rec.roots?.length || editing?.uid === uid) return;
+    if (rec.type === "section") {
+      const text = rec.title?.textContent || lastBoard?.items.get(uid)?.title || "Section";
+      unmountRoots(rec);
+      if (rec.title) rec.title.textContent = text;
+      rec.titleRendered = false;
+    } else if (rec.body) {
+      const text = rec.body.textContent || "";
+      unmountRoots(rec);
+      rec.body.replaceChildren();
+      if (text) el("div", "pxd-quiet", rec.body).textContent = text;
+    } else {
+      unmountRoots(rec);
+    }
+    rec.contentKey = null;
+    mounted.delete(uid);
+  };
+  const fillContent = ({ visibleRect, zoom = zoomCache, tier = null }) => {
     zoomCache = zoom;
     if (!lastBoard || !lastRects) return;
     const next = new Set();
@@ -936,6 +958,25 @@ export function createItemRenderer({
     queue = [...next].filter((u) => !mounted.has(u));
     if (queue.length && !paused && !idleHandle) idleHandle = idle(pump);
     if ([...mounted.keys()].some((u) => !next.has(u))) scheduleUnmounts();
+  };
+  const scheduleContent = (args) => {
+    lastContent = args;
+    if (quieted) return;
+    fillContent(args);
+  };
+  // Detach live Roam roots so a keystroke elsewhere does not re-render every card.
+  // The words stay as plain text. The next schedule puts the live roots back.
+  const quiet = (on) => {
+    const next = Boolean(on);
+    if (next === quieted) return;
+    quieted = next;
+    if (quieted) {
+      if (idleHandle) { idleHandle(); idleHandle = null; }
+      queue = [];
+      for (const [uid, rec] of shells) holdQuiet(rec, uid);
+      return;
+    }
+    if (lastContent) fillContent(lastContent);
   };
 
   const setPaused = (on) => {
@@ -1572,6 +1613,7 @@ export function createItemRenderer({
   return {
     sync,
     scheduleContent,
+    quiet,
     setPaused,
     setLod,
     setZoom,

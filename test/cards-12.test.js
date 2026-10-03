@@ -99,6 +99,31 @@ const mixedChildren = () => [
   ]),
 ];
 
+test("quiet drops live Roam roots while typing elsewhere and mounts them again after", () => {
+  const h = harness({ children: mixedChildren() });
+  try {
+    h.show("detail");
+    const before = h.calls.renderString;
+    assert.ok(before > 0);
+    let unmounts = 0;
+    h.host.unmount = () => { unmounts += 1; };
+    h.r.quiet(true);
+    assert.ok(!h.r.mountedUids().includes("cardAAAA1"));
+    assert.ok(unmounts > 0);
+    assert.match(h.shell("cardAAAA1").textContent, /Alpha/);
+    assert.ok(h.shell("cardAAAA1").querySelector(".pxd-quiet"));
+    const mid = h.calls.renderString;
+    h.show("detail");
+    assert.equal(h.calls.renderString, mid, "a quiet board does not remount on schedule");
+    h.r.quiet(false);
+    h.flush();
+    assert.ok(h.calls.renderString > mid);
+    assert.ok(h.r.mountedUids().includes("cardAAAA1"));
+  } finally {
+    h.done();
+  }
+});
+
 test("LOD tiers: map and overview mount section titles, text and board shells only; detail mounts cards", () => {
   const h = harness({ children: mixedChildren() });
   try {

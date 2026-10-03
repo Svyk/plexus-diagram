@@ -2,6 +2,7 @@ import pkg from "../package.json" with { type: "json" };
 import { createHost } from "./host/roam.js";
 import { acquireSession as acquireSessionDefault } from "./session.js";
 import { mountBoardView } from "./view/board-view.js";
+import { isTextEntryTarget } from "./view/cards.js";
 import { assignDeepLink } from "./model/deeplink.js";
 import { openAddToBoard } from "./view/board-picker.js";
 import { parseBoardTitle, readPlexus, UNTITLED_BOARD } from "./model/schema.js";
@@ -462,6 +463,9 @@ export async function installPlexusDiagram({
     // An embed must not collapse the board. The original mount still does, once.
     if (!embedOwnerUid(native, (id) => host.blockString?.(id))) collapseOnce(uid, native);
     if (currentUid(rec) === uid) migrateLegacy(rec);
+    ensureViewportWatch();
+    recByMount.set(mountEl, rec);
+    viewportWatch?.observe(mountEl);
     return rec;
   }
 
@@ -481,8 +485,58 @@ export async function installPlexusDiagram({
       .catch((error) => console.warn("[plexus-diagram] 0.6 import failed", uid, error));
   }
 
+  // An offscreen board still holds its card shells, and a keystroke is a Roam transaction
+  // that walks that DOM. Park the board as a sized gap and bring it back when it nears the viewport.
+  const recByMount = new WeakMap();
+  let viewportWatch = null;
+  function ensureViewportWatch() {
+    if (viewportWatch || typeof IntersectionObserver !== "function") return;
+    viewportWatch = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        const rec = recByMount.get(entry.target);
+        if (!rec || !mounts.has(rec.native)) continue;
+        if (entry.isIntersecting) wake(rec);
+        else hibernate(rec);
+      }
+    }, { rootMargin: "60px" });
+  }
+  function hibernate(rec) {
+    if (!rec || rec.dormant || rec.fullscreen || !rec.view) return;
+    if (doc.activeElement && rec.mountEl.contains?.(doc.activeElement)) return;
+    const height = rec.mountEl.getBoundingClientRect?.().height || 0;
+    if (height < 40) return;
+    rec.mountEl.style.minHeight = `${Math.round(height)}px`;
+    try { rec.off?.(); } catch { /* ignore */ }
+    rec.off = null;
+    try { rec.view.dispose(); } catch (error) { console.warn("[plexus-diagram] hibernate failed", error); }
+    try { rec.session?.release?.(); } catch (error) { console.warn("[plexus-diagram] session release failed", error); }
+    rec.view = null;
+    rec.session = null;
+    rec.dormant = true;
+  }
+  function wake(rec) {
+    if (!rec || !rec.dormant || stopped || rec.mountEl.isConnected === false) return;
+    rec.dormant = false;
+    rec.mountEl.style.minHeight = "";
+    try {
+      rec.session = acquireSession(currentUid(rec), { host, settings: liveSettings });
+      if (!rec.session?.board) {
+        rec.session?.release?.();
+        unmount(rec);
+        return;
+      }
+      rec.view = mountRecView(rec);
+      rec.off = watchRec(rec);
+    } catch (error) {
+      console.error("[plexus-diagram] Wake failed; native diagram restored", error);
+      unmount(rec);
+    }
+  }
+
   function unmount(rec) {
     if (!rec || !mounts.has(rec.native)) return;
+    viewportWatch?.unobserve(rec.mountEl);
+    recByMount.delete(rec.mountEl);
     mounts.delete(rec.native);
     try { rec.off?.(); } catch { /* ignore */ }
     try { rec.view?.dispose?.(); } catch (error) { console.warn("[plexus-diagram] view dispose failed", error); }
@@ -871,7 +925,7 @@ export async function installPlexusDiagram({
       try {
         if (typeof rec.view?.setSettings === "function") {
           rec.view.setSettings(settings);
-        } else {
+        } else if (!rec.dormant) {
           const { native, crumbs } = rec;
           unmount(rec);
           consider(native, { crumbs });
@@ -935,13 +989,67 @@ export async function installPlexusDiagram({
       }), doc.body, { childList: true });
     }
   }
+  // Typing outside a board is a Roam transaction. Park every board that does not
+  // contain the caret before the keys land, and bring the visible ones back after a pause.
+  let wakeTimer = null;
+  let parkKey = null;
+  const stopParkKeys = () => {
+    if (!parkKey) return;
+    doc.removeEventListener("keydown", parkKey, true);
+    parkKey = null;
+  };
+  const wakeVisible = () => {
+    wakeTimer = null;
+    stopParkKeys();
+    const height = win.innerHeight || 0;
+    for (const rec of mounts.values()) {
+      if (!rec.dormant) continue;
+      const box = rec.mountEl.getBoundingClientRect?.();
+      if (!box) continue;
+      if (box.bottom > -60 && box.top < height + 60) wake(rec);
+    }
+  };
+  const armWake = () => {
+    if (wakeTimer) clearTimeout(wakeTimer);
+    wakeTimer = setTimeout(wakeVisible, 700);
+  };
+  const watchParkKeys = () => {
+    if (parkKey) return;
+    parkKey = (event) => {
+      if (!isTextEntryTarget(event.target)) return;
+      parkOutside(event.target);
+      armWake();
+    };
+    doc.addEventListener("keydown", parkKey, true);
+  };
+  const parkOutside = (target) => {
+    if (!isTextEntryTarget(target)) return;
+    let parked = false;
+    for (const rec of mounts.values()) {
+      if (rec.mountEl.contains?.(target) || rec.view?.root?.contains?.(target)) continue;
+      if (rec.dormant || rec.fullscreen) continue;
+      hibernate(rec);
+      parked = rec.dormant || parked;
+    }
+    if (parked) watchParkKeys();
+  };
+  if (doc && typeof doc.addEventListener === "function") {
+    lifecycle.event(doc, "focusin", (event) => { parkOutside(event.target); armWake(); });
+    // `input` covers the burst after focus. A document keydown would sit beside the command sheet's own Escape listener.
+    lifecycle.event(doc, "input", (event) => {
+      if (!isTextEntryTarget(event.target)) return;
+      parkOutside(event.target);
+      armWake();
+    }, true);
+  }
+  lifecycle.add(() => { if (wakeTimer) clearTimeout(wakeTimer); stopParkKeys(); });
   if (typeof win.addEventListener === "function") {
     lifecycle.event(win, "hashchange", onNavigate);
     lifecycle.event(win, "popstate", onNavigate);
   }
   lifecycle.interval(reconcile, RECONCILE_INTERVAL_MS);
   // Registered last so it runs first on dispose: nothing may mount while teardown is in flight.
-  lifecycle.add(() => { stopped = true; });
+  lifecycle.add(() => { stopped = true; viewportWatch?.disconnect(); });
   reconcile();
 }
 

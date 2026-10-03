@@ -9506,7 +9506,27 @@ function createItemRenderer({
       if ([...mounted.keys()].some((u) => !wanted.has(u))) scheduleUnmounts();
     }, UNMOUNT_AFTER_MS);
   };
-  const scheduleContent = ({ visibleRect, zoom = zoomCache, tier = null }) => {
+  let lastContent = null;
+  let quieted = false;
+  const holdQuiet = (rec, uid) => {
+    if (!rec.roots?.length || editing?.uid === uid) return;
+    if (rec.type === "section") {
+      const text2 = rec.title?.textContent || lastBoard?.items.get(uid)?.title || "Section";
+      unmountRoots(rec);
+      if (rec.title) rec.title.textContent = text2;
+      rec.titleRendered = false;
+    } else if (rec.body) {
+      const text2 = rec.body.textContent || "";
+      unmountRoots(rec);
+      rec.body.replaceChildren();
+      if (text2) el("div", "pxd-quiet", rec.body).textContent = text2;
+    } else {
+      unmountRoots(rec);
+    }
+    rec.contentKey = null;
+    mounted.delete(uid);
+  };
+  const fillContent = ({ visibleRect, zoom = zoomCache, tier = null }) => {
     zoomCache = zoom;
     if (!lastBoard || !lastRects) return;
     const next = /* @__PURE__ */ new Set();
@@ -9528,6 +9548,26 @@ function createItemRenderer({
     queue = [...next].filter((u) => !mounted.has(u));
     if (queue.length && !paused && !idleHandle) idleHandle = idle(pump);
     if ([...mounted.keys()].some((u) => !next.has(u))) scheduleUnmounts();
+  };
+  const scheduleContent = (args) => {
+    lastContent = args;
+    if (quieted) return;
+    fillContent(args);
+  };
+  const quiet = (on) => {
+    const next = Boolean(on);
+    if (next === quieted) return;
+    quieted = next;
+    if (quieted) {
+      if (idleHandle) {
+        idleHandle();
+        idleHandle = null;
+      }
+      queue = [];
+      for (const [uid, rec] of shells) holdQuiet(rec, uid);
+      return;
+    }
+    if (lastContent) fillContent(lastContent);
   };
   const setPaused = (on) => {
     paused = Boolean(on);
@@ -10239,6 +10279,7 @@ function createItemRenderer({
   return {
     sync,
     scheduleContent,
+    quiet,
     setPaused,
     setLod,
     setZoom,
@@ -17071,7 +17112,22 @@ function mountBoardView({
     if (pointerBoard) return pointerBoard === root;
     return isFullscreen;
   };
+  let outsideQuiet = null;
   const onKeyDown = (event) => {
+    if (isTextEntryTarget(event.target) && !root.contains?.(event.target)) {
+      itemsR.quiet(true);
+      if (outsideQuiet) outsideQuiet();
+      outsideQuiet = timers.later(() => {
+        outsideQuiet = null;
+        if (!disposed) itemsR.quiet(false);
+      }, 700);
+      return;
+    }
+    if (outsideQuiet) {
+      outsideQuiet();
+      outsideQuiet = null;
+      itemsR.quiet(false);
+    }
     if (outlineMode && !event.target?.closest?.(".pxd-mode")) return;
     if (tableMode && !event.target?.closest?.(".pxd-toolbar__table")) return;
     if (kanbanMode && !event.target?.closest?.(".pxd-toolbar__kanban")) return;
@@ -18456,6 +18512,9 @@ async function installPlexusDiagram({
     unmountOutlineCopies(rec);
     if (!embedOwnerUid(native, (id) => host.blockString?.(id))) collapseOnce(uid, native);
     if (currentUid(rec) === uid) migrateLegacy(rec);
+    ensureViewportWatch();
+    recByMount.set(mountEl, rec);
+    viewportWatch?.observe(mountEl);
     return rec;
   }
   function migrateLegacy(rec) {
@@ -18471,8 +18530,66 @@ async function installPlexusDiagram({
     rec.migrating = true;
     Promise.resolve().then(() => session.enhance()).then(() => markEnhanced(uid)).catch((error) => console.warn("[plexus-diagram] 0.6 import failed", uid, error));
   }
+  const recByMount = /* @__PURE__ */ new WeakMap();
+  let viewportWatch = null;
+  function ensureViewportWatch() {
+    if (viewportWatch || typeof IntersectionObserver !== "function") return;
+    viewportWatch = new IntersectionObserver((entries) => {
+      for (const entry of entries) {
+        const rec = recByMount.get(entry.target);
+        if (!rec || !mounts.has(rec.native)) continue;
+        if (entry.isIntersecting) wake(rec);
+        else hibernate(rec);
+      }
+    }, { rootMargin: "60px" });
+  }
+  function hibernate(rec) {
+    if (!rec || rec.dormant || rec.fullscreen || !rec.view) return;
+    if (doc.activeElement && rec.mountEl.contains?.(doc.activeElement)) return;
+    const height = rec.mountEl.getBoundingClientRect?.().height || 0;
+    if (height < 40) return;
+    rec.mountEl.style.minHeight = `${Math.round(height)}px`;
+    try {
+      rec.off?.();
+    } catch {
+    }
+    rec.off = null;
+    try {
+      rec.view.dispose();
+    } catch (error) {
+      console.warn("[plexus-diagram] hibernate failed", error);
+    }
+    try {
+      rec.session?.release?.();
+    } catch (error) {
+      console.warn("[plexus-diagram] session release failed", error);
+    }
+    rec.view = null;
+    rec.session = null;
+    rec.dormant = true;
+  }
+  function wake(rec) {
+    if (!rec || !rec.dormant || stopped || rec.mountEl.isConnected === false) return;
+    rec.dormant = false;
+    rec.mountEl.style.minHeight = "";
+    try {
+      rec.session = acquireSession2(currentUid(rec), { host, settings: liveSettings });
+      if (!rec.session?.board) {
+        rec.session?.release?.();
+        unmount(rec);
+        return;
+      }
+      rec.view = mountRecView(rec);
+      rec.off = watchRec(rec);
+    } catch (error) {
+      console.error("[plexus-diagram] Wake failed; native diagram restored", error);
+      unmount(rec);
+    }
+  }
   function unmount(rec) {
     if (!rec || !mounts.has(rec.native)) return;
+    viewportWatch?.unobserve(rec.mountEl);
+    recByMount.delete(rec.mountEl);
     mounts.delete(rec.native);
     try {
       rec.off?.();
@@ -18848,7 +18965,7 @@ async function installPlexusDiagram({
       try {
         if (typeof rec.view?.setSettings === "function") {
           rec.view.setSettings(settings);
-        } else {
+        } else if (!rec.dormant) {
           const { native, crumbs } = rec;
           unmount(rec);
           consider(native, { crumbs });
@@ -18906,6 +19023,63 @@ async function installPlexusDiagram({
       }), doc.body, { childList: true });
     }
   }
+  let wakeTimer = null;
+  let parkKey = null;
+  const stopParkKeys = () => {
+    if (!parkKey) return;
+    doc.removeEventListener("keydown", parkKey, true);
+    parkKey = null;
+  };
+  const wakeVisible = () => {
+    wakeTimer = null;
+    stopParkKeys();
+    const height = win.innerHeight || 0;
+    for (const rec of mounts.values()) {
+      if (!rec.dormant) continue;
+      const box2 = rec.mountEl.getBoundingClientRect?.();
+      if (!box2) continue;
+      if (box2.bottom > -60 && box2.top < height + 60) wake(rec);
+    }
+  };
+  const armWake = () => {
+    if (wakeTimer) clearTimeout(wakeTimer);
+    wakeTimer = setTimeout(wakeVisible, 700);
+  };
+  const watchParkKeys = () => {
+    if (parkKey) return;
+    parkKey = (event) => {
+      if (!isTextEntryTarget(event.target)) return;
+      parkOutside(event.target);
+      armWake();
+    };
+    doc.addEventListener("keydown", parkKey, true);
+  };
+  const parkOutside = (target) => {
+    if (!isTextEntryTarget(target)) return;
+    let parked = false;
+    for (const rec of mounts.values()) {
+      if (rec.mountEl.contains?.(target) || rec.view?.root?.contains?.(target)) continue;
+      if (rec.dormant || rec.fullscreen) continue;
+      hibernate(rec);
+      parked = rec.dormant || parked;
+    }
+    if (parked) watchParkKeys();
+  };
+  if (doc && typeof doc.addEventListener === "function") {
+    lifecycle.event(doc, "focusin", (event) => {
+      parkOutside(event.target);
+      armWake();
+    });
+    lifecycle.event(doc, "input", (event) => {
+      if (!isTextEntryTarget(event.target)) return;
+      parkOutside(event.target);
+      armWake();
+    }, true);
+  }
+  lifecycle.add(() => {
+    if (wakeTimer) clearTimeout(wakeTimer);
+    stopParkKeys();
+  });
   if (typeof win.addEventListener === "function") {
     lifecycle.event(win, "hashchange", onNavigate);
     lifecycle.event(win, "popstate", onNavigate);
@@ -18913,6 +19087,7 @@ async function installPlexusDiagram({
   lifecycle.interval(reconcile, RECONCILE_INTERVAL_MS);
   lifecycle.add(() => {
     stopped = true;
+    viewportWatch?.disconnect();
   });
   reconcile();
 }

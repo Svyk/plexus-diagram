@@ -2583,7 +2583,20 @@ export function mountBoardView({
     if (pointerBoard) return pointerBoard === root;
     return isFullscreen;
   };
+  let outsideQuiet = null;
   const onKeyDown = (event) => {
+    // A keystroke outside the board is a Roam transaction. Drop live card renders first,
+    // before any board lookup, and put them back shortly after typing stops.
+    if (isTextEntryTarget(event.target) && !root.contains?.(event.target)) {
+      itemsR.quiet(true);
+      if (outsideQuiet) outsideQuiet();
+      outsideQuiet = timers.later(() => {
+        outsideQuiet = null;
+        if (!disposed) itemsR.quiet(false);
+      }, 700);
+      return;
+    }
+    if (outsideQuiet) { outsideQuiet(); outsideQuiet = null; itemsR.quiet(false); }
     // Outline mode is real Roam blocks. Canvas shortcuts stay off so a key there is not a board command.
     if (outlineMode && !event.target?.closest?.(".pxd-mode")) return;
     if (tableMode && !event.target?.closest?.(".pxd-toolbar__table")) return;

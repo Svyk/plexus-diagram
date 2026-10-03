@@ -4517,6 +4517,13 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
     return commit(ops, result);
   }
   const rawPlexus = (id) => readPlexus(rawNode(id)?.[PROPS]) ?? {};
+  function hasStoredLayout() {
+    for (const item of board2.items.values()) {
+      const stored = readPlexus(rawNode(item.uid)?.[PROPS]);
+      if (stored && Number.isFinite(stored.x) && Number.isFinite(stored.y)) return true;
+    }
+    return false;
+  }
   function itemPlexus(id, patch) {
     const item = board2.items.get(id);
     const base = rawPlexus(id);
@@ -5480,6 +5487,12 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
     async enhance() {
       if (!board2) return { enhanced: false, reason: "no-board" };
       if (board2.enhanced) return { enhanced: false, reason: "already" };
+      if (hasStoredLayout()) {
+        await txn((t) => {
+          t.props(uid, withBoardMarker(rawPlexus(uid), true));
+        });
+        return { enhanced: true, kind: "kept", counts: null };
+      }
       let source = readV06Entry(host, uid);
       let kind = "v06";
       if (!source) {

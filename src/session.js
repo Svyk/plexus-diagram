@@ -497,6 +497,15 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
   // ---- layout helpers ----
   const rawPlexus = (id) => readPlexus(rawNode(id)?.[PROPS]) ?? {};
 
+  // Stored x/y means a previous enhance already laid this board out. Auto-placed memory coords do not count.
+  function hasStoredLayout() {
+    for (const item of board.items.values()) {
+      const stored = readPlexus(rawNode(item.uid)?.[PROPS]);
+      if (stored && Number.isFinite(stored.x) && Number.isFinite(stored.y)) return true;
+    }
+    return false;
+  }
+
   function itemPlexus(id, patch) {
     const item = board.items.get(id);
     const base = rawPlexus(id);
@@ -1497,6 +1506,11 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
     async enhance() {
       if (!board) return { enhanced: false, reason: "no-board" };
       if (board.enhanced) return { enhanced: false, reason: "already" };
+      // Restore leaves the edited item props in place. Importing again would overwrite that layout and duplicate connections.
+      if (hasStoredLayout()) {
+        await txn((t) => { t.props(uid, withBoardMarker(rawPlexus(uid), true)); });
+        return { enhanced: true, kind: "kept", counts: null };
+      }
       let source = readV06Entry(host, uid);
       let kind = "v06";
       if (!source) {

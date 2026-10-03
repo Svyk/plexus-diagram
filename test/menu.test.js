@@ -20,7 +20,7 @@ test("buildMenu knows all seven kinds and returns [] for an unknown one", () => 
 });
 
 test("canvas menu ids, in order, with paste gated by canPaste", () => {
-  const want = ["new-card", "new-text", "new-sticky", "new-section", "new-lane-h", "new-lane-v", "new-board", "template", "save-template", "save-snapshot", "restore-snapshot", "paste", "paste-clone", "add-today", "add-week", "select-all", "fit-all", "fold-all", "unfold-all", "background", "export-svg", "export-png", "copy-outline"];
+  const want = ["new-card", "new-text", "new-sticky", "new-section", "new-lane-h", "new-lane-v", "new-board", "template", "save-template", "save-snapshot", "restore-snapshot", "paste", "paste-clone", "add-today", "add-week", "select-all", "fit-all", "fold-all", "unfold-all", "background", "bg-image", "gallery", "timeline", "graph", "print", "highlights", "export-svg", "export-png", "copy-outline"];
   assert.deepEqual(ids(buildMenu("canvas", {})), want);
   assert.equal(byId(buildMenu("canvas", { canPaste: false }), "paste").disabled, true);
   assert.equal(byId(buildMenu("canvas", { canPaste: false }), "paste-clone").disabled, true);
@@ -124,7 +124,7 @@ test("text menu: sizes 16/24/32/48 with the current one checked", () => {
 
 test("edge menu: dir, route, dash radios follow ctx", () => {
   const menu = buildMenu("edge", { dir: "two", route: "elbow", dash: "dashed", item: { color: "blue" } });
-  assert.deepEqual(leafIds(menu).filter((id) => /^(dir|route|dash):/.test(id)), ["dir:one", "dir:two", "dir:none", "route:curve", "route:straight", "route:elbow", "dash:solid", "dash:dashed"]);
+  assert.deepEqual(leafIds(menu).filter((id) => /^(dir|route|dash):/.test(id)), ["dir:one", "dir:two", "dir:none", "route:curve", "route:straight", "route:elbow", "route:around", "dash:solid", "dash:dashed"]);
   const checked = flattenMenu(menu).filter((i) => i.checked).map((i) => i.id);
   assert.deepEqual(checked, ["dir:two", "route:elbow", "dash:dashed", "color:blue"]);
   for (const id of ["flip", "label", "notes", "write-to-graph", "delete"]) assert.ok(ids(menu).includes(id), id);

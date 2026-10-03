@@ -13,7 +13,7 @@ export const CARD_LOOKS = ["block", "card"];
 export const TEXT_LOOKS = ["section-note", "sticky"];
 export const STICKY_SIZE = { w: 200, h: 200 };
 export const STICKY_COLOR = "yellow";
-export const SECTION_LOOKS = ["lane"];
+export const SECTION_LOOKS = ["lane", "calendar", "timer"];
 export const LANE_AXES = ["horizontal", "vertical"];
 export const LANE_SIZE = { horizontal: { w: 960, h: 180 }, vertical: { w: 240, h: 640 } };
 export const CARD_FONT_MIN = 10;
@@ -28,7 +28,7 @@ export const EDGE_WEIGHTS = [1, 2, 3, 4];
 export const SIDES = ["auto", "top", "right", "bottom", "left"];
 export const ARROWS = { one: "→", two: "↔", none: "—" };
 export const DIRS = ["one", "two", "none"];
-export const ROUTES = ["curve", "straight", "elbow"];
+export const ROUTES = ["curve", "straight", "elbow", "around"];
 export const DASHES = ["solid", "dashed", "animated"];
 export const BOARD_PATTERNS = ["dots", "lines", "cross", "grid", "plain"];
 export const BOARD_TONES = ["paper", ...PALETTE];
@@ -133,7 +133,7 @@ export function normalizeItemLayout(plexus) {
       : type === "section"
         ? (SECTION_LOOKS.includes(p.look) ? p.look : undefined)
         : (CARD_LOOKS.includes(p.look) ? p.look : undefined),
-    axis: type === "section" && SECTION_LOOKS.includes(p.look)
+    axis: type === "section" && p.look === "lane"
       ? (p.axis === "vertical" ? "vertical" : "horizontal")
       : undefined,
     textColor: section ? undefined : styleColor(p.textColor),
@@ -211,7 +211,7 @@ export function serializeItemLayout(layout) {
     if (SHAPES.includes(l.shape)) out.shape = l.shape;
   } else if (type === "section" && SECTION_LOOKS.includes(l.look)) {
     out.look = l.look;
-    out.axis = l.axis === "vertical" ? "vertical" : "horizontal";
+    if (l.look === "lane") out.axis = l.axis === "vertical" ? "vertical" : "horizontal";
   } else if (CARD_LOOKS.includes(l.look)) out.look = l.look;
   if (BOARD_PATTERNS.includes(l.bg)) out.bg = l.bg;
   const tone = boardColor(l.bgColor);
@@ -226,6 +226,8 @@ export function withBoardMarker(plexus, on) {
   delete base.v;
   delete base.bg;
   delete base.bgColor;
+  delete base.bgImage;
+  delete base.lodZoom;
   return Object.keys(base).length ? base : null;
 }
 
@@ -239,9 +241,23 @@ export function dailyPageTitle(date) {
   return `${MONTHS[d.getMonth()]} ${day}${suffix}, ${d.getFullYear()}`;
 }
 
+export function cleanVia(points) {
+  if (!Array.isArray(points)) return [];
+  const out = [];
+  for (const p of points) {
+    const x = Number(p?.x);
+    const y = Number(p?.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+    out.push({ x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10 });
+    if (out.length >= 8) break;
+  }
+  return out;
+}
+
 export function normalizeEdge(plexus) {
   const p = isObject(plexus) ? plexus : {};
   const pick = (v, list, def) => (list.includes(v) ? v : def);
+  const via = cleanVia(p.via);
   return {
     from: typeof p.from === "string" ? p.from : "",
     to: typeof p.to === "string" ? p.to : "",
@@ -252,6 +268,7 @@ export function normalizeEdge(plexus) {
     dash: pick(p.dash, DASHES, EDGE_DEFAULTS.dash),
     weight: EDGE_WEIGHTS.includes(p.weight) ? p.weight : EDGE_DEFAULTS.weight,
     color: styleColor(p.color),
+    ...(via.length ? { via } : {}),
   };
 }
 
@@ -263,6 +280,8 @@ export function serializeEdge(edge) {
   }
   const color = styleColor(e.color);
   if (color) out.color = color;
+  const via = cleanVia(e.via);
+  if (via.length) out.via = via;
   return out;
 }
 

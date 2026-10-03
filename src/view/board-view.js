@@ -53,6 +53,18 @@ import { createPresenter } from "./present.js";
 import { createClipboardIO, filesFromDataTransfer, writeClipboard } from "./clipboard-io.js";
 import { applyFullscreenChrome, watchRouteExit } from "./fullscreen.js";
 import { embedOwnerUid } from "../discovery.js";
+import {
+  ATTRIBUTE_TEMPLATE,
+  FOCUS_MS,
+  backgroundImage,
+  highlightHits,
+  sectionPair,
+  thumbnailBudget,
+  timerStep,
+  versionPeekRequest,
+  zoomThreshold,
+} from "../model/section6.js";
+import { mountLater, mountPrintSheet } from "./later-views.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -425,7 +437,11 @@ export function mountBoardView({
   let bgPattern; // effective board pattern / tone; undefined until applyBackground() runs
   let bgTone;
   let bgHex = null;
+  let bgImage = null;
   let bgOverride = false;
+  let timerHud = null;
+  let timerState = null;
+  let timerTick = null;
   let focusOn = false;
   let focusKey = null;
   let lensTag = null;
@@ -482,6 +498,7 @@ export function mountBoardView({
   let tableCtl = { open() {}, close() {}, refresh() {}, dispose() {} };
   let kanbanMode = false;
   let kanbanCtl = { open() {}, close() {}, refresh() {}, dispose() {} };
+  let laterCtl = { open() { return false; }, close() {}, refresh() {}, isOpen() { return false; }, dispose() {} };
   const leaveOutline = () => {
     outlineMode = false;
     root.classList.remove("pxd-root--outline");
@@ -494,6 +511,7 @@ export function mountBoardView({
     const next = Boolean(on);
     if (next && outlineMode) leaveOutline();
     if (next && kanbanMode) setKanban(false);
+    if (next) laterCtl.close();
     tableMode = next;
     root.classList.toggle("pxd-root--table", tableMode);
     chrome?.toolbar?.setTable?.(tableMode);
@@ -504,6 +522,7 @@ export function mountBoardView({
     const next = Boolean(on);
     if (next && outlineMode) leaveOutline();
     if (next && tableMode) setTable(false);
+    if (next) laterCtl.close();
     kanbanMode = next;
     root.classList.toggle("pxd-root--kanban", kanbanMode);
     chrome?.toolbar?.setKanban?.(kanbanMode);
@@ -665,10 +684,7 @@ export function mountBoardView({
   };
 
   // ------------------------------------------------------------ LOD
-  const mapThreshold = () => {
-    const n = Number(setting("map-zoom", "0.45"));
-    return Number.isFinite(n) && n > 0 ? n : 0.45;
-  };
+  const mapThreshold = () => zoomThreshold(board()?.plexus?.lodZoom, setting("map-zoom", "0.45"));
   // Classes and font variables are written only when the tier changes (renderFrame) or a viewport settles.
   const paintTier = () => {
     root.classList.toggle("pxd-lod-map", tier !== "detail");
@@ -785,7 +801,49 @@ export function mountBoardView({
       schedule();
       updateBackToContent();
       refreshBadges();
+      refreshThumbnails();
     }, RESUME_MS);
+  };
+  const refreshThumbnails = () => {
+    if (disposed || gesturing || !board()) return;
+    const view = visibleWorldRect(vp, size, 0);
+    const r = rects();
+    const candidates = [];
+    for (const card of board().items.values()) {
+      if (card.type !== "card" || card.kind !== "block") continue;
+      const rect = r.get(card.uid);
+      if (!rect || !rectsIntersect(rect, view)) continue;
+      let refString = "";
+      try { refString = host?.blockString?.(card.target?.uid) || ""; } catch { refString = ""; }
+      if (classifyString(refString).kind !== "board") continue;
+      candidates.push(card.uid);
+    }
+    const batch = thumbnailBudget(candidates);
+    if (batch.length) itemsR.expireContent?.(batch);
+  };
+  const paintTimer = () => {
+    if (!timerHud || !timerState) return;
+    const secs = Math.ceil(timerState.remainingMs / 1000);
+    const m = Math.floor(secs / 60);
+    timerHud.textContent = `${m}:${String(secs % 60).padStart(2, "0")}`;
+  };
+  const stopTimer = () => {
+    timerTick?.();
+    timerTick = null;
+    timerHud?.remove();
+    timerHud = null;
+    timerState = null;
+  };
+  const armTimer = () => {
+    timerTick?.();
+    timerTick = timers.later(() => {
+      timerTick = null;
+      if (!timerState?.running || disposed) return;
+      timerState = timerStep(timerState, Date.now());
+      paintTimer();
+      if (timerState.running) armTimer();
+      else toast("Focus timer done");
+    }, 1000);
   };
 
   // ------------------------------------------------------------ selection + context bar
@@ -1007,8 +1065,9 @@ export function mountBoardView({
     const defTone = setting("board-tone", "none");
     const pattern = ownPattern ?? (BOARD_PATTERNS.includes(defPattern) ? defPattern : "dots");
     const tone = ownHex ? null : (ownTone ?? (BOARD_TONES.includes(defTone) ? defTone : null));
-    const override = ownPattern !== null || ownTone !== null || ownHex !== null;
-    if (pattern === bgPattern && tone === bgTone && ownHex === bgHex && override === bgOverride) return;
+    const image = backgroundImage(own?.bgImage);
+    const override = ownPattern !== null || ownTone !== null || ownHex !== null || Boolean(image);
+    if (pattern === bgPattern && tone === bgTone && ownHex === bgHex && image === bgImage && override === bgOverride) return;
     if (pattern !== bgPattern) {
       grid.className = `pxd-grid pxd-grid--${pattern}`;
       if (bgPattern === "grid") for (const v of ["--pxd-grid-major", "--pxd-grid-major-x", "--pxd-grid-major-y"]) grid.style.removeProperty?.(v);
@@ -1030,6 +1089,12 @@ export function mountBoardView({
         root.style.removeProperty("--pxd-label-bg");
       }
       bgHex = ownHex;
+    }
+    if (image !== bgImage) {
+      grid.style.backgroundImage = image ? `url("${image}")` : "";
+      grid.style.backgroundSize = image ? "cover" : "";
+      grid.style.backgroundPosition = image ? "center" : "";
+      bgImage = image;
     }
     bgOverride = override;
     chrome.toolbar.setBackground({ pattern, tone: ownHex || tone, override });
@@ -1364,7 +1429,12 @@ export function mountBoardView({
       case "edge": { const e = uid ? b?.edges.get(uid) : null; return { item: e, dir: e?.dir, route: e?.route, dash: e?.dash }; }
       case "multi": {
         const items = selection.items.map((u) => b?.items.get(u)).filter(Boolean);
-        return { count: items.length, allPinned: items.length > 0 && items.every((i) => i.pinned), anyCollapsed: items.some((i) => i.type === "card" && i.collapsed) };
+        return {
+          count: items.length,
+          allPinned: items.length > 0 && items.every((i) => i.pinned),
+          anyCollapsed: items.some((i) => i.type === "card" && i.collapsed),
+          sectionPair: sectionPair(items.map((i) => i.uid), (id) => b?.items.get(id)),
+        };
       }
       default: return {};
     }
@@ -1458,6 +1528,75 @@ export function mountBoardView({
       case "add-today": addDaily([new Date()], world); break;
       case "add-week": addDaily(weekDates(), world); break;
       case "background": chrome.popover.open(); break;
+      case "bg-image": {
+        void (async () => {
+          let text = "";
+          try { text = await globalThis.navigator?.clipboard?.readText?.() || ""; } catch { text = ""; }
+          const ok = await session.setBoardBackground?.({ bgImage: text.trim() });
+          if (!disposed && !ok) toast("Copy an https image URL first");
+        })();
+        break;
+      }
+      case "gallery":
+      case "timeline":
+      case "graph":
+        if (tableMode) setTable(false);
+        if (kanbanMode) setKanban(false);
+        laterCtl.open(head);
+        break;
+      case "print": {
+        const sheet = mountPrintSheet(doc, b);
+        root.append(sheet);
+        root.classList.add("pxd-root--print");
+        try { win?.print?.(); } catch { /* the dialog is optional */ }
+        sheet.remove();
+        root.classList.remove("pxd-root--print");
+        break;
+      }
+      case "highlights": {
+        const on = root.classList.toggle("pxd-root--highlights");
+        for (const card of b.items.values()) {
+          const shell = itemsR.shellOf(card.uid);
+          if (!shell) continue;
+          shell.classList.toggle("pxd-has-highlight", on && highlightHits(card.string).length > 0);
+        }
+        break;
+      }
+      case "apply-template": if (item) void session.applyCardTemplate?.(item.uid, ATTRIBUTE_TEMPLATE); break;
+      case "version-peek": {
+        if (!versionPeekRequest(host?.api)) toast("Roam does not expose block history");
+        else toast("Block history is available on this host");
+        break;
+      }
+      case "layout-dates": if (item) void session.layoutByDate?.(item.uid); break;
+      case "focus-timer": {
+        if (item?.type === "section") void session.setSectionLook?.(item.uid, "timer");
+        stopTimer();
+        timerState = { remainingMs: FOCUS_MS, running: true, endsAt: Date.now() + FOCUS_MS };
+        timerHud = el("div", "pxd-timer pxd-chrome", root);
+        paintTimer();
+        armTimer();
+        break;
+      }
+      case "group-connect": {
+        const pair = sectionPair(uids, (id) => b.items.get(id));
+        if (pair) void session.addEdge?.({ from: pair[0], to: pair[1] });
+        break;
+      }
+      case "add-bend": {
+        if (!edgeUid) break;
+        const edge = b.edges.get(edgeUid);
+        const a = rects().get(edge?.from);
+        const c = rects().get(edge?.to);
+        if (!edge || !a || !c) break;
+        const mid = {
+          x: (a.x + a.w / 2 + c.x + c.w / 2) / 2,
+          y: (a.y + a.h / 2 + c.y + c.h / 2) / 2 - 48,
+        };
+        void session.updateEdge?.(edgeUid, { via: [...(edge.via || []), mid] });
+        break;
+      }
+      case "clear-bends": if (edgeUid) void session.updateEdge?.(edgeUid, { via: [] }); break;
       case "export-svg": void view.exportSvg({ download: true }); break;
       case "export-png": void exportPng(); break;
       case "copy-png": {
@@ -2764,6 +2903,7 @@ export function mountBoardView({
     if (outlineMode) syncOutline();
     if (tableMode) tableCtl.refresh();
     if (kanbanMode) kanbanCtl.refresh();
+    if (laterCtl.isOpen()) laterCtl.refresh();
   }));
   subs.push(session.on("links", () => { dirty.links = true; schedule(); }));
   subs.push(session.on("sync", (state) => chrome.toolbar.setSync(state)));
@@ -2779,6 +2919,12 @@ export function mountBoardView({
     root,
     host,
     getBoard: board,
+  });
+  laterCtl = mountLater({
+    doc,
+    root,
+    getBoard: board,
+    onClose: () => laterCtl.close(),
   });
   if (inSidebar) setOutline(true);
 
@@ -3108,6 +3254,8 @@ export function mountBoardView({
       clearOutline();
       tableCtl.dispose();
       kanbanCtl.dispose();
+      laterCtl.dispose();
+      stopTimer();
       ctl.cancel();
       releaseCapture();
       if (heightDrag) onHeightUp();

@@ -1,4 +1,5 @@
 import { namespaceParent } from "./model/namespace.js";
+import { backgroundImage, calendarLayout, cardTemplatePlan, zoomThreshold } from "./model/section6.js";
 import {
   boardPreview,
   boundsOf,
@@ -64,7 +65,7 @@ const OPEN = ":block/open";
 
 const LINK_MODES = ["off", "attributes", "all"];
 const ITEM_KEYS = ["type", "x", "y", "w", "h", "color", "collapsed", "fontSize", "pinned", "fit", "look", "axis", "textColor", "align", "fill", "border", "titleSize", "titleColor", "titleFill", "areaFill", "shape"];
-const EDGE_KEYS = ["type", "from", "to", "fromSide", "toSide", "dir", "route", "dash", "weight", "color"];
+const EDGE_KEYS = ["type", "from", "to", "fromSide", "toSide", "dir", "route", "dash", "weight", "color", "via"];
 const MAX_PARENT_STRINGS = 200;
 const DAILY_GAP = 20;
 
@@ -1223,9 +1224,10 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
       });
     },
 
-    // bg / bgColor: undefined leaves the key, null removes it. bg is a pattern. bgColor is a tone name or #rrggbb.
-    // Resolves true when applied (or already equal), false when rejected.
-    setBoardBackground({ bg, bgColor } = {}) {
+    // bg / bgColor / bgImage / lodZoom: undefined leaves the key, null removes it.
+    // bg is a pattern. bgColor is a tone name or #rrggbb. bgImage is an https URL, painted locked.
+    // lodZoom is this board's map threshold (0.05–1.5).
+    setBoardBackground({ bg, bgColor, bgImage, lodZoom } = {}) {
       return txn((t) => {
         if (!board.enhanced) return false;
         let tone = bgColor;
@@ -1234,15 +1236,57 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
           tone = boardColor(tone);
           if (!tone) return false;
         }
+        let image = bgImage;
+        if (image != null) {
+          image = backgroundImage(image);
+          if (!image) return false;
+        }
+        let zoom = lodZoom;
+        if (zoom != null) {
+          const picked = zoomThreshold(zoom, null);
+          if (picked === 0.45 && Number(zoom) !== 0.45) return false;
+          zoom = picked;
+        }
         const base = rawPlexus(uid);
         const next = { ...base };
-        for (const [key, value] of [["bg", bg], ["bgColor", tone]]) {
+        for (const [key, value] of [["bg", bg], ["bgColor", tone], ["bgImage", image], ["lodZoom", zoom]]) {
           if (value === undefined) continue;
           if (value === null) delete next[key];
           else next[key] = value;
         }
         if (stable(next) !== stable(base)) t.props(uid, next);
         return true;
+      });
+    },
+
+    setSectionLook(id, look) {
+      return txn((t) => {
+        const item = board.items.get(id);
+        if (!item || item.type !== "section") return false;
+        if (look != null && look !== "lane" && look !== "calendar" && look !== "timer") return false;
+        t.props(id, itemPlexus(id, { look: look ?? null }));
+        return true;
+      });
+    },
+
+    applyCardTemplate(id, blocks) {
+      return txn((t) => {
+        const item = board.items.get(id);
+        if (!item || item.type !== "card") return 0;
+        const plan = cardTemplatePlan(blocks).slice(0, 45);
+        for (const child of plan) t.create({ parent: id, order: "last", string: child.string });
+        return plan.length;
+      });
+    },
+
+    layoutByDate(id) {
+      return txn((t) => {
+        const item = board.items.get(id);
+        if (!item || item.type !== "section") return 0;
+        const cards = item.members.map((member) => board.items.get(member)).filter(Boolean);
+        const plan = calendarLayout(cards).slice(0, 45);
+        for (const spot of plan) t.props(spot.uid, itemPlexus(spot.uid, { x: spot.x, y: spot.y }));
+        return plan.length;
       });
     },
 

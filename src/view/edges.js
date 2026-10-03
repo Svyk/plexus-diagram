@@ -4,7 +4,8 @@
 // recomputed during a drag.
 
 import { routedEdge } from "../model/board.js";
-import { arrowHeadPath, arrowSize, edgePath, sidePoint } from "../model/geometry.js";
+import { arrowHeadPath, arrowSize, center, edgePath, sidePoint } from "../model/geometry.js";
+import { routeAround } from "../model/section6.js";
 import { PALETTE, hexColor } from "../model/schema.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
@@ -53,7 +54,17 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
   const geometryFor = (board, edge, rects) => {
     const routed = routedEdge(board, edge, rects);
     if (!routed) return null;
-    return edgePath({ a: routed.a, b: routed.b, fromSide: edge.fromSide, toSide: edge.toSide, route: edge.route, offset: pairOffset(board, edge) });
+    let via = edge.via;
+    if ((!via || !via.length) && edge.route === "around") {
+      const obstacles = [];
+      for (const [uid, rect] of rects) {
+        if (uid === edge.from || uid === edge.to || !rect) continue;
+        const item = board.items.get(uid);
+        if (item?.type === "card" || item?.type === "text") obstacles.push(rect);
+      }
+      via = routeAround(center(routed.a), center(routed.b), obstacles);
+    }
+    return edgePath({ a: routed.a, b: routed.b, fromSide: edge.fromSide, toSide: edge.toSide, route: edge.route, offset: pairOffset(board, edge), via });
   };
 
   const buildEdge = (edge) => {

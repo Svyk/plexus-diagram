@@ -227,7 +227,7 @@ var NORMALS = {
   bottom: { x: 0, y: 1 },
   left: { x: -1, y: 0 }
 };
-function edgePath({ a, b, fromSide = "auto", toSide = "auto", route = "curve", offset = 0 }) {
+function edgePath({ a, b, fromSide = "auto", toSide = "auto", route = "curve", offset = 0, via } = {}) {
   if (fromSide === "auto" || toSide === "auto") {
     const auto = autoSides(a, b);
     if (fromSide === "auto") fromSide = auto.fromSide;
@@ -235,6 +235,23 @@ function edgePath({ a, b, fromSide = "auto", toSide = "auto", route = "curve", o
   }
   const start = sidePoint(a, fromSide);
   const end = sidePoint(b, toSide);
+  const bends = Array.isArray(via) ? via.filter((p) => p && Number.isFinite(p.x) && Number.isFinite(p.y)).slice(0, 8) : [];
+  if (bends.length) {
+    const pts = [start, ...bends, end];
+    const mid2 = pts[Math.floor((pts.length - 1) / 2)];
+    const angle = Math.atan2(end.y - start.y, end.x - start.x);
+    return {
+      d: pts.map((p, i) => `${i ? "L" : "M"}${num(p.x)} ${num(p.y)}`).join(""),
+      start,
+      end,
+      mid: mid2,
+      points: pts,
+      startAngle: angle,
+      endAngle: angle,
+      fromSide,
+      toSide
+    };
+  }
   const nf = NORMALS[fromSide];
   const nt = NORMALS[toSide];
   const dist = Math.hypot(end.x - start.x, end.y - start.y);
@@ -445,7 +462,7 @@ var CARD_LOOKS = ["block", "card"];
 var TEXT_LOOKS = ["section-note", "sticky"];
 var STICKY_SIZE = { w: 200, h: 200 };
 var STICKY_COLOR = "yellow";
-var SECTION_LOOKS = ["lane"];
+var SECTION_LOOKS = ["lane", "calendar", "timer"];
 var LANE_SIZE = { horizontal: { w: 960, h: 180 }, vertical: { w: 240, h: 640 } };
 var CARD_FONT_MIN = 10;
 var CARD_FONT_MAX = 48;
@@ -459,7 +476,7 @@ var EDGE_WEIGHTS = [1, 2, 3, 4];
 var SIDES2 = ["auto", "top", "right", "bottom", "left"];
 var ARROWS = { one: "→", two: "↔", none: "—" };
 var DIRS = ["one", "two", "none"];
-var ROUTES = ["curve", "straight", "elbow"];
+var ROUTES = ["curve", "straight", "elbow", "around"];
 var DASHES = ["solid", "dashed", "animated"];
 var BOARD_PATTERNS = ["dots", "lines", "cross", "grid", "plain"];
 var BOARD_TONES = ["paper", ...PALETTE];
@@ -553,7 +570,7 @@ function normalizeItemLayout(plexus) {
     pinned: p.pinned === true,
     fit: p.fit === false ? false : void 0,
     look: type === "text" ? TEXT_LOOKS.includes(p.look) ? p.look : void 0 : type === "section" ? SECTION_LOOKS.includes(p.look) ? p.look : void 0 : CARD_LOOKS.includes(p.look) ? p.look : void 0,
-    axis: type === "section" && SECTION_LOOKS.includes(p.look) ? p.axis === "vertical" ? "vertical" : "horizontal" : void 0,
+    axis: type === "section" && p.look === "lane" ? p.axis === "vertical" ? "vertical" : "horizontal" : void 0,
     textColor: section2 ? void 0 : styleColor(p.textColor),
     align: section2 || !ALIGNS.includes(p.align) ? void 0 : p.align,
     fill: section2 ? void 0 : styleColor(p.fill),
@@ -620,7 +637,7 @@ function serializeItemLayout(layout) {
     if (SHAPES.includes(l.shape)) out.shape = l.shape;
   } else if (type === "section" && SECTION_LOOKS.includes(l.look)) {
     out.look = l.look;
-    out.axis = l.axis === "vertical" ? "vertical" : "horizontal";
+    if (l.look === "lane") out.axis = l.axis === "vertical" ? "vertical" : "horizontal";
   } else if (CARD_LOOKS.includes(l.look)) out.look = l.look;
   if (BOARD_PATTERNS.includes(l.bg)) out.bg = l.bg;
   const tone = boardColor(l.bgColor);
@@ -633,6 +650,8 @@ function withBoardMarker(plexus, on) {
   delete base.v;
   delete base.bg;
   delete base.bgColor;
+  delete base.bgImage;
+  delete base.lodZoom;
   return Object.keys(base).length ? base : null;
 }
 var MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -642,9 +661,22 @@ function dailyPageTitle(date) {
   const suffix = day >= 11 && day <= 13 ? "th" : { 1: "st", 2: "nd", 3: "rd" }[day % 10] ?? "th";
   return `${MONTHS[d.getMonth()]} ${day}${suffix}, ${d.getFullYear()}`;
 }
+function cleanVia(points) {
+  if (!Array.isArray(points)) return [];
+  const out = [];
+  for (const p of points) {
+    const x = Number(p?.x);
+    const y = Number(p?.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) continue;
+    out.push({ x: Math.round(x * 10) / 10, y: Math.round(y * 10) / 10 });
+    if (out.length >= 8) break;
+  }
+  return out;
+}
 function normalizeEdge(plexus) {
   const p = isObject(plexus) ? plexus : {};
   const pick = (v, list, def) => list.includes(v) ? v : def;
+  const via = cleanVia(p.via);
   return {
     from: typeof p.from === "string" ? p.from : "",
     to: typeof p.to === "string" ? p.to : "",
@@ -654,7 +686,8 @@ function normalizeEdge(plexus) {
     route: pick(p.route, ROUTES, EDGE_DEFAULTS.route),
     dash: pick(p.dash, DASHES, EDGE_DEFAULTS.dash),
     weight: EDGE_WEIGHTS.includes(p.weight) ? p.weight : EDGE_DEFAULTS.weight,
-    color: styleColor(p.color)
+    color: styleColor(p.color),
+    ...via.length ? { via } : {}
   };
 }
 function serializeEdge(edge) {
@@ -665,6 +698,8 @@ function serializeEdge(edge) {
   }
   const color = styleColor(e.color);
   if (color) out.color = color;
+  const via = cleanVia(e.via);
+  if (via.length) out.via = via;
   return out;
 }
 function isSingleWikiRef(s) {
@@ -2053,6 +2088,278 @@ function dropNamespace(strings) {
   return { parent, indexes: hits.map((hit) => hit.i) };
 }
 
+// src/model/section6.js
+var MONTHS2 = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+var DAY = /(\d{1,2})(?:st|nd|rd|th)?/;
+var ATTRIBUTE_TEMPLATE = [
+  { string: "Owner:: " },
+  { string: "Status:: " },
+  { string: "Due:: " }
+];
+var FOCUS_MS = 25 * 60 * 1e3;
+var THUMBNAIL_CAP = 4;
+var VIA_CAP = 8;
+function highlightHits(string) {
+  const out = [];
+  const re = /\^\^([\s\S]*?)\^\^/g;
+  let m;
+  const s = String(string ?? "");
+  while (m = re.exec(s)) {
+    const text2 = m[1].trim();
+    if (text2) out.push(text2);
+  }
+  return out;
+}
+function imageSrcOf(string) {
+  const m = /!\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/.exec(String(string ?? ""));
+  return m ? m[1] : null;
+}
+function galleryItems(board2) {
+  const out = [];
+  for (const item of board2?.items?.values?.() || []) {
+    if (item.type !== "card") continue;
+    const src = item.kind === "image" ? imageSrcOf(item.string) : imageSrcOf(item.string);
+    if (item.kind !== "image" && !src) continue;
+    out.push({ uid: item.uid, title: item.title || "", src });
+  }
+  return out;
+}
+function galleryGrid(items, { cols = 4, cell = 160, gap = 12 } = {}) {
+  const n2 = Math.max(1, cols);
+  return (items || []).map((item, i) => ({
+    uid: item.uid,
+    title: item.title || "",
+    src: item.src || null,
+    x: i % n2 * (cell + gap),
+    y: Math.floor(i / n2) * (cell + gap),
+    w: cell,
+    h: cell
+  }));
+}
+function parseCardDate(item) {
+  const title = String(item?.title ?? "").trim();
+  const daily = new RegExp(`^(${MONTHS2.join("|")})\\s+${DAY.source},\\s+(\\d{4})$`).exec(title);
+  if (daily) {
+    const month2 = MONTHS2.indexOf(daily[1]);
+    const day2 = Number(daily[2]);
+    const year2 = Number(daily[3]);
+    if (month2 >= 0 && day2 >= 1 && day2 <= 31) return Date.UTC(year2, month2, day2);
+  }
+  const blob = `${title}
+${item?.string ?? ""}`;
+  const iso = /(\d{4})-(\d{2})-(\d{2})/.exec(blob);
+  if (!iso) return null;
+  const year = Number(iso[1]);
+  const month = Number(iso[2]) - 1;
+  const day = Number(iso[3]);
+  if (month < 0 || month > 11 || day < 1 || day > 31) return null;
+  return Date.UTC(year, month, day);
+}
+function calendarSlots(cards, { year, month } = {}) {
+  const slots = [];
+  for (const card2 of cards || []) {
+    const t = parseCardDate(card2);
+    if (t == null) continue;
+    const d = new Date(t);
+    if (year != null && d.getUTCFullYear() !== year) continue;
+    if (month != null && d.getUTCMonth() !== month) continue;
+    slots.push({ uid: card2.uid, day: d.getUTCDate(), t, title: card2.title || "" });
+  }
+  slots.sort((a, b) => a.t - b.t || String(a.uid).localeCompare(String(b.uid)));
+  return slots;
+}
+function calendarLayout(cards, { year, month, x0 = 16, y0 = 48, col = 28 } = {}) {
+  return calendarSlots(cards, { year, month }).map((slot) => ({
+    uid: slot.uid,
+    x: x0 + (slot.day - 1) * col,
+    y: y0
+  }));
+}
+function timelineAxis(cards, { width = 800 } = {}) {
+  const dated = (cards || []).map((card2) => ({ card: card2, t: parseCardDate(card2) })).filter((row2) => row2.t != null).sort((a, b) => a.t - b.t || String(a.card.uid).localeCompare(String(b.card.uid)));
+  if (!dated.length) return [];
+  const min = dated[0].t;
+  const span = dated[dated.length - 1].t - min || 1;
+  return dated.map((row2) => ({
+    uid: row2.card.uid,
+    title: row2.card.title || "",
+    t: row2.t,
+    x: (row2.t - min) / span * width
+  }));
+}
+function graphLayout(nodes, links, { iterations = 12 } = {}) {
+  const ids = [...nodes || []];
+  const pos = /* @__PURE__ */ new Map();
+  const n2 = ids.length || 1;
+  ids.forEach((id, i) => {
+    const a = Math.PI * 2 * i / n2;
+    pos.set(id, { x: Math.cos(a) * 120, y: Math.sin(a) * 120 });
+  });
+  const steps = Math.max(0, Math.min(40, iterations));
+  for (let k = 0; k < steps; k++) {
+    for (let i = 0; i < ids.length; i++) {
+      for (let j = i + 1; j < ids.length; j++) {
+        const a = pos.get(ids[i]);
+        const b = pos.get(ids[j]);
+        let dx = a.x - b.x;
+        let dy = a.y - b.y;
+        const d2 = dx * dx + dy * dy || 0.01;
+        const dist = Math.sqrt(d2);
+        const push = 400 / d2;
+        dx /= dist;
+        dy /= dist;
+        a.x += dx * push;
+        a.y += dy * push;
+        b.x -= dx * push;
+        b.y -= dy * push;
+      }
+    }
+    for (const link of links || []) {
+      const a = pos.get(link[0]);
+      const b = pos.get(link[1]);
+      if (!a || !b) continue;
+      a.x += (b.x - a.x) * 0.05;
+      a.y += (b.y - a.y) * 0.05;
+      b.x += (a.x - b.x) * 0.05;
+      b.y += (a.y - b.y) * 0.05;
+    }
+  }
+  return pos;
+}
+function derivedGraph(board2) {
+  const nodes = [];
+  const links = [];
+  for (const item of board2?.items?.values?.() || []) {
+    if (item.type === "card") nodes.push(item.uid);
+  }
+  for (const edge of board2?.edges?.values?.() || []) {
+    if (edge.valid === false) continue;
+    if (!edge.from || !edge.to) continue;
+    links.push([edge.from, edge.to]);
+  }
+  return { nodes, links };
+}
+function commentCount(board2, uid) {
+  const item = board2?.items?.get?.(uid);
+  if (!item) return 0;
+  let n2 = 0;
+  for (const member of item.members || []) {
+    const kid = board2.items.get(member);
+    if (!kid) continue;
+    const title = String(kid.title || "").trim();
+    const text2 = `${title} ${kid.string || ""}`.trim();
+    if (/^comments?$/i.test(title) && kid.members?.length) n2 += kid.members.length;
+    else if (/\{\{\[\[comment\]\]\}\}|^\[\[comment\]\]|^comment::/i.test(text2)) n2 += 1;
+  }
+  return n2;
+}
+function cardTemplatePlan(blocks) {
+  const out = [];
+  for (const block of blocks || []) {
+    if (!block || typeof block.string !== "string") continue;
+    const string = block.string.trim();
+    if (!string || string.startsWith("{{")) continue;
+    out.push({ string: string.slice(0, 500) });
+    if (out.length >= 45) break;
+  }
+  return out;
+}
+function cleanVia2(points) {
+  if (!Array.isArray(points)) return [];
+  const out = [];
+  for (const p of points) {
+    if (!p || !Number.isFinite(Number(p.x)) || !Number.isFinite(Number(p.y))) continue;
+    out.push({ x: Math.round(Number(p.x) * 10) / 10, y: Math.round(Number(p.y) * 10) / 10 });
+    if (out.length >= VIA_CAP) break;
+  }
+  return out;
+}
+function segmentHits(a, b, rect) {
+  const pad2 = 8;
+  const left = rect.x - pad2;
+  const right = rect.x + rect.w + pad2;
+  const top = rect.y - pad2;
+  const bottom = rect.y + rect.h + pad2;
+  const minX = Math.min(a.x, b.x);
+  const maxX = Math.max(a.x, b.x);
+  const minY = Math.min(a.y, b.y);
+  const maxY = Math.max(a.y, b.y);
+  if (maxX < left || minX > right || maxY < top || minY > bottom) return false;
+  return true;
+}
+function routeAround(start, end, obstacles = []) {
+  const hit = (obstacles || []).filter((rect) => rect && segmentHits(start, end, rect));
+  if (!hit.length) return [];
+  const top = Math.min(...hit.map((rect) => rect.y)) - 28;
+  return cleanVia2([{ x: start.x, y: top }, { x: end.x, y: top }]);
+}
+function sectionPair(uids, getItem) {
+  const sections = [];
+  for (const uid of uids || []) {
+    if (getItem?.(uid)?.type === "section") sections.push(uid);
+    if (sections.length === 2) break;
+  }
+  return sections.length === 2 ? sections : null;
+}
+function zoomThreshold(boardValue, settingValue) {
+  const pick = (value) => {
+    const n2 = Number(value);
+    return Number.isFinite(n2) && n2 >= 0.05 && n2 <= 1.5 ? n2 : null;
+  };
+  return pick(boardValue) ?? pick(settingValue) ?? 0.45;
+}
+function thumbnailBudget(uids, { cap: cap2 = THUMBNAIL_CAP } = {}) {
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  const limit = Math.max(0, Math.min(THUMBNAIL_CAP, cap2));
+  for (const uid of uids || []) {
+    if (!uid || seen.has(uid)) continue;
+    seen.add(uid);
+    out.push(uid);
+    if (out.length >= limit) break;
+  }
+  return out;
+}
+function timerStep(state, now2) {
+  const remaining = Math.max(0, Number(state?.remainingMs) || 0);
+  if (!state?.running || !state.endsAt) return { remainingMs: remaining, running: false, endsAt: null };
+  const left = Math.max(0, state.endsAt - now2);
+  return { remainingMs: left, running: left > 0, endsAt: left > 0 ? state.endsAt : null };
+}
+function presenterNote(board2, uid) {
+  const item = board2?.items?.get?.(uid);
+  if (!item) return "";
+  for (const member of item.members || []) {
+    const kid = board2.items.get(member);
+    const raw = kid?.string || kid?.title || "";
+    const text2 = String(raw).replace(/\s+/g, " ").trim();
+    if (text2) return text2.slice(0, 240);
+  }
+  return "";
+}
+function printPages(board2) {
+  const items = board2?.items;
+  if (!items) return [];
+  const roots = board2.roots || [];
+  const sections = roots.map((uid) => items.get(uid)).filter((item) => item?.type === "section");
+  const pages = sections.length ? sections : [...items.values()].filter((item) => item.type !== "edge");
+  return pages.map((item) => ({ uid: item.uid, title: item.title || item.string || "Untitled" }));
+}
+function backgroundImage(url) {
+  if (typeof url !== "string") return null;
+  const s = url.trim();
+  if (!s || s.length > 2e3) return null;
+  if (!/^https:\/\//i.test(s)) return null;
+  if (/[\s"'()<>]/.test(s)) return null;
+  return s;
+}
+function versionPeekRequest(api) {
+  if (!api || typeof api !== "object") return null;
+  if (typeof api.block?.history === "function") return "block.history";
+  if (typeof api.ui?.blockHistory === "function") return "ui.blockHistory";
+  return null;
+}
+
 // src/model/links.js
 var MAX_SOURCES = 20;
 function linksQuery() {
@@ -2295,8 +2602,8 @@ function boardsFromRows(rows, { limit = 20 } = {}) {
 var LIBRARY_TYPES = ["all", "page", "block", "board", "daily"];
 var LIBRARY_CAP = 80;
 var DAY_MS = 864e5;
-var MONTHS2 = "January|February|March|April|May|June|July|August|September|October|November|December";
-var DAILY_RE = new RegExp(`^(${MONTHS2}) (\\d{1,2})(st|nd|rd|th), (\\d{4})$`);
+var MONTHS3 = "January|February|March|April|May|June|July|August|September|October|November|December";
+var DAILY_RE = new RegExp(`^(${MONTHS3}) (\\d{1,2})(st|nd|rd|th), (\\d{4})$`);
 function isDailyTitle(title) {
   const m = DAILY_RE.exec(String(title ?? ""));
   if (!m) return false;
@@ -4086,7 +4393,7 @@ var PROPS = ":block/props";
 var OPEN = ":block/open";
 var LINK_MODES = ["off", "attributes", "all"];
 var ITEM_KEYS = ["type", "x", "y", "w", "h", "color", "collapsed", "fontSize", "pinned", "fit", "look", "axis", "textColor", "align", "fill", "border", "titleSize", "titleColor", "titleFill", "areaFill", "shape"];
-var EDGE_KEYS = ["type", "from", "to", "fromSide", "toSide", "dir", "route", "dash", "weight", "color"];
+var EDGE_KEYS = ["type", "from", "to", "fromSide", "toSide", "dir", "route", "dash", "weight", "color", "via"];
 var MAX_PARENT_STRINGS = 200;
 var DAILY_GAP = 20;
 var registry = /* @__PURE__ */ new Map();
@@ -5214,9 +5521,10 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
         });
       });
     },
-    // bg / bgColor: undefined leaves the key, null removes it. bg is a pattern. bgColor is a tone name or #rrggbb.
-    // Resolves true when applied (or already equal), false when rejected.
-    setBoardBackground({ bg, bgColor } = {}) {
+    // bg / bgColor / bgImage / lodZoom: undefined leaves the key, null removes it.
+    // bg is a pattern. bgColor is a tone name or #rrggbb. bgImage is an https URL, painted locked.
+    // lodZoom is this board's map threshold (0.05–1.5).
+    setBoardBackground({ bg, bgColor, bgImage, lodZoom } = {}) {
       return txn((t) => {
         if (!board2.enhanced) return false;
         let tone = bgColor;
@@ -5225,15 +5533,54 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
           tone = boardColor(tone);
           if (!tone) return false;
         }
+        let image = bgImage;
+        if (image != null) {
+          image = backgroundImage(image);
+          if (!image) return false;
+        }
+        let zoom = lodZoom;
+        if (zoom != null) {
+          const picked = zoomThreshold(zoom, null);
+          if (picked === 0.45 && Number(zoom) !== 0.45) return false;
+          zoom = picked;
+        }
         const base = rawPlexus(uid);
         const next = { ...base };
-        for (const [key, value] of [["bg", bg], ["bgColor", tone]]) {
+        for (const [key, value] of [["bg", bg], ["bgColor", tone], ["bgImage", image], ["lodZoom", zoom]]) {
           if (value === void 0) continue;
           if (value === null) delete next[key];
           else next[key] = value;
         }
         if (stable(next) !== stable(base)) t.props(uid, next);
         return true;
+      });
+    },
+    setSectionLook(id, look) {
+      return txn((t) => {
+        const item = board2.items.get(id);
+        if (!item || item.type !== "section") return false;
+        if (look != null && look !== "lane" && look !== "calendar" && look !== "timer") return false;
+        t.props(id, itemPlexus(id, { look: look ?? null }));
+        return true;
+      });
+    },
+    applyCardTemplate(id, blocks) {
+      return txn((t) => {
+        const item = board2.items.get(id);
+        if (!item || item.type !== "card") return 0;
+        const plan = cardTemplatePlan(blocks).slice(0, 45);
+        for (const child of plan) t.create({ parent: id, order: "last", string: child.string });
+        return plan.length;
+      });
+    },
+    layoutByDate(id) {
+      return txn((t) => {
+        const item = board2.items.get(id);
+        if (!item || item.type !== "section") return 0;
+        const cards = item.members.map((member) => board2.items.get(member)).filter(Boolean);
+        const plan = calendarLayout(cards).slice(0, 45);
+        for (const spot of plan) t.props(spot.uid, itemPlexus(spot.uid, { x: spot.x, y: spot.y }));
+        return plan.length;
       });
     },
     setCollapsedMany(uids, value) {
@@ -7650,15 +7997,15 @@ function createInteractions({ actions, settings } = {}) {
 }
 
 // src/model/tasks.js
-var MONTHS3 = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-var DAILY_RE2 = new RegExp(`^(${MONTHS3.join("|")}) (\\d{1,2})(st|nd|rd|th), (\\d{4})$`);
+var MONTHS4 = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+var DAILY_RE2 = new RegExp(`^(${MONTHS4.join("|")}) (\\d{1,2})(st|nd|rd|th), (\\d{4})$`);
 function parseRoamDay(title) {
   const m = DAILY_RE2.exec(String(title ?? "").trim());
   if (!m) return null;
   const day = Number(m[2]);
   const suffix = day >= 11 && day <= 13 ? "th" : { 1: "st", 2: "nd", 3: "rd" }[day % 10] ?? "th";
   if (m[3] !== suffix || day < 1 || day > 31) return null;
-  const month = MONTHS3.indexOf(m[1]);
+  const month = MONTHS4.indexOf(m[1]);
   if (month < 0) return null;
   return { y: Number(m[4]), m: month + 1, d: day };
 }
@@ -9679,6 +10026,8 @@ function createItemRenderer({
     if (info?.refs > 0) chips.push({ cls: "refs", text: `${info.refs} refs`, title: `${info.refs} references to this card` });
     if (info?.boards > 0) chips.push({ cls: "boards", text: `on ${info.boards} boards`, title: "Shown on other boards", action: "boards" });
     if (info && (info.open > 0 || info.done > 0)) chips.push({ cls: "todo", text: `${info.open || 0}/${info.done || 0}`, title: `${info.open || 0} open, ${info.done || 0} done` });
+    const comments = commentCount(lastBoard, rec.uid);
+    if (comments > 0) chips.push({ cls: "comments", text: `${comments}`, title: `${comments} comments` });
     const due = item.type === "card" ? dueChip(item.content) : null;
     if (due) chips.unshift({ cls: "due", text: due.text, title: "Due", overdue: due.overdue });
     for (const text2 of attrChipsOf(rec, item)) chips.push({ cls: "attr", text: text2 });
@@ -10303,6 +10652,22 @@ function createItemRenderer({
     renameBoard,
     renamePage,
     shellOf: (uid) => shells.get(uid)?.el ?? null,
+    expireContent(uids) {
+      for (const uid of uids || []) {
+        const rec = shells.get(uid);
+        if (!rec || editing?.uid === uid) continue;
+        unmountRoots(rec);
+        rec.body?.replaceChildren?.();
+        rec.contentKey = null;
+        mounted.delete(uid);
+        rec.titleRendered = false;
+        if (rec.type === "card") {
+          rec.bare = true;
+          rec.el.classList.add("pxd-item--bare");
+        }
+      }
+      if (uids?.length && lastContent) fillContent(lastContent);
+    },
     mountedCount: () => mounted.size,
     mountedUids: () => [...mounted.keys()],
     shellCount: () => shells.size,
@@ -10412,7 +10777,17 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
   const geometryFor = (board2, edge, rects) => {
     const routed = routedEdge(board2, edge, rects);
     if (!routed) return null;
-    return edgePath({ a: routed.a, b: routed.b, fromSide: edge.fromSide, toSide: edge.toSide, route: edge.route, offset: pairOffset(board2, edge) });
+    let via = edge.via;
+    if ((!via || !via.length) && edge.route === "around") {
+      const obstacles = [];
+      for (const [uid, rect] of rects) {
+        if (uid === edge.from || uid === edge.to || !rect) continue;
+        const item = board2.items.get(uid);
+        if (item?.type === "card" || item?.type === "text") obstacles.push(rect);
+      }
+      via = routeAround(center(routed.a), center(routed.b), obstacles);
+    }
+    return edgePath({ a: routed.a, b: routed.b, fromSide: edge.fromSide, toSide: edge.toSide, route: edge.route, offset: pairOffset(board2, edge), via });
   };
   const buildEdge = (edge) => {
     const g = mk("g", "pxd-edge", svg);
@@ -13076,6 +13451,12 @@ function buildMenu(kind, ctx = {}) {
         make("unfold-all", "Unfold all cards"),
         sep(),
         make("background", "Background…"),
+        make("bg-image", "Lock copied image as background"),
+        make("gallery", "Gallery"),
+        make("timeline", "Timeline"),
+        make("graph", "Graph"),
+        make("print", "Print…"),
+        make("highlights", "Highlight marks"),
         make("export-svg", "Export as SVG"),
         make("export-png", "Export as PNG"),
         make("copy-outline", "Copy as outline")
@@ -13097,6 +13478,8 @@ function buildMenu(kind, ctx = {}) {
         sep(),
         colorMenu(),
         item?.look === "card" ? make("show-as-block", "Show as block") : make("show-as-card", "Show as card"),
+        make("apply-template", "Add attribute template"),
+        make("version-peek", "Version history"),
         foldItem(folded),
         make("fit-height", "Fit height", { disabled: folded }),
         make("reset-size", "Reset size", { disabled: folded }),
@@ -13133,6 +13516,8 @@ function buildMenu(kind, ctx = {}) {
         make("section-note", c.hasNote ? "Remove description" : "Add description"),
         c.locked ? make("unlock-contents", "Unlock") : make("lock-contents", "Lock"),
         make("present-section", "Present this section"),
+        make("layout-dates", "Lay out by date"),
+        make("focus-timer", "Focus timer"),
         sep(),
         make("fit-section", "Fit to contents", { disabled: empty }),
         make("toggle-fit", "Auto-fit", { checked: Boolean(c.fitOn) }),
@@ -13180,7 +13565,8 @@ function buildMenu(kind, ctx = {}) {
           children: [
             make("route:curve", "Curve", { checked: c.route === "curve" }),
             make("route:straight", "Straight", { checked: c.route === "straight" }),
-            make("route:elbow", "Elbow", { checked: c.route === "elbow" })
+            make("route:elbow", "Elbow", { checked: c.route === "elbow" }),
+            make("route:around", "Around cards", { checked: c.route === "around" })
           ]
         }),
         make("dash", "Line", {
@@ -13191,6 +13577,8 @@ function buildMenu(kind, ctx = {}) {
         }),
         colorMenu(),
         sep(),
+        make("add-bend", "Add bend"),
+        make("clear-bends", "Clear bends"),
         make("label", "Label"),
         make("notes", "Notes"),
         make("write-to-graph", "Write to graph"),
@@ -13222,6 +13610,7 @@ function buildMenu(kind, ctx = {}) {
         foldItem(Boolean(c.anyCollapsed)),
         pinItem(Boolean(c.allPinned)),
         sep(),
+        ...c.sectionPair ? [make("group-connect", "Connect sections")] : [],
         make("wrap-section", "Wrap in section", { hint: "Cmd G" }),
         make("wrap-board", "Move into new board"),
         make("send-to", "Send to board…"),
@@ -13438,8 +13827,14 @@ function createPresenter({ doc = globalThis.document, root, timers, on = {} } = 
   let hud = null;
   let titleEl = null;
   let countEl = null;
+  let noteEl = null;
   let prevBtn = null;
   let nextBtn = null;
+  let ink = null;
+  let laserOn = false;
+  let penOn = false;
+  let drawing = false;
+  const strokes = [];
   const offs = [];
   const el = (tag, cls, parent, text2) => {
     const n2 = doc.createElement(tag);
@@ -13472,6 +13867,7 @@ function createPresenter({ doc = globalThis.document, root, timers, on = {} } = 
     const s = steps[index];
     if (!hud || !s) return;
     titleEl.textContent = s.title || "";
+    if (noteEl) noteEl.textContent = s.note || "";
     countEl.textContent = `${index + 1} / ${steps.length}`;
     prevBtn.disabled = index <= 0;
     nextBtn.disabled = index >= steps.length - 1;
@@ -13488,13 +13884,19 @@ function createPresenter({ doc = globalThis.document, root, timers, on = {} } = 
     index = next;
     paint2();
     const s = steps[index];
-    on.step?.({ index, total: steps.length, uid: s.uid, rect: s.rect, title: s.title, members: s.members });
+    on.step?.({ index, total: steps.length, uid: s.uid, rect: s.rect, title: s.title, note: s.note || "", members: s.members });
     return true;
   };
   const teardown = () => {
     offs.splice(0).forEach((off) => off());
+    ink?.remove();
     hud?.remove();
-    hud = titleEl = countEl = prevBtn = nextBtn = null;
+    hud = titleEl = countEl = noteEl = prevBtn = nextBtn = ink = null;
+    laserOn = false;
+    penOn = false;
+    drawing = false;
+    strokes.length = 0;
+    root?.classList.remove("pxd-root--laser");
   };
   const stop = () => {
     if (!active) return false;
@@ -13516,7 +13918,7 @@ function createPresenter({ doc = globalThis.document, root, timers, on = {} } = 
       const item = board2.items.get(only);
       const rect = rects?.get(only);
       if (!item || item.type !== "section" || !rect) return false;
-      steps = [{ uid: only, rect, title: item.title || "", members: collectMembers(board2, only) }];
+      steps = [{ uid: only, rect, title: item.title || "", note: presenterNote(board2, only), members: collectMembers(board2, only) }];
     } else {
       const rootSet = new Set(board2.roots);
       const sections = outlineOrder(board2).filter((u) => rootSet.has(u) && board2.items.get(u)?.type === "section" && rects.get(u));
@@ -13524,6 +13926,7 @@ function createPresenter({ doc = globalThis.document, root, timers, on = {} } = 
         uid,
         rect: rects.get(uid),
         title: board2.items.get(uid).title || "",
+        note: presenterNote(board2, uid),
         members: collectMembers(board2, uid)
       }));
     }
@@ -13535,10 +13938,70 @@ function createPresenter({ doc = globalThis.document, root, timers, on = {} } = 
     active = true;
     hud = el("div", "pxd-present-hud pxd-chrome", root);
     titleEl = el("span", "pxd-present-hud__title", hud);
+    noteEl = el("span", "pxd-present-hud__note", hud);
     countEl = el("span", "pxd-present-hud__count", hud);
     prevBtn = button(hud, "pxd-present-hud__prev", "Prev", () => goto(index - 1));
     nextBtn = button(hud, "pxd-present-hud__next", "Next", () => goto(index + 1));
+    button(hud, "pxd-present-hud__laser", "Laser", () => {
+      laserOn = !laserOn;
+      penOn = false;
+      root?.classList.toggle("pxd-root--laser", laserOn);
+    });
+    button(hud, "pxd-present-hud__pen", "Pen", () => {
+      penOn = !penOn;
+      laserOn = false;
+      root?.classList.remove("pxd-root--laser");
+    });
     button(hud, "pxd-present-hud__exit", "Exit", () => stop());
+    ink = el("div", "pxd-present-ink", root);
+    const dot = el("div", "pxd-present-laser", ink);
+    const onMove = (event) => {
+      if (!active) return;
+      const box2 = root?.getBoundingClientRect?.();
+      const x = (event.clientX ?? 0) - (box2?.left || 0);
+      const y = (event.clientY ?? 0) - (box2?.top || 0);
+      if (laserOn) {
+        dot.hidden = false;
+        dot.style.left = `${x}px`;
+        dot.style.top = `${y}px`;
+      } else dot.hidden = true;
+      if (penOn && drawing) strokes.push({ x, y });
+    };
+    const onDown = (event) => {
+      if (!penOn || event.target?.closest?.(".pxd-present-hud")) return;
+      drawing = true;
+      strokes.push({ break: true });
+    };
+    const onUp = () => {
+      if (!drawing) return;
+      drawing = false;
+      ink.querySelectorAll(".pxd-present-stroke").forEach((node2) => node2.remove());
+      let run = [];
+      const flush = () => {
+        if (run.length < 2) {
+          run = [];
+          return;
+        }
+        const line = el("div", "pxd-present-stroke", ink);
+        line.style.left = `${run[0].x}px`;
+        line.style.top = `${run[0].y}px`;
+        line.style.width = `${Math.hypot(run[run.length - 1].x - run[0].x, run[run.length - 1].y - run[0].y)}px`;
+        run = [];
+      };
+      for (const point of strokes) {
+        if (point.break) flush();
+        else run.push(point);
+      }
+      flush();
+    };
+    root?.addEventListener("pointermove", onMove);
+    root?.addEventListener("pointerdown", onDown);
+    root?.addEventListener("pointerup", onUp);
+    offs.push(() => {
+      root?.removeEventListener("pointermove", onMove);
+      root?.removeEventListener("pointerdown", onDown);
+      root?.removeEventListener("pointerup", onUp);
+    });
     goto(0);
     return true;
   };
@@ -14038,6 +14501,138 @@ function watchRouteExit({ boardUid, onExit, win = globalThis.window } = {}) {
   };
 }
 
+// src/view/later-views.js
+var TITLES = { gallery: "Gallery", timeline: "Timeline", graph: "Graph" };
+function mountLater({ doc = globalThis.document, root, getBoard, onClose } = {}) {
+  const box2 = doc.createElement("div");
+  box2.className = "pxd-later pxd-chrome";
+  box2.hidden = true;
+  root?.append(box2);
+  const bar = doc.createElement("div");
+  bar.className = "pxd-later__bar";
+  const title = doc.createElement("span");
+  title.className = "pxd-later__title";
+  const close = doc.createElement("button");
+  close.type = "button";
+  close.className = "pxd-btn pxd-later__close";
+  close.textContent = "Close";
+  close.setAttribute("aria-label", "Close");
+  bar.append(title, close);
+  const body = doc.createElement("div");
+  body.className = "pxd-later__body";
+  box2.append(bar, body);
+  let mode = null;
+  const offs = [];
+  const listen = (el, type, fn) => {
+    el.addEventListener(type, fn);
+    offs.push(() => el.removeEventListener(type, fn));
+  };
+  const stop = (event) => event.stopPropagation?.();
+  for (const type of ["pointerdown", "pointerup", "click", "dblclick", "wheel", "contextmenu"]) {
+    listen(box2, type, stop);
+  }
+  listen(close, "click", (event) => {
+    stop(event);
+    onClose?.();
+  });
+  const paint2 = () => {
+    body.replaceChildren();
+    const board2 = getBoard?.();
+    if (!board2 || !mode) return;
+    if (mode === "gallery") {
+      const tiles = galleryGrid(galleryItems(board2));
+      if (!tiles.length) {
+        body.textContent = "No images on this board";
+        return;
+      }
+      for (const tile of tiles) {
+        const cell = doc.createElement("figure");
+        cell.className = "pxd-later__tile";
+        if (tile.src) {
+          const img = doc.createElement("img");
+          img.alt = tile.title || "";
+          img.src = tile.src;
+          cell.append(img);
+        }
+        const cap2 = doc.createElement("figcaption");
+        cap2.textContent = tile.title || "Image";
+        cell.append(cap2);
+        body.append(cell);
+      }
+      return;
+    }
+    if (mode === "timeline") {
+      const cards = [...board2.items.values()].filter((item) => item.type === "card");
+      const axis = timelineAxis(cards);
+      if (!axis.length) {
+        body.textContent = "No dated cards";
+        return;
+      }
+      for (const spot of axis) {
+        const node2 = doc.createElement("div");
+        node2.className = "pxd-later__tick";
+        node2.style.left = `${Math.round(spot.x)}px`;
+        node2.textContent = spot.title || spot.uid;
+        body.append(node2);
+      }
+      return;
+    }
+    const graph = derivedGraph(board2);
+    const pos = graphLayout(graph.nodes, graph.links);
+    if (!pos.size) {
+      body.textContent = "No cards to graph";
+      return;
+    }
+    for (const [uid, p] of pos) {
+      const node2 = doc.createElement("div");
+      node2.className = "pxd-later__node";
+      node2.style.left = `${Math.round(160 + p.x)}px`;
+      node2.style.top = `${Math.round(120 + p.y)}px`;
+      node2.textContent = board2.items.get(uid)?.title || uid;
+      body.append(node2);
+    }
+  };
+  return {
+    open(next) {
+      if (!TITLES[next]) return false;
+      mode = next;
+      title.textContent = TITLES[next];
+      box2.hidden = false;
+      paint2();
+      return true;
+    },
+    close() {
+      mode = null;
+      box2.hidden = true;
+      body.replaceChildren();
+    },
+    refresh() {
+      if (mode) paint2();
+    },
+    isOpen: () => Boolean(mode),
+    mode: () => mode,
+    dispose() {
+      mode = null;
+      offs.splice(0).forEach((off) => off());
+      box2.remove();
+    }
+  };
+}
+function mountPrintSheet(doc, board2) {
+  const sheet = doc.createElement("div");
+  sheet.className = "pxd-print";
+  for (const page of printPages(board2)) {
+    const section2 = doc.createElement("section");
+    section2.className = "pxd-print__page";
+    section2.dataset.uid = page.uid;
+    const heading = doc.createElement("h1");
+    heading.textContent = page.title;
+    section2.append(heading);
+    sheet.append(section2);
+  }
+  return sheet;
+}
+
 // src/view/board-view.js
 var SVG_NS3 = "http://www.w3.org/2000/svg";
 var pointerBoard = null;
@@ -14458,7 +15053,11 @@ function mountBoardView({
   let bgPattern;
   let bgTone;
   let bgHex = null;
+  let bgImage = null;
   let bgOverride = false;
+  let timerHud = null;
+  let timerState = null;
+  let timerTick = null;
   let focusOn = false;
   let focusKey = null;
   let lensTag = null;
@@ -14527,6 +15126,14 @@ function mountBoardView({
   }, refresh() {
   }, dispose() {
   } };
+  let laterCtl = { open() {
+    return false;
+  }, close() {
+  }, refresh() {
+  }, isOpen() {
+    return false;
+  }, dispose() {
+  } };
   const leaveOutline = () => {
     outlineMode = false;
     root.classList.remove("pxd-root--outline");
@@ -14539,6 +15146,7 @@ function mountBoardView({
     const next = Boolean(on);
     if (next && outlineMode) leaveOutline();
     if (next && kanbanMode) setKanban(false);
+    if (next) laterCtl.close();
     tableMode = next;
     root.classList.toggle("pxd-root--table", tableMode);
     chrome?.toolbar?.setTable?.(tableMode);
@@ -14549,6 +15157,7 @@ function mountBoardView({
     const next = Boolean(on);
     if (next && outlineMode) leaveOutline();
     if (next && tableMode) setTable(false);
+    if (next) laterCtl.close();
     kanbanMode = next;
     root.classList.toggle("pxd-root--kanban", kanbanMode);
     chrome?.toolbar?.setKanban?.(kanbanMode);
@@ -14726,10 +15335,7 @@ function mountBoardView({
   const centerOn = (worldPoint) => {
     moveViewport({ x: size.width / 2 - worldPoint.x * vp.zoom, y: size.height / 2 - worldPoint.y * vp.zoom, zoom: vp.zoom });
   };
-  const mapThreshold = () => {
-    const n2 = Number(setting("map-zoom", "0.45"));
-    return Number.isFinite(n2) && n2 > 0 ? n2 : 0.45;
-  };
+  const mapThreshold = () => zoomThreshold(board2()?.plexus?.lodZoom, setting("map-zoom", "0.45"));
   const paintTier = () => {
     root.classList.toggle("pxd-lod-map", tier !== "detail");
     root.classList.toggle("pxd-lod-overview", tier === "overview");
@@ -14853,7 +15459,53 @@ function mountBoardView({
       schedule();
       updateBackToContent();
       refreshBadges();
+      refreshThumbnails();
     }, RESUME_MS);
+  };
+  const refreshThumbnails = () => {
+    if (disposed || gesturing || !board2()) return;
+    const view2 = visibleWorldRect(vp, size, 0);
+    const r = rects();
+    const candidates = [];
+    for (const card2 of board2().items.values()) {
+      if (card2.type !== "card" || card2.kind !== "block") continue;
+      const rect = r.get(card2.uid);
+      if (!rect || !rectsIntersect(rect, view2)) continue;
+      let refString = "";
+      try {
+        refString = host?.blockString?.(card2.target?.uid) || "";
+      } catch {
+        refString = "";
+      }
+      if (classifyString(refString).kind !== "board") continue;
+      candidates.push(card2.uid);
+    }
+    const batch = thumbnailBudget(candidates);
+    if (batch.length) itemsR.expireContent?.(batch);
+  };
+  const paintTimer = () => {
+    if (!timerHud || !timerState) return;
+    const secs = Math.ceil(timerState.remainingMs / 1e3);
+    const m = Math.floor(secs / 60);
+    timerHud.textContent = `${m}:${String(secs % 60).padStart(2, "0")}`;
+  };
+  const stopTimer = () => {
+    timerTick?.();
+    timerTick = null;
+    timerHud?.remove();
+    timerHud = null;
+    timerState = null;
+  };
+  const armTimer = () => {
+    timerTick?.();
+    timerTick = timers.later(() => {
+      timerTick = null;
+      if (!timerState?.running || disposed) return;
+      timerState = timerStep(timerState, Date.now());
+      paintTimer();
+      if (timerState.running) armTimer();
+      else toast("Focus timer done");
+    }, 1e3);
   };
   const selectedItems = () => selection.items.map((u) => board2()?.items.get(u)).filter(Boolean);
   const toScreenRect = (r) => {
@@ -15088,8 +15740,9 @@ function mountBoardView({
     const defTone = setting("board-tone", "none");
     const pattern = ownPattern ?? (BOARD_PATTERNS.includes(defPattern) ? defPattern : "dots");
     const tone = ownHex ? null : ownTone ?? (BOARD_TONES.includes(defTone) ? defTone : null);
-    const override = ownPattern !== null || ownTone !== null || ownHex !== null;
-    if (pattern === bgPattern && tone === bgTone && ownHex === bgHex && override === bgOverride) return;
+    const image = backgroundImage(own?.bgImage);
+    const override = ownPattern !== null || ownTone !== null || ownHex !== null || Boolean(image);
+    if (pattern === bgPattern && tone === bgTone && ownHex === bgHex && image === bgImage && override === bgOverride) return;
     if (pattern !== bgPattern) {
       grid.className = `pxd-grid pxd-grid--${pattern}`;
       if (bgPattern === "grid") for (const v of ["--pxd-grid-major", "--pxd-grid-major-x", "--pxd-grid-major-y"]) grid.style.removeProperty?.(v);
@@ -15111,6 +15764,12 @@ function mountBoardView({
         root.style.removeProperty("--pxd-label-bg");
       }
       bgHex = ownHex;
+    }
+    if (image !== bgImage) {
+      grid.style.backgroundImage = image ? `url("${image}")` : "";
+      grid.style.backgroundSize = image ? "cover" : "";
+      grid.style.backgroundPosition = image ? "center" : "";
+      bgImage = image;
     }
     bgOverride = override;
     chrome.toolbar.setBackground({ pattern, tone: ownHex || tone, override });
@@ -15515,7 +16174,12 @@ function mountBoardView({
       }
       case "multi": {
         const items = selection.items.map((u) => b?.items.get(u)).filter(Boolean);
-        return { count: items.length, allPinned: items.length > 0 && items.every((i) => i.pinned), anyCollapsed: items.some((i) => i.type === "card" && i.collapsed) };
+        return {
+          count: items.length,
+          allPinned: items.length > 0 && items.every((i) => i.pinned),
+          anyCollapsed: items.some((i) => i.type === "card" && i.collapsed),
+          sectionPair: sectionPair(items.map((i) => i.uid), (id) => b?.items.get(id))
+        };
       }
       default:
         return {};
@@ -15656,6 +16320,88 @@ function mountBoardView({
         break;
       case "background":
         chrome.popover.open();
+        break;
+      case "bg-image": {
+        void (async () => {
+          let text2 = "";
+          try {
+            text2 = await globalThis.navigator?.clipboard?.readText?.() || "";
+          } catch {
+            text2 = "";
+          }
+          const ok = await session.setBoardBackground?.({ bgImage: text2.trim() });
+          if (!disposed && !ok) toast("Copy an https image URL first");
+        })();
+        break;
+      }
+      case "gallery":
+      case "timeline":
+      case "graph":
+        if (tableMode) setTable(false);
+        if (kanbanMode) setKanban(false);
+        laterCtl.open(head);
+        break;
+      case "print": {
+        const sheet = mountPrintSheet(doc, b);
+        root.append(sheet);
+        root.classList.add("pxd-root--print");
+        try {
+          win?.print?.();
+        } catch {
+        }
+        sheet.remove();
+        root.classList.remove("pxd-root--print");
+        break;
+      }
+      case "highlights": {
+        const on = root.classList.toggle("pxd-root--highlights");
+        for (const card2 of b.items.values()) {
+          const shell = itemsR.shellOf(card2.uid);
+          if (!shell) continue;
+          shell.classList.toggle("pxd-has-highlight", on && highlightHits(card2.string).length > 0);
+        }
+        break;
+      }
+      case "apply-template":
+        if (item) void session.applyCardTemplate?.(item.uid, ATTRIBUTE_TEMPLATE);
+        break;
+      case "version-peek": {
+        if (!versionPeekRequest(host?.api)) toast("Roam does not expose block history");
+        else toast("Block history is available on this host");
+        break;
+      }
+      case "layout-dates":
+        if (item) void session.layoutByDate?.(item.uid);
+        break;
+      case "focus-timer": {
+        if (item?.type === "section") void session.setSectionLook?.(item.uid, "timer");
+        stopTimer();
+        timerState = { remainingMs: FOCUS_MS, running: true, endsAt: Date.now() + FOCUS_MS };
+        timerHud = el("div", "pxd-timer pxd-chrome", root);
+        paintTimer();
+        armTimer();
+        break;
+      }
+      case "group-connect": {
+        const pair2 = sectionPair(uids, (id2) => b.items.get(id2));
+        if (pair2) void session.addEdge?.({ from: pair2[0], to: pair2[1] });
+        break;
+      }
+      case "add-bend": {
+        if (!edgeUid) break;
+        const edge = b.edges.get(edgeUid);
+        const a = rects().get(edge?.from);
+        const c = rects().get(edge?.to);
+        if (!edge || !a || !c) break;
+        const mid = {
+          x: (a.x + a.w / 2 + c.x + c.w / 2) / 2,
+          y: (a.y + a.h / 2 + c.y + c.h / 2) / 2 - 48
+        };
+        void session.updateEdge?.(edgeUid, { via: [...edge.via || [], mid] });
+        break;
+      }
+      case "clear-bends":
+        if (edgeUid) void session.updateEdge?.(edgeUid, { via: [] });
         break;
       case "export-svg":
         void view.exportSvg({ download: true });
@@ -17307,6 +18053,7 @@ function mountBoardView({
     if (outlineMode) syncOutline();
     if (tableMode) tableCtl.refresh();
     if (kanbanMode) kanbanCtl.refresh();
+    if (laterCtl.isOpen()) laterCtl.refresh();
   }));
   subs.push(session.on("links", () => {
     dirty.links = true;
@@ -17325,6 +18072,12 @@ function mountBoardView({
     root,
     host,
     getBoard: board2
+  });
+  laterCtl = mountLater({
+    doc,
+    root,
+    getBoard: board2,
+    onClose: () => laterCtl.close()
   });
   if (inSidebar) setOutline(true);
   const RO = globalThis.ResizeObserver;
@@ -17705,6 +18458,8 @@ function mountBoardView({
       clearOutline();
       tableCtl.dispose();
       kanbanCtl.dispose();
+      laterCtl.dispose();
+      stopTimer();
       ctl.cancel();
       releaseCapture();
       if (heightDrag) onHeightUp();

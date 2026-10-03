@@ -189,7 +189,7 @@ const NORMALS = {
   left: { x: -1, y: 0 },
 };
 
-export function edgePath({ a, b, fromSide = "auto", toSide = "auto", route = "curve", offset = 0 }) {
+export function edgePath({ a, b, fromSide = "auto", toSide = "auto", route = "curve", offset = 0, via } = {}) {
   if (fromSide === "auto" || toSide === "auto") {
     const auto = autoSides(a, b);
     if (fromSide === "auto") fromSide = auto.fromSide;
@@ -197,6 +197,23 @@ export function edgePath({ a, b, fromSide = "auto", toSide = "auto", route = "cu
   }
   const start = sidePoint(a, fromSide);
   const end = sidePoint(b, toSide);
+  const bends = Array.isArray(via) ? via.filter((p) => p && Number.isFinite(p.x) && Number.isFinite(p.y)).slice(0, 8) : [];
+  if (bends.length) {
+    const pts = [start, ...bends, end];
+    const mid = pts[Math.floor((pts.length - 1) / 2)];
+    const angle = Math.atan2(end.y - start.y, end.x - start.x);
+    return {
+      d: pts.map((p, i) => `${i ? "L" : "M"}${num(p.x)} ${num(p.y)}`).join(""),
+      start,
+      end,
+      mid,
+      points: pts,
+      startAngle: angle,
+      endAngle: angle,
+      fromSide,
+      toSide,
+    };
+  }
   const nf = NORMALS[fromSide];
   const nt = NORMALS[toSide];
   const dist = Math.hypot(end.x - start.x, end.y - start.y);

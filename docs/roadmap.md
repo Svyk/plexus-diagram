@@ -222,24 +222,24 @@ Order matters: P1 and P2 are the user's direct requests. Within a phase, do task
 
 Pick from here only when every phase above is done or blocked.
 
-- Card templates (a card with preset children and attributes) from `roam/templates` or SmartBlocks if installed (read only their output, never their config).
-- Gallery view of a board (image-first grid).
-- Calendar lane: a section that lays out daily-page cards by date.
-- Timeline view: cards with a date attribute on a horizontal axis.
-- Graph view of a board's derived links (force layout, read-only).
-- Card version peek: Roam's block history for a card, if Roam exposes it.
-- Comments on cards via Roam's native comments (`add_comment` surface), shown as a count badge.
-- Highlight colors inside card text (Roam `^^highlight^^`) as a color filter.
-- Connection waypoints (manual bend points) and orthogonal routing around cards.
-- Group connections: one arrow from a section to a section.
-- Board-level "focus timer" (pomodoro) section for daily planning boards.
-- Presenter notes from each section's first child block, and a presenter window.
-- Laser pointer and temporary pen during present.
-- PDF export through the print dialog, one section per page.
-- Import an image of a whiteboard as a background layer, locked.
-- Per-board default zoom threshold.
-- Live thumbnails of boards on other pages without opening them (needs a watch budget plan).
-- Multi-user cursors (needs Roam multiplayer presence; probably never).
+- Card templates (a card with preset children and attributes) from `roam/templates` or SmartBlocks if installed (read only their output, never their config). Done 2026-10-03: `cardTemplatePlan` skips `{{` wrappers and stops at 45. Menu "Add attribute template". Test `comments, templates, notes, print, and versions`.
+- Gallery view of a board (image-first grid). Done 2026-10-03: canvas menu Gallery. Test `highlight marks and gallery grid`.
+- Calendar lane: a section that lays out daily-page cards by date. Done 2026-10-03: look `calendar`, menu "Lay out by date", one props write per card, cap 45. Test `calendar, timeline, and read-only graph`.
+- Timeline view: cards with a date attribute on a horizontal axis. Done 2026-10-03: canvas menu Timeline. Same test.
+- Graph view of a board's derived links (force layout, read-only). Done 2026-10-03: canvas menu Graph. Positions are not written. Same test.
+- Card version peek: Roam's block history for a card, if Roam exposes it. Done 2026-10-03: the menu asks `versionPeekRequest` and toasts that history is missing unless `api.block.history` or `api.ui.blockHistory` exists. No fake history.
+- Comments on cards via Roam's native comments (`add_comment` surface), shown as a count badge. Done 2026-10-03: `commentCount` paints a count chip. Test `comments, templates, notes, print, and versions`.
+- Highlight colors inside card text (Roam `^^highlight^^`) as a color filter. Done 2026-10-03: menu "Highlight marks" dims cards without `^^`. Test `highlight marks and gallery grid`.
+- Connection waypoints (manual bend points) and orthogonal routing around cards. Done 2026-10-03: edge `via` (max 8), menu Add bend / Clear bends, route Around cards. Test `waypoints, orthogonal bends, group sections, zoom, thumbnails, timer, image`.
+- Group connections: one arrow from a section to a section. Done 2026-10-03: multi-select "Connect sections" calls `addEdge`. Same test.
+- Board-level "focus timer" (pomodoro) section for daily planning boards. Done 2026-10-03: local countdown, one look write, no write each second. `timerStep` in the same test.
+- Presenter notes from each section's first child block, and a presenter window. Done 2026-10-03: the HUD shows `presenterNote`. Same comments test.
+- Laser pointer and temporary pen during present. Done 2026-10-03: Laser and Pen on the HUD. Strokes stay in memory and are dropped on exit.
+- PDF export through the print dialog, one section per page. Done 2026-10-03: menu Print… builds one section per page and calls `window.print`. `printPages` in the comments test.
+- Import an image of a whiteboard as a background layer, locked. Done 2026-10-03: https URL only, stored as `bgImage`, painted on the grid. Menu "Lock copied image as background". Same waypoints test.
+- Per-board default zoom threshold. Done 2026-10-03: `plexus.lodZoom` wins over the map-zoom setting. `zoomThreshold` in the same test.
+- Live thumbnails of boards on other pages without opening them (needs a watch budget plan). Done 2026-10-03: each settle refreshes at most 4 visible shortcut cards. No pull watch per board. `thumbnailBudget` in the same test.
+- Multi-user cursors (needs Roam multiplayer presence; probably never). Skipped.
 
 ## 7. Non-goals
 
@@ -249,6 +249,7 @@ AI agent features inside the board, SuperTag-style typed schemas or class tags, 
 
 Fill in as phases run. Keep the newest at the top of each list.
 
+- Section 6, 2026-10-03: gallery, timeline, graph, calendar layout, waypoints, section arrows, focus timer, presenter notes, laser and pen, print pages, locked https background, per-board zoom, and a 4-card thumbnail cap. Version history stays a toast until Roam exposes it. Multi-user cursors skipped. `npm run check` 849 pass.
 - Typing gates, 2026-10-02: On Readwisenotes Test Lab, 200 keys in SQo1XCFLi, boards parked, −4.07 ms/key (106.82 injected, 110.89 unloaded, 0 `.pxd-root` during the sample). The harness bench that zooms the block was −1.86 (53.96 vs 55.82, 200 keys, 0 pxd nodes). `npm run check` 844 pass. Offscreen boards stay a sized gap (8 mounts, 0 roots, 1711 nodes, down from 10238). A board scrolled into view wakes (1 root, 560px).
 - HARD-3, 2026-10-02: On Readwisenotes BNIFCZf8W, Enhance imported 2 native nodes. A move, teal, and section vb4eeZCwm survived Restore with the native nodes byte-identical and the marker cleared, and a second Enhance returned kind kept with the same x, y, color, and section. `npm run check` 843 pass.
 - PF-1, 2026-10-02: palette cut to Commands… and New whiteboard here. Typing after the cut was +213.88 ms/key (260.93 injected, 47.05 unloaded, 200 keys, 13 roots). Before the cut it was +95.68. Unload left 0. `npm run check` 812 pass.

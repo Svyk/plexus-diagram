@@ -3,6 +3,7 @@
 // step list and the HUD.
 
 import { boundsOf, outlineOrder } from "../model/board.js";
+import { presenterNote } from "../model/section6.js";
 
 const collectMembers = (board, uid) => {
   const out = new Set();
@@ -23,8 +24,14 @@ export function createPresenter({ doc = globalThis.document, root, timers, on = 
   let hud = null;
   let titleEl = null;
   let countEl = null;
+  let noteEl = null;
   let prevBtn = null;
   let nextBtn = null;
+  let ink = null;
+  let laserOn = false;
+  let penOn = false;
+  let drawing = false;
+  const strokes = [];
   const offs = [];
 
   const el = (tag, cls, parent, text) => {
@@ -51,6 +58,7 @@ export function createPresenter({ doc = globalThis.document, root, timers, on = 
     const s = steps[index];
     if (!hud || !s) return;
     titleEl.textContent = s.title || "";
+    if (noteEl) noteEl.textContent = s.note || "";
     countEl.textContent = `${index + 1} / ${steps.length}`;
     prevBtn.disabled = index <= 0;
     nextBtn.disabled = index >= steps.length - 1;
@@ -68,14 +76,20 @@ export function createPresenter({ doc = globalThis.document, root, timers, on = 
     index = next;
     paint();
     const s = steps[index];
-    on.step?.({ index, total: steps.length, uid: s.uid, rect: s.rect, title: s.title, members: s.members });
+    on.step?.({ index, total: steps.length, uid: s.uid, rect: s.rect, title: s.title, note: s.note || "", members: s.members });
     return true;
   };
 
   const teardown = () => {
     offs.splice(0).forEach((off) => off());
+    ink?.remove();
     hud?.remove();
-    hud = titleEl = countEl = prevBtn = nextBtn = null;
+    hud = titleEl = countEl = noteEl = prevBtn = nextBtn = ink = null;
+    laserOn = false;
+    penOn = false;
+    drawing = false;
+    strokes.length = 0;
+    root?.classList.remove("pxd-root--laser");
   };
 
   const stop = () => {
@@ -96,7 +110,7 @@ export function createPresenter({ doc = globalThis.document, root, timers, on = 
       const item = board.items.get(only);
       const rect = rects?.get(only);
       if (!item || item.type !== "section" || !rect) return false;
-      steps = [{ uid: only, rect, title: item.title || "", members: collectMembers(board, only) }];
+      steps = [{ uid: only, rect, title: item.title || "", note: presenterNote(board, only), members: collectMembers(board, only) }];
     } else {
     const rootSet = new Set(board.roots);
     const sections = outlineOrder(board).filter((u) => rootSet.has(u) && board.items.get(u)?.type === "section" && rects.get(u));
@@ -104,6 +118,7 @@ export function createPresenter({ doc = globalThis.document, root, timers, on = 
       uid,
       rect: rects.get(uid),
       title: board.items.get(uid).title || "",
+      note: presenterNote(board, uid),
       members: collectMembers(board, uid),
     }));
     }
@@ -115,10 +130,67 @@ export function createPresenter({ doc = globalThis.document, root, timers, on = 
     active = true;
     hud = el("div", "pxd-present-hud pxd-chrome", root);
     titleEl = el("span", "pxd-present-hud__title", hud);
+    noteEl = el("span", "pxd-present-hud__note", hud);
     countEl = el("span", "pxd-present-hud__count", hud);
     prevBtn = button(hud, "pxd-present-hud__prev", "Prev", () => goto(index - 1));
     nextBtn = button(hud, "pxd-present-hud__next", "Next", () => goto(index + 1));
+    button(hud, "pxd-present-hud__laser", "Laser", () => {
+      laserOn = !laserOn;
+      penOn = false;
+      root?.classList.toggle("pxd-root--laser", laserOn);
+    });
+    button(hud, "pxd-present-hud__pen", "Pen", () => {
+      penOn = !penOn;
+      laserOn = false;
+      root?.classList.remove("pxd-root--laser");
+    });
     button(hud, "pxd-present-hud__exit", "Exit", () => stop());
+    ink = el("div", "pxd-present-ink", root);
+    const dot = el("div", "pxd-present-laser", ink);
+    const onMove = (event) => {
+      if (!active) return;
+      const box = root?.getBoundingClientRect?.();
+      const x = (event.clientX ?? 0) - (box?.left || 0);
+      const y = (event.clientY ?? 0) - (box?.top || 0);
+      if (laserOn) {
+        dot.hidden = false;
+        dot.style.left = `${x}px`;
+        dot.style.top = `${y}px`;
+      } else dot.hidden = true;
+      if (penOn && drawing) strokes.push({ x, y });
+    };
+    const onDown = (event) => {
+      if (!penOn || event.target?.closest?.(".pxd-present-hud")) return;
+      drawing = true;
+      strokes.push({ break: true });
+    };
+    const onUp = () => {
+      if (!drawing) return;
+      drawing = false;
+      ink.querySelectorAll(".pxd-present-stroke").forEach((node) => node.remove());
+      let run = [];
+      const flush = () => {
+        if (run.length < 2) { run = []; return; }
+        const line = el("div", "pxd-present-stroke", ink);
+        line.style.left = `${run[0].x}px`;
+        line.style.top = `${run[0].y}px`;
+        line.style.width = `${Math.hypot(run[run.length - 1].x - run[0].x, run[run.length - 1].y - run[0].y)}px`;
+        run = [];
+      };
+      for (const point of strokes) {
+        if (point.break) flush();
+        else run.push(point);
+      }
+      flush();
+    };
+    root?.addEventListener("pointermove", onMove);
+    root?.addEventListener("pointerdown", onDown);
+    root?.addEventListener("pointerup", onUp);
+    offs.push(() => {
+      root?.removeEventListener("pointermove", onMove);
+      root?.removeEventListener("pointerdown", onDown);
+      root?.removeEventListener("pointerup", onUp);
+    });
     goto(0);
     return true;
   };

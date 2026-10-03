@@ -5,6 +5,7 @@
 import { DEFAULT_SIZES, FONT_SIZES, PALETTE, attrNameOf, classifyString, cssColor, firstLine, hexColor, isUntitledBoard, parseBoardTitle, plainText } from "../model/schema.js";
 import { isQueryString } from "../model/query.js";
 import { dueChip } from "../model/tasks.js";
+import { commentCount } from "../model/section6.js";
 import { LINKED_REF_CAP, linkedRefCard, linkedRefLabel } from "../model/refs.js";
 import { boardPreview, descendantsOf, sectionNoteUid } from "../model/board.js";
 import { CARD_MIME } from "./panel.js";
@@ -1087,6 +1088,8 @@ export function createItemRenderer({
     if (info?.refs > 0) chips.push({ cls: "refs", text: `${info.refs} refs`, title: `${info.refs} references to this card` });
     if (info?.boards > 0) chips.push({ cls: "boards", text: `on ${info.boards} boards`, title: "Shown on other boards", action: "boards" });
     if (info && (info.open > 0 || info.done > 0)) chips.push({ cls: "todo", text: `${info.open || 0}/${info.done || 0}`, title: `${info.open || 0} open, ${info.done || 0} done` });
+    const comments = commentCount(lastBoard, rec.uid);
+    if (comments > 0) chips.push({ cls: "comments", text: `${comments}`, title: `${comments} comments` });
     const due = item.type === "card" ? dueChip(item.content) : null;
     if (due) chips.unshift({ cls: "due", text: due.text, title: "Due", overdue: due.overdue });
     for (const text of attrChipsOf(rec, item)) chips.push({ cls: "attr", text });
@@ -1637,6 +1640,19 @@ export function createItemRenderer({
     renameBoard,
     renamePage,
     shellOf: (uid) => shells.get(uid)?.el ?? null,
+    expireContent(uids) {
+      for (const uid of uids || []) {
+        const rec = shells.get(uid);
+        if (!rec || editing?.uid === uid) continue;
+        unmountRoots(rec);
+        rec.body?.replaceChildren?.();
+        rec.contentKey = null;
+        mounted.delete(uid);
+        rec.titleRendered = false;
+        if (rec.type === "card") { rec.bare = true; rec.el.classList.add("pxd-item--bare"); }
+      }
+      if (uids?.length && lastContent) fillContent(lastContent);
+    },
     mountedCount: () => mounted.size,
     mountedUids: () => [...mounted.keys()],
     shellCount: () => shells.size,

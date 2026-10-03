@@ -769,6 +769,10 @@ export async function installPlexusDiagram({
     return targetView(context)?.copyOutline?.();
   }
 
+  function addPageCommand(context) {
+    return targetView(context)?.addPage?.();
+  }
+
   const sheetActions = [
     ["Plexus: Enhance this diagram", enhanceCommand],
     ["Plexus: New whiteboard here", newWhiteboardCommand],
@@ -776,6 +780,10 @@ export async function installPlexusDiagram({
     ["Plexus: Fullscreen this diagram", fullscreenCommand],
     ["Plexus: Export board as SVG", exportSvgCommand],
     ["Plexus: Copy board as text", copyOutlineCommand],
+  ];
+  // Sheet only: no slash command and no palette entry (PF-1).
+  const sheetOnlyActions = [
+    ["Plexus: Add page…", addPageCommand],
   ];
 
   function runCommand(label, fn) {
@@ -804,7 +812,7 @@ export async function installPlexusDiagram({
     title.className = "pxd-commands__title";
     title.textContent = "Plexus";
     box.append(title);
-    for (const [label, fn] of sheetActions) {
+    for (const [label, fn] of [...sheetActions, ...sheetOnlyActions]) {
       const row = doc.createElement("button");
       row.type = "button";
       row.className = "pxd-commands__row";

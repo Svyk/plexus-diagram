@@ -618,10 +618,13 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
     return look ? { ...layout, look } : layout;
   };
 
-  const cardAt = (t, string, x, y) => {
-    const parent = containerAt(board, { x: x + DEFAULT_SIZES.card.w / 2, y: y + DEFAULT_SIZES.card.h / 2 }, { rects });
+  const cardAt = (t, string, x, y, size = null) => {
+    const parent = containerAt(board, { x: x + (size?.w ?? DEFAULT_SIZES.card.w) / 2, y: y + (size?.h ?? DEFAULT_SIZES.card.h) / 2 }, { rects });
     const rel = toRelative(board, parent, { x, y }, rects);
-    return t.create({ parent, string, plexus: serializeItemLayout(withCardLook({ x: rel.x, y: rel.y }, string)) });
+    const layout = withCardLook({ x: rel.x, y: rel.y }, string);
+    if (Number.isFinite(size?.w)) layout.w = size.w;
+    if (Number.isFinite(size?.h)) layout.h = size.h;
+    return t.create({ parent, string, plexus: serializeItemLayout(layout) });
   };
 
   const defaultSizeFor = (item) => {
@@ -959,7 +962,7 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
     addRefCards(list) {
       const items = capBulk(list ?? [], emit);
       return txn((t) => {
-        const ids = items.map(({ string, x, y }) => cardAt(t, string, x, y));
+        const ids = items.map(({ string, x, y, w, h }) => cardAt(t, string, x, y, w || h ? { w, h } : null));
         applyFit(t, ids);
         return ids;
       });

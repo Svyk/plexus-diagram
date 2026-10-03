@@ -796,3 +796,26 @@ test("librarySearch narrows type, tag, days and orphans without writing", () => 
   assert.equal(host.stats.writes, 0);
   assert.equal(fake.writesLog().length, 0);
 });
+
+test("pageOutline returns every level with folded blocks flagged; watchPage counts page watches apart from board watches", () => {
+  const { fake, host } = setup();
+  fake.seedPage({
+    title: "Deep",
+    uid: "pgDeep001",
+    children: [{ uid: "a1", string: "one", open: false, children: [{ uid: "a2", string: "two", children: [{ uid: "a3", string: "three", children: [{ uid: "a4", string: "four" }] }] }] }],
+  });
+  const out = host.pageOutline("Deep", 2000);
+  assert.equal(out.exists, true);
+  assert.equal(out.uid, "pgDeep001");
+  assert.equal(out.blocks[0].open, false);
+  assert.equal(out.blocks[0].children[0].children[0].children[0].uid, "a4");
+  assert.equal(host.pageOutline("Missing").exists, false);
+  const off = host.watchPage("Deep", () => {});
+  assert.equal(host.stats.pageWatches, 1);
+  assert.equal(host.stats.watches, 0, "the board watch budget is untouched");
+  assert.equal(fake.watchCount(), 1);
+  off();
+  off();
+  assert.equal(host.stats.pageWatches, 0);
+  assert.equal(fake.watchCount(), 0);
+});

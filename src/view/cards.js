@@ -21,6 +21,10 @@ const UNMOUNT_AFTER_MS = 4000;
 const HYDRATE_CAP_MS = 900;
 const CONTENT_LIMIT = 12;
 const CONTENT_DEPTH = 2;
+const OUTLINE_CAP = 300;
+const OUTLINE_FETCH = 2000;
+const PAGE_WATCH_MAX = 8;
+const PAGE_REFRESH_MS = 250;
 const GROW_CAP = 900;
 const HEADER_H = 32;
 const META_H = 28;
@@ -46,6 +50,22 @@ export function isTextEntryTarget(target) {
   // (caught above). An ancestor that contains the board is a host wrapper, not an input.
   const hit = target.closest("[contenteditable=\"true\"], .pxd-label--editing, .pxd-section__title--editing, .pxd-input");
   return Boolean(hit && !hit.querySelector?.(".pxd-root"));
+}
+
+// A plain wheel over a page card body scrolls that body until it reaches an end. Cmd/Ctrl+wheel (a pinch) is the board's.
+export function pageBodyWantsWheel(target, event) {
+  if (!target || typeof target.closest !== "function" || !event) return null;
+  if (event.ctrlKey || event.metaKey) return null;
+  const dy = Number(event.deltaY) || 0;
+  if (!dy) return null;
+  const body = target.closest(".pxd-item__body");
+  const card = body?.closest(".pxd-item--page");
+  if (!card || card.classList?.contains("pxd-item--editing")) return null;
+  const room = (Number(body.scrollHeight) || 0) - (Number(body.clientHeight) || 0);
+  if (room <= 1) return null;
+  const top = Number(body.scrollTop) || 0;
+  if (dy > 0 ? top >= room - 1 : top <= 0) return null;
+  return body;
 }
 
 function synthesizeBlockClick(host) {
@@ -381,6 +401,10 @@ export function createItemRenderer({
   const unmountRoots = (rec) => {
     try { rec.refOff?.(); } catch { /* already off */ }
     rec.refOff = null;
+    try { rec.pageUnwatch?.(); } catch { /* already off */ }
+    rec.pageUnwatch = null;
+    rec.pageRoots = [];
+    rec.pageHolder = null;
     if (!rec.roots?.length) return;
     for (const node of rec.roots) {
       try { node.__pxdEmbedMo?.disconnect(); } catch { /* already gone */ }
@@ -802,6 +826,153 @@ export function createItemRenderer({
     open.addEventListener("click", (event) => { event.stopPropagation(); openBoard(openUid); });
   };
 
+  // ---- page cards (PG-1): the whole outline, rows tagged data-pxd-row, folded blocks folded.
+  const fetchPage = (title) => (host?.pageOutline
+    ? host.pageOutline(title, OUTLINE_FETCH)
+    : host?.pagePreview?.(title, 64, OUTLINE_FETCH));
+  const pageKeyOf = (blocks) => {
+    const parts = [];
+    const walk = (list) => {
+      for (const c of list) {
+        parts.push(childUid(c), childString(c), c.open === false ? "0" : "1");
+        walk(childKids(c));
+      }
+    };
+    walk(blocks || []);
+    return parts.join("\u0001");
+  };
+  const countRows = (blocks) => {
+    let n = 0;
+    for (const c of blocks) {
+      if (attrNameOf(childString(c)) === "BT_attrDue") continue;
+      n += 1;
+      if (c.open !== false) n += countRows(childKids(c));
+    }
+    return n;
+  };
+  const openPageByTitle = (title, uid) => {
+    const id = uid || host?.pageUid?.(title);
+    if (id) host?.openPage?.(id);
+  };
+  const moreRow = (parent, n, title, uid) => {
+    const more = el("button", "pxd-row__more", parent);
+    more.type = "button";
+    more.textContent = `+${n} more`;
+    more.setAttribute("aria-label", `${n} more blocks, open the page`);
+    for (const type of ["pointerdown", "mousedown", "dblclick"]) more.addEventListener(type, stopEvent);
+    more.addEventListener("click", (event) => { stopEvent(event); openPageByTitle(title, uid); });
+    return more;
+  };
+  const renderOutline = (parent, blocks, b, rec) => {
+    for (const blk of blocks) {
+      const s = childString(blk);
+      if (attrNameOf(s) === "BT_attrDue") continue;
+      const uid = childUid(blk);
+      const kids = childKids(blk);
+      const folded = blk.open === false && kids.length > 0;
+      if (b.n >= OUTLINE_CAP) { b.more += 1 + (folded ? 0 : countRows(kids)); continue; }
+      b.n += 1;
+      const row = el("div", "pxd-block pxd-prow", parent);
+      row.dataset.uid = uid;
+      row.setAttribute("data-uid", uid);
+      const line = el("div", "pxd-row", row);
+      line.dataset.pxdRow = uid;
+      line.setAttribute("data-pxd-row", uid);
+      let wrap = null;
+      let fold = null;
+      if (kids.length) {
+        fold = el("button", "pxd-row__fold", line);
+        fold.type = "button";
+        fold.setAttribute("aria-label", folded ? "Unfold" : "Fold");
+        fold.setAttribute("aria-expanded", folded ? "false" : "true");
+        for (const type of ["pointerdown", "mousedown", "dblclick"]) fold.addEventListener(type, stopEvent);
+      }
+      b.roots.push(renderRoot(line, s, "pxd-rs pxd-block__text", uid));
+      if (!kids.length) continue;
+      wrap = el("div", "pxd-block__children", row);
+      let filled = false;
+      const fill = () => {
+        if (filled) return;
+        filled = true;
+        const sub = { n: b.n, more: 0, roots: [] };
+        renderOutline(wrap, kids, sub, rec);
+        b.n = sub.n;
+        if (sub.more) moreRow(wrap, sub.more, rec.pageTitle, rec.pageUid);
+        if (rec.pageHolder && rec.pageHolder.isConnected !== false) { rec.pageRoots.push(...sub.roots); rec.roots.push(...sub.roots); }
+      };
+      if (folded) setHidden(wrap, true);
+      else { filled = true; renderOutline(wrap, kids, b, rec); }
+      row.classList.toggle("pxd-prow--folded", folded);
+      fold.addEventListener("click", (event) => {
+        stopEvent(event);
+        const open = fold.getAttribute("aria-expanded") !== "true";
+        if (open) fill();
+        fold.setAttribute("aria-expanded", open ? "true" : "false");
+        fold.setAttribute("aria-label", open ? "Fold" : "Unfold");
+        row.classList.toggle("pxd-prow--folded", !open);
+        setHidden(wrap, !open);
+      });
+    }
+  };
+  // Replaces the holder's rows. Returns the new live roots; the caller files them under rec.roots.
+  const paintPage = (rec, holder, p) => {
+    const old = new Set(rec.pageRoots || []);
+    for (const node of old) {
+      try { node.__pxdEmbedMo?.disconnect(); } catch { /* already gone */ }
+      try { host?.unmount?.(embedLive(node)); } catch { /* not a roam root */ }
+    }
+    if (old.size && rec.roots) rec.roots = rec.roots.filter((node) => !old.has(node));
+    holder.replaceChildren();
+    rec.pageRoots = [];
+    rec.pageTitle = p?.title || rec.pageTitle || "";
+    if (!p?.exists) {
+      rec.pageKey = "";
+      el("div", "pxd-item__placeholder", holder).textContent = "Empty page";
+      return [];
+    }
+    rec.pageUid = p.uid || null;
+    rec.pageKey = pageKeyOf(p.blocks);
+    const b = { n: 0, more: 0, roots: [] };
+    renderOutline(holder, p.blocks || [], b, rec);
+    if (!b.n) el("div", "pxd-item__placeholder", holder).textContent = "Empty page";
+    if (b.more) moreRow(holder, b.more, rec.pageTitle, rec.pageUid);
+    rec.pageRoots = [...b.roots];
+    return b.roots;
+  };
+  let pageWatches = 0;
+  const armPageWatch = (rec, item, holder) => {
+    if (disposed || rec.pageUnwatch || !host?.watchPage || pageWatches >= PAGE_WATCH_MAX) return;
+    let pending = null;
+    const refresh = () => {
+      pending = null;
+      if (disposed || editing?.uid === rec.uid || rec.pageHolder !== holder || holder.isConnected === false) return;
+      let got;
+      try { got = fetchPage(item.title); } catch { return; }
+      Promise.resolve(got).then((p) => {
+        if (disposed || editing?.uid === rec.uid || rec.pageHolder !== holder) return;
+        if (p?.exists ? pageKeyOf(p.blocks) === rec.pageKey : rec.pageKey === "") return;
+        const keep = Number(rec.body?.scrollTop) || 0;
+        rec.roots.push(...paintPage(rec, holder, p));
+        if (rec.body && keep) rec.body.scrollTop = keep;
+      }).catch(() => {});
+    };
+    let off = null;
+    try {
+      off = host.watchPage(item.title, () => {
+        if (pending) return;
+        pending = later(refresh, PAGE_REFRESH_MS);
+      });
+    } catch { return; }
+    pageWatches += 1;
+    rec.pageUnwatch = () => {
+      rec.pageUnwatch = null;
+      try { off?.(); } catch { /* already off */ }
+      pending?.();
+      pending = null;
+      pageWatches -= 1;
+    };
+  };
+
   const mountContent = (rec, item) => {
     noteRender(item.uid);
     const body = rec.body;
@@ -828,18 +999,20 @@ export function createItemRenderer({
         return;
       }
       const holder = el("div", "pxd-item__page", body);
-      const preview = host?.pagePreview?.(item.title, CONTENT_DEPTH, CONTENT_LIMIT);
+      rec.pageHolder = holder;
+      rec.pageTitle = item.title;
+      const preview = fetchPage(item.title);
       // contentKey is stamped after mountContent returns, so only the async path can be stale.
       const apply = (p, sync = false) => {
         if (disposed || !holder.parentElement || (!sync && rec.contentKey !== contentKeyOf(item))) return;
-        if (!p?.exists) { el("div", "pxd-item__placeholder", holder).textContent = "Empty page"; return; }
-        const b = { n: 0, roots: [] };
-        renderBlocks(holder, p.blocks || [], 1, b);
-        budget.roots.push(...b.roots);
+        const roots = paintPage(rec, holder, p);
+        if (sync) budget.roots.push(...roots);
+        else rec.roots.push(...roots);
       };
       if (preview && typeof preview.then === "function") preview.then((p) => apply(p)).catch(() => {});
       else apply(preview, true);
       mountLinkedRefs(body, rec, item);
+      armPageWatch(rec, item, holder);
     } else if (item.kind === "block") {
       const ref = item.target.uid;
       const refString = host?.blockString?.(ref);
@@ -1412,7 +1585,7 @@ export function createItemRenderer({
     rec.el.classList.remove("pxd-item--xfade");
   };
 
-  const enterEdit = async (uid) => {
+  const enterEdit = async (uid, { row = "" } = {}) => {
     const rec = shells.get(uid);
     const item = lastBoard?.items.get(uid);
     if (!rec || !item || rec.type === "section" || item.kind === "board" || rec.refBoard) return false;
@@ -1424,6 +1597,11 @@ export function createItemRenderer({
     const contentH = boxHeight(rec.body);
     const lockH = boxHeight(rec.el) || contentH || Number(rec.rect?.h) || 0;
     const reduced = prefersReducedMotion();
+    // PG-3: where the clicked row sits in the card, so the editor can put the same block back under the pointer.
+    const clickedRow = item.kind === "page" && row ? rec.body.querySelector?.(`[data-pxd-row="${row}"]`) : null;
+    const rowOffset = clickedRow
+      ? (Number(clickedRow.getBoundingClientRect?.().top) || 0) - (Number(rec.body.getBoundingClientRect?.().top) || 0)
+      : null;
     const ghost = el("div", "pxd-item__ghost");
     ghost.setAttribute("aria-hidden", "true");
     for (const node of [...(rec.body.children || [])]) ghost.append(node);
@@ -1484,7 +1662,17 @@ export function createItemRenderer({
     }
     await waitHydrateQuiet(editor, HYDRATE_CAP_MS);
     if (disposed || editing?.uid !== uid) return false;
-    const input = editor.querySelector?.(".rm-block__input") || editor.querySelector?.("textarea");
+    let input = null;
+    if (rowOffset !== null) {
+      for (const node of editor.querySelectorAll?.(".rm-block__input") || []) {
+        if (String(node.id || node.getAttribute?.("id") || "").endsWith(`-${row}`)) { input = node; break; }
+      }
+      if (input) {
+        const delta = (Number(input.getBoundingClientRect?.().top) || 0) - (Number(rec.body.getBoundingClientRect?.().top) || 0) - rowOffset;
+        if (delta && rec.body) rec.body.scrollTop = Math.max(0, (Number(rec.body.scrollTop) || 0) + delta / (zoomCache || 1));
+      }
+    }
+    if (!input) input = editor.querySelector?.(".rm-block__input") || editor.querySelector?.("textarea");
     applyEditorCounterScale(editor, zoomCache);
     if (input) focusRoamInput(input);
     // Roam writes an explicit textarea height when the editor focuses. Apply again

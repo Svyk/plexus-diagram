@@ -159,9 +159,15 @@ export function createInteractions({ actions, settings } = {}) {
   };
 
   // ------------------------------------------------------------------ pointer
+  // A click on a page card's title opens the page after a short wait, so a double-click (rename) cancels it.
+  let openTimer = null;
+  const cancelOpen = () => { if (openTimer) { clearTimeout(openTimer); openTimer = null; } };
+  const OPEN_DELAY_MS = 300;
+
   const onPointerDown = (ev) => {
     const t = ev.target || { kind: "empty" };
     if (t.kind === "chrome") return;
+    cancelOpen();
     if (ev.button === 2) return;
     if (state.gesture) return;
     const editing = editingUid();
@@ -207,7 +213,9 @@ export function createInteractions({ actions, settings } = {}) {
         const dup = Boolean(ev.alt);
         // Cmd/Ctrl-click adds (React Flow multiSelectionKey). Shift-click does the same.
         // Alt+Shift stays duplicate-as-reference.
-        const multi = !dup && (ev.shift || ev.meta || ev.ctrl);
+        const pageItem = b.items.get(t.uid)?.kind === "page";
+        const pageHeader = pageItem && t.part === "header";
+        const multi = !dup && (ev.meta || ev.ctrl || (ev.shift && !pageHeader));
         if (multi) {
           const next = new Set(state.selection);
           if (next.has(t.uid)) next.delete(t.uid); else next.add(t.uid);
@@ -221,7 +229,7 @@ export function createInteractions({ actions, settings } = {}) {
         }
         if (!state.selection.has(t.uid)) return;
         const uids = movingSet(dup);
-        begin({ kind: "move", uids, dup, multi, asRef: dup && Boolean(ev.shift), start: ev.screen, target: t.uid, deferred, bounds: movingBounds(uids), others: setting("snap-guides", true) ? otherRects(uids) : [] });
+        begin({ kind: "move", uids, dup, multi, asRef: dup && Boolean(ev.shift), start: ev.screen, target: t.uid, deferred, pageHeader, pageRow: pageItem && t.part === "body" ? (t.row || "") : "", bounds: movingBounds(uids), others: setting("snap-guides", true) ? otherRects(uids) : [] });
         return;
       }
       default:
@@ -442,8 +450,17 @@ export function createInteractions({ actions, settings } = {}) {
         } else if (g.deferred) {
           selectItems([g.target]);
         }
-        if (!g.moved && ev.shift && !ev.alt && !g.dup && g.target && b?.items.get(g.target)?.type !== "section") {
+        if (!g.moved && !g.dup && !ev.alt && g.pageHeader && !ev.meta && !ev.ctrl && g.target) {
+          // PG-2: click opens the page in the main window, Shift-click in the right sidebar.
+          const sidebar = Boolean(ev.shift);
+          const target = g.target;
+          cancelOpen();
+          openTimer = setTimeout(() => { openTimer = null; call("openPage", target, { sidebar }); }, OPEN_DELAY_MS);
+        } else if (!g.moved && ev.shift && !ev.alt && !g.dup && g.target && b?.items.get(g.target)?.type !== "section") {
           call("addInfoTab", g.target);
+        } else if (!g.moved && !g.dup && g.pageRow && !ev.shift && !ev.alt && !ev.meta && !ev.ctrl && editingUid() !== g.target) {
+          // PG-3: a click on a page card row edits that block.
+          call("enterEdit", g.target, { row: g.pageRow });
         }
         break;
       case "resize":
@@ -494,6 +511,7 @@ export function createInteractions({ actions, settings } = {}) {
   const onDblClick = (ev) => {
     const t = ev.target || { kind: "empty" };
     if (t.kind === "chrome") return;
+    cancelOpen();
     const b = board();
     if (t.kind === "item" && t.uid) {
       const item = b?.items.get(t.uid);
@@ -789,7 +807,7 @@ export function createInteractions({ actions, settings } = {}) {
     escape,
     isGesturing: () => Boolean(state.gesture),
     gestureKind: () => state.gesture?.kind ?? null,
-    cancel: onPointerCancel,
+    cancel: () => { cancelOpen(); onPointerCancel(); },
     // Model changed under us: drop selection entries that no longer exist.
     reconcile() {
       const b = board();

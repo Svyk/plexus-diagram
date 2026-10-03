@@ -1,0 +1,67 @@
+/* P9 page cards: title header in both looks, the whole outline, an internal scroll. */
+
+.pxd-root:not(.pxd-lod-map) .pxd-item.pxd-card--block.pxd-item--page:not(.pxd-item--collapsed):not(.pxd-item--bare) > .pxd-item__header {
+  display: block;
+}
+
+.pxd-root .pxd-item.pxd-item--page:not(.pxd-item--editing) > .pxd-item__body {
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+}
+
+.pxd-root .pxd-item--page .pxd-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 2px;
+}
+
+.pxd-root .pxd-item--page .pxd-row > .pxd-block__text {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.pxd-root .pxd-item--page .pxd-row > .pxd-block__text:first-child {
+  margin-left: 16px;
+}
+
+.pxd-root .pxd-item--page .pxd-row__fold {
+  flex: 0 0 auto;
+  width: 14px;
+  height: 20px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--pxd-muted);
+  font-size: 10px;
+  line-height: 20px;
+  text-align: center;
+  cursor: pointer;
+}
+
+.pxd-root .pxd-item--page .pxd-row__fold::before {
+  content: "\25BE";
+}
+
+.pxd-root .pxd-item--page .pxd-row__fold[aria-expanded="false"]::before {
+  content: "\25B8";
+}
+
+.pxd-root .pxd-item--page .pxd-block__children[hidden] {
+  display: none;
+}
+
+.pxd-root .pxd-item--page .pxd-row__more {
+  display: block;
+  margin: 6px 0 2px 16px;
+  padding: 2px 8px;
+  border: 1px solid var(--pxd-border);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--pxd-muted);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}

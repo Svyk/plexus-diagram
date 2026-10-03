@@ -454,6 +454,7 @@ var SCHEMA_VERSION = 2;
 var PALETTE = ["gray", "red", "orange", "yellow", "green", "teal", "blue", "indigo", "purple", "pink"];
 var ITEM_TYPES = ["card", "section", "text"];
 var DEFAULT_SIZES = { card: { w: 280, h: 160 }, section: { w: 480, h: 320 }, text: { w: 240, h: 48 } };
+var PAGE_CARD = { w: 360, h: 480 };
 var MIN_SIZES = { card: { w: 200, h: 80 }, section: { w: 160, h: 100 }, text: { w: 60, h: 24 } };
 var DEFAULT_BOARD_CARD = { w: 320, h: 220 };
 var UNTITLED_BOARD = "Untitled board";
@@ -2828,6 +2829,7 @@ function trimTree(node2, depth, budget) {
     out.push({
       uid: c[":block/uid"],
       string: c[":block/string"] ?? "",
+      ...c[":block/open"] === false ? { open: false } : {},
       children: trimTree(c, depth - 1, budget)
     });
   }
@@ -2982,7 +2984,7 @@ function createViewportStore({ storage = globalThis.localStorage, graph = "", no
   };
 }
 function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localStorage, graph } = {}) {
-  const stats = { writes: 0, watches: 0, renders: 0, items: {} };
+  const stats = { writes: 0, watches: 0, pageWatches: 0, renders: 0, items: {} };
   const data = api.data;
   const undoLog = [];
   const redoLog = [];
@@ -3049,6 +3051,26 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
       const res = pull(BOARD_PATTERN, [":node/title", title]);
       if (!res || !res[":block/uid"]) return { uid: null, exists: false, blocks: [] };
       return { uid: res[":block/uid"], exists: true, blocks: trimTree(res, depth, { left: limit }) };
+    },
+    // The whole outline of a page for a page card: every level, folded blocks flagged `open: false`.
+    pageOutline(title, limit = 400) {
+      const res = pull(BOARD_PATTERN, [":node/title", title]);
+      if (!res || !res[":block/uid"]) return { uid: null, exists: false, blocks: [] };
+      return { uid: res[":block/uid"], exists: true, blocks: trimTree(res, 64, { left: limit }) };
+    },
+    // One pull watch on a page, for a page card on screen. The caller releases it.
+    watchPage(title, cb) {
+      const entity = `[:node/title ${JSON.stringify(String(title))}]`;
+      const wrapped = (before, after) => cb(after);
+      data.addPullWatch(BOARD_PATTERN, entity, wrapped);
+      stats.pageWatches++;
+      let active = true;
+      return () => {
+        if (!active) return;
+        active = false;
+        data.removePullWatch(BOARD_PATTERN, entity, wrapped);
+        stats.pageWatches--;
+      };
     },
     pageUid(title) {
       const res = pull("[:block/uid]", [":node/title", title]);
@@ -3253,6 +3275,9 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
     },
     openBlock(uid) {
       return api.ui.mainWindow.openBlock({ block: { uid } });
+    },
+    openPage(uid) {
+      return api.ui.mainWindow.openPage({ page: { uid } });
     },
     renderString(el, string) {
       stats.renders++;
@@ -4932,10 +4957,13 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
     const look = lookForNewString(string, setting("default-card-look", "block"));
     return look ? { ...layout, look } : layout;
   };
-  const cardAt = (t, string, x, y) => {
-    const parent = containerAt(board2, { x: x + DEFAULT_SIZES.card.w / 2, y: y + DEFAULT_SIZES.card.h / 2 }, { rects });
+  const cardAt = (t, string, x, y, size = null) => {
+    const parent = containerAt(board2, { x: x + (size?.w ?? DEFAULT_SIZES.card.w) / 2, y: y + (size?.h ?? DEFAULT_SIZES.card.h) / 2 }, { rects });
     const rel = toRelative(board2, parent, { x, y }, rects);
-    return t.create({ parent, string, plexus: serializeItemLayout(withCardLook({ x: rel.x, y: rel.y }, string)) });
+    const layout = withCardLook({ x: rel.x, y: rel.y }, string);
+    if (Number.isFinite(size?.w)) layout.w = size.w;
+    if (Number.isFinite(size?.h)) layout.h = size.h;
+    return t.create({ parent, string, plexus: serializeItemLayout(layout) });
   };
   const defaultSizeFor = (item) => {
     if (item.type === "section") return DEFAULT_SIZES.section;
@@ -5275,7 +5303,7 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
     addRefCards(list) {
       const items = capBulk(list ?? [], emit2);
       return txn((t) => {
-        const ids = items.map(({ string, x, y }) => cardAt(t, string, x, y));
+        const ids = items.map(({ string, x, y, w, h }) => cardAt(t, string, x, y, w || h ? { w, h } : null));
         applyFit(t, ids);
         return ids;
       });
@@ -7265,9 +7293,18 @@ function createInteractions({ actions, settings } = {}) {
     begin({ kind: "connect", from: uid, fromSide: side, start: world });
     call("showTempWire", { from: uid, fromSide: side, point: world });
   };
+  let openTimer = null;
+  const cancelOpen = () => {
+    if (openTimer) {
+      clearTimeout(openTimer);
+      openTimer = null;
+    }
+  };
+  const OPEN_DELAY_MS = 300;
   const onPointerDown = (ev) => {
     const t = ev.target || { kind: "empty" };
     if (t.kind === "chrome") return;
+    cancelOpen();
     if (ev.button === 2) return;
     if (state.gesture) return;
     const editing = editingUid();
@@ -7311,7 +7348,9 @@ function createInteractions({ actions, settings } = {}) {
         if (state.tool !== "select") break;
         let deferred = false;
         const dup = Boolean(ev.alt);
-        const multi = !dup && (ev.shift || ev.meta || ev.ctrl);
+        const pageItem = b.items.get(t.uid)?.kind === "page";
+        const pageHeader = pageItem && t.part === "header";
+        const multi = !dup && (ev.meta || ev.ctrl || ev.shift && !pageHeader);
         if (multi) {
           const next = new Set(state.selection);
           if (next.has(t.uid)) next.delete(t.uid);
@@ -7326,7 +7365,7 @@ function createInteractions({ actions, settings } = {}) {
         }
         if (!state.selection.has(t.uid)) return;
         const uids = movingSet(dup);
-        begin({ kind: "move", uids, dup, multi, asRef: dup && Boolean(ev.shift), start: ev.screen, target: t.uid, deferred, bounds: movingBounds(uids), others: setting("snap-guides", true) ? otherRects(uids) : [] });
+        begin({ kind: "move", uids, dup, multi, asRef: dup && Boolean(ev.shift), start: ev.screen, target: t.uid, deferred, pageHeader, pageRow: pageItem && t.part === "body" ? t.row || "" : "", bounds: movingBounds(uids), others: setting("snap-guides", true) ? otherRects(uids) : [] });
         return;
       }
       default:
@@ -7555,8 +7594,18 @@ function createInteractions({ actions, settings } = {}) {
         } else if (g.deferred) {
           selectItems([g.target]);
         }
-        if (!g.moved && ev.shift && !ev.alt && !g.dup && g.target && b?.items.get(g.target)?.type !== "section") {
+        if (!g.moved && !g.dup && !ev.alt && g.pageHeader && !ev.meta && !ev.ctrl && g.target) {
+          const sidebar = Boolean(ev.shift);
+          const target = g.target;
+          cancelOpen();
+          openTimer = setTimeout(() => {
+            openTimer = null;
+            call("openPage", target, { sidebar });
+          }, OPEN_DELAY_MS);
+        } else if (!g.moved && ev.shift && !ev.alt && !g.dup && g.target && b?.items.get(g.target)?.type !== "section") {
           call("addInfoTab", g.target);
+        } else if (!g.moved && !g.dup && g.pageRow && !ev.shift && !ev.alt && !ev.meta && !ev.ctrl && editingUid() !== g.target) {
+          call("enterEdit", g.target, { row: g.pageRow });
         }
         break;
       case "resize":
@@ -7608,6 +7657,7 @@ function createInteractions({ actions, settings } = {}) {
   const onDblClick = (ev) => {
     const t = ev.target || { kind: "empty" };
     if (t.kind === "chrome") return;
+    cancelOpen();
     const b = board2();
     if (t.kind === "item" && t.uid) {
       const item = b?.items.get(t.uid);
@@ -7983,7 +8033,10 @@ function createInteractions({ actions, settings } = {}) {
     escape,
     isGesturing: () => Boolean(state.gesture),
     gestureKind: () => state.gesture?.kind ?? null,
-    cancel: onPointerCancel,
+    cancel: () => {
+      cancelOpen();
+      onPointerCancel();
+    },
     // Model changed under us: drop selection entries that no longer exist.
     reconcile() {
       const b = board2();
@@ -8000,6 +8053,232 @@ function createInteractions({ actions, settings } = {}) {
       if (changed2) emitSelection();
     }
   };
+}
+
+// src/view/board-picker.js
+function recentBoardRows(rows) {
+  return [...rows || []].filter((row2) => row2 && row2.uid).sort((a, b) => (Number(b.edited) || 0) - (Number(a.edited) || 0) || String(a.title || "").localeCompare(String(b.title || "")));
+}
+var current = null;
+function openAddToBoard({ doc = globalThis.document, listBoards, onPick } = {}) {
+  current?.close();
+  const offs = [];
+  const on = (target, type, fn, capture) => {
+    target.addEventListener(type, fn, capture);
+    offs.push(() => target.removeEventListener(type, fn, capture));
+  };
+  const el = (tag, cls, parent, text2) => {
+    const node2 = doc.createElement(tag);
+    node2.className = cls;
+    if (text2 !== void 0) node2.textContent = text2;
+    parent?.append(node2);
+    return node2;
+  };
+  const back = el("div", "pxd-addboard-back", doc.body);
+  const box2 = el("div", "pxd-addboard", doc.body);
+  el("div", "pxd-addboard__title", box2, "Add to board");
+  const filter = el("input", "pxd-addboard__filter", box2);
+  filter.type = "text";
+  filter.setAttribute("aria-label", "Filter boards");
+  filter.placeholder = "Filter boards…";
+  filter.setAttribute("placeholder", "Filter boards…");
+  const list = el("div", "pxd-addboard__list", box2);
+  el("div", "pxd-addboard__empty", list, "Loading boards…");
+  let rows = [];
+  let closed = false;
+  let busy = false;
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    if (current === api) current = null;
+    for (const off of offs) off();
+    back.remove();
+    box2.remove();
+  };
+  const api = { close };
+  current = api;
+  const render = () => {
+    list.replaceChildren();
+    const q = String(filter.value || "").trim().toLowerCase();
+    const shown = rows.filter((b) => !q || `${b.title || ""}
+${b.pageTitle || b.page || ""}`.toLowerCase().includes(q));
+    if (!shown.length) {
+      el("div", "pxd-addboard__empty", list, rows.length ? "No matching boards" : "No boards found");
+      return;
+    }
+    for (const b of shown) {
+      const row2 = el("div", "pxd-addboard__row", list);
+      row2.dataset.uid = b.uid;
+      row2.setAttribute("data-uid", b.uid);
+      const text2 = el("span", "pxd-addboard__text", row2);
+      el("span", "pxd-addboard__name", text2, b.title || "Untitled board");
+      const page = b.pageTitle || b.page;
+      if (page) el("span", "pxd-addboard__page", text2, page);
+    }
+  };
+  on(box2, "pxd-close", () => close());
+  on(back, "pointerdown", (event) => {
+    event.preventDefault?.();
+    event.stopPropagation?.();
+    close();
+  });
+  on(filter, "input", () => render());
+  on(filter, "keydown", (event) => {
+    event.stopPropagation?.();
+    if (event.key !== "Escape") return;
+    event.preventDefault?.();
+    close();
+  });
+  on(list, "click", (event) => {
+    const row2 = event.target?.closest?.(".pxd-addboard__row");
+    const uid = row2?.dataset?.uid || row2?.getAttribute?.("data-uid");
+    if (!uid || busy) return;
+    const board2 = rows.find((b) => b.uid === uid);
+    if (!board2) return;
+    event.preventDefault?.();
+    event.stopPropagation?.();
+    busy = true;
+    Promise.resolve(onPick?.(board2)).then((ok) => {
+      if (ok === false) {
+        busy = false;
+        return;
+      }
+      close();
+    }, () => {
+      busy = false;
+    });
+  });
+  Promise.resolve(typeof listBoards === "function" ? listBoards() : []).then((got) => {
+    if (closed) return;
+    rows = recentBoardRows(got);
+    render();
+  }, () => {
+    if (closed) return;
+    rows = [];
+    render();
+  });
+  try {
+    filter.focus();
+  } catch {
+  }
+  return api;
+}
+function openPagePicker({ doc = globalThis.document, search, onPick, debounceMs = 150 } = {}) {
+  current?.close();
+  const offs = [];
+  const on = (target, type, fn, capture) => {
+    target.addEventListener(type, fn, capture);
+    offs.push(() => target.removeEventListener(type, fn, capture));
+  };
+  const el = (tag, cls, parent, text2) => {
+    const node2 = doc.createElement(tag);
+    node2.className = cls;
+    if (text2 !== void 0) node2.textContent = text2;
+    parent?.append(node2);
+    return node2;
+  };
+  const back = el("div", "pxd-addboard-back", doc.body);
+  const box2 = el("div", "pxd-addboard pxd-addpage", doc.body);
+  el("div", "pxd-addboard__title", box2, "Add page");
+  const filter = el("input", "pxd-addboard__filter", box2);
+  filter.type = "text";
+  filter.setAttribute("aria-label", "Search pages");
+  filter.placeholder = "Search pages…";
+  filter.setAttribute("placeholder", "Search pages…");
+  const list = el("div", "pxd-addboard__list", box2);
+  el("div", "pxd-addboard__empty", list, "Type to search pages");
+  let closed = false;
+  let busy = false;
+  let timer = null;
+  let ticket = 0;
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    if (current === api) current = null;
+    if (timer) clearTimeout(timer);
+    for (const off of offs) off();
+    back.remove();
+    box2.remove();
+  };
+  const api = { close };
+  current = api;
+  const show = (rows, text2) => {
+    list.replaceChildren();
+    if (!rows.length) {
+      el("div", "pxd-addboard__empty", list, text2 ? "No matching pages" : "Type to search pages");
+      return;
+    }
+    for (const page of rows) {
+      const row2 = el("div", "pxd-addboard__row", list);
+      row2.dataset.title = page.title;
+      row2.setAttribute("data-title", page.title);
+      const label = el("span", "pxd-addboard__text", row2);
+      el("span", "pxd-addboard__name", label, page.title);
+    }
+  };
+  const run = () => {
+    timer = null;
+    const text2 = String(filter.value || "").trim();
+    const mine = ++ticket;
+    if (!text2) {
+      show([], "");
+      return;
+    }
+    Promise.resolve(typeof search === "function" ? search(text2) : []).then((got) => {
+      if (closed || mine !== ticket) return;
+      show((Array.isArray(got) ? got : []).filter((row2) => row2 && typeof row2.title === "string" && row2.title), text2);
+    }, () => {
+      if (closed || mine !== ticket) return;
+      show([], text2);
+    });
+  };
+  on(box2, "pxd-close", () => close());
+  on(back, "pointerdown", (event) => {
+    event.preventDefault?.();
+    event.stopPropagation?.();
+    close();
+  });
+  on(filter, "input", () => {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(run, debounceMs);
+  });
+  on(filter, "keydown", (event) => {
+    event.stopPropagation?.();
+    if (event.key === "Escape") {
+      event.preventDefault?.();
+      close();
+      return;
+    }
+    if (event.key === "Enter") {
+      const first = list.querySelector?.(".pxd-addboard__row");
+      if (first) {
+        event.preventDefault?.();
+        first.click?.();
+      }
+    }
+  });
+  on(list, "click", (event) => {
+    const row2 = event.target?.closest?.(".pxd-addboard__row");
+    const title = row2?.dataset?.title || row2?.getAttribute?.("data-title");
+    if (!title || busy) return;
+    event.preventDefault?.();
+    event.stopPropagation?.();
+    busy = true;
+    Promise.resolve(onPick?.(title)).then((ok) => {
+      if (ok === false) {
+        busy = false;
+        return;
+      }
+      close();
+    }, () => {
+      busy = false;
+    });
+  });
+  try {
+    filter.focus();
+  } catch {
+  }
+  return api;
 }
 
 // src/model/tasks.js
@@ -8045,12 +8324,12 @@ function dueChip(content, today = /* @__PURE__ */ new Date()) {
   return { text: title, overdue: Boolean(due && now2 && stamp(due) < stamp(now2)), raw };
 }
 
-// src/view/panel.js
+// src/model/drop.js
 var CARD_MIME = "application/x-plexus-card";
-var DEBOUNCE_MS = 150;
-var LIMIT = 40;
 var MAX_DROP = 50;
-function parseDropPayload(dataTransfer, { resolveUid } = {}) {
+var URL_LINE = /^(?:https?|roam):\/\//i;
+var APP_URL = /#\/app\/([^/?#]+)(?:\/page\/([\w-]+))?/;
+function parseDropPayload(dataTransfer, { resolveUid, graph = "" } = {}) {
   if (!dataTransfer) return [];
   const take = (type) => {
     try {
@@ -8066,14 +8345,21 @@ function parseDropPayload(dataTransfer, { resolveUid } = {}) {
   let uids = tokens(take("roam/block-uid-list-only-parents"));
   if (!uids.length) uids = tokens(take("roam/block-uid-list"));
   if (!uids.length) {
-    for (const type of ["roam/roam-uri-list", "text/uri-list"]) {
-      for (const line of take(type).split(/\r?\n/)) {
-        if (!line.trim() || line.startsWith("#")) continue;
-        const m = line.match(/\/page\/([\w-]+)/);
+    for (const type of ["roam/roam-uri-list", "text/uri-list", "text/plain"]) {
+      for (const raw of take(type).split(/\r?\n/)) {
+        const line = raw.trim();
+        if (!line || line.startsWith("#")) continue;
+        if (type === "text/plain" && !URL_LINE.test(line)) continue;
+        const app = APP_URL.exec(line);
+        if (app && graph && decodeURIComponent(app[1]) !== graph) continue;
+        const m = app ? app[2] ? [null, app[2]] : null : line.match(/\/page\/([\w-]+)/);
         if (m) uids.push(m[1]);
       }
       if (uids.length) break;
     }
+  }
+  if (!uids.length) {
+    for (const m of take("text/html").matchAll(/data-link-uid="([\w-]+)"/g)) uids.push(m[1]);
   }
   if (uids.length) {
     const out = [];
@@ -8097,7 +8383,11 @@ function parseDropPayload(dataTransfer, { resolveUid } = {}) {
   if (page) return [{ string: `[[${page[1]}]]` }];
   const blockRef = blob.match(/\(\(([^)]+)\)\)/);
   if (blockRef) return [{ string: `((${blockRef[1]}))` }];
+  const linked = take("text/html").match(/data-link-title="([^"]+)"/);
+  if (linked) return [{ string: `[[${linked[1].replace(/&amp;/g, "&").replace(/&quot;/g, '"')}]]` }];
   const plain = take("text/plain").trim();
+  const tag = /^#([^\s#[\]/][^\s#[\]]*)$/.exec(plain);
+  if (tag) return [{ string: `[[${tag[1]}]]` }];
   if (/^[A-Za-z0-9_-]{9}$/.test(plain)) {
     let string = null;
     try {
@@ -8109,6 +8399,10 @@ function parseDropPayload(dataTransfer, { resolveUid } = {}) {
   }
   return [];
 }
+
+// src/view/panel.js
+var DEBOUNCE_MS = 150;
+var LIMIT = 40;
 function createPanel({ doc = globalThis.document, root, host, timers, on = {}, width } = {}) {
   const listeners2 = [];
   const listen = (el2, type, fn, opts) => {
@@ -8936,6 +9230,10 @@ var UNMOUNT_AFTER_MS = 4e3;
 var HYDRATE_CAP_MS = 900;
 var CONTENT_LIMIT = 12;
 var CONTENT_DEPTH = 2;
+var OUTLINE_CAP = 300;
+var OUTLINE_FETCH = 2e3;
+var PAGE_WATCH_MAX = 8;
+var PAGE_REFRESH_MS = 250;
 var GROW_CAP = 900;
 var HEADER_H = 32;
 var META_H = 28;
@@ -8956,6 +9254,20 @@ function isTextEntryTarget(target) {
   if (typeof target.closest !== "function") return false;
   const hit = target.closest('[contenteditable="true"], .pxd-label--editing, .pxd-section__title--editing, .pxd-input');
   return Boolean(hit && !hit.querySelector?.(".pxd-root"));
+}
+function pageBodyWantsWheel(target, event) {
+  if (!target || typeof target.closest !== "function" || !event) return null;
+  if (event.ctrlKey || event.metaKey) return null;
+  const dy = Number(event.deltaY) || 0;
+  if (!dy) return null;
+  const body = target.closest(".pxd-item__body");
+  const card2 = body?.closest(".pxd-item--page");
+  if (!card2 || card2.classList?.contains("pxd-item--editing")) return null;
+  const room = (Number(body.scrollHeight) || 0) - (Number(body.clientHeight) || 0);
+  if (room <= 1) return null;
+  const top = Number(body.scrollTop) || 0;
+  if (dy > 0 ? top >= room - 1 : top <= 0) return null;
+  return body;
 }
 function synthesizeBlockClick(host) {
   if (!host?.dispatchEvent) return false;
@@ -9325,6 +9637,13 @@ function createItemRenderer({
     } catch {
     }
     rec.refOff = null;
+    try {
+      rec.pageUnwatch?.();
+    } catch {
+    }
+    rec.pageUnwatch = null;
+    rec.pageRoots = [];
+    rec.pageHolder = null;
     if (!rec.roots?.length) return;
     for (const node2 of rec.roots) {
       try {
@@ -9745,6 +10064,176 @@ function createItemRenderer({
       openBoard(openUid);
     });
   };
+  const fetchPage = (title) => host?.pageOutline ? host.pageOutline(title, OUTLINE_FETCH) : host?.pagePreview?.(title, 64, OUTLINE_FETCH);
+  const pageKeyOf = (blocks) => {
+    const parts = [];
+    const walk = (list) => {
+      for (const c of list) {
+        parts.push(childUid(c), childString2(c), c.open === false ? "0" : "1");
+        walk(childKids(c));
+      }
+    };
+    walk(blocks || []);
+    return parts.join("");
+  };
+  const countRows = (blocks) => {
+    let n2 = 0;
+    for (const c of blocks) {
+      if (attrNameOf(childString2(c)) === "BT_attrDue") continue;
+      n2 += 1;
+      if (c.open !== false) n2 += countRows(childKids(c));
+    }
+    return n2;
+  };
+  const openPageByTitle = (title, uid) => {
+    const id = uid || host?.pageUid?.(title);
+    if (id) host?.openPage?.(id);
+  };
+  const moreRow = (parent, n2, title, uid) => {
+    const more = el("button", "pxd-row__more", parent);
+    more.type = "button";
+    more.textContent = `+${n2} more`;
+    more.setAttribute("aria-label", `${n2} more blocks, open the page`);
+    for (const type of ["pointerdown", "mousedown", "dblclick"]) more.addEventListener(type, stopEvent);
+    more.addEventListener("click", (event) => {
+      stopEvent(event);
+      openPageByTitle(title, uid);
+    });
+    return more;
+  };
+  const renderOutline = (parent, blocks, b, rec) => {
+    for (const blk of blocks) {
+      const s = childString2(blk);
+      if (attrNameOf(s) === "BT_attrDue") continue;
+      const uid = childUid(blk);
+      const kids = childKids(blk);
+      const folded = blk.open === false && kids.length > 0;
+      if (b.n >= OUTLINE_CAP) {
+        b.more += 1 + (folded ? 0 : countRows(kids));
+        continue;
+      }
+      b.n += 1;
+      const row2 = el("div", "pxd-block pxd-prow", parent);
+      row2.dataset.uid = uid;
+      row2.setAttribute("data-uid", uid);
+      const line = el("div", "pxd-row", row2);
+      line.dataset.pxdRow = uid;
+      line.setAttribute("data-pxd-row", uid);
+      let wrap = null;
+      let fold = null;
+      if (kids.length) {
+        fold = el("button", "pxd-row__fold", line);
+        fold.type = "button";
+        fold.setAttribute("aria-label", folded ? "Unfold" : "Fold");
+        fold.setAttribute("aria-expanded", folded ? "false" : "true");
+        for (const type of ["pointerdown", "mousedown", "dblclick"]) fold.addEventListener(type, stopEvent);
+      }
+      b.roots.push(renderRoot(line, s, "pxd-rs pxd-block__text", uid));
+      if (!kids.length) continue;
+      wrap = el("div", "pxd-block__children", row2);
+      let filled = false;
+      const fill = () => {
+        if (filled) return;
+        filled = true;
+        const sub = { n: b.n, more: 0, roots: [] };
+        renderOutline(wrap, kids, sub, rec);
+        b.n = sub.n;
+        if (sub.more) moreRow(wrap, sub.more, rec.pageTitle, rec.pageUid);
+        if (rec.pageHolder && rec.pageHolder.isConnected !== false) {
+          rec.pageRoots.push(...sub.roots);
+          rec.roots.push(...sub.roots);
+        }
+      };
+      if (folded) setHidden(wrap, true);
+      else {
+        filled = true;
+        renderOutline(wrap, kids, b, rec);
+      }
+      row2.classList.toggle("pxd-prow--folded", folded);
+      fold.addEventListener("click", (event) => {
+        stopEvent(event);
+        const open = fold.getAttribute("aria-expanded") !== "true";
+        if (open) fill();
+        fold.setAttribute("aria-expanded", open ? "true" : "false");
+        fold.setAttribute("aria-label", open ? "Fold" : "Unfold");
+        row2.classList.toggle("pxd-prow--folded", !open);
+        setHidden(wrap, !open);
+      });
+    }
+  };
+  const paintPage = (rec, holder, p) => {
+    const old = new Set(rec.pageRoots || []);
+    for (const node2 of old) {
+      try {
+        node2.__pxdEmbedMo?.disconnect();
+      } catch {
+      }
+      try {
+        host?.unmount?.(embedLive(node2));
+      } catch {
+      }
+    }
+    if (old.size && rec.roots) rec.roots = rec.roots.filter((node2) => !old.has(node2));
+    holder.replaceChildren();
+    rec.pageRoots = [];
+    rec.pageTitle = p?.title || rec.pageTitle || "";
+    if (!p?.exists) {
+      rec.pageKey = "";
+      el("div", "pxd-item__placeholder", holder).textContent = "Empty page";
+      return [];
+    }
+    rec.pageUid = p.uid || null;
+    rec.pageKey = pageKeyOf(p.blocks);
+    const b = { n: 0, more: 0, roots: [] };
+    renderOutline(holder, p.blocks || [], b, rec);
+    if (!b.n) el("div", "pxd-item__placeholder", holder).textContent = "Empty page";
+    if (b.more) moreRow(holder, b.more, rec.pageTitle, rec.pageUid);
+    rec.pageRoots = [...b.roots];
+    return b.roots;
+  };
+  let pageWatches = 0;
+  const armPageWatch = (rec, item, holder) => {
+    if (disposed || rec.pageUnwatch || !host?.watchPage || pageWatches >= PAGE_WATCH_MAX) return;
+    let pending = null;
+    const refresh = () => {
+      pending = null;
+      if (disposed || editing?.uid === rec.uid || rec.pageHolder !== holder || holder.isConnected === false) return;
+      let got;
+      try {
+        got = fetchPage(item.title);
+      } catch {
+        return;
+      }
+      Promise.resolve(got).then((p) => {
+        if (disposed || editing?.uid === rec.uid || rec.pageHolder !== holder) return;
+        if (p?.exists ? pageKeyOf(p.blocks) === rec.pageKey : rec.pageKey === "") return;
+        const keep = Number(rec.body?.scrollTop) || 0;
+        rec.roots.push(...paintPage(rec, holder, p));
+        if (rec.body && keep) rec.body.scrollTop = keep;
+      }).catch(() => {
+      });
+    };
+    let off = null;
+    try {
+      off = host.watchPage(item.title, () => {
+        if (pending) return;
+        pending = later(refresh, PAGE_REFRESH_MS);
+      });
+    } catch {
+      return;
+    }
+    pageWatches += 1;
+    rec.pageUnwatch = () => {
+      rec.pageUnwatch = null;
+      try {
+        off?.();
+      } catch {
+      }
+      pending?.();
+      pending = null;
+      pageWatches -= 1;
+    };
+  };
   const mountContent = (rec, item) => {
     noteRender(item.uid);
     const body = rec.body;
@@ -9771,21 +10260,20 @@ function createItemRenderer({
         return;
       }
       const holder = el("div", "pxd-item__page", body);
-      const preview = host?.pagePreview?.(item.title, CONTENT_DEPTH, CONTENT_LIMIT);
+      rec.pageHolder = holder;
+      rec.pageTitle = item.title;
+      const preview = fetchPage(item.title);
       const apply = (p, sync2 = false) => {
         if (disposed || !holder.parentElement || !sync2 && rec.contentKey !== contentKeyOf(item)) return;
-        if (!p?.exists) {
-          el("div", "pxd-item__placeholder", holder).textContent = "Empty page";
-          return;
-        }
-        const b = { n: 0, roots: [] };
-        renderBlocks(holder, p.blocks || [], 1, b);
-        budget.roots.push(...b.roots);
+        const roots = paintPage(rec, holder, p);
+        if (sync2) budget.roots.push(...roots);
+        else rec.roots.push(...roots);
       };
       if (preview && typeof preview.then === "function") preview.then((p) => apply(p)).catch(() => {
       });
       else apply(preview, true);
       mountLinkedRefs(body, rec, item);
+      armPageWatch(rec, item, holder);
     } else if (item.kind === "block") {
       const ref = item.target.uid;
       const refString = host?.blockString?.(ref);
@@ -10363,7 +10851,7 @@ function createItemRenderer({
     if (rec.body?.style) rec.body.style.minHeight = "";
     rec.el.classList.remove("pxd-item--xfade");
   };
-  const enterEdit = async (uid) => {
+  const enterEdit = async (uid, { row: row2 = "" } = {}) => {
     const rec = shells.get(uid);
     const item = lastBoard?.items.get(uid);
     if (!rec || !item || rec.type === "section" || item.kind === "board" || rec.refBoard) return false;
@@ -10377,6 +10865,8 @@ function createItemRenderer({
     const contentH = boxHeight(rec.body);
     const lockH = boxHeight(rec.el) || contentH || Number(rec.rect?.h) || 0;
     const reduced = prefersReducedMotion();
+    const clickedRow = item.kind === "page" && row2 ? rec.body.querySelector?.(`[data-pxd-row="${row2}"]`) : null;
+    const rowOffset = clickedRow ? (Number(clickedRow.getBoundingClientRect?.().top) || 0) - (Number(rec.body.getBoundingClientRect?.().top) || 0) : null;
     const ghost = el("div", "pxd-item__ghost");
     ghost.setAttribute("aria-hidden", "true");
     for (const node2 of [...rec.body.children || []]) ghost.append(node2);
@@ -10439,7 +10929,20 @@ function createItemRenderer({
     }
     await waitHydrateQuiet(editor, HYDRATE_CAP_MS);
     if (disposed || editing?.uid !== uid) return false;
-    const input = editor.querySelector?.(".rm-block__input") || editor.querySelector?.("textarea");
+    let input = null;
+    if (rowOffset !== null) {
+      for (const node2 of editor.querySelectorAll?.(".rm-block__input") || []) {
+        if (String(node2.id || node2.getAttribute?.("id") || "").endsWith(`-${row2}`)) {
+          input = node2;
+          break;
+        }
+      }
+      if (input) {
+        const delta = (Number(input.getBoundingClientRect?.().top) || 0) - (Number(rec.body.getBoundingClientRect?.().top) || 0) - rowOffset;
+        if (delta && rec.body) rec.body.scrollTop = Math.max(0, (Number(rec.body.scrollTop) || 0) + delta / (zoomCache || 1));
+      }
+    }
+    if (!input) input = editor.querySelector?.(".rm-block__input") || editor.querySelector?.("textarea");
     applyEditorCounterScale(editor, zoomCache);
     if (input) focusRoamInput(input);
     applyEditorCounterScale(editor, zoomCache);
@@ -13527,6 +14030,7 @@ function buildMenu(kind, ctx = {}) {
         make("paste", "Paste", { hint: "Cmd V", disabled: !c.canPaste }),
         make("paste-clone", "Paste as copies", { disabled: !c.canPaste }),
         sep(),
+        make("add-page", "Add page…"),
         make("add-today", "Add today's journal"),
         make("add-week", "Add this week's journals"),
         sep(),
@@ -13718,6 +14222,7 @@ function buildMenu(kind, ctx = {}) {
         make("fold-all", "Fold all cards"),
         make("unfold-all", "Unfold all cards"),
         sep(),
+        make("add-page", "Add page…"),
         make("add-today", "Add today's journal"),
         make("add-week", "Add this week's journals"),
         sep(),
@@ -16028,6 +16533,32 @@ function mountBoardView({
     }).catch(() => {
     });
   };
+  let pagePicker = null;
+  const addPage = (at = null) => {
+    if (disposed) return;
+    measure();
+    const spot = at || screenToWorld(vp, { x: size.width / 2, y: size.height / 2 });
+    pagePicker?.close();
+    const picker = openPagePicker({
+      doc,
+      search: (text2) => host?.searchPages?.(text2, 30) || [],
+      onPick: async (title) => {
+        const b = board2();
+        if (!b || disposed) return false;
+        for (const it of b.items.values()) {
+          if (it.kind === "page" && it.target?.title === title) {
+            ctl.select([it.uid]);
+            pulseItem(it.uid);
+            return true;
+          }
+        }
+        const uid = await session.createCard?.({ x: spot.x - PAGE_CARD.w / 2, y: spot.y - PAGE_CARD.h / 2, string: `[[${title}]]`, w: PAGE_CARD.w, h: PAGE_CARD.h });
+        if (uid && !disposed) ctl.select([uid]);
+        return Boolean(uid);
+      }
+    });
+    pagePicker = picker;
+  };
   const outline = () => {
     const b = board2();
     const out = [];
@@ -16422,6 +16953,9 @@ function mountBoardView({
         break;
       case "add-today":
         addDaily([/* @__PURE__ */ new Date()], world2);
+        break;
+      case "add-page":
+        addPage(world2);
         break;
       case "add-week":
         addDaily(weekDates(), world2);
@@ -17302,13 +17836,13 @@ function mountBoardView({
     const countEl = root.querySelector(".pxd-search__count");
     if (countEl) countEl.textContent = `${searchIndex + 1}/${searchMatches.length}`;
   };
-  const enterEdit = async (uid) => {
+  const enterEdit = async (uid, opts) => {
     ctl.select([uid]);
     if (tier !== "detail") {
       fitSelection([uid]);
       applyLod();
     }
-    const ok = await itemsR.enterEdit(uid);
+    const ok = await itemsR.enterEdit(uid, opts);
     if (ok) chrome.ctx.hide();
     return ok;
   };
@@ -17614,7 +18148,15 @@ function mountBoardView({
     addEdge: (spec) => session.addEdge?.(spec),
     undo: () => session.undo?.(),
     redo: () => session.redo?.(),
-    enterEdit: (uid) => enterEdit(uid),
+    enterEdit: (uid, opts) => enterEdit(uid, opts),
+    openPage: (uid, { sidebar = false } = {}) => {
+      const item = board2()?.items.get(uid);
+      if (item?.kind !== "page") return;
+      const pageUid = host?.pageUid?.(item.target?.title || item.title);
+      if (!pageUid) return;
+      if (sidebar) host?.openInSidebar?.(pageUid, "outline");
+      else host?.openPage?.(pageUid);
+    },
     exitEdit: () => exitEdit(),
     isEditing: () => itemsR.isEditing(),
     editingUid: () => itemsR.editingUid(),
@@ -17666,7 +18208,12 @@ function mountBoardView({
     const border = t.closest(".pxd-section__edge");
     if (border) return { kind: "section-border", uid: border.closest(".pxd-section")?.dataset?.uid || border.closest(".pxd-section")?.getAttribute?.("data-uid") };
     const item = t.closest(".pxd-item");
-    if (item) return { kind: "item", uid: item.dataset?.uid || item.getAttribute?.("data-uid"), part: t.closest(".pxd-item__header") ? "header" : "body" };
+    if (item) {
+      const hit = { kind: "item", uid: item.dataset?.uid || item.getAttribute?.("data-uid"), part: t.closest(".pxd-item__header") ? "header" : "body" };
+      const row2 = nativeClickKind(t) ? null : t.closest("[data-pxd-row]");
+      if (row2) hit.row = row2.getAttribute?.("data-pxd-row") || row2.dataset?.pxdRow || "";
+      return hit;
+    }
     return { kind: "empty" };
   };
   const normalize = (event, type = event.type) => {
@@ -17819,6 +18366,10 @@ function mountBoardView({
   });
   listen(root, "wheel", (event) => {
     if (event.target?.closest?.(".pxd-chrome")) return;
+    if (pageBodyWantsWheel(event.target, event)) {
+      event.stopPropagation();
+      return;
+    }
     measure();
     const handled = ctl.handle(normalize(event, "wheel"));
     if (handled) {
@@ -17928,11 +18479,19 @@ function mountBoardView({
       return;
     }
     const resolveUid = (u) => host?.cardStringForUid ? host.cardStringForUid(u) : `((${u}))`;
-    const list = parseDropPayload(event.dataTransfer, { resolveUid });
+    const list = parseDropPayload(event.dataTransfer, { resolveUid, graph: host?.graph || "" });
     if (!list.length) return;
     const w = Number(setting("default-card-width", DEFAULT_SIZES.card.w)) || DEFAULT_SIZES.card.w;
     const h = Number(setting("default-card-height", DEFAULT_SIZES.card.h)) || DEFAULT_SIZES.card.h;
-    const made = session.addRefCards?.(stackAt(list.map((x) => x.string), p.x - w / 2, p.y - h / 2, h));
+    const isPage = (string) => /^\[\[[^\]]+\]\]$/.test(String(string).trim());
+    let dropY = p.y - h / 2;
+    const placed = list.map((x) => {
+      const page = isPage(x.string);
+      const entry = page ? { string: x.string, x: p.x - PAGE_CARD.w / 2, y: dropY, w: PAGE_CARD.w, h: PAGE_CARD.h } : { string: x.string, x: p.x - w / 2, y: dropY };
+      dropY += (page ? PAGE_CARD.h : h) + 24;
+      return entry;
+    });
+    const made = session.addRefCards?.(placed);
     const offer = dropNamespace(list.map((x) => x.string));
     Promise.resolve(made).then((uids) => {
       if (Array.isArray(uids) && uids.length) ctl.select(uids);
@@ -18569,6 +19128,9 @@ function mountBoardView({
     async exportPng() {
       return exportPng();
     },
+    addPage(at = null) {
+      addPage(at);
+    },
     async copyOutline() {
       const b = board2();
       if (!b) return "";
@@ -18584,6 +19146,7 @@ function mountBoardView({
       if (disposed) return;
       disposed = true;
       closeLens();
+      pagePicker?.close();
       closeBlockEdit();
       if (pointerBoard === root) pointerBoard = null;
       clearOutline();
@@ -18629,115 +19192,6 @@ function mountBoardView({
     }
   };
   return view;
-}
-
-// src/view/board-picker.js
-function recentBoardRows(rows) {
-  return [...rows || []].filter((row2) => row2 && row2.uid).sort((a, b) => (Number(b.edited) || 0) - (Number(a.edited) || 0) || String(a.title || "").localeCompare(String(b.title || "")));
-}
-var current = null;
-function openAddToBoard({ doc = globalThis.document, listBoards, onPick } = {}) {
-  current?.close();
-  const offs = [];
-  const on = (target, type, fn, capture) => {
-    target.addEventListener(type, fn, capture);
-    offs.push(() => target.removeEventListener(type, fn, capture));
-  };
-  const el = (tag, cls, parent, text2) => {
-    const node2 = doc.createElement(tag);
-    node2.className = cls;
-    if (text2 !== void 0) node2.textContent = text2;
-    parent?.append(node2);
-    return node2;
-  };
-  const back = el("div", "pxd-addboard-back", doc.body);
-  const box2 = el("div", "pxd-addboard", doc.body);
-  el("div", "pxd-addboard__title", box2, "Add to board");
-  const filter = el("input", "pxd-addboard__filter", box2);
-  filter.type = "text";
-  filter.setAttribute("aria-label", "Filter boards");
-  filter.placeholder = "Filter boards…";
-  filter.setAttribute("placeholder", "Filter boards…");
-  const list = el("div", "pxd-addboard__list", box2);
-  el("div", "pxd-addboard__empty", list, "Loading boards…");
-  let rows = [];
-  let closed = false;
-  let busy = false;
-  const close = () => {
-    if (closed) return;
-    closed = true;
-    if (current === api) current = null;
-    for (const off of offs) off();
-    back.remove();
-    box2.remove();
-  };
-  const api = { close };
-  current = api;
-  const render = () => {
-    list.replaceChildren();
-    const q = String(filter.value || "").trim().toLowerCase();
-    const shown = rows.filter((b) => !q || `${b.title || ""}
-${b.pageTitle || b.page || ""}`.toLowerCase().includes(q));
-    if (!shown.length) {
-      el("div", "pxd-addboard__empty", list, rows.length ? "No matching boards" : "No boards found");
-      return;
-    }
-    for (const b of shown) {
-      const row2 = el("div", "pxd-addboard__row", list);
-      row2.dataset.uid = b.uid;
-      row2.setAttribute("data-uid", b.uid);
-      const text2 = el("span", "pxd-addboard__text", row2);
-      el("span", "pxd-addboard__name", text2, b.title || "Untitled board");
-      const page = b.pageTitle || b.page;
-      if (page) el("span", "pxd-addboard__page", text2, page);
-    }
-  };
-  on(box2, "pxd-close", () => close());
-  on(back, "pointerdown", (event) => {
-    event.preventDefault?.();
-    event.stopPropagation?.();
-    close();
-  });
-  on(filter, "input", () => render());
-  on(filter, "keydown", (event) => {
-    event.stopPropagation?.();
-    if (event.key !== "Escape") return;
-    event.preventDefault?.();
-    close();
-  });
-  on(list, "click", (event) => {
-    const row2 = event.target?.closest?.(".pxd-addboard__row");
-    const uid = row2?.dataset?.uid || row2?.getAttribute?.("data-uid");
-    if (!uid || busy) return;
-    const board2 = rows.find((b) => b.uid === uid);
-    if (!board2) return;
-    event.preventDefault?.();
-    event.stopPropagation?.();
-    busy = true;
-    Promise.resolve(onPick?.(board2)).then((ok) => {
-      if (ok === false) {
-        busy = false;
-        return;
-      }
-      close();
-    }, () => {
-      busy = false;
-    });
-  });
-  Promise.resolve(typeof listBoards === "function" ? listBoards() : []).then((got) => {
-    if (closed) return;
-    rows = recentBoardRows(got);
-    render();
-  }, () => {
-    if (closed) return;
-    rows = [];
-    render();
-  });
-  try {
-    filter.focus();
-  } catch {
-  }
-  return api;
 }
 
 // src/settings.js
@@ -19692,6 +20146,9 @@ async function installPlexusDiagram({
   function copyOutlineCommand(context) {
     return targetView(context)?.copyOutline?.();
   }
+  function addPageCommand(context) {
+    return targetView(context)?.addPage?.();
+  }
   const sheetActions = [
     ["Plexus: Enhance this diagram", enhanceCommand],
     ["Plexus: New whiteboard here", newWhiteboardCommand],
@@ -19699,6 +20156,9 @@ async function installPlexusDiagram({
     ["Plexus: Fullscreen this diagram", fullscreenCommand],
     ["Plexus: Export board as SVG", exportSvgCommand],
     ["Plexus: Copy board as text", copyOutlineCommand]
+  ];
+  const sheetOnlyActions = [
+    ["Plexus: Add page…", addPageCommand]
   ];
   function runCommand(label, fn) {
     return (context) => {
@@ -19724,7 +20184,7 @@ async function installPlexusDiagram({
     title.className = "pxd-commands__title";
     title.textContent = "Plexus";
     box2.append(title);
-    for (const [label, fn] of sheetActions) {
+    for (const [label, fn] of [...sheetActions, ...sheetOnlyActions]) {
       const row2 = doc.createElement("button");
       row2.type = "button";
       row2.className = "pxd-commands__row";

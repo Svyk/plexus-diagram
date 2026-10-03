@@ -108,3 +108,109 @@ export function openAddToBoard({ doc = globalThis.document, listBoards, onPick }
   try { filter.focus(); } catch { /* the host has no focus */ }
   return api;
 }
+
+// "Add page…" picker (PG-4). Same chrome as the board picker; rows come from a page search as you type.
+// `search(text)` returns [{ uid, title }] (sync or async). Nothing is searched until the filter has text.
+export function openPagePicker({ doc = globalThis.document, search, onPick, debounceMs = 150 } = {}) {
+  current?.close();
+  const offs = [];
+  const on = (target, type, fn, capture) => {
+    target.addEventListener(type, fn, capture);
+    offs.push(() => target.removeEventListener(type, fn, capture));
+  };
+  const el = (tag, cls, parent, text) => {
+    const node = doc.createElement(tag);
+    node.className = cls;
+    if (text !== undefined) node.textContent = text;
+    parent?.append(node);
+    return node;
+  };
+
+  const back = el("div", "pxd-addboard-back", doc.body);
+  const box = el("div", "pxd-addboard pxd-addpage", doc.body);
+  el("div", "pxd-addboard__title", box, "Add page");
+  const filter = el("input", "pxd-addboard__filter", box);
+  filter.type = "text";
+  filter.setAttribute("aria-label", "Search pages");
+  filter.placeholder = "Search pages…";
+  filter.setAttribute("placeholder", "Search pages…");
+  const list = el("div", "pxd-addboard__list", box);
+  el("div", "pxd-addboard__empty", list, "Type to search pages");
+
+  let closed = false;
+  let busy = false;
+  let timer = null;
+  let ticket = 0;
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    if (current === api) current = null;
+    if (timer) clearTimeout(timer);
+    for (const off of offs) off();
+    back.remove();
+    box.remove();
+  };
+  const api = { close };
+  current = api;
+
+  const show = (rows, text) => {
+    list.replaceChildren();
+    if (!rows.length) {
+      el("div", "pxd-addboard__empty", list, text ? "No matching pages" : "Type to search pages");
+      return;
+    }
+    for (const page of rows) {
+      const row = el("div", "pxd-addboard__row", list);
+      row.dataset.title = page.title;
+      row.setAttribute("data-title", page.title);
+      const label = el("span", "pxd-addboard__text", row);
+      el("span", "pxd-addboard__name", label, page.title);
+    }
+  };
+  const run = () => {
+    timer = null;
+    const text = String(filter.value || "").trim();
+    const mine = ++ticket;
+    if (!text) { show([], ""); return; }
+    Promise.resolve(typeof search === "function" ? search(text) : []).then((got) => {
+      if (closed || mine !== ticket) return;
+      show((Array.isArray(got) ? got : []).filter((row) => row && typeof row.title === "string" && row.title), text);
+    }, () => {
+      if (closed || mine !== ticket) return;
+      show([], text);
+    });
+  };
+
+  on(box, "pxd-close", () => close());
+  on(back, "pointerdown", (event) => {
+    event.preventDefault?.();
+    event.stopPropagation?.();
+    close();
+  });
+  on(filter, "input", () => {
+    if (timer) clearTimeout(timer);
+    timer = setTimeout(run, debounceMs);
+  });
+  on(filter, "keydown", (event) => {
+    event.stopPropagation?.();
+    if (event.key === "Escape") { event.preventDefault?.(); close(); return; }
+    if (event.key === "Enter") {
+      const first = list.querySelector?.(".pxd-addboard__row");
+      if (first) { event.preventDefault?.(); first.click?.(); }
+    }
+  });
+  on(list, "click", (event) => {
+    const row = event.target?.closest?.(".pxd-addboard__row");
+    const title = row?.dataset?.title || row?.getAttribute?.("data-title");
+    if (!title || busy) return;
+    event.preventDefault?.();
+    event.stopPropagation?.();
+    busy = true;
+    Promise.resolve(onPick?.(title)).then((ok) => {
+      if (ok === false) { busy = false; return; }
+      close();
+    }, () => { busy = false; });
+  });
+  try { filter.focus(); } catch { /* the host has no focus */ }
+  return api;
+}

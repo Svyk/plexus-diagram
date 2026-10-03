@@ -6,7 +6,7 @@
 // 1.2 wiring: three-tier LOD flipped by class during a gesture, board backgrounds (pattern + tone), live
 // section auto-fit preview, context menu, clipboard, focus, presentation, card badges, back-to-content.
 
-import { BOARD_PATTERNS, BOARD_TONES, DEFAULT_BOARD_CARD, DEFAULT_SIZES, LANE_SIZE, STICKY_SIZE, UNTITLED_BOARD, classifyString, hexColor, semanticRef, plainText } from "../model/schema.js";
+import { BOARD_PATTERNS, BOARD_TONES, DEFAULT_BOARD_CARD, DEFAULT_SIZES, LANE_SIZE, PAGE_CARD, STICKY_SIZE, UNTITLED_BOARD, classifyString, hexColor, semanticRef, plainText } from "../model/schema.js";
 import { boundsOf, buildBoard, connectedUids, containerAt, descendantsOf, displayRects, edgesTouching, outlineOrder, sameColorUids, sectionAllUids, sectionFitPlan, sectionNoteUid, sidebarOutlineUids, worldRects } from "../model/board.js";
 import { copyLinkText, hashFromUrl, pageUidFromHash, pxdTarget } from "../model/deeplink.js";
 import { findOnBoard } from "../model/find.js";
@@ -33,7 +33,8 @@ import {
 import { PLEXUS_MIME, copyPayload, editorPastePlan, imageMarkdown, inlineAtCaret, parsePastedText } from "../model/clipboard.js";
 import { boardToMarkdown, boardToSvg, dropExternalImages, imageSrc, pngFileName, sliceBoard } from "../model/export.js";
 import { createInteractions } from "./interactions.js";
-import { createItemRenderer, isTextEntryTarget } from "./cards.js";
+import { openPagePicker } from "./board-picker.js";
+import { createItemRenderer, isTextEntryTarget, pageBodyWantsWheel } from "./cards.js";
 import { editorKeyAction, inputBlockRole } from "./editor-keys.js";
 import { createEdgeLayer } from "./edges.js";
 import { createChrome, LINK_MODES } from "./chrome.js";
@@ -1248,6 +1249,33 @@ export function mountBoardView({
       else toast("Already on this board");
     }).catch(() => {});
   };
+  // PG-4: a page search that adds [[Title]] as a page card. A page already on the board is selected and pulsed.
+  let pagePicker = null;
+  const addPage = (at = null) => {
+    if (disposed) return;
+    measure();
+    const spot = at || screenToWorld(vp, { x: size.width / 2, y: size.height / 2 });
+    pagePicker?.close();
+    const picker = openPagePicker({
+      doc,
+      search: (text) => host?.searchPages?.(text, 30) || [],
+      onPick: async (title) => {
+        const b = board();
+        if (!b || disposed) return false;
+        for (const it of b.items.values()) {
+          if (it.kind === "page" && it.target?.title === title) {
+            ctl.select([it.uid]);
+            pulseItem(it.uid);
+            return true;
+          }
+        }
+        const uid = await session.createCard?.({ x: spot.x - PAGE_CARD.w / 2, y: spot.y - PAGE_CARD.h / 2, string: `[[${title}]]`, w: PAGE_CARD.w, h: PAGE_CARD.h });
+        if (uid && !disposed) ctl.select([uid]);
+        return Boolean(uid);
+      },
+    });
+    pagePicker = picker;
+  };
   const outline = () => {
     const b = board();
     const out = [];
@@ -1536,6 +1564,7 @@ export function mountBoardView({
       case "fold-all": void session.collapseAll?.(true); break;
       case "unfold-all": void session.collapseAll?.(false); break;
       case "add-today": addDaily([new Date()], world); break;
+      case "add-page": addPage(world); break;
       case "add-week": addDaily(weekDates(), world); break;
       case "background": chrome.popover.open(); break;
       case "bg-image": {
@@ -2117,11 +2146,11 @@ export function mountBoardView({
   };
 
   // ------------------------------------------------------------ editing
-  const enterEdit = async (uid) => {
+  const enterEdit = async (uid, opts) => {
     ctl.select([uid]);
     // Editing at map zoom is unreadable: bring the card to a working zoom first.
     if (tier !== "detail") { fitSelection([uid]); applyLod(); }
-    const ok = await itemsR.enterEdit(uid);
+    const ok = await itemsR.enterEdit(uid, opts);
     if (ok) chrome.ctx.hide();
     return ok;
   };
@@ -2401,7 +2430,15 @@ export function mountBoardView({
     addEdge: (spec) => session.addEdge?.(spec),
     undo: () => session.undo?.(),
     redo: () => session.redo?.(),
-    enterEdit: (uid) => enterEdit(uid),
+    enterEdit: (uid, opts) => enterEdit(uid, opts),
+    openPage: (uid, { sidebar = false } = {}) => {
+      const item = board()?.items.get(uid);
+      if (item?.kind !== "page") return;
+      const pageUid = host?.pageUid?.(item.target?.title || item.title);
+      if (!pageUid) return;
+      if (sidebar) host?.openInSidebar?.(pageUid, "outline");
+      else host?.openPage?.(pageUid);
+    },
     exitEdit: () => exitEdit(),
     isEditing: () => itemsR.isEditing(),
     editingUid: () => itemsR.editingUid(),
@@ -2455,7 +2492,13 @@ export function mountBoardView({
     const border = t.closest(".pxd-section__edge");
     if (border) return { kind: "section-border", uid: border.closest(".pxd-section")?.dataset?.uid || border.closest(".pxd-section")?.getAttribute?.("data-uid") };
     const item = t.closest(".pxd-item");
-    if (item) return { kind: "item", uid: item.dataset?.uid || item.getAttribute?.("data-uid"), part: t.closest(".pxd-item__header") ? "header" : "body" };
+    if (item) {
+      const hit = { kind: "item", uid: item.dataset?.uid || item.getAttribute?.("data-uid"), part: t.closest(".pxd-item__header") ? "header" : "body" };
+      // PG-3: the page-card row under the pointer (not for a link, checkbox or image inside it).
+      const row = nativeClickKind(t) ? null : t.closest("[data-pxd-row]");
+      if (row) hit.row = row.getAttribute?.("data-pxd-row") || row.dataset?.pxdRow || "";
+      return hit;
+    }
     return { kind: "empty" };
   };
   const normalize = (event, type = event.type) => {
@@ -2609,6 +2652,8 @@ export function mountBoardView({
   });
   listen(root, "wheel", (event) => {
     if (event.target?.closest?.(".pxd-chrome")) return;
+    // PG-1: a plain wheel scrolls a long page card's body until it hits an end; Cmd/Ctrl+wheel still zooms.
+    if (pageBodyWantsWheel(event.target, event)) { event.stopPropagation(); return; }
     measure(); // the outer Roam page scrolls without any pointer event on the board
     const handled = ctl.handle(normalize(event, "wheel"));
     if (handled) { event.preventDefault(); event.stopPropagation(); settle(); }
@@ -2696,11 +2741,20 @@ export function mountBoardView({
     const files = filesFromDataTransfer(event.dataTransfer);
     if (files.length) { void pasteImages(files, p); return; }
     const resolveUid = (u) => (host?.cardStringForUid ? host.cardStringForUid(u) : `((${u}))`);
-    const list = parseDropPayload(event.dataTransfer, { resolveUid });
+    const list = parseDropPayload(event.dataTransfer, { resolveUid, graph: host?.graph || "" });
     if (!list.length) return;
     const w = Number(setting("default-card-width", DEFAULT_SIZES.card.w)) || DEFAULT_SIZES.card.w;
     const h = Number(setting("default-card-height", DEFAULT_SIZES.card.h)) || DEFAULT_SIZES.card.h;
-    const made = session.addRefCards?.(stackAt(list.map((x) => x.string), p.x - w / 2, p.y - h / 2, h));
+    // A dropped page becomes a page card at the page-card size, stacked below the card above it.
+    const isPage = (string) => /^\[\[[^\]]+\]\]$/.test(String(string).trim());
+    let dropY = p.y - h / 2;
+    const placed = list.map((x) => {
+      const page = isPage(x.string);
+      const entry = page ? { string: x.string, x: p.x - PAGE_CARD.w / 2, y: dropY, w: PAGE_CARD.w, h: PAGE_CARD.h } : { string: x.string, x: p.x - w / 2, y: dropY };
+      dropY += (page ? PAGE_CARD.h : h) + 24;
+      return entry;
+    });
+    const made = session.addRefCards?.(placed);
     const offer = dropNamespace(list.map((x) => x.string));
     Promise.resolve(made).then((uids) => {
       if (Array.isArray(uids) && uids.length) ctl.select(uids);
@@ -3276,6 +3330,7 @@ export function mountBoardView({
       return text;
     },
     async exportPng() { return exportPng(); },
+    addPage(at = null) { addPage(at); },
     async copyOutline() {
       const b = board();
       if (!b) return "";
@@ -3291,6 +3346,7 @@ export function mountBoardView({
       if (disposed) return;
       disposed = true;
       closeLens();
+      pagePicker?.close();
       closeBlockEdit();
       if (pointerBoard === root) pointerBoard = null;
       clearOutline();

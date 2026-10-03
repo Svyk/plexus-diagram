@@ -56,6 +56,7 @@ function trimTree(node, depth, budget) {
     out.push({
       uid: c[":block/uid"],
       string: c[":block/string"] ?? "",
+      ...(c[":block/open"] === false ? { open: false } : {}),
       children: trimTree(c, depth - 1, budget),
     });
   }
@@ -191,7 +192,7 @@ export function createViewportStore({ storage = globalThis.localStorage, graph =
 }
 
 export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localStorage, graph } = {}) {
-  const stats = { writes: 0, watches: 0, renders: 0, items: {} };
+  const stats = { writes: 0, watches: 0, pageWatches: 0, renders: 0, items: {} };
   const data = api.data;
   // Every data.block.* call is its own Roam undo entry. The log groups the calls of one session transaction
   // (host.group) so one undo()/redo() steps over the whole user operation. A write outside a group is its own step.
@@ -271,6 +272,28 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       const res = pull(BOARD_PATTERN, [":node/title", title]);
       if (!res || !res[":block/uid"]) return { uid: null, exists: false, blocks: [] };
       return { uid: res[":block/uid"], exists: true, blocks: trimTree(res, depth, { left: limit }) };
+    },
+
+    // The whole outline of a page for a page card: every level, folded blocks flagged `open: false`.
+    pageOutline(title, limit = 400) {
+      const res = pull(BOARD_PATTERN, [":node/title", title]);
+      if (!res || !res[":block/uid"]) return { uid: null, exists: false, blocks: [] };
+      return { uid: res[":block/uid"], exists: true, blocks: trimTree(res, 64, { left: limit }) };
+    },
+
+    // One pull watch on a page, for a page card on screen. The caller releases it.
+    watchPage(title, cb) {
+      const entity = `[:node/title ${JSON.stringify(String(title))}]`;
+      const wrapped = (before, after) => cb(after);
+      data.addPullWatch(BOARD_PATTERN, entity, wrapped);
+      stats.pageWatches++;
+      let active = true;
+      return () => {
+        if (!active) return;
+        active = false;
+        data.removePullWatch(BOARD_PATTERN, entity, wrapped);
+        stats.pageWatches--;
+      };
     },
 
     pageUid(title) {
@@ -483,6 +506,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       return api.ui.rightSidebar.addWindow({ window: { type, "block-uid": uid } });
     },
     openBlock(uid) { return api.ui.mainWindow.openBlock({ block: { uid } }); },
+    openPage(uid) { return api.ui.mainWindow.openPage({ page: { uid } }); },
 
     renderString(el, string) { stats.renders++; return api.ui.components.renderString({ el, string }); },
     renderBlock(el, uid) { stats.renders++; return api.ui.components.renderBlock({ uid, el, "open?": true }); },

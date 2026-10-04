@@ -96,6 +96,7 @@ Native diagrams are React Flow (`.react-flow`, nodes `.react-flow__node-block`).
 | P16 | Rough edges | 2.7.1 | done 2026-10-04, tagged `v2.7.1` |
 | P17 | Quick wins, first slice | 2.8.0 | released 2026-10-04. TSK-1, TSK-6, PERF-1, PERF-2, and PERF-3 done. TSK-2 stays open. TSK-3, TSK-4, TSK-5, and DOC-17 stay open. |
 | P18 slice | Region block model | 2.9.0 | released 2026-10-04. REG-1 done. ECO-1 and the rest of P18 stay open. |
+| P18 patch | Region container order | 2.9.1 | released 2026-10-04. A new card stays ahead of the region container. |
 | P17 rest-P22 | 3.x roadmap, see roadmap-3.md | 2.8.1-3.0.0 | open |
 
 Order matters: P1 and P2 are the user's direct requests. Within a phase, do tasks in the listed order unless one is blocked.
@@ -383,7 +384,7 @@ Live on Readwisenotes, window titled "Readwisenotes - Plexus Diagram/Test Lab". 
 
 ### P18: Region block model (2.9.0, 2026-10-04)
 
-- [x] **REG-1 Region and view block model** — done 2026-10-04, `4258a7e`: Two cards. Note badge ▸ 1. Image had no kids badge. Edit times unchanged on 13 blocks. Unload left 0 `.pxd-*` nodes. Real area string parses as roam-plexus, unsupported, no error.
+- [x] **REG-1 Region and view block model** — done 2026-10-04, `4258a7e`: Two cards. Note badge ▸ 1. Image had no kids badge. Edit times unchanged on 13 blocks. Unload left 0 `.pxd-*` nodes. Real area string parses as roam-plexus, unsupported, no error. Order follow-up done 2026-10-04, `ba770fb`: new card at order 1, regions container at order 2, edit times unchanged, unload 78 to 69 and 92 to 84, `.pxd-*` 0.
 
 ## 6. Later (ideas not scheduled)
 
@@ -415,6 +416,8 @@ AI agent features inside the board, SuperTag-style typed schemas or class tags, 
 ## 8. Measurements and findings
 
 Fill in as phases run. Keep the newest at the top of each list.
+
+- 2.9.1, 2026-10-04. Card GoBMARGQ9 at order 1, container zmvDOLPzI at order 2. Edit times unchanged. Unload 78 to 69, 92 to 84, pxd 0. Theme Auto. Ledger removed 5.
 
 - 2.9.0 REG-1 live, 2026-10-04, Test Lab. Injected build, board `lq5cgkLW7`. Cards 2. Note badge "▸ 1". Image `.pxd-kids` absent. Region text absent from `.pxd-root`. `:edit/time` unchanged on 13 blocks. Unload window 78 to 69, document 92 to 84, `.pxd-*` 0. Theme restored to Auto. Ledger removed 13. No typing bench.
 

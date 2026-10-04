@@ -1,4 +1,5 @@
 import { SHAPES } from "./shapes.js";
+import { isContainerString, parseRegion } from "./regions.js";
 
 export const PLEXUS_KEY = "plexus";
 export const SCHEMA_VERSION = 2;
@@ -323,6 +324,8 @@ export function classifyString(s) {
   if (block) return { kind: "block", refUid: block[1] };
   if (/^\{\{(\[\[)?diagram/i.test(t)) return { kind: "board" };
   if (/^!\[[^\]]*\]\([^)]*\)$/.test(t)) return { kind: "image" };
+  if (isContainerString(t)) return { kind: "regions" };
+  if (parseRegion(t)) return { kind: "region" };
   return { kind: "note" };
 }
 

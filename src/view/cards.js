@@ -17,6 +17,7 @@ import { fillFromTags, highlighterTags } from "../model/highlighter.js";
 import { watchEditorMenus } from "./editor-menus.js";
 import { applyEditorCounterScale } from "./editor-scale.js";
 import { UNMOUNT_GRACE_MS, intrinsicSize, shellOffscreen } from "./offscreen.js";
+import { isStructuralString } from "../model/regions.js";
 
 const SIDES = ["top", "right", "bottom", "left"];
 const CHUNK_MS = 8;
@@ -202,7 +203,8 @@ const stickyTitleOf = (string) => {
 };
 // Direct children that count as rows. Better Tasks attribute children are chips, never rows, bullets or badge counts.
 const isTaskAttrString = (s) => taskAttrId(s) !== null;
-const visibleKids = (list) => (list || []).filter((c) => !isTaskAttrString(childString(c)));
+const skipChildString = (s) => isTaskAttrString(s) || isStructuralString(s);
+const visibleKids = (list) => (list || []).filter((c) => !skipChildString(childString(c)));
 // A note card whose block is a task, with Better Tasks loaded, draws a light Plexus checkbox (a span, not an input, so
 // it is not one of Better Tasks' 100 decorated checkboxes) and renders the rest of the title with the marker cut off.
 // A click on that checkbox completes through Better Tasks' own checkbox path (src/view/task-complete.js), so the
@@ -1109,7 +1111,7 @@ export function createItemRenderer({
       if (budget.n >= CONTENT_LIMIT) return;
       const s = childString(b);
       // Task attributes are chips. Their children stay in the block and are never rewritten by Plexus.
-      if (isTaskAttrString(s)) continue;
+      if (skipChildString(s)) continue;
       budget.n += 1;
       const row = el("div", "pxd-block", parent);
       row.dataset.uid = childUid(b);
@@ -1249,7 +1251,7 @@ export function createItemRenderer({
   const countRows = (blocks) => {
     let n = 0;
     for (const c of blocks) {
-      if (isTaskAttrString(childString(c))) continue;
+      if (skipChildString(childString(c))) continue;
       n += 1;
       if (c.open !== false) n += countRows(childKids(c));
     }
@@ -1378,7 +1380,7 @@ export function createItemRenderer({
   const renderOutline = (parent, blocks, b, rec) => {
     for (const blk of blocks) {
       const s = childString(blk);
-      if (isTaskAttrString(s)) continue;
+      if (skipChildString(s)) continue;
       const uid = childUid(blk);
       const kids = childKids(blk);
       const folded = blk.open === false && kids.length > 0;
@@ -2075,7 +2077,7 @@ export function createItemRenderer({
     for (const line of lines) {
       if (out.length >= ATTR_CHIPS_MAX) break;
       const name = attrNameOf(line);
-      if (!name || isTaskAttrString(line)) continue;
+      if (!name || skipChildString(line)) continue;
       const value = plainText(line.slice(line.indexOf("::") + 2), 40);
       if (value) out.push(`${plainText(name, 24)}: ${value}`);
     }

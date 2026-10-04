@@ -94,6 +94,7 @@ export function buildBoard(pulled, { defaults } = {}) {
 
   const boardKids = sortedChildren(pulled);
   let snapshotsUid = null;
+  let regionsUid = null;
   boardKids.forEach((child, index) => {
     const marker = readPlexus(child[":block/props"])?.type;
     if (containerUid === null && marker === "edges") {
@@ -101,6 +102,7 @@ export function buildBoard(pulled, { defaults } = {}) {
       containerIndex = index;
     }
     if (snapshotsUid === null && marker === "snapshots") snapshotsUid = child[":block/uid"];
+    if (regionsUid === null && marker === "regions") regionsUid = child[":block/uid"];
   });
 
   const sectionDefaults = normalizeSectionDefaults(plexus?.defaults?.section);
@@ -109,7 +111,7 @@ export function buildBoard(pulled, { defaults } = {}) {
     const siblings = [];
     for (const child of children) {
       const cuid = child[":block/uid"];
-      if (cuid === containerUid || cuid === snapshotsUid) continue;
+      if (cuid === containerUid || cuid === snapshotsUid || cuid === regionsUid) continue;
       const cplexus = readPlexus(child[":block/props"]);
       const cstring = child[":block/string"] ?? "";
       const heading = child[":block/heading"] || 0;
@@ -118,6 +120,7 @@ export function buildBoard(pulled, { defaults } = {}) {
       let type = layout.type;
       if (!cplexus && heading > 0 && kids.length) type = "section";
       const cls = classifyString(cstring);
+      if (cls.kind === "regions" || cls.kind === "region") continue;
       const kind = type === "section" ? "section" : type === "text" ? "text" : cls.kind;
       const size = sizes[type];
       const hasLayout = isNum(layout.x) && isNum(layout.y);

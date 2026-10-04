@@ -1,5 +1,15 @@
 # Changelog
 
+## 2.2.0 — 2026-10-03
+
+- Board bar and tool dock. The top bar is now the board bar: breadcrumbs, Add, Info, links, views, background, present and More. The nine tools moved into a floating dock along the bottom. Settings, Toolbar layout, brings back the 2.1 look (Classic) or hides the top bar until the pointer nears the top edge (Dock only).
+- Dock settings: position (bottom, left or top), shape (pill or strip), tool names under the icons, and button size. A board can set its own dock position from the More menu, Dock position for this board; opening a board still writes nothing.
+- The active tool slides a highlight behind it. A locked tool (double-click) shows a padlock. In dark mode the active tool is a border and a dot, so it stays visible without a fill.
+- Dock options. With Card, Sticky, Section or Shape active, the dock shows that tool's colors, the block or card look, or the shape kinds. With nothing selected, a pick styles the next item you create with that tool and is forgotten when the board closes; with cards selected, it restyles them as before. One undo reverses it.
+- The last breadcrumb carries the board's own color, and the bar's bottom edge takes the same tone.
+- Overview zoom keeps Select, Hand and Board in the dock. A board narrower than 560 px gets smaller buttons and no options. A left dock no longer sits on the Properties panel.
+- The active and locked tool styles in the top bar lost to Roam's own button rules in dark mode. They hold now.
+
 ## 2.1.0 — 2026-10-03
 
 - Enter in a card adds a line to the card's block, like a node in a native Roam diagram. Settings, Cards, "Enter in a card" set to Child brings back the old behavior of making a child block.

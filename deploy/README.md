@@ -31,9 +31,9 @@ An enhanced board keeps Roam's diagram controls and adds to them.
 
 - **Rail.** The vertical stack on the right (Settings can switch it to a horizontal bar): zoom in, zoom out, fit view, Toggle Minimap, Save PNG, Open outline in sidebar, Edit Block, Maximize, the zoom percent, and the version badge. The badge opens this version's changelog from the bundle. No network.
 - **Properties.** The panel on the canvas. It edits the selection: title size, title color, title fill, area fill, and border. Reset default clears that selection's overrides. Background, on the board, sets this board's pattern and tone.
-- **Toolbar.** The top row: breadcrumbs, the tools, Add, Info, graph links, Find, and More. A selection shows a context bar: colors, align, distribute, and, for a connection, direction, route, dash, weight, and label.
+- **Board bar.** The top row: breadcrumbs, Add, Info, graph links, Find, and More. The last breadcrumb and the bar's bottom edge take the board's own color. A selection shows a context bar: colors, align, distribute, and, for a connection, direction, route, dash, weight, and label. Toolbar layout in Settings: Split (default, tools in the dock), Classic (tools in the top bar, as in 2.1), or Dock only (the bar appears when the pointer is near the top edge).
 - **Panel.** Add opens the side panel. Search finds pages and blocks. Related lists what the selected card links to and what links to it. Info (also the I key) shows the card or the board. The outline in the sidebar is the same canvas, not a second copy of the bullets.
-- **Palette.** The floating bar along the bottom, above the minimap. Select (V), Hand (H), Card (N), Text (T), Sticky (S), Shape (R), Section (G), Board (W), Connect (C). Hide it with Show tool palette.
+- **Tool dock.** The floating bar along the bottom, above the minimap: Select (V), Hand (H), Card (N), Text (T), Sticky (S), Shape (R), Section (G), Board (W), Connect (C). The active tool has a sliding highlight; double-click a tool to lock it (padlock). With Card, Sticky, Section or Shape active the dock shows that tool's options: with nothing selected a color, look or shape sets the next item you create (kept in memory only); with a selection it restyles the selection. Position, shape, labels and size are in Settings; a board can pick its own position from More, Dock position for this board. Below zoom 0.2 the dock keeps Select, Hand and Board. Hide it with Show tool palette.
 
 ![The tool palette above the minimap](docs/img/palette.png)
 
@@ -164,7 +164,13 @@ Settings → Extensions → Plexus Diagram. Each change applies on the open boar
 | Board | Fullscreen on zoom | Open a diagram full screen when you zoom into its block. Esc leaves it. |
 | Board | Mouse wheel | Pan or zoom. Pinch still zooms. |
 | Board | Show minimap | Show the small map of the whole board. |
-| Board | Show tool palette | Show the tool palette along the bottom of the board. |
+| Board | Show tool palette | Show the tool dock. |
+| Board | Toolbar layout | Split: board bar on top, tools in the dock. Classic: the 2.1 look. Dock only: hide the top bar until the pointer is near the top edge. |
+| Board | Tool dock position | Bottom, left or top. A board can override it from its More menu. |
+| Board | Dock shape | Pill or strip. |
+| Board | Show tool names under icons | Label each tool in the dock. |
+| Board | Button size | Comfortable or compact, for both bars. |
+| Board | Show tool options in the dock | Show the active tool's colors, look or shape next to the dock. |
 | Board | Controls | Rail is the vertical stack on the right. Bar is the horizontal zoom group. |
 | Board | Snap guides | Line a dragged card up with its neighbours and show the guides. |
 | Board | Snap to grid | Snap a dragged card to the 24 pixel grid. Hold Alt while dragging to skip snapping. |

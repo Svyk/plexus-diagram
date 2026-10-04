@@ -99,6 +99,30 @@ test("BUG-2 / PL-6: Graph draws an edge line, spreads the nodes and labels ref c
   for (const n of nodes) assert.ok(parseInt(n.style.left, 10) >= 0 && parseInt(n.style.top, 10) >= 0, "no node starts off the box");
 });
 
+test("PL-6: a measured overlay keeps every Graph node inside it", (t) => {
+  const stub = createDomStub();
+  const restore = stub.install();
+  t.after(restore);
+  const root = stub.document.createElement("div");
+  root.className = "pxd-root";
+  stub.document.body.append(root);
+  const cards = Array.from({ length: 14 }, (_, i) => blk(`n${String(i).padStart(7, "0")}`, `Card ${i}`, plexus({ x: i * 40, y: 0, w: 100, h: 60 })));
+  const big = buildBoard(blk("b9", "{{[[diagram]]:Big}}", plexus({ v: 2 }), cards));
+  const later = mountLater({ doc: stub.document, root, host: { blockString: resolve }, getBoard: () => big, onClose: () => later.close() });
+  const box = root.querySelector(".pxd-later");
+  Object.defineProperty(box, "clientWidth", { value: 900, configurable: true });
+  Object.defineProperty(box, "clientHeight", { value: 520, configurable: true });
+  later.open("graph");
+  const nodes = root.querySelectorAll(".pxd-later__node");
+  assert.equal(nodes.length, 14);
+  for (const n of nodes) {
+    const x = parseInt(n.style.left, 10);
+    const y = parseInt(n.style.top, 10);
+    assert.ok(x >= 90 && x <= 900 - 24 - 90, `x ${x}`);
+    assert.ok(y >= 30 && y <= 520 - 24 - 30, `y ${y}`);
+  }
+});
+
 test("BUG-5 / PL-9: a Gallery tile without alt text has no caption, with alt text the alt text", (t) => {
   const f = laterFixture({ blockString: resolve });
   t.after(f.restore);

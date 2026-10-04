@@ -1,5 +1,23 @@
 # Changelog
 
+## 2.3.0 — 2026-10-03
+
+- Board rows in page cards. A page card for a page that holds a board shows that board as a small map with its title and item count, not a grey box. After four maps on one card, the rest are one-line chips. The row for the board you are looking at says "this board". Click opens the board; Shift-click opens it in the right sidebar.
+- A row that Roam cannot render inside a card, such as an empty `{{[[roam/render]]}}`, now shows its raw text, muted, instead of "Failed to render". This also ends the Roam console errors the old page-card row caused.
+- Hover tooltips. Every control on the board bar, the dock, the rail, the card toolbar and the Properties panel shows its name, its shortcut and a one-line description after a short hover. Keyboard focus shows it at once. The tip sits below the board bar, above the dock, left of the rail, and stays inside the board. Settings, Hover tooltips, turns them off and hands the text back to the browser. Tooltip delay is instant, 350 ms or 800 ms.
+- A tooltip no longer stays on screen after the control it described is removed.
+- Ref cards and image cards show readable titles everywhere: Table, Kanban, Graph, Timeline, Gallery and Find use the first line of the referenced block or the image's alt text, never `((uid))` or a blank. Find matches the text a ref card shows.
+- Graph view draws a line for every connection, fits all cards inside its window and no longer scrolls them out of sight.
+- The end handles of a short arrow with a label can be grabbed. The label steps aside while the arrow is selected.
+- Gallery captions show the image's alt text, or nothing. They never show raw markdown.
+- The Escape that closes Search, a menu, or Gallery, Timeline and Graph no longer also leaves fullscreen.
+- Present mode hides the board bar, dock, Properties, rail, minimap and side panel, and brings them back on exit.
+- Shift-click only extends the selection. It no longer opens the Info panel.
+- Gallery, Timeline and Graph, the board bar and the Properties pill are opaque now, so nothing shows through. A collapsed Properties pill is only as wide as its label.
+- Section titles in the zoomed-out overview may run wider than a small frame before they are cut off.
+- Gallery, Timeline and Graph are also under More, Views, and under Views in the canvas menu. The template entry is now "Timeline template". An empty Timeline says that a date attribute or a daily-page reference makes a card dated.
+- The thin dotted curves that run across a board between cards are graph links, drawn for every shared page reference or attribute. They are not a stray line. Links, in the board bar or the L key, switches them off or to attributes only.
+
 ## 2.2.0 — 2026-10-03
 
 - Board bar and tool dock. The top bar is now the board bar: breadcrumbs, Add, Info, links, views, background, present and More. The nine tools moved into a floating dock along the bottom. Settings, Toolbar layout, brings back the 2.1 look (Classic) or hides the top bar until the pointer nears the top edge (Dock only).

@@ -90,7 +90,25 @@ export function mountLater({ doc = globalThis.document, root, host, getBoard, on
       body.textContent = "No cards to graph";
       return;
     }
-    const spread = Math.min(6, Math.max(1, pos.size * 0.26));
+    let spread = Math.min(6, Math.max(1, pos.size * 0.26));
+    {
+      // PL-6: keep the whole graph inside the overlay when it has a measured size; below the floor it scrolls.
+      let x0 = Infinity;
+      let y0 = Infinity;
+      let x1 = -Infinity;
+      let y1 = -Infinity;
+      for (const p of pos.values()) {
+        x0 = Math.min(x0, p.x);
+        y0 = Math.min(y0, p.y);
+        x1 = Math.max(x1, p.x);
+        y1 = Math.max(y1, p.y);
+      }
+      const availW = (box.clientWidth || 0) - 24;
+      const availH = (box.clientHeight || 0) - (bar.offsetHeight || 0) - 24;
+      if (availW > 300 && x1 - x0 > 0) spread = Math.min(spread, (availW - 220) / (x1 - x0));
+      if (availH > 200 && y1 - y0 > 0) spread = Math.min(spread, (availH - 80) / (y1 - y0));
+      spread = Math.max(0.35, spread);
+    }
     let minX = Infinity;
     let minY = Infinity;
     let maxX = -Infinity;

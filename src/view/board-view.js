@@ -650,6 +650,7 @@ export function mountBoardView({
   // BA-3: block ends follow their row. Row offsets are measured only for edges that have block ends, in one
   // batched frame, whenever the page body scrolls or re-renders, or the card moves, resizes or folds.
   const blockCards = new Set();
+  let blockSig = "";
   let anchorFrame = false;
   const refreshBlockCards = () => {
     blockCards.clear();
@@ -659,6 +660,8 @@ export function mountBoardView({
       if (e.fromBlock) blockCards.add(e.from);
       if (e.toBlock) blockCards.add(e.to);
     }
+    const sig = [...blockCards].sort().join(",");
+    if (sig !== blockSig) { blockSig = sig; itemsR.setLayoutWatch?.(blockCards); }
     return blockCards.size > 0;
   };
   const runAnchors = () => {
@@ -2602,7 +2605,8 @@ export function mountBoardView({
       if (p.look === "sticky" && sticky?.color) spec.color = sticky.color;
       const shaped = pendingFor("shape");
       if (p.shape && shaped?.shape) spec.shape = shaped.shape;
-      return Promise.resolve(session.createText?.(spec)).then((uid) => { if (uid) freshItems.add(uid); return uid; });
+      // A sticky persists even when it is left empty; only plain text is swept when it ends blank.
+      return Promise.resolve(session.createText?.(spec)).then((uid) => { if (uid && p.look !== "sticky") freshItems.add(uid); return uid; });
     },
     createSection: (p) => session.createSection?.({ rect: p.rect, ...(pendingFor("section")?.color ? { color: pendingFor("section").color } : {}) }),
     createBoard: (p) => session.createBoard?.({ rect: p.rect }),

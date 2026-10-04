@@ -2,6 +2,7 @@
 // and edit mode (spec 3.2). Roam content only ever comes from host.renderString /
 // renderBlock / renderPage; we never build <img> or fake editors.
 
+import { createRowScheduler, isHeavyRow } from "./progressive.js";
 import { DEFAULT_SIZES, FONT_SIZES, PALETTE, attrNameOf, classifyString, cssColor, firstLine, hexColor, isUntitledBoard, parseBoardTitle, plainText } from "../model/schema.js";
 import { isQueryString } from "../model/query.js";
 import { dueChip } from "../model/tasks.js";
@@ -147,6 +148,14 @@ const childProps = (c) => c?.[":block/props"] ?? c?.props;
 
 const KIDS_KINDS = ["note", "block"];
 const isKidsCard = (item) => item?.type === "card" && KIDS_KINDS.includes(item.kind);
+// EK-2: a sticky is a text item with the sticky look. Its body is the live Roam block, so the string is not part
+// of the content key while the live editor owns it.
+const isSticky = (item) => item?.type === "text" && item.look === "sticky" && !item.shape;
+const STICKY_TITLE_MAX = 40;
+const stickyTitleOf = (string) => {
+  const line = plainText(firstLine(String(string || ""))).trim();
+  return line ? line.slice(0, STICKY_TITLE_MAX) : "Note";
+};
 // Direct children that count as rows: the BT_attrDue child is the due chip, never a row.
 const visibleKids = (list) => (list || []).filter((c) => attrNameOf(childString(c)) !== "BT_attrDue");
 // Rows renderBlocks will draw for this list (same depth and row caps).
@@ -160,7 +169,10 @@ function kidRowsOf(list, depth = 1, budget = { n: 0 }) {
   return budget.n;
 }
 
-function contentKeyOf(item) {
+function contentKeyOf(item, live = false) {
+  if (isSticky(item)) {
+    return ["sticky", live ? "live" : item.string, item.min ? "m" : "", item.fontSize || "", item.textColor || "", item.align || ""].join("\u0001");
+  }
   const parts = [
     item.kind, item.enhanced ? "e" : "", item.string, item.collapsed ? "c" : "", item.open === false ? "x" : "", item.kids ? "k" : "",
     item.fontSize || "", item.textColor || "", item.align || "", item.fill || "", item.border || "",
@@ -251,8 +263,11 @@ export function createItemRenderer({
   doc.addEventListener?.("pointerup", onMenuPointer, true);
 
   const later = (fn, ms) => (timers?.later ? timers.later(fn, ms) : (() => { const t = setTimeout(fn, ms); return () => clearTimeout(t); })());
-  const idle = (fn) => {
+  const idle = (fn, soon = false) => {
     if (timers?.idle) return timers.idle(fn);
+    // A busy Roam can starve idle callbacks for hundreds of ms. Visible page rows ask for a plain task instead:
+    // one 8 ms slice, then it yields again.
+    if (soon) { const t = setTimeout(() => fn({ timeRemaining: () => CHUNK_MS, didTimeout: true }), 0); return () => clearTimeout(t); }
     const ric = globalThis.requestIdleCallback;
     if (typeof ric === "function") { const id = ric(fn); return () => globalThis.cancelIdleCallback?.(id); }
     const t = setTimeout(() => fn({ timeRemaining: () => CHUNK_MS, didTimeout: true }), 0);
@@ -437,6 +452,8 @@ export function createItemRenderer({
     rec.pageUnwatch = null;
     rec.pageRoots = [];
     rec.pageHolder = null;
+    stopRowSched(rec);
+    dropLayoutWatch(rec);
     rec.scrollOff?.();
     rec.scrollOff = null;
     if (!rec.roots?.length) return;
@@ -618,6 +635,66 @@ export function createItemRenderer({
     rec.shapeKey = key;
   };
 
+  // EK-2: the sticky header is a drag bar with a short title, a colour dot and a minimize toggle. Built once per shell.
+  const stickyBtn = (parent, cls, tip, label) => {
+    const b = el("button", cls, parent);
+    b.type = "button";
+    b.setAttribute("data-tip", tip);
+    b.setAttribute("aria-label", label);
+    // A press on a header control must not start a drag or change the selection.
+    for (const type of ["pointerdown", "mousedown", "dblclick"]) b.addEventListener(type, stopEvent);
+    return b;
+  };
+  const buildStickyHeader = (rec) => {
+    rec.header.textContent = "";
+    const title = el("span", "pxd-sticky__title", rec.header);
+    const swatches = el("span", "pxd-sticky__swatches", rec.header);
+    swatches.hidden = true;
+    for (const color of PALETTE) {
+      const sw = stickyBtn(swatches, `pxd-swatch pxd-sticky__swatch pxd-c-${color}`, "sticky.swatch", color);
+      sw.setAttribute("data-color", color);
+      sw.addEventListener("click", (event) => {
+        event.stopPropagation();
+        setStickyPicking(rec, false);
+        void session?.setColor?.([rec.uid], color);
+      });
+    }
+    const dot = stickyBtn(rec.header, "pxd-sticky__btn pxd-sticky__dot", "sticky.color", "Sticky color");
+    dot.addEventListener("click", (event) => {
+      event.stopPropagation();
+      setStickyPicking(rec, Boolean(rec.stickyBits?.swatches.hidden));
+    });
+    const min = stickyBtn(rec.header, "pxd-sticky__btn pxd-sticky__min", "sticky.min", "Minimize sticky");
+    min.addEventListener("click", (event) => {
+      event.stopPropagation();
+      const item = lastBoard?.items.get(rec.uid);
+      if (item) void session?.setMinimized?.(rec.uid, !item.min);
+    });
+    rec.stickyBits = { title, swatches, dot, min };
+  };
+  const setStickyPicking = (rec, on) => {
+    if (!rec.stickyBits) return;
+    rec.stickyBits.swatches.hidden = !on;
+    rec.stickyBits.title.hidden = on;
+    rec.el.classList.toggle("pxd-sticky--picking", on);
+  };
+  const paintStickyHeader = (rec, item) => {
+    if (!rec.stickyBits) buildStickyHeader(rec);
+    const { title, min } = rec.stickyBits;
+    title.textContent = stickyTitleOf(item.string);
+    min.setAttribute("aria-label", item.min ? "Expand sticky" : "Minimize sticky");
+    min.setAttribute("data-tip", item.min ? "sticky.expand" : "sticky.min");
+    min.textContent = item.min ? "+" : "\u2212";
+    rec.header.style.display = "";
+    rec.header.setAttribute("data-tip", "sticky.drag");
+  };
+  const dropStickyHeader = (rec) => {
+    rec.header.removeAttribute("data-tip");
+    rec.header.textContent = "";
+    rec.stickyBits = null;
+    rec.el.classList.remove("pxd-sticky--picking");
+  };
+
   const paintShell = (rec, item) => {
     const node = rec.el;
     if (item.type !== "section") {
@@ -645,11 +722,12 @@ export function createItemRenderer({
     if (item.type !== "section" && item.fontSize) cls.push("pxd-fs");
     if (item.textColor) cls.push("pxd-has-textc");
     if (item.type === "text" && item.shape) cls.push("pxd-item--shape", `pxd-item--shape-${item.shape}`);
-    else if (item.type === "text" && item.look === "sticky") cls.push("pxd-item--sticky");
+    else if (isSticky(item)) cls.push("pxd-item--sticky");
     else if (item.type === "text" && (item.fill || item.border)) cls.push("pxd-text-paint");
     if (rec.selected) cls.push(item.type === "section" ? "pxd-section--selected" : "pxd-item--selected");
     if (rec.hover) cls.push("pxd-item--drop");
-    if (editing?.uid === item.uid) cls.push("pxd-item--editing");
+    if (editing?.uid === item.uid) cls.push(editing.sticky ? "pxd-item--typing" : "pxd-item--editing");
+    if (isSticky(item) && item.min) cls.push("pxd-item--min");
     if (item.pinned) cls.push(item.type === "section" ? "pxd-section--pinned" : "pxd-item--pinned");
     if (focusSet && !focusSet.has(item.uid)) cls.push(item.type === "section" ? "pxd-section--focus-dim" : "pxd-item--focus-dim");
     if (item.type !== "section") {
@@ -677,8 +755,12 @@ export function createItemRenderer({
         } else rec.note.style.display = "none";
       }
     } else {
-      if (editing?.uid !== item.uid && !rec.renaming) rec.header.textContent = item.type === "text" ? "" : String(rec.refTitle || item.title || "").slice(0, HEADER_TEXT_MAX);
-      if (item.type === "text") rec.header.style.display = "none";
+      if (isSticky(item)) paintStickyHeader(rec, item);
+      else {
+        if (rec.stickyBits) dropStickyHeader(rec);
+        if (editing?.uid !== item.uid && !rec.renaming) rec.header.textContent = item.type === "text" ? "" : String(rec.refTitle || item.title || "").slice(0, HEADER_TEXT_MAX);
+        if (item.type === "text") rec.header.style.display = "none";
+      }
       rec.header.classList.toggle("pxd-item__header--muted", item.kind === "board" && isUntitledBoard(item.title));
     }
     node.title = "";
@@ -790,7 +872,7 @@ export function createItemRenderer({
           noteRender(uid);
           paintShell(rec, item);
           if (rect) position(rec, rect);
-          const key = contentKeyOf(item);
+          const key = contentKeyOf(item, rec.stickyLive);
           if (rec.contentKey !== null && rec.contentKey !== key && editing?.uid !== uid) {
             // content changed under a mounted shell → remount on the next content pass
             unmountRoots(rec);
@@ -1017,9 +1099,29 @@ export function createItemRenderer({
   };
 
   // ---- page cards (PG-1): the whole outline, rows tagged data-pxd-row, folded blocks folded.
-  const fetchPage = (title) => (host?.pageOutline
-    ? host.pageOutline(title, OUTLINE_FETCH)
-    : host?.pagePreview?.(title, 64, OUTLINE_FETCH));
+  // EK-3: how long each page card took from mount to its first paint (pull, or cache hit, plus the plain rows).
+  const notePageMount = (title, ms, rows, cached) => {
+    const bag = host?.stats;
+    if (!bag || typeof bag !== "object") return;
+    if (!Array.isArray(bag.pageMounts)) bag.pageMounts = [];
+    const entry = { title, ms: Math.round(ms * 10) / 10, rows, cached, at: Math.round(now()), firstLiveMs: null, primed: null };
+    bag.pageMounts.push(entry);
+    if (bag.pageMounts.length > 50) bag.pageMounts.shift();
+    return entry;
+  };
+  // EK-3: a pulled outline is kept for the session while a page watch for that title is armed. The watch drops it on
+  // any change, and the last card to leave drops it too, so a cached outline is never older than the live page.
+  const outlineCache = new Map();
+  const watchedTitles = new Map();
+  const fetchPage = (title) => {
+    const hit = outlineCache.get(title);
+    if (hit && (watchedTitles.get(title) || 0) > 0) return hit;
+    const got = host?.pageOutline
+      ? host.pageOutline(title, OUTLINE_FETCH)
+      : host?.pagePreview?.(title, 64, OUTLINE_FETCH);
+    if (got && typeof got.then !== "function") outlineCache.set(title, got);
+    return got;
+  };
   const pageKeyOf = (blocks) => {
     const parts = [];
     const walk = (list) => {
@@ -1053,6 +1155,113 @@ export function createItemRenderer({
     more.addEventListener("click", (event) => { stopEvent(event); openPageByTitle(title, uid); });
     return more;
   };
+  // EK-3: every row paints as plain text first. The scheduler upgrades the rows on screen (heavy ones last) in idle
+  // chunks; the observers tell it which rows those are. Without IntersectionObserver every row upgrades in turn.
+  const upgradeRow = (rec, uid) => {
+    const row = rec.rowTable?.get(uid);
+    if (!row || disposed) return;
+    rec.rowTable.delete(uid);
+    rec.rowIO?.unobserve?.(row.plain);
+    rec.rowIOHeavy?.unobserve?.(row.plain);
+    if (!row.plain.isConnected) return;
+    const root = renderRowRoot(row.line, row.string, "pxd-rs pxd-block__text", uid);
+    row.plain.remove();
+    rec.roots.push(root);
+    rec.pageRoots?.push(root);
+    if (rec.mountStat && rec.mountStat.firstLiveMs === null) rec.mountStat.firstLiveMs = Math.round(now() - rec.mountStat.at);
+    onPageLayout?.(rec.uid);
+  };
+  const addPlainRow = (rec, line, string, uid) => {
+    if (!rec.rowTable) return;
+    const heavy = isHeavyRow(string);
+    const plain = el("div", `pxd-block__text pxd-block__plain${heavy ? " pxd-block__plain--heavy" : ""}`, line);
+    plain.textContent = heavy ? "\u2026" : plainText(string);
+    plain.setAttribute("data-pxd-plain", uid);
+    rec.rowTable.set(uid, { line, plain, string, heavy });
+    const io = heavy ? rec.rowIOHeavy : rec.rowIO;
+    rec.rowSched.add(uid, { heavy, wanted: !io });
+    io?.observe(plain);
+  };
+  // EK-4: a page card that carries a block arrow re-measures its rows whenever its content changes size (a chart or an
+  // image above the row loads late, a row upgrades, a fold opens). One ResizeObserver per such card, batched to a frame.
+  const layoutSet = new Set();
+  const dropLayoutWatch = (rec) => {
+    const w = rec.layoutWatch;
+    if (!w) return;
+    rec.layoutWatch = null;
+    try { w.ro.disconnect(); } catch { /* already off */ }
+    w.cancel?.();
+  };
+  const armLayoutWatch = (rec) => {
+    if (rec.layoutWatch || disposed || !rec.pageHolder || !layoutSet.has(rec.uid)) return;
+    const RO = doc.defaultView?.ResizeObserver || globalThis.ResizeObserver;
+    if (typeof RO !== "function") return;
+    const w = { ro: null, cancel: null, queued: false };
+    w.ro = new RO(() => {
+      if (w.queued || disposed) return;
+      w.queued = true;
+      w.cancel = frameLater(() => {
+        w.queued = false;
+        w.cancel = null;
+        if (!disposed && rec.layoutWatch === w) onPageLayout?.(rec.uid);
+      });
+    });
+    try { w.ro.observe(rec.pageHolder); } catch { return; }
+    rec.layoutWatch = w;
+  };
+  const setLayoutWatch = (uids) => {
+    layoutSet.clear();
+    for (const uid of uids || []) layoutSet.add(uid);
+    for (const [uid, rec] of shells) {
+      if (layoutSet.has(uid)) armLayoutWatch(rec);
+      else dropLayoutWatch(rec);
+    }
+  };
+  const startRowSched = (rec) => {
+    stopRowSched(rec);
+    rec.rowTable = new Map();
+    rec.rowSched = createRowScheduler({ idle: (fn) => idle(fn, true), now, budgetMs: CHUNK_MS, render: (uid) => upgradeRow(rec, uid) });
+    const IO = doc.defaultView?.IntersectionObserver || globalThis.IntersectionObserver;
+    if (typeof IO !== "function" || !rec.body) return;
+    const onSee = (entries) => {
+      for (const en of entries) {
+        const id = en.target?.getAttribute?.("data-pxd-plain");
+        if (id) rec.rowSched?.want(id, en.isIntersecting);
+      }
+    };
+    try {
+      rec.rowIO = new IO(onSee, { root: rec.body, rootMargin: "100% 0px 100% 0px" });
+      rec.rowIOHeavy = new IO(onSee, { root: rec.body, rootMargin: "0px" });
+    } catch {
+      rec.rowIO = null;
+      rec.rowIOHeavy = null;
+    }
+  };
+  // The observers only report after a frame, and Roam can hold frames back. Rows already inside the window are
+  // wanted straight away, from one layout read; the observers keep the list current once the body scrolls.
+  const primeRows = (rec) => {
+    if (!rec.rowSched || !rec.rowTable?.size || !rec.body?.getBoundingClientRect) return 0;
+    const body = rec.body.getBoundingClientRect();
+    const h = Number(body.height) || 0;
+    if (!(h > 0)) return 0;
+    let n = 0;
+    for (const [uid, row] of rec.rowTable) {
+      const r = row.plain.getBoundingClientRect();
+      if (!(r.height > 0 || r.width > 0)) continue;
+      const room = row.heavy ? 0 : h;
+      if (r.bottom >= body.top - room && r.top <= body.bottom + room) { rec.rowSched.want(uid, true); n += 1; }
+    }
+    return n;
+  };
+  const stopRowSched = (rec) => {
+    rec.rowSched?.dispose?.();
+    rec.rowSched = null;
+    try { rec.rowIO?.disconnect?.(); } catch { /* already off */ }
+    try { rec.rowIOHeavy?.disconnect?.(); } catch { /* already off */ }
+    rec.rowIO = null;
+    rec.rowIOHeavy = null;
+    rec.rowTable = null;
+  };
   const renderOutline = (parent, blocks, b, rec) => {
     for (const blk of blocks) {
       const s = childString(blk);
@@ -1077,7 +1286,7 @@ export function createItemRenderer({
         fold.setAttribute("aria-expanded", folded ? "false" : "true");
         for (const type of ["pointerdown", "mousedown", "dblclick"]) fold.addEventListener(type, stopEvent);
       }
-      b.roots.push(renderRowRoot(line, s, "pxd-rs pxd-block__text", uid));
+      addPlainRow(rec, line, s, uid);
       if (!kids.length) continue;
       wrap = el("div", "pxd-block__children", row);
       let filled = false;
@@ -1115,6 +1324,7 @@ export function createItemRenderer({
       try { host?.unmount?.(embedLive(node)); } catch { /* not a roam root */ }
     }
     if (old.size && rec.roots) rec.roots = rec.roots.filter((node) => !old.has(node));
+    startRowSched(rec);
     holder.replaceChildren();
     rec.pageRoots = [];
     rec.pageTitle = p?.title || rec.pageTitle || "";
@@ -1131,6 +1341,8 @@ export function createItemRenderer({
     if (!b.n) el("div", "pxd-item__placeholder", holder).textContent = "Empty page";
     if (b.more) moreRow(holder, b.more, rec.pageTitle, rec.pageUid);
     rec.pageRoots = [...b.roots];
+    rec.primed = primeRows(rec);
+    armLayoutWatch(rec);
     onPageLayout?.(rec.uid);
     return b.roots;
   };
@@ -1191,6 +1403,7 @@ export function createItemRenderer({
     const rec = shells.get(uid);
     const row = rec?.pageHolder?.querySelector?.(`[data-pxd-row="${rowUid}"]`);
     if (!rec?.body || !row) return false;
+    rec.rowSched?.renderNow?.(rowUid);
     const r = row.getBoundingClientRect();
     if (!r.width && !r.height) return false;
     const body = rec.body.getBoundingClientRect();
@@ -1221,18 +1434,119 @@ export function createItemRenderer({
     let off = null;
     try {
       off = host.watchPage(item.title, () => {
+        outlineCache.delete(item.title);
         if (pending) return;
         pending = later(refresh, PAGE_REFRESH_MS);
       });
     } catch { return; }
     pageWatches += 1;
+    watchedTitles.set(item.title, (watchedTitles.get(item.title) || 0) + 1);
     rec.pageUnwatch = () => {
       rec.pageUnwatch = null;
+      const left = (watchedTitles.get(item.title) || 1) - 1;
+      if (left > 0) watchedTitles.set(item.title, left);
+      else { watchedTitles.delete(item.title); outlineCache.delete(item.title); }
       try { off?.(); } catch { /* already off */ }
       pending?.();
       pending = null;
       pageWatches -= 1;
     };
+  };
+
+  // EK-2: the sticky body is the live Roam block while the sticky is on screen at detail zoom; a static render
+  // otherwise (map zoom). A minimized sticky mounts nothing. Focus in the live block is the sticky's "editing"
+  // state, so a click types at once and nothing swaps in or out.
+  const mountSticky = (rec, item, budget) => {
+    if (item.min) return;
+    if (lod !== "detail" || !host?.renderBlock) {
+      budget.roots.push(renderRoot(rec.body, item.string, "pxd-rs pxd-item__text", item.uid));
+      return;
+    }
+    const editor = el("div", "pxd-item__editor pxd-item__editor--sticky", rec.body);
+    // The whole body is Roam's while the block is live, so a press on the paper under the text never starts a drag.
+    // The header stays the board's: that is the drag handle.
+    if (!rec.bodyWired) {
+      rec.bodyWired = true;
+      for (const type of EDITOR_STOPPED) rec.body.addEventListener(type, (event) => { if (rec.stickyLive) event.stopPropagation(); });
+      rec.body.addEventListener("click", (event) => {
+        if (disposed || !rec.stickyLive || event.target?.closest?.(".rm-block")) return;
+        if (editing?.uid !== rec.uid) void focusSticky(rec.uid);
+      });
+    }
+    try { host.renderBlock(editor, item.uid); }
+    catch {
+      editor.remove();
+      budget.roots.push(renderRoot(rec.body, item.string, "pxd-rs pxd-item__text", item.uid));
+      return;
+    }
+    const onIn = () => { if (!disposed && editing?.uid !== rec.uid) beginStickyEdit(rec); };
+    const onOut = (event) => {
+      if (event.relatedTarget && editor.contains?.(event.relatedTarget)) return;
+      const e = editing;
+      if (!e || e.uid !== rec.uid) return;
+      e.leave?.();
+      e.leave = later(() => {
+        if (editing !== e || disposed) return;
+        if (editor.contains?.(doc.activeElement)) return;
+        if (floor || !focusLost(doc.activeElement) || lastOutsideDown > now() - 300) endStickyEdit();
+      }, 160);
+    };
+    editor.addEventListener("focusin", onIn);
+    editor.addEventListener("focusout", onOut);
+    rec.stickyOff = () => {
+      editor.removeEventListener("focusin", onIn);
+      editor.removeEventListener("focusout", onOut);
+    };
+    rec.editor = editor;
+    rec.stickyLive = true;
+    applyEditorCounterScale(editor, zoomCache);
+    budget.roots.push(editor);
+  };
+  const detachStickyEditor = (rec) => {
+    rec.stickyOff?.();
+    rec.stickyOff = null;
+  };
+  const beginStickyEdit = (rec) => {
+    if (editing && editing.uid !== rec.uid) void exitEdit({ silent: true });
+    const item = lastBoard?.items.get(rec.uid);
+    if (!item || !rec.editor) return;
+    editing = { uid: rec.uid, rec, editor: rec.editor, targetUid: rec.uid, item, ready: true, sticky: true, fadeCancel: null, releaseCancel: null, leave: null };
+    rec.el.classList.add("pxd-item--typing");
+    lastOutsideDown = -Infinity;
+    attachFocusGuard();
+    attachFloor(editing);
+    onEditChange?.(rec.uid);
+    ensureMenus(() => rec.editor?.querySelector?.("textarea"));
+  };
+  const endStickyEdit = () => {
+    const e = editing;
+    if (!e?.sticky) return;
+    e.leave?.();
+    editing = null;
+    stopMenus?.();
+    stopMenus = null;
+    detachFocusGuard();
+    e.rec.el.classList.remove("pxd-item--typing");
+    onEditChange?.(null);
+  };
+  const focusSticky = async (uid) => {
+    const rec = shells.get(uid);
+    const item = lastBoard?.items.get(uid);
+    if (!rec || !item) return false;
+    if (editing && editing.uid !== uid) await exitEdit();
+    if (item.min) { await session?.setMinimized?.(uid, false); return true; }
+    if (!rec.editor?.isConnected) {
+      mountContent(rec, item);
+      mounted.delete(uid);
+      mounted.set(uid, now());
+    }
+    const editor = rec.editor;
+    if (!editor) return false;
+    await waitHydrateQuiet(editor, HYDRATE_CAP_MS);
+    if (disposed || rec.editor !== editor) return false;
+    const input = editor.querySelector?.("textarea") || editor.querySelector?.(".rm-block__input") || editor.querySelector?.(".rm-block-text");
+    if (input) focusRoamInput(input);
+    return true;
   };
 
   const mountContentBody = (rec, item) => {
@@ -1241,8 +1555,11 @@ export function createItemRenderer({
     rec.kidCount = 0;
     rec.kidRows = 0;
     const body = rec.body;
+    if (rec.editor && editing?.uid !== item.uid) detachStickyEditor(rec);
     unmountRoots(rec);
     body.replaceChildren();
+    rec.stickyLive = false;
+    rec.editor = null;
     rec.bare = false;
     rec.el.classList.remove("pxd-item--bare");
     const budget = { n: 0, roots: [] };
@@ -1251,7 +1568,9 @@ export function createItemRenderer({
       rec.roots = [];
       return;
     }
-    if (item.type === "text") {
+    if (isSticky(item)) {
+      mountSticky(rec, item, budget);
+    } else if (item.type === "text") {
       budget.roots.push(renderRoot(body, item.string, "pxd-rs pxd-item__text", item.uid));
     } else if (item.kind === "image") {
       budget.roots.push(renderRoot(el("div", "pxd-item__media", body), item.string, "pxd-rs", item.uid));
@@ -1271,11 +1590,14 @@ export function createItemRenderer({
         rec.scrollOff = () => body.removeEventListener("scroll", onScroll, { passive: true });
       }
       rec.pageTitle = item.title;
+      const mountedAt = now();
       const preview = fetchPage(item.title);
       // contentKey is stamped after mountContent returns, so only the async path can be stale.
       const apply = (p, sync = false) => {
         if (disposed || !holder.parentElement || (!sync && rec.contentKey !== contentKeyOf(item))) return;
         const roots = paintPage(rec, holder, p);
+        rec.mountStat = notePageMount(item.title, now() - mountedAt, rec.rowTable ? rec.rowTable.size : 0, outlineCache.get(item.title) === p);
+        if (rec.mountStat) rec.mountStat.primed = rec.primed ?? null;
         if (sync) budget.roots.push(...roots);
         else rec.roots.push(...roots);
       };
@@ -1342,7 +1664,7 @@ export function createItemRenderer({
       }
     }
     rec.roots = budget.roots;
-    rec.contentKey = contentKeyOf(item);
+    rec.contentKey = contentKeyOf(item, rec.stickyLive);
   };
 
   const mountContent = (rec, item) => {
@@ -1506,6 +1828,7 @@ export function createItemRenderer({
     zoomCache = next > 0 && Number.isFinite(next) ? next : 1;
     if (zoomCache !== prevZoom) closePeek();
     if (editing?.editor) applyEditorCounterScale(editing.editor, zoomCache);
+    if (zoomCache !== prevZoom) for (const rec of shells.values()) if (rec.stickyLive && rec.editor && rec.editor !== editing?.editor) applyEditorCounterScale(rec.editor, zoomCache);
   };
 
   const setLod = (nextLod, zoom) => {
@@ -1513,6 +1836,16 @@ export function createItemRenderer({
     lod = nextLod === "map" || nextLod === "overview" ? nextLod : "detail";
     setZoom(zoom);
     closePeek();
+    if ((prev === "detail") !== (lod === "detail")) {
+      // EK-2: a sticky is the live block at detail zoom and a static render below it.
+      let moved = false;
+      for (const [uid, rec] of shells) {
+        if (rec.type !== "text" || !rec.contentKey || editing?.uid === uid || !isSticky(lastBoard?.items.get(uid))) continue;
+        unmountContent(uid);
+        moved = true;
+      }
+      if (moved && lastContent && !quieted) fillContent({ ...lastContent, tier: lod, zoom: zoomCache });
+    }
     if (prev !== lod) for (const rec of shells.values()) if (rec.kidsBtn || rec.kidCount > 0) syncKidsBadge(rec);
     if (showBadges && (prev === "detail") !== (lod === "detail")) {
       if (lod !== "detail") {
@@ -1870,11 +2203,21 @@ export function createItemRenderer({
     rec.el.classList.remove("pxd-item--xfade");
   };
 
+  // EK-1: Roam only sizes its textarea on the next input, so a card with two lines of text opened clipped to one.
+  // Give the textarea its content height once, as Roam does on input; a later input still resizes it.
+  const fitEditorText = (editor) => {
+    for (const ta of editor.querySelectorAll?.("textarea") || []) {
+      const need = Number(ta.scrollHeight) || 0;
+      if (need > (Number(ta.clientHeight) || 0) + 1 && !ta.style?.height) ta.style.height = `${need}px`;
+    }
+  };
+
   const enterEdit = async (uid, { row = "" } = {}) => {
     const rec = shells.get(uid);
     const item = lastBoard?.items.get(uid);
     if (!rec || !item || rec.type === "section" || item.kind === "board" || rec.refBoard) return false;
     if (editing?.uid === uid) return true;
+    if (isSticky(item)) return focusSticky(uid);
     if (editing) await exitEdit();
     if (!host?.renderBlock) { host?.openBlock?.(uid); return false; }
     const targetUid = item.target.kind === "block" ? item.target.uid : item.uid;
@@ -1919,31 +2262,14 @@ export function createItemRenderer({
       }
     } catch { ok = false; }
     if (!ok) { await exitEdit({ silent: true }); return false; }
-    // Hold the measured box through the crossfade. Release on the next frame only when the
-    // editor already fills that box; a shorter editor would collapse the card (ED-1).
-    const releaseIfFilled = () => {
-      if (editing?.uid !== uid) return;
-      const editorH = boxHeight(editor);
-      if (!(editorH > 0 && editorH + 1 >= lockH)) return;
-      releaseEditLock(rec);
-    };
-    if (reduced) {
-      editing.releaseCancel = frameLater(() => {
-        if (editing?.uid !== uid) return;
-        editing.releaseCancel = null;
-        releaseIfFilled();
-      });
-    } else {
+    // EK-1: the measured box is the card's floor for the whole edit. The editor is absolutely placed under a
+    // zoom counter-scale, so it never holds the card open; only exitEdit releases the lock.
+    if (!reduced) {
       editing.fadeCancel = later(() => {
         if (editing?.uid !== uid) return;
         editing.fadeCancel = null;
         rec.el.classList.remove("pxd-item--xfade");
         dropStaticLayer(rec);
-        editing.releaseCancel = frameLater(() => {
-          if (editing?.uid !== uid) return;
-          editing.releaseCancel = null;
-          releaseIfFilled();
-        });
       }, EDIT_FADE_MS);
     }
     await waitHydrateQuiet(editor, HYDRATE_CAP_MS);
@@ -1961,10 +2287,11 @@ export function createItemRenderer({
     if (!input) input = editor.querySelector?.(".rm-block__input") || editor.querySelector?.("textarea");
     applyEditorCounterScale(editor, zoomCache);
     if (input) focusRoamInput(input);
+    fitEditorText(editor);
     // Roam writes an explicit textarea height when the editor focuses. Apply again
     // after that, and once more on the next frame, so the screen font is not clipped.
     applyEditorCounterScale(editor, zoomCache);
-    frameLater(() => { if (editing?.uid === uid) applyEditorCounterScale(editor, zoomCache); });
+    frameLater(() => { if (editing?.uid === uid) { applyEditorCounterScale(editor, zoomCache); fitEditorText(editor); } });
     if (editing?.uid === uid && editor.contains?.(doc.activeElement)) editing.ready = true;
     stopMenus?.();
     stopMenus = null;
@@ -1978,6 +2305,13 @@ export function createItemRenderer({
     if (doc.querySelector?.(".pxd-root .bp3-popover-open")) ensureMenus();
     const e = editing;
     if (!e) return;
+    if (e.sticky) {
+      // The live block stays mounted. Blur it so Roam saves, and drop the typing state.
+      const active = doc.activeElement;
+      if (active && e.editor.contains?.(active)) active.blur?.();
+      endStickyEdit();
+      return;
+    }
     editing = null;
     clearEditFade(e);
     detachFocusGuard();
@@ -2200,6 +2534,7 @@ export function createItemRenderer({
     renamePage,
     shellOf: (uid) => shells.get(uid)?.el ?? null,
     measureRow,
+    setLayoutWatch,
     markRows,
     setRowHot,
     revealRow,

@@ -170,7 +170,7 @@ test("PG-1: the render cap is 300 rows and the rest is one +N more row that open
   } finally { h.done(); }
 });
 
-test("PG-1: Roam-folded blocks render folded, a chevron unfolds them locally, BT_attrDue stays hidden", () => {
+test("PG-1: Roam-folded blocks render folded, a chevron unfolds them locally, BT_attrDue stays hidden", async () => {
   const blocks = [
     { uid: "fold00001", string: "folded", open: false, children: [{ uid: "kid000001", string: "inside", children: [] }] },
     { uid: "open00001", string: "open", children: [{ uid: "kid000002", string: "shown", children: [] }] },
@@ -185,10 +185,12 @@ test("PG-1: Roam-folded blocks render folded, a chevron unfolds them locally, BT
     const row = card.querySelector("[data-pxd-row=fold00001]");
     const chevron = row.querySelector(".pxd-row__fold");
     assert.equal(chevron.getAttribute("aria-expanded"), "false");
+    h.flush(); // EK-3: rows upgrade to live renders in idle chunks
     const writes = h.calls.renderString;
     chevron.click();
     assert.ok(card.querySelector("[data-pxd-row=kid000001]"));
     assert.equal(chevron.getAttribute("aria-expanded"), "true");
+    h.flush();
     assert.ok(h.calls.renderString > writes);
     chevron.click();
     assert.equal(chevron.getAttribute("aria-expanded"), "false");

@@ -1603,6 +1603,22 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   z-index: 3;
 }
 
+/* EK-1: the editor fills the card body. Under a zoom counter-scale the editor sizes itself (z * 100%), so skip it there. */
+.pxd-root .pxd-item.pxd-item--editing > .pxd-item__body {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.pxd-root .pxd-item.pxd-item--editing:not(.pxd-item--xfade) > .pxd-item__body {
+  display: flex;
+  flex-direction: column;
+}
+
+.pxd-root .pxd-item.pxd-item--editing > .pxd-item__body > .pxd-item__editor:not([style*="--pxd-ed-z"]) {
+  flex: 1 1 auto;
+  min-height: 100%;
+}
+
 /* ED-1: static layer and the editor share one cell so the swap does not move text. 80ms, none under reduced motion. */
 .pxd-item.pxd-item--editing.pxd-item--xfade > .pxd-item__body {
   display: grid;
@@ -2509,6 +2525,24 @@ body.roam-body.dark .pxd-root .pxd-row.pxd-row--linked:hover,
 .pxd-root.pxd-root--dark .pxd-row.pxd-row--linked:hover {
   background: transparent;
   box-shadow: inset 3px 0 0 var(--pxd-row-line, var(--pxd-edge)), inset 0 0 0 1.5px var(--pxd-row-line, var(--pxd-edge));
+}
+
+/* EK-4: a small dot in the edge's own colour at the start of each linked row, so two arrows into one card stay apart. */
+.pxd-root .pxd-row.pxd-row--linked::before {
+  content: "";
+  position: absolute;
+  left: -3px;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  margin-top: -3px;
+  border-radius: 50%;
+  background: var(--pxd-row-line, var(--pxd-edge));
+  pointer-events: none;
+}
+
+.pxd-root .pxd-row.pxd-row--linked {
+  position: relative;
 }
 
 /* NP-1. A block-look card is a plain Roam block: no title row, 14px text, root bullet hidden. */
@@ -4460,6 +4494,18 @@ body.roam-body.dark .pxd-root .pxd-present-hud,
   box-sizing: border-box;
 }
 
+/* EK-3: rows paint as plain text first, then upgrade to live Roam renders when they are on screen. */
+.pxd-root .pxd-block__plain {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: inherit;
+}
+
+.pxd-root .pxd-block__plain--heavy {
+  min-height: 1.4em;
+  color: var(--pxd-muted);
+}
+
 /* NP-4. Properties panel, custom style keys, cross texture, animated dashes.
    Every rule is scoped under .pxd-root. A missing style key sets no variable, so 1.2 boards stay as they are. */
 
@@ -5123,6 +5169,147 @@ body.bt-theme-dark .pxd-relcrumb,
 .rm-dark-theme .pxd-relcrumb,
 body.roam-body.dark .pxd-relcrumb {
   --pxd-rc-accent: hsl(175 60% 55%);
+}
+
+/* EK-2: sticky notes. A coloured header bar (drag handle, title, colour dot, minimize) over a body that is the live
+   Roam block. Persistent: there is no close button; Delete and the menu remove it, and undo brings it back. */
+
+.pxd-root .pxd-item--text.pxd-item--sticky {
+  display: flex;
+  flex-direction: column;
+  --pxd-sticky-bar: color-mix(in srgb, var(--pxd-sticky-paper, #fefce8) 80%, var(--pxd-text, #1c1917) 20%);
+}
+
+.pxd-root .pxd-item--text.pxd-item--sticky:not([style*="--pxd-text-fs"]) {
+  --pxd-text-fs: 16px;
+}
+
+.pxd-root .pxd-item--sticky > .pxd-item__header {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 28px;
+  height: 28px;
+  min-height: 28px;
+  padding: 0 4px 0 10px;
+  background: var(--pxd-sticky-bar);
+  border-bottom: 1px solid color-mix(in srgb, var(--pxd-sticky-bar) 70%, var(--pxd-text, #1c1917) 30%);
+  color: var(--pxd-text-c, var(--pxd-text));
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 28px;
+  cursor: grab;
+  overflow: hidden;
+}
+
+.pxd-root .pxd-sticky__title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+}
+
+.pxd-root .pxd-sticky__swatches {
+  flex: 1 1 auto;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.pxd-root .pxd-sticky__swatches[hidden] {
+  display: none;
+}
+
+.pxd-root .pxd-sticky__swatch {
+  flex: 0 0 14px;
+  width: 14px;
+  height: 14px;
+  padding: 0;
+  border-radius: 50%;
+  cursor: pointer;
+}
+
+.pxd-root .pxd-sticky__btn {
+  flex: 0 0 22px;
+  width: 22px;
+  height: 22px;
+  padding: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 14px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.pxd-root .pxd-sticky__btn:hover {
+  background: color-mix(in srgb, var(--pxd-text, #1c1917) 12%, transparent);
+  border-color: color-mix(in srgb, var(--pxd-text, #1c1917) 35%, transparent);
+}
+
+.pxd-root .pxd-sticky__dot::before {
+  content: "";
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  background: var(--pxd-sticky-paper, #fefce8);
+  border: 1.5px solid currentColor;
+  box-sizing: border-box;
+}
+
+.pxd-root .pxd-item--sticky > .pxd-item__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  padding: 6px 10px 8px;
+  overflow: auto;
+  color: var(--pxd-text-c, var(--pxd-text));
+}
+
+/* The live block fills the body and sizes itself; no bullet-sized indent, and Roam's own children keep their outline. */
+.pxd-root .pxd-item--sticky .pxd-item__editor--sticky {
+  min-height: 100%;
+}
+
+.pxd-root .pxd-item--sticky .pxd-item__editor--sticky[style*="--pxd-ed-z"] {
+  min-height: 0;
+}
+
+.pxd-root .pxd-item--sticky .pxd-item__editor--sticky .rm-block-main > .controls {
+  display: none;
+}
+
+.pxd-root .pxd-item--sticky.pxd-item--typing {
+  box-shadow: 0 0 0 2px var(--pxd-accent-soft), 0 1px 2px rgba(28, 25, 23, 0.18), 0 3px 8px rgba(28, 25, 23, 0.12);
+  cursor: text;
+}
+
+/* Minimized: the header only. The stored size is kept; the grips and ports go. */
+.pxd-root .pxd-item--sticky.pxd-item--min > .pxd-item__body,
+.pxd-root .pxd-item--sticky.pxd-item--min > .pxd-grip {
+  display: none;
+}
+
+.pxd-root .pxd-item--sticky.pxd-item--min > .pxd-item__header {
+  border-bottom-color: transparent;
+}
+
+/* Map zoom: the header title carries the tile. */
+.pxd-root.pxd-lod-map .pxd-item--sticky > .pxd-item__header,
+.pxd-root.pxd-lod-overview .pxd-item--sticky > .pxd-item__header {
+  display: none;
+}
+
+.pxd-root.pxd-lod-map .pxd-item--sticky.pxd-item--min > .pxd-item__header,
+.pxd-root.pxd-lod-overview .pxd-item--sticky.pxd-item--min > .pxd-item__header {
+  display: flex;
 }
 
 .pxd-root .pxd-lens {

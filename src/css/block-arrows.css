@@ -169,3 +169,21 @@ body.roam-body.dark .pxd-root .pxd-row.pxd-row--linked:hover,
   background: transparent;
   box-shadow: inset 3px 0 0 var(--pxd-row-line, var(--pxd-edge)), inset 0 0 0 1.5px var(--pxd-row-line, var(--pxd-edge));
 }
+
+/* EK-4: a small dot in the edge's own colour at the start of each linked row, so two arrows into one card stay apart. */
+.pxd-root .pxd-row.pxd-row--linked::before {
+  content: "";
+  position: absolute;
+  left: -3px;
+  top: 50%;
+  width: 6px;
+  height: 6px;
+  margin-top: -3px;
+  border-radius: 50%;
+  background: var(--pxd-row-line, var(--pxd-edge));
+  pointer-events: none;
+}
+
+.pxd-root .pxd-row.pxd-row--linked {
+  position: relative;
+}

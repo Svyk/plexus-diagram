@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.6.0 — 2026-10-03
+
+- Editing a card no longer shrinks it. Opening a card or a sticky for editing used to let it collapse toward the height of one line, and its arrows came loose. The card now keeps its size for the whole edit, the editor fills it, and the text is no longer cut to one line when you start typing. Edges stay attached.
+- Sticky notes are rebuilt to work like the RoamJS sticky notes, and they stay saved. Each one has a coloured header bar you drag, with a short title, a colour dot and a minimize button. The body is the live Roam block: click once and type, with tags, images, links and the slash menu. Drag a corner or edge to resize. Minimize folds a note to its header and remembers it. There is no close button; Delete or the menu removes a sticky and Cmd+Z brings it back.
+- Page cards open faster. A card now shows all its rows as plain text at once, then turns the rows you can see into live Roam blocks a few at a time. Rows scrolled out of view, and heavy rows such as charts, embeds and images, wait until they are on screen. A page you pulled once is reused while the card is open. A 146-row page card used to block for about 150 ms while it drew; now it paints in about 20 ms.
+- Arrows to blocks now stay on their block. When a chart or an image above the target row loads late, or a row turns live, the card re-measures its rows and the arrow follows. Each linked row shows a small dot in its own arrow's colour, so two arrows into one card stay apart, and hovering one arrow lights only its row.
+- New tooltips for the sticky header: drag, minimize or expand, and the colour dot.
+
 ## 2.5.0 — 2026-10-03
 
 - The connection preview is cleaner. The target block is now a highlighted bar inside its page card, at the block's real place in the page, with its text cut to the card's width, and the arrow runs into the bar with a head like the one on the board. Nothing spills over a neighbouring card any more.

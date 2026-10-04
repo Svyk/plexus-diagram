@@ -1603,6 +1603,22 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   z-index: 3;
 }
 
+/* EK-1: the editor fills the card body. Under a zoom counter-scale the editor sizes itself (z * 100%), so skip it there. */
+.pxd-root .pxd-item.pxd-item--editing > .pxd-item__body {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.pxd-root .pxd-item.pxd-item--editing:not(.pxd-item--xfade) > .pxd-item__body {
+  display: flex;
+  flex-direction: column;
+}
+
+.pxd-root .pxd-item.pxd-item--editing > .pxd-item__body > .pxd-item__editor:not([style*="--pxd-ed-z"]) {
+  flex: 1 1 auto;
+  min-height: 100%;
+}
+
 /* ED-1: static layer and the editor share one cell so the swap does not move text. 80ms, none under reduced motion. */
 .pxd-item.pxd-item--editing.pxd-item--xfade > .pxd-item__body {
   display: grid;

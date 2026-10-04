@@ -820,6 +820,8 @@ test("R1: note and block cards render the whole string in the body; header stays
     assert.ok(page, "page card still present");
     assert.ok(alpha.classList.contains("pxd-card--block"), "a note with no stored look is a plain block");
     assert.equal(page.classList.contains("pxd-card--block"), false, "a page card keeps the card look");
+    await tick(40); // EK-3: page rows finish upgrading before the count is taken
+    await f.flush();
     const before = f.host.calls.renderString;
     f.session.emit("change", { dirty: new Set(["cardAAAA1"]), structural: false });
     await f.flush();
@@ -1040,7 +1042,10 @@ test("ED-1: enter locks the measured content box and keeps the static layer for 
     assert.equal(alpha.classList.contains("pxd-item--xfade"), false);
     assert.equal(alpha.style.minHeight, "140px", "lock holds for the editor's first in-flow frame");
     f.stub.flushFrames();
-    assert.equal(alpha.style.minHeight, "", "released once the editor fills the measured box");
+    assert.equal(alpha.style.minHeight, "140px", "EK-1: a filled editor does not release the floor; only exit does");
+    f.stub.dispatch(body.querySelector("textarea"), "keydown", { key: "Escape" });
+    await tick();
+    assert.equal(alpha.style.minHeight, "");
   } finally {
     f.view.dispose();
     f.restore();
@@ -1085,7 +1090,7 @@ test("ED-1: a 0 content box falls back to the stored height", async () => {
   }
 });
 
-test("ED-1: reduced motion skips the crossfade and releases a filled editor on the next frame", async () => {
+test("ED-1: reduced motion skips the crossfade; EK-1 the floor holds until exit", async () => {
   const f = mountFixture();
   try {
     await f.flush();
@@ -1099,8 +1104,13 @@ test("ED-1: reduced motion skips the crossfade and releases a filled editor on t
     assert.equal(body.querySelector(".pxd-item__ghost"), null);
     const editor = body.querySelector(".pxd-item__editor");
     assert.ok(editor);
-    editor._rect = contentBox(140);
+    editor._rect = contentBox(240);
     f.stub.flushFrames();
+    await tick(100);
+    f.stub.flushFrames();
+    assert.equal(alpha.style.minHeight, "140px", "EK-1: a taller editor (counter-scaled, absolutely placed) never releases the floor");
+    f.stub.dispatch(body.querySelector("textarea"), "keydown", { key: "Escape" });
+    await tick();
     assert.equal(alpha.style.minHeight, "");
   } finally {
     f.view.dispose();

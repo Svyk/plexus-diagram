@@ -107,3 +107,15 @@
   border-bottom: 2px solid var(--pxd-accent);
   box-sizing: border-box;
 }
+
+/* EK-3: rows paint as plain text first, then upgrade to live Roam renders when they are on screen. */
+.pxd-root .pxd-block__plain {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  color: inherit;
+}
+
+.pxd-root .pxd-block__plain--heavy {
+  min-height: 1.4em;
+  color: var(--pxd-muted);
+}

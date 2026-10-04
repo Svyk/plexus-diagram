@@ -45,12 +45,13 @@ An enhanced board keeps Roam's diagram controls and adds to them.
 | Zoom | Pinch or Ctrl/Cmd + scroll, `−` / `+`, click the % to reset, Shift+1 fit all, Shift+2 fit selection |
 | Select | Click; Shift-click to add; drag on empty board for a selection box; Cmd+A |
 | New card | Double-click empty board, or N. Type right away; an empty new card disappears when you click away |
-| Edit a card | Double-click or Enter. Roam's own editor opens in the card (page cards open the whole page). Esc to finish |
+| Edit a card | Double-click or Enter. Roam's own editor opens in the card (page cards open the whole page). The card keeps its size while you edit, and its arrows stay attached; the editor fills the card and the card grows only if your text is taller. Esc to finish |
 | Open | Click a `[[link]]` in a card to go there (Shift-click: sidebar). Context bar: Open in sidebar |
 | Move / resize | Drag a card (from anywhere, links included); drag the right edge, bottom edge, or corner. Alignment guides snap to neighbours. The Hand tool resizes too: a press on a grip resizes, anything else pans (Space-drag always pans). Page cards have a wide grip band and a corner above the scrollbar. Grips, connection dots and arrow-end handles keep the same size on screen at every zoom |
 | Section | G, then drag (or click for a default size). Cmd+G wraps the selection. Drop cards in and out of sections. A section grows to contain a card moved or resized past its edge (24 px padding, cascading through nested sections); Fit to contents shrinks it, and Auto-fit in the menu turns it off for one section |
 | Connect | Drag from a card's port (the dots on its edges) to another card or section. Drop on empty board to create a new linked card. C turns the whole card into a handle |
 | Text | T for a free heading on the board (16/24/32/48) |
+| Sticky notes | S, then click the board. A sticky is a real Roam block in a coloured note: drag the header bar to move it, click once in the note to type (tags, images, links, refs and the slash menu all work), drag a corner or edge to resize. The header has a colour dot (pick one of ten) and a minimize toggle that folds the note to its header; the choice is saved with the note. Stickies persist: there is no close button, and an empty sticky stays. Delete (or the menu) removes one, and Cmd+Z brings it back |
 | Nested board | W, then click or drag; or select cards → **Move into new board**. Double-click a board card to go inside; the breadcrumb (`Parent › Child`) and Esc take you back up. Drag a card onto a board card to move it in |
 | Drag from Roam | Drag any bullet from the outline or sidebar onto the board to add it as a `((ref))` card |
 | Right-click menu | Right-click empty board, a card, section, text, connection, or a multi-selection. The board menu (toolbar More) has export, fold all, journals, background |

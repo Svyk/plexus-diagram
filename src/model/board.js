@@ -157,6 +157,7 @@ export function buildBoard(pulled, { defaults } = {}) {
         areaFill: type === "section" ? layout.areaFill : undefined,
         sectionDefaults: type === "section" ? sectionDefaults : undefined,
         pinned: layout.pinned,
+        min: type === "text" && layout.look === "sticky" && layout.min === true,
         kids: type === "card" && layout.kids === true,
         look: type === "card" ? cardLook(kind, layout.look) : (type === "text" || type === "section" ? layout.look : undefined),
         ...(type === "section" && layout.look === "lane" ? { axis: layout.axis || "horizontal" } : {}),
@@ -233,6 +234,9 @@ export function buildBoard(pulled, { defaults } = {}) {
 // Visual height of a collapsed section. Stored :plexus h is left alone.
 export const COLLAPSED_SECTION_H = 8;
 
+// EK-2: a minimized sticky paints as its header bar only. Stored :plexus h is left alone.
+export const STICKY_HEADER_H = 28;
+
 // The item a connection should attach to. A section-note sticks to its section. Anything inside a
 // collapsed section sticks to the outermost collapsed section. A visible item sticks to itself.
 export function anchorUid(board, uid) {
@@ -276,7 +280,9 @@ export function displayRects(board, stored) {
     const item = board.items.get(uid);
     const next = item?.type === "section" && item.collapsed
       ? { x: r.x, y: r.y, w: r.w, h: COLLAPSED_SECTION_H }
-      : { x: r.x, y: r.y, w: r.w, h: r.h };
+      : item?.type === "text" && item.look === "sticky" && item.min
+        ? { x: r.x, y: r.y, w: r.w, h: STICKY_HEADER_H }
+        : { x: r.x, y: r.y, w: r.w, h: r.h };
     if (item?.type === "text" && item.shape) next.shape = item.shape;
     out.set(uid, next);
   }

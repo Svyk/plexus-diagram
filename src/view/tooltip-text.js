@@ -179,6 +179,12 @@ export const TIP_TEXT = {
   "props.choice.weight": e(null, "Set the line thickness of the selected arrow in pixels."),
   "props.choice.texture": e(null, "Set the pattern behind this board's cards. Default uses the board setting."),
   "picker.swatch": e(null, "Use this color for the style you are editing."),
+  // ---- sticky header (EK-5)
+  "sticky.drag": e("Sticky", "Drag the header to move the note. Click in the note to type."),
+  "sticky.min": e("Minimize", "Collapse this sticky to its header. It stays on the board."),
+  "sticky.expand": e("Expand", "Show the whole sticky again."),
+  "sticky.color": e("Sticky color", "Pick a color for this sticky."),
+  "sticky.swatch": e(null, "Use this color for the sticky."),
 
   // ---- the board itself
   minimap: e("Minimap", "The whole board at a glance. Click or drag to move the view."),

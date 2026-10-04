@@ -65,7 +65,7 @@ const PROPS = ":block/props";
 const OPEN = ":block/open";
 
 const LINK_MODES = ["off", "attributes", "all"];
-const ITEM_KEYS = ["type", "x", "y", "w", "h", "color", "collapsed", "fontSize", "pinned", "kids", "fit", "look", "axis", "textColor", "align", "fill", "border", "titleSize", "titleColor", "titleFill", "areaFill", "shape"];
+const ITEM_KEYS = ["type", "x", "y", "w", "h", "color", "collapsed", "fontSize", "pinned", "min", "kids", "fit", "look", "axis", "textColor", "align", "fill", "border", "titleSize", "titleColor", "titleFill", "areaFill", "shape"];
 const EDGE_KEYS = ["type", "from", "to", "fromSide", "toSide", "dir", "route", "dash", "weight", "color", "fromBlock", "toBlock", "via"];
 const MAX_PARENT_STRINGS = 200;
 const DAILY_GAP = 20;
@@ -1203,6 +1203,15 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
         const want = on === false ? false : undefined;
         if ((item.autofit === false) === (want === false)) return;
         t.props(id, itemPlexus(id, { fit: want }));
+      });
+    },
+
+    // EK-2: minimize a sticky to its header. One write, one undo step; the stored size stays.
+    setMinimized(id, on) {
+      return txn((t) => {
+        const item = board.items.get(id);
+        if (!item || item.type !== "text" || item.look !== "sticky" || Boolean(item.min) === Boolean(on)) return;
+        t.props(id, itemPlexus(id, { min: on ? true : undefined }));
       });
     },
 

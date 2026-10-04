@@ -5,6 +5,7 @@
 import { closeInfoTab, infoTabList, nextPanelWidth, PANEL_WIDTH_DEFAULT } from "../model/info.js";
 import { LIBRARY_TYPES, libraryFilterActive } from "../model/library.js";
 import { CARD_MIME, parseDropPayload } from "../model/drop.js";
+import { minimapSvg } from "./minimap-svg.js";
 
 export { CARD_MIME, parseDropPayload };
 const DEBOUNCE_MS = 150;
@@ -135,7 +136,46 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
   boardsFilter.setAttribute("aria-label", "Filter boards");
   boardsFilter.placeholder = "Filter boards…";
   boardsFilter.setAttribute("placeholder", "Filter boards…");
+  const viewsList = el("div", "pxd-panel__views", boardsPane);
   const boardsList = el("div", "pxd-panel__list pxd-panel__boards", boardsPane);
+  const renderViews = () => {
+    viewsList.replaceChildren();
+    let views = [];
+    try { views = on.listViews?.() || []; } catch { views = []; }
+    if (!Array.isArray(views) || !views.length) return;
+    el("div", "pxd-panel__views-title", viewsList, "Views");
+    for (const view of views) {
+      if (!view?.uid) continue;
+      const row = el("div", "pxd-view-row", viewsList);
+      row.setAttribute("data-view", view.uid);
+      row.append(minimapSvg(doc, { v: view.v, items: view.items || [] }));
+      el("span", "pxd-view-caption", row, view.caption || "View");
+      const go = el("button", "pxd-btn pxd-view-go", row, "Go");
+      go.type = "button";
+      go.setAttribute("data-act", "go");
+      const copy = el("button", "pxd-btn pxd-view-copy", row, "Copy ref");
+      copy.type = "button";
+      copy.setAttribute("data-act", "copy");
+      const rename = el("button", "pxd-btn pxd-view-rename", row, "Rename");
+      rename.type = "button";
+      rename.setAttribute("data-act", "rename");
+      const del = el("button", "pxd-btn pxd-view-delete", row, "Delete");
+      del.type = "button";
+      del.setAttribute("data-act", "delete");
+    }
+  };
+  listen(viewsList, "click", (event) => {
+    const row = event.target?.closest?.(".pxd-view-row");
+    const uid = row?.getAttribute?.("data-view");
+    if (!uid) return;
+    event.preventDefault?.();
+    event.stopPropagation();
+    const act = event.target?.closest?.("button")?.getAttribute?.("data-act");
+    if (act === "go") on.goView?.(uid);
+    else if (act === "copy") on.copyView?.(uid);
+    else if (act === "rename") on.renameView?.(uid);
+    else if (act === "delete") on.deleteView?.(uid);
+  });
   const outlinePane = el("div", "pxd-panel__pane pxd-panel__pane--outline", panel);
   outlinePane.style.display = "none";
   const outlineList = el("div", "pxd-panel__list pxd-panel__outline", outlinePane);
@@ -321,6 +361,7 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
   });
   const loadBoards = async () => {
     const id = queryId += 1;
+    renderViews();
     boardsList.replaceChildren();
     el("div", "pxd-panel__empty", boardsList, "Loading boards…");
     let rows = [];
@@ -519,6 +560,7 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     },
     currentTab: () => tab,
     refreshOutline() { if (api.isOpen() && tab === "outline") renderOutline(); },
+    refreshBoards() { if (tab === "boards") void loadBoards(); },
     close() {
       if (tab === "info") unmountInfo();
       panel.style.display = "none";

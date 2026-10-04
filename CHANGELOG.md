@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.9.2 — 2026-10-04
+
+- Save view, in More or with Shift+V, writes the current camera as one view block at the end of the board. A selection can save its own view from the context bar. The Boards tab lists those views. Go puts the camera back and writes nothing. Delete removes the view block. The command palette stays two entries.
+
 ## 2.9.1 — 2026-10-04
 
 - A new card is placed before the Connections list, snapshots, and a region container, so those stay at the end of the block. The library card count skips a region container the same way it skips Connections. Leaving a new empty card that only holds a region container no longer deletes that card.

@@ -3,7 +3,7 @@
 
 const down = (ev) => String(ev.key || "").toLowerCase();
 const hasMod = (ev) => Boolean(ev.meta || ev.ctrl);
-const letter = (ev, ch) => !hasMod(ev) && !ev.alt && down(ev) === ch;
+const letter = (ev, ch) => !hasMod(ev) && !ev.alt && !ev.shift && down(ev) === ch;
 
 function arrow(ev, { alt, shift }) {
   return !hasMod(ev) && Boolean(ev.alt) === alt && Boolean(ev.shift) === shift && String(ev.key || "").startsWith("Arrow");
@@ -63,6 +63,7 @@ export const SHORTCUTS = [
   { group: "View", keys: "Q", label: "Quick Look", action: "quickLook", events: [{ key: "q" }], match: (ev) => letter(ev, "q") },
   { group: "View", keys: "P", label: "Present", action: "present", events: [{ key: "p" }], match: (ev) => letter(ev, "p") },
   { group: "View", keys: "?", label: "Shortcuts", action: "help", events: [{ key: "?", shift: true, code: "Slash" }], match: (ev) => !hasMod(ev) && !ev.alt && (ev.key === "?" || (ev.code === "Slash" && ev.shift)) },
+  { group: "View", keys: "Shift+V", label: "Save view", action: "saveView", events: [{ key: "V", shift: true }], match: (ev) => !hasMod(ev) && !ev.alt && ev.shift && down(ev) === "v" },
   { group: "View", keys: "Escape", label: "Close or step back", action: "escape", mode: "always", events: [{ key: "Escape" }], match: (ev) => ev.key === "Escape" },
 
   { group: "Navigate", keys: "⌘[", label: "Back", action: "back", events: [{ key: "[", meta: true, code: "BracketLeft" }], match: (ev) => hasMod(ev) && !ev.shift && !ev.alt && (ev.code === "BracketLeft" || ev.key === "[") },

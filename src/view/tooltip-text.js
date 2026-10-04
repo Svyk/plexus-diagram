@@ -105,6 +105,7 @@ export const TIP_TEXT = {
   "ctx.connected": e("Select connected", "Select the cards linked to this one by an arrow or a graph link."),
   "ctx.wrap": e("Wrap in section", "Put the selected cards in a new section.", "⌘ G"),
   "ctx.wrap-board": e("Move into new board", "Move the selection into a new nested board."),
+  "ctx.save-view": e("Save view", "Save a view framed on the selected cards."),
   "ctx.fold": e("Fold", "Collapse the selected cards to their titles.", "⌘ ⌥ Enter"),
   "ctx.fold:on": e("Unfold", "Expand the collapsed cards again.", "⌘ ⌥ Enter"),
   "ctx.delete": e("Delete", "Remove the selection. On a section, the cards stay; Shift+Delete removes them too.", "Delete"),

@@ -34,15 +34,18 @@ import {
   lodTier,
   rectsIntersect,
   screenToWorld,
+  viewportFromWorldRect,
   visibleWorldRect,
   worldToScreen,
   zoomAt,
 } from "../model/geometry.js";
+import { captionForView, selectionViewRect } from "../model/view-save.js";
 import { PLEXUS_MIME, copyPayload, editorPastePlan, imageMarkdown, inlineAtCaret, parsePastedText } from "../model/clipboard.js";
 import { boardToMarkdown, boardToSvg, dropExternalImages, imageSrc, pngFileName, sliceBoard } from "../model/export.js";
 import { createInteractions } from "./interactions.js";
 import { openPagePicker } from "./board-picker.js";
 import { createItemRenderer, isTextEntryTarget, pageBodyWantsWheel, syncBoardHighlighter } from "./cards.js";
+import { openViewDialog } from "./view-dialog.js";
 import { boardKeyIsOutside } from "./offscreen.js";
 import { editorKeyAction, inputBlockRole } from "./editor-keys.js";
 import { createEdgeLayer } from "./edges.js";
@@ -1754,6 +1757,12 @@ export function mountBoardView({
       case "delete-snapshot":
         Promise.resolve(session.deleteSnapshot?.(arg)).catch(() => {});
         break;
+      case "save-view":
+        saveCameraView();
+        break;
+      case "save-view-selection":
+        saveSelectionView(uids);
+        break;
       case "paste": void pasteFromMenu(world, false); break;
       case "paste-clone": void pasteFromMenu(world, true); break;
       case "select-all": ctl.select([...b.items.keys()]); break;
@@ -2050,6 +2059,7 @@ export function mountBoardView({
       renameBoard: () => { const it = singleItem(); if (it) itemsR.renameBoard(it.uid); },
       crumb: (index) => { void goCrumb(index); },
       wrapBoard: () => wrapBoardSel(),
+      saveViewSelection: () => saveSelectionView(selection.items.slice()),
       setTool: (tool, lock) => ctl.setTool(tool, lock),
       togglePanel: () => panel.toggle(),
       openInfo: () => openInfo(),
@@ -2270,8 +2280,106 @@ export function mountBoardView({
       openRef: (uid) => host?.openInSidebar?.(uid, "block"),
       focusInfoTab: (uid) => ctl.select([uid]),
       rememberWidth: (w) => { try { storage?.setItem?.(PANEL_WIDTH_KEY, String(w)); } catch { /* private mode */ } },
+      listViews: () => {
+        const b = board();
+        const world = rects();
+        const items = [];
+        if (b) for (const item of b.items.values()) {
+          const rect = world.get(item.uid);
+          if (rect) items.push(rect);
+        }
+        return (b?.views || []).map((view) => ({ ...view, items }));
+      },
+      goView: (uid) => goToView(uid),
+      copyView: (uid) => {
+        try { globalThis.navigator?.clipboard?.writeText?.(`((${uid}))`); } catch { /* clipboard is a manual check */ }
+      },
+      renameView: (uid) => renameSavedView(uid),
+      deleteView: (uid) => {
+        Promise.resolve(session.deleteView?.(uid)).then(() => { if (!disposed) panel.refreshBoards?.(); }).catch(() => {});
+      },
     },
   });
+  let viewDialog = null;
+  const closeViewDialog = () => {
+    viewDialog?.close();
+    viewDialog = null;
+  };
+  const viewSize = () => (size.width > 0 && size.height > 0 ? size : { width: 800, height: 560 });
+  const sectionCaptions = () => {
+    const b = board();
+    if (!b) return [];
+    const world = rects();
+    const out = [];
+    for (const item of b.items.values()) {
+      if (item.type !== "section") continue;
+      out.push({ title: item.title, rect: world.get(item.uid) });
+    }
+    return out;
+  };
+  const askView = ({ caption, showCopy, onSave }) => {
+    closeViewDialog();
+    viewDialog = openViewDialog(doc, {
+      caption,
+      showCopy,
+      onSave: (result) => {
+        closeViewDialog();
+        onSave(result);
+      },
+      onCancel: () => closeViewDialog(),
+    });
+    root.append(viewDialog.el);
+    viewDialog.focus();
+  };
+  const commitView = ({ caption, v, ids, copy }) => {
+    const pending = session.addView?.({ caption, v, ids });
+    if (copy && pending?.uid) {
+      try { globalThis.navigator?.clipboard?.writeText?.(`((${pending.uid}))`); } catch { /* clipboard is a manual check */ }
+    }
+    Promise.resolve(pending).then(() => { if (!disposed) panel.refreshBoards?.(); }).catch(() => {});
+  };
+  const saveCameraView = () => {
+    const b = board();
+    if (!b || disposed) return;
+    const rect = visibleWorldRect(vp, viewSize(), 0);
+    const centerPt = { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 };
+    askView({
+      caption: captionForView(sectionCaptions(), centerPt, b.title),
+      showCopy: true,
+      onSave: ({ caption, copy }) => commitView({ caption, v: rect, ids: [], copy }),
+    });
+  };
+  const saveSelectionView = (picked) => {
+    const b = board();
+    if (!b || disposed) return;
+    const list = (picked || []).filter((id) => b.items.has(id)).slice(0, 24);
+    const world = list.map((id) => rects().get(id)).filter(Boolean);
+    const rect = selectionViewRect(world);
+    if (!rect) return;
+    const centerPt = { x: rect.x + rect.w / 2, y: rect.y + rect.h / 2 };
+    askView({
+      caption: captionForView(sectionCaptions(), centerPt, b.title),
+      showCopy: true,
+      onSave: ({ caption, copy }) => commitView({ caption, v: rect, ids: list, copy }),
+    });
+  };
+  const renameSavedView = (uid) => {
+    const view = board()?.views?.find((row) => row.uid === uid);
+    if (!view) return;
+    askView({
+      caption: view.caption,
+      showCopy: false,
+      onSave: ({ caption }) => {
+        Promise.resolve(session.renameView?.(uid, caption)).then(() => { if (!disposed) panel.refreshBoards?.(); }).catch(() => {});
+      },
+    });
+  };
+  const goToView = (uid) => {
+    const view = board()?.views?.find((row) => row.uid === uid);
+    if (!view?.v) return;
+    const next = viewportFromWorldRect({ x: view.v[0], y: view.v[1], w: view.v[2], h: view.v[3] }, viewSize());
+    if (next) setViewport(next);
+  };
   openInfo = () => {
     const it = singleItem();
     if (it && it.type !== "section") panel.addInfoTab(it);
@@ -2699,7 +2807,13 @@ export function mountBoardView({
       if (it && it.type !== "section") quicklook.open(it);
     },
     closeQuickLook: () => quicklook.close(),
+    saveView: () => saveCameraView(),
     closeOverlay: () => {
+      if (viewDialog) {
+        closeViewDialog();
+        noteOverlayClosed();
+        return true;
+      }
       if (!laterCtl.isOpen()) return false;
       laterCtl.close();
       noteOverlayClosed();
@@ -3252,6 +3366,10 @@ export function mountBoardView({
       return;
     }
     if (outsideQuiet) { outsideQuiet(); outsideQuiet = null; itemsR.quiet(false); }
+    if (event.target?.closest?.(".pxd-view-dialog")) {
+      if (event.key === "Escape") closeViewDialog();
+      return;
+    }
     // Nothing selected and the key is outside every board: do not read the model.
     if (boardKeyIsOutside(event.target, selection.items.length > 0)) return;
     // Outline mode is real Roam blocks. Canvas shortcuts stay off so a key there is not a board command.
@@ -3839,6 +3957,7 @@ export function mountBoardView({
     dispose() {
       if (disposed) return;
       disposed = true;
+      closeViewDialog();
       closeLens();
       pagePicker?.close();
       closeBlockEdit();

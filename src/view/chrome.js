@@ -712,6 +712,7 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
           opt("fold", "pxd-ctx__fold", model?.anyCollapsed ? "expand-all" : "collapse-all", model?.anyCollapsed ? "Unfold" : "Fold", model?.anyCollapsed ? "Expand the collapsed cards" : "Collapse the cards to titles", () => on.fold(!model?.anyCollapsed));
           pinButton(Boolean(model?.allPinned));
           opt("duplicate", "pxd-ctx__duplicate", "duplicate", "Duplicate", "Duplicate (Cmd D)", () => on.duplicate());
+          opt("saveViewSelection", "pxd-ctx__save-view", "camera", "Save view", "Save a view of the selection", () => on.saveViewSelection());
         }
         btn("pxd-ctx__delete pxd-btn--danger", "trash", "Delete", "Delete (Del)", () => on.delete?.());
         break;

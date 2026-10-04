@@ -51,6 +51,13 @@ export function visibleWorldRect(vp, size, margin = 0) {
   };
 }
 
+// Inverse of visibleWorldRect with margin 0. Zoom comes from the width so a saved view lands within a pixel.
+export function viewportFromWorldRect(rect, size) {
+  if (!rect || !(rect.w > 0) || !(rect.h > 0) || !size || !(size.width > 0)) return null;
+  const zoom = clampZoom(size.width / rect.w);
+  return { x: -rect.x * zoom, y: -rect.y * zoom, zoom };
+}
+
 export function lodForZoom(zoom) {
   return zoom < 0.45 ? "map" : "detail";
 }

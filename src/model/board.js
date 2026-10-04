@@ -17,6 +17,7 @@ import {
   semanticRef,
 } from "./schema.js";
 import { isQueryString } from "./query.js";
+import { isContainerString, parseRegion } from "./regions.js";
 import { listFromNodes } from "./snapshots.js";
 
 const AUTO_GAP = 40;
@@ -26,6 +27,25 @@ const TITLE_BAND = 32;
 const BORDER_BAND = 8;
 
 const isNum = (v) => typeof v === "number" && Number.isFinite(v);
+
+function viewsOf(boardKids, regionsUid) {
+  const container = regionsUid
+    ? boardKids.find((child) => child[":block/uid"] === regionsUid)
+    : boardKids.find((child) => isContainerString(child[":block/string"] ?? ""));
+  if (!container) return [];
+  const out = [];
+  for (const child of sortedChildren(container)) {
+    const region = parseRegion(child[":block/string"] ?? "");
+    if (!region || region.kind !== "view" || region.supported !== true) continue;
+    out.push({
+      uid: child[":block/uid"],
+      caption: region.caption || "",
+      v: region.v,
+      ids: region.ids ? region.ids.slice() : [],
+    });
+  }
+  return out;
+}
 
 function sortedChildren(node) {
   const kids = Array.isArray(node?.[":block/children"]) ? node[":block/children"] : [];
@@ -229,6 +249,8 @@ export function buildBoard(pulled, { defaults } = {}) {
     containerIndex,
     snapshotsUid,
     snapshots: listFromNodes(sortedChildren(snapshotsUid ? boardKids.find((child) => child[":block/uid"] === snapshotsUid) : null)),
+    regionsUid,
+    views: viewsOf(boardKids, regionsUid),
     childCount: boardKids.length,
     edges,
   };

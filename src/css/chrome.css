@@ -270,6 +270,48 @@ body.roam-body.dark .pxd-root .pxd-bg__tones .pxd-swatch--paper,
   background: var(--pxd-accent-soft);
 }
 
+.pxd-root .pxd-view-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  margin: 4px 0;
+  border: 1px solid var(--pxd-border);
+  border-radius: 6px;
+}
+
+.pxd-root .pxd-view-row:hover {
+  border-color: var(--pxd-accent);
+}
+
+.pxd-root .pxd-minimap {
+  width: 96px;
+  height: 96px;
+  flex: 0 0 auto;
+  color: var(--pxd-border);
+  background: transparent;
+}
+
+.pxd-root .pxd-view-dialog {
+  position: absolute;
+  inset: 0;
+  z-index: 40;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pxd-root .pxd-view-dialog__card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 240px;
+  padding: 12px;
+  border: 1px solid var(--pxd-border);
+  border-radius: 8px;
+  background: var(--pxd-surface);
+}
+
 .pxd-root .pxd-panel__board-text {
   display: flex;
   flex: 1 1 auto;

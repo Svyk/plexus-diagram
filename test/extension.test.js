@@ -59,7 +59,7 @@ test("settings panel follows spec section 6 ids, defaults and row types", () => 
     "auto-fit-sections", "board-tone", "map-zoom", "motion", "show-card-badges", "show-palette", "space-out",
     "enter-in-card",
     "toolbar-layout", "dock-position", "dock-style", "dock-labels", "chrome-density", "dock-options",
-    "tooltips", "tooltip-delay", "task-tool", "task-chips", "task-default-project",
+    "tooltips", "tooltip-delay", "task-tool", "task-chips", "task-default-project", "better-tasks",
   ].sort());
   assert.equal(settingsDefaults()["enter-in-card"], "newline");
   assert.deepEqual(byIdOf(panel)["enter-in-card"].action.items, ["newline", "child"]);
@@ -168,13 +168,16 @@ test("UI-10: settings are grouped, described in plain language, and reset applie
       members[current].push(row.id);
     }
   }
-  assert.deepEqual(groups, ["Cards", "Sections", "Connections", "Board", "Performance"]);
-  assert.deepEqual(members.Cards, ["default-card-look", "default-card-width", "default-card-height", "enter-in-card", "show-card-badges", "space-out", "task-tool", "task-chips", "task-default-project"]);
+  assert.deepEqual(groups, ["Cards", "Integrations", "Sections", "Connections", "Board", "Performance"]);
+  assert.deepEqual(members.Cards, ["default-card-look", "default-card-width", "default-card-height", "enter-in-card", "show-card-badges", "space-out"]);
+  assert.deepEqual(members.Integrations, ["better-tasks", "task-tool", "task-chips", "task-default-project"]);
   assert.deepEqual(members.Sections, ["auto-fit-sections"]);
   assert.deepEqual(members.Connections, ["graph-links", "attr-styles"]);
   assert.ok(members.Board.includes("enabled"));
   assert.ok(members.Performance.includes("motion"));
-  assert.deepEqual([...members.Cards, ...members.Sections, ...members.Connections, ...members.Board, ...members.Performance].sort(), Object.keys(defaults).sort());
+  assert.equal(defaults["better-tasks"], false);
+  assert.equal(defaults["task-tool"], false);
+  assert.deepEqual([...members.Cards, ...members.Integrations, ...members.Sections, ...members.Connections, ...members.Board, ...members.Performance].sort(), Object.keys(defaults).sort());
 
   const saved = [];
   const seen = [];

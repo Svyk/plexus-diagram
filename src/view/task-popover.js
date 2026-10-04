@@ -88,8 +88,9 @@ export function createTaskPopover({ doc = globalThis.document, root, bt, toast =
   const TITLES = { due: "Due", project: "Project", priority: "Priority", repeat: "Repeat" };
 
   function open(uid, kind, anchor) {
+    if (!bt?.available?.()) return false;
     close();
-    if (!root || !bt?.available?.() || !FILL[kind]) return false;
+    if (!root || !FILL[kind]) return false;
     openFor = uid;
     node = el("div", "pxd-task-pop pxd-chrome", root);
     node.setAttribute("role", "dialog");

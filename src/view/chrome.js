@@ -660,13 +660,21 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
           const picker = el("div", "pxd-ctx__picker", ctx);
           picker.style.display = "none";
           let pickerBuilt = false;
-          iconBtn("pxd-ctx__color", "tint", "Color", "Color", () => {
+          const colorBtn = iconBtn("pxd-ctx__color", "tint", "Color", "Color", () => {
             if (!pickerBuilt) {
-              picker.append(buildColorPicker(doc, (c) => { on.setColor?.(c); picker.style.display = "none"; }, listen));
+              const tagOpts = typeof on.onTag === "function"
+                ? {
+                    onTag: (name) => { on.onTag(name); picker.style.display = "none"; },
+                    onGear: typeof on.onGear === "function" ? (flag) => { on.onGear(flag); } : undefined,
+                    tagMode: typeof on.tagMode === "function" ? on.tagMode() === true : false,
+                  }
+                : undefined;
+              picker.append(buildColorPicker(doc, (c) => { on.setColor?.(c); picker.style.display = "none"; }, listen, tagOpts));
               pickerBuilt = true;
             }
             picker.style.display = picker.style.display === "none" ? "" : "none";
-            if (picker.style.display !== "none") placeNearAnchor(picker, ctx.getBoundingClientRect(), root, { gap: 4, origin: ctx });
+            // The bar is nearly as wide as the board. Anchoring on it drops the picker past the right edge.
+            if (picker.style.display !== "none") placeNearAnchor(picker, colorBtn.getBoundingClientRect(), root, { gap: 4, origin: ctx });
           });
           const closed = model?.kind === "note" || model?.kind === "block" ? !model?.kids : model?.open === false;
           iconBtn(

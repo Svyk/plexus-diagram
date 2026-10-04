@@ -3959,6 +3959,51 @@ body.roam-body.dark .pxd-commands__box {
   top: 100%;
 }
 
+/* Highlighter tag mode. Every rule stays under .pxd-root. */
+
+.pxd-root .pxd-picker__gear {
+  align-self: flex-start;
+  margin: 2px 0;
+  padding: 2px 6px;
+  border: 1px solid var(--pxd-border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--pxd-muted);
+  font-size: 11px;
+  line-height: 1.3;
+}
+
+.pxd-root .pxd-picker__gear--on {
+  border-color: var(--pxd-accent);
+  color: var(--pxd-text);
+}
+
+.pxd-root .pxd-picker__tag-note {
+  font-size: 10px;
+  line-height: 1.3;
+  color: var(--pxd-muted);
+}
+
+.pxd-root .pxd-picker__tag-note[hidden] {
+  display: none;
+}
+
+.pxd-root.pxd-hl .pxd-item__body span.rm-page-ref[data-tag^="bg-"],
+.pxd-root.pxd-hl .pxd-item__body a.rm-page-ref[data-tag^="bg-"],
+.pxd-root.pxd-hl .pxd-item__body span.rm-page-ref[data-tag^="c:"],
+.pxd-root.pxd-hl .pxd-item__body a.rm-page-ref[data-tag^="c:"] {
+  display: none;
+}
+
+/* PERF-3. An offscreen card keeps the model size and skips layout and paint.
+   --pxd-iw and --pxd-ih are world pixels. The card sits inside the scaled world,
+   so the size is not multiplied by the camera zoom. */
+
+.pxd-root .pxd-item.pxd-item--offscreen {
+  content-visibility: auto;
+  contain-intrinsic-size: var(--pxd-iw, 200px) var(--pxd-ih, 80px);
+}
+
 /* Overlays: Quick Look, presentation HUD, Alt+drag ghosts, focus dimming.
    Borders carry the semantics; fills stay on the chrome token (no tinted fills in dark). */
 

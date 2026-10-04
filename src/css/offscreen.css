@@ -1,0 +1,8 @@
+/* PERF-3. An offscreen card keeps the model size and skips layout and paint.
+   --pxd-iw and --pxd-ih are world pixels. The card sits inside the scaled world,
+   so the size is not multiplied by the camera zoom. */
+
+.pxd-root .pxd-item.pxd-item--offscreen {
+  content-visibility: auto;
+  contain-intrinsic-size: var(--pxd-iw, 200px) var(--pxd-ih, 80px);
+}

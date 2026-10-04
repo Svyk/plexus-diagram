@@ -9,11 +9,30 @@ export const TASK_ATTR_IDS = ["repeat", "start", "defer", "due", "completed", "p
 
 const lower = (s) => String(s ?? "").trim().toLowerCase();
 
-export function createBt({ win = globalThis.window ?? globalThis } = {}) {
+export function createBt(options = {}) {
+  // enabled defaults on so callers that omit it stay on. Read it before win: a throwing win stays unread while off.
+  // A function (or a getter) is read again on every tool lookup, including after setSettings.
+  const enabledNow = () => {
+    const flag = options.enabled;
+    if (typeof flag === "function") return flag() !== false;
+    return flag !== false;
+  };
   let names = null; // Map id -> Set of lower-case labels, from bt_get_attributes
   let priming = null;
+  let cachedWin;
+  let winReady = false;
+  const readWin = () => {
+    if (winReady) return cachedWin;
+    let value;
+    if (Object.prototype.hasOwnProperty.call(options, "win")) value = options.win;
+    if (value == null) value = globalThis.window ?? globalThis;
+    cachedWin = value;
+    winReady = true;
+    return cachedWin;
+  };
 
   const tools = () => {
+    const win = readWin();
     let entry = null;
     try { entry = win?.[REGISTRY]?.[ENTRY]; } catch { entry = null; }
     const list = entry?.tools;
@@ -23,6 +42,7 @@ export function createBt({ win = globalThis.window ?? globalThis } = {}) {
     return map;
   };
   const tool = (name) => {
+    if (!enabledNow()) return null;
     const t = tools().get(name);
     return t && typeof t.execute === "function" ? t : null;
   };
@@ -58,6 +78,7 @@ export function createBt({ win = globalThis.window ?? globalThis } = {}) {
     // Attribute labels by id. Null until primed or when Better Tasks does not answer: callers fall back to /^BT_attr/.
     attrNames: () => names,
     prime() {
+      if (!enabledNow()) return Promise.resolve(null);
       if (names) return Promise.resolve(names);
       if (priming) return priming;
       if (!tool("bt_get_attributes")) return Promise.resolve(null);

@@ -13,13 +13,15 @@ import { boardPreview, descendantsOf, sectionNoteUid } from "../model/board.js";
 import { CARD_MIME } from "./panel.js";
 import { lodForZoom, rectsIntersect } from "../model/geometry.js";
 import { SHAPES, shapePath } from "../model/shapes.js";
+import { fillFromTags, highlighterTags } from "../model/highlighter.js";
 import { watchEditorMenus } from "./editor-menus.js";
 import { applyEditorCounterScale } from "./editor-scale.js";
+import { UNMOUNT_GRACE_MS, intrinsicSize, shellOffscreen } from "./offscreen.js";
 
 const SIDES = ["top", "right", "bottom", "left"];
 const CHUNK_MS = 8;
 const LRU_CAP = 80;
-const UNMOUNT_AFTER_MS = 4000;
+const UNMOUNT_AFTER_MS = UNMOUNT_GRACE_MS;
 const HYDRATE_CAP_MS = 900;
 const CONTENT_LIMIT = 12;
 const CONTENT_DEPTH = 2;
@@ -47,6 +49,47 @@ const PEEK_SUB = 4;
 const PEEK_TEXT_MAX = 140;
 
 const now = () => (globalThis.performance?.now ? globalThis.performance.now() : Date.now());
+
+// Names the colour highlighter publishes as --cl-lh-* / --cl-dk-*. pxd-hl is set only when one of them is non-empty.
+const HL_NAMES = ["red", "orange", "yellow", "green", "blue", "purple", "pink", "gray", "grey", "teal", "indigo"];
+
+function bodyStyleOf(doc) {
+  const view = doc?.defaultView || globalThis;
+  const body = doc?.body;
+  if (!body || typeof view?.getComputedStyle !== "function") return null;
+  try { return view.getComputedStyle(body); } catch { return null; }
+}
+
+function hlValue(style, name) {
+  if (!style || typeof style.getPropertyValue !== "function") return "";
+  const value = style.getPropertyValue(name);
+  return typeof value === "string" && value.trim() ? value.trim() : "";
+}
+
+export function syncBoardHighlighter(doc, root) {
+  if (!root?.classList) return false;
+  const style = bodyStyleOf(doc);
+  let on = false;
+  if (style) {
+    for (const name of HL_NAMES) {
+      if (hlValue(style, `--cl-lh-${name}`) || hlValue(style, `--cl-dk-${name}`)) { on = true; break; }
+    }
+  }
+  root.classList.toggle("pxd-hl", on);
+  return on;
+}
+
+// probe(name) reads the light or dark highlighter variable, picked from the board root.
+function hlProbe(style, dark) {
+  return (key) => {
+    const raw = String(key || "");
+    const name = raw.replace(/^--cl-(?:lh|dk)-/, "").toLowerCase();
+    if (!/^[a-z0-9_]+$/.test(name)) return "";
+    const chosen = `${dark ? "--cl-dk-" : "--cl-lh-"}${name}`;
+    if (raw.startsWith("--cl-") && raw !== chosen) return "";
+    return hlValue(style, chosen);
+  };
+}
 
 export function isTextEntryTarget(target) {
   if (!target || typeof target !== "object") return false;
@@ -599,6 +642,34 @@ export function createItemRenderer({
     if (value) el.style.setProperty(name, value);
     else el.style.removeProperty(name);
   };
+  const boardRoot = () => itemsLayer?.closest?.(".pxd-root") || sectionsLayer?.closest?.(".pxd-root") || null;
+  const paintTagChip = (rec, info) => {
+    if (!info) {
+      if (rec.tagChip) { rec.tagChip.remove(); rec.tagChip = null; }
+      return;
+    }
+    if (!rec.tagChip || !rec.tagChip.isConnected) rec.tagChip = el("span", "pxd-hl-chip", rec.el);
+    let swatch = rec.tagChip.querySelector?.(".pxd-hl-swatch");
+    if (!swatch) swatch = el("span", "pxd-hl-swatch", rec.tagChip);
+    swatch.style.setProperty("background", info.color);
+    swatch.style.setProperty("display", "inline-block");
+    swatch.style.setProperty("width", "10px");
+    swatch.style.setProperty("height", "10px");
+    swatch.setAttribute("aria-hidden", "true");
+    let name = rec.tagChip.querySelector?.(".pxd-hl-name");
+    if (!name) name = el("span", "pxd-hl-name", rec.tagChip);
+    if (name.textContent !== info.name) name.textContent = info.name;
+    rec.tagChip.setAttribute("data-tag", info.name);
+  };
+  // Props fill wins and does not call fillFromTags. A tag fill probes --cl-lh-* or --cl-dk-* on document.body.
+  const tagFillOf = (item) => {
+    if (!item || item.type === "section" || cssColor(item.fill, "fill")) return null;
+    const tags = highlighterTags(typeof item.string === "string" ? item.string : "");
+    if (!tags.bg) return null;
+    const dark = Boolean(boardRoot()?.classList?.contains("pxd-root--dark"));
+    const color = fillFromTags(tags, hlProbe(bodyStyleOf(doc), dark));
+    return color ? { name: tags.bg, color } : null;
+  };
   // Inline variables only when a key is present, so a 1.2 board with no style keys keeps its look.
   const applyStyle = (rec, item) => {
     const node = rec.el;
@@ -619,16 +690,19 @@ export function createItemRenderer({
       return;
     }
     const accent = hexColor(item.color);
+    const propsFill = cssColor(item.fill, "fill") || "";
+    const tagFill = propsFill ? null : tagFillOf(item);
     setVar(node, "--pxd-card-fs", item.fontSize ? `${item.fontSize}px` : "");
     setVar(node, "--pxd-text-fs", item.type === "text" && item.fontSize ? `${item.fontSize}px` : "");
     setVar(node, "--pxd-text-c", cssColor(item.textColor, "text") || accent || "");
-    setVar(node, "--pxd-fill", cssColor(item.fill, "fill") || accent || "");
+    setVar(node, "--pxd-fill", propsFill || tagFill?.color || accent || "");
     setVar(node, "--pxd-line", cssColor(item.border, "line") || accent || "");
     node.style.textAlign = item.align || "";
     const stickyHex = item.type === "text" && item.look === "sticky" && !item.shape
       ? (hexColor(item.fill) || accent || "")
       : "";
     node.style.backgroundColor = stickyHex;
+    paintTagChip(rec, tagFill);
   };
 
   const syncShape = (rec, item, size) => {
@@ -870,6 +944,7 @@ export function createItemRenderer({
   const sync = ({ board, rects, dirty = null, structural = false, view = null }) => {
     lastBoard = board;
     lastRects = rects;
+    syncBoardHighlighter(doc, boardRoot());
     // A full sync builds every missing shell itself. A partial sync must leave the
     // open-time queue alone, or the cards past the first chunk never appear.
     if (dirty == null) shellQueue = [];
@@ -1810,8 +1885,26 @@ export function createItemRenderer({
     rec.contentKey = null;
     mounted.delete(uid);
   };
+  // PERF-3. Keep this call at the start of fillContent. An editing card is never a shell.
+  const paintOffscreen = (visibleRect) => {
+    for (const [uid, rec] of shells) {
+      if (!rec.el || rec.type === "section") continue;
+      const rect = lastRects?.get(uid);
+      const off = Boolean(visibleRect) && shellOffscreen(uid, rect, visibleRect, { editingUid: editing?.uid ?? null });
+      rec.el.classList.toggle("pxd-item--offscreen", off);
+      if (!off) {
+        rec.el.style.removeProperty("--pxd-iw");
+        rec.el.style.removeProperty("--pxd-ih");
+        continue;
+      }
+      const [iw, ih] = intrinsicSize(rect).split(" ");
+      rec.el.style.setProperty("--pxd-iw", iw);
+      rec.el.style.setProperty("--pxd-ih", ih);
+    }
+  };
   const fillContent = ({ visibleRect, zoom = zoomCache, tier = null }) => {
     zoomCache = zoom;
+    paintOffscreen(visibleRect);
     if (!lastBoard || !lastRects) return;
     const next = new Set();
     if ((tier ?? lodForZoom(zoom)) === "detail") {
@@ -2618,6 +2711,15 @@ export function createItemRenderer({
     markRows,
     setRowHot,
     revealRow,
+    repaintStyles() {
+      syncBoardHighlighter(doc, boardRoot());
+      if (!lastBoard) return;
+      for (const [uid, rec] of shells) {
+        if (editing?.uid === uid) continue;
+        const item = lastBoard.items.get(uid);
+        if (item) paintShell(rec, item);
+      }
+    },
     expireContent(uids) {
       for (const uid of uids || []) {
         const rec = shells.get(uid);

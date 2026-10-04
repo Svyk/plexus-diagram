@@ -1192,6 +1192,7 @@ test("UI-8: every shortcut in the sheet runs from that same table", () => {
   for (const row of SHORTCUTS) {
     if (row.mode === "view") continue;
     const h = harness({
+      settings: row.tool === "task" ? { "task-tool": true } : {},
       extra: row.mode === "present" ? { presentActive: () => true } : {},
     });
     if (row.action === "zoomReset") h.ctl.handle({ type: "keydown", key: "=", meta: true });

@@ -357,6 +357,44 @@ test("selection shows a context bar above the selection and never over it", asyn
   }
 });
 
+test("TSK-6 the card color picker stays inside a narrow board", async () => {
+  const f = mountFixture();
+  try {
+    await f.flush();
+    const root = f.view.root;
+    const alpha = root.querySelector("[data-uid=cardAAAA1]");
+    f.stub.dispatch(alpha, "pointerdown", { button: 0, clientX: 50, clientY: 50, pointerId: 1 });
+    f.stub.dispatch(f.stub.document, "pointerup", { clientX: 50, clientY: 50, pointerId: 1 });
+    await tick(300);
+    f.stub.flushFrames();
+    const R = (left, top, right, bottom) => ({ left, top, right, bottom, width: right - left, height: bottom - top, x: left, y: top });
+    root._rect = R(314, 161, 983, 721);
+    const set = (sel, rect) => { const node = root.querySelector(sel); if (node) node._rect = rect; };
+    set(".pxd-toolbar", R(323, 170, 930, 204));
+    set(".pxd-dock", R(323, 534, 922, 584));
+    set(".pxd-rail", R(934, 170, 974, 474));
+    set(".pxd-minimap", R(750, 592, 930, 712));
+    set(".pxd-props", R(323, 210, 401, 238));
+    const ctx = root.querySelector(".pxd-ctx");
+    ctx._rect = R(323, 314, 974, 384);
+    const color = ctx.querySelector(".pxd-ctx__color");
+    color._rect = R(330, 319, 358, 347);
+    f.stub.dispatch(color, "click");
+    const picker = ctx.querySelector(".pxd-ctx__picker");
+    picker._rect = R(0, 0, 150, 249);
+    f.stub.dispatch(color, "click");
+    f.stub.dispatch(color, "click");
+    const left = ctx._rect.left + Number.parseInt(picker.style.left, 10);
+    const top = ctx._rect.top + Number.parseInt(picker.style.top, 10);
+    const right = left + 150;
+    const bottom = top + (Number.parseInt(picker.style.maxHeight, 10) || 249);
+    assert.ok(left >= 314 && right <= 983 && top >= 161 && bottom <= 721, `picker outside the board (${left},${top})-(${right},${bottom})`);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
 test("hover toolbar works on a note, a page and a block ref", async () => {
   const calls = [];
   const f = mountFixture({

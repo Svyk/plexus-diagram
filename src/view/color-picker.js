@@ -1,12 +1,29 @@
 // Native 13 swatches, a darker row, a lighter row, hex entry, and the 1.2 named colors.
 // Named picks store the palette name. Everything else stores lowercase hex.
+// Pass onTag / onGear / tagMode as a fourth options object, or as the third argument
+// when that argument is not the listen function. Omitting onTag keeps onPick.
 
 import { NATIVE_SWATCHES, PALETTE, hexColor, shadeHex } from "../model/schema.js";
 
 const DARKER = -0.28;
 const LIGHTER = 0.4;
+const TAG_NOTE = "Hex, darker, and lighter stay on the card only.";
 
-export function buildColorPicker(doc, onPick, listen) {
+function pickerArgs(listen, fourth) {
+  if (listen && typeof listen === "object") return { listen: undefined, options: listen };
+  if (typeof fourth === "function") return { listen, options: { onTag: fourth } };
+  if (fourth && typeof fourth === "object") return { listen, options: fourth };
+  return { listen, options: {} };
+}
+
+export function buildColorPicker(doc, onPick, listen, fourth) {
+  const args = pickerArgs(listen, fourth);
+  listen = args.listen;
+  const options = args.options;
+  const onTag = typeof options.onTag === "function" ? options.onTag : null;
+  const onGear = typeof options.onGear === "function" ? options.onGear : null;
+  let tagMode = options.tagMode === true && onTag != null;
+
   const box = doc.createElement("div");
   box.className = "pxd-picker";
   const on = (node, type, fn) => {
@@ -14,6 +31,30 @@ export function buildColorPicker(doc, onPick, listen) {
     else node.addEventListener(type, fn);
   };
   const stop = (event) => { event.preventDefault?.(); event.stopPropagation?.(); };
+
+  if (onTag) {
+    const gear = doc.createElement("button");
+    gear.type = "button";
+    gear.className = "pxd-btn pxd-picker__gear";
+    gear.textContent = "Write as highlighter tag";
+    gear.setAttribute("aria-label", "Write as highlighter tag");
+    gear.setAttribute("aria-pressed", tagMode ? "true" : "false");
+    if (tagMode) gear.classList.add("pxd-picker__gear--on");
+    const note = doc.createElement("div");
+    note.className = "pxd-picker__tag-note";
+    note.textContent = TAG_NOTE;
+    if (!tagMode) note.setAttribute("hidden", "");
+    on(gear, "click", (event) => {
+      stop(event);
+      tagMode = !tagMode;
+      gear.classList.toggle("pxd-picker__gear--on", tagMode);
+      gear.setAttribute("aria-pressed", tagMode ? "true" : "false");
+      if (tagMode) note.removeAttribute("hidden");
+      else note.setAttribute("hidden", "");
+      onGear?.(tagMode);
+    });
+    box.append(gear, note);
+  }
 
   const row = (label, colors, named) => {
     const wrap = doc.createElement("div");
@@ -33,7 +74,11 @@ export function buildColorPicker(doc, onPick, listen) {
       b.setAttribute("aria-label", color);
       b.setAttribute("data-color", color);
       if (!named) b.style.background = color;
-      on(b, "click", (event) => { stop(event); onPick?.(color); });
+      on(b, "click", (event) => {
+        stop(event);
+        if (named && tagMode && onTag) onTag(color);
+        else onPick?.(color);
+      });
       swatches.append(b);
     }
     wrap.append(swatches);

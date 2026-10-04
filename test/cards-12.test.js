@@ -196,7 +196,7 @@ test("pxd-item--bare marks a card whose body is empty or unmounted, and clears o
     assert.equal(h.shell("cardAAAA1").classList.contains("pxd-item--bare"), false);
     // a map switch unmounts card bodies after the grace period and they turn bare again
     h.show("map");
-    clock.t += 5000;
+    clock.t += 10000;
     for (const t of [...h.laterQueue]) t.fn();
     assert.ok(h.shell("cardAAAA1").classList.contains("pxd-item--bare"), "unmountContent sets bare");
     assert.equal(h.shell("cardAAAA1").querySelector(".pxd-item__body").children.length, 0);

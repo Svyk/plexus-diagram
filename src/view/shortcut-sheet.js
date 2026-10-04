@@ -1,6 +1,6 @@
 import { SHORTCUTS } from "./shortcuts.js";
 
-export function createShortcutSheet({ doc = globalThis.document, root, shortcuts = SHORTCUTS } = {}) {
+export function createShortcutSheet({ doc = globalThis.document, root, shortcuts = SHORTCUTS, settings = null } = {}) {
   let sheet = null;
   const close = () => {
     sheet?.remove();
@@ -33,7 +33,8 @@ export function createShortcutSheet({ doc = globalThis.document, root, shortcuts
     grid.className = "pxd-sheet__grid";
     let groupEl = null;
     let groupName = "";
-    for (const row of shortcuts) {
+    const visible = shortcuts.filter((row) => settings == null || typeof row.when !== "function" || row.when(settings) !== false);
+    for (const row of visible) {
       if (row.group !== groupName) {
         groupName = row.group;
         groupEl = doc.createElement("section");

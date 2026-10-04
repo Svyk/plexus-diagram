@@ -857,7 +857,7 @@ export function createInteractions({ actions, settings } = {}) {
     const always = findShortcut(ev, "always");
     if (always) return runShortcut(always, ev);
     if (setting("enable-shortcuts", true) === false) return false;
-    const row = findShortcut(ev, "normal");
+    const row = findShortcut(ev, "normal", settings);
     if (!row) return false;
     return runShortcut(row, ev);
   };

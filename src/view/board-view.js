@@ -6,7 +6,8 @@
 // 1.2 wiring: three-tier LOD flipped by class during a gesture, board backgrounds (pattern + tone), live
 // section auto-fit preview, context menu, clipboard, focus, presentation, card badges, back-to-content.
 
-import { BOARD_PATTERNS, BOARD_TONES, DEFAULT_BOARD_CARD, DEFAULT_SIZES, LANE_SIZE, PAGE_CARD, PALETTE, STICKY_SIZE, UNTITLED_BOARD, classifyString, hexColor, semanticRef, plainText } from "../model/schema.js";
+import { BOARD_PATTERNS, BOARD_TONES, DEFAULT_BOARD_CARD, DEFAULT_SIZES, LANE_SIZE, PAGE_CARD, PALETTE, STICKY_SIZE, UNTITLED_BOARD, classifyString, hexColor, readPlexus, semanticRef, plainText } from "../model/schema.js";
+import { rewriteBgTag } from "../model/highlighter.js";
 import { boundsOf, buildBoard, connectedUids, containerAt, descendantsOf, displayRects, edgesTouching, outlineOrder, sameColorUids, sectionAllUids, sectionFitPlan, sectionNoteUid, sidebarOutlineUids, worldRects } from "../model/board.js";
 import { copyLinkText, hashFromUrl, pageUidFromHash, pxdTarget } from "../model/deeplink.js";
 import { findOnBoard } from "../model/find.js";
@@ -41,7 +42,8 @@ import { PLEXUS_MIME, copyPayload, editorPastePlan, imageMarkdown, inlineAtCaret
 import { boardToMarkdown, boardToSvg, dropExternalImages, imageSrc, pngFileName, sliceBoard } from "../model/export.js";
 import { createInteractions } from "./interactions.js";
 import { openPagePicker } from "./board-picker.js";
-import { createItemRenderer, isTextEntryTarget, pageBodyWantsWheel } from "./cards.js";
+import { createItemRenderer, isTextEntryTarget, pageBodyWantsWheel, syncBoardHighlighter } from "./cards.js";
+import { boardKeyIsOutside } from "./offscreen.js";
 import { editorKeyAction, inputBlockRole } from "./editor-keys.js";
 import { createEdgeLayer } from "./edges.js";
 import { createChrome, LINK_MODES } from "./chrome.js";
@@ -165,7 +167,7 @@ const MIN_HEIGHT = 240;
 const RESUME_MS = 120;
 const VP_PERSIST_MS = 500;
 const SECTION_TITLE_ALLOWANCE = 32; // px: section title pill (20 + padding) plus its 4px lift, fits above the frame
-const CULL_MARGIN = 0.5;
+const CULL_MARGIN = 1;
 const BADGE_TTL_MS = 120000;
 const BADGE_CHUNK = 12;
 const NATIVE_MENU_TARGETS = ".rm-page-ref, .rm-block-ref, [data-link-uid], a[href], img";
@@ -350,7 +352,11 @@ export function mountBoardView({
   let settingsRef = settings;
   const readSetting = (k) => (typeof settingsRef?.get === "function" ? settingsRef.get(k) : settingsRef?.[k]);
   const settingsProxy = { get: readSetting };
-  const bt = host?.bt ?? createBt({ win });
+  // One bridge for the life of the board. enabled is read again on every tool lookup, including after setSettings.
+  const bt = createBt({
+    enabled: () => readSetting("better-tasks") === true,
+    win,
+  });
   const setting = (k, d) => {
     const v = readSetting(k);
     return v === undefined || v === null ? d : v;
@@ -417,10 +423,13 @@ export function mountBoardView({
   resizeGrip.title = "Drag to resize the board";
   // The dark/light class follows the host: decided at mount, then again whenever the host flips (Roam's auto theme
   // follows the OS, and the theme extensions toggle their marker classes on <html>/<body>).
+  let repaintItemStyles = () => {};
   const applyTheme = () => {
     const dark = isDarkHost(mountEl, doc);
     root.classList.toggle("pxd-root--dark", dark);
     root.classList.toggle("pxd-root--light", !dark && isLightHost(mountEl, doc, globalThis.window));
+    syncBoardHighlighter(doc, root);
+    repaintItemStyles();
   };
   applyTheme();
 
@@ -648,18 +657,39 @@ export function mountBoardView({
     onTaskChip: (uid, kind, anchor) => taskPop.open(uid, kind, anchor),
     onPageLayout: (uid) => { if (blockCards.has(uid)) scheduleAnchors(); },
   });
+  repaintItemStyles = () => { if (!disposed) itemsR.repaintStyles(); };
   const taskPop = createTaskPopover({ doc, root, bt, toast: (m) => chrome.toast.show(m) });
   const taskDone = createTaskCompleter({ doc, getRoot: () => root, host, bt, win });
-  const applyTaskSettings = () => itemsR.setTaskChips(String(setting("task-chips", "full")));
-  applyTaskSettings();
-  // Attribute labels can be renamed in Better Tasks: once it answers, redraw the task cards that read them.
-  void bt.prime().then((names) => {
-    if (!names || disposed) return;
-    setTaskAttrNames(names);
+  let betterTasksOn = false;
+  const taskCardUids = () => {
     const b = board();
-    const uids = b ? [...b.items.values()].filter((it) => it.type === "card" && it.kind === "note" && isTaskString(it.string)).map((it) => it.uid) : [];
-    if (uids.length) { itemsR.expireContent(uids); scheduleContent(); }
-  });
+    if (!b) return [];
+    return [...b.items.values()].filter((it) => it.type === "card" && it.kind === "note" && isTaskString(it.string)).map((it) => it.uid);
+  };
+  const applyTaskSettings = () => {
+    const on = readSetting("better-tasks") === true;
+    if (!on) {
+      itemsR.setTaskChips("none");
+      // Bodies mounted while the integration was on keep the light checkbox until they rebuild.
+      if (betterTasksOn) {
+        betterTasksOn = false;
+        const uids = taskCardUids();
+        if (uids.length) { itemsR.expireContent(uids); scheduleContent(); }
+      }
+      return;
+    }
+    itemsR.setTaskChips(String(setting("task-chips", "full")));
+    if (betterTasksOn) return;
+    betterTasksOn = true;
+    // Attribute labels can be renamed in Better Tasks: once it answers, redraw the task cards that read them.
+    void bt.prime().then((names) => {
+      if (!names || disposed || readSetting("better-tasks") !== true) return;
+      setTaskAttrNames(names);
+      const uids = taskCardUids();
+      if (uids.length) { itemsR.expireContent(uids); scheduleContent(); }
+    });
+  };
+  applyTaskSettings();
   const edgesR = createEdgeLayer({
     doc,
     svg: edgesSvg,
@@ -1606,7 +1636,7 @@ export function mountBoardView({
     const b = board();
     const item = uid ? b?.items.get(uid) : null;
     switch (kind) {
-      case "canvas": return { canPaste: true, snapshots: b?.snapshots || [] };
+      case "canvas": return { canPaste: true, snapshots: b?.snapshots || [], taskTool: readSetting("task-tool") === true };
       case "board-menu": return { snapshots: b?.snapshots || [], dock: b?.plexus?.dock };
       case "card": {
         let queryText = item?.string || "";
@@ -1948,6 +1978,64 @@ export function mountBoardView({
     chrome.toolbar.setPending?.(pendingStyle);
   };
   let tooltipCheck = () => {};
+  const blockTextareaFocused = (uid) => {
+    const active = doc.activeElement;
+    if (String(active?.tagName || "").toLowerCase() !== "textarea") return false;
+    if (itemsR.editingUid?.() === uid) return true;
+    const owner = typeof active.closest === "function" ? active.closest("[data-uid]") : null;
+    const id = owner?.getAttribute?.("data-uid") || owner?.dataset?.uid;
+    return id === uid;
+  };
+  // Named swatch in tag mode: one group holds the string rewrite and the fill clear.
+  const setHighlighterTag = async (name) => {
+    if (disposed || typeof name !== "string" || !/^[A-Za-z0-9_]+$/.test(name)) return;
+    const item = barCard();
+    if (!item) return;
+    const uid = item.uid;
+    if (blockTextareaFocused(uid)) return;
+    let current = null;
+    try { current = host?.blockString?.(uid); } catch { current = null; }
+    if (typeof current !== "string") current = typeof item.string === "string" ? item.string : "";
+    const next = rewriteBgTag(current, name);
+    const clearFill = async () => {
+      if (typeof session?.setItemStyle === "function") {
+        await session.setItemStyle([uid], { fill: null });
+        return;
+      }
+      if (typeof host?.pullProps !== "function" || typeof host?.updateProps !== "function") return;
+      const full = readPlexus(host.pullProps(uid));
+      if (!full || !Object.prototype.hasOwnProperty.call(full, "fill")) return;
+      const props = { ...full };
+      delete props.fill;
+      await host.updateProps(uid, props);
+    };
+    const write = async () => {
+      if (typeof session?.setString === "function") await session.setString(uid, next);
+      else if (typeof host?.updateString === "function") await host.updateString(uid, next);
+      await clearFill();
+    };
+    if (typeof host?.group === "function") await host.group(write);
+    else await write();
+  };
+  // The gear stores the board flag. updateProps replaces the whole plexus, so the copy keeps every key.
+  const writeHighlighterFlag = async (on) => {
+    if (disposed) return;
+    const flag = on === true;
+    let base = null;
+    try {
+      if (typeof host?.pullProps === "function") base = readPlexus(host.pullProps(boardUid));
+    } catch { base = null; }
+    const live = board()?.plexus;
+    if (!base || typeof base !== "object") base = live && typeof live === "object" ? live : null;
+    if (live && typeof live === "object" && live.v === 2 && (!base || base.v !== 2)) base = live;
+    if (!base || typeof base !== "object") return;
+    if (board()?.enhanced && base.v !== 2) return;
+    if (base.highlighterTags === flag) return;
+    const next = { ...base, highlighterTags: flag };
+    if (live && typeof live === "object") live.highlighterTags = flag;
+    if (typeof host?.updateProps !== "function") return;
+    try { await host.updateProps(boardUid, next); } catch { /* leave the board mounted */ }
+  };
   const chrome = createChrome({
     doc,
     root,
@@ -1982,6 +2070,9 @@ export function mountBoardView({
         if (uids.length) void session.setColor?.(uids, c);
         else setPending("color", c);
       },
+      onTag: (name) => { void setHighlighterTag(name); },
+      onGear: (flag) => { void writeHighlighterFlag(flag); },
+      tagMode: () => board()?.plexus?.highlighterTags === true,
       setLook: (look) => {
         if (selection.items.length) { for (const uid of selection.items) void session.setLook?.(uid, look); }
         else setPending("look", look);
@@ -2499,7 +2590,7 @@ export function mountBoardView({
   };
 
   // ------------------------------------------------------------ controller
-  const shortcutSheet = createShortcutSheet({ doc, root });
+  const shortcutSheet = createShortcutSheet({ doc, root, settings: settingsProxy });
   const actions = {
     board,
     rects,
@@ -2744,7 +2835,7 @@ export function mountBoardView({
     return false;
   };
 
-  const ctl = createInteractions({ actions, settings });
+  const ctl = createInteractions({ actions, settings: settingsProxy });
   ctl.setTool("select");
 
   // ------------------------------------------------------------ DOM events → controller
@@ -2854,6 +2945,7 @@ export function mountBoardView({
     if (next != null) session.setString?.(uid, next);
   };
   const completeLightCheck = async (uid, box) => {
+    if (readSetting("better-tasks") !== true) return;
     const item = board()?.items?.get(uid);
     if (!item || !isTaskString(item.string)) return;
     const wasDone = taskState(item.string) === "DONE";
@@ -3160,6 +3252,8 @@ export function mountBoardView({
       return;
     }
     if (outsideQuiet) { outsideQuiet(); outsideQuiet = null; itemsR.quiet(false); }
+    // Nothing selected and the key is outside every board: do not read the model.
+    if (boardKeyIsOutside(event.target, selection.items.length > 0)) return;
     // Outline mode is real Roam blocks. Canvas shortcuts stay off so a key there is not a board command.
     if (outlineMode && !event.target?.closest?.(".pxd-mode")) return;
     if (tableMode && !event.target?.closest?.(".pxd-toolbar__table")) return;
@@ -3359,14 +3453,25 @@ export function mountBoardView({
     host,
     getBoard: board,
   });
-  kanbanCtl = mountKanban({
-    doc,
-    root,
-    host,
-    bt,
-    completeTask: (uid) => taskDone.complete(uid),
-    getBoard: board,
-  });
+  let kanbanBtOn = null;
+  const syncKanbanTask = () => {
+    const on = readSetting("better-tasks") === true;
+    if (kanbanBtOn === on) return;
+    const wasOpen = kanbanMode;
+    kanbanCtl.dispose();
+    const next = mountKanban({
+      doc,
+      root,
+      host,
+      bt,
+      getBoard: board,
+      ...(on ? { completeTask: (uid) => taskDone.complete(uid) } : {}),
+    });
+    kanbanCtl = next;
+    kanbanBtOn = on;
+    if (wasOpen) kanbanCtl.open();
+  };
+  syncKanbanTask();
   laterCtl = mountLater({
     doc,
     root,
@@ -3676,6 +3781,8 @@ export function mountBoardView({
       chrome.toolbar.applyControls?.();
       itemsR.setShowBadges(flag("show-card-badges", true));
       applyTaskSettings();
+      if (readSetting("task-tool") !== true && ctl.getTool() === "task") ctl.setTool("select");
+      syncKanbanTask();
       dirty.links = true;
       scheduleContent();
       scheduleBadges(0);

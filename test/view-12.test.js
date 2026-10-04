@@ -1770,7 +1770,7 @@ test("UI-9: the version badge shows the bundled changelog entry", async () => {
 });
 
 test("UI-8: ? opens the shortcut sheet from the one shortcut table", async () => {
-  const f = mountFixture({ viewOptions: { autofocus: false } });
+  const f = mountFixture({ settings: { "task-tool": true }, viewOptions: { autofocus: false } });
   try {
     await f.flush();
     f.root.focus();
@@ -2421,6 +2421,7 @@ test("RG-2: a page card drawer drags one mention out and the source string stays
 test("RG-5: a due chip and overdue border stay read-only when the TODO flips", async () => {
   const due = "BT_attrDue:: [[January 1st, 2020]]";
   const f = mountFixture({
+    settings: { "better-tasks": true },
     extra: [{
       ":block/uid": "todoRG501",
       ":block/string": "{{[[TODO]]}} ship rg5",

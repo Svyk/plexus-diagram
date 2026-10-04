@@ -119,7 +119,7 @@ export function buildMenu(kind, ctx = {}) {
     case "canvas":
       return [
         make("new-card", "New card", { hint: "N" }),
-        make("new-task", "New task", { hint: "K" }),
+        ...(c.taskTool === false ? [] : [make("new-task", "New task", { hint: "K" })]),
         make("new-text", "New text", { hint: "T" }),
         make("new-sticky", "New sticky"),
         make("new-section", "New section", { hint: "G" }),

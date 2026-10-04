@@ -66,27 +66,28 @@
   cursor: pointer;
 }
 
-/* RF-5 (2.4): page cards scroll inside, so their resize grips are a generous 12px band that sits above the
-   scrollbar; the corner is 16px and never lets the scrollbar take it. */
+/* RF-5 (2.4), PO-5 (2.5): page cards scroll inside, so their resize grips are a generous 12px band that sits above
+   the scrollbar; the corner is 16px and never lets the scrollbar take it. Every size is screen px: the board root
+   publishes --pxd-inv-zoom (1/zoom) and the world scale turns it back into the same on-screen size. */
 .pxd-root .pxd-item.pxd-item--page > .pxd-grip {
   z-index: 4;
 }
 
 .pxd-root .pxd-item.pxd-item--page > .pxd-grip.pxd-grip--right {
-  right: -6px;
-  width: 12px;
+  right: calc(-6px * var(--pxd-inv-zoom, 1));
+  width: calc(12px * var(--pxd-inv-zoom, 1));
 }
 
 .pxd-root .pxd-item.pxd-item--page > .pxd-grip.pxd-grip--bottom {
-  bottom: -6px;
-  height: 12px;
+  bottom: calc(-6px * var(--pxd-inv-zoom, 1));
+  height: calc(12px * var(--pxd-inv-zoom, 1));
 }
 
 .pxd-root .pxd-item.pxd-item--page > .pxd-grip.pxd-grip--corner {
-  right: -6px;
-  bottom: -6px;
-  width: 16px;
-  height: 16px;
+  right: calc(-6px * var(--pxd-inv-zoom, 1));
+  bottom: calc(-6px * var(--pxd-inv-zoom, 1));
+  width: calc(16px * var(--pxd-inv-zoom, 1));
+  height: calc(16px * var(--pxd-inv-zoom, 1));
 }
 
 /* Hand tool: grips show on hover so it is clear a press resizes. */

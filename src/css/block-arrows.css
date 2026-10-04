@@ -58,9 +58,10 @@
 }
 
 .pxd-root .pxd-edge__end {
+  r: calc(6px * var(--pxd-inv-zoom, 1));
   fill: var(--pxd-card);
   stroke: var(--pxd-accent);
-  stroke-width: 2px;
+  stroke-width: calc(2px * var(--pxd-inv-zoom, 1));
   cursor: grab;
   pointer-events: all;
 }

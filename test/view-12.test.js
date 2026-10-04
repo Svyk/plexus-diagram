@@ -144,9 +144,9 @@ const toastText = (f) => f.root.querySelector(".pxd-toast__text")?.textContent ?
 const settleWait = async (f) => { await tick(140); f.stub.flushFrames(); };
 
 function countSetProperty(el) {
-  const counter = { n: 0 };
+  const counter = { n: 0, inv: 0 };
   const original = el.style.setProperty;
-  el.style.setProperty = (...args) => { counter.n += 1; return original.apply(el.style, args); };
+  el.style.setProperty = (...args) => { if (args[0] === "--pxd-inv-zoom") counter.inv += 1; else counter.n += 1; return original.apply(el.style, args); };
   return counter;
 }
 
@@ -2663,5 +2663,39 @@ test("dock options: sticky, section and shape each keep their own pending style 
   } finally {
     f.view.dispose();
     f.restore();
+  }
+});
+
+
+// ------------------------------------------------------------------ PO-5 screen-constant grips
+test("PO-5: --pxd-inv-zoom is 1/zoom clamped to 0.25..4, written once per zoom change and never on a pan", async () => {
+  const f = mountFixture({ vp: { x: 0, y: 0, zoom: 0.5 } });
+  try {
+    await f.flush();
+    assert.equal(f.root.style["--pxd-inv-zoom"], "2", "published at mount");
+    const counter = countSetProperty(f.root);
+    for (let i = 0; i < 5; i += 1) {
+      f.stub.dispatch(f.root.querySelector(".pxd-viewport"), "wheel", { deltaX: 12, deltaY: 7, clientX: 300, clientY: 300 });
+      f.stub.flushFrames();
+    }
+    assert.equal(counter.inv, 0, "panning writes nothing");
+    key(f, "=", { ctrlKey: true });
+    f.stub.flushFrames();
+    assert.equal(counter.inv, 1, "one write for one zoom step");
+    near(Number(f.root.style["--pxd-inv-zoom"]), 1 / f.view.state().zoom, 1e-3);
+    key(f, "=", { ctrlKey: true });
+    f.stub.flushFrames();
+    assert.equal(counter.inv, 2);
+  } finally {
+    f.view.dispose?.();
+    f.restore();
+  }
+});
+
+test("PO-5: the grips, ports and end handles size themselves from --pxd-inv-zoom with calc()", () => {
+  const css = readFileSync(new URL("../extension.css", import.meta.url), "utf8");
+  assert.equal(/--pxd-ui\b/.test(css), false, "the old zoom-out-only variable is gone from the CSS");
+  for (const rule of [/\.pxd-port \{[^}]*width: calc\(12px \* var\(--pxd-inv-zoom, 1\)\)/, /\.pxd-grip--right \{[^}]*width: calc\(8px \* var\(--pxd-inv-zoom, 1\)\)/, /\.pxd-grip--corner \{[^}]*width: calc\(14px \* var\(--pxd-inv-zoom, 1\)\)/, /\.pxd-edge__end \{[^}]*r: calc\(6px \* var\(--pxd-inv-zoom, 1\)\)/]) {
+    assert.match(css, rule);
   }
 });

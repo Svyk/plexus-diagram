@@ -7,6 +7,7 @@ import { fileURLToPath } from "node:url";
 const PORT = process.env.CDP_PORT || 9223;
 const sel = process.argv[2] || "Readwisenotes - ";
 const KEYS = 200;
+const VIEW = process.env.BENCH_VIEW === "page" ? "page" : "block";
 const sentence = "the quick brown fox jumps over the lazy dog ";
 const text = sentence.repeat(Math.ceil(KEYS / sentence.length)).slice(0, KEYS);
 
@@ -102,9 +103,11 @@ async function typeKeys(ws) {
   };
 }
 
-async function clickEditor(ws) {
+async function clickEditor(ws, uid) {
+  const pick = VIEW === "page" ? `document.querySelector('.rm-block__input[id$="-${uid}"], textarea[id$="-${uid}"]')` : `document.querySelector("textarea.rm-block__input, .rm-block__input")`;
   const box = JSON.parse(await evaluate(ws, `(() => {
-    const el = document.querySelector("textarea.rm-block__input, .rm-block__input");
+    const el = ${pick};
+    if (el) el.scrollIntoView({ block: "center" });
     if (!el) return "null";
     const b = el.getBoundingClientRect();
     return JSON.stringify({ x: b.x + b.width / 2, y: b.y + Math.min(b.height / 2, 14) });
@@ -130,26 +133,27 @@ async function main() {
   }
   const title = await evaluate(ws, `document.title`);
   // Scratch block: made on Test Lab for this run and ledgered (ledger cleanup removes it afterwards).
-  const uid = await evaluate(ws, `(async () => {
+  const uid = process.env.BENCH_SCRATCH || await evaluate(ws, `(async () => {
     const api = window.roamAlphaAPI;
     const page = "Plexus Diagram/Test Lab";
     await api.ui.mainWindow.openPage({ page: { title: page } });
     await new Promise((r) => setTimeout(r, 400));
     const pageUid = api.q('[:find ?u . :where [?p :node/title "' + page + '"] [?p :block/uid ?u]]');
     const uid = api.util.generateUID();
-    await api.data.block.create({ location: { "parent-uid": pageUid, order: "last" }, block: { uid, string: "" } });
-    await api.ui.mainWindow.openBlock({ block: { uid } });
-    await new Promise((r) => setTimeout(r, 500));
+    await api.data.block.create({ location: { "parent-uid": pageUid, order: ${JSON.stringify(VIEW)} === "page" ? 10 : "last" }, block: { uid, string: "" } });
+    if (${JSON.stringify(VIEW)} === "block") await api.ui.mainWindow.openBlock({ block: { uid } });
+    await new Promise((r) => setTimeout(r, 1500));
     return uid;
   })()`);
   const ledgerPath = fileURLToPath(new URL("./ledger.mjs", import.meta.url));
   spawnSync(process.execPath, [ledgerPath, "add", uid, "bench scratch block", "--page", "Plexus Diagram/Test Lab"], { encoding: "utf8" });
-  await clickEditor(ws);
+  await clickEditor(ws, uid);
+  const preRoots = live ? await evaluate(ws, `document.querySelectorAll(".pxd-root").length`) : null;
   const injected = live ? await typeKeys(ws) : null;
 
   const listeners = JSON.parse(await evaluate(ws, `(() => {
     const count = (target) => { try { const map = getEventListeners(target); return Object.values(map).reduce((n, list) => n + list.length, 0); } catch (e) { return String(e); } };
-    return JSON.stringify({ window: count(window), document: count(document), pxd: document.querySelectorAll("[class*=pxd-]").length, watches: window.__plexusDiagram && window.__plexusDiagram.stats && window.__plexusDiagram.stats.watches });
+    return JSON.stringify({ window: count(window), document: count(document), pxd: document.querySelectorAll("[class*=pxd-]").length, roots: document.querySelectorAll(".pxd-root").length, chips: document.querySelectorAll(".pxd-relchip").length, watches: window.__plexusDiagram && window.__plexusDiagram.stats && window.__plexusDiagram.stats.watches });
   })()`));
 
   if (live) await evaluate(ws, `window.__pxdLive.unload().then(() => { delete window.__pxdLive; })`);
@@ -163,13 +167,13 @@ async function main() {
   await evaluate(ws, `(async () => {
     const api = window.roamAlphaAPI;
     await api.data.block.update({ block: { uid: ${JSON.stringify(uid)}, string: "" } });
-    await api.ui.mainWindow.openBlock({ block: { uid: ${JSON.stringify(uid)} } });
+    if (${JSON.stringify(VIEW)} === "block") await api.ui.mainWindow.openBlock({ block: { uid: ${JSON.stringify(uid)} } });
     await new Promise((r) => setTimeout(r, 400));
   })()`);
-  await clickEditor(ws);
+  await clickEditor(ws, uid);
   const unloaded = await typeKeys(ws);
 
-  const out = { title, injected, listenersBeforeUnload: listeners, afterUnload, unloadedListeners, unloaded, deltaMeanMs: injected && unloaded.meanMs != null ? Math.round((injected.meanMs - unloaded.meanMs) * 100) / 100 : null };
+  const out = { title, preRoots, injected, listenersBeforeUnload: listeners, afterUnload, unloadedListeners, unloaded, deltaMeanMs: injected && unloaded.meanMs != null ? Math.round((injected.meanMs - unloaded.meanMs) * 100) / 100 : null };
   writeFileSync(new URL("../../.live/bench.json", import.meta.url), JSON.stringify(out, null, 1));
   console.log(JSON.stringify(out, null, 1));
   ws.close();

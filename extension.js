@@ -125,6 +125,7 @@ function lodFonts(zoom) {
     ui: clampNum(1 / zoom, 1, 4)
   };
 }
+var invZoom = (zoom) => Math.round(clampNum(1 / (Number(zoom) > 0 ? Number(zoom) : 1), 0.25, 4) * 1e4) / 1e4;
 var CONE = 68 * Math.PI / 180;
 function nearestInDirection(rects, fromUid, dir, { candidates = null } = {}) {
   const src = rects.get(fromUid);
@@ -17605,9 +17606,16 @@ function mountBoardView({
     root.style.setProperty("--pxd-overview-font", `${f.section}px`);
     itemsR.setLod(tier, vp.zoom);
   };
+  let invZoomAt = 0;
+  const paintInvZoom = () => {
+    if (vp.zoom === invZoomAt) return;
+    invZoomAt = vp.zoom;
+    root.style.setProperty("--pxd-inv-zoom", String(invZoom(vp.zoom)));
+  };
   const applyLod = () => {
     tier = lodTier(vp.zoom, tier, { threshold: mapThreshold() });
     paintTier();
+    paintInvZoom();
   };
   const scheduleContent = () => {
     if (disposed || gesturing || !board2()) return;
@@ -20642,6 +20650,7 @@ function mountBoardView({
     if (dirty.viewport) {
       world.style.transform = `translate(${vp.x}px, ${vp.y}px) scale(${vp.zoom})`;
       itemsR.setZoom(vp.zoom);
+      paintInvZoom();
       const nextTier = lodTier(vp.zoom, tier, { threshold: mapThreshold() });
       if (nextTier !== tier) {
         tier = nextTier;
@@ -21027,6 +21036,8 @@ function mountBoardView({
 // src/relchips.js
 var CHIP_CLASS = "pxd-relchip";
 var POP_CLASS = "pxd-relpop";
+var CRUMB_CLASS = "pxd-relcrumb";
+var CRUMB_TIP = "Open the connection preview";
 var SCAN_CAP = 60;
 var NAME_MAX = 28;
 var BLOCK_MAX = 24;
@@ -21082,7 +21093,77 @@ function relationOf(board2, edgeUid, { blockText } = {}) {
     boardTitle: board2.title || parseBoardTitle(board2.string) || "Untitled board"
   };
 }
-function previewModel(board2, edgeUid, { pad: pad2 = 48, maxOthers = 24, blockText } = {}) {
+var previewFont = (viewWidth) => Math.max(12, Math.round(viewWidth / 32));
+var ROW_PAD = 10;
+var clamp01 = (n2) => Number.isFinite(n2) ? Math.min(1, Math.max(0, n2)) : 0.5;
+function rowBarRect(rect, frac, font) {
+  const head = font * 2 + 4;
+  const h = Math.min(font + 8, Math.max(4, rect.h - 4));
+  const top = rect.y + Math.min(head, Math.max(0, rect.h - h - 2));
+  const span = Math.max(0, rect.y + rect.h - 6 - top - h);
+  const y = Math.min(rect.y + rect.h - h - 2, top + clamp01(frac) * span);
+  const x = rect.x + ROW_PAD;
+  const w = Math.max(4, rect.w - 2 * ROW_PAD);
+  return { x, y, w, h, textX: x + 8, textY: y + h - Math.max(3, Math.round(font * 0.28)), maxChars: Math.max(0, Math.floor((w - 16) / (font * 0.58))) };
+}
+var POP_GAP = 8;
+function placePopover({ anchor, size, viewport, bounds, gap = POP_GAP } = {}) {
+  const box2 = {
+    left: Math.max(viewport.left ?? 0, bounds?.left ?? -Infinity),
+    top: Math.max(viewport.top ?? 0, bounds?.top ?? -Infinity),
+    right: Math.min(viewport.right, bounds?.right ?? Infinity),
+    bottom: Math.min(viewport.bottom, bounds?.bottom ?? Infinity)
+  };
+  const edge = 8;
+  const room = {
+    below: box2.bottom - edge - (anchor.bottom + gap),
+    above: anchor.top - gap - (box2.top + edge),
+    right: box2.right - edge - (anchor.right + gap),
+    left: anchor.left - gap - (box2.left + edge)
+  };
+  const fits = (side2) => side2 === "below" || side2 === "above" ? room[side2] >= size.h : room[side2] >= size.w;
+  let side = ["below", "above", "right", "left"].find(fits);
+  let scroll = false;
+  if (!side) {
+    side = Object.keys(room).reduce((best, k) => room[k] > room[best] ? k : best, "below");
+    scroll = true;
+  }
+  const vertical = side === "below" || side === "above";
+  const width = Math.min(size.w, Math.max(80, box2.right - box2.left - 2 * edge));
+  const height = scroll ? Math.max(80, Math.min(size.h, room[side])) : size.h;
+  const clampX = (x) => Math.max(box2.left + edge, Math.min(x, box2.right - edge - width));
+  const clampY = (y) => Math.max(box2.top + edge, Math.min(y, box2.bottom - edge - height));
+  let left;
+  let top;
+  if (vertical) {
+    left = clampX(anchor.left);
+    top = side === "below" ? anchor.bottom + gap : anchor.top - gap - height;
+  } else {
+    top = clampY(anchor.top);
+    left = side === "right" ? anchor.right + gap : anchor.left - gap - width;
+  }
+  return { side, left: Math.round(left), top: Math.round(top), width: Math.round(width), maxHeight: scroll ? Math.round(height) : null, scroll };
+}
+function rowFraction(blocks, uid) {
+  const rows = [];
+  const walk = (list) => {
+    for (const c of list || []) {
+      const str2 = c?.[":block/string"] ?? c?.string ?? "";
+      if (attrNameOf(str2) === "BT_attrDue") continue;
+      rows.push(c?.[":block/uid"] ?? c?.uid ?? "");
+      if (c?.open !== false && c?.[":block/open"] !== false) walk(c?.[":block/children"] ?? c?.children);
+    }
+  };
+  walk(blocks);
+  const i = rows.indexOf(uid);
+  return i < 0 || !rows.length ? null : (i + 0.5) / rows.length;
+}
+var rowEnd = (item, other, bar) => {
+  const side = other.x + other.w / 2 >= item.x + item.w / 2 ? "right" : "left";
+  const point = { x: side === "right" ? item.x + item.w : item.x, y: bar.y + bar.h / 2 };
+  return { side, point, inner: blockInner({ rect: item, side, point, rowLeft: ROW_PAD, rowRight: item.w - ROW_PAD }) };
+};
+function previewModel(board2, edgeUid, { pad: pad2 = 48, maxOthers = 24, blockText, rowFrac } = {}) {
   const edge = board2?.edges?.get(edgeUid);
   if (!edge) return null;
   const rects = worldRects(board2);
@@ -21107,7 +21188,41 @@ function previewModel(board2, edgeUid, { pad: pad2 = 48, maxOthers = 24, blockTe
     }
     cards.push({ uid: item.uid, type: item.type, rect: r, title: label(item), role });
   }
-  const geo = edgePath({ a: routed.a, b: routed.b, fromSide: edge.fromSide || "auto", toSide: edge.toSide || "auto", route: edge.route || "curve" });
+  const font = previewFont(view.w);
+  const textOf = (uid) => {
+    try {
+      const t = blockText?.(uid);
+      return typeof t === "string" && t ? t : "block";
+    } catch {
+      return "block";
+    }
+  };
+  const barFor = (itemUid, blockUid2) => {
+    const item = board2.items.get(itemUid);
+    if (!blockUid2 || !item || item.type === "section" || routed.from === routed.to) return null;
+    let frac = null;
+    try {
+      frac = rowFrac?.(item, blockUid2);
+    } catch {
+      frac = null;
+    }
+    const rect = itemUid === edge.from ? a : b;
+    const box2 = rowBarRect(rect, frac, font);
+    return { ...box2, frac: clamp01(frac), text: textOf(blockUid2), label: clip(textOf(blockUid2), box2.maxChars) };
+  };
+  const fromBar = routed.from === edge.from ? barFor(edge.from, edge.fromBlock) : null;
+  const toBar = routed.to === edge.to ? barFor(edge.to, edge.toBlock) : null;
+  const fromEnd = fromBar ? rowEnd(a, b, fromBar) : null;
+  const toEnd = toBar ? rowEnd(b, a, toBar) : null;
+  const geo = edgePath({
+    a: routed.a,
+    b: routed.b,
+    fromSide: fromEnd?.side || edge.fromSide || "auto",
+    toSide: toEnd?.side || edge.toSide || "auto",
+    route: edge.route || "curve",
+    fromPoint: fromEnd?.point,
+    toPoint: toEnd?.point
+  });
   const named = PALETTE.includes(edge.color);
   return {
     viewBox: view,
@@ -21120,22 +21235,15 @@ function previewModel(board2, edgeUid, { pad: pad2 = 48, maxOthers = 24, blockTe
     dir: edge.dir,
     color: named ? edge.color : "",
     hex: named ? "" : hexColor(edge.color) || "",
-    toBlockText: edge.toBlock ? (() => {
-      try {
-        const t = blockText?.(edge.toBlock);
-        return typeof t === "string" && t ? t : "block";
-      } catch {
-        return "block";
-      }
-    })() : "",
-    fromBlockText: edge.fromBlock ? (() => {
-      try {
-        const t = blockText?.(edge.fromBlock);
-        return typeof t === "string" && t ? t : "block";
-      } catch {
-        return "block";
-      }
-    })() : ""
+    font,
+    toBar,
+    fromBar,
+    fromCard: edge.from,
+    toCard: edge.to,
+    toInner: toEnd?.inner || null,
+    fromInner: fromEnd?.inner || null,
+    toBlockText: edge.toBlock ? textOf(edge.toBlock) : "",
+    fromBlockText: edge.fromBlock ? textOf(edge.fromBlock) : ""
   };
 }
 function createConnectionCache({ host } = {}) {
@@ -21185,6 +21293,16 @@ function createRelChips({ doc = globalThis.document, win = globalThis.window, ho
       return null;
     }
   };
+  const rowFrac = (item, blockUid2) => {
+    if (item?.target?.kind !== "page") return null;
+    let outline = null;
+    try {
+      outline = host?.pageOutline?.(item.target.title, 400);
+    } catch {
+      outline = null;
+    }
+    return rowFraction(outline?.blocks, blockUid2);
+  };
   const modelOf = (boardUid) => {
     const hit = models.get(boardUid);
     if (hit && Date.now() - hit.at < MODEL_TTL_MS) return hit.board;
@@ -21217,7 +21335,9 @@ function createRelChips({ doc = globalThis.document, win = globalThis.window, ho
     const svg = svgEl("svg", { class: "pxd-relpop__map", viewBox: `${v.x} ${v.y} ${v.w} ${v.h}`, preserveAspectRatio: "xMidYMid meet", role: "img", "aria-label": "Where the connection sits on the board" }, parent);
     const line = svgEl("g", { class: `pxd-relpop__edge${model.color ? ` pxd-c-${model.color}` : ""}` }, null);
     if (model.hex) line.style.setProperty("--pxd-line", model.hex);
-    const font = Math.max(12, Math.round(v.w / 32));
+    const font = model.font || previewFont(v.w);
+    let clips = 0;
+    const rects = /* @__PURE__ */ new Map();
     for (const card2 of model.cards) {
       const r = card2.rect;
       const g = svgEl("g", { class: `pxd-relpop__card pxd-relpop__card--${card2.role}${card2.type === "section" ? " pxd-relpop__card--section" : ""}` }, svg);
@@ -21226,23 +21346,36 @@ function createRelChips({ doc = globalThis.document, win = globalThis.window, ho
       svgEl("rect", { x: r.x, y: r.y, width: r.w, height: r.h, rx: 8 }, g);
       if (card2.title && card2.type !== "section") {
         const t = svgEl("text", { x: r.x + 10, y: r.y + font + 6, "font-size": font }, g);
-        t.textContent = clip(card2.title, Math.max(8, Math.floor(r.w / (font * 0.55))));
+        t.textContent = clip(card2.title, Math.max(8, Math.floor((r.w - 20) / (font * 0.55))));
       }
+      rects.set(card2.uid, r);
     }
-    svg.append(line);
     svgEl("path", { class: "pxd-relpop__line", d: model.path }, line);
-    if (model.dir !== "none") svgEl("path", { class: "pxd-relpop__head", d: arrowHeadPath(model.end, model.endAngle, arrowSize(1, 2) * 1.6) }, line);
-    if (model.dir === "two") svgEl("path", { class: "pxd-relpop__head", d: arrowHeadPath(model.start, model.startAngle + Math.PI, arrowSize(1, 2) * 1.6) }, line);
-    if (model.toBlockText) {
-      const pill = svgEl("g", { class: "pxd-relpop__row" }, line);
-      const room = Math.max(font * 4, model.end.x - 6 - (v.x + 4));
-      const chars = Math.max(6, Math.min(30, Math.floor((room - 16) / (font * 0.58))));
-      const text2 = `▸ ${clip(model.toBlockText, chars)}`;
-      const w = Math.min(room, Math.max(60, text2.length * font * 0.58 + 16));
-      svgEl("rect", { x: model.end.x - w - 6, y: model.end.y - font - 10, width: w, height: font + 8, rx: (font + 8) / 2 }, pill);
-      const t = svgEl("text", { x: model.end.x - w + 2, y: model.end.y - 6, "font-size": font }, pill);
-      t.textContent = text2;
-    }
+    const bar = (b, inner, cardUid, arrowEnd) => {
+      if (!b) return;
+      const r = rects.get(cardUid);
+      const g = svgEl("g", { class: `pxd-relpop__row${model.color ? ` pxd-c-${model.color}` : ""}` }, svg);
+      if (model.hex) g.style.setProperty("--pxd-line", model.hex);
+      if (r) {
+        clips += 1;
+        const id = `pxd-relclip-${Math.round(r.x)}-${Math.round(r.y)}-${clips}`;
+        const cp = svgEl("clipPath", { id }, g);
+        svgEl("rect", { x: r.x, y: r.y, width: r.w, height: r.h, rx: 8 }, cp);
+        g.setAttribute("clip-path", `url(#${id})`);
+      }
+      svgEl("rect", { x: b.x, y: b.y, width: b.w, height: b.h, rx: 4 }, g);
+      const t = svgEl("text", { x: b.textX, y: b.textY, "font-size": font }, g);
+      t.textContent = b.label;
+      if (inner) {
+        svgEl("path", { class: "pxd-relpop__inner", d: `M${inner.from.x} ${inner.from.y}L${inner.tip.x} ${inner.tip.y}` }, line);
+        if (arrowEnd) svgEl("path", { class: "pxd-relpop__head", d: arrowHeadPath(inner.tip, inner.angle, arrowSize(1, 2) * 1.6) }, line);
+      }
+    };
+    bar(model.fromBar, model.fromInner, model.fromCard, model.dir === "two");
+    bar(model.toBar, model.toInner, model.toCard, model.dir !== "none");
+    if (model.dir !== "none" && !model.toInner) svgEl("path", { class: "pxd-relpop__head", d: arrowHeadPath(model.end, model.endAngle, arrowSize(1, 2) * 1.6) }, line);
+    if (model.dir === "two" && !model.fromInner) svgEl("path", { class: "pxd-relpop__head", d: arrowHeadPath(model.start, model.startAngle + Math.PI, arrowSize(1, 2) * 1.6) }, line);
+    svg.append(line);
     return svg;
   };
   const openOnBoard = (boardUid, edgeUid) => {
@@ -21274,7 +21407,7 @@ function createRelChips({ doc = globalThis.document, win = globalThis.window, ho
       }
     });
   };
-  const openPop = (chip, edgeUid) => {
+  const openPop = (chip, edgeUid, avoid) => {
     closePop();
     const boardUid = cache.boardOf(edgeUid);
     const board2 = boardUid ? modelOf(boardUid) : null;
@@ -21321,15 +21454,41 @@ function createRelChips({ doc = globalThis.document, win = globalThis.window, ho
       }
     });
     doc.body.append(el);
-    const cr = chip.getBoundingClientRect?.() || { left: 0, top: 0, bottom: 0 };
-    const vw = win?.innerWidth || 1024;
-    const vh = win?.innerHeight || 768;
-    const w = el.offsetWidth || 380;
-    const h = el.offsetHeight || 300;
-    const left = Math.max(8, Math.min(cr.left, vw - w - 8));
-    const top = cr.bottom + 6 + h > vh - 8 ? Math.max(8, cr.top - h - 6) : cr.bottom + 6;
-    el.style.left = `${Math.round(left)}px`;
-    el.style.top = `${Math.round(top)}px`;
+    const scrollParent = (node2) => {
+      for (let n2 = node2?.parentElement; n2; n2 = n2.parentElement) {
+        const o = win?.getComputedStyle?.(n2)?.overflowY;
+        if (o === "auto" || o === "scroll") return n2;
+      }
+      return null;
+    };
+    const holder = scrollParent(chip);
+    const place = () => {
+      if (chip.isConnected === false) {
+        closePop();
+        return;
+      }
+      const rects = [chip, ...[].concat(avoid || [])].map((n2) => n2?.getBoundingClientRect?.()).filter(Boolean);
+      const cr = rects.length > 1 ? { left: Math.min(...rects.map((r) => r.left)), top: Math.min(...rects.map((r) => r.top)), right: Math.max(...rects.map((r) => r.right)), bottom: Math.max(...rects.map((r) => r.bottom)) } : rects[0] || { left: 0, top: 0, right: 0, bottom: 0 };
+      const vw = win?.innerWidth || 1024;
+      const vh = win?.innerHeight || 768;
+      const own = rects[0] || cr;
+      if (own.bottom < 0 || own.top > vh || own.right < 0 || own.left > vw) {
+        closePop();
+        return;
+      }
+      const hr = holder?.getBoundingClientRect?.();
+      const at = placePopover({
+        anchor: cr,
+        size: { w: el.offsetWidth || 380, h: pop?.natural ?? (el.offsetHeight || 300) },
+        viewport: { left: 0, top: 0, right: vw, bottom: vh },
+        bounds: hr ? { left: hr.left, top: hr.top, right: hr.right, bottom: hr.bottom } : null
+      });
+      el.style.left = `${at.left}px`;
+      el.style.top = `${at.top}px`;
+      el.style.maxHeight = at.maxHeight ? `${at.maxHeight}px` : "";
+      el.style.overflowY = at.scroll ? "auto" : "";
+      el.setAttribute("data-side", at.side);
+    };
     const offs = [];
     const on = (target, type, fn, opts) => {
       target.addEventListener(type, fn, opts);
@@ -21344,19 +21503,31 @@ function createRelChips({ doc = globalThis.document, win = globalThis.window, ho
     on(doc, "pointerdown", (event) => {
       if (!el.contains?.(event.target) && !chip.contains?.(event.target)) closePop();
     }, true);
+    let queued = null;
+    const again = () => {
+      if (queued || !pop) return;
+      const id = win?.requestAnimationFrame?.(() => {
+        queued = null;
+        if (pop) place();
+      });
+      queued = () => win?.cancelAnimationFrame?.(id);
+    };
     on(win, "scroll", (event) => {
-      if (!el.contains?.(event.target)) closePop();
+      if (!el.contains?.(event.target)) again();
     }, { capture: true, passive: true });
-    on(win, "wheel", (event) => {
-      if (!el.contains?.(event.target)) closePop();
-    }, { capture: true, passive: true });
+    on(win, "resize", again, { passive: true });
+    offs.push(() => {
+      queued?.();
+      queued = null;
+    });
     let tooltip = null;
     try {
       tooltip = createTooltip({ doc, root: el, timers, setting });
     } catch {
       tooltip = null;
     }
-    pop = { el, offs, tooltip, chip };
+    pop = { el, offs, tooltip, chip, natural: el.offsetHeight || 300 };
+    place();
   };
   const buildChip = (edgeUid) => {
     const boardUid = cache.boardOf(edgeUid);
@@ -21375,20 +21546,71 @@ function createRelChips({ doc = globalThis.document, win = globalThis.window, ho
     chip.addEventListener("click", (event) => {
       stop(event);
       event.preventDefault?.();
-      openPop(chip, edgeUid);
+      openPop(chip, edgeUid, chip.parentElement?.querySelector?.(".rm-block-main"));
     });
     chip.addEventListener("keydown", (event) => {
       if (event.key === "Enter" || event.key === " ") {
         stop(event);
         event.preventDefault?.();
-        openPop(chip, edgeUid);
+        openPop(chip, edgeUid, chip.parentElement?.querySelector?.(".rm-block-main"));
       }
     });
     return chip;
   };
+  const crumbs = /* @__PURE__ */ new WeakSet();
+  const crumbOffs = [];
+  const crumbGlyphs = /* @__PURE__ */ new Set();
+  const plain = (event) => event.button === 0 && !event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey;
+  const crumbFor = (zoom) => {
+    if (disposed || !zoom || crumbs.has(zoom) || zoom.querySelector?.(`.${CRUMB_CLASS}`)) return;
+    const holder = zoom.parentElement;
+    const container = holder?.querySelector?.(".roam-block-container[data-block-uid]");
+    const edgeUid = container?.getAttribute?.("data-block-uid");
+    if (!edgeUid || !cache.has(edgeUid)) return;
+    crumbs.add(zoom);
+    const avoid = () => [container.querySelector?.(".rm-block-main") || container, container.querySelector?.(`.${CHIP_CLASS}`)].filter(Boolean);
+    const items = [...zoom.querySelectorAll?.(".rm-zoom-item") || []];
+    const glyph = doc.createElement("span");
+    glyph.className = CRUMB_CLASS;
+    glyph.textContent = "▦";
+    glyph.title = CRUMB_TIP;
+    glyph.setAttribute("role", "button");
+    glyph.setAttribute("tabindex", "0");
+    glyph.setAttribute("aria-label", CRUMB_TIP);
+    (items[items.length - 1] || zoom).append(glyph);
+    crumbGlyphs.add(glyph);
+    for (const el of [...items, glyph]) {
+      const swallow = (event) => {
+        if (plain(event)) stop(event);
+      };
+      const open = (event) => {
+        if (!plain(event)) return;
+        stop(event);
+        event.preventDefault?.();
+        openPop(el, edgeUid, avoid());
+      };
+      for (const type of ["pointerdown", "mousedown", "mouseup"]) {
+        el.addEventListener(type, swallow, true);
+        crumbOffs.push(() => el.removeEventListener(type, swallow, true));
+      }
+      el.addEventListener("click", open, true);
+      crumbOffs.push(() => el.removeEventListener("click", open, true));
+    }
+    const onKey = (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        stop(event);
+        event.preventDefault?.();
+        openPop(glyph, edgeUid, avoid());
+      }
+    };
+    glyph.addEventListener("keydown", onKey);
+    crumbOffs.push(() => glyph.removeEventListener("keydown", onKey));
+  };
   const attach2 = (input, edgeUid) => {
     const container = input.closest?.(".roam-block-container") || input.parentElement;
     if (!container) return;
+    const zoom = container.parentElement?.querySelector?.(".rm-zoom");
+    if (zoom) crumbFor(zoom);
     for (const child of container.children || []) if (child.classList?.contains(CHIP_CLASS) && child.getAttribute("data-edge") === edgeUid) return;
     const chip = buildChip(edgeUid);
     if (!chip) return;
@@ -21418,6 +21640,15 @@ function createRelChips({ doc = globalThis.document, win = globalThis.window, ho
       const uid = uidFromElementId(input.id, cache.uids());
       if (uid) attach2(input, uid);
     }
+    if (node2.classList?.contains("rm-zoom")) crumbFor(node2);
+    else if (typeof node2.querySelectorAll === "function") {
+      let n2 = 0;
+      for (const zoom of node2.querySelectorAll(".rm-zoom")) {
+        crumbFor(zoom);
+        n2 += 1;
+        if (n2 >= SCAN_CAP) break;
+      }
+    }
   };
   const start = () => {
     cache.load();
@@ -21434,10 +21665,13 @@ function createRelChips({ doc = globalThis.document, win = globalThis.window, ho
     closePop();
     for (const chip of chips) chip.remove();
     chips.clear();
+    for (const off of crumbOffs.splice(0)) off();
+    for (const glyph of crumbGlyphs) glyph.remove();
+    crumbGlyphs.clear();
     models.clear();
     cache.clear();
   };
-  return { start, scan, noteBoard, dispose, openPop, closePop, cache, chipCount: () => chips.size, isOpen: () => Boolean(pop) };
+  return { start, scan, noteBoard, dispose, openPop, closePop, cache, chipCount: () => chips.size, crumbCount: () => crumbGlyphs.size, isOpen: () => Boolean(pop) };
 }
 
 // src/settings.js

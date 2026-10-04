@@ -80,6 +80,9 @@ export function lodFonts(zoom) {
   };
 }
 
+// PO-5: world px per screen px, clamped. Grips, ports and end handles multiply their screen size by this.
+export const invZoom = (zoom) => Math.round(clampNum(1 / (Number(zoom) > 0 ? Number(zoom) : 1), 0.25, 4) * 10000) / 10000;
+
 const CONE = (68 * Math.PI) / 180;
 
 // Arrow-key navigation: the closest rect beyond the source center along `dir`, preferring a 68-degree cone.

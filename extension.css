@@ -590,15 +590,16 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   display: none;
 }
 
-/* --pxd-ui = clamp(1, 1/zoom, 4): keeps ports and grips at a usable on-screen size when zoomed out.
+/* --pxd-inv-zoom = clamp(0.25, 1/zoom, 4), set on the board root once per zoom change: ports and grips keep the
+   same on-screen size at every zoom (PO-5).
    Ports sit above the edge grips so the midpoint of an edge always connects. */
 .pxd-port {
   position: absolute;
-  width: calc(12px * var(--pxd-ui, 1));
-  height: calc(12px * var(--pxd-ui, 1));
-  margin: calc(-6px * var(--pxd-ui, 1)) 0 0 calc(-6px * var(--pxd-ui, 1));
+  width: calc(12px * var(--pxd-inv-zoom, 1));
+  height: calc(12px * var(--pxd-inv-zoom, 1));
+  margin: calc(-6px * var(--pxd-inv-zoom, 1)) 0 0 calc(-6px * var(--pxd-inv-zoom, 1));
   border-radius: 50%;
-  border: calc(2px * var(--pxd-ui, 1)) solid var(--pxd-accent);
+  border: calc(2px * var(--pxd-inv-zoom, 1)) solid var(--pxd-accent);
   box-sizing: border-box;
   background: var(--pxd-card);
   cursor: crosshair;
@@ -632,26 +633,26 @@ body.pxd-has-fullscreen .breadcrumbs-content {
 }
 
 .pxd-grip--right {
-  right: calc(-4px * var(--pxd-ui, 1));
-  top: 8px;
-  bottom: 8px;
-  width: calc(8px * var(--pxd-ui, 1));
+  right: calc(-4px * var(--pxd-inv-zoom, 1));
+  top: calc(8px * var(--pxd-inv-zoom, 1));
+  bottom: calc(8px * var(--pxd-inv-zoom, 1));
+  width: calc(8px * var(--pxd-inv-zoom, 1));
   cursor: ew-resize;
 }
 
 .pxd-grip--bottom {
-  left: 8px;
-  right: 8px;
-  bottom: calc(-4px * var(--pxd-ui, 1));
-  height: calc(8px * var(--pxd-ui, 1));
+  left: calc(8px * var(--pxd-inv-zoom, 1));
+  right: calc(8px * var(--pxd-inv-zoom, 1));
+  bottom: calc(-4px * var(--pxd-inv-zoom, 1));
+  height: calc(8px * var(--pxd-inv-zoom, 1));
   cursor: ns-resize;
 }
 
 .pxd-grip--corner {
-  right: calc(-5px * var(--pxd-ui, 1));
-  bottom: calc(-5px * var(--pxd-ui, 1));
-  width: calc(14px * var(--pxd-ui, 1));
-  height: calc(14px * var(--pxd-ui, 1));
+  right: calc(-5px * var(--pxd-inv-zoom, 1));
+  bottom: calc(-5px * var(--pxd-inv-zoom, 1));
+  width: calc(14px * var(--pxd-inv-zoom, 1));
+  height: calc(14px * var(--pxd-inv-zoom, 1));
   cursor: nwse-resize;
   border-right: 2px solid transparent;
   border-bottom: 2px solid transparent;
@@ -2398,9 +2399,10 @@ body.roam-body.dark .pxd-root.pxd-bg-pink {
 }
 
 .pxd-root .pxd-edge__end {
+  r: calc(6px * var(--pxd-inv-zoom, 1));
   fill: var(--pxd-card);
   stroke: var(--pxd-accent);
-  stroke-width: 2px;
+  stroke-width: calc(2px * var(--pxd-inv-zoom, 1));
   cursor: grab;
   pointer-events: all;
 }
@@ -4416,27 +4418,28 @@ body.roam-body.dark .pxd-root .pxd-present-hud,
   cursor: pointer;
 }
 
-/* RF-5 (2.4): page cards scroll inside, so their resize grips are a generous 12px band that sits above the
-   scrollbar; the corner is 16px and never lets the scrollbar take it. */
+/* RF-5 (2.4), PO-5 (2.5): page cards scroll inside, so their resize grips are a generous 12px band that sits above
+   the scrollbar; the corner is 16px and never lets the scrollbar take it. Every size is screen px: the board root
+   publishes --pxd-inv-zoom (1/zoom) and the world scale turns it back into the same on-screen size. */
 .pxd-root .pxd-item.pxd-item--page > .pxd-grip {
   z-index: 4;
 }
 
 .pxd-root .pxd-item.pxd-item--page > .pxd-grip.pxd-grip--right {
-  right: -6px;
-  width: 12px;
+  right: calc(-6px * var(--pxd-inv-zoom, 1));
+  width: calc(12px * var(--pxd-inv-zoom, 1));
 }
 
 .pxd-root .pxd-item.pxd-item--page > .pxd-grip.pxd-grip--bottom {
-  bottom: -6px;
-  height: 12px;
+  bottom: calc(-6px * var(--pxd-inv-zoom, 1));
+  height: calc(12px * var(--pxd-inv-zoom, 1));
 }
 
 .pxd-root .pxd-item.pxd-item--page > .pxd-grip.pxd-grip--corner {
-  right: -6px;
-  bottom: -6px;
-  width: 16px;
-  height: 16px;
+  right: calc(-6px * var(--pxd-inv-zoom, 1));
+  bottom: calc(-6px * var(--pxd-inv-zoom, 1));
+  width: calc(16px * var(--pxd-inv-zoom, 1));
+  height: calc(16px * var(--pxd-inv-zoom, 1));
 }
 
 /* Hand tool: grips show on hover so it is clear a press resizes. */
@@ -4945,10 +4948,10 @@ body.roam-body.dark .pxd-root,
   --pxd-rc-border: #d0d7de;
   --pxd-rc-text: #1f2937;
   --pxd-rc-muted: #5f6b7c;
-  --pxd-rc-accent: hsl(175 80% 30%);
+  --pxd-rc-accent: hsl(175 85% 24%);
   display: inline-block;
   box-sizing: border-box;
-  max-width: 100%;
+  max-width: calc(100% - 24px);
   margin: 2px 0 4px 24px;
   padding: 1px 8px;
   overflow: hidden;
@@ -5041,7 +5044,8 @@ body.roam-body.dark .pxd-relchip,
   stroke-width: 4px;
 }
 
-.pxd-relpop .pxd-relpop__line {
+.pxd-relpop .pxd-relpop__line,
+.pxd-relpop .pxd-relpop__inner {
   fill: none;
   stroke: var(--pxd-line, var(--pxd-edge));
   stroke-width: 4px;
@@ -5053,9 +5057,13 @@ body.roam-body.dark .pxd-relchip,
 }
 
 .pxd-relpop .pxd-relpop__row rect {
-  fill: var(--pxd-card);
+  fill: color-mix(in srgb, var(--pxd-line, var(--pxd-edge)) 14%, var(--pxd-card));
   stroke: var(--pxd-line, var(--pxd-edge));
   stroke-width: 2px;
+}
+
+.pxd-relpop .pxd-relpop__row text {
+  font-size-adjust: none;
 }
 
 .pxd-relpop .pxd-relpop__note,
@@ -5085,6 +5093,36 @@ body.roam-body.dark .pxd-relchip,
 .pxd-relpop .pxd-relpop__btn:hover,
 .pxd-relpop .pxd-relpop__btn:focus-visible {
   border-color: var(--pxd-accent);
+}
+
+/* PO-4 (2.5): the board glyph at the end of a connection block's breadcrumb. Lives outside every .pxd-root, so it
+   carries its own tokens like the chip. */
+.pxd-relcrumb {
+  --pxd-rc-accent: hsl(175 85% 24%);
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 4px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--pxd-rc-accent);
+  font-family: "Apple Symbols", "Segoe UI Symbol", system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.3;
+  cursor: pointer;
+  user-select: none;
+}
+
+.pxd-relcrumb:hover,
+.pxd-relcrumb:focus-visible {
+  border-color: var(--pxd-rc-accent);
+  outline: none;
+}
+
+.bp3-dark .pxd-relcrumb,
+body.bt-theme-dark .pxd-relcrumb,
+.rm-dark-theme .pxd-relcrumb,
+body.roam-body.dark .pxd-relcrumb {
+  --pxd-rc-accent: hsl(175 60% 55%);
 }
 
 .pxd-root .pxd-lens {

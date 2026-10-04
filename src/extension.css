@@ -590,15 +590,16 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   display: none;
 }
 
-/* --pxd-ui = clamp(1, 1/zoom, 4): keeps ports and grips at a usable on-screen size when zoomed out.
+/* --pxd-inv-zoom = clamp(0.25, 1/zoom, 4), set on the board root once per zoom change: ports and grips keep the
+   same on-screen size at every zoom (PO-5).
    Ports sit above the edge grips so the midpoint of an edge always connects. */
 .pxd-port {
   position: absolute;
-  width: calc(12px * var(--pxd-ui, 1));
-  height: calc(12px * var(--pxd-ui, 1));
-  margin: calc(-6px * var(--pxd-ui, 1)) 0 0 calc(-6px * var(--pxd-ui, 1));
+  width: calc(12px * var(--pxd-inv-zoom, 1));
+  height: calc(12px * var(--pxd-inv-zoom, 1));
+  margin: calc(-6px * var(--pxd-inv-zoom, 1)) 0 0 calc(-6px * var(--pxd-inv-zoom, 1));
   border-radius: 50%;
-  border: calc(2px * var(--pxd-ui, 1)) solid var(--pxd-accent);
+  border: calc(2px * var(--pxd-inv-zoom, 1)) solid var(--pxd-accent);
   box-sizing: border-box;
   background: var(--pxd-card);
   cursor: crosshair;
@@ -632,26 +633,26 @@ body.pxd-has-fullscreen .breadcrumbs-content {
 }
 
 .pxd-grip--right {
-  right: calc(-4px * var(--pxd-ui, 1));
-  top: 8px;
-  bottom: 8px;
-  width: calc(8px * var(--pxd-ui, 1));
+  right: calc(-4px * var(--pxd-inv-zoom, 1));
+  top: calc(8px * var(--pxd-inv-zoom, 1));
+  bottom: calc(8px * var(--pxd-inv-zoom, 1));
+  width: calc(8px * var(--pxd-inv-zoom, 1));
   cursor: ew-resize;
 }
 
 .pxd-grip--bottom {
-  left: 8px;
-  right: 8px;
-  bottom: calc(-4px * var(--pxd-ui, 1));
-  height: calc(8px * var(--pxd-ui, 1));
+  left: calc(8px * var(--pxd-inv-zoom, 1));
+  right: calc(8px * var(--pxd-inv-zoom, 1));
+  bottom: calc(-4px * var(--pxd-inv-zoom, 1));
+  height: calc(8px * var(--pxd-inv-zoom, 1));
   cursor: ns-resize;
 }
 
 .pxd-grip--corner {
-  right: calc(-5px * var(--pxd-ui, 1));
-  bottom: calc(-5px * var(--pxd-ui, 1));
-  width: calc(14px * var(--pxd-ui, 1));
-  height: calc(14px * var(--pxd-ui, 1));
+  right: calc(-5px * var(--pxd-inv-zoom, 1));
+  bottom: calc(-5px * var(--pxd-inv-zoom, 1));
+  width: calc(14px * var(--pxd-inv-zoom, 1));
+  height: calc(14px * var(--pxd-inv-zoom, 1));
   cursor: nwse-resize;
   border-right: 2px solid transparent;
   border-bottom: 2px solid transparent;

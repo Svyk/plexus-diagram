@@ -22,6 +22,7 @@ import {
   distributeRects,
   fitViewport,
   gridBackground,
+  invZoom,
   lodFonts,
   lodTier,
   rectsIntersect,
@@ -817,9 +818,17 @@ export function mountBoardView({
     root.style.setProperty("--pxd-overview-font", `${f.section}px`);
     itemsR.setLod(tier, vp.zoom);
   };
+  // PO-5: one write per zoom change (a pan never touches it); the grips size themselves from it with calc().
+  let invZoomAt = 0;
+  const paintInvZoom = () => {
+    if (vp.zoom === invZoomAt) return;
+    invZoomAt = vp.zoom;
+    root.style.setProperty("--pxd-inv-zoom", String(invZoom(vp.zoom)));
+  };
   const applyLod = () => {
     tier = lodTier(vp.zoom, tier, { threshold: mapThreshold() });
     paintTier();
+    paintInvZoom();
   };
   const scheduleContent = () => {
     if (disposed || gesturing || !board()) return;
@@ -3332,6 +3341,7 @@ export function mountBoardView({
     if (dirty.viewport) {
       world.style.transform = `translate(${vp.x}px, ${vp.y}px) scale(${vp.zoom})`;
       itemsR.setZoom(vp.zoom);
+      paintInvZoom();
       // The tier flips (classes + font variables, once) the moment the zoom crosses the threshold, mid-gesture too.
       const nextTier = lodTier(vp.zoom, tier, { threshold: mapThreshold() });
       if (nextTier !== tier) { tier = nextTier; paintTier(); chrome.toolbar.scheduleDock?.(); }

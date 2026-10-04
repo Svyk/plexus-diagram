@@ -6,10 +6,10 @@
   --pxd-rc-border: #d0d7de;
   --pxd-rc-text: #1f2937;
   --pxd-rc-muted: #5f6b7c;
-  --pxd-rc-accent: hsl(175 80% 30%);
+  --pxd-rc-accent: hsl(175 85% 24%);
   display: inline-block;
   box-sizing: border-box;
-  max-width: 100%;
+  max-width: calc(100% - 24px);
   margin: 2px 0 4px 24px;
   padding: 1px 8px;
   overflow: hidden;
@@ -102,7 +102,8 @@ body.roam-body.dark .pxd-relchip,
   stroke-width: 4px;
 }
 
-.pxd-relpop .pxd-relpop__line {
+.pxd-relpop .pxd-relpop__line,
+.pxd-relpop .pxd-relpop__inner {
   fill: none;
   stroke: var(--pxd-line, var(--pxd-edge));
   stroke-width: 4px;
@@ -114,9 +115,13 @@ body.roam-body.dark .pxd-relchip,
 }
 
 .pxd-relpop .pxd-relpop__row rect {
-  fill: var(--pxd-card);
+  fill: color-mix(in srgb, var(--pxd-line, var(--pxd-edge)) 14%, var(--pxd-card));
   stroke: var(--pxd-line, var(--pxd-edge));
   stroke-width: 2px;
+}
+
+.pxd-relpop .pxd-relpop__row text {
+  font-size-adjust: none;
 }
 
 .pxd-relpop .pxd-relpop__note,
@@ -146,4 +151,34 @@ body.roam-body.dark .pxd-relchip,
 .pxd-relpop .pxd-relpop__btn:hover,
 .pxd-relpop .pxd-relpop__btn:focus-visible {
   border-color: var(--pxd-accent);
+}
+
+/* PO-4 (2.5): the board glyph at the end of a connection block's breadcrumb. Lives outside every .pxd-root, so it
+   carries its own tokens like the chip. */
+.pxd-relcrumb {
+  --pxd-rc-accent: hsl(175 85% 24%);
+  display: inline-block;
+  margin-left: 6px;
+  padding: 0 4px;
+  border: 1px solid transparent;
+  border-radius: 4px;
+  color: var(--pxd-rc-accent);
+  font-family: "Apple Symbols", "Segoe UI Symbol", system-ui, sans-serif;
+  font-size: 14px;
+  line-height: 1.3;
+  cursor: pointer;
+  user-select: none;
+}
+
+.pxd-relcrumb:hover,
+.pxd-relcrumb:focus-visible {
+  border-color: var(--pxd-rc-accent);
+  outline: none;
+}
+
+.bp3-dark .pxd-relcrumb,
+body.bt-theme-dark .pxd-relcrumb,
+.rm-dark-theme .pxd-relcrumb,
+body.roam-body.dark .pxd-relcrumb {
+  --pxd-rc-accent: hsl(175 60% 55%);
 }

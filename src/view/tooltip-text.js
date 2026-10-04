@@ -168,6 +168,17 @@ export const TIP_TEXT = {
   "props.group.defaults": e("Default groups", "The look every new section on this board starts with."),
   "props.group.diagram": e("Diagram", "The background color and pattern of this board."),
   "props.reset": e("Reset", "Remove the custom styles shown in this group."),
+  "props.step.dec": e("Smaller", "Lower this size by one pixel."),
+  "props.step.inc": e("Larger", "Raise this size by one pixel."),
+  "props.step.input": e(null, "Type a size in pixels, then press Enter."),
+  "props.chip": e(null, "Open the color picker for this style. Pick again to close it."),
+  "props.choice.align": e(null, "Align the text in the selected cards. Default follows the card look."),
+  "props.choice.dir": e(null, "Set where the selected arrow has arrowheads."),
+  "props.choice.dash": e(null, "Set the line style of the selected arrow."),
+  "props.choice.route": e(null, "Set how the selected arrow is drawn between its ends."),
+  "props.choice.weight": e(null, "Set the line thickness of the selected arrow in pixels."),
+  "props.choice.texture": e(null, "Set the pattern behind this board's cards. Default uses the board setting."),
+  "picker.swatch": e(null, "Use this color for the style you are editing."),
 
   // ---- the board itself
   minimap: e("Minimap", "The whole board at a glance. Click or drag to move the view."),

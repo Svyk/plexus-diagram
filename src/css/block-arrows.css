@@ -64,3 +64,9 @@
   cursor: grab;
   pointer-events: all;
 }
+
+/* BUG-3: the label of a selected short edge lets the end handles through. */
+.pxd-root .pxd-label.pxd-label--clear {
+  pointer-events: none;
+  opacity: 0.35;
+}

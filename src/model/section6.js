@@ -1,6 +1,8 @@
 // Later ideas from roadmap section 6. Pure functions only: no DOM, no writes.
 // A countdown, a graph layout, and a thumbnail budget stay in memory.
 
+import { itemLabel, plainText } from "./schema.js";
+
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const DAY = /(\d{1,2})(?:st|nd|rd|th)?/;
 
@@ -14,11 +16,11 @@ export const FOCUS_MS = 25 * 60 * 1000;
 export const THUMBNAIL_CAP = 4;
 export const VIA_CAP = 8;
 
-export function cardLabel(item) {
-  const title = String(item?.title ?? "").trim();
-  if (title) return title;
+export function cardLabel(item, resolve) {
+  const label = itemLabel(item, resolve);
+  if (label) return label;
   const line = String(item?.string ?? "").split("\n").map((s) => s.trim()).find(Boolean) || "";
-  return line.slice(0, 80);
+  return plainText(line, 80);
 }
 
 export function highlightHits(string) {
@@ -33,18 +35,23 @@ export function highlightHits(string) {
   return out;
 }
 
+function imageAlt(string) {
+  const m = /!\[([^\]]*)\]/.exec(String(string ?? ""));
+  return m ? m[1].trim() : "";
+}
+
 function imageSrcOf(string) {
   const m = /!\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/.exec(String(string ?? ""));
   return m ? m[1] : null;
 }
 
-export function galleryItems(board) {
+export function galleryItems(board, resolve) {
   const out = [];
   for (const item of board?.items?.values?.() || []) {
     if (item.type !== "card") continue;
     const src = item.kind === "image" ? imageSrcOf(item.string) : imageSrcOf(item.string);
     if (item.kind !== "image" && !src) continue;
-    out.push({ uid: item.uid, title: cardLabel(item), src });
+    out.push({ uid: item.uid, title: item.kind === "image" ? imageAlt(item.string) : cardLabel(item, resolve), src });
   }
   return out;
 }
@@ -103,7 +110,7 @@ export function calendarLayout(cards, { year, month, x0 = 16, y0 = 48, col = 28 
   }));
 }
 
-export function timelineAxis(cards, { width = 800 } = {}) {
+export function timelineAxis(cards, { width = 800, resolve } = {}) {
   const dated = (cards || [])
     .map((card) => ({ card, t: parseCardDate(card) }))
     .filter((row) => row.t != null)
@@ -113,7 +120,7 @@ export function timelineAxis(cards, { width = 800 } = {}) {
   const span = (dated[dated.length - 1].t - min) || 1;
   return dated.map((row) => ({
     uid: row.card.uid,
-    title: cardLabel(row.card),
+    title: cardLabel(row.card, resolve),
     t: row.t,
     x: ((row.t - min) / span) * width,
   }));

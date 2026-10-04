@@ -14,9 +14,9 @@ export function todoState(string) {
   return hit[1] === "DONE" ? DONE_COLUMN : TODO_FIELD;
 }
 
-export function kanbanRows(board) {
+export function kanbanRows(board, resolve) {
   const items = board?.items;
-  return tableRows(board).map((row) => {
+  return tableRows(board, resolve).map((row) => {
     const item = items?.get?.(row.uid);
     return { ...row, string: item?.string ?? row.title ?? "" };
   });

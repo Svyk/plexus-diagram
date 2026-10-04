@@ -173,6 +173,7 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
   const renderCrumbs = (list) => {
     closeCrumbMenu();
     crumbsEl.replaceChildren();
+    on.chromeRebuilt?.();
     overflow = [];
     const items = Array.isArray(list) ? list : [];
     crumbsEl.style.display = items.length < 2 ? "none" : "";
@@ -632,6 +633,7 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
 
   const buildCtx = (kind, model) => {
     ctx.replaceChildren();
+    on.chromeRebuilt?.();
     ctx.dataset.kind = kind;
     ctx.setAttribute("data-kind", kind);
     const row = el("div", "pxd-ctx__row", ctx);
@@ -829,7 +831,7 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
       ctx.style.display = "";
       positionCtx();
     },
-    hide() { ctx.style.display = "none"; ctxAnchor = null; ctx.replaceChildren(); },
+    hide() { ctx.style.display = "none"; ctxAnchor = null; ctx.replaceChildren(); on.chromeRebuilt?.(); },
     reposition: positionCtx,
     isOpen: () => ctx.style.display !== "none",
   };

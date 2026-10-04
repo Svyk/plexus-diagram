@@ -517,6 +517,8 @@ export function mountBoardView({
   let tableCtl = { open() {}, close() {}, refresh() {}, dispose() {} };
   let kanbanMode = false;
   let kanbanCtl = { open() {}, close() {}, refresh() {}, dispose() {} };
+  let lastOverlayClose = 0;
+  const noteOverlayClosed = () => { lastOverlayClose = Date.now(); };
   let laterCtl = { open() { return false; }, close() {}, refresh() {}, isOpen() { return false; }, dispose() {} };
   const leaveOutline = () => {
     outlineMode = false;
@@ -1846,6 +1848,7 @@ export function mountBoardView({
     pendingStyle[tool] = next;
     chrome.toolbar.setPending?.(pendingStyle);
   };
+  let tooltipCheck = () => {};
   const chrome = createChrome({
     doc,
     root,
@@ -1854,6 +1857,7 @@ export function mountBoardView({
     timers,
     crumbs: crumbList,
     on: {
+      chromeRebuilt: () => tooltipCheck(),
       openBoard: () => { const it = singleItem(); if (it) void openBoard(it.uid); },
       openOwnPage: () => openOwnPage(singleItem()),
       renameBoard: () => { const it = singleItem(); if (it) itemsR.renameBoard(it.uid); },
@@ -1941,7 +1945,7 @@ export function mountBoardView({
       navigate: (worldPoint) => centerOn(worldPoint),
       searchFilter: (text) => searchFilter(text),
       searchNext: (dir) => searchNext(dir),
-      searchClosed: () => { try { root.focus({ preventScroll: true }); } catch { /* stub */ } },
+      searchClosed: () => { noteOverlayClosed(); try { root.focus({ preventScroll: true }); } catch { /* stub */ } },
       // 1.2
       pin: (on) => { if (selection.items.length) void session.setPinned?.(selection.items, Boolean(on)); },
       fitHeight: () => { const it = singleItem(); if (it) fitHeight(it.uid); },
@@ -1976,6 +1980,7 @@ export function mountBoardView({
   });
   // PL-3: one hover tooltip for every chrome control, read live from the `tooltips` / `tooltip-delay` settings.
   const tooltip = createTooltip({ doc, root, timers, setting: readSetting });
+  tooltipCheck = () => tooltip.check();
   const lensPop = el("div", "pxd-popover pxd-lens pxd-chrome", root);
   lensPop.style.display = "none";
   lensPop.setAttribute("role", "dialog");
@@ -2230,7 +2235,7 @@ export function mountBoardView({
     const q = String(text || "").trim().toLowerCase();
     searchIndex = -1;
     root.classList.toggle("pxd-root--searching", Boolean(q));
-    searchMatches = b && q ? findOnBoard(b, q, nestedBoards(b)) : [];
+    searchMatches = b && q ? findOnBoard(b, q, nestedBoards(b), (uid) => host?.blockString?.(uid)) : [];
     paintSearch(b, searchMatches, q);
     return searchMatches.length;
   };
@@ -2492,6 +2497,13 @@ export function mountBoardView({
       if (it && it.type !== "section") quicklook.open(it);
     },
     closeQuickLook: () => quicklook.close(),
+    closeOverlay: () => {
+      if (!laterCtl.isOpen()) return false;
+      laterCtl.close();
+      noteOverlayClosed();
+      return true;
+    },
+    overlayEscapeRecent: () => Date.now() - lastOverlayClose < 600,
     present: () => startPresent(),
     presentActive: () => presenter.isActive(),
     presentNext: () => presenter.next(),
@@ -2993,8 +3005,8 @@ export function mountBoardView({
       return;
     }
     // Escape closes the Background popover before the controller's chain (selection, up a level, fullscreen) runs.
-    if (event.key === "Escape" && chrome.popover.isOpen()) { chrome.popover.close(); event.preventDefault(); event.stopPropagation(); return; }
-    if (event.key === "Escape" && chrome.changelog?.isOpen()) { chrome.changelog.close(); event.preventDefault(); event.stopPropagation(); return; }
+    if (event.key === "Escape" && chrome.popover.isOpen()) { chrome.popover.close(); noteOverlayClosed(); event.preventDefault(); event.stopPropagation(); return; }
+    if (event.key === "Escape" && chrome.changelog?.isOpen()) { chrome.changelog.close(); noteOverlayClosed(); event.preventDefault(); event.stopPropagation(); return; }
     if (quicklook.isOpen() && event.key !== "Escape" && String(event.key).toLowerCase() !== "q") return;
     if (presenter.isActive() && !["Escape", "ArrowRight", "ArrowLeft", "ArrowDown", "ArrowUp", "PageDown", "PageUp", " ", "p", "P"].includes(event.key)) return;
     const findKey = (event.metaKey || event.ctrlKey) && !event.altKey && String(event.key).toLowerCase() === "f";
@@ -3161,6 +3173,7 @@ export function mountBoardView({
   laterCtl = mountLater({
     doc,
     root,
+    host,
     getBoard: board,
     onClose: () => laterCtl.close(),
   });

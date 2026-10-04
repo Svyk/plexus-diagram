@@ -290,8 +290,21 @@ body.roam-body.dark .pxd-root .pxd-present-hud,
   overflow: auto;
   border: 1px solid var(--pxd-border-strong);
   border-radius: 10px;
-  background: var(--pxd-chrome-bg);
+  background: var(--pxd-surface);
   color: var(--pxd-text);
+  box-shadow: var(--pxd-shadow);
+}
+
+.pxd-root .pxd-later__links {
+  position: absolute;
+  left: 0;
+  top: 0;
+  pointer-events: none;
+}
+
+.pxd-root .pxd-later__link {
+  stroke: var(--pxd-edge);
+  stroke-width: 1.5px;
 }
 
 .pxd-root .pxd-later[hidden] {
@@ -326,7 +339,7 @@ body.roam-body.dark .pxd-root .pxd-present-hud,
   padding: 6px;
   border: 1px solid var(--pxd-border);
   border-radius: 8px;
-  background: var(--pxd-chrome-bg);
+  background: var(--pxd-card, var(--pxd-surface));
 }
 
 .pxd-root .pxd-later__tile img {
@@ -389,4 +402,32 @@ body.roam-body.dark .pxd-root .pxd-present-hud,
     break-after: page;
     page-break-after: always;
   }
+}
+
+/* PL-11 BUG-11: overview and map titles may run wider than a small frame before the ellipsis. */
+.pxd-root.pxd-lod-overview .pxd-section__title,
+.pxd-root.pxd-lod-map .pxd-section__title {
+  max-width: max(calc(100% + 4px), 12em);
+}
+
+/* PL-12 BUG-10: the board bar is solid and a collapsed Properties pill stays small. */
+.pxd-root.pxd-root--docked .pxd-toolbar {
+  background: var(--pxd-surface);
+}
+
+.pxd-root .pxd-props.pxd-props--collapsed {
+  width: auto;
+  max-width: 120px;
+}
+
+/* PL-7 BUG-7: present mode hides every piece of editing chrome. The HUD stays. */
+.pxd-root.pxd-root--presenting .pxd-toolbar,
+.pxd-root.pxd-root--presenting .pxd-dock,
+.pxd-root.pxd-root--presenting .pxd-palette,
+.pxd-root.pxd-root--presenting .pxd-props,
+.pxd-root.pxd-root--presenting .pxd-rail,
+.pxd-root.pxd-root--presenting .pxd-minimap,
+.pxd-root.pxd-root--presenting .pxd-panel,
+.pxd-root.pxd-root--presenting .pxd-ctx {
+  display: none;
 }

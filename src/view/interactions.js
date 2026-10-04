@@ -26,6 +26,7 @@
 //   cancelPreview()                                        — every gesture end/cancel: reset grown-section previews
 //   foldSelection()  toggleFocus()  quickLook()  present()  expandOutline(uid)   — Cmd/Ctrl+Alt+Enter, F, Q, P, M
 //   presentActive() presentNext() presentPrev()            — presentation state / paging keys
+//   closeOverlay() overlayEscapeRecent()                   — Gallery/Timeline/Graph close; true for 600ms after an overlay, search or popover closed
 //   closeQuickLook() exitPresent() exitFocus()             — each returns true when it closed something (Escape chain)
 //   fitHeight(uid)  fitSection(uid)  resetSize(uids)       — double-click on a bottom / corner grip (a section fits its contents)
 // Keydown events may carry tabOwned:false (focus is not on the board itself); Tab is then left to Roam and the browser.
@@ -498,8 +499,6 @@ export function createInteractions({ actions, settings } = {}) {
           const target = g.target;
           cancelOpen();
           openTimer = setTimeout(() => { openTimer = null; call("openPage", target, { sidebar }); }, OPEN_DELAY_MS);
-        } else if (!g.moved && ev.shift && !ev.alt && !g.dup && g.target && b?.items.get(g.target)?.type !== "section") {
-          call("addInfoTab", g.target);
         } else if (!g.moved && !g.dup && g.pageRow && !ev.shift && !ev.alt && !ev.meta && !ev.ctrl && editingUid() !== g.target) {
           // PG-3: a click on a page card row edits that block.
           call("enterEdit", g.target, { row: g.pageRow });
@@ -727,11 +726,14 @@ export function createInteractions({ actions, settings } = {}) {
   const escape = () => {
     if (state.gesture) { onPointerCancel(); return true; }
     if (call("closeQuickLook")) return true;
+    if (call("closeOverlay")) return true;
     if (call("exitPresent")) return true;
     if (isEditing()) { call("exitEdit"); return true; }
     if (call("exitFocus")) return true;
     if (clearSelection()) return true;
     if (call("popBoard")) return true;
+    // BUG-6: the Escape that just closed Search, a popover or an overlay never also leaves fullscreen.
+    if (call("overlayEscapeRecent")) return true;
     if (call("isFullscreen")) { call("setFullscreen", false); return true; }
     return false;
   };

@@ -2,7 +2,7 @@
 // Title, Section, Type, Edited, then each Name:: attribute found on those
 // blocks. No Roam calls. A new column writes nothing until a cell is filled.
 
-import { attrNameOf } from "./schema.js";
+import { attrNameOf, itemLabel } from "./schema.js";
 
 const FIXED = ["Title", "Section", "Type", "Edited"];
 
@@ -83,7 +83,7 @@ export function planAttrCell({ name, value, blockUid = null, parentUid = null } 
 // One row per card and nested board, in board order. Attribute children keep
 // their block uid so a cell can mount renderBlock. BT_attr* and the fixed
 // column names are not columns.
-export function tableRows(board) {
+export function tableRows(board, resolve) {
   const items = board?.items;
   if (!items || typeof items.get !== "function") return [];
   const order = Array.isArray(board.order) ? board.order : [...items.keys()];
@@ -109,7 +109,7 @@ export function tableRows(board) {
     rows.push({
       uid: item.uid,
       kind: item.kind,
-      title: item.title || "",
+      title: itemLabel(item, resolve),
       section,
       type: item.kind || "",
       edited: item.edited ?? null,

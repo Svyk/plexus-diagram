@@ -84,7 +84,7 @@ export function mountTable({ doc = globalThis.document, root, host, getBoard } =
   };
 
   const sourceRows = () => {
-    const rows = tableRows(getBoard?.() || null);
+    const rows = tableRows(getBoard?.() || null, (uid) => host?.blockString?.(uid));
     const missing = rows.map((row) => row.uid).filter((uid) => !edited.has(uid));
     if (missing.length && typeof host?.q === "function") {
       let found = [];

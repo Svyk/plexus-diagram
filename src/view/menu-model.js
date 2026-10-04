@@ -36,7 +36,16 @@ export function buildMenu(kind, ctx = {}) {
   const sep = () => ({ id: `sep-${separators += 1}`, separator: true });
 
   const templateMenu = () => make("template", "New board from template…", {
-    children: STARTERS.map((s) => make(`template:${s.id}`, s.title)),
+    children: STARTERS.map((s) => make(`template:${s.id}`, s.id === "timeline" ? "Timeline template" : s.title)),
+  });
+
+  // The Timeline view and the Timeline template used to share one label.
+  const viewsMenu = () => make("views", "Views", {
+    children: [
+      make("gallery", "Gallery"),
+      make("timeline", "Timeline"),
+      make("graph", "Graph"),
+    ],
   });
 
   // Leaves, not a parent of Expand: picking Expand still runs the remembered preset.
@@ -134,9 +143,7 @@ export function buildMenu(kind, ctx = {}) {
         sep(),
         make("background", "Background…"),
         make("bg-image", "Lock copied image as background"),
-        make("gallery", "Gallery"),
-        make("timeline", "Timeline"),
-        make("graph", "Graph"),
+        viewsMenu(),
         make("print", "Print…"),
         make("highlights", "Highlight marks"),
         make("export-svg", "Export as SVG"),
@@ -328,6 +335,7 @@ export function buildMenu(kind, ctx = {}) {
         make("add-week", "Add this week's journals"),
         sep(),
         make("background", "Background…"),
+        viewsMenu(),
         make("dock", "Dock position for this board", {
           children: [
             ...DOCK_POSITIONS.map((d) => make(`dock:${d}`, cap(d), { checked: c.dock === d })),

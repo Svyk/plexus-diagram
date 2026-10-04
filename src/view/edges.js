@@ -153,11 +153,17 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
   // Selected-edge end handles: dragging one re-targets that end (BA-2). Built lazily, only for the selected edge.
   const placeEnds = (rec, geo) => {
     if (!rec.ends || !geo) return;
+    let covered = false;
+    const text = String(rec.label?.textContent || "");
+    const half = text ? (Number(rec.label.offsetWidth) || text.length * 6.5 + 18) / 2 : 0;
     for (const end of ["from", "to"]) {
       const p = end === "from" ? geo.start : geo.end;
       rec.ends[end].setAttribute("cx", String(p.x));
       rec.ends[end].setAttribute("cy", String(p.y));
+      if (half && geo.mid && Math.hypot(p.x - geo.mid.x, p.y - geo.mid.y) <= half + 12) covered = true;
     }
+    // BUG-3: a short edge's label sits over its end handles; it steps aside while the edge is selected.
+    rec.label?.classList?.toggle("pxd-label--clear", covered);
   };
   const syncEnds = (rec, on) => {
     if (!on) {
@@ -165,6 +171,7 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
       rec.ends.from.remove();
       rec.ends.to.remove();
       rec.ends = null;
+      rec.label?.classList?.remove("pxd-label--clear");
       return;
     }
     if (rec.ends) return;
@@ -201,7 +208,9 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     setClass(rec.g, cls.join(" "));
     if (hex) rec.g.style.setProperty("--pxd-line", hex);
     else rec.g.style.removeProperty("--pxd-line");
+    const wasClear = Boolean(rec.ends) && rec.label.classList.contains("pxd-label--clear");
     rec.label.className = `pxd-label${named ? ` pxd-c-${edge.color}` : ""}${edge.label ? "" : " pxd-label--empty"}${selected ? " pxd-label--selected" : ""}${dim ? " pxd-label--dim" : ""}`;
+    if (wasClear) rec.label.classList.add("pxd-label--clear");
     rec.label.style.color = hex || "";
     if (editingLabel?.uid !== edge.uid) rec.label.textContent = edge.label || "";
     rec.dir = edge.dir;

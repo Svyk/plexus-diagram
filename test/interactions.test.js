@@ -776,19 +776,19 @@ test("alt-drag: ghosts preview, originals stay put, one duplicateItems on drop i
   assert.deepEqual(h.ctl.getSelection().items, ["cardAAAA1"]);
 });
 
-test("shift-click adds an info tab; a plain click and a shift-drag do not", () => {
+test("shift-click only extends the selection and never opens an info tab (BUG-8); a shift-drag still moves", () => {
   const h = harness();
   const cardB = { kind: "item", uid: "cardBBBB2", part: "body" };
   h.ctl.handle(h.ev("pointerdown", { x: 10, y: 10 }, { target: CARD, shift: true }));
   h.ctl.handle(h.ev("pointerup", { x: 10, y: 10 }, { target: CARD, shift: true }));
-  assert.deepEqual(h.named("addInfoTab").map((c) => c[1]), ["cardAAAA1"]);
+  assert.equal(h.named("addInfoTab").length, 0);
   h.ctl.handle(h.ev("pointerdown", { x: 410, y: 10 }, { target: cardB }));
   h.ctl.handle(h.ev("pointerup", { x: 410, y: 10 }, { target: cardB }));
-  assert.equal(h.named("addInfoTab").length, 1);
+  assert.equal(h.named("addInfoTab").length, 0);
   h.ctl.handle(h.ev("pointerdown", { x: 10, y: 10 }, { target: CARD, shift: true }));
   h.ctl.handle(h.ev("pointermove", { x: 80, y: 40 }, { target: CARD, shift: true }));
   h.ctl.handle(h.ev("pointerup", { x: 80, y: 40 }, { target: CARD, shift: true }));
-  assert.equal(h.named("addInfoTab").length, 1);
+  assert.equal(h.named("addInfoTab").length, 0);
   assert.equal(h.named("commitMove").length, 1);
 });
 
@@ -1245,4 +1245,38 @@ test("UI-8: every shortcut in the sheet runs from that same table", () => {
     }
     if (row.action === "presentPrev") assert.equal(h.named("presentPrev").length, row.events.length);
   }
+});
+
+test("BUG-6 / PL-10: the Escape that closed an overlay or search never also leaves fullscreen", () => {
+  let overlay = true;
+  let recent = false;
+  let fullscreen = true;
+  const h = harness({
+    extra: {
+      closeOverlay: () => { const was = overlay; overlay = false; if (was) recent = true; return was; },
+      overlayEscapeRecent: () => recent,
+      isFullscreen: () => fullscreen,
+      setFullscreen: () => { fullscreen = false; },
+    },
+  });
+  const esc = () => h.ctl.handle({ type: "keydown", key: "Escape" });
+  assert.equal(esc(), true, "first Escape closes the overlay");
+  assert.equal(fullscreen, true);
+  assert.equal(esc(), true, "an Escape right after a closed overlay is swallowed");
+  assert.equal(fullscreen, true, "fullscreen stays");
+  recent = false;
+  esc();
+  assert.equal(fullscreen, false, "a later Escape with nothing open leaves fullscreen");
+});
+
+test("BUG-8 / PL-12: shift-click extends the selection and opens no panel", () => {
+  const h = harness();
+  const cardB = { kind: "item", uid: "cardBBBB2", part: "body" };
+  h.ctl.handle(h.ev("pointerdown", { x: 10, y: 10 }, { target: CARD }));
+  h.ctl.handle(h.ev("pointerup", { x: 10, y: 10 }, { target: CARD }));
+  h.ctl.handle(h.ev("pointerdown", { x: 410, y: 10 }, { target: cardB, shift: true }));
+  h.ctl.handle(h.ev("pointerup", { x: 410, y: 10 }, { target: cardB, shift: true }));
+  assert.deepEqual(h.ctl.getSelection().items.slice().sort(), ["cardAAAA1", "cardBBBB2"]);
+  assert.equal(h.named("addInfoTab").length, 0);
+  assert.equal(h.named("openInfo").length, 0);
 });

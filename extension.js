@@ -791,6 +791,29 @@ function firstLine(s) {
   const line = String(s ?? "").split("\n").find((l) => l.trim() !== "");
   return line === void 0 ? "" : plainText(line);
 }
+function itemLabel(item, resolve) {
+  const own = String(item?.title ?? "").trim();
+  if (own) return own;
+  if (item?.kind === "block" && item.target?.uid) {
+    let text2 = null;
+    try {
+      text2 = typeof resolve === "function" ? resolve(item.target.uid) : null;
+    } catch {
+      text2 = null;
+    }
+    if (typeof text2 === "string") {
+      if (classifyString(text2).kind === "board") return parseBoardTitle(text2) || "Untitled board";
+      const line = firstLine(text2);
+      if (line) return line;
+    }
+    return "Block reference";
+  }
+  if (item?.kind === "image") {
+    const alt = /^\s*!\[([^\]]*)\]/.exec(String(item.string ?? ""));
+    return alt?.[1]?.trim() || "Image";
+  }
+  return "";
+}
 function semanticRef(item) {
   const t = item?.target;
   if (t?.kind === "page") return `[[${t.title}]]`;
@@ -2124,11 +2147,11 @@ var ATTRIBUTE_TEMPLATE = [
 var FOCUS_MS = 25 * 60 * 1e3;
 var THUMBNAIL_CAP = 4;
 var VIA_CAP = 8;
-function cardLabel(item) {
-  const title = String(item?.title ?? "").trim();
-  if (title) return title;
+function cardLabel(item, resolve) {
+  const label = itemLabel(item, resolve);
+  if (label) return label;
   const line = String(item?.string ?? "").split("\n").map((s) => s.trim()).find(Boolean) || "";
-  return line.slice(0, 80);
+  return plainText(line, 80);
 }
 function highlightHits(string) {
   const out = [];
@@ -2141,17 +2164,21 @@ function highlightHits(string) {
   }
   return out;
 }
+function imageAlt(string) {
+  const m = /!\[([^\]]*)\]/.exec(String(string ?? ""));
+  return m ? m[1].trim() : "";
+}
 function imageSrcOf(string) {
   const m = /!\[[^\]]*\]\((https?:\/\/[^)\s]+)\)/.exec(String(string ?? ""));
   return m ? m[1] : null;
 }
-function galleryItems(board2) {
+function galleryItems(board2, resolve) {
   const out = [];
   for (const item of board2?.items?.values?.() || []) {
     if (item.type !== "card") continue;
     const src = item.kind === "image" ? imageSrcOf(item.string) : imageSrcOf(item.string);
     if (item.kind !== "image" && !src) continue;
-    out.push({ uid: item.uid, title: cardLabel(item), src });
+    out.push({ uid: item.uid, title: item.kind === "image" ? imageAlt(item.string) : cardLabel(item, resolve), src });
   }
   return out;
 }
@@ -2206,14 +2233,14 @@ function calendarLayout(cards, { year, month, x0 = 16, y0 = 48, col = 28 } = {})
     y: y0
   }));
 }
-function timelineAxis(cards, { width = 800 } = {}) {
+function timelineAxis(cards, { width = 800, resolve } = {}) {
   const dated = (cards || []).map((card2) => ({ card: card2, t: parseCardDate(card2) })).filter((row2) => row2.t != null).sort((a, b) => a.t - b.t || String(a.card.uid).localeCompare(String(b.card.uid)));
   if (!dated.length) return [];
   const min = dated[0].t;
   const span = dated[dated.length - 1].t - min || 1;
   return dated.map((row2) => ({
     uid: row2.card.uid,
-    title: cardLabel(row2.card),
+    title: cardLabel(row2.card, resolve),
     t: row2.t,
     x: (row2.t - min) / span * width
   }));
@@ -6844,18 +6871,28 @@ var package_default = {
 };
 
 // src/model/find.js
-function hayOf(item) {
+function hayOf(item, resolve) {
   const bits = [item?.title, plainText(item?.string, 2e3)];
+  if (item?.kind === "block" && item.target?.uid) {
+    let text2 = null;
+    try {
+      text2 = typeof resolve === "function" ? resolve(item.target.uid) : null;
+    } catch {
+      text2 = null;
+    }
+    if (typeof text2 === "string") bits.push(plainText(text2, 2e3));
+  }
+  if (item?.kind === "image") bits.push(itemLabel(item));
   const kids = Array.isArray(item?.content) ? item.content : [];
   for (const kid of kids) bits.push(plainText(kid?.[":block/string"] ?? kid?.string ?? "", 500));
   return bits.filter(Boolean).join("\n").toLowerCase();
 }
-function findOnBoard(board2, query, nested = []) {
+function findOnBoard(board2, query, nested = [], resolve) {
   const q = String(query || "").trim().toLowerCase();
   if (!q || !board2?.items) return [];
   const hits = [];
   for (const item of board2.items.values()) {
-    if (!hayOf(item).includes(q)) continue;
+    if (!hayOf(item, resolve).includes(q)) continue;
     hits.push({ uid: item.uid, focus: item.uid, kind: item.type === "section" ? "section" : "card" });
   }
   for (const edge of board2.edges?.values?.() || []) {
@@ -6866,7 +6903,7 @@ ${plainText(edge.string, 500)}`.toLowerCase();
   }
   for (const nest of nested || []) {
     if (!nest?.board || !nest.parentUid) continue;
-    for (const hit of findOnBoard(nest.board, query)) {
+    for (const hit of findOnBoard(nest.board, query, [], resolve)) {
       hits.push({ uid: hit.uid, focus: nest.parentUid, kind: "nested", via: nest.parentUid });
     }
   }
@@ -7751,8 +7788,6 @@ function createInteractions({ actions, settings } = {}) {
             openTimer = null;
             call("openPage", target, { sidebar });
           }, OPEN_DELAY_MS);
-        } else if (!g.moved && ev.shift && !ev.alt && !g.dup && g.target && b?.items.get(g.target)?.type !== "section") {
-          call("addInfoTab", g.target);
         } else if (!g.moved && !g.dup && g.pageRow && !ev.shift && !ev.alt && !ev.meta && !ev.ctrl && editingUid() !== g.target) {
           call("enterEdit", g.target, { row: g.pageRow });
         }
@@ -7997,6 +8032,7 @@ function createInteractions({ actions, settings } = {}) {
       return true;
     }
     if (call("closeQuickLook")) return true;
+    if (call("closeOverlay")) return true;
     if (call("exitPresent")) return true;
     if (isEditing()) {
       call("exitEdit");
@@ -8005,6 +8041,7 @@ function createInteractions({ actions, settings } = {}) {
     if (call("exitFocus")) return true;
     if (clearSelection()) return true;
     if (call("popBoard")) return true;
+    if (call("overlayEscapeRecent")) return true;
     if (call("isFullscreen")) {
       call("setFullscreen", false);
       return true;
@@ -11903,11 +11940,16 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
   };
   const placeEnds = (rec, geo) => {
     if (!rec.ends || !geo) return;
+    let covered = false;
+    const text2 = String(rec.label?.textContent || "");
+    const half = text2 ? (Number(rec.label.offsetWidth) || text2.length * 6.5 + 18) / 2 : 0;
     for (const end of ["from", "to"]) {
       const p = end === "from" ? geo.start : geo.end;
       rec.ends[end].setAttribute("cx", String(p.x));
       rec.ends[end].setAttribute("cy", String(p.y));
+      if (half && geo.mid && Math.hypot(p.x - geo.mid.x, p.y - geo.mid.y) <= half + 12) covered = true;
     }
+    rec.label?.classList?.toggle("pxd-label--clear", covered);
   };
   const syncEnds = (rec, on) => {
     if (!on) {
@@ -11915,6 +11957,7 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
       rec.ends.from.remove();
       rec.ends.to.remove();
       rec.ends = null;
+      rec.label?.classList?.remove("pxd-label--clear");
       return;
     }
     if (rec.ends) return;
@@ -11949,7 +11992,9 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     setClass(rec.g, cls.join(" "));
     if (hex) rec.g.style.setProperty("--pxd-line", hex);
     else rec.g.style.removeProperty("--pxd-line");
+    const wasClear = Boolean(rec.ends) && rec.label.classList.contains("pxd-label--clear");
     rec.label.className = `pxd-label${named ? ` pxd-c-${edge.color}` : ""}${edge.label ? "" : " pxd-label--empty"}${selected ? " pxd-label--selected" : ""}${dim ? " pxd-label--dim" : ""}`;
+    if (wasClear) rec.label.classList.add("pxd-label--clear");
     rec.label.style.color = hex || "";
     if (editingLabel?.uid !== edge.uid) rec.label.textContent = edge.label || "";
     rec.dir = edge.dir;
@@ -12352,7 +12397,7 @@ function buildColorPicker(doc, onPick, listen) {
       const b = doc.createElement("button");
       b.type = "button";
       b.className = named ? `pxd-swatch pxd-picker__swatch pxd-c-${color}` : "pxd-swatch pxd-picker__swatch";
-      b.title = color;
+      b.setAttribute("data-tip", "picker.swatch");
       b.setAttribute("aria-label", color);
       b.setAttribute("data-color", color);
       if (!named) b.style.background = color;
@@ -12569,6 +12614,17 @@ var TIP_TEXT = {
   "props.group.defaults": e("Default groups", "The look every new section on this board starts with."),
   "props.group.diagram": e("Diagram", "The background color and pattern of this board."),
   "props.reset": e("Reset", "Remove the custom styles shown in this group."),
+  "props.step.dec": e("Smaller", "Lower this size by one pixel."),
+  "props.step.inc": e("Larger", "Raise this size by one pixel."),
+  "props.step.input": e(null, "Type a size in pixels, then press Enter."),
+  "props.chip": e(null, "Open the color picker for this style. Pick again to close it."),
+  "props.choice.align": e(null, "Align the text in the selected cards. Default follows the card look."),
+  "props.choice.dir": e(null, "Set where the selected arrow has arrowheads."),
+  "props.choice.dash": e(null, "Set the line style of the selected arrow."),
+  "props.choice.route": e(null, "Set how the selected arrow is drawn between its ends."),
+  "props.choice.weight": e(null, "Set the line thickness of the selected arrow in pixels."),
+  "props.choice.texture": e(null, "Set the pattern behind this board's cards. Default uses the board setting."),
+  "picker.swatch": e(null, "Use this color for the style you are editing."),
   // ---- the board itself
   minimap: e("Minimap", "The whole board at a glance. Click or drag to move the view."),
   kids: e("Children", "This block has children. Click to show them as an outline inside the card; hover to peek."),
@@ -12763,6 +12819,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
   const renderCrumbs = (list) => {
     closeCrumbMenu();
     crumbsEl.replaceChildren();
+    on.chromeRebuilt?.();
     overflow = [];
     const items = Array.isArray(list) ? list : [];
     crumbsEl.style.display = items.length < 2 ? "none" : "";
@@ -13251,6 +13308,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
   let ctxAnchor = null;
   const buildCtx = (kind, model) => {
     ctx.replaceChildren();
+    on.chromeRebuilt?.();
     ctx.dataset.kind = kind;
     ctx.setAttribute("data-kind", kind);
     const row2 = el("div", "pxd-ctx__row", ctx);
@@ -13455,6 +13513,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
       ctx.style.display = "none";
       ctxAnchor = null;
       ctx.replaceChildren();
+      on.chromeRebuilt?.();
     },
     reposition: positionCtx,
     isOpen: () => ctx.style.display !== "none"
@@ -13749,7 +13808,7 @@ function planAttrCell({ name, value, blockUid: blockUid2 = null, parentUid = nul
   if (!text2 || !parentUid) return null;
   return { op: "create", parent: parentUid, string };
 }
-function tableRows(board2) {
+function tableRows(board2, resolve) {
   const items = board2?.items;
   if (!items || typeof items.get !== "function") return [];
   const order = Array.isArray(board2.order) ? board2.order : [...items.keys()];
@@ -13775,7 +13834,7 @@ function tableRows(board2) {
     rows.push({
       uid: item.uid,
       kind: item.kind,
-      title: item.title || "",
+      title: itemLabel(item, resolve),
       section: section2,
       type: item.kind || "",
       edited: item.edited ?? null,
@@ -13862,7 +13921,7 @@ function mountTable({ doc = globalThis.document, root, host, getBoard } = {}) {
     }
   };
   const sourceRows = () => {
-    const rows = tableRows(getBoard?.() || null);
+    const rows = tableRows(getBoard?.() || null, (uid) => host?.blockString?.(uid));
     const missing = rows.map((row2) => row2.uid).filter((uid) => !edited.has(uid));
     if (missing.length && typeof host?.q === "function") {
       let found = [];
@@ -14079,9 +14138,9 @@ function todoState(string) {
   if (!hit) return "";
   return hit[1] === "DONE" ? DONE_COLUMN : TODO_FIELD;
 }
-function kanbanRows(board2) {
+function kanbanRows(board2, resolve) {
   const items = board2?.items;
-  return tableRows(board2).map((row2) => {
+  return tableRows(board2, resolve).map((row2) => {
     const item = items?.get?.(row2.uid);
     return { ...row2, string: item?.string ?? row2.title ?? "" };
   });
@@ -14216,7 +14275,7 @@ function mountKanban({ doc = globalThis.document, root, host, getBoard } = {}) {
   const paint2 = () => {
     if (!open) return;
     paintOffs.splice(0).forEach((off) => off());
-    const rows = kanbanRows(getBoard?.() || null);
+    const rows = kanbanRows(getBoard?.() || null, (uid) => host?.blockString?.(uid));
     const fields = kanbanFields(rows);
     if (!fields.includes(field)) field = TODO_FIELD;
     select.replaceChildren();
@@ -14358,10 +14417,10 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
     const h = tb?.offsetHeight || 0;
     panel.style.top = `${8 + (h ? h + 6 : 44)}px`;
   };
-  const choice = (parent, options, current2, fn) => {
+  const choice = (parent, options, current2, fn, tip) => {
     const wrap = el("div", "pxd-seg pxd-props__choices", parent);
     for (const [value, label] of options) {
-      const b = button(wrap, `pxd-seg__btn${value === current2 ? " pxd-seg__btn--on" : ""}`, label, label, () => fn(value));
+      const b = button(wrap, `pxd-seg__btn${value === current2 ? " pxd-seg__btn--on" : ""}`, label, label, () => fn(value), `props.choice.${tip}`);
       b.setAttribute("data-value", value);
     }
     return wrap;
@@ -14375,6 +14434,7 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
     input.max = String(max);
     input.value = String(shown);
     input.setAttribute("aria-label", aria);
+    input.setAttribute("data-tip", "props.step.input");
     const commit = (n2) => {
       const v = Number(n2);
       if (!Number.isInteger(v) || v < min || v > max) {
@@ -14383,9 +14443,9 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
       }
       onCommit(v);
     };
-    const dec = button(row2, "pxd-props__dec", "−", "Smaller", () => commit(shown - 1));
+    const dec = button(row2, "pxd-props__dec", "−", "Smaller", () => commit(shown - 1), "props.step.dec");
     row2.insertBefore(dec, input);
-    button(row2, "pxd-props__inc", "+", "Larger", () => commit(shown + 1));
+    button(row2, "pxd-props__inc", "+", "Larger", () => commit(shown + 1), "props.step.inc");
     listen(input, "change", () => commit(input.value));
     listen(input, "keydown", (event) => {
       event.stopPropagation();
@@ -14406,7 +14466,7 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
       }
       const picker = buildColorPicker(doc, (c) => fn(c), listen);
       row2.append(picker);
-    });
+    }, "props.chip");
     chip.setAttribute("aria-label", label);
     const sw = el("span", "pxd-props__chip-swatch", chip);
     const painted = value === "paper" ? "#eeeded" : cssColor(value, "fill") || "";
@@ -14439,7 +14499,7 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
     colorField(g, "Text color", same ? sample.textColor : void 0, (c) => on.setItemStyle?.({ textColor: c }));
     el("span", "pxd-props__label", g, "Align");
     const align = same ? sample.align || "" : "";
-    choice(g, [["", "Default"], ...ALIGNS.map((a) => [a, a[0].toUpperCase() + a.slice(1)])], align, (v) => on.setItemStyle?.({ align: v || null }));
+    choice(g, [["", "Default"], ...ALIGNS.map((a) => [a, a[0].toUpperCase() + a.slice(1)])], align, (v) => on.setItemStyle?.({ align: v || null }), "align");
     colorField(g, "Fill", same ? sample.fill : void 0, (c) => on.setItemStyle?.({ fill: c }));
     colorField(g, "Border", same ? sample.border : void 0, (c) => on.setItemStyle?.({ border: c }));
     button(g, "pxd-props__reset", "Reset selected", "Remove text size, color, align, fill, and border", () => on.resetItems?.(), "props.reset");
@@ -14447,13 +14507,13 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
   const edgeGroup = (edge) => {
     const g = group("Connection", "edge");
     el("span", "pxd-props__label", g, "Direction");
-    choice(g, DIR_LABELS, DIRS.includes(edge.dir) ? edge.dir : "one", (v) => on.setEdge?.({ dir: v }));
+    choice(g, DIR_LABELS, DIRS.includes(edge.dir) ? edge.dir : "one", (v) => on.setEdge?.({ dir: v }), "dir");
     el("span", "pxd-props__label", g, "Decoration");
-    choice(g, DASH_LABELS, edge.dash || "solid", (v) => on.setEdge?.({ dash: v }));
+    choice(g, DASH_LABELS, edge.dash || "solid", (v) => on.setEdge?.({ dash: v }), "dash");
     el("span", "pxd-props__label", g, "Type");
-    choice(g, ROUTE_LABELS, ROUTES.includes(edge.route) ? edge.route : "curve", (v) => on.setEdge?.({ route: v }));
+    choice(g, ROUTE_LABELS, ROUTES.includes(edge.route) ? edge.route : "curve", (v) => on.setEdge?.({ route: v }), "route");
     el("span", "pxd-props__label", g, "Weight");
-    choice(g, [[1, "1"], [2, "2"], [3, "3"], [4, "4"]], [1, 2, 3, 4].includes(edge.weight) ? edge.weight : 1, (v) => on.setEdge?.({ weight: v }));
+    choice(g, [[1, "1"], [2, "2"], [3, "3"], [4, "4"]], [1, 2, 3, 4].includes(edge.weight) ? edge.weight : 1, (v) => on.setEdge?.({ weight: v }), "weight");
     colorField(g, "Color", edge.color, (c) => on.setEdge?.({ color: c }));
     button(g, "pxd-props__reset", "Reset", "Remove direction, decoration, type, weight, and color", () => on.resetEdge?.(), "props.reset");
   };
@@ -14497,7 +14557,7 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
     colorField(g, "Background", bg.bgColor, (c) => on.setBackground?.({ bgColor: c }));
     el("span", "pxd-props__label", g, "Texture");
     const pattern = BOARD_PATTERNS.includes(bg.bg) ? bg.bg : "";
-    choice(g, [["", "Default"], ...BOARD_PATTERNS.map((p) => [p, PATTERN_LABELS2[p] || p])], pattern, (v) => on.setBackground?.({ bg: v || null }));
+    choice(g, [["", "Default"], ...BOARD_PATTERNS.map((p) => [p, PATTERN_LABELS2[p] || p])], pattern, (v) => on.setBackground?.({ bg: v || null }), "texture");
     button(g, "pxd-props__reset", "Reset default", "Clear this board's background", () => on.setBackground?.({ bg: null, bgColor: null }), "props.reset");
   };
   let last = null;
@@ -14992,6 +15052,10 @@ function createTooltip({ doc = globalThis.document, root, timers, setting } = {}
     add("hint", info.hint);
   };
   const place = (target) => {
+    if (target.isConnected === false) {
+      hide();
+      return;
+    }
     const rr = root.getBoundingClientRect();
     const tr = target.getBoundingClientRect();
     const r = { left: tr.left - rr.left, top: tr.top - rr.top, width: tr.width, height: tr.height };
@@ -15011,6 +15075,13 @@ function createTooltip({ doc = globalThis.document, root, timers, setting } = {}
       current2 = null;
     }
     tip.style.display = "none";
+  };
+  const check = () => {
+    if (current2 && current2.isConnected === false) hide();
+    if (pending && pending.target?.isConnected === false) {
+      pending.cancel?.();
+      pending = null;
+    }
   };
   const show = (target) => {
     if (!target || target.isConnected === false) return;
@@ -15098,6 +15169,7 @@ function createTooltip({ doc = globalThis.document, root, timers, setting } = {}
     el: tip,
     show,
     hide,
+    check,
     isVisible: () => tip.style.display !== "none",
     target: () => current2,
     dispose() {
@@ -15135,7 +15207,14 @@ function buildMenu(kind, ctx = {}) {
   let separators = 0;
   const sep = () => ({ id: `sep-${separators += 1}`, separator: true });
   const templateMenu = () => make("template", "New board from template…", {
-    children: STARTERS.map((s) => make(`template:${s.id}`, s.title))
+    children: STARTERS.map((s) => make(`template:${s.id}`, s.id === "timeline" ? "Timeline template" : s.title))
+  });
+  const viewsMenu = () => make("views", "Views", {
+    children: [
+      make("gallery", "Gallery"),
+      make("timeline", "Timeline"),
+      make("graph", "Graph")
+    ]
   });
   const mindPresetMenu = () => {
     const preset = normalizeMindPreset(c.mindPreset);
@@ -15228,9 +15307,7 @@ function buildMenu(kind, ctx = {}) {
         sep(),
         make("background", "Background…"),
         make("bg-image", "Lock copied image as background"),
-        make("gallery", "Gallery"),
-        make("timeline", "Timeline"),
-        make("graph", "Graph"),
+        viewsMenu(),
         make("print", "Print…"),
         make("highlights", "Highlight marks"),
         make("export-svg", "Export as SVG"),
@@ -15416,6 +15493,7 @@ function buildMenu(kind, ctx = {}) {
         make("add-week", "Add this week's journals"),
         sep(),
         make("background", "Background…"),
+        viewsMenu(),
         make("dock", "Dock position for this board", {
           children: [
             ...DOCK_POSITIONS.map((d) => make(`dock:${d}`, cap3(d), { checked: c.dock === d })),
@@ -15683,6 +15761,7 @@ function createPresenter({ doc = globalThis.document, root, timers, on = {} } = 
     drawing = false;
     strokes.length = 0;
     root?.classList.remove("pxd-root--laser");
+    root?.classList.remove("pxd-root--presenting");
   };
   const stop = () => {
     if (!active) return false;
@@ -15722,6 +15801,7 @@ function createPresenter({ doc = globalThis.document, root, timers, on = {} } = 
       steps = [{ uid: null, rect: boundsOf(all.map((u) => rects.get(u))), title: board2.title || "", members: new Set(all) }];
     }
     active = true;
+    root?.classList.add("pxd-root--presenting");
     hud = el("div", "pxd-present-hud pxd-chrome", root);
     titleEl = el("span", "pxd-present-hud__title", hud);
     noteEl = el("span", "pxd-present-hud__note", hud);
@@ -16297,7 +16377,9 @@ function watchRouteExit({ boardUid, onExit, win = globalThis.window } = {}) {
 
 // src/view/later-views.js
 var TITLES = { gallery: "Gallery", timeline: "Timeline", graph: "Graph" };
-function mountLater({ doc = globalThis.document, root, getBoard, onClose } = {}) {
+var SVG_NS3 = "http://www.w3.org/2000/svg";
+function mountLater({ doc = globalThis.document, root, host, getBoard, onClose } = {}) {
+  const resolve = (uid) => host?.blockString?.(uid);
   const box2 = doc.createElement("div");
   box2.className = "pxd-later pxd-chrome";
   box2.hidden = true;
@@ -16334,7 +16416,7 @@ function mountLater({ doc = globalThis.document, root, getBoard, onClose } = {})
     const board2 = getBoard?.();
     if (!board2 || !mode) return;
     if (mode === "gallery") {
-      const tiles = galleryGrid(galleryItems(board2));
+      const tiles = galleryGrid(galleryItems(board2, resolve));
       if (!tiles.length) {
         body.textContent = "No images on this board";
         return;
@@ -16348,18 +16430,20 @@ function mountLater({ doc = globalThis.document, root, getBoard, onClose } = {})
           img.src = tile.src;
           cell.append(img);
         }
-        const cap4 = doc.createElement("figcaption");
-        cap4.textContent = tile.title || "Image";
-        cell.append(cap4);
+        if (tile.title) {
+          const cap4 = doc.createElement("figcaption");
+          cap4.textContent = tile.title;
+          cell.append(cap4);
+        }
         body.append(cell);
       }
       return;
     }
     if (mode === "timeline") {
       const cards = [...board2.items.values()].filter((item) => item.type === "card");
-      const axis = timelineAxis(cards);
+      const axis = timelineAxis(cards, { resolve });
       if (!axis.length) {
-        body.textContent = "No dated cards";
+        body.textContent = "No dated cards. A card counts as dated when its title or text holds a date attribute (2026-10-03) or a daily page reference.";
         return;
       }
       for (const spot of axis) {
@@ -16377,12 +16461,49 @@ function mountLater({ doc = globalThis.document, root, getBoard, onClose } = {})
       body.textContent = "No cards to graph";
       return;
     }
+    const spread = Math.min(6, Math.max(1, pos.size * 0.26));
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const p of pos.values()) {
+      minX = Math.min(minX, p.x * spread);
+      minY = Math.min(minY, p.y * spread);
+      maxX = Math.max(maxX, p.x * spread);
+      maxY = Math.max(maxY, p.y * spread);
+    }
+    const at = (p) => ({ x: Math.round(110 + p.x * spread - minX), y: Math.round(40 + p.y * spread - minY) });
+    const width = Math.round(maxX - minX + 220);
+    const height = Math.round(maxY - minY + 80);
+    body.style.minWidth = `${width}px`;
+    body.style.minHeight = `${height}px`;
+    const svg = doc.createElementNS(SVG_NS3, "svg");
+    svg.setAttribute("class", "pxd-later__links");
+    svg.setAttribute("width", String(width));
+    svg.setAttribute("height", String(height));
+    for (const [from, to] of graph.links) {
+      const a = pos.get(from);
+      const b = pos.get(to);
+      if (!a || !b) continue;
+      const pa = at(a);
+      const pb = at(b);
+      const line = doc.createElementNS(SVG_NS3, "line");
+      line.setAttribute("class", "pxd-later__link");
+      line.setAttribute("x1", String(pa.x));
+      line.setAttribute("y1", String(pa.y));
+      line.setAttribute("x2", String(pb.x));
+      line.setAttribute("y2", String(pb.y));
+      svg.append(line);
+    }
+    body.append(svg);
     for (const [uid, p] of pos) {
       const node2 = doc.createElement("div");
       node2.className = "pxd-later__node";
-      node2.style.left = `${Math.round(160 + p.x)}px`;
-      node2.style.top = `${Math.round(120 + p.y)}px`;
-      node2.textContent = cardLabel(board2.items.get(uid)) || uid;
+      const spot = at(p);
+      node2.style.left = `${spot.x}px`;
+      node2.style.top = `${spot.y}px`;
+      node2.style.transform = "translate(-50%, -50%)";
+      node2.textContent = cardLabel(board2.items.get(uid), resolve) || uid;
       body.append(node2);
     }
   };
@@ -16428,7 +16549,7 @@ function mountPrintSheet(doc, board2) {
 }
 
 // src/view/board-view.js
-var SVG_NS3 = "http://www.w3.org/2000/svg";
+var SVG_NS4 = "http://www.w3.org/2000/svg";
 var pointerBoard = null;
 function sidebarMountKind(nativeEl) {
   const win = nativeEl?.closest?.(".rm-sidebar-window");
@@ -16790,7 +16911,7 @@ function mountBoardView({
     return node2;
   };
   const svg = (cls, parent) => {
-    const node2 = doc.createElementNS(SVG_NS3, "svg");
+    const node2 = doc.createElementNS(SVG_NS4, "svg");
     node2.setAttribute("class", cls);
     if (node2.classList && !node2.classList.contains(cls)) node2.className = cls;
     parent?.append(node2);
@@ -16937,6 +17058,10 @@ function mountBoardView({
   }, refresh() {
   }, dispose() {
   } };
+  let lastOverlayClose = 0;
+  const noteOverlayClosed = () => {
+    lastOverlayClose = Date.now();
+  };
   let laterCtl = { open() {
     return false;
   }, close() {
@@ -18598,6 +18723,8 @@ function mountBoardView({
     pendingStyle[tool] = next;
     chrome.toolbar.setPending?.(pendingStyle);
   };
+  let tooltipCheck = () => {
+  };
   const chrome = createChrome({
     doc,
     root,
@@ -18606,6 +18733,7 @@ function mountBoardView({
     timers,
     crumbs: crumbList,
     on: {
+      chromeRebuilt: () => tooltipCheck(),
       openBoard: () => {
         const it = singleItem();
         if (it) void openBoard(it.uid);
@@ -18741,6 +18869,7 @@ function mountBoardView({
       searchFilter: (text2) => searchFilter(text2),
       searchNext: (dir) => searchNext(dir),
       searchClosed: () => {
+        noteOverlayClosed();
         try {
           root.focus({ preventScroll: true });
         } catch {
@@ -18820,6 +18949,7 @@ function mountBoardView({
     }
   });
   const tooltip = createTooltip({ doc, root, timers, setting: readSetting });
+  tooltipCheck = () => tooltip.check();
   const lensPop = el("div", "pxd-popover pxd-lens pxd-chrome", root);
   lensPop.style.display = "none";
   lensPop.setAttribute("role", "dialog");
@@ -19124,7 +19254,7 @@ function mountBoardView({
     const q = String(text2 || "").trim().toLowerCase();
     searchIndex = -1;
     root.classList.toggle("pxd-root--searching", Boolean(q));
-    searchMatches = b && q ? findOnBoard(b, q, nestedBoards(b)) : [];
+    searchMatches = b && q ? findOnBoard(b, q, nestedBoards(b), (uid) => host?.blockString?.(uid)) : [];
     paintSearch(b, searchMatches, q);
     return searchMatches.length;
   };
@@ -19403,6 +19533,13 @@ function mountBoardView({
       if (it && it.type !== "section") quicklook.open(it);
     },
     closeQuickLook: () => quicklook.close(),
+    closeOverlay: () => {
+      if (!laterCtl.isOpen()) return false;
+      laterCtl.close();
+      noteOverlayClosed();
+      return true;
+    },
+    overlayEscapeRecent: () => Date.now() - lastOverlayClose < 600,
     present: () => startPresent(),
     presentActive: () => presenter.isActive(),
     presentNext: () => presenter.next(),
@@ -19931,12 +20068,14 @@ function mountBoardView({
     }
     if (event.key === "Escape" && chrome.popover.isOpen()) {
       chrome.popover.close();
+      noteOverlayClosed();
       event.preventDefault();
       event.stopPropagation();
       return;
     }
     if (event.key === "Escape" && chrome.changelog?.isOpen()) {
       chrome.changelog.close();
+      noteOverlayClosed();
       event.preventDefault();
       event.stopPropagation();
       return;
@@ -20109,6 +20248,7 @@ function mountBoardView({
   laterCtl = mountLater({
     doc,
     root,
+    host,
     getBoard: board2,
     onClose: () => laterCtl.close()
   });

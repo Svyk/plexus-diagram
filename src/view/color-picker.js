@@ -29,7 +29,7 @@ export function buildColorPicker(doc, onPick, listen) {
       const b = doc.createElement("button");
       b.type = "button";
       b.className = named ? `pxd-swatch pxd-picker__swatch pxd-c-${color}` : "pxd-swatch pxd-picker__swatch";
-      b.title = color;
+      b.setAttribute("data-tip", "picker.swatch");
       b.setAttribute("aria-label", color);
       b.setAttribute("data-color", color);
       if (!named) b.style.background = color;

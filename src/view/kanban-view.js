@@ -64,7 +64,7 @@ export function mountKanban({ doc = globalThis.document, root, host, getBoard } 
   const paint = () => {
     if (!open) return;
     paintOffs.splice(0).forEach((off) => off());
-    const rows = kanbanRows(getBoard?.() || null);
+    const rows = kanbanRows(getBoard?.() || null, (uid) => host?.blockString?.(uid));
     const fields = kanbanFields(rows);
     if (!fields.includes(field)) field = TODO_FIELD;
     select.replaceChildren();

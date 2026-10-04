@@ -90,6 +90,7 @@ export function createPresenter({ doc = globalThis.document, root, timers, on = 
     drawing = false;
     strokes.length = 0;
     root?.classList.remove("pxd-root--laser");
+    root?.classList.remove("pxd-root--presenting");
   };
 
   const stop = () => {
@@ -128,6 +129,7 @@ export function createPresenter({ doc = globalThis.document, root, timers, on = 
       steps = [{ uid: null, rect: boundsOf(all.map((u) => rects.get(u))), title: board.title || "", members: new Set(all) }];
     }
     active = true;
+    root?.classList.add("pxd-root--presenting");
     hud = el("div", "pxd-present-hud pxd-chrome", root);
     titleEl = el("span", "pxd-present-hud__title", hud);
     noteEl = el("span", "pxd-present-hud__note", hud);

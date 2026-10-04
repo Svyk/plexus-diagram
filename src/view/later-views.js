@@ -4,7 +4,10 @@ import { cardLabel, derivedGraph, galleryGrid, galleryItems, graphLayout, printP
 
 const TITLES = { gallery: "Gallery", timeline: "Timeline", graph: "Graph" };
 
-export function mountLater({ doc = globalThis.document, root, getBoard, onClose } = {}) {
+const SVG_NS = "http://www.w3.org/2000/svg";
+
+export function mountLater({ doc = globalThis.document, root, host, getBoard, onClose } = {}) {
+  const resolve = (uid) => host?.blockString?.(uid);
   const box = doc.createElement("div");
   box.className = "pxd-later pxd-chrome";
   box.hidden = true;
@@ -42,7 +45,7 @@ export function mountLater({ doc = globalThis.document, root, getBoard, onClose 
     const board = getBoard?.();
     if (!board || !mode) return;
     if (mode === "gallery") {
-      const tiles = galleryGrid(galleryItems(board));
+      const tiles = galleryGrid(galleryItems(board, resolve));
       if (!tiles.length) {
         body.textContent = "No images on this board";
         return;
@@ -56,18 +59,20 @@ export function mountLater({ doc = globalThis.document, root, getBoard, onClose 
           img.src = tile.src;
           cell.append(img);
         }
-        const cap = doc.createElement("figcaption");
-        cap.textContent = tile.title || "Image";
-        cell.append(cap);
+        if (tile.title) {
+          const cap = doc.createElement("figcaption");
+          cap.textContent = tile.title;
+          cell.append(cap);
+        }
         body.append(cell);
       }
       return;
     }
     if (mode === "timeline") {
       const cards = [...board.items.values()].filter((item) => item.type === "card");
-      const axis = timelineAxis(cards);
+      const axis = timelineAxis(cards, { resolve });
       if (!axis.length) {
-        body.textContent = "No dated cards";
+        body.textContent = "No dated cards. A card counts as dated when its title or text holds a date attribute (2026-10-03) or a daily page reference.";
         return;
       }
       for (const spot of axis) {
@@ -85,12 +90,49 @@ export function mountLater({ doc = globalThis.document, root, getBoard, onClose 
       body.textContent = "No cards to graph";
       return;
     }
+    const spread = Math.min(6, Math.max(1, pos.size * 0.26));
+    let minX = Infinity;
+    let minY = Infinity;
+    let maxX = -Infinity;
+    let maxY = -Infinity;
+    for (const p of pos.values()) {
+      minX = Math.min(minX, p.x * spread);
+      minY = Math.min(minY, p.y * spread);
+      maxX = Math.max(maxX, p.x * spread);
+      maxY = Math.max(maxY, p.y * spread);
+    }
+    const at = (p) => ({ x: Math.round(110 + p.x * spread - minX), y: Math.round(40 + p.y * spread - minY) });
+    const width = Math.round(maxX - minX + 220);
+    const height = Math.round(maxY - minY + 80);
+    body.style.minWidth = `${width}px`;
+    body.style.minHeight = `${height}px`;
+    const svg = doc.createElementNS(SVG_NS, "svg");
+    svg.setAttribute("class", "pxd-later__links");
+    svg.setAttribute("width", String(width));
+    svg.setAttribute("height", String(height));
+    for (const [from, to] of graph.links) {
+      const a = pos.get(from);
+      const b = pos.get(to);
+      if (!a || !b) continue;
+      const pa = at(a);
+      const pb = at(b);
+      const line = doc.createElementNS(SVG_NS, "line");
+      line.setAttribute("class", "pxd-later__link");
+      line.setAttribute("x1", String(pa.x));
+      line.setAttribute("y1", String(pa.y));
+      line.setAttribute("x2", String(pb.x));
+      line.setAttribute("y2", String(pb.y));
+      svg.append(line);
+    }
+    body.append(svg);
     for (const [uid, p] of pos) {
       const node = doc.createElement("div");
       node.className = "pxd-later__node";
-      node.style.left = `${Math.round(160 + p.x)}px`;
-      node.style.top = `${Math.round(120 + p.y)}px`;
-      node.textContent = cardLabel(board.items.get(uid)) || uid;
+      const spot = at(p);
+      node.style.left = `${spot.x}px`;
+      node.style.top = `${spot.y}px`;
+      node.style.transform = "translate(-50%, -50%)";
+      node.textContent = cardLabel(board.items.get(uid), resolve) || uid;
       body.append(node);
     }
   };

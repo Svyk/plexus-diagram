@@ -65,10 +65,10 @@ export function createPropsPanel({ doc = globalThis.document, root, storage, on 
     panel.style.top = `${8 + (h ? h + 6 : 44)}px`;
   };
 
-  const choice = (parent, options, current, fn) => {
+  const choice = (parent, options, current, fn, tip) => {
     const wrap = el("div", "pxd-seg pxd-props__choices", parent);
     for (const [value, label] of options) {
-      const b = button(wrap, `pxd-seg__btn${value === current ? " pxd-seg__btn--on" : ""}`, label, label, () => fn(value));
+      const b = button(wrap, `pxd-seg__btn${value === current ? " pxd-seg__btn--on" : ""}`, label, label, () => fn(value), `props.choice.${tip}`);
       b.setAttribute("data-value", value);
     }
     return wrap;
@@ -83,14 +83,15 @@ export function createPropsPanel({ doc = globalThis.document, root, storage, on 
     input.max = String(max);
     input.value = String(shown);
     input.setAttribute("aria-label", aria);
+    input.setAttribute("data-tip", "props.step.input");
     const commit = (n) => {
       const v = Number(n);
       if (!Number.isInteger(v) || v < min || v > max) { input.value = String(shown); return; }
       onCommit(v);
     };
-    const dec = button(row, "pxd-props__dec", "−", "Smaller", () => commit(shown - 1));
+    const dec = button(row, "pxd-props__dec", "−", "Smaller", () => commit(shown - 1), "props.step.dec");
     row.insertBefore(dec, input);
-    button(row, "pxd-props__inc", "+", "Larger", () => commit(shown + 1));
+    button(row, "pxd-props__inc", "+", "Larger", () => commit(shown + 1), "props.step.inc");
     listen(input, "change", () => commit(input.value));
     listen(input, "keydown", (event) => {
       event.stopPropagation();
@@ -106,7 +107,7 @@ export function createPropsPanel({ doc = globalThis.document, root, storage, on 
       if (open) { open.remove(); return; }
       const picker = buildColorPicker(doc, (c) => fn(c), listen);
       row.append(picker);
-    });
+    }, "props.chip");
     chip.setAttribute("aria-label", label);
     const sw = el("span", "pxd-props__chip-swatch", chip);
     const painted = value === "paper" ? "#eeeded" : (cssColor(value, "fill") || "");
@@ -141,7 +142,7 @@ export function createPropsPanel({ doc = globalThis.document, root, storage, on 
     colorField(g, "Text color", same ? sample.textColor : undefined, (c) => on.setItemStyle?.({ textColor: c }));
     el("span", "pxd-props__label", g, "Align");
     const align = same ? (sample.align || "") : "";
-    choice(g, [["", "Default"], ...ALIGNS.map((a) => [a, a[0].toUpperCase() + a.slice(1)])], align, (v) => on.setItemStyle?.({ align: v || null }));
+    choice(g, [["", "Default"], ...ALIGNS.map((a) => [a, a[0].toUpperCase() + a.slice(1)])], align, (v) => on.setItemStyle?.({ align: v || null }), "align");
     colorField(g, "Fill", same ? sample.fill : undefined, (c) => on.setItemStyle?.({ fill: c }));
     colorField(g, "Border", same ? sample.border : undefined, (c) => on.setItemStyle?.({ border: c }));
     button(g, "pxd-props__reset", "Reset selected", "Remove text size, color, align, fill, and border", () => on.resetItems?.(), "props.reset");
@@ -150,13 +151,13 @@ export function createPropsPanel({ doc = globalThis.document, root, storage, on 
   const edgeGroup = (edge) => {
     const g = group("Connection", "edge");
     el("span", "pxd-props__label", g, "Direction");
-    choice(g, DIR_LABELS, DIRS.includes(edge.dir) ? edge.dir : "one", (v) => on.setEdge?.({ dir: v }));
+    choice(g, DIR_LABELS, DIRS.includes(edge.dir) ? edge.dir : "one", (v) => on.setEdge?.({ dir: v }), "dir");
     el("span", "pxd-props__label", g, "Decoration");
-    choice(g, DASH_LABELS, edge.dash || "solid", (v) => on.setEdge?.({ dash: v }));
+    choice(g, DASH_LABELS, edge.dash || "solid", (v) => on.setEdge?.({ dash: v }), "dash");
     el("span", "pxd-props__label", g, "Type");
-    choice(g, ROUTE_LABELS, ROUTES.includes(edge.route) ? edge.route : "curve", (v) => on.setEdge?.({ route: v }));
+    choice(g, ROUTE_LABELS, ROUTES.includes(edge.route) ? edge.route : "curve", (v) => on.setEdge?.({ route: v }), "route");
     el("span", "pxd-props__label", g, "Weight");
-    choice(g, [[1, "1"], [2, "2"], [3, "3"], [4, "4"]], [1, 2, 3, 4].includes(edge.weight) ? edge.weight : 1, (v) => on.setEdge?.({ weight: v }));
+    choice(g, [[1, "1"], [2, "2"], [3, "3"], [4, "4"]], [1, 2, 3, 4].includes(edge.weight) ? edge.weight : 1, (v) => on.setEdge?.({ weight: v }), "weight");
     colorField(g, "Color", edge.color, (c) => on.setEdge?.({ color: c }));
     button(g, "pxd-props__reset", "Reset", "Remove direction, decoration, type, weight, and color", () => on.resetEdge?.(), "props.reset");
   };
@@ -203,7 +204,7 @@ export function createPropsPanel({ doc = globalThis.document, root, storage, on 
     colorField(g, "Background", bg.bgColor, (c) => on.setBackground?.({ bgColor: c }));
     el("span", "pxd-props__label", g, "Texture");
     const pattern = BOARD_PATTERNS.includes(bg.bg) ? bg.bg : "";
-    choice(g, [["", "Default"], ...BOARD_PATTERNS.map((p) => [p, PATTERN_LABELS[p] || p])], pattern, (v) => on.setBackground?.({ bg: v || null }));
+    choice(g, [["", "Default"], ...BOARD_PATTERNS.map((p) => [p, PATTERN_LABELS[p] || p])], pattern, (v) => on.setBackground?.({ bg: v || null }), "texture");
     button(g, "pxd-props__reset", "Reset default", "Clear this board's background", () => on.setBackground?.({ bg: null, bgColor: null }), "props.reset");
   };
 

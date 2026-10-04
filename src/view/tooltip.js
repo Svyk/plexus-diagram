@@ -115,6 +115,7 @@ export function createTooltip({ doc = globalThis.document, root, timers, setting
     add("hint", info.hint);
   };
   const place = (target) => {
+    if (target.isConnected === false) { hide(); return; }
     const rr = root.getBoundingClientRect();
     const tr = target.getBoundingClientRect();
     const r = { left: tr.left - rr.left, top: tr.top - rr.top, width: tr.width, height: tr.height };
@@ -135,6 +136,11 @@ export function createTooltip({ doc = globalThis.document, root, timers, setting
       current = null;
     }
     tip.style.display = "none";
+  };
+  // T-1: a control that was removed while its tooltip is up (the context bar rebuilds) takes the tooltip with it.
+  const check = () => {
+    if (current && current.isConnected === false) hide();
+    if (pending && pending.target?.isConnected === false) { pending.cancel?.(); pending = null; }
   };
   const show = (target) => {
     if (!target || target.isConnected === false) return;
@@ -210,6 +216,7 @@ export function createTooltip({ doc = globalThis.document, root, timers, setting
     el: tip,
     show,
     hide,
+    check,
     isVisible: () => tip.style.display !== "none",
     target: () => current,
     dispose() {

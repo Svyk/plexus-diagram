@@ -375,6 +375,28 @@ export function firstLine(s) {
   return line === undefined ? "" : plainText(line);
 }
 
+// Text to show for a card outside the canvas. Ref cards use the first line of the block they point at,
+// image cards their alt text, so lists and graphs never show "((uid))" or markdown.
+export function itemLabel(item, resolve) {
+  const own = String(item?.title ?? "").trim();
+  if (own) return own;
+  if (item?.kind === "block" && item.target?.uid) {
+    let text = null;
+    try { text = typeof resolve === "function" ? resolve(item.target.uid) : null; } catch { text = null; }
+    if (typeof text === "string") {
+      if (classifyString(text).kind === "board") return parseBoardTitle(text) || "Untitled board";
+      const line = firstLine(text);
+      if (line) return line;
+    }
+    return "Block reference";
+  }
+  if (item?.kind === "image") {
+    const alt = /^\s*!\[([^\]]*)\]/.exec(String(item.string ?? ""));
+    return alt?.[1]?.trim() || "Image";
+  }
+  return "";
+}
+
 export function semanticRef(item) {
   const t = item?.target;
   if (t?.kind === "page") return `[[${t.title}]]`;

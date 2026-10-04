@@ -277,6 +277,25 @@ Two things the user hit on 2.2.0: a page card that holds a board block showed Ro
 - [ ] **PL-3 Hover tooltips** (L) — One shared tooltip per board (`src/view/tooltip.js`), one pair of pointer listeners and one pair of focus listeners on the root, dismiss listeners only while shown. 350 ms hover, immediate on keyboard focus; hides on leave, blur, pointerdown, wheel, scroll, zoom and Escape. Bold name, shortcut in `<kbd>`, one-line description, lock hint on tools. Below for the board bar, above for the dock (right for a left dock), left for the rail, flips inside the board. Native `title` removed where it exists; `aria-label` kept and `aria-describedby` set while shown. All strings in `src/view/tooltip-text.js`, keyed by control id (`data-tip`, `data-tip-state`). Accept: a test that every chrome control has an entry; live light and dark.
 - [ ] **PL-4 Tooltip settings** (S) — `tooltips` (switch, default on) and `tooltip-delay` (instant, 350 ms, 800 ms) under Board. Off hands the text to the browser's native tooltip. Accept: settings tests; delay and off live.
 
+Bug hunt on 2.2.0 (`/tmp/wo/plx-hunt/report.md`), fixed in 2.3.0 by `/tmp/wo/pxd-23-fix.wo.md`:
+
+- [ ] **PL-5 Titles for ref and image cards (BUG-1)** (M) — Table, Kanban, Graph, Timeline and Find use the first line of a ref card's target block and an image card's alt text (`itemLabel`), never "((uid))" or a blank. Accept: unit tests; Find matches displayed ref text.
+- [ ] **PL-6 Graph view (BUG-2)** (M) — Graph draws a line per edge, spreads the nodes with the node count and keeps them inside the overlay. Accept: DOM test; live on the fixture.
+- [ ] **PL-7 End handles under a short edge's label (BUG-3)** (S) — The label of a selected edge steps aside (`pxd-label--clear`) when it covers an end handle. Accept: test; live grab of both ends of a 40 px edge.
+- [ ] **PL-8 Page card of the board's own page (BUG-4)** (S) — No `renderString` for board rows and no Roam core TypeError (`lastIndexOf` of null). Accept: live console clean; polish-23 tests.
+- [ ] **PL-9 Gallery captions (BUG-5)** (S) — A tile caption is the image alt text or nothing, never raw markdown. Accept: test.
+- [ ] **PL-10 Esc after a closed overlay (BUG-6)** (S) — The Escape that closed Search, a popover or Gallery/Timeline/Graph does not also leave fullscreen (600 ms guard). The zoomed block page's child bullets under an inline board are Roam's own zoom view and are not changed. Accept: interactions test; live.
+- [ ] **PL-11 Present hides chrome (BUG-7)** (S) — `pxd-root--presenting` hides the bar, dock, Properties, rail, minimap, panel and context bar; restored on exit. Accept: test; live.
+- [ ] **PL-12 Shift-click only extends the selection (BUG-8)** (S) — No Info tab or panel opens; Info stays on the Info button and I. Accept: interactions tests.
+- [ ] **PL-13 Opaque Gallery, Timeline and Graph (BUG-9)** (S) — Overlay background is the board surface. Accept: CSS test; shot.
+- [ ] **PL-14 Opaque board bar, small Properties pill (BUG-10)** (S) — Bar is solid; a collapsed Properties pill shrinks to its label. Accept: CSS test; shot.
+- [ ] **PL-15 Section titles in overview (BUG-11)** (S) — Titles may run wider than a small frame (`max(100%, 12em)`) before the ellipsis. Accept: CSS test; shot at 19%.
+- [ ] **PL-16 Stray hairline (BUG-12)** (S) — Investigate the thin curved line from the top edge through Section one to the Note card. Not an `.pxd-edges` path and not the temp connect wire (that one is dashed accent). Accept: cause found live, or recorded as not reproduced.
+- [ ] **PL-17 Views in More, Timeline empty state (UX-2)** (S) — Gallery, Timeline and Graph under a Views submenu in More and still in the canvas menu; the empty Timeline says a date attribute or a daily-page ref makes a card dated. Accept: menu tests.
+- [ ] **PL-18 Canvas menu names (UX-3)** (S) — Template entry is "Timeline template"; the three views sit under Views. Accept: menu test.
+- [ ] **PL-19 Tooltip on a removed control (T-1)** (S) — `check()` hides a tooltip whose target left the DOM (`isConnected`), called on every context bar and crumb rebuild and on show and place. Accept: test.
+- [ ] **PL-20 Properties tooltips (T-2)** (S) — Steppers, color chips, choice buttons and picker swatches use `data-tip` entries, no native title. Accept: tests.
+
 ## 6. Later (ideas not scheduled)
 
 Pick from here only when every phase above is done or blocked.

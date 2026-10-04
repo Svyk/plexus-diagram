@@ -28,6 +28,8 @@ node tools/live/ledger.mjs cleanup "Svy - "          # deletes ledger uids on te
 node tools/live/ledger.mjs roundtrip "Svy - "        # create, list, cleanup on Test Lab
 node tools/live/fixture.mjs <phase> ["Readwisenotes - Daily Notes"] [--cards N]
 node tools/live/bench.mjs ["Readwisenotes - "]          # 200 real keys, injected vs unloaded
+node tools/live/taskboard.mjs ["Readwisenotes - Plexus"] [--count 40] [--repeat-every 10] [--title T]   # a board of Better Tasks task cards, ledgered
+PXD_REPO=/path/to/build-dir node tools/live/plexus-live.mjs inject <title>   # inject another build (extension.js + extension.css in that dir)
 ```
 
 `cleanup` deletes only blocks whose page is `Plexus Diagram/Test Lab` or `diagram testing`, and only in the window's graph. Page uids and every other page are left in the ledger. `fixture` builds `P<phase> fixture` through `window.__plexusDiagram.session(uid)` (the caller releases). A second run reuses the page and adds a new board.

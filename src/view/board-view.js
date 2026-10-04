@@ -16,7 +16,6 @@ import { attrLegend, parseAttrStyles, styleAttrLinks } from "../model/attr-style
 import { lensBright, lensCatalog, tagsForCard } from "../model/lens.js";
 import { dropNamespace } from "../model/namespace.js";
 import { isBareTask, isTaskAttr, isTaskString, setTaskAttrNames, taskMeta, taskState } from "../model/tasks.js";
-import { isStructuralString } from "../model/regions.js";
 import { createBt } from "../host/bt.js";
 import { createTaskPopover } from "./task-popover.js";
 import { createTaskCompleter } from "./task-complete.js";
@@ -2473,7 +2472,7 @@ export function mountBoardView({
       if (item && freshCardIsBlank({
         blockString: text,
         itemString: item.string,
-        contentCount: (item.content || []).filter((c) => !isTaskAttr(c) && !isStructuralString(c?.[":block/string"] ?? c?.string ?? "")).length,
+        contentCount: (item.content || []).filter((c) => !isTaskAttr(c)).length,
         editorText,
       })) {
         freshTasks.delete(uid);

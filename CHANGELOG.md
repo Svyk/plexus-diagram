@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.9.1 — 2026-10-04
+
+- A new card is placed before the Connections list, snapshots, and a region container, so those stay at the end of the block. The library card count skips a region container the same way it skips Connections. Leaving a new empty card that only holds a region container no longer deletes that card.
+
 ## 2.9.0 — 2026-10-04
 
 - A region container `{{[[plexus-regions]]}}` and its `{{[[plexus-region]]}}` children stay off the board. They are not cards. A card's child badge does not count them. Image regions and saved views can be stored in that shape. A Roam Plexus region is recognized and left as theirs. Nothing is drawn yet.

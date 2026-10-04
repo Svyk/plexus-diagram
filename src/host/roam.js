@@ -533,7 +533,8 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         const kids = Array.isArray(res[":block/children"]) ? res[":block/children"] : [];
         const count = kids.filter((k) => {
           const kp = k?.[":block/props"];
-          return !(kp && typeof kp === "object" && plainKeys(kp)?.plexus?.type === "edges");
+          const type = kp && typeof kp === "object" ? plainKeys(kp)?.plexus?.type : "";
+          return type !== "edges" && type !== "snapshots" && type !== "regions";
         }).length;
         const edited = res[":edit/time"];
         out.push({

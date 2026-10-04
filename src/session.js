@@ -1,4 +1,5 @@
 import { namespaceParent } from "./model/namespace.js";
+import { isContainerString } from "./model/regions.js";
 import { backgroundImage, calendarLayout, cardTemplatePlan, zoomThreshold } from "./model/section6.js";
 import {
   boardPreview,
@@ -216,11 +217,15 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
 
   // ---- raw tree helpers (optimistic model) ----
   const rawNode = (id) => (id === uid ? raw : ix().get(id)?.node ?? null);
-  // New children go before the Connections container so it stays last (any board level, nested boards included).
+  // New children go before Connections, snapshots, or a regions container so those stay last.
   const insertOrder = (parentUid) => {
     const node = raw ? rawNode(parentUid) : null;
     if (!node) return "last";
-    const at = kidsOf(node).findIndex((k) => readPlexus(k[PROPS])?.type === "edges");
+    const at = kidsOf(node).findIndex((k) => {
+      const type = readPlexus(k[PROPS])?.type;
+      if (type === "edges" || type === "snapshots" || type === "regions") return true;
+      return isContainerString(k[":block/string"] ?? k.string ?? "");
+    });
     return at >= 0 ? at : "last";
   };
   const rawInsert = (parentUid, node, order) => {

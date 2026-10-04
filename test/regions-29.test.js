@@ -2,8 +2,13 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
+import { createFakeRoam } from "./fixtures/fake-roam.js";
+import { createHost } from "../src/host/roam.js";
+import { acquireSession, resetSessions } from "../src/session.js";
 import { buildBoard, worldRects } from "../src/model/board.js";
 import { classifyString } from "../src/model/schema.js";
+import { isTaskAttr } from "../src/model/tasks.js";
+import { freshCardIsBlank } from "../src/view/board-view.js";
 import {
   fracRectOf,
   isContainerString,
@@ -21,6 +26,7 @@ const RECT = "{{[[plexus-region]]: k=rect d=ITvT3bqaL el=plx-img-a f=0.25,0.25,0
 const FRAME = "{{[[plexus-region]]: k=frame d=ITvT3bqaL fr=plx-frame-a pad=10}}";
 const CFRAME = "{{[[plexus-region]]: k=cframe d=ITvT3bqaL fr=plx-frame-a}}";
 const IMGRECT = "{{[[plexus-region]]: k=imgrect d=kK4xlY1jm i=0 f=0.0859,0.171,0.4124,0.6863}}";
+const GROUP = "{{[[plexus-region]]: k=group d=ITvT3bqaL g=plx-grp-1 pad=10}}";
 
 const blk = (uid, string, plexus, order, children = []) => ({
   ":block/uid": uid,
@@ -66,7 +72,7 @@ test("REG-1: img and view round-trip, and a real area stays unsupported", () => 
   assert.equal(area.error, undefined);
   assert.equal(area.caption, "((h6dynpr9M))");
   assert.equal(serializeRegion(area), AREA);
-  for (const sample of [RECT, FRAME, CFRAME, IMGRECT]) {
+  for (const sample of [RECT, FRAME, CFRAME, IMGRECT, GROUP]) {
     const region = parseRegion(sample);
     assert.equal(region.owner, "roam-plexus", sample);
     assert.equal(region.supported, false, sample);
@@ -126,6 +132,9 @@ test("REG-1: a regions container is not a card, and the badge ignores it", () =>
   assert.deepEqual([...board.items.keys()].sort(), ["imgcard01", "notecard1"]);
   const note = board.items.get("notecard1");
   assert.equal(note.content.length, 2);
+  const kept = note.content.filter((c) => !isTaskAttr(c)).length;
+  assert.equal(kept, 2);
+  assert.equal(freshCardIsBlank({ blockString: "", itemString: "", contentCount: kept, editorText: "" }), false);
 
   const stub = createDomStub();
   const restore = stub.install();
@@ -163,5 +172,52 @@ test("REG-1: a regions container is not a card, and the badge ignores it", () =>
   } finally {
     r.dispose();
     restore();
+  }
+});
+
+test("REG-1: createCard lands before edges, snapshots, and a regions container", async () => {
+  const fake = createFakeRoam();
+  const host = createHost({ api: fake.api, storage: fake.storage, graph: "g" });
+  fake.seedBoard({
+    uid: "b1",
+    props: { plexus: { v: 2 } },
+    children: [
+      { uid: "c1", string: "note", props: { plexus: { x: 0, y: 0, w: 280, h: 160 } } },
+      { uid: "ed", string: "Connections", props: { plexus: { type: "edges" } } },
+      { uid: "sn", string: "Snapshots", props: { plexus: { type: "snapshots" } } },
+      { uid: "box", string: "{{[[plexus-regions]]}}", props: { plexus: { type: "regions" } } },
+    ],
+  });
+  const session = acquireSession("b1", { host, linkDelay: 0 });
+  try {
+    assert.equal(session.board.items.has("box"), false);
+    const id = await session.createCard({ x: 800, y: 800, string: "added" });
+    assert.deepEqual(fake.children("b1"), ["c1", id, "ed", "sn", "box"]);
+    assert.equal(session.board.items.has(id), true);
+    assert.equal(session.board.items.has("box"), false);
+  } finally {
+    session.release();
+    resetSessions();
+  }
+});
+
+test("REG-1: createCard lands before a regions container that has only the macro string", async () => {
+  const fake = createFakeRoam();
+  const host = createHost({ api: fake.api, storage: fake.storage, graph: "g" });
+  fake.seedBoard({
+    uid: "b2",
+    props: { plexus: { v: 2 } },
+    children: [
+      { uid: "c1", string: "note", props: { plexus: { x: 0, y: 0, w: 280, h: 160 } } },
+      { uid: "box", string: "{{[[plexus-regions]]}}" },
+    ],
+  });
+  const session = acquireSession("b2", { host, linkDelay: 0 });
+  try {
+    const id = await session.createCard({ x: 800, y: 800, string: "added" });
+    assert.deepEqual(fake.children("b2"), ["c1", id, "box"]);
+  } finally {
+    session.release();
+    resetSessions();
   }
 });

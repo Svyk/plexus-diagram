@@ -149,6 +149,8 @@ function seedLibrary(fake) {
     { uid: "bz", string: "{{[[diagram]]:Zed board}}", props: { plexus: { v: 2 } }, children: [
       { uid: "bz1", string: "a" }, { uid: "bz2", string: "b" },
       { uid: "bze", string: "Connections", props: { plexus: { type: "edges" } } },
+      { uid: "bzs", string: "Snapshots", props: { plexus: { type: "snapshots" } } },
+      { uid: "bzr", string: "{{[[plexus-regions]]}}", props: { plexus: { type: "regions" } } },
     ] },
   ] });
   fake.seedPage({ title: "Alpha", children: [

@@ -186,7 +186,7 @@ export function createRelChips({ doc = globalThis.document, win = globalThis.win
     const svg = svgEl("svg", { class: "pxd-relpop__map", viewBox: `${v.x} ${v.y} ${v.w} ${v.h}`, preserveAspectRatio: "xMidYMid meet", role: "img", "aria-label": "Where the connection sits on the board" }, parent);
     const line = svgEl("g", { class: `pxd-relpop__edge${model.color ? ` pxd-c-${model.color}` : ""}` }, null);
     if (model.hex) line.style.setProperty("--pxd-line", model.hex);
-    const font = Math.max(12, Math.round(v.w / 22));
+    const font = Math.max(12, Math.round(v.w / 32));
     for (const card of model.cards) {
       const r = card.rect;
       const g = svgEl("g", { class: `pxd-relpop__card pxd-relpop__card--${card.role}${card.type === "section" ? " pxd-relpop__card--section" : ""}` }, svg);
@@ -204,8 +204,11 @@ export function createRelChips({ doc = globalThis.document, win = globalThis.win
     if (model.dir === "two") svgEl("path", { class: "pxd-relpop__head", d: arrowHeadPath(model.start, model.startAngle + Math.PI, arrowSize(1, 2) * 1.6) }, line);
     if (model.toBlockText) {
       const pill = svgEl("g", { class: "pxd-relpop__row" }, line);
-      const text = `▸ ${clip(model.toBlockText, 30)}`;
-      const w = Math.max(60, text.length * font * 0.58 + 16);
+      // Left of the card the arrow enters, kept inside the crop: the text shrinks to the room that is there.
+      const room = Math.max(font * 4, model.end.x - 6 - (v.x + 4));
+      const chars = Math.max(6, Math.min(30, Math.floor((room - 16) / (font * 0.58))));
+      const text = `▸ ${clip(model.toBlockText, chars)}`;
+      const w = Math.min(room, Math.max(60, text.length * font * 0.58 + 16));
       svgEl("rect", { x: model.end.x - w - 6, y: model.end.y - font - 10, width: w, height: font + 8, rx: (font + 8) / 2 }, pill);
       const t = svgEl("text", { x: model.end.x - w + 2, y: model.end.y - 6, "font-size": font }, pill);
       t.textContent = text;

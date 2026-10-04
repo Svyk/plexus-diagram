@@ -3534,7 +3534,12 @@ export function mountBoardView({
     setFullscreen(on) { if (Boolean(on) !== isFullscreen) applyFullscreen(on); },
     fit() { fitAll(); },
     // Select and pulse a card or connection by uid, without a page check (feature.js enters a nested board first).
-    focusUid(uid) { return consumeDeepLink(`#?pxd=${encodeURIComponent(uid)}`); },
+    focusUid(uid) {
+      const ok = consumeDeepLink(`#?pxd=${encodeURIComponent(uid)}`);
+      // A board inline on a long page: bring it on screen so the pulse is seen.
+      if (ok && !isFullscreen) { try { mountEl?.scrollIntoView?.({ block: "center" }); } catch { /* no layout */ } }
+      return ok;
+    },
     viewport: () => ({ x: vp.x, y: vp.y, zoom: vp.zoom }),
     // Swap the settings object (feature.js calls this when a setting changes) and re-apply what depends on it.
     setSettings(next) {

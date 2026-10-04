@@ -9,6 +9,8 @@
   gap: 2px;
   max-height: calc(100% - 16px);
   overflow: auto;
+  box-sizing: border-box;
+  width: var(--pxd-rail-w, 40px);
   padding: 4px;
   border: 1px solid var(--pxd-border);
   border-radius: 8px;
@@ -36,6 +38,20 @@
   min-width: 28px;
   padding: 2px 4px;
   font-size: 10px;
+}
+
+/* The rail keeps the width the panel offset assumes: the version badge and zoom label shrink to fit. */
+.pxd-root .pxd-rail .pxd-rail__zoom,
+.pxd-root .pxd-rail .pxd-rail__badge {
+  box-sizing: border-box;
+  max-width: 100%;
+  min-width: 0;
+  padding: 2px 0;
+  overflow: hidden;
+  font-size: 9px;
+  line-height: 1.2;
+  text-align: center;
+  white-space: nowrap;
 }
 
 .pxd-root .pxd-legend {
@@ -82,7 +98,7 @@
 
 /* 2.4 panel placement: the Add/Info panel floats left of the control rail, never over it. */
 .pxd-root {
-  --pxd-rail-w: 38px;
+  --pxd-rail-w: 40px;
   --pxd-panel-gap: 8px;
   --pxd-panel-right: 8px;
 }

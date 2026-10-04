@@ -1022,13 +1022,12 @@ test("F2 Open on board for a connection on a nested board enters the nested boar
   });
 });
 
-test("F2 a connection on a top-level board is left to the plain page link; the parent page loads, then the nested board opens", async () => {
+test("F2 Open on board waits for the page's board to mount (Roam drops ?pxd=), enters a nested board, then focuses the edge", async () => {
   await withEnv({ enhanced: ["boardAAA1", "childBBB1"], hash: "#/app/Readwisenotes/page/elsewhere" }, async (t) => {
     nestedAncestors(t);
     t.host.graph = "Readwisenotes";
     t.host.blockPageUid = () => "pageLAB99";
     await t.install();
-    assert.equal(t.env.win.__plexusDiagram.openConnection("boardAAA1", "edgeEEE01"), false, "not nested");
     assert.equal(t.env.win.__plexusDiagram.openConnection("childBBB1", "edgeEEE01"), true);
     assert.equal(globalThis.location.hash, "#/app/Readwisenotes/page/pageLAB99?pxd=boardAAA1", "page link first");
     addNative(t.doc, "boardAAA1");
@@ -1037,6 +1036,21 @@ test("F2 a connection on a top-level board is left to the plain page link; the p
     assert.equal(t.views.length, 2, "the root mounted, then the nested board opened");
     assert.equal(t.views[1].args.session.uid, "childBBB1");
     assert.deepEqual(t.views[1].focused, ["edgeEEE01"]);
+  });
+});
+
+test("F2 Open on board for a top-level board: the board mounts after the page loads, then the connection is focused", async () => {
+  await withEnv({ enhanced: ["boardAAA1"], hash: "#/app/Readwisenotes/page/elsewhere" }, async (t) => {
+    t.strings.set("boardAAA1", "{{[[diagram]]:Root}}");
+    t.host.graph = "Readwisenotes";
+    t.host.blockPageUid = () => "pageLAB99";
+    await t.install();
+    assert.equal(t.env.win.__plexusDiagram.openConnection("boardAAA1", "edgeEEE01"), true);
+    addNative(t.doc, "boardAAA1");
+    t.tick();
+    await settle();
+    assert.equal(t.views.length, 1);
+    assert.deepEqual(t.views[0].focused, ["edgeEEE01"]);
   });
 });
 

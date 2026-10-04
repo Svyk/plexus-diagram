@@ -354,13 +354,20 @@ export async function installPlexusDiagram({
     navigate(rec, rec.crumbs.slice(0, -1), null);
   }
 
-  // "Open on board" for a connection that lives on a nested board: open the parent page's board, enter the nested
-  // board through the normal navigation (crumbs, history), then select the connection. Returns false for a board
-  // that is not nested (the caller uses the plain page link). If the root board never mounts, open the block itself.
+  // "Open on board" for a connection: open the page's board (a link's ?pxd= is dropped by Roam before a board that is
+  // not mounted yet could read it, so the target waits here), enter a nested board through the normal navigation
+  // (crumbs, history), then select the connection. If the root board never mounts, open the board block itself.
   let pendingNest = null; // { root, trail, edgeUid, boardUid, until }
   function enterNested(rec, trail, edgeUid) {
     visit(rec, trail);
-    queueMicrotask(() => { if (!stopped && mounts.get(rec.native) === rec) rec.view?.focusUid?.(edgeUid); });
+    // The board's data may still be loading right after a mount: retry for about a second.
+    const focus = (left) => {
+      if (stopped || mounts.get(rec.native) !== rec) return;
+      let done = false;
+      try { done = Boolean(rec.view?.focusUid?.(edgeUid)); } catch { done = false; }
+      if (!done && left > 0) lifecycle.timeout(() => focus(left - 1), 150);
+    };
+    queueMicrotask(() => focus(8));
   }
   function resumeNestedOpen(rec) {
     const p = pendingNest;
@@ -371,7 +378,6 @@ export async function installPlexusDiagram({
   function openNestedConnection(boardUid, edgeUid) {
     if (stopped || !boardUid || !edgeUid) return false;
     const trail = seedCrumbs(boardUid);
-    if (trail.length < 2) return false;
     const root = trail[0].uid;
     for (const rec of mounts.values()) {
       if (rec.uid === root && rec.view) { enterNested(rec, trail, edgeUid); return true; }
@@ -1026,7 +1032,7 @@ export async function installPlexusDiagram({
       connected: rec.native.isConnected !== false && rec.mountEl.isConnected !== false,
       state: rec.view?.state?.() ?? null,
     })),
-    // "Open on board" for a connection (RF-3); false when the board is not nested.
+    // "Open on board" for a connection (RF-3).
     openConnection: (boardUid, edgeUid) => openNestedConnection(boardUid, edgeUid),
     // Caller must release(). A second acquire of the same board shares the session.
     session(uid) {

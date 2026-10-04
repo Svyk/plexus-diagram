@@ -21,12 +21,14 @@ const timers = { later: () => () => {}, frame: () => () => {} };
 // ------------------------------------------------------------------ RF-1 panel beside the rail
 test("RF-1: the panel sits left of the rail (rail width plus gap), 8px from the edge otherwise", async () => {
   const rail = await css("rail.css");
-  assert.match(rail, /\.pxd-root \{[^}]*--pxd-rail-w: 38px;[^}]*--pxd-panel-gap: 8px;[^}]*--pxd-panel-right: 8px;/);
+  assert.match(rail, /\.pxd-root \{[^}]*--pxd-rail-w: 40px;[^}]*--pxd-panel-gap: 8px;[^}]*--pxd-panel-right: 8px;/);
   assert.match(rail, /\.pxd-root\.pxd-root--rail \{\s*--pxd-panel-right: calc\(8px \+ var\(--pxd-rail-w\) \+ var\(--pxd-panel-gap\)\);/);
   assert.match(rail, /\.pxd-root \.pxd-panel \{[^}]*right: var\(--pxd-panel-right\);/);
   assert.match(rail, /\.pxd-root\.pxd-root--panel-open \.pxd-minimap \{\s*right: calc\(var\(--pxd-panel-right\) \+ var\(--pxd-panel-w, 340px\) \+ var\(--pxd-panel-gap\)\);/);
   const railBlock = /\.pxd-root \.pxd-rail \{[^}]*\}/.exec(rail)[0];
   assert.match(railBlock, /right: 8px;/, "the rail stays put");
+  assert.match(railBlock, /width: var\(--pxd-rail-w, 40px\);/, "the rail is as wide as the offset assumes");
+  assert.match(rail, /\.pxd-rail \.pxd-rail__badge \{[^}]*overflow: hidden;[^}]*white-space: nowrap;/, "the badge cannot widen the rail");
 });
 
 test("RF-1: opening the panel marks the root and publishes its width for the minimap; closing clears the mark", (t) => {
@@ -224,6 +226,19 @@ test("RF-3 Open in sidebar and Open on board go through the host and the deep li
   f.stub.dispatch(chip, "click", {});
   f.stub.dispatch(f.doc.body.querySelectorAll(".pxd-relpop__btn")[0], "click", {});
   assert.equal(f.stub.window.location.hash, "#/app/Svy/page/pageUID01?pxd=edge0001");
+});
+
+test("RF-3 the target-block pill in the preview map stays inside the crop", (t) => {
+  const f = chipFixture();
+  t.after(f.restore);
+  f.chips.start();
+  const a = f.outline("edge0001");
+  f.chips.scan(a.container);
+  f.stub.dispatch(a.container.children.find((c) => c.classList.contains("pxd-relchip")), "click", {});
+  const pop = f.doc.body.querySelector(".pxd-relpop");
+  const [vx] = pop.querySelector(".pxd-relpop__map").getAttribute("viewBox").split(" ").map(Number);
+  const rect = pop.querySelector(".pxd-relpop__row rect");
+  assert.ok(Number(rect.getAttribute("x")) >= vx, "the pill does not start left of the crop");
 });
 
 test("F2 Open on board asks the host to enter a nested board first, and skips the plain link when it handled it", (t) => {

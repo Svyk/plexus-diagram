@@ -32,6 +32,9 @@ export const SETTING_IDS = Object.freeze({
   dockOptions: "dock-options",
   tooltips: "tooltips",
   tooltipDelay: "tooltip-delay",
+  taskTool: "task-tool",
+  taskChips: "task-chips",
+  taskDefaultProject: "task-default-project",
 });
 
 const DEFAULTS = Object.freeze({
@@ -68,11 +71,15 @@ const DEFAULTS = Object.freeze({
   [SETTING_IDS.dockOptions]: true,
   [SETTING_IDS.tooltips]: true,
   [SETTING_IDS.tooltipDelay]: "350 ms",
+  [SETTING_IDS.taskTool]: true,
+  [SETTING_IDS.taskChips]: "full",
+  [SETTING_IDS.taskDefaultProject]: "",
 });
 
 const BOARD_TONES = ["none", "paper", "gray", "red", "orange", "yellow", "green", "teal", "blue", "indigo", "purple", "pink"];
 const MAP_ZOOMS = ["0.3", "0.45", "0.6"];
 const TOOLTIP_DELAYS = ["instant", "350 ms", "800 ms"];
+const TASK_CHIPS = ["full", "due only", "none"];
 
 const ENUMS = Object.freeze({
   [SETTING_IDS.graphLinks]: ["off", "attributes", "all"],
@@ -89,6 +96,7 @@ const ENUMS = Object.freeze({
   [SETTING_IDS.dockStyle]: ["pill", "strip"],
   [SETTING_IDS.chromeDensity]: ["comfortable", "compact"],
   [SETTING_IDS.tooltipDelay]: TOOLTIP_DELAYS,
+  [SETTING_IDS.taskChips]: TASK_CHIPS,
 });
 
 const NUMBERS = new Set([SETTING_IDS.defaultCardWidth, SETTING_IDS.defaultCardHeight]);
@@ -237,6 +245,9 @@ const SETTING_ROWS = {
   [SETTING_IDS.autoFitSections]: () => switchRow(SETTING_IDS.autoFitSections, "Auto-fit sections", "Grow a section when a card is moved or resized past its edge."),
   [SETTING_IDS.spaceOut]: () => switchRow(SETTING_IDS.spaceOut, "Space out cards", "After a move, push cards apart when they overlap."),
   [SETTING_IDS.showCardBadges]: () => switchRow(SETTING_IDS.showCardBadges, "Show card badges", "Show how many references, tasks, and children a card has."),
+  [SETTING_IDS.taskTool]: () => switchRow(SETTING_IDS.taskTool, "Task tool", "Show the Task tool (K) in the dock. It makes a Roam TODO block; Better Tasks sets its due date and project."),
+  [SETTING_IDS.taskChips]: () => selectRow(SETTING_IDS.taskChips, "Task chips", "What a task card shows under its title. Full: due date, project, priority, repeat, status. Due only: just the date. None: no chips.", TASK_CHIPS),
+  [SETTING_IDS.taskDefaultProject]: () => inputRow(SETTING_IDS.taskDefaultProject, "Default project for new tasks", "A page name. A task made from the board gets it as its Better Tasks project. Empty uses Better Tasks' own default."),
   [SETTING_IDS.enterInCard]: () => selectRow(SETTING_IDS.enterInCard, "Enter in a card", "Newline adds a line to the card's block, like a native Roam diagram. Child makes a new child block inside the card.", ["newline", "child"]),
   [SETTING_IDS.defaultCardLook]: () => selectRow(SETTING_IDS.defaultCardLook, "Default card look", "New note cards. Block is a plain Roam block. Card keeps a title row.", ["block", "card"]),
   [SETTING_IDS.defaultCardWidth]: () => inputRow(SETTING_IDS.defaultCardWidth, "Default card width", "Width of a new card, in pixels."),
@@ -250,6 +261,7 @@ const SETTING_ROWS = {
 const SETTING_GROUPS = [
   ["group-cards", "Cards", "How new cards look, and the marks on them.", [
     SETTING_IDS.defaultCardLook, SETTING_IDS.defaultCardWidth, SETTING_IDS.defaultCardHeight, SETTING_IDS.enterInCard, SETTING_IDS.showCardBadges, SETTING_IDS.spaceOut,
+    SETTING_IDS.taskTool, SETTING_IDS.taskChips, SETTING_IDS.taskDefaultProject,
   ]],
   ["group-sections", "Sections", "How a section grows around its cards.", [
     SETTING_IDS.autoFitSections,

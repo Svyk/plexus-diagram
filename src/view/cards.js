@@ -5,7 +5,7 @@
 import { createRowScheduler, isHeavyRow } from "./progressive.js";
 import { DEFAULT_SIZES, FONT_SIZES, PALETTE, attrNameOf, classifyString, cssColor, firstLine, hexColor, isUntitledBoard, parseBoardTitle, plainText } from "../model/schema.js";
 import { isQueryString } from "../model/query.js";
-import { dueChip } from "../model/tasks.js";
+import { dueChip, isTaskString, taskAttrId, taskMeta, taskNamesSig } from "../model/tasks.js";
 import { commentCount } from "../model/section6.js";
 import { LINKED_REF_CAP, linkedRefCard, linkedRefLabel } from "../model/refs.js";
 import { boardPreview, descendantsOf, sectionNoteUid } from "../model/board.js";
@@ -156,8 +156,13 @@ const stickyTitleOf = (string) => {
   const line = plainText(firstLine(String(string || ""))).trim();
   return line ? line.slice(0, STICKY_TITLE_MAX) : "Note";
 };
-// Direct children that count as rows: the BT_attrDue child is the due chip, never a row.
-const visibleKids = (list) => (list || []).filter((c) => attrNameOf(childString(c)) !== "BT_attrDue");
+// Direct children that count as rows. Better Tasks attribute children are chips, never rows, bullets or badge counts.
+const isTaskAttrString = (s) => taskAttrId(s) !== null;
+const visibleKids = (list) => (list || []).filter((c) => !isTaskAttrString(childString(c)));
+// A note card whose block is a task draws its title through renderBlock when Better Tasks is loaded, so Better Tasks
+// sees the checkbox click (Completed date, next occurrence). Without it the card flips the marker itself.
+let taskBlockOn = () => false;
+const isTaskCard = (item) => item?.type === "card" && item.kind === "note" && isTaskString(item.string);
 // Rows renderBlocks will draw for this list (same depth and row caps).
 function kidRowsOf(list, depth = 1, budget = { n: 0 }) {
   for (const c of visibleKids(list)) {
@@ -177,6 +182,7 @@ function contentKeyOf(item, live = false) {
     item.kind, item.enhanced ? "e" : "", item.string, item.collapsed ? "c" : "", item.open === false ? "x" : "", item.kids ? "k" : "",
     item.fontSize || "", item.textColor || "", item.align || "", item.fill || "", item.border || "",
     item.titleSize || "", item.titleColor || "", item.titleFill || "", item.areaFill || "",
+    taskBlockOn(item) ? `tb${taskNamesSig()}` : "",
   ];
   if (item.kind === "board") parts.push(item.w, item.h);
   if (item.kind === "board") {
@@ -217,7 +223,10 @@ export function createItemRenderer({
   onRenamePage,
   onBadgeClick,
   onPageLayout,
+  onTaskChip,
+  bt = null,
 } = {}) {
+  taskBlockOn = (item) => Boolean(bt?.available?.()) && isTaskCard(item);
   const shells = new Map(); // uid → rec
   const mounted = new Map(); // uid → lastWanted (LRU order = insertion order)
   // ED-2: per-item board renders, on the same object as window.__plexusDiagram.stats.
@@ -231,6 +240,7 @@ export function createItemRenderer({
   let focusSet = null;
   let badgeMap = new Map();
   let showBadges = false;
+  let taskChips = "full";
   let zoomCache = 1;
   let paused = false;
   let editing = null;
@@ -310,6 +320,15 @@ export function createItemRenderer({
     const mount = el("div", "pxd-rs__live", live);
     try { host.renderBlock(mount, uid); }
     catch { mount.textContent = "Query"; }
+    return live;
+  };
+
+  // The task's own block, closed: Roam's checkbox inside a real block render, which Better Tasks watches.
+  const mountTaskBlock = (parent, uid) => {
+    const live = el("div", "pxd-rs pxd-item__string pxd-item__taskblock", parent);
+    const mount = el("div", "pxd-rs__live", live);
+    try { host.renderBlock(mount, uid, { open: false }); }
+    catch { mount.textContent = "Task"; }
     return live;
   };
 
@@ -735,9 +754,24 @@ export function createItemRenderer({
       if (rec.bare) cls.push("pxd-item--bare");
       if (rec.refBoard) cls.push("pxd-item--wb");
       if (item.look === "block") cls.push("pxd-card--block");
-      if (item.type === "card" && dueChip(item.content)?.overdue) cls.push("pxd-item--overdue");
+      const task = isTaskCard(item) ? taskMeta(item.string, item.content) : null;
+      if (task) {
+        cls.push("pxd-item--task");
+        if (task.done) cls.push("pxd-item--task-done");
+        if (task.cancelled) cls.push("pxd-item--task-cancelled");
+        if (task.due?.today && !task.done) cls.push("pxd-item--task-today");
+        if (task.due?.overdue) cls.push("pxd-item--overdue", "pxd-item--task-overdue");
+      } else if (item.type === "card" && dueChip(item.content)?.overdue) cls.push("pxd-item--overdue");
     }
     node.className = cls.join(" ");
+    {
+      const dueShort = item.type === "card" && cls.includes("pxd-item--task") ? taskMeta(item.string, item.content)?.due?.short : "";
+      // The map tier prints it after the header text, and a pseudo element reads its own element's attribute.
+      if (rec.header) {
+        if (dueShort) rec.header.setAttribute("data-task-due", dueShort);
+        else rec.header.removeAttribute("data-task-due");
+      }
+    }
     applyStyle(rec, item);
     if (item.type !== "section") syncShape(rec, item);
     if (item.type === "section") {
@@ -995,8 +1029,8 @@ export function createItemRenderer({
     for (const b of blocks) {
       if (budget.n >= CONTENT_LIMIT) return;
       const s = childString(b);
-      // The due date is the chip. The BT_attrDue child stays in the block and is never rewritten.
-      if (attrNameOf(s) === "BT_attrDue") continue;
+      // Task attributes are chips. Their children stay in the block and are never rewritten by Plexus.
+      if (isTaskAttrString(s)) continue;
       budget.n += 1;
       const row = el("div", "pxd-block", parent);
       row.dataset.uid = childUid(b);
@@ -1136,7 +1170,7 @@ export function createItemRenderer({
   const countRows = (blocks) => {
     let n = 0;
     for (const c of blocks) {
-      if (attrNameOf(childString(c)) === "BT_attrDue") continue;
+      if (isTaskAttrString(childString(c))) continue;
       n += 1;
       if (c.open !== false) n += countRows(childKids(c));
     }
@@ -1265,7 +1299,7 @@ export function createItemRenderer({
   const renderOutline = (parent, blocks, b, rec) => {
     for (const blk of blocks) {
       const s = childString(blk);
-      if (attrNameOf(s) === "BT_attrDue") continue;
+      if (isTaskAttrString(s)) continue;
       const uid = childUid(blk);
       const kids = childKids(blk);
       const folded = blk.open === false && kids.length > 0;
@@ -1655,7 +1689,7 @@ export function createItemRenderer({
     } else if (isQueryString(item.string) && host?.renderBlock) {
       budget.roots.push(mountQuery(body, item.uid));
     } else {
-      if (item.string?.trim()) budget.roots.push(renderRoot(body, item.string, "pxd-rs pxd-item__string", item.uid));
+      if (item.string?.trim()) budget.roots.push(taskBlockOn(item) ? mountTaskBlock(body, item.uid) : renderRoot(body, item.string, "pxd-rs pxd-item__string", item.uid));
       rec.kidCount = visibleKids(item.content).length;
       rec.kidRows = kidRowsOf(item.content);
       if (item.kids) renderBlocks(body, item.content || [], 1, budget);
@@ -1944,10 +1978,31 @@ export function createItemRenderer({
     for (const line of lines) {
       if (out.length >= ATTR_CHIPS_MAX) break;
       const name = attrNameOf(line);
-      if (!name || name === "BT_attrDue") continue;
+      if (!name || isTaskAttrString(line)) continue;
       const value = plainText(line.slice(line.indexOf("::") + 2), 40);
       if (value) out.push(`${plainText(name, 24)}: ${value}`);
     }
+    return out;
+  };
+
+  // Task chips: due, project, priority, repeat, status, waiting-for and GTD. Clicking one opens its popover when
+  // Better Tasks can write it; without Better Tasks they are plain read-only marks.
+  const taskChipsOf = (task) => {
+    const edit = Boolean(bt?.available?.()) && typeof onTaskChip === "function";
+    const note = edit ? " Click to change. Changes go through Better Tasks, so Cmd+Z there is Roam's undo." : "";
+    const out = [];
+    if (task.due) {
+      out.push({ cls: "due", text: task.due.short, title: `Due ${task.due.text}.${note}`, overdue: task.due.overdue, today: task.due.today, task: edit ? "due" : null });
+    } else if (edit && taskChips === "full" && !task.done) {
+      out.push({ cls: "due", text: "+ Due", title: `Set a due date.${note}`, empty: true, task: "due" });
+    }
+    if (taskChips !== "full") return out;
+    if (task.project) out.push({ cls: "project", text: task.project, title: `Project ${task.project}.${note}`, task: edit ? "project" : null });
+    if (task.priorityGlyph) out.push({ cls: "priority", text: task.priorityGlyph, title: `Priority ${task.priority}.${note}`, task: edit ? "priority" : null });
+    if (task.repeat) out.push({ cls: "repeat", text: "\u21BB", title: `Repeats: ${task.repeat}.${note}`, task: edit ? "repeat" : null });
+    if (task.status) out.push({ cls: "status", text: task.status, title: `Status ${task.status}` });
+    if (task.waitingFor) out.push({ cls: "waiting", text: task.waitingFor, title: `Waiting for ${task.waitingFor}` });
+    if (task.gtd) out.push({ cls: "gtd", text: task.gtd, title: `GTD ${task.gtd}` });
     return out;
   };
 
@@ -1963,8 +2018,13 @@ export function createItemRenderer({
     if (info && (info.open > 0 || info.done > 0)) chips.push({ cls: "todo", text: `${info.open || 0}/${info.done || 0}`, title: `${info.open || 0} open, ${info.done || 0} done` });
     const comments = commentCount(lastBoard, rec.uid);
     if (comments > 0) chips.push({ cls: "comments", text: `${comments}`, title: `${comments} comments` });
-    const due = item.type === "card" ? dueChip(item.content) : null;
-    if (due) chips.unshift({ cls: "due", text: due.text, title: "Due", overdue: due.overdue });
+    const task = isTaskCard(item) ? taskMeta(item.string, item.content) : null;
+    if (task) {
+      if (taskChips !== "none") chips.unshift(...taskChipsOf(task));
+    } else {
+      const due = item.type === "card" ? dueChip(item.content) : null;
+      if (due) chips.unshift({ cls: "due", text: due.text, title: "Due", overdue: due.overdue });
+    }
     for (const text of attrChipsOf(rec, item)) chips.push({ cls: "attr", text });
     if (!chips.length) return clear();
     const key = JSON.stringify(chips);
@@ -1972,9 +2032,18 @@ export function createItemRenderer({
     clear();
     const row = el("div", "pxd-item__badges", rec.el);
     for (const chip of chips) {
-      const node = el(chip.action ? "button" : "span", `pxd-badge-chip pxd-badge-chip--${chip.cls}`, row);
+      const node = el(chip.action || chip.task ? "button" : "span", `pxd-badge-chip pxd-badge-chip--${chip.cls}`, row);
       node.textContent = chip.text;
       if (chip.overdue) node.classList.add("pxd-badge-chip--overdue");
+      if (chip.today) node.classList.add("pxd-badge-chip--today");
+      if (chip.empty) node.classList.add("pxd-badge-chip--empty");
+      if (chip.task) {
+        node.type = "button";
+        node.setAttribute("aria-label", chip.title || chip.text);
+        node.setAttribute("data-task-chip", chip.task);
+        for (const type of ["pointerdown", "mousedown", "dblclick"]) node.addEventListener(type, stopEvent);
+        node.addEventListener("click", (event) => { event.stopPropagation(); onTaskChip?.(rec.uid, chip.task, node); });
+      }
       if (chip.title) node.title = chip.title;
       if (chip.action) {
         node.type = "button";
@@ -1990,6 +2059,12 @@ export function createItemRenderer({
   const setBadges = (map) => {
     badgeMap = map instanceof Map ? map : new Map();
     if (showBadges) for (const rec of shells.values()) renderBadges(rec);
+  };
+  const setTaskChips = (mode) => {
+    const next = ["full", "due only", "none"].includes(mode) ? mode : "full";
+    if (next === taskChips) return;
+    taskChips = next;
+    for (const rec of shells.values()) renderBadges(rec);
   };
   const setShowBadges = (on) => {
     const next = Boolean(on);
@@ -2520,6 +2595,7 @@ export function createItemRenderer({
     toggleKids,
     setBadges,
     setShowBadges,
+    setTaskChips,
     setFocus,
     setSelection,
     setHover,

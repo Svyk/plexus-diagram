@@ -48,7 +48,7 @@ Native diagrams are React Flow (`.react-flow`, nodes `.react-flow__node-block`).
 
 1. **Add, never take away.** An enhanced board keeps every native capability (section 1 inventory) and every 1.0-1.2 feature. Removing a feature needs the user's approval in the conversation.
 2. **Roam data is canonical.** Cards, sections, connections and nested boards are blocks. Layout and style live in each block's `:block/props` under `plexus`, merged on write (read, merge, write: an update replaces the whole props map). Relations that mean something are `Name::` attributes and refs. No shadow store, no IndexedDB, no network requests.
-3. **Never write `:diagram/*`**, never write Better Tasks `BT_attr*` blocks, never touch a native diagram that was not enhanced. "Restore native diagram" must keep working.
+3. **Never write `:diagram/*`**, never write Better Tasks `BT_attr*` blocks yourself (task attributes change only through Better Tasks' own tools, `bt_modify` and `bt_create`, feature-detected on every call), never touch a native diagram that was not enhanced. "Restore native diagram" must keep working.
 4. **No writes on open, pan, zoom or select.** Viewport is per device in localStorage.
 5. **Undo budget.** Roam's undo stack holds 50 entries. Any bulk operation stays at or under 45 writes per user action (`BULK_CARD_CAP`) and is fully undoable with Cmd+Z.
 6. **Never stop `mouseup`** in a `renderBlock` editor (Roam's drag-select disarm; this was the 1.1 Enter focus-loss bug). Keyboard listeners stay in the window capture phase. No `setPointerCapture`.
@@ -92,6 +92,7 @@ Native diagrams are React Flow (`.react-flow`, nodes `.react-flow__node-block`).
 | P12 | Refinements from 2026-10-03 videos | 2.4.0 | done 2026-10-03, tagged `v2.4.0` |
 | P13 | Polish | 2.5.0 | done 2026-10-03, tagged `v2.5.0` |
 | P14 | Editing, stickies, speed, arrow aim | 2.6.0 | done 2026-10-03, tagged `v2.6.0` |
+| P15 | Better Tasks cards | 2.7.0 | in progress |
 
 Order matters: P1 and P2 are the user's direct requests. Within a phase, do tasks in the listed order unless one is blocked.
 
@@ -360,7 +361,7 @@ Pick from here only when every phase above is done or blocked.
 
 ## 7. Non-goals
 
-AI agent features inside the board, SuperTag-style typed schemas or class tags, storing anything outside Roam blocks and props, network requests, any write on open, pan, zoom or select, writing `:diagram/*`, writing `BT_attr*`, replacing Roam's native diagram for boards the user did not enhance.
+AI agent features inside the board, SuperTag-style typed schemas or class tags, storing anything outside Roam blocks and props, network requests, any write on open, pan, zoom or select, writing `:diagram/*`, writing `BT_attr*` blocks from Plexus (Better Tasks' own tools may), replacing Roam's native diagram for boards the user did not enhance.
 
 ## 8. Measurements and findings
 

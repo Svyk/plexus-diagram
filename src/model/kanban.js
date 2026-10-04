@@ -1,6 +1,6 @@
 // Kanban columns for one board. Grouping is either the card's TODO/DONE
 // marker or one Name:: attribute. A drop plans a single write. No Roam calls.
-// BT_attr* stays with Better Tasks.
+// BT_attr* stays with Better Tasks: a Done drop asks Better Tasks to complete the task when it is loaded.
 
 import { columnNameOk, planAttrCell, tableRows } from "./table.js";
 
@@ -88,7 +88,8 @@ export function planKanbanMove({ field, column, row } = {}) {
     if (todoState(row.string) === column) return null;
     const string = withMarker(row.string, column);
     if (string === String(row.string || "")) return null;
-    return { op: "string", uid: row.uid, string };
+    // `status` lets a host with Better Tasks complete the task through it (Completed date, next occurrence).
+    return { op: "string", uid: row.uid, string, status: column === DONE_COLUMN ? "DONE" : "TODO" };
   }
   if (!columnNameOk(field)) return null;
   const attr = (row.attrs || []).find((item) => item.name === field);

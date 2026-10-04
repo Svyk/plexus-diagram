@@ -2453,7 +2453,8 @@ test("RG-5: a due chip and overdue border stay read-only when the TODO flips", a
     const card = f.root.querySelector("[data-uid=todoRG501]");
     assert.ok(card.classList.contains("pxd-item--overdue"));
     const chip = card.querySelector(".pxd-badge-chip--due");
-    assert.equal(chip?.textContent, "January 1st, 2020");
+    assert.equal(chip?.textContent, "Jan 1, 2020");
+    assert.match(chip.title, /January 1st, 2020/);
     assert.ok(chip.classList.contains("pxd-badge-chip--overdue"));
     assert.equal(card.textContent.includes("BT_attrDue"), false);
     const before = f.session.mutations.length;

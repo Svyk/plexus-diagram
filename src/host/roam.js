@@ -509,7 +509,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     openPage(uid) { return api.ui.mainWindow.openPage({ page: { uid } }); },
 
     renderString(el, string) { stats.renders++; return api.ui.components.renderString({ el, string }); },
-    renderBlock(el, uid) { stats.renders++; return api.ui.components.renderBlock({ uid, el, "open?": true }); },
+    renderBlock(el, uid, { open = true } = {}) { stats.renders++; return api.ui.components.renderBlock({ uid, el, "open?": open }); },
     renderPage(el, uid) { stats.renders++; return api.ui.components.renderPage({ uid, el }); },
     unmount(el) { return api.ui.components.unmountNode({ el }); },
 

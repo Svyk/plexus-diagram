@@ -34,6 +34,7 @@ const PALETTE_LIST = [
   ["hand", "Hand", "H", "hand"],
   ["card", "Card", "N", "new-object"],
   ["text", "Text", "T", "new-text-box"],
+  ["task", "Task", "K", "tick-circle"],
   ["sticky", "Sticky", "S", "annotation"],
   ["shape", "Shape", "R", "square"],
   ["section", "Section", "G", "widget"],
@@ -43,7 +44,7 @@ const PALETTE_LIST = [
 
 const LAYOUTS = ["split", "classic", "dock-only"];
 const DOCK_STYLES = ["pill", "strip"];
-const DOCK_GROUPS = [["select", "hand"], ["card", "text", "sticky", "shape", "section", "board"], ["connect"]];
+const DOCK_GROUPS = [["select", "hand"], ["card", "task", "text", "sticky", "shape", "section", "board"], ["connect"]];
 const SWATCH_TOOLS = new Set(["card", "sticky", "section"]);
 const REVEAL_PX = 48;
 const cap = (word) => word.charAt(0).toUpperCase() + word.slice(1);
@@ -425,6 +426,8 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
     badge.style.display = !rail && showBadge ? "" : "none";
     railBadge.style.display = rail && showBadge ? "" : "none";
     palette.style.display = setting("show-palette") === false ? "none" : "";
+    const taskBtn = paletteButtons.get("task");
+    if (taskBtn) taskBtn.style.display = setting("task-tool") === false ? "none" : "";
     const layoutSetting = setting("toolbar-layout");
     const layout = LAYOUTS.includes(layoutSetting) ? layoutSetting : "split";
     const docked = layout !== "classic";

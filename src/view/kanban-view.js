@@ -3,7 +3,7 @@
 
 import { DONE_COLUMN, TODO_FIELD, kanbanColumns, kanbanFields, kanbanRows, planKanbanMove } from "../model/kanban.js";
 
-export function mountKanban({ doc = globalThis.document, root, host, getBoard } = {}) {
+export function mountKanban({ doc = globalThis.document, root, host, bt = null, getBoard } = {}) {
   const box = doc.createElement("div");
   box.className = "pxd-kanban pxd-chrome";
   root?.append(box);
@@ -46,6 +46,12 @@ export function mountKanban({ doc = globalThis.document, root, host, getBoard } 
 
   const commit = async (plan) => {
     try {
+      // A task moved between To do and Done goes through Better Tasks when it is loaded, so it writes the
+      // Completed date. When Better Tasks refuses, the marker write below still moves the card.
+      if (plan.status && bt?.available?.()) {
+        const res = await bt.modify(plan.uid, { status: plan.status });
+        if (res.ok) { paint(); return; }
+      }
       if (plan.op === "string" && typeof host?.updateString === "function") {
         const write = () => host.updateString(plan.uid, plan.string);
         if (typeof host.group === "function") await host.group(write);

@@ -1,0 +1,186 @@
+/* P15 BT-2..BT-4. Task cards. Plexus draws its own chips, so Better Tasks' pills are hidden inside a card.
+   All rules sit under .pxd-root. Status is carried by borders: no tinted fill in dark, a faint strip in light. */
+
+.pxd-root .pxd-item .rt-pill-wrap {
+  display: none;
+}
+
+/* The title is a real block render (Roam's own checkbox). Only the checkbox and text stay. */
+.pxd-root .pxd-item__taskblock .rm-block-children,
+.pxd-root .pxd-item__taskblock .rm-bullet,
+.pxd-root .pxd-item__taskblock .controls,
+.pxd-root .pxd-item__taskblock .block-ref-count-button {
+  display: none;
+}
+
+.pxd-root .pxd-item.pxd-item--task {
+  border-left: 3px solid var(--pxd-border-strong);
+}
+
+.pxd-root .pxd-item.pxd-item--task-today {
+  border-left-color: var(--pxd-accent);
+}
+
+.pxd-root .pxd-item.pxd-item--task-overdue {
+  border-left-color: var(--pxd-red-line, #c23030);
+}
+
+.pxd-root .pxd-item.pxd-item--task-done {
+  opacity: 0.62;
+}
+
+.pxd-root .pxd-item.pxd-item--task-done .pxd-item__string,
+.pxd-root .pxd-item.pxd-item--task-cancelled .pxd-item__string {
+  text-decoration: line-through;
+}
+
+/* Light mode may tint the strip. Dark mode keeps the border alone. */
+.pxd-root:not(.pxd-root--dark) .pxd-item.pxd-item--task-today {
+  background-image: linear-gradient(90deg, hsl(175 60% 90% / 0.55), transparent 28px);
+}
+
+.pxd-root:not(.pxd-root--dark) .pxd-item.pxd-item--task-overdue {
+  background-image: linear-gradient(90deg, hsl(0 80% 92% / 0.7), transparent 28px);
+}
+
+/* Chips */
+.pxd-root .pxd-badge-chip[data-task-chip] {
+  pointer-events: auto;
+  cursor: pointer;
+  font: inherit;
+  font-size: 10px;
+  line-height: 14px;
+}
+
+.pxd-root .pxd-badge-chip[data-task-chip]:hover,
+.pxd-root .pxd-badge-chip[data-task-chip]:focus-visible {
+  border-color: var(--pxd-accent);
+  color: var(--pxd-text);
+  outline: none;
+}
+
+.pxd-root .pxd-badge-chip.pxd-badge-chip--today {
+  border-color: var(--pxd-accent);
+  color: var(--pxd-accent);
+}
+
+.pxd-root .pxd-badge-chip.pxd-badge-chip--overdue {
+  border-color: var(--pxd-red-line, #c23030);
+  color: var(--pxd-red-text, var(--pxd-red-line, #c23030));
+}
+
+.pxd-root .pxd-badge-chip.pxd-badge-chip--empty {
+  border-style: dashed;
+}
+
+.pxd-root .pxd-badge-chip.pxd-badge-chip--priority {
+  color: var(--pxd-text);
+  font-weight: 600;
+}
+
+.pxd-root .pxd-badge-chip.pxd-badge-chip--status,
+.pxd-root .pxd-badge-chip.pxd-badge-chip--gtd,
+.pxd-root .pxd-badge-chip.pxd-badge-chip--waiting {
+  background: transparent;
+}
+
+/* Map tier: a check glyph, the title and the due date. Overview tier: the check glyph alone. */
+.pxd-root.pxd-lod-map .pxd-item--task > .pxd-item__header::before {
+  content: "\2610  ";
+}
+
+.pxd-root.pxd-lod-map .pxd-item--task-done > .pxd-item__header::before {
+  content: "\2611  ";
+}
+
+.pxd-root.pxd-lod-map .pxd-item--task > .pxd-item__header[data-task-due]::after {
+  content: "  " attr(data-task-due);
+  color: var(--pxd-muted);
+}
+
+.pxd-root.pxd-lod-overview .pxd-item.pxd-item--card.pxd-item--task:not(.pxd-item--editing) > .pxd-item__header {
+  display: block;
+  font-size: 0;
+  text-align: center;
+}
+
+.pxd-root.pxd-lod-overview .pxd-item.pxd-item--card.pxd-item--task:not(.pxd-item--editing) > .pxd-item__header::before {
+  content: "\2610";
+  font-size: var(--pxd-overview-font, 40px);
+  line-height: 1.2;
+}
+
+.pxd-root.pxd-lod-overview .pxd-item.pxd-item--card.pxd-item--task-done:not(.pxd-item--editing) > .pxd-item__header::before {
+  content: "\2611";
+}
+
+.pxd-root.pxd-lod-overview .pxd-item.pxd-item--card.pxd-item--task:not(.pxd-item--editing) > .pxd-item__header::after {
+  content: none;
+}
+
+/* Chip popover */
+.pxd-root .pxd-task-pop {
+  position: absolute;
+  z-index: 40;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  min-width: 150px;
+  max-width: 240px;
+  padding: 8px;
+  border: 1px solid var(--pxd-border-strong);
+  border-radius: 8px;
+  background: var(--pxd-card);
+  color: var(--pxd-text);
+  box-shadow: var(--pxd-shadow);
+  font-size: 12px;
+}
+
+.pxd-root .pxd-task-pop .pxd-task-pop__title {
+  font-weight: 600;
+}
+
+.pxd-root .pxd-task-pop .pxd-task-pop__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  max-height: 180px;
+  overflow-y: auto;
+}
+
+.pxd-root .pxd-task-pop .pxd-task-pop__hint {
+  color: var(--pxd-muted);
+}
+
+.pxd-root .pxd-task-pop .pxd-task-pop__btn {
+  box-sizing: border-box;
+  padding: 3px 8px;
+  border: 1px solid var(--pxd-border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--pxd-text);
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pxd-root .pxd-task-pop .pxd-task-pop__btn:hover,
+.pxd-root .pxd-task-pop .pxd-task-pop__btn:focus-visible {
+  border-color: var(--pxd-accent);
+  outline: none;
+}
+
+.pxd-root .pxd-task-pop .pxd-task-pop__btn--clear {
+  color: var(--pxd-muted);
+}
+
+.pxd-root .pxd-task-pop .pxd-task-pop__input {
+  box-sizing: border-box;
+  padding: 3px 6px;
+  border: 1px solid var(--pxd-border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--pxd-text);
+  font: inherit;
+}

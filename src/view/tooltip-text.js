@@ -55,6 +55,7 @@ export const TIP_TEXT = {
   "tool.select": e("Select", "Click cards to select them, drag to move, drag on empty space to box-select.", "V", LOCK),
   "tool.hand": e("Hand", "Drag the board to pan without moving anything.", "H", LOCK),
   "tool.card": e("Card", "Click the board to make a card, or drag to size one. It is a Roam block.", "N", LOCK),
+  "tool.task": e("Task", "Click the board to make a task card: a Roam TODO block. Better Tasks sets its due date and project from the chips.", "K", LOCK),
   "tool.text": e("Text", "Click the board to place a free text label.", "T", LOCK),
   "tool.sticky": e("Sticky", "Click the board to place a colored sticky note.", "S", LOCK),
   "tool.shape": e("Shape", "Click or drag to draw a shape. Pick its kind in the options beside the dock.", "R", LOCK),

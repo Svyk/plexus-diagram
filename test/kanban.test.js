@@ -17,6 +17,7 @@ test("TP-3: moving a TODO card to Done rewrites the marker once", () => {
     op: "string",
     uid: "c1",
     string: "{{[[DONE]]}} Wash",
+    status: "DONE",
   });
   assert.equal(planKanbanMove({ field: "To do", column: "To do", row }), null);
   assert.equal(planKanbanMove({ field: "BT_attrStatus", column: "Done", row }), null);

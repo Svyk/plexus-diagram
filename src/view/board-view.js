@@ -14,6 +14,9 @@ import { readMindPreset, writeMindPreset } from "../model/mindmap.js";
 import { attrLegend, parseAttrStyles, styleAttrLinks } from "../model/attr-styles.js";
 import { lensBright, lensCatalog, tagsForCard } from "../model/lens.js";
 import { dropNamespace } from "../model/namespace.js";
+import { isBareTask, isTaskAttr, isTaskString, setTaskAttrNames, taskMeta } from "../model/tasks.js";
+import { createBt } from "../host/bt.js";
+import { createTaskPopover } from "./task-popover.js";
 import { neighborLayout } from "../model/neighbors.js";
 import { isQueryString, queryResultLayout, queryResultUids } from "../model/query.js";
 import {
@@ -126,7 +129,8 @@ function rasterizeSvg(doc, svg) {
 // Roam debounces the block string, so the editor text is what the user actually typed.
 export function freshCardIsBlank({ blockString, itemString, contentCount = 0, editorText = "" } = {}) {
   if (contentCount > 0) return false;
-  return ![blockString, itemString, editorText].some((s) => String(s ?? "").trim());
+  // A task block that still holds only its TODO marker is as empty as a blank card.
+  return ![blockString, itemString, editorText].some((s) => !isBareTask(s) && String(s ?? "").trim());
 }
 
 function editingPlainText(root) {
@@ -342,6 +346,7 @@ export function mountBoardView({
   let settingsRef = settings;
   const readSetting = (k) => (typeof settingsRef?.get === "function" ? settingsRef.get(k) : settingsRef?.[k]);
   const settingsProxy = { get: readSetting };
+  const bt = host?.bt ?? createBt({ win });
   const setting = (k, d) => {
     const v = readSetting(k);
     return v === undefined || v === null ? d : v;
@@ -635,7 +640,20 @@ export function mountBoardView({
       return false;
     },
     onBadgeClick: (uid) => { ctl.select([uid]); panel.open("related"); },
+    bt,
+    onTaskChip: (uid, kind, anchor) => taskPop.open(uid, kind, anchor),
     onPageLayout: (uid) => { if (blockCards.has(uid)) scheduleAnchors(); },
+  });
+  const taskPop = createTaskPopover({ doc, root, bt, toast: (m) => chrome.toast.show(m) });
+  const applyTaskSettings = () => itemsR.setTaskChips(String(setting("task-chips", "full")));
+  applyTaskSettings();
+  // Attribute labels can be renamed in Better Tasks: once it answers, redraw the task cards that read them.
+  void bt.prime().then((names) => {
+    if (!names || disposed) return;
+    setTaskAttrNames(names);
+    const b = board();
+    const uids = b ? [...b.items.values()].filter((it) => it.type === "card" && it.kind === "note" && isTaskString(it.string)).map((it) => it.uid) : [];
+    if (uids.length) { itemsR.expireContent(uids); scheduleContent(); }
   });
   const edgesR = createEdgeLayer({
     doc,
@@ -1590,7 +1608,7 @@ export function mountBoardView({
           try { queryText = host?.blockString?.(item.target.uid) || ""; } catch { queryText = ""; }
         }
         const canExpand = item?.kind === "page" || item?.kind === "note" || item?.kind === "block";
-        return { item, isBoard: item?.kind === "board", collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS.includes(item?.kind), canSpread: item?.kind === "note" || item?.kind === "block", isQuery: isQueryString(queryText), canExpand, mindPreset: readMindPreset(storage) };
+        return { item, canMakeTask: item?.type === "card" && item?.kind === "note" && !isTaskString(item.string) && !isQueryString(queryText), isBoard: item?.kind === "board", collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS.includes(item?.kind), canSpread: item?.kind === "note" || item?.kind === "block", isQuery: isQueryString(queryText), canExpand, mindPreset: readMindPreset(storage) };
       }
       case "section": {
         const members = item && b ? [item.uid, ...descendantsOf(b, item.uid)] : [];
@@ -1632,9 +1650,9 @@ export function mountBoardView({
       if (uid && !disposed) { ctl.select([uid]); void enterEdit(uid); }
       return;
     }
-    const d = DEFAULT_SIZES[type];
+    const d = DEFAULT_SIZES[type === "task" ? "card" : type];
     const at = { x: world.x - d.w / 2, y: world.y - d.h / 2 };
-    const uid = await (type === "text" ? actions.createText(at) : actions.createCard(at));
+    const uid = await (type === "text" ? actions.createText(at) : type === "task" ? actions.createTask(at) : actions.createCard(at));
     if (uid && !disposed) { ctl.select([uid]); void enterEdit(uid); }
   };
   const onMenuPick = (id) => {
@@ -1650,6 +1668,8 @@ export function mountBoardView({
     const arg = at < 0 ? null : id.slice(at + 1);
     switch (head) {
       case "new-card": void createAt("card", world); break;
+      case "new-task": void createAt("task", world); break;
+      case "make-task": if (item && item.type === "card" && item.kind === "note" && !isTaskString(item.string)) void makeTask(item.uid, item.string); break;
       case "new-text": void createAt("text", world); break;
       case "new-sticky": void createAt("sticky", world); break;
       case "new-section": {
@@ -2335,6 +2355,22 @@ export function mountBoardView({
   };
   // Cards/text created by a gesture and left empty are removed on edit exit (no junk cards).
   const freshItems = new Set();
+  const freshTasks = new Set();
+  const defaultTaskProject = () => String(setting("task-default-project", "") || "").trim().replace(/^\[\[|\]\]$/g, "");
+  // The default project is applied once, when the new task has text, through Better Tasks.
+  const settleFreshTask = (uid) => {
+    if (!freshTasks.delete(uid)) return;
+    const project = defaultTaskProject();
+    if (!project || !bt.available()) return;
+    const text = host?.blockString?.(uid);
+    if (!isTaskString(text) || isBareTask(text)) return;
+    void bt.modify(uid, { attributes: { project } });
+  };
+  const makeTask = async (uid, string) => {
+    await session.setString?.(uid, `{{[[TODO]]}} ${String(string || "").trim()}`.trimEnd());
+    const project = defaultTaskProject();
+    if (project && bt.available()) void bt.modify(uid, { attributes: { project } });
+  };
   const exitEdit = async () => {
     const uid = itemsR.editingUid?.();
     const editorText = editingPlainText(root);
@@ -2345,12 +2381,14 @@ export function mountBoardView({
       if (item && freshCardIsBlank({
         blockString: text,
         itemString: item.string,
-        contentCount: (item.content || []).length,
+        contentCount: (item.content || []).filter((c) => !isTaskAttr(c)).length,
         editorText,
       })) {
+        freshTasks.delete(uid);
         await session.deleteItems?.([uid]);
       }
     }
+    if (uid) settleFreshTask(uid);
     if (!disposed) { dirty.selection = true; schedule(); }
   };
 
@@ -2594,6 +2632,19 @@ export function mountBoardView({
     commitMove: (uids, dx, dy) => session.commitMove?.(uids, dx, dy),
     commitRects: (list) => session.commitRects?.(list),
     createCard: (p) => Promise.resolve(session.createCard?.({ x: p.x, y: p.y, ...(pendingFor("card") || {}) })).then((uid) => { if (uid) freshItems.add(uid); return uid; }),
+    // A task card is a plain TODO block. Plexus writes the marker only; attributes come from Better Tasks.
+    rescheduleTasks: (uids, day) => {
+      const b = board();
+      if (!b || !bt.available()) return;
+      const tasks = (uids || []).filter((u) => { const it = b.items.get(u); return it?.type === "card" && it.kind === "note" && isTaskString(it.string); });
+      if (!tasks.length) return;
+      void Promise.all(tasks.map((u) => bt.modify(u, { attributes: { due: day.iso } }))).then((all) => {
+        if (disposed) return;
+        const bad = all.find((r) => !r.ok);
+        chrome.toast.show({ message: bad ? `Better Tasks could not set the due date: ${bad.reason}` : `Due ${day.title}` });
+      });
+    },
+    createTask: (p) => Promise.resolve(session.createCard?.({ x: p.x, y: p.y, string: "{{[[TODO]]}} " })).then((uid) => { if (uid) { freshItems.add(uid); freshTasks.add(uid); } return uid; }),
     createText: (p) => {
       const spec = { x: p.x, y: p.y };
       if (p.look) spec.look = p.look;
@@ -2778,7 +2829,32 @@ export function mountBoardView({
     doc.removeEventListener("pointerup", onDocUp, true);
     doc.removeEventListener("pointercancel", onDocCancel, true);
   };
+  // Completing a repeating task makes Better Tasks write the next occurrence on a daily or project page, not on
+  // the board. Look for it after the click and offer to add it.
+  const watchRecurrence = (uid) => {
+    const item = uid ? board()?.items?.get(uid) : null;
+    const meta = item && isTaskString(item.string) ? taskMeta(item.string, item.content) : null;
+    if (!meta || meta.done || !meta.repeat || !bt.available()) return;
+    const query = plainText(item.string, 80);
+    const look = (attempt) => {
+      if (disposed) return;
+      void bt.search({ query, status: "TODO", max_results: 10 }).then((tasks) => {
+        if (disposed) return;
+        const next = tasks.find((t) => t.uid !== uid && !board()?.items?.has(t.uid) && t.attributes?.repeat);
+        if (next) {
+          const due = String(next.due || "").replace(/^\[\[|\]\]$/g, "");
+          chrome.toast.show({ message: `Next occurrence${due ? ` on ${due}` : ""}`, action: { label: "Add to board", run: () => { void session.addBlockRef?.(next.uid); } } });
+        } else if (attempt < 3) timers.later(() => look(attempt + 1), 2000);
+      });
+    };
+    timers.later(() => look(1), 1500);
+  };
   const toggleClickedTodo = (node) => {
+    // A task drawn through renderBlock has Roam's own checkbox. Roam flips it and Better Tasks sees the click.
+    if (node?.closest?.(".pxd-item__taskblock")) {
+      watchRecurrence(node.closest(".pxd-item")?.getAttribute?.("data-uid"));
+      return;
+    }
     const card = node?.closest?.(".pxd-item");
     const uid = card?.getAttribute?.("data-uid") || card?.dataset?.uid;
     if (!uid) return;
@@ -3263,6 +3339,7 @@ export function mountBoardView({
     doc,
     root,
     host,
+    bt,
     getBoard: board,
   });
   laterCtl = mountLater({
@@ -3573,6 +3650,7 @@ export function mountBoardView({
       if (minimapNow !== minimapBefore) chrome.minimap.setVisible(minimapNow);
       chrome.toolbar.applyControls?.();
       itemsR.setShowBadges(flag("show-card-badges", true));
+      applyTaskSettings();
       dirty.links = true;
       scheduleContent();
       scheduleBadges(0);
@@ -3636,6 +3714,7 @@ export function mountBoardView({
       clearOutline();
       tableCtl.dispose();
       kanbanCtl.dispose();
+      taskPop.dispose();
       laterCtl.dispose();
       stopTimer();
       ctl.cancel();

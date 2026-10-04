@@ -22,6 +22,7 @@ export const SHORTCUTS = [
   { group: "Tools", keys: "V", label: "Select", action: "tool", tool: "select", letter: "v", events: [{ key: "v" }], match: (ev) => letter(ev, "v") },
   { group: "Tools", keys: "H", label: "Hand", action: "tool", tool: "hand", letter: "h", events: [{ key: "h" }], match: (ev) => letter(ev, "h") },
   { group: "Tools", keys: "N", label: "Card", action: "tool", tool: "card", letter: "n", events: [{ key: "n" }], match: (ev) => letter(ev, "n") },
+  { group: "Tools", keys: "K", label: "Task", action: "tool", tool: "task", letter: "k", events: [{ key: "k" }], match: (ev) => letter(ev, "k") },
   { group: "Tools", keys: "T", label: "Text", action: "tool", tool: "text", letter: "t", events: [{ key: "t" }], match: (ev) => letter(ev, "t") },
   { group: "Tools", keys: "S", label: "Sticky", action: "tool", tool: "sticky", letter: "s", events: [{ key: "s" }], match: (ev) => letter(ev, "s") },
   { group: "Tools", keys: "R", label: "Shape", action: "tool", tool: "shape", letter: "r", events: [{ key: "r" }], match: (ev) => letter(ev, "r") },

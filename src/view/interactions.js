@@ -36,9 +36,19 @@ import { DEFAULT_BOARD_CARD, DEFAULT_SIZES, MIN_SIZES, STICKY_SIZE } from "../mo
 import { descendantsOf, findEdge, hitTest, itemsInPolygon, itemsInRect, outlineOrder, topLevelOf, boundsOf } from "../model/board.js";
 import { GRID_PITCH, nearestInDirection, nearestSide, snapMove, snapToGrid, zoomAt } from "../model/geometry.js";
 import { SHORTCUTS, findShortcut } from "./shortcuts.js";
+import { isoDay, parseRoamDay } from "../model/tasks.js";
+
+// The day a drop target stands for: a page card or a section whose title is a Roam daily-page title.
+function dayTargetOf(b, hit) {
+  const item = hit ? b?.items?.get(hit.uid) : null;
+  if (!item) return null;
+  const title = item.type === "section" ? item.title : item.kind === "page" ? (item.target?.title || item.title) : null;
+  const day = title ? parseRoamDay(title) : null;
+  return day ? { uid: item.uid, title, iso: isoDay(new Date(day.y, day.m - 1, day.d)) } : null;
+}
 
 export const TOOL_KEYS = Object.fromEntries(SHORTCUTS.filter((row) => row.letter).map((row) => [row.letter, row.tool]));
-export const TOOLS = ["select", "hand", "card", "text", "sticky", "shape", "section", "board", "connect"];
+export const TOOLS = ["select", "hand", "card", "task", "text", "sticky", "shape", "section", "board", "connect"];
 const SHAPE_PLACE = { w: 160, h: 100 };
 export const DRAG_THRESHOLD_PX = 4;
 export const SNAP_PX = 6;
@@ -277,7 +287,7 @@ export function createInteractions({ actions, settings } = {}) {
       begin({ kind: "board-draw", start: ev.world });
       return;
     }
-    if (state.tool === "card" || state.tool === "text" || state.tool === "sticky" || state.tool === "shape") {
+    if (state.tool === "card" || state.tool === "task" || state.tool === "text" || state.tool === "sticky" || state.tool === "shape") {
       begin({ kind: "place", tool: state.tool, start: ev.world });
       return;
     }
@@ -370,6 +380,14 @@ export function createInteractions({ actions, settings } = {}) {
         }
         const hit = hitTest(b, ev.world, r, { exclude: g.exclude });
         const drop = hit?.part === "body" && (b.items.get(hit.uid)?.kind === "board" && b.items.get(hit.uid)?.enhanced) ? hit.uid : null;
+        // A task dropped on a daily-page card or a section named for a day takes that day as its due date.
+        const day = !drop && !ev.shift ? dayTargetOf(b, hit) : null;
+        const dayKey = day ? `${day.uid}:${day.iso}` : null;
+        if (dayKey !== (g.dayKey ?? null)) {
+          g.dayKey = dayKey;
+          g.day = day;
+          if (!drop) call("onHover", day ? day.uid : null);
+        }
         if (drop !== (g.drop ?? null)) { g.drop = drop; call("onHover", drop); }
       }
       return;
@@ -474,9 +492,9 @@ export function createInteractions({ actions, settings } = {}) {
           } else if (g.tool === "shape") {
             p = call("createText", { x: g.start.x - SHAPE_PLACE.w / 2, y: g.start.y - SHAPE_PLACE.h / 2, w: SHAPE_PLACE.w, h: SHAPE_PLACE.h, shape: "rectangle" });
           } else {
-            const d = DEFAULT_SIZES[g.tool];
+            const d = DEFAULT_SIZES[g.tool === "task" ? "card" : g.tool];
             const at = { x: g.start.x - d.w / 2, y: g.start.y - d.h / 2 };
-            p = g.tool === "text" ? call("createText", at) : call("createCard", at);
+            p = g.tool === "text" ? call("createText", at) : g.tool === "task" ? call("createTask", at) : call("createCard", at);
           }
           end();
           Promise.resolve(p).then((uid) => { if (uid) { selectItems([uid]); call("enterEdit", uid); } }).catch(() => {});
@@ -490,6 +508,9 @@ export function createInteractions({ actions, settings } = {}) {
           call("duplicateItems", g.uids, { dx: g.dx || 0, dy: g.dy || 0, asRef: Boolean(g.asRef) });
         } else if (g.moved && g.drop) {
           call("moveIntoBoard", g.uids, g.drop, g.dx || 0, g.dy || 0);
+        } else if (g.moved && g.day && !ev.shift) {
+          call("rescheduleTasks", g.uids, g.day);
+          if (g.uids.length) call("commitMove", g.uids, g.dx || 0, g.dy || 0);
         } else if (g.moved) {
           if (g.uids.length) call("commitMove", g.uids, g.dx || 0, g.dy || 0);
         } else if (g.deferred) {

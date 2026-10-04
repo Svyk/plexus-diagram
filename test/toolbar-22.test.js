@@ -62,7 +62,7 @@ test("TB-1: classic shows the tools in the top bar and sets no dock classes, so 
   for (const name of ["bottom", "left", "top"]) assert.ok(!has(f.root, `pxd-root--dock-${name}`), name);
   assert.ok(!has(f.root, "pxd-root--dock-labels"));
   assert.equal(q(f.root, ".pxd-toolbar__tools").style.display, "");
-  assert.equal(f.root.querySelectorAll(".pxd-palette__btn").length, 9, "the old palette is still there");
+  assert.equal(f.root.querySelectorAll(".pxd-palette__btn").length, 10, "the old palette is still there");
 });
 
 test("TB-1: every dock rule is gated on pxd-root--docked, so classic is untouched", async () => {
@@ -150,14 +150,14 @@ test("TB-1: the reveal listeners exist only in dock-only and dispose removes the
 
 // ------------------------------------------------------------------ TB-2 / TB-3 dock look, active tool, lock
 
-test("TB-2: the dock groups nine tools as navigate | create | connect with separators and keeps the palette aliases", (t) => {
+test("TB-2: the dock groups ten tools as navigate | create | connect with separators and keeps the palette aliases", (t) => {
   const f = setup();
   t.after(f.restore);
   const dock = q(f.root, ".pxd-dock");
   assert.ok(dock && has(dock, "pxd-palette"));
   assert.ok(q(f.root, ".pxd-dock__bar") && has(q(f.root, ".pxd-dock__bar"), "pxd-palette__bar"));
   const groups = f.root.querySelectorAll(".pxd-dock__group").map((g) => g.querySelectorAll(".pxd-dock__btn").map((b) => b.dataset.tool));
-  assert.deepEqual(groups, [["select", "hand"], ["card", "text", "sticky", "shape", "section", "board"], ["connect"]]);
+  assert.deepEqual(groups, [["select", "hand"], ["card", "task", "text", "sticky", "shape", "section", "board"], ["connect"]]);
   assert.equal(f.root.querySelectorAll(".pxd-dock__sep").filter((s) => s.parentElement === q(f.root, ".pxd-dock__bar")).length, 2);
   for (const b of f.root.querySelectorAll(".pxd-dock__btn")) {
     assert.ok(has(b, "pxd-palette__btn"));
@@ -334,11 +334,11 @@ test("TB-6: the dock key is written only by the explicit action, validated, and 
 
 // ------------------------------------------------------------------ TB-7 LOD and narrow
 
-test("TB-7: overview keeps Select, Hand and Board and hides the other six dock buttons", async (t) => {
+test("TB-7: overview keeps Select, Hand and Board and hides the other seven dock buttons", async (t) => {
   const f = setup();
   t.after(f.restore);
   const hidden = f.root.querySelectorAll(".pxd-dock__btn").filter((b) => !["select", "hand", "board"].includes(b.dataset.tool));
-  assert.equal(hidden.length, 6);
+  assert.equal(hidden.length, 7);
   const css = await read("chrome.css");
   assert.match(css, /pxd-lod-overview \.pxd-dock__btn:not\(\[data-tool="select"\]\):not\(\[data-tool="hand"\]\):not\(\[data-tool="board"\]\)/);
   assert.match(css, /pxd-lod-overview \.pxd-dock__options/);

@@ -119,6 +119,7 @@ export function buildMenu(kind, ctx = {}) {
     case "canvas":
       return [
         make("new-card", "New card", { hint: "N" }),
+        make("new-task", "New task", { hint: "K" }),
         make("new-text", "New text", { hint: "T" }),
         make("new-sticky", "New sticky"),
         make("new-section", "New section", { hint: "G" }),
@@ -168,6 +169,7 @@ export function buildMenu(kind, ctx = {}) {
         sep(),
         colorMenu(),
         item?.look === "card" ? make("show-as-block", "Show as block") : make("show-as-card", "Show as card"),
+        ...(c.canMakeTask ? [make("make-task", "Make task")] : []),
         make("apply-template", "Add attribute template"),
         make("version-peek", "Version history"),
         foldItem(folded),

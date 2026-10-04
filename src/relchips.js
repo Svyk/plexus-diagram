@@ -144,7 +144,7 @@ export function createConnectionCache({ host } = {}) {
 
 // ---------------------------------------------------------------- DOM layer
 
-export function createRelChips({ doc = globalThis.document, win = globalThis.window, host, graph, timers, setting } = {}) {
+export function createRelChips({ doc = globalThis.document, win = globalThis.window, host, graph, timers, setting, openNested } = {}) {
   const cache = createConnectionCache({ host });
   const chips = new Set();
   const models = new Map(); // board uid → { board, at }
@@ -214,6 +214,8 @@ export function createRelChips({ doc = globalThis.document, win = globalThis.win
   };
 
   const openOnBoard = (boardUid, edgeUid) => {
+    // A connection on a nested board: the host opens the parent page's board and enters the nested one first.
+    try { if (openNested?.(boardUid, edgeUid)) return; } catch { /* fall through to the plain page link */ }
     let pageUid = "";
     try { pageUid = host?.blockPageUid?.(boardUid) || ""; } catch { pageUid = ""; }
     if (!pageUid) { try { void host?.openBlock?.(boardUid); } catch { /* host unavailable */ } return; }

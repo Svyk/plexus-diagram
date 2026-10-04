@@ -148,7 +148,7 @@ export async function installPlexusDiagram({
   const guardUids = new Set([...readEnhancedUidCache(storage), ...legacyUids]);
   let guardStyle = null;
   // RF-3: relation chips under connection blocks Roam renders outside a board. Fed by the same mutation observer.
-  const relChips = createRelChips({ doc, win, host, graph: () => host.graph || graphFromHash() });
+  const relChips = createRelChips({ doc, win, host, graph: () => host.graph || graphFromHash(), openNested: (boardUid, edgeUid) => openNestedConnection(boardUid, edgeUid) });
   lifecycle.add(() => relChips.dispose());
 
   const active = () => !stopped && settings[SETTING_IDS.enabled] !== false
@@ -354,6 +354,44 @@ export async function installPlexusDiagram({
     navigate(rec, rec.crumbs.slice(0, -1), null);
   }
 
+  // "Open on board" for a connection that lives on a nested board: open the parent page's board, enter the nested
+  // board through the normal navigation (crumbs, history), then select the connection. Returns false for a board
+  // that is not nested (the caller uses the plain page link). If the root board never mounts, open the block itself.
+  let pendingNest = null; // { root, trail, edgeUid, boardUid, until }
+  function enterNested(rec, trail, edgeUid) {
+    visit(rec, trail);
+    queueMicrotask(() => { if (!stopped && mounts.get(rec.native) === rec) rec.view?.focusUid?.(edgeUid); });
+  }
+  function resumeNestedOpen(rec) {
+    const p = pendingNest;
+    if (!p || p.root !== rec.uid || !rec.view || Date.now() > p.until) return;
+    pendingNest = null;
+    enterNested(rec, p.trail, p.edgeUid);
+  }
+  function openNestedConnection(boardUid, edgeUid) {
+    if (stopped || !boardUid || !edgeUid) return false;
+    const trail = seedCrumbs(boardUid);
+    if (trail.length < 2) return false;
+    const root = trail[0].uid;
+    for (const rec of mounts.values()) {
+      if (rec.uid === root && rec.view) { enterNested(rec, trail, edgeUid); return true; }
+    }
+    let pageUid = "";
+    try { pageUid = host.blockPageUid?.(boardUid) || ""; } catch { pageUid = ""; }
+    if (!pageUid) { try { void host.openBlock?.(boardUid); } catch { /* host unavailable */ } return true; }
+    pendingNest = { root, trail, edgeUid, boardUid, until: Date.now() + 8000 };
+    const mine = pendingNest;
+    lifecycle.timeout(() => {
+      if (pendingNest !== mine) return;
+      pendingNest = null;
+      try { void host.openBlock?.(boardUid); } catch { /* host unavailable */ }
+    }, 6000);
+    assignDeepLink(globalThis.location, { graph: host.graph || graphFromHash(), pageUid, cardUid: root }, () => {
+      try { win.dispatchEvent?.(new Event("hashchange")); } catch { /* already there */ }
+    });
+    return true;
+  }
+
   // User navigation. History commits only after the target board actually opens.
   function visit(rec, next) {
     if (stopped || mounts.get(rec.native) !== rec || !next?.length) return;
@@ -476,6 +514,7 @@ export async function installPlexusDiagram({
       return null;
     }
     unmountOutlineCopies(rec);
+    resumeNestedOpen(rec);
     // An embed must not collapse the board. The original mount still does, once.
     if (!embedOwnerUid(native, (id) => host.blockString?.(id))) collapseOnce(uid, native);
     if (currentUid(rec) === uid) migrateLegacy(rec);
@@ -987,6 +1026,8 @@ export async function installPlexusDiagram({
       connected: rec.native.isConnected !== false && rec.mountEl.isConnected !== false,
       state: rec.view?.state?.() ?? null,
     })),
+    // "Open on board" for a connection (RF-3); false when the board is not nested.
+    openConnection: (boardUid, edgeUid) => openNestedConnection(boardUid, edgeUid),
     // Caller must release(). A second acquire of the same board shares the session.
     session(uid) {
       if (!uid) return null;

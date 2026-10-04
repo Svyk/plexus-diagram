@@ -738,7 +738,7 @@ export function mountBoardView({
   // travel from the card to the bar. Declared here because setViewport (pan/zoom) hides it at once.
   const HOVER_GRACE = 400;
   let hoverUid = null;
-  let hoverPending = null; // { target: uid | null, cancel }
+  let hoverPending = null; // { cancel }
   function cancelHoverGrace() {
     if (hoverPending) { hoverPending.cancel?.(); hoverPending = null; }
   }
@@ -2915,15 +2915,15 @@ export function mountBoardView({
     if (hoverUid && chrome.ctx.isOpen()) {
       // Back on the card whose bar is up: the grace is void.
       if (it && it.uid === hoverUid) { cancelHoverGrace(); return; }
-      // Off the card or onto another one: keep the bar for the grace, then hide or switch (no hide/show flicker).
-      const target = it ? it.uid : null;
-      if (hoverPending) { hoverPending.target = target; return; }
-      const pending = { target, cancel: null };
+      // Onto another card: switch at once (no wait, no hide/show flicker).
+      if (it) { cancelHoverGrace(); openHover(it); return; }
+      // Off every card onto empty canvas: keep the bar for the grace, so the pointer can reach it.
+      if (hoverPending) return;
+      const pending = { cancel: null };
       pending.cancel = timers.later(() => {
         hoverPending = null;
         if (disposed || gesturing || itemsR.isEditing() || selectionOwnsBar()) { hoverUid = null; return; }
-        const next = hoverCardAt(pending.target);
-        if (next) openHover(next); else hideHover();
+        hideHover();
       }, HOVER_GRACE);
       hoverPending = pending;
       return;
@@ -3533,6 +3533,8 @@ export function mountBoardView({
     controller: ctl,
     setFullscreen(on) { if (Boolean(on) !== isFullscreen) applyFullscreen(on); },
     fit() { fitAll(); },
+    // Select and pulse a card or connection by uid, without a page check (feature.js enters a nested board first).
+    focusUid(uid) { return consumeDeepLink(`#?pxd=${encodeURIComponent(uid)}`); },
     viewport: () => ({ x: vp.x, y: vp.y, zoom: vp.zoom }),
     // Swap the settings object (feature.js calls this when a setting changes) and re-apply what depends on it.
     setSettings(next) {

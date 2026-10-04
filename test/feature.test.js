@@ -251,7 +251,7 @@ function setup({ enhanced = [], legacy = null, settings = {}, hash = "" } = {}) 
 
   const views = [];
   const mountView = (args) => {
-    const view = { args, disposed: 0, fullscreen: [], dispose() { this.disposed += 1; }, setFullscreen(v) { this.fullscreen.push(v); } };
+    const view = { args, disposed: 0, fullscreen: [], focused: [], dispose() { this.disposed += 1; }, setFullscreen(v) { this.fullscreen.push(v); }, focusUid(uid) { this.focused.push(uid); } };
     views.push(view);
     return view;
   };
@@ -988,6 +988,66 @@ test("F5 onOpenBoard swaps the view and session in place: same mount, old view d
     assert.equal(t.doc.root.querySelectorAll(".pxd-mount").length, 1);
     assert.deepEqual(t.env.win.__plexusDiagram.mounts(), [{ uid: "boardAAA1", current: "childBBB1", crumbs: ["boardAAA1", "childBBB1"], fullscreen: false, connected: true, state: null }]);
     assert.equal(t.writes.createBlock.length + t.sessions.enhance, 0, "navigation writes nothing");
+  });
+});
+
+const nestedAncestors = (t) => {
+  t.props.set("boardAAA1", { ":plexus": { ":v": 2 } });
+  t.strings.set("boardAAA1", "{{[[diagram]]:Root}}");
+  t.strings.set("childBBB1", "{{[[diagram]]:Child}}");
+  t.env.ancestors = {
+    childBBB1: {
+      ":block/uid": "childBBB1",
+      ":block/parents": [
+        { ":block/uid": "boardAAA1", ":block/string": "{{[[diagram]]:Root}}", ":block/props": { ":plexus": { ":v": 2 } }, ":block/parents": [{ ":db/id": 1 }] },
+      ],
+    },
+  };
+};
+
+test("F2 Open on board for a connection on a nested board enters the nested board of the mounted parent, then focuses the edge", async () => {
+  await withEnv({ enhanced: ["boardAAA1", "childBBB1"] }, async (t) => {
+    nestedAncestors(t);
+    addNative(t.doc, "boardAAA1");
+    await t.install();
+    t.tick();
+    assert.equal(t.env.win.__plexusDiagram.openConnection("childBBB1", "edgeEEE01"), true);
+    await settle();
+    assert.equal(t.views.length, 2, "the nested board opened in place");
+    assert.equal(t.views[1].args.session.uid, "childBBB1");
+    assert.deepEqual(t.views[1].args.crumbs.map((c) => c.uid), ["boardAAA1", "childBBB1"]);
+    assert.deepEqual(t.views[1].focused, ["edgeEEE01"], "the edge is focused on the nested board's view");
+    assert.deepEqual(t.views[0].focused, []);
+    assert.equal(t.writes.createBlock.length, 0);
+  });
+});
+
+test("F2 a connection on a top-level board is left to the plain page link; the parent page loads, then the nested board opens", async () => {
+  await withEnv({ enhanced: ["boardAAA1", "childBBB1"], hash: "#/app/Readwisenotes/page/elsewhere" }, async (t) => {
+    nestedAncestors(t);
+    t.host.graph = "Readwisenotes";
+    t.host.blockPageUid = () => "pageLAB99";
+    await t.install();
+    assert.equal(t.env.win.__plexusDiagram.openConnection("boardAAA1", "edgeEEE01"), false, "not nested");
+    assert.equal(t.env.win.__plexusDiagram.openConnection("childBBB1", "edgeEEE01"), true);
+    assert.equal(globalThis.location.hash, "#/app/Readwisenotes/page/pageLAB99?pxd=boardAAA1", "page link first");
+    addNative(t.doc, "boardAAA1");
+    t.tick();
+    await settle();
+    assert.equal(t.views.length, 2, "the root mounted, then the nested board opened");
+    assert.equal(t.views[1].args.session.uid, "childBBB1");
+    assert.deepEqual(t.views[1].focused, ["edgeEEE01"]);
+  });
+});
+
+test("F2 when the parent board never mounts the nested board block itself is opened", async () => {
+  await withEnv({ enhanced: ["boardAAA1", "childBBB1"] }, async (t) => {
+    nestedAncestors(t);
+    t.host.graph = "Readwisenotes";
+    t.host.blockPageUid = () => "";
+    await t.install();
+    assert.equal(t.env.win.__plexusDiagram.openConnection("childBBB1", "edgeEEE01"), true);
+    assert.deepEqual(t.writes.openBlock, ["childBBB1"]);
   });
 });
 

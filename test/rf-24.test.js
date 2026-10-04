@@ -226,6 +226,28 @@ test("RF-3 Open in sidebar and Open on board go through the host and the deep li
   assert.equal(f.stub.window.location.hash, "#/app/Svy/page/pageUID01?pxd=edge0001");
 });
 
+test("F2 Open on board asks the host to enter a nested board first, and skips the plain link when it handled it", (t) => {
+  const f = chipFixture();
+  t.after(f.restore);
+  f.stub.window.location = { hash: "" };
+  const asked = [];
+  let handled = true;
+  const chips = createRelChips({ doc: f.doc, win: f.stub.window, host: f.host, graph: () => "Svy", timers, openNested: (b, e) => { asked.push([b, e]); return handled; } });
+  chips.start();
+  const a = f.outline("edge0001");
+  chips.scan(a.container);
+  const chip = a.container.children.find((c) => c.classList.contains("pxd-relchip"));
+  f.stub.dispatch(chip, "click", {});
+  f.stub.dispatch(f.doc.body.querySelectorAll(".pxd-relpop__btn")[0], "click", {});
+  assert.deepEqual(asked, [["board001", "edge0001"]]);
+  assert.equal(f.stub.window.location.hash, "", "no page link when the host entered the nested board");
+  handled = false;
+  f.stub.dispatch(chip, "click", {});
+  f.stub.dispatch(f.doc.body.querySelectorAll(".pxd-relpop__btn")[0], "click", {});
+  assert.equal(f.stub.window.location.hash, "#/app/Svy/page/pageUID01?pxd=edge0001", "a top-level board falls back to the page link");
+  chips.dispose();
+});
+
 test("RF-3 unload removes every chip and popover, and nothing is written", (t) => {
   const f = chipFixture();
   t.after(f.restore);

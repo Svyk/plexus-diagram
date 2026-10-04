@@ -386,7 +386,7 @@ test("hover toolbar works on a note, a page and a block ref", async () => {
     const root = f.view.root;
     const show = async (uid) => {
       f.stub.dispatch(root.querySelector(`[data-uid=${uid}]`), "pointermove", { clientX: 20, clientY: 20 });
-      await new Promise((r) => setTimeout(r, 430)); // RF-4: a switch to another card waits out the 400 ms grace
+      await Promise.resolve();
       return root.querySelector(".pxd-ctx");
     };
     const note = await show("cardAAAA1");
@@ -2839,7 +2839,7 @@ test("RF-4: the hover toolbar waits 400 ms after the pointer leaves the card, an
   }
 });
 
-test("RF-4: moving to an adjacent card switches the bar after the grace, without hiding it; returning cancels the switch", async (t) => {
+test("RF-4: moving to another card switches the bar at once, with no hide and no wait; empty canvas still gets the grace", async (t) => {
   const f = mountFixture({ hostOverrides: cardStatsHost });
   try {
     await f.flush();
@@ -2853,14 +2853,18 @@ test("RF-4: moving to an adjacent card switches the bar after the grace, without
     assert.equal(count(), "4");
     moveTo(card("cardBBBB2"));
     assert.equal(ctx.style.display, "", "never hidden on the way");
-    assert.equal(count(), "4", "still the first card's bar until the grace ends");
-    t.mock.timers.tick(400);
+    assert.equal(count(), "2", "switched with no timer tick");
+    moveTo(root.querySelector(".pxd-viewport")); // grace starts
+    t.mock.timers.tick(200);
+    moveTo(card("cardAAAA1")); // another card inside the grace: switch now and void the grace
+    assert.equal(count(), "4");
+    t.mock.timers.tick(1000);
+    assert.equal(ctx.style.display, "", "the grace was cancelled by the switch");
+    moveTo(root.querySelector(".pxd-viewport"));
+    t.mock.timers.tick(399);
     assert.equal(ctx.style.display, "");
-    assert.equal(count(), "2", "switched to the page card");
-    moveTo(card("cardAAAA1"));
-    moveTo(card("cardBBBB2")); // back before the grace ends
-    t.mock.timers.tick(400);
-    assert.equal(count(), "2", "returning to the card whose bar is up cancels the switch");
+    t.mock.timers.tick(1);
+    assert.equal(ctx.style.display, "none", "leaving to empty canvas hides after 400 ms");
   } finally {
     t.mock.timers.reset();
     f.view.dispose();

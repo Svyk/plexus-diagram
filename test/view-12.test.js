@@ -146,7 +146,7 @@ const settleWait = async (f) => { await tick(140); f.stub.flushFrames(); };
 function countSetProperty(el) {
   const counter = { n: 0, inv: 0 };
   const original = el.style.setProperty;
-  el.style.setProperty = (...args) => { if (args[0] === "--pxd-inv-zoom") counter.inv += 1; else counter.n += 1; return original.apply(el.style, args); };
+  el.style.setProperty = (...args) => { if (args[0] === "--pxd-inv-zoom") counter.inv += 1; else if (args[0] !== "--pxd-screen-px") counter.n += 1; return original.apply(el.style, args); };
   return counter;
 }
 

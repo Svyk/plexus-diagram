@@ -28,9 +28,18 @@
   padding: 0 6px;
 }
 
+/* RE-2: the picker floats under the bar so the placer can move it clear of the dock, rail and panels. */
 .pxd-root .pxd-ctx .pxd-ctx__picker {
+  position: absolute;
+  left: 0;
+  top: calc(100% + 4px);
+  z-index: 1;
   display: flex;
-  margin-top: 4px;
+  box-sizing: border-box;
+  border: 1px solid var(--pxd-border);
+  border-radius: 8px;
+  background: var(--pxd-chrome-bg);
+  box-shadow: var(--pxd-shadow);
 }
 
 /* RF-4: an invisible bridge over the gap between a card and its hover toolbar, so the pointer can cross it. */

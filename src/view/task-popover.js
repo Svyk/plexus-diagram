@@ -3,21 +3,23 @@
 // normalisation and activity log apply. Cmd+Z after a pick is Roam's undo, not the Plexus ledger.
 
 import { dayChoices } from "../model/tasks.js";
+import { placeNearAnchor } from "./avoid.js";
 
 const PRIORITIES = ["low", "medium", "high"];
 const GAP = 6;
-const MARGIN = 8;
 
 export function createTaskPopover({ doc = globalThis.document, root, bt, toast = () => {}, today = () => new Date() } = {}) {
   let node = null;
   let offs = [];
   let openFor = null;
+  let placeAgain = () => {};
 
   const close = () => {
     for (const off of offs.splice(0)) off();
     try { node?.remove(); } catch { /* already gone */ }
     node = null;
     openFor = null;
+    placeAgain = () => {};
   };
 
   const el = (tag, cls, parent, text) => {
@@ -58,6 +60,7 @@ export function createTaskPopover({ doc = globalThis.document, root, bt, toast =
       list.replaceChildren();
       if (!names.length) el("div", "pxd-task-pop__hint", list, "No projects yet");
       for (const name of names) button(list, name, () => apply(uid, { project: name }));
+      placeAgain();
     });
     button(box, "Clear", () => apply(uid, { project: "" }), "pxd-task-pop__btn pxd-task-pop__btn--clear");
   };
@@ -95,12 +98,9 @@ export function createTaskPopover({ doc = globalThis.document, root, bt, toast =
     el("div", "pxd-task-pop__title", node, TITLES[kind]);
     FILL[kind](node, uid);
     const a = anchor?.getBoundingClientRect?.();
-    const r = root.getBoundingClientRect?.();
-    if (a && r) {
-      const width = Number(node.offsetWidth) || 180;
-      const left = Math.max(MARGIN, Math.min(a.left - r.left, (r.width || width + MARGIN * 2) - width - MARGIN));
-      node.style.left = `${Math.round(left)}px`;
-      node.style.top = `${Math.round(a.bottom - r.top + GAP)}px`;
+    if (a) {
+      placeAgain = () => { if (node && anchor.isConnected !== false) placeNearAnchor(node, anchor.getBoundingClientRect(), root, { gap: GAP }); };
+      placeAgain();
     }
     const on = (target, type, fn, capture = false) => {
       target.addEventListener?.(type, fn, capture);

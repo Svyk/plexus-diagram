@@ -152,15 +152,17 @@ test("BT-1: attribute children never count as children, badge or rows", () => {
   } finally { real.restore(); }
 });
 
-test("BT-2: a task card with Better Tasks draws the title through renderBlock closed, and shows chips", async () => {
+test("BT-2/RE-5: a task card with Better Tasks draws a light checkbox and the title without its marker, and shows chips", async () => {
   const f = fakeWin();
   const bt = createBt({ win: f.win });
   const picks = [];
   const h = cardHarness({ children: [taskCard()], bt, onTaskChip: (uid, kind) => picks.push([uid, kind]) });
   try {
-    assert.deepEqual(h.calls.renderBlock, [["task00001", { open: false }]]);
-    assert.equal(h.calls.renderString.length, 0);
+    assert.deepEqual(h.calls.renderBlock, [], "no real block render at rest");
+    assert.deepEqual(h.calls.renderString, ["ship"], "the title is rendered without the TODO marker");
     const card = h.root.querySelector("[data-uid=task00001]");
+    assert.equal(card.querySelectorAll(".pxd-task-check").length, 1);
+    assert.equal(card.querySelectorAll("input").length, 0, "the light checkbox is not an input");
     assert.ok(card.classList.contains("pxd-item--task"));
     assert.ok(card.classList.contains("pxd-item--task-overdue"));
     assert.equal(card.querySelector(".pxd-item__header").getAttribute("data-task-due"), "Oct 1");

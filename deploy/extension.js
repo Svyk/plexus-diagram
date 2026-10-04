@@ -125,6 +125,7 @@ function lodFonts(zoom) {
     ui: clampNum(1 / zoom, 1, 4)
   };
 }
+var screenPx = (zoom) => Math.round(clampNum(1 / (Number(zoom) > 0 ? Number(zoom) : 1), 0.05, 40) * 1e4) / 1e4;
 var invZoom = (zoom) => Math.round(clampNum(1 / (Number(zoom) > 0 ? Number(zoom) : 1), 0.25, 4) * 1e4) / 1e4;
 var CONE = 68 * Math.PI / 180;
 function nearestInDirection(rects, fromUid, dir, { candidates = null } = {}) {
@@ -2508,14 +2509,14 @@ function coveredBy(links, board2) {
       pairs.get(k).push(uid);
     }
   }
-  const visible = [];
+  const visible2 = [];
   const coveredEdges = /* @__PURE__ */ new Set();
   for (const l of links) {
     const hit = pairs.get(`${l.from}->${l.to}`);
     if (hit) hit.forEach((u) => coveredEdges.add(u));
-    else visible.push(l);
+    else visible2.push(l);
   }
-  return { visible, coveredEdges };
+  return { visible: visible2, coveredEdges };
 }
 
 // src/model/deeplink.js
@@ -7287,15 +7288,1247 @@ function createBt({ win = globalThis.window ?? globalThis } = {}) {
   };
 }
 
+// src/view/tooltip-text.js
+var LOCK = "Double-click to keep this tool.";
+var e = (name, desc, key, hint) => {
+  const out = { name, desc };
+  if (key) out.key = key;
+  if (hint) out.hint = hint;
+  return out;
+};
+var cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+var TIP_TEXT = {
+  // ---- board bar
+  crumb: e(null, "Go back up to this board."),
+  "crumb.current": e(null, "The board you are looking at."),
+  "crumb.more": e("Hidden boards", "Show the boards between the first and the last crumb."),
+  "toolbar.add": e("Add", "Open the panel to search the graph and drag pages, blocks and today's notes onto the board."),
+  "toolbar.info": e("Info", "Show details for the selected card: references, attributes, tasks and the boards it sits on.", "I"),
+  "toolbar.links": e("Graph links", "Cycle the lines drawn from page references and attributes.", "L"),
+  "toolbar.links:off": e("Links: Off", "No graph lines. Only the arrows you drew are shown.", "L", "Click to show attribute links."),
+  "toolbar.links:attributes": e("Links: Attributes", "Draw lines only for shared Name:: attributes.", "L", "Click to show all links."),
+  "toolbar.links:all": e("Links: All", "Draw lines for every shared page reference and attribute.", "L", "Click to turn links off."),
+  "toolbar.table": e("Table", "Show this board's cards as a table you can sort and edit."),
+  "toolbar.table:on": e("Board", "Go back from the table to the canvas."),
+  "toolbar.kanban": e("Kanban", "Group the cards into columns by status or tag."),
+  "toolbar.kanban:on": e("Board", "Go back from the kanban columns to the canvas."),
+  "toolbar.bg": e("Background", "Choose the pattern and the tone of this board, or reset it to the default."),
+  "toolbar.lens": e("Tags", "Tag lens: keep the cards with one tag bright and dim the rest."),
+  "toolbar.focus": e("Focus", "Fade everything except the selected cards and what they connect to.", "F"),
+  "toolbar.present": e("Present", "Step through the sections full screen, one frame at a time.", "P"),
+  "toolbar.more": e("More", "More board actions: export, templates, dock position, layouts and views."),
+  "toolbar.zoom-out": e("Zoom out", "Make everything on the board smaller.", "⌘ −"),
+  "toolbar.zoom": e("Zoom", "The current zoom. Click to return to 100%.", "⇧ 0"),
+  "toolbar.zoom-in": e("Zoom in", "Make everything on the board larger.", "⌘ ="),
+  "toolbar.fit": e("Fit", "Zoom and pan so every card is in view.", "⇧ 1"),
+  "toolbar.minimap": e("Minimap", "Show or hide the small map of the whole board."),
+  "toolbar.edit": e("Edit block", "Open the diagram block itself in Roam to edit its text or children."),
+  "toolbar.fullscreen": e("Fullscreen", "Open this board full screen. Esc leaves it."),
+  "toolbar.fullscreen:on": e("Exit fullscreen", "Return the board to its place on the page.", "Esc"),
+  badge: e("Version", "The installed Plexus version. Click to read what changed in it."),
+  "rail.badge": e("Version", "The installed Plexus version. Click to read what changed in it."),
+  sync: e("Saved", "Every change is written to Roam."),
+  "sync:idle": e("Saved", "Every change is written to Roam."),
+  "sync:writing": e("Saving", "Your last change is being written to Roam."),
+  "sync:retrying": e("Retrying", "Roam did not take the last write. Plexus is trying again."),
+  "sync:failed": e("Could not save", "The last change did not reach Roam. Undo it or try the action again."),
+  // ---- tool dock and board-bar tools
+  "tool.select": e("Select", "Click cards to select them, drag to move, drag on empty space to box-select.", "V", LOCK),
+  "tool.hand": e("Hand", "Drag the board to pan without moving anything.", "H", LOCK),
+  "tool.card": e("Card", "Click the board to make a card, or drag to size one. It is a Roam block.", "N", LOCK),
+  "tool.task": e("Task", "Click the board to make a task card: a Roam TODO block. Better Tasks sets its due date and project from the chips.", "K", LOCK),
+  "tool.text": e("Text", "Click the board to place a free text label.", "T", LOCK),
+  "tool.sticky": e("Sticky", "Click the board to place a colored sticky note.", "S", LOCK),
+  "tool.shape": e("Shape", "Click or drag to draw a shape. Pick its kind in the options beside the dock.", "R", LOCK),
+  "tool.section": e("Section", "Drag a colored frame. Cards dropped inside become its members.", "G", LOCK),
+  "tool.board": e("Board", "Click to make a nested board you can open in place.", "W", LOCK),
+  "tool.connect": e("Connect", "Drag from one card to another to draw an arrow, which is saved as a Roam block.", "C", LOCK),
+  "dock.look.block": e("Block look", "Show new cards, or the selected one, as a plain Roam block."),
+  "dock.look.card": e("Card look", "Show new cards, or the selected one, with a title row."),
+  "backtocontent": e("Back to content", "Fit the view back to your cards."),
+  // ---- right control rail
+  "rail.zoom-in": e("Zoom in", "Make everything on the board larger.", "⌘ ="),
+  "rail.zoom-out": e("Zoom out", "Make everything on the board smaller.", "⌘ −"),
+  "rail.fit": e("Fit view", "Zoom and pan so every card is in view.", "⇧ 1"),
+  "rail.minimap": e("Minimap", "Show or hide the small map of the whole board."),
+  "rail.png": e("Save PNG", "Save the board as an image."),
+  "rail.outline": e("Open outline", "Open the board's blocks as an outline in the right sidebar."),
+  "rail.edit": e("Edit block", "Open the diagram block itself in Roam to edit its text or children."),
+  "rail.fullscreen": e("Maximize", "Open this board full screen. Esc leaves it."),
+  "rail.fullscreen:on": e("Minimize", "Return the board to its place on the page.", "Esc"),
+  "rail.zoom": e("Zoom", "The current zoom. Click to return to 100%.", "⇧ 0"),
+  // ---- background popover
+  "bg.default": e("Use as default", "Use this pattern and tone for every board that does not set its own."),
+  "bg.reset": e("Reset", "Clear this board's own pattern and tone."),
+  "swatch.none": e("No color", "Clear the color, or use the default tone."),
+  "swatch.paper": e("Paper", "A warm off-white tone for the board."),
+  // ---- card hover toolbar and the other context bars
+  "ctx.color": e("Color", "Open the color picker for this card."),
+  "ctx.expand": e("Show children", "Show this block's children as an outline inside the card."),
+  "ctx.expand:on": e("Hide children", "Fold the children away so the card shows only its own block."),
+  "ctx.refs": e("References", "Show the blocks that link to this card."),
+  "ctx.edit": e("Edit", "Edit the card's text in place.", "Enter"),
+  "ctx.sidebar": e("Open in sidebar", "Open the block or page in Roam's right sidebar."),
+  "ctx.collapse": e("Collapse", "Shrink the card to its title row."),
+  "ctx.collapse:on": e("Expand", "Show the whole card again."),
+  "ctx.related": e("Related", "Find pages and blocks related to this card."),
+  "ctx.pin-toggle": e("Pin", "Lock the position and size so it cannot be moved or resized by accident."),
+  "ctx.pin-toggle:on": e("Unpin", "Allow moving and resizing again."),
+  "ctx.fit-height": e("Fit height", "Grow or shrink the card to the height of its text."),
+  "ctx.copy-ref": e("Copy ref", "Copy a block or page reference for this card to paste into Roam."),
+  "ctx.duplicate": e("Duplicate", "Make a copy of the selection next to it.", "⌘ D"),
+  "ctx.send-to": e("Send to board", "Move the selection into another board."),
+  "ctx.mindmap": e("Mind map", "Lay the card's children out as cards around it, with arrows."),
+  "ctx.same-color": e("Select same color", "Select every card or section of this color."),
+  "ctx.connected": e("Select connected", "Select the cards linked to this one by an arrow or a graph link."),
+  "ctx.wrap": e("Wrap in section", "Put the selected cards in a new section.", "⌘ G"),
+  "ctx.wrap-board": e("Move into new board", "Move the selection into a new nested board."),
+  "ctx.fold": e("Fold", "Collapse the selected cards to their titles.", "⌘ ⌥ Enter"),
+  "ctx.fold:on": e("Unfold", "Expand the collapsed cards again.", "⌘ ⌥ Enter"),
+  "ctx.delete": e("Delete", "Remove the selection. On a section, the cards stay; Shift+Delete removes them too.", "Delete"),
+  "ctx.open-board": e("Open", "Open this board in place.", "Enter"),
+  "ctx.own-page": e("Own page", "Open the nested board on its own Roam page."),
+  "ctx.rename-board": e("Rename board", "Change the board's name."),
+  "ctx.rename": e("Rename", "Edit the section's title.", "Enter"),
+  "ctx.contents": e("Select contents", "Select the cards inside this section."),
+  "ctx.all-in-section": e("Select all in section", "Select everything inside the section, nested sections too."),
+  "ctx.collapse-section": e("Collapse", "Fold the section down to its title."),
+  "ctx.collapse-section:on": e("Expand", "Show the section's cards again."),
+  "ctx.section-note": e("Description", "Add a one-line description under the section's title."),
+  "ctx.section-note:on": e("Remove note", "Delete the section's description line."),
+  "ctx.lock": e("Lock", "Pin the section and everything inside it."),
+  "ctx.lock:on": e("Unlock", "Unpin the section and everything inside it."),
+  "ctx.present-section": e("Present", "Present this section full screen."),
+  "ctx.fit-section": e("Fit to contents", "Resize the section around its cards."),
+  "ctx.auto-fit": e("Auto-fit", "Keep the section sized to its cards as they move."),
+  "ctx.auto-fit:on": e("Auto-fit is on", "The section grows around its cards. Click to stop."),
+  "ctx.fold-all": e("Fold all", "Collapse every card in the section to its title."),
+  "ctx.flip": e("Flip", "Swap the arrow's two ends."),
+  "ctx.unblock": e("Connect to the page", "End the arrow on the whole page instead of one block."),
+  "ctx.label": e("Label", "Edit the text on the arrow."),
+  "ctx.notes": e("Notes", "Open the arrow's own block in the sidebar to add notes."),
+  "ctx.write": e("Write to graph", "Write this link as a Name:: attribute on the source block."),
+  "ctx.source": e(null, "Open the block that makes this link in the sidebar."),
+  "ctx.pin": e("Pin as connection", "Turn this graph link into an arrow you can style."),
+  "ctx.align.left": e("Align left", "Line the selected cards up on their left edges."),
+  "ctx.align.center": e("Align centers", "Line the selected cards up on their horizontal centers."),
+  "ctx.align.right": e("Align right", "Line the selected cards up on their right edges."),
+  "ctx.align.top": e("Align top", "Line the selected cards up on their top edges."),
+  "ctx.align.middle": e("Align middles", "Line the selected cards up on their vertical centers."),
+  "ctx.align.bottom": e("Align bottom", "Line the selected cards up on their bottom edges."),
+  "ctx.distribute.h": e("Distribute horizontally", "Space the selected cards evenly from left to right."),
+  "ctx.distribute.v": e("Distribute vertically", "Space the selected cards evenly from top to bottom."),
+  "ctx.tidy.grid": e("Tidy into a grid", "Arrange the selection in rows and columns."),
+  "ctx.tidy.row": e("Tidy into a row", "Arrange the selection in one row."),
+  "ctx.tidy.column": e("Tidy into a column", "Arrange the selection in one column."),
+  "ctx.same-size.width": e("Same width", "Give the selected cards the width of the first one."),
+  "ctx.same-size.height": e("Same height", "Give the selected cards the height of the first one."),
+  "ctx.same-size.both": e("Same size", "Give the selected cards the width and height of the first one."),
+  "ctx.dir.one": e("One way", "An arrowhead at the end only."),
+  "ctx.dir.two": e("Two way", "An arrowhead at both ends."),
+  "ctx.dir.none": e("No arrow", "A plain line with no arrowheads."),
+  "ctx.route.curve": e("Curve", "Draw the connection as a smooth curve."),
+  "ctx.route.straight": e("Straight", "Draw the connection as a straight line."),
+  "ctx.route.elbow": e("Elbow", "Draw the connection with right-angle bends."),
+  "ctx.dash.solid": e("Solid", "A solid line."),
+  "ctx.dash.dashed": e("Dashed", "A dashed line."),
+  "ctx.dash.animated": e("Animated", "A dashed line that moves from start to end."),
+  "bg.pattern.dots": e("Dots", "A dotted grid behind the cards."),
+  "bg.pattern.lines": e("Lines", "Horizontal lines behind the cards."),
+  "bg.pattern.cross": e("Cross", "Small crosses behind the cards."),
+  "bg.pattern.grid": e("Grid", "A square grid behind the cards."),
+  "bg.pattern.plain": e("Plain", "No pattern behind the cards."),
+  // ---- Properties panel
+  "props.toggle": e("Properties", "Show or hide the style panel. Its state is remembered on this device."),
+  "props.group.blocks": e("Blocks", "Text size, color, alignment, fill and border for the selected cards and text."),
+  "props.group.edge": e("Connection", "Direction, line style, shape, weight and color of the selected arrow."),
+  "props.group.group": e("Group", "Title size, colors and border of the selected sections."),
+  "props.group.defaults": e("Default groups", "The look every new section on this board starts with."),
+  "props.group.diagram": e("Diagram", "The background color and pattern of this board."),
+  "props.reset": e("Reset", "Remove the custom styles shown in this group."),
+  "props.step.dec": e("Smaller", "Lower this size by one pixel."),
+  "props.step.inc": e("Larger", "Raise this size by one pixel."),
+  "props.step.input": e(null, "Type a size in pixels, then press Enter."),
+  "props.chip": e(null, "Open the color picker for this style. Pick again to close it."),
+  "props.choice.align": e(null, "Align the text in the selected cards. Default follows the card look."),
+  "props.choice.dir": e(null, "Set where the selected arrow has arrowheads."),
+  "props.choice.dash": e(null, "Set the line style of the selected arrow."),
+  "props.choice.route": e(null, "Set how the selected arrow is drawn between its ends."),
+  "props.choice.weight": e(null, "Set the line thickness of the selected arrow in pixels."),
+  "props.choice.texture": e(null, "Set the pattern behind this board's cards. Default uses the board setting."),
+  "picker.swatch": e(null, "Use this color for the style you are editing."),
+  // ---- sticky header (EK-5)
+  "sticky.drag": e("Sticky", "Drag the header to move the note. Click in the note to type."),
+  "sticky.min": e("Minimize", "Collapse this sticky to its header. It stays on the board."),
+  "sticky.expand": e("Expand", "Show the whole sticky again."),
+  "sticky.color": e("Sticky color", "Pick a color for this sticky."),
+  "sticky.swatch": e(null, "Use this color for the sticky."),
+  // ---- the board itself
+  minimap: e("Minimap", "The whole board at a glance. Click or drag to move the view."),
+  kids: e("Children", "This block has children. Click to show them as an outline inside the card; hover to peek."),
+  "kids:on": e("Children", "The children are shown. Click to hide them again."),
+  "edge.bend": e("Arrow end on a block", "This arrow ends on one block of the page card, not the whole page."),
+  "edge.bend:clamped": e("Arrow end on a block", "The block is scrolled out of view. Click to scroll the card to it."),
+  relchip: e("Connection", "This block is a connection on a board. Click to see where it sits."),
+  "relpop.board": e("Open on board", "Go to the board and select this connection."),
+  "relpop.sidebar": e("Open in sidebar", "Open the board in the right sidebar."),
+  "edge.row": e("Linked block", "An arrow on the board ends on this block.")
+};
+for (const c of PALETTE) TIP_TEXT[`swatch.${c}`] = e(cap(c), `Color the selection ${c}, or tone the board ${c}.`);
+for (const s of SHAPES) TIP_TEXT[`dock.shape.${s}`] = e(cap(s), `Draw ${s === "rounded" ? "rounded rectangles" : `${s}s`} with the Shape tool, or change the selected shape.`);
+for (const n2 of [16, 24, 32, 48]) {
+  const word = { 16: "Small", 24: "Medium", 32: "Large", 48: "Extra large" }[n2];
+  TIP_TEXT[`ctx.size.${n2}`] = e(`${word} text`, `Set the label to ${n2} px.`);
+}
+for (const n2 of [1, 2, 3, 4]) TIP_TEXT[`ctx.weight.${n2}`] = e(`Weight ${n2}`, `Draw the connection ${n2} px thick.`);
+function tipEntry(id, state) {
+  if (!id) return null;
+  if (state && TIP_TEXT[`${id}:${state}`]) return TIP_TEXT[`${id}:${state}`];
+  return TIP_TEXT[id] || null;
+}
+var BLOCKS = /^pxd-(toolbar|rail|ctx|bg)__([a-z0-9-]+)$/;
+var SKIP = /* @__PURE__ */ new Set(["btn", "row", "group", "tools", "picker", "sources", "extra", "pattern", "tones"]);
+function tipIdForClass(cls) {
+  let found = null;
+  for (const token of String(cls || "").split(/\s+/)) {
+    const m = BLOCKS.exec(token);
+    if (m && !SKIP.has(m[2])) found = `${m[1]}.${m[2]}`;
+  }
+  if (!found && /(^|\s)pxd-badge(\s|$)/.test(String(cls || ""))) return "badge";
+  return found;
+}
+
+// src/view/tooltip.js
+var GAP = 8;
+var MARGIN = 4;
+var DELAYS = { instant: 0, "350 ms": 350, "800 ms": 800 };
+var ID = "pxd-tooltip";
+function tooltipDelay(value) {
+  return Object.hasOwn(DELAYS, value) ? DELAYS[value] : DELAYS["350 ms"];
+}
+function preferredSide(target, root) {
+  if (target.closest?.(".pxd-toolbar")) return "below";
+  if (target.closest?.(".pxd-rail")) return "left";
+  if (target.closest?.(".pxd-palette, .pxd-dock")) {
+    if (root.classList?.contains("pxd-root--dock-left")) return "right";
+    return root.classList?.contains("pxd-root--dock-top") ? "below" : "above";
+  }
+  if (target.closest?.(".pxd-minimap")) return "left";
+  return "above";
+}
+var OPPOSITE = { above: "below", below: "above", left: "right", right: "left" };
+function placeTip({ target, tip, bounds, side }) {
+  const at = (s) => {
+    if (s === "below") return { left: target.left + target.width / 2 - tip.width / 2, top: target.top + target.height + GAP };
+    if (s === "above") return { left: target.left + target.width / 2 - tip.width / 2, top: target.top - tip.height - GAP };
+    if (s === "left") return { left: target.left - tip.width - GAP, top: target.top + target.height / 2 - tip.height / 2 };
+    return { left: target.left + target.width + GAP, top: target.top + target.height / 2 - tip.height / 2 };
+  };
+  let use = side;
+  let p = at(use);
+  const vertical = side === "above" || side === "below";
+  const axisFits = (pt) => vertical ? pt.top >= bounds.top + MARGIN && pt.top + tip.height <= bounds.top + bounds.height - MARGIN : pt.left >= bounds.left + MARGIN && pt.left + tip.width <= bounds.left + bounds.width - MARGIN;
+  if (bounds.width && bounds.height && !axisFits(p) && axisFits(at(OPPOSITE[side]))) {
+    use = OPPOSITE[side];
+    p = at(use);
+  }
+  if (bounds.width && bounds.height) {
+    const maxLeft = bounds.left + bounds.width - tip.width - MARGIN;
+    const maxTop = bounds.top + bounds.height - tip.height - MARGIN;
+    p = {
+      left: Math.max(bounds.left + MARGIN, Math.min(p.left, maxLeft)),
+      top: Math.max(bounds.top + MARGIN, Math.min(p.top, maxTop))
+    };
+  }
+  return { left: Math.round(p.left), top: Math.round(p.top), side: use };
+}
+function createTooltip({ doc = globalThis.document, root, timers, setting } = {}) {
+  const read = (k) => typeof setting === "function" ? setting(k) : void 0;
+  const tip = doc.createElement("div");
+  tip.className = "pxd-tooltip pxd-chrome";
+  tip.id = ID;
+  tip.setAttribute("role", "tooltip");
+  tip.style.display = "none";
+  root.append(tip);
+  const offs = [];
+  const on = (node2, type, fn, opts) => {
+    node2.addEventListener(type, fn, opts);
+    offs.push(() => node2.removeEventListener(type, fn, opts));
+  };
+  let current2 = null;
+  let pending = null;
+  let dismiss = [];
+  const enabled = () => read("tooltips") !== false;
+  const delay = () => tooltipDelay(read("tooltip-delay"));
+  const closest = (node2) => {
+    const hit = node2?.closest?.("[data-tip]");
+    return hit && root.contains(hit) ? hit : null;
+  };
+  const sync = (target) => {
+    const entry = tipEntry(target.getAttribute("data-tip"), target.getAttribute("data-tip-state"));
+    if (!entry) return null;
+    return {
+      name: entry.name || target.getAttribute("aria-label") || target.getAttribute("data-tip-name") || "",
+      desc: entry.desc,
+      key: entry.key,
+      hint: entry.hint,
+      extra: target.getAttribute("data-tip-extra") || ""
+    };
+  };
+  const fill = (info) => {
+    tip.replaceChildren();
+    const head = doc.createElement("div");
+    head.className = "pxd-tooltip__head";
+    const name = doc.createElement("strong");
+    name.className = "pxd-tooltip__name";
+    name.textContent = info.name;
+    head.append(name);
+    for (const k of [].concat(info.key || [])) {
+      const kbd = doc.createElement("kbd");
+      kbd.className = "pxd-tooltip__key";
+      kbd.textContent = k;
+      head.append(kbd);
+    }
+    tip.append(head);
+    const add = (cls, text2) => {
+      if (!text2) return;
+      const line = doc.createElement("div");
+      line.className = `pxd-tooltip__${cls}`;
+      line.textContent = text2;
+      tip.append(line);
+    };
+    add("desc", info.desc);
+    add("extra", info.extra);
+    add("hint", info.hint);
+  };
+  const place = (target) => {
+    if (target.isConnected === false) {
+      hide();
+      return;
+    }
+    const rr = root.getBoundingClientRect();
+    const tr = target.getBoundingClientRect();
+    const r = { left: tr.left - rr.left, top: tr.top - rr.top, width: tr.width, height: tr.height };
+    const size = { width: tip.offsetWidth || 0, height: tip.offsetHeight || 0 };
+    const bounds = { left: 0, top: 0, width: rr.width, height: rr.height };
+    const at = placeTip({ target: r, tip: size, bounds, side: preferredSide(target, root) });
+    tip.style.left = `${at.left}px`;
+    tip.style.top = `${at.top}px`;
+    tip.setAttribute("data-side", at.side);
+  };
+  const hide = () => {
+    pending?.cancel?.();
+    pending = null;
+    for (const off of dismiss.splice(0)) off();
+    if (current2) {
+      if (current2.getAttribute("aria-describedby") === ID) current2.removeAttribute("aria-describedby");
+      current2 = null;
+    }
+    tip.style.display = "none";
+  };
+  const check = () => {
+    if (current2 && current2.isConnected === false) hide();
+    if (pending && pending.target?.isConnected === false) {
+      pending.cancel?.();
+      pending = null;
+    }
+  };
+  const show = (target) => {
+    if (!target || target.isConnected === false) return;
+    const info = sync(target);
+    if (!info) return;
+    if (current2 && current2 !== target && current2.getAttribute("aria-describedby") === ID) current2.removeAttribute("aria-describedby");
+    pending = null;
+    fill(info);
+    tip.style.display = "";
+    current2 = target;
+    target.setAttribute("aria-describedby", ID);
+    place(target);
+    if (!dismiss.length) {
+      const off = (node2, type, fn, opts) => {
+        node2.addEventListener(type, fn, opts);
+        dismiss.push(() => node2.removeEventListener(type, fn, opts));
+      };
+      off(root, "pointerdown", hide, true);
+      off(root, "wheel", hide, { capture: true, passive: true });
+      off(root, "scroll", hide, true);
+      off(doc, "keydown", (event) => {
+        if (event.key === "Escape") hide();
+      }, true);
+    }
+  };
+  const schedule = (target) => {
+    if (current2 === target || pending?.target === target) return;
+    pending?.cancel?.();
+    pending = null;
+    if (!tipEntry(target.getAttribute("data-tip"), target.getAttribute("data-tip-state"))) return;
+    if (!enabled()) {
+      const info = sync(target);
+      if (info) target.title = info.key ? `${info.name} (${[].concat(info.key).join(" ")}). ${info.desc}` : `${info.name}. ${info.desc}`;
+      return;
+    }
+    const wait = current2 ? 0 : delay();
+    if (wait <= 0) {
+      show(target);
+      return;
+    }
+    const cancel = timers?.later ? timers.later(() => show(target), wait) : (() => {
+      const t = setTimeout(() => show(target), wait);
+      return () => clearTimeout(t);
+    })();
+    pending = { target, cancel };
+  };
+  on(root, "pointerover", (event) => {
+    if (event.buttons) return;
+    const target = closest(event.target);
+    if (!target) return;
+    schedule(target);
+  });
+  on(root, "pointerout", (event) => {
+    const from = closest(event.target);
+    if (!from) return;
+    const to = event.relatedTarget;
+    if (to && from.contains?.(to)) return;
+    if (pending?.target === from) {
+      pending.cancel?.();
+      pending = null;
+    }
+    if (current2 === from) hide();
+  });
+  on(root, "focusin", (event) => {
+    const target = closest(event.target);
+    if (!target || !enabled()) return;
+    try {
+      if (typeof target.matches === "function" && target.matches(":focus-visible") === false) return;
+    } catch {
+    }
+    pending?.cancel?.();
+    pending = null;
+    show(target);
+  });
+  on(root, "focusout", (event) => {
+    const from = closest(event.target);
+    if (!from) return;
+    if (pending?.target === from) {
+      pending.cancel?.();
+      pending = null;
+    }
+    if (current2 === from) hide();
+  });
+  return {
+    el: tip,
+    show,
+    hide,
+    check,
+    isVisible: () => tip.style.display !== "none",
+    target: () => current2,
+    dispose() {
+      hide();
+      for (const off of offs.splice(0)) off();
+      tip.remove();
+    }
+  };
+}
+
+// src/relchips.js
+var CHIP_CLASS = "pxd-relchip";
+var POP_CLASS = "pxd-relpop";
+var CRUMB_CLASS = "pxd-relcrumb";
+var CRUMB_TIP = "Open the connection preview";
+var SCAN_CAP = 60;
+var NAME_MAX = 28;
+var BLOCK_MAX = 24;
+var MODEL_TTL_MS = 5e3;
+var SVG_NS = "http://www.w3.org/2000/svg";
+var BLOCK_SELECTOR = ".roam-block";
+var isInput = (el) => String(el?.id || "").startsWith("block-input-");
+function uidFromElementId(id, uids) {
+  const parts = String(id ?? "").split("-");
+  for (let k = 1; k <= Math.min(4, parts.length); k += 1) {
+    const candidate = parts.slice(-k).join("-");
+    if (candidate && uids.has(candidate)) return candidate;
+  }
+  return null;
+}
+var clip = (text2, max) => {
+  const t = String(text2 ?? "").replace(/\s+/g, " ").trim();
+  return t.length > max ? `${t.slice(0, max - 1).trimEnd()}…` : t;
+};
+var endName = (name, blockText) => {
+  const base = clip(name, NAME_MAX) || "card";
+  const block = clip(blockText, BLOCK_MAX);
+  return block ? `${base} ▸ “${block}”` : base;
+};
+function chipText({ from, to, label, boardTitle: boardTitle2, fromBlockText, toBlockText } = {}) {
+  const arrow2 = label ? `—${clip(label, 32)}→` : "→";
+  const board2 = clip(boardTitle2, 32);
+  return `↗ ${endName(from, fromBlockText)} ${arrow2} ${endName(to, toBlockText)}${board2 ? ` · on ${board2}` : ""}`;
+}
+function relationOf(board2, edgeUid, { blockText } = {}) {
+  const edge = board2?.edges?.get(edgeUid);
+  if (!edge) return null;
+  const read = (uid) => {
+    if (!uid) return "";
+    try {
+      const t = blockText?.(uid);
+      return typeof t === "string" ? t : "";
+    } catch {
+      return "";
+    }
+  };
+  const title = (uid) => {
+    const item = board2.items.get(uid);
+    return item ? itemLabel(item, blockText) || item.title || "card" : "card";
+  };
+  return {
+    edge,
+    from: title(edge.from),
+    to: title(edge.to),
+    label: edge.label || "",
+    fromBlockText: edge.fromBlock ? read(edge.fromBlock) || "block" : "",
+    toBlockText: edge.toBlock ? read(edge.toBlock) || "block" : "",
+    boardTitle: board2.title || parseBoardTitle(board2.string) || "Untitled board"
+  };
+}
+var previewFont = (viewWidth) => Math.max(12, Math.round(viewWidth / 32));
+var ROW_PAD = 10;
+var clamp01 = (n2) => Number.isFinite(n2) ? Math.min(1, Math.max(0, n2)) : 0.5;
+function rowBarRect(rect, frac, font) {
+  const head = font * 2 + 4;
+  const h = Math.min(font + 8, Math.max(4, rect.h - 4));
+  const top = rect.y + Math.min(head, Math.max(0, rect.h - h - 2));
+  const span = Math.max(0, rect.y + rect.h - 6 - top - h);
+  const y = Math.min(rect.y + rect.h - h - 2, top + clamp01(frac) * span);
+  const x = rect.x + ROW_PAD;
+  const w = Math.max(4, rect.w - 2 * ROW_PAD);
+  return { x, y, w, h, textX: x + 8, textY: y + h - Math.max(3, Math.round(font * 0.28)), maxChars: Math.max(0, Math.floor((w - 16) / (font * 0.58))) };
+}
+var POP_GAP = 8;
+var rectsHit = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+function placePopover({ anchor, size, viewport, bounds, gap = POP_GAP, obstacles = [] } = {}) {
+  const first = placeBasic({ anchor, size, viewport, bounds, gap });
+  const wall = (obstacles || []).filter((o) => o && o.right > o.left && o.bottom > o.top);
+  if (!wall.length) return first;
+  const spanOf = (p) => ({ left: p.left, top: p.top, right: p.left + p.width, bottom: p.top + (p.maxHeight ?? size.h) });
+  if (!wall.some((o) => rectsHit(spanOf(first), o))) return first;
+  const box2 = {
+    left: Math.max(viewport.left ?? 0, bounds?.left ?? -Infinity),
+    top: Math.max(viewport.top ?? 0, bounds?.top ?? -Infinity),
+    right: Math.min(viewport.right, bounds?.right ?? Infinity),
+    bottom: Math.min(viewport.bottom, bounds?.bottom ?? Infinity)
+  };
+  const edge = 8;
+  const width = Math.min(size.w, Math.max(80, box2.right - box2.left - 2 * edge));
+  const clampX = (x, w) => Math.max(box2.left + edge, Math.min(x, box2.right - edge - w));
+  const clampY = (y, h) => Math.max(box2.top + edge, Math.min(y, box2.bottom - edge - h));
+  const sides = ["below", "above", "right", "left"];
+  const make2 = (side, along, h, scroll) => {
+    const vertical = side === "below" || side === "above";
+    const left = vertical ? clampX(along, width) : side === "right" ? anchor.right + gap : anchor.left - gap - width;
+    const top = vertical ? side === "below" ? anchor.bottom + gap : anchor.top - gap - h : clampY(along, h);
+    return { side, left: Math.round(left), top: Math.round(top), width: Math.round(width), maxHeight: scroll ? Math.round(h) : null, scroll };
+  };
+  const alongOf = (side, h) => {
+    const vertical = side === "below" || side === "above";
+    const base = vertical ? anchor.left : anchor.top;
+    const out = [base];
+    for (const o of wall) {
+      if (vertical) out.push(o.right + gap / 2, o.left - gap / 2 - width);
+      else out.push(o.bottom + gap / 2, o.top - gap / 2 - h);
+    }
+    return out.sort((a, b) => Math.abs(a - base) - Math.abs(b - base));
+  };
+  const fitsSide = (side) => {
+    if (side === "below") return box2.bottom - edge - (anchor.bottom + gap) >= size.h;
+    if (side === "above") return anchor.top - gap - (box2.top + edge) >= size.h;
+    if (side === "right") return box2.right - edge - (anchor.right + gap) >= width;
+    return anchor.left - gap - (box2.left + edge) >= width;
+  };
+  for (const side of sides) {
+    if (!fitsSide(side)) continue;
+    for (const along of alongOf(side, size.h)) {
+      const p = make2(side, along, size.h, false);
+      if (!wall.some((o) => rectsHit(spanOf(p), o))) return p;
+    }
+  }
+  let best = null;
+  for (const side of sides) {
+    for (const along of alongOf(side, size.h)) {
+      const vertical = side === "below" || side === "above";
+      const probe = make2(side, along, vertical ? 1 : size.h, false);
+      let room;
+      if (vertical) {
+        const xs2 = { left: probe.left, right: probe.left + probe.width };
+        const lowest = side === "below" ? anchor.bottom + gap : box2.top + edge;
+        const highest = side === "below" ? box2.bottom - edge : anchor.top - gap;
+        let lo = lowest;
+        let hi = highest;
+        for (const o of wall) {
+          if (o.right <= xs2.left || o.left >= xs2.right) continue;
+          if (side === "below" && o.top >= lowest) hi = Math.min(hi, o.top - 4);
+          else if (side === "above" && o.bottom <= highest) lo = Math.max(lo, o.bottom + 4);
+        }
+        room = hi - lo;
+        if (room < 80) continue;
+        const h = Math.min(size.h, room);
+        const p = make2(side, along, h, true);
+        if (side === "above") p.top = Math.round(hi - h);
+        if (!best || h > best.h) best = { p, h };
+      } else {
+        const x0 = side === "right" ? anchor.right + gap : anchor.left - gap - width;
+        let lo = box2.top + edge;
+        let hi = box2.bottom - edge;
+        let straddles = false;
+        for (const o of wall) {
+          if (o.right <= x0 || o.left >= x0 + width) continue;
+          if (o.top < anchor.bottom && o.bottom > anchor.top) {
+            straddles = true;
+            break;
+          }
+          if (o.bottom <= anchor.top) lo = Math.max(lo, o.bottom + 4);
+          else hi = Math.min(hi, o.top - 4);
+        }
+        if (straddles) continue;
+        const h = Math.min(size.h, hi - lo);
+        if (h < 80) continue;
+        const p = make2(side, 0, h, true);
+        p.top = Math.round(Math.max(lo, Math.min(anchor.top, hi - h)));
+        if (!best || h > best.h) best = { p, h };
+      }
+    }
+  }
+  if (best) return best.p;
+  return first;
+}
+function placeBasic({ anchor, size, viewport, bounds, gap = POP_GAP } = {}) {
+  const box2 = {
+    left: Math.max(viewport.left ?? 0, bounds?.left ?? -Infinity),
+    top: Math.max(viewport.top ?? 0, bounds?.top ?? -Infinity),
+    right: Math.min(viewport.right, bounds?.right ?? Infinity),
+    bottom: Math.min(viewport.bottom, bounds?.bottom ?? Infinity)
+  };
+  const edge = 8;
+  const room = {
+    below: box2.bottom - edge - (anchor.bottom + gap),
+    above: anchor.top - gap - (box2.top + edge),
+    right: box2.right - edge - (anchor.right + gap),
+    left: anchor.left - gap - (box2.left + edge)
+  };
+  const fits = (side2) => side2 === "below" || side2 === "above" ? room[side2] >= size.h : room[side2] >= size.w;
+  let side = ["below", "above", "right", "left"].find(fits);
+  let scroll = false;
+  if (!side) {
+    side = Object.keys(room).reduce((best, k) => room[k] > room[best] ? k : best, "below");
+    scroll = true;
+  }
+  const vertical = side === "below" || side === "above";
+  const width = Math.min(size.w, Math.max(80, box2.right - box2.left - 2 * edge));
+  const height = scroll ? Math.max(80, Math.min(size.h, room[side])) : size.h;
+  const clampX = (x) => Math.max(box2.left + edge, Math.min(x, box2.right - edge - width));
+  const clampY = (y) => Math.max(box2.top + edge, Math.min(y, box2.bottom - edge - height));
+  let left;
+  let top;
+  if (vertical) {
+    left = clampX(anchor.left);
+    top = side === "below" ? anchor.bottom + gap : anchor.top - gap - height;
+  } else {
+    top = clampY(anchor.top);
+    left = side === "right" ? anchor.right + gap : anchor.left - gap - width;
+  }
+  return { side, left: Math.round(left), top: Math.round(top), width: Math.round(width), maxHeight: scroll ? Math.round(height) : null, scroll };
+}
+function rowFraction(blocks, uid) {
+  const rows = [];
+  const walk = (list) => {
+    for (const c of list || []) {
+      const str2 = c?.[":block/string"] ?? c?.string ?? "";
+      if (attrNameOf(str2) === "BT_attrDue") continue;
+      rows.push(c?.[":block/uid"] ?? c?.uid ?? "");
+      if (c?.open !== false && c?.[":block/open"] !== false) walk(c?.[":block/children"] ?? c?.children);
+    }
+  };
+  walk(blocks);
+  const i = rows.indexOf(uid);
+  return i < 0 || !rows.length ? null : (i + 0.5) / rows.length;
+}
+var rowEnd = (item, other, bar) => {
+  const side = other.x + other.w / 2 >= item.x + item.w / 2 ? "right" : "left";
+  const point = { x: side === "right" ? item.x + item.w : item.x, y: bar.y + bar.h / 2 };
+  return { side, point, inner: blockInner({ rect: item, side, point, rowLeft: ROW_PAD, rowRight: item.w - ROW_PAD }) };
+};
+function previewModel(board2, edgeUid, { pad: pad2 = 48, maxOthers = 24, blockText, rowFrac } = {}) {
+  const edge = board2?.edges?.get(edgeUid);
+  if (!edge) return null;
+  const rects = worldRects(board2);
+  const routed = routedEdge(board2, edge, rects);
+  if (!routed) return null;
+  const a = rects.get(edge.from);
+  const b = rects.get(edge.to);
+  if (!a || !b) return null;
+  const bounds = boundsOf([a, b]);
+  const view = { x: bounds.x - pad2, y: bounds.y - pad2, w: bounds.w + 2 * pad2, h: bounds.h + 2 * pad2 };
+  const inside3 = (r) => r.x < view.x + view.w && r.x + r.w > view.x && r.y < view.y + view.h && r.y + r.h > view.y;
+  const label = (item) => itemLabel(item, blockText) || item.title || "";
+  const cards = [];
+  let others = 0;
+  for (const item of board2.items.values()) {
+    const r = rects.get(item.uid);
+    if (!r) continue;
+    const role = item.uid === edge.from ? "from" : item.uid === edge.to ? "to" : "other";
+    if (role === "other") {
+      if (!inside3(r) || others >= maxOthers) continue;
+      others += 1;
+    }
+    cards.push({ uid: item.uid, type: item.type, rect: r, title: label(item), role });
+  }
+  const font = previewFont(view.w);
+  const textOf = (uid) => {
+    try {
+      const t = blockText?.(uid);
+      return typeof t === "string" && t ? t : "block";
+    } catch {
+      return "block";
+    }
+  };
+  const barFor = (itemUid, blockUid2) => {
+    const item = board2.items.get(itemUid);
+    if (!blockUid2 || !item || item.type === "section" || routed.from === routed.to) return null;
+    let frac = null;
+    try {
+      frac = rowFrac?.(item, blockUid2);
+    } catch {
+      frac = null;
+    }
+    const rect = itemUid === edge.from ? a : b;
+    const box2 = rowBarRect(rect, frac, font);
+    return { ...box2, frac: clamp01(frac), text: textOf(blockUid2), label: clip(textOf(blockUid2), box2.maxChars) };
+  };
+  const fromBar = routed.from === edge.from ? barFor(edge.from, edge.fromBlock) : null;
+  const toBar = routed.to === edge.to ? barFor(edge.to, edge.toBlock) : null;
+  const fromEnd = fromBar ? rowEnd(a, b, fromBar) : null;
+  const toEnd = toBar ? rowEnd(b, a, toBar) : null;
+  const geo = edgePath({
+    a: routed.a,
+    b: routed.b,
+    fromSide: fromEnd?.side || edge.fromSide || "auto",
+    toSide: toEnd?.side || edge.toSide || "auto",
+    route: edge.route || "curve",
+    fromPoint: fromEnd?.point,
+    toPoint: toEnd?.point
+  });
+  const named = PALETTE.includes(edge.color);
+  return {
+    viewBox: view,
+    cards,
+    path: geo.d,
+    end: geo.end,
+    endAngle: geo.endAngle,
+    start: geo.start,
+    startAngle: geo.startAngle,
+    dir: edge.dir,
+    color: named ? edge.color : "",
+    hex: named ? "" : hexColor(edge.color) || "",
+    font,
+    toBar,
+    fromBar,
+    fromCard: edge.from,
+    toCard: edge.to,
+    toInner: toEnd?.inner || null,
+    fromInner: fromEnd?.inner || null,
+    toBlockText: edge.toBlock ? textOf(edge.toBlock) : "",
+    fromBlockText: edge.fromBlock ? textOf(edge.fromBlock) : ""
+  };
+}
+function createConnectionCache({ host } = {}) {
+  const boardOf = /* @__PURE__ */ new Map();
+  let loaded = false;
+  return {
+    load() {
+      let rows = [];
+      try {
+        rows = host?.listConnectionBlocks?.() || [];
+      } catch {
+        rows = [];
+      }
+      for (const [edgeUid, boardUid] of rows) if (edgeUid && boardUid) boardOf.set(edgeUid, boardUid);
+      loaded = true;
+      return boardOf.size;
+    },
+    // A mounted board's session saw the connection set change: replace that board's entries.
+    setBoard(boardUid, edgeUids) {
+      for (const [e2, b] of [...boardOf]) if (b === boardUid) boardOf.delete(e2);
+      for (const e2 of edgeUids || []) boardOf.set(e2, boardUid);
+    },
+    has: (uid) => boardOf.has(uid),
+    boardOf: (uid) => boardOf.get(uid) ?? null,
+    uids: () => boardOf,
+    size: () => boardOf.size,
+    isLoaded: () => loaded,
+    clear() {
+      boardOf.clear();
+      loaded = false;
+    }
+  };
+}
+function createRelChips({ doc = globalThis.document, win = globalThis.window, host, graph, timers, setting, openNested } = {}) {
+  const cache = createConnectionCache({ host });
+  const chips = /* @__PURE__ */ new Set();
+  const models = /* @__PURE__ */ new Map();
+  let pop = null;
+  let disposed = false;
+  const stop = (event) => {
+    event.stopPropagation?.();
+  };
+  const blockText = (uid) => {
+    try {
+      return host?.blockString?.(uid);
+    } catch {
+      return null;
+    }
+  };
+  const rowFrac = (item, blockUid2) => {
+    if (item?.target?.kind !== "page") return null;
+    let outline = null;
+    try {
+      outline = host?.pageOutline?.(item.target.title, 400);
+    } catch {
+      outline = null;
+    }
+    return rowFraction(outline?.blocks, blockUid2);
+  };
+  const modelOf = (boardUid) => {
+    const hit = models.get(boardUid);
+    if (hit && Date.now() - hit.at < MODEL_TTL_MS) return hit.board;
+    let raw = null;
+    try {
+      raw = host?.pullBoard?.(boardUid);
+    } catch {
+      raw = null;
+    }
+    const board2 = raw ? buildBoard(raw) : null;
+    models.set(boardUid, { board: board2, at: Date.now() });
+    return board2;
+  };
+  const closePop = () => {
+    if (!pop) return;
+    const p = pop;
+    pop = null;
+    for (const off of p.offs) off();
+    p.tooltip?.dispose?.();
+    p.el.remove();
+  };
+  const svgEl = (tag, attrs, parent) => {
+    const node2 = doc.createElementNS(SVG_NS, tag);
+    for (const [k, v] of Object.entries(attrs || {})) node2.setAttribute(k, String(v));
+    parent?.append(node2);
+    return node2;
+  };
+  const drawPreview = (parent, model) => {
+    const v = model.viewBox;
+    const svg = svgEl("svg", { class: "pxd-relpop__map", viewBox: `${v.x} ${v.y} ${v.w} ${v.h}`, preserveAspectRatio: "xMidYMid meet", role: "img", "aria-label": "Where the connection sits on the board" }, parent);
+    const line = svgEl("g", { class: `pxd-relpop__edge${model.color ? ` pxd-c-${model.color}` : ""}` }, null);
+    if (model.hex) line.style.setProperty("--pxd-line", model.hex);
+    const font = model.font || previewFont(v.w);
+    let clips = 0;
+    const rects = /* @__PURE__ */ new Map();
+    for (const card2 of model.cards) {
+      const r = card2.rect;
+      const g = svgEl("g", { class: `pxd-relpop__card pxd-relpop__card--${card2.role}${card2.type === "section" ? " pxd-relpop__card--section" : ""}` }, svg);
+      if (card2.role !== "other" && model.hex) g.style.setProperty("--pxd-line", model.hex);
+      if (card2.role !== "other" && model.color) g.setAttribute("class", `${g.getAttribute("class")} pxd-c-${model.color}`);
+      svgEl("rect", { x: r.x, y: r.y, width: r.w, height: r.h, rx: 8 }, g);
+      if (card2.title && card2.type !== "section") {
+        const t = svgEl("text", { x: r.x + 10, y: r.y + font + 6, "font-size": font }, g);
+        t.textContent = clip(card2.title, Math.max(8, Math.floor((r.w - 20) / (font * 0.55))));
+      }
+      rects.set(card2.uid, r);
+    }
+    svgEl("path", { class: "pxd-relpop__line", d: model.path }, line);
+    const bar = (b, inner, cardUid, arrowEnd) => {
+      if (!b) return;
+      const r = rects.get(cardUid);
+      const g = svgEl("g", { class: `pxd-relpop__row${model.color ? ` pxd-c-${model.color}` : ""}` }, svg);
+      if (model.hex) g.style.setProperty("--pxd-line", model.hex);
+      if (r) {
+        clips += 1;
+        const id = `pxd-relclip-${Math.round(r.x)}-${Math.round(r.y)}-${clips}`;
+        const cp = svgEl("clipPath", { id }, g);
+        svgEl("rect", { x: r.x, y: r.y, width: r.w, height: r.h, rx: 8 }, cp);
+        g.setAttribute("clip-path", `url(#${id})`);
+      }
+      svgEl("rect", { x: b.x, y: b.y, width: b.w, height: b.h, rx: 4 }, g);
+      const t = svgEl("text", { x: b.textX, y: b.textY, "font-size": font }, g);
+      t.textContent = b.label;
+      if (inner) {
+        svgEl("path", { class: "pxd-relpop__inner", d: `M${inner.from.x} ${inner.from.y}L${inner.tip.x} ${inner.tip.y}` }, line);
+        if (arrowEnd) svgEl("path", { class: "pxd-relpop__head", d: arrowHeadPath(inner.tip, inner.angle, arrowSize(1, 2) * 1.6) }, line);
+      }
+    };
+    bar(model.fromBar, model.fromInner, model.fromCard, model.dir === "two");
+    bar(model.toBar, model.toInner, model.toCard, model.dir !== "none");
+    if (model.dir !== "none" && !model.toInner) svgEl("path", { class: "pxd-relpop__head", d: arrowHeadPath(model.end, model.endAngle, arrowSize(1, 2) * 1.6) }, line);
+    if (model.dir === "two" && !model.fromInner) svgEl("path", { class: "pxd-relpop__head", d: arrowHeadPath(model.start, model.startAngle + Math.PI, arrowSize(1, 2) * 1.6) }, line);
+    svg.append(line);
+    return svg;
+  };
+  const openOnBoard = (boardUid, edgeUid) => {
+    try {
+      if (openNested?.(boardUid, edgeUid)) return;
+    } catch {
+    }
+    let pageUid = "";
+    try {
+      pageUid = host?.blockPageUid?.(boardUid) || "";
+    } catch {
+      pageUid = "";
+    }
+    if (!pageUid) {
+      try {
+        void host?.openBlock?.(boardUid);
+      } catch {
+      }
+      return;
+    }
+    assignDeepLink(win?.location, {
+      graph: (typeof graph === "function" ? graph() : graph) || host?.graph || "",
+      pageUid,
+      cardUid: edgeUid
+    }, () => {
+      try {
+        win.dispatchEvent?.(new Event("hashchange"));
+      } catch {
+      }
+    });
+  };
+  const openPop = (chip, edgeUid, avoid) => {
+    closePop();
+    const boardUid = cache.boardOf(edgeUid);
+    const board2 = boardUid ? modelOf(boardUid) : null;
+    const rel = board2 ? relationOf(board2, edgeUid, { blockText }) : null;
+    const model = board2 ? previewModel(board2, edgeUid, { blockText }) : null;
+    const el = doc.createElement("div");
+    el.className = `pxd-root ${POP_CLASS}`;
+    el.setAttribute("role", "dialog");
+    el.setAttribute("aria-label", "Connection preview");
+    const mk = (tag, cls, parent, text2) => {
+      const n2 = doc.createElement(tag);
+      n2.className = cls;
+      if (text2 !== void 0) n2.textContent = text2;
+      parent?.append(n2);
+      return n2;
+    };
+    const head = mk("div", "pxd-relpop__head", el);
+    mk("div", "pxd-relpop__title", head, rel ? chipText({ ...rel }).replace(/^↗ /, "") : "This connection is no longer on a board");
+    if (model) drawPreview(el, model);
+    else mk("div", "pxd-relpop__empty", el, "The connected cards could not be found on the board.");
+    if (rel?.toBlockText) mk("div", "pxd-relpop__note", el, `Ends on the block “${clip(rel.toBlockText, 60)}”`);
+    const row2 = mk("div", "pxd-relpop__actions", el);
+    const button = (tip, text2, fn) => {
+      const b = mk("button", "pxd-btn pxd-relpop__btn", row2, text2);
+      b.type = "button";
+      b.setAttribute("data-tip", tip);
+      b.addEventListener("click", (event) => {
+        stop(event);
+        fn();
+      });
+      return b;
+    };
+    button("relpop.board", "Open on board", () => {
+      closePop();
+      if (boardUid) openOnBoard(boardUid, edgeUid);
+    });
+    button("relpop.sidebar", "Open in sidebar", () => {
+      closePop();
+      if (boardUid) {
+        try {
+          void host?.openInSidebar?.(boardUid, "block");
+        } catch {
+        }
+      }
+    });
+    doc.body.append(el);
+    const scrollParent = (node2) => {
+      for (let n2 = node2?.parentElement; n2; n2 = n2.parentElement) {
+        const o = win?.getComputedStyle?.(n2)?.overflowY;
+        if (o === "auto" || o === "scroll") return n2;
+      }
+      return null;
+    };
+    const holder = scrollParent(chip);
+    const place = () => {
+      if (chip.isConnected === false) {
+        closePop();
+        return;
+      }
+      const rects = [chip, ...[].concat(avoid || [])].map((n2) => n2?.getBoundingClientRect?.()).filter(Boolean);
+      const cr = rects.length > 1 ? { left: Math.min(...rects.map((r) => r.left)), top: Math.min(...rects.map((r) => r.top)), right: Math.max(...rects.map((r) => r.right)), bottom: Math.max(...rects.map((r) => r.bottom)) } : rects[0] || { left: 0, top: 0, right: 0, bottom: 0 };
+      const vw = win?.innerWidth || 1024;
+      const vh = win?.innerHeight || 768;
+      const own = rects[0] || cr;
+      if (own.bottom < 0 || own.top > vh || own.right < 0 || own.left > vw) {
+        closePop();
+        return;
+      }
+      const hr = holder?.getBoundingClientRect?.();
+      const at = placePopover({
+        anchor: cr,
+        size: { w: el.offsetWidth || 380, h: pop?.natural ?? (el.offsetHeight || 300) },
+        viewport: { left: 0, top: 0, right: vw, bottom: vh },
+        bounds: hr ? { left: hr.left, top: hr.top, right: hr.right, bottom: hr.bottom } : null
+      });
+      el.style.left = `${at.left}px`;
+      el.style.top = `${at.top}px`;
+      el.style.maxHeight = at.maxHeight ? `${at.maxHeight}px` : "";
+      el.style.overflowY = at.scroll ? "auto" : "";
+      el.setAttribute("data-side", at.side);
+    };
+    const offs = [];
+    const on = (target, type, fn, opts) => {
+      target.addEventListener(type, fn, opts);
+      offs.push(() => target.removeEventListener(type, fn, opts));
+    };
+    on(doc, "keydown", (event) => {
+      if (event.key === "Escape") {
+        event.stopPropagation?.();
+        closePop();
+      }
+    }, true);
+    on(doc, "pointerdown", (event) => {
+      if (!el.contains?.(event.target) && !chip.contains?.(event.target)) closePop();
+    }, true);
+    let queued = null;
+    const again = () => {
+      if (queued || !pop) return;
+      const id = win?.requestAnimationFrame?.(() => {
+        queued = null;
+        if (pop) place();
+      });
+      queued = () => win?.cancelAnimationFrame?.(id);
+    };
+    on(win, "scroll", (event) => {
+      if (!el.contains?.(event.target)) again();
+    }, { capture: true, passive: true });
+    on(win, "resize", again, { passive: true });
+    offs.push(() => {
+      queued?.();
+      queued = null;
+    });
+    let tooltip = null;
+    try {
+      tooltip = createTooltip({ doc, root: el, timers, setting });
+    } catch {
+      tooltip = null;
+    }
+    pop = { el, offs, tooltip, chip, natural: el.offsetHeight || 300 };
+    place();
+  };
+  const buildChip = (edgeUid) => {
+    const boardUid = cache.boardOf(edgeUid);
+    const board2 = boardUid ? modelOf(boardUid) : null;
+    const rel = board2 ? relationOf(board2, edgeUid, { blockText }) : null;
+    if (!rel) return null;
+    const chip = doc.createElement("div");
+    chip.className = CHIP_CLASS;
+    chip.setAttribute("role", "button");
+    chip.setAttribute("tabindex", "0");
+    chip.setAttribute("data-edge", edgeUid);
+    const entry = tipEntry("relchip");
+    if (entry) chip.title = `${entry.name}. ${entry.desc}`;
+    chip.textContent = chipText({ ...rel });
+    for (const type of ["pointerdown", "mousedown", "mouseup", "dblclick"]) chip.addEventListener(type, stop);
+    chip.addEventListener("click", (event) => {
+      stop(event);
+      event.preventDefault?.();
+      openPop(chip, edgeUid, chip.parentElement?.querySelector?.(".rm-block-main"));
+    });
+    chip.addEventListener("keydown", (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        stop(event);
+        event.preventDefault?.();
+        openPop(chip, edgeUid, chip.parentElement?.querySelector?.(".rm-block-main"));
+      }
+    });
+    return chip;
+  };
+  const crumbs = /* @__PURE__ */ new WeakSet();
+  const crumbOffs = [];
+  const crumbGlyphs = /* @__PURE__ */ new Set();
+  const plain = (event) => event.button === 0 && !event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey;
+  const crumbFor = (zoom) => {
+    if (disposed || !zoom || crumbs.has(zoom) || zoom.querySelector?.(`.${CRUMB_CLASS}`)) return;
+    const holder = zoom.parentElement;
+    const container = holder?.querySelector?.(".roam-block-container[data-block-uid]");
+    const edgeUid = container?.getAttribute?.("data-block-uid");
+    if (!edgeUid || !cache.has(edgeUid)) return;
+    crumbs.add(zoom);
+    const avoid = () => [container.querySelector?.(".rm-block-main") || container, container.querySelector?.(`.${CHIP_CLASS}`)].filter(Boolean);
+    const items = [...zoom.querySelectorAll?.(".rm-zoom-item") || []];
+    const glyph = doc.createElement("span");
+    glyph.className = CRUMB_CLASS;
+    glyph.textContent = "▦";
+    glyph.title = CRUMB_TIP;
+    glyph.setAttribute("role", "button");
+    glyph.setAttribute("tabindex", "0");
+    glyph.setAttribute("aria-label", CRUMB_TIP);
+    (items[items.length - 1] || zoom).append(glyph);
+    crumbGlyphs.add(glyph);
+    for (const el of [...items, glyph]) {
+      const swallow = (event) => {
+        if (plain(event)) stop(event);
+      };
+      const open = (event) => {
+        if (!plain(event)) return;
+        stop(event);
+        event.preventDefault?.();
+        openPop(el, edgeUid, avoid());
+      };
+      for (const type of ["pointerdown", "mousedown", "mouseup"]) {
+        el.addEventListener(type, swallow, true);
+        crumbOffs.push(() => el.removeEventListener(type, swallow, true));
+      }
+      el.addEventListener("click", open, true);
+      crumbOffs.push(() => el.removeEventListener("click", open, true));
+    }
+    const onKey = (event) => {
+      if (event.key === "Enter" || event.key === " ") {
+        stop(event);
+        event.preventDefault?.();
+        openPop(glyph, edgeUid, avoid());
+      }
+    };
+    glyph.addEventListener("keydown", onKey);
+    crumbOffs.push(() => glyph.removeEventListener("keydown", onKey));
+  };
+  const attach2 = (input, edgeUid) => {
+    const container = input.closest?.(".roam-block-container") || input.parentElement;
+    if (!container) return;
+    const zoom = container.parentElement?.querySelector?.(".rm-zoom");
+    if (zoom) crumbFor(zoom);
+    for (const child of container.children || []) if (child.classList?.contains(CHIP_CLASS) && child.getAttribute("data-edge") === edgeUid) return;
+    const chip = buildChip(edgeUid);
+    if (!chip) return;
+    let kids = null;
+    for (const child of container.children || []) if (child.classList?.contains("rm-block-children")) {
+      kids = child;
+      break;
+    }
+    if (kids) container.insertBefore(chip, kids);
+    else container.append(chip);
+    chips.add(chip);
+  };
+  const scan = (node2) => {
+    if (disposed || !cache.size() || !node2 || node2.nodeType !== 1) return;
+    for (const chip of chips) if (chip.isConnected === false) chips.delete(chip);
+    if (node2.classList?.contains(CHIP_CLASS) || node2.classList?.contains(POP_CLASS)) return;
+    const found = [];
+    if (node2.classList?.contains("roam-block") && isInput(node2)) found.push(node2);
+    if (typeof node2.querySelectorAll === "function") {
+      for (const el of node2.querySelectorAll(BLOCK_SELECTOR)) {
+        if (!isInput(el)) continue;
+        found.push(el);
+        if (found.length >= SCAN_CAP) break;
+      }
+    }
+    for (const input of found.slice(0, SCAN_CAP)) {
+      const uid = uidFromElementId(input.id, cache.uids());
+      if (uid) attach2(input, uid);
+    }
+    if (node2.classList?.contains("rm-zoom")) crumbFor(node2);
+    else if (typeof node2.querySelectorAll === "function") {
+      let n2 = 0;
+      for (const zoom of node2.querySelectorAll(".rm-zoom")) {
+        crumbFor(zoom);
+        n2 += 1;
+        if (n2 >= SCAN_CAP) break;
+      }
+    }
+  };
+  const start = () => {
+    cache.load();
+    if (!cache.size()) return;
+    scan(doc.body);
+  };
+  const noteBoard = (board2) => {
+    if (!board2?.uid) return;
+    cache.setBoard(board2.uid, [...board2.edges?.keys?.() || []]);
+    models.delete(board2.uid);
+  };
+  const dispose = () => {
+    disposed = true;
+    closePop();
+    for (const chip of chips) chip.remove();
+    chips.clear();
+    for (const off of crumbOffs.splice(0)) off();
+    for (const glyph of crumbGlyphs) glyph.remove();
+    crumbGlyphs.clear();
+    models.clear();
+    cache.clear();
+  };
+  return { start, scan, noteBoard, dispose, openPop, closePop, cache, chipCount: () => chips.size, crumbCount: () => crumbGlyphs.size, isOpen: () => Boolean(pop) };
+}
+
+// src/view/avoid.js
+var CHROME_SELECTOR = ".pxd-toolbar, .pxd-dock, .pxd-rail, .pxd-minimap, .pxd-props, .pxd-panel";
+var visible = (node2, win) => {
+  if (!node2 || node2.hidden || node2.style?.display === "none") return false;
+  try {
+    const style = win?.getComputedStyle?.(node2);
+    if (style && (style.display === "none" || style.visibility === "hidden")) return false;
+  } catch {
+  }
+  return true;
+};
+function chromeObstacles(root, { win = root?.ownerDocument?.defaultView, skip = null } = {}) {
+  const out = [];
+  let nodes = [];
+  try {
+    nodes = [...root?.querySelectorAll?.(CHROME_SELECTOR) || []];
+  } catch {
+    nodes = [];
+  }
+  for (const node2 of nodes) {
+    if (skip && (node2 === skip || node2.contains?.(skip))) continue;
+    if (!visible(node2, win)) continue;
+    const r = node2.getBoundingClientRect?.();
+    if (!r || !(r.right > r.left) || !(r.bottom > r.top)) continue;
+    out.push({ left: r.left, top: r.top, right: r.right, bottom: r.bottom });
+  }
+  return out;
+}
+function placeNearAnchor(node2, anchor, root, { gap = 6, skip = null, origin = root, win = root?.ownerDocument?.defaultView } = {}) {
+  const r = root?.getBoundingClientRect?.();
+  const o = origin?.getBoundingClientRect?.() || r;
+  if (!node2 || !anchor || !r) return null;
+  node2.style.maxHeight = "";
+  node2.style.overflowY = "";
+  const size = { w: Number(node2.offsetWidth) || 180, h: Number(node2.offsetHeight) || 120 };
+  const at = placePopover({
+    anchor,
+    size,
+    viewport: { left: r.left, top: r.top, right: r.right || r.left + size.w, bottom: r.bottom || r.top + size.h },
+    gap,
+    obstacles: chromeObstacles(root, { win, skip })
+  });
+  node2.style.left = `${Math.round(at.left - o.left)}px`;
+  node2.style.top = `${Math.round(at.top - o.top)}px`;
+  if (at.maxHeight) {
+    node2.style.maxHeight = `${at.maxHeight}px`;
+    node2.style.overflowY = "auto";
+  }
+  return at;
+}
+var pointAnchor = (x, y) => ({ left: x, top: y, right: x + 1, bottom: y + 1 });
+
 // src/view/task-popover.js
 var PRIORITIES = ["low", "medium", "high"];
-var GAP = 6;
-var MARGIN = 8;
+var GAP2 = 6;
 function createTaskPopover({ doc = globalThis.document, root, bt, toast = () => {
 }, today = () => /* @__PURE__ */ new Date() } = {}) {
   let node2 = null;
   let offs = [];
   let openFor = null;
+  let placeAgain = () => {
+  };
   const close = () => {
     for (const off of offs.splice(0)) off();
     try {
@@ -7304,6 +8537,8 @@ function createTaskPopover({ doc = globalThis.document, root, bt, toast = () => 
     }
     node2 = null;
     openFor = null;
+    placeAgain = () => {
+    };
   };
   const el = (tag, cls, parent, text2) => {
     const n2 = doc.createElement(tag);
@@ -7344,6 +8579,7 @@ function createTaskPopover({ doc = globalThis.document, root, bt, toast = () => 
       list.replaceChildren();
       if (!names.length) el("div", "pxd-task-pop__hint", list, "No projects yet");
       for (const name of names) button(list, name, () => apply(uid, { project: name }));
+      placeAgain();
     });
     button(box2, "Clear", () => apply(uid, { project: "" }), "pxd-task-pop__btn pxd-task-pop__btn--clear");
   };
@@ -7387,12 +8623,11 @@ function createTaskPopover({ doc = globalThis.document, root, bt, toast = () => 
     el("div", "pxd-task-pop__title", node2, TITLES2[kind]);
     FILL[kind](node2, uid);
     const a = anchor?.getBoundingClientRect?.();
-    const r = root.getBoundingClientRect?.();
-    if (a && r) {
-      const width = Number(node2.offsetWidth) || 180;
-      const left = Math.max(MARGIN, Math.min(a.left - r.left, (r.width || width + MARGIN * 2) - width - MARGIN));
-      node2.style.left = `${Math.round(left)}px`;
-      node2.style.top = `${Math.round(a.bottom - r.top + GAP)}px`;
+    if (a) {
+      placeAgain = () => {
+        if (node2 && anchor.isConnected !== false) placeNearAnchor(node2, anchor.getBoundingClientRect(), root, { gap: GAP2 });
+      };
+      placeAgain();
     }
     const on = (target, type, fn, capture = false) => {
       target.addEventListener?.(type, fn, capture);
@@ -7416,6 +8651,79 @@ function createTaskPopover({ doc = globalThis.document, root, bt, toast = () => 
     return true;
   }
   return { open, close, isOpen: () => Boolean(node2), dispose: close };
+}
+
+// src/view/task-complete.js
+var CHECKBOX = ".check-container input, .rm-checkbox input";
+var FIND_MS = 2500;
+var DONE_MS = 3e3;
+var POLL_MS = 40;
+var GRACE_MS = 400;
+function createTaskCompleter({ doc = globalThis.document, getRoot, host, bt, win = doc?.defaultView || globalThis } = {}) {
+  const busy = /* @__PURE__ */ new Map();
+  const wait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+  const until = async (probe, limit) => {
+    const end = Date.now() + limit;
+    for (; ; ) {
+      const hit = probe();
+      if (hit) return hit;
+      if (Date.now() >= end) return null;
+      await wait(POLL_MS);
+    }
+  };
+  const fire = (target, type) => {
+    const Ctor = win.PointerEvent || win.MouseEvent || win.Event;
+    target.dispatchEvent(new Ctor(type, { bubbles: true, cancelable: true, composed: true, pointerType: "mouse", button: 0 }));
+  };
+  const run = async (uid) => {
+    const root = getRoot?.();
+    if (!root || typeof host?.renderBlock !== "function" || !bt?.available?.()) return { ok: false, reason: "unavailable" };
+    if (taskState(host.blockString?.(uid)) === "DONE") return { ok: true, already: true };
+    const holder = doc.createElement("div");
+    holder.className = "pxd-task-holder";
+    holder.setAttribute("aria-hidden", "true");
+    const mount = doc.createElement("div");
+    holder.append(mount);
+    root.append(holder);
+    const cleanup = () => {
+      try {
+        host.unmount?.(mount);
+      } catch {
+      }
+      try {
+        holder.remove();
+      } catch {
+      }
+    };
+    try {
+      try {
+        host.renderBlock(mount, uid, { open: false });
+      } catch (error) {
+        return { ok: false, reason: String(error?.message || error) };
+      }
+      const input = await until(() => mount.querySelector?.(CHECKBOX), FIND_MS);
+      if (!input) return { ok: false, reason: "no checkbox rendered" };
+      fire(input, "pointerdown");
+      input.click();
+      const done = await until(() => taskState(host.blockString?.(uid)) === "DONE", DONE_MS);
+      if (!done) return { ok: false, reason: "the block did not turn DONE" };
+      await wait(GRACE_MS);
+      return { ok: true };
+    } finally {
+      cleanup();
+    }
+  };
+  return {
+    // One click per task at a time: a second call while one is running returns the same promise.
+    complete(uid) {
+      if (!uid) return Promise.resolve({ ok: false, reason: "no uid" });
+      if (busy.has(uid)) return busy.get(uid);
+      const p = run(uid).catch((error) => ({ ok: false, reason: String(error?.message || error) })).finally(() => busy.delete(uid));
+      busy.set(uid, p);
+      return p;
+    },
+    pending: () => busy.size
+  };
 }
 
 // src/model/export.js
@@ -9916,7 +11224,7 @@ var REF_TITLE_MAX = 120;
 var HEADER_TEXT_MAX = 160;
 var TINY_MINI_PX = 28;
 var ATTR_CHIPS_MAX = 3;
-var SVG_NS = "http://www.w3.org/2000/svg";
+var SVG_NS2 = "http://www.w3.org/2000/svg";
 var ROW_BOARD_W = 220;
 var ROW_BOARD_H = 90;
 var ROW_BOARD_THUMBS = 4;
@@ -10041,6 +11349,7 @@ var stickyTitleOf = (string) => {
 var isTaskAttrString = (s) => taskAttrId(s) !== null;
 var visibleKids = (list) => (list || []).filter((c) => !isTaskAttrString(childString2(c)));
 var taskBlockOn = () => false;
+var TASK_MARK = /^\s*\{\{\[\[(?:TODO|DONE)\]\]\}\}\s?/;
 var isTaskCard = (item) => item?.type === "card" && item.kind === "note" && isTaskString(item.string);
 function kidRowsOf(list, depth = 1, budget = { n: 0 }) {
   for (const c of visibleKids(list)) {
@@ -10218,15 +11527,15 @@ function createItemRenderer({
     }
     return live;
   };
-  const mountTaskBlock = (parent, uid) => {
-    const live = el("div", "pxd-rs pxd-item__string pxd-item__taskblock", parent);
-    const mount = el("div", "pxd-rs__live", live);
-    try {
-      host.renderBlock(mount, uid, { open: false });
-    } catch {
-      mount.textContent = "Task";
-    }
-    return live;
+  const mountTaskLine = (parent, item) => {
+    const meta = taskMeta(item.string, item.content);
+    const line = el("div", "pxd-item__taskline", parent);
+    const box2 = el("span", `pxd-task-check${meta?.done ? " pxd-task-check--done" : ""}${meta?.cancelled ? " pxd-task-check--cancelled" : ""}`, line);
+    box2.setAttribute("role", "checkbox");
+    box2.setAttribute("aria-checked", meta?.done ? "true" : "false");
+    box2.setAttribute("aria-label", meta?.done ? "Done" : "To do");
+    const text2 = renderRoot(line, String(item.string).replace(TASK_MARK, ""), "pxd-rs pxd-item__string pxd-item__tasktext", item.uid);
+    return text2;
   };
   const setHidden = (node2, hidden) => {
     node2.hidden = hidden;
@@ -10540,10 +11849,10 @@ function createItemRenderer({
       return;
     }
     if (!rec.shapeEl) {
-      const svg = doc.createElementNS(SVG_NS, "svg");
+      const svg = doc.createElementNS(SVG_NS2, "svg");
       svg.setAttribute("class", "pxd-shape");
       svg.setAttribute("aria-hidden", "true");
-      const path = doc.createElementNS(SVG_NS, "path");
+      const path = doc.createElementNS(SVG_NS2, "path");
       svg.append(path);
       const before = rec.body || null;
       if (before) rec.el.insertBefore(svg, before);
@@ -10863,10 +12172,7 @@ function createItemRenderer({
           el("div", "pxd-kids-peek__row pxd-kids-peek__row--sub", node2).textContent = plainText(childString2(g), PEEK_TEXT_MAX);
         }
       }
-      const b = rec.kidsBtn.getBoundingClientRect();
-      const r = root.getBoundingClientRect();
-      node2.style.left = `${Math.round(b.left - r.left)}px`;
-      node2.style.top = `${Math.round(b.bottom - r.top + 6)}px`;
+      placeNearAnchor(node2, rec.kidsBtn.getBoundingClientRect(), root, { gap: 6 });
       const close = () => closePeek();
       doc.addEventListener?.("pointerdown", close, true);
       doc.addEventListener?.("wheel", close, true);
@@ -10985,12 +12291,12 @@ function createItemRenderer({
       };
       for (const r of preview.rects) if (r.type === "section") addMini(r);
       if (preview.edges.length) {
-        const svg = doc.createElementNS(SVG_NS, "svg");
+        const svg = doc.createElementNS(SVG_NS2, "svg");
         svg.setAttribute("class", "pxd-board-preview__edges");
         svg.setAttribute("viewBox", "0 0 1 1");
         svg.setAttribute("preserveAspectRatio", "none");
         for (const e2 of preview.edges) {
-          const line = doc.createElementNS(SVG_NS, "line");
+          const line = doc.createElementNS(SVG_NS2, "line");
           line.setAttribute("x1", String(e2.x1));
           line.setAttribute("y1", String(e2.y1));
           line.setAttribute("x2", String(e2.x2));
@@ -11630,7 +12936,7 @@ function createItemRenderer({
     } else if (isQueryString(item.string) && host?.renderBlock) {
       budget.roots.push(mountQuery(body, item.uid));
     } else {
-      if (item.string?.trim()) budget.roots.push(taskBlockOn(item) ? mountTaskBlock(body, item.uid) : renderRoot(body, item.string, "pxd-rs pxd-item__string", item.uid));
+      if (item.string?.trim()) budget.roots.push(taskBlockOn(item) ? mountTaskLine(body, item) : renderRoot(body, item.string, "pxd-rs pxd-item__string", item.uid));
       rec.kidCount = visibleKids(item.content).length;
       rec.kidRows = kidRowsOf(item.content);
       if (item.kids) renderBlocks(body, item.content || [], 1, budget);
@@ -11935,7 +13241,7 @@ function createItemRenderer({
   };
   const renderBadges = (rec) => {
     const item = lastBoard?.items.get(rec.uid);
-    const visible = showBadges && lod === "detail" && rec.type === "card" && item && editing?.uid !== rec.uid;
+    const visible2 = showBadges && lod === "detail" && rec.type === "card" && item && editing?.uid !== rec.uid;
     const clear = () => {
       if (rec.badgeEl) {
         rec.badgeEl.remove();
@@ -11943,7 +13249,7 @@ function createItemRenderer({
       }
       rec.badgeKey = null;
     };
-    if (!visible) return clear();
+    if (!visible2) return clear();
     const info = badgeMap?.get?.(rec.uid) || null;
     const chips = [];
     if (info?.refs > 0) chips.push({ cls: "refs", text: `${info.refs} refs`, title: `${info.refs} references to this card` });
@@ -12710,7 +14016,7 @@ function editorKeyAction({
 }
 
 // src/view/edges.js
-var SVG_NS2 = "http://www.w3.org/2000/svg";
+var SVG_NS3 = "http://www.w3.org/2000/svg";
 var PAIR_OFFSET = 18;
 var LABEL_HIDE_ZOOM = 0.3;
 var setClass = (el, name) => {
@@ -12733,7 +14039,7 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
   const measures = /* @__PURE__ */ new Map();
   const listeners2 = [];
   const mk = (tag, cls, parent) => {
-    const el = doc.createElementNS(SVG_NS2, tag);
+    const el = doc.createElementNS(SVG_NS3, tag);
     setClass(el, cls);
     parent?.append(el);
     return el;
@@ -12792,6 +14098,8 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     if (m) {
       geo.fromClamp = fromClamp;
       geo.toClamp = toClamp;
+      geo.fromW = routed.a.w;
+      geo.toW = routed.b.w;
       geo.fromBlockAnchored = Boolean(fromPoint);
       geo.toBlockAnchored = Boolean(toPoint);
       geo.fromInner = fromInnerSpec ? blockInner(fromInnerSpec) : null;
@@ -12842,9 +14150,11 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     delete rec.bends[end];
   };
   const PILL_CHAR = 6;
-  const placeBend = (rec, end, point, clamp2, zoom, side) => {
+  const PILL_PAD = 16;
+  const PILL_MIN = 40;
+  const placeBend = (rec, end, point, clamp2, zoom, side, cardW = 0) => {
     const bend = bendOf(rec, end);
-    const scale = Math.min(3, Math.max(1, 1 / (zoom || 1)));
+    const scale = screenPx(zoom);
     bend.g.setAttribute("transform", `translate(${point.x} ${point.y}) scale(${scale})`);
     if (bend.clamp !== clamp2) {
       bend.clamp = clamp2;
@@ -12853,18 +14163,23 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
       bend.g.setAttribute("data-tip-state", clamp2 ? "clamped" : "inline");
       bend.g.querySelector?.(".pxd-edge__bend-chevron")?.setAttribute("d", clamp2 === "bottom" ? "M-3 -1.5L0 1.5L3 -1.5" : "M-3 1.5L0 -1.5L3 1.5");
     }
-    const label = clamp2 ? `${clamp2 === "bottom" ? "↓" : "↑"} ${bend.words || "Block"}` : "";
-    const key = `${clamp2 || ""}|${side || ""}|${label}`;
+    const full = clamp2 ? `${clamp2 === "bottom" ? "↓" : "↑"} ${bend.words || "Block"}` : "";
+    const cardScreen = cardW > 0 ? cardW * (Number(zoom) > 0 ? Number(zoom) : 1) : Infinity;
+    const maxW = Math.max(PILL_MIN, cardScreen - PILL_PAD);
+    const wantW = Math.max(PILL_MIN, full.length * PILL_CHAR + PILL_PAD);
+    const w = Math.round(Math.min(wantW, maxW));
+    const fit = Math.max(1, Math.floor((w - PILL_PAD) / PILL_CHAR));
+    const label = full.length > fit ? `${full.slice(0, Math.max(1, fit - 1))}…` : full;
+    const key = `${clamp2 || ""}|${side || ""}|${label}|${w}`;
     if (bend.pillKey !== key) {
       bend.pillKey = key;
       if (clamp2) {
-        const w = Math.max(40, label.length * PILL_CHAR + 16);
-        const out = side === "left" ? -1 : 1;
+        const inward = side === "left" ? 1 : -1;
         bend.text.textContent = label;
         bend.pill.setAttribute("width", String(w));
-        bend.pill.setAttribute("x", String(out > 0 ? 10 : -10 - w));
-        bend.text.setAttribute("x", String(out > 0 ? 18 : -18));
-        bend.text.setAttribute("text-anchor", out > 0 ? "start" : "end");
+        bend.pill.setAttribute("x", String(inward > 0 ? 10 : -10 - w));
+        bend.text.setAttribute("x", String(inward > 0 ? 18 : -10 - w + 8));
+        bend.text.setAttribute("text-anchor", "start");
       } else {
         bend.text.textContent = "";
       }
@@ -13059,7 +14374,7 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
         }
         const bend = bendOf(rec, end);
         bend.g.removeAttribute("display");
-        placeBend(rec, end, end === "from" ? geo.start : geo.end, end === "from" ? geo.fromClamp : geo.toClamp, zoom, end === "from" ? geo.fromSide : geo.toSide);
+        placeBend(rec, end, end === "from" ? geo.start : geo.end, end === "from" ? geo.fromClamp : geo.toClamp, zoom, end === "from" ? geo.fromSide : geo.toSide, end === "from" ? geo.fromW : geo.toW);
       }
     }
     placeEnds(rec, geo);
@@ -13491,216 +14806,6 @@ function buildColorPicker(doc, onPick, listen) {
   return box2;
 }
 
-// src/view/tooltip-text.js
-var LOCK = "Double-click to keep this tool.";
-var e = (name, desc, key, hint) => {
-  const out = { name, desc };
-  if (key) out.key = key;
-  if (hint) out.hint = hint;
-  return out;
-};
-var cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
-var TIP_TEXT = {
-  // ---- board bar
-  crumb: e(null, "Go back up to this board."),
-  "crumb.current": e(null, "The board you are looking at."),
-  "crumb.more": e("Hidden boards", "Show the boards between the first and the last crumb."),
-  "toolbar.add": e("Add", "Open the panel to search the graph and drag pages, blocks and today's notes onto the board."),
-  "toolbar.info": e("Info", "Show details for the selected card: references, attributes, tasks and the boards it sits on.", "I"),
-  "toolbar.links": e("Graph links", "Cycle the lines drawn from page references and attributes.", "L"),
-  "toolbar.links:off": e("Links: Off", "No graph lines. Only the arrows you drew are shown.", "L", "Click to show attribute links."),
-  "toolbar.links:attributes": e("Links: Attributes", "Draw lines only for shared Name:: attributes.", "L", "Click to show all links."),
-  "toolbar.links:all": e("Links: All", "Draw lines for every shared page reference and attribute.", "L", "Click to turn links off."),
-  "toolbar.table": e("Table", "Show this board's cards as a table you can sort and edit."),
-  "toolbar.table:on": e("Board", "Go back from the table to the canvas."),
-  "toolbar.kanban": e("Kanban", "Group the cards into columns by status or tag."),
-  "toolbar.kanban:on": e("Board", "Go back from the kanban columns to the canvas."),
-  "toolbar.bg": e("Background", "Choose the pattern and the tone of this board, or reset it to the default."),
-  "toolbar.lens": e("Tags", "Tag lens: keep the cards with one tag bright and dim the rest."),
-  "toolbar.focus": e("Focus", "Fade everything except the selected cards and what they connect to.", "F"),
-  "toolbar.present": e("Present", "Step through the sections full screen, one frame at a time.", "P"),
-  "toolbar.more": e("More", "More board actions: export, templates, dock position, layouts and views."),
-  "toolbar.zoom-out": e("Zoom out", "Make everything on the board smaller.", "⌘ −"),
-  "toolbar.zoom": e("Zoom", "The current zoom. Click to return to 100%.", "⇧ 0"),
-  "toolbar.zoom-in": e("Zoom in", "Make everything on the board larger.", "⌘ ="),
-  "toolbar.fit": e("Fit", "Zoom and pan so every card is in view.", "⇧ 1"),
-  "toolbar.minimap": e("Minimap", "Show or hide the small map of the whole board."),
-  "toolbar.edit": e("Edit block", "Open the diagram block itself in Roam to edit its text or children."),
-  "toolbar.fullscreen": e("Fullscreen", "Open this board full screen. Esc leaves it."),
-  "toolbar.fullscreen:on": e("Exit fullscreen", "Return the board to its place on the page.", "Esc"),
-  badge: e("Version", "The installed Plexus version. Click to read what changed in it."),
-  "rail.badge": e("Version", "The installed Plexus version. Click to read what changed in it."),
-  sync: e("Saved", "Every change is written to Roam."),
-  "sync:idle": e("Saved", "Every change is written to Roam."),
-  "sync:writing": e("Saving", "Your last change is being written to Roam."),
-  "sync:retrying": e("Retrying", "Roam did not take the last write. Plexus is trying again."),
-  "sync:failed": e("Could not save", "The last change did not reach Roam. Undo it or try the action again."),
-  // ---- tool dock and board-bar tools
-  "tool.select": e("Select", "Click cards to select them, drag to move, drag on empty space to box-select.", "V", LOCK),
-  "tool.hand": e("Hand", "Drag the board to pan without moving anything.", "H", LOCK),
-  "tool.card": e("Card", "Click the board to make a card, or drag to size one. It is a Roam block.", "N", LOCK),
-  "tool.task": e("Task", "Click the board to make a task card: a Roam TODO block. Better Tasks sets its due date and project from the chips.", "K", LOCK),
-  "tool.text": e("Text", "Click the board to place a free text label.", "T", LOCK),
-  "tool.sticky": e("Sticky", "Click the board to place a colored sticky note.", "S", LOCK),
-  "tool.shape": e("Shape", "Click or drag to draw a shape. Pick its kind in the options beside the dock.", "R", LOCK),
-  "tool.section": e("Section", "Drag a colored frame. Cards dropped inside become its members.", "G", LOCK),
-  "tool.board": e("Board", "Click to make a nested board you can open in place.", "W", LOCK),
-  "tool.connect": e("Connect", "Drag from one card to another to draw an arrow, which is saved as a Roam block.", "C", LOCK),
-  "dock.look.block": e("Block look", "Show new cards, or the selected one, as a plain Roam block."),
-  "dock.look.card": e("Card look", "Show new cards, or the selected one, with a title row."),
-  "backtocontent": e("Back to content", "Fit the view back to your cards."),
-  // ---- right control rail
-  "rail.zoom-in": e("Zoom in", "Make everything on the board larger.", "⌘ ="),
-  "rail.zoom-out": e("Zoom out", "Make everything on the board smaller.", "⌘ −"),
-  "rail.fit": e("Fit view", "Zoom and pan so every card is in view.", "⇧ 1"),
-  "rail.minimap": e("Minimap", "Show or hide the small map of the whole board."),
-  "rail.png": e("Save PNG", "Save the board as an image."),
-  "rail.outline": e("Open outline", "Open the board's blocks as an outline in the right sidebar."),
-  "rail.edit": e("Edit block", "Open the diagram block itself in Roam to edit its text or children."),
-  "rail.fullscreen": e("Maximize", "Open this board full screen. Esc leaves it."),
-  "rail.fullscreen:on": e("Minimize", "Return the board to its place on the page.", "Esc"),
-  "rail.zoom": e("Zoom", "The current zoom. Click to return to 100%.", "⇧ 0"),
-  // ---- background popover
-  "bg.default": e("Use as default", "Use this pattern and tone for every board that does not set its own."),
-  "bg.reset": e("Reset", "Clear this board's own pattern and tone."),
-  "swatch.none": e("No color", "Clear the color, or use the default tone."),
-  "swatch.paper": e("Paper", "A warm off-white tone for the board."),
-  // ---- card hover toolbar and the other context bars
-  "ctx.color": e("Color", "Open the color picker for this card."),
-  "ctx.expand": e("Show children", "Show this block's children as an outline inside the card."),
-  "ctx.expand:on": e("Hide children", "Fold the children away so the card shows only its own block."),
-  "ctx.refs": e("References", "Show the blocks that link to this card."),
-  "ctx.edit": e("Edit", "Edit the card's text in place.", "Enter"),
-  "ctx.sidebar": e("Open in sidebar", "Open the block or page in Roam's right sidebar."),
-  "ctx.collapse": e("Collapse", "Shrink the card to its title row."),
-  "ctx.collapse:on": e("Expand", "Show the whole card again."),
-  "ctx.related": e("Related", "Find pages and blocks related to this card."),
-  "ctx.pin-toggle": e("Pin", "Lock the position and size so it cannot be moved or resized by accident."),
-  "ctx.pin-toggle:on": e("Unpin", "Allow moving and resizing again."),
-  "ctx.fit-height": e("Fit height", "Grow or shrink the card to the height of its text."),
-  "ctx.copy-ref": e("Copy ref", "Copy a block or page reference for this card to paste into Roam."),
-  "ctx.duplicate": e("Duplicate", "Make a copy of the selection next to it.", "⌘ D"),
-  "ctx.send-to": e("Send to board", "Move the selection into another board."),
-  "ctx.mindmap": e("Mind map", "Lay the card's children out as cards around it, with arrows."),
-  "ctx.same-color": e("Select same color", "Select every card or section of this color."),
-  "ctx.connected": e("Select connected", "Select the cards linked to this one by an arrow or a graph link."),
-  "ctx.wrap": e("Wrap in section", "Put the selected cards in a new section.", "⌘ G"),
-  "ctx.wrap-board": e("Move into new board", "Move the selection into a new nested board."),
-  "ctx.fold": e("Fold", "Collapse the selected cards to their titles.", "⌘ ⌥ Enter"),
-  "ctx.fold:on": e("Unfold", "Expand the collapsed cards again.", "⌘ ⌥ Enter"),
-  "ctx.delete": e("Delete", "Remove the selection. On a section, the cards stay; Shift+Delete removes them too.", "Delete"),
-  "ctx.open-board": e("Open", "Open this board in place.", "Enter"),
-  "ctx.own-page": e("Own page", "Open the nested board on its own Roam page."),
-  "ctx.rename-board": e("Rename board", "Change the board's name."),
-  "ctx.rename": e("Rename", "Edit the section's title.", "Enter"),
-  "ctx.contents": e("Select contents", "Select the cards inside this section."),
-  "ctx.all-in-section": e("Select all in section", "Select everything inside the section, nested sections too."),
-  "ctx.collapse-section": e("Collapse", "Fold the section down to its title."),
-  "ctx.collapse-section:on": e("Expand", "Show the section's cards again."),
-  "ctx.section-note": e("Description", "Add a one-line description under the section's title."),
-  "ctx.section-note:on": e("Remove note", "Delete the section's description line."),
-  "ctx.lock": e("Lock", "Pin the section and everything inside it."),
-  "ctx.lock:on": e("Unlock", "Unpin the section and everything inside it."),
-  "ctx.present-section": e("Present", "Present this section full screen."),
-  "ctx.fit-section": e("Fit to contents", "Resize the section around its cards."),
-  "ctx.auto-fit": e("Auto-fit", "Keep the section sized to its cards as they move."),
-  "ctx.auto-fit:on": e("Auto-fit is on", "The section grows around its cards. Click to stop."),
-  "ctx.fold-all": e("Fold all", "Collapse every card in the section to its title."),
-  "ctx.flip": e("Flip", "Swap the arrow's two ends."),
-  "ctx.unblock": e("Connect to the page", "End the arrow on the whole page instead of one block."),
-  "ctx.label": e("Label", "Edit the text on the arrow."),
-  "ctx.notes": e("Notes", "Open the arrow's own block in the sidebar to add notes."),
-  "ctx.write": e("Write to graph", "Write this link as a Name:: attribute on the source block."),
-  "ctx.source": e(null, "Open the block that makes this link in the sidebar."),
-  "ctx.pin": e("Pin as connection", "Turn this graph link into an arrow you can style."),
-  "ctx.align.left": e("Align left", "Line the selected cards up on their left edges."),
-  "ctx.align.center": e("Align centers", "Line the selected cards up on their horizontal centers."),
-  "ctx.align.right": e("Align right", "Line the selected cards up on their right edges."),
-  "ctx.align.top": e("Align top", "Line the selected cards up on their top edges."),
-  "ctx.align.middle": e("Align middles", "Line the selected cards up on their vertical centers."),
-  "ctx.align.bottom": e("Align bottom", "Line the selected cards up on their bottom edges."),
-  "ctx.distribute.h": e("Distribute horizontally", "Space the selected cards evenly from left to right."),
-  "ctx.distribute.v": e("Distribute vertically", "Space the selected cards evenly from top to bottom."),
-  "ctx.tidy.grid": e("Tidy into a grid", "Arrange the selection in rows and columns."),
-  "ctx.tidy.row": e("Tidy into a row", "Arrange the selection in one row."),
-  "ctx.tidy.column": e("Tidy into a column", "Arrange the selection in one column."),
-  "ctx.same-size.width": e("Same width", "Give the selected cards the width of the first one."),
-  "ctx.same-size.height": e("Same height", "Give the selected cards the height of the first one."),
-  "ctx.same-size.both": e("Same size", "Give the selected cards the width and height of the first one."),
-  "ctx.dir.one": e("One way", "An arrowhead at the end only."),
-  "ctx.dir.two": e("Two way", "An arrowhead at both ends."),
-  "ctx.dir.none": e("No arrow", "A plain line with no arrowheads."),
-  "ctx.route.curve": e("Curve", "Draw the connection as a smooth curve."),
-  "ctx.route.straight": e("Straight", "Draw the connection as a straight line."),
-  "ctx.route.elbow": e("Elbow", "Draw the connection with right-angle bends."),
-  "ctx.dash.solid": e("Solid", "A solid line."),
-  "ctx.dash.dashed": e("Dashed", "A dashed line."),
-  "ctx.dash.animated": e("Animated", "A dashed line that moves from start to end."),
-  "bg.pattern.dots": e("Dots", "A dotted grid behind the cards."),
-  "bg.pattern.lines": e("Lines", "Horizontal lines behind the cards."),
-  "bg.pattern.cross": e("Cross", "Small crosses behind the cards."),
-  "bg.pattern.grid": e("Grid", "A square grid behind the cards."),
-  "bg.pattern.plain": e("Plain", "No pattern behind the cards."),
-  // ---- Properties panel
-  "props.toggle": e("Properties", "Show or hide the style panel. Its state is remembered on this device."),
-  "props.group.blocks": e("Blocks", "Text size, color, alignment, fill and border for the selected cards and text."),
-  "props.group.edge": e("Connection", "Direction, line style, shape, weight and color of the selected arrow."),
-  "props.group.group": e("Group", "Title size, colors and border of the selected sections."),
-  "props.group.defaults": e("Default groups", "The look every new section on this board starts with."),
-  "props.group.diagram": e("Diagram", "The background color and pattern of this board."),
-  "props.reset": e("Reset", "Remove the custom styles shown in this group."),
-  "props.step.dec": e("Smaller", "Lower this size by one pixel."),
-  "props.step.inc": e("Larger", "Raise this size by one pixel."),
-  "props.step.input": e(null, "Type a size in pixels, then press Enter."),
-  "props.chip": e(null, "Open the color picker for this style. Pick again to close it."),
-  "props.choice.align": e(null, "Align the text in the selected cards. Default follows the card look."),
-  "props.choice.dir": e(null, "Set where the selected arrow has arrowheads."),
-  "props.choice.dash": e(null, "Set the line style of the selected arrow."),
-  "props.choice.route": e(null, "Set how the selected arrow is drawn between its ends."),
-  "props.choice.weight": e(null, "Set the line thickness of the selected arrow in pixels."),
-  "props.choice.texture": e(null, "Set the pattern behind this board's cards. Default uses the board setting."),
-  "picker.swatch": e(null, "Use this color for the style you are editing."),
-  // ---- sticky header (EK-5)
-  "sticky.drag": e("Sticky", "Drag the header to move the note. Click in the note to type."),
-  "sticky.min": e("Minimize", "Collapse this sticky to its header. It stays on the board."),
-  "sticky.expand": e("Expand", "Show the whole sticky again."),
-  "sticky.color": e("Sticky color", "Pick a color for this sticky."),
-  "sticky.swatch": e(null, "Use this color for the sticky."),
-  // ---- the board itself
-  minimap: e("Minimap", "The whole board at a glance. Click or drag to move the view."),
-  kids: e("Children", "This block has children. Click to show them as an outline inside the card; hover to peek."),
-  "kids:on": e("Children", "The children are shown. Click to hide them again."),
-  "edge.bend": e("Arrow end on a block", "This arrow ends on one block of the page card, not the whole page."),
-  "edge.bend:clamped": e("Arrow end on a block", "The block is scrolled out of view. Click to scroll the card to it."),
-  relchip: e("Connection", "This block is a connection on a board. Click to see where it sits."),
-  "relpop.board": e("Open on board", "Go to the board and select this connection."),
-  "relpop.sidebar": e("Open in sidebar", "Open the board in the right sidebar."),
-  "edge.row": e("Linked block", "An arrow on the board ends on this block.")
-};
-for (const c of PALETTE) TIP_TEXT[`swatch.${c}`] = e(cap(c), `Color the selection ${c}, or tone the board ${c}.`);
-for (const s of SHAPES) TIP_TEXT[`dock.shape.${s}`] = e(cap(s), `Draw ${s === "rounded" ? "rounded rectangles" : `${s}s`} with the Shape tool, or change the selected shape.`);
-for (const n2 of [16, 24, 32, 48]) {
-  const word = { 16: "Small", 24: "Medium", 32: "Large", 48: "Extra large" }[n2];
-  TIP_TEXT[`ctx.size.${n2}`] = e(`${word} text`, `Set the label to ${n2} px.`);
-}
-for (const n2 of [1, 2, 3, 4]) TIP_TEXT[`ctx.weight.${n2}`] = e(`Weight ${n2}`, `Draw the connection ${n2} px thick.`);
-function tipEntry(id, state) {
-  if (!id) return null;
-  if (state && TIP_TEXT[`${id}:${state}`]) return TIP_TEXT[`${id}:${state}`];
-  return TIP_TEXT[id] || null;
-}
-var BLOCKS = /^pxd-(toolbar|rail|ctx|bg)__([a-z0-9-]+)$/;
-var SKIP = /* @__PURE__ */ new Set(["btn", "row", "group", "tools", "picker", "sources", "extra", "pattern", "tones"]);
-function tipIdForClass(cls) {
-  let found = null;
-  for (const token of String(cls || "").split(/\s+/)) {
-    const m = BLOCKS.exec(token);
-    if (m && !SKIP.has(m[2])) found = `${m[1]}.${m[2]}`;
-  }
-  if (!found && /(^|\s)pxd-badge(\s|$)/.test(String(cls || ""))) return "badge";
-  return found;
-}
-
 // src/view/chrome.js
 var CTX_GAP = 12;
 var CTX_EDGE_CLEARANCE = 28;
@@ -13741,7 +14846,6 @@ var cap2 = (word) => word.charAt(0).toUpperCase() + word.slice(1);
 var SHAPE_LABELS = { rectangle: "Rectangle", rounded: "Rounded", ellipse: "Ellipse", diamond: "Diamond", parallelogram: "Parallelogram", cylinder: "Cylinder" };
 var MAX_CRUMBS = 4;
 var POPOVER_GAP = 6;
-var POPOVER_MARGIN = 8;
 var PATTERN_LABELS = { dots: "Dots", lines: "Lines", cross: "Cross", grid: "Grid", plain: "Plain" };
 var NOTE_KINDS = ["note", "block", "page"];
 function createChrome({ doc = globalThis.document, root, version = "", settings, timers, on = {}, crumbs = [] } = {}) {
@@ -14048,10 +15152,10 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
   const px = (v) => Number.isFinite(Number(v)) ? Number(v) : 0;
   const layoutDock = () => {
     const b = paletteButtons.get(activeTool);
-    const visible = Boolean(b) && px(b.offsetWidth) > 0;
+    const visible2 = Boolean(b) && px(b.offsetWidth) > 0;
     dockIndicator.classList.toggle("pxd-dock__indicator--locked", activeLocked);
-    dockIndicator.classList.toggle("pxd-dock__indicator--idle", !visible);
-    if (!visible) return;
+    dockIndicator.classList.toggle("pxd-dock__indicator--idle", !visible2);
+    if (!visible2) return;
     dockIndicator.style.setProperty("--pxd-ind-x", `${px(b.offsetLeft)}px`);
     dockIndicator.style.setProperty("--pxd-ind-y", `${px(b.offsetTop)}px`);
     dockIndicator.style.setProperty("--pxd-ind-w", `${px(b.offsetWidth)}px`);
@@ -14296,15 +15400,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     open() {
       if (popover.isOpen()) return;
       popEl.style.display = "";
-      const rootRect = root.getBoundingClientRect();
-      const b = bgBtn.getBoundingClientRect();
-      const w = popEl.offsetWidth || 240;
-      const h = popEl.offsetHeight || 200;
-      const left = Math.max(POPOVER_MARGIN, Math.min(b.left - rootRect.left, (rootRect.width || 0) - w - POPOVER_MARGIN));
-      let top = b.bottom - rootRect.top + POPOVER_GAP;
-      if (rootRect.height && top + h > rootRect.height - POPOVER_MARGIN) top = Math.max(POPOVER_MARGIN, rootRect.height - h - POPOVER_MARGIN);
-      popEl.style.left = `${Math.round(left)}px`;
-      popEl.style.top = `${Math.round(top)}px`;
+      placeNearAnchor(popEl, bgBtn.getBoundingClientRect(), root, { gap: POPOVER_GAP, skip: bgBtn.closest?.(".pxd-toolbar, .pxd-dock") || null });
       bgBtn.classList.add("pxd-btn--active");
       const onDown = (event) => {
         if (popEl.contains(event.target) || bgBtn.contains(event.target)) return;
@@ -14345,8 +15441,8 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
   for (const type of ["pointerup", "wheel", "keydown", "keyup", "contextmenu"]) listen(backEl, type, (event) => event.stopPropagation());
   const backToContent = {
     el: backEl,
-    setVisible(visible) {
-      backEl.style.display = visible ? "" : "none";
+    setVisible(visible2) {
+      backEl.style.display = visible2 ? "" : "none";
     },
     isVisible: () => backEl.style.display !== "none"
   };
@@ -14400,6 +15496,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
               pickerBuilt = true;
             }
             picker.style.display = picker.style.display === "none" ? "" : "none";
+            if (picker.style.display !== "none") placeNearAnchor(picker, ctx.getBoundingClientRect(), root, { gap: 4, origin: ctx });
           });
           const closed = model?.kind === "note" || model?.kind === "block" ? !model?.kids : model?.open === false;
           iconBtn(
@@ -15268,7 +16365,7 @@ function planKanbanMove({ field, column, row: row2 } = {}) {
 }
 
 // src/view/kanban-view.js
-function mountKanban({ doc = globalThis.document, root, host, bt = null, getBoard } = {}) {
+function mountKanban({ doc = globalThis.document, root, host, bt = null, completeTask = null, getBoard } = {}) {
   const box2 = doc.createElement("div");
   box2.className = "pxd-kanban pxd-chrome";
   root?.append(box2);
@@ -15307,6 +16404,13 @@ function mountKanban({ doc = globalThis.document, root, host, bt = null, getBoar
   };
   const commit = async (plan) => {
     try {
+      if (plan.status === "DONE" && typeof completeTask === "function") {
+        const res = await completeTask(plan.uid);
+        if (res?.ok) {
+          paint2();
+          return;
+        }
+      }
       if (plan.status && bt?.available?.()) {
         const res = await bt.modify(plan.uid, { status: plan.status });
         if (res.ok) {
@@ -15906,6 +17010,11 @@ function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
       if (H) top = Math.max(MARGIN2, Math.min(top, H - h - MARGIN2));
       menuEl.style.left = `${Math.round(left)}px`;
       menuEl.style.top = `${Math.round(top)}px`;
+      const spot = { left: (rootRect.left || 0) + left, top: (rootRect.top || 0) + top };
+      const box2 = { left: spot.left, top: spot.top, right: spot.left + w, bottom: spot.top + h };
+      if (chromeObstacles(root, { win }).some((o) => box2.left < o.right && box2.right > o.left && box2.top < o.bottom && box2.bottom > o.top)) {
+        placeNearAnchor(menuEl, pointAnchor(x, y), root, { gap: 0 });
+      }
       return true;
     },
     close,
@@ -16000,238 +17109,6 @@ function createShortcutSheet({ doc = globalThis.document, root, shortcuts = SHOR
       else open();
     },
     isOpen: () => Boolean(sheet)
-  };
-}
-
-// src/view/tooltip.js
-var GAP2 = 8;
-var MARGIN3 = 4;
-var DELAYS = { instant: 0, "350 ms": 350, "800 ms": 800 };
-var ID = "pxd-tooltip";
-function tooltipDelay(value) {
-  return Object.hasOwn(DELAYS, value) ? DELAYS[value] : DELAYS["350 ms"];
-}
-function preferredSide(target, root) {
-  if (target.closest?.(".pxd-toolbar")) return "below";
-  if (target.closest?.(".pxd-rail")) return "left";
-  if (target.closest?.(".pxd-palette, .pxd-dock")) {
-    if (root.classList?.contains("pxd-root--dock-left")) return "right";
-    return root.classList?.contains("pxd-root--dock-top") ? "below" : "above";
-  }
-  if (target.closest?.(".pxd-minimap")) return "left";
-  return "above";
-}
-var OPPOSITE = { above: "below", below: "above", left: "right", right: "left" };
-function placeTip({ target, tip, bounds, side }) {
-  const at = (s) => {
-    if (s === "below") return { left: target.left + target.width / 2 - tip.width / 2, top: target.top + target.height + GAP2 };
-    if (s === "above") return { left: target.left + target.width / 2 - tip.width / 2, top: target.top - tip.height - GAP2 };
-    if (s === "left") return { left: target.left - tip.width - GAP2, top: target.top + target.height / 2 - tip.height / 2 };
-    return { left: target.left + target.width + GAP2, top: target.top + target.height / 2 - tip.height / 2 };
-  };
-  let use = side;
-  let p = at(use);
-  const vertical = side === "above" || side === "below";
-  const axisFits = (pt) => vertical ? pt.top >= bounds.top + MARGIN3 && pt.top + tip.height <= bounds.top + bounds.height - MARGIN3 : pt.left >= bounds.left + MARGIN3 && pt.left + tip.width <= bounds.left + bounds.width - MARGIN3;
-  if (bounds.width && bounds.height && !axisFits(p) && axisFits(at(OPPOSITE[side]))) {
-    use = OPPOSITE[side];
-    p = at(use);
-  }
-  if (bounds.width && bounds.height) {
-    const maxLeft = bounds.left + bounds.width - tip.width - MARGIN3;
-    const maxTop = bounds.top + bounds.height - tip.height - MARGIN3;
-    p = {
-      left: Math.max(bounds.left + MARGIN3, Math.min(p.left, maxLeft)),
-      top: Math.max(bounds.top + MARGIN3, Math.min(p.top, maxTop))
-    };
-  }
-  return { left: Math.round(p.left), top: Math.round(p.top), side: use };
-}
-function createTooltip({ doc = globalThis.document, root, timers, setting } = {}) {
-  const read = (k) => typeof setting === "function" ? setting(k) : void 0;
-  const tip = doc.createElement("div");
-  tip.className = "pxd-tooltip pxd-chrome";
-  tip.id = ID;
-  tip.setAttribute("role", "tooltip");
-  tip.style.display = "none";
-  root.append(tip);
-  const offs = [];
-  const on = (node2, type, fn, opts) => {
-    node2.addEventListener(type, fn, opts);
-    offs.push(() => node2.removeEventListener(type, fn, opts));
-  };
-  let current2 = null;
-  let pending = null;
-  let dismiss = [];
-  const enabled = () => read("tooltips") !== false;
-  const delay = () => tooltipDelay(read("tooltip-delay"));
-  const closest = (node2) => {
-    const hit = node2?.closest?.("[data-tip]");
-    return hit && root.contains(hit) ? hit : null;
-  };
-  const sync = (target) => {
-    const entry = tipEntry(target.getAttribute("data-tip"), target.getAttribute("data-tip-state"));
-    if (!entry) return null;
-    return {
-      name: entry.name || target.getAttribute("aria-label") || target.getAttribute("data-tip-name") || "",
-      desc: entry.desc,
-      key: entry.key,
-      hint: entry.hint,
-      extra: target.getAttribute("data-tip-extra") || ""
-    };
-  };
-  const fill = (info) => {
-    tip.replaceChildren();
-    const head = doc.createElement("div");
-    head.className = "pxd-tooltip__head";
-    const name = doc.createElement("strong");
-    name.className = "pxd-tooltip__name";
-    name.textContent = info.name;
-    head.append(name);
-    for (const k of [].concat(info.key || [])) {
-      const kbd = doc.createElement("kbd");
-      kbd.className = "pxd-tooltip__key";
-      kbd.textContent = k;
-      head.append(kbd);
-    }
-    tip.append(head);
-    const add = (cls, text2) => {
-      if (!text2) return;
-      const line = doc.createElement("div");
-      line.className = `pxd-tooltip__${cls}`;
-      line.textContent = text2;
-      tip.append(line);
-    };
-    add("desc", info.desc);
-    add("extra", info.extra);
-    add("hint", info.hint);
-  };
-  const place = (target) => {
-    if (target.isConnected === false) {
-      hide();
-      return;
-    }
-    const rr = root.getBoundingClientRect();
-    const tr = target.getBoundingClientRect();
-    const r = { left: tr.left - rr.left, top: tr.top - rr.top, width: tr.width, height: tr.height };
-    const size = { width: tip.offsetWidth || 0, height: tip.offsetHeight || 0 };
-    const bounds = { left: 0, top: 0, width: rr.width, height: rr.height };
-    const at = placeTip({ target: r, tip: size, bounds, side: preferredSide(target, root) });
-    tip.style.left = `${at.left}px`;
-    tip.style.top = `${at.top}px`;
-    tip.setAttribute("data-side", at.side);
-  };
-  const hide = () => {
-    pending?.cancel?.();
-    pending = null;
-    for (const off of dismiss.splice(0)) off();
-    if (current2) {
-      if (current2.getAttribute("aria-describedby") === ID) current2.removeAttribute("aria-describedby");
-      current2 = null;
-    }
-    tip.style.display = "none";
-  };
-  const check = () => {
-    if (current2 && current2.isConnected === false) hide();
-    if (pending && pending.target?.isConnected === false) {
-      pending.cancel?.();
-      pending = null;
-    }
-  };
-  const show = (target) => {
-    if (!target || target.isConnected === false) return;
-    const info = sync(target);
-    if (!info) return;
-    if (current2 && current2 !== target && current2.getAttribute("aria-describedby") === ID) current2.removeAttribute("aria-describedby");
-    pending = null;
-    fill(info);
-    tip.style.display = "";
-    current2 = target;
-    target.setAttribute("aria-describedby", ID);
-    place(target);
-    if (!dismiss.length) {
-      const off = (node2, type, fn, opts) => {
-        node2.addEventListener(type, fn, opts);
-        dismiss.push(() => node2.removeEventListener(type, fn, opts));
-      };
-      off(root, "pointerdown", hide, true);
-      off(root, "wheel", hide, { capture: true, passive: true });
-      off(root, "scroll", hide, true);
-      off(doc, "keydown", (event) => {
-        if (event.key === "Escape") hide();
-      }, true);
-    }
-  };
-  const schedule = (target) => {
-    if (current2 === target || pending?.target === target) return;
-    pending?.cancel?.();
-    pending = null;
-    if (!tipEntry(target.getAttribute("data-tip"), target.getAttribute("data-tip-state"))) return;
-    if (!enabled()) {
-      const info = sync(target);
-      if (info) target.title = info.key ? `${info.name} (${[].concat(info.key).join(" ")}). ${info.desc}` : `${info.name}. ${info.desc}`;
-      return;
-    }
-    const wait = current2 ? 0 : delay();
-    if (wait <= 0) {
-      show(target);
-      return;
-    }
-    const cancel = timers?.later ? timers.later(() => show(target), wait) : (() => {
-      const t = setTimeout(() => show(target), wait);
-      return () => clearTimeout(t);
-    })();
-    pending = { target, cancel };
-  };
-  on(root, "pointerover", (event) => {
-    if (event.buttons) return;
-    const target = closest(event.target);
-    if (!target) return;
-    schedule(target);
-  });
-  on(root, "pointerout", (event) => {
-    const from = closest(event.target);
-    if (!from) return;
-    const to = event.relatedTarget;
-    if (to && from.contains?.(to)) return;
-    if (pending?.target === from) {
-      pending.cancel?.();
-      pending = null;
-    }
-    if (current2 === from) hide();
-  });
-  on(root, "focusin", (event) => {
-    const target = closest(event.target);
-    if (!target || !enabled()) return;
-    try {
-      if (typeof target.matches === "function" && target.matches(":focus-visible") === false) return;
-    } catch {
-    }
-    pending?.cancel?.();
-    pending = null;
-    show(target);
-  });
-  on(root, "focusout", (event) => {
-    const from = closest(event.target);
-    if (!from) return;
-    if (pending?.target === from) {
-      pending.cancel?.();
-      pending = null;
-    }
-    if (current2 === from) hide();
-  });
-  return {
-    el: tip,
-    show,
-    hide,
-    check,
-    isVisible: () => tip.style.display !== "none",
-    target: () => current2,
-    dispose() {
-      hide();
-      for (const off of offs.splice(0)) off();
-      tip.remove();
-    }
   };
 }
 
@@ -17434,7 +18311,7 @@ function watchRouteExit({ boardUid, onExit, win = globalThis.window } = {}) {
 
 // src/view/later-views.js
 var TITLES = { gallery: "Gallery", timeline: "Timeline", graph: "Graph" };
-var SVG_NS3 = "http://www.w3.org/2000/svg";
+var SVG_NS4 = "http://www.w3.org/2000/svg";
 function mountLater({ doc = globalThis.document, root, host, getBoard, onClose } = {}) {
   const resolve = (uid) => host?.blockString?.(uid);
   const box2 = doc.createElement("div");
@@ -17551,7 +18428,7 @@ function mountLater({ doc = globalThis.document, root, host, getBoard, onClose }
     const height = Math.round(maxY - minY + 80);
     body.style.minWidth = `${width}px`;
     body.style.minHeight = `${height}px`;
-    const svg = doc.createElementNS(SVG_NS3, "svg");
+    const svg = doc.createElementNS(SVG_NS4, "svg");
     svg.setAttribute("class", "pxd-later__links");
     svg.setAttribute("width", String(width));
     svg.setAttribute("height", String(height));
@@ -17561,7 +18438,7 @@ function mountLater({ doc = globalThis.document, root, host, getBoard, onClose }
       if (!a || !b) continue;
       const pa = at(a);
       const pb = at(b);
-      const line = doc.createElementNS(SVG_NS3, "line");
+      const line = doc.createElementNS(SVG_NS4, "line");
       line.setAttribute("class", "pxd-later__link");
       line.setAttribute("x1", String(pa.x));
       line.setAttribute("y1", String(pa.y));
@@ -17623,7 +18500,7 @@ function mountPrintSheet(doc, board2) {
 }
 
 // src/view/board-view.js
-var SVG_NS4 = "http://www.w3.org/2000/svg";
+var SVG_NS5 = "http://www.w3.org/2000/svg";
 var pointerBoard = null;
 function sidebarMountKind(nativeEl) {
   const win = nativeEl?.closest?.(".rm-sidebar-window");
@@ -17736,6 +18613,7 @@ var NATIVE_MENU_TARGETS = ".rm-page-ref, .rm-block-ref, [data-link-uid], a[href]
 function nativeClickKind(node2) {
   if (!node2 || typeof node2.closest !== "function") return null;
   if (node2.closest("img")) return "image";
+  if (node2.closest(".pxd-task-check")) return "checkbox";
   const box2 = node2.closest("input, label, .check-container");
   if (box2) {
     const tag = String(box2.tagName || "").toLowerCase();
@@ -17986,7 +18864,7 @@ function mountBoardView({
     return node2;
   };
   const svg = (cls, parent) => {
-    const node2 = doc.createElementNS(SVG_NS4, "svg");
+    const node2 = doc.createElementNS(SVG_NS5, "svg");
     node2.setAttribute("class", cls);
     if (node2.classList && !node2.classList.contains(cls)) node2.className = cls;
     parent?.append(node2);
@@ -18273,6 +19151,7 @@ function mountBoardView({
     }
   });
   const taskPop = createTaskPopover({ doc, root, bt, toast: (m) => chrome.toast.show(m) });
+  const taskDone = createTaskCompleter({ doc, getRoot: () => root, host, bt, win });
   const applyTaskSettings = () => itemsR.setTaskChips(String(setting("task-chips", "full")));
   applyTaskSettings();
   void bt.prime().then((names) => {
@@ -18496,6 +19375,7 @@ function mountBoardView({
     if (vp.zoom === invZoomAt) return;
     invZoomAt = vp.zoom;
     root.style.setProperty("--pxd-inv-zoom", String(invZoom(vp.zoom)));
+    root.style.setProperty("--pxd-screen-px", String(screenPx(vp.zoom)));
   };
   const applyLod = () => {
     tier = lodTier(vp.zoom, tier, { threshold: mapThreshold() });
@@ -20170,14 +21050,8 @@ function mountBoardView({
     lensPop.style.display = "";
     const btn = chrome.toolbar.lensButton;
     const rootRect2 = root.getBoundingClientRect();
-    const b = btn?.getBoundingClientRect?.() || { left: rootRect2.left, bottom: rootRect2.top };
-    const w = lensPop.offsetWidth || 200;
-    const h = lensPop.offsetHeight || 120;
-    const left = Math.max(8, Math.min(b.left - rootRect2.left, (rootRect2.width || 0) - w - 8));
-    let top = b.bottom - rootRect2.top + 6;
-    if (rootRect2.height && top + h > rootRect2.height - 8) top = Math.max(8, rootRect2.height - h - 8);
-    lensPop.style.left = `${Math.round(left)}px`;
-    lensPop.style.top = `${Math.round(top)}px`;
+    const b = btn?.getBoundingClientRect?.() || { left: rootRect2.left, top: rootRect2.top, right: rootRect2.left, bottom: rootRect2.top };
+    placeNearAnchor(lensPop, b, root, { gap: 6, skip: btn?.closest?.(".pxd-toolbar, .pxd-dock") || null });
     const onDown = (event) => {
       if (lensPop.contains(event.target) || btn?.contains?.(event.target)) return;
       closeLens();
@@ -20982,9 +21856,32 @@ function mountBoardView({
     };
     timers.later(() => look(1), 1500);
   };
+  const flipMarker = (uid) => {
+    const next = toggleTodoAt(board2()?.items?.get(uid)?.string, 0);
+    if (next != null) session.setString?.(uid, next);
+  };
+  const completeLightCheck = async (uid, box2) => {
+    const item = board2()?.items?.get(uid);
+    if (!item || !isTaskString(item.string)) return;
+    const wasDone = taskState(item.string) === "DONE";
+    box2.classList?.toggle("pxd-task-check--done", !wasDone);
+    box2.setAttribute?.("aria-checked", wasDone ? "false" : "true");
+    if (wasDone) {
+      const res2 = bt.available() ? await bt.modify(uid, { status: "TODO" }) : { ok: false };
+      if (!res2.ok && !disposed) flipMarker(uid);
+      return;
+    }
+    watchRecurrence(uid);
+    const res = await taskDone.complete(uid);
+    if (res.ok || disposed) return;
+    const via = await bt.modify(uid, { status: "DONE" });
+    if (!via.ok && !disposed) flipMarker(uid);
+  };
   const toggleClickedTodo = (node2) => {
-    if (node2?.closest?.(".pxd-item__taskblock")) {
-      watchRecurrence(node2.closest(".pxd-item")?.getAttribute?.("data-uid"));
+    const light = node2?.closest?.(".pxd-task-check");
+    if (light) {
+      const uid2 = light.closest?.(".pxd-item")?.getAttribute?.("data-uid");
+      if (uid2) void completeLightCheck(uid2, light);
       return;
     }
     const card2 = node2?.closest?.(".pxd-item");
@@ -21514,6 +22411,7 @@ function mountBoardView({
     root,
     host,
     bt,
+    completeTask: (uid) => taskDone.complete(uid),
     getBoard: board2
   });
   laterCtl = mountLater({
@@ -21988,647 +22886,6 @@ function mountBoardView({
     }
   };
   return view;
-}
-
-// src/relchips.js
-var CHIP_CLASS = "pxd-relchip";
-var POP_CLASS = "pxd-relpop";
-var CRUMB_CLASS = "pxd-relcrumb";
-var CRUMB_TIP = "Open the connection preview";
-var SCAN_CAP = 60;
-var NAME_MAX = 28;
-var BLOCK_MAX = 24;
-var MODEL_TTL_MS = 5e3;
-var SVG_NS5 = "http://www.w3.org/2000/svg";
-var BLOCK_SELECTOR = ".roam-block";
-var isInput = (el) => String(el?.id || "").startsWith("block-input-");
-function uidFromElementId(id, uids) {
-  const parts = String(id ?? "").split("-");
-  for (let k = 1; k <= Math.min(4, parts.length); k += 1) {
-    const candidate = parts.slice(-k).join("-");
-    if (candidate && uids.has(candidate)) return candidate;
-  }
-  return null;
-}
-var clip = (text2, max) => {
-  const t = String(text2 ?? "").replace(/\s+/g, " ").trim();
-  return t.length > max ? `${t.slice(0, max - 1).trimEnd()}…` : t;
-};
-var endName = (name, blockText) => {
-  const base = clip(name, NAME_MAX) || "card";
-  const block = clip(blockText, BLOCK_MAX);
-  return block ? `${base} ▸ “${block}”` : base;
-};
-function chipText({ from, to, label, boardTitle: boardTitle2, fromBlockText, toBlockText } = {}) {
-  const arrow2 = label ? `—${clip(label, 32)}→` : "→";
-  const board2 = clip(boardTitle2, 32);
-  return `↗ ${endName(from, fromBlockText)} ${arrow2} ${endName(to, toBlockText)}${board2 ? ` · on ${board2}` : ""}`;
-}
-function relationOf(board2, edgeUid, { blockText } = {}) {
-  const edge = board2?.edges?.get(edgeUid);
-  if (!edge) return null;
-  const read = (uid) => {
-    if (!uid) return "";
-    try {
-      const t = blockText?.(uid);
-      return typeof t === "string" ? t : "";
-    } catch {
-      return "";
-    }
-  };
-  const title = (uid) => {
-    const item = board2.items.get(uid);
-    return item ? itemLabel(item, blockText) || item.title || "card" : "card";
-  };
-  return {
-    edge,
-    from: title(edge.from),
-    to: title(edge.to),
-    label: edge.label || "",
-    fromBlockText: edge.fromBlock ? read(edge.fromBlock) || "block" : "",
-    toBlockText: edge.toBlock ? read(edge.toBlock) || "block" : "",
-    boardTitle: board2.title || parseBoardTitle(board2.string) || "Untitled board"
-  };
-}
-var previewFont = (viewWidth) => Math.max(12, Math.round(viewWidth / 32));
-var ROW_PAD = 10;
-var clamp01 = (n2) => Number.isFinite(n2) ? Math.min(1, Math.max(0, n2)) : 0.5;
-function rowBarRect(rect, frac, font) {
-  const head = font * 2 + 4;
-  const h = Math.min(font + 8, Math.max(4, rect.h - 4));
-  const top = rect.y + Math.min(head, Math.max(0, rect.h - h - 2));
-  const span = Math.max(0, rect.y + rect.h - 6 - top - h);
-  const y = Math.min(rect.y + rect.h - h - 2, top + clamp01(frac) * span);
-  const x = rect.x + ROW_PAD;
-  const w = Math.max(4, rect.w - 2 * ROW_PAD);
-  return { x, y, w, h, textX: x + 8, textY: y + h - Math.max(3, Math.round(font * 0.28)), maxChars: Math.max(0, Math.floor((w - 16) / (font * 0.58))) };
-}
-var POP_GAP = 8;
-function placePopover({ anchor, size, viewport, bounds, gap = POP_GAP } = {}) {
-  const box2 = {
-    left: Math.max(viewport.left ?? 0, bounds?.left ?? -Infinity),
-    top: Math.max(viewport.top ?? 0, bounds?.top ?? -Infinity),
-    right: Math.min(viewport.right, bounds?.right ?? Infinity),
-    bottom: Math.min(viewport.bottom, bounds?.bottom ?? Infinity)
-  };
-  const edge = 8;
-  const room = {
-    below: box2.bottom - edge - (anchor.bottom + gap),
-    above: anchor.top - gap - (box2.top + edge),
-    right: box2.right - edge - (anchor.right + gap),
-    left: anchor.left - gap - (box2.left + edge)
-  };
-  const fits = (side2) => side2 === "below" || side2 === "above" ? room[side2] >= size.h : room[side2] >= size.w;
-  let side = ["below", "above", "right", "left"].find(fits);
-  let scroll = false;
-  if (!side) {
-    side = Object.keys(room).reduce((best, k) => room[k] > room[best] ? k : best, "below");
-    scroll = true;
-  }
-  const vertical = side === "below" || side === "above";
-  const width = Math.min(size.w, Math.max(80, box2.right - box2.left - 2 * edge));
-  const height = scroll ? Math.max(80, Math.min(size.h, room[side])) : size.h;
-  const clampX = (x) => Math.max(box2.left + edge, Math.min(x, box2.right - edge - width));
-  const clampY = (y) => Math.max(box2.top + edge, Math.min(y, box2.bottom - edge - height));
-  let left;
-  let top;
-  if (vertical) {
-    left = clampX(anchor.left);
-    top = side === "below" ? anchor.bottom + gap : anchor.top - gap - height;
-  } else {
-    top = clampY(anchor.top);
-    left = side === "right" ? anchor.right + gap : anchor.left - gap - width;
-  }
-  return { side, left: Math.round(left), top: Math.round(top), width: Math.round(width), maxHeight: scroll ? Math.round(height) : null, scroll };
-}
-function rowFraction(blocks, uid) {
-  const rows = [];
-  const walk = (list) => {
-    for (const c of list || []) {
-      const str2 = c?.[":block/string"] ?? c?.string ?? "";
-      if (attrNameOf(str2) === "BT_attrDue") continue;
-      rows.push(c?.[":block/uid"] ?? c?.uid ?? "");
-      if (c?.open !== false && c?.[":block/open"] !== false) walk(c?.[":block/children"] ?? c?.children);
-    }
-  };
-  walk(blocks);
-  const i = rows.indexOf(uid);
-  return i < 0 || !rows.length ? null : (i + 0.5) / rows.length;
-}
-var rowEnd = (item, other, bar) => {
-  const side = other.x + other.w / 2 >= item.x + item.w / 2 ? "right" : "left";
-  const point = { x: side === "right" ? item.x + item.w : item.x, y: bar.y + bar.h / 2 };
-  return { side, point, inner: blockInner({ rect: item, side, point, rowLeft: ROW_PAD, rowRight: item.w - ROW_PAD }) };
-};
-function previewModel(board2, edgeUid, { pad: pad2 = 48, maxOthers = 24, blockText, rowFrac } = {}) {
-  const edge = board2?.edges?.get(edgeUid);
-  if (!edge) return null;
-  const rects = worldRects(board2);
-  const routed = routedEdge(board2, edge, rects);
-  if (!routed) return null;
-  const a = rects.get(edge.from);
-  const b = rects.get(edge.to);
-  if (!a || !b) return null;
-  const bounds = boundsOf([a, b]);
-  const view = { x: bounds.x - pad2, y: bounds.y - pad2, w: bounds.w + 2 * pad2, h: bounds.h + 2 * pad2 };
-  const inside3 = (r) => r.x < view.x + view.w && r.x + r.w > view.x && r.y < view.y + view.h && r.y + r.h > view.y;
-  const label = (item) => itemLabel(item, blockText) || item.title || "";
-  const cards = [];
-  let others = 0;
-  for (const item of board2.items.values()) {
-    const r = rects.get(item.uid);
-    if (!r) continue;
-    const role = item.uid === edge.from ? "from" : item.uid === edge.to ? "to" : "other";
-    if (role === "other") {
-      if (!inside3(r) || others >= maxOthers) continue;
-      others += 1;
-    }
-    cards.push({ uid: item.uid, type: item.type, rect: r, title: label(item), role });
-  }
-  const font = previewFont(view.w);
-  const textOf = (uid) => {
-    try {
-      const t = blockText?.(uid);
-      return typeof t === "string" && t ? t : "block";
-    } catch {
-      return "block";
-    }
-  };
-  const barFor = (itemUid, blockUid2) => {
-    const item = board2.items.get(itemUid);
-    if (!blockUid2 || !item || item.type === "section" || routed.from === routed.to) return null;
-    let frac = null;
-    try {
-      frac = rowFrac?.(item, blockUid2);
-    } catch {
-      frac = null;
-    }
-    const rect = itemUid === edge.from ? a : b;
-    const box2 = rowBarRect(rect, frac, font);
-    return { ...box2, frac: clamp01(frac), text: textOf(blockUid2), label: clip(textOf(blockUid2), box2.maxChars) };
-  };
-  const fromBar = routed.from === edge.from ? barFor(edge.from, edge.fromBlock) : null;
-  const toBar = routed.to === edge.to ? barFor(edge.to, edge.toBlock) : null;
-  const fromEnd = fromBar ? rowEnd(a, b, fromBar) : null;
-  const toEnd = toBar ? rowEnd(b, a, toBar) : null;
-  const geo = edgePath({
-    a: routed.a,
-    b: routed.b,
-    fromSide: fromEnd?.side || edge.fromSide || "auto",
-    toSide: toEnd?.side || edge.toSide || "auto",
-    route: edge.route || "curve",
-    fromPoint: fromEnd?.point,
-    toPoint: toEnd?.point
-  });
-  const named = PALETTE.includes(edge.color);
-  return {
-    viewBox: view,
-    cards,
-    path: geo.d,
-    end: geo.end,
-    endAngle: geo.endAngle,
-    start: geo.start,
-    startAngle: geo.startAngle,
-    dir: edge.dir,
-    color: named ? edge.color : "",
-    hex: named ? "" : hexColor(edge.color) || "",
-    font,
-    toBar,
-    fromBar,
-    fromCard: edge.from,
-    toCard: edge.to,
-    toInner: toEnd?.inner || null,
-    fromInner: fromEnd?.inner || null,
-    toBlockText: edge.toBlock ? textOf(edge.toBlock) : "",
-    fromBlockText: edge.fromBlock ? textOf(edge.fromBlock) : ""
-  };
-}
-function createConnectionCache({ host } = {}) {
-  const boardOf = /* @__PURE__ */ new Map();
-  let loaded = false;
-  return {
-    load() {
-      let rows = [];
-      try {
-        rows = host?.listConnectionBlocks?.() || [];
-      } catch {
-        rows = [];
-      }
-      for (const [edgeUid, boardUid] of rows) if (edgeUid && boardUid) boardOf.set(edgeUid, boardUid);
-      loaded = true;
-      return boardOf.size;
-    },
-    // A mounted board's session saw the connection set change: replace that board's entries.
-    setBoard(boardUid, edgeUids) {
-      for (const [e2, b] of [...boardOf]) if (b === boardUid) boardOf.delete(e2);
-      for (const e2 of edgeUids || []) boardOf.set(e2, boardUid);
-    },
-    has: (uid) => boardOf.has(uid),
-    boardOf: (uid) => boardOf.get(uid) ?? null,
-    uids: () => boardOf,
-    size: () => boardOf.size,
-    isLoaded: () => loaded,
-    clear() {
-      boardOf.clear();
-      loaded = false;
-    }
-  };
-}
-function createRelChips({ doc = globalThis.document, win = globalThis.window, host, graph, timers, setting, openNested } = {}) {
-  const cache = createConnectionCache({ host });
-  const chips = /* @__PURE__ */ new Set();
-  const models = /* @__PURE__ */ new Map();
-  let pop = null;
-  let disposed = false;
-  const stop = (event) => {
-    event.stopPropagation?.();
-  };
-  const blockText = (uid) => {
-    try {
-      return host?.blockString?.(uid);
-    } catch {
-      return null;
-    }
-  };
-  const rowFrac = (item, blockUid2) => {
-    if (item?.target?.kind !== "page") return null;
-    let outline = null;
-    try {
-      outline = host?.pageOutline?.(item.target.title, 400);
-    } catch {
-      outline = null;
-    }
-    return rowFraction(outline?.blocks, blockUid2);
-  };
-  const modelOf = (boardUid) => {
-    const hit = models.get(boardUid);
-    if (hit && Date.now() - hit.at < MODEL_TTL_MS) return hit.board;
-    let raw = null;
-    try {
-      raw = host?.pullBoard?.(boardUid);
-    } catch {
-      raw = null;
-    }
-    const board2 = raw ? buildBoard(raw) : null;
-    models.set(boardUid, { board: board2, at: Date.now() });
-    return board2;
-  };
-  const closePop = () => {
-    if (!pop) return;
-    const p = pop;
-    pop = null;
-    for (const off of p.offs) off();
-    p.tooltip?.dispose?.();
-    p.el.remove();
-  };
-  const svgEl = (tag, attrs, parent) => {
-    const node2 = doc.createElementNS(SVG_NS5, tag);
-    for (const [k, v] of Object.entries(attrs || {})) node2.setAttribute(k, String(v));
-    parent?.append(node2);
-    return node2;
-  };
-  const drawPreview = (parent, model) => {
-    const v = model.viewBox;
-    const svg = svgEl("svg", { class: "pxd-relpop__map", viewBox: `${v.x} ${v.y} ${v.w} ${v.h}`, preserveAspectRatio: "xMidYMid meet", role: "img", "aria-label": "Where the connection sits on the board" }, parent);
-    const line = svgEl("g", { class: `pxd-relpop__edge${model.color ? ` pxd-c-${model.color}` : ""}` }, null);
-    if (model.hex) line.style.setProperty("--pxd-line", model.hex);
-    const font = model.font || previewFont(v.w);
-    let clips = 0;
-    const rects = /* @__PURE__ */ new Map();
-    for (const card2 of model.cards) {
-      const r = card2.rect;
-      const g = svgEl("g", { class: `pxd-relpop__card pxd-relpop__card--${card2.role}${card2.type === "section" ? " pxd-relpop__card--section" : ""}` }, svg);
-      if (card2.role !== "other" && model.hex) g.style.setProperty("--pxd-line", model.hex);
-      if (card2.role !== "other" && model.color) g.setAttribute("class", `${g.getAttribute("class")} pxd-c-${model.color}`);
-      svgEl("rect", { x: r.x, y: r.y, width: r.w, height: r.h, rx: 8 }, g);
-      if (card2.title && card2.type !== "section") {
-        const t = svgEl("text", { x: r.x + 10, y: r.y + font + 6, "font-size": font }, g);
-        t.textContent = clip(card2.title, Math.max(8, Math.floor((r.w - 20) / (font * 0.55))));
-      }
-      rects.set(card2.uid, r);
-    }
-    svgEl("path", { class: "pxd-relpop__line", d: model.path }, line);
-    const bar = (b, inner, cardUid, arrowEnd) => {
-      if (!b) return;
-      const r = rects.get(cardUid);
-      const g = svgEl("g", { class: `pxd-relpop__row${model.color ? ` pxd-c-${model.color}` : ""}` }, svg);
-      if (model.hex) g.style.setProperty("--pxd-line", model.hex);
-      if (r) {
-        clips += 1;
-        const id = `pxd-relclip-${Math.round(r.x)}-${Math.round(r.y)}-${clips}`;
-        const cp = svgEl("clipPath", { id }, g);
-        svgEl("rect", { x: r.x, y: r.y, width: r.w, height: r.h, rx: 8 }, cp);
-        g.setAttribute("clip-path", `url(#${id})`);
-      }
-      svgEl("rect", { x: b.x, y: b.y, width: b.w, height: b.h, rx: 4 }, g);
-      const t = svgEl("text", { x: b.textX, y: b.textY, "font-size": font }, g);
-      t.textContent = b.label;
-      if (inner) {
-        svgEl("path", { class: "pxd-relpop__inner", d: `M${inner.from.x} ${inner.from.y}L${inner.tip.x} ${inner.tip.y}` }, line);
-        if (arrowEnd) svgEl("path", { class: "pxd-relpop__head", d: arrowHeadPath(inner.tip, inner.angle, arrowSize(1, 2) * 1.6) }, line);
-      }
-    };
-    bar(model.fromBar, model.fromInner, model.fromCard, model.dir === "two");
-    bar(model.toBar, model.toInner, model.toCard, model.dir !== "none");
-    if (model.dir !== "none" && !model.toInner) svgEl("path", { class: "pxd-relpop__head", d: arrowHeadPath(model.end, model.endAngle, arrowSize(1, 2) * 1.6) }, line);
-    if (model.dir === "two" && !model.fromInner) svgEl("path", { class: "pxd-relpop__head", d: arrowHeadPath(model.start, model.startAngle + Math.PI, arrowSize(1, 2) * 1.6) }, line);
-    svg.append(line);
-    return svg;
-  };
-  const openOnBoard = (boardUid, edgeUid) => {
-    try {
-      if (openNested?.(boardUid, edgeUid)) return;
-    } catch {
-    }
-    let pageUid = "";
-    try {
-      pageUid = host?.blockPageUid?.(boardUid) || "";
-    } catch {
-      pageUid = "";
-    }
-    if (!pageUid) {
-      try {
-        void host?.openBlock?.(boardUid);
-      } catch {
-      }
-      return;
-    }
-    assignDeepLink(win?.location, {
-      graph: (typeof graph === "function" ? graph() : graph) || host?.graph || "",
-      pageUid,
-      cardUid: edgeUid
-    }, () => {
-      try {
-        win.dispatchEvent?.(new Event("hashchange"));
-      } catch {
-      }
-    });
-  };
-  const openPop = (chip, edgeUid, avoid) => {
-    closePop();
-    const boardUid = cache.boardOf(edgeUid);
-    const board2 = boardUid ? modelOf(boardUid) : null;
-    const rel = board2 ? relationOf(board2, edgeUid, { blockText }) : null;
-    const model = board2 ? previewModel(board2, edgeUid, { blockText }) : null;
-    const el = doc.createElement("div");
-    el.className = `pxd-root ${POP_CLASS}`;
-    el.setAttribute("role", "dialog");
-    el.setAttribute("aria-label", "Connection preview");
-    const mk = (tag, cls, parent, text2) => {
-      const n2 = doc.createElement(tag);
-      n2.className = cls;
-      if (text2 !== void 0) n2.textContent = text2;
-      parent?.append(n2);
-      return n2;
-    };
-    const head = mk("div", "pxd-relpop__head", el);
-    mk("div", "pxd-relpop__title", head, rel ? chipText({ ...rel }).replace(/^↗ /, "") : "This connection is no longer on a board");
-    if (model) drawPreview(el, model);
-    else mk("div", "pxd-relpop__empty", el, "The connected cards could not be found on the board.");
-    if (rel?.toBlockText) mk("div", "pxd-relpop__note", el, `Ends on the block “${clip(rel.toBlockText, 60)}”`);
-    const row2 = mk("div", "pxd-relpop__actions", el);
-    const button = (tip, text2, fn) => {
-      const b = mk("button", "pxd-btn pxd-relpop__btn", row2, text2);
-      b.type = "button";
-      b.setAttribute("data-tip", tip);
-      b.addEventListener("click", (event) => {
-        stop(event);
-        fn();
-      });
-      return b;
-    };
-    button("relpop.board", "Open on board", () => {
-      closePop();
-      if (boardUid) openOnBoard(boardUid, edgeUid);
-    });
-    button("relpop.sidebar", "Open in sidebar", () => {
-      closePop();
-      if (boardUid) {
-        try {
-          void host?.openInSidebar?.(boardUid, "block");
-        } catch {
-        }
-      }
-    });
-    doc.body.append(el);
-    const scrollParent = (node2) => {
-      for (let n2 = node2?.parentElement; n2; n2 = n2.parentElement) {
-        const o = win?.getComputedStyle?.(n2)?.overflowY;
-        if (o === "auto" || o === "scroll") return n2;
-      }
-      return null;
-    };
-    const holder = scrollParent(chip);
-    const place = () => {
-      if (chip.isConnected === false) {
-        closePop();
-        return;
-      }
-      const rects = [chip, ...[].concat(avoid || [])].map((n2) => n2?.getBoundingClientRect?.()).filter(Boolean);
-      const cr = rects.length > 1 ? { left: Math.min(...rects.map((r) => r.left)), top: Math.min(...rects.map((r) => r.top)), right: Math.max(...rects.map((r) => r.right)), bottom: Math.max(...rects.map((r) => r.bottom)) } : rects[0] || { left: 0, top: 0, right: 0, bottom: 0 };
-      const vw = win?.innerWidth || 1024;
-      const vh = win?.innerHeight || 768;
-      const own = rects[0] || cr;
-      if (own.bottom < 0 || own.top > vh || own.right < 0 || own.left > vw) {
-        closePop();
-        return;
-      }
-      const hr = holder?.getBoundingClientRect?.();
-      const at = placePopover({
-        anchor: cr,
-        size: { w: el.offsetWidth || 380, h: pop?.natural ?? (el.offsetHeight || 300) },
-        viewport: { left: 0, top: 0, right: vw, bottom: vh },
-        bounds: hr ? { left: hr.left, top: hr.top, right: hr.right, bottom: hr.bottom } : null
-      });
-      el.style.left = `${at.left}px`;
-      el.style.top = `${at.top}px`;
-      el.style.maxHeight = at.maxHeight ? `${at.maxHeight}px` : "";
-      el.style.overflowY = at.scroll ? "auto" : "";
-      el.setAttribute("data-side", at.side);
-    };
-    const offs = [];
-    const on = (target, type, fn, opts) => {
-      target.addEventListener(type, fn, opts);
-      offs.push(() => target.removeEventListener(type, fn, opts));
-    };
-    on(doc, "keydown", (event) => {
-      if (event.key === "Escape") {
-        event.stopPropagation?.();
-        closePop();
-      }
-    }, true);
-    on(doc, "pointerdown", (event) => {
-      if (!el.contains?.(event.target) && !chip.contains?.(event.target)) closePop();
-    }, true);
-    let queued = null;
-    const again = () => {
-      if (queued || !pop) return;
-      const id = win?.requestAnimationFrame?.(() => {
-        queued = null;
-        if (pop) place();
-      });
-      queued = () => win?.cancelAnimationFrame?.(id);
-    };
-    on(win, "scroll", (event) => {
-      if (!el.contains?.(event.target)) again();
-    }, { capture: true, passive: true });
-    on(win, "resize", again, { passive: true });
-    offs.push(() => {
-      queued?.();
-      queued = null;
-    });
-    let tooltip = null;
-    try {
-      tooltip = createTooltip({ doc, root: el, timers, setting });
-    } catch {
-      tooltip = null;
-    }
-    pop = { el, offs, tooltip, chip, natural: el.offsetHeight || 300 };
-    place();
-  };
-  const buildChip = (edgeUid) => {
-    const boardUid = cache.boardOf(edgeUid);
-    const board2 = boardUid ? modelOf(boardUid) : null;
-    const rel = board2 ? relationOf(board2, edgeUid, { blockText }) : null;
-    if (!rel) return null;
-    const chip = doc.createElement("div");
-    chip.className = CHIP_CLASS;
-    chip.setAttribute("role", "button");
-    chip.setAttribute("tabindex", "0");
-    chip.setAttribute("data-edge", edgeUid);
-    const entry = tipEntry("relchip");
-    if (entry) chip.title = `${entry.name}. ${entry.desc}`;
-    chip.textContent = chipText({ ...rel });
-    for (const type of ["pointerdown", "mousedown", "mouseup", "dblclick"]) chip.addEventListener(type, stop);
-    chip.addEventListener("click", (event) => {
-      stop(event);
-      event.preventDefault?.();
-      openPop(chip, edgeUid, chip.parentElement?.querySelector?.(".rm-block-main"));
-    });
-    chip.addEventListener("keydown", (event) => {
-      if (event.key === "Enter" || event.key === " ") {
-        stop(event);
-        event.preventDefault?.();
-        openPop(chip, edgeUid, chip.parentElement?.querySelector?.(".rm-block-main"));
-      }
-    });
-    return chip;
-  };
-  const crumbs = /* @__PURE__ */ new WeakSet();
-  const crumbOffs = [];
-  const crumbGlyphs = /* @__PURE__ */ new Set();
-  const plain = (event) => event.button === 0 && !event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey;
-  const crumbFor = (zoom) => {
-    if (disposed || !zoom || crumbs.has(zoom) || zoom.querySelector?.(`.${CRUMB_CLASS}`)) return;
-    const holder = zoom.parentElement;
-    const container = holder?.querySelector?.(".roam-block-container[data-block-uid]");
-    const edgeUid = container?.getAttribute?.("data-block-uid");
-    if (!edgeUid || !cache.has(edgeUid)) return;
-    crumbs.add(zoom);
-    const avoid = () => [container.querySelector?.(".rm-block-main") || container, container.querySelector?.(`.${CHIP_CLASS}`)].filter(Boolean);
-    const items = [...zoom.querySelectorAll?.(".rm-zoom-item") || []];
-    const glyph = doc.createElement("span");
-    glyph.className = CRUMB_CLASS;
-    glyph.textContent = "▦";
-    glyph.title = CRUMB_TIP;
-    glyph.setAttribute("role", "button");
-    glyph.setAttribute("tabindex", "0");
-    glyph.setAttribute("aria-label", CRUMB_TIP);
-    (items[items.length - 1] || zoom).append(glyph);
-    crumbGlyphs.add(glyph);
-    for (const el of [...items, glyph]) {
-      const swallow = (event) => {
-        if (plain(event)) stop(event);
-      };
-      const open = (event) => {
-        if (!plain(event)) return;
-        stop(event);
-        event.preventDefault?.();
-        openPop(el, edgeUid, avoid());
-      };
-      for (const type of ["pointerdown", "mousedown", "mouseup"]) {
-        el.addEventListener(type, swallow, true);
-        crumbOffs.push(() => el.removeEventListener(type, swallow, true));
-      }
-      el.addEventListener("click", open, true);
-      crumbOffs.push(() => el.removeEventListener("click", open, true));
-    }
-    const onKey = (event) => {
-      if (event.key === "Enter" || event.key === " ") {
-        stop(event);
-        event.preventDefault?.();
-        openPop(glyph, edgeUid, avoid());
-      }
-    };
-    glyph.addEventListener("keydown", onKey);
-    crumbOffs.push(() => glyph.removeEventListener("keydown", onKey));
-  };
-  const attach2 = (input, edgeUid) => {
-    const container = input.closest?.(".roam-block-container") || input.parentElement;
-    if (!container) return;
-    const zoom = container.parentElement?.querySelector?.(".rm-zoom");
-    if (zoom) crumbFor(zoom);
-    for (const child of container.children || []) if (child.classList?.contains(CHIP_CLASS) && child.getAttribute("data-edge") === edgeUid) return;
-    const chip = buildChip(edgeUid);
-    if (!chip) return;
-    let kids = null;
-    for (const child of container.children || []) if (child.classList?.contains("rm-block-children")) {
-      kids = child;
-      break;
-    }
-    if (kids) container.insertBefore(chip, kids);
-    else container.append(chip);
-    chips.add(chip);
-  };
-  const scan = (node2) => {
-    if (disposed || !cache.size() || !node2 || node2.nodeType !== 1) return;
-    for (const chip of chips) if (chip.isConnected === false) chips.delete(chip);
-    if (node2.classList?.contains(CHIP_CLASS) || node2.classList?.contains(POP_CLASS)) return;
-    const found = [];
-    if (node2.classList?.contains("roam-block") && isInput(node2)) found.push(node2);
-    if (typeof node2.querySelectorAll === "function") {
-      for (const el of node2.querySelectorAll(BLOCK_SELECTOR)) {
-        if (!isInput(el)) continue;
-        found.push(el);
-        if (found.length >= SCAN_CAP) break;
-      }
-    }
-    for (const input of found.slice(0, SCAN_CAP)) {
-      const uid = uidFromElementId(input.id, cache.uids());
-      if (uid) attach2(input, uid);
-    }
-    if (node2.classList?.contains("rm-zoom")) crumbFor(node2);
-    else if (typeof node2.querySelectorAll === "function") {
-      let n2 = 0;
-      for (const zoom of node2.querySelectorAll(".rm-zoom")) {
-        crumbFor(zoom);
-        n2 += 1;
-        if (n2 >= SCAN_CAP) break;
-      }
-    }
-  };
-  const start = () => {
-    cache.load();
-    if (!cache.size()) return;
-    scan(doc.body);
-  };
-  const noteBoard = (board2) => {
-    if (!board2?.uid) return;
-    cache.setBoard(board2.uid, [...board2.edges?.keys?.() || []]);
-    models.delete(board2.uid);
-  };
-  const dispose = () => {
-    disposed = true;
-    closePop();
-    for (const chip of chips) chip.remove();
-    chips.clear();
-    for (const off of crumbOffs.splice(0)) off();
-    for (const glyph of crumbGlyphs) glyph.remove();
-    crumbGlyphs.clear();
-    models.clear();
-    cache.clear();
-  };
-  return { start, scan, noteBoard, dispose, openPop, closePop, cache, chipCount: () => chips.size, crumbCount: () => crumbGlyphs.size, isOpen: () => Boolean(pop) };
 }
 
 // src/settings.js

@@ -93,7 +93,107 @@ export function rowBarRect(rect, frac, font) {
 // Where a popover goes: first of below / above / right / left of the chip that holds it fully inside the viewport
 // (and inside `bounds`, e.g. Roam's scroll container), else the side with most room, shrunk with `scroll` set.
 export const POP_GAP = 8;
-export function placePopover({ anchor, size, viewport, bounds, gap = POP_GAP } = {}) {
+const rectsHit = (a, b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+
+// RE-2: `obstacles` are viewport rects the popover must not cover (the dock, board bar, rail, minimap, panels).
+// The plain placement stands when it is clear. Otherwise each side is tried, slid along its axis past each
+// obstacle; when nothing is clear the roomiest clear strip wins, with `scroll` set and a max-height.
+export function placePopover({ anchor, size, viewport, bounds, gap = POP_GAP, obstacles = [] } = {}) {
+  const first = placeBasic({ anchor, size, viewport, bounds, gap });
+  const wall = (obstacles || []).filter((o) => o && o.right > o.left && o.bottom > o.top);
+  if (!wall.length) return first;
+  const spanOf = (p) => ({ left: p.left, top: p.top, right: p.left + p.width, bottom: p.top + (p.maxHeight ?? size.h) });
+  if (!wall.some((o) => rectsHit(spanOf(first), o))) return first;
+  const box = {
+    left: Math.max(viewport.left ?? 0, bounds?.left ?? -Infinity),
+    top: Math.max(viewport.top ?? 0, bounds?.top ?? -Infinity),
+    right: Math.min(viewport.right, bounds?.right ?? Infinity),
+    bottom: Math.min(viewport.bottom, bounds?.bottom ?? Infinity),
+  };
+  const edge = 8;
+  const width = Math.min(size.w, Math.max(80, box.right - box.left - 2 * edge));
+  const clampX = (x, w) => Math.max(box.left + edge, Math.min(x, box.right - edge - w));
+  const clampY = (y, h) => Math.max(box.top + edge, Math.min(y, box.bottom - edge - h));
+  const sides = ["below", "above", "right", "left"];
+  const make = (side, along, h, scroll) => {
+    const vertical = side === "below" || side === "above";
+    const left = vertical ? clampX(along, width) : (side === "right" ? anchor.right + gap : anchor.left - gap - width);
+    const top = vertical ? (side === "below" ? anchor.bottom + gap : anchor.top - gap - h) : clampY(along, h);
+    return { side, left: Math.round(left), top: Math.round(top), width: Math.round(width), maxHeight: scroll ? Math.round(h) : null, scroll };
+  };
+  // Positions along the side's axis: the aligned one, then flush against each obstacle edge.
+  const alongOf = (side, h) => {
+    const vertical = side === "below" || side === "above";
+    const base = vertical ? anchor.left : anchor.top;
+    const out = [base];
+    for (const o of wall) {
+      if (vertical) out.push(o.right + gap / 2, o.left - gap / 2 - width);
+      else out.push(o.bottom + gap / 2, o.top - gap / 2 - h);
+    }
+    return out.sort((a, b) => Math.abs(a - base) - Math.abs(b - base));
+  };
+  const fitsSide = (side) => {
+    if (side === "below") return box.bottom - edge - (anchor.bottom + gap) >= size.h;
+    if (side === "above") return anchor.top - gap - (box.top + edge) >= size.h;
+    if (side === "right") return box.right - edge - (anchor.right + gap) >= width;
+    return anchor.left - gap - (box.left + edge) >= width;
+  };
+  for (const side of sides) {
+    if (!fitsSide(side)) continue;
+    for (const along of alongOf(side, size.h)) {
+      const p = make(side, along, size.h, false);
+      if (!wall.some((o) => rectsHit(spanOf(p), o))) return p;
+    }
+  }
+  // Nothing fits whole: the tallest clear strip, scrolled.
+  let best = null;
+  for (const side of sides) {
+    for (const along of alongOf(side, size.h)) {
+      const vertical = side === "below" || side === "above";
+      const probe = make(side, along, vertical ? 1 : size.h, false);
+      let room;
+      if (vertical) {
+        const xs = { left: probe.left, right: probe.left + probe.width };
+        const lowest = side === "below" ? anchor.bottom + gap : box.top + edge;
+        const highest = side === "below" ? box.bottom - edge : anchor.top - gap;
+        let lo = lowest;
+        let hi = highest;
+        for (const o of wall) {
+          if (o.right <= xs.left || o.left >= xs.right) continue;
+          if (side === "below" && o.top >= lowest) hi = Math.min(hi, o.top - 4);
+          else if (side === "above" && o.bottom <= highest) lo = Math.max(lo, o.bottom + 4);
+        }
+        room = hi - lo;
+        if (room < 80) continue;
+        const h = Math.min(size.h, room);
+        const p = make(side, along, h, true);
+        if (side === "above") p.top = Math.round(hi - h);
+        if (!best || h > best.h) best = { p, h };
+      } else {
+        const x0 = side === "right" ? anchor.right + gap : anchor.left - gap - width;
+        let lo = box.top + edge;
+        let hi = box.bottom - edge;
+        let straddles = false;
+        for (const o of wall) {
+          if (o.right <= x0 || o.left >= x0 + width) continue;
+          if (o.top < anchor.bottom && o.bottom > anchor.top) { straddles = true; break; }
+          if (o.bottom <= anchor.top) lo = Math.max(lo, o.bottom + 4);
+          else hi = Math.min(hi, o.top - 4);
+        }
+        if (straddles) continue;
+        const h = Math.min(size.h, hi - lo);
+        if (h < 80) continue;
+        const p = make(side, 0, h, true);
+        p.top = Math.round(Math.max(lo, Math.min(anchor.top, hi - h)));
+        if (!best || h > best.h) best = { p, h };
+      }
+    }
+  }
+  if (best) return best.p;
+  return first;
+}
+
+function placeBasic({ anchor, size, viewport, bounds, gap = POP_GAP } = {}) {
   const box = {
     left: Math.max(viewport.left ?? 0, bounds?.left ?? -Infinity),
     top: Math.max(viewport.top ?? 0, bounds?.top ?? -Infinity),

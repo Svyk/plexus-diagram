@@ -2,6 +2,7 @@
 // and edit mode (spec 3.2). Roam content only ever comes from host.renderString /
 // renderBlock / renderPage; we never build <img> or fake editors.
 
+import { placeNearAnchor } from "./avoid.js";
 import { createRowScheduler, isHeavyRow } from "./progressive.js";
 import { DEFAULT_SIZES, FONT_SIZES, PALETTE, attrNameOf, classifyString, cssColor, firstLine, hexColor, isUntitledBoard, parseBoardTitle, plainText } from "../model/schema.js";
 import { isQueryString } from "../model/query.js";
@@ -159,9 +160,12 @@ const stickyTitleOf = (string) => {
 // Direct children that count as rows. Better Tasks attribute children are chips, never rows, bullets or badge counts.
 const isTaskAttrString = (s) => taskAttrId(s) !== null;
 const visibleKids = (list) => (list || []).filter((c) => !isTaskAttrString(childString(c)));
-// A note card whose block is a task draws its title through renderBlock when Better Tasks is loaded, so Better Tasks
-// sees the checkbox click (Completed date, next occurrence). Without it the card flips the marker itself.
+// A note card whose block is a task, with Better Tasks loaded, draws a light Plexus checkbox (a span, not an input, so
+// it is not one of Better Tasks' 100 decorated checkboxes) and renders the rest of the title with the marker cut off.
+// A click on that checkbox completes through Better Tasks' own checkbox path (src/view/task-complete.js), so the
+// Completed date and the next occurrence still happen. Without Better Tasks the card flips the marker itself.
 let taskBlockOn = () => false;
+const TASK_MARK = /^\s*\{\{\[\[(?:TODO|DONE)\]\]\}\}\s?/;
 const isTaskCard = (item) => item?.type === "card" && item.kind === "note" && isTaskString(item.string);
 // Rows renderBlocks will draw for this list (same depth and row caps).
 function kidRowsOf(list, depth = 1, budget = { n: 0 }) {
@@ -323,13 +327,16 @@ export function createItemRenderer({
     return live;
   };
 
-  // The task's own block, closed: Roam's checkbox inside a real block render, which Better Tasks watches.
-  const mountTaskBlock = (parent, uid) => {
-    const live = el("div", "pxd-rs pxd-item__string pxd-item__taskblock", parent);
-    const mount = el("div", "pxd-rs__live", live);
-    try { host.renderBlock(mount, uid, { open: false }); }
-    catch { mount.textContent = "Task"; }
-    return live;
+  // RE-5: the checkbox is a span; the title text is the string without its TODO/DONE marker.
+  const mountTaskLine = (parent, item) => {
+    const meta = taskMeta(item.string, item.content);
+    const line = el("div", "pxd-item__taskline", parent);
+    const box = el("span", `pxd-task-check${meta?.done ? " pxd-task-check--done" : ""}${meta?.cancelled ? " pxd-task-check--cancelled" : ""}`, line);
+    box.setAttribute("role", "checkbox");
+    box.setAttribute("aria-checked", meta?.done ? "true" : "false");
+    box.setAttribute("aria-label", meta?.done ? "Done" : "To do");
+    const text = renderRoot(line, String(item.string).replace(TASK_MARK, ""), "pxd-rs pxd-item__string pxd-item__tasktext", item.uid);
+    return text;
   };
 
   const setHidden = (node, hidden) => {
@@ -965,10 +972,7 @@ export function createItemRenderer({
           el("div", "pxd-kids-peek__row pxd-kids-peek__row--sub", node).textContent = plainText(childString(g), PEEK_TEXT_MAX);
         }
       }
-      const b = rec.kidsBtn.getBoundingClientRect();
-      const r = root.getBoundingClientRect();
-      node.style.left = `${Math.round(b.left - r.left)}px`;
-      node.style.top = `${Math.round(b.bottom - r.top + 6)}px`;
+      placeNearAnchor(node, rec.kidsBtn.getBoundingClientRect(), root, { gap: 6 });
       const close = () => closePeek();
       doc.addEventListener?.("pointerdown", close, true);
       doc.addEventListener?.("wheel", close, true);
@@ -1689,7 +1693,7 @@ export function createItemRenderer({
     } else if (isQueryString(item.string) && host?.renderBlock) {
       budget.roots.push(mountQuery(body, item.uid));
     } else {
-      if (item.string?.trim()) budget.roots.push(taskBlockOn(item) ? mountTaskBlock(body, item.uid) : renderRoot(body, item.string, "pxd-rs pxd-item__string", item.uid));
+      if (item.string?.trim()) budget.roots.push(taskBlockOn(item) ? mountTaskLine(body, item) : renderRoot(body, item.string, "pxd-rs pxd-item__string", item.uid));
       rec.kidCount = visibleKids(item.content).length;
       rec.kidRows = kidRowsOf(item.content);
       if (item.kids) renderBlocks(body, item.content || [], 1, budget);

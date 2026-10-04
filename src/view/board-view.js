@@ -14,9 +14,11 @@ import { readMindPreset, writeMindPreset } from "../model/mindmap.js";
 import { attrLegend, parseAttrStyles, styleAttrLinks } from "../model/attr-styles.js";
 import { lensBright, lensCatalog, tagsForCard } from "../model/lens.js";
 import { dropNamespace } from "../model/namespace.js";
-import { isBareTask, isTaskAttr, isTaskString, setTaskAttrNames, taskMeta } from "../model/tasks.js";
+import { isBareTask, isTaskAttr, isTaskString, setTaskAttrNames, taskMeta, taskState } from "../model/tasks.js";
 import { createBt } from "../host/bt.js";
 import { createTaskPopover } from "./task-popover.js";
+import { createTaskCompleter } from "./task-complete.js";
+import { placeNearAnchor } from "./avoid.js";
 import { neighborLayout } from "../model/neighbors.js";
 import { isQueryString, queryResultLayout, queryResultUids } from "../model/query.js";
 import {
@@ -26,6 +28,7 @@ import {
   fitViewport,
   gridBackground,
   invZoom,
+  screenPx,
   lodFonts,
   lodTier,
   rectsIntersect,
@@ -172,6 +175,7 @@ const NATIVE_MENU_TARGETS = ".rm-page-ref, .rm-block-ref, [data-link-uid], a[hre
 function nativeClickKind(node) {
   if (!node || typeof node.closest !== "function") return null;
   if (node.closest("img")) return "image";
+  if (node.closest(".pxd-task-check")) return "checkbox";
   const box = node.closest("input, label, .check-container");
   if (box) {
     const tag = String(box.tagName || "").toLowerCase();
@@ -645,6 +649,7 @@ export function mountBoardView({
     onPageLayout: (uid) => { if (blockCards.has(uid)) scheduleAnchors(); },
   });
   const taskPop = createTaskPopover({ doc, root, bt, toast: (m) => chrome.toast.show(m) });
+  const taskDone = createTaskCompleter({ doc, getRoot: () => root, host, bt, win });
   const applyTaskSettings = () => itemsR.setTaskChips(String(setting("task-chips", "full")));
   applyTaskSettings();
   // Attribute labels can be renamed in Better Tasks: once it answers, redraw the task cards that read them.
@@ -845,6 +850,7 @@ export function mountBoardView({
     if (vp.zoom === invZoomAt) return;
     invZoomAt = vp.zoom;
     root.style.setProperty("--pxd-inv-zoom", String(invZoom(vp.zoom)));
+    root.style.setProperty("--pxd-screen-px", String(screenPx(vp.zoom)));
   };
   const applyLod = () => {
     tier = lodTier(vp.zoom, tier, { threshold: mapThreshold() });
@@ -2113,14 +2119,8 @@ export function mountBoardView({
     lensPop.style.display = "";
     const btn = chrome.toolbar.lensButton;
     const rootRect = root.getBoundingClientRect();
-    const b = btn?.getBoundingClientRect?.() || { left: rootRect.left, bottom: rootRect.top };
-    const w = lensPop.offsetWidth || 200;
-    const h = lensPop.offsetHeight || 120;
-    const left = Math.max(8, Math.min(b.left - rootRect.left, (rootRect.width || 0) - w - 8));
-    let top = b.bottom - rootRect.top + 6;
-    if (rootRect.height && top + h > rootRect.height - 8) top = Math.max(8, rootRect.height - h - 8);
-    lensPop.style.left = `${Math.round(left)}px`;
-    lensPop.style.top = `${Math.round(top)}px`;
+    const b = btn?.getBoundingClientRect?.() || { left: rootRect.left, top: rootRect.top, right: rootRect.left, bottom: rootRect.top };
+    placeNearAnchor(lensPop, b, root, { gap: 6, skip: btn?.closest?.(".pxd-toolbar, .pxd-dock") || null });
     const onDown = (event) => {
       if (lensPop.contains(event.target) || btn?.contains?.(event.target)) return;
       closeLens();
@@ -2849,10 +2849,34 @@ export function mountBoardView({
     };
     timers.later(() => look(1), 1500);
   };
+  const flipMarker = (uid) => {
+    const next = toggleTodoAt(board()?.items?.get(uid)?.string, 0);
+    if (next != null) session.setString?.(uid, next);
+  };
+  const completeLightCheck = async (uid, box) => {
+    const item = board()?.items?.get(uid);
+    if (!item || !isTaskString(item.string)) return;
+    const wasDone = taskState(item.string) === "DONE";
+    box.classList?.toggle("pxd-task-check--done", !wasDone);
+    box.setAttribute?.("aria-checked", wasDone ? "false" : "true");
+    if (wasDone) {
+      const res = bt.available() ? await bt.modify(uid, { status: "TODO" }) : { ok: false };
+      if (!res.ok && !disposed) flipMarker(uid);
+      return;
+    }
+    watchRecurrence(uid);
+    const res = await taskDone.complete(uid);
+    if (res.ok || disposed) return;
+    const via = await bt.modify(uid, { status: "DONE" });
+    if (!via.ok && !disposed) flipMarker(uid);
+  };
   const toggleClickedTodo = (node) => {
-    // A task drawn through renderBlock has Roam's own checkbox. Roam flips it and Better Tasks sees the click.
-    if (node?.closest?.(".pxd-item__taskblock")) {
-      watchRecurrence(node.closest(".pxd-item")?.getAttribute?.("data-uid"));
+    // RE-5: a task card's checkbox is a light span. Done goes through Better Tasks' own checkbox path (RE-1) so the
+    // Completed date and the next occurrence happen; un-doing goes through bt_modify. Either falls back to the marker.
+    const light = node?.closest?.(".pxd-task-check");
+    if (light) {
+      const uid = light.closest?.(".pxd-item")?.getAttribute?.("data-uid");
+      if (uid) void completeLightCheck(uid, light);
       return;
     }
     const card = node?.closest?.(".pxd-item");
@@ -3340,6 +3364,7 @@ export function mountBoardView({
     root,
     host,
     bt,
+    completeTask: (uid) => taskDone.complete(uid),
     getBoard: board,
   });
   laterCtl = mountLater({

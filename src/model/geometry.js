@@ -81,6 +81,8 @@ export function lodFonts(zoom) {
 }
 
 // PO-5: world px per screen px, clamped. Grips, ports and end handles multiply their screen size by this.
+// RE-3: world px per screen px with no clamp (invZoom stops at 4), for marks that must stay readable at 13% zoom.
+export const screenPx = (zoom) => Math.round(clampNum(1 / (Number(zoom) > 0 ? Number(zoom) : 1), 0.05, 40) * 10000) / 10000;
 export const invZoom = (zoom) => Math.round(clampNum(1 / (Number(zoom) > 0 ? Number(zoom) : 1), 0.25, 4) * 10000) / 10000;
 
 const CONE = (68 * Math.PI) / 180;

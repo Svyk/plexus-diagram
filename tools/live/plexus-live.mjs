@@ -53,7 +53,7 @@ async function evaluate(expression) {
   console.log(typeof v === "string" ? v : JSON.stringify(v, null, 1));
 }
 
-const repo = `${homedir()}/plexus-Diagram`;
+const repo = process.env.PXD_REPO || `${homedir()}/plexus-Diagram`;
 
 if (cmd === "inject") {
   const code = await readFile(`${repo}/extension.js`, "utf8");

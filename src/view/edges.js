@@ -4,7 +4,7 @@
 // recomputed during a drag.
 
 import { routedEdge } from "../model/board.js";
-import { arrowHeadPath, arrowSize, blockAnchor, blockInner, center, edgePath, sidePoint } from "../model/geometry.js";
+import { arrowHeadPath, arrowSize, blockAnchor, blockInner, center, edgePath, screenPx, sidePoint } from "../model/geometry.js";
 import { routeAround } from "../model/section6.js";
 import { PALETTE, hexColor } from "../model/schema.js";
 
@@ -92,7 +92,7 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
       }
     }
     const geo = edgePath({ a: routed.a, b: routed.b, fromSide, toSide, route: edge.route, offset: pairOffset(board, edge), via, fromPoint, toPoint });
-    if (m) { geo.fromClamp = fromClamp; geo.toClamp = toClamp; geo.fromBlockAnchored = Boolean(fromPoint); geo.toBlockAnchored = Boolean(toPoint); geo.fromInner = fromInnerSpec ? blockInner(fromInnerSpec) : null; geo.toInner = toInnerSpec ? blockInner(toInnerSpec) : null; }
+    if (m) { geo.fromClamp = fromClamp; geo.toClamp = toClamp; geo.fromW = routed.a.w; geo.toW = routed.b.w; geo.fromBlockAnchored = Boolean(fromPoint); geo.toBlockAnchored = Boolean(toPoint); geo.fromInner = fromInnerSpec ? blockInner(fromInnerSpec) : null; geo.toInner = toInnerSpec ? blockInner(toInnerSpec) : null; }
     return geo;
   };
 
@@ -142,9 +142,12 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     delete rec.bends[end];
   };
   const PILL_CHAR = 6;
-  const placeBend = (rec, end, point, clamp, zoom, side) => {
+  const PILL_PAD = 16;
+  const PILL_MIN = 40;
+  const placeBend = (rec, end, point, clamp, zoom, side, cardW = 0) => {
     const bend = bendOf(rec, end);
-    const scale = Math.min(3, Math.max(1, 1 / (zoom || 1)));
+    // RE-4: the group is drawn in screen pixels at any zoom.
+    const scale = screenPx(zoom);
     bend.g.setAttribute("transform", `translate(${point.x} ${point.y}) scale(${scale})`);
     if (bend.clamp !== clamp) {
       bend.clamp = clamp;
@@ -154,18 +157,25 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
       bend.g.querySelector?.(".pxd-edge__bend-chevron")?.setAttribute("d", clamp === "bottom" ? "M-3 -1.5L0 1.5L3 -1.5" : "M-3 1.5L0 -1.5L3 1.5");
     }
     // RF-2: a clamped end is a pill "↑ first words" / "↓ first words" on the outside of the card edge.
-    const label = clamp ? `${clamp === "bottom" ? "\u2193" : "\u2191"} ${bend.words || "Block"}` : "";
-    const key = `${clamp || ""}|${side || ""}|${label}`;
+    const full = clamp ? `${clamp === "bottom" ? "\u2193" : "\u2191"} ${bend.words || "Block"}` : "";
+    // RE-4: the pill sits inside the card, on the edge side the arrow ends at, and is never wider than the card
+    // (on screen) minus 16 px: the text is cut with an ellipsis.
+    const cardScreen = cardW > 0 ? cardW * (Number(zoom) > 0 ? Number(zoom) : 1) : Infinity;
+    const maxW = Math.max(PILL_MIN, cardScreen - PILL_PAD);
+    const wantW = Math.max(PILL_MIN, full.length * PILL_CHAR + PILL_PAD);
+    const w = Math.round(Math.min(wantW, maxW));
+    const fit = Math.max(1, Math.floor((w - PILL_PAD) / PILL_CHAR));
+    const label = full.length > fit ? `${full.slice(0, Math.max(1, fit - 1))}\u2026` : full;
+    const key = `${clamp || ""}|${side || ""}|${label}|${w}`;
     if (bend.pillKey !== key) {
       bend.pillKey = key;
       if (clamp) {
-        const w = Math.max(40, label.length * PILL_CHAR + 16);
-        const out = side === "left" ? -1 : 1;
+        const inward = side === "left" ? 1 : -1;
         bend.text.textContent = label;
         bend.pill.setAttribute("width", String(w));
-        bend.pill.setAttribute("x", String(out > 0 ? 10 : -10 - w));
-        bend.text.setAttribute("x", String(out > 0 ? 18 : -18));
-        bend.text.setAttribute("text-anchor", out > 0 ? "start" : "end");
+        bend.pill.setAttribute("x", String(inward > 0 ? 10 : -10 - w));
+        bend.text.setAttribute("x", String(inward > 0 ? 18 : -10 - w + 8));
+        bend.text.setAttribute("text-anchor", "start");
       } else {
         bend.text.textContent = "";
       }
@@ -356,7 +366,7 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
         if (!uid || !anchored) { if (rec.bends?.[end]) rec.bends[end].g.setAttribute("display", "none"); continue; }
         const bend = bendOf(rec, end);
         bend.g.removeAttribute("display");
-        placeBend(rec, end, end === "from" ? geo.start : geo.end, end === "from" ? geo.fromClamp : geo.toClamp, zoom, end === "from" ? geo.fromSide : geo.toSide);
+        placeBend(rec, end, end === "from" ? geo.start : geo.end, end === "from" ? geo.fromClamp : geo.toClamp, zoom, end === "from" ? geo.fromSide : geo.toSide, end === "from" ? geo.fromW : geo.toW);
       }
     }
     placeEnds(rec, geo);

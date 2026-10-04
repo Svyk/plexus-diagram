@@ -5,12 +5,72 @@
   display: none;
 }
 
-/* The title is a real block render (Roam's own checkbox). Only the checkbox and text stay. */
-.pxd-root .pxd-item__taskblock .rm-block-children,
-.pxd-root .pxd-item__taskblock .rm-bullet,
-.pxd-root .pxd-item__taskblock .controls,
-.pxd-root .pxd-item__taskblock .block-ref-count-button {
-  display: none;
+/* RE-5: a light checkbox (a span, not an input, so Better Tasks does not count it) and the title text beside it. */
+.pxd-root .pxd-item__taskline {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+}
+
+.pxd-root .pxd-item__taskline .pxd-item__tasktext {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.pxd-root .pxd-task-check {
+  position: relative;
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  width: 16px;
+  height: 16px;
+  margin-top: 2px;
+  border: 1px solid var(--pxd-border-strong);
+  border-radius: 3px;
+  background: transparent;
+  cursor: pointer;
+}
+
+.pxd-root .pxd-task-check:hover {
+  border-color: var(--pxd-accent);
+}
+
+.pxd-root .pxd-task-check.pxd-task-check--done {
+  border-color: var(--pxd-accent);
+  background: var(--pxd-accent);
+}
+
+.pxd-root .pxd-task-check.pxd-task-check--done::after {
+  content: "";
+  position: absolute;
+  left: 4px;
+  top: 0;
+  width: 4px;
+  height: 9px;
+  border: solid var(--pxd-card);
+  border-width: 0 2px 2px 0;
+  transform: rotate(45deg);
+}
+
+.pxd-root.pxd-root--dark .pxd-task-check.pxd-task-check--done {
+  background: transparent;
+}
+
+.pxd-root.pxd-root--dark .pxd-task-check.pxd-task-check--done::after {
+  border-color: var(--pxd-accent);
+}
+
+.pxd-root .pxd-task-check.pxd-task-check--cancelled {
+  border-style: dashed;
+}
+
+/* RE-1: the hidden render that carries the real checkbox while a completion runs. */
+.pxd-root .pxd-task-holder {
+  position: fixed;
+  left: -10000px;
+  top: 0;
+  width: 320px;
+  visibility: hidden;
+  pointer-events: none;
 }
 
 .pxd-root .pxd-item.pxd-item--task {
@@ -84,37 +144,131 @@
   background: transparent;
 }
 
-/* Map tier: a check glyph, the title and the due date. Overview tier: the check glyph alone. */
-.pxd-root.pxd-lod-map .pxd-item--task > .pxd-item__header::before {
-  content: "\2610  ";
+/* RE-3. Zoomed out, a task card is a status mark first. The mark and the due date are sized in screen pixels:
+   --pxd-screen-px is world px per screen px (1 / zoom, not clamped), so calc(20px * var(--pxd-screen-px)) is 20 px
+   on screen at any zoom. The mark carries the state: empty, check (done), cross (cancelled), and the due colour. */
+.pxd-root.pxd-lod-map .pxd-item.pxd-item--task:not(.pxd-item--editing) > .pxd-item__header {
+  padding-left: calc(26px * var(--pxd-screen-px, 1));
+  -webkit-line-clamp: 2;
+  max-height: calc(2 * 1.2em + 6px);
 }
 
-.pxd-root.pxd-lod-map .pxd-item--task-done > .pxd-item__header::before {
-  content: "\2611  ";
+.pxd-root.pxd-lod-map .pxd-item.pxd-item--task:not(.pxd-item--editing) > .pxd-item__header::before {
+  content: "\2610";
+  position: absolute;
+  left: calc(4px * var(--pxd-screen-px, 1));
+  top: calc(2px * var(--pxd-screen-px, 1));
+  font-size: calc(22px * var(--pxd-screen-px, 1));
+  line-height: 1;
+  color: var(--pxd-text);
 }
 
-.pxd-root.pxd-lod-map .pxd-item--task > .pxd-item__header[data-task-due]::after {
-  content: "  " attr(data-task-due);
+.pxd-root.pxd-lod-map .pxd-item.pxd-item--task-done:not(.pxd-item--editing) > .pxd-item__header::before {
+  content: "\2611";
   color: var(--pxd-muted);
 }
 
+.pxd-root.pxd-lod-map .pxd-item.pxd-item--task-cancelled:not(.pxd-item--editing) > .pxd-item__header::before {
+  content: "\2612";
+  color: var(--pxd-muted);
+}
+
+.pxd-root.pxd-lod-map .pxd-item.pxd-item--task-today:not(.pxd-item--task-done):not(.pxd-item--editing) > .pxd-item__header::before {
+  color: var(--pxd-accent);
+}
+
+.pxd-root.pxd-lod-map .pxd-item.pxd-item--task-overdue:not(.pxd-item--task-done):not(.pxd-item--editing) > .pxd-item__header::before {
+  color: var(--pxd-red-text, var(--pxd-red-line, #c23030));
+}
+
+.pxd-root.pxd-lod-map .pxd-item.pxd-item--task:not(.pxd-item--editing) > .pxd-item__header[data-task-due]::after {
+  content: attr(data-task-due);
+  position: absolute;
+  left: calc(26px * var(--pxd-screen-px, 1));
+  bottom: calc(3px * var(--pxd-screen-px, 1));
+  font-size: calc(11px * var(--pxd-screen-px, 1));
+  line-height: 1.2;
+  white-space: nowrap;
+  color: var(--pxd-muted);
+}
+
+.pxd-root.pxd-lod-map .pxd-item.pxd-item--task-today:not(.pxd-item--task-done):not(.pxd-item--editing) > .pxd-item__header[data-task-due]::after {
+  color: var(--pxd-accent);
+}
+
+.pxd-root.pxd-lod-map .pxd-item.pxd-item--task-overdue:not(.pxd-item--task-done):not(.pxd-item--editing) > .pxd-item__header[data-task-due]::after {
+  color: var(--pxd-red-text, var(--pxd-red-line, #c23030));
+}
+
+/* Overview tier: the mark alone, centred in the card, 20 px or more on screen. The box is drawn with borders (the
+   ballot-box glyphs sit on the baseline and clip in a 20 px card); done fills it with a check, cancelled crosses it. */
 .pxd-root.pxd-lod-overview .pxd-item.pxd-item--card.pxd-item--task:not(.pxd-item--editing) > .pxd-item__header {
-  display: block;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  height: 100%;
+  min-height: 0;
+  max-height: none;
+  margin: 0;
+  padding: 0;
   font-size: 0;
-  text-align: center;
+  line-height: 1;
+  color: var(--pxd-text);
+}
+
+.pxd-root.pxd-lod-overview .pxd-item.pxd-item--card.pxd-item--task-today:not(.pxd-item--task-done):not(.pxd-item--editing) > .pxd-item__header {
+  color: var(--pxd-accent);
+}
+
+.pxd-root.pxd-lod-overview .pxd-item.pxd-item--card.pxd-item--task-overdue:not(.pxd-item--task-done):not(.pxd-item--editing) > .pxd-item__header {
+  color: var(--pxd-red-text, var(--pxd-red-line, #c23030));
+}
+
+.pxd-root.pxd-lod-overview .pxd-item.pxd-item--card.pxd-item--task-done:not(.pxd-item--editing) > .pxd-item__header,
+.pxd-root.pxd-lod-overview .pxd-item.pxd-item--card.pxd-item--task-cancelled:not(.pxd-item--editing) > .pxd-item__header {
+  color: var(--pxd-muted);
 }
 
 .pxd-root.pxd-lod-overview .pxd-item.pxd-item--card.pxd-item--task:not(.pxd-item--editing) > .pxd-item__header::before {
-  content: "\2610";
-  font-size: var(--pxd-overview-font, 40px);
-  line-height: 1.2;
+  content: "";
+  position: static;
+  display: block;
+  box-sizing: border-box;
+  width: calc(20px * var(--pxd-screen-px, 1));
+  height: calc(20px * var(--pxd-screen-px, 1));
+  border: calc(2px * var(--pxd-screen-px, 1)) solid currentColor;
+  border-radius: calc(3px * var(--pxd-screen-px, 1));
+  background: transparent;
 }
 
 .pxd-root.pxd-lod-overview .pxd-item.pxd-item--card.pxd-item--task-done:not(.pxd-item--editing) > .pxd-item__header::before {
-  content: "\2611";
+  background: currentColor;
 }
 
-.pxd-root.pxd-lod-overview .pxd-item.pxd-item--card.pxd-item--task:not(.pxd-item--editing) > .pxd-item__header::after {
+.pxd-root.pxd-lod-overview .pxd-item.pxd-item--card.pxd-item--task-done:not(.pxd-item--editing) > .pxd-item__header::after,
+.pxd-root.pxd-lod-overview .pxd-item.pxd-item--card.pxd-item--task-cancelled:not(.pxd-item--editing) > .pxd-item__header::after {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  bottom: auto;
+  transform: translate(-50%, -52%);
+  font-size: calc(16px * var(--pxd-screen-px, 1));
+  font-weight: 700;
+  line-height: 1;
+}
+
+.pxd-root.pxd-lod-overview .pxd-item.pxd-item--card.pxd-item--task-done:not(.pxd-item--editing) > .pxd-item__header::after {
+  content: "\2713";
+  color: var(--pxd-card);
+}
+
+.pxd-root.pxd-lod-overview .pxd-item.pxd-item--card.pxd-item--task-cancelled:not(.pxd-item--editing) > .pxd-item__header::after {
+  content: "\2715";
+  color: currentColor;
+}
+
+.pxd-root.pxd-lod-overview .pxd-item.pxd-item--card.pxd-item--task:not(.pxd-item--task-done):not(.pxd-item--task-cancelled):not(.pxd-item--editing) > .pxd-item__header::after {
   content: none;
 }
 

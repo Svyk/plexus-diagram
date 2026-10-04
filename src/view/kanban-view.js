@@ -3,7 +3,7 @@
 
 import { DONE_COLUMN, TODO_FIELD, kanbanColumns, kanbanFields, kanbanRows, planKanbanMove } from "../model/kanban.js";
 
-export function mountKanban({ doc = globalThis.document, root, host, bt = null, getBoard } = {}) {
+export function mountKanban({ doc = globalThis.document, root, host, bt = null, completeTask = null, getBoard } = {}) {
   const box = doc.createElement("div");
   box.className = "pxd-kanban pxd-chrome";
   root?.append(box);
@@ -48,6 +48,11 @@ export function mountKanban({ doc = globalThis.document, root, host, bt = null, 
     try {
       // A task moved between To do and Done goes through Better Tasks when it is loaded, so it writes the
       // Completed date. When Better Tasks refuses, the marker write below still moves the card.
+      // RE-1: Done goes through the checkbox path first, so a repeating task also makes its next occurrence.
+      if (plan.status === "DONE" && typeof completeTask === "function") {
+        const res = await completeTask(plan.uid);
+        if (res?.ok) { paint(); return; }
+      }
       if (plan.status && bt?.available?.()) {
         const res = await bt.modify(plan.uid, { status: plan.status });
         if (res.ok) { paint(); return; }

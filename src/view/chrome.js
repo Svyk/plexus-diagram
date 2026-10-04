@@ -6,6 +6,7 @@ import { SHAPES } from "../model/shapes.js";
 import { changelogEntry } from "../model/changelog.js";
 import { CHANGELOG_TEXT } from "../changelog-text.js";
 import { buildColorPicker } from "./color-picker.js";
+import { placeNearAnchor } from "./avoid.js";
 import { tipIdForClass } from "./tooltip-text.js";
 
 const CTX_GAP = 12;
@@ -52,7 +53,6 @@ const SHAPE_LABELS = { rectangle: "Rectangle", rounded: "Rounded", ellipse: "Ell
 
 const MAX_CRUMBS = 4;
 const POPOVER_GAP = 6;
-const POPOVER_MARGIN = 8;
 const PATTERN_LABELS = { dots: "Dots", lines: "Lines", cross: "Cross", grid: "Grid", plain: "Plain" };
 const NOTE_KINDS = ["note", "block", "page"];
 
@@ -573,15 +573,7 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
     open() {
       if (popover.isOpen()) return;
       popEl.style.display = "";
-      const rootRect = root.getBoundingClientRect();
-      const b = bgBtn.getBoundingClientRect();
-      const w = popEl.offsetWidth || 240;
-      const h = popEl.offsetHeight || 200;
-      const left = Math.max(POPOVER_MARGIN, Math.min(b.left - rootRect.left, (rootRect.width || 0) - w - POPOVER_MARGIN));
-      let top = b.bottom - rootRect.top + POPOVER_GAP;
-      if (rootRect.height && top + h > rootRect.height - POPOVER_MARGIN) top = Math.max(POPOVER_MARGIN, rootRect.height - h - POPOVER_MARGIN);
-      popEl.style.left = `${Math.round(left)}px`;
-      popEl.style.top = `${Math.round(top)}px`;
+      placeNearAnchor(popEl, bgBtn.getBoundingClientRect(), root, { gap: POPOVER_GAP, skip: bgBtn.closest?.(".pxd-toolbar, .pxd-dock") || null });
       bgBtn.classList.add("pxd-btn--active");
       const onDown = (event) => {
         if (popEl.contains(event.target) || bgBtn.contains(event.target)) return;
@@ -674,6 +666,7 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
               pickerBuilt = true;
             }
             picker.style.display = picker.style.display === "none" ? "" : "none";
+            if (picker.style.display !== "none") placeNearAnchor(picker, ctx.getBoundingClientRect(), root, { gap: 4, origin: ctx });
           });
           const closed = model?.kind === "note" || model?.kind === "block" ? !model?.kids : model?.open === false;
           iconBtn(

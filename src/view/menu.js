@@ -3,6 +3,8 @@
 // Coordinates passed to open() are client coordinates; the menu converts them to root space and clamps.
 // One delegated click and pointerover listener serve the whole menu, so a close leaves nothing behind.
 
+import { chromeObstacles, placeNearAnchor, pointAnchor } from "./avoid.js";
+
 const MARGIN = 4;
 const ROW_HEIGHT = 28;
 const MENU_WIDTH = 200;
@@ -262,6 +264,12 @@ export function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
       if (H) top = Math.max(MARGIN, Math.min(top, H - h - MARGIN));
       menuEl.style.left = `${Math.round(left)}px`;
       menuEl.style.top = `${Math.round(top)}px`;
+      // RE-2: a menu that would sit under the dock, board bar, rail, minimap or a panel moves clear of them.
+      const spot = { left: (rootRect.left || 0) + left, top: (rootRect.top || 0) + top };
+      const box = { left: spot.left, top: spot.top, right: spot.left + w, bottom: spot.top + h };
+      if (chromeObstacles(root, { win }).some((o) => box.left < o.right && box.right > o.left && box.top < o.bottom && box.bottom > o.top)) {
+        placeNearAnchor(menuEl, pointAnchor(x, y), root, { gap: 0 });
+      }
       return true;
     },
     close,

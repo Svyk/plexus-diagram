@@ -94,6 +94,7 @@ Native diagrams are React Flow (`.react-flow`, nodes `.react-flow__node-block`).
 | P14 | Editing, stickies, speed, arrow aim | 2.6.0 | done 2026-10-03, tagged `v2.6.0` |
 | P15 | Better Tasks cards | 2.7.0 | done 2026-10-03, tagged `v2.7.0` |
 | P16 | Rough edges | 2.7.1 | done 2026-10-04, tagged `v2.7.1` |
+| P17-P22 | 3.x roadmap, see roadmap-3.md | 2.8.0-3.0.0 | open |
 
 Order matters: P1 and P2 are the user's direct requests. Within a phase, do tasks in the listed order unless one is blocked.
 

@@ -681,3 +681,323 @@ body.roam-body.dark .pxd-root .pxd-panel__outline-row:hover {
   pointer-events: none;
   user-select: none;
 }
+
+/* ------------------------------------------------------------------ 2.2 board bar and tool dock
+   Split: the top bar is the board bar (navigation, views, board actions) and the dock holds the tools.
+   Classic sets no pxd-root--docked class, so none of the rules below apply and the 2.1 look stays.
+   Every rule is two classes at least. Colors come from tokens that flip for dark in extension.css
+   (--pxd-dock-pill-border carries the active tool in dark, a border, not a fill). */
+
+/* Latent 2.1 bug: the single-class .pxd-tool--active / --locked lost to .pxd-root .pxd-btn (0,2,0) and
+   to Blueprint's dark button rules, so the top bar's active tool did not paint in dark Roam. */
+.pxd-root .pxd-btn.pxd-tool--active {
+  border-color: var(--pxd-accent);
+  background: var(--pxd-accent-soft);
+  color: var(--pxd-text);
+}
+
+.pxd-root .pxd-btn.pxd-tool--locked {
+  box-shadow: inset 0 0 0 1px var(--pxd-accent);
+}
+
+.pxd-root .pxd-dock__bar {
+  position: relative;
+}
+
+.pxd-root .pxd-dock__group {
+  display: flex;
+  gap: 2px;
+}
+
+.pxd-root .pxd-dock__sep,
+.pxd-root .pxd-dock__indicator,
+.pxd-root .pxd-dock__label {
+  display: none;
+}
+
+.pxd-root .pxd-dock__lock {
+  position: absolute;
+  top: 1px;
+  right: 2px;
+  display: none;
+  color: var(--pxd-accent);
+  font-size: 9px;
+  line-height: 1;
+}
+
+/* ---- board bar (top) */
+
+.pxd-root.pxd-root--docked .pxd-toolbar {
+  right: 8px;
+  box-sizing: border-box;
+  min-height: 34px;
+  max-width: none;
+  gap: 4px 8px;
+  padding: 2px 6px;
+  border-width: 0 0 1px;
+  border-bottom-color: var(--pxd-board-line, var(--pxd-bar-line));
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--pxd-chrome-bg) 92%, transparent);
+  box-shadow: none;
+}
+
+.pxd-root.pxd-root--docked.pxd-root--rail .pxd-toolbar {
+  right: 52px;
+  max-width: none;
+}
+
+.pxd-root.pxd-root--docked.pxd-root--fullscreen .pxd-toolbar {
+  padding: 6px 10px;
+}
+
+.pxd-root.pxd-root--docked .pxd-toolbar .pxd-iconbtn {
+  width: 26px;
+  min-width: 26px;
+  height: 26px;
+  border-color: transparent;
+  background: transparent;
+  color: var(--pxd-muted);
+}
+
+.pxd-root.pxd-root--docked .pxd-toolbar .pxd-iconbtn:hover {
+  border-color: var(--pxd-border);
+  color: var(--pxd-text);
+}
+
+.pxd-root.pxd-root--docked .pxd-toolbar .pxd-iconbtn .bp3-icon {
+  font-size: 14px;
+}
+
+.pxd-root.pxd-root--docked .pxd-toolbar .pxd-iconbtn.pxd-btn--active {
+  border-color: transparent;
+  border-bottom: 2px solid var(--pxd-accent);
+  border-radius: 6px 6px 0 0;
+  background: transparent;
+  color: var(--pxd-accent);
+}
+
+.pxd-root.pxd-root--docked.pxd-root--dense .pxd-toolbar .pxd-iconbtn {
+  width: 24px;
+  min-width: 24px;
+  height: 24px;
+}
+
+.pxd-root.pxd-root--docked .pxd-toolbar .pxd-crumb {
+  font-size: 12px;
+  font-weight: 500;
+}
+
+.pxd-root.pxd-root--docked .pxd-toolbar .pxd-crumb.pxd-crumb--current {
+  padding-left: 8px;
+  border-left: 3px solid var(--pxd-board-line, var(--pxd-border-strong));
+  font-weight: 600;
+}
+
+.pxd-root.pxd-root--layout-dock-only .pxd-toolbar.pxd-toolbar--hidden {
+  opacity: 0;
+  pointer-events: none;
+  transform: translateY(-8px);
+}
+
+.pxd-root.pxd-root--layout-dock-only:not(.pxd-root--motion-off) .pxd-toolbar {
+  transition: opacity 120ms ease, transform 120ms ease;
+}
+
+/* ---- tool dock */
+
+.pxd-root.pxd-root--docked .pxd-palette {
+  --pxd-dock-btn: 36px;
+  --pxd-dock-offset: 136px;
+}
+
+.pxd-root.pxd-root--docked .pxd-palette.pxd-palette--wide {
+  --pxd-dock-offset: 16px;
+}
+
+.pxd-root.pxd-root--docked.pxd-root--dense .pxd-palette {
+  --pxd-dock-btn: 30px;
+}
+
+.pxd-root.pxd-root--docked.pxd-root--narrow .pxd-palette {
+  --pxd-dock-btn: 32px;
+}
+
+.pxd-root.pxd-root--docked.pxd-root--narrow.pxd-root--dense .pxd-palette {
+  --pxd-dock-btn: 28px;
+}
+
+.pxd-root.pxd-root--docked.pxd-root--dock-bottom .pxd-palette {
+  bottom: var(--pxd-dock-offset);
+}
+
+.pxd-root.pxd-root--docked.pxd-root--dock-top .pxd-palette {
+  top: 52px;
+  bottom: auto;
+}
+
+.pxd-root.pxd-root--docked.pxd-root--dock-left .pxd-palette {
+  top: 50%;
+  right: auto;
+  bottom: auto;
+  left: 8px;
+  justify-content: flex-start;
+  transform: translateY(-50%);
+}
+
+.pxd-root.pxd-root--docked .pxd-dock__bar {
+  align-items: center;
+  gap: 4px;
+  padding: 6px;
+  border: 1px solid var(--pxd-dock-border);
+  border-radius: 999px;
+  box-shadow: var(--pxd-dock-shadow);
+}
+
+.pxd-root.pxd-root--docked.pxd-root--dock-strip .pxd-dock__bar {
+  border-radius: 6px;
+  box-shadow: none;
+}
+
+.pxd-root.pxd-root--docked.pxd-root--dock-left .pxd-dock__bar,
+.pxd-root.pxd-root--docked.pxd-root--dock-left .pxd-dock__group {
+  flex-direction: column;
+}
+
+.pxd-root.pxd-root--docked .pxd-dock__sep {
+  display: block;
+  flex: none;
+  width: 1px;
+  height: 20px;
+  background: var(--pxd-border);
+}
+
+.pxd-root.pxd-root--docked.pxd-root--dock-left .pxd-dock__sep {
+  width: 20px;
+  height: 1px;
+}
+
+.pxd-root.pxd-root--docked .pxd-dock__btn {
+  position: relative;
+  z-index: 1;
+  flex-direction: column;
+  box-sizing: border-box;
+  width: var(--pxd-dock-btn);
+  min-width: var(--pxd-dock-btn);
+  height: var(--pxd-dock-btn);
+  border: 1px solid transparent;
+  border-radius: 10px;
+  background: transparent;
+  color: var(--pxd-text);
+}
+
+.pxd-root.pxd-root--docked .pxd-dock__btn:hover {
+  border-color: var(--pxd-border);
+}
+
+.pxd-root.pxd-root--docked .pxd-dock__btn .bp3-icon {
+  color: inherit;
+  font-size: 18px;
+}
+
+.pxd-root.pxd-root--docked .pxd-dock__btn .bp3-icon svg {
+  overflow: visible;
+}
+
+.pxd-root.pxd-root--docked .pxd-dock__btn.pxd-dock__btn--on {
+  border-color: transparent;
+  background: transparent;
+  box-shadow: none;
+  color: var(--pxd-accent);
+}
+
+.pxd-root.pxd-root--docked .pxd-dock__btn.pxd-dock__btn--on::before {
+  content: "";
+  position: absolute;
+  bottom: 2px;
+  left: 50%;
+  width: 3px;
+  height: 3px;
+  margin-left: -1.5px;
+  border-radius: 50%;
+  background: var(--pxd-dock-dot);
+}
+
+.pxd-root.pxd-root--docked.pxd-root--dock-labels .pxd-dock__btn {
+  height: 48px;
+  gap: 1px;
+}
+
+.pxd-root.pxd-root--docked.pxd-root--dock-labels .pxd-dock__label {
+  display: block;
+  font-size: 10px;
+  line-height: 1.1;
+}
+
+.pxd-root.pxd-root--docked.pxd-root--dock-labels .pxd-dock__label::after {
+  content: attr(data-label);
+}
+
+.pxd-root.pxd-root--docked .pxd-dock__indicator {
+  position: absolute;
+  top: 0;
+  left: 0;
+  z-index: 0;
+  display: block;
+  box-sizing: border-box;
+  width: var(--pxd-ind-w, 36px);
+  height: var(--pxd-ind-h, 36px);
+  border: 1.5px solid var(--pxd-dock-pill-border);
+  border-radius: 10px;
+  background: var(--pxd-dock-pill-bg);
+  pointer-events: none;
+  transform: translate(var(--pxd-ind-x, 0px), var(--pxd-ind-y, 0px));
+}
+
+.pxd-root.pxd-root--docked .pxd-dock__indicator.pxd-dock__indicator--idle {
+  display: none;
+}
+
+.pxd-root.pxd-root--docked .pxd-dock__indicator.pxd-dock__indicator--locked .pxd-dock__lock {
+  display: block;
+}
+
+.pxd-root.pxd-root--docked:not(.pxd-root--motion-off) .pxd-dock__indicator {
+  transition: transform 120ms ease, width 120ms ease, height 120ms ease;
+}
+
+.pxd-root.pxd-root--docked .pxd-dock__options {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pxd-root.pxd-root--docked.pxd-root--dock-left .pxd-dock__options,
+.pxd-root.pxd-root--docked.pxd-root--dock-left .pxd-dock__optset {
+  flex-direction: column;
+}
+
+.pxd-root.pxd-root--docked .pxd-dock__optset {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pxd-root.pxd-root--docked .pxd-dock__opt {
+  min-height: 24px;
+  padding: 2px 8px;
+  border-radius: 12px;
+  font-size: 11px;
+}
+
+/* ---- narrow, overview */
+
+.pxd-root.pxd-root--docked.pxd-root--narrow .pxd-dock__sep,
+.pxd-root.pxd-root--docked.pxd-root--narrow .pxd-dock__options {
+  display: none;
+}
+
+.pxd-root.pxd-root--docked.pxd-lod-overview .pxd-dock__btn:not([data-tool="select"]):not([data-tool="hand"]):not([data-tool="board"]),
+.pxd-root.pxd-root--docked.pxd-lod-overview .pxd-dock__sep,
+.pxd-root.pxd-root--docked.pxd-lod-overview .pxd-dock__options {
+  display: none;
+}

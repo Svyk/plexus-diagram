@@ -491,6 +491,7 @@ var DIRS = ["one", "two", "none"];
 var ROUTES = ["curve", "straight", "elbow", "around"];
 var DASHES = ["solid", "dashed", "animated"];
 var BOARD_PATTERNS = ["dots", "lines", "cross", "grid", "plain"];
+var DOCK_POSITIONS = ["bottom", "left", "top"];
 var BOARD_TONES = ["paper", ...PALETTE];
 var FIT_PAD = 24;
 var NATIVE_SWATCHES = [
@@ -668,6 +669,7 @@ function withBoardMarker(plexus, on) {
   delete base.bgColor;
   delete base.bgImage;
   delete base.lodZoom;
+  delete base.dock;
   return Object.keys(base).length ? base : null;
 }
 var MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
@@ -2337,10 +2339,10 @@ function zoomThreshold(boardValue, settingValue) {
   };
   return pick(boardValue) ?? pick(settingValue) ?? 0.45;
 }
-function thumbnailBudget(uids, { cap: cap2 = THUMBNAIL_CAP } = {}) {
+function thumbnailBudget(uids, { cap: cap3 = THUMBNAIL_CAP } = {}) {
   const out = [];
   const seen = /* @__PURE__ */ new Set();
-  const limit = Math.max(0, Math.min(THUMBNAIL_CAP, cap2));
+  const limit = Math.max(0, Math.min(THUMBNAIL_CAP, cap3));
   for (const uid of uids || []) {
     if (!uid || seen.has(uid)) continue;
     seen.add(uid);
@@ -2612,7 +2614,7 @@ function tagNames(text2) {
 function boardsFromRows(rows, { limit = 20 } = {}) {
   const seen = /* @__PURE__ */ new Set();
   const out = [];
-  const cap2 = Number.isFinite(limit) && limit > 0 ? limit : 20;
+  const cap3 = Number.isFinite(limit) && limit > 0 ? limit : 20;
   for (const row2 of rows || []) {
     if (!row2?.uid || seen.has(row2.uid)) continue;
     if (row2.v != null && row2.v !== 2) continue;
@@ -2622,7 +2624,7 @@ function boardsFromRows(rows, { limit = 20 } = {}) {
       title: row2.title || "Untitled board",
       pageTitle: row2.pageTitle || ""
     });
-    if (out.length >= cap2) break;
+    if (out.length >= cap3) break;
   }
   return out;
 }
@@ -3446,11 +3448,11 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
       if (!librarySelective(f)) return { rows: [], queries };
       const nowMs = Date.now();
       const since = f.days ? nowMs - f.days * 864e5 : null;
-      const cap2 = libraryCap();
+      const cap3 = libraryCap();
       const candidates = [];
       const seen = /* @__PURE__ */ new Set();
       const push = (row2) => {
-        if (candidates.length >= cap2) return false;
+        if (candidates.length >= cap3) return false;
         const key = `${row2.kind}:${row2.uid || row2.title}`;
         if (seen.has(key)) return false;
         seen.add(key);
@@ -3587,7 +3589,7 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
           ));
         }
         for (const rec of found) {
-          if (candidates.length >= cap2) break;
+          if (candidates.length >= cap3) break;
           const uid = rec?.[0];
           const string = rec?.[1];
           const pageTitle = rec?.[2];
@@ -3768,7 +3770,7 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
       const pageTitle = kind === "page" ? String(item.target?.title || item.title || "") : "";
       const targetUid = kind === "block" ? String(item.target?.uid || "") : pageTitle ? "" : cardUid;
       if (!pageTitle && !targetUid) return [];
-      const cap2 = Number.isFinite(Number(limit)) ? Math.max(0, Math.floor(Number(limit))) : LINKED_REF_CAP;
+      const cap3 = Number.isFinite(Number(limit)) ? Math.max(0, Math.floor(Number(limit))) : LINKED_REF_CAP;
       let rows = [];
       try {
         rows = host.q(
@@ -3785,7 +3787,7 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
         if (!uid || uid === cardUid || targetUid && uid === targetUid || seen.has(uid)) continue;
         seen.add(uid);
         refs.push({ uid, string: String(row2?.[1] ?? ""), pageTitle: row2?.[2] || "" });
-        if (refs.length >= cap2) break;
+        if (refs.length >= cap3) break;
       }
       return refs;
     },
@@ -5593,8 +5595,8 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
     },
     // bg / bgColor / bgImage / lodZoom: undefined leaves the key, null removes it.
     // bg is a pattern. bgColor is a tone name or #rrggbb. bgImage is an https URL, painted locked.
-    // lodZoom is this board's map threshold (0.05–1.5).
-    setBoardBackground({ bg, bgColor, bgImage, lodZoom } = {}) {
+    // lodZoom is this board's map threshold (0.05–1.5). dock is this board's tool dock side.
+    setBoardBackground({ bg, bgColor, bgImage, lodZoom, dock } = {}) {
       return txn((t) => {
         if (!board2.enhanced) return false;
         let tone = bgColor;
@@ -5614,9 +5616,10 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
           if (picked === 0.45 && Number(zoom) !== 0.45) return false;
           zoom = picked;
         }
+        if (dock != null && !DOCK_POSITIONS.includes(dock)) return false;
         const base = rawPlexus(uid);
         const next = { ...base };
-        for (const [key, value] of [["bg", bg], ["bgColor", tone], ["bgImage", image], ["lodZoom", zoom]]) {
+        for (const [key, value] of [["bg", bg], ["bgColor", tone], ["bgImage", image], ["lodZoom", zoom], ["dock", dock]]) {
           if (value === void 0) continue;
           if (value === null) delete next[key];
           else next[key] = value;
@@ -6575,8 +6578,8 @@ function rewriteEdgeEnds(creates, uidMap) {
     return { ...op, props: { ...op.props, plexus: { ...px, from, to } } };
   });
 }
-function chunkCreates(creates, cap2 = TEMPLATE_WRITE_CAP) {
-  const size = cap2 > 0 ? cap2 : TEMPLATE_WRITE_CAP;
+function chunkCreates(creates, cap3 = TEMPLATE_WRITE_CAP) {
+  const size = cap3 > 0 ? cap3 : TEMPLATE_WRITE_CAP;
   const chunks = [];
   for (let i = 0; i < creates.length; i += size) chunks.push(creates.slice(i, i + size));
   return chunks;
@@ -12264,10 +12267,10 @@ function buildColorPicker(doc, onPick, listen) {
   const row2 = (label, colors, named) => {
     const wrap = doc.createElement("div");
     wrap.className = "pxd-picker__row";
-    const cap2 = doc.createElement("div");
-    cap2.className = "pxd-picker__cap";
-    cap2.textContent = label;
-    wrap.append(cap2);
+    const cap3 = doc.createElement("div");
+    cap3.className = "pxd-picker__cap";
+    cap3.textContent = label;
+    wrap.append(cap3);
     const swatches = doc.createElement("div");
     swatches.className = "pxd-picker__swatches";
     for (const color of colors) {
@@ -12366,6 +12369,12 @@ var PALETTE_LIST = [
   ["board", "Board", "W", "grid-view"],
   ["connect", "Connect", "C", "flows"]
 ];
+var LAYOUTS = ["split", "classic", "dock-only"];
+var DOCK_STYLES = ["pill", "strip"];
+var DOCK_GROUPS = [["select", "hand"], ["card", "text", "sticky", "shape", "section", "board"], ["connect"]];
+var REVEAL_PX = 48;
+var cap = (word) => word.charAt(0).toUpperCase() + word.slice(1);
+var SHAPE_LABELS = { rectangle: "Rectangle", rounded: "Rounded", ellipse: "Ellipse", diamond: "Diamond", parallelogram: "Parallelogram", cylinder: "Cylinder" };
 var MAX_CRUMBS = 4;
 var POPOVER_GAP = 6;
 var POPOVER_MARGIN = 8;
@@ -12520,7 +12529,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     });
   };
   renderCrumbs(crumbs);
-  const toolGroup = el("div", "pxd-toolbar__group", toolbar);
+  const toolGroup = el("div", "pxd-toolbar__group pxd-toolbar__tools", toolbar);
   const toolButtons = /* @__PURE__ */ new Map();
   for (const [id, label, key, icon] of TOOL_LIST) {
     const b = iconButton(toolGroup, "pxd-tool", icon, label, `${label} (${key}). Double-click to lock`, () => on.setTool?.(id, false));
@@ -12602,20 +12611,137 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
   const railExtra = el("div", "pxd-rail__extra", railEl);
   const railZoom = button(railExtra, "pxd-rail__zoom", "100%", "Zoom to 100% (Shift 0)", () => on.zoomReset?.());
   const railBadge = button(railExtra, "pxd-badge pxd-rail__badge", version ? `v${version}` : "", "Show changelog", toggleLog);
-  const palette = el("div", "pxd-palette pxd-chrome", root);
-  const paletteBar = el("div", "pxd-palette__bar", palette);
+  const palette = el("div", "pxd-palette pxd-dock pxd-chrome", root);
+  const paletteBar = el("div", "pxd-palette__bar pxd-dock__bar", palette);
+  const dockIndicator = el("span", "pxd-dock__indicator", paletteBar);
+  dockIndicator.setAttribute("aria-hidden", "true");
+  el("span", "bp3-icon bp3-icon-lock pxd-dock__lock", dockIndicator);
   const paletteButtons = /* @__PURE__ */ new Map();
-  for (const [id, label, key, icon] of PALETTE_LIST) {
-    const b = iconButton(paletteBar, "pxd-palette__btn", icon, label, `${label} (${key})`, () => on.setTool?.(id, false));
-    b.dataset.tool = id;
-    b.setAttribute("data-tool", id);
-    listen(b, "dblclick", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      on.setTool?.(id, true);
-    });
-    paletteButtons.set(id, b);
+  DOCK_GROUPS.forEach((ids, n2) => {
+    if (n2) el("span", "pxd-dock__sep", paletteBar);
+    const group = el("div", "pxd-dock__group", paletteBar);
+    for (const id of ids) {
+      const [, label, key, icon] = PALETTE_LIST.find((entry) => entry[0] === id);
+      const b = iconButton(group, "pxd-palette__btn pxd-dock__btn", icon, label, `${label} (${key})`, () => on.setTool?.(id, false));
+      b.dataset.tool = id;
+      b.setAttribute("data-tool", id);
+      const tag = el("span", "pxd-dock__label", b);
+      tag.setAttribute("data-label", label);
+      tag.setAttribute("aria-hidden", "true");
+      listen(b, "dblclick", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        on.setTool?.(id, true);
+      });
+      paletteButtons.set(id, b);
+    }
+  });
+  const dockOptions = el("div", "pxd-dock__options", paletteBar);
+  dockOptions.style.display = "none";
+  el("span", "pxd-dock__sep", dockOptions);
+  const optionSets = /* @__PURE__ */ new Map();
+  const optionSet = (cls) => {
+    const node2 = el("div", `pxd-dock__optset ${cls}`, dockOptions);
+    node2.style.display = "none";
+    return node2;
+  };
+  const colorOpts = optionSet("pxd-dock__colors");
+  swatches(colorOpts, (c) => on.setColor?.(c));
+  const lookOpts = optionSet("pxd-dock__looks");
+  for (const look of ["block", "card"]) {
+    const b = button(lookOpts, "pxd-dock__opt", cap(look), `Show selected as ${look}`, () => on.setLook?.(look));
+    b.dataset.look = look;
+    b.setAttribute("data-look", look);
   }
+  const shapeOpts = optionSet("pxd-dock__shapes");
+  for (const shape of SHAPES) {
+    const b = button(shapeOpts, "pxd-dock__opt", SHAPE_LABELS[shape] || shape, `Shape: ${SHAPE_LABELS[shape] || shape}`, () => on.setShape?.(shape));
+    b.dataset.shape = shape;
+    b.setAttribute("data-shape", shape);
+  }
+  optionSets.set("card", [colorOpts, lookOpts]);
+  optionSets.set("sticky", [colorOpts]);
+  optionSets.set("section", [colorOpts]);
+  optionSets.set("shape", [shapeOpts]);
+  let activeTool = "select";
+  let activeLocked = false;
+  const px = (v) => Number.isFinite(Number(v)) ? Number(v) : 0;
+  const layoutDock = () => {
+    const b = paletteButtons.get(activeTool);
+    const visible = Boolean(b) && px(b.offsetWidth) > 0;
+    dockIndicator.classList.toggle("pxd-dock__indicator--locked", activeLocked);
+    dockIndicator.classList.toggle("pxd-dock__indicator--idle", !visible);
+    if (!visible) return;
+    dockIndicator.style.setProperty("--pxd-ind-x", `${px(b.offsetLeft)}px`);
+    dockIndicator.style.setProperty("--pxd-ind-y", `${px(b.offsetTop)}px`);
+    dockIndicator.style.setProperty("--pxd-ind-w", `${px(b.offsetWidth)}px`);
+    dockIndicator.style.setProperty("--pxd-ind-h", `${px(b.offsetHeight)}px`);
+  };
+  let dockFrame = null;
+  const scheduleDock = () => {
+    if (dockFrame) return;
+    dockFrame = timers.frame(() => {
+      dockFrame = null;
+      layoutDock();
+    });
+  };
+  listen(palette, "pointerenter", () => layoutDock());
+  const applyDockOptions = () => {
+    const sets = optionSets.get(activeTool) || [];
+    const show = sets.length > 0 && setting("dock-options") !== false;
+    dockOptions.style.display = show ? "" : "none";
+    for (const node2 of /* @__PURE__ */ new Set([colorOpts, lookOpts, shapeOpts])) node2.style.display = show && sets.includes(node2) ? "" : "none";
+  };
+  let boardDock = null;
+  let barNear = false;
+  let barFocus = false;
+  let revealOff = null;
+  const barHeld = () => {
+    if (popover.isOpen() || crumbMenu) return true;
+    return Boolean(root.querySelector?.(".pxd-menu"));
+  };
+  const paintBar = () => {
+    const dockOnly = root.classList.contains("pxd-root--layout-dock-only");
+    toolbar.classList.toggle("pxd-toolbar--hidden", dockOnly && !(barNear || barFocus || barHeld()));
+  };
+  const onRootMove = (event) => {
+    const r = root.getBoundingClientRect();
+    const near = event.clientY - (r.top || 0) <= REVEAL_PX || Boolean(toolbar.contains?.(event.target));
+    if (near === barNear) {
+      if (!near && !toolbar.classList.contains("pxd-toolbar--hidden")) paintBar();
+      return;
+    }
+    barNear = near;
+    paintBar();
+  };
+  const onRootLeave = () => {
+    if (!barNear) return;
+    barNear = false;
+    paintBar();
+  };
+  const onBarFocus = () => {
+    barFocus = true;
+    paintBar();
+  };
+  const onBarBlur = () => {
+    barFocus = false;
+    paintBar();
+  };
+  const watchReveal = (on2) => {
+    if (on2 && !revealOff) {
+      const offs = [];
+      for (const [node2, type, fn] of [[root, "pointermove", onRootMove], [root, "pointerleave", onRootLeave], [toolbar, "focusin", onBarFocus], [toolbar, "focusout", onBarBlur]]) {
+        node2.addEventListener(type, fn);
+        offs.push(() => node2.removeEventListener(type, fn));
+      }
+      revealOff = () => offs.splice(0).forEach((off) => off());
+    } else if (!on2 && revealOff) {
+      revealOff();
+      revealOff = null;
+      barNear = false;
+      barFocus = false;
+    }
+  };
   const applyControls = () => {
     const rail = setting("controls-position") !== "bar";
     root.classList.toggle("pxd-root--rail", rail);
@@ -12625,8 +12751,26 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     badge.style.display = !rail && showBadge ? "" : "none";
     railBadge.style.display = rail && showBadge ? "" : "none";
     palette.style.display = setting("show-palette") === false ? "none" : "";
+    const layoutSetting = setting("toolbar-layout");
+    const layout = LAYOUTS.includes(layoutSetting) ? layoutSetting : "split";
+    const docked = layout !== "classic";
+    for (const name of LAYOUTS) root.classList.toggle(`pxd-root--layout-${name}`, name === layout);
+    root.classList.toggle("pxd-root--docked", docked);
+    toolGroup.style.display = docked ? "none" : "";
+    const dockSetting = setting("dock-position");
+    const own = DOCK_POSITIONS.includes(boardDock) ? boardDock : null;
+    const side = own ?? (DOCK_POSITIONS.includes(dockSetting) ? dockSetting : "bottom");
+    for (const name of DOCK_POSITIONS) root.classList.toggle(`pxd-root--dock-${name}`, docked && name === side);
+    const styleSetting = setting("dock-style");
+    const shape = DOCK_STYLES.includes(styleSetting) ? styleSetting : "pill";
+    for (const name of DOCK_STYLES) root.classList.toggle(`pxd-root--dock-${name}`, docked && name === shape);
+    root.classList.toggle("pxd-root--dock-labels", docked && setting("dock-labels") === true);
+    root.classList.toggle("pxd-root--dense", docked && setting("chrome-density") === "compact");
+    watchReveal(layout === "dock-only");
+    paintBar();
+    applyDockOptions();
+    layoutDock();
   };
-  applyControls();
   const toolbarApi = {
     el: toolbar,
     setCrumbs: renderCrumbs,
@@ -12635,10 +12779,31 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
         b.classList.toggle("pxd-tool--active", id === tool);
         b.classList.toggle("pxd-tool--locked", id === tool && Boolean(locked));
       }
+      activeTool = tool;
+      activeLocked = Boolean(locked);
       for (const [id, b] of paletteButtons) {
         b.classList.toggle("pxd-palette__btn--on", id === tool);
+        b.classList.toggle("pxd-dock__btn--on", id === tool);
         b.classList.toggle("pxd-tool--locked", id === tool && Boolean(locked));
+        b.classList.toggle("pxd-dock__btn--locked", id === tool && Boolean(locked));
       }
+      applyDockOptions();
+      layoutDock();
+    },
+    layoutDock,
+    scheduleDock,
+    setBoardDock(value) {
+      const next = DOCK_POSITIONS.includes(value) ? value : null;
+      if (next === boardDock) return;
+      boardDock = next;
+      applyControls();
+    },
+    setBoardColor(value) {
+      let line = null;
+      if (PALETTE.includes(value)) line = `var(--pxd-${value}-line)`;
+      else if (/^#[0-9a-f]{6}$/i.test(String(value || ""))) line = String(value).toLowerCase();
+      if (line) toolbar.style.setProperty("--pxd-board-line", line);
+      else toolbar.style.removeProperty("--pxd-board-line");
     },
     setZoom(z) {
       const label = `${Math.round((z || 1) * 100)}%`;
@@ -12773,6 +12938,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
   };
   let bgState = { pattern: null, tone: null, override: false };
   popover.setState(bgState);
+  applyControls();
   const backEl = button(root, "pxd-backtocontent pxd-chrome", "Back to content", "Fit the view back to your cards", () => on.backToContent?.());
   backEl.style.display = "none";
   for (const type of ["pointerup", "wheel", "keydown", "keyup", "contextmenu"]) listen(backEl, type, (event) => event.stopPropagation());
@@ -13116,9 +13282,9 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
   const navigateTo = (event) => {
     if (!mmScale || !mmState) return;
     const r = canvas.getBoundingClientRect();
-    const px = event.clientX - r.left - mmScale.ox;
+    const px2 = event.clientX - r.left - mmScale.ox;
     const py = event.clientY - r.top - mmScale.oy;
-    const world = { x: px / mmScale.s, y: py / mmScale.s };
+    const world = { x: px2 / mmScale.s, y: py / mmScale.s };
     on.navigate?.(world);
   };
   let mmDragging = false;
@@ -13158,6 +13324,8 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
   const dispose = () => {
     toastTimer?.();
     mmFrame?.();
+    dockFrame?.();
+    revealOff?.();
     bgOffs.splice(0).forEach((off) => off());
     listeners2.splice(0).forEach((off) => off());
     for (const node2 of [toolbar, railEl, palette, popEl, backEl, ctx, toast, search, minimap]) node2.remove();
@@ -14412,7 +14580,7 @@ function createShortcutSheet({ doc = globalThis.document, root, shortcuts = SHOR
 
 // src/view/menu-model.js
 var SIZE_LABELS = { 16: "Small", 24: "Medium", 32: "Large", 48: "Extra large" };
-var SHAPE_LABELS = {
+var SHAPE_LABELS2 = {
   rectangle: "Rectangle",
   rounded: "Rounded",
   ellipse: "Ellipse",
@@ -14420,7 +14588,7 @@ var SHAPE_LABELS = {
   parallelogram: "Parallelogram",
   cylinder: "Cylinder"
 };
-var cap = (word) => word.charAt(0).toUpperCase() + word.slice(1);
+var cap2 = (word) => word.charAt(0).toUpperCase() + word.slice(1);
 var make = (id, label, extra = {}) => {
   const out = { id, label };
   for (const [key, value] of Object.entries(extra)) {
@@ -14441,8 +14609,8 @@ function buildMenu(kind, ctx = {}) {
   });
   const mindPresetMenu = () => {
     const preset = normalizeMindPreset(c.mindPreset);
-    const dirs = MIND_DIRECTIONS.map((d) => make(`mind-dir:${d}`, cap(d), { checked: preset.direction === d }));
-    const spaces = MIND_SPACINGS.map((s) => make(`mind-space:${s}`, cap(s), { checked: preset.spacing === s }));
+    const dirs = MIND_DIRECTIONS.map((d) => make(`mind-dir:${d}`, cap2(d), { checked: preset.direction === d }));
+    const spaces = MIND_SPACINGS.map((s) => make(`mind-space:${s}`, cap2(s), { checked: preset.spacing === s }));
     const depths = [];
     for (let d = MIND_DEPTH_MIN; d <= MIND_DEPTH_MAX; d++) depths.push(make(`mind-depth:${d}`, `Depth ${d}`, { checked: preset.depth === d }));
     return make("mind-preset", "Mind map preset…", {
@@ -14487,7 +14655,7 @@ function buildMenu(kind, ctx = {}) {
     return make("color", "Color", {
       children: [
         make("color:none", "No color", { checked: !current2 }),
-        ...PALETTE.map((name) => make(`color:${name}`, cap(name), { checked: current2 === name }))
+        ...PALETTE.map((name) => make(`color:${name}`, cap2(name), { checked: current2 === name }))
       ]
     });
   };
@@ -14621,7 +14789,7 @@ function buildMenu(kind, ctx = {}) {
           children: FONT_SIZES.map((px) => make(`size:${px}`, `${SIZE_LABELS[px] || px} (${px}px)`, { checked: item?.fontSize === px }))
         }),
         make("shape", "Shape", {
-          children: SHAPES.map((name) => make(`shape:${name}`, SHAPE_LABELS[name] || name, { checked: item?.shape === name }))
+          children: SHAPES.map((name) => make(`shape:${name}`, SHAPE_LABELS2[name] || name, { checked: item?.shape === name }))
         }),
         make("duplicate", "Duplicate", { hint: "Cmd D" }),
         pinItem(Boolean(c.pinned)),
@@ -14676,7 +14844,7 @@ function buildMenu(kind, ctx = {}) {
         sep(),
         make("align", "Align", {
           disabled: few,
-          children: ["left", "center", "right", "top", "middle", "bottom"].map((side) => make(`align:${side}`, cap(side)))
+          children: ["left", "center", "right", "top", "middle", "bottom"].map((side) => make(`align:${side}`, cap2(side)))
         }),
         make("distribute", "Distribute", {
           disabled: count !== null && count < 3,
@@ -14718,6 +14886,13 @@ function buildMenu(kind, ctx = {}) {
         make("add-week", "Add this week's journals"),
         sep(),
         make("background", "Background…"),
+        make("dock", "Dock position for this board", {
+          children: [
+            ...DOCK_POSITIONS.map((d) => make(`dock:${d}`, cap2(d), { checked: c.dock === d })),
+            sep(),
+            make("dock:default", "Use setting", { checked: !DOCK_POSITIONS.includes(c.dock) })
+          ]
+        }),
         make("tidy:grid", "Tidy into a grid")
       ];
     default:
@@ -15643,9 +15818,9 @@ function mountLater({ doc = globalThis.document, root, getBoard, onClose } = {})
           img.src = tile.src;
           cell.append(img);
         }
-        const cap2 = doc.createElement("figcaption");
-        cap2.textContent = tile.title || "Image";
-        cell.append(cap2);
+        const cap3 = doc.createElement("figcaption");
+        cap3.textContent = tile.title || "Image";
+        cell.append(cap3);
         body.append(cell);
       }
       return;
@@ -16318,6 +16493,7 @@ function mountBoardView({
     const r = root.getBoundingClientRect();
     rootRect = { left: r.left || 0, top: r.top || 0, width: r.width || 0, height: r.height || 0 };
     size = { width: rootRect.width, height: rootRect.height };
+    root.classList.toggle("pxd-root--narrow", size.width > 0 && size.width < 560);
   };
   const itemsR = createItemRenderer({
     doc,
@@ -16883,6 +17059,8 @@ function mountBoardView({
   const applyBackground = () => {
     const b = board2();
     const own = b?.plexus;
+    chrome.toolbar.setBoardColor?.(own?.bgColor);
+    chrome.toolbar.setBoardDock?.(own?.dock);
     const ownPattern = BOARD_PATTERNS.includes(own?.bg) ? own.bg : null;
     const ownHex = hexColor(own?.bgColor) || null;
     const ownTone = ownHex ? null : BOARD_TONES.includes(own?.bgColor) ? own.bgColor : null;
@@ -17339,7 +17517,7 @@ function mountBoardView({
       case "canvas":
         return { canPaste: true, snapshots: b?.snapshots || [] };
       case "board-menu":
-        return { snapshots: b?.snapshots || [] };
+        return { snapshots: b?.snapshots || [], dock: b?.plexus?.dock };
       case "card": {
         let queryText = item?.string || "";
         if (!isQueryString(queryText) && item?.target?.kind === "block") {
@@ -17521,6 +17699,9 @@ function mountBoardView({
         break;
       case "background":
         chrome.popover.open();
+        break;
+      case "dock":
+        void session.setBoardBackground?.({ dock: arg === "default" ? null : arg });
         break;
       case "bg-image": {
         void (async () => {
@@ -17917,6 +18098,12 @@ function mountBoardView({
       setColor: (c) => {
         const uids = targetUids();
         if (uids.length) void session.setColor?.(uids, c);
+      },
+      setLook: (look) => {
+        for (const uid of selection.items) void session.setLook?.(uid, look);
+      },
+      setShape: (shape) => {
+        if (selection.items.length) void session.setItemStyle?.(selection.items.slice(), { shape });
       },
       edit: () => {
         const it = singleItem();
@@ -19383,6 +19570,7 @@ function mountBoardView({
         measure();
         markViewport();
         chrome.ctx.reposition();
+        chrome.toolbar.scheduleDock?.();
       });
       ro.observe(root);
       observers.push(ro);
@@ -19460,6 +19648,7 @@ function mountBoardView({
       if (nextTier !== tier) {
         tier = nextTier;
         paintTier();
+        chrome.toolbar.scheduleDock?.();
       }
       if (!gesturing) {
         const g = gridBackground(vp, bgPattern);
@@ -19838,7 +20027,13 @@ var SETTING_IDS = Object.freeze({
   showCardBadges: "show-card-badges",
   showPalette: "show-palette",
   motion: "motion",
-  enterInCard: "enter-in-card"
+  enterInCard: "enter-in-card",
+  toolbarLayout: "toolbar-layout",
+  dockPosition: "dock-position",
+  dockStyle: "dock-style",
+  dockLabels: "dock-labels",
+  chromeDensity: "chrome-density",
+  dockOptions: "dock-options"
 });
 var DEFAULTS = Object.freeze({
   [SETTING_IDS.enabled]: true,
@@ -19865,7 +20060,13 @@ var DEFAULTS = Object.freeze({
   [SETTING_IDS.showCardBadges]: true,
   [SETTING_IDS.showPalette]: true,
   [SETTING_IDS.motion]: "full",
-  [SETTING_IDS.enterInCard]: "newline"
+  [SETTING_IDS.enterInCard]: "newline",
+  [SETTING_IDS.toolbarLayout]: "split",
+  [SETTING_IDS.dockPosition]: "bottom",
+  [SETTING_IDS.dockStyle]: "pill",
+  [SETTING_IDS.dockLabels]: false,
+  [SETTING_IDS.chromeDensity]: "comfortable",
+  [SETTING_IDS.dockOptions]: true
 });
 var BOARD_TONES2 = ["none", "paper", "gray", "red", "orange", "yellow", "green", "teal", "blue", "indigo", "purple", "pink"];
 var MAP_ZOOMS = ["0.3", "0.45", "0.6"];
@@ -19878,7 +20079,11 @@ var ENUMS = Object.freeze({
   [SETTING_IDS.boardTone]: BOARD_TONES2,
   [SETTING_IDS.mapZoom]: MAP_ZOOMS,
   [SETTING_IDS.motion]: ["full", "reduced", "none"],
-  [SETTING_IDS.enterInCard]: ["newline", "child"]
+  [SETTING_IDS.enterInCard]: ["newline", "child"],
+  [SETTING_IDS.toolbarLayout]: ["split", "classic", "dock-only"],
+  [SETTING_IDS.dockPosition]: ["bottom", "left", "top"],
+  [SETTING_IDS.dockStyle]: ["pill", "strip"],
+  [SETTING_IDS.chromeDensity]: ["comfortable", "compact"]
 });
 var NUMBERS = /* @__PURE__ */ new Set([SETTING_IDS.defaultCardWidth, SETTING_IDS.defaultCardHeight]);
 function settingsDefaults() {
@@ -19992,6 +20197,12 @@ var SETTING_ROWS = {
   [SETTING_IDS.showMinimap]: () => switchRow(SETTING_IDS.showMinimap, "Show minimap", "Show the small map of the whole board."),
   [SETTING_IDS.showPalette]: () => switchRow(SETTING_IDS.showPalette, "Show tool palette", "Show the tool palette along the bottom of the board."),
   [SETTING_IDS.motion]: () => selectRow(SETTING_IDS.motion, "Motion", "Full, reduced, or none. A system reduced-motion setting shortens Full.", ["full", "reduced", "none"]),
+  [SETTING_IDS.toolbarLayout]: () => selectRow(SETTING_IDS.toolbarLayout, "Toolbar layout", "Split: board bar on top, tools in the dock. Classic: the 2.1 look, tools in the top bar. Dock only: hide the top bar until the pointer is near the top edge.", ["split", "classic", "dock-only"]),
+  [SETTING_IDS.dockPosition]: () => selectRow(SETTING_IDS.dockPosition, "Tool dock position", "Where the tool dock sits. A board can override this from its More menu.", ["bottom", "left", "top"]),
+  [SETTING_IDS.dockStyle]: () => selectRow(SETTING_IDS.dockStyle, "Dock shape", "Pill is a rounded floating dock. Strip is a flat bar.", ["pill", "strip"]),
+  [SETTING_IDS.dockLabels]: () => switchRow(SETTING_IDS.dockLabels, "Show tool names under icons", "Label each tool in the dock."),
+  [SETTING_IDS.chromeDensity]: () => selectRow(SETTING_IDS.chromeDensity, "Button size", "Comfortable or compact buttons for both bars.", ["comfortable", "compact"]),
+  [SETTING_IDS.dockOptions]: () => switchRow(SETTING_IDS.dockOptions, "Show tool options in the dock", "Show the active tool's quick options (colors, look, shape) next to the dock."),
   [SETTING_IDS.controlsPosition]: () => selectRow(SETTING_IDS.controlsPosition, "Controls", "Rail is the vertical stack on the right. Bar is the horizontal zoom group.", ["rail", "bar"]),
   [SETTING_IDS.snapGuides]: () => switchRow(SETTING_IDS.snapGuides, "Snap guides", "Line a dragged card up with its neighbours and show the guides."),
   [SETTING_IDS.snapGrid]: () => switchRow(SETTING_IDS.snapGrid, "Snap to grid", "Snap a dragged card to the 24 pixel grid. Hold Alt while dragging to skip snapping."),
@@ -20032,6 +20243,12 @@ var SETTING_GROUPS = [
     SETTING_IDS.wheel,
     SETTING_IDS.showMinimap,
     SETTING_IDS.showPalette,
+    SETTING_IDS.toolbarLayout,
+    SETTING_IDS.dockPosition,
+    SETTING_IDS.dockStyle,
+    SETTING_IDS.dockLabels,
+    SETTING_IDS.chromeDensity,
+    SETTING_IDS.dockOptions,
     SETTING_IDS.controlsPosition,
     SETTING_IDS.snapGuides,
     SETTING_IDS.snapGrid,

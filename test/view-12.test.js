@@ -854,6 +854,47 @@ test("More button opens the board menu at the button and picks run", async () =>
   }
 });
 
+test("TB-6: the board's own dock key picks the side, opening writes nothing, and the menu action writes it", async () => {
+  const f = mountFixture({ settings: { "dock-position": "bottom" }, rootPlexus: { dock: "left", bgColor: "teal" } });
+  try {
+    await f.flush();
+    assert.equal(f.root.classList.contains("pxd-root--dock-left"), true);
+    assert.equal(f.root.classList.contains("pxd-root--dock-bottom"), false);
+    assert.equal(f.root.querySelector(".pxd-toolbar").style["--pxd-board-line"], "var(--pxd-teal-line)");
+    assert.equal(f.session.mutations.length, 0, "no write on open");
+    f.root.querySelector(".pxd-toolbar__more").click();
+    pickRow(f, "dock");
+    pickRow(f, "dock:top");
+    await tick();
+    assert.deepEqual(f.session.mutations.at(-1), ["setBoardBackground", { dock: "top" }]);
+    f.root.querySelector(".pxd-toolbar__more").click();
+    pickRow(f, "dock");
+    pickRow(f, "dock:default");
+    await tick();
+    assert.deepEqual(f.session.mutations.at(-1), ["setBoardBackground", { dock: null }]);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("TB-7: a board narrower than 560px gets the narrow class", async () => {
+  const f = mountFixture();
+  try {
+    await f.flush();
+    assert.equal(f.root.classList.contains("pxd-root--narrow"), false, "800px wide");
+    f.root.getBoundingClientRect = () => ({ left: 0, top: 0, width: 480, height: 400, right: 480, bottom: 400, x: 0, y: 0 });
+    for (const ro of [...f.stub.observers]) ro.cb?.([]);
+    assert.equal(f.root.classList.contains("pxd-root--narrow"), true, "480px wide");
+    f.root.getBoundingClientRect = () => ({ left: 0, top: 0, width: 900, height: 400, right: 900, bottom: 400, x: 0, y: 0 });
+    for (const ro of [...f.stub.observers]) ro.cb?.([]);
+    assert.equal(f.root.classList.contains("pxd-root--narrow"), false);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
 // ------------------------------------------------------------------ Alt+drag duplicate
 
 test("Alt+drag shows a dashed ghost, leaves the original, and duplicates on drop; Shift adds 'as ref'", async () => {

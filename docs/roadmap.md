@@ -87,6 +87,7 @@ Native diagrams are React Flow (`.react-flow`, nodes `.react-flow__node-block`).
 | P7 | Look, feel and accessibility | 1.9.0 | gate passed 2026-10-02, `7ffd95c` |
 | P8 | Docs, hardening and 2.0 | 2.0.0 | tagged `v2.0.0` on 2026-10-03. PF-2 stays a known limit. |
 | P9 | Whole pages, block arrows, card children | 2.1.0 | done 2026-10-03, tagged `v2.1.0`, `08005e2` |
+| P10 | Board bar and tool dock | 2.2.0 | open |
 
 Order matters: P1 and P2 are the user's direct requests. Within a phase, do tasks in the listed order unless one is blocked.
 
@@ -251,6 +252,20 @@ Card children:
 - [x] **CH-3 Peek on hover** (S) — done 2026-10-03, `8739579`: hover 250 ms no popover, 750 ms showed the rows, mouse leave closed it, :edit/time unchanged (.live/shots/CH-3.png). Original task: Hovering the badge 400 ms shows a read-only popover with up to 12 children, 2 levels; it closes on leave, never shows during a drag, and writes nothing. Accept: live.
 - [x] **CH-4 Spread children as cards** (M) — done 2026-10-03, `8739579`: Spread on alpha (beta, gamma, delta) made 3 ref cards and 3 arrows in one column at +40, one Cmd+Z removed all of them (.live/shots/CH-4.png). Original task: Card menu "Spread children as cards": one block-ref card `((child))` per direct child, in a column to the right of the card (40 gap), each with an arrow from the card, capped at 22 children (2 writes each, under `BULK_CARD_CAP`) with the usual toast past the cap. Children already on the board as cards are skipped. One Cmd+Z per the existing bulk-undo pattern. Accept: spread a card with 3 children, undo.
 - [x] **CH-5 Gate and release 2.1.0** — done 2026-10-03, `08005e2`, tag `v2.1.0`: npm run check green (925 tests), Pages extension.js and extension.css cmp equal to the local build. Original task: standing gate, README and CHANGELOG, tag `v2.1.0`.
+
+### P10: Board bar and tool dock (2.2.0)
+
+The top bar and the bottom palette were the same component drawn twice. Split them by job: the top bar is the board bar (navigation, views, board actions) and the dock holds the tools. Design consult: `/tmp/wo/pxd-toolbar-design.fable.md`. `classic` reproduces 2.1.0 so the user can go back. Settings are per device (`toolbar-layout`, `dock-position`, `dock-style`, `dock-labels`, `chrome-density`, `dock-options`); one per-board value, `plexus.dock`, is written only from an explicit menu action.
+
+- [ ] **TB-1 Layout presets** (M) — `toolbar-layout` is `split` (default), `classic` or `dock-only`. Split hides the top-bar tool group (it stays in the DOM as `pxd-toolbar__tools`) and shows the dock. Classic sets no dock classes and looks like 2.1.0. Dock only hides the top bar until the pointer is within 48px of the board's top edge or the bar has focus, and never while a popover or menu from it is open. Accept: tests for each preset; live screenshots light and dark.
+- [ ] **TB-2 Dock look** (M) — The nine tools in a floating pill (strip optional), buttons 36px with 18px icons, heavier shadow, separators navigate | create | connect, optional labels, `chrome-density` compact, `dock-position` bottom, left or top, minimap lift as `--pxd-dock-offset`. The board bar is a 34px attached strip with ghost 26px buttons. Accept: live screenshots; old `pxd-palette*` classes kept as aliases.
+- [ ] **TB-3 Active indicator and lock glyph** (S) — A 120ms sliding pill behind the active tool (light: soft fill; dark: 1.5px accent border plus a dot, no fill). A padlock glyph in the pill's corner replaces the inset ring when the tool is locked. Accept: tests for the classes and the indicator box; dark screenshot shows the active tool with fills disabled.
+- [ ] **TB-4 Inline tool options** (M) — The dock extends right with the active tool's quick options: colors for Card, Sticky and Section, block/card look for Card, shape kind for Shape. They call the same handlers as the context bar on the selection. No new commands and no palette entries (PF-1). Accept: tests per tool; a tool switch adds no listeners.
+- [ ] **TB-5 Board-coloured crumb path** (S) — The last crumb carries a 3px left rule and the bar's bottom border tints with the board's own `bgColor` (palette tone or hex). Accept: test for the variable; live on a nested board with a color.
+- [ ] **TB-6 Settings rows and per-board dock** (M) — Six rows under Board in the settings panel. Board menu item "Dock position for this board" (Bottom, Left, Top, Use setting) writes `plexus.dock` through `setBoardBackground`; nothing is written on open, pan, zoom or select, and Restore native removes the key. Accept: tests for the rows, the menu, the write and the override.
+- [ ] **TB-7 LOD and narrow behaviour** (S) — Overview keeps Select, Hand and Board in the dock and hides the rest and the options. A board under 560px wide gets `pxd-root--narrow`: 32px buttons, no separators, no options. Fullscreen top bar gains 4px padding. Accept: tests; live below zoom 0.2 and at 480px inline.
+- [ ] **TB-8 Dark-mode fix** (S) — `.pxd-tool--active` and `--locked` were single-class rules that lost to `.pxd-root .pxd-btn` and Blueprint's dark button rules. Restated at three classes. Dark tokens carry the dock's active tool as a border. Accept: CSS tests; dark screenshot.
+- [ ] **TB-9 Gate** — standing gate: `npm run check` green, live acceptance on `Plexus Diagram/Test Lab` (screenshots light and dark for split, classic and dock-only; zoom below 0.2; fullscreen and 480px inline; typing bench within +0.1 ms/key; Restore native diagram still clean), then release 2.2.0 per section 4.
 
 ## 6. Later (ideas not scheduled)
 

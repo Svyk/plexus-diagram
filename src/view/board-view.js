@@ -595,6 +595,7 @@ export function mountBoardView({
     const r = root.getBoundingClientRect();
     rootRect = { left: r.left || 0, top: r.top || 0, width: r.width || 0, height: r.height || 0 };
     size = { width: rootRect.width, height: rootRect.height };
+    root.classList.toggle("pxd-root--narrow", size.width > 0 && size.width < 560);
   };
 
   // ------------------------------------------------------------ layers
@@ -1115,6 +1116,8 @@ export function mountBoardView({
   const applyBackground = () => {
     const b = board();
     const own = b?.plexus;
+    chrome.toolbar.setBoardColor?.(own?.bgColor);
+    chrome.toolbar.setBoardDock?.(own?.dock);
     const ownPattern = BOARD_PATTERNS.includes(own?.bg) ? own.bg : null;
     const ownHex = hexColor(own?.bgColor) || null;
     const ownTone = ownHex ? null : (BOARD_TONES.includes(own?.bgColor) ? own.bgColor : null);
@@ -1504,7 +1507,7 @@ export function mountBoardView({
     const item = uid ? b?.items.get(uid) : null;
     switch (kind) {
       case "canvas": return { canPaste: true, snapshots: b?.snapshots || [] };
-      case "board-menu": return { snapshots: b?.snapshots || [] };
+      case "board-menu": return { snapshots: b?.snapshots || [], dock: b?.plexus?.dock };
       case "card": {
         let queryText = item?.string || "";
         if (!isQueryString(queryText) && item?.target?.kind === "block") {
@@ -1629,6 +1632,7 @@ export function mountBoardView({
       case "add-page": addPage(world); break;
       case "add-week": addDaily(weekDates(), world); break;
       case "background": chrome.popover.open(); break;
+      case "dock": void session.setBoardBackground?.({ dock: arg === "default" ? null : arg }); break;
       case "bg-image": {
         void (async () => {
           let text = "";
@@ -1858,6 +1862,8 @@ export function mountBoardView({
       savePng: () => { void exportPng(); },
       openOutline: () => openBoardOutline(),
       setColor: (c) => { const uids = targetUids(); if (uids.length) void session.setColor?.(uids, c); },
+      setLook: (look) => { for (const uid of selection.items) void session.setLook?.(uid, look); },
+      setShape: (shape) => { if (selection.items.length) void session.setItemStyle?.(selection.items.slice(), { shape }); },
       edit: () => { const it = singleItem(); if (it) void enterEdit(it.uid); },
       openSidebar: () => openItemInSidebar(singleItem()),
       collapse: () => { const it = singleItem(); if (it) void session.setCollapsed?.(it.uid, !it.collapsed); },
@@ -3135,7 +3141,7 @@ export function mountBoardView({
   const RO = globalThis.ResizeObserver;
   if (typeof RO === "function") {
     try {
-      const ro = new RO(() => { measure(); markViewport(); chrome.ctx.reposition(); });
+      const ro = new RO(() => { measure(); markViewport(); chrome.ctx.reposition(); chrome.toolbar.scheduleDock?.(); });
       ro.observe(root);
       observers.push(ro);
     } catch { /* stub */ }
@@ -3204,7 +3210,7 @@ export function mountBoardView({
       itemsR.setZoom(vp.zoom);
       // The tier flips (classes + font variables, once) the moment the zoom crosses the threshold, mid-gesture too.
       const nextTier = lodTier(vp.zoom, tier, { threshold: mapThreshold() });
-      if (nextTier !== tier) { tier = nextTier; paintTier(); }
+      if (nextTier !== tier) { tier = nextTier; paintTier(); chrome.toolbar.scheduleDock?.(); }
       if (!gesturing) {
         const g = gridBackground(vp, bgPattern);
         if (g) {

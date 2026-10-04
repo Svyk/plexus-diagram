@@ -3,7 +3,7 @@
 // No DOM here: everything is data so the ids, disabled and checked logic can be tested directly.
 
 import { MIND_DEPTH_MAX, MIND_DEPTH_MIN, MIND_DIRECTIONS, MIND_SPACINGS, normalizeMindPreset } from "../model/mindmap.js";
-import { PALETTE, FONT_SIZES } from "../model/schema.js";
+import { PALETTE, FONT_SIZES, DOCK_POSITIONS } from "../model/schema.js";
 import { SHAPES } from "../model/shapes.js";
 import { partitionSnapshots } from "../model/snapshots.js";
 import { STARTERS } from "../model/templates.js";
@@ -328,6 +328,13 @@ export function buildMenu(kind, ctx = {}) {
         make("add-week", "Add this week's journals"),
         sep(),
         make("background", "Background…"),
+        make("dock", "Dock position for this board", {
+          children: [
+            ...DOCK_POSITIONS.map((d) => make(`dock:${d}`, cap(d), { checked: c.dock === d })),
+            sep(),
+            make("dock:default", "Use setting", { checked: !DOCK_POSITIONS.includes(c.dock) }),
+          ],
+        }),
         make("tidy:grid", "Tidy into a grid"),
       ];
 

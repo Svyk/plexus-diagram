@@ -148,7 +148,7 @@ test("multi menu: align/distribute/tidy/same-size submenus, fold and pin follow 
 });
 
 test("board-menu ids", () => {
-  assert.deepEqual(ids(buildMenu("board-menu", {})), ["template", "save-template", "save-snapshot", "restore-snapshot", "export-svg", "export-png", "copy-outline", "sort-outline", "open-outline", "fold-all", "unfold-all", "add-page", "add-today", "add-week", "background", "tidy:grid"]);
+  assert.deepEqual(ids(buildMenu("board-menu", {})), ["template", "save-template", "save-snapshot", "restore-snapshot", "export-svg", "export-png", "copy-outline", "sort-outline", "open-outline", "fold-all", "unfold-all", "add-page", "add-today", "add-week", "background", "dock", "tidy:grid"]);
   assert.equal(byId(buildMenu("board-menu", {}), "open-outline").label, "Open outline in sidebar");
   assert.equal(byId(buildMenu("board-menu", {}), "export-png").label, "Export as PNG");
   for (const kind of ["card", "section", "text", "edge", "multi"]) {

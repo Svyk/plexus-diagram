@@ -32,6 +32,7 @@ export const DIRS = ["one", "two", "none"];
 export const ROUTES = ["curve", "straight", "elbow", "around"];
 export const DASHES = ["solid", "dashed", "animated"];
 export const BOARD_PATTERNS = ["dots", "lines", "cross", "grid", "plain"];
+export const DOCK_POSITIONS = ["bottom", "left", "top"];
 export const BOARD_TONES = ["paper", ...PALETTE];
 export const FIT_PAD = 24;
 // Native diagram swatches, stored as lowercase hex. Named 1.2 colors stay names.
@@ -233,6 +234,7 @@ export function withBoardMarker(plexus, on) {
   delete base.bgColor;
   delete base.bgImage;
   delete base.lodZoom;
+  delete base.dock;
   return Object.keys(base).length ? base : null;
 }
 

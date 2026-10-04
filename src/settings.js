@@ -24,6 +24,12 @@ export const SETTING_IDS = Object.freeze({
   showPalette: "show-palette",
   motion: "motion",
   enterInCard: "enter-in-card",
+  toolbarLayout: "toolbar-layout",
+  dockPosition: "dock-position",
+  dockStyle: "dock-style",
+  dockLabels: "dock-labels",
+  chromeDensity: "chrome-density",
+  dockOptions: "dock-options",
 });
 
 const DEFAULTS = Object.freeze({
@@ -52,6 +58,12 @@ const DEFAULTS = Object.freeze({
   [SETTING_IDS.showPalette]: true,
   [SETTING_IDS.motion]: "full",
   [SETTING_IDS.enterInCard]: "newline",
+  [SETTING_IDS.toolbarLayout]: "split",
+  [SETTING_IDS.dockPosition]: "bottom",
+  [SETTING_IDS.dockStyle]: "pill",
+  [SETTING_IDS.dockLabels]: false,
+  [SETTING_IDS.chromeDensity]: "comfortable",
+  [SETTING_IDS.dockOptions]: true,
 });
 
 const BOARD_TONES = ["none", "paper", "gray", "red", "orange", "yellow", "green", "teal", "blue", "indigo", "purple", "pink"];
@@ -67,6 +79,10 @@ const ENUMS = Object.freeze({
   [SETTING_IDS.mapZoom]: MAP_ZOOMS,
   [SETTING_IDS.motion]: ["full", "reduced", "none"],
   [SETTING_IDS.enterInCard]: ["newline", "child"],
+  [SETTING_IDS.toolbarLayout]: ["split", "classic", "dock-only"],
+  [SETTING_IDS.dockPosition]: ["bottom", "left", "top"],
+  [SETTING_IDS.dockStyle]: ["pill", "strip"],
+  [SETTING_IDS.chromeDensity]: ["comfortable", "compact"],
 });
 
 const NUMBERS = new Set([SETTING_IDS.defaultCardWidth, SETTING_IDS.defaultCardHeight]);
@@ -198,6 +214,12 @@ const SETTING_ROWS = {
   [SETTING_IDS.showMinimap]: () => switchRow(SETTING_IDS.showMinimap, "Show minimap", "Show the small map of the whole board."),
   [SETTING_IDS.showPalette]: () => switchRow(SETTING_IDS.showPalette, "Show tool palette", "Show the tool palette along the bottom of the board."),
   [SETTING_IDS.motion]: () => selectRow(SETTING_IDS.motion, "Motion", "Full, reduced, or none. A system reduced-motion setting shortens Full.", ["full", "reduced", "none"]),
+  [SETTING_IDS.toolbarLayout]: () => selectRow(SETTING_IDS.toolbarLayout, "Toolbar layout", "Split: board bar on top, tools in the dock. Classic: the 2.1 look, tools in the top bar. Dock only: hide the top bar until the pointer is near the top edge.", ["split", "classic", "dock-only"]),
+  [SETTING_IDS.dockPosition]: () => selectRow(SETTING_IDS.dockPosition, "Tool dock position", "Where the tool dock sits. A board can override this from its More menu.", ["bottom", "left", "top"]),
+  [SETTING_IDS.dockStyle]: () => selectRow(SETTING_IDS.dockStyle, "Dock shape", "Pill is a rounded floating dock. Strip is a flat bar.", ["pill", "strip"]),
+  [SETTING_IDS.dockLabels]: () => switchRow(SETTING_IDS.dockLabels, "Show tool names under icons", "Label each tool in the dock."),
+  [SETTING_IDS.chromeDensity]: () => selectRow(SETTING_IDS.chromeDensity, "Button size", "Comfortable or compact buttons for both bars.", ["comfortable", "compact"]),
+  [SETTING_IDS.dockOptions]: () => switchRow(SETTING_IDS.dockOptions, "Show tool options in the dock", "Show the active tool's quick options (colors, look, shape) next to the dock."),
   [SETTING_IDS.controlsPosition]: () => selectRow(SETTING_IDS.controlsPosition, "Controls", "Rail is the vertical stack on the right. Bar is the horizontal zoom group.", ["rail", "bar"]),
   [SETTING_IDS.snapGuides]: () => switchRow(SETTING_IDS.snapGuides, "Snap guides", "Line a dragged card up with its neighbours and show the guides."),
   [SETTING_IDS.snapGrid]: () => switchRow(SETTING_IDS.snapGrid, "Snap to grid", "Snap a dragged card to the 24 pixel grid. Hold Alt while dragging to skip snapping."),
@@ -229,6 +251,7 @@ const SETTING_GROUPS = [
   ]],
   ["group-board", "Board", "The canvas, the controls, and how you move around.", [
     SETTING_IDS.enabled, SETTING_IDS.fullscreenOnZoom, SETTING_IDS.wheel, SETTING_IDS.showMinimap, SETTING_IDS.showPalette,
+    SETTING_IDS.toolbarLayout, SETTING_IDS.dockPosition, SETTING_IDS.dockStyle, SETTING_IDS.dockLabels, SETTING_IDS.chromeDensity, SETTING_IDS.dockOptions,
     SETTING_IDS.controlsPosition, SETTING_IDS.snapGuides, SETTING_IDS.snapGrid, SETTING_IDS.grid, SETTING_IDS.boardTone,
     SETTING_IDS.mapZoom, SETTING_IDS.enableShortcuts, SETTING_IDS.showVersionBadge,
   ]],

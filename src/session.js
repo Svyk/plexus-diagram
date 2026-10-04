@@ -22,6 +22,7 @@ import {
 } from "./model/board.js";
 import {
   BOARD_PATTERNS,
+  DOCK_POSITIONS,
   DEFAULT_BOARD_CARD,
   DEFAULT_SIZES,
   FIT_PAD,
@@ -1244,8 +1245,8 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
 
     // bg / bgColor / bgImage / lodZoom: undefined leaves the key, null removes it.
     // bg is a pattern. bgColor is a tone name or #rrggbb. bgImage is an https URL, painted locked.
-    // lodZoom is this board's map threshold (0.05–1.5).
-    setBoardBackground({ bg, bgColor, bgImage, lodZoom } = {}) {
+    // lodZoom is this board's map threshold (0.05–1.5). dock is this board's tool dock side.
+    setBoardBackground({ bg, bgColor, bgImage, lodZoom, dock } = {}) {
       return txn((t) => {
         if (!board.enhanced) return false;
         let tone = bgColor;
@@ -1265,9 +1266,10 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
           if (picked === 0.45 && Number(zoom) !== 0.45) return false;
           zoom = picked;
         }
+        if (dock != null && !DOCK_POSITIONS.includes(dock)) return false;
         const base = rawPlexus(uid);
         const next = { ...base };
-        for (const [key, value] of [["bg", bg], ["bgColor", tone], ["bgImage", image], ["lodZoom", zoom]]) {
+        for (const [key, value] of [["bg", bg], ["bgColor", tone], ["bgImage", image], ["lodZoom", zoom], ["dock", dock]]) {
           if (value === undefined) continue;
           if (value === null) delete next[key];
           else next[key] = value;

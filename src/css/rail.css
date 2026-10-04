@@ -75,3 +75,7 @@
 .pxd-root.pxd-root--rail .pxd-minimap {
   right: 52px;
 }
+
+.pxd-root.pxd-root--docked.pxd-root--dock-left .pxd-legend {
+  left: 64px;
+}

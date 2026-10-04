@@ -1,7 +1,8 @@
 // Screen-space chrome: toolbar (spec 3.5), context bar (spec 3.4), toast, board search,
 // minimap, version badge, sync dot. Everything lives inside .pxd-root; no portals.
 
-import { PALETTE, FONT_SIZES, BOARD_PATTERNS } from "../model/schema.js";
+import { PALETTE, FONT_SIZES, BOARD_PATTERNS, DOCK_POSITIONS } from "../model/schema.js";
+import { SHAPES } from "../model/shapes.js";
 import { changelogEntry } from "../model/changelog.js";
 import { CHANGELOG_TEXT } from "../changelog-text.js";
 import { buildColorPicker } from "./color-picker.js";
@@ -38,6 +39,14 @@ const PALETTE_LIST = [
   ["board", "Board", "W", "grid-view"],
   ["connect", "Connect", "C", "flows"],
 ];
+
+const LAYOUTS = ["split", "classic", "dock-only"];
+const DOCK_STYLES = ["pill", "strip"];
+const DOCK_GROUPS = [["select", "hand"], ["card", "text", "sticky", "shape", "section", "board"], ["connect"]];
+const SWATCH_TOOLS = new Set(["card", "sticky", "section"]);
+const REVEAL_PX = 48;
+const cap = (word) => word.charAt(0).toUpperCase() + word.slice(1);
+const SHAPE_LABELS = { rectangle: "Rectangle", rounded: "Rounded", ellipse: "Ellipse", diamond: "Diamond", parallelogram: "Parallelogram", cylinder: "Cylinder" };
 
 const MAX_CRUMBS = 4;
 const POPOVER_GAP = 6;
@@ -190,7 +199,7 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
     });
   };
   renderCrumbs(crumbs);
-  const toolGroup = el("div", "pxd-toolbar__group", toolbar);
+  const toolGroup = el("div", "pxd-toolbar__group pxd-toolbar__tools", toolbar);
   const toolButtons = new Map();
   for (const [id, label, key, icon] of TOOL_LIST) {
     const b = iconButton(toolGroup, "pxd-tool", icon, label, `${label} (${key}). Double-click to lock`, () => on.setTool?.(id, false));
@@ -264,16 +273,119 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
   const railExtra = el("div", "pxd-rail__extra", railEl);
   const railZoom = button(railExtra, "pxd-rail__zoom", "100%", "Zoom to 100% (Shift 0)", () => on.zoomReset?.());
   const railBadge = button(railExtra, "pxd-badge pxd-rail__badge", version ? `v${version}` : "", "Show changelog", toggleLog);
-  const palette = el("div", "pxd-palette pxd-chrome", root);
-  const paletteBar = el("div", "pxd-palette__bar", palette);
+  const palette = el("div", "pxd-palette pxd-dock pxd-chrome", root);
+  const paletteBar = el("div", "pxd-palette__bar pxd-dock__bar", palette);
+  const dockIndicator = el("span", "pxd-dock__indicator", paletteBar);
+  dockIndicator.setAttribute("aria-hidden", "true");
+  el("span", "bp3-icon bp3-icon-lock pxd-dock__lock", dockIndicator);
   const paletteButtons = new Map();
-  for (const [id, label, key, icon] of PALETTE_LIST) {
-    const b = iconButton(paletteBar, "pxd-palette__btn", icon, label, `${label} (${key})`, () => on.setTool?.(id, false));
-    b.dataset.tool = id;
-    b.setAttribute("data-tool", id);
-    listen(b, "dblclick", (event) => { event.preventDefault(); event.stopPropagation(); on.setTool?.(id, true); });
-    paletteButtons.set(id, b);
+  DOCK_GROUPS.forEach((ids, n) => {
+    if (n) el("span", "pxd-dock__sep", paletteBar);
+    const group = el("div", "pxd-dock__group", paletteBar);
+    for (const id of ids) {
+      const [, label, key, icon] = PALETTE_LIST.find((entry) => entry[0] === id);
+      const b = iconButton(group, "pxd-palette__btn pxd-dock__btn", icon, label, `${label} (${key})`, () => on.setTool?.(id, false));
+      b.dataset.tool = id;
+      b.setAttribute("data-tool", id);
+      const tag = el("span", "pxd-dock__label", b);
+      tag.setAttribute("data-label", label);
+      tag.setAttribute("aria-hidden", "true");
+      listen(b, "dblclick", (event) => { event.preventDefault(); event.stopPropagation(); on.setTool?.(id, true); });
+      paletteButtons.set(id, b);
+    }
+  });
+  // Inline tool options: built once, shown per tool, so a tool switch never adds listeners.
+  const dockOptions = el("div", "pxd-dock__options", paletteBar);
+  dockOptions.style.display = "none";
+  el("span", "pxd-dock__sep", dockOptions);
+  const optionSets = new Map();
+  const optionSet = (cls) => { const node = el("div", `pxd-dock__optset ${cls}`, dockOptions); node.style.display = "none"; return node; };
+  const colorOpts = optionSet("pxd-dock__colors");
+  swatches(colorOpts, (c) => on.setColor?.(c));
+  const lookOpts = optionSet("pxd-dock__looks");
+  for (const look of ["block", "card"]) {
+    const b = button(lookOpts, "pxd-dock__opt", cap(look), `Show selected as ${look}`, () => on.setLook?.(look));
+    b.dataset.look = look;
+    b.setAttribute("data-look", look);
   }
+  const shapeOpts = optionSet("pxd-dock__shapes");
+  for (const shape of SHAPES) {
+    const b = button(shapeOpts, "pxd-dock__opt", SHAPE_LABELS[shape] || shape, `Shape: ${SHAPE_LABELS[shape] || shape}`, () => on.setShape?.(shape));
+    b.dataset.shape = shape;
+    b.setAttribute("data-shape", shape);
+  }
+  optionSets.set("card", [colorOpts, lookOpts]);
+  optionSets.set("sticky", [colorOpts]);
+  optionSets.set("section", [colorOpts]);
+  optionSets.set("shape", [shapeOpts]);
+  let activeTool = "select";
+  let activeLocked = false;
+  const px = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
+  const layoutDock = () => {
+    const b = paletteButtons.get(activeTool);
+    const visible = Boolean(b) && px(b.offsetWidth) > 0;
+    dockIndicator.classList.toggle("pxd-dock__indicator--locked", activeLocked);
+    dockIndicator.classList.toggle("pxd-dock__indicator--idle", !visible);
+    if (!visible) return;
+    dockIndicator.style.setProperty("--pxd-ind-x", `${px(b.offsetLeft)}px`);
+    dockIndicator.style.setProperty("--pxd-ind-y", `${px(b.offsetTop)}px`);
+    dockIndicator.style.setProperty("--pxd-ind-w", `${px(b.offsetWidth)}px`);
+    dockIndicator.style.setProperty("--pxd-ind-h", `${px(b.offsetHeight)}px`);
+  };
+  let dockFrame = null;
+  const scheduleDock = () => {
+    if (dockFrame) return;
+    dockFrame = timers.frame(() => { dockFrame = null; layoutDock(); });
+  };
+  listen(palette, "pointerenter", () => layoutDock());
+  const applyDockOptions = () => {
+    const sets = optionSets.get(activeTool) || [];
+    const show = sets.length > 0 && setting("dock-options") !== false;
+    dockOptions.style.display = show ? "" : "none";
+    for (const node of new Set([colorOpts, lookOpts, shapeOpts])) node.style.display = show && sets.includes(node) ? "" : "none";
+  };
+
+  // Board bar visibility for the dock-only layout: near the top edge, or focus inside, or a popover/menu from it is open.
+  let boardDock = null;
+  let barNear = false;
+  let barFocus = false;
+  let revealOff = null;
+  const barHeld = () => {
+    if (popover.isOpen() || crumbMenu) return true;
+    return Boolean(root.querySelector?.(".pxd-menu"));
+  };
+  const paintBar = () => {
+    const dockOnly = root.classList.contains("pxd-root--layout-dock-only");
+    toolbar.classList.toggle("pxd-toolbar--hidden", dockOnly && !(barNear || barFocus || barHeld()));
+  };
+  const onRootMove = (event) => {
+    const r = root.getBoundingClientRect();
+    const near = event.clientY - (r.top || 0) <= REVEAL_PX || Boolean(toolbar.contains?.(event.target));
+    if (near === barNear) {
+      if (!near && !toolbar.classList.contains("pxd-toolbar--hidden")) paintBar();
+      return;
+    }
+    barNear = near;
+    paintBar();
+  };
+  const onRootLeave = () => { if (!barNear) return; barNear = false; paintBar(); };
+  const onBarFocus = () => { barFocus = true; paintBar(); };
+  const onBarBlur = () => { barFocus = false; paintBar(); };
+  const watchReveal = (on) => {
+    if (on && !revealOff) {
+      const offs = [];
+      for (const [node, type, fn] of [[root, "pointermove", onRootMove], [root, "pointerleave", onRootLeave], [toolbar, "focusin", onBarFocus], [toolbar, "focusout", onBarBlur]]) {
+        node.addEventListener(type, fn);
+        offs.push(() => node.removeEventListener(type, fn));
+      }
+      revealOff = () => offs.splice(0).forEach((off) => off());
+    } else if (!on && revealOff) {
+      revealOff();
+      revealOff = null;
+      barNear = false;
+      barFocus = false;
+    }
+  };
   const applyControls = () => {
     const rail = setting("controls-position") !== "bar";
     root.classList.toggle("pxd-root--rail", rail);
@@ -283,8 +395,26 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
     badge.style.display = !rail && showBadge ? "" : "none";
     railBadge.style.display = rail && showBadge ? "" : "none";
     palette.style.display = setting("show-palette") === false ? "none" : "";
+    const layoutSetting = setting("toolbar-layout");
+    const layout = LAYOUTS.includes(layoutSetting) ? layoutSetting : "split";
+    const docked = layout !== "classic";
+    for (const name of LAYOUTS) root.classList.toggle(`pxd-root--layout-${name}`, name === layout);
+    root.classList.toggle("pxd-root--docked", docked);
+    toolGroup.style.display = docked ? "none" : "";
+    const dockSetting = setting("dock-position");
+    const own = DOCK_POSITIONS.includes(boardDock) ? boardDock : null;
+    const side = own ?? (DOCK_POSITIONS.includes(dockSetting) ? dockSetting : "bottom");
+    for (const name of DOCK_POSITIONS) root.classList.toggle(`pxd-root--dock-${name}`, docked && name === side);
+    const styleSetting = setting("dock-style");
+    const shape = DOCK_STYLES.includes(styleSetting) ? styleSetting : "pill";
+    for (const name of DOCK_STYLES) root.classList.toggle(`pxd-root--dock-${name}`, docked && name === shape);
+    root.classList.toggle("pxd-root--dock-labels", docked && setting("dock-labels") === true);
+    root.classList.toggle("pxd-root--dense", docked && setting("chrome-density") === "compact");
+    watchReveal(layout === "dock-only");
+    paintBar();
+    applyDockOptions();
+    layoutDock();
   };
-  applyControls();
 
   const toolbarApi = {
     el: toolbar,
@@ -294,10 +424,31 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
         b.classList.toggle("pxd-tool--active", id === tool);
         b.classList.toggle("pxd-tool--locked", id === tool && Boolean(locked));
       }
+      activeTool = tool;
+      activeLocked = Boolean(locked);
       for (const [id, b] of paletteButtons) {
         b.classList.toggle("pxd-palette__btn--on", id === tool);
+        b.classList.toggle("pxd-dock__btn--on", id === tool);
         b.classList.toggle("pxd-tool--locked", id === tool && Boolean(locked));
+        b.classList.toggle("pxd-dock__btn--locked", id === tool && Boolean(locked));
       }
+      applyDockOptions();
+      layoutDock();
+    },
+    layoutDock,
+    scheduleDock,
+    setBoardDock(value) {
+      const next = DOCK_POSITIONS.includes(value) ? value : null;
+      if (next === boardDock) return;
+      boardDock = next;
+      applyControls();
+    },
+    setBoardColor(value) {
+      let line = null;
+      if (PALETTE.includes(value)) line = `var(--pxd-${value}-line)`;
+      else if (/^#[0-9a-f]{6}$/i.test(String(value || ""))) line = String(value).toLowerCase();
+      if (line) toolbar.style.setProperty("--pxd-board-line", line);
+      else toolbar.style.removeProperty("--pxd-board-line");
     },
     setZoom(z) {
       const label = `${Math.round((z || 1) * 100)}%`;
@@ -425,6 +576,7 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
   };
   let bgState = { pattern: null, tone: null, override: false };
   popover.setState(bgState);
+  applyControls();
 
   // ---------------------------------------------------------------- back to content
   const backEl = button(root, "pxd-backtocontent pxd-chrome", "Back to content", "Fit the view back to your cards", () => on.backToContent?.());
@@ -772,6 +924,8 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
   const dispose = () => {
     toastTimer?.();
     mmFrame?.();
+    dockFrame?.();
+    revealOff?.();
     bgOffs.splice(0).forEach((off) => off());
     listeners.splice(0).forEach((off) => off());
     for (const node of [toolbar, railEl, palette, popEl, backEl, ctx, toast, search, minimap]) node.remove();

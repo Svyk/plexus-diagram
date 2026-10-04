@@ -2411,6 +2411,104 @@ body.roam-body.dark .pxd-root.pxd-bg-pink {
   opacity: 0.35;
 }
 
+/* RF-2 (2.4): block arrows point into the card at the row. The inner segment and its head live in the overlay
+   (above the cards), colored like the edge; the linked row keeps a persistent mark in the edge color. */
+.pxd-root .pxd-inner {
+  pointer-events: none;
+}
+
+.pxd-root .pxd-inner .pxd-inner__line {
+  fill: none;
+  stroke: var(--pxd-line, var(--pxd-edge));
+  stroke-width: 2px;
+  stroke-linecap: round;
+}
+
+.pxd-root .pxd-inner .pxd-inner__head,
+.pxd-root .pxd-inner .pxd-inner__dot {
+  fill: var(--pxd-line, var(--pxd-edge));
+  stroke: none;
+}
+
+.pxd-root .pxd-inner.pxd-inner--selected .pxd-inner__line {
+  stroke: var(--pxd-accent);
+  stroke-width: 3px;
+}
+
+.pxd-root .pxd-inner.pxd-inner--selected .pxd-inner__head,
+.pxd-root .pxd-inner.pxd-inner--selected .pxd-inner__dot {
+  fill: var(--pxd-accent);
+}
+
+.pxd-root .pxd-inner.pxd-inner--hover .pxd-inner__line {
+  stroke-width: 3.5px;
+}
+
+.pxd-root .pxd-inner.pxd-inner--dim {
+  opacity: 0.25;
+}
+
+.pxd-root .pxd-edge.pxd-edge--hover .pxd-edge__line {
+  stroke-width: 3.5px;
+}
+
+.pxd-root .pxd-row.pxd-row--linked {
+  box-shadow: inset 2px 0 0 var(--pxd-row-line, var(--pxd-edge));
+  background: color-mix(in srgb, var(--pxd-row-line, var(--pxd-edge)) 9%, transparent);
+  border-radius: 2px;
+}
+
+.pxd-root .pxd-row.pxd-row--linked.pxd-row--hot,
+.pxd-root .pxd-row.pxd-row--linked:hover {
+  box-shadow: inset 3px 0 0 var(--pxd-row-line, var(--pxd-edge));
+  background: color-mix(in srgb, var(--pxd-row-line, var(--pxd-edge)) 20%, transparent);
+}
+
+/* Clamped end: a pill on the outside of the card edge. Hidden while the row is in view. */
+.pxd-root .pxd-edge__bend .pxd-edge__bend-pill,
+.pxd-root .pxd-edge__bend .pxd-edge__bend-text {
+  display: none;
+}
+
+.pxd-root .pxd-edge__bend.pxd-edge__bend--clamped .pxd-edge__bend-pill {
+  display: block;
+  fill: var(--pxd-card);
+  stroke: var(--pxd-line, var(--pxd-edge));
+  stroke-width: 1.5px;
+}
+
+.pxd-root .pxd-edge__bend.pxd-edge__bend--clamped .pxd-edge__bend-text {
+  display: block;
+  fill: var(--pxd-text);
+  font-size: 11px;
+  font-weight: 600;
+  pointer-events: none;
+}
+
+/* Dark: the row mark is a border, never a tinted fill. */
+.bp3-dark .pxd-root .pxd-row.pxd-row--linked,
+body.bt-theme-dark .pxd-root .pxd-row.pxd-row--linked,
+.rm-dark-theme .pxd-root .pxd-row.pxd-row--linked,
+body.roam-body.dark .pxd-root .pxd-row.pxd-row--linked,
+.pxd-root.pxd-root--dark .pxd-row.pxd-row--linked {
+  background: transparent;
+  box-shadow: inset 2px 0 0 var(--pxd-row-line, var(--pxd-edge)), inset 0 0 0 1px color-mix(in srgb, var(--pxd-row-line, var(--pxd-edge)) 55%, transparent);
+}
+
+.bp3-dark .pxd-root .pxd-row.pxd-row--linked.pxd-row--hot,
+body.bt-theme-dark .pxd-root .pxd-row.pxd-row--linked.pxd-row--hot,
+.rm-dark-theme .pxd-root .pxd-row.pxd-row--linked.pxd-row--hot,
+body.roam-body.dark .pxd-root .pxd-row.pxd-row--linked.pxd-row--hot,
+.pxd-root.pxd-root--dark .pxd-row.pxd-row--linked.pxd-row--hot,
+.bp3-dark .pxd-root .pxd-row.pxd-row--linked:hover,
+body.bt-theme-dark .pxd-root .pxd-row.pxd-row--linked:hover,
+.rm-dark-theme .pxd-root .pxd-row.pxd-row--linked:hover,
+body.roam-body.dark .pxd-root .pxd-row.pxd-row--linked:hover,
+.pxd-root.pxd-root--dark .pxd-row.pxd-row--linked:hover {
+  background: transparent;
+  box-shadow: inset 3px 0 0 var(--pxd-row-line, var(--pxd-edge)), inset 0 0 0 1.5px var(--pxd-row-line, var(--pxd-edge));
+}
+
 /* NP-1. A block-look card is a plain Roam block: no title row, 14px text, root bullet hidden. */
 
 .pxd-root:not(.pxd-lod-map) .pxd-item.pxd-card--block:not(.pxd-item--collapsed):not(.pxd-item--bare) > .pxd-item__header {
@@ -3797,6 +3895,25 @@ body.roam-body.dark .pxd-commands__box {
   margin-top: 4px;
 }
 
+/* RF-4: an invisible bridge over the gap between a card and its hover toolbar, so the pointer can cross it. */
+.pxd-root .pxd-ctx::before,
+.pxd-root .pxd-ctx::after {
+  content: "";
+  position: absolute;
+  left: -8px;
+  right: -8px;
+  height: 20px;
+  background: transparent;
+}
+
+.pxd-root .pxd-ctx::before {
+  bottom: 100%;
+}
+
+.pxd-root .pxd-ctx::after {
+  top: 100%;
+}
+
 /* Overlays: Quick Look, presentation HUD, Alt+drag ghosts, focus dimming.
    Borders carry the semantics; fills stay on the chrome token (no tinted fills in dark). */
 
@@ -4299,6 +4416,47 @@ body.roam-body.dark .pxd-root .pxd-present-hud,
   cursor: pointer;
 }
 
+/* RF-5 (2.4): page cards scroll inside, so their resize grips are a generous 12px band that sits above the
+   scrollbar; the corner is 16px and never lets the scrollbar take it. */
+.pxd-root .pxd-item.pxd-item--page > .pxd-grip {
+  z-index: 4;
+}
+
+.pxd-root .pxd-item.pxd-item--page > .pxd-grip.pxd-grip--right {
+  right: -6px;
+  width: 12px;
+}
+
+.pxd-root .pxd-item.pxd-item--page > .pxd-grip.pxd-grip--bottom {
+  bottom: -6px;
+  height: 12px;
+}
+
+.pxd-root .pxd-item.pxd-item--page > .pxd-grip.pxd-grip--corner {
+  right: -6px;
+  bottom: -6px;
+  width: 16px;
+  height: 16px;
+}
+
+/* Hand tool: grips show on hover so it is clear a press resizes. */
+.pxd-root[data-tool="hand"] .pxd-item:hover > .pxd-grip.pxd-grip--corner,
+.pxd-root[data-tool="hand"] .pxd-section:hover > .pxd-grip.pxd-grip--corner {
+  border-color: var(--pxd-accent);
+}
+
+.pxd-root[data-tool="hand"] .pxd-item:hover > .pxd-grip.pxd-grip--right,
+.pxd-root[data-tool="hand"] .pxd-section:hover > .pxd-grip.pxd-grip--right {
+  border-right: 2px solid var(--pxd-accent);
+  box-sizing: border-box;
+}
+
+.pxd-root[data-tool="hand"] .pxd-item:hover > .pxd-grip.pxd-grip--bottom,
+.pxd-root[data-tool="hand"] .pxd-section:hover > .pxd-grip.pxd-grip--bottom {
+  border-bottom: 2px solid var(--pxd-accent);
+  box-sizing: border-box;
+}
+
 /* NP-4. Properties panel, custom style keys, cross texture, animated dashes.
    Every rule is scoped under .pxd-root. A missing style key sets no variable, so 1.2 boards stay as they are. */
 
@@ -4737,6 +4895,180 @@ body.roam-body.dark .pxd-root,
 
 .pxd-root.pxd-root--docked.pxd-root--dock-left .pxd-legend {
   left: 64px;
+}
+
+/* 2.4 panel placement: the Add/Info panel floats left of the control rail, never over it. */
+.pxd-root {
+  --pxd-rail-w: 38px;
+  --pxd-panel-gap: 8px;
+  --pxd-panel-right: 8px;
+}
+
+.pxd-root.pxd-root--rail {
+  --pxd-panel-right: calc(8px + var(--pxd-rail-w) + var(--pxd-panel-gap));
+}
+
+.pxd-root .pxd-panel {
+  top: 8px;
+  right: var(--pxd-panel-right);
+  bottom: 8px;
+  border: 1px solid var(--pxd-border);
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.pxd-root.pxd-root--panel-open .pxd-minimap {
+  right: calc(var(--pxd-panel-right) + var(--pxd-panel-w, 340px) + var(--pxd-panel-gap));
+}
+
+/* RF-3 (2.4): relation chips under connection blocks in Roam's outline, sidebar and linked references, and the
+   preview popover. The chip lives outside every .pxd-root, so it carries its own tokens (light, then the five dark
+   signals). The popover is a .pxd-root on document.body and takes the board tokens. */
+
+.pxd-relchip {
+  --pxd-rc-border: #d0d7de;
+  --pxd-rc-text: #1f2937;
+  --pxd-rc-muted: #5f6b7c;
+  --pxd-rc-accent: hsl(175 80% 30%);
+  display: inline-block;
+  box-sizing: border-box;
+  max-width: 100%;
+  margin: 2px 0 4px 24px;
+  padding: 1px 8px;
+  overflow: hidden;
+  border: 1px solid var(--pxd-rc-border);
+  border-left: 3px solid var(--pxd-rc-accent);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--pxd-rc-muted);
+  font-size: 12px;
+  line-height: 1.5;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+}
+
+.pxd-relchip:hover,
+.pxd-relchip:focus-visible {
+  color: var(--pxd-rc-text);
+  border-color: var(--pxd-rc-accent);
+  outline: none;
+}
+
+.bp3-dark .pxd-relchip,
+body.bt-theme-dark .pxd-relchip,
+.rm-dark-theme .pxd-relchip,
+body.roam-body.dark .pxd-relchip,
+.pxd-root--dark .pxd-relchip {
+  --pxd-rc-border: #3b4b58;
+  --pxd-rc-text: #e6edf3;
+  --pxd-rc-muted: #a7b6c2;
+  --pxd-rc-accent: hsl(175 60% 55%);
+}
+
+.pxd-root.pxd-relpop {
+  position: fixed;
+  z-index: 1000;
+  width: 380px;
+  height: auto;
+  max-width: calc(100vw - 16px);
+  padding: 10px;
+  border: 1px solid var(--pxd-border);
+  border-radius: 8px;
+  background: var(--pxd-surface);
+  box-shadow: var(--pxd-shadow);
+  contain: none;
+  overflow: visible;
+  touch-action: auto;
+}
+
+.pxd-relpop .pxd-relpop__title {
+  margin-bottom: 6px;
+  color: var(--pxd-text);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.pxd-relpop .pxd-relpop__map {
+  display: block;
+  width: 100%;
+  height: 200px;
+  border: 1px solid var(--pxd-border);
+  border-radius: 6px;
+  background: var(--pxd-surface);
+  overflow: hidden;
+}
+
+.pxd-relpop .pxd-relpop__card rect {
+  fill: var(--pxd-card);
+  stroke: var(--pxd-border);
+  stroke-width: 2px;
+}
+
+.pxd-relpop .pxd-relpop__card--section rect {
+  fill: none;
+  stroke-dasharray: 8 6;
+}
+
+.pxd-relpop .pxd-relpop__card text,
+.pxd-relpop .pxd-relpop__row text {
+  fill: var(--pxd-text);
+  font-weight: 600;
+}
+
+.pxd-relpop .pxd-relpop__card--from rect,
+.pxd-relpop .pxd-relpop__card--to rect {
+  stroke: var(--pxd-line, var(--pxd-edge));
+  stroke-width: 4px;
+}
+
+.pxd-relpop .pxd-relpop__line {
+  fill: none;
+  stroke: var(--pxd-line, var(--pxd-edge));
+  stroke-width: 4px;
+  stroke-linecap: round;
+}
+
+.pxd-relpop .pxd-relpop__head {
+  fill: var(--pxd-line, var(--pxd-edge));
+}
+
+.pxd-relpop .pxd-relpop__row rect {
+  fill: var(--pxd-card);
+  stroke: var(--pxd-line, var(--pxd-edge));
+  stroke-width: 2px;
+}
+
+.pxd-relpop .pxd-relpop__note,
+.pxd-relpop .pxd-relpop__empty {
+  margin-top: 6px;
+  color: var(--pxd-muted);
+  font-size: 12px;
+}
+
+.pxd-relpop .pxd-relpop__actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.pxd-relpop .pxd-relpop__btn {
+  padding: 3px 10px;
+  border: 1px solid var(--pxd-border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--pxd-text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.pxd-relpop .pxd-relpop__btn:hover,
+.pxd-relpop .pxd-relpop__btn:focus-visible {
+  border-color: var(--pxd-accent);
 }
 
 .pxd-root .pxd-lens {

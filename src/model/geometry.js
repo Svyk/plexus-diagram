@@ -198,6 +198,27 @@ export function blockAnchor({ rect, rowTop, rowHeight = 0, bodyTop = 0, bodyBott
   return { point: { x, y: rect.y + cy }, side, clamped: null };
 }
 
+// RF-2: where a block arrow's inner segment lives once the row is on screen. `point` is the card-edge anchor from
+// blockAnchor, `side` the facing side, `rowLeft` / `rowRight` the row's horizontal extent relative to the card's
+// left edge (world px). The segment starts a few px inside the card (the notch that reads as "entering") and runs
+// to a tip in the gutter just outside the row's text on the facing side. `angle` points into the card.
+export const INNER_NOTCH = 4;
+export const INNER_MIN = 10;
+export function blockInner({ rect, side, point, rowLeft, rowRight } = {}) {
+  if (!rect || !point || rowLeft == null || !Number.isFinite(rowLeft)) return null;
+  const right = side === "right";
+  const reach = right
+    ? rect.w - (Number.isFinite(rowRight) ? rowRight : rect.w) + 2
+    : rowLeft - 2;
+  const depth = Math.min(Math.max(reach, INNER_MIN), Math.max(INNER_MIN, rect.w / 2));
+  const dir = right ? -1 : 1;
+  return {
+    from: { x: point.x + dir * INNER_NOTCH, y: point.y },
+    tip: { x: point.x + dir * depth, y: point.y },
+    angle: right ? Math.PI : 0,
+  };
+}
+
 const NORMALS = {
   top: { x: 0, y: -1 },
   right: { x: 1, y: 0 },

@@ -98,7 +98,7 @@ test("label change keeps the block end in the string", async () => {
 
 // ------------------------------------------------------------------ BA-3 geometry
 import { buildBoard, worldRects } from "../src/model/board.js";
-import { blockAnchor, edgePath } from "../src/model/geometry.js";
+import { blockAnchor, blockInner, edgePath, INNER_NOTCH } from "../src/model/geometry.js";
 import { createEdgeLayer } from "../src/view/edges.js";
 import { createItemRenderer } from "../src/view/cards.js";
 import { createInteractions } from "../src/view/interactions.js";
@@ -265,7 +265,7 @@ test("measureRow: offsets are relative to the card top, a missing row is unrende
     body._rect = rect(1030, 450);
     h.shell.querySelector("[data-pxd-row=row1]")._rect = rect(1040, 20);
     h.shell.querySelector("[data-pxd-row=row2]")._rect = { ...rect(0, 0), width: 0 };
-    assert.deepEqual(h.r.measureRow("pg000001", "row1"), { bodyTop: 30, bodyBottom: 480, rowTop: 40, rowHeight: 20, rendered: true });
+    assert.deepEqual(h.r.measureRow("pg000001", "row1"), { bodyTop: 30, bodyBottom: 480, rowTop: 40, rowHeight: 20, rowLeft: 0, rowRight: 300, rendered: true });
     assert.equal(h.r.measureRow("pg000001", "row2").rendered, false);
     assert.equal(h.r.measureRow("pg000001", "nope0001").rendered, false);
     assert.equal(h.r.measureRow("missing", "row1"), null);
@@ -436,4 +436,106 @@ test("edgeEndNear grabs a handle whose centre sits under a card", async () => {
   assert.deepEqual(edgeEndNear(root, 408, 200), { kind: "edge-end", uid: "eAB", end: "to" });
   assert.equal(edgeEndNear(root, 420, 200), null);
   assert.equal(edgeEndNear({ querySelectorAll: () => [] }, 400, 200), null);
+});
+
+// ------------------------------------------------------------------ RF-2 arrows point at the block
+test("RF-2 blockInner: the segment starts a notch inside the card and ends in the gutter beside the row, facing the other end", () => {
+  const rect = { x: 400, y: 100, w: 360, h: 480 };
+  const left = blockInner({ rect, side: "left", point: { x: 400, y: 210 }, rowLeft: 16, rowRight: 340 });
+  assert.deepEqual(left.from, { x: 400 + INNER_NOTCH, y: 210 });
+  assert.deepEqual(left.tip, { x: 414, y: 210 }, "2 px outside the row's left edge");
+  assert.deepEqual(blockInner({ rect, side: "left", point: { x: 400, y: 210 }, rowLeft: 8, rowRight: 340 }).tip, { x: 410, y: 210 }, "10 px minimum run");
+  assert.equal(left.angle, 0, "pointing into the card, to the right");
+  const right = blockInner({ rect, side: "right", point: { x: 760, y: 210 }, rowLeft: 16, rowRight: 340 });
+  assert.deepEqual(right.from, { x: 760 - INNER_NOTCH, y: 210 });
+  assert.deepEqual(right.tip, { x: 738, y: 210 }, "2 px outside the row's right edge");
+  assert.equal(right.angle, Math.PI);
+  const deep = blockInner({ rect, side: "left", point: { x: 400, y: 210 }, rowLeft: 40, rowRight: 340 });
+  assert.equal(deep.tip.x, 400 + 38, "the tip sits 2 px outside the row");
+  assert.equal(blockInner({ rect, side: "left", point: { x: 400, y: 210 } }), null, "an unmeasured row has no inner segment");
+});
+
+test("RF-2 edge layer: an on-screen block end draws its inner segment and head above the card; the card-edge head steps aside", () => {
+  const { layer, svg, stub } = layerFor({ row1: "Target block" });
+  const restore = stub.install();
+  try {
+    const over = stub.document.body.querySelectorAll("svg")[1];
+    const board = pageBoard({ toBlock: "row1", color: "blue" });
+    const rects = worldRects(board);
+    layer.render({ board, rects, zoom: 1 });
+    assert.equal(over.querySelectorAll(".pxd-inner").length, 0, "no measurement: no inner segment");
+    layer.setMeasures(new Map([["e12", { to: { rowTop: 100, rowHeight: 20, bodyTop: 30, bodyBottom: 480, rowLeft: 16, rowRight: 340 } }]]));
+    layer.update({ board, edgeUids: new Set(["e12"]), rects, zoom: 1 });
+    const inner = over.querySelectorAll(".pxd-inner");
+    assert.equal(inner.length, 1);
+    assert.ok(inner[0].classList.contains("pxd-c-blue"), "colored like the edge");
+    assert.equal(inner[0].getAttribute("data-edge"), "e12");
+    assert.equal(inner[0].querySelector(".pxd-inner__head").getAttribute("display"), null, "arrowhead shown inside the card");
+    assert.equal(svg.querySelector(".pxd-edge .pxd-edge__head").getAttribute("display"), "none", "the head at the card edge is hidden");
+    assert.match(inner[0].querySelector(".pxd-inner__line").getAttribute("d"), /^M404 110L414 110$/);
+    // hovering: class on the edge and its inner group, one handler call
+    layer.setHover("e12", true);
+    assert.ok(svg.querySelector(".pxd-edge").classList.contains("pxd-edge--hover"));
+    assert.ok(inner[0].classList.contains("pxd-inner--hover"));
+    layer.setHover("e12", false);
+    assert.ok(!inner[0].classList.contains("pxd-inner--hover"));
+    // selecting
+    layer.setSelection({ edge: "e12" });
+    assert.ok(inner[0].classList.contains("pxd-inner--selected"));
+    layer.setSelection({});
+    // scrolled out: the inner segment goes, the clamped pill appears
+    layer.setMeasures(new Map([["e12", { to: { rowTop: -80, rowHeight: 20, bodyTop: 30, bodyBottom: 480, rowLeft: 16, rowRight: 340 } }]]));
+    layer.update({ board, edgeUids: new Set(["e12"]), rects, zoom: 1 });
+    assert.equal(over.querySelectorAll(".pxd-inner").length, 0);
+    const bend = svg.querySelector(".pxd-edge__bend--clamped");
+    assert.ok(bend);
+    assert.equal(bend.querySelector(".pxd-edge__bend-text").textContent, "\u2191 Target block");
+    // unload removes everything
+    layer.dispose();
+    assert.equal(over.querySelectorAll(".pxd-inner").length, 0);
+  } finally { restore(); }
+});
+
+test("RF-2 edge layer: hover over a block arrow reports to the board view; plain arrows stay silent", () => {
+  const stub = createDomStub();
+  const doc = stub.document;
+  const svg = doc.createElementNS("http://www.w3.org/2000/svg", "svg");
+  const over = doc.createElementNS("http://www.w3.org/2000/svg", "svg");
+  const labels = doc.createElement("div");
+  doc.body.append(svg, over, labels);
+  const calls = [];
+  const restore = stub.install();
+  try {
+    const layer = createEdgeLayer({ doc, svg, labelsLayer: labels, overlaySvg: over, onHover: (uid, on) => calls.push([uid, on]) });
+    const board = pageBoard({ toBlock: "row1" });
+    layer.render({ board, rects: worldRects(board), zoom: 1 });
+    const hit = svg.querySelector(".pxd-edge__hit");
+    stub.dispatch(hit, "pointerover", {});
+    stub.dispatch(hit, "pointerout", {});
+    assert.deepEqual(calls, [["e12", true], ["e12", false]]);
+    const plain = pageBoard();
+    layer.dispose();
+    const layer2 = createEdgeLayer({ doc, svg, labelsLayer: labels, overlaySvg: over, onHover: (uid, on) => calls.push([uid, on]) });
+    layer2.render({ board: plain, rects: worldRects(plain), zoom: 1 });
+    stub.dispatch(svg.querySelector(".pxd-edge__hit"), "pointerover", {});
+    assert.equal(calls.length, 2, "an edge without a block end never reports");
+  } finally { restore(); }
+});
+
+test("RF-2 page card: marked rows carry the class, color, edge uids and tooltip text, and are cleared when no longer linked", () => {
+  const h = pageCardHarness();
+  try {
+    const row = h.shell.querySelector("[data-pxd-row=row1]");
+    h.r.markRows([{ card: "pg000001", row: "row1", edges: ["e1", "e2"], color: "var(--pxd-blue-line)", tip: "Linked from Alpha \u00b7 causes" }]);
+    assert.ok(row.classList.contains("pxd-row--linked"));
+    assert.equal(row.style["--pxd-row-line"], "var(--pxd-blue-line)");
+    assert.equal(row.getAttribute("data-pxd-edges"), "e1 e2");
+    assert.equal(row.getAttribute("data-tip"), "edge.row");
+    assert.equal(row.getAttribute("data-tip-extra"), "Linked from Alpha \u00b7 causes");
+    h.r.setRowHot("pg000001", "row1", true);
+    assert.ok(row.classList.contains("pxd-row--hot"));
+    h.r.markRows([]);
+    assert.ok(!row.classList.contains("pxd-row--linked"));
+    assert.equal(row.getAttribute("data-tip"), null);
+  } finally { h.done(); }
 });

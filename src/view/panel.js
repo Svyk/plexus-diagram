@@ -27,6 +27,9 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
   const panel = el("aside", "pxd-panel pxd-chrome", root);
   panel.style.display = "none";
   if (Number.isFinite(Number(width))) panel.style.width = `${nextPanelWidth(width, 0)}px`;
+  // The minimap steps left of an open panel; the panel itself sits left of the rail (rail.css).
+  const publishWidth = (w) => root?.style?.setProperty?.("--pxd-panel-w", `${w}px`);
+  publishWidth(parseFloat(panel.style.width) || PANEL_WIDTH_DEFAULT);
   const resize = el("div", "pxd-panel__resize", panel);
   resize.title = "Resize";
   for (const type of ["pointerdown", "pointerup", "click", "dblclick", "wheel", "keydown", "keyup"]) {
@@ -47,13 +50,16 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
   });
   listen(resize, "pointermove", (event) => {
     if (!resizing) return;
-    panel.style.width = `${nextPanelWidth(resizing.w, resizing.x - event.clientX)}px`;
+    const w = nextPanelWidth(resizing.w, resizing.x - event.clientX);
+    panel.style.width = `${w}px`;
+    publishWidth(w);
   });
   listen(resize, "pointerup", (event) => {
     if (!resizing) return;
     const next = nextPanelWidth(resizing.w, resizing.x - event.clientX);
     resizing = null;
     panel.style.width = `${next}px`;
+    publishWidth(next);
     on.rememberWidth?.(next);
   });
   const head = el("div", "pxd-panel__head", panel);
@@ -505,6 +511,7 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     el: panel,
     open(which = tab) {
       panel.style.display = "";
+      root.classList.add("pxd-root--panel-open");
       setTab(which);
       on.opened?.(true);
       const focusTarget = which === "search" ? input : which === "boards" ? boardsFilter : null;
@@ -515,6 +522,7 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     close() {
       if (tab === "info") unmountInfo();
       panel.style.display = "none";
+      root.classList.remove("pxd-root--panel-open");
       on.opened?.(false);
     },
     toggle() { if (api.isOpen()) api.close(); else api.open(); },

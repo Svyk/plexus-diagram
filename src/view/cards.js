@@ -1149,7 +1149,42 @@ export function createItemRenderer({
     const row = holder.querySelector?.(`[data-pxd-row="${rowUid}"]`);
     const r = row ? row.getBoundingClientRect() : null;
     if (!r || (!r.width && !r.height)) return { ...out, rowTop: null, rowHeight: 0, rendered: false };
-    return { ...out, rowTop: round1((r.top - card.top) / z), rowHeight: round1(r.height / z), rendered: true };
+    const cardLeft = card.left;
+    return { ...out, rowTop: round1((r.top - card.top) / z), rowHeight: round1(r.height / z), rowLeft: round1((r.left - cardLeft) / z), rowRight: round1((r.right - cardLeft) / z), rendered: true };
+  };
+  // RF-2: rows that a block arrow ends on carry a persistent mark (class, edge color, edge uids, tooltip text).
+  // `entries` = [{ card, row, edges: [uid], color, tip }]; rows marked before and absent now are cleared.
+  const markedRows = new Set();
+  const rowOf = (uid, rowUid) => shells.get(uid)?.pageHolder?.querySelector?.(`[data-pxd-row="${rowUid}"]`) ?? null;
+  const unmarkRow = (row) => {
+    row.classList.remove("pxd-row--linked", "pxd-row--hot");
+    row.style.removeProperty("--pxd-row-line");
+    row.removeAttribute("data-pxd-edges");
+    row.removeAttribute("data-tip");
+    row.removeAttribute("data-tip-extra");
+  };
+  const markRows = (entries) => {
+    const keep = new Set();
+    for (const en of entries || []) {
+      const row = rowOf(en.card, en.row);
+      if (!row) continue;
+      keep.add(row);
+      row.classList.add("pxd-row--linked");
+      if (en.color) row.style.setProperty("--pxd-row-line", en.color); else row.style.removeProperty("--pxd-row-line");
+      row.setAttribute("data-pxd-edges", en.edges.join(" "));
+      row.setAttribute("data-tip", "edge.row");
+      row.setAttribute("data-tip-extra", en.tip || "");
+      markedRows.add(row);
+    }
+    for (const row of [...markedRows]) {
+      if (keep.has(row)) continue;
+      markedRows.delete(row);
+      unmarkRow(row);
+    }
+  };
+  const setRowHot = (uid, rowUid, on) => {
+    const row = rowOf(uid, rowUid);
+    row?.classList?.toggle("pxd-row--hot", Boolean(on));
   };
   // Scrolls the body so the row is centered and flashes it. False when the row is not on screen to scroll to.
   const revealRow = (uid, rowUid) => {
@@ -2165,6 +2200,8 @@ export function createItemRenderer({
     renamePage,
     shellOf: (uid) => shells.get(uid)?.el ?? null,
     measureRow,
+    markRows,
+    setRowHot,
     revealRow,
     expireContent(uids) {
       for (const uid of uids || []) {

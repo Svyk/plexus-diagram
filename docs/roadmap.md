@@ -89,6 +89,7 @@ Native diagrams are React Flow (`.react-flow`, nodes `.react-flow__node-block`).
 | P9 | Whole pages, block arrows, card children | 2.1.0 | done 2026-10-03, tagged `v2.1.0`, `08005e2` |
 | P10 | Board bar and tool dock | 2.2.0 | done 2026-10-03, tagged `v2.2.0` |
 | P11 | Polish and fixes | 2.3.0 | done 2026-10-03, tagged `v2.3.0` |
+| P12 | Refinements from 2026-10-03 videos | 2.4.0 | open |
 
 Order matters: P1 and P2 are the user's direct requests. Within a phase, do tasks in the listed order unless one is blocked.
 
@@ -296,6 +297,18 @@ Bug hunt on 2.2.0 (`/tmp/wo/plx-hunt/report.md`), fixed in 2.3.0 by `/tmp/wo/pxd
 - [x] **PL-19 Tooltip on a removed control (T-1)** — done 2026-10-03, `79b0409`: hovered ctx.color (tip shown), Esc removed the context bar, tip gone (0 ctx buttons, no tooltip). Original task: `check()` hides a tooltip whose target left the DOM (`isConnected`), called on every context bar and crumb rebuild and on show and place. Accept: test.
 - [x] **PL-20 Properties tooltips (T-2)** — done 2026-10-03, `79b0409`: hovered Larger stepper, Text color chip and an align choice in Properties: 'Larger | Raise this size by one pixel.', 'Text color | ...', 'Default | ...'; 0 elements with a native title in .pxd-props (.live/shots/PL-20-props-tip.png). Original task: Steppers, color chips, choice buttons and picker swatches use `data-tip` entries, no native title. Accept: tests.
 - [x] **PL-21 Gate** — done 2026-10-03, tag `v2.3.0`: npm run check green (998 tests), live acceptance on Readwisenotes Plexus Diagram/Test Lab, typing bench with the board mounted (7 runs, 200 real keys each) deltas -1.13, -2.13, +2.81, +0.22, -3.08, +1.15, -2.32 ms/key, mean -0.64 (run-to-run spread about 3 ms; the board hibernates while typing, by design), unload left 0 .pxd-* and no window.__plexusDiagram.
+
+### P12: Refinements from 2026-10-03 videos (2.4.0)
+
+Five things the user raised on 2.3.0, from his own videos: the Add panel covered the right control rail, a block arrow reached the page card but did not visibly point at the block, a connection block in Roam's linked references showed only the board and "Connections" as its breadcrumb, the hover toolbar vanished on the way from the card to the toolbar, and a resize grip did nothing with the Hand tool. Work order: `/tmp/wo/pxd-24-build.wo.md`. Rules in section 3 apply to every task.
+
+- [ ] **RF-1 Panel beside the rail** (S): the Add/Info panel opens left of the right control rail, never over it. Right offset is rail width plus gap while the rail is shown (`pxd-root--rail`), 8px otherwise; the minimap steps left of an open panel; fit and the context bar already measure the panel's real rectangle. Accept: tests for the offset rules and for the open class and width variable.
+- [ ] **RF-2 Block arrows point at the block** (L): view only, no data change. An on-screen block end continues into the card (inner segment and arrowhead in the overlay, the card-edge head steps aside) and ends beside the row's text; the row keeps a persistent mark in the edge color (2px left rule and light tint, border only in dark); hovering the arrow or the row lights both; the row tooltip names the other card and the label; a clamped end is a pill with an arrow and the block's first words. Accept: geometry test for the inner endpoint (`blockInner`), DOM tests for the classes, hover and pill.
+- [ ] **RF-3 Connection preview in Roam** (L): a relation chip under every connection block Roam renders in the outline, sidebar or linked references, and a preview popover (cropped mini-map of the two cards, the arrow, the target block named; Open on board, Open in sidebar). A deep link to a connection block uid selects the connection on its board. Zero writes; one cached uid set; the chip hooks the existing mutation observer. Accept: tests for the uid cache, the chip text, the popover, the deep link and unload cleanup.
+- [ ] **RF-4 Sticky hover toolbar** (M): 400 ms grace on leave, cancelled by the bar or by returning to the card; an invisible bridge over the gap; a switch to an adjacent card waits out the grace and never hides the bar; Escape and pan or zoom hide it at once. Accept: tests with fake timers.
+- [ ] **RF-5 Hand-tool resize** (M): with the Hand tool a press on a resize grip resizes; Space and the middle button still pan; page cards get a 12px grip band and a 16px corner above the scrollbar; the grips show on hover in hand mode. Accept: interactions tests, CSS test.
+- [ ] **RF-6 Tooltip strings** (S): entries for the chip, the preview buttons and the linked row; the clamped pill reuses `edge.bend:clamped`. Accept: test that each id resolves.
+- [ ] **RF-7 Gate**: standing gate (section 4), then release 2.4.0.
 
 ## 6. Later (ideas not scheduled)
 

@@ -193,7 +193,9 @@ export function createInteractions({ actions, settings } = {}) {
       if (t.kind === "item" && t.uid === editing && t.part !== "header") return; // editor owns the pointer
       if (!(t.kind === "item" && t.uid === editing)) call("exitEdit");
     }
-    const panRequested = ev.button === 1 || state.space || state.tool === "hand";
+    // RF-5: with the Hand tool a press on a resize grip resizes; Space and the middle button still pan over it.
+    const handGrip = state.tool === "hand" && !state.space && ev.button === 0 && t.kind === "grip";
+    const panRequested = ev.button === 1 || state.space || (state.tool === "hand" && !handGrip);
     if (panRequested) {
       begin({ kind: "pan", start: ev.screen, vp0: { ...vp() } });
       return;

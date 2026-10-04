@@ -70,3 +70,101 @@
   pointer-events: none;
   opacity: 0.35;
 }
+
+/* RF-2 (2.4): block arrows point into the card at the row. The inner segment and its head live in the overlay
+   (above the cards), colored like the edge; the linked row keeps a persistent mark in the edge color. */
+.pxd-root .pxd-inner {
+  pointer-events: none;
+}
+
+.pxd-root .pxd-inner .pxd-inner__line {
+  fill: none;
+  stroke: var(--pxd-line, var(--pxd-edge));
+  stroke-width: 2px;
+  stroke-linecap: round;
+}
+
+.pxd-root .pxd-inner .pxd-inner__head,
+.pxd-root .pxd-inner .pxd-inner__dot {
+  fill: var(--pxd-line, var(--pxd-edge));
+  stroke: none;
+}
+
+.pxd-root .pxd-inner.pxd-inner--selected .pxd-inner__line {
+  stroke: var(--pxd-accent);
+  stroke-width: 3px;
+}
+
+.pxd-root .pxd-inner.pxd-inner--selected .pxd-inner__head,
+.pxd-root .pxd-inner.pxd-inner--selected .pxd-inner__dot {
+  fill: var(--pxd-accent);
+}
+
+.pxd-root .pxd-inner.pxd-inner--hover .pxd-inner__line {
+  stroke-width: 3.5px;
+}
+
+.pxd-root .pxd-inner.pxd-inner--dim {
+  opacity: 0.25;
+}
+
+.pxd-root .pxd-edge.pxd-edge--hover .pxd-edge__line {
+  stroke-width: 3.5px;
+}
+
+.pxd-root .pxd-row.pxd-row--linked {
+  box-shadow: inset 2px 0 0 var(--pxd-row-line, var(--pxd-edge));
+  background: color-mix(in srgb, var(--pxd-row-line, var(--pxd-edge)) 9%, transparent);
+  border-radius: 2px;
+}
+
+.pxd-root .pxd-row.pxd-row--linked.pxd-row--hot,
+.pxd-root .pxd-row.pxd-row--linked:hover {
+  box-shadow: inset 3px 0 0 var(--pxd-row-line, var(--pxd-edge));
+  background: color-mix(in srgb, var(--pxd-row-line, var(--pxd-edge)) 20%, transparent);
+}
+
+/* Clamped end: a pill on the outside of the card edge. Hidden while the row is in view. */
+.pxd-root .pxd-edge__bend .pxd-edge__bend-pill,
+.pxd-root .pxd-edge__bend .pxd-edge__bend-text {
+  display: none;
+}
+
+.pxd-root .pxd-edge__bend.pxd-edge__bend--clamped .pxd-edge__bend-pill {
+  display: block;
+  fill: var(--pxd-card);
+  stroke: var(--pxd-line, var(--pxd-edge));
+  stroke-width: 1.5px;
+}
+
+.pxd-root .pxd-edge__bend.pxd-edge__bend--clamped .pxd-edge__bend-text {
+  display: block;
+  fill: var(--pxd-text);
+  font-size: 11px;
+  font-weight: 600;
+  pointer-events: none;
+}
+
+/* Dark: the row mark is a border, never a tinted fill. */
+.bp3-dark .pxd-root .pxd-row.pxd-row--linked,
+body.bt-theme-dark .pxd-root .pxd-row.pxd-row--linked,
+.rm-dark-theme .pxd-root .pxd-row.pxd-row--linked,
+body.roam-body.dark .pxd-root .pxd-row.pxd-row--linked,
+.pxd-root.pxd-root--dark .pxd-row.pxd-row--linked {
+  background: transparent;
+  box-shadow: inset 2px 0 0 var(--pxd-row-line, var(--pxd-edge)), inset 0 0 0 1px color-mix(in srgb, var(--pxd-row-line, var(--pxd-edge)) 55%, transparent);
+}
+
+.bp3-dark .pxd-root .pxd-row.pxd-row--linked.pxd-row--hot,
+body.bt-theme-dark .pxd-root .pxd-row.pxd-row--linked.pxd-row--hot,
+.rm-dark-theme .pxd-root .pxd-row.pxd-row--linked.pxd-row--hot,
+body.roam-body.dark .pxd-root .pxd-row.pxd-row--linked.pxd-row--hot,
+.pxd-root.pxd-root--dark .pxd-row.pxd-row--linked.pxd-row--hot,
+.bp3-dark .pxd-root .pxd-row.pxd-row--linked:hover,
+body.bt-theme-dark .pxd-root .pxd-row.pxd-row--linked:hover,
+.rm-dark-theme .pxd-root .pxd-row.pxd-row--linked:hover,
+body.roam-body.dark .pxd-root .pxd-row.pxd-row--linked:hover,
+.pxd-root.pxd-root--dark .pxd-row.pxd-row--linked:hover {
+  background: transparent;
+  box-shadow: inset 3px 0 0 var(--pxd-row-line, var(--pxd-edge)), inset 0 0 0 1.5px var(--pxd-row-line, var(--pxd-edge));
+}

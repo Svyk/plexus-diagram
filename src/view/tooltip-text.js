@@ -186,6 +186,10 @@ export const TIP_TEXT = {
   "kids:on": e("Children", "The children are shown. Click to hide them again."),
   "edge.bend": e("Arrow end on a block", "This arrow ends on one block of the page card, not the whole page."),
   "edge.bend:clamped": e("Arrow end on a block", "The block is scrolled out of view. Click to scroll the card to it."),
+  relchip: e("Connection", "This block is a connection on a board. Click to see where it sits."),
+  "relpop.board": e("Open on board", "Go to the board and select this connection."),
+  "relpop.sidebar": e("Open in sidebar", "Open the board in the right sidebar."),
+  "edge.row": e("Linked block", "An arrow on the board ends on this block."),
 };
 
 for (const c of PALETTE) TIP_TEXT[`swatch.${c}`] = e(cap(c), `Color the selection ${c}, or tone the board ${c}.`);

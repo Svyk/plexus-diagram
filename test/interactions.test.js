@@ -1280,3 +1280,33 @@ test("BUG-8 / PL-12: shift-click extends the selection and opens no panel", () =
   assert.equal(h.named("addInfoTab").length, 0);
   assert.equal(h.named("openInfo").length, 0);
 });
+
+// ------------------------------------------------------------------ RF-5 hand-tool resize
+test("RF-5: with the Hand tool a press on a resize grip resizes instead of panning", () => {
+  const h = harness();
+  h.ctl.setTool("hand");
+  const grip = { kind: "grip", uid: "cardAAAA1", part: "corner" };
+  h.ctl.handle(h.ev("pointerdown", { x: 200, y: 100 }, { target: grip }));
+  assert.equal(h.ctl.gestureKind(), "resize");
+  h.ctl.handle(h.ev("pointermove", { x: 260, y: 150 }, { target: grip }));
+  h.ctl.handle(h.ev("pointerup", { x: 260, y: 150 }, { target: grip }));
+  const commits = h.named("commitRects");
+  assert.equal(commits.length, 1, "one resize commit");
+  assert.equal(h.ctl.getTool(), "hand", "the Hand tool stays active");
+  assert.equal(h.named("setViewport").length, 0, "nothing panned");
+});
+
+test("RF-5: with the Hand tool anything that is not a grip still pans, and Space or the middle button pan over a grip", () => {
+  const h = harness();
+  h.ctl.setTool("hand");
+  h.ctl.handle(h.ev("pointerdown", { x: 50, y: 50 }, { target: { kind: "item", uid: "cardAAAA1", part: "body" } }));
+  assert.equal(h.ctl.gestureKind(), "pan");
+  h.ctl.handle(h.ev("pointerup", { x: 50, y: 50 }));
+  const grip = { kind: "grip", uid: "cardAAAA1", part: "corner" };
+  h.ctl.handle(h.ev("pointerdown", { x: 200, y: 100 }, { target: grip, button: 1 }));
+  assert.equal(h.ctl.gestureKind(), "pan", "middle button pans");
+  h.ctl.handle(h.ev("pointerup", { x: 200, y: 100 }, { button: 1 }));
+  h.ctl.handle({ type: "keydown", key: " ", code: "Space", meta: false, ctrl: false, shift: false, alt: false });
+  h.ctl.handle(h.ev("pointerdown", { x: 200, y: 100 }, { target: grip }));
+  assert.equal(h.ctl.gestureKind(), "pan", "Space pans");
+});

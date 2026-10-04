@@ -384,22 +384,23 @@ test("hover toolbar works on a note, a page and a block ref", async () => {
   try {
     await f.flush();
     const root = f.view.root;
-    const show = (uid) => {
+    const show = async (uid) => {
       f.stub.dispatch(root.querySelector(`[data-uid=${uid}]`), "pointermove", { clientX: 20, clientY: 20 });
+      await new Promise((r) => setTimeout(r, 430)); // RF-4: a switch to another card waits out the 400 ms grace
       return root.querySelector(".pxd-ctx");
     };
-    const note = show("cardAAAA1");
+    const note = await show("cardAAAA1");
     assert.equal(note.style.display, "");
     assert.equal(note.querySelector(".pxd-ctx__refs-count").textContent, "4");
     f.stub.dispatch(note.querySelector(".pxd-ctx__expand"), "click");
     assert.deepEqual(f.session.mutations.at(-1).slice(0, 3), ["setKids", "cardAAAA1", true]);
     f.stub.dispatch(note.querySelector(".pxd-ctx__refs"), "click");
     assert.deepEqual(calls.at(-1), ["cardAAAA1", "mentions"]);
-    const page = show("cardBBBB2");
+    const page = await show("cardBBBB2");
     assert.equal(page.querySelector(".pxd-ctx__refs-count").textContent, "2");
     f.stub.dispatch(page.querySelector(".pxd-ctx__refs"), "click");
     assert.deepEqual(calls.at(-1), ["pgBeta001", "mentions"]);
-    const ref = show("refRRRR01");
+    const ref = await show("refRRRR01");
     assert.equal(ref.querySelector(".bp3-icon-collapse-all") != null, true);
     f.stub.dispatch(ref.querySelector(".pxd-ctx__refs"), "click");
     assert.deepEqual(calls.at(-1), ["abcDEF123", "mentions"]);
@@ -2791,6 +2792,115 @@ test("PF-5: a swallowed roam render error becomes one chip", async () => {
     assert.equal(chip2.children.find((c) => c.classList.contains("pxd-render-chip__uid")).textContent, "cardAAAA1");
   } finally {
     console.error = orig;
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+// ------------------------------------------------------------------ RF-4 sticky hover toolbar
+const cardStatsHost = {
+  cardStats(targets) {
+    const map = new Map();
+    for (const t of targets) map.set(t.kind === "page" ? `page:${t.title}` : `uid:${t.uid}`, { refs: t.kind === "page" ? 2 : 4, boards: 0, open: 0, done: 0 });
+    return map;
+  },
+};
+
+test("RF-4: the hover toolbar waits 400 ms after the pointer leaves the card, and the bar itself cancels the hide", async (t) => {
+  const f = mountFixture({ hostOverrides: cardStatsHost });
+  try {
+    await f.flush();
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const root = f.view.root;
+    const ctx = root.querySelector(".pxd-ctx");
+    const moveTo = (node) => f.stub.dispatch(node, "pointermove", { clientX: 20, clientY: 20 });
+    const card = (uid) => root.querySelector(`[data-uid=${uid}]`);
+    moveTo(card("cardAAAA1"));
+    assert.equal(ctx.style.display, "");
+    moveTo(root.querySelector(".pxd-viewport")); // the gap between card and bar is empty canvas
+    t.mock.timers.tick(399);
+    assert.equal(ctx.style.display, "", "still up inside the grace");
+    t.mock.timers.tick(1);
+    assert.equal(ctx.style.display, "none", "hidden once the grace ran out");
+    moveTo(card("cardAAAA1"));
+    moveTo(root.querySelector(".pxd-viewport"));
+    t.mock.timers.tick(200);
+    moveTo(ctx); // pointer reached the toolbar
+    t.mock.timers.tick(2000);
+    assert.equal(ctx.style.display, "", "the bar keeps itself while the pointer is over it");
+    moveTo(card("cardAAAA1")); // back on the card: nothing pending
+    moveTo(root.querySelector(".pxd-viewport"));
+    t.mock.timers.tick(400);
+    assert.equal(ctx.style.display, "none", "leaving the bar and the card starts a fresh grace");
+  } finally {
+    t.mock.timers.reset();
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("RF-4: moving to an adjacent card switches the bar after the grace, without hiding it; returning cancels the switch", async (t) => {
+  const f = mountFixture({ hostOverrides: cardStatsHost });
+  try {
+    await f.flush();
+    t.mock.timers.enable({ apis: ["setTimeout"] });
+    const root = f.view.root;
+    const ctx = root.querySelector(".pxd-ctx");
+    const moveTo = (node) => f.stub.dispatch(node, "pointermove", { clientX: 20, clientY: 20 });
+    const card = (uid) => root.querySelector(`[data-uid=${uid}]`);
+    const count = () => ctx.querySelector(".pxd-ctx__refs-count")?.textContent;
+    moveTo(card("cardAAAA1"));
+    assert.equal(count(), "4");
+    moveTo(card("cardBBBB2"));
+    assert.equal(ctx.style.display, "", "never hidden on the way");
+    assert.equal(count(), "4", "still the first card's bar until the grace ends");
+    t.mock.timers.tick(400);
+    assert.equal(ctx.style.display, "");
+    assert.equal(count(), "2", "switched to the page card");
+    moveTo(card("cardAAAA1"));
+    moveTo(card("cardBBBB2")); // back before the grace ends
+    t.mock.timers.tick(400);
+    assert.equal(count(), "2", "returning to the card whose bar is up cancels the switch");
+  } finally {
+    t.mock.timers.reset();
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("RF-4: Escape and a pan or zoom hide the bar at once", async (t) => {
+  const f = mountFixture({ hostOverrides: cardStatsHost });
+  try {
+    await f.flush();
+    const root = f.view.root;
+    const ctx = root.querySelector(".pxd-ctx");
+    const card = root.querySelector("[data-uid=cardAAAA1]");
+    f.stub.dispatch(card, "pointermove", { clientX: 20, clientY: 20 });
+    assert.equal(ctx.style.display, "");
+    f.stub.dispatch(f.stub.window, "keydown", { key: "Escape" });
+    assert.equal(ctx.style.display, "none", "Escape");
+    f.stub.dispatch(card, "pointermove", { clientX: 20, clientY: 20 });
+    assert.equal(ctx.style.display, "");
+    f.stub.dispatch(root.querySelector(".pxd-viewport"), "wheel", { ctrlKey: true, deltaY: -100, clientX: 400, clientY: 300 });
+    assert.equal(ctx.style.display, "none", "zoom");
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("RF-3: a deep link to a connection block uid selects that connection and pulses both cards", async () => {
+  const f = mountFixture();
+  try {
+    await f.flush();
+    const root = f.view.root;
+    f.stub.dispatch(f.stub.window, "hashchange", { newURL: "https://roamresearch.com/#/app/Svy/page/anyPage?pxd=edgeFFFF6" });
+    await f.flush();
+    const selected = root.querySelectorAll(".pxd-edge--selected");
+    assert.equal(selected.length, 1);
+    assert.equal(selected[0].getAttribute("data-uid"), "edgeFFFF6");
+    for (const uid of ["cardAAAA1", "cardBBBB2"]) assert.ok(root.querySelector(`[data-uid=${uid}]`).classList.contains("pxd-item--pulse"), uid);
+  } finally {
     f.view.dispose();
     f.restore();
   }

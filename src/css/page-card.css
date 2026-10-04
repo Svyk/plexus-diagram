@@ -65,3 +65,44 @@
   font-size: 12px;
   cursor: pointer;
 }
+
+/* RF-5 (2.4): page cards scroll inside, so their resize grips are a generous 12px band that sits above the
+   scrollbar; the corner is 16px and never lets the scrollbar take it. */
+.pxd-root .pxd-item.pxd-item--page > .pxd-grip {
+  z-index: 4;
+}
+
+.pxd-root .pxd-item.pxd-item--page > .pxd-grip.pxd-grip--right {
+  right: -6px;
+  width: 12px;
+}
+
+.pxd-root .pxd-item.pxd-item--page > .pxd-grip.pxd-grip--bottom {
+  bottom: -6px;
+  height: 12px;
+}
+
+.pxd-root .pxd-item.pxd-item--page > .pxd-grip.pxd-grip--corner {
+  right: -6px;
+  bottom: -6px;
+  width: 16px;
+  height: 16px;
+}
+
+/* Hand tool: grips show on hover so it is clear a press resizes. */
+.pxd-root[data-tool="hand"] .pxd-item:hover > .pxd-grip.pxd-grip--corner,
+.pxd-root[data-tool="hand"] .pxd-section:hover > .pxd-grip.pxd-grip--corner {
+  border-color: var(--pxd-accent);
+}
+
+.pxd-root[data-tool="hand"] .pxd-item:hover > .pxd-grip.pxd-grip--right,
+.pxd-root[data-tool="hand"] .pxd-section:hover > .pxd-grip.pxd-grip--right {
+  border-right: 2px solid var(--pxd-accent);
+  box-sizing: border-box;
+}
+
+.pxd-root[data-tool="hand"] .pxd-item:hover > .pxd-grip.pxd-grip--bottom,
+.pxd-root[data-tool="hand"] .pxd-section:hover > .pxd-grip.pxd-grip--bottom {
+  border-bottom: 2px solid var(--pxd-accent);
+  box-sizing: border-box;
+}

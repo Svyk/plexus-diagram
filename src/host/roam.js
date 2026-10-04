@@ -549,6 +549,17 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       return out.slice(0, limit);
     },
 
+    // RF-3: every connection block in the graph as [edgeUid, boardUid]: the children of a board's "Connections"
+    // container. One read-only query; the chip layer keeps the result as a uid set.
+    listConnectionBlocks({ limit = 5000 } = {}) {
+      const rows = host.q(
+        `[:find ?eu ?bu :in $ ?pat :where [?c :block/string "Connections"] [?b :block/children ?c] [?b :block/string ?s]
+ [(re-pattern ?pat) ?re] [(re-find ?re ?s)] [?b :block/uid ?bu] [?c :block/children ?e] [?e :block/uid ?eu]]`,
+        DIAGRAM_RE,
+      ) || [];
+      return rows.slice(0, limit).map(([edgeUid, boardUid]) => [edgeUid, boardUid]);
+    },
+
     // Card footer stats for many targets in at most four datalog queries.
     cardStats(targets, { boardUid } = {}) {
       const result = new Map();

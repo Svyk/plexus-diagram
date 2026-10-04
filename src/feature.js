@@ -5,6 +5,7 @@ import { mountBoardView } from "./view/board-view.js";
 import { isTextEntryTarget } from "./view/cards.js";
 import { assignDeepLink } from "./model/deeplink.js";
 import { openAddToBoard } from "./view/board-picker.js";
+import { createRelChips } from "./relchips.js";
 import { parseBoardTitle, readPlexus, UNTITLED_BOARD } from "./model/schema.js";
 import {
   BLOCK_CONTAINER_SELECTOR,
@@ -146,6 +147,9 @@ export async function installPlexusDiagram({
   const legacyUids = readLegacyEnhanced(host);
   const guardUids = new Set([...readEnhancedUidCache(storage), ...legacyUids]);
   let guardStyle = null;
+  // RF-3: relation chips under connection blocks Roam renders outside a board. Fed by the same mutation observer.
+  const relChips = createRelChips({ doc, win, host, graph: () => host.graph || graphFromHash() });
+  lifecycle.add(() => relChips.dispose());
 
   const active = () => !stopped && settings[SETTING_IDS.enabled] !== false
     && !(settings[SETTING_IDS.disableOnMobile] && isMobile(extensionAPI));
@@ -322,7 +326,8 @@ export async function installPlexusDiagram({
       if (currentUid(rec) !== rec.uid) popSilent(rec);
       else unmount(rec);
     });
-    const offChange = session.on?.("change", () => {
+    const offChange = session.on?.("change", (diff) => {
+      if (diff?.structural && session.board) relChips.noteBoard(session.board);
       // Restore (or an external props edit / undo) removed :plexus: give the native diagram back.
       if (!session.board || session.board.enhanced !== false) return;
       if (currentUid(rec) !== rec.uid) {
@@ -630,6 +635,7 @@ export async function installPlexusDiagram({
 
   function scanAdded(node) {
     for (const diagram of diagramsWithin(node)) consider(diagram);
+    if (active()) relChips.scan(node);
   }
 
   function reconcile() {
@@ -994,6 +1000,8 @@ export async function installPlexusDiagram({
 
   syncGuard();
   await registerCommands();
+  // Read the connection-block uids once the page has settled, off the install path.
+  lifecycle.timeout(() => { if (!stopped && active()) relChips.start(); }, 600);
 
   if (doc && typeof globalThis.MutationObserver === "function") {
     const onAdded = (records) => {

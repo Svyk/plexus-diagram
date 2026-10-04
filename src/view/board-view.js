@@ -6,7 +6,7 @@
 // 1.2 wiring: three-tier LOD flipped by class during a gesture, board backgrounds (pattern + tone), live
 // section auto-fit preview, context menu, clipboard, focus, presentation, card badges, back-to-content.
 
-import { BOARD_PATTERNS, BOARD_TONES, DEFAULT_BOARD_CARD, DEFAULT_SIZES, LANE_SIZE, PAGE_CARD, STICKY_SIZE, UNTITLED_BOARD, classifyString, hexColor, semanticRef, plainText } from "../model/schema.js";
+import { BOARD_PATTERNS, BOARD_TONES, DEFAULT_BOARD_CARD, DEFAULT_SIZES, LANE_SIZE, PAGE_CARD, PALETTE, STICKY_SIZE, UNTITLED_BOARD, classifyString, hexColor, semanticRef, plainText } from "../model/schema.js";
 import { boundsOf, buildBoard, connectedUids, containerAt, descendantsOf, displayRects, edgesTouching, outlineOrder, sameColorUids, sectionAllUids, sectionFitPlan, sectionNoteUid, sidebarOutlineUids, worldRects } from "../model/board.js";
 import { copyLinkText, hashFromUrl, pageUidFromHash, pxdTarget } from "../model/deeplink.js";
 import { findOnBoard } from "../model/find.js";
@@ -643,6 +643,7 @@ export function mountBoardView({
     overlaySvg,
     onLabelCommit: (uid, label) => session.updateEdge?.(uid, { label }),
     blockText: (uid) => host?.blockString?.(uid),
+    onHover: (uid, on) => hoverRows(uid, on),
   });
 
   // BA-3: block ends follow their row. Row offsets are measured only for edges that have block ends, in one
@@ -674,7 +675,55 @@ export function mountBoardView({
     }
     const changed = edgesR.setMeasures(next);
     if (changed.size) edgesR.update({ board: b, edgeUids: changed, rects: paintRects(), zoom: vp.zoom });
+    markLinkedRows(b, next);
   };
+  // RF-2: every row a block arrow ends on shows in the edge's color, with a tooltip naming the other end.
+  const rowEdges = new Map(); // `${card}|${row}` → [edge uids], kept for hover in both directions
+  const edgeTone = (e) => (PALETTE.includes(e.color) ? `var(--pxd-${e.color}-line)` : hexColor(e.color) || "var(--pxd-edge)");
+  const cardName = (b, uid) => {
+    const it = b.items.get(uid);
+    const t = String(it?.title ?? "").trim();
+    return t || (it?.kind === "page" ? "page" : "card");
+  };
+  const markLinkedRows = (b, measured) => {
+    rowEdges.clear();
+    const groups = new Map();
+    for (const e of b.edges.values()) {
+      const m = measured.get(e.uid);
+      if (!m) continue;
+      for (const end of ["from", "to"]) {
+        const row = end === "from" ? e.fromBlock : e.toBlock;
+        if (!row || !m[end]?.rendered) continue;
+        const card = end === "from" ? e.from : e.to;
+        const other = cardName(b, end === "from" ? e.to : e.from);
+        const key = `${card}|${row}`;
+        const g = groups.get(key) || { card, row, edges: [], color: edgeTone(e), tips: [] };
+        g.edges.push(e.uid);
+        g.tips.push(`${end === "to" ? "Linked from" : "Links to"} ${other}${e.label ? ` \u00b7 ${e.label}` : ""}`);
+        groups.set(key, g);
+      }
+    }
+    for (const [key, g] of groups) rowEdges.set(key, g.edges);
+    itemsR.markRows([...groups.values()].map((g) => ({ card: g.card, row: g.row, edges: g.edges, color: g.color, tip: g.tips.join(" | ") })));
+  };
+  // The arrow lights its rows and the row lights its arrows. Each side sets only its own class, so no loop.
+  const hoverRows = (edgeUid, on) => {
+    const e = board()?.edges.get(edgeUid);
+    if (!e) return;
+    if (e.fromBlock) itemsR.setRowHot(e.from, e.fromBlock, on);
+    if (e.toBlock) itemsR.setRowHot(e.to, e.toBlock, on);
+  };
+  listen(root, "pointerover", (event) => {
+    if (event.buttons) return;
+    const row = event.target?.closest?.(".pxd-row--linked");
+    if (!row) return;
+    for (const uid of String(row.getAttribute("data-pxd-edges") || "").split(" ").filter(Boolean)) { edgesR.setHover(uid, true); hoverRows(uid, true); }
+  });
+  listen(root, "pointerout", (event) => {
+    const row = event.target?.closest?.(".pxd-row--linked");
+    if (!row || row.contains?.(event.relatedTarget)) return;
+    for (const uid of String(row.getAttribute("data-pxd-edges") || "").split(" ").filter(Boolean)) { edgesR.setHover(uid, false); hoverRows(uid, false); }
+  });
   function scheduleAnchors() {
     if (disposed || anchorFrame) return;
     anchorFrame = true;
@@ -685,6 +734,18 @@ export function mountBoardView({
     if (disposed || frameHandle) return;
     frameHandle = timers.frame(() => { frameHandle = null; renderFrame(); });
   };
+  // RF-4: the hover toolbar waits HOVER_GRACE ms before it hides or switches to another card, so the pointer can
+  // travel from the card to the bar. Declared here because setViewport (pan/zoom) hides it at once.
+  const HOVER_GRACE = 400;
+  let hoverUid = null;
+  let hoverPending = null; // { target: uid | null, cancel }
+  function cancelHoverGrace() {
+    if (hoverPending) { hoverPending.cancel?.(); hoverPending = null; }
+  }
+  function hideHover() {
+    cancelHoverGrace();
+    if (hoverUid) { hoverUid = null; chrome.ctx.hide(); }
+  }
   const markViewport = () => { dirty.viewport = true; schedule(); };
   const markAll = () => { dirty.all = true; dirty.structural = true; schedule(); };
 
@@ -692,6 +753,7 @@ export function mountBoardView({
   const setViewport = (next) => {
     if (!next) return;
     vp = { x: next.x, y: next.y, zoom: next.zoom };
+    if (hoverUid) hideHover();
     markViewport();
     // Buttons, Fit, search and edit-zoom change the viewport outside a gesture: re-evaluate LOD + content.
     if (!gesturing) settle();
@@ -991,7 +1053,6 @@ export function mountBoardView({
   // ------------------------------------------------------------ session mutations used by chrome
   const targetUids = () => (selection.edge ? [selection.edge] : selection.items);
   const singleItem = () => (selection.items.length === 1 ? board()?.items.get(selection.items[0]) : null);
-  let hoverUid = null;
   const selectionOwnsBar = () => Boolean(selection.edge || selection.link || selection.items.length);
   const barCard = () => {
     const sel = singleItem();
@@ -2835,29 +2896,49 @@ export function mountBoardView({
     const handled = ctl.handle(normalize(event, "contextmenu"));
     if (handled) event.preventDefault();
   });
-  const showHover = (uid) => {
-    if (gesturing || itemsR.isEditing()) { hoverUid = null; return; }
-    if (selectionOwnsBar()) { hoverUid = null; return; }
-    if (!uid) {
-      if (hoverUid) { hoverUid = null; chrome.ctx.hide(); }
-      return;
-    }
-    if (uid === hoverUid && chrome.ctx.isOpen()) return;
-    const it = board()?.items.get(uid);
-    if (!it || it.type !== "card") {
-      if (hoverUid) { hoverUid = null; chrome.ctx.hide(); }
-      return;
-    }
-    hoverUid = uid;
+  const hoverCardAt = (uid) => {
+    const it = uid ? board()?.items.get(uid) : null;
+    return it && it.type === "card" ? it : null;
+  };
+  const openHover = (it) => {
+    hoverUid = it.uid;
     const anchor = () => {
-      const r = rects().get(uid);
+      const r = rects().get(it.uid);
       return r ? { kind: "items", rect: toScreenRect(r) } : null;
     };
     chrome.ctx.show(it.kind === "board" ? "board" : "card", cardModel(it), anchor);
   };
+  const showHover = (uid) => {
+    if (gesturing || itemsR.isEditing()) { cancelHoverGrace(); hoverUid = null; return; }
+    if (selectionOwnsBar()) { cancelHoverGrace(); hoverUid = null; return; }
+    const it = hoverCardAt(uid);
+    if (hoverUid && chrome.ctx.isOpen()) {
+      // Back on the card whose bar is up: the grace is void.
+      if (it && it.uid === hoverUid) { cancelHoverGrace(); return; }
+      // Off the card or onto another one: keep the bar for the grace, then hide or switch (no hide/show flicker).
+      const target = it ? it.uid : null;
+      if (hoverPending) { hoverPending.target = target; return; }
+      const pending = { target, cancel: null };
+      pending.cancel = timers.later(() => {
+        hoverPending = null;
+        if (disposed || gesturing || itemsR.isEditing() || selectionOwnsBar()) { hoverUid = null; return; }
+        const next = hoverCardAt(pending.target);
+        if (next) openHover(next); else hideHover();
+      }, HOVER_GRACE);
+      hoverPending = pending;
+      return;
+    }
+    cancelHoverGrace();
+    if (!it) { if (hoverUid) { hoverUid = null; chrome.ctx.hide(); } return; }
+    openHover(it);
+  };
   listen(root, "pointermove", (event) => {
     lastPointer = { x: event.clientX || 0, y: event.clientY || 0 };
-    if (event.target?.closest?.(".pxd-chrome")) return;
+    if (event.target?.closest?.(".pxd-chrome")) {
+      // The bar, its bridge and its popovers count as the card: hovering them keeps the toolbar.
+      if (hoverPending && event.target.closest(".pxd-ctx")) cancelHoverGrace();
+      return;
+    }
     const node = event.target?.closest?.(".pxd-item--card");
     showHover(node?.getAttribute?.("data-uid") || node?.dataset?.uid || null);
   });
@@ -3004,6 +3085,7 @@ export function mountBoardView({
       closeBlockEdit();
       return;
     }
+    if (event.key === "Escape" && hoverUid) hideHover();
     // Escape closes the Background popover before the controller's chain (selection, up a level, fullscreen) runs.
     if (event.key === "Escape" && chrome.popover.isOpen()) { chrome.popover.close(); noteOverlayClosed(); event.preventDefault(); event.stopPropagation(); return; }
     if (event.key === "Escape" && chrome.changelog?.isOpen()) { chrome.changelog.close(); noteOverlayClosed(); event.preventDefault(); event.stopPropagation(); return; }
@@ -3320,10 +3402,21 @@ export function mountBoardView({
     const target = pxdTarget(hash);
     if (!target?.cardUid) return false;
     const b = board();
-    if (!b?.items?.has(target.cardUid)) return false;
+    const edge = b?.edges?.get(target.cardUid);
+    if (!b || (!b.items.has(target.cardUid) && !edge)) return false;
     let pageUid = "";
     try { pageUid = host?.blockPageUid?.(boardUid) || ""; } catch { pageUid = ""; }
     if (target.pageUid && pageUid && target.pageUid !== pageUid) return false;
+    // RF-3: a connection block's uid lands on the connection: select it, frame both cards, pulse them.
+    if (edge && !b.items.has(target.cardUid)) {
+      ctl.selectEdge(edge.uid);
+      fitSelection([edge.from, edge.to]);
+      for (const uid of [edge.from, edge.to]) {
+        if (itemsR.shellOf(uid)) pulseItem(uid);
+        else timers.frame(() => { if (!disposed) pulseItem(uid); });
+      }
+      return true;
+    }
     ctl.select([target.cardUid]);
     fitSelection([target.cardUid]);
     if (itemsR.shellOf(target.cardUid)) pulseItem(target.cardUid);

@@ -32,3 +32,22 @@
   display: flex;
   margin-top: 4px;
 }
+
+/* RF-4: an invisible bridge over the gap between a card and its hover toolbar, so the pointer can cross it. */
+.pxd-root .pxd-ctx::before,
+.pxd-root .pxd-ctx::after {
+  content: "";
+  position: absolute;
+  left: -8px;
+  right: -8px;
+  height: 20px;
+  background: transparent;
+}
+
+.pxd-root .pxd-ctx::before {
+  bottom: 100%;
+}
+
+.pxd-root .pxd-ctx::after {
+  top: 100%;
+}

@@ -1,0 +1,149 @@
+/* RF-3 (2.4): relation chips under connection blocks in Roam's outline, sidebar and linked references, and the
+   preview popover. The chip lives outside every .pxd-root, so it carries its own tokens (light, then the five dark
+   signals). The popover is a .pxd-root on document.body and takes the board tokens. */
+
+.pxd-relchip {
+  --pxd-rc-border: #d0d7de;
+  --pxd-rc-text: #1f2937;
+  --pxd-rc-muted: #5f6b7c;
+  --pxd-rc-accent: hsl(175 80% 30%);
+  display: inline-block;
+  box-sizing: border-box;
+  max-width: 100%;
+  margin: 2px 0 4px 24px;
+  padding: 1px 8px;
+  overflow: hidden;
+  border: 1px solid var(--pxd-rc-border);
+  border-left: 3px solid var(--pxd-rc-accent);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--pxd-rc-muted);
+  font-size: 12px;
+  line-height: 1.5;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  cursor: pointer;
+  user-select: none;
+}
+
+.pxd-relchip:hover,
+.pxd-relchip:focus-visible {
+  color: var(--pxd-rc-text);
+  border-color: var(--pxd-rc-accent);
+  outline: none;
+}
+
+.bp3-dark .pxd-relchip,
+body.bt-theme-dark .pxd-relchip,
+.rm-dark-theme .pxd-relchip,
+body.roam-body.dark .pxd-relchip,
+.pxd-root--dark .pxd-relchip {
+  --pxd-rc-border: #3b4b58;
+  --pxd-rc-text: #e6edf3;
+  --pxd-rc-muted: #a7b6c2;
+  --pxd-rc-accent: hsl(175 60% 55%);
+}
+
+.pxd-root.pxd-relpop {
+  position: fixed;
+  z-index: 1000;
+  width: 380px;
+  height: auto;
+  max-width: calc(100vw - 16px);
+  padding: 10px;
+  border: 1px solid var(--pxd-border);
+  border-radius: 8px;
+  background: var(--pxd-surface);
+  box-shadow: var(--pxd-shadow);
+  contain: none;
+  overflow: visible;
+  touch-action: auto;
+}
+
+.pxd-relpop .pxd-relpop__title {
+  margin-bottom: 6px;
+  color: var(--pxd-text);
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 1.4;
+  overflow-wrap: anywhere;
+}
+
+.pxd-relpop .pxd-relpop__map {
+  display: block;
+  width: 100%;
+  height: 200px;
+  border: 1px solid var(--pxd-border);
+  border-radius: 6px;
+  background: var(--pxd-surface);
+  overflow: hidden;
+}
+
+.pxd-relpop .pxd-relpop__card rect {
+  fill: var(--pxd-card);
+  stroke: var(--pxd-border);
+  stroke-width: 2px;
+}
+
+.pxd-relpop .pxd-relpop__card--section rect {
+  fill: none;
+  stroke-dasharray: 8 6;
+}
+
+.pxd-relpop .pxd-relpop__card text,
+.pxd-relpop .pxd-relpop__row text {
+  fill: var(--pxd-text);
+  font-weight: 600;
+}
+
+.pxd-relpop .pxd-relpop__card--from rect,
+.pxd-relpop .pxd-relpop__card--to rect {
+  stroke: var(--pxd-line, var(--pxd-edge));
+  stroke-width: 4px;
+}
+
+.pxd-relpop .pxd-relpop__line {
+  fill: none;
+  stroke: var(--pxd-line, var(--pxd-edge));
+  stroke-width: 4px;
+  stroke-linecap: round;
+}
+
+.pxd-relpop .pxd-relpop__head {
+  fill: var(--pxd-line, var(--pxd-edge));
+}
+
+.pxd-relpop .pxd-relpop__row rect {
+  fill: var(--pxd-card);
+  stroke: var(--pxd-line, var(--pxd-edge));
+  stroke-width: 2px;
+}
+
+.pxd-relpop .pxd-relpop__note,
+.pxd-relpop .pxd-relpop__empty {
+  margin-top: 6px;
+  color: var(--pxd-muted);
+  font-size: 12px;
+}
+
+.pxd-relpop .pxd-relpop__actions {
+  display: flex;
+  gap: 6px;
+  margin-top: 8px;
+}
+
+.pxd-relpop .pxd-relpop__btn {
+  padding: 3px 10px;
+  border: 1px solid var(--pxd-border);
+  border-radius: 6px;
+  background: transparent;
+  color: var(--pxd-text);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.pxd-relpop .pxd-relpop__btn:hover,
+.pxd-relpop .pxd-relpop__btn:focus-visible {
+  border-color: var(--pxd-accent);
+}

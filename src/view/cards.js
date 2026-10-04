@@ -33,6 +33,9 @@ const HEADER_TEXT_MAX = 160;
 const TINY_MINI_PX = 28;
 const ATTR_CHIPS_MAX = 3;
 const SVG_NS = "http://www.w3.org/2000/svg";
+const ROW_BOARD_W = 220;
+const ROW_BOARD_H = 90;
+const ROW_BOARD_THUMBS = 4;
 const BOARD_KEY_DEPTH = 3;
 const BOARD_KEY_NODES = 400;
 const KID_ROW_H = 22;
@@ -385,7 +388,13 @@ export function createItemRenderer({
   };
   // Roam's renderString catches a broken {{[[roam/render]]}} and writes this phrase instead of throwing.
   const RENDER_FAIL = "Error rendering component";
-  const renderRoot = (parent, string, cls = "pxd-rs", uid = "") => {
+  const RENDER_FAILS = [RENDER_FAIL, "Failed to render"];
+  // PL-2: rows inside cards swap a failed macro for the raw text, muted, instead of a chip or Roam's grey box.
+  const showPlainRow = (node, string) => {
+    node.classList.add("pxd-rs--plain");
+    el("span", "pxd-rs__plain", node).textContent = String(string ?? "");
+  };
+  const renderRoot = (parent, string, cls = "pxd-rs", uid = "", { plain = false } = {}) => {
     const node = el("div", cls, parent);
     if (!string) return node;
     const live = el("div", "pxd-rs__live", node);
@@ -402,7 +411,8 @@ export function createItemRenderer({
       console.error = origError;
     }
     const renderedText = String(live.textContent || "");
-    const failed = Boolean(thrown) || renderedText.includes(RENDER_FAIL);
+    const failed = Boolean(thrown) || RENDER_FAILS.some((t) => renderedText.includes(t))
+      || Boolean(live.querySelector?.(".rm-render-failed, .rm-api-render--failed"));
     if (!failed) {
       for (const args of buffered) origError.apply(console, args);
       armEmbedShield(node, live);
@@ -410,7 +420,8 @@ export function createItemRenderer({
     }
     try { host?.unmount?.(live); } catch { /* Roam had nothing to detach */ }
     try { live.remove(); } catch { /* already gone */ }
-    showRenderChip(node, uid);
+    if (plain) showPlainRow(node, string);
+    else showRenderChip(node, uid);
     if (!loggedRenderErrors.has(uid)) {
       loggedRenderErrors.add(uid);
       const reported = thrown || buffered[0]?.[0] || new Error(renderedText.slice(0, 180));
@@ -434,6 +445,65 @@ export function createItemRenderer({
       try { host?.unmount?.(embedLive(node)); } catch { /* not a roam root */ }
     }
     rec.roots = [];
+  };
+
+  // PL-1: a row whose block is a {{[[diagram]]}} board (or an embed of one) cannot render through renderString.
+  // It becomes a compact board row: a mini-map thumbnail, or a chip when the thumbnail budget is spent or the board
+  // is the one on screen. PL-2: any other row that fails to render falls back to its raw text.
+  let rowThumbs = ROW_BOARD_THUMBS;
+  const startRows = () => { rowThumbs = ROW_BOARD_THUMBS; };
+  const EMBED_RE = /^\{\{\s*(?:\[\[)?embed(?:\]\])?\s*:\s*\(\(([\w-]+)\)\)\s*\}\}$/i;
+  const boardRowTarget = (uid, string) => {
+    const t = String(string ?? "").trim();
+    if (classifyString(t).kind === "board") return { uid, string: t };
+    const m = EMBED_RE.exec(t);
+    if (!m) return null;
+    const inner = host?.blockString?.(m[1]);
+    return typeof inner === "string" && classifyString(inner).kind === "board" ? { uid: m[1], string: inner } : null;
+  };
+  const mountBoardRow = (parent, cls, target) => {
+    const node = el("div", `${cls} pxd-rs--board`, parent);
+    const title = parseBoardTitle(target.string) || "Untitled board";
+    const self = target.uid === lastBoard?.uid;
+    const open = (event) => {
+      stopEvent(event);
+      if (event.shiftKey) host?.openInSidebar?.(target.uid, "block");
+      else openBoard(target.uid);
+    };
+    const raw = self ? null : host?.pullBoard?.(target.uid);
+    const content = raw?.[":block/children"] ?? raw?.children ?? [];
+    if (self || !raw || rowThumbs <= 0) {
+      const chip = el("button", "pxd-btn pxd-board-row pxd-board-row--chip", node);
+      chip.type = "button";
+      const n = self ? 0 : boardPreview({ uid: target.uid, string: target.string, content }).count;
+      const label = self ? "this board" : `${n} ${n === 1 ? "item" : "items"}`;
+      chip.textContent = `\u25A6 ${title} \u00B7 ${label}`;
+      chip.dataset.action = "open";
+      chip.setAttribute("aria-label", `Open board ${title}`);
+      for (const type of ["pointerdown", "mousedown", "dblclick"]) chip.addEventListener(type, stopEvent);
+      chip.addEventListener("click", open);
+      return node;
+    }
+    rowThumbs -= 1;
+    const wrap = el("div", "pxd-board-row", node);
+    mountBoardBody(wrap, {
+      uid: target.uid,
+      string: target.string,
+      content,
+      w: ROW_BOARD_W + 24,
+      h: ROW_BOARD_H + HEADER_H + META_H,
+      title,
+      enhanced: false,
+    }, { openUid: target.uid });
+    wrap.addEventListener("click", (event) => {
+      if (!event.shiftKey || event.target?.closest?.("button")) return;
+      open(event);
+    });
+    return node;
+  };
+  const renderRowRoot = (parent, string, cls, uid) => {
+    const target = boardRowTarget(uid, string);
+    return target ? mountBoardRow(parent, cls, target) : renderRoot(parent, string, cls, uid, { plain: true });
   };
 
   // ---------------------------------------------------------------- shells
@@ -834,7 +904,8 @@ export function createItemRenderer({
     rec.kidsBtn.textContent = text;
     rec.kidsBtn.setAttribute("aria-expanded", item.kids ? "true" : "false");
     rec.kidsBtn.setAttribute("aria-label", `${rec.kidCount} ${rec.kidCount === 1 ? "child" : "children"}`);
-    rec.kidsBtn.title = item.kids ? "Hide children" : "Show children";
+    rec.kidsBtn.setAttribute("data-tip", "kids");
+    rec.kidsBtn.setAttribute("data-tip-state", item.kids ? "on" : "off");
   };
 
   // ---------------------------------------------------------------- content
@@ -848,7 +919,7 @@ export function createItemRenderer({
       const row = el("div", "pxd-block", parent);
       row.dataset.uid = childUid(b);
       row.setAttribute("data-pxd-row", childUid(b));
-      const node = renderRoot(row, s, "pxd-rs pxd-block__text", childUid(b));
+      const node = renderRowRoot(row, s, "pxd-rs pxd-block__text", childUid(b));
       budget.roots.push(node);
       const kids = childKids(b);
       if (kids.length && depth < CONTENT_DEPTH) {
@@ -1006,13 +1077,14 @@ export function createItemRenderer({
         fold.setAttribute("aria-expanded", folded ? "false" : "true");
         for (const type of ["pointerdown", "mousedown", "dblclick"]) fold.addEventListener(type, stopEvent);
       }
-      b.roots.push(renderRoot(line, s, "pxd-rs pxd-block__text", uid));
+      b.roots.push(renderRowRoot(line, s, "pxd-rs pxd-block__text", uid));
       if (!kids.length) continue;
       wrap = el("div", "pxd-block__children", row);
       let filled = false;
       const fill = () => {
         if (filled) return;
         filled = true;
+        startRows();
         const sub = { n: b.n, more: 0, roots: [] };
         renderOutline(wrap, kids, sub, rec);
         b.n = sub.n;
@@ -1036,6 +1108,7 @@ export function createItemRenderer({
   };
   // Replaces the holder's rows. Returns the new live roots; the caller files them under rec.roots.
   const paintPage = (rec, holder, p) => {
+    startRows();
     const old = new Set(rec.pageRoots || []);
     for (const node of old) {
       try { node.__pxdEmbedMo?.disconnect(); } catch { /* already gone */ }
@@ -1128,6 +1201,7 @@ export function createItemRenderer({
   };
 
   const mountContentBody = (rec, item) => {
+    startRows();
     noteRender(item.uid);
     rec.kidCount = 0;
     rec.kidRows = 0;
@@ -1206,6 +1280,7 @@ export function createItemRenderer({
         const tree = host?.pullTree?.(ref, item.kids ? CONTENT_DEPTH : 1, 200);
         const apply = (blocks, sync = false) => {
           if (disposed || !body.isConnected || (!sync && rec.contentKey !== contentKeyOf(item))) return;
+          startRows();
           if (!refString?.trim() && !blocks?.length) el("div", "pxd-item__placeholder", body).textContent = "Empty card";
           rec.kidCount = visibleKids(blocks).length;
           rec.kidRows = kidRowsOf(blocks);

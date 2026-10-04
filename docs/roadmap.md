@@ -88,6 +88,7 @@ Native diagrams are React Flow (`.react-flow`, nodes `.react-flow__node-block`).
 | P8 | Docs, hardening and 2.0 | 2.0.0 | tagged `v2.0.0` on 2026-10-03. PF-2 stays a known limit. |
 | P9 | Whole pages, block arrows, card children | 2.1.0 | done 2026-10-03, tagged `v2.1.0`, `08005e2` |
 | P10 | Board bar and tool dock | 2.2.0 | done 2026-10-03, tagged `v2.2.0` |
+| P11 | Polish and fixes | 2.3.0 | open |
 
 Order matters: P1 and P2 are the user's direct requests. Within a phase, do tasks in the listed order unless one is blocked.
 
@@ -266,6 +267,15 @@ The top bar and the bottom palette were the same component drawn twice. Split th
 - [x] **TB-7 LOD and narrow behaviour** (S) — done 2026-10-03, `2b61d7e`: zoom 0.15: dock showed select,hand,board only (TB-overview); 546 px inline board got pxd-root--narrow with 32px buttons and no options (TB-narrow-480). Original task: Overview keeps Select, Hand and Board in the dock and hides the rest and the options. A board under 560px wide gets `pxd-root--narrow`: 32px buttons, no separators, no options. Fullscreen top bar gains 4px padding. Accept: tests; live below zoom 0.2 and at 480px inline.
 - [x] **TB-8 Dark-mode fix** (S) — done 2026-10-03, `2b61d7e`: dark shots show the active tool with a border and dot and no fill (TB-dark-active-card, TB-dark-section); CSS tests TB-8. Original task: `.pxd-tool--active` and `--locked` were single-class rules that lost to `.pxd-root .pxd-btn` and Blueprint's dark button rules. Restated at three classes. Dark tokens carry the dock's active tool as a border. Accept: CSS tests; dark screenshot.
 - [x] **TB-9 Gate** — done 2026-10-03, tag `v2.2.0`: npm run check green, live acceptance on Readwisenotes Plexus Diagram/Test Lab, typing delta -0.06 ms/key (one run, mounted board), unload left 0 .pxd-*. Original task: standing gate: `npm run check` green, live acceptance on `Plexus Diagram/Test Lab` (screenshots light and dark for split, classic and dock-only; zoom below 0.2; fullscreen and 480px inline; typing bench within +0.1 ms/key; Restore native diagram still clean), then release 2.2.0 per section 4.
+
+### P11: Polish and fixes (2.3.0)
+
+Two things the user hit on 2.2.0: a page card that holds a board block showed Roam's grey "Failed to render" box, and toolbar buttons only had slow native tooltips. Design consult: none; the work order is `/tmp/wo/pxd-23-build.wo.md`.
+
+- [ ] **PL-1 Board rows in page cards** (M) — A row whose string classifies as a board (`{{[[diagram]]}}`, or an `{{embed}}` of a board) renders as a compact board row, never through `renderString`: a mini-map thumbnail at about 220 by 90 (the board-card thumbnail path, `mountBoardBody` and `pullBoard`), or a chip "▦ title · N items" once four thumbnails are on a card, or "▦ title · this board" for the board on screen (never pulled, never recursed). Click opens the board, Shift-click opens it in the right sidebar. The row keeps `data-pxd-row`. Covers page-card outline rows and card children (CH-2). Accept: a page card for the page holding the board shows no grey box; the self row is a chip; click and Shift-click live.
+- [ ] **PL-2 Render-failure fallback** (S) — Any other row in a card whose rendered output holds Roam's render-failure text or element (`Error rendering component`, `Failed to render`, `.rm-render-failed`) becomes its raw text, muted, instead of a chip or a grey box. Top-level card bodies keep the existing "Could not render" chip. Accept: `{{[[excalidraw]]}}` and `{{[[roam/render]]}}` rows in a page card show plain text.
+- [ ] **PL-3 Hover tooltips** (L) — One shared tooltip per board (`src/view/tooltip.js`), one pair of pointer listeners and one pair of focus listeners on the root, dismiss listeners only while shown. 350 ms hover, immediate on keyboard focus; hides on leave, blur, pointerdown, wheel, scroll, zoom and Escape. Bold name, shortcut in `<kbd>`, one-line description, lock hint on tools. Below for the board bar, above for the dock (right for a left dock), left for the rail, flips inside the board. Native `title` removed where it exists; `aria-label` kept and `aria-describedby` set while shown. All strings in `src/view/tooltip-text.js`, keyed by control id (`data-tip`, `data-tip-state`). Accept: a test that every chrome control has an entry; live light and dark.
+- [ ] **PL-4 Tooltip settings** (S) — `tooltips` (switch, default on) and `tooltip-delay` (instant, 350 ms, 800 ms) under Board. Off hands the text to the browser's native tooltip. Accept: settings tests; delay and off live.
 
 ## 6. Later (ideas not scheduled)
 

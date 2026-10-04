@@ -23,10 +23,12 @@ export function createPropsPanel({ doc = globalThis.document, root, storage, on 
     parent?.append(node);
     return node;
   };
-  const button = (parent, cls, label, title, fn) => {
+  // tipId: the hover text comes from tooltip-text.js, so no native title (PL-3).
+  const button = (parent, cls, label, title, fn, tipId) => {
     const b = el("button", `pxd-btn ${cls}`, parent, label);
     b.type = "button";
-    if (title) b.title = title;
+    if (tipId) b.setAttribute("data-tip", tipId);
+    else if (title) b.title = title;
     const name = String(label || "").trim() || title || "";
     if (name) b.setAttribute("aria-label", name);
     listen(b, "click", (event) => { event.preventDefault(); event.stopPropagation(); fn?.(event); });
@@ -47,7 +49,7 @@ export function createPropsPanel({ doc = globalThis.document, root, storage, on 
     storage?.setItem?.(STORAGE_KEY, collapsed ? "1" : "0");
     paintCollapsed();
     place();
-  });
+  }, "props.toggle");
   head.setAttribute("aria-expanded", collapsed ? "false" : "true");
   const body = el("div", "pxd-props__body", panel);
 
@@ -115,7 +117,8 @@ export function createPropsPanel({ doc = globalThis.document, root, storage, on 
   const group = (title, key) => {
     const g = el("section", "pxd-props__group", body);
     g.setAttribute("data-group", key);
-    el("h3", "pxd-props__heading", g, title);
+    const h = el("h3", "pxd-props__heading", g, title);
+    h.setAttribute("data-tip", `props.group.${key}`);
     return g;
   };
 
@@ -141,7 +144,7 @@ export function createPropsPanel({ doc = globalThis.document, root, storage, on 
     choice(g, [["", "Default"], ...ALIGNS.map((a) => [a, a[0].toUpperCase() + a.slice(1)])], align, (v) => on.setItemStyle?.({ align: v || null }));
     colorField(g, "Fill", same ? sample.fill : undefined, (c) => on.setItemStyle?.({ fill: c }));
     colorField(g, "Border", same ? sample.border : undefined, (c) => on.setItemStyle?.({ border: c }));
-    button(g, "pxd-props__reset", "Reset selected", "Remove text size, color, align, fill, and border", () => on.resetItems?.());
+    button(g, "pxd-props__reset", "Reset selected", "Remove text size, color, align, fill, and border", () => on.resetItems?.(), "props.reset");
   };
 
   const edgeGroup = (edge) => {
@@ -155,7 +158,7 @@ export function createPropsPanel({ doc = globalThis.document, root, storage, on 
     el("span", "pxd-props__label", g, "Weight");
     choice(g, [[1, "1"], [2, "2"], [3, "3"], [4, "4"]], [1, 2, 3, 4].includes(edge.weight) ? edge.weight : 1, (v) => on.setEdge?.({ weight: v }));
     colorField(g, "Color", edge.color, (c) => on.setEdge?.({ color: c }));
-    button(g, "pxd-props__reset", "Reset", "Remove direction, decoration, type, weight, and color", () => on.resetEdge?.());
+    button(g, "pxd-props__reset", "Reset", "Remove direction, decoration, type, weight, and color", () => on.resetEdge?.(), "props.reset");
   };
 
   const sectionGroup = (items, title, key, write, resetLabel, reset) => {
@@ -179,7 +182,7 @@ export function createPropsPanel({ doc = globalThis.document, root, storage, on 
     colorField(g, "Title fill", pick("titleFill"), (c) => write({ titleFill: c }));
     colorField(g, "Area fill", pick("areaFill"), (c) => write({ areaFill: c }));
     colorField(g, "Border", pick("border"), (c) => write({ border: c }));
-    button(g, "pxd-props__reset", resetLabel, resetLabel, reset);
+    button(g, "pxd-props__reset", resetLabel, resetLabel, reset, "props.reset");
   };
 
   const defaultsGroup = (board) => {
@@ -201,7 +204,7 @@ export function createPropsPanel({ doc = globalThis.document, root, storage, on 
     el("span", "pxd-props__label", g, "Texture");
     const pattern = BOARD_PATTERNS.includes(bg.bg) ? bg.bg : "";
     choice(g, [["", "Default"], ...BOARD_PATTERNS.map((p) => [p, PATTERN_LABELS[p] || p])], pattern, (v) => on.setBackground?.({ bg: v || null }));
-    button(g, "pxd-props__reset", "Reset default", "Clear this board's background", () => on.setBackground?.({ bg: null, bgColor: null }));
+    button(g, "pxd-props__reset", "Reset default", "Clear this board's background", () => on.setBackground?.({ bg: null, bgColor: null }), "props.reset");
   };
 
   let last = null;

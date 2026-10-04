@@ -1,0 +1,44 @@
+/* PL-1 / PL-2: a board inside a page card or a card's children is a compact row, a failed macro is muted text. */
+
+.pxd-root .pxd-rs.pxd-rs--board {
+  display: block;
+  max-width: 100%;
+}
+
+.pxd-root .pxd-rs--board .pxd-board-row {
+  display: block;
+  width: 220px;
+  max-width: 100%;
+  margin: 2px 0;
+}
+
+.pxd-root .pxd-rs--board .pxd-board-row .pxd-item__board {
+  height: auto;
+}
+
+.pxd-root .pxd-rs--board .pxd-board-row .pxd-board-preview {
+  flex: 0 0 auto;
+  height: 90px;
+  min-height: 0;
+}
+
+.pxd-root .pxd-rs--board .pxd-board-row.pxd-board-row--chip {
+  display: inline-flex;
+  align-items: center;
+  width: auto;
+  padding: 1px 8px;
+  border: 1px solid var(--pxd-border);
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+  line-height: 1.5;
+  cursor: pointer;
+}
+
+.pxd-root .pxd-rs.pxd-rs--plain {
+  color: var(--pxd-muted);
+  font-size: 13px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}

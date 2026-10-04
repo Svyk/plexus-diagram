@@ -120,9 +120,8 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     g.dataset.end = end;
     mk("circle", "pxd-edge__bend-dot", g).setAttribute("r", "5");
     mk("path", "pxd-edge__bend-chevron", g);
-    const title = doc.createElementNS(SVG_NS, "title");
-    g.append(title);
-    rec.bends = { ...(rec.bends || {}), [end]: { g, title, clamp: null } };
+    g.setAttribute("data-tip", "edge.bend");
+    rec.bends = { ...(rec.bends || {}), [end]: { g, clamp: null } };
     return rec.bends[end];
   };
   const dropBend = (rec, end) => {
@@ -139,6 +138,7 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
       bend.clamp = clamp;
       bend.g.setAttribute("class", `pxd-edge__bend${clamp ? " pxd-edge__bend--clamped" : ""}`);
       bend.g.setAttribute("data-clamp", clamp || "");
+      bend.g.setAttribute("data-tip-state", clamp ? "clamped" : "inline");
       bend.g.querySelector?.(".pxd-edge__bend-chevron")?.setAttribute("d", clamp === "bottom" ? "M-3 -1.5L0 1.5L3 -1.5" : "M-3 1.5L0 -1.5L3 1.5");
     }
   };
@@ -147,7 +147,7 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     if (!bend) return;
     let text = "";
     try { text = String(blockText?.(uid) ?? "").trim().slice(0, 120); } catch { text = ""; }
-    bend.title.textContent = text || "Block";
+    bend.g.setAttribute("data-tip-extra", text || "Block");
   };
 
   // Selected-edge end handles: dragging one re-targets that end (BA-2). Built lazily, only for the selected edge.

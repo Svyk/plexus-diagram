@@ -2543,6 +2543,51 @@ body.roam-body.dark .pxd-addboard {
   color: var(--pxd-muted);
 }
 
+/* PL-1 / PL-2: a board inside a page card or a card's children is a compact row, a failed macro is muted text. */
+
+.pxd-root .pxd-rs.pxd-rs--board {
+  display: block;
+  max-width: 100%;
+}
+
+.pxd-root .pxd-rs--board .pxd-board-row {
+  display: block;
+  width: 220px;
+  max-width: 100%;
+  margin: 2px 0;
+}
+
+.pxd-root .pxd-rs--board .pxd-board-row .pxd-item__board {
+  height: auto;
+}
+
+.pxd-root .pxd-rs--board .pxd-board-row .pxd-board-preview {
+  flex: 0 0 auto;
+  height: 90px;
+  min-height: 0;
+}
+
+.pxd-root .pxd-rs--board .pxd-board-row.pxd-board-row--chip {
+  display: inline-flex;
+  align-items: center;
+  width: auto;
+  padding: 1px 8px;
+  border: 1px solid var(--pxd-border);
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font-size: 12px;
+  line-height: 1.5;
+  cursor: pointer;
+}
+
+.pxd-root .pxd-rs.pxd-rs--plain {
+  color: var(--pxd-muted);
+  font-size: 13px;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
 /* P9 CH-1..CH-3. Children badge on the bottom edge, outline rows, hover peek. All scoped under .pxd-root. */
 
 .pxd-root .pxd-kids {
@@ -4673,4 +4718,76 @@ body.roam-body.dark .pxd-root,
   padding: 4px 8px;
   color: var(--pxd-muted);
   font-size: 12px;
+}
+
+/* PL-3: the shared hover tooltip. One element in .pxd-root, screen space. Light: raised surface. Dark: the border carries it. */
+
+.pxd-root .pxd-tooltip.pxd-chrome {
+  position: absolute;
+  left: 0;
+  top: 0;
+  z-index: 30;
+  box-sizing: border-box;
+  max-width: 260px;
+  padding: 6px 9px 7px;
+  border: 1px solid var(--pxd-border);
+  border-radius: 6px;
+  background: var(--pxd-chrome-bg);
+  color: var(--pxd-text);
+  box-shadow: var(--pxd-shadow);
+  font-size: 12px;
+  line-height: 1.4;
+  pointer-events: none;
+  text-align: left;
+  white-space: normal;
+}
+
+.bp3-dark .pxd-root .pxd-tooltip.pxd-chrome,
+body.bt-theme-dark .pxd-root .pxd-tooltip.pxd-chrome,
+.rm-dark-theme .pxd-root .pxd-tooltip.pxd-chrome,
+body.roam-body.dark .pxd-root .pxd-tooltip.pxd-chrome,
+.pxd-root.pxd-root--dark .pxd-tooltip.pxd-chrome {
+  border-color: var(--pxd-border-strong);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.45);
+}
+
+.pxd-root .pxd-tooltip .pxd-tooltip__head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.pxd-root .pxd-tooltip .pxd-tooltip__name {
+  font-weight: 600;
+}
+
+.pxd-root .pxd-tooltip .pxd-tooltip__key {
+  margin: 0;
+  padding: 0 5px;
+  border: 1px solid var(--pxd-border-strong);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--pxd-muted);
+  font-family: inherit;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.pxd-root .pxd-tooltip .pxd-tooltip__desc {
+  margin-top: 2px;
+  color: var(--pxd-text);
+}
+
+.pxd-root .pxd-tooltip .pxd-tooltip__extra {
+  margin-top: 3px;
+  padding-left: 6px;
+  border-left: 2px solid var(--pxd-border-strong);
+  color: var(--pxd-muted);
+  overflow-wrap: anywhere;
+}
+
+.pxd-root .pxd-tooltip .pxd-tooltip__hint {
+  margin-top: 3px;
+  color: var(--pxd-muted);
+  font-size: 11px;
 }

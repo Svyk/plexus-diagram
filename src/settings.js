@@ -30,6 +30,8 @@ export const SETTING_IDS = Object.freeze({
   dockLabels: "dock-labels",
   chromeDensity: "chrome-density",
   dockOptions: "dock-options",
+  tooltips: "tooltips",
+  tooltipDelay: "tooltip-delay",
 });
 
 const DEFAULTS = Object.freeze({
@@ -64,10 +66,13 @@ const DEFAULTS = Object.freeze({
   [SETTING_IDS.dockLabels]: false,
   [SETTING_IDS.chromeDensity]: "comfortable",
   [SETTING_IDS.dockOptions]: true,
+  [SETTING_IDS.tooltips]: true,
+  [SETTING_IDS.tooltipDelay]: "350 ms",
 });
 
 const BOARD_TONES = ["none", "paper", "gray", "red", "orange", "yellow", "green", "teal", "blue", "indigo", "purple", "pink"];
 const MAP_ZOOMS = ["0.3", "0.45", "0.6"];
+const TOOLTIP_DELAYS = ["instant", "350 ms", "800 ms"];
 
 const ENUMS = Object.freeze({
   [SETTING_IDS.graphLinks]: ["off", "attributes", "all"],
@@ -83,6 +88,7 @@ const ENUMS = Object.freeze({
   [SETTING_IDS.dockPosition]: ["bottom", "left", "top"],
   [SETTING_IDS.dockStyle]: ["pill", "strip"],
   [SETTING_IDS.chromeDensity]: ["comfortable", "compact"],
+  [SETTING_IDS.tooltipDelay]: TOOLTIP_DELAYS,
 });
 
 const NUMBERS = new Set([SETTING_IDS.defaultCardWidth, SETTING_IDS.defaultCardHeight]);
@@ -220,6 +226,8 @@ const SETTING_ROWS = {
   [SETTING_IDS.dockLabels]: () => switchRow(SETTING_IDS.dockLabels, "Show tool names under icons", "Label each tool in the dock."),
   [SETTING_IDS.chromeDensity]: () => selectRow(SETTING_IDS.chromeDensity, "Button size", "Comfortable or compact buttons for both bars.", ["comfortable", "compact"]),
   [SETTING_IDS.dockOptions]: () => switchRow(SETTING_IDS.dockOptions, "Show tool options in the dock", "Show the active tool's quick options (colors, look, shape) next to the dock."),
+  [SETTING_IDS.tooltips]: () => switchRow(SETTING_IDS.tooltips, "Hover tooltips", "Show a name, shortcut and one-line description when you hover or focus a control. Off falls back to the browser's plain tooltip."),
+  [SETTING_IDS.tooltipDelay]: () => selectRow(SETTING_IDS.tooltipDelay, "Tooltip delay", "How long to hover before a tooltip shows. Keyboard focus always shows it at once.", TOOLTIP_DELAYS),
   [SETTING_IDS.controlsPosition]: () => selectRow(SETTING_IDS.controlsPosition, "Controls", "Rail is the vertical stack on the right. Bar is the horizontal zoom group.", ["rail", "bar"]),
   [SETTING_IDS.snapGuides]: () => switchRow(SETTING_IDS.snapGuides, "Snap guides", "Line a dragged card up with its neighbours and show the guides."),
   [SETTING_IDS.snapGrid]: () => switchRow(SETTING_IDS.snapGrid, "Snap to grid", "Snap a dragged card to the 24 pixel grid. Hold Alt while dragging to skip snapping."),
@@ -252,6 +260,7 @@ const SETTING_GROUPS = [
   ["group-board", "Board", "The canvas, the controls, and how you move around.", [
     SETTING_IDS.enabled, SETTING_IDS.fullscreenOnZoom, SETTING_IDS.wheel, SETTING_IDS.showMinimap, SETTING_IDS.showPalette,
     SETTING_IDS.toolbarLayout, SETTING_IDS.dockPosition, SETTING_IDS.dockStyle, SETTING_IDS.dockLabels, SETTING_IDS.chromeDensity, SETTING_IDS.dockOptions,
+    SETTING_IDS.tooltips, SETTING_IDS.tooltipDelay,
     SETTING_IDS.controlsPosition, SETTING_IDS.snapGuides, SETTING_IDS.snapGrid, SETTING_IDS.grid, SETTING_IDS.boardTone,
     SETTING_IDS.mapZoom, SETTING_IDS.enableShortcuts, SETTING_IDS.showVersionBadge,
   ]],

@@ -711,16 +711,16 @@ function normalizeEdge(plexus) {
   };
 }
 function serializeEdge(edge) {
-  const e = isObject(edge) ? edge : {};
-  const out = { type: "edge", from: e.from, to: e.to };
+  const e2 = isObject(edge) ? edge : {};
+  const out = { type: "edge", from: e2.from, to: e2.to };
   for (const k of ["fromSide", "toSide", "dir", "route", "dash", "weight"]) {
-    if (e[k] !== void 0 && e[k] !== EDGE_DEFAULTS[k]) out[k] = e[k];
+    if (e2[k] !== void 0 && e2[k] !== EDGE_DEFAULTS[k]) out[k] = e2[k];
   }
-  const color = styleColor(e.color);
+  const color = styleColor(e2.color);
   if (color) out.color = color;
-  if (blockUid(e.fromBlock)) out.fromBlock = e.fromBlock;
-  if (blockUid(e.toBlock)) out.toBlock = e.toBlock;
-  const via = cleanVia(e.via);
+  if (blockUid(e2.fromBlock)) out.fromBlock = e2.fromBlock;
+  if (blockUid(e2.toBlock)) out.toBlock = e2.toBlock;
+  const via = cleanVia(e2.via);
   if (via.length) out.via = via;
   return out;
 }
@@ -1164,11 +1164,11 @@ function buildBoard(pulled, { defaults } = {}) {
   const order = [...sections, ...rest];
   if (containerUid !== null) {
     const container = boardKids[containerIndex];
-    for (const e of sortedChildren(container)) {
-      const eplexus = readPlexus(e[":block/props"]);
+    for (const e2 of sortedChildren(container)) {
+      const eplexus = readPlexus(e2[":block/props"]);
       if (eplexus?.type !== "edge") continue;
-      const euid = e[":block/uid"];
-      const estring = e[":block/string"] ?? "";
+      const euid = e2[":block/uid"];
+      const estring = e2[":block/string"] ?? "";
       const n2 = normalizeEdge(eplexus);
       const a = items.get(n2.from);
       const b = items.get(n2.to);
@@ -1399,10 +1399,10 @@ function boardPreview(item, { max = 60, aspect = null, pad: pad2 = 0.12 } = {}) 
     });
   }
   const edges = [];
-  for (const e of child.edges.values()) {
-    if (!e.valid) continue;
-    const a = centerOf(world.get(e.from));
-    const b = centerOf(world.get(e.to));
+  for (const e2 of child.edges.values()) {
+    if (!e2.valid) continue;
+    const a = centerOf(world.get(e2.from));
+    const b = centerOf(world.get(e2.to));
     edges.push({ x1: (a.x - fx) / w, y1: (a.y - fy) / h, x2: (b.x - fx) / w, y2: (b.y - fy) / h });
   }
   return { count: child.items.size, aspect: target, rects, edges, bounds, empty: false };
@@ -1613,11 +1613,11 @@ function edgesTouching(board2, uidSet) {
   const full = new Set(uidSet);
   for (const u of uidSet) for (const d of descendantsOf(board2, u)) full.add(d);
   const out = /* @__PURE__ */ new Set();
-  for (const e of board2.edges.values()) if (full.has(e.from) || full.has(e.to)) out.add(e.uid);
+  for (const e2 of board2.edges.values()) if (full.has(e2.from) || full.has(e2.to)) out.add(e2.uid);
   return out;
 }
 function findEdge(board2, from, to) {
-  for (const e of board2.edges.values()) if (e.from === from && e.to === to) return e;
+  for (const e2 of board2.edges.values()) if (e2.from === from && e2.to === to) return e2;
   return null;
 }
 function diffBoards(prev, next) {
@@ -2339,10 +2339,10 @@ function zoomThreshold(boardValue, settingValue) {
   };
   return pick(boardValue) ?? pick(settingValue) ?? 0.45;
 }
-function thumbnailBudget(uids, { cap: cap3 = THUMBNAIL_CAP } = {}) {
+function thumbnailBudget(uids, { cap: cap4 = THUMBNAIL_CAP } = {}) {
   const out = [];
   const seen = /* @__PURE__ */ new Set();
-  const limit = Math.max(0, Math.min(THUMBNAIL_CAP, cap3));
+  const limit = Math.max(0, Math.min(THUMBNAIL_CAP, cap4));
   for (const uid of uids || []) {
     if (!uid || seen.has(uid)) continue;
     seen.add(uid);
@@ -2456,8 +2456,8 @@ function filterLinks(links, mode) {
 }
 function coveredBy(links, board2) {
   const pairs = /* @__PURE__ */ new Map();
-  for (const [uid, e] of board2.edges) {
-    for (const k of [`${e.from}->${e.to}`, `${e.to}->${e.from}`]) {
+  for (const [uid, e2] of board2.edges) {
+    for (const k of [`${e2.from}->${e2.to}`, `${e2.to}->${e2.from}`]) {
       if (!pairs.has(k)) pairs.set(k, []);
       pairs.get(k).push(uid);
     }
@@ -2614,7 +2614,7 @@ function tagNames(text2) {
 function boardsFromRows(rows, { limit = 20 } = {}) {
   const seen = /* @__PURE__ */ new Set();
   const out = [];
-  const cap3 = Number.isFinite(limit) && limit > 0 ? limit : 20;
+  const cap4 = Number.isFinite(limit) && limit > 0 ? limit : 20;
   for (const row2 of rows || []) {
     if (!row2?.uid || seen.has(row2.uid)) continue;
     if (row2.v != null && row2.v !== 2) continue;
@@ -2624,7 +2624,7 @@ function boardsFromRows(rows, { limit = 20 } = {}) {
       title: row2.title || "Untitled board",
       pageTitle: row2.pageTitle || ""
     });
-    if (out.length >= cap3) break;
+    if (out.length >= cap4) break;
   }
   return out;
 }
@@ -3448,11 +3448,11 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
       if (!librarySelective(f)) return { rows: [], queries };
       const nowMs = Date.now();
       const since = f.days ? nowMs - f.days * 864e5 : null;
-      const cap3 = libraryCap();
+      const cap4 = libraryCap();
       const candidates = [];
       const seen = /* @__PURE__ */ new Set();
       const push = (row2) => {
-        if (candidates.length >= cap3) return false;
+        if (candidates.length >= cap4) return false;
         const key = `${row2.kind}:${row2.uid || row2.title}`;
         if (seen.has(key)) return false;
         seen.add(key);
@@ -3589,7 +3589,7 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
           ));
         }
         for (const rec of found) {
-          if (candidates.length >= cap3) break;
+          if (candidates.length >= cap4) break;
           const uid = rec?.[0];
           const string = rec?.[1];
           const pageTitle = rec?.[2];
@@ -3770,7 +3770,7 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
       const pageTitle = kind === "page" ? String(item.target?.title || item.title || "") : "";
       const targetUid = kind === "block" ? String(item.target?.uid || "") : pageTitle ? "" : cardUid;
       if (!pageTitle && !targetUid) return [];
-      const cap3 = Number.isFinite(Number(limit)) ? Math.max(0, Math.floor(Number(limit))) : LINKED_REF_CAP;
+      const cap4 = Number.isFinite(Number(limit)) ? Math.max(0, Math.floor(Number(limit))) : LINKED_REF_CAP;
       let rows = [];
       try {
         rows = host.q(
@@ -3787,7 +3787,7 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
         if (!uid || uid === cardUid || targetUid && uid === targetUid || seen.has(uid)) continue;
         seen.add(uid);
         refs.push({ uid, string: String(row2?.[1] ?? ""), pageTitle: row2?.[2] || "" });
-        if (refs.length >= cap3) break;
+        if (refs.length >= cap4) break;
       }
       return refs;
     },
@@ -4195,11 +4195,11 @@ function readNative(host, boardUid) {
     delete n2.parentId;
   }
   const edges = [];
-  for (const e of rawEdges) {
-    const from = keyById.get(e[":diagram.edge/source"]?.[":db/id"]);
-    const to = keyById.get(e[":diagram.edge/target"]?.[":db/id"]);
+  for (const e2 of rawEdges) {
+    const from = keyById.get(e2[":diagram.edge/source"]?.[":db/id"]);
+    const to = keyById.get(e2[":diagram.edge/target"]?.[":db/id"]);
     if (!from || !to) continue;
-    const data = parseData(e[":diagram.edge/data"]);
+    const data = parseData(e2[":diagram.edge/data"]);
     const style = mapEdgeStyle(data);
     edges.push({ from, to, label: typeof data.label === "string" ? data.label : typeof data.data?.label === "string" ? data.data.label : "", ...style });
   }
@@ -4265,14 +4265,14 @@ function planV06(board2, source, gen) {
       plan.itemLayouts.push({ uid, layout: { ...layout, x: abs.x, y: abs.y } });
     }
   }
-  for (const e of source.edges) {
-    if (!board2.items.has(e.from) || !board2.items.has(e.to) || e.from === e.to) continue;
-    plan.edges.push(edgePlan(board2, sectionUids, e.from, e.to, e.label ?? "", {
-      fromSide: e.fromSide,
-      toSide: e.toSide,
-      dir: e.dir,
-      route: e.route,
-      color: e.color
+  for (const e2 of source.edges) {
+    if (!board2.items.has(e2.from) || !board2.items.has(e2.to) || e2.from === e2.to) continue;
+    plan.edges.push(edgePlan(board2, sectionUids, e2.from, e2.to, e2.label ?? "", {
+      fromSide: e2.fromSide,
+      toSide: e2.toSide,
+      dir: e2.dir,
+      route: e2.route,
+      color: e2.color
     }));
   }
   return plan;
@@ -4356,15 +4356,15 @@ function planNative(board2, source, gen) {
       plan.itemLayouts.push({ uid: item.uid, layout: { ...layout, x: round12(abs.x), y: round12(abs.y) } });
     }
   }
-  for (const e of source.edges) {
-    const from = uidOfKey.get(e.from);
-    const to = uidOfKey.get(e.to);
+  for (const e2 of source.edges) {
+    const from = uidOfKey.get(e2.from);
+    const to = uidOfKey.get(e2.to);
     if (!from || !to || from === to) continue;
-    plan.edges.push(edgePlan(board2, sectionUids, from, to, e.label ?? "", {
-      dir: e.dir,
-      route: e.route,
-      dash: e.dash,
-      color: e.color
+    plan.edges.push(edgePlan(board2, sectionUids, from, to, e2.label ?? "", {
+      dir: e2.dir,
+      route: e2.route,
+      dash: e2.dash,
+      color: e2.color
     }));
   }
   if (source.boardStyle && Object.keys(source.boardStyle).length) plan.boardStyle = source.boardStyle;
@@ -4421,8 +4421,8 @@ async function executeImport(plan, host, board2) {
         open: false
       });
     }
-    for (const e of plan.edges) {
-      await host.createBlock({ parentUid: containerUid, order: "last", string: e.string, props: { plexus: e.props } });
+    for (const e2 of plan.edges) {
+      await host.createBlock({ parentUid: containerUid, order: "last", string: e2.string, props: { plexus: e2.props } });
       counts.edges++;
     }
   }
@@ -5304,12 +5304,12 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
               u.move(it.uid, it.parentUid, it.order);
               u.props(it.uid, it.plexus);
             }
-            for (const e of undoEdges.sort((a, b) => a.order - b.order)) {
-              if (e.deleted) u.create({ uid: e.uid, parent: e.parent, order: e.order, string: e.string, plexus: e.plexus });
+            for (const e2 of undoEdges.sort((a, b) => a.order - b.order)) {
+              if (e2.deleted) u.create({ uid: e2.uid, parent: e2.parent, order: e2.order, string: e2.string, plexus: e2.plexus });
               else {
-                if (e.relocated) u.move(e.uid, e.parent, e.order);
-                u.props(e.uid, e.plexus);
-                u.string(e.uid, e.string);
+                if (e2.relocated) u.move(e2.uid, e2.parent, e2.order);
+                u.props(e2.uid, e2.plexus);
+                u.string(e2.uid, e2.string);
               }
             }
             if (info.createdContainer) u.del(info.createdContainer);
@@ -5351,7 +5351,7 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
           edgeSet = edgesTouching(board2, set);
         } else {
           edgeSet = /* @__PURE__ */ new Set();
-          for (const e of board2.edges.values()) if (set.has(e.from) || set.has(e.to)) edgeSet.add(e.uid);
+          for (const e2 of board2.edges.values()) if (set.has(e2.from) || set.has(e2.to)) edgeSet.add(e2.uid);
           for (const id of set) {
             const item = board2.items.get(id);
             if (item.type !== "section") continue;
@@ -5814,7 +5814,7 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
       return txn((t) => {
         if (!from || !to || from === to || !board2.items.has(from) || !board2.items.has(to)) return null;
         const props = serializeEdge({ from, to, dir, fromSide, toSide, fromBlock, toBlock });
-        const existing = [...board2.edges.values()].find((e) => e.from === from && e.to === to && (e.fromBlock ?? "") === (props.fromBlock ?? "") && (e.toBlock ?? "") === (props.toBlock ?? ""));
+        const existing = [...board2.edges.values()].find((e2) => e2.from === from && e2.to === to && (e2.fromBlock ?? "") === (props.fromBlock ?? "") && (e2.toBlock ?? "") === (props.toBlock ?? ""));
         if (existing && existing.dir === dir) return existing.uid;
         const container = ensureContainer(t);
         return t.create({ parent: container, order: "last", string: edgeStringFor(from, to, dir, label, props.fromBlock, props.toBlock), plexus: props });
@@ -5994,36 +5994,36 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
       return childContainer;
     };
     const taken = /* @__PURE__ */ new Set();
-    const touched = [...board2.edges.values()].filter((e) => moved.has(e.from) || moved.has(e.to));
+    const touched = [...board2.edges.values()].filter((e2) => moved.has(e2.from) || moved.has(e2.to));
     const snapshots = /* @__PURE__ */ new Map();
-    for (const e of touched) {
-      const hit = ix().get(e.uid);
+    for (const e2 of touched) {
+      const hit = ix().get(e2.uid);
       if (hit?.parent) {
-        snapshots.set(e.uid, { uid: e.uid, parent: hit.parent[UID], order: kidsOf(hit.parent).indexOf(hit.node), plexus: clone(readPlexus(hit.node[PROPS])), string: hit.node[STR] ?? "" });
+        snapshots.set(e2.uid, { uid: e2.uid, parent: hit.parent[UID], order: kidsOf(hit.parent).indexOf(hit.node), plexus: clone(readPlexus(hit.node[PROPS])), string: hit.node[STR] ?? "" });
       }
     }
-    for (const e of touched) {
-      const snapshot = snapshots.get(e.uid);
+    for (const e2 of touched) {
+      const snapshot = snapshots.get(e2.uid);
       if (snapshot) track.undoEdges?.push(snapshot);
-      if (moved.has(e.from) && moved.has(e.to)) {
+      if (moved.has(e2.from) && moved.has(e2.to)) {
         if (snapshot) snapshot.relocated = true;
-        t.move(e.uid, childEdges(), "last");
+        t.move(e2.uid, childEdges(), "last");
         continue;
       }
-      const from = moved.has(e.from) ? boardUid : e.from;
-      const to = moved.has(e.to) ? boardUid : e.to;
+      const from = moved.has(e2.from) ? boardUid : e2.from;
+      const to = moved.has(e2.to) ? boardUid : e2.to;
       const dup = findEdge(board2, from, to);
       const key = `${from}>${to}`;
-      if (from === to || dup && dup.uid !== e.uid || taken.has(key)) {
+      if (from === to || dup && dup.uid !== e2.uid || taken.has(key)) {
         if (snapshot) snapshot.deleted = true;
-        t.del(e.uid);
+        t.del(e2.uid);
         continue;
       }
       taken.add(key);
-      const fromBlock = moved.has(e.from) ? void 0 : e.fromBlock;
-      const toBlock = moved.has(e.to) ? void 0 : e.toBlock;
-      t.props(e.uid, edgePlexus(e.uid, { from, to, fromSide: moved.has(e.from) ? "auto" : e.fromSide, toSide: moved.has(e.to) ? "auto" : e.toSide, fromBlock, toBlock }));
-      t.string(e.uid, edgeStringFor(from, to, e.dir, e.label, fromBlock, toBlock));
+      const fromBlock = moved.has(e2.from) ? void 0 : e2.fromBlock;
+      const toBlock = moved.has(e2.to) ? void 0 : e2.toBlock;
+      t.props(e2.uid, edgePlexus(e2.uid, { from, to, fromSide: moved.has(e2.from) ? "auto" : e2.fromSide, toSide: moved.has(e2.to) ? "auto" : e2.toSide, fromBlock, toBlock }));
+      t.string(e2.uid, edgeStringFor(from, to, e2.dir, e2.label, fromBlock, toBlock));
     }
   }
   function makeSection(t, rect, title, color, adopt, lane2) {
@@ -6150,17 +6150,17 @@ extendSession((session, api) => {
   function cloneSet(t, src, entries, exclude) {
     const board2 = api.board();
     const rects = api.rects();
-    const at = new Map(entries.map((e) => [e.uid, e]));
+    const at = new Map(entries.map((e2) => [e2.uid, e2]));
     const uidMap = /* @__PURE__ */ new Map();
     const tops = [];
-    for (const id of topLevelOf(src.board, entries.map((e) => e.uid))) {
-      const e = at.get(id);
+    for (const id of topLevelOf(src.board, entries.map((e2) => e2.uid))) {
+      const e2 = at.get(id);
       const item = src.board.items.get(id);
       const node2 = src.node(id);
       if (!item || !node2) continue;
       if (item.kind === "board" && !item.enhanced) continue;
-      const parent = containerAt(board2, { x: e.x + item.w / 2, y: e.y + item.h / 2 }, { rects, exclude });
-      const rel = toRelative(board2, parent, { x: e.x, y: e.y }, rects);
+      const parent = containerAt(board2, { x: e2.x + item.w / 2, y: e2.y + item.h / 2 }, { rects, exclude });
+      const rel = toRelative(board2, parent, { x: e2.x, y: e2.y }, rects);
       const x = api.round1(rel.x);
       const y = api.round1(rel.y);
       const simple = item.type === "text" || ["page", "block", "image"].includes(item.kind);
@@ -6248,7 +6248,7 @@ extendSession((session, api) => {
       const copy = (id) => JSON.parse(JSON.stringify(api.rawNode(id) ?? null));
       const nodes = top.map(copy).filter(Boolean);
       if (!nodes.length) return null;
-      const edgeNodes = [...board2.edges.values()].filter((e) => e.valid && set.has(e.from) && set.has(e.to)).map((e) => copy(e.uid)).filter(Boolean);
+      const edgeNodes = [...board2.edges.values()].filter((e2) => e2.valid && set.has(e2.from) && set.has(e2.to)).map((e2) => copy(e2.uid)).filter(Boolean);
       if (edgeNodes.length) nodes.push({ [UID2]: "plexus-cut-edges", [STR2]: "Connections", [PROPS2]: { [PLEXUS_KEY]: { type: "edges" } }, [KIDS2]: edgeNodes });
       return { [UID2]: session.uid, [STR2]: "", [KIDS2]: nodes };
     },
@@ -6286,7 +6286,7 @@ extendSession((session, api) => {
     },
     // text: raw clipboard text or the entries parsePastedText returned.
     pasteText(text2, { x = 0, y = 0 } = {}) {
-      const list = (Array.isArray(text2) ? text2 : parsePastedText(text2)).map((e) => typeof e === "string" ? e : e?.string).filter((s) => typeof s === "string" && s.trim() !== "");
+      const list = (Array.isArray(text2) ? text2 : parsePastedText(text2)).map((e2) => typeof e2 === "string" ? e2 : e2?.string).filter((s) => typeof s === "string" && s.trim() !== "");
       if (!list.length) return Promise.resolve([]);
       return api.txn((t) => {
         const made = capBulk(stackAt(list, x, y), api.emit).map((c) => placeCard(t, c.string, c.x, c.y));
@@ -6581,8 +6581,8 @@ function rewriteEdgeEnds(creates, uidMap) {
     return { ...op, props: { ...op.props, plexus: { ...px, from, to } } };
   });
 }
-function chunkCreates(creates, cap3 = TEMPLATE_WRITE_CAP) {
-  const size = cap3 > 0 ? cap3 : TEMPLATE_WRITE_CAP;
+function chunkCreates(creates, cap4 = TEMPLATE_WRITE_CAP) {
+  const size = cap4 > 0 ? cap4 : TEMPLATE_WRITE_CAP;
   const chunks = [];
   for (let i = 0; i < creates.length; i += size) chunks.push(creates.slice(i, i + size));
   return chunks;
@@ -7181,7 +7181,7 @@ function boardToSvg(board2, rects, { dark = false, padding = 48, maxItems = 500,
 var oneLine = (s) => String(s ?? "").replace(/\s+/g, " ").trim();
 function boardToMarkdown(board2, rects) {
   const lines = [];
-  const readingOrder2 = (uids) => uids.map((uid, i) => ({ uid, i, r: rects.get(uid) })).sort((a, b) => (a.r?.y ?? 0) - (b.r?.y ?? 0) || (a.r?.x ?? 0) - (b.r?.x ?? 0) || a.i - b.i).map((e) => e.uid);
+  const readingOrder2 = (uids) => uids.map((uid, i) => ({ uid, i, r: rects.get(uid) })).sort((a, b) => (a.r?.y ?? 0) - (b.r?.y ?? 0) || (a.r?.x ?? 0) - (b.r?.x ?? 0) || a.i - b.i).map((e2) => e2.uid);
   const content = (children, depth) => {
     for (const c of children ?? []) {
       const s = oneLine(c[":block/string"]);
@@ -7205,14 +7205,14 @@ function boardToMarkdown(board2, rects) {
     }
   };
   walk(board2.roots);
-  const edges = [...board2.edges.values()].filter((e) => e.valid);
+  const edges = [...board2.edges.values()].filter((e2) => e2.valid);
   if (edges.length) {
     if (lines.length) lines.push("");
     lines.push("## Connections");
-    for (const e of edges) {
-      const a = oneLine(titleOf(board2.items.get(e.from)));
-      const b = oneLine(titleOf(board2.items.get(e.to)));
-      lines.push(e.label ? `${a} -> ${e.label} -> ${b}` : `${a} -> ${b}`);
+    for (const e2 of edges) {
+      const a = oneLine(titleOf(board2.items.get(e2.from)));
+      const b = oneLine(titleOf(board2.items.get(e2.to)));
+      lines.push(e2.label ? `${a} -> ${e2.label} -> ${b}` : `${a} -> ${b}`);
     }
   }
   return `${lines.join("\n")}
@@ -7402,8 +7402,8 @@ function createInteractions({ actions, settings } = {}) {
     return bt && bt.uid === uid ? bt : null;
   };
   const sameEdge = (b, from, to, fromBlock, toBlock) => {
-    for (const e of b.edges.values()) {
-      if (e.from === from && e.to === to && (e.fromBlock ?? "") === (fromBlock ?? "") && (e.toBlock ?? "") === (toBlock ?? "")) return e;
+    for (const e2 of b.edges.values()) {
+      if (e2.from === from && e2.to === to && (e2.fromBlock ?? "") === (fromBlock ?? "") && (e2.toBlock ?? "") === (toBlock ?? "")) return e2;
     }
     return null;
   };
@@ -9419,6 +9419,9 @@ var HEADER_TEXT_MAX = 160;
 var TINY_MINI_PX = 28;
 var ATTR_CHIPS_MAX = 3;
 var SVG_NS = "http://www.w3.org/2000/svg";
+var ROW_BOARD_W = 220;
+var ROW_BOARD_H = 90;
+var ROW_BOARD_THUMBS = 4;
 var BOARD_KEY_DEPTH = 3;
 var BOARD_KEY_NODES = 400;
 var KID_ROW_H = 22;
@@ -9786,7 +9789,12 @@ function createItemRenderer({
     }
   };
   const RENDER_FAIL = "Error rendering component";
-  const renderRoot = (parent, string, cls = "pxd-rs", uid = "") => {
+  const RENDER_FAILS = [RENDER_FAIL, "Failed to render"];
+  const showPlainRow = (node2, string) => {
+    node2.classList.add("pxd-rs--plain");
+    el("span", "pxd-rs__plain", node2).textContent = String(string ?? "");
+  };
+  const renderRoot = (parent, string, cls = "pxd-rs", uid = "", { plain = false } = {}) => {
     const node2 = el("div", cls, parent);
     if (!string) return node2;
     const live = el("div", "pxd-rs__live", node2);
@@ -9805,7 +9813,7 @@ function createItemRenderer({
       console.error = origError;
     }
     const renderedText = String(live.textContent || "");
-    const failed = Boolean(thrown) || renderedText.includes(RENDER_FAIL);
+    const failed = Boolean(thrown) || RENDER_FAILS.some((t) => renderedText.includes(t)) || Boolean(live.querySelector?.(".rm-render-failed, .rm-api-render--failed"));
     if (!failed) {
       for (const args of buffered) origError.apply(console, args);
       armEmbedShield(node2, live);
@@ -9819,7 +9827,8 @@ function createItemRenderer({
       live.remove();
     } catch {
     }
-    showRenderChip(node2, uid);
+    if (plain) showPlainRow(node2, string);
+    else showRenderChip(node2, uid);
     if (!loggedRenderErrors.has(uid)) {
       loggedRenderErrors.add(uid);
       const reported = thrown || buffered[0]?.[0] || new Error(renderedText.slice(0, 180));
@@ -9854,6 +9863,63 @@ function createItemRenderer({
       }
     }
     rec.roots = [];
+  };
+  let rowThumbs = ROW_BOARD_THUMBS;
+  const startRows = () => {
+    rowThumbs = ROW_BOARD_THUMBS;
+  };
+  const EMBED_RE = /^\{\{\s*(?:\[\[)?embed(?:\]\])?\s*:\s*\(\(([\w-]+)\)\)\s*\}\}$/i;
+  const boardRowTarget = (uid, string) => {
+    const t = String(string ?? "").trim();
+    if (classifyString(t).kind === "board") return { uid, string: t };
+    const m = EMBED_RE.exec(t);
+    if (!m) return null;
+    const inner = host?.blockString?.(m[1]);
+    return typeof inner === "string" && classifyString(inner).kind === "board" ? { uid: m[1], string: inner } : null;
+  };
+  const mountBoardRow = (parent, cls, target) => {
+    const node2 = el("div", `${cls} pxd-rs--board`, parent);
+    const title = parseBoardTitle(target.string) || "Untitled board";
+    const self = target.uid === lastBoard?.uid;
+    const open = (event) => {
+      stopEvent(event);
+      if (event.shiftKey) host?.openInSidebar?.(target.uid, "block");
+      else openBoard(target.uid);
+    };
+    const raw = self ? null : host?.pullBoard?.(target.uid);
+    const content = raw?.[":block/children"] ?? raw?.children ?? [];
+    if (self || !raw || rowThumbs <= 0) {
+      const chip = el("button", "pxd-btn pxd-board-row pxd-board-row--chip", node2);
+      chip.type = "button";
+      const n2 = self ? 0 : boardPreview({ uid: target.uid, string: target.string, content }).count;
+      const label = self ? "this board" : `${n2} ${n2 === 1 ? "item" : "items"}`;
+      chip.textContent = `▦ ${title} · ${label}`;
+      chip.dataset.action = "open";
+      chip.setAttribute("aria-label", `Open board ${title}`);
+      for (const type of ["pointerdown", "mousedown", "dblclick"]) chip.addEventListener(type, stopEvent);
+      chip.addEventListener("click", open);
+      return node2;
+    }
+    rowThumbs -= 1;
+    const wrap = el("div", "pxd-board-row", node2);
+    mountBoardBody(wrap, {
+      uid: target.uid,
+      string: target.string,
+      content,
+      w: ROW_BOARD_W + 24,
+      h: ROW_BOARD_H + HEADER_H + META_H,
+      title,
+      enhanced: false
+    }, { openUid: target.uid });
+    wrap.addEventListener("click", (event) => {
+      if (!event.shiftKey || event.target?.closest?.("button")) return;
+      open(event);
+    });
+    return node2;
+  };
+  const renderRowRoot = (parent, string, cls, uid) => {
+    const target = boardRowTarget(uid, string);
+    return target ? mountBoardRow(parent, cls, target) : renderRoot(parent, string, cls, uid, { plain: true });
   };
   const buildPorts = (parent) => {
     const wrap = el("div", "pxd-ports", parent);
@@ -10255,7 +10321,8 @@ function createItemRenderer({
     rec.kidsBtn.textContent = text2;
     rec.kidsBtn.setAttribute("aria-expanded", item.kids ? "true" : "false");
     rec.kidsBtn.setAttribute("aria-label", `${rec.kidCount} ${rec.kidCount === 1 ? "child" : "children"}`);
-    rec.kidsBtn.title = item.kids ? "Hide children" : "Show children";
+    rec.kidsBtn.setAttribute("data-tip", "kids");
+    rec.kidsBtn.setAttribute("data-tip-state", item.kids ? "on" : "off");
   };
   const renderBlocks = (parent, blocks, depth, budget) => {
     for (const b of blocks) {
@@ -10266,7 +10333,7 @@ function createItemRenderer({
       const row2 = el("div", "pxd-block", parent);
       row2.dataset.uid = childUid(b);
       row2.setAttribute("data-pxd-row", childUid(b));
-      const node2 = renderRoot(row2, s, "pxd-rs pxd-block__text", childUid(b));
+      const node2 = renderRowRoot(row2, s, "pxd-rs pxd-block__text", childUid(b));
       budget.roots.push(node2);
       const kids = childKids(b);
       if (kids.length && depth < CONTENT_DEPTH) {
@@ -10315,12 +10382,12 @@ function createItemRenderer({
         svg.setAttribute("class", "pxd-board-preview__edges");
         svg.setAttribute("viewBox", "0 0 1 1");
         svg.setAttribute("preserveAspectRatio", "none");
-        for (const e of preview.edges) {
+        for (const e2 of preview.edges) {
           const line = doc.createElementNS(SVG_NS, "line");
-          line.setAttribute("x1", String(e.x1));
-          line.setAttribute("y1", String(e.y1));
-          line.setAttribute("x2", String(e.x2));
-          line.setAttribute("y2", String(e.y2));
+          line.setAttribute("x1", String(e2.x1));
+          line.setAttribute("y1", String(e2.y1));
+          line.setAttribute("x2", String(e2.x2));
+          line.setAttribute("y2", String(e2.y2));
           svg.append(line);
         }
         canvas.append(svg);
@@ -10433,13 +10500,14 @@ function createItemRenderer({
         fold.setAttribute("aria-expanded", folded ? "false" : "true");
         for (const type of ["pointerdown", "mousedown", "dblclick"]) fold.addEventListener(type, stopEvent);
       }
-      b.roots.push(renderRoot(line, s, "pxd-rs pxd-block__text", uid));
+      b.roots.push(renderRowRoot(line, s, "pxd-rs pxd-block__text", uid));
       if (!kids.length) continue;
       wrap = el("div", "pxd-block__children", row2);
       let filled = false;
       const fill = () => {
         if (filled) return;
         filled = true;
+        startRows();
         const sub = { n: b.n, more: 0, roots: [] };
         renderOutline(wrap, kids, sub, rec);
         b.n = sub.n;
@@ -10468,6 +10536,7 @@ function createItemRenderer({
     }
   };
   const paintPage = (rec, holder, p) => {
+    startRows();
     const old = new Set(rec.pageRoots || []);
     for (const node2 of old) {
       try {
@@ -10571,6 +10640,7 @@ function createItemRenderer({
     };
   };
   const mountContentBody = (rec, item) => {
+    startRows();
     noteRender(item.uid);
     rec.kidCount = 0;
     rec.kidRows = 0;
@@ -10648,6 +10718,7 @@ function createItemRenderer({
         const tree = host?.pullTree?.(ref, item.kids ? CONTENT_DEPTH : 1, 200);
         const apply = (blocks, sync2 = false) => {
           if (disposed || !body.isConnected || !sync2 && rec.contentKey !== contentKeyOf(item)) return;
+          startRows();
           if (!refString?.trim() && !blocks?.length) el("div", "pxd-item__placeholder", body).textContent = "Empty card";
           rec.kidCount = visibleKids(blocks).length;
           rec.kidRows = kidRowsOf(blocks);
@@ -11084,70 +11155,70 @@ function createItemRenderer({
   };
   const rootOfLayer = () => itemsLayer?.closest?.(".pxd-root") ?? null;
   const focusLost = (a) => !a || a === doc.body || a === doc.documentElement || a === rootOfLayer();
-  const findLiveTextarea = (e) => {
-    const list = [...e.editor.querySelectorAll?.("textarea") || []];
+  const findLiveTextarea = (e2) => {
+    const list = [...e2.editor.querySelectorAll?.("textarea") || []];
     if (!list.length) return null;
     const ta = [...list].reverse().find((n2) => String(n2.id || "").startsWith("block-input-")) || list[list.length - 1];
     return ta?.isConnected ? ta : null;
   };
-  const floorTick = (e) => {
+  const floorTick = (e2) => {
     const f = floor;
     if (!f) return;
     f.cancel = null;
     const stop = () => {
       if (floor === f) floor = null;
     };
-    if (editing !== e || disposed || lastOutsideDown > f.start - FLOOR_POINTER_MS || doc.hasFocus?.() === false) return stop();
+    if (editing !== e2 || disposed || lastOutsideDown > f.start - FLOOR_POINTER_MS || doc.hasFocus?.() === false) return stop();
     const a = doc.activeElement;
-    if (e.editor.contains?.(a)) return stop();
+    if (e2.editor.contains?.(a)) return stop();
     if (!focusLost(a)) return stop();
-    const ta = findLiveTextarea(e);
+    const ta = findLiveTextarea(e2);
     if (ta) {
       recoveries.push(now());
       focusRoamInput(ta);
       return stop();
     }
-    if (now() - f.start < FLOOR_WINDOW_MS) f.cancel = frameLater(() => floorTick(e));
+    if (now() - f.start < FLOOR_WINDOW_MS) f.cancel = frameLater(() => floorTick(e2));
     else stop();
   };
   const armFloor = () => {
-    const e = editing;
-    if (!e || disposed || !e.ready || floor) return false;
+    const e2 = editing;
+    if (!e2 || disposed || !e2.ready || floor) return false;
     const t = now();
     recoveries = recoveries.filter((x) => t - x < FLOOR_SPAN_MS);
     if (recoveries.length >= FLOOR_MAX) {
       if (!floorRetry) {
         floorRetry = later(() => {
           floorRetry = null;
-          if (editing === e && !disposed && focusLost(doc.activeElement)) armFloor();
+          if (editing === e2 && !disposed && focusLost(doc.activeElement)) armFloor();
         }, FLOOR_SPAN_MS - (t - recoveries[0]) + 20);
       }
       return false;
     }
     floor = { start: t, cancel: null };
-    floor.cancel = frameLater(() => floorTick(e));
+    floor.cancel = frameLater(() => floorTick(e2));
     return true;
   };
-  const attachFloor = (e) => {
+  const attachFloor = (e2) => {
     const onIn = () => {
-      e.ready = true;
+      e2.ready = true;
     };
     const onOut = (event) => {
-      if (editing !== e || !e.ready) return;
+      if (editing !== e2 || !e2.ready) return;
       const to = event.relatedTarget;
       if (to) return;
       armFloor();
     };
-    e.editor.addEventListener("focusin", onIn);
-    e.editor.addEventListener("focusout", onOut);
+    e2.editor.addEventListener("focusin", onIn);
+    e2.editor.addEventListener("focusout", onOut);
     const MO = doc.defaultView?.MutationObserver || globalThis.MutationObserver;
     let mo = null;
     if (typeof MO === "function") {
       mo = new MO(() => {
-        if (editing === e && e.ready && focusLost(doc.activeElement)) armFloor();
+        if (editing === e2 && e2.ready && focusLost(doc.activeElement)) armFloor();
       });
       try {
-        mo.observe(e.editor, { childList: true, subtree: true });
+        mo.observe(e2.editor, { childList: true, subtree: true });
       } catch {
       }
     }
@@ -11155,16 +11226,16 @@ function createItemRenderer({
     let ro = null;
     if (typeof RO === "function" && onEditResize) {
       ro = new RO(() => {
-        if (editing === e) onEditResize(e.uid, Number(e.rec.el?.offsetHeight) || 0);
+        if (editing === e2) onEditResize(e2.uid, Number(e2.rec.el?.offsetHeight) || 0);
       });
       try {
-        ro.observe(e.editor);
+        ro.observe(e2.editor);
       } catch {
       }
     }
     floorTeardown = () => {
-      e.editor.removeEventListener("focusin", onIn);
-      e.editor.removeEventListener("focusout", onOut);
+      e2.editor.removeEventListener("focusin", onIn);
+      e2.editor.removeEventListener("focusout", onOut);
       mo?.disconnect();
       ro?.disconnect();
       floor?.cancel?.();
@@ -11190,12 +11261,12 @@ function createItemRenderer({
       return false;
     }
   };
-  const clearEditFade = (e) => {
-    e?.fadeCancel?.();
-    e?.releaseCancel?.();
-    if (e) {
-      e.fadeCancel = null;
-      e.releaseCancel = null;
+  const clearEditFade = (e2) => {
+    e2?.fadeCancel?.();
+    e2?.releaseCancel?.();
+    if (e2) {
+      e2.fadeCancel = null;
+      e2.releaseCancel = null;
     }
   };
   const dropStaticLayer = (rec) => {
@@ -11318,12 +11389,12 @@ function createItemRenderer({
     stopMenus?.();
     stopMenus = null;
     if (doc.querySelector?.(".pxd-root .bp3-popover-open")) ensureMenus();
-    const e = editing;
-    if (!e) return;
+    const e2 = editing;
+    if (!e2) return;
     editing = null;
-    clearEditFade(e);
+    clearEditFade(e2);
     detachFocusGuard();
-    const { rec, editor, uid, item } = e;
+    const { rec, editor, uid, item } = e2;
     applyEditorCounterScale(editor, 1);
     const contentH = Number(editor.scrollHeight) || 0;
     for (const type of EDITOR_STOPPED) editor.removeEventListener(type, stopEvent);
@@ -11542,15 +11613,15 @@ function createItemRenderer({
     stopMenus?.();
     stopMenus = null;
     if (editing) {
-      const e = editing;
-      clearEditFade(e);
+      const e2 = editing;
+      clearEditFade(e2);
       editing = null;
       detachFocusGuard();
-      for (const type of EDITOR_STOPPED) e.editor.removeEventListener(type, stopEvent);
-      e.rec.ghost?.remove();
-      e.rec.ghost = null;
+      for (const type of EDITOR_STOPPED) e2.editor.removeEventListener(type, stopEvent);
+      e2.rec.ghost?.remove();
+      e2.rec.ghost = null;
       try {
-        host?.unmount?.(e.editor);
+        host?.unmount?.(e2.editor);
       } catch {
       }
     }
@@ -11797,9 +11868,8 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     g.dataset.end = end;
     mk("circle", "pxd-edge__bend-dot", g).setAttribute("r", "5");
     mk("path", "pxd-edge__bend-chevron", g);
-    const title = doc.createElementNS(SVG_NS2, "title");
-    g.append(title);
-    rec.bends = { ...rec.bends || {}, [end]: { g, title, clamp: null } };
+    g.setAttribute("data-tip", "edge.bend");
+    rec.bends = { ...rec.bends || {}, [end]: { g, clamp: null } };
     return rec.bends[end];
   };
   const dropBend = (rec, end) => {
@@ -11816,6 +11886,7 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
       bend.clamp = clamp2;
       bend.g.setAttribute("class", `pxd-edge__bend${clamp2 ? " pxd-edge__bend--clamped" : ""}`);
       bend.g.setAttribute("data-clamp", clamp2 || "");
+      bend.g.setAttribute("data-tip-state", clamp2 ? "clamped" : "inline");
       bend.g.querySelector?.(".pxd-edge__bend-chevron")?.setAttribute("d", clamp2 === "bottom" ? "M-3 -1.5L0 1.5L3 -1.5" : "M-3 1.5L0 -1.5L3 1.5");
     }
   };
@@ -11828,7 +11899,7 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     } catch {
       text2 = "";
     }
-    bend.title.textContent = text2 || "Block";
+    bend.g.setAttribute("data-tip-extra", text2 || "Block");
   };
   const placeEnds = (rec, geo) => {
     if (!rec.ends || !geo) return;
@@ -11857,7 +11928,7 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     }
     placeEnds(rec, rec.geo);
   };
-  const dimmed = (e) => Boolean(focusSet) && !(focusSet.has(e.from) && focusSet.has(e.to));
+  const dimmed = (e2) => Boolean(focusSet) && !(focusSet.has(e2.from) && focusSet.has(e2.to));
   const paintEdge = (board2, edge, rec, { covered, selected }) => {
     const cls = ["pxd-edge"];
     const named = PALETTE.includes(edge.color);
@@ -12270,10 +12341,10 @@ function buildColorPicker(doc, onPick, listen) {
   const row2 = (label, colors, named) => {
     const wrap = doc.createElement("div");
     wrap.className = "pxd-picker__row";
-    const cap3 = doc.createElement("div");
-    cap3.className = "pxd-picker__cap";
-    cap3.textContent = label;
-    wrap.append(cap3);
+    const cap4 = doc.createElement("div");
+    cap4.className = "pxd-picker__cap";
+    cap4.textContent = label;
+    wrap.append(cap4);
     const swatches = doc.createElement("div");
     swatches.className = "pxd-picker__swatches";
     for (const color of colors) {
@@ -12341,6 +12412,194 @@ function buildColorPicker(doc, onPick, listen) {
   return box2;
 }
 
+// src/view/tooltip-text.js
+var LOCK = "Double-click to keep this tool.";
+var e = (name, desc, key, hint) => {
+  const out = { name, desc };
+  if (key) out.key = key;
+  if (hint) out.hint = hint;
+  return out;
+};
+var cap = (s) => s.charAt(0).toUpperCase() + s.slice(1);
+var TIP_TEXT = {
+  // ---- board bar
+  crumb: e(null, "Go back up to this board."),
+  "crumb.current": e(null, "The board you are looking at."),
+  "crumb.more": e("Hidden boards", "Show the boards between the first and the last crumb."),
+  "toolbar.add": e("Add", "Open the panel to search the graph and drag pages, blocks and today's notes onto the board."),
+  "toolbar.info": e("Info", "Show details for the selected card: references, attributes, tasks and the boards it sits on.", "I"),
+  "toolbar.links": e("Graph links", "Cycle the lines drawn from page references and attributes.", "L"),
+  "toolbar.links:off": e("Links: Off", "No graph lines. Only the arrows you drew are shown.", "L", "Click to show attribute links."),
+  "toolbar.links:attributes": e("Links: Attributes", "Draw lines only for shared Name:: attributes.", "L", "Click to show all links."),
+  "toolbar.links:all": e("Links: All", "Draw lines for every shared page reference and attribute.", "L", "Click to turn links off."),
+  "toolbar.table": e("Table", "Show this board's cards as a table you can sort and edit."),
+  "toolbar.table:on": e("Board", "Go back from the table to the canvas."),
+  "toolbar.kanban": e("Kanban", "Group the cards into columns by status or tag."),
+  "toolbar.kanban:on": e("Board", "Go back from the kanban columns to the canvas."),
+  "toolbar.bg": e("Background", "Choose the pattern and the tone of this board, or reset it to the default."),
+  "toolbar.lens": e("Tags", "Tag lens: keep the cards with one tag bright and dim the rest."),
+  "toolbar.focus": e("Focus", "Fade everything except the selected cards and what they connect to.", "F"),
+  "toolbar.present": e("Present", "Step through the sections full screen, one frame at a time.", "P"),
+  "toolbar.more": e("More", "More board actions: export, templates, dock position, layouts and views."),
+  "toolbar.zoom-out": e("Zoom out", "Make everything on the board smaller.", "⌘ −"),
+  "toolbar.zoom": e("Zoom", "The current zoom. Click to return to 100%.", "⇧ 0"),
+  "toolbar.zoom-in": e("Zoom in", "Make everything on the board larger.", "⌘ ="),
+  "toolbar.fit": e("Fit", "Zoom and pan so every card is in view.", "⇧ 1"),
+  "toolbar.minimap": e("Minimap", "Show or hide the small map of the whole board."),
+  "toolbar.edit": e("Edit block", "Open the diagram block itself in Roam to edit its text or children."),
+  "toolbar.fullscreen": e("Fullscreen", "Open this board full screen. Esc leaves it."),
+  "toolbar.fullscreen:on": e("Exit fullscreen", "Return the board to its place on the page.", "Esc"),
+  badge: e("Version", "The installed Plexus version. Click to read what changed in it."),
+  "rail.badge": e("Version", "The installed Plexus version. Click to read what changed in it."),
+  sync: e("Saved", "Every change is written to Roam."),
+  "sync:idle": e("Saved", "Every change is written to Roam."),
+  "sync:writing": e("Saving", "Your last change is being written to Roam."),
+  "sync:retrying": e("Retrying", "Roam did not take the last write. Plexus is trying again."),
+  "sync:failed": e("Could not save", "The last change did not reach Roam. Undo it or try the action again."),
+  // ---- tool dock and board-bar tools
+  "tool.select": e("Select", "Click cards to select them, drag to move, drag on empty space to box-select.", "V", LOCK),
+  "tool.hand": e("Hand", "Drag the board to pan without moving anything.", "H", LOCK),
+  "tool.card": e("Card", "Click the board to make a card, or drag to size one. It is a Roam block.", "N", LOCK),
+  "tool.text": e("Text", "Click the board to place a free text label.", "T", LOCK),
+  "tool.sticky": e("Sticky", "Click the board to place a colored sticky note.", "S", LOCK),
+  "tool.shape": e("Shape", "Click or drag to draw a shape. Pick its kind in the options beside the dock.", "R", LOCK),
+  "tool.section": e("Section", "Drag a colored frame. Cards dropped inside become its members.", "G", LOCK),
+  "tool.board": e("Board", "Click to make a nested board you can open in place.", "W", LOCK),
+  "tool.connect": e("Connect", "Drag from one card to another to draw an arrow, which is saved as a Roam block.", "C", LOCK),
+  "dock.look.block": e("Block look", "Show new cards, or the selected one, as a plain Roam block."),
+  "dock.look.card": e("Card look", "Show new cards, or the selected one, with a title row."),
+  "backtocontent": e("Back to content", "Fit the view back to your cards."),
+  // ---- right control rail
+  "rail.zoom-in": e("Zoom in", "Make everything on the board larger.", "⌘ ="),
+  "rail.zoom-out": e("Zoom out", "Make everything on the board smaller.", "⌘ −"),
+  "rail.fit": e("Fit view", "Zoom and pan so every card is in view.", "⇧ 1"),
+  "rail.minimap": e("Minimap", "Show or hide the small map of the whole board."),
+  "rail.png": e("Save PNG", "Save the board as an image."),
+  "rail.outline": e("Open outline", "Open the board's blocks as an outline in the right sidebar."),
+  "rail.edit": e("Edit block", "Open the diagram block itself in Roam to edit its text or children."),
+  "rail.fullscreen": e("Maximize", "Open this board full screen. Esc leaves it."),
+  "rail.fullscreen:on": e("Minimize", "Return the board to its place on the page.", "Esc"),
+  "rail.zoom": e("Zoom", "The current zoom. Click to return to 100%.", "⇧ 0"),
+  // ---- background popover
+  "bg.default": e("Use as default", "Use this pattern and tone for every board that does not set its own."),
+  "bg.reset": e("Reset", "Clear this board's own pattern and tone."),
+  "swatch.none": e("No color", "Clear the color, or use the default tone."),
+  "swatch.paper": e("Paper", "A warm off-white tone for the board."),
+  // ---- card hover toolbar and the other context bars
+  "ctx.color": e("Color", "Open the color picker for this card."),
+  "ctx.expand": e("Show children", "Show this block's children as an outline inside the card."),
+  "ctx.expand:on": e("Hide children", "Fold the children away so the card shows only its own block."),
+  "ctx.refs": e("References", "Show the blocks that link to this card."),
+  "ctx.edit": e("Edit", "Edit the card's text in place.", "Enter"),
+  "ctx.sidebar": e("Open in sidebar", "Open the block or page in Roam's right sidebar."),
+  "ctx.collapse": e("Collapse", "Shrink the card to its title row."),
+  "ctx.collapse:on": e("Expand", "Show the whole card again."),
+  "ctx.related": e("Related", "Find pages and blocks related to this card."),
+  "ctx.pin-toggle": e("Pin", "Lock the position and size so it cannot be moved or resized by accident."),
+  "ctx.pin-toggle:on": e("Unpin", "Allow moving and resizing again."),
+  "ctx.fit-height": e("Fit height", "Grow or shrink the card to the height of its text."),
+  "ctx.copy-ref": e("Copy ref", "Copy a block or page reference for this card to paste into Roam."),
+  "ctx.duplicate": e("Duplicate", "Make a copy of the selection next to it.", "⌘ D"),
+  "ctx.send-to": e("Send to board", "Move the selection into another board."),
+  "ctx.mindmap": e("Mind map", "Lay the card's children out as cards around it, with arrows."),
+  "ctx.same-color": e("Select same color", "Select every card or section of this color."),
+  "ctx.connected": e("Select connected", "Select the cards linked to this one by an arrow or a graph link."),
+  "ctx.wrap": e("Wrap in section", "Put the selected cards in a new section.", "⌘ G"),
+  "ctx.wrap-board": e("Move into new board", "Move the selection into a new nested board."),
+  "ctx.fold": e("Fold", "Collapse the selected cards to their titles.", "⌘ ⌥ Enter"),
+  "ctx.fold:on": e("Unfold", "Expand the collapsed cards again.", "⌘ ⌥ Enter"),
+  "ctx.delete": e("Delete", "Remove the selection. On a section, the cards stay; Shift+Delete removes them too.", "Delete"),
+  "ctx.open-board": e("Open", "Open this board in place.", "Enter"),
+  "ctx.own-page": e("Own page", "Open the nested board on its own Roam page."),
+  "ctx.rename-board": e("Rename board", "Change the board's name."),
+  "ctx.rename": e("Rename", "Edit the section's title.", "Enter"),
+  "ctx.contents": e("Select contents", "Select the cards inside this section."),
+  "ctx.all-in-section": e("Select all in section", "Select everything inside the section, nested sections too."),
+  "ctx.collapse-section": e("Collapse", "Fold the section down to its title."),
+  "ctx.collapse-section:on": e("Expand", "Show the section's cards again."),
+  "ctx.section-note": e("Description", "Add a one-line description under the section's title."),
+  "ctx.section-note:on": e("Remove note", "Delete the section's description line."),
+  "ctx.lock": e("Lock", "Pin the section and everything inside it."),
+  "ctx.lock:on": e("Unlock", "Unpin the section and everything inside it."),
+  "ctx.present-section": e("Present", "Present this section full screen."),
+  "ctx.fit-section": e("Fit to contents", "Resize the section around its cards."),
+  "ctx.auto-fit": e("Auto-fit", "Keep the section sized to its cards as they move."),
+  "ctx.auto-fit:on": e("Auto-fit is on", "The section grows around its cards. Click to stop."),
+  "ctx.fold-all": e("Fold all", "Collapse every card in the section to its title."),
+  "ctx.flip": e("Flip", "Swap the arrow's two ends."),
+  "ctx.unblock": e("Connect to the page", "End the arrow on the whole page instead of one block."),
+  "ctx.label": e("Label", "Edit the text on the arrow."),
+  "ctx.notes": e("Notes", "Open the arrow's own block in the sidebar to add notes."),
+  "ctx.write": e("Write to graph", "Write this link as a Name:: attribute on the source block."),
+  "ctx.source": e(null, "Open the block that makes this link in the sidebar."),
+  "ctx.pin": e("Pin as connection", "Turn this graph link into an arrow you can style."),
+  "ctx.align.left": e("Align left", "Line the selected cards up on their left edges."),
+  "ctx.align.center": e("Align centers", "Line the selected cards up on their horizontal centers."),
+  "ctx.align.right": e("Align right", "Line the selected cards up on their right edges."),
+  "ctx.align.top": e("Align top", "Line the selected cards up on their top edges."),
+  "ctx.align.middle": e("Align middles", "Line the selected cards up on their vertical centers."),
+  "ctx.align.bottom": e("Align bottom", "Line the selected cards up on their bottom edges."),
+  "ctx.distribute.h": e("Distribute horizontally", "Space the selected cards evenly from left to right."),
+  "ctx.distribute.v": e("Distribute vertically", "Space the selected cards evenly from top to bottom."),
+  "ctx.tidy.grid": e("Tidy into a grid", "Arrange the selection in rows and columns."),
+  "ctx.tidy.row": e("Tidy into a row", "Arrange the selection in one row."),
+  "ctx.tidy.column": e("Tidy into a column", "Arrange the selection in one column."),
+  "ctx.same-size.width": e("Same width", "Give the selected cards the width of the first one."),
+  "ctx.same-size.height": e("Same height", "Give the selected cards the height of the first one."),
+  "ctx.same-size.both": e("Same size", "Give the selected cards the width and height of the first one."),
+  "ctx.dir.one": e("One way", "An arrowhead at the end only."),
+  "ctx.dir.two": e("Two way", "An arrowhead at both ends."),
+  "ctx.dir.none": e("No arrow", "A plain line with no arrowheads."),
+  "ctx.route.curve": e("Curve", "Draw the connection as a smooth curve."),
+  "ctx.route.straight": e("Straight", "Draw the connection as a straight line."),
+  "ctx.route.elbow": e("Elbow", "Draw the connection with right-angle bends."),
+  "ctx.dash.solid": e("Solid", "A solid line."),
+  "ctx.dash.dashed": e("Dashed", "A dashed line."),
+  "ctx.dash.animated": e("Animated", "A dashed line that moves from start to end."),
+  "bg.pattern.dots": e("Dots", "A dotted grid behind the cards."),
+  "bg.pattern.lines": e("Lines", "Horizontal lines behind the cards."),
+  "bg.pattern.cross": e("Cross", "Small crosses behind the cards."),
+  "bg.pattern.grid": e("Grid", "A square grid behind the cards."),
+  "bg.pattern.plain": e("Plain", "No pattern behind the cards."),
+  // ---- Properties panel
+  "props.toggle": e("Properties", "Show or hide the style panel. Its state is remembered on this device."),
+  "props.group.blocks": e("Blocks", "Text size, color, alignment, fill and border for the selected cards and text."),
+  "props.group.edge": e("Connection", "Direction, line style, shape, weight and color of the selected arrow."),
+  "props.group.group": e("Group", "Title size, colors and border of the selected sections."),
+  "props.group.defaults": e("Default groups", "The look every new section on this board starts with."),
+  "props.group.diagram": e("Diagram", "The background color and pattern of this board."),
+  "props.reset": e("Reset", "Remove the custom styles shown in this group."),
+  // ---- the board itself
+  minimap: e("Minimap", "The whole board at a glance. Click or drag to move the view."),
+  kids: e("Children", "This block has children. Click to show them as an outline inside the card; hover to peek."),
+  "kids:on": e("Children", "The children are shown. Click to hide them again."),
+  "edge.bend": e("Arrow end on a block", "This arrow ends on one block of the page card, not the whole page."),
+  "edge.bend:clamped": e("Arrow end on a block", "The block is scrolled out of view. Click to scroll the card to it.")
+};
+for (const c of PALETTE) TIP_TEXT[`swatch.${c}`] = e(cap(c), `Color the selection ${c}, or tone the board ${c}.`);
+for (const s of SHAPES) TIP_TEXT[`dock.shape.${s}`] = e(cap(s), `Draw ${s === "rounded" ? "rounded rectangles" : `${s}s`} with the Shape tool, or change the selected shape.`);
+for (const n2 of [16, 24, 32, 48]) {
+  const word = { 16: "Small", 24: "Medium", 32: "Large", 48: "Extra large" }[n2];
+  TIP_TEXT[`ctx.size.${n2}`] = e(`${word} text`, `Set the label to ${n2} px.`);
+}
+for (const n2 of [1, 2, 3, 4]) TIP_TEXT[`ctx.weight.${n2}`] = e(`Weight ${n2}`, `Draw the connection ${n2} px thick.`);
+function tipEntry(id, state) {
+  if (!id) return null;
+  if (state && TIP_TEXT[`${id}:${state}`]) return TIP_TEXT[`${id}:${state}`];
+  return TIP_TEXT[id] || null;
+}
+var BLOCKS = /^pxd-(toolbar|rail|ctx|bg)__([a-z0-9-]+)$/;
+var SKIP = /* @__PURE__ */ new Set(["btn", "row", "group", "tools", "picker", "sources", "extra", "pattern", "tones"]);
+function tipIdForClass(cls) {
+  let found = null;
+  for (const token of String(cls || "").split(/\s+/)) {
+    const m = BLOCKS.exec(token);
+    if (m && !SKIP.has(m[2])) found = `${m[1]}.${m[2]}`;
+  }
+  if (!found && /(^|\s)pxd-badge(\s|$)/.test(String(cls || ""))) return "badge";
+  return found;
+}
+
 // src/view/chrome.js
 var CTX_GAP = 12;
 var CTX_EDGE_CLEARANCE = 28;
@@ -12376,7 +12635,7 @@ var LAYOUTS = ["split", "classic", "dock-only"];
 var DOCK_STYLES = ["pill", "strip"];
 var DOCK_GROUPS = [["select", "hand"], ["card", "text", "sticky", "shape", "section", "board"], ["connect"]];
 var REVEAL_PX = 48;
-var cap = (word) => word.charAt(0).toUpperCase() + word.slice(1);
+var cap2 = (word) => word.charAt(0).toUpperCase() + word.slice(1);
 var SHAPE_LABELS = { rectangle: "Rectangle", rounded: "Rounded", ellipse: "Ellipse", diamond: "Diamond", parallelogram: "Parallelogram", cylinder: "Cylinder" };
 var MAX_CRUMBS = 4;
 var POPOVER_GAP = 6;
@@ -12397,10 +12656,15 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     parent?.append(node2);
     return node2;
   };
+  const tip = (node2, id, state) => {
+    if (id) node2.setAttribute("data-tip", id);
+    if (state !== void 0) node2.setAttribute("data-tip-state", state);
+    return node2;
+  };
   const button = (parent, cls, label, title, onClick) => {
     const b = el("button", `pxd-btn ${cls}`, parent, label);
     b.type = "button";
-    if (title) b.title = title;
+    tip(b, tipIdForClass(cls));
     const name = String(label || "").trim() || title || "";
     if (name) b.setAttribute("aria-label", name);
     listen(b, "click", (event) => {
@@ -12419,24 +12683,27 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     i.setAttribute("aria-hidden", "true");
     return b;
   };
-  const setIcon = (node2, icon, label, title) => {
+  const setIcon = (node2, icon, label, state) => {
     if (label) node2.setAttribute("aria-label", label);
-    if (title || label) node2.title = title || label;
+    if (state !== void 0) node2.setAttribute("data-tip-state", state);
     const i = node2.querySelector(".bp3-icon");
     if (i && icon) i.className = `bp3-icon bp3-icon-${icon}`;
   };
   const swatches = (parent, onPick, { key = "color", paper = false } = {}) => {
     const wrap = el("div", "pxd-swatches", parent);
     const none = button(wrap, "pxd-swatch pxd-swatch--none", "", key === "tone" ? "Default" : "No color", () => onPick(null));
+    tip(none, "swatch.none");
     none.dataset[key] = "";
     if (key !== "color") none.setAttribute(`data-${key}`, "");
     if (paper) {
       const p = button(wrap, "pxd-swatch pxd-swatch--paper", "", "Paper", () => onPick("paper"));
+      tip(p, "swatch.paper");
       p.dataset[key] = "paper";
       p.setAttribute(`data-${key}`, "paper");
     }
     for (const c of PALETTE) {
       const s = button(wrap, `pxd-swatch pxd-c-${c}`, "", c, () => onPick(c));
+      tip(s, `swatch.${c}`);
       s.dataset[key] = c;
       s.setAttribute(`data-${key}`, c);
     }
@@ -12463,7 +12730,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     for (const entry of overflow) {
       const b = el("button", "pxd-btn pxd-crumb", crumbMenu, entry.title);
       b.type = "button";
-      b.title = entry.title;
+      tip(b, "crumb");
       b.setAttribute("aria-label", entry.title);
       b.dataset.index = String(entry.index);
       b.setAttribute("data-index", String(entry.index));
@@ -12511,7 +12778,8 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
       if (n2 === 1 && overflow.length) {
         const more = el("button", "pxd-crumb__more", crumbsEl, "…");
         more.type = "button";
-        more.title = overflow.map((c2) => c2.title).join(" › ");
+        tip(more, "crumb.more");
+        more.setAttribute("data-tip-extra", overflow.map((c2) => c2.title).join(" › "));
         more.setAttribute("aria-label", "Hidden boards");
         more.setAttribute("aria-haspopup", "menu");
         el("span", "pxd-crumb__sep", crumbsEl, "›");
@@ -12519,12 +12787,13 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
       const c = items[i];
       if (i === last) {
         const cur = el("span", "pxd-crumb pxd-crumb--current", crumbsEl, c.title);
-        cur.title = c.title;
+        tip(cur, "crumb.current");
+        cur.setAttribute("aria-label", c.title);
         return;
       }
       const b = el("button", "pxd-btn pxd-crumb", crumbsEl, c.title);
       b.type = "button";
-      b.title = c.title;
+      tip(b, "crumb");
       b.setAttribute("aria-label", c.title);
       b.dataset.index = String(i);
       b.setAttribute("data-index", String(i));
@@ -12538,6 +12807,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     const b = iconButton(toolGroup, "pxd-tool", icon, label, `${label} (${key}). Double-click to lock`, () => on.setTool?.(id, false));
     b.dataset.tool = id;
     b.setAttribute("data-tool", id);
+    tip(b, `tool.${id}`);
     listen(b, "dblclick", (event) => {
       event.preventDefault();
       event.stopPropagation();
@@ -12591,7 +12861,8 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
   };
   const badge = button(toolbar, "pxd-badge", version ? `v${version}` : "", "Show changelog", toggleLog);
   const sync = el("span", "pxd-sync", toolbar);
-  sync.title = "Synced";
+  tip(sync, "sync", "idle");
+  sync.setAttribute("aria-label", "Synced");
   const railEl = el("div", "pxd-rail pxd-chrome", root);
   stopAll(railEl);
   railEl.setAttribute("role", "toolbar");
@@ -12628,6 +12899,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
       const b = iconButton(group, "pxd-palette__btn pxd-dock__btn", icon, label, `${label} (${key})`, () => on.setTool?.(id, false));
       b.dataset.tool = id;
       b.setAttribute("data-tool", id);
+      tip(b, `tool.${id}`);
       const tag = el("span", "pxd-dock__label", b);
       tag.setAttribute("data-label", label);
       tag.setAttribute("aria-hidden", "true");
@@ -12652,15 +12924,17 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
   swatches(colorOpts, (c) => on.setColor?.(c));
   const lookOpts = optionSet("pxd-dock__looks");
   for (const look of ["block", "card"]) {
-    const b = button(lookOpts, "pxd-dock__opt", cap(look), `Show selected as ${look}`, () => on.setLook?.(look));
+    const b = button(lookOpts, "pxd-dock__opt", cap2(look), `Show selected as ${look}`, () => on.setLook?.(look));
     b.dataset.look = look;
     b.setAttribute("data-look", look);
+    tip(b, `dock.look.${look}`);
   }
   const shapeOpts = optionSet("pxd-dock__shapes");
   for (const shape of SHAPES) {
     const b = button(shapeOpts, "pxd-dock__opt", SHAPE_LABELS[shape] || shape, `Shape: ${SHAPE_LABELS[shape] || shape}`, () => on.setShape?.(shape));
     b.dataset.shape = shape;
     b.setAttribute("data-shape", shape);
+    tip(b, `dock.shape.${shape}`);
   }
   optionSets.set("card", [colorOpts, lookOpts]);
   optionSets.set("sticky", [colorOpts]);
@@ -12831,7 +13105,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     },
     setLinkMode(mode) {
       const key = LINK_ICONS[mode] ? mode : "all";
-      setIcon(linksBtn, LINK_ICONS[key], LINK_LABELS[key], "Graph links (L)");
+      setIcon(linksBtn, LINK_ICONS[key], LINK_LABELS[key], key);
     },
     setSync(pending) {
       const name = pending === true ? "writing" : pending === false || pending == null ? "idle" : pending;
@@ -12840,15 +13114,16 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
       sync.classList.remove("pxd-sync--pending", "pxd-sync--writing", "pxd-sync--retrying", "pxd-sync--failed");
       if (state === "writing") sync.classList.add("pxd-sync--pending", "pxd-sync--writing");
       else if (state !== "idle") sync.classList.add(`pxd-sync--${state}`);
-      sync.title = titles[state];
+      sync.setAttribute("data-tip-state", state);
+      sync.setAttribute("aria-label", titles[state]);
     },
     setFullscreen(on2) {
       editBtn.style.display = on2 ? "none" : "";
       railEdit.style.display = on2 ? "none" : "";
-      setIcon(fullBtn, on2 ? "minimize" : "fullscreen", on2 ? "Exit fullscreen" : "Fullscreen", on2 ? "Exit fullscreen" : "Fullscreen this board");
+      setIcon(fullBtn, on2 ? "minimize" : "fullscreen", on2 ? "Exit fullscreen" : "Fullscreen", on2 ? "on" : "off");
       fullBtn.classList.toggle("pxd-btn--active", Boolean(on2));
       const title = on2 ? "Minimize" : "Maximize";
-      railFull.title = title;
+      railFull.setAttribute("data-tip-state", on2 ? "on" : "off");
       railFull.setAttribute("aria-label", title);
       const icon = railFull.querySelector(".bp3-icon");
       if (icon) icon.className = `bp3-icon bp3-icon-${on2 ? "minimize" : "maximize"}`;
@@ -12873,13 +13148,13 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     setTable(on2) {
       const active = Boolean(on2);
       tableBtn.classList.toggle("pxd-btn--active", active);
-      setIcon(tableBtn, active ? "grid-view" : "th", active ? "Board" : "Table", active ? "Board view" : "Table view");
+      setIcon(tableBtn, active ? "grid-view" : "th", active ? "Board" : "Table", active ? "on" : "off");
       tableBtn.setAttribute("aria-pressed", active ? "true" : "false");
     },
     setKanban(on2) {
       const active = Boolean(on2);
       kanbanBtn.classList.toggle("pxd-btn--active", active);
-      setIcon(kanbanBtn, active ? "grid-view" : "layout-auto", active ? "Board" : "Kanban", active ? "Board view" : "Kanban view");
+      setIcon(kanbanBtn, active ? "grid-view" : "layout-auto", active ? "Board" : "Kanban", active ? "on" : "off");
       kanbanBtn.setAttribute("aria-pressed", active ? "true" : "false");
     },
     setBackground(state) {
@@ -12900,6 +13175,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     const b = button(patternSeg, "pxd-seg__btn", PATTERN_LABELS[pattern] || pattern, PATTERN_LABELS[pattern] || pattern, () => on.setBackground?.({ bg: pattern }));
     b.dataset.value = pattern;
     b.setAttribute("data-value", pattern);
+    tip(b, `bg.pattern.${pattern}`);
     patternButtons.set(pattern, b);
   }
   el("div", "pxd-popover__label", popEl, "Tone");
@@ -12959,6 +13235,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
   popover.setState(bgState);
   applyControls();
   const backEl = button(root, "pxd-backtocontent pxd-chrome", "Back to content", "Fit the view back to your cards", () => on.backToContent?.());
+  tip(backEl, "backtocontent");
   backEl.style.display = "none";
   for (const type of ["pointerup", "wheel", "keydown", "keyup", "contextmenu"]) listen(backEl, type, (event) => event.stopPropagation());
   const backToContent = {
@@ -12988,6 +13265,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
           i.setAttribute("aria-hidden", "true");
         }
         b.dataset.value = String(value);
+        tip(b, `${cls.replace(/^pxd-ctx__/, "ctx.")}.${value}`);
       }
       return wrap;
     };
@@ -13113,6 +13391,16 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
       default:
         break;
     }
+    const flip = (cls, active) => row2.querySelector(`.${cls}`)?.setAttribute("data-tip-state", active ? "on" : "off");
+    const closedKids = model?.kind === "note" || model?.kind === "block" ? !model?.kids : model?.open === false;
+    flip("pxd-ctx__expand", !closedKids);
+    flip("pxd-ctx__collapse", Boolean(model?.collapsed));
+    flip("pxd-ctx__pin-toggle", Boolean(model?.pinned ?? model?.allPinned));
+    flip("pxd-ctx__fold", Boolean(model?.anyCollapsed));
+    flip("pxd-ctx__lock", Boolean(model?.locked));
+    flip("pxd-ctx__section-note", Boolean(model?.hasNote));
+    flip("pxd-ctx__collapse-section", Boolean(model?.collapsed));
+    flip("pxd-ctx__auto-fit", Boolean(model?.autofit));
   };
   const positionCtx = () => {
     if (ctx.style.display === "none" || !ctxAnchor) return;
@@ -13240,6 +13528,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     isOpen: () => search.style.display !== "none"
   };
   const minimap = el("div", "pxd-minimap pxd-chrome", root);
+  tip(minimap, "minimap");
   stopAll(minimap);
   const canvas = el("canvas", "pxd-minimap__canvas", minimap);
   canvas.width = MINIMAP_W;
@@ -14029,10 +14318,11 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
     parent?.append(node2);
     return node2;
   };
-  const button = (parent, cls, label, title, fn) => {
+  const button = (parent, cls, label, title, fn, tipId) => {
     const b = el("button", `pxd-btn ${cls}`, parent, label);
     b.type = "button";
-    if (title) b.title = title;
+    if (tipId) b.setAttribute("data-tip", tipId);
+    else if (title) b.title = title;
     const name = String(label || "").trim() || title || "";
     if (name) b.setAttribute("aria-label", name);
     listen(b, "click", (event) => {
@@ -14055,7 +14345,7 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
     storage?.setItem?.(STORAGE_KEY, collapsed ? "1" : "0");
     paintCollapsed();
     place();
-  });
+  }, "props.toggle");
   head.setAttribute("aria-expanded", collapsed ? "false" : "true");
   const body = el("div", "pxd-props__body", panel);
   const paintCollapsed = () => {
@@ -14126,7 +14416,8 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
   const group = (title, key) => {
     const g = el("section", "pxd-props__group", body);
     g.setAttribute("data-group", key);
-    el("h3", "pxd-props__heading", g, title);
+    const h = el("h3", "pxd-props__heading", g, title);
+    h.setAttribute("data-tip", `props.group.${key}`);
     return g;
   };
   const blocks = (items) => {
@@ -14151,7 +14442,7 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
     choice(g, [["", "Default"], ...ALIGNS.map((a) => [a, a[0].toUpperCase() + a.slice(1)])], align, (v) => on.setItemStyle?.({ align: v || null }));
     colorField(g, "Fill", same ? sample.fill : void 0, (c) => on.setItemStyle?.({ fill: c }));
     colorField(g, "Border", same ? sample.border : void 0, (c) => on.setItemStyle?.({ border: c }));
-    button(g, "pxd-props__reset", "Reset selected", "Remove text size, color, align, fill, and border", () => on.resetItems?.());
+    button(g, "pxd-props__reset", "Reset selected", "Remove text size, color, align, fill, and border", () => on.resetItems?.(), "props.reset");
   };
   const edgeGroup = (edge) => {
     const g = group("Connection", "edge");
@@ -14164,7 +14455,7 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
     el("span", "pxd-props__label", g, "Weight");
     choice(g, [[1, "1"], [2, "2"], [3, "3"], [4, "4"]], [1, 2, 3, 4].includes(edge.weight) ? edge.weight : 1, (v) => on.setEdge?.({ weight: v }));
     colorField(g, "Color", edge.color, (c) => on.setEdge?.({ color: c }));
-    button(g, "pxd-props__reset", "Reset", "Remove direction, decoration, type, weight, and color", () => on.resetEdge?.());
+    button(g, "pxd-props__reset", "Reset", "Remove direction, decoration, type, weight, and color", () => on.resetEdge?.(), "props.reset");
   };
   const sectionGroup = (items, title, key, write, resetLabel, reset) => {
     const g = group(title, key);
@@ -14187,7 +14478,7 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
     colorField(g, "Title fill", pick("titleFill"), (c) => write({ titleFill: c }));
     colorField(g, "Area fill", pick("areaFill"), (c) => write({ areaFill: c }));
     colorField(g, "Border", pick("border"), (c) => write({ border: c }));
-    button(g, "pxd-props__reset", resetLabel, resetLabel, reset);
+    button(g, "pxd-props__reset", resetLabel, resetLabel, reset, "props.reset");
   };
   const defaultsGroup = (board2) => {
     const stored = board2?.defaults?.section || {};
@@ -14207,7 +14498,7 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
     el("span", "pxd-props__label", g, "Texture");
     const pattern = BOARD_PATTERNS.includes(bg.bg) ? bg.bg : "";
     choice(g, [["", "Default"], ...BOARD_PATTERNS.map((p) => [p, PATTERN_LABELS2[p] || p])], pattern, (v) => on.setBackground?.({ bg: v || null }));
-    button(g, "pxd-props__reset", "Reset default", "Clear this board's background", () => on.setBackground?.({ bg: null, bgColor: null }));
+    button(g, "pxd-props__reset", "Reset default", "Clear this board's background", () => on.setBackground?.({ bg: null, bgColor: null }), "props.reset");
   };
   let last = null;
   const refresh = (state) => {
@@ -14597,6 +14888,226 @@ function createShortcutSheet({ doc = globalThis.document, root, shortcuts = SHOR
   };
 }
 
+// src/view/tooltip.js
+var GAP = 8;
+var MARGIN2 = 4;
+var DELAYS = { instant: 0, "350 ms": 350, "800 ms": 800 };
+var ID = "pxd-tooltip";
+function tooltipDelay(value) {
+  return Object.hasOwn(DELAYS, value) ? DELAYS[value] : DELAYS["350 ms"];
+}
+function preferredSide(target, root) {
+  if (target.closest?.(".pxd-toolbar")) return "below";
+  if (target.closest?.(".pxd-rail")) return "left";
+  if (target.closest?.(".pxd-palette, .pxd-dock")) {
+    if (root.classList?.contains("pxd-root--dock-left")) return "right";
+    return root.classList?.contains("pxd-root--dock-top") ? "below" : "above";
+  }
+  if (target.closest?.(".pxd-minimap")) return "left";
+  return "above";
+}
+var OPPOSITE = { above: "below", below: "above", left: "right", right: "left" };
+function placeTip({ target, tip, bounds, side }) {
+  const at = (s) => {
+    if (s === "below") return { left: target.left + target.width / 2 - tip.width / 2, top: target.top + target.height + GAP };
+    if (s === "above") return { left: target.left + target.width / 2 - tip.width / 2, top: target.top - tip.height - GAP };
+    if (s === "left") return { left: target.left - tip.width - GAP, top: target.top + target.height / 2 - tip.height / 2 };
+    return { left: target.left + target.width + GAP, top: target.top + target.height / 2 - tip.height / 2 };
+  };
+  let use = side;
+  let p = at(use);
+  const vertical = side === "above" || side === "below";
+  const axisFits = (pt) => vertical ? pt.top >= bounds.top + MARGIN2 && pt.top + tip.height <= bounds.top + bounds.height - MARGIN2 : pt.left >= bounds.left + MARGIN2 && pt.left + tip.width <= bounds.left + bounds.width - MARGIN2;
+  if (bounds.width && bounds.height && !axisFits(p) && axisFits(at(OPPOSITE[side]))) {
+    use = OPPOSITE[side];
+    p = at(use);
+  }
+  if (bounds.width && bounds.height) {
+    const maxLeft = bounds.left + bounds.width - tip.width - MARGIN2;
+    const maxTop = bounds.top + bounds.height - tip.height - MARGIN2;
+    p = {
+      left: Math.max(bounds.left + MARGIN2, Math.min(p.left, maxLeft)),
+      top: Math.max(bounds.top + MARGIN2, Math.min(p.top, maxTop))
+    };
+  }
+  return { left: Math.round(p.left), top: Math.round(p.top), side: use };
+}
+function createTooltip({ doc = globalThis.document, root, timers, setting } = {}) {
+  const read = (k) => typeof setting === "function" ? setting(k) : void 0;
+  const tip = doc.createElement("div");
+  tip.className = "pxd-tooltip pxd-chrome";
+  tip.id = ID;
+  tip.setAttribute("role", "tooltip");
+  tip.style.display = "none";
+  root.append(tip);
+  const offs = [];
+  const on = (node2, type, fn, opts) => {
+    node2.addEventListener(type, fn, opts);
+    offs.push(() => node2.removeEventListener(type, fn, opts));
+  };
+  let current2 = null;
+  let pending = null;
+  let dismiss = [];
+  const enabled = () => read("tooltips") !== false;
+  const delay = () => tooltipDelay(read("tooltip-delay"));
+  const closest = (node2) => {
+    const hit = node2?.closest?.("[data-tip]");
+    return hit && root.contains(hit) ? hit : null;
+  };
+  const sync = (target) => {
+    const entry = tipEntry(target.getAttribute("data-tip"), target.getAttribute("data-tip-state"));
+    if (!entry) return null;
+    return {
+      name: entry.name || target.getAttribute("aria-label") || target.getAttribute("data-tip-name") || "",
+      desc: entry.desc,
+      key: entry.key,
+      hint: entry.hint,
+      extra: target.getAttribute("data-tip-extra") || ""
+    };
+  };
+  const fill = (info) => {
+    tip.replaceChildren();
+    const head = doc.createElement("div");
+    head.className = "pxd-tooltip__head";
+    const name = doc.createElement("strong");
+    name.className = "pxd-tooltip__name";
+    name.textContent = info.name;
+    head.append(name);
+    for (const k of [].concat(info.key || [])) {
+      const kbd = doc.createElement("kbd");
+      kbd.className = "pxd-tooltip__key";
+      kbd.textContent = k;
+      head.append(kbd);
+    }
+    tip.append(head);
+    const add = (cls, text2) => {
+      if (!text2) return;
+      const line = doc.createElement("div");
+      line.className = `pxd-tooltip__${cls}`;
+      line.textContent = text2;
+      tip.append(line);
+    };
+    add("desc", info.desc);
+    add("extra", info.extra);
+    add("hint", info.hint);
+  };
+  const place = (target) => {
+    const rr = root.getBoundingClientRect();
+    const tr = target.getBoundingClientRect();
+    const r = { left: tr.left - rr.left, top: tr.top - rr.top, width: tr.width, height: tr.height };
+    const size = { width: tip.offsetWidth || 0, height: tip.offsetHeight || 0 };
+    const bounds = { left: 0, top: 0, width: rr.width, height: rr.height };
+    const at = placeTip({ target: r, tip: size, bounds, side: preferredSide(target, root) });
+    tip.style.left = `${at.left}px`;
+    tip.style.top = `${at.top}px`;
+    tip.setAttribute("data-side", at.side);
+  };
+  const hide = () => {
+    pending?.cancel?.();
+    pending = null;
+    for (const off of dismiss.splice(0)) off();
+    if (current2) {
+      if (current2.getAttribute("aria-describedby") === ID) current2.removeAttribute("aria-describedby");
+      current2 = null;
+    }
+    tip.style.display = "none";
+  };
+  const show = (target) => {
+    if (!target || target.isConnected === false) return;
+    const info = sync(target);
+    if (!info) return;
+    if (current2 && current2 !== target && current2.getAttribute("aria-describedby") === ID) current2.removeAttribute("aria-describedby");
+    pending = null;
+    fill(info);
+    tip.style.display = "";
+    current2 = target;
+    target.setAttribute("aria-describedby", ID);
+    place(target);
+    if (!dismiss.length) {
+      const off = (node2, type, fn, opts) => {
+        node2.addEventListener(type, fn, opts);
+        dismiss.push(() => node2.removeEventListener(type, fn, opts));
+      };
+      off(root, "pointerdown", hide, true);
+      off(root, "wheel", hide, { capture: true, passive: true });
+      off(root, "scroll", hide, true);
+      off(doc, "keydown", (event) => {
+        if (event.key === "Escape") hide();
+      }, true);
+    }
+  };
+  const schedule = (target) => {
+    if (current2 === target || pending?.target === target) return;
+    pending?.cancel?.();
+    pending = null;
+    if (!tipEntry(target.getAttribute("data-tip"), target.getAttribute("data-tip-state"))) return;
+    if (!enabled()) {
+      const info = sync(target);
+      if (info) target.title = info.key ? `${info.name} (${[].concat(info.key).join(" ")}). ${info.desc}` : `${info.name}. ${info.desc}`;
+      return;
+    }
+    const wait = current2 ? 0 : delay();
+    if (wait <= 0) {
+      show(target);
+      return;
+    }
+    const cancel = timers?.later ? timers.later(() => show(target), wait) : (() => {
+      const t = setTimeout(() => show(target), wait);
+      return () => clearTimeout(t);
+    })();
+    pending = { target, cancel };
+  };
+  on(root, "pointerover", (event) => {
+    if (event.buttons) return;
+    const target = closest(event.target);
+    if (!target) return;
+    schedule(target);
+  });
+  on(root, "pointerout", (event) => {
+    const from = closest(event.target);
+    if (!from) return;
+    const to = event.relatedTarget;
+    if (to && from.contains?.(to)) return;
+    if (pending?.target === from) {
+      pending.cancel?.();
+      pending = null;
+    }
+    if (current2 === from) hide();
+  });
+  on(root, "focusin", (event) => {
+    const target = closest(event.target);
+    if (!target || !enabled()) return;
+    try {
+      if (typeof target.matches === "function" && target.matches(":focus-visible") === false) return;
+    } catch {
+    }
+    pending?.cancel?.();
+    pending = null;
+    show(target);
+  });
+  on(root, "focusout", (event) => {
+    const from = closest(event.target);
+    if (!from) return;
+    if (pending?.target === from) {
+      pending.cancel?.();
+      pending = null;
+    }
+    if (current2 === from) hide();
+  });
+  return {
+    el: tip,
+    show,
+    hide,
+    isVisible: () => tip.style.display !== "none",
+    target: () => current2,
+    dispose() {
+      hide();
+      for (const off of offs.splice(0)) off();
+      tip.remove();
+    }
+  };
+}
+
 // src/view/menu-model.js
 var SIZE_LABELS = { 16: "Small", 24: "Medium", 32: "Large", 48: "Extra large" };
 var SHAPE_LABELS2 = {
@@ -14607,7 +15118,7 @@ var SHAPE_LABELS2 = {
   parallelogram: "Parallelogram",
   cylinder: "Cylinder"
 };
-var cap2 = (word) => word.charAt(0).toUpperCase() + word.slice(1);
+var cap3 = (word) => word.charAt(0).toUpperCase() + word.slice(1);
 var make = (id, label, extra = {}) => {
   const out = { id, label };
   for (const [key, value] of Object.entries(extra)) {
@@ -14628,8 +15139,8 @@ function buildMenu(kind, ctx = {}) {
   });
   const mindPresetMenu = () => {
     const preset = normalizeMindPreset(c.mindPreset);
-    const dirs = MIND_DIRECTIONS.map((d) => make(`mind-dir:${d}`, cap2(d), { checked: preset.direction === d }));
-    const spaces = MIND_SPACINGS.map((s) => make(`mind-space:${s}`, cap2(s), { checked: preset.spacing === s }));
+    const dirs = MIND_DIRECTIONS.map((d) => make(`mind-dir:${d}`, cap3(d), { checked: preset.direction === d }));
+    const spaces = MIND_SPACINGS.map((s) => make(`mind-space:${s}`, cap3(s), { checked: preset.spacing === s }));
     const depths = [];
     for (let d = MIND_DEPTH_MIN; d <= MIND_DEPTH_MAX; d++) depths.push(make(`mind-depth:${d}`, `Depth ${d}`, { checked: preset.depth === d }));
     return make("mind-preset", "Mind map preset…", {
@@ -14674,7 +15185,7 @@ function buildMenu(kind, ctx = {}) {
     return make("color", "Color", {
       children: [
         make("color:none", "No color", { checked: !current2 }),
-        ...PALETTE.map((name) => make(`color:${name}`, cap2(name), { checked: current2 === name }))
+        ...PALETTE.map((name) => make(`color:${name}`, cap3(name), { checked: current2 === name }))
       ]
     });
   };
@@ -14863,7 +15374,7 @@ function buildMenu(kind, ctx = {}) {
         sep(),
         make("align", "Align", {
           disabled: few,
-          children: ["left", "center", "right", "top", "middle", "bottom"].map((side) => make(`align:${side}`, cap2(side)))
+          children: ["left", "center", "right", "top", "middle", "bottom"].map((side) => make(`align:${side}`, cap3(side)))
         }),
         make("distribute", "Distribute", {
           disabled: count !== null && count < 3,
@@ -14907,7 +15418,7 @@ function buildMenu(kind, ctx = {}) {
         make("background", "Background…"),
         make("dock", "Dock position for this board", {
           children: [
-            ...DOCK_POSITIONS.map((d) => make(`dock:${d}`, cap2(d), { checked: c.dock === d })),
+            ...DOCK_POSITIONS.map((d) => make(`dock:${d}`, cap3(d), { checked: c.dock === d })),
             sep(),
             make("dock:default", "Use setting", { checked: !DOCK_POSITIONS.includes(c.dock) })
           ]
@@ -15837,9 +16348,9 @@ function mountLater({ doc = globalThis.document, root, getBoard, onClose } = {})
           img.src = tile.src;
           cell.append(img);
         }
-        const cap3 = doc.createElement("figcaption");
-        cap3.textContent = tile.title || "Image";
-        cell.append(cap3);
+        const cap4 = doc.createElement("figcaption");
+        cap4.textContent = tile.title || "Image";
+        cell.append(cap4);
         body.append(cell);
       }
       return;
@@ -16211,10 +16722,10 @@ function createLocalViewportStore({ storage, graph, timers }) {
       pending.set(uid, entry);
     },
     flush() {
-      for (const [uid, e] of pending) {
-        e.cancel();
+      for (const [uid, e2] of pending) {
+        e2.cancel();
         try {
-          storage?.setItem?.(key(uid), JSON.stringify(e.vp));
+          storage?.setItem?.(key(uid), JSON.stringify(e2.vp));
         } catch {
         }
       }
@@ -16573,9 +17084,9 @@ function mountBoardView({
     blockCards.clear();
     const b = board2();
     if (!b) return false;
-    for (const e of b.edges.values()) {
-      if (e.fromBlock) blockCards.add(e.from);
-      if (e.toBlock) blockCards.add(e.to);
+    for (const e2 of b.edges.values()) {
+      if (e2.fromBlock) blockCards.add(e2.from);
+      if (e2.toBlock) blockCards.add(e2.to);
     }
     return blockCards.size > 0;
   };
@@ -16585,18 +17096,18 @@ function mountBoardView({
     if (disposed || !b) return;
     refreshBlockCards();
     const next = /* @__PURE__ */ new Map();
-    for (const e of b.edges.values()) {
-      if (!e.fromBlock && !e.toBlock) continue;
+    for (const e2 of b.edges.values()) {
+      if (!e2.fromBlock && !e2.toBlock) continue;
       const m = {};
-      if (e.fromBlock) {
-        const x = itemsR.measureRow(e.from, e.fromBlock);
+      if (e2.fromBlock) {
+        const x = itemsR.measureRow(e2.from, e2.fromBlock);
         if (x) m.from = x;
       }
-      if (e.toBlock) {
-        const x = itemsR.measureRow(e.to, e.toBlock);
+      if (e2.toBlock) {
+        const x = itemsR.measureRow(e2.to, e2.toBlock);
         if (x) m.to = x;
       }
-      if (m.from || m.to) next.set(e.uid, m);
+      if (m.from || m.to) next.set(e2.uid, m);
     }
     const changed2 = edgesR.setMeasures(next);
     if (changed2.size) edgesR.update({ board: b, edgeUids: changed2, rects: paintRects(), zoom: vp.zoom });
@@ -17130,10 +17641,10 @@ function mountBoardView({
     if (!focusOn || !b || !selection.items.length) return null;
     const sel = new Set(selection.items);
     const set = new Set(sel);
-    for (const e of b.edges.values()) {
-      if (!e.valid) continue;
-      if (sel.has(e.from)) set.add(e.to);
-      if (sel.has(e.to)) set.add(e.from);
+    for (const e2 of b.edges.values()) {
+      if (!e2.valid) continue;
+      if (sel.has(e2.from)) set.add(e2.to);
+      if (sel.has(e2.to)) set.add(e2.from);
     }
     for (const l of session.links || []) {
       if (sel.has(l.from)) set.add(l.to);
@@ -17564,8 +18075,8 @@ function mountBoardView({
       case "text":
         return { item, pinned: Boolean(item?.pinned) };
       case "edge": {
-        const e = uid ? b?.edges.get(uid) : null;
-        return { item: e, dir: e?.dir, route: e?.route, dash: e?.dash, blockEnd: Boolean(e?.fromBlock || e?.toBlock) };
+        const e2 = uid ? b?.edges.get(uid) : null;
+        return { item: e2, dir: e2?.dir, route: e2?.route, dash: e2?.dash, blockEnd: Boolean(e2?.fromBlock || e2?.toBlock) };
       }
       case "multi": {
         const items = selection.items.map((u) => b?.items.get(u)).filter(Boolean);
@@ -18308,6 +18819,7 @@ function mountBoardView({
       }
     }
   });
+  const tooltip = createTooltip({ doc, root, timers, setting: readSetting });
   const lensPop = el("div", "pxd-popover pxd-lens pxd-chrome", root);
   lensPop.style.display = "none";
   lensPop.setAttribute("role", "dialog");
@@ -19003,10 +19515,10 @@ function mountBoardView({
     return null;
   };
   const revealBlockEnd = (edgeUid, end) => {
-    const e = board2()?.edges.get(edgeUid);
-    if (!e) return false;
-    const card2 = end === "from" ? e.from : e.to;
-    const block = end === "from" ? e.fromBlock : e.toBlock;
+    const e2 = board2()?.edges.get(edgeUid);
+    if (!e2) return false;
+    const card2 = end === "from" ? e2.from : e2.to;
+    const block = end === "from" ? e2.fromBlock : e2.toBlock;
     if (!block) return false;
     if (itemsR.revealRow(card2, block)) return true;
     host?.openInSidebar?.(block, "block");
@@ -19702,6 +20214,7 @@ function mountBoardView({
         }
       }
       chrome.toolbar.setZoom(vp.zoom);
+      if (tooltip.isVisible()) tooltip.hide();
       if (!gesturing) propsPanel.place();
     }
     if (dirty.selection || itemsChanged) {
@@ -20028,6 +20541,7 @@ function mountBoardView({
       edgesR.dispose();
       panel.dispose();
       propsPanel.dispose();
+      tooltip.dispose();
       chrome.dispose();
       listeners2.splice(0).forEach((off) => off());
       observers.splice(0).forEach((o) => o.disconnect());
@@ -20071,7 +20585,9 @@ var SETTING_IDS = Object.freeze({
   dockStyle: "dock-style",
   dockLabels: "dock-labels",
   chromeDensity: "chrome-density",
-  dockOptions: "dock-options"
+  dockOptions: "dock-options",
+  tooltips: "tooltips",
+  tooltipDelay: "tooltip-delay"
 });
 var DEFAULTS = Object.freeze({
   [SETTING_IDS.enabled]: true,
@@ -20104,10 +20620,13 @@ var DEFAULTS = Object.freeze({
   [SETTING_IDS.dockStyle]: "pill",
   [SETTING_IDS.dockLabels]: false,
   [SETTING_IDS.chromeDensity]: "comfortable",
-  [SETTING_IDS.dockOptions]: true
+  [SETTING_IDS.dockOptions]: true,
+  [SETTING_IDS.tooltips]: true,
+  [SETTING_IDS.tooltipDelay]: "350 ms"
 });
 var BOARD_TONES2 = ["none", "paper", "gray", "red", "orange", "yellow", "green", "teal", "blue", "indigo", "purple", "pink"];
 var MAP_ZOOMS = ["0.3", "0.45", "0.6"];
+var TOOLTIP_DELAYS = ["instant", "350 ms", "800 ms"];
 var ENUMS = Object.freeze({
   [SETTING_IDS.graphLinks]: ["off", "attributes", "all"],
   [SETTING_IDS.wheel]: ["pan", "zoom"],
@@ -20121,7 +20640,8 @@ var ENUMS = Object.freeze({
   [SETTING_IDS.toolbarLayout]: ["split", "classic", "dock-only"],
   [SETTING_IDS.dockPosition]: ["bottom", "left", "top"],
   [SETTING_IDS.dockStyle]: ["pill", "strip"],
-  [SETTING_IDS.chromeDensity]: ["comfortable", "compact"]
+  [SETTING_IDS.chromeDensity]: ["comfortable", "compact"],
+  [SETTING_IDS.tooltipDelay]: TOOLTIP_DELAYS
 });
 var NUMBERS = /* @__PURE__ */ new Set([SETTING_IDS.defaultCardWidth, SETTING_IDS.defaultCardHeight]);
 function settingsDefaults() {
@@ -20241,6 +20761,8 @@ var SETTING_ROWS = {
   [SETTING_IDS.dockLabels]: () => switchRow(SETTING_IDS.dockLabels, "Show tool names under icons", "Label each tool in the dock."),
   [SETTING_IDS.chromeDensity]: () => selectRow(SETTING_IDS.chromeDensity, "Button size", "Comfortable or compact buttons for both bars.", ["comfortable", "compact"]),
   [SETTING_IDS.dockOptions]: () => switchRow(SETTING_IDS.dockOptions, "Show tool options in the dock", "Show the active tool's quick options (colors, look, shape) next to the dock."),
+  [SETTING_IDS.tooltips]: () => switchRow(SETTING_IDS.tooltips, "Hover tooltips", "Show a name, shortcut and one-line description when you hover or focus a control. Off falls back to the browser's plain tooltip."),
+  [SETTING_IDS.tooltipDelay]: () => selectRow(SETTING_IDS.tooltipDelay, "Tooltip delay", "How long to hover before a tooltip shows. Keyboard focus always shows it at once.", TOOLTIP_DELAYS),
   [SETTING_IDS.controlsPosition]: () => selectRow(SETTING_IDS.controlsPosition, "Controls", "Rail is the vertical stack on the right. Bar is the horizontal zoom group.", ["rail", "bar"]),
   [SETTING_IDS.snapGuides]: () => switchRow(SETTING_IDS.snapGuides, "Snap guides", "Line a dragged card up with its neighbours and show the guides."),
   [SETTING_IDS.snapGrid]: () => switchRow(SETTING_IDS.snapGrid, "Snap to grid", "Snap a dragged card to the 24 pixel grid. Hold Alt while dragging to skip snapping."),
@@ -20287,6 +20809,8 @@ var SETTING_GROUPS = [
     SETTING_IDS.dockLabels,
     SETTING_IDS.chromeDensity,
     SETTING_IDS.dockOptions,
+    SETTING_IDS.tooltips,
+    SETTING_IDS.tooltipDelay,
     SETTING_IDS.controlsPosition,
     SETTING_IDS.snapGuides,
     SETTING_IDS.snapGrid,

@@ -631,10 +631,10 @@ test("session change re-renders only dirty uids; structural change reconciles sh
     f.session.emit("sync", "writing");
     assert.ok(root.querySelector(".pxd-sync").classList.contains("pxd-sync--pending"));
     assert.ok(root.querySelector(".pxd-sync").classList.contains("pxd-sync--writing"));
-    assert.equal(root.querySelector(".pxd-sync").title, "Saving…");
+    assert.equal(root.querySelector(".pxd-sync").getAttribute("aria-label"), "Saving…");
     f.session.emit("sync", "idle");
     assert.equal(root.querySelector(".pxd-sync").classList.contains("pxd-sync--pending"), false);
-    assert.equal(root.querySelector(".pxd-sync").title, "Synced");
+    assert.equal(root.querySelector(".pxd-sync").getAttribute("aria-label"), "Synced");
   } finally {
     f.view.dispose();
     f.restore();
@@ -1382,7 +1382,7 @@ test("F5: more than four crumbs collapse the middle into an ellipsis that names 
     assert.equal(bar.querySelector(".pxd-crumb--current").textContent, "F");
     const more = bar.querySelector(".pxd-crumb__more");
     assert.equal(more.textContent, "…");
-    assert.equal(more.title, "B › C");
+    assert.equal(more.getAttribute("data-tip-extra"), "B › C", "the tooltip names the hidden boards");
     assert.equal(more.tagName, "BUTTON");
     assert.equal(bar.querySelector(".pxd-crumb-menu"), null);
     assert.deepEqual(rowCrumbs().map((b) => b.dataset.index), ["0", "3", "4"]);
@@ -1452,7 +1452,7 @@ test("HB-11: Own page opens the nested board through the host and leaves the in-
     const btn = f.view.root.querySelector(".pxd-ctx__own-page");
     assert.equal(btn.getAttribute("aria-label"), "Own page");
     assert.ok(btn.querySelector(".bp3-icon-document"));
-    assert.equal(btn.title, "Open nested board in its own page");
+    assert.equal(btn.getAttribute("data-tip"), "ctx.own-page");
     btn.click();
     assert.deepEqual(hostOpened, ["nbCard001"]);
     assert.deepEqual(inPlace, []);

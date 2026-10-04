@@ -6,6 +6,7 @@ import { SHAPES } from "../model/shapes.js";
 import { changelogEntry } from "../model/changelog.js";
 import { CHANGELOG_TEXT } from "../changelog-text.js";
 import { buildColorPicker } from "./color-picker.js";
+import { tipIdForClass } from "./tooltip-text.js";
 
 const CTX_GAP = 12;
 const CTX_EDGE_CLEARANCE = 28;
@@ -68,10 +69,16 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
     parent?.append(node);
     return node;
   };
+  // PL-3: no native title. The hover text lives in tooltip-text.js, found through data-tip (and data-tip-state).
+  const tip = (node, id, state) => {
+    if (id) node.setAttribute("data-tip", id);
+    if (state !== undefined) node.setAttribute("data-tip-state", state);
+    return node;
+  };
   const button = (parent, cls, label, title, onClick) => {
     const b = el("button", `pxd-btn ${cls}`, parent, label);
     b.type = "button";
-    if (title) b.title = title;
+    tip(b, tipIdForClass(cls));
     const name = String(label || "").trim() || title || "";
     if (name) b.setAttribute("aria-label", name);
     listen(b, "click", (event) => { event.preventDefault(); event.stopPropagation(); onClick?.(event); });
@@ -86,24 +93,27 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
     i.setAttribute("aria-hidden", "true");
     return b;
   };
-  const setIcon = (node, icon, label, title) => {
+  const setIcon = (node, icon, label, state) => {
     if (label) node.setAttribute("aria-label", label);
-    if (title || label) node.title = title || label;
+    if (state !== undefined) node.setAttribute("data-tip-state", state);
     const i = node.querySelector(".bp3-icon");
     if (i && icon) i.className = `bp3-icon bp3-icon-${icon}`;
   };
   const swatches = (parent, onPick, { key = "color", paper = false } = {}) => {
     const wrap = el("div", "pxd-swatches", parent);
     const none = button(wrap, "pxd-swatch pxd-swatch--none", "", key === "tone" ? "Default" : "No color", () => onPick(null));
+    tip(none, "swatch.none");
     none.dataset[key] = "";
     if (key !== "color") none.setAttribute(`data-${key}`, "");
     if (paper) {
       const p = button(wrap, "pxd-swatch pxd-swatch--paper", "", "Paper", () => onPick("paper"));
+      tip(p, "swatch.paper");
       p.dataset[key] = "paper";
       p.setAttribute(`data-${key}`, "paper");
     }
     for (const c of PALETTE) {
       const s = button(wrap, `pxd-swatch pxd-c-${c}`, "", c, () => onPick(c));
+      tip(s, `swatch.${c}`);
       s.dataset[key] = c;
       s.setAttribute(`data-${key}`, c);
     }
@@ -129,7 +139,7 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
     for (const entry of overflow) {
       const b = el("button", "pxd-btn pxd-crumb", crumbMenu, entry.title);
       b.type = "button";
-      b.title = entry.title;
+      tip(b, "crumb");
       b.setAttribute("aria-label", entry.title);
       b.dataset.index = String(entry.index);
       b.setAttribute("data-index", String(entry.index));
@@ -178,7 +188,8 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
       if (n === 1 && overflow.length) {
         const more = el("button", "pxd-crumb__more", crumbsEl, "…");
         more.type = "button";
-        more.title = overflow.map((c) => c.title).join(" › ");
+        tip(more, "crumb.more");
+        more.setAttribute("data-tip-extra", overflow.map((c) => c.title).join(" › "));
         more.setAttribute("aria-label", "Hidden boards");
         more.setAttribute("aria-haspopup", "menu");
         el("span", "pxd-crumb__sep", crumbsEl, "›");
@@ -186,12 +197,13 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
       const c = items[i];
       if (i === last) {
         const cur = el("span", "pxd-crumb pxd-crumb--current", crumbsEl, c.title);
-        cur.title = c.title;
+        tip(cur, "crumb.current");
+        cur.setAttribute("aria-label", c.title);
         return;
       }
       const b = el("button", "pxd-btn pxd-crumb", crumbsEl, c.title);
       b.type = "button";
-      b.title = c.title;
+      tip(b, "crumb");
       b.setAttribute("aria-label", c.title);
       b.dataset.index = String(i);
       b.setAttribute("data-index", String(i));
@@ -205,6 +217,7 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
     const b = iconButton(toolGroup, "pxd-tool", icon, label, `${label} (${key}). Double-click to lock`, () => on.setTool?.(id, false));
     b.dataset.tool = id;
     b.setAttribute("data-tool", id);
+    tip(b, `tool.${id}`);
     listen(b, "dblclick", (event) => { event.preventDefault(); event.stopPropagation(); on.setTool?.(id, true); });
     toolButtons.set(id, b);
   }
@@ -248,7 +261,8 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
   };
   const badge = button(toolbar, "pxd-badge", version ? `v${version}` : "", "Show changelog", toggleLog);
   const sync = el("span", "pxd-sync", toolbar);
-  sync.title = "Synced";
+  tip(sync, "sync", "idle");
+  sync.setAttribute("aria-label", "Synced");
 
   // Native order and title text, measured on an unenhanced diagram 2026-09-30.
   const railEl = el("div", "pxd-rail pxd-chrome", root);
@@ -287,6 +301,7 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
       const b = iconButton(group, "pxd-palette__btn pxd-dock__btn", icon, label, `${label} (${key})`, () => on.setTool?.(id, false));
       b.dataset.tool = id;
       b.setAttribute("data-tool", id);
+      tip(b, `tool.${id}`);
       const tag = el("span", "pxd-dock__label", b);
       tag.setAttribute("data-label", label);
       tag.setAttribute("aria-hidden", "true");
@@ -307,12 +322,14 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
     const b = button(lookOpts, "pxd-dock__opt", cap(look), `Show selected as ${look}`, () => on.setLook?.(look));
     b.dataset.look = look;
     b.setAttribute("data-look", look);
+    tip(b, `dock.look.${look}`);
   }
   const shapeOpts = optionSet("pxd-dock__shapes");
   for (const shape of SHAPES) {
     const b = button(shapeOpts, "pxd-dock__opt", SHAPE_LABELS[shape] || shape, `Shape: ${SHAPE_LABELS[shape] || shape}`, () => on.setShape?.(shape));
     b.dataset.shape = shape;
     b.setAttribute("data-shape", shape);
+    tip(b, `dock.shape.${shape}`);
   }
   optionSets.set("card", [colorOpts, lookOpts]);
   optionSets.set("sticky", [colorOpts]);
@@ -473,7 +490,7 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
     },
     setLinkMode(mode) {
       const key = LINK_ICONS[mode] ? mode : "all";
-      setIcon(linksBtn, LINK_ICONS[key], LINK_LABELS[key], "Graph links (L)");
+      setIcon(linksBtn, LINK_ICONS[key], LINK_LABELS[key], key);
     },
     setSync(pending) {
       const name = pending === true ? "writing" : pending === false || pending == null ? "idle" : pending;
@@ -482,15 +499,16 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
       sync.classList.remove("pxd-sync--pending", "pxd-sync--writing", "pxd-sync--retrying", "pxd-sync--failed");
       if (state === "writing") sync.classList.add("pxd-sync--pending", "pxd-sync--writing");
       else if (state !== "idle") sync.classList.add(`pxd-sync--${state}`);
-      sync.title = titles[state];
+      sync.setAttribute("data-tip-state", state);
+      sync.setAttribute("aria-label", titles[state]);
     },
     setFullscreen(on) {
       editBtn.style.display = on ? "none" : "";
       railEdit.style.display = on ? "none" : "";
-      setIcon(fullBtn, on ? "minimize" : "fullscreen", on ? "Exit fullscreen" : "Fullscreen", on ? "Exit fullscreen" : "Fullscreen this board");
+      setIcon(fullBtn, on ? "minimize" : "fullscreen", on ? "Exit fullscreen" : "Fullscreen", on ? "on" : "off");
       fullBtn.classList.toggle("pxd-btn--active", Boolean(on));
       const title = on ? "Minimize" : "Maximize";
-      railFull.title = title;
+      railFull.setAttribute("data-tip-state", on ? "on" : "off");
       railFull.setAttribute("aria-label", title);
       const icon = railFull.querySelector(".bp3-icon");
       if (icon) icon.className = `bp3-icon bp3-icon-${on ? "minimize" : "maximize"}`;
@@ -508,13 +526,13 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
     setTable(on) {
       const active = Boolean(on);
       tableBtn.classList.toggle("pxd-btn--active", active);
-      setIcon(tableBtn, active ? "grid-view" : "th", active ? "Board" : "Table", active ? "Board view" : "Table view");
+      setIcon(tableBtn, active ? "grid-view" : "th", active ? "Board" : "Table", active ? "on" : "off");
       tableBtn.setAttribute("aria-pressed", active ? "true" : "false");
     },
     setKanban(on) {
       const active = Boolean(on);
       kanbanBtn.classList.toggle("pxd-btn--active", active);
-      setIcon(kanbanBtn, active ? "grid-view" : "layout-auto", active ? "Board" : "Kanban", active ? "Board view" : "Kanban view");
+      setIcon(kanbanBtn, active ? "grid-view" : "layout-auto", active ? "Board" : "Kanban", active ? "on" : "off");
       kanbanBtn.setAttribute("aria-pressed", active ? "true" : "false");
     },
     setBackground(state) { popover.setState(state); },
@@ -535,6 +553,7 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
     const b = button(patternSeg, "pxd-seg__btn", PATTERN_LABELS[pattern] || pattern, PATTERN_LABELS[pattern] || pattern, () => on.setBackground?.({ bg: pattern }));
     b.dataset.value = pattern;
     b.setAttribute("data-value", pattern);
+    tip(b, `bg.pattern.${pattern}`);
     patternButtons.set(pattern, b);
   }
   el("div", "pxd-popover__label", popEl, "Tone");
@@ -596,6 +615,7 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
 
   // ---------------------------------------------------------------- back to content
   const backEl = button(root, "pxd-backtocontent pxd-chrome", "Back to content", "Fit the view back to your cards", () => on.backToContent?.());
+  tip(backEl, "backtocontent");
   backEl.style.display = "none";
   for (const type of ["pointerup", "wheel", "keydown", "keyup", "contextmenu"]) listen(backEl, type, (event) => event.stopPropagation());
   const backToContent = {
@@ -626,6 +646,7 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
           i.setAttribute("aria-hidden", "true");
         }
         b.dataset.value = String(value);
+        tip(b, `${cls.replace(/^pxd-ctx__/, "ctx.")}.${value}`);
       }
       return wrap;
     };
@@ -745,6 +766,17 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
       default:
         break;
     }
+    // Buttons whose meaning flips carry the state the tooltip table keys on (`id:on`).
+    const flip = (cls, active) => row.querySelector(`.${cls}`)?.setAttribute("data-tip-state", active ? "on" : "off");
+    const closedKids = model?.kind === "note" || model?.kind === "block" ? !model?.kids : model?.open === false;
+    flip("pxd-ctx__expand", !closedKids);
+    flip("pxd-ctx__collapse", Boolean(model?.collapsed));
+    flip("pxd-ctx__pin-toggle", Boolean(model?.pinned ?? model?.allPinned));
+    flip("pxd-ctx__fold", Boolean(model?.anyCollapsed));
+    flip("pxd-ctx__lock", Boolean(model?.locked));
+    flip("pxd-ctx__section-note", Boolean(model?.hasNote));
+    flip("pxd-ctx__collapse-section", Boolean(model?.collapsed));
+    flip("pxd-ctx__auto-fit", Boolean(model?.autofit));
   };
 
   const positionCtx = () => {
@@ -860,6 +892,7 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
 
   // ---------------------------------------------------------------- minimap
   const minimap = el("div", "pxd-minimap pxd-chrome", root);
+  tip(minimap, "minimap");
   stopAll(minimap);
   const canvas = el("canvas", "pxd-minimap__canvas", minimap);
   canvas.width = MINIMAP_W;

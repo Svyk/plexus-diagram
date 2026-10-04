@@ -47,6 +47,7 @@ import { PANEL_WIDTH_DEFAULT, nextPanelWidth } from "../model/info.js";
 import { createPanel, parseDropPayload } from "./panel.js";
 import { createMenu } from "./menu.js";
 import { createShortcutSheet } from "./shortcut-sheet.js";
+import { createTooltip } from "./tooltip.js";
 import { findShortcut } from "./shortcuts.js";
 import { buildMenu } from "./menu-model.js";
 import { createQuickLook } from "./quicklook.js";
@@ -1973,6 +1974,8 @@ export function mountBoardView({
       },
     },
   });
+  // PL-3: one hover tooltip for every chrome control, read live from the `tooltips` / `tooltip-delay` settings.
+  const tooltip = createTooltip({ doc, root, timers, setting: readSetting });
   const lensPop = el("div", "pxd-popover pxd-lens pxd-chrome", root);
   lensPop.style.display = "none";
   lensPop.setAttribute("role", "dialog");
@@ -3251,6 +3254,7 @@ export function mountBoardView({
         }
       }
       chrome.toolbar.setZoom(vp.zoom);
+      if (tooltip.isVisible()) tooltip.hide();
       // offsetHeight in place() forces layout. During a gesture the toolbar height
       // does not change, and that read was the long task on a 300-card board.
       if (!gesturing) propsPanel.place();
@@ -3528,6 +3532,7 @@ export function mountBoardView({
       edgesR.dispose();
       panel.dispose();
       propsPanel.dispose();
+      tooltip.dispose();
       chrome.dispose();
       listeners.splice(0).forEach((off) => off());
       observers.splice(0).forEach((o) => o.disconnect());

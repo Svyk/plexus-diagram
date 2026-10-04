@@ -27,7 +27,8 @@ test("background button toggles a popover inside the root", (t) => {
   const btn = q(f.root, ".pxd-toolbar__bg");
   assert.ok(btn, "Background button");
   assert.equal(btn.getAttribute("aria-label"), "Background");
-  assert.equal(btn.title, "Background pattern and tone");
+  assert.equal(btn.getAttribute("data-tip"), "toolbar.bg");
+  assert.ok(!btn.title, "no native title, the tooltip carries the text");
   assert.ok(btn.querySelector(".bp3-icon-style"));
   assert.equal(btn.textContent, "");
   const pop = q(f.root, ".pxd-popover.pxd-popover--bg");
@@ -180,7 +181,7 @@ test("card ctx bar gains Pin, Fit height, Copy ref, Duplicate, Send to board", (
   t.after(f.restore);
   const ctx = showCtx(f, "card", { kind: "block", kids: true, pinned: false, collapsed: false });
   assert.deepEqual(labels(ctx), ["Color", "Collapse children", "References", "Edit", "Open in sidebar", "Collapse", "Related…", "Pin", "Fit height", "Copy ref", "Duplicate", "Send to board…", "Mind map", "Select same color", "Select connected", "Delete"]);
-  assert.ok([...ctx.querySelectorAll(".pxd-ctx__btn")].every((b) => b.querySelector(".bp3-icon") && b.title));
+  assert.ok([...ctx.querySelectorAll(".pxd-ctx__btn")].every((b) => b.querySelector(".bp3-icon") && b.getAttribute("data-tip")));
   for (const cls of [".pxd-ctx__pin-toggle", ".pxd-ctx__fit-height", ".pxd-ctx__copy-ref", ".pxd-ctx__duplicate", ".pxd-ctx__send-to", ".pxd-ctx__mindmap"]) q(ctx, cls).click();
   assert.deepEqual(calls, [["pin", true], ["fitHeight"], ["copyRef"], ["duplicate"], ["sendTo"], ["expandOutline"]]);
 });
@@ -391,7 +392,7 @@ test("control rail uses native titles and the bar setting restores the zoom grou
   t.after(f.restore);
   assert.ok(f.root.classList.contains("pxd-root--rail"));
   assert.equal(q(f.root, ".pxd-toolbar__zoom").style.display, "none");
-  const titles = [...f.root.querySelectorAll(".pxd-rail__btn")].map((b) => b.title);
+  const titles = [...f.root.querySelectorAll(".pxd-rail__btn")].map((b) => b.getAttribute("aria-label"));
   assert.deepEqual(titles, ["zoom in", "zoom out", "fit view", "Toggle Minimap", "Save PNG", "Open outline in sidebar", "Edit Block", "Maximize"]);
   for (const b of f.root.querySelectorAll(".pxd-rail__btn")) b.click();
   q(f.root, ".pxd-rail__zoom").click();
@@ -399,7 +400,8 @@ test("control rail uses native titles and the bar setting restores the zoom grou
   f.chrome.toolbar.setFullscreen(true);
   assert.equal(q(f.root, ".pxd-rail__edit").style.display, "none");
   assert.equal(q(f.root, ".pxd-toolbar__edit").style.display, "none");
-  assert.equal(q(f.root, ".pxd-rail__fullscreen").title, "Minimize");
+  assert.equal(q(f.root, ".pxd-rail__fullscreen").getAttribute("aria-label"), "Minimize");
+  assert.equal(q(f.root, ".pxd-rail__fullscreen").getAttribute("data-tip-state"), "on");
   f.chrome.toolbar.setZoom(1.25);
   assert.equal(q(f.root, ".pxd-rail__zoom").textContent, "125%");
   const bar = setup({ zoomIn: () => {} }, { settings: { get: (k) => (k === "controls-position" ? "bar" : undefined) } });
@@ -417,7 +419,7 @@ test("UI-3: the palette lists nine tools, lifts above the minimap, and hides fro
   assert.deepEqual(buttons.map((b) => b.getAttribute("aria-label")), ["Select", "Hand", "Card", "Text", "Sticky", "Shape", "Section", "Board", "Connect"]);
   for (const b of buttons) {
     assert.ok(b.querySelector(".bp3-icon"), b.getAttribute("aria-label"));
-    assert.ok(b.title);
+    assert.ok(b.getAttribute("data-tip"));
     assert.equal(b.textContent, "");
   }
   buttons.find((b) => b.dataset.tool === "sticky").click();
@@ -469,7 +471,7 @@ test("UI-2: toolbar actions are Blueprint icons with tooltips, and the zoom perc
   for (const [node, label, icon] of expect) {
     assert.ok(node, label);
     assert.equal(node.getAttribute("aria-label"), label);
-    assert.ok(node.title, label);
+    assert.ok(node.getAttribute("data-tip"), label);
     assert.ok(node.querySelector(`.bp3-icon-${icon}`), label);
     assert.equal(node.textContent, "", label);
   }
@@ -477,7 +479,7 @@ test("UI-2: toolbar actions are Blueprint icons with tooltips, and the zoom perc
     const b = q(f.root, sel);
     assert.ok(b, sel);
     assert.equal(b.getAttribute("aria-label"), label, sel);
-    assert.ok(b.title, sel);
+    assert.ok(b.getAttribute("data-tip"), sel);
     assert.ok(b.querySelector(`.bp3-icon-${icon}`), sel);
     assert.equal(b.textContent, "", sel);
   }
@@ -492,7 +494,7 @@ test("UI-2: toolbar actions are Blueprint icons with tooltips, and the zoom perc
   assert.equal(q(f.root, ".pxd-toolbar__links").textContent, "");
   f.chrome.toolbar.setTable(true);
   assert.equal(q(f.root, ".pxd-toolbar__table").getAttribute("aria-label"), "Board");
-  assert.equal(q(f.root, ".pxd-toolbar__table").title, "Board view");
+  assert.equal(q(f.root, ".pxd-toolbar__table").getAttribute("data-tip-state"), "on");
   assert.ok(q(f.root, ".pxd-toolbar__table").querySelector(".bp3-icon-grid-view"));
   assert.equal(q(f.root, ".pxd-toolbar__table").textContent, "");
   f.chrome.toolbar.setKanban(true);
@@ -502,8 +504,8 @@ test("UI-2: toolbar actions are Blueprint icons with tooltips, and the zoom perc
   assert.equal(q(f.root, ".pxd-toolbar__fullscreen").getAttribute("aria-label"), "Exit fullscreen");
   assert.ok(q(f.root, ".pxd-toolbar__fullscreen").querySelector(".bp3-icon-minimize"));
   for (const b of f.root.querySelectorAll(".pxd-rail__btn")) {
-    assert.ok(b.querySelector(".bp3-icon"), b.title);
-    assert.ok(b.title);
+    assert.ok(b.querySelector(".bp3-icon"), b.getAttribute("data-tip"));
+    assert.ok(b.getAttribute("data-tip"));
     assert.equal(b.textContent, "");
   }
 });
@@ -528,7 +530,7 @@ test("PF-8: the status dot titles idle, writing, retrying, and failed", (t) => {
   const f = setup();
   t.after(f.restore);
   const dot = q(f.root, ".pxd-sync");
-  assert.equal(dot.title, "Synced");
+  assert.equal(dot.getAttribute("aria-label"), "Synced");
   const cases = [
     ["idle", "Synced", []],
     ["writing", "Saving…", ["pxd-sync--pending", "pxd-sync--writing"]],
@@ -538,14 +540,15 @@ test("PF-8: the status dot titles idle, writing, retrying, and failed", (t) => {
   const all = ["pxd-sync--pending", "pxd-sync--writing", "pxd-sync--retrying", "pxd-sync--failed"];
   for (const [state, title, on] of cases) {
     f.chrome.toolbar.setSync(state);
-    assert.equal(dot.title, title, state);
+    assert.equal(dot.getAttribute("aria-label"), title, state);
+    assert.equal(dot.getAttribute("data-tip-state"), state);
     for (const cls of all) assert.equal(dot.classList.contains(cls), on.includes(cls), `${state} ${cls}`);
   }
   f.chrome.toolbar.setSync(true);
-  assert.equal(dot.title, "Saving…");
+  assert.equal(dot.getAttribute("aria-label"), "Saving…");
   assert.ok(dot.classList.contains("pxd-sync--writing"));
   f.chrome.toolbar.setSync(false);
-  assert.equal(dot.title, "Synced");
+  assert.equal(dot.getAttribute("aria-label"), "Synced");
   assert.equal(dot.classList.contains("pxd-sync--writing"), false);
 });
 

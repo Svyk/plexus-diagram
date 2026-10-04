@@ -171,7 +171,9 @@ test("edge layer: a block end follows its row, clamps with a marker when scrolle
     const bend = svg.querySelector(".pxd-edge__bend");
     assert.ok(bend);
     assert.ok(!bend.classList.contains("pxd-edge__bend--clamped"));
-    assert.equal(bend.querySelector("title").textContent.length, 120, "the tooltip is the first 120 chars");
+    assert.equal(bend.getAttribute("data-tip-extra").length, 120, "the tooltip is the first 120 chars");
+    assert.equal(bend.getAttribute("data-tip"), "edge.bend");
+    assert.equal(bend.querySelector("title"), null, "no native SVG title beside the tooltip");
 
     const changed = layer.setMeasures(new Map([["e12", { to: { rowTop: -80, rowHeight: 20, bodyTop: 30, bodyBottom: 480 } }]]));
     assert.deepEqual([...changed], ["e12"]);

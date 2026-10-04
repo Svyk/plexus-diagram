@@ -338,7 +338,19 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
     dockFrame = timers.frame(() => { dockFrame = null; layoutDock(); });
   };
   listen(palette, "pointerenter", () => layoutDock());
+  let pendingMap = {};
+  const paintPending = () => {
+    const mine = pendingMap[activeTool] || {};
+    const mark = (node, on) => {
+      node.classList.toggle("pxd-dock__chosen", on);
+      node.setAttribute("aria-pressed", on ? "true" : "false");
+    };
+    for (const s of colorOpts.querySelectorAll(".pxd-swatch")) mark(s, Boolean(mine.color) && s.getAttribute("data-color") === mine.color);
+    for (const b of lookOpts.querySelectorAll(".pxd-dock__opt")) mark(b, Boolean(mine.look) && b.getAttribute("data-look") === mine.look);
+    for (const b of shapeOpts.querySelectorAll(".pxd-dock__opt")) mark(b, Boolean(mine.shape) && b.getAttribute("data-shape") === mine.shape);
+  };
   const applyDockOptions = () => {
+    paintPending();
     const sets = optionSets.get(activeTool) || [];
     const show = sets.length > 0 && setting("dock-options") !== false;
     dockOptions.style.display = show ? "" : "none";
@@ -434,6 +446,10 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
       }
       applyDockOptions();
       layoutDock();
+    },
+    setPending(map) {
+      pendingMap = map || {};
+      paintPending();
     },
     layoutDock,
     scheduleDock,

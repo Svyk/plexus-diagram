@@ -405,3 +405,13 @@ test("TB-8: every rule in the 2.2 block starts at .pxd-root with two classes at 
   }
   assert.ok(!/!important/.test(block));
 });
+
+test("a left dock offsets the Properties panel like the legend, and the chosen option has a ring", async () => {
+  const css = await read("chrome.css");
+  const rule = rulesOf(block22(css)).find((r) => r.selectors.includes(".pxd-root.pxd-root--docked.pxd-root--dock-left .pxd-props"));
+  assert.ok(rule, "props offset rule");
+  assert.match(rule.body, /left:\s*64px/);
+  const legend = rulesOf(await read("rail.css")).find((r) => r.selectors.includes(".pxd-root.pxd-root--docked.pxd-root--dock-left .pxd-legend"));
+  assert.match(legend.body, /left:\s*64px/);
+  assert.ok(rulesOf(block22(css)).some((r) => r.selectors.some((x) => x.includes(".pxd-dock__chosen"))));
+});

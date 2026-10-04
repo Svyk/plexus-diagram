@@ -273,6 +273,16 @@ test("createCard lands in the container under the point, position relative", asy
   assert.equal(kinds(fake, "create").length, 1);
 });
 
+test("createCard takes a palette color and a block/card look, and ignores anything else", async () => {
+  const { fake, session } = setup();
+  const styled = await session.createCard({ x: 10, y: 20, color: "blue", look: "card" });
+  assert.equal(fake.props(styled).plexus.color, "blue");
+  assert.equal(fake.props(styled).plexus.look, "card");
+  const plain = await session.createCard({ x: 400, y: 20, color: "nope", look: "sticky" });
+  assert.equal(fake.props(plain).plexus.color, undefined);
+  assert.notEqual(fake.props(plain).plexus.look, "sticky");
+});
+
 test("createText sticky is 200 by 200 yellow and plain text keeps the text default", async () => {
   const { fake, session } = setup();
   const plain = await session.createText({ x: 1000, y: 1000, string: "hi" });

@@ -989,6 +989,21 @@ body.roam-body.dark .pxd-root .pxd-panel__outline-row:hover {
   font-size: 11px;
 }
 
+.pxd-root.pxd-root--docked .pxd-dock__options .pxd-swatch.pxd-dock__chosen {
+  box-shadow: 0 0 0 2px var(--pxd-chrome-bg), 0 0 0 4px var(--pxd-accent);
+}
+
+.pxd-root.pxd-root--docked .pxd-dock__options .pxd-dock__opt.pxd-dock__chosen {
+  border-color: var(--pxd-accent);
+  box-shadow: inset 0 0 0 1px var(--pxd-accent);
+}
+
+/* A left dock must not sit on the Properties panel (top left); same offset as the legend. */
+.pxd-root.pxd-root--docked.pxd-root--dock-left .pxd-props {
+  left: 64px;
+  width: min(220px, calc(100% - 304px));
+}
+
 /* ---- narrow, overview */
 
 .pxd-root.pxd-root--docked.pxd-root--narrow .pxd-dock__sep,

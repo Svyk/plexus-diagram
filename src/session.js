@@ -791,7 +791,7 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
       });
     },
 
-    createCard({ x, y, string = "", w, h } = {}) {
+    createCard({ x, y, string = "", w, h, color, look } = {}) {
       return txn((t) => {
         const size = { w: w ?? DEFAULT_SIZES.card.w, h: h ?? DEFAULT_SIZES.card.h };
         const parent = containerAt(board, { x: x + size.w / 2, y: y + size.h / 2 }, { rects });
@@ -799,6 +799,9 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
         const layout = withCardLook({ x: rel.x, y: rel.y }, string);
         if (w !== undefined) layout.w = w;
         if (h !== undefined) layout.h = h;
+        if (look === "block" || look === "card") layout.look = look;
+        const tone = styleColor(color);
+        if (tone) layout.color = tone;
         const id = t.create({ parent, string, plexus: serializeItemLayout(layout) });
         applyFit(t, [id]);
         return id;

@@ -2568,3 +2568,100 @@ function blockish(uid, string, order) {
     ":block/children": [],
   };
 }
+
+// ------------------------------------------------------------------ 2.2 dock options as the next item's style
+
+const dockBtn = (f, sel) => {
+  const m = /\[data-(\w+)=(\w+)\]/.exec(sel);
+  return f.root.querySelectorAll(".pxd-dock__options button").find((b) => b.getAttribute(`data-${m[1]}`) === m[2]);
+};
+const place = (f, x, y) => {
+  const vpEl = f.root.querySelector(".pxd-viewport");
+  pointerDown(f, vpEl, x, y);
+  pointerUp(f, x, y);
+};
+
+test("dock options: with Card active and nothing selected a swatch and a look become the next card's style, written only at create", async () => {
+  const f = mountFixture();
+  try {
+    await f.flush();
+    f.view.controller.select([]);
+    f.view.controller.setTool("card");
+    const before = f.session.mutations.length;
+    dockBtn(f, ".pxd-swatch[data-color=blue]").click();
+    dockBtn(f, "[data-look=card]").click();
+    assert.equal(f.session.mutations.length, before, "choosing writes nothing");
+    assert.ok(dockBtn(f, ".pxd-swatch[data-color=blue]").classList.contains("pxd-dock__chosen"), "pending swatch shows selected");
+    assert.ok(dockBtn(f, "[data-look=card]").classList.contains("pxd-dock__chosen"));
+    place(f, 500, 700);
+    await tick();
+    const made = f.session.mutations.slice(before).find((row) => row[0] === "createCard");
+    assert.ok(made, "a card was created");
+    assert.equal(made[1].color, "blue");
+    assert.equal(made[1].look, "card");
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("dock options: with a card selected the swatch restyles it and sets no pending style", async () => {
+  const f = mountFixture();
+  try {
+    await f.flush();
+    f.view.controller.select(["cardAAAA1"]);
+    f.view.controller.setTool("card");
+    f.session.mutations.length = 0;
+    dockBtn(f, ".pxd-swatch[data-color=red]").click();
+    assert.deepEqual(f.session.mutations[0], ["setColor", ["cardAAAA1"], "red"]);
+    assert.ok(!dockBtn(f, ".pxd-swatch[data-color=red]").classList.contains("pxd-dock__chosen"));
+    f.view.controller.select([]);
+    f.session.mutations.length = 0;
+    place(f, 500, 700);
+    await tick();
+    const made = f.session.mutations.find((row) => row[0] === "createCard");
+    assert.equal(made[1].color, undefined);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});
+
+test("dock options: sticky, section and shape each keep their own pending style and a plain card is unaffected", async () => {
+  const f = mountFixture();
+  try {
+    await f.flush();
+    f.view.controller.select([]);
+    f.view.controller.setTool("sticky");
+    dockBtn(f, ".pxd-swatch[data-color=green]").click();
+    f.view.controller.setTool("shape");
+    dockBtn(f, "[data-shape=ellipse]").click();
+    f.view.controller.setTool("card");
+    assert.ok(!dockBtn(f, ".pxd-swatch[data-color=green]").classList.contains("pxd-dock__chosen"), "sticky pick does not mark the card tool");
+    f.view.controller.setTool("sticky");
+    assert.ok(dockBtn(f, ".pxd-swatch[data-color=green]").classList.contains("pxd-dock__chosen"));
+    f.session.mutations.length = 0;
+    place(f, 500, 700);
+    await tick();
+    let made = f.session.mutations.find((row) => row[0] === "createText");
+    assert.equal(made[1].look, "sticky");
+    assert.equal(made[1].color, "green");
+    f.view.controller.select([]);
+    f.view.controller.setTool("shape");
+    f.session.mutations.length = 0;
+    place(f, 900, 700);
+    await tick();
+    made = f.session.mutations.find((row) => row[0] === "createText");
+    assert.equal(made[1].shape, "ellipse");
+    f.view.controller.select([]);
+    f.view.controller.setTool("card");
+    f.session.mutations.length = 0;
+    place(f, 1300, 700);
+    await tick();
+    made = f.session.mutations.find((row) => row[0] === "createCard");
+    assert.equal(made[1].color, undefined);
+  } finally {
+    f.view.dispose();
+    f.restore();
+  }
+});

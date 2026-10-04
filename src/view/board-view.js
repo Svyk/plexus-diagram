@@ -1833,6 +1833,18 @@ export function mountBoardView({
   // ------------------------------------------------------------ chrome + panel
   // Chrome is built before the panel, so Info is bound after createPanel.
   let openInfo = () => {};
+  // Transient "next item" style from the dock options: per creation tool, in memory only, gone with the view.
+  const pendingStyle = {};
+  const pendingFor = (tool) => (ctl.getTool?.() === tool ? pendingStyle[tool] || null : null);
+  const setPending = (key, value) => {
+    const tool = ctl.getTool?.();
+    if (!["card", "sticky", "section", "shape"].includes(tool)) return;
+    const next = { ...(pendingStyle[tool] || {}) };
+    if (value === null || value === undefined) delete next[key];
+    else next[key] = value;
+    pendingStyle[tool] = next;
+    chrome.toolbar.setPending?.(pendingStyle);
+  };
   const chrome = createChrome({
     doc,
     root,
@@ -1861,9 +1873,19 @@ export function mountBoardView({
       editBlock: () => editBoardBlock(),
       savePng: () => { void exportPng(); },
       openOutline: () => openBoardOutline(),
-      setColor: (c) => { const uids = targetUids(); if (uids.length) void session.setColor?.(uids, c); },
-      setLook: (look) => { for (const uid of selection.items) void session.setLook?.(uid, look); },
-      setShape: (shape) => { if (selection.items.length) void session.setItemStyle?.(selection.items.slice(), { shape }); },
+      setColor: (c) => {
+        const uids = targetUids();
+        if (uids.length) void session.setColor?.(uids, c);
+        else setPending("color", c);
+      },
+      setLook: (look) => {
+        if (selection.items.length) { for (const uid of selection.items) void session.setLook?.(uid, look); }
+        else setPending("look", look);
+      },
+      setShape: (shape) => {
+        if (selection.items.length) void session.setItemStyle?.(selection.items.slice(), { shape });
+        else setPending("shape", shape);
+      },
       edit: () => { const it = singleItem(); if (it) void enterEdit(it.uid); },
       openSidebar: () => openItemInSidebar(singleItem()),
       collapse: () => { const it = singleItem(); if (it) void session.setCollapsed?.(it.uid, !it.collapsed); },
@@ -2483,7 +2505,7 @@ export function mountBoardView({
     updateEdge: (uid, patch) => session.updateEdge?.(uid, patch),
     commitMove: (uids, dx, dy) => session.commitMove?.(uids, dx, dy),
     commitRects: (list) => session.commitRects?.(list),
-    createCard: (p) => Promise.resolve(session.createCard?.({ x: p.x, y: p.y })).then((uid) => { if (uid) freshItems.add(uid); return uid; }),
+    createCard: (p) => Promise.resolve(session.createCard?.({ x: p.x, y: p.y, ...(pendingFor("card") || {}) })).then((uid) => { if (uid) freshItems.add(uid); return uid; }),
     createText: (p) => {
       const spec = { x: p.x, y: p.y };
       if (p.look) spec.look = p.look;
@@ -2491,9 +2513,13 @@ export function mountBoardView({
       if (typeof p.h === "number") spec.h = p.h;
       if (p.color) spec.color = p.color;
       if (p.shape) spec.shape = p.shape;
+      const sticky = pendingFor("sticky");
+      if (p.look === "sticky" && sticky?.color) spec.color = sticky.color;
+      const shaped = pendingFor("shape");
+      if (p.shape && shaped?.shape) spec.shape = shaped.shape;
       return Promise.resolve(session.createText?.(spec)).then((uid) => { if (uid) freshItems.add(uid); return uid; });
     },
-    createSection: (p) => session.createSection?.({ rect: p.rect }),
+    createSection: (p) => session.createSection?.({ rect: p.rect, ...(pendingFor("section")?.color ? { color: pendingFor("section").color } : {}) }),
     createBoard: (p) => session.createBoard?.({ rect: p.rect }),
     moveIntoBoard: async (uids, boardUid, dx = 0, dy = 0) => {
       const res = await session.moveIntoBoard?.(uids, boardUid);

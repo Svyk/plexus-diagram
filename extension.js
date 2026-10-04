@@ -5164,7 +5164,7 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
         applyFit(t, fitTouched, { skip: changedSections });
       });
     },
-    createCard({ x, y, string = "", w, h } = {}) {
+    createCard({ x, y, string = "", w, h, color, look } = {}) {
       return txn((t) => {
         const size = { w: w ?? DEFAULT_SIZES.card.w, h: h ?? DEFAULT_SIZES.card.h };
         const parent = containerAt(board2, { x: x + size.w / 2, y: y + size.h / 2 }, { rects });
@@ -5172,6 +5172,9 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
         const layout = withCardLook({ x: rel.x, y: rel.y }, string);
         if (w !== void 0) layout.w = w;
         if (h !== void 0) layout.h = h;
+        if (look === "block" || look === "card") layout.look = look;
+        const tone = styleColor(color);
+        if (tone) layout.color = tone;
         const id = t.create({ parent, string, plexus: serializeItemLayout(layout) });
         applyFit(t, [id]);
         return id;
@@ -12686,7 +12689,19 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     });
   };
   listen(palette, "pointerenter", () => layoutDock());
+  let pendingMap = {};
+  const paintPending = () => {
+    const mine = pendingMap[activeTool] || {};
+    const mark = (node2, on2) => {
+      node2.classList.toggle("pxd-dock__chosen", on2);
+      node2.setAttribute("aria-pressed", on2 ? "true" : "false");
+    };
+    for (const s of colorOpts.querySelectorAll(".pxd-swatch")) mark(s, Boolean(mine.color) && s.getAttribute("data-color") === mine.color);
+    for (const b of lookOpts.querySelectorAll(".pxd-dock__opt")) mark(b, Boolean(mine.look) && b.getAttribute("data-look") === mine.look);
+    for (const b of shapeOpts.querySelectorAll(".pxd-dock__opt")) mark(b, Boolean(mine.shape) && b.getAttribute("data-shape") === mine.shape);
+  };
   const applyDockOptions = () => {
+    paintPending();
     const sets = optionSets.get(activeTool) || [];
     const show = sets.length > 0 && setting("dock-options") !== false;
     dockOptions.style.display = show ? "" : "none";
@@ -12789,6 +12804,10 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
       }
       applyDockOptions();
       layoutDock();
+    },
+    setPending(map) {
+      pendingMap = map || {};
+      paintPending();
     },
     layoutDock,
     scheduleDock,
@@ -18057,6 +18076,17 @@ function mountBoardView({
   };
   let openInfo = () => {
   };
+  const pendingStyle = {};
+  const pendingFor = (tool) => ctl.getTool?.() === tool ? pendingStyle[tool] || null : null;
+  const setPending = (key, value) => {
+    const tool = ctl.getTool?.();
+    if (!["card", "sticky", "section", "shape"].includes(tool)) return;
+    const next = { ...pendingStyle[tool] || {} };
+    if (value === null || value === void 0) delete next[key];
+    else next[key] = value;
+    pendingStyle[tool] = next;
+    chrome.toolbar.setPending?.(pendingStyle);
+  };
   const chrome = createChrome({
     doc,
     root,
@@ -18098,12 +18128,16 @@ function mountBoardView({
       setColor: (c) => {
         const uids = targetUids();
         if (uids.length) void session.setColor?.(uids, c);
+        else setPending("color", c);
       },
       setLook: (look) => {
-        for (const uid of selection.items) void session.setLook?.(uid, look);
+        if (selection.items.length) {
+          for (const uid of selection.items) void session.setLook?.(uid, look);
+        } else setPending("look", look);
       },
       setShape: (shape) => {
         if (selection.items.length) void session.setItemStyle?.(selection.items.slice(), { shape });
+        else setPending("shape", shape);
       },
       edit: () => {
         const it = singleItem();
@@ -18873,7 +18907,7 @@ function mountBoardView({
     updateEdge: (uid, patch) => session.updateEdge?.(uid, patch),
     commitMove: (uids, dx, dy) => session.commitMove?.(uids, dx, dy),
     commitRects: (list) => session.commitRects?.(list),
-    createCard: (p) => Promise.resolve(session.createCard?.({ x: p.x, y: p.y })).then((uid) => {
+    createCard: (p) => Promise.resolve(session.createCard?.({ x: p.x, y: p.y, ...pendingFor("card") || {} })).then((uid) => {
       if (uid) freshItems.add(uid);
       return uid;
     }),
@@ -18884,12 +18918,16 @@ function mountBoardView({
       if (typeof p.h === "number") spec.h = p.h;
       if (p.color) spec.color = p.color;
       if (p.shape) spec.shape = p.shape;
+      const sticky = pendingFor("sticky");
+      if (p.look === "sticky" && sticky?.color) spec.color = sticky.color;
+      const shaped = pendingFor("shape");
+      if (p.shape && shaped?.shape) spec.shape = shaped.shape;
       return Promise.resolve(session.createText?.(spec)).then((uid) => {
         if (uid) freshItems.add(uid);
         return uid;
       });
     },
-    createSection: (p) => session.createSection?.({ rect: p.rect }),
+    createSection: (p) => session.createSection?.({ rect: p.rect, ...pendingFor("section")?.color ? { color: pendingFor("section").color } : {} }),
     createBoard: (p) => session.createBoard?.({ rect: p.rect }),
     moveIntoBoard: async (uids, boardUid2, dx = 0, dy = 0) => {
       const res = await session.moveIntoBoard?.(uids, boardUid2);

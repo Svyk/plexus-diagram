@@ -89,7 +89,7 @@ Native diagrams are React Flow (`.react-flow`, nodes `.react-flow__node-block`).
 | P9 | Whole pages, block arrows, card children | 2.1.0 | done 2026-10-03, tagged `v2.1.0`, `08005e2` |
 | P10 | Board bar and tool dock | 2.2.0 | done 2026-10-03, tagged `v2.2.0` |
 | P11 | Polish and fixes | 2.3.0 | done 2026-10-03, tagged `v2.3.0` |
-| P12 | Refinements from 2026-10-03 videos | 2.4.0 | open |
+| P12 | Refinements from 2026-10-03 videos | 2.4.0 | done 2026-10-03, tagged `v2.4.0` |
 
 Order matters: P1 and P2 are the user's direct requests. Within a phase, do tasks in the listed order unless one is blocked.
 

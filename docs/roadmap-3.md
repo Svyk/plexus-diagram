@@ -518,7 +518,7 @@ Rules that bind every task below (docs/roadmap.md §3): add, never take away (3.
 - Revisit when: n/a
 
 ### POL-3 — Bundle and start-up budget
-- Phase: P22 · Version: 3.0.0 · Effort: M · Priority: medium · Depriority · Depends: NAV-1
+- Phase: P22 · Version: 3.0.0 · Effort: M · Priority: medium · Depends: NAV-1
 - Summary: 3.x adds many modules; the bundle and start-up work must stay inside a stated budget: extension.js under 900 KB, CSS under 90 KB, load-to-ready under 80 ms with no board on the page, and the start-up caches (enhanced uids, card chips) built lazily after first idle.
 - Roam model: None.
 - Design: `npm run check` gains a size gate (fail over budget). Start-up: everything not needed for the first paint of a board moves behind the first `requestIdleCallback` (chip cache, resurface, suggestions), still in the single bundle (no dynamic loading, rule 3.9). Measure with `performance.mark` around `onload`.

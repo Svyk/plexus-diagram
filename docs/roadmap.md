@@ -383,7 +383,7 @@ Live on Readwisenotes, window titled "Readwisenotes - Plexus Diagram/Test Lab". 
 
 ### P18: Region block model (2.9.0, 2026-10-04)
 
-- [x] **REG-1 Region and view block model** — done 2026-10-04, `SHA`: Two cards. Note badge ▸ 1. Image had no kids badge. Edit times unchanged on 13 blocks. Unload left 0 `.pxd-*` nodes. Real area string parses as roam-plexus, unsupported, no error.
+- [x] **REG-1 Region and view block model** — done 2026-10-04, `4258a7e`: Two cards. Note badge ▸ 1. Image had no kids badge. Edit times unchanged on 13 blocks. Unload left 0 `.pxd-*` nodes. Real area string parses as roam-plexus, unsupported, no error.
 
 ## 6. Later (ideas not scheduled)
 

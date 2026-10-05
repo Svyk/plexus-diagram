@@ -109,6 +109,7 @@ Native diagrams are React Flow (`.react-flow`, nodes `.react-flow__node-block`).
 | P23 | Highlight cards | 2.11.1 | released 2026-10-05. PDF-2 done. |
 | P24 | Highlight picker and colour | 2.11.2 | released 2026-10-05. PDF-6, PDF-5, and PDF-3 done. |
 | P25 | Open a highlight in the reader | 2.11.3 | released 2026-10-05. PDF-4 done. |
+| P26 | Page chips and On board | 2.11.4 | released 2026-10-05. PDF-7 and DOC-20 done. |
 | P17 rest-P22 | 3.x roadmap, see roadmap-3.md | 2.8.1-3.0.0 | open |
 
 Order matters: P1 and P2 are the user's direct requests. Within a phase, do tasks in the listed order unless one is blocked.
@@ -441,6 +442,11 @@ Live on Readwisenotes, window titled "Readwisenotes - Plexus Diagram/Test Lab". 
 
 - [x] **PDF-4 Open in reader** — done 2026-10-05, `6688c6b`: The card page field went to 1, then to 2, and the mark was on that page. The button wrote 0. With no PDF card, Roam opened plx-pdf1-test, fullscreen stayed 0, and the note said to click the highlight. Dark fill was clear, border 107,127,145, bar 4 px. Unload left 0 pxd nodes and no diagram listener. Window listeners 95 to 84. Check 1313 pass. Theme restored to Auto. No typing bench.
 
+### P26: Page chips and On board (2.11.4, 2026-10-05)
+
+- [x] **PDF-7 Page chips** — done 2026-10-05, `f89a7c8`: Chips 1 and 2, badges 1 and 1. Click on 2 pulsed only the page-2 card. Double-click opened the reader at page 2 and cancelled the pulse. Edit times unchanged. Pill p. 2, bends 0. On board was 66 px, one per row, only the two fixture highlights. Dark text 230,237,243 with a clear fill. A relation chip showed on the connection in the sidebar. Shots PDF-7-board-light.png and PDF-7-board-dark.png. The fixture has no page 3. No typing bench.
+- [x] **DOC-20 PDF gate** — done 2026-10-05, `f89a7c8`: Check 1324 pass. Unload left 0 pxd nodes. Window listeners 76 to 76. Document 142 to 144. Readers 1. Ledger removed 7 Test Lab blocks. plx-pdf1-test stayed. Theme restored to Auto. Copy and paste were not run. No typing bench.
+
 ## 6. Later (ideas not scheduled)
 
 Pick from here only when every phase above is done or blocked.
@@ -472,6 +478,8 @@ AI agent features inside the board, SuperTag-style typed schemas or class tags, 
 
 Fill in as phases run. Keep the newest at the top of each list.
 
+- 2.11.4 live, 2026-10-05, Test Lab, `f89a7c8`. Chips 1 and 2. Page-2 click pulsed one card. Double-click opened page 2. Pill p. 2. On board 66 px. Unload pxd 0, window 76, document 144, readers 1. No typing bench.
+- 2.11.4 measure, 2026-10-05, Test Lab. Fixture plx-pdf1-test has two text highlights, pages 1 and 2. No page 3. No fingerprints on those two. The page url is present and not encrypted. The mounted reader has text marks and 0 highlight lists. Outline rows are normal blocks with a highlight view. Chips group by page, scoped by that url. The On board chip goes on the outline. No typing bench.
 - 2.11.3 live, 2026-10-05, Test Lab, `6688c6b`. Open in reader set the card page field to 1, then to 2. The button wrote 0. With no PDF card, openBlock opened plx-pdf1-test and the toast showed. Fullscreen stayed 0. Unload: pxd 0, diagram listeners 0. Window listeners 95 to 84. No typing bench.
 - 2.11.3 measure, 2026-10-05, Test Lab. Closed render shows rm-block-highlight-view and rm-pdf-highlight-color-icon. No rm-pdf-highlight. Icon click opened a fullscreen reader on the fixture page. Page input was 1. The same click still went fullscreen when an embedded reader was already mounted, and left Test Lab. Setting that input to 2 stuck and stayed on Test Lab. Text highlight has no fingerprints. Its hash matches the page hash. Page title has no md5. Match the card by the page url, not by a fingerprint in the title.
 - 2.11.2 live, 2026-10-05, Test Lab, `fbe4009`. Picker 10 rows, 2 groups. Grid 5 cards in 3 columns. One Cmd-Z removed the 5. Reopen disabled 7, then 2. Bullet drag made 1 yellow card. Date cancel added 0. Date confirm added 2. Area ratio 133 / 47. Crop rendered and a click opened a board. Lens green dimmed 3. Dark bar 250,204,21. Light bar 202,138,4. Unload pxd 0. Check 1306. Paste not run. No typing bench.

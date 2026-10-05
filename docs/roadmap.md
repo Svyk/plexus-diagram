@@ -110,6 +110,7 @@ Native diagrams are React Flow (`.react-flow`, nodes `.react-flow__node-block`).
 | P24 | Highlight picker and colour | 2.11.2 | released 2026-10-05. PDF-6, PDF-5, and PDF-3 done. |
 | P25 | Open a highlight in the reader | 2.11.3 | released 2026-10-05. PDF-4 done. |
 | P26 | Page chips and On board | 2.11.4 | released 2026-10-05. PDF-7 and DOC-20 done. |
+| P27 | Card context and board chips | 2.12.0 | released 2026-10-05. MEM-1 and NAV-1 done. |
 | P17 rest-P22 | 3.x roadmap, see roadmap-3.md | 2.8.1-3.0.0 | open |
 
 Order matters: P1 and P2 are the user's direct requests. Within a phase, do tasks in the listed order unless one is blocked.
@@ -447,6 +448,11 @@ Live on Readwisenotes, window titled "Readwisenotes - Plexus Diagram/Test Lab". 
 - [x] **PDF-7 Page chips** — done 2026-10-05, `f89a7c8`: Chips 1 and 2, badges 1 and 1. Click on 2 pulsed only the page-2 card. Double-click opened the reader at page 2 and cancelled the pulse. Edit times unchanged. Pill p. 2, bends 0. On board was 66 px, one per row, only the two fixture highlights. Dark text 230,237,243 with a clear fill. A relation chip showed on the connection in the sidebar. Shots PDF-7-board-light.png and PDF-7-board-dark.png. The fixture has no page 3. No typing bench.
 - [x] **DOC-20 PDF gate** — done 2026-10-05, `f89a7c8`: Check 1324 pass. Unload left 0 pxd nodes. Window listeners 76 to 76. Document 142 to 144. Readers 1. Ledger removed 7 Test Lab blocks. plx-pdf1-test stayed. Theme restored to Auto. Copy and paste were not run. No typing bench.
 
+### P27: Card context and board chips (2.12.0, 2026-10-05)
+
+- [x] **MEM-1 Card context** — done 2026-10-05, `e967806`: Header was October 5th, 2026, on Halo board, section Y. With listed the same-minute card. Sparkline had 12 buckets and summed to 1 ref. The date click opened that daily page. Edit times stayed. Dark and light shots. No typing bench.
+- [x] **NAV-1 Board chips** — done 2026-10-05, `e967806`: The source block showed two chips in the outline and in the sidebar. Hover drew the card and a neighbour. Click pulsed the card. Dark text 230,237,243. Light text 31,41,55. Clear fill. Border 1 px. cardCacheMs 59. Unload pxd 0. Window 92 to 92. Document 168 to 168. No typing bench.
+
 ## 6. Later (ideas not scheduled)
 
 Pick from here only when every phase above is done or blocked.
@@ -478,6 +484,9 @@ AI agent features inside the board, SuperTag-style typed schemas or class tags, 
 
 Fill in as phases run. Keep the newest at the top of each list.
 
+- 2.12.0 live, 2026-10-05, Test Lab, `e967806`. Halo day matched create time. Two chips on the source. cardCacheMs 59. Unload pxd 0. Window 92 to 92. Document 168 to 168. Check 1336 pass. Theme restored to Auto. No typing bench.
+- 2.12.0 placement, 2026-10-05, Test Lab. The page title is h1.rm-title-display, 279 by 90. No reference header was on the page. The page chip is then the first child of the page's first block list. It does not touch the title. A scan attaches 60 blocks, then the rest on a timer. No typing bench.
+- 2.12.0 measure, 2026-10-05, Test Lab. Create time and edit time are numbers. The user pull has a uid and an empty display name. dateToPageUid exists. The board pull does not ask for those fields yet. The fixture page had 0 refs. No typing bench.
 - 2.11.4 live, 2026-10-05, Test Lab, `f89a7c8`. Chips 1 and 2. Page-2 click pulsed one card. Double-click opened page 2. Pill p. 2. On board 66 px. Unload pxd 0, window 76, document 144, readers 1. No typing bench.
 - 2.11.4 measure, 2026-10-05, Test Lab. Fixture plx-pdf1-test has two text highlights, pages 1 and 2. No page 3. No fingerprints on those two. The page url is present and not encrypted. The mounted reader has text marks and 0 highlight lists. Outline rows are normal blocks with a highlight view. Chips group by page, scoped by that url. The On board chip goes on the outline. No typing bench.
 - 2.11.3 live, 2026-10-05, Test Lab, `6688c6b`. Open in reader set the card page field to 1, then to 2. The button wrote 0. With no PDF card, openBlock opened plx-pdf1-test and the toast showed. Fullscreen stayed 0. Unload: pxd 0, diagram listeners 0. Window listeners 95 to 84. No typing bench.

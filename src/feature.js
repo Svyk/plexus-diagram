@@ -11,8 +11,10 @@ import { parseRegion } from "./model/regions.js";
 import { classifyString, parseBoardTitle, readPlexus, UNTITLED_BOARD } from "./model/schema.js";
 import { eachRegionButton, openRegionCrop, openRegionView, regionButtonUid } from "./view/region-crop.js";
 import { chromeObstacles } from "./view/avoid.js";
-import { holeRect, previewImageBox } from "./view/region-hover-geom.js";
-import { drawViewMap, viewMapModel } from "./view/minimap-svg.js";
+import { holeRect, previewImageBox, setCameraFromView } from "./view/region-hover-geom.js";
+import { drawViewMap, minimapSvg, viewMapModel } from "./view/minimap-svg.js";
+import { worldRects, buildBoard } from "./model/board.js";
+import { boardBounds, createPublicApi, fitThumbSize, installPublicApi, thumbStroke, uninstallPublicApi } from "./model/public-api.js";
 import { motionProfile, resolveMotion } from "./view/motion.js";
 import { createShowStash, pickCameraMount, resolveRegionTarget } from "./view/region-open.js";
 import { tooltipDelay } from "./view/tooltip.js";
@@ -1472,6 +1474,194 @@ export async function installPlexusDiagram({
 
   // ---- install --------------------------------------------------------------------------------
 
+  function borderStroke() {
+    const probe = doc?.querySelector?.(".pxd-root") || doc?.body || doc?.documentElement;
+    let color = "";
+    try {
+      const view = doc?.defaultView || win;
+      const style = probe ? view?.getComputedStyle?.(probe) : null;
+      color = style?.getPropertyValue?.("--pxd-border") || style?.borderTopColor || "";
+    } catch { color = ""; }
+    return thumbStroke(color);
+  }
+
+  function rasterBoard(svg, width, height) {
+    return new Promise((resolve) => {
+      const view = doc?.defaultView || win;
+      let url = "";
+      const finish = (blob) => {
+        try { if (url) URL.revokeObjectURL(url); } catch { /* already revoked */ }
+        resolve(blob || null);
+      };
+      try {
+        const xml = new view.XMLSerializer().serializeToString(svg);
+        url = URL.createObjectURL(new Blob([xml], { type: "image/svg+xml" }));
+      } catch {
+        finish(null);
+        return;
+      }
+      const Img = view.Image;
+      if (typeof Img !== "function") { finish(null); return; }
+      const img = new Img();
+      img.onload = () => {
+        const w = Math.max(1, Math.round(width));
+        const h = Math.max(1, Math.round(height));
+        const Off = view.OffscreenCanvas;
+        if (typeof Off === "function") {
+          try {
+            const canvas = new Off(w, h);
+            const g = canvas.getContext("2d");
+            g.drawImage(img, 0, 0, w, h);
+            Promise.resolve(canvas.convertToBlob({ type: "image/png" })).then(finish, () => finish(null));
+            return;
+          } catch { /* hidden canvas below */ }
+        }
+        const canvas = doc.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        canvas.hidden = true;
+        try { canvas.style.position = "fixed"; canvas.style.left = "-10000px"; } catch { /* stub */ }
+        try { (doc.body || doc.documentElement).append(canvas); } catch { /* stub */ }
+        try {
+          const g = canvas.getContext("2d");
+          g.drawImage(img, 0, 0, w, h);
+          if (typeof canvas.toBlob !== "function") { canvas.remove?.(); finish(null); return; }
+          canvas.toBlob((blob) => { canvas.remove?.(); finish(blob); }, "image/png");
+        } catch {
+          canvas.remove?.();
+          finish(null);
+        }
+      };
+      img.onerror = () => finish(null);
+      img.src = url;
+    });
+  }
+
+  function thumbnailBoard(boardUid, opts = {}) {
+    const maxWidth = Number.isFinite(opts?.maxWidth) && opts.maxWidth > 0 ? opts.maxWidth : 160;
+    let pulled = null;
+    try { pulled = host.pullBoard?.(boardUid); } catch { pulled = null; }
+    const board = pulled ? buildBoard(pulled) : null;
+    if (!board || !doc) return Promise.resolve(null);
+    const rects = worldRects(board);
+    const cards = [];
+    for (const item of board.items.values()) {
+      if (item.type === "section") continue;
+      const rect = rects.get(item.uid);
+      if (rect) cards.push(rect);
+    }
+    const bounds = boardBounds(cards.length ? cards : [...rects.values()]);
+    const fit = fitThumbSize(bounds.w, bounds.h, maxWidth);
+    if (!fit) return Promise.resolve(null);
+    const svg = minimapSvg(doc, { v: bounds, items: cards, size: fit.width });
+    svg.setAttribute("width", String(fit.width));
+    svg.setAttribute("height", String(fit.height));
+    const stroke = borderStroke();
+    for (const node of svg.querySelectorAll?.("[stroke]") || []) node.setAttribute("stroke", stroke);
+    return rasterBoard(svg, fit.width, fit.height);
+  }
+
+  function mountSize(rec) {
+    const root = rec?.view?.root || rec?.mountEl;
+    const box = root?.getBoundingClientRect?.() || {};
+    return {
+      width: Number(box.width) || Number(rec?.mountEl?.clientWidth) || 0,
+      height: Number(box.height) || Number(rec?.mountEl?.clientHeight) || 0,
+    };
+  }
+
+  function findOpenMount(boardUid, sidebar) {
+    for (const rec of mounts.values()) {
+      if (!rec?.view || rec.dormant) continue;
+      if (rec.uid !== boardUid && currentUid(rec) !== boardUid) continue;
+      if (sidebar ? isSidebarMount(rec) : !isSidebarMount(rec)) return rec;
+    }
+    return null;
+  }
+
+  function waitOpenMount(boardUid, sidebar, left, done) {
+    const rec = findOpenMount(boardUid, sidebar);
+    if (rec || left <= 0) { done(rec); return; }
+    lifecycle.timeout(() => waitOpenMount(boardUid, sidebar, left - 1, done), 50);
+  }
+
+  function pulseCard(rec, cardUid, left) {
+    const root = rec?.view?.root || rec?.mountEl;
+    const shell = root?.querySelector?.(`[data-uid="${cardUid}"]`);
+    if (shell?.classList) { shell.classList.add("pxd-item--pulse"); return; }
+    if (left > 0) lifecycle.timeout(() => pulseCard(rec, cardUid, left - 1), 50);
+  }
+
+  function showCard(rec, cardUid) {
+    try { rec.view?.focusUid?.(cardUid); } catch { /* view gone */ }
+    pulseCard(rec, cardUid, 20);
+  }
+
+  function showSavedView(rec, viewUid, left) {
+    let text = "";
+    try { text = host.blockString?.(viewUid) || ""; } catch { text = ""; }
+    const region = parseRegion(text);
+    if (!region || region.kind !== "view" || region.supported !== true) return;
+    const cam = setCameraFromView(region.v, mountSize(rec));
+    if (!cam) {
+      if (left > 0) lifecycle.timeout(() => showSavedView(rec, viewUid, left - 1), 50);
+      return;
+    }
+    try { rec.view?.applyShow?.({ kind: "view", v: region.v, ids: region.ids || [] }); } catch { /* view gone */ }
+  }
+
+  function aimMount(rec, opts) {
+    if (!rec?.view) return;
+    const viewUid = typeof opts?.view === "string" ? opts.view : (typeof opts?.region === "string" ? opts.region : "");
+    if (viewUid) showSavedView(rec, viewUid, 20);
+    if (opts?.card) showCard(rec, opts.card);
+  }
+
+  function openPublic(boardUid, opts = {}) {
+    const sidebar = Boolean(opts?.sidebar);
+    if (sidebar) {
+      try { void host.openInSidebar?.(boardUid, "block"); } catch { /* host unavailable */ }
+    } else if (!findOpenMount(boardUid, false)) {
+      const asleep = [...mounts.values()].find((rec) => !isSidebarMount(rec) && (rec.uid === boardUid || currentUid(rec) === boardUid));
+      if (asleep?.mountEl) {
+        try { asleep.mountEl.scrollIntoView?.({ block: "center" }); } catch { /* no layout */ }
+      } else {
+        let pageUid = "";
+        try { pageUid = host.blockPageUid?.(boardUid) || ""; } catch { pageUid = ""; }
+        try {
+          if (pageUid) void host.openPage?.(pageUid);
+          else void host.openBlock?.(boardUid);
+        } catch { /* host unavailable */ }
+      }
+    }
+    return new Promise((resolve) => {
+      waitOpenMount(boardUid, sidebar, 40, (rec) => {
+        if (!rec) { resolve(false); return; }
+        aimMount(rec, opts);
+        resolve(true);
+      });
+    });
+  }
+
+  const publicApi = createPublicApi({
+    host: {
+      graphName: () => host.graph || graphFromHash(),
+      listBoards: (...args) => host.listBoards?.(...args),
+      q: (...args) => host.q?.(...args),
+      pullBoard: (uid) => host.pullBoard?.(uid),
+    },
+    version: badge,
+    addCard: (boardUid, string, x, y) => {
+      const session = acquireSession(boardUid, { host, settings: liveSettings });
+      return Promise.resolve(session?.addPublicCard?.({ string, x, y })).finally(() => {
+        try { session?.release?.(); } catch { /* already released */ }
+      });
+    },
+    openBoard: (boardUid, opts) => openPublic(boardUid, opts),
+    thumbnail: (boardUid, opts) => thumbnailBoard(boardUid, opts),
+  });
+  installPublicApi(publicApi, { win });
+
   const api = {
     version: badge,
     stats: host.stats,
@@ -1497,6 +1687,7 @@ export async function installPlexusDiagram({
   };
   win.__plexusDiagram = api;
   lifecycle.add(() => {
+    uninstallPublicApi(publicApi, { win });
     if (win.__plexusDiagram === api) delete win.__plexusDiagram;
   });
 

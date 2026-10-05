@@ -78,6 +78,8 @@ An enhanced board keeps Roam's diagram controls and adds to them.
 | Mark region | On an image card, Mark region, then drag a rectangle on the picture. Confirm stores the region under the image and copies a block ref. The first undo removes the region. The next undo removes the empty container |
 | Mark image region | On an image block, right-click the bullet, then Extensions, then Plexus: Mark image region. Drag a rectangle and Confirm. The region is stored under the image and a block ref is copied. Escape writes nothing. The same region shows as a crop, at most 160px tall, in the outline, a block ref, an embed, the sidebar, and linked references. The crop has a 1px border and no shadow |
 | Open a region | Hover a crop for a larger preview. Click opens the image on its board, zoomed to the region, or scrolls the outline image into view and pulses the region. Shift-click opens the board in the sidebar |
+| Public API | `window.PlexusDiagram` lists boards, opens a card or a saved view, adds one card, and returns a small PNG of a board. The command palette stays two entries |
+| Roam Plexus on a board | A block ref of a Roam Plexus region shows the caption, a crop, Open drawing, and Open in sidebar. Without Roam Plexus the card is an ordinary block ref |
 | Open a view | An inline view is a small map. Hover enlarges it. Click opens the board at that view and pulses the highlighted cards. Shift-click opens the board in the sidebar. The click does not write |
 
 The context bar above a selection has 10 colors for cards, sections, text, and connections; connection direction (→ ↔ —), flip, route (curve, straight, elbow), dashed line, weight, label, and notes.

@@ -17,6 +17,7 @@ import {
   semanticRef,
 } from "./schema.js";
 import { isQueryString } from "./query.js";
+import { regionRefModel } from "./region-card.js";
 import { isContainerString, parseRegion } from "./regions.js";
 import { listFromNodes } from "./snapshots.js";
 
@@ -98,7 +99,7 @@ function autoPlace(siblings) {
   });
 }
 
-export function buildBoard(pulled, { defaults } = {}) {
+export function buildBoard(pulled, { defaults, resolve, plexusApi } = {}) {
   if (!pulled || typeof pulled !== "object") return null;
   const uid = pulled[":block/uid"];
   const string = pulled[":block/string"] ?? "";
@@ -141,7 +142,7 @@ export function buildBoard(pulled, { defaults } = {}) {
       if (!cplexus && heading > 0 && kids.length) type = "section";
       const cls = classifyString(cstring);
       if (cls.kind === "regions" || cls.kind === "region") continue;
-      const kind = type === "section" ? "section" : type === "text" ? "text" : cls.kind;
+      let kind = type === "section" ? "section" : type === "text" ? "text" : cls.kind;
       const size = sizes[type];
       const hasLayout = isNum(layout.x) && isNum(layout.y);
       let title;
@@ -149,9 +150,20 @@ export function buildBoard(pulled, { defaults } = {}) {
       else if (kind === "board") title = parseBoardTitle(cstring) || "Untitled board";
       else if (isQueryString(cstring)) title = "Query";
       else title = firstLine(cstring);
+      let regionDrawing;
+      if (kind === "block" && cls.refUid && typeof resolve === "function") {
+        let targetText = null;
+        try { targetText = resolve(cls.refUid); } catch { targetText = null; }
+        const regionModel = regionRefModel(typeof targetText === "string" ? targetText : "", plexusApi);
+        if (regionModel) {
+          kind = "region-ref";
+          title = regionModel.caption ?? "";
+          regionDrawing = regionModel.drawingUid;
+        }
+      }
       let target;
       if (kind === "page") target = { kind: "page", title: cls.title };
-      else if (kind === "block") target = { kind: "block", uid: cls.refUid };
+      else if (kind === "block" || kind === "region-ref") target = { kind: "block", uid: cls.refUid };
       else target = { kind: "self", uid: cuid };
       const item = {
         uid: cuid,
@@ -189,6 +201,7 @@ export function buildBoard(pulled, { defaults } = {}) {
         autofit: !(type === "section" && layout.fit === false),
         title,
         target,
+        ...(regionDrawing ? { regionDrawing } : {}),
         enhanced: kind === "board" && cplexus?.v === 2,
         members: [],
         content: type === "section" ? [] : kids,

@@ -567,7 +567,9 @@ test("Show on board is hidden for an ordinary block and opens the card deep link
   t.host.graph = "Readwisenotes";
   t.host.showOnBoard = (uid) => hits[uid] || null;
   let same = 0;
-  t.env.win.dispatchEvent = () => { same += 1; };
+  t.env.win.dispatchEvent = (event) => {
+    if (event?.type === "hashchange") same += 1;
+  };
   try {
     await t.install();
     const cmd = t.commands.context.get("Show on board");

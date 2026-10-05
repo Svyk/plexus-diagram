@@ -1,4 +1,4 @@
-/* Plexus Diagram v2.9.6 | MIT | generated; edit src/ */
+/* Plexus Diagram v2.10.1 | MIT | generated; edit src/ */
 
 // src/model/shapes.js
 var SHAPES = ["rectangle", "rounded", "ellipse", "diamond", "parallelogram", "cylinder"];
@@ -540,9 +540,9 @@ function parseIds(raw, cap4) {
   if (!ids.length || cap4 && ids.length > MAX_IDS || ids.some((id) => !isId(id))) return null;
   return ids;
 }
-function parseRegion(blockString) {
-  if (typeof blockString !== "string") return null;
-  const m = HEAD_RE.exec(blockString);
+function parseRegion(blockString2) {
+  if (typeof blockString2 !== "string") return null;
+  const m = HEAD_RE.exec(blockString2);
   if (!m) return null;
   const caption = (m[2] ?? "").trim();
   const args = /* @__PURE__ */ new Map();
@@ -1223,6 +1223,24 @@ function queryResultLayout(rect, uids) {
   });
 }
 
+// src/model/region-card.js
+function accepted(targetString, api) {
+  if (api == null || typeof api.apiVersion !== "number" || api.apiVersion < 6) return null;
+  const region = parseRegion(targetString);
+  if (!region || region.owner !== "roam-plexus" || region.error != null) return null;
+  return region;
+}
+function regionRefModel(targetString, api) {
+  const region = accepted(targetString, api);
+  if (!region) return null;
+  return {
+    kind: "region-ref",
+    caption: region.caption,
+    drawingUid: region.drawingUid,
+    regionKind: region.kind
+  };
+}
+
 // src/model/snapshots.js
 var SNAPSHOTS_TITLE = "Snapshots";
 var SNAPSHOT_KEEP = 10;
@@ -1399,7 +1417,7 @@ function autoPlace(siblings) {
     colW = Math.max(colW, item.w);
   });
 }
-function buildBoard(pulled, { defaults } = {}) {
+function buildBoard(pulled, { defaults, resolve, plexusApi } = {}) {
   if (!pulled || typeof pulled !== "object") return null;
   const uid = pulled[":block/uid"];
   const string = pulled[":block/string"] ?? "";
@@ -1438,7 +1456,7 @@ function buildBoard(pulled, { defaults } = {}) {
       if (!cplexus && heading > 0 && kids.length) type = "section";
       const cls = classifyString(cstring);
       if (cls.kind === "regions" || cls.kind === "region") continue;
-      const kind = type === "section" ? "section" : type === "text" ? "text" : cls.kind;
+      let kind = type === "section" ? "section" : type === "text" ? "text" : cls.kind;
       const size = sizes[type];
       const hasLayout = isNum2(layout.x) && isNum2(layout.y);
       let title;
@@ -1446,9 +1464,24 @@ function buildBoard(pulled, { defaults } = {}) {
       else if (kind === "board") title = parseBoardTitle(cstring) || "Untitled board";
       else if (isQueryString(cstring)) title = "Query";
       else title = firstLine(cstring);
+      let regionDrawing;
+      if (kind === "block" && cls.refUid && typeof resolve === "function") {
+        let targetText = null;
+        try {
+          targetText = resolve(cls.refUid);
+        } catch {
+          targetText = null;
+        }
+        const regionModel = regionRefModel(typeof targetText === "string" ? targetText : "", plexusApi);
+        if (regionModel) {
+          kind = "region-ref";
+          title = regionModel.caption ?? "";
+          regionDrawing = regionModel.drawingUid;
+        }
+      }
       let target;
       if (kind === "page") target = { kind: "page", title: cls.title };
-      else if (kind === "block") target = { kind: "block", uid: cls.refUid };
+      else if (kind === "block" || kind === "region-ref") target = { kind: "block", uid: cls.refUid };
       else target = { kind: "self", uid: cuid };
       const item = {
         uid: cuid,
@@ -1486,6 +1519,7 @@ function buildBoard(pulled, { defaults } = {}) {
         autofit: !(type === "section" && layout.fit === false),
         title,
         target,
+        ...regionDrawing ? { regionDrawing } : {},
         enhanced: kind === "board" && cplexus?.v === 2,
         members: [],
         content: type === "section" ? [] : kids
@@ -4815,6 +4849,18 @@ var DAILY_GAP = 20;
 var registry = /* @__PURE__ */ new Map();
 var extensions = [];
 var BULK_CARD_CAP = 45;
+function addPublicCard(opts = {}, createFn) {
+  const { string = "", x, y, boardUid, create } = opts && typeof opts === "object" ? opts : {};
+  const op = {
+    parent: boardUid,
+    string: String(string ?? ""),
+    x: Number.isFinite(x) ? x : 40,
+    y: Number.isFinite(y) ? y : 40
+  };
+  const make2 = typeof create === "function" ? create : createFn;
+  if (typeof make2 !== "function") return op;
+  return make2(op);
+}
 function capBulk(list, emit2) {
   if (list.length <= BULK_CARD_CAP) return list;
   emit2("toast", { message: `Added ${BULK_CARD_CAP} of ${list.length} (Roam undo holds 50 changes)` });
@@ -4919,7 +4965,18 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
   const ix = () => rix ?? (rix = indexTree(raw));
   const rebuild = () => {
     rix = null;
-    board2 = raw ? buildBoard(raw) : null;
+    const plexusApi = globalThis.window?.RoamPlexus ?? globalThis.RoamPlexus ?? null;
+    board2 = raw ? buildBoard(raw, {
+      resolve: (id) => {
+        try {
+          const text2 = host.blockString?.(id);
+          return typeof text2 === "string" ? text2 : null;
+        } catch {
+          return null;
+        }
+      },
+      plexusApi
+    }) : null;
     rects = board2 ? worldRects(board2) : /* @__PURE__ */ new Map();
   };
   rebuild();
@@ -5528,6 +5585,19 @@ function createSession(uid, { host, settings = null, raf: raf2, now: now2 = Date
         }
         applyFit(t, fitTouched, { skip: changedSections });
       });
+    },
+    addPublicCard({ string, x, y } = {}) {
+      return txn((t) => addPublicCard({
+        string,
+        x,
+        y,
+        boardUid: uid,
+        create: (op) => t.create({
+          parent: op.parent,
+          string: op.string,
+          plexus: serializeItemLayout({ x: op.x, y: op.y })
+        })
+      }));
     },
     createCard({ x, y, string = "", w, h, color, look } = {}) {
       return txn((t) => {
@@ -7388,7 +7458,7 @@ function createLifecycle() {
 // package.json
 var package_default = {
   name: "plexus-diagram",
-  version: "2.9.6",
+  version: "2.10.1",
   private: true,
   description: "Heptabase-style whiteboard for Roam {{[[diagram]]}} blocks: cards, colored sections, and connections that are real Roam blocks and links",
   type: "module",
@@ -8555,9 +8625,9 @@ var endName = (name, blockText) => {
   const block = clip2(blockText, BLOCK_MAX);
   return block ? `${base} ▸ “${block}”` : base;
 };
-function chipText({ from, to, label, boardTitle: boardTitle2, fromBlockText, toBlockText } = {}) {
+function chipText({ from, to, label, boardTitle: boardTitle3, fromBlockText, toBlockText } = {}) {
   const arrow2 = label ? `—${clip2(label, 32)}→` : "→";
-  const board2 = clip2(boardTitle2, 32);
+  const board2 = clip2(boardTitle3, 32);
   return `↗ ${endName(from, fromBlockText)} ${arrow2} ${endName(to, toBlockText)}${board2 ? ` · on ${board2}` : ""}`;
 }
 function relationOf(board2, edgeUid, { blockText } = {}) {
@@ -9413,7 +9483,7 @@ function createTaskCompleter({ doc = globalThis.document, getRoot, host, bt, win
       await wait(POLL_MS);
     }
   };
-  const fire = (target, type) => {
+  const fire2 = (target, type) => {
     const Ctor = win.PointerEvent || win.MouseEvent || win.Event;
     target.dispatchEvent(new Ctor(type, { bubbles: true, cancelable: true, composed: true, pointerType: "mouse", button: 0 }));
   };
@@ -9445,7 +9515,7 @@ function createTaskCompleter({ doc = globalThis.document, getRoot, host, bt, win
       }
       const input = await until(() => mount.querySelector?.(CHECKBOX), FIND_MS);
       if (!input) return { ok: false, reason: "no checkbox rendered" };
-      fire(input, "pointerdown");
+      fire2(input, "pointerdown");
       input.click();
       const done = await until(() => taskState(host.blockString?.(uid)) === "DONE", DONE_MS);
       if (!done) return { ok: false, reason: "the block did not turn DONE" };
@@ -9510,8 +9580,8 @@ function imageSrc(string) {
   const m = /!\[[^\]]*\]\(([^)]*)\)/.exec(String(string ?? "").trim());
   return m ? m[1].trim() : "";
 }
-function pngFileName({ boardTitle: boardTitle2 = "", pageTitle = "", date = "" } = {}) {
-  const board2 = String(boardTitle2 ?? "").trim();
+function pngFileName({ boardTitle: boardTitle3 = "", pageTitle = "", date = "" } = {}) {
+  const board2 = String(boardTitle3 ?? "").trim();
   const page = String(pageTitle ?? "").trim();
   const named = board2 && board2.toLowerCase() !== UNTITLED_BOARD.toLowerCase();
   const raw = (named ? board2 : page) || board2 || "board";
@@ -12044,9 +12114,9 @@ var MACRO_RE = /^(\s*\{\{\[\[plexus-region\]\]:\s*[^}]*\}\})(?: [\s\S]*)?$/;
 function imageRegionRows(content) {
   return regionsOf({ ":block/children": content || [] }).filter((row2) => row2.owner === "plexus-diagram" && row2.kind === "img" && row2.supported === true && row2.uid).map((row2) => ({ uid: row2.uid, caption: row2.caption || "", f: row2.f }));
 }
-function renameRegionCaption(blockString, caption) {
-  if (typeof blockString !== "string") return null;
-  const match = MACRO_RE.exec(blockString);
+function renameRegionCaption(blockString2, caption) {
+  if (typeof blockString2 !== "string") return null;
+  const match = MACRO_RE.exec(blockString2);
   if (!match) return null;
   const next = String(caption ?? "").replace(/\s+/g, " ").trim();
   return next ? `${match[1]} ${next}` : match[1];
@@ -12089,6 +12159,109 @@ function regionMenu(rows) {
       ]
     }))
   };
+}
+
+// src/view/region-card.js
+function thumbRequest(prevWidth, nextWidth) {
+  const next = Number(nextWidth);
+  if (!Number.isFinite(next) || next <= 0) return false;
+  return next !== Number(prevWidth);
+}
+function releaseThumb(node2) {
+  const url = node2?._pxdObjectUrl;
+  if (!url) return;
+  node2._pxdObjectUrl = "";
+  try {
+    URL.revokeObjectURL(url);
+  } catch {
+  }
+}
+function paintThumb(doc, node2, blob) {
+  const caption = node2.querySelector(".pxd-region-caption");
+  let img = node2.querySelector("img.pxd-region-thumb");
+  if (blob == null) {
+    releaseThumb(node2);
+    img?.remove();
+    return;
+  }
+  if (!img) {
+    img = doc.createElement("img");
+    img.className = "pxd-region-thumb";
+    img.alt = "";
+    if (caption) node2.insertBefore(img, caption);
+    else node2.append(img);
+  }
+  if (typeof blob === "string") {
+    releaseThumb(node2);
+    img.src = blob;
+    return;
+  }
+  if (typeof URL.createObjectURL !== "function") return;
+  let url = "";
+  try {
+    url = URL.createObjectURL(blob);
+  } catch {
+    return;
+  }
+  releaseThumb(node2);
+  node2._pxdObjectUrl = url;
+  img.src = url;
+}
+function mountButton(doc, node2, className, text2, onClick) {
+  node2.querySelector(`.${className}`)?.remove();
+  const btn = doc.createElement("button");
+  btn.type = "button";
+  btn.setAttribute("type", "button");
+  btn.className = className;
+  btn.textContent = text2;
+  const stop = (event) => event.stopPropagation?.();
+  btn.addEventListener("pointerdown", stop);
+  btn.addEventListener("mousedown", stop);
+  btn.addEventListener("click", (event) => {
+    stop(event);
+    onClick();
+  });
+  node2.append(btn);
+}
+function wantsThumb(hooks) {
+  return hooks?.tier === "detail" && hooks.visible !== false && typeof hooks.thumbnail === "function";
+}
+function renderRegionCard(doc, card2, model, hooks = {}) {
+  const node2 = card2 || doc.createElement("div");
+  node2.classList.add("pxd-item--region");
+  let caption = node2.querySelector(".pxd-region-caption");
+  if (!caption) {
+    caption = doc.createElement("div");
+    caption.className = "pxd-region-caption";
+    node2.append(caption);
+  }
+  caption.textContent = model?.caption ?? "";
+  const open = typeof hooks.open === "function" ? hooks.open : () => {
+  };
+  mountButton(doc, node2, "pxd-region-open", "Open drawing", () => open({ sidebar: false }));
+  mountButton(doc, node2, "pxd-region-sidebar", "Open in sidebar", () => open({ sidebar: true }));
+  node2.pxdUnmount = () => {
+    node2._pxdThumbGen = (node2._pxdThumbGen || 0) + 1;
+    releaseThumb(node2);
+    node2.querySelector("img.pxd-region-thumb")?.remove();
+  };
+  const gen = (node2._pxdThumbGen || 0) + 1;
+  node2._pxdThumbGen = gen;
+  if (!wantsThumb(hooks)) return node2;
+  let result;
+  try {
+    result = hooks.thumbnail({ maxWidth: hooks.maxWidth });
+  } catch {
+    return node2;
+  }
+  const apply = (blob) => {
+    if (node2._pxdThumbGen !== gen) return;
+    paintThumb(doc, node2, blob);
+  };
+  if (result && typeof result.then === "function") result.then(apply, () => {
+  });
+  else apply(result);
+  return node2;
 }
 
 // src/view/cards.js
@@ -12604,6 +12777,11 @@ function createItemRenderer({
   };
   const unmountRoots = (rec) => {
     try {
+      rec.regionNode?.pxdUnmount?.();
+    } catch {
+    }
+    rec.regionNode = null;
+    try {
       rec.refOff?.();
     } catch {
     }
@@ -12925,6 +13103,7 @@ function createItemRenderer({
       if (isKidsCard(item)) cls.push(item.kids ? "pxd-item--kids" : "pxd-item--kidsoff");
       if (rec.bare) cls.push("pxd-item--bare");
       if (rec.refBoard) cls.push("pxd-item--wb");
+      if (item.kind === "region-ref") cls.push("pxd-item--region");
       if (item.look === "block") cls.push("pxd-card--block");
       const task = isTaskCard(item) ? taskMeta(item.string, item.content) : null;
       if (task) {
@@ -13848,6 +14027,8 @@ function createItemRenderer({
       else apply(preview, true);
       mountLinkedRefs(body, rec, item);
       armPageWatch(rec, item, holder);
+    } else if (item.kind === "region-ref") {
+      mountRegionBody(rec, item);
     } else if (item.kind === "block") {
       const ref = item.target.uid;
       const refString = host?.blockString?.(ref);
@@ -13908,6 +14089,42 @@ function createItemRenderer({
     }
     rec.roots = budget.roots;
     rec.contentKey = contentKeyOf(item, rec.stickyLive);
+  };
+  const regionWindow = () => doc.defaultView || globalThis;
+  const mountRegionBody = (rec, item) => {
+    const api = regionWindow().RoamPlexus ?? null;
+    const ref = item.target?.uid;
+    let text2 = "";
+    try {
+      text2 = ref ? host?.blockString?.(ref) || "" : "";
+    } catch {
+      text2 = "";
+    }
+    const model = regionRefModel(text2, api);
+    const caption = model?.caption ?? item.title ?? "";
+    if (model?.drawingUid) item.regionDrawing = model.drawingUid;
+    const off = rec.el.classList.contains("pxd-item--offscreen");
+    const detail = lod === "detail" && !off;
+    rec.regionNode = renderRegionCard(doc, rec.body, { caption }, {
+      tier: lod,
+      visible: detail,
+      maxWidth: Math.max(1, Math.round(Number(rec.rect?.w || item.w) || 160)),
+      thumbnail: detail ? (opts) => {
+        if (lod !== "detail" || rec.el.classList.contains("pxd-item--offscreen")) return null;
+        const live = regionWindow().RoamPlexus;
+        if (!ref || typeof live?.thumbnail !== "function") return null;
+        return live.thumbnail(ref, { maxWidth: opts?.maxWidth });
+      } : void 0,
+      open: ({ sidebar } = {}) => {
+        const live = regionWindow().RoamPlexus;
+        if (!ref || typeof live?.open !== "function") return;
+        try {
+          live.open(ref, { region: true, sidebar: Boolean(sidebar) });
+        } catch {
+        }
+      }
+    });
+    if (detail) rec.regionWidth = rec.rect?.w ?? item.w;
   };
   const mountContent = (rec, item) => {
     mountContentBody(rec, item);
@@ -14017,6 +14234,10 @@ function createItemRenderer({
       if (!off) {
         rec.el.style.removeProperty("--pxd-iw");
         rec.el.style.removeProperty("--pxd-ih");
+        const item = lastBoard?.items.get(uid);
+        if (!paused && item?.kind === "region-ref" && lod === "detail" && mounted.has(uid) && editing?.uid !== uid && thumbRequest(rec.regionWidth, rec.rect?.w)) {
+          mountContent(rec, item);
+        }
         continue;
       }
       const [iw, ih] = intrinsicSize(rect).split(" ");
@@ -14069,12 +14290,22 @@ function createItemRenderer({
     if (lastContent) fillContent(lastContent);
   };
   const setPaused = (on) => {
+    const was = paused;
     paused = Boolean(on);
     if (paused && idleHandle) {
       idleHandle();
       idleHandle = null;
     }
     if (!paused && queue.length && !idleHandle) idleHandle = idle(pump);
+    if (was && !paused && lod === "detail") {
+      for (const [uid, rec] of shells) {
+        const item = lastBoard?.items.get(uid);
+        if (item?.kind !== "region-ref" || editing?.uid === uid || !mounted.has(uid)) continue;
+        if (rec.el.classList.contains("pxd-item--offscreen")) continue;
+        if (!thumbRequest(rec.regionWidth, rec.rect?.w)) continue;
+        mountContent(rec, item);
+      }
+    }
   };
   const setZoom = (zoom) => {
     const next = Number(zoom);
@@ -14839,8 +15070,96 @@ function createItemRenderer({
     }
     return true;
   };
+  let regionWatch = null;
+  const onRegionChange = (detail) => {
+    const eventUid = detail && typeof detail === "object" ? detail.uid : null;
+    if (!eventUid) return;
+    refreshRegionKinds(eventUid);
+  };
+  const bindRegionWatch = () => {
+    const api = regionWindow().RoamPlexus;
+    if (regionWatch === api) return;
+    try {
+      regionWatch?.removeEventListener?.("change", onRegionChange);
+    } catch {
+    }
+    regionWatch = api && typeof api.addEventListener === "function" ? api : null;
+    try {
+      regionWatch?.addEventListener("change", onRegionChange);
+    } catch {
+    }
+  };
+  const refreshRegionKinds = (eventUid) => {
+    if (disposed || !lastBoard) return;
+    const api = regionWindow().RoamPlexus ?? null;
+    let changed2 = false;
+    for (const item of lastBoard.items.values()) {
+      if (item.type !== "card" || item.kind !== "block" && item.kind !== "region-ref") continue;
+      const ref = item.target?.kind === "block" ? item.target.uid : null;
+      if (!ref) continue;
+      if (eventUid && item.regionDrawing && item.regionDrawing !== eventUid && ref !== eventUid) continue;
+      let text2 = null;
+      try {
+        text2 = host?.blockString?.(ref);
+      } catch {
+        text2 = null;
+      }
+      const model = regionRefModel(typeof text2 === "string" ? text2 : "", api);
+      const drawing = model?.drawingUid || item.regionDrawing || "";
+      if (eventUid && drawing !== eventUid && ref !== eventUid) continue;
+      const nextKind = model ? "region-ref" : "block";
+      const nextTitle = model ? model.caption ?? "" : firstLine(item.string);
+      const same = item.kind === nextKind && (item.title || "") === nextTitle && (item.regionDrawing || "") === (model?.drawingUid || "");
+      if (!model && item.kind !== "region-ref") continue;
+      if (model) {
+        item.kind = "region-ref";
+        item.title = model.caption ?? "";
+        item.regionDrawing = model.drawingUid;
+      } else {
+        item.kind = "block";
+        item.title = firstLine(item.string);
+        delete item.regionDrawing;
+      }
+      const rec = shells.get(item.uid);
+      if (rec && editing?.uid !== item.uid) paintShell(rec, item);
+      if (!same || eventUid) {
+        changed2 = true;
+        if (rec && mounted.has(item.uid) && editing?.uid !== item.uid) unmountContent(item.uid);
+      }
+    }
+    if (changed2 && lastContent && !quieted) fillContent(lastContent);
+  };
+  const onRegionReady = () => {
+    bindRegionWatch();
+    refreshRegionKinds(null);
+  };
+  const onRegionUnload = () => {
+    try {
+      regionWatch?.removeEventListener?.("change", onRegionChange);
+    } catch {
+    }
+    regionWatch = null;
+    refreshRegionKinds(null);
+  };
+  const regionWin = regionWindow();
+  regionWin.addEventListener?.("roam-plexus:ready", onRegionReady);
+  regionWin.addEventListener?.("roam-plexus:unload", onRegionUnload);
+  bindRegionWatch();
   const dispose = () => {
     disposed = true;
+    try {
+      regionWin.removeEventListener?.("roam-plexus:ready", onRegionReady);
+    } catch {
+    }
+    try {
+      regionWin.removeEventListener?.("roam-plexus:unload", onRegionUnload);
+    } catch {
+    }
+    try {
+      regionWatch?.removeEventListener?.("change", onRegionChange);
+    } catch {
+    }
+    regionWatch = null;
     closePeek();
     doc.removeEventListener?.("pointerup", onMenuPointer, true);
     stopMenus?.();
@@ -15846,7 +16165,7 @@ function changelogEntry(markdown, version) {
 }
 
 // src/changelog-text.js
-var CHANGELOG_TEXT = "# Changelog\n\n## 2.9.6 — 2026-10-04\n\n- An image card shows a small region count when it has regions. The card menu lists them: Go, Copy ref, Rename, and Delete. Rename changes only the caption. Delete asks when another block still references the region, and can open those mentions. Badges off hides the count. The command palette stays two entries.\n\n## 2.9.5 — 2026-10-04\n\n- Hover an image crop for a larger preview, the picture dimmed and the region lit. Click opens that image on its board, zoomed to the region, or scrolls the outline to the image and pulses the region. Shift-click opens the board in the sidebar. An inline view draws a small map. Hover enlarges it. Click opens the board at that view and pulses the highlighted cards. Shift-click opens the board in the sidebar. Neither click writes to the graph.\n\n## 2.9.4 — 2026-10-04\n\n- On an image block, the block menu item Plexus: Mark image region lets you drag a rectangle. Confirm stores the region under the image, copies a block ref, and toasts. Escape writes nothing. A plexus-region image button in the outline, a block ref, an embed, the sidebar, and linked references draws the crop at most 160px tall, with a 1px border and no shadow, and hides that button. A Roam Plexus region such as a rectangle is left alone. The command palette does not gain an entry.\n\n## 2.9.3 — 2026-10-04\n\n- On an image card, Mark region lets you drag a rectangle on the picture and add a short caption. Confirm stores that region under the image, copies a block ref, and toasts that it copied. The first undo removes the region. The next undo removes the empty container. The card stays put, and the image viewer does not open. The command palette stays two entries.\n\n## 2.9.2 — 2026-10-04\n\n- Save view, in More or with Shift+V, writes the current camera as one view block at the end of the board. A selection can save its own view from the context bar. The Boards tab lists those views, each with a 96px outline map. Go puts the camera back and writes nothing. Delete removes the view block, and undo puts that row back. The command palette stays two entries.\n\n## 2.9.1 — 2026-10-04\n\n- A new card is placed before the Connections list, snapshots, and a region container, so those stay at the end of the block. The library card count skips a region container the same way it skips Connections. Leaving a new empty card that only holds a region container no longer deletes that card.\n\n## 2.9.0 — 2026-10-04\n\n- A region container `{{[[plexus-regions]]}}` and its `{{[[plexus-region]]}}` children stay off the board. They are not cards. A card's child badge does not count them. Image regions and saved views can be stored in that shape. A Roam Plexus region is recognized and left as theirs. Nothing is drawn yet.\n\n## 2.8.0 — 2026-10-04\n\n- Better Tasks and the Task tool start off. Settings, Integrations, has four controls: Better Tasks integration, Task tool, Task chips, and Default project for new tasks. With both switches off, the dock has no Task button, K does nothing, and the ? sheet does not list K. A Task tool you already saved stays on. Turning Better Tasks on draws the light checkbox and the chips, and asks Better Tasks for attributes once. Turning it off puts Roam's own checkbox back. Opening, panning, and clicking a board does not call Better Tasks while the integration is off.\n- A card whose text has #bg-blue or #[[bg-blue]] takes that colour on the board when the colour highlighter's variables are on the page, in light and in dark. #c:red still colours bold text inside the card, and Plexus does not paint over it. A fill you set in the picker wins; clearing that fill brings the tag colour back. With no highlighter variables, named colours use a fixed palette and the tag stays visible in the card.\n- The colour picker's gear, Write as highlighter tag, is saved on that board. In that mode a named colour writes one #[[bg-name]] into the block and clears the card's fill. One undo restores the text and the fill together. Hex, darker, and lighter still change only the fill.\n- A key pressed outside the board no longer switches the tool or adds a card, while nothing on the board is selected. A selected card still receives the board's keys.\n- A card more than one screen outside the view keeps its size and skips layout. The card you are editing stays fully drawn. A card that stays outside the view for 10 seconds drops its live Roam body and draws it again when it comes back.\n\n\n## 2.7.1 — 2026-10-04\n\n- Dropping a repeating task on Done in the Kanban view now makes the next occurrence, the same as ticking its checkbox. Before, only a real checkbox click did, because Better Tasks starts the next occurrence from its own checkbox. The task is now finished through that same checkbox, out of sight, so you get the completed date and the next task together.\n- Popovers stay clear of the board's own controls. The task chip popovers, the children peek, the Background and tag popovers, the card colour picker and the right-click menu move aside or flip instead of opening under the dock, the top bar, the rail, the minimap or the Properties panel. When there is no room, they shrink and scroll.\n- Task cards are readable when you zoom out. At the map zoom the check box is at least 20 pixels on screen, with the due date under the title (teal today, red overdue). Zoomed far out, a task is one clear box: empty, checked or crossed, in the same colours.\n- The pill that shows a scrolled-out block arrow (\"↓ the block's first words\") stays inside its card. It is cut to the card's width less 16 pixels with an ellipsis and keeps the same size on screen at any zoom.\n- A board with many tasks no longer uses up Better Tasks' limit of 100 decorated checkboxes. A task card now draws a light checkbox of its own instead of a real Roam block, so a 40-task board added 40 real checkboxes before and adds none now, and Better Tasks keeps decorating the rest of the page. Clicking the box still completes the task through Better Tasks.\n- Checked for a freeze when the bench is run back to back with a task board open: five runs and five load-and-unload cycles did not reproduce it.\n\n## 2.7.0 — 2026-10-03\n\n- Task cards. A card whose block is a Roam TODO now looks like a task: Roam's own checkbox, the title, and a row of chips under it for the due date, project, priority, repeat, status, waiting-for and GTD. Today's due date has a teal border, an overdue task a red one, a done task is dimmed and struck through, and a cancelled one is struck through. Better Tasks' own pills are hidden inside the card so the chips are not doubled. At map zoom a task shows a check box, its title and its due date; zoomed far out it is a single check box.\n- New Task tool. Press K, or pick it in the dock or the canvas menu, then click the board: a TODO card appears and opens for typing. A task left with no text disappears when you click away, like an empty card. Cmd+Z right after makes one undo step. The card menu has Make task for a plain note.\n- Change a task from its chips. Click the due date, project, priority or repeat chip and pick from a small popover (today, tomorrow, next week or any date; a project from Better Tasks' list; low, medium or high; a repeat rule). The change is made by Better Tasks itself, so the attribute blocks keep their uid and Plexus still never writes a `BT_attr` block. Cmd+Z after a chip change is Roam's undo, not the board's. Without Better Tasks the tool makes a plain TODO card and the chips are read-only.\n- Finishing a task works the way it does in Roam. Tick the checkbox on the card and Better Tasks writes the completed date and, for a repeating task, the next occurrence on its daily or project page. A toast tells you the date and offers Add to board. Dropping a card on Done in the Kanban view does the same through Better Tasks.\n- Drag a task card onto a daily-page card (or a section named for a day) and its due date becomes that day, in the same attribute block. Hold Shift to move the card without changing the date.\n- Better Tasks' attribute blocks and its Activity log no longer count as children: they are never rows, never in the outline or the peek, and never a \"▸ N\" badge. Renamed attributes are read from Better Tasks.\n- Three new settings: Task tool (show it in the dock), Task chips (full, due only or none) and Default project for new tasks.\n\n## 2.6.0 — 2026-10-03\n\n- Editing a card no longer shrinks it. Opening a card or a sticky for editing used to let it collapse toward the height of one line, and its arrows came loose. The card now keeps its size for the whole edit, the editor fills it, and the text is no longer cut to one line when you start typing. Edges stay attached.\n- Sticky notes are rebuilt to work like the RoamJS sticky notes, and they stay saved. Each one has a coloured header bar you drag, with a short title, a colour dot and a minimize button. The body is the live Roam block: click once and type, with tags, images, links and the slash menu. Drag a corner or edge to resize. Minimize folds a note to its header and remembers it. There is no close button; Delete or the menu removes a sticky and Cmd+Z brings it back.\n- Page cards open faster. A card now shows all its rows as plain text at once, then turns the rows you can see into live Roam blocks a few at a time. Rows scrolled out of view, and heavy rows such as charts, embeds and images, wait until they are on screen. A page you pulled once is reused while the card is open. A 146-row page card used to block for about 150 ms while it drew; now it paints in about 20 ms.\n- Arrows to blocks now stay on their block. When a chart or an image above the target row loads late, or a row turns live, the card re-measures its rows and the arrow follows. Each linked row shows a small dot in its own arrow's colour, so two arrows into one card stay apart, and hovering one arrow lights only its row.\n- New tooltips for the sticky header: drag, minimize or expand, and the colour dot.\n\n## 2.5.0 — 2026-10-03\n\n- The connection preview is cleaner. The target block is now a highlighted bar inside its page card, at the block's real place in the page, with its text cut to the card's width, and the arrow runs into the bar with a head like the one on the board. Nothing spills over a neighbouring card any more.\n- The preview opens where it never covers the chip or the block line it belongs to: under it, else above, else beside it, shrinking and scrolling inside when the window is small. It follows the chip while you scroll or resize and closes when the chip leaves the screen.\n- Roam's breadcrumb above a connection block (in linked references and when you zoom into the block) now opens the same preview on a plain click, because Roam's own link there only led to \"Board › Connections\". A small ▦ marks it. Shift-click, Cmd-click and Ctrl-click still do what Roam does. Unloading removes the marks and the listeners.\n- Resize grips, connection dots and arrow-end handles keep the same size on screen at every zoom, so they are easy to grab on a zoomed-out board and no longer huge when zoomed in.\n- Light mode was checked on every new surface. Fixed: the connection chip could run past the edge of its block, and its teal was too pale on white.\n\n## 2.4.0 — 2026-10-03\n\n- The Add and Info panel now opens to the left of the control rail instead of covering it. The minimap steps left of an open panel. The rail keeps one fixed width, so the version badge no longer pushes it wider.\n- An arrow that ends on a block now visibly points at it. The line continues into the page card and its head stops beside the row's text. The row keeps a mark in the arrow's color (a left rule and a light tint; in the dark theme a border only, no fill). Hover the arrow and the row lights up; hover the row and the arrow thickens and a tooltip names the other card and the label. When the row has scrolled out of view, the arrow ends in a pill at the card edge with an arrow and the block's first words; click it to scroll the row back.\n- Connections now show up where Roam draws them. Under every connection block in the outline, the sidebar or a block's linked references, a small chip reads \"A —label→ B · on Board\" and names the block when the arrow ends on one. Click the chip to see a preview: a map of the two cards with the arrow and the target row, plus Open on board and Open in sidebar. Open on board opens the page, enters a nested board if needed, and selects the connection. Nothing is written, and unloading removes every chip.\n- The card's hover toolbar no longer disappears on the way to it. It waits 400 ms after the pointer leaves the card, so you can reach it and open its color picker. Moving to a different card switches the toolbar at once with no flicker. Escape, panning and zooming hide it immediately.\n- With the Hand tool you can now resize: a press on a resize grip resizes, anything else pans, and Space-drag still pans over grips. Page cards have a wider grip band on the right and bottom edges and a larger corner that sits above the scrollbar. The grips show when you hover a card in hand mode.\n\n## 2.3.0 — 2026-10-03\n\n- Board rows in page cards. A page card for a page that holds a board shows that board as a small map with its title and item count, not a grey box. After four maps on one card, the rest are one-line chips. The row for the board you are looking at says \"this board\". Click opens the board; Shift-click opens it in the right sidebar.\n- A row that Roam cannot render inside a card, such as an empty `{{[[roam/render]]}}`, now shows its raw text, muted, instead of \"Failed to render\". This also ends the Roam console errors the old page-card row caused.\n- Hover tooltips. Every control on the board bar, the dock, the rail, the card toolbar and the Properties panel shows its name, its shortcut and a one-line description after a short hover. Keyboard focus shows it at once. The tip sits below the board bar, above the dock, left of the rail, and stays inside the board. Settings, Hover tooltips, turns them off and hands the text back to the browser. Tooltip delay is instant, 350 ms or 800 ms.\n- A tooltip no longer stays on screen after the control it described is removed.\n- Ref cards and image cards show readable titles everywhere: Table, Kanban, Graph, Timeline, Gallery and Find use the first line of the referenced block or the image's alt text, never `((uid))` or a blank. Find matches the text a ref card shows.\n- Graph view draws a line for every connection, fits all cards inside its window and no longer scrolls them out of sight.\n- The end handles of a short arrow with a label can be grabbed. The label steps aside while the arrow is selected.\n- Gallery captions show the image's alt text, or nothing. They never show raw markdown.\n- The Escape that closes Search, a menu, or Gallery, Timeline and Graph no longer also leaves fullscreen.\n- Present mode hides the board bar, dock, Properties, rail, minimap and side panel, and brings them back on exit.\n- Shift-click only extends the selection. It no longer opens the Info panel.\n- Gallery, Timeline and Graph, the board bar and the Properties pill are opaque now, so nothing shows through. A collapsed Properties pill is only as wide as its label.\n- Section titles in the zoomed-out overview may run wider than a small frame before they are cut off.\n- Gallery, Timeline and Graph are also under More, Views, and under Views in the canvas menu. The template entry is now \"Timeline template\". An empty Timeline says that a date attribute or a daily-page reference makes a card dated.\n- The thin dotted curves that run across a board between cards are graph links, drawn for every shared page reference or attribute. They are not a stray line. Links, in the board bar or the L key, switches them off or to attributes only.\n\n## 2.2.0 — 2026-10-03\n\n- Board bar and tool dock. The top bar is now the board bar: breadcrumbs, Add, Info, links, views, background, present and More. The nine tools moved into a floating dock along the bottom. Settings, Toolbar layout, brings back the 2.1 look (Classic) or hides the top bar until the pointer nears the top edge (Dock only).\n- Dock settings: position (bottom, left or top), shape (pill or strip), tool names under the icons, and button size. A board can set its own dock position from the More menu, Dock position for this board; opening a board still writes nothing.\n- The active tool slides a highlight behind it. A locked tool (double-click) shows a padlock. In dark mode the active tool is a border and a dot, so it stays visible without a fill.\n- Dock options. With Card, Sticky, Section or Shape active, the dock shows that tool's colors, the block or card look, or the shape kinds. With nothing selected, a pick styles the next item you create with that tool and is forgotten when the board closes; with cards selected, it restyles them as before. One undo reverses it.\n- The last breadcrumb carries the board's own color, and the bar's bottom edge takes the same tone.\n- Overview zoom keeps Select, Hand and Board in the dock. A board narrower than 560 px gets smaller buttons and no options. A left dock no longer sits on the Properties panel.\n- The active and locked tool styles in the top bar lost to Roam's own button rules in dark mode. They hold now.\n\n## 2.1.0 — 2026-10-03\n\n- Enter in a card adds a line to the card's block, like a node in a native Roam diagram. Settings, Cards, \"Enter in a card\" set to Child brings back the old behavior of making a child block.\n- An empty white panel with a Close button no longer covers boards.\n- Pasting one image into a card inserted it twice. It now inserts once.\n- Dragging an image onto a card that is being edited works. Dropping an image on a card adds it after the card's text instead of replacing the text.\n- Whole-page cards: a page card shows the page title as a header and the whole outline, scrolls inside the card, and edits where you click. Add page… in the canvas menu adds a page by search. Dropping a page from the left sidebar makes a page card.\n- Arrows to a single block. Drag an arrow end over a page card and the row under the pointer lights up; dropping there connects to that block with a real `((ref))`, so it shows in Roam's backlinks. Dropping on the title connects to the page. Ends follow their row as the card scrolls and clamp to the edge with a marker when the row is out of view. A selected arrow has end handles to re-aim it, and the arrow menu has Connect to the page instead.\n- Card children. A note, block or ref card shows only its own block. A ▸ N badge opens the children as an editable outline inside the card, remembered per card, and hovering the badge peeks at them. Spread children as cards makes one card per child with an arrow back.\n- Note: note and ref cards now show only their own block until the badge is opened.\n- A selected arrow's end handle could only be grabbed on the half outside the card it ends on. The whole handle now grabs.\n\n## 2.0.0 — 2026-10-03\n\n- Card editing, outline navigation, templates, the table, snapshots, and the graph tools that landed after 1.3.0.\n- Gallery, timeline, and a read-only graph of the board. A section can lay cards out by date. Connections can bend or route around cards. Present shows a section's first child as notes, plus a laser and a pen that are dropped on exit.\n- A diagram in the right sidebar stays a gap until that window is on screen. Opening the sidebar parks the boards on the page.\n- A 300-card board shows its first shells in about 1 second and finishes the rest over the following frames. Detail and overview pan hold 60 fps. Zooming across the detail threshold is about 57 to 59 fps, and that switch no longer produces a long task.\n- The same board in two Roam windows kept the same 6 cards and 4 connections across 30 moves.\n\n## 1.3.0 — 2026-10-01\n\n- Native parity on an enhanced board: plain block cards, a node hover toolbar, a right-hand control rail, a properties panel, PNG export, outline in the sidebar, boards in the sidebar, edge styles, native embeds, style import on Enhance, per-card expand, minimap drag, keyboard parity, and Edit Block.\n\n## 1.2.0 — 2026-09-29\n\nFixes from the second round of testing on 1.1.0:\n\n- **Zoomed-out cards stay inside their box.** Map view is a clean title-only tile: three-line clamp, font capped by the tile height, nothing spills below the card. Ref titles are cut at 120 characters and header text at 160. The level of detail now switches while you zoom (with hysteresis, one class toggle), not only when the gesture ends. A third tier below 20% shows section titles only.\n- **Nested board thumbnails are real thumbnails.** A padded frame with mini cards (border, fill, title), sections as tinted frames, connections, and an \"Empty board\" state, instead of one white box.\n- **Sections auto-fit.** A card moved, resized, created, or pasted past a section edge grows the section to contain it (24 px padding), live during the drag and saved as one undo step. It cascades through nested sections, never shrinks by itself, and can be turned off per section or with the `auto-fit-sections` setting.\n- **Board backgrounds.** Dots, lines, grid, and plain patterns and paper or ten palette tones, chosen per board from the Background button (stored in the board block's props) with a default in Settings.\n\nAdded:\n\n- **Right-click menus** for the board, cards, sections, text, connections, multi-selection, and the More menu.\n- **Duplicate and clipboard.** Alt+drag and Cmd+D duplicate (Alt+Shift makes `((ref))` cards); copy and paste as refs or as copies, across boards; pasted text and images become cards. Send to board, Boards tab (every board in the graph), Outline tab.\n- **Keyboard.** Tab and Shift+Tab step through the outline, F focus mode, Q quick look, P presentation, M mind map from a card's child blocks, Cmd/Ctrl+Alt+Enter fold, double-click a bottom or corner grip to fit or reset height. Arrow keys nudge the selection 1 px (Shift for 10 px); Alt+Arrow selects the nearest card in that direction (Alt+Shift adds), as in Heptabase.\n- **Layout tools.** Tidy (row, column, grid, outline order), same size, fit height, reset size, fit section, fold all, optional space-out after a move, \"Back to content\" button.\n- **Pin.** Pinned items do not move, resize, or delete.\n- **Card badges.** References, boards, and open and done TODO counts, read from Roam (never written); a `((ref))` to a board renders its thumbnail; journal cards for today and this week.\n- **Export.** Export board as SVG and Copy board as text (commands and board menu).\n- **Review fixes.** Cut and paste now moves a note, text or section (the clipboard carries a snapshot; before, the paste was a dead `((ref))`). The Open button, double-click and Enter open a whiteboard-shortcut card. Settings changes reach open boards' sessions live. A pinned section is never grown by auto-fit. Fit height can shrink a card. Fit / Reset size / Same size never leave a card outside its section. A pinned card no longer pushes other cards in space-out. Escape closes the Background popover first. Right-clicking a ref, tag, link or image inside a card keeps Roam's or the browser's menu. Tab is only taken while the board itself has focus. A tall menu scrolls inside a small board. Thumbnails title `((ref))` and image cards. The section grows live while you type in a card at its edge. Card badge queries run in idle slots and are cached for two minutes.\n- New settings: default board tone, map view threshold, auto-fit sections, space out cards, show card badges; grid accepts `grid`. API and build: see `docs/api-plexus-1.0.md` (\"1.2 additions\") and `docs/spec-plexus-1.2.md`; `src/css/*.css` is appended to the bundle.\n\nFixed after live testing in Roam Desktop:\n\n- **One Cmd+Z per operation.** Duplicate, Alt+drag, mind map, Tidy, and a drag that grows a section each took one Cmd+Z per block written; the Undo toast button undid one block. Writes of a transaction are now grouped, and Undo and Redo step over the whole group.\n- Map-view cards clamp to exactly three lines (no fourth-line sliver, no ellipsis in the middle of a tall card); section titles show an ellipsis; far zoom-out no longer paints a dot moire; colored cards read at overview zoom; whiteboard-shortcut cards keep their thumbnail at map zoom.\n- Ctrl-wheel zoom and paste use the board's current position after the Roam page scrolls (they were off by the scroll distance).\n- Pasted images are `![](url)`, not `![](![](url))`.\n- The section preview no longer snaps back while you type in a card at its edge.\n- Fit keeps content below the toolbar and left of an open panel (Outline click fits the visible area); the context bar no longer covers the toolbar or the panel; double-click on the middle of a card's bottom edge fits its height.\n- Mind map from a card that already has child cards on the board lays the rest out around them, and says when the 24-branch cap left nodes out. Add this week no longer stacks a card on an existing one. Duplicating a section says \"section\".\n- The OS dark-mode hint no longer darkens a board on a light Roam theme.\n- **Typing in a card: Enter no longer drops you out of the card.** Root cause: the card editor stopped the mouseup that Roam uses to end its block drag-select, so a new block created under the resting pointer turned the edit into a block selection. Mouseup now passes through.\n- **Undo limits.** Roam keeps only the last 50 changes, so one Cmd+Z sequence can undo an operation only if it fits. Mind maps cap at 24 branches (\"Mind map: 24 of 45 branches (cap)\") and bulk adds (large pastes, multi-drops, Add all) at 45 cards (\"Added 45 of N (Roam undo holds 50 changes)\").\n\n## 1.1.0 — 2026-09-29\n\nFrom the first round of testing on 1.0.0:\n\n- **Cards show their content.** Note and block-reference cards render the whole block (and its children) instead of a truncated first line over an empty body. A long single-line `((ref))` card is readable again.\n- **Drag blocks in from Roam.** Dragging a bullet from the outline or the right sidebar onto a board adds it as a `((ref))` card (a page becomes a `[[page]]` card). Multi-block drags stack. The source block is never moved.\n- **Typing in a card.** Enter adds lines inside the card and keeps the caret there; if Roam drops focus while it moves between blocks, the editor takes it back. The card header no longer repeats and lags behind what you type, and text items keep their heading size while editing.\n- **Nested boards (Heptabase sub-whiteboards).** New Board tool (W): click or drag to add a board card, or select cards and choose **Move into new board**. Board cards show a mini map, item count, and a name field. Double-click or Open goes into the board in place with a `Parent › Child` breadcrumb; click a crumb or press Esc to go back up. Drag a card onto a board card to move it inside (with Undo). Boards opened from their own page get crumbs for their parent boards.\n- **Collapsed board blocks.** The board block is collapsed once so Roam does not list its cards as bullets under an inline board; expand the bullet to see them. Turn it off with **Collapse board blocks in the outline**. A nested board no longer opens a second overlay from an expanded outline.\n- Import and Restore keep a nested board's marker; a board deleted while open closes cleanly (a nested one pops to its parent).\n\n## 1.0.0 — 2026-09-28\n\nRewrite. The 0.6 canvas (one 2,200-line closure) is replaced by a model / host / session / view split with 204 unit tests and a live CDP gate on Roam Desktop.\n\n- **Everything is a Roam object.** Card layout lives in each block's `:block/props` (`plexus` key), not on `[[plexus-diagram/metadata]]`. Sections are parent blocks of their cards. Connections are blocks under a collapsed **Connections** child that read `[[A]] → label → [[B]]`, so both ends get a backlink and notes live as children.\n- **Graph links.** References and attributes that already exist between cards are drawn as dashed arrows colored by relation (`causes`, `Detected by`, `mentions`). **Write to graph** turns a labelled connection into `label:: [[B]]` on the source.\n- **Heptabase features.** 10 colors for cards, sections, text, and connections; sections drawn by drag or Cmd+G around a selection, with titles above the frame; ports on every edge; curve / straight / elbow routes, direction, dash, weight; selection box, alignment guides, align / distribute; text headings; minimap; board search; Add panel with Search and Related; card editing with Roam's own editor (page cards open the whole page); zoomed-out map view with readable titles.\n- **Fast by construction.** Pan and zoom move one transform (p95 frame 4.5 ms on a 120-card board, no renders, no writes). Only on-screen cards render content; zoomed out, cards show titles only. Opening a board writes nothing; the viewport is per device.\n- **Fixed from 0.6.4:** Section tool made two frames per drag and one per click; sections did not hold cards and had no color; the connection inspector covered the connection; text typed into a new card was lost; the sync indicator went pending on pan and zoom; diagrams on normal (non-daily) pages were never discovered; `[[links]]` inside cards did not open; keyboard shortcuts were swallowed by the diagram block.\n- **Migration.** Boards enhanced with 0.6 upgrade once on first open (positions, colors, sections with their cards, connections with labels and styles). Native diagrams import on **Enhance** (positions, groups as sections, edges as connections). Diagrams you never enhance are never written.\n- Commands: Enhance this diagram, New whiteboard here, Restore native diagram, Fullscreen this diagram.\n\n## 0.6.4 — 2026-09-05\n\n- **Inspector Comment** — converts the edge label to native Roam comments (one-way → target, two-way → both) then clears the pill.\n\n## 0.6.3 — 2026-09-05\n\n- **Idle card children** — after click-away, idle cards `renderBlock` the card uid so child bullets stay visible; deep pull includes nested `:block/children`; empty placeholder only when string is blank and there are no children.\n- **Board background** — toolbar cycles Dots / Lines / Solid (`grid-style` persisted).\n\n## 0.6.2 — 2026-09-05\n\n- **Connect hit-test** — targets resolve from the painted card rects (`getBoundingClientRect`, 12px handle inflate) before `elementsFromPoint` and world-rect math, and the card hovered on the last pointermove is the fallback for a captured pointerup.\n- **Rubber-band** — the edge and temp-wire SVGs cover content ∪ viewport (2000px pad) so the dashed wire paints across a panned board.\n- **No junk cards** — a click-click that misses a card cancels the arm; only a real drag onto empty board creates a linked card.\n- **Version badge** — the toolbar stamps the package version, not Roam's `DEV` developer-extension version.\n\n## 0.6.1 — 2026-09-05\n\n- **Connect hit-test** — when Electron's `elementsFromPoint` misses cards under `.pxd-world`, resolve targets from world-space node rects (12px handle inflate). Click-click arms and drag-to-card both work.\n- **Delete cards** — Delete/Backspace on a selected card removes it from the diagram (adapter + metadata), not just edges.\n- **Scratch children** — `blankScratch` deletes scratch-host children so a new card editor never inherits the previous card's bullet tree.\n\n## 0.6.0 — 2026-09-05\n\n- **Visible arrows** — connector stroke and marker fill are resolved colors, not `var()` in SVG attributes. Marker ids are unique per canvas. Heads scale with zoom (`clamp(10 / zoom, 6, 24)`).\n- **Ports** — drag from a card handle stores `from::` / `to::` (`auto|top|right|bottom|left`). Click-click and connect-to-empty still work.\n- **Per-edge direction** — `direction::` `oneWay|twoWay|none` on `edge A->B`. Global Arrowheads is the default for new edges only.\n- **Inspector** — click a line for a floating cluster: direction, Flip (disabled if the reverse exists), Route, Label, color, Delete. Mutations `await flushLayout()`.\n- **Schema** — optional `from::` `to::` `direction::` `color::` children under the existing edge row. `[[plexus-diagram/metadata]]` only. No `:diagram/*` / `:harc/*`.\n\n## 0.5.0 — 2026-08-29\n\n- **Connect two-click + temp wire** — Connect stays on after an edge. Click-click or drag; the rubber-band lives on `.pxd-edges-temp` above the cards and follows the cursor immediately. Handles are a 12px disc with a larger hit target.\n- **In-place nested boards** — opening a nested diagram does not call `openBlock` / change the hash. The parent session stays loaded; crumbs sit on the toolbar and Esc pops one level.\n- **Section and card color** — toolbar swatches (eight Blueprint-ish ids plus default) write `color::` on nodes and sections. Dark mode uses the border as the signal.\n- **Section click-rename** — a single click on the section title starts rename; pointerdown on the label does not drag the frame.\n- **Review pack** — session swap flushes the outgoing board then cancels persist timers; unused parent pull-watches stop; Esc nest-pop only when the overlay owns the pointer; connect-to-empty rolls back a failed edge persist.\n\n## 0.4.2 — 2026-08-28\n\n- **Svy Beam caret** — overlay inputs use native `caret-color` and `cursor: text` (higher specificity than Beam's custom hotspot cursor). `focus({ preventScroll: true })` plus a capture-phase guard stop Roam from scrolling the outline copy of an editing card into view.\n- **Right sidebar inset** — fullscreen also ResizeObserves the right sidebar and re-places on the next two animation frames after the article class changes. When the article's right edge is within 8px of the viewport, the overlay `right` inset is 0.\n- **Library portal** — the drawer mounts on `document.body` (fixed, 320px, 14px) so it is not scaled by `.pxd-world`. Items are opaque `#f5f8fa` / `#182026`. Empty search hides `roam/js/` and `roam/css` pages.\n- **Nested crumbs** — opening a nested board pushes the parent onto a crumb stack (`Parent › Current`). Clicking a crumb opens that block (or page). Nested cards show the parsed name; unnamed boards get an inline \"Name this board…\" field.\n- **Connect to empty** — dragging a handle onto empty board creates a card at the drop point, links it, and enters edit (Heptabase pull-from-port). Handles are 14px. An existing edge is kept if you connect the same pair again.\n- **Review pack** — nested open passes parent uid explicitly; nest stack truncates on multi-level back; drop parsing no longer treats incidental 9-char tokens as block refs; connect failures do not leave dangling edges; nested name timers clear on repaint and dispose.\n\n## 0.4.1 — 2026-08-28\n\n- **Pending-changes patch** — layout persist no longer delete-all/recreates the metadata tree. Existing diagram blocks are patched in place: only changed `pos::` / `size::` / `color::` / edge / section rows are written, identical strings are skipped, and gone ids are the only deletes. Viewport persist is still the one-line `setViewport` path.\n- **Article-pane fullscreen** — fullscreen follows `.rm-article-wrapper` (below the topbar, inset with the left sidebar) instead of `sidebar.right`. ResizeObserver on the article and sidebar plus a class MutationObserver re-place the overlay when the sidebar opens or closes. Drop `[[page]]` / block uid from the sidebar onto the board to add a card.\n- **Visible sections** — sections use a 2px solid border, a light blue fill, `pointer-events: auto`, a default \"Section\" label, drag, corner resize, and double-click rename.\n- **Opaque library** — the drawer sets its own `#ffffff` / `#1c2127` background so it stays readable when mounted outside `.pxd-root`. Blank titles and `roam/js/` pages are hidden until you search.\n- **Nested overlay** — adding or opening a nested `{{[[diagram]]}}` card registers it as enhanced and opens our overlay fullscreen, not native Empty Roam Diagram. Nested cards show \"Nested diagram\" instead of the raw macro. Nested open no longer waits on the parent canvas.\n- **Connect hit-testing** — `cardFromPoint` walks `elementsFromPoint` and ignores edge-hit strokes; temp edges are `pointer-events: none`; connect-tool handles stay visible.\n\n## 0.4.0 — 2026-08-28\n\n- **Fullscreen vs breadcrumbs** — fullscreen hides `#roam-breadcrumbs-panel` / `.breadcrumbs-content` only while `body.pxd-has-fullscreen`. The overlay sits below the remaining topbar and to the right of the left sidebar (article fill, not the whole window). Resize recomputes the inset. Inline boards leave breadcrumbs alone.\n- **Scratch-host card editor** — double-click no longer `renderBlock`s the card uid (the hidden native diagram still owns it). Edit mounts on a `pxd:scratch` child of `[[plexus-diagram/metadata]]`, hydrates until MutationObserver-quiet, then a trusted mousedown/mouseup/click. Commit pulls the scratch string onto the card; empty pulls never overwrite known text.\n- **Connection notes** — labels live on the connector (`label::` under `edge A->B`), not as extra cards. Double-click the line or click the midpoint pill. `show-edge-labels` defaults on.\n- **Commands** — palette and slash keep Enhance, Restore, and Fullscreen only. Toolbar is a single nowrap row. `V` / `C` / `N` / `F` when the overlay owns the pointer.\n- **Sync silence on open** — remounting an already-enhanced diagram no longer rewrites `[[plexus-diagram/metadata]]` or `:rf-diagram` viewport props when the stored snapshot already matches.\n- **Viewport-only persist** — pan/zoom/fit writes only the `viewport::` metadata line; node/edge/section children are left intact.\n- **Dirty flags** — initial fit, fullscreen resize, and dispose no longer schedule Roam writes; persist runs only after real user gestures (pan, zoom, drag, Fit, etc.).\n\n## 0.3.2 — 2026-08-28\n\nDouble-clicking a card no longer blanks its text: `setBlockFocusAndSelection` was focusing the outline copy of the same uid (Roam then cleared the overlay mount), and a same-tick `focusout` committed an empty pull. Overlay editors now keep a text fallback until `renderBlock` hydrates, ignore focusout for 1s, and refuse to commit an empty pull over known text. Fullscreen sits below `.rm-topbar` so RoamJS breadcrumbs stay clickable and the Plexus toolbar is not hidden under it.\n\n## 0.3.1 — 2026-08-28\n\nHouse / daily-tab navigation left a `position:fixed` overlay covering the daily notes. Native Maximize unmounts on route change; our mount often survives because the diagram block is still in the outline. `hashchange` / `popstate` now exit fullscreen, drop `--zoomed`, and restore the inline height whenever the open page uid is no longer the diagram. The 250ms reconcile does not do this, so a Fullscreen click on an inline embed is not immediately undone.\n\n## 0.3.0 — 2026-08-28\n\nCanvas rewrite: the board is usable. Imported native React Flow nodes (165×83 on the live graph) are floored to real cards (min 240×140, default 280×160), and a viewport that paints any card under 140px, has zoom below 0.7, or shows no card at all is rejected and replaced by a fit once the root has a size (single card fits at zoom 1.5, centred; fitted viewport persisted once). Pan, wheel zoom, card drag and corner resize touch only CSS (`.pxd-world` transform, one card's box, the edges hanging off it) — no `innerHTML` rebuild, no Roam write per pixel; viewport/layout persist on pointer-up and wheel-end with a 150 ms debounce, serialized through one queue per session. Cards render with `renderString`; double-click swaps in the native block editor (`renderBlock`) and blur/Esc commits it back, so Roam chrome no longer paints into every card. `render()` reconciles card elements by uid, so a pull during editing never tears down the caret. Drag from a card's connect dots (or any card with the Connect tool) onto another card to link. Double-click empty board adds a card at that point; Card/Nested tool clicks still add. A hint pill explains pan/add/fullscreen on boards with ≤1 card until the first pointer down. Zoomed diagram pages open in fullscreen (`fullscreen-on-zoom`, default on; inline embeds stay inline). Grid lives outside the world and tracks pan/zoom; a live minimap replaces the empty box; toolbar buttons are grouped, high-contrast, with a zoom readout. Dark mode: card and toolbar backgrounds from `--bc-main` / `--bc-menu`, 1px visible borders, 2px `--cl-blue` ring for selection — no tinted fills. `applyPull` keeps in-memory positions, sizes, edges, sections, and viewport (a pull only refreshes content), so a debounced persist can no longer be undone by a concurrent add.\n\n## 0.2.1 — 2026-08-27\n\nFix dead board on zoomed block pages. Navigating to `#/app/<graph>/page/<uid>` destroys the overlay DOM and the MutationObserver never remounted it. A reconcile pass (hashchange/popstate + 250ms interval) now prunes detached views, finds the native canvas — via the dated `block-input-…-body-outline-MM-DD-YYYY-<uid>` suffix or the location hash when ancestors carry no `data-uid` — and remounts the overlay. The pre-paint guard uses `display: none` (React Flow nodes punch through `visibility: hidden` by re-setting `visibility: visible` on themselves) and also hides the native `.rm-diagram-title-panel` and `.react-flow` chrome. Zoomed mounts fill the article (`pxd-mount--zoomed`). Every mount is stamped `data-diagram-uid` and remounts are idempotent per uid.\n\n## 0.2.0 — 2026-08-27\n\nHeptabase-usable overlay: full-bleed board sizing from native diagram (min 560px), horizontal labeled toolbar with zoom/fit/**Fullscreen** (Esc exits; covers the window like native Maximize), empty-canvas pan and cursor-anchored wheel zoom, Roam bullet/ref-count chrome hidden on cards, searchable library drawer that toggles without covering the board, and card titles off by default.\n\n## 0.1.4 — 2026-08-27\n\nSlash/command Enhance was a no-op: typing `/enh` puts the diagram block in edit mode, which unmounts `.rm-diagram`. The command now remembers the uid and waits for the native canvas to remount before overlaying.\n\n## 0.1.3 — 2026-08-27\n\nSlash commands use the same labels as the command palette (Roam Grid pattern), so `/enh` lists **Plexus Diagram: Enhance this diagram**.\n\n## 0.1.2 — 2026-08-27\n\nMetadata writes now generate UIDs before `block.create` / `page.create`. Live roamAlphaAPI returns `undefined` from those calls, so the first enhance was dropping `schema-version::`, `enhanced::`, and node/edge lines. Nested-diagram open uses `roamAlphaAPI.ui.mainWindow.openBlock`.\n\n## 0.1.1 — 2026-08-27\n\nLive-wire fixes against roamAlphaAPI (CDP, Svy graph):\n\n- Fix native hide inversion: `.pxd-native-hidden` now sets `display: none`; pending state uses visibility\n- Use EDN string pull pattern for `data.pull`; strip keyword colons from pull results\n- Generate child block UIDs via `util.generateUID()`; default create order `\"last\"`\n- Viewport writes try `roamAlphaAPI.updateBlock` before `data.block.update`\n- Register slash/context commands via `addCommand`/`removeCommand` with live callback shapes\n- Auto-enhance and focus checks pull `[:block/string]` via `roamAlphaAPI.data.pull`\n- Find native diagram hosts via `diagramElForUid` (id suffix, data-uid, block-ref)\n- Library mounts as overlay drawer; queries `roamAlphaAPI.data.q`; filters daily pages by UID\n- Card/Section toolbar tools place items at click position; library uses viewport center\n- Default `restore-native-on-unload` to false; unload disposes sessions without deleting metadata\n\n## 0.1.0 — 2026-08-27\n\nInitial release of Plexus Diagram.\n\n- Hide native `.rm-diagram` React Flow renderer for enhanced diagrams and mount a vanilla DOM/SVG canvas overlay\n- Keep Roam diagram children as the canonical card store; persist layout on `[[plexus-diagram/metadata]]`\n- Writable viewport via native `:rf-diagram` props; import native node positions when metadata is absent\n- Heptabase-like toolbar, cards, connectors, sections, library sidebar, and fat settings panel\n- Command palette, slash command, and block context menu integration\n- GitHub Pages developer extension at https://svyk.github.io/plexus-diagram\n";
+var CHANGELOG_TEXT = "# Changelog\n\n## 2.10.1 — 2026-10-04\n\n- window.PlexusDiagram lists boards on a page, boards that show a block, and the cards and views on a board. It can open a card or a saved view, add one card, and return a small PNG of a board. Opening and the picture do not write. Adding a card writes that one block.\n- A block ref of a Roam Plexus region shows the caption, a crop, Open drawing, and Open in sidebar. Open drawing uses Roam Plexus. If Roam Plexus is missing, the card is an ordinary block ref. The command palette stays two entries.\n\n## 2.9.6 — 2026-10-04\n\n- An image card shows a small region count when it has regions. The card menu lists them: Go, Copy ref, Rename, and Delete. Rename changes only the caption. Delete asks when another block still references the region, and can open those mentions. Badges off hides the count. The command palette stays two entries.\n\n## 2.9.5 — 2026-10-04\n\n- Hover an image crop for a larger preview, the picture dimmed and the region lit. Click opens that image on its board, zoomed to the region, or scrolls the outline to the image and pulses the region. Shift-click opens the board in the sidebar. An inline view draws a small map. Hover enlarges it. Click opens the board at that view and pulses the highlighted cards. Shift-click opens the board in the sidebar. Neither click writes to the graph.\n\n## 2.9.4 — 2026-10-04\n\n- On an image block, the block menu item Plexus: Mark image region lets you drag a rectangle. Confirm stores the region under the image, copies a block ref, and toasts. Escape writes nothing. A plexus-region image button in the outline, a block ref, an embed, the sidebar, and linked references draws the crop at most 160px tall, with a 1px border and no shadow, and hides that button. A Roam Plexus region such as a rectangle is left alone. The command palette does not gain an entry.\n\n## 2.9.3 — 2026-10-04\n\n- On an image card, Mark region lets you drag a rectangle on the picture and add a short caption. Confirm stores that region under the image, copies a block ref, and toasts that it copied. The first undo removes the region. The next undo removes the empty container. The card stays put, and the image viewer does not open. The command palette stays two entries.\n\n## 2.9.2 — 2026-10-04\n\n- Save view, in More or with Shift+V, writes the current camera as one view block at the end of the board. A selection can save its own view from the context bar. The Boards tab lists those views, each with a 96px outline map. Go puts the camera back and writes nothing. Delete removes the view block, and undo puts that row back. The command palette stays two entries.\n\n## 2.9.1 — 2026-10-04\n\n- A new card is placed before the Connections list, snapshots, and a region container, so those stay at the end of the block. The library card count skips a region container the same way it skips Connections. Leaving a new empty card that only holds a region container no longer deletes that card.\n\n## 2.9.0 — 2026-10-04\n\n- A region container `{{[[plexus-regions]]}}` and its `{{[[plexus-region]]}}` children stay off the board. They are not cards. A card's child badge does not count them. Image regions and saved views can be stored in that shape. A Roam Plexus region is recognized and left as theirs. Nothing is drawn yet.\n\n## 2.8.0 — 2026-10-04\n\n- Better Tasks and the Task tool start off. Settings, Integrations, has four controls: Better Tasks integration, Task tool, Task chips, and Default project for new tasks. With both switches off, the dock has no Task button, K does nothing, and the ? sheet does not list K. A Task tool you already saved stays on. Turning Better Tasks on draws the light checkbox and the chips, and asks Better Tasks for attributes once. Turning it off puts Roam's own checkbox back. Opening, panning, and clicking a board does not call Better Tasks while the integration is off.\n- A card whose text has #bg-blue or #[[bg-blue]] takes that colour on the board when the colour highlighter's variables are on the page, in light and in dark. #c:red still colours bold text inside the card, and Plexus does not paint over it. A fill you set in the picker wins; clearing that fill brings the tag colour back. With no highlighter variables, named colours use a fixed palette and the tag stays visible in the card.\n- The colour picker's gear, Write as highlighter tag, is saved on that board. In that mode a named colour writes one #[[bg-name]] into the block and clears the card's fill. One undo restores the text and the fill together. Hex, darker, and lighter still change only the fill.\n- A key pressed outside the board no longer switches the tool or adds a card, while nothing on the board is selected. A selected card still receives the board's keys.\n- A card more than one screen outside the view keeps its size and skips layout. The card you are editing stays fully drawn. A card that stays outside the view for 10 seconds drops its live Roam body and draws it again when it comes back.\n\n\n## 2.7.1 — 2026-10-04\n\n- Dropping a repeating task on Done in the Kanban view now makes the next occurrence, the same as ticking its checkbox. Before, only a real checkbox click did, because Better Tasks starts the next occurrence from its own checkbox. The task is now finished through that same checkbox, out of sight, so you get the completed date and the next task together.\n- Popovers stay clear of the board's own controls. The task chip popovers, the children peek, the Background and tag popovers, the card colour picker and the right-click menu move aside or flip instead of opening under the dock, the top bar, the rail, the minimap or the Properties panel. When there is no room, they shrink and scroll.\n- Task cards are readable when you zoom out. At the map zoom the check box is at least 20 pixels on screen, with the due date under the title (teal today, red overdue). Zoomed far out, a task is one clear box: empty, checked or crossed, in the same colours.\n- The pill that shows a scrolled-out block arrow (\"↓ the block's first words\") stays inside its card. It is cut to the card's width less 16 pixels with an ellipsis and keeps the same size on screen at any zoom.\n- A board with many tasks no longer uses up Better Tasks' limit of 100 decorated checkboxes. A task card now draws a light checkbox of its own instead of a real Roam block, so a 40-task board added 40 real checkboxes before and adds none now, and Better Tasks keeps decorating the rest of the page. Clicking the box still completes the task through Better Tasks.\n- Checked for a freeze when the bench is run back to back with a task board open: five runs and five load-and-unload cycles did not reproduce it.\n\n## 2.7.0 — 2026-10-03\n\n- Task cards. A card whose block is a Roam TODO now looks like a task: Roam's own checkbox, the title, and a row of chips under it for the due date, project, priority, repeat, status, waiting-for and GTD. Today's due date has a teal border, an overdue task a red one, a done task is dimmed and struck through, and a cancelled one is struck through. Better Tasks' own pills are hidden inside the card so the chips are not doubled. At map zoom a task shows a check box, its title and its due date; zoomed far out it is a single check box.\n- New Task tool. Press K, or pick it in the dock or the canvas menu, then click the board: a TODO card appears and opens for typing. A task left with no text disappears when you click away, like an empty card. Cmd+Z right after makes one undo step. The card menu has Make task for a plain note.\n- Change a task from its chips. Click the due date, project, priority or repeat chip and pick from a small popover (today, tomorrow, next week or any date; a project from Better Tasks' list; low, medium or high; a repeat rule). The change is made by Better Tasks itself, so the attribute blocks keep their uid and Plexus still never writes a `BT_attr` block. Cmd+Z after a chip change is Roam's undo, not the board's. Without Better Tasks the tool makes a plain TODO card and the chips are read-only.\n- Finishing a task works the way it does in Roam. Tick the checkbox on the card and Better Tasks writes the completed date and, for a repeating task, the next occurrence on its daily or project page. A toast tells you the date and offers Add to board. Dropping a card on Done in the Kanban view does the same through Better Tasks.\n- Drag a task card onto a daily-page card (or a section named for a day) and its due date becomes that day, in the same attribute block. Hold Shift to move the card without changing the date.\n- Better Tasks' attribute blocks and its Activity log no longer count as children: they are never rows, never in the outline or the peek, and never a \"▸ N\" badge. Renamed attributes are read from Better Tasks.\n- Three new settings: Task tool (show it in the dock), Task chips (full, due only or none) and Default project for new tasks.\n\n## 2.6.0 — 2026-10-03\n\n- Editing a card no longer shrinks it. Opening a card or a sticky for editing used to let it collapse toward the height of one line, and its arrows came loose. The card now keeps its size for the whole edit, the editor fills it, and the text is no longer cut to one line when you start typing. Edges stay attached.\n- Sticky notes are rebuilt to work like the RoamJS sticky notes, and they stay saved. Each one has a coloured header bar you drag, with a short title, a colour dot and a minimize button. The body is the live Roam block: click once and type, with tags, images, links and the slash menu. Drag a corner or edge to resize. Minimize folds a note to its header and remembers it. There is no close button; Delete or the menu removes a sticky and Cmd+Z brings it back.\n- Page cards open faster. A card now shows all its rows as plain text at once, then turns the rows you can see into live Roam blocks a few at a time. Rows scrolled out of view, and heavy rows such as charts, embeds and images, wait until they are on screen. A page you pulled once is reused while the card is open. A 146-row page card used to block for about 150 ms while it drew; now it paints in about 20 ms.\n- Arrows to blocks now stay on their block. When a chart or an image above the target row loads late, or a row turns live, the card re-measures its rows and the arrow follows. Each linked row shows a small dot in its own arrow's colour, so two arrows into one card stay apart, and hovering one arrow lights only its row.\n- New tooltips for the sticky header: drag, minimize or expand, and the colour dot.\n\n## 2.5.0 — 2026-10-03\n\n- The connection preview is cleaner. The target block is now a highlighted bar inside its page card, at the block's real place in the page, with its text cut to the card's width, and the arrow runs into the bar with a head like the one on the board. Nothing spills over a neighbouring card any more.\n- The preview opens where it never covers the chip or the block line it belongs to: under it, else above, else beside it, shrinking and scrolling inside when the window is small. It follows the chip while you scroll or resize and closes when the chip leaves the screen.\n- Roam's breadcrumb above a connection block (in linked references and when you zoom into the block) now opens the same preview on a plain click, because Roam's own link there only led to \"Board › Connections\". A small ▦ marks it. Shift-click, Cmd-click and Ctrl-click still do what Roam does. Unloading removes the marks and the listeners.\n- Resize grips, connection dots and arrow-end handles keep the same size on screen at every zoom, so they are easy to grab on a zoomed-out board and no longer huge when zoomed in.\n- Light mode was checked on every new surface. Fixed: the connection chip could run past the edge of its block, and its teal was too pale on white.\n\n## 2.4.0 — 2026-10-03\n\n- The Add and Info panel now opens to the left of the control rail instead of covering it. The minimap steps left of an open panel. The rail keeps one fixed width, so the version badge no longer pushes it wider.\n- An arrow that ends on a block now visibly points at it. The line continues into the page card and its head stops beside the row's text. The row keeps a mark in the arrow's color (a left rule and a light tint; in the dark theme a border only, no fill). Hover the arrow and the row lights up; hover the row and the arrow thickens and a tooltip names the other card and the label. When the row has scrolled out of view, the arrow ends in a pill at the card edge with an arrow and the block's first words; click it to scroll the row back.\n- Connections now show up where Roam draws them. Under every connection block in the outline, the sidebar or a block's linked references, a small chip reads \"A —label→ B · on Board\" and names the block when the arrow ends on one. Click the chip to see a preview: a map of the two cards with the arrow and the target row, plus Open on board and Open in sidebar. Open on board opens the page, enters a nested board if needed, and selects the connection. Nothing is written, and unloading removes every chip.\n- The card's hover toolbar no longer disappears on the way to it. It waits 400 ms after the pointer leaves the card, so you can reach it and open its color picker. Moving to a different card switches the toolbar at once with no flicker. Escape, panning and zooming hide it immediately.\n- With the Hand tool you can now resize: a press on a resize grip resizes, anything else pans, and Space-drag still pans over grips. Page cards have a wider grip band on the right and bottom edges and a larger corner that sits above the scrollbar. The grips show when you hover a card in hand mode.\n\n## 2.3.0 — 2026-10-03\n\n- Board rows in page cards. A page card for a page that holds a board shows that board as a small map with its title and item count, not a grey box. After four maps on one card, the rest are one-line chips. The row for the board you are looking at says \"this board\". Click opens the board; Shift-click opens it in the right sidebar.\n- A row that Roam cannot render inside a card, such as an empty `{{[[roam/render]]}}`, now shows its raw text, muted, instead of \"Failed to render\". This also ends the Roam console errors the old page-card row caused.\n- Hover tooltips. Every control on the board bar, the dock, the rail, the card toolbar and the Properties panel shows its name, its shortcut and a one-line description after a short hover. Keyboard focus shows it at once. The tip sits below the board bar, above the dock, left of the rail, and stays inside the board. Settings, Hover tooltips, turns them off and hands the text back to the browser. Tooltip delay is instant, 350 ms or 800 ms.\n- A tooltip no longer stays on screen after the control it described is removed.\n- Ref cards and image cards show readable titles everywhere: Table, Kanban, Graph, Timeline, Gallery and Find use the first line of the referenced block or the image's alt text, never `((uid))` or a blank. Find matches the text a ref card shows.\n- Graph view draws a line for every connection, fits all cards inside its window and no longer scrolls them out of sight.\n- The end handles of a short arrow with a label can be grabbed. The label steps aside while the arrow is selected.\n- Gallery captions show the image's alt text, or nothing. They never show raw markdown.\n- The Escape that closes Search, a menu, or Gallery, Timeline and Graph no longer also leaves fullscreen.\n- Present mode hides the board bar, dock, Properties, rail, minimap and side panel, and brings them back on exit.\n- Shift-click only extends the selection. It no longer opens the Info panel.\n- Gallery, Timeline and Graph, the board bar and the Properties pill are opaque now, so nothing shows through. A collapsed Properties pill is only as wide as its label.\n- Section titles in the zoomed-out overview may run wider than a small frame before they are cut off.\n- Gallery, Timeline and Graph are also under More, Views, and under Views in the canvas menu. The template entry is now \"Timeline template\". An empty Timeline says that a date attribute or a daily-page reference makes a card dated.\n- The thin dotted curves that run across a board between cards are graph links, drawn for every shared page reference or attribute. They are not a stray line. Links, in the board bar or the L key, switches them off or to attributes only.\n\n## 2.2.0 — 2026-10-03\n\n- Board bar and tool dock. The top bar is now the board bar: breadcrumbs, Add, Info, links, views, background, present and More. The nine tools moved into a floating dock along the bottom. Settings, Toolbar layout, brings back the 2.1 look (Classic) or hides the top bar until the pointer nears the top edge (Dock only).\n- Dock settings: position (bottom, left or top), shape (pill or strip), tool names under the icons, and button size. A board can set its own dock position from the More menu, Dock position for this board; opening a board still writes nothing.\n- The active tool slides a highlight behind it. A locked tool (double-click) shows a padlock. In dark mode the active tool is a border and a dot, so it stays visible without a fill.\n- Dock options. With Card, Sticky, Section or Shape active, the dock shows that tool's colors, the block or card look, or the shape kinds. With nothing selected, a pick styles the next item you create with that tool and is forgotten when the board closes; with cards selected, it restyles them as before. One undo reverses it.\n- The last breadcrumb carries the board's own color, and the bar's bottom edge takes the same tone.\n- Overview zoom keeps Select, Hand and Board in the dock. A board narrower than 560 px gets smaller buttons and no options. A left dock no longer sits on the Properties panel.\n- The active and locked tool styles in the top bar lost to Roam's own button rules in dark mode. They hold now.\n\n## 2.1.0 — 2026-10-03\n\n- Enter in a card adds a line to the card's block, like a node in a native Roam diagram. Settings, Cards, \"Enter in a card\" set to Child brings back the old behavior of making a child block.\n- An empty white panel with a Close button no longer covers boards.\n- Pasting one image into a card inserted it twice. It now inserts once.\n- Dragging an image onto a card that is being edited works. Dropping an image on a card adds it after the card's text instead of replacing the text.\n- Whole-page cards: a page card shows the page title as a header and the whole outline, scrolls inside the card, and edits where you click. Add page… in the canvas menu adds a page by search. Dropping a page from the left sidebar makes a page card.\n- Arrows to a single block. Drag an arrow end over a page card and the row under the pointer lights up; dropping there connects to that block with a real `((ref))`, so it shows in Roam's backlinks. Dropping on the title connects to the page. Ends follow their row as the card scrolls and clamp to the edge with a marker when the row is out of view. A selected arrow has end handles to re-aim it, and the arrow menu has Connect to the page instead.\n- Card children. A note, block or ref card shows only its own block. A ▸ N badge opens the children as an editable outline inside the card, remembered per card, and hovering the badge peeks at them. Spread children as cards makes one card per child with an arrow back.\n- Note: note and ref cards now show only their own block until the badge is opened.\n- A selected arrow's end handle could only be grabbed on the half outside the card it ends on. The whole handle now grabs.\n\n## 2.0.0 — 2026-10-03\n\n- Card editing, outline navigation, templates, the table, snapshots, and the graph tools that landed after 1.3.0.\n- Gallery, timeline, and a read-only graph of the board. A section can lay cards out by date. Connections can bend or route around cards. Present shows a section's first child as notes, plus a laser and a pen that are dropped on exit.\n- A diagram in the right sidebar stays a gap until that window is on screen. Opening the sidebar parks the boards on the page.\n- A 300-card board shows its first shells in about 1 second and finishes the rest over the following frames. Detail and overview pan hold 60 fps. Zooming across the detail threshold is about 57 to 59 fps, and that switch no longer produces a long task.\n- The same board in two Roam windows kept the same 6 cards and 4 connections across 30 moves.\n\n## 1.3.0 — 2026-10-01\n\n- Native parity on an enhanced board: plain block cards, a node hover toolbar, a right-hand control rail, a properties panel, PNG export, outline in the sidebar, boards in the sidebar, edge styles, native embeds, style import on Enhance, per-card expand, minimap drag, keyboard parity, and Edit Block.\n\n## 1.2.0 — 2026-09-29\n\nFixes from the second round of testing on 1.1.0:\n\n- **Zoomed-out cards stay inside their box.** Map view is a clean title-only tile: three-line clamp, font capped by the tile height, nothing spills below the card. Ref titles are cut at 120 characters and header text at 160. The level of detail now switches while you zoom (with hysteresis, one class toggle), not only when the gesture ends. A third tier below 20% shows section titles only.\n- **Nested board thumbnails are real thumbnails.** A padded frame with mini cards (border, fill, title), sections as tinted frames, connections, and an \"Empty board\" state, instead of one white box.\n- **Sections auto-fit.** A card moved, resized, created, or pasted past a section edge grows the section to contain it (24 px padding), live during the drag and saved as one undo step. It cascades through nested sections, never shrinks by itself, and can be turned off per section or with the `auto-fit-sections` setting.\n- **Board backgrounds.** Dots, lines, grid, and plain patterns and paper or ten palette tones, chosen per board from the Background button (stored in the board block's props) with a default in Settings.\n\nAdded:\n\n- **Right-click menus** for the board, cards, sections, text, connections, multi-selection, and the More menu.\n- **Duplicate and clipboard.** Alt+drag and Cmd+D duplicate (Alt+Shift makes `((ref))` cards); copy and paste as refs or as copies, across boards; pasted text and images become cards. Send to board, Boards tab (every board in the graph), Outline tab.\n- **Keyboard.** Tab and Shift+Tab step through the outline, F focus mode, Q quick look, P presentation, M mind map from a card's child blocks, Cmd/Ctrl+Alt+Enter fold, double-click a bottom or corner grip to fit or reset height. Arrow keys nudge the selection 1 px (Shift for 10 px); Alt+Arrow selects the nearest card in that direction (Alt+Shift adds), as in Heptabase.\n- **Layout tools.** Tidy (row, column, grid, outline order), same size, fit height, reset size, fit section, fold all, optional space-out after a move, \"Back to content\" button.\n- **Pin.** Pinned items do not move, resize, or delete.\n- **Card badges.** References, boards, and open and done TODO counts, read from Roam (never written); a `((ref))` to a board renders its thumbnail; journal cards for today and this week.\n- **Export.** Export board as SVG and Copy board as text (commands and board menu).\n- **Review fixes.** Cut and paste now moves a note, text or section (the clipboard carries a snapshot; before, the paste was a dead `((ref))`). The Open button, double-click and Enter open a whiteboard-shortcut card. Settings changes reach open boards' sessions live. A pinned section is never grown by auto-fit. Fit height can shrink a card. Fit / Reset size / Same size never leave a card outside its section. A pinned card no longer pushes other cards in space-out. Escape closes the Background popover first. Right-clicking a ref, tag, link or image inside a card keeps Roam's or the browser's menu. Tab is only taken while the board itself has focus. A tall menu scrolls inside a small board. Thumbnails title `((ref))` and image cards. The section grows live while you type in a card at its edge. Card badge queries run in idle slots and are cached for two minutes.\n- New settings: default board tone, map view threshold, auto-fit sections, space out cards, show card badges; grid accepts `grid`. API and build: see `docs/api-plexus-1.0.md` (\"1.2 additions\") and `docs/spec-plexus-1.2.md`; `src/css/*.css` is appended to the bundle.\n\nFixed after live testing in Roam Desktop:\n\n- **One Cmd+Z per operation.** Duplicate, Alt+drag, mind map, Tidy, and a drag that grows a section each took one Cmd+Z per block written; the Undo toast button undid one block. Writes of a transaction are now grouped, and Undo and Redo step over the whole group.\n- Map-view cards clamp to exactly three lines (no fourth-line sliver, no ellipsis in the middle of a tall card); section titles show an ellipsis; far zoom-out no longer paints a dot moire; colored cards read at overview zoom; whiteboard-shortcut cards keep their thumbnail at map zoom.\n- Ctrl-wheel zoom and paste use the board's current position after the Roam page scrolls (they were off by the scroll distance).\n- Pasted images are `![](url)`, not `![](![](url))`.\n- The section preview no longer snaps back while you type in a card at its edge.\n- Fit keeps content below the toolbar and left of an open panel (Outline click fits the visible area); the context bar no longer covers the toolbar or the panel; double-click on the middle of a card's bottom edge fits its height.\n- Mind map from a card that already has child cards on the board lays the rest out around them, and says when the 24-branch cap left nodes out. Add this week no longer stacks a card on an existing one. Duplicating a section says \"section\".\n- The OS dark-mode hint no longer darkens a board on a light Roam theme.\n- **Typing in a card: Enter no longer drops you out of the card.** Root cause: the card editor stopped the mouseup that Roam uses to end its block drag-select, so a new block created under the resting pointer turned the edit into a block selection. Mouseup now passes through.\n- **Undo limits.** Roam keeps only the last 50 changes, so one Cmd+Z sequence can undo an operation only if it fits. Mind maps cap at 24 branches (\"Mind map: 24 of 45 branches (cap)\") and bulk adds (large pastes, multi-drops, Add all) at 45 cards (\"Added 45 of N (Roam undo holds 50 changes)\").\n\n## 1.1.0 — 2026-09-29\n\nFrom the first round of testing on 1.0.0:\n\n- **Cards show their content.** Note and block-reference cards render the whole block (and its children) instead of a truncated first line over an empty body. A long single-line `((ref))` card is readable again.\n- **Drag blocks in from Roam.** Dragging a bullet from the outline or the right sidebar onto a board adds it as a `((ref))` card (a page becomes a `[[page]]` card). Multi-block drags stack. The source block is never moved.\n- **Typing in a card.** Enter adds lines inside the card and keeps the caret there; if Roam drops focus while it moves between blocks, the editor takes it back. The card header no longer repeats and lags behind what you type, and text items keep their heading size while editing.\n- **Nested boards (Heptabase sub-whiteboards).** New Board tool (W): click or drag to add a board card, or select cards and choose **Move into new board**. Board cards show a mini map, item count, and a name field. Double-click or Open goes into the board in place with a `Parent › Child` breadcrumb; click a crumb or press Esc to go back up. Drag a card onto a board card to move it inside (with Undo). Boards opened from their own page get crumbs for their parent boards.\n- **Collapsed board blocks.** The board block is collapsed once so Roam does not list its cards as bullets under an inline board; expand the bullet to see them. Turn it off with **Collapse board blocks in the outline**. A nested board no longer opens a second overlay from an expanded outline.\n- Import and Restore keep a nested board's marker; a board deleted while open closes cleanly (a nested one pops to its parent).\n\n## 1.0.0 — 2026-09-28\n\nRewrite. The 0.6 canvas (one 2,200-line closure) is replaced by a model / host / session / view split with 204 unit tests and a live CDP gate on Roam Desktop.\n\n- **Everything is a Roam object.** Card layout lives in each block's `:block/props` (`plexus` key), not on `[[plexus-diagram/metadata]]`. Sections are parent blocks of their cards. Connections are blocks under a collapsed **Connections** child that read `[[A]] → label → [[B]]`, so both ends get a backlink and notes live as children.\n- **Graph links.** References and attributes that already exist between cards are drawn as dashed arrows colored by relation (`causes`, `Detected by`, `mentions`). **Write to graph** turns a labelled connection into `label:: [[B]]` on the source.\n- **Heptabase features.** 10 colors for cards, sections, text, and connections; sections drawn by drag or Cmd+G around a selection, with titles above the frame; ports on every edge; curve / straight / elbow routes, direction, dash, weight; selection box, alignment guides, align / distribute; text headings; minimap; board search; Add panel with Search and Related; card editing with Roam's own editor (page cards open the whole page); zoomed-out map view with readable titles.\n- **Fast by construction.** Pan and zoom move one transform (p95 frame 4.5 ms on a 120-card board, no renders, no writes). Only on-screen cards render content; zoomed out, cards show titles only. Opening a board writes nothing; the viewport is per device.\n- **Fixed from 0.6.4:** Section tool made two frames per drag and one per click; sections did not hold cards and had no color; the connection inspector covered the connection; text typed into a new card was lost; the sync indicator went pending on pan and zoom; diagrams on normal (non-daily) pages were never discovered; `[[links]]` inside cards did not open; keyboard shortcuts were swallowed by the diagram block.\n- **Migration.** Boards enhanced with 0.6 upgrade once on first open (positions, colors, sections with their cards, connections with labels and styles). Native diagrams import on **Enhance** (positions, groups as sections, edges as connections). Diagrams you never enhance are never written.\n- Commands: Enhance this diagram, New whiteboard here, Restore native diagram, Fullscreen this diagram.\n\n## 0.6.4 — 2026-09-05\n\n- **Inspector Comment** — converts the edge label to native Roam comments (one-way → target, two-way → both) then clears the pill.\n\n## 0.6.3 — 2026-09-05\n\n- **Idle card children** — after click-away, idle cards `renderBlock` the card uid so child bullets stay visible; deep pull includes nested `:block/children`; empty placeholder only when string is blank and there are no children.\n- **Board background** — toolbar cycles Dots / Lines / Solid (`grid-style` persisted).\n\n## 0.6.2 — 2026-09-05\n\n- **Connect hit-test** — targets resolve from the painted card rects (`getBoundingClientRect`, 12px handle inflate) before `elementsFromPoint` and world-rect math, and the card hovered on the last pointermove is the fallback for a captured pointerup.\n- **Rubber-band** — the edge and temp-wire SVGs cover content ∪ viewport (2000px pad) so the dashed wire paints across a panned board.\n- **No junk cards** — a click-click that misses a card cancels the arm; only a real drag onto empty board creates a linked card.\n- **Version badge** — the toolbar stamps the package version, not Roam's `DEV` developer-extension version.\n\n## 0.6.1 — 2026-09-05\n\n- **Connect hit-test** — when Electron's `elementsFromPoint` misses cards under `.pxd-world`, resolve targets from world-space node rects (12px handle inflate). Click-click arms and drag-to-card both work.\n- **Delete cards** — Delete/Backspace on a selected card removes it from the diagram (adapter + metadata), not just edges.\n- **Scratch children** — `blankScratch` deletes scratch-host children so a new card editor never inherits the previous card's bullet tree.\n\n## 0.6.0 — 2026-09-05\n\n- **Visible arrows** — connector stroke and marker fill are resolved colors, not `var()` in SVG attributes. Marker ids are unique per canvas. Heads scale with zoom (`clamp(10 / zoom, 6, 24)`).\n- **Ports** — drag from a card handle stores `from::` / `to::` (`auto|top|right|bottom|left`). Click-click and connect-to-empty still work.\n- **Per-edge direction** — `direction::` `oneWay|twoWay|none` on `edge A->B`. Global Arrowheads is the default for new edges only.\n- **Inspector** — click a line for a floating cluster: direction, Flip (disabled if the reverse exists), Route, Label, color, Delete. Mutations `await flushLayout()`.\n- **Schema** — optional `from::` `to::` `direction::` `color::` children under the existing edge row. `[[plexus-diagram/metadata]]` only. No `:diagram/*` / `:harc/*`.\n\n## 0.5.0 — 2026-08-29\n\n- **Connect two-click + temp wire** — Connect stays on after an edge. Click-click or drag; the rubber-band lives on `.pxd-edges-temp` above the cards and follows the cursor immediately. Handles are a 12px disc with a larger hit target.\n- **In-place nested boards** — opening a nested diagram does not call `openBlock` / change the hash. The parent session stays loaded; crumbs sit on the toolbar and Esc pops one level.\n- **Section and card color** — toolbar swatches (eight Blueprint-ish ids plus default) write `color::` on nodes and sections. Dark mode uses the border as the signal.\n- **Section click-rename** — a single click on the section title starts rename; pointerdown on the label does not drag the frame.\n- **Review pack** — session swap flushes the outgoing board then cancels persist timers; unused parent pull-watches stop; Esc nest-pop only when the overlay owns the pointer; connect-to-empty rolls back a failed edge persist.\n\n## 0.4.2 — 2026-08-28\n\n- **Svy Beam caret** — overlay inputs use native `caret-color` and `cursor: text` (higher specificity than Beam's custom hotspot cursor). `focus({ preventScroll: true })` plus a capture-phase guard stop Roam from scrolling the outline copy of an editing card into view.\n- **Right sidebar inset** — fullscreen also ResizeObserves the right sidebar and re-places on the next two animation frames after the article class changes. When the article's right edge is within 8px of the viewport, the overlay `right` inset is 0.\n- **Library portal** — the drawer mounts on `document.body` (fixed, 320px, 14px) so it is not scaled by `.pxd-world`. Items are opaque `#f5f8fa` / `#182026`. Empty search hides `roam/js/` and `roam/css` pages.\n- **Nested crumbs** — opening a nested board pushes the parent onto a crumb stack (`Parent › Current`). Clicking a crumb opens that block (or page). Nested cards show the parsed name; unnamed boards get an inline \"Name this board…\" field.\n- **Connect to empty** — dragging a handle onto empty board creates a card at the drop point, links it, and enters edit (Heptabase pull-from-port). Handles are 14px. An existing edge is kept if you connect the same pair again.\n- **Review pack** — nested open passes parent uid explicitly; nest stack truncates on multi-level back; drop parsing no longer treats incidental 9-char tokens as block refs; connect failures do not leave dangling edges; nested name timers clear on repaint and dispose.\n\n## 0.4.1 — 2026-08-28\n\n- **Pending-changes patch** — layout persist no longer delete-all/recreates the metadata tree. Existing diagram blocks are patched in place: only changed `pos::` / `size::` / `color::` / edge / section rows are written, identical strings are skipped, and gone ids are the only deletes. Viewport persist is still the one-line `setViewport` path.\n- **Article-pane fullscreen** — fullscreen follows `.rm-article-wrapper` (below the topbar, inset with the left sidebar) instead of `sidebar.right`. ResizeObserver on the article and sidebar plus a class MutationObserver re-place the overlay when the sidebar opens or closes. Drop `[[page]]` / block uid from the sidebar onto the board to add a card.\n- **Visible sections** — sections use a 2px solid border, a light blue fill, `pointer-events: auto`, a default \"Section\" label, drag, corner resize, and double-click rename.\n- **Opaque library** — the drawer sets its own `#ffffff` / `#1c2127` background so it stays readable when mounted outside `.pxd-root`. Blank titles and `roam/js/` pages are hidden until you search.\n- **Nested overlay** — adding or opening a nested `{{[[diagram]]}}` card registers it as enhanced and opens our overlay fullscreen, not native Empty Roam Diagram. Nested cards show \"Nested diagram\" instead of the raw macro. Nested open no longer waits on the parent canvas.\n- **Connect hit-testing** — `cardFromPoint` walks `elementsFromPoint` and ignores edge-hit strokes; temp edges are `pointer-events: none`; connect-tool handles stay visible.\n\n## 0.4.0 — 2026-08-28\n\n- **Fullscreen vs breadcrumbs** — fullscreen hides `#roam-breadcrumbs-panel` / `.breadcrumbs-content` only while `body.pxd-has-fullscreen`. The overlay sits below the remaining topbar and to the right of the left sidebar (article fill, not the whole window). Resize recomputes the inset. Inline boards leave breadcrumbs alone.\n- **Scratch-host card editor** — double-click no longer `renderBlock`s the card uid (the hidden native diagram still owns it). Edit mounts on a `pxd:scratch` child of `[[plexus-diagram/metadata]]`, hydrates until MutationObserver-quiet, then a trusted mousedown/mouseup/click. Commit pulls the scratch string onto the card; empty pulls never overwrite known text.\n- **Connection notes** — labels live on the connector (`label::` under `edge A->B`), not as extra cards. Double-click the line or click the midpoint pill. `show-edge-labels` defaults on.\n- **Commands** — palette and slash keep Enhance, Restore, and Fullscreen only. Toolbar is a single nowrap row. `V` / `C` / `N` / `F` when the overlay owns the pointer.\n- **Sync silence on open** — remounting an already-enhanced diagram no longer rewrites `[[plexus-diagram/metadata]]` or `:rf-diagram` viewport props when the stored snapshot already matches.\n- **Viewport-only persist** — pan/zoom/fit writes only the `viewport::` metadata line; node/edge/section children are left intact.\n- **Dirty flags** — initial fit, fullscreen resize, and dispose no longer schedule Roam writes; persist runs only after real user gestures (pan, zoom, drag, Fit, etc.).\n\n## 0.3.2 — 2026-08-28\n\nDouble-clicking a card no longer blanks its text: `setBlockFocusAndSelection` was focusing the outline copy of the same uid (Roam then cleared the overlay mount), and a same-tick `focusout` committed an empty pull. Overlay editors now keep a text fallback until `renderBlock` hydrates, ignore focusout for 1s, and refuse to commit an empty pull over known text. Fullscreen sits below `.rm-topbar` so RoamJS breadcrumbs stay clickable and the Plexus toolbar is not hidden under it.\n\n## 0.3.1 — 2026-08-28\n\nHouse / daily-tab navigation left a `position:fixed` overlay covering the daily notes. Native Maximize unmounts on route change; our mount often survives because the diagram block is still in the outline. `hashchange` / `popstate` now exit fullscreen, drop `--zoomed`, and restore the inline height whenever the open page uid is no longer the diagram. The 250ms reconcile does not do this, so a Fullscreen click on an inline embed is not immediately undone.\n\n## 0.3.0 — 2026-08-28\n\nCanvas rewrite: the board is usable. Imported native React Flow nodes (165×83 on the live graph) are floored to real cards (min 240×140, default 280×160), and a viewport that paints any card under 140px, has zoom below 0.7, or shows no card at all is rejected and replaced by a fit once the root has a size (single card fits at zoom 1.5, centred; fitted viewport persisted once). Pan, wheel zoom, card drag and corner resize touch only CSS (`.pxd-world` transform, one card's box, the edges hanging off it) — no `innerHTML` rebuild, no Roam write per pixel; viewport/layout persist on pointer-up and wheel-end with a 150 ms debounce, serialized through one queue per session. Cards render with `renderString`; double-click swaps in the native block editor (`renderBlock`) and blur/Esc commits it back, so Roam chrome no longer paints into every card. `render()` reconciles card elements by uid, so a pull during editing never tears down the caret. Drag from a card's connect dots (or any card with the Connect tool) onto another card to link. Double-click empty board adds a card at that point; Card/Nested tool clicks still add. A hint pill explains pan/add/fullscreen on boards with ≤1 card until the first pointer down. Zoomed diagram pages open in fullscreen (`fullscreen-on-zoom`, default on; inline embeds stay inline). Grid lives outside the world and tracks pan/zoom; a live minimap replaces the empty box; toolbar buttons are grouped, high-contrast, with a zoom readout. Dark mode: card and toolbar backgrounds from `--bc-main` / `--bc-menu`, 1px visible borders, 2px `--cl-blue` ring for selection — no tinted fills. `applyPull` keeps in-memory positions, sizes, edges, sections, and viewport (a pull only refreshes content), so a debounced persist can no longer be undone by a concurrent add.\n\n## 0.2.1 — 2026-08-27\n\nFix dead board on zoomed block pages. Navigating to `#/app/<graph>/page/<uid>` destroys the overlay DOM and the MutationObserver never remounted it. A reconcile pass (hashchange/popstate + 250ms interval) now prunes detached views, finds the native canvas — via the dated `block-input-…-body-outline-MM-DD-YYYY-<uid>` suffix or the location hash when ancestors carry no `data-uid` — and remounts the overlay. The pre-paint guard uses `display: none` (React Flow nodes punch through `visibility: hidden` by re-setting `visibility: visible` on themselves) and also hides the native `.rm-diagram-title-panel` and `.react-flow` chrome. Zoomed mounts fill the article (`pxd-mount--zoomed`). Every mount is stamped `data-diagram-uid` and remounts are idempotent per uid.\n\n## 0.2.0 — 2026-08-27\n\nHeptabase-usable overlay: full-bleed board sizing from native diagram (min 560px), horizontal labeled toolbar with zoom/fit/**Fullscreen** (Esc exits; covers the window like native Maximize), empty-canvas pan and cursor-anchored wheel zoom, Roam bullet/ref-count chrome hidden on cards, searchable library drawer that toggles without covering the board, and card titles off by default.\n\n## 0.1.4 — 2026-08-27\n\nSlash/command Enhance was a no-op: typing `/enh` puts the diagram block in edit mode, which unmounts `.rm-diagram`. The command now remembers the uid and waits for the native canvas to remount before overlaying.\n\n## 0.1.3 — 2026-08-27\n\nSlash commands use the same labels as the command palette (Roam Grid pattern), so `/enh` lists **Plexus Diagram: Enhance this diagram**.\n\n## 0.1.2 — 2026-08-27\n\nMetadata writes now generate UIDs before `block.create` / `page.create`. Live roamAlphaAPI returns `undefined` from those calls, so the first enhance was dropping `schema-version::`, `enhanced::`, and node/edge lines. Nested-diagram open uses `roamAlphaAPI.ui.mainWindow.openBlock`.\n\n## 0.1.1 — 2026-08-27\n\nLive-wire fixes against roamAlphaAPI (CDP, Svy graph):\n\n- Fix native hide inversion: `.pxd-native-hidden` now sets `display: none`; pending state uses visibility\n- Use EDN string pull pattern for `data.pull`; strip keyword colons from pull results\n- Generate child block UIDs via `util.generateUID()`; default create order `\"last\"`\n- Viewport writes try `roamAlphaAPI.updateBlock` before `data.block.update`\n- Register slash/context commands via `addCommand`/`removeCommand` with live callback shapes\n- Auto-enhance and focus checks pull `[:block/string]` via `roamAlphaAPI.data.pull`\n- Find native diagram hosts via `diagramElForUid` (id suffix, data-uid, block-ref)\n- Library mounts as overlay drawer; queries `roamAlphaAPI.data.q`; filters daily pages by UID\n- Card/Section toolbar tools place items at click position; library uses viewport center\n- Default `restore-native-on-unload` to false; unload disposes sessions without deleting metadata\n\n## 0.1.0 — 2026-08-27\n\nInitial release of Plexus Diagram.\n\n- Hide native `.rm-diagram` React Flow renderer for enhanced diagrams and mount a vanilla DOM/SVG canvas overlay\n- Keep Roam diagram children as the canonical card store; persist layout on `[[plexus-diagram/metadata]]`\n- Writable viewport via native `:rf-diagram` props; import native node positions when metadata is absent\n- Heptabase-like toolbar, cards, connectors, sections, library sidebar, and fat settings panel\n- Command palette, slash command, and block context menu integration\n- GitHub Pages developer extension at https://svyk.github.io/plexus-diagram\n";
 
 // src/view/color-picker.js
 var DARKER = -0.28;
@@ -19988,9 +20307,9 @@ function rasterizeSvg(doc, svg) {
     img.src = url;
   });
 }
-function freshCardIsBlank({ blockString, itemString, contentCount = 0, editorText = "" } = {}) {
+function freshCardIsBlank({ blockString: blockString2, itemString, contentCount = 0, editorText = "" } = {}) {
   if (contentCount > 0) return false;
-  return ![blockString, itemString, editorText].some((s) => !isBareTask(s) && String(s ?? "").trim());
+  return ![blockString2, itemString, editorText].some((s) => !isBareTask(s) && String(s ?? "").trim());
 }
 function editingPlainText(root) {
   const editor = root.querySelector?.(".pxd-item--editing .pxd-item__editor");
@@ -25246,6 +25565,268 @@ function eachRegionButton(root, fn, cap4 = REGION_SCAN_CAP) {
   return seen;
 }
 
+// src/model/public-api.js
+var API_VERSION = 1;
+var API_EVENTS = Object.freeze(["change", "mount", "unmount"]);
+var EVENTS = new Set(API_EVENTS);
+var DEFAULT_AT = 40;
+var DEFAULT_MAX_WIDTH = 160;
+var THUMB_STROKE = "#5c7080";
+var EMPTY_BOUNDS = { x: 0, y: 0, w: 160, h: 160 };
+var DIAGRAM_RE2 = "^\\{\\{(\\[\\[)?diagram";
+var REF_QUERY = `[:find ?board ?page ?card :in $ ?uid ?pat :where
+ [?target :block/uid ?uid] [?cardblock :block/refs ?target] [?cardblock :block/uid ?card]
+ [?cardblock :block/parents ?diagram] [?diagram :block/uid ?board] [?diagram :block/string ?s]
+ [(re-pattern ?pat) ?re] [(re-find ?re ?s)] [?diagram :block/page ?p] [?p :block/uid ?page]]`;
+var BLOCK_REF = /^\(\(([\w-]+)\)\)$/;
+function pullBlock(host, uid) {
+  const fn = typeof host?.pullBoard === "function" ? host.pullBoard : host?.pull;
+  if (typeof fn !== "function") return null;
+  return fn.call(host, uid);
+}
+function boardVersion(pulled) {
+  if (!pulled || typeof pulled !== "object") return void 0;
+  if (pulled.plexus && typeof pulled.plexus === "object" && !Array.isArray(pulled.plexus) && "v" in pulled.plexus) {
+    return pulled.plexus.v;
+  }
+  return readPlexus(pulled[":block/props"] ?? pulled.props)?.v;
+}
+function blockString(pulled) {
+  if (!pulled || typeof pulled !== "object") return "";
+  if (typeof pulled[":block/string"] === "string") return pulled[":block/string"];
+  if (typeof pulled.string === "string") return pulled.string;
+  return "";
+}
+function boardTitle(pulled) {
+  return parseBoardTitle(blockString(pulled)) || "Untitled board";
+}
+function parseAddRef(raw) {
+  if (raw == null) return null;
+  const s = String(raw).trim();
+  if (!s) return null;
+  const pages = s.match(/\[\[/g)?.length ?? 0;
+  const blocks = s.match(/\(\(/g)?.length ?? 0;
+  if (pages + blocks !== 1) return null;
+  if (BLOCK_REF.test(s)) return s;
+  if (pages !== 1 || !s.startsWith("[[") || !s.endsWith("]]")) return null;
+  const title = s.slice(2, -2).trim();
+  if (!title || title.includes("[[") || title.includes("]]")) return null;
+  return s;
+}
+function boardsFromRefRows(rows, pull) {
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  const list = Array.isArray(rows) ? rows : [];
+  for (const row2 of list) {
+    const boardUid = Array.isArray(row2) ? row2[0] : null;
+    if (!boardUid || seen.has(boardUid)) continue;
+    seen.add(boardUid);
+    let pulled = null;
+    try {
+      pulled = typeof pull === "function" ? pull(boardUid) : null;
+    } catch {
+      pulled = null;
+    }
+    if (boardVersion(pulled) !== 2) continue;
+    out.push({ uid: boardUid, title: boardTitle(pulled) });
+  }
+  return out;
+}
+function fitThumbSize(naturalW, naturalH, maxWidth) {
+  const w = Number(naturalW);
+  const h = Number(naturalH);
+  const max = Number(maxWidth);
+  if (!(w > 0) || !(h > 0) || !(max > 0)) return null;
+  const width = Math.min(w, max);
+  return { width, height: h * (width / w) };
+}
+function thumbStroke(color) {
+  if (typeof color !== "string") return THUMB_STROKE;
+  const s = color.trim();
+  if (!s || s.toLowerCase() === "currentcolor") return THUMB_STROKE;
+  return s;
+}
+function boardBounds(rects) {
+  const empty = { x: EMPTY_BOUNDS.x, y: EMPTY_BOUNDS.y, w: EMPTY_BOUNDS.w, h: EMPTY_BOUNDS.h };
+  if (!Array.isArray(rects) || rects.length === 0) return empty;
+  let x1 = Infinity;
+  let y1 = Infinity;
+  let x2 = -Infinity;
+  let y2 = -Infinity;
+  let n2 = 0;
+  for (const rect of rects) {
+    if (!rect) continue;
+    const x = Number(rect.x);
+    const y = Number(rect.y);
+    const w = Number(rect.w);
+    const h = Number(rect.h);
+    if (![x, y, w, h].every(Number.isFinite)) continue;
+    x1 = Math.min(x1, x);
+    y1 = Math.min(y1, y);
+    x2 = Math.max(x2, x + w);
+    y2 = Math.max(y2, y + h);
+    n2 += 1;
+  }
+  if (!n2) return empty;
+  return { x: x1, y: y1, w: x2 - x1, h: y2 - y1 };
+}
+function fire(win, type, detail, Ctor) {
+  try {
+    const C = Ctor ?? win.CustomEvent ?? globalThis.CustomEvent;
+    if (typeof win.dispatchEvent !== "function" || typeof C !== "function") return;
+    win.dispatchEvent(new C(type, { detail }));
+  } catch {
+  }
+}
+function createPublicApi({ host, version, addCard: addCardFn, openBoard, thumbnail: thumbnailFn } = {}) {
+  const buckets = /* @__PURE__ */ new Map();
+  function emit2(type, detail) {
+    const bag = buckets.get(type);
+    if (!bag) return;
+    for (const cb of [...bag]) {
+      try {
+        cb(detail);
+      } catch {
+      }
+    }
+  }
+  const api = {
+    apiVersion: API_VERSION,
+    version: String(version ?? ""),
+    isAvailable() {
+      try {
+        const name = host?.graphName?.();
+        return typeof name === "string" && name.length > 0;
+      } catch {
+        return false;
+      }
+    },
+    boardsOn(pageUid) {
+      let listed = [];
+      try {
+        const rows = host?.listBoards?.();
+        listed = Array.isArray(rows) ? rows : [];
+      } catch {
+        listed = [];
+      }
+      return listed.filter((row2) => row2 && row2.pageUid === pageUid).map((row2) => ({ uid: row2.uid, title: row2.title || "Untitled board" }));
+    },
+    boardsWith(targetUid) {
+      let rows = [];
+      try {
+        const found = host?.q?.(REF_QUERY, targetUid, DIAGRAM_RE2);
+        rows = Array.isArray(found) ? found : [];
+      } catch {
+        return [];
+      }
+      return boardsFromRefRows(rows, (uid) => pullBlock(host, uid));
+    },
+    cardsOf(boardUid) {
+      const board2 = buildBoard(pullBlock(host, boardUid));
+      if (!board2?.items) return [];
+      const out = [];
+      for (const item of board2.items.values()) {
+        if (item?.type !== "card") continue;
+        out.push({
+          uid: item.uid,
+          kind: item.kind,
+          title: item.title ?? "",
+          rect: { x: item.x, y: item.y, w: item.w, h: item.h },
+          parent: item.parentUid ?? null
+        });
+      }
+      return out;
+    },
+    regionsOf(ownerUid) {
+      let regions = [];
+      try {
+        regions = regionsOf(pullBlock(host, ownerUid)) || [];
+      } catch {
+        regions = [];
+      }
+      return regions.map((region) => ({
+        uid: region.uid,
+        kind: region.kind,
+        caption: region.caption ?? ""
+      }));
+    },
+    viewsOf(boardUid) {
+      const board2 = buildBoard(pullBlock(host, boardUid));
+      return board2?.views ?? [];
+    },
+    thumbnail(boardUid, opts) {
+      const maxWidth = Number.isFinite(opts?.maxWidth) && opts.maxWidth > 0 ? opts.maxWidth : DEFAULT_MAX_WIDTH;
+      const next = { ...opts && typeof opts === "object" ? opts : {}, maxWidth };
+      if (typeof thumbnailFn !== "function") return void 0;
+      return thumbnailFn(boardUid, next);
+    },
+    open(boardUid, opts) {
+      if (typeof openBoard !== "function") return void 0;
+      return openBoard(boardUid, opts);
+    },
+    async addCard(boardUid, opts) {
+      const string = parseAddRef(opts?.ref);
+      if (!string) throw new Error("Bad ref");
+      let pulled = null;
+      try {
+        pulled = pullBlock(host, boardUid);
+      } catch {
+        pulled = null;
+      }
+      if (boardVersion(pulled) !== 2) throw new Error("Not a board");
+      const at = opts?.at;
+      const x = Number.isFinite(at?.x) ? at.x : DEFAULT_AT;
+      const y = Number.isFinite(at?.y) ? at.y : DEFAULT_AT;
+      const made = await addCardFn(boardUid, string, x, y);
+      const uid = made && typeof made === "object" ? made.uid : made;
+      emit2("change", { boardUid, uid });
+      return { uid };
+    },
+    addEventListener(type, cb) {
+      if (!EVENTS.has(type) || typeof cb !== "function") return;
+      let bag = buckets.get(type);
+      if (!bag) {
+        bag = /* @__PURE__ */ new Set();
+        buckets.set(type, bag);
+      }
+      bag.add(cb);
+    },
+    removeEventListener(type, cb) {
+      buckets.get(type)?.delete(cb);
+    },
+    spec() {
+      return {
+        apiVersion: API_VERSION,
+        events: [...API_EVENTS],
+        methods: Object.keys(api).filter((key) => typeof api[key] === "function").sort()
+      };
+    },
+    help() {
+      return "PlexusDiagram apiVersion 1. Listeners: change, mount, unmount. spec() lists the methods.";
+    }
+  };
+  return Object.freeze(api);
+}
+function installPublicApi(api, { win = globalThis.window ?? globalThis, CustomEventCtor } = {}) {
+  const target = win ?? globalThis;
+  if (target.PlexusDiagram != null && target.PlexusDiagram !== api) return false;
+  target.PlexusDiagram = api;
+  fire(target, "plexus-diagram:ready", { apiVersion: API_VERSION }, CustomEventCtor);
+  return true;
+}
+function uninstallPublicApi(api, { win = globalThis.window ?? globalThis, CustomEventCtor } = {}) {
+  const target = win ?? globalThis;
+  let ours = false;
+  try {
+    ours = target.PlexusDiagram === api;
+    if (ours) delete target.PlexusDiagram;
+  } catch {
+    ours = false;
+  }
+  fire(target, "plexus-diagram:unload", { apiVersion: API_VERSION }, CustomEventCtor);
+  return ours;
+}
+
 // src/view/region-outline.js
 var OUTLINE_TOAST = {
   ready: "The image is not ready",
@@ -25674,7 +26255,7 @@ var LEGACY_METADATA_PAGE = "plexus-diagram/metadata";
 var TITLE_PANEL_CLASS = "rm-diagram-title-panel";
 var NEW_BOARD_STRING = "{{[[diagram]]:Untitled board}}";
 var ANCESTORS_PATTERN = "[:block/uid :block/string {:block/parents [:block/uid :block/string :block/props {:block/parents [:db/id]}]}]";
-var boardTitle = (s) => parseBoardTitle(s) || UNTITLED_BOARD;
+var boardTitle2 = (s) => parseBoardTitle(s) || UNTITLED_BOARD;
 var currentUid = (rec) => rec.crumbs[rec.crumbs.length - 1].uid;
 function crumbCopy(list) {
   return (list || []).map((c) => ({ uid: c.uid, title: c.title }));
@@ -25865,11 +26446,11 @@ async function installPlexusDiagram({
     }
   }
   function seedCrumbs(uid) {
-    const self = { uid, title: boardTitle(host.blockString?.(uid)) };
+    const self = { uid, title: boardTitle2(host.blockString?.(uid)) };
     try {
       const res = host.api.data.pull(ANCESTORS_PATTERN, [":block/uid", uid]);
       const parents = res?.[":block/parents"] ?? [];
-      const chain = parents.filter((p) => isDiagramString(pulledString(p)) && readPlexus(p[":block/props"] ?? p.props)?.v === 2).map((p) => ({ uid: p[":block/uid"], title: boardTitle(p[":block/string"]), depth: (p[":block/parents"] ?? []).length })).sort((a, b) => a.depth - b.depth).map(({ uid: u, title }) => ({ uid: u, title }));
+      const chain = parents.filter((p) => isDiagramString(pulledString(p)) && readPlexus(p[":block/props"] ?? p.props)?.v === 2).map((p) => ({ uid: p[":block/uid"], title: boardTitle2(p[":block/string"]), depth: (p[":block/parents"] ?? []).length })).sort((a, b) => a.depth - b.depth).map(({ uid: u, title }) => ({ uid: u, title }));
       return [...chain, self];
     } catch {
       return [self];
@@ -25911,7 +26492,7 @@ async function installPlexusDiagram({
       routeUid: rec.uid,
       autofocus,
       initialViewport: viewport,
-      onOpenBoard: (child) => visit(rec, [...rec.crumbs, { uid: child, title: boardTitle(host.blockString?.(child)) }]),
+      onOpenBoard: (child) => visit(rec, [...rec.crumbs, { uid: child, title: boardTitle2(host.blockString?.(child)) }]),
       onCrumb: (index) => visit(rec, rec.crumbs.slice(0, index + 1)),
       onHistoryBack: () => historyMove(rec, "back"),
       onHistoryForward: () => historyMove(rec, "forward"),
@@ -27113,6 +27694,242 @@ async function installPlexusDiagram({
     }
     reconcile();
   }));
+  function borderStroke() {
+    const probe = doc?.querySelector?.(".pxd-root") || doc?.body || doc?.documentElement;
+    let color = "";
+    try {
+      const view = doc?.defaultView || win;
+      const style = probe ? view?.getComputedStyle?.(probe) : null;
+      color = style?.getPropertyValue?.("--pxd-border") || style?.borderTopColor || "";
+    } catch {
+      color = "";
+    }
+    return thumbStroke(color);
+  }
+  function rasterBoard(svg, width, height) {
+    return new Promise((resolve) => {
+      const view = doc?.defaultView || win;
+      let url = "";
+      const finish = (blob) => {
+        try {
+          if (url) URL.revokeObjectURL(url);
+        } catch {
+        }
+        resolve(blob || null);
+      };
+      try {
+        const xml = new view.XMLSerializer().serializeToString(svg);
+        url = URL.createObjectURL(new Blob([xml], { type: "image/svg+xml" }));
+      } catch {
+        finish(null);
+        return;
+      }
+      const Img = view.Image;
+      if (typeof Img !== "function") {
+        finish(null);
+        return;
+      }
+      const img = new Img();
+      img.onload = () => {
+        const w = Math.max(1, Math.round(width));
+        const h = Math.max(1, Math.round(height));
+        const Off = view.OffscreenCanvas;
+        if (typeof Off === "function") {
+          try {
+            const canvas2 = new Off(w, h);
+            const g = canvas2.getContext("2d");
+            g.drawImage(img, 0, 0, w, h);
+            Promise.resolve(canvas2.convertToBlob({ type: "image/png" })).then(finish, () => finish(null));
+            return;
+          } catch {
+          }
+        }
+        const canvas = doc.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        canvas.hidden = true;
+        try {
+          canvas.style.position = "fixed";
+          canvas.style.left = "-10000px";
+        } catch {
+        }
+        try {
+          (doc.body || doc.documentElement).append(canvas);
+        } catch {
+        }
+        try {
+          const g = canvas.getContext("2d");
+          g.drawImage(img, 0, 0, w, h);
+          if (typeof canvas.toBlob !== "function") {
+            canvas.remove?.();
+            finish(null);
+            return;
+          }
+          canvas.toBlob((blob) => {
+            canvas.remove?.();
+            finish(blob);
+          }, "image/png");
+        } catch {
+          canvas.remove?.();
+          finish(null);
+        }
+      };
+      img.onerror = () => finish(null);
+      img.src = url;
+    });
+  }
+  function thumbnailBoard(boardUid, opts = {}) {
+    const maxWidth = Number.isFinite(opts?.maxWidth) && opts.maxWidth > 0 ? opts.maxWidth : 160;
+    let pulled = null;
+    try {
+      pulled = host.pullBoard?.(boardUid);
+    } catch {
+      pulled = null;
+    }
+    const board2 = pulled ? buildBoard(pulled) : null;
+    if (!board2 || !doc) return Promise.resolve(null);
+    const rects = worldRects(board2);
+    const cards = [];
+    for (const item of board2.items.values()) {
+      if (item.type === "section") continue;
+      const rect = rects.get(item.uid);
+      if (rect) cards.push(rect);
+    }
+    const bounds = boardBounds(cards.length ? cards : [...rects.values()]);
+    const fit = fitThumbSize(bounds.w, bounds.h, maxWidth);
+    if (!fit) return Promise.resolve(null);
+    const svg = minimapSvg(doc, { v: bounds, items: cards, size: fit.width });
+    svg.setAttribute("width", String(fit.width));
+    svg.setAttribute("height", String(fit.height));
+    const stroke = borderStroke();
+    for (const node2 of svg.querySelectorAll?.("[stroke]") || []) node2.setAttribute("stroke", stroke);
+    return rasterBoard(svg, fit.width, fit.height);
+  }
+  function mountSize(rec) {
+    const root = rec?.view?.root || rec?.mountEl;
+    const box2 = root?.getBoundingClientRect?.() || {};
+    return {
+      width: Number(box2.width) || Number(rec?.mountEl?.clientWidth) || 0,
+      height: Number(box2.height) || Number(rec?.mountEl?.clientHeight) || 0
+    };
+  }
+  function findOpenMount(boardUid, sidebar) {
+    for (const rec of mounts.values()) {
+      if (!rec?.view || rec.dormant) continue;
+      if (rec.uid !== boardUid && currentUid(rec) !== boardUid) continue;
+      if (sidebar ? isSidebarMount(rec) : !isSidebarMount(rec)) return rec;
+    }
+    return null;
+  }
+  function waitOpenMount(boardUid, sidebar, left, done) {
+    const rec = findOpenMount(boardUid, sidebar);
+    if (rec || left <= 0) {
+      done(rec);
+      return;
+    }
+    lifecycle.timeout(() => waitOpenMount(boardUid, sidebar, left - 1, done), 50);
+  }
+  function pulseCard(rec, cardUid, left) {
+    const root = rec?.view?.root || rec?.mountEl;
+    const shell = root?.querySelector?.(`[data-uid="${cardUid}"]`);
+    if (shell?.classList) {
+      shell.classList.add("pxd-item--pulse");
+      return;
+    }
+    if (left > 0) lifecycle.timeout(() => pulseCard(rec, cardUid, left - 1), 50);
+  }
+  function showCard(rec, cardUid) {
+    try {
+      rec.view?.focusUid?.(cardUid);
+    } catch {
+    }
+    pulseCard(rec, cardUid, 20);
+  }
+  function showSavedView(rec, viewUid, left) {
+    let text2 = "";
+    try {
+      text2 = host.blockString?.(viewUid) || "";
+    } catch {
+      text2 = "";
+    }
+    const region = parseRegion(text2);
+    if (!region || region.kind !== "view" || region.supported !== true) return;
+    const cam = setCameraFromView(region.v, mountSize(rec));
+    if (!cam) {
+      if (left > 0) lifecycle.timeout(() => showSavedView(rec, viewUid, left - 1), 50);
+      return;
+    }
+    try {
+      rec.view?.applyShow?.({ kind: "view", v: region.v, ids: region.ids || [] });
+    } catch {
+    }
+  }
+  function aimMount(rec, opts) {
+    if (!rec?.view) return;
+    const viewUid = typeof opts?.view === "string" ? opts.view : typeof opts?.region === "string" ? opts.region : "";
+    if (viewUid) showSavedView(rec, viewUid, 20);
+    if (opts?.card) showCard(rec, opts.card);
+  }
+  function openPublic(boardUid, opts = {}) {
+    const sidebar = Boolean(opts?.sidebar);
+    if (sidebar) {
+      try {
+        void host.openInSidebar?.(boardUid, "block");
+      } catch {
+      }
+    } else if (!findOpenMount(boardUid, false)) {
+      const asleep = [...mounts.values()].find((rec) => !isSidebarMount(rec) && (rec.uid === boardUid || currentUid(rec) === boardUid));
+      if (asleep?.mountEl) {
+        try {
+          asleep.mountEl.scrollIntoView?.({ block: "center" });
+        } catch {
+        }
+      } else {
+        let pageUid = "";
+        try {
+          pageUid = host.blockPageUid?.(boardUid) || "";
+        } catch {
+          pageUid = "";
+        }
+        try {
+          if (pageUid) void host.openPage?.(pageUid);
+          else void host.openBlock?.(boardUid);
+        } catch {
+        }
+      }
+    }
+    return new Promise((resolve) => {
+      waitOpenMount(boardUid, sidebar, 40, (rec) => {
+        if (!rec) {
+          resolve(false);
+          return;
+        }
+        aimMount(rec, opts);
+        resolve(true);
+      });
+    });
+  }
+  const publicApi = createPublicApi({
+    host: {
+      graphName: () => host.graph || graphFromHash(),
+      listBoards: (...args) => host.listBoards?.(...args),
+      q: (...args) => host.q?.(...args),
+      pullBoard: (uid) => host.pullBoard?.(uid)
+    },
+    version: badge,
+    addCard: (boardUid, string, x, y) => {
+      const session = acquireSession2(boardUid, { host, settings: liveSettings });
+      return Promise.resolve(session?.addPublicCard?.({ string, x, y })).finally(() => {
+        try {
+          session?.release?.();
+        } catch {
+        }
+      });
+    },
+    openBoard: (boardUid, opts) => openPublic(boardUid, opts),
+    thumbnail: (boardUid, opts) => thumbnailBoard(boardUid, opts)
+  });
+  installPublicApi(publicApi, { win });
   const api = {
     version: badge,
     stats: host.stats,
@@ -27142,6 +27959,7 @@ async function installPlexusDiagram({
   };
   win.__plexusDiagram = api;
   lifecycle.add(() => {
+    uninstallPublicApi(publicApi, { win });
     if (win.__plexusDiagram === api) delete win.__plexusDiagram;
   });
   syncGuard();

@@ -18,7 +18,9 @@ import { watchEditorMenus } from "./editor-menus.js";
 import { applyEditorCounterScale } from "./editor-scale.js";
 import { UNMOUNT_GRACE_MS, intrinsicSize, shellOffscreen } from "./offscreen.js";
 import { isStructuralString } from "../model/regions.js";
+import { regionRefModel } from "../model/region-card.js";
 import { imageRegionRows, regionBadge } from "../model/region-menu.js";
+import { renderRegionCard, thumbRequest } from "./region-card.js";
 
 const SIDES = ["top", "right", "bottom", "left"];
 const CHUNK_MS = 8;
@@ -518,6 +520,8 @@ export function createItemRenderer({
   };
 
   const unmountRoots = (rec) => {
+    try { rec.regionNode?.pxdUnmount?.(); } catch { /* already revoked */ }
+    rec.regionNode = null;
     try { rec.refOff?.(); } catch { /* already off */ }
     rec.refOff = null;
     try { rec.pageUnwatch?.(); } catch { /* already off */ }
@@ -837,6 +841,7 @@ export function createItemRenderer({
       if (isKidsCard(item)) cls.push(item.kids ? "pxd-item--kids" : "pxd-item--kidsoff");
       if (rec.bare) cls.push("pxd-item--bare");
       if (rec.refBoard) cls.push("pxd-item--wb");
+      if (item.kind === "region-ref") cls.push("pxd-item--region");
       if (item.look === "block") cls.push("pxd-card--block");
       const task = isTaskCard(item) ? taskMeta(item.string, item.content) : null;
       if (task) {
@@ -1721,6 +1726,8 @@ export function createItemRenderer({
       else apply(preview, true);
       mountLinkedRefs(body, rec, item);
       armPageWatch(rec, item, holder);
+    } else if (item.kind === "region-ref") {
+      mountRegionBody(rec, item);
     } else if (item.kind === "block") {
       const ref = item.target.uid;
       const refString = host?.blockString?.(ref);
@@ -1781,6 +1788,36 @@ export function createItemRenderer({
     }
     rec.roots = budget.roots;
     rec.contentKey = contentKeyOf(item, rec.stickyLive);
+  };
+
+  const regionWindow = () => doc.defaultView || globalThis;
+  const mountRegionBody = (rec, item) => {
+    const api = regionWindow().RoamPlexus ?? null;
+    const ref = item.target?.uid;
+    let text = "";
+    try { text = ref ? host?.blockString?.(ref) || "" : ""; } catch { text = ""; }
+    const model = regionRefModel(text, api);
+    const caption = model?.caption ?? item.title ?? "";
+    if (model?.drawingUid) item.regionDrawing = model.drawingUid;
+    const off = rec.el.classList.contains("pxd-item--offscreen");
+    const detail = lod === "detail" && !off;
+    rec.regionNode = renderRegionCard(doc, rec.body, { caption }, {
+      tier: lod,
+      visible: detail,
+      maxWidth: Math.max(1, Math.round(Number(rec.rect?.w || item.w) || 160)),
+      thumbnail: detail ? (opts) => {
+        if (lod !== "detail" || rec.el.classList.contains("pxd-item--offscreen")) return null;
+        const live = regionWindow().RoamPlexus;
+        if (!ref || typeof live?.thumbnail !== "function") return null;
+        return live.thumbnail(ref, { maxWidth: opts?.maxWidth });
+      } : undefined,
+      open: ({ sidebar } = {}) => {
+        const live = regionWindow().RoamPlexus;
+        if (!ref || typeof live?.open !== "function") return;
+        try { live.open(ref, { region: true, sidebar: Boolean(sidebar) }); } catch { /* host */ }
+      },
+    });
+    if (detail) rec.regionWidth = rec.rect?.w ?? item.w;
   };
 
   const mountContent = (rec, item) => {
@@ -1898,6 +1935,10 @@ export function createItemRenderer({
       if (!off) {
         rec.el.style.removeProperty("--pxd-iw");
         rec.el.style.removeProperty("--pxd-ih");
+        const item = lastBoard?.items.get(uid);
+        if (!paused && item?.kind === "region-ref" && lod === "detail" && mounted.has(uid) && editing?.uid !== uid && thumbRequest(rec.regionWidth, rec.rect?.w)) {
+          mountContent(rec, item);
+        }
         continue;
       }
       const [iw, ih] = intrinsicSize(rect).split(" ");
@@ -1951,9 +1992,19 @@ export function createItemRenderer({
   };
 
   const setPaused = (on) => {
+    const was = paused;
     paused = Boolean(on);
     if (paused && idleHandle) { idleHandle(); idleHandle = null; }
     if (!paused && queue.length && !idleHandle) idleHandle = idle(pump);
+    if (was && !paused && lod === "detail") {
+      for (const [uid, rec] of shells) {
+        const item = lastBoard?.items.get(uid);
+        if (item?.kind !== "region-ref" || editing?.uid === uid || !mounted.has(uid)) continue;
+        if (rec.el.classList.contains("pxd-item--offscreen")) continue;
+        if (!thumbRequest(rec.regionWidth, rec.rect?.w)) continue;
+        mountContent(rec, item);
+      }
+    }
   };
 
   const setZoom = (zoom) => {
@@ -2653,8 +2704,72 @@ export function createItemRenderer({
     return true;
   };
 
+  let regionWatch = null;
+  const onRegionChange = (detail) => {
+    const eventUid = detail && typeof detail === "object" ? detail.uid : null;
+    if (!eventUid) return;
+    refreshRegionKinds(eventUid);
+  };
+  const bindRegionWatch = () => {
+    const api = regionWindow().RoamPlexus;
+    if (regionWatch === api) return;
+    try { regionWatch?.removeEventListener?.("change", onRegionChange); } catch { /* already gone */ }
+    regionWatch = api && typeof api.addEventListener === "function" ? api : null;
+    try { regionWatch?.addEventListener("change", onRegionChange); } catch { /* foreign api */ }
+  };
+  const refreshRegionKinds = (eventUid) => {
+    if (disposed || !lastBoard) return;
+    const api = regionWindow().RoamPlexus ?? null;
+    let changed = false;
+    for (const item of lastBoard.items.values()) {
+      if (item.type !== "card" || (item.kind !== "block" && item.kind !== "region-ref")) continue;
+      const ref = item.target?.kind === "block" ? item.target.uid : null;
+      if (!ref) continue;
+      if (eventUid && item.regionDrawing && item.regionDrawing !== eventUid && ref !== eventUid) continue;
+      let text = null;
+      try { text = host?.blockString?.(ref); } catch { text = null; }
+      const model = regionRefModel(typeof text === "string" ? text : "", api);
+      const drawing = model?.drawingUid || item.regionDrawing || "";
+      if (eventUid && drawing !== eventUid && ref !== eventUid) continue;
+      const nextKind = model ? "region-ref" : "block";
+      const nextTitle = model ? (model.caption ?? "") : firstLine(item.string);
+      const same = item.kind === nextKind && (item.title || "") === nextTitle && (item.regionDrawing || "") === (model?.drawingUid || "");
+      if (!model && item.kind !== "region-ref") continue;
+      if (model) {
+        item.kind = "region-ref";
+        item.title = model.caption ?? "";
+        item.regionDrawing = model.drawingUid;
+      } else {
+        item.kind = "block";
+        item.title = firstLine(item.string);
+        delete item.regionDrawing;
+      }
+      const rec = shells.get(item.uid);
+      if (rec && editing?.uid !== item.uid) paintShell(rec, item);
+      if (!same || eventUid) {
+        changed = true;
+        if (rec && mounted.has(item.uid) && editing?.uid !== item.uid) unmountContent(item.uid);
+      }
+    }
+    if (changed && lastContent && !quieted) fillContent(lastContent);
+  };
+  const onRegionReady = () => { bindRegionWatch(); refreshRegionKinds(null); };
+  const onRegionUnload = () => {
+    try { regionWatch?.removeEventListener?.("change", onRegionChange); } catch { /* already gone */ }
+    regionWatch = null;
+    refreshRegionKinds(null);
+  };
+  const regionWin = regionWindow();
+  regionWin.addEventListener?.("roam-plexus:ready", onRegionReady);
+  regionWin.addEventListener?.("roam-plexus:unload", onRegionUnload);
+  bindRegionWatch();
+
   const dispose = () => {
     disposed = true;
+    try { regionWin.removeEventListener?.("roam-plexus:ready", onRegionReady); } catch { /* already gone */ }
+    try { regionWin.removeEventListener?.("roam-plexus:unload", onRegionUnload); } catch { /* already gone */ }
+    try { regionWatch?.removeEventListener?.("change", onRegionChange); } catch { /* already gone */ }
+    regionWatch = null;
     closePeek();
     doc.removeEventListener?.("pointerup", onMenuPointer, true);
     stopMenus?.();

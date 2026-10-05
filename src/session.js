@@ -76,6 +76,20 @@ const extensions = [];
 
 // Roam's undo stack holds 50 changes, so one bulk add stays under it: past 45 cards only the first 45 are made.
 export const BULK_CARD_CAP = 45;
+
+// One create. The parent is the board uid. x and y default to 40. No second parent.
+export function addPublicCard(opts = {}, createFn) {
+  const { string = "", x, y, boardUid, create } = opts && typeof opts === "object" ? opts : {};
+  const op = {
+    parent: boardUid,
+    string: String(string ?? ""),
+    x: Number.isFinite(x) ? x : 40,
+    y: Number.isFinite(y) ? y : 40,
+  };
+  const make = typeof create === "function" ? create : createFn;
+  if (typeof make !== "function") return op;
+  return make(op);
+}
 export function capBulk(list, emit) {
   if (list.length <= BULK_CARD_CAP) return list;
   emit("toast", { message: `Added ${BULK_CARD_CAP} of ${list.length} (Roam undo holds 50 changes)` });
@@ -189,7 +203,18 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
   const ix = () => (rix ??= indexTree(raw));
   const rebuild = () => {
     rix = null;
-    board = raw ? buildBoard(raw) : null;
+    const plexusApi = globalThis.window?.RoamPlexus ?? globalThis.RoamPlexus ?? null;
+    board = raw ? buildBoard(raw, {
+      resolve: (id) => {
+        try {
+          const text = host.blockString?.(id);
+          return typeof text === "string" ? text : null;
+        } catch {
+          return null;
+        }
+      },
+      plexusApi,
+    }) : null;
     rects = board ? worldRects(board) : new Map();
   };
   rebuild();
@@ -794,6 +819,20 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
         }
         applyFit(t, fitTouched, { skip: changedSections });
       });
+    },
+
+    addPublicCard({ string, x, y } = {}) {
+      return txn((t) => addPublicCard({
+        string,
+        x,
+        y,
+        boardUid: uid,
+        create: (op) => t.create({
+          parent: op.parent,
+          string: op.string,
+          plexus: serializeItemLayout({ x: op.x, y: op.y }),
+        }),
+      }));
     },
 
     createCard({ x, y, string = "", w, h, color, look } = {}) {

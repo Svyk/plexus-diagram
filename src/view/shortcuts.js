@@ -64,6 +64,7 @@ export const SHORTCUTS = [
   { group: "View", keys: "P", label: "Present", action: "present", events: [{ key: "p" }], match: (ev) => letter(ev, "p") },
   { group: "View", keys: "?", label: "Shortcuts", action: "help", events: [{ key: "?", shift: true, code: "Slash" }], match: (ev) => !hasMod(ev) && !ev.alt && (ev.key === "?" || (ev.code === "Slash" && ev.shift)) },
   { group: "View", keys: "Shift+V", label: "Save view", action: "saveView", events: [{ key: "V", shift: true }], match: (ev) => !hasMod(ev) && !ev.alt && ev.shift && down(ev) === "v" },
+  { group: "View", keys: "Shift+T", label: "Memory lane", action: "memoryLane", events: [{ key: "T", shift: true }], match: (ev) => !hasMod(ev) && !ev.alt && ev.shift && down(ev) === "t" },
   { group: "View", keys: "Escape", label: "Close or step back", action: "escape", mode: "always", events: [{ key: "Escape" }], match: (ev) => ev.key === "Escape" },
 
   { group: "Navigate", keys: "⌘[", label: "Back", action: "back", events: [{ key: "[", meta: true, code: "BracketLeft" }], match: (ev) => hasMod(ev) && !ev.shift && !ev.alt && (ev.code === "BracketLeft" || ev.key === "[") },

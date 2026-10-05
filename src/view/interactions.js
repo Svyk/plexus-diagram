@@ -829,6 +829,7 @@ export function createInteractions({ actions, settings } = {}) {
       case "quickLook": call("quickLook"); return true;
       case "present": call("present"); return true;
       case "saveView": call("saveView"); return true;
+      case "memoryLane": call("memoryLane"); return true;
       case "help": call("toggleShortcuts"); return true;
       case "expand": {
         if (state.selection.size !== 1) return false;

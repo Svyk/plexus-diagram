@@ -8,6 +8,8 @@ import { openAddToBoard } from "./view/board-picker.js";
 import { createRelChips } from "./relchips.js";
 import { createBoardChips } from "./boardchips.js";
 import { createCardChips } from "./cardchips.js";
+import { createResurface } from "./view/resurface-panel.js";
+import { closeOpenWhyPopovers } from "./view/why-pop.js";
 import { createCardCache } from "./model/card-cache.js";
 import { imageSrc } from "./model/export.js";
 import { parseRegion } from "./model/regions.js";
@@ -142,6 +144,14 @@ export async function installPlexusDiagram({
   const doc = globalThis.document;
   const win = globalThis.window ?? globalThis;
   const badge = PACKAGE_VERSION || version || "DEV";
+  // First disposer runs last. A why popover sits on document.body, outside every mount.
+  lifecycle.add(() => {
+    try { closeOpenWhyPopovers(); } catch { /* already gone */ }
+    const nodes = doc?.querySelectorAll?.("[class*='pxd-']");
+    for (const el of [...(nodes || [])]) {
+      try { el.remove(); } catch { /* already gone */ }
+    }
+  });
 
   if (!injectedHost) injectedHost = createHost();
   if (!injectedAcquire) injectedAcquire = acquireSessionDefault;
@@ -204,9 +214,46 @@ export async function installPlexusDiagram({
     cardChips.scan(doc?.body);
     relChips.scan(doc?.body);
   };
+  let resurfaceRows = [];
+  let resurfaceAt = 0;
+  const resurfaceList = () => {
+    if (resurfaceRows.length && Date.now() - resurfaceAt < 60000) return resurfaceRows;
+    const entries = cardCache.entries();
+    const uids = [...new Set(entries.map((row) => row.uid).filter(Boolean))];
+    if (!uids.length) {
+      resurfaceRows = [];
+      return resurfaceRows;
+    }
+    let times = [];
+    try {
+      times = uids.length && typeof host.q === "function"
+        ? host.q("[:find ?u ?t ?s :in $ [?u ...] :where [?e :block/uid ?u] [?e :create/time ?t] [?e :block/string ?s]]", uids) || []
+        : [];
+    } catch {
+      times = [];
+    }
+    const byUid = new Map(times.map((row) => [row[0], row]));
+    resurfaceRows = [];
+    for (const row of entries) {
+      const hit = byUid.get(row.uid);
+      if (!hit || !Number.isFinite(hit[1])) continue;
+      const line = String(hit[2] || "Card").split("\n")[0].slice(0, 80);
+      resurfaceRows.push({ ...row, time: hit[1], title: `${line} · ${row.title}` });
+    }
+    resurfaceAt = Date.now();
+    return resurfaceRows;
+  };
+  const resurface = createResurface({
+    doc,
+    pageTitle: () => doc?.querySelector?.("h1.rm-title-display")?.textContent || "",
+    intervals: () => settings[SETTING_IDS.resurfaceIntervals] || "7,30,90,365",
+    rows: resurfaceList,
+    onOpen: ({ boardUid, cardUid }) => { void openPublic(boardUid, { card: cardUid }); },
+  });
   lifecycle.add(() => relChips.dispose());
   lifecycle.add(() => boardChips.dispose());
   lifecycle.add(() => cardChips.dispose());
+  lifecycle.add(() => resurface.dispose());
   const editSeen = new Map();
   let cacheLoadMs = null;
   function refreshCardCache() {
@@ -1225,6 +1272,7 @@ export async function installPlexusDiagram({
       relChips.scan(node);
       boardChips.scan(node);
       cardChips.scan(node);
+      resurface.scan(node);
     }
     scanRegions(node);
   }
@@ -1380,6 +1428,15 @@ export async function installPlexusDiagram({
     return targetView(context)?.newDrawing?.();
   }
 
+  async function resurfaceCommand(context) {
+    const parentUid = focusedUid(context);
+    if (!parentUid) {
+      console.info("[plexus-diagram] Focus a block first");
+      return;
+    }
+    await host.createBlock({ parentUid, order: "last", string: "{{[[plexus-resurface]]}}" });
+  }
+
   const sheetActions = [
     ["Plexus: Enhance this diagram", enhanceCommand],
     ["Plexus: New whiteboard here", newWhiteboardCommand],
@@ -1392,6 +1449,7 @@ export async function installPlexusDiagram({
   const sheetOnlyActions = [
     ["Plexus: Add page…", addPageCommand],
     ["Plexus: New drawing here", newDrawingCommand],
+    ["Plexus: Resurface here", resurfaceCommand],
   ];
 
   function runCommand(label, fn) {
@@ -1846,6 +1904,7 @@ export async function installPlexusDiagram({
     if (stopped || !active()) return;
     relChips.start();
     refreshCardCache();
+    resurface.scan(doc.body);
   }, 600);
   lifecycle.interval(() => {
     if (stopped || !active()) return;

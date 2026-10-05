@@ -8,6 +8,8 @@ import { arrowHeadPath, arrowSize, blockAnchor, blockInner, center, edgePath, sc
 import { routeAround } from "../model/section6.js";
 import { PALETTE, hexColor } from "../model/schema.js";
 import { highlightPill } from "../model/pdf-chips.js";
+import { whyTip } from "../model/why.js";
+import { paintSuggest } from "./suggest-lines.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const PAIR_OFFSET = 18;
@@ -20,6 +22,7 @@ const setClass = (el, name) => {
 
 export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlaySvg, onLabelCommit, blockText, onHover } = {}) {
   const edgeEls = new Map(); // uid → {g, hit, line, head, tail, dot, label}
+  const laneHidden = new Set();
   const linkEls = new Map(); // key → {g, hit, line, head, label}
   let wire = null;
   let marquee = null;
@@ -316,7 +319,8 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     if (hex) rec.g.style.setProperty("--pxd-line", hex);
     else rec.g.style.removeProperty("--pxd-line");
     const wasClear = Boolean(rec.ends) && rec.label.classList.contains("pxd-label--clear");
-    rec.label.className = `pxd-label${named ? ` pxd-c-${edge.color}` : ""}${edge.label ? "" : " pxd-label--empty"}${selected ? " pxd-label--selected" : ""}${dim ? " pxd-label--dim" : ""}`;
+    rec.label.className = `pxd-label${named ? ` pxd-c-${edge.color}` : ""}${edge.label ? "" : " pxd-label--empty"}${edge.why ? " pxd-label--why" : ""}${selected ? " pxd-label--selected" : ""}${dim ? " pxd-label--dim" : ""}`;
+    rec.label.title = edge.why ? whyTip(edge.why) : "";
     if (wasClear) rec.label.classList.add("pxd-label--clear");
     rec.label.style.color = hex || "";
     if (editingLabel?.uid !== edge.uid) rec.label.textContent = edge.label || "";
@@ -360,6 +364,11 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
       rec.label.style.display = "none";
       placeInner(rec, edge, null, zoom);
       paintPagePills(board, edge, rec, null);
+      return;
+    }
+    if (laneHidden.has(edge.uid)) {
+      rec.g.setAttribute("display", "none");
+      rec.label.style.display = "none";
       return;
     }
     rec.g.removeAttribute("display");
@@ -706,6 +715,11 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     setSearch,
     setMeasures,
     editLabel,
+    setSuggest: (lines) => paintSuggest(doc, svg, lines),
+    setLaneHidden(uids) {
+      laneHidden.clear();
+      for (const uid of uids || []) laneHidden.add(uid);
+    },
     isEditingLabel: () => Boolean(editingLabel),
     geometryOf,
     linkGeometryOf,

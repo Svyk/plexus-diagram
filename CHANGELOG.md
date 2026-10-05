@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.12.1 — 2026-10-05
+
+- Double-click a connection label to edit the label and a why note. Enter saves both. The outline chip adds "because …". An empty why writes no child.
+- Shift+T opens a memory lane. Play fades cards that did not exist yet. A snapshot tick restores that layout and writes nothing.
+- The references button on a block card lists blocks that mention it, grouped by year.
+- The links menu can draw dotted lines for shared page references. Connect makes the connection. Link text wraps the mention.
+- Plexus Commands has Resurface here. It inserts a button that lists cards from a week, a month, or a year ago. The command palette stays two entries.
+
 ## 2.12.0 — 2026-10-05
 
 - Hover the info button on a card or a connection to see when it was made, the board, the section, cards from the same day, and how often it is referenced. A block on a board shows one chip per board. Hover the chip for a map. Click the chip to open that card. Nothing here writes. The command palette stays two entries.

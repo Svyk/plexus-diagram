@@ -12,7 +12,7 @@
   max-width: calc(100% - 24px);
   margin: 2px 0 4px 24px;
   padding: 1px 8px;
-  overflow: hidden;
+  overflow: visible;
   border: 1px solid var(--pxd-rc-border);
   border-left: 3px solid var(--pxd-rc-accent);
   border-radius: 6px;
@@ -20,8 +20,7 @@
   color: var(--pxd-rc-muted);
   font-size: 12px;
   line-height: 1.5;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
   cursor: pointer;
   user-select: none;
 }

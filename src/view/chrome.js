@@ -226,7 +226,7 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
   const group2 = el("div", "pxd-toolbar__group", toolbar);
   const addBtn = iconButton(group2, "pxd-toolbar__add", "plus", "Add", "Add cards from the graph", () => on.togglePanel?.());
   iconButton(group2, "pxd-toolbar__info", "info-sign", "Info", "Card info (I)", () => on.openInfo?.());
-  const linksBtn = iconButton(group2, "pxd-toolbar__links", LINK_ICONS.all, LINK_LABELS.all, "Graph links (L)", () => on.cycleLinks?.());
+  const linksBtn = iconButton(group2, "pxd-toolbar__links", LINK_ICONS.all, LINK_LABELS.all, "Graph links (L)", () => (on.openLinksMenu ? on.openLinksMenu(linksBtn) : on.cycleLinks?.()));
   const groupView = el("div", "pxd-toolbar__group", toolbar);
   const tableBtn = iconButton(groupView, "pxd-toolbar__table", "th", "Table", "Table view", () => on.toggleTable?.());
   tableBtn.setAttribute("aria-pressed", "false");

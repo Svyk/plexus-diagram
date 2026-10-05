@@ -440,8 +440,10 @@ test("hover toolbar works on a note, a page and a block ref", async () => {
     assert.deepEqual(calls.at(-1), ["pgBeta001", "mentions"]);
     const ref = await show("refRRRR01");
     assert.equal(ref.querySelector(".bp3-icon-collapse-all") != null, true);
+    const before = calls.length;
     f.stub.dispatch(ref.querySelector(".pxd-ctx__refs"), "click");
-    assert.deepEqual(calls.at(-1), ["abcDEF123", "mentions"]);
+    assert.equal(calls.length, before);
+    assert.ok(root.querySelector(".pxd-contexts"));
     assert.match(root.querySelector("[data-uid=refRRRR01]").textContent, /ref child/);
   } finally {
     f.view.dispose();
@@ -709,6 +711,28 @@ test("dispose removes every pxd node, listener, observer and timer, and leaves s
     assert.equal(stub.document.body.classList.contains("pxd-has-fullscreen"), false);
     assert.equal(mountEl.classList.contains("pxd-mount--fullscreen"), false);
   } finally {
+    f.restore();
+  }
+});
+
+test("dispose removes a why popover that was appended to document.body", async () => {
+  const f = mountFixture();
+  const { stub, view, mountEl } = f;
+  try {
+    await f.flush();
+    const label = view.root.querySelector(".pxd-label");
+    assert.ok(label);
+    stub.dispatch(label, "dblclick", { target: label });
+    const pop = stub.document.querySelector(".pxd-why");
+    assert.ok(pop, "double-click on a label opens the why popover");
+    assert.equal(pop.parentElement, stub.document.body);
+    assert.ok(stub.listenerCount() > 0);
+    view.dispose();
+    assert.equal(stub.document.querySelector(".pxd-why"), null);
+    assert.equal(stub.pxdNodes().filter((n) => n !== mountEl).length, 0);
+    assert.equal(stub.listenerCount(), 0);
+  } finally {
+    try { f.view.dispose(); } catch { /* already disposed */ }
     f.restore();
   }
 });

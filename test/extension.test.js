@@ -60,6 +60,7 @@ test("settings panel follows spec section 6 ids, defaults and row types", () => 
     "enter-in-card",
     "toolbar-layout", "dock-position", "dock-style", "dock-labels", "chrome-density", "dock-options",
     "tooltips", "tooltip-delay", "task-tool", "task-chips", "task-default-project", "better-tasks", "card-chips",
+    "why-prompt", "resurface-intervals",
   ].sort());
   assert.equal(settingsDefaults()["enter-in-card"], "newline");
   assert.deepEqual(byIdOf(panel)["enter-in-card"].action.items, ["newline", "child"]);
@@ -172,7 +173,7 @@ test("UI-10: settings are grouped, described in plain language, and reset applie
   assert.deepEqual(members.Cards, ["default-card-look", "default-card-width", "default-card-height", "enter-in-card", "show-card-badges", "card-chips", "space-out"]);
   assert.deepEqual(members.Integrations, ["better-tasks", "task-tool", "task-chips", "task-default-project"]);
   assert.deepEqual(members.Sections, ["auto-fit-sections"]);
-  assert.deepEqual(members.Connections, ["graph-links", "attr-styles"]);
+  assert.deepEqual(members.Connections, ["graph-links", "attr-styles", "why-prompt"]);
   assert.ok(members.Board.includes("enabled"));
   assert.ok(members.Performance.includes("motion"));
   assert.equal(defaults["better-tasks"], false);

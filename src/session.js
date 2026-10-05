@@ -21,6 +21,7 @@ import {
   topLevelOf,
   worldRects,
 } from "./model/board.js";
+import { whyPlan } from "./model/why.js";
 import {
   BOARD_PATTERNS,
   DOCK_POSITIONS,
@@ -152,7 +153,8 @@ function detach(idx, uid) {
 
 function attach(parentNode, node, order) {
   const kids = kidsOf(parentNode);
-  if (order === "last" || typeof order !== "number") kids.push(node);
+  if (order === "first") kids.unshift(node);
+  else if (order === "last" || typeof order !== "number") kids.push(node);
   else kids.splice(Math.max(0, Math.min(order, kids.length)), 0, node);
   kids.forEach((k, i) => { k[ORD] = i; });
   parentNode[KIDS] = kids;
@@ -1635,6 +1637,21 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
         if (existing && existing.dir === dir) return existing.uid;
         const container = ensureContainer(t);
         return t.create({ parent: container, order: "last", string: edgeStringFor(from, to, dir, label, props.fromBlock, props.toBlock), plexus: props });
+      });
+    },
+
+    commitWhy(id, { label, why } = {}) {
+      return txn((t) => {
+        const edge = board.edges.get(id);
+        if (!edge) return;
+        const plan = whyPlan({ label, why, prevLabel: edge.label || "", prevWhy: edge.why || "" });
+        for (const step of plan) {
+          if (step.op === "label") t.string(id, edgeStringFor(edge.from, edge.to, edge.dir, step.label, edge.fromBlock, edge.toBlock));
+          else if (step.op === "why") {
+            if (edge.whyUid) t.string(edge.whyUid, step.text);
+            else t.create({ parent: id, order: "first", string: step.text });
+          } else if (step.op === "clear" && edge.whyUid) t.del(edge.whyUid);
+        }
       });
     },
 

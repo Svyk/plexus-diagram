@@ -23,6 +23,12 @@ import { isDailyTitle } from "../model/library.js";
 import { highlightLensTag, lensBright, lensCatalog, tagsForCard } from "../model/lens.js";
 import { HALO_PULL, company, headerText, readHaloPull } from "../model/halo.js";
 import { openHaloPopover } from "./halo-pop.js";
+import { openWhyPopover } from "./why-pop.js";
+import { leavesBoardPointer } from "./overlay-hit.js";
+import { mountContextsDrawer } from "./contexts-drawer.js";
+import { mountMemoryLane } from "./lane-bar.js";
+import { breadcrumb, snippetOf } from "../model/contexts.js";
+import { linkMention, suggestPairs } from "../model/suggest.js";
 import { dropNamespace } from "../model/namespace.js";
 import { isBareTask, isTaskAttr, isTaskString, setTaskAttrNames, taskMeta, taskState } from "../model/tasks.js";
 import { createBt } from "../host/bt.js";
@@ -811,6 +817,7 @@ export function mountBoardView({
   let size = { width: 0, height: 0 };
   let rootRect = { left: 0, top: 0, width: 0, height: 0 };
   let disposed = false;
+  let disposing = false;
   let released = false;
   let gesturing = false;
   let isFullscreen = false;
@@ -818,6 +825,14 @@ export function mountBoardView({
   let suppressClick = false;
   let swallowMouseUp = false;
   let linkMode = setting("graph-links", "all");
+  let suggestMode = "off";
+  let suggestWarned = false;
+  const suggestDismissed = new Set();
+  let whyPop = null;
+  let contextsDrawer = null;
+  let memoryLane = null;
+  let lanePreview = false;
+  let linksMenu = null;
   let selection = { items: [], edge: null, link: null };
   let liveRects = null; // Map override during move/resize preview
   let grown = new Set(); // section uids whose shells show a live auto-fit preview
@@ -1563,6 +1578,217 @@ export function mountBoardView({
 
   // ------------------------------------------------------------ 1.2 helpers
   const toast = (message, undo = false) => chrome.toast.show({ message, action: undo ? { label: "Undo", run: () => session.undo?.() } : undefined });
+  const pairKey = (a, b) => (a < b ? `${a}|${b}` : `${b}|${a}`);
+  const closeLinksMenu = () => {
+    const menu = linksMenu;
+    linksMenu = null;
+    if (!menu) return;
+    try { menu.remove(); } catch { /* a body menu must still leave */ }
+    if (menu.parentElement) {
+      try { menu.parentElement.removeChild(menu); } catch { /* already gone */ }
+    }
+  };
+  const refreshSuggest = () => {
+    const b = board();
+    if (!b || suggestMode === "off") { edgesR.setSuggest?.([]); return; }
+    const cards = [];
+    for (const item of b.items.values()) {
+      if (item.type === "section") continue;
+      const text = `${item.string || ""} ${item.title || ""}`;
+      const refs = [];
+      const re = /\[\[([^\]\n]+)\]\]/g;
+      let match;
+      while ((match = re.exec(text))) refs.push(match[1]);
+      cards.push({
+        uid: item.uid,
+        text,
+        refs,
+        attrs: [],
+        pageTitle: item.kind === "page" ? (item.target?.title || item.title || "") : "",
+      });
+    }
+    const existing = new Set([...b.edges.values()].map((edge) => pairKey(edge.from, edge.to)));
+    const picked = selection.items.length > 1 ? new Set(selection.items) : null;
+    const result = suggestPairs(cards, { mode: suggestMode, existing, dismissed: suggestDismissed, only: picked });
+    if (result.tooMany) {
+      edgesR.setSuggest?.([]);
+      if (!suggestWarned) { suggestWarned = true; toast("Too many cards to suggest"); }
+      return;
+    }
+    suggestWarned = false;
+    const placed = paintRects();
+    const lines = [];
+    for (const pair of result.pairs) {
+      const a = placed.get(pair.a);
+      const c = placed.get(pair.b);
+      if (!a || !c) continue;
+      const pa = center(a);
+      const pb = center(c);
+      lines.push({ x1: pa.x, y1: pa.y, x2: pb.x, y2: pb.y, reason: pair.reason, a: pair.a, b: pair.b, key: pair.key });
+    }
+    edgesR.setSuggest?.(lines);
+  };
+  const openSuggestAction = (line) => {
+    closeLinksMenu();
+    const menu = doc.createElement("div");
+    menu.className = "pxd-linksmenu";
+    menu.style.position = "fixed";
+    menu.style.left = "24px";
+    menu.style.top = "24px";
+    const add = (label, run) => {
+      const button = doc.createElement("button");
+      button.type = "button";
+      button.textContent = label;
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        run();
+        menu.remove();
+      });
+      menu.append(button);
+    };
+    const reason = line.getAttribute("data-reason") || "";
+    const a = line.getAttribute("data-a");
+    const b = line.getAttribute("data-b");
+    const key = line.getAttribute("data-key");
+    add("Connect", () => {
+      const name = /\[\[(.+?)\]\]/.exec(reason)?.[1] || "";
+      if (a && b) void session.addEdge?.({ from: a, to: b, label: name });
+    });
+    add("Link text", () => {
+      const title = /'([^']+)'/.exec(reason)?.[1] || "";
+      const item = board()?.items.get(a);
+      const next = item && title ? linkMention(item.string || item.title || "", title) : null;
+      if (next) void session.setString?.(item.uid, next);
+    });
+    add("Dismiss", () => { if (key) suggestDismissed.add(key); refreshSuggest(); });
+    doc.body.append(menu);
+    linksMenu = menu;
+  };
+  const openWhy = (uid, focus = "label") => {
+    const edge = board()?.edges.get(uid);
+    if (!edge) return;
+    whyPop?.close();
+    const labelEl = edgesR.labelEl?.(uid);
+    const box = labelEl?.getBoundingClientRect?.() || { left: 24, top: 24, right: 80, bottom: 48 };
+    whyPop = openWhyPopover({
+      doc,
+      anchor: box,
+      label: edge.label || "",
+      why: edge.why || "",
+      focus,
+      onSave: (next) => { whyPop = null; void session.commitWhy?.(uid, next); },
+      onCancel: () => { whyPop = null; },
+    });
+  };
+  const openContexts = (uid) => {
+    contextsDrawer?.close();
+    let raw = [];
+    try {
+      raw = host?.q?.("[:find ?u ?s ?pt ?t ?ps :in $ ?uid :where [?c :block/uid ?uid] [?b :block/refs ?c] [?b :block/uid ?u] [?b :block/string ?s] [?b :create/time ?t] [?b :block/page ?pg] [?pg :node/title ?pt] [?b :block/parents ?p] [?p :block/children ?b] [?p :block/string ?ps]]", uid) || [];
+    } catch { raw = []; }
+    const rows = raw.map((row) => ({ uid: row[0], time: Number(row[3]), crumb: breadcrumb(row[2], row[4]), snippet: snippetOf(row[1]) }));
+    contextsDrawer = mountContextsDrawer({
+      doc,
+      parent: root,
+      rows,
+      onOpen: (blockUid, { sidebar }) => {
+        if (sidebar) host?.openInSidebar?.(blockUid, "block");
+        else host?.openBlock?.(blockUid);
+      },
+    });
+  };
+  const clearLaneMarks = () => {
+    const b = board();
+    for (const item of b?.items.values() || []) {
+      const el = itemsR.shellOf(item.uid);
+      el?.classList.remove("pxd-item--future", "pxd-item--fresh");
+      if (lanePreview && el) {
+        const rect = rects().get(item.uid);
+        if (rect) el.style.transform = `translate(${rect.x}px, ${rect.y}px)`;
+      }
+    }
+    lanePreview = false;
+    edgesR.setLaneHidden?.([]);
+    if (b) edgesR.update({ board: b, edgeUids: [...b.edges.keys()], rects: paintRects(), zoom: vp.zoom });
+  };
+  const toggleMemoryLane = () => {
+    if (memoryLane) { memoryLane.close(); memoryLane = null; clearLaneMarks(); return; }
+    const b = board();
+    if (!b) return;
+    const uids = [...b.items.keys(), ...b.edges.keys()];
+    let times = [];
+    try {
+      times = uids.length && host?.q ? host.q("[:find ?u ?t :in $ [?u ...] :where [?e :block/uid ?u] [?e :create/time ?t]]", uids) || [] : [];
+    } catch { times = []; }
+    const timeOf = new Map(times.map((row) => [row[0], row[1]]));
+    memoryLane = mountMemoryLane({
+      doc,
+      parent: root,
+      items: uids.map((uid) => ({ uid, time: timeOf.get(uid) })),
+      edges: [...b.edges.values()].map((edge) => ({ uid: edge.uid, from: edge.from, to: edge.to, time: timeOf.get(edge.uid) })),
+      snapshots: b.snapshots || [],
+      motion: setting("motion", "full"),
+      onFrame(frame) {
+        const future = new Set(frame.future);
+        const fresh = new Set(frame.fresh);
+        for (const item of b.items.values()) {
+          const el = itemsR.shellOf(item.uid);
+          if (!el) continue;
+          el.classList.toggle("pxd-item--future", future.has(item.uid));
+          el.classList.toggle("pxd-item--fresh", fresh.has(item.uid));
+        }
+        edgesR.setLaneHidden?.(frame.hiddenEdges);
+        edgesR.update({ board: b, edgeUids: [...b.edges.keys()], rects: paintRects(), zoom: vp.zoom });
+      },
+      onPreview(preview) {
+        lanePreview = true;
+        for (const [uid, rect] of preview.layout) {
+          const el = itemsR.shellOf(uid);
+          if (el) el.style.transform = `translate(${rect.x}px, ${rect.y}px)`;
+        }
+      },
+    });
+  };
+  const openLinksMenu = (anchor) => {
+    closeLinksMenu();
+    const menu = doc.createElement("div");
+    menu.className = "pxd-linksmenu pxd-root";
+    menu.style.position = "fixed";
+    const box = anchor?.getBoundingClientRect?.() || { left: 8, bottom: 40 };
+    menu.style.left = `${box.left || 8}px`;
+    menu.style.top = `${(box.bottom || 40) + 4}px`;
+    menu.style.height = "auto";
+    const add = (label, run) => {
+      const button = doc.createElement("button");
+      button.type = "button";
+      button.className = "pxd-linksmenu__row";
+      button.textContent = label;
+      button.addEventListener("click", (event) => {
+        event.preventDefault();
+        event.stopPropagation();
+        run();
+        closeLinksMenu();
+      });
+      menu.append(button);
+    };
+    const setLinks = (mode) => { linkMode = mode; chrome.toolbar.setLinkMode(linkMode); session.setLinkMode?.(linkMode); };
+    add("Links off", () => setLinks("off"));
+    add("Attribute links", () => setLinks("attributes"));
+    add("All links", () => setLinks("all"));
+    add("Suggest off", () => { suggestMode = "off"; suggestWarned = false; refreshSuggest(); });
+    add("Suggest shared refs", () => { suggestMode = "shared"; refreshSuggest(); });
+    add("Suggest shared and unlinked", () => { suggestMode = "both"; refreshSuggest(); });
+    (doc.body || root).append(menu);
+    linksMenu = menu;
+  };
+  listen(edgesSvg, "pointerdown", (event) => {
+    const line = event.target?.closest?.(".pxd-suggest__line");
+    if (!line) return;
+    event.preventDefault();
+    event.stopPropagation();
+    openSuggestAction(line);
+  });
   const lastSelected = () => selection.items[selection.items.length - 1] ?? null;
   const viewCenterWorld = () => screenToWorld(vp, { x: size.width / 2, y: size.height / 2 });
   const cardsIn = (uids) => {
@@ -2432,7 +2658,9 @@ export function mountBoardView({
       case "dash": if (edgeUid) void session.updateEdge?.(edgeUid, { dash: arg }); break;
       case "flip": if (edgeUid) void session.flipEdge?.(edgeUid); break;
       case "unblock": if (edgeUid) void session.updateEdge?.(edgeUid, { fromBlock: undefined, toBlock: undefined }); break;
-      case "label": if (edgeUid) edgesR.editLabel(edgeUid); break;
+      case "label": if (edgeUid) openWhy(edgeUid, "label"); break;
+      case "edit-why": if (edgeUid) openWhy(edgeUid, "why"); break;
+      case "memory-lane": toggleMemoryLane(); break;
       case "notes": if (edgeUid) host?.openInSidebar?.(edgeUid, "block"); break;
       case "write-to-graph": void writeEdgeToGraph(); break;
       case "align": alignSel(arg, uids); break;
@@ -2566,6 +2794,7 @@ export function mountBoardView({
       togglePanel: () => panel.toggle(),
       openInfo: () => openInfo(),
       cycleLinks: () => cycleLinks(),
+      openLinksMenu: (anchor) => openLinksMenu(anchor),
       toggleTable: () => setTable(!tableMode),
       toggleKanban: () => setKanban(!kanbanMode),
       zoomIn: () => animateViewport(zoomAt(vp, { x: size.width / 2, y: size.height / 2 }, 1.2)),
@@ -2610,6 +2839,7 @@ export function mountBoardView({
       },
       showRefs: () => {
         const it = barCard();
+        if (it?.target?.kind === "block" && it.target.uid) { openContexts(it.target.uid); return; }
         const uid = mentionsUid(it);
         if (uid) host?.openInSidebar?.(uid, "mentions");
       },
@@ -2639,7 +2869,7 @@ export function mountBoardView({
       route: (route) => { if (selection.edge) void session.updateEdge?.(selection.edge, { route }); },
       dash: (dash) => { if (selection.edge) void session.updateEdge?.(selection.edge, { dash }); },
       weight: (weight) => { if (selection.edge) void session.updateEdge?.(selection.edge, { weight }); },
-      label: () => { if (selection.edge) edgesR.editLabel(selection.edge); },
+      label: () => { if (selection.edge) openWhy(selection.edge, "label"); },
       notes: () => { if (selection.edge) host?.openInSidebar?.(selection.edge, "block"); },
       writeToGraph: () => writeEdgeToGraph(),
       pinLink: () => {
@@ -3357,6 +3587,10 @@ export function mountBoardView({
     closeQuickLook: () => quicklook.close(),
     saveView: () => saveCameraView(),
     closeOverlay: () => {
+      if (linksMenu) { closeLinksMenu(); noteOverlayClosed(); return true; }
+      if (whyPop) { whyPop.close(); whyPop = null; noteOverlayClosed(); return true; }
+      if (contextsDrawer) { contextsDrawer.close(); contextsDrawer = null; noteOverlayClosed(); return true; }
+      if (memoryLane) { memoryLane.close(); memoryLane = null; clearLaneMarks(); noteOverlayClosed(); return true; }
       if (viewDialog) {
         closeViewDialog();
         noteOverlayClosed();
@@ -3427,7 +3661,10 @@ export function mountBoardView({
     wrapInSection: (uids) => session.wrapInSection?.(uids),
     deleteItems: (uids, opts) => session.deleteItems?.(uids, opts),
     deleteEdges: (uids) => session.deleteEdges?.(uids),
-    addEdge: (spec) => session.addEdge?.(spec),
+    addEdge: (spec) => Promise.resolve(session.addEdge?.(spec)).then((uid) => {
+      if (uid && setting("why-prompt", false) === true) openWhy(uid, "why");
+      return uid;
+    }),
     undo: () => session.undo?.(),
     redo: () => session.redo?.(),
     enterEdit: (uid, opts) => enterEdit(uid, opts),
@@ -3445,7 +3682,8 @@ export function mountBoardView({
     autocompleteOpen: () => itemsR.autocompleteOpen(),
     renameSection: (uid) => itemsR.renameSection(uid),
     renamePage: (uid) => itemsR.renamePage(uid),
-    editLabel: (uid) => edgesR.editLabel(uid),
+    editLabel: (uid) => openWhy(uid, setting("why-prompt", false) === true ? "why" : "label"),
+    memoryLane: () => toggleMemoryLane(),
     openBlock: (uid) => host?.openBlock?.(uid),
     toast: (t) => chrome.toast.show(t),
     openSearch: () => chrome.search.open(),
@@ -3646,7 +3884,7 @@ export function mountBoardView({
     session.setString?.(uid, next);
   };
   listen(root, "pointerdown", (event) => {
-    if (event.target?.closest?.(".pxd-chrome")) return;
+    if (leavesBoardPointer(event.target)) return;
     // Interact is on: this click belongs to the reader. preventDefault or stopPropagation would block page nav.
     if (pdfClickShield(event.target)) return;
     else if (root.querySelector?.(".pxd-pdf-live")) itemsR.endPdfInteract();
@@ -3689,7 +3927,7 @@ export function mountBoardView({
   // mousedown/mouseup: inner React roots (renderString links) see them first; Roam's block handlers do not.
   for (const type of ["mousedown", "mouseup"]) {
     listen(root, type, (event) => {
-      if (event.target?.closest?.(".pxd-chrome")) return;
+      if (leavesBoardPointer(event.target)) return;
       const native = nativeClickKind(event.target);
       if (native === "checkbox" || native === "image") return;
       const editing = itemsR.editingUid();
@@ -3698,7 +3936,7 @@ export function mountBoardView({
     });
   }
   listen(root, "dragstart", (event) => {
-    if (event.target?.closest?.(".pxd-chrome, .pxd-item--editing, .pxd-refs__row")) return;
+    if (leavesBoardPointer(event.target) || event.target?.closest?.(".pxd-item--editing, .pxd-refs__row")) return;
     event.preventDefault();
   });
   // Capture phase only cancels the click that ends a drag. Shielding Roam's block-edit handlers happens in
@@ -3735,10 +3973,10 @@ export function mountBoardView({
   listen(root, "click", (event) => {
     const kind = nativeClickKind(event.target);
     if (kind === "image" || kind === "checkbox") return;
-    if (!event.target?.closest?.(".pxd-chrome")) event.stopPropagation();
+    if (!leavesBoardPointer(event.target)) event.stopPropagation();
   });
   listen(root, "dblclick", (event) => {
-    if (event.target?.closest?.(".pxd-chrome, .pxd-refs")) return;
+    if (leavesBoardPointer(event.target) || event.target?.closest?.(".pxd-refs")) return;
     if (nativeClickKind(event.target)) return;
     event.stopPropagation();
     event.preventDefault();
@@ -3746,7 +3984,7 @@ export function mountBoardView({
     ctl.handle(normalize(event, "dblclick"));
   });
   listen(root, "wheel", (event) => {
-    if (event.target?.closest?.(".pxd-chrome")) return;
+    if (leavesBoardPointer(event.target)) return;
     // PG-1: a plain wheel scrolls a long page card's body until it hits an end; Cmd/Ctrl+wheel still zooms.
     if (pageBodyWantsWheel(event.target, event)) { event.stopPropagation(); return; }
     measure(); // the outer Roam page scrolls without any pointer event on the board
@@ -3756,7 +3994,7 @@ export function mountBoardView({
   // Right-click: the controller decides what was hit and asks us to open the menu; an editing card keeps the
   // browser's own menu (the controller returns false there).
   listen(root, "contextmenu", (event) => {
-    if (event.target?.closest?.(".pxd-chrome")) return;
+    if (leavesBoardPointer(event.target)) return;
     event.stopPropagation();
     // Roam's own menu for a ref / tag already handled this (its React root ran first); links and images keep the browser's.
     if (event.defaultPrevented) return;
@@ -4334,6 +4572,7 @@ export function mountBoardView({
         const links = paintedLinks();
         edgesR.render({ board: b, rects: shown, links, coveredEdges: session.coveredEdges || new Set(), selection, zoom: vp.zoom, dirty: dirty.all || dirty.structural || dirty.links ? null : dirty.edges });
         paintLegend();
+        if (suggestMode !== "off") refreshSuggest();
       }
       if (itemsMoveEdges) {
         const links = paintedLinks();
@@ -4869,52 +5108,73 @@ export function mountBoardView({
       return { timers: timers.count(), listeners: listeners.length + (captured ? 3 : 0), observers: observers.length, mounted: itemsR.mountedCount(), shells: itemsR.shellCount() };
     },
     dispose() {
-      if (disposed) return;
+      if (disposing) return;
+      disposing = true;
       disposed = true;
-      closeHalo();
-      regionMark?.destroy?.();
-      regionMark = null;
-      closeViewDialog();
-      closeHighlightDialog();
-      closeLens();
-      pagePicker?.close();
-      closeBlockEdit();
-      if (pointerBoard === root) pointerBoard = null;
-      clearOutline();
-      tableCtl.dispose();
-      kanbanCtl.dispose();
-      taskPop.dispose();
-      laterCtl.dispose();
-      stopTimer();
-      ctl.cancel();
-      releaseCapture();
-      if (heightDrag) onHeightUp();
-      subs.splice(0).forEach((off) => { try { off?.(); } catch { /* already off */ } });
-      routeOff();
-      fsDispose();
-      applyFullscreenChrome(mountEl, false, doc);
-      try { vpStore.set(vpId, vp); } catch { /* the store can refuse a write */ }
-      vpStore.flush?.();
-      resumeTimer?.();
-      settleTimer?.();
-      frameHandle?.();
-      badgeTimer?.();
-      menu.dispose();
-      quicklook.dispose();
-      presenter.dispose();
-      clip.dispose();
-      itemsR.dispose();
-      edgesR.dispose();
-      panel.dispose();
-      propsPanel.dispose();
-      tooltip.dispose();
-      chrome.dispose();
-      listeners.splice(0).forEach((off) => off());
-      observers.splice(0).forEach((o) => o.disconnect());
-      timers.cancelAll();
-      root.remove();
+      const step = (fn) => {
+        try { fn(); } catch (error) { console.warn("[plexus-diagram] dispose step failed", error); }
+      };
+      // Each step stands alone. A throw used to set disposed and skip the body popover and the window listeners.
+      step(() => closeLinksMenu());
+      step(() => { whyPop?.close(); whyPop = null; });
+      step(() => { contextsDrawer?.close(); contextsDrawer = null; });
+      step(() => {
+        if (!memoryLane) return;
+        memoryLane.close();
+        memoryLane = null;
+        clearLaneMarks();
+      });
+      step(() => closeHalo());
+      step(() => { regionMark?.destroy?.(); regionMark = null; });
+      step(() => closeViewDialog());
+      step(() => closeHighlightDialog());
+      step(() => closeLens());
+      step(() => pagePicker?.close());
+      step(() => closeBlockEdit());
+      step(() => { if (pointerBoard === root) pointerBoard = null; });
+      step(() => clearOutline());
+      step(() => tableCtl.dispose());
+      step(() => kanbanCtl.dispose());
+      step(() => taskPop.dispose());
+      step(() => laterCtl.dispose());
+      step(() => stopTimer());
+      step(() => ctl.cancel());
+      step(() => releaseCapture());
+      step(() => { if (heightDrag) onHeightUp(); });
+      step(() => {
+        doc.removeEventListener("pointermove", onDocMove, true);
+        doc.removeEventListener("pointerup", onDocUp, true);
+        doc.removeEventListener("pointercancel", onDocCancel, true);
+        doc.removeEventListener("pointermove", onHeightMove, true);
+        doc.removeEventListener("pointerup", onHeightUp, true);
+      });
+      step(() => subs.splice(0).forEach((off) => { try { off?.(); } catch { /* already off */ } }));
+      step(() => routeOff());
+      step(() => fsDispose());
+      step(() => applyFullscreenChrome(mountEl, false, doc));
+      step(() => { try { vpStore.set(vpId, vp); } catch { /* the store can refuse a write */ } });
+      step(() => vpStore.flush?.());
+      step(() => resumeTimer?.());
+      step(() => settleTimer?.());
+      step(() => frameHandle?.());
+      step(() => badgeTimer?.());
+      step(() => menu.dispose());
+      step(() => quicklook.dispose());
+      step(() => presenter.dispose());
+      step(() => clip.dispose());
+      step(() => itemsR.dispose());
+      step(() => edgesR.dispose());
+      step(() => panel.dispose());
+      step(() => propsPanel.dispose());
+      step(() => tooltip.dispose());
+      step(() => chrome.dispose());
+      step(() => listeners.splice(0).forEach((off) => { try { off(); } catch { /* already off */ } }));
+      step(() => observers.splice(0).forEach((o) => { try { o.disconnect(); } catch { /* already off */ } }));
+      step(() => timers.cancelAll());
+      step(() => root.remove());
       // The acquirer (feature.js) owns session.release(); a second release here destroyed shared sessions.
       released = true;
+      disposing = false;
     },
   };
   return view;

@@ -78,6 +78,21 @@ export function createCardCache() {
     titleOf(boardUid) {
       return titles.get(boardUid) || "Untitled board";
     },
+    entries() {
+      const out = [];
+      for (const [boardUid, list] of boards) {
+        for (const child of list) {
+          out.push({
+            uid: child.uid,
+            cardUid: child.uid,
+            target: child.target || "",
+            boardUid,
+            title: titles.get(boardUid) || "Untitled board",
+          });
+        }
+      }
+      return out;
+    },
     cardOn(boardUid, target) {
       return cardBy.get(keyOf(boardUid, target)) || "";
     },

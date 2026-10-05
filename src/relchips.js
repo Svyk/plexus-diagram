@@ -6,6 +6,7 @@ import { boundsOf, buildBoard, routedEdge, worldRects } from "./model/board.js";
 import { blockInner, edgePath } from "./model/geometry.js";
 import { assignDeepLink } from "./model/deeplink.js";
 import { PALETTE, attrNameOf, hexColor, itemLabel, parseBoardTitle } from "./model/schema.js";
+import { becauseClause } from "./model/why.js";
 import { drawPreview, previewFont } from "./view/minimap-svg.js";
 import { createTooltip } from "./view/tooltip.js";
 import { tipEntry } from "./view/tooltip-text.js";
@@ -44,10 +45,10 @@ const endName = (name, blockText) => {
 };
 
 // "↗ A —label→ B · on Board", with the block named when an end is a block.
-export function chipText({ from, to, label, boardTitle, fromBlockText, toBlockText } = {}) {
+export function chipText({ from, to, label, boardTitle, fromBlockText, toBlockText, why } = {}) {
   const arrow = label ? `—${clip(label, 32)}→` : "→";
   const board = clip(boardTitle, 32);
-  return `↗ ${endName(from, fromBlockText)} ${arrow} ${endName(to, toBlockText)}${board ? ` · on ${board}` : ""}`;
+  return `↗ ${endName(from, fromBlockText)} ${arrow} ${endName(to, toBlockText)}${board ? ` · on ${board}` : ""}${becauseClause(why)}`;
 }
 
 export function relationOf(board, edgeUid, { blockText } = {}) {
@@ -66,6 +67,7 @@ export function relationOf(board, edgeUid, { blockText } = {}) {
     from: title(edge.from),
     to: title(edge.to),
     label: edge.label || "",
+    why: edge.why || "",
     fromBlockText: edge.fromBlock ? read(edge.fromBlock) || "block" : "",
     toBlockText: edge.toBlock ? read(edge.toBlock) || "block" : "",
     boardTitle: board.title || parseBoardTitle(board.string) || "Untitled board",

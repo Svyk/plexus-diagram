@@ -3146,18 +3146,21 @@ export function createItemRenderer({
   regionWin.addEventListener?.("roam-plexus:unload", onRegionUnload);
   bindRegionWatch();
 
+  const dropRegionWatch = () => {
+    try { regionWin.removeEventListener?.("roam-plexus:ready", onRegionReady); } catch { /* already gone */ }
+    try { regionWin.removeEventListener?.("roam-plexus:unload", onRegionUnload); } catch { /* already gone */ }
+    try { regionWatch?.removeEventListener?.("change", onRegionChange); } catch { /* already gone */ }
+    regionWatch = null;
+    doc.removeEventListener?.("pointerup", onMenuPointer, true);
+  };
   const dispose = () => {
     disposed = true;
     try { pdfLiveOff?.(); } catch { /* already off */ }
     pdfLiveOff = null;
     pdfLiveUid = null;
     pdfOpenUid = null;
-    try { regionWin.removeEventListener?.("roam-plexus:ready", onRegionReady); } catch { /* already gone */ }
-    try { regionWin.removeEventListener?.("roam-plexus:unload", onRegionUnload); } catch { /* already gone */ }
-    try { regionWatch?.removeEventListener?.("change", onRegionChange); } catch { /* already gone */ }
-    regionWatch = null;
+    dropRegionWatch();
     closePeek();
-    doc.removeEventListener?.("pointerup", onMenuPointer, true);
     stopMenus?.();
     stopMenus = null;
     if (editing) {
@@ -3181,6 +3184,7 @@ export function createItemRenderer({
     shells.clear();
     mounted.clear();
     queue = [];
+    dropRegionWatch();
   };
 
   return {

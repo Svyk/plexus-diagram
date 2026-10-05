@@ -22,6 +22,7 @@ import { drawingRefModel, isDrawingString } from "./drawing-card.js";
 import { isContainerString, parseRegion } from "./regions.js";
 import { listFromNodes } from "./snapshots.js";
 import { highlightModel } from "./highlight.js";
+import { readWhy } from "./why.js";
 
 const AUTO_GAP = 40;
 const AUTO_OFFSET = 48;
@@ -259,11 +260,14 @@ export function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf } = {
       const n = normalizeEdge(eplexus);
       const a = items.get(n.from);
       const b = items.get(n.to);
+      const why = readWhy(sortedChildren(e));
       edges.set(euid, {
         uid: euid,
         string: estring,
         ...n,
         label: parseEdgeLabel(estring, n.fromBlock ? `((${n.fromBlock}))` : a ? semanticRef(a) : "", n.toBlock ? `((${n.toBlock}))` : b ? semanticRef(b) : ""),
+        why: why?.text || "",
+        whyUid: why?.uid || "",
         valid: Boolean(a && b),
       });
     }

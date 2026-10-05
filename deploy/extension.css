@@ -4149,6 +4149,60 @@ body.roam-body.dark .pxd-commands__box {
   background: var(--pxd-accent-soft);
 }
 
+/* NAV-2. Contexts drawer. A border, a scroll, and no tinted fill. */
+
+.pxd-contexts {
+  position: absolute;
+  z-index: 6;
+  top: 48px;
+  right: 8px;
+  width: 240px;
+  max-height: 240px;
+  overflow: auto;
+  border: 1px solid var(--pxd-border, #d0d7de);
+  border-radius: 8px;
+  background: var(--pxd-surface, #fff);
+  color: #1f2937;
+  font-size: 12px;
+}
+
+.pxd-lod-map .pxd-contexts { display: none; }
+
+.pxd-contexts__year {
+  margin: 6px 8px 2px;
+  font-weight: 600;
+}
+
+.pxd-contexts__row {
+  display: block;
+  width: 100%;
+  margin: 0;
+  padding: 4px 8px;
+  border: 0;
+  border-top: 1px solid var(--pxd-border, #d0d7de);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.pxd-contexts__snippet { color: #6b7280; }
+
+.pxd-contexts__filter,
+.pxd-contexts__cap {
+  margin: 6px 8px;
+}
+
+.bp3-dark .pxd-contexts,
+body.bt-theme-dark .pxd-contexts,
+.rm-dark-theme .pxd-contexts,
+body.roam-body.dark .pxd-contexts {
+  border-color: #3b4b58;
+  background: #1c2127;
+  color: #e6edf3;
+}
+
 /* NP-2. The three native node tools sit in the context bar. Hit target is 28px. */
 
 .pxd-root .pxd-ctx .pxd-ctx__btn.pxd-ctx__color,
@@ -4489,6 +4543,52 @@ body.roam-body.dark .pxd-halo__spark,
 .pxd-root.pxd-hl .pxd-item__body span.rm-page-ref[data-tag^="c:"],
 .pxd-root.pxd-hl .pxd-item__body a.rm-page-ref[data-tag^="c:"] {
   display: none;
+}
+
+/* MEM-3. Memory lane. Future cards fade. The outline is the fresh mark. */
+
+.pxd-memory {
+  position: absolute;
+  z-index: 11;
+  left: 8px;
+  right: 8px;
+  bottom: 8px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  height: 36px;
+  padding: 0 8px;
+  border-top: 1px solid var(--pxd-border, #d0d7de);
+  background: transparent;
+  color: #1f2937;
+}
+
+.pxd-memory__range { flex: 1; }
+
+.pxd-memory__play,
+.pxd-memory__tick {
+  height: 24px;
+  padding: 0 8px;
+  border: 1px solid var(--pxd-border, #d0d7de);
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.pxd-item--future { opacity: 0.12; }
+
+.pxd-item--fresh { outline: 1px solid currentColor; }
+
+.pxd-edge--lane-off { display: none; }
+
+.bp3-dark .pxd-memory,
+body.bt-theme-dark .pxd-memory,
+.rm-dark-theme .pxd-memory,
+body.roam-body.dark .pxd-memory {
+  border-color: #3b4b58;
+  color: #e6edf3;
 }
 
 /* PERF-3. An offscreen card keeps the model size and skips layout and paint.
@@ -5839,7 +5939,7 @@ body.roam-body.dark .pxd-viewmap .pxd-viewmap__card--hi,
   max-width: calc(100% - 24px);
   margin: 2px 0 4px 24px;
   padding: 1px 8px;
-  overflow: hidden;
+  overflow: visible;
   border: 1px solid var(--pxd-rc-border);
   border-left: 3px solid var(--pxd-rc-accent);
   border-radius: 6px;
@@ -5847,8 +5947,7 @@ body.roam-body.dark .pxd-viewmap .pxd-viewmap__card--hi,
   color: var(--pxd-rc-muted);
   font-size: 12px;
   line-height: 1.5;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  white-space: normal;
   cursor: pointer;
   user-select: none;
 }
@@ -6010,6 +6109,49 @@ body.roam-body.dark .pxd-relcrumb {
   --pxd-rc-accent: hsl(175 60% 55%);
 }
 
+/* MEM-4. Resurface panel. The Roam button stays when this panel leaves. */
+
+.pxd-root.pxd-resurface {
+  width: 280px;
+  height: auto;
+  margin: 4px 0 8px;
+  padding: 8px;
+  border: 1px solid var(--pxd-border, #d0d7de);
+  border-radius: 8px;
+  background: var(--pxd-surface, #fff);
+  color: #1f2937;
+  contain: none;
+  overflow: visible;
+  touch-action: auto;
+  font-size: 12px;
+}
+
+.pxd-resurface__tab,
+.pxd-resurface__item {
+  margin: 0 4px 4px 0;
+  padding: 2px 6px;
+  border: 1px solid var(--pxd-border, #d0d7de);
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.pxd-resurface__item { display: block; width: 100%; text-align: left; }
+
+.pxd-resurface__thumb { height: 48px; overflow: hidden; color: #1f2937; }
+
+.bp3-dark .pxd-resurface,
+body.bt-theme-dark .pxd-resurface,
+.rm-dark-theme .pxd-resurface,
+body.roam-body.dark .pxd-resurface,
+.pxd-root--dark.pxd-resurface {
+  border-color: #3b4b58;
+  background: #1c2127;
+  color: #e6edf3;
+}
+
 /* EK-2: sticky notes. A coloured header bar (drag handle, title, colour dot, minimize) over a body that is the live
    Roam block. Persistent: there is no close button; Delete and the menu remove it, and undo brings it back. */
 
@@ -6149,6 +6291,62 @@ body.roam-body.dark .pxd-relcrumb {
 .pxd-root.pxd-lod-map .pxd-item--sticky.pxd-item--min > .pxd-item__header,
 .pxd-root.pxd-lod-overview .pxd-item--sticky.pxd-item--min > .pxd-item__header {
   display: flex;
+}
+
+/* MEM-5. Suggestion lines are strokes only. The links menu uses a border, not a fill. */
+
+.pxd-root.pxd-linksmenu {
+  position: fixed;
+  z-index: 1000;
+  width: 220px;
+  height: auto;
+  padding: 6px;
+  border: 1px solid var(--pxd-border, #d0d7de);
+  border-radius: 8px;
+  background: var(--pxd-surface, #fff);
+  color: #1f2937;
+  contain: none;
+  overflow: visible;
+  touch-action: auto;
+}
+
+.pxd-linksmenu__row {
+  display: block;
+  width: 100%;
+  margin: 0 0 4px;
+  padding: 4px 6px;
+  border: 1px solid var(--pxd-border, #d0d7de);
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.bp3-dark .pxd-linksmenu,
+body.bt-theme-dark .pxd-linksmenu,
+.rm-dark-theme .pxd-linksmenu,
+body.roam-body.dark .pxd-linksmenu,
+.pxd-root--dark.pxd-linksmenu {
+  border-color: #3b4b58;
+  background: #1c2127;
+  color: #e6edf3;
+}
+
+.pxd-suggest__line {
+  fill: none;
+  stroke: #6b7280;
+  stroke-width: 1.5;
+  stroke-dasharray: 4 4;
+}
+
+.bp3-dark .pxd-suggest__line,
+body.bt-theme-dark .pxd-suggest__line,
+.rm-dark-theme .pxd-suggest__line,
+body.roam-body.dark .pxd-suggest__line {
+  fill: none;
+  stroke: #9ca3af;
 }
 
 .pxd-root .pxd-lens {
@@ -6590,4 +6788,57 @@ body.roam-body.dark .pxd-root .pxd-tooltip.pxd-chrome,
   margin-top: 3px;
   color: var(--pxd-muted);
   font-size: 11px;
+}
+
+/* MEM-2. Why popover. Border carries the edge. Height stays auto on pxd-root. */
+
+.pxd-root.pxd-why {
+  position: fixed;
+  z-index: 1000;
+  width: 280px;
+  height: auto;
+  padding: 10px;
+  border: 1px solid var(--pxd-border, #d0d7de);
+  border-radius: 8px;
+  background: var(--pxd-surface, #fff);
+  color: #1f2937;
+  contain: none;
+  overflow: visible;
+  touch-action: auto;
+  font-size: 12px;
+}
+
+.pxd-why__label,
+.pxd-why__note {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  margin: 0 0 6px;
+  padding: 4px 6px;
+  border: 1px solid var(--pxd-border, #d0d7de);
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+
+.pxd-why__note { min-height: 64px; }
+
+.pxd-why__hint { color: #6b7280; }
+
+.pxd-label--why::after {
+  content: " ¶";
+  font-size: 10px;
+}
+
+.pxd-lod-map .pxd-label--why::after { content: none; }
+
+.bp3-dark .pxd-why,
+body.bt-theme-dark .pxd-why,
+.rm-dark-theme .pxd-why,
+body.roam-body.dark .pxd-why,
+.pxd-root--dark.pxd-why {
+  border-color: #3b4b58;
+  background: #1c2127;
+  color: #e6edf3;
 }

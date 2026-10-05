@@ -105,6 +105,7 @@ Native diagrams are React Flow (`.react-flow`, nodes `.react-flow__node-block`).
 | P19 | Public API and region cards | 2.10.1 | released 2026-10-04. ECO-2 and ECO-3 done. |
 | P20 | Drawing cards and Compass boards | 2.10.2 | released 2026-10-05. ECO-4 and ECO-5 done. |
 | P21 | Compass hop and annotate | 2.10.3 | released 2026-10-05. ECO-6, ECO-7, and DOC-19 done. |
+| P22 | PDF card | 2.11.0 | released 2026-10-05. PDF-1 done. |
 | P17 rest-P22 | 3.x roadmap, see roadmap-3.md | 2.8.1-3.0.0 | open |
 
 Order matters: P1 and P2 are the user's direct requests. Within a phase, do tasks in the listed order unless one is blocked.
@@ -419,6 +420,10 @@ Live on Readwisenotes, window titled "Readwisenotes - Plexus Diagram/Test Lab". 
 - [x] **ECO-7 Annotate as drawing** — done 2026-10-05, `2392eae`: The first annotate wrote a drawing, a ref, Connections, and an edge (4). The next reused Connections (3). The stored edge named the drawing, then annotates, then the image. The toast stayed after the drawing opened, dark and light. The chip named the drawing. With create missing, the row was absent and the real object was put back. The editor stayed closed. Shots ECO-7-toast.png, ECO-7-toast-light.png, ECO-7-chip-light.png. No typing bench.
 - [x] **DOC-19 Interop gate** — done 2026-10-05, `2392eae`: plexus-diagram check 1242 pass. roam-compass check 148 pass at `4949743`. roam-plexus stayed 0.33.0. Its full check missed two timing asserts together. Both passed alone. Plexus unload left 0 `.pxd-*` nodes and removed its global. Compass and Roam Plexus stayed. The URL Roam Plexus was not unloaded. The palette stays two entries. No typing bench.
 
+### P22: PDF card (2.11.0, 2026-10-05)
+
+- [x] **PDF-1 PDF card** — done 2026-10-05, `4248337`: Cover plx-pdf1-test, count 2. Reader 640 by 820. Page input 2 to 3. Shield returned on a board click. Middle-drag panned and left the page at 3. Second reader toasted "Closed the other reader". Settings length 137, hash f8478982, unchanged. Card moved from -139.5, 188.1 to -49.5, 281.1. Fullscreen opened the PDF page. Escape did not return. Minimize did. Both cards remained. Shots PDF-1-dark.png and PDF-1-light.png. Unload: `.pxd-*` 0, window listeners 84 to 84, document 139 to 146, no diagram listener left. Theme Auto. Check 1257 pass. No typing bench.
+
 ## 6. Later (ideas not scheduled)
 
 Pick from here only when every phase above is done or blocked.
@@ -450,6 +455,9 @@ AI agent features inside the board, SuperTag-style typed schemas or class tags, 
 
 Fill in as phases run. Keep the newest at the top of each list.
 
+- 2.11.0 PDF-1 live, 2026-10-05, Test Lab, `4248337`. Cover plx-pdf1-test, count 2. Reader 640 by 820. Page input 2 to 3. Second reader toast "Closed the other reader", readers 1. Settings length 137 and hash f8478982 stayed the same across the drag. Card :x -139.5 to -49.5, :y 188.1 to 281.1. Fullscreen opened the PDF page. Escape did not return. Minimize did. Both cards remained. Unload: `.pxd-*` 0, window 84 to 84, document 139 to 146. Theme Auto. No typing bench.
+- 2.11.0 PDF-1 highlight, 2026-10-05, Test Lab block Rsdbn43vH. A real drag and a click on the tip created one highlight. The page title is the file name. Path is Notes by, then the date, then the highlight. The text is the selection plus #h/yellow. Page number is 1. The page has :pdf/url and :pdf/content-hash. The block macro contains that url. The highlight hash matches the page. The pdf block has no link prop. Count on that page is 1. A synthetic click wrote nothing. No typing bench.
+- 2.11.0 PDF-1, before code, 2026-10-05, Test Lab. Nine pdf blocks. Props were empty or only :pdf-settings. No fingerprint and no ref to the PDF page. A page title is the file name, then an md5. Highlights use :pdf-highlight and :pdf-fingerprints. Page number is under :position :boundingRect. file.upload returns the pdf macro. A 3-page test file opened in the native reader. A synthetic highlight click wrote nothing. Block Rsdbn43vH. No typing bench.
 - 2.10.3 live, 2026-10-05, Test Lab, `2392eae`, compass `4949743`. Toast stayed after the drawing opened. Chip named the drawing. Writes 4, then 3. Pulse cards were the page cards. Menu lost Open in Compass after the owning Compass unloaded. Unload left 0 `.pxd-*`. URL Roam Plexus stayed. Two roam-plexus timing tests passed alone. No typing bench.
 - 2.10.3 ECO-6 and ECO-7, before code, 2026-10-05, Test Lab. Plexus was unloaded. Roam Plexus stayed frozen, apiVersion 7, version DEV. spec().methods includes create and has no image method. The live create function only forwards its argument to host.createDrawing. That host takes pageUid, parentUid, title, and order. scene.add throws on an image element. ECO-7 creates an empty drawing and shows the drop toast. RoamCompass was frozen with isAvailable and focus, and no apiVersion. Compass 0.8.0 already sends roam-compass:ready and roam-compass:unload. No typing bench.
 - 2.10.2 unload, 2026-10-05, Test Lab. Two cycles: window listeners 108 then 88, document 144 then 130, both times. `.pxd-*` 0. Errors none. Roam Plexus stayed apiVersion 7, frozen. Theme Auto. No typing bench.

@@ -222,8 +222,8 @@ test("boardsFromRefRows keeps v2 boards and titles them with parseBoardTitle", (
     return null;
   });
   assert.deepEqual(out, [
-    { uid: "boardA", title: "Hold for leak" },
-    { uid: "boardB", title: "Untitled board" },
+    { uid: "boardA", title: "Hold for leak", card: "card1" },
+    { uid: "boardB", title: "Untitled board", card: "card3" },
   ]);
   assert.deepEqual(boardsFromRefRows(null, () => ({ plexus: { v: 2 } })), []);
 });
@@ -271,8 +271,8 @@ test("boardsWith reads ref rows and boardsOn does not", () => {
   assert.equal(calls[1][1].includes("re-pattern"), true);
   assert.equal(calls[1][2], "pageTarget");
   assert.deepEqual(found, [
-    { uid: "boardA", title: "Alpha" },
-    { uid: "boardB", title: "Beta" },
+    { uid: "boardA", title: "Alpha", card: "card1" },
+    { uid: "boardB", title: "Beta", card: "card2" },
   ]);
   assert.equal(calls.filter((row) => row === "list").length, 1);
   assert.deepEqual(api.cardsOf("boardShown"), [

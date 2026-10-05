@@ -161,6 +161,7 @@ export function buildMenu(kind, ctx = {}) {
         make("open", c.isBoard ? "Open board" : "Open"),
         ...(c.isBoard ? [make("open-own-page", "Open nested board in its own page")] : []),
         make("open-sidebar", "Open in sidebar", { hint: "Shift Click" }),
+        ...(c.compass ? [make("open-compass", "Open in Compass")] : []),
         sep(),
         make("copy", "Copy", { hint: "Cmd C" }),
         make("copy-png", "Copy selection as PNG"),
@@ -197,6 +198,7 @@ export function buildMenu(kind, ctx = {}) {
         out.push(make("neighbors:in", "Add pages that link here"));
         out.push(make("neighbors:attr", "Add attribute values"));
       }
+      if (c.canAnnotate) out.push(make("annotate-drawing", "Annotate as drawing"));
       out.push(
         make("send-to", "Send to board…"),
         make("related", "Related…"),

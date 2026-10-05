@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.10.3 — 2026-10-05
+
+- With Compass loaded, a card menu can open Compass on that page. Compass can open the board that holds the card, and asks which board when there are two.
+- An image card can start an empty drawing beside it. The connection reads annotates. A note says to drop the image into the drawing, and it stays up after the drawing opens. The outline chip names the drawing. Without Roam Plexus that row stays hidden. The command palette stays two entries.
+
 ## 2.10.2 — 2026-10-05
 
 - A block ref of a Roam drawing shows the drawing. Regions lists that drawing's regions, and picking one adds a reference on the board. New drawing here creates the drawing and a reference card. The drawing block is not rewritten. Without Roam Plexus the new drawing is still an ordinary drawing. The command palette stays two entries.

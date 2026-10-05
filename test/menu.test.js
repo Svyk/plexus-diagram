@@ -88,6 +88,35 @@ test("card menu: ids, color submenu with checked, fold/unfold, pin/unpin, mind-m
   assert.ok(!ids(buildMenu("card", { item: { look: "card" } })).includes("show-as-card"));
 });
 
+test("card menu adds Open in Compass and Annotate as drawing only when flagged", () => {
+  const plain = buildMenu("card", {});
+  assert.equal(byId(plain, "open-compass"), undefined);
+  assert.equal(byId(plain, "annotate-drawing"), undefined);
+  assert.deepEqual(ids(plain), ids(buildMenu("card", { compass: false, canAnnotate: false })));
+
+  const compass = buildMenu("card", { compass: true });
+  assert.equal(byId(compass, "open-compass").label, "Open in Compass");
+  assert.equal(byId(compass, "annotate-drawing"), undefined);
+  const compassIds = ids(compass);
+  assert.equal(compassIds[compassIds.indexOf("open-sidebar") + 1], "open-compass");
+
+  const annotate = buildMenu("card", { canAnnotate: true });
+  assert.equal(byId(annotate, "annotate-drawing").label, "Annotate as drawing");
+  assert.equal(byId(annotate, "open-compass"), undefined);
+  const annotateIds = ids(annotate);
+  assert.equal(annotateIds[annotateIds.indexOf("send-to") - 1], "annotate-drawing");
+
+  const both = ids(buildMenu("card", { compass: true, canAnnotate: true }));
+  assert.ok(both.includes("open-compass"));
+  assert.ok(both.includes("annotate-drawing"));
+
+  for (const kind of ["canvas", "section", "text", "edge", "multi", "board-menu"]) {
+    const menu = buildMenu(kind, { compass: true, canAnnotate: true, count: 3 });
+    assert.equal(byId(menu, "open-compass"), undefined, kind);
+    assert.equal(byId(menu, "annotate-drawing"), undefined, kind);
+  }
+});
+
 test("card menu on a board card says board", () => {
   const menu = buildMenu("card", { isBoard: true });
   assert.equal(byId(menu, "open").label, "Open board");

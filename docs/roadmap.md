@@ -443,6 +443,7 @@ AI agent features inside the board, SuperTag-style typed schemas or class tags, 
 
 Fill in as phases run. Keep the newest at the top of each list.
 
+- 2.10.3 ECO-6 and ECO-7, before code, 2026-10-05, Test Lab. Plexus was unloaded. Roam Plexus stayed frozen, apiVersion 7, version DEV. spec().methods includes create and has no image method. The live create function only forwards its argument to host.createDrawing. That host takes pageUid, parentUid, title, and order. scene.add throws on an image element. ECO-7 creates an empty drawing and shows the drop toast. RoamCompass was frozen with isAvailable and focus, and no apiVersion. Compass 0.8.0 already sends roam-compass:ready and roam-compass:unload. No typing bench.
 - 2.10.2 unload, 2026-10-05, Test Lab. Two cycles: window listeners 108 then 88, document 144 then 130, both times. `.pxd-*` 0. Errors none. Roam Plexus stayed apiVersion 7, frozen. Theme Auto. No typing bench.
 - 2.10.2 ECO-5 live, 2026-10-05, Test Lab. Thumbs 160 by 91 and 160 by 40. Cards matched cardsOf, 2. Label annotates. Pulse at 602 ms. Unloaded: 0 board nodes, 0 errors. Shots ECO-5-dark.png, ECO-5-light.png, ECO-5-pulse.png. Dev Compass ran in Test Lab. No typing bench.
 - 2.10.2 ECO-4 live, 2026-10-05, Test Lab. Picture 160 by 100. Prop bytes stayed 24670. Regions 10. New drawing wrote one empty macro and one reference, with the API and without it. Shots ECO-4-dark.png and ECO-4-light.png. Open drawing was not clicked. The drop toast was not seen. No typing bench.

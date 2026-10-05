@@ -7,7 +7,8 @@
 // section auto-fit preview, context menu, clipboard, focus, presentation, card badges, back-to-content.
 
 import { BOARD_PATTERNS, BOARD_TONES, DEFAULT_BOARD_CARD, DEFAULT_SIZES, LANE_SIZE, PAGE_CARD, PALETTE, STICKY_SIZE, UNTITLED_BOARD, classifyString, hexColor, readPlexus, semanticRef, plainText } from "../model/schema.js";
-import { DRAWING_DROP_TOAST, droppedDrawingUids } from "../model/drawing-card.js";
+import { DRAWING_DROP_TOAST, drawingRefString, droppedDrawingUids } from "../model/drawing-card.js";
+import { annotatePlan } from "../model/annotate.js";
 import { rewriteBgTag } from "../model/highlighter.js";
 import { boundsOf, buildBoard, connectedUids, containerAt, descendantsOf, displayRects, edgesTouching, outlineOrder, sameColorUids, sectionAllUids, sectionFitPlan, sectionNoteUid, sidebarOutlineUids, worldRects } from "../model/board.js";
 import { copyLinkText, hashFromUrl, pageUidFromHash, pxdTarget } from "../model/deeplink.js";
@@ -268,6 +269,36 @@ function createTimers() {
     return entry;
   };
   return { later, frame, idle, count: () => active.size, cancelAll: () => { for (const c of [...active]) c(); active.clear(); } };
+}
+
+const ANNOTATE_TOAST = "Drop the image into the drawing";
+
+// Survives the board unmount that follows RoamPlexus.open.
+export function pinAnnotateToast(doc, win = globalThis) {
+  const body = doc?.body;
+  if (!body || typeof doc.createElement !== "function") return;
+  try { body.querySelector(".pxd-toast--pin")?.remove(); } catch { /* none yet */ }
+  const dark = doc.documentElement?.classList?.contains("bp3-dark") || body.classList?.contains("bp3-dark");
+  const node = doc.createElement("div");
+  node.className = "pxd-toast pxd-chrome pxd-toast--pin";
+  node.setAttribute("role", "status");
+  node.style.position = "fixed";
+  node.style.zIndex = "100000";
+  node.style.left = "50%";
+  node.style.bottom = "24px";
+  node.style.transform = "translateX(-50%)";
+  node.style.padding = "8px 12px";
+  node.style.borderRadius = "8px";
+  node.style.fontSize = "13px";
+  node.style.border = dark ? "1px solid #8aabb8" : "1px solid #394b59";
+  node.style.background = dark ? "#1c2127" : "#ffffff";
+  node.style.color = dark ? "#f5f8fa" : "#182026";
+  const span = doc.createElement("span");
+  span.className = "pxd-toast__text";
+  span.textContent = ANNOTATE_TOAST;
+  node.append(span);
+  body.append(node);
+  win.setTimeout?.(() => { try { node.remove(); } catch { /* already gone */ } }, 6000);
 }
 
 export function isDarkHost(root, doc = globalThis.document) {
@@ -1654,7 +1685,9 @@ export function mountBoardView({
           try { queryText = host?.blockString?.(item.target.uid) || ""; } catch { queryText = ""; }
         }
         const canExpand = item?.kind === "page" || item?.kind === "note" || item?.kind === "block";
-        return { item, regions: imageRegionRows(item?.content), canMakeTask: item?.type === "card" && item?.kind === "note" && !isTaskString(item.string) && !isQueryString(queryText), isBoard: item?.kind === "board", collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS.includes(item?.kind), canSpread: item?.kind === "note" || item?.kind === "block", isQuery: isQueryString(queryText), canExpand, mindPreset: readMindPreset(storage) };
+        const compassApi = globalThis.RoamCompass || globalThis.window?.RoamCompass || null;
+        const plexusApi = globalThis.RoamPlexus || globalThis.window?.RoamPlexus || null;
+        return { item, regions: imageRegionRows(item?.content), canMakeTask: item?.type === "card" && item?.kind === "note" && !isTaskString(item.string) && !isQueryString(queryText), isBoard: item?.kind === "board", collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS.includes(item?.kind), canSpread: item?.kind === "note" || item?.kind === "block", isQuery: isQueryString(queryText), canExpand, mindPreset: readMindPreset(storage), compass: typeof compassApi?.open === "function", canAnnotate: item?.kind === "image" && typeof plexusApi?.create === "function" };
       }
       case "section": {
         const members = item && b ? [item.uid, ...descendantsOf(b, item.uid)] : [];
@@ -1921,6 +1954,55 @@ export function mountBoardView({
       case "open": openItem(item); break;
       case "open-own-page": openOwnPage(item); break;
       case "open-sidebar": openItemInSidebar(item); break;
+      case "open-compass": {
+        if (!item) break;
+        const api = globalThis.RoamCompass || globalThis.window?.RoamCompass || null;
+        if (typeof api?.open !== "function") break;
+        let uid = null;
+        if (item.target?.kind === "page") uid = host?.pageUid?.(item.target.title) || null;
+        else if (item.target?.kind === "block") uid = item.target.uid || null;
+        else uid = item.uid || null;
+        if (uid) api.open(uid);
+        break;
+      }
+      case "annotate-drawing": {
+        if (!item || item.kind !== "image") break;
+        const api = globalThis.RoamPlexus || globalThis.window?.RoamPlexus || null;
+        if (typeof api?.create !== "function") break;
+        const live = rects().get(item.uid);
+        const plan = annotatePlan({
+          uid: item.uid,
+          x: live?.x ?? item.x,
+          y: live?.y ?? item.y,
+          w: live?.w ?? item.w,
+          h: live?.h ?? item.h,
+        }, boardUid);
+        // Create, then the ref card, then the edge. No undo group. open only — never whenOpen.
+        void (async () => {
+          let made = null;
+          try { made = await api.create(plan.create); } catch { return; }
+          if (disposed) return;
+          const drawingUid = typeof made === "string" ? made : made?.uid || null;
+          const ref = drawingRefString(drawingUid);
+          if (!drawingUid || !ref) return;
+          const placed = await Promise.resolve(session.addRefCards?.([{
+            string: ref,
+            x: plan.card.x,
+            y: plan.card.y,
+            w: plan.card.w,
+            h: plan.card.h,
+          }]));
+          if (disposed) return;
+          const refUid = Array.isArray(placed) ? placed[0] : placed || null;
+          if (refUid) await Promise.resolve(session.addEdge?.({ from: refUid, to: plan.edge.to, label: plan.edge.label }));
+          if (disposed) return;
+          // openBlock leaves the board, so the board toast goes with it. Pin one on the page first.
+          pinAnnotateToast(doc);
+          toast("Drop the image into the drawing");
+          if (typeof api.open === "function") api.open(drawingUid);
+        })();
+        break;
+      }
       case "copy": doCopy(uids); break;
       case "copy-ref": if (item) copyText(`((${item.uid}))`, "Reference copied"); break;
       case "copy-link": {

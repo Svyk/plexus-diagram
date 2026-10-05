@@ -63,7 +63,8 @@ export function parseAddRef(raw) {
   return s;
 }
 
-// rows are [boardUid, pageUid, cardUid]. pull results stay only when plexus.v is 2.
+// rows are [boardUid, pageUid, cardUid]. card is row[2]. row[1] is the page and is never the card.
+// A repeated board keeps the card from its first row. pull results stay only when plexus.v is 2.
 export function boardsFromRefRows(rows, pull) {
   const out = [];
   const seen = new Set();
@@ -72,6 +73,7 @@ export function boardsFromRefRows(rows, pull) {
     const boardUid = Array.isArray(row) ? row[0] : null;
     if (!boardUid || seen.has(boardUid)) continue;
     seen.add(boardUid);
+    const card = typeof row[2] === "string" && row[2] ? row[2] : undefined;
     let pulled = null;
     try {
       pulled = typeof pull === "function" ? pull(boardUid) : null;
@@ -79,7 +81,9 @@ export function boardsFromRefRows(rows, pull) {
       pulled = null;
     }
     if (boardVersion(pulled) !== 2) continue;
-    out.push({ uid: boardUid, title: boardTitle(pulled) });
+    const item = { uid: boardUid, title: boardTitle(pulled) };
+    if (card !== undefined) item.card = card;
+    out.push(item);
   }
   return out;
 }

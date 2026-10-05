@@ -113,6 +113,10 @@ An image region and a saved view are blocks under `{{[[plexus-regions]]}}`. That
 
 Mark a region on the picture, or from the block menu. Plexus copies a block ref. Paste that ref on a daily note and the crop shows there. Save view stores the camera the same way. The image card shows a region count. Rename changes only the words after `}}`. Delete asks when another block still references the region.
 
+## Works with
+
+Plexus Diagram, Roam Compass, and Roam Plexus notice each other. With Compass loaded, a card menu can open Compass on that page, and Compass can open the board that holds it. With Roam Plexus loaded, an image card can start an empty drawing beside it. If one of them is missing, that menu row stays hidden.
+
 ## Shortcuts
 
 `?` opens this same list on the board. ⌘ means Command on a Mac and Ctrl elsewhere. Present keys apply only while a presentation is running.

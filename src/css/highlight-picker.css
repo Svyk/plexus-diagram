@@ -1,0 +1,57 @@
+.pxd-root .pxd-highlight-dialog {
+  width: 360px;
+  max-height: min(70vh, 520px);
+}
+
+.pxd-root .pxd-hl-filters,
+.pxd-root .pxd-hl-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.pxd-root .pxd-hl-list {
+  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pxd-root .pxd-hl-group {
+  margin-top: 6px;
+  color: var(--pxd-muted);
+  font-size: 12px;
+}
+
+.pxd-root .pxd-hl-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.pxd-root .pxd-hl-bar {
+  flex: 0 0 4px;
+  width: 4px;
+  align-self: stretch;
+  min-height: 16px;
+  border-radius: 2px;
+  background: var(--pxd-gray-line);
+}
+
+.pxd-root .pxd-hl-bar[data-color="yellow"] { background: var(--pxd-yellow-line); }
+.pxd-root .pxd-hl-bar[data-color="green"] { background: var(--pxd-green-line); }
+.pxd-root .pxd-hl-bar[data-color="blue"] { background: var(--pxd-blue-line); }
+.pxd-root .pxd-hl-bar[data-color="pink"] { background: var(--pxd-pink-line); }
+.pxd-root .pxd-hl-bar[data-color="purple"] { background: var(--pxd-purple-line); }
+.pxd-root .pxd-hl-bar[data-color="orange"] { background: var(--pxd-orange-line); }
+.pxd-root .pxd-hl-bar[data-color="red"] { background: var(--pxd-red-line); }
+
+.pxd-root .pxd-hl-row__text {
+  min-width: 0;
+}
+
+.pxd-root .pxd-hl-page {
+  margin-left: auto;
+  color: var(--pxd-muted);
+  font-size: 12px;
+}

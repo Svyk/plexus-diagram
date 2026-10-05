@@ -49,3 +49,11 @@ export function lensBright(byUid, tag, focusSet = null) {
   for (const uid of bright) if (focusSet.has(uid)) both.add(uid);
   return both;
 }
+
+// Highlight lens tag. Seven colour names only. Gray and anything else are not a row.
+const HIGHLIGHT_LENS_NAMES = ["yellow", "green", "blue", "pink", "purple", "orange", "red"];
+
+export function highlightLensTag(color) {
+  const name = String(color ?? "").trim().toLowerCase();
+  return HIGHLIGHT_LENS_NAMES.includes(name) ? `h/${name}` : "";
+}

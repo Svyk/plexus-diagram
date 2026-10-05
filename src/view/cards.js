@@ -247,6 +247,8 @@ function cardContentKey(item, live = false, pdfOpen = false) {
     item.kind === "highlight" && item.highlight ? item.highlight.color ?? "" : "",
     item.kind === "highlight" && item.highlight ? item.highlight.page ?? "" : "",
     item.kind === "highlight" && item.highlight ? item.highlight.text ?? "" : "",
+    item.kind === "highlight" && item.highlight?.image === true ? "img" : "",
+    item.kind === "highlight" && item.highlight?.natural ? `${item.highlight.natural.w}x${item.highlight.natural.h}` : "",
   ];
   if (item.kind === "board") parts.push(item.w, item.h);
   if (item.kind === "board") {
@@ -865,6 +867,7 @@ export function createItemRenderer({
       if (item.kind === "region-ref") cls.push("pxd-item--region");
       if (item.kind === "drawing-ref") cls.push("pxd-item--drawing");
       if (item.kind === "pdf" && pdfLiveUid === item.uid) cls.push("pxd-pdf-live");
+      if (item.kind === "highlight" && item.highlight?.image === true) cls.push("pxd-item--image");
       if (item.look === "block") cls.push("pxd-card--block");
       const task = isTaskCard(item) ? taskMeta(item.string, item.content) : null;
       if (task) {
@@ -1833,9 +1836,23 @@ export function createItemRenderer({
     if (rule.open) remountPdf(rule.open);
   };
 
-  // PDF-2. The bar carries the colour. The card itself stays unfilled.
+  // PDF-2 / PDF-5. The bar carries the colour. An area image sets its ratio before renderString. The card stays unfilled.
+  const highlightRatio = (natural) => {
+    const w = natural?.w;
+    const h = natural?.h;
+    if (typeof w !== "number" || typeof h !== "number" || !Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0) return "";
+    return `${w} / ${h}`;
+  };
   const paintHighlight = (rec, item, budget) => {
     const hl = item.highlight;
+    const uid = item.target?.uid || item.uid;
+    const image = hl.image === true && lod === "detail";
+    if (image) {
+      const media = el("div", "pxd-highlight-media", rec.body);
+      const ratio = highlightRatio(hl.natural);
+      if (ratio) media.style.aspectRatio = ratio;
+      if (hl.text) budget.roots.push(renderRoot(media, hl.text, "pxd-rs pxd-item__string", uid));
+    }
     const bar = el("div", "pxd-highlight-bar", rec.body);
     bar.setAttribute("data-color", String(hl.color || ""));
     if (lod !== "detail") {
@@ -1843,7 +1860,7 @@ export function createItemRenderer({
       if (line) el("div", "pxd-highlight-line", rec.body).textContent = line;
       return;
     }
-    if (hl.text) budget.roots.push(renderRoot(rec.body, hl.text, "pxd-rs pxd-item__string", item.target?.uid || item.uid));
+    if (!image && hl.text) budget.roots.push(renderRoot(rec.body, hl.text, "pxd-rs pxd-item__string", uid));
     const foot = el("div", "pxd-highlight-foot", rec.body);
     foot.textContent = typeof hl.footer === "string" ? hl.footer : "";
   };

@@ -662,14 +662,17 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
           let pickerBuilt = false;
           const colorBtn = iconBtn("pxd-ctx__color", "tint", "Color", "Color", () => {
             if (!pickerBuilt) {
-              const tagOpts = typeof on.onTag === "function"
-                ? {
-                    onTag: (name) => { on.onTag(name); picker.style.display = "none"; },
-                    onGear: typeof on.onGear === "function" ? (flag) => { on.onGear(flag); } : undefined,
-                    tagMode: typeof on.tagMode === "function" ? on.tagMode() === true : false,
-                  }
-                : undefined;
-              picker.append(buildColorPicker(doc, (c) => { on.setColor?.(c); picker.style.display = "none"; }, listen, tagOpts));
+              const tagOpts = {};
+              if (typeof on.onTag === "function") {
+                tagOpts.onTag = (name) => { on.onTag(name); picker.style.display = "none"; };
+                if (typeof on.onGear === "function") tagOpts.onGear = (flag) => { on.onGear(flag); };
+                tagOpts.tagMode = typeof on.tagMode === "function" ? on.tagMode() === true : false;
+              }
+              if (model?.kind === "highlight" && typeof on.setHighlightColor === "function") {
+                tagOpts.onHighlight = (name) => { on.setHighlightColor(name); picker.style.display = "none"; };
+              }
+              const pickerOpts = tagOpts.onTag || tagOpts.onHighlight ? tagOpts : undefined;
+              picker.append(buildColorPicker(doc, (c) => { on.setColor?.(c); picker.style.display = "none"; }, listen, pickerOpts));
               pickerBuilt = true;
             }
             picker.style.display = picker.style.display === "none" ? "" : "none";
@@ -700,7 +703,7 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
           opt("duplicate", "pxd-ctx__duplicate", "duplicate", "Duplicate", "Duplicate (Cmd D)", () => on.duplicate());
           opt("sendTo", "pxd-ctx__send-to", "send-to", "Send to board…", "Move into another board", () => on.sendTo());
           if (NOTE_KINDS.includes(model?.kind)) opt("expandOutline", "pxd-ctx__mindmap", "layout-hierarchy", "Mind map", "Expand the children as a mind map", () => on.expandOutline());
-          if (model?.kind === "image") btn("pxd-ctx__mark-region", "highlight", "Mark region", "Drag a rectangle on this image", () => on.markRegion?.());
+          if (model?.kind === "image" || (model?.kind === "highlight" && model?.highlight?.image === true)) btn("pxd-ctx__mark-region", "highlight", "Mark region", "Drag a rectangle on this image", () => on.markRegion?.());
           opt("selectSameColor", "pxd-ctx__same-color", "full-circle", "Select same color", "Select every item of this color", () => on.selectSameColor());
           opt("selectConnected", "pxd-ctx__connected", "flows", "Select connected", "Select items linked to this one", () => on.selectConnected());
         } else {

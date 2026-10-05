@@ -1,11 +1,13 @@
-// Kanban columns for one board. Grouping is either the card's TODO/DONE
-// marker or one Name:: attribute. A drop plans a single write. No Roam calls.
+// Kanban columns for one board. Grouping is the TODO/DONE marker, Highlight
+// colour, or one Name:: attribute. A drop plans a single write. No Roam calls.
 // BT_attr* stays with Better Tasks: a Done drop asks Better Tasks to complete the task when it is loaded.
 
+import { rewriteHighlightTag } from "./highlight.js";
 import { columnNameOk, planAttrCell, tableRows } from "./table.js";
 
 export const TODO_FIELD = "To do";
 export const DONE_COLUMN = "Done";
+export const HIGHLIGHT_FIELD = "Highlight colour";
 const MARK = /\{\{\[\[(TODO|DONE)\]\]\}\}/;
 
 export function todoState(string) {
@@ -18,22 +20,38 @@ export function kanbanRows(board, resolve) {
   const items = board?.items;
   return tableRows(board, resolve).map((row) => {
     const item = items?.get?.(row.uid);
-    return { ...row, string: item?.string ?? row.title ?? "" };
+    const next = { ...row, string: item?.string ?? row.title ?? "" };
+    if (item?.kind !== "highlight") return next;
+    const targetUid = item.target?.uid;
+    let targetString;
+    if (typeof resolve === "function") {
+      try { targetString = resolve(targetUid); } catch { targetString = undefined; }
+    }
+    next.highlightColor = item.highlight?.color;
+    next.targetUid = targetUid;
+    next.targetString = targetString;
+    return next;
   });
 }
 
 export function kanbanFields(rows) {
   const names = [];
+  let highlight = false;
   for (const row of rows || []) {
+    if (typeof row?.highlightColor === "string" && row.highlightColor !== "") highlight = true;
     for (const attr of row.attrs || []) {
       if (attr?.name && columnNameOk(attr.name) && !names.includes(attr.name)) names.push(attr.name);
     }
   }
-  return [TODO_FIELD, ...names];
+  return highlight ? [TODO_FIELD, HIGHLIGHT_FIELD, ...names] : [TODO_FIELD, ...names];
 }
 
 function columnOf(row, field) {
   if (field === TODO_FIELD) return todoState(row?.string);
+  if (field === HIGHLIGHT_FIELD) {
+    const color = row?.highlightColor;
+    return typeof color === "string" && color !== "" ? color : "";
+  }
   const hit = (row?.attrs || []).find((attr) => attr.name === field);
   return hit ? String(hit.value ?? "") : "";
 }
@@ -90,6 +108,14 @@ export function planKanbanMove({ field, column, row } = {}) {
     if (string === String(row.string || "")) return null;
     // `status` lets a host with Better Tasks complete the task through it (Completed date, next occurrence).
     return { op: "string", uid: row.uid, string, status: column === DONE_COLUMN ? "DONE" : "TODO" };
+  }
+  if (field === HIGHLIGHT_FIELD) {
+    if (row.kind === "note") return null;
+    const targetUid = row.targetUid;
+    const targetString = row.targetString;
+    if (!targetUid || typeof targetString !== "string" || targetString === "") return null;
+    if (row.highlightColor === column) return null;
+    return { op: "string", uid: targetUid, string: rewriteHighlightTag(targetString, column) };
   }
   if (!columnNameOk(field)) return null;
   const attr = (row.attrs || []).find((item) => item.name === field);

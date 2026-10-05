@@ -1,5 +1,11 @@
 # Changelog
 
+## 2.11.2 — 2026-10-05
+
+- Add highlights on a PDF card places the ones you pick, as a grid or a column. One undo removes them. Dragging a highlight bullet onto the board makes one card. Dropping a date asks before adding only the highlights under that date.
+- An area highlight keeps the picture's shape. Mark region on that card stores a region under the highlight. The page mark keeps the colour Roam painted.
+- The tag lens can show one highlight colour. The command palette stays two entries.
+
 ## 2.11.1 — 2026-10-05
 
 - A block ref of a PDF highlight is a card. It shows a colour bar, the passage or the area picture, and the page. Changing the colour tag updates the bar. A block that is not a highlight stays a normal ref. The command palette stays two entries.

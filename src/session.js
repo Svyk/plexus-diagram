@@ -52,6 +52,7 @@ import {
   withBoardMarker,
 } from "./model/schema.js";
 import { drawingCreateSpec, drawingRefString } from "./model/drawing-card.js";
+import { HIGHLIGHT_COLORS, rewriteHighlightTag } from "./model/highlight.js";
 import { inflate, rectsIntersect, unionRect } from "./model/geometry.js";
 import { SHAPES } from "./model/shapes.js";
 import { sameSize as sameSizeRects, spaceOut as spaceOutRects, tidyRects } from "./model/layout.js";
@@ -1287,6 +1288,18 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
         const cur = rawNode(id)?.[STR];
         if (cur === undefined || cur === string) return;
         t.string(id, string);
+      });
+    },
+
+    // The highlight block is not on the board. setString returns when rawNode misses, so this reads blockString and writes one string op.
+    setHighlightColor(blockUid, name) {
+      return txn((t) => {
+        if (!HIGHLIGHT_COLORS.includes(name)) return;
+        const cur = host.blockString?.(blockUid);
+        if (cur == null) return;
+        const next = rewriteHighlightTag(cur, name);
+        if (next === cur) return;
+        t.string(blockUid, next);
       });
     },
 

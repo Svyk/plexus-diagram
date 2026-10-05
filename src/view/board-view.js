@@ -15,7 +15,10 @@ import { copyLinkText, hashFromUrl, pageUidFromHash, pxdTarget } from "../model/
 import { findOnBoard } from "../model/find.js";
 import { readMindPreset, writeMindPreset } from "../model/mindmap.js";
 import { attrLegend, parseAttrStyles, styleAttrLinks } from "../model/attr-styles.js";
-import { lensBright, lensCatalog, tagsForCard } from "../model/lens.js";
+import { HIGHLIGHT_COLORS } from "../model/highlight.js";
+import { expandDateHighlights, highlightRows, placeHighlights } from "../model/highlight-pick.js";
+import { isDailyTitle } from "../model/library.js";
+import { highlightLensTag, lensBright, lensCatalog, tagsForCard } from "../model/lens.js";
 import { dropNamespace } from "../model/namespace.js";
 import { isBareTask, isTaskAttr, isTaskString, setTaskAttrNames, taskMeta, taskState } from "../model/tasks.js";
 import { createBt } from "../host/bt.js";
@@ -337,6 +340,296 @@ export function pdfEscapeAction({ live, fullscreen } = {}) {
   return "pass";
 }
 
+export const PDF_HIGHLIGHTS_LABEL = "Add highlights…";
+
+const DATE_BLOCK = /^\[\[([^\[\]]+)\]\]$/;
+const BLOCK_REF = /^\(\(([^()\s]+)\)\)$/;
+
+function pageKey(page) {
+  return page == null ? "none" : String(page);
+}
+
+export function isDateBlockString(string) {
+  const match = DATE_BLOCK.exec(String(string ?? "").trim());
+  return Boolean(match && isDailyTitle(match[1]));
+}
+
+// A date drop is ((uid)). A [[page]] string is not expanded here.
+export function dateDropExpansion(dropString, block) {
+  const text = String(dropString ?? "").trim();
+  if (DATE_BLOCK.test(text)) return null;
+  if (!BLOCK_REF.test(text)) return null;
+  if (!block || !isDateBlockString(block.string)) return null;
+  const uids = expandDateHighlights(block);
+  if (!uids) return null;
+  return { uids, message: `Add ${uids.length} highlights under this date?` };
+}
+
+export function planDroppedCards(list, { blockOf, confirm, card, page, at } = {}) {
+  const rows = Array.isArray(list) ? list : [];
+  const w = Number(card?.w) || 0;
+  const h = Number(card?.h) || 0;
+  const pw = Number(page?.w) || w;
+  const ph = Number(page?.h) || h;
+  const x = Number(at?.x) || 0;
+  const y = Number(at?.y) || 0;
+  const isPage = (string) => DATE_BLOCK.test(String(string).trim());
+  let dropY = y - h / 2;
+  const placed = [];
+  for (const entry of rows) {
+    const raw = String(entry?.string ?? "");
+    if (!isPage(raw)) {
+      let block = null;
+      try { block = typeof blockOf === "function" ? blockOf(raw) : null; } catch { block = null; }
+      const expansion = dateDropExpansion(raw, block);
+      if (expansion) {
+        let ok = false;
+        try { ok = typeof confirm === "function" && confirm(expansion.message) === true; } catch { ok = false; }
+        if (!ok) return null;
+        for (const uid of expansion.uids) {
+          placed.push({ string: `((${uid}))`, x: x - w / 2, y: dropY });
+          dropY += h + 24;
+        }
+        continue;
+      }
+    }
+    if (isPage(raw)) {
+      placed.push({ string: raw, x: x - pw / 2, y: dropY, w: pw, h: ph });
+      dropY += ph + 24;
+    } else {
+      placed.push({ string: raw, x: x - w / 2, y: dropY });
+      dropY += h + 24;
+    }
+  }
+  return placed;
+}
+
+export function lensRowLabel(tag) {
+  const name = String(tag ?? "");
+  if (!name) return "";
+  if (name.startsWith("h/") && highlightLensTag(name.slice(2)) === name) return name.slice(2);
+  return `#${name}`;
+}
+
+export function highlightPickerList(rows) {
+  return (Array.isArray(rows) ? rows : []).map((row) => {
+    const placed = row?.placed === true;
+    return {
+      ...row,
+      placed,
+      enabled: !placed,
+      disabled: placed,
+      checked: placed || row?.selected === true,
+    };
+  });
+}
+
+export function highlightPickerRows(rows, { color, page } = {}) {
+  const list = Array.isArray(rows) ? rows : [];
+  const colorOn = typeof color === "string" && color !== "";
+  const pageOn = typeof page === "string" && page !== "";
+  return list.filter((row) => {
+    if (!row) return false;
+    if (colorOn && row.color !== color) return false;
+    if (pageOn && pageKey(row.page) !== page) return false;
+    return true;
+  });
+}
+
+// Select all on the current colour and page. Placed rows stay out of the place set.
+export function selectHighlightPage(rows, { color, page } = {}) {
+  const list = Array.isArray(rows) ? rows : [];
+  const colorOn = typeof color === "string" && color !== "";
+  const pageOn = typeof page === "string" && page !== "";
+  return list.map((row) => {
+    if (!row || row.placed === true) return { ...row, selected: false };
+    if (colorOn && row.color !== color) return row;
+    if (pageOn && pageKey(row.page) !== page) return row;
+    return { ...row, selected: true };
+  });
+}
+
+export function pdfHighlightButton(doc, onClick) {
+  const btn = doc.createElement("button");
+  btn.type = "button";
+  btn.className = "pxd-pdf-highlights pxd-chrome";
+  btn.textContent = PDF_HIGHLIGHTS_LABEL;
+  btn.setAttribute("aria-label", PDF_HIGHLIGHTS_LABEL);
+  const stop = (event) => {
+    event.preventDefault?.();
+    event.stopPropagation?.();
+  };
+  btn.addEventListener("pointerdown", stop);
+  btn.addEventListener("mousedown", stop);
+  btn.addEventListener("dblclick", stop);
+  btn.addEventListener("click", (event) => {
+    stop(event);
+    onClick?.(event);
+  });
+  return btn;
+}
+
+export function openHighlightDialog(doc, { rows, origin, onPlace, onClose } = {}) {
+  let rowsState = (Array.isArray(rows) ? rows : []).map((row) => ({ ...row, selected: false }));
+  const at = origin && typeof origin === "object" ? origin : { x: 0, y: 0 };
+  const root = doc.createElement("div");
+  root.className = "pxd-highlight-dialog pxd-popover pxd-chrome";
+  root.setAttribute("role", "dialog");
+  root.setAttribute("aria-label", "Add highlights");
+  const stop = (event) => {
+    event.preventDefault?.();
+    event.stopPropagation?.();
+  };
+  root.addEventListener("pointerdown", (event) => event.stopPropagation?.());
+  root.addEventListener("mousedown", (event) => event.stopPropagation?.());
+
+  let closed = false;
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    root.remove();
+    onClose?.();
+  };
+  root.close = close;
+
+  const title = doc.createElement("div");
+  title.className = "pxd-popover__title";
+  title.textContent = "Add highlights";
+  root.append(title);
+
+  const filters = doc.createElement("div");
+  filters.className = "pxd-hl-filters";
+  const colorSel = doc.createElement("select");
+  colorSel.className = "pxd-hl-color";
+  colorSel.setAttribute("aria-label", "Colour");
+  const pageSel = doc.createElement("select");
+  pageSel.className = "pxd-hl-page";
+  pageSel.setAttribute("aria-label", "Page");
+  const colors = [];
+  const pages = [];
+  for (const row of rowsState) {
+    if (row.color && !colors.includes(row.color)) colors.push(row.color);
+    const key = pageKey(row.page);
+    if (!pages.some((entry) => entry[0] === key)) pages.push([key, row.page == null ? "No page" : `Page ${row.page}`]);
+  }
+  const colorOrder = new Map(HIGHLIGHT_COLORS.map((name, index) => [name, index]));
+  colors.sort((a, b) => (colorOrder.get(a) ?? 99) - (colorOrder.get(b) ?? 99));
+  pages.sort((a, b) => {
+    if (a[0] === "none") return 1;
+    if (b[0] === "none") return -1;
+    return Number(a[0]) - Number(b[0]);
+  });
+  const addOption = (select, value, label) => {
+    const opt = doc.createElement("option");
+    opt.value = value;
+    opt.setAttribute("value", value);
+    opt.textContent = label;
+    select.append(opt);
+  };
+  addOption(colorSel, "", "All colours");
+  for (const name of colors) addOption(colorSel, name, name);
+  addOption(pageSel, "", "All pages");
+  for (const [value, label] of pages) addOption(pageSel, value, label);
+  const allBtn = doc.createElement("button");
+  allBtn.type = "button";
+  allBtn.className = "pxd-btn pxd-hl-all";
+  allBtn.textContent = "Select all on page";
+  allBtn.setAttribute("aria-label", "Select all on page");
+  filters.append(colorSel, pageSel, allBtn);
+  root.append(filters);
+
+  const list = doc.createElement("div");
+  list.className = "pxd-hl-list";
+  root.append(list);
+
+  const actions = doc.createElement("div");
+  actions.className = "pxd-hl-actions";
+  const gridBtn = doc.createElement("button");
+  gridBtn.type = "button";
+  gridBtn.className = "pxd-btn pxd-hl-grid";
+  gridBtn.textContent = "Place as grid";
+  gridBtn.setAttribute("aria-label", "Place as grid");
+  const columnBtn = doc.createElement("button");
+  columnBtn.type = "button";
+  columnBtn.className = "pxd-btn pxd-hl-column";
+  columnBtn.textContent = "Place as column";
+  columnBtn.setAttribute("aria-label", "Place as column");
+  actions.append(gridBtn, columnBtn);
+  root.append(actions);
+
+  const groupLabel = (row) => {
+    const text = typeof row?.group === "string" ? row.group.trim() : "";
+    return text || "Other";
+  };
+  const paint = () => {
+    list.replaceChildren();
+    const shown = highlightPickerRows(highlightPickerList(rowsState), { color: colorSel.value, page: pageSel.value });
+    let lastGroup = null;
+    for (const row of shown) {
+      const label = groupLabel(row);
+      if (label !== lastGroup) {
+        lastGroup = label;
+        const head = doc.createElement("div");
+        head.className = "pxd-hl-group";
+        head.textContent = label;
+        list.append(head);
+      }
+      const line = doc.createElement("label");
+      line.className = "pxd-hl-row";
+      line.setAttribute("data-uid", row.uid || "");
+      line.setAttribute("data-enabled", row.enabled ? "true" : "false");
+      const box = doc.createElement("input");
+      box.className = "pxd-hl-check";
+      box.type = "checkbox";
+      box.checked = row.checked === true;
+      box.disabled = row.disabled === true;
+      if (row.disabled) box.setAttribute("disabled", "");
+      box.setAttribute("data-uid", row.uid || "");
+      box.addEventListener("change", () => {
+        if (row.placed) return;
+        const live = rowsState.find((item) => item.uid === row.uid);
+        if (live && live.placed !== true) live.selected = box.checked === true;
+      });
+      const bar = doc.createElement("span");
+      bar.className = "pxd-hl-bar";
+      bar.setAttribute("data-color", row.color || "gray");
+      const text = doc.createElement("span");
+      text.className = "pxd-hl-row__text";
+      text.textContent = row.snippet || row.uid || "";
+      const page = doc.createElement("span");
+      page.className = "pxd-hl-page";
+      page.textContent = row.page == null ? "" : `p. ${row.page}`;
+      line.append(box, bar, text, page);
+      list.append(line);
+    }
+  };
+  const place = (mode) => {
+    const result = placeHighlights(rowsState, { mode, origin: at });
+    if (!result.items.length) return;
+    onPlace?.(result.items);
+    close();
+  };
+  colorSel.addEventListener("change", paint);
+  pageSel.addEventListener("change", paint);
+  allBtn.addEventListener("click", (event) => {
+    stop(event);
+    rowsState = selectHighlightPage(rowsState, { color: colorSel.value, page: pageSel.value });
+    paint();
+  });
+  gridBtn.addEventListener("click", (event) => { stop(event); place("grid"); });
+  columnBtn.addEventListener("click", (event) => { stop(event); place("column"); });
+  root.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      stop(event);
+      close();
+      return;
+    }
+    event.stopPropagation?.();
+  });
+  paint();
+  return root;
+}
+
 // True only when the host is measurably light: no dark marker, and the first opaque background up the chain
 // (Roam paints only <body>; the app wrappers are transparent) has high luminance. The OS color-scheme hint must not
 // darken a board that sits on a light host, so a confirmed-light host opts out of the prefers-color-scheme rules.
@@ -537,6 +830,7 @@ export function mountBoardView({
   let focusKey = null;
   let lensTag = null;
   let lensIndex = new Map();
+  let highlightDialog = null;
   let presentSet = null;
   let sendPending = null; // uids waiting for a target board picked in the Boards tab
   let menuCtx = null;
@@ -1367,6 +1661,7 @@ export function mountBoardView({
     return set;
   };
   const extraTagText = (item) => {
+    if (item?.kind === "highlight") return "";
     try {
       if (item?.kind === "page" && item.target?.title) {
         const page = host?.pullPage?.(item.target.title);
@@ -1380,7 +1675,12 @@ export function mountBoardView({
     const cards = [];
     for (const item of board()?.items.values() || []) {
       if (!item || item.type === "section") continue;
-      cards.push({ uid: item.uid, tags: tagsForCard(item, extraTagText(item)) });
+      const tags = tagsForCard(item, extraTagText(item));
+      if (item.kind === "highlight") {
+        const tag = highlightLensTag(item.highlight?.color);
+        if (tag && !tags.includes(tag)) tags.push(tag);
+      }
+      cards.push({ uid: item.uid, tags });
     }
     const catalog = lensCatalog(cards);
     lensIndex = catalog.byUid;
@@ -2237,6 +2537,11 @@ export function mountBoardView({
         if (uids.length) void session.setColor?.(uids, c);
         else setPending("color", c);
       },
+      setHighlightColor: (name) => {
+        const it = singleItem() || barCard();
+        if (it?.kind !== "highlight" || !it.target?.uid) return;
+        void session.setHighlightColor?.(it.target.uid, name);
+      },
       onTag: (name) => { void setHighlighterTag(name); },
       onGear: (flag) => { void writeHighlighterFlag(flag); },
       tagMode: () => board()?.plexus?.highlighterTags === true,
@@ -2309,12 +2614,15 @@ export function mountBoardView({
       copyRef: () => { const it = singleItem(); if (it) copyText(`((${it.uid}))`, "Reference copied"); },
       markRegion: () => {
         const it = singleItem() || barCard();
-        if (!it || it.kind !== "image") return;
+        const area = it?.kind === "highlight" && it.highlight?.image === true;
+        if (!it || (it.kind !== "image" && !area)) return;
         const card = root.querySelector(`[data-uid="${it.uid}"]`);
         const img = card?.querySelector?.("img.rm-inline-img");
         if (!img) { toast("The image is not ready"); return; }
         regionMark?.destroy?.();
         const cardUid = it.uid;
+        const parentUid = area ? it.target?.uid : cardUid;
+        if (!parentUid) { toast("The image is not ready"); return; }
         regionMark = mountRegionMark({
           doc,
           root,
@@ -2325,7 +2633,8 @@ export function mountBoardView({
               const pending = navigator.clipboard.writeText(`((${uid}))`);
               if (pending && typeof pending.catch === "function") pending.catch(() => {});
             } catch { /* clipboard can be missing; the region write still runs */ }
-            session.addImageRegion(cardUid, frac, caption, uid);
+            if (area) session.addHighlightRegion(parentUid, frac, caption, uid);
+            else session.addImageRegion(cardUid, frac, caption, uid);
             toast("Region made, ref copied");
             regionMark = null;
           },
@@ -2391,10 +2700,11 @@ export function mountBoardView({
       empty.textContent = "No tags on this board";
     }
     for (const tag of catalog.tags) {
+      const label = lensRowLabel(tag);
       const row = el("button", `pxd-lens__row${tag === lensTag ? " is-on" : ""}`, lensPop);
       row.type = "button";
-      row.textContent = `#${tag}`;
-      row.setAttribute("aria-label", `#${tag}`);
+      row.textContent = label;
+      row.setAttribute("aria-label", label);
       row.dataset.tag = tag;
       row.setAttribute("data-tag", tag);
     }
@@ -3457,6 +3767,85 @@ export function mountBoardView({
   });
   listen(root, "pointerenter", () => { pointerInside = true; pointerBoard = root; });
   listen(root, "pointerleave", () => { pointerInside = false; if (pointerBoard === root) pointerBoard = null; });
+  const closeHighlightDialog = () => {
+    const node = highlightDialog;
+    highlightDialog = null;
+    if (node && typeof node.close === "function") node.close();
+    else node?.remove?.();
+  };
+  const dateBlockForDrop = (dropString) => {
+    const text = String(dropString ?? "").trim();
+    const match = BLOCK_REF.exec(text);
+    if (!match) return null;
+    const uid = match[1];
+    let string = null;
+    try { string = host?.blockString?.(uid); } catch { string = null; }
+    if (typeof string !== "string") return null;
+    let children = [];
+    try {
+      const tree = host?.pdfHighlightTree?.(uid);
+      children = Array.isArray(tree) ? tree : [];
+    } catch { children = []; }
+    return { uid, string, children };
+  };
+  const pdfSourceOf = (item) => {
+    if (item?.target?.kind === "block") {
+      try { return host?.blockString?.(item.target.uid) || ""; } catch { return ""; }
+    }
+    return typeof item?.string === "string" ? item.string : "";
+  };
+  const openHighlightPicker = (item, anchor) => {
+    if (disposed || item?.kind !== "pdf") return;
+    closeHighlightDialog();
+    let pageUid = null;
+    try { pageUid = host?.pdfCover?.(pdfSourceOf(item))?.pageUid || null; } catch { pageUid = null; }
+    let tree = [];
+    try {
+      const pulled = pageUid ? host?.pdfHighlightTree?.(pageUid) : [];
+      tree = Array.isArray(pulled) ? pulled : [];
+    } catch { tree = []; }
+    const placed = [...(board()?.items.values() || [])];
+    const rows = highlightRows(tree, { placed });
+    const live = rects().get(item.uid);
+    const origin = {
+      x: (live?.x ?? item.x ?? 0) + (live?.w ?? item.w ?? 0) + 40,
+      y: live?.y ?? item.y ?? 0,
+    };
+    const node = openHighlightDialog(doc, {
+      rows,
+      origin,
+      onPlace: (items) => {
+        if (!items?.length) return;
+        const made = session.addRefCards?.(items);
+        Promise.resolve(made).then((uids) => {
+          if (!disposed && Array.isArray(uids) && uids.length) ctl.select(uids);
+        }).catch(() => {});
+      },
+      onClose: () => { highlightDialog = null; },
+    });
+    highlightDialog = node;
+    root.append(node);
+    if (anchor?.getBoundingClientRect) {
+      placeNearAnchor(node, anchor.getBoundingClientRect(), root, { gap: 6 });
+    }
+  };
+  // Header text is replaced when the card body mounts, so the button stays on the card.
+  const ensurePdfHighlightButtons = () => {
+    if (disposed) return;
+    const b = board();
+    if (!b) return;
+    for (const item of b.items.values()) {
+      if (item?.kind !== "pdf") continue;
+      const shell = itemsR.shellOf?.(item.uid);
+      if (!shell || shell.querySelector?.(".pxd-pdf-highlights")) continue;
+      const btn = pdfHighlightButton(doc, () => openHighlightPicker(item, btn));
+      btn.style.position = "absolute";
+      btn.style.top = "4px";
+      btn.style.right = "8px";
+      btn.style.zIndex = "4";
+      shell.append(btn);
+    }
+  };
   const dropEffectFor = (effectAllowed) => {
     const a = String(effectAllowed || "uninitialized");
     if (a === "all" || a === "uninitialized" || /copy/i.test(a)) return "copy";
@@ -3503,18 +3892,23 @@ export function mountBoardView({
     if (!list.length) return;
     const w = Number(setting("default-card-width", DEFAULT_SIZES.card.w)) || DEFAULT_SIZES.card.w;
     const h = Number(setting("default-card-height", DEFAULT_SIZES.card.h)) || DEFAULT_SIZES.card.h;
-    // A dropped page becomes a page card at the page-card size, stacked below the card above it.
-    const isPage = (string) => /^\[\[[^\]]+\]\]$/.test(String(string).trim());
-    let dropY = p.y - h / 2;
-    const placed = list.map((x) => {
-      const page = isPage(x.string);
-      const entry = page ? { string: x.string, x: p.x - PAGE_CARD.w / 2, y: dropY, w: PAGE_CARD.w, h: PAGE_CARD.h } : { string: x.string, x: p.x - w / 2, y: dropY };
-      dropY += (page ? PAGE_CARD.h : h) + 24;
-      return entry;
+    // A [[page]] drop stays a page card. A ((uid)) whose block is a date expands only after confirm.
+    const planned = planDroppedCards(list, {
+      blockOf: dateBlockForDrop,
+      confirm: (message) => {
+        const ask = win?.confirm;
+        if (typeof ask !== "function") return false;
+        try { return ask(message) === true; } catch { return false; }
+      },
+      card: { w, h },
+      page: PAGE_CARD,
+      at: p,
     });
-    if (droppedDrawingUids(list.map((x) => x.string), (id) => host?.blockString?.(id)).length) toast(DRAWING_DROP_TOAST);
-    const made = session.addRefCards?.(placed);
-    const offer = dropNamespace(list.map((x) => x.string));
+    if (!planned) return;
+    if (droppedDrawingUids(planned.map((x) => x.string), (id) => host?.blockString?.(id)).length) toast(DRAWING_DROP_TOAST);
+    const made = session.addRefCards?.(planned);
+    const same = planned.length === list.length && planned.every((row, i) => row.string === list[i].string);
+    const offer = same ? dropNamespace(list.map((x) => x.string)) : null;
     Promise.resolve(made).then((uids) => {
       if (Array.isArray(uids) && uids.length) ctl.select(uids);
       if (!offer || !Array.isArray(uids) || disposed) return;
@@ -3583,6 +3977,14 @@ export function mountBoardView({
     if (outsideQuiet) { outsideQuiet(); outsideQuiet = null; itemsR.quiet(false); }
     if (event.target?.closest?.(".pxd-view-dialog")) {
       if (event.key === "Escape") closeViewDialog();
+      return;
+    }
+    if (highlightDialog) {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        closeHighlightDialog();
+      }
       return;
     }
     // Nothing selected and the key is outside every board: do not read the model.
@@ -3869,6 +4271,7 @@ export function mountBoardView({
         structural: dirty.structural,
         view: size.width ? visibleWorldRect(vp, size, CULL_MARGIN) : null,
       });
+      ensurePdfHighlightButtons();
       syncEmptyHint(emptyHint, b);
       itemsChanged = true;
     }
@@ -4262,6 +4665,7 @@ export function mountBoardView({
       regionMark?.destroy?.();
       regionMark = null;
       closeViewDialog();
+      closeHighlightDialog();
       closeLens();
       pagePicker?.close();
       closeBlockEdit();

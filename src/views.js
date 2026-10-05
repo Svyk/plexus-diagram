@@ -112,4 +112,24 @@ extendSession((session, api) => {
     if (promise && typeof promise === "object") promise.uid = regionUid;
     return promise;
   };
+
+  // The highlight block is not on the board. rawInsert skips that parent, so both creates stay one txn.
+  session.addHighlightRegion = (highlightUid, frac, caption, uid) => {
+    const string = imageRegionString(highlightUid, frac, caption);
+    if (string == null) return Promise.resolve(null);
+    const regionUid = uid || api.host.generateUid();
+    const promise = api.txn((t) => {
+      const parent = t.create({
+        parent: highlightUid,
+        string: CONTAINER,
+        plexus: { type: "regions" },
+        open: false,
+        order: "last",
+      });
+      t.create({ parent, uid: regionUid, string, order: "last" });
+      return regionUid;
+    });
+    if (promise && typeof promise === "object") promise.uid = regionUid;
+    return promise;
+  };
 });

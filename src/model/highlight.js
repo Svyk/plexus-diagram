@@ -1,8 +1,11 @@
-// PDF-2 highlight card. Reads props and the block string. No writes.
+// PDF highlight card. Reads props and the block string. Tag rewrite returns a string. No writes.
 
 import { PALETTE, plainKeys } from "./schema.js";
 
+export const HIGHLIGHT_COLORS = ["yellow", "green", "blue", "pink", "purple", "orange", "red"];
+
 const COLOR_TOKEN = /#h\/([A-Za-z]+)/;
+const TAG_TOKEN = /#h\/[A-Za-z]+/;
 
 function isObject(value) {
   return value !== null && typeof value === "object" && !Array.isArray(value);
@@ -56,6 +59,65 @@ function footerOf(page, pageTitle) {
   return parts.join(" · ");
 }
 
+function finiteNumber(value) {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
+function fieldNumber(obj, name) {
+  const colon = finiteNumber(obj[`:${name}`]);
+  if (colon != null) return colon;
+  return finiteNumber(obj[name]);
+}
+
+function sizePair(obj) {
+  if (!isObject(obj)) return null;
+  const w = fieldNumber(obj, "width");
+  const h = fieldNumber(obj, "height");
+  if (w == null || h == null) return null;
+  return { w, h };
+}
+
+function firstSize(value, seen) {
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      const found = firstSize(item, seen);
+      if (found) return found;
+    }
+    return null;
+  }
+  if (!isObject(value) || seen.has(value)) return null;
+  seen.add(value);
+  const pair = sizePair(value);
+  if (pair) return pair;
+  for (const key of Object.keys(value)) {
+    if (key === "url" || key === ":url") continue;
+    const found = firstSize(value[key], seen);
+    if (found) return found;
+  }
+  return null;
+}
+
+export function rewriteHighlightTag(string, name) {
+  if (typeof string !== "string") return string;
+  if (typeof name !== "string" || !HIGHLIGHT_COLORS.includes(name)) return string;
+  const token = `#h/${name}`;
+  if (!TAG_TOKEN.test(string)) return `${string} ${token}`;
+  return string.replace(TAG_TOKEN, token);
+}
+
+export function naturalSize(props) {
+  if (!isObject(props)) return null;
+  const seen = new Set();
+  if (Object.prototype.hasOwnProperty.call(props, ":image-size")) {
+    const found = firstSize(props[":image-size"], seen);
+    if (found) return found;
+  }
+  if (Object.prototype.hasOwnProperty.call(props, "image-size")) {
+    return firstSize(props["image-size"], seen);
+  }
+  return null;
+}
+
 export function highlightModel(input) {
   const src = isObject(input) ? input : {};
   const record = highlightRecord(src.props);
@@ -69,6 +131,7 @@ export function highlightModel(input) {
     type: area ? "area" : (rawType || "text"),
     text: area || stored === "" ? stripHighlightTokens(block) : stored,
     image: area,
+    natural: naturalSize(src.props),
     page,
     color: highlightColor(block),
     footer: footerOf(page, src.pageTitle),

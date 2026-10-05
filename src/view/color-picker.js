@@ -3,11 +3,13 @@
 // Pass onTag / onGear / tagMode as a fourth options object, or as the third argument
 // when that argument is not the listen function. Omitting onTag keeps onPick.
 
+import { HIGHLIGHT_COLORS } from "../model/highlight.js";
 import { NATIVE_SWATCHES, PALETTE, hexColor, shadeHex } from "../model/schema.js";
 
 const DARKER = -0.28;
 const LIGHTER = 0.4;
 const TAG_NOTE = "Hex, darker, and lighter stay on the card only.";
+export const HIGHLIGHT_MARK_TIP = "The page mark keeps the colour Roam painted.";
 
 function pickerArgs(listen, fourth) {
   if (listen && typeof listen === "object") return { listen: undefined, options: listen };
@@ -22,6 +24,7 @@ export function buildColorPicker(doc, onPick, listen, fourth) {
   const options = args.options;
   const onTag = typeof options.onTag === "function" ? options.onTag : null;
   const onGear = typeof options.onGear === "function" ? options.onGear : null;
+  const onHighlight = typeof options.onHighlight === "function" ? options.onHighlight : null;
   let tagMode = options.tagMode === true && onTag != null;
 
   const box = doc.createElement("div");
@@ -31,6 +34,35 @@ export function buildColorPicker(doc, onPick, listen, fourth) {
     else node.addEventListener(type, fn);
   };
   const stop = (event) => { event.preventDefault?.(); event.stopPropagation?.(); };
+
+  if (onHighlight) {
+    const wrap = doc.createElement("div");
+    wrap.className = "pxd-picker__row";
+    const cap = doc.createElement("div");
+    cap.className = "pxd-picker__cap";
+    cap.textContent = "Highlight";
+    wrap.append(cap);
+    const swatches = doc.createElement("div");
+    swatches.className = "pxd-picker__swatches";
+    for (const name of HIGHLIGHT_COLORS) {
+      const b = doc.createElement("button");
+      b.type = "button";
+      b.className = `pxd-swatch pxd-picker__swatch pxd-c-${name}`;
+      b.setAttribute("data-tip", "picker.swatch");
+      b.setAttribute("data-tip-extra", HIGHLIGHT_MARK_TIP);
+      b.setAttribute("title", HIGHLIGHT_MARK_TIP);
+      b.setAttribute("aria-label", `#h/${name}`);
+      b.setAttribute("data-color", name);
+      b.setAttribute("data-highlight", name);
+      on(b, "click", (event) => {
+        stop(event);
+        onHighlight(name);
+      });
+      swatches.append(b);
+    }
+    wrap.append(swatches);
+    box.append(wrap);
+  }
 
   if (onTag) {
     const gear = doc.createElement("button");

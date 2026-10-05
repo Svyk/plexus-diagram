@@ -40,6 +40,11 @@ const PDF_PAGE_QUERY = `[:find ?u ?t :in $ ?url :where [?p :pdf/url ?url] [?p :b
 const PDF_PAGE_BLOCKS_QUERY = `[:find ?props :in $ ?uid :where [?p :block/uid ?uid] [?b :block/page ?p] [?b :block/props ?props]]`;
 const BLOCK_PROPS_PATTERN = "[:block/string :block/props {:block/page [:node/title]}]";
 const BLOCK_WATCH_PATTERN = "[:block/uid :block/string :block/props {:block/page [:node/title]}]";
+const HIGHLIGHT_TREE_PATTERN = `[:block/uid
+ {:block/children [:block/uid :block/string :block/order :block/props
+   {:block/children [:block/uid :block/string :block/order :block/props
+     {:block/children [:block/uid :block/string :block/order :block/props
+       {:block/children [:block/uid :block/string :block/order :block/props]}]}]}]}]`;
 
 const eidKey = (uid) => [":block/uid", uid];
 const watchEntity = (uid) => `[:block/uid "${String(uid).replace(/["\\]/g, "")}"]`;
@@ -63,6 +68,22 @@ function trimTree(node, depth, budget) {
       string: c[":block/string"] ?? "",
       ...(c[":block/open"] === false ? { open: false } : {}),
       children: trimTree(c, depth - 1, budget),
+    });
+  }
+  return out;
+}
+
+function highlightTreeNodes(node) {
+  const out = [];
+  for (const child of sortedKids(node)) {
+    const uid = child[":block/uid"];
+    const string = child[":block/string"];
+    const props = child[":block/props"];
+    out.push({
+      uid: typeof uid === "string" ? uid : "",
+      string: typeof string === "string" ? string : "",
+      props: props && typeof props === "object" && !Array.isArray(props) ? props : {},
+      children: highlightTreeNodes(child),
     });
   }
   return out;
@@ -566,6 +587,16 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
 
     q(query, ...inputs) {
       return data.fast?.q ? data.fast.q(query, ...inputs) : data.q(query, ...inputs);
+    },
+
+    // Page children for the highlight picker, four levels. No url query.
+    pdfHighlightTree(pageUid) {
+      const uid = typeof pageUid === "string" ? pageUid : "";
+      if (!uid) return [];
+      let res = null;
+      try { res = pull(HIGHLIGHT_TREE_PATTERN, eidKey(uid)); } catch { return []; }
+      if (!res || typeof res !== "object" || Array.isArray(res) || typeof res[":block/uid"] !== "string") return [];
+      return highlightTreeNodes(res);
     },
 
     // Read-only cover. :pdf/url is a page attribute. Highlight blocks sit anywhere on that page.

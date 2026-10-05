@@ -2731,6 +2731,11 @@ export function mountBoardView({
   const writeHighlighterFlag = async (on) => {
     if (disposed) return;
     const flag = on === true;
+    // A virtual board has no props yet: the session stamps the marker in the same undo step as the flag.
+    if (board()?.virtual && typeof session?.setHighlighterTags === "function") {
+      await session.setHighlighterTags(flag);
+      return;
+    }
     let base = null;
     try {
       if (typeof host?.pullProps === "function") base = readPlexus(host.pullProps(boardUid));

@@ -1,0 +1,40 @@
+/* AE-1. "Open as Plexus board" button over a native diagram that already has shapes. */
+
+.pxd-convert.pxd-convert--chip {
+  position: relative;
+  z-index: 3;
+  display: block;
+  box-sizing: border-box;
+  height: 26px;
+  margin: -34px 8px 8px auto;
+  padding: 0 10px;
+  border: 1px solid #0d9488;
+  border-radius: 4px;
+  background: #ffffff;
+  color: #115e59;
+  font: inherit;
+  font-size: 12px;
+  line-height: 24px;
+  cursor: pointer;
+}
+
+.pxd-convert.pxd-convert--chip:hover,
+.pxd-convert.pxd-convert--chip:focus-visible {
+  border-color: #115e59;
+  outline: 2px solid #0d9488;
+  outline-offset: 1px;
+}
+
+.pxd-convert.pxd-convert--chip:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.bp3-dark .pxd-convert.pxd-convert--chip,
+body.bt-theme-dark .pxd-convert.pxd-convert--chip,
+.rm-dark-theme .pxd-convert.pxd-convert--chip,
+body.roam-body.dark .pxd-convert.pxd-convert--chip {
+  border-color: #2dd4bf;
+  background: transparent;
+  color: #99f6e4;
+}

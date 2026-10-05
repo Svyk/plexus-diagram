@@ -212,9 +212,9 @@ test("serializeItemLayout keeps the board marker v:2 and a valid bg, drops other
 test("withBoardMarker adds v:2 or strips v and bg without touching layout", () => {
   assert.deepEqual(withBoardMarker({ x: 1, y: 2 }, true), { x: 1, y: 2, v: 2 });
   assert.deepEqual(withBoardMarker(null, true), { v: 2 });
-  assert.deepEqual(withBoardMarker({ ":x": 1, ":v": 2, ":bg": "dots" }, false), { x: 1 });
-  assert.equal(withBoardMarker({ v: 2, bg: "dots" }, false), null);
-  assert.equal(withBoardMarker(null, false), null);
+  assert.deepEqual(withBoardMarker({ ":x": 1, ":v": 2, ":bg": "dots" }, false), { x: 1, native: true });
+  assert.deepEqual(withBoardMarker({ v: 2, bg: "dots" }, false), { native: true });
+  assert.deepEqual(withBoardMarker(null, false), { native: true });
 });
 
 test("BOARD_PATTERNS, BOARD_TONES and FIT_PAD", () => {
@@ -247,8 +247,8 @@ test("bg and bgColor are kept only when valid, and grid is a pattern", () => {
 });
 
 test("withBoardMarker off also removes bgColor", () => {
-  assert.deepEqual(withBoardMarker({ x: 1, v: 2, bg: "grid", bgColor: "teal" }, false), { x: 1 });
-  assert.equal(withBoardMarker({ v: 2, bgColor: "teal" }, false), null);
+  assert.deepEqual(withBoardMarker({ x: 1, v: 2, bg: "grid", bgColor: "teal" }, false), { x: 1, native: true });
+  assert.deepEqual(withBoardMarker({ v: 2, bgColor: "teal" }, false), { native: true });
   assert.deepEqual(withBoardMarker({ x: 1, bgColor: "teal" }, true), { x: 1, bgColor: "teal", v: 2 });
 });
 

@@ -58,6 +58,7 @@ import { inflate, rectsIntersect, unionRect } from "./model/geometry.js";
 import { SHAPES } from "./model/shapes.js";
 import { sameSize as sameSizeRects, spaceOut as spaceOutRects, tidyRects } from "./model/layout.js";
 import { coveredBy, filterLinks, linksQuery, reduceLinks } from "./model/links.js";
+import { autoEligibility, storedLayoutIn } from "./discovery.js";
 import { createEchoLedger, createWriteQueue } from "./host/roam.js";
 import { executeImport, planImport, readNative, readV06Entry } from "./host/migrate.js";
 
@@ -166,7 +167,7 @@ function unknownKeys(plexus, known) {
   return out;
 }
 
-function createSession(uid, { host, settings = null, raf, now = Date.now, idle, linkDelay = 1500, graceMs = 800 } = {}) {
+function createSession(uid, { host, settings = null, virtual = false, raf, now = Date.now, idle, linkDelay = 1500, graceMs = 800 } = {}) {
   const schedule = raf ?? ((fn) => {
     if (typeof globalThis.requestAnimationFrame === "function") return globalThis.requestAnimationFrame(fn);
     const t = setTimeout(fn, 0);
@@ -218,6 +219,22 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
   };
 
   const ix = () => (rix ??= indexTree(raw));
+  // Auto-enhance: a board with no :plexus yet is shown as a board but nothing is written until the first edit stamps it.
+  let virtualAllowed = virtual === true;
+  const autoEnhanceOn = () => (typeof settings?.get === "function" ? settings.get("auto-enhance") : settings?.["auto-enhance"]) !== false;
+  const autoBoardCache = new Map();
+  const autoBoardOf = (id, cplexus, kids) => {
+    if (!autoEnhanceOn()) return false;
+    if (!autoBoardCache.has(id)) {
+      let count = 0;
+      try {
+        const nodes = host.pullNative?.(id)?.[":diagram/nodes"];
+        count = Array.isArray(nodes) ? nodes.length : 0;
+      } catch { count = 0; }
+      autoBoardCache.set(id, count);
+    }
+    return autoEligibility({ plexus: cplexus, nativeNodeCount: autoBoardCache.get(id), storedLayout: storedLayoutIn(kids) }) === "virtual";
+  };
   const rebuild = () => {
     rix = null;
     const plexusApi = globalThis.window?.RoamPlexus ?? globalThis.RoamPlexus ?? null;
@@ -232,7 +249,12 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
       },
       propsOf: (id) => host.blockProps(id),
       plexusApi,
+      autoBoard: autoBoardOf,
     }) : null;
+    if (board && virtualAllowed && autoEnhanceOn() && !board.enhanced && !board.native) {
+      board.enhanced = true;
+      board.virtual = true;
+    }
     rects = board ? worldRects(board) : new Map();
     if (highlightWatchReady) syncHighlightWatches();
   };
@@ -463,6 +485,7 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
       case "delete": await host.deleteBlock(op.uid); break;
       case "props": await host.updateProps(op.uid, op.plexus); break;
       case "string": await host.updateString(op.uid, op.string); break;
+      case "open": await host.setOpen(op.uid, op.open); break;
       default: break;
     }
   }
@@ -538,8 +561,46 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
   // One user operation is one Roam undo step: the host groups the writes of a transaction.
   const grouped = (fn) => (host.group ? host.group(fn) : fn());
 
+  // A virtual board is stamped with the board marker by its first write, in the same group as that write.
+  // The props op merges into any props op the transaction already holds for the board (coalesce keeps the last one).
+  // Folds the outline once, like Enhance, when the collapse setting is on.
+  function stampBoard(ops) {
+    if (!board?.virtual) return;
+    const held = ops.filter((op) => op.op === "props" && op.uid === uid);
+    if (held.length) {
+      const last = held[held.length - 1];
+      if (last.plexus?.native === true) return; // Restore native is the user choosing native: no stamp
+      last.plexus = withBoardMarker(last.plexus, true);
+      rawProps(uid, last.plexus);
+    } else {
+      const plexus = withBoardMarker(rawPlexus(uid), true);
+      ops.unshift({ op: "props", uid, plexus });
+      rawProps(uid, plexus);
+    }
+    if (collapseOutline() && raw?.[OPEN] !== false) {
+      ops.push({ op: "open", uid, open: false });
+      raw[OPEN] = false;
+    }
+  }
+
+  // For writes that do not go through txn: the stamp ops (empty unless the board is virtual), already in the model.
+  function stampList() {
+    const ops = [];
+    stampBoard(ops);
+    if (!ops.length) return ops;
+    for (const op of ops) for (const [f, v] of fieldsOf(op)) ledger.expect(op.uid, f, v);
+    publish();
+    return ops;
+  }
+
+  const stampedRun = (list, fn) => queue.run(() => grouped(async () => {
+    await execute(list);
+    return fn();
+  }));
+
   function commit(ops, result) {
     if (!ops.length) return Promise.resolve(result);
+    stampBoard(ops);
     const list = coalesce(ops);
     for (const op of list) for (const [f, v] of fieldsOf(op)) ledger.expect(op.uid, f, v);
     publish();
@@ -1008,7 +1069,11 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
         if (typeof host.createBlock !== "function") return Promise.resolve(null);
         return Promise.resolve(host.createBlock(spec)).then((made) => (typeof made === "string" ? made : made?.uid || null));
       };
-      return place().then((drawingUid) => {
+      const stamp = stampList();
+      const placed = stamp.length
+        ? stampedRun(stamp, place).catch((err) => { handleFailure(err); return null; })
+        : place();
+      return placed.then((drawingUid) => {
         const ref = drawingRefString(drawingUid);
         if (!ref || !board || destroyed || gone) return null;
         return txn((t) => {
@@ -1168,11 +1233,13 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
       const next = open !== false;
       if ((node[OPEN] !== false) === next) return Promise.resolve(false);
       node[OPEN] = next;
+      const stamp = stampList();
       publish();
-      return queue.run(async () => {
+      const write = async () => {
         await host.setOpen(id, next);
         return true;
-      }).catch((err) => { handleFailure(err); return false; });
+      };
+      return (stamp.length ? stampedRun(stamp, write) : queue.run(write)).catch((err) => { handleFailure(err); return false; });
     },
 
     // CH-1: show or hide a card's children inside it. One props write. Turning it on grows the card by `extraH`
@@ -1707,21 +1774,27 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
       const dst = board.items.get(edge.to);
       if (!src || !dst) return { ok: false, reason: "unresolved" };
       const dstRef = edge.toBlock ? `((${edge.toBlock}))` : semanticRef(dst);
+      let stamp = stampList();
+      const write = (fn) => {
+        const list = stamp;
+        stamp = [];
+        return list.length ? stampedRun(list, fn) : queue.run(fn);
+      };
       try {
         if (src.kind === "page") {
           const page = host.pullPage(src.target.title);
           if (!page) return { ok: false, reason: "no-page" };
           const attr = kidsOf(page).find((k) => String(k[STR] ?? "").trim() === `${label}::`);
           if (attr) {
-            await queue.run(() => host.createBlock({ parentUid: attr[UID], order: "last", string: dstRef }));
+            await write(() => host.createBlock({ parentUid: attr[UID], order: "last", string: dstRef }));
             return { ok: true, reason: "appended" };
           }
-          await queue.run(() => host.createBlock({ parentUid: page[UID], order: "last", string: `${label}:: ${dstRef}` }));
+          await write(() => host.createBlock({ parentUid: page[UID], order: "last", string: `${label}:: ${dstRef}` }));
           return { ok: true, reason: "created" };
         }
         const srcUid = src.kind === "block" ? src.target.uid : src.uid;
         if (host.blockString(srcUid) == null) return { ok: false, reason: "unresolved" };
-        await queue.run(() => host.createBlock({ parentUid: srcUid, order: "last", string: `${label}:: ${dstRef}` }));
+        await write(() => host.createBlock({ parentUid: srcUid, order: "last", string: `${label}:: ${dstRef}` }));
         return { ok: true, reason: "created" };
       } catch (err) {
         emit("toast", { message: "Couldn't write the connection to the graph." });
@@ -1745,6 +1818,10 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
 
     async enhance() {
       if (!board) return { enhanced: false, reason: "no-board" };
+      if (board.virtual) {
+        await txn((t) => { t.props(uid, withBoardMarker(rawPlexus(uid), true)); });
+        return { enhanced: true, kind: "virtual", counts: null };
+      }
       if (board.enhanced) return { enhanced: false, reason: "already" };
       // Restore leaves the edited item props in place. Importing again would overwrite that layout and duplicate connections.
       if (hasStoredLayout()) {
@@ -1775,6 +1852,16 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
       }
       repull();
       return { enhanced: true, kind, counts };
+    },
+
+    setHighlighterTags(on) {
+      return txn((t) => { t.props(uid, { ...rawPlexus(uid), highlighterTags: on === true }); });
+    },
+
+    allowVirtual() {
+      if (destroyed) return;
+      virtualAllowed = true;
+      publish();
     },
 
     restoreNative() {
@@ -1812,6 +1899,8 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
   // Moves top-level items into a child board (rebased to its origin) and re-homes the connections that follow.
   function moveItemsInto(t, top, boardUid, origin, place, track = {}) {
     const moved = track.moved ?? new Set([...top].flatMap((id) => [id, ...descendantsOf(board, id)]));
+    // A nested board that is only virtual (auto-enhance) gets its marker with the first card moved into it.
+    if (rawPlexus(boardUid).v !== SCHEMA_VERSION) t.props(boardUid, withBoardMarker(rawPlexus(boardUid), true));
     for (const id of top) {
       const r = rects.get(id);
       t.move(id, boardUid, insertOrder(boardUid));
@@ -1923,6 +2012,7 @@ export function acquireSession(boardUid, options = {}) {
   const entry = registry.get(boardUid);
   if (entry && entry.host === host) {
     entry.refs++;
+    if (options.virtual === true) entry.session.allowVirtual?.();
     return entry.session;
   }
   if (entry) {

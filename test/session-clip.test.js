@@ -37,12 +37,12 @@ function mainChildren() {
   ];
 }
 
-function setup(children = mainChildren(), { extra } = {}) {
+function setup(children = mainChildren(), { extra, settings = null } = {}) {
   const fake = createFakeRoam();
   const host = createHost({ api: fake.api, storage: fake.storage, graph: "g" });
   fake.seedBoard({ uid: "b1", props: { plexus: { v: 2 } }, children });
   extra?.(fake);
-  const session = acquireSession("b1", { host, settings: null, linkDelay: 0 });
+  const session = acquireSession("b1", { host, settings, linkDelay: 0 });
   fake.clearLog();
   return { fake, host, session };
 }
@@ -139,7 +139,7 @@ test("duplicateItems chooses the parent from the copy's center and grows a secti
 });
 
 test("duplicateItems skips a non-enhanced nested board and ignores unknown uids", async () => {
-  const { fake, session } = setup();
+  const { fake, session } = setup(undefined, { settings: { "auto-enhance": false } });
   assert.deepEqual(await session.duplicateItems(["NN"]), []);
   assert.deepEqual(await session.duplicateItems(["ghost"]), []);
   assert.equal(fake.writesLog().length, 0);

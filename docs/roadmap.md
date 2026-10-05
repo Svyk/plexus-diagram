@@ -112,6 +112,7 @@ Native diagrams are React Flow (`.react-flow`, nodes `.react-flow__node-block`).
 | P26 | Page chips and On board | 2.11.4 | released 2026-10-05. PDF-7 and DOC-20 done. |
 | P27 | Card context and board chips | 2.12.0 | released 2026-10-05. MEM-1 and NAV-1 done. |
 | P28 | Why, references, lane, suggest, resurface | 2.12.1 | released 2026-10-05. MEM-2, NAV-2, MEM-3, MEM-5, and MEM-4 done. |
+| P29 | AE-1 auto-enhance default | 2.13.0 | open |
 | P17 rest-P22 | 3.x roadmap, see roadmap-3.md | 2.8.1-3.0.0 | open |
 
 Order matters: P1 and P2 are the user's direct requests. Within a phase, do tasks in the listed order unless one is blocked.

@@ -25,6 +25,7 @@ import { createShowStash, pickCameraMount, resolveRegionTarget } from "./view/re
 import { tooltipDelay } from "./view/tooltip.js";
 import { mountOutlineRegion, OUTLINE_TOAST, outlineToast } from "./view/region-outline.js";
 import {
+  autoEligibility,
   BLOCK_CONTAINER_SELECTOR,
   blockContainerUid,
   diagramsWithin,
@@ -41,6 +42,7 @@ import {
   readEnhanced,
   readEnhancedUidCache,
   routeLeftZoomedDiagram,
+  storedLayoutIn,
   writeEnhancedUidCache,
 } from "./discovery.js";
 import { normalizeSetting, onSettingsChange, readSettings, SETTING_IDS } from "./settings.js";
@@ -54,6 +56,9 @@ const NEGATIVE_TTL_MS = 1500;
 const LEGACY_METADATA_PAGE = "plexus-diagram/metadata";
 const TITLE_PANEL_CLASS = "rm-diagram-title-panel";
 const NEW_BOARD_STRING = "{{[[diagram]]:Untitled board}}";
+const AUTO_PATTERN = "[:block/props {:block/children [:block/props]}]";
+const CONVERT_LABEL = "Open as Plexus board";
+const CONVERT_TITLE = "Imports this diagram's shapes and arrows into a Plexus board. Plexus: Restore native diagram gives it back.";
 const ANCESTORS_PATTERN = "[:block/uid :block/string {:block/parents [:block/uid :block/string :block/props {:block/parents [:db/id]}]}]";
 const boardTitle = (s) => parseBoardTitle(s) || UNTITLED_BOARD;
 const currentUid = (rec) => rec.crumbs[rec.crumbs.length - 1].uid;
@@ -169,6 +174,9 @@ export async function installPlexusDiagram({
   const trusted = new Set(); // uids confirmed enhanced by this runtime (command results)
   const portalObservers = new Map(); // portal node -> its own added-nodes observer
   const negativeUntil = new Map(); // uid -> timestamp before which a failed pull is not repeated
+  const autoCache = new Map(); // uid -> { kind: "virtual" | "convert" | null, at } (auto-enhance decision, one read per TTL)
+  const virtualUids = new Set(); // uids shown as a board with no :plexus written yet
+  const convertButtons = new Map(); // native element -> { el, uid }
   const legacyUids = readLegacyEnhanced(host);
   const guardUids = new Set([...readEnhancedUidCache(storage), ...legacyUids]);
   let guardStyle = null;
@@ -355,6 +363,7 @@ export async function installPlexusDiagram({
 
   // Runs last on dispose (disposers unwind in reverse): tear every mount down, restore native Roam.
   lifecycle.add(() => {
+    for (const native of [...convertButtons.keys()]) dropConvert(native);
     for (const rec of [...mounts.values()]) unmount(rec);
     for (const observer of portalObservers.values()) observer.disconnect();
     portalObservers.clear();
@@ -385,6 +394,8 @@ export async function installPlexusDiagram({
     trusted.add(uid);
     guardUids.add(uid);
     negativeUntil.delete(uid);
+    autoCache.delete(uid);
+    virtualUids.delete(uid);
     syncGuard();
   }
 
@@ -392,21 +403,60 @@ export async function installPlexusDiagram({
     trusted.delete(uid);
     legacyUids.delete(uid);
     guardUids.delete(uid);
+    autoCache.delete(uid);
+    virtualUids.delete(uid);
     syncGuard();
   }
+
+  // Auto-enhance decision for a diagram that is not a v2 board: "virtual", "convert", or null. Read once per TTL.
+  function autoKind(uid) {
+    if (!uid || settings[SETTING_IDS.autoEnhance] === false) return null;
+    const hit = autoCache.get(uid);
+    if (hit && Date.now() - hit.at < NEGATIVE_TTL_MS) return hit.kind;
+    let kind = null;
+    try {
+      const pulled = host.api.data.pull(AUTO_PATTERN, [":block/uid", uid]);
+      const plexus = readPlexus(pulled?.[":block/props"] ?? pulled?.props ?? null);
+      let nativeNodeCount = 0;
+      if (plexus?.v !== 2 && plexus?.native !== true) {
+        const nodes = host.pullNative?.(uid)?.[":diagram/nodes"];
+        nativeNodeCount = Array.isArray(nodes) ? nodes.length : 0;
+      }
+      kind = autoEligibility({ plexus, nativeNodeCount, storedLayout: storedLayoutIn(pulled?.[":block/children"]) });
+    } catch {
+      kind = null;
+    }
+    autoCache.set(uid, { kind, at: Date.now() });
+    return kind;
+  }
+
+  const virtualOptions = (virtual) => (virtual ? { virtual: true } : {});
 
   function isBoardEnhanced(uid) {
     if (trusted.has(uid) || legacyUids.has(uid)) return true;
     const until = negativeUntil.get(uid);
     if (until && until > Date.now()) return false;
+    const auto = autoCache.get(uid);
+    if (auto?.kind === "virtual" && virtualUids.has(uid) && Date.now() - auto.at < NEGATIVE_TTL_MS) return true;
     if (readEnhanced(host.api, uid)) {
       trusted.add(uid);
+      virtualUids.delete(uid);
+      autoCache.delete(uid);
       if (!guardUids.has(uid)) {
         guardUids.add(uid);
         syncGuard();
       }
       return true;
     }
+    if (autoKind(uid) === "virtual") {
+      virtualUids.add(uid);
+      if (!guardUids.has(uid)) {
+        guardUids.add(uid);
+        syncGuard();
+      }
+      return true;
+    }
+    virtualUids.delete(uid);
     negativeUntil.set(uid, Date.now() + NEGATIVE_TTL_MS);
     if (guardUids.has(uid)) {
       guardUids.delete(uid);
@@ -475,6 +525,12 @@ export async function installPlexusDiagram({
     Promise.resolve()
       .then(() => host.setOpen(uid, false))
       .catch((error) => console.warn("[plexus-diagram] Could not collapse the board block", uid, error));
+  }
+
+  // A virtual board folds with its first write (the session stamps it). Remember that so a later mount does not fold again.
+  function markCollapsed(uid) {
+    if (!storage?.setItem) return;
+    try { storage.setItem(`plexus-diagram:collapsed:${graphFromHash()}:${uid}`, "1"); } catch { /* storage is a cache only */ }
   }
 
   function mountRecView(rec, { autofocus = false, viewport = null } = {}) {
@@ -639,14 +695,15 @@ export async function installPlexusDiagram({
       if (stopped || mounts.get(rec.native) !== rec || !next.length) return;
       const target = next[next.length - 1].uid;
       if (target === currentUid(rec)) return;
-      if (!readEnhanced(host.api, target)) {
+      const virtual = !readEnhanced(host.api, target) && autoKind(target) === "virtual";
+      if (!virtual && !readEnhanced(host.api, target)) {
         // Never enhance a native diagram from here; Roam opens it.
         try { Promise.resolve(host.openBlock?.(target)).catch(() => {}); } catch { /* host unavailable */ }
         return;
       }
       let session;
       try {
-        session = acquireSession(target, { host, settings: liveSettings });
+        session = acquireSession(target, { host, settings: liveSettings, ...virtualOptions(virtual) });
       } catch (error) {
         console.warn("[plexus-diagram] Could not open the nested board", error);
         return;
@@ -674,7 +731,8 @@ export async function installPlexusDiagram({
     });
   }
 
-  function mount(uid, native, { crumbs } = {}) {
+  function mount(uid, native, { crumbs, virtual = false } = {}) {
+    dropConvert(native);
     const mountEl = doc.createElement("div");
     mountEl.className = "pxd-mount";
     mountEl.dataset.diagramUid = uid;
@@ -689,6 +747,7 @@ export async function installPlexusDiagram({
       titleDisplay: titlePanel ? titlePanel.style.display : "",
       session: null,
       view: null,
+      virtual,
       crumbs: crumbs ?? seedCrumbs(uid),
       back: [],
       forward: [],
@@ -711,7 +770,7 @@ export async function installPlexusDiagram({
       return rec;
     }
     try {
-      rec.session = acquireSession(currentUid(rec), { host, settings: liveSettings });
+      rec.session = acquireSession(currentUid(rec), { host, settings: liveSettings, ...virtualOptions(virtual) });
       rec.fullscreen = settings[SETTING_IDS.fullscreenOnZoom] !== false
         && !routeLeftZoomedDiagram(uid);
       rec.view = mountRecView(rec);
@@ -727,7 +786,8 @@ export async function installPlexusDiagram({
     resumeNestedOpen(rec);
     applyShow(rec);
     // An embed must not collapse the board. The original mount still does, once.
-    if (!embedOwnerUid(native, (id) => host.blockString?.(id))) collapseOnce(uid, native);
+    if (rec.session?.board?.virtual) markCollapsed(uid);
+    else if (!embedOwnerUid(native, (id) => host.blockString?.(id))) collapseOnce(uid, native);
     if (currentUid(rec) === uid) migrateLegacy(rec);
     ensureViewportWatch();
     recByMount.set(mountEl, rec);
@@ -794,7 +854,7 @@ export async function installPlexusDiagram({
     rec.dormant = false;
     rec.mountEl.style.minHeight = "";
     try {
-      rec.session = acquireSession(currentUid(rec), { host, settings: liveSettings });
+      rec.session = acquireSession(currentUid(rec), { host, settings: liveSettings, ...virtualOptions(rec.virtual && virtualUids.has(currentUid(rec))) });
       if (!rec.session?.board) {
         rec.session?.release?.();
         unmount(rec);
@@ -803,7 +863,8 @@ export async function installPlexusDiagram({
       rec.view = mountRecView(rec);
       rec.off = watchRec(rec);
       publishCards(rec.session?.board);
-      if (!embedOwnerUid(rec.native, (id) => host.blockString?.(id))) collapseOnce(currentUid(rec), rec.native);
+      if (rec.session.board.virtual) markCollapsed(currentUid(rec));
+      else if (!embedOwnerUid(rec.native, (id) => host.blockString?.(id))) collapseOnce(currentUid(rec), rec.native);
       if (currentUid(rec) === rec.uid) migrateLegacy(rec);
       applyShow(rec);
     } catch (error) {
@@ -859,9 +920,53 @@ export async function installPlexusDiagram({
     return false;
   }
 
+  function dropConvert(native) {
+    const hit = convertButtons.get(native);
+    if (!hit) return;
+    convertButtons.delete(native);
+    hit.el.remove();
+  }
+
+  // Auto mode: a native diagram that already has shapes stays native, with one button that imports it.
+  // Importing writes many blocks, so it never happens on open.
+  function syncConvert(native, uid) {
+    const want = Boolean(uid) && active() && settings[SETTING_IDS.autoEnhance] !== false
+      && autoCache.get(uid)?.kind === "convert"
+      && native.isConnected !== false
+      && !native.closest?.(".bp3-portal")
+      && !insideEnhancedOutline(native);
+    if (!want) {
+      dropConvert(native);
+      return;
+    }
+    const have = convertButtons.get(native);
+    if (have && have.uid === uid && have.el.isConnected !== false) return;
+    dropConvert(native);
+    const el = doc.createElement("button");
+    el.type = "button";
+    el.className = "pxd-convert pxd-convert--chip";
+    el.textContent = CONVERT_LABEL;
+    el.title = CONVERT_TITLE;
+    el.addEventListener("pointerdown", (event) => event.stopPropagation?.());
+    el.addEventListener("click", (event) => {
+      event.preventDefault?.();
+      event.stopPropagation?.();
+      if (!active() || el.disabled) return;
+      el.disabled = true;
+      enhanceCommand({}, uid)
+        .catch((error) => console.warn("[plexus-diagram] Enhance failed", error))
+        .finally(() => { el.disabled = false; });
+    });
+    native.after(el);
+    convertButtons.set(native, { el, uid });
+  }
+
   function consider(native, options) {
     if (stopped || !native || mounts.has(native) || native.isConnected === false) return;
-    if (!active()) return;
+    if (!active()) {
+      dropConvert(native);
+      return;
+    }
     // A native diagram nested inside a hidden native (or inside our own overlay) is not a board of its own.
     if (native.parentElement?.closest?.(".pxd-native-hidden, .pxd-root")) return;
     const readString = (id) => host.blockString?.(id);
@@ -875,7 +980,10 @@ export async function installPlexusDiagram({
       }
       uidByNative.set(native, uid);
     }
-    if (!uid || !isBoardEnhanced(uid)) return;
+    if (!uid || !isBoardEnhanced(uid)) {
+      syncConvert(native, uid);
+      return;
+    }
     if (insideEnhancedOutline(native)) {
       // An outline copy stays native; exempt it from the pre-paint guard so its bullet is not blank.
       native.classList.add(OUTLINE_NATIVE_CLASS);
@@ -892,7 +1000,7 @@ export async function installPlexusDiagram({
         }
       }
     }
-    mount(uid, native, options);
+    mount(uid, native, { ...options, virtual: virtualUids.has(uid) && !trusted.has(uid) });
   }
 
   function outlineImage(uid) {
@@ -1289,8 +1397,12 @@ export async function installPlexusDiagram({
         portalObservers.delete(node);
       }
     }
+    for (const native of [...convertButtons.keys()]) {
+      if (native.isConnected === false) dropConvert(native);
+    }
     if (!active()) {
       for (const rec of [...mounts.values()]) unmount(rec);
+      for (const native of [...convertButtons.keys()]) dropConvert(native);
       return;
     }
     if (!doc) return;
@@ -1350,8 +1462,8 @@ export async function installPlexusDiagram({
     return uids.size === 1 ? [...uids][0] : null;
   }
 
-  async function enhanceCommand(context) {
-    const uid = resolveBoardUid(context);
+  async function enhanceCommand(context, explicitUid = null) {
+    const uid = explicitUid || resolveBoardUid(context);
     if (!uid) {
       console.info("[plexus-diagram] Focus a {{[[diagram]]}} block first");
       return;
@@ -1655,6 +1767,21 @@ export async function installPlexusDiagram({
   lifecycle.add(onSettingsChange((id, value) => {
     if (stopped) return;
     settings = { ...settings, [id]: normalizeSetting(id, value) };
+    if (id === SETTING_IDS.autoEnhance) {
+      autoCache.clear();
+      negativeUntil.clear();
+      if (settings[id] === false) {
+        // Boards that are only virtual give the native diagram back. Stamped boards stay boards.
+        for (const rec of [...mounts.values()]) {
+          const virtual = rec.session ? rec.session.board?.virtual === true : rec.virtual && virtualUids.has(rec.uid);
+          if (virtual) unmount(rec);
+        }
+        for (const uid of [...virtualUids]) {
+          virtualUids.delete(uid);
+          if (!trusted.has(uid) && !legacyUids.has(uid)) guardUids.delete(uid);
+        }
+      }
+    }
     syncGuard();
     if (!active()) {
       for (const rec of [...mounts.values()]) unmount(rec);

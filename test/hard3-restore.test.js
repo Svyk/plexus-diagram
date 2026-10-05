@@ -60,7 +60,7 @@ test("HARD-3 edit, restore native, and re-enhance keeps the Plexus layout and th
 
   await session.restoreNative();
   assert.equal(session.board.enhanced, false);
-  assert.equal(fake.props("b1").plexus, undefined);
+  assert.deepEqual(fake.props("b1").plexus, { native: true });
   assert.equal(fake.props("b").plexus.x, edited.b.x);
   assert.equal(fake.props("b").plexus.color, "teal");
   assert.deepEqual(nativeGeom(host.pullNative("b1")), nativeBefore);
@@ -83,6 +83,7 @@ test("HARD-3 edit, restore native, and re-enhance keeps the Plexus layout and th
   );
   assert.equal(fake.props(sectionUid).plexus.type, "section");
   assert.equal(fake.props("b1").plexus.v, 2);
+  assert.equal(fake.props("b1").plexus.native, undefined);
   assert.deepEqual(fake.props("b1")["rf-diagram"], { keep: 1 });
   assert.deepEqual(nativeGeom(host.pullNative("b1")), nativeBefore);
   assert.deepEqual(fake.writesLog().map((entry) => [entry[0], entry[1]]), [["update", "b1"]]);

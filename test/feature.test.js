@@ -6,6 +6,7 @@ import { installPlexusDiagram, PACKAGE_VERSION } from "../src/feature.js";
 import { mergePropsForWrite } from "../src/model/schema.js";
 import { PREPAINT_STYLE_ID } from "../src/discovery.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
+import { createSettingsPanel } from "../src/settings.js";
 
 // ---- minimal DOM ------------------------------------------------------------------------------
 
@@ -35,6 +36,8 @@ class El {
     const siblings = this.parentElement?.children;
     return siblings ? siblings[siblings.indexOf(this) - 1] ?? null : null;
   }
+  addEventListener(type, fn) { (this.handlers ??= {})[type] = [...(this.handlers[type] || []), fn]; }
+  fire(type) { for (const fn of this.handlers?.[type] || []) fn({ preventDefault() {}, stopPropagation() {} }); }
   setAttribute(name, value) { this.attrs.set(name, String(value)); this.attrWrites = (this.attrWrites || 0) + 1; }
   removeAttribute(name) { this.attrs.delete(name); this.attrWrites = (this.attrWrites || 0) + 1; }
   hasAttribute(name) { return this.attrs.has(name); }
@@ -201,6 +204,7 @@ function setup({ enhanced = [], legacy = null, settings = {}, hash = "" } = {}) 
         pull(pattern, ref) {
           if (pattern.startsWith("[:block/open")) return env.openState?.[ref[1]] ?? null;
           if (pattern === "[:block/props]") return { ":block/props": props.get(ref[1]) ?? null };
+          if (pattern.startsWith("[:block/props {:block/children")) return { ":block/props": props.get(ref[1]) ?? null, ":block/children": env.autoKids?.[ref[1]] ?? [] };
           if (pattern.includes(":block/parents")) return env.ancestors?.[ref[1]] ?? null;
           if (pattern.includes("...")) return legacyTree;
           return null;
@@ -209,6 +213,7 @@ function setup({ enhanced = [], legacy = null, settings = {}, hash = "" } = {}) 
       ui: { getFocusedBlock: () => env.focused ?? null },
     },
     stats: { writes: 0, watches: 0, renders: 0 },
+    pullNative: (uid) => env.native?.[uid] ?? null,
     pageUid: (title) => (title === "plexus-diagram/metadata" && legacyTree ? "meta" : null),
     blockString: (uid) => strings.get(uid) ?? null,
     q: () => env.parents ?? [],
@@ -227,7 +232,7 @@ function setup({ enhanced = [], legacy = null, settings = {}, hash = "" } = {}) 
     const goneHandlers = new Set();
     const session = {
       uid,
-      board: env.ghost?.has(uid) ? null : { enhanced: props.has(uid) },
+      board: env.ghost?.has(uid) ? null : { enhanced: props.has(uid) || options?.virtual === true, virtual: options?.virtual === true && !props.has(uid) },
       on: (name, fn) => {
         const set = name === "change" ? handlers : name === "gone" ? goneHandlers : null;
         set?.add(fn);
@@ -261,7 +266,7 @@ function setup({ enhanced = [], legacy = null, settings = {}, hash = "" } = {}) 
     addCommand: async (config) => { map.set(config.label, config); },
     removeCommand: async ({ label }) => { map.delete(label); commands.removed.push([kind, label]); },
   });
-  const values = { ...settings };
+  const values = { "auto-enhance": false, ...settings };
   const extensionAPI = {
     settings: { get: (id) => values[id] ?? null },
     ui: {
@@ -1571,5 +1576,161 @@ test("RG-10 the original plus two embeds mount, a second diagram in one embed do
     assert.equal(t.views.filter((view) => view.args.nativeEl === duplicate.native).length, 0);
     assert.equal(t.views.filter((view) => view.args.nativeEl === second.native).length, 1);
     assert.deepEqual(t.writes.setOpen, [["boardAAA1", false]]);
+  });
+});
+
+// ---- AE-1 auto-enhance ------------------------------------------------------------------------------
+
+const NATIVE_NODES = { ":diagram/nodes": [{ ":db/id": 1 }] };
+const buttons = (t) => t.doc.querySelectorAll(".pxd-convert");
+
+test("AE-1 auto on: an empty native diagram mounts as a virtual board and nothing is written", async () => {
+  await withEnv({ settings: { "auto-enhance": true }, hash: "#/app/Svy" }, async (t) => {
+    t.strings.set("vBoard001", "{{[[diagram]]}}");
+    t.env.openState = { vBoard001: { ":block/open": true } };
+    const { native } = addBoardBlock(t.doc, "vBoard001");
+    await t.install();
+    t.tick();
+    await settle();
+    assert.equal(t.views.length, 1);
+    assert.equal(t.sessions.options[0].virtual, true);
+    assert.ok(native.classList.contains("pxd-native-hidden"));
+    assert.equal(buttons(t).length, 0);
+    assert.deepEqual(t.writes.setOpen, []);
+    assert.deepEqual(t.writes.createBlock, []);
+    assert.equal(t.writes.other, 0);
+  });
+});
+
+test("AE-1 auto on: a native diagram with shapes stays native with one convert button; a click enhances that uid and mounts", async () => {
+  await withEnv({ settings: { "auto-enhance": true }, hash: "#/app/Svy" }, async (t) => {
+    t.strings.set("nBoard001", "{{[[diagram]]}}");
+    t.env.native = { nBoard001: NATIVE_NODES };
+    const { native } = addBoardBlock(t.doc, "nBoard001");
+    await t.install();
+    t.tick();
+    await settle();
+    assert.equal(t.views.length, 0);
+    assert.equal(native.classList.contains("pxd-native-hidden"), false);
+    assert.equal(buttons(t).length, 1);
+    t.tick();
+    assert.equal(buttons(t).length, 1, "one button per native, however often it is scanned");
+    const [button] = buttons(t);
+    assert.equal(button.textContent, "Open as Plexus board");
+    assert.ok(button.title.includes("Plexus: Restore native diagram"));
+    assert.ok(button.classList.contains("pxd-convert--chip"));
+    button.fire("click");
+    await settle();
+    assert.equal(t.sessions.enhance, 1);
+    assert.equal(t.sessions.made[0].uid, "nBoard001");
+    assert.equal(t.views.length, 1);
+    assert.equal(buttons(t).length, 0);
+  });
+});
+
+test("AE-1 a restored diagram (native marker) gets neither a board nor a button", async () => {
+  await withEnv({ settings: { "auto-enhance": true }, hash: "#/app/Svy" }, async (t) => {
+    t.strings.set("rBoard001", "{{[[diagram]]}}");
+    t.props.set("rBoard001", { ":plexus": { ":native": true } });
+    t.env.native = { rBoard001: NATIVE_NODES };
+    addBoardBlock(t.doc, "rBoard001");
+    t.strings.set("rBoard002", "{{[[diagram]]}}");
+    t.props.set("rBoard002", { ":plexus": { ":native": true } });
+    addBoardBlock(t.doc, "rBoard002");
+    await t.install();
+    t.tick();
+    await settle();
+    assert.equal(t.views.length, 0);
+    assert.equal(buttons(t).length, 0);
+  });
+});
+
+test("AE-1 a diagram whose children carry stored layout gets the button, not a virtual board", async () => {
+  await withEnv({ settings: { "auto-enhance": true }, hash: "#/app/Svy" }, async (t) => {
+    t.strings.set("sBoard001", "{{[[diagram]]}}");
+    t.env.autoKids = { sBoard001: [{ ":block/props": { ":plexus": { ":x": 1, ":y": 2 } } }] };
+    addBoardBlock(t.doc, "sBoard001");
+    await t.install();
+    t.tick();
+    await settle();
+    assert.equal(t.views.length, 0);
+    assert.equal(buttons(t).length, 1);
+  });
+});
+
+test("AE-1 auto off: no virtual board and no button, only v2 boards mount", async () => {
+  await withEnv({ settings: { "auto-enhance": false }, enhanced: ["eBoard001"], hash: "#/app/Svy" }, async (t) => {
+    t.strings.set("vBoard001", "{{[[diagram]]}}");
+    t.strings.set("nBoard001", "{{[[diagram]]}}");
+    t.strings.set("eBoard001", "{{[[diagram]]}}");
+    t.env.native = { nBoard001: NATIVE_NODES };
+    addBoardBlock(t.doc, "vBoard001");
+    addBoardBlock(t.doc, "nBoard001");
+    addBoardBlock(t.doc, "eBoard001");
+    await t.install();
+    t.tick();
+    await settle();
+    assert.equal(t.views.length, 1);
+    assert.equal(t.views[0].args.routeUid, "eBoard001");
+    assert.equal(buttons(t).length, 0);
+  });
+});
+
+test("AE-1 turning the setting off gives a virtual board back and removes the buttons; on mounts again", async () => {
+  await withEnv({ settings: { "auto-enhance": true }, hash: "#/app/Svy" }, async (t) => {
+    t.strings.set("vBoard001", "{{[[diagram]]}}");
+    t.strings.set("nBoard001", "{{[[diagram]]}}");
+    t.env.native = { nBoard001: NATIVE_NODES };
+    const virtual = addBoardBlock(t.doc, "vBoard001");
+    addBoardBlock(t.doc, "nBoard001");
+    await t.install();
+    t.tick();
+    await settle();
+    assert.equal(t.views.length, 1);
+    assert.equal(buttons(t).length, 1);
+    const row = createSettingsPanel().settings.find((r) => r.id === "auto-enhance");
+    row.action.onChange({ target: { checked: false } });
+    assert.equal(t.views[0].disposed, 1);
+    assert.equal(virtual.native.classList.contains("pxd-native-hidden"), false);
+    assert.equal(buttons(t).length, 0);
+    row.action.onChange({ target: { checked: true } });
+    await settle();
+    t.tick();
+    assert.equal(t.views.length, 2);
+    assert.equal(buttons(t).length, 1);
+  });
+});
+
+test("AE-1 unload removes the convert buttons", async () => {
+  const ctx = setup({ settings: { "auto-enhance": true }, hash: "#/app/Svy" });
+  try {
+    ctx.strings.set("nBoard001", "{{[[diagram]]}}");
+    ctx.env.native = { nBoard001: NATIVE_NODES };
+    addBoardBlock(ctx.doc, "nBoard001");
+    await ctx.install();
+    ctx.tick();
+    assert.equal(buttons(ctx).length, 1);
+    await ctx.lifecycle.dispose();
+    assert.equal(buttons(ctx).length, 0);
+    assert.equal(ctx.doc.querySelectorAll("[class*='pxd-']").length, 0);
+  } finally {
+    ctx.restore();
+  }
+});
+
+test("AE-1 a nested plain diagram opens as a virtual board in auto mode; one with shapes is left to Roam", async () => {
+  await withEnv({ settings: { "auto-enhance": true }, enhanced: ["boardAAA1"] }, async (t) => {
+    t.env.native = { shapesCCC1: NATIVE_NODES };
+    addNative(t.doc, "boardAAA1");
+    await t.install();
+    t.tick();
+    t.views[0].args.onOpenBoard("plainBBB01");
+    await settle();
+    assert.equal(t.env.win.__plexusDiagram.mounts()[0].current, "plainBBB01");
+    assert.equal(t.sessions.options.at(-1).virtual, true);
+    t.views.at(-1).args.onOpenBoard("shapesCCC1");
+    await settle();
+    assert.deepEqual(t.writes.openBlock, ["shapesCCC1"]);
+    assert.equal(t.writes.createBlock.length, 0);
   });
 });

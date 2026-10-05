@@ -6,9 +6,10 @@ A Heptabase-style whiteboard for Roam `{{[[diagram]]}}` blocks. Cards, colored s
 
 ## Start a board
 
+- **Every diagram opens as a Plexus board by default.** A new `{{[[diagram]]}}` block shows the board at once. Nothing is saved to the graph until you change the board; your first edit writes the board marker in the same undo step. A diagram that already has native shapes stays Roam's own, with an **Open as Plexus board** button over it that imports the shapes and arrows. **Plexus: Restore native diagram** now sticks, even with this on. Turn it off under Settings, **Every diagram is a Plexus board**, to open only diagrams you enhance or create with New whiteboard here.
 - **Plexus: New whiteboard here** (palette or slash) creates `{{[[diagram]]:Untitled board}}` under the focused block and opens it.
 - **Plexus: Commands…** (palette) lists every action and keeps the block that was focused: Enhance, Restore, Fullscreen, Export board as SVG, and Copy board as text. Slash still runs each action by its **Plexus:** name.
-- **Plexus: Enhance this diagram** turns an existing native diagram into a board. Native node positions, groups (become sections), and edges (become connections) are imported. Native diagrams you never enhance are never touched.
+- **Plexus: Enhance this diagram** turns an existing native diagram into a board. Native node positions, groups (become sections), and edges (become connections) are imported. With Every diagram is a Plexus board off, native diagrams you never enhance are never touched.
 - **Plexus: Restore native diagram** gives the block back to Roam's React Flow view. Content is not deleted.
 - Opening a board's block page (zoomed in) shows it full screen. **Plexus: Fullscreen this diagram** does the same from anywhere.
 
@@ -194,6 +195,7 @@ Settings → Extensions → Plexus Diagram. Each change applies on the open boar
 | Cards | Default card width | Width of a new card, in pixels. |
 | Cards | Default card height | Height of a new card, in pixels. |
 | Cards | Show card badges | Show how many references, tasks, and children a card has. |
+| Cards | Board chips | Show a board chip under a block that is a card on a board. |
 | Cards | Space out cards | After a move, push cards apart when they overlap. |
 | Integrations | Better Tasks integration | Use Better Tasks for task chips, the light checkbox, and task edits. Off leaves the TODO marker to Roam. Starts off. |
 | Integrations | Task tool | Show the Task tool (K) in the dock. Starts off. A saved on stays on. |
@@ -202,7 +204,9 @@ Settings → Extensions → Plexus Diagram. Each change applies on the open boar
 | Sections | Auto-fit sections | Grow a section when a card is moved or resized past its edge. |
 | Connections | Graph links | Show lines between cards that share a page reference or an attribute. All, attributes, or off. |
 | Connections | Attribute styles | One JSON object. Each attribute name gets a palette color and a line: solid, dashed, or dotted. |
+| Connections | Ask why on a new connection | After you draw a connection, open the why field. |
 | Board | Enabled | Turn the diagram overlay on or off. |
+| Board | Every diagram is a Plexus board | On: every `{{[[diagram]]}}` opens as a Plexus board. Nothing is saved until you change the board. Off: only diagrams you enhance (Plexus: Enhance) or create with New whiteboard open in Plexus. |
 | Board | Fullscreen on zoom | Open a diagram full screen when you zoom into its block. Esc leaves it. |
 | Board | Mouse wheel | Pan or zoom. Pinch still zooms. |
 | Board | Show minimap | Show the small map of the whole board. |
@@ -223,6 +227,7 @@ Settings → Extensions → Plexus Diagram. Each change applies on the open boar
 | Board | Map view below (zoom) | Below 0.3, 0.45, or 0.6, cards show only their title. |
 | Board | Enable shortcuts | Use keyboard shortcuts on the board. |
 | Board | Show version badge | Show the version on the board. |
+| Board | Resurface intervals | Days, separated by commas. A daily page lists cards from those many days ago. |
 | Performance | Motion | Full, reduced, or none. A system reduced-motion setting shortens Full. |
 | Performance | Disable on mobile | Do not open diagrams on a phone. |
 | Performance | Collapse the outline | Fold an enhanced board once, so the outline does not list every card. Opening the bullet is remembered. |

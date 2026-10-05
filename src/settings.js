@@ -1,5 +1,6 @@
 export const SETTING_IDS = Object.freeze({
   enabled: "enabled",
+  autoEnhance: "auto-enhance",
   fullscreenOnZoom: "fullscreen-on-zoom",
   graphLinks: "graph-links",
   attrStyles: "attr-styles",
@@ -43,6 +44,7 @@ export const SETTING_IDS = Object.freeze({
 
 const DEFAULTS = Object.freeze({
   [SETTING_IDS.enabled]: true,
+  [SETTING_IDS.autoEnhance]: true,
   [SETTING_IDS.fullscreenOnZoom]: true,
   [SETTING_IDS.graphLinks]: "all",
   [SETTING_IDS.attrStyles]: "",
@@ -229,6 +231,7 @@ export async function resetPlexusSettings() {
 
 const SETTING_ROWS = {
   [SETTING_IDS.enabled]: () => switchRow(SETTING_IDS.enabled, "Enabled", "Turn the diagram overlay on or off."),
+  [SETTING_IDS.autoEnhance]: () => switchRow(SETTING_IDS.autoEnhance, "Every diagram is a Plexus board", "On: every {{[[diagram]]}} opens as a Plexus board. Nothing is saved until you change the board. Off: only diagrams you enhance (Plexus: Enhance) or create with New whiteboard open in Plexus."),
   [SETTING_IDS.fullscreenOnZoom]: () => switchRow(SETTING_IDS.fullscreenOnZoom, "Fullscreen on zoom", "Open a diagram full screen when you zoom into its block. Esc leaves it."),
   [SETTING_IDS.graphLinks]: () => selectRow(SETTING_IDS.graphLinks, "Graph links", "Show lines between cards that share a page reference or an attribute.", ["all", "attributes", "off"]),
   [SETTING_IDS.attrStyles]: () => inputRow(SETTING_IDS.attrStyles, "Attribute styles", "One JSON object. Each attribute name gets a palette color and a line: solid, dashed, or dotted."),
@@ -284,7 +287,7 @@ const SETTING_GROUPS = [
     SETTING_IDS.graphLinks, SETTING_IDS.attrStyles, SETTING_IDS.whyPrompt,
   ]],
   ["group-board", "Board", "The canvas, the controls, and how you move around.", [
-    SETTING_IDS.enabled, SETTING_IDS.fullscreenOnZoom, SETTING_IDS.wheel, SETTING_IDS.showMinimap, SETTING_IDS.showPalette,
+    SETTING_IDS.enabled, SETTING_IDS.autoEnhance, SETTING_IDS.fullscreenOnZoom, SETTING_IDS.wheel, SETTING_IDS.showMinimap, SETTING_IDS.showPalette,
     SETTING_IDS.toolbarLayout, SETTING_IDS.dockPosition, SETTING_IDS.dockStyle, SETTING_IDS.dockLabels, SETTING_IDS.chromeDensity, SETTING_IDS.dockOptions,
     SETTING_IDS.tooltips, SETTING_IDS.tooltipDelay,
     SETTING_IDS.controlsPosition, SETTING_IDS.snapGuides, SETTING_IDS.snapGrid, SETTING_IDS.grid, SETTING_IDS.boardTone,

@@ -60,8 +60,9 @@ test("settings panel follows spec section 6 ids, defaults and row types", () => 
     "enter-in-card",
     "toolbar-layout", "dock-position", "dock-style", "dock-labels", "chrome-density", "dock-options",
     "tooltips", "tooltip-delay", "task-tool", "task-chips", "task-default-project", "better-tasks", "card-chips",
-    "why-prompt", "resurface-intervals",
+    "why-prompt", "resurface-intervals", "auto-enhance",
   ].sort());
+  assert.equal(settingsDefaults()["auto-enhance"], true);
   assert.equal(settingsDefaults()["enter-in-card"], "newline");
   assert.deepEqual(byIdOf(panel)["enter-in-card"].action.items, ["newline", "child"]);
   const byId = Object.fromEntries(panel.settings.map((row) => [row.id, row]));

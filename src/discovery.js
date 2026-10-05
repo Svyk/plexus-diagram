@@ -317,3 +317,21 @@ export function readEnhanced(api, uid) {
     return false;
   }
 }
+
+// A direct child with stored Plexus layout means the diagram was a board before (restored without the marker).
+export function storedLayoutIn(children) {
+  for (const child of Array.isArray(children) ? children : []) {
+    const stored = readPlexus(child?.[":block/props"] ?? child?.props);
+    if (stored && Number.isFinite(stored.x) && Number.isFinite(stored.y)) return true;
+  }
+  return false;
+}
+
+// Auto mode: "virtual" mounts a board without writing, "convert" keeps the native
+// diagram and offers a button, null means nothing to do (v2, or restored with the marker).
+export function autoEligibility({ plexus, nativeNodeCount = 0, storedLayout = false } = {}) {
+  if (plexus?.v === SCHEMA_VERSION) return null;
+  if (plexus?.native === true) return null;
+  if (nativeNodeCount > 0 || storedLayout) return "convert";
+  return "virtual";
+}

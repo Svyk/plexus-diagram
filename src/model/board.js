@@ -102,7 +102,7 @@ function autoPlace(siblings) {
   });
 }
 
-export function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf } = {}) {
+export function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, autoBoard } = {}) {
   if (!pulled || typeof pulled !== "object") return null;
   const uid = pulled[":block/uid"];
   const string = pulled[":block/string"] ?? "";
@@ -228,7 +228,7 @@ export function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf } = {
         target,
         ...(regionDrawing ? { regionDrawing } : {}),
         ...(highlight ? { highlight } : {}),
-        enhanced: kind === "board" && cplexus?.v === 2,
+        enhanced: kind === "board" && (cplexus?.v === 2 || (typeof autoBoard === "function" && autoBoard(cuid, cplexus, kids) === true)),
         members: [],
         content: type === "section" ? [] : kids,
       };
@@ -279,6 +279,7 @@ export function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf } = {
     title: parseBoardTitle(string),
     plexus,
     enhanced: plexus?.v === 2,
+    native: plexus?.native === true,
     background: {
       pattern: BOARD_PATTERNS.includes(plexus?.bg) ? plexus.bg : null,
       tone: BOARD_TONES.includes(plexus?.bgColor) ? plexus.bgColor : (hexColor(plexus?.bgColor) || null),

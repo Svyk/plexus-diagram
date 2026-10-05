@@ -687,7 +687,7 @@ test("restoreNative leaves the open state alone", async () => {
 test("restoreNative removes only plexus from board props", async () => {
   const { fake, session } = setup();
   await session.restoreNative();
-  assert.deepEqual(fake.props("b1"), { "rf-diagram": { keep: 1 } });
+  assert.deepEqual(fake.props("b1"), { "rf-diagram": { keep: 1 }, plexus: { native: true } });
   assert.equal(session.board.enhanced, false);
   assert.ok(fake.props("c1").plexus);
 });
@@ -961,14 +961,14 @@ test("restoreNative on a nested board keeps its layout and removes only the mark
   seedNested(fake);
   const session = acquireSession("nbFull", { host, settings: null, linkDelay: 0 });
   await session.restoreNative();
-  assert.deepEqual(fake.props("nbFull"), { "rf-diagram": { keep: 1 }, plexus: { x: 0, y: 500, w: 320, h: 220 } });
+  assert.deepEqual(fake.props("nbFull"), { "rf-diagram": { keep: 1 }, plexus: { x: 0, y: 500, w: 320, h: 220, native: true } });
   const root = acquireSession("b1", { host, settings: null, linkDelay: 0 });
   await root.restoreNative();
-  assert.equal(fake.props("b1").plexus, undefined);
+  assert.deepEqual(fake.props("b1").plexus, { native: true });
 });
 
-test("a non-enhanced native diagram card is neither a move target nor renameable", async () => {
-  const { fake, session } = nestedSetup();
+test("with auto-enhance off a non-enhanced native diagram card is neither a move target nor renameable", async () => {
+  const { fake, session } = setup({}, { seedFn: seedNested, settings: { "auto-enhance": false } });
   assert.equal(session.board.items.get("nbNative").enhanced, false);
   assert.equal(session.board.items.get("nbFull").enhanced, true);
   fake.clearLog();

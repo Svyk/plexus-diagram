@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.13.0 — 2026-10-05
+
+- Every diagram opens as a Plexus board by default. Nothing is saved until you change the board. Your first edit writes the board marker in the same undo step, and folds the outline when Collapse the outline is on.
+- A diagram that already has native shapes stays Roam's own. An Open as Plexus board button over it imports the shapes and arrows.
+- Settings has Every diagram is a Plexus board. Turn it off to open only diagrams you enhance or create with New whiteboard here. Turning it off gives the native diagram back to boards you have not changed.
+- Plexus: Restore native diagram now sticks, even with the setting on. Plexus: Enhance clears it.
+- The command palette stays two entries.
+
 ## 2.12.1 — 2026-10-05
 
 - Double-click a connection label to edit the label and a why note. Enter saves both. The outline chip adds "because …". An empty why writes no child.

@@ -231,14 +231,17 @@ export function serializeItemLayout(layout) {
 // A nested board is a card block whose own props carry `v: 2` next to its layout.
 export function withBoardMarker(plexus, on) {
   const base = isObject(plexus) ? plainKeys(plexus) : {};
-  if (on) return { ...base, v: SCHEMA_VERSION };
+  if (on) {
+    delete base.native;
+    return { ...base, v: SCHEMA_VERSION };
+  }
   delete base.v;
   delete base.bg;
   delete base.bgColor;
   delete base.bgImage;
   delete base.lodZoom;
   delete base.dock;
-  return Object.keys(base).length ? base : null;
+  return { ...base, native: true };
 }
 
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];

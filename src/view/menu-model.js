@@ -127,6 +127,7 @@ export function buildMenu(kind, ctx = {}) {
         make("new-lane-h", "Horizontal lane"),
         make("new-lane-v", "Vertical lane"),
         make("new-board", "New board", { hint: "W" }),
+        make("new-drawing", "New drawing here"),
         templateMenu(),
         make("save-template", "Save board as template"),
         ...snapshotMenus(),

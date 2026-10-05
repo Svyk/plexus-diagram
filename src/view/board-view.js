@@ -7,6 +7,7 @@
 // section auto-fit preview, context menu, clipboard, focus, presentation, card badges, back-to-content.
 
 import { BOARD_PATTERNS, BOARD_TONES, DEFAULT_BOARD_CARD, DEFAULT_SIZES, LANE_SIZE, PAGE_CARD, PALETTE, STICKY_SIZE, UNTITLED_BOARD, classifyString, hexColor, readPlexus, semanticRef, plainText } from "../model/schema.js";
+import { DRAWING_DROP_TOAST, droppedDrawingUids } from "../model/drawing-card.js";
 import { rewriteBgTag } from "../model/highlighter.js";
 import { boundsOf, buildBoard, connectedUids, containerAt, descendantsOf, displayRects, edgesTouching, outlineOrder, sameColorUids, sectionAllUids, sectionFitPlan, sectionNoteUid, sidebarOutlineUids, worldRects } from "../model/board.js";
 import { copyLinkText, hashFromUrl, pageUidFromHash, pxdTarget } from "../model/deeplink.js";
@@ -664,6 +665,7 @@ export function mountBoardView({
     bt,
     onTaskChip: (uid, kind, anchor) => taskPop.open(uid, kind, anchor),
     onPageLayout: (uid) => { if (blockCards.has(uid)) scheduleAnchors(); },
+    onToast: (message) => chrome.toast.show({ message }),
   });
   repaintItemStyles = () => { if (!disposed) itemsR.repaintStyles(); };
   const taskPop = createTaskPopover({ doc, root, bt, toast: (m) => chrome.toast.show(m) });
@@ -1785,6 +1787,11 @@ export function mountBoardView({
       case "new-board": {
         const d = DEFAULT_BOARD_CARD;
         Promise.resolve(session.createBoard?.({ rect: { x: world.x - d.w / 2, y: world.y - d.h / 2, w: d.w, h: d.h } })).then((uid) => { if (uid && !disposed) ctl.select([uid]); }).catch(() => {});
+        break;
+      }
+      case "new-drawing": {
+        const d = DEFAULT_SIZES.card;
+        Promise.resolve(session.createDrawing?.({ x: world.x - d.w / 2, y: world.y - d.h / 2 })).then((uid) => { if (uid && !disposed) ctl.select([uid]); }).catch(() => {});
         break;
       }
       case "template": {
@@ -3406,6 +3413,7 @@ export function mountBoardView({
       dropY += (page ? PAGE_CARD.h : h) + 24;
       return entry;
     });
+    if (droppedDrawingUids(list.map((x) => x.string), (id) => host?.blockString?.(id)).length) toast(DRAWING_DROP_TOAST);
     const made = session.addRefCards?.(placed);
     const offer = dropNamespace(list.map((x) => x.string));
     Promise.resolve(made).then((uids) => {
@@ -4106,6 +4114,11 @@ export function mountBoardView({
     },
     async exportPng() { return exportPng(); },
     addPage(at = null) { addPage(at); },
+    newDrawing(at = null) {
+      const d = DEFAULT_SIZES.card;
+      const world = at || { x: 80, y: 80 };
+      return session.createDrawing?.({ x: world.x - d.w / 2, y: world.y - d.h / 2 });
+    },
     async copyOutline() {
       const b = board();
       if (!b) return "";

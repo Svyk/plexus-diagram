@@ -21,6 +21,7 @@ import { isStructuralString } from "../model/regions.js";
 import { regionRefModel } from "../model/region-card.js";
 import { imageRegionRows, regionBadge } from "../model/region-menu.js";
 import { renderRegionCard, thumbRequest } from "./region-card.js";
+import { copyDrawingPixels, renderDrawingCard } from "./drawing-card.js";
 
 const SIDES = ["top", "right", "bottom", "left"];
 const CHUNK_MS = 8;
@@ -115,14 +116,20 @@ export function pageBodyWantsWheel(target, event) {
   if (event.ctrlKey || event.metaKey) return null;
   const dy = Number(event.deltaY) || 0;
   if (!dy) return null;
+  const list = target.closest(".pxd-drawing-region-list.is-open");
+  if (list && scrollRoom(list, dy)) return list;
   const body = target.closest(".pxd-item__body");
   const card = body?.closest(".pxd-item--page");
   if (!card || card.classList?.contains("pxd-item--editing")) return null;
-  const room = (Number(body.scrollHeight) || 0) - (Number(body.clientHeight) || 0);
-  if (room <= 1) return null;
-  const top = Number(body.scrollTop) || 0;
-  if (dy > 0 ? top >= room - 1 : top <= 0) return null;
-  return body;
+  return scrollRoom(body, dy) ? body : null;
+}
+
+function scrollRoom(el, dy) {
+  const room = (Number(el.scrollHeight) || 0) - (Number(el.clientHeight) || 0);
+  if (room <= 1) return false;
+  const top = Number(el.scrollTop) || 0;
+  if (dy > 0 ? top >= room - 1 : top <= 0) return false;
+  return true;
 }
 
 function synthesizeBlockClick(host) {
@@ -276,6 +283,7 @@ export function createItemRenderer({
   onBadgeClick,
   onPageLayout,
   onTaskChip,
+  onToast,
   bt = null,
 } = {}) {
   taskBlockOn = (item) => Boolean(bt?.available?.()) && isTaskCard(item);
@@ -522,6 +530,9 @@ export function createItemRenderer({
   const unmountRoots = (rec) => {
     try { rec.regionNode?.pxdUnmount?.(); } catch { /* already revoked */ }
     rec.regionNode = null;
+    try { rec.drawingNode?.pxdUnmount?.(); } catch { /* already revoked */ }
+    rec.drawingNode = null;
+    rec.drawingToken = null;
     try { rec.refOff?.(); } catch { /* already off */ }
     rec.refOff = null;
     try { rec.pageUnwatch?.(); } catch { /* already off */ }
@@ -842,6 +853,7 @@ export function createItemRenderer({
       if (rec.bare) cls.push("pxd-item--bare");
       if (rec.refBoard) cls.push("pxd-item--wb");
       if (item.kind === "region-ref") cls.push("pxd-item--region");
+      if (item.kind === "drawing-ref") cls.push("pxd-item--drawing");
       if (item.look === "block") cls.push("pxd-card--block");
       const task = isTaskCard(item) ? taskMeta(item.string, item.content) : null;
       if (task) {
@@ -1728,6 +1740,8 @@ export function createItemRenderer({
       armPageWatch(rec, item, holder);
     } else if (item.kind === "region-ref") {
       mountRegionBody(rec, item);
+    } else if (item.kind === "drawing-ref") {
+      mountDrawingBody(rec, item);
     } else if (item.kind === "block") {
       const ref = item.target.uid;
       const refString = host?.blockString?.(ref);
@@ -1791,6 +1805,101 @@ export function createItemRenderer({
   };
 
   const regionWindow = () => doc.defaultView || globalThis;
+  const roamPlexus = () => {
+    const api = regionWindow().RoamPlexus ?? globalThis.RoamPlexus;
+    return api && typeof api === "object" ? api : null;
+  };
+  const drawingEditorMounted = (drawingUid) => {
+    if (!drawingUid) return false;
+    const id = `block-input-${drawingUid}`;
+    const root = doc.getElementById?.(id) || doc.querySelector?.(`#${id}`);
+    return Boolean(root?.querySelector?.(".excalidraw"));
+  };
+  const blobOf = async (value) => {
+    if (value == null) return null;
+    if (typeof value?.then === "function") return blobOf(await value);
+    if (typeof value === "string") return value.length ? value : null;
+    if (typeof value === "object") return value;
+    return null;
+  };
+  const canvasBlob = (canvas) => new Promise((resolve) => {
+    if (!canvas || typeof canvas.toBlob !== "function") { resolve(null); return; }
+    try { canvas.toBlob((blob) => resolve(blob || null), "image/png"); } catch { resolve(null); }
+  });
+  const waitDrawingImg = (holder) => new Promise((resolve) => {
+    const start = Date.now();
+    const tick = () => {
+      const img = holder.querySelector?.("img.rm-inline-img.rm-inline-img--excalidraw");
+      if (img && (img.complete || img.naturalWidth > 0)) { resolve(img); return; }
+      if (Date.now() - start > 2500) { resolve(img || null); return; }
+      setTimeout(tick, 40);
+    };
+    tick();
+  });
+  const snapshotDrawing = async (drawingUid) => {
+    if (!host?.renderBlock || !doc.createElement) return null;
+    const holder = doc.createElement("div");
+    (doc.body || doc.documentElement)?.append?.(holder);
+    try { host.renderBlock(holder, drawingUid, { open: false }); } catch { /* no render */ }
+    const img = await waitDrawingImg(holder);
+    let blob = null;
+    if (img) blob = await canvasBlob(copyDrawingPixels(img, doc));
+    try { holder.replaceChildren(); } catch { /* unmount */ }
+    holder.remove?.();
+    return blob;
+  };
+  const loadDrawingBlob = async (api, drawingUid) => {
+    if (api && Number(api.apiVersion) >= 6 && typeof api.thumbnail === "function") {
+      let shot = null;
+      try { shot = await blobOf(api.thumbnail(drawingUid, { maxWidth: 160 })); } catch { shot = null; }
+      if (shot == null) {
+        try { shot = await blobOf(api.thumbnail(drawingUid, { maxWidth: 160, render: true })); } catch { shot = null; }
+      }
+      return shot;
+    }
+    return snapshotDrawing(drawingUid);
+  };
+  const mountDrawingBody = (rec, item) => {
+    const ref = item.target?.uid;
+    const api = roamPlexus();
+    const off = rec.el.classList.contains("pxd-item--offscreen");
+    const detail = lod === "detail" && !off;
+    let regions;
+    if (api && typeof api.regionsOf === "function" && ref) {
+      try {
+        const rows = api.regionsOf(ref);
+        regions = Array.isArray(rows) ? rows : [];
+      } catch { regions = []; }
+    }
+    const token = {};
+    rec.drawingToken = token;
+    const paint = (blob) => {
+      if (disposed || rec.drawingToken !== token || !rec.body?.isConnected) return;
+      rec.drawingNode = renderDrawingCard(doc, rec.body, { title: item.title || "Drawing" }, {
+        tier: lod,
+        visible: detail,
+        blob: detail ? blob : undefined,
+        regions,
+        open: ({ sidebar } = {}) => {
+          const live = roamPlexus();
+          if (live && typeof live.open === "function") {
+            if (drawingEditorMounted(ref)) return;
+            try { live.open(ref, { sidebar: Boolean(sidebar) }); } catch { /* host */ }
+            return;
+          }
+          try { host?.openBlock?.(ref); } catch { /* host */ }
+          try { onToast?.("the expand control is Roam's"); } catch { /* toast */ }
+        },
+        addRegion: (regionUid) => {
+          if (!regionUid || typeof session?.addPublicCard !== "function") return;
+          try { session.addPublicCard({ string: `((${regionUid}))` }); } catch { /* one write */ }
+        },
+      });
+    };
+    paint(null);
+    if (!detail || !ref) return;
+    void loadDrawingBlob(api, ref).then((blob) => { if (blob) paint(blob); }).catch(() => {});
+  };
   const mountRegionBody = (rec, item) => {
     const api = regionWindow().RoamPlexus ?? null;
     const ref = item.target?.uid;
@@ -2443,7 +2552,7 @@ export function createItemRenderer({
   const enterEdit = async (uid, { row = "" } = {}) => {
     const rec = shells.get(uid);
     const item = lastBoard?.items.get(uid);
-    if (!rec || !item || rec.type === "section" || item.kind === "board" || rec.refBoard) return false;
+    if (!rec || !item || rec.type === "section" || item.kind === "board" || item.kind === "drawing-ref" || rec.refBoard) return false;
     if (editing?.uid === uid) return true;
     if (isSticky(item)) return focusSticky(uid);
     if (editing) await exitEdit();

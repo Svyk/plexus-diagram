@@ -51,6 +51,7 @@ import {
   setBoardTitle,
   withBoardMarker,
 } from "./model/schema.js";
+import { drawingCreateSpec, drawingRefString } from "./model/drawing-card.js";
 import { inflate, rectsIntersect, unionRect } from "./model/geometry.js";
 import { SHAPES } from "./model/shapes.js";
 import { sameSize as sameSizeRects, spaceOut as spaceOutRects, tidyRects } from "./model/layout.js";
@@ -936,6 +937,39 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
         const id = makeBoard(t, { x: r.x, y: r.y, w: size.w, h: size.h }, title, undefined);
         applyFit(t, [id]);
         return id;
+      });
+    },
+
+    // The drawing block gets a string and no props. The ref card is the only plexus write.
+    createDrawing({ x, y } = {}) {
+      if (!board || destroyed || gone) return Promise.resolve(undefined);
+      const spec = drawingCreateSpec(uid);
+      const api = globalThis.RoamPlexus || globalThis.window?.RoamPlexus || null;
+      const place = () => {
+        if (api && typeof api.create === "function") {
+          return Promise.resolve(api.create({ parentUid: spec.parentUid, order: spec.order }))
+            .then((made) => made?.uid || null);
+        }
+        if (typeof host.createBlock !== "function") return Promise.resolve(null);
+        return Promise.resolve(host.createBlock(spec)).then((made) => (typeof made === "string" ? made : made?.uid || null));
+      };
+      return place().then((drawingUid) => {
+        const ref = drawingRefString(drawingUid);
+        if (!ref || !board || destroyed || gone) return null;
+        return txn((t) => {
+          const size = { w: DEFAULT_SIZES.card.w, h: DEFAULT_SIZES.card.h };
+          const px = Number.isFinite(x) ? x : 40;
+          const py = Number.isFinite(y) ? y : 40;
+          const parent = containerAt(board, { x: px + size.w / 2, y: py + size.h / 2 }, { rects });
+          const rel = toRelative(board, parent, { x: px, y: py }, rects);
+          const id = t.create({
+            parent,
+            string: ref,
+            plexus: serializeItemLayout({ x: rel.x, y: rel.y, w: size.w, h: size.h }),
+          });
+          applyFit(t, [id]);
+          return id;
+        });
       });
     },
 

@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.10.2 — 2026-10-05
+
+- A block ref of a Roam drawing shows the drawing. Regions lists that drawing's regions, and picking one adds a reference on the board. New drawing here creates the drawing and a reference card. The drawing block is not rewritten. Without Roam Plexus the new drawing is still an ordinary drawing. The command palette stays two entries.
+
 ## 2.10.1 — 2026-10-04
 
 - window.PlexusDiagram lists boards on a page, boards that show a block, and the cards and views on a board. It can open a card or a saved view, add one card, and return a small PNG of a board. Opening and the picture do not write. Adding a card writes that one block.

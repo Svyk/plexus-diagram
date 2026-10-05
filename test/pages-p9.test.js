@@ -255,6 +255,11 @@ test("PG-1: a plain wheel scrolls a long page body until an end; a pinch and an 
   editing = false;
   body.scrollHeight = 400;
   assert.equal(pageBodyWantsWheel(target, { deltaY: 50 }), null, "a short page does not scroll");
+  const list = { classList: { contains: () => false }, scrollHeight: 400, clientHeight: 80, scrollTop: 10, closest: () => null };
+  const row = { closest: (sel) => (sel === ".pxd-drawing-region-list.is-open" ? list : null) };
+  assert.equal(pageBodyWantsWheel(row, { deltaY: 20 }), list);
+  list.scrollTop = 0;
+  assert.equal(pageBodyWantsWheel(row, { deltaY: -20 }), null);
 });
 
 // ------------------------------------------------------------------ PG-3 edit where you click

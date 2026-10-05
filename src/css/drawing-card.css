@@ -1,0 +1,114 @@
+/* ECO-4. The thumb fits the card. The 1px border is the button signal, not a shadow. */
+
+.pxd-root .pxd-item__body.pxd-item--drawing {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.pxd-root .pxd-drawing-thumb {
+  display: block;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  max-width: 100%;
+  height: 100%;
+  object-fit: contain;
+}
+
+.pxd-root .pxd-item__body.pxd-item--drawing.is-regions .pxd-drawing-thumb {
+  display: none;
+}
+
+.pxd-root .pxd-drawing-bar {
+  position: absolute;
+  left: 4px;
+  right: 4px;
+  bottom: 4px;
+  z-index: 2;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.pxd-root .pxd-drawing-title {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.pxd-root--dark .pxd-drawing-region-list.is-open {
+  border: 1px solid var(--pxd-border-strong, #fff);
+  background: var(--pxd-card);
+}
+
+.pxd-root .pxd-drawing-region-list {
+  display: none;
+  flex: 1 1 auto;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 4px;
+  min-height: 0;
+  overflow: auto;
+}
+
+.pxd-root .pxd-drawing-region-list.is-open {
+  display: flex;
+  position: absolute;
+  z-index: 2;
+  left: 4px;
+  right: 4px;
+  top: 4px;
+  bottom: 36px;
+  padding: 4px;
+  border: 1px solid var(--pxd-border, #d0d7de);
+  background: var(--pxd-card, #fff);
+}
+
+.pxd-root .pxd-drawing-open,
+.pxd-root .pxd-drawing-sidebar,
+.pxd-root .pxd-drawing-regions,
+.pxd-root .pxd-drawing-region {
+  flex: 0 0 auto;
+  align-self: flex-start;
+  box-sizing: border-box;
+  margin: 0;
+  padding: 2px 8px;
+  border: 1px solid var(--pxd-border, #d0d7de);
+  border-radius: 6px;
+  background: var(--pxd-card);
+  box-shadow: none;
+  color: var(--pxd-text, #1f2937);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.bp3-dark .pxd-root .pxd-drawing-open,
+body.bt-theme-dark .pxd-root .pxd-drawing-open,
+.rm-dark-theme .pxd-root .pxd-drawing-open,
+body.roam-body.dark .pxd-root .pxd-drawing-open,
+.pxd-root--dark .pxd-drawing-open,
+.bp3-dark .pxd-root .pxd-drawing-sidebar,
+body.bt-theme-dark .pxd-root .pxd-drawing-sidebar,
+.rm-dark-theme .pxd-root .pxd-drawing-sidebar,
+body.roam-body.dark .pxd-root .pxd-drawing-sidebar,
+.pxd-root--dark .pxd-drawing-sidebar,
+.bp3-dark .pxd-root .pxd-drawing-regions,
+body.bt-theme-dark .pxd-root .pxd-drawing-regions,
+.rm-dark-theme .pxd-root .pxd-drawing-regions,
+body.roam-body.dark .pxd-root .pxd-drawing-regions,
+.pxd-root--dark .pxd-drawing-regions,
+.bp3-dark .pxd-root .pxd-drawing-region,
+body.bt-theme-dark .pxd-root .pxd-drawing-region,
+.rm-dark-theme .pxd-root .pxd-drawing-region,
+body.roam-body.dark .pxd-root .pxd-drawing-region,
+.pxd-root--dark .pxd-drawing-region {
+  border: 1px solid var(--pxd-border-strong, #fff);
+  background: var(--pxd-card);
+  box-shadow: none;
+}

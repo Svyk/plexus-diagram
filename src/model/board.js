@@ -18,6 +18,7 @@ import {
 } from "./schema.js";
 import { isQueryString } from "./query.js";
 import { regionRefModel } from "./region-card.js";
+import { drawingRefModel, isDrawingString } from "./drawing-card.js";
 import { isContainerString, parseRegion } from "./regions.js";
 import { listFromNodes } from "./snapshots.js";
 
@@ -142,6 +143,7 @@ export function buildBoard(pulled, { defaults, resolve, plexusApi } = {}) {
       if (!cplexus && heading > 0 && kids.length) type = "section";
       const cls = classifyString(cstring);
       if (cls.kind === "regions" || cls.kind === "region") continue;
+      if (isDrawingString(cstring)) continue;
       let kind = type === "section" ? "section" : type === "text" ? "text" : cls.kind;
       const size = sizes[type];
       const hasLayout = isNum(layout.x) && isNum(layout.y);
@@ -159,11 +161,14 @@ export function buildBoard(pulled, { defaults, resolve, plexusApi } = {}) {
           kind = "region-ref";
           title = regionModel.caption ?? "";
           regionDrawing = regionModel.drawingUid;
+        } else if (drawingRefModel(typeof targetText === "string" ? targetText : "")) {
+          kind = "drawing-ref";
+          title = "Drawing";
         }
       }
       let target;
       if (kind === "page") target = { kind: "page", title: cls.title };
-      else if (kind === "block" || kind === "region-ref") target = { kind: "block", uid: cls.refUid };
+      else if (kind === "block" || kind === "region-ref" || kind === "drawing-ref") target = { kind: "block", uid: cls.refUid };
       else target = { kind: "self", uid: cuid };
       const item = {
         uid: cuid,

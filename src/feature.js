@@ -1235,6 +1235,10 @@ export async function installPlexusDiagram({
     return targetView(context)?.addPage?.();
   }
 
+  function newDrawingCommand(context) {
+    return targetView(context)?.newDrawing?.();
+  }
+
   const sheetActions = [
     ["Plexus: Enhance this diagram", enhanceCommand],
     ["Plexus: New whiteboard here", newWhiteboardCommand],
@@ -1246,6 +1250,7 @@ export async function installPlexusDiagram({
   // Sheet only: no slash command and no palette entry (PF-1).
   const sheetOnlyActions = [
     ["Plexus: Add page…", addPageCommand],
+    ["Plexus: New drawing here", newDrawingCommand],
   ];
 
   function runCommand(label, fn) {

@@ -6,6 +6,8 @@ import { isTextEntryTarget } from "./view/cards.js";
 import { assignDeepLink, hashFromUrl, pageUidFromHash, pxdTarget } from "./model/deeplink.js";
 import { openAddToBoard } from "./view/board-picker.js";
 import { createRelChips } from "./relchips.js";
+import { createBoardChips } from "./boardchips.js";
+import { createCardCache } from "./model/card-cache.js";
 import { imageSrc } from "./model/export.js";
 import { parseRegion } from "./model/regions.js";
 import { classifyString, parseBoardTitle, readPlexus, UNTITLED_BOARD } from "./model/schema.js";
@@ -161,7 +163,28 @@ export async function installPlexusDiagram({
   let guardStyle = null;
   // RF-3: relation chips under connection blocks Roam renders outside a board. Fed by the same mutation observer.
   const relChips = createRelChips({ doc, win, host, graph: () => host.graph || graphFromHash(), openNested: (boardUid, edgeUid) => openNestedConnection(boardUid, edgeUid) });
+  const cardCache = createCardCache();
+  const boardChips = createBoardChips({ doc, cache: cardCache });
+  const noteCards = (board) => {
+    if (!board?.uid || !board.items) return;
+    const children = [];
+    for (const item of board.items.values()) {
+      if (!item?.uid) continue;
+      const target = item.target?.kind === "block" ? item.target.uid : "";
+      children.push({ uid: item.uid, target, string: typeof item.string === "string" ? item.string : "" });
+    }
+    cardCache.setBoard(board.uid, "", children);
+  };
+  const publishCards = (board) => {
+    if (board) {
+      relChips.noteBoard(board);
+      noteCards(board);
+    }
+    boardChips.scan(doc?.body);
+    relChips.scan(doc?.body);
+  };
   lifecycle.add(() => relChips.dispose());
+  lifecycle.add(() => boardChips.dispose());
   const regionCrops = new Set();
   const showStash = createShowStash();
   let showWhere = "main";
@@ -358,7 +381,10 @@ export async function installPlexusDiagram({
       else unmount(rec);
     });
     const offChange = session.on?.("change", (diff) => {
-      if (diff?.structural && session.board) relChips.noteBoard(session.board);
+      if (diff?.structural && session.board) {
+        relChips.noteBoard(session.board);
+        publishCards(session.board);
+      }
       // Restore (or an external props edit / undo) removed :plexus: give the native diagram back.
       if (!session.board || session.board.enhanced !== false) return;
       if (currentUid(rec) !== rec.uid) {
@@ -494,6 +520,7 @@ export async function installPlexusDiagram({
       try {
         rec.view = mountRecView(rec, { autofocus: true, viewport: viewport || null });
         rec.off = watchRec(rec);
+        publishCards(rec.session?.board);
       } catch (error) {
         console.error("[plexus-diagram] Nested mount failed; native diagram restored", error);
         negativeUntil.set(rec.uid, Date.now() + 10 * NEGATIVE_TTL_MS);
@@ -544,6 +571,7 @@ export async function installPlexusDiagram({
         && !routeLeftZoomedDiagram(uid);
       rec.view = mountRecView(rec);
       rec.off = watchRec(rec);
+      publishCards(rec.session?.board);
     } catch (error) {
       console.error("[plexus-diagram] Mount failed; native diagram restored", error);
       negativeUntil.set(uid, Date.now() + 10 * NEGATIVE_TTL_MS);
@@ -629,6 +657,7 @@ export async function installPlexusDiagram({
       }
       rec.view = mountRecView(rec);
       rec.off = watchRec(rec);
+      publishCards(rec.session?.board);
       if (!embedOwnerUid(rec.native, (id) => host.blockString?.(id))) collapseOnce(currentUid(rec), rec.native);
       if (currentUid(rec) === rec.uid) migrateLegacy(rec);
       applyShow(rec);
@@ -643,6 +672,16 @@ export async function installPlexusDiagram({
     viewportWatch?.unobserve(rec.mountEl);
     recByMount.delete(rec.mountEl);
     mounts.delete(rec.native);
+    const boardUid = rec.session?.board?.uid || rec.uid;
+    let still = false;
+    for (const other of mounts.values()) {
+      if (other.session?.board?.uid === boardUid) still = true;
+    }
+    if (!still && boardUid) {
+      cardCache.setBoard(boardUid, "", []);
+      boardChips.dispose();
+      boardChips.scan(doc?.body);
+    }
     try { rec.off?.(); } catch { /* ignore */ }
     try { rec.view?.dispose?.(); } catch (error) { console.warn("[plexus-diagram] view dispose failed", error); }
     try { rec.session?.release?.(); } catch (error) { console.warn("[plexus-diagram] session release failed", error); }
@@ -1084,7 +1123,10 @@ export async function installPlexusDiagram({
 
   function scanAdded(node) {
     for (const diagram of diagramsWithin(node)) consider(diagram);
-    if (active()) relChips.scan(node);
+    if (active()) {
+      relChips.scan(node);
+      boardChips.scan(node);
+    }
     scanRegions(node);
   }
 
@@ -1699,7 +1741,12 @@ export async function installPlexusDiagram({
   syncGuard();
   await registerCommands();
   // Read the connection-block uids once the page has settled, off the install path.
-  lifecycle.timeout(() => { if (!stopped && active()) relChips.start(); }, 600);
+  lifecycle.timeout(() => {
+    if (stopped || !active()) return;
+    relChips.start();
+    for (const rec of mounts.values()) if (rec.session?.board) noteCards(rec.session.board);
+    boardChips.scan(doc?.body);
+  }, 600);
 
   if (doc && typeof globalThis.MutationObserver === "function") {
     const onAdded = (records) => {

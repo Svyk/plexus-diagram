@@ -17,6 +17,7 @@ import { readMindPreset, writeMindPreset } from "../model/mindmap.js";
 import { attrLegend, parseAttrStyles, styleAttrLinks } from "../model/attr-styles.js";
 import { HIGHLIGHT_COLORS } from "../model/highlight.js";
 import { pdfCardForUrl } from "../model/pdf.js";
+import { chipsForPdf } from "../model/pdf-chips.js";
 import { expandDateHighlights, highlightRows, placeHighlights } from "../model/highlight-pick.js";
 import { isDailyTitle } from "../model/library.js";
 import { highlightLensTag, lensBright, lensCatalog, tagsForCard } from "../model/lens.js";
@@ -1006,6 +1007,9 @@ export function mountBoardView({
     onTaskChip: (uid, kind, anchor) => taskPop.open(uid, kind, anchor),
     onPageLayout: (uid) => { if (blockCards.has(uid)) scheduleAnchors(); },
     onToast: (message) => chrome.toast.show({ message }),
+    pdfChips: (item) => pdfChipsFor(item),
+    onPdfPulse: (uids) => { for (const uid of uids || []) pulseItem(uid); },
+    onPdfOpen: (uid, page) => { void itemsR.openPdfAt?.(uid, page); },
   });
   repaintItemStyles = () => { if (!disposed) itemsR.repaintStyles(); };
   const taskPop = createTaskPopover({ doc, root, bt, toast: (m) => chrome.toast.show(m) });
@@ -2510,6 +2514,11 @@ export function mountBoardView({
     }
     return typeof item?.string === "string" ? item.string : "";
   };
+  const pdfChipsFor = (item) => chipsForPdf(item, board()?.items, {
+    source: pdfSourceOfItem,
+    pageUid: (uid) => host?.blockPageUid?.(uid) || "",
+    pageUrl: (uid) => host?.pdfPageUrl?.(uid) || "",
+  });
   const openHighlightInReader = async (item) => {
     if (!item || item.kind !== "highlight" || !item.target?.uid) return;
     const pageUid = host?.blockPageUid?.(item.target.uid) || "";

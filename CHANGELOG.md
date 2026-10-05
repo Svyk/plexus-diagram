@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.11.4 — 2026-10-05
+
+- A PDF card shows one chip per page that has a highlight on the board. The badge is the count. A click pulses those cards. A double-click opens that page in the card reader. An arrow into a highlight shows the page at the tip. A highlight in the outline says On board when that highlight is a card. None of these write. The command palette stays two entries.
+
 ## 2.11.3 — 2026-10-05
 
 - Open in reader on a highlight card opens that page in the PDF card on the same board. The mark stays in view. If that PDF card is not on the board, Roam opens the highlight and a note says to click it. The click does not write. The command palette stays two entries.

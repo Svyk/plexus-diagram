@@ -7,6 +7,7 @@ import { routedEdge } from "../model/board.js";
 import { arrowHeadPath, arrowSize, blockAnchor, blockInner, center, edgePath, screenPx, sidePoint } from "../model/geometry.js";
 import { routeAround } from "../model/section6.js";
 import { PALETTE, hexColor } from "../model/schema.js";
+import { highlightPill } from "../model/pdf-chips.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 const PAIR_OFFSET = 18;
@@ -329,6 +330,28 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     }
   };
 
+  const pagePill = (rec, end, text, point) => {
+    let node = rec.pagePills?.[end];
+    if (!text || !point) {
+      node?.remove();
+      if (rec.pagePills) delete rec.pagePills[end];
+      return;
+    }
+    if (!node) {
+      node = mk("text", "pxd-edge__page", rec.g);
+      rec.pagePills = { ...(rec.pagePills || {}), [end]: node };
+    }
+    if (node.textContent !== text) node.textContent = text;
+    node.setAttribute("x", String(point.x));
+    node.setAttribute("y", String(point.y - 10));
+  };
+  const paintPagePills = (board, edge, rec, geo) => {
+    for (const end of ["from", "to"]) {
+      const item = board?.items?.get(end === "from" ? edge.from : edge.to);
+      const page = item?.kind === "highlight" ? item.highlight?.page : null;
+      pagePill(rec, end, highlightPill(page), geo ? (end === "from" ? geo.start : geo.end) : null);
+    }
+  };
   const placeEdge = (board, edge, rec, rects, zoom) => {
     const geo = geometryFor(board, edge, rects);
     rec.geo = geo;
@@ -336,6 +359,7 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
       rec.g.setAttribute("display", "none");
       rec.label.style.display = "none";
       placeInner(rec, edge, null, zoom);
+      paintPagePills(board, edge, rec, null);
       return;
     }
     rec.g.removeAttribute("display");
@@ -370,6 +394,7 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
       }
     }
     placeEnds(rec, geo);
+    paintPagePills(board, edge, rec, geo);
     rec.label.style.transform = `translate(${geo.mid.x}px, ${geo.mid.y}px) translate(-50%, -50%)`;
   };
 

@@ -101,7 +101,8 @@ Same block `vc8Skaj5K`, checked 2026-10-01.
 | Motion | full, reduced, none | Honors `prefers-reduced-motion` under Full. |
 | Light and dark | Tokens on the board root | Host theme is not rewritten. |
 | Gallery, calendar, timeline, force graph | Not built | Listed under Later in the roadmap. |
-| Manual waypoints, PDF, image background | Not built | Same. |
+| Manual waypoints, image background | Not built | Same. |
+| PDF | pdf card, highlight card, page chips | No `:pdf-*` writes. Roam's reader stays canonical. |
 
 ## 5. Limits
 

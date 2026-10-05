@@ -23,6 +23,7 @@ import { imageRegionRows, regionBadge } from "../model/region-menu.js";
 import { renderRegionCard, thumbRequest } from "./region-card.js";
 import { copyDrawingPixels, renderDrawingCard } from "./drawing-card.js";
 import { PDF_READER_H, PDF_READER_W, coverModel, readerRule, writeReaderPage } from "../model/pdf.js";
+import { paintPdfChipStrip } from "./pdf-chip-strip.js";
 
 const SIDES = ["top", "right", "bottom", "left"];
 const CHUNK_MS = 8;
@@ -234,7 +235,7 @@ function kidRowsOf(list, depth = 1, budget = { n: 0 }) {
   return budget.n;
 }
 
-function cardContentKey(item, live = false, pdfOpen = false) {
+function cardContentKey(item, live = false, pdfOpen = false, chipSig = "") {
   if (isSticky(item)) {
     return ["sticky", live ? "live" : item.string, item.min ? "m" : "", item.fontSize || "", item.textColor || "", item.align || ""].join("\u0001");
   }
@@ -244,6 +245,7 @@ function cardContentKey(item, live = false, pdfOpen = false) {
     item.titleSize || "", item.titleColor || "", item.titleFill || "", item.areaFill || "",
     taskBlockOn(item) ? `tb${taskNamesSig()}` : "",
     item.kind === "pdf" ? (pdfOpen ? "o" : "") : "",
+    item.kind === "pdf" && chipSig ? chipSig : "",
     item.kind === "highlight" && item.highlight ? item.highlight.color ?? "" : "",
     item.kind === "highlight" && item.highlight ? item.highlight.page ?? "" : "",
     item.kind === "highlight" && item.highlight ? item.highlight.text ?? "" : "",
@@ -292,12 +294,34 @@ export function createItemRenderer({
   onTaskChip,
   onToast,
   bt = null,
+  pdfChips = null,
+  onPdfPulse = null,
+  onPdfOpen = null,
 } = {}) {
   taskBlockOn = (item) => Boolean(bt?.available?.()) && isTaskCard(item);
   let pdfOpenUid = null;
   let pdfLiveUid = null;
   let pdfLiveOff = null;
-  const contentKeyFor = (item, live = false) => cardContentKey(item, live, item?.kind === "pdf" && pdfOpenUid === item.uid);
+  const chipsFor = (item) => {
+    if (item?.kind !== "pdf" || typeof pdfChips !== "function") return [];
+    try {
+      const rows = pdfChips(item);
+      return Array.isArray(rows) ? rows : [];
+    } catch {
+      return [];
+    }
+  };
+  const chipHandlers = (item) => ({
+    later: (fn, ms) => (typeof timers?.later === "function" ? timers.later(fn, ms) : setTimeout(fn, ms)),
+    onPulse: (uids) => { try { onPdfPulse?.(uids); } catch { /* host */ } },
+    onOpen: (page) => { try { onPdfOpen?.(item.uid, page); } catch { /* host */ } },
+  });
+  const contentKeyFor = (item, live = false) => cardContentKey(
+    item,
+    live,
+    item?.kind === "pdf" && pdfOpenUid === item.uid,
+    item?.kind === "pdf" ? chipsFor(item).map((chip) => `${chip.page}:${chip.count}`).join(",") : "",
+  );
   const shells = new Map(); // uid → rec
   const mounted = new Map(); // uid → lastWanted (LRU order = insertion order)
   // ED-2: per-item board renders, on the same object as window.__plexusDiagram.stats.
@@ -1782,6 +1806,8 @@ export function createItemRenderer({
     rec.pdfReader = null;
     const node = el("div", "pxd-pdf-cover", rec.body);
     el("div", "pxd-pdf-title", node).textContent = String(cover.title || "PDF");
+    const coverChips = chipsFor(item);
+    if (coverChips.length) paintPdfChipStrip(doc, node, coverChips, chipHandlers(item));
     el("div", "pxd-pdf-count", node).textContent = String(cover.label ?? "");
     const open = el("button", "pxd-pdf-open pxd-chrome", node);
     open.type = "button";
@@ -1794,6 +1820,8 @@ export function createItemRenderer({
   };
   const paintPdfReader = (rec, item) => {
     const reader = el("div", "pxd-pdf-reader", rec.body);
+    const readerChips = chipsFor(item);
+    if (readerChips.length) paintPdfChipStrip(doc, reader, readerChips, chipHandlers(item));
     const live = el("div", "pxd-rs__live", reader);
     const uid = item.target?.kind === "block" ? item.target.uid : item.uid;
     try { host?.renderBlock?.(live, uid); } catch { /* host */ }

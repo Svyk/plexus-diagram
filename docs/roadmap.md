@@ -103,6 +103,7 @@ Native diagrams are React Flow (`.react-flow`, nodes `.react-flow__node-block`).
 | P18 open | Open a region and a view | 2.9.5 | released 2026-10-04. REG-5 and REG-7 done. |
 | P18 menu | Region badge and menu | 2.9.6 | released 2026-10-04. REG-8 and DOC-18 done. |
 | P19 | Public API and region cards | 2.10.1 | released 2026-10-04. ECO-2 and ECO-3 done. |
+| P20 | Drawing cards and Compass boards | 2.10.2 | released 2026-10-05. ECO-4 and ECO-5 done. |
 | P17 rest-P22 | 3.x roadmap, see roadmap-3.md | 2.8.1-3.0.0 | open |
 
 Order matters: P1 and P2 are the user's direct requests. Within a phase, do tasks in the listed order unless one is blocked.
@@ -406,6 +407,11 @@ Live on Readwisenotes, window titled "Readwisenotes - Plexus Diagram/Test Lab". 
 - [x] **ECO-2 Public API** — done 2026-10-04, `04151bb`: boardsWith returned both fixture boards. Thumbnail warm call 4.6 ms, PNG 160 by 91, 750 bytes. Two addCard calls, writes +2, one change each. Open card pulsed, writes 0. Open view moved one camera from scale 1.61 to 1.94, writes 0. Sidebar open moved only the sidebar camera, windows 140 to 141, then that window was removed. Unload deleted window.PlexusDiagram and fired plexus-diagram:unload. Shots ECO-2-dark.png and ECO-2-light.png. No typing bench.
 - [x] **ECO-3 Roam Plexus region card** — done 2026-10-04, `04151bb`: Paste of `((eyjMKi1DA))` after readText matched created UtPQ4PmZh, writes 4 to 5. Caption "Region A of spike". Buttons Open drawing and Open in sidebar. Dark and light shots. Open drawing filled the window at 44% on the spike drawing, writes stayed 5. Minimize returned the card. A detail resize called thumbnail once, maxWidth 839, no render flag, writes 7 to 8. Removing the Roam Plexus URL made the card a plain block, writes stayed 8, no error. Putting the same URL back restored apiVersion 7, version DEV, and the crop. Unload left 0 `.pxd-*` nodes. Theme Auto. Ledger removed 8. No typing bench.
 
+### P20: Drawing cards and Compass boards (2.10.2, 2026-10-05)
+
+- [x] **ECO-4 Drawing card** — done 2026-10-05, `fc4e28e`: The drawing ref showed a 160 by 100 picture and the drawing props stayed 24670 bytes. Regions listed 10. The picked area became a region card. A new drawing, with the API and without it, was one empty drawing plus one reference. Dark and light shots. Theme restored to Auto. No typing bench.
+- [x] **ECO-5 Compass boards** — done 2026-10-05, `fc4e28e`, roam-compass `d4d69e1`: Two board nodes, thumbs 160 by 91 and 160 by 40. The click showed both cards. The edge label was annotates. Open on board pulsed that card in 602 ms. With Plexus unloaded, board nodes were 0 and errors were 0. Light shot. No typing bench.
+
 ## 6. Later (ideas not scheduled)
 
 Pick from here only when every phase above is done or blocked.
@@ -437,7 +443,13 @@ AI agent features inside the board, SuperTag-style typed schemas or class tags, 
 
 Fill in as phases run. Keep the newest at the top of each list.
 
-- 2.10.1 ECO-3 live, 2026-10-04, Test Lab, `04151bb`. Paste writes 4 to 5. Detail resize: one thumbnail call, maxWidth 839, no render flag, writes 7 to 8. URL removed: plain block, writes 8. Same URL back: api 7, version DEV, crop restored. Unload `.pxd-*` 0. Window listeners 92, document 136. No pxd listener left. Theme Auto.
+- 2.10.2 unload, 2026-10-05, Test Lab. Two cycles: window listeners 108 then 88, document 144 then 130, both times. `.pxd-*` 0. Errors none. Roam Plexus stayed apiVersion 7, frozen. Theme Auto. No typing bench.
+- 2.10.2 ECO-5 live, 2026-10-05, Test Lab. Thumbs 160 by 91 and 160 by 40. Cards matched cardsOf, 2. Label annotates. Pulse at 602 ms. Unloaded: 0 board nodes, 0 errors. Shots ECO-5-dark.png, ECO-5-light.png, ECO-5-pulse.png. Dev Compass ran in Test Lab. No typing bench.
+- 2.10.2 ECO-4 live, 2026-10-05, Test Lab. Picture 160 by 100. Prop bytes stayed 24670. Regions 10. New drawing wrote one empty macro and one reference, with the API and without it. Shots ECO-4-dark.png and ECO-4-light.png. Open drawing was not clicked. The drop toast was not seen. No typing bench.
+- 2.10.2 ECO-4 image URL, before code, 2026-10-05, Test Lab. The hidden drawing image src was a blob URL, length 66. After unmount a new Image with that src failed. Copy the pixels before unmount.
+- 2.10.2 ECO-5, before code, 2026-10-05, Test Lab. window.RoamCompass is already frozen with isAvailable and focus. No apiVersion. roam-compass is 0.7.0 at 851eea4, clean main. isDrawingLike matches an excalidraw or plexus-region macro. A board string is the diagram macro. ECO-6 must add methods beside those two.
+- 2.10.2 ECO-4, before code, 2026-10-05, Test Lab. Drawing ITvT3bqaL starts with the excalidraw macro. Prop keys: instance-id, elements-json, state-json, version. 24670 bytes, unchanged after two hidden renderBlock calls. Each call made one img.rm-inline-img--excalidraw, 2400 by 1507, in 179 ms then 220 ms. Thumbnail at maxWidth 160 took 4.5 ms: PNG 160 by 100, 2402 bytes. regionsOf returned 10. create is on spec().methods.
+ Paste writes 4 to 5. Detail resize: one thumbnail call, maxWidth 839, no render flag, writes 7 to 8. URL removed: plain block, writes 8. Same URL back: api 7, version DEV, crop restored. Unload `.pxd-*` 0. Window listeners 92, document 136. No pxd listener left. Theme Auto.
 - 2.10.1 ECO-2 live, 2026-10-04, Test Lab, `04151bb`. Thumbnail 4.6 ms, PNG 160 by 91, 750 bytes. addCard writes +2. Open card, view, and sidebar writes 0. Sidebar windows 140 to 141, then removed. Unload deleted the global. Shots ECO-2-dark.png and ECO-2-light.png. No typing bench.
 - 2.10.1 ECO-2, before code, 2026-10-04, Test Lab. OffscreenCanvas is a function. devicePixelRatio was 2.19. Plexus Diagram was unloaded. Roam Plexus stayed the Pages URL: frozen, apiVersion 7, version DEV. Its spec lists thumbnail, open, and regionsOf. SHOW_REF_QUERY in src/host/roam.js is the board lookup.
 - 2.10.1 ECO-3, before code, 2026-10-04, Test Lab. Page 8eai6ikkw is Plexus Spike 2026-09-28. Region eyjMKi1DA is k=area, length 116, and has no file URL. thumbnail with maxWidth 160 and render left false returned a PNG 1873 by 160, 18596 bytes, in 13 ms. That is the cached full crop. A refs query returned 3 rows of length 2. A diagram-string query returned 1 row.

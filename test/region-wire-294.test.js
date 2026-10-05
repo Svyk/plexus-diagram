@@ -12,6 +12,29 @@ const REGION = "{{[[plexus-region]]: k=img d=imgBlock1 f=0.25,0.3,0.2,0.25}} ham
 const IMAGE = "![](https://example.com/leg.png)";
 const tick = () => new Promise((resolve) => setTimeout(resolve, 0));
 
+// Node 20 on CI has no navigator. Node 22 has one, and clipboard is getter-only.
+function stubClipboard(writeText) {
+  const hadNav = globalThis.navigator != null;
+  const prevNav = hadNav ? null : Object.getOwnPropertyDescriptor(globalThis, "navigator");
+  if (!hadNav) {
+    Object.defineProperty(globalThis, "navigator", { configurable: true, writable: true, value: {} });
+  }
+  const prevClip = Object.getOwnPropertyDescriptor(globalThis.navigator, "clipboard");
+  Object.defineProperty(globalThis.navigator, "clipboard", {
+    configurable: true,
+    writable: true,
+    value: { writeText },
+  });
+  return () => {
+    if (prevClip) Object.defineProperty(globalThis.navigator, "clipboard", prevClip);
+    else delete globalThis.navigator.clipboard;
+    if (!hadNav) {
+      if (prevNav) Object.defineProperty(globalThis, "navigator", prevNav);
+      else delete globalThis.navigator;
+    }
+  };
+}
+
 function rect(x, y, width, height) {
   return { x, y, left: x, top: y, width, height, right: x + width, bottom: y + height };
 }
@@ -61,12 +84,7 @@ test("REG-3: Mark image region confirms on the image block and keeps two palette
   const restore = dom.install();
   const calls = [];
   const clips = [];
-  const prevClip = Object.getOwnPropertyDescriptor(globalThis.navigator, "clipboard");
-  Object.defineProperty(globalThis.navigator, "clipboard", {
-    configurable: true,
-    writable: true,
-    value: { writeText: (text) => { clips.push(text); return Promise.resolve(); } },
-  });
+  const restoreClip = stubClipboard((text) => { clips.push(text); return Promise.resolve(); });
   const box = rect(40, 80, 200, 100);
   const container = dom.document.createElement("div");
   container.className = "roam-block-container";
@@ -138,8 +156,7 @@ test("REG-3: Mark image region confirms on the image block and keeps two palette
     assert.equal(commands.context.size, 0);
   } finally {
     await lifecycle?.dispose();
-    if (prevClip) Object.defineProperty(globalThis.navigator, "clipboard", prevClip);
-    else delete globalThis.navigator.clipboard;
+    restoreClip();
     restore();
   }
 });

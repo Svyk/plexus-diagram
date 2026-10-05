@@ -106,6 +106,7 @@ Native diagrams are React Flow (`.react-flow`, nodes `.react-flow__node-block`).
 | P20 | Drawing cards and Compass boards | 2.10.2 | released 2026-10-05. ECO-4 and ECO-5 done. |
 | P21 | Compass hop and annotate | 2.10.3 | released 2026-10-05. ECO-6, ECO-7, and DOC-19 done. |
 | P22 | PDF card | 2.11.0 | released 2026-10-05. PDF-1 done. |
+| P23 | Highlight cards | 2.11.1 | released 2026-10-05. PDF-2 done. |
 | P17 rest-P22 | 3.x roadmap, see roadmap-3.md | 2.8.1-3.0.0 | open |
 
 Order matters: P1 and P2 are the user's direct requests. Within a phase, do tasks in the listed order unless one is blocked.
@@ -424,6 +425,10 @@ Live on Readwisenotes, window titled "Readwisenotes - Plexus Diagram/Test Lab". 
 
 - [x] **PDF-1 PDF card** — done 2026-10-05, `4248337`: Cover plx-pdf1-test, count 2. Reader 640 by 820. Page input 2 to 3. Shield returned on a board click. Middle-drag panned and left the page at 3. Second reader toasted "Closed the other reader". Settings length 137, hash f8478982, unchanged. Card moved from -139.5, 188.1 to -49.5, 281.1. Fullscreen opened the PDF page. Escape did not return. Minimize did. Both cards remained. Shots PDF-1-dark.png and PDF-1-light.png. Unload: `.pxd-*` 0, window listeners 84 to 84, document 139 to 146, no diagram listener left. Theme Auto. Check 1257 pass. No typing bench.
 
+### P23: Highlight cards (2.11.1, 2026-10-05)
+
+- [x] **PDF-2 Highlight cards** — done 2026-10-05, `27f7a30`: Text card showed a yellow bar, the passage, and p. 1. Area card showed one image and p. 2. A plain ref had no bar. The tag change to green updated the bar in 305 ms and did not change prop keys. Yellow was restored in 203 ms. Dark and light shots. Unload left 0 pxd nodes. No typing bench.
+
 ## 6. Later (ideas not scheduled)
 
 Pick from here only when every phase above is done or blocked.
@@ -455,6 +460,8 @@ AI agent features inside the board, SuperTag-style typed schemas or class tags, 
 
 Fill in as phases run. Keep the newest at the top of each list.
 
+- 2.11.1 PDF-2 live, 2026-10-05, Test Lab. Text card: yellow bar, the passage, p. 1. Area card: 1 image, 260 by 91, p. 2. Plain ref: no bar. Tag to green in 305 ms, prop keys unchanged, restored yellow in 203 ms. Dark bar 250,204,21. Light bar 202,138,4. Fill transparent. Unload left 0 pxd nodes and no diagram listener. Window 76 to 84. Document 124 to 136. Theme Auto. Check 1273 pass. No typing bench.
+- 2.11.1 PDF-2, before code, 2026-10-05, Test Lab. Two fixture highlights are type text, pages 1 and 2, tag #h/yellow. Props are :pdf-highlight and :pdf-content-hash. That hash equals the PDF page hash. Those two have no :pdf-fingerprints. The page title is the file name. Two older area highlights are type area, with :image-id, page 2, :pdf-fingerprints, and :image-size width and height. Their string is an image macro plus the colour tag, not an encrypted url. The board pull includes props for the board tree, not for a ref target. No typing bench.
 - 2.11.0 PDF-1 live, 2026-10-05, Test Lab, `4248337`. Cover plx-pdf1-test, count 2. Reader 640 by 820. Page input 2 to 3. Second reader toast "Closed the other reader", readers 1. Settings length 137 and hash f8478982 stayed the same across the drag. Card :x -139.5 to -49.5, :y 188.1 to 281.1. Fullscreen opened the PDF page. Escape did not return. Minimize did. Both cards remained. Unload: `.pxd-*` 0, window 84 to 84, document 139 to 146. Theme Auto. No typing bench.
 - 2.11.0 PDF-1 highlight, 2026-10-05, Test Lab block Rsdbn43vH. A real drag and a click on the tip created one highlight. The page title is the file name. Path is Notes by, then the date, then the highlight. The text is the selection plus #h/yellow. Page number is 1. The page has :pdf/url and :pdf/content-hash. The block macro contains that url. The highlight hash matches the page. The pdf block has no link prop. Count on that page is 1. A synthetic click wrote nothing. No typing bench.
 - 2.11.0 PDF-1, before code, 2026-10-05, Test Lab. Nine pdf blocks. Props were empty or only :pdf-settings. No fingerprint and no ref to the PDF page. A page title is the file name, then an md5. Highlights use :pdf-highlight and :pdf-fingerprints. Page number is under :position :boundingRect. file.upload returns the pdf macro. A 3-page test file opened in the native reader. A synthetic highlight click wrote nothing. Block Rsdbn43vH. No typing bench.

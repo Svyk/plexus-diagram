@@ -26,3 +26,19 @@ test("a block ref keys its target, and setBoard replaces that board", () => {
   assert.equal(cache.hasTarget("hid"), false);
   assert.equal(cache.hasChild("card9"), false);
 });
+
+test("setBoard stores the title and the card that points at a block", () => {
+  const cache = createCardCache();
+  cache.setBoard("board1", "P18 fixture", [{ uid: "card1", target: "block1" }]);
+  cache.setBoard("board2", "   ", [{ uid: "card2", target: "block1" }]);
+  assert.equal(cache.titleOf("board1"), "P18 fixture");
+  assert.equal(cache.titleOf("board2"), "Untitled board");
+  assert.equal(cache.titleOf("missing"), "Untitled board");
+  assert.equal(cache.cardOn("board1", "block1"), "card1");
+  assert.equal(cache.cardOn("board2", "block1"), "card2");
+  assert.deepEqual(cache.boardsOf("block1").sort(), ["board1", "board2"]);
+  cache.setBoard("board1", "P18 fixture", []);
+  assert.equal(cache.cardOn("board1", "block1"), "");
+  assert.equal(cache.hasTarget("card1"), false);
+  assert.deepEqual(cache.boardsOf("block1"), ["board2"]);
+});

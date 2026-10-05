@@ -613,9 +613,10 @@ test("I and the Info button open card info; fullscreen edits in the panel", asyn
     assert.equal(root.querySelector(".pxd-panel__pane--info").style.display, "");
     assert.deepEqual(
       [...root.querySelectorAll(".pxd-panel__info-h")].map((n) => n.textContent),
-      ["Card", "Attributes", "Linked references", "On boards", "Tags"],
+      ["Card", "Context", "Attributes", "Linked references", "On boards", "Tags"],
     );
     assert.equal(root.querySelector(".pxd-panel__info-body").textContent, "Alpha #live");
+    assert.match(root.querySelector(".pxd-panel__info-context").textContent, /^Made /);
     assert.equal(root.querySelector(".pxd-panel__info-value").textContent, "green");
     assert.equal(root.querySelector(".pxd-panel__info-ref").textContent, "mentions alpha");
     assert.equal(root.querySelector(".pxd-panel__info-board-title").textContent, "Other board");

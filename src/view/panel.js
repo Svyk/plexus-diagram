@@ -480,6 +480,16 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
       el("div", "pxd-panel__info-note", mount, "Editing in the right sidebar");
       try { on.openSidebarEditor?.(subject); } catch { /* sidebar unavailable */ }
     }
+    let contextText = "";
+    try {
+      const line = await Promise.resolve(on.contextLine?.(subject));
+      contextText = typeof line === "string" ? line : "";
+    } catch { contextText = ""; }
+    if (id !== queryId || tab !== "info") return;
+    if (contextText) {
+      const ctxSec = infoSection("Context");
+      el("div", "pxd-panel__info-context", ctxSec, contextText);
+    }
     const attrSec = infoSection("Attributes");
     if (!info.attributes?.length) el("div", "pxd-panel__empty", attrSec, "No attributes");
     else for (const attr of info.attributes) {

@@ -463,7 +463,7 @@ test("dispose leaves zero mounts, observers, intervals, listeners, tags and glob
     await t.install();
     t.tick();
     assert.ok(t.env.observers.size >= 1);
-    assert.equal(t.env.intervals.size, 1);
+    assert.equal(t.env.intervals.size, 2);
     assert.ok([...t.listeners.values()].some((set) => set.size > 0));
     await t.lifecycle.dispose();
     assert.equal(t.env.observers.size, 0);

@@ -2886,6 +2886,124 @@ body.roam-body.dark .pxd-addboard {
   color: var(--pxd-muted);
 }
 
+/* NAV-1. Board chips. A border and a clear fill. The label is content-width. */
+
+.pxd-cardchip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 2px 0 4px;
+}
+
+.pxd-cardchip,
+.pxd-cardchip-more {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  flex: 0 0 auto;
+  width: fit-content;
+  margin: 2px 4px 4px 0;
+  padding: 0 6px;
+  border: 1px solid var(--pxd-border, #d0d7de);
+  border-radius: 999px;
+  background: transparent;
+  color: #1f2937;
+  font: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.pxd-cardchip-more {
+  cursor: default;
+}
+
+.pxd-root.pxd-cardpop {
+  position: fixed;
+  z-index: 1000;
+  width: 320px;
+  height: auto;
+  max-width: calc(100vw - 16px);
+  padding: 10px;
+  border: 1px solid var(--pxd-border, #d0d7de);
+  border-radius: 8px;
+  background: var(--pxd-surface, #fff);
+  color: #1f2937;
+  contain: none;
+  overflow: visible;
+  touch-action: auto;
+}
+
+.pxd-cardpop__title,
+.pxd-cardpop__section {
+  margin: 0 0 6px;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.pxd-cardpop svg {
+  display: block;
+  width: 320px;
+  max-width: 100%;
+  height: auto;
+}
+
+.pxd-cardchip__hot {
+  stroke-width: 2;
+}
+
+.pxd-cardpop__open,
+.pxd-cardpop__side {
+  margin: 6px 6px 0 0;
+  padding: 2px 8px;
+  border: 1px solid var(--pxd-border, #d0d7de);
+  border-radius: 6px;
+  background: transparent;
+  color: #1f2937;
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.bp3-dark .pxd-cardchip,
+.bp3-dark .pxd-cardchip-more,
+body.bt-theme-dark .pxd-cardchip,
+body.bt-theme-dark .pxd-cardchip-more,
+.rm-dark-theme .pxd-cardchip,
+.rm-dark-theme .pxd-cardchip-more,
+body.roam-body.dark .pxd-cardchip,
+body.roam-body.dark .pxd-cardchip-more,
+.pxd-root--dark .pxd-cardchip,
+.pxd-root--dark .pxd-cardchip-more {
+  border: 1px solid var(--pxd-border, #3b4b58);
+  background: transparent;
+  color: #e6edf3;
+}
+
+.bp3-dark .pxd-cardpop,
+body.bt-theme-dark .pxd-cardpop,
+.rm-dark-theme .pxd-cardpop,
+body.roam-body.dark .pxd-cardpop,
+.pxd-root--dark.pxd-cardpop {
+  border: 1px solid var(--pxd-border, #3b4b58);
+  background: var(--pxd-surface, #1c2127);
+  color: #e6edf3;
+}
+
+.bp3-dark .pxd-cardpop__open,
+.bp3-dark .pxd-cardpop__side,
+body.bt-theme-dark .pxd-cardpop__open,
+body.bt-theme-dark .pxd-cardpop__side,
+.rm-dark-theme .pxd-cardpop__open,
+.rm-dark-theme .pxd-cardpop__side,
+body.roam-body.dark .pxd-cardpop__open,
+body.roam-body.dark .pxd-cardpop__side {
+  border: 1px solid var(--pxd-border, #3b4b58);
+  background: transparent;
+  color: #e6edf3;
+}
+
 /* Plexus Diagram 1.2 chrome: background popover, context menu, back-to-content, panel tabs. Every
    rule is scoped .pxd-root .pxd-x (two classes at least) so Roam normalize and Blueprint (0,1,1)
    cannot win. Colors come from the .pxd-root tokens, which already flip for dark. The rules that
@@ -4207,6 +4325,76 @@ body.roam-body.dark .pxd-root .pxd-drawing-region,
   border: 1px solid var(--pxd-border-strong, #fff);
   background: var(--pxd-card);
   box-shadow: none;
+}
+
+/* MEM-1. Halo popover. A border, and the same surface as other popovers. */
+
+.pxd-root.pxd-halo {
+  position: fixed;
+  z-index: 1000;
+  width: 320px;
+  height: auto;
+  max-width: calc(100vw - 16px);
+  padding: 10px;
+  border: 1px solid var(--pxd-border, #d0d7de);
+  border-radius: 8px;
+  background: var(--pxd-surface, #fff);
+  color: #1f2937;
+  box-shadow: var(--pxd-shadow, none);
+  contain: none;
+  overflow: visible;
+  touch-action: auto;
+  cursor: auto;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.pxd-halo__link {
+  display: inline;
+}
+
+.pxd-halo__head,
+.pxd-halo__with,
+.pxd-halo__refs,
+.pxd-halo__boards {
+  margin: 0 0 6px;
+}
+
+.pxd-halo__spark {
+  display: block;
+  width: 120px;
+  height: 24px;
+  margin: 0 0 6px;
+  color: #1f2937;
+}
+
+.pxd-halo__company {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  text-decoration: underline;
+}
+
+.bp3-dark .pxd-halo,
+body.bt-theme-dark .pxd-halo,
+.rm-dark-theme .pxd-halo,
+body.roam-body.dark .pxd-halo,
+.pxd-root--dark.pxd-halo {
+  border: 1px solid var(--pxd-border, #3b4b58);
+  background: var(--pxd-surface, #1c2127);
+  color: #e6edf3;
+}
+
+.bp3-dark .pxd-halo__spark,
+body.bt-theme-dark .pxd-halo__spark,
+.rm-dark-theme .pxd-halo__spark,
+body.roam-body.dark .pxd-halo__spark,
+.pxd-root--dark .pxd-halo__spark {
+  color: #e6edf3;
 }
 
 .pxd-root .pxd-highlight-dialog {

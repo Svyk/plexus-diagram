@@ -21,6 +21,7 @@ export const SETTING_IDS = Object.freeze({
   autoFitSections: "auto-fit-sections",
   spaceOut: "space-out",
   showCardBadges: "show-card-badges",
+  cardChips: "card-chips",
   showPalette: "show-palette",
   motion: "motion",
   enterInCard: "enter-in-card",
@@ -61,6 +62,7 @@ const DEFAULTS = Object.freeze({
   [SETTING_IDS.autoFitSections]: true,
   [SETTING_IDS.spaceOut]: false,
   [SETTING_IDS.showCardBadges]: true,
+  [SETTING_IDS.cardChips]: true,
   [SETTING_IDS.showPalette]: true,
   [SETTING_IDS.motion]: "full",
   [SETTING_IDS.enterInCard]: "newline",
@@ -247,6 +249,7 @@ const SETTING_ROWS = {
   [SETTING_IDS.autoFitSections]: () => switchRow(SETTING_IDS.autoFitSections, "Auto-fit sections", "Grow a section when a card is moved or resized past its edge."),
   [SETTING_IDS.spaceOut]: () => switchRow(SETTING_IDS.spaceOut, "Space out cards", "After a move, push cards apart when they overlap."),
   [SETTING_IDS.showCardBadges]: () => switchRow(SETTING_IDS.showCardBadges, "Show card badges", "Show how many references, tasks, and children a card has."),
+  [SETTING_IDS.cardChips]: () => switchRow(SETTING_IDS.cardChips, "Board chips", "Show a board chip under a block that is a card on a board."),
   [SETTING_IDS.betterTasks]: () => switchRow(SETTING_IDS.betterTasks, "Better Tasks integration", "Use Better Tasks for task chips, the light checkbox, and task edits. Off leaves the TODO marker to Roam."),
   [SETTING_IDS.taskTool]: () => switchRow(SETTING_IDS.taskTool, "Task tool", "Show the Task tool (K) in the dock. It makes a Roam TODO block; Better Tasks sets its due date and project."),
   [SETTING_IDS.taskChips]: () => selectRow(SETTING_IDS.taskChips, "Task chips", "What a task card shows under its title. Full: due date, project, priority, repeat, status. Due only: just the date. None: no chips.", TASK_CHIPS),
@@ -263,7 +266,7 @@ const SETTING_ROWS = {
 
 const SETTING_GROUPS = [
   ["group-cards", "Cards", "How new cards look, and the marks on them.", [
-    SETTING_IDS.defaultCardLook, SETTING_IDS.defaultCardWidth, SETTING_IDS.defaultCardHeight, SETTING_IDS.enterInCard, SETTING_IDS.showCardBadges, SETTING_IDS.spaceOut,
+    SETTING_IDS.defaultCardLook, SETTING_IDS.defaultCardWidth, SETTING_IDS.defaultCardHeight, SETTING_IDS.enterInCard, SETTING_IDS.showCardBadges, SETTING_IDS.cardChips, SETTING_IDS.spaceOut,
   ]],
   ["group-integrations", "Integrations", "Better Tasks, the task tool, and what a task card shows.", [
     SETTING_IDS.betterTasks, SETTING_IDS.taskTool, SETTING_IDS.taskChips, SETTING_IDS.taskDefaultProject,

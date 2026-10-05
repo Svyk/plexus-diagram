@@ -7,6 +7,7 @@ import { assignDeepLink, hashFromUrl, pageUidFromHash, pxdTarget } from "./model
 import { openAddToBoard } from "./view/board-picker.js";
 import { createRelChips } from "./relchips.js";
 import { createBoardChips } from "./boardchips.js";
+import { createCardChips } from "./cardchips.js";
 import { createCardCache } from "./model/card-cache.js";
 import { imageSrc } from "./model/export.js";
 import { parseRegion } from "./model/regions.js";
@@ -15,7 +16,7 @@ import { eachRegionButton, openRegionCrop, openRegionView, regionButtonUid } fro
 import { chromeObstacles } from "./view/avoid.js";
 import { holeRect, previewImageBox, setCameraFromView } from "./view/region-hover-geom.js";
 import { drawViewMap, minimapSvg, viewMapModel } from "./view/minimap-svg.js";
-import { worldRects, buildBoard } from "./model/board.js";
+import { boundsOf, buildBoard, worldRects } from "./model/board.js";
 import { boardBounds, createPublicApi, fitThumbSize, installPublicApi, thumbStroke, uninstallPublicApi } from "./model/public-api.js";
 import { motionProfile, resolveMotion } from "./view/motion.js";
 import { createShowStash, pickCameraMount, resolveRegionTarget } from "./view/region-open.js";
@@ -165,26 +166,123 @@ export async function installPlexusDiagram({
   const relChips = createRelChips({ doc, win, host, graph: () => host.graph || graphFromHash(), openNested: (boardUid, edgeUid) => openNestedConnection(boardUid, edgeUid) });
   const cardCache = createCardCache();
   const boardChips = createBoardChips({ doc, cache: cardCache });
+  const pageUidByTitle = new Map();
   const noteCards = (board) => {
     if (!board?.uid || !board.items) return;
     const children = [];
     for (const item of board.items.values()) {
-      if (!item?.uid) continue;
-      const target = item.target?.kind === "block" ? item.target.uid : "";
+      if (!item?.uid || item.type !== "card") continue;
+      let target = "";
+      if (item.target?.kind === "block" && item.target.uid) target = item.target.uid;
+      else if (item.target?.kind === "page" && item.target.title) {
+        const title = item.target.title;
+        if (pageUidByTitle.has(title)) target = pageUidByTitle.get(title);
+        else {
+          try { target = host.pageUid?.(title) || ""; } catch { target = ""; }
+          pageUidByTitle.set(title, target);
+        }
+      }
       children.push({ uid: item.uid, target, string: typeof item.string === "string" ? item.string : "" });
     }
-    cardCache.setBoard(board.uid, "", children);
+    const title = board.title || parseBoardTitle(board.string) || "";
+    cardCache.setBoard(board.uid, title, children);
   };
+  const cardChips = createCardChips({
+    doc,
+    cache: cardCache,
+    enabled: () => settings[SETTING_IDS.cardChips] !== false,
+    pageUid: () => openPageUid(),
+    onOpen: ({ boardUid, cardUid, sidebar }) => { void openPublic(boardUid, { card: cardUid, sidebar }); },
+    onPreview: ({ boardUid, cardUid }) => chipPreview(boardUid, cardUid),
+  });
   const publishCards = (board) => {
     if (board) {
       relChips.noteBoard(board);
       noteCards(board);
     }
     boardChips.scan(doc?.body);
+    cardChips.scan(doc?.body);
     relChips.scan(doc?.body);
   };
   lifecycle.add(() => relChips.dispose());
   lifecycle.add(() => boardChips.dispose());
+  lifecycle.add(() => cardChips.dispose());
+  const editSeen = new Map();
+  let cacheLoadMs = null;
+  function refreshCardCache() {
+    const started = Date.now();
+    const uids = [...guardUids];
+    let edits = [];
+    try {
+      edits = uids.length && typeof host.q === "function"
+        ? host.q("[:find ?u ?t :in $ [?u ...] :where [?b :block/uid ?u] [?b :edit/time ?t]]", uids) || []
+        : [];
+    } catch { edits = []; }
+    const next = new Map();
+    for (const row of edits) {
+      if (Array.isArray(row) && row.length >= 2) next.set(row[0], row[1]);
+    }
+    const due = [];
+    for (const uid of uids) {
+      const stamp = next.has(uid) ? next.get(uid) : null;
+      if (editSeen.has(uid) && editSeen.get(uid) === stamp) continue;
+      due.push(uid);
+      editSeen.set(uid, stamp);
+    }
+    for (const uid of due) {
+      let board = null;
+      try {
+        const pulled = host.pullBoard?.(uid);
+        board = pulled ? buildBoard(pulled) : null;
+      } catch { board = null; }
+      if (board?.uid) noteCards(board);
+      else cardCache.setBoard(uid, "", []);
+    }
+    for (const rec of mounts.values()) {
+      if (rec.session?.board) noteCards(rec.session.board);
+    }
+    if (cacheLoadMs == null) cacheLoadMs = Date.now() - started;
+    boardChips.scan(doc?.body);
+    cardChips.scan(doc?.body);
+  }
+  function chipPreview(boardUid, cardUid) {
+    let board = null;
+    for (const rec of mounts.values()) {
+      if (rec.session?.board?.uid === boardUid) board = rec.session.board;
+    }
+    if (!board) {
+      try {
+        const pulled = host.pullBoard?.(boardUid);
+        board = pulled ? buildBoard(pulled) : null;
+      } catch { board = null; }
+    }
+    const title = board?.title || cardCache.titleOf(boardUid);
+    if (!board) return { title, section: "", svg: null };
+    const rects = worldRects(board);
+    const ids = [cardUid];
+    for (const edge of board.edges.values()) {
+      if (edge && edge.valid === false) continue;
+      const other = edge.from === cardUid ? edge.to : edge.to === cardUid ? edge.from : "";
+      if (!other || ids.includes(other)) continue;
+      ids.push(other);
+      if (ids.length >= 3) break;
+    }
+    const items = [];
+    for (const id of ids) {
+      const rect = rects.get(id);
+      if (rect) items.push({ ...rect, hot: id === cardUid });
+    }
+    const svg = items.length ? minimapSvg(doc, { v: boundsOf(items), items, size: 320 }) : null;
+    let section = "";
+    let parent = board.items.get(cardUid)?.parentUid;
+    while (parent && parent !== board.uid) {
+      const item = board.items.get(parent);
+      if (!item) break;
+      if (item.type === "section") { section = item.title || ""; break; }
+      parent = item.parentUid;
+    }
+    return { title, section, svg };
+  }
   const regionCrops = new Set();
   const showStash = createShowStash();
   let showWhere = "main";
@@ -678,9 +776,9 @@ export async function installPlexusDiagram({
       if (other.session?.board?.uid === boardUid) still = true;
     }
     if (!still && boardUid) {
-      cardCache.setBoard(boardUid, "", []);
       boardChips.dispose();
       boardChips.scan(doc?.body);
+      cardChips.scan(doc?.body);
     }
     try { rec.off?.(); } catch { /* ignore */ }
     try { rec.view?.dispose?.(); } catch (error) { console.warn("[plexus-diagram] view dispose failed", error); }
@@ -1126,6 +1224,7 @@ export async function installPlexusDiagram({
     if (active()) {
       relChips.scan(node);
       boardChips.scan(node);
+      cardChips.scan(node);
     }
     scanRegions(node);
   }
@@ -1517,6 +1616,7 @@ export async function installPlexusDiagram({
       }
     }
     reconcile();
+    cardChips.scan(doc?.body);
   }));
 
   // ---- install --------------------------------------------------------------------------------
@@ -1722,6 +1822,7 @@ export async function installPlexusDiagram({
     })),
     // "Open on board" for a connection (RF-3).
     openConnection: (boardUid, edgeUid) => openNestedConnection(boardUid, edgeUid),
+    cardCacheMs: () => cacheLoadMs,
     cameraRect(boardUid) {
       const rec = pickCameraMount([...mounts.values()], boardUid, isSidebarMount, currentUid);
       try { return rec?.view?.cameraRect?.() ?? null; } catch { return null; }
@@ -1744,9 +1845,12 @@ export async function installPlexusDiagram({
   lifecycle.timeout(() => {
     if (stopped || !active()) return;
     relChips.start();
-    for (const rec of mounts.values()) if (rec.session?.board) noteCards(rec.session.board);
-    boardChips.scan(doc?.body);
+    refreshCardCache();
   }, 600);
+  lifecycle.interval(() => {
+    if (stopped || !active()) return;
+    refreshCardCache();
+  }, 60000);
 
   if (doc && typeof globalThis.MutationObserver === "function") {
     const onAdded = (records) => {

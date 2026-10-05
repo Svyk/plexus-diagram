@@ -202,6 +202,7 @@ export function buildMenu(kind, ctx = {}) {
       out.push(
         make("send-to", "Send to board…"),
         make("related", "Related…"),
+        make("context", "Context"),
         sep(),
         make("delete", "Delete", { hint: "Del", danger: true }),
       );
@@ -290,6 +291,7 @@ export function buildMenu(kind, ctx = {}) {
         make("write-to-graph", "Write to graph"),
         sep(),
         make("copy-png", "Copy selection as PNG"),
+        make("context", "Context"),
         make("delete", "Delete", { hint: "Del", danger: true }),
       ];
 

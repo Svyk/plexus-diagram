@@ -38,7 +38,9 @@ export function minimapSvg(doc, { v, items = [], size = 96 } = {}) {
   for (const item of items) {
     const rect = rectOf(item);
     if (!rect || !(rect.w > 0) || !(rect.h > 0)) continue;
-    svg.append(strokeRect(doc, { x: rect.x, y: rect.y, width: rect.w, height: rect.h }));
+    const node = strokeRect(doc, { x: rect.x, y: rect.y, width: rect.w, height: rect.h });
+    if (item.hot) node.setAttribute("class", "pxd-cardchip__hot");
+    svg.append(node);
   }
   return svg;
 }

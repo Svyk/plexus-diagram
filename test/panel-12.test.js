@@ -430,3 +430,22 @@ test("Info keeps three session tabs, and the width is the only thing remembered"
   assert.deepEqual(fresh.infoTabs(), []);
   fresh.dispose();
 });
+
+test("Info inserts Context after the card body when contextLine returns text", async (t) => {
+  const f = setup({
+    contextLine: async () => "Made October 4th, 2026 on Lab",
+    isFullscreen: () => false,
+  }, {
+    cardInfo: async () => INFO,
+  });
+  t.after(f.restore);
+  f.panel.setSelection({ uid: "note1", type: "card", title: "Field", target: { kind: "self", uid: "note1" } });
+  f.panel.open("info");
+  await tick();
+  assert.deepEqual(
+    [...f.root.querySelectorAll(".pxd-panel__info-h")].map((n) => n.textContent),
+    ["Card", "Context", "Attributes", "Linked references", "On boards", "Tags"],
+  );
+  assert.equal(q(f.root, ".pxd-panel__info-body").textContent, "Field note #hb1");
+  assert.equal(q(f.root, ".pxd-panel__info-context").textContent, "Made October 4th, 2026 on Lab");
+});

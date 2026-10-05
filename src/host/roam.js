@@ -274,6 +274,17 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       return res && res[":block/uid"] ? res : null;
     },
 
+    // One unwatched read. Not added to the board pull watch.
+    pullEntity(pattern, uid) {
+      if (typeof pattern !== "string" || pattern === "" || !uid) return null;
+      try {
+        const res = pull(pattern, eidKey(uid));
+        return res && typeof res === "object" ? res : null;
+      } catch {
+        return null;
+      }
+    },
+
     watchBoard(uid, cb) {
       const entity = watchEntity(uid);
       const wrapped = (before, after) => cb(after);

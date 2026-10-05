@@ -21,6 +21,8 @@ import { chipsForPdf } from "../model/pdf-chips.js";
 import { expandDateHighlights, highlightRows, placeHighlights } from "../model/highlight-pick.js";
 import { isDailyTitle } from "../model/library.js";
 import { highlightLensTag, lensBright, lensCatalog, tagsForCard } from "../model/lens.js";
+import { HALO_PULL, company, headerText, readHaloPull } from "../model/halo.js";
+import { openHaloPopover } from "./halo-pop.js";
 import { dropNamespace } from "../model/namespace.js";
 import { isBareTask, isTaskAttr, isTaskString, setTaskAttrNames, taskMeta, taskState } from "../model/tasks.js";
 import { createBt } from "../host/bt.js";
@@ -2053,6 +2055,10 @@ export function mountBoardView({
     const uid = await (type === "text" ? actions.createText(at) : type === "task" ? actions.createTask(at) : actions.createCard(at));
     if (uid && !disposed) { ctl.select([uid]); void enterEdit(uid); }
   };
+  let openHalo = () => {};
+  let closeHalo = () => {};
+  let contextLineFor = async () => "";
+  let bindInfoHover = () => {};
   const onMenuPick = (id) => {
     const b = board();
     if (!b || disposed) return;
@@ -2384,6 +2390,11 @@ export function mountBoardView({
       case "mind-color": if (item && arg) expandOutline(item.uid, { colorBranches: arg === "on" }); break;
       case "send-to": startSendTo(uids); break;
       case "related": panel.open("related"); break;
+      case "context": {
+        const sub = edgeUid ? b.edges.get(edgeUid) : item;
+        if (sub && sub.type !== "section") openHalo(sub);
+        break;
+      }
       case "delete": case "delete-frame": ctl.deleteSelection(false); break;
       case "delete-contents": ctl.deleteSelection(true); break;
       case "rename": if (item) itemsR.renameSection(item.uid); break;
@@ -2544,7 +2555,7 @@ export function mountBoardView({
     timers,
     crumbs: crumbList,
     on: {
-      chromeRebuilt: () => tooltipCheck(),
+      chromeRebuilt: () => { tooltipCheck(); bindInfoHover(); },
       openBoard: () => { const it = singleItem(); if (it) void openBoard(it.uid); },
       openOwnPage: () => openOwnPage(singleItem()),
       renameBoard: () => { const it = singleItem(); if (it) itemsR.renameBoard(it.uid); },
@@ -2828,6 +2839,7 @@ export function mountBoardView({
       deleteView: (uid) => {
         Promise.resolve(session.deleteView?.(uid)).then(() => { if (!disposed) panel.refreshBoards?.(); }).catch(() => {});
       },
+      contextLine: (subject) => contextLineFor(subject),
     },
   });
   let viewDialog = null;
@@ -4397,6 +4409,168 @@ export function mountBoardView({
     shell.classList.add("pxd-item--pulse");
     timers.later(() => { if (!disposed) shell.classList.remove("pxd-item--pulse"); }, ms);
   };
+  const haloCache = new Map();
+  const haloPending = new Map();
+  const haloButtons = new Set();
+  let haloPop = null;
+  let haloWait = null;
+  let haloGen = 0;
+  const sectionTitle = (originUid) => {
+    const b = board();
+    let uid = originUid;
+    let guard = 0;
+    while (uid && b && uid !== b.uid && guard < 40) {
+      const item = b.items.get(uid);
+      if (!item) break;
+      if (item.type === "section") return item.title || "";
+      uid = item.parentUid;
+      guard += 1;
+    }
+    return "";
+  };
+  const boardCount = (target) => {
+    let n = 1;
+    if (!target) return n;
+    try {
+      const list = win?.PlexusDiagram?.boardsWith?.(target);
+      if (Array.isArray(list) && list.length) {
+        const here = board()?.uid;
+        n = list.some((row) => row && row.uid === here) ? list.length : list.length + 1;
+      }
+    } catch { n = 1; }
+    return n;
+  };
+  const cardLabel = (uid) => {
+    const title = String(board()?.items.get(uid)?.title || "").trim();
+    if (!title || title.length > 40) return "card";
+    return title;
+  };
+  const loadHalo = (subject) => {
+    const uid = subject?.uid;
+    if (!uid) return Promise.resolve(null);
+    const hit = haloCache.get(uid);
+    if (hit && Date.now() - hit.at < 60000) return Promise.resolve(hit.model);
+    const pending = haloPending.get(uid);
+    if (pending) return pending;
+    const job = (async () => {
+      try {
+      let pulled = null;
+      try { pulled = host?.pullEntity?.(HALO_PULL, uid) || null; } catch { pulled = null; }
+      const read = readHaloPull(pulled);
+      const b = board();
+      const cardUids = [];
+      if (b) for (const item of b.items.values()) {
+        if (item?.type === "card" && item.uid) cardUids.push(item.uid);
+      }
+      const stamps = new Map();
+      if (cardUids.length && typeof host?.q === "function") {
+        let found = [];
+        try {
+          found = host.q("[:find ?u ?t :in $ [?u ...] :where [?e :block/uid ?u] [?e :create/time ?t]]", cardUids) || [];
+        } catch { found = []; }
+        for (const row of found) {
+          if (Array.isArray(row) && row.length >= 2) stamps.set(row[0], row[1]);
+        }
+      }
+      const rows = cardUids.map((id) => ({
+        uid: id,
+        created: id === uid && read.created != null ? read.created : stamps.get(id),
+      }));
+      if (!rows.some((row) => row.uid === uid)) rows.push({ uid, created: read.created });
+      const origin = subject.from ? subject.from : uid;
+      const target = subject.target?.uid || uid;
+      const model = {
+        created: read.created,
+        edited: read.edited,
+        userName: read.userName,
+        board: b?.title || "",
+        section: sectionTitle(origin),
+        with: company(rows, uid).map((id) => ({ uid: id, label: cardLabel(id) })),
+        refTimes: read.refTimes,
+        boards: boardCount(target),
+      };
+      haloCache.set(uid, { at: Date.now(), model });
+      return model;
+      } catch { return null; }
+    })();
+    haloPending.set(uid, job);
+    job.finally(() => { if (haloPending.get(uid) === job) haloPending.delete(uid); });
+    return job;
+  };
+  const haloSubjectNow = () => {
+    const b = board();
+    if (!b || disposed) return null;
+    if (selection.edge) {
+      const edge = b.edges.get(selection.edge);
+      if (edge) return edge;
+    }
+    const it = singleItem();
+    if (it && it.type !== "section") return it;
+    return null;
+  };
+  const showHalo = async (subject, anchor) => {
+    const gen = haloGen;
+    const model = await loadHalo(subject);
+    if (disposed || !model || gen !== haloGen) return;
+    try { haloPop?.close(); } catch { /* already closed */ }
+    haloPop = openHaloPopover({
+      doc,
+      anchor,
+      model,
+      pageExists: (label) => {
+        try { return Boolean(host?.pageUid?.(label)); } catch { return false; }
+      },
+      renderString: (el, string) => host?.renderString?.(el, string),
+      unmount: (el) => { try { host?.unmount?.(el); } catch { /* already gone */ } },
+      onPulse: (id) => { if (!disposed) pulseItem(id); },
+    });
+  };
+  openHalo = (subject, anchor) => {
+    const sub = subject?.uid ? subject : haloSubjectNow();
+    if (!sub?.uid || sub.type === "section") return;
+    const btn = root.querySelector?.(".pxd-toolbar__info");
+    const box = anchor || btn?.getBoundingClientRect?.() || { left: 24, top: 24, right: 56, bottom: 48 };
+    void showHalo(sub, box);
+  };
+  contextLineFor = async (subject) => {
+    if (!subject?.uid || subject.type === "section") return "";
+    const model = await loadHalo(subject);
+    return model ? headerText(model) : "";
+  };
+  closeHalo = () => {
+    haloGen += 1;
+    haloWait?.();
+    haloWait = null;
+    try { haloPop?.close(); } catch { /* already closed */ }
+    haloPop = null;
+  };
+  bindInfoHover = () => {
+    const btn = root.querySelector?.(".pxd-toolbar__info");
+    if (!btn || haloButtons.has(btn)) return;
+    haloButtons.add(btn);
+    const armHalo = () => {
+      haloWait?.();
+      haloWait = timers.later(() => {
+        haloWait = null;
+        if (!disposed) openHalo();
+      }, 400);
+    };
+    listen(btn, "pointerenter", armHalo);
+    listen(btn, "mouseenter", armHalo);
+    listen(btn, "pointerleave", () => { haloWait?.(); haloWait = null; });
+    listen(btn, "mouseleave", () => { haloWait?.(); haloWait = null; });
+    listen(btn, "pointerdown", () => { haloWait?.(); haloWait = null; });
+  };
+  bindInfoHover();
+  listen(doc, "pointerdown", (event) => {
+    if (event.target?.closest?.(".pxd-halo")) return;
+    haloGen += 1;
+    haloWait?.();
+    haloWait = null;
+    if (!haloPop?.el) return;
+    try { haloPop.close(); } catch { /* already closed */ }
+    haloPop = null;
+  }, true);
   const fracParts = (frac) => {
     if (Array.isArray(frac)) return { rx: Number(frac[0]), ry: Number(frac[1]), rw: Number(frac[2]), rh: Number(frac[3]) };
     const src = frac || {};
@@ -4697,6 +4871,7 @@ export function mountBoardView({
     dispose() {
       if (disposed) return;
       disposed = true;
+      closeHalo();
       regionMark?.destroy?.();
       regionMark = null;
       closeViewDialog();

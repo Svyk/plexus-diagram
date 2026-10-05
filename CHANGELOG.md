@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.12.0 — 2026-10-05
+
+- Hover the info button on a card or a connection to see when it was made, the board, the section, cards from the same day, and how often it is referenced. A block on a board shows one chip per board. Hover the chip for a map. Click the chip to open that card. Nothing here writes. The command palette stays two entries.
+
 ## 2.11.4 — 2026-10-05
 
 - A PDF card shows one chip per page that has a highlight on the board. The badge is the count. A click pulses those cards. A double-click opens that page in the card reader. An arrow into a highlight shows the page at the tip. A highlight in the outline says On board when that highlight is a card. None of these write. The command palette stays two entries.

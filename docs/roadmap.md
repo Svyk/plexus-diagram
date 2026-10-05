@@ -108,6 +108,7 @@ Native diagrams are React Flow (`.react-flow`, nodes `.react-flow__node-block`).
 | P22 | PDF card | 2.11.0 | released 2026-10-05. PDF-1 done. |
 | P23 | Highlight cards | 2.11.1 | released 2026-10-05. PDF-2 done. |
 | P24 | Highlight picker and colour | 2.11.2 | released 2026-10-05. PDF-6, PDF-5, and PDF-3 done. |
+| P25 | Open a highlight in the reader | 2.11.3 | released 2026-10-05. PDF-4 done. |
 | P17 rest-P22 | 3.x roadmap, see roadmap-3.md | 2.8.1-3.0.0 | open |
 
 Order matters: P1 and P2 are the user's direct requests. Within a phase, do tasks in the listed order unless one is blocked.
@@ -436,6 +437,10 @@ Live on Readwisenotes, window titled "Readwisenotes - Plexus Diagram/Test Lab". 
 - [x] **PDF-5 Area image** — done 2026-10-05, `fbe4009`: Detail ratio 133 / 47. Mark region stored a container under the highlight. Prop keys unchanged. The ref rendered a crop. A click opened a board. Title stayed Test Lab. No typing bench.
 - [x] **PDF-3 Highlight picker** — done 2026-10-05, `fbe4009`: Picker showed 10 rows in 2 groups. Grid place made 5 cards in 3 columns. Reopen disabled 7. One Cmd-Z removed the 5. Reopen disabled 2. Bullet drag made 1 yellow card. Date cancel added 0. Date confirm added 2 highlight cards. Unload left 0 pxd nodes. Check 1306 pass. Paste not run. No typing bench.
 
+### P25: Open a highlight in the reader (2.11.3, 2026-10-05)
+
+- [x] **PDF-4 Open in reader** — done 2026-10-05, `6688c6b`: The card page field went to 1, then to 2, and the mark was on that page. The button wrote 0. With no PDF card, Roam opened plx-pdf1-test, fullscreen stayed 0, and the note said to click the highlight. Dark fill was clear, border 107,127,145, bar 4 px. Unload left 0 pxd nodes and no diagram listener. Window listeners 95 to 84. Check 1313 pass. Theme restored to Auto. No typing bench.
+
 ## 6. Later (ideas not scheduled)
 
 Pick from here only when every phase above is done or blocked.
@@ -467,6 +472,8 @@ AI agent features inside the board, SuperTag-style typed schemas or class tags, 
 
 Fill in as phases run. Keep the newest at the top of each list.
 
+- 2.11.3 live, 2026-10-05, Test Lab, `6688c6b`. Open in reader set the card page field to 1, then to 2. The button wrote 0. With no PDF card, openBlock opened plx-pdf1-test and the toast showed. Fullscreen stayed 0. Unload: pxd 0, diagram listeners 0. Window listeners 95 to 84. No typing bench.
+- 2.11.3 measure, 2026-10-05, Test Lab. Closed render shows rm-block-highlight-view and rm-pdf-highlight-color-icon. No rm-pdf-highlight. Icon click opened a fullscreen reader on the fixture page. Page input was 1. The same click still went fullscreen when an embedded reader was already mounted, and left Test Lab. Setting that input to 2 stuck and stayed on Test Lab. Text highlight has no fingerprints. Its hash matches the page hash. Page title has no md5. Match the card by the page url, not by a fingerprint in the title.
 - 2.11.2 live, 2026-10-05, Test Lab, `fbe4009`. Picker 10 rows, 2 groups. Grid 5 cards in 3 columns. One Cmd-Z removed the 5. Reopen disabled 7, then 2. Bullet drag made 1 yellow card. Date cancel added 0. Date confirm added 2. Area ratio 133 / 47. Crop rendered and a click opened a board. Lens green dimmed 3. Dark bar 250,204,21. Light bar 202,138,4. Unload pxd 0. Check 1306. Paste not run. No typing bench.
 - 2.11.2 measure, 2026-10-05. Fixture tree: one date block, two text highlights. Another page has 10. Area image-size is 133 by 47, png. Overlay parts are not draggable. Outline bullets are. No popup opened. A tag rewrite turned the outline swatch green, 167,232,200, after reload. Page marks stayed yellow, 255,234,133. Tag restored. Prop keys unchanged.
 - 2.11.1 PDF-2 live, 2026-10-05, Test Lab. Text card: yellow bar, the passage, p. 1. Area card: 1 image, 260 by 91, p. 2. Plain ref: no bar. Tag to green in 305 ms, prop keys unchanged, restored yellow in 203 ms. Dark bar 250,204,21. Light bar 202,138,4. Fill transparent. Unload left 0 pxd nodes and no diagram listener. Window 76 to 84. Document 124 to 136. Theme Auto. Check 1273 pass. No typing bench.

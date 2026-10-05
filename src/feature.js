@@ -3,13 +3,19 @@ import { createHost } from "./host/roam.js";
 import { acquireSession as acquireSessionDefault } from "./session.js";
 import { mountBoardView } from "./view/board-view.js";
 import { isTextEntryTarget } from "./view/cards.js";
-import { assignDeepLink } from "./model/deeplink.js";
+import { assignDeepLink, hashFromUrl, pageUidFromHash, pxdTarget } from "./model/deeplink.js";
 import { openAddToBoard } from "./view/board-picker.js";
 import { createRelChips } from "./relchips.js";
 import { imageSrc } from "./model/export.js";
 import { parseRegion } from "./model/regions.js";
 import { classifyString, parseBoardTitle, readPlexus, UNTITLED_BOARD } from "./model/schema.js";
-import { eachRegionButton, openRegionCrop, regionButtonUid } from "./view/region-crop.js";
+import { eachRegionButton, openRegionCrop, openRegionView, regionButtonUid } from "./view/region-crop.js";
+import { chromeObstacles } from "./view/avoid.js";
+import { holeRect, previewImageBox } from "./view/region-hover-geom.js";
+import { drawViewMap, viewMapModel } from "./view/minimap-svg.js";
+import { motionProfile, resolveMotion } from "./view/motion.js";
+import { createShowStash, pickCameraMount, resolveRegionTarget } from "./view/region-open.js";
+import { tooltipDelay } from "./view/tooltip.js";
 import { mountOutlineRegion, OUTLINE_TOAST, outlineToast } from "./view/region-outline.js";
 import {
   BLOCK_CONTAINER_SELECTOR,
@@ -155,6 +161,10 @@ export async function installPlexusDiagram({
   const relChips = createRelChips({ doc, win, host, graph: () => host.graph || graphFromHash(), openNested: (boardUid, edgeUid) => openNestedConnection(boardUid, edgeUid) });
   lifecycle.add(() => relChips.dispose());
   const regionCrops = new Set();
+  const showStash = createShowStash();
+  let showWhere = "main";
+  const viewBoards = new Map();
+  const VIEW_BOARD_TTL_MS = 5000;
   let outlineMark = null;
   let toastOff = () => {};
   const say = (message) => {
@@ -540,6 +550,7 @@ export async function installPlexusDiagram({
     }
     unmountOutlineCopies(rec);
     resumeNestedOpen(rec);
+    applyShow(rec);
     // An embed must not collapse the board. The original mount still does, once.
     if (!embedOwnerUid(native, (id) => host.blockString?.(id))) collapseOnce(uid, native);
     if (currentUid(rec) === uid) migrateLegacy(rec);
@@ -618,6 +629,7 @@ export async function installPlexusDiagram({
       rec.off = watchRec(rec);
       if (!embedOwnerUid(rec.native, (id) => host.blockString?.(id))) collapseOnce(currentUid(rec), rec.native);
       if (currentUid(rec) === rec.uid) migrateLegacy(rec);
+      applyShow(rec);
     } catch (error) {
       console.error("[plexus-diagram] Wake failed; native diagram restored", error);
       unmount(rec);
@@ -707,6 +719,303 @@ export async function installPlexusDiagram({
     return null;
   }
 
+  function isSidebarMount(rec) {
+    return inRightSidebar(rec.native) || inRightSidebar(rec.mountEl);
+  }
+
+  function allowShowMount(rec) {
+    const sidebar = isSidebarMount(rec);
+    if (showWhere === "sidebar") return sidebar;
+    if (!sidebar) return true;
+    const main = [...mounts.values()].some((other) => other !== rec && other.view && !isSidebarMount(other) && (other.uid === rec.uid || currentUid(other) === rec.uid || other.uid === currentUid(rec)));
+    return !main;
+  }
+
+  function applyShow(rec) {
+    const entry = showStash.peek();
+    if (!entry || !rec?.view) return;
+    if (!allowShowMount(rec)) return;
+    let text = "";
+    try { text = host.blockString?.(entry.uid) || ""; } catch { return; }
+    const region = parseRegion(text);
+    if (!region || region.owner !== "plexus-diagram" || region.supported !== true) return;
+    if (region.kind === "img") {
+      let hit = null;
+      try { hit = host.showOnBoard?.(region.drawingUid) || null; } catch { hit = null; }
+      if (!hit?.boardUid || !hit.cardUid) return;
+      if (hit.boardUid !== currentUid(rec) && hit.boardUid !== rec.uid) return;
+      try { rec.view.applyShow?.({ kind: "img", f: region.f, cardUid: hit.cardUid }); } catch { /* view gone */ }
+      return;
+    }
+    if (region.kind !== "view") return;
+    const boardUid = region.drawingUid;
+    if (boardUid !== currentUid(rec)) {
+      const trail = seedCrumbs(boardUid);
+      if (trail[0]?.uid === rec.uid && trail.length > 1) {
+        visit(rec, trail);
+        queueMicrotask(() => {
+          if (stopped || mounts.get(rec.native) !== rec) return;
+          if (currentUid(rec) !== boardUid || !rec.view) return;
+          try { rec.view.applyShow?.({ kind: "view", v: region.v, ids: region.ids || [] }); } catch { /* view gone */ }
+        });
+        return;
+      }
+      if (rec.uid !== boardUid && currentUid(rec) !== boardUid) return;
+    }
+    if (currentUid(rec) !== boardUid) return;
+    try { rec.view.applyShow?.({ kind: "view", v: region.v, ids: region.ids || [] }); } catch { /* view gone */ }
+  }
+
+  function applyShowAll() {
+    for (const rec of [...mounts.values()]) applyShow(rec);
+  }
+
+  function revealMain(boardUid) {
+    if (!boardUid) return;
+    for (const rec of mounts.values()) {
+      if (isSidebarMount(rec)) continue;
+      if (rec.uid !== boardUid && currentUid(rec) !== boardUid) continue;
+      try { (rec.mountEl || rec.native)?.scrollIntoView?.({ block: "center" }); } catch { /* no layout */ }
+    }
+  }
+
+  function openPageUid() {
+    try {
+      const uid = host.api?.ui?.getOpenPageOrBlockUid?.() || "";
+      if (uid) return uid;
+    } catch { /* the hash is the fallback */ }
+    return pageUidFromHash(globalThis.location?.hash || "");
+  }
+
+  function deepLinkTo(pageUid, cardUid) {
+    assignDeepLink(globalThis.location, {
+      graph: host.graph || graphFromHash(),
+      pageUid,
+      cardUid,
+    }, () => applyShowAll());
+  }
+
+  function pulseOutline(img, frac) {
+    if (!img || !doc) return;
+    const ms = motionProfile(resolveMotion(settings[SETTING_IDS.motion])).pulseMs;
+    const f = Array.isArray(frac) ? frac : [frac?.rx, frac?.ry, frac?.rw, frac?.rh];
+    const viewH = () => doc.defaultView?.innerHeight || 0;
+    let node = null;
+    const place = () => {
+      try { img.scrollIntoView?.({ block: "center", behavior: "instant" }); } catch { /* no layout */ }
+      const box = img.getBoundingClientRect?.();
+      if (!box || !(box.width > 0) || !(box.height > 0)) return false;
+      if (ms > 0) {
+        if (!node) {
+          node = doc.createElement("div");
+          node.className = "pxd-item--pulse";
+          node.style.position = "fixed";
+          node.style.pointerEvents = "none";
+          doc.body.append(node);
+          const drop = () => node.remove();
+          lifecycle.timeout(drop, ms);
+          lifecycle.add(drop);
+        }
+        node.style.left = `${(box.left || 0) + Number(f[0] || 0) * box.width}px`;
+        node.style.top = `${(box.top || 0) + Number(f[1] || 0) * box.height}px`;
+        node.style.width = `${Number(f[2] || 0) * box.width}px`;
+        node.style.height = `${Number(f[3] || 0) * box.height}px`;
+      }
+      const vh = viewH();
+      return box.top >= 0 && box.bottom <= vh + 1;
+    };
+    const kick = (left) => {
+      if (stopped) return;
+      place();
+      if (left > 0) lifecycle.timeout(() => kick(left - 1), 100);
+    };
+    kick(10);
+  }
+
+  function openOutlineImage(pageUid, drawingUid, frac) {
+    if (!pageUid) return;
+    const landed = (left) => {
+      if (stopped) return;
+      const img = outlineImage(drawingUid);
+      if (!img) {
+        if (left > 0) lifecycle.timeout(() => landed(left - 1), 150);
+        return;
+      }
+      pulseOutline(img, frac);
+    };
+    if (openPageUid() === pageUid) {
+      landed(8);
+      return;
+    }
+    try { host.openPage?.(pageUid); } catch { /* host unavailable */ }
+    let tries = 0;
+    const wait = () => {
+      if (stopped) return;
+      if (openPageUid() === pageUid) {
+        landed(8);
+        return;
+      }
+      tries += 1;
+      if (tries >= 8) return;
+      lifecycle.timeout(wait, 150);
+    };
+    lifecycle.timeout(wait, 150);
+  }
+
+  function openImageTarget(region, regionUid, shiftKey) {
+    let hit = null;
+    try { hit = host.showOnBoard?.(region.drawingUid) || null; } catch { hit = null; }
+    let pageUid = "";
+    try { pageUid = host.blockPageUid?.(region.drawingUid) || ""; } catch { pageUid = ""; }
+    const target = resolveRegionTarget(hit, { blockUid: region.drawingUid, pageUid });
+    if (shiftKey) {
+      if (target.kind === "board") {
+        try { host.openInSidebar?.(target.boardUid, "block"); } catch { /* host unavailable */ }
+        applyShowAll();
+      }
+      return;
+    }
+    if (target.kind === "board") {
+      revealMain(target.boardUid);
+      deepLinkTo(target.pageUid, regionUid);
+      return;
+    }
+    openOutlineImage(target.pageUid, region.drawingUid, region.f);
+  }
+
+  function openViewTarget(region, regionUid, shiftKey) {
+    const boardUid = region.drawingUid;
+    if (shiftKey) {
+      try { host.openInSidebar?.(boardUid, "block"); } catch { /* host unavailable */ }
+      applyShowAll();
+      return;
+    }
+    let pageUid = "";
+    try { pageUid = host.blockPageUid?.(boardUid) || ""; } catch { pageUid = ""; }
+    revealMain(boardUid);
+    if (pageUid) deepLinkTo(pageUid, regionUid);
+  }
+
+  function loadViewBoard(region) {
+    const id = region?.drawingUid;
+    if (!id) return null;
+    const hit = viewBoards.get(id);
+    if (hit && Date.now() - hit.at < VIEW_BOARD_TTL_MS) return hit.board;
+    let session = null;
+    let board = null;
+    try {
+      session = acquireSession(id, { host, settings: liveSettings });
+      board = session?.board || null;
+    } catch {
+      board = null;
+    } finally {
+      try { session?.release?.(); } catch { /* already released */ }
+    }
+    viewBoards.set(id, { board, at: Date.now() });
+    return board;
+  }
+
+  function popButton(parent, text, shiftKey, onOpen) {
+    const button = (parent.ownerDocument || doc).createElement("button");
+    button.type = "button";
+    button.textContent = text;
+    button.addEventListener("pointerdown", (event) => event.stopPropagation?.());
+    button.addEventListener("click", (event) => {
+      event.preventDefault?.();
+      event.stopPropagation?.();
+      onOpen?.({ shiftKey });
+    });
+    parent.append(button);
+    return button;
+  }
+
+  function sizedInline(node, w, h) {
+    node.style.setProperty("display", "inline-block", "important");
+    node.style.width = `${w}px`;
+    node.style.height = `${h}px`;
+  }
+
+  function fillImagePopover(el, button, region, onOpen) {
+    const popDoc = el.ownerDocument || doc;
+    const crop = button?.parentElement?.querySelector?.(".pxd-region-crop");
+    const img = crop?.querySelector?.("img");
+    const box = previewImageBox(img?.naturalWidth, img?.naturalHeight);
+    if (box) {
+      const preview = popDoc.createElement("span");
+      preview.className = "pxd-region-preview";
+      preview.style.position = "relative";
+      preview.style.overflow = "hidden";
+      sizedInline(preview, box.w, box.h);
+      if (img?.src) {
+        const pic = popDoc.createElement("img");
+        pic.alt = region.caption || "";
+        pic.draggable = false;
+        pic.src = img.src;
+        pic.style.position = "absolute";
+        pic.style.left = "0";
+        pic.style.top = "0";
+        pic.style.width = `${box.w}px`;
+        pic.style.height = `${box.h}px`;
+        preview.append(pic);
+      }
+      const hole = holeRect(box, region.f);
+      if (hole) {
+        const veil = (x, y, w, h) => {
+          if (!(w > 0) || !(h > 0)) return;
+          const s = popDoc.createElement("span");
+          s.className = "pxd-region-veil";
+          s.style.position = "absolute";
+          s.style.left = `${x}px`;
+          s.style.top = `${y}px`;
+          s.style.background = "rgba(0,0,0,0.4)";
+          s.style.pointerEvents = "none";
+          sizedInline(s, w, h);
+          preview.append(s);
+        };
+        veil(0, 0, box.w, hole.y);
+        veil(0, hole.y, hole.x, hole.h);
+        veil(hole.x + hole.w, hole.y, box.w - hole.x - hole.w, hole.h);
+        veil(0, hole.y + hole.h, box.w, box.h - hole.y - hole.h);
+        const holeSpan = popDoc.createElement("span");
+        holeSpan.className = "pxd-region-hole";
+        holeSpan.style.position = "absolute";
+        holeSpan.style.left = `${hole.x}px`;
+        holeSpan.style.top = `${hole.y}px`;
+        holeSpan.style.pointerEvents = "none";
+        sizedInline(holeSpan, hole.w, hole.h);
+        preview.append(holeSpan);
+      }
+      el.append(preview);
+    }
+    const caption = popDoc.createElement("span");
+    caption.className = "pxd-region-pop__caption";
+    caption.textContent = region.caption || "";
+    el.append(caption);
+    popButton(el, "Open", false, onOpen);
+    popButton(el, "Open in sidebar", true, onOpen);
+  }
+
+  function fillViewPopover(el, region, onOpen) {
+    const popDoc = el.ownerDocument || doc;
+    const board = loadViewBoard(region);
+    if (board) {
+      const svg = drawViewMap(popDoc, el, viewMapModel(board, region.v, region.ids));
+      const w = parseFloat(svg.style.width);
+      const h = parseFloat(svg.style.height);
+      if (w > 0 && h > 0) {
+        svg.style.width = "480px";
+        svg.style.height = `${(480 * h) / w}px`;
+      }
+    }
+    if (region.caption) {
+      const caption = popDoc.createElement("span");
+      caption.textContent = region.caption;
+      el.append(caption);
+    }
+    popButton(el, "Open", false, onOpen);
+    popButton(el, "Open in sidebar", true, onOpen);
+  }
+
   function considerRegionButton(button) {
     if (!active() || !button || button.getAttribute?.("data-plexus-owner")) return;
     const uid = regionButtonUid(button);
@@ -714,20 +1023,51 @@ export async function installPlexusDiagram({
     let text = "";
     try { text = host.blockString?.(uid) || ""; } catch { return; }
     const region = parseRegion(text);
-    if (!region || region.owner !== "plexus-diagram" || region.kind !== "img" || region.supported !== true) return;
-    const handle = openRegionCrop({
-      doc,
-      button,
-      region,
-      loadFile: (parsed) => {
-        try {
-          const src = imageSrc(host.blockString?.(parsed.drawingUid) || "");
-          return src && typeof host.getFile === "function" ? host.getFile(src) : null;
-        } catch {
-          return null;
-        }
-      },
-    });
+    if (!region || region.owner !== "plexus-diagram" || region.supported !== true) return;
+    if (region.kind !== "img" && region.kind !== "view") return;
+    const delayMs = tooltipDelay(settings[SETTING_IDS.tooltipDelay]);
+    const obstacles = () => {
+      const root = doc?.querySelector?.(".pxd-root");
+      return root ? chromeObstacles(root) : [];
+    };
+    const onOpen = ({ shiftKey } = {}) => {
+      showWhere = shiftKey ? "sidebar" : "main";
+      showStash.stash({ uid });
+      if (region.kind === "view") openViewTarget(region, uid, Boolean(shiftKey));
+      else openImageTarget(region, uid, Boolean(shiftKey));
+    };
+    const buildPopover = (el) => {
+      if (region.kind === "view") fillViewPopover(el, region, onOpen);
+      else fillImagePopover(el, button, region, onOpen);
+    };
+    const handle = region.kind === "view"
+      ? openRegionView({
+        doc,
+        button,
+        region,
+        onOpen,
+        delayMs,
+        buildPopover,
+        obstacles,
+        loadBoard: () => loadViewBoard(region),
+      })
+      : openRegionCrop({
+        doc,
+        button,
+        region,
+        onOpen,
+        delayMs,
+        buildPopover,
+        obstacles,
+        loadFile: (parsed) => {
+          try {
+            const src = imageSrc(host.blockString?.(parsed.drawingUid) || "");
+            return src && typeof host.getFile === "function" ? host.getFile(src) : null;
+          } catch {
+            return null;
+          }
+        },
+      });
     const drop = () => {
       handle.destroy();
       regionCrops.delete(drop);
@@ -764,6 +1104,12 @@ export async function installPlexusDiagram({
     }
     if (!doc) return;
     for (const diagram of doc.querySelectorAll(".rm-diagram")) consider(diagram);
+  }
+
+  function onHash(event) {
+    const target = pxdTarget(hashFromUrl(event?.newURL));
+    if (target?.cardUid && showStash.peek(target.cardUid)) applyShowAll();
+    onNavigate();
   }
 
   function onNavigate() {
@@ -1139,6 +1485,10 @@ export async function installPlexusDiagram({
     })),
     // "Open on board" for a connection (RF-3).
     openConnection: (boardUid, edgeUid) => openNestedConnection(boardUid, edgeUid),
+    cameraRect(boardUid) {
+      const rec = pickCameraMount([...mounts.values()], boardUid, isSidebarMount, currentUid);
+      try { return rec?.view?.cameraRect?.() ?? null; } catch { return null; }
+    },
     // Caller must release(). A second acquire of the same board shares the session.
     session(uid) {
       if (!uid) return null;
@@ -1258,7 +1608,7 @@ export async function installPlexusDiagram({
   lifecycle.add(() => { sidebarWatch?.disconnect(); sidebarWatch = null; });
   lifecycle.add(() => { if (wakeTimer) clearTimeout(wakeTimer); stopParkKeys(); });
   if (typeof win.addEventListener === "function") {
-    lifecycle.event(win, "hashchange", onNavigate);
+    lifecycle.event(win, "hashchange", onHash);
     lifecycle.event(win, "popstate", onNavigate);
   }
   lifecycle.interval(reconcile, RECONCILE_INTERVAL_MS);

@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.9.5 — 2026-10-04
+
+- Hover an image crop for a larger preview, the picture dimmed and the region lit. Click opens that image on its board, zoomed to the region, or scrolls the outline to the image and pulses the region. Shift-click opens the board in the sidebar. An inline view draws a small map. Hover enlarges it. Click opens the board at that view and pulses the highlighted cards. Shift-click opens the board in the sidebar. Neither click writes to the graph.
+
 ## 2.9.4 — 2026-10-04
 
 - On an image block, the block menu item Plexus: Mark image region lets you drag a rectangle. Confirm stores the region under the image, copies a block ref, and toasts. Escape writes nothing. A plexus-region image button in the outline, a block ref, an embed, the sidebar, and linked references draws the crop at most 160px tall, with a 1px border and no shadow, and hides that button. A Roam Plexus region such as a rectangle is left alone. The command palette does not gain an entry.

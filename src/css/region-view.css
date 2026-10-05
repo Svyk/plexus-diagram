@@ -1,0 +1,52 @@
+/* REG-7. Inline view map: strokes only. The highlighted card is an accent stroke plus a 12% tint. */
+
+.pxd-viewmap {
+  display: inline-block;
+  max-width: none;
+  vertical-align: top;
+  overflow: hidden;
+  background: transparent;
+  color: #1f2937;
+}
+
+.bp3-dark .pxd-viewmap,
+body.bt-theme-dark .pxd-viewmap,
+.rm-dark-theme .pxd-viewmap,
+body.roam-body.dark .pxd-viewmap,
+.pxd-root--dark .pxd-viewmap {
+  color: #fff;
+  background: transparent;
+}
+
+.pxd-viewmap rect {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5px;
+  vector-effect: non-scaling-stroke;
+}
+
+.pxd-viewmap .pxd-viewmap__card--muted {
+  fill: none;
+  stroke: currentColor;
+}
+
+.pxd-viewmap .pxd-viewmap__card--hi {
+  stroke: var(--pxd-accent, hsl(175 80% 30%));
+  fill: color-mix(in srgb, var(--pxd-accent, hsl(175 80% 30%)) 12%, transparent);
+}
+
+.bp3-dark .pxd-viewmap .pxd-viewmap__card--hi,
+body.bt-theme-dark .pxd-viewmap .pxd-viewmap__card--hi,
+.rm-dark-theme .pxd-viewmap .pxd-viewmap__card--hi,
+body.roam-body.dark .pxd-viewmap .pxd-viewmap__card--hi,
+.pxd-root--dark .pxd-viewmap .pxd-viewmap__card--hi {
+  stroke: var(--pxd-accent, hsl(175 60% 55%));
+  fill: color-mix(in srgb, var(--pxd-accent, hsl(175 60% 55%)) 12%, transparent);
+}
+
+.pxd-viewmap .pxd-viewmap__card--section,
+.bp3-dark .pxd-viewmap .pxd-viewmap__card--section,
+.pxd-root--dark .pxd-viewmap .pxd-viewmap__card--section {
+  fill: none;
+  stroke-dasharray: 6 4;
+}

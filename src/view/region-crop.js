@@ -1,8 +1,62 @@
 // REG-4. One crop beside a region button. The button stays in the DOM so unload can show it again.
+// REG-5 / REG-7. The same span opens on click and shows one hover popover.
+
+import { drawViewMap, viewMapModel } from "./minimap-svg.js";
+import { openHoverPopover } from "./region-open.js";
 
 export const REGION_SCAN_CAP = 60;
 export const CROP_MAX_H = 160;
 const URL_CAP = 24;
+const STOP_TYPES = ["pointerdown", "mousedown", "mouseup", "dblclick"];
+
+let liveHover = null;
+
+function closeHover(anchor) {
+  if (!liveHover) return;
+  if (anchor && liveHover.anchor !== anchor) return;
+  const cur = liveHover;
+  liveHover = null;
+  try { cur.close(); } catch { /* already closed */ }
+}
+
+function readObstacles(obstacles) {
+  if (typeof obstacles === "function") {
+    try { return obstacles() || []; } catch { return []; }
+  }
+  return obstacles ?? [];
+}
+
+function wireFrame(span, { doc, onOpen, delayMs, buildPopover, obstacles } = {}) {
+  span.tabIndex = 0;
+  const stop = (event) => event.stopPropagation?.();
+  for (const type of STOP_TYPES) span.addEventListener(type, stop);
+  span.addEventListener("click", (event) => {
+    event.stopPropagation?.();
+    event.preventDefault?.();
+    if (typeof onOpen === "function") onOpen({ shiftKey: Boolean(event.shiftKey) });
+  });
+  const open = () => {
+    if (liveHover?.anchor === span && liveHover.el?.isConnected !== false) return;
+    closeHover();
+    const handle = openHoverPopover({
+      doc: doc || span.ownerDocument || globalThis.document,
+      anchor: span,
+      delayMs,
+      build: buildPopover,
+      obstacles: readObstacles(obstacles),
+    });
+    liveHover = { anchor: span, el: handle.el, close: handle.close };
+  };
+  const blur = (event) => {
+    const next = event?.relatedTarget;
+    if (next && (next === liveHover?.el || liveHover?.el?.contains?.(next))) return;
+    closeHover(span);
+  };
+  span.addEventListener("mouseenter", open);
+  span.addEventListener("focus", open);
+  span.addEventListener("blur", blur);
+  return () => closeHover(span);
+}
 
 const urls = new Map();
 
@@ -117,7 +171,7 @@ function applyFrame(frame, img, frac, maxH) {
   return true;
 }
 
-export function mountRegionCrop({ doc = globalThis.document, button, region, file, maxH = CROP_MAX_H } = {}) {
+export function mountRegionCrop({ doc = globalThis.document, button, region, file, maxH = CROP_MAX_H, onOpen, delayMs, buildPopover, obstacles } = {}) {
   const noop = { destroy() {} };
   const parent = button?.parentElement;
   if (!doc || !parent || !region) return noop;
@@ -168,6 +222,7 @@ export function mountRegionCrop({ doc = globalThis.document, button, region, fil
     }
   }
 
+  const closePop = wireFrame(span, { doc, onOpen, delayMs, buildPopover, obstacles });
   parent.insertBefore(span, nextSibling(button));
   let dead = false;
   return {
@@ -175,6 +230,7 @@ export function mountRegionCrop({ doc = globalThis.document, button, region, fil
     destroy() {
       if (dead) return;
       dead = true;
+      closePop();
       span.remove();
       if (key) dropUrl(key);
       showButton(button);
@@ -182,9 +238,52 @@ export function mountRegionCrop({ doc = globalThis.document, button, region, fil
   };
 }
 
-export function openRegionCrop({ doc, button, region, loadFile, maxH = CROP_MAX_H } = {}) {
+function mountRegionView({ doc = globalThis.document, button, region, board, onOpen, delayMs, buildPopover, obstacles } = {}) {
+  const noop = { destroy() {} };
+  const parent = button?.parentElement;
+  if (!doc || !parent || !region) return noop;
+  const span = doc.createElement("span");
+  span.className = "pxd-region-view";
+  span.style.setProperty("display", "inline-block", "important");
+  span.style.setProperty("max-width", "none", "important");
+  span.style.setProperty("vertical-align", "top", "important");
+  if (!board) {
+    span.textContent = "view unavailable";
+  } else {
+    drawViewMap(doc, span, viewMapModel(board, region.v, region.ids));
+    if (region.caption) {
+      const caption = doc.createElement("span");
+      caption.className = "pxd-region-view__caption";
+      caption.textContent = region.caption;
+      span.append(caption);
+    }
+  }
+  const closePop = wireFrame(span, { doc, onOpen, delayMs, buildPopover, obstacles });
+  parent.insertBefore(span, nextSibling(button));
+  let dead = false;
+  return {
+    el: span,
+    destroy() {
+      if (dead) return;
+      dead = true;
+      closePop();
+      span.remove();
+      showButton(button);
+    },
+  };
+}
+
+const cropHooks = (extra) => ({
+  onOpen: extra.onOpen,
+  delayMs: extra.delayMs,
+  buildPopover: extra.buildPopover,
+  obstacles: extra.obstacles,
+});
+
+export function openRegionCrop({ doc, button, region, loadFile, maxH = CROP_MAX_H, onOpen, delayMs, buildPopover, obstacles } = {}) {
   const noop = { destroy() {}, pending: Promise.resolve() };
   if (!claimRegionButton(button)) return noop;
+  const hooks = cropHooks({ onOpen, delayMs, buildPopover, obstacles });
   let handle = null;
   let dead = false;
   const destroy = () => {
@@ -201,7 +300,7 @@ export function openRegionCrop({ doc, button, region, loadFile, maxH = CROP_MAX_
         dead = true;
         return;
       }
-      handle = mountRegionCrop({ doc, button, region, file, maxH });
+      handle = mountRegionCrop({ doc, button, region, file, maxH, ...hooks });
     })
     .catch(() => {
       if (dead || button.isConnected === false) {
@@ -209,7 +308,40 @@ export function openRegionCrop({ doc, button, region, loadFile, maxH = CROP_MAX_
         dead = true;
         return;
       }
-      handle = mountRegionCrop({ doc, button, region, file: null, maxH });
+      handle = mountRegionCrop({ doc, button, region, file: null, maxH, ...hooks });
+    });
+  return { destroy, pending };
+}
+
+export function openRegionView({ doc, button, region, loadBoard, onOpen, delayMs, buildPopover, obstacles } = {}) {
+  const noop = { destroy() {}, pending: Promise.resolve() };
+  if (!claimRegionButton(button)) return noop;
+  const hooks = cropHooks({ onOpen, delayMs, buildPopover, obstacles });
+  let handle = null;
+  let dead = false;
+  const destroy = () => {
+    if (dead) return;
+    dead = true;
+    if (handle) handle.destroy();
+    else showButton(button);
+  };
+  const pending = Promise.resolve()
+    .then(() => (typeof loadBoard === "function" ? loadBoard(region) : null))
+    .then((board) => {
+      if (dead || button.isConnected === false) {
+        if (!dead) showButton(button);
+        dead = true;
+        return;
+      }
+      handle = mountRegionView({ doc, button, region, board, ...hooks });
+    })
+    .catch(() => {
+      if (dead || button.isConnected === false) {
+        if (!dead) showButton(button);
+        dead = true;
+        return;
+      }
+      handle = mountRegionView({ doc, button, region, board: null, ...hooks });
     });
   return { destroy, pending };
 }

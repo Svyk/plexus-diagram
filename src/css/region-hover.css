@@ -1,0 +1,53 @@
+/* REG-5. Hover popover on document.body. The 1px border is the signal. No shadow. */
+
+.pxd-root.pxd-region-pop {
+  position: fixed;
+  z-index: 1000;
+  width: auto;
+  height: auto;
+  max-width: calc(100vw - 16px);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--pxd-border, #d0d7de);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--pxd-text, #1f2937);
+  box-shadow: none;
+  contain: none;
+  overflow: visible;
+  touch-action: auto;
+}
+
+.pxd-root.pxd-region-pop button {
+  box-sizing: border-box;
+  border: 1px solid var(--pxd-border, #d0d7de);
+  border-radius: 6px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--pxd-text, #1f2937);
+}
+
+.bp3-dark .pxd-root.pxd-region-pop,
+body.bt-theme-dark .pxd-root.pxd-region-pop,
+.rm-dark-theme .pxd-root.pxd-region-pop,
+body.roam-body.dark .pxd-root.pxd-region-pop,
+.pxd-root.pxd-region-pop.pxd-root--dark {
+  border: 1px solid var(--pxd-border-strong, #fff);
+  background: #26333f;
+  box-shadow: none;
+}
+
+.bp3-dark .pxd-root.pxd-region-pop button,
+body.bt-theme-dark .pxd-root.pxd-region-pop button,
+.rm-dark-theme .pxd-root.pxd-region-pop button,
+body.roam-body.dark .pxd-root.pxd-region-pop button,
+.pxd-root.pxd-region-pop.pxd-root--dark button {
+  border: 1px solid var(--pxd-border-strong, #fff);
+  background: transparent;
+  box-shadow: none;
+  color: var(--pxd-text, #e6edf3);
+}

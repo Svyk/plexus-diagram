@@ -8,6 +8,7 @@ import {
   isShowableCard,
   locateShowTarget,
   hashFromUrl,
+  pageUidFromHash,
   pxdTarget,
 } from "../src/model/deeplink.js";
 
@@ -27,6 +28,9 @@ test("card deep link round-trips the page and the card", () => {
   assert.equal(hashFromUrl(kept), "#/app/Readwisenotes/page/xxnGb6SEj?pxd=Or6gEkteS");
   assert.equal(hashFromUrl("#/app/G/page/page1"), "#/app/G/page/page1");
   assert.equal(hashFromUrl("https://roamresearch.com/"), "");
+  assert.equal(pageUidFromHash("#/app/Readwisenotes/page/xxnGb6SEj"), "xxnGb6SEj");
+  assert.equal(pageUidFromHash("#/app/Readwisenotes/page/xxnGb6SEj?pxd=MC-yZP0bb"), "xxnGb6SEj");
+  assert.equal(pageUidFromHash(""), "");
 });
 
 test("copy link keeps the block ref and appends the url when the page is known", () => {

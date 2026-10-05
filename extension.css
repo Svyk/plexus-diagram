@@ -5131,6 +5131,60 @@ body.roam-body.dark .pxd-root,
   background: transparent;
 }
 
+/* REG-5. Hover popover on document.body. The 1px border is the signal. No shadow. */
+
+.pxd-root.pxd-region-pop {
+  position: fixed;
+  z-index: 1000;
+  width: auto;
+  height: auto;
+  max-width: calc(100vw - 16px);
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--pxd-border, #d0d7de);
+  border-radius: 8px;
+  background: #fff;
+  color: var(--pxd-text, #1f2937);
+  box-shadow: none;
+  contain: none;
+  overflow: visible;
+  touch-action: auto;
+}
+
+.pxd-root.pxd-region-pop button {
+  box-sizing: border-box;
+  border: 1px solid var(--pxd-border, #d0d7de);
+  border-radius: 6px;
+  background: transparent;
+  box-shadow: none;
+  color: var(--pxd-text, #1f2937);
+}
+
+.bp3-dark .pxd-root.pxd-region-pop,
+body.bt-theme-dark .pxd-root.pxd-region-pop,
+.rm-dark-theme .pxd-root.pxd-region-pop,
+body.roam-body.dark .pxd-root.pxd-region-pop,
+.pxd-root.pxd-region-pop.pxd-root--dark {
+  border: 1px solid var(--pxd-border-strong, #fff);
+  background: #26333f;
+  box-shadow: none;
+}
+
+.bp3-dark .pxd-root.pxd-region-pop button,
+body.bt-theme-dark .pxd-root.pxd-region-pop button,
+.rm-dark-theme .pxd-root.pxd-region-pop button,
+body.roam-body.dark .pxd-root.pxd-region-pop button,
+.pxd-root.pxd-region-pop.pxd-root--dark button {
+  border: 1px solid var(--pxd-border-strong, #fff);
+  background: transparent;
+  box-shadow: none;
+  color: var(--pxd-text, #e6edf3);
+}
+
 /* REG-2. The draft is a stroke. Dark adds a 1px halo. No fill. */
 
 .pxd-root .pxd-region-layer {
@@ -5178,6 +5232,59 @@ body.roam-body.dark .pxd-root,
 
 .pxd-root .pxd-region-caption {
   width: 160px;
+}
+
+/* REG-7. Inline view map: strokes only. The highlighted card is an accent stroke plus a 12% tint. */
+
+.pxd-viewmap {
+  display: inline-block;
+  max-width: none;
+  vertical-align: top;
+  overflow: hidden;
+  background: transparent;
+  color: #1f2937;
+}
+
+.bp3-dark .pxd-viewmap,
+body.bt-theme-dark .pxd-viewmap,
+.rm-dark-theme .pxd-viewmap,
+body.roam-body.dark .pxd-viewmap,
+.pxd-root--dark .pxd-viewmap {
+  color: #fff;
+  background: transparent;
+}
+
+.pxd-viewmap rect {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5px;
+  vector-effect: non-scaling-stroke;
+}
+
+.pxd-viewmap .pxd-viewmap__card--muted {
+  fill: none;
+  stroke: currentColor;
+}
+
+.pxd-viewmap .pxd-viewmap__card--hi {
+  stroke: var(--pxd-accent, hsl(175 80% 30%));
+  fill: color-mix(in srgb, var(--pxd-accent, hsl(175 80% 30%)) 12%, transparent);
+}
+
+.bp3-dark .pxd-viewmap .pxd-viewmap__card--hi,
+body.bt-theme-dark .pxd-viewmap .pxd-viewmap__card--hi,
+.rm-dark-theme .pxd-viewmap .pxd-viewmap__card--hi,
+body.roam-body.dark .pxd-viewmap .pxd-viewmap__card--hi,
+.pxd-root--dark .pxd-viewmap .pxd-viewmap__card--hi {
+  stroke: var(--pxd-accent, hsl(175 60% 55%));
+  fill: color-mix(in srgb, var(--pxd-accent, hsl(175 60% 55%)) 12%, transparent);
+}
+
+.pxd-viewmap .pxd-viewmap__card--section,
+.bp3-dark .pxd-viewmap .pxd-viewmap__card--section,
+.pxd-root--dark .pxd-viewmap .pxd-viewmap__card--section {
+  fill: none;
+  stroke-dasharray: 6 4;
 }
 
 /* RF-3 (2.4): relation chips under connection blocks in Roam's outline, sidebar and linked references, and the

@@ -50,6 +50,7 @@ import { boardKeyIsOutside } from "./offscreen.js";
 import { editorKeyAction, inputBlockRole } from "./editor-keys.js";
 import { createEdgeLayer } from "./edges.js";
 import { createChrome, LINK_MODES } from "./chrome.js";
+import { cameraRectOf, regionCamera, setCameraFromView } from "./region-hover-geom.js";
 import { mountRegionMark } from "./region-mark.js";
 import { syncEmptyHint } from "./empty-hint.js";
 import { applyMotionClasses, motionProfile, resolveMotion } from "./motion.js";
@@ -3767,6 +3768,30 @@ export function mountBoardView({
     shell.classList.add("pxd-item--pulse");
     timers.later(() => { if (!disposed) shell.classList.remove("pxd-item--pulse"); }, ms);
   };
+  const fracParts = (frac) => {
+    if (Array.isArray(frac)) return { rx: Number(frac[0]), ry: Number(frac[1]), rw: Number(frac[2]), rh: Number(frac[3]) };
+    const src = frac || {};
+    return { rx: Number(src.rx), ry: Number(src.ry), rw: Number(src.rw), rh: Number(src.rh) };
+  };
+  const pulseFraction = (img, frac) => {
+    const ms = motionProfile(currentMotion()).pulseMs;
+    if (!(ms > 0) || !img) return;
+    const imgBox = img.getBoundingClientRect?.();
+    const rootBox = root.getBoundingClientRect?.() || { left: 0, top: 0 };
+    if (!imgBox || !(imgBox.width > 0) || !(imgBox.height > 0)) return;
+    const f = fracParts(frac);
+    if (![f.rx, f.ry, f.rw, f.rh].every((n) => Number.isFinite(n))) return;
+    const node = doc.createElement("div");
+    node.className = "pxd-item--pulse";
+    node.style.position = "absolute";
+    node.style.pointerEvents = "none";
+    node.style.left = `${(imgBox.left - rootBox.left) + f.rx * imgBox.width}px`;
+    node.style.top = `${(imgBox.top - rootBox.top) + f.ry * imgBox.height}px`;
+    node.style.width = `${f.rw * imgBox.width}px`;
+    node.style.height = `${f.rh * imgBox.height}px`;
+    root.append(node);
+    timers.later(() => { if (!disposed) node.remove(); }, ms);
+  };
   const consumeDeepLink = (hash = win?.location?.hash || "") => {
     if (disposed) return false;
     const target = pxdTarget(hash);
@@ -3911,6 +3936,56 @@ export function mountBoardView({
       return ok;
     },
     viewport: () => ({ x: vp.x, y: vp.y, zoom: vp.zoom }),
+    cameraRect() {
+      return cameraRectOf({ x: vp.x, y: vp.y, zoom: vp.zoom }, viewSize());
+    },
+    applyShow(region) {
+      if (disposed || !region) return;
+      if (region.kind === "img") {
+        let nudged = false;
+        const place = (left) => {
+          if (disposed) return;
+          const card = rects().get(region.cardUid);
+          const shell = itemsR.shellOf(region.cardUid);
+          const img = shell?.querySelector?.("img");
+          const shellBox = shell?.getBoundingClientRect?.();
+          const imgBox = img?.getBoundingClientRect?.();
+          const ready = card && shellBox && imgBox
+            && shellBox.width > 0 && shellBox.height > 0
+            && imgBox.width > 0 && imgBox.height > 0;
+          if (!ready) {
+            if (card && !nudged) {
+              nudged = true;
+              setViewport(regionCamera({
+                imageRect: { x: card.x, y: card.y, w: card.w, h: card.h },
+                frac: [0, 0, 1, 1],
+                size: viewSize(),
+              }));
+            }
+            if (left > 0) timers.later(() => place(left - 1), 100);
+            return;
+          }
+          const imageRect = {
+            x: card.x + ((imgBox.left - shellBox.left) / shellBox.width) * card.w,
+            y: card.y + ((imgBox.top - shellBox.top) / shellBox.height) * card.h,
+            w: (imgBox.width / shellBox.width) * card.w,
+            h: (imgBox.height / shellBox.height) * card.h,
+          };
+          setViewport(regionCamera({ imageRect, frac: region.f, size: viewSize() }));
+          timers.frame(() => { if (!disposed) pulseFraction(img, region.f); });
+        };
+        place(20);
+        return;
+      }
+      if (region.kind !== "view") return;
+      setViewport(setCameraFromView(region.v, viewSize()));
+      const pulseLater = (id, left) => {
+        if (disposed || left < 0) return;
+        if (itemsR.shellOf(id)) { pulseItem(id); return; }
+        timers.later(() => pulseLater(id, left - 1), 100);
+      };
+      for (const id of region.ids || []) pulseLater(id, 15);
+    },
     // Swap the settings object (feature.js calls this when a setting changes) and re-apply what depends on it.
     setSettings(next) {
       if (disposed) return;

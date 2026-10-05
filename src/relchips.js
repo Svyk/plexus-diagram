@@ -3,9 +3,10 @@
 // Zero writes. One cached set of connection-block uids, checked only for the nodes a mutation batch added.
 
 import { boundsOf, buildBoard, routedEdge, worldRects } from "./model/board.js";
-import { arrowHeadPath, arrowSize, blockInner, edgePath } from "./model/geometry.js";
+import { blockInner, edgePath } from "./model/geometry.js";
 import { assignDeepLink } from "./model/deeplink.js";
 import { PALETTE, attrNameOf, hexColor, itemLabel, parseBoardTitle } from "./model/schema.js";
+import { drawPreview, previewFont } from "./view/minimap-svg.js";
 import { createTooltip } from "./view/tooltip.js";
 import { tipEntry } from "./view/tooltip-text.js";
 
@@ -17,7 +18,6 @@ export const SCAN_CAP = 60; // candidate rows examined per mutation batch
 const NAME_MAX = 28;
 const BLOCK_MAX = 24;
 const MODEL_TTL_MS = 5000;
-const SVG_NS = "http://www.w3.org/2000/svg";
 const BLOCK_SELECTOR = ".roam-block";
 const isInput = (el) => String(el?.id || "").startsWith("block-input-");
 
@@ -72,8 +72,7 @@ export function relationOf(board, edgeUid, { blockText } = {}) {
   };
 }
 
-// PO-2: the preview's text size in world units follows the crop width.
-export const previewFont = (viewWidth) => Math.max(12, Math.round(viewWidth / 32));
+export { previewFont };
 export const ROW_PAD = 10;
 const clamp01 = (n) => (Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : 0.5);
 
@@ -394,63 +393,6 @@ export function createRelChips({ doc = globalThis.document, win = globalThis.win
     p.el.remove();
   };
 
-  const svgEl = (tag, attrs, parent) => {
-    const node = doc.createElementNS(SVG_NS, tag);
-    for (const [k, v] of Object.entries(attrs || {})) node.setAttribute(k, String(v));
-    parent?.append(node);
-    return node;
-  };
-
-  const drawPreview = (parent, model) => {
-    const v = model.viewBox;
-    const svg = svgEl("svg", { class: "pxd-relpop__map", viewBox: `${v.x} ${v.y} ${v.w} ${v.h}`, preserveAspectRatio: "xMidYMid meet", role: "img", "aria-label": "Where the connection sits on the board" }, parent);
-    const line = svgEl("g", { class: `pxd-relpop__edge${model.color ? ` pxd-c-${model.color}` : ""}` }, null);
-    if (model.hex) line.style.setProperty("--pxd-line", model.hex);
-    const font = model.font || previewFont(v.w);
-    let clips = 0;
-    const rects = new Map();
-    for (const card of model.cards) {
-      const r = card.rect;
-      const g = svgEl("g", { class: `pxd-relpop__card pxd-relpop__card--${card.role}${card.type === "section" ? " pxd-relpop__card--section" : ""}` }, svg);
-      if (card.role !== "other" && model.hex) g.style.setProperty("--pxd-line", model.hex);
-      if (card.role !== "other" && model.color) g.setAttribute("class", `${g.getAttribute("class")} pxd-c-${model.color}`);
-      svgEl("rect", { x: r.x, y: r.y, width: r.w, height: r.h, rx: 8 }, g);
-      if (card.title && card.type !== "section") {
-        const t = svgEl("text", { x: r.x + 10, y: r.y + font + 6, "font-size": font }, g);
-        t.textContent = clip(card.title, Math.max(8, Math.floor((r.w - 20) / (font * 0.55))));
-      }
-      rects.set(card.uid, r);
-    }
-    svgEl("path", { class: "pxd-relpop__line", d: model.path }, line);
-    // PO-2: a block end is a highlighted bar inside its card, clipped to the card, the arrow entering it.
-    const bar = (b, inner, cardUid, arrowEnd) => {
-      if (!b) return;
-      const r = rects.get(cardUid);
-      const g = svgEl("g", { class: `pxd-relpop__row${model.color ? ` pxd-c-${model.color}` : ""}` }, svg);
-      if (model.hex) g.style.setProperty("--pxd-line", model.hex);
-      if (r) {
-        clips += 1;
-        const id = `pxd-relclip-${Math.round(r.x)}-${Math.round(r.y)}-${clips}`;
-        const cp = svgEl("clipPath", { id }, g);
-        svgEl("rect", { x: r.x, y: r.y, width: r.w, height: r.h, rx: 8 }, cp);
-        g.setAttribute("clip-path", `url(#${id})`);
-      }
-      svgEl("rect", { x: b.x, y: b.y, width: b.w, height: b.h, rx: 4 }, g);
-      const t = svgEl("text", { x: b.textX, y: b.textY, "font-size": font }, g);
-      t.textContent = b.label;
-      if (inner) {
-        svgEl("path", { class: "pxd-relpop__inner", d: `M${inner.from.x} ${inner.from.y}L${inner.tip.x} ${inner.tip.y}` }, line);
-        if (arrowEnd) svgEl("path", { class: "pxd-relpop__head", d: arrowHeadPath(inner.tip, inner.angle, arrowSize(1, 2) * 1.6) }, line);
-      }
-    };
-    bar(model.fromBar, model.fromInner, model.fromCard, model.dir === "two");
-    bar(model.toBar, model.toInner, model.toCard, model.dir !== "none");
-    if (model.dir !== "none" && !model.toInner) svgEl("path", { class: "pxd-relpop__head", d: arrowHeadPath(model.end, model.endAngle, arrowSize(1, 2) * 1.6) }, line);
-    if (model.dir === "two" && !model.fromInner) svgEl("path", { class: "pxd-relpop__head", d: arrowHeadPath(model.start, model.startAngle + Math.PI, arrowSize(1, 2) * 1.6) }, line);
-    svg.append(line);
-    return svg;
-  };
-
   const openOnBoard = (boardUid, edgeUid) => {
     // A connection on a nested board: the host opens the parent page's board and enters the nested one first.
     try { if (openNested?.(boardUid, edgeUid)) return; } catch { /* fall through to the plain page link */ }
@@ -483,7 +425,7 @@ export function createRelChips({ doc = globalThis.document, win = globalThis.win
     };
     const head = mk("div", "pxd-relpop__head", el);
     mk("div", "pxd-relpop__title", head, rel ? chipText({ ...rel }).replace(/^↗ /, "") : "This connection is no longer on a board");
-    if (model) drawPreview(el, model);
+    if (model) drawPreview(doc, el, model);
     else mk("div", "pxd-relpop__empty", el, "The connected cards could not be found on the board.");
     if (rel?.toBlockText) mk("div", "pxd-relpop__note", el, `Ends on the block “${clip(rel.toBlockText, 60)}”`);
     const row = mk("div", "pxd-relpop__actions", el);

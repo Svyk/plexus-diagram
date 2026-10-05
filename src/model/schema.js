@@ -323,6 +323,7 @@ export function classifyString(s) {
   const block = /^\(\(([\w-]+)\)\)$/.exec(t);
   if (block) return { kind: "block", refUid: block[1] };
   if (/^\{\{(\[\[)?diagram/i.test(t)) return { kind: "board" };
+  if (t.startsWith("{{[[pdf]]:")) return { kind: "pdf" };
   if (/^!\[[^\]]*\]\([^)]*\)$/.test(t)) return { kind: "image" };
   if (isContainerString(t)) return { kind: "regions" };
   if (parseRegion(t)) return { kind: "region" };

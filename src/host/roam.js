@@ -10,6 +10,7 @@ import {
   recentDailyTitles,
 } from "../model/library.js";
 import { splitNeighbors } from "../model/neighbors.js";
+import { coverModel, pdfMacroUrl, pdfPagePlan } from "../model/pdf.js";
 import { LINKED_REF_CAP } from "../model/refs.js";
 import { attrNameOf, mergePropsForWrite, parseBoardTitle, plainKeys } from "../model/schema.js";
 
@@ -35,6 +36,8 @@ const SHOW_REF_QUERY = `[:find ?board ?page ?card :in $ ?uid ?pat :where
  [?cardblock :block/parents ?diagram] [?diagram :block/uid ?board] [?diagram :block/string ?s]
  [(re-pattern ?pat) ?re] [(re-find ?re ?s)] [?diagram :block/page ?p] [?p :block/uid ?page]]`;
 const BOARD_META_PATTERN = "[:block/props :edit/time {:block/children [:block/props]}]";
+const PDF_PAGE_QUERY = `[:find ?u ?t :in $ ?url :where [?p :pdf/url ?url] [?p :block/uid ?u] [?p :node/title ?t]]`;
+const PDF_PAGE_BLOCKS_QUERY = `[:find ?props :in $ ?uid :where [?p :block/uid ?uid] [?b :block/page ?p] [?b :block/props ?props]]`;
 
 const eidKey = (uid) => [":block/uid", uid];
 const watchEntity = (uid) => `[:block/uid "${String(uid).replace(/["\\]/g, "")}"]`;
@@ -189,6 +192,20 @@ export function createViewportStore({ storage = globalThis.localStorage, graph =
       latest.clear();
     },
   };
+}
+
+function hasPdfHighlight(value) {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return false;
+  return Object.keys(value).includes(":pdf-highlight") || Object.keys(value).includes("pdf-highlight");
+}
+
+function queryRows(host, query, ...inputs) {
+  try {
+    const rows = host.q(query, ...inputs);
+    return Array.isArray(rows) ? rows : [];
+  } catch {
+    return [];
+  }
 }
 
 export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localStorage, graph } = {}) {
@@ -515,6 +532,28 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
 
     q(query, ...inputs) {
       return data.fast?.q ? data.fast.q(query, ...inputs) : data.q(query, ...inputs);
+    },
+
+    // Read-only cover. :pdf/url is a page attribute. Highlight blocks sit anywhere on that page.
+    pdfCover(string) {
+      const url = pdfMacroUrl(string);
+      if (!url) return { ...coverModel({ count: 0 }), pageUid: null };
+      const pages = [];
+      for (const row of queryRows(host, PDF_PAGE_QUERY, url)) {
+        if (!Array.isArray(row)) continue;
+        const uid = row[0];
+        const title = row[1];
+        if (typeof uid !== "string" || uid === "") continue;
+        pages.push({ uid, title: typeof title === "string" ? title : "", url });
+      }
+      const page = pdfPagePlan(url, pages);
+      if (!page) return { ...coverModel({ url, count: 0 }), pageUid: null };
+      let count = 0;
+      for (const row of queryRows(host, PDF_PAGE_BLOCKS_QUERY, page.uid)) {
+        const cells = Array.isArray(row) ? row : [row];
+        if (cells.some(hasPdfHighlight)) count++;
+      }
+      return { ...coverModel({ title: page.title, url, count }), pageUid: page.uid };
     },
 
     // Boards library: every enhanced (plexus.v === 2) board block in the graph. Read-only.

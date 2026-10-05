@@ -323,6 +323,20 @@ const rgbOf = (value) => {
   return { r: Number(m[1]), g: Number(m[2]), b: Number(m[3]), a };
 };
 
+// True while the hit is inside a PDF reader that has Interact on. The board must not
+// preventDefault that pointerdown, or page nav and the native fullscreen control never run.
+export function pdfClickShield(target) {
+  return Boolean(target?.closest?.(".pxd-pdf-live"));
+}
+
+// Native fullscreen owns Escape (the browser leaves it). Interact without fullscreen ends on Escape.
+// Anything else keeps the board's own Escape chain.
+export function pdfEscapeAction({ live, fullscreen } = {}) {
+  if (fullscreen) return "native";
+  if (live) return "end-interact";
+  return "pass";
+}
+
 // True only when the host is measurably light: no dark marker, and the first opaque background up the chain
 // (Roam paints only <body>; the app wrappers are transparent) has high luminance. The OS color-scheme hint must not
 // darken a board that sits on a light host, so a confirmed-light host opts out of the prefers-color-scheme rules.
@@ -3276,6 +3290,9 @@ export function mountBoardView({
   };
   listen(root, "pointerdown", (event) => {
     if (event.target?.closest?.(".pxd-chrome")) return;
+    // Interact is on: this click belongs to the reader. preventDefault or stopPropagation would block page nav.
+    if (pdfClickShield(event.target)) return;
+    else if (root.querySelector?.(".pxd-pdf-live")) itemsR.endPdfInteract();
     // The linked-references drawer drags a mention out. preventDefault would cancel that drag and move the card.
     if (event.target?.closest?.(".pxd-refs")) {
       event.stopPropagation();
@@ -3532,6 +3549,26 @@ export function mountBoardView({
   let outsideQuiet = null;
   let swallowEnterUp = false;
   const onKeyDown = (event) => {
+    // True when this Escape is the reader's, and the side effect has already run. Native fullscreen
+    // returns true without preventDefault so the browser can leave fullscreen and the card stays up.
+    const consumePdfEscape = () => {
+      if (event.key !== "Escape") return false;
+      const liveNode = root.querySelector?.(".pxd-pdf-live");
+      const fsEl = doc.fullscreenElement;
+      const action = pdfEscapeAction({
+        // Card edit, Quick Look, and a presentation keep Escape. Native fullscreen still wins.
+        live: Boolean(liveNode) && !itemsR.isEditing() && !quicklook.isOpen() && !presenter.isActive(),
+        fullscreen: Boolean(fsEl && (liveNode || fsEl.closest?.(".pxd-pdf-live, .rm-pdf-container") || fsEl.querySelector?.(".rm-pdf-container"))),
+      });
+      if (action === "end-interact") {
+        event.preventDefault();
+        event.stopPropagation();
+        itemsR.endPdfInteract();
+        return true;
+      }
+      if (action === "native") return true;
+      return false;
+    };
     // A keystroke outside the board is a Roam transaction. Drop live card renders first,
     // before any board lookup, and put them back shortly after typing stops.
     if (isTextEntryTarget(event.target) && !root.contains?.(event.target)) {
@@ -3549,7 +3586,12 @@ export function mountBoardView({
       return;
     }
     // Nothing selected and the key is outside every board: do not read the model.
-    if (boardKeyIsOutside(event.target, selection.items.length > 0)) return;
+    // Escape still ends PDF interact, or stays with native fullscreen, when the reader is up.
+    if (boardKeyIsOutside(event.target, selection.items.length > 0)) {
+      const overlay = menu.isOpen() || shortcutSheet.isOpen() || chrome.popover.isOpen() || chrome.changelog?.isOpen() || blockEdit;
+      if (!overlay && consumePdfEscape()) return;
+      return;
+    }
     // Outline mode is real Roam blocks. Canvas shortcuts stay off so a key there is not a board command.
     if (outlineMode && !event.target?.closest?.(".pxd-mode")) return;
     if (tableMode && !event.target?.closest?.(".pxd-toolbar__table")) return;
@@ -3594,6 +3636,8 @@ export function mountBoardView({
     if (event.key === "Escape" && chrome.changelog?.isOpen()) { chrome.changelog.close(); noteOverlayClosed(); event.preventDefault(); event.stopPropagation(); return; }
     if (quicklook.isOpen() && event.key !== "Escape" && String(event.key).toLowerCase() !== "q") return;
     if (presenter.isActive() && !["Escape", "ArrowRight", "ArrowLeft", "ArrowDown", "ArrowUp", "PageDown", "PageUp", " ", "p", "P"].includes(event.key)) return;
+    // A live reader takes Escape before the board chain (selection, up a level, board fullscreen).
+    if (consumePdfEscape()) return;
     const findKey = (event.metaKey || event.ctrlKey) && !event.altKey && String(event.key).toLowerCase() === "f";
     const findInSearch = event.target?.closest?.(".pxd-search") || doc.activeElement?.closest?.(".pxd-search");
     if (findKey && findInSearch && root.contains?.(findInSearch)) {

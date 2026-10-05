@@ -164,11 +164,14 @@ export function buildBoard(pulled, { defaults, resolve, plexusApi } = {}) {
         } else if (drawingRefModel(typeof targetText === "string" ? targetText : "")) {
           kind = "drawing-ref";
           title = "Drawing";
+        } else if (classifyString(typeof targetText === "string" ? targetText : "").kind === "pdf") {
+          kind = "pdf";
+          title = "PDF";
         }
       }
       let target;
       if (kind === "page") target = { kind: "page", title: cls.title };
-      else if (kind === "block" || kind === "region-ref" || kind === "drawing-ref") target = { kind: "block", uid: cls.refUid };
+      else if (kind === "block" || kind === "region-ref" || kind === "drawing-ref" || (kind === "pdf" && cls.refUid)) target = { kind: "block", uid: cls.refUid };
       else target = { kind: "self", uid: cuid };
       const item = {
         uid: cuid,

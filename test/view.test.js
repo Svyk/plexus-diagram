@@ -2008,6 +2008,12 @@ test("NP-9: native embeds keep a shield until edit, and a drag still moves the c
     const expectShield = ["np9hl0001", "np9pdf001", "np9vid001", "np9tw0001"];
     for (const uid of expectShield) {
       const card = root.querySelector(`[data-uid=${uid}]`);
+      if (uid === "np9pdf001") {
+        assert.equal(card.querySelector(".pxd-embed-shield"), null);
+        assert.ok(card.querySelector(".pxd-pdf-cover"), uid);
+        drag(card.querySelector(".pxd-pdf-title"));
+        continue;
+      }
       assert.ok(card.querySelector(".pxd-embed-shield"), uid);
       drag(card.querySelector(".pxd-embed-shield"));
     }

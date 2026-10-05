@@ -2002,6 +2002,33 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   pointer-events: none;
 }
 
+/* PDF-1 cover. The reader is Roam's block; the shield sits on .pxd-pdf-reader. */
+.pxd-root .pxd-pdf-cover {
+  border: 1px solid var(--pxd-border);
+  background: transparent;
+}
+
+.pxd-root .pxd-pdf-reader {
+  position: relative;
+  height: 100%;
+  min-height: 48px;
+}
+
+.pxd-root .pxd-pdf-interact {
+  position: absolute;
+  z-index: 3;
+  top: 8px;
+  right: 8px;
+}
+
+.pxd-root.pxd-lod-map .pxd-item.pxd-item--pdf > .pxd-item__body {
+  display: block;
+}
+
+.pxd-root.pxd-lod-overview .pxd-item.pxd-item--pdf > .pxd-item__body {
+  display: none;
+}
+
 /* Focus mode dims everything outside the focused set (class-only, no per-frame style work). */
 .pxd-root .pxd-item.pxd-item--focus-dim,
 .pxd-root .pxd-section.pxd-section--focus-dim {

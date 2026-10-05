@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.11.0 — 2026-10-05
+
+- A pdf block on the board is a card. The cover shows the file name and the highlight count. Open reader mounts Roam's own reader. Interact lets you use that reader. Escape or a board click puts the shield back. A second reader closes the first. Moving the card does not change the PDF settings. The command palette stays two entries.
+
 ## 2.10.3 — 2026-10-05
 
 - With Compass loaded, a card menu can open Compass on that page. Compass can open the board that holds the card, and asks which board when there are two.

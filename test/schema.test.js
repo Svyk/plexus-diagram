@@ -94,7 +94,9 @@ test("classifyString", () => {
   assert.deepEqual(classifyString("((abcDEF123))"), { kind: "block", refUid: "abcDEF123" });
   assert.deepEqual(classifyString("{{[[diagram]]:X}}"), { kind: "board" });
   assert.deepEqual(classifyString("{{diagram}}"), { kind: "board" });
+  assert.deepEqual(classifyString("  {{[[pdf]]:https://x/a.pdf}}  "), { kind: "pdf" });
   assert.deepEqual(classifyString("![](https://x/y.png)"), { kind: "image" });
+  assert.deepEqual(classifyString("see {{[[pdf]]:https://x/a.pdf}}"), { kind: "note" });
   assert.deepEqual(classifyString("[[A]] and more"), { kind: "note" });
   assert.deepEqual(classifyString("[[A]] [[B]]"), { kind: "note" });
   assert.deepEqual(classifyString(""), { kind: "note" });

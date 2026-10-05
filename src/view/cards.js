@@ -22,6 +22,7 @@ import { regionRefModel } from "../model/region-card.js";
 import { imageRegionRows, regionBadge } from "../model/region-menu.js";
 import { renderRegionCard, thumbRequest } from "./region-card.js";
 import { copyDrawingPixels, renderDrawingCard } from "./drawing-card.js";
+import { PDF_READER_H, PDF_READER_W, coverModel, readerRule } from "../model/pdf.js";
 
 const SIDES = ["top", "right", "bottom", "left"];
 const CHUNK_MS = 8;
@@ -233,7 +234,7 @@ function kidRowsOf(list, depth = 1, budget = { n: 0 }) {
   return budget.n;
 }
 
-function contentKeyOf(item, live = false) {
+function cardContentKey(item, live = false, pdfOpen = false) {
   if (isSticky(item)) {
     return ["sticky", live ? "live" : item.string, item.min ? "m" : "", item.fontSize || "", item.textColor || "", item.align || ""].join("\u0001");
   }
@@ -242,6 +243,7 @@ function contentKeyOf(item, live = false) {
     item.fontSize || "", item.textColor || "", item.align || "", item.fill || "", item.border || "",
     item.titleSize || "", item.titleColor || "", item.titleFill || "", item.areaFill || "",
     taskBlockOn(item) ? `tb${taskNamesSig()}` : "",
+    item.kind === "pdf" ? (pdfOpen ? "o" : "") : "",
   ];
   if (item.kind === "board") parts.push(item.w, item.h);
   if (item.kind === "board") {
@@ -287,6 +289,10 @@ export function createItemRenderer({
   bt = null,
 } = {}) {
   taskBlockOn = (item) => Boolean(bt?.available?.()) && isTaskCard(item);
+  let pdfOpenUid = null;
+  let pdfLiveUid = null;
+  let pdfLiveOff = null;
+  const contentKeyFor = (item, live = false) => cardContentKey(item, live, item?.kind === "pdf" && pdfOpenUid === item.uid);
   const shells = new Map(); // uid → rec
   const mounted = new Map(); // uid → lastWanted (LRU order = insertion order)
   // ED-2: per-item board renders, on the same object as window.__plexusDiagram.stats.
@@ -543,6 +549,7 @@ export function createItemRenderer({
     dropLayoutWatch(rec);
     rec.scrollOff?.();
     rec.scrollOff = null;
+    rec.pdfReader = null;
     if (!rec.roots?.length) return;
     for (const node of rec.roots) {
       try { node.__pxdEmbedMo?.disconnect(); } catch { /* already gone */ }
@@ -854,6 +861,7 @@ export function createItemRenderer({
       if (rec.refBoard) cls.push("pxd-item--wb");
       if (item.kind === "region-ref") cls.push("pxd-item--region");
       if (item.kind === "drawing-ref") cls.push("pxd-item--drawing");
+      if (item.kind === "pdf" && pdfLiveUid === item.uid) cls.push("pxd-pdf-live");
       if (item.look === "block") cls.push("pxd-card--block");
       const task = isTaskCard(item) ? taskMeta(item.string, item.content) : null;
       if (task) {
@@ -894,6 +902,11 @@ export function createItemRenderer({
       else {
         if (rec.stickyBits) dropStickyHeader(rec);
         if (editing?.uid !== item.uid && !rec.renaming) rec.header.textContent = item.type === "text" ? "" : String(rec.refTitle || item.title || "").slice(0, HEADER_TEXT_MAX);
+        if (item.kind === "pdf" && editing?.uid !== item.uid && !rec.renaming) {
+          const cover = pdfCoverOf(item);
+          rec.pdfCover = cover;
+          rec.header.textContent = String(cover.title || "PDF").slice(0, HEADER_TEXT_MAX);
+        }
         if (item.type === "text") rec.header.style.display = "none";
       }
       rec.header.classList.toggle("pxd-item__header--muted", item.kind === "board" && isUntitledBoard(item.title));
@@ -911,12 +924,18 @@ export function createItemRenderer({
     rec.el.style.transform = `translate(${rect.x}px, ${rect.y}px)`;
     rec.el.style.width = `${rect.w}px`;
     rec.el.style.height = `${rect.h}px`;
+    if (pdfReaderBox(rec.uid)) {
+      rec.el.style.width = `${PDF_READER_W}px`;
+      rec.el.style.height = `${PDF_READER_H}px`;
+    }
     if (rec.shapeName) syncShape(rec, { type: "text", shape: rec.shapeName, w: rect.w, h: rect.h }, rect);
   };
 
   const removeShell = (uid) => {
     const rec = shells.get(uid);
     if (!rec) return;
+    if (pdfLiveUid === uid) endPdfInteract();
+    if (pdfOpenUid === uid) pdfOpenUid = null;
     if (editing?.uid === uid) void exitEdit({ silent: true });
     unmountRoots(rec);
     rec.el.remove();
@@ -1008,7 +1027,7 @@ export function createItemRenderer({
           noteRender(uid);
           paintShell(rec, item);
           if (rect) position(rec, rect);
-          const key = contentKeyOf(item, rec.stickyLive);
+          const key = contentKeyFor(item, rec.stickyLive);
           if (rec.contentKey !== null && rec.contentKey !== key && editing?.uid !== uid) {
             // content changed under a mounted shell → remount on the next content pass
             unmountRoots(rec);
@@ -1682,6 +1701,132 @@ export function createItemRenderer({
     return true;
   };
 
+  // PDF-1. One reader. Map lod keeps the cover at the card's own size.
+  const pdfReaderBox = (uid) => {
+    const item = lastBoard?.items.get(uid);
+    return Boolean(item && !item.collapsed && item.kind === "pdf" && pdfOpenUid === uid && lod === "detail");
+  };
+  const pdfSourceOf = (item) => {
+    if (item?.target?.kind === "block") {
+      const text = host?.blockString?.(item.target.uid);
+      return typeof text === "string" ? text : "";
+    }
+    return typeof item?.string === "string" ? item.string : "";
+  };
+  const pdfCoverOf = (item) => {
+    let cover = null;
+    try { cover = host?.pdfCover?.(pdfSourceOf(item)); } catch { cover = null; }
+    if (!cover || typeof cover !== "object") return coverModel({ count: 0 });
+    return cover;
+  };
+  const applyPdfSize = (rec) => {
+    if (!rec?.el || !rec.rect) return;
+    if (pdfReaderBox(rec.uid)) {
+      rec.el.style.width = `${PDF_READER_W}px`;
+      rec.el.style.height = `${PDF_READER_H}px`;
+      return;
+    }
+    rec.el.style.width = `${rec.rect.w}px`;
+    rec.el.style.height = `${rec.rect.h}px`;
+  };
+  const armPdfLiveWatch = () => {
+    if (pdfLiveOff) return;
+    const onKey = (event) => {
+      if (event.key !== "Escape" || isTextEntryTarget(event.target)) return;
+      endPdfInteract();
+    };
+    const onDown = (event) => {
+      const reader = pdfLiveUid ? shells.get(pdfLiveUid)?.pdfReader : null;
+      if (reader && event.target && reader.contains(event.target)) return;
+      endPdfInteract();
+    };
+    doc.addEventListener?.("keydown", onKey, true);
+    doc.addEventListener?.("pointerdown", onDown, true);
+    pdfLiveOff = () => {
+      doc.removeEventListener?.("keydown", onKey, true);
+      doc.removeEventListener?.("pointerdown", onDown, true);
+    };
+  };
+  const endPdfInteract = () => {
+    const off = pdfLiveOff;
+    pdfLiveOff = null;
+    const uid = pdfLiveUid;
+    pdfLiveUid = null;
+    try { off?.(); } catch { /* already off */ }
+    const rec = uid ? shells.get(uid) : null;
+    rec?.el.classList.remove("pxd-pdf-live");
+    const reader = rec?.pdfReader;
+    if (!reader?.isConnected) return;
+    try { reader.__pxdEmbedMo?.disconnect(); } catch { /* already stopped */ }
+    armEmbedShield(reader, embedLive(reader));
+  };
+  const beginPdfInteract = (rec) => {
+    const reader = rec?.pdfReader;
+    if (!reader) return;
+    rec.el.classList.add("pxd-pdf-live");
+    pdfLiveUid = rec.uid;
+    try { reader.__pxdEmbedMo?.disconnect(); } catch { /* already stopped */ }
+    for (const shield of reader.querySelectorAll?.(".pxd-embed-shield") || []) shield.remove();
+    armPdfLiveWatch();
+  };
+  const paintPdfCover = (rec, item, cover) => {
+    rec.pdfReader = null;
+    const node = el("div", "pxd-pdf-cover", rec.body);
+    el("div", "pxd-pdf-title", node).textContent = String(cover.title || "PDF");
+    el("div", "pxd-pdf-count", node).textContent = String(cover.label ?? "");
+    const open = el("button", "pxd-pdf-open pxd-chrome", node);
+    open.type = "button";
+    open.textContent = "Open reader";
+    for (const type of ["pointerdown", "mousedown", "dblclick"]) open.addEventListener(type, stopEvent);
+    open.addEventListener("click", (event) => {
+      stopEvent(event);
+      openPdf(item.uid);
+    });
+  };
+  const paintPdfReader = (rec, item) => {
+    const reader = el("div", "pxd-pdf-reader", rec.body);
+    const live = el("div", "pxd-rs__live", reader);
+    const uid = item.target?.kind === "block" ? item.target.uid : item.uid;
+    try { host?.renderBlock?.(live, uid); } catch { /* host */ }
+    armEmbedShield(reader, live);
+    rec.pdfReader = reader;
+    const interact = el("button", "pxd-pdf-interact pxd-chrome", reader);
+    interact.type = "button";
+    interact.textContent = "Interact";
+    for (const type of ["pointerdown", "mousedown", "dblclick"]) interact.addEventListener(type, stopEvent);
+    interact.addEventListener("click", (event) => {
+      stopEvent(event);
+      beginPdfInteract(rec);
+    });
+    reader.addEventListener("pointerdown", (event) => {
+      if (!rec.el.classList.contains("pxd-pdf-live")) return;
+      if (event.target?.closest?.(".pxd-chrome")) return;
+      event.stopPropagation();
+    });
+    if (pdfLiveUid === rec.uid) beginPdfInteract(rec);
+    return reader;
+  };
+  const remountPdf = (uid) => {
+    const rec = shells.get(uid);
+    const item = lastBoard?.items.get(uid);
+    if (!rec || !item || editing?.uid === uid) return;
+    mountContent(rec, item);
+    mounted.delete(uid);
+    mounted.set(uid, now());
+    applyPdfSize(rec);
+  };
+  const openPdf = (uid) => {
+    const rule = readerRule(pdfOpenUid, uid);
+    if (rule.close == null && rule.open === (pdfOpenUid || null)) return;
+    pdfOpenUid = rule.open || null;
+    if (rule.close) {
+      if (pdfLiveUid === rule.close) endPdfInteract();
+      remountPdf(rule.close);
+      try { onToast?.("Closed the other reader"); } catch { /* toast */ }
+    }
+    if (rule.open) remountPdf(rule.open);
+  };
+
   const mountContentBody = (rec, item) => {
     startRows();
     noteRender(item.uid);
@@ -1697,7 +1842,7 @@ export function createItemRenderer({
     rec.el.classList.remove("pxd-item--bare");
     const budget = { n: 0, roots: [] };
     if (item.collapsed) {
-      rec.contentKey = contentKeyOf(item);
+      rec.contentKey = contentKeyFor(item);
       rec.roots = [];
       return;
     }
@@ -1712,7 +1857,7 @@ export function createItemRenderer({
     } else if (item.kind === "page") {
       if (item.open === false) {
         rec.roots = [];
-        rec.contentKey = contentKeyOf(item);
+        rec.contentKey = contentKeyFor(item);
         return;
       }
       const holder = el("div", "pxd-item__page", body);
@@ -1727,7 +1872,7 @@ export function createItemRenderer({
       const preview = fetchPage(item.title);
       // contentKey is stamped after mountContent returns, so only the async path can be stale.
       const apply = (p, sync = false) => {
-        if (disposed || !holder.parentElement || (!sync && rec.contentKey !== contentKeyOf(item))) return;
+        if (disposed || !holder.parentElement || (!sync && rec.contentKey !== contentKeyFor(item))) return;
         const roots = paintPage(rec, holder, p);
         rec.mountStat = notePageMount(item.title, now() - mountedAt, rec.rowTable ? rec.rowTable.size : 0, outlineCache.get(item.title) === p);
         if (rec.mountStat) rec.mountStat.primed = rec.primed ?? null;
@@ -1742,6 +1887,12 @@ export function createItemRenderer({
       mountRegionBody(rec, item);
     } else if (item.kind === "drawing-ref") {
       mountDrawingBody(rec, item);
+    } else if (item.kind === "pdf") {
+      const cover = pdfCoverOf(item);
+      rec.pdfCover = cover;
+      if (editing?.uid !== item.uid && !rec.renaming) rec.header.textContent = String(cover.title || "PDF").slice(0, HEADER_TEXT_MAX);
+      if (pdfReaderBox(item.uid)) budget.roots.push(paintPdfReader(rec, item));
+      else paintPdfCover(rec, item, cover);
     } else if (item.kind === "block") {
       const ref = item.target.uid;
       const refString = host?.blockString?.(ref);
@@ -1753,7 +1904,7 @@ export function createItemRenderer({
       if (isBoardRef) {
         if (item.open === false) {
           rec.roots = budget.roots;
-          rec.contentKey = contentKeyOf(item);
+          rec.contentKey = contentKeyFor(item);
           return;
         }
         // Whiteboard shortcut: the same thumbnail from the referenced board's children. Never renderString (a nested overlay).
@@ -1773,7 +1924,7 @@ export function createItemRenderer({
         if (typeof refString === "string" && refString.trim()) budget.roots.push(renderRoot(body, refString, "pxd-rs pxd-item__string", ref));
         const tree = host?.pullTree?.(ref, item.kids ? CONTENT_DEPTH : 1, 200);
         const apply = (blocks, sync = false) => {
-          if (disposed || !body.isConnected || (!sync && rec.contentKey !== contentKeyOf(item))) return;
+          if (disposed || !body.isConnected || (!sync && rec.contentKey !== contentKeyFor(item))) return;
           startRows();
           if (!refString?.trim() && !blocks?.length) el("div", "pxd-item__placeholder", body).textContent = "Empty card";
           rec.kidCount = visibleKids(blocks).length;
@@ -1801,7 +1952,7 @@ export function createItemRenderer({
       }
     }
     rec.roots = budget.roots;
-    rec.contentKey = contentKeyOf(item, rec.stickyLive);
+    rec.contentKey = contentKeyFor(item, rec.stickyLive);
   };
 
   const regionWindow = () => doc.defaultView || globalThis;
@@ -1942,7 +2093,7 @@ export function createItemRenderer({
     if (!item.string) node.textContent = "Section";
     rec.roots = [node];
     rec.titleRendered = true;
-    rec.contentKey = contentKeyOf(item);
+    rec.contentKey = contentKeyFor(item);
   };
 
   const unmountContent = (uid) => {
@@ -2069,7 +2220,8 @@ export function createItemRenderer({
       // map / overview LOD: section titles, text items and board thumbnails, including whiteboard-shortcut cards (plain divs) stay rendered; card bodies unmount later
       for (const [uid, rec] of shells) {
         const r = lastRects.get(uid);
-        const keep = rec.type === "section" || rec.type === "text" || rec.refBoard || lastBoard.items.get(uid)?.kind === "board";
+        const kind = lastBoard.items.get(uid)?.kind;
+        const keep = rec.type === "section" || rec.type === "text" || rec.refBoard || kind === "board" || kind === "pdf";
         if (keep && r && rectsIntersect(r, visibleRect)) next.add(uid);
       }
     }
@@ -2132,11 +2284,18 @@ export function createItemRenderer({
     closePeek();
     if ((prev === "detail") !== (lod === "detail")) {
       // EK-2: a sticky is the live block at detail zoom and a static render below it.
+      // A pdf reader is detail-only. Map lod paints the cover at the card's own size.
       let moved = false;
       for (const [uid, rec] of shells) {
-        if (rec.type !== "text" || !rec.contentKey || editing?.uid === uid || !isSticky(lastBoard?.items.get(uid))) continue;
-        unmountContent(uid);
-        moved = true;
+        const item = lastBoard?.items.get(uid);
+        if (rec.type === "text" && rec.contentKey && editing?.uid !== uid && isSticky(item)) {
+          unmountContent(uid);
+          moved = true;
+        } else if (item?.kind === "pdf" && mounted.has(uid) && editing?.uid !== uid) {
+          unmountContent(uid);
+          applyPdfSize(rec);
+          moved = true;
+        }
       }
       if (moved && lastContent && !quieted) fillContent({ ...lastContent, tier: lod, zoom: zoomCache });
     }
@@ -2875,6 +3034,10 @@ export function createItemRenderer({
 
   const dispose = () => {
     disposed = true;
+    try { pdfLiveOff?.(); } catch { /* already off */ }
+    pdfLiveOff = null;
+    pdfLiveUid = null;
+    pdfOpenUid = null;
     try { regionWin.removeEventListener?.("roam-plexus:ready", onRegionReady); } catch { /* already gone */ }
     try { regionWin.removeEventListener?.("roam-plexus:unload", onRegionUnload); } catch { /* already gone */ }
     try { regionWatch?.removeEventListener?.("change", onRegionChange); } catch { /* already gone */ }
@@ -2963,6 +3126,8 @@ export function createItemRenderer({
       }
       if (uids?.length && lastContent) fillContent(lastContent);
     },
+    openPdf,
+    endPdfInteract,
     mountedCount: () => mounted.size,
     mountedUids: () => [...mounted.keys()],
     shellCount: () => shells.size,

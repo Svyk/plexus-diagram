@@ -97,7 +97,7 @@ Native diagrams are React Flow (`.react-flow`, nodes `.react-flow__node-block`).
 | P17 | Quick wins, first slice | 2.8.0 | released 2026-10-04. TSK-1, TSK-6, PERF-1, PERF-2, and PERF-3 done. TSK-2 stays open. TSK-3, TSK-4, TSK-5, and DOC-17 stay open. |
 | P18 slice | Region block model | 2.9.0 | released 2026-10-04. REG-1 done. ECO-1 and the rest of P18 stay open. |
 | P18 patch | Region container order | 2.9.1 | released 2026-10-04. A new card stays ahead of the region container. |
-| P18 views | Save a board view | 2.9.2 | released 2026-10-04. REG-6 done. ECO-1 is roam-plexus 0.33.0, still to install. |
+| P18 views | Save a board view | 2.9.2 | released 2026-10-04. REG-6 done. ECO-1 is roam-plexus 0.33.0, live in Test Lab. |
 | P17 rest-P22 | 3.x roadmap, see roadmap-3.md | 2.8.1-3.0.0 | open |
 
 Order matters: P1 and P2 are the user's direct requests. Within a phase, do tasks in the listed order unless one is blocked.
@@ -387,6 +387,7 @@ Live on Readwisenotes, window titled "Readwisenotes - Plexus Diagram/Test Lab". 
 
 - [x] **REG-1 Region and view block model** — done 2026-10-04, `4258a7e`: Two cards. Note badge ▸ 1. Image had no kids badge. Edit times unchanged on 13 blocks. Unload left 0 `.pxd-*` nodes. Real area string parses as roam-plexus, unsupported, no error. Order follow-up done 2026-10-04, `ba770fb`: new card at order 1, regions container at order 2, edit times unchanged, unload 78 to 69 and 92 to 84, `.pxd-*` 0.
 - [x] **REG-6 Save a board view** — done 2026-10-04, `68cc875`: Corner `v=825.5,799.9,1126,850.6`. Three cards `v=32,32,1056,256` with those ids. Go within 0.04 px. Edit times unchanged. One undo restored the row. Unload left 0 `.pxd-*`. Maps are 96px strokes.
+- [x] **ECO-1 Roam Plexus tolerates img and view** — done 2026-10-05, roam-plexus `52869cc`: apiVersion 7. The img button had no owner and no error chip. The area crop was 139 by 65. regionsOf label was Plexus Diagram · region. The source area block was not edited. Theme restored to Auto. Ledger removed 4.
 
 ## 6. Later (ideas not scheduled)
 
@@ -420,6 +421,7 @@ AI agent features inside the board, SuperTag-style typed schemas or class tags, 
 Fill in as phases run. Keep the newest at the top of each list.
 
 - 2.9.2 REG-6, 2026-10-05, Test Lab. Corner matched the camera ±0.1. Selection ids 3, pad 48. Clipboard read `((uid))`. Go moved 0.033 px and 0.009 px. Edit times unchanged on 7 blocks. Delete removed one block. Undo restored the panel row. Unload: window keydown 5, document keydown 13, same after a fresh inject, `.pxd-*` 0. Theme Auto. Ledger removed 7. No typing bench.
+- 2.9.2 ECO-1, 2026-10-05, Test Lab. Removed and re-added the Roam Plexus Pages URL. apiVersion 7. Img button owner was empty, no error chip. Area crop was an image 139 by 65 with owner roam-plexus. regionsOf label was Plexus Diagram · region. Source area block unchanged. Theme Auto. `.pxd-*` 0. Ledger removed 4. No typing bench.
 
 - 2.9.1, 2026-10-04. Card GoBMARGQ9 at order 1, container zmvDOLPzI at order 2. Edit times unchanged. Unload 78 to 69, 92 to 84, pxd 0. Theme Auto. Ledger removed 5.
 

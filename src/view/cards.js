@@ -18,6 +18,7 @@ import { watchEditorMenus } from "./editor-menus.js";
 import { applyEditorCounterScale } from "./editor-scale.js";
 import { UNMOUNT_GRACE_MS, intrinsicSize, shellOffscreen } from "./offscreen.js";
 import { isStructuralString } from "../model/regions.js";
+import { imageRegionRows, regionBadge } from "../model/region-menu.js";
 
 const SIDES = ["top", "right", "bottom", "left"];
 const CHUNK_MS = 8;
@@ -2113,6 +2114,8 @@ export function createItemRenderer({
     const info = badgeMap?.get?.(rec.uid) || null;
     const chips = [];
     if (info?.refs > 0) chips.push({ cls: "refs", text: `${info.refs} refs`, title: `${info.refs} references to this card` });
+    const regionCount = imageRegionRows(item.content).length;
+    if (regionCount > 0) chips.push({ cls: "regions", text: regionBadge(regionCount), title: `${regionCount} ${regionCount === 1 ? "region" : "regions"}` });
     if (info?.boards > 0) chips.push({ cls: "boards", text: `on ${info.boards} boards`, title: "Shown on other boards", action: "boards" });
     if (info && (info.open > 0 || info.done > 0)) chips.push({ cls: "todo", text: `${info.open || 0}/${info.done || 0}`, title: `${info.open || 0} open, ${info.done || 0} done` });
     const comments = commentCount(lastBoard, rec.uid);

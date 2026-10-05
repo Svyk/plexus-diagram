@@ -6,6 +6,7 @@ import { MIND_DEPTH_MAX, MIND_DEPTH_MIN, MIND_DIRECTIONS, MIND_SPACINGS, normali
 import { PALETTE, FONT_SIZES, DOCK_POSITIONS } from "../model/schema.js";
 import { SHAPES } from "../model/shapes.js";
 import { partitionSnapshots } from "../model/snapshots.js";
+import { regionMenu } from "../model/region-menu.js";
 import { STARTERS } from "../model/templates.js";
 
 export const MENU_KINDS = ["canvas", "card", "section", "text", "edge", "multi", "board-menu"];
@@ -179,6 +180,11 @@ export function buildMenu(kind, ctx = {}) {
         make("select-same-color", "Select same color"),
         make("select-connected", "Select connected"),
       ];
+      const regionsItem = regionMenu(c.regions);
+      if (regionsItem) {
+        const at = out.findIndex((row) => row.id === "color");
+        out.splice(at < 0 ? out.length : at, 0, regionsItem);
+      }
       if (c.hasOutline) {
         out.push(make("mind-map", "Expand as mind map"));
         out.push(mindPresetMenu());

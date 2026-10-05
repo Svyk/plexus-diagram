@@ -97,6 +97,19 @@ The context bar above a selection has 10 colors for cards, sections, text, and c
 | Badges | The small counts on a card (references, boards, open and done TODOs) are read from Roam and never written |
 | Pan and zoom | Stored per device in local storage. Opening, panning, and zooming write nothing to the graph |
 
+## Regions and views
+
+An image region and a saved view are blocks under `{{[[plexus-regions]]}}`. That container is a child of the image or the board. It is not a card.
+
+| Kind | Block |
+|---|---|
+| Image region | `{{[[plexus-region]]: k=img d=<image uid> f=<rx>,<ry>,<rw>,<rh>}} caption` |
+| Saved view | `{{[[plexus-region]]: k=view d=<board uid> v=<x>,<y>,<w>,<h>}} caption` |
+
+`f` is the crop as fractions of the picture. `v` is the camera. `ids=` can name up to 24 cards. Roam Plexus 0.33.0 reserves these two kinds.
+
+Mark a region on the picture, or from the block menu. Plexus copies a block ref. Paste that ref on a daily note and the crop shows there. Save view stores the camera the same way. The image card shows a region count. Rename changes only the words after `}}`. Delete asks when another block still references the region.
+
 ## Shortcuts
 
 `?` opens this same list on the board. ⌘ means Command on a Mac and Ctrl elsewhere. Present keys apply only while a presentation is running.

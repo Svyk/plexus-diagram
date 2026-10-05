@@ -489,6 +489,31 @@ test("badges: refs / boards / todo chips, up to three attribute chips, hidden of
   }
 });
 
+test("badges: an image card with two regions shows the count, and badges off hides it", () => {
+  const region = (uid, caption) => blk(uid, `{{[[plexus-region]]: k=img d=cardAAAA1 f=0.25,0.2,0.5,0.5}} ${caption}`, null, 0);
+  const children = [
+    blk("cardAAAA1", "Chart", CARD, 0, [
+      blk("contREG01", "{{[[plexus-regions]]}}", null, 0, [
+        region("regONE001", "hamstring"),
+        region("regTWO002", "quad"),
+      ]),
+    ]),
+  ];
+  const h = harness({ children });
+  try {
+    assert.equal(h.board.items.has("contREG01"), false);
+    assert.equal(h.board.items.has("regONE001"), false);
+    h.show("detail");
+    h.r.setShowBadges(true);
+    const chip = h.shell("cardAAAA1").querySelector(".pxd-badge-chip--regions");
+    assert.equal(chip.textContent, "\u25EC 2");
+    h.r.setShowBadges(false);
+    assert.equal(h.shell("cardAAAA1").querySelector(".pxd-badge-chip--regions"), null);
+  } finally {
+    h.done();
+  }
+});
+
 test("badges: a block-ref card takes attribute chips from the referenced string; board cards take none", () => {
   const h = harness({
     children: [

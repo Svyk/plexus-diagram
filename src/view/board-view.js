@@ -46,6 +46,8 @@ import { createInteractions } from "./interactions.js";
 import { openPagePicker } from "./board-picker.js";
 import { createItemRenderer, isTextEntryTarget, pageBodyWantsWheel, syncBoardHighlighter } from "./cards.js";
 import { openViewDialog } from "./view-dialog.js";
+import { openRegionDeleteDialog } from "./region-delete-dialog.js";
+import { imageRegionRows, regionDeleteCopy, regionRefCount, renameRegionCaption } from "../model/region-menu.js";
 import { boardKeyIsOutside } from "./offscreen.js";
 import { editorKeyAction, inputBlockRole } from "./editor-keys.js";
 import { createEdgeLayer } from "./edges.js";
@@ -1650,7 +1652,7 @@ export function mountBoardView({
           try { queryText = host?.blockString?.(item.target.uid) || ""; } catch { queryText = ""; }
         }
         const canExpand = item?.kind === "page" || item?.kind === "note" || item?.kind === "block";
-        return { item, canMakeTask: item?.type === "card" && item?.kind === "note" && !isTaskString(item.string) && !isQueryString(queryText), isBoard: item?.kind === "board", collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS.includes(item?.kind), canSpread: item?.kind === "note" || item?.kind === "block", isQuery: isQueryString(queryText), canExpand, mindPreset: readMindPreset(storage) };
+        return { item, regions: imageRegionRows(item?.content), canMakeTask: item?.type === "card" && item?.kind === "note" && !isTaskString(item.string) && !isQueryString(queryText), isBoard: item?.kind === "board", collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS.includes(item?.kind), canSpread: item?.kind === "note" || item?.kind === "block", isQuery: isQueryString(queryText), canExpand, mindPreset: readMindPreset(storage) };
       }
       case "section": {
         const members = item && b ? [item.uid, ...descendantsOf(b, item.uid)] : [];
@@ -1709,6 +1711,55 @@ export function mountBoardView({
     const head = at < 0 ? id : id.slice(0, at);
     const arg = at < 0 ? null : id.slice(at + 1);
     switch (head) {
+      case "region-go":
+      case "region-copy":
+      case "region-rename":
+      case "region-delete": {
+        const region = imageRegionRows(item?.content).find((row) => row.uid === arg);
+        if (head === "region-go") {
+          if (region && item) view.applyShow({ kind: "img", f: region.f, cardUid: item.uid });
+          break;
+        }
+        if (head === "region-copy") {
+          if (arg) copyText(`((${arg}))`, "Reference copied");
+          break;
+        }
+        if (head === "region-rename") {
+          if (!region || !arg) break;
+          askView({
+            caption: region.caption,
+            showCopy: false,
+            dialogLabel: "Rename region",
+            onSave: ({ caption }) => {
+              let current = "";
+              try { current = host?.blockString?.(arg) || ""; } catch { current = ""; }
+              const next = renameRegionCaption(current, caption);
+              if (!next || next === current || typeof host?.updateString !== "function") return;
+              void host.updateString(arg, next);
+            },
+          });
+          break;
+        }
+        if (!arg) break;
+        let count = null;
+        try {
+          const raw = host?.q?.("[:find (count ?b) :in $ ?u :where [?r :block/uid ?u] [?b :block/refs ?r]]", arg);
+          count = regionRefCount(raw);
+        } catch { count = null; }
+        const copy = regionDeleteCopy(count);
+        if (copy == null) break;
+        const remove = () => { if (typeof host?.deleteBlock === "function") void host.deleteBlock(arg); };
+        if (!copy) { remove(); break; }
+        closeRegionDelete();
+        regionDelete = openRegionDeleteDialog(doc, {
+          message: copy,
+          onDelete: () => { closeRegionDelete(); remove(); },
+          onOpen: () => { try { host?.openInSidebar?.(arg, "mentions"); } catch { /* sidebar missing */ } },
+          onCancel: () => closeRegionDelete(),
+        });
+        root.append(regionDelete.el);
+        break;
+      }
       case "new-card": void createAt("card", world); break;
       case "new-task": void createAt("task", world); break;
       case "make-task": if (item && item.type === "card" && item.kind === "note" && !isTaskString(item.string)) void makeTask(item.uid, item.string); break;
@@ -2332,9 +2383,14 @@ export function mountBoardView({
     },
   });
   let viewDialog = null;
+  let regionDelete = null;
   const closeViewDialog = () => {
     viewDialog?.close();
     viewDialog = null;
+  };
+  const closeRegionDelete = () => {
+    regionDelete?.close();
+    regionDelete = null;
   };
   const viewSize = () => (size.width > 0 && size.height > 0 ? size : { width: 800, height: 560 });
   const sectionCaptions = () => {
@@ -2348,11 +2404,12 @@ export function mountBoardView({
     }
     return out;
   };
-  const askView = ({ caption, showCopy, onSave }) => {
+  const askView = ({ caption, showCopy, dialogLabel, onSave }) => {
     closeViewDialog();
     viewDialog = openViewDialog(doc, {
       caption,
       showCopy,
+      dialogLabel,
       onSave: (result) => {
         closeViewDialog();
         onSave(result);

@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.9.6 — 2026-10-04
+
+- An image card shows a small region count when it has regions. The card menu lists them: Go, Copy ref, Rename, and Delete. Rename changes only the caption. Delete asks when another block still references the region, and can open those mentions. Badges off hides the count. The command palette stays two entries.
+
 ## 2.9.5 — 2026-10-04
 
 - Hover an image crop for a larger preview, the picture dimmed and the region lit. Click opens that image on its board, zoomed to the region, or scrolls the outline to the image and pulses the region. Shift-click opens the board in the sidebar. An inline view draws a small map. Hover enlarges it. Click opens the board at that view and pulses the highlighted cards. Shift-click opens the board in the sidebar. Neither click writes to the graph.

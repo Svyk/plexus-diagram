@@ -1,10 +1,10 @@
 // REG-6. The Save click calls onSave before any await, so the clipboard write stays in the click.
 
-export function openViewDialog(doc, { caption = "", showCopy = true, onSave, onCancel } = {}) {
+export function openViewDialog(doc, { caption = "", showCopy = true, dialogLabel = "", onSave, onCancel } = {}) {
   const root = doc.createElement("div");
   root.className = "pxd-view-dialog";
   root.setAttribute("role", "dialog");
-  root.setAttribute("aria-label", showCopy ? "Save view" : "Rename view");
+  root.setAttribute("aria-label", dialogLabel || (showCopy ? "Save view" : "Rename view"));
   const stop = (event) => event.stopPropagation();
   root.addEventListener("pointerdown", stop);
   root.addEventListener("mousedown", stop);

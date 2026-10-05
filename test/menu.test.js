@@ -28,6 +28,15 @@ test("canvas menu ids, in order, with paste gated by canPaste", () => {
   assert.equal(byId(buildMenu("canvas", { canPaste: true }), "paste-clone").disabled, undefined);
 });
 
+test("card menu gains a Regions submenu only when the card has regions", () => {
+  assert.equal(byId(buildMenu("card", {}), "regions"), undefined);
+  const menu = buildMenu("card", { regions: [{ uid: "regUID001", caption: "hamstring" }] });
+  const regions = byId(menu, "regions");
+  assert.equal(regions.label, "Regions");
+  assert.equal(byId(menu, "region-go:regUID001").label, "Go");
+  assert.equal(byId(menu, "region-delete:regUID001").danger, true);
+});
+
 test("card menu: ids, color submenu with checked, fold/unfold, pin/unpin, mind-map only with an outline", () => {
   const base = ids(buildMenu("card", {}));
   for (const id of ["edit", "open", "open-sidebar", "copy", "copy-ref", "copy-link", "duplicate", "duplicate-ref", "color", "fold", "fit-height", "reset-size", "pin", "select-same-color", "select-connected", "send-to", "related", "delete"]) assert.ok(base.includes(id), id);

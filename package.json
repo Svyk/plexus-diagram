@@ -1,6 +1,6 @@
 {
   "name": "plexus-diagram",
-  "version": "2.9.5",
+  "version": "2.9.6",
   "private": true,
   "description": "Heptabase-style whiteboard for Roam {{[[diagram]]}} blocks: cards, colored sections, and connections that are real Roam blocks and links",
   "type": "module",

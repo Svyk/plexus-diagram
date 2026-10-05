@@ -117,3 +117,14 @@ Same block `vc8Skaj5K`, checked 2026-10-01.
 ## 6. Non-goals
 
 No network. No store besides Roam blocks and props. No `:diagram/*` writes and no `BT_attr*` writes by product code. No write on open, pan, or zoom. No AI features. No Depot pull request until you ask. No version tag while a phase gate is blocked.
+
+## 7. Region grammar
+
+Same strings Roam Plexus 0.33.0 parses and leaves alone (`docs/spec-plexus.md` section 8, `apiVersion` 7). The container is `{{[[plexus-regions]]}}`.
+
+| Kind | After `}}` | Fields |
+|---|---|---|
+| `k=img` | caption | `d` image uid, `f` four fractions `rx,ry,rw,rh` |
+| `k=view` | caption | `d` board uid, `v` four numbers `x,y,w,h`, optional `ids` up to 24 |
+
+Rename rewrites only the caption. Delete deletes the block and does not edit other blocks. A count of incoming `:block/refs` is `[[n]]` from `data.fast.q`.

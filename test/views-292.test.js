@@ -1,5 +1,6 @@
 // REG-6: save a view block, restore the camera from it, list it in the Boards tab.
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import { createFakeRoam } from "./fixtures/fake-roam.js";
@@ -8,6 +9,7 @@ import { createHost } from "../src/host/roam.js";
 import { acquireSession, resetSessions } from "../src/session.js";
 import { parseRegion } from "../src/model/regions.js";
 import { viewportFromWorldRect, visibleWorldRect } from "../src/model/geometry.js";
+import { diffBoards } from "../src/model/board.js";
 import { captionForView, selectionViewRect, viewBlockString } from "../src/model/view-save.js";
 import { findShortcut } from "../src/view/shortcuts.js";
 import { buildMenu } from "../src/view/menu-model.js";
@@ -201,10 +203,15 @@ test("REG-6: the map is strokes only and Go does not ask for a write", () => {
   });
   try {
     const svg = minimapSvg(stub.document, { v: [0, 0, 100, 80], items: [{ x: 1, y: 2, w: 3, h: 4 }] });
+    assert.equal(svg.getAttribute("class"), "pxd-view-map");
     for (const rect of svg.querySelectorAll("rect")) assert.equal(rect.getAttribute("fill"), "none");
+    const css = readFileSync(new URL("../src/css/chrome.css", import.meta.url), "utf8");
+    assert.match(css, /\.pxd-root \.pxd-view-map \{[^}]*width: 96px;/s);
+    assert.doesNotMatch(css, /\.pxd-root \.pxd-minimap \{[^}]*width: 96px/s);
     panel.open("boards");
     const row = root.querySelector("[data-view=view1]");
     assert.ok(row);
+    assert.equal(row.querySelector(".pxd-view-map").getAttribute("class"), "pxd-view-map");
     assert.equal(row.querySelector(".pxd-view-caption").textContent, "Corner");
     row.querySelector(".pxd-view-go").click();
     row.querySelector(".pxd-view-delete").click();
@@ -213,4 +220,39 @@ test("REG-6: the map is strokes only and Go does not ask for a write", () => {
     panel.dispose();
     restore();
   }
+});
+
+test("REG-6: refreshViews puts an undone view back on the list", () => {
+  const stub = createDomStub();
+  const restore = stub.install();
+  const root = stub.document.createElement("div");
+  root.className = "pxd-root";
+  stub.document.body.append(root);
+  let views = [{ uid: "view1", caption: "Corner", v: [0, 0, 10, 10], ids: [] }];
+  const panel = createPanel({
+    doc: stub.document,
+    root,
+    timers,
+    on: { listBoards: async () => [], listViews: () => views },
+  });
+  try {
+    panel.open("boards");
+    assert.equal(root.querySelectorAll(".pxd-view-row").length, 1);
+    views = views.concat([{ uid: "view2", caption: "Three", v: [1, 1, 4, 4], ids: ["a", "b", "c"] }]);
+    panel.refreshViews();
+    assert.deepEqual([...root.querySelectorAll(".pxd-view-row")].map((row) => row.getAttribute("data-view")), ["view1", "view2"]);
+    const before = root.querySelector("[data-view=view1]");
+    panel.refreshViews();
+    assert.equal(root.querySelector("[data-view=view1]"), before);
+  } finally {
+    panel.dispose();
+    restore();
+  }
+});
+
+test("REG-6: a view block change is a board change", () => {
+  const prev = { uid: "b", string: "", plexus: {}, containerUid: null, items: new Map(), edges: new Map(), roots: [], order: [], views: [] };
+  const next = { ...prev, views: [{ uid: "v1", caption: "Corner", v: [1, 2, 3, 4], ids: [] }] };
+  assert.equal(diffBoards(prev, next).structural, true);
+  assert.equal(diffBoards(next, { ...next, views: next.views }).structural, false);
 });

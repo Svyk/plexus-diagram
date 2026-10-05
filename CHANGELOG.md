@@ -2,7 +2,7 @@
 
 ## 2.9.2 — 2026-10-04
 
-- Save view, in More or with Shift+V, writes the current camera as one view block at the end of the board. A selection can save its own view from the context bar. The Boards tab lists those views. Go puts the camera back and writes nothing. Delete removes the view block. The command palette stays two entries.
+- Save view, in More or with Shift+V, writes the current camera as one view block at the end of the board. A selection can save its own view from the context bar. The Boards tab lists those views, each with a 96px outline map. Go puts the camera back and writes nothing. Delete removes the view block, and undo puts that row back. The command palette stays two entries.
 
 ## 2.9.1 — 2026-10-04
 

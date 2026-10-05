@@ -752,7 +752,8 @@ export function diffBoards(prev, next) {
     || prev.items.size !== next.items.size
     || prev.edges.size !== next.edges.size
     || !same(prev.roots, next.roots)
-    || !same(prev.order, next.order);
+    || !same(prev.order, next.order)
+    || !same(prev.views, next.views);
   const dirty = new Set();
   if (prev.string !== next.string || !same(prev.plexus, next.plexus)) dirty.add(next.uid);
   for (const [uid, item] of next.items) {

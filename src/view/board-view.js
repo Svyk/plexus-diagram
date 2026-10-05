@@ -3561,6 +3561,7 @@ export function mountBoardView({
     if (tableMode) tableCtl.refresh();
     if (kanbanMode) kanbanCtl.refresh();
     if (laterCtl.isOpen()) laterCtl.refresh();
+    panel.refreshViews?.();
   }));
   subs.push(session.on("links", () => { dirty.links = true; schedule(); }));
   subs.push(session.on("sync", (state) => chrome.toolbar.setSync(state)));

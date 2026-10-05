@@ -20,7 +20,7 @@ function strokeRect(doc, attrs) {
 export function minimapSvg(doc, { v, items = [], size = 96 } = {}) {
   const frame = rectOf(v);
   const svg = doc.createElementNS(NS, "svg");
-  svg.setAttribute("class", "pxd-minimap");
+  svg.setAttribute("class", "pxd-view-map");
   svg.setAttribute("width", String(size));
   svg.setAttribute("height", String(size));
   svg.setAttribute("aria-hidden", "true");

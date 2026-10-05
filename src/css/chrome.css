@@ -272,6 +272,7 @@ body.roam-body.dark .pxd-root .pxd-bg__tones .pxd-swatch--paper,
 
 .pxd-root .pxd-view-row {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
   gap: 8px;
   padding: 6px 8px;
@@ -284,10 +285,16 @@ body.roam-body.dark .pxd-root .pxd-bg__tones .pxd-swatch--paper,
   border-color: var(--pxd-accent);
 }
 
-.pxd-root .pxd-minimap {
+.pxd-root .pxd-view-caption {
+  flex: 1 1 80px;
+  min-width: 0;
+}
+
+.pxd-root .pxd-view-map {
+  position: static;
   width: 96px;
   height: 96px;
-  flex: 0 0 auto;
+  flex: 0 0 96px;
   color: var(--pxd-border);
   background: transparent;
 }

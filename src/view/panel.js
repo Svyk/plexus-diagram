@@ -138,10 +138,13 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
   boardsFilter.setAttribute("placeholder", "Filter boards…");
   const viewsList = el("div", "pxd-panel__views", boardsPane);
   const boardsList = el("div", "pxd-panel__list pxd-panel__boards", boardsPane);
+  let viewSig = "";
+  const viewSignature = (views) => (Array.isArray(views) ? views : []).map((view) => `${view?.uid}|${view?.caption}|${(view?.v || []).join(",")}|${(view?.ids || []).join(",")}`).join("\n");
   const renderViews = () => {
     viewsList.replaceChildren();
     let views = [];
     try { views = on.listViews?.() || []; } catch { views = []; }
+    viewSig = viewSignature(views);
     if (!Array.isArray(views) || !views.length) return;
     el("div", "pxd-panel__views-title", viewsList, "Views");
     for (const view of views) {
@@ -561,6 +564,13 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     currentTab: () => tab,
     refreshOutline() { if (api.isOpen() && tab === "outline") renderOutline(); },
     refreshBoards() { if (tab === "boards") void loadBoards(); },
+    refreshViews() {
+      if (tab !== "boards") return;
+      let views = [];
+      try { views = on.listViews?.() || []; } catch { views = []; }
+      if (viewSignature(views) === viewSig) return;
+      renderViews();
+    },
     close() {
       if (tab === "info") unmountInfo();
       panel.style.display = "none";

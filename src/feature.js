@@ -6,7 +6,11 @@ import { isTextEntryTarget } from "./view/cards.js";
 import { assignDeepLink } from "./model/deeplink.js";
 import { openAddToBoard } from "./view/board-picker.js";
 import { createRelChips } from "./relchips.js";
-import { parseBoardTitle, readPlexus, UNTITLED_BOARD } from "./model/schema.js";
+import { imageSrc } from "./model/export.js";
+import { parseRegion } from "./model/regions.js";
+import { classifyString, parseBoardTitle, readPlexus, UNTITLED_BOARD } from "./model/schema.js";
+import { eachRegionButton, openRegionCrop, regionButtonUid } from "./view/region-crop.js";
+import { mountOutlineRegion, OUTLINE_TOAST, outlineToast } from "./view/region-outline.js";
 import {
   BLOCK_CONTAINER_SELECTOR,
   blockContainerUid,
@@ -150,6 +154,21 @@ export async function installPlexusDiagram({
   // RF-3: relation chips under connection blocks Roam renders outside a board. Fed by the same mutation observer.
   const relChips = createRelChips({ doc, win, host, graph: () => host.graph || graphFromHash(), openNested: (boardUid, edgeUid) => openNestedConnection(boardUid, edgeUid) });
   lifecycle.add(() => relChips.dispose());
+  const regionCrops = new Set();
+  let outlineMark = null;
+  let toastOff = () => {};
+  const say = (message) => {
+    toastOff();
+    toastOff = outlineToast(doc, message);
+  };
+  lifecycle.add(() => {
+    outlineMark?.destroy?.();
+    outlineMark = null;
+    toastOff();
+    toastOff = () => {};
+    for (const drop of [...regionCrops]) drop();
+    regionCrops.clear();
+  });
 
   const active = () => !stopped && settings[SETTING_IDS.enabled] !== false
     && !(settings[SETTING_IDS.disableOnMobile] && isMobile(extensionAPI));
@@ -678,9 +697,53 @@ export async function installPlexusDiagram({
     mount(uid, native, options);
   }
 
+  function outlineImage(uid) {
+    if (!doc || !uid) return null;
+    for (const node of doc.querySelectorAll(".roam-block-container")) {
+      if (node.getAttribute?.("data-block-uid") !== uid) continue;
+      const img = node.querySelector?.("img.rm-inline-img");
+      if (img) return img;
+    }
+    return null;
+  }
+
+  function considerRegionButton(button) {
+    if (!active() || !button || button.getAttribute?.("data-plexus-owner")) return;
+    const uid = regionButtonUid(button);
+    if (!uid) return;
+    let text = "";
+    try { text = host.blockString?.(uid) || ""; } catch { return; }
+    const region = parseRegion(text);
+    if (!region || region.owner !== "plexus-diagram" || region.kind !== "img" || region.supported !== true) return;
+    const handle = openRegionCrop({
+      doc,
+      button,
+      region,
+      loadFile: (parsed) => {
+        try {
+          const src = imageSrc(host.blockString?.(parsed.drawingUid) || "");
+          return src && typeof host.getFile === "function" ? host.getFile(src) : null;
+        } catch {
+          return null;
+        }
+      },
+    });
+    const drop = () => {
+      handle.destroy();
+      regionCrops.delete(drop);
+    };
+    regionCrops.add(drop);
+  }
+
+  function scanRegions(node) {
+    if (!active()) return;
+    eachRegionButton(node, considerRegionButton);
+  }
+
   function scanAdded(node) {
     for (const diagram of diagramsWithin(node)) consider(diagram);
     if (active()) relChips.scan(node);
+    scanRegions(node);
   }
 
   function reconcile() {
@@ -988,6 +1051,48 @@ export async function installPlexusDiagram({
           closeAddToBoard = () => { picker.close(); closeAddToBoard = () => {}; };
         },
       });
+      await lifecycle.command(extensionAPI.ui.blockContextMenu, {
+        label: "Plexus: Mark image region",
+        "display-conditional": (event) => active() && classifyString(event?.["block-string"]).kind === "image",
+        callback: (event) => {
+          if (!active()) return;
+          if (classifyString(event?.["block-string"]).kind !== "image") {
+            say(OUTLINE_TOAST.notImage);
+            return;
+          }
+          const blockUid = event?.["block-uid"];
+          const img = outlineImage(blockUid);
+          if (!img) {
+            say(OUTLINE_TOAST.ready);
+            return;
+          }
+          outlineMark?.destroy?.();
+          outlineMark = mountOutlineRegion({
+            doc,
+            img,
+            onConfirm: ({ frac, caption }) => {
+              outlineMark = null;
+              const uid = host.generateUid?.();
+              if (!uid) return;
+              try {
+                const pending = globalThis.navigator?.clipboard?.writeText?.(`((${uid}))`);
+                if (pending && typeof pending.catch === "function") pending.catch(() => {});
+              } catch { /* the region write still runs */ }
+              let session = null;
+              try {
+                session = acquireSession(blockUid, { host, settings: liveSettings });
+                session?.addImageRegion?.(blockUid, frac, caption, uid);
+                say(OUTLINE_TOAST.copied);
+              } catch (error) {
+                console.warn("[plexus-diagram] Mark image region failed", error);
+              } finally {
+                session?.release?.();
+              }
+            },
+            onCancel: () => { outlineMark = null; },
+          });
+        },
+      });
       lifecycle.add(() => closeAddToBoard());
     }
     lifecycle.add(() => closeCommandSheet());
@@ -1075,6 +1180,8 @@ export async function installPlexusDiagram({
       }), doc.body, { childList: true });
     }
   }
+  scanRegions(doc);
+  for (const portal of doc?.querySelectorAll?.(".bp3-portal") || []) scanRegions(portal);
   // Typing outside a board is a Roam transaction. Park every board that does not
   // contain the caret before the keys land, and bring the visible ones back after a pause.
   let wakeTimer = null;

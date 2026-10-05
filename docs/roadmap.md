@@ -422,6 +422,8 @@ AI agent features inside the board, SuperTag-style typed schemas or class tags, 
 
 Fill in as phases run. Keep the newest at the top of each list.
 
+- 2.9.4 REG-3 and REG-4, before code, 2026-10-04, Test Lab page. Outline image and its resize wrapper are the same box, 500 by 312.5, natural 1600 by 1000, not .enc. The right-click submenu is labeled Extensions. It already contains Roam Plexus "Plexus: Region on image". A k=img block and its block ref each show button.rm-xparser-default-plexus-region, text "plexus-region", owner unset. The region block refs only the plexus-region page, not the image block. file.get on that PNG URL returned a File, 9542 bytes, image/png.
+
 - 2.9.2 REG-6, 2026-10-05, Test Lab. Corner matched the camera ±0.1. Selection ids 3, pad 48. Clipboard read `((uid))`. Go moved 0.033 px and 0.009 px. Edit times unchanged on 7 blocks. Delete removed one block. Undo restored the panel row. Unload: window keydown 5, document keydown 13, same after a fresh inject, `.pxd-*` 0. Theme Auto. Ledger removed 7. No typing bench.
 - 2.9.2 ECO-1, 2026-10-05, Test Lab. Removed and re-added the Roam Plexus Pages URL. apiVersion 7. Img button owner was empty, no error chip. Area crop was an image 139 by 65 with owner roam-plexus. regionsOf label was Plexus Diagram · region. Source area block unchanged. Theme Auto. `.pxd-*` 0. Ledger removed 4. No typing bench.
 - 2.9.3 REG-2, 2026-10-04, Test Lab. img box 254.2 by 158.9, card 280 by 160. Fractions 0.2501, 0.2999, 0.1999, 0.2499. Clipboard `((tCEX9Adrq))`. Toast copied. Badge 0. Viewer 0. Card x stayed 701. Two undos. Stroke only, both themes. Unload 79 to 70 and 92 to 84, same on the second inject, `.pxd-*` 0. No Plexus error. Theme Auto. Ledger removed 2. No typing bench. No live .enc image.

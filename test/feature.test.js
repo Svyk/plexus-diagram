@@ -489,7 +489,7 @@ test("commands register in palette and slash, the context menu gets Enhance, and
     const labels = ["Plexus: Enhance this diagram", "Plexus: New whiteboard here", "Plexus: Restore native diagram", "Plexus: Fullscreen this diagram", "Plexus: Export board as SVG", "Plexus: Copy board as text"];
     assert.deepEqual([...t.commands.palette.keys()], ["Plexus: Commands…", "Plexus: New whiteboard here"]);
     assert.deepEqual([...t.commands.slash.keys()], labels);
-    assert.deepEqual([...t.commands.context.keys()], ["Plexus: Enhance", "Show on board", "Add to board…"]);
+    assert.deepEqual([...t.commands.context.keys()], ["Plexus: Enhance", "Show on board", "Add to board…", "Plexus: Mark image region"]);
     const context = t.commands.context.get("Plexus: Enhance");
     assert.equal(context["display-conditional"]({ "block-string": "{{[[diagram]]}}" }), true);
     assert.equal(context["display-conditional"]({ "block-string": "plain" }), false);
@@ -501,7 +501,7 @@ test("commands register in palette and slash, the context menu gets Enhance, and
     assert.equal(t.commands.slash.has("Add to board…"), false);
     await t.lifecycle.dispose();
     assert.equal(t.commands.palette.size + t.commands.slash.size + t.commands.context.size, 0);
-    assert.equal(t.commands.removed.length, 11);
+    assert.equal(t.commands.removed.length, 12);
   } finally {
     t.restore();
   }

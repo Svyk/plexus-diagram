@@ -5089,6 +5089,48 @@ body.roam-body.dark .pxd-root,
   right: calc(var(--pxd-panel-right) + var(--pxd-panel-w, 340px) + var(--pxd-panel-gap));
 }
 
+/* REG-4. The crop is a 1px stroke. Dark keeps the stroke and adds no shadow. */
+
+.pxd-region-crop {
+  display: inline-flex !important;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  max-width: none !important;
+  vertical-align: top;
+}
+
+.pxd-region-crop__frame {
+  position: relative;
+  display: inline-block !important;
+  overflow: hidden;
+  box-sizing: border-box;
+  max-width: none !important;
+  border: 1px solid #1f2937;
+  background: transparent;
+  box-shadow: none;
+}
+
+.bp3-dark .pxd-region-crop__frame,
+.pxd-root--dark .pxd-region-crop__frame {
+  border-color: #fff;
+  background: transparent;
+  box-shadow: none;
+}
+
+.pxd-region-crop__img {
+  position: absolute;
+  max-width: none;
+  pointer-events: none;
+}
+
+.pxd-region-crop__caption,
+.pxd-region-crop__missing {
+  font-size: 12px;
+  line-height: 1.3;
+  background: transparent;
+}
+
 /* REG-2. The draft is a stroke. Dark adds a 1px halo. No fill. */
 
 .pxd-root .pxd-region-layer {

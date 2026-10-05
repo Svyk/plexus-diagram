@@ -66,6 +66,15 @@ export function fillResurface(doc, panel, { pageTitle, rows, intervals, onOpen }
 export function createResurface({ doc, pageTitle, rows, intervals, onOpen } = {}) {
   const panels = new Set();
   let lastSig = "";
+  let lastList = null;
+  let lastKey = "";
+  const prune = () => {
+    for (const entry of [...panels]) {
+      if (entry.button?.isConnected !== false) continue;
+      entry.panel.remove();
+      panels.delete(entry);
+    }
+  };
   const mount = (button) => {
     if (!button || button.dataset?.pxdResurface === "1") return;
     if (button.dataset) button.dataset.pxdResurface = "1";
@@ -80,10 +89,21 @@ export function createResurface({ doc, pageTitle, rows, intervals, onOpen } = {}
     scan(node) {
       // A refill replaces the panel's children. Those mutations must not scan again.
       if (node?.closest?.(".pxd-resurface")) return;
+      prune();
       const root = node?.querySelectorAll ? node : doc;
       const buttons = root?.querySelectorAll?.(BUTTON) || [];
       for (const button of buttons) mount(button);
+      // No button and no panel: nothing to show, and no card rows to read.
+      if (!panels.size) {
+        lastSig = "";
+        lastList = null;
+        return;
+      }
       const list = rows?.() || [];
+      const key = `${pageTitle?.() || ""}\n${intervals?.() || ""}`;
+      if (list === lastList && key === lastKey) return;
+      lastList = list;
+      lastKey = key;
       const sig = `${pageTitle?.() || ""}\n${intervals?.() || ""}\n${list.map((row) => `${row.uid}:${row.time}`).join(",")}`;
       if (sig === lastSig) return;
       lastSig = sig;
@@ -98,6 +118,8 @@ export function createResurface({ doc, pageTitle, rows, intervals, onOpen } = {}
         if (button?.dataset) delete button.dataset.pxdResurface;
       }
       panels.clear();
+      lastSig = "";
+      lastList = null;
     },
   };
 }

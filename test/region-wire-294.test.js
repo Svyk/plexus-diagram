@@ -99,6 +99,7 @@ test("REG-3: Mark image region confirms on the image block and keeps two palette
     return {
       addImageRegion: (cardUid, frac, caption, regionUid) => {
         calls.push(["write", cardUid, frac, caption, regionUid, clips.slice()]);
+        return Promise.resolve(regionUid);
       },
       release: () => { calls.push(["release"]); },
     };
@@ -141,11 +142,15 @@ test("REG-3: Mark image region confirms on the image block and keeps two palette
     dom.dispatch(dom.document, "pointerup", { clientX: x1, clientY: y1 });
     root.querySelector(".pxd-region-caption").value = "hamstring";
     root.querySelector(".pxd-region-confirm").click();
+    assert.equal(dom.document.querySelector(".pxd-outline-toast"), null, "no toast before the write has a result");
+    assert.deepEqual(clips, [], "nothing is copied before the write has a result");
+    await new Promise((resolve) => setTimeout(resolve, 0));
     assert.deepEqual(calls, [
       ["acquire", "imgBlock1"],
-      ["write", "imgBlock1", { rx: 0.25, ry: 0.3, rw: 0.2, rh: 0.25 }, "hamstring", "regNEW01", ["((regNEW01))"]],
+      ["write", "imgBlock1", { rx: 0.25, ry: 0.3, rw: 0.2, rh: 0.25 }, "hamstring", "regNEW01", []],
       ["release"],
     ]);
+    assert.deepEqual(clips, ["((regNEW01))"]);
     assert.equal(dom.document.querySelector(".pxd-root"), null);
     assert.equal(dom.document.querySelector(".pxd-outline-toast").textContent, OUTLINE_TOAST.copied);
     await lifecycle.dispose();

@@ -2,12 +2,41 @@
 // extended with capture-phase dispatch, focus tracking, observers, rAF and timer ledgers so
 // view tests can prove that dispose() leaves nothing behind.
 
+// Real element.children is an HTMLCollection: index, length, item() and iteration, no Array methods.
+// Code that calls .indexOf on it must fail here the way it fails in Roam.
+const collectionOf = (read) => new Proxy({}, {
+  get(_, key) {
+    const list = read();
+    if (key === "length") return list.length;
+    if (key === "item") return (i) => list[i] ?? null;
+    if (key === Symbol.iterator) return () => list[Symbol.iterator]();
+    if (typeof key === "string" && /^\d+$/.test(key)) return list[Number(key)];
+    return undefined;
+  },
+  has(_, key) {
+    const list = read();
+    if (key === "length" || key === "item") return true;
+    return typeof key === "string" && /^\d+$/.test(key) && Number(key) < list.length;
+  },
+});
+
 export function createDomStub({ width = 800, height = 600 } = {}) {
   const elements = new Map();
   const theme = {};
   let id = 0;
   const allListeners = new Set();
   const observers = new Set();
+  // childList records go to every connected-or-not MutationObserver that watches the parent. They are queued
+  // and delivered by flushMutations(), the way a microtask would in a browser.
+  const mutationObservers = new Set();
+  const noteMutation = (parent, added = [], removed = []) => {
+    if (!mutationObservers.size) return;
+    for (const obs of mutationObservers) {
+      if (!obs.active) continue;
+      const hit = obs.targets.some(({ target, subtree }) => target === parent || (subtree && target.contains?.(parent)));
+      if (hit) obs.queue.push({ type: "childList", target: parent, addedNodes: added, removedNodes: removed });
+    }
+  };
   const frames = [];
   const timers = new Set();
   const idle = [];
@@ -23,6 +52,8 @@ export function createDomStub({ width = 800, height = 600 } = {}) {
     if (s.startsWith("#")) return node.id === s.slice(1);
     if (s.startsWith("[")) {
       const inner = s.slice(1, -1);
+      const sub = /^([\w-]+)\*=(.*)$/.exec(inner);
+      if (sub) return String(node.getAttribute?.(sub[1]) ?? "").includes(sub[2].replace(/^["']|["']$/g, ""));
       const [name, value] = inner.split("=");
       if (!node.hasAttribute?.(name)) return false;
       if (value === undefined) return true;
@@ -77,7 +108,11 @@ export function createDomStub({ width = 800, height = 600 } = {}) {
     let html = "";
     const attrs = new Map();
     const classSet = new Set();
+    let kids = [];
+    const collection = collectionOf(() => kids);
     const el = {
+      get _kids() { return kids; },
+      set _kids(list) { kids = list; },
       tagName: tag.toUpperCase(),
       namespaceURI: ns || "http://www.w3.org/1999/xhtml",
       nodeType: 1,
@@ -95,11 +130,23 @@ export function createDomStub({ width = 800, height = 600 } = {}) {
       },
       style: makeStyle(),
       dataset: {},
-      children: [],
-      get childNodes() { return el.children; },
-      get firstChild() { return el.children[0] || null; },
-      get lastChild() { return el.children[el.children.length - 1] || null; },
-      get childElementCount() { return el.children.length; },
+      get children() { return collection; },
+      get childNodes() { return collection; },
+      get firstChild() { return kids[0] || null; },
+      get lastChild() { return kids[kids.length - 1] || null; },
+      get childElementCount() { return kids.length; },
+      get nextElementSibling() {
+        const list = el.parentElement?._kids;
+        if (!list) return null;
+        for (let i = list.indexOf(el) + 1; i > 0 && i < list.length; i += 1) if (list[i].nodeType === 1) return list[i];
+        return null;
+      },
+      get previousElementSibling() {
+        const list = el.parentElement?._kids;
+        if (!list) return null;
+        for (let i = list.indexOf(el) - 1; i >= 0; i -= 1) if (list[i].nodeType === 1) return list[i];
+        return null;
+      },
       get isConnected() {
         let n = el;
         while (n) { if (n === document.body || n === document) return true; n = n.parentElement; }
@@ -109,38 +156,42 @@ export function createDomStub({ width = 800, height = 600 } = {}) {
         nodes.forEach((n) => {
           if (n == null) return;
           const node = typeof n === "string" ? document.createTextNode(n) : n;
-          node.parentElement?.children && node.parentElement !== el && node.remove();
-          if (node.parentElement === el) el.children = el.children.filter((c) => c !== node);
-          el.children.push(node);
+          node.parentElement?._kids && node.parentElement !== el && node.remove();
+          if (node.parentElement === el) kids = kids.filter((c) => c !== node);
+          kids.push(node);
           node.parentElement = el;
+          noteMutation(el, [node]);
         });
       },
       appendChild(node) { el.append(node); return node; },
       prepend(...nodes) {
         nodes.slice().reverse().forEach((node) => {
           if (node.parentElement) node.remove();
-          el.children.unshift(node);
+          kids.unshift(node);
           node.parentElement = el;
+          noteMutation(el, [node]);
         });
       },
       insertBefore(node, ref) {
         if (node.parentElement) node.remove();
-        const i = ref ? el.children.indexOf(ref) : -1;
-        if (i < 0) el.children.push(node); else el.children.splice(i, 0, node);
+        const i = ref ? kids.indexOf(ref) : -1;
+        if (i < 0) kids.push(node); else kids.splice(i, 0, node);
         node.parentElement = el;
+        noteMutation(el, [node]);
         return node;
       },
       replaceChildren(...nodes) {
-        el.children.forEach((child) => { child.parentElement = null; });
-        el.children = [];
+        kids.forEach((child) => { child.parentElement = null; });
+        kids = [];
         el.append(...nodes);
       },
       removeChild(node) { node.remove(); return node; },
       remove() {
         const parent = el.parentElement;
         if (parent) {
-          parent.children = parent.children.filter((child) => child !== el);
+          parent._kids = parent._kids.filter((child) => child !== el);
           el.parentElement = null;
+          noteMutation(parent, [], [el]);
         }
       },
       contains(node) {
@@ -150,7 +201,7 @@ export function createDomStub({ width = 800, height = 600 } = {}) {
       },
       matches(sel) { return matchSelector(el, sel); },
       querySelector(sel) {
-        for (const child of el.children || []) {
+        for (const child of kids) {
           if (child.nodeType !== 1) continue;
           if (matchSelector(child, sel)) return child;
           const found = child.querySelector?.(sel);
@@ -161,7 +212,7 @@ export function createDomStub({ width = 800, height = 600 } = {}) {
       querySelectorAll(sel) {
         const out = [];
         const walk = (node) => {
-          for (const child of node.children || []) {
+          for (const child of node._kids || []) {
             if (child.nodeType !== 1) continue;
             if (matchSelector(child, sel)) out.push(child);
             walk(child);
@@ -225,14 +276,14 @@ export function createDomStub({ width = 800, height = 600 } = {}) {
       get() { return html; },
       set(value) {
         html = String(value ?? "");
-        el.children.forEach((child) => { child.parentElement = null; });
-        el.children = [];
+        kids.forEach((child) => { child.parentElement = null; });
+        kids = [];
       },
       enumerable: true,
     });
     Object.defineProperty(el, "textContent", {
-      get() { return el._text ?? el.children.map((c) => c.textContent ?? "").join(""); },
-      set(v) { el._text = String(v ?? ""); el.children.forEach((child) => { child.parentElement = null; }); el.children = []; },
+      get() { return el._text ?? kids.map((c) => c.textContent ?? "").join(""); },
+      set(v) { el._text = String(v ?? ""); kids.forEach((child) => { child.parentElement = null; }); kids = []; },
       enumerable: true,
     });
     Object.defineProperty(el, "value", {
@@ -259,7 +310,7 @@ export function createDomStub({ width = 800, height = 600 } = {}) {
       return el;
     },
     createTextNode(text) {
-      return { nodeType: 3, textContent: String(text), parentElement: null, remove() { const p = this.parentElement; if (p) { p.children = p.children.filter((c) => c !== this); this.parentElement = null; } } };
+      return { nodeType: 3, textContent: String(text), parentElement: null, remove() { const p = this.parentElement; if (p) { p._kids = p._kids.filter((c) => c !== this); this.parentElement = null; } } };
     },
     querySelector(sel) { return document.body.querySelector(sel); },
     querySelectorAll(sel) { return document.body.querySelectorAll(sel); },
@@ -329,8 +380,18 @@ export function createDomStub({ width = 800, height = 600 } = {}) {
     disconnect() { this.active = false; observers.delete(this); }
     takeRecords() { return []; }
   }
+  class StubMutationObserver extends StubObserver {
+    constructor(cb) { super(cb); this.targets = []; this.queue = []; mutationObservers.add(this); }
+    observe(target, opts = {}) {
+      this.active = true;
+      this.targets.push({ target, subtree: Boolean(opts.subtree) });
+      observers.add(this);
+    }
+    disconnect() { super.disconnect(); this.queue = []; this.targets = []; mutationObservers.delete(this); }
+    takeRecords() { const out = this.queue; this.queue = []; return out; }
+  }
   window.ResizeObserver = StubObserver;
-  window.MutationObserver = StubObserver;
+  window.MutationObserver = StubMutationObserver;
 
   const dispatch = (target, type, init = {}) => {
     const ev = {
@@ -379,6 +440,18 @@ export function createDomStub({ width = 800, height = 600 } = {}) {
     pending.forEach((f) => f.fn({ timeRemaining: () => 8, didTimeout: false }));
     return pending.length;
   };
+  // Deliver queued records once per observer. Callbacks that mutate the DOM queue new records for the next call.
+  const flushMutations = () => {
+    let delivered = 0;
+    for (const obs of [...mutationObservers]) {
+      if (!obs.active || !obs.queue.length) continue;
+      const records = obs.queue;
+      obs.queue = [];
+      delivered += records.length;
+      obs.cb(records, obs);
+    }
+    return delivered;
+  };
   const flushTimers = () => {
     const pending = [...timers];
     timers.clear();
@@ -403,7 +476,7 @@ export function createDomStub({ width = 800, height = 600 } = {}) {
     globalThis.window = window;
     globalThis.localStorage = localStorage;
     globalThis.ResizeObserver = StubObserver;
-    globalThis.MutationObserver = StubObserver;
+    globalThis.MutationObserver = StubMutationObserver;
     globalThis.requestAnimationFrame = window.requestAnimationFrame;
     globalThis.cancelAnimationFrame = window.cancelAnimationFrame;
     globalThis.requestIdleCallback = window.requestIdleCallback;
@@ -428,6 +501,7 @@ export function createDomStub({ width = 800, height = 600 } = {}) {
     flushFrames,
     flushIdle,
     flushTimers,
+    flushMutations,
     frames,
     idle,
     timers,

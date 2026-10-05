@@ -112,7 +112,7 @@ Native diagrams are React Flow (`.react-flow`, nodes `.react-flow__node-block`).
 | P26 | Page chips and On board | 2.11.4 | released 2026-10-05. PDF-7 and DOC-20 done. |
 | P27 | Card context and board chips | 2.12.0 | released 2026-10-05. MEM-1 and NAV-1 done. |
 | P28 | Why, references, lane, suggest, resurface | 2.12.1 | released 2026-10-05. MEM-2, NAV-2, MEM-3, MEM-5, and MEM-4 done. |
-| P29 | AE-1 auto-enhance default | 2.13.0 | open |
+| P29 | AE-1 auto-enhance default, review fixes for 2.8–2.12 | 2.13.0 | done 2026-10-05 |
 | P17 rest-P22 | 3.x roadmap, see roadmap-3.md | 2.8.1-3.0.0 | open |
 
 Order matters: P1 and P2 are the user's direct requests. Within a phase, do tasks in the listed order unless one is blocked.
@@ -689,3 +689,11 @@ PERF-2, ranked by measured share of the 21.38 ms (c) key:
 - P16 RE-6 freeze check, 2026-10-04: not reproduced (5 back-to-back bench runs, 5 inject/unload cycles, 1 long task of 51 to 65 ms per run). Typing, board mounted, injected minus unloaded mean ms per key: 2.7.0 +4.39, +5.21, +3.89; 2.7.1 +2.69, +4.86, +3.18, +1.96, +2.76. The scratch block has to sit above the board in `BENCH_VIEW=page` or the board scrolls out of view and unmounts (`preRoots` 0); `BENCH_SCRATCH=<uid>` reuses one block.
 - P16 Better Tasks completion, 2026-10-04: the first completion of each repeating series opens Better Tasks' "Choose scheduling mode" dialog (Due date, Completion date, Cancel). Answering it writes `BT_attrAdvance`. A click outside the dialog cancels the completion and leaves the block DONE without a Completed date or a spawn; undo it with `bt_modify({uid, status: "TODO"})`.
 - P16 live harness: `tools/live/taskboard.mjs` builds a board of N task cards with due dates and optional repeats and ledgers every uid; `PXD_REPO=<dir>` makes `plexus-live.mjs inject` load another build (used for the 2.7.0 baseline). Ledger cleanup skips blocks Better Tasks spawns on daily pages: delete those by uid.
+
+### 2.13.0 (2026-10-05)
+
+- AE-1 live, Readwisenotes Test Lab, injected build: a fresh `{{[[diagram]]}}` mounts as a board with `:block/props` null. The first drag writes `plexus {v 2}` and `open false` with the card move; one board Cmd+Z reverts all three. Restore on a virtual board writes `plexus {native true}`, the native diagram returns, no button. The one native-shape diagram in the graph keeps Roam's view with the Open as Plexus board button (light and dark). Setting off unmounts only the virtual board; on remounts it with 0 writes. Unload 0 `.pxd-*`.
+- Review fixes: page-card page "Chip target" opens with 0 body mutations over 3 s after settle, no errors, chip row under the title (2.12.1 threw in `nextAfter`).
+- Typing bench, BENCH_VIEW=page, 200 keys, injected minus unloaded, no board mounted at the scratch block: 2.12.1 −0.26 / +0.92 / −0.73 ms/key (mean −0.02); 2.13.0 −0.58 / −0.31 / +0.14 (mean −0.25). Baseline about 22 ms/key. Listeners return to the unloaded count after unload.
+- Same bench with the scratch block directly above the AE board (`preRoots` 1, board mounted), five interleaved rounds each: 2.12.1 −0.67 / +1.91 / +2.26 / +1.25 / +2.20 (median +1.91); 2.13.0 +1.90 / +2.27 / +2.79 / +2.46 / +0.59 (median +2.27). The 0.36 gap is inside the ±1 ms run-to-run spread. The mounted-board cost of about +2 ms/key predates this release (2.7.x measured +2 to +5) and is still open.
+- Known limit: New drawing through Roam Plexus creates the drawing outside Plexus' undo log, so one Cmd+Z removes the card but not the drawing block.

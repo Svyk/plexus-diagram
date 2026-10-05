@@ -398,7 +398,7 @@ body.roam-body.dark .pxd-root .pxd-present-hud,
 }
 
 @media print {
-  .pxd-print__page {
+  .pxd-print__page.pxd-print__page {
     break-after: page;
     page-break-after: always;
   }

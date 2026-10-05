@@ -6,6 +6,18 @@
 - A diagram that already has native shapes stays Roam's own. An Open as Plexus board button over it imports the shapes and arrows.
 - Settings has Every diagram is a Plexus board. Turn it off to open only diagrams you enhance or create with New whiteboard here. Turning it off gives the native diagram back to boards you have not changed.
 - Plexus: Restore native diagram now sticks, even with the setting on. Plexus: Enhance clears it.
+- Fixes from a review of 2.8 to 2.12:
+  - A page that is a card on a board no longer throws or loops when it opens. Its board chip sits under the page title.
+  - The references drawer lists top-level blocks again.
+  - Cutting or duplicating an image card keeps its regions. Deleting one asks first and shows how many regions it has.
+  - Clearing a connection's why no longer deletes a note that has children.
+  - An open PDF reader stays mounted while it is in view, and arrows meet its edge. Page chips refresh when highlight cards change.
+  - Encrypted-graph PDFs (`.enc`) show their highlights.
+  - Each image highlight reuses one regions block.
+  - Fewer reads on large boards: highlight watches are capped, block props are read only for highlights, and the Info panel counts references without pulling them all.
+  - Memory lane arrows follow the cards. Suggested lines follow a dragged card, and their menu sits at the line.
+  - Escape works on a full-screen board. Annotate is one undo step.
+  - Popovers close when the pointer leaves. Unload no longer removes Roam's own nodes.
 - The command palette stays two entries.
 
 ## 2.12.1 — 2026-10-05

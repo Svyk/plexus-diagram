@@ -95,12 +95,12 @@ test("pdf and board chips keep a 1px border and a clear fill, including dark the
     body: match[2],
   }));
   const need = [
-    ".pxd-pdf-chip",
-    ".pxd-boardchip",
-    ".bp3-dark .pxd-pdf-chip",
-    ".bp3-dark .pxd-boardchip",
-    "body.bt-theme-dark .pxd-pdf-chip",
-    "body.bt-theme-dark .pxd-boardchip",
+    ".pxd-pdf-chip.pxd-pdf-chip",
+    ".pxd-boardchip.pxd-boardchip",
+    ".bp3-dark .pxd-pdf-chip.pxd-pdf-chip",
+    ".bp3-dark .pxd-boardchip.pxd-boardchip",
+    "body.bt-theme-dark .pxd-pdf-chip.pxd-pdf-chip",
+    "body.bt-theme-dark .pxd-boardchip.pxd-boardchip",
   ];
   for (const selector of need) {
     const block = blocks.find((entry) => entry.selectors.includes(selector));

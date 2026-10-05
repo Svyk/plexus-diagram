@@ -238,7 +238,7 @@ test("board thumbnail: titled minis, one edges svg of hairlines, no accent-soft,
     assert.equal(section.querySelector(".pxd-mini__title").textContent, "Phase one", "a section frame carries a title strip");
     const tiny = card.querySelector(".pxd-mini.pxd-c-teal");
     assert.ok(tiny.classList.contains("pxd-mini--tiny"), "a mini under 28px wide is marked so CSS hides its title");
-    const order = canvas.children.map((n) => (n.classList.contains("pxd-mini--section") ? "section" : n.classList.contains("pxd-mini") ? "mini" : "edges"));
+    const order = [...canvas.children].map((n) => (n.classList.contains("pxd-mini--section") ? "section" : n.classList.contains("pxd-mini") ? "mini" : "edges"));
     assert.deepEqual(order, ["section", "edges", "mini", "mini", "mini"], "section frames, then hairlines, then cards on top");
     const svgs = card.querySelectorAll(".pxd-board-preview__edges");
     assert.equal(svgs.length, 1, "one svg for every connection");

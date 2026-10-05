@@ -174,10 +174,10 @@ test("RF-3 a rendered connection block gets one chip before its children; other 
   f.chips.scan(a.container);
   f.chips.scan(other.container);
   f.chips.scan(a.container);
-  const mine = a.container.children.filter((c) => c.classList.contains("pxd-relchip"));
+  const mine = [...a.container.children].filter((c) => c.classList.contains("pxd-relchip"));
   assert.equal(mine.length, 1, "scanning twice adds one chip");
-  assert.equal(a.container.children.indexOf(mine[0]), 1, "after the block text, before the children");
-  assert.equal(other.container.children.filter((c) => c.classList.contains("pxd-relchip")).length, 0);
+  assert.equal([...a.container.children].indexOf(mine[0]), 1, "after the block text, before the children");
+  assert.equal([...other.container.children].filter((c) => c.classList.contains("pxd-relchip")).length, 0);
   assert.equal(mine[0].textContent, "↗ Alpha idea —causes→ Beta page ▸ “The target sentence in…” · on Roadmap");
   assert.equal(mine[0].getAttribute("role"), "button");
   assert.equal(mine[0].parentElement, a.container, "never inside the editable block text");
@@ -189,7 +189,7 @@ test("RF-3 the chip opens a preview popover with a map and two buttons; Escape, 
   f.chips.start();
   const a = f.outline("edge0001");
   f.chips.scan(a.container);
-  const chip = a.container.children.find((c) => c.classList.contains("pxd-relchip"));
+  const chip = [...a.container.children].find((c) => c.classList.contains("pxd-relchip"));
   f.stub.dispatch(chip, "click", {});
   const pop = f.doc.body.querySelector(".pxd-relpop");
   assert.ok(pop, "popover on document.body");
@@ -223,7 +223,7 @@ test("RF-3 Open in sidebar and Open on board go through the host and the deep li
   f.chips.start();
   const a = f.outline("edge0001");
   f.chips.scan(a.container);
-  const chip = a.container.children.find((c) => c.classList.contains("pxd-relchip"));
+  const chip = [...a.container.children].find((c) => c.classList.contains("pxd-relchip"));
   f.stub.dispatch(chip, "click", {});
   f.stub.dispatch(f.doc.body.querySelectorAll(".pxd-relpop__btn")[1], "click", {});
   assert.deepEqual(f.opened, [["sidebar", "board001", "block"]]);
@@ -239,7 +239,7 @@ test("RF-3 the target-block pill in the preview map stays inside the crop", (t) 
   f.chips.start();
   const a = f.outline("edge0001");
   f.chips.scan(a.container);
-  f.stub.dispatch(a.container.children.find((c) => c.classList.contains("pxd-relchip")), "click", {});
+  f.stub.dispatch([...a.container.children].find((c) => c.classList.contains("pxd-relchip")), "click", {});
   const pop = f.doc.body.querySelector(".pxd-relpop");
   const [vx] = pop.querySelector(".pxd-relpop__map").getAttribute("viewBox").split(" ").map(Number);
   const rect = pop.querySelector(".pxd-relpop__row rect");
@@ -256,7 +256,7 @@ test("F2 Open on board asks the host to enter a nested board first, and skips th
   chips.start();
   const a = f.outline("edge0001");
   chips.scan(a.container);
-  const chip = a.container.children.find((c) => c.classList.contains("pxd-relchip"));
+  const chip = [...a.container.children].find((c) => c.classList.contains("pxd-relchip"));
   f.stub.dispatch(chip, "click", {});
   f.stub.dispatch(f.doc.body.querySelectorAll(".pxd-relpop__btn")[0], "click", {});
   assert.deepEqual(asked, [["board001", "edge0001"]]);
@@ -277,7 +277,7 @@ test("RF-3 unload removes every chip and popover, and nothing is written", (t) =
   f.chips.scan(a.container);
   f.chips.scan(b.container);
   assert.equal(f.chips.chipCount(), 2);
-  f.stub.dispatch(a.container.children.find((c) => c.classList.contains("pxd-relchip")), "click", {});
+  f.stub.dispatch([...a.container.children].find((c) => c.classList.contains("pxd-relchip")), "click", {});
   const before = f.stub.listenerCount();
   assert.ok(before > 0);
   f.chips.dispose();

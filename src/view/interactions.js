@@ -707,8 +707,11 @@ export function createInteractions({ actions, settings } = {}) {
     if (kept.length) call("toast", { message: "Pinned items were not deleted. Unpin first." });
     if (!uids.length) return true;
     selectItems(kept);
-    call("deleteItems", uids, { withContents: Boolean(withContents) });
-    call("toast", { message: "Deleted", action: { label: "Undo", run: () => call("undo") } });
+    // The region-count dialog can cancel the delete (null): the toast follows the delete, not the keypress.
+    Promise.resolve(call("deleteItems", uids, { withContents: Boolean(withContents) })).then((done) => {
+      if (done === null) return;
+      call("toast", { message: "Deleted", action: { label: "Undo", run: () => call("undo") } });
+    }, () => {});
     return true;
   };
 

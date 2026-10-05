@@ -20,8 +20,8 @@ test("pdfMacroUrl returns the http(s) url only when the trimmed string starts wi
   assert.equal(pdfMacroUrl(` \n${MACRO} `), URL);
   assert.equal(pdfMacroUrl("{{[[pdf]]:http://example.test/a.pdf}}"), "http://example.test/a.pdf");
   assert.equal(pdfMacroUrl("{{[[pdf]]: https://example.test/a.pdf?x=1}}"), "https://example.test/a.pdf?x=1");
-  assert.equal(pdfMacroUrl("{{[[pdf]]: https://example.test/a.pdf.enc}}"), "");
-  assert.equal(pdfMacroUrl("{{[[pdf]]: https://example.test/dir.enc/a.pdf}}"), "");
+  assert.equal(pdfMacroUrl("{{[[pdf]]: https://example.test/a.pdf.enc?alt=media&token=x}}"), "https://example.test/a.pdf.enc?alt=media&token=x");
+  assert.equal(pdfMacroUrl("{{[[pdf]]: https://example.test/dir.encyclopedia/a.pdf}}"), "https://example.test/dir.encyclopedia/a.pdf");
   assert.equal(pdfMacroUrl("see {{[[pdf]]: https://example.test/a.pdf}}"), "");
   assert.equal(pdfMacroUrl("{{[[pdf]]: ftp://example.test/a.pdf}}"), "");
   assert.equal(pdfMacroUrl("{{pdf: https://example.test/a.pdf}}"), "");

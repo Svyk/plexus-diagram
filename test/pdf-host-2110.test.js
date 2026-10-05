@@ -27,9 +27,9 @@ test("one :pdf-highlight row counts 1 and a Notes by parent with no highlight pr
   const { fake, host } = setup();
   const calls = stubCover(fake, {
     blocks: [
-      ["notesBy01", "Notes by [[Svy]]", {}],
-      ["date01", "[[October 5th, 2026]]", { ":created": 1 }],
-      ["hl01", "selected passage #h/yellow", { ":pdf-highlight": { ":type": "text", ":id": "hl01" } }],
+      [{}],
+      [{ ":created": 1 }],
+      [{ ":pdf-highlight": { ":type": "text", ":id": "hl01" } }],
     ],
   });
   fake.clearLog();
@@ -56,7 +56,7 @@ test("one :pdf-highlight row counts 1 and a Notes by parent with no highlight pr
 test("a Notes by parent with no highlight prop counts 0", () => {
   const { fake, host } = setup();
   stubCover(fake, {
-    blocks: [["notesBy01", "Notes by [[Svy]]", { ":heading": 2 }]],
+    blocks: [[{ ":heading": 2 }]],
   });
   fake.clearLog();
   const cover = host.pdfCover(` \n${MACRO} `);
@@ -111,9 +111,9 @@ test("two :pdf-highlight rows count 2 and pdfCover still does not write", () => 
   const { fake, host } = setup();
   stubCover(fake, {
     blocks: [
-      ["notesBy01", "Notes by [[Svy]]", {}],
-      ["hl01", "a", { ":pdf-highlight": { ":type": "text" } }],
-      ["hl02", "b", { "pdf-highlight": { ":type": "area" } }],
+      [{}],
+      [{ ":pdf-highlight": { ":type": "text" } }],
+      [{ "pdf-highlight": { ":type": "area" } }],
     ],
   });
   fake.clearLog();

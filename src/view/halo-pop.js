@@ -101,10 +101,11 @@ export function openHaloPopover({
   const times = model.refTimes || [];
   const finite = times.filter((value) => Number.isFinite(Number(value))).map(Number);
   if (!finite.length) {
-    refs.textContent = refsLine(finite);
+    refs.textContent = refsLine(finite, model.refTotal);
   } else {
-    const noun = finite.length === 1 ? "time" : "times";
-    refs.append(`Referenced ${finite.length} ${noun}, first `);
+    const shown = Number.isFinite(model.refTotal) && model.refTotal >= finite.length ? model.refTotal : finite.length;
+    const noun = shown === 1 ? "time" : "times";
+    refs.append(`Referenced ${shown} ${noun}, first `);
     refs.append(dateNode(doc, Math.min(...finite), { pageExists, renderString, mounts }));
     refs.append(", last ");
     refs.append(dateNode(doc, Math.max(...finite), { pageExists, renderString, mounts }));

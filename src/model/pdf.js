@@ -11,9 +11,8 @@ export function pdfMacroUrl(s) {
   if (!text.startsWith(PDF_MACRO)) return "";
   const match = /https?:\/\/[^\s}]+/.exec(text.slice(PDF_MACRO.length));
   if (!match) return "";
-  const url = match[0];
-  if (url.includes(".enc")) return "";
-  return url;
+  // Encrypted graphs store PDFs as .enc. The url only keys the page lookup; nothing here fetches it.
+  return match[0];
 }
 
 export function pdfPagePlan(url, pages) {

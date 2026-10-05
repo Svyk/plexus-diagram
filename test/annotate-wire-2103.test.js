@@ -5,7 +5,7 @@ import test from "node:test";
 import { annotatePlan } from "../src/model/annotate.js";
 import { buildBoard, worldRects } from "../src/model/board.js";
 import { createRelChips } from "../src/relchips.js";
-import { mountBoardView } from "../src/view/board-view.js";
+import { clearPinnedToast, mountBoardView } from "../src/view/board-view.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
 
 const BOARD = "Brd2wXe5a";
@@ -16,6 +16,9 @@ const PAGE = "pgOps0001";
 const BLOCK = "blkRef001";
 const NOTE = "noteCard1";
 const PAGE_CARD = "pageCard1";
+
+let groupDepth = 0;
+const groupCalls = [];
 
 const tick = (ms = 0) => new Promise((r) => setTimeout(r, ms));
 
@@ -61,7 +64,11 @@ function fakeHost(pageCalls) {
     searchBlocks: () => [],
     related: () => [],
     cardStringForUid: (uid) => `((${uid}))`,
-    group() { throw new Error("annotate must not group the writes"); },
+    async group(fn) {
+      groupCalls.push("group");
+      groupDepth += 1;
+      try { return await fn(); } finally { groupDepth -= 1; }
+    },
   };
 }
 
@@ -220,12 +227,15 @@ test("card menu rows follow compass and canAnnotate, and the clicks use the ship
     assert.equal(f.pageCalls.length, noteBefore);
     assert.equal(compassOpens.at(-1), NOTE);
 
+    const grouped = [];
     f.session.addRefCards = (list) => {
       opens.push(["card", list]);
+      grouped.push(groupDepth > 0);
       return Promise.resolve([REF]);
     };
     f.session.addEdge = (spec) => {
       opens.push(["edge", spec]);
+      grouped.push(groupDepth > 0);
       return Promise.resolve("edgeUid01");
     };
     openCard(f, IMAGE);
@@ -246,6 +256,8 @@ test("card menu rows follow compass and canAnnotate, and the clicks use the ship
     assert.deepEqual(opens[2], ["edge", { from: REF, to: IMAGE, label: "annotates" }]);
     assert.deepEqual(opens[3], ["open", DRAWING, 1]);
     assert.deepEqual(whenOpens, []);
+    assert.deepEqual(grouped, [true, true], "ref card and edge run in one host group");
+    assert.equal(groupCalls.length, 1, "one undo group for the annotate");
     assert.equal(f.root.querySelector(".pxd-toast__text")?.textContent, "Drop the image into the drawing");
     assert.equal(f.stub.document.body.querySelector(".pxd-toast--pin .pxd-toast__text")?.textContent, "Drop the image into the drawing");
     assert.equal(opens.some((row) => Array.isArray(row) && row[0] === "edge" && (row[1].from === DRAWING || row[1].to === DRAWING)), false);
@@ -263,7 +275,8 @@ test("card menu rows follow compass and canAnnotate, and the clicks use the ship
     delete globalThis.RoamCompass;
     delete globalThis.RoamPlexus;
     f.view.dispose();
-    f.stub.document.body.querySelector(".pxd-toast--pin")?.remove();
+    clearPinnedToast();
+    assert.equal(f.stub.document.body.querySelector(".pxd-toast--pin"), null, "unload leaves no pinned toast");
     f.restore();
   }
 });

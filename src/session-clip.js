@@ -4,6 +4,7 @@
 import { boardPreview, boundsOf, buildBoard, containerAt, descendantsOf, findEdge, toRelative, topLevelOf } from "./model/board.js";
 import { parsePastedText, planEdgeClones, planSubtreeClone, refCardStrings } from "./model/clipboard.js";
 import { mindMapLayout } from "./model/layout.js";
+import { isContainerString, parseRegion } from "./model/regions.js";
 import { MIND_GAPS, branchColor, normalizeMindPreset } from "./model/mindmap.js";
 import {
   DEFAULT_SIZES,
@@ -66,6 +67,22 @@ extendSession((session, api) => {
     return t.create({ parent, string, plexus: serializeItemLayout(layout) });
   }
 
+  // An image card's regions live in a container child and point back at the card with d=<uid>. The copy gets its
+  // own container and regions, each aimed at the new card; the originals keep their uids.
+  function cloneRegions(t, node, oldUid, freshUid) {
+    for (const kid of node[KIDS] ?? []) {
+      const isBox = isContainerString(kid[STR] ?? "") || readPlexus(kid[PROPS])?.type === "regions";
+      if (!isBox) continue;
+      const box = t.create({ parent: freshUid, uid: gen(), string: kid[STR] ?? "", plexus: { type: "regions" }, open: false, order: "last" });
+      for (const region of kid[KIDS] ?? []) {
+        const text = region[STR] ?? "";
+        const parsed = parseRegion(text);
+        const string = parsed && parsed.drawingUid === oldUid ? text.replace(`d=${oldUid}`, `d=${freshUid}`) : text;
+        t.create({ parent: box, uid: gen(), string, order: "last" });
+      }
+    }
+  }
+
   // Clones `entries` ({uid, x, y}: world top-left of the copy) out of `src` ({board, node(uid)}) into this
   // board. Page, block, image and text cards become another card with the same string; notes, sections and
   // enhanced nested boards are cloned as a whole subtree. Connections between cloned items are cloned too.
@@ -92,6 +109,7 @@ extendSession((session, api) => {
         const fresh = gen();
         uidMap.set(id, fresh);
         t.create({ parent, uid: fresh, string: node[STR] ?? "", plexus });
+        if (item.kind === "image") cloneRegions(t, node, id, fresh);
         tops.push(fresh);
         continue;
       }
@@ -124,7 +142,7 @@ extendSession((session, api) => {
       const refs = new Map();
       for (const [old, fresh] of uidMap) {
         const it = src.board.items.get(old);
-        refs.set(fresh, it && (it.kind === "page" || it.kind === "block") ? semanticRef(it) : `((${fresh}))`);
+        refs.set(fresh, it && (it.target?.kind === "page" || it.target?.kind === "block") ? semanticRef(it) : `((${fresh}))`);
       }
       const containerUid = api.ensureContainer(t);
       for (const c of planEdgeClones(edges, uidMap, { genUid: gen, containerUid, refOfNew: (fresh) => refs.get(fresh) })) {
@@ -278,7 +296,7 @@ extendSession((session, api) => {
       else if (item.kind === "block") kids = (host.pullTree(item.target.uid, 1, 60) ?? []).map((n) => ({ uid: n[UID] ?? n.uid, string: n[STR] ?? n.string ?? "" }));
       else return Promise.resolve(none);
       const onBoard = new Set();
-      for (const it of board.items.values()) if (it.kind === "block" && it.target?.uid) onBoard.add(it.target.uid);
+      for (const it of board.items.values()) if (it.target?.kind === "block" && it.target.uid) onBoard.add(it.target.uid);
       const seen = new Set();
       const fresh = [];
       let skipped = 0;
@@ -371,7 +389,7 @@ extendSession((session, api) => {
       const own = rects.get(cardUid);
       const onBoard = new Map();
       for (const it of board.items.values()) {
-        if (it.uid !== cardUid && it.kind === "block" && !onBoard.has(it.target.uid)) onBoard.set(it.target.uid, it.uid);
+        if (it.uid !== cardUid && it.target?.kind === "block" && !onBoard.has(it.target.uid)) onBoard.set(it.target.uid, it.uid);
       }
       const nodes = new Map(picked.map((f) => {
         const have = onBoard.get(f.uid);

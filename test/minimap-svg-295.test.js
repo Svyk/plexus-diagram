@@ -109,8 +109,8 @@ test("REG-7 view map css is strokes, with an accent stroke and a 12% fill only o
   assert.match(css, /\.pxd-viewmap \.pxd-viewmap__card--muted\s*\{[^}]*fill:\s*none;[^}]*stroke:\s*currentColor;/s);
   assert.match(css, /\.pxd-viewmap \.pxd-viewmap__card--hi\s*\{[^}]*stroke:\s*var\(--pxd-accent[^}]*12%/s);
   assert.match(css, /\.pxd-viewmap \.pxd-viewmap__card--section\s*,[\s\S]*fill:\s*none;/);
-  assert.match(css, /\.bp3-dark \.pxd-viewmap\s*,[\s\S]*\.pxd-root--dark \.pxd-viewmap\s*\{[^}]*color:\s*#fff;/);
-  assert.doesNotMatch(css, /\.pxd-viewmap\s*\{[^}]*width:\s*240px/s);
+  assert.match(css, /\.bp3-dark \.pxd-viewmap\.pxd-viewmap\s*,[\s\S]*\.pxd-root--dark \.pxd-viewmap\.pxd-viewmap\s*\{[^}]*color:\s*#fff;/);
+  assert.doesNotMatch(css, /\.pxd-viewmap(\.pxd-viewmap)?\s*\{[^}]*width:\s*240px/s);
   assert.match(css, /background:\s*transparent/);
 });
 

@@ -16,7 +16,7 @@ import { SHAPES, shapePath } from "../model/shapes.js";
 import { fillFromTags, highlighterTags } from "../model/highlighter.js";
 import { watchEditorMenus } from "./editor-menus.js";
 import { applyEditorCounterScale } from "./editor-scale.js";
-import { UNMOUNT_GRACE_MS, intrinsicSize, shellOffscreen } from "./offscreen.js";
+import { UNMOUNT_GRACE_MS, intrinsicSize, shellOffscreen, unmountDue } from "./offscreen.js";
 import { isStructuralString } from "../model/regions.js";
 import { regionRefModel } from "../model/region-card.js";
 import { imageRegionRows, regionBadge } from "../model/region-menu.js";
@@ -302,14 +302,26 @@ export function createItemRenderer({
   let pdfOpenUid = null;
   let pdfLiveUid = null;
   let pdfLiveOff = null;
+  // Chip rows cost a page read per highlight. One turn on one board shares them; the next turn reads again.
+  let chipMemo = null;
   const chipsFor = (item) => {
     if (item?.kind !== "pdf" || typeof pdfChips !== "function") return [];
-    try {
-      const rows = pdfChips(item);
-      return Array.isArray(rows) ? rows : [];
-    } catch {
-      return [];
+    if (!chipMemo || chipMemo.board !== lastBoard) {
+      const memo = { board: lastBoard, rows: new Map() };
+      chipMemo = memo;
+      queueMicrotask(() => { if (chipMemo === memo) chipMemo = null; });
     }
+    const hit = chipMemo.rows.get(item.uid);
+    if (hit) return hit;
+    let rows = [];
+    try {
+      const got = pdfChips(item);
+      rows = Array.isArray(got) ? got : [];
+    } catch {
+      rows = [];
+    }
+    chipMemo.rows.set(item.uid, rows);
+    return rows;
   };
   const chipHandlers = (item) => ({
     later: (fn, ms) => (typeof timers?.later === "function" ? timers.later(fn, ms) : setTimeout(fn, ms)),
@@ -849,6 +861,7 @@ export function createItemRenderer({
     rec.el.classList.remove("pxd-sticky--picking");
   };
 
+  const TRANSIENT_CLASSES = ["pxd-item--offscreen", "pxd-item--future", "pxd-item--fresh", "pxd-item--pulse"];
   const paintShell = (rec, item) => {
     const node = rec.el;
     if (item.type !== "section") {
@@ -902,6 +915,8 @@ export function createItemRenderer({
         if (task.due?.overdue) cls.push("pxd-item--overdue", "pxd-item--task-overdue");
       } else if (item.type === "card" && dueChip(item.content)?.overdue) cls.push("pxd-item--overdue");
     }
+    // Classes other code toggles on the shell (offscreen shell, memory lane, pulse) survive the re-sync.
+    for (const keep of TRANSIENT_CLASSES) if (node.classList?.contains(keep)) cls.push(keep);
     node.className = cls.join(" ");
     {
       const dueShort = item.type === "card" && cls.includes("pxd-item--task") ? taskMeta(item.string, item.content)?.due?.short : "";
@@ -1013,9 +1028,19 @@ export function createItemRenderer({
     if (chunk.length) placeShells();
     if (shellQueue.length && timers?.frame) timers.frame(pumpShells);
   };
-  const sync = ({ board, rects, dirty = null, structural = false, view = null }) => {
+  const sync = ({ board, rects, dirty: changed = null, structural = false, view = null }) => {
     lastBoard = board;
     lastRects = rects;
+    // A highlight card placed, removed or changed moves its PDF's page chips and count, though the PDF card itself did not change.
+    let dirty = changed;
+    if (dirty != null) {
+      let touched = structural;
+      if (!touched) for (const uid of dirty) if (board.items.get(uid)?.kind === "highlight") { touched = true; break; }
+      if (touched) {
+        dirty = new Set(dirty);
+        for (const [uid, item] of board.items) if (item.kind === "pdf") dirty.add(uid);
+      }
+    }
     syncBoardHighlighter(doc, boardRoot());
     // A full sync builds every missing shell itself. A partial sync must leave the
     // open-time queue alone, or the cards past the first chunk never appear.
@@ -1739,6 +1764,8 @@ export function createItemRenderer({
     const item = lastBoard?.items.get(uid);
     return Boolean(item && !item.collapsed && item.kind === "pdf" && pdfOpenUid === uid && lod === "detail");
   };
+  // The open reader is drawn 640x820 while the model keeps the card size. Culling and anchors use the drawn box.
+  const drawnRect = (uid, rect) => (rect && pdfReaderBox(uid) ? { ...rect, w: PDF_READER_W, h: PDF_READER_H } : rect);
   const pdfSourceOf = (item) => {
     if (item?.target?.kind === "block") {
       const text = host?.blockString?.(item.target.uid);
@@ -2073,9 +2100,12 @@ export function createItemRenderer({
   };
   const drawingEditorMounted = (drawingUid) => {
     if (!drawingUid) return false;
-    const id = `block-input-${drawingUid}`;
-    const root = doc.getElementById?.(id) || doc.querySelector?.(`#${id}`);
-    return Boolean(root?.querySelector?.(".excalidraw"));
+    // Roam ids read block-input-<window>-body-outline-<page>-<uid>.
+    const suffix = `-${drawingUid}`;
+    for (const root of doc.querySelectorAll?.('[id^="block-input-"]') || []) {
+      if (String(root.id || "").endsWith(suffix) && root.querySelector?.(".excalidraw")) return true;
+    }
+    return false;
   };
   const blobOf = async (value) => {
     if (value == null) return null;
@@ -2088,26 +2118,43 @@ export function createItemRenderer({
     if (!canvas || typeof canvas.toBlob !== "function") { resolve(null); return; }
     try { canvas.toBlob((blob) => resolve(blob || null), "image/png"); } catch { resolve(null); }
   });
-  const waitDrawingImg = (holder) => new Promise((resolve) => {
+  const snapshots = new Set(); // { holder, mount, stop, done } while a fallback thumbnail renders
+  const waitDrawingImg = (holder, snap) => new Promise((resolve) => {
     const start = Date.now();
+    snap.done = () => resolve(null);
     const tick = () => {
+      if (disposed) { resolve(null); return; }
       const img = holder.querySelector?.("img.rm-inline-img.rm-inline-img--excalidraw");
       if (img && (img.complete || img.naturalWidth > 0)) { resolve(img); return; }
       if (Date.now() - start > 2500) { resolve(img || null); return; }
-      setTimeout(tick, 40);
+      snap.stop = later(tick, 40);
     };
     tick();
   });
+  const dropSnapshot = (snap) => {
+    snap.stop?.();
+    snap.stop = null;
+    snap.done?.();
+    try { host?.unmount?.(snap.mount); } catch { /* nothing mounted */ }
+    snap.holder.remove?.();
+    snapshots.delete(snap);
+  };
   const snapshotDrawing = async (drawingUid) => {
-    if (!host?.renderBlock || !doc.createElement) return null;
+    const root = boardRoot();
+    if (!host?.renderBlock || !doc.createElement || !root || disposed) return null;
     const holder = doc.createElement("div");
-    (doc.body || doc.documentElement)?.append?.(holder);
-    try { host.renderBlock(holder, drawingUid, { open: false }); } catch { /* no render */ }
-    const img = await waitDrawingImg(holder);
+    holder.className = "pxd-snap-holder";
+    holder.setAttribute?.("aria-hidden", "true");
+    const mount = doc.createElement("div");
+    holder.append(mount);
+    root.append(holder);
+    const snap = { holder, mount, stop: null, done: null };
+    snapshots.add(snap);
+    try { host.renderBlock(mount, drawingUid, { open: false }); } catch { /* no render */ }
+    const img = await waitDrawingImg(mount, snap);
     let blob = null;
-    if (img) blob = await canvasBlob(copyDrawingPixels(img, doc));
-    try { holder.replaceChildren(); } catch { /* unmount */ }
-    holder.remove?.();
+    if (img && !disposed) blob = await canvasBlob(copyDrawingPixels(img, doc));
+    dropSnapshot(snap);
     return blob;
   };
   const loadDrawingBlob = async (api, drawingUid) => {
@@ -2267,7 +2314,7 @@ export function createItemRenderer({
       if (disposed) return;
       const t = now();
       for (const [uid, seen] of [...mounted]) {
-        if (!wanted.has(uid) && t - seen >= UNMOUNT_AFTER_MS - 1) unmountContent(uid);
+        if (!wanted.has(uid) && unmountDue(seen, t, UNMOUNT_AFTER_MS - 1)) unmountContent(uid);
       }
       if ([...mounted.keys()].some((u) => !wanted.has(u))) scheduleUnmounts();
     }, UNMOUNT_AFTER_MS);
@@ -2300,7 +2347,7 @@ export function createItemRenderer({
   const paintOffscreen = (visibleRect) => {
     for (const [uid, rec] of shells) {
       if (!rec.el || rec.type === "section") continue;
-      const rect = lastRects?.get(uid);
+      const rect = drawnRect(uid, lastRects?.get(uid));
       const off = Boolean(visibleRect) && shellOffscreen(uid, rect, visibleRect, { editingUid: editing?.uid ?? null });
       rec.el.classList.toggle("pxd-item--offscreen", off);
       if (!off) {
@@ -2324,13 +2371,13 @@ export function createItemRenderer({
     const next = new Set();
     if ((tier ?? lodForZoom(zoom)) === "detail") {
       for (const [uid, rec] of shells) {
-        const r = lastRects.get(uid);
+        const r = drawnRect(uid, lastRects.get(uid));
         if (r && rectsIntersect(r, visibleRect)) next.add(uid);
       }
     } else {
       // map / overview LOD: section titles, text items and board thumbnails, including whiteboard-shortcut cards (plain divs) stay rendered; card bodies unmount later
       for (const [uid, rec] of shells) {
-        const r = lastRects.get(uid);
+        const r = drawnRect(uid, lastRects.get(uid));
         const kind = lastBoard.items.get(uid)?.kind;
         const keep = rec.type === "section" || rec.type === "text" || rec.refBoard || kind === "board" || kind === "pdf" || kind === "highlight";
         if (keep && r && rectsIntersect(r, visibleRect)) next.add(uid);
@@ -3104,9 +3151,19 @@ export function createItemRenderer({
     const api = regionWindow().RoamPlexus ?? null;
     let changed = false;
     for (const item of lastBoard.items.values()) {
-      if (item.type !== "card" || (item.kind !== "block" && item.kind !== "region-ref")) continue;
+      if (item.type !== "card" || (item.kind !== "block" && item.kind !== "region-ref" && item.kind !== "drawing-ref")) continue;
       const ref = item.target?.kind === "block" ? item.target.uid : null;
       if (!ref) continue;
+      if (item.kind === "drawing-ref") {
+        // A drawing card lists its regions and thumbnail: remount when its drawing's regions change.
+        if (eventUid && ref !== eventUid) continue;
+        const live = shells.get(item.uid);
+        if (live && mounted.has(item.uid) && editing?.uid !== item.uid) {
+          unmountContent(item.uid);
+          changed = true;
+        }
+        continue;
+      }
       if (eventUid && item.regionDrawing && item.regionDrawing !== eventUid && ref !== eventUid) continue;
       let text = null;
       try { text = host?.blockString?.(ref); } catch { text = null; }
@@ -3175,6 +3232,7 @@ export function createItemRenderer({
     }
     if (idleHandle) { idleHandle(); idleHandle = null; }
     if (unmountTimer) { unmountTimer(); unmountTimer = null; }
+    for (const snap of [...snapshots]) dropSnapshot(snap);
     for (const uid of [...shells.keys()]) {
       const rec = shells.get(uid);
       unmountRoots(rec);
@@ -3216,6 +3274,7 @@ export function createItemRenderer({
     renameBoard,
     renamePage,
     shellOf: (uid) => shells.get(uid)?.el ?? null,
+    drawnRect: (uid) => drawnRect(uid, lastRects?.get(uid)) ?? null,
     measureRow,
     setLayoutWatch,
     markRows,

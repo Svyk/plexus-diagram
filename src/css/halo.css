@@ -20,18 +20,18 @@
   line-height: 1.4;
 }
 
-.pxd-halo__link {
+.pxd-halo .pxd-halo__link {
   display: inline;
 }
 
-.pxd-halo__head,
-.pxd-halo__with,
-.pxd-halo__refs,
-.pxd-halo__boards {
+.pxd-halo .pxd-halo__head,
+.pxd-halo .pxd-halo__with,
+.pxd-halo .pxd-halo__refs,
+.pxd-halo .pxd-halo__boards {
   margin: 0 0 6px;
 }
 
-.pxd-halo__spark {
+.pxd-halo .pxd-halo__spark {
   display: block;
   width: 120px;
   height: 24px;
@@ -39,7 +39,7 @@
   color: #1f2937;
 }
 
-.pxd-halo__company {
+.pxd-halo .pxd-halo__company {
   margin: 0;
   padding: 0;
   border: 0;
@@ -60,10 +60,10 @@ body.roam-body.dark .pxd-halo,
   color: #e6edf3;
 }
 
-.bp3-dark .pxd-halo__spark,
-body.bt-theme-dark .pxd-halo__spark,
-.rm-dark-theme .pxd-halo__spark,
-body.roam-body.dark .pxd-halo__spark,
-.pxd-root--dark .pxd-halo__spark {
+.bp3-dark .pxd-halo .pxd-halo__spark,
+body.bt-theme-dark .pxd-halo .pxd-halo__spark,
+.rm-dark-theme .pxd-halo .pxd-halo__spark,
+body.roam-body.dark .pxd-halo .pxd-halo__spark,
+.pxd-root--dark .pxd-halo .pxd-halo__spark {
   color: #e6edf3;
 }

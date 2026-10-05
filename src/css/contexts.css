@@ -1,6 +1,6 @@
 /* NAV-2. Contexts drawer. A border, a scroll, and no tinted fill. */
 
-.pxd-contexts {
+.pxd-root .pxd-contexts {
   position: absolute;
   z-index: 6;
   top: 48px;
@@ -17,12 +17,12 @@
 
 .pxd-lod-map .pxd-contexts { display: none; }
 
-.pxd-contexts__year {
+.pxd-root .pxd-contexts__year {
   margin: 6px 8px 2px;
   font-weight: 600;
 }
 
-.pxd-contexts__row {
+.pxd-root .pxd-contexts__row {
   display: block;
   width: 100%;
   margin: 0;
@@ -36,17 +36,17 @@
   cursor: pointer;
 }
 
-.pxd-contexts__snippet { color: #6b7280; }
+.pxd-root .pxd-contexts__snippet { color: #6b7280; }
 
-.pxd-contexts__filter,
-.pxd-contexts__cap {
+.pxd-root .pxd-contexts__filter,
+.pxd-root .pxd-contexts__cap {
   margin: 6px 8px;
 }
 
-.bp3-dark .pxd-contexts,
-body.bt-theme-dark .pxd-contexts,
-.rm-dark-theme .pxd-contexts,
-body.roam-body.dark .pxd-contexts {
+.bp3-dark .pxd-root .pxd-contexts,
+body.bt-theme-dark .pxd-root .pxd-contexts,
+.rm-dark-theme .pxd-root .pxd-contexts,
+body.roam-body.dark .pxd-root .pxd-contexts {
   border-color: #3b4b58;
   background: #1c2127;
   color: #e6edf3;

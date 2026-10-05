@@ -575,7 +575,7 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     refreshOutline() { if (api.isOpen() && tab === "outline") renderOutline(); },
     refreshBoards() { if (tab === "boards") void loadBoards(); },
     refreshViews() {
-      if (tab !== "boards") return;
+      if (tab !== "boards" || !api.isOpen()) return;
       let views = [];
       try { views = on.listViews?.() || []; } catch { views = []; }
       if (viewSignature(views) === viewSig) return;

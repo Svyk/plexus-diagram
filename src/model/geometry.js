@@ -51,10 +51,11 @@ export function visibleWorldRect(vp, size, margin = 0) {
   };
 }
 
-// Inverse of visibleWorldRect with margin 0. Zoom comes from the width so a saved view lands within a pixel.
+// Inverse of visibleWorldRect with margin 0. Zoom is the tighter axis, so the whole rect stays on screen.
+// A view saved from the same window size has the same aspect, so the width alone gives the same zoom.
 export function viewportFromWorldRect(rect, size) {
   if (!rect || !(rect.w > 0) || !(rect.h > 0) || !size || !(size.width > 0)) return null;
-  const zoom = clampZoom(size.width / rect.w);
+  const zoom = clampZoom(size.height > 0 ? Math.min(size.width / rect.w, size.height / rect.h) : size.width / rect.w);
   return { x: -rect.x * zoom, y: -rect.y * zoom, zoom };
 }
 

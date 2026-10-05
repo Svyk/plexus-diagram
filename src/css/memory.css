@@ -1,6 +1,6 @@
 /* MEM-3. Memory lane. Future cards fade. The outline is the fresh mark. */
 
-.pxd-memory {
+.pxd-root .pxd-memory {
   position: absolute;
   z-index: 11;
   left: 8px;
@@ -16,10 +16,10 @@
   color: #1f2937;
 }
 
-.pxd-memory__range { flex: 1; }
+.pxd-root .pxd-memory .pxd-memory__range { flex: 1; }
 
-.pxd-memory__play,
-.pxd-memory__tick {
+.pxd-root .pxd-memory .pxd-memory__play,
+.pxd-root .pxd-memory .pxd-memory__tick {
   height: 24px;
   padding: 0 8px;
   border: 1px solid var(--pxd-border, #d0d7de);
@@ -30,16 +30,14 @@
   cursor: pointer;
 }
 
-.pxd-item--future { opacity: 0.12; }
+.pxd-root .pxd-item.pxd-item--future { opacity: 0.12; }
 
-.pxd-item--fresh { outline: 1px solid currentColor; }
+.pxd-root .pxd-item.pxd-item--fresh { outline: 1px solid currentColor; }
 
-.pxd-edge--lane-off { display: none; }
-
-.bp3-dark .pxd-memory,
-body.bt-theme-dark .pxd-memory,
-.rm-dark-theme .pxd-memory,
-body.roam-body.dark .pxd-memory {
+.bp3-dark .pxd-root .pxd-memory,
+body.bt-theme-dark .pxd-root .pxd-memory,
+.rm-dark-theme .pxd-root .pxd-memory,
+body.roam-body.dark .pxd-root .pxd-memory {
   border-color: #3b4b58;
   color: #e6edf3;
 }

@@ -1,14 +1,14 @@
 /* PDF-7. Page chips and the On board chip. A border and a clear fill. No filled background. */
 
-.pxd-pdf-chips {
+.pxd-pdf-chips.pxd-pdf-chips {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
   margin: 4px 0;
 }
 
-.pxd-pdf-chip,
-.pxd-boardchip {
+.pxd-pdf-chip.pxd-pdf-chip,
+.pxd-boardchip.pxd-boardchip {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -24,11 +24,11 @@
   cursor: pointer;
 }
 
-.pxd-pdf-chip__n {
+.pxd-pdf-chip .pxd-pdf-chip__n {
   color: inherit;
 }
 
-.pxd-boardchip {
+.pxd-boardchip.pxd-boardchip {
   align-self: flex-start;
   flex: 0 0 auto;
   width: fit-content;
@@ -36,11 +36,18 @@
   white-space: nowrap;
 }
 
-.bp3-dark .pxd-pdf-chip,
-.bp3-dark .pxd-boardchip,
-body.bt-theme-dark .pxd-pdf-chip,
-body.bt-theme-dark .pxd-boardchip {
+.bp3-dark .pxd-pdf-chip.pxd-pdf-chip,
+.bp3-dark .pxd-boardchip.pxd-boardchip,
+body.bt-theme-dark .pxd-pdf-chip.pxd-pdf-chip,
+body.bt-theme-dark .pxd-boardchip.pxd-boardchip {
   border: 1px solid var(--pxd-border, #3b4b58);
   background: transparent;
   color: #e6edf3;
+}
+
+/* Page labels at the ends of a highlight connection. SVG text takes fill, not color. */
+.pxd-root .pxd-edge__page {
+  fill: var(--pxd-text);
+  font-size: 11px;
+  pointer-events: none;
 }

@@ -37,11 +37,20 @@ export function mountRegionMark({ doc = globalThis.document, root, img, onConfir
 
   let dead = false;
   let dragging = false;
+  // The drag is kept as fractions of the image, so a scroll, pan or zoom before Confirm cannot shift it.
   let x0 = null;
   let y0 = null;
   let x1 = null;
   let y1 = null;
   const offs = [];
+
+  const imgBox = () => {
+    let box = null;
+    try { box = img.getBoundingClientRect(); } catch { box = null; }
+    return { left: axis(box, "left", "x"), top: axis(box, "top", "y"), w: axis(box, "width", "w"), h: axis(box, "height", "h") };
+  };
+  const fx = (clientX, box) => (box.w > 0 ? (clientX - box.left) / box.w : 0);
+  const fy = (clientY, box) => (box.h > 0 ? (clientY - box.top) / box.h : 0);
 
   const listen = (target, type, fn, opts) => {
     if (!target || typeof target.addEventListener !== "function") return;
@@ -50,16 +59,17 @@ export function mountRegionMark({ doc = globalThis.document, root, img, onConfir
   };
 
   const place = () => {
-    const imgBox = img.getBoundingClientRect();
+    const box = imgBox();
     const rootBox = root.getBoundingClientRect();
-    const imgLeft = axis(imgBox, "left", "x");
-    const imgTop = axis(imgBox, "top", "y");
+    const imgLeft = box.left;
+    const imgTop = box.top;
     const rootLeft = axis(rootBox, "left", "x");
     const rootTop = axis(rootBox, "top", "y");
-    const ax = (x0 ?? imgLeft) - imgLeft;
-    const ay = (y0 ?? imgTop) - imgTop;
-    const bx = (x1 ?? x0 ?? imgLeft) - imgLeft;
-    const by = (y1 ?? y0 ?? imgTop) - imgTop;
+    const px = (n) => Math.round(n * 1e6) / 1e6;
+    const ax = px((x0 ?? 0) * box.w);
+    const ay = px((y0 ?? 0) * box.h);
+    const bx = px((x1 ?? x0 ?? 0) * box.w);
+    const by = px((y1 ?? y0 ?? 0) * box.h);
     const left = (imgLeft - rootLeft) + Math.min(ax, bx);
     const top = (imgTop - rootTop) + Math.min(ay, by);
     draft.style.left = `${left}px`;
@@ -80,9 +90,12 @@ export function mountRegionMark({ doc = globalThis.document, root, img, onConfir
 
   const confirm = () => {
     if (dead) return;
-    let rect = null;
-    try { rect = img.getBoundingClientRect(); } catch { rect = null; }
-    const frac = fracFromDrag(rect, x0, y0, x1, y1);
+    const box = imgBox();
+    const client = (f, origin, size) => (f == null ? null : origin + f * size);
+    const frac = fracFromDrag(
+      { left: box.left, top: box.top, width: box.w, height: box.h },
+      client(x0, box.left, box.w), client(y0, box.top, box.h), client(x1, box.left, box.w), client(y1, box.top, box.h),
+    );
     if (!frac) return;
     const caption = String(input.value ?? "");
     try { onConfirm?.({ frac, caption }); }
@@ -101,10 +114,11 @@ export function mountRegionMark({ doc = globalThis.document, root, img, onConfir
     event.preventDefault();
     if (event.button != null && event.button !== 0) return;
     dragging = true;
-    x0 = event.clientX;
-    y0 = event.clientY;
-    x1 = event.clientX;
-    y1 = event.clientY;
+    const box = imgBox();
+    x0 = fx(event.clientX, box);
+    y0 = fy(event.clientY, box);
+    x1 = x0;
+    y1 = y0;
     place();
   };
 
@@ -116,16 +130,18 @@ export function mountRegionMark({ doc = globalThis.document, root, img, onConfir
 
   const onMove = (event) => {
     if (!dragging) return;
-    x1 = event.clientX;
-    y1 = event.clientY;
+    const box = imgBox();
+    x1 = fx(event.clientX, box);
+    y1 = fy(event.clientY, box);
     place();
   };
 
   const onUp = (event) => {
     if (!dragging) return;
     dragging = false;
-    x1 = event.clientX;
-    y1 = event.clientY;
+    const box = imgBox();
+    x1 = fx(event.clientX, box);
+    y1 = fy(event.clientY, box);
     place();
     try { input.focus(); } catch { /* stub */ }
   };

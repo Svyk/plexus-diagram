@@ -15,8 +15,8 @@
   font-size: 12px;
 }
 
-.pxd-resurface__tab,
-.pxd-resurface__item {
+.pxd-resurface .pxd-resurface__tab,
+.pxd-resurface .pxd-resurface__item {
   margin: 0 4px 4px 0;
   padding: 2px 6px;
   border: 1px solid var(--pxd-border, #d0d7de);
@@ -27,9 +27,9 @@
   cursor: pointer;
 }
 
-.pxd-resurface__item { display: block; width: 100%; text-align: left; }
+.pxd-resurface .pxd-resurface__item { display: block; width: 100%; text-align: left; }
 
-.pxd-resurface__thumb { height: 48px; overflow: hidden; color: #1f2937; }
+.pxd-resurface .pxd-resurface__thumb { height: 48px; overflow: hidden; color: inherit; }
 
 .bp3-dark .pxd-resurface,
 body.bt-theme-dark .pxd-resurface,

@@ -4,7 +4,7 @@ import { createFakeRoam } from "./fixtures/fake-roam.js";
 import { createHost } from "../src/host/roam.js";
 
 const PROPS_PATTERN = "[:block/string :block/props {:block/page [:node/title]}]";
-const WATCH_PATTERN = "[:block/uid :block/string :block/props {:block/page [:node/title]}]";
+const WATCH_PATTERN = "[:block/string]";
 const HIGHLIGHT_STRING = "selected passage #h/yellow {{[[pdf]]: https://example.test/papers/Risk%20model.pdf}}";
 
 function setup() {

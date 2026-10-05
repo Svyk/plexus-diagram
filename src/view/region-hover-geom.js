@@ -1,6 +1,6 @@
 // REG-5. Preview veil boxes and the camera that centres a region or pins a view.
 
-import { clampZoom, visibleWorldRect } from "../model/geometry.js";
+import { clampZoom, viewportFromWorldRect, visibleWorldRect } from "../model/geometry.js";
 
 function finite(n) {
   return typeof n === "number" && Number.isFinite(n);
@@ -74,8 +74,7 @@ export function setCameraFromView(v, size) {
   const vh = Number(size?.height);
   if (![x, y, w, h, vw, vh].every(finite)) return null;
   if (!(w > 0) || !(h > 0) || !(vw > 0) || !(vh > 0)) return null;
-  const zoom = clampZoom(Math.min(vw / w, vh / h));
-  return { x: -x * zoom, y: -y * zoom, zoom };
+  return viewportFromWorldRect({ x, y, w, h }, { width: vw, height: vh });
 }
 
 export function cameraRectOf(vp, size) {

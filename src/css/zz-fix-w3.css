@@ -1,0 +1,9 @@
+/* C4: the hidden render that carries a fallback drawing thumbnail. */
+.pxd-root .pxd-snap-holder {
+  position: fixed;
+  left: -10000px;
+  top: 0;
+  width: 640px;
+  visibility: hidden;
+  pointer-events: none;
+}

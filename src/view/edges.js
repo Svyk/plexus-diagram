@@ -319,7 +319,7 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     if (hex) rec.g.style.setProperty("--pxd-line", hex);
     else rec.g.style.removeProperty("--pxd-line");
     const wasClear = Boolean(rec.ends) && rec.label.classList.contains("pxd-label--clear");
-    rec.label.className = `pxd-label${named ? ` pxd-c-${edge.color}` : ""}${edge.label ? "" : " pxd-label--empty"}${edge.why ? " pxd-label--why" : ""}${selected ? " pxd-label--selected" : ""}${dim ? " pxd-label--dim" : ""}`;
+    rec.label.className = `pxd-label${named ? ` pxd-c-${edge.color}` : ""}${edge.label || edge.why ? "" : " pxd-label--empty"}${edge.why ? " pxd-label--why" : ""}${selected ? " pxd-label--selected" : ""}${dim ? " pxd-label--dim" : ""}`;
     rec.label.title = edge.why ? whyTip(edge.why) : "";
     if (wasClear) rec.label.classList.add("pxd-label--clear");
     rec.label.style.color = hex || "";
@@ -632,7 +632,7 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
       const next = String(el.textContent || "").trim();
       if (commit && next !== previous) onLabelCommit?.(uid, next);
       else el.textContent = previous;
-      if (!el.textContent) el.classList.add("pxd-label--empty");
+      if (!el.textContent && !el.classList.contains("pxd-label--why")) el.classList.add("pxd-label--empty");
     };
     const onKey = (event) => {
       if (event.key === "Enter") { event.preventDefault(); event.stopPropagation(); finish(true); }

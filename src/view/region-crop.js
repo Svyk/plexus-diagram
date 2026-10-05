@@ -355,9 +355,10 @@ export function eachRegionButton(root, fn, cap = REGION_SCAN_CAP) {
   }
   let seen = 0;
   for (const button of found) {
+    // A button this module already claimed does not count against the cap, so later ones are still reached.
+    if (button.getAttribute?.("data-plexus-owner")) continue;
     if (seen >= cap) break;
     seen += 1;
-    if (button.getAttribute?.("data-plexus-owner")) continue;
     fn(button);
   }
   return seen;

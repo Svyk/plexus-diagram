@@ -118,8 +118,14 @@ extendSession((session, api) => {
     const string = imageRegionString(highlightUid, frac, caption);
     if (string == null) return Promise.resolve(null);
     const regionUid = uid || api.host.generateUid();
+    let existing = null;
+    try {
+      for (const kid of api.host.pullTree?.(highlightUid, 1, 200) || []) {
+        if (kid?.uid && isContainerString(kid.string ?? "")) { existing = kid.uid; break; }
+      }
+    } catch { existing = null; }
     const promise = api.txn((t) => {
-      const parent = t.create({
+      const parent = existing || t.create({
         parent: highlightUid,
         string: CONTAINER,
         plexus: { type: "regions" },

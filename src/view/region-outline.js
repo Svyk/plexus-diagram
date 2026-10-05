@@ -6,6 +6,7 @@ export const OUTLINE_TOAST = {
   ready: "The image is not ready",
   copied: "Region made, ref copied",
   notImage: "That block is not an image",
+  failed: "The region was not saved",
 };
 
 export function outlineToast(doc, message) {

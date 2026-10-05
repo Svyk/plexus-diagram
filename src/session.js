@@ -74,6 +74,7 @@ const ITEM_KEYS = ["type", "x", "y", "w", "h", "color", "collapsed", "fontSize",
 const EDGE_KEYS = ["type", "from", "to", "fromSide", "toSide", "dir", "route", "dash", "weight", "color", "fromBlock", "toBlock", "via"];
 const MAX_PARENT_STRINGS = 200;
 const DAILY_GAP = 20;
+const HIGHLIGHT_WATCH_CAP = 60;
 
 const registry = new Map();
 const extensions = [];
@@ -206,6 +207,9 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
   let rix = null;
 
   const highlightWatches = new Map();
+  // Props reads for highlight targets, dropped whenever a highlight watch fires. A plain ref never lands here.
+  const propsCache = new Map();
+  let knownHighlights = new Set();
   let highlightWatchReady = false;
   let syncHighlightWatches = () => {};
   const disposeHighlightWatch = (id) => {
@@ -247,7 +251,13 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
           return null;
         }
       },
-      propsOf: (id) => host.blockProps(id),
+      propsOf: (id) => {
+        if (propsCache.has(id)) return propsCache.get(id);
+        const bag = host.blockProps(id);
+        propsCache.set(id, bag);
+        return bag;
+      },
+      knownHighlight: (id) => knownHighlights.has(id),
       plexusApi,
       autoBoard: autoBoardOf,
     }) : null;
@@ -256,6 +266,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       board.virtual = true;
     }
     rects = board ? worldRects(board) : new Map();
+    knownHighlights = new Set();
+    if (board) for (const item of board.items.values()) if (item.kind === "highlight" && item.target?.uid) knownHighlights.add(item.target.uid);
     if (highlightWatchReady) syncHighlightWatches();
   };
   rebuild();
@@ -343,6 +355,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     const fresh = host.pullBoard(uid);
     if (!fresh) { markGone(); return; }
     raw = clone(fresh);
+    propsCache.clear();
     publish();
   };
 
@@ -425,6 +438,16 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
   const unwatch = raw ? host.watchBoard(uid, onBoard) : () => {};
 
   // The colour tag lives on the highlight block, which is not a child of the board. One watch per target.
+  // A watch only marks the board dirty; one pull per flush however many highlights changed.
+  let highlightDirty = false;
+  let highlightScheduled = false;
+  const flushHighlights = () => {
+    highlightScheduled = false;
+    if (destroyed || !highlightDirty) return;
+    highlightDirty = false;
+    propsCache.clear();
+    onBoard(host.pullBoard(uid));
+  };
   syncHighlightWatches = () => {
     const live = new Set();
     if (board && !destroyed) {
@@ -432,6 +455,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
         if (item.kind !== "highlight") continue;
         const id = item.target?.uid;
         if (typeof id !== "string" || id === "" || live.has(id)) continue;
+        // Past the cap a highlight colour refreshes when the board is next pulled.
+        if (live.size >= HIGHLIGHT_WATCH_CAP) break;
         live.add(id);
         if (highlightWatches.has(id) || typeof host.watchBlock !== "function") continue;
         highlightWatches.set(id, () => {});
@@ -439,7 +464,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
         try {
           const ret = host.watchBlock(id, () => {
             if (destroyed) return;
-            onBoard(host.pullBoard(uid));
+            highlightDirty = true;
+            if (!highlightScheduled) { highlightScheduled = true; schedule(flushHighlights); }
           });
           if (typeof ret === "function") off = ret;
         } catch {
@@ -1070,25 +1096,29 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
         return Promise.resolve(host.createBlock(spec)).then((made) => (typeof made === "string" ? made : made?.uid || null));
       };
       const stamp = stampList();
-      const placed = stamp.length
-        ? stampedRun(stamp, place).catch((err) => { handleFailure(err); return null; })
-        : place();
-      return placed.then((drawingUid) => {
-        const ref = drawingRefString(drawingUid);
-        if (!ref || !board || destroyed || gone) return null;
-        return txn((t) => {
-          const size = { w: DEFAULT_SIZES.card.w, h: DEFAULT_SIZES.card.h };
-          const px = Number.isFinite(x) ? x : 40;
-          const py = Number.isFinite(y) ? y : 40;
-          const parent = containerAt(board, { x: px + size.w / 2, y: py + size.h / 2 }, { rects });
-          const rel = toRelative(board, parent, { x: px, y: py }, rects);
-          const id = t.create({
-            parent,
-            string: ref,
-            plexus: serializeItemLayout({ x: rel.x, y: rel.y, w: size.w, h: size.h }),
+      // The drawing block and its ref card are one undo step: one host group around both writes. The group is
+      // taken outside the write queue (stampedRun and txn each take a queue slot, so holding it would deadlock).
+      return grouped(() => {
+        const placed = stamp.length
+          ? stampedRun(stamp, place).catch((err) => { handleFailure(err); return null; })
+          : place();
+        return placed.then((drawingUid) => {
+          const ref = drawingRefString(drawingUid);
+          if (!ref || !board || destroyed || gone) return null;
+          return txn((t) => {
+            const size = { w: DEFAULT_SIZES.card.w, h: DEFAULT_SIZES.card.h };
+            const px = Number.isFinite(x) ? x : 40;
+            const py = Number.isFinite(y) ? y : 40;
+            const parent = containerAt(board, { x: px + size.w / 2, y: py + size.h / 2 }, { rects });
+            const rel = toRelative(board, parent, { x: px, y: py }, rects);
+            const id = t.create({
+              parent,
+              string: ref,
+              plexus: serializeItemLayout({ x: rel.x, y: rel.y, w: size.w, h: size.h }),
+            });
+            applyFit(t, [id]);
+            return id;
           });
-          applyFit(t, [id]);
-          return id;
         });
       });
     },
@@ -1717,7 +1747,11 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
           else if (step.op === "why") {
             if (edge.whyUid) t.string(edge.whyUid, step.text);
             else t.create({ parent: id, order: "first", string: step.text });
-          } else if (step.op === "clear" && edge.whyUid) t.del(edge.whyUid);
+          } else if (step.op === "clear" && edge.whyUid) {
+            // A why with notes under it is the user's outline: leave the block.
+            if (edge.whyKids > 0) emit("toast", { message: "This why has notes under it. Edit it in the outline." });
+            else t.del(edge.whyUid);
+          }
         }
       });
     },

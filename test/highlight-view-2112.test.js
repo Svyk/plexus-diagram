@@ -151,7 +151,7 @@ test("the dialog checks placed rows, filters, and places the unplaced refs", () 
     );
     const first = dialog.querySelector(".pxd-hl-row");
     assert.equal(first.querySelector(".pxd-hl-bar").getAttribute("data-color"), "yellow");
-    assert.equal(first.querySelector(".pxd-hl-page").textContent, "p. 2");
+    assert.equal(first.querySelector(".pxd-hl-rowpage").textContent, "p. 2");
     assert.equal(first.querySelector(".pxd-hl-row__text").textContent, "passage one");
     assert.deepEqual(
       [...dialog.querySelectorAll('[data-enabled="false"]')].map((row) => row.getAttribute("data-uid")),

@@ -34,10 +34,11 @@ export function openRegionDeleteDialog(doc, { message = "", onDelete, onOpen, on
     });
     return node;
   };
+  const cancel = button("pxd-region-delete-cancel", "Cancel", onCancel);
   actions.append(
     button("pxd-region-delete", "Delete", onDelete),
     button("pxd-region-open-refs", "Open references", onOpen),
-    button("pxd-region-delete-cancel", "Cancel", onCancel),
+    cancel,
   );
   card.append(actions);
 
@@ -54,5 +55,12 @@ export function openRegionDeleteDialog(doc, { message = "", onDelete, onOpen, on
     onCancel?.();
   });
 
-  return { el: root, close };
+  return {
+    el: root,
+    close,
+    // The safe choice takes focus once the dialog is in the tree, so Escape and Enter reach it.
+    focus() {
+      try { cancel.focus(); } catch { /* the stub has no focus */ }
+    },
+  };
 }

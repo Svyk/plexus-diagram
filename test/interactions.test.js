@@ -447,10 +447,11 @@ test("keyboard shortcuts are ignored while an input has focus (except Esc leavin
   assert.equal(h.named("exitEdit").length, 1);
 });
 
-test("Delete removes the selection with an Undo toast; Shift+Delete deletes section contents", () => {
+test("Delete removes the selection with an Undo toast; Shift+Delete deletes section contents", async () => {
   const h = harness();
   h.ctl.select(["sectCCCC3"]);
   h.ctl.handle({ type: "keydown", key: "Delete" });
+  await Promise.resolve();
   assert.deepEqual(h.named("deleteItems")[0].slice(1), [["sectCCCC3"], { withContents: false }]);
   const toast = h.named("toast")[0][1];
   assert.equal(toast.action.label, "Undo");
@@ -1067,11 +1068,12 @@ test("pinned: arrow nudge and resize grips are ignored, marquee still selects, s
   assert.deepEqual(h.ctl.getSelection().items.sort(), ["cardAAAA1", "cardBBBB2"]);
 });
 
-test("pinned: Delete keeps pinned items and toasts; an all-pinned selection deletes nothing", () => {
+test("pinned: Delete keeps pinned items and toasts; an all-pinned selection deletes nothing", async () => {
   const h = harness();
   h.board.items.get("cardAAAA1").pinned = true;
   h.ctl.select(["cardAAAA1", "cardBBBB2"]);
   assert.equal(key(h, "Delete"), true);
+  await Promise.resolve();
   assert.deepEqual(h.named("deleteItems")[0].slice(1), [["cardBBBB2"], { withContents: false }]);
   assert.ok(h.named("toast").some((c) => c[1].message === "Pinned items were not deleted. Unpin first."));
   assert.equal(h.named("toast").at(-1)[1].message, "Deleted", "the Undo toast is the last one");

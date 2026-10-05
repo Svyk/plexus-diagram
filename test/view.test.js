@@ -182,7 +182,7 @@ test("mount builds the documented DOM and a shell for every item", async () => {
     const viewport = root.querySelector(".pxd-viewport");
     assert.ok(viewport.querySelector(".pxd-grid"));
     const world = viewport.querySelector(".pxd-world");
-    const layers = world.children.map((c) => c.className);
+    const layers = [...world.children].map((c) => c.className);
     assert.deepEqual(layers, ["pxd-sections", "pxd-edges", "pxd-labels", "pxd-items", "pxd-overlay"]);
     assert.equal(world.querySelectorAll(".pxd-item").length, 6, "cards and text get shells");
     assert.equal(world.querySelectorAll(".pxd-section").length, 1);
@@ -486,6 +486,7 @@ test("keyboard shortcuts are ignored while a Roam editor / input has focus", asy
     root.focus();
     f.stub.dispatch(root, "keydown", { key: "Delete" });
     assert.deepEqual(f.session.mutations[0].slice(0, 2), ["deleteItems", ["cardAAAA1"]]);
+    await f.flush();
     assert.equal(root.querySelector(".pxd-toast").style.display, "");
   } finally {
     f.view.dispose();
@@ -2852,7 +2853,7 @@ test("PF-5: a swallowed roam render error becomes one chip", async () => {
     const root = f.view.root;
     const alpha = root.querySelector("[data-uid=cardAAAA1]");
     const chip = alpha.querySelector(".pxd-render-chip");
-    const textOf = (cls) => chip.children.find((c) => c.classList.contains(cls)).textContent;
+    const textOf = (cls) => [...chip.children].find((c) => c.classList.contains(cls)).textContent;
     assert.equal(textOf("pxd-render-chip__label"), "Could not render");
     assert.equal(textOf("pxd-render-chip__uid"), "cardAAAA1");
     assert.equal(textOf("pxd-render-chip__open"), "Open");
@@ -2868,7 +2869,7 @@ test("PF-5: a swallowed roam render error becomes one chip", async () => {
     assert.ok(f.host.calls.renderString > before, "the card renders again after its string changes");
     assert.equal(errors.length, 1, "a second render of the same card does not log again");
     const chip2 = root.querySelector("[data-uid=cardAAAA1] .pxd-render-chip");
-    assert.equal(chip2.children.find((c) => c.classList.contains("pxd-render-chip__uid")).textContent, "cardAAAA1");
+    assert.equal([...chip2.children].find((c) => c.classList.contains("pxd-render-chip__uid")).textContent, "cardAAAA1");
   } finally {
     console.error = orig;
     f.view.dispose();

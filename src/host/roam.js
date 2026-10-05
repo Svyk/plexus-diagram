@@ -39,7 +39,7 @@ const BOARD_META_PATTERN = "[:block/props :edit/time {:block/children [:block/pr
 const PDF_PAGE_QUERY = `[:find ?u ?t :in $ ?url :where [?p :pdf/url ?url] [?p :block/uid ?u] [?p :node/title ?t]]`;
 const PDF_PAGE_BLOCKS_QUERY = `[:find ?props :in $ ?uid :where [?p :block/uid ?uid] [?b :block/page ?p] [?b :block/props ?props]]`;
 const BLOCK_PROPS_PATTERN = "[:block/string :block/props {:block/page [:node/title]}]";
-const BLOCK_WATCH_PATTERN = "[:block/uid :block/string :block/props {:block/page [:node/title]}]";
+const BLOCK_WATCH_PATTERN = "[:block/string]";
 const HIGHLIGHT_TREE_PATTERN = `[:block/uid
  {:block/children [:block/uid :block/string :block/order :block/props
    {:block/children [:block/uid :block/string :block/order :block/props
@@ -262,6 +262,25 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     if (undoLog.length > UNDO_LOG_MAX) undoLog.shift();
   };
   const pull = (pattern, entity) => data.pull(pattern, entity);
+  let coverMemo = null;
+  const readPdfCover = (url) => {
+    const pages = [];
+    for (const row of queryRows(host, PDF_PAGE_QUERY, url)) {
+      if (!Array.isArray(row)) continue;
+      const uid = row[0];
+      const title = row[1];
+      if (typeof uid !== "string" || uid === "") continue;
+      pages.push({ uid, title: typeof title === "string" ? title : "", url });
+    }
+    const page = pdfPagePlan(url, pages);
+    if (!page) return { ...coverModel({ url, count: 0 }), pageUid: null };
+    let count = 0;
+    for (const row of queryRows(host, PDF_PAGE_BLOCKS_QUERY, page.uid)) {
+      const cells = Array.isArray(row) ? row : [row];
+      if (cells.some(hasPdfHighlight)) count++;
+    }
+    return { ...coverModel({ title: page.title, url, count }), pageUid: page.uid };
+  };
   const gname = graph ?? graphName();
 
   const host = {
@@ -624,22 +643,16 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     pdfCover(string) {
       const url = pdfMacroUrl(string);
       if (!url) return { ...coverModel({ count: 0 }), pageUid: null };
-      const pages = [];
-      for (const row of queryRows(host, PDF_PAGE_QUERY, url)) {
-        if (!Array.isArray(row)) continue;
-        const uid = row[0];
-        const title = row[1];
-        if (typeof uid !== "string" || uid === "") continue;
-        pages.push({ uid, title: typeof title === "string" ? title : "", url });
+      // A card paint asks twice and the picker once more; one turn shares one read, the next turn reads again.
+      if (!coverMemo) {
+        coverMemo = new Map();
+        queueMicrotask(() => { coverMemo = null; });
       }
-      const page = pdfPagePlan(url, pages);
-      if (!page) return { ...coverModel({ url, count: 0 }), pageUid: null };
-      let count = 0;
-      for (const row of queryRows(host, PDF_PAGE_BLOCKS_QUERY, page.uid)) {
-        const cells = Array.isArray(row) ? row : [row];
-        if (cells.some(hasPdfHighlight)) count++;
-      }
-      return { ...coverModel({ title: page.title, url, count }), pageUid: page.uid };
+      const memo = coverMemo.get(url);
+      if (memo) return { ...memo };
+      const cover = readPdfCover(url);
+      coverMemo?.set(url, cover);
+      return { ...cover };
     },
 
     // Boards library: every enhanced (plexus.v === 2) board block in the graph. Read-only.

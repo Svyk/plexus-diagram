@@ -16,8 +16,8 @@
   font-size: 12px;
 }
 
-.pxd-why__label,
-.pxd-why__note {
+.pxd-why .pxd-why__label,
+.pxd-why .pxd-why__note {
   display: block;
   width: 100%;
   box-sizing: border-box;
@@ -30,16 +30,16 @@
   font: inherit;
 }
 
-.pxd-why__note { min-height: 64px; }
+.pxd-why .pxd-why__note { min-height: 64px; }
 
-.pxd-why__hint { color: #6b7280; }
+.pxd-why .pxd-why__hint { color: #6b7280; }
 
-.pxd-label--why::after {
+.pxd-root .pxd-label--why::after {
   content: " ¶";
   font-size: 10px;
 }
 
-.pxd-lod-map .pxd-label--why::after { content: none; }
+.pxd-root.pxd-lod-map .pxd-label--why::after { content: none; }
 
 .bp3-dark .pxd-why,
 body.bt-theme-dark .pxd-why,

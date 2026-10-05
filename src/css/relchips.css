@@ -2,7 +2,7 @@
    preview popover. The chip lives outside every .pxd-root, so it carries its own tokens (light, then the five dark
    signals). The popover is a .pxd-root on document.body and takes the board tokens. */
 
-.pxd-relchip {
+.pxd-relchip.pxd-relchip {
   --pxd-rc-border: #d0d7de;
   --pxd-rc-text: #1f2937;
   --pxd-rc-muted: #5f6b7c;
@@ -25,18 +25,18 @@
   user-select: none;
 }
 
-.pxd-relchip:hover,
-.pxd-relchip:focus-visible {
+.pxd-relchip.pxd-relchip:hover,
+.pxd-relchip.pxd-relchip:focus-visible {
   color: var(--pxd-rc-text);
   border-color: var(--pxd-rc-accent);
   outline: none;
 }
 
-.bp3-dark .pxd-relchip,
-body.bt-theme-dark .pxd-relchip,
-.rm-dark-theme .pxd-relchip,
-body.roam-body.dark .pxd-relchip,
-.pxd-root--dark .pxd-relchip {
+.bp3-dark .pxd-relchip.pxd-relchip,
+body.bt-theme-dark .pxd-relchip.pxd-relchip,
+.rm-dark-theme .pxd-relchip.pxd-relchip,
+body.roam-body.dark .pxd-relchip.pxd-relchip,
+.pxd-root--dark .pxd-relchip.pxd-relchip {
   --pxd-rc-border: #3b4b58;
   --pxd-rc-text: #e6edf3;
   --pxd-rc-muted: #a7b6c2;
@@ -154,7 +154,7 @@ body.roam-body.dark .pxd-relchip,
 
 /* PO-4 (2.5): the board glyph at the end of a connection block's breadcrumb. Lives outside every .pxd-root, so it
    carries its own tokens like the chip. */
-.pxd-relcrumb {
+.pxd-relcrumb.pxd-relcrumb {
   --pxd-rc-accent: hsl(175 85% 24%);
   display: inline-block;
   margin-left: 6px;
@@ -169,15 +169,15 @@ body.roam-body.dark .pxd-relchip,
   user-select: none;
 }
 
-.pxd-relcrumb:hover,
-.pxd-relcrumb:focus-visible {
+.pxd-relcrumb.pxd-relcrumb:hover,
+.pxd-relcrumb.pxd-relcrumb:focus-visible {
   border-color: var(--pxd-rc-accent);
   outline: none;
 }
 
-.bp3-dark .pxd-relcrumb,
-body.bt-theme-dark .pxd-relcrumb,
-.rm-dark-theme .pxd-relcrumb,
-body.roam-body.dark .pxd-relcrumb {
+.bp3-dark .pxd-relcrumb.pxd-relcrumb,
+body.bt-theme-dark .pxd-relcrumb.pxd-relcrumb,
+.rm-dark-theme .pxd-relcrumb.pxd-relcrumb,
+body.roam-body.dark .pxd-relcrumb.pxd-relcrumb {
   --pxd-rc-accent: hsl(175 60% 55%);
 }

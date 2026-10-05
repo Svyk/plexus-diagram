@@ -165,10 +165,10 @@ test("REG-4: a scan examines at most 60 buttons", () => {
 
 test("REG-4: crop css is a 1px stroke in light and dark, with no shadow", () => {
   const css = readFileSync(new URL("../src/css/region-crop.css", import.meta.url), "utf8");
-  assert.match(css, /\.pxd-region-crop\s*\{[^}]*display:\s*inline-flex !important;/s);
-  assert.match(css, /\.pxd-region-crop__frame\s*\{[^}]*display:\s*inline-block !important;/s);
-  assert.match(css, /\.pxd-region-crop__frame\s*\{[^}]*border:\s*1px solid #1f2937;/s);
-  assert.match(css, /\.bp3-dark \.pxd-region-crop__frame\s*,\s*\.pxd-root--dark \.pxd-region-crop__frame\s*\{[^}]*border-color:\s*#fff;/s);
-  assert.match(css, /\.bp3-dark \.pxd-region-crop__frame[\s\S]*box-shadow:\s*none;/);
+  assert.match(css, /\.pxd-region-crop\.pxd-region-crop\s*\{[^}]*display:\s*inline-flex !important;/s);
+  assert.match(css, /\.pxd-region-crop \.pxd-region-crop__frame\s*\{[^}]*display:\s*inline-block !important;/s);
+  assert.match(css, /\.pxd-region-crop \.pxd-region-crop__frame\s*\{[^}]*border:\s*1px solid #1f2937;/s);
+  assert.match(css, /\.bp3-dark \.pxd-region-crop \.pxd-region-crop__frame\s*,\s*\.pxd-root--dark \.pxd-region-crop \.pxd-region-crop__frame\s*\{[^}]*border-color:\s*#fff;/s);
+  assert.match(css, /\.bp3-dark \.pxd-region-crop \.pxd-region-crop__frame[\s\S]*box-shadow:\s*none;/);
   assert.equal(css.includes("background: transparent"), true);
 });

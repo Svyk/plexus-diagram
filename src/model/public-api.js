@@ -3,6 +3,7 @@
 // Thumbnail width is capped. It is never doubled the way rasterizeSvg doubles a canvas.
 
 import { buildBoard } from "./board.js";
+import { isShowableCard } from "./deeplink.js";
 import { regionsOf as regionList } from "./regions.js";
 import { parseBoardTitle, readPlexus } from "./schema.js";
 
@@ -10,6 +11,7 @@ export const API_VERSION = 1;
 export const API_EVENTS = Object.freeze(["change", "mount", "unmount"]);
 
 const EVENTS = new Set(API_EVENTS);
+const emitters = new WeakMap();
 const DEFAULT_AT = 40;
 const DEFAULT_MAX_WIDTH = 160;
 const THUMB_STROKE = "#5c7080";
@@ -63,6 +65,18 @@ export function parseAddRef(raw) {
   return s;
 }
 
+// The ref may sit in a child bullet or a Connections block. The card is the board child that holds it.
+// Undefined when that child is not a placed card (an edge, a section). Unchanged when the tree does not hold the uid.
+function cardFor(pulled, uid) {
+  const kids = (node) => (Array.isArray(node?.[":block/children"]) ? node[":block/children"] : []);
+  const holds = (node) => node?.[":block/uid"] === uid || kids(node).some(holds);
+  for (const top of kids(pulled)) {
+    if (!holds(top)) continue;
+    return isShowableCard(readPlexus(top[":block/props"])) ? top[":block/uid"] : undefined;
+  }
+  return uid;
+}
+
 // rows are [boardUid, pageUid, cardUid]. card is row[2]. row[1] is the page and is never the card.
 // A repeated board keeps the card from its first row. pull results stay only when plexus.v is 2.
 export function boardsFromRefRows(rows, pull) {
@@ -73,7 +87,7 @@ export function boardsFromRefRows(rows, pull) {
     const boardUid = Array.isArray(row) ? row[0] : null;
     if (!boardUid || seen.has(boardUid)) continue;
     seen.add(boardUid);
-    const card = typeof row[2] === "string" && row[2] ? row[2] : undefined;
+    let card = typeof row[2] === "string" && row[2] ? row[2] : undefined;
     let pulled = null;
     try {
       pulled = typeof pull === "function" ? pull(boardUid) : null;
@@ -81,6 +95,7 @@ export function boardsFromRefRows(rows, pull) {
       pulled = null;
     }
     if (boardVersion(pulled) !== 2) continue;
+    if (card !== undefined) card = cardFor(pulled, card);
     const item = { uid: boardUid, title: boardTitle(pulled) };
     if (card !== undefined) item.card = card;
     out.push(item);
@@ -272,7 +287,15 @@ export function createPublicApi({ host, version, addCard: addCardFn, openBoard, 
       return "PlexusDiagram apiVersion 1. Listeners: change, mount, unmount. spec() lists the methods.";
     },
   };
-  return Object.freeze(api);
+  const frozen = Object.freeze(api);
+  emitters.set(frozen, emit);
+  return frozen;
+}
+
+// The host fires mount, unmount and change through this. The frozen api has no emit method of its own.
+export function emitPublicEvent(api, type, detail) {
+  if (!EVENTS.has(type)) return;
+  emitters.get(api)?.(type, detail);
 }
 
 export function installPublicApi(api, { win = globalThis.window ?? globalThis, CustomEventCtor } = {}) {

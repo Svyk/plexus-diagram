@@ -90,7 +90,7 @@ test("PO-2 the drawn map holds the bar in a clip of its own card; no text leaves
   container.append(input);
   doc.body.append(container);
   chips.scan(container);
-  stub.dispatch(container.children.find((c) => c.classList.contains("pxd-relchip")), "click", {});
+  stub.dispatch([...container.children].find((c) => c.classList.contains("pxd-relchip")), "click", {});
   const pop = doc.body.querySelector(".pxd-relpop");
   const row = pop.querySelector(".pxd-relpop__row");
   assert.ok(row.getAttribute("clip-path")?.startsWith("url(#pxd-relclip-"), "clipped to the card");
@@ -160,7 +160,7 @@ function popFixture(t, anchorRect, avoidRect) {
   container.append(main);
   doc.body.append(container);
   chips.scan(container);
-  const chip = container.children.find((c) => c.classList.contains("pxd-relchip"));
+  const chip = [...container.children].find((c) => c.classList.contains("pxd-relchip"));
   chip._rect = anchorRect;
   main._rect = avoidRect;
   return { stub, doc, chip, main, chips };

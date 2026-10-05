@@ -102,7 +102,15 @@ function autoPlace(siblings) {
   });
 }
 
-export function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, autoBoard } = {}) {
+// A block ref only costs a props read when its text carries a highlight tag or image, or it was a highlight before.
+const HIGHLIGHT_HINT = /#h\/|!\[/;
+function highlightCandidate(text, refUid, known) {
+  if (typeof text === "string" && HIGHLIGHT_HINT.test(text)) return true;
+  if (typeof known !== "function") return false;
+  try { return known(refUid) === true; } catch { return false; }
+}
+
+export function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, knownHighlight, autoBoard } = {}) {
   if (!pulled || typeof pulled !== "object") return null;
   const uid = pulled[":block/uid"];
   const string = pulled[":block/string"] ?? "";
@@ -170,7 +178,7 @@ export function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, auto
         } else if (classifyString(typeof targetText === "string" ? targetText : "").kind === "pdf") {
           kind = "pdf";
           title = "PDF";
-        } else if (typeof propsOf === "function") {
+        } else if (typeof propsOf === "function" && highlightCandidate(targetText, cls.refUid, knownHighlight)) {
           let bag = null;
           try { bag = propsOf(cls.refUid); } catch { bag = null; }
           const src = bag && typeof bag === "object" ? bag : {};
@@ -268,6 +276,7 @@ export function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, auto
         label: parseEdgeLabel(estring, n.fromBlock ? `((${n.fromBlock}))` : a ? semanticRef(a) : "", n.toBlock ? `((${n.toBlock}))` : b ? semanticRef(b) : ""),
         why: why?.text || "",
         whyUid: why?.uid || "",
+        whyKids: why ? (sortedChildren(e).find((c) => c[":block/uid"] === why.uid)?.[":block/children"] || []).length : 0,
         valid: Boolean(a && b),
       });
     }

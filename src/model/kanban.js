@@ -2,7 +2,7 @@
 // colour, or one Name:: attribute. A drop plans a single write. No Roam calls.
 // BT_attr* stays with Better Tasks: a Done drop asks Better Tasks to complete the task when it is loaded.
 
-import { rewriteHighlightTag } from "./highlight.js";
+import { HIGHLIGHT_COLORS, rewriteHighlightTag } from "./highlight.js";
 import { columnNameOk, planAttrCell, tableRows } from "./table.js";
 
 export const TODO_FIELD = "To do";
@@ -115,6 +115,8 @@ export function planKanbanMove({ field, column, row } = {}) {
     const targetString = row.targetString;
     if (!targetUid || typeof targetString !== "string" || targetString === "") return null;
     if (row.highlightColor === column) return null;
+    // Lanes outside the seven colours would rewrite nothing: an empty undo step.
+    if (!HIGHLIGHT_COLORS.includes(column)) return null;
     return { op: "string", uid: targetUid, string: rewriteHighlightTag(targetString, column) };
   }
   if (!columnNameOk(field)) return null;

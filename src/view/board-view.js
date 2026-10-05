@@ -21,7 +21,7 @@ import { chipsForPdf } from "../model/pdf-chips.js";
 import { expandDateHighlights, highlightRows, placeHighlights } from "../model/highlight-pick.js";
 import { isDailyTitle } from "../model/library.js";
 import { highlightLensTag, lensBright, lensCatalog, tagsForCard } from "../model/lens.js";
-import { HALO_PULL, company, headerText, readHaloPull } from "../model/halo.js";
+import { HALO_PULL_LIGHT, company, haloRefs, headerText, readHaloPull } from "../model/halo.js";
 import { openHaloPopover } from "./halo-pop.js";
 import { openWhyPopover } from "./why-pop.js";
 import { leavesBoardPointer } from "./overlay-hit.js";
@@ -61,6 +61,7 @@ import { createInteractions } from "./interactions.js";
 import { openPagePicker } from "./board-picker.js";
 import { createItemRenderer, isTextEntryTarget, pageBodyWantsWheel, syncBoardHighlighter } from "./cards.js";
 import { openViewDialog } from "./view-dialog.js";
+import { viewMapModel } from "./minimap-svg.js";
 import { openRegionDeleteDialog } from "./region-delete-dialog.js";
 import { imageRegionRows, regionDeleteCopy, regionRefCount, renameRegionCaption } from "../model/region-menu.js";
 import { boardKeyIsOutside } from "./offscreen.js";
@@ -286,32 +287,33 @@ function createTimers() {
 
 const ANNOTATE_TOAST = "Drop the image into the drawing";
 
-// Survives the board unmount that follows RoamPlexus.open.
+// Survives the board unmount that follows RoamPlexus.open, so it is not tied to one view. The extension's
+// unload calls clearPinnedToast(), which drops the node and its timer.
+let pinned = null;
+
+export function clearPinnedToast() {
+  const entry = pinned;
+  pinned = null;
+  if (!entry) return;
+  try { entry.cancel?.(); } catch { /* timer already fired */ }
+  try { entry.node.remove(); } catch { /* already gone */ }
+}
+
 export function pinAnnotateToast(doc, win = globalThis) {
   const body = doc?.body;
   if (!body || typeof doc.createElement !== "function") return;
+  clearPinnedToast();
   try { body.querySelector(".pxd-toast--pin")?.remove(); } catch { /* none yet */ }
-  const dark = doc.documentElement?.classList?.contains("bp3-dark") || body.classList?.contains("bp3-dark");
   const node = doc.createElement("div");
-  node.className = "pxd-toast pxd-chrome pxd-toast--pin";
+  node.className = "pxd-toast pxd-toast--pin";
   node.setAttribute("role", "status");
-  node.style.position = "fixed";
-  node.style.zIndex = "100000";
-  node.style.left = "50%";
-  node.style.bottom = "24px";
-  node.style.transform = "translateX(-50%)";
-  node.style.padding = "8px 12px";
-  node.style.borderRadius = "8px";
-  node.style.fontSize = "13px";
-  node.style.border = dark ? "1px solid #8aabb8" : "1px solid #394b59";
-  node.style.background = dark ? "#1c2127" : "#ffffff";
-  node.style.color = dark ? "#f5f8fa" : "#182026";
   const span = doc.createElement("span");
   span.className = "pxd-toast__text";
   span.textContent = ANNOTATE_TOAST;
   node.append(span);
   body.append(node);
-  win.setTimeout?.(() => { try { node.remove(); } catch { /* already gone */ } }, 6000);
+  const id = win.setTimeout?.(() => { if (pinned?.node === node) pinned = null; try { node.remove(); } catch { /* already gone */ } }, 6000);
+  pinned = { node, cancel: () => win.clearTimeout?.(id) };
 }
 
 export function isDarkHost(root, doc = globalThis.document) {
@@ -349,6 +351,9 @@ export function pdfEscapeAction({ live, fullscreen } = {}) {
   if (live) return "end-interact";
   return "pass";
 }
+
+// Top-level blocks have the page as parent and no string, so the parent string defaults to "".
+export const CONTEXTS_QUERY = "[:find ?u ?s ?pt ?t ?ps :in $ ?uid :where [?c :block/uid ?uid] [?b :block/refs ?c] [?b :block/uid ?u] [?b :block/string ?s] [?b :create/time ?t] [?b :block/page ?pg] [?pg :node/title ?pt] [?b :block/parents ?p] [?p :block/children ?b] [(get-else $ ?p :block/string \"\") ?ps]]";
 
 export const PDF_HIGHLIGHTS_LABEL = "Add highlights…";
 
@@ -607,7 +612,7 @@ export function openHighlightDialog(doc, { rows, origin, onPlace, onClose } = {}
       text.className = "pxd-hl-row__text";
       text.textContent = row.snippet || row.uid || "";
       const page = doc.createElement("span");
-      page.className = "pxd-hl-page";
+      page.className = "pxd-hl-rowpage";
       page.textContent = row.page == null ? "" : `p. ${row.page}`;
       line.append(box, bar, text, page);
       list.append(line);
@@ -616,7 +621,7 @@ export function openHighlightDialog(doc, { rows, origin, onPlace, onClose } = {}
   const place = (mode) => {
     const result = placeHighlights(rowsState, { mode, origin: at });
     if (!result.items.length) return;
-    onPlace?.(result.items);
+    onPlace?.(result.items, { omitted: result.omitted || 0 });
     close();
   };
   colorSel.addEventListener("change", paint);
@@ -780,12 +785,19 @@ export function mountBoardView({
   // The dark/light class follows the host: decided at mount, then again whenever the host flips (Roam's auto theme
   // follows the OS, and the theme extensions toggle their marker classes on <html>/<body>).
   let repaintItemStyles = () => {};
+  let themeKey = null;
   const applyTheme = () => {
     const dark = isDarkHost(mountEl, doc);
     root.classList.toggle("pxd-root--dark", dark);
     root.classList.toggle("pxd-root--light", !dark && isLightHost(mountEl, doc, globalThis.window));
-    syncBoardHighlighter(doc, root);
+    const hl = syncBoardHighlighter(doc, root);
+    // Cards repaint only when the dark flag or the highlighter flips, not on every html/body class change.
+    const key = `${dark}|${hl}`;
+    const flipped = themeKey !== null && key !== themeKey;
+    themeKey = key;
+    if (!flipped || disposed) return;
     repaintItemStyles();
+    scheduleContent();
   };
   applyTheme();
 
@@ -827,11 +839,14 @@ export function mountBoardView({
   let linkMode = setting("graph-links", "all");
   let suggestMode = "off";
   let suggestWarned = false;
+  let suggestSelKey = "";
   const suggestDismissed = new Set();
   let whyPop = null;
   let contextsDrawer = null;
   let memoryLane = null;
   let lanePreview = false;
+  let laneMarks = null; // { future, fresh } sets from the last lane frame; re-applied after every card re-sync
+  let lanePreviewLayout = null;
   let linksMenu = null;
   let selection = { items: [], edge: null, link: null };
   let liveRects = null; // Map override during move/resize preview
@@ -974,10 +989,23 @@ export function mountBoardView({
     return merged;
   };
   // Paint and hit-test. Stored rects stay on `rects()` so a collapse never writes section h.
+  let itemsReady = false;
   const paintRects = () => {
     const b = board();
     const base = effectiveRects();
-    return b ? displayRects(b, base) : base;
+    const shown = b ? displayRects(b, base) : base;
+    if (!b || !itemsReady) return shown;
+    // An open PDF reader is drawn larger than its model rect; arrows attach at the reader's border.
+    let out = shown;
+    for (const item of b.items.values()) {
+      if (item.kind !== "pdf") continue;
+      const drawn = itemsR.drawnRect?.(item.uid);
+      const own = shown.get(item.uid);
+      if (!drawn || !own || (drawn.w === own.w && drawn.h === own.h)) continue;
+      if (out === shown) out = new Map(shown);
+      out.set(item.uid, drawn);
+    }
+    return out;
   };
 
   const measure = () => {
@@ -1028,6 +1056,7 @@ export function mountBoardView({
     onPdfPulse: (uids) => { for (const uid of uids || []) pulseItem(uid); },
     onPdfOpen: (uid, page) => { void itemsR.openPdfAt?.(uid, page); },
   });
+  itemsReady = true;
   repaintItemStyles = () => { if (!disposed) itemsR.repaintStyles(); };
   const taskPop = createTaskPopover({ doc, root, bt, toast: (m) => chrome.toast.show(m) });
   const taskDone = createTaskCompleter({ doc, getRoot: () => root, host, bt, win });
@@ -1589,6 +1618,7 @@ export function mountBoardView({
     }
   };
   const refreshSuggest = () => {
+    suggestSelKey = selection.items.join("|");
     const b = board();
     if (!b || suggestMode === "off") { edgesR.setSuggest?.([]); return; }
     const cards = [];
@@ -1631,19 +1661,22 @@ export function mountBoardView({
   const openSuggestAction = (line) => {
     closeLinksMenu();
     const menu = doc.createElement("div");
-    menu.className = "pxd-linksmenu";
+    menu.className = "pxd-linksmenu pxd-root";
     menu.style.position = "fixed";
-    menu.style.left = "24px";
-    menu.style.top = "24px";
+    const box = line?.getBoundingClientRect?.() || { left: 8, bottom: 40 };
+    menu.style.left = `${box.left || 8}px`;
+    menu.style.top = `${(box.bottom || 40) + 4}px`;
+    menu.style.height = "auto";
     const add = (label, run) => {
       const button = doc.createElement("button");
       button.type = "button";
+      button.className = "pxd-linksmenu__row";
       button.textContent = label;
       button.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
         run();
-        menu.remove();
+        closeLinksMenu();
       });
       menu.append(button);
     };
@@ -1662,7 +1695,7 @@ export function mountBoardView({
       if (next) void session.setString?.(item.uid, next);
     });
     add("Dismiss", () => { if (key) suggestDismissed.add(key); refreshSuggest(); });
-    doc.body.append(menu);
+    (doc.body || root).append(menu);
     linksMenu = menu;
   };
   const openWhy = (uid, focus = "label") => {
@@ -1670,7 +1703,15 @@ export function mountBoardView({
     if (!edge) return;
     whyPop?.close();
     const labelEl = edgesR.labelEl?.(uid);
-    const box = labelEl?.getBoundingClientRect?.() || { left: 24, top: 24, right: 80, bottom: 48 };
+    let box = labelEl?.getBoundingClientRect?.();
+    if (!box || !(box.width || box.height)) {
+      // An empty label is display:none and measures zero: anchor on the edge midpoint instead.
+      const mid = edgesR.geometryOf?.(uid)?.mid;
+      const p = mid ? worldToScreen(vp, mid) : { x: 24, y: 24 };
+      const left = rootRect.left + p.x;
+      const top = rootRect.top + p.y;
+      box = { left, top, right: left + 56, bottom: top + 24 };
+    }
     whyPop = openWhyPopover({
       doc,
       anchor: box,
@@ -1685,7 +1726,7 @@ export function mountBoardView({
     contextsDrawer?.close();
     let raw = [];
     try {
-      raw = host?.q?.("[:find ?u ?s ?pt ?t ?ps :in $ ?uid :where [?c :block/uid ?uid] [?b :block/refs ?c] [?b :block/uid ?u] [?b :block/string ?s] [?b :create/time ?t] [?b :block/page ?pg] [?pg :node/title ?pt] [?b :block/parents ?p] [?p :block/children ?b] [?p :block/string ?ps]]", uid) || [];
+      raw = host?.q?.(CONTEXTS_QUERY, uid) || [];
     } catch { raw = []; }
     const rows = raw.map((row) => ({ uid: row[0], time: Number(row[3]), crumb: breadcrumb(row[2], row[4]), snippet: snippetOf(row[1]) }));
     contextsDrawer = mountContextsDrawer({
@@ -1698,8 +1739,33 @@ export function mountBoardView({
       },
     });
   };
+  const lanePaintRects = () => {
+    const base = paintRects();
+    if (!lanePreviewLayout) return base;
+    const merged = new Map(base);
+    for (const [uid, rect] of lanePreviewLayout) {
+      const own = base.get(uid);
+      merged.set(uid, { x: rect.x, y: rect.y, w: Number.isFinite(rect.w) ? rect.w : own?.w, h: Number.isFinite(rect.h) ? rect.h : own?.h });
+    }
+    return merged;
+  };
+  const updateLaneEdges = (b) => edgesR.update({ board: b, edgeUids: [...b.edges.keys()], rects: lanePaintRects(), zoom: vp.zoom });
+  const applyLaneMarks = () => {
+    const b = board();
+    if (!b) return;
+    for (const item of b.items.values()) {
+      const el = itemsR.shellOf(item.uid);
+      if (!el) continue;
+      el.classList.toggle("pxd-item--future", Boolean(laneMarks?.future.has(item.uid)));
+      el.classList.toggle("pxd-item--fresh", Boolean(laneMarks?.fresh.has(item.uid)));
+      const moved = lanePreviewLayout?.get(item.uid);
+      if (moved) el.style.transform = `translate(${moved.x}px, ${moved.y}px)`;
+    }
+  };
   const clearLaneMarks = () => {
     const b = board();
+    laneMarks = null;
+    lanePreviewLayout = null;
     for (const item of b?.items.values() || []) {
       const el = itemsR.shellOf(item.uid);
       el?.classList.remove("pxd-item--future", "pxd-item--fresh");
@@ -1730,23 +1796,19 @@ export function mountBoardView({
       snapshots: b.snapshots || [],
       motion: setting("motion", "full"),
       onFrame(frame) {
-        const future = new Set(frame.future);
-        const fresh = new Set(frame.fresh);
-        for (const item of b.items.values()) {
-          const el = itemsR.shellOf(item.uid);
-          if (!el) continue;
-          el.classList.toggle("pxd-item--future", future.has(item.uid));
-          el.classList.toggle("pxd-item--fresh", fresh.has(item.uid));
-        }
+        const live = board();
+        if (!live) return;
+        laneMarks = { future: new Set(frame.future), fresh: new Set(frame.fresh) };
+        applyLaneMarks();
         edgesR.setLaneHidden?.(frame.hiddenEdges);
-        edgesR.update({ board: b, edgeUids: [...b.edges.keys()], rects: paintRects(), zoom: vp.zoom });
+        updateLaneEdges(live);
       },
       onPreview(preview) {
+        const live = board();
         lanePreview = true;
-        for (const [uid, rect] of preview.layout) {
-          const el = itemsR.shellOf(uid);
-          if (el) el.style.transform = `translate(${rect.x}px, ${rect.y}px)`;
-        }
+        lanePreviewLayout = preview.layout;
+        applyLaneMarks();
+        if (live) updateLaneEdges(live);
       },
     });
   };
@@ -2344,6 +2406,7 @@ export function mountBoardView({
           onCancel: () => closeRegionDelete(),
         });
         root.append(regionDelete.el);
+        regionDelete.focus?.();
         break;
       }
       case "new-card": void createAt("card", world); break;
@@ -2528,7 +2591,7 @@ export function mountBoardView({
           w: live?.w ?? item.w,
           h: live?.h ?? item.h,
         }, boardUid);
-        // Create, then the ref card, then the edge. No undo group. open only — never whenOpen.
+        // Create the drawing, then the ref card and the edge as one undo group. open only — never whenOpen.
         void (async () => {
           let made = null;
           try { made = await api.create(plan.create); } catch { return; }
@@ -2536,16 +2599,19 @@ export function mountBoardView({
           const drawingUid = typeof made === "string" ? made : made?.uid || null;
           const ref = drawingRefString(drawingUid);
           if (!drawingUid || !ref) return;
-          const placed = await Promise.resolve(session.addRefCards?.([{
-            string: ref,
-            x: plan.card.x,
-            y: plan.card.y,
-            w: plan.card.w,
-            h: plan.card.h,
-          }]));
-          if (disposed) return;
-          const refUid = Array.isArray(placed) ? placed[0] : placed || null;
-          if (refUid) await Promise.resolve(session.addEdge?.({ from: refUid, to: plan.edge.to, label: plan.edge.label }));
+          const link = async () => {
+            const placed = await Promise.resolve(session.addRefCards?.([{
+              string: ref,
+              x: plan.card.x,
+              y: plan.card.y,
+              w: plan.card.w,
+              h: plan.card.h,
+            }]));
+            if (disposed) return;
+            const refUid = Array.isArray(placed) ? placed[0] : placed || null;
+            if (refUid) await Promise.resolve(session.addEdge?.({ from: refUid, to: plan.edge.to, label: plan.edge.label }));
+          };
+          await (host?.group ? host.group(link) : link());
           if (disposed) return;
           // openBlock leaves the board, so the board toast goes with it. Pin one on the page first.
           pinAnnotateToast(doc);
@@ -3058,13 +3124,8 @@ export function mountBoardView({
       rememberWidth: (w) => { try { storage?.setItem?.(PANEL_WIDTH_KEY, String(w)); } catch { /* private mode */ } },
       listViews: () => {
         const b = board();
-        const world = rects();
-        const items = [];
-        if (b) for (const item of b.items.values()) {
-          const rect = world.get(item.uid);
-          if (rect) items.push(rect);
-        }
-        return (b?.views || []).map((view) => ({ ...view, items }));
+        // Each map draws only the cards that meet its frame, 40 at most (the same filter as the region preview).
+        return (b?.views || []).map((view) => ({ ...view, items: viewMapModel(b, view.v, view.ids).cards.map((card) => card.rect) }));
       },
       goView: (uid) => goToView(uid),
       copyView: (uid) => {
@@ -3072,7 +3133,7 @@ export function mountBoardView({
       },
       renameView: (uid) => renameSavedView(uid),
       deleteView: (uid) => {
-        Promise.resolve(session.deleteView?.(uid)).then(() => { if (!disposed) panel.refreshBoards?.(); }).catch(() => {});
+        Promise.resolve(session.deleteView?.(uid)).then(() => { if (!disposed) panel.refreshViews?.(); }).catch(() => {});
       },
       contextLine: (subject) => contextLineFor(subject),
     },
@@ -3086,6 +3147,20 @@ export function mountBoardView({
   const closeRegionDelete = () => {
     regionDelete?.close();
     regionDelete = null;
+  };
+  let cutting = false; // a cut carries its regions in the clip snapshot, so it does not ask
+  const regionsLostBy = (uids) => {
+    const b = board();
+    let count = 0;
+    let first = null;
+    for (const uid of uids || []) {
+      const item = b?.items.get(uid);
+      if (item?.kind !== "image") continue;
+      const rows = imageRegionRows(item.content);
+      count += rows.length;
+      first = first || rows[0]?.uid || null;
+    }
+    return { count, first };
   };
   const viewSize = () => (size.width > 0 && size.height > 0 ? size : { width: 800, height: 560 });
   const sectionCaptions = () => {
@@ -3119,7 +3194,7 @@ export function mountBoardView({
     if (copy && pending?.uid) {
       try { globalThis.navigator?.clipboard?.writeText?.(`((${pending.uid}))`); } catch { /* clipboard is a manual check */ }
     }
-    Promise.resolve(pending).then(() => { if (!disposed) panel.refreshBoards?.(); }).catch(() => {});
+    Promise.resolve(pending).then(() => { if (!disposed) panel.refreshViews?.(); }).catch(() => {});
   };
   const saveCameraView = () => {
     const b = board();
@@ -3153,7 +3228,7 @@ export function mountBoardView({
       caption: view.caption,
       showCopy: false,
       onSave: ({ caption }) => {
-        Promise.resolve(session.renameView?.(uid, caption)).then(() => { if (!disposed) panel.refreshBoards?.(); }).catch(() => {});
+        Promise.resolve(session.renameView?.(uid, caption)).then(() => { if (!disposed) panel.refreshViews?.(); }).catch(() => {});
       },
     });
   };
@@ -3601,6 +3676,7 @@ export function mountBoardView({
         noteOverlayClosed();
         return true;
       }
+      if (regionDelete) { closeRegionDelete(); noteOverlayClosed(); return true; }
       if (!laterCtl.isOpen()) return false;
       laterCtl.close();
       noteOverlayClosed();
@@ -3664,7 +3740,22 @@ export function mountBoardView({
     historyBack: () => onHistoryBack?.(),
     historyForward: () => onHistoryForward?.(),
     wrapInSection: (uids) => session.wrapInSection?.(uids),
-    deleteItems: (uids, opts) => session.deleteItems?.(uids, opts),
+    deleteItems: (uids, opts) => {
+      const lost = cutting ? { count: 0 } : regionsLostBy(uids);
+      if (!lost.count) return session.deleteItems?.(uids, opts);
+      const noun = lost.count === 1 ? "region" : "regions";
+      return new Promise((resolve) => {
+        closeRegionDelete();
+        regionDelete = openRegionDeleteDialog(doc, {
+          message: `This image has ${lost.count} ${noun}. Deleting it breaks every reference to ${lost.count === 1 ? "it" : "them"}. Delete anyway?`,
+          onDelete: () => { closeRegionDelete(); resolve(session.deleteItems?.(uids, opts)); },
+          onOpen: () => { try { host?.openInSidebar?.(lost.first, "mentions"); } catch { /* sidebar missing */ } },
+          onCancel: () => { closeRegionDelete(); resolve(null); },
+        });
+        root.append(regionDelete.el);
+        regionDelete.focus?.();
+      });
+    },
     deleteEdges: (uids) => session.deleteEdges?.(uids),
     addEdge: (spec) => Promise.resolve(session.addEdge?.(spec)).then((uid) => {
       if (uid && setting("why-prompt", false) === true) openWhy(uid, "why");
@@ -4070,7 +4161,7 @@ export function mountBoardView({
     const uid = match[1];
     let string = null;
     try { string = host?.blockString?.(uid); } catch { string = null; }
-    if (typeof string !== "string") return null;
+    if (typeof string !== "string" || !isDateBlockString(string)) return null;
     let children = [];
     try {
       const tree = host?.pdfHighlightTree?.(uid);
@@ -4104,8 +4195,9 @@ export function mountBoardView({
     const node = openHighlightDialog(doc, {
       rows,
       origin,
-      onPlace: (items) => {
+      onPlace: (items, { omitted = 0 } = {}) => {
         if (!items?.length) return;
+        if (omitted > 0) toast(`Placed ${items.length}. ${omitted} left: run Add highlights again.`);
         const made = session.addRefCards?.(items);
         Promise.resolve(made).then((uids) => {
           if (!disposed && Array.isArray(uids) && uids.length) ctl.select(uids);
@@ -4129,10 +4221,7 @@ export function mountBoardView({
       const shell = itemsR.shellOf?.(item.uid);
       if (!shell || shell.querySelector?.(".pxd-pdf-highlights")) continue;
       const btn = pdfHighlightButton(doc, () => openHighlightPicker(item, btn));
-      btn.style.position = "absolute";
-      btn.style.top = "4px";
-      btn.style.right = "8px";
-      btn.style.zIndex = "4";
+      btn.classList.add("pxd-hl-add");
       shell.append(btn);
     }
   };
@@ -4279,7 +4368,8 @@ export function mountBoardView({
     }
     // Nothing selected and the key is outside every board: do not read the model.
     // Escape still ends PDF interact, or stays with native fullscreen, when the reader is up.
-    if (boardKeyIsOutside(event.target, selection.items.length > 0)) {
+    // A fullscreen board, or one under the pointer, still owns a key whose focus sits on the body.
+    if (!isFullscreen && pointerBoard !== root && boardKeyIsOutside(event.target, selection.items.length > 0)) {
       const overlay = menu.isOpen() || shortcutSheet.isOpen() || chrome.popover.isOpen() || chrome.changelog?.isOpen() || blockEdit;
       if (!overlay && consumePdfEscape()) return;
       return;
@@ -4444,7 +4534,10 @@ export function mountBoardView({
         lastPayload = payload;
         return payload;
       },
-      cutDone: () => { ctl.deleteSelection(true); },
+      cutDone: () => {
+        cutting = true;
+        try { ctl.deleteSelection(true); } finally { cutting = false; }
+      },
       pastePlexus: (data, opts) => pastePlexus(data, opts),
       pasteText: (entries) => pasteEntries(entries),
       pasteImages: (files) => { void pasteImages(files); },
@@ -4561,6 +4654,7 @@ export function mountBoardView({
         structural: dirty.structural,
         view: size.width ? visibleWorldRect(vp, size, CULL_MARGIN) : null,
       });
+      if (laneMarks || lanePreviewLayout) applyLaneMarks();
       ensurePdfHighlightButtons();
       syncEmptyHint(emptyHint, b);
       itemsChanged = true;
@@ -4582,7 +4676,9 @@ export function mountBoardView({
       if (itemsMoveEdges) {
         const links = paintedLinks();
         edgesR.update({ board: b, edgeUids: edgesTouching(b, dirty.items), rects: shown, zoom: vp.zoom, linkKeys: new Set(links.map((l) => l.key)), links });
+        if (suggestMode !== "off") refreshSuggest();
       }
+      if (lanePreviewLayout) updateLaneEdges(b);
     }
     if (dirty.viewport) {
       world.style.transform = `translate(${vp.x}px, ${vp.y}px) scale(${vp.zoom})`;
@@ -4613,6 +4709,7 @@ export function mountBoardView({
     if (dirty.selection || itemsChanged) {
       itemsR.setSelection(selection.items);
       edgesR.setSelection({ edge: selection.edge, link: selection.link });
+      if (suggestMode !== "off" && selection.items.join("|") !== suggestSelKey) refreshSuggest();
       if (!gesturing && !itemsR.isEditing()) showCtx(); else chrome.ctx.hide();
       syncProps();
       if (lensTag && dirty.structural) rebuildLens();
@@ -4699,8 +4796,9 @@ export function mountBoardView({
     const job = (async () => {
       try {
       let pulled = null;
-      try { pulled = host?.pullEntity?.(HALO_PULL, uid) || null; } catch { pulled = null; }
+      try { pulled = host?.pullEntity?.(HALO_PULL_LIGHT, uid) || null; } catch { pulled = null; }
       const read = readHaloPull(pulled);
+      const refs = haloRefs(typeof host?.q === "function" ? host.q.bind(host) : null, uid);
       const b = board();
       const cardUids = [];
       if (b) for (const item of b.items.values()) {
@@ -4730,7 +4828,8 @@ export function mountBoardView({
         board: b?.title || "",
         section: sectionTitle(origin),
         with: company(rows, uid).map((id) => ({ uid: id, label: cardLabel(id) })),
-        refTimes: read.refTimes,
+        refTimes: refs.times,
+        refTotal: refs.total,
         boards: boardCount(target),
       };
       haloCache.set(uid, { at: Date.now(), model });

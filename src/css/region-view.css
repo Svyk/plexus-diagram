@@ -1,6 +1,6 @@
 /* REG-7. Inline view map: strokes only. The highlighted card is an accent stroke plus a 12% tint. */
 
-.pxd-viewmap {
+.pxd-viewmap.pxd-viewmap {
   display: inline-block;
   max-width: none;
   vertical-align: top;
@@ -9,16 +9,17 @@
   color: #1f2937;
 }
 
-.bp3-dark .pxd-viewmap,
-body.bt-theme-dark .pxd-viewmap,
-.rm-dark-theme .pxd-viewmap,
-body.roam-body.dark .pxd-viewmap,
-.pxd-root--dark .pxd-viewmap {
+.bp3-dark .pxd-viewmap.pxd-viewmap,
+body.bt-theme-dark .pxd-viewmap.pxd-viewmap,
+.rm-dark-theme .pxd-viewmap.pxd-viewmap,
+body.roam-body.dark .pxd-viewmap.pxd-viewmap,
+.pxd-root--dark .pxd-viewmap.pxd-viewmap {
   color: #fff;
   background: transparent;
 }
 
-.pxd-viewmap rect {
+.pxd-viewmap .pxd-viewmap__card--hi,
+.pxd-viewmap .pxd-viewmap__card--muted {
   fill: none;
   stroke: currentColor;
   stroke-width: 1.5px;

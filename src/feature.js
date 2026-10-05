@@ -1,7 +1,7 @@
 import pkg from "../package.json" with { type: "json" };
 import { createHost } from "./host/roam.js";
 import { acquireSession as acquireSessionDefault } from "./session.js";
-import { mountBoardView } from "./view/board-view.js";
+import { clearPinnedToast, mountBoardView } from "./view/board-view.js";
 import { isTextEntryTarget } from "./view/cards.js";
 import { assignDeepLink, hashFromUrl, pageUidFromHash, pxdTarget } from "./model/deeplink.js";
 import { openAddToBoard } from "./view/board-picker.js";
@@ -14,12 +14,12 @@ import { createCardCache } from "./model/card-cache.js";
 import { imageSrc } from "./model/export.js";
 import { parseRegion } from "./model/regions.js";
 import { classifyString, parseBoardTitle, readPlexus, UNTITLED_BOARD } from "./model/schema.js";
-import { eachRegionButton, openRegionCrop, openRegionView, regionButtonUid } from "./view/region-crop.js";
+import { eachRegionButton, openRegionCrop, openRegionView, regionButtonUid, resetCropUrls } from "./view/region-crop.js";
 import { chromeObstacles } from "./view/avoid.js";
 import { holeRect, previewImageBox, setCameraFromView } from "./view/region-hover-geom.js";
 import { drawViewMap, minimapSvg, viewMapModel } from "./view/minimap-svg.js";
 import { boundsOf, buildBoard, worldRects } from "./model/board.js";
-import { boardBounds, createPublicApi, fitThumbSize, installPublicApi, thumbStroke, uninstallPublicApi } from "./model/public-api.js";
+import { boardBounds, createPublicApi, emitPublicEvent, fitThumbSize, installPublicApi, thumbStroke, uninstallPublicApi } from "./model/public-api.js";
 import { motionProfile, resolveMotion } from "./view/motion.js";
 import { createShowStash, pickCameraMount, resolveRegionTarget } from "./view/region-open.js";
 import { tooltipDelay } from "./view/tooltip.js";
@@ -154,7 +154,15 @@ export async function installPlexusDiagram({
     try { closeOpenWhyPopovers(); } catch { /* already gone */ }
     const nodes = doc?.querySelectorAll?.("[class*='pxd-']");
     for (const el of [...(nodes || [])]) {
-      try { el.remove(); } catch { /* already gone */ }
+      try {
+        const classes = String(el.getAttribute?.("class") ?? el.className ?? "").split(/\s+/).filter(Boolean);
+        // A Roam node (a second diagram in an embed) only carries our marker classes. React owns the node.
+        if (classes.some((name) => /^(rm-|roam-)/.test(name))) {
+          for (const name of classes) if (name.startsWith("pxd-")) el.classList.remove(name);
+        } else {
+          el.remove();
+        }
+      } catch { /* already gone */ }
     }
   });
 
@@ -185,6 +193,8 @@ export async function installPlexusDiagram({
   const cardCache = createCardCache();
   const boardChips = createBoardChips({ doc, cache: cardCache });
   const pageUidByTitle = new Map();
+  const previewBoards = new Map(); // board uid -> built board for the chip hover popover; dropped when that board changes
+  let publicEmit = () => {};
   const noteCards = (board) => {
     if (!board?.uid || !board.items) return;
     const children = [];
@@ -197,13 +207,14 @@ export async function installPlexusDiagram({
         if (pageUidByTitle.has(title)) target = pageUidByTitle.get(title);
         else {
           try { target = host.pageUid?.(title) || ""; } catch { target = ""; }
-          pageUidByTitle.set(title, target);
+          if (target) pageUidByTitle.set(title, target);
         }
       }
       children.push({ uid: item.uid, target, string: typeof item.string === "string" ? item.string : "" });
     }
     const title = board.title || parseBoardTitle(board.string) || "";
     cardCache.setBoard(board.uid, title, children);
+    previewBoards.delete(board.uid);
   };
   const cardChips = createCardChips({
     doc,
@@ -217,8 +228,14 @@ export async function installPlexusDiagram({
     if (board) {
       relChips.noteBoard(board);
       noteCards(board);
+      const targets = [];
+      for (const item of board.items?.values?.() || []) {
+        if (item?.type === "card" && item.target?.kind === "block" && item.target.uid) targets.push(item.target.uid);
+      }
+      boardChips.scanUids(targets);
+    } else {
+      boardChips.scan(doc?.body);
     }
-    boardChips.scan(doc?.body);
     cardChips.scan(doc?.body);
     relChips.scan(doc?.body);
   };
@@ -263,7 +280,18 @@ export async function installPlexusDiagram({
   lifecycle.add(() => cardChips.dispose());
   lifecycle.add(() => resurface.dispose());
   const editSeen = new Map();
+  lifecycle.add(() => previewBoards.clear());
+  lifecycle.add(() => clearPinnedToast());
   let cacheLoadMs = null;
+  // A board that left the enhanced set or was deleted takes its chips with it.
+  const dropBoardCards = (uid) => {
+    if (!uid) return;
+    cardCache.setBoard(uid, "", []);
+    previewBoards.delete(uid);
+    editSeen.delete(uid);
+    boardChips.scan(doc?.body);
+    cardChips.scan(doc?.body);
+  };
   function refreshCardCache() {
     const started = Date.now();
     const uids = [...guardUids];
@@ -282,14 +310,17 @@ export async function installPlexusDiagram({
       const stamp = next.has(uid) ? next.get(uid) : null;
       if (editSeen.has(uid) && editSeen.get(uid) === stamp) continue;
       due.push(uid);
-      editSeen.set(uid, stamp);
     }
     for (const uid of due) {
       let board = null;
+      let read = true;
       try {
         const pulled = host.pullBoard?.(uid);
         board = pulled ? buildBoard(pulled) : null;
-      } catch { board = null; }
+      } catch { board = null; read = false; }
+      // The stamp is remembered only after a pull that did not throw, so a failed read is tried again.
+      if (read) editSeen.set(uid, next.has(uid) ? next.get(uid) : null);
+      previewBoards.delete(uid);
       if (board?.uid) noteCards(board);
       else cardCache.setBoard(uid, "", []);
     }
@@ -305,11 +336,16 @@ export async function installPlexusDiagram({
     for (const rec of mounts.values()) {
       if (rec.session?.board?.uid === boardUid) board = rec.session.board;
     }
+    if (!board) board = previewBoards.get(boardUid) || null;
     if (!board) {
       try {
         const pulled = host.pullBoard?.(boardUid);
         board = pulled ? buildBoard(pulled) : null;
       } catch { board = null; }
+      if (board) {
+        previewBoards.set(boardUid, board);
+        while (previewBoards.size > 12) previewBoards.delete(previewBoards.keys().next().value);
+      }
     }
     const title = board?.title || cardCache.titleOf(boardUid);
     if (!board) return { title, section: "", svg: null };
@@ -338,7 +374,7 @@ export async function installPlexusDiagram({
     }
     return { title, section, svg };
   }
-  const regionCrops = new Set();
+  const regionCrops = new Map(); // region button -> its destroy
   const showStash = createShowStash();
   let showWhere = "main";
   const viewBoards = new Map();
@@ -354,8 +390,9 @@ export async function installPlexusDiagram({
     outlineMark = null;
     toastOff();
     toastOff = () => {};
-    for (const drop of [...regionCrops]) drop();
+    for (const drop of [...regionCrops.values()]) drop();
     regionCrops.clear();
+    resetCropUrls();
   });
 
   const active = () => !stopped && settings[SETTING_IDS.enabled] !== false
@@ -406,6 +443,7 @@ export async function installPlexusDiagram({
     autoCache.delete(uid);
     virtualUids.delete(uid);
     syncGuard();
+    dropBoardCards(uid);
   }
 
   // Auto-enhance decision for a diagram that is not a v2 board: "virtual", "convert", or null. Read once per TTL.
@@ -578,6 +616,7 @@ export async function installPlexusDiagram({
   function watchRec(rec) {
     const session = rec.session;
     const offGone = session.on?.("gone", () => {
+      dropBoardCards(session.board?.uid || currentUid(rec));
       if (currentUid(rec) !== rec.uid) popSilent(rec);
       else unmount(rec);
     });
@@ -585,6 +624,7 @@ export async function installPlexusDiagram({
       if (diff?.structural && session.board) {
         relChips.noteBoard(session.board);
         publishCards(session.board);
+        publicEmit("change", { boardUid: session.board.uid });
       }
       // Restore (or an external props edit / undo) removed :plexus: give the native diagram back.
       if (!session.board || session.board.enhanced !== false) return;
@@ -767,6 +807,7 @@ export async function installPlexusDiagram({
       ensureViewportWatch();
       recByMount.set(mountEl, rec);
       viewportWatch?.observe(mountEl);
+      publicEmit("mount", { boardUid: uid });
       return rec;
     }
     try {
@@ -792,6 +833,7 @@ export async function installPlexusDiagram({
     ensureViewportWatch();
     recByMount.set(mountEl, rec);
     viewportWatch?.observe(mountEl);
+    publicEmit("mount", { boardUid: uid });
     return rec;
   }
 
@@ -879,6 +921,7 @@ export async function installPlexusDiagram({
     recByMount.delete(rec.mountEl);
     mounts.delete(rec.native);
     const boardUid = rec.session?.board?.uid || rec.uid;
+    publicEmit("unmount", { boardUid });
     let still = false;
     for (const other of mounts.values()) {
       if (other.session?.board?.uid === boardUid) still = true;
@@ -1029,6 +1072,8 @@ export async function installPlexusDiagram({
     const entry = showStash.peek();
     if (!entry || !rec?.view) return;
     if (!allowShowMount(rec)) return;
+    // One stash entry is applied once per mount. Later wakes and hash changes must not snap the camera back.
+    if (rec.shown === entry) return;
     let text = "";
     try { text = host.blockString?.(entry.uid) || ""; } catch { return; }
     const region = parseRegion(text);
@@ -1038,6 +1083,7 @@ export async function installPlexusDiagram({
       try { hit = host.showOnBoard?.(region.drawingUid) || null; } catch { hit = null; }
       if (!hit?.boardUid || !hit.cardUid) return;
       if (hit.boardUid !== currentUid(rec) && hit.boardUid !== rec.uid) return;
+      rec.shown = entry;
       try { rec.view.applyShow?.({ kind: "img", f: region.f, cardUid: hit.cardUid }); } catch { /* view gone */ }
       return;
     }
@@ -1046,6 +1092,7 @@ export async function installPlexusDiagram({
     if (boardUid !== currentUid(rec)) {
       const trail = seedCrumbs(boardUid);
       if (trail[0]?.uid === rec.uid && trail.length > 1) {
+        rec.shown = entry;
         visit(rec, trail);
         queueMicrotask(() => {
           if (stopped || mounts.get(rec.native) !== rec) return;
@@ -1057,6 +1104,7 @@ export async function installPlexusDiagram({
       if (rec.uid !== boardUid && currentUid(rec) !== boardUid) return;
     }
     if (currentUid(rec) !== boardUid) return;
+    rec.shown = entry;
     try { rec.view.applyShow?.({ kind: "view", v: region.v, ids: region.ids || [] }); } catch { /* view gone */ }
   }
 
@@ -1364,9 +1412,9 @@ export async function installPlexusDiagram({
       });
     const drop = () => {
       handle.destroy();
-      regionCrops.delete(drop);
+      regionCrops.delete(button);
     };
-    regionCrops.add(drop);
+    regionCrops.set(button, drop);
   }
 
   function scanRegions(node) {
@@ -1400,9 +1448,14 @@ export async function installPlexusDiagram({
     for (const native of [...convertButtons.keys()]) {
       if (native.isConnected === false) dropConvert(native);
     }
+    // Roam re-renders blocks and takes the button with it. Release the crop so its image URL can go.
+    for (const [button, drop] of [...regionCrops]) {
+      if (button.isConnected === false) drop();
+    }
     if (!active()) {
       for (const rec of [...mounts.values()]) unmount(rec);
       for (const native of [...convertButtons.keys()]) dropConvert(native);
+      for (const drop of [...regionCrops.values()]) drop();
       return;
     }
     if (!doc) return;
@@ -1734,24 +1787,32 @@ export async function installPlexusDiagram({
           outlineMark = mountOutlineRegion({
             doc,
             img,
-            onConfirm: ({ frac, caption }) => {
+            onConfirm: async ({ frac, caption }) => {
               outlineMark = null;
               const uid = host.generateUid?.();
               if (!uid) return;
-              try {
-                const pending = globalThis.navigator?.clipboard?.writeText?.(`((${uid}))`);
-                if (pending && typeof pending.catch === "function") pending.catch(() => {});
-              } catch { /* the region write still runs */ }
               let session = null;
+              let made = false;
               try {
                 session = acquireSession(blockUid, { host, settings: liveSettings });
-                session?.addImageRegion?.(blockUid, frac, caption, uid);
-                say(OUTLINE_TOAST.copied);
+                // The ref is copied and the toast shown only once the write has a result.
+                const result = await session?.addImageRegion?.(blockUid, frac, caption, uid);
+                made = result !== null && result !== false;
               } catch (error) {
                 console.warn("[plexus-diagram] Mark image region failed", error);
               } finally {
-                session?.release?.();
+                try { session?.release?.(); } catch { /* already released */ }
               }
+              if (stopped) return;
+              if (!made) {
+                say(OUTLINE_TOAST.failed);
+                return;
+              }
+              try {
+                const pending = globalThis.navigator?.clipboard?.writeText?.(`((${uid}))`);
+                if (pending && typeof pending.catch === "function") pending.catch(() => {});
+              } catch { /* the region is written; the ref can be copied from the block */ }
+              say(OUTLINE_TOAST.copied);
             },
             onCancel: () => { outlineMark = null; },
           });
@@ -1917,16 +1978,8 @@ export async function installPlexusDiagram({
     lifecycle.timeout(() => waitOpenMount(boardUid, sidebar, left - 1, done), 50);
   }
 
-  function pulseCard(rec, cardUid, left) {
-    const root = rec?.view?.root || rec?.mountEl;
-    const shell = root?.querySelector?.(`[data-uid="${cardUid}"]`);
-    if (shell?.classList) { shell.classList.add("pxd-item--pulse"); return; }
-    if (left > 0) lifecycle.timeout(() => pulseCard(rec, cardUid, left - 1), 50);
-  }
-
   function showCard(rec, cardUid) {
     try { rec.view?.focusUid?.(cardUid); } catch { /* view gone */ }
-    pulseCard(rec, cardUid, 20);
   }
 
   function showSavedView(rec, viewUid, left) {
@@ -1992,6 +2045,7 @@ export async function installPlexusDiagram({
     openBoard: (boardUid, opts) => openPublic(boardUid, opts),
     thumbnail: (boardUid, opts) => thumbnailBoard(boardUid, opts),
   });
+  publicEmit = (type, detail) => emitPublicEvent(publicApi, type, detail);
   installPublicApi(publicApi, { win });
 
   const api = {

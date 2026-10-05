@@ -5,6 +5,8 @@ import { placePopover, SCAN_CAP, uidFromElementId } from "./relchips.js";
 
 const SKIP = ".pxd-root, .rm-pdf-container, .rm-search-results, .rm-search";
 const OPT_OUT = "plexus-no-chips";
+const OWN = ".pxd-cardchip-row, .pxd-cardchip, .pxd-cardchip-more, .pxd-cardpop";
+const HOVER_GRACE_MS = 250;
 
 export function chipText(title) {
   const name = String(title || "").trim() || "Untitled board";
@@ -24,17 +26,18 @@ function optedOut(scope) {
   return false;
 }
 
-function blocked(node) {
+// The opt-out answer is read once per article per scan. memo is that scan's Map.
+function blocked(node, memo) {
   if (node?.closest?.(SKIP)) return true;
   const page = articleOf(node);
-  return page ? optedOut(page) : false;
+  if (!page) return false;
+  if (!memo) return optedOut(page);
+  if (!memo.has(page)) memo.set(page, optedOut(page));
+  return memo.get(page);
 }
 
 function nextAfter(node) {
-  const parent = node?.parentElement;
-  if (!parent?.children) return null;
-  const index = parent.children.indexOf(node);
-  return index >= 0 ? parent.children[index + 1] || null : null;
+  return node?.nextElementSibling || null;
 }
 
 export function createCardChips({
@@ -49,7 +52,10 @@ export function createCardChips({
   const rows = new Set();
   let pop = null;
   let timer = null;
+  let closeTimer = null;
   let sweepTimer = null;
+  let off = false;
+  const sigs = new WeakMap(); // page row -> signature of the boards it shows
   let sweepGen = 0;
   const view = () => doc?.defaultView || globalThis;
 
@@ -62,6 +68,8 @@ export function createCardChips({
   const closePop = () => {
     if (timer) view().clearTimeout?.(timer);
     timer = null;
+    if (closeTimer) view().clearTimeout?.(closeTimer);
+    closeTimer = null;
     pop?.remove();
     pop = null;
   };
@@ -118,6 +126,7 @@ export function createCardChips({
 
   const onPointerDown = (event) => {
     const chip = event.target?.closest?.(".pxd-cardchip");
+    if (pop && !chip && !event.target?.closest?.(".pxd-cardpop")) closePop();
     if (chip) {
       event.stopPropagation();
       return;
@@ -145,17 +154,32 @@ export function createCardChips({
   };
 
   const onOver = (event) => {
+    if (pop && event.target?.closest?.(".pxd-cardpop")) {
+      if (closeTimer) view().clearTimeout?.(closeTimer);
+      closeTimer = null;
+      return;
+    }
     const chip = event.target?.closest?.(".pxd-cardchip");
     if (!chip || !chip.classList?.contains("pxd-cardchip")) return;
+    if (closeTimer) view().clearTimeout?.(closeTimer);
+    closeTimer = null;
     if (timer) view().clearTimeout?.(timer);
     timer = view().setTimeout?.(() => showPop(chip), 200);
   };
 
+  // Leaving a chip or the popover closes it after a short grace, so the pointer can cross into the popover.
   const onOut = (event) => {
-    const chip = event.target?.closest?.(".pxd-cardchip");
-    if (!chip) return;
+    const from = event.target?.closest?.(".pxd-cardchip, .pxd-cardpop");
+    if (!from) return;
     if (timer) view().clearTimeout?.(timer);
     timer = null;
+    if (event.relatedTarget?.closest?.(".pxd-cardchip, .pxd-cardpop")) return;
+    if (!pop) return;
+    if (closeTimer) view().clearTimeout?.(closeTimer);
+    closeTimer = view().setTimeout?.(() => {
+      closeTimer = null;
+      closePop();
+    }, HOVER_GRACE_MS);
   };
 
   if (doc?.addEventListener) {
@@ -209,14 +233,15 @@ export function createCardChips({
     }
   };
 
-  const attach = (container) => {
-    if (!container || container.nodeType !== 1 || blocked(container)) return;
+  const attach = (container, memo) => {
+    if (!container || container.nodeType !== 1 || container.closest?.(SKIP)) return;
     let uid = container.getAttribute?.("data-block-uid") || "";
     if (!uid) {
       const input = container.querySelector?.("textarea");
       uid = uidFromElementId(input?.id, cache?.targets?.() || new Set()) || "";
     }
     if (!uid || !cache?.hasTarget?.(uid)) return;
+    if (blocked(container, memo)) return;
     if (container.querySelector?.(".rm-block-highlight-view, .pxd-boardchip")) return;
     const area = container.querySelector?.("textarea");
     if (area && area === doc.activeElement) {
@@ -248,13 +273,18 @@ export function createCardChips({
     if (!scope?.querySelector) return;
     const uid = typeof pageUid === "function" ? pageUid() : "";
     if (!uid || !cache?.hasTarget?.(uid)) return;
+    // Under the page title; the references section and the first child list are fallbacks.
+    const title = outside(scope, ".rm-title-display-container");
     const header = outside(scope, ".rm-reference-main");
     const kids = outside(scope, ".rm-block-children");
-    const page = articleOf(header || kids) || scope.querySelector(".roam-article") || scope;
+    const page = articleOf(title || header || kids) || scope.querySelector(".roam-article") || scope;
     if (optedOut(page)) return;
     let parent = null;
     let before = null;
-    if (header?.parentElement && !header.closest?.("h1.rm-title-display")) {
+    if (title?.parentElement) {
+      parent = title.parentElement;
+      before = nextAfter(title);
+    } else if (header?.parentElement && !header.closest?.("h1.rm-title-display")) {
       parent = header.parentElement;
       before = nextAfter(header);
     } else if (kids && !kids.closest?.("h1.rm-title-display")) {
@@ -274,16 +304,20 @@ export function createCardChips({
       else parent.append(row);
       rows.add(row);
     }
-    for (const child of [...(row.children || [])]) chips.delete(child);
-    row.replaceChildren();
     const boards = cache.boardsOf(uid) || [];
-    for (const boardUid of boards.slice(0, 3)) row.append(makeChip(boardUid, uid));
-    const extra = boards.length - 3;
-    if (extra > 0) {
-      const more = doc.createElement("span");
-      more.className = "pxd-cardchip-more";
-      more.textContent = `+${extra}`;
-      row.append(more);
+    const sig = `${uid}\n${boards.map((boardUid) => `${boardUid}:${cache?.titleOf?.(boardUid) || ""}`).join("\n")}`;
+    if (sigs.get(row) !== sig) {
+      for (const child of [...(row.children || [])]) chips.delete(child);
+      row.replaceChildren();
+      for (const boardUid of boards.slice(0, 3)) row.append(makeChip(boardUid, uid));
+      const extra = boards.length - 3;
+      if (extra > 0) {
+        const more = doc.createElement("span");
+        more.className = "pxd-cardchip-more";
+        more.textContent = `+${extra}`;
+        row.append(more);
+      }
+      sigs.set(row, sig);
     }
     for (const old of scope.querySelectorAll(".pxd-cardchip-row") || []) {
       if (old === row) continue;
@@ -308,14 +342,20 @@ export function createCardChips({
   // and leaves the queued walk alone so the tail is not starved.
   const scan = (node) => {
     if (enabled() === false) {
+      if (off) return;
+      off = true;
       stopSweep();
       disposeChips();
       return;
     }
+    off = false;
     if (!node || node.nodeType !== 1) return;
+    // Chips this module wrote come back through the mutation observer. They are not page content.
+    if (node.closest?.(OWN)) return;
+    const memo = new Map();
     const list = containersOf(node);
     const end = Math.min(SCAN_CAP, list.length);
-    for (let i = 0; i < end; i += 1) attach(list[i]);
+    for (let i = 0; i < end; i += 1) attach(list[i], memo);
     placePage(doc.body || node);
     if (list.length <= SCAN_CAP || sweepTimer != null) return;
     const gen = sweepGen;
@@ -323,7 +363,7 @@ export function createCardChips({
     const run = (start) => {
       if (gen !== sweepGen) return;
       const next = Math.min(start + SCAN_CAP, pending.length);
-      for (let i = start; i < next; i += 1) attach(pending[i]);
+      for (let i = start; i < next; i += 1) attach(pending[i], memo);
       if (next >= pending.length) return;
       const set = view().setTimeout?.bind(view());
       if (!set) return;

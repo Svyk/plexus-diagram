@@ -5,6 +5,37 @@ const MONTHS = ["January", "February", "March", "April", "May", "June", "July", 
 
 export const HALO_PULL = "[:create/time :edit/time {:create/user [:user/display-name]} {:block/_refs [:create/time]}]";
 
+// Same pull without the reverse refs. A heavily referenced block makes the full pull slow, so the refs are
+// counted by an aggregate and only the newest HALO_REF_CAP times are fetched (haloRefs).
+export const HALO_PULL_LIGHT = "[:create/time :edit/time {:create/user [:user/display-name]}]";
+export const HALO_REF_CAP = 200;
+export const HALO_REFS_SPAN_QUERY = "[:find (count ?r) (min ?t) (max ?t) :in $ ?u :where [?e :block/uid ?u] [?r :block/refs ?e] [?r :create/time ?t]]";
+export const HALO_REFS_TIMES_QUERY = "[:find ?r ?t :in $ ?u :where [?e :block/uid ?u] [?r :block/refs ?e] [?r :create/time ?t]]";
+
+// q(query, uid) returns rows. total is the exact count. times holds the oldest and newest ref plus at most cap newest.
+export function haloRefs(q, uid, cap = HALO_REF_CAP) {
+  const none = { total: 0, times: [] };
+  if (typeof q !== "function" || !uid) return none;
+  let span = null;
+  try { span = (q(HALO_REFS_SPAN_QUERY, uid) || [])[0] || null; } catch { return none; }
+  const total = finite(span?.[0]) ?? 0;
+  if (total <= 0) return none;
+  let rows = [];
+  try { rows = q(HALO_REFS_TIMES_QUERY, uid) || []; } catch { rows = []; }
+  const stamps = [];
+  for (const row of rows) {
+    const stamp = finite(Array.isArray(row) ? row[1] : null);
+    if (stamp != null) stamps.push(stamp);
+  }
+  stamps.sort((a, b) => b - a);
+  const times = stamps.slice(0, Math.max(0, cap));
+  const lo = finite(span?.[1]);
+  const hi = finite(span?.[2]);
+  if (lo != null) times.push(lo);
+  if (hi != null) times.push(hi);
+  return { total, times };
+}
+
 function finite(value) {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
@@ -80,7 +111,7 @@ export function buckets(times) {
   return counts;
 }
 
-export function refsLine(times) {
+export function refsLine(times, total) {
   const list = [];
   for (const value of times || []) {
     const n = finite(value);
@@ -93,8 +124,9 @@ export function refsLine(times) {
     if (n < min) min = n;
     if (n > max) max = n;
   }
-  const noun = list.length === 1 ? "time" : "times";
-  return `Referenced ${list.length} ${noun}, first ${formatMade(min)}, last ${formatMade(max)}`;
+  const count = Number.isFinite(total) && total >= list.length ? total : list.length;
+  const noun = count === 1 ? "time" : "times";
+  return `Referenced ${count} ${noun}, first ${formatMade(min)}, last ${formatMade(max)}`;
 }
 
 // One unwatched pull. The display name is kept only when it is non-empty. The user uid is dropped.

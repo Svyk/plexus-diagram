@@ -55,3 +55,47 @@
   color: var(--pxd-muted);
   font-size: 12px;
 }
+
+.pxd-root .pxd-hl-rowpage {
+  margin-left: auto;
+  color: var(--pxd-muted);
+  font-size: 12px;
+}
+
+.pxd-root .pxd-hl-add {
+  position: absolute;
+  top: 4px;
+  right: 8px;
+  z-index: 4;
+}
+
+/* TSK-6 tag chip: a small colour square and the tag name. The square keeps a border so it reads in dark mode. */
+.pxd-root .pxd-hl-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 0 6px;
+  border: 1px solid var(--pxd-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--pxd-muted);
+  font-size: 11px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+.pxd-root .pxd-hl-chip .pxd-hl-swatch {
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  width: 10px;
+  height: 10px;
+  border: 1px solid var(--pxd-border);
+  border-radius: 2px;
+}
+
+.pxd-root .pxd-hl-chip .pxd-hl-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--pxd-text);
+}

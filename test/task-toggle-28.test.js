@@ -78,7 +78,7 @@ test("turning Better Tasks off removes the light checkbox", async () => {
     stub.flushIdle();
     stub.flushFrames();
     const body = view.root.querySelector("[data-uid=cardAAAA1]");
-    const kids = body ? (body.children || []).map((n) => n.className).join(",") : "no card";
+    const kids = body ? [...(body.children || [])].map((n) => n.className).join(",") : "no card";
     assert.equal(view.root.querySelectorAll(".pxd-task-check").length, 1, kids);
 
     view.setSettings(settingsOf(false));

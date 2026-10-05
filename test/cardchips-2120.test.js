@@ -141,11 +141,8 @@ test("the page chip sits after the reference header, or first in the block list,
     header.className = "rm-reference-main";
     page.insertBefore(header, kids);
     chips.scan(page);
-    assert.equal(header.nextElementSibling || page.children[page.children.indexOf(header) + 1], page.querySelector(".pxd-cardchip-row").parentElement === header.parentElement
-      ? page.children[page.children.indexOf(header) + 1]
-      : null);
     const row = page.querySelector(".pxd-cardchip-row");
-    assert.equal(page.children.indexOf(row), page.children.indexOf(header) + 1);
+    assert.equal(header.nextElementSibling, row);
     assert.equal(title.querySelector(".pxd-cardchip"), null);
     chips.dispose();
   } finally {
@@ -221,7 +218,7 @@ test("card chips keep a 1px border and a clear fill", () => {
     selectors: match[1].split(",").map((part) => part.trim()),
     body: match[2],
   }));
-  for (const selector of [".pxd-cardchip", ".bp3-dark .pxd-cardchip", "body.bt-theme-dark .pxd-cardchip"]) {
+  for (const selector of [".pxd-cardchip.pxd-cardchip", ".bp3-dark .pxd-cardchip.pxd-cardchip", "body.bt-theme-dark .pxd-cardchip.pxd-cardchip"]) {
     const block = blocks.find((entry) => entry.selectors.includes(selector));
     assert.ok(block, selector);
     assert.match(block.body, /border:\s*1px solid/);

@@ -15,7 +15,7 @@
   touch-action: auto;
 }
 
-.pxd-linksmenu__row {
+.pxd-linksmenu .pxd-linksmenu__row {
   display: block;
   width: 100%;
   margin: 0 0 4px;
@@ -39,17 +39,17 @@ body.roam-body.dark .pxd-linksmenu,
   color: #e6edf3;
 }
 
-.pxd-suggest__line {
+.pxd-root .pxd-suggest__line {
   fill: none;
   stroke: #6b7280;
   stroke-width: 1.5;
   stroke-dasharray: 4 4;
 }
 
-.bp3-dark .pxd-suggest__line,
-body.bt-theme-dark .pxd-suggest__line,
-.rm-dark-theme .pxd-suggest__line,
-body.roam-body.dark .pxd-suggest__line {
+.bp3-dark .pxd-root .pxd-suggest__line,
+body.bt-theme-dark .pxd-root .pxd-suggest__line,
+.rm-dark-theme .pxd-root .pxd-suggest__line,
+body.roam-body.dark .pxd-root .pxd-suggest__line {
   fill: none;
   stroke: #9ca3af;
 }

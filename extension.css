@@ -2676,13 +2676,13 @@ body.roam-body.dark .pxd-root .pxd-row.pxd-row--linked:hover,
 /* Add to board picker. It is mounted on document.body, outside .pxd-root, because
    .pxd-root uses contain:layout and would trap a fixed layer inside the board. */
 
-.pxd-addboard-back {
+.pxd-addboard-back.pxd-addboard-back {
   position: fixed;
   inset: 0;
   z-index: 30;
 }
 
-.pxd-addboard {
+.pxd-addboard.pxd-addboard {
   --pxd-surface: #ffffff;
   --pxd-border: #d0d7de;
   --pxd-text: #1f2937;
@@ -2709,10 +2709,10 @@ body.roam-body.dark .pxd-root .pxd-row.pxd-row--linked:hover,
   font-size: 13px;
 }
 
-.bp3-dark .pxd-addboard,
-body.bt-theme-dark .pxd-addboard,
-.rm-dark-theme .pxd-addboard,
-body.roam-body.dark .pxd-addboard {
+.bp3-dark .pxd-addboard.pxd-addboard,
+body.bt-theme-dark .pxd-addboard.pxd-addboard,
+.rm-dark-theme .pxd-addboard.pxd-addboard,
+body.roam-body.dark .pxd-addboard.pxd-addboard {
   --pxd-surface: #26333f;
   --pxd-border: #3b4b58;
   --pxd-text: #e6edf3;
@@ -2722,12 +2722,12 @@ body.roam-body.dark .pxd-addboard {
   --pxd-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
 }
 
-.pxd-addboard__title {
+.pxd-addboard__title.pxd-addboard__title {
   font-weight: 600;
   margin-bottom: 8px;
 }
 
-.pxd-addboard__filter {
+.pxd-addboard__filter.pxd-addboard__filter {
   box-sizing: border-box;
   width: 100%;
   margin-bottom: 8px;
@@ -2738,12 +2738,12 @@ body.roam-body.dark .pxd-addboard {
   color: inherit;
 }
 
-.pxd-addboard__list {
+.pxd-addboard__list.pxd-addboard__list {
   overflow: auto;
   min-height: 0;
 }
 
-.pxd-addboard__row {
+.pxd-addboard__row.pxd-addboard__row {
   display: flex;
   flex-direction: column;
   gap: 2px;
@@ -2753,19 +2753,19 @@ body.roam-body.dark .pxd-addboard {
   cursor: pointer;
 }
 
-.pxd-addboard__row:hover {
+.pxd-addboard__row.pxd-addboard__row:hover {
   border-color: var(--pxd-accent);
   background: var(--pxd-accent-soft);
 }
 
-.pxd-addboard__name {
+.pxd-addboard__name.pxd-addboard__name {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
-.pxd-addboard__page,
-.pxd-addboard__empty {
+.pxd-addboard__page.pxd-addboard__page,
+.pxd-addboard__empty.pxd-addboard__empty {
   color: var(--pxd-muted);
 }
 
@@ -2888,15 +2888,15 @@ body.roam-body.dark .pxd-addboard {
 
 /* NAV-1. Board chips. A border and a clear fill. The label is content-width. */
 
-.pxd-cardchip-row {
+.pxd-cardchip-row.pxd-cardchip-row {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
   margin: 2px 0 4px;
 }
 
-.pxd-cardchip,
-.pxd-cardchip-more {
+.pxd-cardchip.pxd-cardchip,
+.pxd-cardchip-more.pxd-cardchip-more {
   display: inline-flex;
   align-items: center;
   align-self: flex-start;
@@ -2915,7 +2915,7 @@ body.roam-body.dark .pxd-addboard {
   cursor: pointer;
 }
 
-.pxd-cardchip-more {
+.pxd-cardchip-more.pxd-cardchip-more {
   cursor: default;
 }
 
@@ -2935,26 +2935,26 @@ body.roam-body.dark .pxd-addboard {
   touch-action: auto;
 }
 
-.pxd-cardpop__title,
-.pxd-cardpop__section {
+.pxd-cardpop .pxd-cardpop__title,
+.pxd-cardpop .pxd-cardpop__section {
   margin: 0 0 6px;
   font-size: 12px;
   line-height: 1.4;
 }
 
-.pxd-cardpop svg {
+.pxd-root.pxd-cardpop svg {
   display: block;
   width: 320px;
   max-width: 100%;
   height: auto;
 }
 
-.pxd-cardchip__hot {
+.pxd-cardpop .pxd-cardchip__hot {
   stroke-width: 2;
 }
 
-.pxd-cardpop__open,
-.pxd-cardpop__side {
+.pxd-cardpop .pxd-cardpop__open,
+.pxd-cardpop .pxd-cardpop__side {
   margin: 6px 6px 0 0;
   padding: 2px 8px;
   border: 1px solid var(--pxd-border, #d0d7de);
@@ -2966,16 +2966,16 @@ body.roam-body.dark .pxd-addboard {
   cursor: pointer;
 }
 
-.bp3-dark .pxd-cardchip,
-.bp3-dark .pxd-cardchip-more,
-body.bt-theme-dark .pxd-cardchip,
-body.bt-theme-dark .pxd-cardchip-more,
-.rm-dark-theme .pxd-cardchip,
-.rm-dark-theme .pxd-cardchip-more,
-body.roam-body.dark .pxd-cardchip,
-body.roam-body.dark .pxd-cardchip-more,
-.pxd-root--dark .pxd-cardchip,
-.pxd-root--dark .pxd-cardchip-more {
+.bp3-dark .pxd-cardchip.pxd-cardchip,
+.bp3-dark .pxd-cardchip-more.pxd-cardchip-more,
+body.bt-theme-dark .pxd-cardchip.pxd-cardchip,
+body.bt-theme-dark .pxd-cardchip-more.pxd-cardchip-more,
+.rm-dark-theme .pxd-cardchip.pxd-cardchip,
+.rm-dark-theme .pxd-cardchip-more.pxd-cardchip-more,
+body.roam-body.dark .pxd-cardchip.pxd-cardchip,
+body.roam-body.dark .pxd-cardchip-more.pxd-cardchip-more,
+.pxd-root--dark .pxd-cardchip.pxd-cardchip,
+.pxd-root--dark .pxd-cardchip-more.pxd-cardchip-more {
   border: 1px solid var(--pxd-border, #3b4b58);
   background: transparent;
   color: #e6edf3;
@@ -2991,14 +2991,14 @@ body.roam-body.dark .pxd-cardpop,
   color: #e6edf3;
 }
 
-.bp3-dark .pxd-cardpop__open,
-.bp3-dark .pxd-cardpop__side,
-body.bt-theme-dark .pxd-cardpop__open,
-body.bt-theme-dark .pxd-cardpop__side,
-.rm-dark-theme .pxd-cardpop__open,
-.rm-dark-theme .pxd-cardpop__side,
-body.roam-body.dark .pxd-cardpop__open,
-body.roam-body.dark .pxd-cardpop__side {
+.bp3-dark .pxd-cardpop .pxd-cardpop__open,
+.bp3-dark .pxd-cardpop .pxd-cardpop__side,
+body.bt-theme-dark .pxd-cardpop .pxd-cardpop__open,
+body.bt-theme-dark .pxd-cardpop .pxd-cardpop__side,
+.rm-dark-theme .pxd-cardpop .pxd-cardpop__open,
+.rm-dark-theme .pxd-cardpop .pxd-cardpop__side,
+body.roam-body.dark .pxd-cardpop .pxd-cardpop__open,
+body.roam-body.dark .pxd-cardpop .pxd-cardpop__side {
   border: 1px solid var(--pxd-border, #3b4b58);
   background: transparent;
   color: #e6edf3;
@@ -4075,7 +4075,7 @@ body.roam-body.dark .pxd-root .pxd-panel__outline-row:hover {
 /* "Plexus: Commands…" list. On document.body, outside .pxd-root, because
    .pxd-root uses contain:layout and would trap a fixed layer inside the board. */
 
-.pxd-commands-back {
+.pxd-commands-back.pxd-commands-back {
   position: fixed;
   inset: 0;
   z-index: 32;
@@ -4085,7 +4085,7 @@ body.roam-body.dark .pxd-root .pxd-panel__outline-row:hover {
   background: transparent;
 }
 
-.pxd-commands__box {
+.pxd-commands__box.pxd-commands__box {
   --pxd-surface: #ffffff;
   --pxd-border: #d0d7de;
   --pxd-text: #1f2937;
@@ -4112,10 +4112,10 @@ body.roam-body.dark .pxd-root .pxd-panel__outline-row:hover {
   font-size: 13px;
 }
 
-.bp3-dark .pxd-commands__box,
-body.bt-theme-dark .pxd-commands__box,
-.rm-dark-theme .pxd-commands__box,
-body.roam-body.dark .pxd-commands__box {
+.bp3-dark .pxd-commands__box.pxd-commands__box,
+body.bt-theme-dark .pxd-commands__box.pxd-commands__box,
+.rm-dark-theme .pxd-commands__box.pxd-commands__box,
+body.roam-body.dark .pxd-commands__box.pxd-commands__box {
   --pxd-surface: #26333f;
   --pxd-border: #3b4b58;
   --pxd-text: #e6edf3;
@@ -4125,12 +4125,12 @@ body.roam-body.dark .pxd-commands__box {
   --pxd-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
 }
 
-.pxd-commands__title {
+.pxd-commands__title.pxd-commands__title {
   font-weight: 600;
   margin-bottom: 8px;
 }
 
-.pxd-commands__row {
+.pxd-commands__row.pxd-commands__row {
   display: block;
   width: 100%;
   margin: 0;
@@ -4144,14 +4144,36 @@ body.roam-body.dark .pxd-commands__box {
   cursor: pointer;
 }
 
-.pxd-commands__row:hover {
+.pxd-commands__row.pxd-commands__row:hover {
   border-color: var(--pxd-accent);
   background: var(--pxd-accent-soft);
 }
 
+/* Outline-side toast after Annotate pins a drawing. It sits on document.body, outside every .pxd-root. */
+.pxd-toast.pxd-toast--pin {
+  position: fixed;
+  z-index: 100000;
+  left: 50%;
+  bottom: 24px;
+  padding: 8px 12px;
+  border: 1px solid #394b59;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: none;
+  color: #182026;
+  font-size: 13px;
+  transform: translateX(-50%);
+}
+
+.bp3-dark .pxd-toast.pxd-toast--pin {
+  border-color: #8aabb8;
+  background: #1c2127;
+  color: #f5f8fa;
+}
+
 /* NAV-2. Contexts drawer. A border, a scroll, and no tinted fill. */
 
-.pxd-contexts {
+.pxd-root .pxd-contexts {
   position: absolute;
   z-index: 6;
   top: 48px;
@@ -4168,12 +4190,12 @@ body.roam-body.dark .pxd-commands__box {
 
 .pxd-lod-map .pxd-contexts { display: none; }
 
-.pxd-contexts__year {
+.pxd-root .pxd-contexts__year {
   margin: 6px 8px 2px;
   font-weight: 600;
 }
 
-.pxd-contexts__row {
+.pxd-root .pxd-contexts__row {
   display: block;
   width: 100%;
   margin: 0;
@@ -4187,17 +4209,17 @@ body.roam-body.dark .pxd-commands__box {
   cursor: pointer;
 }
 
-.pxd-contexts__snippet { color: #6b7280; }
+.pxd-root .pxd-contexts__snippet { color: #6b7280; }
 
-.pxd-contexts__filter,
-.pxd-contexts__cap {
+.pxd-root .pxd-contexts__filter,
+.pxd-root .pxd-contexts__cap {
   margin: 6px 8px;
 }
 
-.bp3-dark .pxd-contexts,
-body.bt-theme-dark .pxd-contexts,
-.rm-dark-theme .pxd-contexts,
-body.roam-body.dark .pxd-contexts {
+.bp3-dark .pxd-root .pxd-contexts,
+body.bt-theme-dark .pxd-root .pxd-contexts,
+.rm-dark-theme .pxd-root .pxd-contexts,
+body.roam-body.dark .pxd-root .pxd-contexts {
   border-color: #3b4b58;
   background: #1c2127;
   color: #e6edf3;
@@ -4240,7 +4262,7 @@ body.bt-theme-dark .pxd-convert.pxd-convert--chip,
 .rm-dark-theme .pxd-convert.pxd-convert--chip,
 body.roam-body.dark .pxd-convert.pxd-convert--chip {
   border-color: #2dd4bf;
-  background: transparent;
+  background: #293742;
   color: #99f6e4;
 }
 
@@ -4444,18 +4466,18 @@ body.roam-body.dark .pxd-root .pxd-drawing-region,
   line-height: 1.4;
 }
 
-.pxd-halo__link {
+.pxd-halo .pxd-halo__link {
   display: inline;
 }
 
-.pxd-halo__head,
-.pxd-halo__with,
-.pxd-halo__refs,
-.pxd-halo__boards {
+.pxd-halo .pxd-halo__head,
+.pxd-halo .pxd-halo__with,
+.pxd-halo .pxd-halo__refs,
+.pxd-halo .pxd-halo__boards {
   margin: 0 0 6px;
 }
 
-.pxd-halo__spark {
+.pxd-halo .pxd-halo__spark {
   display: block;
   width: 120px;
   height: 24px;
@@ -4463,7 +4485,7 @@ body.roam-body.dark .pxd-root .pxd-drawing-region,
   color: #1f2937;
 }
 
-.pxd-halo__company {
+.pxd-halo .pxd-halo__company {
   margin: 0;
   padding: 0;
   border: 0;
@@ -4484,11 +4506,11 @@ body.roam-body.dark .pxd-halo,
   color: #e6edf3;
 }
 
-.bp3-dark .pxd-halo__spark,
-body.bt-theme-dark .pxd-halo__spark,
-.rm-dark-theme .pxd-halo__spark,
-body.roam-body.dark .pxd-halo__spark,
-.pxd-root--dark .pxd-halo__spark {
+.bp3-dark .pxd-halo .pxd-halo__spark,
+body.bt-theme-dark .pxd-halo .pxd-halo__spark,
+.rm-dark-theme .pxd-halo .pxd-halo__spark,
+body.roam-body.dark .pxd-halo .pxd-halo__spark,
+.pxd-root--dark .pxd-halo .pxd-halo__spark {
   color: #e6edf3;
 }
 
@@ -4550,6 +4572,50 @@ body.roam-body.dark .pxd-halo__spark,
   font-size: 12px;
 }
 
+.pxd-root .pxd-hl-rowpage {
+  margin-left: auto;
+  color: var(--pxd-muted);
+  font-size: 12px;
+}
+
+.pxd-root .pxd-hl-add {
+  position: absolute;
+  top: 4px;
+  right: 8px;
+  z-index: 4;
+}
+
+/* TSK-6 tag chip: a small colour square and the tag name. The square keeps a border so it reads in dark mode. */
+.pxd-root .pxd-hl-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  padding: 0 6px;
+  border: 1px solid var(--pxd-border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--pxd-muted);
+  font-size: 11px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+.pxd-root .pxd-hl-chip .pxd-hl-swatch {
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  width: 10px;
+  height: 10px;
+  border: 1px solid var(--pxd-border);
+  border-radius: 2px;
+}
+
+.pxd-root .pxd-hl-chip .pxd-hl-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  color: var(--pxd-text);
+}
+
 /* Highlighter tag mode. Every rule stays under .pxd-root. */
 
 .pxd-root .pxd-picker__gear {
@@ -4588,7 +4654,7 @@ body.roam-body.dark .pxd-halo__spark,
 
 /* MEM-3. Memory lane. Future cards fade. The outline is the fresh mark. */
 
-.pxd-memory {
+.pxd-root .pxd-memory {
   position: absolute;
   z-index: 11;
   left: 8px;
@@ -4604,10 +4670,10 @@ body.roam-body.dark .pxd-halo__spark,
   color: #1f2937;
 }
 
-.pxd-memory__range { flex: 1; }
+.pxd-root .pxd-memory .pxd-memory__range { flex: 1; }
 
-.pxd-memory__play,
-.pxd-memory__tick {
+.pxd-root .pxd-memory .pxd-memory__play,
+.pxd-root .pxd-memory .pxd-memory__tick {
   height: 24px;
   padding: 0 8px;
   border: 1px solid var(--pxd-border, #d0d7de);
@@ -4618,16 +4684,14 @@ body.roam-body.dark .pxd-halo__spark,
   cursor: pointer;
 }
 
-.pxd-item--future { opacity: 0.12; }
+.pxd-root .pxd-item.pxd-item--future { opacity: 0.12; }
 
-.pxd-item--fresh { outline: 1px solid currentColor; }
+.pxd-root .pxd-item.pxd-item--fresh { outline: 1px solid currentColor; }
 
-.pxd-edge--lane-off { display: none; }
-
-.bp3-dark .pxd-memory,
-body.bt-theme-dark .pxd-memory,
-.rm-dark-theme .pxd-memory,
-body.roam-body.dark .pxd-memory {
+.bp3-dark .pxd-root .pxd-memory,
+body.bt-theme-dark .pxd-root .pxd-memory,
+.rm-dark-theme .pxd-root .pxd-memory,
+body.roam-body.dark .pxd-root .pxd-memory {
   border-color: #3b4b58;
   color: #e6edf3;
 }
@@ -5041,7 +5105,7 @@ body.roam-body.dark .pxd-root .pxd-present-hud,
 }
 
 @media print {
-  .pxd-print__page {
+  .pxd-print__page.pxd-print__page {
     break-after: page;
     page-break-after: always;
   }
@@ -5199,15 +5263,15 @@ body.roam-body.dark .pxd-root .pxd-present-hud,
 
 /* PDF-7. Page chips and the On board chip. A border and a clear fill. No filled background. */
 
-.pxd-pdf-chips {
+.pxd-pdf-chips.pxd-pdf-chips {
   display: flex;
   flex-wrap: wrap;
   gap: 4px;
   margin: 4px 0;
 }
 
-.pxd-pdf-chip,
-.pxd-boardchip {
+.pxd-pdf-chip.pxd-pdf-chip,
+.pxd-boardchip.pxd-boardchip {
   display: inline-flex;
   align-items: center;
   gap: 4px;
@@ -5223,11 +5287,11 @@ body.roam-body.dark .pxd-root .pxd-present-hud,
   cursor: pointer;
 }
 
-.pxd-pdf-chip__n {
+.pxd-pdf-chip .pxd-pdf-chip__n {
   color: inherit;
 }
 
-.pxd-boardchip {
+.pxd-boardchip.pxd-boardchip {
   align-self: flex-start;
   flex: 0 0 auto;
   width: fit-content;
@@ -5235,13 +5299,20 @@ body.roam-body.dark .pxd-root .pxd-present-hud,
   white-space: nowrap;
 }
 
-.bp3-dark .pxd-pdf-chip,
-.bp3-dark .pxd-boardchip,
-body.bt-theme-dark .pxd-pdf-chip,
-body.bt-theme-dark .pxd-boardchip {
+.bp3-dark .pxd-pdf-chip.pxd-pdf-chip,
+.bp3-dark .pxd-boardchip.pxd-boardchip,
+body.bt-theme-dark .pxd-pdf-chip.pxd-pdf-chip,
+body.bt-theme-dark .pxd-boardchip.pxd-boardchip {
   border: 1px solid var(--pxd-border, #3b4b58);
   background: transparent;
   color: #e6edf3;
+}
+
+/* Page labels at the ends of a highlight connection. SVG text takes fill, not color. */
+.pxd-root .pxd-edge__page {
+  fill: var(--pxd-text);
+  font-size: 11px;
+  pointer-events: none;
 }
 
 /* NP-4. Properties panel, custom style keys, cross texture, animated dashes.
@@ -5770,7 +5841,7 @@ body.roam-body.dark .pxd-root .pxd-region-sidebar,
 
 /* REG-4. The crop is a 1px stroke. Dark keeps the stroke and adds no shadow. */
 
-.pxd-region-crop {
+.pxd-region-crop.pxd-region-crop {
   display: inline-flex !important;
   flex-direction: column;
   align-items: flex-start;
@@ -5779,7 +5850,7 @@ body.roam-body.dark .pxd-root .pxd-region-sidebar,
   vertical-align: top;
 }
 
-.pxd-region-crop__frame {
+.pxd-region-crop .pxd-region-crop__frame {
   position: relative;
   display: inline-block !important;
   overflow: hidden;
@@ -5790,21 +5861,21 @@ body.roam-body.dark .pxd-root .pxd-region-sidebar,
   box-shadow: none;
 }
 
-.bp3-dark .pxd-region-crop__frame,
-.pxd-root--dark .pxd-region-crop__frame {
+.bp3-dark .pxd-region-crop .pxd-region-crop__frame,
+.pxd-root--dark .pxd-region-crop .pxd-region-crop__frame {
   border-color: #fff;
   background: transparent;
   box-shadow: none;
 }
 
-.pxd-region-crop__img {
+.pxd-region-crop .pxd-region-crop__img {
   position: absolute;
   max-width: none;
   pointer-events: none;
 }
 
-.pxd-region-crop__caption,
-.pxd-region-crop__missing {
+.pxd-region-crop .pxd-region-crop__caption,
+.pxd-region-crop .pxd-region-crop__missing {
   font-size: 12px;
   line-height: 1.3;
   background: transparent;
@@ -5915,7 +5986,7 @@ body.roam-body.dark .pxd-root.pxd-region-pop button,
 
 /* REG-7. Inline view map: strokes only. The highlighted card is an accent stroke plus a 12% tint. */
 
-.pxd-viewmap {
+.pxd-viewmap.pxd-viewmap {
   display: inline-block;
   max-width: none;
   vertical-align: top;
@@ -5924,16 +5995,17 @@ body.roam-body.dark .pxd-root.pxd-region-pop button,
   color: #1f2937;
 }
 
-.bp3-dark .pxd-viewmap,
-body.bt-theme-dark .pxd-viewmap,
-.rm-dark-theme .pxd-viewmap,
-body.roam-body.dark .pxd-viewmap,
-.pxd-root--dark .pxd-viewmap {
+.bp3-dark .pxd-viewmap.pxd-viewmap,
+body.bt-theme-dark .pxd-viewmap.pxd-viewmap,
+.rm-dark-theme .pxd-viewmap.pxd-viewmap,
+body.roam-body.dark .pxd-viewmap.pxd-viewmap,
+.pxd-root--dark .pxd-viewmap.pxd-viewmap {
   color: #fff;
   background: transparent;
 }
 
-.pxd-viewmap rect {
+.pxd-viewmap .pxd-viewmap__card--hi,
+.pxd-viewmap .pxd-viewmap__card--muted {
   fill: none;
   stroke: currentColor;
   stroke-width: 1.5px;
@@ -5970,7 +6042,7 @@ body.roam-body.dark .pxd-viewmap .pxd-viewmap__card--hi,
    preview popover. The chip lives outside every .pxd-root, so it carries its own tokens (light, then the five dark
    signals). The popover is a .pxd-root on document.body and takes the board tokens. */
 
-.pxd-relchip {
+.pxd-relchip.pxd-relchip {
   --pxd-rc-border: #d0d7de;
   --pxd-rc-text: #1f2937;
   --pxd-rc-muted: #5f6b7c;
@@ -5993,18 +6065,18 @@ body.roam-body.dark .pxd-viewmap .pxd-viewmap__card--hi,
   user-select: none;
 }
 
-.pxd-relchip:hover,
-.pxd-relchip:focus-visible {
+.pxd-relchip.pxd-relchip:hover,
+.pxd-relchip.pxd-relchip:focus-visible {
   color: var(--pxd-rc-text);
   border-color: var(--pxd-rc-accent);
   outline: none;
 }
 
-.bp3-dark .pxd-relchip,
-body.bt-theme-dark .pxd-relchip,
-.rm-dark-theme .pxd-relchip,
-body.roam-body.dark .pxd-relchip,
-.pxd-root--dark .pxd-relchip {
+.bp3-dark .pxd-relchip.pxd-relchip,
+body.bt-theme-dark .pxd-relchip.pxd-relchip,
+.rm-dark-theme .pxd-relchip.pxd-relchip,
+body.roam-body.dark .pxd-relchip.pxd-relchip,
+.pxd-root--dark .pxd-relchip.pxd-relchip {
   --pxd-rc-border: #3b4b58;
   --pxd-rc-text: #e6edf3;
   --pxd-rc-muted: #a7b6c2;
@@ -6122,7 +6194,7 @@ body.roam-body.dark .pxd-relchip,
 
 /* PO-4 (2.5): the board glyph at the end of a connection block's breadcrumb. Lives outside every .pxd-root, so it
    carries its own tokens like the chip. */
-.pxd-relcrumb {
+.pxd-relcrumb.pxd-relcrumb {
   --pxd-rc-accent: hsl(175 85% 24%);
   display: inline-block;
   margin-left: 6px;
@@ -6137,16 +6209,16 @@ body.roam-body.dark .pxd-relchip,
   user-select: none;
 }
 
-.pxd-relcrumb:hover,
-.pxd-relcrumb:focus-visible {
+.pxd-relcrumb.pxd-relcrumb:hover,
+.pxd-relcrumb.pxd-relcrumb:focus-visible {
   border-color: var(--pxd-rc-accent);
   outline: none;
 }
 
-.bp3-dark .pxd-relcrumb,
-body.bt-theme-dark .pxd-relcrumb,
-.rm-dark-theme .pxd-relcrumb,
-body.roam-body.dark .pxd-relcrumb {
+.bp3-dark .pxd-relcrumb.pxd-relcrumb,
+body.bt-theme-dark .pxd-relcrumb.pxd-relcrumb,
+.rm-dark-theme .pxd-relcrumb.pxd-relcrumb,
+body.roam-body.dark .pxd-relcrumb.pxd-relcrumb {
   --pxd-rc-accent: hsl(175 60% 55%);
 }
 
@@ -6167,8 +6239,8 @@ body.roam-body.dark .pxd-relcrumb {
   font-size: 12px;
 }
 
-.pxd-resurface__tab,
-.pxd-resurface__item {
+.pxd-resurface .pxd-resurface__tab,
+.pxd-resurface .pxd-resurface__item {
   margin: 0 4px 4px 0;
   padding: 2px 6px;
   border: 1px solid var(--pxd-border, #d0d7de);
@@ -6179,9 +6251,9 @@ body.roam-body.dark .pxd-relcrumb {
   cursor: pointer;
 }
 
-.pxd-resurface__item { display: block; width: 100%; text-align: left; }
+.pxd-resurface .pxd-resurface__item { display: block; width: 100%; text-align: left; }
 
-.pxd-resurface__thumb { height: 48px; overflow: hidden; color: #1f2937; }
+.pxd-resurface .pxd-resurface__thumb { height: 48px; overflow: hidden; color: inherit; }
 
 .bp3-dark .pxd-resurface,
 body.bt-theme-dark .pxd-resurface,
@@ -6351,7 +6423,7 @@ body.roam-body.dark .pxd-resurface,
   touch-action: auto;
 }
 
-.pxd-linksmenu__row {
+.pxd-linksmenu .pxd-linksmenu__row {
   display: block;
   width: 100%;
   margin: 0 0 4px;
@@ -6375,17 +6447,17 @@ body.roam-body.dark .pxd-linksmenu,
   color: #e6edf3;
 }
 
-.pxd-suggest__line {
+.pxd-root .pxd-suggest__line {
   fill: none;
   stroke: #6b7280;
   stroke-width: 1.5;
   stroke-dasharray: 4 4;
 }
 
-.bp3-dark .pxd-suggest__line,
-body.bt-theme-dark .pxd-suggest__line,
-.rm-dark-theme .pxd-suggest__line,
-body.roam-body.dark .pxd-suggest__line {
+.bp3-dark .pxd-root .pxd-suggest__line,
+body.bt-theme-dark .pxd-root .pxd-suggest__line,
+.rm-dark-theme .pxd-root .pxd-suggest__line,
+body.roam-body.dark .pxd-root .pxd-suggest__line {
   fill: none;
   stroke: #9ca3af;
 }
@@ -6849,8 +6921,8 @@ body.roam-body.dark .pxd-root .pxd-tooltip.pxd-chrome,
   font-size: 12px;
 }
 
-.pxd-why__label,
-.pxd-why__note {
+.pxd-why .pxd-why__label,
+.pxd-why .pxd-why__note {
   display: block;
   width: 100%;
   box-sizing: border-box;
@@ -6863,16 +6935,16 @@ body.roam-body.dark .pxd-root .pxd-tooltip.pxd-chrome,
   font: inherit;
 }
 
-.pxd-why__note { min-height: 64px; }
+.pxd-why .pxd-why__note { min-height: 64px; }
 
-.pxd-why__hint { color: #6b7280; }
+.pxd-why .pxd-why__hint { color: #6b7280; }
 
-.pxd-label--why::after {
+.pxd-root .pxd-label--why::after {
   content: " ¶";
   font-size: 10px;
 }
 
-.pxd-lod-map .pxd-label--why::after { content: none; }
+.pxd-root.pxd-lod-map .pxd-label--why::after { content: none; }
 
 .bp3-dark .pxd-why,
 body.bt-theme-dark .pxd-why,
@@ -6882,4 +6954,14 @@ body.roam-body.dark .pxd-why,
   border-color: #3b4b58;
   background: #1c2127;
   color: #e6edf3;
+}
+
+/* C4: the hidden render that carries a fallback drawing thumbnail. */
+.pxd-root .pxd-snap-holder {
+  position: fixed;
+  left: -10000px;
+  top: 0;
+  width: 640px;
+  visibility: hidden;
+  pointer-events: none;
 }

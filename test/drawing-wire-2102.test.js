@@ -178,7 +178,12 @@ test("a drawing card opens the drawing, lists regions, and does not enter edit",
     shell.querySelector(".pxd-drawing-open").dispatchEvent({ type: "click" });
     assert.deepEqual(opens.at(-1), ["open", DRAW, { sidebar: false }]);
     const held = doc.createElement("div");
-    held.setAttribute("id", `block-input-${DRAW}`);
+    held.setAttribute("id", `block-input-win-body-outline-page00001-${DRAW}`);
+    // The stub's selector engine has no [id^=...]; answer that one query from the body like a browser does.
+    const query = doc.querySelectorAll.bind(doc);
+    doc.querySelectorAll = (sel) => (sel === '[id^="block-input-"]'
+      ? Array.from(doc.body.children).filter((node) => String(node.id || node.getAttribute?.("id") || "").startsWith("block-input-"))
+      : query(sel));
     const editor = doc.createElement("div");
     editor.className = "excalidraw";
     held.append(editor);

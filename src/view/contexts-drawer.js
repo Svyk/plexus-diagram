@@ -41,8 +41,8 @@ export function mountContextsDrawer({
     el.append(note);
   }
 
+  let year;
   const paint = (chunk) => {
-    let year = null;
     for (const row of chunk) {
       if (row.year !== year) {
         year = row.year;

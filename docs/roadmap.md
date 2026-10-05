@@ -107,6 +107,7 @@ Native diagrams are React Flow (`.react-flow`, nodes `.react-flow__node-block`).
 | P21 | Compass hop and annotate | 2.10.3 | released 2026-10-05. ECO-6, ECO-7, and DOC-19 done. |
 | P22 | PDF card | 2.11.0 | released 2026-10-05. PDF-1 done. |
 | P23 | Highlight cards | 2.11.1 | released 2026-10-05. PDF-2 done. |
+| P24 | Highlight picker and colour | 2.11.2 | released 2026-10-05. PDF-6, PDF-5, and PDF-3 done. |
 | P17 rest-P22 | 3.x roadmap, see roadmap-3.md | 2.8.1-3.0.0 | open |
 
 Order matters: P1 and P2 are the user's direct requests. Within a phase, do tasks in the listed order unless one is blocked.
@@ -429,6 +430,12 @@ Live on Readwisenotes, window titled "Readwisenotes - Plexus Diagram/Test Lab". 
 
 - [x] **PDF-2 Highlight cards** — done 2026-10-05, `27f7a30`: Text card showed a yellow bar, the passage, and p. 1. Area card showed one image and p. 2. A plain ref had no bar. The tag change to green updated the bar in 305 ms and did not change prop keys. Yellow was restored in 203 ms. Dark and light shots. Unload left 0 pxd nodes. No typing bench.
 
+### P24: Highlight picker and colour (2.11.2, 2026-10-05)
+
+- [x] **PDF-6 Highlight colour** — done 2026-10-05, `fbe4009`: Lens green dimmed 3 and left 1 bright. All restored dim 0. Dark bar 250,204,21. Light bar 202,138,4. Page marks keep Roam's paint. No typing bench.
+- [x] **PDF-5 Area image** — done 2026-10-05, `fbe4009`: Detail ratio 133 / 47. Mark region stored a container under the highlight. Prop keys unchanged. The ref rendered a crop. A click opened a board. Title stayed Test Lab. No typing bench.
+- [x] **PDF-3 Highlight picker** — done 2026-10-05, `fbe4009`: Picker showed 10 rows in 2 groups. Grid place made 5 cards in 3 columns. Reopen disabled 7. One Cmd-Z removed the 5. Reopen disabled 2. Bullet drag made 1 yellow card. Date cancel added 0. Date confirm added 2 highlight cards. Unload left 0 pxd nodes. Check 1306 pass. Paste not run. No typing bench.
+
 ## 6. Later (ideas not scheduled)
 
 Pick from here only when every phase above is done or blocked.
@@ -460,6 +467,8 @@ AI agent features inside the board, SuperTag-style typed schemas or class tags, 
 
 Fill in as phases run. Keep the newest at the top of each list.
 
+- 2.11.2 live, 2026-10-05, Test Lab, `fbe4009`. Picker 10 rows, 2 groups. Grid 5 cards in 3 columns. One Cmd-Z removed the 5. Reopen disabled 7, then 2. Bullet drag made 1 yellow card. Date cancel added 0. Date confirm added 2. Area ratio 133 / 47. Crop rendered and a click opened a board. Lens green dimmed 3. Dark bar 250,204,21. Light bar 202,138,4. Unload pxd 0. Check 1306. Paste not run. No typing bench.
+- 2.11.2 measure, 2026-10-05. Fixture tree: one date block, two text highlights. Another page has 10. Area image-size is 133 by 47, png. Overlay parts are not draggable. Outline bullets are. No popup opened. A tag rewrite turned the outline swatch green, 167,232,200, after reload. Page marks stayed yellow, 255,234,133. Tag restored. Prop keys unchanged.
 - 2.11.1 PDF-2 live, 2026-10-05, Test Lab. Text card: yellow bar, the passage, p. 1. Area card: 1 image, 260 by 91, p. 2. Plain ref: no bar. Tag to green in 305 ms, prop keys unchanged, restored yellow in 203 ms. Dark bar 250,204,21. Light bar 202,138,4. Fill transparent. Unload left 0 pxd nodes and no diagram listener. Window 76 to 84. Document 124 to 136. Theme Auto. Check 1273 pass. No typing bench.
 - 2.11.1 PDF-2, before code, 2026-10-05, Test Lab. Two fixture highlights are type text, pages 1 and 2, tag #h/yellow. Props are :pdf-highlight and :pdf-content-hash. That hash equals the PDF page hash. Those two have no :pdf-fingerprints. The page title is the file name. Two older area highlights are type area, with :image-id, page 2, :pdf-fingerprints, and :image-size width and height. Their string is an image macro plus the colour tag, not an encrypted url. The board pull includes props for the board tree, not for a ref target. No typing bench.
 - 2.11.0 PDF-1 live, 2026-10-05, Test Lab, `4248337`. Cover plx-pdf1-test, count 2. Reader 640 by 820. Page input 2 to 3. Second reader toast "Closed the other reader", readers 1. Settings length 137 and hash f8478982 stayed the same across the drag. Card :x -139.5 to -49.5, :y 188.1 to 281.1. Fullscreen opened the PDF page. Escape did not return. Minimize did. Both cards remained. Unload: `.pxd-*` 0, window 84 to 84, document 139 to 146. Theme Auto. No typing bench.

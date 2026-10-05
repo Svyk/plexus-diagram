@@ -6956,6 +6956,24 @@ body.roam-body.dark .pxd-why,
   color: #e6edf3;
 }
 
+/* A picture has no title. Map zoom used to unmount the body and leave a blank tile.
+   An image-region card is the same: the crop is the body. Overview still hides both. */
+
+.pxd-root.pxd-lod-map .pxd-item.pxd-item--image > .pxd-item__body,
+.pxd-root.pxd-lod-map .pxd-item.pxd-item--imgregion > .pxd-item__body {
+  display: block;
+}
+
+.pxd-root.pxd-lod-overview .pxd-item.pxd-item--image > .pxd-item__body,
+.pxd-root.pxd-lod-overview .pxd-item.pxd-item--imgregion > .pxd-item__body {
+  display: none;
+}
+
+.pxd-root.pxd-lod-map .pxd-item.pxd-item--card.pxd-item--image:not(.pxd-item--collapsed):not(.pxd-item--bare):not(.pxd-item--editing) > .pxd-item__header,
+.pxd-root.pxd-lod-map .pxd-item.pxd-item--card.pxd-item--imgregion:not(.pxd-item--collapsed):not(.pxd-item--bare):not(.pxd-item--editing) > .pxd-item__header {
+  display: none;
+}
+
 /* C4: the hidden render that carries a fallback drawing thumbnail. */
 .pxd-root .pxd-snap-holder {
   position: fixed;

@@ -17,7 +17,7 @@ import { fillFromTags, highlighterTags } from "../model/highlighter.js";
 import { watchEditorMenus } from "./editor-menus.js";
 import { applyEditorCounterScale } from "./editor-scale.js";
 import { UNMOUNT_GRACE_MS, intrinsicSize, shellOffscreen, unmountDue } from "./offscreen.js";
-import { isStructuralString } from "../model/regions.js";
+import { isStructuralString, parseRegion } from "../model/regions.js";
 import { regionRefModel } from "../model/region-card.js";
 import { imageRegionRows, regionBadge } from "../model/region-menu.js";
 import { renderRegionCard, thumbRequest } from "./region-card.js";
@@ -862,17 +862,24 @@ export function createItemRenderer({
   };
 
   const TRANSIENT_CLASSES = ["pxd-item--offscreen", "pxd-item--future", "pxd-item--fresh", "pxd-item--pulse"];
+  const imageRegionString = (text) => {
+    const region = parseRegion(text);
+    return Boolean(region && region.kind === "img" && region.supported === true && region.owner === "plexus-diagram" && region.error == null);
+  };
+
   const paintShell = (rec, item) => {
     const node = rec.el;
     if (item.type !== "section") {
       // A block-ref card's title lives in the referenced block; resolve it here so map LOD and collapsed cards keep a header.
       rec.refString = null;
       rec.refBoard = false;
+      rec.regionImg = false;
       if (item.kind === "block" && item.target?.uid) {
         const refString = host?.blockString?.(item.target.uid);
         if (typeof refString === "string") {
           rec.refString = refString;
           rec.refBoard = classifyString(refString).kind === "board";
+          rec.regionImg = imageRegionString(refString);
         }
         if (rec.refBoard) rec.refTitle = parseBoardTitle(rec.refString) || "Untitled board";
         else rec.refTitle = typeof refString === "string" ? firstLine(refString).slice(0, REF_TITLE_MAX) : "";
@@ -901,6 +908,7 @@ export function createItemRenderer({
       if (isKidsCard(item)) cls.push(item.kids ? "pxd-item--kids" : "pxd-item--kidsoff");
       if (rec.bare) cls.push("pxd-item--bare");
       if (rec.refBoard) cls.push("pxd-item--wb");
+      if (rec.regionImg) cls.push("pxd-item--imgregion");
       if (item.kind === "region-ref") cls.push("pxd-item--region");
       if (item.kind === "drawing-ref") cls.push("pxd-item--drawing");
       if (item.kind === "pdf" && pdfLiveUid === item.uid) cls.push("pxd-pdf-live");
@@ -2379,7 +2387,7 @@ export function createItemRenderer({
       for (const [uid, rec] of shells) {
         const r = drawnRect(uid, lastRects.get(uid));
         const kind = lastBoard.items.get(uid)?.kind;
-        const keep = rec.type === "section" || rec.type === "text" || rec.refBoard || kind === "board" || kind === "pdf" || kind === "highlight";
+        const keep = rec.type === "section" || rec.type === "text" || rec.refBoard || rec.regionImg || kind === "board" || kind === "image" || kind === "pdf" || kind === "highlight";
         if (keep && r && rectsIntersect(r, visibleRect)) next.add(uid);
       }
     }

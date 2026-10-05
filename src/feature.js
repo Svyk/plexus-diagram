@@ -14,7 +14,7 @@ import { createCardCache } from "./model/card-cache.js";
 import { imageSrc } from "./model/export.js";
 import { parseRegion } from "./model/regions.js";
 import { classifyString, parseBoardTitle, readPlexus, UNTITLED_BOARD } from "./model/schema.js";
-import { eachRegionButton, openRegionCrop, openRegionView, regionButtonUid, resetCropUrls } from "./view/region-crop.js";
+import { eachRegionButton, openRegionCrop, openRegionView, regionUidForButton, resetCropUrls } from "./view/region-crop.js";
 import { chromeObstacles } from "./view/avoid.js";
 import { holeRect, previewImageBox, setCameraFromView } from "./view/region-hover-geom.js";
 import { drawViewMap, minimapSvg, viewMapModel } from "./view/minimap-svg.js";
@@ -1360,7 +1360,9 @@ export async function installPlexusDiagram({
 
   function considerRegionButton(button) {
     if (!active() || !button || button.getAttribute?.("data-plexus-owner")) return;
-    const uid = regionButtonUid(button);
+    const uid = regionUidForButton(button, (id) => {
+      try { return host.blockString?.(id) || ""; } catch { return ""; }
+    });
     if (!uid) return;
     let text = "";
     try { text = host.blockString?.(uid) || ""; } catch { return; }

@@ -132,6 +132,26 @@ export function regionButtonUid(button) {
   return button?.closest?.(".roam-block-container[data-block-uid]")?.getAttribute?.("data-block-uid") || "";
 }
 
+// A board card renders the region string with no block-ref wrapper. The nearest
+// Roam block is then the diagram, outside the card. Hop one exact ((uid)) only
+// in that case. A block rendered inside the card keeps its own container.
+export function regionUidForButton(button, blockString) {
+  const refUid = button?.closest?.(".rm-block-ref[data-uid]")?.getAttribute?.("data-uid");
+  if (refUid) return refUid;
+  const card = button?.closest?.(".pxd-item[data-uid]");
+  const cardUid = card?.getAttribute?.("data-uid") || "";
+  const container = button?.closest?.(".roam-block-container[data-block-uid]");
+  const containerInside = Boolean(container && card?.contains?.(container));
+  if (!containerInside && cardUid && typeof blockString === "function") {
+    let text = "";
+    try { text = blockString(cardUid) || ""; } catch { text = ""; }
+    const hop = /^\(\(([A-Za-z0-9_-]+)\)\)$/.exec(String(text).trim());
+    if (hop) return hop[1];
+    if (/\{\{\s*(?:\[\[)?plexus-region(?:\]\])?\s*:/.test(text)) return cardUid;
+  }
+  return container?.getAttribute?.("data-block-uid") || "";
+}
+
 function hideButton(button) {
   button.setAttribute("data-plexus-owner", "plexus-diagram");
   button.style.display = "none";

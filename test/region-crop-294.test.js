@@ -9,6 +9,7 @@ import {
   eachRegionButton,
   mountRegionCrop,
   regionButtonUid,
+  regionUidForButton,
   resetCropUrls,
 } from "../src/view/region-crop.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
@@ -57,6 +58,41 @@ test("REG-4: the region uid prefers the block ref over the container", () => {
     button.remove();
     container.append(button);
     assert.equal(regionButtonUid(button), "PDx3L69_C");
+  } finally {
+    restore();
+  }
+});
+
+test("REG-4: a board card with no block-ref wrapper hops one exact block ref", () => {
+  const stub = createDomStub();
+  const restore = stub.install();
+  try {
+    const card = stub.document.createElement("div");
+    card.className = "pxd-item";
+    card.setAttribute("data-uid", "onFrVPzqS");
+    const button = stub.document.createElement("button");
+    button.className = "rm-xparser-default-plexus-region";
+    card.append(button);
+    stub.document.body.append(card);
+    const read = (uid) => (uid === "onFrVPzqS" ? "((Svsyh8BmE))" : "");
+    assert.equal(regionUidForButton(button, read), "Svsyh8BmE");
+    assert.equal(regionUidForButton(button, () => "not a ref"), "");
+    const diagram = stub.document.createElement("div");
+    diagram.className = "roam-block-container";
+    diagram.setAttribute("data-block-uid", "lwL5UW2Ye");
+    diagram.append(card);
+    assert.equal(regionUidForButton(button, read), "Svsyh8BmE");
+    const inner = stub.document.createElement("div");
+    inner.className = "roam-block-container";
+    inner.setAttribute("data-block-uid", "childBlock1");
+    inner.append(button);
+    card.append(inner);
+    assert.equal(regionUidForButton(button, read), "childBlock1");
+    const ref = stub.document.createElement("span");
+    ref.className = "rm-block-ref";
+    ref.setAttribute("data-uid", "di15RRYuH");
+    ref.append(button);
+    assert.equal(regionUidForButton(button, read), "di15RRYuH");
   } finally {
     restore();
   }

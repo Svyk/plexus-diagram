@@ -1,5 +1,10 @@
 # Changelog
 
+## 2.13.1 — 2026-10-05
+
+- An image card keeps its picture at map zoom. A collapsed or empty card still shows its title.
+- A card that cites part of an image shows that crop. A region inside the card still uses its own block.
+
 ## 2.13.0 — 2026-10-05
 
 - Every diagram opens as a Plexus board by default. Nothing is saved until you change the board. Your first edit writes the board marker in the same undo step, and folds the outline when Collapse the outline is on.

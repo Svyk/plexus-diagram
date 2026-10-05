@@ -102,6 +102,7 @@ Native diagrams are React Flow (`.react-flow`, nodes `.react-flow__node-block`).
 | P18 outline | Outline mark and inline crop | 2.9.4 | released 2026-10-04. REG-3 and REG-4 done. |
 | P18 open | Open a region and a view | 2.9.5 | released 2026-10-04. REG-5 and REG-7 done. |
 | P18 menu | Region badge and menu | 2.9.6 | released 2026-10-04. REG-8 and DOC-18 done. |
+| P19 | Public API and region cards | 2.10.1 | released 2026-10-04. ECO-2 and ECO-3 done. |
 | P17 rest-P22 | 3.x roadmap, see roadmap-3.md | 2.8.1-3.0.0 | open |
 
 Order matters: P1 and P2 are the user's direct requests. Within a phase, do tasks in the listed order unless one is blocked.
@@ -400,6 +401,11 @@ Live on Readwisenotes, window titled "Readwisenotes - Plexus Diagram/Test Lab". 
 - [x] **REG-8 Region badge and menu** — done 2026-10-04, `e158ee9`: Badge "◰ 2" in dark and light. Badges off hid it. Rename kept the macro and set the caption to biceps femoris. The warning was "Referenced in 1 block. Delete anyway?". Open references left the dialog open. Confirm deleted the region. This Roam replaced `((uid))` with the region text. A plain-block delete did the same. Copy ref was not run. No typing bench.
 - [x] **REG-7 Open a saved view** — done 2026-10-04, `ec514e9`: Inline map 269 by 140, three stroked cards. Hover map about 480 px. Click camera {x:40, y:40, w:640, h:926} contains v [40,40,640,400], width exact, three pulses, edit times unchanged. Shift-click: three sidebar pulses 107 by 61, camera width 640, zoom about 0.383. The sidebar diagram opened in Outline mode; the spotlight is that camera and pulse. Linked references of the board page did not show the view map (`d=` is not a Roam ref). Unload: window listeners 93 to 84, document 134 to 126, `.pxd-*` 0, no Plexus error. Theme Auto. No typing bench.
 
+### P19: Public API and region cards (2.10.1, 2026-10-04)
+
+- [x] **ECO-2 Public API** — done 2026-10-04, `04151bb`: boardsWith returned both fixture boards. Thumbnail warm call 4.6 ms, PNG 160 by 91, 750 bytes. Two addCard calls, writes +2, one change each. Open card pulsed, writes 0. Open view moved one camera from scale 1.61 to 1.94, writes 0. Sidebar open moved only the sidebar camera, windows 140 to 141, then that window was removed. Unload deleted window.PlexusDiagram and fired plexus-diagram:unload. Shots ECO-2-dark.png and ECO-2-light.png. No typing bench.
+- [x] **ECO-3 Roam Plexus region card** — done 2026-10-04, `04151bb`: Paste of `((eyjMKi1DA))` after readText matched created UtPQ4PmZh, writes 4 to 5. Caption "Region A of spike". Buttons Open drawing and Open in sidebar. Dark and light shots. Open drawing filled the window at 44% on the spike drawing, writes stayed 5. Minimize returned the card. A detail resize called thumbnail once, maxWidth 839, no render flag, writes 7 to 8. Removing the Roam Plexus URL made the card a plain block, writes stayed 8, no error. Putting the same URL back restored apiVersion 7, version DEV, and the crop. Unload left 0 `.pxd-*` nodes. Theme Auto. Ledger removed 8. No typing bench.
+
 ## 6. Later (ideas not scheduled)
 
 Pick from here only when every phase above is done or blocked.
@@ -431,6 +437,10 @@ AI agent features inside the board, SuperTag-style typed schemas or class tags, 
 
 Fill in as phases run. Keep the newest at the top of each list.
 
+- 2.10.1 ECO-3 live, 2026-10-04, Test Lab, `04151bb`. Paste writes 4 to 5. Detail resize: one thumbnail call, maxWidth 839, no render flag, writes 7 to 8. URL removed: plain block, writes 8. Same URL back: api 7, version DEV, crop restored. Unload `.pxd-*` 0. Window listeners 92, document 136. No pxd listener left. Theme Auto.
+- 2.10.1 ECO-2 live, 2026-10-04, Test Lab, `04151bb`. Thumbnail 4.6 ms, PNG 160 by 91, 750 bytes. addCard writes +2. Open card, view, and sidebar writes 0. Sidebar windows 140 to 141, then removed. Unload deleted the global. Shots ECO-2-dark.png and ECO-2-light.png. No typing bench.
+- 2.10.1 ECO-2, before code, 2026-10-04, Test Lab. OffscreenCanvas is a function. devicePixelRatio was 2.19. Plexus Diagram was unloaded. Roam Plexus stayed the Pages URL: frozen, apiVersion 7, version DEV. Its spec lists thumbnail, open, and regionsOf. SHOW_REF_QUERY in src/host/roam.js is the board lookup.
+- 2.10.1 ECO-3, before code, 2026-10-04, Test Lab. Page 8eai6ikkw is Plexus Spike 2026-09-28. Region eyjMKi1DA is k=area, length 116, and has no file URL. thumbnail with maxWidth 160 and render left false returned a PNG 1873 by 160, 18596 bytes, in 13 ms. That is the cached full crop. A refs query returned 3 rows of length 2. A diagram-string query returned 1 row.
 - 2.9.6 unload, 2026-10-04, Test Lab. Injected 2.9.6. Window listeners 84, then 100, then 84. Document 127, then 141, then 127. After unload, `.pxd-*` was 0 and owned buttons were 0. Theme stayed Auto.
 - 2.9.6 REG-8 live, 2026-10-04, Test Lab. Badge "◰ 2" in dark and light. Chip border rgb(59, 75, 88) dark and rgb(208, 215, 222) light. Shots REG-8-dark-badge.png, REG-8-light-badge.png, REG-8-badges-off.png. Badges off cleared the chip. Rename kept the macro through }} and set the caption to biceps femoris.
 - 2.9.6 REG-8 delete, 2026-10-04, Test Lab. The warning was "Referenced in 1 block. Delete anyway?". Open references added a mentions window and left the dialog open. Confirm deleted the region. fast.q returned [[1]]. A dotted query returned 1. After delete the ref held the region string, not `((uid))`. A Plexus-free delete of a plain block did the same. Copy ref was not run. No typing bench. Theme left on Auto.

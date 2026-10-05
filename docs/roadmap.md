@@ -389,6 +389,7 @@ Live on Readwisenotes, window titled "Readwisenotes - Plexus Diagram/Test Lab". 
 - [x] **REG-1 Region and view block model** — done 2026-10-04, `4258a7e`: Two cards. Note badge ▸ 1. Image had no kids badge. Edit times unchanged on 13 blocks. Unload left 0 `.pxd-*` nodes. Real area string parses as roam-plexus, unsupported, no error. Order follow-up done 2026-10-04, `ba770fb`: new card at order 1, regions container at order 2, edit times unchanged, unload 78 to 69 and 92 to 84, `.pxd-*` 0.
 - [x] **REG-6 Save a board view** — done 2026-10-04, `68cc875`: Corner `v=825.5,799.9,1126,850.6`. Three cards `v=32,32,1056,256` with those ids. Go within 0.04 px. Edit times unchanged. One undo restored the row. Unload left 0 `.pxd-*`. Maps are 96px strokes.
 - [x] **ECO-1 Roam Plexus tolerates img and view** — done 2026-10-05, roam-plexus `52869cc`: apiVersion 7. The img button had no owner and no error chip. The area crop was 139 by 65. regionsOf label was Plexus Diagram · region. The source area block was not edited. Theme restored to Auto. Ledger removed 4.
+- [x] **REG-2 Mark a region on an image** — done 2026-10-04, `67849d3`: img box 254.2 by 158.9, card 280 by 160. Fractions 0.2501, 0.2999, 0.1999, 0.2499. Clipboard `((tCEX9Adrq))`. Two undos. Stroke only in dark and light. Badge 0. Viewer 0. Card x stayed 701. Unload 79 to 70 and 92 to 84, `.pxd-*` 0. Theme Auto. No typing bench.
 
 ## 6. Later (ideas not scheduled)
 

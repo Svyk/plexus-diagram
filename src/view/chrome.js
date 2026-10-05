@@ -704,6 +704,7 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
           opt("sendTo", "pxd-ctx__send-to", "send-to", "Send to board…", "Move into another board", () => on.sendTo());
           if (NOTE_KINDS.includes(model?.kind)) opt("expandOutline", "pxd-ctx__mindmap", "layout-hierarchy", "Mind map", "Expand the children as a mind map", () => on.expandOutline());
           if (model?.kind === "image" || (model?.kind === "highlight" && model?.highlight?.image === true)) btn("pxd-ctx__mark-region", "highlight", "Mark region", "Drag a rectangle on this image", () => on.markRegion?.());
+          if (model?.kind === "highlight") btn("pxd-ctx__open-reader", "document-open", "Open in reader", "Open this highlight in the PDF reader", () => on.openInReader?.());
           opt("selectSameColor", "pxd-ctx__same-color", "full-circle", "Select same color", "Select every item of this color", () => on.selectSameColor());
           opt("selectConnected", "pxd-ctx__connected", "flows", "Select connected", "Select items linked to this one", () => on.selectConnected());
         } else {

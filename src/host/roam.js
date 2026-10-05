@@ -599,6 +599,16 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       return highlightTreeNodes(res);
     },
 
+    // Page attribute only. No block query and no file fetch.
+    pdfPageUrl(pageUid) {
+      const uid = typeof pageUid === "string" ? pageUid : "";
+      if (!uid) return "";
+      let res = null;
+      try { res = pull("[:pdf/url]", eidKey(uid)); } catch { return ""; }
+      const url = res?.[":pdf/url"];
+      return typeof url === "string" ? url : "";
+    },
+
     // Read-only cover. :pdf/url is a page attribute. Highlight blocks sit anywhere on that page.
     pdfCover(string) {
       const url = pdfMacroUrl(string);

@@ -16,6 +16,7 @@ import { findOnBoard } from "../model/find.js";
 import { readMindPreset, writeMindPreset } from "../model/mindmap.js";
 import { attrLegend, parseAttrStyles, styleAttrLinks } from "../model/attr-styles.js";
 import { HIGHLIGHT_COLORS } from "../model/highlight.js";
+import { pdfCardForUrl } from "../model/pdf.js";
 import { expandDateHighlights, highlightRows, placeHighlights } from "../model/highlight-pick.js";
 import { isDailyTitle } from "../model/library.js";
 import { highlightLensTag, lensBright, lensCatalog, tagsForCard } from "../model/lens.js";
@@ -2502,6 +2503,30 @@ export function mountBoardView({
     if (typeof host?.updateProps !== "function") return;
     try { await host.updateProps(boardUid, next); } catch { /* leave the board mounted */ }
   };
+  const pdfSourceOfItem = (item) => {
+    if (item?.target?.kind === "block") {
+      const text = host?.blockString?.(item.target.uid);
+      return typeof text === "string" ? text : "";
+    }
+    return typeof item?.string === "string" ? item.string : "";
+  };
+  const openHighlightInReader = async (item) => {
+    if (!item || item.kind !== "highlight" || !item.target?.uid) return;
+    const pageUid = host?.blockPageUid?.(item.target.uid) || "";
+    const url = pageUid ? (host?.pdfPageUrl?.(pageUid) || "") : "";
+    const cards = [];
+    for (const other of board()?.items.values() || []) {
+      if (other?.kind !== "pdf") continue;
+      cards.push({ uid: other.uid, source: pdfSourceOfItem(other) });
+    }
+    const match = pdfCardForUrl(url, cards);
+    if (match) {
+      await itemsR.openPdfAt?.(match, item.highlight?.page);
+      return;
+    }
+    try { host?.openBlock?.(item.target.uid); } catch { /* navigation can fail closed */ }
+    toast("Click the highlight to open the PDF");
+  };
   const chrome = createChrome({
     doc,
     root,
@@ -2542,6 +2567,7 @@ export function mountBoardView({
         if (it?.kind !== "highlight" || !it.target?.uid) return;
         void session.setHighlightColor?.(it.target.uid, name);
       },
+      openInReader: () => { void openHighlightInReader(singleItem() || barCard()); },
       onTag: (name) => { void setHighlighterTag(name); },
       onGear: (flag) => { void writeHighlighterFlag(flag); },
       tagMode: () => board()?.plexus?.highlighterTags === true,

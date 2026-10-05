@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.11.3 — 2026-10-05
+
+- Open in reader on a highlight card opens that page in the PDF card on the same board. The mark stays in view. If that PDF card is not on the board, Roam opens the highlight and a note says to click it. The click does not write. The command palette stays two entries.
+
 ## 2.11.2 — 2026-10-05
 
 - Add highlights on a PDF card places the ones you pick, as a grid or a column. One undo removes them. Dragging a highlight bullet onto the board makes one card. Dropping a date asks before adding only the highlights under that date.

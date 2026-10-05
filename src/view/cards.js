@@ -22,7 +22,7 @@ import { regionRefModel } from "../model/region-card.js";
 import { imageRegionRows, regionBadge } from "../model/region-menu.js";
 import { renderRegionCard, thumbRequest } from "./region-card.js";
 import { copyDrawingPixels, renderDrawingCard } from "./drawing-card.js";
-import { PDF_READER_H, PDF_READER_W, coverModel, readerRule } from "../model/pdf.js";
+import { PDF_READER_H, PDF_READER_W, coverModel, readerRule, writeReaderPage } from "../model/pdf.js";
 
 const SIDES = ["top", "right", "bottom", "left"];
 const CHUNK_MS = 8;
@@ -1835,6 +1835,49 @@ export function createItemRenderer({
     }
     if (rule.open) remountPdf(rule.open);
   };
+  const readerInput = (uid) => {
+    const rec = shells.get(uid);
+    const box = rec?.pdfReader?.querySelector?.(".rm-pdf-container");
+    if (!box?.querySelectorAll) return null;
+    const inputs = [...box.querySelectorAll("input")];
+    const pageField = inputs.find((node) => /^\d+$/.test(String(node.value || "").trim()));
+    return pageField || inputs[0] || null;
+  };
+  const openPdfAt = (uid, page) => {
+    if (typeof uid !== "string" || uid === "") return Promise.resolve(false);
+    if (pdfOpenUid !== uid) openPdf(uid);
+    const started = now();
+    const want = String(page);
+    const confirm = () => {
+      const input = readerInput(uid);
+      if (input && input.value !== want) writeReaderPage(input, page);
+    };
+    const attempt = () => {
+      const input = readerInput(uid);
+      if (!input) return false;
+      if (input.value === want) return true;
+      const wrote = writeReaderPage(input, page);
+      if (wrote) {
+        later(confirm, 400);
+        later(confirm, 1200);
+      }
+      return wrote && input.value === want;
+    };
+    if (attempt()) return Promise.resolve(true);
+    return new Promise((resolve) => {
+      let stop = null;
+      const finish = (ok) => {
+        try { stop?.(); } catch { /* already cleared */ }
+        resolve(ok);
+      };
+      const tick = () => {
+        if (attempt()) { finish(true); return; }
+        if (now() - started >= 5000) { finish(false); return; }
+        stop = later(tick, 100);
+      };
+      stop = later(tick, 100);
+    });
+  };
 
   // PDF-2 / PDF-5. The bar carries the colour. An area image sets its ratio before renderString. The card stays unfilled.
   const highlightRatio = (natural) => {
@@ -3170,6 +3213,7 @@ export function createItemRenderer({
       if (uids?.length && lastContent) fillContent(lastContent);
     },
     openPdf,
+    openPdfAt,
     endPdfInteract,
     mountedCount: () => mounted.size,
     mountedUids: () => [...mounted.keys()],

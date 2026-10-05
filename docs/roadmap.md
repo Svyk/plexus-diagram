@@ -111,6 +111,7 @@ Native diagrams are React Flow (`.react-flow`, nodes `.react-flow__node-block`).
 | P25 | Open a highlight in the reader | 2.11.3 | released 2026-10-05. PDF-4 done. |
 | P26 | Page chips and On board | 2.11.4 | released 2026-10-05. PDF-7 and DOC-20 done. |
 | P27 | Card context and board chips | 2.12.0 | released 2026-10-05. MEM-1 and NAV-1 done. |
+| P28 | Why, references, lane, suggest, resurface | 2.12.1 | released 2026-10-05. MEM-2, NAV-2, MEM-3, MEM-5, and MEM-4 done. |
 | P17 rest-P22 | 3.x roadmap, see roadmap-3.md | 2.8.1-3.0.0 | open |
 
 Order matters: P1 and P2 are the user's direct requests. Within a phase, do tasks in the listed order unless one is blocked.
@@ -453,6 +454,14 @@ Live on Readwisenotes, window titled "Readwisenotes - Plexus Diagram/Test Lab". 
 - [x] **MEM-1 Card context** — done 2026-10-05, `e967806`: Header was October 5th, 2026, on Halo board, section Y. With listed the same-minute card. Sparkline had 12 buckets and summed to 1 ref. The date click opened that daily page. Edit times stayed. Dark and light shots. No typing bench.
 - [x] **NAV-1 Board chips** — done 2026-10-05, `e967806`: The source block showed two chips in the outline and in the sidebar. Hover drew the card and a neighbour. Click pulsed the card. Dark text 230,237,243. Light text 31,41,55. Clear fill. Border 1 px. cardCacheMs 59. Unload pxd 0. Window 92 to 92. Document 168 to 168. No typing bench.
 
+### P28: Why, references, lane, suggest, resurface (2.12.1, 2026-10-05)
+
+- [x] **MEM-2 Why** — done 2026-10-05, `d783223`: Label plus why child. Empty why had 0 children. Popover 280 by 143. Dark borders. Chip showed because. First undo cleared the child, second the label. No typing bench.
+- [x] **NAV-2 References** — done 2026-10-05, `d783223`: Drawer year 2026, 4 rows, count 3. Shift-click opened the sidebar. Edit times unchanged. Dark borders. No typing bench.
+- [x] **MEM-3 Lane** — done 2026-10-05, `d783223`: Shift+T opened the bar over the minimap. Play returned to Play. Snapshot tick wrote 0. Dark borders. No typing bench.
+- [x] **MEM-5 Suggest** — done 2026-10-05, `d783223`: Dotted lines, dash 4 4. Connect made one edge. Link text wrapped a mention. Off left 0 lines. Dark stroke 156,163,175. No typing bench.
+- [x] **MEM-4 Resurface** — done 2026-10-05, `d783223`: October 12 listed 6 fixture cards. October 5 showed the empty line. A click opened the board and pulsed the card. Dark borders. Thumbs 48 px. No typing bench.
+
 ## 6. Later (ideas not scheduled)
 
 Pick from here only when every phase above is done or blocked.
@@ -484,6 +493,8 @@ AI agent features inside the board, SuperTag-style typed schemas or class tags, 
 
 Fill in as phases run. Keep the newest at the top of each list.
 
+- 2.12.1 live, 2026-10-05, Test Lab, `d783223`. Why pop on body, then unload pxd 0. Our listeners 25 to 0. Roam Plexus listeners stayed 18. Check 1358 pass. Banner 2.12.1. Dark and light shots for the chip, popover, lane, suggest lines, references drawer, and resurface week and empty states. Native undo cleared the why child, then the label. No typing bench.
+- 2.12.1 measure, 2026-10-05, Test Lab. Two diagram blocks, ages 296 and 4 days, both with 0 children. A create-time write did not stick. Undo of a string plus a child: first undo cleared the child, second restored the string, third removed the block. pageTitleToDate parsed October 5th, September 5th, and October 12th, 2026. No typing bench.
 - 2.12.0 live, 2026-10-05, Test Lab, `e967806`. Halo day matched create time. Two chips on the source. cardCacheMs 59. Unload pxd 0. Window 92 to 92. Document 168 to 168. Check 1336 pass. Theme restored to Auto. No typing bench.
 - 2.12.0 placement, 2026-10-05, Test Lab. The page title is h1.rm-title-display, 279 by 90. No reference header was on the page. The page chip is then the first child of the page's first block list. It does not touch the title. A scan attaches 60 blocks, then the rest on a timer. No typing bench.
 - 2.12.0 measure, 2026-10-05, Test Lab. Create time and edit time are numbers. The user pull has a uid and an empty display name. dateToPageUid exists. The board pull does not ask for those fields yet. The fixture page had 0 refs. No typing bench.

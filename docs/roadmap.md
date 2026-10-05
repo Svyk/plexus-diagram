@@ -99,6 +99,7 @@ Native diagrams are React Flow (`.react-flow`, nodes `.react-flow__node-block`).
 | P18 patch | Region container order | 2.9.1 | released 2026-10-04. A new card stays ahead of the region container. |
 | P18 views | Save a board view | 2.9.2 | released 2026-10-04. REG-6 done. ECO-1 is roam-plexus 0.33.0, live in Test Lab. |
 | P18 image | Mark a region on an image | 2.9.3 | released 2026-10-04. REG-2 done. |
+| P18 outline | Outline mark and inline crop | 2.9.4 | released 2026-10-04. REG-3 and REG-4 done. |
 | P17 rest-P22 | 3.x roadmap, see roadmap-3.md | 2.8.1-3.0.0 | open |
 
 Order matters: P1 and P2 are the user's direct requests. Within a phase, do tasks in the listed order unless one is blocked.
@@ -390,6 +391,8 @@ Live on Readwisenotes, window titled "Readwisenotes - Plexus Diagram/Test Lab". 
 - [x] **REG-6 Save a board view** — done 2026-10-04, `68cc875`: Corner `v=825.5,799.9,1126,850.6`. Three cards `v=32,32,1056,256` with those ids. Go within 0.04 px. Edit times unchanged. One undo restored the row. Unload left 0 `.pxd-*`. Maps are 96px strokes.
 - [x] **ECO-1 Roam Plexus tolerates img and view** — done 2026-10-05, roam-plexus `52869cc`: apiVersion 7. The img button had no owner and no error chip. The area crop was 139 by 65. regionsOf label was Plexus Diagram · region. The source area block was not edited. Theme restored to Auto. Ledger removed 4.
 - [x] **REG-2 Mark a region on an image** — done 2026-10-04, `67849d3`: img box 254.2 by 158.9, card 280 by 160. Fractions 0.2501, 0.2999, 0.1999, 0.2499. Clipboard `((tCEX9Adrq))`. Two undos. Stroke only in dark and light. Badge 0. Viewer 0. Card x stayed 701. Unload 79 to 70 and 92 to 84, `.pxd-*` 0. Theme Auto. No typing bench.
+- [x] **REG-3 Mark a region from the outline** — done 2026-10-04, `a8bc4c2`: Overlay matched the image within 0.01 px (dx 0.007, dy 0, dw 0, dh 0.007). Escape left no overlay, no toast, and no children on the image. Confirm wrote container Eel2TEwkt and region fRin5OEpj at f=0.2497,0.3008,0.2,0.2496, caption "live mark". Clipboard `((fRin5OEpj))`. Draft was 100 by 78. The menu is on the block bullet, then Extensions. "Plexus: Mark image region" is not a palette entry. "Plexus: New whiteboard here" stayed at 1.
+- [x] **REG-4 Show an image region in the outline** — done 2026-10-04, `a8bc4c2`: Ref, embed, and sidebar crops were 204.8 by 160. The confirmed crop was 205.1 by 160. Dark border rgb(255,255,255), light border rgb(31,41,55), shadow none, background transparent. Roam Plexus rect zfcQjl2uz stayed owner roam-plexus with 0 of our crops. Embed uVhMpfJb4 had one crop. Linked references of page plexus-region showed both of our crops. The image block had 0 refs. Unload twice: document listeners 115 to 113, window 78 to 76, `.pxd-*` 0. Theme Auto. No typing bench.
 
 ## 6. Later (ideas not scheduled)
 
@@ -422,6 +425,7 @@ AI agent features inside the board, SuperTag-style typed schemas or class tags, 
 
 Fill in as phases run. Keep the newest at the top of each list.
 
+- 2.9.4 REG-3 and REG-4, 2026-10-04, Test Lab. Overlay dx 0.007, dy 0, dw 0, dh 0.007. Escape wrote nothing. Confirm draft 100 by 78. Region fRin5OEpj f=0.2497,0.3008,0.2,0.2496. Clipboard `((fRin5OEpj))`. Crops 204.8 by 160 (ref, embed, sidebar) and 205.1 by 160 (new). Dark border rgb(255,255,255), light rgb(31,41,55), shadow none. Roam Plexus rect left alone. Image block refs 0. Palette: New whiteboard 1, Mark image region 0. Unload twice: document 115 to 113, window 78 to 76, `.pxd-*` 0. Theme Auto. Ledger removed 7. No typing bench. The menu is the block bullet, then Extensions. A right-click on the image pixels does not open Roam's menu.
 - 2.9.4 REG-3 and REG-4, before code, 2026-10-04, Test Lab page. Outline image and its resize wrapper are the same box, 500 by 312.5, natural 1600 by 1000, not .enc. The right-click submenu is labeled Extensions. It already contains Roam Plexus "Plexus: Region on image". A k=img block and its block ref each show button.rm-xparser-default-plexus-region, text "plexus-region", owner unset. The region block refs only the plexus-region page, not the image block. file.get on that PNG URL returned a File, 9542 bytes, image/png.
 
 - 2.9.2 REG-6, 2026-10-05, Test Lab. Corner matched the camera ±0.1. Selection ids 3, pad 48. Clipboard read `((uid))`. Go moved 0.033 px and 0.009 px. Edit times unchanged on 7 blocks. Delete removed one block. Undo restored the panel row. Unload: window keydown 5, document keydown 13, same after a fresh inject, `.pxd-*` 0. Theme Auto. Ledger removed 7. No typing bench.

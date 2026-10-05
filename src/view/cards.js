@@ -244,6 +244,9 @@ function cardContentKey(item, live = false, pdfOpen = false) {
     item.titleSize || "", item.titleColor || "", item.titleFill || "", item.areaFill || "",
     taskBlockOn(item) ? `tb${taskNamesSig()}` : "",
     item.kind === "pdf" ? (pdfOpen ? "o" : "") : "",
+    item.kind === "highlight" && item.highlight ? item.highlight.color ?? "" : "",
+    item.kind === "highlight" && item.highlight ? item.highlight.page ?? "" : "",
+    item.kind === "highlight" && item.highlight ? item.highlight.text ?? "" : "",
   ];
   if (item.kind === "board") parts.push(item.w, item.h);
   if (item.kind === "board") {
@@ -906,6 +909,9 @@ export function createItemRenderer({
           const cover = pdfCoverOf(item);
           rec.pdfCover = cover;
           rec.header.textContent = String(cover.title || "PDF").slice(0, HEADER_TEXT_MAX);
+        }
+        if (item.kind === "highlight" && item.highlight && editing?.uid !== item.uid && !rec.renaming) {
+          rec.header.textContent = firstLine(item.highlight.text || "").slice(0, HEADER_TEXT_MAX);
         }
         if (item.type === "text") rec.header.style.display = "none";
       }
@@ -1827,6 +1833,21 @@ export function createItemRenderer({
     if (rule.open) remountPdf(rule.open);
   };
 
+  // PDF-2. The bar carries the colour. The card itself stays unfilled.
+  const paintHighlight = (rec, item, budget) => {
+    const hl = item.highlight;
+    const bar = el("div", "pxd-highlight-bar", rec.body);
+    bar.setAttribute("data-color", String(hl.color || ""));
+    if (lod !== "detail") {
+      const line = firstLine(hl.text || "");
+      if (line) el("div", "pxd-highlight-line", rec.body).textContent = line;
+      return;
+    }
+    if (hl.text) budget.roots.push(renderRoot(rec.body, hl.text, "pxd-rs pxd-item__string", item.target?.uid || item.uid));
+    const foot = el("div", "pxd-highlight-foot", rec.body);
+    foot.textContent = typeof hl.footer === "string" ? hl.footer : "";
+  };
+
   const mountContentBody = (rec, item) => {
     startRows();
     noteRender(item.uid);
@@ -1893,6 +1914,8 @@ export function createItemRenderer({
       if (editing?.uid !== item.uid && !rec.renaming) rec.header.textContent = String(cover.title || "PDF").slice(0, HEADER_TEXT_MAX);
       if (pdfReaderBox(item.uid)) budget.roots.push(paintPdfReader(rec, item));
       else paintPdfCover(rec, item, cover);
+    } else if (item.kind === "highlight" && item.highlight) {
+      paintHighlight(rec, item, budget);
     } else if (item.kind === "block") {
       const ref = item.target.uid;
       const refString = host?.blockString?.(ref);
@@ -2221,7 +2244,7 @@ export function createItemRenderer({
       for (const [uid, rec] of shells) {
         const r = lastRects.get(uid);
         const kind = lastBoard.items.get(uid)?.kind;
-        const keep = rec.type === "section" || rec.type === "text" || rec.refBoard || kind === "board" || kind === "pdf";
+        const keep = rec.type === "section" || rec.type === "text" || rec.refBoard || kind === "board" || kind === "pdf" || kind === "highlight";
         if (keep && r && rectsIntersect(r, visibleRect)) next.add(uid);
       }
     }
@@ -2294,6 +2317,9 @@ export function createItemRenderer({
         } else if (item?.kind === "pdf" && mounted.has(uid) && editing?.uid !== uid) {
           unmountContent(uid);
           applyPdfSize(rec);
+          moved = true;
+        } else if (item?.kind === "highlight" && mounted.has(uid) && editing?.uid !== uid) {
+          unmountContent(uid);
           moved = true;
         }
       }

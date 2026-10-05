@@ -38,6 +38,8 @@ const SHOW_REF_QUERY = `[:find ?board ?page ?card :in $ ?uid ?pat :where
 const BOARD_META_PATTERN = "[:block/props :edit/time {:block/children [:block/props]}]";
 const PDF_PAGE_QUERY = `[:find ?u ?t :in $ ?url :where [?p :pdf/url ?url] [?p :block/uid ?u] [?p :node/title ?t]]`;
 const PDF_PAGE_BLOCKS_QUERY = `[:find ?props :in $ ?uid :where [?p :block/uid ?uid] [?b :block/page ?p] [?b :block/props ?props]]`;
+const BLOCK_PROPS_PATTERN = "[:block/string :block/props {:block/page [:node/title]}]";
+const BLOCK_WATCH_PATTERN = "[:block/uid :block/string :block/props {:block/page [:node/title]}]";
 
 const eidKey = (uid) => [":block/uid", uid];
 const watchEntity = (uid) => `[:block/uid "${String(uid).replace(/["\\]/g, "")}"]`;
@@ -265,6 +267,21 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       };
     },
 
+    // Highlight blocks live on the PDF page. cb receives the pull.
+    watchBlock(uid, cb) {
+      const entity = watchEntity(uid);
+      const wrapped = (before, after) => cb(after);
+      data.addPullWatch(BLOCK_WATCH_PATTERN, entity, wrapped);
+      stats.watches++;
+      let active = true;
+      return () => {
+        if (!active) return;
+        active = false;
+        data.removePullWatch(BLOCK_WATCH_PATTERN, entity, wrapped);
+        stats.watches--;
+      };
+    },
+
     pullNative(uid) {
       return pull(NATIVE_PATTERN, eidKey(uid)) ?? null;
     },
@@ -389,6 +406,23 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       const node = Array.isArray(page) ? page[0] : page;
       const title = node?.[":node/title"];
       return typeof title === "string" ? title : "";
+    },
+
+    // Highlight read: props, string, and the owning page title. No url query.
+    blockProps(uid) {
+      let res = null;
+      try { res = pull(BLOCK_PROPS_PATTERN, eidKey(uid)); } catch { return null; }
+      if (!res || typeof res !== "object" || Array.isArray(res)) return null;
+      const page = res[":block/page"];
+      const node = Array.isArray(page) ? page[0] : page;
+      const title = node?.[":node/title"];
+      const props = res[":block/props"];
+      const string = res[":block/string"];
+      return {
+        props: props && typeof props === "object" && !Array.isArray(props) ? props : {},
+        string: typeof string === "string" ? string : "",
+        pageTitle: typeof title === "string" ? title : "",
+      };
     },
 
     // Bytes for a graph file. Encrypted graphs only decrypt through file.get; the URL itself taints a canvas.

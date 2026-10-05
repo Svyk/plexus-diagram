@@ -21,6 +21,7 @@ import { regionRefModel } from "./region-card.js";
 import { drawingRefModel, isDrawingString } from "./drawing-card.js";
 import { isContainerString, parseRegion } from "./regions.js";
 import { listFromNodes } from "./snapshots.js";
+import { highlightModel } from "./highlight.js";
 
 const AUTO_GAP = 40;
 const AUTO_OFFSET = 48;
@@ -100,7 +101,7 @@ function autoPlace(siblings) {
   });
 }
 
-export function buildBoard(pulled, { defaults, resolve, plexusApi } = {}) {
+export function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf } = {}) {
   if (!pulled || typeof pulled !== "object") return null;
   const uid = pulled[":block/uid"];
   const string = pulled[":block/string"] ?? "";
@@ -153,6 +154,7 @@ export function buildBoard(pulled, { defaults, resolve, plexusApi } = {}) {
       else if (isQueryString(cstring)) title = "Query";
       else title = firstLine(cstring);
       let regionDrawing;
+      let highlight;
       if (kind === "block" && cls.refUid && typeof resolve === "function") {
         let targetText = null;
         try { targetText = resolve(cls.refUid); } catch { targetText = null; }
@@ -167,11 +169,25 @@ export function buildBoard(pulled, { defaults, resolve, plexusApi } = {}) {
         } else if (classifyString(typeof targetText === "string" ? targetText : "").kind === "pdf") {
           kind = "pdf";
           title = "PDF";
+        } else if (typeof propsOf === "function") {
+          let bag = null;
+          try { bag = propsOf(cls.refUid); } catch { bag = null; }
+          const src = bag && typeof bag === "object" ? bag : {};
+          const model = highlightModel({
+            props: src.props,
+            string: typeof targetText === "string" ? targetText : "",
+            pageTitle: src.pageTitle,
+          });
+          if (model) {
+            kind = "highlight";
+            title = model.text || "PDF";
+            highlight = model;
+          }
         }
       }
       let target;
       if (kind === "page") target = { kind: "page", title: cls.title };
-      else if (kind === "block" || kind === "region-ref" || kind === "drawing-ref" || (kind === "pdf" && cls.refUid)) target = { kind: "block", uid: cls.refUid };
+      else if (kind === "block" || kind === "region-ref" || kind === "drawing-ref" || (kind === "pdf" && cls.refUid) || (kind === "highlight" && cls.refUid)) target = { kind: "block", uid: cls.refUid };
       else target = { kind: "self", uid: cuid };
       const item = {
         uid: cuid,
@@ -210,6 +226,7 @@ export function buildBoard(pulled, { defaults, resolve, plexusApi } = {}) {
         title,
         target,
         ...(regionDrawing ? { regionDrawing } : {}),
+        ...(highlight ? { highlight } : {}),
         enhanced: kind === "board" && cplexus?.v === 2,
         members: [],
         content: type === "section" ? [] : kids,

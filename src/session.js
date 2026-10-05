@@ -201,6 +201,19 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
   let emitted = null;
   let rix = null;
 
+  const highlightWatches = new Map();
+  let highlightWatchReady = false;
+  let syncHighlightWatches = () => {};
+  const disposeHighlightWatch = (id) => {
+    const off = highlightWatches.get(id);
+    if (!off) return;
+    highlightWatches.delete(id);
+    try { off(); } catch { /* watch already gone */ }
+  };
+  const disposeHighlightWatches = () => {
+    for (const id of [...highlightWatches.keys()]) disposeHighlightWatch(id);
+  };
+
   const ix = () => (rix ??= indexTree(raw));
   const rebuild = () => {
     rix = null;
@@ -214,9 +227,11 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
           return null;
         }
       },
+      propsOf: (id) => host.blockProps(id),
       plexusApi,
     }) : null;
     rects = board ? worldRects(board) : new Map();
+    if (highlightWatchReady) syncHighlightWatches();
   };
   rebuild();
   emitted = board;
@@ -295,6 +310,7 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
   const markGone = () => {
     if (gone || destroyed) return;
     gone = true;
+    disposeHighlightWatches();
     emit("gone", { uid });
   };
   const repull = () => {
@@ -372,17 +388,53 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
     // ignores the call inside its own echo window).
     if (diff && (diff.structural || diff.dirty.size) && !queue.pending) host.invalidateUndo?.();
   };
-  const unwatch = raw
-    ? host.watchBoard(uid, (after) => {
-      if (destroyed) return;
-      if (!after || !after[UID]) {
-        if (!host.pullBoard(uid)) markGone();
-        return;
+  const onBoard = (after) => {
+    if (destroyed) return;
+    if (!after || !after[UID]) {
+      if (!host.pullBoard(uid)) markGone();
+      return;
+    }
+    latest = after;
+    if (!scheduled) { scheduled = true; schedule(flush); }
+  };
+  const unwatch = raw ? host.watchBoard(uid, onBoard) : () => {};
+
+  // The colour tag lives on the highlight block, which is not a child of the board. One watch per target.
+  syncHighlightWatches = () => {
+    const live = new Set();
+    if (board && !destroyed) {
+      for (const item of board.items.values()) {
+        if (item.kind !== "highlight") continue;
+        const id = item.target?.uid;
+        if (typeof id !== "string" || id === "" || live.has(id)) continue;
+        live.add(id);
+        if (highlightWatches.has(id) || typeof host.watchBlock !== "function") continue;
+        highlightWatches.set(id, () => {});
+        let off = () => {};
+        try {
+          const ret = host.watchBlock(id, () => {
+            if (destroyed) return;
+            onBoard(host.pullBoard(uid));
+          });
+          if (typeof ret === "function") off = ret;
+        } catch {
+          highlightWatches.delete(id);
+          continue;
+        }
+        if (destroyed || gone) {
+          highlightWatches.delete(id);
+          try { off(); } catch { /* board already gone */ }
+          continue;
+        }
+        highlightWatches.set(id, off);
       }
-      latest = after;
-      if (!scheduled) { scheduled = true; schedule(flush); }
-    })
-    : () => {};
+    }
+    for (const id of [...highlightWatches.keys()]) {
+      if (!live.has(id)) disposeHighlightWatch(id);
+    }
+  };
+  highlightWatchReady = true;
+  syncHighlightWatches();
 
   // ---- write pipeline ----
   const fieldsOf = (op) => {
@@ -1704,6 +1756,7 @@ function createSession(uid, { host, settings = null, raf, now = Date.now, idle, 
       if (destroyed) return;
       destroyed = true;
       unwatch();
+      disposeHighlightWatches();
       if (linkTimer) clearTimeout(linkTimer);
       linkTimer = null;
       linkResolve?.();

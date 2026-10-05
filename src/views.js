@@ -1,6 +1,7 @@
 // REG-6. Save view writes one k=view block under {{[[plexus-regions]]}}. Go does not use this file.
 
 import { extendSession } from "./session.js";
+import { imageRegionString } from "./model/image-region.js";
 import { isContainerString, parseRegion, serializeRegion } from "./model/regions.js";
 import { viewBlockString } from "./model/view-save.js";
 
@@ -24,6 +25,19 @@ function viewRegion(api, uid) {
   const region = parseRegion(node[STR] ?? node.string ?? "");
   if (!region || region.kind !== "view" || region.supported !== true) return null;
   return region;
+}
+
+// The container is a child of this card only. The board's regions list is a different block.
+function imageCardContainer(api, cardUid) {
+  const card = api.rawNode(cardUid);
+  if (!card) return null;
+  for (const child of api.kidsOf(card)) {
+    const id = child[UID] || child.uid;
+    if (!id) continue;
+    const text = child[STR] ?? child.string ?? "";
+    if (isContainerString(text) || api.rawPlexus(id)?.type === "regions") return id;
+  }
+  return null;
 }
 
 extendSession((session, api) => {
@@ -72,5 +86,30 @@ extendSession((session, api) => {
       t.del(uid);
       return true;
     });
+  };
+
+  session.addImageRegion = (cardUid, frac, caption, uid) => {
+    const string = imageRegionString(cardUid, frac, caption);
+    if (string == null) return Promise.resolve(null);
+    const regionUid = uid || api.host.generateUid();
+    const existing = imageCardContainer(api, cardUid);
+    if (!existing) {
+      api.txn((t) => {
+        t.create({
+          parent: cardUid,
+          string: CONTAINER,
+          plexus: { type: "regions" },
+          open: false,
+          order: "last",
+        });
+      });
+    }
+    const parent = existing || imageCardContainer(api, cardUid);
+    const promise = api.txn((t) => {
+      t.create({ parent, uid: regionUid, string, order: "last" });
+      return regionUid;
+    });
+    if (promise && typeof promise === "object") promise.uid = regionUid;
+    return promise;
   };
 });

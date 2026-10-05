@@ -75,6 +75,7 @@ An enhanced board keeps Roam's diagram controls and adds to them.
 | Search | `/` filters the board and steps through matches |
 | Add | The Add panel searches pages and blocks, and its Related tab lists what the selected card links to and is linked from |
 | Save view | More → Save view…, or Shift+V, stores the camera as one view block. With cards selected, the context bar saves a view of that selection. The Boards tab lists the views. Go restores the camera and writes nothing |
+| Mark region | On an image card, Mark region, then drag a rectangle on the picture. Confirm stores the region under the image and copies a block ref. The first undo removes the region. The next undo removes the empty container |
 
 The context bar above a selection has 10 colors for cards, sections, text, and connections; connection direction (→ ↔ —), flip, route (curve, straight, elbow), dashed line, weight, label, and notes.
 

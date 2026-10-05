@@ -5089,6 +5089,55 @@ body.roam-body.dark .pxd-root,
   right: calc(var(--pxd-panel-right) + var(--pxd-panel-w, 340px) + var(--pxd-panel-gap));
 }
 
+/* REG-2. The draft is a stroke. Dark adds a 1px halo. No fill. */
+
+.pxd-root .pxd-region-layer {
+  position: absolute;
+  left: 0;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 20;
+  cursor: crosshair;
+}
+
+.pxd-root .pxd-region-draft {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1.5px solid #1f2937;
+  background: transparent;
+  pointer-events: none;
+}
+
+.pxd-root .pxd-region-draft:hover {
+  background: transparent;
+}
+
+.bp3-dark .pxd-root .pxd-region-draft,
+.pxd-root.pxd-root--dark .pxd-region-draft {
+  border-color: white;
+  box-shadow: 0 0 0 1px black;
+}
+
+.pxd-root .pxd-region-bar {
+  position: absolute;
+  display: flex;
+  gap: 4px;
+  z-index: 1;
+}
+
+.pxd-root .pxd-region-caption,
+.pxd-root .pxd-region-confirm {
+  box-sizing: border-box;
+  border: 1px solid var(--pxd-border, #d0d7de);
+  color: var(--pxd-text, inherit);
+  background: transparent;
+}
+
+.pxd-root .pxd-region-caption {
+  width: 160px;
+}
+
 /* RF-3 (2.4): relation chips under connection blocks in Roam's outline, sidebar and linked references, and the
    preview popover. The chip lives outside every .pxd-root, so it carries its own tokens (light, then the five dark
    signals). The popover is a .pxd-root on document.body and takes the board tokens. */

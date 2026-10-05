@@ -90,6 +90,7 @@ export const TIP_TEXT = {
   "ctx.expand:on": e("Hide children", "Fold the children away so the card shows only its own block."),
   "ctx.refs": e("References", "Show the blocks that link to this card."),
   "ctx.edit": e("Edit", "Edit the card's text in place.", "Enter"),
+  "ctx.mark-region": e("Mark region", "Drag a rectangle on this image."),
   "ctx.sidebar": e("Open in sidebar", "Open the block or page in Roam's right sidebar."),
   "ctx.collapse": e("Collapse", "Shrink the card to its title row."),
   "ctx.collapse:on": e("Expand", "Show the whole card again."),

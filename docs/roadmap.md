@@ -98,6 +98,7 @@ Native diagrams are React Flow (`.react-flow`, nodes `.react-flow__node-block`).
 | P18 slice | Region block model | 2.9.0 | released 2026-10-04. REG-1 done. ECO-1 and the rest of P18 stay open. |
 | P18 patch | Region container order | 2.9.1 | released 2026-10-04. A new card stays ahead of the region container. |
 | P18 views | Save a board view | 2.9.2 | released 2026-10-04. REG-6 done. ECO-1 is roam-plexus 0.33.0, live in Test Lab. |
+| P18 image | Mark a region on an image | 2.9.3 | released 2026-10-04. REG-2 done. |
 | P17 rest-P22 | 3.x roadmap, see roadmap-3.md | 2.8.1-3.0.0 | open |
 
 Order matters: P1 and P2 are the user's direct requests. Within a phase, do tasks in the listed order unless one is blocked.
@@ -422,6 +423,8 @@ Fill in as phases run. Keep the newest at the top of each list.
 
 - 2.9.2 REG-6, 2026-10-05, Test Lab. Corner matched the camera ±0.1. Selection ids 3, pad 48. Clipboard read `((uid))`. Go moved 0.033 px and 0.009 px. Edit times unchanged on 7 blocks. Delete removed one block. Undo restored the panel row. Unload: window keydown 5, document keydown 13, same after a fresh inject, `.pxd-*` 0. Theme Auto. Ledger removed 7. No typing bench.
 - 2.9.2 ECO-1, 2026-10-05, Test Lab. Removed and re-added the Roam Plexus Pages URL. apiVersion 7. Img button owner was empty, no error chip. Area crop was an image 139 by 65 with owner roam-plexus. regionsOf label was Plexus Diagram · region. Source area block unchanged. Theme Auto. `.pxd-*` 0. Ledger removed 4. No typing bench.
+- 2.9.3 REG-2, 2026-10-04, Test Lab. img box 254.2 by 158.9, card 280 by 160. Fractions 0.2501, 0.2999, 0.1999, 0.2499. Clipboard `((tCEX9Adrq))`. Toast copied. Badge 0. Viewer 0. Card x stayed 701. Two undos. Stroke only, both themes. Unload 79 to 70 and 92 to 84, same on the second inject, `.pxd-*` 0. No Plexus error. Theme Auto. Ledger removed 2. No typing bench. No live .enc image.
+- 2.9.3 REG-2, before code, 2026-10-05. Image body is img.rm-inline-img in .pxd-item__media. max-width 100%, max-height 320px, object-fit contain. Card default 280 by 160. Fractions use that img box. A mark drag must stop pointerdown or the card moves and the viewer opens.
 
 - 2.9.1, 2026-10-04. Card GoBMARGQ9 at order 1, container zmvDOLPzI at order 2. Edit times unchanged. Unload 78 to 69, 92 to 84, pxd 0. Theme Auto. Ledger removed 5.
 

@@ -50,6 +50,7 @@ import { boardKeyIsOutside } from "./offscreen.js";
 import { editorKeyAction, inputBlockRole } from "./editor-keys.js";
 import { createEdgeLayer } from "./edges.js";
 import { createChrome, LINK_MODES } from "./chrome.js";
+import { mountRegionMark } from "./region-mark.js";
 import { syncEmptyHint } from "./empty-hint.js";
 import { applyMotionClasses, motionProfile, resolveMotion } from "./motion.js";
 import { mountTable } from "./table-view.js";
@@ -490,6 +491,7 @@ export function mountBoardView({
   let presentSet = null;
   let sendPending = null; // uids waiting for a target board picked in the Boards tab
   let menuCtx = null;
+  let regionMark = null;
   let lastPayload = null; // last copy payload, so a menu paste can restore the plexus items
   let lastPointer = null; // last pointer position in client coords, converted with a fresh measure() at paste time
   let backVisible = false;
@@ -2150,6 +2152,34 @@ export function mountBoardView({
       pin: (on) => { if (selection.items.length) void session.setPinned?.(selection.items, Boolean(on)); },
       fitHeight: () => { const it = singleItem(); if (it) fitHeight(it.uid); },
       copyRef: () => { const it = singleItem(); if (it) copyText(`((${it.uid}))`, "Reference copied"); },
+      markRegion: () => {
+        const it = singleItem() || barCard();
+        if (!it || it.kind !== "image") return;
+        const card = root.querySelector(`[data-uid="${it.uid}"]`);
+        const img = card?.querySelector?.("img.rm-inline-img");
+        if (!img) { toast("The image is not ready"); return; }
+        regionMark?.destroy?.();
+        const cardUid = it.uid;
+        regionMark = mountRegionMark({
+          doc,
+          root,
+          img,
+          onConfirm: ({ frac, caption }) => {
+            const uid = host.generateUid();
+            try {
+              const pending = navigator.clipboard.writeText(`((${uid}))`);
+              if (pending && typeof pending.catch === "function") pending.catch(() => {});
+            } catch { /* clipboard can be missing; the region write still runs */ }
+            session.addImageRegion(cardUid, frac, caption, uid);
+            toast("Region made, ref copied");
+            regionMark = null;
+          },
+          onCancel: () => {
+            regionMark?.destroy?.();
+            regionMark = null;
+          },
+        });
+      },
       duplicate: () => duplicate(selection.items),
       sendTo: () => startSendTo(),
       expandOutline: () => { const it = singleItem(); if (it) expandOutline(it.uid); },
@@ -3958,6 +3988,8 @@ export function mountBoardView({
     dispose() {
       if (disposed) return;
       disposed = true;
+      regionMark?.destroy?.();
+      regionMark = null;
       closeViewDialog();
       closeLens();
       pagePicker?.close();

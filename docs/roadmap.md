@@ -104,6 +104,7 @@ Native diagrams are React Flow (`.react-flow`, nodes `.react-flow__node-block`).
 | P18 menu | Region badge and menu | 2.9.6 | released 2026-10-04. REG-8 and DOC-18 done. |
 | P19 | Public API and region cards | 2.10.1 | released 2026-10-04. ECO-2 and ECO-3 done. |
 | P20 | Drawing cards and Compass boards | 2.10.2 | released 2026-10-05. ECO-4 and ECO-5 done. |
+| P21 | Compass hop and annotate | 2.10.3 | released 2026-10-05. ECO-6, ECO-7, and DOC-19 done. |
 | P17 rest-P22 | 3.x roadmap, see roadmap-3.md | 2.8.1-3.0.0 | open |
 
 Order matters: P1 and P2 are the user's direct requests. Within a phase, do tasks in the listed order unless one is blocked.
@@ -412,6 +413,12 @@ Live on Readwisenotes, window titled "Readwisenotes - Plexus Diagram/Test Lab". 
 - [x] **ECO-4 Drawing card** — done 2026-10-05, `fc4e28e`: The drawing ref showed a 160 by 100 picture and the drawing props stayed 24670 bytes. Regions listed 10. The picked area became a region card. A new drawing, with the API and without it, was one empty drawing plus one reference. Dark and light shots. Theme restored to Auto. No typing bench.
 - [x] **ECO-5 Compass boards** — done 2026-10-05, `fc4e28e`, roam-compass `d4d69e1`: Two board nodes, thumbs 160 by 91 and 160 by 40. The click showed both cards. The edge label was annotates. Open on board pulsed that card in 602 ms. With Plexus unloaded, board nodes were 0 and errors were 0. Light shot. No typing bench.
 
+### P21: Compass hop and annotate (2.10.3, 2026-10-05)
+
+- [x] **ECO-6 Compass hop** — done 2026-10-05, `2392eae`, roam-compass `4949743`: One board opened and pulsed the page card. Two boards asked, then the picked board pulsed its card. After the Compass build that owned the global unloaded, the next card menu had no Open in Compass. Light shots ECO-6-pulse-light.png, ECO-6-picker-light-full.png, ECO-6-card-a-light.png, ECO-6-menu-no-compass-light.png. The results list stayed hidden. No typing bench.
+- [x] **ECO-7 Annotate as drawing** — done 2026-10-05, `2392eae`: The first annotate wrote a drawing, a ref, Connections, and an edge (4). The next reused Connections (3). The stored edge named the drawing, then annotates, then the image. The toast stayed after the drawing opened, dark and light. The chip named the drawing. With create missing, the row was absent and the real object was put back. The editor stayed closed. Shots ECO-7-toast.png, ECO-7-toast-light.png, ECO-7-chip-light.png. No typing bench.
+- [x] **DOC-19 Interop gate** — done 2026-10-05, `2392eae`: plexus-diagram check 1242 pass. roam-compass check 148 pass at `4949743`. roam-plexus stayed 0.33.0. Its full check missed two timing asserts together. Both passed alone. Plexus unload left 0 `.pxd-*` nodes and removed its global. Compass and Roam Plexus stayed. The URL Roam Plexus was not unloaded. The palette stays two entries. No typing bench.
+
 ## 6. Later (ideas not scheduled)
 
 Pick from here only when every phase above is done or blocked.
@@ -443,6 +450,7 @@ AI agent features inside the board, SuperTag-style typed schemas or class tags, 
 
 Fill in as phases run. Keep the newest at the top of each list.
 
+- 2.10.3 live, 2026-10-05, Test Lab, `2392eae`, compass `4949743`. Toast stayed after the drawing opened. Chip named the drawing. Writes 4, then 3. Pulse cards were the page cards. Menu lost Open in Compass after the owning Compass unloaded. Unload left 0 `.pxd-*`. URL Roam Plexus stayed. Two roam-plexus timing tests passed alone. No typing bench.
 - 2.10.3 ECO-6 and ECO-7, before code, 2026-10-05, Test Lab. Plexus was unloaded. Roam Plexus stayed frozen, apiVersion 7, version DEV. spec().methods includes create and has no image method. The live create function only forwards its argument to host.createDrawing. That host takes pageUid, parentUid, title, and order. scene.add throws on an image element. ECO-7 creates an empty drawing and shows the drop toast. RoamCompass was frozen with isAvailable and focus, and no apiVersion. Compass 0.8.0 already sends roam-compass:ready and roam-compass:unload. No typing bench.
 - 2.10.2 unload, 2026-10-05, Test Lab. Two cycles: window listeners 108 then 88, document 144 then 130, both times. `.pxd-*` 0. Errors none. Roam Plexus stayed apiVersion 7, frozen. Theme Auto. No typing bench.
 - 2.10.2 ECO-5 live, 2026-10-05, Test Lab. Thumbs 160 by 91 and 160 by 40. Cards matched cardsOf, 2. Label annotates. Pulse at 602 ms. Unloaded: 0 board nodes, 0 errors. Shots ECO-5-dark.png, ECO-5-light.png, ECO-5-pulse.png. Dev Compass ran in Test Lab. No typing bench.

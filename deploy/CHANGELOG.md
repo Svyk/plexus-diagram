@@ -1,5 +1,20 @@
 # Changelog
 
+## 2.20.0 — 2026-10-06
+
+Statuses, journal, fullscreen tabs, touch, and a round of reliability work.
+
+- Task statuses (with Roam Task Status Tags 0.9.0 or later loaded). A task card shows its status as the same glyph Task Status Tags draws on the checkbox (Active, Waiting, In Review, Holding, Incubating, Alert, Cancelled) and as a chip. A small ring left of the checkbox opens a status chooser; Shift-click removes the status. The card menu and a multi-selection have Status ▸ (up to 45 cards at a time). Every status change is written by Task Status Tags, not by Plexus. Without it, the glyphs still show from a built-in table and the ring is not there.
+- Kanban "Lanes: Status": one column per status, plus No status and Done. Dropping a card on a column sets that status; dropping on Done completes it the same way the checkbox does. `[` and `]` move a focused card one column.
+- Journal tab in the panel: the day's top-level blocks with a day stepper. Drag a row onto the board for a card. Looking and stepping write nothing.
+- Fullscreen board tabs: boards you open while fullscreen collect as tabs above the board bar (up to 9). Cmd+1 to Cmd+9 switch. The tabs come back the next time you go fullscreen in this graph.
+- Touch and tablet: pinch to zoom, two fingers to pan, long-press for the menu, larger resize grips under a coarse pointer.
+- PDF highlights: a Note button on a highlight card opens its note the way Roam's own note button does (in the sidebar, focused), creating the note block only when there is none; one undo removes it. The pane's PDF switcher names a PDF without highlights by its page, and the arrow keys and Enter move through the list.
+- New drawing (Roam Plexus) is one undo step with its card.
+- Fixed: Plexus no longer replaces Roam's global `pull` function. Since 2.14.0 it answered other extensions' reads from its own cache. After updating, reload Roam once to clear the old copy's replacement.
+- Fixed: a board shown in its own linked references, or in the right sidebar, no longer goes fullscreen a second time on top of the main board (clicks and drops went to the hidden copy).
+- Developers: `node tools/live/smoke.mjs "Readwisenotes - "` runs a ten-step live check and cleans up only its own blocks; callback errors are counted and a callback that keeps failing is paused for a minute (Settings shows "N errors" when there are any); `npm run size` prints the bundle report.
+
 ## 2.19.0 — 2026-10-06
 
 - Clicking into a page card no longer changes how it looks. The editor keeps the card's own text size, row spacing, indent and line wrapping. Roam's bullets, guide lines and extra scrollbar stay hidden, and the row you clicked stays where it was.

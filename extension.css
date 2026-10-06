@@ -665,6 +665,41 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   border-color: var(--pxd-accent);
 }
 
+/* Coarse pointers (finger) need a grip the finger can hit. The screen size is 44px;
+   --pxd-inv-zoom puts that back into world px, the same way the 8px fine grip works.
+   A selected page card is named too: its later rule is 12px and would otherwise win. */
+@media (pointer: coarse) {
+  .pxd-root .pxd-item:hover > .pxd-grip.pxd-grip--right,
+  .pxd-root .pxd-item.pxd-item--selected > .pxd-grip.pxd-grip--right,
+  .pxd-root .pxd-item.pxd-item--page:hover > .pxd-grip.pxd-grip--right,
+  .pxd-root .pxd-item.pxd-item--page.pxd-item--selected > .pxd-grip.pxd-grip--right,
+  .pxd-root .pxd-section:hover > .pxd-grip.pxd-grip--right,
+  .pxd-root .pxd-section.pxd-section--selected > .pxd-grip.pxd-grip--right {
+    width: calc(44px * var(--pxd-screen-px, var(--pxd-inv-zoom, 1)));
+    right: calc(-22px * var(--pxd-screen-px, var(--pxd-inv-zoom, 1)));
+  }
+
+  .pxd-root .pxd-item:hover > .pxd-grip.pxd-grip--bottom,
+  .pxd-root .pxd-item.pxd-item--selected > .pxd-grip.pxd-grip--bottom,
+  .pxd-root .pxd-item.pxd-item--page:hover > .pxd-grip.pxd-grip--bottom,
+  .pxd-root .pxd-item.pxd-item--page.pxd-item--selected > .pxd-grip.pxd-grip--bottom,
+  .pxd-root .pxd-section:hover > .pxd-grip.pxd-grip--bottom,
+  .pxd-root .pxd-section.pxd-section--selected > .pxd-grip.pxd-grip--bottom {
+    height: calc(44px * var(--pxd-screen-px, var(--pxd-inv-zoom, 1)));
+    bottom: calc(-22px * var(--pxd-screen-px, var(--pxd-inv-zoom, 1)));
+  }
+
+  .pxd-root .pxd-item:hover > .pxd-grip.pxd-grip--corner,
+  .pxd-root .pxd-item.pxd-item--selected > .pxd-grip.pxd-grip--corner,
+  .pxd-root .pxd-item.pxd-item--page:hover > .pxd-grip.pxd-grip--corner,
+  .pxd-root .pxd-item.pxd-item--page.pxd-item--selected > .pxd-grip.pxd-grip--corner,
+  .pxd-root .pxd-section:hover > .pxd-grip.pxd-grip--corner,
+  .pxd-root .pxd-section.pxd-section--selected > .pxd-grip.pxd-grip--corner {
+    width: calc(44px * var(--pxd-screen-px, var(--pxd-inv-zoom, 1)));
+    height: calc(44px * var(--pxd-screen-px, var(--pxd-inv-zoom, 1)));
+  }
+}
+
 /* ------------------------------------------------------------------ sections */
 
 .pxd-section {
@@ -4566,6 +4601,30 @@ body.roam-body.dark .pxd-halo .pxd-halo__spark,
   color: #e6edf3;
 }
 
+/* PDFH-5. A quiet Note action under the highlight footer; it opens Roam's note child in the sidebar. */
+.pxd-root .pxd-item .pxd-highlight-notebtn {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 1px 8px;
+  border: 1px solid var(--pxd-border, #d0d7de);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--pxd-muted);
+  font-size: 11px;
+  line-height: 16px;
+  cursor: pointer;
+}
+
+.pxd-root .pxd-item .pxd-highlight-notebtn:hover,
+.pxd-root .pxd-item .pxd-highlight-notebtn:focus-visible {
+  color: var(--pxd-text, inherit);
+  border-color: var(--pxd-teal-line, #0d9488);
+}
+
+.pxd-root.pxd-lod-map .pxd-item .pxd-highlight-notebtn {
+  display: none;
+}
+
 .pxd-root .pxd-highlight-dialog {
   width: 360px;
   max-height: min(70vh, 520px);
@@ -4708,6 +4767,28 @@ body.roam-body.dark .pxd-halo .pxd-halo__spark,
 .pxd-root.pxd-hl .pxd-item__body span.rm-page-ref[data-tag^="c:"],
 .pxd-root.pxd-hl .pxd-item__body a.rm-page-ref[data-tag^="c:"] {
   display: none;
+}
+
+/* Journal tab. Borders carry the chrome; the list itself is the same rows as Search. */
+
+.pxd-root .pxd-journal__bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--pxd-border);
+}
+
+.pxd-root .pxd-journal__date {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--pxd-text);
+}
+
+.pxd-root .pxd-journal__today {
+  font-size: 12px;
 }
 
 /* MEM-3. Memory lane. Future cards fade. The outline is the fresh mark. */
@@ -6324,8 +6405,18 @@ body.roam-body.dark .pxd-root,
   margin-top: 4px;
 }
 
-.pxd-read .pxd-read__place {
+.pxd-read .pxd-read__mark {
+  flex: 0 0 auto;
+  color: var(--pxd-muted);
+  font-size: 11px;
+}
+
+.pxd-read .pxd-read__note {
   margin-left: auto;
+}
+
+.pxd-read .pxd-read__place {
+  margin-left: 0;
 }
 
 /* With the control rail, the pane sits left of it, and the board area ends where the pane starts. */
@@ -6911,6 +7002,245 @@ body.roam-body.dark .pxd-resurface,
   color: #e6edf3;
 }
 
+/* TSK-3. Status glyphs are masks so they stay crisp at every zoom. status.css sorts before task.css,
+   so a done checkbox's fill and checkmark in task.css win a specificity tie. Dark mode keeps the border
+   and the glyph; the fill stays empty. The parent sets data-status and --pxd-status-* on the card. */
+
+.pxd-root [data-status="active"],
+.pxd-root [data-status="play"],
+.pxd-root .pxd-item--task:has([data-status="active"]),
+.pxd-root .pxd-item--task:has([data-status="play"]) {
+  --pxd-status-mask: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2012%2012%22%3E%3Cpath%20fill%3D%22black%22%20d%3D%22M2.2%201.2%2010.6%206%202.2%2010.8Z%22%2F%3E%3C%2Fsvg%3E");
+}
+
+.pxd-root [data-status="waiting"],
+.pxd-root [data-status="pause"],
+.pxd-root .pxd-item--task:has([data-status="waiting"]),
+.pxd-root .pxd-item--task:has([data-status="pause"]) {
+  --pxd-status-mask: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2012%2012%22%3E%3Cpath%20fill%3D%22black%22%20d%3D%22M1.6%201.2h3v9.6h-3zm5.8%200h3v9.6h-3z%22%2F%3E%3C%2Fsvg%3E");
+}
+
+.pxd-root [data-status="holding"],
+.pxd-root [data-status="stop"],
+.pxd-root .pxd-item--task:has([data-status="holding"]),
+.pxd-root .pxd-item--task:has([data-status="stop"]) {
+  --pxd-status-mask: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2012%2012%22%3E%3Cpath%20fill%3D%22black%22%20d%3D%22M2%202h8v8H2z%22%2F%3E%3C%2Fsvg%3E");
+}
+
+.pxd-root [data-status="incubating"],
+.pxd-root [data-status="ring"],
+.pxd-root .pxd-item--task:has([data-status="incubating"]),
+.pxd-root .pxd-item--task:has([data-status="ring"]) {
+  --pxd-status-mask: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2012%2012%22%3E%3Ccircle%20cx%3D%226%22%20cy%3D%226%22%20r%3D%223.4%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.8%22%2F%3E%3C%2Fsvg%3E");
+}
+
+.pxd-root [data-status="alert"],
+.pxd-root [data-status="exclamation"],
+.pxd-root .pxd-item--task:has([data-status="alert"]),
+.pxd-root .pxd-item--task:has([data-status="exclamation"]) {
+  --pxd-status-mask: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2012%2012%22%3E%3Cpath%20fill%3D%22black%22%20d%3D%22M5.1%201.2h1.8v6.2H5.1z%22%2F%3E%3Ccircle%20cx%3D%226%22%20cy%3D%2210%22%20r%3D%221.1%22%20fill%3D%22black%22%2F%3E%3C%2Fsvg%3E");
+}
+
+.pxd-root [data-status="cancelled"],
+.pxd-root [data-status="x"],
+.pxd-root .pxd-item--task:has([data-status="cancelled"]),
+.pxd-root .pxd-item--task:has([data-status="x"]) {
+  --pxd-status-mask: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2012%2012%22%3E%3Cpath%20fill%3D%22black%22%20d%3D%22M2.1%201.2%206%205.1%209.9%201.2%2010.8%202.1%206.9%206%2010.8%209.9%209.9%2010.8%206%206.9%202.1%2010.8%201.2%209.9%205.1%206%201.2%202.1Z%22%2F%3E%3C%2Fsvg%3E");
+}
+
+.pxd-root [data-status="custom"],
+.pxd-root [data-status="diamond"],
+.pxd-root .pxd-item--task:has([data-status="custom"]),
+.pxd-root .pxd-item--task:has([data-status="diamond"]) {
+  --pxd-status-mask: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2012%2012%22%3E%3Cpath%20fill%3D%22black%22%20d%3D%22M6%201.1%2010.9%206%206%2010.9%201.1%206Z%22%2F%3E%3C%2Fsvg%3E");
+}
+
+.pxd-root [data-status="in-review"],
+.pxd-root .pxd-item--task:has([data-status="in-review"]) {
+  --pxd-status-mask: url("data:image/svg+xml,%3Csvg%20xmlns%3D%22http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%22%20viewBox%3D%220%200%2012%2012%22%3E%3Ccircle%20cx%3D%226%22%20cy%3D%226%22%20r%3D%223.4%22%20fill%3D%22none%22%20stroke%3D%22black%22%20stroke-width%3D%221.8%22%2F%3E%3Cpath%20fill%3D%22black%22%20d%3D%22M6%202.6A3.4%203.4%200%200%200%206%209.4Z%22%2F%3E%3C%2Fsvg%3E");
+}
+
+.pxd-root .pxd-task-check[data-status]:not(.pxd-task-check--done) {
+  border-color: var(--pxd-status-text, var(--pxd-border-strong));
+  background: var(--pxd-status-base, transparent);
+}
+
+.pxd-root.pxd-root--dark .pxd-task-check[data-status] {
+  background: transparent;
+}
+
+.pxd-root .pxd-task-check[data-status="holding"]:not(.pxd-task-check--done),
+.pxd-root .pxd-task-check[data-status="stop"]:not(.pxd-task-check--done) {
+  border-style: dashed;
+}
+
+.pxd-root .pxd-task-check[data-status="incubating"]:not(.pxd-task-check--done),
+.pxd-root .pxd-task-check[data-status="ring"]:not(.pxd-task-check--done) {
+  border-style: dotted;
+}
+
+.pxd-root .pxd-task-check[data-status]::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 10px;
+  height: 10px;
+  transform: translate(-50%, -50%);
+  background: var(--pxd-status-text, currentColor);
+  pointer-events: none;
+  -webkit-mask: var(--pxd-status-mask) center / contain no-repeat;
+  mask: var(--pxd-status-mask) center / contain no-repeat;
+}
+
+.pxd-root .pxd-task-check.pxd-task-check--done[data-status]::before {
+  content: none;
+  background: none;
+  -webkit-mask: none;
+  mask: none;
+}
+
+.pxd-root .pxd-task-check__status {
+  display: inline-block;
+  flex: 0 0 auto;
+  box-sizing: border-box;
+  width: 10px;
+  height: 10px;
+  margin: 0 6px 0 0;
+  border: 2px solid var(--pxd-status-text, var(--pxd-muted, #94a3b8));
+  border-radius: 50%;
+  vertical-align: middle;
+  cursor: pointer;
+}
+
+.pxd-root .pxd-task-check__status:not([data-status-name]) {
+  border-style: dashed;
+  opacity: 0.6;
+}
+
+.pxd-root .pxd-task-check__status:hover,
+.pxd-root .pxd-task-check__status:focus-visible {
+  outline: 2px solid var(--pxd-focus, #0d9488);
+  outline-offset: 2px;
+}
+
+.pxd-root .pxd-task-check[data-status="alert"]:not(.pxd-task-check--done)::after,
+.pxd-root .pxd-task-check[data-status="exclamation"]:not(.pxd-task-check--done)::after {
+  content: "";
+  position: absolute;
+  inset: -3px;
+  border: 1px solid var(--pxd-status-text, currentColor);
+  border-radius: 4px;
+  pointer-events: none;
+  animation: pxd-status-alert 5.2s cubic-bezier(0.2, 0, 0, 1) infinite;
+}
+
+.pxd-root .pxd-task-check.pxd-task-check--done[data-status]::after {
+  animation: none;
+}
+
+@keyframes pxd-status-alert {
+  0%,
+  10%,
+  24%,
+  100% {
+    opacity: 0;
+    transform: scale(0.82);
+  }
+
+  5%,
+  17% {
+    opacity: 0.72;
+    transform: scale(1.18);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pxd-root .pxd-task-check[data-status="alert"]::after,
+  .pxd-root .pxd-task-check[data-status="exclamation"]::after {
+    animation: none;
+  }
+}
+
+.pxd-root.pxd-root--motion-off .pxd-task-check[data-status="alert"]::after,
+.pxd-root.pxd-root--motion-off .pxd-task-check[data-status="exclamation"]::after,
+.pxd-root.pxd-root--motion-reduced .pxd-task-check[data-status="alert"]::after,
+.pxd-root.pxd-root--motion-reduced .pxd-task-check[data-status="exclamation"]::after,
+.pxd-root.pxd-root--motion-none .pxd-task-check[data-status="alert"]::after,
+.pxd-root.pxd-root--motion-none .pxd-task-check[data-status="exclamation"]::after {
+  animation: none;
+}
+
+/* Map tier: the header mark is the only visible status. 22 screen px via --pxd-screen-px. Done keeps its check. */
+.pxd-root.pxd-lod-map .pxd-item.pxd-item--task:not(.pxd-item--task-done):not(.pxd-item--editing):not(:has(.pxd-task-check--done)):has(.pxd-task-check[data-status]) > .pxd-item__header::before {
+  content: "";
+  width: calc(22px * var(--pxd-screen-px, 1));
+  height: calc(22px * var(--pxd-screen-px, 1));
+  font-size: 0;
+  background-color: var(--pxd-status-text, currentColor);
+  -webkit-mask: var(--pxd-status-mask) center / contain no-repeat;
+  mask: var(--pxd-status-mask) center / contain no-repeat;
+}
+
+/* Overview tier: a coloured 20 px border box. No fill. */
+.pxd-root.pxd-lod-overview .pxd-item.pxd-item--card.pxd-item--task:not(.pxd-item--task-done):not(.pxd-item--editing):not(:has(.pxd-task-check--done)):has(.pxd-task-check[data-status]) > .pxd-item__header::before {
+  border-color: var(--pxd-status-text, currentColor);
+  background: transparent;
+}
+
+.pxd-root .pxd-chip.pxd-chip--status,
+.pxd-root .pxd-badge-chip.pxd-chip--status {
+  border-color: var(--pxd-status-text, var(--pxd-border-strong));
+  color: var(--pxd-status-text, var(--pxd-text));
+  background: var(--pxd-status-base, transparent);
+}
+
+.pxd-root.pxd-root--dark .pxd-chip.pxd-chip--status,
+.pxd-root.pxd-root--dark .pxd-badge-chip.pxd-chip--status {
+  background: transparent;
+}
+
+.pxd-root .pxd-kanban__glyph[data-status],
+.pxd-root .pxd-status-chooser__glyph[data-status] {
+  display: inline-block;
+  flex: 0 0 auto;
+  width: 12px;
+  height: 12px;
+  margin-right: 6px;
+  vertical-align: middle;
+  background: var(--pxd-status-text, currentColor);
+  -webkit-mask: var(--pxd-status-mask) center / contain no-repeat;
+  mask: var(--pxd-status-mask) center / contain no-repeat;
+}
+
+.pxd-root .pxd-status-chooser__list {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.pxd-root .pxd-status-chooser__row {
+  display: flex;
+  align-items: center;
+  width: 100%;
+}
+
+.pxd-root .pxd-status-chooser__row:focus,
+.pxd-root .pxd-status-chooser__row:focus-visible {
+  outline: 2px solid var(--pxd-accent);
+  outline-offset: 1px;
+}
+
+.pxd-root .pxd-status-chooser__row--remove {
+  color: var(--pxd-muted);
+}
+
+/* The card already carries the status as the checkbox glyph and a chip; Task Status Tags' inline pill in the
+   task title would say it a third time. Hidden on Plexus task cards only, never in Roam's outline. */
+.pxd-root .pxd-item--task .pxd-item__tasktext .rm-page-ref--tag[data-task-status-key] {
+  display: none;
+}
+
 /* EK-2: sticky notes. A coloured header bar (drag handle, title, colour dot, minimize) over a body that is the live
    Roam block. Persistent: there is no close button; Delete and the menu remove it, and undo brings it back. */
 
@@ -7106,6 +7436,62 @@ body.bt-theme-dark .pxd-root .pxd-suggest__line,
 body.roam-body.dark .pxd-root .pxd-suggest__line {
   fill: none;
   stroke: #9ca3af;
+}
+
+/* Fullscreen board tabs. Inside .pxd-root so the chrome tokens apply. Not on document.body. */
+
+.pxd-root .pxd-fstabs {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  right: 8px;
+  z-index: 12;
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 4px;
+  border: 1px solid var(--pxd-border-strong);
+  border-radius: 8px;
+  background: var(--pxd-chrome-bg);
+  box-shadow: var(--pxd-shadow);
+}
+
+.pxd-root .pxd-fstab {
+  display: flex;
+  align-items: center;
+  max-width: 160px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+}
+
+.pxd-root .pxd-fstab--on {
+  border-color: var(--pxd-border-strong);
+}
+
+.pxd-root .pxd-fstab__name {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.pxd-root .pxd-fstab__x {
+  width: 22px;
+  min-width: 22px;
+  padding: 0;
+  font-size: 14px;
+}
+
+/* The strip has its own row: the board bar, rail, Properties, legend and panel move down by its height
+   instead of sitting under it (live 2026-10-06: the strip covered the bar's first buttons). */
+.pxd-root.pxd-root--fstabs > .pxd-toolbar,
+.pxd-root.pxd-root--fstabs > .pxd-rail,
+.pxd-root.pxd-root--fstabs > .pxd-props,
+.pxd-root.pxd-root--fstabs > .pxd-legend,
+.pxd-root.pxd-root--fstabs > .pxd-panel {
+  margin-top: 46px;
 }
 
 .pxd-root .pxd-lens {

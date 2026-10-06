@@ -1,4 +1,4 @@
-/* Plexus Diagram v2.19.0 | MIT | generated; edit src/ */
+/* Plexus Diagram v2.20.0 | MIT | generated; edit src/ */
 
 // src/model/shapes.js
 var SHAPES = ["rectangle", "rounded", "ellipse", "diamond", "parallelogram", "cylinder"];
@@ -15,18 +15,18 @@ var box = (rect) => {
 };
 var skewOf = (w) => Math.min(Math.max(0, w) * 0.18, 28);
 var cylinderRy = (h) => Math.min(h * 0.22, 18, Math.max(1, h / 2 - 0.5));
-function shapePoint(rect, shape, side) {
+function shapePoint(rect, shape, side2) {
   const b = box(rect);
   if (shape === "parallelogram") {
     const skew = skewOf(b.w);
-    if (side === "top") return { x: b.cx + skew / 2, y: b.y };
-    if (side === "bottom") return { x: b.cx - skew / 2, y: b.bottom };
-    if (side === "left") return { x: b.x + skew / 2, y: b.cy };
+    if (side2 === "top") return { x: b.cx + skew / 2, y: b.y };
+    if (side2 === "bottom") return { x: b.cx - skew / 2, y: b.bottom };
+    if (side2 === "left") return { x: b.x + skew / 2, y: b.cy };
     return { x: b.right - skew / 2, y: b.cy };
   }
-  if (side === "top") return { x: b.cx, y: b.y };
-  if (side === "bottom") return { x: b.cx, y: b.bottom };
-  if (side === "left") return { x: b.x, y: b.cy };
+  if (side2 === "top") return { x: b.cx, y: b.y };
+  if (side2 === "bottom") return { x: b.cx, y: b.bottom };
+  if (side2 === "left") return { x: b.x, y: b.cy };
   return { x: b.right, y: b.cy };
 }
 function shapePath(rect, shape) {
@@ -191,9 +191,9 @@ function unionRect(a, b) {
 function rectsIntersect(a, b) {
   return a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h && b.y < a.y + a.h;
 }
-function sidePoint(rect, side) {
-  if (rect && SHAPES.includes(rect.shape)) return shapePoint(rect, rect.shape, side);
-  switch (side) {
+function sidePoint(rect, side2) {
+  if (rect && SHAPES.includes(rect.shape)) return shapePoint(rect, rect.shape, side2);
+  switch (side2) {
     case "top":
       return { x: rect.x + rect.w / 2, y: rect.y };
     case "bottom":
@@ -230,20 +230,20 @@ function autoSides(a, b) {
 }
 function blockAnchor({ rect, rowTop, rowHeight = 0, bodyTop = 0, bodyBottom, other } = {}) {
   const right = !other || other.x >= rect.x + rect.w / 2;
-  const side = right ? "right" : "left";
+  const side2 = right ? "right" : "left";
   const x = right ? rect.x + rect.w : rect.x;
   const bottom = bodyBottom ?? rect.h;
-  if (rowTop == null) return { point: { x, y: rect.y + bodyTop }, side, clamped: "top" };
+  if (rowTop == null) return { point: { x, y: rect.y + bodyTop }, side: side2, clamped: "top" };
   const cy = rowTop + rowHeight / 2;
-  if (cy < bodyTop) return { point: { x, y: rect.y }, side, clamped: "top" };
-  if (cy > bottom) return { point: { x, y: rect.y + rect.h }, side, clamped: "bottom" };
-  return { point: { x, y: rect.y + cy }, side, clamped: null };
+  if (cy < bodyTop) return { point: { x, y: rect.y }, side: side2, clamped: "top" };
+  if (cy > bottom) return { point: { x, y: rect.y + rect.h }, side: side2, clamped: "bottom" };
+  return { point: { x, y: rect.y + cy }, side: side2, clamped: null };
 }
 var INNER_NOTCH = 4;
 var INNER_MIN = 10;
-function blockInner({ rect, side, point, rowLeft, rowRight } = {}) {
+function blockInner({ rect, side: side2, point, rowLeft, rowRight } = {}) {
   if (!rect || !point || rowLeft == null || !Number.isFinite(rowLeft)) return null;
-  const right = side === "right";
+  const right = side2 === "right";
   const reach = right ? rect.w - (Number.isFinite(rowRight) ? rowRight : rect.w) + 2 : rowLeft - 2;
   const depth = Math.min(Math.max(reach, INNER_MIN), Math.max(INNER_MIN, rect.w / 2));
   const dir = right ? -1 : 1;
@@ -1494,21 +1494,32 @@ function childFields(node2, index) {
   const props = isObject2(node2.props) ? node2.props : isObject2(node2[":block/props"]) ? node2[":block/props"] : {};
   const orderRaw = node2.order ?? node2[":block/order"];
   const order = typeof orderRaw === "number" && Number.isFinite(orderRaw) ? orderRaw : index;
-  return { string, props, order, index };
+  const uidRaw = typeof node2.uid === "string" && node2.uid ? node2.uid : typeof node2[":block/uid"] === "string" ? node2[":block/uid"] : "";
+  return { string, props, order, index, uid: uidRaw };
 }
-function highlightNote(children) {
+function orderedChildren(children) {
   const list = Array.isArray(children) ? children : [];
   const rows = [];
   for (let i = 0; i < list.length; i += 1) {
-    const row2 = childFields(list[i], i);
-    if (row2) rows.push(row2);
+    const row3 = childFields(list[i], i);
+    if (row3) rows.push(row3);
   }
   rows.sort((a, b) => a.order - b.order || a.index - b.index);
-  for (const row2 of rows) {
-    if (highlightRecord(row2.props)) continue;
-    return row2.string;
+  return rows;
+}
+function highlightNote(children) {
+  for (const row3 of orderedChildren(children)) {
+    if (highlightRecord(row3.props)) continue;
+    return row3.string;
   }
   return "";
+}
+function noteActionPlan(children) {
+  for (const row3 of orderedChildren(children)) {
+    if (highlightRecord(row3.props)) continue;
+    return { kind: "focus", uid: row3.uid };
+  }
+  return { kind: "create" };
 }
 function highlightModel(input) {
   const src = isObject2(input) ? input : {};
@@ -1629,8 +1640,8 @@ function autoPlace(siblings) {
   let colW = 0;
   let y = startY;
   loose.forEach((item, i) => {
-    const row2 = i % AUTO_ROWS;
-    if (i > 0 && row2 === 0) {
+    const row3 = i % AUTO_ROWS;
+    if (i > 0 && row3 === 0) {
       colX += colW + AUTO_GAP;
       colW = 0;
       y = startY;
@@ -2523,9 +2534,9 @@ function gridPlace(items, origin, gap, columns) {
   const rowH = [];
   items.forEach((r, i) => {
     const c = i % cols;
-    const row2 = Math.floor(i / cols);
+    const row3 = Math.floor(i / cols);
     colW[c] = Math.max(colW[c], r.w);
-    rowH[row2] = Math.max(rowH[row2] ?? 0, r.h);
+    rowH[row3] = Math.max(rowH[row3] ?? 0, r.h);
   });
   const colX = [];
   let x = origin.x;
@@ -2535,9 +2546,9 @@ function gridPlace(items, origin, gap, columns) {
   }
   const rowY = [];
   let y = origin.y;
-  for (let row2 = 0; row2 < rowH.length; row2++) {
-    rowY[row2] = y;
-    y += rowH[row2] + gap;
+  for (let row3 = 0; row3 < rowH.length; row3++) {
+    rowY[row3] = y;
+    y += rowH[row3] + gap;
   }
   return items.map((r, i) => ({ uid: r.uid, x: norm(colX[i % cols]), y: norm(rowY[Math.floor(i / cols)]) }));
 }
@@ -2888,15 +2899,15 @@ function calendarLayout(cards, { year, month, x0 = 16, y0 = 48, col = 28 } = {})
   }));
 }
 function timelineAxis(cards, { width = 800, resolve } = {}) {
-  const dated = (cards || []).map((card2) => ({ card: card2, t: parseCardDate(card2) })).filter((row2) => row2.t != null).sort((a, b) => a.t - b.t || String(a.card.uid).localeCompare(String(b.card.uid)));
+  const dated = (cards || []).map((card2) => ({ card: card2, t: parseCardDate(card2) })).filter((row3) => row3.t != null).sort((a, b) => a.t - b.t || String(a.card.uid).localeCompare(String(b.card.uid)));
   if (!dated.length) return [];
   const min = dated[0].t;
   const span = dated[dated.length - 1].t - min || 1;
-  return dated.map((row2) => ({
-    uid: row2.card.uid,
-    title: cardLabel(row2.card, resolve),
-    t: row2.t,
-    x: (row2.t - min) / span * width
+  return dated.map((row3) => ({
+    uid: row3.card.uid,
+    title: cardLabel(row3.card, resolve),
+    t: row3.t,
+    x: (row3.t - min) / span * width
   }));
 }
 function graphLayout(nodes, links, { iterations = 12 } = {}) {
@@ -3463,12 +3474,12 @@ function locateShowTarget(uid, placements) {
   if (!id) return null;
   const hits = [];
   const seen = /* @__PURE__ */ new Set();
-  for (const row2 of placements || []) {
-    const boardUid = String(row2?.boardUid ?? "").trim();
-    const cardUid = String(row2?.cardUid ?? "").trim();
-    const pageUid = String(row2?.pageUid ?? "").trim();
+  for (const row3 of placements || []) {
+    const boardUid = String(row3?.boardUid ?? "").trim();
+    const cardUid = String(row3?.cardUid ?? "").trim();
+    const pageUid = String(row3?.pageUid ?? "").trim();
     if (!boardUid || !cardUid) continue;
-    const refs = Array.isArray(row2.refUids) ? row2.refUids.map((r) => String(r)) : [];
+    const refs = Array.isArray(row3.refUids) ? row3.refUids.map((r) => String(r)) : [];
     if (cardUid !== id && !refs.includes(id)) continue;
     const key = `${boardUid}
 ${cardUid}`;
@@ -3548,14 +3559,14 @@ function boardsFromRows(rows, { limit = 20 } = {}) {
   const seen = /* @__PURE__ */ new Set();
   const out = [];
   const cap4 = Number.isFinite(limit) && limit > 0 ? limit : 20;
-  for (const row2 of rows || []) {
-    if (!row2?.uid || seen.has(row2.uid)) continue;
-    if (row2.v != null && row2.v !== 2) continue;
-    seen.add(row2.uid);
+  for (const row3 of rows || []) {
+    if (!row3?.uid || seen.has(row3.uid)) continue;
+    if (row3.v != null && row3.v !== 2) continue;
+    seen.add(row3.uid);
     out.push({
-      uid: row2.uid,
-      title: row2.title || "Untitled board",
-      pageTitle: row2.pageTitle || ""
+      uid: row3.uid,
+      title: row3.title || "Untitled board",
+      pageTitle: row3.pageTitle || ""
     });
     if (out.length >= cap4) break;
   }
@@ -3611,46 +3622,46 @@ function editedSince(edited, days, now2 = Date.now()) {
   const t = now2 instanceof Date ? now2.getTime() : Number(now2);
   return Number.isFinite(edited) && edited > t - n2 * DAY_MS;
 }
-function libraryKind(row2) {
-  if (row2?.kind === "board") return "board";
-  if (row2?.kind === "block") return "block";
-  const title = row2?.title ?? "";
-  if (row2?.kind === "daily" || isDailyTitle(title)) return "daily";
+function libraryKind(row3) {
+  if (row3?.kind === "board") return "board";
+  if (row3?.kind === "block") return "block";
+  const title = row3?.title ?? "";
+  if (row3?.kind === "daily" || isDailyTitle(title)) return "daily";
   return "page";
 }
 function narrowLibrary(rows, filter, now2 = Date.now()) {
   const f = normalizeLibraryFilter(filter);
   const needle = f.text.toLowerCase();
-  return (Array.isArray(rows) ? rows : []).filter((row2) => {
-    const kind = libraryKind(row2);
+  return (Array.isArray(rows) ? rows : []).filter((row3) => {
+    const kind = libraryKind(row3);
     if (f.type !== "all" && kind !== f.type) return false;
     if (f.tag) {
-      const tags = Array.isArray(row2?.tags) ? row2.tags : [];
+      const tags = Array.isArray(row3?.tags) ? row3.tags : [];
       if (!tags.includes(f.tag)) return false;
     }
     if (needle) {
-      const hay = [row2?.title, row2?.string, row2?.text].filter((v) => v != null).join("\n").toLowerCase();
+      const hay = [row3?.title, row3?.string, row3?.text].filter((v) => v != null).join("\n").toLowerCase();
       if (!hay.includes(needle)) return false;
     }
-    if (f.days && !editedSince(row2?.edited, f.days, now2)) return false;
-    if (f.orphan && (kind === "board" || row2?.onBoard)) return false;
+    if (f.days && !editedSince(row3?.edited, f.days, now2)) return false;
+    if (f.orphan && (kind === "board" || row3?.onBoard)) return false;
     return true;
   });
 }
-function libraryCard(row2) {
-  const kind = libraryKind(row2);
+function libraryCard(row3) {
+  const kind = libraryKind(row3);
   if (kind === "page" || kind === "daily") {
-    const title = String(row2?.title ?? row2?.text ?? "");
+    const title = String(row3?.title ?? row3?.text ?? "");
     return { string: `[[${title}]]`, text: title, kind, label: kind === "daily" ? "daily" : "page" };
   }
-  const uid = String(row2?.uid ?? "");
+  const uid = String(row3?.uid ?? "");
   if (kind === "board") {
-    const title = String(row2?.title || "Untitled board");
-    const label2 = row2?.pageTitle ? `board · ${row2.pageTitle}` : "board";
+    const title = String(row3?.title || "Untitled board");
+    const label2 = row3?.pageTitle ? `board · ${row3.pageTitle}` : "board";
     return { string: `((${uid}))`, text: title, kind, label: label2 };
   }
-  const label = row2?.pageTitle ? `in ${row2.pageTitle}` : "block";
-  return { string: `((${uid}))`, text: String(row2?.string ?? row2?.text ?? "").slice(0, 120), kind, label };
+  const label = row3?.pageTitle ? `in ${row3.pageTitle}` : "block";
+  return { string: `((${uid}))`, text: String(row3?.string ?? row3?.text ?? "").slice(0, 120), kind, label };
 }
 function recentDailyTitles(days = 14, now2 = /* @__PURE__ */ new Date()) {
   const n2 = Math.max(1, Math.min(366, Math.floor(Number(days) || 14)));
@@ -3681,10 +3692,10 @@ function splitNeighbors({ outgoing = [], incoming = [], selfTitle = "", selfUid 
   const counts = /* @__PURE__ */ new Map();
   const seenOut = /* @__PURE__ */ new Set();
   const seenAttr = /* @__PURE__ */ new Set();
-  for (const row2 of outgoing) {
-    const title = row2?.[0];
+  for (const row3 of outgoing) {
+    const title = row3?.[0];
     if (typeof title !== "string" || !title) continue;
-    const name = attrNameOf(row2?.[1]);
+    const name = attrNameOf(row3?.[1]);
     if (name && title === name) continue;
     if (selfTitle && title === selfTitle) continue;
     if (name) {
@@ -3696,13 +3707,13 @@ function splitNeighbors({ outgoing = [], incoming = [], selfTitle = "", selfUid 
       out.push(title);
     }
   }
-  for (const row2 of incoming) {
-    const uid = row2?.[0];
-    const title = row2?.[2];
+  for (const row3 of incoming) {
+    const uid = row3?.[0];
+    const title = row3?.[2];
     if (typeof title !== "string" || !title) continue;
     if (selfUid && uid === selfUid) continue;
     if (selfTitle && title === selfTitle) continue;
-    if (attrNameOf(row2?.[1])) continue;
+    if (attrNameOf(row3?.[1])) continue;
     counts.set(title, (counts.get(title) || 0) + 1);
   }
   const inn = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([title]) => title);
@@ -3753,8 +3764,8 @@ function pdfMacroUrl(s) {
 }
 function pdfPagePlan(url, pages) {
   if (!Array.isArray(pages)) return null;
-  for (const row2 of pages) {
-    if (row2 && typeof row2 === "object" && row2.url === url) return row2;
+  for (const row3 of pages) {
+    if (row3 && typeof row3 === "object" && row3.url === url) return row3;
   }
   return null;
 }
@@ -4184,6 +4195,244 @@ function createCardCache() {
   };
 }
 
+// src/model/resurface.js
+var DEFAULT_INTERVALS = Object.freeze([7, 30, 90, 365]);
+var RESURFACE_CAP = 6;
+var DAY2 = 864e5;
+var MONTHS4 = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+function pageTitleToDate(title) {
+  const match = String(title ?? "").trim().match(/^([A-Z][a-z]+) (\d{1,2})(?:st|nd|rd|th), (\d{4})$/);
+  if (!match) return null;
+  const month = MONTHS4.indexOf(match[1]);
+  const day = Number(match[2]);
+  const year = Number(match[3]);
+  if (month < 0) return null;
+  const date = new Date(year, month, day);
+  if (date.getFullYear() !== year || date.getMonth() !== month || date.getDate() !== day) return null;
+  return date.getTime();
+}
+function parseIntervals(text2) {
+  const nums = String(text2 ?? "").split(",").map((part) => Number(part.trim())).filter((n2) => Number.isFinite(n2) && n2 > 0);
+  return nums.length ? nums : [...DEFAULT_INTERVALS];
+}
+function intervalLabel(days) {
+  if (days === 7) return "1 week ago";
+  if (days === 30) return "1 month ago";
+  if (days === 90) return "3 months ago";
+  if (days === 365) return "1 year ago";
+  if (days % 365 === 0) return `${days / 365} years ago`;
+  return `${days} days ago`;
+}
+function matchResurface(rows, pageDate, intervals, { slack = DAY2, cap: cap4 = RESURFACE_CAP } = {}) {
+  const page = pageDate instanceof Date ? pageDate.getTime() : Number(pageDate);
+  if (!Number.isFinite(page)) return [];
+  const tabs = [];
+  for (const days of intervals || []) {
+    if (!Number.isFinite(days) || days <= 0) continue;
+    const target = page - days * DAY2;
+    const hits = [];
+    for (const row3 of rows || []) {
+      if (!row3?.uid || !Number.isFinite(row3.time)) continue;
+      const delta = Math.abs(row3.time - target);
+      if (delta <= slack) hits.push({ ...row3, delta });
+    }
+    hits.sort((a, b) => a.delta - b.delta || String(a.uid).localeCompare(String(b.uid)));
+    if (hits.length) tabs.push({ days, label: intervalLabel(days), items: hits.slice(0, cap4) });
+  }
+  return tabs;
+}
+
+// src/model/journal.js
+function startOfDay(date) {
+  const d = date instanceof Date ? date : new Date(date);
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
+}
+function stepDay(date, delta = 1) {
+  const d = new Date(startOfDay(date));
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + Number(delta || 0)).getTime();
+}
+function dailyTitle(date) {
+  return dailyPageTitle(startOfDay(date));
+}
+function dailyUid(date) {
+  const d = new Date(startOfDay(date));
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${mm}-${dd}-${d.getFullYear()}`;
+}
+function firstLine2(string) {
+  const text2 = String(string ?? "");
+  const cut = text2.search(/\r?\n/);
+  return cut < 0 ? text2 : text2.slice(0, cut);
+}
+function childList2(tree) {
+  if (!tree) return [];
+  if (Array.isArray(tree)) return tree;
+  if (Array.isArray(tree[":block/children"])) return tree[":block/children"];
+  if (Array.isArray(tree.children)) return tree.children;
+  if (Array.isArray(tree.blocks)) return tree.blocks;
+  return [];
+}
+function orderOf(node2, index) {
+  const raw = node2?.[":block/order"] ?? node2?.order;
+  return Number.isFinite(Number(raw)) ? Number(raw) : index;
+}
+function journalRows(tree) {
+  const kids = childList2(tree).map((node2, index) => ({ node: node2, index })).sort((a, b) => orderOf(a.node, a.index) - orderOf(b.node, b.index) || a.index - b.index);
+  const rows = [];
+  for (const { node: node2 } of kids) {
+    const uid = node2?.[":block/uid"] ?? node2?.uid;
+    if (!uid) continue;
+    const body = node2?.[":block/string"] ?? node2?.string ?? "";
+    rows.push({
+      uid: String(uid),
+      string: `((${uid}))`,
+      text: firstLine2(body)
+    });
+  }
+  return rows;
+}
+
+// src/model/tabs.js
+var TAB_CAP = 9;
+function tabStorageKey(graph) {
+  return `plexus-diagram:fullscreen-tabs:${graph || ""}`;
+}
+function normalizeTabs(raw) {
+  const list = Array.isArray(raw) ? raw : [];
+  const out = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const item of list) {
+    const uid = typeof item === "string" ? item : item?.uid;
+    if (typeof uid !== "string" || uid === "" || seen.has(uid)) continue;
+    seen.add(uid);
+    const title = typeof item === "string" ? "" : String(item?.title || "");
+    out.push({ uid, title });
+    if (out.length >= TAB_CAP) break;
+  }
+  return out;
+}
+function openTab(tabs, entry) {
+  const uid = typeof entry === "string" ? entry : entry?.uid;
+  const title = typeof entry === "string" ? "" : String(entry?.title || "");
+  const list = normalizeTabs(tabs);
+  if (!uid) return { tabs: list, index: list.length ? 0 : -1 };
+  const at = list.findIndex((tab) => tab.uid === uid);
+  if (at >= 0) {
+    if (title && title !== list[at].title) list[at] = { uid, title };
+    return { tabs: list, index: at };
+  }
+  if (list.length >= TAB_CAP) list.shift();
+  list.push({ uid: String(uid), title });
+  return { tabs: list, index: list.length - 1 };
+}
+function closeTab(tabs, uid) {
+  const list = normalizeTabs(tabs);
+  const at = list.findIndex((tab) => tab.uid === uid);
+  if (at < 0) return { tabs: list, index: -1, removed: false };
+  const next = list.filter((tab) => tab.uid !== uid);
+  const index = next.length ? Math.min(at, next.length - 1) : -1;
+  return { tabs: next, index, removed: true };
+}
+function tabAt(tabs, index) {
+  const list = normalizeTabs(tabs);
+  const n2 = Number(index);
+  if (!Number.isInteger(n2) || n2 < 0 || n2 >= list.length) return null;
+  return list[n2];
+}
+function isBoardTabEvent(ev, n2) {
+  if (!ev || !Number.isInteger(n2) || n2 < 1 || n2 > TAB_CAP) return false;
+  if (!(ev.meta || ev.ctrl) || ev.alt || ev.shift) return false;
+  const key = String(ev.key ?? "");
+  const code = String(ev.code ?? "");
+  if (code === `Digit${n2}`) return key === "" || key === String(n2);
+  return key === String(n2) && (code === "" || code === `Digit${n2}`);
+}
+
+// src/guard.js
+var WINDOW_MS = 6e4;
+var TRIP = 20;
+var sharedStats = null;
+var loggedSignatures = /* @__PURE__ */ new Set();
+var listeners = /* @__PURE__ */ new Set();
+function bindGuardStats(stats) {
+  if (stats && typeof stats === "object") sharedStats = stats;
+}
+function onGuardCount(fn) {
+  if (typeof fn !== "function") return () => {
+  };
+  listeners.add(fn);
+  return () => listeners.delete(fn);
+}
+function signatureOf(error) {
+  const name = error && typeof error.name === "string" && error.name ? error.name : "Error";
+  const stack = error && typeof error.stack === "string" ? error.stack : "";
+  let frame = "";
+  for (const line of stack.split("\n")) {
+    const text2 = line.trim();
+    if (text2.startsWith("at ") || text2.includes("@")) {
+      frame = text2;
+      break;
+    }
+  }
+  return `${name}|${frame}`;
+}
+function countOf(hits, sig) {
+  let n2 = 0;
+  for (const hit of hits) if (hit.sig === sig) n2 += 1;
+  return n2;
+}
+function guardCallback(name, fn, opts = {}) {
+  if (typeof fn !== "function") return fn;
+  const clock = typeof opts.now === "function" ? opts.now : () => Date.now();
+  const log = typeof opts.log === "function" ? opts.log : (...args) => console.error(...args);
+  const hits = [];
+  let silenced = false;
+  let silencedUntil = 0;
+  return function guarded(...args) {
+    const t = clock();
+    if (silenced) {
+      if (t < silencedUntil) return void 0;
+      silenced = false;
+    }
+    try {
+      const result = fn.apply(this, args);
+      if (result && typeof result.then === "function") return result.then(void 0, (error) => failed(error, clock()));
+      return result;
+    } catch (error) {
+      return failed(error, t);
+    }
+  };
+  function failed(error, t) {
+    const cutoff = t - WINDOW_MS;
+    let drop = 0;
+    while (drop < hits.length && hits[drop].at <= cutoff) drop += 1;
+    if (drop) hits.splice(0, drop);
+    const sig = signatureOf(error);
+    hits.push({ sig, at: t });
+    const stats = opts.stats && typeof opts.stats === "object" ? opts.stats : sharedStats;
+    if (stats) stats.errors = (Number(stats.errors) || 0) + 1;
+    if (!loggedSignatures.has(sig)) {
+      loggedSignatures.add(sig);
+      try {
+        log("[plexus-diagram]", name, error);
+      } catch {
+      }
+    }
+    if (countOf(hits, sig) >= TRIP) {
+      silenced = true;
+      silencedUntil = t + WINDOW_MS;
+    }
+    for (const listen of listeners) {
+      try {
+        listen(stats);
+      } catch {
+      }
+    }
+    return void 0;
+  }
+}
+
 // src/host/roam.js
 var BOARD_PATTERN = `[:block/uid :block/string :block/order :block/heading :block/open :block/props
  {:block/children [:block/uid :block/string :block/order :block/heading :block/open :block/props
@@ -4283,8 +4532,8 @@ function collectTargets(node2) {
 }
 function unpackPulls(rows) {
   const out = [];
-  for (const row2 of rows || []) {
-    const cell = Array.isArray(row2) ? row2[0] : row2;
+  for (const row3 of rows || []) {
+    const cell = Array.isArray(row3) ? row3[0] : row3;
     if (cell && typeof cell === "object" && !Array.isArray(cell)) out.push(cell);
   }
   return out;
@@ -4354,6 +4603,67 @@ function highlightTreeNodes(node2) {
 function graphName(hash = globalThis.location?.hash ?? "") {
   const m = /#\/app\/([^/?#]+)/.exec(hash);
   return m ? decodeURIComponent(m[1]) : "";
+}
+var CACHE_ASKED = /* @__PURE__ */ new Set([":block/uid", ":block/string", ":block/order", ":block/heading", ":block/open", ":block/props", ":block/children"]);
+var patternMemo = /* @__PURE__ */ new Map();
+function patternNeeds(pattern) {
+  const text2 = String(pattern ?? "");
+  const hit = patternMemo.get(text2);
+  if (hit) return hit;
+  const tokens = text2.match(/\.\.\.|[[\]{}]|:[^\s[\]{}]+|[^\s[\]{}]+/g) || [];
+  let i = 0;
+  const vector = () => {
+    const out = [];
+    if (tokens[i] !== "[") return out;
+    i += 1;
+    while (i < tokens.length && tokens[i] !== "]") {
+      const t = tokens[i];
+      if (t === "{") {
+        i += 1;
+        while (i < tokens.length && tokens[i] !== "}") {
+          const key = tokens[i];
+          i += 1;
+          let sub = null;
+          if (tokens[i] === "[") sub = vector();
+          else i += 1;
+          out.push({ key, sub });
+        }
+        i += 1;
+      } else if (t === "[") vector();
+      else {
+        if (t.startsWith(":")) out.push({ attr: t });
+        i += 1;
+      }
+    }
+    i += 1;
+    return out;
+  };
+  const needs = vector();
+  if (patternMemo.size > 200) patternMemo.clear();
+  patternMemo.set(text2, needs);
+  return needs;
+}
+function nodeAnswers(node2, needs) {
+  for (const need2 of needs) {
+    if (need2.attr) {
+      if (!(need2.attr in node2) && !CACHE_ASKED.has(need2.attr)) return false;
+      continue;
+    }
+    const value = node2[need2.key];
+    if (value == null) {
+      if (!CACHE_ASKED.has(need2.key)) return false;
+      continue;
+    }
+    if (!need2.sub) continue;
+    const first = Array.isArray(value) ? value[0] : value;
+    if (first && typeof first === "object") {
+      for (const inner of need2.sub) {
+        if (inner.attr && !(inner.attr in first) && !CACHE_ASKED.has(inner.attr)) return false;
+        if (inner.key && first[inner.key] == null && !CACHE_ASKED.has(inner.key)) return false;
+      }
+    }
+  }
+  return true;
 }
 function createWriteQueue({ onBusy } = {}) {
   let tail = Promise.resolve();
@@ -4499,6 +4809,40 @@ function createViewportStore({ storage = globalThis.localStorage, graph = "", no
     }
   };
 }
+function createTabStore({ storage = globalThis.localStorage, graph = "" } = {}) {
+  const key = tabStorageKey(graph);
+  const read = () => {
+    try {
+      const raw = storage?.getItem?.(key);
+      if (!raw) return [];
+      return normalizeTabs(JSON.parse(raw));
+    } catch {
+      return [];
+    }
+  };
+  const write = (tabs) => {
+    try {
+      storage?.setItem?.(key, JSON.stringify(normalizeTabs(tabs)));
+    } catch {
+    }
+  };
+  return {
+    get: read,
+    set(tabs) {
+      write(tabs);
+    },
+    open(entry) {
+      const next = openTab(read(), entry);
+      write(next.tabs);
+      return next;
+    },
+    close(uid) {
+      const next = closeTab(read(), uid);
+      write(next.tabs);
+      return next;
+    }
+  };
+}
 function hasPdfHighlight(value) {
   if (!value || typeof value !== "object" || Array.isArray(value)) return false;
   return Object.keys(value).includes(":pdf-highlight") || Object.keys(value).includes("pdf-highlight");
@@ -4512,7 +4856,8 @@ function queryRows(host, query, ...inputs) {
   }
 }
 function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localStorage, graph } = {}) {
-  const stats = { writes: 0, watches: 0, pageWatches: 0, renders: 0, items: {} };
+  const stats = { writes: 0, watches: 0, pageWatches: 0, renders: 0, items: {}, errors: 0 };
+  bindGuardStats(stats);
   const data = api.data;
   const undoLog = [];
   const redoLog = [];
@@ -4539,6 +4884,7 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
     undoLog.push({ n: 1 });
     if (undoLog.length > UNDO_LOG_MAX) undoLog.shift();
   };
+  const groupSpan = (entry) => (entry.n || 0) + (entry.created?.length || 0);
   const cache = createCardCache();
   const warm = /* @__PURE__ */ new Set();
   const boardKeys = /* @__PURE__ */ new Map();
@@ -4736,16 +5082,14 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
     if (compact === "[:db/id]" && node2[":db/id"] == null) return MISS;
     if (compact === "[:block/open]" && !(":block/open" in node2)) return MISS;
     if (compact.includes(":diagram/") && !cache.nativeKnown(id) && !node2[":diagram/nodes"] && !node2[":diagram/edges"]) return MISS;
+    if (!nodeAnswers(node2, patternNeeds(text2))) return MISS;
     return node2;
   };
-  if (typeof data.pull === "function") {
-    data.pull = (pattern, entity) => {
-      const hit = servePull(pattern, entity);
-      if (hit !== MISS) return hit;
-      return rawPull(pattern, entity);
-    };
-  }
-  const pull = (pattern, entity) => typeof data.pull === "function" ? data.pull(pattern, entity) : rawPull(pattern, entity);
+  const pull = (pattern, entity) => {
+    const hit = servePull(pattern, entity);
+    if (hit !== MISS) return hit;
+    return rawPull(pattern, entity);
+  };
   const pullMany = (uids, titles) => {
     if (!uids.length && !titles.length) return [];
     if (typeof data.pull_many === "function") {
@@ -4790,13 +5134,13 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
     }
     const byTitle = /* @__PURE__ */ new Map();
     for (const title of titles) byTitle.set(title, []);
-    for (const row2 of rows) {
-      const title = row2?.[0];
-      const id = row2?.[1];
+    for (const row3 of rows) {
+      const title = row3?.[0];
+      const id = row3?.[1];
       if (!byTitle.has(title) || !id) continue;
       const list = byTitle.get(title);
       if (list.some((item) => item.uid === id) || list.length >= 40) continue;
-      list.push({ uid: id, string: String(row2?.[2] ?? ""), pageTitle: row2?.[3] || "" });
+      list.push({ uid: id, string: String(row3?.[2] ?? ""), pageTitle: row3?.[3] || "" });
     }
     for (const [title, list] of byTitle) cache.rememberLinked(`page:${title}`, list);
   };
@@ -4819,18 +5163,18 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
   let coverMemo = null;
   const readPdfCover = (url) => {
     const pages = [];
-    for (const row2 of queryRows(host, PDF_PAGE_QUERY, url)) {
-      if (!Array.isArray(row2)) continue;
-      const uid = row2[0];
-      const title = row2[1];
+    for (const row3 of queryRows(host, PDF_PAGE_QUERY, url)) {
+      if (!Array.isArray(row3)) continue;
+      const uid = row3[0];
+      const title = row3[1];
       if (typeof uid !== "string" || uid === "") continue;
       pages.push({ uid, title: typeof title === "string" ? title : "", url });
     }
     const page = pdfPagePlan(url, pages);
     if (!page) return { ...coverModel({ url, count: 0 }), pageUid: null };
     let count = 0;
-    for (const row2 of queryRows(host, PDF_PAGE_BLOCKS_QUERY, page.uid)) {
-      const cells = Array.isArray(row2) ? row2 : [row2];
+    for (const row3 of queryRows(host, PDF_PAGE_BLOCKS_QUERY, page.uid)) {
+      const cells = Array.isArray(row3) ? row3 : [row3];
       if (cells.some(hasPdfHighlight)) count++;
     }
     return { ...coverModel({ title: page.title, url, count }), pageUid: page.uid };
@@ -4838,8 +5182,10 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
   const gname = graph ?? graphName();
   const host = {
     api,
+    pull,
     stats,
     viewports: createViewportStore({ storage, graph: gname }),
+    tabs: createTabStore({ storage, graph: gname }),
     // One wide pull fills the session cache, so later card, page, and badge reads do not call Roam again.
     pullBoard(uid, { light = false } = {}) {
       if (warm.has(uid)) {
@@ -4920,11 +5266,11 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
       } else if (covers) slot2.coversRefs = true;
       slot2.n += 1;
       const entity = watchEntity(uid);
-      const wrapped = (before, after) => {
+      const wrapped = guardCallback("watchBoard", (before, after) => {
         if (after?.[":block/uid"]) absorb(uid, after, hasRefs(after));
         cb(after);
         if (covers) notifyPages(slot2, after);
-      };
+      }, { stats });
       data.addPullWatch(pattern, entity, wrapped);
       stats.watches++;
       let active = true;
@@ -4954,11 +5300,12 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
       const id = String(uid ?? "");
       if (!id || typeof cb !== "function") return () => {
       };
+      cb = guardCallback("watchBlock", cb, { stats });
       let slot2 = watchedBlocks.get(id);
       if (!slot2) {
         const entity = watchEntity(id);
         const subs = [];
-        const wrapped = (_before, after) => {
+        const wrapped = guardCallback("watchBlock", (_before, after) => {
           const next = after?.[":block/string"];
           if (typeof next === "string") {
             const node2 = cache.blockOf(id);
@@ -4966,7 +5313,7 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
             burstMemo.delete(id);
           }
           for (const token2 of subs.slice()) if (token2.on) token2.cb(after);
-        };
+        }, { stats });
         slot2 = { entity, wrapped, subs };
         data.addPullWatch(BLOCK_WATCH_PATTERN, entity, wrapped);
         watchedBlocks.set(id, slot2);
@@ -5024,6 +5371,7 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
     // A page already inside an open board shares that board's watch instead of adding another.
     watchPage(title, cb) {
       const name = String(title ?? "");
+      cb = guardCallback("watchPage", cb, { stats });
       for (const boardUid of cache.pageBoardsOf(name)) {
         const slot2 = watchedBoards.get(boardUid);
         if (!slot2 || slot2.n <= 0 || !slot2.coversRefs) continue;
@@ -5060,6 +5408,32 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
     pageUid(title) {
       const res = pull("[:block/uid]", [":node/title", title]);
       return res?.[":block/uid"] ?? null;
+    },
+    // Top-level blocks of one daily page. A missing page is an empty day. This never creates the page.
+    dailyBlocks(when) {
+      const title = dailyTitle(when);
+      const expectUid = dailyUid(when);
+      const pattern = "[:block/uid :node/title {:block/children [:block/uid :block/string :block/order]}]";
+      let res = null;
+      try {
+        res = pull(pattern, [":node/title", title]);
+      } catch {
+        res = null;
+      }
+      if (!res?.[":block/uid"]) {
+        try {
+          res = pull(pattern, eidKey(expectUid));
+        } catch {
+          res = null;
+        }
+      }
+      const exists = Boolean(res?.[":block/uid"]);
+      return {
+        title,
+        uid: exists ? String(res[":block/uid"]) : expectUid,
+        exists,
+        rows: journalRows(exists ? res : null)
+      };
     },
     // The templates page is created once. A second call returns the existing uid.
     async ensurePage(title) {
@@ -5161,7 +5535,7 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
         rows = [];
       }
       const found = /* @__PURE__ */ new Map();
-      for (const row2 of rows) if (Array.isArray(row2) && typeof row2[0] === "string") found.set(row2[0], typeof row2[1] === "string" ? row2[1] : null);
+      for (const row3 of rows) if (Array.isArray(row3) && typeof row3[0] === "string") found.set(row3[0], typeof row3[1] === "string" ? row3[1] : null);
       for (const id of missing) {
         const value = found.has(id) ? found.get(id) : null;
         out.set(id, value);
@@ -5323,27 +5697,38 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
       } finally {
         const g = openGroup;
         openGroup = null;
-        if (g.n) {
+        if (g.n || g.created?.length) {
           undoLog.push(g);
           if (undoLog.length > UNDO_LOG_MAX) undoLog.shift();
         }
       }
     },
+    // A block another extension created inside the open group (Roam Plexus "New drawing").
+    // That write never passed through noteWrite, so it is one extra Roam undo entry.
+    // Recording the uid makes this group's undo/redo step over it too. No-op with no group open.
+    // A delete here would land on Roam's stack and come back on the next redo.
+    adoptCreated(uid) {
+      const id = typeof uid === "string" ? uid : "";
+      if (!openGroup || !id) return;
+      const list = openGroup.created || (openGroup.created = []);
+      if (!list.includes(id)) list.push(id);
+      redoLog.length = 0;
+    },
     // Undo/redo step over a whole recorded group; with nothing recorded (or after invalidateUndo) it is Roam's single step.
     async undo() {
       lastWriteAt = Date.now();
       const entry = undoLog.pop();
-      const n2 = entry?.n ?? 1;
+      const span = entry ? groupSpan(entry) : 1;
       let done = 0;
       try {
-        for (; done < n2; done++) await data.undo();
+        for (; done < span; done++) await data.undo();
       } finally {
         lastWriteAt = Date.now();
         if (entry) {
-          if (done >= n2) redoLog.push(entry);
+          if (done >= span) redoLog.push(entry);
           else {
             if (done > 0) redoLog.push({ n: done });
-            undoLog.push({ n: n2 - done });
+            undoLog.push({ n: span - done });
           }
         }
       }
@@ -5351,15 +5736,15 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
     async redo() {
       lastWriteAt = Date.now();
       const entry = redoLog.pop();
-      const n2 = entry?.n ?? 1;
+      const span = entry ? groupSpan(entry) : 1;
       let done = 0;
       try {
-        for (; done < n2; done++) await data.redo();
+        for (; done < span; done++) await data.redo();
       } finally {
         lastWriteAt = Date.now();
         if (entry) {
-          if (done > 0) undoLog.push(done >= n2 ? entry : { n: done });
-          if (done < n2) redoLog.push({ n: n2 - done });
+          if (done > 0) undoLog.push(done >= span ? entry : { n: done });
+          if (done < span) redoLog.push({ n: span - done });
         }
       }
     },
@@ -5459,8 +5844,8 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
       const pageUid = readPdfCover(needle)?.pageUid;
       if (typeof pageUid !== "string" || pageUid === "") return "";
       const take = (query) => {
-        for (const row2 of queryRows(host, query, pageUid, needle)) {
-          const cell = Array.isArray(row2) ? row2[0] : row2;
+        for (const row3 of queryRows(host, query, pageUid, needle)) {
+          const cell = Array.isArray(row3) ? row3[0] : row3;
           if (typeof cell === "string" && cell && cell !== pageUid) return cell;
         }
         return "";
@@ -5626,12 +6011,12 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
       const cap4 = libraryCap();
       const candidates = [];
       const seen = /* @__PURE__ */ new Set();
-      const push = (row2) => {
+      const push = (row3) => {
         if (candidates.length >= cap4) return false;
-        const key = `${row2.kind}:${row2.uid || row2.title}`;
+        const key = `${row3.kind}:${row3.uid || row3.title}`;
         if (seen.has(key)) return false;
         seen.add(key);
-        candidates.push(row2);
+        candidates.push(row3);
         return true;
       };
       const timed = (name, fn) => {
@@ -5826,8 +6211,8 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
         }
       }
       if (f.orphan) {
-        const blockUids = candidates.filter((row2) => row2.kind === "block" && row2.uid).map((row2) => row2.uid);
-        const pageTitles = candidates.filter((row2) => row2.kind === "page" && row2.title).map((row2) => row2.title);
+        const blockUids = candidates.filter((row3) => row3.kind === "block" && row3.uid).map((row3) => row3.uid);
+        const pageTitles = candidates.filter((row3) => row3.kind === "page" && row3.title).map((row3) => row3.title);
         const onUid = /* @__PURE__ */ new Set();
         const onTitle = /* @__PURE__ */ new Set();
         if (blockUids.length) {
@@ -5854,10 +6239,10 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
           ));
           for (const rec of via) if (rec?.[0]) onTitle.add(rec[0]);
         }
-        for (const row2 of candidates) {
-          if (row2.kind === "board") row2.onBoard = true;
-          else if (row2.kind === "block") row2.onBoard = onUid.has(row2.uid);
-          else row2.onBoard = onTitle.has(row2.title);
+        for (const row3 of candidates) {
+          if (row3.kind === "board") row3.onBoard = true;
+          else if (row3.kind === "block") row3.onBoard = onUid.has(row3.uid);
+          else row3.onBoard = onTitle.has(row3.title);
         }
       }
       const rows = narrowLibrary(candidates, f, nowMs).slice(0, lim).map(libraryCard);
@@ -5949,11 +6334,11 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
       if (pageTitle && cache.hasLinked(`page:${pageTitle}`)) {
         const refs2 = [];
         const seen2 = /* @__PURE__ */ new Set();
-        for (const row2 of cache.linkedOf(`page:${pageTitle}`)) {
-          const id = row2?.uid;
+        for (const row3 of cache.linkedOf(`page:${pageTitle}`)) {
+          const id = row3?.uid;
           if (!id || id === cardUid || seen2.has(id)) continue;
           seen2.add(id);
-          refs2.push({ uid: id, string: String(row2.string ?? ""), pageTitle: row2.pageTitle || "" });
+          refs2.push({ uid: id, string: String(row3.string ?? ""), pageTitle: row3.pageTitle || "" });
           if (refs2.length >= cap4) break;
         }
         return refs2;
@@ -5969,11 +6354,11 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
       }
       const refs = [];
       const seen = /* @__PURE__ */ new Set();
-      for (const row2 of rows) {
-        const uid = row2?.[0];
+      for (const row3 of rows) {
+        const uid = row3?.[0];
         if (!uid || uid === cardUid || targetUid && uid === targetUid || seen.has(uid)) continue;
         seen.add(uid);
-        refs.push({ uid, string: String(row2?.[1] ?? ""), pageTitle: row2?.[2] || "" });
+        refs.push({ uid, string: String(row3?.[1] ?? ""), pageTitle: row3?.[2] || "" });
         if (refs.length >= cap4) break;
       }
       return refs;
@@ -6088,17 +6473,17 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
         return boardOk.get(boardUid);
       };
       const placements = [];
-      for (const row2 of direct) {
-        const boardUid = row2?.[0];
-        const pageUid = row2?.[1];
+      for (const row3 of direct) {
+        const boardUid = row3?.[0];
+        const pageUid = row3?.[1];
         if (!boardUid || !pageUid || !enhanced(boardUid)) continue;
         if (!isShowableCard(propsOf(id)?.plexus)) continue;
         placements.push({ boardUid, pageUid, cardUid: id, refUids: [] });
       }
-      for (const row2 of via) {
-        const boardUid = row2?.[0];
-        const pageUid = row2?.[1];
-        const cardUid = row2?.[2];
+      for (const row3 of via) {
+        const boardUid = row3?.[0];
+        const pageUid = row3?.[1];
+        const cardUid = row3?.[2];
         if (!boardUid || !pageUid || !cardUid || cardUid === id || !enhanced(boardUid)) continue;
         if (!isShowableCard(propsOf(cardUid)?.plexus)) continue;
         placements.push({ boardUid, pageUid, cardUid, refUids: [id] });
@@ -6801,9 +7186,9 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     if (typeof globalThis.requestIdleCallback === "function") globalThis.requestIdleCallback(fn, { timeout: 2e3 });
     else fn();
   });
-  const listeners2 = /* @__PURE__ */ new Map();
+  const listeners3 = /* @__PURE__ */ new Map();
   const emit2 = (name, payload) => {
-    for (const fn of [...listeners2.get(name) ?? []]) {
+    for (const fn of [...listeners3.get(name) ?? []]) {
       try {
         fn(payload);
       } catch (err) {
@@ -7613,9 +7998,9 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     const rows = host.q(linksQuery(), boardEid, eids, eids) || [];
     const parentStrings = /* @__PURE__ */ new Map();
     let budget = MAX_PARENT_STRINGS;
-    for (const row2 of rows) {
-      const su = row2[2];
-      const ss = row2[3];
+    for (const row3 of rows) {
+      const su = row3[2];
+      const ss = row3[3];
       if (budget <= 0) break;
       if (attrNameOf(ss) == null && !parentStrings.has(su)) {
         budget--;
@@ -7725,9 +8110,9 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       return linkMode;
     },
     on(name, fn) {
-      if (!listeners2.has(name)) listeners2.set(name, /* @__PURE__ */ new Set());
-      listeners2.get(name).add(fn);
-      return () => listeners2.get(name)?.delete(fn);
+      if (!listeners3.has(name)) listeners3.set(name, /* @__PURE__ */ new Set());
+      listeners3.get(name).add(fn);
+      return () => listeners3.get(name)?.delete(fn);
     },
     // The view calls this with the card uid while that card is open, and null when editing ends.
     setEditing(id) {
@@ -7917,7 +8302,11 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       const api2 = globalThis.RoamPlexus || globalThis.window?.RoamPlexus || null;
       const place = () => {
         if (api2 && typeof api2.create === "function") {
-          return Promise.resolve(api2.create({ parentUid: spec.parentUid, order: spec.order })).then((made) => made?.uid || null);
+          return Promise.resolve(api2.create({ parentUid: spec.parentUid, order: spec.order })).then((made) => {
+            const id = made?.uid || null;
+            if (id) host.adoptCreated?.(id);
+            return id;
+          });
         }
         if (typeof host.createBlock !== "function") return Promise.resolve(null);
         return Promise.resolve(host.createBlock(spec)).then((made) => typeof made === "string" ? made : made?.uid || null);
@@ -8205,6 +8594,15 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       });
     },
     // The highlight block is not on the board. setString returns when rawNode misses, so this reads blockString and writes one string op.
+    // PDFH-5. Roam's own note button makes one empty child under the highlight; this is the same write,
+    // one undo step. The highlight block is on the PDF's page, not on this board, so it is a host write.
+    addHighlightNote(highlightUid) {
+      if (typeof highlightUid !== "string" || !highlightUid || destroyed) return Promise.resolve(null);
+      return queue.run(() => grouped(() => host.createBlock({ parentUid: highlightUid, order: "last", string: "" }))).then((id) => typeof id === "string" ? id : null, (err) => {
+        handleFailure(err);
+        return null;
+      });
+    },
     setHighlightColor(blockUid2, name) {
       return txn((t) => {
         if (!HIGHLIGHT_COLORS.includes(name)) return;
@@ -8742,7 +9140,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       linkResolve?.();
       linkPromise = null;
       linkResolve = null;
-      listeners2.clear();
+      listeners3.clear();
       ledger.clear();
     }
   };
@@ -9767,6 +10165,7 @@ async function callSafely(disposer) {
 }
 function createLifecycle() {
   let disposed = false;
+  let idlePending = 0;
   const disposers = [];
   const add = (disposer) => {
     if (typeof disposer !== "function") throw new TypeError("A disposer must be a function");
@@ -9795,7 +10194,8 @@ function createLifecycle() {
       return listener;
     },
     interval(callback, delay, ...args) {
-      const id = globalThis.setInterval(callback, delay, ...args);
+      const guarded = guardCallback("interval", callback);
+      const id = globalThis.setInterval(guarded, delay, ...args);
       add(() => globalThis.clearInterval(id));
       return id;
     },
@@ -9804,7 +10204,45 @@ function createLifecycle() {
       add(() => globalThis.clearTimeout(id));
       return id;
     },
+    // POL-3. One idle callback, dropped on dispose before it runs.
+    idle(callback, { timeout = 1e3 } = {}) {
+      const guarded = guardCallback("idle", callback);
+      let open = true;
+      const close = () => {
+        if (!open) return;
+        open = false;
+        idlePending -= 1;
+      };
+      idlePending += 1;
+      const fire2 = (deadline) => {
+        if (!open) return;
+        close();
+        if (disposed) return;
+        guarded(deadline);
+      };
+      if (typeof globalThis.requestIdleCallback === "function") {
+        const id2 = globalThis.requestIdleCallback(fire2, { timeout });
+        add(() => {
+          globalThis.cancelIdleCallback?.(id2);
+          close();
+        });
+        return id2;
+      }
+      const id = globalThis.setTimeout(() => {
+        fire2({ didTimeout: true, timeRemaining: () => 0 });
+      }, timeout);
+      add(() => {
+        globalThis.clearTimeout(id);
+        close();
+      });
+      return id;
+    },
+    pending() {
+      return idlePending;
+    },
     observer(observer, target, options) {
+      if (observer && typeof observer.callback === "function") observer.callback = guardCallback("observer", observer.callback);
+      else if (observer && typeof observer.cb === "function") observer.cb = guardCallback("observer", observer.cb);
       observer.observe(target, options);
       add(() => observer.disconnect());
       return observer;
@@ -9819,9 +10257,10 @@ function createLifecycle() {
       if (!dataApi?.addPullWatch || !dataApi?.removePullWatch) {
         throw new TypeError("A Roam data API with addPullWatch/removePullWatch is required");
       }
-      dataApi.addPullWatch(pattern, entity, callback);
-      add(() => dataApi.removePullWatch(pattern, entity, callback));
-      return callback;
+      const guarded = guardCallback("pullWatch", callback);
+      dataApi.addPullWatch(pattern, entity, guarded);
+      add(() => dataApi.removePullWatch(pattern, entity, guarded));
+      return guarded;
     },
     async settingsPanel(extensionAPI, config) {
       await extensionAPI.settings.panel.create(config);
@@ -9845,7 +10284,7 @@ function createLifecycle() {
 // package.json
 var package_default = {
   name: "plexus-diagram",
-  version: "2.19.0",
+  version: "2.20.0",
   private: true,
   description: "Heptabase-style whiteboard for Roam {{[[diagram]]}} blocks: cards, colored sections, and connections that are real Roam blocks and links",
   type: "module",
@@ -9853,12 +10292,14 @@ var package_default = {
   scripts: {
     build: "node build.mjs",
     dev: "node build.mjs --watch",
+    size: "node scripts/size-report.mjs",
     "scan:secrets": "node scripts/scan-secrets.mjs",
     test: "node --test test/*.test.js",
     "perf:ratchet": "node tools/live/perf-ratchet.mjs",
     "verify:generated": "node scripts/verify-generated.mjs",
     check: "npm run build && npm run scan:secrets && node --check extension.js && npm test && npm run verify:generated",
-    "bench:hot": "node --predictable --test --test-concurrency=1 test/fast-7-hot-paths.test.js"
+    "bench:hot": "node --predictable --test --test-concurrency=1 test/fast-7-hot-paths.test.js",
+    "size:gate": "node scripts/size-gate.mjs"
   },
   engines: {
     node: ">=20"
@@ -10066,10 +10507,10 @@ function parseAttrStyles(raw) {
   for (const [name, spec] of Object.entries(obj)) {
     const key = String(name).trim();
     if (!key || !spec || typeof spec !== "object" || Array.isArray(spec)) continue;
-    const row2 = {};
-    if (PALETTE.includes(spec.color)) row2.color = spec.color;
-    if (ATTR_DASHES.includes(spec.dash)) row2.dash = spec.dash;
-    if (row2.color || row2.dash) out[key] = row2;
+    const row3 = {};
+    if (PALETTE.includes(spec.color)) row3.color = spec.color;
+    if (ATTR_DASHES.includes(spec.dash)) row3.dash = spec.dash;
+    if (row3.color || row3.dash) out[key] = row3;
   }
   return out;
 }
@@ -10123,17 +10564,17 @@ function pageChips(rows, url) {
   if (typeof url !== "string" || url === "") return [];
   if (!Array.isArray(rows)) return [];
   const byPage = /* @__PURE__ */ new Map();
-  for (const row2 of rows) {
-    if (!row2 || typeof row2 !== "object") continue;
-    if (row2.url !== url) continue;
-    if (!wholePage(row2.page)) continue;
-    if (typeof row2.uid !== "string" || row2.uid === "") continue;
-    let chip = byPage.get(row2.page);
+  for (const row3 of rows) {
+    if (!row3 || typeof row3 !== "object") continue;
+    if (row3.url !== url) continue;
+    if (!wholePage(row3.page)) continue;
+    if (typeof row3.uid !== "string" || row3.uid === "") continue;
+    let chip = byPage.get(row3.page);
     if (!chip) {
-      chip = { page: row2.page, uids: [] };
-      byPage.set(row2.page, chip);
+      chip = { page: row3.page, uids: [] };
+      byPage.set(row3.page, chip);
     }
-    chip.uids.push(row2.uid);
+    chip.uids.push(row3.uid);
   }
   return [...byPage.values()].sort((a, b) => a.page - b.page).map((chip) => ({ page: chip.page, uids: chip.uids, count: chip.uids.length }));
 }
@@ -10262,14 +10703,14 @@ function slot(index, mode) {
 }
 function placeHighlights(rows, { mode, origin, cap: cap4 } = {}) {
   const list = Array.isArray(rows) ? rows : [];
-  const eligible = list.filter((row2) => isObject3(row2) && typeof row2.uid === "string" && row2.uid !== "" && row2.selected === true && row2.placed !== true);
+  const eligible = list.filter((row3) => isObject3(row3) && typeof row3.uid === "string" && row3.uid !== "" && row3.selected === true && row3.placed !== true);
   const limit = capOf(cap4);
   const take = eligible.slice(0, limit);
   const at = originOf(origin);
-  const items = take.map((row2, index) => {
+  const items = take.map((row3, index) => {
     const { col, row: line } = slot(index, mode);
     return {
-      string: `((${row2.uid}))`,
+      string: `((${row3.uid}))`,
       x: at.x + col * (CARD_W3 + GAP2),
       y: at.y + line * (CARD_H3 + GAP2),
       w: CARD_W3,
@@ -10339,7 +10780,7 @@ function highlightLensTag(color) {
 
 // src/model/halo.js
 var DAY_MS2 = 864e5;
-var MONTHS4 = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+var MONTHS5 = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 var HALO_PULL_LIGHT = "[:create/time :edit/time {:create/user [:user/display-name]}]";
 var HALO_REF_CAP = 200;
 var HALO_REFS_SPAN_QUERY = "[:find (count ?r) (min ?t) (max ?t) :in $ ?u :where [?e :block/uid ?u] [?r :block/refs ?e] [?r :create/time ?t]]";
@@ -10362,8 +10803,8 @@ function haloRefs(q, uid, cap4 = HALO_REF_CAP) {
     rows = [];
   }
   const stamps = [];
-  for (const row2 of rows) {
-    const stamp2 = finite3(Array.isArray(row2) ? row2[1] : null);
+  for (const row3 of rows) {
+    const stamp2 = finite3(Array.isArray(row3) ? row3[1] : null);
     if (stamp2 != null) stamps.push(stamp2);
   }
   stamps.sort((a, b) => b - a);
@@ -10395,7 +10836,7 @@ function formatMade(ms) {
   const n2 = finite3(ms);
   if (n2 == null) return "";
   const date = new Date(n2);
-  return `${MONTHS4[date.getMonth()]} ${ordinal(date.getDate())}, ${date.getFullYear()}`;
+  return `${MONTHS5[date.getMonth()]} ${ordinal(date.getDate())}, ${date.getFullYear()}`;
 }
 function headerText({ created, board: board2, section: section2, userName } = {}) {
   const when = formatMade(created);
@@ -10409,15 +10850,15 @@ function headerText({ created, board: board2, section: section2, userName } = {}
 }
 function company(rows, uid) {
   const list = Array.isArray(rows) ? rows : [];
-  const self = list.find((row2) => row2 && row2.uid === uid);
+  const self = list.find((row3) => row3 && row3.uid === uid);
   const created = finite3(self?.created);
   if (!self || created == null) return [];
   const out = [];
-  for (const row2 of list) {
-    if (!row2 || row2.uid === uid) continue;
-    const stamp2 = finite3(row2.created);
+  for (const row3 of list) {
+    if (!row3 || row3.uid === uid) continue;
+    const stamp2 = finite3(row3.created);
     if (stamp2 == null || Math.abs(stamp2 - created) > DAY_MS2) continue;
-    out.push(row2.uid);
+    out.push(row3.uid);
     if (out.length >= 6) break;
   }
   return out;
@@ -10872,19 +11313,19 @@ function preferredSide(target, root) {
   return "above";
 }
 var OPPOSITE = { above: "below", below: "above", left: "right", right: "left" };
-function placeTip({ target, tip, bounds, side }) {
+function placeTip({ target, tip, bounds, side: side2 }) {
   const at = (s) => {
     if (s === "below") return { left: target.left + target.width / 2 - tip.width / 2, top: target.top + target.height + GAP3 };
     if (s === "above") return { left: target.left + target.width / 2 - tip.width / 2, top: target.top - tip.height - GAP3 };
     if (s === "left") return { left: target.left - tip.width - GAP3, top: target.top + target.height / 2 - tip.height / 2 };
     return { left: target.left + target.width + GAP3, top: target.top + target.height / 2 - tip.height / 2 };
   };
-  let use = side;
+  let use = side2;
   let p = at(use);
-  const vertical = side === "above" || side === "below";
+  const vertical = side2 === "above" || side2 === "below";
   const axisFits = (pt) => vertical ? pt.top >= bounds.top + MARGIN && pt.top + tip.height <= bounds.top + bounds.height - MARGIN : pt.left >= bounds.left + MARGIN && pt.left + tip.width <= bounds.left + bounds.width - MARGIN;
-  if (bounds.width && bounds.height && !axisFits(p) && axisFits(at(OPPOSITE[side]))) {
-    use = OPPOSITE[side];
+  if (bounds.width && bounds.height && !axisFits(p) && axisFits(at(OPPOSITE[side2]))) {
+    use = OPPOSITE[side2];
     p = at(use);
   }
   if (bounds.width && bounds.height) {
@@ -11176,14 +11617,14 @@ function placePopover({ anchor, size, viewport, bounds, gap = POP_GAP, obstacles
   const clampX = (x, w) => Math.max(box2.left + edge, Math.min(x, box2.right - edge - w));
   const clampY = (y, h) => Math.max(box2.top + edge, Math.min(y, box2.bottom - edge - h));
   const sides = ["below", "above", "right", "left"];
-  const make2 = (side, along, h, scroll) => {
-    const vertical = side === "below" || side === "above";
-    const left = vertical ? clampX(along, width) : side === "right" ? anchor.right + gap : anchor.left - gap - width;
-    const top = vertical ? side === "below" ? anchor.bottom + gap : anchor.top - gap - h : clampY(along, h);
-    return { side, left: Math.round(left), top: Math.round(top), width: Math.round(width), maxHeight: scroll ? Math.round(h) : null, scroll };
+  const make2 = (side2, along, h, scroll) => {
+    const vertical = side2 === "below" || side2 === "above";
+    const left = vertical ? clampX(along, width) : side2 === "right" ? anchor.right + gap : anchor.left - gap - width;
+    const top = vertical ? side2 === "below" ? anchor.bottom + gap : anchor.top - gap - h : clampY(along, h);
+    return { side: side2, left: Math.round(left), top: Math.round(top), width: Math.round(width), maxHeight: scroll ? Math.round(h) : null, scroll };
   };
-  const alongOf = (side, h) => {
-    const vertical = side === "below" || side === "above";
+  const alongOf = (side2, h) => {
+    const vertical = side2 === "below" || side2 === "above";
     const base = vertical ? anchor.left : anchor.top;
     const out = [base];
     for (const o of wall) {
@@ -11192,44 +11633,44 @@ function placePopover({ anchor, size, viewport, bounds, gap = POP_GAP, obstacles
     }
     return out.sort((a, b) => Math.abs(a - base) - Math.abs(b - base));
   };
-  const fitsSide = (side) => {
-    if (side === "below") return box2.bottom - edge - (anchor.bottom + gap) >= size.h;
-    if (side === "above") return anchor.top - gap - (box2.top + edge) >= size.h;
-    if (side === "right") return box2.right - edge - (anchor.right + gap) >= width;
+  const fitsSide = (side2) => {
+    if (side2 === "below") return box2.bottom - edge - (anchor.bottom + gap) >= size.h;
+    if (side2 === "above") return anchor.top - gap - (box2.top + edge) >= size.h;
+    if (side2 === "right") return box2.right - edge - (anchor.right + gap) >= width;
     return anchor.left - gap - (box2.left + edge) >= width;
   };
-  for (const side of sides) {
-    if (!fitsSide(side)) continue;
-    for (const along of alongOf(side, size.h)) {
-      const p = make2(side, along, size.h, false);
+  for (const side2 of sides) {
+    if (!fitsSide(side2)) continue;
+    for (const along of alongOf(side2, size.h)) {
+      const p = make2(side2, along, size.h, false);
       if (!wall.some((o) => rectsHit(spanOf(p), o))) return p;
     }
   }
   let best = null;
-  for (const side of sides) {
-    for (const along of alongOf(side, size.h)) {
-      const vertical = side === "below" || side === "above";
-      const probe = make2(side, along, vertical ? 1 : size.h, false);
+  for (const side2 of sides) {
+    for (const along of alongOf(side2, size.h)) {
+      const vertical = side2 === "below" || side2 === "above";
+      const probe = make2(side2, along, vertical ? 1 : size.h, false);
       let room;
       if (vertical) {
         const xs2 = { left: probe.left, right: probe.left + probe.width };
-        const lowest = side === "below" ? anchor.bottom + gap : box2.top + edge;
-        const highest = side === "below" ? box2.bottom - edge : anchor.top - gap;
+        const lowest = side2 === "below" ? anchor.bottom + gap : box2.top + edge;
+        const highest = side2 === "below" ? box2.bottom - edge : anchor.top - gap;
         let lo = lowest;
         let hi = highest;
         for (const o of wall) {
           if (o.right <= xs2.left || o.left >= xs2.right) continue;
-          if (side === "below" && o.top >= lowest) hi = Math.min(hi, o.top - 4);
-          else if (side === "above" && o.bottom <= highest) lo = Math.max(lo, o.bottom + 4);
+          if (side2 === "below" && o.top >= lowest) hi = Math.min(hi, o.top - 4);
+          else if (side2 === "above" && o.bottom <= highest) lo = Math.max(lo, o.bottom + 4);
         }
         room = hi - lo;
         if (room < 80) continue;
         const h = Math.min(size.h, room);
-        const p = make2(side, along, h, true);
-        if (side === "above") p.top = Math.round(hi - h);
+        const p = make2(side2, along, h, true);
+        if (side2 === "above") p.top = Math.round(hi - h);
         if (!best || h > best.h) best = { p, h };
       } else {
-        const x0 = side === "right" ? anchor.right + gap : anchor.left - gap - width;
+        const x0 = side2 === "right" ? anchor.right + gap : anchor.left - gap - width;
         let lo = box2.top + edge;
         let hi = box2.bottom - edge;
         let straddles = false;
@@ -11245,7 +11686,7 @@ function placePopover({ anchor, size, viewport, bounds, gap = POP_GAP, obstacles
         if (straddles) continue;
         const h = Math.min(size.h, hi - lo);
         if (h < 80) continue;
-        const p = make2(side, 0, h, true);
+        const p = make2(side2, 0, h, true);
         p.top = Math.round(Math.max(lo, Math.min(anchor.top, hi - h)));
         if (!best || h > best.h) best = { p, h };
       }
@@ -11268,28 +11709,28 @@ function placeBasic({ anchor, size, viewport, bounds, gap = POP_GAP } = {}) {
     right: box2.right - edge - (anchor.right + gap),
     left: anchor.left - gap - (box2.left + edge)
   };
-  const fits = (side2) => side2 === "below" || side2 === "above" ? room[side2] >= size.h : room[side2] >= size.w;
-  let side = ["below", "above", "right", "left"].find(fits);
+  const fits = (side3) => side3 === "below" || side3 === "above" ? room[side3] >= size.h : room[side3] >= size.w;
+  let side2 = ["below", "above", "right", "left"].find(fits);
   let scroll = false;
-  if (!side) {
-    side = Object.keys(room).reduce((best, k) => room[k] > room[best] ? k : best, "below");
+  if (!side2) {
+    side2 = Object.keys(room).reduce((best, k) => room[k] > room[best] ? k : best, "below");
     scroll = true;
   }
-  const vertical = side === "below" || side === "above";
+  const vertical = side2 === "below" || side2 === "above";
   const width = Math.min(size.w, Math.max(80, box2.right - box2.left - 2 * edge));
-  const height = scroll ? Math.max(80, Math.min(size.h, room[side])) : size.h;
+  const height = scroll ? Math.max(80, Math.min(size.h, room[side2])) : size.h;
   const clampX = (x) => Math.max(box2.left + edge, Math.min(x, box2.right - edge - width));
   const clampY = (y) => Math.max(box2.top + edge, Math.min(y, box2.bottom - edge - height));
   let left;
   let top;
   if (vertical) {
     left = clampX(anchor.left);
-    top = side === "below" ? anchor.bottom + gap : anchor.top - gap - height;
+    top = side2 === "below" ? anchor.bottom + gap : anchor.top - gap - height;
   } else {
     top = clampY(anchor.top);
-    left = side === "right" ? anchor.right + gap : anchor.left - gap - width;
+    left = side2 === "right" ? anchor.right + gap : anchor.left - gap - width;
   }
-  return { side, left: Math.round(left), top: Math.round(top), width: Math.round(width), maxHeight: scroll ? Math.round(height) : null, scroll };
+  return { side: side2, left: Math.round(left), top: Math.round(top), width: Math.round(width), maxHeight: scroll ? Math.round(height) : null, scroll };
 }
 function rowFraction(blocks, uid) {
   const rows = [];
@@ -11306,9 +11747,9 @@ function rowFraction(blocks, uid) {
   return i < 0 || !rows.length ? null : (i + 0.5) / rows.length;
 }
 var rowEnd = (item, other, bar) => {
-  const side = other.x + other.w / 2 >= item.x + item.w / 2 ? "right" : "left";
-  const point = { x: side === "right" ? item.x + item.w : item.x, y: bar.y + bar.h / 2 };
-  return { side, point, inner: blockInner({ rect: item, side, point, rowLeft: ROW_PAD, rowRight: item.w - ROW_PAD }) };
+  const side2 = other.x + other.w / 2 >= item.x + item.w / 2 ? "right" : "left";
+  const point = { x: side2 === "right" ? item.x + item.w : item.x, y: bar.y + bar.h / 2 };
+  return { side: side2, point, inner: blockInner({ rect: item, side: side2, point, rowLeft: ROW_PAD, rowRight: item.w - ROW_PAD }) };
 };
 function previewModel(board2, edgeUid, { pad: pad2 = 48, maxOthers = 24, blockText, rowFrac } = {}) {
   const edge = board2?.edges?.get(edgeUid);
@@ -11522,9 +11963,9 @@ function createRelChips({ doc = globalThis.document, win = globalThis.window, ho
     if (model) drawPreview(doc, el, model);
     else mk("div", "pxd-relpop__empty", el, "The connected cards could not be found on the board.");
     if (rel?.toBlockText) mk("div", "pxd-relpop__note", el, `Ends on the block “${clip2(rel.toBlockText, 60)}”`);
-    const row2 = mk("div", "pxd-relpop__actions", el);
+    const row3 = mk("div", "pxd-relpop__actions", el);
     const button = (tip, text2, fn) => {
-      const b = mk("button", "pxd-btn pxd-relpop__btn", row2, text2);
+      const b = mk("button", "pxd-btn pxd-relpop__btn", row3, text2);
       b.type = "button";
       b.setAttribute("data-tip", tip);
       b.addEventListener("click", (event) => {
@@ -11844,16 +12285,16 @@ function openHaloPopover({
   withRow.append("With: ");
   const company2 = Array.isArray(model.with) ? model.with.slice(0, 6) : [];
   if (!company2.length) withRow.append("none");
-  company2.forEach((row2, index) => {
+  company2.forEach((row3, index) => {
     if (index) withRow.append(", ");
     const button = doc.createElement("button");
     button.type = "button";
     button.className = "pxd-halo__company";
-    button.textContent = row2.label || "card";
-    button.setAttribute("data-uid", row2.uid || "");
+    button.textContent = row3.label || "card";
+    button.setAttribute("data-uid", row3.uid || "");
     button.addEventListener("click", (event) => {
       event.stopPropagation();
-      if (row2.uid) onPulse?.(row2.uid);
+      if (row3.uid) onPulse?.(row3.uid);
     });
     withRow.append(button);
   });
@@ -12051,20 +12492,20 @@ function snippetOf2(text2, max = 200) {
 function filterRows(rows, query) {
   const q = String(query ?? "").trim().toLowerCase();
   if (!q) return rows || [];
-  return (rows || []).filter((row2) => `${row2.crumb || ""} ${row2.snippet || ""}`.toLowerCase().includes(q));
+  return (rows || []).filter((row3) => `${row3.crumb || ""} ${row3.snippet || ""}`.toLowerCase().includes(q));
 }
 function groupRefs(rows, cap4 = CONTEXT_CAP) {
-  const sorted = [...rows || []].filter((row2) => row2?.uid).sort((a, b) => (b.time || 0) - (a.time || 0) || String(a.uid).localeCompare(String(b.uid)));
+  const sorted = [...rows || []].filter((row3) => row3?.uid).sort((a, b) => (b.time || 0) - (a.time || 0) || String(a.uid).localeCompare(String(b.uid)));
   const shown = sorted.slice(0, cap4);
   const groups = [];
-  for (const row2 of shown) {
-    const year = Number.isFinite(row2.time) ? new Date(row2.time).getFullYear() : 0;
+  for (const row3 of shown) {
+    const year = Number.isFinite(row3.time) ? new Date(row3.time).getFullYear() : 0;
     let group = groups.find((item) => item.year === year);
     if (!group) {
       group = { year, rows: [] };
       groups.push(group);
     }
-    group.rows.push(row2);
+    group.rows.push(row3);
   }
   return { groups, total: sorted.length, hidden: Math.max(0, sorted.length - shown.length) };
 }
@@ -12089,7 +12530,7 @@ function mountContextsDrawer({
   el.setAttribute("role", "dialog");
   el.setAttribute("aria-label", "References");
   const grouped = groupRefs(rows);
-  const flat2 = grouped.groups.flatMap((group) => group.rows.map((row2) => ({ ...row2, year: group.year })));
+  const flat2 = grouped.groups.flatMap((group) => group.rows.map((row3) => ({ ...row3, year: group.year })));
   const chunks = rowChunks(flat2);
   const list = doc.createElement("div");
   list.className = "pxd-contexts__list";
@@ -12099,7 +12540,7 @@ function mountContextsDrawer({
     filter.type = "search";
     filter.setAttribute("aria-label", "Filter references");
     filter.addEventListener("input", () => {
-      const shown = new Set(filterRows(flat2, filter.value).map((row2) => row2.uid));
+      const shown = new Set(filterRows(flat2, filter.value).map((row3) => row3.uid));
       for (const node2 of list.querySelectorAll(".pxd-contexts__row")) {
         node2.hidden = !shown.has(node2.getAttribute("data-uid"));
       }
@@ -12114,9 +12555,9 @@ function mountContextsDrawer({
   }
   let year;
   const paint2 = (chunk) => {
-    for (const row2 of chunk) {
-      if (row2.year !== year) {
-        year = row2.year;
+    for (const row3 of chunk) {
+      if (row3.year !== year) {
+        year = row3.year;
         const head = doc.createElement("div");
         head.className = "pxd-contexts__year";
         head.textContent = year ? String(year) : "Undated";
@@ -12125,18 +12566,18 @@ function mountContextsDrawer({
       const button = doc.createElement("button");
       button.type = "button";
       button.className = "pxd-contexts__row";
-      button.setAttribute("data-uid", row2.uid);
+      button.setAttribute("data-uid", row3.uid);
       const crumb = doc.createElement("div");
       crumb.className = "pxd-contexts__crumb";
-      crumb.textContent = row2.crumb || "Untitled";
+      crumb.textContent = row3.crumb || "Untitled";
       const snippet = doc.createElement("div");
       snippet.className = "pxd-contexts__snippet";
-      snippet.textContent = row2.snippet || "";
+      snippet.textContent = row3.snippet || "";
       button.append(crumb, snippet);
       button.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
-        onOpen?.(row2.uid, { sidebar: Boolean(event.shiftKey) });
+        onOpen?.(row3.uid, { sidebar: Boolean(event.shiftKey) });
       });
       list.append(button);
     }
@@ -12341,8 +12782,8 @@ function mountMemoryLane({
 // src/model/suggest.js
 var SUGGEST_CAP = 60;
 var SUGGEST_LIMIT = 300;
-var MONTHS5 = "January|February|March|April|May|June|July|August|September|October|November|December";
-var DAILY_RE2 = new RegExp(`^(${MONTHS5}) \\d{1,2}(?:st|nd|rd|th), \\d{4}$`);
+var MONTHS6 = "January|February|March|April|May|June|July|August|September|October|November|December";
+var DAILY_RE2 = new RegExp(`^(${MONTHS6}) \\d{1,2}(?:st|nd|rd|th), \\d{4}$`);
 var escapeReg = (text2) => String(text2).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
 function isDailyTitle2(title) {
   return DAILY_RE2.test(String(title ?? "").trim());
@@ -12490,15 +12931,15 @@ var TASK_RE = /^\s*\{\{\[\[(TODO|DONE)\]\]\}\}/;
 var taskState = (string) => TASK_RE.exec(String(string ?? ""))?.[1] ?? "";
 var isTaskString = (string) => TASK_RE.test(String(string ?? ""));
 var isBareTask = (string) => isTaskString(string) && !String(string).replace(TASK_RE, "").replace(/#\[\[task-status\/[^\]]*\]\]/g, "").trim();
-var MONTHS6 = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-var DAILY_RE3 = new RegExp(`^(${MONTHS6.join("|")}) (\\d{1,2})(st|nd|rd|th), (\\d{4})$`);
+var MONTHS7 = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+var DAILY_RE3 = new RegExp(`^(${MONTHS7.join("|")}) (\\d{1,2})(st|nd|rd|th), (\\d{4})$`);
 function parseRoamDay(title) {
   const m = DAILY_RE3.exec(String(title ?? "").trim());
   if (!m) return null;
   const day = Number(m[2]);
   const suffix = day >= 11 && day <= 13 ? "th" : { 1: "st", 2: "nd", 3: "rd" }[day % 10] ?? "th";
   if (m[3] !== suffix || day < 1 || day > 31) return null;
-  const month = MONTHS6.indexOf(m[1]);
+  const month = MONTHS7.indexOf(m[1]);
   if (month < 0) return null;
   return { y: Number(m[4]), m: month + 1, d: day };
 }
@@ -12644,11 +13085,11 @@ function createBt(options = {}) {
     const list = res?.attributes;
     if (!Array.isArray(list) || !list.length) return null;
     const map = /* @__PURE__ */ new Map();
-    for (const row2 of list) {
-      if (!row2?.id || !row2?.name) continue;
-      const set = /* @__PURE__ */ new Set([lower2(row2.name)]);
-      for (const alias of row2.aliases || []) if (alias) set.add(lower2(alias));
-      map.set(row2.id, set);
+    for (const row3 of list) {
+      if (!row3?.id || !row3?.name) continue;
+      const set = /* @__PURE__ */ new Set([lower2(row3.name)]);
+      for (const alias of row3.aliases || []) if (alias) set.add(lower2(alias));
+      map.set(row3.id, set);
     }
     return map.size ? map : null;
   };
@@ -12690,6 +13131,131 @@ function createBt(options = {}) {
       const rows = res.ok ? res.result?.projects : null;
       return Array.isArray(rows) ? rows.map((r) => String(r?.name || "")).filter(Boolean) : [];
     }
+  };
+}
+
+// src/model/status-tags.js
+var STATUS_TAG2 = /#\[\[task-status\/([^\]]+)\]\]/;
+var NEUTRAL = Object.freeze({
+  light: Object.freeze({ base: "rgba(100, 116, 139, 0.1)", text: "rgb(88, 102, 122)" }),
+  dark: Object.freeze({ base: "rgba(100, 116, 139, 0.2)", text: "rgb(158, 168, 183)" })
+});
+var FALLBACK2 = Object.freeze([
+  row2("ACTIVE", "Active", "active", "rgba(20, 184, 166, 0.1)", "rgb(13, 116, 104)", "rgba(20, 184, 166, 0.2)", "rgb(68, 198, 184)"),
+  row2("WAITING", "Waiting", "waiting", "rgba(234, 179, 8, 0.1)", "rgb(131, 100, 4)", "rgba(234, 179, 8, 0.2)", "rgb(234, 179, 8)"),
+  row2("IN_REVIEW", "In Review", "in-review", "rgba(14, 165, 233, 0.1)", "rgb(9, 109, 154)", "rgba(14, 165, 233, 0.2)", "rgb(76, 188, 239)"),
+  row2("HOLDING", "Holding", "holding", "rgba(148, 163, 184, 0.1)", "rgb(95, 104, 118)", "rgba(148, 163, 184, 0.2)", "rgb(169, 181, 198)"),
+  row2("INCUBATING", "Incubating", "incubating", "rgba(99, 102, 241, 0.1)", "rgb(84, 86, 203)", "rgba(99, 102, 241, 0.2)", "rgb(158, 160, 246)"),
+  row2("ALERT", "Alert", "alert", "rgba(244, 63, 94, 0.1)", "rgb(184, 48, 71)", "rgba(244, 63, 94, 0.2)", "rgb(248, 130, 150)"),
+  row2("CANCELLED", "Cancelled", "cancelled", "rgba(30, 41, 59, 0.1)", "rgb(30, 41, 59)", "rgba(30, 41, 59, 0.2)", "rgb(145, 150, 159)")
+]);
+function row2(key, name, glyph, lightBase, lightText, darkBase, darkText) {
+  return Object.freeze({
+    key,
+    name,
+    tag: `task-status/${name}`,
+    glyph,
+    light: Object.freeze({ base: lightBase, text: lightText }),
+    dark: Object.freeze({ base: darkBase, text: darkText })
+  });
+}
+function side(value) {
+  if (!value || typeof value !== "object") return { base: "", text: "" };
+  return { base: String(value.base || ""), text: String(value.text || "") };
+}
+function statusKey(name) {
+  return String(name ?? "").trim().toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
+function statusApi(win) {
+  const api = win?.RoamTaskStatusTags;
+  if (!api || api.apiVersion !== 1 || typeof api.statuses !== "function") return null;
+  return api;
+}
+function normalize(raw) {
+  const name = String(raw?.name || "").trim();
+  if (!name) return null;
+  const glyphRaw = String(raw?.glyph || "").trim();
+  const glyph = !glyphRaw || glyphRaw === "custom" ? "diamond" : glyphRaw;
+  const known = FALLBACK2.find((entry) => entry.name.toLowerCase() === name.toLowerCase());
+  return {
+    key: raw?.key ? String(raw.key) : known?.key || statusKey(name).toUpperCase().replace(/-/g, "_"),
+    name,
+    tag: raw?.tag ? String(raw.tag) : `task-status/${name}`,
+    glyph: glyph === "diamond" && known ? known.glyph : glyph,
+    light: raw?.light ? side(raw.light) : known ? { ...known.light } : { ...NEUTRAL.light },
+    dark: raw?.dark ? side(raw.dark) : known ? { ...known.dark } : { ...NEUTRAL.dark }
+  };
+}
+function statusPalette(api) {
+  let rows = null;
+  if (api && typeof api.statuses === "function") {
+    try {
+      const got = api.statuses();
+      if (Array.isArray(got) && got.length) rows = got;
+    } catch {
+      rows = null;
+    }
+  }
+  const map = /* @__PURE__ */ new Map();
+  for (const raw of rows || FALLBACK2) {
+    const entry = rows ? normalize(raw) : raw;
+    if (!entry?.name) continue;
+    const id = entry.name.toLowerCase();
+    if (map.has(id)) continue;
+    map.set(id, entry);
+  }
+  return map;
+}
+function paletteEntries(palette) {
+  if (!palette) return [];
+  if (typeof palette.values === "function" && !Array.isArray(palette)) return [...palette.values()];
+  return [...palette];
+}
+function findEntry(palette, name) {
+  const id = String(name ?? "").trim().toLowerCase();
+  if (!id) return null;
+  if (palette && typeof palette.get === "function") {
+    const hit = palette.get(id);
+    if (hit) return hit;
+  }
+  for (const entry of paletteEntries(palette)) {
+    if (!entry?.name) continue;
+    if (entry.name.toLowerCase() === id || String(entry.key || "").toLowerCase() === id) return entry;
+  }
+  return null;
+}
+function paletteVars(entry, theme) {
+  const dark = theme === "dark" || theme === "bp3-dark";
+  const pair2 = (dark ? entry?.dark : entry?.light) || {};
+  return {
+    "--pxd-status-base": pair2.base || "",
+    "--pxd-status-text": pair2.text || ""
+  };
+}
+function taskStatusOf(string, palette) {
+  const text2 = String(string ?? "");
+  let raw = "";
+  const meta = taskMeta(text2, []);
+  if (meta?.status) raw = meta.status;
+  else {
+    const tag = STATUS_TAG2.exec(text2);
+    if (tag) raw = tag[1].trim();
+  }
+  if (!raw) return null;
+  const entry = findEntry(palette, raw);
+  return entry ? entry.name : null;
+}
+function statusLook(name, palette) {
+  const hit = findEntry(palette, name);
+  if (hit) return hit;
+  const label = String(name ?? "").trim();
+  return {
+    key: statusKey(label) || "unknown",
+    name: label,
+    tag: label ? `task-status/${label}` : "",
+    glyph: "diamond",
+    light: { base: NEUTRAL.light.base, text: NEUTRAL.light.text },
+    dark: { base: NEUTRAL.dark.base, text: NEUTRAL.dark.text }
   };
 }
 
@@ -12878,6 +13444,138 @@ function createTaskPopover({ doc = globalThis.document, root, bt, toast = () => 
     return true;
   }
   return { open, close, isOpen: () => Boolean(node2), dispose: close };
+}
+function openStatusChooser({ doc = globalThis.document, anchor, palette, current: current3, onPick, onRemove, avoid } = {}) {
+  const win = doc?.defaultView || globalThis;
+  if (!statusApi(win)) return null;
+  const root = avoid?.nodeType === 1 ? avoid : avoid?.root?.nodeType === 1 ? avoid.root : null;
+  const home = root || doc.body;
+  if (doc.querySelector?.(".bp3-dialog") || home?.querySelector?.(".bp3-dialog")) return null;
+  const el = (tag, cls, parent) => {
+    const node2 = doc.createElement(tag);
+    if (cls) node2.className = cls;
+    parent?.append(node2);
+    return node2;
+  };
+  const pop = el("div", "pxd-status-chooser pxd-task-pop pxd-chrome", home);
+  pop.setAttribute("role", "dialog");
+  pop.setAttribute("aria-label", "Status");
+  const list = el("div", "pxd-status-chooser__list", pop);
+  list.setAttribute("role", "listbox");
+  const want = String(current3 ?? "").trim().toLowerCase();
+  let currentRow = null;
+  for (const entry of paletteEntries(palette)) {
+    const name = String(entry?.name || "").trim();
+    if (!name) continue;
+    const row3 = el("button", "pxd-status-chooser__row", list);
+    row3.type = "button";
+    row3.setAttribute("role", "option");
+    row3.setAttribute("data-name", name);
+    const glyph = el("span", "pxd-status-chooser__glyph", row3);
+    glyph.setAttribute("data-status", entry.glyph || "diamond");
+    glyph.setAttribute("aria-hidden", "true");
+    const label = el("span", "pxd-status-chooser__name", row3);
+    label.textContent = name;
+    if (name.toLowerCase() === want) {
+      row3.setAttribute("aria-selected", "true");
+      currentRow = row3;
+    }
+  }
+  const remove = el("button", "pxd-status-chooser__row pxd-status-chooser__row--remove", list);
+  remove.type = "button";
+  remove.setAttribute("data-remove", "true");
+  const removeLabel = el("span", "pxd-status-chooser__name", remove);
+  removeLabel.textContent = "Remove status";
+  let closed = false;
+  let picked = false;
+  const offs = [];
+  const on = (target, type, fn, capture = false) => {
+    target?.addEventListener?.(type, fn, capture);
+    offs.push(() => target?.removeEventListener?.(type, fn, capture));
+  };
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    for (const off of offs.splice(0)) off();
+    try {
+      pop.remove();
+    } catch {
+    }
+  };
+  const finish = (kind, value) => {
+    if (picked || closed) return;
+    picked = true;
+    close();
+    if (kind === "remove") onRemove?.(null);
+    else onPick?.(value);
+  };
+  const rowOf = (event) => {
+    const target = event?.target?.closest?.("button");
+    if (target && pop.contains(target)) return target;
+    const active = doc.activeElement?.closest?.("button");
+    if (active && pop.contains(active)) return active;
+    return null;
+  };
+  const onKey = (event) => {
+    if (closed) return;
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      close();
+      return;
+    }
+    if (event.key !== "Enter" && event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+    const tag = String(event.target?.tagName || "").toLowerCase();
+    if (tag === "input" || tag === "textarea") return;
+    const inside4 = pop.contains?.(event.target) || pop.contains?.(doc.activeElement);
+    if (!inside4) return;
+    event.preventDefault();
+    event.stopPropagation();
+    if (event.key === "Enter") {
+      const row3 = rowOf(event);
+      if (!row3) return;
+      if (row3.getAttribute("data-remove") === "true") finish("remove", null);
+      else finish("pick", row3.getAttribute("data-name"));
+      return;
+    }
+    const buttons = [...pop.querySelectorAll("button")];
+    const index = buttons.indexOf(rowOf(event));
+    const next = buttons[index + (event.key === "ArrowDown" ? 1 : -1)];
+    if (next) {
+      try {
+        next.focus({ preventScroll: true });
+      } catch {
+        next.focus?.();
+      }
+    }
+  };
+  for (const row3 of pop.querySelectorAll("button")) {
+    on(row3, "click", (event) => {
+      event.stopPropagation();
+      if (row3.getAttribute("data-remove") === "true") finish("remove", null);
+      else finish("pick", row3.getAttribute("data-name"));
+    });
+  }
+  for (const type of ["pointerdown", "mousedown", "pointerup", "click", "dblclick", "wheel", "contextmenu"]) {
+    on(pop, type, (event) => event.stopPropagation());
+  }
+  on(doc, "pointerdown", (event) => {
+    if (!pop.contains?.(event.target) && !anchor?.contains?.(event.target)) close();
+  }, true);
+  on(doc, "mousedown", (event) => {
+    if (!pop.contains?.(event.target) && !anchor?.contains?.(event.target)) close();
+  }, true);
+  on(win, "keydown", onKey, true);
+  on(pop, "keydown", onKey);
+  const rect = anchor?.getBoundingClientRect?.() || { left: 0, top: 0, right: 16, bottom: 16, width: 16, height: 16 };
+  if (home) placeNearAnchor(pop, rect, home, { gap: 6 });
+  const focusRow = currentRow || pop.querySelector("button");
+  try {
+    focusRow?.focus?.({ preventScroll: true });
+  } catch {
+    focusRow?.focus?.();
+  }
+  return { close, el: pop };
 }
 
 // src/view/task-complete.js
@@ -13188,6 +13886,39 @@ function boardToMarkdown(board2, rects) {
 `;
 }
 
+// src/model/touch.js
+var LONG_PRESS_MS = 500;
+var LONG_PRESS_OPEN_PX = 8;
+var LONG_PRESS_CANCEL_PX = 20;
+function pointerDistance(a, b) {
+  return Math.hypot((b?.x || 0) - (a?.x || 0), (b?.y || 0) - (a?.y || 0));
+}
+function pointerMidpoint(a, b) {
+  return { x: ((a?.x || 0) + (b?.x || 0)) / 2, y: ((a?.y || 0) + (b?.y || 0)) / 2 };
+}
+function fingerPair(points) {
+  if (!points || points.length < 2) return null;
+  const a = points[0];
+  const b = points[1];
+  return { a, b, dist: pointerDistance(a, b), mid: pointerMidpoint(a, b) };
+}
+function pinchViewport(vp, { dist0 = 0, mid0, dist = 0, mid } = {}) {
+  const base = { x: Number(vp?.x) || 0, y: Number(vp?.y) || 0, zoom: Number(vp?.zoom) || 1 };
+  const from = mid0 || { x: 0, y: 0 };
+  const to = mid || from;
+  const dx = to.x - from.x;
+  const dy = to.y - from.y;
+  let zoomed = base;
+  if (dist0 > 0 && dist > 0 && dist !== dist0) zoomed = zoomAt(base, from, dist / dist0);
+  return { x: zoomed.x + dx, y: zoomed.y + dy, zoom: zoomed.zoom };
+}
+function longPressAt(movement, elapsed = LONG_PRESS_MS) {
+  const moved = Number(movement) || 0;
+  if (moved >= LONG_PRESS_CANCEL_PX) return "cancel";
+  if (elapsed >= LONG_PRESS_MS && moved < LONG_PRESS_OPEN_PX) return "open";
+  return "wait";
+}
+
 // src/view/shortcuts.js
 var down = (ev) => String(ev.key || "").toLowerCase();
 var hasMod = (ev) => Boolean(ev.meta || ev.ctrl);
@@ -13249,14 +13980,24 @@ var SHORTCUTS = [
   { group: "View", keys: "Escape", label: "Close or step back", action: "escape", mode: "always", events: [{ key: "Escape" }], match: (ev) => ev.key === "Escape" },
   { group: "Navigate", keys: "⌘[", label: "Back", action: "back", events: [{ key: "[", meta: true, code: "BracketLeft" }], match: (ev) => hasMod(ev) && !ev.shift && !ev.alt && (ev.code === "BracketLeft" || ev.key === "[") },
   { group: "Navigate", keys: "⌘]", label: "Forward", action: "forward", events: [{ key: "]", meta: true, code: "BracketRight" }], match: (ev) => hasMod(ev) && !ev.shift && !ev.alt && (ev.code === "BracketRight" || ev.key === "]") },
+  // Cmd/Ctrl+1..9 select fullscreen board tabs. Shift+1 / Shift+2 stay Fit all / Fit selection (no modifier).
+  ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n2) => ({
+    group: "Navigate",
+    keys: `⌘${n2}`,
+    label: `Board tab ${n2}`,
+    action: "boardTab",
+    tab: n2 - 1,
+    events: [{ key: String(n2), meta: true, code: `Digit${n2}` }],
+    match: (ev) => isBoardTabEvent(ev, n2)
+  })),
   { group: "Present", keys: "→ ↓ Space", label: "Next", action: "presentNext", mode: "present", events: [{ key: "ArrowRight" }, { key: "ArrowDown" }, { key: "PageDown" }, { key: " ", code: "Space" }], match: (ev) => !hasMod(ev) && !ev.alt && (ev.key === "ArrowRight" || ev.key === "ArrowDown" || ev.key === "PageDown" || ev.code === "Space" || ev.key === " ") },
   { group: "Present", keys: "← ↑", label: "Previous", action: "presentPrev", mode: "present", events: [{ key: "ArrowLeft" }, { key: "ArrowUp" }, { key: "PageUp" }], match: (ev) => !hasMod(ev) && !ev.alt && (ev.key === "ArrowLeft" || ev.key === "ArrowUp" || ev.key === "PageUp") }
 ];
 function findShortcut(ev, mode = "normal", settings) {
-  return SHORTCUTS.find((row2) => {
-    if ((row2.mode || "normal") !== mode || !row2.match(ev)) return false;
-    if (settings == null || typeof row2.when !== "function") return true;
-    return row2.when(settings) !== false;
+  return SHORTCUTS.find((row3) => {
+    if ((row3.mode || "normal") !== mode || !row3.match(ev)) return false;
+    if (settings == null || typeof row3.when !== "function") return true;
+    return row3.when(settings) !== false;
   }) || null;
 }
 
@@ -13268,7 +14009,7 @@ function dayTargetOf(b, hit) {
   const day = title ? parseRoamDay(title) : null;
   return day ? { uid: item.uid, title, iso: isoDay(new Date(day.y, day.m - 1, day.d)) } : null;
 }
-var TOOL_KEYS = Object.fromEntries(SHORTCUTS.filter((row2) => row2.letter).map((row2) => [row2.letter, row2.tool]));
+var TOOL_KEYS = Object.fromEntries(SHORTCUTS.filter((row3) => row3.letter).map((row3) => [row3.letter, row3.tool]));
 var TOOLS = ["select", "hand", "card", "task", "text", "sticky", "shape", "section", "board", "connect"];
 var SHAPE_PLACE = { w: 160, h: 100 };
 var DRAG_THRESHOLD_PX = 4;
@@ -13296,6 +14037,7 @@ function createInteractions({ actions, settings } = {}) {
     space: false,
     hover: null
   };
+  const fingers = /* @__PURE__ */ new Map();
   const board2 = () => call("board");
   const rects = () => call("rects");
   const hitRects = () => call("hitRects") || rects();
@@ -13335,6 +14077,31 @@ function createInteractions({ actions, settings } = {}) {
   };
   const afterToolUse = () => {
     if (!state.locked && !STICKY_TOOLS.has(state.tool)) setTool("select");
+  };
+  const noteFinger = (ev) => {
+    if (ev?.pointerId == null || ev.button != null && ev.button !== 0) return;
+    if (ev.isPrimary === true) fingers.clear();
+    fingers.set(ev.pointerId, { x: ev.screen?.x || 0, y: ev.screen?.y || 0 });
+  };
+  const dropFinger = (ev) => {
+    if (ev?.pointerId == null) fingers.clear();
+    else fingers.delete(ev.pointerId);
+  };
+  const pairNow = () => fingerPair([...fingers.values()]);
+  const beginPinch = (pair2) => {
+    const prev = state.gesture;
+    if (prev && prev.kind !== "pinch") {
+      if (prev.kind === "move" && !prev.dup && prev.uids?.length) call("previewMove", prev.uids, 0, 0);
+      if (prev.kind === "resize") call("previewRects", []);
+      end();
+    }
+    if (state.gesture?.kind !== "pinch") {
+      const v = vp();
+      state.gesture = { kind: "pinch", moved: true, vp0: { x: v.x, y: v.y, zoom: v.zoom }, dist0: pair2.dist, mid0: pair2.mid };
+      call("setGesturing", true);
+    }
+    const g = state.gesture;
+    call("setViewport", pinchViewport(g.vp0, { dist0: g.dist0, mid0: g.mid0, dist: pair2.dist, mid: pair2.mid }));
   };
   const begin = (g) => {
     state.gesture = { moved: false, ...g };
@@ -13390,9 +14157,9 @@ function createInteractions({ actions, settings } = {}) {
     }
     return null;
   };
-  const beginConnect = (uid, side, world) => {
-    begin({ kind: "connect", from: uid, fromSide: side, start: world });
-    call("showTempWire", { from: uid, fromSide: side, point: world });
+  const beginConnect = (uid, side2, world) => {
+    begin({ kind: "connect", from: uid, fromSide: side2, start: world });
+    call("showTempWire", { from: uid, fromSide: side2, point: world });
   };
   let openTimer = null;
   const cancelOpen = () => {
@@ -13406,6 +14173,12 @@ function createInteractions({ actions, settings } = {}) {
     const t = ev.target || { kind: "empty" };
     if (t.kind === "chrome") return;
     cancelOpen();
+    if ((ev.button ?? 0) === 0) noteFinger(ev);
+    const pair2 = pairNow();
+    if (pair2) {
+      beginPinch(pair2);
+      return;
+    }
     if (ev.button === 2) return;
     if (state.gesture) return;
     const editing = editingUid();
@@ -13514,6 +14287,17 @@ function createInteractions({ actions, settings } = {}) {
     begin({ kind: "marquee", start: ev.world, base: ev.shift ? new Set(state.selection) : /* @__PURE__ */ new Set(), shift: ev.shift });
   };
   const onPointerMove = (ev) => {
+    if (ev.pointerId != null && fingers.has(ev.pointerId)) {
+      fingers.set(ev.pointerId, { x: ev.screen?.x || 0, y: ev.screen?.y || 0 });
+    }
+    if (state.gesture?.kind === "pinch") {
+      const pair2 = pairNow();
+      if (pair2) {
+        const g2 = state.gesture;
+        call("setViewport", pinchViewport(g2.vp0, { dist0: g2.dist0, mid0: g2.mid0, dist: pair2.dist, mid: pair2.mid }));
+      }
+      return;
+    }
     const g = state.gesture;
     if (!g) return;
     if (g.kind === "connect") {
@@ -13666,6 +14450,12 @@ function createInteractions({ actions, settings } = {}) {
     }
   };
   const onPointerUp = (ev) => {
+    dropFinger(ev);
+    if (state.gesture?.kind === "pinch") {
+      if (fingers.size >= 2) return;
+      end();
+      return;
+    }
     const g = state.gesture;
     if (!g) return;
     const b = board2();
@@ -13816,7 +14606,10 @@ function createInteractions({ actions, settings } = {}) {
     }
     end();
   };
-  const onPointerCancel = () => {
+  const onPointerCancel = (ev) => {
+    if (ev?.pointerId != null) fingers.delete(ev.pointerId);
+    else fingers.clear();
+    if (state.gesture?.kind === "pinch" && fingers.size >= 2) return;
     if (!state.gesture) return;
     const g = state.gesture;
     if (g.kind === "move" && !g.dup && g.uids.length) call("previewMove", g.uids, 0, 0);
@@ -14008,12 +14801,12 @@ function createInteractions({ actions, settings } = {}) {
     }
     return false;
   };
-  const runShortcut = (row2, ev) => {
+  const runShortcut = (row3, ev) => {
     const key = ev.key || "";
     const b = board2();
-    switch (row2.action) {
+    switch (row3.action) {
       case "tool":
-        setTool(row2.tool);
+        setTool(row3.tool);
         return true;
       case "space":
         if (!state.space) {
@@ -14132,6 +14925,9 @@ function createInteractions({ actions, settings } = {}) {
       case "help":
         call("toggleShortcuts");
         return true;
+      case "boardTab":
+        call("selectBoardTab", row3.tab);
+        return true;
       case "expand": {
         if (state.selection.size !== 1) return false;
         const uid = lastSelected();
@@ -14161,9 +14957,9 @@ function createInteractions({ actions, settings } = {}) {
     const always = findShortcut(ev, "always");
     if (always) return runShortcut(always, ev);
     if (setting("enable-shortcuts", true) === false) return false;
-    const row2 = findShortcut(ev, "normal", settings);
-    if (!row2) return false;
-    return runShortcut(row2, ev);
+    const row3 = findShortcut(ev, "normal", settings);
+    if (!row3) return false;
+    return runShortcut(row3, ev);
   };
   const onKeyUp = (ev) => {
     if (ev.code === "Space" || ev.key === " ") {
@@ -14237,7 +15033,7 @@ function createInteractions({ actions, settings } = {}) {
 
 // src/view/board-picker.js
 function recentBoardRows(rows) {
-  return [...rows || []].filter((row2) => row2 && row2.uid).sort((a, b) => (Number(b.edited) || 0) - (Number(a.edited) || 0) || String(a.title || "").localeCompare(String(b.title || "")));
+  return [...rows || []].filter((row3) => row3 && row3.uid).sort((a, b) => (Number(b.edited) || 0) - (Number(a.edited) || 0) || String(a.title || "").localeCompare(String(b.title || "")));
 }
 var current = null;
 function openAddToBoard({ doc = globalThis.document, listBoards, onPick } = {}) {
@@ -14287,10 +15083,10 @@ ${b.pageTitle || b.page || ""}`.toLowerCase().includes(q));
       return;
     }
     for (const b of shown) {
-      const row2 = el("div", "pxd-addboard__row", list);
-      row2.dataset.uid = b.uid;
-      row2.setAttribute("data-uid", b.uid);
-      const text2 = el("span", "pxd-addboard__text", row2);
+      const row3 = el("div", "pxd-addboard__row", list);
+      row3.dataset.uid = b.uid;
+      row3.setAttribute("data-uid", b.uid);
+      const text2 = el("span", "pxd-addboard__text", row3);
       el("span", "pxd-addboard__name", text2, b.title || "Untitled board");
       const page = b.pageTitle || b.page;
       if (page) el("span", "pxd-addboard__page", text2, page);
@@ -14310,8 +15106,8 @@ ${b.pageTitle || b.page || ""}`.toLowerCase().includes(q));
     close();
   });
   on(list, "click", (event) => {
-    const row2 = event.target?.closest?.(".pxd-addboard__row");
-    const uid = row2?.dataset?.uid || row2?.getAttribute?.("data-uid");
+    const row3 = event.target?.closest?.(".pxd-addboard__row");
+    const uid = row3?.dataset?.uid || row3?.getAttribute?.("data-uid");
     if (!uid || busy) return;
     const board2 = rows.find((b) => b.uid === uid);
     if (!board2) return;
@@ -14389,10 +15185,10 @@ function openPagePicker({ doc = globalThis.document, search, onPick, debounceMs 
       return;
     }
     for (const page of rows) {
-      const row2 = el("div", "pxd-addboard__row", list);
-      row2.dataset.title = page.title;
-      row2.setAttribute("data-title", page.title);
-      const label = el("span", "pxd-addboard__text", row2);
+      const row3 = el("div", "pxd-addboard__row", list);
+      row3.dataset.title = page.title;
+      row3.setAttribute("data-title", page.title);
+      const label = el("span", "pxd-addboard__text", row3);
       el("span", "pxd-addboard__name", label, page.title);
     }
   };
@@ -14406,7 +15202,7 @@ function openPagePicker({ doc = globalThis.document, search, onPick, debounceMs 
     }
     Promise.resolve(typeof search === "function" ? search(text2) : []).then((got) => {
       if (closed || mine !== ticket) return;
-      show((Array.isArray(got) ? got : []).filter((row2) => row2 && typeof row2.title === "string" && row2.title), text2);
+      show((Array.isArray(got) ? got : []).filter((row3) => row3 && typeof row3.title === "string" && row3.title), text2);
     }, () => {
       if (closed || mine !== ticket) return;
       show([], text2);
@@ -14438,8 +15234,8 @@ function openPagePicker({ doc = globalThis.document, search, onPick, debounceMs 
     }
   });
   on(list, "click", (event) => {
-    const row2 = event.target?.closest?.(".pxd-addboard__row");
-    const title = row2?.dataset?.title || row2?.getAttribute?.("data-title");
+    const row3 = event.target?.closest?.(".pxd-addboard__row");
+    const title = row3?.dataset?.title || row3?.getAttribute?.("data-title");
     if (!title || busy) return;
     event.preventDefault?.();
     event.stopPropagation?.();
@@ -14493,24 +15289,24 @@ function createRowScheduler({ idle, now: now2 = () => Date.now(), budgetMs = 8, 
   const pending = () => {
     const light = [];
     const heavy = [];
-    for (const row2 of rows.values()) {
-      if (row2.done || !row2.wanted) continue;
-      (row2.heavy ? heavy : light).push(row2);
+    for (const row3 of rows.values()) {
+      if (row3.done || !row3.wanted) continue;
+      (row3.heavy ? heavy : light).push(row3);
     }
     light.sort(byOrder);
     heavy.sort(byOrder);
     return light.concat(heavy);
   };
-  const finish = (row2) => {
-    if (row2.done) return;
-    row2.done = true;
+  const finish = (row3) => {
+    if (row3.done) return;
+    row3.done = true;
     let retry = false;
     try {
-      retry = render(row2.id) === false;
+      retry = render(row3.id) === false;
     } catch {
       retry = false;
     }
-    if (retry) row2.done = false;
+    if (retry) row3.done = false;
   };
   let pumping = false;
   const allNow = () => {
@@ -14527,9 +15323,9 @@ function createRowScheduler({ idle, now: now2 = () => Date.now(), budgetMs = 8, 
     const start = now2();
     const open = allNow();
     const has = deadline && typeof deadline.timeRemaining === "function" ? () => deadline.timeRemaining() > 1 : () => true;
-    for (const row2 of pending()) {
+    for (const row3 of pending()) {
       if (!open && (held || now2() - start >= budgetMs || !has())) break;
-      finish(row2);
+      finish(row3);
     }
     if (!held && pending().length) schedule();
   };
@@ -14557,31 +15353,31 @@ function createRowScheduler({ idle, now: now2 = () => Date.now(), budgetMs = 8, 
     },
     // Card bodies update distance as the camera moves. A finished row stays finished until reopen.
     place(id, { heavy = false, near = null, wanted = true } = {}) {
-      let row2 = rows.get(id);
-      if (!row2) {
-        row2 = { id, heavy: Boolean(heavy), wanted: false, done: false, near, seq: seq++ };
-        rows.set(id, row2);
-      } else if (row2.done) {
+      let row3 = rows.get(id);
+      if (!row3) {
+        row3 = { id, heavy: Boolean(heavy), wanted: false, done: false, near, seq: seq++ };
+        rows.set(id, row3);
+      } else if (row3.done) {
         return;
       } else {
-        row2.heavy = Boolean(heavy);
-        if (near != null) row2.near = near;
+        row3.heavy = Boolean(heavy);
+        if (near != null) row3.near = near;
       }
-      row2.wanted = Boolean(wanted);
+      row3.wanted = Boolean(wanted);
       if (wanted) schedule();
     },
     // A dirty uid whose body was cleared mounts again. Already-done uids outside the dirty set never get here.
     reopen(id, opts = {}) {
-      const row2 = rows.get(id);
-      if (!row2) {
+      const row3 = rows.get(id);
+      if (!row3) {
         this.place(id, opts);
         return true;
       }
-      row2.done = false;
-      row2.heavy = Boolean(opts.heavy);
-      if (opts.near != null) row2.near = opts.near;
-      row2.wanted = opts.wanted !== false;
-      if (row2.wanted) schedule();
+      row3.done = false;
+      row3.heavy = Boolean(opts.heavy);
+      if (opts.near != null) row3.near = opts.near;
+      row3.wanted = opts.wanted !== false;
+      if (row3.wanted) schedule();
       return true;
     },
     // A gesture holds the pump so a pan frame does not mount bodies. Release continues the same rows.
@@ -14599,9 +15395,9 @@ function createRowScheduler({ idle, now: now2 = () => Date.now(), budgetMs = 8, 
       schedule();
     },
     want(id, on = true) {
-      const row2 = rows.get(id);
-      if (!row2 || row2.done) return;
-      row2.wanted = Boolean(on);
+      const row3 = rows.get(id);
+      if (!row3 || row3.done) return;
+      row3.wanted = Boolean(on);
       if (on) schedule();
     },
     // A refresh drops a row that left the outline. A string edit can flip heavy without starting over.
@@ -14609,20 +15405,20 @@ function createRowScheduler({ idle, now: now2 = () => Date.now(), budgetMs = 8, 
       rows.delete(id);
     },
     retarget(id, { heavy = false } = {}) {
-      const row2 = rows.get(id);
-      if (!row2 || row2.done) return;
-      row2.heavy = Boolean(heavy);
-      if (row2.wanted) schedule();
+      const row3 = rows.get(id);
+      if (!row3 || row3.done) return;
+      row3.heavy = Boolean(heavy);
+      if (row3.wanted) schedule();
     },
     wantAll() {
-      for (const row2 of rows.values()) row2.wanted = true;
+      for (const row3 of rows.values()) row3.wanted = true;
       schedule();
     },
     // Renders one row right now (reveal, scroll to it, measure it).
     renderNow(id) {
-      const row2 = rows.get(id);
-      if (!row2) return false;
-      finish(row2);
+      const row3 = rows.get(id);
+      if (!row3) return false;
+      finish(row3);
       return true;
     },
     isDone: (id) => Boolean(rows.get(id)?.done),
@@ -14720,10 +15516,10 @@ function parseDropPayload(dataTransfer, { resolveUid, graph = "" } = {}) {
 var DEBOUNCE_MS = 150;
 var LIMIT = 40;
 function createPanel({ doc = globalThis.document, root, host, timers, on = {}, width } = {}) {
-  const listeners2 = [];
+  const listeners3 = [];
   const listen = (el2, type, fn, opts) => {
     el2.addEventListener(type, fn, opts);
-    listeners2.push(() => el2.removeEventListener(type, fn, opts));
+    listeners3.push(() => el2.removeEventListener(type, fn, opts));
   };
   const el = (tag, cls, parent, text2) => {
     const node2 = doc.createElement(tag);
@@ -14788,8 +15584,9 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
   const tabRelated = tabBtn("related", "Related", "diagram-tree");
   const tabBoards = tabBtn("boards", "Boards", "applications");
   const tabOutline = tabBtn("outline", "Outline", "list");
+  const tabJournal = tabBtn("journal", "Journal", "calendar");
   const tabInfo = tabBtn("info", "Info", "info-sign");
-  const tabButtons = { search: tabSearch, related: tabRelated, boards: tabBoards, outline: tabOutline, info: tabInfo };
+  const tabButtons = { search: tabSearch, related: tabRelated, boards: tabBoards, outline: tabOutline, journal: tabJournal, info: tabInfo };
   const closeBtn = el("button", "pxd-btn pxd-iconbtn pxd-panel__close", head);
   closeBtn.type = "button";
   closeBtn.title = "Close";
@@ -14861,27 +15658,27 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     el("div", "pxd-panel__views-title", viewsList, "Views");
     for (const view of views) {
       if (!view?.uid) continue;
-      const row3 = el("div", "pxd-view-row", viewsList);
-      row3.setAttribute("data-view", view.uid);
-      row3.append(minimapSvg(doc, { v: view.v, items: view.items || [] }));
-      el("span", "pxd-view-caption", row3, view.caption || "View");
-      const go = el("button", "pxd-btn pxd-view-go", row3, "Go");
+      const row4 = el("div", "pxd-view-row", viewsList);
+      row4.setAttribute("data-view", view.uid);
+      row4.append(minimapSvg(doc, { v: view.v, items: view.items || [] }));
+      el("span", "pxd-view-caption", row4, view.caption || "View");
+      const go = el("button", "pxd-btn pxd-view-go", row4, "Go");
       go.type = "button";
       go.setAttribute("data-act", "go");
-      const copy = el("button", "pxd-btn pxd-view-copy", row3, "Copy ref");
+      const copy = el("button", "pxd-btn pxd-view-copy", row4, "Copy ref");
       copy.type = "button";
       copy.setAttribute("data-act", "copy");
-      const rename = el("button", "pxd-btn pxd-view-rename", row3, "Rename");
+      const rename = el("button", "pxd-btn pxd-view-rename", row4, "Rename");
       rename.type = "button";
       rename.setAttribute("data-act", "rename");
-      const del = el("button", "pxd-btn pxd-view-delete", row3, "Delete");
+      const del = el("button", "pxd-btn pxd-view-delete", row4, "Delete");
       del.type = "button";
       del.setAttribute("data-act", "delete");
     }
   };
   listen(viewsList, "click", (event) => {
-    const row3 = event.target?.closest?.(".pxd-view-row");
-    const uid = row3?.getAttribute?.("data-view");
+    const row4 = event.target?.closest?.(".pxd-view-row");
+    const uid = row4?.getAttribute?.("data-view");
     if (!uid) return;
     event.preventDefault?.();
     event.stopPropagation();
@@ -14894,6 +15691,20 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
   const outlinePane = el("div", "pxd-panel__pane pxd-panel__pane--outline", panel);
   outlinePane.style.display = "none";
   const outlineList = el("div", "pxd-panel__list pxd-panel__outline", outlinePane);
+  const journalPane = el("div", "pxd-panel__pane pxd-panel__pane--journal", panel);
+  journalPane.style.display = "none";
+  const journalBar = el("div", "pxd-journal__bar", journalPane);
+  const journalPrev = el("button", "pxd-btn pxd-journal__prev", journalBar, "‹");
+  journalPrev.type = "button";
+  journalPrev.setAttribute("aria-label", "Previous day");
+  const journalDate = el("div", "pxd-journal__date", journalBar);
+  const journalToday = el("button", "pxd-btn pxd-journal__today", journalBar, "Today");
+  journalToday.type = "button";
+  journalToday.setAttribute("aria-label", "Today");
+  const journalNext = el("button", "pxd-btn pxd-journal__next", journalBar, "›");
+  journalNext.type = "button";
+  journalNext.setAttribute("aria-label", "Next day");
+  const journalList = el("div", "pxd-panel__list pxd-journal__list", journalPane);
   const infoPane = el("div", "pxd-panel__pane pxd-panel__pane--info", panel);
   infoPane.style.display = "none";
   const infoTabsBar = el("div", "pxd-panel__infotabs", infoPane);
@@ -14903,7 +15714,10 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
   let selected = null;
   let relatedRows = [];
   let queryId = 0;
-  const row2 = (parent, { string, label, text: text2, kind }) => {
+  let journalId = 0;
+  const journalNow = () => typeof on.now === "function" ? on.now() : Date.now();
+  let journalDay = startOfDay(journalNow());
+  const row3 = (parent, { string, label, text: text2, kind }) => {
     const r = el("div", "pxd-panel__row", parent);
     r.setAttribute("draggable", "true");
     r.draggable = true;
@@ -14977,7 +15791,7 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
       el("div", "pxd-panel__empty", results, "No matches");
       return;
     }
-    rows.forEach((r) => row2(results, r));
+    rows.forEach((r) => row3(results, r));
   };
   const scheduleSearch = () => {
     debounce?.();
@@ -15023,14 +15837,79 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     relatedPane.style.display = tab === "related" ? "" : "none";
     boardsPane.style.display = tab === "boards" ? "" : "none";
     outlinePane.style.display = tab === "outline" ? "" : "none";
+    journalPane.style.display = tab === "journal" ? "" : "none";
     infoPane.style.display = tab === "info" ? "" : "none";
     if (tab === "related") void loadRelated();
     if (tab === "boards") void loadBoards();
     if (tab === "outline") renderOutline();
+    if (tab === "journal") void loadJournal();
     if (tab === "info") void loadInfo();
   };
-  for (const [name, b] of Object.entries(tabButtons)) listen(b, "click", () => setTab(name));
+  listen(tabs, "click", (event) => {
+    const b = event.target?.closest?.(".pxd-panel__tab");
+    const name = b?.dataset?.tab;
+    if (name && tabs.contains?.(b) && Object.prototype.hasOwnProperty.call(tabButtons, name)) setTab(name);
+  });
   listen(closeBtn, "click", () => api.close());
+  const journalRow = (parent, item) => {
+    const uid = String(item?.uid || "");
+    if (!uid) return null;
+    const string = item.string || `((${uid}))`;
+    const r = el("div", "pxd-panel__row pxd-journal__row", parent);
+    r.setAttribute("draggable", "true");
+    r.draggable = true;
+    r.dataset.string = string;
+    r.setAttribute("data-string", string);
+    r.dataset.uid = uid;
+    r.setAttribute("data-uid", uid);
+    el("span", "pxd-panel__row-text pxd-panel__row-text--block", r, item.text ?? "");
+    listen(r, "click", (event) => {
+      event.preventDefault?.();
+      event.stopPropagation();
+    });
+    listen(r, "dragstart", (event) => {
+      try {
+        event.dataTransfer?.setData?.(CARD_MIME, string);
+        event.dataTransfer?.setData?.("text/plain", string);
+        if (event.dataTransfer) event.dataTransfer.effectAllowed = "copy";
+      } catch {
+      }
+    });
+    return r;
+  };
+  const renderJournal = (pack) => {
+    journalList.replaceChildren();
+    journalDate.textContent = pack?.title || dailyTitle(journalDay);
+    const rows = Array.isArray(pack?.rows) ? pack.rows : [];
+    if (!rows.length) {
+      el("div", "pxd-panel__empty pxd-journal__empty", journalList, "Nothing on this day.");
+      return;
+    }
+    for (const item of rows) journalRow(journalList, item);
+  };
+  const loadJournal = async () => {
+    const id = journalId += 1;
+    const day = journalDay;
+    journalDate.textContent = dailyTitle(day);
+    let pack = { title: dailyTitle(day), rows: [] };
+    try {
+      if (typeof on.loadJournal === "function") pack = await Promise.resolve(on.loadJournal(day)) || pack;
+    } catch {
+      pack = { title: dailyTitle(day), rows: [] };
+    }
+    if (id !== journalId || tab !== "journal") return;
+    renderJournal(pack);
+  };
+  const stepJournal = (delta) => {
+    journalDay = delta === 0 ? startOfDay(journalNow()) : stepDay(journalDay, delta);
+    void loadJournal();
+  };
+  listen(journalBar, "click", (event) => {
+    const t = event.target;
+    if (journalPrev.contains?.(t)) stepJournal(-1);
+    else if (journalToday.contains?.(t)) stepJournal(0);
+    else if (journalNext.contains?.(t)) stepJournal(1);
+  });
   listen(addAll, "click", () => {
     const strings = relatedRows.map((r) => r.string).filter((s) => !on.isOnBoard?.(s));
     if (strings.length) on.addMany?.(strings);
@@ -15060,7 +15939,7 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
       const string = t.kind === "page" ? `[[${t.title}]]` : `((${t.uid}))`;
       const text2 = rel.text || (t.kind === "page" ? t.title : t.uid) || "";
       relatedRows.push({ string });
-      row2(relatedList, { string, label: rel.relation || "related", text: text2, kind: t.kind });
+      row3(relatedList, { string, label: rel.relation || "related", text: text2, kind: t.kind });
     }
     if (!list.length) el("div", "pxd-panel__empty", relatedList, "Nothing related yet");
     addAll.style.display = list.length ? "" : "none";
@@ -15092,8 +15971,8 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
     }
   };
   listen(boardsList, "click", (event) => {
-    const row3 = event.target?.closest?.(".pxd-panel__board-row");
-    const uid = row3?.dataset?.uid ?? row3?.getAttribute?.("data-uid");
+    const row4 = event.target?.closest?.(".pxd-panel__board-row");
+    const uid = row4?.dataset?.uid ?? row4?.getAttribute?.("data-uid");
     if (!uid) return;
     event.preventDefault?.();
     event.stopPropagation();
@@ -15150,8 +16029,8 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
     }
   };
   listen(outlineList, "click", (event) => {
-    const row3 = event.target?.closest?.(".pxd-panel__outline-row");
-    const uid = row3?.dataset?.uid ?? row3?.getAttribute?.("data-uid");
+    const row4 = event.target?.closest?.(".pxd-panel__outline-row");
+    const uid = row4?.dataset?.uid ?? row4?.getAttribute?.("data-uid");
     if (!uid) return;
     event.stopPropagation();
     on.outlineClick?.(uid);
@@ -15163,13 +16042,13 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
   const renderCardTabs = () => {
     infoTabsBar.replaceChildren();
     for (const t of cardTabs) {
-      const row3 = el("span", t.uid === cardCurrent ? "pxd-panel__infotab pxd-panel__infotab--on" : "pxd-panel__infotab", infoTabsBar);
-      const name = el("button", "pxd-btn pxd-panel__infotab-name", row3, cardItems.get(t.uid)?.title || "Untitled");
+      const row4 = el("span", t.uid === cardCurrent ? "pxd-panel__infotab pxd-panel__infotab--on" : "pxd-panel__infotab", infoTabsBar);
+      const name = el("button", "pxd-btn pxd-panel__infotab-name", row4, cardItems.get(t.uid)?.title || "Untitled");
       name.type = "button";
       name.setAttribute("aria-label", name.textContent || "Untitled");
       name.dataset.uid = t.uid;
       name.setAttribute("data-uid", t.uid);
-      const closer = el("button", "pxd-btn pxd-panel__infotab-x", row3, "×");
+      const closer = el("button", "pxd-btn pxd-panel__infotab-x", row4, "×");
       closer.type = "button";
       closer.title = "Close";
       closer.setAttribute("aria-label", "Close");
@@ -15253,30 +16132,30 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
     const attrSec = infoSection("Attributes");
     if (!info.attributes?.length) el("div", "pxd-panel__empty", attrSec, "No attributes");
     else for (const attr of info.attributes) {
-      const row3 = el("div", "pxd-panel__info-attr", attrSec);
-      el("span", "pxd-panel__info-name", row3, attr.name);
-      el("span", "pxd-panel__info-value", row3, attr.value);
+      const row4 = el("div", "pxd-panel__info-attr", attrSec);
+      el("span", "pxd-panel__info-name", row4, attr.name);
+      el("span", "pxd-panel__info-value", row4, attr.value);
     }
     const refSec = infoSection("Linked references");
     if (!info.refs?.length) el("div", "pxd-panel__empty", refSec, "No linked references");
     else for (const ref of info.refs) {
-      const row3 = el("button", "pxd-btn pxd-panel__info-ref", refSec, ref.string || ref.uid);
-      row3.type = "button";
-      row3.setAttribute("aria-label", ref.string || ref.uid);
-      row3.dataset.uid = ref.uid;
-      row3.setAttribute("data-uid", ref.uid);
-      if (ref.pageTitle) row3.title = ref.pageTitle;
+      const row4 = el("button", "pxd-btn pxd-panel__info-ref", refSec, ref.string || ref.uid);
+      row4.type = "button";
+      row4.setAttribute("aria-label", ref.string || ref.uid);
+      row4.dataset.uid = ref.uid;
+      row4.setAttribute("data-uid", ref.uid);
+      if (ref.pageTitle) row4.title = ref.pageTitle;
     }
     const boardSec = infoSection("On boards");
     if (!info.boards?.length) el("div", "pxd-panel__empty", boardSec, "Not on another board");
     else for (const board2 of info.boards) {
-      const row3 = el("button", "pxd-btn pxd-panel__info-board", boardSec);
-      row3.type = "button";
-      row3.setAttribute("aria-label", board2.title || "Untitled board");
-      row3.dataset.uid = board2.uid;
-      row3.setAttribute("data-uid", board2.uid);
-      el("span", "pxd-panel__info-board-title", row3, board2.title || "Untitled board");
-      if (board2.pageTitle) el("span", "pxd-panel__info-board-page", row3, board2.pageTitle);
+      const row4 = el("button", "pxd-btn pxd-panel__info-board", boardSec);
+      row4.type = "button";
+      row4.setAttribute("aria-label", board2.title || "Untitled board");
+      row4.dataset.uid = board2.uid;
+      row4.setAttribute("data-uid", board2.uid);
+      el("span", "pxd-panel__info-board-title", row4, board2.title || "Untitled board");
+      if (board2.pageTitle) el("span", "pxd-panel__info-board-page", row4, board2.pageTitle);
     }
     const tagSec = infoSection("Tags");
     if (!info.tags?.length) el("div", "pxd-panel__empty", tagSec, "No tags");
@@ -15401,8 +16280,9 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
     dispose() {
       debounce?.();
       queryId += 1;
+      journalId += 1;
       unmountInfo();
-      listeners2.splice(0).forEach((off) => off());
+      listeners3.splice(0).forEach((off) => off());
       panel.remove();
     }
   };
@@ -15750,7 +16630,7 @@ function unmountDue(seenAt, now2, grace = UNMOUNT_GRACE_MS) {
 // src/model/region-menu.js
 var MACRO_RE = /^(\s*\{\{\[\[plexus-region\]\]:\s*[^}]*\}\})(?: [\s\S]*)?$/;
 function imageRegionRows(content) {
-  return regionsOf({ ":block/children": content || [] }).filter((row2) => row2.owner === "plexus-diagram" && row2.kind === "img" && row2.supported === true && row2.uid).map((row2) => ({ uid: row2.uid, caption: row2.caption || "", f: row2.f }));
+  return regionsOf({ ":block/children": content || [] }).filter((row3) => row3.owner === "plexus-diagram" && row3.kind === "img" && row3.supported === true && row3.uid).map((row3) => ({ uid: row3.uid, caption: row3.caption || "", f: row3.f }));
 }
 function renameRegionCaption(blockString2, caption) {
   if (typeof blockString2 !== "string") return null;
@@ -15781,19 +16661,19 @@ function regionDeleteCopy(count) {
   return `Referenced in ${n2} ${noun}. Delete anyway?`;
 }
 function regionMenu(rows) {
-  const list = (Array.isArray(rows) ? rows : []).filter((row2) => row2 && typeof row2.uid === "string" && row2.uid);
+  const list = (Array.isArray(rows) ? rows : []).filter((row3) => row3 && typeof row3.uid === "string" && row3.uid);
   if (!list.length) return null;
   return {
     id: "regions",
     label: "Regions",
-    children: list.map((row2) => ({
-      id: `region:${row2.uid}`,
-      label: row2.caption || "Region",
+    children: list.map((row3) => ({
+      id: `region:${row3.uid}`,
+      label: row3.caption || "Region",
       children: [
-        { id: `region-go:${row2.uid}`, label: "Go" },
-        { id: `region-copy:${row2.uid}`, label: "Copy ref" },
-        { id: `region-rename:${row2.uid}`, label: "Rename" },
-        { id: `region-delete:${row2.uid}`, label: "Delete", danger: true }
+        { id: `region-go:${row3.uid}`, label: "Go" },
+        { id: `region-copy:${row3.uid}`, label: "Copy ref" },
+        { id: `region-rename:${row3.uid}`, label: "Rename" },
+        { id: `region-delete:${row3.uid}`, label: "Delete", danger: true }
       ]
     }))
   };
@@ -15990,17 +16870,17 @@ function paintRegions(doc, node2, bar, hooks) {
   const add = typeof hooks.addRegion === "function" ? hooks.addRegion : () => {
   };
   for (const region of hooks.regions) {
-    const row2 = doc.createElement("button");
-    row2.type = "button";
-    row2.setAttribute("type", "button");
-    row2.className = "pxd-drawing-region";
+    const row3 = doc.createElement("button");
+    row3.type = "button";
+    row3.setAttribute("type", "button");
+    row3.className = "pxd-drawing-region";
     const uid = region?.uid;
-    if (uid != null) row2.setAttribute("data-uid", String(uid));
-    row2.textContent = String(region?.caption ?? "");
-    onPress(row2, () => {
+    if (uid != null) row3.setAttribute("data-uid", String(uid));
+    row3.textContent = String(region?.caption ?? "");
+    onPress(row3, () => {
       add(uid);
     });
-    list.append(row2);
+    list.append(row3);
   }
   node2.append(list);
   node2.classList.toggle("is-regions", wasOpen);
@@ -16224,8 +17104,8 @@ function readHostPerf() {
   if (stats && Object.prototype.hasOwnProperty.call(stats, "perf")) return stats.perf ?? null;
   return latestPerf;
 }
-function bindPerfReadout(row2, blurb) {
-  readoutRow = row2 || null;
+function bindPerfReadout(row3, blurb) {
+  readoutRow = row3 || null;
   readoutBlurb = blurb || "";
   paintReadout();
 }
@@ -16674,13 +17554,13 @@ async function initializeSettings(extensionAPI) {
     }
   }
 }
-var listeners = /* @__PURE__ */ new Set();
+var listeners2 = /* @__PURE__ */ new Set();
 function onSettingsChange(fn) {
-  listeners.add(fn);
-  return () => listeners.delete(fn);
+  listeners2.add(fn);
+  return () => listeners2.delete(fn);
 }
 function emit(id, value) {
-  for (const fn of [...listeners]) {
+  for (const fn of [...listeners2]) {
     try {
       fn(id, value);
     } catch (error) {
@@ -16831,13 +17711,55 @@ var SETTING_GROUPS = [
     SETTING_IDS.speedLog
   ]]
 ];
+var ERROR_ROW_ID = "plexus-errors";
+var panelRef = null;
+var statsRef = null;
+var unhookErrors = null;
+function errorRow(n2) {
+  const text2 = `${n2} errors`;
+  return {
+    id: ERROR_ROW_ID,
+    name: text2,
+    description: "Callback errors since this copy loaded. Nothing is sent.",
+    action: { type: "reactComponent", component: () => text2 }
+  };
+}
+function placeErrorRow() {
+  if (!panelRef) return;
+  const list = panelRef.settings;
+  const idx = list.findIndex((row4) => row4.id === ERROR_ROW_ID);
+  const n2 = Number(statsRef?.errors) || 0;
+  if (n2 <= 0) {
+    if (idx >= 0) list.splice(idx, 1);
+    return;
+  }
+  const row3 = errorRow(n2);
+  if (idx >= 0) list[idx] = row3;
+  else {
+    const at = list.findIndex((entry) => entry.id === SETTING_IDS.showVersionBadge);
+    list.splice(at >= 0 ? at + 1 : list.length, 0, row3);
+  }
+}
+function bindErrorStats(stats) {
+  statsRef = stats && typeof stats === "object" ? stats : null;
+  if (!unhookErrors) unhookErrors = onGuardCount(() => placeErrorRow());
+  placeErrorRow();
+}
+function clearErrorStats() {
+  if (unhookErrors) {
+    unhookErrors();
+    unhookErrors = null;
+  }
+  statsRef = null;
+  placeErrorRow();
+}
 function performanceGroupRow(id, name, description) {
   const text2 = () => perfReadoutText(readHostPerf());
-  const row2 = groupRow(id, name, `${description} ${text2()}`, text2);
-  bindPerfReadout(row2, description);
-  return row2;
+  const row3 = groupRow(id, name, `${description} ${text2()}`, text2);
+  bindPerfReadout(row3, description);
+  return row3;
 }
-function createSettingsPanel() {
+function createSettingsPanel({ stats } = {}) {
   const settings = [];
   for (const [id, name, description, members] of SETTING_GROUPS) {
     settings.push(id === "group-performance" ? performanceGroupRow(id, name, description) : groupRow(id, name, description));
@@ -16849,7 +17771,18 @@ function createSettingsPanel() {
     description: "Put every Plexus setting back to its default. Open boards update right away.",
     action: { type: "button", content: "Reset Plexus settings", onClick: () => resetPlexusSettings() }
   });
-  return { tabTitle: "Plexus Diagram", settings };
+  const panel = { tabTitle: "Plexus Diagram", settings };
+  if (stats && typeof stats === "object") {
+    const n2 = Number(stats.errors) || 0;
+    if (n2 > 0) {
+      const at = settings.findIndex((entry) => entry.id === SETTING_IDS.showVersionBadge);
+      settings.splice(at >= 0 ? at + 1 : settings.length, 0, errorRow(n2));
+    }
+    return panel;
+  }
+  panelRef = panel;
+  placeErrorRow();
+  return panel;
 }
 
 // src/view/cards.js
@@ -16990,10 +17923,10 @@ function focusRoamInput(el) {
 function pageEditScrollTop(scrollTop, inputOffset, rowOffset, zoom) {
   const base = Number(scrollTop);
   const top = Number.isFinite(base) ? base : 0;
-  const row2 = Number(rowOffset);
+  const row3 = Number(rowOffset);
   const input = Number(inputOffset);
-  if (!Number.isFinite(row2) || !Number.isFinite(input)) return Math.max(0, top);
-  const delta = input - row2;
+  if (!Number.isFinite(row3) || !Number.isFinite(input)) return Math.max(0, top);
+  const delta = input - row3;
   if (!delta) return Math.max(0, top);
   const z = Number(zoom);
   const scale = z > 0 && Number.isFinite(z) ? z : 1;
@@ -17060,6 +17993,7 @@ var isTaskAttrString = (s) => taskAttrId(s) !== null;
 var skipChildString = (s) => isTaskAttrString(s) || isStructuralString(s);
 var visibleKids = (list) => (list || []).filter((c) => !skipChildString(childString3(c)));
 var taskBlockOn = () => false;
+var statusSig = "";
 var TASK_MARK = /^\s*\{\{\[\[(?:TODO|DONE)\]\]\}\}\s?/;
 var isTaskCard = (item) => item?.type === "card" && item.kind === "note" && isTaskString(item.string);
 function kidRowsOf(list, depth = 1, budget = { n: 0 }) {
@@ -17091,7 +18025,7 @@ function cardContentKey(item, live = false, pdfOpen = false, chipSig = "") {
     item.titleColor || "",
     item.titleFill || "",
     item.areaFill || "",
-    taskBlockOn(item) ? `tb${taskNamesSig()}` : "",
+    taskBlockOn(item) ? `tb${taskNamesSig()}${statusSig}` : "",
     item.kind === "pdf" ? pdfOpen ? "o" : "" : pdfOpen ? "h" : "",
     item.kind === "pdf" && chipSig ? chipSig : "",
     item.kind === "highlight" && item.highlight ? item.highlight.color ?? "" : "",
@@ -17278,6 +18212,7 @@ function createItemRenderer({
   onEmbedOpen = null,
   onReadPane = null,
   onHighlightOpen = null,
+  onHighlightNote = null,
   settings: speedSettings = null
 } = {}) {
   const speedOf = () => {
@@ -17466,7 +18401,7 @@ function createItemRenderer({
     syncShield();
     const MO = doc.defaultView?.MutationObserver || globalThis.MutationObserver;
     if (typeof MO !== "function") return;
-    const mo = new MO(() => syncShield());
+    const mo = new MO(guardCallback("embed-shield", () => syncShield()));
     try {
       mo.observe(live, { childList: true, subtree: true });
     } catch {
@@ -17572,10 +18507,79 @@ function createItemRenderer({
     }
     return live;
   };
+  let statusPal = null;
+  const statusWin = () => doc?.defaultView || globalThis;
+  const palette = () => statusPal || (statusPal = statusPalette(statusApi(statusWin())));
+  const statusTheme = () => boardRoot()?.classList?.contains("pxd-root--dark") ? "dark" : "light";
+  const applyStatusVars = (node2, status) => {
+    if (!node2?.style) return;
+    if (!status) {
+      node2.style.removeProperty?.("--pxd-status-base");
+      node2.style.removeProperty?.("--pxd-status-text");
+      return;
+    }
+    const vars = paletteVars(statusLook(status, palette()), statusTheme()) || {};
+    for (const [key, value] of Object.entries(vars)) node2.style.setProperty?.(key, value);
+  };
+  const taskUidOf = (item) => item?.target?.kind === "block" && item.target.uid ? item.target.uid : item?.uid;
+  const setTaskStatus = async (uid, name) => {
+    const api = statusApi(statusWin());
+    if (!api || !uid) return;
+    let result = null;
+    try {
+      result = await api.setStatus(uid, name);
+    } catch {
+      result = { status: "unknown", reason: "set-status-failed" };
+    }
+    if (result && result.status !== "updated" && result.status !== "unchanged") {
+      try {
+        onToast?.(`Status not changed: ${result.reason || result.status}`);
+      } catch {
+      }
+    }
+  };
+  const mountStatusControl = (line, item, meta) => {
+    if (!statusApi(statusWin()) || meta?.done) return;
+    const ctl = el("span", "pxd-task-check__status", line);
+    ctl.setAttribute("role", "button");
+    ctl.setAttribute("tabindex", "0");
+    const name = meta?.status || "";
+    ctl.setAttribute("aria-label", name ? `Status ${name}. Change status` : "Set a status");
+    ctl.title = name ? `Status: ${name}. Click to change, Shift-click to remove.` : "Set a status";
+    if (name) ctl.setAttribute("data-status-name", name);
+    const uid = taskUidOf(item);
+    const open = (event) => {
+      stopEvent(event);
+      if (event.type !== "click" && !(event.type === "keydown" && (event.key === "Enter" || event.key === " "))) return;
+      if (event.shiftKey && name) {
+        void setTaskStatus(uid, null);
+        return;
+      }
+      openStatusChooser({
+        doc,
+        anchor: ctl,
+        palette: palette(),
+        current: name,
+        avoid: boardRoot(),
+        onPick: (picked) => {
+          void setTaskStatus(uid, picked);
+        },
+        onRemove: () => {
+          void setTaskStatus(uid, null);
+        }
+      });
+    };
+    for (const type of ["pointerdown", "mousedown", "dblclick", "click", "keydown"]) ctl.addEventListener(type, open);
+  };
   const mountTaskLine = (parent, item) => {
     const meta = taskMeta(item.string, item.content);
     const line = el("div", "pxd-item__taskline", parent);
+    mountStatusControl(line, item, meta);
     const box2 = el("span", `pxd-task-check${meta?.done ? " pxd-task-check--done" : ""}${meta?.cancelled ? " pxd-task-check--cancelled" : ""}`, line);
+    if (meta?.status) {
+      box2.setAttribute("data-status", statusLook(meta.status, palette()).glyph);
+      applyStatusVars(box2, meta.status);
+    }
     box2.setAttribute("role", "checkbox");
     box2.setAttribute("aria-checked", meta?.done ? "true" : "false");
     box2.setAttribute("aria-label", meta?.done ? "Done" : "To do");
@@ -17590,12 +18594,12 @@ function createItemRenderer({
   const addRefRow = (list, rec, ref, on) => {
     const payload = linkedRefCard(ref?.uid);
     if (!payload) return;
-    const row2 = el("div", "pxd-refs__row", list);
-    row2.draggable = true;
-    row2.setAttribute("draggable", "true");
-    row2.dataset.uid = ref.uid;
-    row2.setAttribute("data-uid", ref.uid);
-    const liveWrap = el("div", "pxd-rs", row2);
+    const row3 = el("div", "pxd-refs__row", list);
+    row3.draggable = true;
+    row3.setAttribute("draggable", "true");
+    row3.dataset.uid = ref.uid;
+    row3.setAttribute("data-uid", ref.uid);
+    const liveWrap = el("div", "pxd-rs", row3);
     const live = el("div", "pxd-rs__live", liveWrap);
     try {
       if (host?.renderBlock) host.renderBlock(live, ref.uid);
@@ -17605,8 +18609,8 @@ function createItemRenderer({
     }
     armEmbedShield(liveWrap, live);
     rec.roots.push(liveWrap);
-    for (const type of ["pointerdown", "mousedown", "dblclick"]) on(row2, type, stopEvent);
-    on(row2, "dragstart", (event) => {
+    for (const type of ["pointerdown", "mousedown", "dblclick"]) on(row3, type, stopEvent);
+    on(row3, "dragstart", (event) => {
       event.stopPropagation();
       try {
         event.dataTransfer?.setData?.(CARD_MIME, payload);
@@ -17851,10 +18855,10 @@ function createItemRenderer({
   };
   const buildPorts = (parent) => {
     const wrap = el("div", "pxd-ports", parent);
-    for (const side of SIDES3) {
-      const p = el("div", `pxd-port pxd-port--${side}`, wrap);
-      p.dataset.side = side;
-      p.setAttribute("data-side", side);
+    for (const side2 of SIDES3) {
+      const p = el("div", `pxd-port pxd-port--${side2}`, wrap);
+      p.dataset.side = side2;
+      p.setAttribute("data-side", side2);
       p.title = "Drag to connect";
     }
     return wrap;
@@ -17873,7 +18877,7 @@ function createItemRenderer({
       rec.el = node2;
       rec.title = el("div", "pxd-section__title", node2);
       rec.note = el("div", "pxd-section__note", node2);
-      for (const side of ["t", "r", "b", "l"]) el("div", `pxd-section__edge pxd-section__edge--${side}`, node2);
+      for (const side2 of ["t", "r", "b", "l"]) el("div", `pxd-section__edge pxd-section__edge--${side2}`, node2);
       buildGrips(node2);
       buildPorts(node2);
     } else {
@@ -18123,6 +19127,7 @@ function createItemRenderer({
       if (item.kind === "highlight" && item.highlight?.image === true) cls.push("pxd-item--image");
       if (item.look === "block") cls.push("pxd-card--block");
       const task = isTaskCard(item) ? taskMeta(item.string, item.content) : null;
+      applyStatusVars(node2, task?.status || "");
       if (task) {
         cls.push("pxd-item--task");
         if (task.done) cls.push("pxd-item--task-done");
@@ -18451,16 +19456,16 @@ function createItemRenderer({
       if (skipChildString(s)) continue;
       budget.n += 1;
       const rowUid = childUid(b);
-      const row2 = el("div", "pxd-block", parent);
-      row2.dataset.uid = rowUid;
-      row2.setAttribute("data-pxd-row", rowUid);
+      const row3 = el("div", "pxd-block", parent);
+      row3.dataset.uid = rowUid;
+      row3.setAttribute("data-pxd-row", rowUid);
       const posterCount = embedSplit(String(s || ""), embedOptsFor(rowUid)).posters.length;
-      holdHeight(row2, posterCount ? embedBoxFor(rowUid).h : KID_ROW_H);
-      const node2 = renderRowRoot(row2, s, "pxd-rs pxd-block__text", rowUid);
+      holdHeight(row3, posterCount ? embedBoxFor(rowUid).h : KID_ROW_H);
+      const node2 = renderRowRoot(row3, s, "pxd-rs pxd-block__text", rowUid);
       budget.roots.push(node2);
       const kids = childKids(b);
       if (kids.length && depth < CONTENT_DEPTH) {
-        const wrap = el("div", "pxd-block__children", row2);
+        const wrap = el("div", "pxd-block__children", row3);
         renderBlocks(wrap, kids, depth + 1, budget);
       }
     }
@@ -18622,15 +19627,15 @@ function createItemRenderer({
     return more;
   };
   const upgradeRow = (rec, uid) => {
-    const row2 = rec.rowTable?.get(uid);
-    if (!row2 || disposed) return;
+    const row3 = rec.rowTable?.get(uid);
+    if (!row3 || disposed) return;
     rec.rowTable.delete(uid);
-    rec.rowIO?.unobserve?.(row2.plain);
-    rec.rowIOHeavy?.unobserve?.(row2.plain);
-    if (!row2.plain.isConnected) return;
-    holdHeight(row2.line, KID_ROW_H);
-    const root = renderRowRoot(row2.line, row2.string, "pxd-rs pxd-block__text", uid);
-    row2.plain.remove();
+    rec.rowIO?.unobserve?.(row3.plain);
+    rec.rowIOHeavy?.unobserve?.(row3.plain);
+    if (!row3.plain.isConnected) return;
+    holdHeight(row3.line, KID_ROW_H);
+    const root = renderRowRoot(row3.line, row3.string, "pxd-rs pxd-block__text", uid);
+    row3.plain.remove();
     rec.roots.push(root);
     rec.pageRoots?.push(root);
     if (rec.mountStat && rec.mountStat.firstLiveMs === null) rec.mountStat.firstLiveMs = Math.round(now() - rec.mountStat.at);
@@ -18739,11 +19744,11 @@ function createItemRenderer({
   };
   const buildOutlineRow = (parent, spec, rec, b) => {
     const { uid, string: s, folded, hasKids, kids, depth } = spec;
-    const row2 = el("div", "pxd-block pxd-prow", parent);
-    row2.dataset.uid = uid;
-    row2.setAttribute("data-uid", uid);
-    row2.__pxdKids = kids;
-    const line = el("div", "pxd-row", row2);
+    const row3 = el("div", "pxd-block pxd-prow", parent);
+    row3.dataset.uid = uid;
+    row3.setAttribute("data-uid", uid);
+    row3.__pxdKids = kids;
+    const line = el("div", "pxd-row", row3);
     line.dataset.pxdRow = uid;
     line.setAttribute("data-pxd-row", uid);
     let fold = null;
@@ -18756,22 +19761,22 @@ function createItemRenderer({
     }
     const posters = embedSplit(s, embedOptsFor(uid)).posters;
     if (posters.length) {
-      holdHeight(row2, embedBoxFor(uid).h);
+      holdHeight(row3, embedBoxFor(uid).h);
       const root = renderRoot(line, s, "pxd-rs pxd-block__text", uid);
       if (root.classList?.contains("pxd-embed-live") || root.querySelector?.(".pxd-rs__live")) b.roots.push(root);
     } else {
       holdHeight(line, KID_ROW_H);
       addPlainRow(rec, line, s, uid);
     }
-    if (!hasKids) return row2;
-    const wrap = el("div", "pxd-block__children", row2);
+    if (!hasKids) return row3;
+    const wrap = el("div", "pxd-block__children", row3);
     let filled = !folded;
     const fill = () => {
       if (filled) return;
       filled = true;
       startRows();
       const sub = { n: b.n, more: 0, roots: [] };
-      renderOutline(wrap, row2.__pxdKids || [], sub, rec, depth + 1, uid);
+      renderOutline(wrap, row3.__pxdKids || [], sub, rec, depth + 1, uid);
       b.n = sub.n;
       if (sub.more) moreRow(wrap, sub.more, rec.pageTitle, rec.pageUid);
       if (rec.pageHolder && rec.pageHolder.isConnected !== false) {
@@ -18780,18 +19785,18 @@ function createItemRenderer({
       }
     };
     if (folded) setHidden(wrap, true);
-    row2.classList.toggle("pxd-prow--folded", folded);
+    row3.classList.toggle("pxd-prow--folded", folded);
     fold.addEventListener("click", (event) => {
       stopEvent(event);
       const open = fold.getAttribute("aria-expanded") !== "true";
       if (open) fill();
       fold.setAttribute("aria-expanded", open ? "true" : "false");
       fold.setAttribute("aria-label", open ? "Fold" : "Unfold");
-      row2.classList.toggle("pxd-prow--folded", !open);
+      row3.classList.toggle("pxd-prow--folded", !open);
       setHidden(wrap, !open);
       onPageLayout?.(rec.uid);
     });
-    return row2;
+    return row3;
   };
   const renderOutline = (parent, blocks, b, rec, depth = 0, parentUid = null) => {
     if (!rec.rowState) rec.rowState = /* @__PURE__ */ new Map();
@@ -18808,9 +19813,9 @@ function createItemRenderer({
       }
       b.n += 1;
       const spec = { uid, string: s, depth, parentUid, folded, hasKids, kids };
-      const row2 = buildOutlineRow(parent, spec, rec, b);
+      const row3 = buildOutlineRow(parent, spec, rec, b);
       rec.rowState.set(uid, { string: s, depth, parentUid, folded, hasKids });
-      if (hasKids && !folded) renderOutline(childWithClass(row2, "pxd-block__children"), kids, b, rec, depth + 1, uid);
+      if (hasKids && !folded) renderOutline(childWithClass(row3, "pxd-block__children"), kids, b, rec, depth + 1, uid);
     }
   };
   const outlinePlan = (blocks) => {
@@ -18931,11 +19936,11 @@ function createItemRenderer({
       }
     }
     for (let i = 0; i < rows.length; i += 1) {
-      const row2 = rows[i];
+      const row3 = rows[i];
       const next = i + 1 < rows.length ? rows[i + 1] : tail;
-      if (row2.parentElement === parent && row2.nextElementSibling === (next || null)) continue;
-      if (next && next.parentElement === parent) parent.insertBefore(row2, next);
-      else parent.append(row2);
+      if (row3.parentElement === parent && row3.nextElementSibling === (next || null)) continue;
+      if (next && next.parentElement === parent) parent.insertBefore(row3, next);
+      else parent.append(row3);
     }
   };
   const syncTail = (parent, cls, text2) => {
@@ -18982,8 +19987,8 @@ function createItemRenderer({
     for (const spec of specs) {
       if (byUid.has(spec.uid)) continue;
       const parent = spec.parentUid ? childWithClass(byUid.get(spec.parentUid), "pxd-block__children") || holder : holder;
-      const row2 = buildOutlineRow(parent, spec, rec, bucket);
-      byUid.set(spec.uid, row2);
+      const row3 = buildOutlineRow(parent, spec, rec, bucket);
+      byUid.set(spec.uid, row3);
       created.add(spec.uid);
     }
     for (const spec of specs) {
@@ -19066,57 +20071,57 @@ function createItemRenderer({
     const card2 = rec.el.getBoundingClientRect();
     const body = rec.body.getBoundingClientRect();
     const out = { bodyTop: round16((body.top - card2.top) / z), bodyBottom: round16((body.bottom - card2.top) / z) };
-    const row2 = holder.querySelector?.(`[data-pxd-row="${rowUid}"]`);
-    const r = row2 ? row2.getBoundingClientRect() : null;
+    const row3 = holder.querySelector?.(`[data-pxd-row="${rowUid}"]`);
+    const r = row3 ? row3.getBoundingClientRect() : null;
     if (!r || !r.width && !r.height) return { ...out, rowTop: null, rowHeight: 0, rendered: false };
     const cardLeft = card2.left;
     return { ...out, rowTop: round16((r.top - card2.top) / z), rowHeight: round16(r.height / z), rowLeft: round16((r.left - cardLeft) / z), rowRight: round16((r.right - cardLeft) / z), rendered: true };
   };
   const markedRows = /* @__PURE__ */ new Set();
   const rowOf = (uid, rowUid) => shells.get(uid)?.pageHolder?.querySelector?.(`[data-pxd-row="${rowUid}"]`) ?? null;
-  const unmarkRow = (row2) => {
-    row2.classList.remove("pxd-row--linked", "pxd-row--hot");
-    row2.style.removeProperty("--pxd-row-line");
-    row2.removeAttribute("data-pxd-edges");
-    row2.removeAttribute("data-tip");
-    row2.removeAttribute("data-tip-extra");
+  const unmarkRow = (row3) => {
+    row3.classList.remove("pxd-row--linked", "pxd-row--hot");
+    row3.style.removeProperty("--pxd-row-line");
+    row3.removeAttribute("data-pxd-edges");
+    row3.removeAttribute("data-tip");
+    row3.removeAttribute("data-tip-extra");
   };
   const markRows = (entries) => {
     const keep = /* @__PURE__ */ new Set();
     for (const en of entries || []) {
-      const row2 = rowOf(en.card, en.row);
-      if (!row2) continue;
-      keep.add(row2);
-      row2.classList.add("pxd-row--linked");
-      if (en.color) row2.style.setProperty("--pxd-row-line", en.color);
-      else row2.style.removeProperty("--pxd-row-line");
-      row2.setAttribute("data-pxd-edges", en.edges.join(" "));
-      row2.setAttribute("data-tip", "edge.row");
-      row2.setAttribute("data-tip-extra", en.tip || "");
-      markedRows.add(row2);
+      const row3 = rowOf(en.card, en.row);
+      if (!row3) continue;
+      keep.add(row3);
+      row3.classList.add("pxd-row--linked");
+      if (en.color) row3.style.setProperty("--pxd-row-line", en.color);
+      else row3.style.removeProperty("--pxd-row-line");
+      row3.setAttribute("data-pxd-edges", en.edges.join(" "));
+      row3.setAttribute("data-tip", "edge.row");
+      row3.setAttribute("data-tip-extra", en.tip || "");
+      markedRows.add(row3);
     }
-    for (const row2 of [...markedRows]) {
-      if (keep.has(row2)) continue;
-      markedRows.delete(row2);
-      unmarkRow(row2);
+    for (const row3 of [...markedRows]) {
+      if (keep.has(row3)) continue;
+      markedRows.delete(row3);
+      unmarkRow(row3);
     }
   };
   const setRowHot = (uid, rowUid, on) => {
-    const row2 = rowOf(uid, rowUid);
-    row2?.classList?.toggle("pxd-row--hot", Boolean(on));
+    const row3 = rowOf(uid, rowUid);
+    row3?.classList?.toggle("pxd-row--hot", Boolean(on));
   };
   const revealRow = (uid, rowUid) => {
     const rec = shells.get(uid);
-    const row2 = rec?.pageHolder?.querySelector?.(`[data-pxd-row="${rowUid}"]`);
-    if (!rec?.body || !row2) return false;
+    const row3 = rec?.pageHolder?.querySelector?.(`[data-pxd-row="${rowUid}"]`);
+    if (!rec?.body || !row3) return false;
     rec.rowSched?.renderNow?.(rowUid);
-    const r = row2.getBoundingClientRect();
+    const r = row3.getBoundingClientRect();
     if (!r.width && !r.height) return false;
     const body = rec.body.getBoundingClientRect();
     const delta = (r.top + r.height / 2 - (body.top + body.height / 2)) / (zoomCache || 1);
     rec.body.scrollTop = Math.max(0, (Number(rec.body.scrollTop) || 0) + delta);
-    row2.classList.add("pxd-row--flash");
-    later(() => row2.classList.remove("pxd-row--flash"), 600);
+    row3.classList.add("pxd-row--flash");
+    later(() => row3.classList.remove("pxd-row--flash"), 600);
     onPageLayout?.(uid);
     return true;
   };
@@ -19663,6 +20668,21 @@ function createItemRenderer({
       }
     };
     for (const type of ["pointerdown", "mousedown", "dblclick", "click"]) foot.addEventListener(type, openFoot);
+    if (typeof onHighlightNote === "function" && item.target?.uid) {
+      const noteBtn = el("button", "pxd-highlight-notebtn pxd-chrome", rec.body);
+      noteBtn.type = "button";
+      noteBtn.textContent = "Note";
+      noteBtn.setAttribute("aria-label", "Open the note for this highlight");
+      const openNote = (event) => {
+        stopEvent(event);
+        if (event.type !== "click") return;
+        try {
+          onHighlightNote(item.target.uid);
+        } catch {
+        }
+      };
+      for (const type of ["pointerdown", "mousedown", "dblclick", "click"]) noteBtn.addEventListener(type, openNote);
+    }
   };
   const paintBlockString = (rec, refString, refUid) => {
     const body = rec.body;
@@ -20581,9 +21601,9 @@ function createItemRenderer({
     const key = JSON.stringify(chips);
     if (rec.badgeEl && rec.badgeKey === key) return;
     clear();
-    const row2 = el("div", "pxd-item__badges", rec.el);
+    const row3 = el("div", "pxd-item__badges", rec.el);
     for (const chip of chips) {
-      const node2 = el(chip.action || chip.task ? "button" : "span", `pxd-badge-chip pxd-badge-chip--${chip.cls}`, row2);
+      const node2 = el(chip.action || chip.task ? "button" : "span", `pxd-badge-chip pxd-badge-chip--${chip.cls}`, row3);
       node2.textContent = chip.text;
       if (chip.overdue) node2.classList.add("pxd-badge-chip--overdue");
       if (chip.today) node2.classList.add("pxd-badge-chip--today");
@@ -20609,12 +21629,22 @@ function createItemRenderer({
         });
       }
     }
-    rec.badgeEl = row2;
+    rec.badgeEl = row3;
     rec.badgeKey = key;
   };
   const setBadges = (map) => {
     badgeMap = map instanceof Map ? map : /* @__PURE__ */ new Map();
     if (showBadges) for (const rec of shells.values()) renderBadges(rec);
+  };
+  const refreshStatuses = () => {
+    statusPal = null;
+    statusSig = paletteEntries(palette()).map((row3) => `${row3.name}:${row3.glyph}:${row3.light?.base}:${row3.dark?.base}`).join("|");
+    for (const rec of shells.values()) renderBadges(rec);
+    if (!lastBoard) return;
+    const tasks = /* @__PURE__ */ new Set();
+    for (const [uid, item] of lastBoard.items) if (isTaskCard(item)) tasks.add(uid);
+    sync({ board: lastBoard, rects: lastRects, dirty: tasks });
+    if (lastContent) scheduleContent({ ...lastContent, dirty: tasks });
   };
   const setTaskChips = (mode) => {
     const next = ["full", "due only", "none"].includes(mode) ? mode : "full";
@@ -20870,28 +21900,28 @@ function createItemRenderer({
     }
   };
   const PAGE_FOCUS_MS = 1e3;
-  const pageInput = (editor, row2) => {
-    if (row2) {
+  const pageInput = (editor, row3) => {
+    if (row3) {
       for (const node2 of editor.querySelectorAll?.(".rm-block__input") || []) {
-        if (String(node2.id || node2.getAttribute?.("id") || "").endsWith(`-${row2}`)) return node2;
+        if (String(node2.id || node2.getAttribute?.("id") || "").endsWith(`-${row3}`)) return node2;
       }
       return null;
     }
     return editor.querySelector?.(".rm-block__input") || editor.querySelector?.("textarea") || null;
   };
-  const waitPageInput = async (editor, row2, uid) => {
+  const waitPageInput = async (editor, row3, uid) => {
     const start = now();
-    let input = pageInput(editor, row2);
+    let input = pageInput(editor, row3);
     while (!input && now() - start < PAGE_FOCUS_MS) {
       await new Promise((resolve) => {
         frameLater(resolve);
       });
       if (disposed || editing?.uid !== uid) return null;
-      input = pageInput(editor, row2);
+      input = pageInput(editor, row3);
     }
     return input || editor.querySelector?.(".rm-block__input") || editor.querySelector?.("textarea") || null;
   };
-  const enterEdit = async (uid, { row: row2 = "" } = {}) => {
+  const enterEdit = async (uid, { row: row3 = "" } = {}) => {
     const rec = shells.get(uid);
     const item = lastBoard?.items.get(uid);
     if (!rec || !item || rec.type === "section" || item.kind === "board" || item.kind === "drawing-ref" || rec.refBoard) return false;
@@ -20936,7 +21966,7 @@ function createItemRenderer({
     const contentH = boxHeight(rec.body);
     const lockH = pageEdit ? 0 : boxHeight(rec.el) || contentH || Number(rec.rect?.h) || 0;
     const reduced = prefersReducedMotion();
-    const clickedRow = row2 ? rec.body.querySelector?.(`[data-pxd-row="${row2}"]`) : null;
+    const clickedRow = row3 ? rec.body.querySelector?.(`[data-pxd-row="${row3}"]`) : null;
     const rowOffset = clickedRow ? (Number(clickedRow.getBoundingClientRect?.().top) || 0) - (Number(rec.body.getBoundingClientRect?.().top) || 0) : null;
     const ghost = el("div", "pxd-item__ghost");
     ghost.setAttribute("aria-hidden", "true");
@@ -20988,7 +22018,7 @@ function createItemRenderer({
     }
     let input = null;
     if (pageEdit) {
-      input = await waitPageInput(editor, row2, uid);
+      input = await waitPageInput(editor, row3, uid);
       if (disposed || editing?.uid !== uid) return false;
       if (input && rowOffset !== null) {
         const inputOffset = (Number(input.getBoundingClientRect?.().top) || 0) - (Number(rec.body.getBoundingClientRect?.().top) || 0);
@@ -20999,7 +22029,7 @@ function createItemRenderer({
       if (disposed || editing?.uid !== uid) return false;
       if (rowOffset !== null) {
         for (const node2 of editor.querySelectorAll?.(".rm-block__input") || []) {
-          if (String(node2.id || node2.getAttribute?.("id") || "").endsWith(`-${row2}`)) {
+          if (String(node2.id || node2.getAttribute?.("id") || "").endsWith(`-${row3}`)) {
             input = node2;
             break;
           }
@@ -21430,6 +22460,7 @@ function createItemRenderer({
     setBadges,
     setShowBadges,
     setTaskChips,
+    refreshStatuses,
     setFocus,
     setSelection,
     setHover,
@@ -21633,20 +22664,20 @@ function originBeside(rect) {
   const w = typeof box2.w === "number" && Number.isFinite(box2.w) ? box2.w : 0;
   return { x: x + w + 40, y };
 }
-function placePayload(row2, origin) {
-  if (!row2 || row2.placed === true) return null;
-  const uid = typeof row2.uid === "string" ? row2.uid : "";
+function placePayload(row3, origin) {
+  if (!row3 || row3.placed === true) return null;
+  const uid = typeof row3.uid === "string" ? row3.uid : "";
   if (!uid) return null;
   const at = origin && typeof origin === "object" ? origin : {};
   const x = typeof at.x === "number" && Number.isFinite(at.x) ? at.x : 0;
   const y = typeof at.y === "number" && Number.isFinite(at.y) ? at.y : 0;
   return { string: `((${uid}))`, x, y, w: PLACE_W, h: PLACE_H };
 }
-function placeDecision(row2, items, origin) {
-  const uid = typeof row2?.uid === "string" ? row2.uid : "";
+function placeDecision(row3, items, origin) {
+  const uid = typeof row3?.uid === "string" ? row3.uid : "";
   const existing = placedHighlightUid(items, uid);
-  if (row2?.placed === true || existing) return { kind: "pulse", uid: existing };
-  const item = placePayload(row2, origin);
+  if (row3?.placed === true || existing) return { kind: "pulse", uid: existing };
+  const item = placePayload(row3, origin);
   if (!item) return { kind: "none" };
   return { kind: "create", item };
 }
@@ -21663,7 +22694,7 @@ function indexNodes(nodes, map) {
   }
 }
 function sortRows(rows) {
-  return rows.map((row2, index) => ({ row: row2, index })).sort((a, b) => {
+  return rows.map((row3, index) => ({ row: row3, index })).sort((a, b) => {
     const ap = typeof a.row.page === "number" ? a.row.page : Infinity;
     const bp = typeof b.row.page === "number" ? b.row.page : Infinity;
     if (ap !== bp) return ap - bp;
@@ -21678,6 +22709,7 @@ function createReadPane({
   storage = globalThis.localStorage,
   onClose,
   onPlace,
+  onNote,
   onSwitch,
   cards,
   placed,
@@ -21892,7 +22924,10 @@ function createReadPane({
       } catch {
       }
     }
-    return "PDF";
+    const macro = typeof card2?.string === "string" ? card2.string : "";
+    const url = pdfMacroUrl(macro) || (typeof card2?.url === "string" ? card2.url : "");
+    const given = typeof card2?.title === "string" ? card2.title : "";
+    return coverModel({ title: given, url, count: card2?.count }).title;
   };
   const paintSwitcher = () => {
     let pdfs = [];
@@ -21950,22 +22985,22 @@ function createReadPane({
     const pageWant = pageText === "" ? null : Number(pageText);
     const needle = String(snipFilt.value || "").trim().toLowerCase();
     catalog = sortRows(rows);
-    shown = catalog.filter((row2) => {
-      if (color && row2.color !== color) return false;
-      if (pageWant != null && Number.isFinite(pageWant) && row2.page !== pageWant) return false;
-      if (needle && !String(row2.snippet || "").toLowerCase().includes(needle)) return false;
+    shown = catalog.filter((row3) => {
+      if (color && row3.color !== color) return false;
+      if (pageWant != null && Number.isFinite(pageWant) && row3.page !== pageWant) return false;
+      if (needle && !String(row3.snippet || "").toLowerCase().includes(needle)) return false;
       return true;
     });
     list.replaceChildren?.();
-    for (const row2 of shown) {
+    for (const row3 of shown) {
       const node2 = el("div", "pxd-read__row", list);
       node2.setAttribute("role", "option");
-      node2.setAttribute("data-uid", row2.uid);
+      node2.setAttribute("data-uid", row3.uid);
       node2.draggable = true;
       node2.setAttribute("draggable", "true");
       const bar = el("span", "pxd-read__bar", node2);
-      bar.setAttribute("data-color", String(row2.color || ""));
-      const source = byUid.get(row2.uid);
+      bar.setAttribute("data-color", String(row3.color || ""));
+      const source = byUid.get(row3.uid);
       const model = source ? highlightModel({ string: source.string, props: source.props, children: source.children }) : null;
       if (model?.image && source) {
         const media = el("div", "pxd-read__media", node2);
@@ -21980,12 +23015,21 @@ function createReadPane({
         } catch {
           media.textContent = source.string;
         }
-      } else if (row2.snippet && !String(row2.snippet).startsWith("![")) {
-        el("div", "pxd-read__snip", node2).textContent = row2.snippet;
+      } else if (row3.snippet && !String(row3.snippet).startsWith("![")) {
+        el("div", "pxd-read__snip", node2).textContent = row3.snippet;
       }
       const meta = el("div", "pxd-read__meta", node2);
-      if (typeof row2.page === "number") el("span", "pxd-read__pg", meta).textContent = `p. ${row2.page}`;
-      if (row2.placed) el("span", "pxd-read__on", meta).textContent = "On board";
+      if (typeof row3.page === "number") el("span", "pxd-read__pg", meta).textContent = `p. ${row3.page}`;
+      if (row3.placed) el("span", "pxd-read__on", meta).textContent = "On board";
+      if (typeof row3.note === "string" && row3.note.trim()) {
+        const mark = el("span", "pxd-read__mark", meta);
+        mark.textContent = "Note";
+        mark.setAttribute("aria-label", "Note");
+      }
+      const noteBtn = el("button", "pxd-read__note pxd-chrome", meta);
+      noteBtn.type = "button";
+      noteBtn.textContent = "Note";
+      noteBtn.setAttribute("aria-label", "Note");
       const place = el("button", "pxd-read__place pxd-chrome", meta);
       place.type = "button";
       place.textContent = "Place";
@@ -21994,26 +23038,26 @@ function createReadPane({
   }
   const moveSelection = (step) => {
     if (!shown.length) return;
-    let index = shown.findIndex((row2) => row2.uid === selectedUid);
+    let index = shown.findIndex((row3) => row3.uid === selectedUid);
     if (index < 0) index = step > 0 ? -1 : shown.length;
     index = Math.max(0, Math.min(shown.length - 1, index + step));
     selectedUid = shown[index].uid;
     paintSelected();
   };
-  const showHighlight = (row2) => {
-    if (!row2?.uid) return;
-    selectedUid = row2.uid;
+  const showHighlight = (row3) => {
+    if (!row3?.uid) return;
+    selectedUid = row3.uid;
     paintSelected();
-    if (typeof row2.page === "number") {
-      jumpPage(row2.page);
-      jumpPageWhenReady(row2.page, () => locateHighlight(row2.uid));
+    if (typeof row3.page === "number") {
+      jumpPage(row3.page);
+      jumpPageWhenReady(row3.page, () => locateHighlight(row3.uid));
       return;
     }
-    locateHighlight(row2.uid);
+    locateHighlight(row3.uid);
   };
   const jumpSelected = () => {
-    const row2 = shown.find((entry) => entry.uid === selectedUid);
-    if (row2) showHighlight(row2);
+    const row3 = shown.find((entry) => entry.uid === selectedUid);
+    if (row3) showHighlight(row3);
   };
   const onPaneKey = (event) => {
     if (event.metaKey || event.ctrlKey) return;
@@ -22050,21 +23094,32 @@ function createReadPane({
   const onListClick = (event) => {
     if (event.target?.closest?.(".pxd-read__place")) {
       event.stopPropagation();
-      const row3 = rowFromEvent(event);
-      if (row3) {
+      const row4 = rowFromEvent(event);
+      if (row4) {
         try {
-          onPlace?.(row3);
+          onPlace?.(row4);
         } catch {
         }
-        showHighlight(row3);
+        showHighlight(row4);
+      }
+      return;
+    }
+    if (event.target?.closest?.(".pxd-read__note")) {
+      event.stopPropagation();
+      const row4 = rowFromEvent(event);
+      if (row4) {
+        try {
+          onNote?.(row4);
+        } catch {
+        }
       }
       return;
     }
     if (event.target?.closest?.("button")) return;
-    const row2 = rowFromEvent(event);
-    if (!row2) return;
+    const row3 = rowFromEvent(event);
+    if (!row3) return;
     event.stopPropagation();
-    showHighlight(row2);
+    showHighlight(row3);
   };
   const markCache = /* @__PURE__ */ new WeakMap();
   let dragChip = null;
@@ -22363,9 +23418,9 @@ function createReadPane({
     if (!dragging) disarm();
   };
   const chipLabel = (uid, highlight) => {
-    const row2 = catalog.find((entry) => entry.uid === uid);
-    const text2 = row2 && row2.snippet || highlight?.content?.text || "";
-    const color = row2 && row2.color || (typeof highlight?.color === "string" ? highlight.color : "");
+    const row3 = catalog.find((entry) => entry.uid === uid);
+    const text2 = row3 && row3.snippet || highlight?.content?.text || "";
+    const color = row3 && row3.color || (typeof highlight?.color === "string" ? highlight.color : "");
     return { text: dragChipText(text2), color };
   };
   const dropChip = () => {
@@ -22421,10 +23476,10 @@ function createReadPane({
     return true;
   };
   const onListDrag = (event) => {
-    const row2 = rowFromEvent(event);
-    if (!row2?.uid) return;
-    const label = chipLabel(row2.uid, null);
-    beginDrag(event, row2.uid, row2.color || label.color, dragChipText(row2.snippet || label.text));
+    const row3 = rowFromEvent(event);
+    if (!row3?.uid) return;
+    const label = chipLabel(row3.uid, null);
+    beginDrag(event, row3.uid, row3.color || label.color, dragChipText(row3.snippet || label.text));
   };
   const targetIsArmed = (target) => {
     if (!armedEl || !target) return false;
@@ -22547,8 +23602,8 @@ function createReadPane({
       }
     }
     if (!scrolled) fallbackScroll(parts[0]);
-    const row2 = catalog.find((entry) => entry.uid === uid);
-    flashParts(parts, highlight?.color || row2?.color || "");
+    const row3 = catalog.find((entry) => entry.uid === uid);
+    flashParts(parts, highlight?.color || row3?.color || "");
   };
   const highlightUidOf = (detail) => {
     if (typeof detail.highlightUid === "string" && detail.highlightUid) return detail.highlightUid;
@@ -22578,8 +23633,11 @@ function createReadPane({
   const onSwitchChange = () => {
     const uid = String(switcher.value || "");
     if (!uid || uid === current3.cardUid) return;
+    const rule = readerRule(current3.cardUid, uid);
+    if (!rule.open || rule.open === current3.cardUid) return;
+    clearLive();
     try {
-      onSwitch?.(uid);
+      onSwitch?.(rule.open);
     } catch {
     }
   };
@@ -22969,7 +24027,7 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
   let editingLabel = null;
   let hoverUid = null;
   const measures = /* @__PURE__ */ new Map();
-  const listeners2 = [];
+  const listeners3 = [];
   const mk = (tag, cls, parent) => {
     const el = doc.createElementNS(SVG_NS2, tag);
     setClass(el, cls);
@@ -22978,7 +24036,7 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
   };
   const listen = (el, type, fn, opts) => {
     el.addEventListener(type, fn, opts);
-    listeners2.push(() => el.removeEventListener(type, fn, opts));
+    listeners3.push(() => el.removeEventListener(type, fn, opts));
   };
   const pairOffset2 = (board2, edge) => {
     for (const other of board2.edges.values()) {
@@ -23084,7 +24142,7 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
   const PILL_CHAR = 6;
   const PILL_PAD = 16;
   const PILL_MIN = 40;
-  const placeBend = (rec, end, point, clamp3, zoom, side, cardW = 0) => {
+  const placeBend = (rec, end, point, clamp3, zoom, side2, cardW = 0) => {
     const bend = bendOf(rec, end);
     const scale = screenPx(zoom);
     bend.g.setAttribute("transform", `translate(${point.x} ${point.y}) scale(${scale})`);
@@ -23102,11 +24160,11 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     const w = Math.round(Math.min(wantW, maxW));
     const fit = Math.max(1, Math.floor((w - PILL_PAD) / PILL_CHAR));
     const label = full.length > fit ? `${full.slice(0, Math.max(1, fit - 1))}…` : full;
-    const key = `${clamp3 || ""}|${side || ""}|${label}|${w}`;
+    const key = `${clamp3 || ""}|${side2 || ""}|${label}|${w}`;
     if (bend.pillKey !== key) {
       bend.pillKey = key;
       if (clamp3) {
-        const inward = side === "left" ? 1 : -1;
+        const inward = side2 === "left" ? 1 : -1;
         bend.text.textContent = label;
         bend.pill.setAttribute("width", String(w));
         bend.pill.setAttribute("x", String(inward > 0 ? 10 : -10 - w));
@@ -23660,7 +24718,7 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     setGhosts(null);
     focusSet = null;
     searchEdges = null;
-    listeners2.splice(0).forEach((off) => off());
+    listeners3.splice(0).forEach((off) => off());
     editingLabel = null;
   };
   return {
@@ -23687,7 +24745,7 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     linkGeometryOf,
     labelRect,
     labelEl: (uid) => edgeEls.get(uid)?.label ?? null,
-    portPoint: (rect, side) => sidePoint(rect, side),
+    portPoint: (rect, side2) => sidePoint(rect, side2),
     dispose,
     _els: edgeEls
   };
@@ -23713,13 +24771,13 @@ function changelogEntry(markdown, version) {
 }
 
 // src/changelog-text.js
-var CHANGELOG_TEXT = "# Changelog\n\n## 2.19.0 — 2026-10-06\n\n- Clicking into a page card no longer changes how it looks. The editor keeps the card's own text size, row spacing, indent and line wrapping. Roam's bullets, guide lines and extra scrollbar stay hidden, and the row you clicked stays where it was.\n- Drag a highlight straight out of the PDF onto the board, as in Heptabase. Hover a highlight in the reading pane (the cursor becomes a hand), then drag it onto the board: a card lands where you drop it. A highlight that is already on the board pulses instead of being added twice. A plain click on a highlight still opens Roam's highlight menu, and selecting text to make a new highlight works as before.\n- Clicking a highlight in the pane's list, or the page footer on a highlight card, scrolls the PDF to that highlight and flashes it, not just to the top of its page.\n- The PDF reader fills its part of the pane. There is no longer a second scrollbar around it, and Roam's toolbar (highlight tools, zoom, page number) stays in view.\n- The link legend (the chips that turn link types on and off) sits under the board bar, beside Properties, instead of on top of the bar's buttons.\n- While you edit a page card, hovering a row shows a faint bullet in the margin; drag it to move the block, click it for Roam's block menu.\n- A board that is open in the right sidebar while the main window is zoomed into the same board stays in the sidebar. Before, both copies went fullscreen and the sidebar copy covered the main board, so clicks and drops on the board did nothing.\n\n## 2.18.0 — 2026-10-06\n\nPDF highlights closer to Heptabase (roadmap P27), page cards you can edit in place, and two speed and freshness fixes:\n\n- Open reader on a PDF card opens a reading pane beside the board instead of inside the card. The card stays a cover. Drag the pane's edge to resize it; on a narrow board it sits below.\n- The pane lists every highlight in that PDF with its colour, page, and note. Filter by colour, page, or text. Place puts one card on the board; a highlight already on the board pulses instead of being added twice. Drag a row onto the board for a card at that spot.\n- A highlight card's footer opens the pane at that highlight's page and flashes the card. The page holds after Roam restores the last page it showed.\n- A note under a highlight (a child block) shows on its card and follows edits.\n- Clicking into a page card edits it in place. The card keeps its size and look; the row you clicked gets the cursor; Escape returns to the same view.\n- A `((ref))` card follows edits to its source, including edits made while the card was off screen or the board was closed.\n- Graph links are drawn after the board's first paint, so opening a board feels faster.\n- The colour tooltip on a highlight now says what changes: the card and the list follow the tag, the mark inside the PDF keeps the colour Roam painted.\n\n## 2.17.0 — 2026-10-06\n\nFeel instant (roadmap P26), after the claude.ai speed work:\n\n- Going back to a board you just left is instant: the last two boards stay ready (paused, nothing running) and come back as they were, fullscreen included, with no rebuild.\n- A board opens with a quick sketch of its last layout while the real board loads.\n- Hovering a board chip, a board card, a breadcrumb, or a link to a board quietly reads that board ahead of the click.\n- Cards load in small batches nearest the middle of the screen first, so a big board never freezes the page.\n- Selecting a card no longer touches every other card (the same cost on a 300-card board as on a 40-card one).\n- Faster text checks on every card (tags, regions, attributes, diagram detection).\n- Cards and page rows keep their size while their content loads, so nothing jumps.\n- Optional speed log in settings (off by default): open time, click time, pan smoothness, Plexus long tasks.\n- Developers: `npm run perf:ratchet` keeps measured counts from getting worse; a hidden `speed-flags` setting turns each speed feature off without a release.\n\n## 2.14.1 — 2026-10-06\n\n- Typing stays light while a board sits in an open right sidebar. Plexus read Roam's whole sidebar window list every 400 ms (about 6 ms each time with 140 windows); it now reads the window's own open/closed arrow instead.\n\n## 2.14.0 — 2026-10-06\n\n- PDFs, videos, tweets and other heavy embeds on a card, a page row or an outline row show a poster until you open them. Only one stays live per board.\n- A board you scroll away from, a collapsed sidebar window, or a board under a closed block stops working in the background and comes back where you left it.\n- Opening a board reads Roam about six times less (about 24 calls instead of 155 on a 39-card board), so other extensions keep their share of Roam's limit.\n- Typing in a card updates that card only. Typing on a page that is a page card updates the changed row only.\n- Typing outside a board keeps the board open instead of closing and reopening it.\n- Panning no longer measures every arrow handle on each mouse move.\n- Board chips at the top of a page are placed once per frame instead of scanning the whole page for every change.\n- A live speed check for developers: `node tools/live/perf-gate.mjs`.\n\n## 2.13.2 — 2026-10-05\n\n- A board in the right sidebar opens as the board. Outline is still in the mode bar, and the last choice is remembered on this device.\n- Outline rows render when they scroll near the window. A row that scrolls far away unmounts and keeps its height, so a PDF lower down does not stay open.\n- Clicking and panning a board stays fast in a window that has been open for days. Old copies of a board no longer keep listening after they close, and loading Plexus again cleans up an earlier copy that never unloaded. One click had been waking thousands of leftover copies.\n- A board that fails to open waits before trying again, instead of retrying every 400 ms.\n\n## 2.13.1 — 2026-10-05\n\n- An image card keeps its picture at map zoom. A collapsed or empty card still shows its title.\n- A card that cites part of an image shows that crop. A region inside the card still uses its own block.\n\n## 2.13.0 — 2026-10-05\n\n- Every diagram opens as a Plexus board by default. Nothing is saved until you change the board. Your first edit writes the board marker in the same undo step, and folds the outline when Collapse the outline is on.\n- A diagram that already has native shapes stays Roam's own. An Open as Plexus board button over it imports the shapes and arrows.\n- Settings has Every diagram is a Plexus board. Turn it off to open only diagrams you enhance or create with New whiteboard here. Turning it off gives the native diagram back to boards you have not changed.\n- Plexus: Restore native diagram now sticks, even with the setting on. Plexus: Enhance clears it.\n- Fixes from a review of 2.8 to 2.12:\n  - A page that is a card on a board no longer throws or loops when it opens. Its board chip sits under the page title.\n  - The references drawer lists top-level blocks again.\n  - Cutting or duplicating an image card keeps its regions. Deleting one asks first and shows how many regions it has.\n  - Clearing a connection's why no longer deletes a note that has children.\n  - An open PDF reader stays mounted while it is in view, and arrows meet its edge. Page chips refresh when highlight cards change.\n  - Encrypted-graph PDFs (`.enc`) show their highlights.\n  - Each image highlight reuses one regions block.\n  - Fewer reads on large boards: highlight watches are capped, block props are read only for highlights, and the Info panel counts references without pulling them all.\n  - Memory lane arrows follow the cards. Suggested lines follow a dragged card, and their menu sits at the line.\n  - Escape works on a full-screen board. Annotate is one undo step.\n  - Popovers close when the pointer leaves. Unload no longer removes Roam's own nodes.\n- The command palette stays two entries.\n\n## 2.12.1 — 2026-10-05\n\n- Double-click a connection label to edit the label and a why note. Enter saves both. The outline chip adds \"because …\". An empty why writes no child.\n- Shift+T opens a memory lane. Play fades cards that did not exist yet. A snapshot tick restores that layout and writes nothing.\n- The references button on a block card lists blocks that mention it, grouped by year.\n- The links menu can draw dotted lines for shared page references. Connect makes the connection. Link text wraps the mention.\n- Plexus Commands has Resurface here. It inserts a button that lists cards from a week, a month, or a year ago. The command palette stays two entries.\n\n## 2.12.0 — 2026-10-05\n\n- Hover the info button on a card or a connection to see when it was made, the board, the section, cards from the same day, and how often it is referenced. A block on a board shows one chip per board. Hover the chip for a map. Click the chip to open that card. Nothing here writes. The command palette stays two entries.\n\n## 2.11.4 — 2026-10-05\n\n- A PDF card shows one chip per page that has a highlight on the board. The badge is the count. A click pulses those cards. A double-click opens that page in the card reader. An arrow into a highlight shows the page at the tip. A highlight in the outline says On board when that highlight is a card. None of these write. The command palette stays two entries.\n\n## 2.11.3 — 2026-10-05\n\n- Open in reader on a highlight card opens that page in the PDF card on the same board. The mark stays in view. If that PDF card is not on the board, Roam opens the highlight and a note says to click it. The click does not write. The command palette stays two entries.\n\n## 2.11.2 — 2026-10-05\n\n- Add highlights on a PDF card places the ones you pick, as a grid or a column. One undo removes them. Dragging a highlight bullet onto the board makes one card. Dropping a date asks before adding only the highlights under that date.\n- An area highlight keeps the picture's shape. Mark region on that card stores a region under the highlight. The page mark keeps the colour Roam painted.\n- The tag lens can show one highlight colour. The command palette stays two entries.\n\n## 2.11.1 — 2026-10-05\n\n- A block ref of a PDF highlight is a card. It shows a colour bar, the passage or the area picture, and the page. Changing the colour tag updates the bar. A block that is not a highlight stays a normal ref. The command palette stays two entries.\n\n## 2.11.0 — 2026-10-05\n\n- A pdf block on the board is a card. The cover shows the file name and the highlight count. Open reader mounts Roam's own reader. Interact lets you use that reader. Escape or a board click puts the shield back. A second reader closes the first. Moving the card does not change the PDF settings. The command palette stays two entries.\n\n## 2.10.3 — 2026-10-05\n\n- With Compass loaded, a card menu can open Compass on that page. Compass can open the board that holds the card, and asks which board when there are two.\n- An image card can start an empty drawing beside it. The connection reads annotates. A note says to drop the image into the drawing, and it stays up after the drawing opens. The outline chip names the drawing. Without Roam Plexus that row stays hidden. The command palette stays two entries.\n\n## 2.10.2 — 2026-10-05\n\n- A block ref of a Roam drawing shows the drawing. Regions lists that drawing's regions, and picking one adds a reference on the board. New drawing here creates the drawing and a reference card. The drawing block is not rewritten. Without Roam Plexus the new drawing is still an ordinary drawing. The command palette stays two entries.\n\n## 2.10.1 — 2026-10-04\n\n- window.PlexusDiagram lists boards on a page, boards that show a block, and the cards and views on a board. It can open a card or a saved view, add one card, and return a small PNG of a board. Opening and the picture do not write. Adding a card writes that one block.\n- A block ref of a Roam Plexus region shows the caption, a crop, Open drawing, and Open in sidebar. Open drawing uses Roam Plexus. If Roam Plexus is missing, the card is an ordinary block ref. The command palette stays two entries.\n\n## 2.9.6 — 2026-10-04\n\n- An image card shows a small region count when it has regions. The card menu lists them: Go, Copy ref, Rename, and Delete. Rename changes only the caption. Delete asks when another block still references the region, and can open those mentions. Badges off hides the count. The command palette stays two entries.\n\n## 2.9.5 — 2026-10-04\n\n- Hover an image crop for a larger preview, the picture dimmed and the region lit. Click opens that image on its board, zoomed to the region, or scrolls the outline to the image and pulses the region. Shift-click opens the board in the sidebar. An inline view draws a small map. Hover enlarges it. Click opens the board at that view and pulses the highlighted cards. Shift-click opens the board in the sidebar. Neither click writes to the graph.\n\n## 2.9.4 — 2026-10-04\n\n- On an image block, the block menu item Plexus: Mark image region lets you drag a rectangle. Confirm stores the region under the image, copies a block ref, and toasts. Escape writes nothing. A plexus-region image button in the outline, a block ref, an embed, the sidebar, and linked references draws the crop at most 160px tall, with a 1px border and no shadow, and hides that button. A Roam Plexus region such as a rectangle is left alone. The command palette does not gain an entry.\n\n## 2.9.3 — 2026-10-04\n\n- On an image card, Mark region lets you drag a rectangle on the picture and add a short caption. Confirm stores that region under the image, copies a block ref, and toasts that it copied. The first undo removes the region. The next undo removes the empty container. The card stays put, and the image viewer does not open. The command palette stays two entries.\n\n## 2.9.2 — 2026-10-04\n\n- Save view, in More or with Shift+V, writes the current camera as one view block at the end of the board. A selection can save its own view from the context bar. The Boards tab lists those views, each with a 96px outline map. Go puts the camera back and writes nothing. Delete removes the view block, and undo puts that row back. The command palette stays two entries.\n\n## 2.9.1 — 2026-10-04\n\n- A new card is placed before the Connections list, snapshots, and a region container, so those stay at the end of the block. The library card count skips a region container the same way it skips Connections. Leaving a new empty card that only holds a region container no longer deletes that card.\n\n## 2.9.0 — 2026-10-04\n\n- A region container `{{[[plexus-regions]]}}` and its `{{[[plexus-region]]}}` children stay off the board. They are not cards. A card's child badge does not count them. Image regions and saved views can be stored in that shape. A Roam Plexus region is recognized and left as theirs. Nothing is drawn yet.\n\n## 2.8.0 — 2026-10-04\n\n- Better Tasks and the Task tool start off. Settings, Integrations, has four controls: Better Tasks integration, Task tool, Task chips, and Default project for new tasks. With both switches off, the dock has no Task button, K does nothing, and the ? sheet does not list K. A Task tool you already saved stays on. Turning Better Tasks on draws the light checkbox and the chips, and asks Better Tasks for attributes once. Turning it off puts Roam's own checkbox back. Opening, panning, and clicking a board does not call Better Tasks while the integration is off.\n- A card whose text has #bg-blue or #[[bg-blue]] takes that colour on the board when the colour highlighter's variables are on the page, in light and in dark. #c:red still colours bold text inside the card, and Plexus does not paint over it. A fill you set in the picker wins; clearing that fill brings the tag colour back. With no highlighter variables, named colours use a fixed palette and the tag stays visible in the card.\n- The colour picker's gear, Write as highlighter tag, is saved on that board. In that mode a named colour writes one #[[bg-name]] into the block and clears the card's fill. One undo restores the text and the fill together. Hex, darker, and lighter still change only the fill.\n- A key pressed outside the board no longer switches the tool or adds a card, while nothing on the board is selected. A selected card still receives the board's keys.\n- A card more than one screen outside the view keeps its size and skips layout. The card you are editing stays fully drawn. A card that stays outside the view for 10 seconds drops its live Roam body and draws it again when it comes back.\n\n\n## 2.7.1 — 2026-10-04\n\n- Dropping a repeating task on Done in the Kanban view now makes the next occurrence, the same as ticking its checkbox. Before, only a real checkbox click did, because Better Tasks starts the next occurrence from its own checkbox. The task is now finished through that same checkbox, out of sight, so you get the completed date and the next task together.\n- Popovers stay clear of the board's own controls. The task chip popovers, the children peek, the Background and tag popovers, the card colour picker and the right-click menu move aside or flip instead of opening under the dock, the top bar, the rail, the minimap or the Properties panel. When there is no room, they shrink and scroll.\n- Task cards are readable when you zoom out. At the map zoom the check box is at least 20 pixels on screen, with the due date under the title (teal today, red overdue). Zoomed far out, a task is one clear box: empty, checked or crossed, in the same colours.\n- The pill that shows a scrolled-out block arrow (\"↓ the block's first words\") stays inside its card. It is cut to the card's width less 16 pixels with an ellipsis and keeps the same size on screen at any zoom.\n- A board with many tasks no longer uses up Better Tasks' limit of 100 decorated checkboxes. A task card now draws a light checkbox of its own instead of a real Roam block, so a 40-task board added 40 real checkboxes before and adds none now, and Better Tasks keeps decorating the rest of the page. Clicking the box still completes the task through Better Tasks.\n- Checked for a freeze when the bench is run back to back with a task board open: five runs and five load-and-unload cycles did not reproduce it.\n\n## 2.7.0 — 2026-10-03\n\n- Task cards. A card whose block is a Roam TODO now looks like a task: Roam's own checkbox, the title, and a row of chips under it for the due date, project, priority, repeat, status, waiting-for and GTD. Today's due date has a teal border, an overdue task a red one, a done task is dimmed and struck through, and a cancelled one is struck through. Better Tasks' own pills are hidden inside the card so the chips are not doubled. At map zoom a task shows a check box, its title and its due date; zoomed far out it is a single check box.\n- New Task tool. Press K, or pick it in the dock or the canvas menu, then click the board: a TODO card appears and opens for typing. A task left with no text disappears when you click away, like an empty card. Cmd+Z right after makes one undo step. The card menu has Make task for a plain note.\n- Change a task from its chips. Click the due date, project, priority or repeat chip and pick from a small popover (today, tomorrow, next week or any date; a project from Better Tasks' list; low, medium or high; a repeat rule). The change is made by Better Tasks itself, so the attribute blocks keep their uid and Plexus still never writes a `BT_attr` block. Cmd+Z after a chip change is Roam's undo, not the board's. Without Better Tasks the tool makes a plain TODO card and the chips are read-only.\n- Finishing a task works the way it does in Roam. Tick the checkbox on the card and Better Tasks writes the completed date and, for a repeating task, the next occurrence on its daily or project page. A toast tells you the date and offers Add to board. Dropping a card on Done in the Kanban view does the same through Better Tasks.\n- Drag a task card onto a daily-page card (or a section named for a day) and its due date becomes that day, in the same attribute block. Hold Shift to move the card without changing the date.\n- Better Tasks' attribute blocks and its Activity log no longer count as children: they are never rows, never in the outline or the peek, and never a \"▸ N\" badge. Renamed attributes are read from Better Tasks.\n- Three new settings: Task tool (show it in the dock), Task chips (full, due only or none) and Default project for new tasks.\n\n## 2.6.0 — 2026-10-03\n\n- Editing a card no longer shrinks it. Opening a card or a sticky for editing used to let it collapse toward the height of one line, and its arrows came loose. The card now keeps its size for the whole edit, the editor fills it, and the text is no longer cut to one line when you start typing. Edges stay attached.\n- Sticky notes are rebuilt to work like the RoamJS sticky notes, and they stay saved. Each one has a coloured header bar you drag, with a short title, a colour dot and a minimize button. The body is the live Roam block: click once and type, with tags, images, links and the slash menu. Drag a corner or edge to resize. Minimize folds a note to its header and remembers it. There is no close button; Delete or the menu removes a sticky and Cmd+Z brings it back.\n- Page cards open faster. A card now shows all its rows as plain text at once, then turns the rows you can see into live Roam blocks a few at a time. Rows scrolled out of view, and heavy rows such as charts, embeds and images, wait until they are on screen. A page you pulled once is reused while the card is open. A 146-row page card used to block for about 150 ms while it drew; now it paints in about 20 ms.\n- Arrows to blocks now stay on their block. When a chart or an image above the target row loads late, or a row turns live, the card re-measures its rows and the arrow follows. Each linked row shows a small dot in its own arrow's colour, so two arrows into one card stay apart, and hovering one arrow lights only its row.\n- New tooltips for the sticky header: drag, minimize or expand, and the colour dot.\n\n## 2.5.0 — 2026-10-03\n\n- The connection preview is cleaner. The target block is now a highlighted bar inside its page card, at the block's real place in the page, with its text cut to the card's width, and the arrow runs into the bar with a head like the one on the board. Nothing spills over a neighbouring card any more.\n- The preview opens where it never covers the chip or the block line it belongs to: under it, else above, else beside it, shrinking and scrolling inside when the window is small. It follows the chip while you scroll or resize and closes when the chip leaves the screen.\n- Roam's breadcrumb above a connection block (in linked references and when you zoom into the block) now opens the same preview on a plain click, because Roam's own link there only led to \"Board › Connections\". A small ▦ marks it. Shift-click, Cmd-click and Ctrl-click still do what Roam does. Unloading removes the marks and the listeners.\n- Resize grips, connection dots and arrow-end handles keep the same size on screen at every zoom, so they are easy to grab on a zoomed-out board and no longer huge when zoomed in.\n- Light mode was checked on every new surface. Fixed: the connection chip could run past the edge of its block, and its teal was too pale on white.\n\n## 2.4.0 — 2026-10-03\n\n- The Add and Info panel now opens to the left of the control rail instead of covering it. The minimap steps left of an open panel. The rail keeps one fixed width, so the version badge no longer pushes it wider.\n- An arrow that ends on a block now visibly points at it. The line continues into the page card and its head stops beside the row's text. The row keeps a mark in the arrow's color (a left rule and a light tint; in the dark theme a border only, no fill). Hover the arrow and the row lights up; hover the row and the arrow thickens and a tooltip names the other card and the label. When the row has scrolled out of view, the arrow ends in a pill at the card edge with an arrow and the block's first words; click it to scroll the row back.\n- Connections now show up where Roam draws them. Under every connection block in the outline, the sidebar or a block's linked references, a small chip reads \"A —label→ B · on Board\" and names the block when the arrow ends on one. Click the chip to see a preview: a map of the two cards with the arrow and the target row, plus Open on board and Open in sidebar. Open on board opens the page, enters a nested board if needed, and selects the connection. Nothing is written, and unloading removes every chip.\n- The card's hover toolbar no longer disappears on the way to it. It waits 400 ms after the pointer leaves the card, so you can reach it and open its color picker. Moving to a different card switches the toolbar at once with no flicker. Escape, panning and zooming hide it immediately.\n- With the Hand tool you can now resize: a press on a resize grip resizes, anything else pans, and Space-drag still pans over grips. Page cards have a wider grip band on the right and bottom edges and a larger corner that sits above the scrollbar. The grips show when you hover a card in hand mode.\n\n## 2.3.0 — 2026-10-03\n\n- Board rows in page cards. A page card for a page that holds a board shows that board as a small map with its title and item count, not a grey box. After four maps on one card, the rest are one-line chips. The row for the board you are looking at says \"this board\". Click opens the board; Shift-click opens it in the right sidebar.\n- A row that Roam cannot render inside a card, such as an empty `{{[[roam/render]]}}`, now shows its raw text, muted, instead of \"Failed to render\". This also ends the Roam console errors the old page-card row caused.\n- Hover tooltips. Every control on the board bar, the dock, the rail, the card toolbar and the Properties panel shows its name, its shortcut and a one-line description after a short hover. Keyboard focus shows it at once. The tip sits below the board bar, above the dock, left of the rail, and stays inside the board. Settings, Hover tooltips, turns them off and hands the text back to the browser. Tooltip delay is instant, 350 ms or 800 ms.\n- A tooltip no longer stays on screen after the control it described is removed.\n- Ref cards and image cards show readable titles everywhere: Table, Kanban, Graph, Timeline, Gallery and Find use the first line of the referenced block or the image's alt text, never `((uid))` or a blank. Find matches the text a ref card shows.\n- Graph view draws a line for every connection, fits all cards inside its window and no longer scrolls them out of sight.\n- The end handles of a short arrow with a label can be grabbed. The label steps aside while the arrow is selected.\n- Gallery captions show the image's alt text, or nothing. They never show raw markdown.\n- The Escape that closes Search, a menu, or Gallery, Timeline and Graph no longer also leaves fullscreen.\n- Present mode hides the board bar, dock, Properties, rail, minimap and side panel, and brings them back on exit.\n- Shift-click only extends the selection. It no longer opens the Info panel.\n- Gallery, Timeline and Graph, the board bar and the Properties pill are opaque now, so nothing shows through. A collapsed Properties pill is only as wide as its label.\n- Section titles in the zoomed-out overview may run wider than a small frame before they are cut off.\n- Gallery, Timeline and Graph are also under More, Views, and under Views in the canvas menu. The template entry is now \"Timeline template\". An empty Timeline says that a date attribute or a daily-page reference makes a card dated.\n- The thin dotted curves that run across a board between cards are graph links, drawn for every shared page reference or attribute. They are not a stray line. Links, in the board bar or the L key, switches them off or to attributes only.\n\n## 2.2.0 — 2026-10-03\n\n- Board bar and tool dock. The top bar is now the board bar: breadcrumbs, Add, Info, links, views, background, present and More. The nine tools moved into a floating dock along the bottom. Settings, Toolbar layout, brings back the 2.1 look (Classic) or hides the top bar until the pointer nears the top edge (Dock only).\n- Dock settings: position (bottom, left or top), shape (pill or strip), tool names under the icons, and button size. A board can set its own dock position from the More menu, Dock position for this board; opening a board still writes nothing.\n- The active tool slides a highlight behind it. A locked tool (double-click) shows a padlock. In dark mode the active tool is a border and a dot, so it stays visible without a fill.\n- Dock options. With Card, Sticky, Section or Shape active, the dock shows that tool's colors, the block or card look, or the shape kinds. With nothing selected, a pick styles the next item you create with that tool and is forgotten when the board closes; with cards selected, it restyles them as before. One undo reverses it.\n- The last breadcrumb carries the board's own color, and the bar's bottom edge takes the same tone.\n- Overview zoom keeps Select, Hand and Board in the dock. A board narrower than 560 px gets smaller buttons and no options. A left dock no longer sits on the Properties panel.\n- The active and locked tool styles in the top bar lost to Roam's own button rules in dark mode. They hold now.\n\n## 2.1.0 — 2026-10-03\n\n- Enter in a card adds a line to the card's block, like a node in a native Roam diagram. Settings, Cards, \"Enter in a card\" set to Child brings back the old behavior of making a child block.\n- An empty white panel with a Close button no longer covers boards.\n- Pasting one image into a card inserted it twice. It now inserts once.\n- Dragging an image onto a card that is being edited works. Dropping an image on a card adds it after the card's text instead of replacing the text.\n- Whole-page cards: a page card shows the page title as a header and the whole outline, scrolls inside the card, and edits where you click. Add page… in the canvas menu adds a page by search. Dropping a page from the left sidebar makes a page card.\n- Arrows to a single block. Drag an arrow end over a page card and the row under the pointer lights up; dropping there connects to that block with a real `((ref))`, so it shows in Roam's backlinks. Dropping on the title connects to the page. Ends follow their row as the card scrolls and clamp to the edge with a marker when the row is out of view. A selected arrow has end handles to re-aim it, and the arrow menu has Connect to the page instead.\n- Card children. A note, block or ref card shows only its own block. A ▸ N badge opens the children as an editable outline inside the card, remembered per card, and hovering the badge peeks at them. Spread children as cards makes one card per child with an arrow back.\n- Note: note and ref cards now show only their own block until the badge is opened.\n- A selected arrow's end handle could only be grabbed on the half outside the card it ends on. The whole handle now grabs.\n\n## 2.0.0 — 2026-10-03\n\n- Card editing, outline navigation, templates, the table, snapshots, and the graph tools that landed after 1.3.0.\n- Gallery, timeline, and a read-only graph of the board. A section can lay cards out by date. Connections can bend or route around cards. Present shows a section's first child as notes, plus a laser and a pen that are dropped on exit.\n- A diagram in the right sidebar stays a gap until that window is on screen. Opening the sidebar parks the boards on the page.\n- A 300-card board shows its first shells in about 1 second and finishes the rest over the following frames. Detail and overview pan hold 60 fps. Zooming across the detail threshold is about 57 to 59 fps, and that switch no longer produces a long task.\n- The same board in two Roam windows kept the same 6 cards and 4 connections across 30 moves.\n\n## 1.3.0 — 2026-10-01\n\n- Native parity on an enhanced board: plain block cards, a node hover toolbar, a right-hand control rail, a properties panel, PNG export, outline in the sidebar, boards in the sidebar, edge styles, native embeds, style import on Enhance, per-card expand, minimap drag, keyboard parity, and Edit Block.\n\n## 1.2.0 — 2026-09-29\n\nFixes from the second round of testing on 1.1.0:\n\n- **Zoomed-out cards stay inside their box.** Map view is a clean title-only tile: three-line clamp, font capped by the tile height, nothing spills below the card. Ref titles are cut at 120 characters and header text at 160. The level of detail now switches while you zoom (with hysteresis, one class toggle), not only when the gesture ends. A third tier below 20% shows section titles only.\n- **Nested board thumbnails are real thumbnails.** A padded frame with mini cards (border, fill, title), sections as tinted frames, connections, and an \"Empty board\" state, instead of one white box.\n- **Sections auto-fit.** A card moved, resized, created, or pasted past a section edge grows the section to contain it (24 px padding), live during the drag and saved as one undo step. It cascades through nested sections, never shrinks by itself, and can be turned off per section or with the `auto-fit-sections` setting.\n- **Board backgrounds.** Dots, lines, grid, and plain patterns and paper or ten palette tones, chosen per board from the Background button (stored in the board block's props) with a default in Settings.\n\nAdded:\n\n- **Right-click menus** for the board, cards, sections, text, connections, multi-selection, and the More menu.\n- **Duplicate and clipboard.** Alt+drag and Cmd+D duplicate (Alt+Shift makes `((ref))` cards); copy and paste as refs or as copies, across boards; pasted text and images become cards. Send to board, Boards tab (every board in the graph), Outline tab.\n- **Keyboard.** Tab and Shift+Tab step through the outline, F focus mode, Q quick look, P presentation, M mind map from a card's child blocks, Cmd/Ctrl+Alt+Enter fold, double-click a bottom or corner grip to fit or reset height. Arrow keys nudge the selection 1 px (Shift for 10 px); Alt+Arrow selects the nearest card in that direction (Alt+Shift adds), as in Heptabase.\n- **Layout tools.** Tidy (row, column, grid, outline order), same size, fit height, reset size, fit section, fold all, optional space-out after a move, \"Back to content\" button.\n- **Pin.** Pinned items do not move, resize, or delete.\n- **Card badges.** References, boards, and open and done TODO counts, read from Roam (never written); a `((ref))` to a board renders its thumbnail; journal cards for today and this week.\n- **Export.** Export board as SVG and Copy board as text (commands and board menu).\n- **Review fixes.** Cut and paste now moves a note, text or section (the clipboard carries a snapshot; before, the paste was a dead `((ref))`). The Open button, double-click and Enter open a whiteboard-shortcut card. Settings changes reach open boards' sessions live. A pinned section is never grown by auto-fit. Fit height can shrink a card. Fit / Reset size / Same size never leave a card outside its section. A pinned card no longer pushes other cards in space-out. Escape closes the Background popover first. Right-clicking a ref, tag, link or image inside a card keeps Roam's or the browser's menu. Tab is only taken while the board itself has focus. A tall menu scrolls inside a small board. Thumbnails title `((ref))` and image cards. The section grows live while you type in a card at its edge. Card badge queries run in idle slots and are cached for two minutes.\n- New settings: default board tone, map view threshold, auto-fit sections, space out cards, show card badges; grid accepts `grid`. API and build: see `docs/api-plexus-1.0.md` (\"1.2 additions\") and `docs/spec-plexus-1.2.md`; `src/css/*.css` is appended to the bundle.\n\nFixed after live testing in Roam Desktop:\n\n- **One Cmd+Z per operation.** Duplicate, Alt+drag, mind map, Tidy, and a drag that grows a section each took one Cmd+Z per block written; the Undo toast button undid one block. Writes of a transaction are now grouped, and Undo and Redo step over the whole group.\n- Map-view cards clamp to exactly three lines (no fourth-line sliver, no ellipsis in the middle of a tall card); section titles show an ellipsis; far zoom-out no longer paints a dot moire; colored cards read at overview zoom; whiteboard-shortcut cards keep their thumbnail at map zoom.\n- Ctrl-wheel zoom and paste use the board's current position after the Roam page scrolls (they were off by the scroll distance).\n- Pasted images are `![](url)`, not `![](![](url))`.\n- The section preview no longer snaps back while you type in a card at its edge.\n- Fit keeps content below the toolbar and left of an open panel (Outline click fits the visible area); the context bar no longer covers the toolbar or the panel; double-click on the middle of a card's bottom edge fits its height.\n- Mind map from a card that already has child cards on the board lays the rest out around them, and says when the 24-branch cap left nodes out. Add this week no longer stacks a card on an existing one. Duplicating a section says \"section\".\n- The OS dark-mode hint no longer darkens a board on a light Roam theme.\n- **Typing in a card: Enter no longer drops you out of the card.** Root cause: the card editor stopped the mouseup that Roam uses to end its block drag-select, so a new block created under the resting pointer turned the edit into a block selection. Mouseup now passes through.\n- **Undo limits.** Roam keeps only the last 50 changes, so one Cmd+Z sequence can undo an operation only if it fits. Mind maps cap at 24 branches (\"Mind map: 24 of 45 branches (cap)\") and bulk adds (large pastes, multi-drops, Add all) at 45 cards (\"Added 45 of N (Roam undo holds 50 changes)\").\n\n## 1.1.0 — 2026-09-29\n\nFrom the first round of testing on 1.0.0:\n\n- **Cards show their content.** Note and block-reference cards render the whole block (and its children) instead of a truncated first line over an empty body. A long single-line `((ref))` card is readable again.\n- **Drag blocks in from Roam.** Dragging a bullet from the outline or the right sidebar onto a board adds it as a `((ref))` card (a page becomes a `[[page]]` card). Multi-block drags stack. The source block is never moved.\n- **Typing in a card.** Enter adds lines inside the card and keeps the caret there; if Roam drops focus while it moves between blocks, the editor takes it back. The card header no longer repeats and lags behind what you type, and text items keep their heading size while editing.\n- **Nested boards (Heptabase sub-whiteboards).** New Board tool (W): click or drag to add a board card, or select cards and choose **Move into new board**. Board cards show a mini map, item count, and a name field. Double-click or Open goes into the board in place with a `Parent › Child` breadcrumb; click a crumb or press Esc to go back up. Drag a card onto a board card to move it inside (with Undo). Boards opened from their own page get crumbs for their parent boards.\n- **Collapsed board blocks.** The board block is collapsed once so Roam does not list its cards as bullets under an inline board; expand the bullet to see them. Turn it off with **Collapse board blocks in the outline**. A nested board no longer opens a second overlay from an expanded outline.\n- Import and Restore keep a nested board's marker; a board deleted while open closes cleanly (a nested one pops to its parent).\n\n## 1.0.0 — 2026-09-28\n\nRewrite. The 0.6 canvas (one 2,200-line closure) is replaced by a model / host / session / view split with 204 unit tests and a live CDP gate on Roam Desktop.\n\n- **Everything is a Roam object.** Card layout lives in each block's `:block/props` (`plexus` key), not on `[[plexus-diagram/metadata]]`. Sections are parent blocks of their cards. Connections are blocks under a collapsed **Connections** child that read `[[A]] → label → [[B]]`, so both ends get a backlink and notes live as children.\n- **Graph links.** References and attributes that already exist between cards are drawn as dashed arrows colored by relation (`causes`, `Detected by`, `mentions`). **Write to graph** turns a labelled connection into `label:: [[B]]` on the source.\n- **Heptabase features.** 10 colors for cards, sections, text, and connections; sections drawn by drag or Cmd+G around a selection, with titles above the frame; ports on every edge; curve / straight / elbow routes, direction, dash, weight; selection box, alignment guides, align / distribute; text headings; minimap; board search; Add panel with Search and Related; card editing with Roam's own editor (page cards open the whole page); zoomed-out map view with readable titles.\n- **Fast by construction.** Pan and zoom move one transform (p95 frame 4.5 ms on a 120-card board, no renders, no writes). Only on-screen cards render content; zoomed out, cards show titles only. Opening a board writes nothing; the viewport is per device.\n- **Fixed from 0.6.4:** Section tool made two frames per drag and one per click; sections did not hold cards and had no color; the connection inspector covered the connection; text typed into a new card was lost; the sync indicator went pending on pan and zoom; diagrams on normal (non-daily) pages were never discovered; `[[links]]` inside cards did not open; keyboard shortcuts were swallowed by the diagram block.\n- **Migration.** Boards enhanced with 0.6 upgrade once on first open (positions, colors, sections with their cards, connections with labels and styles). Native diagrams import on **Enhance** (positions, groups as sections, edges as connections). Diagrams you never enhance are never written.\n- Commands: Enhance this diagram, New whiteboard here, Restore native diagram, Fullscreen this diagram.\n\n## 0.6.4 — 2026-09-05\n\n- **Inspector Comment** — converts the edge label to native Roam comments (one-way → target, two-way → both) then clears the pill.\n\n## 0.6.3 — 2026-09-05\n\n- **Idle card children** — after click-away, idle cards `renderBlock` the card uid so child bullets stay visible; deep pull includes nested `:block/children`; empty placeholder only when string is blank and there are no children.\n- **Board background** — toolbar cycles Dots / Lines / Solid (`grid-style` persisted).\n\n## 0.6.2 — 2026-09-05\n\n- **Connect hit-test** — targets resolve from the painted card rects (`getBoundingClientRect`, 12px handle inflate) before `elementsFromPoint` and world-rect math, and the card hovered on the last pointermove is the fallback for a captured pointerup.\n- **Rubber-band** — the edge and temp-wire SVGs cover content ∪ viewport (2000px pad) so the dashed wire paints across a panned board.\n- **No junk cards** — a click-click that misses a card cancels the arm; only a real drag onto empty board creates a linked card.\n- **Version badge** — the toolbar stamps the package version, not Roam's `DEV` developer-extension version.\n\n## 0.6.1 — 2026-09-05\n\n- **Connect hit-test** — when Electron's `elementsFromPoint` misses cards under `.pxd-world`, resolve targets from world-space node rects (12px handle inflate). Click-click arms and drag-to-card both work.\n- **Delete cards** — Delete/Backspace on a selected card removes it from the diagram (adapter + metadata), not just edges.\n- **Scratch children** — `blankScratch` deletes scratch-host children so a new card editor never inherits the previous card's bullet tree.\n\n## 0.6.0 — 2026-09-05\n\n- **Visible arrows** — connector stroke and marker fill are resolved colors, not `var()` in SVG attributes. Marker ids are unique per canvas. Heads scale with zoom (`clamp(10 / zoom, 6, 24)`).\n- **Ports** — drag from a card handle stores `from::` / `to::` (`auto|top|right|bottom|left`). Click-click and connect-to-empty still work.\n- **Per-edge direction** — `direction::` `oneWay|twoWay|none` on `edge A->B`. Global Arrowheads is the default for new edges only.\n- **Inspector** — click a line for a floating cluster: direction, Flip (disabled if the reverse exists), Route, Label, color, Delete. Mutations `await flushLayout()`.\n- **Schema** — optional `from::` `to::` `direction::` `color::` children under the existing edge row. `[[plexus-diagram/metadata]]` only. No `:diagram/*` / `:harc/*`.\n\n## 0.5.0 — 2026-08-29\n\n- **Connect two-click + temp wire** — Connect stays on after an edge. Click-click or drag; the rubber-band lives on `.pxd-edges-temp` above the cards and follows the cursor immediately. Handles are a 12px disc with a larger hit target.\n- **In-place nested boards** — opening a nested diagram does not call `openBlock` / change the hash. The parent session stays loaded; crumbs sit on the toolbar and Esc pops one level.\n- **Section and card color** — toolbar swatches (eight Blueprint-ish ids plus default) write `color::` on nodes and sections. Dark mode uses the border as the signal.\n- **Section click-rename** — a single click on the section title starts rename; pointerdown on the label does not drag the frame.\n- **Review pack** — session swap flushes the outgoing board then cancels persist timers; unused parent pull-watches stop; Esc nest-pop only when the overlay owns the pointer; connect-to-empty rolls back a failed edge persist.\n\n## 0.4.2 — 2026-08-28\n\n- **Svy Beam caret** — overlay inputs use native `caret-color` and `cursor: text` (higher specificity than Beam's custom hotspot cursor). `focus({ preventScroll: true })` plus a capture-phase guard stop Roam from scrolling the outline copy of an editing card into view.\n- **Right sidebar inset** — fullscreen also ResizeObserves the right sidebar and re-places on the next two animation frames after the article class changes. When the article's right edge is within 8px of the viewport, the overlay `right` inset is 0.\n- **Library portal** — the drawer mounts on `document.body` (fixed, 320px, 14px) so it is not scaled by `.pxd-world`. Items are opaque `#f5f8fa` / `#182026`. Empty search hides `roam/js/` and `roam/css` pages.\n- **Nested crumbs** — opening a nested board pushes the parent onto a crumb stack (`Parent › Current`). Clicking a crumb opens that block (or page). Nested cards show the parsed name; unnamed boards get an inline \"Name this board…\" field.\n- **Connect to empty** — dragging a handle onto empty board creates a card at the drop point, links it, and enters edit (Heptabase pull-from-port). Handles are 14px. An existing edge is kept if you connect the same pair again.\n- **Review pack** — nested open passes parent uid explicitly; nest stack truncates on multi-level back; drop parsing no longer treats incidental 9-char tokens as block refs; connect failures do not leave dangling edges; nested name timers clear on repaint and dispose.\n\n## 0.4.1 — 2026-08-28\n\n- **Pending-changes patch** — layout persist no longer delete-all/recreates the metadata tree. Existing diagram blocks are patched in place: only changed `pos::` / `size::` / `color::` / edge / section rows are written, identical strings are skipped, and gone ids are the only deletes. Viewport persist is still the one-line `setViewport` path.\n- **Article-pane fullscreen** — fullscreen follows `.rm-article-wrapper` (below the topbar, inset with the left sidebar) instead of `sidebar.right`. ResizeObserver on the article and sidebar plus a class MutationObserver re-place the overlay when the sidebar opens or closes. Drop `[[page]]` / block uid from the sidebar onto the board to add a card.\n- **Visible sections** — sections use a 2px solid border, a light blue fill, `pointer-events: auto`, a default \"Section\" label, drag, corner resize, and double-click rename.\n- **Opaque library** — the drawer sets its own `#ffffff` / `#1c2127` background so it stays readable when mounted outside `.pxd-root`. Blank titles and `roam/js/` pages are hidden until you search.\n- **Nested overlay** — adding or opening a nested `{{[[diagram]]}}` card registers it as enhanced and opens our overlay fullscreen, not native Empty Roam Diagram. Nested cards show \"Nested diagram\" instead of the raw macro. Nested open no longer waits on the parent canvas.\n- **Connect hit-testing** — `cardFromPoint` walks `elementsFromPoint` and ignores edge-hit strokes; temp edges are `pointer-events: none`; connect-tool handles stay visible.\n\n## 0.4.0 — 2026-08-28\n\n- **Fullscreen vs breadcrumbs** — fullscreen hides `#roam-breadcrumbs-panel` / `.breadcrumbs-content` only while `body.pxd-has-fullscreen`. The overlay sits below the remaining topbar and to the right of the left sidebar (article fill, not the whole window). Resize recomputes the inset. Inline boards leave breadcrumbs alone.\n- **Scratch-host card editor** — double-click no longer `renderBlock`s the card uid (the hidden native diagram still owns it). Edit mounts on a `pxd:scratch` child of `[[plexus-diagram/metadata]]`, hydrates until MutationObserver-quiet, then a trusted mousedown/mouseup/click. Commit pulls the scratch string onto the card; empty pulls never overwrite known text.\n- **Connection notes** — labels live on the connector (`label::` under `edge A->B`), not as extra cards. Double-click the line or click the midpoint pill. `show-edge-labels` defaults on.\n- **Commands** — palette and slash keep Enhance, Restore, and Fullscreen only. Toolbar is a single nowrap row. `V` / `C` / `N` / `F` when the overlay owns the pointer.\n- **Sync silence on open** — remounting an already-enhanced diagram no longer rewrites `[[plexus-diagram/metadata]]` or `:rf-diagram` viewport props when the stored snapshot already matches.\n- **Viewport-only persist** — pan/zoom/fit writes only the `viewport::` metadata line; node/edge/section children are left intact.\n- **Dirty flags** — initial fit, fullscreen resize, and dispose no longer schedule Roam writes; persist runs only after real user gestures (pan, zoom, drag, Fit, etc.).\n\n## 0.3.2 — 2026-08-28\n\nDouble-clicking a card no longer blanks its text: `setBlockFocusAndSelection` was focusing the outline copy of the same uid (Roam then cleared the overlay mount), and a same-tick `focusout` committed an empty pull. Overlay editors now keep a text fallback until `renderBlock` hydrates, ignore focusout for 1s, and refuse to commit an empty pull over known text. Fullscreen sits below `.rm-topbar` so RoamJS breadcrumbs stay clickable and the Plexus toolbar is not hidden under it.\n\n## 0.3.1 — 2026-08-28\n\nHouse / daily-tab navigation left a `position:fixed` overlay covering the daily notes. Native Maximize unmounts on route change; our mount often survives because the diagram block is still in the outline. `hashchange` / `popstate` now exit fullscreen, drop `--zoomed`, and restore the inline height whenever the open page uid is no longer the diagram. The 250ms reconcile does not do this, so a Fullscreen click on an inline embed is not immediately undone.\n\n## 0.3.0 — 2026-08-28\n\nCanvas rewrite: the board is usable. Imported native React Flow nodes (165×83 on the live graph) are floored to real cards (min 240×140, default 280×160), and a viewport that paints any card under 140px, has zoom below 0.7, or shows no card at all is rejected and replaced by a fit once the root has a size (single card fits at zoom 1.5, centred; fitted viewport persisted once). Pan, wheel zoom, card drag and corner resize touch only CSS (`.pxd-world` transform, one card's box, the edges hanging off it) — no `innerHTML` rebuild, no Roam write per pixel; viewport/layout persist on pointer-up and wheel-end with a 150 ms debounce, serialized through one queue per session. Cards render with `renderString`; double-click swaps in the native block editor (`renderBlock`) and blur/Esc commits it back, so Roam chrome no longer paints into every card. `render()` reconciles card elements by uid, so a pull during editing never tears down the caret. Drag from a card's connect dots (or any card with the Connect tool) onto another card to link. Double-click empty board adds a card at that point; Card/Nested tool clicks still add. A hint pill explains pan/add/fullscreen on boards with ≤1 card until the first pointer down. Zoomed diagram pages open in fullscreen (`fullscreen-on-zoom`, default on; inline embeds stay inline). Grid lives outside the world and tracks pan/zoom; a live minimap replaces the empty box; toolbar buttons are grouped, high-contrast, with a zoom readout. Dark mode: card and toolbar backgrounds from `--bc-main` / `--bc-menu`, 1px visible borders, 2px `--cl-blue` ring for selection — no tinted fills. `applyPull` keeps in-memory positions, sizes, edges, sections, and viewport (a pull only refreshes content), so a debounced persist can no longer be undone by a concurrent add.\n\n## 0.2.1 — 2026-08-27\n\nFix dead board on zoomed block pages. Navigating to `#/app/<graph>/page/<uid>` destroys the overlay DOM and the MutationObserver never remounted it. A reconcile pass (hashchange/popstate + 250ms interval) now prunes detached views, finds the native canvas — via the dated `block-input-…-body-outline-MM-DD-YYYY-<uid>` suffix or the location hash when ancestors carry no `data-uid` — and remounts the overlay. The pre-paint guard uses `display: none` (React Flow nodes punch through `visibility: hidden` by re-setting `visibility: visible` on themselves) and also hides the native `.rm-diagram-title-panel` and `.react-flow` chrome. Zoomed mounts fill the article (`pxd-mount--zoomed`). Every mount is stamped `data-diagram-uid` and remounts are idempotent per uid.\n\n## 0.2.0 — 2026-08-27\n\nHeptabase-usable overlay: full-bleed board sizing from native diagram (min 560px), horizontal labeled toolbar with zoom/fit/**Fullscreen** (Esc exits; covers the window like native Maximize), empty-canvas pan and cursor-anchored wheel zoom, Roam bullet/ref-count chrome hidden on cards, searchable library drawer that toggles without covering the board, and card titles off by default.\n\n## 0.1.4 — 2026-08-27\n\nSlash/command Enhance was a no-op: typing `/enh` puts the diagram block in edit mode, which unmounts `.rm-diagram`. The command now remembers the uid and waits for the native canvas to remount before overlaying.\n\n## 0.1.3 — 2026-08-27\n\nSlash commands use the same labels as the command palette (Roam Grid pattern), so `/enh` lists **Plexus Diagram: Enhance this diagram**.\n\n## 0.1.2 — 2026-08-27\n\nMetadata writes now generate UIDs before `block.create` / `page.create`. Live roamAlphaAPI returns `undefined` from those calls, so the first enhance was dropping `schema-version::`, `enhanced::`, and node/edge lines. Nested-diagram open uses `roamAlphaAPI.ui.mainWindow.openBlock`.\n\n## 0.1.1 — 2026-08-27\n\nLive-wire fixes against roamAlphaAPI (CDP, Svy graph):\n\n- Fix native hide inversion: `.pxd-native-hidden` now sets `display: none`; pending state uses visibility\n- Use EDN string pull pattern for `data.pull`; strip keyword colons from pull results\n- Generate child block UIDs via `util.generateUID()`; default create order `\"last\"`\n- Viewport writes try `roamAlphaAPI.updateBlock` before `data.block.update`\n- Register slash/context commands via `addCommand`/`removeCommand` with live callback shapes\n- Auto-enhance and focus checks pull `[:block/string]` via `roamAlphaAPI.data.pull`\n- Find native diagram hosts via `diagramElForUid` (id suffix, data-uid, block-ref)\n- Library mounts as overlay drawer; queries `roamAlphaAPI.data.q`; filters daily pages by UID\n- Card/Section toolbar tools place items at click position; library uses viewport center\n- Default `restore-native-on-unload` to false; unload disposes sessions without deleting metadata\n\n## 0.1.0 — 2026-08-27\n\nInitial release of Plexus Diagram.\n\n- Hide native `.rm-diagram` React Flow renderer for enhanced diagrams and mount a vanilla DOM/SVG canvas overlay\n- Keep Roam diagram children as the canonical card store; persist layout on `[[plexus-diagram/metadata]]`\n- Writable viewport via native `:rf-diagram` props; import native node positions when metadata is absent\n- Heptabase-like toolbar, cards, connectors, sections, library sidebar, and fat settings panel\n- Command palette, slash command, and block context menu integration\n- GitHub Pages developer extension at https://svyk.github.io/plexus-diagram\n";
+var CHANGELOG_TEXT = "# Changelog\n\n## 2.20.0 — 2026-10-06\n\nStatuses, journal, fullscreen tabs, touch, and a round of reliability work.\n\n- Task statuses (with Roam Task Status Tags 0.9.0 or later loaded). A task card shows its status as the same glyph Task Status Tags draws on the checkbox (Active, Waiting, In Review, Holding, Incubating, Alert, Cancelled) and as a chip. A small ring left of the checkbox opens a status chooser; Shift-click removes the status. The card menu and a multi-selection have Status ▸ (up to 45 cards at a time). Every status change is written by Task Status Tags, not by Plexus. Without it, the glyphs still show from a built-in table and the ring is not there.\n- Kanban \"Lanes: Status\": one column per status, plus No status and Done. Dropping a card on a column sets that status; dropping on Done completes it the same way the checkbox does. `[` and `]` move a focused card one column.\n- Journal tab in the panel: the day's top-level blocks with a day stepper. Drag a row onto the board for a card. Looking and stepping write nothing.\n- Fullscreen board tabs: boards you open while fullscreen collect as tabs above the board bar (up to 9). Cmd+1 to Cmd+9 switch. The tabs come back the next time you go fullscreen in this graph.\n- Touch and tablet: pinch to zoom, two fingers to pan, long-press for the menu, larger resize grips under a coarse pointer.\n- PDF highlights: a Note button on a highlight card opens its note the way Roam's own note button does (in the sidebar, focused), creating the note block only when there is none; one undo removes it. The pane's PDF switcher names a PDF without highlights by its page, and the arrow keys and Enter move through the list.\n- New drawing (Roam Plexus) is one undo step with its card.\n- Fixed: Plexus no longer replaces Roam's global `pull` function. Since 2.14.0 it answered other extensions' reads from its own cache. After updating, reload Roam once to clear the old copy's replacement.\n- Fixed: a board shown in its own linked references, or in the right sidebar, no longer goes fullscreen a second time on top of the main board (clicks and drops went to the hidden copy).\n- Developers: `node tools/live/smoke.mjs \"Readwisenotes - \"` runs a ten-step live check and cleans up only its own blocks; callback errors are counted and a callback that keeps failing is paused for a minute (Settings shows \"N errors\" when there are any); `npm run size` prints the bundle report.\n\n## 2.19.0 — 2026-10-06\n\n- Clicking into a page card no longer changes how it looks. The editor keeps the card's own text size, row spacing, indent and line wrapping. Roam's bullets, guide lines and extra scrollbar stay hidden, and the row you clicked stays where it was.\n- Drag a highlight straight out of the PDF onto the board, as in Heptabase. Hover a highlight in the reading pane (the cursor becomes a hand), then drag it onto the board: a card lands where you drop it. A highlight that is already on the board pulses instead of being added twice. A plain click on a highlight still opens Roam's highlight menu, and selecting text to make a new highlight works as before.\n- Clicking a highlight in the pane's list, or the page footer on a highlight card, scrolls the PDF to that highlight and flashes it, not just to the top of its page.\n- The PDF reader fills its part of the pane. There is no longer a second scrollbar around it, and Roam's toolbar (highlight tools, zoom, page number) stays in view.\n- The link legend (the chips that turn link types on and off) sits under the board bar, beside Properties, instead of on top of the bar's buttons.\n- While you edit a page card, hovering a row shows a faint bullet in the margin; drag it to move the block, click it for Roam's block menu.\n- A board that is open in the right sidebar while the main window is zoomed into the same board stays in the sidebar. Before, both copies went fullscreen and the sidebar copy covered the main board, so clicks and drops on the board did nothing.\n\n## 2.18.0 — 2026-10-06\n\nPDF highlights closer to Heptabase (roadmap P27), page cards you can edit in place, and two speed and freshness fixes:\n\n- Open reader on a PDF card opens a reading pane beside the board instead of inside the card. The card stays a cover. Drag the pane's edge to resize it; on a narrow board it sits below.\n- The pane lists every highlight in that PDF with its colour, page, and note. Filter by colour, page, or text. Place puts one card on the board; a highlight already on the board pulses instead of being added twice. Drag a row onto the board for a card at that spot.\n- A highlight card's footer opens the pane at that highlight's page and flashes the card. The page holds after Roam restores the last page it showed.\n- A note under a highlight (a child block) shows on its card and follows edits.\n- Clicking into a page card edits it in place. The card keeps its size and look; the row you clicked gets the cursor; Escape returns to the same view.\n- A `((ref))` card follows edits to its source, including edits made while the card was off screen or the board was closed.\n- Graph links are drawn after the board's first paint, so opening a board feels faster.\n- The colour tooltip on a highlight now says what changes: the card and the list follow the tag, the mark inside the PDF keeps the colour Roam painted.\n\n## 2.17.0 — 2026-10-06\n\nFeel instant (roadmap P26), after the claude.ai speed work:\n\n- Going back to a board you just left is instant: the last two boards stay ready (paused, nothing running) and come back as they were, fullscreen included, with no rebuild.\n- A board opens with a quick sketch of its last layout while the real board loads.\n- Hovering a board chip, a board card, a breadcrumb, or a link to a board quietly reads that board ahead of the click.\n- Cards load in small batches nearest the middle of the screen first, so a big board never freezes the page.\n- Selecting a card no longer touches every other card (the same cost on a 300-card board as on a 40-card one).\n- Faster text checks on every card (tags, regions, attributes, diagram detection).\n- Cards and page rows keep their size while their content loads, so nothing jumps.\n- Optional speed log in settings (off by default): open time, click time, pan smoothness, Plexus long tasks.\n- Developers: `npm run perf:ratchet` keeps measured counts from getting worse; a hidden `speed-flags` setting turns each speed feature off without a release.\n\n## 2.14.1 — 2026-10-06\n\n- Typing stays light while a board sits in an open right sidebar. Plexus read Roam's whole sidebar window list every 400 ms (about 6 ms each time with 140 windows); it now reads the window's own open/closed arrow instead.\n\n## 2.14.0 — 2026-10-06\n\n- PDFs, videos, tweets and other heavy embeds on a card, a page row or an outline row show a poster until you open them. Only one stays live per board.\n- A board you scroll away from, a collapsed sidebar window, or a board under a closed block stops working in the background and comes back where you left it.\n- Opening a board reads Roam about six times less (about 24 calls instead of 155 on a 39-card board), so other extensions keep their share of Roam's limit.\n- Typing in a card updates that card only. Typing on a page that is a page card updates the changed row only.\n- Typing outside a board keeps the board open instead of closing and reopening it.\n- Panning no longer measures every arrow handle on each mouse move.\n- Board chips at the top of a page are placed once per frame instead of scanning the whole page for every change.\n- A live speed check for developers: `node tools/live/perf-gate.mjs`.\n\n## 2.13.2 — 2026-10-05\n\n- A board in the right sidebar opens as the board. Outline is still in the mode bar, and the last choice is remembered on this device.\n- Outline rows render when they scroll near the window. A row that scrolls far away unmounts and keeps its height, so a PDF lower down does not stay open.\n- Clicking and panning a board stays fast in a window that has been open for days. Old copies of a board no longer keep listening after they close, and loading Plexus again cleans up an earlier copy that never unloaded. One click had been waking thousands of leftover copies.\n- A board that fails to open waits before trying again, instead of retrying every 400 ms.\n\n## 2.13.1 — 2026-10-05\n\n- An image card keeps its picture at map zoom. A collapsed or empty card still shows its title.\n- A card that cites part of an image shows that crop. A region inside the card still uses its own block.\n\n## 2.13.0 — 2026-10-05\n\n- Every diagram opens as a Plexus board by default. Nothing is saved until you change the board. Your first edit writes the board marker in the same undo step, and folds the outline when Collapse the outline is on.\n- A diagram that already has native shapes stays Roam's own. An Open as Plexus board button over it imports the shapes and arrows.\n- Settings has Every diagram is a Plexus board. Turn it off to open only diagrams you enhance or create with New whiteboard here. Turning it off gives the native diagram back to boards you have not changed.\n- Plexus: Restore native diagram now sticks, even with the setting on. Plexus: Enhance clears it.\n- Fixes from a review of 2.8 to 2.12:\n  - A page that is a card on a board no longer throws or loops when it opens. Its board chip sits under the page title.\n  - The references drawer lists top-level blocks again.\n  - Cutting or duplicating an image card keeps its regions. Deleting one asks first and shows how many regions it has.\n  - Clearing a connection's why no longer deletes a note that has children.\n  - An open PDF reader stays mounted while it is in view, and arrows meet its edge. Page chips refresh when highlight cards change.\n  - Encrypted-graph PDFs (`.enc`) show their highlights.\n  - Each image highlight reuses one regions block.\n  - Fewer reads on large boards: highlight watches are capped, block props are read only for highlights, and the Info panel counts references without pulling them all.\n  - Memory lane arrows follow the cards. Suggested lines follow a dragged card, and their menu sits at the line.\n  - Escape works on a full-screen board. Annotate is one undo step.\n  - Popovers close when the pointer leaves. Unload no longer removes Roam's own nodes.\n- The command palette stays two entries.\n\n## 2.12.1 — 2026-10-05\n\n- Double-click a connection label to edit the label and a why note. Enter saves both. The outline chip adds \"because …\". An empty why writes no child.\n- Shift+T opens a memory lane. Play fades cards that did not exist yet. A snapshot tick restores that layout and writes nothing.\n- The references button on a block card lists blocks that mention it, grouped by year.\n- The links menu can draw dotted lines for shared page references. Connect makes the connection. Link text wraps the mention.\n- Plexus Commands has Resurface here. It inserts a button that lists cards from a week, a month, or a year ago. The command palette stays two entries.\n\n## 2.12.0 — 2026-10-05\n\n- Hover the info button on a card or a connection to see when it was made, the board, the section, cards from the same day, and how often it is referenced. A block on a board shows one chip per board. Hover the chip for a map. Click the chip to open that card. Nothing here writes. The command palette stays two entries.\n\n## 2.11.4 — 2026-10-05\n\n- A PDF card shows one chip per page that has a highlight on the board. The badge is the count. A click pulses those cards. A double-click opens that page in the card reader. An arrow into a highlight shows the page at the tip. A highlight in the outline says On board when that highlight is a card. None of these write. The command palette stays two entries.\n\n## 2.11.3 — 2026-10-05\n\n- Open in reader on a highlight card opens that page in the PDF card on the same board. The mark stays in view. If that PDF card is not on the board, Roam opens the highlight and a note says to click it. The click does not write. The command palette stays two entries.\n\n## 2.11.2 — 2026-10-05\n\n- Add highlights on a PDF card places the ones you pick, as a grid or a column. One undo removes them. Dragging a highlight bullet onto the board makes one card. Dropping a date asks before adding only the highlights under that date.\n- An area highlight keeps the picture's shape. Mark region on that card stores a region under the highlight. The page mark keeps the colour Roam painted.\n- The tag lens can show one highlight colour. The command palette stays two entries.\n\n## 2.11.1 — 2026-10-05\n\n- A block ref of a PDF highlight is a card. It shows a colour bar, the passage or the area picture, and the page. Changing the colour tag updates the bar. A block that is not a highlight stays a normal ref. The command palette stays two entries.\n\n## 2.11.0 — 2026-10-05\n\n- A pdf block on the board is a card. The cover shows the file name and the highlight count. Open reader mounts Roam's own reader. Interact lets you use that reader. Escape or a board click puts the shield back. A second reader closes the first. Moving the card does not change the PDF settings. The command palette stays two entries.\n\n## 2.10.3 — 2026-10-05\n\n- With Compass loaded, a card menu can open Compass on that page. Compass can open the board that holds the card, and asks which board when there are two.\n- An image card can start an empty drawing beside it. The connection reads annotates. A note says to drop the image into the drawing, and it stays up after the drawing opens. The outline chip names the drawing. Without Roam Plexus that row stays hidden. The command palette stays two entries.\n\n## 2.10.2 — 2026-10-05\n\n- A block ref of a Roam drawing shows the drawing. Regions lists that drawing's regions, and picking one adds a reference on the board. New drawing here creates the drawing and a reference card. The drawing block is not rewritten. Without Roam Plexus the new drawing is still an ordinary drawing. The command palette stays two entries.\n\n## 2.10.1 — 2026-10-04\n\n- window.PlexusDiagram lists boards on a page, boards that show a block, and the cards and views on a board. It can open a card or a saved view, add one card, and return a small PNG of a board. Opening and the picture do not write. Adding a card writes that one block.\n- A block ref of a Roam Plexus region shows the caption, a crop, Open drawing, and Open in sidebar. Open drawing uses Roam Plexus. If Roam Plexus is missing, the card is an ordinary block ref. The command palette stays two entries.\n\n## 2.9.6 — 2026-10-04\n\n- An image card shows a small region count when it has regions. The card menu lists them: Go, Copy ref, Rename, and Delete. Rename changes only the caption. Delete asks when another block still references the region, and can open those mentions. Badges off hides the count. The command palette stays two entries.\n\n## 2.9.5 — 2026-10-04\n\n- Hover an image crop for a larger preview, the picture dimmed and the region lit. Click opens that image on its board, zoomed to the region, or scrolls the outline to the image and pulses the region. Shift-click opens the board in the sidebar. An inline view draws a small map. Hover enlarges it. Click opens the board at that view and pulses the highlighted cards. Shift-click opens the board in the sidebar. Neither click writes to the graph.\n\n## 2.9.4 — 2026-10-04\n\n- On an image block, the block menu item Plexus: Mark image region lets you drag a rectangle. Confirm stores the region under the image, copies a block ref, and toasts. Escape writes nothing. A plexus-region image button in the outline, a block ref, an embed, the sidebar, and linked references draws the crop at most 160px tall, with a 1px border and no shadow, and hides that button. A Roam Plexus region such as a rectangle is left alone. The command palette does not gain an entry.\n\n## 2.9.3 — 2026-10-04\n\n- On an image card, Mark region lets you drag a rectangle on the picture and add a short caption. Confirm stores that region under the image, copies a block ref, and toasts that it copied. The first undo removes the region. The next undo removes the empty container. The card stays put, and the image viewer does not open. The command palette stays two entries.\n\n## 2.9.2 — 2026-10-04\n\n- Save view, in More or with Shift+V, writes the current camera as one view block at the end of the board. A selection can save its own view from the context bar. The Boards tab lists those views, each with a 96px outline map. Go puts the camera back and writes nothing. Delete removes the view block, and undo puts that row back. The command palette stays two entries.\n\n## 2.9.1 — 2026-10-04\n\n- A new card is placed before the Connections list, snapshots, and a region container, so those stay at the end of the block. The library card count skips a region container the same way it skips Connections. Leaving a new empty card that only holds a region container no longer deletes that card.\n\n## 2.9.0 — 2026-10-04\n\n- A region container `{{[[plexus-regions]]}}` and its `{{[[plexus-region]]}}` children stay off the board. They are not cards. A card's child badge does not count them. Image regions and saved views can be stored in that shape. A Roam Plexus region is recognized and left as theirs. Nothing is drawn yet.\n\n## 2.8.0 — 2026-10-04\n\n- Better Tasks and the Task tool start off. Settings, Integrations, has four controls: Better Tasks integration, Task tool, Task chips, and Default project for new tasks. With both switches off, the dock has no Task button, K does nothing, and the ? sheet does not list K. A Task tool you already saved stays on. Turning Better Tasks on draws the light checkbox and the chips, and asks Better Tasks for attributes once. Turning it off puts Roam's own checkbox back. Opening, panning, and clicking a board does not call Better Tasks while the integration is off.\n- A card whose text has #bg-blue or #[[bg-blue]] takes that colour on the board when the colour highlighter's variables are on the page, in light and in dark. #c:red still colours bold text inside the card, and Plexus does not paint over it. A fill you set in the picker wins; clearing that fill brings the tag colour back. With no highlighter variables, named colours use a fixed palette and the tag stays visible in the card.\n- The colour picker's gear, Write as highlighter tag, is saved on that board. In that mode a named colour writes one #[[bg-name]] into the block and clears the card's fill. One undo restores the text and the fill together. Hex, darker, and lighter still change only the fill.\n- A key pressed outside the board no longer switches the tool or adds a card, while nothing on the board is selected. A selected card still receives the board's keys.\n- A card more than one screen outside the view keeps its size and skips layout. The card you are editing stays fully drawn. A card that stays outside the view for 10 seconds drops its live Roam body and draws it again when it comes back.\n\n\n## 2.7.1 — 2026-10-04\n\n- Dropping a repeating task on Done in the Kanban view now makes the next occurrence, the same as ticking its checkbox. Before, only a real checkbox click did, because Better Tasks starts the next occurrence from its own checkbox. The task is now finished through that same checkbox, out of sight, so you get the completed date and the next task together.\n- Popovers stay clear of the board's own controls. The task chip popovers, the children peek, the Background and tag popovers, the card colour picker and the right-click menu move aside or flip instead of opening under the dock, the top bar, the rail, the minimap or the Properties panel. When there is no room, they shrink and scroll.\n- Task cards are readable when you zoom out. At the map zoom the check box is at least 20 pixels on screen, with the due date under the title (teal today, red overdue). Zoomed far out, a task is one clear box: empty, checked or crossed, in the same colours.\n- The pill that shows a scrolled-out block arrow (\"↓ the block's first words\") stays inside its card. It is cut to the card's width less 16 pixels with an ellipsis and keeps the same size on screen at any zoom.\n- A board with many tasks no longer uses up Better Tasks' limit of 100 decorated checkboxes. A task card now draws a light checkbox of its own instead of a real Roam block, so a 40-task board added 40 real checkboxes before and adds none now, and Better Tasks keeps decorating the rest of the page. Clicking the box still completes the task through Better Tasks.\n- Checked for a freeze when the bench is run back to back with a task board open: five runs and five load-and-unload cycles did not reproduce it.\n\n## 2.7.0 — 2026-10-03\n\n- Task cards. A card whose block is a Roam TODO now looks like a task: Roam's own checkbox, the title, and a row of chips under it for the due date, project, priority, repeat, status, waiting-for and GTD. Today's due date has a teal border, an overdue task a red one, a done task is dimmed and struck through, and a cancelled one is struck through. Better Tasks' own pills are hidden inside the card so the chips are not doubled. At map zoom a task shows a check box, its title and its due date; zoomed far out it is a single check box.\n- New Task tool. Press K, or pick it in the dock or the canvas menu, then click the board: a TODO card appears and opens for typing. A task left with no text disappears when you click away, like an empty card. Cmd+Z right after makes one undo step. The card menu has Make task for a plain note.\n- Change a task from its chips. Click the due date, project, priority or repeat chip and pick from a small popover (today, tomorrow, next week or any date; a project from Better Tasks' list; low, medium or high; a repeat rule). The change is made by Better Tasks itself, so the attribute blocks keep their uid and Plexus still never writes a `BT_attr` block. Cmd+Z after a chip change is Roam's undo, not the board's. Without Better Tasks the tool makes a plain TODO card and the chips are read-only.\n- Finishing a task works the way it does in Roam. Tick the checkbox on the card and Better Tasks writes the completed date and, for a repeating task, the next occurrence on its daily or project page. A toast tells you the date and offers Add to board. Dropping a card on Done in the Kanban view does the same through Better Tasks.\n- Drag a task card onto a daily-page card (or a section named for a day) and its due date becomes that day, in the same attribute block. Hold Shift to move the card without changing the date.\n- Better Tasks' attribute blocks and its Activity log no longer count as children: they are never rows, never in the outline or the peek, and never a \"▸ N\" badge. Renamed attributes are read from Better Tasks.\n- Three new settings: Task tool (show it in the dock), Task chips (full, due only or none) and Default project for new tasks.\n\n## 2.6.0 — 2026-10-03\n\n- Editing a card no longer shrinks it. Opening a card or a sticky for editing used to let it collapse toward the height of one line, and its arrows came loose. The card now keeps its size for the whole edit, the editor fills it, and the text is no longer cut to one line when you start typing. Edges stay attached.\n- Sticky notes are rebuilt to work like the RoamJS sticky notes, and they stay saved. Each one has a coloured header bar you drag, with a short title, a colour dot and a minimize button. The body is the live Roam block: click once and type, with tags, images, links and the slash menu. Drag a corner or edge to resize. Minimize folds a note to its header and remembers it. There is no close button; Delete or the menu removes a sticky and Cmd+Z brings it back.\n- Page cards open faster. A card now shows all its rows as plain text at once, then turns the rows you can see into live Roam blocks a few at a time. Rows scrolled out of view, and heavy rows such as charts, embeds and images, wait until they are on screen. A page you pulled once is reused while the card is open. A 146-row page card used to block for about 150 ms while it drew; now it paints in about 20 ms.\n- Arrows to blocks now stay on their block. When a chart or an image above the target row loads late, or a row turns live, the card re-measures its rows and the arrow follows. Each linked row shows a small dot in its own arrow's colour, so two arrows into one card stay apart, and hovering one arrow lights only its row.\n- New tooltips for the sticky header: drag, minimize or expand, and the colour dot.\n\n## 2.5.0 — 2026-10-03\n\n- The connection preview is cleaner. The target block is now a highlighted bar inside its page card, at the block's real place in the page, with its text cut to the card's width, and the arrow runs into the bar with a head like the one on the board. Nothing spills over a neighbouring card any more.\n- The preview opens where it never covers the chip or the block line it belongs to: under it, else above, else beside it, shrinking and scrolling inside when the window is small. It follows the chip while you scroll or resize and closes when the chip leaves the screen.\n- Roam's breadcrumb above a connection block (in linked references and when you zoom into the block) now opens the same preview on a plain click, because Roam's own link there only led to \"Board › Connections\". A small ▦ marks it. Shift-click, Cmd-click and Ctrl-click still do what Roam does. Unloading removes the marks and the listeners.\n- Resize grips, connection dots and arrow-end handles keep the same size on screen at every zoom, so they are easy to grab on a zoomed-out board and no longer huge when zoomed in.\n- Light mode was checked on every new surface. Fixed: the connection chip could run past the edge of its block, and its teal was too pale on white.\n\n## 2.4.0 — 2026-10-03\n\n- The Add and Info panel now opens to the left of the control rail instead of covering it. The minimap steps left of an open panel. The rail keeps one fixed width, so the version badge no longer pushes it wider.\n- An arrow that ends on a block now visibly points at it. The line continues into the page card and its head stops beside the row's text. The row keeps a mark in the arrow's color (a left rule and a light tint; in the dark theme a border only, no fill). Hover the arrow and the row lights up; hover the row and the arrow thickens and a tooltip names the other card and the label. When the row has scrolled out of view, the arrow ends in a pill at the card edge with an arrow and the block's first words; click it to scroll the row back.\n- Connections now show up where Roam draws them. Under every connection block in the outline, the sidebar or a block's linked references, a small chip reads \"A —label→ B · on Board\" and names the block when the arrow ends on one. Click the chip to see a preview: a map of the two cards with the arrow and the target row, plus Open on board and Open in sidebar. Open on board opens the page, enters a nested board if needed, and selects the connection. Nothing is written, and unloading removes every chip.\n- The card's hover toolbar no longer disappears on the way to it. It waits 400 ms after the pointer leaves the card, so you can reach it and open its color picker. Moving to a different card switches the toolbar at once with no flicker. Escape, panning and zooming hide it immediately.\n- With the Hand tool you can now resize: a press on a resize grip resizes, anything else pans, and Space-drag still pans over grips. Page cards have a wider grip band on the right and bottom edges and a larger corner that sits above the scrollbar. The grips show when you hover a card in hand mode.\n\n## 2.3.0 — 2026-10-03\n\n- Board rows in page cards. A page card for a page that holds a board shows that board as a small map with its title and item count, not a grey box. After four maps on one card, the rest are one-line chips. The row for the board you are looking at says \"this board\". Click opens the board; Shift-click opens it in the right sidebar.\n- A row that Roam cannot render inside a card, such as an empty `{{[[roam/render]]}}`, now shows its raw text, muted, instead of \"Failed to render\". This also ends the Roam console errors the old page-card row caused.\n- Hover tooltips. Every control on the board bar, the dock, the rail, the card toolbar and the Properties panel shows its name, its shortcut and a one-line description after a short hover. Keyboard focus shows it at once. The tip sits below the board bar, above the dock, left of the rail, and stays inside the board. Settings, Hover tooltips, turns them off and hands the text back to the browser. Tooltip delay is instant, 350 ms or 800 ms.\n- A tooltip no longer stays on screen after the control it described is removed.\n- Ref cards and image cards show readable titles everywhere: Table, Kanban, Graph, Timeline, Gallery and Find use the first line of the referenced block or the image's alt text, never `((uid))` or a blank. Find matches the text a ref card shows.\n- Graph view draws a line for every connection, fits all cards inside its window and no longer scrolls them out of sight.\n- The end handles of a short arrow with a label can be grabbed. The label steps aside while the arrow is selected.\n- Gallery captions show the image's alt text, or nothing. They never show raw markdown.\n- The Escape that closes Search, a menu, or Gallery, Timeline and Graph no longer also leaves fullscreen.\n- Present mode hides the board bar, dock, Properties, rail, minimap and side panel, and brings them back on exit.\n- Shift-click only extends the selection. It no longer opens the Info panel.\n- Gallery, Timeline and Graph, the board bar and the Properties pill are opaque now, so nothing shows through. A collapsed Properties pill is only as wide as its label.\n- Section titles in the zoomed-out overview may run wider than a small frame before they are cut off.\n- Gallery, Timeline and Graph are also under More, Views, and under Views in the canvas menu. The template entry is now \"Timeline template\". An empty Timeline says that a date attribute or a daily-page reference makes a card dated.\n- The thin dotted curves that run across a board between cards are graph links, drawn for every shared page reference or attribute. They are not a stray line. Links, in the board bar or the L key, switches them off or to attributes only.\n\n## 2.2.0 — 2026-10-03\n\n- Board bar and tool dock. The top bar is now the board bar: breadcrumbs, Add, Info, links, views, background, present and More. The nine tools moved into a floating dock along the bottom. Settings, Toolbar layout, brings back the 2.1 look (Classic) or hides the top bar until the pointer nears the top edge (Dock only).\n- Dock settings: position (bottom, left or top), shape (pill or strip), tool names under the icons, and button size. A board can set its own dock position from the More menu, Dock position for this board; opening a board still writes nothing.\n- The active tool slides a highlight behind it. A locked tool (double-click) shows a padlock. In dark mode the active tool is a border and a dot, so it stays visible without a fill.\n- Dock options. With Card, Sticky, Section or Shape active, the dock shows that tool's colors, the block or card look, or the shape kinds. With nothing selected, a pick styles the next item you create with that tool and is forgotten when the board closes; with cards selected, it restyles them as before. One undo reverses it.\n- The last breadcrumb carries the board's own color, and the bar's bottom edge takes the same tone.\n- Overview zoom keeps Select, Hand and Board in the dock. A board narrower than 560 px gets smaller buttons and no options. A left dock no longer sits on the Properties panel.\n- The active and locked tool styles in the top bar lost to Roam's own button rules in dark mode. They hold now.\n\n## 2.1.0 — 2026-10-03\n\n- Enter in a card adds a line to the card's block, like a node in a native Roam diagram. Settings, Cards, \"Enter in a card\" set to Child brings back the old behavior of making a child block.\n- An empty white panel with a Close button no longer covers boards.\n- Pasting one image into a card inserted it twice. It now inserts once.\n- Dragging an image onto a card that is being edited works. Dropping an image on a card adds it after the card's text instead of replacing the text.\n- Whole-page cards: a page card shows the page title as a header and the whole outline, scrolls inside the card, and edits where you click. Add page… in the canvas menu adds a page by search. Dropping a page from the left sidebar makes a page card.\n- Arrows to a single block. Drag an arrow end over a page card and the row under the pointer lights up; dropping there connects to that block with a real `((ref))`, so it shows in Roam's backlinks. Dropping on the title connects to the page. Ends follow their row as the card scrolls and clamp to the edge with a marker when the row is out of view. A selected arrow has end handles to re-aim it, and the arrow menu has Connect to the page instead.\n- Card children. A note, block or ref card shows only its own block. A ▸ N badge opens the children as an editable outline inside the card, remembered per card, and hovering the badge peeks at them. Spread children as cards makes one card per child with an arrow back.\n- Note: note and ref cards now show only their own block until the badge is opened.\n- A selected arrow's end handle could only be grabbed on the half outside the card it ends on. The whole handle now grabs.\n\n## 2.0.0 — 2026-10-03\n\n- Card editing, outline navigation, templates, the table, snapshots, and the graph tools that landed after 1.3.0.\n- Gallery, timeline, and a read-only graph of the board. A section can lay cards out by date. Connections can bend or route around cards. Present shows a section's first child as notes, plus a laser and a pen that are dropped on exit.\n- A diagram in the right sidebar stays a gap until that window is on screen. Opening the sidebar parks the boards on the page.\n- A 300-card board shows its first shells in about 1 second and finishes the rest over the following frames. Detail and overview pan hold 60 fps. Zooming across the detail threshold is about 57 to 59 fps, and that switch no longer produces a long task.\n- The same board in two Roam windows kept the same 6 cards and 4 connections across 30 moves.\n\n## 1.3.0 — 2026-10-01\n\n- Native parity on an enhanced board: plain block cards, a node hover toolbar, a right-hand control rail, a properties panel, PNG export, outline in the sidebar, boards in the sidebar, edge styles, native embeds, style import on Enhance, per-card expand, minimap drag, keyboard parity, and Edit Block.\n\n## 1.2.0 — 2026-09-29\n\nFixes from the second round of testing on 1.1.0:\n\n- **Zoomed-out cards stay inside their box.** Map view is a clean title-only tile: three-line clamp, font capped by the tile height, nothing spills below the card. Ref titles are cut at 120 characters and header text at 160. The level of detail now switches while you zoom (with hysteresis, one class toggle), not only when the gesture ends. A third tier below 20% shows section titles only.\n- **Nested board thumbnails are real thumbnails.** A padded frame with mini cards (border, fill, title), sections as tinted frames, connections, and an \"Empty board\" state, instead of one white box.\n- **Sections auto-fit.** A card moved, resized, created, or pasted past a section edge grows the section to contain it (24 px padding), live during the drag and saved as one undo step. It cascades through nested sections, never shrinks by itself, and can be turned off per section or with the `auto-fit-sections` setting.\n- **Board backgrounds.** Dots, lines, grid, and plain patterns and paper or ten palette tones, chosen per board from the Background button (stored in the board block's props) with a default in Settings.\n\nAdded:\n\n- **Right-click menus** for the board, cards, sections, text, connections, multi-selection, and the More menu.\n- **Duplicate and clipboard.** Alt+drag and Cmd+D duplicate (Alt+Shift makes `((ref))` cards); copy and paste as refs or as copies, across boards; pasted text and images become cards. Send to board, Boards tab (every board in the graph), Outline tab.\n- **Keyboard.** Tab and Shift+Tab step through the outline, F focus mode, Q quick look, P presentation, M mind map from a card's child blocks, Cmd/Ctrl+Alt+Enter fold, double-click a bottom or corner grip to fit or reset height. Arrow keys nudge the selection 1 px (Shift for 10 px); Alt+Arrow selects the nearest card in that direction (Alt+Shift adds), as in Heptabase.\n- **Layout tools.** Tidy (row, column, grid, outline order), same size, fit height, reset size, fit section, fold all, optional space-out after a move, \"Back to content\" button.\n- **Pin.** Pinned items do not move, resize, or delete.\n- **Card badges.** References, boards, and open and done TODO counts, read from Roam (never written); a `((ref))` to a board renders its thumbnail; journal cards for today and this week.\n- **Export.** Export board as SVG and Copy board as text (commands and board menu).\n- **Review fixes.** Cut and paste now moves a note, text or section (the clipboard carries a snapshot; before, the paste was a dead `((ref))`). The Open button, double-click and Enter open a whiteboard-shortcut card. Settings changes reach open boards' sessions live. A pinned section is never grown by auto-fit. Fit height can shrink a card. Fit / Reset size / Same size never leave a card outside its section. A pinned card no longer pushes other cards in space-out. Escape closes the Background popover first. Right-clicking a ref, tag, link or image inside a card keeps Roam's or the browser's menu. Tab is only taken while the board itself has focus. A tall menu scrolls inside a small board. Thumbnails title `((ref))` and image cards. The section grows live while you type in a card at its edge. Card badge queries run in idle slots and are cached for two minutes.\n- New settings: default board tone, map view threshold, auto-fit sections, space out cards, show card badges; grid accepts `grid`. API and build: see `docs/api-plexus-1.0.md` (\"1.2 additions\") and `docs/spec-plexus-1.2.md`; `src/css/*.css` is appended to the bundle.\n\nFixed after live testing in Roam Desktop:\n\n- **One Cmd+Z per operation.** Duplicate, Alt+drag, mind map, Tidy, and a drag that grows a section each took one Cmd+Z per block written; the Undo toast button undid one block. Writes of a transaction are now grouped, and Undo and Redo step over the whole group.\n- Map-view cards clamp to exactly three lines (no fourth-line sliver, no ellipsis in the middle of a tall card); section titles show an ellipsis; far zoom-out no longer paints a dot moire; colored cards read at overview zoom; whiteboard-shortcut cards keep their thumbnail at map zoom.\n- Ctrl-wheel zoom and paste use the board's current position after the Roam page scrolls (they were off by the scroll distance).\n- Pasted images are `![](url)`, not `![](![](url))`.\n- The section preview no longer snaps back while you type in a card at its edge.\n- Fit keeps content below the toolbar and left of an open panel (Outline click fits the visible area); the context bar no longer covers the toolbar or the panel; double-click on the middle of a card's bottom edge fits its height.\n- Mind map from a card that already has child cards on the board lays the rest out around them, and says when the 24-branch cap left nodes out. Add this week no longer stacks a card on an existing one. Duplicating a section says \"section\".\n- The OS dark-mode hint no longer darkens a board on a light Roam theme.\n- **Typing in a card: Enter no longer drops you out of the card.** Root cause: the card editor stopped the mouseup that Roam uses to end its block drag-select, so a new block created under the resting pointer turned the edit into a block selection. Mouseup now passes through.\n- **Undo limits.** Roam keeps only the last 50 changes, so one Cmd+Z sequence can undo an operation only if it fits. Mind maps cap at 24 branches (\"Mind map: 24 of 45 branches (cap)\") and bulk adds (large pastes, multi-drops, Add all) at 45 cards (\"Added 45 of N (Roam undo holds 50 changes)\").\n\n## 1.1.0 — 2026-09-29\n\nFrom the first round of testing on 1.0.0:\n\n- **Cards show their content.** Note and block-reference cards render the whole block (and its children) instead of a truncated first line over an empty body. A long single-line `((ref))` card is readable again.\n- **Drag blocks in from Roam.** Dragging a bullet from the outline or the right sidebar onto a board adds it as a `((ref))` card (a page becomes a `[[page]]` card). Multi-block drags stack. The source block is never moved.\n- **Typing in a card.** Enter adds lines inside the card and keeps the caret there; if Roam drops focus while it moves between blocks, the editor takes it back. The card header no longer repeats and lags behind what you type, and text items keep their heading size while editing.\n- **Nested boards (Heptabase sub-whiteboards).** New Board tool (W): click or drag to add a board card, or select cards and choose **Move into new board**. Board cards show a mini map, item count, and a name field. Double-click or Open goes into the board in place with a `Parent › Child` breadcrumb; click a crumb or press Esc to go back up. Drag a card onto a board card to move it inside (with Undo). Boards opened from their own page get crumbs for their parent boards.\n- **Collapsed board blocks.** The board block is collapsed once so Roam does not list its cards as bullets under an inline board; expand the bullet to see them. Turn it off with **Collapse board blocks in the outline**. A nested board no longer opens a second overlay from an expanded outline.\n- Import and Restore keep a nested board's marker; a board deleted while open closes cleanly (a nested one pops to its parent).\n\n## 1.0.0 — 2026-09-28\n\nRewrite. The 0.6 canvas (one 2,200-line closure) is replaced by a model / host / session / view split with 204 unit tests and a live CDP gate on Roam Desktop.\n\n- **Everything is a Roam object.** Card layout lives in each block's `:block/props` (`plexus` key), not on `[[plexus-diagram/metadata]]`. Sections are parent blocks of their cards. Connections are blocks under a collapsed **Connections** child that read `[[A]] → label → [[B]]`, so both ends get a backlink and notes live as children.\n- **Graph links.** References and attributes that already exist between cards are drawn as dashed arrows colored by relation (`causes`, `Detected by`, `mentions`). **Write to graph** turns a labelled connection into `label:: [[B]]` on the source.\n- **Heptabase features.** 10 colors for cards, sections, text, and connections; sections drawn by drag or Cmd+G around a selection, with titles above the frame; ports on every edge; curve / straight / elbow routes, direction, dash, weight; selection box, alignment guides, align / distribute; text headings; minimap; board search; Add panel with Search and Related; card editing with Roam's own editor (page cards open the whole page); zoomed-out map view with readable titles.\n- **Fast by construction.** Pan and zoom move one transform (p95 frame 4.5 ms on a 120-card board, no renders, no writes). Only on-screen cards render content; zoomed out, cards show titles only. Opening a board writes nothing; the viewport is per device.\n- **Fixed from 0.6.4:** Section tool made two frames per drag and one per click; sections did not hold cards and had no color; the connection inspector covered the connection; text typed into a new card was lost; the sync indicator went pending on pan and zoom; diagrams on normal (non-daily) pages were never discovered; `[[links]]` inside cards did not open; keyboard shortcuts were swallowed by the diagram block.\n- **Migration.** Boards enhanced with 0.6 upgrade once on first open (positions, colors, sections with their cards, connections with labels and styles). Native diagrams import on **Enhance** (positions, groups as sections, edges as connections). Diagrams you never enhance are never written.\n- Commands: Enhance this diagram, New whiteboard here, Restore native diagram, Fullscreen this diagram.\n\n## 0.6.4 — 2026-09-05\n\n- **Inspector Comment** — converts the edge label to native Roam comments (one-way → target, two-way → both) then clears the pill.\n\n## 0.6.3 — 2026-09-05\n\n- **Idle card children** — after click-away, idle cards `renderBlock` the card uid so child bullets stay visible; deep pull includes nested `:block/children`; empty placeholder only when string is blank and there are no children.\n- **Board background** — toolbar cycles Dots / Lines / Solid (`grid-style` persisted).\n\n## 0.6.2 — 2026-09-05\n\n- **Connect hit-test** — targets resolve from the painted card rects (`getBoundingClientRect`, 12px handle inflate) before `elementsFromPoint` and world-rect math, and the card hovered on the last pointermove is the fallback for a captured pointerup.\n- **Rubber-band** — the edge and temp-wire SVGs cover content ∪ viewport (2000px pad) so the dashed wire paints across a panned board.\n- **No junk cards** — a click-click that misses a card cancels the arm; only a real drag onto empty board creates a linked card.\n- **Version badge** — the toolbar stamps the package version, not Roam's `DEV` developer-extension version.\n\n## 0.6.1 — 2026-09-05\n\n- **Connect hit-test** — when Electron's `elementsFromPoint` misses cards under `.pxd-world`, resolve targets from world-space node rects (12px handle inflate). Click-click arms and drag-to-card both work.\n- **Delete cards** — Delete/Backspace on a selected card removes it from the diagram (adapter + metadata), not just edges.\n- **Scratch children** — `blankScratch` deletes scratch-host children so a new card editor never inherits the previous card's bullet tree.\n\n## 0.6.0 — 2026-09-05\n\n- **Visible arrows** — connector stroke and marker fill are resolved colors, not `var()` in SVG attributes. Marker ids are unique per canvas. Heads scale with zoom (`clamp(10 / zoom, 6, 24)`).\n- **Ports** — drag from a card handle stores `from::` / `to::` (`auto|top|right|bottom|left`). Click-click and connect-to-empty still work.\n- **Per-edge direction** — `direction::` `oneWay|twoWay|none` on `edge A->B`. Global Arrowheads is the default for new edges only.\n- **Inspector** — click a line for a floating cluster: direction, Flip (disabled if the reverse exists), Route, Label, color, Delete. Mutations `await flushLayout()`.\n- **Schema** — optional `from::` `to::` `direction::` `color::` children under the existing edge row. `[[plexus-diagram/metadata]]` only. No `:diagram/*` / `:harc/*`.\n\n## 0.5.0 — 2026-08-29\n\n- **Connect two-click + temp wire** — Connect stays on after an edge. Click-click or drag; the rubber-band lives on `.pxd-edges-temp` above the cards and follows the cursor immediately. Handles are a 12px disc with a larger hit target.\n- **In-place nested boards** — opening a nested diagram does not call `openBlock` / change the hash. The parent session stays loaded; crumbs sit on the toolbar and Esc pops one level.\n- **Section and card color** — toolbar swatches (eight Blueprint-ish ids plus default) write `color::` on nodes and sections. Dark mode uses the border as the signal.\n- **Section click-rename** — a single click on the section title starts rename; pointerdown on the label does not drag the frame.\n- **Review pack** — session swap flushes the outgoing board then cancels persist timers; unused parent pull-watches stop; Esc nest-pop only when the overlay owns the pointer; connect-to-empty rolls back a failed edge persist.\n\n## 0.4.2 — 2026-08-28\n\n- **Svy Beam caret** — overlay inputs use native `caret-color` and `cursor: text` (higher specificity than Beam's custom hotspot cursor). `focus({ preventScroll: true })` plus a capture-phase guard stop Roam from scrolling the outline copy of an editing card into view.\n- **Right sidebar inset** — fullscreen also ResizeObserves the right sidebar and re-places on the next two animation frames after the article class changes. When the article's right edge is within 8px of the viewport, the overlay `right` inset is 0.\n- **Library portal** — the drawer mounts on `document.body` (fixed, 320px, 14px) so it is not scaled by `.pxd-world`. Items are opaque `#f5f8fa` / `#182026`. Empty search hides `roam/js/` and `roam/css` pages.\n- **Nested crumbs** — opening a nested board pushes the parent onto a crumb stack (`Parent › Current`). Clicking a crumb opens that block (or page). Nested cards show the parsed name; unnamed boards get an inline \"Name this board…\" field.\n- **Connect to empty** — dragging a handle onto empty board creates a card at the drop point, links it, and enters edit (Heptabase pull-from-port). Handles are 14px. An existing edge is kept if you connect the same pair again.\n- **Review pack** — nested open passes parent uid explicitly; nest stack truncates on multi-level back; drop parsing no longer treats incidental 9-char tokens as block refs; connect failures do not leave dangling edges; nested name timers clear on repaint and dispose.\n\n## 0.4.1 — 2026-08-28\n\n- **Pending-changes patch** — layout persist no longer delete-all/recreates the metadata tree. Existing diagram blocks are patched in place: only changed `pos::` / `size::` / `color::` / edge / section rows are written, identical strings are skipped, and gone ids are the only deletes. Viewport persist is still the one-line `setViewport` path.\n- **Article-pane fullscreen** — fullscreen follows `.rm-article-wrapper` (below the topbar, inset with the left sidebar) instead of `sidebar.right`. ResizeObserver on the article and sidebar plus a class MutationObserver re-place the overlay when the sidebar opens or closes. Drop `[[page]]` / block uid from the sidebar onto the board to add a card.\n- **Visible sections** — sections use a 2px solid border, a light blue fill, `pointer-events: auto`, a default \"Section\" label, drag, corner resize, and double-click rename.\n- **Opaque library** — the drawer sets its own `#ffffff` / `#1c2127` background so it stays readable when mounted outside `.pxd-root`. Blank titles and `roam/js/` pages are hidden until you search.\n- **Nested overlay** — adding or opening a nested `{{[[diagram]]}}` card registers it as enhanced and opens our overlay fullscreen, not native Empty Roam Diagram. Nested cards show \"Nested diagram\" instead of the raw macro. Nested open no longer waits on the parent canvas.\n- **Connect hit-testing** — `cardFromPoint` walks `elementsFromPoint` and ignores edge-hit strokes; temp edges are `pointer-events: none`; connect-tool handles stay visible.\n\n## 0.4.0 — 2026-08-28\n\n- **Fullscreen vs breadcrumbs** — fullscreen hides `#roam-breadcrumbs-panel` / `.breadcrumbs-content` only while `body.pxd-has-fullscreen`. The overlay sits below the remaining topbar and to the right of the left sidebar (article fill, not the whole window). Resize recomputes the inset. Inline boards leave breadcrumbs alone.\n- **Scratch-host card editor** — double-click no longer `renderBlock`s the card uid (the hidden native diagram still owns it). Edit mounts on a `pxd:scratch` child of `[[plexus-diagram/metadata]]`, hydrates until MutationObserver-quiet, then a trusted mousedown/mouseup/click. Commit pulls the scratch string onto the card; empty pulls never overwrite known text.\n- **Connection notes** — labels live on the connector (`label::` under `edge A->B`), not as extra cards. Double-click the line or click the midpoint pill. `show-edge-labels` defaults on.\n- **Commands** — palette and slash keep Enhance, Restore, and Fullscreen only. Toolbar is a single nowrap row. `V` / `C` / `N` / `F` when the overlay owns the pointer.\n- **Sync silence on open** — remounting an already-enhanced diagram no longer rewrites `[[plexus-diagram/metadata]]` or `:rf-diagram` viewport props when the stored snapshot already matches.\n- **Viewport-only persist** — pan/zoom/fit writes only the `viewport::` metadata line; node/edge/section children are left intact.\n- **Dirty flags** — initial fit, fullscreen resize, and dispose no longer schedule Roam writes; persist runs only after real user gestures (pan, zoom, drag, Fit, etc.).\n\n## 0.3.2 — 2026-08-28\n\nDouble-clicking a card no longer blanks its text: `setBlockFocusAndSelection` was focusing the outline copy of the same uid (Roam then cleared the overlay mount), and a same-tick `focusout` committed an empty pull. Overlay editors now keep a text fallback until `renderBlock` hydrates, ignore focusout for 1s, and refuse to commit an empty pull over known text. Fullscreen sits below `.rm-topbar` so RoamJS breadcrumbs stay clickable and the Plexus toolbar is not hidden under it.\n\n## 0.3.1 — 2026-08-28\n\nHouse / daily-tab navigation left a `position:fixed` overlay covering the daily notes. Native Maximize unmounts on route change; our mount often survives because the diagram block is still in the outline. `hashchange` / `popstate` now exit fullscreen, drop `--zoomed`, and restore the inline height whenever the open page uid is no longer the diagram. The 250ms reconcile does not do this, so a Fullscreen click on an inline embed is not immediately undone.\n\n## 0.3.0 — 2026-08-28\n\nCanvas rewrite: the board is usable. Imported native React Flow nodes (165×83 on the live graph) are floored to real cards (min 240×140, default 280×160), and a viewport that paints any card under 140px, has zoom below 0.7, or shows no card at all is rejected and replaced by a fit once the root has a size (single card fits at zoom 1.5, centred; fitted viewport persisted once). Pan, wheel zoom, card drag and corner resize touch only CSS (`.pxd-world` transform, one card's box, the edges hanging off it) — no `innerHTML` rebuild, no Roam write per pixel; viewport/layout persist on pointer-up and wheel-end with a 150 ms debounce, serialized through one queue per session. Cards render with `renderString`; double-click swaps in the native block editor (`renderBlock`) and blur/Esc commits it back, so Roam chrome no longer paints into every card. `render()` reconciles card elements by uid, so a pull during editing never tears down the caret. Drag from a card's connect dots (or any card with the Connect tool) onto another card to link. Double-click empty board adds a card at that point; Card/Nested tool clicks still add. A hint pill explains pan/add/fullscreen on boards with ≤1 card until the first pointer down. Zoomed diagram pages open in fullscreen (`fullscreen-on-zoom`, default on; inline embeds stay inline). Grid lives outside the world and tracks pan/zoom; a live minimap replaces the empty box; toolbar buttons are grouped, high-contrast, with a zoom readout. Dark mode: card and toolbar backgrounds from `--bc-main` / `--bc-menu`, 1px visible borders, 2px `--cl-blue` ring for selection — no tinted fills. `applyPull` keeps in-memory positions, sizes, edges, sections, and viewport (a pull only refreshes content), so a debounced persist can no longer be undone by a concurrent add.\n\n## 0.2.1 — 2026-08-27\n\nFix dead board on zoomed block pages. Navigating to `#/app/<graph>/page/<uid>` destroys the overlay DOM and the MutationObserver never remounted it. A reconcile pass (hashchange/popstate + 250ms interval) now prunes detached views, finds the native canvas — via the dated `block-input-…-body-outline-MM-DD-YYYY-<uid>` suffix or the location hash when ancestors carry no `data-uid` — and remounts the overlay. The pre-paint guard uses `display: none` (React Flow nodes punch through `visibility: hidden` by re-setting `visibility: visible` on themselves) and also hides the native `.rm-diagram-title-panel` and `.react-flow` chrome. Zoomed mounts fill the article (`pxd-mount--zoomed`). Every mount is stamped `data-diagram-uid` and remounts are idempotent per uid.\n\n## 0.2.0 — 2026-08-27\n\nHeptabase-usable overlay: full-bleed board sizing from native diagram (min 560px), horizontal labeled toolbar with zoom/fit/**Fullscreen** (Esc exits; covers the window like native Maximize), empty-canvas pan and cursor-anchored wheel zoom, Roam bullet/ref-count chrome hidden on cards, searchable library drawer that toggles without covering the board, and card titles off by default.\n\n## 0.1.4 — 2026-08-27\n\nSlash/command Enhance was a no-op: typing `/enh` puts the diagram block in edit mode, which unmounts `.rm-diagram`. The command now remembers the uid and waits for the native canvas to remount before overlaying.\n\n## 0.1.3 — 2026-08-27\n\nSlash commands use the same labels as the command palette (Roam Grid pattern), so `/enh` lists **Plexus Diagram: Enhance this diagram**.\n\n## 0.1.2 — 2026-08-27\n\nMetadata writes now generate UIDs before `block.create` / `page.create`. Live roamAlphaAPI returns `undefined` from those calls, so the first enhance was dropping `schema-version::`, `enhanced::`, and node/edge lines. Nested-diagram open uses `roamAlphaAPI.ui.mainWindow.openBlock`.\n\n## 0.1.1 — 2026-08-27\n\nLive-wire fixes against roamAlphaAPI (CDP, Svy graph):\n\n- Fix native hide inversion: `.pxd-native-hidden` now sets `display: none`; pending state uses visibility\n- Use EDN string pull pattern for `data.pull`; strip keyword colons from pull results\n- Generate child block UIDs via `util.generateUID()`; default create order `\"last\"`\n- Viewport writes try `roamAlphaAPI.updateBlock` before `data.block.update`\n- Register slash/context commands via `addCommand`/`removeCommand` with live callback shapes\n- Auto-enhance and focus checks pull `[:block/string]` via `roamAlphaAPI.data.pull`\n- Find native diagram hosts via `diagramElForUid` (id suffix, data-uid, block-ref)\n- Library mounts as overlay drawer; queries `roamAlphaAPI.data.q`; filters daily pages by UID\n- Card/Section toolbar tools place items at click position; library uses viewport center\n- Default `restore-native-on-unload` to false; unload disposes sessions without deleting metadata\n\n## 0.1.0 — 2026-08-27\n\nInitial release of Plexus Diagram.\n\n- Hide native `.rm-diagram` React Flow renderer for enhanced diagrams and mount a vanilla DOM/SVG canvas overlay\n- Keep Roam diagram children as the canonical card store; persist layout on `[[plexus-diagram/metadata]]`\n- Writable viewport via native `:rf-diagram` props; import native node positions when metadata is absent\n- Heptabase-like toolbar, cards, connectors, sections, library sidebar, and fat settings panel\n- Command palette, slash command, and block context menu integration\n- GitHub Pages developer extension at https://svyk.github.io/plexus-diagram\n";
 
 // src/view/color-picker.js
 var DARKER = -0.28;
 var LIGHTER = 0.4;
 var TAG_NOTE = "Hex, darker, and lighter stay on the card only.";
-var HIGHLIGHT_MARK_TIP = "The card and the list follow the tag. The mark inside the PDF keeps the colour Roam painted.";
+var HIGHLIGHT_MARK_TIP = "The card and the list follow the tag. The mark painted in the PDF may stay yellow; Roam's reader changes it.";
 function pickerArgs(listen, fourth) {
   if (listen && typeof listen === "object") return { listen: void 0, options: listen };
   if (typeof fourth === "function") return { listen, options: { onTag: fourth } };
@@ -23795,7 +24853,7 @@ function buildColorPicker(doc, onPick, listen, fourth) {
     });
     box2.append(gear, note);
   }
-  const row2 = (label, colors, named) => {
+  const row3 = (label, colors, named) => {
     const wrap = doc.createElement("div");
     wrap.className = "pxd-picker__row";
     const cap4 = doc.createElement("div");
@@ -23823,9 +24881,9 @@ function buildColorPicker(doc, onPick, listen, fourth) {
     wrap.append(swatches);
     box2.append(wrap);
   };
-  row2("Colors", NATIVE_SWATCHES, false);
-  row2("Darker", NATIVE_SWATCHES.map((h) => shadeHex(h, DARKER)), false);
-  row2("Lighter", NATIVE_SWATCHES.map((h) => shadeHex(h, LIGHTER)), false);
+  row3("Colors", NATIVE_SWATCHES, false);
+  row3("Darker", NATIVE_SWATCHES.map((h) => shadeHex(h, DARKER)), false);
+  row3("Lighter", NATIVE_SWATCHES.map((h) => shadeHex(h, LIGHTER)), false);
   const hexRow = doc.createElement("div");
   hexRow.className = "pxd-picker__hex";
   const preview = doc.createElement("span");
@@ -23856,7 +24914,7 @@ function buildColorPicker(doc, onPick, listen, fourth) {
   });
   hexRow.append(preview, input);
   box2.append(hexRow);
-  row2("Named", PALETTE, true);
+  row3("Named", PALETTE, true);
   const clear = doc.createElement("button");
   clear.type = "button";
   clear.className = "pxd-btn pxd-picker__clear";
@@ -23914,10 +24972,10 @@ var PATTERN_LABELS = { dots: "Dots", lines: "Lines", cross: "Cross", grid: "Grid
 var NOTE_KINDS = ["note", "block", "page"];
 function createChrome({ doc = globalThis.document, root, version = "", settings, timers, on = {}, crumbs = [] } = {}) {
   const setting = (k) => typeof settings?.get === "function" ? settings.get(k) : settings?.[k];
-  const listeners2 = [];
+  const listeners3 = [];
   const listen = (el2, type, fn, opts) => {
     el2.addEventListener(type, fn, opts);
-    listeners2.push(() => el2.removeEventListener(type, fn, opts));
+    listeners3.push(() => el2.removeEventListener(type, fn, opts));
   };
   const el = (tag, cls, parent, text2) => {
     const node2 = doc.createElement(tag);
@@ -24329,8 +25387,8 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     toolGroup.style.display = docked ? "none" : "";
     const dockSetting = setting("dock-position");
     const own = DOCK_POSITIONS.includes(boardDock) ? boardDock : null;
-    const side = own ?? (DOCK_POSITIONS.includes(dockSetting) ? dockSetting : "bottom");
-    for (const name of DOCK_POSITIONS) root.classList.toggle(`pxd-root--dock-${name}`, docked && name === side);
+    const side2 = own ?? (DOCK_POSITIONS.includes(dockSetting) ? dockSetting : "bottom");
+    for (const name of DOCK_POSITIONS) root.classList.toggle(`pxd-root--dock-${name}`, docked && name === side2);
     const styleSetting = setting("dock-style");
     const shape = DOCK_STYLES.includes(styleSetting) ? styleSetting : "pill";
     for (const name of DOCK_STYLES) root.classList.toggle(`pxd-root--dock-${name}`, docked && name === shape);
@@ -24527,10 +25585,10 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     on.chromeRebuilt?.();
     ctx.dataset.kind = kind;
     ctx.setAttribute("data-kind", kind);
-    const row2 = el("div", "pxd-ctx__row", ctx);
-    const btn = (cls, icon, label, title, fn) => iconButton(row2, `pxd-ctx__btn ${cls}`, icon, label, title, fn);
+    const row3 = el("div", "pxd-ctx__row", ctx);
+    const btn = (cls, icon, label, title, fn) => iconButton(row3, `pxd-ctx__btn ${cls}`, icon, label, title, fn);
     const seg = (cls, options, current3, fn) => {
-      const wrap = el("div", `pxd-seg ${cls}`, row2);
+      const wrap = el("div", `pxd-seg ${cls}`, row3);
       for (const [value, label, title, icon] of options) {
         const b = button(wrap, `pxd-seg__btn${value === current3 ? " pxd-seg__btn--on" : ""}${icon ? " pxd-iconbtn" : ""}`, icon ? "" : label, title || label, () => fn(value));
         if (icon) {
@@ -24600,7 +25658,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
           const refs = iconBtn("pxd-ctx__refs", "link", "References", `${n2} ${n2 === 1 ? "reference" : "references"}`, () => on.showRefs?.());
           el("span", "pxd-ctx__refs-count", refs, String(n2));
         }
-        swatches(row2, (c) => on.setColor?.(c));
+        swatches(row3, (c) => on.setColor?.(c));
         if (kind === "card") {
           btn("pxd-ctx__edit", "edit", "Edit", "Edit (Enter)", () => on.edit?.());
           btn("pxd-ctx__sidebar", "panel-stats", "Open in sidebar", "Open in the right sidebar", () => on.openSidebar?.());
@@ -24632,7 +25690,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
         break;
       }
       case "board":
-        swatches(row2, (c) => on.setColor?.(c));
+        swatches(row3, (c) => on.setColor?.(c));
         btn("pxd-ctx__open-board", "document-open", "Open", "Open this board (Enter)", () => on.openBoard?.());
         opt("openOwnPage", "pxd-ctx__own-page", "document", "Own page", "Open nested board in its own page", () => on.openOwnPage());
         if (model?.enhanced) btn("pxd-ctx__rename-board", "edit", "Rename board", "Rename the board", () => on.renameBoard?.());
@@ -24640,7 +25698,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
         btn("pxd-ctx__delete pxd-btn--danger", "trash", "Delete", "Delete (Del)", () => on.delete?.());
         break;
       case "section":
-        swatches(row2, (c) => on.setColor?.(c));
+        swatches(row3, (c) => on.setColor?.(c));
         btn("pxd-ctx__rename", "edit", "Rename", "Rename (Enter)", () => on.rename?.());
         btn("pxd-ctx__contents", "multi-select", "Select contents", "Select the section's members", () => on.selectContents?.());
         opt("selectAllInSection", "pxd-ctx__all-in-section", "select", "Select all in section", "Select everything inside the section", () => on.selectAllInSection());
@@ -24658,7 +25716,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
         btn("pxd-ctx__delete pxd-btn--danger", "trash", "Delete frame", "Delete the frame, keep the cards (Del). Shift+Del deletes contents too", () => on.delete?.());
         break;
       case "text":
-        swatches(row2, (c) => on.setColor?.(c));
+        swatches(row3, (c) => on.setColor?.(c));
         seg("pxd-ctx__size", FONT_SIZES.map((s, i) => [s, ["S", "M", "L", "XL"][i], `${s}px`]), model?.fontSize || 24, (v) => on.setFontSize?.(v));
         btn("pxd-ctx__delete pxd-btn--danger", "trash", "Delete", "Delete (Del)", () => on.delete?.());
         break;
@@ -24669,14 +25727,14 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
         seg("pxd-ctx__route", [["curve", "Curve", "Curve", "path"], ["straight", "Straight", "Straight", "flow-linear"], ["elbow", "Elbow", "Elbow", "step-chart"]], model?.route, (v) => on.route?.(v));
         seg("pxd-ctx__dash", [["solid", "Solid", "Solid", "minus"], ["dashed", "Dashed", "Dashed", "slash"], ["animated", "Animated", "Animated", "pulse"]], model?.dash, (v) => on.dash?.(v));
         seg("pxd-ctx__weight", [[1, "1"], [2, "2"], [3, "3"], [4, "4"]], model?.weight, (v) => on.weight?.(v));
-        swatches(row2, (c) => on.setColor?.(c));
+        swatches(row3, (c) => on.setColor?.(c));
         btn("pxd-ctx__label", "tag", "Label", "Edit the label", () => on.label?.());
         btn("pxd-ctx__notes", "annotation", "Notes", "Open the connection block in the sidebar", () => on.notes?.());
         btn("pxd-ctx__write", "inheritance", "Write to graph", "Create an attribute on the source", () => on.writeToGraph?.());
         btn("pxd-ctx__delete pxd-btn--danger", "trash", "Delete", "Delete (Del)", () => on.delete?.());
         break;
       case "link": {
-        const list = el("div", "pxd-ctx__sources", row2);
+        const list = el("div", "pxd-ctx__sources", row3);
         for (const s of model?.sources || []) {
           const b = button(list, "pxd-ctx__source", (s.string || s.uid || "").slice(0, 60), "Open in the sidebar", () => on.openSource?.(s.uid));
           b.dataset.uid = s.uid;
@@ -24687,7 +25745,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
       default:
         break;
     }
-    const flip = (cls, active) => row2.querySelector(`.${cls}`)?.setAttribute("data-tip-state", active ? "on" : "off");
+    const flip = (cls, active) => row3.querySelector(`.${cls}`)?.setAttribute("data-tip-state", active ? "on" : "off");
     const closedKids = model?.kind === "note" || model?.kind === "block" ? !model?.kids : model?.open === false;
     flip("pxd-ctx__expand", !closedKids);
     flip("pxd-ctx__collapse", Boolean(model?.collapsed));
@@ -24932,7 +25990,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     dockFrame?.();
     revealOff?.();
     bgOffs.splice(0).forEach((off) => off());
-    listeners2.splice(0).forEach((off) => off());
+    listeners3.splice(0).forEach((off) => off());
     for (const node2 of [toolbar, railEl, palette, popEl, backEl, ctx, toast, search, minimap]) node2.remove();
   };
   return { toolbar: toolbarApi, ctx: ctxApi, toast: toastApi, search: searchApi, minimap: minimapApi, popover, changelog: { isOpen: () => Boolean(logEl), close: closeLog }, backToContent, badge, sync, dispose };
@@ -25249,27 +26307,27 @@ function isTableRow(item) {
 }
 function tableColumns(rows) {
   const names = [];
-  for (const row2 of rows || []) {
-    for (const attr of row2.attrs || []) {
+  for (const row3 of rows || []) {
+    for (const attr of row3.attrs || []) {
       if (attr?.name && !names.includes(attr.name)) names.push(attr.name);
     }
   }
   return FIXED.concat(names);
 }
-function cellText(row2, column) {
-  if (!row2) return "";
-  if (column === "Title") return String(row2.title ?? "");
-  if (column === "Section") return String(row2.section ?? "");
-  if (column === "Type") return String(row2.type ?? "");
-  if (column === "Edited") return row2.edited == null ? "" : String(row2.edited);
-  const hit = (row2.attrs || []).find((attr) => attr.name === column);
+function cellText(row3, column) {
+  if (!row3) return "";
+  if (column === "Title") return String(row3.title ?? "");
+  if (column === "Section") return String(row3.section ?? "");
+  if (column === "Type") return String(row3.type ?? "");
+  if (column === "Edited") return row3.edited == null ? "" : String(row3.edited);
+  const hit = (row3.attrs || []).find((attr) => attr.name === column);
   return hit ? String(hit.value ?? "") : "";
 }
 function filterRows2(rows, text2) {
   const needle = String(text2 ?? "").trim().toLowerCase();
   if (!needle) return (rows || []).slice();
   const cols = tableColumns(rows);
-  return (rows || []).filter((row2) => cols.some((column) => cellText(row2, column).toLowerCase().includes(needle)));
+  return (rows || []).filter((row3) => cols.some((column) => cellText(row3, column).toLowerCase().includes(needle)));
 }
 function sortRows2(rows, column, dir = "asc") {
   const sign = dir === "desc" ? -1 : 1;
@@ -25407,7 +26465,7 @@ function mountTable({ doc = globalThis.document, root, host, getBoard } = {}) {
   };
   const sourceRows = () => {
     const rows = tableRows(getBoard?.() || null, (uid) => host?.blockString?.(uid));
-    const missing = rows.map((row2) => row2.uid).filter((uid) => !edited.has(uid));
+    const missing = rows.map((row3) => row3.uid).filter((uid) => !edited.has(uid));
     if (missing.length && typeof host?.q === "function") {
       let found = [];
       try {
@@ -25419,9 +26477,9 @@ function mountTable({ doc = globalThis.document, root, host, getBoard } = {}) {
         if (Array.isArray(hit) && hit.length >= 2) edited.set(hit[0], hit[1]);
       }
     }
-    for (const row2 of rows) {
-      if (edited.has(row2.uid)) row2.edited = edited.get(row2.uid);
-      for (const attr of row2.attrs || []) filled.delete(`${row2.uid}\0${attr.name}`);
+    for (const row3 of rows) {
+      if (edited.has(row3.uid)) row3.edited = edited.get(row3.uid);
+      for (const attr of row3.attrs || []) filled.delete(`${row3.uid}\0${attr.name}`);
     }
     return rows;
   };
@@ -25434,10 +26492,10 @@ function mountTable({ doc = globalThis.document, root, host, getBoard } = {}) {
     const filtered = filterRows2(rows, filterText);
     return sortColumn ? sortRows2(filtered, sortColumn, sortDir) : filtered;
   };
-  const commitFill = async (row2, column, raw) => {
-    const key = `${row2.uid}\0${column}`;
+  const commitFill = async (row3, column, raw) => {
+    const key = `${row3.uid}\0${column}`;
     if (inflight.has(key) || filled.has(key)) return;
-    const plan = planAttrCell({ name: column, value: raw, parentUid: row2.uid });
+    const plan = planAttrCell({ name: column, value: raw, parentUid: row3.uid });
     if (!plan || plan.op !== "create") return;
     if (typeof host?.createBlock !== "function") return;
     inflight.add(key);
@@ -25497,22 +26555,22 @@ function mountTable({ doc = globalThis.document, root, host, getBoard } = {}) {
     }
     thead.append(head);
     tbody.replaceChildren();
-    for (const row2 of body) {
+    for (const row3 of body) {
       const tr = doc.createElement("tr");
       tr.className = "pxd-table__row";
-      tr.setAttribute("data-uid", row2.uid);
+      tr.setAttribute("data-uid", row3.uid);
       for (const column of cols) {
         const td = doc.createElement("td");
         td.className = "pxd-table__cell";
         td.setAttribute("data-col", column);
-        const attr = (row2.attrs || []).find((item) => item.name === column);
-        const pendingValue = filled.get(`${row2.uid}\0${column}`);
+        const attr = (row3.attrs || []).find((item) => item.name === column);
+        const pendingValue = filled.get(`${row3.uid}\0${column}`);
         if (attr?.uid) {
           const button = doc.createElement("button");
           button.type = "button";
           button.className = "pxd-btn pxd-table__value";
-          button.textContent = cellText(row2, column);
-          button.setAttribute("aria-label", `${column} for ${row2.title || row2.uid}`);
+          button.textContent = cellText(row3, column);
+          button.setAttribute("aria-label", `${column} for ${row3.title || row3.uid}`);
           listen(button, "click", () => openEditor(td, attr.uid), paintOffs);
           td.append(button);
         } else if (pendingValue != null) {
@@ -25524,9 +26582,9 @@ function mountTable({ doc = globalThis.document, root, host, getBoard } = {}) {
           const input = doc.createElement("input");
           input.type = "text";
           input.className = "pxd-input pxd-table__fill";
-          input.setAttribute("aria-label", `${column} for ${row2.title || row2.uid}`);
+          input.setAttribute("aria-label", `${column} for ${row3.title || row3.uid}`);
           const commit = () => {
-            void commitFill(row2, column, input.value);
+            void commitFill(row3, column, input.value);
           };
           listen(input, "keydown", (event) => {
             if (event.key !== "Enter") return;
@@ -25538,7 +26596,7 @@ function mountTable({ doc = globalThis.document, root, host, getBoard } = {}) {
         } else {
           const span = doc.createElement("span");
           span.className = "pxd-table__text";
-          span.textContent = column === "Edited" ? editedLabel(row2.edited) : cellText(row2, column);
+          span.textContent = column === "Edited" ? editedLabel(row3.edited) : cellText(row3, column);
           td.append(span);
         }
         tr.append(td);
@@ -25618,6 +26676,8 @@ function mountTable({ doc = globalThis.document, root, host, getBoard } = {}) {
 var TODO_FIELD = "To do";
 var DONE_COLUMN = "Done";
 var HIGHLIGHT_FIELD = "Highlight colour";
+var STATUS_FIELD = "Lanes: Status";
+var NO_STATUS = "No status";
 var MARK = /\{\{\[\[(TODO|DONE)\]\]\}\}/;
 function todoState(string) {
   const hit = MARK.exec(String(string || ""));
@@ -25626,9 +26686,9 @@ function todoState(string) {
 }
 function kanbanRows(board2, resolve) {
   const items = board2?.items;
-  return tableRows(board2, resolve).map((row2) => {
-    const item = items?.get?.(row2.uid);
-    const next = { ...row2, string: item?.string ?? row2.title ?? "" };
+  return tableRows(board2, resolve).map((row3) => {
+    const item = items?.get?.(row3.uid);
+    const next = { ...row3, string: item?.string ?? row3.title ?? "" };
     if (item?.kind !== "highlight") return next;
     const targetUid = item.target?.uid;
     let targetString;
@@ -25648,21 +26708,21 @@ function kanbanRows(board2, resolve) {
 function kanbanFields(rows) {
   const names = [];
   let highlight = false;
-  for (const row2 of rows || []) {
-    if (typeof row2?.highlightColor === "string" && row2.highlightColor !== "") highlight = true;
-    for (const attr of row2.attrs || []) {
+  for (const row3 of rows || []) {
+    if (typeof row3?.highlightColor === "string" && row3.highlightColor !== "") highlight = true;
+    for (const attr of row3.attrs || []) {
       if (attr?.name && columnNameOk(attr.name) && !names.includes(attr.name)) names.push(attr.name);
     }
   }
   return highlight ? [TODO_FIELD, HIGHLIGHT_FIELD, ...names] : [TODO_FIELD, ...names];
 }
-function columnOf(row2, field) {
-  if (field === TODO_FIELD) return todoState(row2?.string);
+function columnOf(row3, field) {
+  if (field === TODO_FIELD) return todoState(row3?.string);
   if (field === HIGHLIGHT_FIELD) {
-    const color = row2?.highlightColor;
+    const color = row3?.highlightColor;
     return typeof color === "string" && color !== "" ? color : "";
   }
-  const hit = (row2?.attrs || []).find((attr) => attr.name === field);
+  const hit = (row3?.attrs || []).find((attr) => attr.name === field);
   return hit ? String(hit.value ?? "") : "";
 }
 function kanbanColumns(rows, field) {
@@ -25673,11 +26733,11 @@ function kanbanColumns(rows, field) {
       { name: DONE_COLUMN, cards: [] }
     ];
     const extra = [];
-    for (const row2 of list) {
-      const name = columnOf(row2, field);
-      if (name === TODO_FIELD) columns2[0].cards.push(row2);
-      else if (name === DONE_COLUMN) columns2[1].cards.push(row2);
-      else extra.push(row2);
+    for (const row3 of list) {
+      const name = columnOf(row3, field);
+      if (name === TODO_FIELD) columns2[0].cards.push(row3);
+      else if (name === DONE_COLUMN) columns2[1].cards.push(row3);
+      else extra.push(row3);
     }
     if (extra.length) columns2.push({ name: "", cards: extra });
     return columns2;
@@ -25685,14 +26745,14 @@ function kanbanColumns(rows, field) {
   if (!columnNameOk(field)) return [];
   const columns = [];
   const byName = /* @__PURE__ */ new Map();
-  for (const row2 of list) {
-    const name = columnOf(row2, field);
+  for (const row3 of list) {
+    const name = columnOf(row3, field);
     if (!byName.has(name)) {
       const column = { name, cards: [] };
       byName.set(name, column);
       columns.push(column);
     }
-    byName.get(name).cards.push(row2);
+    byName.get(name).cards.push(row3);
   }
   return columns;
 }
@@ -25702,40 +26762,83 @@ function withMarker(string, column) {
   if (MARK.test(current3)) return current3.replace(MARK, mark);
   return current3.trim() ? `${mark} ${current3}` : mark;
 }
-function planKanbanMove({ field, column, row: row2 } = {}) {
-  if (!row2?.uid || column == null || column === "") return null;
+function planKanbanMove({ field, column, row: row3 } = {}) {
+  if (!row3?.uid || column == null || column === "") return null;
   if (field === TODO_FIELD) {
     if (column !== TODO_FIELD && column !== DONE_COLUMN) return null;
-    if (todoState(row2.string) === column) return null;
-    const string = withMarker(row2.string, column);
-    if (string === String(row2.string || "")) return null;
-    return { op: "string", uid: row2.uid, string, status: column === DONE_COLUMN ? "DONE" : "TODO" };
+    if (todoState(row3.string) === column) return null;
+    const string = withMarker(row3.string, column);
+    if (string === String(row3.string || "")) return null;
+    return { op: "string", uid: row3.uid, string, status: column === DONE_COLUMN ? "DONE" : "TODO" };
   }
   if (field === HIGHLIGHT_FIELD) {
-    if (row2.kind === "note") return null;
-    const targetUid = row2.targetUid;
-    const targetString = row2.targetString;
+    if (row3.kind === "note") return null;
+    const targetUid = row3.targetUid;
+    const targetString = row3.targetString;
     if (!targetUid || typeof targetString !== "string" || targetString === "") return null;
-    if (row2.highlightColor === column) return null;
+    if (row3.highlightColor === column) return null;
     if (!HIGHLIGHT_COLORS.includes(column)) return null;
     return { op: "string", uid: targetUid, string: rewriteHighlightTag(targetString, column) };
   }
+  if (field === STATUS_FIELD) return null;
   if (!columnNameOk(field)) return null;
-  const attr = (row2.attrs || []).find((item) => item.name === field);
+  const attr = (row3.attrs || []).find((item) => item.name === field);
   if (String(attr?.value ?? "") === column) return null;
   const plan = planAttrCell({
     name: field,
     value: column,
     blockUid: attr?.uid || null,
-    parentUid: row2.uid
+    parentUid: row3.uid
   });
   if (!plan) return null;
   if (plan.op === "update") return { op: "string", uid: plan.uid, string: plan.string };
   return plan;
 }
+function isDoneItem(item) {
+  if (item?.done === true) return true;
+  return todoState(item?.string ?? "") === DONE_COLUMN;
+}
+function groupByStatus(items, palette) {
+  const columns = paletteEntries(palette).map((entry) => ({
+    name: entry.name,
+    key: entry.key,
+    glyph: entry.glyph,
+    cards: [],
+    count: 0
+  }));
+  const none = { name: NO_STATUS, key: "", glyph: "diamond", cards: [], count: 0 };
+  const done = { name: DONE_COLUMN, key: "done", glyph: "", cards: [], count: 0 };
+  const byName = new Map(columns.map((column) => [column.name.toLowerCase(), column]));
+  for (const item of items || []) {
+    if (isDoneItem(item)) {
+      done.cards.push(item);
+      continue;
+    }
+    const name = taskStatusOf(item?.string ?? "", palette);
+    const column = name ? byName.get(name.toLowerCase()) : null;
+    (column || none).cards.push(item);
+  }
+  for (const column of columns) column.count = column.cards.length;
+  none.count = none.cards.length;
+  done.count = done.cards.length;
+  return [...columns, none, done];
+}
 
 // src/view/kanban-view.js
-function mountKanban({ doc = globalThis.document, root, host, bt = null, completeTask = null, getBoard } = {}) {
+var BAD_STATUS = /* @__PURE__ */ new Set(["rejected", "unknown", "conflict", "not-updated"]);
+function mountKanban({
+  doc = globalThis.document,
+  root,
+  host,
+  bt = null,
+  completeTask = null,
+  getBoard,
+  setStatus = null,
+  toast = () => {
+  },
+  onLane = null,
+  getPalette = null
+} = {}) {
   const box2 = doc.createElement("div");
   box2.className = "pxd-kanban pxd-chrome";
   root?.append(box2);
@@ -25755,9 +26858,9 @@ function mountKanban({ doc = globalThis.document, root, host, bt = null, complet
   box2.append(columnsEl);
   const offs = [];
   const paintOffs = [];
-  const listen = (el, type, fn, bucket = offs) => {
-    el.addEventListener(type, fn);
-    bucket.push(() => el.removeEventListener(type, fn));
+  const listen = (el, type, fn, bucket = offs, capture = false) => {
+    el?.addEventListener?.(type, fn, capture);
+    bucket.push(() => el?.removeEventListener?.(type, fn, capture));
   };
   const stop2 = (event) => event.stopPropagation();
   for (const type of ["pointerdown", "pointerup", "click", "dblclick", "wheel", "contextmenu"]) {
@@ -25765,12 +26868,21 @@ function mountKanban({ doc = globalThis.document, root, host, bt = null, complet
   }
   let open = false;
   let field = TODO_FIELD;
+  let picked = false;
   let dragUid = null;
+  let painted = [];
+  const pending = /* @__PURE__ */ new Map();
   const place = () => {
     const toolbar2 = root?.querySelector?.(".pxd-toolbar");
     if (!toolbar2 || typeof toolbar2.getBoundingClientRect !== "function" || typeof root.getBoundingClientRect !== "function") return;
     const top = toolbar2.getBoundingClientRect().bottom - root.getBoundingClientRect().top;
     if (top > 0) box2.style.top = `${Math.ceil(top)}px`;
+  };
+  const palette = () => typeof getPalette === "function" ? getPalette() : statusPalette(statusApi(doc.defaultView));
+  const writer = () => {
+    if (typeof setStatus === "function") return setStatus;
+    const api = statusApi(doc.defaultView);
+    return typeof api?.setStatus === "function" ? api.setStatus.bind(api) : null;
   };
   const commit = async (plan) => {
     try {
@@ -25801,11 +26913,115 @@ function mountKanban({ doc = globalThis.document, root, host, bt = null, complet
     }
     paint2();
   };
+  const persist = (next) => {
+    if (typeof onLane === "function") {
+      onLane(next);
+      return;
+    }
+    const board2 = getBoard?.();
+    const uid = board2?.uid;
+    if (!uid || typeof host?.updateProps !== "function") return;
+    let base = null;
+    if (typeof host.pullProps === "function") {
+      try {
+        base = readPlexus(host.pullProps(uid));
+      } catch {
+        base = null;
+      }
+    }
+    if (!base || typeof base !== "object") base = board2?.plexus && typeof board2.plexus === "object" ? board2.plexus : null;
+    if (!base || base.kanban === next) return;
+    const copy = { ...base, kanban: next };
+    if (board2?.plexus && typeof board2.plexus === "object") board2.plexus.kanban = next;
+    try {
+      const write = host.updateProps(uid, copy);
+      if (write && typeof write.then === "function") void write.catch(() => {
+      });
+    } catch {
+    }
+  };
+  const applyPending = (columns) => {
+    if (!pending.size) return columns;
+    const cards = [];
+    for (const column of columns) for (const card2 of column.cards) cards.push({ card: card2, natural: column.name });
+    const next = columns.map((column) => ({ ...column, cards: [], count: 0 }));
+    const byName = new Map(next.map((column) => [column.name, column]));
+    for (const { card: card2, natural } of cards) {
+      let name = pending.get(card2.uid);
+      if (!name || name === natural) {
+        if (name === natural) pending.delete(card2.uid);
+        name = natural;
+      }
+      const dest = byName.get(name) || byName.get(natural);
+      if (dest) dest.cards.push(card2);
+    }
+    for (const column of next) column.count = column.cards.length;
+    return next;
+  };
+  const laneOf = (row3) => {
+    if (pending.has(row3?.uid)) return pending.get(row3.uid);
+    const found = groupByStatus([row3], palette()).find((column) => column.cards.length);
+    return found?.name || NO_STATUS;
+  };
+  const moveToLane = async (row3, columnName) => {
+    if (!open || !row3?.uid || columnName == null || columnName === "") return { ok: false };
+    const from = field === STATUS_FIELD ? laneOf(row3) : null;
+    if (field !== STATUS_FIELD) {
+      const plan = planKanbanMove({ field, column: columnName, row: row3 });
+      if (!plan) return { ok: false };
+      await commit(plan);
+      return { ok: true };
+    }
+    if (from === columnName) return { ok: false };
+    if (columnName === DONE_COLUMN) {
+      pending.delete(row3.uid);
+      const plan = planKanbanMove({ field: TODO_FIELD, column: DONE_COLUMN, row: row3 });
+      if (!plan) return { ok: false };
+      await commit(plan);
+      return { ok: true, via: "done" };
+    }
+    const leavingDone = from === DONE_COLUMN;
+    pending.set(row3.uid, columnName);
+    paint2();
+    const write = writer();
+    if (typeof write !== "function") {
+      pending.delete(row3.uid);
+      toast({ message: "Task Status Tags is not loaded" });
+      paint2();
+      return { ok: false, reverted: true };
+    }
+    let res;
+    try {
+      res = await write(row3.uid, columnName === NO_STATUS ? null : columnName);
+    } catch (error) {
+      res = { status: "rejected", reason: error?.message || "Could not set that status" };
+    }
+    if (!res || BAD_STATUS.has(res.status)) {
+      pending.delete(row3.uid);
+      toast({ message: res?.reason || "Could not set that status" });
+      paint2();
+      return { ok: false, reverted: true, reason: res?.reason };
+    }
+    if (leavingDone) {
+      const plan = planKanbanMove({ field: TODO_FIELD, column: TODO_FIELD, row: row3 });
+      if (plan) await commit(plan);
+      const item = getBoard?.()?.items?.get?.(row3.uid);
+      const string = item?.string ?? row3.string ?? "";
+      if (item?.done === true || /\{\{\[\[DONE\]\]\}\}/.test(String(string))) {
+        pending.delete(row3.uid);
+        paint2();
+      }
+    }
+    return { ok: true };
+  };
   const paint2 = () => {
     if (!open) return;
     paintOffs.splice(0).forEach((off) => off());
+    const focusUid = doc.activeElement?.closest?.(".pxd-kanban__card")?.getAttribute?.("data-uid") || null;
     const rows = kanbanRows(getBoard?.() || null, (uid) => host?.blockString?.(uid));
+    painted = rows;
     const fields = kanbanFields(rows);
+    if (!fields.includes(STATUS_FIELD)) fields.push(STATUS_FIELD);
     if (!fields.includes(field)) field = TODO_FIELD;
     select.replaceChildren();
     for (const name of fields) {
@@ -25816,19 +27032,47 @@ function mountKanban({ doc = globalThis.document, root, host, bt = null, complet
       select.append(option);
     }
     select.value = field;
+    const source = field === STATUS_FIELD ? applyPending(groupByStatus(rows, palette())) : kanbanColumns(rows, field);
+    const entries = field === STATUS_FIELD ? paletteEntries(palette()) : [];
+    const byKey = new Map(entries.map((entry) => [entry.name.toLowerCase(), entry]));
+    const theme = root?.classList?.contains?.("pxd-root--dark") ? "dark" : "light";
     columnsEl.replaceChildren();
-    for (const column of kanbanColumns(rows, field)) {
+    for (const column of source) {
       const col = doc.createElement("section");
       col.className = "pxd-kanban__column";
       col.setAttribute("data-column", column.name);
+      const count = column.count ?? column.cards.length;
+      col.setAttribute("data-count", String(count));
+      const entry = byKey.get(String(column.name || "").toLowerCase()) || null;
+      if (entry) {
+        for (const [key, value] of Object.entries(paletteVars(entry, theme))) col.style.setProperty(key, value);
+      } else if (column.glyph === "diamond") {
+        for (const [key, value] of Object.entries(paletteVars({ light: {}, dark: {} }, theme))) col.style.setProperty(key, value);
+      }
       const title = doc.createElement("h3");
       title.className = "pxd-kanban__heading";
-      title.textContent = column.name || "None";
+      const glyphName = entry?.glyph || column.glyph || "";
+      if (glyphName) {
+        const glyph = doc.createElement("span");
+        glyph.className = "pxd-kanban__glyph";
+        glyph.setAttribute("data-status", glyphName);
+        glyph.setAttribute("aria-hidden", "true");
+        title.append(glyph);
+      }
+      const nameEl = doc.createElement("span");
+      nameEl.className = "pxd-kanban__name";
+      nameEl.textContent = column.name || "None";
+      title.append(nameEl);
+      const countEl = doc.createElement("span");
+      countEl.className = "pxd-kanban__count";
+      countEl.textContent = String(count);
+      title.append(countEl);
       col.append(title);
       for (const card2 of column.cards) {
         const item = doc.createElement("div");
         item.className = "pxd-kanban__card";
         item.setAttribute("data-uid", card2.uid);
+        item.tabIndex = 0;
         item.textContent = card2.title || card2.uid;
         listen(item, "pointerdown", (event) => {
           dragUid = card2.uid;
@@ -25840,17 +27084,58 @@ function mountKanban({ doc = globalThis.document, root, host, bt = null, complet
         const uid = dragUid;
         dragUid = null;
         if (!uid || column.name === "") return;
-        const row2 = rows.find((item) => item.uid === uid);
-        const plan = planKanbanMove({ field, column: column.name, row: row2 });
-        if (plan) void commit(plan);
+        const row3 = rows.find((item) => item.uid === uid);
+        if (!row3) return;
+        if (field === STATUS_FIELD) void moveToLane(row3, column.name);
+        else {
+          const plan = planKanbanMove({ field, column: column.name, row: row3 });
+          if (plan) void commit(plan);
+        }
       }, paintOffs);
       columnsEl.append(col);
     }
+    if (focusUid) {
+      const again = columnsEl.querySelector(`[data-uid="${focusUid}"]`);
+      try {
+        again?.focus?.({ preventScroll: true });
+      } catch {
+        again?.focus?.();
+      }
+    }
   };
   listen(select, "change", () => {
-    field = select.value || TODO_FIELD;
+    const next = select.value || TODO_FIELD;
+    if (next === field) return;
+    field = next;
+    picked = true;
+    pending.clear();
+    persist(next);
     paint2();
   });
+  const keyOffs = [];
+  const onLaneKey = (event) => {
+    if (!open || event.key !== "[" && event.key !== "]") return;
+    const tag = String(doc.activeElement?.tagName || "").toLowerCase();
+    if (tag === "input" || tag === "textarea" || tag === "select") return;
+    const card2 = doc.activeElement?.closest?.(".pxd-kanban__card");
+    if (!card2 || !box2.contains?.(card2)) return;
+    event.preventDefault();
+    event.stopPropagation();
+    const names = [...columnsEl.querySelectorAll(".pxd-kanban__column")].map((col) => col.getAttribute("data-column")).filter((name) => name);
+    const current3 = card2.closest?.(".pxd-kanban__column")?.getAttribute?.("data-column");
+    const index = names.indexOf(current3);
+    if (index < 0) return;
+    const next = event.key === "]" ? index + 1 : index - 1;
+    if (next < 0 || next >= names.length) return;
+    const row3 = painted.find((item) => item.uid === card2.getAttribute("data-uid"));
+    if (row3) void moveToLane(row3, names[next]);
+  };
+  const armKeys = () => {
+    if (!keyOffs.length) listen(box2, "keydown", onLaneKey, keyOffs, true);
+  };
+  const disarmKeys = () => {
+    keyOffs.splice(0).forEach((off) => off());
+  };
   let resizeObs = null;
   const toolbar = root?.querySelector?.(".pxd-toolbar");
   if (toolbar && typeof globalThis.ResizeObserver === "function") {
@@ -25861,14 +27146,22 @@ function mountKanban({ doc = globalThis.document, root, host, bt = null, complet
   }
   return {
     el: box2,
+    moveToLane,
     open() {
       open = true;
+      armKeys();
+      pending.clear();
+      if (!picked) {
+        const saved = getBoard?.()?.plexus?.kanban;
+        if (typeof saved === "string" && saved) field = saved;
+      }
       place();
       paint2();
     },
     close() {
       open = false;
       dragUid = null;
+      disarmKeys();
     },
     refresh() {
       if (open) paint2();
@@ -25876,6 +27169,8 @@ function mountKanban({ doc = globalThis.document, root, host, bt = null, complet
     dispose() {
       open = false;
       dragUid = null;
+      disarmKeys();
+      pending.clear();
       try {
         resizeObs?.disconnect();
       } catch {
@@ -25894,10 +27189,10 @@ var DIR_LABELS = [["one", "Directed"], ["none", "Undirected"], ["two", "Bidirect
 var DASH_LABELS = [["solid", "Solid"], ["dashed", "Dashed"], ["animated", "Animated"]];
 var ROUTE_LABELS = [["straight", "Straight"], ["elbow", "Smooth step"], ["curve", "Curve"]];
 function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } = {}) {
-  const listeners2 = [];
+  const listeners3 = [];
   const listen = (el2, type, fn) => {
     el2.addEventListener(type, fn);
-    listeners2.push(() => el2.removeEventListener(type, fn));
+    listeners3.push(() => el2.removeEventListener(type, fn));
   };
   const el = (tag, cls, parent, text2) => {
     const node2 = doc.createElement(tag);
@@ -25956,8 +27251,8 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
   };
   const stepper = (parent, { value, fallback, min, max, aria, onCommit }) => {
     const shown = Number.isInteger(value) ? value : fallback;
-    const row2 = el("div", "pxd-props__step", parent);
-    const input = el("input", "pxd-input pxd-props__num", row2);
+    const row3 = el("div", "pxd-props__step", parent);
+    const input = el("input", "pxd-input pxd-props__num", row3);
     input.type = "number";
     input.min = String(min);
     input.max = String(max);
@@ -25972,9 +27267,9 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
       }
       onCommit(v);
     };
-    const dec = button(row2, "pxd-props__dec", "−", "Smaller", () => commit(shown - 1), "props.step.dec");
-    row2.insertBefore(dec, input);
-    button(row2, "pxd-props__inc", "+", "Larger", () => commit(shown + 1), "props.step.inc");
+    const dec = button(row3, "pxd-props__dec", "−", "Smaller", () => commit(shown - 1), "props.step.dec");
+    row3.insertBefore(dec, input);
+    button(row3, "pxd-props__inc", "+", "Larger", () => commit(shown + 1), "props.step.inc");
     listen(input, "change", () => commit(input.value));
     listen(input, "keydown", (event) => {
       event.stopPropagation();
@@ -25985,16 +27280,16 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
     });
   };
   const colorField = (parent, label, value, fn) => {
-    const row2 = el("div", "pxd-props__field", parent);
-    el("span", "pxd-props__label", row2, label);
-    const chip = button(row2, "pxd-props__chip", "", label, () => {
-      const open = row2.querySelector(".pxd-picker");
+    const row3 = el("div", "pxd-props__field", parent);
+    el("span", "pxd-props__label", row3, label);
+    const chip = button(row3, "pxd-props__chip", "", label, () => {
+      const open = row3.querySelector(".pxd-picker");
       if (open) {
         open.remove();
         return;
       }
       const picker = buildColorPicker(doc, (c) => fn(c), listen);
-      row2.append(picker);
+      row3.append(picker);
     }, "props.chip");
     chip.setAttribute("aria-label", label);
     const sw = el("span", "pxd-props__chip-swatch", chip);
@@ -26119,7 +27414,7 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
     place,
     isCollapsed: () => collapsed,
     dispose() {
-      listeners2.splice(0).forEach((off) => off());
+      listeners3.splice(0).forEach((off) => off());
       panel.remove();
     }
   };
@@ -26147,11 +27442,11 @@ function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
     target.addEventListener(type, fn, capture);
     offs.push(() => target.removeEventListener(type, fn, capture));
   };
-  const selectable = (level) => level.rows.filter((row2) => !entries.get(row2).item.disabled);
-  const setActive = (level, row2) => {
-    for (const r of level.rows) r.classList.toggle("pxd-menu__item--active", r === row2);
-    level.active = row2 || null;
-    if (row2 && level.depth === 0 && menuEl?.classList?.contains("pxd-menu--scroll")) row2.scrollIntoView?.({ block: "nearest" });
+  const selectable = (level) => level.rows.filter((row3) => !entries.get(row3).item.disabled);
+  const setActive = (level, row3) => {
+    for (const r of level.rows) r.classList.toggle("pxd-menu__item--active", r === row3);
+    level.active = row3 || null;
+    if (row3 && level.depth === 0 && menuEl?.classList?.contains("pxd-menu--scroll")) row3.scrollIntoView?.({ block: "nearest" });
   };
   const closeFrom = (depth) => {
     while (levels.length > depth) {
@@ -26161,11 +27456,11 @@ function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
       setActive(level, null);
     }
   };
-  const placeSub = (sub, row2) => {
+  const placeSub = (sub, row3) => {
     const rootRect = root.getBoundingClientRect();
     sub.classList.remove("pxd-menu__sub--left");
     sub.style.top = "0px";
-    const r = row2.getBoundingClientRect();
+    const r = row3.getBoundingClientRect();
     const w = sub.offsetWidth || MENU_WIDTH;
     const h = sub.offsetHeight || 0;
     if (menuEl?.classList?.contains("pxd-menu--scroll")) {
@@ -26197,14 +27492,14 @@ function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
       sub.style.top = `${Math.round(Math.min(0, rootRect.bottom - MARGIN2 - (r.top + h)))}px`;
     }
   };
-  const openSub = (row2) => {
-    const entry = entries.get(row2);
+  const openSub = (row3) => {
+    const entry = entries.get(row3);
     if (!entry?.sub || entry.item.disabled) return null;
     closeFrom(entry.level + 1);
     entry.sub.container.style.display = "";
     entry.sub.container.classList.add("pxd-menu__sub--open");
     levels.push(entry.sub);
-    placeSub(entry.sub.container, row2);
+    placeSub(entry.sub.container, row3);
     return entry.sub;
   };
   const build = (items, parent, depth) => {
@@ -26219,22 +27514,22 @@ function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
       if (item.danger) cls += " pxd-menu__item--danger";
       if (item.checked) cls += " pxd-menu__item--checked";
       if (item.children?.length) cls += " pxd-menu__item--parent";
-      const row2 = el("div", cls, parent);
-      row2.setAttribute("role", item.checked ? "menuitemradio" : "menuitem");
-      row2.setAttribute("aria-label", item.label || item.id);
-      row2.tabIndex = item.disabled ? -1 : 0;
-      if (item.checked) row2.setAttribute("aria-checked", "true");
-      if (item.disabled) row2.setAttribute("aria-disabled", "true");
-      row2.setAttribute("data-id", item.id);
-      row2.dataset.id = item.id;
-      el("span", "pxd-menu__label", row2, item.label);
-      if (item.hint) el("span", "pxd-menu__hint", row2, item.hint);
+      const row3 = el("div", cls, parent);
+      row3.setAttribute("role", item.checked ? "menuitemradio" : "menuitem");
+      row3.setAttribute("aria-label", item.label || item.id);
+      row3.tabIndex = item.disabled ? -1 : 0;
+      if (item.checked) row3.setAttribute("aria-checked", "true");
+      if (item.disabled) row3.setAttribute("aria-disabled", "true");
+      row3.setAttribute("data-id", item.id);
+      row3.dataset.id = item.id;
+      el("span", "pxd-menu__label", row3, item.label);
+      if (item.hint) el("span", "pxd-menu__hint", row3, item.hint);
       const entry = { item, level: depth, sub: null };
-      entries.set(row2, entry);
-      level.rows.push(row2);
+      entries.set(row3, entry);
+      level.rows.push(row3);
       if (item.children?.length) {
-        el("span", "pxd-menu__arrow", row2, "›");
-        const container = el("div", "pxd-menu__sub", row2);
+        el("span", "pxd-menu__arrow", row3, "›");
+        const container = el("div", "pxd-menu__sub", row3);
         container.style.display = "none";
         container.setAttribute("role", "menu");
         entry.sub = build(item.children, container, depth + 1);
@@ -26251,11 +27546,11 @@ function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
     levels.length = 0;
     on.closed?.();
   };
-  const pick = (row2) => {
-    const entry = entries.get(row2);
+  const pick = (row3) => {
+    const entry = entries.get(row3);
     if (!entry || entry.item.disabled) return;
     if (entry.sub) {
-      const sub = openSub(row2);
+      const sub = openSub(row3);
       const first = sub ? selectable(sub)[0] || null : null;
       if (sub) setActive(sub, first);
       first?.focus?.();
@@ -26306,9 +27601,9 @@ function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
     if (key === "ArrowUp") return move(-1);
     if (key === "Home" || key === "End") {
       const rows = selectable(level);
-      const row2 = key === "Home" ? rows[0] : rows[rows.length - 1];
-      setActive(level, row2);
-      row2?.focus?.();
+      const row3 = key === "Home" ? rows[0] : rows[rows.length - 1];
+      setActive(level, row3);
+      row3?.focus?.();
       return void 0;
     }
     if (key === "ArrowRight") {
@@ -26339,15 +27634,15 @@ function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
       on_(menuEl, "contextmenu", (event) => event.preventDefault?.());
       levels.push(build(list, menuEl, 0));
       on_(menuEl, "click", (event) => {
-        const row2 = rowOf(event);
-        if (!row2) return;
+        const row3 = rowOf(event);
+        if (!row3) return;
         event.preventDefault?.();
-        pick(row2);
+        pick(row3);
       });
       on_(menuEl, "pointerover", (event) => {
-        const row2 = rowOf(event);
-        if (!row2) return;
-        const entry = entries.get(row2);
+        const row3 = rowOf(event);
+        if (!row3) return;
+        const entry = entries.get(row3);
         const level = levels[entry.level];
         if (!level) return;
         closeFrom(entry.level + 1);
@@ -26355,8 +27650,8 @@ function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
           setActive(level, null);
           return;
         }
-        setActive(level, row2);
-        if (entry.sub) openSub(row2);
+        setActive(level, row3);
+        if (entry.sub) openSub(row3);
       });
       const win = doc.defaultView || doc;
       on_(doc, "pointerdown", (event) => {
@@ -26391,10 +27686,10 @@ function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
     isOpen: () => Boolean(menuEl),
     focusFirst() {
       const level = current3();
-      const row2 = level ? selectable(level)[0] || null : null;
-      if (!row2) return;
-      setActive(level, row2);
-      row2.focus?.();
+      const row3 = level ? selectable(level)[0] || null : null;
+      if (!row3) return;
+      setActive(level, row3);
+      row3.focus?.();
     },
     dispose() {
       close();
@@ -26439,15 +27734,15 @@ function createShortcutSheet({ doc = globalThis.document, root, shortcuts = SHOR
     grid.className = "pxd-sheet__grid";
     let groupEl = null;
     let groupName = "";
-    const visible2 = shortcuts.filter((row2) => settings == null || typeof row2.when !== "function" || row2.when(settings) !== false);
-    for (const row2 of visible2) {
-      if (row2.group !== groupName) {
-        groupName = row2.group;
+    const visible2 = shortcuts.filter((row3) => settings == null || typeof row3.when !== "function" || row3.when(settings) !== false);
+    for (const row3 of visible2) {
+      if (row3.group !== groupName) {
+        groupName = row3.group;
         groupEl = doc.createElement("section");
         groupEl.className = "pxd-sheet__group";
         const heading = doc.createElement("h2");
         heading.className = "pxd-sheet__group-title";
-        heading.textContent = row2.group;
+        heading.textContent = row3.group;
         groupEl.append(heading);
         grid.append(groupEl);
       }
@@ -26455,10 +27750,10 @@ function createShortcutSheet({ doc = globalThis.document, root, shortcuts = SHOR
       line.className = "pxd-sheet__row";
       const keys = doc.createElement("span");
       keys.className = "pxd-sheet__keys";
-      keys.textContent = row2.keys;
+      keys.textContent = row3.keys;
       const label = doc.createElement("span");
       label.className = "pxd-sheet__label";
-      label.textContent = row2.label;
+      label.textContent = row3.label;
       line.append(keys, label);
       groupEl.append(line);
     }
@@ -26484,6 +27779,7 @@ function createShortcutSheet({ doc = globalThis.document, root, shortcuts = SHOR
 }
 
 // src/view/menu-model.js
+var STATUS_WRITE_CAP = 45;
 var SIZE_LABELS = { 16: "Small", 24: "Medium", 32: "Large", 48: "Extra large" };
 var SHAPE_LABELS2 = {
   rectangle: "Rectangle",
@@ -26494,6 +27790,28 @@ var SHAPE_LABELS2 = {
   cylinder: "Cylinder"
 };
 var cap3 = (word) => word.charAt(0).toUpperCase() + word.slice(1);
+function statusRows(source) {
+  const value = typeof source === "function" ? source() : source;
+  if (!value) return [];
+  if (typeof value.values === "function" && !Array.isArray(value)) return [...value.values()];
+  return [...value];
+}
+function statusSubmenu(c) {
+  const api = c.statusTags;
+  if (typeof api?.available !== "function" || api.available() !== true) return null;
+  const current3 = String(c.status ?? "").trim().toLowerCase();
+  const children = [];
+  for (const row3 of statusRows(api.palette)) {
+    const name = String(row3?.name || "").trim();
+    if (!name) continue;
+    children.push(make(`status:${name}`, name, {
+      checked: name.toLowerCase() === current3,
+      glyph: row3.glyph
+    }));
+  }
+  children.push(make("status:remove", "Remove status"));
+  return make("status", "Status ▸", { children });
+}
 var make = (id, label, extra = {}) => {
   const out = { id, label };
   for (const [key, value] of Object.entries(extra)) {
@@ -26649,8 +27967,13 @@ function buildMenu(kind, ctx = {}) {
       ];
       const regionsItem = regionMenu(c.regions);
       if (regionsItem) {
-        const at = out.findIndex((row2) => row2.id === "color");
+        const at = out.findIndex((row3) => row3.id === "color");
         out.splice(at < 0 ? out.length : at, 0, regionsItem);
+      }
+      const statusItem = statusSubmenu(c);
+      if (statusItem) {
+        const at = out.findIndex((row3) => row3.id === "color");
+        out.splice(at < 0 ? out.length : at + 1, 0, statusItem);
       }
       if (c.hasOutline) {
         out.push(make("mind-map", "Expand as mind map"));
@@ -26759,15 +28082,17 @@ function buildMenu(kind, ctx = {}) {
       ];
     case "multi": {
       const few = count !== null && count < 2;
+      const statusItem = statusSubmenu(c);
       return [
         make("copy", "Copy", { hint: "Cmd C" }),
         make("copy-png", "Copy selection as PNG"),
         make("duplicate", "Duplicate", { hint: "Cmd D" }),
         colorMenu(),
+        ...statusItem ? [statusItem] : [],
         sep(),
         make("align", "Align", {
           disabled: few,
-          children: ["left", "center", "right", "top", "middle", "bottom"].map((side) => make(`align:${side}`, cap3(side)))
+          children: ["left", "center", "right", "top", "middle", "bottom"].map((side2) => make(`align:${side2}`, cap3(side2)))
         }),
         make("distribute", "Distribute", {
           disabled: count !== null && count < 3,
@@ -26826,6 +28151,26 @@ function buildMenu(kind, ctx = {}) {
       return [];
   }
 }
+async function applyStatusPicks(uids, name, setStatus, onProgress, toast) {
+  const list = [...uids || []].filter((uid) => uid).slice(0, STATUS_WRITE_CAP);
+  const total = list.length;
+  const rejected = [];
+  for (let i = 0; i < list.length; i += 1) {
+    const uid = list[i];
+    let res;
+    try {
+      res = await setStatus(uid, name);
+    } catch (error) {
+      res = { status: "rejected", reason: error?.message || "Could not set that status" };
+    }
+    if (!res || res.status === "rejected" || res.status === "unknown" || res.status === "conflict" || res.status === "not-updated") {
+      rejected.push({ uid, reason: res?.reason || "" });
+      if (typeof toast === "function") toast({ message: res?.reason || "Could not set that status" });
+    }
+    if (typeof onProgress === "function") onProgress({ done: i + 1, total, uid, name });
+  }
+  return { applied: total, rejected };
+}
 
 // src/view/quicklook.js
 var DEPTH = 3;
@@ -26863,10 +28208,10 @@ function createQuickLook({ doc = globalThis.document, root, host, timers, on = {
     for (const b of blocks || []) {
       if (budget.n >= LIMIT2 * 4) return;
       budget.n += 1;
-      const row2 = el("div", "pxd-ql__block", parent);
-      renderRoot(row2, childString4(b), "pxd-rs pxd-ql__text");
+      const row3 = el("div", "pxd-ql__block", parent);
+      renderRoot(row3, childString4(b), "pxd-rs pxd-ql__text");
       const kids = childKids2(b);
-      if (kids.length && depth < DEPTH) renderBlocks(el("div", "pxd-ql__children", row2), kids, depth + 1, budget);
+      if (kids.length && depth < DEPTH) renderBlocks(el("div", "pxd-ql__children", row3), kids, depth + 1, budget);
     }
   };
   const unmountRoots = () => {
@@ -28018,14 +29363,14 @@ function lensRowLabel(tag) {
   return `#${name}`;
 }
 function highlightPickerList(rows) {
-  return (Array.isArray(rows) ? rows : []).map((row2) => {
-    const placed = row2?.placed === true;
+  return (Array.isArray(rows) ? rows : []).map((row3) => {
+    const placed = row3?.placed === true;
     return {
-      ...row2,
+      ...row3,
       placed,
       enabled: !placed,
       disabled: placed,
-      checked: placed || row2?.selected === true
+      checked: placed || row3?.selected === true
     };
   });
 }
@@ -28033,10 +29378,10 @@ function highlightPickerRows(rows, { color, page } = {}) {
   const list = Array.isArray(rows) ? rows : [];
   const colorOn = typeof color === "string" && color !== "";
   const pageOn = typeof page === "string" && page !== "";
-  return list.filter((row2) => {
-    if (!row2) return false;
-    if (colorOn && row2.color !== color) return false;
-    if (pageOn && pageKey(row2.page) !== page) return false;
+  return list.filter((row3) => {
+    if (!row3) return false;
+    if (colorOn && row3.color !== color) return false;
+    if (pageOn && pageKey(row3.page) !== page) return false;
     return true;
   });
 }
@@ -28044,11 +29389,11 @@ function selectHighlightPage(rows, { color, page } = {}) {
   const list = Array.isArray(rows) ? rows : [];
   const colorOn = typeof color === "string" && color !== "";
   const pageOn = typeof page === "string" && page !== "";
-  return list.map((row2) => {
-    if (!row2 || row2.placed === true) return { ...row2, selected: false };
-    if (colorOn && row2.color !== color) return row2;
-    if (pageOn && pageKey(row2.page) !== page) return row2;
-    return { ...row2, selected: true };
+  return list.map((row3) => {
+    if (!row3 || row3.placed === true) return { ...row3, selected: false };
+    if (colorOn && row3.color !== color) return row3;
+    if (pageOn && pageKey(row3.page) !== page) return row3;
+    return { ...row3, selected: true };
   });
 }
 function pdfHighlightButton(doc, onClick) {
@@ -28071,7 +29416,7 @@ function pdfHighlightButton(doc, onClick) {
   return btn;
 }
 function openHighlightDialog(doc, { rows, origin, onPlace, onClose } = {}) {
-  let rowsState = (Array.isArray(rows) ? rows : []).map((row2) => ({ ...row2, selected: false }));
+  let rowsState = (Array.isArray(rows) ? rows : []).map((row3) => ({ ...row3, selected: false }));
   const at = origin && typeof origin === "object" ? origin : { x: 0, y: 0 };
   const root = doc.createElement("div");
   root.className = "pxd-highlight-dialog pxd-popover pxd-chrome";
@@ -28105,10 +29450,10 @@ function openHighlightDialog(doc, { rows, origin, onPlace, onClose } = {}) {
   pageSel.setAttribute("aria-label", "Page");
   const colors = [];
   const pages = [];
-  for (const row2 of rowsState) {
-    if (row2.color && !colors.includes(row2.color)) colors.push(row2.color);
-    const key = pageKey(row2.page);
-    if (!pages.some((entry) => entry[0] === key)) pages.push([key, row2.page == null ? "No page" : `Page ${row2.page}`]);
+  for (const row3 of rowsState) {
+    if (row3.color && !colors.includes(row3.color)) colors.push(row3.color);
+    const key = pageKey(row3.page);
+    if (!pages.some((entry) => entry[0] === key)) pages.push([key, row3.page == null ? "No page" : `Page ${row3.page}`]);
   }
   const colorOrder = new Map(HIGHLIGHT_COLORS.map((name, index) => [name, index]));
   colors.sort((a, b) => (colorOrder.get(a) ?? 99) - (colorOrder.get(b) ?? 99));
@@ -28152,16 +29497,16 @@ function openHighlightDialog(doc, { rows, origin, onPlace, onClose } = {}) {
   columnBtn.setAttribute("aria-label", "Place as column");
   actions.append(gridBtn, columnBtn);
   root.append(actions);
-  const groupLabel = (row2) => {
-    const text2 = typeof row2?.group === "string" ? row2.group.trim() : "";
+  const groupLabel = (row3) => {
+    const text2 = typeof row3?.group === "string" ? row3.group.trim() : "";
     return text2 || "Other";
   };
   const paint2 = () => {
     list.replaceChildren();
     const shown = highlightPickerRows(highlightPickerList(rowsState), { color: colorSel.value, page: pageSel.value });
     let lastGroup = null;
-    for (const row2 of shown) {
-      const label = groupLabel(row2);
+    for (const row3 of shown) {
+      const label = groupLabel(row3);
       if (label !== lastGroup) {
         lastGroup = label;
         const head = doc.createElement("div");
@@ -28171,31 +29516,31 @@ function openHighlightDialog(doc, { rows, origin, onPlace, onClose } = {}) {
       }
       const line = doc.createElement("label");
       line.className = "pxd-hl-row";
-      line.setAttribute("data-uid", row2.uid || "");
-      line.setAttribute("data-enabled", row2.enabled ? "true" : "false");
+      line.setAttribute("data-uid", row3.uid || "");
+      line.setAttribute("data-enabled", row3.enabled ? "true" : "false");
       const box2 = doc.createElement("input");
       box2.className = "pxd-hl-check";
       box2.type = "checkbox";
-      box2.checked = row2.checked === true;
-      box2.disabled = row2.disabled === true;
-      if (row2.disabled) box2.setAttribute("disabled", "");
-      box2.setAttribute("data-uid", row2.uid || "");
+      box2.checked = row3.checked === true;
+      box2.disabled = row3.disabled === true;
+      if (row3.disabled) box2.setAttribute("disabled", "");
+      box2.setAttribute("data-uid", row3.uid || "");
       box2.addEventListener("change", () => {
-        if (row2.placed) return;
-        const live = rowsState.find((item) => item.uid === row2.uid);
+        if (row3.placed) return;
+        const live = rowsState.find((item) => item.uid === row3.uid);
         if (live && live.placed !== true) live.selected = box2.checked === true;
       });
       const bar = doc.createElement("span");
       bar.className = "pxd-hl-bar";
-      bar.setAttribute("data-color", row2.color || "gray");
+      bar.setAttribute("data-color", row3.color || "gray");
       const text2 = doc.createElement("span");
       text2.className = "pxd-hl-row__text";
-      text2.textContent = row2.snippet || row2.uid || "";
+      text2.textContent = row3.snippet || row3.uid || "";
       const page = doc.createElement("span");
       page.className = "pxd-hl-rowpage";
-      page.textContent = row2.page == null ? "" : `p. ${row2.page}`;
+      page.textContent = row3.page == null ? "" : `p. ${row3.page}`;
       line.append(box2, bar, text2, page);
-      if (typeof row2.note === "string" && row2.note.trim()) {
+      if (typeof row3.note === "string" && row3.note.trim()) {
         const mark = doc.createElement("span");
         mark.className = "pxd-hl-note";
         mark.setAttribute("aria-label", "Note");
@@ -28317,7 +29662,9 @@ function buildBoardView(onFail, {
   autofocus = false,
   onSetDefaults = null,
   perfLog = null,
-  lifecycle = null
+  lifecycle = null,
+  onSelectTab = null,
+  tabStore = null
 } = {}) {
   const doc = globalThis.document;
   const win = globalThis.window;
@@ -28345,7 +29692,7 @@ function buildBoardView(onFail, {
   const prefersReducedMotion = () => Boolean(motionMq?.matches);
   const currentMotion = () => resolveMotion(setting("motion", "full"), prefersReducedMotion());
   const timers = createTimers();
-  const listeners2 = [];
+  const listeners3 = [];
   const observers = [];
   const subs = [];
   let suspended = false;
@@ -28356,7 +29703,7 @@ function buildBoardView(onFail, {
     };
     el2.addEventListener(type, wrapped, opts);
     const off = () => el2.removeEventListener(type, wrapped, opts);
-    listeners2.push(off);
+    listeners3.push(off);
     return off;
   };
   const observed = /* @__PURE__ */ new WeakMap();
@@ -28369,16 +29716,16 @@ function buildBoardView(onFail, {
     const disconnect = typeof observer.disconnect === "function" ? observer.disconnect.bind(observer) : null;
     if (observe) {
       observer.observe = (target, options) => {
-        const at = records.findIndex((row3) => row3.target === target);
-        const row2 = { target, options };
-        if (at >= 0) records[at] = row2;
-        else records.push(row2);
+        const at = records.findIndex((row4) => row4.target === target);
+        const row3 = { target, options };
+        if (at >= 0) records[at] = row3;
+        else records.push(row3);
         return observe(target, options);
       };
     }
     if (unobserve) {
       observer.unobserve = (target) => {
-        const at = records.findIndex((row2) => row2.target === target);
+        const at = records.findIndex((row3) => row3.target === target);
         if (at >= 0) records.splice(at, 1);
         return unobserve(target);
       };
@@ -28394,7 +29741,7 @@ function buildBoardView(onFail, {
   const suspendObservers = () => {
     for (const obs of observers) {
       const records = observed.get(obs) || [];
-      obs._pxdHeld = records.map((row2) => ({ target: row2.target, options: row2.options }));
+      obs._pxdHeld = records.map((row3) => ({ target: row3.target, options: row3.options }));
       try {
         obs.disconnect();
       } catch {
@@ -28405,9 +29752,9 @@ function buildBoardView(onFail, {
     for (const obs of observers) {
       const held = obs._pxdHeld || [];
       obs._pxdHeld = null;
-      for (const row2 of held) {
+      for (const row3 of held) {
         try {
-          obs.observe(row2.target, row2.options);
+          obs.observe(row3.target, row3.options);
         } catch {
         }
       }
@@ -28430,6 +29777,46 @@ function buildBoardView(onFail, {
   const graph = host?.graph || graphName2(win);
   const storage = globalThis.localStorage;
   const vpStore = host?.viewports || host?.viewportStore || createLocalViewportStore({ storage, graph, timers });
+  const tabsStore = tabStore || host?.tabs || null;
+  let memoryTabs = [];
+  const readTabs = () => {
+    if (typeof tabsStore?.get === "function") {
+      try {
+        const stored = tabsStore.get();
+        if (Array.isArray(stored)) return stored;
+      } catch {
+      }
+    }
+    return memoryTabs;
+  };
+  const openBoardTab = (entry) => {
+    if (typeof tabsStore?.open === "function") {
+      const next2 = tabsStore.open(entry);
+      memoryTabs = next2?.tabs || [];
+      return next2;
+    }
+    const next = openTab(readTabs(), entry);
+    memoryTabs = next.tabs;
+    try {
+      tabsStore?.set?.(next.tabs);
+    } catch {
+    }
+    return next;
+  };
+  const closeBoardTab = (uid) => {
+    if (typeof tabsStore?.close === "function") {
+      const next2 = tabsStore.close(uid);
+      memoryTabs = next2?.tabs || [];
+      return next2;
+    }
+    const next = closeTab(readTabs(), uid);
+    memoryTabs = next.tabs;
+    try {
+      tabsStore?.set?.(next.tabs);
+    } catch {
+    }
+    return next;
+  };
   const heightKey = `plexus-diagram:h:${graph}:${routeUid}`;
   const root = el("div", "pxd-root", mountEl);
   root.tabIndex = 0;
@@ -28638,33 +30025,33 @@ function buildBoardView(onFail, {
     forgetObserver(near);
     forgetObserver(far);
   };
-  const rowHeight = (row2) => {
+  const rowHeight = (row3) => {
     try {
-      const h = row2.getBoundingClientRect?.().height;
+      const h = row3.getBoundingClientRect?.().height;
       if (h > 0) return h;
     } catch {
     }
-    const off = Number(row2.offsetHeight) || 0;
+    const off = Number(row3.offsetHeight) || 0;
     return off > 0 ? off : 0;
   };
   const closeOutlineLive = () => {
     const prev = outlineLiveUid;
     outlineLiveUid = null;
     if (!prev || !outlineHost) return;
-    for (const row2 of [...outlineHost.children]) {
-      if (!row2.querySelector?.(".pxd-embed-live")) continue;
-      const live = row2.querySelector(".pxd-rs__live");
+    for (const row3 of [...outlineHost.children]) {
+      if (!row3.querySelector?.(".pxd-embed-live")) continue;
+      const live = row3.querySelector(".pxd-rs__live");
       try {
         if (live) host?.unmount?.(live);
       } catch {
       }
-      outlined.delete(row2);
+      outlined.delete(row3);
       try {
-        row2.replaceChildren();
+        row3.replaceChildren();
       } catch {
       }
-      row2.style.height = "";
-      renderOutlineRow(row2);
+      row3.style.height = "";
+      renderOutlineRow(row3);
     }
   };
   const openOutlineEmbed = (uid) => {
@@ -28677,41 +30064,41 @@ function buildBoardView(onFail, {
     } catch {
     }
     if (!outlineHost) return;
-    for (const row2 of [...outlineHost.children]) {
-      const heavies = outlineHeavies(row2.dataset?.uid);
-      const hit = heavies.some((poster) => (poster.uid || row2.dataset?.uid) === uid);
-      const live = row2.querySelector?.(".pxd-embed-live");
+    for (const row3 of [...outlineHost.children]) {
+      const heavies = outlineHeavies(row3.dataset?.uid);
+      const hit = heavies.some((poster) => (poster.uid || row3.dataset?.uid) === uid);
+      const live = row3.querySelector?.(".pxd-embed-live");
       if (!hit && !live) continue;
       const node2 = live?.querySelector?.(".pxd-rs__live");
       try {
         if (node2) host?.unmount?.(node2);
       } catch {
       }
-      outlined.delete(row2);
+      outlined.delete(row3);
       try {
-        row2.replaceChildren();
+        row3.replaceChildren();
       } catch {
       }
-      row2.style.height = "";
-      renderOutlineRow(row2);
+      row3.style.height = "";
+      renderOutlineRow(row3);
     }
   };
-  const renderOutlineRow = (row2) => {
-    if (disposed || !row2 || outlined.has(row2)) return;
-    if (!outlineHost?.contains?.(row2)) return;
-    const uid = row2.dataset?.uid || "";
+  const renderOutlineRow = (row3) => {
+    if (disposed || !row3 || outlined.has(row3)) return;
+    if (!outlineHost?.contains?.(row3)) return;
+    const uid = row3.dataset?.uid || "";
     const heavies = uid ? outlineHeavies(uid) : [];
     if (heavies.length) {
       const own = outlineRead(uid);
       const ownSplit = embedSplit(own, { read: outlineRead, cover: outlineCover, uid });
       if (!ownSplit.posters.length && own.trim()) {
-        const text2 = el("div", "pxd-outline-rest", row2);
+        const text2 = el("div", "pxd-outline-rest", row3);
         text2.textContent = plainText(own);
       }
       for (const poster of heavies) {
         const mount = poster.uid || uid;
         if (outlineLiveUid && mount === outlineLiveUid) {
-          const liveWrap = el("div", "pxd-embed-poster pxd-embed-live", row2);
+          const liveWrap = el("div", "pxd-embed-poster pxd-embed-live", row3);
           liveWrap.setAttribute("data-pxd-embed", mount);
           if (poster.kind) liveWrap.setAttribute("data-kind", poster.kind);
           const live = el("div", "pxd-rs__live", liveWrap);
@@ -28720,61 +30107,61 @@ function buildBoardView(onFail, {
           } catch {
           }
         } else {
-          const node2 = paintEmbedPoster(doc, row2, { ...poster, uid: mount }, (id) => openOutlineEmbed(id || mount));
+          const node2 = paintEmbedPoster(doc, row3, { ...poster, uid: mount }, (id) => openOutlineEmbed(id || mount));
           const onFocus = () => openOutlineEmbed(mount);
           node2.addEventListener("focusin", onFocus);
           const offs = node2._pxdFocusOffs || (node2._pxdFocusOffs = []);
           offs.push(() => node2.removeEventListener("focusin", onFocus));
         }
       }
-      row2.style.height = "";
-      outlined.add(row2);
+      row3.style.height = "";
+      outlined.add(row3);
       return;
     }
     if (typeof host?.renderBlock !== "function") return;
     try {
-      host.renderBlock(row2, uid);
+      host.renderBlock(row3, uid);
     } catch {
       return;
     }
-    row2.style.height = "";
-    outlined.add(row2);
+    row3.style.height = "";
+    outlined.add(row3);
   };
-  const releaseOutlineRow = (row2) => {
-    if (!row2 || !outlined.has(row2)) return;
-    if (row2.querySelector?.(".pxd-embed-live")) outlineLiveUid = null;
-    for (const node2 of row2.querySelectorAll?.(".pxd-embed-poster") || []) {
+  const releaseOutlineRow = (row3) => {
+    if (!row3 || !outlined.has(row3)) return;
+    if (row3.querySelector?.(".pxd-embed-live")) outlineLiveUid = null;
+    for (const node2 of row3.querySelectorAll?.(".pxd-embed-poster") || []) {
       const offs = node2._pxdFocusOffs;
       if (offs) for (const off of offs.splice(0)) off();
       dropEmbedPoster(node2);
     }
-    const h = rowHeight(row2);
-    const live = row2.querySelector?.(".pxd-rs__live");
+    const h = rowHeight(row3);
+    const live = row3.querySelector?.(".pxd-rs__live");
     try {
       if (live) host?.unmount?.(live);
     } catch {
     }
     try {
-      host?.unmount?.(row2);
+      host?.unmount?.(row3);
     } catch {
     }
     try {
-      row2.replaceChildren();
+      row3.replaceChildren();
     } catch {
     }
-    if (h > 0) row2.style.height = `${Math.ceil(h)}px`;
-    outlined.delete(row2);
+    if (h > 0) row3.style.height = `${Math.ceil(h)}px`;
+    outlined.delete(row3);
   };
-  const dropOutlineRow = (row2) => {
+  const dropOutlineRow = (row3) => {
     try {
-      outlineNear?.unobserve?.(row2);
+      outlineNear?.unobserve?.(row3);
     } catch {
     }
     try {
-      outlineFar?.unobserve?.(row2);
+      outlineFar?.unobserve?.(row3);
     } catch {
     }
-    releaseOutlineRow(row2);
+    releaseOutlineRow(row3);
   };
   const ensureOutlineObserver = () => {
     const IO = globalThis.IntersectionObserver;
@@ -28797,23 +30184,23 @@ function buildBoardView(onFail, {
     observers.push(outlineNear, outlineFar);
     return true;
   };
-  const watchOutlineRow = (row2) => {
+  const watchOutlineRow = (row3) => {
     if (!ensureOutlineObserver()) {
-      renderOutlineRow(row2);
+      renderOutlineRow(row3);
       return;
     }
     try {
-      outlineNear.observe(row2);
-      outlineFar.observe(row2);
+      outlineNear.observe(row3);
+      outlineFar.observe(row3);
     } catch {
-      renderOutlineRow(row2);
+      renderOutlineRow(row3);
     }
   };
   const clearOutline = () => {
     outlineLiveUid = null;
     disconnectOutline();
     if (!outlineHost) return;
-    for (const row2 of [...outlineHost.children]) releaseOutlineRow(row2);
+    for (const row3 of [...outlineHost.children]) releaseOutlineRow(row3);
     outlineHost.replaceChildren();
   };
   const syncOutline = (force = false) => {
@@ -28824,31 +30211,31 @@ function buildBoardView(onFail, {
     outlineKey = key;
     if (force) clearOutline();
     const have = /* @__PURE__ */ new Map();
-    for (const row2 of [...outlineHost.children]) {
-      const uid = row2.dataset?.uid;
-      if (uid && !have.has(uid)) have.set(uid, row2);
+    for (const row3 of [...outlineHost.children]) {
+      const uid = row3.dataset?.uid;
+      if (uid && !have.has(uid)) have.set(uid, row3);
     }
     const keep = new Set(uids);
-    for (const [uid, row2] of have) {
+    for (const [uid, row3] of have) {
       if (keep.has(uid)) continue;
-      dropOutlineRow(row2);
-      row2.remove();
+      dropOutlineRow(row3);
+      row3.remove();
       have.delete(uid);
     }
     let cursor = outlineHost.firstChild;
     for (const uid of uids) {
-      let row2 = have.get(uid);
-      if (!row2) {
-        row2 = el("div", "pxd-sidebar-outline__row");
-        row2.dataset.uid = uid;
-        row2.setAttribute("data-uid", uid);
-        if (cursor) outlineHost.insertBefore(row2, cursor);
-        else outlineHost.append(row2);
-        watchOutlineRow(row2);
-      } else if (row2 !== cursor) {
-        outlineHost.insertBefore(row2, cursor);
+      let row3 = have.get(uid);
+      if (!row3) {
+        row3 = el("div", "pxd-sidebar-outline__row");
+        row3.dataset.uid = uid;
+        row3.setAttribute("data-uid", uid);
+        if (cursor) outlineHost.insertBefore(row3, cursor);
+        else outlineHost.append(row3);
+        watchOutlineRow(row3);
+      } else if (row3 !== cursor) {
+        outlineHost.insertBefore(row3, cursor);
       }
-      cursor = row2.nextElementSibling;
+      cursor = row3.nextElementSibling;
     }
   };
   let tableMode = false;
@@ -28987,7 +30374,7 @@ function buildBoardView(onFail, {
       } catch {
       }
     }),
-    () => listeners2.splice(0).forEach((off) => {
+    () => listeners3.splice(0).forEach((off) => {
       try {
         off();
       } catch {
@@ -29062,6 +30449,9 @@ function buildBoardView(onFail, {
     onHighlightOpen: (item) => {
       void openHighlightInReader(item);
     },
+    onHighlightNote: (uid) => {
+      void openHighlightNote(uid);
+    },
     onReadPane: (detail) => {
       if (!detail?.open) {
         readPane?.close?.({ notify: false });
@@ -29108,16 +30498,28 @@ function buildBoardView(onFail, {
     doc,
     root,
     host,
+    onNote: (row3) => {
+      void openHighlightNote(row3?.uid);
+    },
     graph,
     storage,
     cards: () => [...board2()?.items.values() || []].filter((it) => it?.kind === "pdf"),
     placed: () => [...board2()?.items.values() || []],
     titleOf: (card2) => {
+      let cover = null;
       try {
-        return host?.pdfCover?.(pdfSourceOfItem(card2))?.title || "PDF";
+        cover = host?.pdfCover?.(pdfSourceOfItem(card2));
       } catch {
-        return "PDF";
+        cover = null;
       }
+      if (cover?.pageUid && cover.title) return cover.title;
+      let page = "";
+      try {
+        page = host?.pageTitleOf?.(card2?.target?.uid || card2?.uid) || "";
+      } catch {
+        page = "";
+      }
+      return page || cover?.title || "PDF";
     },
     onClose: () => {
       itemsR?.closeEmbed?.();
@@ -29125,11 +30527,11 @@ function buildBoardView(onFail, {
     onSwitch: (uid) => {
       itemsR?.openPdf?.(uid);
     },
-    onPlace: (row2) => {
+    onPlace: (row3) => {
       const items = [...board2()?.items.values() || []];
       const card2 = board2()?.items.get(readPane?.cardUid?.() || "");
       const live = card2 ? rects().get(card2.uid) || { x: card2.x, y: card2.y, w: card2.w, h: card2.h } : null;
-      const decision = placeDecision(row2, items, originBeside(live));
+      const decision = placeDecision(row3, items, originBeside(live));
       if (decision.kind === "pulse") {
         if (decision.uid) pulseItem(decision.uid);
         return;
@@ -29246,12 +30648,12 @@ function buildBoardView(onFail, {
       const m = measured.get(e2.uid);
       if (!m) continue;
       for (const end of ["from", "to"]) {
-        const row2 = end === "from" ? e2.fromBlock : e2.toBlock;
-        if (!row2 || !m[end]?.rendered) continue;
+        const row3 = end === "from" ? e2.fromBlock : e2.toBlock;
+        if (!row3 || !m[end]?.rendered) continue;
         const card2 = end === "from" ? e2.from : e2.to;
         const other = cardName(b, end === "from" ? e2.to : e2.from);
-        const key = `${card2}|${row2}`;
-        const g = groups.get(key) || { card: card2, row: row2, edges: [], color: edgeTone(e2), tips: [] };
+        const key = `${card2}|${row3}`;
+        const g = groups.get(key) || { card: card2, row: row3, edges: [], color: edgeTone(e2), tips: [] };
         g.edges.push(e2.uid);
         g.tips.push(`${end === "to" ? "Linked from" : "Links to"} ${other}${e2.label ? ` · ${e2.label}` : ""}`);
         groups.set(key, g);
@@ -29272,17 +30674,17 @@ function buildBoardView(onFail, {
   };
   listen(root, "pointerover", (event) => {
     if (event.buttons) return;
-    const row2 = event.target?.closest?.(".pxd-row--linked");
-    if (!row2) return;
-    for (const uid of String(row2.getAttribute("data-pxd-edges") || "").split(" ").filter(Boolean)) {
+    const row3 = event.target?.closest?.(".pxd-row--linked");
+    if (!row3) return;
+    for (const uid of String(row3.getAttribute("data-pxd-edges") || "").split(" ").filter(Boolean)) {
       edgesR.setHover(uid, true);
       hoverRows(uid, true);
     }
   });
   listen(root, "pointerout", (event) => {
-    const row2 = event.target?.closest?.(".pxd-row--linked");
-    if (!row2 || row2.contains?.(event.relatedTarget)) return;
-    for (const uid of String(row2.getAttribute("data-pxd-edges") || "").split(" ").filter(Boolean)) {
+    const row3 = event.target?.closest?.(".pxd-row--linked");
+    if (!row3 || row3.contains?.(event.relatedTarget)) return;
+    for (const uid of String(row3.getAttribute("data-pxd-edges") || "").split(" ").filter(Boolean)) {
       edgesR.setHover(uid, false);
       hoverRows(uid, false);
     }
@@ -29882,7 +31284,7 @@ function buildBoardView(onFail, {
     } catch {
       raw = [];
     }
-    const rows = raw.map((row2) => ({ uid: row2[0], time: Number(row2[3]), crumb: breadcrumb(row2[2], row2[4]), snippet: snippetOf2(row2[1]) }));
+    const rows = raw.map((row3) => ({ uid: row3[0], time: Number(row3[3]), crumb: breadcrumb(row3[2], row3[4]), snippet: snippetOf2(row3[1]) }));
     contextsDrawer = mountContextsDrawer({
       doc,
       parent: root,
@@ -29948,7 +31350,7 @@ function buildBoardView(onFail, {
     } catch {
       times = [];
     }
-    const timeOf = new Map(times.map((row2) => [row2[0], row2[1]]));
+    const timeOf = new Map(times.map((row3) => [row3[0], row3[1]]));
     memoryLane = mountMemoryLane({
       doc,
       parent: root,
@@ -30532,6 +31934,22 @@ function buildBoardView(onFail, {
     void pasteEditorBlocks(ta, blockUid2, plan);
     return true;
   };
+  const statusWin = () => doc?.defaultView || globalThis;
+  const statusTags = {
+    available: () => Boolean(statusApi(statusWin())),
+    palette: () => statusPalette(statusApi(statusWin()))
+  };
+  const taskUidOf = (it) => it?.target?.kind === "block" && it.target.uid ? it.target.uid : it?.uid;
+  const isTaskItem = (it) => Boolean(it) && isTaskString(it.string || (it.target?.kind === "block" ? host?.blockString?.(it.target.uid) : "") || "");
+  const setStatusOf = async (uid, name) => {
+    const api = statusApi(statusWin());
+    if (!api || !uid) return { status: "unknown", reason: "no-api" };
+    try {
+      return await api.setStatus(uid, name);
+    } catch {
+      return { status: "unknown", reason: "set-status-failed" };
+    }
+  };
   const menuContext = (kind, uid) => {
     const b = board2();
     const item = uid ? b?.items.get(uid) : null;
@@ -30552,7 +31970,8 @@ function buildBoardView(onFail, {
         const canExpand = item?.kind === "page" || item?.kind === "note" || item?.kind === "block";
         const compassApi = globalThis.RoamCompass || globalThis.window?.RoamCompass || null;
         const plexusApi = globalThis.RoamPlexus || globalThis.window?.RoamPlexus || null;
-        return { item, regions: imageRegionRows(item?.content), canMakeTask: item?.type === "card" && item?.kind === "note" && !isTaskString(item.string) && !isQueryString(queryText), isBoard: item?.kind === "board", collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS2.includes(item?.kind), canSpread: item?.kind === "note" || item?.kind === "block", isQuery: isQueryString(queryText), canExpand, mindPreset: readMindPreset(storage), compass: typeof compassApi?.open === "function", canAnnotate: item?.kind === "image" && typeof plexusApi?.create === "function" };
+        const task = isTaskItem(item) ? taskMeta(item.string, item.content) : null;
+        return { ...task ? { statusTags, status: task.status || "" } : {}, item, regions: imageRegionRows(item?.content), canMakeTask: item?.type === "card" && item?.kind === "note" && !isTaskString(item.string) && !isQueryString(queryText), isBoard: item?.kind === "board", collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS2.includes(item?.kind), canSpread: item?.kind === "note" || item?.kind === "block", isQuery: isQueryString(queryText), canExpand, mindPreset: readMindPreset(storage), compass: typeof compassApi?.open === "function", canAnnotate: item?.kind === "image" && typeof plexusApi?.create === "function" };
       }
       case "section": {
         const members = item && b ? [item.uid, ...descendantsOf(b, item.uid)] : [];
@@ -30575,6 +31994,7 @@ function buildBoardView(onFail, {
       case "multi": {
         const items = selection.items.map((u) => b?.items.get(u)).filter(Boolean);
         return {
+          ...items.some(isTaskItem) ? { statusTags, status: "" } : {},
           count: items.length,
           allPinned: items.length > 0 && items.every((i) => i.pinned),
           anyCollapsed: items.some((i) => i.type === "card" && i.collapsed),
@@ -30629,11 +32049,25 @@ function buildBoardView(onFail, {
     const head = at < 0 ? id : id.slice(0, at);
     const arg = at < 0 ? null : id.slice(at + 1);
     switch (head) {
+      case "status": {
+        const name = arg === "remove" ? null : arg;
+        const targets = uids.map((u) => b.items.get(u)).filter(isTaskItem).map(taskUidOf).filter(Boolean);
+        if (!targets.length) break;
+        if (targets.length === 1) {
+          void setStatusOf(targets[0], name).then((res) => {
+            if (res && res.status !== "updated" && res.status !== "unchanged") toast(`Status not changed: ${res.reason || res.status}`);
+          });
+        } else {
+          const capped = targets.length > 45;
+          void applyStatusPicks(targets, name, setStatusOf, null, (m) => toast(m?.message || String(m))).then((res) => toast(`Status ${name ? `set to ${name}` : "removed"} on ${res.applied - res.rejected.length} cards${capped ? " (first 45 of the selection)" : ""}`));
+        }
+        break;
+      }
       case "region-go":
       case "region-copy":
       case "region-rename":
       case "region-delete": {
-        const region = imageRegionRows(item?.content).find((row2) => row2.uid === arg);
+        const region = imageRegionRows(item?.content).find((row3) => row3.uid === arg);
         if (head === "region-go") {
           if (region && item) view.applyShow({ kind: "img", f: region.f, cardUid: item.uid });
           break;
@@ -31336,6 +32770,35 @@ function buildBoardView(onFail, {
     pageUid: (uid) => host?.blockPageUid?.(uid) || "",
     pageUrl: (uid) => host?.pdfPageUrl?.(uid) || ""
   });
+  const openHighlightNote = async (hlUid) => {
+    if (typeof hlUid !== "string" || !hlUid) return;
+    const api = host?.api;
+    let kids = [];
+    try {
+      kids = api?.data?.pull?.("[{:block/children [:block/uid :block/string :block/order :block/props]}]", [":block/uid", hlUid])?.[":block/children"] || [];
+    } catch {
+      kids = [];
+    }
+    const plan = noteActionPlan(kids);
+    const sidebar = api?.ui?.rightSidebar;
+    try {
+      await sidebar?.addWindow?.({ window: { type: "block", "block-uid": hlUid } });
+    } catch {
+      return;
+    }
+    const noteUid = plan.kind === "focus" ? plan.uid : await session.addHighlightNote?.(hlUid);
+    if (!noteUid || disposed) return;
+    timers.later(() => {
+      if (disposed) return;
+      const win2 = (sidebar?.getWindows?.() || []).find((w) => w?.["block-uid"] === hlUid);
+      const windowId = win2?.["window-id"];
+      if (!windowId) return;
+      try {
+        api?.ui?.setBlockFocusAndSelection?.({ location: { "block-uid": noteUid, "window-id": windowId } });
+      } catch {
+      }
+    }, 200);
+  };
   const openHighlightInReader = async (item) => {
     if (!item || item.kind !== "highlight" || !item.target?.uid) return;
     const pageUid = host?.blockPageUid?.(item.target.uid) || "";
@@ -31689,12 +33152,12 @@ function buildBoardView(onFail, {
     }
     for (const tag of catalog.tags) {
       const label = lensRowLabel(tag);
-      const row2 = el("button", `pxd-lens__row${tag === lensTag ? " is-on" : ""}`, lensPop);
-      row2.type = "button";
-      row2.textContent = label;
-      row2.setAttribute("aria-label", label);
-      row2.dataset.tag = tag;
-      row2.setAttribute("data-tag", tag);
+      const row3 = el("button", `pxd-lens__row${tag === lensTag ? " is-on" : ""}`, lensPop);
+      row3.type = "button";
+      row3.textContent = label;
+      row3.setAttribute("aria-label", label);
+      row3.dataset.tag = tag;
+      row3.setAttribute("data-tag", tag);
     }
   };
   const openLens = () => {
@@ -31725,11 +33188,11 @@ function buildBoardView(onFail, {
   };
   const toggleLens = () => openLens();
   listen(lensPop, "click", (event) => {
-    const row2 = event.target?.closest?.(".pxd-lens__row");
-    if (!row2 || disposed) return;
+    const row3 = event.target?.closest?.(".pxd-lens__row");
+    if (!row3 || disposed) return;
     event.preventDefault?.();
     event.stopPropagation?.();
-    const tag = row2.dataset?.tag || row2.getAttribute?.("data-tag") || "";
+    const tag = row3.dataset?.tag || row3.getAttribute?.("data-tag") || "";
     lensTag = tag || null;
     if (lensTag) rebuildLens();
     closeLens();
@@ -31801,7 +33264,14 @@ function buildBoardView(onFail, {
         }).catch(() => {
         });
       },
-      contextLine: (subject) => contextLineFor(subject)
+      contextLine: (subject) => contextLineFor(subject),
+      loadJournal: async (date) => {
+        try {
+          if (typeof host?.dailyBlocks === "function") return await Promise.resolve(host.dailyBlocks(date));
+        } catch {
+        }
+        return { rows: [] };
+      }
     }
   });
   let viewDialog = null;
@@ -31894,7 +33364,7 @@ function buildBoardView(onFail, {
     });
   };
   const renameSavedView = (uid) => {
-    const view2 = board2()?.views?.find((row2) => row2.uid === uid);
+    const view2 = board2()?.views?.find((row3) => row3.uid === uid);
     if (!view2) return;
     askView({
       caption: view2.caption,
@@ -31908,7 +33378,7 @@ function buildBoardView(onFail, {
     });
   };
   const goToView = (uid) => {
-    const view2 = board2()?.views?.find((row2) => row2.uid === uid);
+    const view2 = board2()?.views?.find((row3) => row3.uid === uid);
     if (!view2?.v) return;
     const next = viewportFromWorldRect({ x: view2.v[0], y: view2.v[1], w: view2.v[2], h: view2.v[3] }, viewSize());
     if (next) setViewport(next);
@@ -32020,15 +33490,15 @@ function buildBoardView(onFail, {
     }
     legend.hidden = false;
     legend.removeAttribute("hidden");
-    for (const row2 of rows) {
+    for (const row3 of rows) {
       const btn = doc.createElement("button");
       btn.type = "button";
-      btn.className = `pxd-legend__row pxd-c-${row2.color}${row2.on ? "" : " is-off"}`;
-      btn.setAttribute("data-attr", row2.name);
-      btn.setAttribute("aria-pressed", row2.on ? "true" : "false");
-      btn.title = row2.on ? `Hide ${row2.name}` : `Show ${row2.name}`;
+      btn.className = `pxd-legend__row pxd-c-${row3.color}${row3.on ? "" : " is-off"}`;
+      btn.setAttribute("data-attr", row3.name);
+      btn.setAttribute("aria-pressed", row3.on ? "true" : "false");
+      btn.title = row3.on ? `Hide ${row3.name}` : `Show ${row3.name}`;
       btn.setAttribute("aria-label", btn.title);
-      btn.textContent = row2.name;
+      btn.textContent = row3.name;
       legend.append(btn);
     }
   };
@@ -32155,6 +33625,75 @@ function buildBoardView(onFail, {
       schedule();
     }
   };
+  let tabStrip = null;
+  const paintTabStrip = (tabs, current3) => {
+    if (!isFullscreen) {
+      tabStrip?.remove();
+      tabStrip = null;
+      root.classList.remove("pxd-root--fstabs");
+      return;
+    }
+    root.classList.add("pxd-root--fstabs");
+    if (!tabStrip || !root.contains(tabStrip)) {
+      for (const stray of root.querySelectorAll?.(".pxd-fstabs") || []) if (stray.parentElement === root) stray.remove();
+      tabStrip = el("div", "pxd-fstabs pxd-chrome");
+      tabStrip.setAttribute("role", "tablist");
+      tabStrip.setAttribute("aria-label", "Boards");
+      listen(tabStrip, "click", (event) => {
+        event.preventDefault?.();
+        event.stopPropagation();
+        const closer = event.target?.closest?.(".pxd-fstab__x");
+        const tab = event.target?.closest?.(".pxd-fstab");
+        const uid = (closer || tab)?.getAttribute?.("data-uid");
+        if (!uid) return;
+        if (closer) closeFullscreenTab(uid);
+        else selectFullscreenTab(uid);
+      });
+      root.prepend(tabStrip);
+    }
+    tabStrip.replaceChildren();
+    for (const tab of tabs) {
+      const on = tab.uid === current3;
+      const node2 = el("div", `pxd-fstab${on ? " pxd-fstab--on" : ""}`, tabStrip);
+      node2.setAttribute("role", "tab");
+      node2.setAttribute("data-uid", tab.uid);
+      node2.dataset.uid = tab.uid;
+      node2.setAttribute("aria-selected", on ? "true" : "false");
+      const name = el("span", "pxd-fstab__name", node2);
+      name.textContent = tab.title || "Untitled board";
+      const x = el("button", "pxd-btn pxd-fstab__x", node2);
+      x.type = "button";
+      x.textContent = "×";
+      x.setAttribute("aria-label", `Close ${tab.title || "board"}`);
+      x.setAttribute("data-uid", tab.uid);
+    }
+  };
+  const selectFullscreenTab = (uid) => {
+    if (!uid || uid === (board2()?.uid || boardUid)) return;
+    onSelectTab?.(uid);
+  };
+  const closeFullscreenTab = (uid) => {
+    const next = closeBoardTab(uid);
+    const tabs = next?.tabs || [];
+    const current3 = board2()?.uid || boardUid;
+    if (uid !== current3) {
+      paintTabStrip(tabs, current3);
+      return;
+    }
+    const neighbor = next?.index >= 0 ? tabs[next.index] : null;
+    paintTabStrip(tabs, neighbor?.uid || "");
+    if (neighbor?.uid && neighbor.uid !== current3) onSelectTab?.(neighbor.uid);
+  };
+  const syncFullscreenTabs = () => {
+    if (!isFullscreen) {
+      paintTabStrip([], "");
+      return;
+    }
+    const b = board2();
+    const entry = { uid: b?.uid || boardUid, title: b?.title || "" };
+    const next = openBoardTab(entry);
+    paintTabStrip(next?.tabs || [], entry.uid);
+  };
   const applyFullscreen = (on) => {
     isFullscreen = Boolean(on);
     fsDispose();
@@ -32165,6 +33704,7 @@ function buildBoardView(onFail, {
     if (isFullscreen) {
       root.style.height = "";
     } else applyInlineHeight();
+    syncFullscreenTabs();
     timers.frame(() => {
       measure();
       markViewport();
@@ -32566,6 +34106,14 @@ function buildBoardView(onFail, {
     cycleLinks,
     isFullscreen: () => isFullscreen,
     setFullscreen: (on) => requestFullscreen(on),
+    selectBoardTab: (index) => {
+      if (!isFullscreen) return false;
+      const tab = tabAt(readTabs(), index);
+      if (!tab) return false;
+      if (tab.uid === (board2()?.uid || boardUid)) return true;
+      onSelectTab?.(tab.uid);
+      return true;
+    },
     setSpace: (on) => root.classList.toggle("pxd-root--space", Boolean(on))
   };
   let targetEl = null;
@@ -32583,12 +34131,12 @@ function buildBoardView(onFail, {
       if (!card2) continue;
       if (!card2.classList.contains("pxd-item--page") || card2.closest?.(".pxd-root") !== root) return null;
       const uid = card2.dataset?.uid || card2.getAttribute?.("data-uid");
-      const row2 = node2.closest?.("[data-pxd-row]");
-      const header = row2 ? null : node2.closest?.(".pxd-item__header");
-      targetEl = row2 || header || null;
-      targetCls = row2 ? "pxd-row--target" : "pxd-item__header--target";
+      const row3 = node2.closest?.("[data-pxd-row]");
+      const header = row3 ? null : node2.closest?.(".pxd-item__header");
+      targetEl = row3 || header || null;
+      targetCls = row3 ? "pxd-row--target" : "pxd-item__header--target";
       targetEl?.classList.add(targetCls);
-      return { uid, row: row2 ? row2.getAttribute?.("data-pxd-row") || row2.dataset?.pxdRow || null : null, header: Boolean(header) };
+      return { uid, row: row3 ? row3.getAttribute?.("data-pxd-row") || row3.dataset?.pxdRow || null : null, header: Boolean(header) };
     }
     return null;
   };
@@ -32638,8 +34186,8 @@ function buildBoardView(onFail, {
     const item = t.closest(".pxd-item");
     if (item) {
       const hit = { kind: "item", uid: item.dataset?.uid || item.getAttribute?.("data-uid"), part: t.closest(".pxd-item__header") ? "header" : "body" };
-      const row2 = nativeClickKind(t) ? null : t.closest("[data-pxd-row]");
-      if (row2) hit.row = row2.getAttribute?.("data-pxd-row") || row2.dataset?.pxdRow || "";
+      const row3 = nativeClickKind(t) ? null : t.closest("[data-pxd-row]");
+      if (row3) hit.row = row3.getAttribute?.("data-pxd-row") || row3.dataset?.pxdRow || "";
       return hit;
     }
     return { kind: "empty" };
@@ -32663,7 +34211,7 @@ function buildBoardView(onFail, {
       { uid, end: "to", x: geo.end.x, y: geo.end.y }
     ];
   };
-  const normalize = (event, type = event.type) => {
+  const normalize2 = (event, type = event.type) => {
     const screen = { x: (event.clientX || 0) - rootRect.left, y: (event.clientY || 0) - rootRect.top };
     const world2 = screenToWorld(vp, screen);
     let target = targetOf(event.target);
@@ -32687,7 +34235,9 @@ function buildBoardView(onFail, {
       code: event.code,
       deltaX: event.deltaX || 0,
       deltaY: event.deltaY || 0,
-      pointerId: event.pointerId
+      pointerId: event.pointerId,
+      isPrimary: event.isPrimary,
+      pointerType: event.pointerType
     };
   };
   const armSpeedLog = () => {
@@ -32696,20 +34246,84 @@ function buildBoardView(onFail, {
   };
   armSpeedLog();
   let captured = false;
+  let pressWatch = null;
+  const touchIds = /* @__PURE__ */ new Set();
+  const clearPressWatch = () => {
+    pressWatch?.cancel?.();
+    pressWatch = null;
+  };
+  const notePressMove = (event) => {
+    if (!pressWatch) return;
+    if (pressWatch.pointerId != null && event.pointerId != null && event.pointerId !== pressWatch.pointerId) return;
+    const dist = Math.hypot((event.clientX || 0) - pressWatch.x, (event.clientY || 0) - pressWatch.y);
+    if (dist > pressWatch.moved) pressWatch.moved = dist;
+    if (pressWatch.moved >= LONG_PRESS_CANCEL_PX) clearPressWatch();
+  };
+  const endPress = (event) => {
+    if (event?.pointerId != null) touchIds.delete(event.pointerId);
+    else touchIds.clear();
+    if (!pressWatch) return;
+    if (pressWatch.pointerId == null || event?.pointerId == null || event.pointerId === pressWatch.pointerId) clearPressWatch();
+  };
+  const armLongPress = (event) => {
+    const kind = event.pointerType;
+    if (kind !== "touch" && kind !== "pen") return;
+    if ((event.button ?? 0) !== 0) return;
+    if (leavesBoardPointer(event.target)) return;
+    if (event.isPrimary === true) touchIds.clear();
+    if (event.pointerId != null) touchIds.add(event.pointerId);
+    if (touchIds.size >= 2) {
+      clearPressWatch();
+      return;
+    }
+    clearPressWatch();
+    const watch = {
+      x: event.clientX || 0,
+      y: event.clientY || 0,
+      moved: 0,
+      pointerId: event.pointerId,
+      target: event.target,
+      cancel: null
+    };
+    watch.cancel = timers.later(() => {
+      if (pressWatch !== watch || disposed) return;
+      const moved = watch.moved;
+      pressWatch = null;
+      if (longPressAt(moved, LONG_PRESS_MS) !== "open") return;
+      ctl.cancel();
+      onRootContextMenu({
+        type: "contextmenu",
+        target: watch.target,
+        clientX: watch.x,
+        clientY: watch.y,
+        button: 2,
+        defaultPrevented: false,
+        preventDefault() {
+          this.defaultPrevented = true;
+        },
+        stopPropagation() {
+        }
+      });
+    }, LONG_PRESS_MS);
+    pressWatch = watch;
+  };
   const onDocMove = (event) => {
+    notePressMove(event);
     if (suspended || !ctl.isGesturing()) return;
-    ctl.handle(normalize(event, "pointermove"));
+    ctl.handle(normalize2(event, "pointermove"));
   };
   const onDocUp = (event) => {
+    endPress(event);
     if (suspended) return;
     if (!ctl.isGesturing()) return releaseCapture();
     const panning = ctl.gestureKind() === "pan";
-    ctl.handle(normalize(event, "pointerup"));
+    ctl.handle(normalize2(event, "pointerup"));
     if (panning && flag("speed-log", false)) perfLog?.endPan?.();
     if (nativeClickKind(event.target) === "ref" && !suppressClick) openRefFromClick(event);
     releaseCapture();
   };
-  const onDocCancel = () => {
+  const onDocCancel = (event) => {
+    endPress(event);
     if (suspended) return;
     const panning = ctl.gestureKind() === "pan";
     ctl.handle({ type: "pointercancel" });
@@ -32797,7 +34411,7 @@ function buildBoardView(onFail, {
       return;
     }
     measure();
-    const ev = normalize(event, "pointerdown");
+    const ev = normalize2(event, "pointerdown");
     const editingUid = itemsR.editingUid();
     const native = nativeClickKind(event.target);
     if (!(editingUid && ev.target.kind === "item" && ev.target.uid === editingUid && ev.target.part !== "header")) {
@@ -32816,6 +34430,7 @@ function buildBoardView(onFail, {
       if (!editingUid && ev.target.kind !== "label") root.focus({ preventScroll: true });
     } catch {
     }
+    armLongPress(event);
   });
   listen(doc, "mouseup", (event) => {
     if (!swallowMouseUp) return;
@@ -32879,7 +34494,7 @@ function buildBoardView(onFail, {
     event.stopPropagation();
     event.preventDefault();
     measure();
-    ctl.handle(normalize(event, "dblclick"));
+    ctl.handle(normalize2(event, "dblclick"));
   });
   listen(root, "wheel", (event) => {
     if (leavesBoardPointer(event.target)) return;
@@ -32888,23 +34503,24 @@ function buildBoardView(onFail, {
       return;
     }
     measure();
-    const handled = ctl.handle(normalize(event, "wheel"));
+    const handled = ctl.handle(normalize2(event, "wheel"));
     if (handled) {
       event.preventDefault();
       event.stopPropagation();
       settle();
     }
   }, { passive: false });
-  listen(root, "contextmenu", (event) => {
+  const onRootContextMenu = (event) => {
     if (leavesBoardPointer(event.target)) return;
-    event.stopPropagation();
+    event.stopPropagation?.();
     if (event.defaultPrevented) return;
     const native = event.target?.closest?.(NATIVE_MENU_TARGETS);
     if (native && native.closest?.(".pxd-item__body")) return;
     measure();
-    const handled = ctl.handle(normalize(event, "contextmenu"));
-    if (handled) event.preventDefault();
-  });
+    const handled = ctl.handle(normalize2(event, "contextmenu"));
+    if (handled) event.preventDefault?.();
+  };
+  listen(root, "contextmenu", onRootContextMenu);
   const hoverCardAt = (uid) => {
     const it = uid ? board2()?.items.get(uid) : null;
     return it && it.type === "card" ? it : null;
@@ -33147,7 +34763,7 @@ function buildBoardView(onFail, {
     if (!planned) return;
     if (droppedDrawingUids(planned.map((x) => x.string), (id) => host?.blockString?.(id)).length) toast(DRAWING_DROP_TOAST);
     const made = session.addRefCards?.(planned);
-    const same2 = planned.length === list.length && planned.every((row2, i) => row2.string === list[i].string);
+    const same2 = planned.length === list.length && planned.every((row3, i) => row3.string === list[i].string);
     const offer = same2 ? dropNamespace(list.map((x) => x.string)) : null;
     Promise.resolve(made).then((uids) => {
       if (Array.isArray(uids) && uids.length) ctl.select(uids);
@@ -33471,6 +35087,7 @@ function buildBoardView(onFail, {
       host,
       bt,
       getBoard: board2,
+      toast: (message) => toast(message),
       ...on ? { completeTask: (uid) => taskDone.complete(uid) } : {}
     });
     kanbanCtl = next;
@@ -33668,7 +35285,7 @@ function buildBoardView(onFail, {
       const list = win?.PlexusDiagram?.boardsWith?.(target);
       if (Array.isArray(list) && list.length) {
         const here = board2()?.uid;
-        n2 = list.some((row2) => row2 && row2.uid === here) ? list.length : list.length + 1;
+        n2 = list.some((row3) => row3 && row3.uid === here) ? list.length : list.length + 1;
       }
     } catch {
       n2 = 1;
@@ -33710,15 +35327,15 @@ function buildBoardView(onFail, {
           } catch {
             found = [];
           }
-          for (const row2 of found) {
-            if (Array.isArray(row2) && row2.length >= 2) stamps.set(row2[0], row2[1]);
+          for (const row3 of found) {
+            if (Array.isArray(row3) && row3.length >= 2) stamps.set(row3[0], row3[1]);
           }
         }
         const rows = cardUids.map((id) => ({
           uid: id,
           created: id === uid && read.created != null ? read.created : stamps.get(id)
         }));
-        if (!rows.some((row2) => row2.uid === uid)) rows.push({ uid, created: read.created });
+        if (!rows.some((row3) => row3.uid === uid)) rows.push({ uid, created: read.created });
         const origin = subject.from ? subject.from : uid;
         const target = subject.target?.uid || uid;
         const model = {
@@ -34039,6 +35656,10 @@ function buildBoardView(onFail, {
     }
   }
   const view = {
+    refreshStatuses() {
+      itemsR?.refreshStatuses?.();
+      kanbanCtl?.refresh?.();
+    },
     root,
     controller: ctl,
     setFullscreen(on) {
@@ -34259,7 +35880,7 @@ function buildBoardView(onFail, {
       return text2;
     },
     stats() {
-      return { timers: timers.count(), listeners: listeners2.length + (captured ? 3 : 0), observers: observers.length, mounted: itemsR.mountedCount(), shells: itemsR.shellCount() };
+      return { timers: timers.count(), listeners: listeners3.length + (captured ? 3 : 0), observers: observers.length, mounted: itemsR.mountedCount(), shells: itemsR.shellCount() };
     },
     dispose() {
       if (disposing) return;
@@ -34273,6 +35894,11 @@ function buildBoardView(onFail, {
         }
       };
       step(() => perfLog?.cancelPan?.());
+      step(() => {
+        tabStrip?.remove();
+        tabStrip = null;
+        root.classList.remove("pxd-root--fstabs");
+      });
       step(() => closeLinksMenu());
       step(() => {
         whyPop?.close();
@@ -34308,6 +35934,10 @@ function buildBoardView(onFail, {
       step(() => taskPop.dispose());
       step(() => laterCtl.dispose());
       step(() => stopTimer());
+      step(() => {
+        touchIds.clear();
+        clearPressWatch();
+      });
       step(() => ctl.cancel());
       step(() => releaseCapture());
       step(() => {
@@ -34351,7 +35981,7 @@ function buildBoardView(onFail, {
       step(() => propsPanel.dispose());
       step(() => tooltip.dispose());
       step(() => chrome.dispose());
-      step(() => listeners2.splice(0).forEach((off) => {
+      step(() => listeners3.splice(0).forEach((off) => {
         try {
           off();
         } catch {
@@ -35108,15 +36738,15 @@ function createCardChips({
       event.stopPropagation();
       onOpen?.({ boardUid, cardUid, sidebar: false });
     });
-    const side = doc.createElement("button");
-    side.type = "button";
-    side.className = "pxd-cardpop__side";
-    side.textContent = "Open in sidebar";
-    side.addEventListener("click", (event) => {
+    const side2 = doc.createElement("button");
+    side2.type = "button";
+    side2.className = "pxd-cardpop__side";
+    side2.textContent = "Open in sidebar";
+    side2.addEventListener("click", (event) => {
       event.stopPropagation();
       onOpen?.({ boardUid, cardUid, sidebar: true });
     });
-    el.append(open, side);
+    el.append(open, side2);
     doc.body?.append(el);
     const rect = chip.getBoundingClientRect?.() || { left: 8, top: 8, right: 40, bottom: 28, width: 32, height: 20 };
     const placed = placePopover({
@@ -35270,13 +36900,13 @@ function createCardChips({
     return null;
   };
   const CHIP_ROW_H = 28;
-  const reserveChipRow = (row2) => {
-    if (!row2?.style) return;
+  const reserveChipRow = (row3) => {
+    if (!row3?.style) return;
     const text2 = `${CHIP_ROW_H}px`;
-    row2.style.height = text2;
-    row2.style.minHeight = text2;
-    row2.style.boxSizing = "border-box";
-    row2.style.overflow = "hidden";
+    row3.style.height = text2;
+    row3.style.minHeight = text2;
+    row3.style.boxSizing = "border-box";
+    row3.style.overflow = "hidden";
   };
   const placePage = (scope) => {
     if (!scope?.querySelector) return;
@@ -35300,37 +36930,37 @@ function createCardChips({
       before = kids.firstChild;
     }
     if (!parent || parent.closest?.("h1.rm-title-display") || parent.matches?.("h1, h1.rm-title-display")) return;
-    let row2 = null;
+    let row3 = null;
     for (const child of parent.children || []) {
-      if (child.classList?.contains("pxd-cardchip-row")) row2 = child;
+      if (child.classList?.contains("pxd-cardchip-row")) row3 = child;
     }
-    if (!row2) {
-      row2 = doc.createElement("div");
-      row2.className = "pxd-cardchip-row";
-      reserveChipRow(row2);
-      if (before && before.parentElement === parent) parent.insertBefore(row2, before);
-      else if (parent === kids) parent.insertBefore(row2, kids.firstChild);
-      else parent.append(row2);
-      rows.add(row2);
-    } else reserveChipRow(row2);
+    if (!row3) {
+      row3 = doc.createElement("div");
+      row3.className = "pxd-cardchip-row";
+      reserveChipRow(row3);
+      if (before && before.parentElement === parent) parent.insertBefore(row3, before);
+      else if (parent === kids) parent.insertBefore(row3, kids.firstChild);
+      else parent.append(row3);
+      rows.add(row3);
+    } else reserveChipRow(row3);
     const boards = cache.boardsOf(uid) || [];
     const sig = `${uid}
 ${boards.map((boardUid) => `${boardUid}:${cache?.titleOf?.(boardUid) || ""}`).join("\n")}`;
-    if (sigs.get(row2) !== sig) {
-      for (const child of [...row2.children || []]) chips.delete(child);
-      row2.replaceChildren();
-      for (const boardUid of boards.slice(0, 3)) row2.append(makeChip(boardUid, uid));
+    if (sigs.get(row3) !== sig) {
+      for (const child of [...row3.children || []]) chips.delete(child);
+      row3.replaceChildren();
+      for (const boardUid of boards.slice(0, 3)) row3.append(makeChip(boardUid, uid));
       const extra = boards.length - 3;
       if (extra > 0) {
         const more = doc.createElement("span");
         more.className = "pxd-cardchip-more";
         more.textContent = `+${extra}`;
-        row2.append(more);
+        row3.append(more);
       }
-      sigs.set(row2, sig);
+      sigs.set(row3, sig);
     }
     for (const old of scope.querySelectorAll(".pxd-cardchip-row") || []) {
-      if (old === row2) continue;
+      if (old === row3) continue;
       for (const child of [...old.children || []]) chips.delete(child);
       rows.delete(old);
       old.remove();
@@ -35423,7 +37053,7 @@ ${boards.map((boardUid) => `${boardUid}:${cache?.titleOf?.(boardUid) || ""}`).jo
     closePop();
     for (const chip of chips) chip.remove();
     chips.clear();
-    for (const row2 of rows) row2.remove();
+    for (const row3 of rows) row3.remove();
     rows.clear();
     const body = doc?.body;
     if (!body?.querySelectorAll) return;
@@ -35442,53 +37072,6 @@ ${boards.map((boardUid) => `${boardUid}:${cache?.titleOf?.(boardUid) || ""}`).jo
     disposeChips();
   };
   return { scan, dispose, count: () => chips.size };
-}
-
-// src/model/resurface.js
-var DEFAULT_INTERVALS = Object.freeze([7, 30, 90, 365]);
-var RESURFACE_CAP = 6;
-var DAY2 = 864e5;
-var MONTHS7 = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-function pageTitleToDate(title) {
-  const match = String(title ?? "").trim().match(/^([A-Z][a-z]+) (\d{1,2})(?:st|nd|rd|th), (\d{4})$/);
-  if (!match) return null;
-  const month = MONTHS7.indexOf(match[1]);
-  const day = Number(match[2]);
-  const year = Number(match[3]);
-  if (month < 0) return null;
-  const date = new Date(year, month, day);
-  if (date.getFullYear() !== year || date.getMonth() !== month || date.getDate() !== day) return null;
-  return date.getTime();
-}
-function parseIntervals(text2) {
-  const nums = String(text2 ?? "").split(",").map((part) => Number(part.trim())).filter((n2) => Number.isFinite(n2) && n2 > 0);
-  return nums.length ? nums : [...DEFAULT_INTERVALS];
-}
-function intervalLabel(days) {
-  if (days === 7) return "1 week ago";
-  if (days === 30) return "1 month ago";
-  if (days === 90) return "3 months ago";
-  if (days === 365) return "1 year ago";
-  if (days % 365 === 0) return `${days / 365} years ago`;
-  return `${days} days ago`;
-}
-function matchResurface(rows, pageDate, intervals, { slack = DAY2, cap: cap4 = RESURFACE_CAP } = {}) {
-  const page = pageDate instanceof Date ? pageDate.getTime() : Number(pageDate);
-  if (!Number.isFinite(page)) return [];
-  const tabs = [];
-  for (const days of intervals || []) {
-    if (!Number.isFinite(days) || days <= 0) continue;
-    const target = page - days * DAY2;
-    const hits = [];
-    for (const row2 of rows || []) {
-      if (!row2?.uid || !Number.isFinite(row2.time)) continue;
-      const delta = Math.abs(row2.time - target);
-      if (delta <= slack) hits.push({ ...row2, delta });
-    }
-    hits.sort((a, b) => a.delta - b.delta || String(a.uid).localeCompare(String(b.uid)));
-    if (hits.length) tabs.push({ days, label: intervalLabel(days), items: hits.slice(0, cap4) });
-  }
-  return tabs;
 }
 
 // src/view/resurface-panel.js
@@ -35522,17 +37105,17 @@ function fillResurface(doc, panel, { pageTitle, rows, intervals, onOpen } = {}) 
   const show = (tab) => {
     body.replaceChildren();
     for (const item of tab.items) {
-      const row2 = doc.createElement("button");
-      row2.type = "button";
-      row2.className = "pxd-resurface__item";
-      row2.textContent = item.title || item.uid;
-      thumb(doc, row2, item);
-      row2.addEventListener("click", (event) => {
+      const row3 = doc.createElement("button");
+      row3.type = "button";
+      row3.className = "pxd-resurface__item";
+      row3.textContent = item.title || item.uid;
+      thumb(doc, row3, item);
+      row3.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
         onOpen?.({ boardUid: item.boardUid, cardUid: item.cardUid || item.uid });
       });
-      body.append(row2);
+      body.append(row3);
     }
   };
   tabs.forEach((tab, index) => {
@@ -35591,7 +37174,7 @@ ${intervals?.() || ""}`;
       lastKey = key;
       const sig = `${pageTitle?.() || ""}
 ${intervals?.() || ""}
-${list.map((row2) => `${row2.uid}:${row2.time}`).join(",")}`;
+${list.map((row3) => `${row3.uid}:${row3.time}`).join(",")}`;
       if (sig === lastSig) return;
       lastSig = sig;
       const spec = { pageTitle: pageTitle?.(), rows: list, intervals: intervals?.(), onOpen };
@@ -35614,15 +37197,15 @@ ${list.map((row2) => `${row2.uid}:${row2.time}`).join(",")}`;
 // src/view/region-open.js
 var STASH_MS = 8e3;
 var STOP_TYPES = ["pointerdown", "mousedown", "mouseup", "dblclick"];
-function pickCameraMount(rows, boardUid, isSidebar = () => false, current3 = (row2) => row2?.current ?? row2?.uid) {
+function pickCameraMount(rows, boardUid, isSidebar = () => false, current3 = (row3) => row3?.current ?? row3?.uid) {
   const list = Array.isArray(rows) ? rows : [];
-  const side = typeof isSidebar === "function" ? isSidebar : () => false;
-  const idOf = typeof current3 === "function" ? current3 : (row2) => row2?.uid;
+  const side2 = typeof isSidebar === "function" ? isSidebar : () => false;
+  const idOf = typeof current3 === "function" ? current3 : (row3) => row3?.uid;
   if (!boardUid) {
-    return list.find((row2) => row2 && !side(row2) && row2.view) || list.find((row2) => row2 && !side(row2)) || list.find((row2) => row2?.view) || list[0] || null;
+    return list.find((row3) => row3 && !side2(row3) && row3.view) || list.find((row3) => row3 && !side2(row3)) || list.find((row3) => row3?.view) || list[0] || null;
   }
-  const hits = list.filter((row2) => row2 && (idOf(row2) === boardUid || row2.uid === boardUid));
-  return hits.find((row2) => side(row2) && row2.view) || hits.find((row2) => row2.view) || hits[0] || null;
+  const hits = list.filter((row3) => row3 && (idOf(row3) === boardUid || row3.uid === boardUid));
+  return hits.find((row3) => side2(row3) && row3.view) || hits.find((row3) => row3.view) || hits[0] || null;
 }
 function resolveRegionTarget(hit, outline) {
   if (hit?.boardUid && hit.pageUid && hit.cardUid) {
@@ -35824,9 +37407,9 @@ function wireFrame(span, { doc, onOpen, delayMs, buildPopover, obstacles } = {})
 }
 var urls = /* @__PURE__ */ new Map();
 function resetCropUrls() {
-  for (const row2 of urls.values()) {
+  for (const row3 of urls.values()) {
     try {
-      URL.revokeObjectURL(row2.url);
+      URL.revokeObjectURL(row3.url);
     } catch {
     }
   }
@@ -35844,30 +37427,30 @@ function takeUrl(key, file) {
   urls.set(key, { url, refs: 1 });
   while (urls.size > URL_CAP) {
     let victim = null;
-    for (const [id, row3] of urls) {
-      if (row3.refs <= 0) {
+    for (const [id, row4] of urls) {
+      if (row4.refs <= 0) {
         victim = id;
         break;
       }
     }
     if (!victim) break;
-    const row2 = urls.get(victim);
+    const row3 = urls.get(victim);
     urls.delete(victim);
     try {
-      URL.revokeObjectURL(row2.url);
+      URL.revokeObjectURL(row3.url);
     } catch {
     }
   }
   return url;
 }
 function dropUrl(key) {
-  const row2 = urls.get(key);
-  if (!row2) return;
-  row2.refs -= 1;
-  if (row2.refs > 0) return;
+  const row3 = urls.get(key);
+  if (!row3) return;
+  row3.refs -= 1;
+  if (row3.refs > 0) return;
   urls.delete(key);
   try {
-    URL.revokeObjectURL(row2.url);
+    URL.revokeObjectURL(row3.url);
   } catch {
   }
 }
@@ -36196,11 +37779,11 @@ function boardsFromRefRows(rows, pull) {
   const out = [];
   const seen = /* @__PURE__ */ new Set();
   const list = Array.isArray(rows) ? rows : [];
-  for (const row2 of list) {
-    const boardUid = Array.isArray(row2) ? row2[0] : null;
+  for (const row3 of list) {
+    const boardUid = Array.isArray(row3) ? row3[0] : null;
     if (!boardUid || seen.has(boardUid)) continue;
     seen.add(boardUid);
-    let card2 = typeof row2[2] === "string" && row2[2] ? row2[2] : void 0;
+    let card2 = typeof row3[2] === "string" && row3[2] ? row3[2] : void 0;
     let pulled = null;
     try {
       pulled = typeof pull === "function" ? pull(boardUid) : null;
@@ -36292,7 +37875,7 @@ function createPublicApi({ host, version, addCard: addCardFn, openBoard, thumbna
       } catch {
         listed = [];
       }
-      return listed.filter((row2) => row2 && row2.pageUid === pageUid).map((row2) => ({ uid: row2.uid, title: row2.title || "Untitled board" }));
+      return listed.filter((row3) => row3 && row3.pageUid === pageUid).map((row3) => ({ uid: row3.uid, title: row3.title || "Untitled board" }));
     },
     boardsWith(targetUid) {
       let rows = [];
@@ -36580,11 +38163,11 @@ function createShiftWatch() {
       return;
     }
     const tally = emptyTally(usableAt);
-    for (const row2 of rows) {
-      if (REGIONS.has(row2.region)) tally[row2.region] += 1;
-      if (typeof usableAt === "number" && row2.startTime > usableAt) tally.after += 1;
+    for (const row3 of rows) {
+      if (REGIONS.has(row3.region)) tally[row3.region] += 1;
+      if (typeof usableAt === "number" && row3.startTime > usableAt) tally.after += 1;
       else tally.before += 1;
-      if (shiftEntryFails(row2, usableAt)) tally.failing += 1;
+      if (shiftEntryFails(row3, usableAt)) tally.failing += 1;
     }
     stats.shifts = tally;
   };
@@ -36715,6 +38298,10 @@ function createShiftWatch() {
 }
 
 // src/feature.js
+function pullVia(host, pattern, entity) {
+  if (typeof host?.pull === "function") return host.pull(pattern, entity);
+  return host?.api?.data?.pull?.(pattern, entity) ?? null;
+}
 var PACKAGE_VERSION = package_default.version;
 var RECONCILE_INTERVAL_MS = 400;
 var NEGATIVE_TTL_MS = 3e4;
@@ -36786,7 +38373,7 @@ function readLegacyEnhanced(host) {
   try {
     const pageUid = host.pageUid?.(LEGACY_METADATA_PAGE);
     if (!pageUid) return out;
-    const tree = host.api.data.pull("[:block/uid :block/string {:block/children ...}]", [":block/uid", pageUid]);
+    const tree = pullVia(host, "[:block/uid :block/string {:block/children ...}]", [":block/uid", pageUid]);
     const list = pulledChildren(tree).find((child) => /^enhanced::/i.test(pulledString(child).trim()));
     for (const entry of pulledChildren(list)) {
       const uid = uidFromLegacyString(pulledString(entry));
@@ -36952,7 +38539,7 @@ async function installPlexusDiagram({
   const resurfaceList = () => {
     if (resurfaceRows.length && Date.now() - resurfaceAt < 6e4) return resurfaceRows;
     const entries = cardCache.entries();
-    const uids = [...new Set(entries.map((row2) => row2.uid).filter(Boolean))];
+    const uids = [...new Set(entries.map((row3) => row3.uid).filter(Boolean))];
     if (!uids.length) {
       resurfaceRows = [];
       return resurfaceRows;
@@ -36963,13 +38550,13 @@ async function installPlexusDiagram({
     } catch {
       times = [];
     }
-    const byUid = new Map(times.map((row2) => [row2[0], row2]));
+    const byUid = new Map(times.map((row3) => [row3[0], row3]));
     resurfaceRows = [];
-    for (const row2 of entries) {
-      const hit = byUid.get(row2.uid);
+    for (const row3 of entries) {
+      const hit = byUid.get(row3.uid);
       if (!hit || !Number.isFinite(hit[1])) continue;
       const line = String(hit[2] || "Card").split("\n")[0].slice(0, 80);
-      resurfaceRows.push({ ...row2, time: hit[1], title: `${line} · ${row2.title}` });
+      resurfaceRows.push({ ...row3, time: hit[1], title: `${line} · ${row3.title}` });
     }
     resurfaceAt = Date.now();
     return resurfaceRows;
@@ -37010,8 +38597,8 @@ async function installPlexusDiagram({
       edits = [];
     }
     const next = /* @__PURE__ */ new Map();
-    for (const row2 of edits) {
-      if (Array.isArray(row2) && row2.length >= 2) next.set(row2[0], row2[1]);
+    for (const row3 of edits) {
+      if (Array.isArray(row3) && row3.length >= 2) next.set(row3[0], row3[1]);
     }
     const due = [];
     for (const uid of uids) {
@@ -37163,7 +38750,7 @@ async function installPlexusDiagram({
     let kind = null;
     let enhanced = false;
     try {
-      const pulled = host.api.data.pull(AUTO_PATTERN, [":block/uid", uid]);
+      const pulled = pullVia(host, AUTO_PATTERN, [":block/uid", uid]);
       const plexus = readPlexus(pulled?.[":block/props"] ?? pulled?.props ?? null);
       enhanced = plexus?.v === 2;
       let nativeNodeCount = 0;
@@ -37249,7 +38836,7 @@ async function installPlexusDiagram({
   function seedCrumbs(uid) {
     const self = { uid, title: boardTitle2(host.blockString?.(uid)) };
     try {
-      const res = host.api.data.pull(ANCESTORS_PATTERN, [":block/uid", uid]);
+      const res = pullVia(host, ANCESTORS_PATTERN, [":block/uid", uid]);
       const parents = res?.[":block/parents"] ?? [];
       const chain = parents.filter((p) => isDiagramString(pulledString(p)) && readPlexus(p[":block/props"] ?? p.props)?.v === 2).map((p) => ({ uid: p[":block/uid"], title: boardTitle2(p[":block/string"]), depth: (p[":block/parents"] ?? []).length })).sort((a, b) => a.depth - b.depth).map(({ uid: u, title }) => ({ uid: u, title }));
       return [...chain, self];
@@ -37282,7 +38869,7 @@ async function installPlexusDiagram({
     let state;
     try {
       if (storage.getItem(key)) return;
-      state = host.api.data.pull("[:block/open]", [":block/uid", uid]);
+      state = pullVia(host, "[:block/open]", [":block/uid", uid]);
       if (!state) return;
       storage.setItem(key, "1");
     } catch {
@@ -37627,7 +39214,7 @@ async function installPlexusDiagram({
     look();
     if (!handoff.cancelled && handoff.holdRaf == null && handoff.soonTimer == null && typeof MutationObserver === "function" && rec.mountEl) {
       try {
-        const observer = new MutationObserver(look);
+        const observer = new MutationObserver(guardCallback("observer", look));
         observer.observe(rec.mountEl, { childList: true, subtree: true });
         handoff.observer = observer;
       } catch {
@@ -37655,6 +39242,11 @@ async function installPlexusDiagram({
       autofocus,
       initialViewport: viewport,
       onOpenBoard: (child) => visit(rec, [...rec.crumbs, { uid: child, title: boardTitle2(host.blockString?.(child)) }]),
+      onSelectTab: (uid) => {
+        if (!uid) return;
+        visit(rec, [{ uid, title: boardTitle2(host.blockString?.(uid)) }]);
+      },
+      tabStore: host.tabs,
       onCrumb: (index) => visit(rec, rec.crumbs.slice(0, index + 1)),
       onHistoryBack: () => historyMove(rec, "back"),
       onHistoryForward: () => historyMove(rec, "forward"),
@@ -38308,12 +39900,12 @@ async function installPlexusDiagram({
     try {
       if (!claimAlive(rec, uid, native)) {
         rec.session = acquireSession2(currentUid(rec), { host, settings: liveSettings, ...virtualOptions(virtual) });
-        rec.fullscreen = settings[SETTING_IDS.fullscreenOnZoom] !== false && !routeLeftZoomedDiagram(uid) && !isSidebarMount(rec);
+        rec.fullscreen = settings[SETTING_IDS.fullscreenOnZoom] !== false && !routeLeftZoomedDiagram(uid) && !isSecondaryMount(rec);
         rec.view = mountRecView(rec);
         rec.off = watchRec(rec);
         publishCards(rec.session?.board);
       } else {
-        const wantFull = settings[SETTING_IDS.fullscreenOnZoom] !== false && !routeLeftZoomedDiagram(uid) && !isSidebarMount(rec);
+        const wantFull = settings[SETTING_IDS.fullscreenOnZoom] !== false && !routeLeftZoomedDiagram(uid) && !isSecondaryMount(rec);
         if (wantFull !== Boolean(rec.fullscreen)) setFullscreen(rec, wantFull);
       }
     } catch (error) {
@@ -38693,6 +40285,11 @@ async function installPlexusDiagram({
       if (img) return img;
     }
     return null;
+  }
+  function isSecondaryMount(rec) {
+    if (isSidebarMount(rec)) return true;
+    const inRefs = (node2) => Boolean(node2?.closest?.(".rm-reference-item, .rm-reference-main, .rm-mentions"));
+    return inRefs(rec.native) || inRefs(rec.mountEl);
   }
   function isSidebarMount(rec) {
     return inRightSidebar(rec.native) || inRightSidebar(rec.mountEl);
@@ -39148,7 +40745,7 @@ async function installPlexusDiagram({
     for (const rec of mounts.values()) {
       if (routeLeftZoomedDiagram(rec.uid)) {
         if (rec.fullscreen) setFullscreen(rec, false);
-      } else if (settings[SETTING_IDS.fullscreenOnZoom] !== false && !rec.fullscreen && !isSidebarMount(rec)) {
+      } else if (settings[SETTING_IDS.fullscreenOnZoom] !== false && !rec.fullscreen && !isSecondaryMount(rec)) {
         setFullscreen(rec, true);
       }
     }
@@ -39162,10 +40759,10 @@ async function installPlexusDiagram({
     if (isDiagramString(host.blockString?.(uid))) return uid;
     try {
       const rows = host.q?.(PARENTS_QUERY, uid) || [];
-      const hits = rows.filter((row2) => isDiagramString(row2[1])).map((row2) => row2[0]);
+      const hits = rows.filter((row3) => isDiagramString(row3[1])).map((row3) => row3[0]);
       if (hits.length < 2) return hits[0] ?? null;
       const deepest = hits.find((cand) => {
-        const above = new Set((host.q?.(PARENTS_QUERY, cand) || []).map((row2) => row2[0]));
+        const above = new Set((host.q?.(PARENTS_QUERY, cand) || []).map((row3) => row3[0]));
         return hits.every((other) => other === cand || above.has(other));
       });
       return deepest ?? hits[0];
@@ -39296,18 +40893,18 @@ async function installPlexusDiagram({
     title.textContent = "Plexus";
     box2.append(title);
     for (const [label, fn] of [...sheetActions, ...sheetOnlyActions]) {
-      const row2 = doc.createElement("button");
-      row2.type = "button";
-      row2.className = "pxd-commands__row";
-      row2.textContent = label.replace(/^Plexus: /, "");
-      row2.setAttribute("aria-label", row2.textContent);
-      row2.onclick = () => {
+      const row3 = doc.createElement("button");
+      row3.type = "button";
+      row3.className = "pxd-commands__row";
+      row3.textContent = label.replace(/^Plexus: /, "");
+      row3.setAttribute("aria-label", row3.textContent);
+      row3.onclick = () => {
         closeCommandSheet();
         if (!active()) return;
         const context = capturedUid ? { "block-uid": capturedUid } : {};
         Promise.resolve(fn(context)).catch((error) => console.warn(`[plexus-diagram] ${label} failed`, error));
       };
-      box2.append(row2);
+      box2.append(row3);
     }
     sheet.append(back);
     sheet.append(box2);
@@ -39822,19 +41419,19 @@ async function installPlexusDiagram({
       }
     };
     const app = doc.querySelector(".roam-app");
-    if (app) lifecycle.observer(new MutationObserver(onAdded), app, { childList: true, subtree: true });
+    if (app) lifecycle.observer(new MutationObserver(guardCallback("observer", onAdded)), app, { childList: true, subtree: true });
     if (doc.body) {
-      lifecycle.observer(new MutationObserver((records) => {
+      lifecycle.observer(new MutationObserver(guardCallback("observer", (records) => {
         for (const record of records) {
           for (const node2 of record.addedNodes || []) {
             if (node2.nodeType !== 1 || !node2.classList?.contains("bp3-portal") || portalObservers.has(node2)) continue;
-            const observer = new MutationObserver(onAdded);
+            const observer = new MutationObserver(guardCallback("observer", onAdded));
             observer.observe(node2, { childList: true, subtree: true });
             portalObservers.set(node2, observer);
             scanAdded(node2);
           }
         }
-      }), doc.body, { childList: true });
+      })), doc.body, { childList: true });
     }
   }
   scanRegions(doc);
@@ -39900,11 +41497,11 @@ async function installPlexusDiagram({
     const article = doc.querySelector?.(".rm-article-wrapper");
     if (!article) return;
     let open = article.classList?.contains?.("rm-spacing--right-sidebar-open");
-    sidebarWatch = new MutationObserver(() => {
+    sidebarWatch = new MutationObserver(guardCallback("observer", () => {
       const next = article.classList?.contains?.("rm-spacing--right-sidebar-open");
       if (next && !open) parkMainForSidebar();
       open = next;
-    });
+    }));
     sidebarWatch.observe(article, { attributes: true, attributeFilter: ["class"] });
   }
   ensureSidebarWatch();
@@ -39917,10 +41514,47 @@ async function installPlexusDiagram({
     if (quietTimer) clearTimeout(quietTimer);
   });
   if (typeof win.addEventListener === "function") {
+    const refreshStatuses = () => {
+      for (const rec of mounts.values()) {
+        try {
+          rec.view?.refreshStatuses?.();
+        } catch {
+        }
+      }
+    };
+    let statusApiSeen = null;
+    const followStatusApi = () => {
+      const api2 = win.RoamTaskStatusTags;
+      if (statusApiSeen === api2) return;
+      try {
+        statusApiSeen?.removeEventListener?.("statuses", refreshStatuses);
+      } catch {
+      }
+      statusApiSeen = api2 && api2.apiVersion === 1 ? api2 : null;
+      try {
+        statusApiSeen?.addEventListener?.("statuses", refreshStatuses);
+      } catch {
+      }
+      refreshStatuses();
+    };
+    lifecycle.event(win, "roam-task-status-tags:ready", followStatusApi);
+    lifecycle.event(win, "roam-task-status-tags:unload", () => {
+      statusApiSeen = null;
+      refreshStatuses();
+    });
+    lifecycle.add(() => {
+      try {
+        statusApiSeen?.removeEventListener?.("statuses", refreshStatuses);
+      } catch {
+      }
+    });
+    followStatusApi();
     lifecycle.event(win, "hashchange", onHash);
     lifecycle.event(win, "popstate", onNavigate);
   }
-  lifecycle.interval(reconcile, RECONCILE_INTERVAL_MS);
+  bindErrorStats(host.stats);
+  lifecycle.add(() => clearErrorStats());
+  lifecycle.interval(guardCallback("reconcile", reconcile, { stats: host.stats }), RECONCILE_INTERVAL_MS);
   lifecycle.add(() => {
     for (const rec of mounts.values()) forgetSketch(rec);
     sketchStore.dispose();

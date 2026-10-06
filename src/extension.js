@@ -30,6 +30,9 @@ export async function onload({ extensionAPI, extension, deps }) {
     if (win.__plexusDiagramTeardown === prior) delete win.__plexusDiagramTeardown;
   }
   if (activeLifecycle) await activeLifecycle.dispose();
+  // POL-3. Start-up is measured from here (after any previous copy is gone) to "ready".
+  const perf = globalThis.performance;
+  try { perf?.mark?.("plexus:onload-start"); } catch { /* no User Timing */ }
 
   const lifecycle = createLifecycle();
   activeLifecycle = lifecycle;
@@ -42,6 +45,10 @@ export async function onload({ extensionAPI, extension, deps }) {
     await initializeSettings(extensionAPI);
     await lifecycle.settingsPanel(extensionAPI, createSettingsPanel());
     await installPlexusDiagram({ extensionAPI, lifecycle, version: extension?.version, ...deps });
+    try {
+      perf?.mark?.("plexus:ready");
+      perf?.measure?.("plexus:onload", "plexus:onload-start", "plexus:ready");
+    } catch { /* no User Timing */ }
     console.info(`[plexus-diagram] Loaded v${extension?.version || "development"}`);
   } catch (error) {
     if (activeLifecycle === lifecycle) activeLifecycle = null;

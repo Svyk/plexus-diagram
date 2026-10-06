@@ -8,6 +8,19 @@ import { paletteEntries, paletteVars, statusApi, statusPalette } from "../model/
 
 const BAD_STATUS = new Set(["rejected", "unknown", "conflict", "not-updated"]);
 
+// The column already says the status, so a card title drops the status tag and the TODO/DONE marker.
+function kanbanTitle(card) {
+  const raw = typeof card?.string === "string" && card.string ? card.string : "";
+  if (!/task-status\//.test(raw)) return card?.title || "";
+  const text = raw
+    .replace(/#\[\[task-status\/[^\]]+\]\]|#task-status\/\S+/g, "")
+    .replace(/\{\{\[\[(TODO|DONE)\]\]\}\}|\{\{(TODO|DONE)\}\}/g, "")
+    .replace(/\[\[([^\]]+)\]\]/g, "$1")
+    .replace(/\s+/g, " ")
+    .trim();
+  return text || card?.title || "";
+}
+
 export function mountKanban({
   doc = globalThis.document,
   root,
@@ -259,7 +272,7 @@ export function mountKanban({
         item.className = "pxd-kanban__card";
         item.setAttribute("data-uid", card.uid);
         item.tabIndex = 0;
-        item.textContent = card.title || card.uid;
+        item.textContent = kanbanTitle(card) || card.uid;
         listen(item, "pointerdown", (event) => {
           dragUid = card.uid;
           event.stopPropagation();

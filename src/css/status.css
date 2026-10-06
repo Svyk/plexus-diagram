@@ -236,3 +236,10 @@
 .pxd-root .pxd-item--task .pxd-item__tasktext .rm-page-ref--tag[data-task-status-key] {
   display: none;
 }
+
+/* TSK-5. The column count reads as a separate number, not glued to the status name. */
+.pxd-root .pxd-kanban__heading .pxd-kanban__count {
+  margin-left: 6px;
+  color: var(--pxd-muted);
+  font-weight: 400;
+}

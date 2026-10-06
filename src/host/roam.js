@@ -785,6 +785,11 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
   const host = {
     api,
     pull,
+    // A fresh read, never the board cache: false only when Roam has no block with this uid.
+    blockExists(uid) {
+      if (typeof uid !== "string" || !uid) return false;
+      try { return Boolean(rawPull("[:block/uid]", [":block/uid", uid])); } catch { return true; }
+    },
     stats,
     viewports: createViewportStore({ storage, graph: gname }),
     tabs: createTabStore({ storage, graph: gname }),

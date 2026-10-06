@@ -14,6 +14,8 @@ import { coverModel, pdfMacroUrl, pdfPagePlan } from "../model/pdf.js";
 import { LINKED_REF_CAP } from "../model/refs.js";
 import { createCardCache } from "../model/card-cache.js";
 import { attrNameOf, classifyString, mergePropsForWrite, parseBoardTitle, plainKeys } from "../model/schema.js";
+import { dailyTitle, dailyUid, journalRows } from "../model/journal.js";
+import { closeTab, normalizeTabs, openTab, tabStorageKey } from "../model/tabs.js";
 import { bindGuardStats, guardCallback } from "../guard.js";
 
 export const BOARD_PATTERN = `[:block/uid :block/string :block/order :block/heading :block/open :block/props
@@ -213,6 +215,69 @@ export function graphName(hash = globalThis.location?.hash ?? "") {
   return m ? decodeURIComponent(m[1]) : "";
 }
 
+// What a pull pattern asks for: top-level attributes, and one level under each map key.
+// The board cache was filled with patterns that always ask for these, so their absence on a cached node
+// is Roam's answer, not a gap. Any other attribute must be on the node, or the pull goes to Roam.
+const CACHE_ASKED = new Set([":block/uid", ":block/string", ":block/order", ":block/heading", ":block/open", ":block/props", ":block/children"]);
+const patternMemo = new Map();
+export function patternNeeds(pattern) {
+  const text = String(pattern ?? "");
+  const hit = patternMemo.get(text);
+  if (hit) return hit;
+  const tokens = text.match(/\.\.\.|[[\]{}]|:[^\s[\]{}]+|[^\s[\]{}]+/g) || [];
+  let i = 0;
+  const vector = () => {
+    const out = [];
+    if (tokens[i] !== "[") return out;
+    i += 1;
+    while (i < tokens.length && tokens[i] !== "]") {
+      const t = tokens[i];
+      if (t === "{") {
+        i += 1;
+        while (i < tokens.length && tokens[i] !== "}") {
+          const key = tokens[i];
+          i += 1;
+          let sub = null;
+          if (tokens[i] === "[") sub = vector();
+          else i += 1; // `...` or a recursion limit
+          out.push({ key, sub });
+        }
+        i += 1;
+      } else if (t === "[") vector();
+      else { if (t.startsWith(":")) out.push({ attr: t }); i += 1; }
+    }
+    i += 1;
+    return out;
+  };
+  const needs = vector();
+  if (patternMemo.size > 200) patternMemo.clear();
+  patternMemo.set(text, needs);
+  return needs;
+}
+
+function nodeAnswers(node, needs) {
+  for (const need of needs) {
+    if (need.attr) {
+      if (!(need.attr in node) && !CACHE_ASKED.has(need.attr)) return false;
+      continue;
+    }
+    const value = node[need.key];
+    if (value == null) {
+      if (!CACHE_ASKED.has(need.key)) return false;
+      continue;
+    }
+    if (!need.sub) continue;
+    const first = Array.isArray(value) ? value[0] : value;
+    if (first && typeof first === "object") {
+      for (const inner of need.sub) {
+        if (inner.attr && !(inner.attr in first) && !CACHE_ASKED.has(inner.attr)) return false;
+        if (inner.key && first[inner.key] == null && !CACHE_ASKED.has(inner.key)) return false;
+      }
+    }
+  }
+  return true;
+}
+
 export function createWriteQueue({ onBusy } = {}) {
   let tail = Promise.resolve();
   let pending = 0;
@@ -332,6 +397,35 @@ export function createViewportStore({ storage = globalThis.localStorage, graph =
       for (const t of timers.values()) clearTimeout(t);
       timers.clear();
       latest.clear();
+    },
+  };
+}
+
+// Fullscreen board tabs. One key per graph. Writes immediately: opening a tab is one gesture, not a pan.
+export function createTabStore({ storage = globalThis.localStorage, graph = "" } = {}) {
+  const key = tabStorageKey(graph);
+  const read = () => {
+    try {
+      const raw = storage?.getItem?.(key);
+      if (!raw) return [];
+      return normalizeTabs(JSON.parse(raw));
+    } catch { return []; }
+  };
+  const write = (tabs) => {
+    try { storage?.setItem?.(key, JSON.stringify(normalizeTabs(tabs))); } catch { /* quota or private mode */ }
+  };
+  return {
+    get: read,
+    set(tabs) { write(tabs); },
+    open(entry) {
+      const next = openTab(read(), entry);
+      write(next.tabs);
+      return next;
+    },
+    close(uid) {
+      const next = closeTab(read(), uid);
+      write(next.tabs);
+      return next;
     },
   };
 }
@@ -586,6 +680,9 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     if (compact === "[:db/id]" && node[":db/id"] == null) return MISS;
     if (compact === "[:block/open]" && !(":block/open" in node)) return MISS;
     if (compact.includes(":diagram/") && !cache.nativeKnown(id) && !node[":diagram/nodes"] && !node[":diagram/edges"]) return MISS;
+    // A board-shaped node must not answer a pattern that asks for what the board pull never stored
+    // (:edit/time, :create/time, :create/user, a page's :node/title, ...).
+    if (!nodeAnswers(node, patternNeeds(text))) return MISS;
     return node;
   };
   // Plexus's own reads go through the cache. Roam's global pull is never replaced: other extensions
@@ -690,6 +787,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     pull,
     stats,
     viewports: createViewportStore({ storage, graph: gname }),
+    tabs: createTabStore({ storage, graph: gname }),
 
     // One wide pull fills the session cache, so later card, page, and badge reads do not call Roam again.
     pullBoard(uid, { light = false } = {}) {
@@ -913,6 +1011,25 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     pageUid(title) {
       const res = pull("[:block/uid]", [":node/title", title]);
       return res?.[":block/uid"] ?? null;
+    },
+
+    // Top-level blocks of one daily page. A missing page is an empty day. This never creates the page.
+    dailyBlocks(when) {
+      const title = dailyTitle(when);
+      const expectUid = dailyUid(when);
+      const pattern = "[:block/uid :node/title {:block/children [:block/uid :block/string :block/order]}]";
+      let res = null;
+      try { res = pull(pattern, [":node/title", title]); } catch { res = null; }
+      if (!res?.[":block/uid"]) {
+        try { res = pull(pattern, eidKey(expectUid)); } catch { res = null; }
+      }
+      const exists = Boolean(res?.[":block/uid"]);
+      return {
+        title,
+        uid: exists ? String(res[":block/uid"]) : expectUid,
+        exists,
+        rows: journalRows(exists ? res : null),
+      };
     },
 
     // The templates page is created once. A second call returns the existing uid.
@@ -1186,6 +1303,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       if (!openGroup || !id) return;
       const list = openGroup.created || (openGroup.created = []);
       if (!list.includes(id)) list.push(id);
+      redoLog.length = 0; // a new write drops Roam's redo stack; keep the log in step
     },
 
     // Undo/redo step over a whole recorded group; with nothing recorded (or after invalidateUndo) it is Roam's single step.

@@ -35,6 +35,7 @@
 import { DEFAULT_BOARD_CARD, DEFAULT_SIZES, MIN_SIZES, STICKY_SIZE } from "../model/schema.js";
 import { descendantsOf, findEdge, hitTest, itemsInPolygon, itemsInRect, outlineOrder, topLevelOf, boundsOf } from "../model/board.js";
 import { GRID_PITCH, nearestInDirection, nearestSide, snapMove, snapToGrid, zoomAt } from "../model/geometry.js";
+import { fingerPair, pinchViewport } from "../model/touch.js";
 import { SHORTCUTS, findShortcut } from "./shortcuts.js";
 import { isoDay, parseRoamDay } from "../model/tasks.js";
 
@@ -78,6 +79,8 @@ export function createInteractions({ actions, settings } = {}) {
     space: false,
     hover: null,
   };
+  // Live touch points, by pointer id. Two of them pinch or pan. One keeps the mouse path.
+  const fingers = new Map();
 
   const board = () => call("board");
   const rects = () => call("rects");
@@ -122,6 +125,33 @@ export function createInteractions({ actions, settings } = {}) {
     if (!state.locked && !STICKY_TOOLS.has(state.tool)) setTool("select");
   };
 
+  const noteFinger = (ev) => {
+    if (ev?.pointerId == null || (ev.button != null && ev.button !== 0)) return;
+    // A primary pointer starts a new touch sequence: fingers from a gesture whose pointerup never reached the
+    // board (released over chrome, or outside) must not turn this one-finger press into a pinch.
+    if (ev.isPrimary === true) fingers.clear();
+    fingers.set(ev.pointerId, { x: ev.screen?.x || 0, y: ev.screen?.y || 0 });
+  };
+  const dropFinger = (ev) => {
+    if (ev?.pointerId == null) fingers.clear();
+    else fingers.delete(ev.pointerId);
+  };
+  const pairNow = () => fingerPair([...fingers.values()]);
+  const beginPinch = (pair) => {
+    const prev = state.gesture;
+    if (prev && prev.kind !== "pinch") {
+      if (prev.kind === "move" && !prev.dup && prev.uids?.length) call("previewMove", prev.uids, 0, 0);
+      if (prev.kind === "resize") call("previewRects", []);
+      end();
+    }
+    if (state.gesture?.kind !== "pinch") {
+      const v = vp();
+      state.gesture = { kind: "pinch", moved: true, vp0: { x: v.x, y: v.y, zoom: v.zoom }, dist0: pair.dist, mid0: pair.mid };
+      call("setGesturing", true);
+    }
+    const g = state.gesture;
+    call("setViewport", pinchViewport(g.vp0, { dist0: g.dist0, mid0: g.mid0, dist: pair.dist, mid: pair.mid }));
+  };
   const begin = (g) => {
     state.gesture = { moved: false, ...g };
     call("setGesturing", true);
@@ -196,6 +226,12 @@ export function createInteractions({ actions, settings } = {}) {
     const t = ev.target || { kind: "empty" };
     if (t.kind === "chrome") return;
     cancelOpen();
+    if ((ev.button ?? 0) === 0) noteFinger(ev);
+    const pair = pairNow();
+    if (pair) {
+      beginPinch(pair);
+      return;
+    }
     if (ev.button === 2) return;
     if (state.gesture) return;
     const editing = editingUid();
@@ -306,6 +342,17 @@ export function createInteractions({ actions, settings } = {}) {
   };
 
   const onPointerMove = (ev) => {
+    if (ev.pointerId != null && fingers.has(ev.pointerId)) {
+      fingers.set(ev.pointerId, { x: ev.screen?.x || 0, y: ev.screen?.y || 0 });
+    }
+    if (state.gesture?.kind === "pinch") {
+      const pair = pairNow();
+      if (pair) {
+        const g = state.gesture;
+        call("setViewport", pinchViewport(g.vp0, { dist0: g.dist0, mid0: g.mid0, dist: pair.dist, mid: pair.mid }));
+      }
+      return;
+    }
     const g = state.gesture;
     if (!g) return;
     if (g.kind === "connect") {
@@ -453,6 +500,12 @@ export function createInteractions({ actions, settings } = {}) {
   };
 
   const onPointerUp = (ev) => {
+    dropFinger(ev);
+    if (state.gesture?.kind === "pinch") {
+      if (fingers.size >= 2) return;
+      end();
+      return;
+    }
     const g = state.gesture;
     if (!g) return;
     const b = board();
@@ -589,7 +642,10 @@ export function createInteractions({ actions, settings } = {}) {
     end();
   };
 
-  const onPointerCancel = () => {
+  const onPointerCancel = (ev) => {
+    if (ev?.pointerId != null) fingers.delete(ev.pointerId);
+    else fingers.clear();
+    if (state.gesture?.kind === "pinch" && fingers.size >= 2) return;
     if (!state.gesture) return;
     const g = state.gesture;
     if (g.kind === "move" && !g.dup && g.uids.length) call("previewMove", g.uids, 0, 0);
@@ -834,6 +890,10 @@ export function createInteractions({ actions, settings } = {}) {
       case "saveView": call("saveView"); return true;
       case "memoryLane": call("memoryLane"); return true;
       case "help": call("toggleShortcuts"); return true;
+      case "boardTab":
+        // Out of range is a no-op inside selectBoardTab. The key is still taken so it does not change boards.
+        call("selectBoardTab", row.tab);
+        return true;
       case "expand": {
         if (state.selection.size !== 1) return false;
         const uid = lastSelected();

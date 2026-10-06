@@ -97,6 +97,6 @@ test("status.css masks every glyph, sizes the map mark, and stops the Alert puls
   assert.match(css, /pxd-root--motion-off/);
   assert.match(css, /animation:\s*pxd-status-alert 5\.2s/);
   assert.match(css, /pxd-task-check--done\[data-status\]::before/);
-  assert.match(css, /margin-right:\s*14px/);
+  assert.match(css, /margin:\s*0 6px 0 0/);
   assert.match(css, /\.pxd-root\.pxd-root--dark \.pxd-task-check\[data-status\] \{\s*background:\s*transparent;/);
 });

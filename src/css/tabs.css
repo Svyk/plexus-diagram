@@ -1,0 +1,55 @@
+/* Fullscreen board tabs. Inside .pxd-root so the chrome tokens apply. Not on document.body. */
+
+.pxd-root .pxd-fstabs {
+  position: absolute;
+  top: 8px;
+  left: 8px;
+  right: 8px;
+  z-index: 12;
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  padding: 4px;
+  border: 1px solid var(--pxd-border-strong);
+  border-radius: 8px;
+  background: var(--pxd-chrome-bg);
+  box-shadow: var(--pxd-shadow);
+}
+
+.pxd-root .pxd-fstab {
+  display: flex;
+  align-items: center;
+  max-width: 160px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+}
+
+.pxd-root .pxd-fstab--on {
+  border-color: var(--pxd-border-strong);
+}
+
+.pxd-root .pxd-fstab__name {
+  max-width: 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.pxd-root .pxd-fstab__x {
+  width: 22px;
+  min-width: 22px;
+  padding: 0;
+  font-size: 14px;
+}
+
+/* The strip has its own row: the board bar, rail, Properties, legend and panel move down by its height
+   instead of sitting under it (live 2026-10-06: the strip covered the bar's first buttons). */
+.pxd-root.pxd-root--fstabs > .pxd-toolbar,
+.pxd-root.pxd-root--fstabs > .pxd-rail,
+.pxd-root.pxd-root--fstabs > .pxd-props,
+.pxd-root.pxd-root--fstabs > .pxd-legend,
+.pxd-root.pxd-root--fstabs > .pxd-panel {
+  margin-top: 46px;
+}

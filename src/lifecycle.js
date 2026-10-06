@@ -11,6 +11,7 @@ async function callSafely(disposer) {
 
 export function createLifecycle() {
   let disposed = false;
+  let idlePending = 0;
   const disposers = [];
 
   const add = (disposer) => {
@@ -55,6 +56,44 @@ export function createLifecycle() {
       const id = globalThis.setTimeout(callback, delay, ...args);
       add(() => globalThis.clearTimeout(id));
       return id;
+    },
+
+    // POL-3. One idle callback, dropped on dispose before it runs.
+    idle(callback, { timeout = 1000 } = {}) {
+      const guarded = guardCallback("idle", callback);
+      let open = true;
+      const close = () => {
+        if (!open) return;
+        open = false;
+        idlePending -= 1;
+      };
+      idlePending += 1;
+      const fire = (deadline) => {
+        if (!open) return;
+        close();
+        if (disposed) return;
+        guarded(deadline);
+      };
+      if (typeof globalThis.requestIdleCallback === "function") {
+        const id = globalThis.requestIdleCallback(fire, { timeout });
+        add(() => {
+          globalThis.cancelIdleCallback?.(id);
+          close();
+        });
+        return id;
+      }
+      const id = globalThis.setTimeout(() => {
+        fire({ didTimeout: true, timeRemaining: () => 0 });
+      }, timeout);
+      add(() => {
+        globalThis.clearTimeout(id);
+        close();
+      });
+      return id;
+    },
+
+    pending() {
+      return idlePending;
     },
 
     observer(observer, target, options) {

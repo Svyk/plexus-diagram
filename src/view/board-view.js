@@ -77,12 +77,15 @@ import { mountTable } from "./table-view.js";
 import { mountKanban } from "./kanban-view.js";
 import { createPropsPanel } from "./props-panel.js";
 import { PANEL_WIDTH_DEFAULT, nextPanelWidth } from "../model/info.js";
+import { LONG_PRESS_CANCEL_PX, LONG_PRESS_MS, longPressAt } from "../model/touch.js";
+import { closeTab, openTab, tabAt } from "../model/tabs.js";
 import { createPanel, parseDropPayload } from "./panel.js";
 import { createMenu } from "./menu.js";
 import { createShortcutSheet } from "./shortcut-sheet.js";
 import { createTooltip } from "./tooltip.js";
 import { findShortcut } from "./shortcuts.js";
-import { buildMenu } from "./menu-model.js";
+import { applyStatusPicks, buildMenu } from "./menu-model.js";
+import { statusApi, statusPalette } from "../model/status-tags.js";
 import { createQuickLook } from "./quicklook.js";
 import { createPresenter } from "./present.js";
 import { createClipboardIO, dragHasImages, filesFromDataTransfer, writeClipboard } from "./clipboard-io.js";
@@ -733,6 +736,8 @@ function buildBoardView(onFail, {
   onSetDefaults = null,
   perfLog = null,
   lifecycle = null,
+  onSelectTab = null,
+  tabStore = null,
 } = {}) {
   const doc = globalThis.document;
   const win = globalThis.window;
@@ -841,6 +846,39 @@ function buildBoardView(onFail, {
   const graph = host?.graph || graphName(win);
   const storage = globalThis.localStorage;
   const vpStore = host?.viewports || host?.viewportStore || createLocalViewportStore({ storage, graph, timers });
+  const tabsStore = tabStore || host?.tabs || null;
+  let memoryTabs = [];
+  const readTabs = () => {
+    if (typeof tabsStore?.get === "function") {
+      try {
+        const stored = tabsStore.get();
+        if (Array.isArray(stored)) return stored;
+      } catch { /* the session list still paints */ }
+    }
+    return memoryTabs;
+  };
+  const openBoardTab = (entry) => {
+    if (typeof tabsStore?.open === "function") {
+      const next = tabsStore.open(entry);
+      memoryTabs = next?.tabs || [];
+      return next;
+    }
+    const next = openTab(readTabs(), entry);
+    memoryTabs = next.tabs;
+    try { tabsStore?.set?.(next.tabs); } catch { /* quota */ }
+    return next;
+  };
+  const closeBoardTab = (uid) => {
+    if (typeof tabsStore?.close === "function") {
+      const next = tabsStore.close(uid);
+      memoryTabs = next?.tabs || [];
+      return next;
+    }
+    const next = closeTab(readTabs(), uid);
+    memoryTabs = next.tabs;
+    try { tabsStore?.set?.(next.tabs); } catch { /* quota */ }
+    return next;
+  };
   // The inline height belongs to the mount (the route board), not to whichever nested board it is showing.
   const heightKey = `plexus-diagram:h:${graph}:${routeUid}`;
 
@@ -2696,6 +2734,19 @@ function buildBoardView(onFail, {
   };
 
   // ------------------------------------------------------------ context menu
+  // TSK-4. Status rows exist only while Task Status Tags exposes its API; every write goes through it.
+  const statusWin = () => doc?.defaultView || globalThis;
+  const statusTags = {
+    available: () => Boolean(statusApi(statusWin())),
+    palette: () => statusPalette(statusApi(statusWin())),
+  };
+  const taskUidOf = (it) => (it?.target?.kind === "block" && it.target.uid ? it.target.uid : it?.uid);
+  const isTaskItem = (it) => Boolean(it) && isTaskString(it.string || (it.target?.kind === "block" ? host?.blockString?.(it.target.uid) : "") || "");
+  const setStatusOf = async (uid, name) => {
+    const api = statusApi(statusWin());
+    if (!api || !uid) return { status: "unknown", reason: "no-api" };
+    try { return await api.setStatus(uid, name); } catch { return { status: "unknown", reason: "set-status-failed" }; }
+  };
   const menuContext = (kind, uid) => {
     const b = board();
     const item = uid ? b?.items.get(uid) : null;
@@ -2710,7 +2761,8 @@ function buildBoardView(onFail, {
         const canExpand = item?.kind === "page" || item?.kind === "note" || item?.kind === "block";
         const compassApi = globalThis.RoamCompass || globalThis.window?.RoamCompass || null;
         const plexusApi = globalThis.RoamPlexus || globalThis.window?.RoamPlexus || null;
-        return { item, regions: imageRegionRows(item?.content), canMakeTask: item?.type === "card" && item?.kind === "note" && !isTaskString(item.string) && !isQueryString(queryText), isBoard: item?.kind === "board", collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS.includes(item?.kind), canSpread: item?.kind === "note" || item?.kind === "block", isQuery: isQueryString(queryText), canExpand, mindPreset: readMindPreset(storage), compass: typeof compassApi?.open === "function", canAnnotate: item?.kind === "image" && typeof plexusApi?.create === "function" };
+        const task = isTaskItem(item) ? taskMeta(item.string, item.content) : null;
+        return { ...(task ? { statusTags, status: task.status || "" } : {}), item, regions: imageRegionRows(item?.content), canMakeTask: item?.type === "card" && item?.kind === "note" && !isTaskString(item.string) && !isQueryString(queryText), isBoard: item?.kind === "board", collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS.includes(item?.kind), canSpread: item?.kind === "note" || item?.kind === "block", isQuery: isQueryString(queryText), canExpand, mindPreset: readMindPreset(storage), compass: typeof compassApi?.open === "function", canAnnotate: item?.kind === "image" && typeof plexusApi?.create === "function" };
       }
       case "section": {
         const members = item && b ? [item.uid, ...descendantsOf(b, item.uid)] : [];
@@ -2729,6 +2781,7 @@ function buildBoardView(onFail, {
       case "multi": {
         const items = selection.items.map((u) => b?.items.get(u)).filter(Boolean);
         return {
+          ...(items.some(isTaskItem) ? { statusTags, status: "" } : {}),
           count: items.length,
           allPinned: items.length > 0 && items.every((i) => i.pinned),
           anyCollapsed: items.some((i) => i.type === "card" && i.collapsed),
@@ -2773,6 +2826,21 @@ function buildBoardView(onFail, {
     const head = at < 0 ? id : id.slice(0, at);
     const arg = at < 0 ? null : id.slice(at + 1);
     switch (head) {
+      case "status": {
+        const name = arg === "remove" ? null : arg;
+        const targets = uids.map((u) => b.items.get(u)).filter(isTaskItem).map(taskUidOf).filter(Boolean);
+        if (!targets.length) break;
+        if (targets.length === 1) {
+          void setStatusOf(targets[0], name).then((res) => {
+            if (res && res.status !== "updated" && res.status !== "unchanged") toast(`Status not changed: ${res.reason || res.status}`);
+          });
+        } else {
+          const capped = targets.length > 45;
+          void applyStatusPicks(targets, name, setStatusOf, null, (m) => toast(m?.message || String(m)))
+            .then((res) => toast(`Status ${name ? `set to ${name}` : "removed"} on ${res.applied - res.rejected.length} cards${capped ? " (first 45 of the selection)" : ""}`));
+        }
+        break;
+      }
       case "region-go":
       case "region-copy":
       case "region-rename":
@@ -3590,6 +3658,12 @@ function buildBoardView(onFail, {
         Promise.resolve(session.deleteView?.(uid)).then(() => { if (!disposed) panel.refreshViews?.(); }).catch(() => {});
       },
       contextLine: (subject) => contextLineFor(subject),
+      loadJournal: async (date) => {
+        try {
+          if (typeof host?.dailyBlocks === "function") return await Promise.resolve(host.dailyBlocks(date));
+        } catch { /* a missing day is an empty list */ }
+        return { rows: [] };
+      },
     },
   });
   let viewDialog = null;
@@ -3904,6 +3978,78 @@ function buildBoardView(onFail, {
   };
 
   // ------------------------------------------------------------ fullscreen
+  // The strip lives inside .pxd-root so chrome tokens and overlay hit-testing apply. Leaving fullscreen keeps the list.
+  let tabStrip = null;
+  const paintTabStrip = (tabs, current) => {
+    if (!isFullscreen) {
+      tabStrip?.remove();
+      tabStrip = null;
+      root.classList.remove("pxd-root--fstabs");
+      return;
+    }
+    root.classList.add("pxd-root--fstabs");
+    if (!tabStrip || !root.contains(tabStrip)) {
+      // A nested board opened in place reuses this root; a strip the previous view left must not stay.
+      for (const stray of root.querySelectorAll?.(".pxd-fstabs") || []) if (stray.parentElement === root) stray.remove();
+      tabStrip = el("div", "pxd-fstabs pxd-chrome");
+      tabStrip.setAttribute("role", "tablist");
+      tabStrip.setAttribute("aria-label", "Boards");
+      // .pxd-chrome already keeps the board's own pointer handling off the strip; one tracked click listener.
+      listen(tabStrip, "click", (event) => {
+        event.preventDefault?.();
+        event.stopPropagation();
+        const closer = event.target?.closest?.(".pxd-fstab__x");
+        const tab = event.target?.closest?.(".pxd-fstab");
+        const uid = (closer || tab)?.getAttribute?.("data-uid");
+        if (!uid) return;
+        if (closer) closeFullscreenTab(uid);
+        else selectFullscreenTab(uid);
+      });
+      root.prepend(tabStrip);
+    }
+    tabStrip.replaceChildren();
+    for (const tab of tabs) {
+      const on = tab.uid === current;
+      const node = el("div", `pxd-fstab${on ? " pxd-fstab--on" : ""}`, tabStrip);
+      node.setAttribute("role", "tab");
+      node.setAttribute("data-uid", tab.uid);
+      node.dataset.uid = tab.uid;
+      node.setAttribute("aria-selected", on ? "true" : "false");
+      const name = el("span", "pxd-fstab__name", node);
+      name.textContent = tab.title || "Untitled board";
+      const x = el("button", "pxd-btn pxd-fstab__x", node);
+      x.type = "button";
+      x.textContent = "×";
+      x.setAttribute("aria-label", `Close ${tab.title || "board"}`);
+      x.setAttribute("data-uid", tab.uid);
+    }
+  };
+  const selectFullscreenTab = (uid) => {
+    if (!uid || uid === (board()?.uid || boardUid)) return;
+    onSelectTab?.(uid);
+  };
+  const closeFullscreenTab = (uid) => {
+    const next = closeBoardTab(uid);
+    const tabs = next?.tabs || [];
+    const current = board()?.uid || boardUid;
+    if (uid !== current) {
+      paintTabStrip(tabs, current);
+      return;
+    }
+    const neighbor = next?.index >= 0 ? tabs[next.index] : null;
+    paintTabStrip(tabs, neighbor?.uid || "");
+    if (neighbor?.uid && neighbor.uid !== current) onSelectTab?.(neighbor.uid);
+  };
+  const syncFullscreenTabs = () => {
+    if (!isFullscreen) {
+      paintTabStrip([], "");
+      return;
+    }
+    const b = board();
+    const entry = { uid: b?.uid || boardUid, title: b?.title || "" };
+    const next = openBoardTab(entry);
+    paintTabStrip(next?.tabs || [], entry.uid);
+  };
   const applyFullscreen = (on) => {
     isFullscreen = Boolean(on);
     fsDispose();
@@ -3913,6 +4059,7 @@ function buildBoardView(onFail, {
     resizeGrip.style.display = isFullscreen ? "none" : "";
     if (isFullscreen) { root.style.height = ""; }
     else applyInlineHeight();
+    syncFullscreenTabs();
     timers.frame(() => { measure(); markViewport(); });
   };
   const requestFullscreen = (on) => {
@@ -4246,6 +4393,14 @@ function buildBoardView(onFail, {
     cycleLinks,
     isFullscreen: () => isFullscreen,
     setFullscreen: (on) => requestFullscreen(on),
+    selectBoardTab: (index) => {
+      if (!isFullscreen) return false;
+      const tab = tabAt(readTabs(), index);
+      if (!tab) return false;
+      if (tab.uid === (board()?.uid || boardUid)) return true;
+      onSelectTab?.(tab.uid);
+      return true;
+    },
     setSpace: (on) => root.classList.toggle("pxd-root--space", Boolean(on)),
   };
   // BA-2: highlight the page-card row (or title header) under the pointer while an arrow end is dragged.
@@ -4376,6 +4531,8 @@ function buildBoardView(onFail, {
       deltaX: event.deltaX || 0,
       deltaY: event.deltaY || 0,
       pointerId: event.pointerId,
+      isPrimary: event.isPrimary,
+      pointerType: event.pointerType,
     };
   };
 
@@ -4386,8 +4543,73 @@ function buildBoardView(onFail, {
   };
   armSpeedLog();
   let captured = false;
-  const onDocMove = (event) => { if (suspended || !ctl.isGesturing()) return; ctl.handle(normalize(event, "pointermove")); };
+  // Touch and pen only. A mouse still uses the contextmenu event. No setPointerCapture.
+  let pressWatch = null;
+  const touchIds = new Set();
+  const clearPressWatch = () => {
+    pressWatch?.cancel?.();
+    pressWatch = null;
+  };
+  const notePressMove = (event) => {
+    if (!pressWatch) return;
+    if (pressWatch.pointerId != null && event.pointerId != null && event.pointerId !== pressWatch.pointerId) return;
+    const dist = Math.hypot((event.clientX || 0) - pressWatch.x, (event.clientY || 0) - pressWatch.y);
+    if (dist > pressWatch.moved) pressWatch.moved = dist;
+    if (pressWatch.moved >= LONG_PRESS_CANCEL_PX) clearPressWatch();
+  };
+  const endPress = (event) => {
+    if (event?.pointerId != null) touchIds.delete(event.pointerId);
+    else touchIds.clear();
+    if (!pressWatch) return;
+    if (pressWatch.pointerId == null || event?.pointerId == null || event.pointerId === pressWatch.pointerId) clearPressWatch();
+  };
+  const armLongPress = (event) => {
+    const kind = event.pointerType;
+    if (kind !== "touch" && kind !== "pen") return;
+    if ((event.button ?? 0) !== 0) return;
+    if (leavesBoardPointer(event.target)) return;
+    // A primary pointer starts a new touch sequence; ids whose pointerup never reached us are stale.
+    if (event.isPrimary === true) touchIds.clear();
+    if (event.pointerId != null) touchIds.add(event.pointerId);
+    if (touchIds.size >= 2) {
+      clearPressWatch();
+      return;
+    }
+    clearPressWatch();
+    const watch = {
+      x: event.clientX || 0,
+      y: event.clientY || 0,
+      moved: 0,
+      pointerId: event.pointerId,
+      target: event.target,
+      cancel: null,
+    };
+    watch.cancel = timers.later(() => {
+      if (pressWatch !== watch || disposed) return;
+      const moved = watch.moved;
+      pressWatch = null;
+      if (longPressAt(moved, LONG_PRESS_MS) !== "open") return;
+      ctl.cancel();
+      onRootContextMenu({
+        type: "contextmenu",
+        target: watch.target,
+        clientX: watch.x,
+        clientY: watch.y,
+        button: 2,
+        defaultPrevented: false,
+        preventDefault() { this.defaultPrevented = true; },
+        stopPropagation() {},
+      });
+    }, LONG_PRESS_MS);
+    pressWatch = watch;
+  };
+  const onDocMove = (event) => {
+    notePressMove(event);
+    if (suspended || !ctl.isGesturing()) return;
+    ctl.handle(normalize(event, "pointermove"));
+  };
   const onDocUp = (event) => {
+    endPress(event);
     if (suspended) return;
     if (!ctl.isGesturing()) return releaseCapture();
     const panning = ctl.gestureKind() === "pan";
@@ -4398,7 +4620,8 @@ function buildBoardView(onFail, {
     if (nativeClickKind(event.target) === "ref" && !suppressClick) openRefFromClick(event);
     releaseCapture();
   };
-  const onDocCancel = () => {
+  const onDocCancel = (event) => {
+    endPress(event);
     if (suspended) return;
     const panning = ctl.gestureKind() === "pan";
     ctl.handle({ type: "pointercancel" });
@@ -4509,6 +4732,7 @@ function buildBoardView(onFail, {
       // create a phantom card and swallowed [[link]] clicks. Document-level listeners already follow the drag.
     }
     try { if (!editingUid && ev.target.kind !== "label") root.focus({ preventScroll: true }); } catch { /* stub */ }
+    armLongPress(event);
   });
   // The mouseup that ends a drag must not reach a [[link]] the pointer happens to be over (it moved with the card).
   listen(doc, "mouseup", (event) => {
@@ -4585,18 +4809,19 @@ function buildBoardView(onFail, {
     if (handled) { event.preventDefault(); event.stopPropagation(); settle(); }
   }, { passive: false });
   // Right-click: the controller decides what was hit and asks us to open the menu; an editing card keeps the
-  // browser's own menu (the controller returns false there).
-  listen(root, "contextmenu", (event) => {
+  // browser's own menu (the controller returns false there). A long-press calls this same function.
+  const onRootContextMenu = (event) => {
     if (leavesBoardPointer(event.target)) return;
-    event.stopPropagation();
+    event.stopPropagation?.();
     // Roam's own menu for a ref / tag already handled this (its React root ran first); links and images keep the browser's.
     if (event.defaultPrevented) return;
     const native = event.target?.closest?.(NATIVE_MENU_TARGETS);
     if (native && native.closest?.(".pxd-item__body")) return;
     measure();
     const handled = ctl.handle(normalize(event, "contextmenu"));
-    if (handled) event.preventDefault();
-  });
+    if (handled) event.preventDefault?.();
+  };
+  listen(root, "contextmenu", onRootContextMenu);
   const hoverCardAt = (uid) => {
     const it = uid ? board()?.items.get(uid) : null;
     return it && it.type === "card" ? it : null;
@@ -5096,6 +5321,7 @@ function buildBoardView(onFail, {
       host,
       bt,
       getBoard: board,
+      toast: (message) => toast(message),
       ...(on ? { completeTask: (uid) => taskDone.complete(uid) } : {}),
     });
     kanbanCtl = next;
@@ -5578,6 +5804,7 @@ function buildBoardView(onFail, {
   }
 
   const view = {
+    refreshStatuses() { itemsR?.refreshStatuses?.(); kanbanCtl?.refresh?.(); },
     root,
     controller: ctl,
     setFullscreen(on) { if (Boolean(on) !== isFullscreen) applyFullscreen(on); },
@@ -5767,6 +5994,7 @@ function buildBoardView(onFail, {
       };
       // Each step stands alone. A throw used to set disposed and skip the body popover and the window listeners.
       step(() => perfLog?.cancelPan?.());
+      step(() => { tabStrip?.remove(); tabStrip = null; root.classList.remove("pxd-root--fstabs"); });
       step(() => closeLinksMenu());
       step(() => { whyPop?.close(); whyPop = null; });
       step(() => { contextsDrawer?.close(); contextsDrawer = null; });
@@ -5791,6 +6019,7 @@ function buildBoardView(onFail, {
       step(() => taskPop.dispose());
       step(() => laterCtl.dispose());
       step(() => stopTimer());
+      step(() => { touchIds.clear(); clearPressWatch(); });
       step(() => ctl.cancel());
       step(() => releaseCapture());
       step(() => { if (heightDrag) onHeightUp(); });

@@ -665,6 +665,41 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   border-color: var(--pxd-accent);
 }
 
+/* Coarse pointers (finger) need a grip the finger can hit. The screen size is 44px;
+   --pxd-inv-zoom puts that back into world px, the same way the 8px fine grip works.
+   A selected page card is named too: its later rule is 12px and would otherwise win. */
+@media (pointer: coarse) {
+  .pxd-root .pxd-item:hover > .pxd-grip.pxd-grip--right,
+  .pxd-root .pxd-item.pxd-item--selected > .pxd-grip.pxd-grip--right,
+  .pxd-root .pxd-item.pxd-item--page:hover > .pxd-grip.pxd-grip--right,
+  .pxd-root .pxd-item.pxd-item--page.pxd-item--selected > .pxd-grip.pxd-grip--right,
+  .pxd-root .pxd-section:hover > .pxd-grip.pxd-grip--right,
+  .pxd-root .pxd-section.pxd-section--selected > .pxd-grip.pxd-grip--right {
+    width: calc(44px * var(--pxd-screen-px, var(--pxd-inv-zoom, 1)));
+    right: calc(-22px * var(--pxd-screen-px, var(--pxd-inv-zoom, 1)));
+  }
+
+  .pxd-root .pxd-item:hover > .pxd-grip.pxd-grip--bottom,
+  .pxd-root .pxd-item.pxd-item--selected > .pxd-grip.pxd-grip--bottom,
+  .pxd-root .pxd-item.pxd-item--page:hover > .pxd-grip.pxd-grip--bottom,
+  .pxd-root .pxd-item.pxd-item--page.pxd-item--selected > .pxd-grip.pxd-grip--bottom,
+  .pxd-root .pxd-section:hover > .pxd-grip.pxd-grip--bottom,
+  .pxd-root .pxd-section.pxd-section--selected > .pxd-grip.pxd-grip--bottom {
+    height: calc(44px * var(--pxd-screen-px, var(--pxd-inv-zoom, 1)));
+    bottom: calc(-22px * var(--pxd-screen-px, var(--pxd-inv-zoom, 1)));
+  }
+
+  .pxd-root .pxd-item:hover > .pxd-grip.pxd-grip--corner,
+  .pxd-root .pxd-item.pxd-item--selected > .pxd-grip.pxd-grip--corner,
+  .pxd-root .pxd-item.pxd-item--page:hover > .pxd-grip.pxd-grip--corner,
+  .pxd-root .pxd-item.pxd-item--page.pxd-item--selected > .pxd-grip.pxd-grip--corner,
+  .pxd-root .pxd-section:hover > .pxd-grip.pxd-grip--corner,
+  .pxd-root .pxd-section.pxd-section--selected > .pxd-grip.pxd-grip--corner {
+    width: calc(44px * var(--pxd-screen-px, var(--pxd-inv-zoom, 1)));
+    height: calc(44px * var(--pxd-screen-px, var(--pxd-inv-zoom, 1)));
+  }
+}
+
 /* ------------------------------------------------------------------ sections */
 
 .pxd-section {

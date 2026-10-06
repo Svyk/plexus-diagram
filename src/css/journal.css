@@ -1,0 +1,21 @@
+/* Journal tab. Borders carry the chrome; the list itself is the same rows as Search. */
+
+.pxd-root .pxd-journal__bar {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 8px 10px;
+  border-bottom: 1px solid var(--pxd-border);
+}
+
+.pxd-root .pxd-journal__date {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--pxd-text);
+}
+
+.pxd-root .pxd-journal__today {
+  font-size: 12px;
+}

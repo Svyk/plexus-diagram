@@ -15,12 +15,19 @@ const rejectRemoteImports = {
   },
 };
 
-export async function bundleEntry({
+export function artifactBanner(version) {
+  return `/* Plexus Diagram v${version} | MIT | generated; edit src/ */`;
+}
+
+// Shared by the extension build and scripts/size-report.mjs. Callers add
+// metafile: true; they do not copy this option list.
+export function bundleBuildOptions({
   rootDirectory = defaultRoot,
   entryPoint = "src/extension.js",
   banner = "",
+  metafile = false,
 } = {}) {
-  const result = await esbuild({
+  return {
     absWorkingDir: resolve(rootDirectory),
     entryPoints: [entryPoint],
     bundle: true,
@@ -37,9 +44,30 @@ export async function bundleEntry({
     logLevel: "silent",
     plugins: [rejectRemoteImports],
     banner: banner ? { js: banner } : undefined,
-  });
+    metafile: Boolean(metafile),
+  };
+}
+
+export async function bundleEntry({
+  rootDirectory = defaultRoot,
+  entryPoint = "src/extension.js",
+  banner = "",
+  metafilePath,
+} = {}) {
+  const result = await esbuild(bundleBuildOptions({
+    rootDirectory,
+    entryPoint,
+    banner,
+    metafile: Boolean(metafilePath),
+  }));
   const output = result.outputFiles.find((file) => file.path.endsWith("extension.js"));
   if (!output) throw new Error("esbuild did not emit extension.js");
+  if (metafilePath) {
+    if (!result.metafile) throw new Error("esbuild did not emit a metafile");
+    const target = resolve(metafilePath);
+    await mkdir(dirname(target), { recursive: true });
+    await writeFile(target, `${JSON.stringify(result.metafile)}\n`, "utf8");
+  }
   return output.text;
 }
 
@@ -68,18 +96,18 @@ export async function syncChangelogText(rootDirectory = defaultRoot) {
   if (prev !== out) await writeFile(path, out, "utf8");
 }
 
-export async function renderArtifacts(rootDirectory = defaultRoot) {
+export async function renderArtifacts(rootDirectory = defaultRoot, options = {}) {
   await syncChangelogText(rootDirectory);
   const packageMetadata = JSON.parse(await readFile(resolve(rootDirectory, "package.json"), "utf8"));
-  const banner = `/* Plexus Diagram v${packageMetadata.version} | MIT | generated; edit src/ */`;
+  const banner = artifactBanner(packageMetadata.version);
   return {
-    javascript: await bundleEntry({ rootDirectory, banner }),
+    javascript: await bundleEntry({ rootDirectory, banner, metafilePath: options.metafilePath }),
     css: await readCss(rootDirectory),
   };
 }
 
-export async function build(rootDirectory = defaultRoot) {
-  const { javascript, css } = await renderArtifacts(rootDirectory);
+export async function build(rootDirectory = defaultRoot, options = {}) {
+  const { javascript, css } = await renderArtifacts(rootDirectory, options);
   const deployDir = resolve(rootDirectory, "deploy");
   await Promise.all([
     writeFile(resolve(rootDirectory, "extension.js"), javascript, "utf8"),
@@ -124,15 +152,24 @@ export async function verifyGeneratedArtifacts(rootDirectory = defaultRoot) {
   if (drift.length) throw new Error(`Generated artifact drift:\n- ${drift.join("\n- ")}`);
 }
 
+function metafilePathFromArgv(argv) {
+  const index = argv.indexOf("--metafile");
+  if (index < 0) return undefined;
+  const value = argv[index + 1];
+  if (!value || value.startsWith("-")) throw new Error("--metafile needs an output path");
+  return value;
+}
+
 async function main() {
-  await build();
+  const options = { metafilePath: metafilePathFromArgv(process.argv) };
+  await build(defaultRoot, options);
   if (!process.argv.includes("--watch")) return;
   process.stdout.write("Watching src/ for changes. Press Ctrl-C to stop.\n");
   const watcher = watch(resolve(defaultRoot, "src"), { recursive: true });
   let pending = Promise.resolve();
   for await (const event of watcher) {
     if (!event.filename || !/\.(?:js|css)$/.test(event.filename)) continue;
-    pending = pending.then(() => build(), () => build());
+    pending = pending.then(() => build(defaultRoot, options), () => build(defaultRoot, options));
     await pending;
   }
 }

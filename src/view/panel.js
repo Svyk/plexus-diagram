@@ -5,6 +5,7 @@
 import { closeInfoTab, infoTabList, nextPanelWidth, PANEL_WIDTH_DEFAULT } from "../model/info.js";
 import { LIBRARY_TYPES, libraryFilterActive } from "../model/library.js";
 import { CARD_MIME, parseDropPayload } from "../model/drop.js";
+import { dailyTitle, startOfDay, stepDay } from "../model/journal.js";
 import { minimapSvg } from "./minimap-svg.js";
 
 export { CARD_MIME, parseDropPayload };
@@ -80,8 +81,9 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
   const tabRelated = tabBtn("related", "Related", "diagram-tree");
   const tabBoards = tabBtn("boards", "Boards", "applications");
   const tabOutline = tabBtn("outline", "Outline", "list");
+  const tabJournal = tabBtn("journal", "Journal", "calendar");
   const tabInfo = tabBtn("info", "Info", "info-sign");
-  const tabButtons = { search: tabSearch, related: tabRelated, boards: tabBoards, outline: tabOutline, info: tabInfo };
+  const tabButtons = { search: tabSearch, related: tabRelated, boards: tabBoards, outline: tabOutline, journal: tabJournal, info: tabInfo };
   const closeBtn = el("button", "pxd-btn pxd-iconbtn pxd-panel__close", head);
   closeBtn.type = "button";
   closeBtn.title = "Close";
@@ -182,6 +184,20 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
   const outlinePane = el("div", "pxd-panel__pane pxd-panel__pane--outline", panel);
   outlinePane.style.display = "none";
   const outlineList = el("div", "pxd-panel__list pxd-panel__outline", outlinePane);
+  const journalPane = el("div", "pxd-panel__pane pxd-panel__pane--journal", panel);
+  journalPane.style.display = "none";
+  const journalBar = el("div", "pxd-journal__bar", journalPane);
+  const journalPrev = el("button", "pxd-btn pxd-journal__prev", journalBar, "‹");
+  journalPrev.type = "button";
+  journalPrev.setAttribute("aria-label", "Previous day");
+  const journalDate = el("div", "pxd-journal__date", journalBar);
+  const journalToday = el("button", "pxd-btn pxd-journal__today", journalBar, "Today");
+  journalToday.type = "button";
+  journalToday.setAttribute("aria-label", "Today");
+  const journalNext = el("button", "pxd-btn pxd-journal__next", journalBar, "›");
+  journalNext.type = "button";
+  journalNext.setAttribute("aria-label", "Next day");
+  const journalList = el("div", "pxd-panel__list pxd-journal__list", journalPane);
   const infoPane = el("div", "pxd-panel__pane pxd-panel__pane--info", panel);
   infoPane.style.display = "none";
   const infoTabsBar = el("div", "pxd-panel__infotabs", infoPane);
@@ -192,6 +208,9 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
   let selected = null;
   let relatedRows = [];
   let queryId = 0;
+  let journalId = 0;
+  const journalNow = () => (typeof on.now === "function" ? on.now() : Date.now());
+  let journalDay = startOfDay(journalNow());
 
   const row = (parent, { string, label, text, kind }) => {
     const r = el("div", "pxd-panel__row", parent);
@@ -292,14 +311,80 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     relatedPane.style.display = tab === "related" ? "" : "none";
     boardsPane.style.display = tab === "boards" ? "" : "none";
     outlinePane.style.display = tab === "outline" ? "" : "none";
+    journalPane.style.display = tab === "journal" ? "" : "none";
     infoPane.style.display = tab === "info" ? "" : "none";
     if (tab === "related") void loadRelated();
     if (tab === "boards") void loadBoards();
     if (tab === "outline") renderOutline();
+    if (tab === "journal") void loadJournal();
     if (tab === "info") void loadInfo();
   };
-  for (const [name, b] of Object.entries(tabButtons)) listen(b, "click", () => setTab(name));
+  // One delegated listener for every tab button (FAST-1 listenersPerBoard).
+  listen(tabs, "click", (event) => {
+    const b = event.target?.closest?.(".pxd-panel__tab");
+    const name = b?.dataset?.tab;
+    if (name && tabs.contains?.(b) && Object.prototype.hasOwnProperty.call(tabButtons, name)) setTab(name);
+  });
   listen(closeBtn, "click", () => api.close());
+
+  // Journal rows drag onto the board. A click does not add a card.
+  const journalRow = (parent, item) => {
+    const uid = String(item?.uid || "");
+    if (!uid) return null;
+    const string = item.string || `((${uid}))`;
+    const r = el("div", "pxd-panel__row pxd-journal__row", parent);
+    r.setAttribute("draggable", "true");
+    r.draggable = true;
+    r.dataset.string = string;
+    r.setAttribute("data-string", string);
+    r.dataset.uid = uid;
+    r.setAttribute("data-uid", uid);
+    el("span", "pxd-panel__row-text pxd-panel__row-text--block", r, item.text ?? "");
+    listen(r, "click", (event) => {
+      event.preventDefault?.();
+      event.stopPropagation();
+    });
+    listen(r, "dragstart", (event) => {
+      try {
+        event.dataTransfer?.setData?.(CARD_MIME, string);
+        event.dataTransfer?.setData?.("text/plain", string);
+        if (event.dataTransfer) event.dataTransfer.effectAllowed = "copy";
+      } catch { /* stub */ }
+    });
+    return r;
+  };
+  const renderJournal = (pack) => {
+    journalList.replaceChildren();
+    journalDate.textContent = pack?.title || dailyTitle(journalDay);
+    const rows = Array.isArray(pack?.rows) ? pack.rows : [];
+    if (!rows.length) {
+      el("div", "pxd-panel__empty pxd-journal__empty", journalList, "Nothing on this day.");
+      return;
+    }
+    for (const item of rows) journalRow(journalList, item);
+  };
+  const loadJournal = async () => {
+    const id = journalId += 1;
+    const day = journalDay;
+    journalDate.textContent = dailyTitle(day);
+    let pack = { title: dailyTitle(day), rows: [] };
+    try {
+      if (typeof on.loadJournal === "function") pack = await Promise.resolve(on.loadJournal(day)) || pack;
+    } catch { pack = { title: dailyTitle(day), rows: [] }; }
+    if (id !== journalId || tab !== "journal") return;
+    renderJournal(pack);
+  };
+  const stepJournal = (delta) => {
+    journalDay = delta === 0 ? startOfDay(journalNow()) : stepDay(journalDay, delta);
+    void loadJournal();
+  };
+  // One listener for the day stepper (FAST-1 listenersPerBoard).
+  listen(journalBar, "click", (event) => {
+    const t = event.target;
+    if (journalPrev.contains?.(t)) stepJournal(-1);
+    else if (journalToday.contains?.(t)) stepJournal(0);
+    else if (journalNext.contains?.(t)) stepJournal(1);
+  });
   listen(addAll, "click", () => {
     const strings = relatedRows.map((r) => r.string).filter((s) => !on.isOnBoard?.(s));
     if (strings.length) on.addMany?.(strings);
@@ -625,6 +710,7 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     dispose() {
       debounce?.();
       queryId += 1;
+      journalId += 1;
       unmountInfo();
       listeners.splice(0).forEach((off) => off());
       panel.remove();

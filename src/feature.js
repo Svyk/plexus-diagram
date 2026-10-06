@@ -989,6 +989,11 @@ export async function installPlexusDiagram({
       autofocus,
       initialViewport: viewport,
       onOpenBoard: (child) => visit(rec, [...rec.crumbs, { uid: child, title: boardTitle(host.blockString?.(child)) }]),
+      onSelectTab: (uid) => {
+        if (!uid) return;
+        visit(rec, [{ uid, title: boardTitle(host.blockString?.(uid)) }]);
+      },
+      tabStore: host.tabs,
       onCrumb: (index) => visit(rec, rec.crumbs.slice(0, index + 1)),
       onHistoryBack: () => historyMove(rec, "back"),
       onHistoryForward: () => historyMove(rec, "forward"),
@@ -1584,13 +1589,13 @@ export async function installPlexusDiagram({
         rec.session = acquireSession(currentUid(rec), { host, settings: liveSettings, ...virtualOptions(virtual) });
         // Only the main window's copy goes fullscreen; a sidebar copy of the same board would cover it.
         rec.fullscreen = settings[SETTING_IDS.fullscreenOnZoom] !== false
-          && !routeLeftZoomedDiagram(uid) && !isSidebarMount(rec);
+          && !routeLeftZoomedDiagram(uid) && !isSecondaryMount(rec);
         rec.view = mountRecView(rec);
         rec.off = watchRec(rec);
         publishCards(rec.session?.board);
       } else {
         // A kept board left fullscreen when its page went away; a zoomed return puts it back.
-        const wantFull = settings[SETTING_IDS.fullscreenOnZoom] !== false && !routeLeftZoomedDiagram(uid) && !isSidebarMount(rec);
+        const wantFull = settings[SETTING_IDS.fullscreenOnZoom] !== false && !routeLeftZoomedDiagram(uid) && !isSecondaryMount(rec);
         if (wantFull !== Boolean(rec.fullscreen)) setFullscreen(rec, wantFull);
       }
     } catch (error) {
@@ -1974,6 +1979,15 @@ export async function installPlexusDiagram({
       if (img) return img;
     }
     return null;
+  }
+
+  // Only the zoomed block itself goes fullscreen. A copy in the right sidebar, or in that page's linked
+  // references (a board that mentions itself, a ref to it), stays inline: two fullscreen copies stack and the
+  // top one takes every click (live 2026-10-06).
+  function isSecondaryMount(rec) {
+    if (isSidebarMount(rec)) return true;
+    const inRefs = (node) => Boolean(node?.closest?.(".rm-reference-item, .rm-reference-main, .rm-mentions"));
+    return inRefs(rec.native) || inRefs(rec.mountEl);
   }
 
   function isSidebarMount(rec) {
@@ -2400,7 +2414,7 @@ export async function installPlexusDiagram({
     for (const rec of mounts.values()) {
       if (routeLeftZoomedDiagram(rec.uid)) {
         if (rec.fullscreen) setFullscreen(rec, false);
-      } else if (settings[SETTING_IDS.fullscreenOnZoom] !== false && !rec.fullscreen && !isSidebarMount(rec)) {
+      } else if (settings[SETTING_IDS.fullscreenOnZoom] !== false && !rec.fullscreen && !isSecondaryMount(rec)) {
         setFullscreen(rec, true);
       }
     }
@@ -3136,6 +3150,21 @@ export async function installPlexusDiagram({
     if (quietTimer) clearTimeout(quietTimer);
   });
   if (typeof win.addEventListener === "function") {
+    // TSK-3. One set of window listeners for Task Status Tags, not one per board (FAST-1 listener budget).
+    const refreshStatuses = () => { for (const rec of mounts.values()) { try { rec.view?.refreshStatuses?.(); } catch { /* next paint */ } } };
+    let statusApiSeen = null;
+    const followStatusApi = () => {
+      const api = win.RoamTaskStatusTags;
+      if (statusApiSeen === api) return;
+      try { statusApiSeen?.removeEventListener?.("statuses", refreshStatuses); } catch { /* gone */ }
+      statusApiSeen = api && api.apiVersion === 1 ? api : null;
+      try { statusApiSeen?.addEventListener?.("statuses", refreshStatuses); } catch { /* old api */ }
+      refreshStatuses();
+    };
+    lifecycle.event(win, "roam-task-status-tags:ready", followStatusApi);
+    lifecycle.event(win, "roam-task-status-tags:unload", () => { statusApiSeen = null; refreshStatuses(); });
+    lifecycle.add(() => { try { statusApiSeen?.removeEventListener?.("statuses", refreshStatuses); } catch { /* gone */ } });
+    followStatusApi();
     lifecycle.event(win, "hashchange", onHash);
     lifecycle.event(win, "popstate", onNavigate);
   }

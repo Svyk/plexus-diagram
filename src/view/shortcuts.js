@@ -1,6 +1,8 @@
 // One shortcut table. The sheet renders it, and the key handler matches it.
 // A new key belongs in this list or it is not a shortcut.
 
+import { isBoardTabEvent } from "../model/tabs.js";
+
 const down = (ev) => String(ev.key || "").toLowerCase();
 const hasMod = (ev) => Boolean(ev.meta || ev.ctrl);
 const letter = (ev, ch) => !hasMod(ev) && !ev.alt && !ev.shift && down(ev) === ch;
@@ -69,6 +71,16 @@ export const SHORTCUTS = [
 
   { group: "Navigate", keys: "⌘[", label: "Back", action: "back", events: [{ key: "[", meta: true, code: "BracketLeft" }], match: (ev) => hasMod(ev) && !ev.shift && !ev.alt && (ev.code === "BracketLeft" || ev.key === "[") },
   { group: "Navigate", keys: "⌘]", label: "Forward", action: "forward", events: [{ key: "]", meta: true, code: "BracketRight" }], match: (ev) => hasMod(ev) && !ev.shift && !ev.alt && (ev.code === "BracketRight" || ev.key === "]") },
+  // Cmd/Ctrl+1..9 select fullscreen board tabs. Shift+1 / Shift+2 stay Fit all / Fit selection (no modifier).
+  ...[1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => ({
+    group: "Navigate",
+    keys: `⌘${n}`,
+    label: `Board tab ${n}`,
+    action: "boardTab",
+    tab: n - 1,
+    events: [{ key: String(n), meta: true, code: `Digit${n}` }],
+    match: (ev) => isBoardTabEvent(ev, n),
+  })),
 
   { group: "Present", keys: "→ ↓ Space", label: "Next", action: "presentNext", mode: "present", events: [{ key: "ArrowRight" }, { key: "ArrowDown" }, { key: "PageDown" }, { key: " ", code: "Space" }], match: (ev) => !hasMod(ev) && !ev.alt && (ev.key === "ArrowRight" || ev.key === "ArrowDown" || ev.key === "PageDown" || ev.code === "Space" || ev.key === " ") },
   { group: "Present", keys: "← ↑", label: "Previous", action: "presentPrev", mode: "present", events: [{ key: "ArrowLeft" }, { key: "ArrowUp" }, { key: "PageUp" }], match: (ev) => !hasMod(ev) && !ev.alt && (ev.key === "ArrowLeft" || ev.key === "ArrowUp" || ev.key === "PageUp") },

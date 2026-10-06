@@ -145,6 +145,32 @@ export const NATIVE_PATTERN = `[:block/props
 
 const DIAGRAM_RE = "^\\{\\{(\\[\\[)?diagram";
 const DIAGRAM_STRING = /^\s*\{\{(?:\[\[)?diagram/i;
+const DIAGRAM_FIND = new RegExp(DIAGRAM_RE);
+// Index lookup. A `[?t ...]` binding on :block/refs scans every refs datom in the graph.
+const STATS_PULL = `[:db/id {:block/_refs [:db/id {:block/parents [:db/id :block/string]}]} {:block/_parents [:db/id {:block/refs [:db/id]}]} {:block/_page [:db/id {:block/refs [:db/id]}]}]`;
+
+function listOf(value) {
+  if (value == null) return [];
+  return Array.isArray(value) ? value : [value];
+}
+
+function refEid(node) {
+  if (typeof node === "number") return node;
+  if (node && typeof node === "object" && node[":db/id"] != null) return node[":db/id"];
+  return null;
+}
+
+// Same pattern the datalog fallback hands to re-pattern: anchored, case-sensitive, no space trim.
+function isDiagramBlock(node) {
+  const text = node?.[":block/string"];
+  return typeof text === "string" && DIAGRAM_FIND.test(text);
+}
+
+function pullRows(many) {
+  if (Array.isArray(many)) return many;
+  if (many && typeof many === "object" && typeof many.length === "number") return Array.from(many);
+  return null;
+}
 const SHOW_DIRECT_QUERY = `[:find ?board ?page :in $ ?uid ?pat :where
  [?block :block/uid ?uid] [?block :block/parents ?diagram] [?diagram :block/uid ?board]
  [?diagram :block/string ?s] [(re-pattern ?pat) ?re] [(re-find ?re ?s)]
@@ -825,8 +851,8 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         for (const entity of pullMany(found.uids, found.titles)) addEntity(uid, entity);
       }
       boardCovers.set(uid, honored);
-      // A keep-alive catch-up is light: the board shows at once and the badge and linked-ref
-      // queries (~140 ms on a 39-card board) run when the browser is idle.
+      // A keep-alive catch-up is light: the board shows at once. Badge and linked-ref
+      // reads run when the browser is idle.
       const prime = () => {
         try { fetchLinked(found.titles); } catch { /* a later linkedRefs ask reads Roam */ }
         dropStats(uid);
@@ -836,23 +862,26 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       };
       if (!light) prime();
       else {
-        // POL-5. Idle work in chunks of PRIME_CHUNK targets: one query over 300 cards was a 140 ms task.
+        // Linked refs stay in chunks of PRIME_CHUNK. Card stats are one pull:
+        // 300 cards measured about 19 ms, inside one idle slice.
         const idle = globalThis.requestIdleCallback;
         const later = (fn) => (typeof idle === "function" ? idle(() => fn(), { timeout: 1500 }) : setTimeout(fn, 250));
         const titles = found.titles;
         const targets = found.stats;
         let ti = 0;
-        let si = 0;
+        let statsDone = false;
         const step = () => {
-          if (ti === 0 && si === 0) dropStats(uid);
+          if (ti === 0 && !statsDone) dropStats(uid);
           if (ti < titles.length) {
             try { fetchLinked(titles.slice(ti, ti + PRIME_CHUNK)); } catch { /* a later linkedRefs ask reads Roam */ }
             ti += PRIME_CHUNK;
-          } else if (si < targets.length) {
-            try { host.cardStats(targets.slice(si, si + PRIME_CHUNK), { boardUid: uid }); } catch { /* badges ask again */ }
-            si += PRIME_CHUNK;
+          } else if (!statsDone) {
+            statsDone = true;
+            if (targets.length) {
+              try { host.cardStats(targets, { boardUid: uid }); } catch { /* badges ask again */ }
+            }
           }
-          if (ti < titles.length || si < targets.length) later(step);
+          if (ti < titles.length || !statsDone) later(step);
         };
         later(step);
       }
@@ -1505,7 +1534,8 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       return rows.slice(0, limit).map(([edgeUid, boardUid]) => [edgeUid, boardUid]);
     },
 
-    // Card footer stats for many targets in at most four datalog queries.
+    // Card footer stats. One reverse-attribute pull for the resolved targets.
+    // The four collection-bound queries run only when that pull throws or is unusable.
     cardStats(targets, { boardUid } = {}) {
       const keys = [];
       for (const t of targets || []) {
@@ -1542,6 +1572,8 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       if (!byEid.size) return remember(result);
       const eids = [...byEid.keys()];
       const boardEid = boardUid ? host.resolveEid({ uid: boardUid }) ?? -1 : -1;
+      const todoEid = host.resolveEid({ title: "TODO" });
+      const doneEid = host.resolveEid({ title: "DONE" });
       const tally = (rows, field) => {
         const seen = new Map();
         for (const [t, x] of rows || []) {
@@ -1550,23 +1582,89 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         }
         for (const [t, set] of seen) for (const key of byEid.get(t) ?? []) result.get(key)[field] = set.size;
       };
-      tally(host.q(
-        `[:find ?t ?b :in $ [?t ...] ?board :where [?b :block/refs ?t] (not [?b :block/parents ?board]) [(not= ?b ?board)]]`,
-        eids, boardEid,
-      ), "refs");
-      tally(host.q(
-        `[:find ?t ?d :in $ [?t ...] ?board ?pat :where [?b :block/refs ?t] [?b :block/parents ?d] [?d :block/string ?s]
+      const fromQueries = () => {
+        tally(host.q(
+          `[:find ?t ?b :in $ [?t ...] ?board :where [?b :block/refs ?t] (not [?b :block/parents ?board]) [(not= ?b ?board)]]`,
+          eids, boardEid,
+        ), "refs");
+        tally(host.q(
+          `[:find ?t ?d :in $ [?t ...] ?board ?pat :where [?b :block/refs ?t] [?b :block/parents ?d] [?d :block/string ?s]
  [(re-pattern ?pat) ?re] [(re-find ?re ?s)] [(not= ?d ?board)]]`,
-        eids, boardEid, DIAGRAM_RE,
-      ), "boards");
-      const todoEid = host.resolveEid({ title: "TODO" });
-      const doneEid = host.resolveEid({ title: "DONE" });
-      const listFor = (statusEid) => host.q(
-        `[:find ?t ?x :in $ [?t ...] ?status :where [?x :block/refs ?status] (or [?x :block/parents ?t] [?x :block/page ?t])]`,
-        eids, statusEid,
-      );
-      if (todoEid != null) tally(listFor(todoEid), "open");
-      if (doneEid != null) tally(listFor(doneEid), "done");
+          eids, boardEid, DIAGRAM_RE,
+        ), "boards");
+        const listFor = (statusEid) => host.q(
+          `[:find ?t ?x :in $ [?t ...] ?status :where [?x :block/refs ?status] (or [?x :block/parents ?t] [?x :block/page ?t])]`,
+          eids, statusEid,
+        );
+        if (todoEid != null) tally(listFor(todoEid), "open");
+        if (doneEid != null) tally(listFor(doneEid), "done");
+      };
+      const applyPulled = (node, keyList) => {
+        const refs = new Set();
+        const boards = new Set();
+        const openIds = new Set();
+        const doneIds = new Set();
+        if (node && typeof node === "object") {
+          for (const block of listOf(node[":block/_refs"])) {
+            const bid = refEid(block);
+            if (bid == null) continue;
+            const parents = listOf(block?.[":block/parents"]);
+            const underBoard = bid === boardEid || parents.some((parent) => refEid(parent) === boardEid);
+            if (!underBoard) refs.add(bid);
+            for (const parent of parents) {
+              const pid = refEid(parent);
+              if (pid == null || pid === boardEid || !isDiagramBlock(parent)) continue;
+              boards.add(pid);
+            }
+          }
+          const seeStatus = (block) => {
+            const xid = refEid(block);
+            if (xid == null) return;
+            let hasTodo = false;
+            let hasDone = false;
+            for (const ref of listOf(block?.[":block/refs"])) {
+              const id = refEid(ref);
+              if (id == null) continue;
+              if (todoEid != null && id === todoEid) hasTodo = true;
+              if (doneEid != null && id === doneEid) hasDone = true;
+            }
+            if (hasTodo) openIds.add(xid);
+            if (hasDone) doneIds.add(xid);
+          };
+          for (const block of listOf(node[":block/_parents"])) seeStatus(block);
+          for (const block of listOf(node[":block/_page"])) seeStatus(block);
+        }
+        for (const key of keyList) {
+          const stat = result.get(key);
+          stat.refs = refs.size;
+          stat.boards = boards.size;
+          stat.open = openIds.size;
+          stat.done = doneIds.size;
+        }
+      };
+      const fromPull = () => {
+        let nodes = null;
+        if (typeof data.pull_many === "function") {
+          try { nodes = pullRows(data.pull_many(STATS_PULL, eids)); } catch { return false; }
+          if (!nodes) return false;
+        } else if (typeof data.pull === "function") {
+          nodes = [];
+          try {
+            for (const eid of eids) {
+              const one = data.pull(STATS_PULL, eid);
+              nodes.push(one && typeof one === "object" ? one : null);
+            }
+          } catch { return false; }
+        } else return false;
+        const byId = new Map();
+        nodes.forEach((node, i) => {
+          const id = refEid(node);
+          byId.set(id != null ? id : eids[i], node);
+        });
+        for (const [eid, keyList] of byEid) applyPulled(byId.get(eid), keyList);
+        return true;
+      };
+      if (!fromPull()) fromQueries();
       return remember(result);
     },
 

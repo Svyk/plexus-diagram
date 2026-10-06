@@ -195,6 +195,8 @@ test("listBoards honours limit and null rows", () => {
 
 test("cardStats maps counts to page:/uid: keys with at most four queries", () => {
   const { fake, host } = setup();
+  // POL-5 reads through pull_many. This locks the query fallback those four collection queries still are.
+  fake.api.data.pull_many = () => { throw new Error("pull-many"); };
   const alphaUid = fake.seedPage({ title: "Alpha" });
   fake.seedPage({ title: "TODO" });
   fake.seedPage({ title: "DONE" });
@@ -233,6 +235,7 @@ test("cardStats maps counts to page:/uid: keys with at most four queries", () =>
 
 test("cardStats runs no queries when nothing resolves and skips status queries without TODO/DONE pages", () => {
   const { fake, host } = setup();
+  fake.api.data.pull_many = () => { throw new Error("pull-many"); };
   const route = fake.onQuery(/./, () => []);
   assert.equal(host.cardStats([]).size, 0);
   assert.equal(host.cardStats([{ kind: "page", title: "Nope" }]).size, 1);

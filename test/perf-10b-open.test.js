@@ -100,6 +100,11 @@ function countingHost() {
   const watches = [];
   const data = {
     pull,
+    // POL-5: one pull_many for the board, not a pull per card and not four collection queries.
+    pull_many(_pattern, eids) {
+      calls.push({ name: "pull_many" });
+      return (Array.isArray(eids) ? eids : []).map((id) => ({ ":db/id": id }));
+    },
     q: query,
     fast: { q: query },
     addPullWatch(pattern, entity, cb) {

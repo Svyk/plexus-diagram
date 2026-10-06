@@ -10,6 +10,7 @@ import { regionMenu } from "../model/region-menu.js";
 import { STARTERS } from "../model/templates.js";
 
 export const MENU_KINDS = ["canvas", "card", "section", "text", "edge", "multi", "board-menu"];
+export const STATUS_WRITE_CAP = 45;
 
 const SIZE_LABELS = { 16: "Small", 24: "Medium", 32: "Large", 48: "Extra large" };
 const SHAPE_LABELS = {
@@ -17,6 +18,31 @@ const SHAPE_LABELS = {
   diamond: "Diamond", parallelogram: "Parallelogram", cylinder: "Cylinder",
 };
 const cap = (word) => word.charAt(0).toUpperCase() + word.slice(1);
+
+function statusRows(source) {
+  const value = typeof source === "function" ? source() : source;
+  if (!value) return [];
+  if (typeof value.values === "function" && !Array.isArray(value)) return [...value.values()];
+  return [...value];
+}
+
+// Shown only when the caller says the Task Status Tags API is there. The view maps status:<name> and status:remove.
+function statusSubmenu(c) {
+  const api = c.statusTags;
+  if (typeof api?.available !== "function" || api.available() !== true) return null;
+  const current = String(c.status ?? "").trim().toLowerCase();
+  const children = [];
+  for (const row of statusRows(api.palette)) {
+    const name = String(row?.name || "").trim();
+    if (!name) continue;
+    children.push(make(`status:${name}`, name, {
+      checked: name.toLowerCase() === current,
+      glyph: row.glyph,
+    }));
+  }
+  children.push(make("status:remove", "Remove status"));
+  return make("status", "Status ▸", { children });
+}
 
 // Optional keys are only written when set, so items compare cleanly and carry no undefined noise.
 const make = (id, label, extra = {}) => {
@@ -187,6 +213,11 @@ export function buildMenu(kind, ctx = {}) {
         const at = out.findIndex((row) => row.id === "color");
         out.splice(at < 0 ? out.length : at, 0, regionsItem);
       }
+      const statusItem = statusSubmenu(c);
+      if (statusItem) {
+        const at = out.findIndex((row) => row.id === "color");
+        out.splice(at < 0 ? out.length : at + 1, 0, statusItem);
+      }
       if (c.hasOutline) {
         out.push(make("mind-map", "Expand as mind map"));
         out.push(mindPresetMenu());
@@ -298,11 +329,13 @@ export function buildMenu(kind, ctx = {}) {
 
     case "multi": {
       const few = count !== null && count < 2;
+      const statusItem = statusSubmenu(c);
       return [
         make("copy", "Copy", { hint: "Cmd C" }),
         make("copy-png", "Copy selection as PNG"),
         make("duplicate", "Duplicate", { hint: "Cmd D" }),
         colorMenu(),
+        ...(statusItem ? [statusItem] : []),
         sep(),
         make("align", "Align", {
           disabled: few,
@@ -366,6 +399,28 @@ export function buildMenu(kind, ctx = {}) {
     default:
       return [];
   }
+}
+
+// One setStatus per card, in order, and never more than 45 (one Roam undo budget). A rejection does not stop the rest.
+export async function applyStatusPicks(uids, name, setStatus, onProgress, toast) {
+  const list = [...(uids || [])].filter((uid) => uid).slice(0, STATUS_WRITE_CAP);
+  const total = list.length;
+  const rejected = [];
+  for (let i = 0; i < list.length; i += 1) {
+    const uid = list[i];
+    let res;
+    try {
+      res = await setStatus(uid, name);
+    } catch (error) {
+      res = { status: "rejected", reason: error?.message || "Could not set that status" };
+    }
+    if (!res || res.status === "rejected" || res.status === "unknown" || res.status === "conflict" || res.status === "not-updated") {
+      rejected.push({ uid, reason: res?.reason || "" });
+      if (typeof toast === "function") toast({ message: res?.reason || "Could not set that status" });
+    }
+    if (typeof onProgress === "function") onProgress({ done: i + 1, total, uid, name });
+  }
+  return { applied: total, rejected };
 }
 
 // Depth-first list of every non-separator item, parents included. Handy for the view's id lookup and tests.

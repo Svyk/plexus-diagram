@@ -15,6 +15,8 @@ import { lodForZoom, rectsIntersect } from "../model/geometry.js";
 import { SHAPES, shapePath } from "../model/shapes.js";
 import { fillFromTags, highlighterTags } from "../model/highlighter.js";
 import { highlightNote } from "../model/highlight.js";
+import { paletteEntries, paletteVars, statusApi, statusLook, statusPalette } from "../model/status-tags.js";
+import { openStatusChooser } from "./task-popover.js";
 import { nudgeEditorMenus, registerEditorMenus } from "./editor-menus.js";
 import { applyEditorCounterScale } from "./editor-scale.js";
 import { UNMOUNT_GRACE_MS, intrinsicSize, shellOffscreen, unmountDue } from "./offscreen.js";
@@ -247,6 +249,8 @@ const visibleKids = (list) => (list || []).filter((c) => !skipChildString(childS
 // A click on that checkbox completes through Better Tasks' own checkbox path (src/view/task-complete.js), so the
 // Completed date and the next occurrence still happen. Without Better Tasks the card flips the marker itself.
 let taskBlockOn = () => false;
+// TSK-3. Changes with the Task Status Tags list, so a rename or recolour repaints task cards.
+let statusSig = "";
 const TASK_MARK = /^\s*\{\{\[\[(?:TODO|DONE)\]\]\}\}\s?/;
 const isTaskCard = (item) => item?.type === "card" && item.kind === "note" && isTaskString(item.string);
 // Rows renderBlocks will draw for this list (same depth and row caps).
@@ -268,7 +272,7 @@ function cardContentKey(item, live = false, pdfOpen = false, chipSig = "") {
     item.kind, item.enhanced ? "e" : "", item.string, item.collapsed ? "c" : "", item.open === false ? "x" : "", item.kids ? "k" : "",
     item.fontSize || "", item.textColor || "", item.align || "", item.fill || "", item.border || "",
     item.titleSize || "", item.titleColor || "", item.titleFill || "", item.areaFill || "",
-    taskBlockOn(item) ? `tb${taskNamesSig()}` : "",
+    taskBlockOn(item) ? `tb${taskNamesSig()}${statusSig}` : "",
     item.kind === "pdf" ? (pdfOpen ? "o" : "") : (pdfOpen ? "h" : ""),
     item.kind === "pdf" && chipSig ? chipSig : "",
     item.kind === "highlight" && item.highlight ? item.highlight.color ?? "" : "",
@@ -695,11 +699,69 @@ export function createItemRenderer({
     return live;
   };
 
+  // TSK-3. Status colours and glyphs come from Task Status Tags when it is loaded, a fixed table otherwise.
+  let statusPal = null;
+  const statusWin = () => doc?.defaultView || globalThis;
+  const palette = () => statusPal || (statusPal = statusPalette(statusApi(statusWin())));
+  const statusTheme = () => (boardRoot()?.classList?.contains("pxd-root--dark") ? "dark" : "light");
+  const applyStatusVars = (node, status) => {
+    if (!node?.style) return;
+    if (!status) {
+      node.style.removeProperty?.("--pxd-status-base");
+      node.style.removeProperty?.("--pxd-status-text");
+      return;
+    }
+    const vars = paletteVars(statusLook(status, palette()), statusTheme()) || {};
+    for (const [key, value] of Object.entries(vars)) node.style.setProperty?.(key, value);
+  };
+  const taskUidOf = (item) => (item?.target?.kind === "block" && item.target.uid ? item.target.uid : item?.uid);
+  // TSK-4. Writes go through Task Status Tags only; the card re-renders from the pull-watch echo.
+  const setTaskStatus = async (uid, name) => {
+    const api = statusApi(statusWin());
+    if (!api || !uid) return;
+    let result = null;
+    try { result = await api.setStatus(uid, name); } catch { result = { status: "unknown", reason: "set-status-failed" }; }
+    if (result && result.status !== "updated" && result.status !== "unchanged") {
+      try { onToast?.(`Status not changed: ${result.reason || result.status}`); } catch { /* toast */ }
+    }
+  };
+  const mountStatusControl = (line, item, meta) => {
+    if (!statusApi(statusWin()) || meta?.done) return;
+    const ctl = el("span", "pxd-task-check__status", line);
+    ctl.setAttribute("role", "button");
+    ctl.setAttribute("tabindex", "0");
+    const name = meta?.status || "";
+    ctl.setAttribute("aria-label", name ? `Status ${name}. Change status` : "Set a status");
+    ctl.title = name ? `Status: ${name}. Click to change, Shift-click to remove.` : "Set a status";
+    if (name) ctl.setAttribute("data-status-name", name);
+    const uid = taskUidOf(item);
+    const open = (event) => {
+      stopEvent(event);
+      if (event.type !== "click" && !(event.type === "keydown" && (event.key === "Enter" || event.key === " "))) return;
+      if (event.shiftKey && name) { void setTaskStatus(uid, null); return; }
+      openStatusChooser({
+        doc,
+        anchor: ctl,
+        palette: palette(),
+        current: name,
+        avoid: boardRoot(),
+        onPick: (picked) => { void setTaskStatus(uid, picked); },
+        onRemove: () => { void setTaskStatus(uid, null); },
+      });
+    };
+    for (const type of ["pointerdown", "mousedown", "dblclick", "click", "keydown"]) ctl.addEventListener(type, open);
+  };
+
   // RE-5: the checkbox is a span; the title text is the string without its TODO/DONE marker.
   const mountTaskLine = (parent, item) => {
     const meta = taskMeta(item.string, item.content);
     const line = el("div", "pxd-item__taskline", parent);
+    mountStatusControl(line, item, meta);
     const box = el("span", `pxd-task-check${meta?.done ? " pxd-task-check--done" : ""}${meta?.cancelled ? " pxd-task-check--cancelled" : ""}`, line);
+    if (meta?.status) {
+      box.setAttribute("data-status", statusLook(meta.status, palette()).glyph);
+      applyStatusVars(box, meta.status);
+    }
     box.setAttribute("role", "checkbox");
     box.setAttribute("aria-checked", meta?.done ? "true" : "false");
     box.setAttribute("aria-label", meta?.done ? "Done" : "To do");
@@ -1232,6 +1294,7 @@ export function createItemRenderer({
       if (item.kind === "highlight" && item.highlight?.image === true) cls.push("pxd-item--image");
       if (item.look === "block") cls.push("pxd-card--block");
       const task = isTaskCard(item) ? taskMeta(item.string, item.content) : null;
+      applyStatusVars(node, task?.status || "");
       if (task) {
         cls.push("pxd-item--task");
         if (task.done) cls.push("pxd-item--task-done");
@@ -3590,6 +3653,18 @@ export function createItemRenderer({
     badgeMap = map instanceof Map ? map : new Map();
     if (showBadges) for (const rec of shells.values()) renderBadges(rec);
   };
+  // The Task Status Tags list changed (ready, unload, rename, recolour): rebuild the palette and repaint tasks.
+  const refreshStatuses = () => {
+    statusPal = null;
+    statusSig = paletteEntries(palette()).map((row) => `${row.name}:${row.glyph}:${row.light?.base}:${row.dark?.base}`).join("|");
+    for (const rec of shells.values()) renderBadges(rec);
+    if (!lastBoard) return;
+    // Task cards whose content key changed are cleared by the sync; the content pass mounts them again.
+    const tasks = new Set();
+    for (const [uid, item] of lastBoard.items) if (isTaskCard(item)) tasks.add(uid);
+    sync({ board: lastBoard, rects: lastRects, dirty: tasks });
+    if (lastContent) scheduleContent({ ...lastContent, dirty: tasks });
+  };
   const setTaskChips = (mode) => {
     const next = ["full", "due only", "none"].includes(mode) ? mode : "full";
     if (next === taskChips) return;
@@ -4299,6 +4374,7 @@ export function createItemRenderer({
     setBadges,
     setShowBadges,
     setTaskChips,
+    refreshStatuses,
     setFocus,
     setSelection,
     setHover,

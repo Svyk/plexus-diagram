@@ -115,3 +115,15 @@ test("unload removes the errors line", async () => {
   await lifecycle.dispose();
   assert.equal(panel.settings.some((entry) => entry.id === "plexus-errors"), false);
 });
+
+test("an async callback that rejects is counted and logged like a throw, and the rejection does not escape", async () => {
+  const { guardCallback } = await import("../src/guard.js");
+  const stats = { errors: 0 };
+  const logs = [];
+  const fn = guardCallback("async", async () => { throw new TypeError("async boom"); }, { stats, log: (...a) => logs.push(a) });
+  const out = fn();
+  assert.equal(typeof out?.then, "function");
+  assert.equal(await out, undefined);
+  assert.equal(stats.errors, 1);
+  assert.equal(logs.length, 1);
+});

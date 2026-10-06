@@ -3,11 +3,14 @@
 // BT_attr* stays with Better Tasks: a Done drop asks Better Tasks to complete the task when it is loaded.
 
 import { HIGHLIGHT_COLORS, rewriteHighlightTag } from "./highlight.js";
+import { paletteEntries, taskStatusOf } from "./status-tags.js";
 import { columnNameOk, planAttrCell, tableRows } from "./table.js";
 
 export const TODO_FIELD = "To do";
 export const DONE_COLUMN = "Done";
 export const HIGHLIGHT_FIELD = "Highlight colour";
+export const STATUS_FIELD = "Lanes: Status";
+export const NO_STATUS = "No status";
 const MARK = /\{\{\[\[(TODO|DONE)\]\]\}\}/;
 
 export function todoState(string) {
@@ -119,6 +122,7 @@ export function planKanbanMove({ field, column, row } = {}) {
     if (!HIGHLIGHT_COLORS.includes(column)) return null;
     return { op: "string", uid: targetUid, string: rewriteHighlightTag(targetString, column) };
   }
+  if (field === STATUS_FIELD) return null;
   if (!columnNameOk(field)) return null;
   const attr = (row.attrs || []).find((item) => item.name === field);
   if (String(attr?.value ?? "") === column) return null;
@@ -131,4 +135,37 @@ export function planKanbanMove({ field, column, row } = {}) {
   if (!plan) return null;
   if (plan.op === "update") return { op: "string", uid: plan.uid, string: plan.string };
   return plan;
+}
+
+function isDoneItem(item) {
+  if (item?.done === true) return true;
+  return todoState(item?.string ?? "") === DONE_COLUMN;
+}
+
+// One column per palette status, then No status, then Done. A finished card stays in Done
+// even when its status tag is still on the string. A tag the palette does not know is No status.
+export function groupByStatus(items, palette) {
+  const columns = paletteEntries(palette).map((entry) => ({
+    name: entry.name,
+    key: entry.key,
+    glyph: entry.glyph,
+    cards: [],
+    count: 0,
+  }));
+  const none = { name: NO_STATUS, key: "", glyph: "diamond", cards: [], count: 0 };
+  const done = { name: DONE_COLUMN, key: "done", glyph: "", cards: [], count: 0 };
+  const byName = new Map(columns.map((column) => [column.name.toLowerCase(), column]));
+  for (const item of items || []) {
+    if (isDoneItem(item)) {
+      done.cards.push(item);
+      continue;
+    }
+    const name = taskStatusOf(item?.string ?? "", palette);
+    const column = name ? byName.get(name.toLowerCase()) : null;
+    (column || none).cards.push(item);
+  }
+  for (const column of columns) column.count = column.cards.length;
+  none.count = none.cards.length;
+  done.count = done.cards.length;
+  return [...columns, none, done];
 }

@@ -24,3 +24,29 @@ test("createHost leaves Roam's global pull as it was and still serves its own re
   assert.equal(row[":edit/time"], 42);
   assert.ok(calls.length >= 1);
 });
+
+test("a cached board node does not answer a pull for attributes the board pull never stored", async () => {
+  const { patternNeeds } = await import("../src/host/roam.js");
+  assert.deepEqual(patternNeeds("[:block/uid :edit/time]"), [{ attr: ":block/uid" }, { attr: ":edit/time" }]);
+  assert.deepEqual(patternNeeds("[{:block/page [:node/title]}]"), [{ key: ":block/page", sub: [{ attr: ":node/title" }] }]);
+});
+
+test("host.pull goes to Roam for :edit/time even after the board pull filled the cache", async () => {
+  const calls = [];
+  const node = { ":block/uid": "boardAAA1", ":block/string": "{{[[diagram]]}}", ":block/props": { ":plexus": { ":v": 2 } }, ":block/children": [] };
+  const data = {
+    pull(pattern, entity) {
+      calls.push(String(pattern));
+      if (String(pattern).includes(":edit/time")) return { ":block/uid": entity[1], ":edit/time": 42 };
+      return node;
+    },
+    q() { return []; },
+    addPullWatch() {},
+    removePullWatch() {},
+  };
+  const api = { data, util: { generateUID: () => "uidAAAAA1" }, ui: {} };
+  const host = createHost({ api, storage: null, graph: "g" });
+  try { host.pullBoard?.("boardAAA1"); } catch { /* the fake tree is enough to fill the cache */ }
+  const row = host.pull("[:block/uid :edit/time]", [":block/uid", "boardAAA1"]);
+  assert.equal(row[":edit/time"], 42);
+});

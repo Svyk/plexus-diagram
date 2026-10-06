@@ -54,8 +54,16 @@ export function guardCallback(name, fn, opts = {}) {
       silenced = false;
     }
     try {
-      return fn.apply(this, args);
+      const result = fn.apply(this, args);
+      // An async callback that rejects goes through the same count, log and trip as a throw.
+      if (result && typeof result.then === "function") return result.then(undefined, (error) => failed(error, clock()));
+      return result;
     } catch (error) {
+      return failed(error, t);
+    }
+  };
+
+  function failed(error, t) {
       const cutoff = t - WINDOW_MS;
       let drop = 0;
       while (drop < hits.length && hits[drop].at <= cutoff) drop += 1;
@@ -78,6 +86,5 @@ export function guardCallback(name, fn, opts = {}) {
         catch { /* the settings row must not rethrow into a timer */ }
       }
       return undefined;
-    }
-  };
+  }
 }

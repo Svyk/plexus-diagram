@@ -475,6 +475,10 @@ test("the pane source adds no document key listener and no colour-icon click", (
   assert.equal(featureSrc.split("ui.commandPalette").length - 1, 2);
   assert.match(css, /\.pxd-root\.pxd-root--read > \.pxd-viewport/);
   assert.match(css, /\.pxd-item--flash/);
+  assert.match(css, /\.pxd-read \.pxd-read__live\s*\{[^}]*overflow:\s*hidden/);
+  assert.match(css, /\.pxd-read \.pxd-read__live\s*\{[^}]*display:\s*flex/);
+  assert.match(css, /\.pxd-read \.pxd-read__list\s*\{[^}]*overflow:\s*auto/);
+  assert.match(css, /\.pxd-read \.pxd-read__list\s*\{[^}]*flex:\s*1 1 42%/);
   assert.equal(HIGHLIGHT_MARK_TIP, TIP);
   assert.match(HIGHLIGHT_MARK_TIP, /keeps the colour Roam painted/);
   assert.equal(HIGHLIGHT_FIELD, "Highlight colour");

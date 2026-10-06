@@ -102,15 +102,73 @@
   flex: 1;
 }
 
+/* The live box does not scroll. The reader fills it, and Roam's own scroller moves the pages.
+   Side layout keeps a 220px floor. The stacked pane is only 46% tall, so the same 58/42
+   split drops that floor and fits inside the pane. */
 .pxd-read .pxd-read__live {
-  flex: 1 1 46%;
-  min-height: 120px;
-  overflow: auto;
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 58%;
+  min-height: 220px;
+  overflow: hidden;
+}
+
+.pxd-read.pxd-read--stack .pxd-read__live,
+.pxd-read.pxd-read--stack .pxd-read__list {
+  min-height: 0;
+}
+
+.pxd-read .pxd-read__live > * {
+  flex: 1 1 auto;
+  height: 100%;
+  min-height: 0;
+}
+
+.pxd-read .pxd-read__live :is(.rm-api-render--block, .roam-block-container, .rm-block, .rm-block__input),
+.pxd-read .pxd-read__live :has(> .rm-pdf-container),
+.pxd-read .pxd-read__live .rm-pdf-container {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  height: 100%;
+  min-height: 0;
+  box-sizing: border-box;
+}
+
+.pxd-read .pxd-read__live .rm-block-main {
+  flex: 1 1 auto;
+  height: 100%;
+  min-height: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.pxd-read .pxd-read__live .roam-block-container,
+.pxd-read .pxd-read__live .rm-block {
+  margin: 0;
+  padding: 0;
+}
+
+/* Bullet and controls stay in the DOM. They take no space, so only the reader shows. */
+.pxd-read .pxd-read__live .rm-block-main > .controls,
+.pxd-read .pxd-read__live .rm-bullet {
+  visibility: hidden;
+  flex: 0 0 0;
+  width: 0;
+  min-width: 0;
+  max-width: 0;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+}
+
+.pxd-read .pxd-read__live.pxd-read__live--overmark .rm-pdf-container {
+  cursor: grab;
 }
 
 .pxd-read .pxd-read__list {
-  flex: 1 1 40%;
-  min-height: 80px;
+  flex: 1 1 42%;
+  min-height: 120px;
   overflow: auto;
   outline: none;
 }
@@ -255,4 +313,23 @@ body.roam-body.dark .pxd-root.pxd-root--pdf-drag > .pxd-viewport,
   overflow: hidden;
   white-space: nowrap;
   text-overflow: ellipsis;
+}
+
+.pxd-read .pxd-read__mark-flash {
+  outline: 2px solid var(--pxd-mark-flash, var(--pxd-yellow-line, #ca8a04));
+  outline-offset: 1px;
+  animation: pxd-read-mark-flash 1.6s ease-out 1;
+}
+
+@keyframes pxd-read-mark-flash {
+  0% { box-shadow: 0 0 0 0 var(--pxd-mark-flash, var(--pxd-yellow-line, #ca8a04)); }
+  35% { box-shadow: 0 0 0 4px var(--pxd-mark-flash, var(--pxd-yellow-line, #ca8a04)); }
+  100% { box-shadow: 0 0 0 0 transparent; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pxd-read .pxd-read__mark-flash {
+    animation: none;
+    box-shadow: 0 0 0 2px var(--pxd-mark-flash, var(--pxd-yellow-line, #ca8a04));
+  }
 }

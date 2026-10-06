@@ -66,3 +66,57 @@ export function dragChipText(value) {
   if (typeof value !== "string") return "";
   return value.replace(/\s+/g, " ").trim().slice(0, CHIP_LEN);
 }
+
+// Roam's reader context sits on the .PdfHighlighter fiber, or a few returns above it.
+const CTX_LIMIT = 15;
+const BAG_KEYS = ["highlightsByPage", "highlights"];
+
+export function contextFromFiber(fiber) {
+  let current = fiber;
+  const seen = new Set();
+  for (let depth = 0; depth < CTX_LIMIT && current && !seen.has(current); depth += 1) {
+    seen.add(current);
+    const value = current.memoizedProps?.value;
+    if (value && typeof value.scrollToHighlight === "function") return value;
+    current = current.return;
+  }
+  return null;
+}
+
+export function highlighterContext(node) {
+  const root = typeof node?.closest === "function" ? (node.closest(".PdfHighlighter") || node) : node;
+  return contextFromFiber(fiberOf(root));
+}
+
+function findHighlightId(bag, id, seen, depth) {
+  if (!bag || typeof bag !== "object" || depth > 6 || seen.has(bag)) return null;
+  seen.add(bag);
+  if (!Array.isArray(bag) && bag.id === id) return bag;
+  const values = Array.isArray(bag) ? bag : Object.values(bag);
+  for (const value of values) {
+    const found = findHighlightId(value, id, seen, depth + 1);
+    if (found) return found;
+  }
+  return null;
+}
+
+// highlightsByPage is a page-keyed bag of the same highlight objects the mark fiber carries.
+export function highlightById(fiber, id) {
+  if (typeof id !== "string" || id === "") return null;
+  let current = fiber;
+  const seen = new Set();
+  for (let depth = 0; depth < CTX_LIMIT && current && !seen.has(current); depth += 1) {
+    seen.add(current);
+    const props = current.memoizedProps;
+    const bags = [props?.value, props];
+    for (const bag of bags) {
+      if (!bag || typeof bag !== "object") continue;
+      for (const key of BAG_KEYS) {
+        const found = findHighlightId(bag[key], id, new Set(), 0);
+        if (found) return found;
+      }
+    }
+    current = current.return;
+  }
+  return null;
+}

@@ -1398,6 +1398,7 @@ function buildBoardView(onFail, {
         cardUid: detail.cardUid || "",
         blockUid: detail.blockUid,
         page: detail.page,
+        highlightUid: detail.highlightUid,
         title: cover?.title || "",
         source: detail.source || "",
         pageUid: cover?.pageUid || "",
@@ -3250,13 +3251,13 @@ function buildBoardView(onFail, {
     const plan = readerJumpPlan({ cardUid: match || "", blockUid });
     const page = item.highlight?.page;
     if (plan.action === "card") {
-      const pending = itemsR.openPdfAt?.(plan.uid, page);
+      const pending = itemsR.openPdfAt?.(plan.uid, page, item.target.uid);
       itemsR.flash?.(item.uid);
       await pending;
       return;
     }
     if (plan.action === "block") {
-      const pending = itemsR.openPdfBlock?.(plan.uid, page, `{{[[pdf]]: ${url}}}`);
+      const pending = itemsR.openPdfBlock?.(plan.uid, page, `{{[[pdf]]: ${url}}}`, item.target.uid);
       itemsR.flash?.(item.uid);
       await pending;
       return;

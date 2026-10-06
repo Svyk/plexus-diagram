@@ -4,12 +4,13 @@
 import { CARD_MIME } from "../model/drop.js";
 import { HIGHLIGHT_COLORS, highlightModel } from "../model/highlight.js";
 import { highlightRows } from "../model/highlight-pick.js";
-import { dragChipText, PDF_MARK, uidFromMark } from "../model/pdf-drag.js";
+import { dragChipText, fiberOf, highlightById, highlighterContext, PDF_MARK, uidFromMark } from "../model/pdf-drag.js";
 import { readPaneKey, readPaneWidth, writeReaderPage } from "../model/pdf.js";
 import { isTextEntryTarget } from "./cards.js";
 
 const PLACE_W = 300;
 const PLACE_H = 140;
+const FLASH_MS = 1600;
 const ONE_REF = /^\(\(([\w-]+)\)\)$/;
 const COLORS = ["gray", ...HIGHLIGHT_COLORS];
 
@@ -212,6 +213,7 @@ export function createReadPane({
     try { watchOff = host.watchPage(name, () => refreshList()); } catch { watchOff = null; }
   };
   const clearLive = () => {
+    disarm();
     try { host?.unmount?.(live); } catch { /* not mounted */ }
     live.replaceChildren?.();
     liveBlock = "";
@@ -229,27 +231,45 @@ export function createReadPane({
   };
   // A fresh reader has no page field yet, and once it loads Roam restores the last page it showed.
   // Wait for the field, set the page, look again after that restore, and set it once more if it moved.
+  // Locate runs only after that second look, so it is not undone by the restore.
   let pageWait = null;
-  const cancelPageWait = () => { if (pageWait) { clearTimeout(pageWait); pageWait = null; } };
-  const jumpPageWhenReady = (page) => {
+  let pageGen = 0;
+  const clock = () => doc.defaultView || globalThis;
+  const later = (fn, ms) => (clock().setTimeout || globalThis.setTimeout)(fn, ms);
+  const cancelLater = (id) => {
+    if (id == null) return;
+    (clock().clearTimeout || globalThis.clearTimeout)(id);
+  };
+  const cancelPageWait = () => { if (pageWait) { cancelLater(pageWait); pageWait = null; } };
+  const jumpPageWhenReady = (page, after) => {
     cancelPageWait();
+    const gen = pageGen + 1;
+    pageGen = gen;
     if (typeof page !== "number" || page < 1) return;
     const started = Date.now();
     let settled = 0;
+    const finish = () => {
+      if (gen !== pageGen) return;
+      pageGen += 1;
+      try { after?.(); } catch { /* locate */ }
+    };
     const tick = () => {
       pageWait = null;
-      if (!openFlag) return;
+      if (gen !== pageGen || !openFlag) return;
       const input = readerField();
       const ready = input && live.querySelector?.(".rm-pdf-container .page");
       if (!ready) {
-        if (Date.now() - started < 5000) pageWait = setTimeout(tick, 100);
+        if (Date.now() - started < 5000) pageWait = later(tick, 100);
+        else finish();
         return;
       }
       if (String(input.value).trim() !== String(page)) {
         writeReaderPage(input, page);
         settled = 0;
       } else settled += 1;
-      if (settled < 2 && Date.now() - started < 5000) pageWait = setTimeout(tick, 300);
+      if (settled >= 2) { finish(); return; }
+      if (Date.now() - started < 5000) pageWait = later(tick, 300);
+      else finish();
     };
     tick();
   };
@@ -365,10 +385,20 @@ export function createReadPane({
     selectedUid = shown[index].uid;
     paintSelected();
   };
+  const showHighlight = (row) => {
+    if (!row?.uid) return;
+    selectedUid = row.uid;
+    paintSelected();
+    if (typeof row.page === "number") {
+      jumpPage(row.page);
+      jumpPageWhenReady(row.page, () => locateHighlight(row.uid));
+      return;
+    }
+    locateHighlight(row.uid);
+  };
   const jumpSelected = () => {
     const row = shown.find((entry) => entry.uid === selectedUid);
-    if (!row) return;
-    jumpPage(row.page);
+    if (row) showHighlight(row);
   };
   const onPaneKey = (event) => {
     if (event.metaKey || event.ctrlKey) return;
@@ -409,6 +439,7 @@ export function createReadPane({
       const row = rowFromEvent(event);
       if (row) {
         try { onPlace?.(row); } catch { /* host */ }
+        showHighlight(row);
       }
       return;
     }
@@ -416,31 +447,235 @@ export function createReadPane({
     const row = rowFromEvent(event);
     if (!row) return;
     event.stopPropagation();
-    selectedUid = row.uid;
-    paintSelected();
-    jumpPage(row.page);
+    showHighlight(row);
   };
   const markCache = new WeakMap();
   let dragChip = null;
+  let armedEl = null;
+  let armedPrev = null;
+  let armedUid = "";
+  let armedHighlight = null;
+  let armedPart = null;
+  let moveFrame = 0;
+  let lastMove = null;
+  let dragging = false;
+  let flashTimer = null;
+  let flashed = [];
   const blockExists = (uid) => {
     if (typeof host?.blockString !== "function") return true;
     try { return typeof host.blockString(uid) === "string"; } catch { return false; }
   };
-  const markOf = (event) => {
-    const node = event.target;
-    if (!node || typeof node.closest !== "function") return null;
-    const mark = node.closest(PDF_MARK);
-    if (!mark || !live.contains?.(mark)) return null;
-    return mark;
-  };
-  const armMark = (mark) => {
-    const cached = markCache.get(mark);
+  // The text layer sits above the highlight layer, so the event target is a span.
+  // The mark is the part on that page whose rect contains the pointer.
+  const readMark = (node) => {
+    if (!node) return null;
+    const cached = markCache.get(node);
     if (cached) return cached;
-    const found = uidFromMark(mark, blockExists);
+    const found = uidFromMark(node, blockExists);
     if (!found) return null;
-    markCache.set(mark, found);
+    markCache.set(node, found);
     return found;
   };
+  const dragAttr = (node) => (node?.hasAttribute?.("draggable") ? node.getAttribute("draggable") : null);
+  const restoreDrag = (node, prev) => {
+    if (!node) return;
+    if (prev == null) {
+      try { node.removeAttribute?.("draggable"); } catch { /* stub */ }
+      try { delete node.draggable; } catch { /* IDL */ }
+      return;
+    }
+    try { node.setAttribute?.("draggable", prev); } catch { /* stub */ }
+    node.draggable = prev === "true";
+  };
+  const disarm = () => {
+    restoreDrag(armedEl, armedPrev);
+    armedEl = null;
+    armedPrev = null;
+    armedUid = "";
+    armedHighlight = null;
+    armedPart = null;
+    live.classList?.remove("pxd-read__live--overmark");
+  };
+  const armTarget = (node, found, part) => {
+    if (!node || !found?.uid) { disarm(); return; }
+    if (armedEl !== node) {
+      restoreDrag(armedEl, armedPrev);
+      armedEl = node;
+      armedPrev = dragAttr(node);
+    }
+    armedUid = found.uid;
+    armedHighlight = found.highlight || null;
+    armedPart = part || null;
+    node.draggable = true;
+    try { node.setAttribute?.("draggable", "true"); } catch { /* stub */ }
+    live.classList?.add("pxd-read__live--overmark");
+  };
+  const pointIn = (rect, x, y) => {
+    if (!rect) return false;
+    const left = Number(rect.left);
+    const right = Number(rect.right);
+    const top = Number(rect.top);
+    const bottom = Number(rect.bottom);
+    if (![left, right, top, bottom].every(Number.isFinite)) return false;
+    if (right <= left || bottom <= top) return false;
+    return x >= left && x <= right && y >= top && y <= bottom;
+  };
+  const hitMark = (page, x, y) => {
+    const parts = page?.querySelectorAll?.(PDF_MARK) || [];
+    let hit = null;
+    for (const part of parts) {
+      let rect = null;
+      try { rect = part.getBoundingClientRect?.(); } catch { rect = null; }
+      if (pointIn(rect, x, y)) hit = part;
+    }
+    return hit;
+  };
+  const readerContext = () => highlighterContext(live.querySelector?.(".PdfHighlighter"));
+  const selectionBusy = () => {
+    const ctx = readerContext();
+    if (!ctx || typeof ctx.isSelectionInProgress !== "function") return false;
+    try { return ctx.isSelectionInProgress() === true; } catch { return false; }
+  };
+  let moveScheduled = false;
+  const cancelMove = () => {
+    lastMove = null;
+    moveScheduled = false;
+    if (!moveFrame) return;
+    try { (clock().cancelAnimationFrame || globalThis.cancelAnimationFrame)?.(moveFrame); } catch { /* stub */ }
+    moveFrame = 0;
+  };
+  const applyMove = () => {
+    const move = lastMove;
+    lastMove = null;
+    if (!move || dragging) return;
+    const target = move.target;
+    if (!target || !live.contains?.(target)) { disarm(); return; }
+    if (selectionBusy()) { disarm(); return; }
+    const page = typeof target.closest === "function" ? target.closest(".page") : null;
+    if (!page || !live.contains?.(page)) { disarm(); return; }
+    const part = hitMark(page, move.x, move.y);
+    if (!part) { disarm(); return; }
+    const found = readMark(part);
+    if (!found) { disarm(); return; }
+    armTarget(target, found, part);
+  };
+  const onPointerMove = (event) => {
+    if (dragging) return;
+    const x = Number(event.clientX);
+    const y = Number(event.clientY);
+    lastMove = {
+      target: event.target,
+      x: Number.isFinite(x) ? x : 0,
+      y: Number.isFinite(y) ? y : 0,
+    };
+    if (moveScheduled) return;
+    moveScheduled = true;
+    const raf = clock().requestAnimationFrame || globalThis.requestAnimationFrame;
+    if (typeof raf !== "function") {
+      moveScheduled = false;
+      applyMove();
+      return;
+    }
+    moveFrame = raf(() => {
+      moveFrame = 0;
+      moveScheduled = false;
+      applyMove();
+    });
+  };
+  // Roam's highlight layer calls preventDefault on mousedown, so Chrome never starts a native drag
+  // from a mark. A pointer drag carries the mark instead and hands the board a drop event with the
+  // same payload a list row sends. A press that does not move stays Roam's click.
+  const DRAG_START_PX = 6;
+  let press = null;
+  const view = () => doc?.defaultView || globalThis;
+  const pressOff = [];
+  const pressListen = (node, type, fn) => {
+    node?.addEventListener?.(type, fn, true);
+    pressOff.push(() => node?.removeEventListener?.(type, fn, true));
+  };
+  const endPress = () => {
+    while (pressOff.length) { try { pressOff.pop()(); } catch { /* gone */ } }
+    const wasActive = press?.active;
+    press = null;
+    if (wasActive) endPdfDrag();
+  };
+  const moveChip = (x, y) => {
+    if (!dragChip) return;
+    dragChip.style.left = `${Math.round(x + 12)}px`;
+    dragChip.style.top = `${Math.round(y + 12)}px`;
+  };
+  const swallowClick = () => {
+    const w = view();
+    const stop = (event) => { event.stopPropagation(); event.preventDefault(); };
+    w.addEventListener?.("click", stop, { capture: true, once: true });
+    w.setTimeout?.(() => w.removeEventListener?.("click", stop, true), 400);
+  };
+  const dropAt = (uid, x, y) => {
+    const w = view();
+    const target = doc?.elementFromPoint?.(x, y);
+    if (!target || !root?.contains?.(target) || target.closest?.(".pxd-read")) return false;
+    const Transfer = w.DataTransfer;
+    const Drag = w.DragEvent;
+    if (typeof Transfer !== "function" || typeof Drag !== "function") return false;
+    const data = new Transfer();
+    data.setData(CARD_MIME, `((${uid}))`);
+    data.setData("text/plain", `((${uid}))`);
+    try { data.effectAllowed = "copy"; } catch { /* read only */ }
+    const init = { bubbles: true, cancelable: true, clientX: x, clientY: y, dataTransfer: data };
+    target.dispatchEvent(new Drag("dragover", init));
+    target.dispatchEvent(new Drag("drop", init));
+    return true;
+  };
+  const onPressMove = (event) => {
+    if (!press) return;
+    const x = Number(event.clientX);
+    const y = Number(event.clientY);
+    if (!press.active) {
+      if (Math.hypot(x - press.x, y - press.y) < DRAG_START_PX) return;
+      press.active = true;
+      dragging = true;
+      const label = chipLabel(press.uid, press.highlight);
+      paintChip(null, label.color, label.text);
+      if (dragChip) {
+        dragChip.style.pointerEvents = "none";
+        dragChip.style.zIndex = "60";
+      }
+      root?.classList?.add("pxd-root--pdf-drag");
+      clearLiveSelection();
+    }
+    moveChip(x, y);
+    event.preventDefault?.();
+  };
+  const onPressUp = (event) => {
+    if (!press) return;
+    const { active, uid } = press;
+    const x = Number(event.clientX);
+    const y = Number(event.clientY);
+    if (active) {
+      swallowClick();
+      dropChip();
+      dropAt(uid, x, y);
+      clearLiveSelection();
+    }
+    endPress();
+  };
+  const onPressKey = (event) => {
+    if (event.key !== "Escape" || !press) return;
+    event.stopPropagation();
+    endPress();
+  };
+  const onLiveDown = (event) => {
+    if (event.shiftKey || event.altKey || event.metaKey || event.ctrlKey || selectionBusy()) { disarm(); return; }
+    if (event.button !== 0 || !armedUid || !targetIsArmed(event.target)) return;
+    endPress();
+    press = { x: Number(event.clientX), y: Number(event.clientY), uid: armedUid, highlight: armedHighlight, active: false };
+    const w = view();
+    pressListen(w, "pointermove", onPressMove);
+    pressListen(w, "pointerup", onPressUp);
+    pressListen(w, "pointercancel", endPress);
+    pressListen(w, "keydown", onPressKey);
+  };
+  const onLiveLeave = () => { if (!dragging) disarm(); };
   const chipLabel = (uid, highlight) => {
     const row = catalog.find((entry) => entry.uid === uid);
     const text = (row && row.snippet) || highlight?.content?.text || "";
@@ -454,8 +689,11 @@ export function createReadPane({
   };
   const clearDragClass = () => { root?.classList?.remove("pxd-root--pdf-drag"); };
   const endPdfDrag = () => {
+    dragging = false;
     clearDragClass();
     dropChip();
+    clearLiveSelection();
+    disarm();
   };
   const paintChip = (data, color, text) => {
     dropChip();
@@ -467,7 +705,7 @@ export function createReadPane({
     if (color) bar.setAttribute("data-color", color);
     el("span", "pxd-read__dragtext", chip).textContent = text || "";
     pane.append(chip);
-    try { data.setDragImage?.(chip, 8, 8); } catch { /* no drag image */ }
+    try { data?.setDragImage?.(chip, 8, 8); } catch { /* no drag image */ }
     dragChip = chip;
   };
   // The board cancels dragstart on the root. Stopping here keeps this native drag alive.
@@ -481,6 +719,7 @@ export function createReadPane({
     paintChip(data, color, text);
     root?.classList?.add("pxd-root--pdf-drag");
     event.stopPropagation?.();
+    return true;
   };
   const onListDrag = (event) => {
     const row = rowFromEvent(event);
@@ -488,21 +727,106 @@ export function createReadPane({
     const label = chipLabel(row.uid, null);
     beginDrag(event, row.uid, row.color || label.color, dragChipText(row.snippet || label.text));
   };
-  const onMarkHover = (event) => {
-    const mark = markOf(event);
-    if (!mark) return;
-    const found = armMark(mark);
-    if (!found) return;
-    mark.draggable = true;
-    try { mark.setAttribute("draggable", "true"); } catch { /* stub */ }
+  const targetIsArmed = (target) => {
+    if (!armedEl || !target) return false;
+    if (target === armedEl) return true;
+    return Boolean(armedEl.contains?.(target));
   };
   const onMarkDrag = (event) => {
-    const mark = markOf(event);
-    if (!mark) return;
-    const found = markCache.get(mark);
-    if (!found?.uid) return;
-    const label = chipLabel(found.uid, found.highlight);
-    beginDrag(event, found.uid, label.color, label.text);
+    if (!armedUid || !targetIsArmed(event.target)) return;
+    const label = chipLabel(armedUid, armedHighlight);
+    dragging = beginDrag(event, armedUid, label.color, label.text) === true;
+  };
+  const selectionOf = () => {
+    try {
+      if (typeof doc.getSelection === "function") return doc.getSelection();
+    } catch { /* stub */ }
+    try {
+      const view = doc.defaultView;
+      if (view && typeof view.getSelection === "function") return view.getSelection();
+    } catch { /* stub */ }
+    return null;
+  };
+  const clearLiveSelection = () => {
+    const sel = selectionOf();
+    if (!sel || typeof sel.removeAllRanges !== "function") return;
+    const node = sel.anchorNode || sel.focusNode;
+    if (!node) return;
+    const el = node.nodeType === 1 ? node : node.parentElement;
+    if (!el || !live.contains?.(el)) return;
+    try { sel.removeAllRanges(); } catch { /* stub */ }
+  };
+  const clearFlash = () => {
+    if (flashTimer) { cancelLater(flashTimer); flashTimer = null; }
+    for (const part of flashed) {
+      part.classList?.remove("pxd-read__mark-flash");
+      try { part.style?.removeProperty?.("--pxd-mark-flash"); } catch { /* stub */ }
+    }
+    flashed = [];
+  };
+  const flashColor = (color) => {
+    const name = typeof color === "string" ? color : "";
+    if (COLORS.includes(name)) return `var(--pxd-${name}-line, var(--pxd-yellow-line, #ca8a04))`;
+    if (/^#[0-9a-fA-F]{3,8}$/.test(name)) return name;
+    return "var(--pxd-yellow-line, #ca8a04)";
+  };
+  const flashParts = (parts, color) => {
+    clearFlash();
+    const paint = flashColor(color);
+    flashed = parts.filter(Boolean);
+    for (const part of flashed) {
+      try { part.style?.setProperty?.("--pxd-mark-flash", paint); } catch { /* stub */ }
+      part.classList?.add("pxd-read__mark-flash");
+    }
+    if (!flashed.length) return;
+    flashTimer = later(() => { flashTimer = null; clearFlash(); }, FLASH_MS);
+  };
+  const fallbackScroll = (part) => {
+    const scroller = live.querySelector?.(".PdfHighlighter");
+    if (!scroller || !part) return;
+    let mark = null;
+    let view = null;
+    try { mark = part.getBoundingClientRect?.(); } catch { mark = null; }
+    try { view = scroller.getBoundingClientRect?.(); } catch { view = null; }
+    if (!mark || !view) return;
+    const current = Number(scroller.scrollTop);
+    const top = Number.isFinite(current) ? current : 0;
+    const height = Number(view.height) || 0;
+    const next = top + (Number(mark.top) - Number(view.top)) - height * 0.3;
+    scroller.scrollTop = Math.max(0, next);
+  };
+  const partsFor = (uid) => {
+    const nodes = live.querySelectorAll?.(PDF_MARK) || [];
+    const parts = [];
+    let highlight = null;
+    for (const node of nodes) {
+      const found = readMark(node);
+      if (found?.uid !== uid) continue;
+      parts.push(node);
+      if (!highlight && found.highlight) highlight = found.highlight;
+    }
+    return { parts, highlight };
+  };
+  const locateHighlight = (uid) => {
+    if (!openFlag || typeof uid !== "string" || uid === "") return;
+    const { parts, highlight: fromMark } = partsFor(uid);
+    const highlight = fromMark || highlightById(fiberOf(live.querySelector?.(".PdfHighlighter")), uid);
+    if (!highlight && !parts.length) return;
+    let scrolled = false;
+    const ctx = readerContext();
+    if (highlight && ctx && typeof ctx.scrollToHighlight === "function") {
+      try { ctx.scrollToHighlight(highlight); scrolled = true; } catch { scrolled = false; }
+    }
+    if (!scrolled) fallbackScroll(parts[0]);
+    const row = catalog.find((entry) => entry.uid === uid);
+    flashParts(parts, highlight?.color || row?.color || "");
+  };
+  const highlightUidOf = (detail) => {
+    if (typeof detail.highlightUid === "string" && detail.highlightUid) return detail.highlightUid;
+    if (typeof detail.uid === "string" && detail.uid && detail.uid !== detail.blockUid && detail.uid !== detail.cardUid) {
+      return detail.uid;
+    }
+    return "";
   };
   const onWheel = (event) => { event.stopPropagation(); };
   const onPointer = (event) => { event.stopPropagation(); };
@@ -538,8 +862,9 @@ export function createReadPane({
   listen(pane, "dragover", onDragOver);
   listen(pane, "drop", onDrop);
   listen(pane, "dragend", endPdfDrag);
-  listen(live, "pointerover", onMarkHover, true);
-  listen(live, "mouseover", onMarkHover, true);
+  listen(live, "pointermove", onPointerMove, { capture: true, passive: true });
+  listen(live, "pointerleave", onLiveLeave);
+  listen(live, "pointerdown", onLiveDown);
   listen(live, "dragstart", onMarkDrag);
   if (root) listen(root, "drop", clearDragClass);
   listen(list, "click", onListClick);
@@ -574,13 +899,16 @@ export function createReadPane({
 
   function close(opts) {
     cancelPageWait();
+    cancelMove();
+    clearFlash();
     const notify = !opts || opts.notify !== false;
     if (!openFlag && !pane.isConnected) return;
     openFlag = false;
     endSplit();
     releaseWatch();
-    clearLive();
+    endPress();
     endPdfDrag();
+    clearLive();
     root?.classList?.remove("pxd-root--read", "pxd-root--read-stack");
     try { root?.style?.removeProperty?.("--pxd-read-w"); } catch { /* stub */ }
     pane.remove();
@@ -613,7 +941,9 @@ export function createReadPane({
       titleNode.textContent = current.title || "PDF";
       applyBox();
       mountReader(blockUid);
-      if (typeof next.page === "number") jumpPageWhenReady(next.page);
+      const wanted = highlightUidOf(next);
+      if (typeof next.page === "number") jumpPageWhenReady(next.page, wanted ? () => locateHighlight(wanted) : null);
+      else if (wanted) locateHighlight(wanted);
       armWatch(current.title);
       paintSwitcher();
       refreshList();

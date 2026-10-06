@@ -16987,6 +16987,22 @@ function focusRoamInput(el) {
   synthesizeBlockClick(el);
   return true;
 }
+function pageEditScrollTop(scrollTop, inputOffset, rowOffset, zoom) {
+  const base = Number(scrollTop);
+  const top = Number.isFinite(base) ? base : 0;
+  const row2 = Number(rowOffset);
+  const input = Number(inputOffset);
+  if (!Number.isFinite(row2) || !Number.isFinite(input)) return Math.max(0, top);
+  const delta = input - row2;
+  if (!delta) return Math.max(0, top);
+  const z = Number(zoom);
+  const scale = z > 0 && Number.isFinite(z) ? z : 1;
+  return Math.max(0, top + delta / scale);
+}
+function scaleCardEditor(editor, zoom) {
+  if (editor?.classList?.contains("pxd-page-edit")) return false;
+  return applyEditorCounterScale(editor, zoom);
+}
 function nextFrame() {
   return new Promise((resolve) => {
     const raf2 = globalThis.requestAnimationFrame;
@@ -17277,6 +17293,7 @@ function createItemRenderer({
   let pdfLiveOff = null;
   let paneForce = null;
   let panePage = null;
+  let paneHl = null;
   let openingEmbed = false;
   let selectedPrimary = null;
   let openEmbed = () => {
@@ -19460,7 +19477,7 @@ function createItemRenderer({
     const forced = paneForce;
     paneForce = null;
     const rule = readerRule(pdfOpenUid, uid);
-    if (!forced && rule.close == null && rule.open === (pdfOpenUid || null)) return;
+    if (!forced && !paneHl && rule.close == null && rule.open === (pdfOpenUid || null)) return;
     openingEmbed = true;
     try {
       const nextItem = paneItem(rule.open || uid);
@@ -19486,6 +19503,7 @@ function createItemRenderer({
           cardUid: nextItem?.kind === "pdf" ? nextItem.uid : "",
           blockUid: forced?.blockUid || blockUidOf(nextItem) || uid,
           page: forced?.page ?? panePage,
+          highlightUid: forced?.highlightUid || paneHl || void 0,
           source: forced?.source || (nextItem ? pdfSourceOf(nextItem) : "")
         });
         return;
@@ -19535,16 +19553,18 @@ function createItemRenderer({
     const rec = shells.get(uid);
     return pageFieldOf(rec?.pdfReader?.querySelector?.(".rm-pdf-container"));
   };
-  const openPdfAt = (uid, page) => {
+  const openPdfAt = (uid, page, highlightUid) => {
     if (typeof uid !== "string" || uid === "") {
       paneForce = null;
       return Promise.resolve(false);
     }
     panePage = typeof page === "number" ? page : null;
+    paneHl = typeof highlightUid === "string" && highlightUid ? highlightUid : null;
     try {
-      if (pdfOpenUid !== uid || paneForce) openPdf(uid);
+      if (pdfOpenUid !== uid || paneForce || paneHl) openPdf(uid);
     } finally {
       panePage = null;
+      paneHl = null;
     }
     const started = now();
     const want = String(page);
@@ -19587,10 +19607,10 @@ function createItemRenderer({
       stop2 = later(tick, 100);
     });
   };
-  const openPdfBlock = (blockUid2, page, source) => {
+  const openPdfBlock = (blockUid2, page, source, highlightUid) => {
     if (typeof blockUid2 !== "string" || blockUid2 === "") return Promise.resolve(false);
-    paneForce = { blockUid: blockUid2, source: typeof source === "string" ? source : "", page };
-    return openPdfAt(blockUid2, page);
+    paneForce = { blockUid: blockUid2, source: typeof source === "string" ? source : "", page, highlightUid };
+    return openPdfAt(blockUid2, page, highlightUid);
   };
   const flashItem = (uid) => {
     const shell = shells.get(uid)?.el;
@@ -20380,7 +20400,7 @@ function createItemRenderer({
     const prevZoom = zoomCache;
     zoomCache = next > 0 && Number.isFinite(next) ? next : 1;
     if (zoomCache !== prevZoom) closePeek();
-    if (editing?.editor) applyEditorCounterScale(editing.editor, zoomCache);
+    if (editing?.editor) scaleCardEditor(editing.editor, zoomCache);
     if (zoomCache !== prevZoom) {
       for (const rec of shells.values()) if (rec.stickyLive && rec.editor && rec.editor !== editing?.editor) applyEditorCounterScale(rec.editor, zoomCache);
     }
@@ -20971,8 +20991,8 @@ function createItemRenderer({
       input = await waitPageInput(editor, row2, uid);
       if (disposed || editing?.uid !== uid) return false;
       if (input && rowOffset !== null) {
-        const delta = (Number(input.getBoundingClientRect?.().top) || 0) - (Number(rec.body.getBoundingClientRect?.().top) || 0) - rowOffset;
-        if (delta) editor.scrollTop = Math.max(0, (Number(editor.scrollTop) || 0) + delta / (zoomCache || 1));
+        const inputOffset = (Number(input.getBoundingClientRect?.().top) || 0) - (Number(rec.body.getBoundingClientRect?.().top) || 0);
+        editor.scrollTop = pageEditScrollTop(editor.scrollTop, inputOffset, rowOffset, zoomCache);
       }
     } else {
       await waitHydrateQuiet(editor, HYDRATE_CAP_MS);
@@ -20991,13 +21011,13 @@ function createItemRenderer({
       }
       if (!input) input = editor.querySelector?.(".rm-block__input") || editor.querySelector?.("textarea");
     }
-    applyEditorCounterScale(editor, zoomCache);
+    scaleCardEditor(editor, zoomCache);
     if (input) focusRoamInput(input);
     fitEditorText(editor);
-    applyEditorCounterScale(editor, zoomCache);
+    scaleCardEditor(editor, zoomCache);
     frameLater(() => {
       if (editing?.uid === uid) {
-        applyEditorCounterScale(editor, zoomCache);
+        scaleCardEditor(editor, zoomCache);
         fitEditorText(editor);
       }
     });
@@ -21471,9 +21491,116 @@ function createItemRenderer({
   };
 }
 
+// src/model/pdf-drag.js
+var PDF_MARK = ".TextHighlight__part, .AreaHighlight__part, .AreaHighlight";
+var UID4 = /^[A-Za-z0-9_-]{9}$/;
+var FIBER_LIMIT = 10;
+var CHIP_LEN = 60;
+function fiberOf(node2) {
+  if (!node2 || typeof node2 !== "object") return null;
+  let keys = [];
+  try {
+    keys = Object.keys(node2);
+  } catch {
+    return null;
+  }
+  for (const key of keys) {
+    if (!key.startsWith("__reactFiber")) continue;
+    const fiber = node2[key];
+    if (fiber && typeof fiber === "object") return fiber;
+  }
+  return null;
+}
+function highlightFromFiber(fiber) {
+  let current3 = fiber;
+  for (let depth = 0; depth < FIBER_LIMIT && current3; depth += 1) {
+    const highlight = current3.memoizedProps?.value?.highlight;
+    if (highlight && typeof highlight === "object") return highlight;
+    current3 = current3.return;
+  }
+  return null;
+}
+function acceptId(id, exists) {
+  if (typeof id !== "string" || !UID4.test(id)) return null;
+  if (typeof exists !== "function") return id;
+  try {
+    if (exists(id) !== true) return null;
+  } catch {
+    return null;
+  }
+  return id;
+}
+function highlightOf(node2) {
+  if (!node2 || typeof node2 !== "object") return null;
+  const direct = highlightFromFiber(fiberOf(node2));
+  if (direct) return direct;
+  const container = typeof node2.closest === "function" ? node2.closest(".rm-pdf-highlight-container") : null;
+  if (!container || container === node2) return null;
+  return highlightFromFiber(fiberOf(container));
+}
+function uidFromMark(node2, exists) {
+  const highlight = highlightOf(node2);
+  if (!highlight) return null;
+  const uid = acceptId(highlight.id, exists);
+  if (!uid) return null;
+  return { uid, highlight };
+}
+function dragChipText(value) {
+  if (typeof value !== "string") return "";
+  return value.replace(/\s+/g, " ").trim().slice(0, CHIP_LEN);
+}
+var CTX_LIMIT = 15;
+var BAG_KEYS = ["highlightsByPage", "highlights"];
+function contextFromFiber(fiber) {
+  let current3 = fiber;
+  const seen = /* @__PURE__ */ new Set();
+  for (let depth = 0; depth < CTX_LIMIT && current3 && !seen.has(current3); depth += 1) {
+    seen.add(current3);
+    const value = current3.memoizedProps?.value;
+    if (value && typeof value.scrollToHighlight === "function") return value;
+    current3 = current3.return;
+  }
+  return null;
+}
+function highlighterContext(node2) {
+  const root = typeof node2?.closest === "function" ? node2.closest(".PdfHighlighter") || node2 : node2;
+  return contextFromFiber(fiberOf(root));
+}
+function findHighlightId(bag, id, seen, depth) {
+  if (!bag || typeof bag !== "object" || depth > 6 || seen.has(bag)) return null;
+  seen.add(bag);
+  if (!Array.isArray(bag) && bag.id === id) return bag;
+  const values = Array.isArray(bag) ? bag : Object.values(bag);
+  for (const value of values) {
+    const found = findHighlightId(value, id, seen, depth + 1);
+    if (found) return found;
+  }
+  return null;
+}
+function highlightById(fiber, id) {
+  if (typeof id !== "string" || id === "") return null;
+  let current3 = fiber;
+  const seen = /* @__PURE__ */ new Set();
+  for (let depth = 0; depth < CTX_LIMIT && current3 && !seen.has(current3); depth += 1) {
+    seen.add(current3);
+    const props = current3.memoizedProps;
+    const bags = [props?.value, props];
+    for (const bag of bags) {
+      if (!bag || typeof bag !== "object") continue;
+      for (const key of BAG_KEYS) {
+        const found = findHighlightId(bag[key], id, /* @__PURE__ */ new Set(), 0);
+        if (found) return found;
+      }
+    }
+    current3 = current3.return;
+  }
+  return null;
+}
+
 // src/view/read-pane.js
 var PLACE_W = 300;
 var PLACE_H = 140;
+var FLASH_MS = 1600;
 var ONE_REF = /^\(\(([\w-]+)\)\)$/;
 var COLORS = ["gray", ...HIGHLIGHT_COLORS];
 function placedHighlightUid(items, refUid) {
@@ -21605,6 +21732,7 @@ function createReadPane({
   let watchTitle = "";
   let selectedUid = "";
   let shown = [];
+  let catalog = [];
   let current3 = { cardUid: "", blockUid: "", title: "", pageUid: "", source: "" };
   let splitMove = null;
   let splitUp = null;
@@ -21675,6 +21803,7 @@ function createReadPane({
     }
   };
   const clearLive = () => {
+    disarm();
     try {
       host?.unmount?.(live);
     } catch {
@@ -21694,31 +21823,54 @@ function createReadPane({
     return writeReaderPage(input, page);
   };
   let pageWait = null;
+  let pageGen = 0;
+  const clock = () => doc.defaultView || globalThis;
+  const later = (fn, ms) => (clock().setTimeout || globalThis.setTimeout)(fn, ms);
+  const cancelLater = (id) => {
+    if (id == null) return;
+    (clock().clearTimeout || globalThis.clearTimeout)(id);
+  };
   const cancelPageWait = () => {
     if (pageWait) {
-      clearTimeout(pageWait);
+      cancelLater(pageWait);
       pageWait = null;
     }
   };
-  const jumpPageWhenReady = (page) => {
+  const jumpPageWhenReady = (page, after) => {
     cancelPageWait();
+    const gen = pageGen + 1;
+    pageGen = gen;
     if (typeof page !== "number" || page < 1) return;
     const started = Date.now();
     let settled = 0;
+    const finish = () => {
+      if (gen !== pageGen) return;
+      pageGen += 1;
+      try {
+        after?.();
+      } catch {
+      }
+    };
     const tick = () => {
       pageWait = null;
-      if (!openFlag) return;
+      if (gen !== pageGen || !openFlag) return;
       const input = readerField();
       const ready = input && live.querySelector?.(".rm-pdf-container .page");
       if (!ready) {
-        if (Date.now() - started < 5e3) pageWait = setTimeout(tick, 100);
+        if (Date.now() - started < 5e3) pageWait = later(tick, 100);
+        else finish();
         return;
       }
       if (String(input.value).trim() !== String(page)) {
         writeReaderPage(input, page);
         settled = 0;
       } else settled += 1;
-      if (settled < 2 && Date.now() - started < 5e3) pageWait = setTimeout(tick, 300);
+      if (settled >= 2) {
+        finish();
+        return;
+      }
+      if (Date.now() - started < 5e3) pageWait = later(tick, 300);
+      else finish();
     };
     tick();
   };
@@ -21797,7 +21949,8 @@ function createReadPane({
     const pageText = String(pageFilt.value || "").trim();
     const pageWant = pageText === "" ? null : Number(pageText);
     const needle = String(snipFilt.value || "").trim().toLowerCase();
-    shown = sortRows(rows).filter((row2) => {
+    catalog = sortRows(rows);
+    shown = catalog.filter((row2) => {
       if (color && row2.color !== color) return false;
       if (pageWant != null && Number.isFinite(pageWant) && row2.page !== pageWant) return false;
       if (needle && !String(row2.snippet || "").toLowerCase().includes(needle)) return false;
@@ -21847,10 +22000,20 @@ function createReadPane({
     selectedUid = shown[index].uid;
     paintSelected();
   };
+  const showHighlight = (row2) => {
+    if (!row2?.uid) return;
+    selectedUid = row2.uid;
+    paintSelected();
+    if (typeof row2.page === "number") {
+      jumpPage(row2.page);
+      jumpPageWhenReady(row2.page, () => locateHighlight(row2.uid));
+      return;
+    }
+    locateHighlight(row2.uid);
+  };
   const jumpSelected = () => {
     const row2 = shown.find((entry) => entry.uid === selectedUid);
-    if (!row2) return;
-    jumpPage(row2.page);
+    if (row2) showHighlight(row2);
   };
   const onPaneKey = (event) => {
     if (event.metaKey || event.ctrlKey) return;
@@ -21893,6 +22056,7 @@ function createReadPane({
           onPlace?.(row3);
         } catch {
         }
+        showHighlight(row3);
       }
       return;
     }
@@ -21900,19 +22064,485 @@ function createReadPane({
     const row2 = rowFromEvent(event);
     if (!row2) return;
     event.stopPropagation();
-    selectedUid = row2.uid;
-    paintSelected();
-    jumpPage(row2.page);
+    showHighlight(row2);
   };
-  const onListDrag = (event) => {
-    const row2 = rowFromEvent(event);
-    const data = event.dataTransfer;
-    if (!row2?.uid || !data || typeof data.setData !== "function") return;
-    data.setData(CARD_MIME, `((${row2.uid}))`);
+  const markCache = /* @__PURE__ */ new WeakMap();
+  let dragChip = null;
+  let armedEl = null;
+  let armedPrev = null;
+  let armedUid = "";
+  let armedHighlight = null;
+  let armedPart = null;
+  let moveFrame = 0;
+  let lastMove = null;
+  let dragging = false;
+  let flashTimer = null;
+  let flashed = [];
+  const blockExists = (uid) => {
+    if (typeof host?.blockString !== "function") return true;
+    try {
+      return typeof host.blockString(uid) === "string";
+    } catch {
+      return false;
+    }
+  };
+  const readMark = (node2) => {
+    if (!node2) return null;
+    const cached = markCache.get(node2);
+    if (cached) return cached;
+    const found = uidFromMark(node2, blockExists);
+    if (!found) return null;
+    markCache.set(node2, found);
+    return found;
+  };
+  const dragAttr = (node2) => node2?.hasAttribute?.("draggable") ? node2.getAttribute("draggable") : null;
+  const restoreDrag = (node2, prev) => {
+    if (!node2) return;
+    if (prev == null) {
+      try {
+        node2.removeAttribute?.("draggable");
+      } catch {
+      }
+      try {
+        delete node2.draggable;
+      } catch {
+      }
+      return;
+    }
+    try {
+      node2.setAttribute?.("draggable", prev);
+    } catch {
+    }
+    node2.draggable = prev === "true";
+  };
+  const disarm = () => {
+    restoreDrag(armedEl, armedPrev);
+    armedEl = null;
+    armedPrev = null;
+    armedUid = "";
+    armedHighlight = null;
+    armedPart = null;
+    live.classList?.remove("pxd-read__live--overmark");
+  };
+  const armTarget = (node2, found, part) => {
+    if (!node2 || !found?.uid) {
+      disarm();
+      return;
+    }
+    if (armedEl !== node2) {
+      restoreDrag(armedEl, armedPrev);
+      armedEl = node2;
+      armedPrev = dragAttr(node2);
+    }
+    armedUid = found.uid;
+    armedHighlight = found.highlight || null;
+    armedPart = part || null;
+    node2.draggable = true;
+    try {
+      node2.setAttribute?.("draggable", "true");
+    } catch {
+    }
+    live.classList?.add("pxd-read__live--overmark");
+  };
+  const pointIn = (rect, x, y) => {
+    if (!rect) return false;
+    const left = Number(rect.left);
+    const right = Number(rect.right);
+    const top = Number(rect.top);
+    const bottom = Number(rect.bottom);
+    if (![left, right, top, bottom].every(Number.isFinite)) return false;
+    if (right <= left || bottom <= top) return false;
+    return x >= left && x <= right && y >= top && y <= bottom;
+  };
+  const hitMark = (page, x, y) => {
+    const parts = page?.querySelectorAll?.(PDF_MARK) || [];
+    let hit = null;
+    for (const part of parts) {
+      let rect = null;
+      try {
+        rect = part.getBoundingClientRect?.();
+      } catch {
+        rect = null;
+      }
+      if (pointIn(rect, x, y)) hit = part;
+    }
+    return hit;
+  };
+  const readerContext = () => highlighterContext(live.querySelector?.(".PdfHighlighter"));
+  const selectionBusy = () => {
+    const ctx = readerContext();
+    if (!ctx || typeof ctx.isSelectionInProgress !== "function") return false;
+    try {
+      return ctx.isSelectionInProgress() === true;
+    } catch {
+      return false;
+    }
+  };
+  let moveScheduled = false;
+  const cancelMove = () => {
+    lastMove = null;
+    moveScheduled = false;
+    if (!moveFrame) return;
+    try {
+      (clock().cancelAnimationFrame || globalThis.cancelAnimationFrame)?.(moveFrame);
+    } catch {
+    }
+    moveFrame = 0;
+  };
+  const applyMove = () => {
+    const move = lastMove;
+    lastMove = null;
+    if (!move || dragging) return;
+    const target = move.target;
+    if (!target || !live.contains?.(target)) {
+      disarm();
+      return;
+    }
+    if (selectionBusy()) {
+      disarm();
+      return;
+    }
+    const page = typeof target.closest === "function" ? target.closest(".page") : null;
+    if (!page || !live.contains?.(page)) {
+      disarm();
+      return;
+    }
+    const part = hitMark(page, move.x, move.y);
+    if (!part) {
+      disarm();
+      return;
+    }
+    const found = readMark(part);
+    if (!found) {
+      disarm();
+      return;
+    }
+    armTarget(target, found, part);
+  };
+  const onPointerMove = (event) => {
+    if (dragging) return;
+    const x = Number(event.clientX);
+    const y = Number(event.clientY);
+    lastMove = {
+      target: event.target,
+      x: Number.isFinite(x) ? x : 0,
+      y: Number.isFinite(y) ? y : 0
+    };
+    if (moveScheduled) return;
+    moveScheduled = true;
+    const raf2 = clock().requestAnimationFrame || globalThis.requestAnimationFrame;
+    if (typeof raf2 !== "function") {
+      moveScheduled = false;
+      applyMove();
+      return;
+    }
+    moveFrame = raf2(() => {
+      moveFrame = 0;
+      moveScheduled = false;
+      applyMove();
+    });
+  };
+  const DRAG_START_PX = 6;
+  let press = null;
+  const view = () => doc?.defaultView || globalThis;
+  const pressOff = [];
+  const pressListen = (node2, type, fn) => {
+    node2?.addEventListener?.(type, fn, true);
+    pressOff.push(() => node2?.removeEventListener?.(type, fn, true));
+  };
+  const endPress = () => {
+    while (pressOff.length) {
+      try {
+        pressOff.pop()();
+      } catch {
+      }
+    }
+    const wasActive = press?.active;
+    press = null;
+    if (wasActive) endPdfDrag();
+  };
+  const moveChip = (x, y) => {
+    if (!dragChip) return;
+    dragChip.style.left = `${Math.round(x + 12)}px`;
+    dragChip.style.top = `${Math.round(y + 12)}px`;
+  };
+  const swallowClick = () => {
+    const w = view();
+    const stop2 = (event) => {
+      event.stopPropagation();
+      event.preventDefault();
+    };
+    w.addEventListener?.("click", stop2, { capture: true, once: true });
+    w.setTimeout?.(() => w.removeEventListener?.("click", stop2, true), 400);
+  };
+  const dropAt = (uid, x, y) => {
+    const w = view();
+    const target = doc?.elementFromPoint?.(x, y);
+    if (!target || !root?.contains?.(target) || target.closest?.(".pxd-read")) return false;
+    const Transfer = w.DataTransfer;
+    const Drag = w.DragEvent;
+    if (typeof Transfer !== "function" || typeof Drag !== "function") return false;
+    const data = new Transfer();
+    data.setData(CARD_MIME, `((${uid}))`);
+    data.setData("text/plain", `((${uid}))`);
     try {
       data.effectAllowed = "copy";
     } catch {
     }
+    const init = { bubbles: true, cancelable: true, clientX: x, clientY: y, dataTransfer: data };
+    target.dispatchEvent(new Drag("dragover", init));
+    target.dispatchEvent(new Drag("drop", init));
+    return true;
+  };
+  const onPressMove = (event) => {
+    if (!press) return;
+    const x = Number(event.clientX);
+    const y = Number(event.clientY);
+    if (!press.active) {
+      if (Math.hypot(x - press.x, y - press.y) < DRAG_START_PX) return;
+      press.active = true;
+      dragging = true;
+      const label = chipLabel(press.uid, press.highlight);
+      paintChip(null, label.color, label.text);
+      if (dragChip) {
+        dragChip.style.pointerEvents = "none";
+        dragChip.style.zIndex = "60";
+      }
+      root?.classList?.add("pxd-root--pdf-drag");
+      clearLiveSelection();
+    }
+    moveChip(x, y);
+    event.preventDefault?.();
+  };
+  const onPressUp = (event) => {
+    if (!press) return;
+    const { active, uid } = press;
+    const x = Number(event.clientX);
+    const y = Number(event.clientY);
+    if (active) {
+      swallowClick();
+      dropChip();
+      dropAt(uid, x, y);
+      clearLiveSelection();
+    }
+    endPress();
+  };
+  const onPressKey = (event) => {
+    if (event.key !== "Escape" || !press) return;
+    event.stopPropagation();
+    endPress();
+  };
+  const onLiveDown = (event) => {
+    if (event.shiftKey || event.altKey || event.metaKey || event.ctrlKey || selectionBusy()) {
+      disarm();
+      return;
+    }
+    if (event.button !== 0 || !armedUid || !targetIsArmed(event.target)) return;
+    endPress();
+    press = { x: Number(event.clientX), y: Number(event.clientY), uid: armedUid, highlight: armedHighlight, active: false };
+    const w = view();
+    pressListen(w, "pointermove", onPressMove);
+    pressListen(w, "pointerup", onPressUp);
+    pressListen(w, "pointercancel", endPress);
+    pressListen(w, "keydown", onPressKey);
+  };
+  const onLiveLeave = () => {
+    if (!dragging) disarm();
+  };
+  const chipLabel = (uid, highlight) => {
+    const row2 = catalog.find((entry) => entry.uid === uid);
+    const text2 = row2 && row2.snippet || highlight?.content?.text || "";
+    const color = row2 && row2.color || (typeof highlight?.color === "string" ? highlight.color : "");
+    return { text: dragChipText(text2), color };
+  };
+  const dropChip = () => {
+    const node2 = dragChip;
+    dragChip = null;
+    try {
+      node2?.remove?.();
+    } catch {
+    }
+  };
+  const clearDragClass = () => {
+    root?.classList?.remove("pxd-root--pdf-drag");
+  };
+  const endPdfDrag = () => {
+    dragging = false;
+    clearDragClass();
+    dropChip();
+    clearLiveSelection();
+    disarm();
+  };
+  const paintChip = (data, color, text2) => {
+    dropChip();
+    const chip = el("div", "pxd-read__drag");
+    chip.style.position = "fixed";
+    chip.style.left = "-1000px";
+    chip.style.top = "0";
+    const bar = el("span", "pxd-read__bar", chip);
+    if (color) bar.setAttribute("data-color", color);
+    el("span", "pxd-read__dragtext", chip).textContent = text2 || "";
+    pane.append(chip);
+    try {
+      data?.setDragImage?.(chip, 8, 8);
+    } catch {
+    }
+    dragChip = chip;
+  };
+  const beginDrag = (event, uid, color, text2) => {
+    const data = event.dataTransfer;
+    if (!uid || !data || typeof data.setData !== "function") return;
+    const payload = `((${uid}))`;
+    data.setData(CARD_MIME, payload);
+    try {
+      data.setData("text/plain", payload);
+    } catch {
+    }
+    try {
+      data.effectAllowed = "copy";
+    } catch {
+    }
+    paintChip(data, color, text2);
+    root?.classList?.add("pxd-root--pdf-drag");
+    event.stopPropagation?.();
+    return true;
+  };
+  const onListDrag = (event) => {
+    const row2 = rowFromEvent(event);
+    if (!row2?.uid) return;
+    const label = chipLabel(row2.uid, null);
+    beginDrag(event, row2.uid, row2.color || label.color, dragChipText(row2.snippet || label.text));
+  };
+  const targetIsArmed = (target) => {
+    if (!armedEl || !target) return false;
+    if (target === armedEl) return true;
+    return Boolean(armedEl.contains?.(target));
+  };
+  const onMarkDrag = (event) => {
+    if (!armedUid || !targetIsArmed(event.target)) return;
+    const label = chipLabel(armedUid, armedHighlight);
+    dragging = beginDrag(event, armedUid, label.color, label.text) === true;
+  };
+  const selectionOf = () => {
+    try {
+      if (typeof doc.getSelection === "function") return doc.getSelection();
+    } catch {
+    }
+    try {
+      const view2 = doc.defaultView;
+      if (view2 && typeof view2.getSelection === "function") return view2.getSelection();
+    } catch {
+    }
+    return null;
+  };
+  const clearLiveSelection = () => {
+    const sel = selectionOf();
+    if (!sel || typeof sel.removeAllRanges !== "function") return;
+    const node2 = sel.anchorNode || sel.focusNode;
+    if (!node2) return;
+    const el2 = node2.nodeType === 1 ? node2 : node2.parentElement;
+    if (!el2 || !live.contains?.(el2)) return;
+    try {
+      sel.removeAllRanges();
+    } catch {
+    }
+  };
+  const clearFlash = () => {
+    if (flashTimer) {
+      cancelLater(flashTimer);
+      flashTimer = null;
+    }
+    for (const part of flashed) {
+      part.classList?.remove("pxd-read__mark-flash");
+      try {
+        part.style?.removeProperty?.("--pxd-mark-flash");
+      } catch {
+      }
+    }
+    flashed = [];
+  };
+  const flashColor = (color) => {
+    const name = typeof color === "string" ? color : "";
+    if (COLORS.includes(name)) return `var(--pxd-${name}-line, var(--pxd-yellow-line, #ca8a04))`;
+    if (/^#[0-9a-fA-F]{3,8}$/.test(name)) return name;
+    return "var(--pxd-yellow-line, #ca8a04)";
+  };
+  const flashParts = (parts, color) => {
+    clearFlash();
+    const paint2 = flashColor(color);
+    flashed = parts.filter(Boolean);
+    for (const part of flashed) {
+      try {
+        part.style?.setProperty?.("--pxd-mark-flash", paint2);
+      } catch {
+      }
+      part.classList?.add("pxd-read__mark-flash");
+    }
+    if (!flashed.length) return;
+    flashTimer = later(() => {
+      flashTimer = null;
+      clearFlash();
+    }, FLASH_MS);
+  };
+  const fallbackScroll = (part) => {
+    const scroller = live.querySelector?.(".PdfHighlighter");
+    if (!scroller || !part) return;
+    let mark = null;
+    let view2 = null;
+    try {
+      mark = part.getBoundingClientRect?.();
+    } catch {
+      mark = null;
+    }
+    try {
+      view2 = scroller.getBoundingClientRect?.();
+    } catch {
+      view2 = null;
+    }
+    if (!mark || !view2) return;
+    const current4 = Number(scroller.scrollTop);
+    const top = Number.isFinite(current4) ? current4 : 0;
+    const height = Number(view2.height) || 0;
+    const next = top + (Number(mark.top) - Number(view2.top)) - height * 0.3;
+    scroller.scrollTop = Math.max(0, next);
+  };
+  const partsFor = (uid) => {
+    const nodes = live.querySelectorAll?.(PDF_MARK) || [];
+    const parts = [];
+    let highlight = null;
+    for (const node2 of nodes) {
+      const found = readMark(node2);
+      if (found?.uid !== uid) continue;
+      parts.push(node2);
+      if (!highlight && found.highlight) highlight = found.highlight;
+    }
+    return { parts, highlight };
+  };
+  const locateHighlight = (uid) => {
+    if (!openFlag || typeof uid !== "string" || uid === "") return;
+    const { parts, highlight: fromMark } = partsFor(uid);
+    const highlight = fromMark || highlightById(fiberOf(live.querySelector?.(".PdfHighlighter")), uid);
+    if (!highlight && !parts.length) return;
+    let scrolled = false;
+    const ctx = readerContext();
+    if (highlight && ctx && typeof ctx.scrollToHighlight === "function") {
+      try {
+        ctx.scrollToHighlight(highlight);
+        scrolled = true;
+      } catch {
+        scrolled = false;
+      }
+    }
+    if (!scrolled) fallbackScroll(parts[0]);
+    const row2 = catalog.find((entry) => entry.uid === uid);
+    flashParts(parts, highlight?.color || row2?.color || "");
+  };
+  const highlightUidOf = (detail) => {
+    if (typeof detail.highlightUid === "string" && detail.highlightUid) return detail.highlightUid;
+    if (typeof detail.uid === "string" && detail.uid && detail.uid !== detail.blockUid && detail.uid !== detail.cardUid) {
+      return detail.uid;
+    }
+    return "";
   };
   const onWheel = (event) => {
     event.stopPropagation();
@@ -21927,6 +22557,7 @@ function createReadPane({
   const onDrop = (event) => {
     event.preventDefault();
     event.stopPropagation();
+    clearDragClass();
   };
   const onColor = () => refreshList();
   const onPageFilt = () => refreshList();
@@ -21944,15 +22575,21 @@ function createReadPane({
     close({ notify: true });
   };
   const armed = [];
-  const listen = (node2, type, fn) => {
-    node2.addEventListener(type, fn);
-    armed.push([node2, type, fn]);
+  const listen = (node2, type, fn, capture = false) => {
+    node2.addEventListener(type, fn, capture);
+    armed.push([node2, type, fn, capture]);
   };
   listen(pane, "keydown", onPaneKey);
   listen(pane, "wheel", onWheel);
   listen(pane, "pointerdown", onPointer);
   listen(pane, "dragover", onDragOver);
   listen(pane, "drop", onDrop);
+  listen(pane, "dragend", endPdfDrag);
+  listen(live, "pointermove", onPointerMove, { capture: true, passive: true });
+  listen(live, "pointerleave", onLiveLeave);
+  listen(live, "pointerdown", onLiveDown);
+  listen(live, "dragstart", onMarkDrag);
+  if (root) listen(root, "drop", clearDragClass);
   listen(list, "click", onListClick);
   listen(list, "dragstart", onListDrag);
   listen(colorSel, "change", onColor);
@@ -21984,11 +22621,15 @@ function createReadPane({
   });
   function close(opts) {
     cancelPageWait();
+    cancelMove();
+    clearFlash();
     const notify = !opts || opts.notify !== false;
     if (!openFlag && !pane.isConnected) return;
     openFlag = false;
     endSplit();
     releaseWatch();
+    endPress();
+    endPdfDrag();
     clearLive();
     root?.classList?.remove("pxd-root--read", "pxd-root--read-stack");
     try {
@@ -22028,7 +22669,9 @@ function createReadPane({
       titleNode.textContent = current3.title || "PDF";
       applyBox();
       mountReader(blockUid2);
-      if (typeof next.page === "number") jumpPageWhenReady(next.page);
+      const wanted = highlightUidOf(next);
+      if (typeof next.page === "number") jumpPageWhenReady(next.page, wanted ? () => locateHighlight(wanted) : null);
+      else if (wanted) locateHighlight(wanted);
       armWatch(current3.title);
       paintSwitcher();
       refreshList();
@@ -22037,7 +22680,7 @@ function createReadPane({
     dispose() {
       close({ notify: false });
       endSplit();
-      for (const [node2, type, fn] of armed) node2.removeEventListener?.(type, fn);
+      for (const [node2, type, fn, capture] of armed) node2.removeEventListener?.(type, fn, capture);
       armed.length = 0;
     },
     layout(mountWidth) {
@@ -22203,18 +22846,18 @@ function openRegionDeleteDialog(doc, { message = "", onDelete, onOpen, onCancel 
 }
 
 // src/view/editor-keys.js
-var UID4 = /^[A-Za-z0-9_-]{9,15}$/;
+var UID5 = /^[A-Za-z0-9_-]{9,15}$/;
 function blockUidFromNode(node2) {
   let el = node2;
   while (el && el.nodeType === 1) {
     const id = String(el.id || el.getAttribute?.("id") || "");
     if (id.startsWith("block-input-")) {
       const rest = id.slice("block-input-".length);
-      if (UID4.test(rest)) return rest;
+      if (UID5.test(rest)) return rest;
     }
-    if (UID4.test(id)) return id;
+    if (UID5.test(id)) return id;
     const data = el.dataset?.uid || el.getAttribute?.("data-uid") || "";
-    if (UID4.test(data)) return data;
+    if (UID5.test(data)) return data;
     el = el.parentElement;
   }
   return null;
@@ -28420,6 +29063,7 @@ function buildBoardView(onFail, {
         cardUid: detail.cardUid || "",
         blockUid: detail.blockUid,
         page: detail.page,
+        highlightUid: detail.highlightUid,
         title: cover?.title || "",
         source: detail.source || "",
         pageUid: cover?.pageUid || ""
@@ -30699,13 +31343,13 @@ function buildBoardView(onFail, {
     const plan = readerJumpPlan({ cardUid: match || "", blockUid: blockUid2 });
     const page = item.highlight?.page;
     if (plan.action === "card") {
-      const pending = itemsR.openPdfAt?.(plan.uid, page);
+      const pending = itemsR.openPdfAt?.(plan.uid, page, item.target.uid);
       itemsR.flash?.(item.uid);
       await pending;
       return;
     }
     if (plan.action === "block") {
-      const pending = itemsR.openPdfBlock?.(plan.uid, page, `{{[[pdf]]: ${url}}}`);
+      const pending = itemsR.openPdfBlock?.(plan.uid, page, `{{[[pdf]]: ${url}}}`, item.target.uid);
       itemsR.flash?.(item.uid);
       await pending;
       return;

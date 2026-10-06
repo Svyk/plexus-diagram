@@ -451,6 +451,7 @@ export function createItemRenderer({
   let pdfLiveOff = null;
   let paneForce = null;
   let panePage = null;
+  let paneHl = null;
   let openingEmbed = false;
   let selectedPrimary = null;
   let openEmbed = () => {};
@@ -2516,7 +2517,7 @@ export function createItemRenderer({
     const forced = paneForce;
     paneForce = null;
     const rule = readerRule(pdfOpenUid, uid);
-    if (!forced && rule.close == null && rule.open === (pdfOpenUid || null)) return;
+    if (!forced && !paneHl && rule.close == null && rule.open === (pdfOpenUid || null)) return;
     openingEmbed = true;
     try {
       const nextItem = paneItem(rule.open || uid);
@@ -2536,6 +2537,7 @@ export function createItemRenderer({
           cardUid: nextItem?.kind === "pdf" ? nextItem.uid : "",
           blockUid: forced?.blockUid || blockUidOf(nextItem) || uid,
           page: forced?.page ?? panePage,
+          highlightUid: forced?.highlightUid || paneHl || undefined,
           source: forced?.source || (nextItem ? pdfSourceOf(nextItem) : ""),
         });
         return;
@@ -2580,16 +2582,18 @@ export function createItemRenderer({
     const rec = shells.get(uid);
     return pageFieldOf(rec?.pdfReader?.querySelector?.(".rm-pdf-container"));
   };
-  const openPdfAt = (uid, page) => {
+  const openPdfAt = (uid, page, highlightUid) => {
     if (typeof uid !== "string" || uid === "") {
       paneForce = null;
       return Promise.resolve(false);
     }
     panePage = typeof page === "number" ? page : null;
+    paneHl = typeof highlightUid === "string" && highlightUid ? highlightUid : null;
     try {
-      if (pdfOpenUid !== uid || paneForce) openPdf(uid);
+      if (pdfOpenUid !== uid || paneForce || paneHl) openPdf(uid);
     } finally {
       panePage = null;
+      paneHl = null;
     }
     const started = now();
     const want = String(page);
@@ -2623,10 +2627,10 @@ export function createItemRenderer({
       stop = later(tick, 100);
     });
   };
-  const openPdfBlock = (blockUid, page, source) => {
+  const openPdfBlock = (blockUid, page, source, highlightUid) => {
     if (typeof blockUid !== "string" || blockUid === "") return Promise.resolve(false);
-    paneForce = { blockUid, source: typeof source === "string" ? source : "", page };
-    return openPdfAt(blockUid, page);
+    paneForce = { blockUid, source: typeof source === "string" ? source : "", page, highlightUid };
+    return openPdfAt(blockUid, page, highlightUid);
   };
   const flashItem = (uid) => {
     const shell = shells.get(uid)?.el;

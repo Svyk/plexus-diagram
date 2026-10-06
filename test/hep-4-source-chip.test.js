@@ -176,3 +176,18 @@ test("source chip keeps a 1px border and a clear fill, including dark themes", (
   assert.ok(fills.length >= 2);
   assert.deepEqual([...new Set(fills)], ["transparent"]);
 });
+
+test("HEP-4: authorBlockUid finds the Author:: child and chipWithAuthor follows a rename", async () => {
+  const { authorBlockUid, chipWithAuthor, sourceChipFor } = await import("../src/model/source-chip.js");
+  const kids = [
+    { ":block/uid": "h1", ":block/string": "A highlight" },
+    { ":block/uid": "au", ":block/string": "Author:: [[Pat Example]]" },
+  ];
+  assert.equal(authorBlockUid(kids), "au");
+  assert.equal(authorBlockUid([{ ":block/uid": "h1", ":block/string": "No author" }]), "");
+  const chip = sourceChipFor({ pageTitle: "Articles/X", pageUid: "pg", pageChildren: kids });
+  assert.equal(chip.text, "Articles/X · Pat Example");
+  assert.equal(chipWithAuthor(chip, "Author:: [[Sam Renamed]]").text, "Articles/X · Sam Renamed");
+  assert.equal(chipWithAuthor(chip, "renamed to plain text").text, "Articles/X");
+  assert.equal(chipWithAuthor(chip, "Author:: [[Sam Renamed]]").pageUid, "pg");
+});

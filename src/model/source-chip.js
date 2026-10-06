@@ -33,6 +33,24 @@ function authorFrom(children) {
   return "";
 }
 
+// The Author:: block among a page's children, for a watch that follows a rename.
+export function authorBlockUid(children) {
+  const list = Array.isArray(children) ? children : [];
+  for (const child of list) {
+    if (!childString(child).trim().startsWith(AUTHOR_PREFIX)) continue;
+    const uid = child?.[":block/uid"] ?? child?.uid;
+    if (typeof uid === "string" && uid) return uid;
+  }
+  return "";
+}
+
+// Chip after its author block changed. A string that no longer starts with Author:: drops the author.
+export function chipWithAuthor(chip, authorString) {
+  if (!chip || typeof chip !== "object") return null;
+  const author = authorFrom([String(authorString ?? "")]);
+  return { ...chip, author, text: author ? `${chip.title} · ${author}` : chip.title };
+}
+
 // Null for any page that is not Articles/ or Media Captures/.
 export function sourceChipFor({ pageTitle, pageUid, pageChildren } = {}) {
   const title = readingTitle(pageTitle);

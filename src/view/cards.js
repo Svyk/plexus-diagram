@@ -29,7 +29,7 @@ import { PDF_READER_H, PDF_READER_W, coverModel, coverOuterBox, embedSplit, read
 import { paintPdfChipStrip } from "./pdf-chip-strip.js";
 import { guardCallback } from "../guard.js";
 import { notedSpeedFlags, parseSpeedFlags, SETTING_IDS } from "../settings.js";
-import { buildSourceChip, sourceChipFor, sourceChipKey } from "../model/source-chip.js";
+import { authorBlockUid, buildSourceChip, chipWithAuthor, sourceChipFor, sourceChipKey } from "../model/source-chip.js";
 
 const SIDES = ["top", "right", "bottom", "left"];
 const CHUNK_MS = 8;
@@ -994,6 +994,8 @@ export function createItemRenderer({
     rec.pageUnwatch = null;
     try { rec.blockUnwatch?.(); } catch { /* already off */ }
     rec.blockUnwatch = null;
+    try { rec.authorUnwatch?.(); } catch { /* already off */ }
+    rec.authorUnwatch = null;
     rec.blockStringNode = null;
     rec.pageRoots = [];
     rec.pageHolder = null;
@@ -2961,6 +2963,28 @@ export function createItemRenderer({
       pending = null;
     };
   };
+  // HEP-4. The chip follows a rename of the page's Author:: block. One shared watch per author block.
+  const armAuthorWatch = (rec, chip, node) => {
+    if (disposed || rec.authorUnwatch || typeof host?.watchBlock !== "function") return;
+    const authorUid = authorBlockUid(pageChildrenOf(chip.pageUid));
+    if (!authorUid) return;
+    let off = null;
+    try {
+      off = host.watchBlock(authorUid, (after) => {
+        const next = after?.[":block/string"];
+        if (typeof next !== "string" || node.isConnected === false) return;
+        const fresh = chipWithAuthor(chip, next);
+        if (!fresh || node.textContent === fresh.text) return;
+        node.textContent = fresh.text;
+        node.setAttribute("aria-label", `Open ${fresh.text}`);
+      });
+    } catch { return; }
+    if (typeof off !== "function") return;
+    rec.authorUnwatch = () => {
+      rec.authorUnwatch = null;
+      try { off(); } catch { /* already off */ }
+    };
+  };
   const armBlockWatch = (rec, item) => {
     if (disposed || rec.blockUnwatch || typeof host?.watchBlock !== "function") return;
     const ref = item.target?.uid;
@@ -3113,7 +3137,10 @@ export function createItemRenderer({
               const node = buildSourceChip(doc, chip, {
                 onOpen: (uid) => { try { host?.openInSidebar?.(uid); } catch { /* host */ } },
               });
-              if (node) body.append(node);
+              if (node) {
+                body.append(node);
+                armAuthorWatch(rec, chip, node);
+              }
             }
           }
         };

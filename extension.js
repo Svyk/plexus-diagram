@@ -19267,6 +19267,20 @@ function authorFrom(children) {
   }
   return "";
 }
+function authorBlockUid(children) {
+  const list = Array.isArray(children) ? children : [];
+  for (const child of list) {
+    if (!childString3(child).trim().startsWith(AUTHOR_PREFIX)) continue;
+    const uid = child?.[":block/uid"] ?? child?.uid;
+    if (typeof uid === "string" && uid) return uid;
+  }
+  return "";
+}
+function chipWithAuthor(chip, authorString) {
+  if (!chip || typeof chip !== "object") return null;
+  const author = authorFrom([String(authorString ?? "")]);
+  return { ...chip, author, text: author ? `${chip.title} · ${author}` : chip.title };
+}
 function sourceChipFor({ pageTitle, pageUid, pageChildren } = {}) {
   const title = readingTitle(pageTitle);
   if (!title) return null;
@@ -20374,6 +20388,11 @@ function createItemRenderer({
     } catch {
     }
     rec.blockUnwatch = null;
+    try {
+      rec.authorUnwatch?.();
+    } catch {
+    }
+    rec.authorUnwatch = null;
     rec.blockStringNode = null;
     rec.pageRoots = [];
     rec.pageHolder = null;
@@ -22450,6 +22469,32 @@ function createItemRenderer({
       pending = null;
     };
   };
+  const armAuthorWatch = (rec, chip, node2) => {
+    if (disposed || rec.authorUnwatch || typeof host?.watchBlock !== "function") return;
+    const authorUid = authorBlockUid(pageChildrenOf(chip.pageUid));
+    if (!authorUid) return;
+    let off = null;
+    try {
+      off = host.watchBlock(authorUid, (after) => {
+        const next = after?.[":block/string"];
+        if (typeof next !== "string" || node2.isConnected === false) return;
+        const fresh = chipWithAuthor(chip, next);
+        if (!fresh || node2.textContent === fresh.text) return;
+        node2.textContent = fresh.text;
+        node2.setAttribute("aria-label", `Open ${fresh.text}`);
+      });
+    } catch {
+      return;
+    }
+    if (typeof off !== "function") return;
+    rec.authorUnwatch = () => {
+      rec.authorUnwatch = null;
+      try {
+        off();
+      } catch {
+      }
+    };
+  };
   const armBlockWatch = (rec, item) => {
     if (disposed || rec.blockUnwatch || typeof host?.watchBlock !== "function") return;
     const ref = item.target?.uid;
@@ -22610,7 +22655,10 @@ function createItemRenderer({
                   }
                 }
               });
-              if (node2) body.append(node2);
+              if (node2) {
+                body.append(node2);
+                armAuthorWatch(rec, chip, node2);
+              }
             }
           }
         };

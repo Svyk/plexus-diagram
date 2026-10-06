@@ -1,8 +1,7 @@
 /* HEP-4. Reading-page source chip. A border and a clear fill. Dark mode keeps the border and no tinted fill. */
 
 .pxd-chip.pxd-chip--source {
-  display: inline-flex;
-  align-items: center;
+  display: block;
   align-self: flex-start;
   flex: 0 0 auto;
   width: fit-content;

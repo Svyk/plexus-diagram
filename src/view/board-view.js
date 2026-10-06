@@ -1394,7 +1394,7 @@ function buildBoardView(onFail, {
       }
       let cover = null;
       try { cover = detail.source ? host?.pdfCover?.(detail.source) : null; } catch { cover = null; }
-      readPane?.open?.({
+      ensureReadPane().open?.({
         cardUid: detail.cardUid || "",
         blockUid: detail.blockUid,
         page: detail.page,
@@ -1405,7 +1405,14 @@ function buildBoardView(onFail, {
     },
   });
   itemsReady = true;
-  readPane = createReadPane({
+  // The pane, its DOM and its listeners exist only once a PDF is opened. Most boards have no PDF.
+  const ensureReadPane = () => {
+    if (readPane) return readPane;
+    readPane = makeReadPane();
+    try { readPane?.layout?.(size.width); } catch { /* first layout on the next resize */ }
+    return readPane;
+  };
+  const makeReadPane = () => (createReadPane({
     doc,
     root,
     host,
@@ -1433,7 +1440,7 @@ function buildBoardView(onFail, {
         if (!disposed && Array.isArray(uids) && uids.length) ctl.select(uids);
       }).catch(() => {});
     },
-  });
+  }));
   repaintItemStyles = () => { if (!disposed) itemsR.repaintStyles(); };
   const taskPop = createTaskPopover({ doc, root, bt, toast: (m) => chrome.toast.show(m) });
   const taskDone = createTaskCompleter({ doc, getRoot: () => root, host, bt, win });

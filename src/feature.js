@@ -934,6 +934,9 @@ export async function installPlexusDiagram({
   }
   // Only ask Roam when a board sits in a sidebar window; reconcile runs every 400 ms.
   function sidebarWindows() {
+    return null;
+  }
+  function sidebarWindowsFromApi() {
     let any = false;
     for (const rec of mounts.values()) {
       if (sidebarWindowEl(rec.native) || sidebarWindowEl(rec.mountEl)) { any = true; break; }
@@ -944,17 +947,14 @@ export async function installPlexusDiagram({
       return Array.isArray(list) ? list : null;
     } catch { return null; }
   }
-  function windowIsCollapsed(win, windows) {
+  // The window header's caret says open or closed. Reading it costs nothing; asking Roam for
+  // getWindows() on every 400 ms reconcile tick cost ~6 ms per tick with 140 sidebar windows.
+  function windowIsCollapsed(win) {
     if (!win) return false;
     if (win.classList?.contains?.("rm-sidebar-window--collapsed") || win.classList?.contains?.("collapsed")) return true;
-    const id = win.id || "";
-    if (!id || !Array.isArray(windows)) return false;
-    for (const item of windows) {
-      if (!item) continue;
-      const wid = item["window-id"] || item.windowId || "";
-      // The DOM id is "sidebar-window-<window-id>".
-      if (!wid || (wid !== id && id !== `sidebar-window-${wid}`)) continue;
-      if (item.collapsed === true || item["collapsed?"] === true) return true;
+    for (const child of win.children || []) {
+      if (!child.classList?.contains?.("window-headers")) continue;
+      return Boolean(child.querySelector?.(".rm-caret")?.classList?.contains?.("rm-caret-closed"));
     }
     return false;
   }

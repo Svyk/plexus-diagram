@@ -1,5 +1,9 @@
 # Changelog
 
+## 2.14.1 — 2026-10-06
+
+- Typing stays light while a board sits in an open right sidebar. Plexus read Roam's whole sidebar window list every 400 ms (about 6 ms each time with 140 windows); it now reads the window's own open/closed arrow instead.
+
 ## 2.14.0 — 2026-10-06
 
 - PDFs, videos, tweets and other heavy embeds on a card, a page row or an outline row show a poster until you open them. Only one stays live per board.

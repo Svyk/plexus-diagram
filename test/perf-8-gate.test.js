@@ -19,6 +19,7 @@ import {
   median,
   parseArgs,
   planText,
+  PERF_BUDGETS,
   pointerupRatio,
   runGate,
   sidebarStillIntact,
@@ -370,4 +371,12 @@ test("parking the main board does not await the diagram move", () => {
   const mover = src.slice(src.indexOf("function boardMoveExpression"), src.indexOf("function caretExpression"));
   assert.match(mover, /setTimeout/);
   assert.equal(mover.includes("await"), false);
+});
+
+test("the gate module reads perf-budgets.json", () => {
+  const src = readFileSync(new URL("../tools/live/perf-gate.mjs", import.meta.url), "utf8");
+  assert.match(src, /perf-budgets\.json/);
+  assert.match(planText("Readwisenotes - "), /perf-budgets\.json/);
+  assert.equal(typeof PERF_BUDGETS["40"].dataCallsPerOpen, "number");
+  assert.equal(PERF_BUDGETS["40"].dataCallsPerOpen <= 20, true);
 });

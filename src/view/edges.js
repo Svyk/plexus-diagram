@@ -499,21 +499,52 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
     }
   };
 
-  const setSelection = ({ edge = null, link = null } = {}) => {
-    for (const [uid, rec] of edgeEls) {
-      const on = uid === edge;
-      const cls = String(rec.g.getAttribute("class") || "").replace(/\s*pxd-edge--selected/g, "");
-      setClass(rec.g, on ? `${cls} pxd-edge--selected` : cls);
+  // Card selection leaves every edge alone. Only an edge that turned on or off is rewritten.
+  let pickedEdge = null;
+  let pickedLink = null;
+  let selectionReady = false;
+  const markEdge = (uid, on) => {
+    const rec = edgeEls.get(uid);
+    if (!rec) return;
+    const cur = String(rec.g.getAttribute("class") || "");
+    const base = cur.replace(/\s*pxd-edge--selected/g, "");
+    const next = on ? `${base} pxd-edge--selected` : base;
+    if (cur !== next) setClass(rec.g, next);
+    if (Boolean(rec.label.classList.contains("pxd-label--selected")) !== on) {
       rec.label.classList.toggle("pxd-label--selected", on);
-      rec.innerCls = String(rec.innerCls || "").replace(/ pxd-inner--selected/g, "") + (on ? " pxd-inner--selected" : "");
-      paintInner(rec);
-      syncEnds(rec, on);
     }
-    for (const [key, rec] of linkEls) {
-      const on = key === link;
-      const cls = String(rec.g.getAttribute("class") || "").replace(/\s*pxd-link--selected/g, "");
-      setClass(rec.g, on ? `${cls} pxd-link--selected` : cls);
+    const inner = String(rec.innerCls || "").replace(/ pxd-inner--selected/g, "") + (on ? " pxd-inner--selected" : "");
+    if (rec.innerCls !== inner) {
+      rec.innerCls = inner;
+      paintInner(rec);
+    }
+    syncEnds(rec, on);
+  };
+  const markLink = (key, on) => {
+    const rec = linkEls.get(key);
+    if (!rec) return;
+    const cur = String(rec.g.getAttribute("class") || "");
+    const base = cur.replace(/\s*pxd-link--selected/g, "");
+    const next = on ? `${base} pxd-link--selected` : base;
+    if (cur !== next) setClass(rec.g, next);
+    if (Boolean(rec.label.classList.contains("pxd-label--selected")) !== on) {
       rec.label.classList.toggle("pxd-label--selected", on);
+    }
+  };
+  const setSelection = ({ edge = null, link = null } = {}) => {
+    const prevEdge = selectionReady ? pickedEdge : null;
+    const prevLink = selectionReady ? pickedLink : null;
+    if (selectionReady && prevEdge === edge && prevLink === link) return;
+    selectionReady = true;
+    pickedEdge = edge;
+    pickedLink = link;
+    if (prevEdge !== edge) {
+      if (prevEdge) markEdge(prevEdge, false);
+      if (edge) markEdge(edge, true);
+    }
+    if (prevLink !== link) {
+      if (prevLink) markLink(prevLink, false);
+      if (link) markLink(link, true);
     }
   };
 

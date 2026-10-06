@@ -1,13 +1,24 @@
 import pkg from "../package.json" with { type: "json" };
 import { createHost } from "./host/roam.js";
 import { acquireSession as acquireSessionDefault } from "./session.js";
-import { clearPinnedToast, mountBoardView } from "./view/board-view.js";
+import { clearPinnedToast, mountBoardView, viewportStorageId } from "./view/board-view.js";
+import {
+  captureSketch,
+  createSketchStore,
+  paintSketch,
+  removeSketch,
+  resolveSketchViewport,
+  SKETCH_DEBOUNCE_MS,
+  SKETCH_HOLD_MS,
+  SKETCH_ROOT_BORDER,
+} from "./view/sketch.js";
 import { isTextEntryTarget } from "./view/cards.js";
 import { assignDeepLink, hashFromUrl, pageUidFromHash, pxdTarget } from "./model/deeplink.js";
 import { openAddToBoard } from "./view/board-picker.js";
 import { createRelChips } from "./relchips.js";
 import { createBoardChips } from "./boardchips.js";
 import { createCardChips } from "./cardchips.js";
+import { createPrefetch } from "./prefetch.js";
 import { createResurface } from "./view/resurface-panel.js";
 import { closeOpenWhyPopovers } from "./view/why-pop.js";
 import { createCardCache } from "./model/card-cache.js";
@@ -45,7 +56,9 @@ import {
   storedLayoutIn,
   writeEnhancedUidCache,
 } from "./discovery.js";
-import { normalizeSetting, onSettingsChange, readSettings, SETTING_IDS } from "./settings.js";
+import { bindSpeedFlagSource, normalizeSetting, noteSpeedFlags, notedSpeedFlags, onSettingsChange, parseSpeedFlags, readSettings, SETTING_IDS } from "./settings.js";
+import { createPerfLog, perfNow } from "./perf-log.js";
+import { createShiftWatch } from "./view/shift-watch.js";
 
 // Roam reports `extension.version` as "DEV" for URL / local developer installs,
 // so the toolbar badge is stamped from package.json first.
@@ -56,6 +69,9 @@ export const RECONCILE_INTERVAL_MS = 400;
 // An enhance command, or hashchange/popstate, clears that classification.
 const NEGATIVE_TTL_MS = 30000;
 const MOUNT_BACKOFF_MS = [5000, 30000];
+// FAST-5. Navigation keeps this many canvases, off the document, per window.
+const KEEP_ALIVE_CAP = 2;
+const KEEP_ALIVE_MS = 300000;
 const LEGACY_METADATA_PAGE = "plexus-diagram/metadata";
 const TITLE_PANEL_CLASS = "rm-diagram-title-panel";
 const NEW_BOARD_STRING = "{{[[diagram]]:Untitled board}}";
@@ -184,8 +200,33 @@ export async function installPlexusDiagram({
   if (!mountView) mountView = mountBoardView;
   const host = injectedHost;
   const acquireSession = injectedAcquire;
+  const perfLog = createPerfLog();
+  perfLog.bind(host.stats);
+  const shiftWatch = createShiftWatch();
+  // Same graph string the viewport store uses. host.graph wins when a test or host sets it.
+  const sketchStore = createSketchStore({
+    storage,
+    graph: () => {
+      if (typeof host.graph === "string" && host.graph) return host.graph;
+      try {
+        const match = /#\/app\/([^/?#]+)/.exec(String(globalThis.location?.hash || ""));
+        if (match) return decodeURIComponent(match[1]);
+      } catch { /* the hash is not a graph name */ }
+      return graphFromHash();
+    },
+    enabled: () => notedSpeedFlags().sketch !== false,
+  });
+  const sketchTimers = new Map();
+  const sketchHandoffs = new Map();
 
   let settings = readSettings(extensionAPI);
+  // Hidden speed-flags. The panel never lists this id, so the next gate re-reads the store.
+  bindSpeedFlagSource(() => {
+    try { return extensionAPI?.settings?.get?.(SETTING_IDS.speedFlags); }
+    catch { return null; }
+  });
+  lifecycle.add(() => bindSpeedFlagSource(null));
+  const speedFlags = () => notedSpeedFlags();
   // Sessions outlive a settings change (they are ref-counted and kept), so they read through this accessor.
   const liveSettings = { get: (id) => settings[id] };
   let stopped = false;
@@ -237,6 +278,16 @@ export async function installPlexusDiagram({
     pageUid: () => openPageUid(),
     onOpen: ({ boardUid, cardUid, sidebar }) => { void openPublic(boardUid, { card: cardUid, sidebar }); },
     onPreview: ({ boardUid, cardUid }) => chipPreview(boardUid, cardUid),
+  });
+  // FAST-4. Chip hovers, crumbs, nested boards, and known refs share this warm. FAST-9 gates it with `enabled`.
+  const schedulePrefetch = createPrefetch({
+    doc,
+    cache: cardCache,
+    warm: (uid) => host.prefetchBoard?.(uid),
+    isWarm: (uid) => host.prefetchBoard?.warm?.(uid) === true,
+    refBoards: (uid) => host.prefetchBoard?.refBoards?.(uid) || [],
+    pageBoards: (title) => host.prefetchBoard?.pageBoards?.(title) || [],
+    enabled: () => speedFlags().prefetch !== false,
   });
   const publishCards = (board) => {
     if (board) {
@@ -292,6 +343,7 @@ export async function installPlexusDiagram({
   lifecycle.add(() => relChips.dispose());
   lifecycle.add(() => boardChips.dispose());
   lifecycle.add(() => cardChips.dispose());
+  lifecycle.add(() => schedulePrefetch.dispose());
   lifecycle.add(() => resurface.dispose());
   const editSeen = new Map();
   lifecycle.add(() => previewBoards.clear());
@@ -416,6 +468,7 @@ export async function installPlexusDiagram({
   lifecycle.add(() => {
     for (const native of [...convertButtons.keys()]) dropConvert(native);
     for (const rec of [...mounts.values()]) unmount(rec);
+    disposeAlive();
     for (const observer of portalObservers.values()) observer.disconnect();
     portalObservers.clear();
     // Outline copies skipped by consider() carry a mark that no mount owns; clear it so unload leaves nothing.
@@ -609,7 +662,299 @@ export async function installPlexusDiagram({
     try { storage.setItem(`plexus-diagram:collapsed:${graphFromHash()}:${uid}`, "1"); } catch { /* storage is a cache only */ }
   }
 
-  function mountRecView(rec, { autofocus = false, viewport = null } = {}) {
+  function sketchGesturing(rec) {
+    return rec?.view?.root?.classList?.contains?.("pxd-root--gesturing") === true;
+  }
+
+  function clearSketchTimer(rec) {
+    const timer = sketchTimers.get(rec);
+    if (timer) clearTimeout(timer);
+    sketchTimers.delete(rec);
+  }
+
+  function storedSketchViewport(rec, uid) {
+    try {
+      const id = viewportStorageId(rec?.native, uid, (blockId) => host.blockString?.(blockId));
+      let stored = host.viewports?.get?.(id) || null;
+      if (!stored && id !== uid && String(id).startsWith(`${uid}:embed:`)) stored = host.viewports?.get?.(uid) || null;
+      return stored;
+    } catch { return null; }
+  }
+
+  function sketchMountSize(rec) {
+    const box = rec?.mountEl?.getBoundingClientRect?.();
+    if (box && box.width > 0 && box.height > 0) return { width: box.width, height: box.height };
+    return null;
+  }
+
+  // The absolute sketch needs the mount as its containing block. Leave a positioned mount alone.
+  function anchorMount(mountEl) {
+    const pos = mountEl?.style?.position;
+    if (mountEl?.style && (pos == null || pos === "" || pos === "static")) mountEl.style.position = "relative";
+  }
+
+  function showSketch(rec, initialViewport) {
+    if (speedFlags().sketch === false) return null;
+    try {
+      const uid = currentUid(rec);
+      const sketch = sketchStore.get(uid);
+      if (!sketch?.items?.length && !sketch?.edges?.length) return null;
+      const vp = resolveSketchViewport({
+        stored: storedSketchViewport(rec, uid),
+        initial: initialViewport,
+        board: rec.session?.board,
+        size: sketchMountSize(rec),
+      });
+      anchorMount(rec.mountEl);
+      const layer = paintSketch(doc, rec.mountEl, sketch, vp, { inset: rec.fullscreen ? 0 : SKETCH_ROOT_BORDER });
+      return layer ? vp : null;
+    } catch {
+      try { removeSketch(rec?.mountEl); } catch { /* the live mount still proceeds */ }
+      return null;
+    }
+  }
+
+  function forgetSketch(rec) {
+    if (!rec) return;
+    clearSketchTimer(rec);
+    cancelSketchHandoff(rec);
+  }
+
+  // A stand-in is not a settled board. Saves wait until the live view is in.
+  function liveSketchView(rec) {
+    return Boolean(rec?.view) && rec.view.sketchStandIn !== true;
+  }
+
+  function writeSketch(rec) {
+    sketchTimers.delete(rec);
+    if (speedFlags().sketch === false) return;
+    if (stopped || !rec || mounts.get(rec.native) !== rec || !liveSketchView(rec) || !rec.session?.board) return;
+    if (sketchGesturing(rec)) { scheduleSketch(rec); return; }
+    try {
+      const sketch = captureSketch(rec.session.board);
+      const uid = currentUid(rec);
+      if (sketch && uid) sketchStore.set(uid, sketch);
+    } catch { /* a bad board must not throw out of the timer */ }
+  }
+
+  function scheduleSketch(rec) {
+    clearSketchTimer(rec);
+    if (speedFlags().sketch === false) return;
+    if (stopped || !rec || mounts.get(rec.native) !== rec || !liveSketchView(rec)) return;
+    const timer = setTimeout(() => writeSketch(rec), SKETCH_DEBOUNCE_MS);
+    timer.unref?.();
+    sketchTimers.set(rec, timer);
+  }
+
+  function saveSketchNow(rec) {
+    clearSketchTimer(rec);
+    if (speedFlags().sketch === false) return;
+    if (!rec?.view || !rec.session?.board || sketchGesturing(rec)) return;
+    try {
+      const sketch = captureSketch(rec.session.board);
+      const uid = currentUid(rec);
+      if (!sketch || !uid) return;
+      sketchStore.set(uid, sketch);
+      sketchStore.flushAll();
+    } catch { /* storage is optional */ }
+  }
+
+  const SKETCH_INPUT = ["keydown", "keyup", "pointerdown", "pointerup"];
+
+  function clearSketchHandoffTimers(handoff) {
+    if (!handoff) return;
+    if (handoff.rafId != null) {
+      try { globalThis.cancelAnimationFrame?.(handoff.rafId); } catch { /* stub */ }
+      handoff.rafId = null;
+    }
+    if (handoff.holdRaf != null) {
+      try { globalThis.cancelAnimationFrame?.(handoff.holdRaf); } catch { /* stub */ }
+      handoff.holdRaf = null;
+    }
+    for (const key of ["timeoutId", "holdTimer", "soonTimer"]) {
+      if (handoff[key] == null) continue;
+      clearTimeout(handoff[key]);
+      handoff[key] = null;
+    }
+  }
+
+  function detachSketchInput(handoff) {
+    const fn = handoff?.onEvent;
+    if (!fn) return;
+    handoff.onEvent = null;
+    if (typeof handoff.win?.removeEventListener !== "function") return;
+    for (const type of SKETCH_INPUT) {
+      try { handoff.win.removeEventListener(type, fn, true); } catch { /* already gone */ }
+    }
+  }
+
+  function cancelSketchHandoff(rec) {
+    const handoff = rec ? sketchHandoffs.get(rec) : null;
+    if (handoff) {
+      handoff.cancelled = true;
+      sketchHandoffs.delete(rec);
+      clearSketchHandoffTimers(handoff);
+      detachSketchInput(handoff);
+      try { handoff.observer?.disconnect?.(); } catch { /* already gone */ }
+      handoff.observer = null;
+    }
+    if (rec) try { removeSketch(rec.mountEl); } catch { /* already gone */ }
+  }
+
+  // Only input aimed at this board's own mount is held. Typing in a Roam block or clicking
+  // elsewhere while a board loads must reach Roam untouched.
+  function sketchHandoffOwns(handoff, event) {
+    const mount = handoff.rec?.mountEl;
+    const target = event?.target;
+    return Boolean(target && mount?.contains?.(target));
+  }
+
+  function snapshotSketchEvent(event) {
+    return {
+      type: event.type,
+      key: event.key,
+      code: event.code,
+      repeat: event.repeat,
+      shiftKey: event.shiftKey,
+      altKey: event.altKey,
+      metaKey: event.metaKey,
+      ctrlKey: event.ctrlKey,
+      button: event.button,
+      buttons: event.buttons,
+      clientX: event.clientX,
+      clientY: event.clientY,
+      pointerId: event.pointerId,
+      pointerType: event.pointerType,
+      target: event.target ?? null,
+    };
+  }
+
+  function makeSketchEvent(snap) {
+    const init = { bubbles: true, cancelable: true };
+    for (const key of ["key", "code", "repeat", "shiftKey", "altKey", "metaKey", "ctrlKey", "button", "buttons", "clientX", "clientY", "pointerId", "pointerType"]) {
+      if (snap[key] != null) init[key] = snap[key];
+    }
+    const Ctor = String(snap.type || "").startsWith("key") ? globalThis.KeyboardEvent
+      : String(snap.type || "").startsWith("pointer") ? globalThis.PointerEvent
+      : globalThis.MouseEvent;
+    if (typeof Ctor === "function") {
+      try { return new Ctor(snap.type, init); } catch { /* plain event below */ }
+    }
+    return {
+      ...init,
+      type: snap.type,
+      preventDefault() {},
+      stopPropagation() {},
+      stopImmediatePropagation() {},
+    };
+  }
+
+  function attachSketchInput(handoff) {
+    handoff.queue = [];
+    const fn = (event) => {
+      if (!event || handoff.cancelled || handoff.mounted) return;
+      if (!sketchHandoffOwns(handoff, event)) return;
+      handoff.queue.push(snapshotSketchEvent(event));
+      try { event.stopPropagation?.(); } catch { /* frozen event */ }
+      try { event.stopImmediatePropagation?.(); } catch { /* frozen event */ }
+    };
+    handoff.onEvent = fn;
+    if (typeof handoff.win?.addEventListener !== "function") return;
+    for (const type of SKETCH_INPUT) {
+      try { handoff.win.addEventListener(type, fn, true); } catch { /* the window cannot listen */ }
+    }
+  }
+
+  function replaySketchInput(handoff, view) {
+    const queued = handoff.queue?.splice(0) || [];
+    for (const snap of queued) {
+      const keyEvent = String(snap.type || "").startsWith("key");
+      // Board keys listen on window in capture phase; pointers go to the live root.
+      const target = keyEvent
+        ? handoff.win
+        : (typeof view?.root?.dispatchEvent === "function" ? view.root : handoff.rec?.mountEl);
+      if (typeof target?.dispatchEvent !== "function") continue;
+      try { target.dispatchEvent(makeSketchEvent(snap)); } catch { /* replay is best-effort */ }
+    }
+  }
+
+  function sketchStandIn(handoff) {
+    const queued = [];
+    const call = (name, args) => {
+      const live = handoff.view;
+      if (live && typeof live[name] === "function") return live[name](...args);
+      queued.push([name, args]);
+    };
+    handoff.flushQueued = () => {
+      const live = handoff.view;
+      if (!live) return;
+      for (const [name, args] of queued.splice(0)) {
+        try { live[name]?.(...args); } catch { /* the live view rejected a queued call */ }
+      }
+    };
+    return {
+      sketchStandIn: true,
+      get root() { return handoff.view?.root ?? null; },
+      viewport() {
+        try { return handoff.view?.viewport?.() ?? handoff.vp ?? null; } catch { return handoff.vp ?? null; }
+      },
+      state() { try { return handoff.view?.state?.() ?? null; } catch { return null; } },
+      cameraRect() { try { return handoff.view?.cameraRect?.() ?? null; } catch { return null; } },
+      dispose() {
+        queued.length = 0;
+        const live = handoff.view;
+        handoff.view = null;
+        cancelSketchHandoff(handoff.rec);
+        try { live?.dispose?.(); } catch { /* already gone */ }
+      },
+      setSettings(value) { call("setSettings", [value]); },
+      setFullscreen(value) { call("setFullscreen", [value]); },
+      focusUid(uid) { return call("focusUid", [uid]); },
+      applyShow(spec) { call("applyShow", [spec]); },
+      quiet(on) { call("quiet", [on]); },
+    };
+  }
+
+  function armSketchHold(handoff) {
+    const rec = handoff.rec;
+    const finish = () => cancelSketchHandoff(rec);
+    const look = () => {
+      if (handoff.cancelled || handoff.holdRaf != null || handoff.soonTimer != null) return;
+      if (!rec.mountEl?.querySelector?.(".pxd-item")) return;
+      try { handoff.observer?.disconnect?.(); } catch { /* already gone */ }
+      handoff.observer = null;
+      const raf = globalThis.requestAnimationFrame;
+      if (typeof raf === "function") {
+        handoff.holdRaf = raf(() => {
+          handoff.holdRaf = null;
+          finish();
+        });
+        return;
+      }
+      const timer = setTimeout(() => {
+        handoff.soonTimer = null;
+        finish();
+      }, 0);
+      timer.unref?.();
+      handoff.soonTimer = timer;
+    };
+    look();
+    if (!handoff.cancelled && handoff.holdRaf == null && handoff.soonTimer == null && typeof MutationObserver === "function" && rec.mountEl) {
+      try {
+        const observer = new MutationObserver(look);
+        observer.observe(rec.mountEl, { childList: true, subtree: true });
+        handoff.observer = observer;
+      } catch { /* the 2s timeout still removes the sketch */ }
+    }
+    const timer = setTimeout(() => {
+      handoff.holdTimer = null;
+      finish();
+    }, SKETCH_HOLD_MS);
+    timer.unref?.();
+    handoff.holdTimer = timer;
+  }
+
+  function callMountView(rec, autofocus, viewport) {
     return mountView({
       host,
       session: rec.session,
@@ -628,7 +973,123 @@ export async function installPlexusDiagram({
       onHistoryBack: () => historyMove(rec, "back"),
       onHistoryForward: () => historyMove(rec, "forward"),
       onSetDefaults: (patch) => setDefaults(patch),
+      perfLog,
+      lifecycle,
     });
+  }
+
+  function finishLive(rec, view, logging, t0) {
+    rec.view = view;
+    try { scheduleSketch(rec); } catch { /* the live board is already up */ }
+    if (logging) perfLog.watchOpen(rec.mountEl, t0);
+    return view;
+  }
+
+  function runSketchMount(handoff, standIn, { autofocus, viewport, logging, t0 }) {
+    const rec = handoff.rec;
+    if (handoff.cancelled || stopped || mounts.get(rec.native) !== rec) return;
+    handoff.mounted = true;
+    detachSketchInput(handoff);
+    let view;
+    try {
+      view = callMountView(rec, autofocus, viewport);
+    } catch (error) {
+      handoff.cancelled = true;
+      clearSketchHandoffTimers(handoff);
+      detachSketchInput(handoff);
+      sketchHandoffs.delete(rec);
+      try { removeSketch(rec.mountEl); } catch { /* already gone */ }
+      try {
+        noteMountFail(currentUid(rec), error);
+        unmount(rec);
+      } catch { /* already down */ }
+      return;
+    }
+    if (handoff.cancelled || stopped || mounts.get(rec.native) !== rec || rec.view !== standIn) {
+      try { view?.dispose?.(); } catch { /* already gone */ }
+      try { removeSketch(rec.mountEl); } catch { /* already gone */ }
+      return;
+    }
+    handoff.view = view;
+    try { handoff.flushQueued?.(); } catch { /* a queued call can fail closed */ }
+    if (handoff.cancelled || stopped || mounts.get(rec.native) !== rec || rec.view !== standIn) {
+      try { view?.dispose?.(); } catch { /* already gone */ }
+      try { removeSketch(rec.mountEl); } catch { /* already gone */ }
+      return;
+    }
+    finishLive(rec, view, logging, t0);
+    replaySketchInput(handoff, view);
+    try { armSketchHold(handoff); } catch { cancelSketchHandoff(rec); }
+  }
+
+  function beginSketchHandoff(rec, vp, opts) {
+    const handoff = {
+      rec,
+      vp,
+      win,
+      cancelled: false,
+      mounted: false,
+      queue: [],
+      view: null,
+      rafId: null,
+      timeoutId: null,
+      holdRaf: null,
+      holdTimer: null,
+      soonTimer: null,
+      observer: null,
+    };
+    sketchHandoffs.set(rec, handoff);
+    const standIn = sketchStandIn(handoff);
+    rec.view = standIn;
+    attachSketchInput(handoff);
+    const start = () => {
+      handoff.timeoutId = null;
+      runSketchMount(handoff, standIn, opts);
+    };
+    const raf = globalThis.requestAnimationFrame;
+    if (typeof raf === "function") {
+      handoff.rafId = raf(() => {
+        handoff.rafId = null;
+        if (handoff.cancelled || stopped || mounts.get(rec.native) !== rec) return;
+        const timer = setTimeout(start, 0);
+        timer.unref?.();
+        handoff.timeoutId = timer;
+      });
+    } else {
+      const timer = setTimeout(start, 0);
+      timer.unref?.();
+      handoff.timeoutId = timer;
+    }
+    return standIn;
+  }
+
+  // Wake and nested opens both come through here. The clock starts at entry.
+  // A stored sketch paints in this turn, then one frame and a macrotask pass
+  // before mountView, so the browser can show it. The sketch stays until the
+  // live world has a .pxd-item and one more frame, or SKETCH_HOLD_MS. It is
+  // not a .pxd-item, so the open sample still waits for a live card.
+  // No sketch: mount in this turn.
+  function mountRecView(rec, { autofocus = false, viewport = null } = {}) {
+    speedFlags();
+    const logging = settings[SETTING_IDS.speedLog] === true;
+    const t0 = logging ? perfNow() : 0;
+    cancelSketchHandoff(rec);
+    const vp = showSketch(rec, viewport);
+    if (!vp) {
+      let view;
+      try {
+        view = callMountView(rec, autofocus, viewport);
+      } catch (error) {
+        removeSketch(rec.mountEl);
+        throw error;
+      }
+      removeSketch(rec.mountEl);
+      const live = finishLive(rec, view, logging, t0);
+      if (logging) shiftWatch.watchMount(rec.mountEl);
+      return live;
+    }
+    if (logging) shiftWatch.watchMount(rec.mountEl);
+    return beginSketchHandoff(rec, vp, { autofocus, viewport, logging, t0 });
   }
 
   async function setDefaults(patch) {
@@ -659,6 +1120,7 @@ export async function installPlexusDiagram({
       else unmount(rec);
     });
     const offChange = session.on?.("change", (diff) => {
+      scheduleSketch(rec);
       if (diff?.structural && session.board) {
         relChips.noteBoard(session.board);
         publishCards(session.board);
@@ -765,9 +1227,235 @@ export async function installPlexusDiagram({
     return true;
   }
 
+  // Per window, keyed by mount + board uid so the main column and the sidebar
+  // never share a view. Only navigate parks a canvas here. Hibernate disposes it.
+  const kept = [];
+
+  // A canvas we can lift off the document. A sketch stand-in, a fullscreen board,
+  // a board that holds focus, or a view with no root is disposed instead.
+  function canKeep(rec) {
+    if (speedFlags().keepAlive === false) return false;
+    const view = rec?.view;
+    if (!view || view.sketchStandIn === true) return false;
+    if (rec.fullscreen || holdsFocus(rec)) return false;
+    const root = view.root;
+    return Boolean(root && typeof root.remove === "function");
+  }
+
+  function disarm(rec) {
+    try { rec.off?.(); } catch { /* ignore */ }
+    rec.off = null;
+  }
+
+  function disposePair(view, session, paused) {
+    try { view?.dispose?.(); } catch (error) { console.warn("[plexus-diagram] view dispose failed", error); }
+    try {
+      if (paused) session?.release?.({ paused: true });
+      else session?.release?.();
+    } catch (error) { console.warn("[plexus-diagram] session release failed", error); }
+  }
+
+  function dropKept(entry) {
+    const at = kept.indexOf(entry);
+    if (at >= 0) kept.splice(at, 1);
+    if (entry.timer != null) {
+      clearTimeout(entry.timer);
+      entry.timer = null;
+    }
+    disposePair(entry.view, entry.session, true);
+  }
+
+  function dropKeptFor(rec) {
+    for (const entry of kept.filter((item) => item.rec === rec)) dropKept(entry);
+  }
+
+  function trimKept() {
+    while (kept.length > KEEP_ALIVE_CAP) dropKept(kept[0]);
+  }
+
+  function remember(rec, uid, view, session) {
+    for (const entry of kept.filter((item) => item.rec === rec && item.uid === uid)) dropKept(entry);
+    const entry = { rec, uid, view, session, timer: null };
+    entry.timer = setTimeout(() => {
+      entry.timer = null;
+      if (kept.includes(entry)) dropKept(entry);
+    }, KEEP_ALIVE_MS);
+    try { entry.timer.unref?.(); } catch { /* a fake timer has no unref */ }
+    kept.push(entry);
+    trimKept();
+  }
+
+  function suspendView(view) {
+    try { view?.suspend?.(); } catch { /* observers are best-effort */ }
+    try { view?.root?.remove?.(); } catch { /* already off the document */ }
+  }
+
+  function resumeView(rec, view) {
+    const root = view?.root;
+    if (root && rec.mountEl && root.parentElement !== rec.mountEl) {
+      try { rec.mountEl.append(root); } catch { /* the mount is gone */ }
+    }
+    try { view?.resume?.(); } catch { /* already live */ }
+  }
+
+  // Roam page navigation removes the native element. The current canvas stays off
+  // the document, one per board and kind, until that same diagram comes back.
+  // The crumb pool above is separate: it is keyed by the mount that is still on the page.
+  const alive = [];
+
+  function poolKind(native) {
+    if (inRightSidebar(native)) return "sidebar";
+    try {
+      if (embedOwnerUid(native, (id) => host.blockString?.(id))) return "embed";
+    } catch { /* a host without block strings is a main board */ }
+    return "main";
+  }
+
+  function pageLeft(rec) {
+    return rec?.native?.isConnected === false || rec?.mountEl?.isConnected === false;
+  }
+
+  function fullscreenPinned(rec) {
+    if (rec?.fullscreen) return true;
+    const uid = rec?.uid;
+    const shown = currentUid(rec);
+    for (const other of mounts.values()) {
+      if (other === rec || !other.fullscreen) continue;
+      if (other.native?.isConnected === false || other.mountEl?.isConnected === false) continue;
+      if (other.uid === uid || other.uid === shown || currentUid(other) === uid || currentUid(other) === shown) return true;
+    }
+    return false;
+  }
+
+  function canPool(rec) {
+    if (speedFlags().keepAlive === false) return false;
+    if (stopped || !rec || fullscreenPinned(rec)) return false;
+    const view = rec.view;
+    if (!view || view.sketchStandIn === true || typeof view.suspend !== "function") return false;
+    if (!view.root || typeof view.root.remove !== "function") return false;
+    if (!rec.session?.board) return false;
+    return true;
+  }
+
+  function aliveUsable(pooled) {
+    return Boolean(pooled?.session?.board && pooled.view?.root && pooled.view.sketchStandIn !== true);
+  }
+
+  function dropAlive(entry) {
+    const at = alive.indexOf(entry);
+    if (at >= 0) alive.splice(at, 1);
+    if (entry.timer != null) {
+      clearTimeout(entry.timer);
+      entry.timer = null;
+    }
+    disposePair(entry.view, entry.session, true);
+  }
+
+  function trimAlive() {
+    while (alive.length > KEEP_ALIVE_CAP) dropAlive(alive[0]);
+  }
+
+  function rememberAlive(rec, viewport, crumbs) {
+    const boardUid = rec.uid;
+    const kind = rec.poolKind || poolKind(rec.native);
+    for (const entry of alive.filter((item) => item.boardUid === boardUid && item.kind === kind)) dropAlive(entry);
+    const entry = { view: rec.view, session: rec.session, boardUid, kind, viewport, crumbs, timer: null };
+    entry.timer = setTimeout(() => {
+      entry.timer = null;
+      if (alive.includes(entry)) dropAlive(entry);
+    }, KEEP_ALIVE_MS);
+    try { entry.timer.unref?.(); } catch { /* a fake timer has no unref */ }
+    alive.push(entry);
+    trimAlive();
+  }
+
+  function takeAlive(boardUid, kind) {
+    const at = alive.findIndex((entry) => entry.boardUid === boardUid && entry.kind === kind);
+    if (at < 0) return null;
+    const entry = alive[at];
+    alive.splice(at, 1);
+    if (entry.timer != null) {
+      clearTimeout(entry.timer);
+      entry.timer = null;
+    }
+    return entry;
+  }
+
+  function disposeAlive() {
+    for (const entry of [...alive]) dropAlive(entry);
+  }
+
+  // Same view root in the new mount. No sketch, no mountRecView. One pull on resume.
+  function adoptAlive(rec, pooled) {
+    rec.session = pooled.session;
+    if (pooled.crumbs?.length) rec.crumbs = crumbCopy(pooled.crumbs);
+    rec.view = pooled.view;
+    resumeView(rec, pooled.view);
+    try { pooled.view?.restoreViewport?.(pooled.viewport); } catch { /* the camera is optional */ }
+    try { pooled.view?.setSettings?.(settings); } catch { /* settings are optional */ }
+    try { rec.session?.resumeWatches?.(); } catch { /* the watch is already live */ }
+    rec.off = watchRec(rec);
+    publishCards(rec.session?.board);
+    try { scheduleSketch(rec); } catch { /* the live board is already up */ }
+    if (settings[SETTING_IDS.speedLog] === true) perfLog.watchOpen(rec.mountEl, perfNow());
+  }
+
+  function claimAlive(rec, boardUid, native) {
+    const pooled = takeAlive(boardUid, poolKind(native));
+    if (aliveUsable(pooled)) {
+      adoptAlive(rec, pooled);
+      return true;
+    }
+    if (pooled) disposePair(pooled.view, pooled.session, true);
+    return false;
+  }
+
+  // Park the showing canvas. The pool holds its session ref, so release is not called.
+  function detachCurrent(rec) {
+    const view = rec.view;
+    const session = rec.session;
+    const uid = currentUid(rec);
+    const keep = canKeep(rec);
+    disarm(rec);
+    rec.view = null;
+    rec.session = null;
+    if (!keep || !uid || !view || !session) {
+      disposePair(view, session, false);
+      return;
+    }
+    try { session.pauseWatches?.(); } catch { /* a session without watches just stays held */ }
+    suspendView(view);
+    remember(rec, uid, view, session);
+  }
+
+  function takeKept(rec, uid) {
+    const at = kept.findIndex((entry) => entry.rec === rec && entry.uid === uid);
+    if (at < 0) return null;
+    const entry = kept[at];
+    kept.splice(at, 1);
+    if (entry.timer != null) {
+      clearTimeout(entry.timer);
+      entry.timer = null;
+    }
+    return entry;
+  }
+
+  // Same view root, no sketch and no mountRecView. The open sample is this turn.
+  function reattach(rec, view) {
+    rec.view = view;
+    resumeView(rec, view);
+    try { view?.setSettings?.(settings); } catch { /* settings are optional */ }
+    try { rec.session?.resumeWatches?.(); } catch { /* the watch is already live */ }
+    rec.off = watchRec(rec);
+    publishCards(rec.session?.board);
+    try { scheduleSketch(rec); } catch { /* the live board is already up */ }
+    if (settings[SETTING_IDS.speedLog] === true) perfLog.watchOpen(rec.mountEl, perfNow());
+  }
+
   // In-place navigation between nested boards: same mount element, native surface and fullscreen state,
   // only the view and session are swapped. Deferred so the old view's handler stack unwinds first.
   // `commit` records history only once the target session is in hand.
+  // Leaving a board detaches its view when it can be kept. Coming back reattaches that view.
   function navigate(rec, next, viewport, commit) {
     queueMicrotask(() => {
       if (stopped || mounts.get(rec.native) !== rec || !next.length) return;
@@ -777,6 +1465,26 @@ export async function installPlexusDiagram({
       if (!virtual && !readEnhanced(host.api, target)) {
         // Never enhance a native diagram from here; Roam opens it.
         try { Promise.resolve(host.openBlock?.(target)).catch(() => {}); } catch { /* host unavailable */ }
+        return;
+      }
+      let pooled = takeKept(rec, target);
+      if (pooled && !pooled.session?.board) {
+        disposePair(pooled.view, pooled.session, true);
+        pooled = null;
+      }
+      if (pooled) {
+        try { commit?.(); } catch { /* history is optional */ }
+        saveSketchNow(rec);
+        forgetSketch(rec);
+        detachCurrent(rec);
+        rec.session = pooled.session;
+        rec.crumbs = next;
+        try {
+          reattach(rec, pooled.view);
+        } catch (error) {
+          noteMountFail(rec.uid, error);
+          unmount(rec);
+        }
         return;
       }
       let session;
@@ -791,10 +1499,9 @@ export async function installPlexusDiagram({
         return;
       }
       try { commit?.(); } catch { /* history is optional */ }
-      try { rec.off?.(); } catch { /* ignore */ }
-      rec.off = null;
-      try { rec.view?.dispose?.(); } catch (error) { console.warn("[plexus-diagram] view dispose failed", error); }
-      try { rec.session?.release?.(); } catch (error) { console.warn("[plexus-diagram] session release failed", error); }
+      saveSketchNow(rec);
+      forgetSketch(rec);
+      detachCurrent(rec);
       rec.session = session;
       rec.crumbs = next;
       try {
@@ -830,6 +1537,8 @@ export async function installPlexusDiagram({
       forward: [],
       fullscreen: false,
       off: null,
+      // Captured while the native is still connected. Page leave detaches it first.
+      poolKind: poolKind(native),
     };
     setClassToken(native, NATIVE_HIDDEN_CLASS, true);
     if (titlePanel) titlePanel.style.display = "none";
@@ -849,12 +1558,14 @@ export async function installPlexusDiagram({
       return rec;
     }
     try {
-      rec.session = acquireSession(currentUid(rec), { host, settings: liveSettings, ...virtualOptions(virtual) });
-      rec.fullscreen = settings[SETTING_IDS.fullscreenOnZoom] !== false
-        && !routeLeftZoomedDiagram(uid);
-      rec.view = mountRecView(rec);
-      rec.off = watchRec(rec);
-      publishCards(rec.session?.board);
+      if (!claimAlive(rec, uid, native)) {
+        rec.session = acquireSession(currentUid(rec), { host, settings: liveSettings, ...virtualOptions(virtual) });
+        rec.fullscreen = settings[SETTING_IDS.fullscreenOnZoom] !== false
+          && !routeLeftZoomedDiagram(uid);
+        rec.view = mountRecView(rec);
+        rec.off = watchRec(rec);
+        publishCards(rec.session?.board);
+      }
     } catch (error) {
       noteMountFail(uid, error);
       unmount(rec);
@@ -921,6 +1632,9 @@ export async function installPlexusDiagram({
   }
   // Only ask Roam when a board sits in a sidebar window; reconcile runs every 400 ms.
   function sidebarWindows() {
+    return null;
+  }
+  function sidebarWindowsFromApi() {
     let any = false;
     for (const rec of mounts.values()) {
       if (sidebarWindowEl(rec.native) || sidebarWindowEl(rec.mountEl)) { any = true; break; }
@@ -931,17 +1645,14 @@ export async function installPlexusDiagram({
       return Array.isArray(list) ? list : null;
     } catch { return null; }
   }
-  function windowIsCollapsed(win, windows) {
+  // The window header's caret says open or closed. Reading it costs nothing; asking Roam for
+  // getWindows() on every 400 ms reconcile tick cost ~6 ms per tick with 140 sidebar windows.
+  function windowIsCollapsed(win) {
     if (!win) return false;
     if (win.classList?.contains?.("rm-sidebar-window--collapsed") || win.classList?.contains?.("collapsed")) return true;
-    const id = win.id || "";
-    if (!id || !Array.isArray(windows)) return false;
-    for (const item of windows) {
-      if (!item) continue;
-      const wid = item["window-id"] || item.windowId || "";
-      // The DOM id is "sidebar-window-<window-id>".
-      if (!wid || (wid !== id && id !== `sidebar-window-${wid}`)) continue;
-      if (item.collapsed === true || item["collapsed?"] === true) return true;
+    for (const child of win.children || []) {
+      if (!child.classList?.contains?.("window-headers")) continue;
+      return Boolean(child.querySelector?.(".rm-caret")?.classList?.contains?.("rm-caret-closed"));
     }
     return false;
   }
@@ -1019,6 +1730,7 @@ export async function installPlexusDiagram({
     else if (rec.seen === false) hibernate(rec);
   }
   function hibernate(rec, { force = false } = {}) {
+    if (speedFlags().parking === false) return;
     if (!rec || rec.dormant || rec.fullscreen || !rec.view) return;
     if (holdsFocus(rec)) return;
     const height = rec.mountEl.getBoundingClientRect?.().height || 0;
@@ -1026,6 +1738,8 @@ export async function installPlexusDiagram({
     const vp = cameraOf(rec);
     if (vp) rec.parkedVp = vp;
     rec.mountEl.style.minHeight = `${Math.max(40, Math.round(height))}px`;
+    saveSketchNow(rec);
+    forgetSketch(rec);
     try { rec.off?.(); } catch { /* ignore */ }
     rec.off = null;
     try { rec.view.dispose(); } catch (error) { console.warn("[plexus-diagram] hibernate failed", error); }
@@ -1033,21 +1747,25 @@ export async function installPlexusDiagram({
     rec.view = null;
     rec.session = null;
     rec.dormant = true;
+    // Parking disposes the pool too. A scrolled-away mount holds no detached session.
+    dropKeptFor(rec);
   }
   function wake(rec) {
     if (!rec || !rec.dormant || stopped || rec.mountEl.isConnected === false) return;
     rec.dormant = false;
     rec.mountEl.style.minHeight = "";
     try {
-      rec.session = acquireSession(currentUid(rec), { host, settings: liveSettings, ...virtualOptions(rec.virtual && virtualUids.has(currentUid(rec))) });
-      if (!rec.session?.board) {
-        rec.session?.release?.();
-        unmount(rec);
-        return;
+      if (!claimAlive(rec, rec.uid, rec.native)) {
+        rec.session = acquireSession(currentUid(rec), { host, settings: liveSettings, ...virtualOptions(rec.virtual && virtualUids.has(currentUid(rec))) });
+        if (!rec.session?.board) {
+          rec.session?.release?.();
+          unmount(rec);
+          return;
+        }
+        rec.view = mountRecView(rec, { viewport: rec.parkedVp || null });
+        rec.off = watchRec(rec);
+        publishCards(rec.session?.board);
       }
-      rec.view = mountRecView(rec, { viewport: rec.parkedVp || null });
-      rec.off = watchRec(rec);
-      publishCards(rec.session?.board);
       if (rec.session.board.virtual) markCollapsed(currentUid(rec));
       else if (!embedOwnerUid(rec.native, (id) => host.blockString?.(id))) collapseOnce(currentUid(rec), rec.native);
       if (currentUid(rec) === rec.uid) migrateLegacy(rec);
@@ -1060,6 +1778,14 @@ export async function installPlexusDiagram({
 
   function unmount(rec) {
     if (!rec || !mounts.has(rec.native)) return;
+    // A zoomed board opens fullscreen. Leaving the page leaves fullscreen first, so that board
+    // can be kept too; fullscreen-on-zoom puts it back when the page returns.
+    if (rec.fullscreen && pageLeft(rec) && rec.view && !rec.view.sketchStandIn) setFullscreen(rec, false);
+    const keep = pageLeft(rec) && canPool(rec);
+    const viewport = keep ? cameraOf(rec) : null;
+    const crumbs = keep ? crumbCopy(rec.crumbs) : null;
+    saveSketchNow(rec);
+    forgetSketch(rec);
     viewportWatch?.unobserve(rec.mountEl);
     recByMount.delete(rec.mountEl);
     mounts.delete(rec.native);
@@ -1075,8 +1801,18 @@ export async function installPlexusDiagram({
       cardChips.scan(doc?.body);
     }
     try { rec.off?.(); } catch { /* ignore */ }
-    try { rec.view?.dispose?.(); } catch (error) { console.warn("[plexus-diagram] view dispose failed", error); }
-    try { rec.session?.release?.(); } catch (error) { console.warn("[plexus-diagram] session release failed", error); }
+    rec.off = null;
+    dropKeptFor(rec);
+    if (keep) {
+      try { rec.session?.pauseWatches?.(); } catch { /* a session without watches just stays held */ }
+      suspendView(rec.view);
+      rememberAlive(rec, viewport, crumbs);
+      rec.view = null;
+      rec.session = null;
+    } else {
+      try { rec.view?.dispose?.(); } catch (error) { console.warn("[plexus-diagram] view dispose failed", error); }
+      try { rec.session?.release?.(); } catch (error) { console.warn("[plexus-diagram] session release failed", error); }
+    }
     rec.mountEl.remove();
     setClassToken(rec.native, NATIVE_HIDDEN_CLASS, false);
     if (rec.titlePanel) rec.titlePanel.style.display = rec.titleDisplay;
@@ -1990,9 +2726,22 @@ export async function installPlexusDiagram({
 
   // ---- settings -------------------------------------------------------------------------------
 
+  function syncSpeedLog() {
+    if (stopped || settings[SETTING_IDS.speedLog] !== true) {
+      perfLog.stop();
+      shiftWatch.stop();
+    } else {
+      perfLog.start({ stats: host.stats, lifecycle });
+      shiftWatch.start({ stats: host.stats, lifecycle, enabled: true });
+    }
+  }
+
   lifecycle.add(onSettingsChange((id, value) => {
     if (stopped) return;
-    settings = { ...settings, [id]: normalizeSetting(id, value) };
+    const next = id === SETTING_IDS.speedFlags ? parseSpeedFlags(value) : normalizeSetting(id, value);
+    settings = { ...settings, [id]: next };
+    if (id === SETTING_IDS.speedFlags) noteSpeedFlags(next);
+    if (id === SETTING_IDS.speedLog) syncSpeedLog();
     if (id === SETTING_IDS.autoEnhance) {
       autoCache.clear();
       negativeUntil.clear();
@@ -2364,8 +3113,13 @@ export async function installPlexusDiagram({
     lifecycle.event(win, "popstate", onNavigate);
   }
   lifecycle.interval(reconcile, RECONCILE_INTERVAL_MS);
+  lifecycle.add(() => {
+    for (const rec of mounts.values()) forgetSketch(rec);
+    sketchStore.dispose();
+  });
   // Registered last so it runs first on dispose: nothing may mount while teardown is in flight.
   lifecycle.add(() => { stopped = true; viewportWatch?.disconnect(); });
+  syncSpeedLog();
   reconcile();
 }
 

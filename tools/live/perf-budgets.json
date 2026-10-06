@@ -1,0 +1,24 @@
+{
+  "40": {
+    "dataCallsPerOpen": 5,
+    "rendersSelect": 0,
+    "rendersDrag": 0,
+    "rendersType": 0,
+    "domMutationsSelect": 421,
+    "domMutationsDrag": 370,
+    "domMutationsType": 0,
+    "listenersPerBoard": 451,
+    "layoutReadsPerPanFrame": 0
+  },
+  "300": {
+    "dataCallsPerOpen": 5,
+    "rendersSelect": 0,
+    "rendersDrag": 0,
+    "rendersType": 0,
+    "domMutationsSelect": 421,
+    "domMutationsDrag": 520,
+    "domMutationsType": 0,
+    "listenersPerBoard": 451,
+    "layoutReadsPerPanFrame": 0
+  }
+}

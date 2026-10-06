@@ -456,6 +456,7 @@ export function colorForLabel(label) {
 
 export function attrNameOf(s) {
   if (typeof s !== "string") return null;
+  if (s.indexOf("::") === -1) return null;
   const m = /^\s*([^:\n]{1,60})::/.exec(s);
   if (!m) return null;
   const name = m[1].trim();

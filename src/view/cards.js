@@ -3,7 +3,7 @@
 // renderBlock / renderPage; we never build <img> or fake editors.
 
 import { placeNearAnchor } from "./avoid.js";
-import { createRowScheduler, isHeavyRow } from "./progressive.js";
+import { createRowScheduler, isHeavyRow, mountFpsFromStamps } from "./progressive.js";
 import { DEFAULT_SIZES, FONT_SIZES, PALETTE, attrNameOf, classifyString, cssColor, firstLine, hexColor, isUntitledBoard, parseBoardTitle, plainText } from "../model/schema.js";
 import { isQueryString } from "../model/query.js";
 import { dueChip, isTaskString, taskAttrId, taskMeta, taskNamesSig } from "../model/tasks.js";
@@ -22,8 +22,9 @@ import { regionRefModel } from "../model/region-card.js";
 import { imageRegionRows, regionBadge } from "../model/region-menu.js";
 import { renderRegionCard, thumbRequest } from "./region-card.js";
 import { copyDrawingPixels, renderDrawingCard } from "./drawing-card.js";
-import { PDF_READER_H, PDF_READER_W, coverModel, embedSplit, readerRule, writeReaderPage } from "../model/pdf.js";
+import { PDF_READER_H, PDF_READER_W, coverModel, coverOuterBox, embedSplit, readerRule, writeReaderPage } from "../model/pdf.js";
 import { paintPdfChipStrip } from "./pdf-chip-strip.js";
+import { notedSpeedFlags, parseSpeedFlags, SETTING_IDS } from "../settings.js";
 
 const SIDES = ["top", "right", "bottom", "left"];
 const CHUNK_MS = 8;
@@ -408,7 +409,16 @@ export function createItemRenderer({
   onPdfPulse = null,
   onPdfOpen = null,
   onEmbedOpen = null,
+  settings: speedSettings = null,
 } = {}) {
+  // Production reads the hidden setting. A test passes `settings` and does not open the panel.
+  const speedOf = () => {
+    if (speedSettings == null) return notedSpeedFlags();
+    if (Object.prototype.hasOwnProperty.call(speedSettings, SETTING_IDS.speedFlags)) {
+      return parseSpeedFlags(speedSettings[SETTING_IDS.speedFlags]);
+    }
+    return parseSpeedFlags(speedSettings);
+  };
   taskBlockOn = (item) => Boolean(bt?.available?.()) && isTaskCard(item);
   let pdfOpenUid = null;
   let pdfLiveUid = null;
@@ -468,8 +478,9 @@ export function createItemRenderer({
   let zoomCache = 1;
   let paused = false;
   let editing = null;
-  let queue = [];
-  let idleHandle = null;
+  let contentSched = null;
+  let frameSample = null;
+  const frameStamps = [];
   let wanted = new Set();
   let lastBoard = null;
   let lastRects = null;
@@ -532,7 +543,33 @@ export function createItemRenderer({
     for (const child of node.children || []) if (child.classList?.contains("pxd-rs__live")) return child;
     return node;
   };
+  // A board item uses its own w/h. A page-row embed has no item and uses the reader box.
+  const embedBoxFor = (uid) => {
+    const item = uid ? lastBoard?.items.get(uid) : null;
+    if (item && (Number(item.w) > 0 || Number(item.h) > 0)) return coverOuterBox({ w: item.w, h: item.h });
+    return coverOuterBox({});
+  };
+  const fitEmbedOuter = (node, box) => {
+    if (!node?.style || !box) return;
+    node.style.width = `${box.w}px`;
+    node.style.height = `${box.h}px`;
+    node.style.boxSizing = "border-box";
+    node.style.overflow = "hidden";
+  };
+  const holdHeight = (node, px) => {
+    if (!node?.style || !(px > 0) || node.style.minHeight) return;
+    node.style.minHeight = `${Math.round(px)}px`;
+  };
+  // Shell height only. Edit mode owns minHeight on the card element.
+  const reserveCardHeight = (rec, item) => {
+    const h = Number(item?.h);
+    if (!rec?.el?.style || !(h > 0) || rec.el.style.height) return;
+    rec.el.style.height = `${Math.round(h)}px`;
+  };
   const armEmbedShield = (node, live) => {
+    if (node?.classList?.contains("pxd-embed-live") && !node.style?.height) {
+      fitEmbedOuter(node, embedBoxFor(node.getAttribute?.("data-pxd-embed")));
+    }
     const syncShield = () => {
       const hit = live.querySelector?.(EMBED_SEL);
       let shield = null;
@@ -601,7 +638,10 @@ export function createItemRenderer({
   const paintLiveEmbed = (node, string, liveUid) => {
     node.classList.add("pxd-embed-live");
     if (liveUid) node.setAttribute("data-pxd-embed", liveUid);
+    const box = embedBoxFor(liveUid);
+    fitEmbedOuter(node, box);
     const live = el("div", "pxd-rs__live", node);
+    fitEmbedOuter(live, box);
     let mountedLive = false;
     if (liveUid && host?.renderBlock) {
       try { host.renderBlock(live, liveUid); mountedLive = true; } catch { mountedLive = false; }
@@ -736,6 +776,10 @@ export function createItemRenderer({
     const node = el("div", cls, parent);
     if (!string) return node;
     const split = embedSplit(String(string), embedOptsFor(uid));
+    if (split.posters.length && speedOf().posters === false) {
+      paintLiveEmbed(node, string, split.posters[0].uid || uid);
+      return node;
+    }
     if (split.posters.length) {
       const hit = pdfOpenUid ? split.posters.find((poster) => (poster.uid || uid) === pdfOpenUid) : null;
       if (hit && lod === "detail") {
@@ -748,7 +792,8 @@ export function createItemRenderer({
       }
       for (const poster of split.posters) {
         const mount = poster.uid || uid;
-        paintEmbedPoster(doc, node, { ...poster, uid: mount }, (id) => openEmbed(id || mount));
+        const painted = paintEmbedPoster(doc, node, { ...poster, uid: mount }, (id) => openEmbed(id || mount));
+        fitEmbedOuter(painted, embedBoxFor(mount));
       }
       return node;
     }
@@ -1284,6 +1329,8 @@ export function createItemRenderer({
       if (rect) position(rec, rect);
     }
     if (chunk.length) placeShells();
+    // A shell built after the open pass still needs its offscreen size. The next gesture must not be the first paint.
+    if (chunk.length && lastContent) paintOffscreen(lastContent.visibleRect);
     if (shellQueue.length && timers?.frame) timers.frame(pumpShells);
   };
   const sync = ({ board, rects, dirty: changed = null, structural = false, view = null }) => {
@@ -1350,6 +1397,7 @@ export function createItemRenderer({
             rec.body?.replaceChildren?.();
             rec.contentKey = null;
             mounted.delete(uid);
+            contentSched?.drop(uid);
             rec.titleRendered = false;
             if (rec.type === "card") { rec.bare = true; rec.el.classList.add("pxd-item--bare"); }
           }
@@ -1466,10 +1514,13 @@ export function createItemRenderer({
       // Task attributes are chips. Their children stay in the block and are never rewritten by Plexus.
       if (skipChildString(s)) continue;
       budget.n += 1;
+      const rowUid = childUid(b);
       const row = el("div", "pxd-block", parent);
-      row.dataset.uid = childUid(b);
-      row.setAttribute("data-pxd-row", childUid(b));
-      const node = renderRowRoot(row, s, "pxd-rs pxd-block__text", childUid(b));
+      row.dataset.uid = rowUid;
+      row.setAttribute("data-pxd-row", rowUid);
+      const posterCount = embedSplit(String(s || ""), embedOptsFor(rowUid)).posters.length;
+      holdHeight(row, posterCount ? embedBoxFor(rowUid).h : KID_ROW_H);
+      const node = renderRowRoot(row, s, "pxd-rs pxd-block__text", rowUid);
       budget.roots.push(node);
       const kids = childKids(b);
       if (kids.length && depth < CONTENT_DEPTH) {
@@ -1481,6 +1532,7 @@ export function createItemRenderer({
 
   const openBoard = (uid) => { if (onOpenBoard) onOpenBoard(uid); else host?.openBlock?.(uid); };
   const commitBoardName = (uid, name) => (onRenameBoard || ((u, n) => session?.renameBoard?.(u, n)))(uid, name);
+
 
   // Board card body: a thumbnail of the child board (padded frame, titled minis, section frames, hairline connections),
   // the item count and, while untitled, a name field. `openUid` is the board the Open button navigates to.
@@ -1641,6 +1693,7 @@ export function createItemRenderer({
     rec.rowIO?.unobserve?.(row.plain);
     rec.rowIOHeavy?.unobserve?.(row.plain);
     if (!row.plain.isConnected) return;
+    holdHeight(row.line, KID_ROW_H);
     const root = renderRowRoot(row.line, row.string, "pxd-rs pxd-block__text", uid);
     row.plain.remove();
     rec.roots.push(root);
@@ -1650,6 +1703,7 @@ export function createItemRenderer({
   };
   const addPlainRow = (rec, line, string, uid) => {
     if (!rec.rowTable) return;
+    holdHeight(line, KID_ROW_H);
     const heavy = isHeavyRow(string);
     const plain = el("div", `pxd-block__text pxd-block__plain${heavy ? " pxd-block__plain--heavy" : ""}`, line);
     plain.textContent = heavy ? "\u2026" : plainText(string);
@@ -1697,6 +1751,7 @@ export function createItemRenderer({
   const startRowSched = (rec) => {
     stopRowSched(rec);
     rec.rowTable = new Map();
+    // Page rows stay on the 8 ms budget. speed-flags.budgetedMount gates card bodies only.
     rec.rowSched = createRowScheduler({ idle: (fn) => idle(fn, true), now, budgetMs: CHUNK_MS, render: (uid) => upgradeRow(rec, uid) });
     const IO = doc.defaultView?.IntersectionObserver || globalThis.IntersectionObserver;
     if (typeof IO !== "function" || !rec.body) return;
@@ -1756,10 +1811,15 @@ export function createItemRenderer({
       fold.setAttribute("aria-expanded", folded ? "false" : "true");
       for (const type of ["pointerdown", "mousedown", "dblclick"]) fold.addEventListener(type, stopEvent);
     }
-    if (embedSplit(s, embedOptsFor(uid)).posters.length) {
+    const posters = embedSplit(s, embedOptsFor(uid)).posters;
+    if (posters.length) {
+      holdHeight(row, embedBoxFor(uid).h);
       const root = renderRoot(line, s, "pxd-rs pxd-block__text", uid);
       if (root.classList?.contains("pxd-embed-live") || root.querySelector?.(".pxd-rs__live")) b.roots.push(root);
-    } else addPlainRow(rec, line, s, uid);
+    } else {
+      holdHeight(line, KID_ROW_H);
+      addPlainRow(rec, line, s, uid);
+    }
     if (!hasKids) return row;
     const wrap = el("div", "pxd-block__children", row);
     let filled = !folded;
@@ -2557,7 +2617,7 @@ export function createItemRenderer({
       const cover = pdfCoverOf(item);
       rec.pdfCover = cover;
       if (editing?.uid !== item.uid && !rec.renaming) rec.header.textContent = String(cover.title || "PDF").slice(0, HEADER_TEXT_MAX);
-      if (pdfReaderBox(item.uid)) budget.roots.push(paintPdfReader(rec, item));
+      if (pdfReaderBox(item.uid) || speedOf().posters === false) budget.roots.push(paintPdfReader(rec, item));
       else paintPdfCover(rec, item, cover);
     } else if (item.kind === "highlight" && item.highlight) {
       paintHighlight(rec, item, budget);
@@ -2771,6 +2831,7 @@ export function createItemRenderer({
   };
 
   const mountContent = (rec, item) => {
+    reserveCardHeight(rec, item);
     mountContentBody(rec, item);
     syncKidsBadge(rec, item);
   };
@@ -2802,26 +2863,53 @@ export function createItemRenderer({
     }
     rec.contentKey = null;
     mounted.delete(uid);
+    contentSched?.drop(uid);
   };
 
-  const pump = (deadline) => {
-    idleHandle = null;
-    if (disposed || paused || !lastBoard) return;
-    const start = now();
-    const has = (deadline && typeof deadline.timeRemaining === "function") ? () => deadline.timeRemaining() > 1 : () => true;
-    while (queue.length && now() - start < CHUNK_MS && has()) {
-      const uid = queue.shift();
-      if (!wanted.has(uid) || mounted.has(uid)) continue;
-      const rec = shells.get(uid);
-      const item = lastBoard.items.get(uid);
-      if (!rec || !item || editing?.uid === uid) continue;
-      if (rec.type === "section") mountSectionTitle(rec, item);
-      else mountContent(rec, item);
-      mounted.delete(uid);
-      mounted.set(uid, now());
-    }
-    if (queue.length) idleHandle = idle(pump);
+  // One card body is one scheduler row. Already mounted bodies return done so renderBlock is not called again.
+  const mountScheduled = (uid) => {
+    if (disposed || paused) return false;
+    if (!wanted.has(uid)) return false;
+    if (mounted.has(uid)) return true;
+    const rec = shells.get(uid);
+    const item = lastBoard?.items.get(uid);
+    if (!rec || !item || editing?.uid === uid) return true;
+    if (rec.type === "section") mountSectionTitle(rec, item);
+    else mountContent(rec, item);
+    mounted.delete(uid);
+    mounted.set(uid, now());
     evict();
+    return true;
+  };
+  contentSched = createRowScheduler({
+    idle: (fn) => idle(fn),
+    now,
+    budgetMs: CHUNK_MS,
+    render: (uid) => mountScheduled(uid),
+    eager: () => speedOf().budgetedMount === false,
+  });
+  const publishMountFps = () => {
+    const fps = mountFpsFromStamps(frameStamps);
+    if (fps == null) return;
+    const bag = host?.stats;
+    if (!bag || typeof bag !== "object") return;
+    bag.mountFps = fps;
+  };
+  const stopFrames = () => {
+    if (typeof frameSample === "function") frameSample();
+    frameSample = null;
+  };
+  // rAF stamps while card bodies are still pending. speed-log stays off; the number lives on host.stats.
+  const armFrames = () => {
+    if (frameSample || disposed || typeof timers?.frame !== "function") return;
+    if (!contentSched.pending()) return;
+    frameSample = timers.frame((t) => {
+      frameSample = null;
+      if (disposed) return;
+      frameStamps.push(Number.isFinite(t) ? t : now());
+      publishMountFps();
+      if (contentSched.pending() > 0) armFrames();
+    });
   };
 
   const evict = () => {
@@ -2874,17 +2962,36 @@ export function createItemRenderer({
     }
     rec.contentKey = null;
     mounted.delete(uid);
+    contentSched?.drop(uid);
+  };
+  const cardHeavy = (item, rec) => {
+    if (!item || item.type === "section") return false;
+    if (isHeavyRow(item.string) || isHeavyRow(rec?.refString)) return true;
+    return item.kind === "image" || item.kind === "pdf" || item.kind === "board" || item.kind === "drawing-ref";
+  };
+  const centreDist = (uid, visibleRect) => {
+    const r = drawnRect(uid, lastRects?.get(uid));
+    if (!r || !visibleRect) return 0;
+    const cx = (Number(visibleRect.x) || 0) + (Number(visibleRect.w) || 0) / 2;
+    const cy = (Number(visibleRect.y) || 0) + (Number(visibleRect.h) || 0) / 2;
+    const dx = (Number(r.x) || 0) + (Number(r.w) || 0) / 2 - cx;
+    const dy = (Number(r.y) || 0) + (Number(r.h) || 0) / 2 - cy;
+    return dx * dx + dy * dy;
   };
   // PERF-3. Keep this call at the start of fillContent. An editing card is never a shell.
+  const cssVar = (style, name) => (typeof style.getPropertyValue === "function" ? style.getPropertyValue(name) : style[name]) || "";
+  // A later pass (gesture resume) must not rewrite a shell that is already right.
   const paintOffscreen = (visibleRect) => {
     for (const [uid, rec] of shells) {
       if (!rec.el || rec.type === "section") continue;
       const rect = drawnRect(uid, lastRects?.get(uid));
       const off = Boolean(visibleRect) && shellOffscreen(uid, rect, visibleRect, { editingUid: editing?.uid ?? null });
-      rec.el.classList.toggle("pxd-item--offscreen", off);
+      if (rec.el.classList.contains("pxd-item--offscreen") !== off) {
+        rec.el.classList.toggle("pxd-item--offscreen", off);
+      }
       if (!off) {
-        rec.el.style.removeProperty("--pxd-iw");
-        rec.el.style.removeProperty("--pxd-ih");
+        if (cssVar(rec.el.style, "--pxd-iw")) rec.el.style.removeProperty("--pxd-iw");
+        if (cssVar(rec.el.style, "--pxd-ih")) rec.el.style.removeProperty("--pxd-ih");
         const item = lastBoard?.items.get(uid);
         if (!paused && item?.kind === "region-ref" && lod === "detail" && mounted.has(uid) && editing?.uid !== uid && thumbRequest(rec.regionWidth, rec.rect?.w)) {
           mountContent(rec, item);
@@ -2892,14 +2999,14 @@ export function createItemRenderer({
         continue;
       }
       const [iw, ih] = intrinsicSize(rect).split(" ");
-      rec.el.style.setProperty("--pxd-iw", iw);
-      rec.el.style.setProperty("--pxd-ih", ih);
+      if (cssVar(rec.el.style, "--pxd-iw") !== iw) rec.el.style.setProperty("--pxd-iw", iw);
+      if (cssVar(rec.el.style, "--pxd-ih") !== ih) rec.el.style.setProperty("--pxd-ih", ih);
     }
   };
-  const fillContent = ({ visibleRect, zoom = zoomCache, tier = null }) => {
+  const fillContent = ({ visibleRect, zoom = zoomCache, tier = null, dirty = null } = {}) => {
     zoomCache = zoom;
     paintOffscreen(visibleRect);
-    if (!lastBoard || !lastRects) return;
+    if (!lastBoard || !lastRects || !contentSched) return;
     const next = new Set();
     if ((tier ?? lodForZoom(zoom)) === "detail") {
       for (const [uid, rec] of shells) {
@@ -2918,8 +3025,24 @@ export function createItemRenderer({
     wanted = next;
     const t = now();
     for (const uid of next) if (mounted.has(uid)) mounted.set(uid, t);
-    queue = [...next].filter((u) => !mounted.has(u));
-    if (queue.length && !paused && !idleHandle) idleHandle = idle(pump);
+    for (const uid of shells.keys()) if (!next.has(uid)) contentSched.want(uid, false);
+    // null dirty is the first open: every visible body mounts once. A later diff remounts only its uids.
+    const dirtyKnown = dirty != null && typeof dirty.has === "function";
+    for (const uid of next) {
+      const rec = shells.get(uid);
+      const item = lastBoard.items.get(uid);
+      if (!rec || !item) continue;
+      const heavy = cardHeavy(item, rec);
+      const near = centreDist(uid, visibleRect);
+      if (contentSched.isDone(uid)) {
+        if (mounted.has(uid)) continue;
+        if (dirtyKnown && !dirty.has(uid)) continue;
+        contentSched.reopen(uid, { heavy, near, wanted: true });
+        continue;
+      }
+      contentSched.place(uid, { heavy, near, wanted: true });
+    }
+    if (!paused && contentSched.pending() > 0) armFrames();
     if ([...mounted.keys()].some((u) => !next.has(u))) scheduleUnmounts();
   };
   const scheduleContent = (args) => {
@@ -2934,19 +3057,18 @@ export function createItemRenderer({
     if (next === quieted) return;
     quieted = next;
     if (quieted) {
-      if (idleHandle) { idleHandle(); idleHandle = null; }
-      queue = [];
+      contentSched?.hold(true);
       for (const [uid, rec] of shells) holdQuiet(rec, uid);
       return;
     }
+    contentSched?.hold(false);
     if (lastContent) fillContent(lastContent);
   };
 
   const setPaused = (on) => {
     const was = paused;
     paused = Boolean(on);
-    if (paused && idleHandle) { idleHandle(); idleHandle = null; }
-    if (!paused && queue.length && !idleHandle) idleHandle = idle(pump);
+    contentSched?.hold(paused);
     if (was && !paused && lod === "detail") {
       for (const [uid, rec] of shells) {
         const item = lastBoard?.items.get(uid);
@@ -3222,7 +3344,9 @@ export function createItemRenderer({
     }
     for (const [uid, rec] of shells) {
       const on = set.has(uid);
-      if (rec.selected !== on) {
+      // A new shell leaves selected unset. That is not selected, so the first pass
+      // writes only the card that turned on.
+      if (Boolean(rec.selected) !== on) {
         rec.selected = on;
         rec.el.classList.toggle(rec.type === "section" ? "pxd-section--selected" : "pxd-item--selected", on);
       }
@@ -3241,7 +3365,8 @@ export function createItemRenderer({
   const setHover = (uid) => {
     for (const [u, rec] of shells) {
       const on = u === uid;
-      if (rec.hover === on) continue;
+      // Unset hover is not hovered. Clearing hover must not touch every shell.
+      if (Boolean(rec.hover) === on) continue;
       rec.hover = on;
       rec.el.classList.toggle("pxd-item--drop", on);
     }
@@ -3803,7 +3928,8 @@ export function createItemRenderer({
       e.rec.ghost = null;
       try { host?.unmount?.(e.editor); } catch { /* not mounted */ }
     }
-    if (idleHandle) { idleHandle(); idleHandle = null; }
+    stopFrames();
+    contentSched?.dispose();
     if (unmountTimer) { unmountTimer(); unmountTimer = null; }
     for (const snap of [...snapshots]) dropSnapshot(snap);
     for (const uid of [...shells.keys()]) {
@@ -3816,7 +3942,6 @@ export function createItemRenderer({
     }
     shells.clear();
     mounted.clear();
-    queue = [];
     dropRegionWatch();
   };
 
@@ -3872,6 +3997,7 @@ export function createItemRenderer({
         rec.body?.replaceChildren?.();
         rec.contentKey = null;
         mounted.delete(uid);
+        contentSched?.drop(uid);
         rec.titleRendered = false;
         if (rec.type === "card") { rec.bare = true; rec.el.classList.add("pxd-item--bare"); }
         onPageLayout?.(uid);

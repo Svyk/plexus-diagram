@@ -690,11 +690,12 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         if (cached?.[":block/uid"]) return cached;
       }
       warm.delete(uid);
+      const boardEntity = eidKey(uid);
       let node = null;
-      try { node = rawPull(OPEN_PATTERN, eidKey(uid)); } catch { node = null; }
+      try { node = rawPull(OPEN_PATTERN, boardEntity); } catch { node = null; }
       let honored = Boolean(node?.[":block/uid"] && hasRefs(node));
       if (!node?.[":block/uid"]) {
-        try { node = rawPull(BOARD_PATTERN, eidKey(uid)); } catch { node = null; }
+        try { node = rawPull(BOARD_PATTERN, boardEntity); } catch { node = null; }
         honored = false;
       }
       if (!node?.[":block/uid"]) return null;
@@ -710,6 +711,16 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         try { host.cardStats(found.stats, { boardUid: uid }); } catch { /* badges ask again */ }
       }
       return node;
+    },
+
+    // Hover warm of the session cache. No pull watch. A uid already in blockOf is not read again:
+    // pullBoard drops the board root from its warm set, and a hover must not spend that read.
+    prefetchBoard(uid) {
+      const id = String(uid ?? "");
+      if (!id) return null;
+      const cached = cache.blockOf(id);
+      if (cached?.[":block/uid"]) return cached;
+      return host.pullBoard(id);
     },
 
     // One unwatched read. Not added to the board pull watch.
@@ -1850,5 +1861,8 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       return locateShowTarget(id, placements);
     },
   };
+  host.prefetchBoard.warm = (uid) => Boolean(cache.blockOf(String(uid ?? ""))?.[":block/uid"]);
+  host.prefetchBoard.refBoards = (uid) => cache.refBoardsOf(String(uid ?? ""));
+  host.prefetchBoard.pageBoards = (title) => cache.pageBoardsOf(typeof title === "string" ? title : "");
   return host;
 }

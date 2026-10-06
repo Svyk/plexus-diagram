@@ -160,7 +160,10 @@ test("an area highlight with natural 133 by 47 sets the ratio and both classes",
     assert.equal(kids[2].classList.contains("pxd-highlight-foot"), true);
     assert.equal(kids[2].textContent, `p. 2 · ${TITLE}`);
     assert.equal(media.querySelector(".pxd-rs__live").textContent.includes(MACRO), true);
-    assert.equal(ctx.ratiosAtRender[0], "133 / 47");
+    // The ratio is set before the media renders, whatever order the scheduler mounts cards in.
+    const mediaRatios = ctx.ratiosAtRender.filter(Boolean);
+    assert.equal(mediaRatios.length > 0, true);
+    assert.equal(mediaRatios.every((r) => r === "133 / 47"), true);
     assert.equal(ctx.rendered.some((s) => String(s).includes(MACRO)), true);
     assert.equal(ctx.fileGets.length, 0);
     assert.equal(ctx.fetched.length, 0);

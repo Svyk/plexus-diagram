@@ -542,6 +542,7 @@ function parseIds(raw, cap4) {
 }
 function parseRegion(blockString2) {
   if (typeof blockString2 !== "string") return null;
+  if (blockString2.indexOf(REGION_COMPONENT) === -1) return null;
   const m = HEAD_RE.exec(blockString2);
   if (!m) return null;
   const caption = (m[2] ?? "").trim();
@@ -1167,6 +1168,7 @@ function colorForLabel(label) {
 }
 function attrNameOf(s) {
   if (typeof s !== "string") return null;
+  if (s.indexOf("::") === -1) return null;
   const m = /^\s*([^:\n]{1,60})::/.exec(s);
   if (!m) return null;
   const name = m[1].trim();
@@ -2059,7 +2061,7 @@ function sectionFitPlan(board2, rects, touchedUids, {
   parentOf = (u) => board2.items.get(u)?.parentUid
 } = {}) {
   const work = /* @__PURE__ */ new Map();
-  const same = (a, b) => Math.abs(a.x - b.x) < 0.01 && Math.abs(a.y - b.y) < 0.01 && Math.abs(a.w - b.w) < 0.01 && Math.abs(a.h - b.h) < 0.01;
+  const same2 = (a, b) => Math.abs(a.x - b.x) < 0.01 && Math.abs(a.y - b.y) < 0.01 && Math.abs(a.w - b.w) < 0.01 && Math.abs(a.h - b.h) < 0.01;
   for (const touched of touchedUids) {
     let cur = touched;
     for (let guard = 0; guard < 256; guard++) {
@@ -2071,7 +2073,7 @@ function sectionFitPlan(board2, rects, touchedUids, {
       const childRect = work.get(cur) ?? rects.get(cur);
       if (!secRect || !childRect) break;
       const need2 = unionRect2(secRect, inflate(childRect, pad2));
-      if (same(need2, secRect)) break;
+      if (same2(need2, secRect)) break;
       work.set(pid, need2);
       cur = pid;
     }
@@ -2203,9 +2205,9 @@ function connectedUids(board2, uid) {
   const seen = /* @__PURE__ */ new Set([uid]);
   const queue = [uid];
   while (queue.length) {
-    const current2 = queue.shift();
-    out.push(current2);
-    for (const next of adj.get(current2) || []) {
+    const current3 = queue.shift();
+    out.push(current3);
+    for (const next of adj.get(current3) || []) {
       if (seen.has(next)) continue;
       seen.add(next);
       queue.push(next);
@@ -2275,14 +2277,14 @@ function diffBoards(prev, next) {
     }
     return { structural: true, dirty: dirty2 };
   }
-  const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  const same2 = (a, b) => JSON.stringify(a) === JSON.stringify(b);
   const body = (item) => {
     const { content, ...rest } = item;
     return rest;
   };
-  let structural = prev.containerUid !== next.containerUid || prev.items.size !== next.items.size || prev.edges.size !== next.edges.size || !same(prev.roots, next.roots) || !same(prev.order, next.order) || !same(prev.views, next.views);
+  let structural = prev.containerUid !== next.containerUid || prev.items.size !== next.items.size || prev.edges.size !== next.edges.size || !same2(prev.roots, next.roots) || !same2(prev.order, next.order) || !same2(prev.views, next.views);
   const dirty = /* @__PURE__ */ new Set();
-  if (prev.string !== next.string || !same(prev.plexus, next.plexus)) dirty.add(next.uid);
+  if (prev.string !== next.string || !same2(prev.plexus, next.plexus)) dirty.add(next.uid);
   for (const [uid, item] of next.items) {
     const old = prev.items.get(uid);
     if (!old) {
@@ -2290,8 +2292,8 @@ function diffBoards(prev, next) {
       dirty.add(uid);
       continue;
     }
-    if (old.parentUid !== item.parentUid || !same(old.members, item.members)) structural = true;
-    if (old.string !== item.string || old.kind !== item.kind || old.parentUid !== item.parentUid || old.order !== item.order || !same(body(old), body(item))) dirty.add(uid);
+    if (old.parentUid !== item.parentUid || !same2(old.members, item.members)) structural = true;
+    if (old.string !== item.string || old.kind !== item.kind || old.parentUid !== item.parentUid || old.order !== item.order || !same2(body(old), body(item))) dirty.add(uid);
   }
   for (const [uid, edge] of next.edges) {
     const old = prev.edges.get(uid);
@@ -2300,7 +2302,7 @@ function diffBoards(prev, next) {
       dirty.add(uid);
       continue;
     }
-    if (!same(old, edge)) dirty.add(uid);
+    if (!same2(old, edge)) dirty.add(uid);
   }
   return { structural, dirty };
 }
@@ -3135,7 +3137,9 @@ var PENDING_CLASS = "pxd-native-pending";
 var NATIVE_HIDDEN_CLASS = "pxd-native-hidden";
 var OUTLINE_NATIVE_CLASS = "pxd-outline-native";
 function isDiagramString(value) {
-  return DIAGRAM_MARKER.test(String(value ?? ""));
+  const text2 = String(value ?? "");
+  if (text2.indexOf("{") === -1) return false;
+  return DIAGRAM_MARKER.test(text2);
 }
 function cssAttributeValue(value) {
   return String(value).replace(/\\/g, "\\\\").replace(/"/g, '\\"');
@@ -3463,8 +3467,8 @@ function assignDeepLink(loc, { graph, pageUid, cardUid } = {}, onSame) {
 var PANEL_WIDTH_MIN = 260;
 var PANEL_WIDTH_MAX = 640;
 var PANEL_WIDTH_DEFAULT = 340;
-function nextPanelWidth(current2, delta, { min = PANEL_WIDTH_MIN, max = PANEL_WIDTH_MAX } = {}) {
-  const base = Number(current2);
+function nextPanelWidth(current3, delta, { min = PANEL_WIDTH_MIN, max = PANEL_WIDTH_MAX } = {}) {
+  const base = Number(current3);
   const d = Number(delta);
   const start = Number.isFinite(base) ? base : PANEL_WIDTH_DEFAULT;
   const next = start + (Number.isFinite(d) ? d : 0);
@@ -3479,9 +3483,9 @@ function infoTabList(tabs, uid, { add = false } = {}) {
   const next = list.concat([{ uid: id }]);
   return { tabs: next, current: id };
 }
-function closeInfoTab(tabs, current2, uid) {
+function closeInfoTab(tabs, current3, uid) {
   const list = (tabs || []).filter((t) => t && t.uid && t.uid !== uid);
-  let cur = current2 === uid ? null : current2;
+  let cur = current3 === uid ? null : current3;
   if (!cur || !list.some((t) => t.uid === cur)) {
     const idx = (tabs || []).findIndex((t) => t && t.uid === uid);
     cur = list[idx]?.uid || list[idx - 1]?.uid || null;
@@ -3748,11 +3752,25 @@ function coverModel(source) {
   const label = count === 1 ? "1 highlight" : `${count} highlights`;
   return { title, count, label };
 }
+function postersEnabled(source) {
+  if (!source || typeof source !== "object") return true;
+  return source.posters !== false;
+}
+function coverOuterBox(source) {
+  const cover = coverModel(source);
+  const w = Number(source?.w);
+  const h = Number(source?.h);
+  return {
+    title: cover.title,
+    w: Number.isFinite(w) && w > 0 ? Math.round(w) : PDF_READER_W,
+    h: Number.isFinite(h) && h > 0 ? Math.round(h) : PDF_READER_H
+  };
+}
 function readerRule(openUid, nextUid) {
-  const current2 = openUid || null;
-  if (nextUid == null || nextUid === "") return { open: current2, close: null };
-  if (nextUid === current2) return { open: current2, close: null };
-  return { open: nextUid, close: current2 };
+  const current3 = openUid || null;
+  if (nextUid == null || nextUid === "") return { open: current3, close: null };
+  if (nextUid === current3) return { open: current3, close: null };
+  return { open: nextUid, close: current3 };
 }
 var HEAVY_MACRO = /\{\{\s*(?:\[\[)?(pdf|video|youtube|iframe|tweet|twitter)(?:\]\])?\s*:([^}]*)\}\}/gi;
 var HEAVY_ONE = /\{\{\s*(?:\[\[)?(pdf|video|youtube|iframe|tweet|twitter)(?:\]\])?\s*:([^}]*)\}\}/i;
@@ -3801,7 +3819,8 @@ function posterThumb(source) {
   if (fromText && !/["'()]/.test(fromText[0])) return fromText[0];
   return "";
 }
-function heavyEmbed(string) {
+function heavyEmbed(string, opts) {
+  if (opts && postersEnabled(opts) === false) return null;
   const text2 = String(string ?? "").trim();
   if (!text2) return null;
   const match = HEAVY_ONE.exec(text2);
@@ -3847,7 +3866,9 @@ function posterModel(source) {
   }
   return out;
 }
-function embedPoster(string, { read, cover, uid = "" } = {}) {
+function embedPoster(string, opts = {}) {
+  if (postersEnabled(opts) === false) return null;
+  const { read, cover, uid = "" } = opts;
   const text2 = String(string ?? "").trim();
   if (!text2) return null;
   let hit = heavyEmbed(text2);
@@ -4780,16 +4801,17 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
         if (cached?.[":block/uid"]) return cached;
       }
       warm.delete(uid);
+      const boardEntity = eidKey(uid);
       let node2 = null;
       try {
-        node2 = rawPull(OPEN_PATTERN, eidKey(uid));
+        node2 = rawPull(OPEN_PATTERN, boardEntity);
       } catch {
         node2 = null;
       }
       let honored = Boolean(node2?.[":block/uid"] && hasRefs(node2));
       if (!node2?.[":block/uid"]) {
         try {
-          node2 = rawPull(BOARD_PATTERN, eidKey(uid));
+          node2 = rawPull(BOARD_PATTERN, boardEntity);
         } catch {
           node2 = null;
         }
@@ -4814,6 +4836,15 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
         }
       }
       return node2;
+    },
+    // Hover warm of the session cache. No pull watch. A uid already in blockOf is not read again:
+    // pullBoard drops the board root from its warm set, and a hover must not spend that read.
+    prefetchBoard(uid) {
+      const id = String(uid ?? "");
+      if (!id) return null;
+      const cached = cache.blockOf(id);
+      if (cached?.[":block/uid"]) return cached;
+      return host.pullBoard(id);
     },
     // One unwatched read. Not added to the board pull watch.
     pullEntity(pattern, uid) {
@@ -5928,6 +5959,9 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
       return locateShowTarget(id, placements);
     }
   };
+  host.prefetchBoard.warm = (uid) => Boolean(cache.blockOf(String(uid ?? ""))?.[":block/uid"]);
+  host.prefetchBoard.refBoards = (uid) => cache.refBoardsOf(String(uid ?? ""));
+  host.prefetchBoard.pageBoards = (title) => cache.pageBoardsOf(typeof title === "string" ? title : "");
   return host;
 }
 
@@ -6913,11 +6947,13 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     }
     return { dirty: dirty ? item.uid : null };
   };
+  let holders = 1;
+  let pausedHolds = 0;
   let latest = null;
   let scheduled = false;
   const flush = () => {
     scheduled = false;
-    if (destroyed || !latest) return;
+    if (destroyed || pausedHolds >= holders || !latest) return;
     const incoming = clone(latest);
     latest = null;
     const prev = raw;
@@ -6935,7 +6971,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     if (diff && (diff.structural || diff.dirty.size) && !queue.pending) host.invalidateUndo?.();
   };
   const onBoard = (after) => {
-    if (destroyed) return;
+    if (destroyed || pausedHolds >= holders) return;
     if (!after || !after[UID]) {
       if (!host.pullBoard(uid)) markGone();
       return;
@@ -6946,13 +6982,71 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       schedule(flush);
     }
   };
-  const unwatch = raw ? host.watchBoard(uid, onBoard) : () => {
+  let boardWatch = () => {
   };
+  let boardWatchOn = false;
+  if (raw && typeof host.watchBoard === "function") {
+    boardWatch = host.watchBoard(uid, onBoard);
+    boardWatchOn = true;
+  }
+  function dropBoardWatch() {
+    if (!boardWatchOn) return;
+    boardWatchOn = false;
+    try {
+      boardWatch();
+    } catch {
+    }
+    boardWatch = () => {
+    };
+    disposeHighlightWatches();
+    latest = null;
+  }
+  function catchUpBoard() {
+    if (destroyed || pausedHolds >= holders) return;
+    let fresh = null;
+    try {
+      fresh = host.pullBoard?.(uid);
+    } catch {
+      return;
+    }
+    if (!fresh || !fresh[UID]) {
+      markGone();
+      return;
+    }
+    let unchanged = false;
+    try {
+      unchanged = stable(fresh) === stable(raw);
+    } catch {
+      unchanged = false;
+    }
+    if (unchanged) return;
+    latest = fresh;
+    if (!scheduled) {
+      scheduled = true;
+      flush();
+    }
+  }
+  function syncBoardWatch(catchUp) {
+    if (destroyed) return;
+    const want = holders > pausedHolds && Boolean(raw);
+    if (want && !boardWatchOn) {
+      if (typeof host.watchBoard !== "function") return;
+      boardWatch = host.watchBoard(uid, onBoard);
+      boardWatchOn = true;
+      try {
+        syncHighlightWatches();
+      } catch {
+      }
+      if (catchUp) catchUpBoard();
+    } else if (!want && boardWatchOn) {
+      dropBoardWatch();
+    }
+  }
   let highlightDirty = false;
   let highlightScheduled = false;
   const flushHighlights = () => {
     highlightScheduled = false;
-    if (destroyed || !highlightDirty) return;
+    if (destroyed || pausedHolds >= holders || !highlightDirty) return;
     highlightDirty = false;
     propsCache.clear();
     onBoard(host.pullBoard(uid));
@@ -7329,13 +7423,21 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
   }
   function computeLinks() {
     if (!board2) return;
-    const boardEid = host.resolveEid({ uid });
+    const resolved = /* @__PURE__ */ new Map();
+    const resolveOnce = (ref) => {
+      const key = ref.title != null ? `title:${ref.title}` : `uid:${ref.uid}`;
+      if (resolved.has(key)) return resolved.get(key);
+      const eid = host.resolveEid(ref);
+      resolved.set(key, eid);
+      return eid;
+    };
+    const boardEid = resolveOnce({ uid });
     const eidToItems = /* @__PURE__ */ new Map();
     for (const item of board2.items.values()) {
       if (item.type !== "card") continue;
       const t = item.target;
       const ref = t.kind === "page" ? { title: t.title } : { uid: t.uid };
-      const eid = host.resolveEid(ref);
+      const eid = resolveOnce(ref);
       if (eid == null || eid === boardEid) continue;
       if (!eidToItems.has(eid)) eidToItems.set(eid, []);
       eidToItems.get(eid).push(item.uid);
@@ -8385,12 +8487,48 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
         t.props(uid, withBoardMarker(rawPlexus(uid), false));
       });
     },
+    // A second mount of this board. The watch stays up when it is already live.
+    retain() {
+      if (destroyed) return;
+      holders += 1;
+      syncBoardWatch(true);
+    },
+    // Drop this holder's pull watch without destroying the session.
+    pauseWatches() {
+      if (destroyed || pausedHolds >= holders) return;
+      pausedHolds += 1;
+      syncBoardWatch(false);
+    },
+    // Put the watch back. One pullBoard applies edits that landed while paused.
+    resumeWatches() {
+      if (destroyed || pausedHolds <= 0) return;
+      pausedHolds -= 1;
+      const wasOn = boardWatchOn;
+      syncBoardWatch(!wasOn);
+      if (wasOn) catchUpBoard();
+    },
+    // A ref is leaving. A paused ref already dropped its watch hold.
+    forget(opts) {
+      if (destroyed || holders <= 0) return;
+      if (opts?.paused === true && pausedHolds > 0) pausedHolds -= 1;
+      holders -= 1;
+      if (holders === 0) return;
+      syncBoardWatch(false);
+    },
     release() {
     },
     destroy() {
       if (destroyed) return;
       destroyed = true;
-      unwatch();
+      if (boardWatchOn) {
+        boardWatchOn = false;
+        try {
+          boardWatch();
+        } catch {
+        }
+      }
+      boardWatch = () => {
+      };
       disposeHighlightWatches();
       if (linkTimer) clearTimeout(linkTimer);
       linkTimer = null;
@@ -8528,6 +8666,7 @@ function acquireSession(boardUid, options = {}) {
   if (entry && entry.host === host) {
     entry.refs++;
     if (options.virtual === true) entry.session.allowVirtual?.();
+    entry.session.retain?.();
     return entry.session;
   }
   if (entry) {
@@ -8537,13 +8676,15 @@ function acquireSession(boardUid, options = {}) {
   const session = createSession(boardUid, options);
   const record = { host, session, refs: 1 };
   registry.set(boardUid, record);
-  session.release = () => {
+  session.release = (opts) => {
     if (registry.get(boardUid) !== record || record.refs <= 0) return;
     record.refs--;
     if (record.refs === 0) {
       session.destroy();
       registry.delete(boardUid);
+      return;
     }
+    session.forget?.(opts);
   };
   return session;
 }
@@ -9507,8 +9648,10 @@ var package_default = {
     dev: "node build.mjs --watch",
     "scan:secrets": "node scripts/scan-secrets.mjs",
     test: "node --test test/*.test.js",
+    "perf:ratchet": "node tools/live/perf-ratchet.mjs",
     "verify:generated": "node scripts/verify-generated.mjs",
-    check: "npm run build && npm run scan:secrets && node --check extension.js && npm test && npm run verify:generated"
+    check: "npm run build && npm run scan:secrets && node --check extension.js && npm test && npm run verify:generated",
+    "bench:hot": "node --predictable --test --test-concurrency=1 test/fast-7-hot-paths.test.js"
   },
   engines: {
     node: ">=20"
@@ -9584,6 +9727,7 @@ function textName(match) {
 function highlighterTags(string) {
   const out = { bg: null, text: null };
   if (typeof string !== "string" || !string) return out;
+  if (string.indexOf("#") === -1 && string.indexOf("[[") === -1) return out;
   const re = new RegExp(TAG_SRC, "g");
   let match = re.exec(string);
   while (match) {
@@ -10558,7 +10702,7 @@ function createTooltip({ doc = globalThis.document, root, timers, setting } = {}
     node2.addEventListener(type, fn, opts);
     offs.push(() => node2.removeEventListener(type, fn, opts));
   };
-  let current2 = null;
+  let current3 = null;
   let pending = null;
   let dismiss = [];
   const enabled = () => read("tooltips") !== false;
@@ -10623,14 +10767,14 @@ function createTooltip({ doc = globalThis.document, root, timers, setting } = {}
     pending?.cancel?.();
     pending = null;
     for (const off of dismiss.splice(0)) off();
-    if (current2) {
-      if (current2.getAttribute("aria-describedby") === ID) current2.removeAttribute("aria-describedby");
-      current2 = null;
+    if (current3) {
+      if (current3.getAttribute("aria-describedby") === ID) current3.removeAttribute("aria-describedby");
+      current3 = null;
     }
     tip.style.display = "none";
   };
   const check = () => {
-    if (current2 && current2.isConnected === false) hide();
+    if (current3 && current3.isConnected === false) hide();
     if (pending && pending.target?.isConnected === false) {
       pending.cancel?.();
       pending = null;
@@ -10640,11 +10784,11 @@ function createTooltip({ doc = globalThis.document, root, timers, setting } = {}
     if (!target || target.isConnected === false) return;
     const info = sync(target);
     if (!info) return;
-    if (current2 && current2 !== target && current2.getAttribute("aria-describedby") === ID) current2.removeAttribute("aria-describedby");
+    if (current3 && current3 !== target && current3.getAttribute("aria-describedby") === ID) current3.removeAttribute("aria-describedby");
     pending = null;
     fill(info);
     tip.style.display = "";
-    current2 = target;
+    current3 = target;
     target.setAttribute("aria-describedby", ID);
     place(target);
     if (!dismiss.length) {
@@ -10661,7 +10805,7 @@ function createTooltip({ doc = globalThis.document, root, timers, setting } = {}
     }
   };
   const schedule = (target) => {
-    if (current2 === target || pending?.target === target) return;
+    if (current3 === target || pending?.target === target) return;
     pending?.cancel?.();
     pending = null;
     if (!tipEntry(target.getAttribute("data-tip"), target.getAttribute("data-tip-state"))) return;
@@ -10670,7 +10814,7 @@ function createTooltip({ doc = globalThis.document, root, timers, setting } = {}
       if (info) target.title = info.key ? `${info.name} (${[].concat(info.key).join(" ")}). ${info.desc}` : `${info.name}. ${info.desc}`;
       return;
     }
-    const wait = current2 ? 0 : delay();
+    const wait = current3 ? 0 : delay();
     if (wait <= 0) {
       show(target);
       return;
@@ -10696,7 +10840,7 @@ function createTooltip({ doc = globalThis.document, root, timers, setting } = {}
       pending.cancel?.();
       pending = null;
     }
-    if (current2 === from) hide();
+    if (current3 === from) hide();
   });
   on(root, "focusin", (event) => {
     const target = closest(event.target);
@@ -10716,7 +10860,7 @@ function createTooltip({ doc = globalThis.document, root, timers, setting } = {}
       pending.cancel?.();
       pending = null;
     }
-    if (current2 === from) hide();
+    if (current3 === from) hide();
   });
   return {
     el: tip,
@@ -10724,7 +10868,7 @@ function createTooltip({ doc = globalThis.document, root, timers, setting } = {}
     hide,
     check,
     isVisible: () => tip.style.display !== "none",
-    target: () => current2,
+    target: () => current3,
     dispose() {
       hide();
       for (const off of offs.splice(0)) off();
@@ -11509,19 +11653,19 @@ function openHaloPopover({
   const refs = doc.createElement("div");
   refs.className = "pxd-halo__refs";
   const times = model.refTimes || [];
-  const finite5 = times.filter((value) => Number.isFinite(Number(value))).map(Number);
-  if (!finite5.length) {
-    refs.textContent = refsLine(finite5, model.refTotal);
+  const finite6 = times.filter((value) => Number.isFinite(Number(value))).map(Number);
+  if (!finite6.length) {
+    refs.textContent = refsLine(finite6, model.refTotal);
   } else {
-    const shown = Number.isFinite(model.refTotal) && model.refTotal >= finite5.length ? model.refTotal : finite5.length;
+    const shown = Number.isFinite(model.refTotal) && model.refTotal >= finite6.length ? model.refTotal : finite6.length;
     const noun = shown === 1 ? "time" : "times";
     refs.append(`Referenced ${shown} ${noun}, first `);
-    refs.append(dateNode(doc, Math.min(...finite5), { pageExists, renderString, mounts }));
+    refs.append(dateNode(doc, Math.min(...finite6), { pageExists, renderString, mounts }));
     refs.append(", last ");
-    refs.append(dateNode(doc, Math.max(...finite5), { pageExists, renderString, mounts }));
+    refs.append(dateNode(doc, Math.max(...finite6), { pageExists, renderString, mounts }));
   }
   pop.append(refs);
-  const counts = buckets(finite5);
+  const counts = buckets(finite6);
   const spark = sparkline(doc, counts);
   spark.setAttribute("data-sum", String(counts.reduce((sum, n3) => sum + n3, 0)));
   pop.append(spark);
@@ -14112,11 +14256,32 @@ function openPagePicker({ doc = globalThis.document, search, onPick, debounceMs 
 // src/view/progressive.js
 var HEAVY_RE = /\{\{\s*(?:\[\[)?(?:roam\/render|embed[\w-]*|video|youtube|iframe|pdf|query|diagram|table|calc)|!\[[^\]]*\]\(|<iframe/i;
 var isHeavyRow = (string) => HEAVY_RE.test(String(string || ""));
-function createRowScheduler({ idle, now: now2 = () => Date.now(), budgetMs = 8, render } = {}) {
+function mountFpsFromStamps(stamps) {
+  const deltas = [];
+  const list = Array.isArray(stamps) ? stamps : [];
+  for (let i = 1; i < list.length; i += 1) {
+    const d = Number(list[i]) - Number(list[i - 1]);
+    if (d > 0 && Number.isFinite(d)) deltas.push(d);
+  }
+  if (!deltas.length) return null;
+  deltas.sort((a, b) => a - b);
+  const mid = deltas[Math.floor((deltas.length - 1) * 0.5)];
+  const fps = 1e3 / mid;
+  return Number.isFinite(fps) ? Math.round(fps) : null;
+}
+function createRowScheduler({ idle, now: now2 = () => Date.now(), budgetMs = 8, render, eager = null } = {}) {
   const rows = /* @__PURE__ */ new Map();
   let handle = null;
   let disposed = false;
   let queued = false;
+  let held = false;
+  let seq = 0;
+  const byOrder = (a, b) => {
+    const an = a.near;
+    const bn = b.near;
+    if (an != null && bn != null && an !== bn) return an - bn;
+    return a.seq - b.seq;
+  };
   const pending = () => {
     const light = [];
     const heavy = [];
@@ -14124,39 +14289,106 @@ function createRowScheduler({ idle, now: now2 = () => Date.now(), budgetMs = 8, 
       if (row2.done || !row2.wanted) continue;
       (row2.heavy ? heavy : light).push(row2);
     }
+    light.sort(byOrder);
+    heavy.sort(byOrder);
     return light.concat(heavy);
   };
   const finish = (row2) => {
     if (row2.done) return;
     row2.done = true;
+    let retry = false;
     try {
-      render(row2.id);
+      retry = render(row2.id) === false;
     } catch {
+      retry = false;
+    }
+    if (retry) row2.done = false;
+  };
+  let pumping = false;
+  const allNow = () => {
+    try {
+      return typeof eager === "function" && eager() === true;
+    } catch {
+      return false;
     }
   };
   const pump = (deadline) => {
     handle = null;
     queued = false;
-    if (disposed) return;
+    if (disposed || held) return;
     const start = now2();
+    const open = allNow();
     const has = deadline && typeof deadline.timeRemaining === "function" ? () => deadline.timeRemaining() > 1 : () => true;
     for (const row2 of pending()) {
-      if (now2() - start >= budgetMs || !has()) break;
+      if (!open && (held || now2() - start >= budgetMs || !has())) break;
       finish(row2);
     }
-    if (pending().length) schedule();
+    if (!held && pending().length) schedule();
   };
   const schedule = () => {
-    if (disposed || queued || !pending().length) return;
+    if (disposed || held || queued || !pending().length) return;
+    if (allNow()) {
+      if (pumping) return;
+      pumping = true;
+      try {
+        pump(null);
+      } finally {
+        pumping = false;
+      }
+      return;
+    }
     queued = true;
     handle = idle(pump);
   };
   return {
     // Registers a row. `wanted` starts false when the caller watches visibility, true when it cannot.
-    add(id, { heavy = false, wanted = false } = {}) {
+    add(id, { heavy = false, wanted = false, near = null } = {}) {
       if (rows.has(id)) return;
-      rows.set(id, { id, heavy: Boolean(heavy), wanted: Boolean(wanted), done: false });
+      rows.set(id, { id, heavy: Boolean(heavy), wanted: Boolean(wanted), done: false, near, seq: seq++ });
       if (wanted) schedule();
+    },
+    // Card bodies update distance as the camera moves. A finished row stays finished until reopen.
+    place(id, { heavy = false, near = null, wanted = true } = {}) {
+      let row2 = rows.get(id);
+      if (!row2) {
+        row2 = { id, heavy: Boolean(heavy), wanted: false, done: false, near, seq: seq++ };
+        rows.set(id, row2);
+      } else if (row2.done) {
+        return;
+      } else {
+        row2.heavy = Boolean(heavy);
+        if (near != null) row2.near = near;
+      }
+      row2.wanted = Boolean(wanted);
+      if (wanted) schedule();
+    },
+    // A dirty uid whose body was cleared mounts again. Already-done uids outside the dirty set never get here.
+    reopen(id, opts = {}) {
+      const row2 = rows.get(id);
+      if (!row2) {
+        this.place(id, opts);
+        return true;
+      }
+      row2.done = false;
+      row2.heavy = Boolean(opts.heavy);
+      if (opts.near != null) row2.near = opts.near;
+      row2.wanted = opts.wanted !== false;
+      if (row2.wanted) schedule();
+      return true;
+    },
+    // A gesture holds the pump so a pan frame does not mount bodies. Release continues the same rows.
+    hold(on = true) {
+      held = Boolean(on);
+      if (held) {
+        try {
+          if (typeof handle === "function") handle();
+        } catch {
+        }
+        handle = null;
+        queued = false;
+        return;
+      }
+      schedule();
     },
     want(id, on = true) {
       const row2 = rows.get(id);
@@ -15657,6 +15889,761 @@ function paintPdfChipStrip(doc, parent, chips, handlers) {
   return strip;
 }
 
+// src/perf-log.js
+var PERF_CAP = 256;
+var OPEN_FRAMES = 120;
+function perfNow() {
+  const clock = globalThis.performance;
+  if (clock && typeof clock.now === "function") return clock.now();
+  return Date.now();
+}
+function percentile(samples, p) {
+  const n2 = samples.length;
+  if (!n2) return null;
+  const sorted = samples.slice().sort((a, b) => a - b);
+  return sorted[Math.floor((n2 - 1) * p)];
+}
+function ring(cap4) {
+  const samples = [];
+  return {
+    push(value) {
+      const n2 = Number(value);
+      if (!Number.isFinite(n2)) return false;
+      samples.push(n2);
+      if (samples.length > cap4) samples.splice(0, samples.length - cap4);
+      return true;
+    },
+    clear() {
+      samples.length = 0;
+    },
+    get n() {
+      return samples.length;
+    },
+    summary() {
+      return { p50: percentile(samples, 0.5), p75: percentile(samples, 0.75), n: samples.length };
+    }
+  };
+}
+var OWN_URL = (() => {
+  try {
+    return String(import.meta.url || "");
+  } catch {
+    return "";
+  }
+})();
+function isPlexusExtensionUrl(url, own = OWN_URL) {
+  const text2 = String(url || "");
+  if (typeof own !== "string") own = OWN_URL;
+  if (!text2) return false;
+  if (own && text2.split(/[?#]/)[0] === own.split(/[?#]/)[0]) return true;
+  if (text2.startsWith("blob:")) return false;
+  let path = text2;
+  try {
+    path = new URL(text2).pathname;
+  } catch {
+  }
+  return /(?:^|\/)plexus-diagram\/extension\.js$/i.test(path);
+}
+function addUrl(out, value) {
+  if (typeof value === "string" && value) out.push(value);
+}
+function scriptUrlsOf(entry) {
+  const out = [];
+  if (!entry || typeof entry !== "object") return out;
+  addUrl(out, entry.sourceURL);
+  addUrl(out, entry.scriptUrl);
+  addUrl(out, entry.scriptURL);
+  addUrl(out, entry.url);
+  const lists = [entry.attribution, entry.scripts];
+  for (const list of lists) {
+    if (!Array.isArray(list)) continue;
+    for (const item of list) {
+      if (!item || typeof item !== "object") {
+        addUrl(out, item);
+        continue;
+      }
+      addUrl(out, item.sourceURL);
+      addUrl(out, item.scriptUrl);
+      addUrl(out, item.scriptURL);
+      addUrl(out, item.url);
+      addUrl(out, item.containerSrc);
+      addUrl(out, item.containerName);
+      addUrl(out, item.name);
+    }
+  }
+  return out;
+}
+function isPlexusLongTask(entry) {
+  return scriptUrlsOf(entry).some((url) => isPlexusExtensionUrl(url));
+}
+function clickInsideRoot(entry) {
+  if (!entry || entry.name !== "click") return false;
+  let node2 = entry.target;
+  if (node2 && node2.nodeType === 3) node2 = node2.parentElement;
+  if (!node2 || typeof node2.closest !== "function") return false;
+  return Boolean(node2.closest(".pxd-root"));
+}
+function panFps(deltas) {
+  const finite6 = [];
+  for (const value of deltas || []) {
+    const n2 = Number(value);
+    if (Number.isFinite(n2) && n2 > 0) finite6.push(n2);
+  }
+  const median = percentile(finite6, 0.5);
+  if (!(median > 0)) return null;
+  return 1e3 / median;
+}
+function numText(value) {
+  if (!Number.isFinite(value)) return "—";
+  const rounded = Math.round(value * 10) / 10;
+  return String(rounded);
+}
+function perfReadoutText(perf) {
+  const bit = (label, series) => `${label} p50 ${numText(series?.p50)} p75 ${numText(series?.p75)}`;
+  return [
+    bit("Open", perf?.open),
+    bit("Click", perf?.click),
+    bit("Pan", perf?.fps),
+    bit("Long tasks", perf?.longtask)
+  ].join(" · ");
+}
+var latestPerf = null;
+var readoutRow = null;
+var readoutBlurb = "";
+function readHostPerf() {
+  const win = globalThis.window ?? globalThis;
+  const stats = win.__plexusDiagram?.stats;
+  if (stats && Object.prototype.hasOwnProperty.call(stats, "perf")) return stats.perf ?? null;
+  return latestPerf;
+}
+function bindPerfReadout(row2, blurb) {
+  readoutRow = row2 || null;
+  readoutBlurb = blurb || "";
+  paintReadout();
+}
+function paintReadout() {
+  if (!readoutRow) return;
+  const text2 = perfReadoutText(latestPerf);
+  readoutRow.description = readoutBlurb ? `${readoutBlurb} ${text2}` : text2;
+}
+function publishLatest(perf) {
+  latestPerf = perf ?? null;
+  paintReadout();
+}
+function createPerfLog({ cap: cap4 = PERF_CAP } = {}) {
+  const open = ring(cap4);
+  const click = ring(cap4);
+  const fps = ring(cap4);
+  const longtask = ring(cap4);
+  let longCount = 0;
+  let on = false;
+  let stats = null;
+  let eventObserver = null;
+  let longObserver = null;
+  let tracked = false;
+  const watches = /* @__PURE__ */ new Set();
+  const pan = { deltas: null, last: null, raf: 0 };
+  const current3 = () => {
+    if (!on) return null;
+    const tasks = longtask.summary();
+    tasks.count = longCount;
+    return { open: open.summary(), click: click.summary(), fps: fps.summary(), longtask: tasks };
+  };
+  const publish = () => {
+    const snap = current3();
+    if (stats) stats.perf = snap;
+    publishLatest(snap);
+    return snap;
+  };
+  const makeObserver = (type, take) => {
+    const PO = globalThis.PerformanceObserver;
+    if (typeof PO !== "function") return null;
+    let observer;
+    try {
+      observer = new PO((list) => {
+        if (!on) return;
+        const entries = typeof list?.getEntries === "function" ? list.getEntries() : [];
+        let changed2 = false;
+        for (const entry of entries) if (take(entry)) changed2 = true;
+        if (changed2) publish();
+      });
+    } catch {
+      return null;
+    }
+    const attempts = type === "event" ? [{ type, durationThreshold: 0 }, { type, durationThreshold: 16 }, { type }, { entryTypes: [type] }] : [{ type }, { entryTypes: [type] }];
+    for (const opts of attempts) {
+      try {
+        observer.observe(opts);
+        return observer;
+      } catch {
+      }
+    }
+    try {
+      observer.disconnect();
+    } catch {
+    }
+    return null;
+  };
+  const track = (lifecycle) => {
+    if (!lifecycle?.add || tracked) return;
+    tracked = true;
+    lifecycle.add(() => stop2());
+  };
+  const armEvent = (lifecycle) => {
+    track(lifecycle);
+    if (!on || eventObserver) return eventObserver;
+    eventObserver = makeObserver("event", (entry) => {
+      if (!clickInsideRoot(entry)) return false;
+      return click.push(entry.duration);
+    });
+    return eventObserver;
+  };
+  const armLongTask = (lifecycle) => {
+    track(lifecycle);
+    if (!on || longObserver) return longObserver;
+    longObserver = makeObserver("longtask", (entry) => {
+      if (!isPlexusLongTask(entry)) return false;
+      longCount += 1;
+      longtask.push(entry?.duration);
+      return true;
+    });
+    return longObserver;
+  };
+  const bind = (next) => {
+    if (!next || typeof next !== "object") return;
+    stats = next;
+    if (!on) stats.perf = null;
+  };
+  const cancelPan = () => {
+    pan.deltas = null;
+    pan.last = null;
+    if (pan.raf) {
+      try {
+        globalThis.cancelAnimationFrame?.(pan.raf);
+      } catch {
+      }
+      pan.raf = 0;
+    }
+  };
+  const cancelOpens = () => {
+    for (const cancel of watches) {
+      try {
+        cancel();
+      } catch {
+      }
+    }
+    watches.clear();
+  };
+  function stop2() {
+    on = false;
+    cancelPan();
+    cancelOpens();
+    try {
+      eventObserver?.disconnect();
+    } catch {
+    }
+    try {
+      longObserver?.disconnect();
+    } catch {
+    }
+    eventObserver = null;
+    longObserver = null;
+    open.clear();
+    click.clear();
+    fps.clear();
+    longtask.clear();
+    longCount = 0;
+    if (stats) stats.perf = null;
+    publishLatest(null);
+  }
+  const start = ({ stats: next, lifecycle, events = true, tasks = true } = {}) => {
+    if (next) bind(next);
+    track(lifecycle);
+    on = true;
+    if (events) armEvent(lifecycle);
+    if (tasks) armLongTask(lifecycle);
+    publish();
+  };
+  const beginPan = () => {
+    if (!on || pan.deltas) return false;
+    pan.deltas = [];
+    pan.last = null;
+    const raf2 = globalThis.requestAnimationFrame;
+    if (typeof raf2 !== "function") return true;
+    const step = (t) => {
+      if (!pan.deltas) return;
+      if (pan.last != null) pan.deltas.push(t - pan.last);
+      pan.last = t;
+      pan.raf = raf2(step);
+    };
+    pan.raf = raf2(step);
+    return true;
+  };
+  const endPan = () => {
+    if (!pan.deltas) return null;
+    const deltas = pan.deltas;
+    cancelPan();
+    if (!on) return null;
+    const value = panFps(deltas);
+    if (value == null) return null;
+    fps.push(value);
+    publish();
+    return value;
+  };
+  const watchOpen = (mountEl, t0) => {
+    if (!on || !mountEl) return () => {
+    };
+    const finish = () => {
+      const ms = perfNow() - t0;
+      if (Number.isFinite(ms) && ms >= 0) open.push(ms);
+      publish();
+    };
+    if (mountEl.querySelector?.(".pxd-item")) {
+      finish();
+      return () => {
+      };
+    }
+    let stopped = false;
+    const cancel = () => {
+      stopped = true;
+    };
+    const raf2 = globalThis.requestAnimationFrame;
+    if (typeof raf2 !== "function") {
+      queueMicrotask(() => {
+        if (!stopped && on && mountEl.querySelector?.(".pxd-item")) finish();
+      });
+      watches.add(cancel);
+      return cancel;
+    }
+    let left = OPEN_FRAMES;
+    let id = 0;
+    const step = () => {
+      if (stopped || !on) return;
+      if (mountEl.isConnected === false) return;
+      if (mountEl.querySelector?.(".pxd-item")) {
+        finish();
+        return;
+      }
+      left -= 1;
+      if (left <= 0) return;
+      id = raf2(step);
+    };
+    const stopWatch = () => {
+      stopped = true;
+      if (id) try {
+        globalThis.cancelAnimationFrame?.(id);
+      } catch {
+      }
+    };
+    watches.add(stopWatch);
+    id = raf2(step);
+    return stopWatch;
+  };
+  return {
+    bind,
+    start,
+    stop: stop2,
+    armEvent,
+    armLongTask,
+    beginPan,
+    endPan,
+    cancelPan,
+    watchOpen,
+    current: current3,
+    get enabled() {
+      return on;
+    }
+  };
+}
+
+// src/settings.js
+var SETTING_IDS = Object.freeze({
+  enabled: "enabled",
+  autoEnhance: "auto-enhance",
+  fullscreenOnZoom: "fullscreen-on-zoom",
+  graphLinks: "graph-links",
+  attrStyles: "attr-styles",
+  wheel: "wheel",
+  showMinimap: "show-minimap",
+  controlsPosition: "controls-position",
+  snapGuides: "snap-guides",
+  snapGrid: "snap-grid",
+  grid: "grid",
+  defaultCardWidth: "default-card-width",
+  defaultCardHeight: "default-card-height",
+  defaultCardLook: "default-card-look",
+  enableShortcuts: "enable-shortcuts",
+  showVersionBadge: "show-version-badge",
+  disableOnMobile: "disable-on-mobile",
+  collapseOutline: "collapse-outline",
+  boardTone: "board-tone",
+  mapZoom: "map-zoom",
+  autoFitSections: "auto-fit-sections",
+  spaceOut: "space-out",
+  showCardBadges: "show-card-badges",
+  cardChips: "card-chips",
+  whyPrompt: "why-prompt",
+  resurfaceIntervals: "resurface-intervals",
+  showPalette: "show-palette",
+  motion: "motion",
+  enterInCard: "enter-in-card",
+  toolbarLayout: "toolbar-layout",
+  dockPosition: "dock-position",
+  dockStyle: "dock-style",
+  dockLabels: "dock-labels",
+  chromeDensity: "chrome-density",
+  dockOptions: "dock-options",
+  tooltips: "tooltips",
+  tooltipDelay: "tooltip-delay",
+  taskTool: "task-tool",
+  taskChips: "task-chips",
+  taskDefaultProject: "task-default-project",
+  betterTasks: "better-tasks",
+  speedLog: "speed-log",
+  // Hidden. Not a panel row. JSON object, parsed by parseSpeedFlags.
+  speedFlags: "speed-flags"
+});
+var DEFAULTS = Object.freeze({
+  [SETTING_IDS.enabled]: true,
+  [SETTING_IDS.autoEnhance]: true,
+  [SETTING_IDS.fullscreenOnZoom]: true,
+  [SETTING_IDS.graphLinks]: "all",
+  [SETTING_IDS.attrStyles]: "",
+  [SETTING_IDS.wheel]: "pan",
+  [SETTING_IDS.showMinimap]: true,
+  [SETTING_IDS.controlsPosition]: "rail",
+  [SETTING_IDS.snapGuides]: true,
+  [SETTING_IDS.snapGrid]: false,
+  [SETTING_IDS.grid]: "dots",
+  [SETTING_IDS.defaultCardWidth]: 280,
+  [SETTING_IDS.defaultCardHeight]: 160,
+  [SETTING_IDS.defaultCardLook]: "block",
+  [SETTING_IDS.enableShortcuts]: true,
+  [SETTING_IDS.showVersionBadge]: true,
+  [SETTING_IDS.disableOnMobile]: true,
+  [SETTING_IDS.collapseOutline]: true,
+  [SETTING_IDS.boardTone]: "none",
+  [SETTING_IDS.mapZoom]: "0.45",
+  [SETTING_IDS.autoFitSections]: true,
+  [SETTING_IDS.spaceOut]: false,
+  [SETTING_IDS.showCardBadges]: true,
+  [SETTING_IDS.cardChips]: true,
+  [SETTING_IDS.whyPrompt]: false,
+  [SETTING_IDS.resurfaceIntervals]: "7,30,90,365",
+  [SETTING_IDS.showPalette]: true,
+  [SETTING_IDS.motion]: "full",
+  [SETTING_IDS.enterInCard]: "newline",
+  [SETTING_IDS.toolbarLayout]: "split",
+  [SETTING_IDS.dockPosition]: "bottom",
+  [SETTING_IDS.dockStyle]: "pill",
+  [SETTING_IDS.dockLabels]: false,
+  [SETTING_IDS.chromeDensity]: "comfortable",
+  [SETTING_IDS.dockOptions]: true,
+  [SETTING_IDS.tooltips]: true,
+  [SETTING_IDS.tooltipDelay]: "350 ms",
+  [SETTING_IDS.taskTool]: false,
+  [SETTING_IDS.taskChips]: "full",
+  [SETTING_IDS.taskDefaultProject]: "",
+  [SETTING_IDS.betterTasks]: false,
+  [SETTING_IDS.speedLog]: false
+});
+var BOARD_TONES2 = ["none", "paper", "gray", "red", "orange", "yellow", "green", "teal", "blue", "indigo", "purple", "pink"];
+var MAP_ZOOMS = ["0.3", "0.45", "0.6"];
+var TOOLTIP_DELAYS = ["instant", "350 ms", "800 ms"];
+var TASK_CHIPS = ["full", "due only", "none"];
+var ENUMS = Object.freeze({
+  [SETTING_IDS.graphLinks]: ["off", "attributes", "all"],
+  [SETTING_IDS.wheel]: ["pan", "zoom"],
+  [SETTING_IDS.controlsPosition]: ["rail", "bar"],
+  [SETTING_IDS.grid]: ["dots", "lines", "grid", "plain"],
+  [SETTING_IDS.defaultCardLook]: ["block", "card"],
+  [SETTING_IDS.boardTone]: BOARD_TONES2,
+  [SETTING_IDS.mapZoom]: MAP_ZOOMS,
+  [SETTING_IDS.motion]: ["full", "reduced", "none"],
+  [SETTING_IDS.enterInCard]: ["newline", "child"],
+  [SETTING_IDS.toolbarLayout]: ["split", "classic", "dock-only"],
+  [SETTING_IDS.dockPosition]: ["bottom", "left", "top"],
+  [SETTING_IDS.dockStyle]: ["pill", "strip"],
+  [SETTING_IDS.chromeDensity]: ["comfortable", "compact"],
+  [SETTING_IDS.tooltipDelay]: TOOLTIP_DELAYS,
+  [SETTING_IDS.taskChips]: TASK_CHIPS
+});
+var NUMBERS = /* @__PURE__ */ new Set([SETTING_IDS.defaultCardWidth, SETTING_IDS.defaultCardHeight]);
+function settingsDefaults() {
+  return { ...DEFAULTS };
+}
+function normalizeSetting(id, value) {
+  const fallback = DEFAULTS[id];
+  if (value == null || value === "") return fallback;
+  if (typeof fallback === "boolean") {
+    if (typeof value === "boolean") return value;
+    if (value === "true") return true;
+    if (value === "false") return false;
+    return fallback;
+  }
+  if (NUMBERS.has(id)) {
+    const n2 = Number(value);
+    return Number.isFinite(n2) && n2 >= 40 ? n2 : fallback;
+  }
+  if (ENUMS[id]) {
+    const text2 = typeof value === "number" ? String(value) : value;
+    return ENUMS[id].includes(text2) ? text2 : fallback;
+  }
+  return value;
+}
+var SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount"];
+function defaultSpeedFlags() {
+  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true };
+}
+function parseSpeedFlags(raw) {
+  const base = defaultSpeedFlags();
+  if (raw == null || raw === "") return base;
+  let obj = raw;
+  if (typeof raw === "string") {
+    const text2 = raw.trim();
+    if (!text2) return base;
+    try {
+      obj = JSON.parse(text2);
+    } catch {
+      return base;
+    }
+  }
+  if (!obj || typeof obj !== "object" || Array.isArray(obj)) return base;
+  const out = { ...base };
+  for (const name of SPEED_FLAG_NAMES) {
+    if (!Object.prototype.hasOwnProperty.call(obj, name)) continue;
+    const value = obj[name];
+    if (value === false || value === "false") out[name] = false;
+    else if (value === true || value === "true") out[name] = true;
+  }
+  return out;
+}
+var notedFlags = defaultSpeedFlags();
+var speedSource = null;
+function noteSpeedFlags(raw) {
+  notedFlags = parseSpeedFlags(raw);
+  return notedFlags;
+}
+function notedSpeedFlags() {
+  if (typeof speedSource === "function") {
+    try {
+      return noteSpeedFlags(speedSource());
+    } catch {
+    }
+  }
+  return notedFlags;
+}
+function bindSpeedFlagSource(get) {
+  speedSource = typeof get === "function" ? get : null;
+}
+function readSettings(extensionAPI) {
+  const out = {};
+  for (const id of Object.keys(DEFAULTS)) {
+    let raw = null;
+    try {
+      raw = extensionAPI?.settings?.get?.(id);
+    } catch {
+      raw = null;
+    }
+    out[id] = normalizeSetting(id, raw);
+  }
+  let speedRaw = null;
+  try {
+    speedRaw = extensionAPI?.settings?.get?.(SETTING_IDS.speedFlags);
+  } catch {
+    speedRaw = null;
+  }
+  out[SETTING_IDS.speedFlags] = noteSpeedFlags(speedRaw);
+  return out;
+}
+var settingsStore = null;
+async function initializeSettings(extensionAPI) {
+  settingsStore = extensionAPI ?? null;
+  if (extensionAPI.settings.canSet === false) return;
+  for (const [id, value] of Object.entries(DEFAULTS)) {
+    if (extensionAPI.settings.get(id) == null) {
+      await extensionAPI.settings.set(id, value);
+    }
+  }
+}
+var listeners = /* @__PURE__ */ new Set();
+function onSettingsChange(fn) {
+  listeners.add(fn);
+  return () => listeners.delete(fn);
+}
+function emit(id, value) {
+  for (const fn of [...listeners]) {
+    try {
+      fn(id, value);
+    } catch (error) {
+      console.error("[plexus-diagram] Settings listener failed", error);
+    }
+  }
+}
+function switchRow(id, name, description) {
+  return {
+    id,
+    name,
+    description,
+    action: { type: "switch", onChange: (event) => emit(id, event?.target?.checked ?? event) }
+  };
+}
+function inputRow(id, name, description) {
+  return {
+    id,
+    name,
+    description,
+    action: { type: "input", onChange: (event) => emit(id, event?.target?.value ?? event) }
+  };
+}
+function selectRow(id, name, description, items) {
+  return {
+    id,
+    name,
+    description,
+    action: { type: "select", items, onChange: (value) => emit(id, value?.target?.value ?? value) }
+  };
+}
+function groupRow(id, name, description, component) {
+  return {
+    id,
+    name,
+    description,
+    action: { type: "reactComponent", component: typeof component === "function" ? component : () => null }
+  };
+}
+async function resetPlexusSettings() {
+  const defaults = settingsDefaults();
+  for (const [id, value] of Object.entries(defaults)) {
+    try {
+      await settingsStore?.settings?.set?.(id, value);
+    } catch (error) {
+      console.warn("[plexus-diagram] Could not reset setting", id, error);
+    }
+    emit(id, value);
+  }
+}
+var SETTING_ROWS = {
+  [SETTING_IDS.enabled]: () => switchRow(SETTING_IDS.enabled, "Enabled", "Turn the diagram overlay on or off."),
+  [SETTING_IDS.autoEnhance]: () => switchRow(SETTING_IDS.autoEnhance, "Every diagram is a Plexus board", "On: every {{[[diagram]]}} opens as a Plexus board. Nothing is saved until you change the board. Off: only diagrams you enhance (Plexus: Enhance) or create with New whiteboard open in Plexus."),
+  [SETTING_IDS.fullscreenOnZoom]: () => switchRow(SETTING_IDS.fullscreenOnZoom, "Fullscreen on zoom", "Open a diagram full screen when you zoom into its block. Esc leaves it."),
+  [SETTING_IDS.graphLinks]: () => selectRow(SETTING_IDS.graphLinks, "Graph links", "Show lines between cards that share a page reference or an attribute.", ["all", "attributes", "off"]),
+  [SETTING_IDS.attrStyles]: () => inputRow(SETTING_IDS.attrStyles, "Attribute styles", "One JSON object. Each attribute name gets a palette color and a line: solid, dashed, or dotted."),
+  [SETTING_IDS.wheel]: () => selectRow(SETTING_IDS.wheel, "Mouse wheel", "What the mouse wheel does on the board. Pinch still zooms.", ["pan", "zoom"]),
+  [SETTING_IDS.showMinimap]: () => switchRow(SETTING_IDS.showMinimap, "Show minimap", "Show the small map of the whole board."),
+  [SETTING_IDS.showPalette]: () => switchRow(SETTING_IDS.showPalette, "Show tool palette", "Show the tool palette along the bottom of the board."),
+  [SETTING_IDS.motion]: () => selectRow(SETTING_IDS.motion, "Motion", "Full, reduced, or none. A system reduced-motion setting shortens Full.", ["full", "reduced", "none"]),
+  [SETTING_IDS.toolbarLayout]: () => selectRow(SETTING_IDS.toolbarLayout, "Toolbar layout", "Split: board bar on top, tools in the dock. Classic: the 2.1 look, tools in the top bar. Dock only: hide the top bar until the pointer is near the top edge.", ["split", "classic", "dock-only"]),
+  [SETTING_IDS.dockPosition]: () => selectRow(SETTING_IDS.dockPosition, "Tool dock position", "Where the tool dock sits. A board can override this from its More menu.", ["bottom", "left", "top"]),
+  [SETTING_IDS.dockStyle]: () => selectRow(SETTING_IDS.dockStyle, "Dock shape", "Pill is a rounded floating dock. Strip is a flat bar.", ["pill", "strip"]),
+  [SETTING_IDS.dockLabels]: () => switchRow(SETTING_IDS.dockLabels, "Show tool names under icons", "Label each tool in the dock."),
+  [SETTING_IDS.chromeDensity]: () => selectRow(SETTING_IDS.chromeDensity, "Button size", "Comfortable or compact buttons for both bars.", ["comfortable", "compact"]),
+  [SETTING_IDS.dockOptions]: () => switchRow(SETTING_IDS.dockOptions, "Show tool options in the dock", "Show the active tool's quick options (colors, look, shape) next to the dock."),
+  [SETTING_IDS.tooltips]: () => switchRow(SETTING_IDS.tooltips, "Hover tooltips", "Show a name, shortcut and one-line description when you hover or focus a control. Off falls back to the browser's plain tooltip."),
+  [SETTING_IDS.tooltipDelay]: () => selectRow(SETTING_IDS.tooltipDelay, "Tooltip delay", "How long to hover before a tooltip shows. Keyboard focus always shows it at once.", TOOLTIP_DELAYS),
+  [SETTING_IDS.controlsPosition]: () => selectRow(SETTING_IDS.controlsPosition, "Controls", "Rail is the vertical stack on the right. Bar is the horizontal zoom group.", ["rail", "bar"]),
+  [SETTING_IDS.snapGuides]: () => switchRow(SETTING_IDS.snapGuides, "Snap guides", "Line a dragged card up with its neighbours and show the guides."),
+  [SETTING_IDS.snapGrid]: () => switchRow(SETTING_IDS.snapGrid, "Snap to grid", "Snap a dragged card to the 24 pixel grid. Hold Alt while dragging to skip snapping."),
+  [SETTING_IDS.grid]: () => selectRow(SETTING_IDS.grid, "Default board background: pattern", "Pattern for boards that do not set their own. A board can override it from Background.", ["dots", "lines", "grid", "plain"]),
+  [SETTING_IDS.boardTone]: () => selectRow(SETTING_IDS.boardTone, "Default board background: tone", "Color wash for boards that do not set their own.", BOARD_TONES2),
+  [SETTING_IDS.mapZoom]: () => selectRow(SETTING_IDS.mapZoom, "Map view below (zoom)", "Below this zoom, cards show only their title.", MAP_ZOOMS),
+  [SETTING_IDS.autoFitSections]: () => switchRow(SETTING_IDS.autoFitSections, "Auto-fit sections", "Grow a section when a card is moved or resized past its edge."),
+  [SETTING_IDS.spaceOut]: () => switchRow(SETTING_IDS.spaceOut, "Space out cards", "After a move, push cards apart when they overlap."),
+  [SETTING_IDS.showCardBadges]: () => switchRow(SETTING_IDS.showCardBadges, "Show card badges", "Show how many references, tasks, and children a card has."),
+  [SETTING_IDS.cardChips]: () => switchRow(SETTING_IDS.cardChips, "Board chips", "Show a board chip under a block that is a card on a board."),
+  [SETTING_IDS.whyPrompt]: () => switchRow(SETTING_IDS.whyPrompt, "Ask why on a new connection", "After you draw a connection, open the why field."),
+  [SETTING_IDS.resurfaceIntervals]: () => inputRow(SETTING_IDS.resurfaceIntervals, "Resurface intervals", "Days, separated by commas. A daily page lists cards from those many days ago."),
+  [SETTING_IDS.betterTasks]: () => switchRow(SETTING_IDS.betterTasks, "Better Tasks integration", "Use Better Tasks for task chips, the light checkbox, and task edits. Off leaves the TODO marker to Roam."),
+  [SETTING_IDS.taskTool]: () => switchRow(SETTING_IDS.taskTool, "Task tool", "Show the Task tool (K) in the dock. It makes a Roam TODO block; Better Tasks sets its due date and project."),
+  [SETTING_IDS.taskChips]: () => selectRow(SETTING_IDS.taskChips, "Task chips", "What a task card shows under its title. Full: due date, project, priority, repeat, status. Due only: just the date. None: no chips.", TASK_CHIPS),
+  [SETTING_IDS.taskDefaultProject]: () => inputRow(SETTING_IDS.taskDefaultProject, "Default project for new tasks", "A page name. A task made from the board gets it as its Better Tasks project. Empty uses Better Tasks' own default."),
+  [SETTING_IDS.enterInCard]: () => selectRow(SETTING_IDS.enterInCard, "Enter in a card", "Newline adds a line to the card's block, like a native Roam diagram. Child makes a new child block inside the card.", ["newline", "child"]),
+  [SETTING_IDS.defaultCardLook]: () => selectRow(SETTING_IDS.defaultCardLook, "Default card look", "New note cards. Block is a plain Roam block. Card keeps a title row.", ["block", "card"]),
+  [SETTING_IDS.defaultCardWidth]: () => inputRow(SETTING_IDS.defaultCardWidth, "Default card width", "Width of a new card, in pixels."),
+  [SETTING_IDS.defaultCardHeight]: () => inputRow(SETTING_IDS.defaultCardHeight, "Default card height", "Height of a new card, in pixels."),
+  [SETTING_IDS.enableShortcuts]: () => switchRow(SETTING_IDS.enableShortcuts, "Enable shortcuts", "Use keyboard shortcuts on the board."),
+  [SETTING_IDS.showVersionBadge]: () => switchRow(SETTING_IDS.showVersionBadge, "Show version badge", "Show the version on the board."),
+  [SETTING_IDS.disableOnMobile]: () => switchRow(SETTING_IDS.disableOnMobile, "Disable on mobile", "Do not open diagrams on a phone."),
+  [SETTING_IDS.collapseOutline]: () => switchRow(SETTING_IDS.collapseOutline, "Collapse the outline", "Fold an enhanced board once, so the outline does not list every card. Opening the bullet is remembered."),
+  [SETTING_IDS.speedLog]: () => switchRow(SETTING_IDS.speedLog, "Speed log", "Record open time, click-to-paint, pan frame rate, and long tasks in this tab. Nothing is sent or saved.")
+};
+var SETTING_GROUPS = [
+  ["group-cards", "Cards", "How new cards look, and the marks on them.", [
+    SETTING_IDS.defaultCardLook,
+    SETTING_IDS.defaultCardWidth,
+    SETTING_IDS.defaultCardHeight,
+    SETTING_IDS.enterInCard,
+    SETTING_IDS.showCardBadges,
+    SETTING_IDS.cardChips,
+    SETTING_IDS.spaceOut
+  ]],
+  ["group-integrations", "Integrations", "Better Tasks, the task tool, and what a task card shows.", [
+    SETTING_IDS.betterTasks,
+    SETTING_IDS.taskTool,
+    SETTING_IDS.taskChips,
+    SETTING_IDS.taskDefaultProject
+  ]],
+  ["group-sections", "Sections", "How a section grows around its cards.", [
+    SETTING_IDS.autoFitSections
+  ]],
+  ["group-connections", "Connections", "Lines drawn from page references and attributes.", [
+    SETTING_IDS.graphLinks,
+    SETTING_IDS.attrStyles,
+    SETTING_IDS.whyPrompt
+  ]],
+  ["group-board", "Board", "The canvas, the controls, and how you move around.", [
+    SETTING_IDS.enabled,
+    SETTING_IDS.autoEnhance,
+    SETTING_IDS.fullscreenOnZoom,
+    SETTING_IDS.wheel,
+    SETTING_IDS.showMinimap,
+    SETTING_IDS.showPalette,
+    SETTING_IDS.toolbarLayout,
+    SETTING_IDS.dockPosition,
+    SETTING_IDS.dockStyle,
+    SETTING_IDS.dockLabels,
+    SETTING_IDS.chromeDensity,
+    SETTING_IDS.dockOptions,
+    SETTING_IDS.tooltips,
+    SETTING_IDS.tooltipDelay,
+    SETTING_IDS.controlsPosition,
+    SETTING_IDS.snapGuides,
+    SETTING_IDS.snapGrid,
+    SETTING_IDS.grid,
+    SETTING_IDS.boardTone,
+    SETTING_IDS.mapZoom,
+    SETTING_IDS.enableShortcuts,
+    SETTING_IDS.showVersionBadge,
+    SETTING_IDS.resurfaceIntervals
+  ]],
+  ["group-performance", "Performance", "Motion, and when the overlay stays off.", [
+    SETTING_IDS.motion,
+    SETTING_IDS.disableOnMobile,
+    SETTING_IDS.collapseOutline,
+    SETTING_IDS.speedLog
+  ]]
+];
+function performanceGroupRow(id, name, description) {
+  const text2 = () => perfReadoutText(readHostPerf());
+  const row2 = groupRow(id, name, `${description} ${text2()}`, text2);
+  bindPerfReadout(row2, description);
+  return row2;
+}
+function createSettingsPanel() {
+  const settings = [];
+  for (const [id, name, description, members] of SETTING_GROUPS) {
+    settings.push(id === "group-performance" ? performanceGroupRow(id, name, description) : groupRow(id, name, description));
+    for (const member of members) settings.push(SETTING_ROWS[member]());
+  }
+  settings.push({
+    id: "reset-plexus-settings",
+    name: "Reset",
+    description: "Put every Plexus setting back to its default. Open boards update right away.",
+    action: { type: "button", content: "Reset Plexus settings", onClick: () => resetPlexusSettings() }
+  });
+  return { tabTitle: "Plexus Diagram", settings };
+}
+
 // src/view/cards.js
 var SIDES3 = ["top", "right", "bottom", "left"];
 var CHUNK_MS = 8;
@@ -16062,8 +17049,16 @@ function createItemRenderer({
   pdfChips = null,
   onPdfPulse = null,
   onPdfOpen = null,
-  onEmbedOpen = null
+  onEmbedOpen = null,
+  settings: speedSettings = null
 } = {}) {
+  const speedOf = () => {
+    if (speedSettings == null) return notedSpeedFlags();
+    if (Object.prototype.hasOwnProperty.call(speedSettings, SETTING_IDS.speedFlags)) {
+      return parseSpeedFlags(speedSettings[SETTING_IDS.speedFlags]);
+    }
+    return parseSpeedFlags(speedSettings);
+  };
   taskBlockOn = (item) => Boolean(bt?.available?.()) && isTaskCard(item);
   let pdfOpenUid = null;
   let pdfLiveUid = null;
@@ -16135,8 +17130,9 @@ function createItemRenderer({
   let zoomCache = 1;
   let paused = false;
   let editing = null;
-  let queue = [];
-  let idleHandle = null;
+  let contentSched = null;
+  let frameSample = null;
+  const frameStamps = [];
   let wanted = /* @__PURE__ */ new Set();
   let lastBoard = null;
   let lastRects = null;
@@ -16202,7 +17198,31 @@ function createItemRenderer({
     for (const child of node2.children || []) if (child.classList?.contains("pxd-rs__live")) return child;
     return node2;
   };
+  const embedBoxFor = (uid) => {
+    const item = uid ? lastBoard?.items.get(uid) : null;
+    if (item && (Number(item.w) > 0 || Number(item.h) > 0)) return coverOuterBox({ w: item.w, h: item.h });
+    return coverOuterBox({});
+  };
+  const fitEmbedOuter = (node2, box2) => {
+    if (!node2?.style || !box2) return;
+    node2.style.width = `${box2.w}px`;
+    node2.style.height = `${box2.h}px`;
+    node2.style.boxSizing = "border-box";
+    node2.style.overflow = "hidden";
+  };
+  const holdHeight = (node2, px) => {
+    if (!node2?.style || !(px > 0) || node2.style.minHeight) return;
+    node2.style.minHeight = `${Math.round(px)}px`;
+  };
+  const reserveCardHeight = (rec, item) => {
+    const h = Number(item?.h);
+    if (!rec?.el?.style || !(h > 0) || rec.el.style.height) return;
+    rec.el.style.height = `${Math.round(h)}px`;
+  };
   const armEmbedShield = (node2, live) => {
+    if (node2?.classList?.contains("pxd-embed-live") && !node2.style?.height) {
+      fitEmbedOuter(node2, embedBoxFor(node2.getAttribute?.("data-pxd-embed")));
+    }
     const syncShield = () => {
       const hit = live.querySelector?.(EMBED_SEL);
       let shield = null;
@@ -16284,7 +17304,10 @@ function createItemRenderer({
   const paintLiveEmbed = (node2, string, liveUid) => {
     node2.classList.add("pxd-embed-live");
     if (liveUid) node2.setAttribute("data-pxd-embed", liveUid);
+    const box2 = embedBoxFor(liveUid);
+    fitEmbedOuter(node2, box2);
     const live = el("div", "pxd-rs__live", node2);
+    fitEmbedOuter(live, box2);
     let mountedLive = false;
     if (liveUid && host?.renderBlock) {
       try {
@@ -16427,6 +17450,10 @@ function createItemRenderer({
     const node2 = el("div", cls, parent);
     if (!string) return node2;
     const split = embedSplit(String(string), embedOptsFor(uid));
+    if (split.posters.length && speedOf().posters === false) {
+      paintLiveEmbed(node2, string, split.posters[0].uid || uid);
+      return node2;
+    }
     if (split.posters.length) {
       const hit = pdfOpenUid ? split.posters.find((poster) => (poster.uid || uid) === pdfOpenUid) : null;
       if (hit && lod === "detail") {
@@ -16439,7 +17466,8 @@ function createItemRenderer({
       }
       for (const poster of split.posters) {
         const mount = poster.uid || uid;
-        paintEmbedPoster(doc, node2, { ...poster, uid: mount }, (id) => openEmbed(id || mount));
+        const painted = paintEmbedPoster(doc, node2, { ...poster, uid: mount }, (id) => openEmbed(id || mount));
+        fitEmbedOuter(painted, embedBoxFor(mount));
       }
       return node2;
     }
@@ -16985,6 +18013,7 @@ function createItemRenderer({
       if (rect) position(rec, rect);
     }
     if (chunk.length) placeShells();
+    if (chunk.length && lastContent) paintOffscreen(lastContent.visibleRect);
     if (shellQueue.length && timers?.frame) timers.frame(pumpShells);
   };
   const sync = ({ board: board2, rects, dirty: changed2 = null, structural = false, view = null }) => {
@@ -17053,6 +18082,7 @@ function createItemRenderer({
             rec.body?.replaceChildren?.();
             rec.contentKey = null;
             mounted.delete(uid);
+            contentSched?.drop(uid);
             rec.titleRendered = false;
             if (rec.type === "card") {
               rec.bare = true;
@@ -17180,10 +18210,13 @@ function createItemRenderer({
       const s = childString3(b);
       if (skipChildString(s)) continue;
       budget.n += 1;
+      const rowUid = childUid(b);
       const row2 = el("div", "pxd-block", parent);
-      row2.dataset.uid = childUid(b);
-      row2.setAttribute("data-pxd-row", childUid(b));
-      const node2 = renderRowRoot(row2, s, "pxd-rs pxd-block__text", childUid(b));
+      row2.dataset.uid = rowUid;
+      row2.setAttribute("data-pxd-row", rowUid);
+      const posterCount = embedSplit(String(s || ""), embedOptsFor(rowUid)).posters.length;
+      holdHeight(row2, posterCount ? embedBoxFor(rowUid).h : KID_ROW_H);
+      const node2 = renderRowRoot(row2, s, "pxd-rs pxd-block__text", rowUid);
       budget.roots.push(node2);
       const kids = childKids(b);
       if (kids.length && depth < CONTENT_DEPTH) {
@@ -17355,6 +18388,7 @@ function createItemRenderer({
     rec.rowIO?.unobserve?.(row2.plain);
     rec.rowIOHeavy?.unobserve?.(row2.plain);
     if (!row2.plain.isConnected) return;
+    holdHeight(row2.line, KID_ROW_H);
     const root = renderRowRoot(row2.line, row2.string, "pxd-rs pxd-block__text", uid);
     row2.plain.remove();
     rec.roots.push(root);
@@ -17364,6 +18398,7 @@ function createItemRenderer({
   };
   const addPlainRow = (rec, line, string, uid) => {
     if (!rec.rowTable) return;
+    holdHeight(line, KID_ROW_H);
     const heavy = isHeavyRow(string);
     const plain = el("div", `pxd-block__text pxd-block__plain${heavy ? " pxd-block__plain--heavy" : ""}`, line);
     plain.textContent = heavy ? "…" : plainText(string);
@@ -17479,10 +18514,15 @@ function createItemRenderer({
       fold.setAttribute("aria-expanded", folded ? "false" : "true");
       for (const type of ["pointerdown", "mousedown", "dblclick"]) fold.addEventListener(type, stopEvent);
     }
-    if (embedSplit(s, embedOptsFor(uid)).posters.length) {
+    const posters = embedSplit(s, embedOptsFor(uid)).posters;
+    if (posters.length) {
+      holdHeight(row2, embedBoxFor(uid).h);
       const root = renderRoot(line, s, "pxd-rs pxd-block__text", uid);
       if (root.classList?.contains("pxd-embed-live") || root.querySelector?.(".pxd-rs__live")) b.roots.push(root);
-    } else addPlainRow(rec, line, s, uid);
+    } else {
+      holdHeight(line, KID_ROW_H);
+      addPlainRow(rec, line, s, uid);
+    }
     if (!hasKids) return row2;
     const wrap = el("div", "pxd-block__children", row2);
     let filled = !folded;
@@ -18342,7 +19382,7 @@ function createItemRenderer({
       const cover = pdfCoverOf(item);
       rec.pdfCover = cover;
       if (editing?.uid !== item.uid && !rec.renaming) rec.header.textContent = String(cover.title || "PDF").slice(0, HEADER_TEXT_MAX);
-      if (pdfReaderBox(item.uid)) budget.roots.push(paintPdfReader(rec, item));
+      if (pdfReaderBox(item.uid) || speedOf().posters === false) budget.roots.push(paintPdfReader(rec, item));
       else paintPdfCover(rec, item, cover);
     } else if (item.kind === "highlight" && item.highlight) {
       paintHighlight(rec, item, budget);
@@ -18607,6 +19647,7 @@ function createItemRenderer({
     if (detail) rec.regionWidth = rec.rect?.w ?? item.w;
   };
   const mountContent = (rec, item) => {
+    reserveCardHeight(rec, item);
     mountContentBody(rec, item);
     syncKidsBadge(rec, item);
   };
@@ -18639,25 +19680,50 @@ function createItemRenderer({
     }
     rec.contentKey = null;
     mounted.delete(uid);
+    contentSched?.drop(uid);
   };
-  const pump = (deadline) => {
-    idleHandle = null;
-    if (disposed || paused || !lastBoard) return;
-    const start = now();
-    const has = deadline && typeof deadline.timeRemaining === "function" ? () => deadline.timeRemaining() > 1 : () => true;
-    while (queue.length && now() - start < CHUNK_MS && has()) {
-      const uid = queue.shift();
-      if (!wanted.has(uid) || mounted.has(uid)) continue;
-      const rec = shells.get(uid);
-      const item = lastBoard.items.get(uid);
-      if (!rec || !item || editing?.uid === uid) continue;
-      if (rec.type === "section") mountSectionTitle(rec, item);
-      else mountContent(rec, item);
-      mounted.delete(uid);
-      mounted.set(uid, now());
-    }
-    if (queue.length) idleHandle = idle(pump);
+  const mountScheduled = (uid) => {
+    if (disposed || paused) return false;
+    if (!wanted.has(uid)) return false;
+    if (mounted.has(uid)) return true;
+    const rec = shells.get(uid);
+    const item = lastBoard?.items.get(uid);
+    if (!rec || !item || editing?.uid === uid) return true;
+    if (rec.type === "section") mountSectionTitle(rec, item);
+    else mountContent(rec, item);
+    mounted.delete(uid);
+    mounted.set(uid, now());
     evict();
+    return true;
+  };
+  contentSched = createRowScheduler({
+    idle: (fn) => idle(fn),
+    now,
+    budgetMs: CHUNK_MS,
+    render: (uid) => mountScheduled(uid),
+    eager: () => speedOf().budgetedMount === false
+  });
+  const publishMountFps = () => {
+    const fps = mountFpsFromStamps(frameStamps);
+    if (fps == null) return;
+    const bag = host?.stats;
+    if (!bag || typeof bag !== "object") return;
+    bag.mountFps = fps;
+  };
+  const stopFrames = () => {
+    if (typeof frameSample === "function") frameSample();
+    frameSample = null;
+  };
+  const armFrames = () => {
+    if (frameSample || disposed || typeof timers?.frame !== "function") return;
+    if (!contentSched.pending()) return;
+    frameSample = timers.frame((t) => {
+      frameSample = null;
+      if (disposed) return;
+      frameStamps.push(Number.isFinite(t) ? t : now());
+      publishMountFps();
+      if (contentSched.pending() > 0) armFrames();
+    });
   };
   const evict = () => {
     if (mounted.size <= LRU_CAP) return;
@@ -18704,16 +19770,34 @@ function createItemRenderer({
     }
     rec.contentKey = null;
     mounted.delete(uid);
+    contentSched?.drop(uid);
   };
+  const cardHeavy = (item, rec) => {
+    if (!item || item.type === "section") return false;
+    if (isHeavyRow(item.string) || isHeavyRow(rec?.refString)) return true;
+    return item.kind === "image" || item.kind === "pdf" || item.kind === "board" || item.kind === "drawing-ref";
+  };
+  const centreDist = (uid, visibleRect) => {
+    const r = drawnRect(uid, lastRects?.get(uid));
+    if (!r || !visibleRect) return 0;
+    const cx = (Number(visibleRect.x) || 0) + (Number(visibleRect.w) || 0) / 2;
+    const cy = (Number(visibleRect.y) || 0) + (Number(visibleRect.h) || 0) / 2;
+    const dx = (Number(r.x) || 0) + (Number(r.w) || 0) / 2 - cx;
+    const dy = (Number(r.y) || 0) + (Number(r.h) || 0) / 2 - cy;
+    return dx * dx + dy * dy;
+  };
+  const cssVar = (style, name) => (typeof style.getPropertyValue === "function" ? style.getPropertyValue(name) : style[name]) || "";
   const paintOffscreen = (visibleRect) => {
     for (const [uid, rec] of shells) {
       if (!rec.el || rec.type === "section") continue;
       const rect = drawnRect(uid, lastRects?.get(uid));
       const off = Boolean(visibleRect) && shellOffscreen(uid, rect, visibleRect, { editingUid: editing?.uid ?? null });
-      rec.el.classList.toggle("pxd-item--offscreen", off);
+      if (rec.el.classList.contains("pxd-item--offscreen") !== off) {
+        rec.el.classList.toggle("pxd-item--offscreen", off);
+      }
       if (!off) {
-        rec.el.style.removeProperty("--pxd-iw");
-        rec.el.style.removeProperty("--pxd-ih");
+        if (cssVar(rec.el.style, "--pxd-iw")) rec.el.style.removeProperty("--pxd-iw");
+        if (cssVar(rec.el.style, "--pxd-ih")) rec.el.style.removeProperty("--pxd-ih");
         const item = lastBoard?.items.get(uid);
         if (!paused && item?.kind === "region-ref" && lod === "detail" && mounted.has(uid) && editing?.uid !== uid && thumbRequest(rec.regionWidth, rec.rect?.w)) {
           mountContent(rec, item);
@@ -18721,14 +19805,14 @@ function createItemRenderer({
         continue;
       }
       const [iw, ih] = intrinsicSize(rect).split(" ");
-      rec.el.style.setProperty("--pxd-iw", iw);
-      rec.el.style.setProperty("--pxd-ih", ih);
+      if (cssVar(rec.el.style, "--pxd-iw") !== iw) rec.el.style.setProperty("--pxd-iw", iw);
+      if (cssVar(rec.el.style, "--pxd-ih") !== ih) rec.el.style.setProperty("--pxd-ih", ih);
     }
   };
-  const fillContent = ({ visibleRect, zoom = zoomCache, tier = null }) => {
+  const fillContent = ({ visibleRect, zoom = zoomCache, tier = null, dirty = null } = {}) => {
     zoomCache = zoom;
     paintOffscreen(visibleRect);
-    if (!lastBoard || !lastRects) return;
+    if (!lastBoard || !lastRects || !contentSched) return;
     const next = /* @__PURE__ */ new Set();
     if ((tier ?? lodForZoom(zoom)) === "detail") {
       for (const [uid, rec] of shells) {
@@ -18746,8 +19830,23 @@ function createItemRenderer({
     wanted = next;
     const t = now();
     for (const uid of next) if (mounted.has(uid)) mounted.set(uid, t);
-    queue = [...next].filter((u) => !mounted.has(u));
-    if (queue.length && !paused && !idleHandle) idleHandle = idle(pump);
+    for (const uid of shells.keys()) if (!next.has(uid)) contentSched.want(uid, false);
+    const dirtyKnown = dirty != null && typeof dirty.has === "function";
+    for (const uid of next) {
+      const rec = shells.get(uid);
+      const item = lastBoard.items.get(uid);
+      if (!rec || !item) continue;
+      const heavy = cardHeavy(item, rec);
+      const near = centreDist(uid, visibleRect);
+      if (contentSched.isDone(uid)) {
+        if (mounted.has(uid)) continue;
+        if (dirtyKnown && !dirty.has(uid)) continue;
+        contentSched.reopen(uid, { heavy, near, wanted: true });
+        continue;
+      }
+      contentSched.place(uid, { heavy, near, wanted: true });
+    }
+    if (!paused && contentSched.pending() > 0) armFrames();
     if ([...mounted.keys()].some((u) => !next.has(u))) scheduleUnmounts();
   };
   const scheduleContent = (args) => {
@@ -18760,24 +19859,17 @@ function createItemRenderer({
     if (next === quieted) return;
     quieted = next;
     if (quieted) {
-      if (idleHandle) {
-        idleHandle();
-        idleHandle = null;
-      }
-      queue = [];
+      contentSched?.hold(true);
       for (const [uid, rec] of shells) holdQuiet(rec, uid);
       return;
     }
+    contentSched?.hold(false);
     if (lastContent) fillContent(lastContent);
   };
   const setPaused = (on) => {
     const was = paused;
     paused = Boolean(on);
-    if (paused && idleHandle) {
-      idleHandle();
-      idleHandle = null;
-    }
-    if (!paused && queue.length && !idleHandle) idleHandle = idle(pump);
+    contentSched?.hold(paused);
     if (was && !paused && lod === "detail") {
       for (const [uid, rec] of shells) {
         const item = lastBoard?.items.get(uid);
@@ -19055,7 +20147,7 @@ function createItemRenderer({
     }
     for (const [uid, rec] of shells) {
       const on = set.has(uid);
-      if (rec.selected !== on) {
+      if (Boolean(rec.selected) !== on) {
         rec.selected = on;
         rec.el.classList.toggle(rec.type === "section" ? "pxd-section--selected" : "pxd-item--selected", on);
       }
@@ -19074,7 +20166,7 @@ function createItemRenderer({
   const setHover = (uid) => {
     for (const [u, rec] of shells) {
       const on = u === uid;
-      if (rec.hover === on) continue;
+      if (Boolean(rec.hover) === on) continue;
       rec.hover = on;
       rec.el.classList.toggle("pxd-item--drop", on);
     }
@@ -19652,7 +20744,7 @@ function createItemRenderer({
       if (eventUid && drawing !== eventUid && ref !== eventUid) continue;
       const nextKind = model ? "region-ref" : "block";
       const nextTitle = model ? model.caption ?? "" : firstLine(item.string);
-      const same = item.kind === nextKind && (item.title || "") === nextTitle && (item.regionDrawing || "") === (model?.drawingUid || "");
+      const same2 = item.kind === nextKind && (item.title || "") === nextTitle && (item.regionDrawing || "") === (model?.drawingUid || "");
       if (!model && item.kind !== "region-ref") continue;
       if (model) {
         item.kind = "region-ref";
@@ -19665,7 +20757,7 @@ function createItemRenderer({
       }
       const rec = shells.get(item.uid);
       if (rec && editing?.uid !== item.uid) paintShell(rec, item);
-      if (!same || eventUid) {
+      if (!same2 || eventUid) {
         changed2 = true;
         if (rec && mounted.has(item.uid) && editing?.uid !== item.uid) unmountContent(item.uid);
       }
@@ -19735,10 +20827,8 @@ function createItemRenderer({
       } catch {
       }
     }
-    if (idleHandle) {
-      idleHandle();
-      idleHandle = null;
-    }
+    stopFrames();
+    contentSched?.dispose();
     if (unmountTimer) {
       unmountTimer();
       unmountTimer = null;
@@ -19757,7 +20847,6 @@ function createItemRenderer({
     }
     shells.clear();
     mounted.clear();
-    queue = [];
     dropRegionWatch();
   };
   return {
@@ -19812,6 +20901,7 @@ function createItemRenderer({
         rec.body?.replaceChildren?.();
         rec.contentKey = null;
         mounted.delete(uid);
+        contentSched?.drop(uid);
         rec.titleRendered = false;
         if (rec.type === "card") {
           rec.bare = true;
@@ -20106,7 +21196,7 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
     el.addEventListener(type, fn, opts);
     listeners2.push(() => el.removeEventListener(type, fn, opts));
   };
-  const pairOffset = (board2, edge) => {
+  const pairOffset2 = (board2, edge) => {
     for (const other of board2.edges.values()) {
       if (other.uid !== edge.uid && other.from === edge.to && other.to === edge.from) {
         return edge.uid < other.uid ? PAIR_OFFSET : -PAIR_OFFSET;
@@ -20152,7 +21242,7 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
         if (!an.clamped) toInnerSpec = { rect: routed.b, side: an.side, point: an.point, rowLeft: m.to.rowLeft, rowRight: m.to.rowRight };
       }
     }
-    const geo = edgePath({ a: routed.a, b: routed.b, fromSide, toSide, route: edge.route, offset: pairOffset(board2, edge), via, fromPoint, toPoint });
+    const geo = edgePath({ a: routed.a, b: routed.b, fromSide, toSide, route: edge.route, offset: pairOffset2(board2, edge), via, fromPoint, toPoint });
     if (m) {
       geo.fromClamp = fromClamp;
       geo.toClamp = toClamp;
@@ -20557,21 +21647,51 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
       }
     }
   };
-  const setSelection = ({ edge = null, link = null } = {}) => {
-    for (const [uid, rec] of edgeEls) {
-      const on = uid === edge;
-      const cls = String(rec.g.getAttribute("class") || "").replace(/\s*pxd-edge--selected/g, "");
-      setClass(rec.g, on ? `${cls} pxd-edge--selected` : cls);
+  let pickedEdge = null;
+  let pickedLink = null;
+  let selectionReady = false;
+  const markEdge = (uid, on) => {
+    const rec = edgeEls.get(uid);
+    if (!rec) return;
+    const cur = String(rec.g.getAttribute("class") || "");
+    const base = cur.replace(/\s*pxd-edge--selected/g, "");
+    const next = on ? `${base} pxd-edge--selected` : base;
+    if (cur !== next) setClass(rec.g, next);
+    if (Boolean(rec.label.classList.contains("pxd-label--selected")) !== on) {
       rec.label.classList.toggle("pxd-label--selected", on);
-      rec.innerCls = String(rec.innerCls || "").replace(/ pxd-inner--selected/g, "") + (on ? " pxd-inner--selected" : "");
-      paintInner(rec);
-      syncEnds(rec, on);
     }
-    for (const [key, rec] of linkEls) {
-      const on = key === link;
-      const cls = String(rec.g.getAttribute("class") || "").replace(/\s*pxd-link--selected/g, "");
-      setClass(rec.g, on ? `${cls} pxd-link--selected` : cls);
+    const inner = String(rec.innerCls || "").replace(/ pxd-inner--selected/g, "") + (on ? " pxd-inner--selected" : "");
+    if (rec.innerCls !== inner) {
+      rec.innerCls = inner;
+      paintInner(rec);
+    }
+    syncEnds(rec, on);
+  };
+  const markLink = (key, on) => {
+    const rec = linkEls.get(key);
+    if (!rec) return;
+    const cur = String(rec.g.getAttribute("class") || "");
+    const base = cur.replace(/\s*pxd-link--selected/g, "");
+    const next = on ? `${base} pxd-link--selected` : base;
+    if (cur !== next) setClass(rec.g, next);
+    if (Boolean(rec.label.classList.contains("pxd-label--selected")) !== on) {
       rec.label.classList.toggle("pxd-label--selected", on);
+    }
+  };
+  const setSelection = ({ edge = null, link = null } = {}) => {
+    const prevEdge = selectionReady ? pickedEdge : null;
+    const prevLink = selectionReady ? pickedLink : null;
+    if (selectionReady && prevEdge === edge && prevLink === link) return;
+    selectionReady = true;
+    pickedEdge = edge;
+    pickedLink = link;
+    if (prevEdge !== edge) {
+      if (prevEdge) markEdge(prevEdge, false);
+      if (edge) markEdge(edge, true);
+    }
+    if (prevLink !== link) {
+      if (prevLink) markLink(prevLink, false);
+      if (link) markLink(link, true);
     }
   };
   const setTempWire = (spec, rects, zoom = zoomCache) => {
@@ -21100,6 +22220,10 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
       b.setAttribute("aria-label", entry.title);
       b.dataset.index = String(entry.index);
       b.setAttribute("data-index", String(entry.index));
+      if (typeof entry.uid === "string" && entry.uid) {
+        b.dataset.board = entry.uid;
+        b.setAttribute("data-board", entry.uid);
+      }
     }
   };
   listen(crumbsEl, "click", (event) => {
@@ -21139,7 +22263,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     if (items.length > MAX_CRUMBS) {
       shown = [0, last - 2, last - 1, last];
       overflow = [];
-      for (let i = 1; i < last - 2; i += 1) overflow.push({ index: i, title: items[i].title });
+      for (let i = 1; i < last - 2; i += 1) overflow.push({ index: i, title: items[i].title, uid: items[i].uid });
     }
     shown.forEach((i, n2) => {
       if (n2 === 1 && overflow.length) {
@@ -21164,6 +22288,10 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
       b.setAttribute("aria-label", c.title);
       b.dataset.index = String(i);
       b.setAttribute("data-index", String(i));
+      if (typeof c.uid === "string" && c.uid) {
+        b.dataset.board = c.uid;
+        b.setAttribute("data-board", c.uid);
+      }
       el("span", "pxd-crumb__sep", crumbsEl, "›");
     });
   };
@@ -21617,10 +22745,10 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     ctx.setAttribute("data-kind", kind);
     const row2 = el("div", "pxd-ctx__row", ctx);
     const btn = (cls, icon, label, title, fn) => iconButton(row2, `pxd-ctx__btn ${cls}`, icon, label, title, fn);
-    const seg = (cls, options, current2, fn) => {
+    const seg = (cls, options, current3, fn) => {
       const wrap = el("div", `pxd-seg ${cls}`, row2);
       for (const [value, label, title, icon] of options) {
-        const b = button(wrap, `pxd-seg__btn${value === current2 ? " pxd-seg__btn--on" : ""}${icon ? " pxd-iconbtn" : ""}`, icon ? "" : label, title || label, () => fn(value));
+        const b = button(wrap, `pxd-seg__btn${value === current3 ? " pxd-seg__btn--on" : ""}${icon ? " pxd-iconbtn" : ""}`, icon ? "" : label, title || label, () => fn(value));
         if (icon) {
           b.setAttribute("aria-label", title || label);
           const i = el("span", `bp3-icon bp3-icon-${icon}`, b);
@@ -22786,9 +23914,9 @@ function kanbanColumns(rows, field) {
 }
 function withMarker(string, column) {
   const mark = column === DONE_COLUMN ? "{{[[DONE]]}}" : "{{[[TODO]]}}";
-  const current2 = String(string || "");
-  if (MARK.test(current2)) return current2.replace(MARK, mark);
-  return current2.trim() ? `${mark} ${current2}` : mark;
+  const current3 = String(string || "");
+  if (MARK.test(current3)) return current3.replace(MARK, mark);
+  return current3.trim() ? `${mark} ${current3}` : mark;
 }
 function planKanbanMove({ field, column, row: row2 } = {}) {
   if (!row2?.uid || column == null || column === "") return null;
@@ -23034,10 +24162,10 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
     const h = tb?.offsetHeight || 0;
     panel.style.top = `${8 + (h ? h + 6 : 44)}px`;
   };
-  const choice = (parent, options, current2, fn, tip) => {
+  const choice = (parent, options, current3, fn, tip) => {
     const wrap = el("div", "pxd-seg pxd-props__choices", parent);
     for (const [value, label] of options) {
-      const b = button(wrap, `pxd-seg__btn${value === current2 ? " pxd-seg__btn--on" : ""}`, label, label, () => fn(value), `props.choice.${tip}`);
+      const b = button(wrap, `pxd-seg__btn${value === current3 ? " pxd-seg__btn--on" : ""}`, label, label, () => fn(value), `props.choice.${tip}`);
       b.setAttribute("data-value", value);
     }
     return wrap;
@@ -23103,22 +24231,22 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
     const text2 = items.filter((it) => it.type === "text");
     const sample = cards[0] || text2[0];
     const fallback = sample?.type === "text" ? 24 : CARD_FONT_DEFAULT;
-    const same = items.every((it) => (it.fontSize ?? fallback) === (sample.fontSize ?? fallback));
+    const same2 = items.every((it) => (it.fontSize ?? fallback) === (sample.fontSize ?? fallback));
     el("span", "pxd-props__label", g, "Text size");
     stepper(g, {
-      value: same ? sample.fontSize : void 0,
+      value: same2 ? sample.fontSize : void 0,
       fallback,
       min: CARD_FONT_MIN,
       max: CARD_FONT_MAX,
       aria: "Text size",
       onCommit: (v) => on.setItemStyle?.({ fontSize: v })
     });
-    colorField(g, "Text color", same ? sample.textColor : void 0, (c) => on.setItemStyle?.({ textColor: c }));
+    colorField(g, "Text color", same2 ? sample.textColor : void 0, (c) => on.setItemStyle?.({ textColor: c }));
     el("span", "pxd-props__label", g, "Align");
-    const align = same ? sample.align || "" : "";
+    const align = same2 ? sample.align || "" : "";
     choice(g, [["", "Default"], ...ALIGNS.map((a) => [a, a[0].toUpperCase() + a.slice(1)])], align, (v) => on.setItemStyle?.({ align: v || null }), "align");
-    colorField(g, "Fill", same ? sample.fill : void 0, (c) => on.setItemStyle?.({ fill: c }));
-    colorField(g, "Border", same ? sample.border : void 0, (c) => on.setItemStyle?.({ border: c }));
+    colorField(g, "Fill", same2 ? sample.fill : void 0, (c) => on.setItemStyle?.({ fill: c }));
+    colorField(g, "Border", same2 ? sample.border : void 0, (c) => on.setItemStyle?.({ border: c }));
     button(g, "pxd-props__reset", "Reset selected", "Remove text size, color, align, fill, and border", () => on.resetItems?.(), "props.reset");
   };
   const edgeGroup = (edge) => {
@@ -23356,9 +24484,9 @@ function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
       close();
     }
   };
-  const current2 = () => levels[levels.length - 1];
+  const current3 = () => levels[levels.length - 1];
   const move = (step) => {
-    const level = current2();
+    const level = current3();
     const rows = selectable(level);
     if (!rows.length) return;
     const i = rows.indexOf(level.active);
@@ -23368,7 +24496,7 @@ function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
   };
   const onTab = (event) => {
     if (!menuEl?.contains?.(doc.activeElement)) return;
-    const level = current2();
+    const level = current3();
     const rows = selectable(level);
     const focused = doc.activeElement?.closest?.(".pxd-menu__item");
     const from = rows.indexOf(level.active) >= 0 ? rows.indexOf(level.active) : rows.indexOf(focused);
@@ -23388,7 +24516,7 @@ function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
     if (key === "Tab") return onTab(event);
     event.preventDefault?.();
     event.stopPropagation?.();
-    const level = current2();
+    const level = current3();
     if (key === "Escape") return close();
     if (key === "ArrowDown") return move(1);
     if (key === "ArrowUp") return move(-1);
@@ -23478,7 +24606,7 @@ function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
     close,
     isOpen: () => Boolean(menuEl),
     focusFirst() {
-      const level = current2();
+      const level = current3();
       const row2 = level ? selectable(level)[0] || null : null;
       if (!row2) return;
       setActive(level, row2);
@@ -23651,11 +24779,11 @@ function buildMenu(kind, ctx = {}) {
     return items;
   };
   const colorMenu = () => {
-    const current2 = item?.color || null;
+    const current3 = item?.color || null;
     return make("color", "Color", {
       children: [
-        make("color:none", "No color", { checked: !current2 }),
-        ...PALETTE.map((name) => make(`color:${name}`, cap3(name), { checked: current2 === name }))
+        make("color:none", "No color", { checked: !current3 }),
+        ...PALETTE.map((name) => make(`color:${name}`, cap3(name), { checked: current3 === name }))
       ]
     });
   };
@@ -23924,7 +25052,7 @@ var childKids2 = (c) => c?.[":block/children"] ?? c?.children ?? [];
 function createQuickLook({ doc = globalThis.document, root, host, timers, on = {} } = {}) {
   let node2 = null;
   let roots = [];
-  let current2 = null;
+  let current3 = null;
   let cancelPending = null;
   let disposed = false;
   const offs = [];
@@ -23973,7 +25101,7 @@ function createQuickLook({ doc = globalThis.document, root, host, timers, on = {
     unmountRoots();
     node2.remove();
     node2 = null;
-    current2 = null;
+    current3 = null;
     offs.splice(0).forEach((off) => off());
     on.close?.();
     return true;
@@ -23991,7 +25119,7 @@ function createQuickLook({ doc = globalThis.document, root, host, timers, on = {
     const settle = (result, apply) => {
       if (result && typeof result.then === "function") {
         result.then((r) => {
-          if (node2 && current2 === item) apply(r);
+          if (node2 && current3 === item) apply(r);
         }).catch(() => {
         });
       } else apply(result);
@@ -24033,7 +25161,7 @@ function createQuickLook({ doc = globalThis.document, root, host, timers, on = {
   const open = (item) => {
     if (disposed || !item) return false;
     close();
-    current2 = item;
+    current3 = item;
     node2 = el("div", "pxd-quicklook pxd-chrome", root);
     node2.setAttribute("role", "dialog");
     node2.setAttribute("aria-label", "Quick Look");
@@ -25396,7 +26524,9 @@ function buildBoardView(onFail, {
   initialViewport = null,
   routeUid = session.uid,
   autofocus = false,
-  onSetDefaults = null
+  onSetDefaults = null,
+  perfLog = null,
+  lifecycle = null
 } = {}) {
   const doc = globalThis.document;
   const win = globalThis.window;
@@ -25427,11 +26557,70 @@ function buildBoardView(onFail, {
   const listeners2 = [];
   const observers = [];
   const subs = [];
+  let suspended = false;
   const listen = (el2, type, fn, opts) => {
-    el2.addEventListener(type, fn, opts);
-    const off = () => el2.removeEventListener(type, fn, opts);
+    const wrapped = (event) => {
+      if (suspended) return;
+      return fn(event);
+    };
+    el2.addEventListener(type, wrapped, opts);
+    const off = () => el2.removeEventListener(type, wrapped, opts);
     listeners2.push(off);
     return off;
+  };
+  const observed = /* @__PURE__ */ new WeakMap();
+  const trackObserver = (observer) => {
+    if (!observer || observed.has(observer)) return observer;
+    const records = [];
+    observed.set(observer, records);
+    const observe = typeof observer.observe === "function" ? observer.observe.bind(observer) : null;
+    const unobserve = typeof observer.unobserve === "function" ? observer.unobserve.bind(observer) : null;
+    const disconnect = typeof observer.disconnect === "function" ? observer.disconnect.bind(observer) : null;
+    if (observe) {
+      observer.observe = (target, options) => {
+        const at = records.findIndex((row3) => row3.target === target);
+        const row2 = { target, options };
+        if (at >= 0) records[at] = row2;
+        else records.push(row2);
+        return observe(target, options);
+      };
+    }
+    if (unobserve) {
+      observer.unobserve = (target) => {
+        const at = records.findIndex((row2) => row2.target === target);
+        if (at >= 0) records.splice(at, 1);
+        return unobserve(target);
+      };
+    }
+    if (disconnect) {
+      observer.disconnect = () => {
+        records.length = 0;
+        return disconnect();
+      };
+    }
+    return observer;
+  };
+  const suspendObservers = () => {
+    for (const obs of observers) {
+      const records = observed.get(obs) || [];
+      obs._pxdHeld = records.map((row2) => ({ target: row2.target, options: row2.options }));
+      try {
+        obs.disconnect();
+      } catch {
+      }
+    }
+  };
+  const resumeObservers = () => {
+    for (const obs of observers) {
+      const held = obs._pxdHeld || [];
+      obs._pxdHeld = null;
+      for (const row2 of held) {
+        try {
+          obs.observe(row2.target, row2.options);
+        } catch {
+        }
+      }
+    }
   };
   const el = (tag, cls, parent) => {
     const node2 = doc.createElement(tag);
@@ -25802,14 +26991,14 @@ function buildBoardView(onFail, {
     if (outlineNear && outlineFar) return true;
     disconnectOutline();
     try {
-      outlineNear = new IO((entries) => {
-        if (disposed || !outlineMode) return;
+      outlineNear = trackObserver(new IO((entries) => {
+        if (disposed || suspended || !outlineMode) return;
         for (const entry of entries) if (entry.isIntersecting) renderOutlineRow(entry.target);
-      }, { root: outlineHost, rootMargin: OUTLINE_NEAR });
-      outlineFar = new IO((entries) => {
-        if (disposed || !outlineMode) return;
+      }, { root: outlineHost, rootMargin: OUTLINE_NEAR }));
+      outlineFar = trackObserver(new IO((entries) => {
+        if (disposed || suspended || !outlineMode) return;
         for (const entry of entries) if (!entry.isIntersecting) releaseOutlineRow(entry.target);
-      }, { root: outlineHost, rootMargin: OUTLINE_FAR });
+      }, { root: outlineHost, rootMargin: OUTLINE_FAR }));
     } catch {
       disconnectOutline();
       return false;
@@ -26147,7 +27336,7 @@ function buildBoardView(onFail, {
   const runAnchors = () => {
     anchorFrame = false;
     const b = board2();
-    if (disposed || !b) return;
+    if (disposed || suspended || !b) return;
     refreshBlockCards();
     const next = /* @__PURE__ */ new Map();
     for (const e2 of b.edges.values()) {
@@ -26229,7 +27418,7 @@ function buildBoardView(onFail, {
     timers.frame(runAnchors);
   }
   const schedule = () => {
-    if (disposed || frameHandle) return;
+    if (disposed || suspended || frameHandle) return;
     frameHandle = timers.frame(() => {
       frameHandle = null;
       renderFrame();
@@ -26341,11 +27530,12 @@ function buildBoardView(onFail, {
     paintInvZoom();
   };
   const scheduleContent = () => {
-    if (disposed || gesturing || !board2()) return;
-    itemsR.scheduleContent({ visibleRect: visibleWorldRect(vp, size, CULL_MARGIN), zoom: vp.zoom, tier });
+    if (disposed || suspended || gesturing || !board2()) return;
+    const changed2 = dirty.all ? null : dirty.items;
+    itemsR.scheduleContent({ visibleRect: visibleWorldRect(vp, size, CULL_MARGIN), zoom: vp.zoom, tier, dirty: changed2 });
   };
   const updateBackToContent = () => {
-    if (disposed) return;
+    if (disposed || suspended) return;
     let show = false;
     if (size.width && size.height) {
       const r = rects();
@@ -26430,7 +27620,7 @@ function buildBoardView(onFail, {
     timers.idle(() => runChunk(misses));
   };
   const scheduleBadges = (ms = 0) => {
-    if (disposed) return;
+    if (disposed || suspended) return;
     badgeTimer?.();
     badgeTimer = timers.later(() => {
       badgeTimer = null;
@@ -27386,18 +28576,18 @@ function buildBoardView(onFail, {
       return;
     }
     if (!ta) {
-      let current2 = null;
+      let current3 = null;
       try {
-        current2 = host?.blockString?.(blockUid2);
+        current3 = host?.blockString?.(blockUid2);
       } catch {
-        current2 = null;
+        current3 = null;
       }
-      if (typeof current2 !== "string") {
+      if (typeof current3 !== "string") {
         if (!disposed) toast("Couldn't add the image to this card");
         return;
       }
-      snap.value = current2;
-      snap.start = snap.end = current2.length;
+      snap.value = current3;
+      snap.start = snap.end = current3.length;
     }
     const placed = inlineAtCaret(snap.value, snap.start, snap.end, imageMarkdown(urls2));
     if (ta) {
@@ -27584,14 +28774,14 @@ function buildBoardView(onFail, {
             showCopy: false,
             dialogLabel: "Rename region",
             onSave: ({ caption }) => {
-              let current2 = "";
+              let current3 = "";
               try {
-                current2 = host?.blockString?.(arg) || "";
+                current3 = host?.blockString?.(arg) || "";
               } catch {
-                current2 = "";
+                current3 = "";
               }
-              const next = renameRegionCaption(current2, caption);
-              if (!next || next === current2 || typeof host?.updateString !== "function") return;
+              const next = renameRegionCaption(current3, caption);
+              if (!next || next === current3 || typeof host?.updateString !== "function") return;
               void host.updateString(arg, next);
             }
           });
@@ -28078,8 +29268,8 @@ function buildBoardView(onFail, {
         break;
       }
       case "select-same-color": {
-        const same = item ? sameColorUids(b, item.uid) : [];
-        if (same.length) ctl.select(same);
+        const same2 = item ? sameColorUids(b, item.uid) : [];
+        if (same2.length) ctl.select(same2);
         break;
       }
       case "select-connected": {
@@ -28204,14 +29394,14 @@ function buildBoardView(onFail, {
     if (!item) return;
     const uid = item.uid;
     if (blockTextareaFocused(uid)) return;
-    let current2 = null;
+    let current3 = null;
     try {
-      current2 = host?.blockString?.(uid);
+      current3 = host?.blockString?.(uid);
     } catch {
-      current2 = null;
+      current3 = null;
     }
-    if (typeof current2 !== "string") current2 = typeof item.string === "string" ? item.string : "";
-    const next = rewriteBgTag(current2, name);
+    if (typeof current3 !== "string") current3 = typeof item.string === "string" ? item.string : "";
+    const next = rewriteBgTag(current3, name);
     const clearFill = async () => {
       if (typeof session?.setItemStyle === "function") {
         await session.setItemStyle([uid], { fill: null });
@@ -28405,8 +29595,8 @@ function buildBoardView(onFail, {
       },
       selectSameColor: () => {
         const it = singleItem();
-        const same = it ? sameColorUids(board2(), it.uid) : [];
-        if (same.length) ctl.select(same);
+        const same2 = it ? sameColorUids(board2(), it.uid) : [];
+        if (same2.length) ctl.select(same2);
       },
       selectConnected: () => {
         const it = singleItem();
@@ -28626,11 +29816,12 @@ function buildBoardView(onFail, {
     const b = btn?.getBoundingClientRect?.() || { left: rootRect2.left, top: rootRect2.top, right: rootRect2.left, bottom: rootRect2.top };
     placeNearAnchor(lensPop, b, root, { gap: 6, skip: btn?.closest?.(".pxd-toolbar, .pxd-dock") || null });
     const onDown = (event) => {
+      if (suspended) return;
       if (lensPop.contains(event.target) || btn?.contains?.(event.target)) return;
       closeLens();
     };
     const onKey = (event) => {
-      if (event.key !== "Escape") return;
+      if (suspended || event.key !== "Escape") return;
       event.preventDefault?.();
       event.stopPropagation?.();
       closeLens();
@@ -28958,8 +30149,8 @@ function buildBoardView(onFail, {
     if (hiddenAttrs.has(name)) hiddenAttrs.delete(name);
     else hiddenAttrs.add(name);
     if (selection.link) {
-      const current2 = (session.links || []).find((l) => l.key === selection.link);
-      const shown = current2?.kind === "attr" ? current2.labels?.[0] : "";
+      const current3 = (session.links || []).find((l) => l.key === selection.link);
+      const shown = current3?.kind === "attr" ? current3.labels?.[0] : "";
       if (shown && hiddenAttrs.has(shown)) selection.link = null;
     }
     dirty.links = true;
@@ -29148,13 +30339,13 @@ function buildBoardView(onFail, {
   };
   let heightDrag = null;
   const onHeightMove = (event) => {
-    if (!heightDrag) return;
+    if (suspended || !heightDrag) return;
     const h = Math.max(MIN_HEIGHT, Math.round(heightDrag.h0 + (event.clientY - heightDrag.y0)));
     heightDrag.h = h;
     applyInlineHeight(h);
   };
   const onHeightUp = () => {
-    if (!heightDrag) return;
+    if (suspended || !heightDrag) return;
     try {
       storage?.setItem?.(heightKey, String(heightDrag.h));
     } catch {
@@ -29606,18 +30797,30 @@ function buildBoardView(onFail, {
       pointerId: event.pointerId
     };
   };
+  const armSpeedLog = () => {
+    if (!flag("speed-log", false) || !perfLog?.armEvent) return;
+    perfLog.armEvent(lifecycle);
+  };
+  armSpeedLog();
   let captured = false;
   const onDocMove = (event) => {
-    if (ctl.isGesturing()) ctl.handle(normalize(event, "pointermove"));
+    if (suspended || !ctl.isGesturing()) return;
+    ctl.handle(normalize(event, "pointermove"));
   };
   const onDocUp = (event) => {
+    if (suspended) return;
     if (!ctl.isGesturing()) return releaseCapture();
+    const panning = ctl.gestureKind() === "pan";
     ctl.handle(normalize(event, "pointerup"));
+    if (panning && flag("speed-log", false)) perfLog?.endPan?.();
     if (nativeClickKind(event.target) === "ref" && !suppressClick) openRefFromClick(event);
     releaseCapture();
   };
   const onDocCancel = () => {
+    if (suspended) return;
+    const panning = ctl.gestureKind() === "pan";
     ctl.handle({ type: "pointercancel" });
+    if (panning && flag("speed-log", false)) perfLog?.endPan?.();
     releaseCapture();
   };
   const releaseCapture = () => {
@@ -29709,6 +30912,7 @@ function buildBoardView(onFail, {
       if (native !== "image" && ev.target.kind !== "label" && ev.target.kind !== "section-title") event.preventDefault();
     }
     ctl.handle(ev);
+    if (flag("speed-log", false) && ctl.gestureKind() === "pan") perfLog?.beginPan?.();
     if (ctl.isGesturing() && !captured) {
       captured = true;
       doc.addEventListener("pointermove", onDocMove, true);
@@ -30044,8 +31248,8 @@ function buildBoardView(onFail, {
     if (!planned) return;
     if (droppedDrawingUids(planned.map((x) => x.string), (id) => host?.blockString?.(id)).length) toast(DRAWING_DROP_TOAST);
     const made = session.addRefCards?.(planned);
-    const same = planned.length === list.length && planned.every((row2, i) => row2.string === list[i].string);
-    const offer = same ? dropNamespace(list.map((x) => x.string)) : null;
+    const same2 = planned.length === list.length && planned.every((row2, i) => row2.string === list[i].string);
+    const offer = same2 ? dropNamespace(list.map((x) => x.string)) : null;
     Promise.resolve(made).then((uids) => {
       if (Array.isArray(uids) && uids.length) ctl.select(uids);
       if (!offer || !Array.isArray(uids) || disposed) return;
@@ -30309,13 +31513,13 @@ function buildBoardView(onFail, {
   });
   onFail.unshift(() => clip4.dispose());
   subs.push(session.on("change", ({ dirty: d, structural } = {}) => {
-    if (disposed) return;
+    if (disposed || suspended) return;
     const b = board2();
-    const current2 = crumbList[crumbList.length - 1];
-    if (current2 && b) {
+    const current3 = crumbList[crumbList.length - 1];
+    if (current3 && b) {
       const title = b.title || UNTITLED_BOARD;
-      if (current2.title !== title) {
-        current2.title = title;
+      if (current3.title !== title) {
+        current3.title = title;
         chrome.toolbar.setCrumbs(crumbList);
       }
     }
@@ -30337,11 +31541,18 @@ function buildBoardView(onFail, {
     panel.refreshViews?.();
   }));
   subs.push(session.on("links", () => {
+    if (disposed || suspended) return;
     dirty.links = true;
     schedule();
   }));
-  subs.push(session.on("sync", (state) => chrome.toolbar.setSync(state)));
-  subs.push(session.on("toast", (t) => chrome.toast.show(t)));
+  subs.push(session.on("sync", (state) => {
+    if (disposed || suspended) return;
+    chrome.toolbar.setSync(state);
+  }));
+  subs.push(session.on("toast", (t) => {
+    if (disposed || suspended) return;
+    chrome.toast.show(t);
+  }));
   tableCtl = mountTable({
     doc,
     root,
@@ -30378,12 +31589,13 @@ function buildBoardView(onFail, {
   const RO = globalThis.ResizeObserver;
   if (typeof RO === "function") {
     try {
-      const ro = new RO(() => {
+      const ro = trackObserver(new RO(() => {
+        if (disposed || suspended) return;
         measure();
         markViewport();
         chrome.ctx.reposition();
         chrome.toolbar.scheduleDock?.();
-      });
+      }));
       ro.observe(root);
       observers.push(ro);
     } catch {
@@ -30393,15 +31605,15 @@ function buildBoardView(onFail, {
   if (typeof MO === "function") {
     try {
       let settle2 = null;
-      const mo = new MO(() => {
-        if (disposed) return;
+      const mo = trackObserver(new MO(() => {
+        if (disposed || suspended) return;
         applyTheme();
         settle2?.();
         settle2 = timers.later(() => {
           settle2 = null;
-          applyTheme();
+          if (!disposed && !suspended) applyTheme();
         }, 300);
-      });
+      }));
       for (const node2 of [doc.documentElement, doc.body]) if (node2) mo.observe(node2, { attributes: true, attributeFilter: ["class"] });
       observers.push(mo);
     } catch {
@@ -30424,7 +31636,7 @@ function buildBoardView(onFail, {
     if (isFullscreen) requestFullscreen(false);
   }, win });
   const renderFrame = () => {
-    if (disposed) return;
+    if (disposed || suspended) return;
     const b = board2();
     if (!b) return;
     let itemsChanged = false;
@@ -30819,7 +32031,7 @@ function buildBoardView(onFail, {
   markAll();
   consumeDeepLink();
   timers.later(() => {
-    if (!disposed) {
+    if (!disposed && !suspended) {
       scheduleContent();
       updateBackToContent();
     }
@@ -30947,6 +32159,56 @@ function buildBoardView(onFail, {
       return ok;
     },
     viewport: () => ({ x: vp.x, y: vp.y, zoom: vp.zoom }),
+    restoreViewport(next) {
+      if (disposed || !next) return;
+      const zoom = Number(next.zoom);
+      if (!Number.isFinite(next.x) || !Number.isFinite(next.y) || !(zoom > 0)) return;
+      moveViewport({ x: next.x, y: next.y, zoom });
+    },
+    // Park every observer, frame, and document listener. The same functions stay
+    // registered so dispose can still remove them. Resume paints one frame.
+    suspend() {
+      if (disposed || suspended) return;
+      suspended = true;
+      if (frameHandle) {
+        const cancel = frameHandle;
+        frameHandle = null;
+        cancel();
+      }
+      if (settleTimer) {
+        settleTimer();
+        settleTimer = null;
+      }
+      if (resumeTimer) {
+        resumeTimer();
+        resumeTimer = null;
+      }
+      if (badgeTimer) {
+        badgeTimer();
+        badgeTimer = null;
+      }
+      if (outsideQuiet) {
+        outsideQuiet();
+        outsideQuiet = null;
+      }
+      try {
+        cancelHoverGrace();
+      } catch {
+      }
+      try {
+        clearZoomAnim();
+      } catch {
+      }
+      suspendObservers();
+    },
+    resume() {
+      if (disposed || !suspended) return;
+      suspended = false;
+      resumeObservers();
+      dirty.all = true;
+      dirty.structural = true;
+      schedule();
+    },
     cameraRect() {
       return cameraRectOf({ x: vp.x, y: vp.y, zoom: vp.zoom }, viewSize());
     },
@@ -31005,6 +32267,7 @@ function buildBoardView(onFail, {
       if (disposed) return;
       const minimapBefore = setting("show-minimap", true) !== false;
       settingsRef = next;
+      armSpeedLog();
       const nextLinks = setting("graph-links", "all");
       if (nextLinks !== linkMode && LINK_MODES2.includes(nextLinks)) {
         linkMode = nextLinks;
@@ -31095,6 +32358,7 @@ function buildBoardView(onFail, {
           console.warn("[plexus-diagram] dispose step failed", error);
         }
       };
+      step(() => perfLog?.cancelPan?.());
       step(() => closeLinksMenu());
       step(() => {
         whyPop?.close();
@@ -31208,6 +32472,342 @@ function mountBoardView(options = {}) {
   }
 }
 
+// src/view/sketch.js
+var SKETCH_DEBOUNCE_MS = 500;
+var SKETCH_MAX_ITEMS = 300;
+var SKETCH_MAX_BYTES = 200 * 1024;
+var SKETCH_HOLD_MS = 2e3;
+var SKETCH_ROOT_BORDER = 1;
+var PAIR_OFFSET2 = 18;
+var TITLE_MAX = 200;
+var SVG_NS5 = "http://www.w3.org/2000/svg";
+function sketchKey(graph, uid) {
+  return `plexus-diagram:sketch:${graph}:${uid}`;
+}
+function finite5(n2) {
+  return typeof n2 === "number" && Number.isFinite(n2);
+}
+function isSketchViewport(vp) {
+  return Boolean(vp) && finite5(vp.x) && finite5(vp.y) && finite5(vp.zoom) && vp.zoom > 0;
+}
+function cleanItem(item) {
+  if (!item || typeof item.uid !== "string" || !item.uid) return null;
+  if (!finite5(item.x) || !finite5(item.y) || !finite5(item.w) || !finite5(item.h)) return null;
+  return {
+    uid: item.uid,
+    x: item.x,
+    y: item.y,
+    w: item.w,
+    h: item.h,
+    title: String(item.title || "").slice(0, TITLE_MAX),
+    color: typeof item.color === "string" ? item.color : "",
+    fill: typeof item.fill === "string" ? item.fill : ""
+  };
+}
+function cleanEdge(edge) {
+  if (!edge || typeof edge.path !== "string" || !edge.path) return null;
+  return {
+    from: typeof edge.from === "string" ? edge.from : "",
+    to: typeof edge.to === "string" ? edge.to : "",
+    path: edge.path
+  };
+}
+function packSketch(sketch) {
+  const items = [];
+  for (const item of sketch?.items || []) {
+    if (items.length >= SKETCH_MAX_ITEMS) break;
+    const clean = cleanItem(item);
+    if (clean) items.push(clean);
+  }
+  const edges = [];
+  for (const edge of sketch?.edges || []) {
+    const clean = cleanEdge(edge);
+    if (clean) edges.push(clean);
+  }
+  const fit = (next) => {
+    const text3 = JSON.stringify(next);
+    return text3.length <= SKETCH_MAX_BYTES ? text3 : null;
+  };
+  let payload = { items, edges };
+  let text2 = fit(payload);
+  if (text2) return text2;
+  payload = { items, edges: [] };
+  text2 = fit(payload);
+  if (text2) return text2;
+  payload = {
+    items: items.map((item) => ({ ...item, title: item.title.slice(0, 40) })),
+    edges: []
+  };
+  text2 = fit(payload);
+  if (text2) return text2;
+  let kept = payload.items;
+  while (kept.length) {
+    kept = kept.slice(0, kept.length - 1);
+    text2 = fit({ items: kept, edges: [] });
+    if (text2) return text2;
+  }
+  return null;
+}
+function parseSketch(raw) {
+  if (typeof raw !== "string" || !raw) return null;
+  let value;
+  try {
+    value = JSON.parse(raw);
+  } catch {
+    return null;
+  }
+  if (!value || typeof value !== "object" || !Array.isArray(value.items)) return null;
+  const items = [];
+  for (const item of value.items) {
+    const clean = cleanItem(item);
+    if (!clean) return null;
+    items.push(clean);
+  }
+  const edges = [];
+  for (const edge of Array.isArray(value.edges) ? value.edges : []) {
+    const clean = cleanEdge(edge);
+    if (clean) edges.push(clean);
+  }
+  return { items, edges };
+}
+function createSketchStore({ storage = globalThis.localStorage, graph = "", now: now2 = Date.now, enabled = () => true } = {}) {
+  const graphOf = typeof graph === "function" ? graph : () => graph;
+  const key = (uid) => sketchKey(graphOf(), uid);
+  const lastWrite = /* @__PURE__ */ new Map();
+  const latest = /* @__PURE__ */ new Map();
+  const timers = /* @__PURE__ */ new Map();
+  const allow = () => {
+    try {
+      return enabled() !== false;
+    } catch {
+      return true;
+    }
+  };
+  const flush = (uid) => {
+    timers.delete(uid);
+    if (!latest.has(uid)) return;
+    const text2 = latest.get(uid);
+    latest.delete(uid);
+    if (!allow() || typeof text2 !== "string") return;
+    try {
+      storage?.setItem(key(uid), text2);
+    } catch {
+    }
+    lastWrite.set(uid, now2());
+  };
+  return {
+    get(uid) {
+      if (!allow()) return null;
+      try {
+        const raw = storage?.getItem(key(uid));
+        if (!raw) return null;
+        return parseSketch(raw);
+      } catch {
+        return null;
+      }
+    },
+    set(uid, sketch) {
+      if (!allow() || !uid || !sketch) return;
+      const text2 = packSketch(sketch);
+      if (!text2) return;
+      latest.set(uid, text2);
+      const since = now2() - (lastWrite.get(uid) ?? -Infinity);
+      if (since >= SKETCH_DEBOUNCE_MS) {
+        flush(uid);
+        return;
+      }
+      if (!timers.has(uid)) {
+        const t = setTimeout(() => flush(uid), SKETCH_DEBOUNCE_MS - since);
+        t.unref?.();
+        timers.set(uid, t);
+      }
+    },
+    flushAll() {
+      for (const [uid, t] of timers) {
+        clearTimeout(t);
+        flush(uid);
+      }
+    },
+    dispose() {
+      for (const t of timers.values()) clearTimeout(t);
+      timers.clear();
+      latest.clear();
+    }
+  };
+}
+function pairOffset(board2, edge) {
+  for (const other of board2.edges.values()) {
+    if (other.uid !== edge.uid && other.from === edge.to && other.to === edge.from) {
+      return edge.uid < other.uid ? PAIR_OFFSET2 : -PAIR_OFFSET2;
+    }
+  }
+  return 0;
+}
+function edgePathOf(board2, edge, rects) {
+  const routed = routedEdge(board2, edge, rects);
+  if (!routed) return null;
+  let via = edge.via;
+  if ((!via || !via.length) && edge.route === "around") {
+    const obstacles = [];
+    for (const [uid, rect] of rects) {
+      if (uid === edge.from || uid === edge.to || !rect) continue;
+      const item = board2.items.get(uid);
+      if (item?.type === "card" || item?.type === "text") obstacles.push(rect);
+    }
+    via = routeAround(center(routed.a), center(routed.b), obstacles);
+  }
+  const geo = edgePath({
+    a: routed.a,
+    b: routed.b,
+    fromSide: edge.fromSide,
+    toSide: edge.toSide,
+    route: edge.route,
+    offset: pairOffset(board2, edge),
+    via
+  });
+  return geo?.d || null;
+}
+function captureSketch(board2) {
+  if (!board2 || typeof board2.items?.get !== "function") return null;
+  const rects = displayRects(board2);
+  const items = [];
+  const order = Array.isArray(board2.order) ? board2.order : [...board2.items.keys()];
+  for (const uid of order) {
+    if (items.length >= SKETCH_MAX_ITEMS) break;
+    const rect = rects.get(uid);
+    const item = board2.items.get(uid);
+    if (!rect || !item) continue;
+    const clean = cleanItem({
+      uid,
+      x: rect.x,
+      y: rect.y,
+      w: rect.w,
+      h: rect.h,
+      title: item.title || "",
+      color: item.color || "",
+      fill: item.fill || ""
+    });
+    if (clean) items.push(clean);
+  }
+  const edges = [];
+  if (typeof board2.edges?.values === "function") {
+    for (const edge of board2.edges.values()) {
+      const path = edgePathOf(board2, edge, rects);
+      if (!path) continue;
+      edges.push({ from: edge.from || "", to: edge.to || "", path });
+    }
+  }
+  return { items, edges };
+}
+function resolveSketchViewport({ stored, initial, board: board2, size } = {}) {
+  if (isSketchViewport(initial)) return { x: initial.x, y: initial.y, zoom: initial.zoom };
+  if (isSketchViewport(stored)) return { x: stored.x, y: stored.y, zoom: stored.zoom };
+  const rects = board2 ? displayRects(board2) : /* @__PURE__ */ new Map();
+  const box2 = size && size.width > 0 && size.height > 0 ? size : { width: 800, height: 560 };
+  return fitViewport(boundsOf([...rects.values()]), box2, { padding: 64, maxZoom: 1 });
+}
+function svgEl2(doc, tag) {
+  if (typeof doc.createElementNS === "function") return doc.createElementNS(SVG_NS5, tag);
+  return doc.createElement(tag);
+}
+function placeLayer(mountEl, layer) {
+  if (typeof mountEl.insertBefore === "function" && mountEl.firstChild) mountEl.insertBefore(layer, mountEl.firstChild);
+  else mountEl.append(layer);
+}
+function removeSketch(mountEl) {
+  const nodes = mountEl?.querySelectorAll?.(".pxd-sketch");
+  if (!nodes) return;
+  for (const node2 of [...nodes]) {
+    try {
+      node2.remove();
+    } catch {
+    }
+  }
+}
+function paintSketch(doc, mountEl, sketch, vp, { inset = SKETCH_ROOT_BORDER } = {}) {
+  if (!doc || !mountEl || !isSketchViewport(vp)) return null;
+  const parsed = sketch?.items ? sketch : null;
+  if (!parsed || !Array.isArray(parsed.items)) return null;
+  removeSketch(mountEl);
+  let layer;
+  try {
+    layer = doc.createElement("div");
+    layer.className = "pxd-sketch";
+    layer.setAttribute("data-pxd-sketch", "1");
+    layer.setAttribute("aria-hidden", "true");
+    layer.style.position = "absolute";
+    layer.style.left = `${inset}px`;
+    layer.style.top = `${inset}px`;
+    layer.style.right = `${inset}px`;
+    layer.style.bottom = `${inset}px`;
+    layer.style.overflow = "hidden";
+    layer.style.pointerEvents = "none";
+    layer.style.zIndex = "1";
+    const world = doc.createElement("div");
+    world.className = "pxd-sketch__world";
+    world.style.position = "absolute";
+    world.style.left = "0";
+    world.style.top = "0";
+    world.style.width = "0";
+    world.style.height = "0";
+    world.style.transformOrigin = "0 0";
+    world.style.pointerEvents = "none";
+    world.style.transform = `translate(${vp.x}px, ${vp.y}px) scale(${vp.zoom})`;
+    layer.append(world);
+    const edges = svgEl2(doc, "svg");
+    edges.setAttribute("class", "pxd-sketch__edges");
+    edges.style.position = "absolute";
+    edges.style.left = "0";
+    edges.style.top = "0";
+    edges.style.overflow = "visible";
+    edges.style.pointerEvents = "none";
+    world.append(edges);
+    for (const edge of Array.isArray(parsed.edges) ? parsed.edges : []) {
+      const clean = cleanEdge(edge);
+      if (!clean) continue;
+      const path = svgEl2(doc, "path");
+      path.setAttribute("class", "pxd-sketch__edge");
+      path.setAttribute("d", clean.path);
+      path.setAttribute("fill", "none");
+      edges.append(path);
+    }
+    for (const item of parsed.items) {
+      const clean = cleanItem(item);
+      if (!clean) continue;
+      const card2 = doc.createElement("div");
+      card2.className = "pxd-sketch__card";
+      card2.setAttribute("data-uid", clean.uid);
+      card2.style.position = "absolute";
+      card2.style.left = "0";
+      card2.style.top = "0";
+      card2.style.boxSizing = "border-box";
+      card2.style.overflow = "hidden";
+      card2.style.pointerEvents = "none";
+      card2.style.transform = `translate(${clean.x}px, ${clean.y}px)`;
+      card2.style.width = `${clean.w}px`;
+      card2.style.height = `${clean.h}px`;
+      if (PALETTE.includes(clean.color)) card2.classList.add(`pxd-c-${clean.color}`);
+      const fill = cssColor(clean.fill, "fill");
+      if (fill) card2.style.background = fill;
+      else if (!PALETTE.includes(clean.color)) {
+        const accent = hexColor(clean.color);
+        if (accent) card2.style.background = accent;
+      }
+      const title = doc.createElement("div");
+      title.className = "pxd-sketch__title";
+      title.style.pointerEvents = "none";
+      title.textContent = clean.title;
+      card2.append(title);
+      world.append(card2);
+    }
+    placeLayer(mountEl, layer);
+    return layer;
+  } catch {
+    removeSketch(mountEl);
+    return null;
+  }
+}
+
 // src/boardchips.js
 function createBoardChips({ doc = globalThis.document, cache } = {}) {
   const chips = /* @__PURE__ */ new Set();
@@ -31235,6 +32835,8 @@ function createBoardChips({ doc = globalThis.document, cache } = {}) {
     chip.type = "button";
     chip.className = "pxd-boardchip";
     chip.textContent = "On board";
+    const blockUid2 = container.getAttribute?.("data-block-uid") || "";
+    if (blockUid2) chip.setAttribute("data-block-uid", blockUid2);
     for (const type of ["pointerdown", "mousedown", "mouseup", "dblclick", "click"]) {
       chip.addEventListener(type, stop2);
     }
@@ -31274,6 +32876,195 @@ function createBoardChips({ doc = globalThis.document, cache } = {}) {
     chips.clear();
   };
   return { scan, scanUids, dispose, count: () => chips.size };
+}
+
+// src/prefetch.js
+var DEFAULT_DELAY_MS = 80;
+var DEFAULT_LIMIT = 4;
+var DEFAULT_WINDOW_MS = 6e4;
+var current2 = null;
+function dedupe(list) {
+  const out = [];
+  for (const uid of list || []) {
+    const id = String(uid ?? "");
+    if (!id || out.includes(id)) continue;
+    out.push(id);
+  }
+  return out;
+}
+function same(a, b) {
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i += 1) if (a[i] !== b[i]) return false;
+  return true;
+}
+var HOVER_SEL = ".pxd-cardchip, .pxd-boardchip, .pxd-crumb, .rm-block-ref, .rm-page-ref, [data-link-title], .pxd-item--board";
+function schedulePrefetch(uids, el) {
+  current2?.schedule(uids, el);
+}
+function cancelPrefetch(el) {
+  current2?.cancel(el);
+}
+function createPrefetch({
+  doc = globalThis.document,
+  cache,
+  warm = () => null,
+  isWarm = (uid) => Boolean(cache?.blockOf?.(uid)?.[":block/uid"]),
+  refBoards = (uid) => cache?.refBoardsOf?.(uid) || [],
+  pageBoards = (title) => cache?.pageBoardsOf?.(title) || [],
+  delayMs = DEFAULT_DELAY_MS,
+  limit = DEFAULT_LIMIT,
+  windowMs = DEFAULT_WINDOW_MS,
+  now: now2 = Date.now,
+  enabled = () => true,
+  setTimer = (fn, ms) => setTimeout(fn, ms),
+  clearTimer = (id) => clearTimeout(id)
+} = {}) {
+  let timer = null;
+  let pending = [];
+  let pendingEl = null;
+  let misses = [];
+  let inflight = 0;
+  let queued = null;
+  const pageTitle = (node2) => String(node2?.getAttribute?.("data-link-title") || node2?.getAttribute?.("data-page-title") || "").trim();
+  const targetOf = (node2) => {
+    if (!node2?.closest) return null;
+    if (!node2.closest(HOVER_SEL)) return null;
+    const cardChip = node2.closest(".pxd-cardchip");
+    if (cardChip) {
+      const uid = cardChip.getAttribute?.("data-board") || "";
+      return { el: cardChip, uids: uid ? [uid] : [] };
+    }
+    const boardChip = node2.closest(".pxd-boardchip");
+    if (boardChip) {
+      const blockUid2 = boardChip.getAttribute?.("data-block-uid") || boardChip.closest?.("[data-block-uid]")?.getAttribute?.("data-block-uid") || "";
+      return { el: boardChip, uids: blockUid2 ? dedupe(cache?.boardsOf?.(blockUid2) || []) : [] };
+    }
+    const crumb = node2.closest(".pxd-crumb");
+    if (crumb) {
+      if (crumb.classList?.contains?.("pxd-crumb--current") || crumb.classList?.contains?.("pxd-crumb__more")) {
+        return { el: crumb, uids: [] };
+      }
+      const uid = crumb.getAttribute?.("data-board") || "";
+      return { el: crumb, uids: uid ? [uid] : [] };
+    }
+    const blockRef = node2.closest(".rm-block-ref");
+    if (blockRef) {
+      const uid = blockRef.getAttribute?.("data-uid") || "";
+      if (!uid) return { el: blockRef, uids: [] };
+      return { el: blockRef, uids: dedupe([...refBoards(uid) || [], ...cache?.boardsOf?.(uid) || []]) };
+    }
+    const pageRef = node2.closest(".rm-page-ref") || node2.closest("[data-link-title]");
+    if (pageRef) {
+      const title = pageTitle(pageRef);
+      return { el: pageRef, uids: title ? dedupe(pageBoards(title) || []) : [] };
+    }
+    const boardCard = node2.closest(".pxd-item--board");
+    if (boardCard) {
+      const uid = boardCard.getAttribute?.("data-uid") || "";
+      return { el: boardCard, uids: uid ? [uid] : [] };
+    }
+    return null;
+  };
+  const prune = (t) => {
+    misses = misses.filter((at) => t - at < windowMs);
+  };
+  const settle = () => {
+    inflight = 0;
+    const next = queued;
+    queued = null;
+    if (next) fire2(next);
+  };
+  const warmOne = (uid) => {
+    let hot = false;
+    try {
+      hot = isWarm(uid) === true;
+    } catch {
+      hot = false;
+    }
+    if (hot) {
+      try {
+        return warm(uid);
+      } catch {
+        return null;
+      }
+    }
+    const t = now2();
+    prune(t);
+    if (misses.length >= limit) return null;
+    misses.push(t);
+    try {
+      return warm(uid);
+    } catch {
+      return null;
+    }
+  };
+  function fire2(uids) {
+    if (enabled() === false) return;
+    if (inflight >= 1) {
+      queued = uids;
+      return;
+    }
+    inflight = 1;
+    const jobs = [];
+    for (const uid of uids) {
+      const job = warmOne(uid);
+      if (job && typeof job.then === "function") jobs.push(job);
+    }
+    if (jobs.length) Promise.all(jobs).then(settle, settle);
+    else settle();
+  }
+  function schedule(uids, el) {
+    if (enabled() === false) return;
+    const list = dedupe(Array.isArray(uids) ? uids : [uids]);
+    if (!list.length) return;
+    if (timer && same(pending, list)) {
+      if (el) pendingEl = el;
+      return;
+    }
+    cancel();
+    pending = list;
+    pendingEl = el || null;
+    timer = setTimer(() => {
+      timer = null;
+      const batch = pending;
+      pending = [];
+      pendingEl = null;
+      fire2(batch);
+    }, delayMs);
+  }
+  function cancel(el) {
+    if (el && pendingEl !== el) return;
+    if (timer != null) clearTimer(timer);
+    timer = null;
+    pending = [];
+    pendingEl = null;
+    queued = null;
+  }
+  const onOver = (event) => {
+    const hit = targetOf(event?.target);
+    if (!hit?.uids?.length) return;
+    if (hit.el?.contains?.(event.relatedTarget)) return;
+    schedule(hit.uids, hit.el);
+  };
+  const onOut = (event) => {
+    const hit = targetOf(event?.target);
+    if (!hit?.el) return;
+    if (hit.el.contains?.(event.relatedTarget)) return;
+    cancel(hit.el);
+  };
+  if (doc?.addEventListener) {
+    doc.addEventListener("pointerover", onOver);
+    doc.addEventListener("pointerout", onOut);
+  }
+  function dispose() {
+    cancel();
+    doc?.removeEventListener?.("pointerover", onOver);
+    doc?.removeEventListener?.("pointerout", onOut);
+    if (current2 === api) current2 = null;
+  }
+  const api = { schedule, cancel, dispose, misses: () => misses.length };
+  current2 = api;
+  return api;
 }
 
 // src/cardchips.js
@@ -31461,10 +33252,16 @@ function createCardChips({
     closeTimer = null;
     if (timer) view().clearTimeout?.(timer);
     timer = view().setTimeout?.(() => showPop(chip), 200);
+    if (event.relatedTarget?.closest?.(".pxd-cardchip") !== chip) {
+      const board2 = chip.getAttribute?.("data-board") || "";
+      if (board2) schedulePrefetch([board2], chip);
+    }
   };
   const onOut = (event) => {
     const from = event.target?.closest?.(".pxd-cardchip, .pxd-cardpop");
     if (!from) return;
+    const chip = event.target?.closest?.(".pxd-cardchip");
+    if (chip && event.relatedTarget?.closest?.(".pxd-cardchip") !== chip) cancelPrefetch(chip);
     if (timer) view().clearTimeout?.(timer);
     timer = null;
     if (event.relatedTarget?.closest?.(".pxd-cardchip, .pxd-cardpop")) return;
@@ -31557,6 +33354,15 @@ function createCardChips({
     }
     return null;
   };
+  const CHIP_ROW_H = 28;
+  const reserveChipRow = (row2) => {
+    if (!row2?.style) return;
+    const text2 = `${CHIP_ROW_H}px`;
+    row2.style.height = text2;
+    row2.style.minHeight = text2;
+    row2.style.boxSizing = "border-box";
+    row2.style.overflow = "hidden";
+  };
   const placePage = (scope) => {
     if (!scope?.querySelector) return;
     const uid = typeof pageUid === "function" ? pageUid() : "";
@@ -31586,11 +33392,12 @@ function createCardChips({
     if (!row2) {
       row2 = doc.createElement("div");
       row2.className = "pxd-cardchip-row";
+      reserveChipRow(row2);
       if (before && before.parentElement === parent) parent.insertBefore(row2, before);
       else if (parent === kids) parent.insertBefore(row2, kids.firstChild);
       else parent.append(row2);
       rows.add(row2);
-    }
+    } else reserveChipRow(row2);
     const boards = cache.boardsOf(uid) || [];
     const sig = `${uid}
 ${boards.map((boardUid) => `${boardUid}:${cache?.titleOf?.(boardUid) || ""}`).join("\n")}`;
@@ -31892,10 +33699,10 @@ ${list.map((row2) => `${row2.uid}:${row2.time}`).join(",")}`;
 // src/view/region-open.js
 var STASH_MS = 8e3;
 var STOP_TYPES = ["pointerdown", "mousedown", "mouseup", "dblclick"];
-function pickCameraMount(rows, boardUid, isSidebar = () => false, current2 = (row2) => row2?.current ?? row2?.uid) {
+function pickCameraMount(rows, boardUid, isSidebar = () => false, current3 = (row2) => row2?.current ?? row2?.uid) {
   const list = Array.isArray(rows) ? rows : [];
   const side = typeof isSidebar === "function" ? isSidebar : () => false;
-  const idOf = typeof current2 === "function" ? current2 : (row2) => row2?.uid;
+  const idOf = typeof current3 === "function" ? current3 : (row2) => row2?.uid;
   if (!boardUid) {
     return list.find((row2) => row2 && !side(row2) && row2.view) || list.find((row2) => row2 && !side(row2)) || list.find((row2) => row2?.view) || list[0] || null;
   }
@@ -32807,328 +34614,189 @@ function mountOutlineRegion({ doc = globalThis.document, img, onConfirm, onCance
   return { destroy: teardown, root };
 }
 
-// src/settings.js
-var SETTING_IDS = Object.freeze({
-  enabled: "enabled",
-  autoEnhance: "auto-enhance",
-  fullscreenOnZoom: "fullscreen-on-zoom",
-  graphLinks: "graph-links",
-  attrStyles: "attr-styles",
-  wheel: "wheel",
-  showMinimap: "show-minimap",
-  controlsPosition: "controls-position",
-  snapGuides: "snap-guides",
-  snapGrid: "snap-grid",
-  grid: "grid",
-  defaultCardWidth: "default-card-width",
-  defaultCardHeight: "default-card-height",
-  defaultCardLook: "default-card-look",
-  enableShortcuts: "enable-shortcuts",
-  showVersionBadge: "show-version-badge",
-  disableOnMobile: "disable-on-mobile",
-  collapseOutline: "collapse-outline",
-  boardTone: "board-tone",
-  mapZoom: "map-zoom",
-  autoFitSections: "auto-fit-sections",
-  spaceOut: "space-out",
-  showCardBadges: "show-card-badges",
-  cardChips: "card-chips",
-  whyPrompt: "why-prompt",
-  resurfaceIntervals: "resurface-intervals",
-  showPalette: "show-palette",
-  motion: "motion",
-  enterInCard: "enter-in-card",
-  toolbarLayout: "toolbar-layout",
-  dockPosition: "dock-position",
-  dockStyle: "dock-style",
-  dockLabels: "dock-labels",
-  chromeDensity: "chrome-density",
-  dockOptions: "dock-options",
-  tooltips: "tooltips",
-  tooltipDelay: "tooltip-delay",
-  taskTool: "task-tool",
-  taskChips: "task-chips",
-  taskDefaultProject: "task-default-project",
-  betterTasks: "better-tasks"
-});
-var DEFAULTS = Object.freeze({
-  [SETTING_IDS.enabled]: true,
-  [SETTING_IDS.autoEnhance]: true,
-  [SETTING_IDS.fullscreenOnZoom]: true,
-  [SETTING_IDS.graphLinks]: "all",
-  [SETTING_IDS.attrStyles]: "",
-  [SETTING_IDS.wheel]: "pan",
-  [SETTING_IDS.showMinimap]: true,
-  [SETTING_IDS.controlsPosition]: "rail",
-  [SETTING_IDS.snapGuides]: true,
-  [SETTING_IDS.snapGrid]: false,
-  [SETTING_IDS.grid]: "dots",
-  [SETTING_IDS.defaultCardWidth]: 280,
-  [SETTING_IDS.defaultCardHeight]: 160,
-  [SETTING_IDS.defaultCardLook]: "block",
-  [SETTING_IDS.enableShortcuts]: true,
-  [SETTING_IDS.showVersionBadge]: true,
-  [SETTING_IDS.disableOnMobile]: true,
-  [SETTING_IDS.collapseOutline]: true,
-  [SETTING_IDS.boardTone]: "none",
-  [SETTING_IDS.mapZoom]: "0.45",
-  [SETTING_IDS.autoFitSections]: true,
-  [SETTING_IDS.spaceOut]: false,
-  [SETTING_IDS.showCardBadges]: true,
-  [SETTING_IDS.cardChips]: true,
-  [SETTING_IDS.whyPrompt]: false,
-  [SETTING_IDS.resurfaceIntervals]: "7,30,90,365",
-  [SETTING_IDS.showPalette]: true,
-  [SETTING_IDS.motion]: "full",
-  [SETTING_IDS.enterInCard]: "newline",
-  [SETTING_IDS.toolbarLayout]: "split",
-  [SETTING_IDS.dockPosition]: "bottom",
-  [SETTING_IDS.dockStyle]: "pill",
-  [SETTING_IDS.dockLabels]: false,
-  [SETTING_IDS.chromeDensity]: "comfortable",
-  [SETTING_IDS.dockOptions]: true,
-  [SETTING_IDS.tooltips]: true,
-  [SETTING_IDS.tooltipDelay]: "350 ms",
-  [SETTING_IDS.taskTool]: false,
-  [SETTING_IDS.taskChips]: "full",
-  [SETTING_IDS.taskDefaultProject]: "",
-  [SETTING_IDS.betterTasks]: false
-});
-var BOARD_TONES2 = ["none", "paper", "gray", "red", "orange", "yellow", "green", "teal", "blue", "indigo", "purple", "pink"];
-var MAP_ZOOMS = ["0.3", "0.45", "0.6"];
-var TOOLTIP_DELAYS = ["instant", "350 ms", "800 ms"];
-var TASK_CHIPS = ["full", "due only", "none"];
-var ENUMS = Object.freeze({
-  [SETTING_IDS.graphLinks]: ["off", "attributes", "all"],
-  [SETTING_IDS.wheel]: ["pan", "zoom"],
-  [SETTING_IDS.controlsPosition]: ["rail", "bar"],
-  [SETTING_IDS.grid]: ["dots", "lines", "grid", "plain"],
-  [SETTING_IDS.defaultCardLook]: ["block", "card"],
-  [SETTING_IDS.boardTone]: BOARD_TONES2,
-  [SETTING_IDS.mapZoom]: MAP_ZOOMS,
-  [SETTING_IDS.motion]: ["full", "reduced", "none"],
-  [SETTING_IDS.enterInCard]: ["newline", "child"],
-  [SETTING_IDS.toolbarLayout]: ["split", "classic", "dock-only"],
-  [SETTING_IDS.dockPosition]: ["bottom", "left", "top"],
-  [SETTING_IDS.dockStyle]: ["pill", "strip"],
-  [SETTING_IDS.chromeDensity]: ["comfortable", "compact"],
-  [SETTING_IDS.tooltipDelay]: TOOLTIP_DELAYS,
-  [SETTING_IDS.taskChips]: TASK_CHIPS
-});
-var NUMBERS = /* @__PURE__ */ new Set([SETTING_IDS.defaultCardWidth, SETTING_IDS.defaultCardHeight]);
-function settingsDefaults() {
-  return { ...DEFAULTS };
+// src/view/shift-watch.js
+var OPEN_FRAMES2 = 120;
+var REGIONS = /* @__PURE__ */ new Set(["cards", "chrome", "panel", "page"]);
+function attributeShiftNode(node2) {
+  let el = node2;
+  if (el && el.nodeType === 3) el = el.parentElement || el.parentNode;
+  if (!el || typeof el.closest !== "function") return null;
+  if (el.closest(".pxd-item")) return "cards";
+  if (el.closest(".pxd-toolbar") || el.closest(".pxd-dock")) return "chrome";
+  if (el.closest(".pxd-panel")) return "panel";
+  if (el.closest(".pxd-root")) return null;
+  return "page";
 }
-function normalizeSetting(id, value) {
-  const fallback = DEFAULTS[id];
-  if (value == null || value === "") return fallback;
-  if (typeof fallback === "boolean") {
-    if (typeof value === "boolean") return value;
-    if (value === "true") return true;
-    if (value === "false") return false;
-    return fallback;
-  }
-  if (NUMBERS.has(id)) {
-    const n2 = Number(value);
-    return Number.isFinite(n2) && n2 >= 40 ? n2 : fallback;
-  }
-  if (ENUMS[id]) {
-    const text2 = typeof value === "number" ? String(value) : value;
-    return ENUMS[id].includes(text2) ? text2 : fallback;
-  }
-  return value;
+function regionOf(entry) {
+  if (!entry || typeof entry !== "object") return null;
+  if (Object.prototype.hasOwnProperty.call(entry, "region")) return entry.region || null;
+  const sources = entry.sources;
+  if (!Array.isArray(sources) || !sources.length) return null;
+  return attributeShiftNode(sources[0]?.node);
 }
-function readSettings(extensionAPI) {
-  const out = {};
-  for (const id of Object.keys(DEFAULTS)) {
-    let raw = null;
+function shiftEntryFails(entry, usableAt) {
+  if (!entry || entry.hadRecentInput) return false;
+  const region = regionOf(entry);
+  if (!REGIONS.has(region)) return false;
+  if (!(Number(entry.value) > 0)) return false;
+  if (typeof usableAt !== "number" || !Number.isFinite(usableAt)) return false;
+  if (!(Number(entry.startTime) > usableAt)) return false;
+  return true;
+}
+function shiftDebugOn() {
+  return globalThis.__PXD_SHIFT_DEBUG === true;
+}
+function emptyTally(usableAt) {
+  return { cards: 0, chrome: 0, panel: 0, page: 0, before: 0, after: 0, failing: 0, usableAt };
+}
+function createShiftWatch() {
+  let on = false;
+  let observer = null;
+  let stats = null;
+  let tracked = false;
+  let usableAt = null;
+  let raf2 = 0;
+  let frames = 0;
+  const rows = [];
+  const publish = () => {
+    if (!stats) return;
+    if (!on) {
+      stats.shifts = null;
+      return;
+    }
+    const tally = emptyTally(usableAt);
+    for (const row2 of rows) {
+      if (REGIONS.has(row2.region)) tally[row2.region] += 1;
+      if (typeof usableAt === "number" && row2.startTime > usableAt) tally.after += 1;
+      else tally.before += 1;
+      if (shiftEntryFails(row2, usableAt)) tally.failing += 1;
+    }
+    stats.shifts = tally;
+  };
+  const take = (entry) => {
+    rows.push({
+      value: Number(entry?.value) || 0,
+      startTime: Number(entry?.startTime),
+      hadRecentInput: Boolean(entry?.hadRecentInput),
+      region: regionOf(entry),
+      sources: entry?.sources
+    });
+    publish();
+  };
+  const cancelWatch = () => {
+    if (!raf2) return;
     try {
-      raw = extensionAPI?.settings?.get?.(id);
+      globalThis.cancelAnimationFrame?.(raf2);
     } catch {
-      raw = null;
     }
-    out[id] = normalizeSetting(id, raw);
-  }
-  return out;
-}
-var settingsStore = null;
-async function initializeSettings(extensionAPI) {
-  settingsStore = extensionAPI ?? null;
-  if (extensionAPI.settings.canSet === false) return;
-  for (const [id, value] of Object.entries(DEFAULTS)) {
-    if (extensionAPI.settings.get(id) == null) {
-      await extensionAPI.settings.set(id, value);
-    }
-  }
-}
-var listeners = /* @__PURE__ */ new Set();
-function onSettingsChange(fn) {
-  listeners.add(fn);
-  return () => listeners.delete(fn);
-}
-function emit(id, value) {
-  for (const fn of [...listeners]) {
+    raf2 = 0;
+  };
+  function stop2() {
+    on = false;
+    cancelWatch();
+    frames = 0;
     try {
-      fn(id, value);
-    } catch (error) {
-      console.error("[plexus-diagram] Settings listener failed", error);
+      observer?.disconnect();
+    } catch {
     }
+    observer = null;
+    rows.length = 0;
+    usableAt = null;
+    if (stats) stats.shifts = null;
   }
-}
-function switchRow(id, name, description) {
-  return {
-    id,
-    name,
-    description,
-    action: { type: "switch", onChange: (event) => emit(id, event?.target?.checked ?? event) }
-  };
-}
-function inputRow(id, name, description) {
-  return {
-    id,
-    name,
-    description,
-    action: { type: "input", onChange: (event) => emit(id, event?.target?.value ?? event) }
-  };
-}
-function selectRow(id, name, description, items) {
-  return {
-    id,
-    name,
-    description,
-    action: { type: "select", items, onChange: (value) => emit(id, value?.target?.value ?? value) }
-  };
-}
-function groupRow(id, name, description) {
-  return {
-    id,
-    name,
-    description,
-    action: { type: "reactComponent", component: () => null }
-  };
-}
-async function resetPlexusSettings() {
-  const defaults = settingsDefaults();
-  for (const [id, value] of Object.entries(defaults)) {
+  const makeObserver = () => {
+    const PO = globalThis.PerformanceObserver;
+    if (typeof PO !== "function") return null;
+    let next;
     try {
-      await settingsStore?.settings?.set?.(id, value);
-    } catch (error) {
-      console.warn("[plexus-diagram] Could not reset setting", id, error);
+      next = new PO((list) => {
+        if (!on) return;
+        const entries = typeof list?.getEntries === "function" ? list.getEntries() : [];
+        for (const entry of entries) take(entry);
+      });
+    } catch {
+      return null;
     }
-    emit(id, value);
-  }
-}
-var SETTING_ROWS = {
-  [SETTING_IDS.enabled]: () => switchRow(SETTING_IDS.enabled, "Enabled", "Turn the diagram overlay on or off."),
-  [SETTING_IDS.autoEnhance]: () => switchRow(SETTING_IDS.autoEnhance, "Every diagram is a Plexus board", "On: every {{[[diagram]]}} opens as a Plexus board. Nothing is saved until you change the board. Off: only diagrams you enhance (Plexus: Enhance) or create with New whiteboard open in Plexus."),
-  [SETTING_IDS.fullscreenOnZoom]: () => switchRow(SETTING_IDS.fullscreenOnZoom, "Fullscreen on zoom", "Open a diagram full screen when you zoom into its block. Esc leaves it."),
-  [SETTING_IDS.graphLinks]: () => selectRow(SETTING_IDS.graphLinks, "Graph links", "Show lines between cards that share a page reference or an attribute.", ["all", "attributes", "off"]),
-  [SETTING_IDS.attrStyles]: () => inputRow(SETTING_IDS.attrStyles, "Attribute styles", "One JSON object. Each attribute name gets a palette color and a line: solid, dashed, or dotted."),
-  [SETTING_IDS.wheel]: () => selectRow(SETTING_IDS.wheel, "Mouse wheel", "What the mouse wheel does on the board. Pinch still zooms.", ["pan", "zoom"]),
-  [SETTING_IDS.showMinimap]: () => switchRow(SETTING_IDS.showMinimap, "Show minimap", "Show the small map of the whole board."),
-  [SETTING_IDS.showPalette]: () => switchRow(SETTING_IDS.showPalette, "Show tool palette", "Show the tool palette along the bottom of the board."),
-  [SETTING_IDS.motion]: () => selectRow(SETTING_IDS.motion, "Motion", "Full, reduced, or none. A system reduced-motion setting shortens Full.", ["full", "reduced", "none"]),
-  [SETTING_IDS.toolbarLayout]: () => selectRow(SETTING_IDS.toolbarLayout, "Toolbar layout", "Split: board bar on top, tools in the dock. Classic: the 2.1 look, tools in the top bar. Dock only: hide the top bar until the pointer is near the top edge.", ["split", "classic", "dock-only"]),
-  [SETTING_IDS.dockPosition]: () => selectRow(SETTING_IDS.dockPosition, "Tool dock position", "Where the tool dock sits. A board can override this from its More menu.", ["bottom", "left", "top"]),
-  [SETTING_IDS.dockStyle]: () => selectRow(SETTING_IDS.dockStyle, "Dock shape", "Pill is a rounded floating dock. Strip is a flat bar.", ["pill", "strip"]),
-  [SETTING_IDS.dockLabels]: () => switchRow(SETTING_IDS.dockLabels, "Show tool names under icons", "Label each tool in the dock."),
-  [SETTING_IDS.chromeDensity]: () => selectRow(SETTING_IDS.chromeDensity, "Button size", "Comfortable or compact buttons for both bars.", ["comfortable", "compact"]),
-  [SETTING_IDS.dockOptions]: () => switchRow(SETTING_IDS.dockOptions, "Show tool options in the dock", "Show the active tool's quick options (colors, look, shape) next to the dock."),
-  [SETTING_IDS.tooltips]: () => switchRow(SETTING_IDS.tooltips, "Hover tooltips", "Show a name, shortcut and one-line description when you hover or focus a control. Off falls back to the browser's plain tooltip."),
-  [SETTING_IDS.tooltipDelay]: () => selectRow(SETTING_IDS.tooltipDelay, "Tooltip delay", "How long to hover before a tooltip shows. Keyboard focus always shows it at once.", TOOLTIP_DELAYS),
-  [SETTING_IDS.controlsPosition]: () => selectRow(SETTING_IDS.controlsPosition, "Controls", "Rail is the vertical stack on the right. Bar is the horizontal zoom group.", ["rail", "bar"]),
-  [SETTING_IDS.snapGuides]: () => switchRow(SETTING_IDS.snapGuides, "Snap guides", "Line a dragged card up with its neighbours and show the guides."),
-  [SETTING_IDS.snapGrid]: () => switchRow(SETTING_IDS.snapGrid, "Snap to grid", "Snap a dragged card to the 24 pixel grid. Hold Alt while dragging to skip snapping."),
-  [SETTING_IDS.grid]: () => selectRow(SETTING_IDS.grid, "Default board background: pattern", "Pattern for boards that do not set their own. A board can override it from Background.", ["dots", "lines", "grid", "plain"]),
-  [SETTING_IDS.boardTone]: () => selectRow(SETTING_IDS.boardTone, "Default board background: tone", "Color wash for boards that do not set their own.", BOARD_TONES2),
-  [SETTING_IDS.mapZoom]: () => selectRow(SETTING_IDS.mapZoom, "Map view below (zoom)", "Below this zoom, cards show only their title.", MAP_ZOOMS),
-  [SETTING_IDS.autoFitSections]: () => switchRow(SETTING_IDS.autoFitSections, "Auto-fit sections", "Grow a section when a card is moved or resized past its edge."),
-  [SETTING_IDS.spaceOut]: () => switchRow(SETTING_IDS.spaceOut, "Space out cards", "After a move, push cards apart when they overlap."),
-  [SETTING_IDS.showCardBadges]: () => switchRow(SETTING_IDS.showCardBadges, "Show card badges", "Show how many references, tasks, and children a card has."),
-  [SETTING_IDS.cardChips]: () => switchRow(SETTING_IDS.cardChips, "Board chips", "Show a board chip under a block that is a card on a board."),
-  [SETTING_IDS.whyPrompt]: () => switchRow(SETTING_IDS.whyPrompt, "Ask why on a new connection", "After you draw a connection, open the why field."),
-  [SETTING_IDS.resurfaceIntervals]: () => inputRow(SETTING_IDS.resurfaceIntervals, "Resurface intervals", "Days, separated by commas. A daily page lists cards from those many days ago."),
-  [SETTING_IDS.betterTasks]: () => switchRow(SETTING_IDS.betterTasks, "Better Tasks integration", "Use Better Tasks for task chips, the light checkbox, and task edits. Off leaves the TODO marker to Roam."),
-  [SETTING_IDS.taskTool]: () => switchRow(SETTING_IDS.taskTool, "Task tool", "Show the Task tool (K) in the dock. It makes a Roam TODO block; Better Tasks sets its due date and project."),
-  [SETTING_IDS.taskChips]: () => selectRow(SETTING_IDS.taskChips, "Task chips", "What a task card shows under its title. Full: due date, project, priority, repeat, status. Due only: just the date. None: no chips.", TASK_CHIPS),
-  [SETTING_IDS.taskDefaultProject]: () => inputRow(SETTING_IDS.taskDefaultProject, "Default project for new tasks", "A page name. A task made from the board gets it as its Better Tasks project. Empty uses Better Tasks' own default."),
-  [SETTING_IDS.enterInCard]: () => selectRow(SETTING_IDS.enterInCard, "Enter in a card", "Newline adds a line to the card's block, like a native Roam diagram. Child makes a new child block inside the card.", ["newline", "child"]),
-  [SETTING_IDS.defaultCardLook]: () => selectRow(SETTING_IDS.defaultCardLook, "Default card look", "New note cards. Block is a plain Roam block. Card keeps a title row.", ["block", "card"]),
-  [SETTING_IDS.defaultCardWidth]: () => inputRow(SETTING_IDS.defaultCardWidth, "Default card width", "Width of a new card, in pixels."),
-  [SETTING_IDS.defaultCardHeight]: () => inputRow(SETTING_IDS.defaultCardHeight, "Default card height", "Height of a new card, in pixels."),
-  [SETTING_IDS.enableShortcuts]: () => switchRow(SETTING_IDS.enableShortcuts, "Enable shortcuts", "Use keyboard shortcuts on the board."),
-  [SETTING_IDS.showVersionBadge]: () => switchRow(SETTING_IDS.showVersionBadge, "Show version badge", "Show the version on the board."),
-  [SETTING_IDS.disableOnMobile]: () => switchRow(SETTING_IDS.disableOnMobile, "Disable on mobile", "Do not open diagrams on a phone."),
-  [SETTING_IDS.collapseOutline]: () => switchRow(SETTING_IDS.collapseOutline, "Collapse the outline", "Fold an enhanced board once, so the outline does not list every card. Opening the bullet is remembered.")
-};
-var SETTING_GROUPS = [
-  ["group-cards", "Cards", "How new cards look, and the marks on them.", [
-    SETTING_IDS.defaultCardLook,
-    SETTING_IDS.defaultCardWidth,
-    SETTING_IDS.defaultCardHeight,
-    SETTING_IDS.enterInCard,
-    SETTING_IDS.showCardBadges,
-    SETTING_IDS.cardChips,
-    SETTING_IDS.spaceOut
-  ]],
-  ["group-integrations", "Integrations", "Better Tasks, the task tool, and what a task card shows.", [
-    SETTING_IDS.betterTasks,
-    SETTING_IDS.taskTool,
-    SETTING_IDS.taskChips,
-    SETTING_IDS.taskDefaultProject
-  ]],
-  ["group-sections", "Sections", "How a section grows around its cards.", [
-    SETTING_IDS.autoFitSections
-  ]],
-  ["group-connections", "Connections", "Lines drawn from page references and attributes.", [
-    SETTING_IDS.graphLinks,
-    SETTING_IDS.attrStyles,
-    SETTING_IDS.whyPrompt
-  ]],
-  ["group-board", "Board", "The canvas, the controls, and how you move around.", [
-    SETTING_IDS.enabled,
-    SETTING_IDS.autoEnhance,
-    SETTING_IDS.fullscreenOnZoom,
-    SETTING_IDS.wheel,
-    SETTING_IDS.showMinimap,
-    SETTING_IDS.showPalette,
-    SETTING_IDS.toolbarLayout,
-    SETTING_IDS.dockPosition,
-    SETTING_IDS.dockStyle,
-    SETTING_IDS.dockLabels,
-    SETTING_IDS.chromeDensity,
-    SETTING_IDS.dockOptions,
-    SETTING_IDS.tooltips,
-    SETTING_IDS.tooltipDelay,
-    SETTING_IDS.controlsPosition,
-    SETTING_IDS.snapGuides,
-    SETTING_IDS.snapGrid,
-    SETTING_IDS.grid,
-    SETTING_IDS.boardTone,
-    SETTING_IDS.mapZoom,
-    SETTING_IDS.enableShortcuts,
-    SETTING_IDS.showVersionBadge,
-    SETTING_IDS.resurfaceIntervals
-  ]],
-  ["group-performance", "Performance", "Motion, and when the overlay stays off.", [
-    SETTING_IDS.motion,
-    SETTING_IDS.disableOnMobile,
-    SETTING_IDS.collapseOutline
-  ]]
-];
-function createSettingsPanel() {
-  const settings = [];
-  for (const [id, name, description, members] of SETTING_GROUPS) {
-    settings.push(groupRow(id, name, description));
-    for (const member of members) settings.push(SETTING_ROWS[member]());
-  }
-  settings.push({
-    id: "reset-plexus-settings",
-    name: "Reset",
-    description: "Put every Plexus setting back to its default. Open boards update right away.",
-    action: { type: "button", content: "Reset Plexus settings", onClick: () => resetPlexusSettings() }
-  });
-  return { tabTitle: "Plexus Diagram", settings };
+    const attempts = [
+      { type: "layout-shift", buffered: true },
+      { type: "layout-shift" },
+      { entryTypes: ["layout-shift"] }
+    ];
+    for (const opts of attempts) {
+      try {
+        next.observe(opts);
+        return next;
+      } catch {
+      }
+    }
+    try {
+      next.disconnect();
+    } catch {
+    }
+    return null;
+  };
+  const track = (lifecycle) => {
+    if (!lifecycle?.add || tracked) return;
+    tracked = true;
+    lifecycle.add(() => stop2());
+  };
+  const start = ({ stats: next, lifecycle, enabled } = {}) => {
+    if (next && typeof next === "object") stats = next;
+    track(lifecycle);
+    const want = enabled === true || shiftDebugOn();
+    if (!want) {
+      stop2();
+      return;
+    }
+    on = true;
+    if (!observer) observer = makeObserver();
+    publish();
+  };
+  const markUsable = (t) => {
+    if (!on) return false;
+    const n2 = Number(t);
+    usableAt = Number.isFinite(n2) ? n2 : perfNow();
+    publish();
+    return true;
+  };
+  const watchMount = (mountEl) => {
+    if (!on || usableAt != null || raf2) return;
+    const seen = () => {
+      if (mountEl?.classList?.contains?.("pxd-item")) return mountEl;
+      const scope = mountEl?.querySelector ? mountEl : globalThis.document;
+      return scope?.querySelector?.(".pxd-item") || null;
+    };
+    if (seen()) {
+      markUsable(perfNow());
+      return;
+    }
+    const rafFn = globalThis.requestAnimationFrame;
+    if (typeof rafFn !== "function") return;
+    const step = () => {
+      raf2 = 0;
+      if (!on || usableAt != null) return;
+      if (seen()) {
+        markUsable(perfNow());
+        return;
+      }
+      frames += 1;
+      if (frames >= OPEN_FRAMES2) return;
+      raf2 = rafFn(step);
+    };
+    raf2 = rafFn(step);
+  };
+  return {
+    start,
+    stop: stop2,
+    watchMount,
+    markUsable,
+    ingest(entry) {
+      if (on) take(entry);
+    },
+    get enabled() {
+      return on;
+    }
+  };
 }
 
 // src/feature.js
@@ -33136,6 +34804,8 @@ var PACKAGE_VERSION = package_default.version;
 var RECONCILE_INTERVAL_MS = 400;
 var NEGATIVE_TTL_MS = 3e4;
 var MOUNT_BACKOFF_MS = [5e3, 3e4];
+var KEEP_ALIVE_CAP = 2;
+var KEEP_ALIVE_MS = 3e5;
 var LEGACY_METADATA_PAGE = "plexus-diagram/metadata";
 var TITLE_PANEL_CLASS = "rm-diagram-title-panel";
 var NEW_BOARD_STRING = "{{[[diagram]]:Untitled board}}";
@@ -33251,7 +34921,34 @@ async function installPlexusDiagram({
   if (!mountView) mountView = mountBoardView;
   const host = injectedHost;
   const acquireSession2 = injectedAcquire;
+  const perfLog = createPerfLog();
+  perfLog.bind(host.stats);
+  const shiftWatch = createShiftWatch();
+  const sketchStore = createSketchStore({
+    storage,
+    graph: () => {
+      if (typeof host.graph === "string" && host.graph) return host.graph;
+      try {
+        const match = /#\/app\/([^/?#]+)/.exec(String(globalThis.location?.hash || ""));
+        if (match) return decodeURIComponent(match[1]);
+      } catch {
+      }
+      return graphFromHash();
+    },
+    enabled: () => notedSpeedFlags().sketch !== false
+  });
+  const sketchTimers = /* @__PURE__ */ new Map();
+  const sketchHandoffs = /* @__PURE__ */ new Map();
   let settings = readSettings(extensionAPI);
+  bindSpeedFlagSource(() => {
+    try {
+      return extensionAPI?.settings?.get?.(SETTING_IDS.speedFlags);
+    } catch {
+      return null;
+    }
+  });
+  lifecycle.add(() => bindSpeedFlagSource(null));
+  const speedFlags = () => notedSpeedFlags();
   const liveSettings = { get: (id) => settings[id] };
   let stopped = false;
   let closeAddToBoard = () => {
@@ -33311,6 +35008,15 @@ async function installPlexusDiagram({
     },
     onPreview: ({ boardUid, cardUid }) => chipPreview(boardUid, cardUid)
   });
+  const schedulePrefetch2 = createPrefetch({
+    doc,
+    cache: cardCache,
+    warm: (uid) => host.prefetchBoard?.(uid),
+    isWarm: (uid) => host.prefetchBoard?.warm?.(uid) === true,
+    refBoards: (uid) => host.prefetchBoard?.refBoards?.(uid) || [],
+    pageBoards: (title) => host.prefetchBoard?.pageBoards?.(title) || [],
+    enabled: () => speedFlags().prefetch !== false
+  });
   const publishCards = (board2) => {
     if (board2) {
       relChips.noteBoard(board2);
@@ -33365,6 +35071,7 @@ async function installPlexusDiagram({
   lifecycle.add(() => relChips.dispose());
   lifecycle.add(() => boardChips.dispose());
   lifecycle.add(() => cardChips.dispose());
+  lifecycle.add(() => schedulePrefetch2.dispose());
   lifecycle.add(() => resurface.dispose());
   const editSeen = /* @__PURE__ */ new Map();
   lifecycle.add(() => previewBoards.clear());
@@ -33493,6 +35200,7 @@ async function installPlexusDiagram({
   lifecycle.add(() => {
     for (const native of [...convertButtons.keys()]) dropConvert(native);
     for (const rec of [...mounts.values()]) unmount(rec);
+    disposeAlive();
     for (const observer of portalObservers.values()) observer.disconnect();
     portalObservers.clear();
     for (const el of [...doc?.querySelectorAll?.(`.${OUTLINE_NATIVE_CLASS}`) || []]) setClassToken(el, OUTLINE_NATIVE_CLASS, false);
@@ -33663,7 +35371,349 @@ async function installPlexusDiagram({
     } catch {
     }
   }
-  function mountRecView(rec, { autofocus = false, viewport = null } = {}) {
+  function sketchGesturing(rec) {
+    return rec?.view?.root?.classList?.contains?.("pxd-root--gesturing") === true;
+  }
+  function clearSketchTimer(rec) {
+    const timer = sketchTimers.get(rec);
+    if (timer) clearTimeout(timer);
+    sketchTimers.delete(rec);
+  }
+  function storedSketchViewport(rec, uid) {
+    try {
+      const id = viewportStorageId(rec?.native, uid, (blockId) => host.blockString?.(blockId));
+      let stored = host.viewports?.get?.(id) || null;
+      if (!stored && id !== uid && String(id).startsWith(`${uid}:embed:`)) stored = host.viewports?.get?.(uid) || null;
+      return stored;
+    } catch {
+      return null;
+    }
+  }
+  function sketchMountSize(rec) {
+    const box2 = rec?.mountEl?.getBoundingClientRect?.();
+    if (box2 && box2.width > 0 && box2.height > 0) return { width: box2.width, height: box2.height };
+    return null;
+  }
+  function anchorMount(mountEl) {
+    const pos = mountEl?.style?.position;
+    if (mountEl?.style && (pos == null || pos === "" || pos === "static")) mountEl.style.position = "relative";
+  }
+  function showSketch(rec, initialViewport) {
+    if (speedFlags().sketch === false) return null;
+    try {
+      const uid = currentUid(rec);
+      const sketch = sketchStore.get(uid);
+      if (!sketch?.items?.length && !sketch?.edges?.length) return null;
+      const vp = resolveSketchViewport({
+        stored: storedSketchViewport(rec, uid),
+        initial: initialViewport,
+        board: rec.session?.board,
+        size: sketchMountSize(rec)
+      });
+      anchorMount(rec.mountEl);
+      const layer = paintSketch(doc, rec.mountEl, sketch, vp, { inset: rec.fullscreen ? 0 : SKETCH_ROOT_BORDER });
+      return layer ? vp : null;
+    } catch {
+      try {
+        removeSketch(rec?.mountEl);
+      } catch {
+      }
+      return null;
+    }
+  }
+  function forgetSketch(rec) {
+    if (!rec) return;
+    clearSketchTimer(rec);
+    cancelSketchHandoff(rec);
+  }
+  function liveSketchView(rec) {
+    return Boolean(rec?.view) && rec.view.sketchStandIn !== true;
+  }
+  function writeSketch(rec) {
+    sketchTimers.delete(rec);
+    if (speedFlags().sketch === false) return;
+    if (stopped || !rec || mounts.get(rec.native) !== rec || !liveSketchView(rec) || !rec.session?.board) return;
+    if (sketchGesturing(rec)) {
+      scheduleSketch(rec);
+      return;
+    }
+    try {
+      const sketch = captureSketch(rec.session.board);
+      const uid = currentUid(rec);
+      if (sketch && uid) sketchStore.set(uid, sketch);
+    } catch {
+    }
+  }
+  function scheduleSketch(rec) {
+    clearSketchTimer(rec);
+    if (speedFlags().sketch === false) return;
+    if (stopped || !rec || mounts.get(rec.native) !== rec || !liveSketchView(rec)) return;
+    const timer = setTimeout(() => writeSketch(rec), SKETCH_DEBOUNCE_MS);
+    timer.unref?.();
+    sketchTimers.set(rec, timer);
+  }
+  function saveSketchNow(rec) {
+    clearSketchTimer(rec);
+    if (speedFlags().sketch === false) return;
+    if (!rec?.view || !rec.session?.board || sketchGesturing(rec)) return;
+    try {
+      const sketch = captureSketch(rec.session.board);
+      const uid = currentUid(rec);
+      if (!sketch || !uid) return;
+      sketchStore.set(uid, sketch);
+      sketchStore.flushAll();
+    } catch {
+    }
+  }
+  const SKETCH_INPUT = ["keydown", "keyup", "pointerdown", "pointerup"];
+  function clearSketchHandoffTimers(handoff) {
+    if (!handoff) return;
+    if (handoff.rafId != null) {
+      try {
+        globalThis.cancelAnimationFrame?.(handoff.rafId);
+      } catch {
+      }
+      handoff.rafId = null;
+    }
+    if (handoff.holdRaf != null) {
+      try {
+        globalThis.cancelAnimationFrame?.(handoff.holdRaf);
+      } catch {
+      }
+      handoff.holdRaf = null;
+    }
+    for (const key of ["timeoutId", "holdTimer", "soonTimer"]) {
+      if (handoff[key] == null) continue;
+      clearTimeout(handoff[key]);
+      handoff[key] = null;
+    }
+  }
+  function detachSketchInput(handoff) {
+    const fn = handoff?.onEvent;
+    if (!fn) return;
+    handoff.onEvent = null;
+    if (typeof handoff.win?.removeEventListener !== "function") return;
+    for (const type of SKETCH_INPUT) {
+      try {
+        handoff.win.removeEventListener(type, fn, true);
+      } catch {
+      }
+    }
+  }
+  function cancelSketchHandoff(rec) {
+    const handoff = rec ? sketchHandoffs.get(rec) : null;
+    if (handoff) {
+      handoff.cancelled = true;
+      sketchHandoffs.delete(rec);
+      clearSketchHandoffTimers(handoff);
+      detachSketchInput(handoff);
+      try {
+        handoff.observer?.disconnect?.();
+      } catch {
+      }
+      handoff.observer = null;
+    }
+    if (rec) try {
+      removeSketch(rec.mountEl);
+    } catch {
+    }
+  }
+  function sketchHandoffOwns(handoff, event) {
+    const mount2 = handoff.rec?.mountEl;
+    const target = event?.target;
+    return Boolean(target && mount2?.contains?.(target));
+  }
+  function snapshotSketchEvent(event) {
+    return {
+      type: event.type,
+      key: event.key,
+      code: event.code,
+      repeat: event.repeat,
+      shiftKey: event.shiftKey,
+      altKey: event.altKey,
+      metaKey: event.metaKey,
+      ctrlKey: event.ctrlKey,
+      button: event.button,
+      buttons: event.buttons,
+      clientX: event.clientX,
+      clientY: event.clientY,
+      pointerId: event.pointerId,
+      pointerType: event.pointerType,
+      target: event.target ?? null
+    };
+  }
+  function makeSketchEvent(snap) {
+    const init = { bubbles: true, cancelable: true };
+    for (const key of ["key", "code", "repeat", "shiftKey", "altKey", "metaKey", "ctrlKey", "button", "buttons", "clientX", "clientY", "pointerId", "pointerType"]) {
+      if (snap[key] != null) init[key] = snap[key];
+    }
+    const Ctor = String(snap.type || "").startsWith("key") ? globalThis.KeyboardEvent : String(snap.type || "").startsWith("pointer") ? globalThis.PointerEvent : globalThis.MouseEvent;
+    if (typeof Ctor === "function") {
+      try {
+        return new Ctor(snap.type, init);
+      } catch {
+      }
+    }
+    return {
+      ...init,
+      type: snap.type,
+      preventDefault() {
+      },
+      stopPropagation() {
+      },
+      stopImmediatePropagation() {
+      }
+    };
+  }
+  function attachSketchInput(handoff) {
+    handoff.queue = [];
+    const fn = (event) => {
+      if (!event || handoff.cancelled || handoff.mounted) return;
+      if (!sketchHandoffOwns(handoff, event)) return;
+      handoff.queue.push(snapshotSketchEvent(event));
+      try {
+        event.stopPropagation?.();
+      } catch {
+      }
+      try {
+        event.stopImmediatePropagation?.();
+      } catch {
+      }
+    };
+    handoff.onEvent = fn;
+    if (typeof handoff.win?.addEventListener !== "function") return;
+    for (const type of SKETCH_INPUT) {
+      try {
+        handoff.win.addEventListener(type, fn, true);
+      } catch {
+      }
+    }
+  }
+  function replaySketchInput(handoff, view) {
+    const queued = handoff.queue?.splice(0) || [];
+    for (const snap of queued) {
+      const keyEvent = String(snap.type || "").startsWith("key");
+      const target = keyEvent ? handoff.win : typeof view?.root?.dispatchEvent === "function" ? view.root : handoff.rec?.mountEl;
+      if (typeof target?.dispatchEvent !== "function") continue;
+      try {
+        target.dispatchEvent(makeSketchEvent(snap));
+      } catch {
+      }
+    }
+  }
+  function sketchStandIn(handoff) {
+    const queued = [];
+    const call = (name, args) => {
+      const live = handoff.view;
+      if (live && typeof live[name] === "function") return live[name](...args);
+      queued.push([name, args]);
+    };
+    handoff.flushQueued = () => {
+      const live = handoff.view;
+      if (!live) return;
+      for (const [name, args] of queued.splice(0)) {
+        try {
+          live[name]?.(...args);
+        } catch {
+        }
+      }
+    };
+    return {
+      sketchStandIn: true,
+      get root() {
+        return handoff.view?.root ?? null;
+      },
+      viewport() {
+        try {
+          return handoff.view?.viewport?.() ?? handoff.vp ?? null;
+        } catch {
+          return handoff.vp ?? null;
+        }
+      },
+      state() {
+        try {
+          return handoff.view?.state?.() ?? null;
+        } catch {
+          return null;
+        }
+      },
+      cameraRect() {
+        try {
+          return handoff.view?.cameraRect?.() ?? null;
+        } catch {
+          return null;
+        }
+      },
+      dispose() {
+        queued.length = 0;
+        const live = handoff.view;
+        handoff.view = null;
+        cancelSketchHandoff(handoff.rec);
+        try {
+          live?.dispose?.();
+        } catch {
+        }
+      },
+      setSettings(value) {
+        call("setSettings", [value]);
+      },
+      setFullscreen(value) {
+        call("setFullscreen", [value]);
+      },
+      focusUid(uid) {
+        return call("focusUid", [uid]);
+      },
+      applyShow(spec) {
+        call("applyShow", [spec]);
+      },
+      quiet(on) {
+        call("quiet", [on]);
+      }
+    };
+  }
+  function armSketchHold(handoff) {
+    const rec = handoff.rec;
+    const finish = () => cancelSketchHandoff(rec);
+    const look = () => {
+      if (handoff.cancelled || handoff.holdRaf != null || handoff.soonTimer != null) return;
+      if (!rec.mountEl?.querySelector?.(".pxd-item")) return;
+      try {
+        handoff.observer?.disconnect?.();
+      } catch {
+      }
+      handoff.observer = null;
+      const raf2 = globalThis.requestAnimationFrame;
+      if (typeof raf2 === "function") {
+        handoff.holdRaf = raf2(() => {
+          handoff.holdRaf = null;
+          finish();
+        });
+        return;
+      }
+      const timer2 = setTimeout(() => {
+        handoff.soonTimer = null;
+        finish();
+      }, 0);
+      timer2.unref?.();
+      handoff.soonTimer = timer2;
+    };
+    look();
+    if (!handoff.cancelled && handoff.holdRaf == null && handoff.soonTimer == null && typeof MutationObserver === "function" && rec.mountEl) {
+      try {
+        const observer = new MutationObserver(look);
+        observer.observe(rec.mountEl, { childList: true, subtree: true });
+        handoff.observer = observer;
+      } catch {
+      }
+    }
+    const timer = setTimeout(() => {
+      handoff.holdTimer = null;
+      finish();
+    }, SKETCH_HOLD_MS);
+    timer.unref?.();
+    handoff.holdTimer = timer;
+  }
+  function callMountView(rec, autofocus, viewport) {
     return mountView({
       host,
       session: rec.session,
@@ -33681,8 +35731,140 @@ async function installPlexusDiagram({
       onCrumb: (index) => visit(rec, rec.crumbs.slice(0, index + 1)),
       onHistoryBack: () => historyMove(rec, "back"),
       onHistoryForward: () => historyMove(rec, "forward"),
-      onSetDefaults: (patch) => setDefaults(patch)
+      onSetDefaults: (patch) => setDefaults(patch),
+      perfLog,
+      lifecycle
     });
+  }
+  function finishLive(rec, view, logging, t0) {
+    rec.view = view;
+    try {
+      scheduleSketch(rec);
+    } catch {
+    }
+    if (logging) perfLog.watchOpen(rec.mountEl, t0);
+    return view;
+  }
+  function runSketchMount(handoff, standIn, { autofocus, viewport, logging, t0 }) {
+    const rec = handoff.rec;
+    if (handoff.cancelled || stopped || mounts.get(rec.native) !== rec) return;
+    handoff.mounted = true;
+    detachSketchInput(handoff);
+    let view;
+    try {
+      view = callMountView(rec, autofocus, viewport);
+    } catch (error) {
+      handoff.cancelled = true;
+      clearSketchHandoffTimers(handoff);
+      detachSketchInput(handoff);
+      sketchHandoffs.delete(rec);
+      try {
+        removeSketch(rec.mountEl);
+      } catch {
+      }
+      try {
+        noteMountFail(currentUid(rec), error);
+        unmount(rec);
+      } catch {
+      }
+      return;
+    }
+    if (handoff.cancelled || stopped || mounts.get(rec.native) !== rec || rec.view !== standIn) {
+      try {
+        view?.dispose?.();
+      } catch {
+      }
+      try {
+        removeSketch(rec.mountEl);
+      } catch {
+      }
+      return;
+    }
+    handoff.view = view;
+    try {
+      handoff.flushQueued?.();
+    } catch {
+    }
+    if (handoff.cancelled || stopped || mounts.get(rec.native) !== rec || rec.view !== standIn) {
+      try {
+        view?.dispose?.();
+      } catch {
+      }
+      try {
+        removeSketch(rec.mountEl);
+      } catch {
+      }
+      return;
+    }
+    finishLive(rec, view, logging, t0);
+    replaySketchInput(handoff, view);
+    try {
+      armSketchHold(handoff);
+    } catch {
+      cancelSketchHandoff(rec);
+    }
+  }
+  function beginSketchHandoff(rec, vp, opts) {
+    const handoff = {
+      rec,
+      vp,
+      win,
+      cancelled: false,
+      mounted: false,
+      queue: [],
+      view: null,
+      rafId: null,
+      timeoutId: null,
+      holdRaf: null,
+      holdTimer: null,
+      soonTimer: null,
+      observer: null
+    };
+    sketchHandoffs.set(rec, handoff);
+    const standIn = sketchStandIn(handoff);
+    rec.view = standIn;
+    attachSketchInput(handoff);
+    const start = () => {
+      handoff.timeoutId = null;
+      runSketchMount(handoff, standIn, opts);
+    };
+    const raf2 = globalThis.requestAnimationFrame;
+    if (typeof raf2 === "function") {
+      handoff.rafId = raf2(() => {
+        handoff.rafId = null;
+        if (handoff.cancelled || stopped || mounts.get(rec.native) !== rec) return;
+        const timer = setTimeout(start, 0);
+        timer.unref?.();
+        handoff.timeoutId = timer;
+      });
+    } else {
+      const timer = setTimeout(start, 0);
+      timer.unref?.();
+      handoff.timeoutId = timer;
+    }
+    return standIn;
+  }
+  function mountRecView(rec, { autofocus = false, viewport = null } = {}) {
+    speedFlags();
+    const logging = settings[SETTING_IDS.speedLog] === true;
+    const t0 = logging ? perfNow() : 0;
+    cancelSketchHandoff(rec);
+    const vp = showSketch(rec, viewport);
+    if (!vp) {
+      let view;
+      try {
+        view = callMountView(rec, autofocus, viewport);
+      } catch (error) {
+        removeSketch(rec.mountEl);
+        throw error;
+      }
+      removeSketch(rec.mountEl);
+      const live = finishLive(rec, view, logging, t0);
+      if (logging) shiftWatch.watchMount(rec.mountEl);
+      return live;
+    }
+    if (logging) shiftWatch.watchMount(rec.mountEl);
+    return beginSketchHandoff(rec, vp, { autofocus, viewport, logging, t0 });
   }
   async function setDefaults(patch) {
     if (stopped || !patch || typeof patch !== "object") return;
@@ -33711,6 +35893,7 @@ async function installPlexusDiagram({
       else unmount(rec);
     });
     const offChange = session.on?.("change", (diff) => {
+      scheduleSketch(rec);
       if (diff?.structural && session.board) {
         relChips.noteBoard(session.board);
         publishCards(session.board);
@@ -33842,6 +36025,247 @@ async function installPlexusDiagram({
     });
     return true;
   }
+  const kept = [];
+  function canKeep(rec) {
+    if (speedFlags().keepAlive === false) return false;
+    const view = rec?.view;
+    if (!view || view.sketchStandIn === true) return false;
+    if (rec.fullscreen || holdsFocus(rec)) return false;
+    const root = view.root;
+    return Boolean(root && typeof root.remove === "function");
+  }
+  function disarm(rec) {
+    try {
+      rec.off?.();
+    } catch {
+    }
+    rec.off = null;
+  }
+  function disposePair(view, session, paused) {
+    try {
+      view?.dispose?.();
+    } catch (error) {
+      console.warn("[plexus-diagram] view dispose failed", error);
+    }
+    try {
+      if (paused) session?.release?.({ paused: true });
+      else session?.release?.();
+    } catch (error) {
+      console.warn("[plexus-diagram] session release failed", error);
+    }
+  }
+  function dropKept(entry) {
+    const at = kept.indexOf(entry);
+    if (at >= 0) kept.splice(at, 1);
+    if (entry.timer != null) {
+      clearTimeout(entry.timer);
+      entry.timer = null;
+    }
+    disposePair(entry.view, entry.session, true);
+  }
+  function dropKeptFor(rec) {
+    for (const entry of kept.filter((item) => item.rec === rec)) dropKept(entry);
+  }
+  function trimKept() {
+    while (kept.length > KEEP_ALIVE_CAP) dropKept(kept[0]);
+  }
+  function remember(rec, uid, view, session) {
+    for (const entry2 of kept.filter((item) => item.rec === rec && item.uid === uid)) dropKept(entry2);
+    const entry = { rec, uid, view, session, timer: null };
+    entry.timer = setTimeout(() => {
+      entry.timer = null;
+      if (kept.includes(entry)) dropKept(entry);
+    }, KEEP_ALIVE_MS);
+    try {
+      entry.timer.unref?.();
+    } catch {
+    }
+    kept.push(entry);
+    trimKept();
+  }
+  function suspendView(view) {
+    try {
+      view?.suspend?.();
+    } catch {
+    }
+    try {
+      view?.root?.remove?.();
+    } catch {
+    }
+  }
+  function resumeView(rec, view) {
+    const root = view?.root;
+    if (root && rec.mountEl && root.parentElement !== rec.mountEl) {
+      try {
+        rec.mountEl.append(root);
+      } catch {
+      }
+    }
+    try {
+      view?.resume?.();
+    } catch {
+    }
+  }
+  const alive = [];
+  function poolKind(native) {
+    if (inRightSidebar(native)) return "sidebar";
+    try {
+      if (embedOwnerUid(native, (id) => host.blockString?.(id))) return "embed";
+    } catch {
+    }
+    return "main";
+  }
+  function pageLeft(rec) {
+    return rec?.native?.isConnected === false || rec?.mountEl?.isConnected === false;
+  }
+  function fullscreenPinned(rec) {
+    if (rec?.fullscreen) return true;
+    const uid = rec?.uid;
+    const shown = currentUid(rec);
+    for (const other of mounts.values()) {
+      if (other === rec || !other.fullscreen) continue;
+      if (other.native?.isConnected === false || other.mountEl?.isConnected === false) continue;
+      if (other.uid === uid || other.uid === shown || currentUid(other) === uid || currentUid(other) === shown) return true;
+    }
+    return false;
+  }
+  function canPool(rec) {
+    if (speedFlags().keepAlive === false) return false;
+    if (stopped || !rec || fullscreenPinned(rec)) return false;
+    const view = rec.view;
+    if (!view || view.sketchStandIn === true || typeof view.suspend !== "function") return false;
+    if (!view.root || typeof view.root.remove !== "function") return false;
+    if (!rec.session?.board) return false;
+    return true;
+  }
+  function aliveUsable(pooled) {
+    return Boolean(pooled?.session?.board && pooled.view?.root && pooled.view.sketchStandIn !== true);
+  }
+  function dropAlive(entry) {
+    const at = alive.indexOf(entry);
+    if (at >= 0) alive.splice(at, 1);
+    if (entry.timer != null) {
+      clearTimeout(entry.timer);
+      entry.timer = null;
+    }
+    disposePair(entry.view, entry.session, true);
+  }
+  function trimAlive() {
+    while (alive.length > KEEP_ALIVE_CAP) dropAlive(alive[0]);
+  }
+  function rememberAlive(rec, viewport, crumbs) {
+    const boardUid = rec.uid;
+    const kind = rec.poolKind || poolKind(rec.native);
+    for (const entry2 of alive.filter((item) => item.boardUid === boardUid && item.kind === kind)) dropAlive(entry2);
+    const entry = { view: rec.view, session: rec.session, boardUid, kind, viewport, crumbs, timer: null };
+    entry.timer = setTimeout(() => {
+      entry.timer = null;
+      if (alive.includes(entry)) dropAlive(entry);
+    }, KEEP_ALIVE_MS);
+    try {
+      entry.timer.unref?.();
+    } catch {
+    }
+    alive.push(entry);
+    trimAlive();
+  }
+  function takeAlive(boardUid, kind) {
+    const at = alive.findIndex((entry2) => entry2.boardUid === boardUid && entry2.kind === kind);
+    if (at < 0) return null;
+    const entry = alive[at];
+    alive.splice(at, 1);
+    if (entry.timer != null) {
+      clearTimeout(entry.timer);
+      entry.timer = null;
+    }
+    return entry;
+  }
+  function disposeAlive() {
+    for (const entry of [...alive]) dropAlive(entry);
+  }
+  function adoptAlive(rec, pooled) {
+    rec.session = pooled.session;
+    if (pooled.crumbs?.length) rec.crumbs = crumbCopy(pooled.crumbs);
+    rec.view = pooled.view;
+    resumeView(rec, pooled.view);
+    try {
+      pooled.view?.restoreViewport?.(pooled.viewport);
+    } catch {
+    }
+    try {
+      pooled.view?.setSettings?.(settings);
+    } catch {
+    }
+    try {
+      rec.session?.resumeWatches?.();
+    } catch {
+    }
+    rec.off = watchRec(rec);
+    publishCards(rec.session?.board);
+    try {
+      scheduleSketch(rec);
+    } catch {
+    }
+    if (settings[SETTING_IDS.speedLog] === true) perfLog.watchOpen(rec.mountEl, perfNow());
+  }
+  function claimAlive(rec, boardUid, native) {
+    const pooled = takeAlive(boardUid, poolKind(native));
+    if (aliveUsable(pooled)) {
+      adoptAlive(rec, pooled);
+      return true;
+    }
+    if (pooled) disposePair(pooled.view, pooled.session, true);
+    return false;
+  }
+  function detachCurrent(rec) {
+    const view = rec.view;
+    const session = rec.session;
+    const uid = currentUid(rec);
+    const keep = canKeep(rec);
+    disarm(rec);
+    rec.view = null;
+    rec.session = null;
+    if (!keep || !uid || !view || !session) {
+      disposePair(view, session, false);
+      return;
+    }
+    try {
+      session.pauseWatches?.();
+    } catch {
+    }
+    suspendView(view);
+    remember(rec, uid, view, session);
+  }
+  function takeKept(rec, uid) {
+    const at = kept.findIndex((entry2) => entry2.rec === rec && entry2.uid === uid);
+    if (at < 0) return null;
+    const entry = kept[at];
+    kept.splice(at, 1);
+    if (entry.timer != null) {
+      clearTimeout(entry.timer);
+      entry.timer = null;
+    }
+    return entry;
+  }
+  function reattach(rec, view) {
+    rec.view = view;
+    resumeView(rec, view);
+    try {
+      view?.setSettings?.(settings);
+    } catch {
+    }
+    try {
+      rec.session?.resumeWatches?.();
+    } catch {
+    }
+    rec.off = watchRec(rec);
+    publishCards(rec.session?.board);
+    try {
+      scheduleSketch(rec);
+    } catch {
+    }
+    if (settings[SETTING_IDS.speedLog] === true) perfLog.watchOpen(rec.mountEl, perfNow());
+  }
   function navigate(rec, next, viewport, commit) {
     queueMicrotask(() => {
       if (stopped || mounts.get(rec.native) !== rec || !next.length) return;
@@ -33853,6 +36277,29 @@ async function installPlexusDiagram({
           Promise.resolve(host.openBlock?.(target)).catch(() => {
           });
         } catch {
+        }
+        return;
+      }
+      let pooled = takeKept(rec, target);
+      if (pooled && !pooled.session?.board) {
+        disposePair(pooled.view, pooled.session, true);
+        pooled = null;
+      }
+      if (pooled) {
+        try {
+          commit?.();
+        } catch {
+        }
+        saveSketchNow(rec);
+        forgetSketch(rec);
+        detachCurrent(rec);
+        rec.session = pooled.session;
+        rec.crumbs = next;
+        try {
+          reattach(rec, pooled.view);
+        } catch (error) {
+          noteMountFail(rec.uid, error);
+          unmount(rec);
         }
         return;
       }
@@ -33871,21 +36318,9 @@ async function installPlexusDiagram({
         commit?.();
       } catch {
       }
-      try {
-        rec.off?.();
-      } catch {
-      }
-      rec.off = null;
-      try {
-        rec.view?.dispose?.();
-      } catch (error) {
-        console.warn("[plexus-diagram] view dispose failed", error);
-      }
-      try {
-        rec.session?.release?.();
-      } catch (error) {
-        console.warn("[plexus-diagram] session release failed", error);
-      }
+      saveSketchNow(rec);
+      forgetSketch(rec);
+      detachCurrent(rec);
       rec.session = session;
       rec.crumbs = next;
       try {
@@ -33919,7 +36354,9 @@ async function installPlexusDiagram({
       back: [],
       forward: [],
       fullscreen: false,
-      off: null
+      off: null,
+      // Captured while the native is still connected. Page leave detaches it first.
+      poolKind: poolKind(native)
     };
     setClassToken(native, NATIVE_HIDDEN_CLASS, true);
     if (titlePanel) titlePanel.style.display = "none";
@@ -33937,11 +36374,13 @@ async function installPlexusDiagram({
       return rec;
     }
     try {
-      rec.session = acquireSession2(currentUid(rec), { host, settings: liveSettings, ...virtualOptions(virtual) });
-      rec.fullscreen = settings[SETTING_IDS.fullscreenOnZoom] !== false && !routeLeftZoomedDiagram(uid);
-      rec.view = mountRecView(rec);
-      rec.off = watchRec(rec);
-      publishCards(rec.session?.board);
+      if (!claimAlive(rec, uid, native)) {
+        rec.session = acquireSession2(currentUid(rec), { host, settings: liveSettings, ...virtualOptions(virtual) });
+        rec.fullscreen = settings[SETTING_IDS.fullscreenOnZoom] !== false && !routeLeftZoomedDiagram(uid);
+        rec.view = mountRecView(rec);
+        rec.off = watchRec(rec);
+        publishCards(rec.session?.board);
+      }
     } catch (error) {
       noteMountFail(uid, error);
       unmount(rec);
@@ -34001,6 +36440,9 @@ async function installPlexusDiagram({
     return null;
   }
   function sidebarWindows() {
+    return null;
+  }
+  function sidebarWindowsFromApi() {
     let any = false;
     for (const rec of mounts.values()) {
       if (sidebarWindowEl(rec.native) || sidebarWindowEl(rec.mountEl)) {
@@ -34016,16 +36458,12 @@ async function installPlexusDiagram({
       return null;
     }
   }
-  function windowIsCollapsed(win2, windows) {
+  function windowIsCollapsed(win2) {
     if (!win2) return false;
     if (win2.classList?.contains?.("rm-sidebar-window--collapsed") || win2.classList?.contains?.("collapsed")) return true;
-    const id = win2.id || "";
-    if (!id || !Array.isArray(windows)) return false;
-    for (const item of windows) {
-      if (!item) continue;
-      const wid = item["window-id"] || item.windowId || "";
-      if (!wid || wid !== id && id !== `sidebar-window-${wid}`) continue;
-      if (item.collapsed === true || item["collapsed?"] === true) return true;
+    for (const child of win2.children || []) {
+      if (!child.classList?.contains?.("window-headers")) continue;
+      return Boolean(child.querySelector?.(".rm-caret")?.classList?.contains?.("rm-caret-closed"));
     }
     return false;
   }
@@ -34102,6 +36540,7 @@ async function installPlexusDiagram({
     } else if (rec.seen === false) hibernate(rec);
   }
   function hibernate(rec, { force = false } = {}) {
+    if (speedFlags().parking === false) return;
     if (!rec || rec.dormant || rec.fullscreen || !rec.view) return;
     if (holdsFocus(rec)) return;
     const height = rec.mountEl.getBoundingClientRect?.().height || 0;
@@ -34109,6 +36548,8 @@ async function installPlexusDiagram({
     const vp = cameraOf(rec);
     if (vp) rec.parkedVp = vp;
     rec.mountEl.style.minHeight = `${Math.max(40, Math.round(height))}px`;
+    saveSketchNow(rec);
+    forgetSketch(rec);
     try {
       rec.off?.();
     } catch {
@@ -34127,21 +36568,24 @@ async function installPlexusDiagram({
     rec.view = null;
     rec.session = null;
     rec.dormant = true;
+    dropKeptFor(rec);
   }
   function wake(rec) {
     if (!rec || !rec.dormant || stopped || rec.mountEl.isConnected === false) return;
     rec.dormant = false;
     rec.mountEl.style.minHeight = "";
     try {
-      rec.session = acquireSession2(currentUid(rec), { host, settings: liveSettings, ...virtualOptions(rec.virtual && virtualUids.has(currentUid(rec))) });
-      if (!rec.session?.board) {
-        rec.session?.release?.();
-        unmount(rec);
-        return;
+      if (!claimAlive(rec, rec.uid, rec.native)) {
+        rec.session = acquireSession2(currentUid(rec), { host, settings: liveSettings, ...virtualOptions(rec.virtual && virtualUids.has(currentUid(rec))) });
+        if (!rec.session?.board) {
+          rec.session?.release?.();
+          unmount(rec);
+          return;
+        }
+        rec.view = mountRecView(rec, { viewport: rec.parkedVp || null });
+        rec.off = watchRec(rec);
+        publishCards(rec.session?.board);
       }
-      rec.view = mountRecView(rec, { viewport: rec.parkedVp || null });
-      rec.off = watchRec(rec);
-      publishCards(rec.session?.board);
       if (rec.session.board.virtual) markCollapsed(currentUid(rec));
       else if (!embedOwnerUid(rec.native, (id) => host.blockString?.(id))) collapseOnce(currentUid(rec), rec.native);
       if (currentUid(rec) === rec.uid) migrateLegacy(rec);
@@ -34153,6 +36597,12 @@ async function installPlexusDiagram({
   }
   function unmount(rec) {
     if (!rec || !mounts.has(rec.native)) return;
+    if (rec.fullscreen && pageLeft(rec) && rec.view && !rec.view.sketchStandIn) setFullscreen(rec, false);
+    const keep = pageLeft(rec) && canPool(rec);
+    const viewport = keep ? cameraOf(rec) : null;
+    const crumbs = keep ? crumbCopy(rec.crumbs) : null;
+    saveSketchNow(rec);
+    forgetSketch(rec);
     viewportWatch?.unobserve(rec.mountEl);
     recByMount.delete(rec.mountEl);
     mounts.delete(rec.native);
@@ -34171,15 +36621,28 @@ async function installPlexusDiagram({
       rec.off?.();
     } catch {
     }
-    try {
-      rec.view?.dispose?.();
-    } catch (error) {
-      console.warn("[plexus-diagram] view dispose failed", error);
-    }
-    try {
-      rec.session?.release?.();
-    } catch (error) {
-      console.warn("[plexus-diagram] session release failed", error);
+    rec.off = null;
+    dropKeptFor(rec);
+    if (keep) {
+      try {
+        rec.session?.pauseWatches?.();
+      } catch {
+      }
+      suspendView(rec.view);
+      rememberAlive(rec, viewport, crumbs);
+      rec.view = null;
+      rec.session = null;
+    } else {
+      try {
+        rec.view?.dispose?.();
+      } catch (error) {
+        console.warn("[plexus-diagram] view dispose failed", error);
+      }
+      try {
+        rec.session?.release?.();
+      } catch (error) {
+        console.warn("[plexus-diagram] session release failed", error);
+      }
     }
     rec.mountEl.remove();
     setClassToken(rec.native, NATIVE_HIDDEN_CLASS, false);
@@ -35093,9 +37556,21 @@ async function installPlexusDiagram({
     }
     lifecycle.add(() => closeCommandSheet());
   }
+  function syncSpeedLog() {
+    if (stopped || settings[SETTING_IDS.speedLog] !== true) {
+      perfLog.stop();
+      shiftWatch.stop();
+    } else {
+      perfLog.start({ stats: host.stats, lifecycle });
+      shiftWatch.start({ stats: host.stats, lifecycle, enabled: true });
+    }
+  }
   lifecycle.add(onSettingsChange((id, value) => {
     if (stopped) return;
-    settings = { ...settings, [id]: normalizeSetting(id, value) };
+    const next = id === SETTING_IDS.speedFlags ? parseSpeedFlags(value) : normalizeSetting(id, value);
+    settings = { ...settings, [id]: next };
+    if (id === SETTING_IDS.speedFlags) noteSpeedFlags(next);
+    if (id === SETTING_IDS.speedLog) syncSpeedLog();
     if (id === SETTING_IDS.autoEnhance) {
       autoCache.clear();
       negativeUntil.clear();
@@ -35512,9 +37987,14 @@ async function installPlexusDiagram({
   }
   lifecycle.interval(reconcile, RECONCILE_INTERVAL_MS);
   lifecycle.add(() => {
+    for (const rec of mounts.values()) forgetSketch(rec);
+    sketchStore.dispose();
+  });
+  lifecycle.add(() => {
     stopped = true;
     viewportWatch?.disconnect();
   });
+  syncSpeedLog();
   reconcile();
 }
 

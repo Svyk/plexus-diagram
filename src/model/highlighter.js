@@ -51,6 +51,8 @@ function textName(match) {
 export function highlighterTags(string) {
   const out = { bg: null, text: null };
   if (typeof string !== "string" || !string) return out;
+  // A plain note has neither marker. Building the tag expression is the whole cost.
+  if (string.indexOf("#") === -1 && string.indexOf("[[") === -1) return out;
   const re = new RegExp(TAG_SRC, "g");
   let match = re.exec(string);
   while (match) {

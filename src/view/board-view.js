@@ -723,6 +723,8 @@ function buildBoardView(onFail, {
   routeUid = session.uid,
   autofocus = false,
   onSetDefaults = null,
+  perfLog = null,
+  lifecycle = null,
 } = {}) {
   const doc = globalThis.document;
   const win = globalThis.window;
@@ -751,11 +753,67 @@ function buildBoardView(onFail, {
   const listeners = [];
   const observers = [];
   const subs = [];
+  // Set before any document or window listener runs. A suspended board stays
+  // registered and returns immediately, so dispose can still remove the same functions.
+  let suspended = false;
   const listen = (el, type, fn, opts) => {
-    el.addEventListener(type, fn, opts);
-    const off = () => el.removeEventListener(type, fn, opts);
+    const wrapped = (event) => {
+      if (suspended) return;
+      return fn(event);
+    };
+    el.addEventListener(type, wrapped, opts);
+    const off = () => el.removeEventListener(type, wrapped, opts);
     listeners.push(off);
     return off;
+  };
+  // observe() targets, so resume can attach the same observer to the same nodes.
+  const observed = new WeakMap();
+  const trackObserver = (observer) => {
+    if (!observer || observed.has(observer)) return observer;
+    const records = [];
+    observed.set(observer, records);
+    const observe = typeof observer.observe === "function" ? observer.observe.bind(observer) : null;
+    const unobserve = typeof observer.unobserve === "function" ? observer.unobserve.bind(observer) : null;
+    const disconnect = typeof observer.disconnect === "function" ? observer.disconnect.bind(observer) : null;
+    if (observe) {
+      observer.observe = (target, options) => {
+        const at = records.findIndex((row) => row.target === target);
+        const row = { target, options };
+        if (at >= 0) records[at] = row;
+        else records.push(row);
+        return observe(target, options);
+      };
+    }
+    if (unobserve) {
+      observer.unobserve = (target) => {
+        const at = records.findIndex((row) => row.target === target);
+        if (at >= 0) records.splice(at, 1);
+        return unobserve(target);
+      };
+    }
+    if (disconnect) {
+      observer.disconnect = () => {
+        records.length = 0;
+        return disconnect();
+      };
+    }
+    return observer;
+  };
+  const suspendObservers = () => {
+    for (const obs of observers) {
+      const records = observed.get(obs) || [];
+      obs._pxdHeld = records.map((row) => ({ target: row.target, options: row.options }));
+      try { obs.disconnect(); } catch { /* already off */ }
+    }
+  };
+  const resumeObservers = () => {
+    for (const obs of observers) {
+      const held = obs._pxdHeld || [];
+      obs._pxdHeld = null;
+      for (const row of held) {
+        try { obs.observe(row.target, row.options); } catch { /* the node is gone */ }
+      }
+    }
   };
   const el = (tag, cls, parent) => {
     const node = doc.createElement(tag);
@@ -1092,14 +1150,14 @@ function buildBoardView(onFail, {
     if (outlineNear && outlineFar) return true;
     disconnectOutline();
     try {
-      outlineNear = new IO((entries) => {
-        if (disposed || !outlineMode) return;
+      outlineNear = trackObserver(new IO((entries) => {
+        if (disposed || suspended || !outlineMode) return;
         for (const entry of entries) if (entry.isIntersecting) renderOutlineRow(entry.target);
-      }, { root: outlineHost, rootMargin: OUTLINE_NEAR });
-      outlineFar = new IO((entries) => {
-        if (disposed || !outlineMode) return;
+      }, { root: outlineHost, rootMargin: OUTLINE_NEAR }));
+      outlineFar = trackObserver(new IO((entries) => {
+        if (disposed || suspended || !outlineMode) return;
         for (const entry of entries) if (!entry.isIntersecting) releaseOutlineRow(entry.target);
-      }, { root: outlineHost, rootMargin: OUTLINE_FAR });
+      }, { root: outlineHost, rootMargin: OUTLINE_FAR }));
     } catch {
       disconnectOutline();
       return false;
@@ -1382,7 +1440,7 @@ function buildBoardView(onFail, {
   const runAnchors = () => {
     anchorFrame = false;
     const b = board();
-    if (disposed || !b) return;
+    if (disposed || suspended || !b) return;
     refreshBlockCards();
     const next = new Map();
     for (const e of b.edges.values()) {
@@ -1456,7 +1514,7 @@ function buildBoardView(onFail, {
   }
 
   const schedule = () => {
-    if (disposed || frameHandle) return;
+    if (disposed || suspended || frameHandle) return;
     frameHandle = timers.frame(() => { frameHandle = null; renderFrame(); });
   };
   // RF-4: the hover toolbar waits HOVER_GRACE ms before it hides or switches to another card, so the pointer can
@@ -1556,12 +1614,14 @@ function buildBoardView(onFail, {
     paintInvZoom();
   };
   const scheduleContent = () => {
-    if (disposed || gesturing || !board()) return;
-    itemsR.scheduleContent({ visibleRect: visibleWorldRect(vp, size, CULL_MARGIN), zoom: vp.zoom, tier });
+    if (disposed || suspended || gesturing || !board()) return;
+    // A null previous board marks every item dirty. Later diffs pass only the dirty uids.
+    const changed = dirty.all ? null : dirty.items;
+    itemsR.scheduleContent({ visibleRect: visibleWorldRect(vp, size, CULL_MARGIN), zoom: vp.zoom, tier, dirty: changed });
   };
   // "Back to content": shown when no item intersects the visible world rect.
   const updateBackToContent = () => {
-    if (disposed) return;
+    if (disposed || suspended) return;
     let show = false;
     if (size.width && size.height) {
       const r = rects();
@@ -1639,7 +1699,7 @@ function buildBoardView(onFail, {
     timers.idle(() => runChunk(misses));
   };
   const scheduleBadges = (ms = 0) => {
-    if (disposed) return;
+    if (disposed || suspended) return;
     badgeTimer?.();
     badgeTimer = timers.later(() => { badgeTimer = null; refreshBadges(); }, ms);
   };
@@ -3333,11 +3393,12 @@ function buildBoardView(onFail, {
     const b = btn?.getBoundingClientRect?.() || { left: rootRect.left, top: rootRect.top, right: rootRect.left, bottom: rootRect.top };
     placeNearAnchor(lensPop, b, root, { gap: 6, skip: btn?.closest?.(".pxd-toolbar, .pxd-dock") || null });
     const onDown = (event) => {
+      if (suspended) return;
       if (lensPop.contains(event.target) || btn?.contains?.(event.target)) return;
       closeLens();
     };
     const onKey = (event) => {
-      if (event.key !== "Escape") return;
+      if (suspended || event.key !== "Escape") return;
       event.preventDefault?.();
       event.stopPropagation?.();
       closeLens();
@@ -3779,13 +3840,13 @@ function buildBoardView(onFail, {
   };
   let heightDrag = null;
   const onHeightMove = (event) => {
-    if (!heightDrag) return;
+    if (suspended || !heightDrag) return;
     const h = Math.max(MIN_HEIGHT, Math.round(heightDrag.h0 + (event.clientY - heightDrag.y0)));
     heightDrag.h = h;
     applyInlineHeight(h);
   };
   const onHeightUp = () => {
-    if (!heightDrag) return;
+    if (suspended || !heightDrag) return;
     try { storage?.setItem?.(heightKey, String(heightDrag.h)); } catch { /* quota */ }
     heightDrag = null;
     doc.removeEventListener("pointermove", onHeightMove, true);
@@ -4193,17 +4254,32 @@ function buildBoardView(onFail, {
     };
   };
 
+  // Speed log only. Event Timing for a click inside .pxd-root, and pan fps from the gesture's rAF deltas.
+  const armSpeedLog = () => {
+    if (!flag("speed-log", false) || !perfLog?.armEvent) return;
+    perfLog.armEvent(lifecycle);
+  };
+  armSpeedLog();
   let captured = false;
-  const onDocMove = (event) => { if (ctl.isGesturing()) ctl.handle(normalize(event, "pointermove")); };
+  const onDocMove = (event) => { if (suspended || !ctl.isGesturing()) return; ctl.handle(normalize(event, "pointermove")); };
   const onDocUp = (event) => {
+    if (suspended) return;
     if (!ctl.isGesturing()) return releaseCapture();
+    const panning = ctl.gestureKind() === "pan";
     ctl.handle(normalize(event, "pointerup"));
+    if (panning && flag("speed-log", false)) perfLog?.endPan?.();
     // preventDefault on pointerdown suppresses the click, so a stationary ref opens here.
     // A drag sets suppressClick before this line and must not navigate.
     if (nativeClickKind(event.target) === "ref" && !suppressClick) openRefFromClick(event);
     releaseCapture();
   };
-  const onDocCancel = () => { ctl.handle({ type: "pointercancel" }); releaseCapture(); };
+  const onDocCancel = () => {
+    if (suspended) return;
+    const panning = ctl.gestureKind() === "pan";
+    ctl.handle({ type: "pointercancel" });
+    if (panning && flag("speed-log", false)) perfLog?.endPan?.();
+    releaseCapture();
+  };
   const releaseCapture = () => {
     if (!captured) return;
     captured = false;
@@ -4298,6 +4374,7 @@ function buildBoardView(onFail, {
       if (native !== "image" && ev.target.kind !== "label" && ev.target.kind !== "section-title") event.preventDefault();
     }
     ctl.handle(ev);
+    if (flag("speed-log", false) && ctl.gestureKind() === "pan") perfLog?.beginPan?.();
     if (ctl.isGesturing() && !captured) {
       captured = true;
       doc.addEventListener("pointermove", onDocMove, true);
@@ -4843,7 +4920,7 @@ function buildBoardView(onFail, {
 
   // ------------------------------------------------------------ session events
   subs.push(session.on("change", ({ dirty: d, structural } = {}) => {
-    if (disposed) return;
+    if (disposed || suspended) return;
     const b = board();
     const current = crumbList[crumbList.length - 1];
     if (current && b) {
@@ -4866,9 +4943,9 @@ function buildBoardView(onFail, {
     if (laterCtl.isOpen()) laterCtl.refresh();
     panel.refreshViews?.();
   }));
-  subs.push(session.on("links", () => { dirty.links = true; schedule(); }));
-  subs.push(session.on("sync", (state) => chrome.toolbar.setSync(state)));
-  subs.push(session.on("toast", (t) => chrome.toast.show(t)));
+  subs.push(session.on("links", () => { if (disposed || suspended) return; dirty.links = true; schedule(); }));
+  subs.push(session.on("sync", (state) => { if (disposed || suspended) return; chrome.toolbar.setSync(state); }));
+  subs.push(session.on("toast", (t) => { if (disposed || suspended) return; chrome.toast.show(t); }));
   tableCtl = mountTable({
     doc,
     root,
@@ -4907,7 +4984,10 @@ function buildBoardView(onFail, {
   const RO = globalThis.ResizeObserver;
   if (typeof RO === "function") {
     try {
-      const ro = new RO(() => { measure(); markViewport(); chrome.ctx.reposition(); chrome.toolbar.scheduleDock?.(); });
+      const ro = trackObserver(new RO(() => {
+        if (disposed || suspended) return;
+        measure(); markViewport(); chrome.ctx.reposition(); chrome.toolbar.scheduleDock?.();
+      }));
       ro.observe(root);
       observers.push(ro);
     } catch { /* stub */ }
@@ -4916,12 +4996,12 @@ function buildBoardView(onFail, {
   if (typeof MO === "function") {
     try {
       let settle = null;
-      const mo = new MO(() => {
-        if (disposed) return;
+      const mo = trackObserver(new MO(() => {
+        if (disposed || suspended) return;
         applyTheme();
         settle?.(); // a host background may still be transitioning when its marker class flips: measure once more after it
-        settle = timers.later(() => { settle = null; applyTheme(); }, 300);
-      });
+        settle = timers.later(() => { settle = null; if (!disposed && !suspended) applyTheme(); }, 300);
+      }));
       for (const node of [doc.documentElement, doc.body]) if (node) mo.observe(node, { attributes: true, attributeFilter: ["class"] });
       observers.push(mo);
     } catch { /* stub */ }
@@ -4937,7 +5017,7 @@ function buildBoardView(onFail, {
 
   // ------------------------------------------------------------ render frame
   const renderFrame = () => {
-    if (disposed) return;
+    if (disposed || suspended) return;
     const b = board();
     if (!b) return;
     let itemsChanged = false;
@@ -5281,7 +5361,7 @@ function buildBoardView(onFail, {
   dirty.viewport = true;
   markAll();
   consumeDeepLink();
-  timers.later(() => { if (!disposed) { scheduleContent(); updateBackToContent(); } }, 0);
+  timers.later(() => { if (!disposed && !suspended) { scheduleContent(); updateBackToContent(); } }, 0);
 
   // ------------------------------------------------------------ API
   const localDay = (date = new Date()) => {
@@ -5378,6 +5458,34 @@ function buildBoardView(onFail, {
       return ok;
     },
     viewport: () => ({ x: vp.x, y: vp.y, zoom: vp.zoom }),
+    restoreViewport(next) {
+      if (disposed || !next) return;
+      const zoom = Number(next.zoom);
+      if (!Number.isFinite(next.x) || !Number.isFinite(next.y) || !(zoom > 0)) return;
+      moveViewport({ x: next.x, y: next.y, zoom });
+    },
+    // Park every observer, frame, and document listener. The same functions stay
+    // registered so dispose can still remove them. Resume paints one frame.
+    suspend() {
+      if (disposed || suspended) return;
+      suspended = true;
+      if (frameHandle) { const cancel = frameHandle; frameHandle = null; cancel(); }
+      if (settleTimer) { settleTimer(); settleTimer = null; }
+      if (resumeTimer) { resumeTimer(); resumeTimer = null; }
+      if (badgeTimer) { badgeTimer(); badgeTimer = null; }
+      if (outsideQuiet) { outsideQuiet(); outsideQuiet = null; }
+      try { cancelHoverGrace(); } catch { /* none armed */ }
+      try { clearZoomAnim(); } catch { /* none armed */ }
+      suspendObservers();
+    },
+    resume() {
+      if (disposed || !suspended) return;
+      suspended = false;
+      resumeObservers();
+      dirty.all = true;
+      dirty.structural = true;
+      schedule();
+    },
     cameraRect() {
       return cameraRectOf({ x: vp.x, y: vp.y, zoom: vp.zoom }, viewSize());
     },
@@ -5433,6 +5541,7 @@ function buildBoardView(onFail, {
       if (disposed) return;
       const minimapBefore = setting("show-minimap", true) !== false;
       settingsRef = next;
+      armSpeedLog();
       const nextLinks = setting("graph-links", "all");
       if (nextLinks !== linkMode && LINK_MODES.includes(nextLinks)) {
         linkMode = nextLinks;
@@ -5515,6 +5624,7 @@ function buildBoardView(onFail, {
         try { fn(); } catch (error) { console.warn("[plexus-diagram] dispose step failed", error); }
       };
       // Each step stands alone. A throw used to set disposed and skip the body popover and the window listeners.
+      step(() => perfLog?.cancelPan?.());
       step(() => closeLinksMenu());
       step(() => { whyPop?.close(); whyPop = null; });
       step(() => { contextsDrawer?.close(); contextsDrawer = null; });

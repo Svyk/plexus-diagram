@@ -75,6 +75,8 @@ function parseIds(raw, cap) {
 
 export function parseRegion(blockString) {
   if (typeof blockString !== "string") return null;
+  // The head token is the only match. Notes skip the expression.
+  if (blockString.indexOf(REGION_COMPONENT) === -1) return null;
   const m = HEAD_RE.exec(blockString);
   if (!m) return null;
   const caption = (m[2] ?? "").trim();

@@ -361,7 +361,7 @@ test("collapsing the sidebar window parks that board until the window expands", 
   });
 });
 
-test("a collapsed sidebar window reported by getWindows parks without a class change", async () => {
+test("a collapsed sidebar window parks from its header caret, with no Roam API call", async () => {
   await withEnv({ enhanced: ["boardAAA1"] }, async (t) => {
     const side = t.doc.createElement("div");
     side.id = "right-sidebar";
@@ -369,22 +369,28 @@ test("a collapsed sidebar window reported by getWindows parks without a class ch
     const win = t.doc.createElement("div");
     win.cls.add("rm-sidebar-window");
     win.id = "sidebar-window-sidebar-block-boardAAA1";
+    const head = t.doc.createElement("div");
+    head.cls.add("window-headers");
+    const caret = t.doc.createElement("span");
+    caret.cls.add("rm-caret");
+    caret.cls.add("rm-caret-open");
+    head.append(caret);
+    win.append(head);
     side.append(win);
     const { native } = addNative(t.doc, "boardAAA1", { parent: win });
     await t.install();
     const mountEl = native.parentElement.children[native.parentElement.children.indexOf(native) + 1];
     t.fire(mountEl, true);
     assert.ok(rootIn(mountEl));
-    t.env.windows = [{ "window-id": "sidebar-window-sidebar-block-other", collapsed: true }];
-    t.tick();
-    assert.ok(rootIn(mountEl), "a different window id does not park this board");
     t.env.windows = [{ "window-id": win.id, collapsed: true }];
     t.tick();
-    assert.equal(rootIn(mountEl), null);
-    t.env.windows = [{ windowId: win.id, "collapsed?": true }];
+    assert.ok(rootIn(mountEl), "getWindows is not consulted");
+    caret.classList.remove("rm-caret-open");
+    caret.classList.add("rm-caret-closed");
     t.tick();
     assert.equal(rootIn(mountEl), null);
-    t.env.windows = [];
+    caret.classList.remove("rm-caret-closed");
+    caret.classList.add("rm-caret-open");
     t.tick();
     assert.ok(rootIn(mountEl));
     win.classList.add("collapsed");

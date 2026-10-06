@@ -10,8 +10,10 @@
     "dev": "node build.mjs --watch",
     "scan:secrets": "node scripts/scan-secrets.mjs",
     "test": "node --test test/*.test.js",
+    "perf:ratchet": "node tools/live/perf-ratchet.mjs",
     "verify:generated": "node scripts/verify-generated.mjs",
-    "check": "npm run build && npm run scan:secrets && node --check extension.js && npm test && npm run verify:generated"
+    "check": "npm run build && npm run scan:secrets && node --check extension.js && npm test && npm run verify:generated",
+    "bench:hot": "node --predictable --test --test-concurrency=1 test/fast-7-hot-paths.test.js"
   },
   "engines": {
     "node": ">=20"

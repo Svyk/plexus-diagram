@@ -1,3 +1,5 @@
+import { bindPerfReadout, perfReadoutText, readHostPerf } from "./perf-log.js";
+
 export const SETTING_IDS = Object.freeze({
   enabled: "enabled",
   autoEnhance: "auto-enhance",
@@ -40,6 +42,9 @@ export const SETTING_IDS = Object.freeze({
   taskChips: "task-chips",
   taskDefaultProject: "task-default-project",
   betterTasks: "better-tasks",
+  speedLog: "speed-log",
+  // Hidden. Not a panel row. JSON object, parsed by parseSpeedFlags.
+  speedFlags: "speed-flags",
 });
 
 const DEFAULTS = Object.freeze({
@@ -84,6 +89,7 @@ const DEFAULTS = Object.freeze({
   [SETTING_IDS.taskChips]: "full",
   [SETTING_IDS.taskDefaultProject]: "",
   [SETTING_IDS.betterTasks]: false,
+  [SETTING_IDS.speedLog]: false,
 });
 
 const BOARD_TONES = ["none", "paper", "gray", "red", "orange", "yellow", "green", "teal", "blue", "indigo", "purple", "pink"];
@@ -136,6 +142,56 @@ export function normalizeSetting(id, value) {
   return value;
 }
 
+// FAST-9. All six on. A missing key stays on. JSON that does not parse leaves this.
+const SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount"];
+
+export function defaultSpeedFlags() {
+  return { posters: true, parking: true, keepAlive: true, prefetch: true, sketch: true, budgetedMount: true };
+}
+
+export function parseSpeedFlags(raw) {
+  const base = defaultSpeedFlags();
+  if (raw == null || raw === "") return base;
+  let obj = raw;
+  if (typeof raw === "string") {
+    const text = raw.trim();
+    if (!text) return base;
+    try { obj = JSON.parse(text); } catch { return base; }
+  }
+  if (!obj || typeof obj !== "object" || Array.isArray(obj)) return base;
+  const out = { ...base };
+  for (const name of SPEED_FLAG_NAMES) {
+    if (!Object.prototype.hasOwnProperty.call(obj, name)) continue;
+    const value = obj[name];
+    if (value === false || value === "false") out[name] = false;
+    else if (value === true || value === "true") out[name] = true;
+  }
+  return out;
+}
+
+let notedFlags = defaultSpeedFlags();
+let speedSource = null;
+
+export function noteSpeedFlags(raw) {
+  notedFlags = parseSpeedFlags(raw);
+  return notedFlags;
+}
+
+// Cards and the feature gates read through this. A bound getter sees a hidden
+// setting change on the next read. Null, "", and bad JSON are all six on.
+// A throw keeps the last snapshot.
+export function notedSpeedFlags() {
+  if (typeof speedSource === "function") {
+    try { return noteSpeedFlags(speedSource()); }
+    catch { /* the snapshot stands */ }
+  }
+  return notedFlags;
+}
+
+export function bindSpeedFlagSource(get) {
+  speedSource = typeof get === "function" ? get : null;
+}
+
 export function readSettings(extensionAPI) {
   const out = {};
   for (const id of Object.keys(DEFAULTS)) {
@@ -147,6 +203,9 @@ export function readSettings(extensionAPI) {
     }
     out[id] = normalizeSetting(id, raw);
   }
+  let speedRaw = null;
+  try { speedRaw = extensionAPI?.settings?.get?.(SETTING_IDS.speedFlags); } catch { speedRaw = null; }
+  out[SETTING_IDS.speedFlags] = noteSpeedFlags(speedRaw);
   return out;
 }
 
@@ -207,12 +266,12 @@ function selectRow(id, name, description, items) {
   };
 }
 
-function groupRow(id, name, description) {
+function groupRow(id, name, description, component) {
   return {
     id,
     name,
     description,
-    action: { type: "reactComponent", component: () => null },
+    action: { type: "reactComponent", component: typeof component === "function" ? component : () => null },
   };
 }
 
@@ -271,6 +330,7 @@ const SETTING_ROWS = {
   [SETTING_IDS.showVersionBadge]: () => switchRow(SETTING_IDS.showVersionBadge, "Show version badge", "Show the version on the board."),
   [SETTING_IDS.disableOnMobile]: () => switchRow(SETTING_IDS.disableOnMobile, "Disable on mobile", "Do not open diagrams on a phone."),
   [SETTING_IDS.collapseOutline]: () => switchRow(SETTING_IDS.collapseOutline, "Collapse the outline", "Fold an enhanced board once, so the outline does not list every card. Opening the bullet is remembered."),
+  [SETTING_IDS.speedLog]: () => switchRow(SETTING_IDS.speedLog, "Speed log", "Record open time, click-to-paint, pan frame rate, and long tasks in this tab. Nothing is sent or saved."),
 };
 
 const SETTING_GROUPS = [
@@ -294,14 +354,21 @@ const SETTING_GROUPS = [
     SETTING_IDS.mapZoom, SETTING_IDS.enableShortcuts, SETTING_IDS.showVersionBadge, SETTING_IDS.resurfaceIntervals,
   ]],
   ["group-performance", "Performance", "Motion, and when the overlay stays off.", [
-    SETTING_IDS.motion, SETTING_IDS.disableOnMobile, SETTING_IDS.collapseOutline,
+    SETTING_IDS.motion, SETTING_IDS.disableOnMobile, SETTING_IDS.collapseOutline, SETTING_IDS.speedLog,
   ]],
 ];
+
+function performanceGroupRow(id, name, description) {
+  const text = () => perfReadoutText(readHostPerf());
+  const row = groupRow(id, name, `${description} ${text()}`, text);
+  bindPerfReadout(row, description);
+  return row;
+}
 
 export function createSettingsPanel() {
   const settings = [];
   for (const [id, name, description, members] of SETTING_GROUPS) {
-    settings.push(groupRow(id, name, description));
+    settings.push(id === "group-performance" ? performanceGroupRow(id, name, description) : groupRow(id, name, description));
     for (const member of members) settings.push(SETTING_ROWS[member]());
   }
   settings.push({

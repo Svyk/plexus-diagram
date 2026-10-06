@@ -33,6 +33,8 @@ export function createBoardChips({ doc = globalThis.document, cache } = {}) {
     chip.type = "button";
     chip.className = "pxd-boardchip";
     chip.textContent = "On board";
+    const blockUid = container.getAttribute?.("data-block-uid") || "";
+    if (blockUid) chip.setAttribute("data-block-uid", blockUid);
     for (const type of ["pointerdown", "mousedown", "mouseup", "dblclick", "click"]) {
       chip.addEventListener(type, stop);
     }

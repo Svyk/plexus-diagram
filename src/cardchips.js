@@ -2,6 +2,7 @@
 // Listeners are on document, not on each chip.
 
 import { placePopover, SCAN_CAP, uidFromElementId } from "./relchips.js";
+import { cancelPrefetch, schedulePrefetch } from "./prefetch.js";
 
 const SKIP = ".pxd-root, .rm-pdf-container, .rm-search-results, .rm-search";
 const OPT_OUT = "plexus-no-chips";
@@ -199,12 +200,18 @@ export function createCardChips({
     closeTimer = null;
     if (timer) view().clearTimeout?.(timer);
     timer = view().setTimeout?.(() => showPop(chip), 200);
+    if (event.relatedTarget?.closest?.(".pxd-cardchip") !== chip) {
+      const board = chip.getAttribute?.("data-board") || "";
+      if (board) schedulePrefetch([board], chip);
+    }
   };
 
   // Leaving a chip or the popover closes it after a short grace, so the pointer can cross into the popover.
   const onOut = (event) => {
     const from = event.target?.closest?.(".pxd-cardchip, .pxd-cardpop");
     if (!from) return;
+    const chip = event.target?.closest?.(".pxd-cardchip");
+    if (chip && event.relatedTarget?.closest?.(".pxd-cardchip") !== chip) cancelPrefetch(chip);
     if (timer) view().clearTimeout?.(timer);
     timer = null;
     if (event.relatedTarget?.closest?.(".pxd-cardchip, .pxd-cardpop")) return;
@@ -303,6 +310,15 @@ export function createCardChips({
     return null;
   };
 
+  const CHIP_ROW_H = 28;
+  const reserveChipRow = (row) => {
+    if (!row?.style) return;
+    const text = `${CHIP_ROW_H}px`;
+    row.style.height = text;
+    row.style.minHeight = text;
+    row.style.boxSizing = "border-box";
+    row.style.overflow = "hidden";
+  };
   const placePage = (scope) => {
     if (!scope?.querySelector) return;
     const uid = typeof pageUid === "function" ? pageUid() : "";
@@ -333,11 +349,12 @@ export function createCardChips({
     if (!row) {
       row = doc.createElement("div");
       row.className = "pxd-cardchip-row";
+      reserveChipRow(row);
       if (before && before.parentElement === parent) parent.insertBefore(row, before);
       else if (parent === kids) parent.insertBefore(row, kids.firstChild);
       else parent.append(row);
       rows.add(row);
-    }
+    } else reserveChipRow(row);
     const boards = cache.boardsOf(uid) || [];
     const sig = `${uid}\n${boards.map((boardUid) => `${boardUid}:${cache?.titleOf?.(boardUid) || ""}`).join("\n")}`;
     if (sigs.get(row) !== sig) {

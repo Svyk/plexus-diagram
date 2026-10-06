@@ -46,6 +46,24 @@ export function coverModel(source) {
   return { title, count, label };
 }
 
+// FAST-9. Posters off means the caller mounts the embed. coverModel stays {title, count, label}.
+export function postersEnabled(source) {
+  if (!source || typeof source !== "object") return true;
+  return source.posters !== false;
+}
+
+// Poster and the opened embed share this box. coverModel itself stays {title, count, label}.
+export function coverOuterBox(source) {
+  const cover = coverModel(source);
+  const w = Number(source?.w);
+  const h = Number(source?.h);
+  return {
+    title: cover.title,
+    w: Number.isFinite(w) && w > 0 ? Math.round(w) : PDF_READER_W,
+    h: Number.isFinite(h) && h > 0 ? Math.round(h) : PDF_READER_H,
+  };
+}
+
 // One live heavy embed per board: a pdf reader, a video, an iframe, or a tweet.
 export function readerRule(openUid, nextUid) {
   const current = openUid || null;
@@ -108,7 +126,8 @@ export function posterThumb(source) {
 
 // The first heavy macro in a string, or a raw iframe/video that is the whole string.
 // A pdf highlight is not a reader. A bare http url is not an embed.
-export function heavyEmbed(string) {
+export function heavyEmbed(string, opts) {
+  if (opts && postersEnabled(opts) === false) return null;
   const text = String(string ?? "").trim();
   if (!text) return null;
   const match = HEAVY_ONE.exec(text);
@@ -161,7 +180,9 @@ export function posterModel(source) {
 }
 
 // Poster for one string. A ref is one blockString hop. Pdf count comes only from `cover`.
-export function embedPoster(string, { read, cover, uid = "" } = {}) {
+export function embedPoster(string, opts = {}) {
+  if (postersEnabled(opts) === false) return null;
+  const { read, cover, uid = "" } = opts;
   const text = String(string ?? "").trim();
   if (!text) return null;
   let hit = heavyEmbed(text);

@@ -9,7 +9,10 @@ export const NATIVE_HIDDEN_CLASS = "pxd-native-hidden";
 export const OUTLINE_NATIVE_CLASS = "pxd-outline-native";
 
 export function isDiagramString(value) {
-  return DIAGRAM_MARKER.test(String(value ?? ""));
+  const text = String(value ?? "");
+  // Every diagram token contains a brace. Plain notes never reach the marker.
+  if (text.indexOf("{") === -1) return false;
+  return DIAGRAM_MARKER.test(text);
 }
 
 export function cssAttributeValue(value) {

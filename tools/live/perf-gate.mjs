@@ -6,6 +6,10 @@
 // Does not close the sidebar.
 import { writeSync } from "node:fs";
 import { appendEntry, cleanup } from "./ledger.mjs";
+import perfBudgets from "./perf-budgets.json" with { type: "json" };
+import { summarizeGateShifts } from "../../src/view/shift-watch.js";
+
+export const PERF_BUDGETS = perfBudgets;
 
 export const PAGE = "Plexus Diagram/Test Lab";
 export const BOARD_TITLE = "PERF-8 gate";
@@ -241,6 +245,12 @@ export function installDataCounter(data, marker = "") {
   };
 }
 
+// Optional ceiling. Missing from perf-budgets.json means one after-usable shift fails.
+function layoutShiftLimit(budgets = PERF_BUDGETS) {
+  const value = budgets?.["40"]?.layoutShiftsAfterUsable;
+  return Number.isFinite(value) ? value : 0;
+}
+
 function check(metric, value, limit) {
   const ok = Number.isFinite(value) && value <= limit;
   return { metric, value: Number.isFinite(value) ? value : null, limit, ok };
@@ -287,6 +297,11 @@ export function judge(input) {
       ],
     },
   ];
+  const shiftKnown = input != null && Object.prototype.hasOwnProperty.call(input, "layoutShiftsAfterUsable");
+  const shiftRaw = shiftKnown ? input.layoutShiftsAfterUsable : 0;
+  const shiftLimit = layoutShiftLimit();
+  const shiftValue = Number.isFinite(shiftRaw) ? shiftRaw : null;
+  const shiftOk = Number.isFinite(shiftRaw) && shiftRaw <= shiftLimit;
   const extra = [
     {
       id: "pointerup",
@@ -303,6 +318,13 @@ export function judge(input) {
       limit: null,
       ok: Number.isFinite(input?.dataCalls) && input.dataCalls > 0,
       detail: `total ${Number.isFinite(input?.dataCallsTotal) ? input.dataCallsTotal : "n/a"}`,
+    },
+    {
+      id: "layout-shift after usable",
+      metric: "shifts",
+      value: shiftValue,
+      limit: shiftLimit,
+      ok: shiftOk,
     },
   ];
   const ok = rows.every((row) => row.checks.every((rowCheck) => rowCheck.ok)) && extra.every((rowCheck) => rowCheck.ok);
@@ -342,6 +364,8 @@ export function planText(windowSel) {
     "typing park: schedule block.move into the closed folder and poll the main .pxd-root; do not await that move promise",
     `pointerup: <= ${POINTERUP_PER_MOUNTED_BOARD} Plexus document pointerup listener per mounted board`,
     "data-calls: wrap roamAlphaAPI.data, data.block, and data.fast; open Daily Notes, then the board; report total and plexus-only (stack contains this build's blob URL); restore",
+    `layout-shift after usable: shifts with value > 0 after usable <= ${layoutShiftLimit()} (40.layoutShiftsAfterUsable in tools/live/perf-budgets.json, default 0). Separate from the long-task ceilings`,
+    `node budgets: tools/live/perf-budgets.json (40-card dataCallsPerOpen <= ${PERF_BUDGETS["40"].dataCallsPerOpen})`,
     "version: window.__plexusDiagram.version on the running build",
     'cleanup: ledger cleanup deletes this script\'s blocks on "Plexus Diagram/Test Lab"',
   ].join("\n");
@@ -450,6 +474,131 @@ export async function pageApi(arg) {
     return { supported, origin, tasks, frames, windowMs: ms };
   }
 
+  // Layout shifts for the gate. Kept inside pageApi because this function is stringified into the page.
+  // Usable for the mount window is the first .pxd-item. The data-calls navigation sits between
+  // shifts-hold and the idle stamp, so that scripted page change is not an after-usable failure.
+  function regionOf(node) {
+    let el = node;
+    if (el && el.nodeType === 3) el = el.parentElement;
+    if (!el || typeof el.closest !== "function") return null;
+    if (el.closest(".pxd-item")) return "cards";
+    if (el.closest(".pxd-toolbar") || el.closest(".pxd-dock")) return "chrome";
+    if (el.closest(".pxd-panel")) return "panel";
+    if (el.closest(".pxd-root")) return null;
+    return "page";
+  }
+  function snapshotHeights() {
+    const heights = {};
+    const nodes = document.querySelectorAll(".pxd-root .pxd-item");
+    for (const card of nodes) {
+      if (!card || card.hidden || (card.style && card.style.display === "none")) continue;
+      const uid = card.getAttribute("data-uid") || "";
+      if (!uid || Object.prototype.hasOwnProperty.call(heights, uid)) continue;
+      const box = card.getBoundingClientRect();
+      heights[uid] = box ? box.height : 0;
+    }
+    return heights;
+  }
+  function grownSince(before) {
+    if (!before) return 0;
+    const now = snapshotHeights();
+    let grown = 0;
+    for (const uid of Object.keys(before)) {
+      if (!Object.prototype.hasOwnProperty.call(now, uid)) continue;
+      if (now[uid] - before[uid] > 1) grown += 1;
+    }
+    return grown;
+  }
+  function ensureShiftWatch() {
+    const existing = window.__pxdGateShifts;
+    if (existing && (existing.observer || existing.stopped)) return existing;
+    const state = existing || {
+      usableAt: null, entries: [], heights: null, observer: null, raf: 0, gateAt: null, epoch: 0, stopped: false,
+    };
+    window.__pxdGateShifts = state;
+    if (!state.entries) state.entries = [];
+    state.epoch = (state.epoch || 0) + 1;
+    const epoch = state.epoch;
+    const mark = () => {
+      state.raf = 0;
+      if (state.stopped || state.epoch !== epoch || state.usableAt != null) return;
+      const item = document.querySelector(".pxd-root .pxd-item");
+      if (item) {
+        state.usableAt = performance.now();
+        state.heights = snapshotHeights();
+        return;
+      }
+      state.raf = requestAnimationFrame(mark);
+    };
+    try {
+      const observer = new PerformanceObserver((list) => {
+        const found = typeof list.getEntries === "function" ? list.getEntries() : [];
+        for (const entry of found) {
+          const sources = entry.sources || [];
+          const node = sources.length ? sources[0] && sources[0].node : null;
+          state.entries.push({
+            value: entry.value,
+            startTime: entry.startTime,
+            hadRecentInput: Boolean(entry.hadRecentInput),
+            region: regionOf(node),
+          });
+        }
+      });
+      const attempts = [
+        { type: "layout-shift", buffered: true },
+        { type: "layout-shift" },
+        { entryTypes: ["layout-shift"] },
+      ];
+      let armed = false;
+      for (const opts of attempts) {
+        try { observer.observe(opts); armed = true; break; } catch { /* next shape */ }
+      }
+      if (!armed) { try { observer.disconnect(); } catch { /* gone */ } }
+      else state.observer = observer;
+    } catch { /* this Chrome has no layout-shift observer */ }
+    if (!state.stopped && state.usableAt == null) state.raf = requestAnimationFrame(mark);
+    return state;
+  }
+  function stampGateUsable() {
+    const state = ensureShiftWatch();
+    if (!state || state.stopped || state.gateAt != null) return state;
+    if (!document.querySelector(".pxd-root .pxd-item")) return state;
+    state.gateAt = performance.now();
+    state.usableAt = state.gateAt;
+    state.heights = snapshotHeights();
+    return state;
+  }
+  function cancelShiftFrame(state) {
+    if (!state || !state.raf) return;
+    try { cancelAnimationFrame(state.raf); } catch { /* stub */ }
+    state.raf = 0;
+  }
+  function takeShiftSample(opts) {
+    const state = window.__pxdGateShifts || (opts && opts.stop ? null : ensureShiftWatch());
+    if (!state) return { usableAt: null, grown: 0, entries: [] };
+    const payload = {
+      usableAt: state.usableAt,
+      grown: typeof state.usableAt === "number" ? grownSince(state.heights) : 0,
+      entries: state.entries || [],
+    };
+    if (opts && opts.reset) {
+      state.epoch = (state.epoch || 0) + 1;
+      cancelShiftFrame(state);
+      state.entries = [];
+      state.usableAt = null;
+      state.heights = null;
+      state.gateAt = null;
+    }
+    if (opts && opts.stop) {
+      state.stopped = true;
+      state.epoch = (state.epoch || 0) + 1;
+      cancelShiftFrame(state);
+      try { state.observer && state.observer.disconnect(); } catch { /* off */ }
+      state.observer = null;
+    }
+    return payload;
+  }
+
   if (arg.op === "create") {
     const api = window.roamAlphaAPI;
     const px = window.__plexusDiagram;
@@ -459,6 +608,7 @@ export async function pageApi(arg) {
     const graph = (location.hash.match(/#\/app\/([^/]+)/) || [])[1] || "";
     let session = null;
     try {
+      ensureShiftWatch();
       if (!px?.session) return { ok: false, reason: "no-session-api", uids, graph, page, version: px?.version || null };
       await api.ui.mainWindow.openPage({ page: { title: page } });
       await sleep(400);
@@ -531,7 +681,20 @@ export async function pageApi(arg) {
     return { version: window.__plexusDiagram?.version || "" };
   }
 
-  if (arg.op === "idle") return watch(arg.ms);
+  if (arg.op === "idle") {
+    stampGateUsable();
+    return watch(arg.ms);
+  }
+
+  if (arg.op === "shifts-hold") return takeShiftSample({ reset: true });
+
+  if (arg.op === "shifts") return takeShiftSample({ stop: true });
+
+  if (arg.op === "shifts-stop") {
+    const state = window.__pxdGateShifts;
+    if (state) takeShiftSample({ stop: true });
+    return { stopped: true };
+  }
 
   if (arg.op === "data-calls") {
     const api = window.roamAlphaAPI;
@@ -1135,6 +1298,18 @@ async function liveGate(windowSel, deps, warn) {
     let roots = await invoke(cdp, { op: "roots" });
     if (!roots || roots.main < 1) throw new Error("board did not mount in the main column");
 
+    let shiftCount = 0;
+    let shiftBroken = false;
+    try {
+      const held = await invoke(cdp, { op: "shifts-hold" });
+      // Mount window: card growth only. Layout-shift entries are judged after the idle stamp,
+      // once the gate's own open and data-calls navigation are in the past.
+      shiftCount += summarizeGateShifts({ usableAt: held?.usableAt, grown: held?.grown, entries: [] });
+    } catch (error) {
+      warn(`layout shifts (mount) failed: ${error.message || error}`);
+      shiftBroken = true;
+    }
+
     let marker = "";
     try {
       marker = await plexusBlobUrl(cdp);
@@ -1163,6 +1338,18 @@ async function liveGate(windowSel, deps, warn) {
     report.main.longMs = idleMs(mainSample);
     report.main.frames = mainSample?.frames ?? null;
     warn(`main idle ${report.main.longMs} ms`);
+
+    if (!shiftBroken) {
+      try {
+        const payload = await invoke(cdp, { op: "shifts" });
+        shiftCount += summarizeGateShifts(payload || {});
+        report.layoutShiftsAfterUsable = shiftCount;
+        warn(`layout shifts after usable ${shiftCount}`);
+      } catch (error) {
+        warn(`layout shifts failed: ${error.message || error}`);
+        report.layoutShiftsAfterUsable = null;
+      }
+    } else report.layoutShiftsAfterUsable = null;
 
     try {
       const addedResult = await invoke(cdp, { op: "sidebar-add", boardUid });
@@ -1271,6 +1458,7 @@ async function liveGate(windowSel, deps, warn) {
     report.typing.parkedMedian = medians.parkedMedian;
     return report;
   } finally {
+    try { await invoke(cdp, { op: "shifts-stop" }); } catch { /* already read, or the page is gone */ }
     if (added.length && boardUid) {
       try {
         const removed = await invoke(cdp, { op: "sidebar-remove", boardUid, windows: added });

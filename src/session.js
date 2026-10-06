@@ -554,11 +554,15 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     }
     return { dirty: dirty ? item.uid : null };
   };
+  // Active holders want the board watch. A detached holder pauses without release,
+  // so the session stays alive and the pull watch drops when nobody is showing it.
+  let holders = 1;
+  let pausedHolds = 0;
   let latest = null;
   let scheduled = false;
   const flush = () => {
     scheduled = false;
-    if (destroyed || !latest) return;
+    if (destroyed || pausedHolds >= holders || !latest) return;
     const incoming = clone(latest);
     latest = null;
     const prev = raw;
@@ -579,7 +583,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     if (diff && (diff.structural || diff.dirty.size) && !queue.pending) host.invalidateUndo?.();
   };
   const onBoard = (after) => {
-    if (destroyed) return;
+    if (destroyed || pausedHolds >= holders) return;
     if (!after || !after[UID]) {
       if (!host.pullBoard(uid)) markGone();
       return;
@@ -587,7 +591,54 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     latest = after;
     if (!scheduled) { scheduled = true; schedule(flush); }
   };
-  const unwatch = raw ? host.watchBoard(uid, onBoard) : () => {};
+  let boardWatch = () => {};
+  let boardWatchOn = false;
+  if (raw && typeof host.watchBoard === "function") {
+    boardWatch = host.watchBoard(uid, onBoard);
+    boardWatchOn = true;
+  }
+
+  function dropBoardWatch() {
+    if (!boardWatchOn) return;
+    boardWatchOn = false;
+    try { boardWatch(); } catch { /* already dropped */ }
+    boardWatch = () => {};
+    disposeHighlightWatches();
+    latest = null;
+  }
+
+  // One pull. An unchanged tree does not publish, so the view is not rebuilt.
+  function catchUpBoard() {
+    if (destroyed || pausedHolds >= holders) return;
+    let fresh = null;
+    try { fresh = host.pullBoard?.(uid); } catch { return; }
+    if (!fresh || !fresh[UID]) {
+      markGone();
+      return;
+    }
+    let unchanged = false;
+    try { unchanged = stable(fresh) === stable(raw); } catch { unchanged = false; }
+    if (unchanged) return;
+    latest = fresh;
+    if (!scheduled) {
+      scheduled = true;
+      flush();
+    }
+  }
+
+  function syncBoardWatch(catchUp) {
+    if (destroyed) return;
+    const want = holders > pausedHolds && Boolean(raw);
+    if (want && !boardWatchOn) {
+      if (typeof host.watchBoard !== "function") return;
+      boardWatch = host.watchBoard(uid, onBoard);
+      boardWatchOn = true;
+      try { syncHighlightWatches(); } catch { /* highlights follow the board watch */ }
+      if (catchUp) catchUpBoard();
+    } else if (!want && boardWatchOn) {
+      dropBoardWatch();
+    }
+  }
 
   // The colour tag lives on the highlight block, which is not a child of the board. One watch per target.
   // A watch only marks the board dirty; one pull per flush however many highlights changed.
@@ -595,7 +646,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
   let highlightScheduled = false;
   const flushHighlights = () => {
     highlightScheduled = false;
-    if (destroyed || !highlightDirty) return;
+    if (destroyed || pausedHolds >= holders || !highlightDirty) return;
     highlightDirty = false;
     propsCache.clear();
     onBoard(host.pullBoard(uid));
@@ -977,13 +1028,22 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
 
   function computeLinks() {
     if (!board) return;
-    const boardEid = host.resolveEid({ uid });
+    // One lookup per distinct ref. Two cards that share a page do not ask twice.
+    const resolved = new Map();
+    const resolveOnce = (ref) => {
+      const key = ref.title != null ? `title:${ref.title}` : `uid:${ref.uid}`;
+      if (resolved.has(key)) return resolved.get(key);
+      const eid = host.resolveEid(ref);
+      resolved.set(key, eid);
+      return eid;
+    };
+    const boardEid = resolveOnce({ uid });
     const eidToItems = new Map();
     for (const item of board.items.values()) {
       if (item.type !== "card") continue;
       const t = item.target;
       const ref = t.kind === "page" ? { title: t.title } : { uid: t.uid };
-      const eid = host.resolveEid(ref);
+      const eid = resolveOnce(ref);
       if (eid == null || eid === boardEid) continue;
       if (!eidToItems.has(eid)) eidToItems.set(eid, []);
       eidToItems.get(eid).push(item.uid);
@@ -2061,11 +2121,47 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       return txn((t) => { t.props(uid, withBoardMarker(rawPlexus(uid), false)); });
     },
 
+    // A second mount of this board. The watch stays up when it is already live.
+    retain() {
+      if (destroyed) return;
+      holders += 1;
+      syncBoardWatch(true);
+    },
+
+    // Drop this holder's pull watch without destroying the session.
+    pauseWatches() {
+      if (destroyed || pausedHolds >= holders) return;
+      pausedHolds += 1;
+      syncBoardWatch(false);
+    },
+
+    // Put the watch back. One pullBoard applies edits that landed while paused.
+    resumeWatches() {
+      if (destroyed || pausedHolds <= 0) return;
+      pausedHolds -= 1;
+      const wasOn = boardWatchOn;
+      syncBoardWatch(!wasOn);
+      if (wasOn) catchUpBoard();
+    },
+
+    // A ref is leaving. A paused ref already dropped its watch hold.
+    forget(opts) {
+      if (destroyed || holders <= 0) return;
+      if (opts?.paused === true && pausedHolds > 0) pausedHolds -= 1;
+      holders -= 1;
+      if (holders === 0) return;
+      syncBoardWatch(false);
+    },
+
     release() { /* replaced by acquireSession */ },
     destroy() {
       if (destroyed) return;
       destroyed = true;
-      unwatch();
+      if (boardWatchOn) {
+        boardWatchOn = false;
+        try { boardWatch(); } catch { /* already dropped */ }
+      }
+      boardWatch = () => {};
       disposeHighlightWatches();
       if (linkTimer) clearTimeout(linkTimer);
       linkTimer = null;
@@ -2206,6 +2302,7 @@ export function acquireSession(boardUid, options = {}) {
   if (entry && entry.host === host) {
     entry.refs++;
     if (options.virtual === true) entry.session.allowVirtual?.();
+    entry.session.retain?.();
     return entry.session;
   }
   if (entry) {
@@ -2215,13 +2312,15 @@ export function acquireSession(boardUid, options = {}) {
   const session = createSession(boardUid, options);
   const record = { host, session, refs: 1 };
   registry.set(boardUid, record);
-  session.release = () => {
+  session.release = (opts) => {
     if (registry.get(boardUid) !== record || record.refs <= 0) return;
     record.refs--;
     if (record.refs === 0) {
       session.destroy();
       registry.delete(boardUid);
+      return;
     }
+    session.forget?.(opts);
   };
   return session;
 }

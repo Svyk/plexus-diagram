@@ -144,6 +144,10 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
       b.setAttribute("aria-label", entry.title);
       b.dataset.index = String(entry.index);
       b.setAttribute("data-index", String(entry.index));
+      if (typeof entry.uid === "string" && entry.uid) {
+        b.dataset.board = entry.uid;
+        b.setAttribute("data-board", entry.uid);
+      }
     }
   };
   // One delegated listener; re-rendering the row never adds listeners.
@@ -184,7 +188,7 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
     if (items.length > MAX_CRUMBS) {
       shown = [0, last - 2, last - 1, last];
       overflow = [];
-      for (let i = 1; i < last - 2; i += 1) overflow.push({ index: i, title: items[i].title });
+      for (let i = 1; i < last - 2; i += 1) overflow.push({ index: i, title: items[i].title, uid: items[i].uid });
     }
     shown.forEach((i, n) => {
       if (n === 1 && overflow.length) {
@@ -209,6 +213,10 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
       b.setAttribute("aria-label", c.title);
       b.dataset.index = String(i);
       b.setAttribute("data-index", String(i));
+      if (typeof c.uid === "string" && c.uid) {
+        b.dataset.board = c.uid;
+        b.setAttribute("data-board", c.uid);
+      }
       el("span", "pxd-crumb__sep", crumbsEl, "›");
     });
   };

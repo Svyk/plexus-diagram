@@ -123,6 +123,7 @@ function bagFromRef(ref) {
     props: props && typeof props === "object" && !Array.isArray(props) ? props : {},
     string: typeof ref?.[":block/string"] === "string" ? ref[":block/string"] : "",
     pageTitle: typeof title === "string" ? title : "",
+    children: Array.isArray(ref?.[":block/children"]) ? ref[":block/children"] : [],
   };
 }
 
@@ -215,6 +216,7 @@ export function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, know
             props: src.props,
             string: typeof targetText === "string" ? targetText : "",
             pageTitle: src.pageTitle,
+            children: src.children,
           });
           if (model) {
             kind = "highlight";

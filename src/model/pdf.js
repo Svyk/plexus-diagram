@@ -254,3 +254,21 @@ export function writeReaderPage(input, page) {
   input.dispatchEvent(new Event("change", { bubbles: true }));
   return true;
 }
+
+// Pane width. localStorage plexus-diagram:read:<graph>, same class of store as the viewport.
+export function readPaneKey(graph) {
+  return `plexus-diagram:read:${typeof graph === "string" ? graph : ""}`;
+}
+
+// Side pane is 42% of the mount, clamped to 360–720. Under 720px of mount width it stacks.
+// A missing mount (0) does not stack: the stored width, or 360, stays in range.
+export function readPaneWidth(mountWidth, stored) {
+  const mount = typeof mountWidth === "number" && Number.isFinite(mountWidth) ? mountWidth : 0;
+  const stacked = mount > 0 && mount < 720;
+  const given = typeof stored === "number" && Number.isFinite(stored) ? stored : Number(stored);
+  const hasStored = Number.isFinite(given) && given > 0;
+  if (stacked) return { stacked: true, width: Math.round(mount) };
+  const raw = hasStored ? given : (mount > 0 ? Math.round(mount * 0.42) : 360);
+  const width = Math.min(720, Math.max(360, Math.round(raw)));
+  return { stacked: false, width };
+}

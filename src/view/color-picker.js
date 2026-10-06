@@ -9,7 +9,7 @@ import { NATIVE_SWATCHES, PALETTE, hexColor, shadeHex } from "../model/schema.js
 const DARKER = -0.28;
 const LIGHTER = 0.4;
 const TAG_NOTE = "Hex, darker, and lighter stay on the card only.";
-export const HIGHLIGHT_MARK_TIP = "The page mark keeps the colour Roam painted.";
+export const HIGHLIGHT_MARK_TIP = "The card and the list follow the tag. The mark in the PDF changes when Roam's reader changes it. The page mark may stay yellow.";
 
 function pickerArgs(listen, fourth) {
   if (listen && typeof listen === "object") return { listen: undefined, options: listen };

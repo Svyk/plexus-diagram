@@ -7,7 +7,7 @@ import { createItemRenderer } from "../src/view/cards.js";
 import { createFakeRoam } from "./fixtures/fake-roam.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
 
-const BLOCK_WATCH = "[:block/string]";
+const BLOCK_WATCH = "[:block/string {:block/children [:block/string :block/order :block/props]}]";
 
 function joinedHost() {
   const board = {

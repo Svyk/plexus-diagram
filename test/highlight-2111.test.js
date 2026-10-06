@@ -18,6 +18,7 @@ function textModel() {
     page: 2,
     color: "yellow",
     footer: `p. 2 · ${TITLE}`,
+    note: "",
   };
 }
 
@@ -43,6 +44,7 @@ test("a text highlight uses content text and #h/yellow without requiring quotati
     page: 1,
     color: "yellow",
     footer: `p. 1 · ${TITLE}`,
+    note: "",
   });
 
   const preferred = highlightModel({
@@ -98,6 +100,7 @@ test("an area highlight keeps the image macro and does not use image-id as the p
     page: 2,
     color: "orange",
     footer: `p. 2 · ${TITLE}`,
+    note: "",
   });
   assert.equal(model.text.includes("zqJy0wsTc"), false);
   assert.equal(model.text.includes("not the picture"), false);
@@ -243,5 +246,5 @@ test("page 2 footer is p. 2, a middle dot, and the trimmed page title", () => {
   const snapshot = structuredClone(props);
   highlightModel({ props, string: `${TEXT} #h/yellow`, pageTitle: TITLE });
   assert.deepEqual(props, snapshot);
-  assert.deepEqual(Object.keys(highlight).sort(), ["HIGHLIGHT_COLORS", "highlightModel", "naturalSize", "rewriteHighlightTag"]);
+  assert.deepEqual(Object.keys(highlight).sort(), ["HIGHLIGHT_COLORS", "highlightModel", "highlightNote", "naturalSize", "rewriteHighlightTag"]);
 });

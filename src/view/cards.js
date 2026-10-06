@@ -14,6 +14,7 @@ import { CARD_MIME } from "./panel.js";
 import { lodForZoom, rectsIntersect } from "../model/geometry.js";
 import { SHAPES, shapePath } from "../model/shapes.js";
 import { fillFromTags, highlighterTags } from "../model/highlighter.js";
+import { highlightNote } from "../model/highlight.js";
 import { nudgeEditorMenus, registerEditorMenus } from "./editor-menus.js";
 import { applyEditorCounterScale } from "./editor-scale.js";
 import { UNMOUNT_GRACE_MS, intrinsicSize, shellOffscreen, unmountDue } from "./offscreen.js";
@@ -253,6 +254,7 @@ function cardContentKey(item, live = false, pdfOpen = false, chipSig = "") {
     item.kind === "highlight" && item.highlight ? item.highlight.text ?? "" : "",
     item.kind === "highlight" && item.highlight?.image === true ? "img" : "",
     item.kind === "highlight" && item.highlight?.natural ? `${item.highlight.natural.w}x${item.highlight.natural.h}` : "",
+    item.kind === "highlight" && item.highlight ? item.highlight.note ?? "" : "",
   ];
   if (item.kind === "board") parts.push(item.w, item.h);
   if (item.kind === "board") {
@@ -410,6 +412,8 @@ export function createItemRenderer({
   onPdfPulse = null,
   onPdfOpen = null,
   onEmbedOpen = null,
+  onReadPane = null,
+  onHighlightOpen = null,
   settings: speedSettings = null,
 } = {}) {
   // Production reads the hidden setting. A test passes `settings` and does not open the panel.
@@ -424,6 +428,7 @@ export function createItemRenderer({
   let pdfOpenUid = null;
   let pdfLiveUid = null;
   let pdfLiveOff = null;
+  let paneForce = null;
   let openingEmbed = false;
   let selectedPrimary = null;
   let openEmbed = () => {};
@@ -459,7 +464,7 @@ export function createItemRenderer({
   const contentKeyFor = (item, live = false) => cardContentKey(
     item,
     live,
-    item?.kind === "pdf" ? pdfOpenUid === item.uid : ownsOpen(item),
+    item?.kind === "pdf" ? (onReadPane ? false : pdfOpenUid === item.uid) : ownsOpen(item),
     item?.kind === "pdf" ? chipsFor(item).map((chip) => `${chip.page}:${chip.count}`).join(",") : "",
   );
   const shells = new Map(); // uid → rec
@@ -1148,7 +1153,7 @@ export function createItemRenderer({
     rec.el.classList.remove("pxd-sticky--picking");
   };
 
-  const TRANSIENT_CLASSES = ["pxd-item--offscreen", "pxd-item--future", "pxd-item--fresh", "pxd-item--pulse"];
+  const TRANSIENT_CLASSES = ["pxd-item--offscreen", "pxd-item--future", "pxd-item--fresh", "pxd-item--pulse", "pxd-item--flash"];
   const imageRegionString = (text) => {
     const region = parseRegion(text);
     return Boolean(region && region.kind === "img" && region.supported === true && region.owner === "plexus-diagram" && region.error == null);
@@ -2318,6 +2323,7 @@ export function createItemRenderer({
 
   // PDF-1. One reader. Map lod keeps the cover at the card's own size.
   const pdfReaderBox = (uid) => {
+    if (onReadPane) return false;
     const item = lastBoard?.items.get(uid);
     return Boolean(item && !item.collapsed && item.kind === "pdf" && pdfOpenUid === uid && lod === "detail");
   };
@@ -2459,17 +2465,68 @@ export function createItemRenderer({
     if (heavyMounts(item).some((poster) => poster.uid === pdfOpenUid)) return true;
     return shellHasEmbed(shells.get(item.uid), pdfOpenUid);
   };
+  const tellPane = (detail) => {
+    if (typeof onReadPane !== "function") return;
+    try { onReadPane(detail); } catch { /* host */ }
+  };
+  const paneItem = (uid) => {
+    if (!uid || !lastBoard?.items) return null;
+    const direct = lastBoard.items.get(uid);
+    if (direct) return direct;
+    for (const item of lastBoard.items.values()) {
+      if (item?.target?.uid === uid) return item;
+    }
+    return null;
+  };
+  const blockUidOf = (item) => {
+    if (!item) return "";
+    if (item.target?.kind === "block" && item.target.uid) return item.target.uid;
+    return item.uid || "";
+  };
+  const pageFieldOf = (box) => {
+    if (!box?.querySelectorAll) return null;
+    const inputs = [...box.querySelectorAll("input")];
+    const pageField = inputs.find((node) => /^\d+$/.test(String(node.value || "").trim()));
+    return pageField || inputs[0] || null;
+  };
   openEmbed = (uid) => {
     if (!uid || openingEmbed) return;
+    const forced = paneForce;
+    paneForce = null;
     const rule = readerRule(pdfOpenUid, uid);
-    if (rule.close == null && rule.open === (pdfOpenUid || null)) return;
+    if (!forced && rule.close == null && rule.open === (pdfOpenUid || null)) return;
     openingEmbed = true;
     try {
+      const nextItem = paneItem(rule.open || uid);
+      const nextIsPdf = Boolean(forced) || nextItem?.kind === "pdf";
+      if (typeof onReadPane === "function" && nextIsPdf) {
+        const prevShell = rule.close ? shellUidFor(rule.close) : null;
+        const prevItem = rule.close ? paneItem(rule.close) : null;
+        pdfOpenUid = rule.open || null;
+        try { onEmbedOpen?.(pdfOpenUid); } catch { /* outline */ }
+        if (rule.close) {
+          if (pdfLiveUid && (pdfLiveUid === rule.close || pdfLiveUid === prevShell)) endPdfInteract();
+          if (prevShell && prevItem && prevItem.kind !== "pdf") remountPdf(prevShell);
+          try { onToast?.("Closed the other reader"); } catch { /* toast */ }
+        }
+        tellPane({
+          open: true,
+          cardUid: nextItem?.kind === "pdf" ? nextItem.uid : "",
+          blockUid: forced?.blockUid || blockUidOf(nextItem) || uid,
+          page: forced?.page,
+          source: forced?.source || (nextItem ? pdfSourceOf(nextItem) : ""),
+        });
+        return;
+      }
       const prevShell = rule.close ? shellUidFor(rule.close) : null;
       pdfOpenUid = rule.open || null;
       try { onEmbedOpen?.(pdfOpenUid); } catch { /* outline */ }
       if (rule.close) {
         if (pdfLiveUid && (pdfLiveUid === rule.close || pdfLiveUid === prevShell)) endPdfInteract();
+        if (onReadPane) {
+          const prevItem = paneItem(rule.close);
+          if (!prevItem || prevItem.kind === "pdf") tellPane({ open: false });
+        }
         if (prevShell) remountPdf(prevShell);
         try { onToast?.("Closed the other reader"); } catch { /* toast */ }
       }
@@ -2480,25 +2537,33 @@ export function createItemRenderer({
     }
   };
   closeEmbed = () => {
+    tellPane({ open: false });
     if (!pdfOpenUid && !pdfLiveUid) return;
     const prev = pdfOpenUid;
     const shell = prev ? shellUidFor(prev) : (pdfLiveUid && shells.has(pdfLiveUid) ? pdfLiveUid : null);
+    const item = shell ? lastBoard?.items.get(shell) : null;
     pdfOpenUid = null;
     if (pdfLiveUid) endPdfInteract();
+    if (onReadPane && item?.kind === "pdf") return;
     if (shell) remountPdf(shell);
   };
   const openPdf = (uid) => openEmbed(uid);
   const readerInput = (uid) => {
+    if (onReadPane) {
+      const paneBox = boardRoot()?.querySelector?.(".pxd-read .rm-pdf-container")
+        || doc?.querySelector?.(".pxd-read .rm-pdf-container");
+      const paneField = pageFieldOf(paneBox);
+      if (paneField) return paneField;
+    }
     const rec = shells.get(uid);
-    const box = rec?.pdfReader?.querySelector?.(".rm-pdf-container");
-    if (!box?.querySelectorAll) return null;
-    const inputs = [...box.querySelectorAll("input")];
-    const pageField = inputs.find((node) => /^\d+$/.test(String(node.value || "").trim()));
-    return pageField || inputs[0] || null;
+    return pageFieldOf(rec?.pdfReader?.querySelector?.(".rm-pdf-container"));
   };
   const openPdfAt = (uid, page) => {
-    if (typeof uid !== "string" || uid === "") return Promise.resolve(false);
-    if (pdfOpenUid !== uid) openPdf(uid);
+    if (typeof uid !== "string" || uid === "") {
+      paneForce = null;
+      return Promise.resolve(false);
+    }
+    if (pdfOpenUid !== uid || paneForce) openPdf(uid);
     const started = now();
     const want = String(page);
     const confirm = () => {
@@ -2531,6 +2596,17 @@ export function createItemRenderer({
       stop = later(tick, 100);
     });
   };
+  const openPdfBlock = (blockUid, page, source) => {
+    if (typeof blockUid !== "string" || blockUid === "") return Promise.resolve(false);
+    paneForce = { blockUid, source: typeof source === "string" ? source : "", page };
+    return openPdfAt(blockUid, page);
+  };
+  const flashItem = (uid) => {
+    const shell = shells.get(uid)?.el;
+    if (!shell?.classList) return;
+    shell.classList.add("pxd-item--flash");
+    later(() => { shell.classList.remove("pxd-item--flash"); }, 2000);
+  };
 
   // PDF-2 / PDF-5. The bar carries the colour. An area image sets its ratio before renderString. The card stays unfilled.
   const highlightRatio = (natural) => {
@@ -2557,8 +2633,22 @@ export function createItemRenderer({
       return;
     }
     if (!image && hl.text) budget.roots.push(renderRoot(rec.body, hl.text, "pxd-rs pxd-item__string", uid));
-    const foot = el("div", "pxd-highlight-foot", rec.body);
+    rec.hlNote = typeof hl.note === "string" ? hl.note : "";
+    rec.hlNoteBox = null;
+    if (rec.hlNote.trim()) {
+      rec.hlNoteBox = el("div", "pxd-highlight-note", rec.body);
+      budget.roots.push(renderRoot(rec.hlNoteBox, rec.hlNote, "pxd-rs", uid));
+    }
+    const foot = el("button", "pxd-highlight-foot pxd-chrome", rec.body);
+    foot.type = "button";
+    rec.hlFoot = foot;
     foot.textContent = typeof hl.footer === "string" ? hl.footer : "";
+    const openFoot = (event) => {
+      stopEvent(event);
+      if (event.type !== "click") return;
+      try { onHighlightOpen?.(item); } catch { /* host */ }
+    };
+    for (const type of ["pointerdown", "mousedown", "dblclick", "click"]) foot.addEventListener(type, openFoot);
   };
 
   // A mounted ((uid)) card follows edits to its source. The board pull does not, and coversBlock
@@ -2627,6 +2717,52 @@ export function createItemRenderer({
     list.push({ rec, item });
     freshPending.set(ref, list);
     if (!freshTimer) freshTimer = later(flushFresh, BLOCK_REFRESH_MS);
+  };
+  // A highlight card shows its note (PDFH-5). The shared block watch also carries children, so
+  // an edit to the note repaints just that box.
+  const armHighlightWatch = (rec, item) => {
+    if (disposed || rec.blockUnwatch || typeof host?.watchBlock !== "function") return;
+    const ref = item.target?.uid || item.uid;
+    if (!ref) return;
+    let pending = null;
+    let latest = null;
+    let off = null;
+    const apply = () => {
+      pending = null;
+      if (disposed || rec.body?.isConnected === false) return;
+      const kids = latest?.[":block/children"];
+      if (!Array.isArray(kids)) return;
+      const note = highlightNote(kids);
+      if (note === rec.hlNote) return;
+      rec.hlNote = note;
+      if (rec.hlNoteBox) {
+        for (const node of [...rec.hlNoteBox.children]) { try { host?.unmount?.(node); } catch { /* not mounted */ } }
+        rec.hlNoteBox.remove();
+        rec.hlNoteBox = null;
+      }
+      if (!note.trim()) return;
+      const box = doc.createElement("div");
+      box.className = "pxd-highlight-note";
+      if (rec.hlFoot?.parentNode === rec.body) rec.body.insertBefore(box, rec.hlFoot);
+      else rec.body.append(box);
+      rec.hlNoteBox = box;
+      const root = renderRoot(box, note, "pxd-rs", item.uid);
+      if (!rec.roots) rec.roots = [];
+      rec.roots.push(root);
+    };
+    try {
+      off = host.watchBlock(ref, (after) => {
+        latest = after;
+        if (!pending) pending = later(apply, BLOCK_REFRESH_MS);
+      });
+    } catch { return; }
+    if (typeof off !== "function") return;
+    rec.blockUnwatch = () => {
+      rec.blockUnwatch = null;
+      try { off(); } catch { /* already off */ }
+      pending?.();
+      pending = null;
+    };
   };
   const armBlockWatch = (rec, item) => {
     if (disposed || rec.blockUnwatch || typeof host?.watchBlock !== "function") return;
@@ -2719,10 +2855,11 @@ export function createItemRenderer({
       const cover = pdfCoverOf(item);
       rec.pdfCover = cover;
       if (editing?.uid !== item.uid && !rec.renaming) rec.header.textContent = String(cover.title || "PDF").slice(0, HEADER_TEXT_MAX);
-      if (pdfReaderBox(item.uid) || speedOf().posters === false) budget.roots.push(paintPdfReader(rec, item));
+      if (!onReadPane && (pdfReaderBox(item.uid) || speedOf().posters === false)) budget.roots.push(paintPdfReader(rec, item));
       else paintPdfCover(rec, item, cover);
     } else if (item.kind === "highlight" && item.highlight) {
       paintHighlight(rec, item, budget);
+      armHighlightWatch(rec, item);
     } else if (item.kind === "block") {
       const ref = item.target.uid;
       const refString = host?.blockString?.(ref);
@@ -3695,6 +3832,10 @@ export function createItemRenderer({
         const prevShell = shellUidFor(prev);
         pdfOpenUid = heavyUid;
         if (pdfLiveUid && pdfLiveUid !== uid) endPdfInteract();
+        if (onReadPane) {
+          const prevItem = prevShell ? lastBoard?.items.get(prevShell) : null;
+          if (!prevItem || prevItem.kind === "pdf") tellPane({ open: false });
+        }
         if (prevShell && prevShell !== uid) remountPdf(prevShell);
         try { onToast?.("Closed the other reader"); } catch { /* toast */ }
         try { onEmbedOpen?.(heavyUid); } catch { /* outline */ }
@@ -4059,6 +4200,7 @@ export function createItemRenderer({
   };
   const dispose = () => {
     disposed = true;
+    tellPane({ open: false });
     if (freshTimer) { try { freshTimer(); } catch { /* already ran */ } freshTimer = null; }
     freshPending.clear();
     try { pdfLiveOff?.(); } catch { /* already off */ }
@@ -4155,9 +4297,11 @@ export function createItemRenderer({
     },
     openPdf,
     openPdfAt,
+    openPdfBlock,
     openEmbed,
     closeEmbed,
     endPdfInteract,
+    flash: flashItem,
     mountedCount: () => mounted.size,
     mountedUids: () => [...mounted.keys()],
     shellCount: () => shells.size,

@@ -21,7 +21,7 @@ import { createChrome } from "../src/view/chrome.js";
 import { HIGHLIGHT_MARK_TIP, buildColorPicker } from "../src/view/color-picker.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
 
-const TIP = "The page mark keeps the colour Roam painted.";
+const TIP = "The card and the list follow the tag. The mark in the PDF changes when Roam's reader changes it. The page mark may stay yellow.";
 const timers = { later: () => () => {}, frame: () => () => {} };
 const boardSrc = readFileSync(new URL("../src/view/board-view.js", import.meta.url), "utf8");
 

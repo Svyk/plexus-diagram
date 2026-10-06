@@ -1,0 +1,164 @@
+/* PDFH-1. The reader sits on the root, outside the transformed world.
+   The viewport shrink is the other half of that: .pxd-viewport is inset 0, so the pane
+   would be clipped if it lived inside the viewport. */
+
+.pxd-root.pxd-root--read > .pxd-viewport {
+  right: var(--pxd-read-w, 360px);
+}
+
+.pxd-root.pxd-root--read-stack > .pxd-viewport {
+  right: 0;
+  bottom: 46%;
+}
+
+.pxd-root .pxd-item--flash {
+  outline: 2px solid var(--pxd-yellow-line, #ca8a04);
+  outline-offset: 2px;
+}
+
+.pxd-read {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  width: var(--pxd-read-w, 360px);
+  min-width: 360px;
+  max-width: 720px;
+  background: var(--pxd-chrome-bg, var(--pxd-surface, #fff));
+  color: var(--pxd-text, inherit);
+  border-left: 1px solid var(--pxd-border, #d0d7de);
+  overflow: hidden;
+  overscroll-behavior: contain;
+  touch-action: pan-y;
+}
+
+.pxd-read.pxd-read--stack {
+  top: auto;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  width: 100%;
+  min-width: 0;
+  max-width: none;
+  height: 46%;
+  border-left: 0;
+  border-top: 1px solid var(--pxd-border, #d0d7de);
+}
+
+.pxd-read .pxd-read__split {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 6px;
+  cursor: col-resize;
+  z-index: 1;
+}
+
+.pxd-read.pxd-read--stack .pxd-read__split {
+  left: 0;
+  right: 0;
+  top: 0;
+  bottom: auto;
+  width: auto;
+  height: 6px;
+  cursor: row-resize;
+}
+
+.pxd-read .pxd-read__head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px 6px 12px;
+  border-bottom: 1px solid var(--pxd-border, #d0d7de);
+}
+
+.pxd-read .pxd-read__title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 600;
+}
+
+.pxd-read .pxd-read__switch {
+  flex: 1;
+  min-width: 0;
+}
+
+.pxd-read .pxd-read__filters {
+  display: flex;
+  gap: 6px;
+  padding: 6px 8px 6px 12px;
+}
+
+.pxd-read .pxd-read__filters input,
+.pxd-read .pxd-read__filters select {
+  min-width: 0;
+  flex: 1;
+}
+
+.pxd-read .pxd-read__live {
+  flex: 1 1 46%;
+  min-height: 120px;
+  overflow: auto;
+}
+
+.pxd-read .pxd-read__list {
+  flex: 1 1 40%;
+  min-height: 80px;
+  overflow: auto;
+  outline: none;
+}
+
+.pxd-read .pxd-read__row {
+  position: relative;
+  padding: 6px 8px 6px 12px;
+  cursor: pointer;
+}
+
+.pxd-read .pxd-read__row--on {
+  background: var(--pxd-accent-soft, rgba(15, 118, 110, 0.12));
+}
+
+.pxd-read .pxd-read__bar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: 4px;
+  pointer-events: none;
+}
+
+.pxd-read .pxd-read__bar[data-color="gray"] { background: var(--pxd-gray-line); }
+.pxd-read .pxd-read__bar[data-color="red"] { background: var(--pxd-red-line); }
+.pxd-read .pxd-read__bar[data-color="orange"] { background: var(--pxd-orange-line); }
+.pxd-read .pxd-read__bar[data-color="yellow"] { background: var(--pxd-yellow-line); }
+.pxd-read .pxd-read__bar[data-color="green"] { background: var(--pxd-green-line); }
+.pxd-read .pxd-read__bar[data-color="teal"] { background: var(--pxd-teal-line); }
+.pxd-read .pxd-read__bar[data-color="blue"] { background: var(--pxd-blue-line); }
+.pxd-read .pxd-read__bar[data-color="indigo"] { background: var(--pxd-indigo-line); }
+.pxd-read .pxd-read__bar[data-color="purple"] { background: var(--pxd-purple-line); }
+.pxd-read .pxd-read__bar[data-color="pink"] { background: var(--pxd-pink-line); }
+
+.pxd-read .pxd-read__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 4px;
+  color: var(--pxd-muted);
+  font-size: 12px;
+}
+
+.pxd-read .pxd-read__media {
+  width: 100%;
+  margin-top: 4px;
+}
+
+.pxd-read .pxd-read__place {
+  margin-left: auto;
+}

@@ -62,6 +62,12 @@
   font-size: 12px;
 }
 
+.pxd-root .pxd-hl-note {
+  flex: 0 0 auto;
+  color: var(--pxd-muted);
+  font-size: 11px;
+}
+
 .pxd-root .pxd-hl-add {
   position: absolute;
   top: 4px;

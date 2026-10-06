@@ -118,6 +118,35 @@ export function naturalSize(props) {
   return null;
 }
 
+function childFields(node, index) {
+  if (!isObject(node)) return null;
+  const string = typeof node.string === "string"
+    ? node.string
+    : (typeof node[":block/string"] === "string" ? node[":block/string"] : "");
+  const props = isObject(node.props)
+    ? node.props
+    : (isObject(node[":block/props"]) ? node[":block/props"] : {});
+  const orderRaw = node.order ?? node[":block/order"];
+  const order = typeof orderRaw === "number" && Number.isFinite(orderRaw) ? orderRaw : index;
+  return { string, props, order, index };
+}
+
+// The note is the first child that is not itself a highlight. Empty when there is none.
+export function highlightNote(children) {
+  const list = Array.isArray(children) ? children : [];
+  const rows = [];
+  for (let i = 0; i < list.length; i += 1) {
+    const row = childFields(list[i], i);
+    if (row) rows.push(row);
+  }
+  rows.sort((a, b) => a.order - b.order || a.index - b.index);
+  for (const row of rows) {
+    if (highlightRecord(row.props)) continue;
+    return row.string;
+  }
+  return "";
+}
+
 export function highlightModel(input) {
   const src = isObject(input) ? input : {};
   const record = highlightRecord(src.props);
@@ -135,5 +164,6 @@ export function highlightModel(input) {
     page,
     color: highlightColor(block),
     footer: footerOf(page, src.pageTitle),
+    note: highlightNote(src.children),
   };
 }

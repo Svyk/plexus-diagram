@@ -1,5 +1,6 @@
 // PDF-3 picker. Group highlight rows, place at most 45, expand a date's children. No writes.
 
+import { highlightNote } from "./highlight.js";
 import { plainKeys } from "./schema.js";
 
 const NAMES = new Set(["red", "orange", "yellow", "green", "blue", "purple", "pink"]);
@@ -79,6 +80,7 @@ function rowFrom(node, ancestors, placed) {
     page: record ? pageOf(record) : null,
     group: groupOf(ancestors),
     placed: uid !== "" && placed.has(uid),
+    note: highlightNote(node.children),
   };
 }
 

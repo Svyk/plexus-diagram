@@ -2074,6 +2074,16 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   font-size: 12px;
 }
 
+/* PDFH-5. The stored note sits under the quote, about four lines. */
+.pxd-root .pxd-highlight-note {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  line-clamp: 4;
+  overflow: hidden;
+  margin-top: 6px;
+}
+
 /* PDF-5. The ratio is set inline before the picture loads. This box has no fill. */
 .pxd-root .pxd-highlight-media {
   width: 100%;

@@ -153,8 +153,11 @@ const SHOW_REF_QUERY = `[:find ?board ?page ?card :in $ ?uid ?pat :where
 const BOARD_META_PATTERN = "[:block/props :edit/time {:block/children [:block/props]}]";
 const PDF_PAGE_QUERY = `[:find ?u ?t :in $ ?url :where [?p :pdf/url ?url] [?p :block/uid ?u] [?p :node/title ?t]]`;
 const PDF_PAGE_BLOCKS_QUERY = `[:find ?props :in $ ?uid :where [?p :block/uid ?uid] [?b :block/page ?p] [?b :block/props ?props]]`;
+const PDF_BLOCK_OUT_QUERY = `[:find ?u :in $ ?page ?url :where [?p :block/uid ?page] [?p :block/refs ?b] [?b :block/string ?s] [(clojure.string/includes? ?s ?url)] [?b :block/uid ?u]]`;
+const PDF_BLOCK_IN_QUERY = `[:find ?u :in $ ?page ?url :where [?p :block/uid ?page] [?b :block/refs ?p] [?b :block/string ?s] [(clojure.string/includes? ?s ?url)] [?b :block/uid ?u]]`;
 const BLOCK_PROPS_PATTERN = "[:block/string :block/props {:block/page [:node/title]}]";
-const BLOCK_WATCH_PATTERN = "[:block/string]";
+// Children too, so a highlight card sees its note change. The string path ignores child-only fires.
+const BLOCK_WATCH_PATTERN = "[:block/string {:block/children [:block/string :block/order :block/props]}]";
 const HIGHLIGHT_TREE_PATTERN = `[:block/uid
  {:block/children [:block/uid :block/string :block/order :block/props
    {:block/children [:block/uid :block/string :block/order :block/props
@@ -1276,6 +1279,23 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       const cover = readPdfCover(url);
       coverMemo?.set(url, cover);
       return { ...cover };
+    },
+
+    // The pdf macro block, scoped to the :pdf/url page's refs. No file fetch.
+    pdfBlockByUrl(url) {
+      if (typeof url !== "string") return "";
+      const needle = url.trim();
+      if (!needle || /[\r\n]/.test(url)) return "";
+      const pageUid = readPdfCover(needle)?.pageUid;
+      if (typeof pageUid !== "string" || pageUid === "") return "";
+      const take = (query) => {
+        for (const row of queryRows(host, query, pageUid, needle)) {
+          const cell = Array.isArray(row) ? row[0] : row;
+          if (typeof cell === "string" && cell && cell !== pageUid) return cell;
+        }
+        return "";
+      };
+      return take(PDF_BLOCK_OUT_QUERY) || take(PDF_BLOCK_IN_QUERY);
     },
 
     // Boards library: every enhanced (plexus.v === 2) board block in the graph. Read-only.

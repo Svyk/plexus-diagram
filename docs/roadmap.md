@@ -494,6 +494,7 @@ AI agent features inside the board, SuperTag-style typed schemas or class tags, 
 
 Fill in as phases run. Keep the newest at the top of each list.
 
+- PDFH-4, 2026-10-06. Rect scroll did not match. No scroller in this pass had coordinates that match position.boundingRect. No Test Lab this session. The page-input jump and pxd-item--flash for 2 seconds ship. A click on .rm-pdf-highlight-color-icon is not dispatched. Rect scroll does not.
 - 2.12.1 live, 2026-10-05, Test Lab, `d783223`. Why pop on body, then unload pxd 0. Our listeners 25 to 0. Roam Plexus listeners stayed 18. Check 1358 pass. Banner 2.12.1. Dark and light shots for the chip, popover, lane, suggest lines, references drawer, and resurface week and empty states. Native undo cleared the why child, then the label. No typing bench.
 - 2.12.1 measure, 2026-10-05, Test Lab. Two diagram blocks, ages 296 and 4 days, both with 0 children. A create-time write did not stick. Undo of a string plus a child: first undo cleared the child, second restored the string, third removed the block. pageTitleToDate parsed October 5th, September 5th, and October 12th, 2026. No typing bench.
 - 2.12.0 live, 2026-10-05, Test Lab, `e967806`. Halo day matched create time. Two chips on the source. cardCacheMs 59. Unload pxd 0. Window 92 to 92. Document 168 to 168. Check 1336 pass. Theme restored to Auto. No typing bench.

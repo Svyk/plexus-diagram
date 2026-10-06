@@ -60,6 +60,7 @@ import { boardToMarkdown, boardToSvg, dropExternalImages, imageSrc, pngFileName,
 import { createInteractions } from "./interactions.js";
 import { openPagePicker } from "./board-picker.js";
 import { createItemRenderer, dropEmbedPoster, isTextEntryTarget, pageBodyWantsWheel, paintEmbedPoster, syncBoardHighlighter } from "./cards.js";
+import { createReadPane, highlightDropPlan, originBeside, placeDecision, readerJumpPlan } from "./read-pane.js";
 import { openViewDialog } from "./view-dialog.js";
 import { viewMapModel } from "./minimap-svg.js";
 import { openRegionDeleteDialog } from "./region-delete-dialog.js";
@@ -632,6 +633,13 @@ export function openHighlightDialog(doc, { rows, origin, onPlace, onClose } = {}
       page.className = "pxd-hl-rowpage";
       page.textContent = row.page == null ? "" : `p. ${row.page}`;
       line.append(box, bar, text, page);
+      if (typeof row.note === "string" && row.note.trim()) {
+        const mark = doc.createElement("span");
+        mark.className = "pxd-hl-note";
+        mark.setAttribute("aria-label", "Note");
+        mark.textContent = "Note";
+        line.append(mark);
+      }
       list.append(line);
     }
   };
@@ -1314,16 +1322,19 @@ function buildBoardView(onFail, {
     return out;
   };
 
+  let readPane = null;
   const measure = () => {
     const r = root.getBoundingClientRect();
     rootRect = { left: r.left || 0, top: r.top || 0, width: r.width || 0, height: r.height || 0 };
     size = { width: rootRect.width, height: rootRect.height };
     root.classList.toggle("pxd-root--narrow", size.width > 0 && size.width < 560);
+    readPane?.layout?.(size.width);
   };
 
   // ------------------------------------------------------------ layers
   // A throw after the renderer exists must dispose it. Otherwise a retrying reconcile leaks a listener set per tick.
   onFail.push(
+    () => readPane?.dispose?.(),
     () => itemsR?.dispose?.(),
     () => routeOff(),
     () => fsDispose(),
@@ -1375,8 +1386,54 @@ function buildBoardView(onFail, {
     onPdfPulse: (uids) => { for (const uid of uids || []) pulseItem(uid); },
     onPdfOpen: (uid, page) => { void itemsR.openPdfAt?.(uid, page); },
     onEmbedOpen: () => closeOutlineLive(),
+    onHighlightOpen: (item) => { void openHighlightInReader(item); },
+    onReadPane: (detail) => {
+      if (!detail?.open) {
+        readPane?.close?.({ notify: false });
+        return;
+      }
+      let cover = null;
+      try { cover = detail.source ? host?.pdfCover?.(detail.source) : null; } catch { cover = null; }
+      readPane?.open?.({
+        cardUid: detail.cardUid || "",
+        blockUid: detail.blockUid,
+        page: detail.page,
+        title: cover?.title || "",
+        source: detail.source || "",
+        pageUid: cover?.pageUid || "",
+      });
+    },
   });
   itemsReady = true;
+  readPane = createReadPane({
+    doc,
+    root,
+    host,
+    graph,
+    storage,
+    cards: () => [...(board()?.items.values() || [])].filter((it) => it?.kind === "pdf"),
+    placed: () => [...(board()?.items.values() || [])],
+    titleOf: (card) => {
+      try { return host?.pdfCover?.(pdfSourceOfItem(card))?.title || "PDF"; } catch { return "PDF"; }
+    },
+    onClose: () => { itemsR?.closeEmbed?.(); },
+    onSwitch: (uid) => { itemsR?.openPdf?.(uid); },
+    onPlace: (row) => {
+      const items = [...(board()?.items.values() || [])];
+      const card = board()?.items.get(readPane?.cardUid?.() || "");
+      const live = card ? (rects().get(card.uid) || { x: card.x, y: card.y, w: card.w, h: card.h }) : null;
+      const decision = placeDecision(row, items, originBeside(live));
+      if (decision.kind === "pulse") {
+        if (decision.uid) pulseItem(decision.uid);
+        return;
+      }
+      if (decision.kind !== "create") return;
+      const made = session.addRefCards?.([decision.item]);
+      Promise.resolve(made).then((uids) => {
+        if (!disposed && Array.isArray(uids) && uids.length) ctl.select(uids);
+      }).catch(() => {});
+    },
+  });
   repaintItemStyles = () => { if (!disposed) itemsR.repaintStyles(); };
   const taskPop = createTaskPopover({ doc, root, bt, toast: (m) => chrome.toast.show(m) });
   const taskDone = createTaskCompleter({ doc, getRoot: () => root, host, bt, win });
@@ -3167,12 +3224,26 @@ function buildBoardView(onFail, {
       cards.push({ uid: other.uid, source: pdfSourceOfItem(other) });
     }
     const match = pdfCardForUrl(url, cards);
-    if (match) {
-      await itemsR.openPdfAt?.(match, item.highlight?.page);
+    let blockUid = "";
+    if (!match && url) {
+      try { blockUid = host?.pdfBlockByUrl?.(url) || ""; } catch { blockUid = ""; }
+    }
+    const plan = readerJumpPlan({ cardUid: match || "", blockUid });
+    const page = item.highlight?.page;
+    if (plan.action === "card") {
+      const pending = itemsR.openPdfAt?.(plan.uid, page);
+      itemsR.flash?.(item.uid);
+      await pending;
+      return;
+    }
+    if (plan.action === "block") {
+      const pending = itemsR.openPdfBlock?.(plan.uid, page, `{{[[pdf]]: ${url}}}`);
+      itemsR.flash?.(item.uid);
+      await pending;
       return;
     }
     try { host?.openBlock?.(item.target.uid); } catch { /* navigation can fail closed */ }
-    toast("Click the highlight to open the PDF");
+    toast(plan.toast);
   };
   const chrome = createChrome({
     doc,
@@ -4634,6 +4705,7 @@ function buildBoardView(onFail, {
     }
     event.preventDefault();
     event.stopPropagation();
+    if (event.target?.closest?.(".pxd-read")) return;
     measure();
     const p = screenToWorld(vp, { x: event.clientX - rootRect.left, y: event.clientY - rootRect.top });
     const files = filesFromDataTransfer(event.dataTransfer);
@@ -4641,6 +4713,11 @@ function buildBoardView(onFail, {
     const resolveUid = (u) => (host?.cardStringForUid ? host.cardStringForUid(u) : `((${u}))`);
     const list = parseDropPayload(event.dataTransfer, { resolveUid, graph: host?.graph || "" });
     if (!list.length) return;
+    const dropped = highlightDropPlan(list, [...(board()?.items.values() || [])]);
+    if (dropped.kind === "pulse") {
+      if (dropped.uid) pulseItem(dropped.uid);
+      return;
+    }
     const w = Number(setting("default-card-width", DEFAULT_SIZES.card.w)) || DEFAULT_SIZES.card.w;
     const h = Number(setting("default-card-height", DEFAULT_SIZES.card.h)) || DEFAULT_SIZES.card.h;
     // A [[page]] drop stays a page card. A ((uid)) whose block is a date expands only after confirm.
@@ -4714,6 +4791,7 @@ function buildBoardView(onFail, {
       if (action === "native") return true;
       return false;
     };
+    if (event.target?.closest?.(".pxd-read")) return;
     // A keystroke outside the board is a Roam transaction. Drop live card renders first,
     // before any board lookup, and put them back shortly after typing stops.
     if (isTextEntryTarget(event.target) && !root.contains?.(event.target)) {
@@ -5683,6 +5761,7 @@ function buildBoardView(onFail, {
       step(() => quicklook.dispose());
       step(() => presenter.dispose());
       step(() => clip.dispose());
+      step(() => readPane?.dispose?.());
       step(() => itemsR.dispose());
       step(() => edgesR.dispose());
       step(() => panel.dispose());

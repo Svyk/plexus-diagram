@@ -65,6 +65,7 @@ test("a date parent groups the nearest [[...]] ancestor", () => {
     page: 2,
     group: "[[October 5th, 2026]]",
     placed: false,
+    note: "",
   });
   assert.equal(rows[6].color, "red");
   assert.equal(rows[6].page, 5);

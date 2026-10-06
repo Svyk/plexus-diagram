@@ -465,7 +465,7 @@ test("D6/D7: a saved-view map draws only the cards in its frame, and view change
 
 // ---------------------------------------------------------------- B1
 
-test("B1: arrows attach at the open PDF reader's border, not the card's", async () => {
+test("B1: an open PDF reader stays in the pane, so the arrow stays on the card", async () => {
   const tree = pulled({ extra: [block("pdfCard001", "{{[[pdf]]: https://example.test/papers/Risk.pdf}}", { ":x": 0, ":y": 800, ":w": 280, ":h": 160 }, 20)] });
   tree[":block/children"].find((c) => c[":block/uid"] === "edgesEEE5")[":block/children"].push(
     block("edgePDF001", "((pdfCard001)) → ((cardAAAA1))", { ":type": "edge", ":from": "pdfCard001", ":to": "cardAAAA1" }, 1),
@@ -481,7 +481,7 @@ test("B1: arrows attach at the open PDF reader's border, not the card's", async 
     f.stub.dispatch(open, "click", { button: 0 });
     f.session.emit("change", { dirty: new Set(["pdfCard001"]), structural: false });
     await f.flush();
-    assert.notEqual(path(), before, "the arrow start moves to the 640x820 reader box");
+    assert.equal(path(), before, "the pane keeps the cover, so the arrow stays on the card");
   } finally {
     f.done();
   }

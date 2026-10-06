@@ -63,6 +63,11 @@ An enhanced board keeps Roam's diagram controls and adds to them.
 | Journal | Panel tab Journal: the top-level blocks of a daily page, a day stepper and Today. Drag a row onto the board for a card. Viewing and stepping write nothing |
 | Fullscreen tabs | Boards opened while fullscreen become tabs above the board bar, up to 9. Cmd/Ctrl+1 to 9 switch tabs; the list returns next time, per graph, stored on this device only |
 | Touch | Pinch to zoom, two fingers to pan, long-press (half a second, still) for the menu, 44 px grips under a coarse pointer. Phones stay off with Disable on mobile |
+| Trails | Card menu: Add to trail. Walk trail plays the stops in present mode with each stop's note. A trail is a block under the board's collapsed `Trails` child with `((card))` children in order; `((trail))` pasted anywhere in Roam shows a strip of stops you can click. Panel tab Trails lists them |
+| Landmarks | Card menu: Make landmark. A landmark keeps a large glyph at every zoom (overview too) and shows on the minimap. Walk the board tours landmarks left to right, then down, or along a trail |
+| Timeline | Info tab: the daily pages that mention a card on the board, with a count per day; click a day to open it. Lay out by date can use the first or last mention instead of a date attribute |
+| Strength and Dust | More menu. Strength thickens a connection whose ends are referenced a lot, share other boards and were edited recently (hover for the reason). Dust dims cards untouched for 6 months, 1 year or 2 years. Views only: nothing is written |
+| Source chip | A block dragged from an `Articles/` or `Media Captures/` page shows the page title and its `Author::`. Click to open the page in the sidebar |
 | Highlighter colours | A card with `#bg-blue` or `#[[bg-blue]]` uses that colour when the colour highlighter is installed. A fill set on the card wins until you clear it. The colour picker's gear, Write as highlighter tag, stores one `#[[bg-name]]` in the block and clears the fill. One undo restores both. Hex, darker, and lighter stay on the card only. `#c:red` still colours text inside the card. |
 | Card children | A card with child blocks shows only its own block and a ▸ N badge. Click the badge to open the children as an editable outline in the card (remembered per card); hover it to peek. The card menu has Spread children as cards: one card per child with an arrow back, in one undo step |
 | Connections in Roam | A connection block (under a board's Connections) gets a small chip in the outline, the sidebar and linked references: "A —label→ B · on Board". Click it for a preview with a map of the two cards, the arrow and the target row; Open on board selects the connection (inside a nested board too), Open in sidebar opens the board block. Nothing is written The breadcrumb Roam draws above a connection block (in linked references and when zoomed into the block) opens the same preview on a plain click, with a ▦ mark; Shift, Cmd and Ctrl clicks keep Roam's behavior. The preview opens under the chip, else above or beside it, and never covers the chip or the block line |
@@ -128,7 +133,7 @@ Mark a region on the picture, or from the block menu. Plexus copies a block ref.
 
 ## Works with
 
-Plexus Diagram, Roam Compass, and Roam Plexus notice each other. With Compass loaded, a card menu can open Compass on that page, and Compass can open the board that holds it. With Roam Plexus loaded, an image card can start an empty drawing beside it. If one of them is missing, that menu row stays hidden.
+Plexus Diagram, Roam Compass, and Roam Plexus notice each other. With Compass loaded, a card menu can open Compass on that page, and Compass can open the board that holds it. With Roam Plexus loaded, an image card can start an empty drawing beside it. If one of them is missing, that menu row stays hidden. Settings, Integrations shows which ones are detected (with versions) and has a switch for each.
 
 ## Shortcuts
 

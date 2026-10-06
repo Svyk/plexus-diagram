@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.21.0 — 2026-10-06
+
+Trails, landmarks, a timeline, strength and dust lenses, source chips, and an Integrations section in settings.
+
+- Trails: a named path through cards with a note at each stop. Add a card to a trail from its menu; Walk trail plays it stop by stop in present mode. A trail is a block under the board's collapsed `Trails` child, so `((trail))` pasted anywhere in Roam shows as a strip of stops you can click. The panel has a Trails tab.
+- Landmarks: make a card, sticky or section a landmark and it keeps a large glyph at every zoom, including the overview, and shows on the minimap. Walk the board tours landmarks left to right, then down, or along a trail.
+- Timeline in the Info tab: the daily pages that mention any card on the board, with a count per day; click a day to open it. Lay out by date can now place cards by the day they were first or last mentioned, not only by a date attribute.
+- Strength and Dust lenses (More menu). Strength draws a connection thicker when its two ends are referenced a lot, share other boards, and were edited recently; hover a line to see why. Dust dims cards untouched for 6 months, 1 year or 2 years. Both are views: nothing is written, and turning them off puts every line and card back.
+- Source chip: a highlight dragged from an `Articles/` or `Media Captures/` page shows the page title, and the author when the page has an `Author::` line. Click the chip to open the page in the sidebar. Renaming the author updates the chip.
+- Settings has an Integrations section: Better Tasks, Task Status Tags, Roam Plexus, Compass and the colour highlighter, each shown as detected (with its version) or not installed. It updates when one of them loads or unloads. Switches turn each integration off; with "Roam Plexus and Compass" off, Open in Compass is hidden and drawing cards stop asking Roam Plexus for thumbnails.
+- Kanban card titles no longer show the status tag, and lane counts have a space before them.
+- Fullscreen tabs drop boards that were deleted.
+
 ## 2.20.0 — 2026-10-06
 
 Statuses, journal, fullscreen tabs, touch, and a round of reliability work.

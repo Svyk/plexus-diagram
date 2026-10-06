@@ -1,5 +1,18 @@
 # Changelog
 
+## 2.18.0 — 2026-10-06
+
+PDF highlights closer to Heptabase (roadmap P27), page cards you can edit in place, and two speed and freshness fixes:
+
+- Open reader on a PDF card opens a reading pane beside the board instead of inside the card. The card stays a cover. Drag the pane's edge to resize it; on a narrow board it sits below.
+- The pane lists every highlight in that PDF with its colour, page, and note. Filter by colour, page, or text. Place puts one card on the board; a highlight already on the board pulses instead of being added twice. Drag a row onto the board for a card at that spot.
+- A highlight card's footer opens the pane at that highlight's page and flashes the card. The page holds after Roam restores the last page it showed.
+- A note under a highlight (a child block) shows on its card and follows edits.
+- Clicking into a page card edits it in place. The card keeps its size and look; the row you clicked gets the cursor; Escape returns to the same view.
+- A `((ref))` card follows edits to its source, including edits made while the card was off screen or the board was closed.
+- Graph links are drawn after the board's first paint, so opening a board feels faster.
+- The colour tooltip on a highlight now says what changes: the card and the list follow the tag, the mark inside the PDF keeps the colour Roam painted.
+
 ## 2.17.0 — 2026-10-06
 
 Feel instant (roadmap P26), after the claude.ai speed work:

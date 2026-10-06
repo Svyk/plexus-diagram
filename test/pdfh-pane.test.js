@@ -24,7 +24,7 @@ const SELF = "{{[[pdf]]: https://example.test/self.pdf}}";
 const REF = "{{[[pdf]]: https://example.test/ref.pdf}}";
 const TITLE = "Risk model.pdf";
 const TEXT = "beta passage";
-const TIP = "The card and the list follow the tag. The mark in the PDF changes when Roam's reader changes it. The page mark may stay yellow.";
+const TIP = "The card and the list follow the tag. The mark inside the PDF keeps the colour Roam painted.";
 
 const read = (rel) => readFileSync(new URL(rel, import.meta.url), "utf8");
 
@@ -476,7 +476,7 @@ test("the pane source adds no document key listener and no colour-icon click", (
   assert.match(css, /\.pxd-root\.pxd-root--read > \.pxd-viewport/);
   assert.match(css, /\.pxd-item--flash/);
   assert.equal(HIGHLIGHT_MARK_TIP, TIP);
-  assert.match(HIGHLIGHT_MARK_TIP, /may stay yellow/);
+  assert.match(HIGHLIGHT_MARK_TIP, /keeps the colour Roam painted/);
   assert.equal(HIGHLIGHT_FIELD, "Highlight colour");
   const byUid = new Map([
     ["a", ["h/green"]],

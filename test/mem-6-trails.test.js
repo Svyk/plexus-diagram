@@ -272,3 +272,23 @@ test("trails.css draws a dashed path and a transparent badge", () => {
   assert.match(css, /\.pxd-trail-badge\s*\{[^}]*background:\s*transparent/);
   assert.match(css, /\.pxd-root--dark \.pxd-trail-badge\s*\{[^}]*background:\s*transparent/);
 });
+
+test("moveStop down one place sends Roam order final+1 (Roam counts the moved block in place); same place writes nothing", async () => {
+  const { fake, session } = setup([card("c1", 0, 0), card("c2", 300, 0), card("c3", 0, 200)]);
+  await session.createTrail("Down", ["c1", "c2", "c3"]);
+  await fake.flush();
+  await sleep(20);
+  const before = session.board.trails[0].stops.map((s) => s.uid);
+  fake.clearLog();
+  await session.moveStop(before[0], 1);
+  await fake.flush();
+  const moves = fake.writesLog().filter((e) => e[0] === "move");
+  assert.equal(moves.length, 1);
+  assert.equal(moves[0][3], 2);
+  await sleep(20);
+  const now = session.board.trails[0].stops.map((s) => s.uid);
+  fake.clearLog();
+  await session.moveStop(now[1], 1);
+  await fake.flush();
+  assert.equal(fake.writesLog().filter((e) => e[0] === "move").length, 0);
+});

@@ -345,6 +345,8 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     const sig = `${active}|${trails.map((t) => `${t.uid}:${t.name}:${(t.stops || []).map((s) => `${s.uid}${s.ref}${s.note}`).join(",")}`).join(";")}`;
     if (sig === trailSig) return;
     trailSig = sig;
+    // POL-4. A repaint after Alt+arrow keeps keyboard focus on the same stop.
+    const focusedStop = trailsList.contains?.(doc.activeElement) ? doc.activeElement?.dataset?.stop || "" : "";
     trailsList.replaceChildren();
     if (!trails.length) {
       el("div", "pxd-panel__empty", trailsList, "No trails yet");
@@ -388,6 +390,9 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
         li.setAttribute("role", "button");
         li.setAttribute("aria-label", title || "Trail stop");
         if (stop.note) el("div", "pxd-trail__note", li, stop.note);
+        if (focusedStop && stop.uid === focusedStop) {
+          try { li.focus({ preventScroll: true }); } catch { li.focus?.(); }
+        }
       }
     }
   };

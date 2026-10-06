@@ -2140,12 +2140,18 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     moveStop(stopUid, finalIndex) {
       return txn((t) => {
         let parent = null;
+        let from = -1;
         for (const trail of board.trails || []) {
-          if ((trail.stops || []).some((s) => s.uid === stopUid)) { parent = trail.uid; break; }
+          const at = (trail.stops || []).findIndex((s) => s.uid === stopUid);
+          if (at >= 0) { parent = trail.uid; from = at; break; }
         }
         if (!parent) return;
         const index = Math.trunc(Number(finalIndex));
-        t.move(stopUid, parent, Number.isFinite(index) ? Math.max(0, index) : "last");
+        if (!Number.isFinite(index)) { t.move(stopUid, parent, "last"); return; }
+        const final = Math.max(0, index);
+        if (final === from) return;
+        // Roam counts a same-parent order with the moved block still in place: moving down needs one more.
+        t.move(stopUid, parent, final > from ? final + 1 : final);
       });
     },
 

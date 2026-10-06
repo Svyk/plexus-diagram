@@ -935,6 +935,37 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       return value;
     },
 
+    // Strings for many uids in one query: element-id parsing tries every "-" split of an id.
+    blockStrings(uids) {
+      const out = new Map();
+      const now = Date.now();
+      const missing = [];
+      for (const uid of uids || []) {
+        const id = String(uid ?? "");
+        if (!id || out.has(id)) continue;
+        const live = liveCached(id);
+        if (live && typeof live[":block/string"] === "string") { out.set(id, live[":block/string"]); continue; }
+        const hit = burstMemo.get(id);
+        if (hit && now - hit.at < BURST_MS) { out.set(id, hit.value); continue; }
+        missing.push(id);
+      }
+      if (!missing.length) return out;
+      let rows = [];
+      try {
+        const q = data.fast?.q ? data.fast.q.bind(data.fast) : data.q?.bind(data);
+        rows = q ? q("[:find ?u ?s :in $ [?u ...] :where [?b :block/uid ?u] [?b :block/string ?s]]", missing) || [] : [];
+      } catch { rows = []; }
+      const found = new Map();
+      for (const row of rows) if (Array.isArray(row) && typeof row[0] === "string") found.set(row[0], typeof row[1] === "string" ? row[1] : null);
+      for (const id of missing) {
+        const value = found.has(id) ? found.get(id) : null;
+        out.set(id, value);
+        burstMemo.set(id, { value, at: now });
+      }
+      if (burstMemo.size > 2000) burstMemo.clear();
+      return out;
+    },
+
     // Page uid that owns a block. Empty when the block is missing or is itself a page.
     // A warm descendant without its own :block/page shares the watched board's page.
     blockPageUid(uid) {

@@ -4791,6 +4791,101 @@ body.roam-body.dark .pxd-halo .pxd-halo__spark,
   font-size: 12px;
 }
 
+/* MEM-7. Glyph on a bordered disc. No fill, in either theme. Overview size is screen-constant. */
+
+.pxd-landmark {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  background: transparent;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.pxd-item--landmark.pxd-landmark--S > .pxd-landmark,
+.pxd-section--landmark.pxd-landmark--S > .pxd-landmark {
+  width: 48px;
+  height: 48px;
+  font-size: 26px;
+}
+
+.pxd-item--landmark.pxd-landmark--M > .pxd-landmark,
+.pxd-section--landmark.pxd-landmark--M > .pxd-landmark {
+  width: 72px;
+  height: 72px;
+  font-size: 36px;
+}
+
+.pxd-item--landmark.pxd-landmark--L > .pxd-landmark,
+.pxd-section--landmark.pxd-landmark--L > .pxd-landmark {
+  width: 96px;
+  height: 96px;
+  font-size: 48px;
+}
+
+.pxd-root--dark .pxd-landmark {
+  background: transparent;
+  border-color: currentColor;
+}
+
+/* Overview hides every card header. A landmark keeps its glyph and its title. */
+.pxd-root.pxd-lod-overview .pxd-item.pxd-item--card.pxd-item--landmark > .pxd-item__header,
+.pxd-root.pxd-lod-overview .pxd-section.pxd-section--landmark > .pxd-section__title {
+  display: flex;
+}
+
+.pxd-root.pxd-lod-overview .pxd-item--landmark,
+.pxd-root.pxd-lod-overview .pxd-section--landmark {
+  overflow: visible;
+}
+
+.pxd-root.pxd-lod-overview .pxd-landmark--S > .pxd-landmark {
+  width: calc(48px * var(--pxd-screen-px, 1));
+  height: calc(48px * var(--pxd-screen-px, 1));
+  font-size: calc(26px * var(--pxd-screen-px, 1));
+}
+
+.pxd-root.pxd-lod-overview .pxd-landmark--M > .pxd-landmark {
+  width: calc(72px * var(--pxd-screen-px, 1));
+  height: calc(72px * var(--pxd-screen-px, 1));
+  font-size: calc(36px * var(--pxd-screen-px, 1));
+}
+
+.pxd-root.pxd-lod-overview .pxd-landmark--L > .pxd-landmark {
+  width: calc(96px * var(--pxd-screen-px, 1));
+  height: calc(96px * var(--pxd-screen-px, 1));
+  font-size: calc(48px * var(--pxd-screen-px, 1));
+}
+
+.pxd-minimap__marks {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.pxd-minimap__mark {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 14px;
+  min-height: 14px;
+  padding: 0 2px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  background: transparent;
+  font-size: 10px;
+  line-height: 1;
+}
+
 /* MEM-3. Memory lane. Future cards fade. The outline is the fresh mark. */
 
 .pxd-root .pxd-memory {
@@ -7002,6 +7097,38 @@ body.roam-body.dark .pxd-resurface,
   color: #e6edf3;
 }
 
+/* HEP-4. Reading-page source chip. A border and a clear fill. Dark mode keeps the border and no tinted fill. */
+
+.pxd-chip.pxd-chip--source {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  flex: 0 0 auto;
+  width: fit-content;
+  max-width: 100%;
+  margin: 2px 0 4px;
+  padding: 0 6px;
+  border: 1px solid var(--pxd-border, #d0d7de);
+  border-radius: 999px;
+  background: transparent;
+  color: #1f2937;
+  font: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.bp3-dark .pxd-chip.pxd-chip--source,
+body.bt-theme-dark .pxd-chip.pxd-chip--source,
+.pxd-root--dark .pxd-chip.pxd-chip--source {
+  border: 1px solid var(--pxd-border, #3b4b58);
+  background: transparent;
+  color: #e6edf3;
+}
+
 /* TSK-3. Status glyphs are masks so they stay crisp at every zoom. status.css sorts before task.css,
    so a done checkbox's fill and checkmark in task.css win a specificity tie. Dark mode keeps the border
    and the glyph; the fill stays empty. The parent sets data-status and --pxd-status-* on the card. */
@@ -7241,6 +7368,13 @@ body.roam-body.dark .pxd-resurface,
   display: none;
 }
 
+/* TSK-5. The column count reads as a separate number, not glued to the status name. */
+.pxd-root .pxd-kanban__heading .pxd-kanban__count {
+  margin-left: 6px;
+  color: var(--pxd-muted);
+  font-weight: 400;
+}
+
 /* EK-2: sticky notes. A coloured header bar (drag handle, title, colour dot, minimize) over a body that is the live
    Roam block. Persistent: there is no close button; Delete and the menu remove it, and undo brings it back. */
 
@@ -7380,6 +7514,13 @@ body.roam-body.dark .pxd-resurface,
 .pxd-root.pxd-lod-map .pxd-item--sticky.pxd-item--min > .pxd-item__header,
 .pxd-root.pxd-lod-overview .pxd-item--sticky.pxd-item--min > .pxd-item__header {
   display: flex;
+}
+
+/* MEM-8. Dust dims the card. Same filter in light and dark: no tinted fill. */
+
+.pxd-root .pxd-item.pxd-item--dust {
+  opacity: 0.35;
+  filter: grayscale(1);
 }
 
 /* MEM-5. Suggestion lines are strokes only. The links menu uses a border, not a fill. */
@@ -7863,6 +8004,108 @@ body.roam-body.dark .pxd-root .pxd-suggest__line {
   font: inherit;
 }
 
+/* NAV-3. Daily-notes spine in the Info panel. Borders only, no tinted fills. */
+
+.pxd-root .pxd-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px 0 8px;
+  color: inherit;
+}
+
+.pxd-root .pxd-timeline__empty {
+  padding: 4px 8px;
+  color: var(--pxd-muted, #57606a);
+  font-size: 12px;
+}
+
+.pxd-root .pxd-timeline__year,
+.pxd-root .pxd-timeline__open,
+.pxd-root .pxd-timeline__show {
+  border: 1px solid var(--pxd-border, #d0d7de);
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.pxd-root .pxd-timeline__year {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 28px;
+  padding: 0 8px;
+  text-align: left;
+}
+
+.pxd-root .pxd-timeline__days {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 4px 0 0;
+}
+
+.pxd-root .pxd-timeline__days[hidden] {
+  display: none;
+}
+
+.pxd-root .pxd-timeline__day {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.pxd-root .pxd-timeline__open {
+  flex: 1;
+  min-width: 0;
+  height: 26px;
+  padding: 0 8px;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pxd-root .pxd-timeline__count {
+  flex: none;
+  color: var(--pxd-muted, #57606a);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.pxd-root .pxd-timeline__show {
+  flex: none;
+  height: 26px;
+  padding: 0 8px;
+  font-size: 12px;
+}
+
+.bp3-dark .pxd-root .pxd-timeline,
+body.bt-theme-dark .pxd-root .pxd-timeline,
+.rm-dark-theme .pxd-root .pxd-timeline,
+body.roam-body.dark .pxd-root .pxd-timeline {
+  border-color: #3b4b58;
+  color: #e6edf3;
+}
+
+.bp3-dark .pxd-root .pxd-timeline__year,
+.bp3-dark .pxd-root .pxd-timeline__open,
+.bp3-dark .pxd-root .pxd-timeline__show,
+body.bt-theme-dark .pxd-root .pxd-timeline__year,
+body.bt-theme-dark .pxd-root .pxd-timeline__open,
+body.bt-theme-dark .pxd-root .pxd-timeline__show,
+.rm-dark-theme .pxd-root .pxd-timeline__year,
+.rm-dark-theme .pxd-root .pxd-timeline__open,
+.rm-dark-theme .pxd-root .pxd-timeline__show,
+body.roam-body.dark .pxd-root .pxd-timeline__year,
+body.roam-body.dark .pxd-root .pxd-timeline__open,
+body.roam-body.dark .pxd-root .pxd-timeline__show {
+  border-color: #3b4b58;
+}
+
 /* PL-3: the shared hover tooltip. One element in .pxd-root, screen space. Light: raised surface. Dark: the border carries it. */
 
 .pxd-root .pxd-tooltip.pxd-chrome {
@@ -7933,6 +8176,104 @@ body.roam-body.dark .pxd-root .pxd-tooltip.pxd-chrome,
   margin-top: 3px;
   color: var(--pxd-muted);
   font-size: 11px;
+}
+
+/* MEM-6. The dashed path is decoration, not a connection. Badges and the inline strip carry no fill. */
+
+.pxd-trail {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-dasharray: 6 5;
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.pxd-root--dark .pxd-trail {
+  opacity: 0.75;
+}
+
+.pxd-trail-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 3;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  background: transparent;
+  font-size: 11px;
+  line-height: 14px;
+  text-align: center;
+  pointer-events: none;
+}
+
+.pxd-root--dark .pxd-trail-badge {
+  background: transparent;
+}
+
+.pxd-panel__pane--trails {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.pxd-trails__bar {
+  display: flex;
+  gap: 6px;
+  padding: 8px;
+}
+
+.pxd-trails__list {
+  overflow: auto;
+  padding: 0 8px 8px;
+}
+
+.pxd-trail-row {
+  margin: 0 0 10px;
+}
+
+.pxd-trail-row--on > .pxd-trail__head .pxd-trail__name {
+  font-weight: 600;
+}
+
+.pxd-trail__head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.pxd-trail__stops {
+  margin: 4px 0 0;
+  padding: 0 0 0 18px;
+}
+
+.pxd-trail__stop {
+  cursor: grab;
+}
+
+.pxd-trail-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin: 4px 0;
+}
+
+.pxd-trail-strip__arrow {
+  opacity: 0.6;
+}
+
+.pxd-trail-strip__stop,
+.pxd-trail-strip__walk {
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  background: transparent;
+  padding: 2px 8px;
+  cursor: pointer;
 }
 
 /* MEM-2. Why popover. Border carries the edge. Height stays auto on pxd-root. */

@@ -162,3 +162,36 @@ test("MEM-8: dust dims an untouched card, leaves a recent one, and clear restore
   applyDust([oldCard], new Map([["old", 200 * DAY]]), "nope");
   assert.equal(oldCard.classList.contains("pxd-item--dust"), false);
 });
+
+test("MEM-8: an SVG tip with read-only className does not stop the next edge painting", () => {
+  const svgTitle = () => {
+    const attrs = new Map();
+    const node = { textContent: "", classList: {}, setAttribute: (k, v) => attrs.set(k, String(v)), getAttribute: (k) => attrs.get(k) ?? null };
+    Object.defineProperty(node, "className", { get: () => ({ baseVal: attrs.get("class") || "" }) });
+    return node;
+  };
+  const doc = { createElement: svgTitle, createElementNS: () => svgTitle() };
+  const edge = (uid) => {
+    const attrs = new Map([["data-uid", uid]]);
+    const kids = [];
+    const line = { style: {}, setAttribute() {}, hasAttribute: () => false };
+    const g = {
+      ownerDocument: doc,
+      style: {},
+      setAttribute: (k, v) => attrs.set(k, String(v)),
+      getAttribute: (k) => attrs.get(k) ?? null,
+      hasAttribute: (k) => attrs.has(k),
+      querySelector: (sel) => (sel === ".pxd-edge__line" ? line : kids.find((k) => k.getAttribute("class") === sel.slice(1)) || null),
+      append: (n) => kids.push(n),
+    };
+    return { g, line };
+  };
+  const a = edge("a");
+  const b = edge("b");
+  applyStrength([a.g, b.g], new Map([
+    ["a", { refs: 12, shared: 2, editTime: NOW, now: NOW }],
+    ["b", { refs: 0, shared: 0, now: NOW }],
+  ]));
+  assert.equal(parseFloat(b.line.style.strokeWidth), 1);
+  assert.ok(b.g.getAttribute("title"));
+});

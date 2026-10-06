@@ -893,7 +893,11 @@ function normalizeItemLayout(plexus) {
     titleColor: section2 ? styleColor(p.titleColor) : void 0,
     titleFill: section2 ? styleColor(p.titleFill) : void 0,
     areaFill: section2 ? styleColor(p.areaFill) : void 0,
-    shape: type === "text" && SHAPES.includes(p.shape) ? p.shape : void 0
+    shape: type === "text" && SHAPES.includes(p.shape) ? p.shape : void 0,
+    landmark: p.landmark === true ? true : void 0,
+    glyph: p.landmark === true ? clampGlyph(p.glyph) || void 0 : void 0,
+    // M is the detail default and is omitted. S and L are the only stored sizes. landmark:false is never stored.
+    size: p.landmark === true && (p.size === "S" || p.size === "L") ? p.size : void 0
   };
 }
 function normalizeSectionDefaults(raw) {
@@ -916,6 +920,11 @@ function lookForNewString(string, preferred) {
   return preferred === "card" ? "card" : "block";
 }
 var round12 = (n2) => Math.round(n2 * 10) / 10;
+function clampGlyph(v) {
+  const chars = Array.from(String(v ?? "").trim());
+  if (!chars.length) return "";
+  return chars.slice(0, 2).join("");
+}
 function serializeItemLayout(layout) {
   const l = isObject(layout) ? layout : {};
   const out = {};
@@ -958,6 +967,12 @@ function serializeItemLayout(layout) {
   if (BOARD_PATTERNS.includes(l.bg)) out.bg = l.bg;
   const tone = boardColor(l.bgColor);
   if (tone) out.bgColor = tone;
+  if (l.landmark === true) {
+    out.landmark = true;
+    const glyph = clampGlyph(l.glyph);
+    if (glyph) out.glyph = glyph;
+    if (l.size === "S" || l.size === "L") out.size = l.size;
+  }
   return out;
 }
 function withBoardMarker(plexus, on) {
@@ -1386,6 +1401,141 @@ function planRestore(entries, board2) {
   return chunks;
 }
 
+// src/model/trails.js
+var TRAIL_RE = /^\{\{\[\[plexus-trail\]\]\}\}\s*([\s\S]*)$/;
+var STOP_RE = /^\(\(([\w-]+)\)\)$/;
+function sortedChildren(node2) {
+  const kids = Array.isArray(node2?.[":block/children"]) ? node2[":block/children"] : [];
+  return kids.map((c, i) => ({ c, i })).sort((a, b) => (a.c[":block/order"] ?? a.i) - (b.c[":block/order"] ?? b.i) || a.i - b.i).map(({ c }) => c);
+}
+function plexusType(node2) {
+  const props = node2?.[":block/props"];
+  if (!props || typeof props !== "object") return void 0;
+  const plexus = props.plexus ?? props[":plexus"];
+  return plexus && typeof plexus === "object" ? plexus.type : void 0;
+}
+function trailString(name) {
+  const n2 = String(name ?? "").replace(/\s+/g, " ").trim();
+  return `{{[[plexus-trail]]}} ${n2 || "Trail"}`;
+}
+function parseTrailName(string) {
+  const m = TRAIL_RE.exec(String(string ?? "").trim());
+  return m ? m[1].trim() : "";
+}
+function parseStopRef(string) {
+  const m = STOP_RE.exec(String(string ?? "").trim());
+  return m ? m[1] : "";
+}
+function parseTrailBlock(node2) {
+  if (!node2 || typeof node2 !== "object") return null;
+  const string = node2[":block/string"] ?? node2.string ?? "";
+  const macro = TRAIL_RE.test(String(string).trim());
+  if (plexusType(node2) !== "trail" && !macro) return null;
+  const stops = [];
+  for (const child of sortedChildren(node2)) {
+    const ref = parseStopRef(child[":block/string"] ?? child.string ?? "");
+    if (!ref) continue;
+    const noteNode = sortedChildren(child)[0];
+    stops.push({
+      uid: child[":block/uid"] || child.uid,
+      ref,
+      note: noteNode ? String(noteNode[":block/string"] ?? noteNode.string ?? "") : "",
+      noteUid: noteNode?.[":block/uid"] || noteNode?.uid || ""
+    });
+  }
+  return {
+    uid: node2[":block/uid"] || node2.uid,
+    name: parseTrailName(string) || "Trail",
+    stops
+  };
+}
+function parseTrails(containerNode) {
+  if (!containerNode) return [];
+  const out = [];
+  for (const child of sortedChildren(containerNode)) {
+    const trail = parseTrailBlock(child);
+    if (trail) out.push(trail);
+  }
+  return out;
+}
+function trailStrip(stops, titleOf2, limit = 8) {
+  const list = Array.isArray(stops) ? stops : [];
+  const cap4 = Number.isFinite(limit) ? Math.max(0, limit) : 8;
+  const out = [];
+  for (const stop2 of list) {
+    if (out.length >= cap4) break;
+    const uid = stop2?.ref || stop2?.uid || "";
+    if (!uid) continue;
+    let title = "";
+    if (typeof titleOf2 === "function") {
+      try {
+        title = titleOf2(uid) || "";
+      } catch {
+        title = "";
+      }
+    }
+    if (!title) title = stop2?.title || uid;
+    out.push({ uid, title: String(title), index: out.length + 1 });
+  }
+  return out;
+}
+function trailBadges(trail) {
+  const map = /* @__PURE__ */ new Map();
+  let n2 = 0;
+  for (const stop2 of trail?.stops || []) {
+    n2 += 1;
+    const ref = stop2?.ref;
+    if (!ref || map.has(ref)) continue;
+    map.set(ref, n2);
+  }
+  return map;
+}
+function trailPoints(stops, rects) {
+  const out = [];
+  for (const stop2 of stops || []) {
+    const r = rects?.get?.(stop2?.ref);
+    if (!r) continue;
+    out.push({ uid: stop2.ref, x: r.x + r.w / 2, y: r.y + r.h / 2 });
+  }
+  return out;
+}
+function renderTrailStrip(doc, parent, stops, { onStop, onWalk } = {}) {
+  if (!parent) return parent;
+  parent.replaceChildren?.();
+  parent.className = "pxd-trail-strip";
+  const list = Array.isArray(stops) ? stops : [];
+  list.forEach((stop2, i) => {
+    if (i) {
+      const arrow2 = doc.createElement("span");
+      arrow2.className = "pxd-trail-strip__arrow";
+      arrow2.textContent = "→";
+      parent.append(arrow2);
+    }
+    const btn = doc.createElement("button");
+    btn.type = "button";
+    btn.className = "pxd-trail-strip__stop";
+    if (stop2?.uid) btn.dataset.uid = stop2.uid;
+    btn.textContent = stop2?.title || "";
+    btn.addEventListener("click", (event) => {
+      event.preventDefault?.();
+      event.stopPropagation?.();
+      onStop?.(stop2);
+    });
+    parent.append(btn);
+  });
+  const walk2 = doc.createElement("button");
+  walk2.type = "button";
+  walk2.className = "pxd-trail-strip__walk";
+  walk2.textContent = "Walk";
+  walk2.addEventListener("click", (event) => {
+    event.preventDefault?.();
+    event.stopPropagation?.();
+    onWalk?.();
+  });
+  parent.append(walk2);
+  return parent;
+}
+
 // src/model/highlight.js
 var HIGHLIGHT_COLORS = ["yellow", "green", "blue", "pink", "purple", "orange", "red"];
 var COLOR_TOKEN = /#h\/([A-Za-z]+)/;
@@ -1501,23 +1651,23 @@ function orderedChildren(children) {
   const list = Array.isArray(children) ? children : [];
   const rows = [];
   for (let i = 0; i < list.length; i += 1) {
-    const row3 = childFields(list[i], i);
-    if (row3) rows.push(row3);
+    const row4 = childFields(list[i], i);
+    if (row4) rows.push(row4);
   }
   rows.sort((a, b) => a.order - b.order || a.index - b.index);
   return rows;
 }
 function highlightNote(children) {
-  for (const row3 of orderedChildren(children)) {
-    if (highlightRecord(row3.props)) continue;
-    return row3.string;
+  for (const row4 of orderedChildren(children)) {
+    if (highlightRecord(row4.props)) continue;
+    return row4.string;
   }
   return "";
 }
 function noteActionPlan(children) {
-  for (const row3 of orderedChildren(children)) {
-    if (highlightRecord(row3.props)) continue;
-    return { kind: "focus", uid: row3.uid };
+  for (const row4 of orderedChildren(children)) {
+    if (highlightRecord(row4.props)) continue;
+    return { kind: "focus", uid: row4.uid };
   }
   return { kind: "create" };
 }
@@ -1588,7 +1738,7 @@ function viewsOf(boardKids, regionsUid) {
   const container = regionsUid ? boardKids.find((child) => child[":block/uid"] === regionsUid) : boardKids.find((child) => isContainerString(child[":block/string"] ?? ""));
   if (!container) return [];
   const out = [];
-  for (const child of sortedChildren(container)) {
+  for (const child of sortedChildren2(container)) {
     const region = parseRegion(child[":block/string"] ?? "");
     if (!region || region.kind !== "view" || region.supported !== true) continue;
     out.push({
@@ -1600,7 +1750,7 @@ function viewsOf(boardKids, regionsUid) {
   }
   return out;
 }
-function sortedChildren(node2) {
+function sortedChildren2(node2) {
   const kids = Array.isArray(node2?.[":block/children"]) ? node2[":block/children"] : [];
   return kids.map((c, i) => ({ c, i })).sort((a, b) => (a.c[":block/order"] ?? a.i) - (b.c[":block/order"] ?? b.i) || a.i - b.i).map(({ c }) => c);
 }
@@ -1640,8 +1790,8 @@ function autoPlace(siblings) {
   let colW = 0;
   let y = startY;
   loose.forEach((item, i) => {
-    const row3 = i % AUTO_ROWS;
-    if (i > 0 && row3 === 0) {
+    const row4 = i % AUTO_ROWS;
+    if (i > 0 && row4 === 0) {
       colX += colW + AUTO_GAP;
       colW = 0;
       y = startY;
@@ -1695,9 +1845,10 @@ function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, knownHighli
   const preorder = [];
   let containerUid = null;
   let containerIndex = -1;
-  const boardKids = sortedChildren(pulled);
+  const boardKids = sortedChildren2(pulled);
   let snapshotsUid = null;
   let regionsUid = null;
+  let trailsUid = null;
   boardKids.forEach((child, index) => {
     const marker = readPlexus(child[":block/props"])?.type;
     if (containerUid === null && marker === "edges") {
@@ -1706,17 +1857,18 @@ function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, knownHighli
     }
     if (snapshotsUid === null && marker === "snapshots") snapshotsUid = child[":block/uid"];
     if (regionsUid === null && marker === "regions") regionsUid = child[":block/uid"];
+    if (trailsUid === null && marker === "trails") trailsUid = child[":block/uid"];
   });
   const sectionDefaults = normalizeSectionDefaults(plexus?.defaults?.section);
   const walk2 = (children, parentUid, depth) => {
     const siblings = [];
     for (const child of children) {
       const cuid = child[":block/uid"];
-      if (cuid === containerUid || cuid === snapshotsUid || cuid === regionsUid) continue;
+      if (cuid === containerUid || cuid === snapshotsUid || cuid === regionsUid || cuid === trailsUid) continue;
       const cplexus = readPlexus(child[":block/props"]);
       const cstring = child[":block/string"] ?? "";
       const heading = child[":block/heading"] || 0;
-      const kids = sortedChildren(child);
+      const kids = sortedChildren2(child);
       const layout = normalizeItemLayout(cplexus);
       let type = layout.type;
       if (!cplexus && heading > 0 && kids.length) type = "section";
@@ -1819,6 +1971,7 @@ function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, knownHighli
         target,
         ...regionDrawing ? { regionDrawing } : {},
         ...highlight ? { highlight } : {},
+        ...layout.landmark ? { landmark: true, glyph: layout.glyph || "", size: layout.size === "S" || layout.size === "L" ? layout.size : "M" } : {},
         enhanced: kind === "board" && (cplexus?.v === 2 || typeof autoBoard === "function" && autoBoard(cuid, cplexus, kids) === true),
         members: [],
         content: type === "section" ? [] : kids
@@ -1840,7 +1993,7 @@ function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, knownHighli
   const order = [...sections, ...rest];
   if (containerUid !== null) {
     const container = boardKids[containerIndex];
-    for (const e2 of sortedChildren(container)) {
+    for (const e2 of sortedChildren2(container)) {
       const eplexus = readPlexus(e2[":block/props"]);
       if (eplexus?.type !== "edge") continue;
       const euid = e2[":block/uid"];
@@ -1848,7 +2001,7 @@ function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, knownHighli
       const n2 = normalizeEdge(eplexus);
       const a = items.get(n2.from);
       const b = items.get(n2.to);
-      const why = readWhy(sortedChildren(e2));
+      const why = readWhy(sortedChildren2(e2));
       edges.set(euid, {
         uid: euid,
         string: estring,
@@ -1856,7 +2009,7 @@ function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, knownHighli
         label: parseEdgeLabel(estring, n2.fromBlock ? `((${n2.fromBlock}))` : a ? semanticRef(a) : "", n2.toBlock ? `((${n2.toBlock}))` : b ? semanticRef(b) : ""),
         why: why?.text || "",
         whyUid: why?.uid || "",
-        whyKids: why ? (sortedChildren(e2).find((c) => c[":block/uid"] === why.uid)?.[":block/children"] || []).length : 0,
+        whyKids: why ? (sortedChildren2(e2).find((c) => c[":block/uid"] === why.uid)?.[":block/children"] || []).length : 0,
         valid: Boolean(a && b)
       });
     }
@@ -1879,8 +2032,10 @@ function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, knownHighli
     containerUid,
     containerIndex,
     snapshotsUid,
-    snapshots: listFromNodes(sortedChildren(snapshotsUid ? boardKids.find((child) => child[":block/uid"] === snapshotsUid) : null)),
+    snapshots: listFromNodes(sortedChildren2(snapshotsUid ? boardKids.find((child) => child[":block/uid"] === snapshotsUid) : null)),
     regionsUid,
+    trailsUid,
+    trails: parseTrails(trailsUid ? boardKids.find((child) => child[":block/uid"] === trailsUid) : null),
     views: viewsOf(boardKids, regionsUid),
     childCount: boardKids.length,
     edges
@@ -2318,7 +2473,7 @@ function diffBoards(prev, next) {
     const { content, ...rest } = item;
     return rest;
   };
-  let structural = prev.containerUid !== next.containerUid || prev.items.size !== next.items.size || prev.edges.size !== next.edges.size || !same2(prev.roots, next.roots) || !same2(prev.order, next.order) || !same2(prev.views, next.views);
+  let structural = prev.containerUid !== next.containerUid || prev.items.size !== next.items.size || prev.edges.size !== next.edges.size || !same2(prev.roots, next.roots) || !same2(prev.order, next.order) || !same2(prev.views, next.views) || !same2(prev.trails || [], next.trails || []);
   const dirty = /* @__PURE__ */ new Set();
   if (prev.string !== next.string || !same2(prev.plexus, next.plexus)) dirty.add(next.uid);
   for (const [uid, item] of next.items) {
@@ -2534,9 +2689,9 @@ function gridPlace(items, origin, gap, columns) {
   const rowH = [];
   items.forEach((r, i) => {
     const c = i % cols;
-    const row3 = Math.floor(i / cols);
+    const row4 = Math.floor(i / cols);
     colW[c] = Math.max(colW[c], r.w);
-    rowH[row3] = Math.max(rowH[row3] ?? 0, r.h);
+    rowH[row4] = Math.max(rowH[row4] ?? 0, r.h);
   });
   const colX = [];
   let x = origin.x;
@@ -2546,9 +2701,9 @@ function gridPlace(items, origin, gap, columns) {
   }
   const rowY = [];
   let y = origin.y;
-  for (let row3 = 0; row3 < rowH.length; row3++) {
-    rowY[row3] = y;
-    y += rowH[row3] + gap;
+  for (let row4 = 0; row4 < rowH.length; row4++) {
+    rowY[row4] = y;
+    y += rowH[row4] + gap;
   }
   return items.map((r, i) => ({ uid: r.uid, x: norm(colX[i % cols]), y: norm(rowY[Math.floor(i / cols)]) }));
 }
@@ -2651,8 +2806,8 @@ function subtree(node2, sizeOf, levelGap, sibGap) {
     return o;
   });
   const childrenExtent = cursor - sibGap;
-  const centerOf3 = (i) => offs[i] + kids[i].s.nodeB + kids[i].size.bb / 2;
-  const parentB = (centerOf3(0) + centerOf3(kids.length - 1)) / 2 - bb / 2;
+  const centerOf4 = (i) => offs[i] + kids[i].s.nodeB + kids[i].size.bb / 2;
+  const parentB = (centerOf4(0) + centerOf4(kids.length - 1)) / 2 - bb / 2;
   const min = Math.min(0, parentB);
   const max = Math.max(childrenExtent, parentB + bb);
   const places = [{ uid: node2.uid, d: 0, b: parentB - min }];
@@ -2899,15 +3054,15 @@ function calendarLayout(cards, { year, month, x0 = 16, y0 = 48, col = 28 } = {})
   }));
 }
 function timelineAxis(cards, { width = 800, resolve } = {}) {
-  const dated = (cards || []).map((card2) => ({ card: card2, t: parseCardDate(card2) })).filter((row3) => row3.t != null).sort((a, b) => a.t - b.t || String(a.card.uid).localeCompare(String(b.card.uid)));
+  const dated = (cards || []).map((card2) => ({ card: card2, t: parseCardDate(card2) })).filter((row4) => row4.t != null).sort((a, b) => a.t - b.t || String(a.card.uid).localeCompare(String(b.card.uid)));
   if (!dated.length) return [];
   const min = dated[0].t;
   const span = dated[dated.length - 1].t - min || 1;
-  return dated.map((row3) => ({
-    uid: row3.card.uid,
-    title: cardLabel(row3.card, resolve),
-    t: row3.t,
-    x: (row3.t - min) / span * width
+  return dated.map((row4) => ({
+    uid: row4.card.uid,
+    title: cardLabel(row4.card, resolve),
+    t: row4.t,
+    x: (row4.t - min) / span * width
   }));
 }
 function graphLayout(nodes, links, { iterations = 12 } = {}) {
@@ -3081,6 +3236,279 @@ function versionPeekRequest(api) {
   if (typeof api.block?.history === "function") return "block.history";
   if (typeof api.ui?.blockHistory === "function") return "ui.blockHistory";
   return null;
+}
+
+// src/model/resurface.js
+var DEFAULT_INTERVALS = Object.freeze([7, 30, 90, 365]);
+var RESURFACE_CAP = 6;
+var DAY2 = 864e5;
+var MONTHS3 = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+function pageTitleToDate(title) {
+  const match = String(title ?? "").trim().match(/^([A-Z][a-z]+) (\d{1,2})(?:st|nd|rd|th), (\d{4})$/);
+  if (!match) return null;
+  const month = MONTHS3.indexOf(match[1]);
+  const day = Number(match[2]);
+  const year = Number(match[3]);
+  if (month < 0) return null;
+  const date = new Date(year, month, day);
+  if (date.getFullYear() !== year || date.getMonth() !== month || date.getDate() !== day) return null;
+  return date.getTime();
+}
+function parseIntervals(text2) {
+  const nums = String(text2 ?? "").split(",").map((part) => Number(part.trim())).filter((n2) => Number.isFinite(n2) && n2 > 0);
+  return nums.length ? nums : [...DEFAULT_INTERVALS];
+}
+function intervalLabel(days) {
+  if (days === 7) return "1 week ago";
+  if (days === 30) return "1 month ago";
+  if (days === 90) return "3 months ago";
+  if (days === 365) return "1 year ago";
+  if (days % 365 === 0) return `${days / 365} years ago`;
+  return `${days} days ago`;
+}
+function matchResurface(rows, pageDate, intervals, { slack = DAY2, cap: cap4 = RESURFACE_CAP } = {}) {
+  const page = pageDate instanceof Date ? pageDate.getTime() : Number(pageDate);
+  if (!Number.isFinite(page)) return [];
+  const tabs = [];
+  for (const days of intervals || []) {
+    if (!Number.isFinite(days) || days <= 0) continue;
+    const target = page - days * DAY2;
+    const hits = [];
+    for (const row4 of rows || []) {
+      if (!row4?.uid || !Number.isFinite(row4.time)) continue;
+      const delta = Math.abs(row4.time - target);
+      if (delta <= slack) hits.push({ ...row4, delta });
+    }
+    hits.sort((a, b) => a.delta - b.delta || String(a.uid).localeCompare(String(b.uid)));
+    if (hits.length) tabs.push({ days, label: intervalLabel(days), items: hits.slice(0, cap4) });
+  }
+  return tabs;
+}
+
+// src/model/timeline.js
+var LANE_STEP_MS = 700;
+var WEEK = 7 * 864e5;
+function timeIndex(items) {
+  const events = [];
+  for (const item of items || []) {
+    if (!item?.uid || !Number.isFinite(item.time)) continue;
+    events.push({ uid: item.uid, time: item.time, kind: item.kind || "card" });
+  }
+  events.sort((a, b) => a.time - b.time || String(a.uid).localeCompare(String(b.uid)));
+  return events;
+}
+function monthSteps(start, end) {
+  const a = new Date(start);
+  const b = new Date(end);
+  if (!Number.isFinite(a.getTime()) || !Number.isFinite(b.getTime()) || b.getTime() <= a.getTime()) {
+    return [Number.isFinite(a.getTime()) ? a.getTime() : Date.now()];
+  }
+  const steps = [a.getTime()];
+  let year = a.getFullYear();
+  let month = a.getMonth();
+  const endT = b.getTime();
+  for (let i = 0; i < 600; i += 1) {
+    month += 1;
+    if (month > 11) {
+      month = 0;
+      year += 1;
+    }
+    const t = new Date(year, month, 1).getTime();
+    if (t >= endT) {
+      steps.push(endT);
+      break;
+    }
+    steps.push(t);
+  }
+  return steps;
+}
+function laneSets(index, t) {
+  const future = [];
+  const fresh = [];
+  for (const event of index || []) {
+    if (event.time > t) future.push(event.uid);
+    else if (t - event.time <= WEEK) fresh.push(event.uid);
+  }
+  return { future, fresh };
+}
+function edgeHidden(edges, itemFuture, t) {
+  const late = new Set(itemFuture || []);
+  const out = [];
+  for (const edge of edges || []) {
+    if (!edge?.uid) continue;
+    const own = Number.isFinite(edge.time) && edge.time > t;
+    if (own || late.has(edge.from) || late.has(edge.to)) out.push(edge.uid);
+  }
+  return out;
+}
+function previewLayout(items) {
+  const layout = /* @__PURE__ */ new Map();
+  for (const item of items || []) {
+    if (!item?.uid || !Number.isFinite(item.x) || !Number.isFinite(item.y)) continue;
+    layout.set(item.uid, { x: item.x, y: item.y, w: item.w, h: item.h });
+  }
+  return { layout, writes: 0 };
+}
+var TIMELINE_DAY_CAP = 365;
+var DAILY_TITLE_PATTERN = "^(January|February|March|April|May|June|July|August|September|October|November|December) \\d{1,2}(?:st|nd|rd|th), \\d{4}$";
+var TIMELINE_QUERY = "[:find ?card ?ref ?title ?page ?time :in $ [?card ...] ?pat :where [?c :block/uid ?card] [?b :block/refs ?c] [?b :block/uid ?ref] [?b :block/page ?pg] [?pg :node/title ?title] [?pg :block/uid ?page] [(get-else $ ?b :create/time 0) ?time] [(re-pattern ?pat) ?re] [(re-find ?re ?title)]]";
+function timelineQuery(uids) {
+  const ids = [];
+  const seen = /* @__PURE__ */ new Set();
+  for (const uid of uids || []) {
+    const id = String(uid ?? "").trim();
+    if (!id || seen.has(id)) continue;
+    seen.add(id);
+    ids.push(id);
+  }
+  return { query: TIMELINE_QUERY, args: [ids, DAILY_TITLE_PATTERN] };
+}
+function asRow(row4) {
+  if (!row4) return null;
+  if (Array.isArray(row4)) {
+    const cardUid2 = row4[0] == null ? "" : String(row4[0]).trim();
+    if (!cardUid2) return null;
+    return {
+      cardUid: cardUid2,
+      blockUid: row4[1] == null ? "" : String(row4[1]),
+      pageTitle: row4[2] == null ? "" : String(row4[2]),
+      pageUid: row4[3] == null ? "" : String(row4[3]),
+      time: Number.isFinite(row4[4]) ? row4[4] : null
+    };
+  }
+  const cardUid = String(row4.cardUid ?? row4.uid ?? row4.card ?? "").trim();
+  if (!cardUid) return null;
+  return {
+    cardUid,
+    blockUid: row4.blockUid == null ? "" : String(row4.blockUid),
+    pageTitle: String(row4.pageTitle ?? row4.title ?? ""),
+    pageUid: row4.pageUid == null ? "" : String(row4.pageUid),
+    time: Number.isFinite(row4.time) ? row4.time : null
+  };
+}
+function timelineRows(rows) {
+  const out = [];
+  for (const row4 of rows || []) {
+    const next = asRow(row4);
+    if (next) out.push(next);
+  }
+  return out;
+}
+function groupTimeline(rows) {
+  const byDate = /* @__PURE__ */ new Map();
+  for (const row4 of timelineRows(rows)) {
+    const date = pageTitleToDate(row4.pageTitle);
+    if (date == null) continue;
+    let day = byDate.get(date);
+    if (!day) {
+      day = {
+        date,
+        title: row4.pageTitle.trim(),
+        pageUid: row4.pageUid,
+        count: 0,
+        cardUids: /* @__PURE__ */ new Set(),
+        time: Number.isFinite(row4.time) ? row4.time : -Infinity
+      };
+      byDate.set(date, day);
+    }
+    day.count += 1;
+    day.cardUids.add(row4.cardUid);
+    const stamp2 = Number.isFinite(row4.time) ? row4.time : -Infinity;
+    if (row4.pageUid && stamp2 >= day.time) {
+      day.pageUid = row4.pageUid;
+      day.title = row4.pageTitle.trim();
+      day.time = stamp2;
+    }
+  }
+  const days = [...byDate.values()].sort((a, b) => b.date - a.date || a.title.localeCompare(b.title));
+  const years = [];
+  for (const day of days.slice(0, TIMELINE_DAY_CAP)) {
+    const year = new Date(day.date).getFullYear();
+    let bucket = years[years.length - 1];
+    if (!bucket || bucket.year !== year) {
+      bucket = { year, days: [] };
+      years.push(bucket);
+    }
+    bucket.days.push({
+      date: day.date,
+      title: day.title,
+      pageUid: day.pageUid,
+      count: day.count,
+      cardUids: day.cardUids
+    });
+  }
+  return years;
+}
+function mentionMap(rows, which) {
+  const map = /* @__PURE__ */ new Map();
+  for (const row4 of timelineRows(rows)) {
+    const date = pageTitleToDate(row4.pageTitle);
+    if (date == null) continue;
+    const prev = map.get(row4.cardUid);
+    if (prev == null) map.set(row4.cardUid, date);
+    else map.set(row4.cardUid, which === "first" ? Math.min(prev, date) : Math.max(prev, date));
+  }
+  return map;
+}
+function firstMention(rows) {
+  return mentionMap(rows, "first");
+}
+function lastMention(rows) {
+  return mentionMap(rows, "last");
+}
+function isoDate(text2) {
+  const match = /(\d{4})-(\d{2})-(\d{2})/.exec(String(text2 ?? ""));
+  if (!match) return null;
+  const year = Number(match[1]);
+  const month = Number(match[2]) - 1;
+  const day = Number(match[3]);
+  const date = new Date(year, month, day);
+  if (date.getFullYear() !== year || date.getMonth() !== month || date.getDate() !== day) return null;
+  return date.getTime();
+}
+function cleanAttr(value) {
+  return String(value ?? "").trim().replace(/^\[\[/, "").replace(/\]\]$/, "").trim();
+}
+function blobsOf(item) {
+  const blobs = [];
+  if (item?.string) blobs.push(String(item.string));
+  if (item?.title) blobs.push(String(item.title));
+  for (const kid of item?.content || item?.children || []) {
+    const text2 = kid?.[":block/string"] ?? kid?.string ?? "";
+    if (text2) blobs.push(String(text2));
+  }
+  return blobs;
+}
+function attributeDate(item) {
+  if (!item) return null;
+  if (Number.isFinite(item.date)) return item.date;
+  if (Number.isFinite(item.attributeDate)) return item.attributeDate;
+  const titled = pageTitleToDate(item.title);
+  if (titled != null) return titled;
+  for (const blob of blobsOf(item)) {
+    const attr = /(?:^|\n)\s*(?:Date|Due)::\s*([^\n]+)/i.exec(blob);
+    if (!attr) continue;
+    const value = cleanAttr(attr[1]);
+    const daily = pageTitleToDate(value);
+    if (daily != null) return daily;
+    const iso2 = isoDate(value);
+    if (iso2 != null) return iso2;
+  }
+  for (const blob of blobsOf(item)) {
+    const iso2 = isoDate(blob);
+    if (iso2 != null) return iso2;
+  }
+  return null;
+}
+function dateSource(item, rows, mode) {
+  const kind = String(mode ?? "").trim().toLowerCase();
+  if (kind === "attribute" || kind === "date attribute") return attributeDate(item);
+  const which = kind === "first" || kind === "first mention" ? "first" : kind === "last" || kind === "last mention" ? "last" : "";
+  if (!which) return null;
+  const uid = String(item?.uid ?? item?.cardUid ?? "").trim();
+  if (!uid) return null;
+  const map = which === "first" ? firstMention(rows) : lastMention(rows);
+  return map.get(uid) ?? null;
 }
 
 // src/model/links.js
@@ -3474,12 +3902,12 @@ function locateShowTarget(uid, placements) {
   if (!id) return null;
   const hits = [];
   const seen = /* @__PURE__ */ new Set();
-  for (const row3 of placements || []) {
-    const boardUid = String(row3?.boardUid ?? "").trim();
-    const cardUid = String(row3?.cardUid ?? "").trim();
-    const pageUid = String(row3?.pageUid ?? "").trim();
+  for (const row4 of placements || []) {
+    const boardUid = String(row4?.boardUid ?? "").trim();
+    const cardUid = String(row4?.cardUid ?? "").trim();
+    const pageUid = String(row4?.pageUid ?? "").trim();
     if (!boardUid || !cardUid) continue;
-    const refs = Array.isArray(row3.refUids) ? row3.refUids.map((r) => String(r)) : [];
+    const refs = Array.isArray(row4.refUids) ? row4.refUids.map((r) => String(r)) : [];
     if (cardUid !== id && !refs.includes(id)) continue;
     const key = `${boardUid}
 ${cardUid}`;
@@ -3559,14 +3987,14 @@ function boardsFromRows(rows, { limit = 20 } = {}) {
   const seen = /* @__PURE__ */ new Set();
   const out = [];
   const cap4 = Number.isFinite(limit) && limit > 0 ? limit : 20;
-  for (const row3 of rows || []) {
-    if (!row3?.uid || seen.has(row3.uid)) continue;
-    if (row3.v != null && row3.v !== 2) continue;
-    seen.add(row3.uid);
+  for (const row4 of rows || []) {
+    if (!row4?.uid || seen.has(row4.uid)) continue;
+    if (row4.v != null && row4.v !== 2) continue;
+    seen.add(row4.uid);
     out.push({
-      uid: row3.uid,
-      title: row3.title || "Untitled board",
-      pageTitle: row3.pageTitle || ""
+      uid: row4.uid,
+      title: row4.title || "Untitled board",
+      pageTitle: row4.pageTitle || ""
     });
     if (out.length >= cap4) break;
   }
@@ -3577,8 +4005,8 @@ function boardsFromRows(rows, { limit = 20 } = {}) {
 var LIBRARY_TYPES = ["all", "page", "block", "board", "daily"];
 var LIBRARY_CAP = 80;
 var DAY_MS = 864e5;
-var MONTHS3 = "January|February|March|April|May|June|July|August|September|October|November|December";
-var DAILY_RE = new RegExp(`^(${MONTHS3}) (\\d{1,2})(st|nd|rd|th), (\\d{4})$`);
+var MONTHS4 = "January|February|March|April|May|June|July|August|September|October|November|December";
+var DAILY_RE = new RegExp(`^(${MONTHS4}) (\\d{1,2})(st|nd|rd|th), (\\d{4})$`);
 function isDailyTitle(title) {
   const m = DAILY_RE.exec(String(title ?? ""));
   if (!m) return false;
@@ -3622,46 +4050,46 @@ function editedSince(edited, days, now2 = Date.now()) {
   const t = now2 instanceof Date ? now2.getTime() : Number(now2);
   return Number.isFinite(edited) && edited > t - n2 * DAY_MS;
 }
-function libraryKind(row3) {
-  if (row3?.kind === "board") return "board";
-  if (row3?.kind === "block") return "block";
-  const title = row3?.title ?? "";
-  if (row3?.kind === "daily" || isDailyTitle(title)) return "daily";
+function libraryKind(row4) {
+  if (row4?.kind === "board") return "board";
+  if (row4?.kind === "block") return "block";
+  const title = row4?.title ?? "";
+  if (row4?.kind === "daily" || isDailyTitle(title)) return "daily";
   return "page";
 }
 function narrowLibrary(rows, filter, now2 = Date.now()) {
   const f = normalizeLibraryFilter(filter);
   const needle = f.text.toLowerCase();
-  return (Array.isArray(rows) ? rows : []).filter((row3) => {
-    const kind = libraryKind(row3);
+  return (Array.isArray(rows) ? rows : []).filter((row4) => {
+    const kind = libraryKind(row4);
     if (f.type !== "all" && kind !== f.type) return false;
     if (f.tag) {
-      const tags = Array.isArray(row3?.tags) ? row3.tags : [];
+      const tags = Array.isArray(row4?.tags) ? row4.tags : [];
       if (!tags.includes(f.tag)) return false;
     }
     if (needle) {
-      const hay = [row3?.title, row3?.string, row3?.text].filter((v) => v != null).join("\n").toLowerCase();
+      const hay = [row4?.title, row4?.string, row4?.text].filter((v) => v != null).join("\n").toLowerCase();
       if (!hay.includes(needle)) return false;
     }
-    if (f.days && !editedSince(row3?.edited, f.days, now2)) return false;
-    if (f.orphan && (kind === "board" || row3?.onBoard)) return false;
+    if (f.days && !editedSince(row4?.edited, f.days, now2)) return false;
+    if (f.orphan && (kind === "board" || row4?.onBoard)) return false;
     return true;
   });
 }
-function libraryCard(row3) {
-  const kind = libraryKind(row3);
+function libraryCard(row4) {
+  const kind = libraryKind(row4);
   if (kind === "page" || kind === "daily") {
-    const title = String(row3?.title ?? row3?.text ?? "");
+    const title = String(row4?.title ?? row4?.text ?? "");
     return { string: `[[${title}]]`, text: title, kind, label: kind === "daily" ? "daily" : "page" };
   }
-  const uid = String(row3?.uid ?? "");
+  const uid = String(row4?.uid ?? "");
   if (kind === "board") {
-    const title = String(row3?.title || "Untitled board");
-    const label2 = row3?.pageTitle ? `board · ${row3.pageTitle}` : "board";
+    const title = String(row4?.title || "Untitled board");
+    const label2 = row4?.pageTitle ? `board · ${row4.pageTitle}` : "board";
     return { string: `((${uid}))`, text: title, kind, label: label2 };
   }
-  const label = row3?.pageTitle ? `in ${row3.pageTitle}` : "block";
-  return { string: `((${uid}))`, text: String(row3?.string ?? row3?.text ?? "").slice(0, 120), kind, label };
+  const label = row4?.pageTitle ? `in ${row4.pageTitle}` : "block";
+  return { string: `((${uid}))`, text: String(row4?.string ?? row4?.text ?? "").slice(0, 120), kind, label };
 }
 function recentDailyTitles(days = 14, now2 = /* @__PURE__ */ new Date()) {
   const n2 = Math.max(1, Math.min(366, Math.floor(Number(days) || 14)));
@@ -3692,10 +4120,10 @@ function splitNeighbors({ outgoing = [], incoming = [], selfTitle = "", selfUid 
   const counts = /* @__PURE__ */ new Map();
   const seenOut = /* @__PURE__ */ new Set();
   const seenAttr = /* @__PURE__ */ new Set();
-  for (const row3 of outgoing) {
-    const title = row3?.[0];
+  for (const row4 of outgoing) {
+    const title = row4?.[0];
     if (typeof title !== "string" || !title) continue;
-    const name = attrNameOf(row3?.[1]);
+    const name = attrNameOf(row4?.[1]);
     if (name && title === name) continue;
     if (selfTitle && title === selfTitle) continue;
     if (name) {
@@ -3707,13 +4135,13 @@ function splitNeighbors({ outgoing = [], incoming = [], selfTitle = "", selfUid 
       out.push(title);
     }
   }
-  for (const row3 of incoming) {
-    const uid = row3?.[0];
-    const title = row3?.[2];
+  for (const row4 of incoming) {
+    const uid = row4?.[0];
+    const title = row4?.[2];
     if (typeof title !== "string" || !title) continue;
     if (selfUid && uid === selfUid) continue;
     if (selfTitle && title === selfTitle) continue;
-    if (attrNameOf(row3?.[1])) continue;
+    if (attrNameOf(row4?.[1])) continue;
     counts.set(title, (counts.get(title) || 0) + 1);
   }
   const inn = [...counts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0])).map(([title]) => title);
@@ -3764,8 +4192,8 @@ function pdfMacroUrl(s) {
 }
 function pdfPagePlan(url, pages) {
   if (!Array.isArray(pages)) return null;
-  for (const row3 of pages) {
-    if (row3 && typeof row3 === "object" && row3.url === url) return row3;
+  for (const row4 of pages) {
+    if (row4 && typeof row4 === "object" && row4.url === url) return row4;
   }
   return null;
 }
@@ -3909,7 +4337,7 @@ function posterModel(source) {
 }
 function embedPoster(string, opts = {}) {
   if (postersEnabled(opts) === false) return null;
-  const { read, cover, uid = "" } = opts;
+  const { read: read2, cover, uid = "" } = opts;
   const text2 = String(string ?? "").trim();
   if (!text2) return null;
   let hit = heavyEmbed(text2);
@@ -3917,10 +4345,10 @@ function embedPoster(string, opts = {}) {
   let source = text2;
   if (!hit) {
     const ref = heavyRefUid(text2);
-    if (!ref || typeof read !== "function") return null;
+    if (!ref || typeof read2 !== "function") return null;
     let inner = "";
     try {
-      inner = read(ref);
+      inner = read2(ref);
     } catch {
       inner = "";
     }
@@ -4052,7 +4480,7 @@ function createCardCache() {
     boards.delete(boardUid);
     titles.delete(boardUid);
   };
-  const remember = (boardUid, target, cardUid) => {
+  const remember2 = (boardUid, target, cardUid) => {
     if (!target) return;
     cardBy.set(keyOf(boardUid, target), cardUid);
     let set = targetBoards.get(target);
@@ -4081,7 +4509,7 @@ function createCardCache() {
         const add = (value) => {
           if (!value || keys.includes(value)) return;
           keys.push(value);
-          remember(boardUid, value, uid);
+          remember2(boardUid, value, uid);
         };
         add(uid);
         add(target);
@@ -4193,53 +4621,6 @@ function createCardCache() {
       nativeKnown.clear();
     }
   };
-}
-
-// src/model/resurface.js
-var DEFAULT_INTERVALS = Object.freeze([7, 30, 90, 365]);
-var RESURFACE_CAP = 6;
-var DAY2 = 864e5;
-var MONTHS4 = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-function pageTitleToDate(title) {
-  const match = String(title ?? "").trim().match(/^([A-Z][a-z]+) (\d{1,2})(?:st|nd|rd|th), (\d{4})$/);
-  if (!match) return null;
-  const month = MONTHS4.indexOf(match[1]);
-  const day = Number(match[2]);
-  const year = Number(match[3]);
-  if (month < 0) return null;
-  const date = new Date(year, month, day);
-  if (date.getFullYear() !== year || date.getMonth() !== month || date.getDate() !== day) return null;
-  return date.getTime();
-}
-function parseIntervals(text2) {
-  const nums = String(text2 ?? "").split(",").map((part) => Number(part.trim())).filter((n2) => Number.isFinite(n2) && n2 > 0);
-  return nums.length ? nums : [...DEFAULT_INTERVALS];
-}
-function intervalLabel(days) {
-  if (days === 7) return "1 week ago";
-  if (days === 30) return "1 month ago";
-  if (days === 90) return "3 months ago";
-  if (days === 365) return "1 year ago";
-  if (days % 365 === 0) return `${days / 365} years ago`;
-  return `${days} days ago`;
-}
-function matchResurface(rows, pageDate, intervals, { slack = DAY2, cap: cap4 = RESURFACE_CAP } = {}) {
-  const page = pageDate instanceof Date ? pageDate.getTime() : Number(pageDate);
-  if (!Number.isFinite(page)) return [];
-  const tabs = [];
-  for (const days of intervals || []) {
-    if (!Number.isFinite(days) || days <= 0) continue;
-    const target = page - days * DAY2;
-    const hits = [];
-    for (const row3 of rows || []) {
-      if (!row3?.uid || !Number.isFinite(row3.time)) continue;
-      const delta = Math.abs(row3.time - target);
-      if (delta <= slack) hits.push({ ...row3, delta });
-    }
-    hits.sort((a, b) => a.delta - b.delta || String(a.uid).localeCompare(String(b.uid)));
-    if (hits.length) tabs.push({ days, label: intervalLabel(days), items: hits.slice(0, cap4) });
-  }
-  return tabs;
 }
 
 // src/model/journal.js
@@ -4532,8 +4913,8 @@ function collectTargets(node2) {
 }
 function unpackPulls(rows) {
   const out = [];
-  for (const row3 of rows || []) {
-    const cell = Array.isArray(row3) ? row3[0] : row3;
+  for (const row4 of rows || []) {
+    const cell = Array.isArray(row4) ? row4[0] : row4;
     if (cell && typeof cell === "object" && !Array.isArray(cell)) out.push(cell);
   }
   return out;
@@ -4811,7 +5192,7 @@ function createViewportStore({ storage = globalThis.localStorage, graph = "", no
 }
 function createTabStore({ storage = globalThis.localStorage, graph = "" } = {}) {
   const key = tabStorageKey(graph);
-  const read = () => {
+  const read2 = () => {
     try {
       const raw = storage?.getItem?.(key);
       if (!raw) return [];
@@ -4827,17 +5208,17 @@ function createTabStore({ storage = globalThis.localStorage, graph = "" } = {}) 
     }
   };
   return {
-    get: read,
+    get: read2,
     set(tabs) {
       write(tabs);
     },
     open(entry) {
-      const next = openTab(read(), entry);
+      const next = openTab(read2(), entry);
       write(next.tabs);
       return next;
     },
     close(uid) {
-      const next = closeTab(read(), uid);
+      const next = closeTab(read2(), uid);
       write(next.tabs);
       return next;
     }
@@ -5134,13 +5515,13 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
     }
     const byTitle = /* @__PURE__ */ new Map();
     for (const title of titles) byTitle.set(title, []);
-    for (const row3 of rows) {
-      const title = row3?.[0];
-      const id = row3?.[1];
+    for (const row4 of rows) {
+      const title = row4?.[0];
+      const id = row4?.[1];
       if (!byTitle.has(title) || !id) continue;
       const list = byTitle.get(title);
       if (list.some((item) => item.uid === id) || list.length >= 40) continue;
-      list.push({ uid: id, string: String(row3?.[2] ?? ""), pageTitle: row3?.[3] || "" });
+      list.push({ uid: id, string: String(row4?.[2] ?? ""), pageTitle: row4?.[3] || "" });
     }
     for (const [title, list] of byTitle) cache.rememberLinked(`page:${title}`, list);
   };
@@ -5163,18 +5544,18 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
   let coverMemo = null;
   const readPdfCover = (url) => {
     const pages = [];
-    for (const row3 of queryRows(host, PDF_PAGE_QUERY, url)) {
-      if (!Array.isArray(row3)) continue;
-      const uid = row3[0];
-      const title = row3[1];
+    for (const row4 of queryRows(host, PDF_PAGE_QUERY, url)) {
+      if (!Array.isArray(row4)) continue;
+      const uid = row4[0];
+      const title = row4[1];
       if (typeof uid !== "string" || uid === "") continue;
       pages.push({ uid, title: typeof title === "string" ? title : "", url });
     }
     const page = pdfPagePlan(url, pages);
     if (!page) return { ...coverModel({ url, count: 0 }), pageUid: null };
     let count = 0;
-    for (const row3 of queryRows(host, PDF_PAGE_BLOCKS_QUERY, page.uid)) {
-      const cells = Array.isArray(row3) ? row3 : [row3];
+    for (const row4 of queryRows(host, PDF_PAGE_BLOCKS_QUERY, page.uid)) {
+      const cells = Array.isArray(row4) ? row4 : [row4];
       if (cells.some(hasPdfHighlight)) count++;
     }
     return { ...coverModel({ title: page.title, url, count }), pageUid: page.uid };
@@ -5183,6 +5564,15 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
   const host = {
     api,
     pull,
+    // A fresh read, never the board cache: false only when Roam has no block with this uid.
+    blockExists(uid) {
+      if (typeof uid !== "string" || !uid) return false;
+      try {
+        return Boolean(rawPull("[:block/uid]", [":block/uid", uid]));
+      } catch {
+        return true;
+      }
+    },
     stats,
     viewports: createViewportStore({ storage, graph: gname }),
     tabs: createTabStore({ storage, graph: gname }),
@@ -5505,12 +5895,12 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
     blockStrings(uids, { fresh = false } = {}) {
       const out = /* @__PURE__ */ new Map();
       const now2 = Date.now();
-      const missing = [];
+      const missing2 = [];
       for (const uid of uids || []) {
         const id = String(uid ?? "");
         if (!id || out.has(id)) continue;
         if (fresh) {
-          missing.push(id);
+          missing2.push(id);
           out.set(id, null);
           continue;
         }
@@ -5524,19 +5914,19 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
           out.set(id, hit.value);
           continue;
         }
-        missing.push(id);
+        missing2.push(id);
       }
-      if (!missing.length) return out;
+      if (!missing2.length) return out;
       let rows = [];
       try {
         const q = data.fast?.q ? data.fast.q.bind(data.fast) : data.q?.bind(data);
-        rows = q ? q("[:find ?u ?s :in $ [?u ...] :where [?b :block/uid ?u] [?b :block/string ?s]]", missing) || [] : [];
+        rows = q ? q("[:find ?u ?s :in $ [?u ...] :where [?b :block/uid ?u] [?b :block/string ?s]]", missing2) || [] : [];
       } catch {
         rows = [];
       }
       const found = /* @__PURE__ */ new Map();
-      for (const row3 of rows) if (Array.isArray(row3) && typeof row3[0] === "string") found.set(row3[0], typeof row3[1] === "string" ? row3[1] : null);
-      for (const id of missing) {
+      for (const row4 of rows) if (Array.isArray(row4) && typeof row4[0] === "string") found.set(row4[0], typeof row4[1] === "string" ? row4[1] : null);
+      for (const id of missing2) {
         const value = found.has(id) ? found.get(id) : null;
         out.set(id, value);
         burstMemo.set(id, { value, at: now2 });
@@ -5844,8 +6234,8 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
       const pageUid = readPdfCover(needle)?.pageUid;
       if (typeof pageUid !== "string" || pageUid === "") return "";
       const take = (query) => {
-        for (const row3 of queryRows(host, query, pageUid, needle)) {
-          const cell = Array.isArray(row3) ? row3[0] : row3;
+        for (const row4 of queryRows(host, query, pageUid, needle)) {
+          const cell = Array.isArray(row4) ? row4[0] : row4;
           if (typeof cell === "string" && cell && cell !== pageUid) return cell;
         }
         return "";
@@ -5913,7 +6303,7 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
         for (const key of keys) result2.set(key, { ...freshStat(boardUid, key) });
         return result2;
       }
-      const remember = (result2) => {
+      const remember2 = (result2) => {
         const at = Date.now();
         for (const [key, stat] of result2) statsCache.set(`${boardUid || ""}\0${key}`, { at, stats: stat });
         return result2;
@@ -5932,7 +6322,7 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
         if (!byEid.has(eid)) byEid.set(eid, []);
         byEid.get(eid).push(key);
       }
-      if (!byEid.size) return remember(result);
+      if (!byEid.size) return remember2(result);
       const eids = [...byEid.keys()];
       const boardEid = boardUid ? host.resolveEid({ uid: boardUid }) ?? -1 : -1;
       const tally = (rows, field) => {
@@ -5964,7 +6354,7 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
       );
       if (todoEid != null) tally(listFor(todoEid), "open");
       if (doneEid != null) tally(listFor(doneEid), "done");
-      return remember(result);
+      return remember2(result);
     },
     async uploadFile(file) {
       const upload = api.file?.upload;
@@ -6011,12 +6401,12 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
       const cap4 = libraryCap();
       const candidates = [];
       const seen = /* @__PURE__ */ new Set();
-      const push = (row3) => {
+      const push = (row4) => {
         if (candidates.length >= cap4) return false;
-        const key = `${row3.kind}:${row3.uid || row3.title}`;
+        const key = `${row4.kind}:${row4.uid || row4.title}`;
         if (seen.has(key)) return false;
         seen.add(key);
-        candidates.push(row3);
+        candidates.push(row4);
         return true;
       };
       const timed = (name, fn) => {
@@ -6211,8 +6601,8 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
         }
       }
       if (f.orphan) {
-        const blockUids = candidates.filter((row3) => row3.kind === "block" && row3.uid).map((row3) => row3.uid);
-        const pageTitles = candidates.filter((row3) => row3.kind === "page" && row3.title).map((row3) => row3.title);
+        const blockUids = candidates.filter((row4) => row4.kind === "block" && row4.uid).map((row4) => row4.uid);
+        const pageTitles = candidates.filter((row4) => row4.kind === "page" && row4.title).map((row4) => row4.title);
         const onUid = /* @__PURE__ */ new Set();
         const onTitle = /* @__PURE__ */ new Set();
         if (blockUids.length) {
@@ -6239,10 +6629,10 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
           ));
           for (const rec of via) if (rec?.[0]) onTitle.add(rec[0]);
         }
-        for (const row3 of candidates) {
-          if (row3.kind === "board") row3.onBoard = true;
-          else if (row3.kind === "block") row3.onBoard = onUid.has(row3.uid);
-          else row3.onBoard = onTitle.has(row3.title);
+        for (const row4 of candidates) {
+          if (row4.kind === "board") row4.onBoard = true;
+          else if (row4.kind === "block") row4.onBoard = onUid.has(row4.uid);
+          else row4.onBoard = onTitle.has(row4.title);
         }
       }
       const rows = narrowLibrary(candidates, f, nowMs).slice(0, lim).map(libraryCard);
@@ -6334,11 +6724,11 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
       if (pageTitle && cache.hasLinked(`page:${pageTitle}`)) {
         const refs2 = [];
         const seen2 = /* @__PURE__ */ new Set();
-        for (const row3 of cache.linkedOf(`page:${pageTitle}`)) {
-          const id = row3?.uid;
+        for (const row4 of cache.linkedOf(`page:${pageTitle}`)) {
+          const id = row4?.uid;
           if (!id || id === cardUid || seen2.has(id)) continue;
           seen2.add(id);
-          refs2.push({ uid: id, string: String(row3.string ?? ""), pageTitle: row3.pageTitle || "" });
+          refs2.push({ uid: id, string: String(row4.string ?? ""), pageTitle: row4.pageTitle || "" });
           if (refs2.length >= cap4) break;
         }
         return refs2;
@@ -6354,11 +6744,11 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
       }
       const refs = [];
       const seen = /* @__PURE__ */ new Set();
-      for (const row3 of rows) {
-        const uid = row3?.[0];
+      for (const row4 of rows) {
+        const uid = row4?.[0];
         if (!uid || uid === cardUid || targetUid && uid === targetUid || seen.has(uid)) continue;
         seen.add(uid);
-        refs.push({ uid, string: String(row3?.[1] ?? ""), pageTitle: row3?.[2] || "" });
+        refs.push({ uid, string: String(row4?.[1] ?? ""), pageTitle: row4?.[2] || "" });
         if (refs.length >= cap4) break;
       }
       return refs;
@@ -6473,17 +6863,17 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
         return boardOk.get(boardUid);
       };
       const placements = [];
-      for (const row3 of direct) {
-        const boardUid = row3?.[0];
-        const pageUid = row3?.[1];
+      for (const row4 of direct) {
+        const boardUid = row4?.[0];
+        const pageUid = row4?.[1];
         if (!boardUid || !pageUid || !enhanced(boardUid)) continue;
         if (!isShowableCard(propsOf(id)?.plexus)) continue;
         placements.push({ boardUid, pageUid, cardUid: id, refUids: [] });
       }
-      for (const row3 of via) {
-        const boardUid = row3?.[0];
-        const pageUid = row3?.[1];
-        const cardUid = row3?.[2];
+      for (const row4 of via) {
+        const boardUid = row4?.[0];
+        const pageUid = row4?.[1];
+        const cardUid = row4?.[2];
         if (!boardUid || !pageUid || !cardUid || cardUid === id || !enhanced(boardUid)) continue;
         if (!isShowableCard(propsOf(cardUid)?.plexus)) continue;
         placements.push({ boardUid, pageUid, cardUid, refUids: [id] });
@@ -7022,7 +7412,7 @@ var KIDS = ":block/children";
 var PROPS = ":block/props";
 var OPEN = ":block/open";
 var LINK_MODES = ["off", "attributes", "all"];
-var ITEM_KEYS = ["type", "x", "y", "w", "h", "color", "collapsed", "fontSize", "pinned", "min", "kids", "fit", "look", "axis", "textColor", "align", "fill", "border", "titleSize", "titleColor", "titleFill", "areaFill", "shape"];
+var ITEM_KEYS = ["type", "x", "y", "w", "h", "color", "collapsed", "fontSize", "pinned", "min", "kids", "fit", "look", "axis", "textColor", "align", "fill", "border", "titleSize", "titleColor", "titleFill", "areaFill", "shape", "landmark", "glyph", "size"];
 var EDGE_KEYS = ["type", "from", "to", "fromSide", "toSide", "dir", "route", "dash", "weight", "color", "fromBlock", "toBlock", "via"];
 var MAX_PARENT_STRINGS = 200;
 var DAILY_GAP = 20;
@@ -7313,7 +7703,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     if (!node2) return "last";
     const at = kidsOf(node2).findIndex((k) => {
       const type = readPlexus(k[PROPS])?.type;
-      if (type === "edges" || type === "snapshots" || type === "regions") return true;
+      if (type === "edges" || type === "snapshots" || type === "regions" || type === "trails") return true;
       return isContainerString(k[":block/string"] ?? k.string ?? "");
     });
     return at >= 0 ? at : "last";
@@ -7868,6 +8258,15 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     if (existing) return existing[UID];
     return t.create({ parent: uid, order: "last", string: "Connections", plexus: { type: "edges" }, open: false });
   }
+  function ensureTrails(t) {
+    if (board2.trailsUid) return board2.trailsUid;
+    const existing = kidsOf(raw).find((k) => readPlexus(k[PROPS])?.type === "trails");
+    if (existing) return existing[UID];
+    return t.create({ parent: uid, order: "last", string: "Trails", plexus: { type: "trails" }, open: false });
+  }
+  function trailByUid(id) {
+    return (board2.trails || []).find((tr) => tr.uid === id) || null;
+  }
   function refOf2(id) {
     const item = board2.items.get(id);
     return item ? semanticRef(item) : `((${id}))`;
@@ -7998,9 +8397,9 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     const rows = host.q(linksQuery(), boardEid, eids, eids) || [];
     const parentStrings = /* @__PURE__ */ new Map();
     let budget = MAX_PARENT_STRINGS;
-    for (const row3 of rows) {
-      const su = row3[2];
-      const ss = row3[3];
+    for (const row4 of rows) {
+      const su = row4[2];
+      const ss = row4[3];
       if (budget <= 0) break;
       if (attrNameOf(ss) == null && !parentStrings.has(su)) {
         budget--;
@@ -8754,12 +9153,29 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
         return plan.length;
       });
     },
-    layoutByDate(id) {
+    layoutByDate(id, opts) {
       return txn((t) => {
         const item = board2.items.get(id);
         if (!item || item.type !== "section") return 0;
+        const spec = opts && typeof opts === "object" ? opts : {};
+        const mode = (typeof opts === "string" ? opts : spec.mode) || "attribute";
+        const rows = Array.isArray(spec.rows) ? spec.rows : [];
         const cards = item.members.map((member) => board2.items.get(member)).filter(Boolean);
-        const plan = calendarLayout(cards).slice(0, 45);
+        if (mode === "attribute") {
+          const plan2 = calendarLayout(cards).slice(0, 45);
+          for (const spot of plan2) t.props(spot.uid, itemPlexus(spot.uid, { x: spot.x, y: spot.y }));
+          return plan2.length;
+        }
+        const spots = [];
+        for (const card2 of cards) {
+          const stamp2 = dateSource(card2, rows, mode);
+          if (stamp2 == null || !Number.isFinite(stamp2)) continue;
+          const day = new Date(stamp2).getDate();
+          if (!Number.isFinite(day) || day < 1) continue;
+          spots.push({ uid: card2.uid, x: 16 + (day - 1) * 28, y: 48, t: stamp2 });
+        }
+        spots.sort((a, b) => a.t - b.t || String(a.uid).localeCompare(String(b.uid)));
+        const plan = spots.slice(0, 45);
         for (const spot of plan) t.props(spot.uid, itemPlexus(spot.uid, { x: spot.x, y: spot.y }));
         return plan.length;
       });
@@ -8940,6 +9356,84 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
             else t.del(edge.whyUid);
           }
         }
+      });
+    },
+    createTrail(name, cardUids) {
+      return txn((t) => {
+        const parent = ensureTrails(t);
+        const id = t.create({ parent, order: "last", string: trailString(name), plexus: { type: "trail" }, open: true });
+        const ids = [];
+        for (const card2 of cardUids || []) if (card2 && board2.items.has(card2)) ids.push(card2);
+        for (const card2 of capBulk(ids, emit2)) t.create({ parent: id, order: "last", string: `((${card2}))`, open: true });
+        return id;
+      });
+    },
+    renameTrail(id, name) {
+      return txn((t) => {
+        if (!trailByUid(id)) return;
+        t.string(id, trailString(name));
+        const base = rawPlexus(id);
+        if (base.type !== "trail") t.props(id, { ...base, type: "trail" });
+      });
+    },
+    deleteTrail(id) {
+      return txn((t) => {
+        if (!trailByUid(id)) return;
+        t.del(id);
+      });
+    },
+    addToTrail(trailUid, cardUid, note) {
+      return txn((t) => {
+        if (!trailByUid(trailUid) || !cardUid) return null;
+        const stop2 = t.create({ parent: trailUid, order: "last", string: `((${cardUid}))`, open: true });
+        const text2 = typeof note === "string" ? note.trim() : "";
+        if (text2) t.create({ parent: stop2, order: "first", string: text2 });
+        return stop2;
+      });
+    },
+    addSelectionToTrail(trailUid, cardUids) {
+      return txn((t) => {
+        if (!trailByUid(trailUid)) return [];
+        const ids = [];
+        for (const id of cardUids || []) {
+          if (!id || !board2.items.has(id)) continue;
+          ids.push(id);
+        }
+        const capped = capBulk(ids, emit2);
+        const made = [];
+        for (const id of capped) made.push(t.create({ parent: trailUid, order: "last", string: `((${id}))`, open: true }));
+        return made;
+      });
+    },
+    moveStop(stopUid, finalIndex) {
+      return txn((t) => {
+        let parent = null;
+        for (const trail of board2.trails || []) {
+          if ((trail.stops || []).some((s) => s.uid === stopUid)) {
+            parent = trail.uid;
+            break;
+          }
+        }
+        if (!parent) return;
+        const index = Math.trunc(Number(finalIndex));
+        t.move(stopUid, parent, Number.isFinite(index) ? Math.max(0, index) : "last");
+      });
+    },
+    setLandmark(id, { on, glyph, size } = {}) {
+      return txn((t) => {
+        const item = board2.items.get(id);
+        if (!item) return;
+        const nextOn = on === void 0 ? item.landmark === true : Boolean(on);
+        if (!nextOn) {
+          t.props(id, itemPlexus(id, { landmark: false, glyph: "", size: void 0 }));
+          return;
+        }
+        const patch = { landmark: true };
+        if (glyph !== void 0) patch.glyph = glyph;
+        else if (item.glyph) patch.glyph = item.glyph;
+        if (size !== void 0) patch.size = size;
+        else if (item.size === "S" || item.size === "L") patch.size = item.size;
+        t.props(id, itemPlexus(id, patch));
       });
     },
     updateEdge(id, patch = {}) {
@@ -9144,8 +9638,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       ledger.clear();
     }
   };
-  function makeBoard(t, rect, title, exclude, centerOf3 = rect) {
-    const parent = containerAt(board2, { x: centerOf3.x + centerOf3.w / 2, y: centerOf3.y + centerOf3.h / 2 }, { rects, exclude });
+  function makeBoard(t, rect, title, exclude, centerOf4 = rect) {
+    const parent = containerAt(board2, { x: centerOf4.x + centerOf4.w / 2, y: centerOf4.y + centerOf4.h / 2 }, { rects, exclude });
     const rel = toRelative(board2, parent, { x: rect.x, y: rect.y }, rects);
     return t.create({
       parent,
@@ -10449,6 +10943,164 @@ function rewriteBgTag(string, name) {
   return next.slice(0, spans[0][0]) + token + next.slice(spans[0][1]);
 }
 
+// src/model/landmarks.js
+var READ_BUCKET = 200;
+var MINIMAP_W = 180;
+var MINIMAP_H = 120;
+var MINIMAP_PAD = 40;
+function landmarkUids(board2) {
+  if (!board2?.items) return [];
+  const out = [];
+  const ids = board2.order || [...board2.items.keys()];
+  for (const uid of ids) {
+    if (board2.items.get(uid)?.landmark === true) out.push(uid);
+  }
+  return out;
+}
+var posOf = (uid, rects) => {
+  const r = rects?.get?.(uid);
+  return { y: r?.y ?? 0, x: r?.x ?? 0, r };
+};
+function readingLandmarkOrder(uids, rects) {
+  return [...uids || []].sort((a, b) => {
+    const pa = posOf(a, rects);
+    const pb = posOf(b, rects);
+    const ba = Math.floor(pa.y / READ_BUCKET);
+    const bb = Math.floor(pb.y / READ_BUCKET);
+    return ba - bb || pa.x - pb.x || pa.y - pb.y || (a < b ? -1 : a > b ? 1 : 0);
+  });
+}
+var centerOf3 = (uid, rects) => {
+  const r = rects?.get?.(uid);
+  return r ? { x: r.x + r.w / 2, y: r.y + r.h / 2 } : { x: 0, y: 0 };
+};
+function nearestNextOrder(uids, rects) {
+  const list = readingLandmarkOrder(uids, rects);
+  if (list.length < 2) return list;
+  const left = new Set(list.slice(1));
+  const out = [list[0]];
+  while (left.size) {
+    const cur = centerOf3(out[out.length - 1], rects);
+    let best = null;
+    let bestD = Infinity;
+    for (const uid of left) {
+      const p = centerOf3(uid, rects);
+      const d = (p.x - cur.x) ** 2 + (p.y - cur.y) ** 2;
+      if (d < bestD || d === bestD && (best == null || uid < best)) {
+        bestD = d;
+        best = uid;
+      }
+    }
+    out.push(best);
+    left.delete(best);
+  }
+  return out;
+}
+function neighbourhoodRect(rect, screen) {
+  if (!rect) return null;
+  const sw = Number(screen?.w ?? screen?.width);
+  const sh = Number(screen?.h ?? screen?.height);
+  const w = Math.max(rect.w, Number.isFinite(sw) && sw > 0 ? sw : rect.w);
+  const h = Math.max(rect.h, Number.isFinite(sh) && sh > 0 ? sh : rect.h);
+  const cx = rect.x + rect.w / 2;
+  const cy = rect.y + rect.h / 2;
+  return { x: cx - w / 2, y: cy - h / 2, w, h };
+}
+function membersIn(board2, rects, focusRect, focusUid) {
+  const out = /* @__PURE__ */ new Set();
+  if (focusUid) out.add(focusUid);
+  if (!board2 || !focusRect || !rects) return out;
+  const right = focusRect.x + focusRect.w;
+  const bottom = focusRect.y + focusRect.h;
+  for (const uid of board2.order || []) {
+    const r = rects.get(uid);
+    if (!r) continue;
+    const cx = r.x + r.w / 2;
+    const cy = r.y + r.h / 2;
+    if (cx >= focusRect.x && cx <= right && cy >= focusRect.y && cy <= bottom) out.add(uid);
+  }
+  return out;
+}
+function minimapScale(rects, size, vp) {
+  let minX = Infinity;
+  let minY = Infinity;
+  let maxX = -Infinity;
+  let maxY = -Infinity;
+  const add = (r) => {
+    if (!r || !Number.isFinite(r.x) || !Number.isFinite(r.y)) return;
+    minX = Math.min(minX, r.x);
+    minY = Math.min(minY, r.y);
+    maxX = Math.max(maxX, r.x + (Number.isFinite(r.w) ? r.w : 0));
+    maxY = Math.max(maxY, r.y + (Number.isFinite(r.h) ? r.h : 0));
+  };
+  if (rects && typeof rects.values === "function") for (const r of rects.values()) add(r);
+  if (vp && size && vp.zoom) add({ x: -vp.x / vp.zoom, y: -vp.y / vp.zoom, w: size.width / vp.zoom, h: size.height / vp.zoom });
+  if (!Number.isFinite(minX)) return null;
+  minX -= MINIMAP_PAD;
+  minY -= MINIMAP_PAD;
+  maxX += MINIMAP_PAD;
+  maxY += MINIMAP_PAD;
+  const s = Math.min(MINIMAP_W / (maxX - minX), MINIMAP_H / (maxY - minY));
+  return {
+    s,
+    ox: (MINIMAP_W - (maxX - minX) * s) / 2 - minX * s,
+    oy: (MINIMAP_H - (maxY - minY) * s) / 2 - minY * s
+  };
+}
+function landmarkDots(board2, rects, vp, size) {
+  const sc = minimapScale(rects, size, vp);
+  if (!sc || !board2) return [];
+  const out = [];
+  for (const uid of landmarkUids(board2)) {
+    const r = rects?.get?.(uid);
+    if (!r) continue;
+    const item = board2.items.get(uid);
+    out.push({
+      uid,
+      glyph: item?.glyph || "",
+      x: (r.x + r.w / 2) * sc.s + sc.ox,
+      y: (r.y + r.h / 2) * sc.s + sc.oy
+    });
+  }
+  return out;
+}
+function walkStops(board2, rects, { mode = "reading", screen, trail } = {}) {
+  if (!board2) return [];
+  if (mode === "trail") {
+    const out2 = [];
+    for (const stop2 of trail?.stops || []) {
+      const rect = rects?.get?.(stop2.ref);
+      if (!rect) continue;
+      const item = board2.items.get(stop2.ref);
+      const focus = neighbourhoodRect(rect, screen) || rect;
+      out2.push({
+        uid: stop2.ref,
+        rect: focus,
+        title: item?.title || stop2.ref,
+        note: stop2.note || "",
+        members: membersIn(board2, rects, focus, stop2.ref)
+      });
+    }
+    return out2;
+  }
+  const order = mode === "nearest" ? nearestNextOrder(landmarkUids(board2), rects) : readingLandmarkOrder(landmarkUids(board2), rects);
+  const out = [];
+  for (const uid of order) {
+    const rect = rects?.get?.(uid);
+    if (!rect) continue;
+    const item = board2.items.get(uid);
+    const focus = neighbourhoodRect(rect, screen) || rect;
+    out.push({
+      uid,
+      rect: focus,
+      title: item?.title || "",
+      note: "",
+      members: membersIn(board2, rects, focus, uid)
+    });
+  }
+  return out;
+}
+
 // src/model/find.js
 function hayOf(item, resolve) {
   const bits = [item?.title, plainText(item?.string, 2e3)];
@@ -10507,10 +11159,10 @@ function parseAttrStyles(raw) {
   for (const [name, spec] of Object.entries(obj)) {
     const key = String(name).trim();
     if (!key || !spec || typeof spec !== "object" || Array.isArray(spec)) continue;
-    const row3 = {};
-    if (PALETTE.includes(spec.color)) row3.color = spec.color;
-    if (ATTR_DASHES.includes(spec.dash)) row3.dash = spec.dash;
-    if (row3.color || row3.dash) out[key] = row3;
+    const row4 = {};
+    if (PALETTE.includes(spec.color)) row4.color = spec.color;
+    if (ATTR_DASHES.includes(spec.dash)) row4.dash = spec.dash;
+    if (row4.color || row4.dash) out[key] = row4;
   }
   return out;
 }
@@ -10564,17 +11216,17 @@ function pageChips(rows, url) {
   if (typeof url !== "string" || url === "") return [];
   if (!Array.isArray(rows)) return [];
   const byPage = /* @__PURE__ */ new Map();
-  for (const row3 of rows) {
-    if (!row3 || typeof row3 !== "object") continue;
-    if (row3.url !== url) continue;
-    if (!wholePage(row3.page)) continue;
-    if (typeof row3.uid !== "string" || row3.uid === "") continue;
-    let chip = byPage.get(row3.page);
+  for (const row4 of rows) {
+    if (!row4 || typeof row4 !== "object") continue;
+    if (row4.url !== url) continue;
+    if (!wholePage(row4.page)) continue;
+    if (typeof row4.uid !== "string" || row4.uid === "") continue;
+    let chip = byPage.get(row4.page);
     if (!chip) {
-      chip = { page: row3.page, uids: [] };
-      byPage.set(row3.page, chip);
+      chip = { page: row4.page, uids: [] };
+      byPage.set(row4.page, chip);
     }
-    chip.uids.push(row3.uid);
+    chip.uids.push(row4.uid);
   }
   return [...byPage.values()].sort((a, b) => a.page - b.page).map((chip) => ({ page: chip.page, uids: chip.uids, count: chip.uids.length }));
 }
@@ -10582,17 +11234,17 @@ function highlightPill(page) {
   if (!wholePage(page)) return "";
   return `p. ${page}`;
 }
-function chipsForPdf(item, items, lookup) {
+function chipsForPdf(item, items, lookup2) {
   if (item?.kind !== "pdf") return [];
-  const source = typeof lookup?.source === "function" ? lookup.source(item) : "";
+  const source = typeof lookup2?.source === "function" ? lookup2.source(item) : "";
   const url = pdfMacroUrl(typeof source === "string" ? source : "");
   if (!url) return [];
   const rows = [];
   const list = items && typeof items.values === "function" ? items.values() : [];
   for (const other of list) {
     if (other?.kind !== "highlight" || !other.target?.uid) continue;
-    const pageUid = typeof lookup.pageUid === "function" ? lookup.pageUid(other.target.uid) || "" : "";
-    const pageUrl = pageUid && typeof lookup.pageUrl === "function" ? lookup.pageUrl(pageUid) || "" : "";
+    const pageUid = typeof lookup2.pageUid === "function" ? lookup2.pageUid(other.target.uid) || "" : "";
+    const pageUrl = pageUid && typeof lookup2.pageUrl === "function" ? lookup2.pageUrl(pageUid) || "" : "";
     rows.push({ page: other.highlight?.page, uid: other.uid, url: pageUrl });
   }
   return pageChips(rows, url);
@@ -10703,14 +11355,14 @@ function slot(index, mode) {
 }
 function placeHighlights(rows, { mode, origin, cap: cap4 } = {}) {
   const list = Array.isArray(rows) ? rows : [];
-  const eligible = list.filter((row3) => isObject3(row3) && typeof row3.uid === "string" && row3.uid !== "" && row3.selected === true && row3.placed !== true);
+  const eligible = list.filter((row4) => isObject3(row4) && typeof row4.uid === "string" && row4.uid !== "" && row4.selected === true && row4.placed !== true);
   const limit = capOf(cap4);
   const take = eligible.slice(0, limit);
   const at = originOf(origin);
-  const items = take.map((row3, index) => {
+  const items = take.map((row4, index) => {
     const { col, row: line } = slot(index, mode);
     return {
-      string: `((${row3.uid}))`,
+      string: `((${row4.uid}))`,
       x: at.x + col * (CARD_W3 + GAP2),
       y: at.y + line * (CARD_H3 + GAP2),
       w: CARD_W3,
@@ -10803,8 +11455,8 @@ function haloRefs(q, uid, cap4 = HALO_REF_CAP) {
     rows = [];
   }
   const stamps = [];
-  for (const row3 of rows) {
-    const stamp2 = finite3(Array.isArray(row3) ? row3[1] : null);
+  for (const row4 of rows) {
+    const stamp2 = finite3(Array.isArray(row4) ? row4[1] : null);
     if (stamp2 != null) stamps.push(stamp2);
   }
   stamps.sort((a, b) => b - a);
@@ -10850,15 +11502,15 @@ function headerText({ created, board: board2, section: section2, userName } = {}
 }
 function company(rows, uid) {
   const list = Array.isArray(rows) ? rows : [];
-  const self = list.find((row3) => row3 && row3.uid === uid);
+  const self = list.find((row4) => row4 && row4.uid === uid);
   const created = finite3(self?.created);
   if (!self || created == null) return [];
   const out = [];
-  for (const row3 of list) {
-    if (!row3 || row3.uid === uid) continue;
-    const stamp2 = finite3(row3.created);
+  for (const row4 of list) {
+    if (!row4 || row4.uid === uid) continue;
+    const stamp2 = finite3(row4.created);
     if (stamp2 == null || Math.abs(stamp2 - created) > DAY_MS2) continue;
-    out.push(row3.uid);
+    out.push(row4.uid);
     if (out.length >= 6) break;
   }
   return out;
@@ -11339,7 +11991,7 @@ function placeTip({ target, tip, bounds, side: side2 }) {
   return { left: Math.round(p.left), top: Math.round(p.top), side: use };
 }
 function createTooltip({ doc = globalThis.document, root, timers, setting } = {}) {
-  const read = (k) => typeof setting === "function" ? setting(k) : void 0;
+  const read2 = (k) => typeof setting === "function" ? setting(k) : void 0;
   const tip = doc.createElement("div");
   tip.className = "pxd-tooltip pxd-chrome";
   tip.id = ID;
@@ -11354,8 +12006,8 @@ function createTooltip({ doc = globalThis.document, root, timers, setting } = {}
   let current3 = null;
   let pending = null;
   let dismiss = [];
-  const enabled = () => read("tooltips") !== false;
-  const delay = () => tooltipDelay(read("tooltip-delay"));
+  const enabled = () => read2("tooltips") !== false;
+  const delay = () => tooltipDelay(read2("tooltip-delay"));
   const closest = (node2) => {
     const hit = node2?.closest?.("[data-tip]");
     return hit && root.contains(hit) ? hit : null;
@@ -11562,7 +12214,7 @@ function chipText({ from, to, label, boardTitle: boardTitle3, fromBlockText, toB
 function relationOf(board2, edgeUid, { blockText } = {}) {
   const edge = board2?.edges?.get(edgeUid);
   if (!edge) return null;
-  const read = (uid) => {
+  const read2 = (uid) => {
     if (!uid) return "";
     try {
       const t = blockText?.(uid);
@@ -11581,8 +12233,8 @@ function relationOf(board2, edgeUid, { blockText } = {}) {
     to: title(edge.to),
     label: edge.label || "",
     why: edge.why || "",
-    fromBlockText: edge.fromBlock ? read(edge.fromBlock) || "block" : "",
-    toBlockText: edge.toBlock ? read(edge.toBlock) || "block" : "",
+    fromBlockText: edge.fromBlock ? read2(edge.fromBlock) || "block" : "",
+    toBlockText: edge.toBlock ? read2(edge.toBlock) || "block" : "",
     boardTitle: board2.title || parseBoardTitle(board2.string) || "Untitled board"
   };
 }
@@ -11963,9 +12615,9 @@ function createRelChips({ doc = globalThis.document, win = globalThis.window, ho
     if (model) drawPreview(doc, el, model);
     else mk("div", "pxd-relpop__empty", el, "The connected cards could not be found on the board.");
     if (rel?.toBlockText) mk("div", "pxd-relpop__note", el, `Ends on the block “${clip2(rel.toBlockText, 60)}”`);
-    const row3 = mk("div", "pxd-relpop__actions", el);
+    const row4 = mk("div", "pxd-relpop__actions", el);
     const button = (tip, text2, fn) => {
-      const b = mk("button", "pxd-btn pxd-relpop__btn", row3, text2);
+      const b = mk("button", "pxd-btn pxd-relpop__btn", row4, text2);
       b.type = "button";
       b.setAttribute("data-tip", tip);
       b.addEventListener("click", (event) => {
@@ -12262,7 +12914,8 @@ function openHaloPopover({
   pageExists,
   renderString,
   unmount,
-  onPulse
+  onPulse,
+  dustAge: dustAge2
 } = {}) {
   const mounts = [];
   const pop = doc.createElement("div");
@@ -12285,16 +12938,16 @@ function openHaloPopover({
   withRow.append("With: ");
   const company2 = Array.isArray(model.with) ? model.with.slice(0, 6) : [];
   if (!company2.length) withRow.append("none");
-  company2.forEach((row3, index) => {
+  company2.forEach((row4, index) => {
     if (index) withRow.append(", ");
     const button = doc.createElement("button");
     button.type = "button";
     button.className = "pxd-halo__company";
-    button.textContent = row3.label || "card";
-    button.setAttribute("data-uid", row3.uid || "");
+    button.textContent = row4.label || "card";
+    button.setAttribute("data-uid", row4.uid || "");
     button.addEventListener("click", (event) => {
       event.stopPropagation();
-      if (row3.uid) onPulse?.(row3.uid);
+      if (row4.uid) onPulse?.(row4.uid);
     });
     withRow.append(button);
   });
@@ -12324,6 +12977,14 @@ function openHaloPopover({
   const count = Number.isFinite(n2) && n2 > 0 ? n2 : 0;
   boards.textContent = `On ${count} ${count === 1 ? "board" : "boards"}`;
   pop.append(boards);
+  const age = String(dustAge2 ?? "").trim();
+  if (age) {
+    pop.setAttribute("data-dust-age", age);
+    const dust = doc.createElement("div");
+    dust.className = "pxd-halo__dust";
+    dust.textContent = age;
+    pop.append(dust);
+  }
   pop.addEventListener("pointerdown", (event) => {
     if (event.target?.closest?.("[data-link-uid], .rm-page-ref, .pxd-halo__link")) return;
     event.stopPropagation();
@@ -12349,6 +13010,299 @@ function openHaloPopover({
     pop.remove();
   };
   return { el: pop, close, header: headerText(model), counts };
+}
+
+// src/model/strength.js
+var STRENGTH_WEIGHTS = Object.freeze({
+  refs: 0.6,
+  shared: 0.25,
+  recency: 0.15,
+  opens: 0.15
+});
+var REFS_CAP = 12;
+var SHARED_CAP = 3;
+var OPENS_CAP = 10;
+var RECENCY_HALF_LIFE_DAYS = 180;
+var DAY3 = 864e5;
+var DUST_PERIODS = Object.freeze({
+  "6m": 180 * DAY3,
+  "6 months": 180 * DAY3,
+  "1y": 365 * DAY3,
+  "1 year": 365 * DAY3,
+  "2y": 730 * DAY3,
+  "2 years": 730 * DAY3
+});
+var OPEN_PREFIX = "plexus-diagram:opens:";
+function clamp013(n2) {
+  if (!Number.isFinite(n2) || n2 <= 0) return 0;
+  if (n2 >= 1) return 1;
+  return n2;
+}
+function normCount(value, cap4) {
+  const n2 = Number(value);
+  if (!Number.isFinite(n2) || n2 <= 0 || !(cap4 > 0)) return 0;
+  return Math.min(n2, cap4) / cap4;
+}
+function recencyNorm(editTime, now2) {
+  if (!Number.isFinite(editTime) || !Number.isFinite(now2)) return 0;
+  const days = Math.max(0, now2 - editTime) / DAY3;
+  return Math.exp(-Math.LN2 * days / RECENCY_HALF_LIFE_DAYS);
+}
+function strengthScore(components = {}, { trackOpens = false, now: now2 = components?.now ?? Date.now() } = {}) {
+  const refs = normCount(components?.refs, REFS_CAP);
+  const shared = normCount(components?.shared, SHARED_CAP);
+  const recency = recencyNorm(components?.editTime ?? components?.edit, now2);
+  if (trackOpens !== true) return clamp013(0.6 * refs + 0.25 * shared + 0.15 * recency);
+  const opens = normCount(components?.opens, OPENS_CAP);
+  return clamp013(0.5 * refs + 0.2 * shared + 0.15 * recency + 0.15 * opens);
+}
+function strokeFor(score) {
+  const s = clamp013(score);
+  return {
+    width: Math.round(1 + s * 3),
+    opacity: 0.5 + s * 0.5
+  };
+}
+function dustLimit(period) {
+  if (Number.isFinite(period) && period > 0) return period;
+  const key = String(period ?? "").trim().toLowerCase();
+  return DUST_PERIODS[key] ?? null;
+}
+function stampsOf(item) {
+  return {
+    edit: item?.editTime ?? item?.edit,
+    create: item?.createTime ?? item?.create,
+    now: Number.isFinite(item?.now) ? item.now : Date.now()
+  };
+}
+function dustAge(editTime, createTime, now2) {
+  const stamps = [editTime, createTime].filter((n2) => Number.isFinite(n2));
+  if (!stamps.length || !Number.isFinite(now2)) return null;
+  return Math.max(0, now2 - Math.max(...stamps));
+}
+function dusty(item, period) {
+  const limit = dustLimit(period);
+  if (limit == null) return false;
+  const times = stampsOf(item);
+  const age = dustAge(times.edit, times.create, times.now);
+  return age != null && age >= limit;
+}
+function ageParts(ms) {
+  const days = Math.max(0, Math.round(Number(ms) / DAY3));
+  if (days <= 0) return { n: 0, unit: "today" };
+  if (days < 30) return { n: days, unit: "day" };
+  if (days < 365) return { n: Math.max(1, Math.round(days / 30)), unit: "month" };
+  return { n: Math.max(1, Math.round(days / 365)), unit: "year" };
+}
+function ageLabel(ms) {
+  if (!Number.isFinite(ms)) return "";
+  const part = ageParts(ms);
+  if (part.unit === "today") return "today";
+  const word = part.n === 1 ? part.unit : `${part.unit}s`;
+  return `${part.n} ${word}`;
+}
+function countPhrase(value, one, many) {
+  const n2 = Number(value);
+  const v = Number.isFinite(n2) && n2 > 0 ? Math.round(n2) : 0;
+  return `${v} ${v === 1 ? one : many}`;
+}
+function explain(components = {}) {
+  const refs = countPhrase(components?.refs, "ref", "refs");
+  const shared = countPhrase(components?.shared, "shared board", "shared boards");
+  const edit = components?.editTime ?? components?.edit;
+  const now2 = Number.isFinite(components?.now) ? components.now : Date.now();
+  let when = "not edited";
+  if (Number.isFinite(edit)) {
+    const part = ageParts(Math.max(0, now2 - edit));
+    when = part.unit === "today" ? "edited today" : `edited ${part.n} ${part.n === 1 ? part.unit : `${part.unit}s`} ago`;
+  }
+  return `${refs}, ${shared}, ${when}`;
+}
+function edgeOpens(store, from, to) {
+  if (typeof store?.get !== "function") return 0;
+  return store.get(from) + store.get(to);
+}
+function createOpenStore({ storage = globalThis.localStorage, graph = "", enabled = false } = {}) {
+  const key = `${OPEN_PREFIX}${graph}`;
+  let on = enabled === true;
+  const read2 = () => {
+    try {
+      const raw = storage?.getItem?.(key);
+      if (!raw) return {};
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed : {};
+    } catch {
+      return {};
+    }
+  };
+  const write = (data) => {
+    try {
+      storage?.setItem?.(key, JSON.stringify(data));
+    } catch {
+    }
+  };
+  return {
+    key,
+    get enabled() {
+      return on;
+    },
+    setEnabled(value) {
+      on = value === true;
+    },
+    get(uid) {
+      const n2 = Number(read2()[uid]);
+      return Number.isFinite(n2) && n2 > 0 ? n2 : 0;
+    },
+    bump(uid) {
+      if (!uid) return 0;
+      const current3 = this.get(uid);
+      if (!on) return current3;
+      const data = read2();
+      const next = current3 + 1;
+      data[uid] = next;
+      write(data);
+      return next;
+    },
+    dispose() {
+    }
+  };
+}
+
+// src/view/strength-lens.js
+var saved = /* @__PURE__ */ new WeakMap();
+function lineOf(el) {
+  return el?.querySelector?.(".pxd-edge__line") || el;
+}
+function lookup(table, uid, index) {
+  if (table == null) return void 0;
+  if (typeof table.get === "function") {
+    if (uid != null && table.has?.(uid)) return table.get(uid);
+    if (typeof table.has !== "function" && uid != null && table.get(uid) != null) return table.get(uid);
+  }
+  if (Array.isArray(table)) return table[index];
+  if (uid != null && typeof table === "object" && Object.prototype.hasOwnProperty.call(table, uid)) return table[uid];
+  return void 0;
+}
+function uidOf(el) {
+  return el?.getAttribute?.("data-uid") || el?.dataset?.uid || "";
+}
+function remember(el) {
+  if (!el || saved.has(el)) return;
+  saved.set(el, {
+    strokeWidth: el.style?.strokeWidth || "",
+    strokeOpacity: el.style?.strokeOpacity || "",
+    title: el.hasAttribute?.("title") ? el.getAttribute("title") : null
+  });
+}
+function restore(el) {
+  if (!el || !saved.has(el)) return;
+  const prev = saved.get(el);
+  saved.delete(el);
+  if (el.style) {
+    el.style.strokeWidth = prev.strokeWidth;
+    el.style.strokeOpacity = prev.strokeOpacity;
+  }
+  if (prev.title == null) el.removeAttribute?.("title");
+  else el.setAttribute?.("title", prev.title);
+}
+function dropTip(el) {
+  const tips = el?.querySelectorAll?.(".pxd-strength__tip") || [];
+  for (const tip of tips) tip.remove?.();
+}
+function putTip(el, text2) {
+  el.setAttribute?.("title", text2);
+  const doc = el.ownerDocument || globalThis.document;
+  if (!doc?.createElement) return;
+  let tip = el.querySelector?.(".pxd-strength__tip");
+  if (!tip) {
+    tip = doc.createElementNS?.("http://www.w3.org/2000/svg", "title") || doc.createElement("title");
+    tip.setAttribute?.("class", "pxd-strength__tip");
+    el.append?.(tip);
+  }
+  tip.textContent = text2;
+}
+function partsOf(raw) {
+  if (typeof raw === "number") return { score: raw, components: null };
+  if (!raw || typeof raw !== "object") return { score: null, components: null };
+  const components = raw.components && typeof raw.components === "object" ? { ...raw.components, now: raw.components.now ?? raw.now } : raw;
+  const trackOpens = raw.trackOpens === true || components.trackOpens === true;
+  const score = Number.isFinite(raw.score) ? raw.score : strengthScore(components, { trackOpens, now: components.now });
+  return { score, components };
+}
+function lists(edges, cards) {
+  if (edges && typeof edges === "object" && !Array.isArray(edges) && typeof edges.get !== "function" && (Object.prototype.hasOwnProperty.call(edges, "edges") || Object.prototype.hasOwnProperty.call(edges, "cards"))) {
+    return { edges: edges.edges || [], cards: edges.cards || [] };
+  }
+  return { edges: edges || [], cards: cards || [] };
+}
+function applyStrength(edgeEls, scores) {
+  const list = [...edgeEls || []];
+  list.forEach((el, index) => {
+    if (!el) return;
+    const raw = lookup(scores, uidOf(el), index);
+    if (raw === void 0) return;
+    const { score, components } = partsOf(raw);
+    if (!Number.isFinite(score)) return;
+    const stroke = strokeFor(score);
+    const node2 = lineOf(el);
+    remember(node2);
+    if (node2 !== el) remember(el);
+    if (node2?.style) {
+      node2.style.strokeWidth = `${stroke.width}px`;
+      node2.style.strokeOpacity = String(stroke.opacity);
+    }
+    if (components) {
+      const text2 = `${explain(components)} Heuristic.`;
+      putTip(el, text2);
+      if (node2 !== el) node2?.setAttribute?.("title", text2);
+    }
+  });
+}
+function dustItem(raw) {
+  if (typeof raw === "number" && Number.isFinite(raw)) return { editTime: 0, now: raw };
+  return raw && typeof raw === "object" ? raw : null;
+}
+function applyDust(cardEls, ages, period) {
+  const list = [...cardEls || []];
+  list.forEach((el, index) => {
+    if (!el) return;
+    const raw = lookup(ages, uidOf(el), index);
+    const item = dustItem(raw);
+    const on = item ? dusty(item, period) : false;
+    if (!on) {
+      el.classList?.remove("pxd-item--dust");
+      el.removeAttribute?.("data-dust-age");
+      dropTip(el);
+      restore(el);
+      return;
+    }
+    const age = typeof raw === "number" ? raw : dustAge(item.editTime ?? item.edit, item.createTime ?? item.create, Number.isFinite(item.now) ? item.now : Date.now());
+    const label = ageLabel(age);
+    remember(el);
+    el.classList?.add("pxd-item--dust");
+    el.setAttribute?.("data-dust-age", label);
+    el.setAttribute?.("title", `Untouched for ${label}. Heuristic.`);
+  });
+}
+function clearLens(edges, cards) {
+  const spec = lists(edges, cards);
+  for (const el of spec.edges || []) {
+    if (!el) continue;
+    const node2 = lineOf(el);
+    dropTip(el);
+    if (node2 !== el) {
+      dropTip(node2);
+      restore(node2);
+    }
+    restore(el);
+  }
+  for (const el of spec.cards || []) {
+    if (!el) continue;
+    el.classList?.remove("pxd-item--dust");
+    el.removeAttribute?.("data-dust-age");
+    dropTip(el);
+    restore(el);
+  }
 }
 
 // src/view/why-pop.js
@@ -12492,20 +13446,20 @@ function snippetOf2(text2, max = 200) {
 function filterRows(rows, query) {
   const q = String(query ?? "").trim().toLowerCase();
   if (!q) return rows || [];
-  return (rows || []).filter((row3) => `${row3.crumb || ""} ${row3.snippet || ""}`.toLowerCase().includes(q));
+  return (rows || []).filter((row4) => `${row4.crumb || ""} ${row4.snippet || ""}`.toLowerCase().includes(q));
 }
 function groupRefs(rows, cap4 = CONTEXT_CAP) {
-  const sorted = [...rows || []].filter((row3) => row3?.uid).sort((a, b) => (b.time || 0) - (a.time || 0) || String(a.uid).localeCompare(String(b.uid)));
+  const sorted = [...rows || []].filter((row4) => row4?.uid).sort((a, b) => (b.time || 0) - (a.time || 0) || String(a.uid).localeCompare(String(b.uid)));
   const shown = sorted.slice(0, cap4);
   const groups = [];
-  for (const row3 of shown) {
-    const year = Number.isFinite(row3.time) ? new Date(row3.time).getFullYear() : 0;
+  for (const row4 of shown) {
+    const year = Number.isFinite(row4.time) ? new Date(row4.time).getFullYear() : 0;
     let group = groups.find((item) => item.year === year);
     if (!group) {
       group = { year, rows: [] };
       groups.push(group);
     }
-    group.rows.push(row3);
+    group.rows.push(row4);
   }
   return { groups, total: sorted.length, hidden: Math.max(0, sorted.length - shown.length) };
 }
@@ -12530,7 +13484,7 @@ function mountContextsDrawer({
   el.setAttribute("role", "dialog");
   el.setAttribute("aria-label", "References");
   const grouped = groupRefs(rows);
-  const flat2 = grouped.groups.flatMap((group) => group.rows.map((row3) => ({ ...row3, year: group.year })));
+  const flat2 = grouped.groups.flatMap((group) => group.rows.map((row4) => ({ ...row4, year: group.year })));
   const chunks = rowChunks(flat2);
   const list = doc.createElement("div");
   list.className = "pxd-contexts__list";
@@ -12540,7 +13494,7 @@ function mountContextsDrawer({
     filter.type = "search";
     filter.setAttribute("aria-label", "Filter references");
     filter.addEventListener("input", () => {
-      const shown = new Set(filterRows(flat2, filter.value).map((row3) => row3.uid));
+      const shown = new Set(filterRows(flat2, filter.value).map((row4) => row4.uid));
       for (const node2 of list.querySelectorAll(".pxd-contexts__row")) {
         node2.hidden = !shown.has(node2.getAttribute("data-uid"));
       }
@@ -12555,9 +13509,9 @@ function mountContextsDrawer({
   }
   let year;
   const paint2 = (chunk) => {
-    for (const row3 of chunk) {
-      if (row3.year !== year) {
-        year = row3.year;
+    for (const row4 of chunk) {
+      if (row4.year !== year) {
+        year = row4.year;
         const head = doc.createElement("div");
         head.className = "pxd-contexts__year";
         head.textContent = year ? String(year) : "Undated";
@@ -12566,18 +13520,18 @@ function mountContextsDrawer({
       const button = doc.createElement("button");
       button.type = "button";
       button.className = "pxd-contexts__row";
-      button.setAttribute("data-uid", row3.uid);
+      button.setAttribute("data-uid", row4.uid);
       const crumb = doc.createElement("div");
       crumb.className = "pxd-contexts__crumb";
-      crumb.textContent = row3.crumb || "Untitled";
+      crumb.textContent = row4.crumb || "Untitled";
       const snippet = doc.createElement("div");
       snippet.className = "pxd-contexts__snippet";
-      snippet.textContent = row3.snippet || "";
+      snippet.textContent = row4.snippet || "";
       button.append(crumb, snippet);
       button.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
-        onOpen?.(row3.uid, { sidebar: Boolean(event.shiftKey) });
+        onOpen?.(row4.uid, { sidebar: Boolean(event.shiftKey) });
       });
       list.append(button);
     }
@@ -12598,71 +13552,6 @@ function mountContextsDrawer({
       el.remove();
     }
   };
-}
-
-// src/model/timeline.js
-var LANE_STEP_MS = 700;
-var WEEK = 7 * 864e5;
-function timeIndex(items) {
-  const events = [];
-  for (const item of items || []) {
-    if (!item?.uid || !Number.isFinite(item.time)) continue;
-    events.push({ uid: item.uid, time: item.time, kind: item.kind || "card" });
-  }
-  events.sort((a, b) => a.time - b.time || String(a.uid).localeCompare(String(b.uid)));
-  return events;
-}
-function monthSteps(start, end) {
-  const a = new Date(start);
-  const b = new Date(end);
-  if (!Number.isFinite(a.getTime()) || !Number.isFinite(b.getTime()) || b.getTime() <= a.getTime()) {
-    return [Number.isFinite(a.getTime()) ? a.getTime() : Date.now()];
-  }
-  const steps = [a.getTime()];
-  let year = a.getFullYear();
-  let month = a.getMonth();
-  const endT = b.getTime();
-  for (let i = 0; i < 600; i += 1) {
-    month += 1;
-    if (month > 11) {
-      month = 0;
-      year += 1;
-    }
-    const t = new Date(year, month, 1).getTime();
-    if (t >= endT) {
-      steps.push(endT);
-      break;
-    }
-    steps.push(t);
-  }
-  return steps;
-}
-function laneSets(index, t) {
-  const future = [];
-  const fresh = [];
-  for (const event of index || []) {
-    if (event.time > t) future.push(event.uid);
-    else if (t - event.time <= WEEK) fresh.push(event.uid);
-  }
-  return { future, fresh };
-}
-function edgeHidden(edges, itemFuture, t) {
-  const late = new Set(itemFuture || []);
-  const out = [];
-  for (const edge of edges || []) {
-    if (!edge?.uid) continue;
-    const own = Number.isFinite(edge.time) && edge.time > t;
-    if (own || late.has(edge.from) || late.has(edge.to)) out.push(edge.uid);
-  }
-  return out;
-}
-function previewLayout(items) {
-  const layout = /* @__PURE__ */ new Map();
-  for (const item of items || []) {
-    if (!item?.uid || !Number.isFinite(item.x) || !Number.isFinite(item.y)) continue;
-    layout.set(item.uid, { x: item.x, y: item.y, w: item.w, h: item.h });
-  }
-  return { layout, writes: 0 };
 }
 
 // src/view/lane-bar.js
@@ -13085,11 +13974,11 @@ function createBt(options = {}) {
     const list = res?.attributes;
     if (!Array.isArray(list) || !list.length) return null;
     const map = /* @__PURE__ */ new Map();
-    for (const row3 of list) {
-      if (!row3?.id || !row3?.name) continue;
-      const set = /* @__PURE__ */ new Set([lower2(row3.name)]);
-      for (const alias of row3.aliases || []) if (alias) set.add(lower2(alias));
-      map.set(row3.id, set);
+    for (const row4 of list) {
+      if (!row4?.id || !row4?.name) continue;
+      const set = /* @__PURE__ */ new Set([lower2(row4.name)]);
+      for (const alias of row4.aliases || []) if (alias) set.add(lower2(alias));
+      map.set(row4.id, set);
     }
     return map.size ? map : null;
   };
@@ -13467,18 +14356,18 @@ function openStatusChooser({ doc = globalThis.document, anchor, palette, current
   for (const entry of paletteEntries(palette)) {
     const name = String(entry?.name || "").trim();
     if (!name) continue;
-    const row3 = el("button", "pxd-status-chooser__row", list);
-    row3.type = "button";
-    row3.setAttribute("role", "option");
-    row3.setAttribute("data-name", name);
-    const glyph = el("span", "pxd-status-chooser__glyph", row3);
+    const row4 = el("button", "pxd-status-chooser__row", list);
+    row4.type = "button";
+    row4.setAttribute("role", "option");
+    row4.setAttribute("data-name", name);
+    const glyph = el("span", "pxd-status-chooser__glyph", row4);
     glyph.setAttribute("data-status", entry.glyph || "diamond");
     glyph.setAttribute("aria-hidden", "true");
-    const label = el("span", "pxd-status-chooser__name", row3);
+    const label = el("span", "pxd-status-chooser__name", row4);
     label.textContent = name;
     if (name.toLowerCase() === want) {
-      row3.setAttribute("aria-selected", "true");
-      currentRow = row3;
+      row4.setAttribute("aria-selected", "true");
+      currentRow = row4;
     }
   }
   const remove = el("button", "pxd-status-chooser__row pxd-status-chooser__row--remove", list);
@@ -13532,10 +14421,10 @@ function openStatusChooser({ doc = globalThis.document, anchor, palette, current
     event.preventDefault();
     event.stopPropagation();
     if (event.key === "Enter") {
-      const row3 = rowOf(event);
-      if (!row3) return;
-      if (row3.getAttribute("data-remove") === "true") finish("remove", null);
-      else finish("pick", row3.getAttribute("data-name"));
+      const row4 = rowOf(event);
+      if (!row4) return;
+      if (row4.getAttribute("data-remove") === "true") finish("remove", null);
+      else finish("pick", row4.getAttribute("data-name"));
       return;
     }
     const buttons = [...pop.querySelectorAll("button")];
@@ -13549,11 +14438,11 @@ function openStatusChooser({ doc = globalThis.document, anchor, palette, current
       }
     }
   };
-  for (const row3 of pop.querySelectorAll("button")) {
-    on(row3, "click", (event) => {
+  for (const row4 of pop.querySelectorAll("button")) {
+    on(row4, "click", (event) => {
       event.stopPropagation();
-      if (row3.getAttribute("data-remove") === "true") finish("remove", null);
-      else finish("pick", row3.getAttribute("data-name"));
+      if (row4.getAttribute("data-remove") === "true") finish("remove", null);
+      else finish("pick", row4.getAttribute("data-name"));
     });
   }
   for (const type of ["pointerdown", "mousedown", "pointerup", "click", "dblclick", "wheel", "contextmenu"]) {
@@ -13994,10 +14883,10 @@ var SHORTCUTS = [
   { group: "Present", keys: "← ↑", label: "Previous", action: "presentPrev", mode: "present", events: [{ key: "ArrowLeft" }, { key: "ArrowUp" }, { key: "PageUp" }], match: (ev) => !hasMod(ev) && !ev.alt && (ev.key === "ArrowLeft" || ev.key === "ArrowUp" || ev.key === "PageUp") }
 ];
 function findShortcut(ev, mode = "normal", settings) {
-  return SHORTCUTS.find((row3) => {
-    if ((row3.mode || "normal") !== mode || !row3.match(ev)) return false;
-    if (settings == null || typeof row3.when !== "function") return true;
-    return row3.when(settings) !== false;
+  return SHORTCUTS.find((row4) => {
+    if ((row4.mode || "normal") !== mode || !row4.match(ev)) return false;
+    if (settings == null || typeof row4.when !== "function") return true;
+    return row4.when(settings) !== false;
   }) || null;
 }
 
@@ -14009,7 +14898,7 @@ function dayTargetOf(b, hit) {
   const day = title ? parseRoamDay(title) : null;
   return day ? { uid: item.uid, title, iso: isoDay(new Date(day.y, day.m - 1, day.d)) } : null;
 }
-var TOOL_KEYS = Object.fromEntries(SHORTCUTS.filter((row3) => row3.letter).map((row3) => [row3.letter, row3.tool]));
+var TOOL_KEYS = Object.fromEntries(SHORTCUTS.filter((row4) => row4.letter).map((row4) => [row4.letter, row4.tool]));
 var TOOLS = ["select", "hand", "card", "task", "text", "sticky", "shape", "section", "board", "connect"];
 var SHAPE_PLACE = { w: 160, h: 100 };
 var DRAG_THRESHOLD_PX = 4;
@@ -14801,12 +15690,12 @@ function createInteractions({ actions, settings } = {}) {
     }
     return false;
   };
-  const runShortcut = (row3, ev) => {
+  const runShortcut = (row4, ev) => {
     const key = ev.key || "";
     const b = board2();
-    switch (row3.action) {
+    switch (row4.action) {
       case "tool":
-        setTool(row3.tool);
+        setTool(row4.tool);
         return true;
       case "space":
         if (!state.space) {
@@ -14926,7 +15815,7 @@ function createInteractions({ actions, settings } = {}) {
         call("toggleShortcuts");
         return true;
       case "boardTab":
-        call("selectBoardTab", row3.tab);
+        call("selectBoardTab", row4.tab);
         return true;
       case "expand": {
         if (state.selection.size !== 1) return false;
@@ -14957,9 +15846,9 @@ function createInteractions({ actions, settings } = {}) {
     const always = findShortcut(ev, "always");
     if (always) return runShortcut(always, ev);
     if (setting("enable-shortcuts", true) === false) return false;
-    const row3 = findShortcut(ev, "normal", settings);
-    if (!row3) return false;
-    return runShortcut(row3, ev);
+    const row4 = findShortcut(ev, "normal", settings);
+    if (!row4) return false;
+    return runShortcut(row4, ev);
   };
   const onKeyUp = (ev) => {
     if (ev.code === "Space" || ev.key === " ") {
@@ -15033,7 +15922,7 @@ function createInteractions({ actions, settings } = {}) {
 
 // src/view/board-picker.js
 function recentBoardRows(rows) {
-  return [...rows || []].filter((row3) => row3 && row3.uid).sort((a, b) => (Number(b.edited) || 0) - (Number(a.edited) || 0) || String(a.title || "").localeCompare(String(b.title || "")));
+  return [...rows || []].filter((row4) => row4 && row4.uid).sort((a, b) => (Number(b.edited) || 0) - (Number(a.edited) || 0) || String(a.title || "").localeCompare(String(b.title || "")));
 }
 var current = null;
 function openAddToBoard({ doc = globalThis.document, listBoards, onPick } = {}) {
@@ -15083,10 +15972,10 @@ ${b.pageTitle || b.page || ""}`.toLowerCase().includes(q));
       return;
     }
     for (const b of shown) {
-      const row3 = el("div", "pxd-addboard__row", list);
-      row3.dataset.uid = b.uid;
-      row3.setAttribute("data-uid", b.uid);
-      const text2 = el("span", "pxd-addboard__text", row3);
+      const row4 = el("div", "pxd-addboard__row", list);
+      row4.dataset.uid = b.uid;
+      row4.setAttribute("data-uid", b.uid);
+      const text2 = el("span", "pxd-addboard__text", row4);
       el("span", "pxd-addboard__name", text2, b.title || "Untitled board");
       const page = b.pageTitle || b.page;
       if (page) el("span", "pxd-addboard__page", text2, page);
@@ -15106,8 +15995,8 @@ ${b.pageTitle || b.page || ""}`.toLowerCase().includes(q));
     close();
   });
   on(list, "click", (event) => {
-    const row3 = event.target?.closest?.(".pxd-addboard__row");
-    const uid = row3?.dataset?.uid || row3?.getAttribute?.("data-uid");
+    const row4 = event.target?.closest?.(".pxd-addboard__row");
+    const uid = row4?.dataset?.uid || row4?.getAttribute?.("data-uid");
     if (!uid || busy) return;
     const board2 = rows.find((b) => b.uid === uid);
     if (!board2) return;
@@ -15185,10 +16074,10 @@ function openPagePicker({ doc = globalThis.document, search, onPick, debounceMs 
       return;
     }
     for (const page of rows) {
-      const row3 = el("div", "pxd-addboard__row", list);
-      row3.dataset.title = page.title;
-      row3.setAttribute("data-title", page.title);
-      const label = el("span", "pxd-addboard__text", row3);
+      const row4 = el("div", "pxd-addboard__row", list);
+      row4.dataset.title = page.title;
+      row4.setAttribute("data-title", page.title);
+      const label = el("span", "pxd-addboard__text", row4);
       el("span", "pxd-addboard__name", label, page.title);
     }
   };
@@ -15202,7 +16091,7 @@ function openPagePicker({ doc = globalThis.document, search, onPick, debounceMs 
     }
     Promise.resolve(typeof search === "function" ? search(text2) : []).then((got) => {
       if (closed || mine !== ticket) return;
-      show((Array.isArray(got) ? got : []).filter((row3) => row3 && typeof row3.title === "string" && row3.title), text2);
+      show((Array.isArray(got) ? got : []).filter((row4) => row4 && typeof row4.title === "string" && row4.title), text2);
     }, () => {
       if (closed || mine !== ticket) return;
       show([], text2);
@@ -15234,8 +16123,8 @@ function openPagePicker({ doc = globalThis.document, search, onPick, debounceMs 
     }
   });
   on(list, "click", (event) => {
-    const row3 = event.target?.closest?.(".pxd-addboard__row");
-    const title = row3?.dataset?.title || row3?.getAttribute?.("data-title");
+    const row4 = event.target?.closest?.(".pxd-addboard__row");
+    const title = row4?.dataset?.title || row4?.getAttribute?.("data-title");
     if (!title || busy) return;
     event.preventDefault?.();
     event.stopPropagation?.();
@@ -15289,24 +16178,24 @@ function createRowScheduler({ idle, now: now2 = () => Date.now(), budgetMs = 8, 
   const pending = () => {
     const light = [];
     const heavy = [];
-    for (const row3 of rows.values()) {
-      if (row3.done || !row3.wanted) continue;
-      (row3.heavy ? heavy : light).push(row3);
+    for (const row4 of rows.values()) {
+      if (row4.done || !row4.wanted) continue;
+      (row4.heavy ? heavy : light).push(row4);
     }
     light.sort(byOrder);
     heavy.sort(byOrder);
     return light.concat(heavy);
   };
-  const finish = (row3) => {
-    if (row3.done) return;
-    row3.done = true;
+  const finish = (row4) => {
+    if (row4.done) return;
+    row4.done = true;
     let retry = false;
     try {
-      retry = render(row3.id) === false;
+      retry = render(row4.id) === false;
     } catch {
       retry = false;
     }
-    if (retry) row3.done = false;
+    if (retry) row4.done = false;
   };
   let pumping = false;
   const allNow = () => {
@@ -15323,9 +16212,9 @@ function createRowScheduler({ idle, now: now2 = () => Date.now(), budgetMs = 8, 
     const start = now2();
     const open = allNow();
     const has = deadline && typeof deadline.timeRemaining === "function" ? () => deadline.timeRemaining() > 1 : () => true;
-    for (const row3 of pending()) {
+    for (const row4 of pending()) {
       if (!open && (held || now2() - start >= budgetMs || !has())) break;
-      finish(row3);
+      finish(row4);
     }
     if (!held && pending().length) schedule();
   };
@@ -15353,31 +16242,31 @@ function createRowScheduler({ idle, now: now2 = () => Date.now(), budgetMs = 8, 
     },
     // Card bodies update distance as the camera moves. A finished row stays finished until reopen.
     place(id, { heavy = false, near = null, wanted = true } = {}) {
-      let row3 = rows.get(id);
-      if (!row3) {
-        row3 = { id, heavy: Boolean(heavy), wanted: false, done: false, near, seq: seq++ };
-        rows.set(id, row3);
-      } else if (row3.done) {
+      let row4 = rows.get(id);
+      if (!row4) {
+        row4 = { id, heavy: Boolean(heavy), wanted: false, done: false, near, seq: seq++ };
+        rows.set(id, row4);
+      } else if (row4.done) {
         return;
       } else {
-        row3.heavy = Boolean(heavy);
-        if (near != null) row3.near = near;
+        row4.heavy = Boolean(heavy);
+        if (near != null) row4.near = near;
       }
-      row3.wanted = Boolean(wanted);
+      row4.wanted = Boolean(wanted);
       if (wanted) schedule();
     },
     // A dirty uid whose body was cleared mounts again. Already-done uids outside the dirty set never get here.
     reopen(id, opts = {}) {
-      const row3 = rows.get(id);
-      if (!row3) {
+      const row4 = rows.get(id);
+      if (!row4) {
         this.place(id, opts);
         return true;
       }
-      row3.done = false;
-      row3.heavy = Boolean(opts.heavy);
-      if (opts.near != null) row3.near = opts.near;
-      row3.wanted = opts.wanted !== false;
-      if (row3.wanted) schedule();
+      row4.done = false;
+      row4.heavy = Boolean(opts.heavy);
+      if (opts.near != null) row4.near = opts.near;
+      row4.wanted = opts.wanted !== false;
+      if (row4.wanted) schedule();
       return true;
     },
     // A gesture holds the pump so a pan frame does not mount bodies. Release continues the same rows.
@@ -15395,9 +16284,9 @@ function createRowScheduler({ idle, now: now2 = () => Date.now(), budgetMs = 8, 
       schedule();
     },
     want(id, on = true) {
-      const row3 = rows.get(id);
-      if (!row3 || row3.done) return;
-      row3.wanted = Boolean(on);
+      const row4 = rows.get(id);
+      if (!row4 || row4.done) return;
+      row4.wanted = Boolean(on);
       if (on) schedule();
     },
     // A refresh drops a row that left the outline. A string edit can flip heavy without starting over.
@@ -15405,20 +16294,20 @@ function createRowScheduler({ idle, now: now2 = () => Date.now(), budgetMs = 8, 
       rows.delete(id);
     },
     retarget(id, { heavy = false } = {}) {
-      const row3 = rows.get(id);
-      if (!row3 || row3.done) return;
-      row3.heavy = Boolean(heavy);
-      if (row3.wanted) schedule();
+      const row4 = rows.get(id);
+      if (!row4 || row4.done) return;
+      row4.heavy = Boolean(heavy);
+      if (row4.wanted) schedule();
     },
     wantAll() {
-      for (const row3 of rows.values()) row3.wanted = true;
+      for (const row4 of rows.values()) row4.wanted = true;
       schedule();
     },
     // Renders one row right now (reveal, scroll to it, measure it).
     renderNow(id) {
-      const row3 = rows.get(id);
-      if (!row3) return false;
-      finish(row3);
+      const row4 = rows.get(id);
+      if (!row4) return false;
+      finish(row4);
       return true;
     },
     isDone: (id) => Boolean(rows.get(id)?.done),
@@ -15432,6 +16321,126 @@ function createRowScheduler({ idle, now: now2 = () => Date.now(), budgetMs = 8, 
       }
       handle = null;
       rows.clear();
+    }
+  };
+}
+
+// src/view/timeline.js
+var EMPTY = "No daily notes mention this board.";
+function mountTimeline(parent, { doc, rows = [], onOpenDay, onShowOnBoard } = {}) {
+  const document = doc || globalThis.document;
+  if (!document?.createElement) throw new Error("mountTimeline needs a document");
+  const el = document.createElement("div");
+  el.className = "pxd-timeline";
+  let grouped = [];
+  const collapsed = /* @__PURE__ */ new Set();
+  let disposed = false;
+  const dayOf2 = (pageUid) => {
+    for (const year of grouped) {
+      for (const day of year.days) {
+        if (day.pageUid === pageUid) return day;
+      }
+    }
+    return null;
+  };
+  const onClick = (event) => {
+    if (disposed) return;
+    const show = event.target?.closest?.(".pxd-timeline__show");
+    if (show && el.contains(show)) {
+      event.preventDefault?.();
+      event.stopPropagation?.();
+      const day = dayOf2(show.getAttribute("data-page-uid") || "");
+      const ids = day ? [...day.cardUids].sort() : [];
+      onShowOnBoard?.(new Set(ids));
+      return;
+    }
+    const yearBtn = event.target?.closest?.(".pxd-timeline__year");
+    if (yearBtn && el.contains(yearBtn)) {
+      event.preventDefault?.();
+      event.stopPropagation?.();
+      const year = Number(yearBtn.getAttribute("data-year"));
+      const days = yearBtn.parentElement?.querySelector?.(".pxd-timeline__days");
+      const next = !collapsed.has(year);
+      if (next) collapsed.add(year);
+      else collapsed.delete(year);
+      yearBtn.setAttribute("aria-expanded", next ? "false" : "true");
+      if (days) {
+        if (next) days.setAttribute("hidden", "");
+        else days.removeAttribute("hidden");
+      }
+      return;
+    }
+    const dayRow = event.target?.closest?.(".pxd-timeline__day");
+    if (dayRow && el.contains(dayRow)) {
+      event.preventDefault?.();
+      event.stopPropagation?.();
+      const pageUid = dayRow.getAttribute("data-page-uid") || "";
+      if (pageUid) onOpenDay?.(pageUid);
+    }
+  };
+  const render = (nextRows) => {
+    if (disposed) return;
+    grouped = groupTimeline(nextRows);
+    el.replaceChildren();
+    if (!grouped.length) {
+      const empty = document.createElement("div");
+      empty.className = "pxd-timeline__empty";
+      empty.textContent = EMPTY;
+      el.append(empty);
+      return;
+    }
+    for (const year of grouped) {
+      const group = document.createElement("div");
+      group.className = "pxd-timeline__group";
+      const button = document.createElement("button");
+      button.type = "button";
+      button.className = "pxd-timeline__year";
+      button.setAttribute("data-year", String(year.year));
+      const shut = collapsed.has(year.year);
+      button.setAttribute("aria-expanded", shut ? "false" : "true");
+      const label = document.createElement("span");
+      label.className = "pxd-timeline__year-label";
+      label.textContent = String(year.year);
+      button.append(label);
+      const days = document.createElement("div");
+      days.className = "pxd-timeline__days";
+      if (shut) days.setAttribute("hidden", "");
+      for (const day of year.days) {
+        const row4 = document.createElement("div");
+        row4.className = "pxd-timeline__day";
+        row4.setAttribute("data-page-uid", day.pageUid || "");
+        const open = document.createElement("button");
+        open.type = "button";
+        open.className = "pxd-timeline__open";
+        open.textContent = day.title;
+        const count = document.createElement("span");
+        count.className = "pxd-timeline__count";
+        count.textContent = String(day.count);
+        const show = document.createElement("button");
+        show.type = "button";
+        show.className = "pxd-timeline__show";
+        show.setAttribute("data-page-uid", day.pageUid || "");
+        show.textContent = "Show on board";
+        row4.append(open, count, show);
+        days.append(row4);
+      }
+      group.append(button, days);
+      el.append(group);
+    }
+  };
+  el.addEventListener("click", onClick);
+  render(rows);
+  parent?.append?.(el);
+  return {
+    el,
+    update(nextRows) {
+      render(nextRows);
+    },
+    dispose() {
+      if (disposed) return;
+      disposed = true;
+      el.removeEventListener("click", onClick);
+      el.remove();
     }
   };
 }
@@ -15539,6 +16548,8 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     listen(panel, type, (event) => {
       if ((type === "keydown" || type === "keyup") && event.target?.closest?.(".pxd-panel__info-mount")) return;
       event.stopPropagation();
+      if (type === "click") trailClick(event);
+      else if (type === "pointerdown") trailPointerDown(event);
     });
   }
   let resizing = null;
@@ -15586,7 +16597,8 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
   const tabOutline = tabBtn("outline", "Outline", "list");
   const tabJournal = tabBtn("journal", "Journal", "calendar");
   const tabInfo = tabBtn("info", "Info", "info-sign");
-  const tabButtons = { search: tabSearch, related: tabRelated, boards: tabBoards, outline: tabOutline, journal: tabJournal, info: tabInfo };
+  const tabTrails = tabBtn("trails", "Trails", "flows");
+  const tabButtons = { search: tabSearch, related: tabRelated, boards: tabBoards, outline: tabOutline, journal: tabJournal, info: tabInfo, trails: tabTrails };
   const closeBtn = el("button", "pxd-btn pxd-iconbtn pxd-panel__close", head);
   closeBtn.type = "button";
   closeBtn.title = "Close";
@@ -15658,27 +16670,27 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     el("div", "pxd-panel__views-title", viewsList, "Views");
     for (const view of views) {
       if (!view?.uid) continue;
-      const row4 = el("div", "pxd-view-row", viewsList);
-      row4.setAttribute("data-view", view.uid);
-      row4.append(minimapSvg(doc, { v: view.v, items: view.items || [] }));
-      el("span", "pxd-view-caption", row4, view.caption || "View");
-      const go = el("button", "pxd-btn pxd-view-go", row4, "Go");
+      const row5 = el("div", "pxd-view-row", viewsList);
+      row5.setAttribute("data-view", view.uid);
+      row5.append(minimapSvg(doc, { v: view.v, items: view.items || [] }));
+      el("span", "pxd-view-caption", row5, view.caption || "View");
+      const go = el("button", "pxd-btn pxd-view-go", row5, "Go");
       go.type = "button";
       go.setAttribute("data-act", "go");
-      const copy = el("button", "pxd-btn pxd-view-copy", row4, "Copy ref");
+      const copy = el("button", "pxd-btn pxd-view-copy", row5, "Copy ref");
       copy.type = "button";
       copy.setAttribute("data-act", "copy");
-      const rename = el("button", "pxd-btn pxd-view-rename", row4, "Rename");
+      const rename = el("button", "pxd-btn pxd-view-rename", row5, "Rename");
       rename.type = "button";
       rename.setAttribute("data-act", "rename");
-      const del = el("button", "pxd-btn pxd-view-delete", row4, "Delete");
+      const del = el("button", "pxd-btn pxd-view-delete", row5, "Delete");
       del.type = "button";
       del.setAttribute("data-act", "delete");
     }
   };
   listen(viewsList, "click", (event) => {
-    const row4 = event.target?.closest?.(".pxd-view-row");
-    const uid = row4?.getAttribute?.("data-view");
+    const row5 = event.target?.closest?.(".pxd-view-row");
+    const uid = row5?.getAttribute?.("data-view");
     if (!uid) return;
     event.preventDefault?.();
     event.stopPropagation();
@@ -15707,6 +16719,16 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
   const journalList = el("div", "pxd-panel__list pxd-journal__list", journalPane);
   const infoPane = el("div", "pxd-panel__pane pxd-panel__pane--info", panel);
   infoPane.style.display = "none";
+  const trailsPane = el("div", "pxd-panel__pane pxd-panel__pane--trails", panel);
+  trailsPane.style.display = "none";
+  const trailsBar = el("div", "pxd-trails__bar", trailsPane);
+  const trailsNew = el("button", "pxd-btn pxd-trails__new", trailsBar, "New trail");
+  trailsNew.setAttribute("aria-label", "New trail");
+  trailsNew.type = "button";
+  trailsNew.dataset.trailAction = "new";
+  const trailsList = el("div", "pxd-trails__list", trailsPane);
+  let trailSig = "";
+  let trailDrag = null;
   const infoTabsBar = el("div", "pxd-panel__infotabs", infoPane);
   const infoScroll = el("div", "pxd-panel__info", infoPane);
   let tab = "search";
@@ -15717,7 +16739,7 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
   let journalId = 0;
   const journalNow = () => typeof on.now === "function" ? on.now() : Date.now();
   let journalDay = startOfDay(journalNow());
-  const row3 = (parent, { string, label, text: text2, kind }) => {
+  const row4 = (parent, { string, label, text: text2, kind }) => {
     const r = el("div", "pxd-panel__row", parent);
     r.setAttribute("draggable", "true");
     r.draggable = true;
@@ -15791,7 +16813,7 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
       el("div", "pxd-panel__empty", results, "No matches");
       return;
     }
-    rows.forEach((r) => row3(results, r));
+    rows.forEach((r) => row4(results, r));
   };
   const scheduleSearch = () => {
     debounce?.();
@@ -15839,11 +16861,125 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     outlinePane.style.display = tab === "outline" ? "" : "none";
     journalPane.style.display = tab === "journal" ? "" : "none";
     infoPane.style.display = tab === "info" ? "" : "none";
+    trailsPane.style.display = tab === "trails" ? "" : "none";
     if (tab === "related") void loadRelated();
     if (tab === "boards") void loadBoards();
     if (tab === "outline") renderOutline();
     if (tab === "journal") void loadJournal();
     if (tab === "info") void loadInfo();
+    if (tab === "trails") renderTrails();
+  };
+  const renderTrails = () => {
+    let trails = [];
+    let active = "";
+    try {
+      trails = on.listTrails?.() || [];
+    } catch {
+      trails = [];
+    }
+    try {
+      active = on.activeTrail?.() || "";
+    } catch {
+      active = "";
+    }
+    const sig = `${active}|${trails.map((t) => `${t.uid}:${t.name}:${(t.stops || []).map((s) => `${s.uid}${s.ref}${s.note}`).join(",")}`).join(";")}`;
+    if (sig === trailSig) return;
+    trailSig = sig;
+    trailsList.replaceChildren();
+    if (!trails.length) {
+      el("div", "pxd-panel__empty", trailsList, "No trails yet");
+      return;
+    }
+    for (const trail of trails) {
+      const row5 = el("div", `pxd-trail-row${trail.uid === active ? " pxd-trail-row--on" : ""}`, trailsList);
+      row5.dataset.trail = trail.uid;
+      const head2 = el("div", "pxd-trail__head", row5);
+      const name = el("button", "pxd-btn pxd-trail__name", head2, trail.name || "Trail");
+      name.type = "button";
+      name.dataset.trailAction = "select";
+      name.dataset.trail = trail.uid;
+      const rename = el("button", "pxd-btn pxd-trail__rename", head2, "Rename");
+      rename.type = "button";
+      rename.dataset.trailAction = "rename";
+      rename.dataset.trail = trail.uid;
+      const walk2 = el("button", "pxd-btn pxd-trail__walk", head2, "Walk");
+      walk2.type = "button";
+      walk2.dataset.trailAction = "walk";
+      walk2.dataset.trail = trail.uid;
+      const del = el("button", "pxd-btn pxd-trail__delete", head2, "Delete");
+      del.type = "button";
+      del.dataset.trailAction = "delete";
+      del.dataset.trail = trail.uid;
+      const stops = el("ol", "pxd-trail__stops", row5);
+      for (const stop2 of trail.stops || []) {
+        let title = stop2.ref;
+        try {
+          title = on.stopTitle?.(stop2.ref) || stop2.ref;
+        } catch {
+          title = stop2.ref;
+        }
+        const li = el("li", "pxd-trail__stop", stops, title);
+        li.dataset.stop = stop2.uid;
+        li.dataset.trail = trail.uid;
+        li.dataset.trailAction = "grip";
+        if (stop2.note) el("div", "pxd-trail__note", li, stop2.note);
+      }
+    }
+  };
+  const trailClick = (event) => {
+    const node2 = event.target?.closest?.("[data-trail-action]");
+    if (!node2 || !trailsPane.contains(node2)) return;
+    const action = node2.dataset.trailAction || node2.getAttribute?.("data-trail-action");
+    const id = node2.dataset.trail || node2.getAttribute?.("data-trail") || "";
+    if (action === "grip") return;
+    event.preventDefault?.();
+    if (action === "new") on.newTrail?.();
+    else if (action === "select" && id) {
+      on.selectTrail?.(id);
+      trailSig = "";
+      renderTrails();
+    } else if (action === "rename" && id) on.renameTrail?.(id);
+    else if (action === "delete" && id) on.deleteTrail?.(id);
+    else if (action === "walk" && id) on.walkTrail?.(id);
+  };
+  const trailPointerDown = (event) => {
+    if (event.button !== 0) return;
+    const node2 = event.target?.closest?.("[data-trail-action=grip]");
+    if (!node2 || !trailsPane.contains(node2)) return;
+    const list = node2.parentElement;
+    if (!list) return;
+    const rows = [...list.querySelectorAll("[data-stop]")];
+    const startIndex = rows.indexOf(node2);
+    trailDrag = { el: node2, list, startIndex, y: event.clientY, moved: false, uid: node2.dataset.stop };
+    const move = (ev) => {
+      if (!trailDrag) return;
+      if (!trailDrag.moved && Math.abs(ev.clientY - trailDrag.y) < 4) return;
+      trailDrag.moved = true;
+      const items = [...trailDrag.list.querySelectorAll("[data-stop]")];
+      let before = null;
+      for (const row5 of items) {
+        if (row5 === trailDrag.el) continue;
+        const box2 = row5.getBoundingClientRect?.();
+        if (box2 && ev.clientY < box2.top + box2.height / 2) {
+          before = row5;
+          break;
+        }
+      }
+      if (before) trailDrag.list.insertBefore(trailDrag.el, before);
+      else trailDrag.list.append(trailDrag.el);
+    };
+    const up = () => {
+      doc.removeEventListener?.("pointermove", move);
+      doc.removeEventListener?.("pointerup", up);
+      const drag = trailDrag;
+      trailDrag = null;
+      if (!drag?.moved) return;
+      const index = [...drag.list.querySelectorAll("[data-stop]")].indexOf(drag.el);
+      if (index < 0 || index === drag.startIndex) return;
+      on.moveStop?.(drag.uid, index);
+    };
+    doc.addEventListener?.("pointermove", move);
+    doc.addEventListener?.("pointerup", up);
   };
   listen(tabs, "click", (event) => {
     const b = event.target?.closest?.(".pxd-panel__tab");
@@ -15939,7 +17075,7 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
       const string = t.kind === "page" ? `[[${t.title}]]` : `((${t.uid}))`;
       const text2 = rel.text || (t.kind === "page" ? t.title : t.uid) || "";
       relatedRows.push({ string });
-      row3(relatedList, { string, label: rel.relation || "related", text: text2, kind: t.kind });
+      row4(relatedList, { string, label: rel.relation || "related", text: text2, kind: t.kind });
     }
     if (!list.length) el("div", "pxd-panel__empty", relatedList, "Nothing related yet");
     addAll.style.display = list.length ? "" : "none";
@@ -15971,8 +17107,8 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
     }
   };
   listen(boardsList, "click", (event) => {
-    const row4 = event.target?.closest?.(".pxd-panel__board-row");
-    const uid = row4?.dataset?.uid ?? row4?.getAttribute?.("data-uid");
+    const row5 = event.target?.closest?.(".pxd-panel__board-row");
+    const uid = row5?.dataset?.uid ?? row5?.getAttribute?.("data-uid");
     if (!uid) return;
     event.preventDefault?.();
     event.stopPropagation();
@@ -16029,8 +17165,8 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
     }
   };
   listen(outlineList, "click", (event) => {
-    const row4 = event.target?.closest?.(".pxd-panel__outline-row");
-    const uid = row4?.dataset?.uid ?? row4?.getAttribute?.("data-uid");
+    const row5 = event.target?.closest?.(".pxd-panel__outline-row");
+    const uid = row5?.dataset?.uid ?? row5?.getAttribute?.("data-uid");
     if (!uid) return;
     event.stopPropagation();
     on.outlineClick?.(uid);
@@ -16042,13 +17178,13 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
   const renderCardTabs = () => {
     infoTabsBar.replaceChildren();
     for (const t of cardTabs) {
-      const row4 = el("span", t.uid === cardCurrent ? "pxd-panel__infotab pxd-panel__infotab--on" : "pxd-panel__infotab", infoTabsBar);
-      const name = el("button", "pxd-btn pxd-panel__infotab-name", row4, cardItems.get(t.uid)?.title || "Untitled");
+      const row5 = el("span", t.uid === cardCurrent ? "pxd-panel__infotab pxd-panel__infotab--on" : "pxd-panel__infotab", infoTabsBar);
+      const name = el("button", "pxd-btn pxd-panel__infotab-name", row5, cardItems.get(t.uid)?.title || "Untitled");
       name.type = "button";
       name.setAttribute("aria-label", name.textContent || "Untitled");
       name.dataset.uid = t.uid;
       name.setAttribute("data-uid", t.uid);
-      const closer = el("button", "pxd-btn pxd-panel__infotab-x", row4, "×");
+      const closer = el("button", "pxd-btn pxd-panel__infotab-x", row5, "×");
       closer.type = "button";
       closer.title = "Close";
       closer.setAttribute("aria-label", "Close");
@@ -16057,7 +17193,15 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
     }
   };
   let infoMounted = false;
+  let timelineView = null;
   const unmountInfo = () => {
+    if (timelineView) {
+      try {
+        timelineView.dispose();
+      } catch {
+      }
+      timelineView = null;
+    }
     if (!infoMounted) return;
     infoMounted = false;
     const prev = infoScroll.querySelector(".pxd-panel__info-mount");
@@ -16067,6 +17211,43 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
       } catch {
       }
     }
+  };
+  const paintTimeline = async (id) => {
+    if (id !== queryId || tab !== "info") return;
+    if (infoScroll.isConnected === false) return;
+    let rows = [];
+    try {
+      const got = await Promise.resolve(on.ensureTimeline?.());
+      rows = Array.isArray(got) ? got : [];
+    } catch {
+      rows = [];
+    }
+    if (id !== queryId || tab !== "info") return;
+    if (infoScroll.isConnected === false) return;
+    if (timelineView) {
+      try {
+        timelineView.dispose();
+      } catch {
+      }
+      timelineView = null;
+    }
+    const section2 = el("section", "pxd-panel__info-sec", infoScroll);
+    timelineView = mountTimeline(section2, {
+      doc,
+      rows,
+      onOpenDay: (pageUid) => {
+        try {
+          on.openDay?.(pageUid);
+        } catch {
+        }
+      },
+      onShowOnBoard: (uids) => {
+        try {
+          on.showOnBoard?.(uids);
+        } catch {
+        }
+      }
+    });
   };
   const infoSection = (label) => {
     const section2 = el("section", "pxd-panel__info-sec", infoScroll);
@@ -16081,6 +17262,7 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
     const subject = followInfoSelection ? selected : tabItem || selected;
     if (!subject || subject.type === "section") {
       el("div", "pxd-panel__empty", infoScroll, "Select a card");
+      void paintTimeline(id);
       return;
     }
     let info = null;
@@ -16094,6 +17276,7 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
     infoScroll.replaceChildren();
     if (!info) {
       el("div", "pxd-panel__empty", infoScroll, "Nothing to show");
+      void paintTimeline(id);
       return;
     }
     const bodySec = infoSection("Card");
@@ -16132,30 +17315,30 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
     const attrSec = infoSection("Attributes");
     if (!info.attributes?.length) el("div", "pxd-panel__empty", attrSec, "No attributes");
     else for (const attr of info.attributes) {
-      const row4 = el("div", "pxd-panel__info-attr", attrSec);
-      el("span", "pxd-panel__info-name", row4, attr.name);
-      el("span", "pxd-panel__info-value", row4, attr.value);
+      const row5 = el("div", "pxd-panel__info-attr", attrSec);
+      el("span", "pxd-panel__info-name", row5, attr.name);
+      el("span", "pxd-panel__info-value", row5, attr.value);
     }
     const refSec = infoSection("Linked references");
     if (!info.refs?.length) el("div", "pxd-panel__empty", refSec, "No linked references");
     else for (const ref of info.refs) {
-      const row4 = el("button", "pxd-btn pxd-panel__info-ref", refSec, ref.string || ref.uid);
-      row4.type = "button";
-      row4.setAttribute("aria-label", ref.string || ref.uid);
-      row4.dataset.uid = ref.uid;
-      row4.setAttribute("data-uid", ref.uid);
-      if (ref.pageTitle) row4.title = ref.pageTitle;
+      const row5 = el("button", "pxd-btn pxd-panel__info-ref", refSec, ref.string || ref.uid);
+      row5.type = "button";
+      row5.setAttribute("aria-label", ref.string || ref.uid);
+      row5.dataset.uid = ref.uid;
+      row5.setAttribute("data-uid", ref.uid);
+      if (ref.pageTitle) row5.title = ref.pageTitle;
     }
     const boardSec = infoSection("On boards");
     if (!info.boards?.length) el("div", "pxd-panel__empty", boardSec, "Not on another board");
     else for (const board2 of info.boards) {
-      const row4 = el("button", "pxd-btn pxd-panel__info-board", boardSec);
-      row4.type = "button";
-      row4.setAttribute("aria-label", board2.title || "Untitled board");
-      row4.dataset.uid = board2.uid;
-      row4.setAttribute("data-uid", board2.uid);
-      el("span", "pxd-panel__info-board-title", row4, board2.title || "Untitled board");
-      if (board2.pageTitle) el("span", "pxd-panel__info-board-page", row4, board2.pageTitle);
+      const row5 = el("button", "pxd-btn pxd-panel__info-board", boardSec);
+      row5.type = "button";
+      row5.setAttribute("aria-label", board2.title || "Untitled board");
+      row5.dataset.uid = board2.uid;
+      row5.setAttribute("data-uid", board2.uid);
+      el("span", "pxd-panel__info-board-title", row5, board2.title || "Untitled board");
+      if (board2.pageTitle) el("span", "pxd-panel__info-board-page", row5, board2.pageTitle);
     }
     const tagSec = infoSection("Tags");
     if (!info.tags?.length) el("div", "pxd-panel__empty", tagSec, "No tags");
@@ -16163,6 +17346,7 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
       const wrap = el("div", "pxd-panel__info-tags", tagSec);
       for (const name of info.tags) el("span", "pxd-panel__info-tag", wrap, name);
     }
+    void paintTimeline(id);
   };
   listen(infoScroll, "click", (event) => {
     const board2 = event.target?.closest?.(".pxd-panel__info-board");
@@ -16221,6 +17405,11 @@ ${b.page || b.pageTitle || ""}`.toLowerCase().includes(q));
     },
     refreshBoards() {
       if (tab === "boards") void loadBoards();
+    },
+    refreshTrails() {
+      if (tab !== "trails" || !api.isOpen()) return;
+      trailSig = "";
+      renderTrails();
     },
     refreshViews() {
       if (tab !== "boards" || !api.isOpen()) return;
@@ -16630,7 +17819,7 @@ function unmountDue(seenAt, now2, grace = UNMOUNT_GRACE_MS) {
 // src/model/region-menu.js
 var MACRO_RE = /^(\s*\{\{\[\[plexus-region\]\]:\s*[^}]*\}\})(?: [\s\S]*)?$/;
 function imageRegionRows(content) {
-  return regionsOf({ ":block/children": content || [] }).filter((row3) => row3.owner === "plexus-diagram" && row3.kind === "img" && row3.supported === true && row3.uid).map((row3) => ({ uid: row3.uid, caption: row3.caption || "", f: row3.f }));
+  return regionsOf({ ":block/children": content || [] }).filter((row4) => row4.owner === "plexus-diagram" && row4.kind === "img" && row4.supported === true && row4.uid).map((row4) => ({ uid: row4.uid, caption: row4.caption || "", f: row4.f }));
 }
 function renameRegionCaption(blockString2, caption) {
   if (typeof blockString2 !== "string") return null;
@@ -16661,19 +17850,19 @@ function regionDeleteCopy(count) {
   return `Referenced in ${n2} ${noun}. Delete anyway?`;
 }
 function regionMenu(rows) {
-  const list = (Array.isArray(rows) ? rows : []).filter((row3) => row3 && typeof row3.uid === "string" && row3.uid);
+  const list = (Array.isArray(rows) ? rows : []).filter((row4) => row4 && typeof row4.uid === "string" && row4.uid);
   if (!list.length) return null;
   return {
     id: "regions",
     label: "Regions",
-    children: list.map((row3) => ({
-      id: `region:${row3.uid}`,
-      label: row3.caption || "Region",
+    children: list.map((row4) => ({
+      id: `region:${row4.uid}`,
+      label: row4.caption || "Region",
       children: [
-        { id: `region-go:${row3.uid}`, label: "Go" },
-        { id: `region-copy:${row3.uid}`, label: "Copy ref" },
-        { id: `region-rename:${row3.uid}`, label: "Rename" },
-        { id: `region-delete:${row3.uid}`, label: "Delete", danger: true }
+        { id: `region-go:${row4.uid}`, label: "Go" },
+        { id: `region-copy:${row4.uid}`, label: "Copy ref" },
+        { id: `region-rename:${row4.uid}`, label: "Rename" },
+        { id: `region-delete:${row4.uid}`, label: "Delete", danger: true }
       ]
     }))
   };
@@ -16870,17 +18059,17 @@ function paintRegions(doc, node2, bar, hooks) {
   const add = typeof hooks.addRegion === "function" ? hooks.addRegion : () => {
   };
   for (const region of hooks.regions) {
-    const row3 = doc.createElement("button");
-    row3.type = "button";
-    row3.setAttribute("type", "button");
-    row3.className = "pxd-drawing-region";
+    const row4 = doc.createElement("button");
+    row4.type = "button";
+    row4.setAttribute("type", "button");
+    row4.className = "pxd-drawing-region";
     const uid = region?.uid;
-    if (uid != null) row3.setAttribute("data-uid", String(uid));
-    row3.textContent = String(region?.caption ?? "");
-    onPress(row3, () => {
+    if (uid != null) row4.setAttribute("data-uid", String(uid));
+    row4.textContent = String(region?.caption ?? "");
+    onPress(row4, () => {
       add(uid);
     });
-    list.append(row3);
+    list.append(row4);
   }
   node2.append(list);
   node2.classList.toggle("is-regions", wasOpen);
@@ -16977,6 +18166,157 @@ function paintPdfChipStrip(doc, parent, chips, handlers) {
   return strip;
 }
 
+// src/model/detect.js
+var INTEGRATION_EVENTS = Object.freeze([
+  "roam-compass:ready",
+  "roam-compass:unload",
+  "roam-plexus:ready",
+  "roam-plexus:unload",
+  "roam-task-status-tags:ready",
+  "roam-task-status-tags:unload"
+]);
+var HL_NAMES = ["red", "orange", "yellow", "green", "blue", "purple", "pink", "gray", "grey", "teal", "indigo"];
+var MISSING = "not installed";
+var FOUND = "detected";
+function read(win, key) {
+  try {
+    return win?.[key];
+  } catch {
+    return void 0;
+  }
+}
+function plainVersion(value) {
+  if (typeof value === "number" && Number.isFinite(value)) return String(value);
+  if (typeof value === "string" && value.trim()) return value.trim();
+  return "";
+}
+function apiVersionText(api) {
+  if (!api || typeof api !== "object") return "";
+  const text2 = plainVersion(api.apiVersion);
+  return text2 ? `apiVersion ${text2}` : "";
+}
+function row3(id, label, state, version) {
+  return { id, label, state, version: version || "" };
+}
+function missing(id, label) {
+  return row3(id, label, MISSING, "");
+}
+function betterTasks(win) {
+  let entry = null;
+  try {
+    entry = win?.RoamExtensionTools?.["better-tasks"];
+  } catch {
+    entry = null;
+  }
+  const bt = read(win, "betterTasks");
+  const entryOn = entry != null && typeof entry === "object";
+  const btOn = bt != null && typeof bt === "object";
+  if (!entryOn && !btOn) return missing("better-tasks", "Better Tasks");
+  const version = plainVersion(entry?.version) || plainVersion(bt?.version) || plainVersion(bt?.v1?.version) || plainVersion(bt?.v2?.version);
+  return row3("better-tasks", "Better Tasks", FOUND, version);
+}
+function taskStatusTags(win) {
+  const api = read(win, "RoamTaskStatusTags");
+  if (!api || typeof api !== "object") return missing("task-status-tags", "Task Status Tags");
+  return row3("task-status-tags", "Task Status Tags", FOUND, apiVersionText(api));
+}
+function roamPlexus(win) {
+  const api = read(win, "RoamPlexus");
+  if (!api || typeof api !== "object") return missing("roam-plexus", "Roam Plexus");
+  return row3("roam-plexus", "Roam Plexus", FOUND, apiVersionText(api));
+}
+function compass(win) {
+  const api = read(win, "RoamCompass");
+  const flag = plainVersion(read(win, "__ROAM_COMPASS_VERSION"));
+  const apiOn = api != null && typeof api === "object";
+  if (!apiOn && !flag) return missing("compass", "Compass");
+  return row3("compass", "Compass", FOUND, flag || apiVersionText(api));
+}
+function styleText(doc) {
+  let text2 = "";
+  try {
+    const nodes = typeof doc.querySelectorAll === "function" ? doc.querySelectorAll("style") : [];
+    for (const node2 of nodes || []) text2 += String(node2?.textContent || "");
+  } catch {
+  }
+  const sheets = doc?.styleSheets;
+  if (!sheets) return text2;
+  for (const sheet of sheets) {
+    try {
+      const rules = sheet?.cssRules || sheet?.rules;
+      if (!rules) continue;
+      for (const rule of rules) text2 += String(rule?.cssText || "");
+    } catch {
+    }
+  }
+  return text2;
+}
+function highlighterVars(win) {
+  const doc = win?.document;
+  const view = doc?.defaultView || win;
+  const body = doc?.body;
+  if (!body || typeof view?.getComputedStyle !== "function") return false;
+  let style = null;
+  try {
+    style = view.getComputedStyle(body);
+  } catch {
+    return false;
+  }
+  if (!style || typeof style.getPropertyValue !== "function") return false;
+  for (const name of HL_NAMES) {
+    let light = "";
+    let dark = "";
+    try {
+      light = style.getPropertyValue(`--cl-lh-${name}`);
+      dark = style.getPropertyValue(`--cl-dk-${name}`);
+    } catch {
+      return false;
+    }
+    if (typeof light === "string" && light.trim() || typeof dark === "string" && dark.trim()) return true;
+  }
+  return false;
+}
+function highlighterMarker(win) {
+  const doc = win?.document;
+  if (!doc) return false;
+  try {
+    if (typeof doc.querySelector === "function" && doc.querySelector('[id*="roam-extension-color-highlighter"]')) return true;
+  } catch {
+  }
+  const text2 = styleText(doc);
+  return text2.includes('[data-tag^=".bg-"]') || text2.includes("--cl-lh-");
+}
+function highlighterGlobal(win) {
+  for (const key of ["RoamColorHighlighter", "colorHighlighter"]) {
+    const value = read(win, key);
+    if (value && typeof value === "object") return value;
+  }
+  return null;
+}
+function highlighter(win) {
+  const global = highlighterGlobal(win);
+  let marked = false;
+  try {
+    marked = highlighterVars(win) || highlighterMarker(win);
+  } catch {
+    marked = false;
+  }
+  if (!global && !marked) return missing("highlighter", "Colour highlighter");
+  return row3("highlighter", "Colour highlighter", FOUND, plainVersion(global?.version));
+}
+function integrations(win) {
+  return [betterTasks(win), taskStatusTags(win), roamPlexus(win), compass(win), highlighter(win)];
+}
+function statusLine(row4, switchOn2) {
+  const label = String(row4?.label || "Integration");
+  const detected = row4?.state === FOUND;
+  const version = detected ? plainVersion(row4?.version) : "";
+  let line = detected ? `${label}: detected${version ? ` ${version}` : ""}` : `${label}: ${MISSING}`;
+  if (switchOn2 === true) line += " · on";
+  else if (switchOn2 === false) line += " · off";
+  return line;
+}
+
 // src/perf-log.js
 var PERF_CAP = 256;
 var OPEN_FRAMES = 120;
@@ -17042,8 +18382,8 @@ function scriptUrlsOf(entry) {
   addUrl(out, entry.scriptUrl);
   addUrl(out, entry.scriptURL);
   addUrl(out, entry.url);
-  const lists = [entry.attribution, entry.scripts];
-  for (const list of lists) {
+  const lists2 = [entry.attribution, entry.scripts];
+  for (const list of lists2) {
     if (!Array.isArray(list)) continue;
     for (const item of list) {
       if (!item || typeof item !== "object") {
@@ -17104,8 +18444,8 @@ function readHostPerf() {
   if (stats && Object.prototype.hasOwnProperty.call(stats, "perf")) return stats.perf ?? null;
   return latestPerf;
 }
-function bindPerfReadout(row3, blurb) {
-  readoutRow = row3 || null;
+function bindPerfReadout(row4, blurb) {
+  readoutRow = row4 || null;
   readoutBlurb = blurb || "";
   paintReadout();
 }
@@ -17387,6 +18727,9 @@ var SETTING_IDS = Object.freeze({
   taskChips: "task-chips",
   taskDefaultProject: "task-default-project",
   betterTasks: "better-tasks",
+  resurface: "resurface",
+  regionsInline: "regions-inline",
+  interop: "interop",
   speedLog: "speed-log",
   // Hidden. Not a panel row. JSON object, parsed by parseSpeedFlags.
   speedFlags: "speed-flags"
@@ -17433,6 +18776,9 @@ var DEFAULTS = Object.freeze({
   [SETTING_IDS.taskChips]: "full",
   [SETTING_IDS.taskDefaultProject]: "",
   [SETTING_IDS.betterTasks]: false,
+  [SETTING_IDS.resurface]: true,
+  [SETTING_IDS.regionsInline]: true,
+  [SETTING_IDS.interop]: true,
   [SETTING_IDS.speedLog]: false
 });
 var BOARD_TONES2 = ["none", "paper", "gray", "red", "orange", "yellow", "green", "teal", "blue", "indigo", "purple", "pink"];
@@ -17560,6 +18906,7 @@ function onSettingsChange(fn) {
   return () => listeners2.delete(fn);
 }
 function emit(id, value) {
+  if (INTEGRATION_SWITCH_IDS.has(id)) liveSwitches.set(id, normalizeSetting(id, value) === true);
   for (const fn of [...listeners2]) {
     try {
       fn(id, value);
@@ -17567,6 +18914,7 @@ function emit(id, value) {
       console.error("[plexus-diagram] Settings listener failed", error);
     }
   }
+  if (INTEGRATION_SWITCH_IDS.has(id)) refreshIntegrations();
 }
 function switchRow(id, name, description) {
   return {
@@ -17611,7 +18959,102 @@ async function resetPlexusSettings() {
     emit(id, value);
   }
 }
+var STATUS_IDS = Object.freeze({
+  betterTasks: "status-better-tasks",
+  taskStatusTags: "status-task-status-tags",
+  roamPlexus: "status-roam-plexus",
+  compass: "status-compass",
+  highlighter: "status-highlighter"
+});
+var STATUS_FOR = Object.freeze({
+  [STATUS_IDS.betterTasks]: "better-tasks",
+  [STATUS_IDS.taskStatusTags]: "task-status-tags",
+  [STATUS_IDS.roamPlexus]: "roam-plexus",
+  [STATUS_IDS.compass]: "compass",
+  [STATUS_IDS.highlighter]: "highlighter"
+});
+var SWITCH_FOR = Object.freeze({
+  "better-tasks": SETTING_IDS.betterTasks,
+  "roam-plexus": SETTING_IDS.interop,
+  compass: SETTING_IDS.interop
+});
+var INTEGRATION_SWITCH_IDS = /* @__PURE__ */ new Set([
+  SETTING_IDS.betterTasks,
+  SETTING_IDS.taskTool,
+  SETTING_IDS.cardChips,
+  SETTING_IDS.resurface,
+  SETTING_IDS.regionsInline,
+  SETTING_IDS.interop
+]);
+var integrationText = /* @__PURE__ */ new Map();
+var liveSwitches = /* @__PURE__ */ new Map();
+function integrationHost(win) {
+  if (win) return win;
+  return globalThis.window ?? globalThis;
+}
+function switchOn(detectId) {
+  const settingId = SWITCH_FOR[detectId];
+  if (!settingId) return void 0;
+  if (liveSwitches.has(settingId)) return liveSwitches.get(settingId);
+  let raw = null;
+  try {
+    raw = settingsStore?.settings?.get?.(settingId);
+  } catch {
+    raw = null;
+  }
+  if (raw == null || raw === "") return DEFAULTS[settingId] === true;
+  return normalizeSetting(settingId, raw) === true;
+}
+function syncIntegrationText(win) {
+  for (const found of integrations(integrationHost(win))) {
+    const statusId = Object.keys(STATUS_FOR).find((id) => STATUS_FOR[id] === found.id);
+    if (!statusId) continue;
+    integrationText.set(statusId, statusLine(found, switchOn(found.id)));
+  }
+}
+function reactOf() {
+  const host = globalThis.window ?? globalThis;
+  const React = host?.React ?? globalThis.React;
+  return React && typeof React.createElement === "function" ? React : null;
+}
+function integrationStatusComponent(statusId) {
+  return function IntegrationStatus() {
+    const text2 = integrationText.get(statusId) || "";
+    const React = reactOf();
+    if (!React) return text2;
+    try {
+      return React.createElement("span", { className: "pxd-integration-status" }, text2);
+    } catch {
+      return text2;
+    }
+  };
+}
+function statusSettingRow(statusId, label) {
+  return {
+    id: statusId,
+    name: label,
+    description: integrationText.get(statusId) || `${label}: not installed`,
+    action: { type: "reactComponent", component: integrationStatusComponent(statusId) }
+  };
+}
+function paintIntegrationRows() {
+  const list = panelRef?.settings;
+  if (!list) return;
+  for (const entry of list) {
+    if (!integrationText.has(entry.id)) continue;
+    entry.description = integrationText.get(entry.id);
+  }
+}
+function refreshIntegrations(win) {
+  syncIntegrationText(win);
+  paintIntegrationRows();
+}
 var SETTING_ROWS = {
+  [STATUS_IDS.betterTasks]: () => statusSettingRow(STATUS_IDS.betterTasks, "Better Tasks"),
+  [STATUS_IDS.taskStatusTags]: () => statusSettingRow(STATUS_IDS.taskStatusTags, "Task Status Tags"),
+  [STATUS_IDS.roamPlexus]: () => statusSettingRow(STATUS_IDS.roamPlexus, "Roam Plexus"),
+  [STATUS_IDS.compass]: () => statusSettingRow(STATUS_IDS.compass, "Compass"),
+  [STATUS_IDS.highlighter]: () => statusSettingRow(STATUS_IDS.highlighter, "Colour highlighter"),
   [SETTING_IDS.enabled]: () => switchRow(SETTING_IDS.enabled, "Enabled", "Turn the diagram overlay on or off."),
   [SETTING_IDS.autoEnhance]: () => switchRow(SETTING_IDS.autoEnhance, "Every diagram is a Plexus board", "On: every {{[[diagram]]}} opens as a Plexus board. Nothing is saved until you change the board. Off: only diagrams you enhance (Plexus: Enhance) or create with New whiteboard open in Plexus."),
   [SETTING_IDS.fullscreenOnZoom]: () => switchRow(SETTING_IDS.fullscreenOnZoom, "Fullscreen on zoom", "Open a diagram full screen when you zoom into its block. Esc leaves it."),
@@ -17643,6 +19086,9 @@ var SETTING_ROWS = {
   [SETTING_IDS.resurfaceIntervals]: () => inputRow(SETTING_IDS.resurfaceIntervals, "Resurface intervals", "Days, separated by commas. A daily page lists cards from those many days ago."),
   [SETTING_IDS.betterTasks]: () => switchRow(SETTING_IDS.betterTasks, "Better Tasks integration", "Use Better Tasks for task chips, the light checkbox, and task edits. Off leaves the TODO marker to Roam."),
   [SETTING_IDS.taskTool]: () => switchRow(SETTING_IDS.taskTool, "Task tool", "Show the Task tool (K) in the dock. It makes a Roam TODO block; Better Tasks sets its due date and project."),
+  [SETTING_IDS.resurface]: () => switchRow(SETTING_IDS.resurface, "Resurface", "Allow the resurface macro. A daily page can list cards from earlier days, and Plexus Commands can insert the button."),
+  [SETTING_IDS.regionsInline]: () => switchRow(SETTING_IDS.regionsInline, "Inline region crops", "Show a region crop beside its button. Off leaves the button and hides the crop."),
+  [SETTING_IDS.interop]: () => switchRow(SETTING_IDS.interop, "Roam Plexus and Compass", "Use Roam Plexus and Compass when they are loaded. Off hides Open in Compass and stops thumbnail calls."),
   [SETTING_IDS.taskChips]: () => selectRow(SETTING_IDS.taskChips, "Task chips", "What a task card shows under its title. Full: due date, project, priority, repeat, status. Due only: just the date. None: no chips.", TASK_CHIPS),
   [SETTING_IDS.taskDefaultProject]: () => inputRow(SETTING_IDS.taskDefaultProject, "Default project for new tasks", "A page name. A task made from the board gets it as its Better Tasks project. Empty uses Better Tasks' own default."),
   [SETTING_IDS.enterInCard]: () => selectRow(SETTING_IDS.enterInCard, "Enter in a card", "Newline adds a line to the card's block, like a native Roam diagram. Child makes a new child block inside the card.", ["newline", "child"]),
@@ -17662,14 +19108,22 @@ var SETTING_GROUPS = [
     SETTING_IDS.defaultCardHeight,
     SETTING_IDS.enterInCard,
     SETTING_IDS.showCardBadges,
-    SETTING_IDS.cardChips,
     SETTING_IDS.spaceOut
   ]],
-  ["group-integrations", "Integrations", "Better Tasks, the task tool, and what a task card shows.", [
+  ["group-integrations", "Integrations", "Sibling extensions, and the switches that turn them on.", [
+    STATUS_IDS.betterTasks,
     SETTING_IDS.betterTasks,
+    STATUS_IDS.taskStatusTags,
     SETTING_IDS.taskTool,
     SETTING_IDS.taskChips,
-    SETTING_IDS.taskDefaultProject
+    SETTING_IDS.taskDefaultProject,
+    STATUS_IDS.roamPlexus,
+    STATUS_IDS.compass,
+    SETTING_IDS.interop,
+    STATUS_IDS.highlighter,
+    SETTING_IDS.cardChips,
+    SETTING_IDS.resurface,
+    SETTING_IDS.regionsInline
   ]],
   ["group-sections", "Sections", "How a section grows around its cards.", [
     SETTING_IDS.autoFitSections
@@ -17727,17 +19181,17 @@ function errorRow(n2) {
 function placeErrorRow() {
   if (!panelRef) return;
   const list = panelRef.settings;
-  const idx = list.findIndex((row4) => row4.id === ERROR_ROW_ID);
+  const idx = list.findIndex((row5) => row5.id === ERROR_ROW_ID);
   const n2 = Number(statsRef?.errors) || 0;
   if (n2 <= 0) {
     if (idx >= 0) list.splice(idx, 1);
     return;
   }
-  const row3 = errorRow(n2);
-  if (idx >= 0) list[idx] = row3;
+  const row4 = errorRow(n2);
+  if (idx >= 0) list[idx] = row4;
   else {
     const at = list.findIndex((entry) => entry.id === SETTING_IDS.showVersionBadge);
-    list.splice(at >= 0 ? at + 1 : list.length, 0, row3);
+    list.splice(at >= 0 ? at + 1 : list.length, 0, row4);
   }
 }
 function bindErrorStats(stats) {
@@ -17755,11 +19209,12 @@ function clearErrorStats() {
 }
 function performanceGroupRow(id, name, description) {
   const text2 = () => perfReadoutText(readHostPerf());
-  const row3 = groupRow(id, name, `${description} ${text2()}`, text2);
-  bindPerfReadout(row3, description);
-  return row3;
+  const row4 = groupRow(id, name, `${description} ${text2()}`, text2);
+  bindPerfReadout(row4, description);
+  return row4;
 }
 function createSettingsPanel({ stats } = {}) {
+  syncIntegrationText();
   const settings = [];
   for (const [id, name, description, members] of SETTING_GROUPS) {
     settings.push(id === "group-performance" ? performanceGroupRow(id, name, description) : groupRow(id, name, description));
@@ -17783,6 +19238,75 @@ function createSettingsPanel({ stats } = {}) {
   panelRef = panel;
   placeErrorRow();
   return panel;
+}
+
+// src/model/source-chip.js
+var READING_PREFIXES = ["Articles/", "Media Captures/"];
+var AUTHOR_PREFIX = "Author::";
+function readingTitle(title) {
+  const text2 = typeof title === "string" ? title.trim() : "";
+  if (!text2) return "";
+  return READING_PREFIXES.some((prefix) => text2.startsWith(prefix)) ? text2 : "";
+}
+function childString3(child) {
+  if (typeof child === "string") return child;
+  if (!child || typeof child !== "object") return "";
+  const raw = child[":block/string"] ?? child.string;
+  return typeof raw === "string" ? raw : "";
+}
+function cleanAuthor(raw) {
+  return String(raw ?? "").replace(/\[\[|\]\]/g, "").trim();
+}
+function authorFrom(children) {
+  const list = Array.isArray(children) ? children : [];
+  for (const child of list) {
+    const text2 = childString3(child).trim();
+    if (!text2.startsWith(AUTHOR_PREFIX)) continue;
+    const author = cleanAuthor(text2.slice(AUTHOR_PREFIX.length));
+    if (author) return author;
+  }
+  return "";
+}
+function sourceChipFor({ pageTitle, pageUid, pageChildren } = {}) {
+  const title = readingTitle(pageTitle);
+  if (!title) return null;
+  const author = authorFrom(pageChildren);
+  const uid = typeof pageUid === "string" ? pageUid : "";
+  return {
+    title,
+    author,
+    pageUid: uid,
+    text: author ? `${title} · ${author}` : title
+  };
+}
+function sourceChipKey(chip) {
+  if (!chip || typeof chip !== "object") return "";
+  return [chip.pageUid || "", chip.title || "", chip.author || "", chip.text || ""].join("");
+}
+function buildSourceChip(doc, chip, { onOpen } = {}) {
+  if (!chip || typeof doc?.createElement !== "function") return null;
+  const button = doc.createElement("button");
+  button.type = "button";
+  button.setAttribute("type", "button");
+  button.className = "pxd-chip pxd-chip--source";
+  button.textContent = chip.text || "";
+  button.setAttribute("aria-label", `Open ${chip.text || chip.title || "source"}`);
+  const stop2 = (event) => {
+    event.stopPropagation?.();
+  };
+  button.addEventListener("pointerdown", stop2);
+  button.addEventListener("mousedown", stop2);
+  const open = (event) => {
+    stop2(event);
+    if (typeof onOpen === "function") onOpen(chip.pageUid);
+  };
+  button.addEventListener("click", open);
+  button.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter") return;
+    event.preventDefault?.();
+    open(event);
+  });
+  return button;
 }
 
 // src/view/cards.js
@@ -17817,7 +19341,7 @@ var PEEK_TOP = 12;
 var PEEK_SUB = 4;
 var PEEK_TEXT_MAX = 140;
 var now = () => globalThis.performance?.now ? globalThis.performance.now() : Date.now();
-var HL_NAMES = ["red", "orange", "yellow", "green", "blue", "purple", "pink", "gray", "grey", "teal", "indigo"];
+var HL_NAMES2 = ["red", "orange", "yellow", "green", "blue", "purple", "pink", "gray", "grey", "teal", "indigo"];
 function bodyStyleOf(doc) {
   const view = doc?.defaultView || globalThis;
   const body = doc?.body;
@@ -17838,7 +19362,7 @@ function syncBoardHighlighter(doc, root) {
   const style = bodyStyleOf(doc);
   let on = false;
   if (style) {
-    for (const name of HL_NAMES) {
+    for (const name of HL_NAMES2) {
       if (hlValue(style, `--cl-lh-${name}`) || hlValue(style, `--cl-dk-${name}`)) {
         on = true;
         break;
@@ -17923,10 +19447,10 @@ function focusRoamInput(el) {
 function pageEditScrollTop(scrollTop, inputOffset, rowOffset, zoom) {
   const base = Number(scrollTop);
   const top = Number.isFinite(base) ? base : 0;
-  const row3 = Number(rowOffset);
+  const row4 = Number(rowOffset);
   const input = Number(inputOffset);
-  if (!Number.isFinite(row3) || !Number.isFinite(input)) return Math.max(0, top);
-  const delta = input - row3;
+  if (!Number.isFinite(row4) || !Number.isFinite(input)) return Math.max(0, top);
+  const delta = input - row4;
   if (!delta) return Math.max(0, top);
   const z = Number(zoom);
   const scale = z > 0 && Number.isFinite(z) ? z : 1;
@@ -17977,7 +19501,7 @@ async function waitHydrateQuiet(el, capMs = HYDRATE_CAP_MS) {
     observer.disconnect();
   }
 }
-var childString3 = (c) => c?.[":block/string"] ?? c?.string ?? "";
+var childString4 = (c) => c?.[":block/string"] ?? c?.string ?? "";
 var childKids = (c) => c?.[":block/children"] ?? c?.children ?? [];
 var childUid = (c) => c?.[":block/uid"] ?? c?.uid ?? "";
 var childProps = (c) => c?.[":block/props"] ?? c?.props;
@@ -17991,7 +19515,7 @@ var stickyTitleOf = (string) => {
 };
 var isTaskAttrString = (s) => taskAttrId(s) !== null;
 var skipChildString = (s) => isTaskAttrString(s) || isStructuralString(s);
-var visibleKids = (list) => (list || []).filter((c) => !skipChildString(childString3(c)));
+var visibleKids = (list) => (list || []).filter((c) => !skipChildString(childString4(c)));
 var taskBlockOn = () => false;
 var statusSig = "";
 var TASK_MARK = /^\s*\{\{\[\[(?:TODO|DONE)\]\]\}\}\s?/;
@@ -18042,7 +19566,7 @@ function cardContentKey(item, live = false, pdfOpen = false, chipSig = "") {
       if (depth > BOARD_KEY_DEPTH) return;
       for (const c of kids) {
         if (budget-- <= 0) return;
-        parts.push(childUid(c), childString3(c), JSON.stringify(childProps(c) ?? null));
+        parts.push(childUid(c), childString4(c), JSON.stringify(childProps(c) ?? null));
         walkBoard(childKids(c), depth + 1);
       }
     };
@@ -18052,7 +19576,7 @@ function cardContentKey(item, live = false, pdfOpen = false, chipSig = "") {
   const walk2 = (kids, depth) => {
     if (depth > CONTENT_DEPTH) return;
     for (const c of kids) {
-      parts.push(childString3(c));
+      parts.push(childString4(c));
       walk2(childKids(c), depth + 1);
     }
   };
@@ -18213,7 +19737,8 @@ function createItemRenderer({
   onReadPane = null,
   onHighlightOpen = null,
   onHighlightNote = null,
-  settings: speedSettings = null
+  settings: speedSettings = null,
+  interopOn = null
 } = {}) {
   const speedOf = () => {
     if (speedSettings == null) return notedSpeedFlags();
@@ -18274,12 +19799,88 @@ function createItemRenderer({
       }
     }
   });
-  const contentKeyFor = (item, live = false) => cardContentKey(
-    item,
-    live,
-    item?.kind === "pdf" ? onReadPane ? false : pdfOpenUid === item.uid : ownsOpen(item),
-    item?.kind === "pdf" ? chipsFor(item).map((chip) => `${chip.page}:${chip.count}`).join(",") : ""
-  );
+  const interopAllowed = () => {
+    if (typeof interopOn !== "function") return true;
+    try {
+      return interopOn() !== false;
+    } catch {
+      return true;
+    }
+  };
+  let sourcePass = 0;
+  let pageKids = /* @__PURE__ */ new Map();
+  const sourceKids = (raw) => {
+    if (Array.isArray(raw)) return raw;
+    if (raw && typeof raw === "object") return raw[":block/children"] || raw.children || [];
+    return [];
+  };
+  const pageChildrenOf = (pageUid) => {
+    if (!pageUid) return [];
+    if (pageKids.has(pageUid)) return pageKids.get(pageUid);
+    let raw = null;
+    try {
+      raw = host?.pullTree?.(pageUid, 1, 80);
+    } catch {
+      raw = null;
+    }
+    if (raw && typeof raw.then === "function") {
+      const pass = sourcePass;
+      pageKids.set(pageUid, []);
+      raw.then((value) => {
+        if (pass !== sourcePass) return;
+        pageKids.set(pageUid, sourceKids(value));
+      }).catch(() => {
+      });
+      return [];
+    }
+    const kids = sourceKids(raw);
+    pageKids.set(pageUid, kids);
+    return kids;
+  };
+  const sourceChipOf = (item) => {
+    if (item?.kind !== "block") return null;
+    const ref = item.target?.uid;
+    if (!ref) return null;
+    let refString = "";
+    try {
+      refString = host?.blockString?.(ref) || "";
+    } catch {
+      refString = "";
+    }
+    if (refString) {
+      if (classifyString(refString).kind === "board") return null;
+      if (isQueryString(refString)) return null;
+    }
+    let title = "";
+    try {
+      title = host?.pageTitleOf?.(ref) || "";
+    } catch {
+      title = "";
+    }
+    const text2 = typeof title === "string" ? title.trim() : "";
+    if (!text2.startsWith("Articles/") && !text2.startsWith("Media Captures/")) return null;
+    let pageUid = "";
+    try {
+      pageUid = host?.pageUid?.(text2) || "";
+    } catch {
+      pageUid = "";
+    }
+    return sourceChipFor({ pageTitle: text2, pageUid, pageChildren: pageChildrenOf(pageUid) });
+  };
+  const contentKeyFor = (item, live = false) => {
+    let key = cardContentKey(
+      item,
+      live,
+      item?.kind === "pdf" ? onReadPane ? false : pdfOpenUid === item.uid : ownsOpen(item),
+      item?.kind === "pdf" ? chipsFor(item).map((chip) => `${chip.page}:${chip.count}`).join(",") : ""
+    );
+    if (item?.kind === "block") {
+      const sig = sourceChipKey(sourceChipOf(item));
+      if (sig) key += `${sig}`;
+    }
+    if ((item?.kind === "drawing-ref" || item?.kind === "region-ref") && !interopAllowed()) key += "interop-off";
+    return key;
+  };
   const shells = /* @__PURE__ */ new Map();
   const mounted = /* @__PURE__ */ new Map();
   const noteRender = (uid) => {
@@ -18292,6 +19893,7 @@ function createItemRenderer({
   let focusSet = null;
   let badgeMap = /* @__PURE__ */ new Map();
   let showBadges = false;
+  let trailBadgeMap = /* @__PURE__ */ new Map();
   let taskChips = "full";
   let zoomCache = 1;
   let paused = false;
@@ -18450,7 +20052,7 @@ function createItemRenderer({
     const walk2 = (list, depth) => {
       if (!Array.isArray(list) || depth > CONTENT_DEPTH) return;
       for (const child of list) {
-        pushString(childString3(child), childUid(child) || item.uid);
+        pushString(childString4(child), childUid(child) || item.uid);
         walk2(childKids(child), depth + 1);
       }
     };
@@ -18594,12 +20196,12 @@ function createItemRenderer({
   const addRefRow = (list, rec, ref, on) => {
     const payload = linkedRefCard(ref?.uid);
     if (!payload) return;
-    const row3 = el("div", "pxd-refs__row", list);
-    row3.draggable = true;
-    row3.setAttribute("draggable", "true");
-    row3.dataset.uid = ref.uid;
-    row3.setAttribute("data-uid", ref.uid);
-    const liveWrap = el("div", "pxd-rs", row3);
+    const row4 = el("div", "pxd-refs__row", list);
+    row4.draggable = true;
+    row4.setAttribute("draggable", "true");
+    row4.dataset.uid = ref.uid;
+    row4.setAttribute("data-uid", ref.uid);
+    const liveWrap = el("div", "pxd-rs", row4);
     const live = el("div", "pxd-rs__live", liveWrap);
     try {
       if (host?.renderBlock) host.renderBlock(live, ref.uid);
@@ -18609,8 +20211,8 @@ function createItemRenderer({
     }
     armEmbedShield(liveWrap, live);
     rec.roots.push(liveWrap);
-    for (const type of ["pointerdown", "mousedown", "dblclick"]) on(row3, type, stopEvent);
-    on(row3, "dragstart", (event) => {
+    for (const type of ["pointerdown", "mousedown", "dblclick"]) on(row4, type, stopEvent);
+    on(row4, "dragstart", (event) => {
       event.stopPropagation();
       try {
         event.dataTransfer?.setData?.(CARD_MIME, payload);
@@ -19115,6 +20717,10 @@ function createItemRenderer({
     if (editing?.uid === item.uid) cls.push(editing.sticky ? "pxd-item--typing" : "pxd-item--editing");
     if (isSticky(item) && item.min) cls.push("pxd-item--min");
     if (item.pinned) cls.push(item.type === "section" ? "pxd-section--pinned" : "pxd-item--pinned");
+    if (item.landmark) {
+      cls.push(item.type === "section" ? "pxd-section--landmark" : "pxd-item--landmark");
+      cls.push(`pxd-landmark--${item.size === "S" || item.size === "L" ? item.size : "M"}`);
+    }
     if (focusSet && !focusSet.has(item.uid)) cls.push(item.type === "section" ? "pxd-section--focus-dim" : "pxd-item--focus-dim");
     if (item.type !== "section") {
       if (isKidsCard(item)) cls.push(item.kids ? "pxd-item--kids" : "pxd-item--kidsoff");
@@ -19185,6 +20791,33 @@ function createItemRenderer({
     node2.title = "";
     const announced = item.type === "section" ? item.title || "Section" : String(rec.refTitle || item.title || "Untitled");
     node2.setAttribute("aria-label", `${announced}, ${item.type}`);
+    if (item.landmark || rec.landmarkEl) paintLandmarkMark(rec, item);
+    if (trailBadgeMap.size || rec.trailBadge) paintTrailBadge(rec, item.uid);
+  };
+  const paintLandmarkMark = (rec, item) => {
+    if (!item.landmark) {
+      if (rec.landmarkEl) {
+        rec.landmarkEl.remove();
+        rec.landmarkEl = null;
+      }
+      return;
+    }
+    if (!rec.landmarkEl) rec.landmarkEl = el("span", "pxd-landmark", rec.el);
+    const text2 = item.glyph || "";
+    if (rec.landmarkEl.textContent !== text2) rec.landmarkEl.textContent = text2;
+  };
+  const paintTrailBadge = (rec, uid) => {
+    const n2 = trailBadgeMap.get(uid);
+    if (!n2) {
+      if (rec.trailBadge) {
+        rec.trailBadge.remove();
+        rec.trailBadge = null;
+      }
+      return;
+    }
+    if (!rec.trailBadge) rec.trailBadge = el("span", "pxd-trail-badge", rec.el);
+    const text2 = String(n2);
+    if (rec.trailBadge.textContent !== text2) rec.trailBadge.textContent = text2;
   };
   const position = (rec, rect) => {
     const prev = rec.rect;
@@ -19262,6 +20895,8 @@ function createItemRenderer({
     if (shellQueue.length && timers?.frame) timers.frame(pumpShells);
   };
   const sync = ({ board: board2, rects, dirty: changed2 = null, structural = false, view = null }) => {
+    sourcePass += 1;
+    pageKids = /* @__PURE__ */ new Map();
     lastBoard = board2;
     lastRects = rects;
     let dirty = changed2;
@@ -19379,9 +21014,9 @@ function createItemRenderer({
       const node2 = el("div", "pxd-kids-peek", root);
       node2.setAttribute("role", "tooltip");
       for (const c of rows) {
-        el("div", "pxd-kids-peek__row", node2).textContent = plainText(childString3(c), PEEK_TEXT_MAX);
+        el("div", "pxd-kids-peek__row", node2).textContent = plainText(childString4(c), PEEK_TEXT_MAX);
         for (const g of visibleKids(childKids(c)).slice(0, PEEK_SUB)) {
-          el("div", "pxd-kids-peek__row pxd-kids-peek__row--sub", node2).textContent = plainText(childString3(g), PEEK_TEXT_MAX);
+          el("div", "pxd-kids-peek__row pxd-kids-peek__row--sub", node2).textContent = plainText(childString4(g), PEEK_TEXT_MAX);
         }
       }
       placeNearAnchor(node2, rec.kidsBtn.getBoundingClientRect(), root, { gap: 6 });
@@ -19452,20 +21087,20 @@ function createItemRenderer({
   const renderBlocks = (parent, blocks, depth, budget) => {
     for (const b of blocks) {
       if (budget.n >= CONTENT_LIMIT) return;
-      const s = childString3(b);
+      const s = childString4(b);
       if (skipChildString(s)) continue;
       budget.n += 1;
       const rowUid = childUid(b);
-      const row3 = el("div", "pxd-block", parent);
-      row3.dataset.uid = rowUid;
-      row3.setAttribute("data-pxd-row", rowUid);
+      const row4 = el("div", "pxd-block", parent);
+      row4.dataset.uid = rowUid;
+      row4.setAttribute("data-pxd-row", rowUid);
       const posterCount = embedSplit(String(s || ""), embedOptsFor(rowUid)).posters.length;
-      holdHeight(row3, posterCount ? embedBoxFor(rowUid).h : KID_ROW_H);
-      const node2 = renderRowRoot(row3, s, "pxd-rs pxd-block__text", rowUid);
+      holdHeight(row4, posterCount ? embedBoxFor(rowUid).h : KID_ROW_H);
+      const node2 = renderRowRoot(row4, s, "pxd-rs pxd-block__text", rowUid);
       budget.roots.push(node2);
       const kids = childKids(b);
       if (kids.length && depth < CONTENT_DEPTH) {
-        const wrap = el("div", "pxd-block__children", row3);
+        const wrap = el("div", "pxd-block__children", row4);
         renderBlocks(wrap, kids, depth + 1, budget);
       }
     }
@@ -19594,7 +21229,7 @@ function createItemRenderer({
     const parts = [];
     const walk2 = (list) => {
       for (const c of list) {
-        parts.push(childUid(c), childString3(c), c.open === false ? "0" : "1");
+        parts.push(childUid(c), childString4(c), c.open === false ? "0" : "1");
         walk2(childKids(c));
       }
     };
@@ -19604,7 +21239,7 @@ function createItemRenderer({
   const countRows = (blocks) => {
     let n2 = 0;
     for (const c of blocks) {
-      if (skipChildString(childString3(c))) continue;
+      if (skipChildString(childString4(c))) continue;
       n2 += 1;
       if (c.open !== false) n2 += countRows(childKids(c));
     }
@@ -19627,15 +21262,15 @@ function createItemRenderer({
     return more;
   };
   const upgradeRow = (rec, uid) => {
-    const row3 = rec.rowTable?.get(uid);
-    if (!row3 || disposed) return;
+    const row4 = rec.rowTable?.get(uid);
+    if (!row4 || disposed) return;
     rec.rowTable.delete(uid);
-    rec.rowIO?.unobserve?.(row3.plain);
-    rec.rowIOHeavy?.unobserve?.(row3.plain);
-    if (!row3.plain.isConnected) return;
-    holdHeight(row3.line, KID_ROW_H);
-    const root = renderRowRoot(row3.line, row3.string, "pxd-rs pxd-block__text", uid);
-    row3.plain.remove();
+    rec.rowIO?.unobserve?.(row4.plain);
+    rec.rowIOHeavy?.unobserve?.(row4.plain);
+    if (!row4.plain.isConnected) return;
+    holdHeight(row4.line, KID_ROW_H);
+    const root = renderRowRoot(row4.line, row4.string, "pxd-rs pxd-block__text", uid);
+    row4.plain.remove();
     rec.roots.push(root);
     rec.pageRoots?.push(root);
     if (rec.mountStat && rec.mountStat.firstLiveMs === null) rec.mountStat.firstLiveMs = Math.round(now() - rec.mountStat.at);
@@ -19744,11 +21379,11 @@ function createItemRenderer({
   };
   const buildOutlineRow = (parent, spec, rec, b) => {
     const { uid, string: s, folded, hasKids, kids, depth } = spec;
-    const row3 = el("div", "pxd-block pxd-prow", parent);
-    row3.dataset.uid = uid;
-    row3.setAttribute("data-uid", uid);
-    row3.__pxdKids = kids;
-    const line = el("div", "pxd-row", row3);
+    const row4 = el("div", "pxd-block pxd-prow", parent);
+    row4.dataset.uid = uid;
+    row4.setAttribute("data-uid", uid);
+    row4.__pxdKids = kids;
+    const line = el("div", "pxd-row", row4);
     line.dataset.pxdRow = uid;
     line.setAttribute("data-pxd-row", uid);
     let fold = null;
@@ -19761,22 +21396,22 @@ function createItemRenderer({
     }
     const posters = embedSplit(s, embedOptsFor(uid)).posters;
     if (posters.length) {
-      holdHeight(row3, embedBoxFor(uid).h);
+      holdHeight(row4, embedBoxFor(uid).h);
       const root = renderRoot(line, s, "pxd-rs pxd-block__text", uid);
       if (root.classList?.contains("pxd-embed-live") || root.querySelector?.(".pxd-rs__live")) b.roots.push(root);
     } else {
       holdHeight(line, KID_ROW_H);
       addPlainRow(rec, line, s, uid);
     }
-    if (!hasKids) return row3;
-    const wrap = el("div", "pxd-block__children", row3);
+    if (!hasKids) return row4;
+    const wrap = el("div", "pxd-block__children", row4);
     let filled = !folded;
     const fill = () => {
       if (filled) return;
       filled = true;
       startRows();
       const sub = { n: b.n, more: 0, roots: [] };
-      renderOutline(wrap, row3.__pxdKids || [], sub, rec, depth + 1, uid);
+      renderOutline(wrap, row4.__pxdKids || [], sub, rec, depth + 1, uid);
       b.n = sub.n;
       if (sub.more) moreRow(wrap, sub.more, rec.pageTitle, rec.pageUid);
       if (rec.pageHolder && rec.pageHolder.isConnected !== false) {
@@ -19785,23 +21420,23 @@ function createItemRenderer({
       }
     };
     if (folded) setHidden(wrap, true);
-    row3.classList.toggle("pxd-prow--folded", folded);
+    row4.classList.toggle("pxd-prow--folded", folded);
     fold.addEventListener("click", (event) => {
       stopEvent(event);
       const open = fold.getAttribute("aria-expanded") !== "true";
       if (open) fill();
       fold.setAttribute("aria-expanded", open ? "true" : "false");
       fold.setAttribute("aria-label", open ? "Fold" : "Unfold");
-      row3.classList.toggle("pxd-prow--folded", !open);
+      row4.classList.toggle("pxd-prow--folded", !open);
       setHidden(wrap, !open);
       onPageLayout?.(rec.uid);
     });
-    return row3;
+    return row4;
   };
   const renderOutline = (parent, blocks, b, rec, depth = 0, parentUid = null) => {
     if (!rec.rowState) rec.rowState = /* @__PURE__ */ new Map();
     for (const blk of blocks || []) {
-      const s = childString3(blk);
+      const s = childString4(blk);
       if (skipChildString(s)) continue;
       const uid = childUid(blk);
       const kids = childKids(blk);
@@ -19813,9 +21448,9 @@ function createItemRenderer({
       }
       b.n += 1;
       const spec = { uid, string: s, depth, parentUid, folded, hasKids, kids };
-      const row3 = buildOutlineRow(parent, spec, rec, b);
+      const row4 = buildOutlineRow(parent, spec, rec, b);
       rec.rowState.set(uid, { string: s, depth, parentUid, folded, hasKids });
-      if (hasKids && !folded) renderOutline(childWithClass(row3, "pxd-block__children"), kids, b, rec, depth + 1, uid);
+      if (hasKids && !folded) renderOutline(childWithClass(row4, "pxd-block__children"), kids, b, rec, depth + 1, uid);
     }
   };
   const outlinePlan = (blocks) => {
@@ -19824,7 +21459,7 @@ function createItemRenderer({
     let n2 = 0;
     const walk2 = (list, depth, parentUid) => {
       for (const blk of list || []) {
-        const s = childString3(blk);
+        const s = childString4(blk);
         if (skipChildString(s)) continue;
         const uid = childUid(blk);
         const kids = childKids(blk);
@@ -19936,11 +21571,11 @@ function createItemRenderer({
       }
     }
     for (let i = 0; i < rows.length; i += 1) {
-      const row3 = rows[i];
+      const row4 = rows[i];
       const next = i + 1 < rows.length ? rows[i + 1] : tail;
-      if (row3.parentElement === parent && row3.nextElementSibling === (next || null)) continue;
-      if (next && next.parentElement === parent) parent.insertBefore(row3, next);
-      else parent.append(row3);
+      if (row4.parentElement === parent && row4.nextElementSibling === (next || null)) continue;
+      if (next && next.parentElement === parent) parent.insertBefore(row4, next);
+      else parent.append(row4);
     }
   };
   const syncTail = (parent, cls, text2) => {
@@ -19987,8 +21622,8 @@ function createItemRenderer({
     for (const spec of specs) {
       if (byUid.has(spec.uid)) continue;
       const parent = spec.parentUid ? childWithClass(byUid.get(spec.parentUid), "pxd-block__children") || holder : holder;
-      const row3 = buildOutlineRow(parent, spec, rec, bucket);
-      byUid.set(spec.uid, row3);
+      const row4 = buildOutlineRow(parent, spec, rec, bucket);
+      byUid.set(spec.uid, row4);
       created.add(spec.uid);
     }
     for (const spec of specs) {
@@ -20071,57 +21706,57 @@ function createItemRenderer({
     const card2 = rec.el.getBoundingClientRect();
     const body = rec.body.getBoundingClientRect();
     const out = { bodyTop: round16((body.top - card2.top) / z), bodyBottom: round16((body.bottom - card2.top) / z) };
-    const row3 = holder.querySelector?.(`[data-pxd-row="${rowUid}"]`);
-    const r = row3 ? row3.getBoundingClientRect() : null;
+    const row4 = holder.querySelector?.(`[data-pxd-row="${rowUid}"]`);
+    const r = row4 ? row4.getBoundingClientRect() : null;
     if (!r || !r.width && !r.height) return { ...out, rowTop: null, rowHeight: 0, rendered: false };
     const cardLeft = card2.left;
     return { ...out, rowTop: round16((r.top - card2.top) / z), rowHeight: round16(r.height / z), rowLeft: round16((r.left - cardLeft) / z), rowRight: round16((r.right - cardLeft) / z), rendered: true };
   };
   const markedRows = /* @__PURE__ */ new Set();
   const rowOf = (uid, rowUid) => shells.get(uid)?.pageHolder?.querySelector?.(`[data-pxd-row="${rowUid}"]`) ?? null;
-  const unmarkRow = (row3) => {
-    row3.classList.remove("pxd-row--linked", "pxd-row--hot");
-    row3.style.removeProperty("--pxd-row-line");
-    row3.removeAttribute("data-pxd-edges");
-    row3.removeAttribute("data-tip");
-    row3.removeAttribute("data-tip-extra");
+  const unmarkRow = (row4) => {
+    row4.classList.remove("pxd-row--linked", "pxd-row--hot");
+    row4.style.removeProperty("--pxd-row-line");
+    row4.removeAttribute("data-pxd-edges");
+    row4.removeAttribute("data-tip");
+    row4.removeAttribute("data-tip-extra");
   };
   const markRows = (entries) => {
     const keep = /* @__PURE__ */ new Set();
     for (const en of entries || []) {
-      const row3 = rowOf(en.card, en.row);
-      if (!row3) continue;
-      keep.add(row3);
-      row3.classList.add("pxd-row--linked");
-      if (en.color) row3.style.setProperty("--pxd-row-line", en.color);
-      else row3.style.removeProperty("--pxd-row-line");
-      row3.setAttribute("data-pxd-edges", en.edges.join(" "));
-      row3.setAttribute("data-tip", "edge.row");
-      row3.setAttribute("data-tip-extra", en.tip || "");
-      markedRows.add(row3);
+      const row4 = rowOf(en.card, en.row);
+      if (!row4) continue;
+      keep.add(row4);
+      row4.classList.add("pxd-row--linked");
+      if (en.color) row4.style.setProperty("--pxd-row-line", en.color);
+      else row4.style.removeProperty("--pxd-row-line");
+      row4.setAttribute("data-pxd-edges", en.edges.join(" "));
+      row4.setAttribute("data-tip", "edge.row");
+      row4.setAttribute("data-tip-extra", en.tip || "");
+      markedRows.add(row4);
     }
-    for (const row3 of [...markedRows]) {
-      if (keep.has(row3)) continue;
-      markedRows.delete(row3);
-      unmarkRow(row3);
+    for (const row4 of [...markedRows]) {
+      if (keep.has(row4)) continue;
+      markedRows.delete(row4);
+      unmarkRow(row4);
     }
   };
   const setRowHot = (uid, rowUid, on) => {
-    const row3 = rowOf(uid, rowUid);
-    row3?.classList?.toggle("pxd-row--hot", Boolean(on));
+    const row4 = rowOf(uid, rowUid);
+    row4?.classList?.toggle("pxd-row--hot", Boolean(on));
   };
   const revealRow = (uid, rowUid) => {
     const rec = shells.get(uid);
-    const row3 = rec?.pageHolder?.querySelector?.(`[data-pxd-row="${rowUid}"]`);
-    if (!rec?.body || !row3) return false;
+    const row4 = rec?.pageHolder?.querySelector?.(`[data-pxd-row="${rowUid}"]`);
+    if (!rec?.body || !row4) return false;
     rec.rowSched?.renderNow?.(rowUid);
-    const r = row3.getBoundingClientRect();
+    const r = row4.getBoundingClientRect();
     if (!r.width && !r.height) return false;
     const body = rec.body.getBoundingClientRect();
     const delta = (r.top + r.height / 2 - (body.top + body.height / 2)) / (zoomCache || 1);
     rec.body.scrollTop = Math.max(0, (Number(rec.body.scrollTop) || 0) + delta);
-    row3.classList.add("pxd-row--flash");
-    later(() => row3.classList.remove("pxd-row--flash"), 600);
+    row4.classList.add("pxd-row--flash");
+    later(() => row4.classList.remove("pxd-row--flash"), 600);
     onPageLayout?.(uid);
     return true;
   };
@@ -20964,6 +22599,20 @@ function createItemRenderer({
             else rec.roots.push(...b.roots);
           }
           if (!sync2) syncKidsBadge(rec, item);
+          if (!body.querySelector?.(".pxd-chip--source")) {
+            const chip = sourceChipOf(item);
+            if (chip) {
+              const node2 = buildSourceChip(doc, chip, {
+                onOpen: (uid) => {
+                  try {
+                    host?.openInSidebar?.(uid);
+                  } catch {
+                  }
+                }
+              });
+              if (node2) body.append(node2);
+            }
+          }
         };
         if (tree && typeof tree.then === "function") tree.then((t) => apply(t)).catch(() => {
         });
@@ -20985,7 +22634,7 @@ function createItemRenderer({
     rec.contentKey = contentKeyFor(item, rec.stickyLive);
   };
   const regionWindow = () => doc.defaultView || globalThis;
-  const roamPlexus = () => {
+  const roamPlexus2 = () => {
     const api = regionWindow().RoamPlexus ?? globalThis.RoamPlexus;
     return api && typeof api === "object" ? api : null;
   };
@@ -21070,7 +22719,7 @@ function createItemRenderer({
     return blob;
   };
   const loadDrawingBlob = async (api, drawingUid) => {
-    if (api && Number(api.apiVersion) >= 6 && typeof api.thumbnail === "function") {
+    if (interopAllowed() && api && Number(api.apiVersion) >= 6 && typeof api.thumbnail === "function") {
       let shot2 = null;
       try {
         shot2 = await blobOf(api.thumbnail(drawingUid, { maxWidth: 160 }));
@@ -21090,7 +22739,7 @@ function createItemRenderer({
   };
   const mountDrawingBody = (rec, item) => {
     const ref = item.target?.uid;
-    const api = roamPlexus();
+    const api = roamPlexus2();
     const off = rec.el.classList.contains("pxd-item--offscreen");
     const detail = lod === "detail" && !off;
     let regions;
@@ -21112,7 +22761,7 @@ function createItemRenderer({
         blob: detail ? blob : void 0,
         regions,
         open: ({ sidebar } = {}) => {
-          const live = roamPlexus();
+          const live = roamPlexus2();
           if (live && typeof live.open === "function") {
             if (drawingEditorMounted(ref)) return;
             try {
@@ -21165,6 +22814,7 @@ function createItemRenderer({
       visible: detail,
       maxWidth: Math.max(1, Math.round(Number(rec.rect?.w || item.w) || 160)),
       thumbnail: detail ? (opts) => {
+        if (!interopAllowed()) return null;
         if (lod !== "detail" || rec.el.classList.contains("pxd-item--offscreen")) return null;
         const live = regionWindow().RoamPlexus;
         if (!ref || typeof live?.thumbnail !== "function") return null;
@@ -21522,15 +23172,15 @@ function createItemRenderer({
     if (!rec || rec.type === "section" || lod !== "detail" || !mounted.has(uid) || rec.bare) return null;
     const body = rec.body;
     const st = body?.style;
-    const saved = st ? { flex: st.flex, height: st.height } : null;
+    const saved2 = st ? { flex: st.flex, height: st.height } : null;
     if (st) {
       st.flex = "0 0 auto";
       st.height = "auto";
     }
     const natural = Number(body?.scrollHeight) || 0;
-    if (st && saved) {
-      st.flex = saved.flex;
-      st.height = saved.height;
+    if (st && saved2) {
+      st.flex = saved2.flex;
+      st.height = saved2.height;
     }
     const h = (Number(rec.header?.offsetHeight) || 0) + natural;
     return h > 0 ? h : null;
@@ -21540,7 +23190,7 @@ function createItemRenderer({
     const lines = [];
     const own = item.kind === "block" ? rec.refString : item.string;
     if (typeof own === "string") lines.push(...own.split("\n"));
-    for (const c of item.content || []) lines.push(...String(childString3(c)).split("\n"));
+    for (const c of item.content || []) lines.push(...String(childString4(c)).split("\n"));
     const out = [];
     for (const line of lines) {
       if (out.length >= ATTR_CHIPS_MAX) break;
@@ -21601,9 +23251,9 @@ function createItemRenderer({
     const key = JSON.stringify(chips);
     if (rec.badgeEl && rec.badgeKey === key) return;
     clear();
-    const row3 = el("div", "pxd-item__badges", rec.el);
+    const row4 = el("div", "pxd-item__badges", rec.el);
     for (const chip of chips) {
-      const node2 = el(chip.action || chip.task ? "button" : "span", `pxd-badge-chip pxd-badge-chip--${chip.cls}`, row3);
+      const node2 = el(chip.action || chip.task ? "button" : "span", `pxd-badge-chip pxd-badge-chip--${chip.cls}`, row4);
       node2.textContent = chip.text;
       if (chip.overdue) node2.classList.add("pxd-badge-chip--overdue");
       if (chip.today) node2.classList.add("pxd-badge-chip--today");
@@ -21629,7 +23279,7 @@ function createItemRenderer({
         });
       }
     }
-    rec.badgeEl = row3;
+    rec.badgeEl = row4;
     rec.badgeKey = key;
   };
   const setBadges = (map) => {
@@ -21638,7 +23288,7 @@ function createItemRenderer({
   };
   const refreshStatuses = () => {
     statusPal = null;
-    statusSig = paletteEntries(palette()).map((row3) => `${row3.name}:${row3.glyph}:${row3.light?.base}:${row3.dark?.base}`).join("|");
+    statusSig = paletteEntries(palette()).map((row4) => `${row4.name}:${row4.glyph}:${row4.light?.base}:${row4.dark?.base}`).join("|");
     for (const rec of shells.values()) renderBadges(rec);
     if (!lastBoard) return;
     const tasks = /* @__PURE__ */ new Set();
@@ -21657,6 +23307,22 @@ function createItemRenderer({
     if (next === showBadges) return;
     showBadges = next;
     for (const rec of shells.values()) renderBadges(rec);
+  };
+  let trailBadgeSig = "";
+  const setTrailBadges = (map) => {
+    const next = map instanceof Map ? map : /* @__PURE__ */ new Map();
+    let sig = "";
+    if (next.size) {
+      const parts = [];
+      for (const [k, v] of next) parts.push(`${k}=${v}`);
+      sig = parts.join("|");
+    }
+    if (sig === trailBadgeSig) return;
+    trailBadgeSig = sig;
+    trailBadgeMap = next;
+    for (const [uid, rec] of shells) {
+      if (next.has(uid) || rec.trailBadge) paintTrailBadge(rec, uid);
+    }
   };
   const setFocus = (uids) => {
     focusSet = uids ? new Set(uids) : null;
@@ -21900,28 +23566,28 @@ function createItemRenderer({
     }
   };
   const PAGE_FOCUS_MS = 1e3;
-  const pageInput = (editor, row3) => {
-    if (row3) {
+  const pageInput = (editor, row4) => {
+    if (row4) {
       for (const node2 of editor.querySelectorAll?.(".rm-block__input") || []) {
-        if (String(node2.id || node2.getAttribute?.("id") || "").endsWith(`-${row3}`)) return node2;
+        if (String(node2.id || node2.getAttribute?.("id") || "").endsWith(`-${row4}`)) return node2;
       }
       return null;
     }
     return editor.querySelector?.(".rm-block__input") || editor.querySelector?.("textarea") || null;
   };
-  const waitPageInput = async (editor, row3, uid) => {
+  const waitPageInput = async (editor, row4, uid) => {
     const start = now();
-    let input = pageInput(editor, row3);
+    let input = pageInput(editor, row4);
     while (!input && now() - start < PAGE_FOCUS_MS) {
       await new Promise((resolve) => {
         frameLater(resolve);
       });
       if (disposed || editing?.uid !== uid) return null;
-      input = pageInput(editor, row3);
+      input = pageInput(editor, row4);
     }
     return input || editor.querySelector?.(".rm-block__input") || editor.querySelector?.("textarea") || null;
   };
-  const enterEdit = async (uid, { row: row3 = "" } = {}) => {
+  const enterEdit = async (uid, { row: row4 = "" } = {}) => {
     const rec = shells.get(uid);
     const item = lastBoard?.items.get(uid);
     if (!rec || !item || rec.type === "section" || item.kind === "board" || item.kind === "drawing-ref" || rec.refBoard) return false;
@@ -21966,7 +23632,7 @@ function createItemRenderer({
     const contentH = boxHeight(rec.body);
     const lockH = pageEdit ? 0 : boxHeight(rec.el) || contentH || Number(rec.rect?.h) || 0;
     const reduced = prefersReducedMotion();
-    const clickedRow = row3 ? rec.body.querySelector?.(`[data-pxd-row="${row3}"]`) : null;
+    const clickedRow = row4 ? rec.body.querySelector?.(`[data-pxd-row="${row4}"]`) : null;
     const rowOffset = clickedRow ? (Number(clickedRow.getBoundingClientRect?.().top) || 0) - (Number(rec.body.getBoundingClientRect?.().top) || 0) : null;
     const ghost = el("div", "pxd-item__ghost");
     ghost.setAttribute("aria-hidden", "true");
@@ -22018,7 +23684,7 @@ function createItemRenderer({
     }
     let input = null;
     if (pageEdit) {
-      input = await waitPageInput(editor, row3, uid);
+      input = await waitPageInput(editor, row4, uid);
       if (disposed || editing?.uid !== uid) return false;
       if (input && rowOffset !== null) {
         const inputOffset = (Number(input.getBoundingClientRect?.().top) || 0) - (Number(rec.body.getBoundingClientRect?.().top) || 0);
@@ -22029,7 +23695,7 @@ function createItemRenderer({
       if (disposed || editing?.uid !== uid) return false;
       if (rowOffset !== null) {
         for (const node2 of editor.querySelectorAll?.(".rm-block__input") || []) {
-          if (String(node2.id || node2.getAttribute?.("id") || "").endsWith(`-${row3}`)) {
+          if (String(node2.id || node2.getAttribute?.("id") || "").endsWith(`-${row4}`)) {
             input = node2;
             break;
           }
@@ -22459,6 +24125,7 @@ function createItemRenderer({
     toggleKids,
     setBadges,
     setShowBadges,
+    setTrailBadges,
     setTaskChips,
     refreshStatuses,
     setFocus,
@@ -22664,20 +24331,20 @@ function originBeside(rect) {
   const w = typeof box2.w === "number" && Number.isFinite(box2.w) ? box2.w : 0;
   return { x: x + w + 40, y };
 }
-function placePayload(row3, origin) {
-  if (!row3 || row3.placed === true) return null;
-  const uid = typeof row3.uid === "string" ? row3.uid : "";
+function placePayload(row4, origin) {
+  if (!row4 || row4.placed === true) return null;
+  const uid = typeof row4.uid === "string" ? row4.uid : "";
   if (!uid) return null;
   const at = origin && typeof origin === "object" ? origin : {};
   const x = typeof at.x === "number" && Number.isFinite(at.x) ? at.x : 0;
   const y = typeof at.y === "number" && Number.isFinite(at.y) ? at.y : 0;
   return { string: `((${uid}))`, x, y, w: PLACE_W, h: PLACE_H };
 }
-function placeDecision(row3, items, origin) {
-  const uid = typeof row3?.uid === "string" ? row3.uid : "";
+function placeDecision(row4, items, origin) {
+  const uid = typeof row4?.uid === "string" ? row4.uid : "";
   const existing = placedHighlightUid(items, uid);
-  if (row3?.placed === true || existing) return { kind: "pulse", uid: existing };
-  const item = placePayload(row3, origin);
+  if (row4?.placed === true || existing) return { kind: "pulse", uid: existing };
+  const item = placePayload(row4, origin);
   if (!item) return { kind: "none" };
   return { kind: "create", item };
 }
@@ -22694,7 +24361,7 @@ function indexNodes(nodes, map) {
   }
 }
 function sortRows(rows) {
-  return rows.map((row3, index) => ({ row: row3, index })).sort((a, b) => {
+  return rows.map((row4, index) => ({ row: row4, index })).sort((a, b) => {
     const ap = typeof a.row.page === "number" ? a.row.page : Infinity;
     const bp = typeof b.row.page === "number" ? b.row.page : Infinity;
     if (ap !== bp) return ap - bp;
@@ -22985,22 +24652,22 @@ function createReadPane({
     const pageWant = pageText === "" ? null : Number(pageText);
     const needle = String(snipFilt.value || "").trim().toLowerCase();
     catalog = sortRows(rows);
-    shown = catalog.filter((row3) => {
-      if (color && row3.color !== color) return false;
-      if (pageWant != null && Number.isFinite(pageWant) && row3.page !== pageWant) return false;
-      if (needle && !String(row3.snippet || "").toLowerCase().includes(needle)) return false;
+    shown = catalog.filter((row4) => {
+      if (color && row4.color !== color) return false;
+      if (pageWant != null && Number.isFinite(pageWant) && row4.page !== pageWant) return false;
+      if (needle && !String(row4.snippet || "").toLowerCase().includes(needle)) return false;
       return true;
     });
     list.replaceChildren?.();
-    for (const row3 of shown) {
+    for (const row4 of shown) {
       const node2 = el("div", "pxd-read__row", list);
       node2.setAttribute("role", "option");
-      node2.setAttribute("data-uid", row3.uid);
+      node2.setAttribute("data-uid", row4.uid);
       node2.draggable = true;
       node2.setAttribute("draggable", "true");
       const bar = el("span", "pxd-read__bar", node2);
-      bar.setAttribute("data-color", String(row3.color || ""));
-      const source = byUid.get(row3.uid);
+      bar.setAttribute("data-color", String(row4.color || ""));
+      const source = byUid.get(row4.uid);
       const model = source ? highlightModel({ string: source.string, props: source.props, children: source.children }) : null;
       if (model?.image && source) {
         const media = el("div", "pxd-read__media", node2);
@@ -23015,13 +24682,13 @@ function createReadPane({
         } catch {
           media.textContent = source.string;
         }
-      } else if (row3.snippet && !String(row3.snippet).startsWith("![")) {
-        el("div", "pxd-read__snip", node2).textContent = row3.snippet;
+      } else if (row4.snippet && !String(row4.snippet).startsWith("![")) {
+        el("div", "pxd-read__snip", node2).textContent = row4.snippet;
       }
       const meta = el("div", "pxd-read__meta", node2);
-      if (typeof row3.page === "number") el("span", "pxd-read__pg", meta).textContent = `p. ${row3.page}`;
-      if (row3.placed) el("span", "pxd-read__on", meta).textContent = "On board";
-      if (typeof row3.note === "string" && row3.note.trim()) {
+      if (typeof row4.page === "number") el("span", "pxd-read__pg", meta).textContent = `p. ${row4.page}`;
+      if (row4.placed) el("span", "pxd-read__on", meta).textContent = "On board";
+      if (typeof row4.note === "string" && row4.note.trim()) {
         const mark = el("span", "pxd-read__mark", meta);
         mark.textContent = "Note";
         mark.setAttribute("aria-label", "Note");
@@ -23038,26 +24705,26 @@ function createReadPane({
   }
   const moveSelection = (step) => {
     if (!shown.length) return;
-    let index = shown.findIndex((row3) => row3.uid === selectedUid);
+    let index = shown.findIndex((row4) => row4.uid === selectedUid);
     if (index < 0) index = step > 0 ? -1 : shown.length;
     index = Math.max(0, Math.min(shown.length - 1, index + step));
     selectedUid = shown[index].uid;
     paintSelected();
   };
-  const showHighlight = (row3) => {
-    if (!row3?.uid) return;
-    selectedUid = row3.uid;
+  const showHighlight = (row4) => {
+    if (!row4?.uid) return;
+    selectedUid = row4.uid;
     paintSelected();
-    if (typeof row3.page === "number") {
-      jumpPage(row3.page);
-      jumpPageWhenReady(row3.page, () => locateHighlight(row3.uid));
+    if (typeof row4.page === "number") {
+      jumpPage(row4.page);
+      jumpPageWhenReady(row4.page, () => locateHighlight(row4.uid));
       return;
     }
-    locateHighlight(row3.uid);
+    locateHighlight(row4.uid);
   };
   const jumpSelected = () => {
-    const row3 = shown.find((entry) => entry.uid === selectedUid);
-    if (row3) showHighlight(row3);
+    const row4 = shown.find((entry) => entry.uid === selectedUid);
+    if (row4) showHighlight(row4);
   };
   const onPaneKey = (event) => {
     if (event.metaKey || event.ctrlKey) return;
@@ -23094,32 +24761,32 @@ function createReadPane({
   const onListClick = (event) => {
     if (event.target?.closest?.(".pxd-read__place")) {
       event.stopPropagation();
-      const row4 = rowFromEvent(event);
-      if (row4) {
+      const row5 = rowFromEvent(event);
+      if (row5) {
         try {
-          onPlace?.(row4);
+          onPlace?.(row5);
         } catch {
         }
-        showHighlight(row4);
+        showHighlight(row5);
       }
       return;
     }
     if (event.target?.closest?.(".pxd-read__note")) {
       event.stopPropagation();
-      const row4 = rowFromEvent(event);
-      if (row4) {
+      const row5 = rowFromEvent(event);
+      if (row5) {
         try {
-          onNote?.(row4);
+          onNote?.(row5);
         } catch {
         }
       }
       return;
     }
     if (event.target?.closest?.("button")) return;
-    const row3 = rowFromEvent(event);
-    if (!row3) return;
+    const row4 = rowFromEvent(event);
+    if (!row4) return;
     event.stopPropagation();
-    showHighlight(row3);
+    showHighlight(row4);
   };
   const markCache = /* @__PURE__ */ new WeakMap();
   let dragChip = null;
@@ -23418,9 +25085,9 @@ function createReadPane({
     if (!dragging) disarm();
   };
   const chipLabel = (uid, highlight) => {
-    const row3 = catalog.find((entry) => entry.uid === uid);
-    const text2 = row3 && row3.snippet || highlight?.content?.text || "";
-    const color = row3 && row3.color || (typeof highlight?.color === "string" ? highlight.color : "");
+    const row4 = catalog.find((entry) => entry.uid === uid);
+    const text2 = row4 && row4.snippet || highlight?.content?.text || "";
+    const color = row4 && row4.color || (typeof highlight?.color === "string" ? highlight.color : "");
     return { text: dragChipText(text2), color };
   };
   const dropChip = () => {
@@ -23476,10 +25143,10 @@ function createReadPane({
     return true;
   };
   const onListDrag = (event) => {
-    const row3 = rowFromEvent(event);
-    if (!row3?.uid) return;
-    const label = chipLabel(row3.uid, null);
-    beginDrag(event, row3.uid, row3.color || label.color, dragChipText(row3.snippet || label.text));
+    const row4 = rowFromEvent(event);
+    if (!row4?.uid) return;
+    const label = chipLabel(row4.uid, null);
+    beginDrag(event, row4.uid, row4.color || label.color, dragChipText(row4.snippet || label.text));
   };
   const targetIsArmed = (target) => {
     if (!armedEl || !target) return false;
@@ -23602,8 +25269,8 @@ function createReadPane({
       }
     }
     if (!scrolled) fallbackScroll(parts[0]);
-    const row3 = catalog.find((entry) => entry.uid === uid);
-    flashParts(parts, highlight?.color || row3?.color || "");
+    const row4 = catalog.find((entry) => entry.uid === uid);
+    flashParts(parts, highlight?.color || row4?.color || "");
   };
   const highlightUidOf = (detail) => {
     if (typeof detail.highlightUid === "string" && detail.highlightUid) return detail.highlightUid;
@@ -24853,7 +26520,7 @@ function buildColorPicker(doc, onPick, listen, fourth) {
     });
     box2.append(gear, note);
   }
-  const row3 = (label, colors, named) => {
+  const row4 = (label, colors, named) => {
     const wrap = doc.createElement("div");
     wrap.className = "pxd-picker__row";
     const cap4 = doc.createElement("div");
@@ -24881,9 +26548,9 @@ function buildColorPicker(doc, onPick, listen, fourth) {
     wrap.append(swatches);
     box2.append(wrap);
   };
-  row3("Colors", NATIVE_SWATCHES, false);
-  row3("Darker", NATIVE_SWATCHES.map((h) => shadeHex(h, DARKER)), false);
-  row3("Lighter", NATIVE_SWATCHES.map((h) => shadeHex(h, LIGHTER)), false);
+  row4("Colors", NATIVE_SWATCHES, false);
+  row4("Darker", NATIVE_SWATCHES.map((h) => shadeHex(h, DARKER)), false);
+  row4("Lighter", NATIVE_SWATCHES.map((h) => shadeHex(h, LIGHTER)), false);
   const hexRow = doc.createElement("div");
   hexRow.className = "pxd-picker__hex";
   const preview = doc.createElement("span");
@@ -24914,7 +26581,7 @@ function buildColorPicker(doc, onPick, listen, fourth) {
   });
   hexRow.append(preview, input);
   box2.append(hexRow);
-  row3("Named", PALETTE, true);
+  row4("Named", PALETTE, true);
   const clear = doc.createElement("button");
   clear.type = "button";
   clear.className = "pxd-btn pxd-picker__clear";
@@ -24934,8 +26601,8 @@ var CTX_EDGE_CLEARANCE = 28;
 var CTX_MARGIN = 8;
 var CTX_MIN_WIDTH = 180;
 var TOAST_MS = 6e3;
-var MINIMAP_W = 180;
-var MINIMAP_H = 120;
+var MINIMAP_W2 = 180;
+var MINIMAP_H2 = 120;
 var LINK_MODES2 = ["off", "attributes", "all"];
 var LINK_LABELS = { off: "Links: Off", attributes: "Links: Attributes", all: "Links: All" };
 var LINK_ICONS = { off: "disable", attributes: "inheritance", all: "graph" };
@@ -25585,10 +27252,10 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     on.chromeRebuilt?.();
     ctx.dataset.kind = kind;
     ctx.setAttribute("data-kind", kind);
-    const row3 = el("div", "pxd-ctx__row", ctx);
-    const btn = (cls, icon, label, title, fn) => iconButton(row3, `pxd-ctx__btn ${cls}`, icon, label, title, fn);
+    const row4 = el("div", "pxd-ctx__row", ctx);
+    const btn = (cls, icon, label, title, fn) => iconButton(row4, `pxd-ctx__btn ${cls}`, icon, label, title, fn);
     const seg = (cls, options, current3, fn) => {
-      const wrap = el("div", `pxd-seg ${cls}`, row3);
+      const wrap = el("div", `pxd-seg ${cls}`, row4);
       for (const [value, label, title, icon] of options) {
         const b = button(wrap, `pxd-seg__btn${value === current3 ? " pxd-seg__btn--on" : ""}${icon ? " pxd-iconbtn" : ""}`, icon ? "" : label, title || label, () => fn(value));
         if (icon) {
@@ -25658,7 +27325,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
           const refs = iconBtn("pxd-ctx__refs", "link", "References", `${n2} ${n2 === 1 ? "reference" : "references"}`, () => on.showRefs?.());
           el("span", "pxd-ctx__refs-count", refs, String(n2));
         }
-        swatches(row3, (c) => on.setColor?.(c));
+        swatches(row4, (c) => on.setColor?.(c));
         if (kind === "card") {
           btn("pxd-ctx__edit", "edit", "Edit", "Edit (Enter)", () => on.edit?.());
           btn("pxd-ctx__sidebar", "panel-stats", "Open in sidebar", "Open in the right sidebar", () => on.openSidebar?.());
@@ -25690,7 +27357,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
         break;
       }
       case "board":
-        swatches(row3, (c) => on.setColor?.(c));
+        swatches(row4, (c) => on.setColor?.(c));
         btn("pxd-ctx__open-board", "document-open", "Open", "Open this board (Enter)", () => on.openBoard?.());
         opt("openOwnPage", "pxd-ctx__own-page", "document", "Own page", "Open nested board in its own page", () => on.openOwnPage());
         if (model?.enhanced) btn("pxd-ctx__rename-board", "edit", "Rename board", "Rename the board", () => on.renameBoard?.());
@@ -25698,7 +27365,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
         btn("pxd-ctx__delete pxd-btn--danger", "trash", "Delete", "Delete (Del)", () => on.delete?.());
         break;
       case "section":
-        swatches(row3, (c) => on.setColor?.(c));
+        swatches(row4, (c) => on.setColor?.(c));
         btn("pxd-ctx__rename", "edit", "Rename", "Rename (Enter)", () => on.rename?.());
         btn("pxd-ctx__contents", "multi-select", "Select contents", "Select the section's members", () => on.selectContents?.());
         opt("selectAllInSection", "pxd-ctx__all-in-section", "select", "Select all in section", "Select everything inside the section", () => on.selectAllInSection());
@@ -25716,7 +27383,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
         btn("pxd-ctx__delete pxd-btn--danger", "trash", "Delete frame", "Delete the frame, keep the cards (Del). Shift+Del deletes contents too", () => on.delete?.());
         break;
       case "text":
-        swatches(row3, (c) => on.setColor?.(c));
+        swatches(row4, (c) => on.setColor?.(c));
         seg("pxd-ctx__size", FONT_SIZES.map((s, i) => [s, ["S", "M", "L", "XL"][i], `${s}px`]), model?.fontSize || 24, (v) => on.setFontSize?.(v));
         btn("pxd-ctx__delete pxd-btn--danger", "trash", "Delete", "Delete (Del)", () => on.delete?.());
         break;
@@ -25727,14 +27394,14 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
         seg("pxd-ctx__route", [["curve", "Curve", "Curve", "path"], ["straight", "Straight", "Straight", "flow-linear"], ["elbow", "Elbow", "Elbow", "step-chart"]], model?.route, (v) => on.route?.(v));
         seg("pxd-ctx__dash", [["solid", "Solid", "Solid", "minus"], ["dashed", "Dashed", "Dashed", "slash"], ["animated", "Animated", "Animated", "pulse"]], model?.dash, (v) => on.dash?.(v));
         seg("pxd-ctx__weight", [[1, "1"], [2, "2"], [3, "3"], [4, "4"]], model?.weight, (v) => on.weight?.(v));
-        swatches(row3, (c) => on.setColor?.(c));
+        swatches(row4, (c) => on.setColor?.(c));
         btn("pxd-ctx__label", "tag", "Label", "Edit the label", () => on.label?.());
         btn("pxd-ctx__notes", "annotation", "Notes", "Open the connection block in the sidebar", () => on.notes?.());
         btn("pxd-ctx__write", "inheritance", "Write to graph", "Create an attribute on the source", () => on.writeToGraph?.());
         btn("pxd-ctx__delete pxd-btn--danger", "trash", "Delete", "Delete (Del)", () => on.delete?.());
         break;
       case "link": {
-        const list = el("div", "pxd-ctx__sources", row3);
+        const list = el("div", "pxd-ctx__sources", row4);
         for (const s of model?.sources || []) {
           const b = button(list, "pxd-ctx__source", (s.string || s.uid || "").slice(0, 60), "Open in the sidebar", () => on.openSource?.(s.uid));
           b.dataset.uid = s.uid;
@@ -25745,7 +27412,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
       default:
         break;
     }
-    const flip = (cls, active) => row3.querySelector(`.${cls}`)?.setAttribute("data-tip-state", active ? "on" : "off");
+    const flip = (cls, active) => row4.querySelector(`.${cls}`)?.setAttribute("data-tip-state", active ? "on" : "off");
     const closedKids = model?.kind === "note" || model?.kind === "block" ? !model?.kids : model?.open === false;
     flip("pxd-ctx__expand", !closedKids);
     flip("pxd-ctx__collapse", Boolean(model?.collapsed));
@@ -25886,8 +27553,8 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
   tip(minimap, "minimap");
   stopAll(minimap);
   const canvas = el("canvas", "pxd-minimap__canvas", minimap);
-  canvas.width = MINIMAP_W;
-  canvas.height = MINIMAP_H;
+  canvas.width = MINIMAP_W2;
+  canvas.height = MINIMAP_H2;
   let mmDirty = true;
   let mmFrame = null;
   let mmState = null;
@@ -25912,8 +27579,8 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     minY -= pad2;
     maxX += pad2;
     maxY += pad2;
-    const s = Math.min(MINIMAP_W / (maxX - minX), MINIMAP_H / (maxY - minY));
-    return { s, ox: (MINIMAP_W - (maxX - minX) * s) / 2 - minX * s, oy: (MINIMAP_H - (maxY - minY) * s) / 2 - minY * s, view };
+    const s = Math.min(MINIMAP_W2 / (maxX - minX), MINIMAP_H2 / (maxY - minY));
+    return { s, ox: (MINIMAP_W2 - (maxX - minX) * s) / 2 - minX * s, oy: (MINIMAP_H2 - (maxY - minY) * s) / 2 - minY * s, view };
   };
   const draw = () => {
     mmFrame = null;
@@ -25924,7 +27591,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     if (!g) return;
     const sc = computeScale(rects, size, vp);
     mmScale = sc;
-    g.clearRect(0, 0, MINIMAP_W, MINIMAP_H);
+    g.clearRect(0, 0, MINIMAP_W2, MINIMAP_H2);
     if (!sc) return;
     const colors = mmColors();
     for (const uid of board2.order) {
@@ -26307,27 +27974,27 @@ function isTableRow(item) {
 }
 function tableColumns(rows) {
   const names = [];
-  for (const row3 of rows || []) {
-    for (const attr of row3.attrs || []) {
+  for (const row4 of rows || []) {
+    for (const attr of row4.attrs || []) {
       if (attr?.name && !names.includes(attr.name)) names.push(attr.name);
     }
   }
   return FIXED.concat(names);
 }
-function cellText(row3, column) {
-  if (!row3) return "";
-  if (column === "Title") return String(row3.title ?? "");
-  if (column === "Section") return String(row3.section ?? "");
-  if (column === "Type") return String(row3.type ?? "");
-  if (column === "Edited") return row3.edited == null ? "" : String(row3.edited);
-  const hit = (row3.attrs || []).find((attr) => attr.name === column);
+function cellText(row4, column) {
+  if (!row4) return "";
+  if (column === "Title") return String(row4.title ?? "");
+  if (column === "Section") return String(row4.section ?? "");
+  if (column === "Type") return String(row4.type ?? "");
+  if (column === "Edited") return row4.edited == null ? "" : String(row4.edited);
+  const hit = (row4.attrs || []).find((attr) => attr.name === column);
   return hit ? String(hit.value ?? "") : "";
 }
 function filterRows2(rows, text2) {
   const needle = String(text2 ?? "").trim().toLowerCase();
   if (!needle) return (rows || []).slice();
   const cols = tableColumns(rows);
-  return (rows || []).filter((row3) => cols.some((column) => cellText(row3, column).toLowerCase().includes(needle)));
+  return (rows || []).filter((row4) => cols.some((column) => cellText(row4, column).toLowerCase().includes(needle)));
 }
 function sortRows2(rows, column, dir = "asc") {
   const sign = dir === "desc" ? -1 : 1;
@@ -26465,11 +28132,11 @@ function mountTable({ doc = globalThis.document, root, host, getBoard } = {}) {
   };
   const sourceRows = () => {
     const rows = tableRows(getBoard?.() || null, (uid) => host?.blockString?.(uid));
-    const missing = rows.map((row3) => row3.uid).filter((uid) => !edited.has(uid));
-    if (missing.length && typeof host?.q === "function") {
+    const missing2 = rows.map((row4) => row4.uid).filter((uid) => !edited.has(uid));
+    if (missing2.length && typeof host?.q === "function") {
       let found = [];
       try {
-        found = host.q(EDITED_QUERY, missing) || [];
+        found = host.q(EDITED_QUERY, missing2) || [];
       } catch {
         found = [];
       }
@@ -26477,9 +28144,9 @@ function mountTable({ doc = globalThis.document, root, host, getBoard } = {}) {
         if (Array.isArray(hit) && hit.length >= 2) edited.set(hit[0], hit[1]);
       }
     }
-    for (const row3 of rows) {
-      if (edited.has(row3.uid)) row3.edited = edited.get(row3.uid);
-      for (const attr of row3.attrs || []) filled.delete(`${row3.uid}\0${attr.name}`);
+    for (const row4 of rows) {
+      if (edited.has(row4.uid)) row4.edited = edited.get(row4.uid);
+      for (const attr of row4.attrs || []) filled.delete(`${row4.uid}\0${attr.name}`);
     }
     return rows;
   };
@@ -26492,10 +28159,10 @@ function mountTable({ doc = globalThis.document, root, host, getBoard } = {}) {
     const filtered = filterRows2(rows, filterText);
     return sortColumn ? sortRows2(filtered, sortColumn, sortDir) : filtered;
   };
-  const commitFill = async (row3, column, raw) => {
-    const key = `${row3.uid}\0${column}`;
+  const commitFill = async (row4, column, raw) => {
+    const key = `${row4.uid}\0${column}`;
     if (inflight.has(key) || filled.has(key)) return;
-    const plan = planAttrCell({ name: column, value: raw, parentUid: row3.uid });
+    const plan = planAttrCell({ name: column, value: raw, parentUid: row4.uid });
     if (!plan || plan.op !== "create") return;
     if (typeof host?.createBlock !== "function") return;
     inflight.add(key);
@@ -26555,22 +28222,22 @@ function mountTable({ doc = globalThis.document, root, host, getBoard } = {}) {
     }
     thead.append(head);
     tbody.replaceChildren();
-    for (const row3 of body) {
+    for (const row4 of body) {
       const tr = doc.createElement("tr");
       tr.className = "pxd-table__row";
-      tr.setAttribute("data-uid", row3.uid);
+      tr.setAttribute("data-uid", row4.uid);
       for (const column of cols) {
         const td = doc.createElement("td");
         td.className = "pxd-table__cell";
         td.setAttribute("data-col", column);
-        const attr = (row3.attrs || []).find((item) => item.name === column);
-        const pendingValue = filled.get(`${row3.uid}\0${column}`);
+        const attr = (row4.attrs || []).find((item) => item.name === column);
+        const pendingValue = filled.get(`${row4.uid}\0${column}`);
         if (attr?.uid) {
           const button = doc.createElement("button");
           button.type = "button";
           button.className = "pxd-btn pxd-table__value";
-          button.textContent = cellText(row3, column);
-          button.setAttribute("aria-label", `${column} for ${row3.title || row3.uid}`);
+          button.textContent = cellText(row4, column);
+          button.setAttribute("aria-label", `${column} for ${row4.title || row4.uid}`);
           listen(button, "click", () => openEditor(td, attr.uid), paintOffs);
           td.append(button);
         } else if (pendingValue != null) {
@@ -26582,9 +28249,9 @@ function mountTable({ doc = globalThis.document, root, host, getBoard } = {}) {
           const input = doc.createElement("input");
           input.type = "text";
           input.className = "pxd-input pxd-table__fill";
-          input.setAttribute("aria-label", `${column} for ${row3.title || row3.uid}`);
+          input.setAttribute("aria-label", `${column} for ${row4.title || row4.uid}`);
           const commit = () => {
-            void commitFill(row3, column, input.value);
+            void commitFill(row4, column, input.value);
           };
           listen(input, "keydown", (event) => {
             if (event.key !== "Enter") return;
@@ -26596,7 +28263,7 @@ function mountTable({ doc = globalThis.document, root, host, getBoard } = {}) {
         } else {
           const span = doc.createElement("span");
           span.className = "pxd-table__text";
-          span.textContent = column === "Edited" ? editedLabel(row3.edited) : cellText(row3, column);
+          span.textContent = column === "Edited" ? editedLabel(row4.edited) : cellText(row4, column);
           td.append(span);
         }
         tr.append(td);
@@ -26686,9 +28353,9 @@ function todoState(string) {
 }
 function kanbanRows(board2, resolve) {
   const items = board2?.items;
-  return tableRows(board2, resolve).map((row3) => {
-    const item = items?.get?.(row3.uid);
-    const next = { ...row3, string: item?.string ?? row3.title ?? "" };
+  return tableRows(board2, resolve).map((row4) => {
+    const item = items?.get?.(row4.uid);
+    const next = { ...row4, string: item?.string ?? row4.title ?? "" };
     if (item?.kind !== "highlight") return next;
     const targetUid = item.target?.uid;
     let targetString;
@@ -26708,21 +28375,21 @@ function kanbanRows(board2, resolve) {
 function kanbanFields(rows) {
   const names = [];
   let highlight = false;
-  for (const row3 of rows || []) {
-    if (typeof row3?.highlightColor === "string" && row3.highlightColor !== "") highlight = true;
-    for (const attr of row3.attrs || []) {
+  for (const row4 of rows || []) {
+    if (typeof row4?.highlightColor === "string" && row4.highlightColor !== "") highlight = true;
+    for (const attr of row4.attrs || []) {
       if (attr?.name && columnNameOk(attr.name) && !names.includes(attr.name)) names.push(attr.name);
     }
   }
   return highlight ? [TODO_FIELD, HIGHLIGHT_FIELD, ...names] : [TODO_FIELD, ...names];
 }
-function columnOf(row3, field) {
-  if (field === TODO_FIELD) return todoState(row3?.string);
+function columnOf(row4, field) {
+  if (field === TODO_FIELD) return todoState(row4?.string);
   if (field === HIGHLIGHT_FIELD) {
-    const color = row3?.highlightColor;
+    const color = row4?.highlightColor;
     return typeof color === "string" && color !== "" ? color : "";
   }
-  const hit = (row3?.attrs || []).find((attr) => attr.name === field);
+  const hit = (row4?.attrs || []).find((attr) => attr.name === field);
   return hit ? String(hit.value ?? "") : "";
 }
 function kanbanColumns(rows, field) {
@@ -26733,11 +28400,11 @@ function kanbanColumns(rows, field) {
       { name: DONE_COLUMN, cards: [] }
     ];
     const extra = [];
-    for (const row3 of list) {
-      const name = columnOf(row3, field);
-      if (name === TODO_FIELD) columns2[0].cards.push(row3);
-      else if (name === DONE_COLUMN) columns2[1].cards.push(row3);
-      else extra.push(row3);
+    for (const row4 of list) {
+      const name = columnOf(row4, field);
+      if (name === TODO_FIELD) columns2[0].cards.push(row4);
+      else if (name === DONE_COLUMN) columns2[1].cards.push(row4);
+      else extra.push(row4);
     }
     if (extra.length) columns2.push({ name: "", cards: extra });
     return columns2;
@@ -26745,14 +28412,14 @@ function kanbanColumns(rows, field) {
   if (!columnNameOk(field)) return [];
   const columns = [];
   const byName = /* @__PURE__ */ new Map();
-  for (const row3 of list) {
-    const name = columnOf(row3, field);
+  for (const row4 of list) {
+    const name = columnOf(row4, field);
     if (!byName.has(name)) {
       const column = { name, cards: [] };
       byName.set(name, column);
       columns.push(column);
     }
-    byName.get(name).cards.push(row3);
+    byName.get(name).cards.push(row4);
   }
   return columns;
 }
@@ -26762,33 +28429,33 @@ function withMarker(string, column) {
   if (MARK.test(current3)) return current3.replace(MARK, mark);
   return current3.trim() ? `${mark} ${current3}` : mark;
 }
-function planKanbanMove({ field, column, row: row3 } = {}) {
-  if (!row3?.uid || column == null || column === "") return null;
+function planKanbanMove({ field, column, row: row4 } = {}) {
+  if (!row4?.uid || column == null || column === "") return null;
   if (field === TODO_FIELD) {
     if (column !== TODO_FIELD && column !== DONE_COLUMN) return null;
-    if (todoState(row3.string) === column) return null;
-    const string = withMarker(row3.string, column);
-    if (string === String(row3.string || "")) return null;
-    return { op: "string", uid: row3.uid, string, status: column === DONE_COLUMN ? "DONE" : "TODO" };
+    if (todoState(row4.string) === column) return null;
+    const string = withMarker(row4.string, column);
+    if (string === String(row4.string || "")) return null;
+    return { op: "string", uid: row4.uid, string, status: column === DONE_COLUMN ? "DONE" : "TODO" };
   }
   if (field === HIGHLIGHT_FIELD) {
-    if (row3.kind === "note") return null;
-    const targetUid = row3.targetUid;
-    const targetString = row3.targetString;
+    if (row4.kind === "note") return null;
+    const targetUid = row4.targetUid;
+    const targetString = row4.targetString;
     if (!targetUid || typeof targetString !== "string" || targetString === "") return null;
-    if (row3.highlightColor === column) return null;
+    if (row4.highlightColor === column) return null;
     if (!HIGHLIGHT_COLORS.includes(column)) return null;
     return { op: "string", uid: targetUid, string: rewriteHighlightTag(targetString, column) };
   }
   if (field === STATUS_FIELD) return null;
   if (!columnNameOk(field)) return null;
-  const attr = (row3.attrs || []).find((item) => item.name === field);
+  const attr = (row4.attrs || []).find((item) => item.name === field);
   if (String(attr?.value ?? "") === column) return null;
   const plan = planAttrCell({
     name: field,
     value: column,
     blockUid: attr?.uid || null,
-    parentUid: row3.uid
+    parentUid: row4.uid
   });
   if (!plan) return null;
   if (plan.op === "update") return { op: "string", uid: plan.uid, string: plan.string };
@@ -26826,6 +28493,12 @@ function groupByStatus(items, palette) {
 
 // src/view/kanban-view.js
 var BAD_STATUS = /* @__PURE__ */ new Set(["rejected", "unknown", "conflict", "not-updated"]);
+function kanbanTitle(card2) {
+  const raw = typeof card2?.string === "string" && card2.string ? card2.string : "";
+  if (!/task-status\//.test(raw)) return card2?.title || "";
+  const text2 = raw.replace(/#\[\[task-status\/[^\]]+\]\]|#task-status\/\S+/g, "").replace(/\{\{\[\[(TODO|DONE)\]\]\}\}|\{\{(TODO|DONE)\}\}/g, "").replace(/\[\[([^\]]+)\]\]/g, "$1").replace(/\s+/g, " ").trim();
+  return text2 || card2?.title || "";
+}
 function mountKanban({
   doc = globalThis.document,
   root,
@@ -26958,57 +28631,57 @@ function mountKanban({
     for (const column of next) column.count = column.cards.length;
     return next;
   };
-  const laneOf = (row3) => {
-    if (pending.has(row3?.uid)) return pending.get(row3.uid);
-    const found = groupByStatus([row3], palette()).find((column) => column.cards.length);
+  const laneOf = (row4) => {
+    if (pending.has(row4?.uid)) return pending.get(row4.uid);
+    const found = groupByStatus([row4], palette()).find((column) => column.cards.length);
     return found?.name || NO_STATUS;
   };
-  const moveToLane = async (row3, columnName) => {
-    if (!open || !row3?.uid || columnName == null || columnName === "") return { ok: false };
-    const from = field === STATUS_FIELD ? laneOf(row3) : null;
+  const moveToLane = async (row4, columnName) => {
+    if (!open || !row4?.uid || columnName == null || columnName === "") return { ok: false };
+    const from = field === STATUS_FIELD ? laneOf(row4) : null;
     if (field !== STATUS_FIELD) {
-      const plan = planKanbanMove({ field, column: columnName, row: row3 });
+      const plan = planKanbanMove({ field, column: columnName, row: row4 });
       if (!plan) return { ok: false };
       await commit(plan);
       return { ok: true };
     }
     if (from === columnName) return { ok: false };
     if (columnName === DONE_COLUMN) {
-      pending.delete(row3.uid);
-      const plan = planKanbanMove({ field: TODO_FIELD, column: DONE_COLUMN, row: row3 });
+      pending.delete(row4.uid);
+      const plan = planKanbanMove({ field: TODO_FIELD, column: DONE_COLUMN, row: row4 });
       if (!plan) return { ok: false };
       await commit(plan);
       return { ok: true, via: "done" };
     }
     const leavingDone = from === DONE_COLUMN;
-    pending.set(row3.uid, columnName);
+    pending.set(row4.uid, columnName);
     paint2();
     const write = writer();
     if (typeof write !== "function") {
-      pending.delete(row3.uid);
+      pending.delete(row4.uid);
       toast({ message: "Task Status Tags is not loaded" });
       paint2();
       return { ok: false, reverted: true };
     }
     let res;
     try {
-      res = await write(row3.uid, columnName === NO_STATUS ? null : columnName);
+      res = await write(row4.uid, columnName === NO_STATUS ? null : columnName);
     } catch (error) {
       res = { status: "rejected", reason: error?.message || "Could not set that status" };
     }
     if (!res || BAD_STATUS.has(res.status)) {
-      pending.delete(row3.uid);
+      pending.delete(row4.uid);
       toast({ message: res?.reason || "Could not set that status" });
       paint2();
       return { ok: false, reverted: true, reason: res?.reason };
     }
     if (leavingDone) {
-      const plan = planKanbanMove({ field: TODO_FIELD, column: TODO_FIELD, row: row3 });
+      const plan = planKanbanMove({ field: TODO_FIELD, column: TODO_FIELD, row: row4 });
       if (plan) await commit(plan);
-      const item = getBoard?.()?.items?.get?.(row3.uid);
-      const string = item?.string ?? row3.string ?? "";
+      const item = getBoard?.()?.items?.get?.(row4.uid);
+      const string = item?.string ?? row4.string ?? "";
       if (item?.done === true || /\{\{\[\[DONE\]\]\}\}/.test(String(string))) {
-        pending.delete(row3.uid);
+        pending.delete(row4.uid);
         paint2();
       }
     }
@@ -27073,7 +28746,7 @@ function mountKanban({
         item.className = "pxd-kanban__card";
         item.setAttribute("data-uid", card2.uid);
         item.tabIndex = 0;
-        item.textContent = card2.title || card2.uid;
+        item.textContent = kanbanTitle(card2) || card2.uid;
         listen(item, "pointerdown", (event) => {
           dragUid = card2.uid;
           event.stopPropagation();
@@ -27084,11 +28757,11 @@ function mountKanban({
         const uid = dragUid;
         dragUid = null;
         if (!uid || column.name === "") return;
-        const row3 = rows.find((item) => item.uid === uid);
-        if (!row3) return;
-        if (field === STATUS_FIELD) void moveToLane(row3, column.name);
+        const row4 = rows.find((item) => item.uid === uid);
+        if (!row4) return;
+        if (field === STATUS_FIELD) void moveToLane(row4, column.name);
         else {
-          const plan = planKanbanMove({ field, column: column.name, row: row3 });
+          const plan = planKanbanMove({ field, column: column.name, row: row4 });
           if (plan) void commit(plan);
         }
       }, paintOffs);
@@ -27127,8 +28800,8 @@ function mountKanban({
     if (index < 0) return;
     const next = event.key === "]" ? index + 1 : index - 1;
     if (next < 0 || next >= names.length) return;
-    const row3 = painted.find((item) => item.uid === card2.getAttribute("data-uid"));
-    if (row3) void moveToLane(row3, names[next]);
+    const row4 = painted.find((item) => item.uid === card2.getAttribute("data-uid"));
+    if (row4) void moveToLane(row4, names[next]);
   };
   const armKeys = () => {
     if (!keyOffs.length) listen(box2, "keydown", onLaneKey, keyOffs, true);
@@ -27152,8 +28825,8 @@ function mountKanban({
       armKeys();
       pending.clear();
       if (!picked) {
-        const saved = getBoard?.()?.plexus?.kanban;
-        if (typeof saved === "string" && saved) field = saved;
+        const saved2 = getBoard?.()?.plexus?.kanban;
+        if (typeof saved2 === "string" && saved2) field = saved2;
       }
       place();
       paint2();
@@ -27251,8 +28924,8 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
   };
   const stepper = (parent, { value, fallback, min, max, aria, onCommit }) => {
     const shown = Number.isInteger(value) ? value : fallback;
-    const row3 = el("div", "pxd-props__step", parent);
-    const input = el("input", "pxd-input pxd-props__num", row3);
+    const row4 = el("div", "pxd-props__step", parent);
+    const input = el("input", "pxd-input pxd-props__num", row4);
     input.type = "number";
     input.min = String(min);
     input.max = String(max);
@@ -27267,9 +28940,9 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
       }
       onCommit(v);
     };
-    const dec = button(row3, "pxd-props__dec", "−", "Smaller", () => commit(shown - 1), "props.step.dec");
-    row3.insertBefore(dec, input);
-    button(row3, "pxd-props__inc", "+", "Larger", () => commit(shown + 1), "props.step.inc");
+    const dec = button(row4, "pxd-props__dec", "−", "Smaller", () => commit(shown - 1), "props.step.dec");
+    row4.insertBefore(dec, input);
+    button(row4, "pxd-props__inc", "+", "Larger", () => commit(shown + 1), "props.step.inc");
     listen(input, "change", () => commit(input.value));
     listen(input, "keydown", (event) => {
       event.stopPropagation();
@@ -27280,16 +28953,16 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
     });
   };
   const colorField = (parent, label, value, fn) => {
-    const row3 = el("div", "pxd-props__field", parent);
-    el("span", "pxd-props__label", row3, label);
-    const chip = button(row3, "pxd-props__chip", "", label, () => {
-      const open = row3.querySelector(".pxd-picker");
+    const row4 = el("div", "pxd-props__field", parent);
+    el("span", "pxd-props__label", row4, label);
+    const chip = button(row4, "pxd-props__chip", "", label, () => {
+      const open = row4.querySelector(".pxd-picker");
       if (open) {
         open.remove();
         return;
       }
       const picker = buildColorPicker(doc, (c) => fn(c), listen);
-      row3.append(picker);
+      row4.append(picker);
     }, "props.chip");
     chip.setAttribute("aria-label", label);
     const sw = el("span", "pxd-props__chip-swatch", chip);
@@ -27442,11 +29115,11 @@ function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
     target.addEventListener(type, fn, capture);
     offs.push(() => target.removeEventListener(type, fn, capture));
   };
-  const selectable = (level) => level.rows.filter((row3) => !entries.get(row3).item.disabled);
-  const setActive = (level, row3) => {
-    for (const r of level.rows) r.classList.toggle("pxd-menu__item--active", r === row3);
-    level.active = row3 || null;
-    if (row3 && level.depth === 0 && menuEl?.classList?.contains("pxd-menu--scroll")) row3.scrollIntoView?.({ block: "nearest" });
+  const selectable = (level) => level.rows.filter((row4) => !entries.get(row4).item.disabled);
+  const setActive = (level, row4) => {
+    for (const r of level.rows) r.classList.toggle("pxd-menu__item--active", r === row4);
+    level.active = row4 || null;
+    if (row4 && level.depth === 0 && menuEl?.classList?.contains("pxd-menu--scroll")) row4.scrollIntoView?.({ block: "nearest" });
   };
   const closeFrom = (depth) => {
     while (levels.length > depth) {
@@ -27456,11 +29129,11 @@ function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
       setActive(level, null);
     }
   };
-  const placeSub = (sub, row3) => {
+  const placeSub = (sub, row4) => {
     const rootRect = root.getBoundingClientRect();
     sub.classList.remove("pxd-menu__sub--left");
     sub.style.top = "0px";
-    const r = row3.getBoundingClientRect();
+    const r = row4.getBoundingClientRect();
     const w = sub.offsetWidth || MENU_WIDTH;
     const h = sub.offsetHeight || 0;
     if (menuEl?.classList?.contains("pxd-menu--scroll")) {
@@ -27492,14 +29165,14 @@ function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
       sub.style.top = `${Math.round(Math.min(0, rootRect.bottom - MARGIN2 - (r.top + h)))}px`;
     }
   };
-  const openSub = (row3) => {
-    const entry = entries.get(row3);
+  const openSub = (row4) => {
+    const entry = entries.get(row4);
     if (!entry?.sub || entry.item.disabled) return null;
     closeFrom(entry.level + 1);
     entry.sub.container.style.display = "";
     entry.sub.container.classList.add("pxd-menu__sub--open");
     levels.push(entry.sub);
-    placeSub(entry.sub.container, row3);
+    placeSub(entry.sub.container, row4);
     return entry.sub;
   };
   const build = (items, parent, depth) => {
@@ -27514,22 +29187,22 @@ function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
       if (item.danger) cls += " pxd-menu__item--danger";
       if (item.checked) cls += " pxd-menu__item--checked";
       if (item.children?.length) cls += " pxd-menu__item--parent";
-      const row3 = el("div", cls, parent);
-      row3.setAttribute("role", item.checked ? "menuitemradio" : "menuitem");
-      row3.setAttribute("aria-label", item.label || item.id);
-      row3.tabIndex = item.disabled ? -1 : 0;
-      if (item.checked) row3.setAttribute("aria-checked", "true");
-      if (item.disabled) row3.setAttribute("aria-disabled", "true");
-      row3.setAttribute("data-id", item.id);
-      row3.dataset.id = item.id;
-      el("span", "pxd-menu__label", row3, item.label);
-      if (item.hint) el("span", "pxd-menu__hint", row3, item.hint);
+      const row4 = el("div", cls, parent);
+      row4.setAttribute("role", item.checked ? "menuitemradio" : "menuitem");
+      row4.setAttribute("aria-label", item.label || item.id);
+      row4.tabIndex = item.disabled ? -1 : 0;
+      if (item.checked) row4.setAttribute("aria-checked", "true");
+      if (item.disabled) row4.setAttribute("aria-disabled", "true");
+      row4.setAttribute("data-id", item.id);
+      row4.dataset.id = item.id;
+      el("span", "pxd-menu__label", row4, item.label);
+      if (item.hint) el("span", "pxd-menu__hint", row4, item.hint);
       const entry = { item, level: depth, sub: null };
-      entries.set(row3, entry);
-      level.rows.push(row3);
+      entries.set(row4, entry);
+      level.rows.push(row4);
       if (item.children?.length) {
-        el("span", "pxd-menu__arrow", row3, "›");
-        const container = el("div", "pxd-menu__sub", row3);
+        el("span", "pxd-menu__arrow", row4, "›");
+        const container = el("div", "pxd-menu__sub", row4);
         container.style.display = "none";
         container.setAttribute("role", "menu");
         entry.sub = build(item.children, container, depth + 1);
@@ -27546,11 +29219,11 @@ function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
     levels.length = 0;
     on.closed?.();
   };
-  const pick = (row3) => {
-    const entry = entries.get(row3);
+  const pick = (row4) => {
+    const entry = entries.get(row4);
     if (!entry || entry.item.disabled) return;
     if (entry.sub) {
-      const sub = openSub(row3);
+      const sub = openSub(row4);
       const first = sub ? selectable(sub)[0] || null : null;
       if (sub) setActive(sub, first);
       first?.focus?.();
@@ -27601,9 +29274,9 @@ function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
     if (key === "ArrowUp") return move(-1);
     if (key === "Home" || key === "End") {
       const rows = selectable(level);
-      const row3 = key === "Home" ? rows[0] : rows[rows.length - 1];
-      setActive(level, row3);
-      row3?.focus?.();
+      const row4 = key === "Home" ? rows[0] : rows[rows.length - 1];
+      setActive(level, row4);
+      row4?.focus?.();
       return void 0;
     }
     if (key === "ArrowRight") {
@@ -27634,15 +29307,15 @@ function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
       on_(menuEl, "contextmenu", (event) => event.preventDefault?.());
       levels.push(build(list, menuEl, 0));
       on_(menuEl, "click", (event) => {
-        const row3 = rowOf(event);
-        if (!row3) return;
+        const row4 = rowOf(event);
+        if (!row4) return;
         event.preventDefault?.();
-        pick(row3);
+        pick(row4);
       });
       on_(menuEl, "pointerover", (event) => {
-        const row3 = rowOf(event);
-        if (!row3) return;
-        const entry = entries.get(row3);
+        const row4 = rowOf(event);
+        if (!row4) return;
+        const entry = entries.get(row4);
         const level = levels[entry.level];
         if (!level) return;
         closeFrom(entry.level + 1);
@@ -27650,8 +29323,8 @@ function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
           setActive(level, null);
           return;
         }
-        setActive(level, row3);
-        if (entry.sub) openSub(row3);
+        setActive(level, row4);
+        if (entry.sub) openSub(row4);
       });
       const win = doc.defaultView || doc;
       on_(doc, "pointerdown", (event) => {
@@ -27686,10 +29359,10 @@ function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
     isOpen: () => Boolean(menuEl),
     focusFirst() {
       const level = current3();
-      const row3 = level ? selectable(level)[0] || null : null;
-      if (!row3) return;
-      setActive(level, row3);
-      row3.focus?.();
+      const row4 = level ? selectable(level)[0] || null : null;
+      if (!row4) return;
+      setActive(level, row4);
+      row4.focus?.();
     },
     dispose() {
       close();
@@ -27734,15 +29407,15 @@ function createShortcutSheet({ doc = globalThis.document, root, shortcuts = SHOR
     grid.className = "pxd-sheet__grid";
     let groupEl = null;
     let groupName = "";
-    const visible2 = shortcuts.filter((row3) => settings == null || typeof row3.when !== "function" || row3.when(settings) !== false);
-    for (const row3 of visible2) {
-      if (row3.group !== groupName) {
-        groupName = row3.group;
+    const visible2 = shortcuts.filter((row4) => settings == null || typeof row4.when !== "function" || row4.when(settings) !== false);
+    for (const row4 of visible2) {
+      if (row4.group !== groupName) {
+        groupName = row4.group;
         groupEl = doc.createElement("section");
         groupEl.className = "pxd-sheet__group";
         const heading = doc.createElement("h2");
         heading.className = "pxd-sheet__group-title";
-        heading.textContent = row3.group;
+        heading.textContent = row4.group;
         groupEl.append(heading);
         grid.append(groupEl);
       }
@@ -27750,10 +29423,10 @@ function createShortcutSheet({ doc = globalThis.document, root, shortcuts = SHOR
       line.className = "pxd-sheet__row";
       const keys = doc.createElement("span");
       keys.className = "pxd-sheet__keys";
-      keys.textContent = row3.keys;
+      keys.textContent = row4.keys;
       const label = doc.createElement("span");
       label.className = "pxd-sheet__label";
-      label.textContent = row3.label;
+      label.textContent = row4.label;
       line.append(keys, label);
       groupEl.append(line);
     }
@@ -27801,16 +29474,46 @@ function statusSubmenu(c) {
   if (typeof api?.available !== "function" || api.available() !== true) return null;
   const current3 = String(c.status ?? "").trim().toLowerCase();
   const children = [];
-  for (const row3 of statusRows(api.palette)) {
-    const name = String(row3?.name || "").trim();
+  for (const row4 of statusRows(api.palette)) {
+    const name = String(row4?.name || "").trim();
     if (!name) continue;
     children.push(make(`status:${name}`, name, {
       checked: name.toLowerCase() === current3,
-      glyph: row3.glyph
+      glyph: row4.glyph
     }));
   }
   children.push(make("status:remove", "Remove status"));
   return make("status", "Status ▸", { children });
+}
+function trailChildren(c, prefix) {
+  const trails = Array.isArray(c.trails) ? c.trails : [];
+  const children = [];
+  for (const trail of trails) {
+    if (!trail?.uid) continue;
+    children.push(make(`${prefix}:${trail.uid}`, trail.name || "Trail"));
+  }
+  children.push(make(`${prefix}:new`, "New trail…"));
+  return children;
+}
+function trailItem(c) {
+  return make("trail", "Add to trail ▸", { children: trailChildren(c, "trail-add") });
+}
+function selectionTrailItem(c) {
+  return make("trail-sel", "Add selection to trail ▸", { children: trailChildren(c, "trail-sel") });
+}
+function landmarkItem(c) {
+  const on = c.landmark === true;
+  if (!on) return make("landmark-toggle", "Make landmark");
+  const size = c.landmarkSize === "S" || c.landmarkSize === "L" ? c.landmarkSize : "M";
+  return make("landmark", "Landmark", {
+    children: [
+      make("landmark-toggle", "Remove landmark", { checked: true }),
+      make("landmark-glyph", "Glyph…"),
+      make("landmark-size:S", "Small", { checked: size === "S" }),
+      make("landmark-size:M", "Medium", { checked: size === "M" }),
+      make("landmark-size:L", "Large", { checked: size === "L" })
+    ]
+  });
 }
 var make = (id, label, extra = {}) => {
   const out = { id, label };
@@ -27944,7 +29647,7 @@ function buildMenu(kind, ctx = {}) {
         make("open", c.isBoard ? "Open board" : "Open"),
         ...c.isBoard ? [make("open-own-page", "Open nested board in its own page")] : [],
         make("open-sidebar", "Open in sidebar", { hint: "Shift Click" }),
-        ...c.compass ? [make("open-compass", "Open in Compass")] : [],
+        ...c.compass && c.interop !== false ? [make("open-compass", "Open in Compass")] : [],
         sep(),
         make("copy", "Copy", { hint: "Cmd C" }),
         make("copy-png", "Copy selection as PNG"),
@@ -27967,12 +29670,12 @@ function buildMenu(kind, ctx = {}) {
       ];
       const regionsItem = regionMenu(c.regions);
       if (regionsItem) {
-        const at = out.findIndex((row3) => row3.id === "color");
+        const at = out.findIndex((row4) => row4.id === "color");
         out.splice(at < 0 ? out.length : at, 0, regionsItem);
       }
       const statusItem = statusSubmenu(c);
       if (statusItem) {
-        const at = out.findIndex((row3) => row3.id === "color");
+        const at = out.findIndex((row4) => row4.id === "color");
         out.splice(at < 0 ? out.length : at + 1, 0, statusItem);
       }
       if (c.hasOutline) {
@@ -27991,6 +29694,8 @@ function buildMenu(kind, ctx = {}) {
         make("send-to", "Send to board…"),
         make("related", "Related…"),
         make("context", "Context"),
+        trailItem(c),
+        landmarkItem(c),
         sep(),
         make("delete", "Delete", { hint: "Del", danger: true })
       );
@@ -28008,6 +29713,13 @@ function buildMenu(kind, ctx = {}) {
         c.locked ? make("unlock-contents", "Unlock") : make("lock-contents", "Lock"),
         make("present-section", "Present this section"),
         make("layout-dates", "Lay out by date"),
+        make("date-source", "Date source", {
+          children: [
+            make("date-source:attribute", "Attribute", { checked: !c.dateSource || c.dateSource === "attribute" }),
+            make("date-source:first", "First mention", { checked: c.dateSource === "first" }),
+            make("date-source:last", "Last mention", { checked: c.dateSource === "last" })
+          ]
+        }),
         make("focus-timer", "Focus timer"),
         sep(),
         make("fit-section", "Fit to contents", { disabled: empty }),
@@ -28021,6 +29733,8 @@ function buildMenu(kind, ctx = {}) {
         make("duplicate", "Duplicate", { hint: "Cmd D" }),
         make("copy-ref", "Copy ref"),
         make("copy-png", "Copy selection as PNG"),
+        trailItem(c),
+        landmarkItem(c),
         sep(),
         make("delete-frame", "Delete frame", { hint: "Del", danger: true }),
         make("delete-contents", "Delete frame and contents", { hint: "Shift Del", danger: true, disabled: empty })
@@ -28039,6 +29753,8 @@ function buildMenu(kind, ctx = {}) {
         pinItem(Boolean(c.pinned)),
         make("copy", "Copy", { hint: "Cmd C" }),
         make("copy-png", "Copy selection as PNG"),
+        trailItem(c),
+        landmarkItem(c),
         sep(),
         make("delete", "Delete", { hint: "Del", danger: true })
       ];
@@ -28111,6 +29827,7 @@ function buildMenu(kind, ctx = {}) {
         make("wrap-board", "Move into new board"),
         make("save-view-selection", "Save view of selection"),
         make("send-to", "Send to board…"),
+        selectionTrailItem(c),
         sep(),
         make("delete", "Delete", { hint: "Del", danger: true })
       ];
@@ -28122,6 +29839,24 @@ function buildMenu(kind, ctx = {}) {
         ...snapshotMenus(),
         make("save-view", "Save view…"),
         make("memory-lane", "Memory lane", { hint: "Shift T" }),
+        ...c.lens ? [
+          make("lens-strength", "Strength", { checked: c.strength === true }),
+          make("lens-dust", "Dust", {
+            children: [
+              make("lens-dust:off", "Off", { checked: !c.dust || c.dust === "off" }),
+              make("lens-dust:6 months", "6 months", { checked: c.dust === "6 months" }),
+              make("lens-dust:1 year", "1 year", { checked: c.dust === "1 year" }),
+              make("lens-dust:2 years", "2 years", { checked: c.dust === "2 years" })
+            ]
+          })
+        ] : [],
+        ...c.walk ? [make("walk", "Walk", {
+          children: [
+            make("walk:reading", "Reading order"),
+            make("walk:nearest", "Nearest next"),
+            make("walk:trail", "Along the trail", { disabled: !c.hasTrail })
+          ]
+        })] : [],
         sep(),
         make("export-svg", "Export as SVG"),
         make("export-png", "Export as PNG"),
@@ -28176,7 +29911,7 @@ async function applyStatusPicks(uids, name, setStatus, onProgress, toast) {
 var DEPTH = 3;
 var LIMIT2 = 24;
 var STOP_EVENTS2 = ["pointerdown", "pointerup", "mousedown", "mouseup", "click", "dblclick", "wheel", "keydown", "keyup", "contextmenu"];
-var childString4 = (c) => c?.[":block/string"] ?? c?.string ?? "";
+var childString5 = (c) => c?.[":block/string"] ?? c?.string ?? "";
 var childKids2 = (c) => c?.[":block/children"] ?? c?.children ?? [];
 function createQuickLook({ doc = globalThis.document, root, host, timers, on = {} } = {}) {
   let node2 = null;
@@ -28208,10 +29943,10 @@ function createQuickLook({ doc = globalThis.document, root, host, timers, on = {
     for (const b of blocks || []) {
       if (budget.n >= LIMIT2 * 4) return;
       budget.n += 1;
-      const row3 = el("div", "pxd-ql__block", parent);
-      renderRoot(row3, childString4(b), "pxd-rs pxd-ql__text");
+      const row4 = el("div", "pxd-ql__block", parent);
+      renderRoot(row4, childString5(b), "pxd-rs pxd-ql__text");
       const kids = childKids2(b);
-      if (kids.length && depth < DEPTH) renderBlocks(el("div", "pxd-ql__children", row3), kids, depth + 1, budget);
+      if (kids.length && depth < DEPTH) renderBlocks(el("div", "pxd-ql__children", row4), kids, depth + 1, budget);
     }
   };
   const unmountRoots = () => {
@@ -28443,7 +30178,15 @@ function createPresenter({ doc = globalThis.document, root, timers, on = {} } = 
       active = false;
     }
     const only = opts && typeof opts === "object" ? opts.only : null;
-    if (only) {
+    if (opts && Array.isArray(opts.stops)) {
+      steps = [];
+      for (const s of opts.stops) {
+        if (!s?.rect) continue;
+        const members = s.members instanceof Set ? s.members : new Set(s.members || (s.uid ? [s.uid] : []));
+        steps.push({ uid: s.uid ?? null, rect: s.rect, title: s.title || "", note: s.note || "", members });
+      }
+      if (!steps.length) return false;
+    } else if (only) {
       const item = board2.items.get(only);
       const rect = rects?.get(only);
       if (!item || item.type !== "section" || !rect) return false;
@@ -29363,14 +31106,14 @@ function lensRowLabel(tag) {
   return `#${name}`;
 }
 function highlightPickerList(rows) {
-  return (Array.isArray(rows) ? rows : []).map((row3) => {
-    const placed = row3?.placed === true;
+  return (Array.isArray(rows) ? rows : []).map((row4) => {
+    const placed = row4?.placed === true;
     return {
-      ...row3,
+      ...row4,
       placed,
       enabled: !placed,
       disabled: placed,
-      checked: placed || row3?.selected === true
+      checked: placed || row4?.selected === true
     };
   });
 }
@@ -29378,10 +31121,10 @@ function highlightPickerRows(rows, { color, page } = {}) {
   const list = Array.isArray(rows) ? rows : [];
   const colorOn = typeof color === "string" && color !== "";
   const pageOn = typeof page === "string" && page !== "";
-  return list.filter((row3) => {
-    if (!row3) return false;
-    if (colorOn && row3.color !== color) return false;
-    if (pageOn && pageKey(row3.page) !== page) return false;
+  return list.filter((row4) => {
+    if (!row4) return false;
+    if (colorOn && row4.color !== color) return false;
+    if (pageOn && pageKey(row4.page) !== page) return false;
     return true;
   });
 }
@@ -29389,11 +31132,11 @@ function selectHighlightPage(rows, { color, page } = {}) {
   const list = Array.isArray(rows) ? rows : [];
   const colorOn = typeof color === "string" && color !== "";
   const pageOn = typeof page === "string" && page !== "";
-  return list.map((row3) => {
-    if (!row3 || row3.placed === true) return { ...row3, selected: false };
-    if (colorOn && row3.color !== color) return row3;
-    if (pageOn && pageKey(row3.page) !== page) return row3;
-    return { ...row3, selected: true };
+  return list.map((row4) => {
+    if (!row4 || row4.placed === true) return { ...row4, selected: false };
+    if (colorOn && row4.color !== color) return row4;
+    if (pageOn && pageKey(row4.page) !== page) return row4;
+    return { ...row4, selected: true };
   });
 }
 function pdfHighlightButton(doc, onClick) {
@@ -29416,7 +31159,7 @@ function pdfHighlightButton(doc, onClick) {
   return btn;
 }
 function openHighlightDialog(doc, { rows, origin, onPlace, onClose } = {}) {
-  let rowsState = (Array.isArray(rows) ? rows : []).map((row3) => ({ ...row3, selected: false }));
+  let rowsState = (Array.isArray(rows) ? rows : []).map((row4) => ({ ...row4, selected: false }));
   const at = origin && typeof origin === "object" ? origin : { x: 0, y: 0 };
   const root = doc.createElement("div");
   root.className = "pxd-highlight-dialog pxd-popover pxd-chrome";
@@ -29450,10 +31193,10 @@ function openHighlightDialog(doc, { rows, origin, onPlace, onClose } = {}) {
   pageSel.setAttribute("aria-label", "Page");
   const colors = [];
   const pages = [];
-  for (const row3 of rowsState) {
-    if (row3.color && !colors.includes(row3.color)) colors.push(row3.color);
-    const key = pageKey(row3.page);
-    if (!pages.some((entry) => entry[0] === key)) pages.push([key, row3.page == null ? "No page" : `Page ${row3.page}`]);
+  for (const row4 of rowsState) {
+    if (row4.color && !colors.includes(row4.color)) colors.push(row4.color);
+    const key = pageKey(row4.page);
+    if (!pages.some((entry) => entry[0] === key)) pages.push([key, row4.page == null ? "No page" : `Page ${row4.page}`]);
   }
   const colorOrder = new Map(HIGHLIGHT_COLORS.map((name, index) => [name, index]));
   colors.sort((a, b) => (colorOrder.get(a) ?? 99) - (colorOrder.get(b) ?? 99));
@@ -29497,16 +31240,16 @@ function openHighlightDialog(doc, { rows, origin, onPlace, onClose } = {}) {
   columnBtn.setAttribute("aria-label", "Place as column");
   actions.append(gridBtn, columnBtn);
   root.append(actions);
-  const groupLabel = (row3) => {
-    const text2 = typeof row3?.group === "string" ? row3.group.trim() : "";
+  const groupLabel = (row4) => {
+    const text2 = typeof row4?.group === "string" ? row4.group.trim() : "";
     return text2 || "Other";
   };
   const paint2 = () => {
     list.replaceChildren();
     const shown = highlightPickerRows(highlightPickerList(rowsState), { color: colorSel.value, page: pageSel.value });
     let lastGroup = null;
-    for (const row3 of shown) {
-      const label = groupLabel(row3);
+    for (const row4 of shown) {
+      const label = groupLabel(row4);
       if (label !== lastGroup) {
         lastGroup = label;
         const head = doc.createElement("div");
@@ -29516,31 +31259,31 @@ function openHighlightDialog(doc, { rows, origin, onPlace, onClose } = {}) {
       }
       const line = doc.createElement("label");
       line.className = "pxd-hl-row";
-      line.setAttribute("data-uid", row3.uid || "");
-      line.setAttribute("data-enabled", row3.enabled ? "true" : "false");
+      line.setAttribute("data-uid", row4.uid || "");
+      line.setAttribute("data-enabled", row4.enabled ? "true" : "false");
       const box2 = doc.createElement("input");
       box2.className = "pxd-hl-check";
       box2.type = "checkbox";
-      box2.checked = row3.checked === true;
-      box2.disabled = row3.disabled === true;
-      if (row3.disabled) box2.setAttribute("disabled", "");
-      box2.setAttribute("data-uid", row3.uid || "");
+      box2.checked = row4.checked === true;
+      box2.disabled = row4.disabled === true;
+      if (row4.disabled) box2.setAttribute("disabled", "");
+      box2.setAttribute("data-uid", row4.uid || "");
       box2.addEventListener("change", () => {
-        if (row3.placed) return;
-        const live = rowsState.find((item) => item.uid === row3.uid);
+        if (row4.placed) return;
+        const live = rowsState.find((item) => item.uid === row4.uid);
         if (live && live.placed !== true) live.selected = box2.checked === true;
       });
       const bar = doc.createElement("span");
       bar.className = "pxd-hl-bar";
-      bar.setAttribute("data-color", row3.color || "gray");
+      bar.setAttribute("data-color", row4.color || "gray");
       const text2 = doc.createElement("span");
       text2.className = "pxd-hl-row__text";
-      text2.textContent = row3.snippet || row3.uid || "";
+      text2.textContent = row4.snippet || row4.uid || "";
       const page = doc.createElement("span");
       page.className = "pxd-hl-rowpage";
-      page.textContent = row3.page == null ? "" : `p. ${row3.page}`;
+      page.textContent = row4.page == null ? "" : `p. ${row4.page}`;
       line.append(box2, bar, text2, page);
-      if (typeof row3.note === "string" && row3.note.trim()) {
+      if (typeof row4.note === "string" && row4.note.trim()) {
         const mark = doc.createElement("span");
         mark.className = "pxd-hl-note";
         mark.setAttribute("aria-label", "Note");
@@ -29664,7 +31407,8 @@ function buildBoardView(onFail, {
   perfLog = null,
   lifecycle = null,
   onSelectTab = null,
-  tabStore = null
+  tabStore = null,
+  boardsOf = null
 } = {}) {
   const doc = globalThis.document;
   const win = globalThis.window;
@@ -29716,16 +31460,16 @@ function buildBoardView(onFail, {
     const disconnect = typeof observer.disconnect === "function" ? observer.disconnect.bind(observer) : null;
     if (observe) {
       observer.observe = (target, options) => {
-        const at = records.findIndex((row4) => row4.target === target);
-        const row3 = { target, options };
-        if (at >= 0) records[at] = row3;
-        else records.push(row3);
+        const at = records.findIndex((row5) => row5.target === target);
+        const row4 = { target, options };
+        if (at >= 0) records[at] = row4;
+        else records.push(row4);
         return observe(target, options);
       };
     }
     if (unobserve) {
       observer.unobserve = (target) => {
-        const at = records.findIndex((row3) => row3.target === target);
+        const at = records.findIndex((row4) => row4.target === target);
         if (at >= 0) records.splice(at, 1);
         return unobserve(target);
       };
@@ -29741,7 +31485,7 @@ function buildBoardView(onFail, {
   const suspendObservers = () => {
     for (const obs of observers) {
       const records = observed.get(obs) || [];
-      obs._pxdHeld = records.map((row3) => ({ target: row3.target, options: row3.options }));
+      obs._pxdHeld = records.map((row4) => ({ target: row4.target, options: row4.options }));
       try {
         obs.disconnect();
       } catch {
@@ -29752,9 +31496,9 @@ function buildBoardView(onFail, {
     for (const obs of observers) {
       const held = obs._pxdHeld || [];
       obs._pxdHeld = null;
-      for (const row3 of held) {
+      for (const row4 of held) {
         try {
-          obs.observe(row3.target, row3.options);
+          obs.observe(row4.target, row4.options);
         } catch {
         }
       }
@@ -29776,6 +31520,27 @@ function buildBoardView(onFail, {
   const boardUid = session.uid;
   const graph = host?.graph || graphName2(win);
   const storage = globalThis.localStorage;
+  let dateMode = "attribute";
+  let strengthOn = false;
+  let dustPeriod = "off";
+  let strengthScores = null;
+  let dustAges = null;
+  let strengthGen = 0;
+  let strengthStale = false;
+  let dustGen = 0;
+  let openStore = null;
+  let timelineRows2 = null;
+  let timelineCacheUid = "";
+  let timelinePending = null;
+  let timelinePendingUid = "";
+  const trackOpensOn = () => readSetting("track-opens") === true;
+  const bumpOpen = (uid) => {
+    if (!uid || !openStore) return;
+    try {
+      openStore.bump(uid);
+    } catch {
+    }
+  };
   const vpStore = host?.viewports || host?.viewportStore || createLocalViewportStore({ storage, graph, timers });
   const tabsStore = tabStore || host?.tabs || null;
   let memoryTabs = [];
@@ -30025,33 +31790,33 @@ function buildBoardView(onFail, {
     forgetObserver(near);
     forgetObserver(far);
   };
-  const rowHeight = (row3) => {
+  const rowHeight = (row4) => {
     try {
-      const h = row3.getBoundingClientRect?.().height;
+      const h = row4.getBoundingClientRect?.().height;
       if (h > 0) return h;
     } catch {
     }
-    const off = Number(row3.offsetHeight) || 0;
+    const off = Number(row4.offsetHeight) || 0;
     return off > 0 ? off : 0;
   };
   const closeOutlineLive = () => {
     const prev = outlineLiveUid;
     outlineLiveUid = null;
     if (!prev || !outlineHost) return;
-    for (const row3 of [...outlineHost.children]) {
-      if (!row3.querySelector?.(".pxd-embed-live")) continue;
-      const live = row3.querySelector(".pxd-rs__live");
+    for (const row4 of [...outlineHost.children]) {
+      if (!row4.querySelector?.(".pxd-embed-live")) continue;
+      const live = row4.querySelector(".pxd-rs__live");
       try {
         if (live) host?.unmount?.(live);
       } catch {
       }
-      outlined.delete(row3);
+      outlined.delete(row4);
       try {
-        row3.replaceChildren();
+        row4.replaceChildren();
       } catch {
       }
-      row3.style.height = "";
-      renderOutlineRow(row3);
+      row4.style.height = "";
+      renderOutlineRow(row4);
     }
   };
   const openOutlineEmbed = (uid) => {
@@ -30064,41 +31829,41 @@ function buildBoardView(onFail, {
     } catch {
     }
     if (!outlineHost) return;
-    for (const row3 of [...outlineHost.children]) {
-      const heavies = outlineHeavies(row3.dataset?.uid);
-      const hit = heavies.some((poster) => (poster.uid || row3.dataset?.uid) === uid);
-      const live = row3.querySelector?.(".pxd-embed-live");
+    for (const row4 of [...outlineHost.children]) {
+      const heavies = outlineHeavies(row4.dataset?.uid);
+      const hit = heavies.some((poster) => (poster.uid || row4.dataset?.uid) === uid);
+      const live = row4.querySelector?.(".pxd-embed-live");
       if (!hit && !live) continue;
       const node2 = live?.querySelector?.(".pxd-rs__live");
       try {
         if (node2) host?.unmount?.(node2);
       } catch {
       }
-      outlined.delete(row3);
+      outlined.delete(row4);
       try {
-        row3.replaceChildren();
+        row4.replaceChildren();
       } catch {
       }
-      row3.style.height = "";
-      renderOutlineRow(row3);
+      row4.style.height = "";
+      renderOutlineRow(row4);
     }
   };
-  const renderOutlineRow = (row3) => {
-    if (disposed || !row3 || outlined.has(row3)) return;
-    if (!outlineHost?.contains?.(row3)) return;
-    const uid = row3.dataset?.uid || "";
+  const renderOutlineRow = (row4) => {
+    if (disposed || !row4 || outlined.has(row4)) return;
+    if (!outlineHost?.contains?.(row4)) return;
+    const uid = row4.dataset?.uid || "";
     const heavies = uid ? outlineHeavies(uid) : [];
     if (heavies.length) {
       const own = outlineRead(uid);
       const ownSplit = embedSplit(own, { read: outlineRead, cover: outlineCover, uid });
       if (!ownSplit.posters.length && own.trim()) {
-        const text2 = el("div", "pxd-outline-rest", row3);
+        const text2 = el("div", "pxd-outline-rest", row4);
         text2.textContent = plainText(own);
       }
       for (const poster of heavies) {
         const mount = poster.uid || uid;
         if (outlineLiveUid && mount === outlineLiveUid) {
-          const liveWrap = el("div", "pxd-embed-poster pxd-embed-live", row3);
+          const liveWrap = el("div", "pxd-embed-poster pxd-embed-live", row4);
           liveWrap.setAttribute("data-pxd-embed", mount);
           if (poster.kind) liveWrap.setAttribute("data-kind", poster.kind);
           const live = el("div", "pxd-rs__live", liveWrap);
@@ -30107,61 +31872,61 @@ function buildBoardView(onFail, {
           } catch {
           }
         } else {
-          const node2 = paintEmbedPoster(doc, row3, { ...poster, uid: mount }, (id) => openOutlineEmbed(id || mount));
+          const node2 = paintEmbedPoster(doc, row4, { ...poster, uid: mount }, (id) => openOutlineEmbed(id || mount));
           const onFocus = () => openOutlineEmbed(mount);
           node2.addEventListener("focusin", onFocus);
           const offs = node2._pxdFocusOffs || (node2._pxdFocusOffs = []);
           offs.push(() => node2.removeEventListener("focusin", onFocus));
         }
       }
-      row3.style.height = "";
-      outlined.add(row3);
+      row4.style.height = "";
+      outlined.add(row4);
       return;
     }
     if (typeof host?.renderBlock !== "function") return;
     try {
-      host.renderBlock(row3, uid);
+      host.renderBlock(row4, uid);
     } catch {
       return;
     }
-    row3.style.height = "";
-    outlined.add(row3);
+    row4.style.height = "";
+    outlined.add(row4);
   };
-  const releaseOutlineRow = (row3) => {
-    if (!row3 || !outlined.has(row3)) return;
-    if (row3.querySelector?.(".pxd-embed-live")) outlineLiveUid = null;
-    for (const node2 of row3.querySelectorAll?.(".pxd-embed-poster") || []) {
+  const releaseOutlineRow = (row4) => {
+    if (!row4 || !outlined.has(row4)) return;
+    if (row4.querySelector?.(".pxd-embed-live")) outlineLiveUid = null;
+    for (const node2 of row4.querySelectorAll?.(".pxd-embed-poster") || []) {
       const offs = node2._pxdFocusOffs;
       if (offs) for (const off of offs.splice(0)) off();
       dropEmbedPoster(node2);
     }
-    const h = rowHeight(row3);
-    const live = row3.querySelector?.(".pxd-rs__live");
+    const h = rowHeight(row4);
+    const live = row4.querySelector?.(".pxd-rs__live");
     try {
       if (live) host?.unmount?.(live);
     } catch {
     }
     try {
-      host?.unmount?.(row3);
+      host?.unmount?.(row4);
     } catch {
     }
     try {
-      row3.replaceChildren();
+      row4.replaceChildren();
     } catch {
     }
-    if (h > 0) row3.style.height = `${Math.ceil(h)}px`;
-    outlined.delete(row3);
+    if (h > 0) row4.style.height = `${Math.ceil(h)}px`;
+    outlined.delete(row4);
   };
-  const dropOutlineRow = (row3) => {
+  const dropOutlineRow = (row4) => {
     try {
-      outlineNear?.unobserve?.(row3);
+      outlineNear?.unobserve?.(row4);
     } catch {
     }
     try {
-      outlineFar?.unobserve?.(row3);
+      outlineFar?.unobserve?.(row4);
     } catch {
     }
-    releaseOutlineRow(row3);
+    releaseOutlineRow(row4);
   };
   const ensureOutlineObserver = () => {
     const IO = globalThis.IntersectionObserver;
@@ -30184,23 +31949,23 @@ function buildBoardView(onFail, {
     observers.push(outlineNear, outlineFar);
     return true;
   };
-  const watchOutlineRow = (row3) => {
+  const watchOutlineRow = (row4) => {
     if (!ensureOutlineObserver()) {
-      renderOutlineRow(row3);
+      renderOutlineRow(row4);
       return;
     }
     try {
-      outlineNear.observe(row3);
-      outlineFar.observe(row3);
+      outlineNear.observe(row4);
+      outlineFar.observe(row4);
     } catch {
-      renderOutlineRow(row3);
+      renderOutlineRow(row4);
     }
   };
   const clearOutline = () => {
     outlineLiveUid = null;
     disconnectOutline();
     if (!outlineHost) return;
-    for (const row3 of [...outlineHost.children]) releaseOutlineRow(row3);
+    for (const row4 of [...outlineHost.children]) releaseOutlineRow(row4);
     outlineHost.replaceChildren();
   };
   const syncOutline = (force = false) => {
@@ -30211,31 +31976,31 @@ function buildBoardView(onFail, {
     outlineKey = key;
     if (force) clearOutline();
     const have = /* @__PURE__ */ new Map();
-    for (const row3 of [...outlineHost.children]) {
-      const uid = row3.dataset?.uid;
-      if (uid && !have.has(uid)) have.set(uid, row3);
+    for (const row4 of [...outlineHost.children]) {
+      const uid = row4.dataset?.uid;
+      if (uid && !have.has(uid)) have.set(uid, row4);
     }
     const keep = new Set(uids);
-    for (const [uid, row3] of have) {
+    for (const [uid, row4] of have) {
       if (keep.has(uid)) continue;
-      dropOutlineRow(row3);
-      row3.remove();
+      dropOutlineRow(row4);
+      row4.remove();
       have.delete(uid);
     }
     let cursor = outlineHost.firstChild;
     for (const uid of uids) {
-      let row3 = have.get(uid);
-      if (!row3) {
-        row3 = el("div", "pxd-sidebar-outline__row");
-        row3.dataset.uid = uid;
-        row3.setAttribute("data-uid", uid);
-        if (cursor) outlineHost.insertBefore(row3, cursor);
-        else outlineHost.append(row3);
-        watchOutlineRow(row3);
-      } else if (row3 !== cursor) {
-        outlineHost.insertBefore(row3, cursor);
+      let row4 = have.get(uid);
+      if (!row4) {
+        row4 = el("div", "pxd-sidebar-outline__row");
+        row4.dataset.uid = uid;
+        row4.setAttribute("data-uid", uid);
+        if (cursor) outlineHost.insertBefore(row4, cursor);
+        else outlineHost.append(row4);
+        watchOutlineRow(row4);
+      } else if (row4 !== cursor) {
+        outlineHost.insertBefore(row4, cursor);
       }
-      cursor = row3.nextElementSibling;
+      cursor = row4.nextElementSibling;
     }
   };
   let tableMode = false;
@@ -30452,6 +32217,7 @@ function buildBoardView(onFail, {
     onHighlightNote: (uid) => {
       void openHighlightNote(uid);
     },
+    interopOn: () => readSetting("interop") !== false,
     onReadPane: (detail) => {
       if (!detail?.open) {
         readPane?.close?.({ notify: false });
@@ -30498,8 +32264,8 @@ function buildBoardView(onFail, {
     doc,
     root,
     host,
-    onNote: (row3) => {
-      void openHighlightNote(row3?.uid);
+    onNote: (row4) => {
+      void openHighlightNote(row4?.uid);
     },
     graph,
     storage,
@@ -30527,11 +32293,11 @@ function buildBoardView(onFail, {
     onSwitch: (uid) => {
       itemsR?.openPdf?.(uid);
     },
-    onPlace: (row3) => {
+    onPlace: (row4) => {
       const items = [...board2()?.items.values() || []];
       const card2 = board2()?.items.get(readPane?.cardUid?.() || "");
       const live = card2 ? rects().get(card2.uid) || { x: card2.x, y: card2.y, w: card2.w, h: card2.h } : null;
-      const decision = placeDecision(row3, items, originBeside(live));
+      const decision = placeDecision(row4, items, originBeside(live));
       if (decision.kind === "pulse") {
         if (decision.uid) pulseItem(decision.uid);
         return;
@@ -30592,6 +32358,304 @@ function buildBoardView(onFail, {
     blockText: (uid) => host?.blockString?.(uid),
     onHover: (uid, on) => hoverRows(uid, on)
   });
+  const timelineTargetUid = (item) => {
+    if (!item || item.type === "section" || item.type === "text") return "";
+    if (item.target?.kind === "page") {
+      try {
+        return host?.pageUid?.(item.target.title) || "";
+      } catch {
+        return "";
+      }
+    }
+    if (item.target?.uid) return item.target.uid;
+    return item.uid || "";
+  };
+  const timelineIds = () => {
+    const ids = [];
+    const seen = /* @__PURE__ */ new Set();
+    const add = (id) => {
+      const s = String(id || "").trim();
+      if (!s || seen.has(s)) return;
+      seen.add(s);
+      ids.push(s);
+    };
+    add(board2()?.uid || boardUid);
+    const b = board2();
+    if (b) {
+      for (const item of b.items.values()) if (item?.type === "card") add(timelineTargetUid(item));
+    }
+    return ids;
+  };
+  const loadTimelineRows = () => {
+    const uid = board2()?.uid || boardUid;
+    if (timelineRows2 && timelineCacheUid === uid) return Promise.resolve(timelineRows2);
+    if (timelinePending && timelinePendingUid === uid) return timelinePending;
+    const ids = timelineIds();
+    if (!ids.length || typeof host?.q !== "function") return Promise.resolve(timelineRows2 || []);
+    const spec = timelineQuery(ids);
+    let job;
+    try {
+      job = Promise.resolve(host.q(spec.query, ...spec.args)).then((rows) => {
+        const list = Array.isArray(rows) ? rows : [];
+        if (!disposed && (board2()?.uid || boardUid) === uid) {
+          timelineRows2 = list;
+          timelineCacheUid = uid;
+        }
+        return list;
+      }).catch(() => []);
+    } catch {
+      return Promise.resolve([]);
+    }
+    timelinePending = job;
+    timelinePendingUid = uid;
+    const clear = () => {
+      if (timelinePending === job) {
+        timelinePending = null;
+        timelinePendingUid = "";
+      }
+    };
+    job.then(clear, clear);
+    return job;
+  };
+  const aliasTimelineRows = (rows) => {
+    const list = Array.isArray(rows) ? rows : [];
+    const b = board2();
+    if (!b) return list;
+    const byTarget = /* @__PURE__ */ new Map();
+    for (const item of b.items.values()) {
+      if (item?.type !== "card") continue;
+      const target = timelineTargetUid(item);
+      if (!target) continue;
+      if (!byTarget.has(target)) byTarget.set(target, []);
+      byTarget.get(target).push(item.uid);
+    }
+    const out = [];
+    for (const row4 of list) {
+      const key = Array.isArray(row4) ? String(row4[0] ?? "") : String(row4?.cardUid ?? "");
+      const owners = byTarget.get(key) || [];
+      if (!owners.length) {
+        out.push(row4);
+        continue;
+      }
+      for (const itemUid of owners) {
+        if (Array.isArray(row4)) out.push([itemUid, row4[1], row4[2], row4[3], row4[4]]);
+        else out.push({ ...row4, cardUid: itemUid });
+      }
+    }
+    return out;
+  };
+  const pulseTimeline = (uids) => {
+    const wanted = uids instanceof Set ? uids : new Set(uids || []);
+    const b = board2();
+    if (!b) return;
+    for (const item of b.items.values()) {
+      if (item?.type !== "card") continue;
+      const target = timelineTargetUid(item);
+      if (wanted.has(item.uid) || target && wanted.has(target)) pulseItem(item.uid);
+    }
+  };
+  const edgeList = () => root.querySelectorAll?.(".pxd-edge") || [];
+  const dustShells = () => [...root.querySelectorAll?.(".pxd-item[data-uid]") || []];
+  const paintLenses = () => {
+    if (disposed) return;
+    if (strengthOn && strengthScores) {
+      try {
+        applyStrength(edgeList(), strengthScores);
+      } catch {
+      }
+      if (!strengthStale) {
+        for (const uid of board2()?.edges?.keys?.() || []) {
+          if (strengthScores.has(uid)) continue;
+          strengthStale = true;
+          setTimeout(() => {
+            strengthStale = false;
+            if (!disposed) void refreshStrength();
+          }, 300);
+          break;
+        }
+      }
+    }
+    if (dustPeriod && dustPeriod !== "off" && dustAges) {
+      try {
+        applyDust(dustShells(), dustAges, dustPeriod);
+      } catch {
+      }
+    }
+  };
+  const boardsFor = (uid) => {
+    if (!uid) return [];
+    try {
+      if (typeof boardsOf === "function") {
+        const list = boardsOf(uid);
+        if (Array.isArray(list)) return list.map((row4) => row4 && typeof row4 === "object" ? row4.uid : row4).filter(Boolean);
+      }
+    } catch {
+    }
+    try {
+      const list = win?.PlexusDiagram?.boardsWith?.(uid);
+      return Array.isArray(list) ? list.map((row4) => row4?.uid).filter(Boolean) : [];
+    } catch {
+      return [];
+    }
+  };
+  const shareCount = (a, b) => {
+    const left = new Set(boardsFor(a));
+    let n2 = 0;
+    for (const id of boardsFor(b)) if (id !== boardUid && left.has(id)) n2 += 1;
+    return n2;
+  };
+  const endTarget = (itemUid) => timelineTargetUid(board2()?.items.get(itemUid)) || itemUid || "";
+  const ensureOpenStore = () => {
+    if (!trackOpensOn()) return openStore;
+    if (!openStore) openStore = createOpenStore({ storage, graph, enabled: true });
+    else openStore.setEnabled(true);
+    return openStore;
+  };
+  const askRows = (query, ids) => {
+    if (!ids.length || typeof host?.q !== "function") return Promise.resolve([]);
+    try {
+      return Promise.resolve(host.q(query, ids)).then((rows) => Array.isArray(rows) ? rows : []).catch(() => []);
+    } catch {
+      return Promise.resolve([]);
+    }
+  };
+  const refreshStrength = async () => {
+    const gen = ++strengthGen;
+    if (!strengthOn) {
+      strengthScores = null;
+      try {
+        clearLens(edgeList(), []);
+      } catch {
+      }
+      if (dustPeriod !== "off" && dustAges) {
+        try {
+          applyDust(dustShells(), dustAges, dustPeriod);
+        } catch {
+        }
+      }
+      return;
+    }
+    ensureOpenStore();
+    const edges = [...board2()?.edges?.values?.() || []];
+    const ids = [];
+    const seen = /* @__PURE__ */ new Set();
+    const ends = [];
+    const add = (id) => {
+      const s = String(id || "").trim();
+      if (!s || seen.has(s)) return;
+      seen.add(s);
+      ids.push(s);
+    };
+    for (const edge of edges) {
+      const from = endTarget(edge.from);
+      const to = endTarget(edge.to);
+      ends.push({ uid: edge.uid, from, to });
+      add(from);
+      add(to);
+    }
+    if (!ids.length) {
+      if (gen !== strengthGen || !strengthOn || disposed) return;
+      strengthScores = /* @__PURE__ */ new Map();
+      paintLenses();
+      return;
+    }
+    const [refRows, editRows] = await Promise.all([
+      askRows("[:find ?u ?ru :in $ [?u ...] :where [?e :block/uid ?u] [?r :block/refs ?e] [?r :block/uid ?ru]]", ids),
+      askRows("[:find ?u ?t :in $ [?u ...] :where [?e :block/uid ?u] [?e :edit/time ?t]]", ids)
+    ]);
+    if (disposed || gen !== strengthGen || !strengthOn) return;
+    const refCount = /* @__PURE__ */ new Map();
+    const edgeUids = new Set(edges.map((e2) => e2.uid));
+    for (const row4 of refRows) {
+      if (!Array.isArray(row4) || row4.length < 2 || edgeUids.has(String(row4[1]))) continue;
+      const key = String(row4[0]);
+      refCount.set(key, (refCount.get(key) || 0) + 1);
+    }
+    const editAt = /* @__PURE__ */ new Map();
+    for (const row4 of editRows) {
+      if (Array.isArray(row4) && row4.length >= 2 && Number.isFinite(Number(row4[1]))) editAt.set(String(row4[0]), Number(row4[1]));
+    }
+    const now2 = Date.now();
+    const track = Boolean(openStore && openStore.enabled);
+    const scores = /* @__PURE__ */ new Map();
+    for (const edge of ends) {
+      const times = [editAt.get(edge.from), editAt.get(edge.to)].filter((n2) => Number.isFinite(n2));
+      const components = {
+        refs: (refCount.get(edge.from) || 0) + (refCount.get(edge.to) || 0),
+        shared: shareCount(edge.from, edge.to),
+        now: now2
+      };
+      if (times.length) components.editTime = Math.max(...times);
+      if (track) components.opens = edgeOpens(openStore, edge.from, edge.to);
+      scores.set(edge.uid, { components, trackOpens: track, now: now2 });
+    }
+    strengthScores = scores;
+    try {
+      applyStrength(edgeList(), strengthScores);
+    } catch {
+    }
+  };
+  const refreshDust = async () => {
+    const gen = ++dustGen;
+    if (!dustPeriod || dustPeriod === "off") {
+      dustAges = null;
+      try {
+        clearLens([], dustShells());
+      } catch {
+      }
+      if (strengthOn && strengthScores) {
+        try {
+          applyStrength(edgeList(), strengthScores);
+        } catch {
+        }
+      }
+      return;
+    }
+    const cards = [...board2()?.items?.values?.() || []].filter((it) => it?.type === "card");
+    const ids = [];
+    const seen = /* @__PURE__ */ new Set();
+    const pairs = [];
+    for (const card2 of cards) {
+      const target = timelineTargetUid(card2) || card2.uid;
+      pairs.push({ uid: card2.uid, target });
+      if (target && !seen.has(target)) {
+        seen.add(target);
+        ids.push(target);
+      }
+    }
+    if (!ids.length) {
+      if (gen !== dustGen || dustPeriod === "off" || disposed) return;
+      dustAges = /* @__PURE__ */ new Map();
+      paintLenses();
+      return;
+    }
+    const rows = await askRows("[:find ?u ?e ?c :in $ [?u ...] :where [?b :block/uid ?u] [(get-else $ ?b :edit/time -1) ?e] [(get-else $ ?b :create/time -1) ?c]]", ids);
+    if (disposed || gen !== dustGen || dustPeriod === "off") return;
+    const by = /* @__PURE__ */ new Map();
+    for (const row4 of rows) {
+      if (!Array.isArray(row4)) continue;
+      const edit = Number(row4[1]);
+      const create = Number(row4[2]);
+      by.set(String(row4[0]), {
+        edit: Number.isFinite(edit) && edit >= 0 ? edit : null,
+        create: Number.isFinite(create) && create >= 0 ? create : null
+      });
+    }
+    const now2 = Date.now();
+    const ages = /* @__PURE__ */ new Map();
+    for (const pair2 of pairs) {
+      const hit = by.get(pair2.target) || {};
+      const age = { now: now2 };
+      if (hit.edit != null) age.editTime = hit.edit;
+      if (hit.create != null) age.createTime = hit.create;
+      ages.set(pair2.uid, age);
+    }
+    dustAges = ages;
+    try {
+      applyDust(dustShells(), dustAges, dustPeriod);
+    } catch {
+    }
+  };
   const blockCards = /* @__PURE__ */ new Set();
   let blockSig = "";
   let anchorFrame = false;
@@ -30648,12 +32712,12 @@ function buildBoardView(onFail, {
       const m = measured.get(e2.uid);
       if (!m) continue;
       for (const end of ["from", "to"]) {
-        const row3 = end === "from" ? e2.fromBlock : e2.toBlock;
-        if (!row3 || !m[end]?.rendered) continue;
+        const row4 = end === "from" ? e2.fromBlock : e2.toBlock;
+        if (!row4 || !m[end]?.rendered) continue;
         const card2 = end === "from" ? e2.from : e2.to;
         const other = cardName(b, end === "from" ? e2.to : e2.from);
-        const key = `${card2}|${row3}`;
-        const g = groups.get(key) || { card: card2, row: row3, edges: [], color: edgeTone(e2), tips: [] };
+        const key = `${card2}|${row4}`;
+        const g = groups.get(key) || { card: card2, row: row4, edges: [], color: edgeTone(e2), tips: [] };
         g.edges.push(e2.uid);
         g.tips.push(`${end === "to" ? "Linked from" : "Links to"} ${other}${e2.label ? ` · ${e2.label}` : ""}`);
         groups.set(key, g);
@@ -30674,17 +32738,17 @@ function buildBoardView(onFail, {
   };
   listen(root, "pointerover", (event) => {
     if (event.buttons) return;
-    const row3 = event.target?.closest?.(".pxd-row--linked");
-    if (!row3) return;
-    for (const uid of String(row3.getAttribute("data-pxd-edges") || "").split(" ").filter(Boolean)) {
+    const row4 = event.target?.closest?.(".pxd-row--linked");
+    if (!row4) return;
+    for (const uid of String(row4.getAttribute("data-pxd-edges") || "").split(" ").filter(Boolean)) {
       edgesR.setHover(uid, true);
       hoverRows(uid, true);
     }
   });
   listen(root, "pointerout", (event) => {
-    const row3 = event.target?.closest?.(".pxd-row--linked");
-    if (!row3 || row3.contains?.(event.relatedTarget)) return;
-    for (const uid of String(row3.getAttribute("data-pxd-edges") || "").split(" ").filter(Boolean)) {
+    const row4 = event.target?.closest?.(".pxd-row--linked");
+    if (!row4 || row4.contains?.(event.relatedTarget)) return;
+    for (const uid of String(row4.getAttribute("data-pxd-edges") || "").split(" ").filter(Boolean)) {
       edgesR.setHover(uid, false);
       hoverRows(uid, false);
     }
@@ -31074,9 +33138,14 @@ function buildBoardView(onFail, {
     if (!item) return;
     if (item.target.kind === "page") {
       const uid = host?.pageUid?.(item.target.title);
-      if (uid) host?.openInSidebar?.(uid, "outline");
+      if (uid) {
+        bumpOpen(uid);
+        host?.openInSidebar?.(uid, "outline");
+      }
     } else {
-      host?.openInSidebar?.(item.target.uid || item.uid, "block");
+      const uid = item.target.uid || item.uid;
+      bumpOpen(uid);
+      host?.openInSidebar?.(uid, "block");
     }
   };
   const stackAt = (strings, x, y, h) => strings.map((string, i) => ({ string, x, y: y + i * (h + 24) }));
@@ -31284,7 +33353,7 @@ function buildBoardView(onFail, {
     } catch {
       raw = [];
     }
-    const rows = raw.map((row3) => ({ uid: row3[0], time: Number(row3[3]), crumb: breadcrumb(row3[2], row3[4]), snippet: snippetOf2(row3[1]) }));
+    const rows = raw.map((row4) => ({ uid: row4[0], time: Number(row4[3]), crumb: breadcrumb(row4[2], row4[4]), snippet: snippetOf2(row4[1]) }));
     contextsDrawer = mountContextsDrawer({
       doc,
       parent: root,
@@ -31350,7 +33419,7 @@ function buildBoardView(onFail, {
     } catch {
       times = [];
     }
-    const timeOf = new Map(times.map((row3) => [row3[0], row3[1]]));
+    const timeOf = new Map(times.map((row4) => [row4[0], row4[1]]));
     memoryLane = mountMemoryLane({
       doc,
       parent: root,
@@ -31467,12 +33536,15 @@ function buildBoardView(onFail, {
     if (item.target.kind === "page") {
       const uid = host?.pageUid?.(item.target.title);
       if (uid) {
+        bumpOpen(uid);
         if (host?.api?.ui?.mainWindow?.openPage) host.api.ui.mainWindow.openPage({ page: { uid } });
         else host?.openBlock?.(uid);
       }
       return;
     }
-    host?.openBlock?.(item.target.uid || item.uid);
+    const openUid = item.target.uid || item.uid;
+    bumpOpen(openUid);
+    host?.openBlock?.(openUid);
   };
   const applyBackground = () => {
     const b = board2();
@@ -31950,6 +34022,7 @@ function buildBoardView(onFail, {
       return { status: "unknown", reason: "set-status-failed" };
     }
   };
+  const trailRows = (b) => (b?.trails || []).map((t) => ({ uid: t.uid, name: t.name }));
   const menuContext = (kind, uid) => {
     const b = board2();
     const item = uid ? b?.items.get(uid) : null;
@@ -31957,7 +34030,7 @@ function buildBoardView(onFail, {
       case "canvas":
         return { canPaste: true, snapshots: b?.snapshots || [], taskTool: readSetting("task-tool") === true };
       case "board-menu":
-        return { snapshots: b?.snapshots || [], dock: b?.plexus?.dock };
+        return { snapshots: b?.snapshots || [], dock: b?.plexus?.dock, walk: true, hasTrail: Boolean(b?.trails?.length), lens: true, strength: strengthOn, dust: dustPeriod };
       case "card": {
         let queryText = item?.string || "";
         if (!isQueryString(queryText) && item?.target?.kind === "block") {
@@ -31971,7 +34044,7 @@ function buildBoardView(onFail, {
         const compassApi = globalThis.RoamCompass || globalThis.window?.RoamCompass || null;
         const plexusApi = globalThis.RoamPlexus || globalThis.window?.RoamPlexus || null;
         const task = isTaskItem(item) ? taskMeta(item.string, item.content) : null;
-        return { ...task ? { statusTags, status: task.status || "" } : {}, item, regions: imageRegionRows(item?.content), canMakeTask: item?.type === "card" && item?.kind === "note" && !isTaskString(item.string) && !isQueryString(queryText), isBoard: item?.kind === "board", collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS2.includes(item?.kind), canSpread: item?.kind === "note" || item?.kind === "block", isQuery: isQueryString(queryText), canExpand, mindPreset: readMindPreset(storage), compass: typeof compassApi?.open === "function", canAnnotate: item?.kind === "image" && typeof plexusApi?.create === "function" };
+        return { ...task ? { statusTags, status: task.status || "" } : {}, item, regions: imageRegionRows(item?.content), canMakeTask: item?.type === "card" && item?.kind === "note" && !isTaskString(item.string) && !isQueryString(queryText), isBoard: item?.kind === "board", collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS2.includes(item?.kind), canSpread: item?.kind === "note" || item?.kind === "block", isQuery: isQueryString(queryText), canExpand, mindPreset: readMindPreset(storage), compass: typeof compassApi?.open === "function", interop: readSetting("interop") !== false, canAnnotate: item?.kind === "image" && typeof plexusApi?.create === "function", trails: trailRows(b), landmark: item?.landmark === true, landmarkSize: item?.size || "M" };
       }
       case "section": {
         const members = item && b ? [item.uid, ...descendantsOf(b, item.uid)] : [];
@@ -31982,11 +34055,15 @@ function buildBoardView(onFail, {
           pinned: Boolean(item?.pinned),
           collapsed: Boolean(item?.collapsed),
           hasNote: Boolean(item && sectionNoteUid(b, item.uid)),
-          locked: members.length > 0 && members.every((u) => b.items.get(u)?.pinned)
+          locked: members.length > 0 && members.every((u) => b.items.get(u)?.pinned),
+          trails: trailRows(b),
+          landmark: item?.landmark === true,
+          landmarkSize: item?.size || "M",
+          dateSource: dateMode
         };
       }
       case "text":
-        return { item, pinned: Boolean(item?.pinned) };
+        return { item, pinned: Boolean(item?.pinned), trails: trailRows(b), landmark: item?.landmark === true, landmarkSize: item?.size || "M" };
       case "edge": {
         const e2 = uid ? b?.edges.get(uid) : null;
         return { item: e2, dir: e2?.dir, route: e2?.route, dash: e2?.dash, blockEnd: Boolean(e2?.fromBlock || e2?.toBlock) };
@@ -31998,7 +34075,8 @@ function buildBoardView(onFail, {
           count: items.length,
           allPinned: items.length > 0 && items.every((i) => i.pinned),
           anyCollapsed: items.some((i) => i.type === "card" && i.collapsed),
-          sectionPair: sectionPair(items.map((i) => i.uid), (id) => b?.items.get(id))
+          sectionPair: sectionPair(items.map((i) => i.uid), (id) => b?.items.get(id)),
+          trails: trailRows(b)
         };
       }
       default:
@@ -32067,7 +34145,7 @@ function buildBoardView(onFail, {
       case "region-copy":
       case "region-rename":
       case "region-delete": {
-        const region = imageRegionRows(item?.content).find((row3) => row3.uid === arg);
+        const region = imageRegionRows(item?.content).find((row4) => row4.uid === arg);
         if (head === "region-go") {
           if (region && item) view.applyShow({ kind: "img", f: region.f, cardUid: item.uid });
           break;
@@ -32306,9 +34384,32 @@ function buildBoardView(onFail, {
         else toast("Block history is available on this host");
         break;
       }
-      case "layout-dates":
-        if (item) void session.layoutByDate?.(item.uid);
+      case "date-source": {
+        if (arg === "attribute" || arg === "first" || arg === "last") dateMode = arg;
         break;
+      }
+      case "layout-dates": {
+        if (!item || item.type !== "section") break;
+        const write = (rows) => {
+          void session.layoutByDate?.(item.uid, { mode: dateMode, rows: aliasTimelineRows(rows) });
+        };
+        if (dateMode === "attribute" || timelineRows2 && timelineCacheUid === b.uid) write(timelineRows2 || []);
+        else void loadTimelineRows().then((rows) => {
+          if (!disposed) write(rows);
+        });
+        break;
+      }
+      case "lens-strength": {
+        strengthOn = !strengthOn;
+        void refreshStrength();
+        break;
+      }
+      case "lens-dust": {
+        const next = arg && arg !== "off" ? arg : "off";
+        dustPeriod = next === "6 months" || next === "1 year" || next === "2 years" || next === "off" ? next : "off";
+        void refreshDust();
+        break;
+      }
       case "focus-timer": {
         if (item?.type === "section") void session.setSectionLook?.(item.uid, "timer");
         stopTimer();
@@ -32649,6 +34750,55 @@ function buildBoardView(onFail, {
       case "memory-lane":
         toggleMemoryLane();
         break;
+      case "trail-add":
+      case "trail-sel": {
+        const targets = head === "trail-sel" ? uids.slice() : item ? [item.uid] : [];
+        const run = (trailUid) => {
+          if (!trailUid) return;
+          activeTrailUid = trailUid;
+          if (head === "trail-sel") void session.addSelectionToTrail?.(trailUid, targets);
+          else if (item) void session.addToTrail?.(trailUid, item.uid);
+        };
+        if (arg === "new") {
+          askView({
+            caption: "",
+            showCopy: false,
+            dialogLabel: "New trail",
+            onSave: ({ caption }) => {
+              activeTrailUid = null;
+              Promise.resolve(session.createTrail?.(caption, targets)).then((id2) => {
+                if (id2) activeTrailUid = id2;
+              }).catch(() => {
+              });
+            }
+          });
+        } else if (arg) run(arg);
+        break;
+      }
+      case "landmark-toggle":
+        if (item) void session.setLandmark?.(item.uid, { on: item.landmark !== true });
+        break;
+      case "landmark-glyph": {
+        if (!item) break;
+        askView({
+          caption: item.glyph || "",
+          showCopy: false,
+          dialogLabel: "Landmark glyph",
+          onSave: ({ caption }) => {
+            void session.setLandmark?.(item.uid, { on: true, glyph: caption });
+          }
+        });
+        break;
+      }
+      case "landmark-size":
+        if (item && arg) void session.setLandmark?.(item.uid, { on: true, size: arg });
+        break;
+      case "walk": {
+        if (arg === "nearest") startWalk("nearest");
+        else if (arg === "trail") startWalk("trail");
+        else startWalk("reading");
+        break;
+      }
       case "notes":
         if (edgeUid) host?.openInSidebar?.(edgeUid, "block");
         break;
@@ -33152,12 +35302,12 @@ function buildBoardView(onFail, {
     }
     for (const tag of catalog.tags) {
       const label = lensRowLabel(tag);
-      const row3 = el("button", `pxd-lens__row${tag === lensTag ? " is-on" : ""}`, lensPop);
-      row3.type = "button";
-      row3.textContent = label;
-      row3.setAttribute("aria-label", label);
-      row3.dataset.tag = tag;
-      row3.setAttribute("data-tag", tag);
+      const row4 = el("button", `pxd-lens__row${tag === lensTag ? " is-on" : ""}`, lensPop);
+      row4.type = "button";
+      row4.textContent = label;
+      row4.setAttribute("aria-label", label);
+      row4.dataset.tag = tag;
+      row4.setAttribute("data-tag", tag);
     }
   };
   const openLens = () => {
@@ -33188,17 +35338,82 @@ function buildBoardView(onFail, {
   };
   const toggleLens = () => openLens();
   listen(lensPop, "click", (event) => {
-    const row3 = event.target?.closest?.(".pxd-lens__row");
-    if (!row3 || disposed) return;
+    const row4 = event.target?.closest?.(".pxd-lens__row");
+    if (!row4 || disposed) return;
     event.preventDefault?.();
     event.stopPropagation?.();
-    const tag = row3.dataset?.tag || row3.getAttribute?.("data-tag") || "";
+    const tag = row4.dataset?.tag || row4.getAttribute?.("data-tag") || "";
     lensTag = tag || null;
     if (lensTag) rebuildLens();
     closeLens();
     focusKey = null;
     applyFocus();
   });
+  let activeTrailUid = null;
+  let trailPath = null;
+  let trailD = "";
+  let mmMarks = null;
+  let mmSig = "";
+  const currentTrail = (b) => {
+    const trails = b?.trails || [];
+    if (!trails.length) return null;
+    return trails.find((t) => t.uid === activeTrailUid) || trails[0];
+  };
+  let askTrailName = () => {
+  };
+  let startWalk = () => {
+  };
+  const paintTrailPath = (b, shown) => {
+    const trail = currentTrail(b);
+    const pts = trail ? trailPoints(trail.stops, shown) : [];
+    if (pts.length < 2) {
+      if (trailPath) {
+        trailPath.remove();
+        trailPath = null;
+        trailD = "";
+      }
+      return;
+    }
+    const d = pts.map((p, i) => `${i ? "L" : "M"}${p.x} ${p.y}`).join(" ");
+    if (!trailPath) {
+      trailPath = doc.createElementNS(SVG_NS4, "path");
+      trailPath.setAttribute("class", "pxd-trail");
+      trailPath.setAttribute("fill", "none");
+      overlaySvg.append(trailPath);
+    }
+    if (d !== trailD) {
+      trailD = d;
+      trailPath.setAttribute("d", d);
+    }
+  };
+  const syncTrailPaint = (b) => {
+    if (!b || !itemsR) return;
+    const trail = currentTrail(b);
+    itemsR.setTrailBadges?.(trail ? trailBadges(trail) : /* @__PURE__ */ new Map());
+    paintTrailPath(b, paintRects());
+  };
+  const paintLandmarkDots = (b, shown) => {
+    if (!landmarkUids(b).length) {
+      if (mmMarks) {
+        mmMarks.remove();
+        mmMarks = null;
+        mmSig = "";
+      }
+      return;
+    }
+    const dots = landmarkDots(b, shown, vp, size);
+    const sig = dots.map((d) => `${d.uid}:${d.glyph}:${Math.round(d.x)}:${Math.round(d.y)}`).join("|");
+    if (sig === mmSig && mmMarks) return;
+    mmSig = sig;
+    if (!mmMarks) mmMarks = el("div", "pxd-minimap__marks", chrome.minimap.el);
+    mmMarks.replaceChildren();
+    for (const dot of dots) {
+      const n2 = el("span", "pxd-minimap__mark", mmMarks);
+      n2.textContent = dot.glyph || "•";
+      n2.style.left = `${dot.x}px`;
+      n2.style.top = `${dot.y}px`;
+    }
+  };
   const PANEL_WIDTH_KEY = "plexus-diagram:panel-width";
   let panelWidth = PANEL_WIDTH_DEFAULT;
   try {
@@ -33271,7 +35486,45 @@ function buildBoardView(onFail, {
         } catch {
         }
         return { rows: [] };
-      }
+      },
+      listTrails: () => board2()?.trails || [],
+      activeTrail: () => currentTrail(board2())?.uid || "",
+      stopTitle: (ref) => board2()?.items.get(ref)?.title || ref,
+      selectTrail: (uid) => {
+        activeTrailUid = uid;
+        syncTrailPaint(board2());
+      },
+      newTrail: () => askTrailName("", (caption) => {
+        Promise.resolve(session.createTrail?.(caption)).then((id) => {
+          if (id) activeTrailUid = id;
+        }).catch(() => {
+        });
+      }),
+      renameTrail: (uid) => {
+        const trail = (board2()?.trails || []).find((t) => t.uid === uid);
+        askTrailName(trail?.name || "", (caption) => {
+          void session.renameTrail?.(uid, caption);
+        });
+      },
+      deleteTrail: (uid) => {
+        void session.deleteTrail?.(uid);
+        if (activeTrailUid === uid) activeTrailUid = null;
+      },
+      moveStop: (stopUid, index) => {
+        void session.moveStop?.(stopUid, index);
+      },
+      walkTrail: (uid) => {
+        if (uid) activeTrailUid = uid;
+        startWalk("trail");
+      },
+      ensureTimeline: () => loadTimelineRows(),
+      openDay: (pageUid) => {
+        try {
+          host?.openInSidebar?.(pageUid, "block");
+        } catch {
+        }
+      },
+      showOnBoard: (uids) => pulseTimeline(uids)
     }
   });
   let viewDialog = null;
@@ -33309,6 +35562,14 @@ function buildBoardView(onFail, {
       out.push({ title: item.title, rect: world2.get(item.uid) });
     }
     return out;
+  };
+  askTrailName = (caption, onSave) => {
+    askView({
+      caption: caption || "",
+      showCopy: false,
+      dialogLabel: "Trail name",
+      onSave: ({ caption: next }) => onSave?.(next)
+    });
   };
   const askView = ({ caption, showCopy, dialogLabel, onSave }) => {
     closeViewDialog();
@@ -33364,7 +35625,7 @@ function buildBoardView(onFail, {
     });
   };
   const renameSavedView = (uid) => {
-    const view2 = board2()?.views?.find((row3) => row3.uid === uid);
+    const view2 = board2()?.views?.find((row4) => row4.uid === uid);
     if (!view2) return;
     askView({
       caption: view2.caption,
@@ -33378,7 +35639,7 @@ function buildBoardView(onFail, {
     });
   };
   const goToView = (uid) => {
-    const view2 = board2()?.views?.find((row3) => row3.uid === uid);
+    const view2 = board2()?.views?.find((row4) => row4.uid === uid);
     if (!view2?.v) return;
     const next = viewportFromWorldRect({ x: view2.v[0], y: view2.v[1], w: view2.v[2], h: view2.v[3] }, viewSize());
     if (next) setViewport(next);
@@ -33467,6 +35728,19 @@ function buildBoardView(onFail, {
     const opts = only ? { only } : void 0;
     if (!presenter.start(board2(), rects(), opts)) toast("Nothing to present");
   };
+  startWalk = (mode) => {
+    quicklook.close();
+    const b = board2();
+    if (!b) return false;
+    const world2 = rects();
+    const vis = visibleWorldRect(vp, viewSize(), 0);
+    const stops = walkStops(b, world2, { mode, screen: vis, trail: currentTrail(b) });
+    if (!presenter.start(b, world2, { stops })) {
+      toast("Nothing to walk");
+      return false;
+    }
+    return true;
+  };
   chrome.minimap.setVisible(setting("show-minimap", true) !== false);
   chrome.toolbar.setLinkMode(linkMode);
   const cycleLinks = () => {
@@ -33490,15 +35764,15 @@ function buildBoardView(onFail, {
     }
     legend.hidden = false;
     legend.removeAttribute("hidden");
-    for (const row3 of rows) {
+    for (const row4 of rows) {
       const btn = doc.createElement("button");
       btn.type = "button";
-      btn.className = `pxd-legend__row pxd-c-${row3.color}${row3.on ? "" : " is-off"}`;
-      btn.setAttribute("data-attr", row3.name);
-      btn.setAttribute("aria-pressed", row3.on ? "true" : "false");
-      btn.title = row3.on ? `Hide ${row3.name}` : `Show ${row3.name}`;
+      btn.className = `pxd-legend__row pxd-c-${row4.color}${row4.on ? "" : " is-off"}`;
+      btn.setAttribute("data-attr", row4.name);
+      btn.setAttribute("aria-pressed", row4.on ? "true" : "false");
+      btn.title = row4.on ? `Hide ${row4.name}` : `Show ${row4.name}`;
       btn.setAttribute("aria-label", btn.title);
-      btn.textContent = row3.name;
+      btn.textContent = row4.name;
       legend.append(btn);
     }
   };
@@ -33691,7 +35965,18 @@ function buildBoardView(onFail, {
     }
     const b = board2();
     const entry = { uid: b?.uid || boardUid, title: b?.title || "" };
-    const next = openBoardTab(entry);
+    let next = openBoardTab(entry);
+    const exists = (uid) => {
+      if (typeof host?.blockExists !== "function") return true;
+      try {
+        return host.blockExists(uid) !== false;
+      } catch {
+        return true;
+      }
+    };
+    for (const tab of [...next?.tabs || []]) {
+      if (tab.uid !== entry.uid && !exists(tab.uid)) next = closeBoardTab(tab.uid) || next;
+    }
     paintTabStrip(next?.tabs || [], entry.uid);
   };
   const applyFullscreen = (on) => {
@@ -34131,12 +36416,12 @@ function buildBoardView(onFail, {
       if (!card2) continue;
       if (!card2.classList.contains("pxd-item--page") || card2.closest?.(".pxd-root") !== root) return null;
       const uid = card2.dataset?.uid || card2.getAttribute?.("data-uid");
-      const row3 = node2.closest?.("[data-pxd-row]");
-      const header = row3 ? null : node2.closest?.(".pxd-item__header");
-      targetEl = row3 || header || null;
-      targetCls = row3 ? "pxd-row--target" : "pxd-item__header--target";
+      const row4 = node2.closest?.("[data-pxd-row]");
+      const header = row4 ? null : node2.closest?.(".pxd-item__header");
+      targetEl = row4 || header || null;
+      targetCls = row4 ? "pxd-row--target" : "pxd-item__header--target";
       targetEl?.classList.add(targetCls);
-      return { uid, row: row3 ? row3.getAttribute?.("data-pxd-row") || row3.dataset?.pxdRow || null : null, header: Boolean(header) };
+      return { uid, row: row4 ? row4.getAttribute?.("data-pxd-row") || row4.dataset?.pxdRow || null : null, header: Boolean(header) };
     }
     return null;
   };
@@ -34186,8 +36471,8 @@ function buildBoardView(onFail, {
     const item = t.closest(".pxd-item");
     if (item) {
       const hit = { kind: "item", uid: item.dataset?.uid || item.getAttribute?.("data-uid"), part: t.closest(".pxd-item__header") ? "header" : "body" };
-      const row3 = nativeClickKind(t) ? null : t.closest("[data-pxd-row]");
-      if (row3) hit.row = row3.getAttribute?.("data-pxd-row") || row3.dataset?.pxdRow || "";
+      const row4 = nativeClickKind(t) ? null : t.closest("[data-pxd-row]");
+      if (row4) hit.row = row4.getAttribute?.("data-pxd-row") || row4.dataset?.pxdRow || "";
       return hit;
     }
     return { kind: "empty" };
@@ -34763,7 +37048,7 @@ function buildBoardView(onFail, {
     if (!planned) return;
     if (droppedDrawingUids(planned.map((x) => x.string), (id) => host?.blockString?.(id)).length) toast(DRAWING_DROP_TOAST);
     const made = session.addRefCards?.(planned);
-    const same2 = planned.length === list.length && planned.every((row3, i) => row3.string === list[i].string);
+    const same2 = planned.length === list.length && planned.every((row4, i) => row4.string === list[i].string);
     const offer = same2 ? dropNamespace(list.map((x) => x.string)) : null;
     Promise.resolve(made).then((uids) => {
       if (Array.isArray(uids) && uids.length) ctl.select(uids);
@@ -35169,6 +37454,8 @@ function buildBoardView(onFail, {
       ensurePdfHighlightButtons();
       syncEmptyHint(emptyHint, b);
       itemsChanged = true;
+      syncTrailPaint(b);
+      if ((dirty.all || dirty.structural) && panel.currentTab?.() === "trails") panel.refreshTrails?.();
     }
     const edgesDue = dirty.all || dirty.structural || dirty.links || dirty.edges.size;
     const itemsMoveEdges = dirty.items.size && !dirty.all && !dirty.structural;
@@ -35226,7 +37513,11 @@ function buildBoardView(onFail, {
     } else if (dirty.viewport && chrome.ctx.isOpen()) {
       chrome.ctx.reposition();
     }
-    if (itemsChanged || dirty.minimap || dirty.viewport && !gesturing) chrome.minimap.update({ board: b, rects: paintRects(), vp, size });
+    if (itemsChanged || dirty.minimap || dirty.viewport && !gesturing) {
+      const shown = paintRects();
+      chrome.minimap.update({ board: b, rects: shown, vp, size });
+      paintLandmarkDots(b, shown);
+    }
     if (itemsChanged && !gesturing) {
       scheduleContent();
       updateBackToContent();
@@ -35238,6 +37529,7 @@ function buildBoardView(onFail, {
       else edgesR.setMeasures(/* @__PURE__ */ new Map());
     }
     if (searchMatches.length || root.classList.contains("pxd-root--searching")) panel.refreshMarks();
+    if (itemsChanged || edgesDue || itemsMoveEdges) paintLenses();
     dirty.minimap = false;
     dirty.viewport = false;
     dirty.items = /* @__PURE__ */ new Set();
@@ -35285,7 +37577,7 @@ function buildBoardView(onFail, {
       const list = win?.PlexusDiagram?.boardsWith?.(target);
       if (Array.isArray(list) && list.length) {
         const here = board2()?.uid;
-        n2 = list.some((row3) => row3 && row3.uid === here) ? list.length : list.length + 1;
+        n2 = list.some((row4) => row4 && row4.uid === here) ? list.length : list.length + 1;
       }
     } catch {
       n2 = 1;
@@ -35312,7 +37604,7 @@ function buildBoardView(onFail, {
         } catch {
           pulled = null;
         }
-        const read = readHaloPull(pulled);
+        const read2 = readHaloPull(pulled);
         const refs = haloRefs(typeof host?.q === "function" ? host.q.bind(host) : null, uid);
         const b = board2();
         const cardUids = [];
@@ -35327,21 +37619,21 @@ function buildBoardView(onFail, {
           } catch {
             found = [];
           }
-          for (const row3 of found) {
-            if (Array.isArray(row3) && row3.length >= 2) stamps.set(row3[0], row3[1]);
+          for (const row4 of found) {
+            if (Array.isArray(row4) && row4.length >= 2) stamps.set(row4[0], row4[1]);
           }
         }
         const rows = cardUids.map((id) => ({
           uid: id,
-          created: id === uid && read.created != null ? read.created : stamps.get(id)
+          created: id === uid && read2.created != null ? read2.created : stamps.get(id)
         }));
-        if (!rows.some((row3) => row3.uid === uid)) rows.push({ uid, created: read.created });
+        if (!rows.some((row4) => row4.uid === uid)) rows.push({ uid, created: read2.created });
         const origin = subject.from ? subject.from : uid;
         const target = subject.target?.uid || uid;
         const model = {
-          created: read.created,
-          edited: read.edited,
-          userName: read.userName,
+          created: read2.created,
+          edited: read2.edited,
+          userName: read2.userName,
           board: b?.title || "",
           section: sectionTitle(origin),
           with: company(rows, uid).map((id) => ({ uid: id, label: cardLabel2(id) })),
@@ -35400,7 +37692,8 @@ function buildBoardView(onFail, {
       },
       onPulse: (id) => {
         if (!disposed) pulseItem(id);
-      }
+      },
+      dustAge: subject && !subject.from && !subject.to ? itemsR.shellOf(subject.uid)?.getAttribute?.("data-dust-age") || "" : ""
     });
   };
   openHalo = (subject, anchor) => {
@@ -35669,6 +37962,12 @@ function buildBoardView(onFail, {
       fitAll();
     },
     // Select and pulse a card or connection by uid, without a page check (feature.js enters a nested board first).
+    walkTrail(trailUid) {
+      if (disposed || !board2()) return false;
+      if (trailUid) activeTrailUid = trailUid;
+      startWalk("trail");
+      return true;
+    },
     focusUid(uid) {
       const ok = consumeDeepLink(`#?pxd=${encodeURIComponent(uid)}`);
       if (ok && !isFullscreen) {
@@ -35801,7 +38100,22 @@ function buildBoardView(onFail, {
     setSettings(next) {
       if (disposed) return;
       const minimapBefore = setting("show-minimap", true) !== false;
+      const opensBefore = trackOpensOn();
+      const interopBefore = readSetting("interop") !== false;
       settingsRef = next;
+      if (openStore) {
+        try {
+          openStore.setEnabled(trackOpensOn());
+        } catch {
+        }
+      }
+      if (opensBefore !== trackOpensOn() && strengthOn) void refreshStrength();
+      if (interopBefore !== (readSetting("interop") !== false)) {
+        const live = board2();
+        if (live) for (const item of live.items.values()) {
+          if (item?.kind === "drawing-ref" || item?.kind === "region-ref") dirty.items.add(item.uid);
+        }
+      }
       armSpeedLog();
       const nextLinks = setting("graph-links", "all");
       if (nextLinks !== linkMode && LINK_MODES2.includes(nextLinks)) {
@@ -36900,13 +39214,13 @@ function createCardChips({
     return null;
   };
   const CHIP_ROW_H = 28;
-  const reserveChipRow = (row3) => {
-    if (!row3?.style) return;
+  const reserveChipRow = (row4) => {
+    if (!row4?.style) return;
     const text2 = `${CHIP_ROW_H}px`;
-    row3.style.height = text2;
-    row3.style.minHeight = text2;
-    row3.style.boxSizing = "border-box";
-    row3.style.overflow = "hidden";
+    row4.style.height = text2;
+    row4.style.minHeight = text2;
+    row4.style.boxSizing = "border-box";
+    row4.style.overflow = "hidden";
   };
   const placePage = (scope) => {
     if (!scope?.querySelector) return;
@@ -36930,37 +39244,37 @@ function createCardChips({
       before = kids.firstChild;
     }
     if (!parent || parent.closest?.("h1.rm-title-display") || parent.matches?.("h1, h1.rm-title-display")) return;
-    let row3 = null;
+    let row4 = null;
     for (const child of parent.children || []) {
-      if (child.classList?.contains("pxd-cardchip-row")) row3 = child;
+      if (child.classList?.contains("pxd-cardchip-row")) row4 = child;
     }
-    if (!row3) {
-      row3 = doc.createElement("div");
-      row3.className = "pxd-cardchip-row";
-      reserveChipRow(row3);
-      if (before && before.parentElement === parent) parent.insertBefore(row3, before);
-      else if (parent === kids) parent.insertBefore(row3, kids.firstChild);
-      else parent.append(row3);
-      rows.add(row3);
-    } else reserveChipRow(row3);
+    if (!row4) {
+      row4 = doc.createElement("div");
+      row4.className = "pxd-cardchip-row";
+      reserveChipRow(row4);
+      if (before && before.parentElement === parent) parent.insertBefore(row4, before);
+      else if (parent === kids) parent.insertBefore(row4, kids.firstChild);
+      else parent.append(row4);
+      rows.add(row4);
+    } else reserveChipRow(row4);
     const boards = cache.boardsOf(uid) || [];
     const sig = `${uid}
 ${boards.map((boardUid) => `${boardUid}:${cache?.titleOf?.(boardUid) || ""}`).join("\n")}`;
-    if (sigs.get(row3) !== sig) {
-      for (const child of [...row3.children || []]) chips.delete(child);
-      row3.replaceChildren();
-      for (const boardUid of boards.slice(0, 3)) row3.append(makeChip(boardUid, uid));
+    if (sigs.get(row4) !== sig) {
+      for (const child of [...row4.children || []]) chips.delete(child);
+      row4.replaceChildren();
+      for (const boardUid of boards.slice(0, 3)) row4.append(makeChip(boardUid, uid));
       const extra = boards.length - 3;
       if (extra > 0) {
         const more = doc.createElement("span");
         more.className = "pxd-cardchip-more";
         more.textContent = `+${extra}`;
-        row3.append(more);
+        row4.append(more);
       }
-      sigs.set(row3, sig);
+      sigs.set(row4, sig);
     }
     for (const old of scope.querySelectorAll(".pxd-cardchip-row") || []) {
-      if (old === row3) continue;
+      if (old === row4) continue;
       for (const child of [...old.children || []]) chips.delete(child);
       rows.delete(old);
       old.remove();
@@ -37053,7 +39367,7 @@ ${boards.map((boardUid) => `${boardUid}:${cache?.titleOf?.(boardUid) || ""}`).jo
     closePop();
     for (const chip of chips) chip.remove();
     chips.clear();
-    for (const row3 of rows) row3.remove();
+    for (const row4 of rows) row4.remove();
     rows.clear();
     const body = doc?.body;
     if (!body?.querySelectorAll) return;
@@ -37075,7 +39389,7 @@ ${boards.map((boardUid) => `${boardUid}:${cache?.titleOf?.(boardUid) || ""}`).jo
 }
 
 // src/view/resurface-panel.js
-var EMPTY = "Nothing from a week, a month or a year ago.";
+var EMPTY2 = "Nothing from a week, a month or a year ago.";
 var BUTTON = "button.rm-xparser-default-plexus-resurface";
 function thumb(doc, parent, item) {
   const box2 = doc.createElement("div");
@@ -37094,7 +39408,7 @@ function fillResurface(doc, panel, { pageTitle, rows, intervals, onOpen } = {}) 
   if (!tabs.length) {
     const line = doc.createElement("div");
     line.className = "pxd-resurface__empty";
-    line.textContent = EMPTY;
+    line.textContent = EMPTY2;
     panel.append(line);
     return;
   }
@@ -37105,17 +39419,17 @@ function fillResurface(doc, panel, { pageTitle, rows, intervals, onOpen } = {}) 
   const show = (tab) => {
     body.replaceChildren();
     for (const item of tab.items) {
-      const row3 = doc.createElement("button");
-      row3.type = "button";
-      row3.className = "pxd-resurface__item";
-      row3.textContent = item.title || item.uid;
-      thumb(doc, row3, item);
-      row3.addEventListener("click", (event) => {
+      const row4 = doc.createElement("button");
+      row4.type = "button";
+      row4.className = "pxd-resurface__item";
+      row4.textContent = item.title || item.uid;
+      thumb(doc, row4, item);
+      row4.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
         onOpen?.({ boardUid: item.boardUid, cardUid: item.cardUid || item.uid });
       });
-      body.append(row3);
+      body.append(row4);
     }
   };
   tabs.forEach((tab, index) => {
@@ -37174,7 +39488,7 @@ ${intervals?.() || ""}`;
       lastKey = key;
       const sig = `${pageTitle?.() || ""}
 ${intervals?.() || ""}
-${list.map((row3) => `${row3.uid}:${row3.time}`).join(",")}`;
+${list.map((row4) => `${row4.uid}:${row4.time}`).join(",")}`;
       if (sig === lastSig) return;
       lastSig = sig;
       const spec = { pageTitle: pageTitle?.(), rows: list, intervals: intervals?.(), onOpen };
@@ -37197,15 +39511,15 @@ ${list.map((row3) => `${row3.uid}:${row3.time}`).join(",")}`;
 // src/view/region-open.js
 var STASH_MS = 8e3;
 var STOP_TYPES = ["pointerdown", "mousedown", "mouseup", "dblclick"];
-function pickCameraMount(rows, boardUid, isSidebar = () => false, current3 = (row3) => row3?.current ?? row3?.uid) {
+function pickCameraMount(rows, boardUid, isSidebar = () => false, current3 = (row4) => row4?.current ?? row4?.uid) {
   const list = Array.isArray(rows) ? rows : [];
   const side2 = typeof isSidebar === "function" ? isSidebar : () => false;
-  const idOf = typeof current3 === "function" ? current3 : (row3) => row3?.uid;
+  const idOf = typeof current3 === "function" ? current3 : (row4) => row4?.uid;
   if (!boardUid) {
-    return list.find((row3) => row3 && !side2(row3) && row3.view) || list.find((row3) => row3 && !side2(row3)) || list.find((row3) => row3?.view) || list[0] || null;
+    return list.find((row4) => row4 && !side2(row4) && row4.view) || list.find((row4) => row4 && !side2(row4)) || list.find((row4) => row4?.view) || list[0] || null;
   }
-  const hits = list.filter((row3) => row3 && (idOf(row3) === boardUid || row3.uid === boardUid));
-  return hits.find((row3) => side2(row3) && row3.view) || hits.find((row3) => row3.view) || hits[0] || null;
+  const hits = list.filter((row4) => row4 && (idOf(row4) === boardUid || row4.uid === boardUid));
+  return hits.find((row4) => side2(row4) && row4.view) || hits.find((row4) => row4.view) || hits[0] || null;
 }
 function resolveRegionTarget(hit, outline) {
   if (hit?.boardUid && hit.pageUid && hit.cardUid) {
@@ -37407,9 +39721,9 @@ function wireFrame(span, { doc, onOpen, delayMs, buildPopover, obstacles } = {})
 }
 var urls = /* @__PURE__ */ new Map();
 function resetCropUrls() {
-  for (const row3 of urls.values()) {
+  for (const row4 of urls.values()) {
     try {
-      URL.revokeObjectURL(row3.url);
+      URL.revokeObjectURL(row4.url);
     } catch {
     }
   }
@@ -37427,30 +39741,30 @@ function takeUrl(key, file) {
   urls.set(key, { url, refs: 1 });
   while (urls.size > URL_CAP) {
     let victim = null;
-    for (const [id, row4] of urls) {
-      if (row4.refs <= 0) {
+    for (const [id, row5] of urls) {
+      if (row5.refs <= 0) {
         victim = id;
         break;
       }
     }
     if (!victim) break;
-    const row3 = urls.get(victim);
+    const row4 = urls.get(victim);
     urls.delete(victim);
     try {
-      URL.revokeObjectURL(row3.url);
+      URL.revokeObjectURL(row4.url);
     } catch {
     }
   }
   return url;
 }
 function dropUrl(key) {
-  const row3 = urls.get(key);
-  if (!row3) return;
-  row3.refs -= 1;
-  if (row3.refs > 0) return;
+  const row4 = urls.get(key);
+  if (!row4) return;
+  row4.refs -= 1;
+  if (row4.refs > 0) return;
   urls.delete(key);
   try {
-    URL.revokeObjectURL(row3.url);
+    URL.revokeObjectURL(row4.url);
   } catch {
   }
 }
@@ -37779,11 +40093,11 @@ function boardsFromRefRows(rows, pull) {
   const out = [];
   const seen = /* @__PURE__ */ new Set();
   const list = Array.isArray(rows) ? rows : [];
-  for (const row3 of list) {
-    const boardUid = Array.isArray(row3) ? row3[0] : null;
+  for (const row4 of list) {
+    const boardUid = Array.isArray(row4) ? row4[0] : null;
     if (!boardUid || seen.has(boardUid)) continue;
     seen.add(boardUid);
-    let card2 = typeof row3[2] === "string" && row3[2] ? row3[2] : void 0;
+    let card2 = typeof row4[2] === "string" && row4[2] ? row4[2] : void 0;
     let pulled = null;
     try {
       pulled = typeof pull === "function" ? pull(boardUid) : null;
@@ -37875,7 +40189,7 @@ function createPublicApi({ host, version, addCard: addCardFn, openBoard, thumbna
       } catch {
         listed = [];
       }
-      return listed.filter((row3) => row3 && row3.pageUid === pageUid).map((row3) => ({ uid: row3.uid, title: row3.title || "Untitled board" }));
+      return listed.filter((row4) => row4 && row4.pageUid === pageUid).map((row4) => ({ uid: row4.uid, title: row4.title || "Untitled board" }));
     },
     boardsWith(targetUid) {
       let rows = [];
@@ -38163,11 +40477,11 @@ function createShiftWatch() {
       return;
     }
     const tally = emptyTally(usableAt);
-    for (const row3 of rows) {
-      if (REGIONS.has(row3.region)) tally[row3.region] += 1;
-      if (typeof usableAt === "number" && row3.startTime > usableAt) tally.after += 1;
+    for (const row4 of rows) {
+      if (REGIONS.has(row4.region)) tally[row4.region] += 1;
+      if (typeof usableAt === "number" && row4.startTime > usableAt) tally.after += 1;
       else tally.before += 1;
-      if (shiftEntryFails(row3, usableAt)) tally.failing += 1;
+      if (shiftEntryFails(row4, usableAt)) tally.failing += 1;
     }
     stats.shifts = tally;
   };
@@ -38539,7 +40853,7 @@ async function installPlexusDiagram({
   const resurfaceList = () => {
     if (resurfaceRows.length && Date.now() - resurfaceAt < 6e4) return resurfaceRows;
     const entries = cardCache.entries();
-    const uids = [...new Set(entries.map((row3) => row3.uid).filter(Boolean))];
+    const uids = [...new Set(entries.map((row4) => row4.uid).filter(Boolean))];
     if (!uids.length) {
       resurfaceRows = [];
       return resurfaceRows;
@@ -38550,13 +40864,13 @@ async function installPlexusDiagram({
     } catch {
       times = [];
     }
-    const byUid = new Map(times.map((row3) => [row3[0], row3]));
+    const byUid = new Map(times.map((row4) => [row4[0], row4]));
     resurfaceRows = [];
-    for (const row3 of entries) {
-      const hit = byUid.get(row3.uid);
+    for (const row4 of entries) {
+      const hit = byUid.get(row4.uid);
       if (!hit || !Number.isFinite(hit[1])) continue;
       const line = String(hit[2] || "Card").split("\n")[0].slice(0, 80);
-      resurfaceRows.push({ ...row3, time: hit[1], title: `${line} · ${row3.title}` });
+      resurfaceRows.push({ ...row4, time: hit[1], title: `${line} · ${row4.title}` });
     }
     resurfaceAt = Date.now();
     return resurfaceRows;
@@ -38575,6 +40889,9 @@ async function installPlexusDiagram({
   lifecycle.add(() => cardChips.dispose());
   lifecycle.add(() => schedulePrefetch2.dispose());
   lifecycle.add(() => resurface.dispose());
+  const trailStrips = /* @__PURE__ */ new Map();
+  const trailMiss = /* @__PURE__ */ new Map();
+  lifecycle.add(() => dropAllTrailStrips());
   const editSeen = /* @__PURE__ */ new Map();
   lifecycle.add(() => previewBoards.clear());
   lifecycle.add(() => clearPinnedToast());
@@ -38597,8 +40914,8 @@ async function installPlexusDiagram({
       edits = [];
     }
     const next = /* @__PURE__ */ new Map();
-    for (const row3 of edits) {
-      if (Array.isArray(row3) && row3.length >= 2) next.set(row3[0], row3[1]);
+    for (const row4 of edits) {
+      if (Array.isArray(row4) && row4.length >= 2) next.set(row4[0], row4[1]);
     }
     const due = [];
     for (const uid of uids) {
@@ -38608,15 +40925,15 @@ async function installPlexusDiagram({
     }
     for (const uid of due) {
       let board2 = null;
-      let read = true;
+      let read2 = true;
       try {
         const pulled = host.pullBoard?.(uid);
         board2 = pulled ? buildBoard(pulled) : null;
       } catch {
         board2 = null;
-        read = false;
+        read2 = false;
       }
-      if (read) editSeen.set(uid, next.has(uid) ? next.get(uid) : null);
+      if (read2) editSeen.set(uid, next.has(uid) ? next.get(uid) : null);
       previewBoards.delete(uid);
       if (board2?.uid) noteCards(board2);
       else cardCache.setBoard(uid, "", []);
@@ -39247,6 +41564,13 @@ async function installPlexusDiagram({
         visit(rec, [{ uid, title: boardTitle2(host.blockString?.(uid)) }]);
       },
       tabStore: host.tabs,
+      boardsOf: (uid) => {
+        try {
+          return cardCache.boardsOf(uid);
+        } catch {
+          return [];
+        }
+      },
       onCrumb: (index) => visit(rec, rec.crumbs.slice(0, index + 1)),
       onHistoryBack: () => historyMove(rec, "back"),
       onHistoryForward: () => historyMove(rec, "forward"),
@@ -39588,7 +41912,7 @@ async function installPlexusDiagram({
   function trimKept() {
     while (kept.length > KEEP_ALIVE_CAP) dropKept(kept[0]);
   }
-  function remember(rec, uid, view, session) {
+  function remember2(rec, uid, view, session) {
     for (const entry2 of kept.filter((item) => item.rec === rec && item.uid === uid)) dropKept(entry2);
     const entry = { rec, uid, view, session, timer: null };
     entry.timer = setTimeout(() => {
@@ -39758,7 +42082,7 @@ async function installPlexusDiagram({
     } catch {
     }
     suspendView(view);
-    remember(rec, uid, view, session);
+    remember2(rec, uid, view, session);
   }
   function takeKept(rec, uid) {
     const at = kept.findIndex((entry2) => entry2.rec === rec && entry2.uid === uid);
@@ -40643,6 +42967,7 @@ async function installPlexusDiagram({
     const region = parseRegion(text2);
     if (!region || region.owner !== "plexus-diagram" || region.supported !== true) return;
     if (region.kind !== "img" && region.kind !== "view") return;
+    if (region.kind !== "view" && settings[SETTING_IDS.regionsInline] === false) return;
     const delayMs = tooltipDelay(settings[SETTING_IDS.tooltipDelay]);
     const obstacles = () => {
       const root = doc?.querySelector?.(".pxd-root");
@@ -40690,6 +43015,119 @@ async function installPlexusDiagram({
     };
     regionCrops.set(button, drop);
   }
+  function dropAllTrailStrips() {
+    for (const drop of [...trailStrips.values()]) {
+      try {
+        drop();
+      } catch {
+      }
+    }
+    trailStrips.clear();
+  }
+  function stopTitleOf(ref) {
+    let text2 = "";
+    try {
+      text2 = host.blockString?.(ref) || "";
+    } catch {
+      text2 = "";
+    }
+    const line = firstLine(text2) || String(text2).split("\n")[0] || "";
+    return line.replace(/^\[\[|\]\]$/g, "").trim().slice(0, 48);
+  }
+  function trailNodeFromPull(uid) {
+    let raw = null;
+    try {
+      raw = host.pullTree?.(uid, 3, 40);
+    } catch {
+      raw = null;
+    }
+    let props = null;
+    try {
+      props = host.pullProps?.(uid) || null;
+    } catch {
+      props = null;
+    }
+    let string = "";
+    try {
+      string = host.blockString?.(uid) || "";
+    } catch {
+      string = "";
+    }
+    const mapKid = (n2) => ({
+      ":block/uid": n2?.[":block/uid"] || n2?.uid || "",
+      ":block/string": n2?.[":block/string"] ?? n2?.string ?? "",
+      ":block/order": n2?.[":block/order"] ?? n2?.order,
+      ":block/props": n2?.[":block/props"] ?? n2?.props,
+      ":block/children": (n2?.[":block/children"] || n2?.children || []).map(mapKid)
+    });
+    if (raw && !Array.isArray(raw) && (raw[":block/string"] != null || raw.string != null || raw[":block/uid"])) {
+      const kids2 = raw[":block/children"] || raw.children || [];
+      return { ...raw, ":block/uid": raw[":block/uid"] || raw.uid || uid, ":block/children": kids2.map(mapKid) };
+    }
+    const kids = Array.isArray(raw) ? raw : [];
+    return {
+      ":block/uid": uid,
+      ":block/string": string,
+      ":block/props": props,
+      ":block/children": kids.map(mapKid)
+    };
+  }
+  function fillTrailStrip(button, uid) {
+    if (!button || !uid || button.getAttribute?.("data-plexus-owner")) return;
+    if ((trailMiss.get(uid) || 0) > Date.now()) return;
+    const trail = parseTrailBlock(trailNodeFromPull(uid));
+    if (!trail) {
+      trailMiss.set(uid, Date.now() + 2e3);
+      return;
+    }
+    trailMiss.delete(uid);
+    button.setAttribute("data-plexus-owner", "trail");
+    if (button.style) button.style.display = "none";
+    const strip = doc.createElement("div");
+    if (typeof button.insertAdjacentElement === "function") button.insertAdjacentElement("afterend", strip);
+    else button.parentNode?.insertBefore?.(strip, button.nextSibling);
+    const boardUid = diagramAncestorUid(uid);
+    renderTrailStrip(doc, strip, trailStrip(trail.stops, stopTitleOf, 8), {
+      onStop(stop2) {
+        const home = diagramAncestorUid(stop2?.uid) || boardUid;
+        if (home) void openPublic(home, { card: stop2.uid });
+      },
+      onWalk() {
+        if (boardUid) void openPublic(boardUid, { walk: trail.uid });
+      }
+    });
+    const drop = () => {
+      try {
+        strip.remove();
+      } catch {
+      }
+      if (button.style) button.style.display = "";
+      button.removeAttribute?.("data-plexus-owner");
+      trailStrips.delete(button);
+    };
+    trailStrips.set(button, drop);
+  }
+  function scanTrails(node2) {
+    if (!active() || !node2) return;
+    const found = [];
+    if (node2.matches?.("button.rm-xparser-default-plexus-trail")) found.push(node2);
+    if (typeof node2.querySelectorAll === "function") {
+      try {
+        found.push(...node2.querySelectorAll("button.rm-xparser-default-plexus-trail"));
+      } catch {
+      }
+    }
+    let seen = 0;
+    for (const button of found) {
+      if (button.getAttribute?.("data-plexus-owner")) continue;
+      if (seen >= 8) break;
+      seen += 1;
+      const ref = button.closest?.(".rm-block-ref[data-uid]");
+      const block = button.closest?.(".roam-block-container[data-block-uid]") || button.closest?.(BLOCK_CONTAINER_SELECTOR);
+      const id = ref?.getAttribute?.("data-uid") || block?.getAttribute?.("data-block-uid") || "";
+      if (id) fillTrailStrip(button, id);
+    }
+  }
   function scanRegions(node2) {
     if (!active()) return;
     eachRegionButton(node2, considerRegionButton);
@@ -40700,9 +43138,10 @@ async function installPlexusDiagram({
       relChips.scan(node2);
       boardChips.scan(node2);
       cardChips.scan(node2);
-      resurface.scan(node2);
+      if (settings[SETTING_IDS.resurface] !== false) resurface.scan(node2);
     }
     scanRegions(node2);
+    scanTrails(node2);
   }
   function reconcile() {
     if (stopped) return;
@@ -40724,10 +43163,14 @@ async function installPlexusDiagram({
     for (const [button, drop] of [...regionCrops]) {
       if (button.isConnected === false) drop();
     }
+    for (const [button, drop] of [...trailStrips]) {
+      if (button.isConnected === false) drop();
+    }
     if (!active()) {
       for (const rec of [...mounts.values()]) unmount(rec);
       for (const native of [...convertButtons.keys()]) dropConvert(native);
       for (const drop of [...regionCrops.values()]) drop();
+      dropAllTrailStrips();
       return;
     }
     if (!doc) return;
@@ -40759,10 +43202,10 @@ async function installPlexusDiagram({
     if (isDiagramString(host.blockString?.(uid))) return uid;
     try {
       const rows = host.q?.(PARENTS_QUERY, uid) || [];
-      const hits = rows.filter((row3) => isDiagramString(row3[1])).map((row3) => row3[0]);
+      const hits = rows.filter((row4) => isDiagramString(row4[1])).map((row4) => row4[0]);
       if (hits.length < 2) return hits[0] ?? null;
       const deepest = hits.find((cand) => {
-        const above = new Set((host.q?.(PARENTS_QUERY, cand) || []).map((row3) => row3[0]));
+        const above = new Set((host.q?.(PARENTS_QUERY, cand) || []).map((row4) => row4[0]));
         return hits.every((other) => other === cand || above.has(other));
       });
       return deepest ?? hits[0];
@@ -40848,6 +43291,7 @@ async function installPlexusDiagram({
     return targetView(context)?.newDrawing?.();
   }
   async function resurfaceCommand(context) {
+    if (settings[SETTING_IDS.resurface] === false) return;
     const parentUid = focusedUid(context);
     if (!parentUid) {
       console.info("[plexus-diagram] Focus a block first");
@@ -40893,18 +43337,18 @@ async function installPlexusDiagram({
     title.textContent = "Plexus";
     box2.append(title);
     for (const [label, fn] of [...sheetActions, ...sheetOnlyActions]) {
-      const row3 = doc.createElement("button");
-      row3.type = "button";
-      row3.className = "pxd-commands__row";
-      row3.textContent = label.replace(/^Plexus: /, "");
-      row3.setAttribute("aria-label", row3.textContent);
-      row3.onclick = () => {
+      const row4 = doc.createElement("button");
+      row4.type = "button";
+      row4.className = "pxd-commands__row";
+      row4.textContent = label.replace(/^Plexus: /, "");
+      row4.setAttribute("aria-label", row4.textContent);
+      row4.onclick = () => {
         closeCommandSheet();
         if (!active()) return;
         const context = capturedUid ? { "block-uid": capturedUid } : {};
         Promise.resolve(fn(context)).catch((error) => console.warn(`[plexus-diagram] ${label} failed`, error));
       };
-      box2.append(row3);
+      box2.append(row4);
     }
     sheet.append(back);
     sheet.append(box2);
@@ -41103,6 +43547,34 @@ async function installPlexusDiagram({
     settings = { ...settings, [id]: next };
     if (id === SETTING_IDS.speedFlags) noteSpeedFlags(next);
     if (id === SETTING_IDS.speedLog) syncSpeedLog();
+    if (id === SETTING_IDS.resurface) {
+      if (next === false) {
+        try {
+          resurface.dispose();
+        } catch {
+        }
+      } else {
+        try {
+          resurface.scan(doc?.body || doc);
+        } catch {
+        }
+      }
+    }
+    if (id === SETTING_IDS.regionsInline) {
+      if (next === false) {
+        for (const drop of [...regionCrops.values()]) {
+          try {
+            drop();
+          } catch {
+          }
+        }
+      } else {
+        try {
+          scanRegions(doc?.body || doc);
+        } catch {
+        }
+      }
+    }
     if (id === SETTING_IDS.autoEnhance) {
       autoCache.clear();
       negativeUntil.clear();
@@ -41303,6 +43775,18 @@ async function installPlexusDiagram({
     const viewUid = typeof opts?.view === "string" ? opts.view : typeof opts?.region === "string" ? opts.region : "";
     if (viewUid) showSavedView(rec, viewUid, 20);
     if (opts?.card) showCard(rec, opts.card);
+    if (opts?.walk) {
+      const kick = (left) => {
+        let started = false;
+        try {
+          started = rec.view?.walkTrail?.(opts.walk) === true;
+        } catch {
+          started = false;
+        }
+        if (!started && left > 0) lifecycle.timeout(() => kick(left - 1), 50);
+      };
+      kick(20);
+    }
   }
   function openPublic(boardUid, opts = {}) {
     const sidebar = Boolean(opts?.sidebar);
@@ -41404,7 +43888,7 @@ async function installPlexusDiagram({
     if (stopped || !active()) return;
     relChips.start();
     refreshCardCache();
-    resurface.scan(doc.body);
+    if (settings[SETTING_IDS.resurface] !== false) resurface.scan(doc.body);
   }, 600);
   lifecycle.interval(() => {
     if (stopped || !active()) return;
@@ -41435,6 +43919,7 @@ async function installPlexusDiagram({
     }
   }
   scanRegions(doc);
+  scanTrails(doc?.body || doc);
   for (const portal of doc?.querySelectorAll?.(".bp3-portal") || []) scanRegions(portal);
   let wakeTimer = null;
   let quietTimer = null;
@@ -41513,7 +43998,19 @@ async function installPlexusDiagram({
     if (wakeTimer) clearTimeout(wakeTimer);
     if (quietTimer) clearTimeout(quietTimer);
   });
+  try {
+    refreshIntegrations(win);
+  } catch {
+  }
   if (typeof win.addEventListener === "function") {
+    for (const name of INTEGRATION_EVENTS) {
+      lifecycle.event(win, name, () => {
+        try {
+          refreshIntegrations(win);
+        } catch {
+        }
+      });
+    }
     const refreshStatuses = () => {
       for (const rec of mounts.values()) {
         try {
@@ -41590,6 +44087,11 @@ async function onload({ extensionAPI, extension, deps }) {
     if (win.__plexusDiagramTeardown === prior) delete win.__plexusDiagramTeardown;
   }
   if (activeLifecycle) await activeLifecycle.dispose();
+  const perf = globalThis.performance;
+  try {
+    perf?.mark?.("plexus:onload-start");
+  } catch {
+  }
   const lifecycle = createLifecycle();
   activeLifecycle = lifecycle;
   const dispose = async () => {
@@ -41601,6 +44103,11 @@ async function onload({ extensionAPI, extension, deps }) {
     await initializeSettings(extensionAPI);
     await lifecycle.settingsPanel(extensionAPI, createSettingsPanel());
     await installPlexusDiagram({ extensionAPI, lifecycle, version: extension?.version, ...deps });
+    try {
+      perf?.mark?.("plexus:ready");
+      perf?.measure?.("plexus:onload", "plexus:onload-start", "plexus:ready");
+    } catch {
+    }
     console.info(`[plexus-diagram] Loaded v${extension?.version || "development"}`);
   } catch (error) {
     if (activeLifecycle === lifecycle) activeLifecycle = null;

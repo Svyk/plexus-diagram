@@ -57,7 +57,6 @@ function putTip(el, text) {
   if (!tip) {
     tip = doc.createElementNS?.("http://www.w3.org/2000/svg", "title") || doc.createElement("title");
     tip.setAttribute?.("class", "pxd-strength__tip");
-    if (tip.classList) tip.className = "pxd-strength__tip";
     el.append?.(tip);
   }
   tip.textContent = text;

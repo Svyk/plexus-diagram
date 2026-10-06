@@ -857,6 +857,7 @@ function buildBoardView(onFail, {
   let strengthScores = null;
   let dustAges = null;
   let strengthGen = 0;
+  let strengthStale = false;
   let dustGen = 0;
   let openStore = null;
   let timelineRows = null;
@@ -1662,6 +1663,14 @@ function buildBoardView(onFail, {
     if (disposed) return;
     if (strengthOn && strengthScores) {
       try { applyStrength(edgeList(), strengthScores); } catch { /* paint */ }
+      if (!strengthStale) {
+        for (const uid of board()?.edges?.keys?.() || []) {
+          if (strengthScores.has(uid)) continue;
+          strengthStale = true;
+          setTimeout(() => { strengthStale = false; if (!disposed) void refreshStrength(); }, 300);
+          break;
+        }
+      }
     }
     if (dustPeriod && dustPeriod !== "off" && dustAges) {
       try { applyDust(dustShells(), dustAges, dustPeriod); } catch { /* paint */ }
@@ -1683,7 +1692,7 @@ function buildBoardView(onFail, {
   const shareCount = (a, b) => {
     const left = new Set(boardsFor(a));
     let n = 0;
-    for (const id of boardsFor(b)) if (left.has(id)) n += 1;
+    for (const id of boardsFor(b)) if (id !== boardUid && left.has(id)) n += 1;
     return n;
   };
   const endTarget = (itemUid) => timelineTargetUid(board()?.items.get(itemUid)) || itemUid || "";
@@ -1734,13 +1743,16 @@ function buildBoardView(onFail, {
       return;
     }
     const [refRows, editRows] = await Promise.all([
-      askRows("[:find ?u (count ?r) :in $ [?u ...] :where [?e :block/uid ?u] [?r :block/refs ?e]]", ids),
+      askRows("[:find ?u ?ru :in $ [?u ...] :where [?e :block/uid ?u] [?r :block/refs ?e] [?r :block/uid ?ru]]", ids),
       askRows("[:find ?u ?t :in $ [?u ...] :where [?e :block/uid ?u] [?e :edit/time ?t]]", ids),
     ]);
     if (disposed || gen !== strengthGen || !strengthOn) return;
     const refCount = new Map();
+    const edgeUids = new Set(edges.map((e) => e.uid));
     for (const row of refRows) {
-      if (Array.isArray(row) && row.length >= 2) refCount.set(String(row[0]), Number(row[1]) || 0);
+      if (!Array.isArray(row) || row.length < 2 || edgeUids.has(String(row[1]))) continue;
+      const key = String(row[0]);
+      refCount.set(key, (refCount.get(key) || 0) + 1);
     }
     const editAt = new Map();
     for (const row of editRows) {

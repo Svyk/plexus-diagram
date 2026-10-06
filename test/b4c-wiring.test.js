@@ -246,7 +246,7 @@ test("lens toggles write nothing and dust paints an age", async () => {
     assert.equal(f.session.mutations.length, before);
     const dusty = [...f.view.root.querySelectorAll(".pxd-item[data-uid]")].some((el) => el.getAttribute("data-dust-age") === "1 year");
     assert.equal(dusty, true);
-    assert.ok(f.bag.queries.some((row) => row.query.includes(":block/refs") && row.query.includes("count")));
+    assert.ok(f.bag.queries.some((row) => row.query.includes(":block/refs") && row.query.includes("?ru")));
     assert.equal(timelineQueries(f.bag).length, 0);
   } finally {
     f.view.dispose();

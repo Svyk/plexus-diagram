@@ -385,6 +385,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
   const pdfUrls = new Map();
   const boardCovers = new Map();
   const watchedBoards = new Map();
+  const watchedBlocks = new Map();
   const eidByUid = new Map();
   const eidByTitle = new Map();
   const statsCache = new Map();
@@ -783,17 +784,40 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       return false;
     },
 
-    // Highlight blocks live on the PDF page. cb receives the pull.
+    // One shared pull watch per source uid, released with the last caller. coversBlock does not
+    // gate it: a board watch does not see an edit inside a joined ref, so the cached string stays old.
+    // cb receives the pull. A new string is written onto the cached block so the next read is current.
     watchBlock(uid, cb) {
-      const entity = watchEntity(uid);
-      const wrapped = (before, after) => cb(after);
-      data.addPullWatch(BLOCK_WATCH_PATTERN, entity, wrapped);
-      stats.watches++;
-      let active = true;
+      const id = String(uid ?? "");
+      if (!id || typeof cb !== "function") return () => {};
+      let slot = watchedBlocks.get(id);
+      if (!slot) {
+        const entity = watchEntity(id);
+        const subs = [];
+        const wrapped = (_before, after) => {
+          const next = after?.[":block/string"];
+          if (typeof next === "string") {
+            const node = cache.blockOf(id);
+            if (node && typeof node === "object") node[":block/string"] = next;
+            burstMemo.delete(id);
+          }
+          for (const token of subs.slice()) if (token.on) token.cb(after);
+        };
+        slot = { entity, wrapped, subs };
+        data.addPullWatch(BLOCK_WATCH_PATTERN, entity, wrapped);
+        watchedBlocks.set(id, slot);
+        stats.watches++;
+      }
+      const token = { cb, on: true };
+      slot.subs.push(token);
       return () => {
-        if (!active) return;
-        active = false;
-        data.removePullWatch(BLOCK_WATCH_PATTERN, entity, wrapped);
+        if (!token.on) return;
+        token.on = false;
+        const i = slot.subs.indexOf(token);
+        if (i >= 0) slot.subs.splice(i, 1);
+        if (slot.subs.length > 0 || watchedBlocks.get(id) !== slot) return;
+        watchedBlocks.delete(id);
+        data.removePullWatch(BLOCK_WATCH_PATTERN, slot.entity, slot.wrapped);
         stats.watches--;
       };
     },
@@ -946,13 +970,16 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     },
 
     // Strings for many uids in one query: element-id parsing tries every "-" split of an id.
-    blockStrings(uids) {
+    // fresh: skip the session cache and the burst memo, and write what Roam returns back into the cache.
+    // A ref target is joined into the board pull, but the board watch does not fire when it changes.
+    blockStrings(uids, { fresh = false } = {}) {
       const out = new Map();
       const now = Date.now();
       const missing = [];
       for (const uid of uids || []) {
         const id = String(uid ?? "");
         if (!id || out.has(id)) continue;
+        if (fresh) { missing.push(id); out.set(id, null); continue; }
         const live = liveCached(id);
         if (live && typeof live[":block/string"] === "string") { out.set(id, live[":block/string"]); continue; }
         const hit = burstMemo.get(id);
@@ -971,6 +998,10 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         const value = found.has(id) ? found.get(id) : null;
         out.set(id, value);
         burstMemo.set(id, { value, at: now });
+        if (fresh && typeof value === "string") {
+          const node = cache.blockOf(id);
+          if (node && typeof node === "object") node[":block/string"] = value;
+        }
       }
       if (burstMemo.size > 2000) burstMemo.clear();
       return out;
@@ -1186,7 +1217,14 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
 
     renderString(el, string) { stats.renders++; return api.ui.components.renderString({ el, string }); },
     renderBlock(el, uid, { open = true } = {}) { stats.renders++; return api.ui.components.renderBlock({ uid, el, "open?": open }); },
-    renderPage(el, uid) { stats.renders++; return api.ui.components.renderPage({ uid, el }); },
+    renderPage(el, uid, opts) {
+      stats.renders++;
+      const props = { uid, el };
+      if (opts && typeof opts === "object") {
+        for (const key of Object.keys(opts)) if (key !== "uid" && key !== "el") props[key] = opts[key];
+      }
+      return api.ui.components.renderPage(props);
+    },
     unmount(el) { return api.ui.components.unmountNode({ el }); },
 
     q(query, ...inputs) {

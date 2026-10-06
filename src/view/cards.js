@@ -37,6 +37,7 @@ const OUTLINE_CAP = 300;
 const OUTLINE_FETCH = 2000;
 const PAGE_WATCH_MAX = 8;
 const PAGE_REFRESH_MS = 250;
+const BLOCK_REFRESH_MS = 250;
 const GROW_CAP = 900;
 const HEADER_H = 32;
 const META_H = 28;
@@ -840,6 +841,9 @@ export function createItemRenderer({
     rec.refOff = null;
     try { rec.pageUnwatch?.(); } catch { /* already off */ }
     rec.pageUnwatch = null;
+    try { rec.blockUnwatch?.(); } catch { /* already off */ }
+    rec.blockUnwatch = null;
+    rec.blockStringNode = null;
     rec.pageRoots = [];
     rec.pageHolder = null;
     rec.rowState = null;
@@ -1270,6 +1274,10 @@ export function createItemRenderer({
     if (pdfReaderBox(rec.uid)) {
       rec.el.style.width = `${PDF_READER_W}px`;
       rec.el.style.height = `${PDF_READER_H}px`;
+    }
+    // Page edit pins height !important so the shared editing rule cannot grow the card. A resize rewrites that pin.
+    if (editing?.uid === rec.uid && rec.el.classList?.contains("pxd-item--page") && rec.el.style.height) {
+      rec.el.style.setProperty("height", rec.el.style.height, "important");
     }
     if (rec.shapeName) syncShape(rec, { type: "text", shape: rec.shapeName, w: rect.w, h: rect.h }, rect);
   };
@@ -2553,6 +2561,100 @@ export function createItemRenderer({
     foot.textContent = typeof hl.footer === "string" ? hl.footer : "";
   };
 
+  // A mounted ((uid)) card follows edits to its source. The board pull does not, and coversBlock
+  // must not skip this watch. Offscreen cards never get here: content mounts only while wanted.
+  const paintBlockString = (rec, refString, refUid) => {
+    const body = rec.body;
+    const prev = rec.blockStringNode;
+    if (prev) {
+      try { prev.__pxdEmbedMo?.disconnect(); } catch { /* already gone */ }
+      try {
+        const live = prev.querySelector?.(".pxd-rs__live");
+        if (live) host?.unmount?.(live);
+      } catch { /* not a roam root */ }
+      const i = rec.roots?.indexOf(prev) ?? -1;
+      if (i >= 0) rec.roots.splice(i, 1);
+    }
+    if (!body || typeof refString !== "string" || !refString.trim()) {
+      prev?.remove?.();
+      rec.blockStringNode = null;
+      return;
+    }
+    try { body.querySelector?.(".pxd-item__placeholder")?.remove?.(); } catch { /* stub */ }
+    const node = renderRoot(body, refString, "pxd-rs pxd-item__string", refUid);
+    if (prev?.parentNode === body && typeof body.insertBefore === "function") body.insertBefore(node, prev);
+    prev?.remove?.();
+    rec.blockStringNode = node;
+    if (!rec.roots) rec.roots = [];
+    rec.roots.push(node);
+  };
+  const refreshBlockRef = (rec, item, after) => {
+    if (disposed || editing?.uid === rec.uid || rec.body?.isConnected === false) return;
+    const live = lastBoard?.items.get(rec.uid);
+    if (!live || live.kind !== "block" || live.target?.uid !== item.target?.uid) return;
+    const watched = after?.[":block/string"];
+    const refString = typeof watched === "string" ? watched : null;
+    if (refString == null || refString === rec.refString) return;
+    rec.refString = refString;
+    rec.refBoard = classifyString(refString).kind === "board";
+    rec.refTitle = rec.refBoard ? (parseBoardTitle(refString) || "Untitled board") : firstLine(refString).slice(0, REF_TITLE_MAX);
+    if (!rec.renaming && rec.header) rec.header.textContent = String(rec.refTitle || live.title || "").slice(0, HEADER_TEXT_MAX);
+    if (rec.el) rec.el.setAttribute("aria-label", `${rec.refTitle || live.title || "Untitled"}, ${live.type}`);
+    if (rec.refBoard) return;
+    paintBlockString(rec, refString, live.target.uid);
+  };
+  // A card that mounts after its source changed off screen still holds the cached string.
+  // Cards mounting together are checked against Roam in one query, after the paint.
+  const freshPending = new Map(); // source uid -> [{ rec, item }]
+  let freshTimer = null;
+  const flushFresh = () => {
+    freshTimer = null;
+    if (disposed || !freshPending.size || typeof host?.blockStrings !== "function") { freshPending.clear(); return; }
+    const batch = [...freshPending.entries()];
+    freshPending.clear();
+    let strings = null;
+    try { strings = host.blockStrings(batch.map(([uid]) => uid), { fresh: true }); } catch { return; }
+    for (const [uid, holders] of batch) {
+      const value = strings?.get?.(uid);
+      if (typeof value !== "string") continue;
+      for (const { rec, item } of holders) refreshBlockRef(rec, item, { ":block/string": value });
+    }
+  };
+  const checkBlockRefFresh = (rec, item) => {
+    const ref = item.target?.uid;
+    if (!ref) return;
+    const list = freshPending.get(ref) || [];
+    list.push({ rec, item });
+    freshPending.set(ref, list);
+    if (!freshTimer) freshTimer = later(flushFresh, BLOCK_REFRESH_MS);
+  };
+  const armBlockWatch = (rec, item) => {
+    if (disposed || rec.blockUnwatch || typeof host?.watchBlock !== "function") return;
+    const ref = item.target?.uid;
+    if (!ref) return;
+    checkBlockRefFresh(rec, item);
+    let pending = null;
+    let latest = null;
+    let off = null;
+    try {
+      off = host.watchBlock(ref, (after) => {
+        latest = after;
+        if (pending) return;
+        pending = later(() => {
+          pending = null;
+          refreshBlockRef(rec, item, latest);
+        }, BLOCK_REFRESH_MS);
+      });
+    } catch { return; }
+    if (typeof off !== "function") return;
+    rec.blockUnwatch = () => {
+      rec.blockUnwatch = null;
+      try { off(); } catch { /* already off */ }
+      pending?.();
+      pending = null;
+    };
+  };
+
   const mountContentBody = (rec, item) => {
     startRows();
     noteRender(item.uid);
@@ -2651,7 +2753,12 @@ export function createItemRenderer({
       } else if (typeof refString === "string" && isQueryString(refString) && host?.renderBlock) {
         budget.roots.push(mountQuery(body, ref));
       } else {
-        if (typeof refString === "string" && refString.trim()) budget.roots.push(renderRoot(body, refString, "pxd-rs pxd-item__string", ref));
+        rec.blockStringNode = null;
+        if (typeof refString === "string" && refString.trim()) {
+          const node = renderRoot(body, refString, "pxd-rs pxd-item__string", ref);
+          rec.blockStringNode = node;
+          budget.roots.push(node);
+        }
         const tree = host?.pullTree?.(ref, item.kids ? CONTENT_DEPTH : 1, 200);
         const apply = (blocks, sync = false) => {
           if (disposed || !body.isConnected || (!sync && rec.contentKey !== contentKeyFor(item))) return;
@@ -2669,6 +2776,7 @@ export function createItemRenderer({
         };
         if (tree && typeof tree.then === "function") tree.then((t) => apply(t)).catch(() => {});
         else apply(tree, true);
+        armBlockWatch(rec, item);
       }
     } else if (isQueryString(item.string) && host?.renderBlock) {
       budget.roots.push(mountQuery(body, item.uid));
@@ -3534,6 +3642,8 @@ export function createItemRenderer({
   const releaseEditLock = (rec) => {
     if (!rec?.el) return;
     rec.el.style.minHeight = "";
+    // Drop the page-edit !important pin. The value stays; only the priority goes back to the normal inline height.
+    if (rec.el.classList?.contains("pxd-item--page") && rec.el.style?.height) rec.el.style.height = rec.el.style.height;
     if (rec.body?.style) rec.body.style.minHeight = "";
     rec.el.classList.remove("pxd-item--xfade");
   };
@@ -3545,6 +3655,28 @@ export function createItemRenderer({
       const need = Number(ta.scrollHeight) || 0;
       if (need > (Number(ta.clientHeight) || 0) + 1 && !ta.style?.height) ta.style.height = `${need}px`;
     }
+  };
+
+  const PAGE_FOCUS_MS = 1000;
+  const pageInput = (editor, row) => {
+    if (row) {
+      for (const node of editor.querySelectorAll?.(".rm-block__input") || []) {
+        if (String(node.id || node.getAttribute?.("id") || "").endsWith(`-${row}`)) return node;
+      }
+      return null;
+    }
+    return editor.querySelector?.(".rm-block__input") || editor.querySelector?.("textarea") || null;
+  };
+  // Page cards focus the clicked row on the first frame its input exists. They do not wait for hydrate-quiet.
+  const waitPageInput = async (editor, row, uid) => {
+    const start = now();
+    let input = pageInput(editor, row);
+    while (!input && now() - start < PAGE_FOCUS_MS) {
+      await new Promise((resolve) => { frameLater(resolve); });
+      if (disposed || editing?.uid !== uid) return null;
+      input = pageInput(editor, row);
+    }
+    return input || editor.querySelector?.(".rm-block__input") || editor.querySelector?.("textarea") || null;
   };
 
   const enterEdit = async (uid, { row = "" } = {}) => {
@@ -3573,8 +3705,9 @@ export function createItemRenderer({
       unmountRoots(rec);
     }
     // Measure before any mount. A 0 box (stub, detached) falls back to the stored card height.
+    const pageEdit = item.kind === "page";
     const contentH = boxHeight(rec.body);
-    const lockH = boxHeight(rec.el) || contentH || Number(rec.rect?.h) || 0;
+    const lockH = pageEdit ? 0 : (boxHeight(rec.el) || contentH || Number(rec.rect?.h) || 0);
     const reduced = prefersReducedMotion();
     // PG-3: where the clicked row sits in the card, so the editor can put the same block back under the pointer.
     const clickedRow = row ? rec.body.querySelector?.(`[data-pxd-row="${row}"]`) : null;
@@ -3588,15 +3721,19 @@ export function createItemRenderer({
     rec.ghost = ghost;
     rec.contentKey = null;
     mounted.delete(uid);
-    const editor = el("div", "pxd-item__editor", rec.body);
+    const editor = el("div", pageEdit ? "pxd-item__editor pxd-page-edit" : "pxd-item__editor", rec.body);
     // Rule 19.1: stop pointer/wheel at the overlay boundary BEFORE the synthetic focus click.
     for (const type of EDITOR_STOPPED) editor.addEventListener(type, stopEvent);
     editing = { uid, rec, editor, targetUid, item, ready: false, fadeCancel: null, releaseCancel: null };
+    if (pageEdit) {
+      const h = rec.el.style?.height || (Number(rec.rect?.h) > 0 ? `${Math.round(Number(rec.rect.h))}px` : "");
+      if (h && rec.el.style?.setProperty) rec.el.style.setProperty("height", h, "important");
+    }
     rec.el.classList.add("pxd-item--editing");
     renderBadges(rec);
     syncKidsBadge(rec, item);
     if (lockH > 0) rec.el.style.minHeight = `${lockH}px`;
-    if (reduced) dropStaticLayer(rec);
+    if (pageEdit || reduced) dropStaticLayer(rec);
     else rec.el.classList.add("pxd-item--xfade");
     lastOutsideDown = -Infinity;
     attachFocusGuard();
@@ -3604,9 +3741,9 @@ export function createItemRenderer({
     onEditChange?.(uid);
     let ok = true;
     try {
-      if (item.kind === "page") {
+      if (pageEdit) {
         const pageUid = host.pageUid?.(item.title);
-        if (pageUid && host.renderPage) host.renderPage(editor, pageUid);
+        if (pageUid && host.renderPage) host.renderPage(editor, pageUid, { "hide-mentions?": true });
         else host.renderBlock(editor, item.uid);
       } else {
         host.renderBlock(editor, targetUid);
@@ -3615,7 +3752,8 @@ export function createItemRenderer({
     if (!ok) { await exitEdit({ silent: true }); return false; }
     // EK-1: the measured box is the card's floor for the whole edit. The editor is absolutely placed under a
     // zoom counter-scale, so it never holds the card open; only exitEdit releases the lock.
-    if (!reduced) {
+    // Page cards skip the cross-fade. The outline and the editor would not match, and the fade is the delay.
+    if (!pageEdit && !reduced) {
       editing.fadeCancel = later(() => {
         if (editing?.uid !== uid) return;
         editing.fadeCancel = null;
@@ -3623,19 +3761,28 @@ export function createItemRenderer({
         dropStaticLayer(rec);
       }, EDIT_FADE_MS);
     }
-    await waitHydrateQuiet(editor, HYDRATE_CAP_MS);
-    if (disposed || editing?.uid !== uid) return false;
     let input = null;
-    if (rowOffset !== null) {
-      for (const node of editor.querySelectorAll?.(".rm-block__input") || []) {
-        if (String(node.id || node.getAttribute?.("id") || "").endsWith(`-${row}`)) { input = node; break; }
-      }
-      if (input) {
+    if (pageEdit) {
+      input = await waitPageInput(editor, row, uid);
+      if (disposed || editing?.uid !== uid) return false;
+      if (input && rowOffset !== null) {
         const delta = (Number(input.getBoundingClientRect?.().top) || 0) - (Number(rec.body.getBoundingClientRect?.().top) || 0) - rowOffset;
-        if (delta && rec.body) rec.body.scrollTop = Math.max(0, (Number(rec.body.scrollTop) || 0) + delta / (zoomCache || 1));
+        if (delta) editor.scrollTop = Math.max(0, (Number(editor.scrollTop) || 0) + delta / (zoomCache || 1));
       }
+    } else {
+      await waitHydrateQuiet(editor, HYDRATE_CAP_MS);
+      if (disposed || editing?.uid !== uid) return false;
+      if (rowOffset !== null) {
+        for (const node of editor.querySelectorAll?.(".rm-block__input") || []) {
+          if (String(node.id || node.getAttribute?.("id") || "").endsWith(`-${row}`)) { input = node; break; }
+        }
+        if (input) {
+          const delta = (Number(input.getBoundingClientRect?.().top) || 0) - (Number(rec.body.getBoundingClientRect?.().top) || 0) - rowOffset;
+          if (delta && rec.body) rec.body.scrollTop = Math.max(0, (Number(rec.body.scrollTop) || 0) + delta / (zoomCache || 1));
+        }
+      }
+      if (!input) input = editor.querySelector?.(".rm-block__input") || editor.querySelector?.("textarea");
     }
-    if (!input) input = editor.querySelector?.(".rm-block__input") || editor.querySelector?.("textarea");
     applyEditorCounterScale(editor, zoomCache);
     if (input) focusRoamInput(input);
     fitEditorText(editor);
@@ -3912,6 +4059,8 @@ export function createItemRenderer({
   };
   const dispose = () => {
     disposed = true;
+    if (freshTimer) { try { freshTimer(); } catch { /* already ran */ } freshTimer = null; }
+    freshPending.clear();
     try { pdfLiveOff?.(); } catch { /* already off */ }
     pdfLiveOff = null;
     pdfLiveUid = null;

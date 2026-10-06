@@ -1,0 +1,106 @@
+/* PGE-1. A page card keeps its box while Roam's editor is open.
+   extension.css sets height:auto !important on every editing card. enterEdit pins the page card's
+   own height with an inline !important so this file does not have to fight that rule.
+   The editor scrolls inside the body. The header keeps the one title. Roam's title and mentions stay hidden. */
+
+.pxd-root .pxd-item.pxd-item--page.pxd-item--editing {
+  overflow: hidden;
+  max-height: none;
+}
+
+.pxd-root .pxd-item.pxd-item--page.pxd-item--editing > .pxd-item__header {
+  position: static;
+  top: auto;
+  right: auto;
+  left: auto;
+  height: auto;
+  min-height: 32px;
+  padding: 6px 12px;
+  font-size: 13px;
+  font-weight: 600;
+  line-height: normal;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pxd-root .pxd-item.pxd-item--page.pxd-item--editing > .pxd-item__body {
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.pxd-root .pxd-item.pxd-item--page.pxd-item--editing > .pxd-item__body > .pxd-item__editor.pxd-page-edit {
+  flex: 1 1 auto;
+  min-height: 0;
+  max-height: 100%;
+  overflow: auto;
+  overscroll-behavior: contain;
+  font-size: inherit;
+  line-height: 1.4;
+}
+
+.pxd-root .pxd-item--page .pxd-page-edit :is(.rm-title-display, .rm-title-display-container, h1.rm-title-display) {
+  display: none;
+}
+
+.pxd-root .pxd-item--page .pxd-page-edit :is(.rm-reference-main, .rm-reference-container, .rm-mentions, .rm-unlinked-references) {
+  display: none;
+}
+
+.pxd-root .pxd-item--page .pxd-page-edit .roam-block-container {
+  margin: 2px 0;
+}
+
+.pxd-root .pxd-item--page .pxd-page-edit .rm-block-children .rm-block-children {
+  margin-left: 12px;
+  padding-left: 6px;
+  border-left: 1px solid var(--pxd-border);
+}
+
+.pxd-root .pxd-item.pxd-item--page .pxd-page-edit .rm-api-render--block > .rm-block > .rm-block-main > .controls,
+.pxd-root .pxd-item--page .pxd-page-edit .rm-block-main > .controls {
+  display: flex;
+  flex: 0 0 20px;
+  width: 20px;
+  min-width: 20px;
+  align-items: flex-start;
+  justify-content: center;
+  margin: 0;
+  padding: 0;
+}
+
+.pxd-root .pxd-item--page .pxd-page-edit .rm-bullet {
+  width: 20px;
+  margin: 0;
+  justify-content: center;
+}
+
+/* Roam sizes the inner dot elsewhere; without !important it spilled 12px wide onto the text. */
+.pxd-root .pxd-item--page .pxd-page-edit .rm-bullet__inner {
+  width: 6px !important;
+  height: 6px !important;
+  margin: 0 !important;
+}
+
+.pxd-root .pxd-item--page .pxd-page-edit :is(textarea.rm-block-input, textarea.rm-block__input, .rm-block__input, .rm-block__input--view, .rm-block-text) {
+  margin: 0 !important;
+  padding: 0 0 0 6px !important;
+  font-size: inherit !important;
+  font-family: inherit;
+  line-height: 1.4 !important;
+}
+
+.pxd-root .pxd-item--page .pxd-page-edit :is(.rm-page-ref, .rm-page-ref__brackets, .rm-block-ref) {
+  font-size: inherit;
+  font-family: inherit;
+  line-height: inherit;
+  letter-spacing: normal;
+}
+
+/* Roam pulls the page's top level 27px left to line bullets up with its own title.
+   The card has no Roam title, so that pull clipped the first letters of every row. */
+.pxd-root .pxd-item--page .pxd-page-edit .rm-block-children.rm-level-0 {
+  margin-left: 0;
+}

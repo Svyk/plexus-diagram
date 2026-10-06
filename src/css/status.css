@@ -116,7 +116,7 @@
 
 .pxd-root .pxd-task-check__status:hover,
 .pxd-root .pxd-task-check__status:focus-visible {
-  outline: 2px solid var(--pxd-focus, #0d9488);
+  outline: 2px solid var(--pxd-focus, #0d9488) !important;
   outline-offset: 2px;
 }
 
@@ -223,7 +223,7 @@
 
 .pxd-root .pxd-status-chooser__row:focus,
 .pxd-root .pxd-status-chooser__row:focus-visible {
-  outline: 2px solid var(--pxd-focus, #0d9488);
+  outline: 2px solid var(--pxd-focus, #0d9488) !important;
   outline-offset: 2px;
 }
 

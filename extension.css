@@ -4531,6 +4531,51 @@ body.roam-body.dark .pxd-root .pxd-drawing-region,
   box-shadow: none;
 }
 
+/* POL-4. Focus is an outline. Dark mode does not fill. */
+
+.pxd-root {
+  --pxd-focus: #0d9488;
+}
+
+.bp3-dark,
+body.bt-theme-dark,
+.rm-dark-theme,
+body.roam-body.dark,
+.pxd-root--dark,
+.bp3-dark .pxd-root,
+body.bt-theme-dark .pxd-root,
+.rm-dark-theme .pxd-root,
+body.roam-body.dark .pxd-root {
+  --pxd-focus: #2dd4bf;
+}
+
+.pxd-root .pxd-region-layer:focus-visible,
+.pxd-region-layer:focus-visible,
+.pxd-region-crop:focus-visible,
+.pxd-region-view:focus-visible,
+.pxd-region-open:focus-visible,
+.pxd-region-sidebar:focus-visible,
+.pxd-halo :focus-visible,
+.pxd-why :focus-visible,
+.pxd-resurface button:focus-visible,
+.pxd-pdf-chip:focus-visible,
+.pxd-trail-strip__stop:focus-visible,
+.pxd-trail-strip__walk:focus-visible,
+.pxd-trail__stop:focus-visible,
+.pxd-chip--source:focus-visible,
+.pxd-view-dialog button:focus-visible,
+.pxd-view-dialog input:focus-visible,
+.pxd-sheet button:focus-visible,
+.pxd-status-chooser__row:focus-visible,
+.pxd-timeline button:focus-visible,
+.pxd-memory__range:focus-visible,
+.pxd-memory__play:focus-visible,
+.pxd-memory__tick:focus-visible {
+  /* !important: another Roam extension ships `:focus { outline: none !important }` for every element. */
+  outline: 2px solid var(--pxd-focus, #0d9488) !important;
+  outline-offset: 2px;
+}
+
 /* MEM-1. Halo popover. A border, and the same surface as other popovers. */
 
 .pxd-root.pxd-halo {
@@ -7246,7 +7291,7 @@ body.bt-theme-dark .pxd-chip.pxd-chip--source,
 
 .pxd-root .pxd-task-check__status:hover,
 .pxd-root .pxd-task-check__status:focus-visible {
-  outline: 2px solid var(--pxd-focus, #0d9488);
+  outline: 2px solid var(--pxd-focus, #0d9488) !important;
   outline-offset: 2px;
 }
 
@@ -7353,8 +7398,8 @@ body.bt-theme-dark .pxd-chip.pxd-chip--source,
 
 .pxd-root .pxd-status-chooser__row:focus,
 .pxd-root .pxd-status-chooser__row:focus-visible {
-  outline: 2px solid var(--pxd-accent);
-  outline-offset: 1px;
+  outline: 2px solid var(--pxd-focus, #0d9488) !important;
+  outline-offset: 2px;
 }
 
 .pxd-root .pxd-status-chooser__row--remove {
@@ -7983,10 +8028,14 @@ body.roam-body.dark .pxd-root .pxd-suggest__line {
   cursor: pointer;
 }
 
-.pxd-root .pxd-task-pop .pxd-task-pop__btn:hover,
+.pxd-root .pxd-task-pop .pxd-task-pop__btn:hover {
+  border-color: var(--pxd-accent);
+}
+
 .pxd-root .pxd-task-pop .pxd-task-pop__btn:focus-visible {
   border-color: var(--pxd-accent);
-  outline: none;
+  outline: 2px solid var(--pxd-focus, #0d9488) !important;
+  outline-offset: 2px;
 }
 
 .pxd-root .pxd-task-pop .pxd-task-pop__btn--clear {

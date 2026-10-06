@@ -1516,6 +1516,7 @@ function renderTrailStrip(doc, parent, stops, { onStop, onWalk } = {}) {
     btn.className = "pxd-trail-strip__stop";
     if (stop2?.uid) btn.dataset.uid = stop2.uid;
     btn.textContent = stop2?.title || "";
+    btn.setAttribute("aria-label", stop2?.title || "Trail stop");
     btn.addEventListener("click", (event) => {
       event.preventDefault?.();
       event.stopPropagation?.();
@@ -1527,12 +1528,35 @@ function renderTrailStrip(doc, parent, stops, { onStop, onWalk } = {}) {
   walk2.type = "button";
   walk2.className = "pxd-trail-strip__walk";
   walk2.textContent = "Walk";
+  walk2.setAttribute("aria-label", "Walk trail");
   walk2.addEventListener("click", (event) => {
     event.preventDefault?.();
     event.stopPropagation?.();
     onWalk?.();
   });
   parent.append(walk2);
+  parent.__pxdStrip = { list, onStop, onWalk };
+  if (!parent.__pxdStripKeys) {
+    parent.__pxdStripKeys = true;
+    parent.addEventListener("keydown", (event) => {
+      const now2 = parent.__pxdStrip || {};
+      if (event.key !== "Enter" && event.key !== " ") return;
+      const target = event.target;
+      if (target?.closest?.(".pxd-trail-strip__walk")) {
+        event.preventDefault?.();
+        event.stopPropagation?.();
+        now2.onWalk?.();
+        return;
+      }
+      const btn = target?.closest?.(".pxd-trail-strip__stop");
+      if (!btn) return;
+      const i = [...parent.querySelectorAll(".pxd-trail-strip__stop")].indexOf(btn);
+      if (i < 0) return;
+      event.preventDefault?.();
+      event.stopPropagation?.();
+      now2.onStop?.(now2.list?.[i]);
+    });
+  }
   return parent;
 }
 
@@ -4925,6 +4949,26 @@ var NATIVE_PATTERN = `[:block/props
  {:diagram/edges [{:diagram.edge/source [:db/id]} {:diagram.edge/target [:db/id]} :diagram.edge/data]}]`;
 var DIAGRAM_RE = "^\\{\\{(\\[\\[)?diagram";
 var DIAGRAM_STRING = /^\s*\{\{(?:\[\[)?diagram/i;
+var DIAGRAM_FIND = new RegExp(DIAGRAM_RE);
+var STATS_PULL = `[:db/id {:block/_refs [:db/id {:block/parents [:db/id :block/string]}]} {:block/_parents [:db/id {:block/refs [:db/id]}]} {:block/_page [:db/id {:block/refs [:db/id]}]}]`;
+function listOf(value) {
+  if (value == null) return [];
+  return Array.isArray(value) ? value : [value];
+}
+function refEid(node2) {
+  if (typeof node2 === "number") return node2;
+  if (node2 && typeof node2 === "object" && node2[":db/id"] != null) return node2[":db/id"];
+  return null;
+}
+function isDiagramBlock(node2) {
+  const text2 = node2?.[":block/string"];
+  return typeof text2 === "string" && DIAGRAM_FIND.test(text2);
+}
+function pullRows(many) {
+  if (Array.isArray(many)) return many;
+  if (many && typeof many === "object" && typeof many.length === "number") return Array.from(many);
+  return null;
+}
 var SHOW_DIRECT_QUERY = `[:find ?board ?page :in $ ?uid ?pat :where
  [?block :block/uid ?uid] [?block :block/parents ?diagram] [?diagram :block/uid ?board]
  [?diagram :block/string ?s] [(re-pattern ?pat) ?re] [(re-find ?re ?s)]
@@ -5249,21 +5293,28 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
   let lastWriteAt = -Infinity;
   let dropBurst = () => {
   };
-  const noteWrite = () => {
+  const closeChunk = (chunk) => {
+    if (!(chunk.n || chunk.created?.length)) return;
+    undoLog.push(chunk);
+    if (undoLog.length > UNDO_LOG_MAX) undoLog.shift();
+    const named = typeof chunk.label === "string" && chunk.label ? chunk.label : (chunk.kinds || []).join("+");
+    stats.lastAction = { label: named, writes: chunk.n || 0 };
+  };
+  const noteWrite = (kind) => {
     dropBurst();
     lastWriteAt = Date.now();
     redoLog.length = 0;
     if (openGroup) {
       if (openGroup.n >= MAX_GROUP_WRITES) {
-        undoLog.push(openGroup);
-        if (undoLog.length > UNDO_LOG_MAX) undoLog.shift();
-        openGroup = { n: 0 };
+        const done = openGroup;
+        openGroup = { n: 0, kinds: [], label: done.label || "" };
+        closeChunk(done);
       }
       openGroup.n++;
+      if (kind && !openGroup.kinds.includes(kind)) openGroup.kinds.push(kind);
       return;
     }
-    undoLog.push({ n: 1 });
-    if (undoLog.length > UNDO_LOG_MAX) undoLog.shift();
+    closeChunk({ n: 1, kinds: kind ? [kind] : [] });
   };
   const groupSpan = (entry) => (entry.n || 0) + (entry.created?.length || 0);
   const cache = createCardCache();
@@ -5277,6 +5328,7 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
   const eidByUid = /* @__PURE__ */ new Map();
   const eidByTitle = /* @__PURE__ */ new Map();
   const statsCache = /* @__PURE__ */ new Map();
+  const PRIME_CHUNK = 40;
   const STATS_TTL_MS = 12e4;
   const MISS = /* @__PURE__ */ Symbol("pull-miss");
   const rawPull = typeof data.pull === "function" ? data.pull.bind(data) : () => null;
@@ -5622,8 +5674,31 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
       if (!light) prime();
       else {
         const idle = globalThis.requestIdleCallback;
-        if (typeof idle === "function") idle(() => prime(), { timeout: 1500 });
-        else setTimeout(prime, 250);
+        const later = (fn) => typeof idle === "function" ? idle(() => fn(), { timeout: 1500 }) : setTimeout(fn, 250);
+        const titles = found.titles;
+        const targets = found.stats;
+        let ti = 0;
+        let statsDone = false;
+        const step = () => {
+          if (ti === 0 && !statsDone) dropStats(uid);
+          if (ti < titles.length) {
+            try {
+              fetchLinked(titles.slice(ti, ti + PRIME_CHUNK));
+            } catch {
+            }
+            ti += PRIME_CHUNK;
+          } else if (!statsDone) {
+            statsDone = true;
+            if (targets.length) {
+              try {
+                host.cardStats(targets, { boardUid: uid });
+              } catch {
+              }
+            }
+          }
+          if (ti < titles.length || !statsDone) later(step);
+        };
+        later(step);
       }
       return node2;
     },
@@ -5833,7 +5908,7 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
       if (existing) return existing;
       stats.writes++;
       await data.page.create({ page: { title: name } });
-      noteWrite();
+      noteWrite("create");
       return host.pageUid(name);
     },
     // Blocks that link to the page. The card's own [[title]] counts as one.
@@ -5860,7 +5935,7 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
       if (!uid) return false;
       stats.writes++;
       await data.page.update({ page: { uid, title: newTitle } });
-      noteWrite();
+      noteWrite("update");
       return true;
     },
     cardStringForUid(uid) {
@@ -6044,13 +6119,13 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
       if (open !== void 0) block.open = open;
       stats.writes++;
       await data.block.create({ location: { "parent-uid": parentUid, order }, block });
-      noteWrite();
+      noteWrite("create");
       return id;
     },
     async updateString(uid, string) {
       stats.writes++;
       await data.block.update({ block: { uid, string } });
-      noteWrite();
+      noteWrite("update");
       forgetUid(uid);
     },
     async updateProps(uid, plexus) {
@@ -6058,39 +6133,37 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
       const merged = mergePropsForWrite(host.pullProps(uid), plexus);
       stats.writes++;
       await data.block.update({ block: { uid, props: merged } });
-      noteWrite();
+      noteWrite("update");
     },
     async moveBlock(uid, parentUid, order = "last") {
       stats.writes++;
       await data.block.move({ location: { "parent-uid": parentUid, order }, block: { uid } });
-      noteWrite();
+      noteWrite("move");
       forgetUid(uid);
     },
     async deleteBlock(uid) {
       stats.writes++;
       await data.block.delete({ block: { uid } });
-      noteWrite();
+      noteWrite("delete");
       forgetUid(uid);
     },
     async setOpen(uid, open) {
       stats.writes++;
       await data.block.update({ block: { uid, open } });
-      noteWrite();
+      noteWrite("update");
       forgetUid(uid);
     },
     // Runs fn (a serialized write sequence) as one undo step. Groups do not nest; the write queue serializes callers.
-    async group(fn) {
+    // An optional label names the group in stats.lastAction. Otherwise the label is the write kinds in that group.
+    async group(fn, label) {
       if (openGroup) return fn();
-      openGroup = { n: 0 };
+      openGroup = { n: 0, kinds: [], label: typeof label === "string" ? label : "" };
       try {
         return await fn();
       } finally {
         const g = openGroup;
         openGroup = null;
-        if (g.n || g.created?.length) {
-          undoLog.push(g);
-          if (undoLog.length > UNDO_LOG_MAX) undoLog.shift();
-        }
+        closeChunk(g);
       }
     },
     // A block another extension created inside the open group (Roam Plexus "New drawing").
@@ -6288,7 +6361,8 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
       ) || [];
       return rows.slice(0, limit).map(([edgeUid, boardUid]) => [edgeUid, boardUid]);
     },
-    // Card footer stats for many targets in at most four datalog queries.
+    // Card footer stats. One reverse-attribute pull for the resolved targets.
+    // The four collection-bound queries run only when that pull throws or is unusable.
     cardStats(targets, { boardUid } = {}) {
       const keys = [];
       for (const t of targets || []) {
@@ -6325,6 +6399,8 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
       if (!byEid.size) return remember2(result);
       const eids = [...byEid.keys()];
       const boardEid = boardUid ? host.resolveEid({ uid: boardUid }) ?? -1 : -1;
+      const todoEid = host.resolveEid({ title: "TODO" });
+      const doneEid = host.resolveEid({ title: "DONE" });
       const tally = (rows, field) => {
         const seen = /* @__PURE__ */ new Map();
         for (const [t, x] of rows || []) {
@@ -6333,27 +6409,99 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
         }
         for (const [t, set] of seen) for (const key of byEid.get(t) ?? []) result.get(key)[field] = set.size;
       };
-      tally(host.q(
-        `[:find ?t ?b :in $ [?t ...] ?board :where [?b :block/refs ?t] (not [?b :block/parents ?board]) [(not= ?b ?board)]]`,
-        eids,
-        boardEid
-      ), "refs");
-      tally(host.q(
-        `[:find ?t ?d :in $ [?t ...] ?board ?pat :where [?b :block/refs ?t] [?b :block/parents ?d] [?d :block/string ?s]
+      const fromQueries = () => {
+        tally(host.q(
+          `[:find ?t ?b :in $ [?t ...] ?board :where [?b :block/refs ?t] (not [?b :block/parents ?board]) [(not= ?b ?board)]]`,
+          eids,
+          boardEid
+        ), "refs");
+        tally(host.q(
+          `[:find ?t ?d :in $ [?t ...] ?board ?pat :where [?b :block/refs ?t] [?b :block/parents ?d] [?d :block/string ?s]
  [(re-pattern ?pat) ?re] [(re-find ?re ?s)] [(not= ?d ?board)]]`,
-        eids,
-        boardEid,
-        DIAGRAM_RE
-      ), "boards");
-      const todoEid = host.resolveEid({ title: "TODO" });
-      const doneEid = host.resolveEid({ title: "DONE" });
-      const listFor = (statusEid) => host.q(
-        `[:find ?t ?x :in $ [?t ...] ?status :where [?x :block/refs ?status] (or [?x :block/parents ?t] [?x :block/page ?t])]`,
-        eids,
-        statusEid
-      );
-      if (todoEid != null) tally(listFor(todoEid), "open");
-      if (doneEid != null) tally(listFor(doneEid), "done");
+          eids,
+          boardEid,
+          DIAGRAM_RE
+        ), "boards");
+        const listFor = (statusEid) => host.q(
+          `[:find ?t ?x :in $ [?t ...] ?status :where [?x :block/refs ?status] (or [?x :block/parents ?t] [?x :block/page ?t])]`,
+          eids,
+          statusEid
+        );
+        if (todoEid != null) tally(listFor(todoEid), "open");
+        if (doneEid != null) tally(listFor(doneEid), "done");
+      };
+      const applyPulled = (node2, keyList) => {
+        const refs = /* @__PURE__ */ new Set();
+        const boards = /* @__PURE__ */ new Set();
+        const openIds = /* @__PURE__ */ new Set();
+        const doneIds = /* @__PURE__ */ new Set();
+        if (node2 && typeof node2 === "object") {
+          for (const block of listOf(node2[":block/_refs"])) {
+            const bid = refEid(block);
+            if (bid == null) continue;
+            const parents = listOf(block?.[":block/parents"]);
+            const underBoard = bid === boardEid || parents.some((parent) => refEid(parent) === boardEid);
+            if (!underBoard) refs.add(bid);
+            for (const parent of parents) {
+              const pid = refEid(parent);
+              if (pid == null || pid === boardEid || !isDiagramBlock(parent)) continue;
+              boards.add(pid);
+            }
+          }
+          const seeStatus = (block) => {
+            const xid = refEid(block);
+            if (xid == null) return;
+            let hasTodo = false;
+            let hasDone = false;
+            for (const ref of listOf(block?.[":block/refs"])) {
+              const id = refEid(ref);
+              if (id == null) continue;
+              if (todoEid != null && id === todoEid) hasTodo = true;
+              if (doneEid != null && id === doneEid) hasDone = true;
+            }
+            if (hasTodo) openIds.add(xid);
+            if (hasDone) doneIds.add(xid);
+          };
+          for (const block of listOf(node2[":block/_parents"])) seeStatus(block);
+          for (const block of listOf(node2[":block/_page"])) seeStatus(block);
+        }
+        for (const key of keyList) {
+          const stat = result.get(key);
+          stat.refs = refs.size;
+          stat.boards = boards.size;
+          stat.open = openIds.size;
+          stat.done = doneIds.size;
+        }
+      };
+      const fromPull = () => {
+        let nodes = null;
+        if (typeof data.pull_many === "function") {
+          try {
+            nodes = pullRows(data.pull_many(STATS_PULL, eids));
+          } catch {
+            return false;
+          }
+          if (!nodes) return false;
+        } else if (typeof data.pull === "function") {
+          nodes = [];
+          try {
+            for (const eid of eids) {
+              const one = data.pull(STATS_PULL, eid);
+              nodes.push(one && typeof one === "object" ? one : null);
+            }
+          } catch {
+            return false;
+          }
+        } else return false;
+        const byId = /* @__PURE__ */ new Map();
+        nodes.forEach((node2, i) => {
+          const id = refEid(node2);
+          byId.set(id != null ? id : eids[i], node2);
+        });
+        for (const [eid, keyList] of byEid) applyPulled(byId.get(eid), keyList);
+        return true;
+      };
+      if (!fromPull()) fromQueries();
       return remember2(result);
     },
     async uploadFile(file) {
@@ -7432,10 +7580,12 @@ function addPublicCard(opts = {}, createFn) {
   if (typeof make2 !== "function") return op;
   return make2(op);
 }
-function capBulk(list, emit2) {
-  if (list.length <= BULK_CARD_CAP) return list;
-  emit2("toast", { message: `Added ${BULK_CARD_CAP} of ${list.length} (Roam undo holds 50 changes)` });
-  return list.slice(0, BULK_CARD_CAP);
+function capBulk(list, emit2, limit = BULK_CARD_CAP) {
+  const raw = Number(limit);
+  const cap4 = Math.min(BULK_CARD_CAP, Math.max(0, Number.isFinite(raw) ? Math.floor(raw) : BULK_CARD_CAP));
+  if (list.length <= cap4) return list;
+  emit2("toast", { message: `Added ${cap4} of ${list.length} (Roam undo holds 50 changes)` });
+  return list.slice(0, cap4);
 }
 function extendSession(fn) {
   if (typeof fn !== "function") return () => {
@@ -9162,7 +9312,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
         const rows = Array.isArray(spec.rows) ? spec.rows : [];
         const cards = item.members.map((member) => board2.items.get(member)).filter(Boolean);
         if (mode === "attribute") {
-          const plan2 = calendarLayout(cards).slice(0, 45);
+          const plan2 = capBulk(calendarLayout(cards), emit2);
           for (const spot of plan2) t.props(spot.uid, itemPlexus(spot.uid, { x: spot.x, y: spot.y }));
           return plan2.length;
         }
@@ -9175,7 +9325,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
           spots.push({ uid: card2.uid, x: 16 + (day - 1) * 28, y: 48, t: stamp2 });
         }
         spots.sort((a, b) => a.t - b.t || String(a.uid).localeCompare(String(b.uid)));
-        const plan = spots.slice(0, 45);
+        const plan = capBulk(spots, emit2);
         for (const spot of plan) t.props(spot.uid, itemPlexus(spot.uid, { x: spot.x, y: spot.y }));
         return plan.length;
       });
@@ -9360,11 +9510,13 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     },
     createTrail(name, cardUids) {
       return txn((t) => {
+        const had = Boolean(board2.trailsUid) || kidsOf(raw).some((k) => readPlexus(k[PROPS])?.type === "trails");
         const parent = ensureTrails(t);
         const id = t.create({ parent, order: "last", string: trailString(name), plexus: { type: "trail" }, open: true });
         const ids = [];
         for (const card2 of cardUids || []) if (card2 && board2.items.has(card2)) ids.push(card2);
-        for (const card2 of capBulk(ids, emit2)) t.create({ parent: id, order: "last", string: `((${card2}))`, open: true });
+        const room = BULK_CARD_CAP - 1 - (had ? 0 : 1);
+        for (const card2 of capBulk(ids, emit2, room)) t.create({ parent: id, order: "last", string: `((${card2}))`, open: true });
         return id;
       });
     },
@@ -9408,32 +9560,51 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     moveStop(stopUid, finalIndex) {
       return txn((t) => {
         let parent = null;
+        let from = -1;
         for (const trail of board2.trails || []) {
-          if ((trail.stops || []).some((s) => s.uid === stopUid)) {
+          const at = (trail.stops || []).findIndex((s) => s.uid === stopUid);
+          if (at >= 0) {
             parent = trail.uid;
+            from = at;
             break;
           }
         }
         if (!parent) return;
         const index = Math.trunc(Number(finalIndex));
-        t.move(stopUid, parent, Number.isFinite(index) ? Math.max(0, index) : "last");
-      });
-    },
-    setLandmark(id, { on, glyph, size } = {}) {
-      return txn((t) => {
-        const item = board2.items.get(id);
-        if (!item) return;
-        const nextOn = on === void 0 ? item.landmark === true : Boolean(on);
-        if (!nextOn) {
-          t.props(id, itemPlexus(id, { landmark: false, glyph: "", size: void 0 }));
+        if (!Number.isFinite(index)) {
+          t.move(stopUid, parent, "last");
           return;
         }
-        const patch = { landmark: true };
-        if (glyph !== void 0) patch.glyph = glyph;
-        else if (item.glyph) patch.glyph = item.glyph;
-        if (size !== void 0) patch.size = size;
-        else if (item.size === "S" || item.size === "L") patch.size = item.size;
-        t.props(id, itemPlexus(id, patch));
+        const final = Math.max(0, index);
+        if (final === from) return;
+        t.move(stopUid, parent, final > from ? final + 1 : final);
+      });
+    },
+    // One id, or a list. A list is one gesture and stops at 45.
+    setLandmark(id, { on, glyph, size } = {}) {
+      const list = Array.isArray(id) ? id : [id];
+      return txn((t) => {
+        const ids = [];
+        const seen = /* @__PURE__ */ new Set();
+        for (const one of list) {
+          if (!one || seen.has(one) || !board2.items.get(one)) continue;
+          seen.add(one);
+          ids.push(one);
+        }
+        for (const one of capBulk(ids, emit2)) {
+          const item = board2.items.get(one);
+          const nextOn = on === void 0 ? item.landmark === true : Boolean(on);
+          if (!nextOn) {
+            t.props(one, itemPlexus(one, { landmark: false, glyph: "", size: void 0 }));
+            continue;
+          }
+          const patch = { landmark: true };
+          if (glyph !== void 0) patch.glyph = glyph;
+          else if (item.glyph) patch.glyph = item.glyph;
+          if (size !== void 0) patch.size = size;
+          else if (item.size === "S" || item.size === "L") patch.size = item.size;
+          t.props(one, itemPlexus(one, patch));
+        }
       });
     },
     updateEdge(id, patch = {}) {
@@ -12862,6 +13033,17 @@ function createRelChips({ doc = globalThis.document, win = globalThis.window, ho
 
 // src/view/halo-pop.js
 var NS2 = "http://www.w3.org/2000/svg";
+function focusEl(el) {
+  if (!el || typeof el.focus !== "function" || el.isConnected === false) return;
+  try {
+    el.focus({ preventScroll: true });
+  } catch {
+    try {
+      el.focus();
+    } catch {
+    }
+  }
+}
 function darkDoc(doc) {
   return Boolean(doc.querySelector?.(".bp3-dark, .bt-theme-dark, .rm-dark-theme, body.roam-body.dark"));
 }
@@ -12918,11 +13100,16 @@ function openHaloPopover({
   dustAge: dustAge2
 } = {}) {
   const mounts = [];
+  const prior = doc.activeElement;
+  const opener = prior && prior !== doc.body && prior !== doc.documentElement ? prior : null;
   const pop = doc.createElement("div");
   pop.className = "pxd-halo pxd-root";
   if (darkDoc(doc)) pop.classList.add("pxd-root--dark");
   pop.style.position = "fixed";
   pop.style.width = "320px";
+  pop.tabIndex = -1;
+  pop.setAttribute("role", "dialog");
+  pop.setAttribute("aria-label", "Card history");
   const head = doc.createElement("div");
   head.className = "pxd-halo__head";
   head.append("Made ");
@@ -12943,7 +13130,9 @@ function openHaloPopover({
     const button = doc.createElement("button");
     button.type = "button";
     button.className = "pxd-halo__company";
-    button.textContent = row4.label || "card";
+    const label = row4.label || "card";
+    button.textContent = label;
+    button.setAttribute("aria-label", label);
     button.setAttribute("data-uid", row4.uid || "");
     button.addEventListener("click", (event) => {
       event.stopPropagation();
@@ -12989,6 +13178,31 @@ function openHaloPopover({
     if (event.target?.closest?.("[data-link-uid], .rm-page-ref, .pxd-halo__link")) return;
     event.stopPropagation();
   });
+  const companies = () => [...pop.querySelectorAll(".pxd-halo__company")];
+  pop.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      close();
+      focusEl(opener);
+      return;
+    }
+    const buttons = companies();
+    if (!buttons.length) return;
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      const index = buttons.indexOf(event.target);
+      const from = index < 0 ? 0 : index;
+      const next = buttons[from + (event.key === "ArrowDown" ? 1 : -1)];
+      if (!next) return;
+      event.preventDefault();
+      focusEl(next);
+      return;
+    }
+    if ((event.key === "Enter" || event.key === " ") && event.target?.classList?.contains?.("pxd-halo__company")) {
+      event.preventDefault();
+      event.target.click?.();
+    }
+  });
   doc.body?.append(pop);
   const box2 = anchor || { left: 16, top: 16, right: 48, bottom: 40 };
   const view = doc.defaultView || globalThis;
@@ -12999,6 +13213,9 @@ function openHaloPopover({
   });
   pop.style.left = `${placed.left}px`;
   pop.style.top = `${placed.top}px`;
+  const first = pop.querySelector(".pxd-halo__company");
+  if (first) focusEl(first);
+  else focusEl(pop);
   const close = () => {
     for (const el of mounts) {
       try {
@@ -13307,6 +13524,17 @@ function clearLens(edges, cards) {
 
 // src/view/why-pop.js
 var openPops = /* @__PURE__ */ new Set();
+function focusEl2(el) {
+  if (!el || typeof el.focus !== "function" || el.isConnected === false) return;
+  try {
+    el.focus({ preventScroll: true });
+  } catch {
+    try {
+      el.focus();
+    } catch {
+    }
+  }
+}
 function darkDoc2(doc) {
   return Boolean(doc.querySelector?.(".bp3-dark, .bt-theme-dark, .rm-dark-theme, body.roam-body.dark"));
 }
@@ -13383,6 +13611,25 @@ function openWhyPopover({
       event.preventDefault();
       event.stopPropagation();
       close(false);
+      focusEl2(opener);
+      return;
+    }
+    if (event.key === "ArrowDown" && event.target === labelField) {
+      event.preventDefault();
+      focusEl2(whyField);
+      return;
+    }
+    if (event.key === "ArrowUp" && event.target === whyField) {
+      let start = 0;
+      try {
+        start = whyField.selectionStart;
+      } catch {
+        start = 0;
+      }
+      if (start == null || start === 0) {
+        event.preventDefault();
+        focusEl2(labelField);
+      }
       return;
     }
     if (event.key !== "Enter" || event.target !== whyField) return;
@@ -13408,6 +13655,8 @@ function openWhyPopover({
   });
   pop.style.left = `${placed.left}px`;
   pop.style.top = `${placed.top}px`;
+  const prior = doc.activeElement;
+  const opener = prior && prior !== doc.body && prior !== doc.documentElement && !pop.contains(prior) ? prior : null;
   const field = focus === "why" ? whyField : labelField;
   try {
     field.focus();
@@ -14203,6 +14452,20 @@ var pointAnchor = (x, y) => ({ left: x, top: y, right: x + 1, bottom: y + 1 });
 // src/view/task-popover.js
 var PRIORITIES = ["low", "medium", "high"];
 var GAP4 = 6;
+function focusEl3(el) {
+  if (!el || typeof el.focus !== "function" || el.isConnected === false) return;
+  try {
+    el.focus({ preventScroll: true });
+  } catch {
+    try {
+      el.focus();
+    } catch {
+    }
+  }
+}
+function fieldTag(event) {
+  return String(event?.target?.tagName || "").toLowerCase();
+}
 function createTaskPopover({ doc = globalThis.document, root, bt, toast = () => {
 }, today = () => /* @__PURE__ */ new Date() } = {}) {
   let node2 = null;
@@ -14236,6 +14499,7 @@ function createTaskPopover({ doc = globalThis.document, root, bt, toast = () => 
   const button = (parent, label, run, cls = "pxd-task-pop__btn") => {
     const b = el("button", cls, parent, label);
     b.type = "button";
+    b.setAttribute("aria-label", label);
     b.addEventListener("click", (event) => {
       event.stopPropagation();
       run();
@@ -14261,6 +14525,11 @@ function createTaskPopover({ doc = globalThis.document, root, bt, toast = () => 
       if (!names.length) el("div", "pxd-task-pop__hint", list, "No projects yet");
       for (const name of names) button(list, name, () => apply(uid, { project: name }));
       placeAgain();
+      const active = doc.activeElement;
+      const tag = String(active?.tagName || "").toLowerCase();
+      if (tag !== "input" && tag !== "textarea" && (active == null || active === doc.body || node2.contains(active))) {
+        focusEl3(list.querySelector("button"));
+      }
     });
     button(box2, "Clear", () => apply(uid, { project: "" }), "pxd-task-pop__btn pxd-task-pop__btn--clear");
   };
@@ -14295,6 +14564,8 @@ function createTaskPopover({ doc = globalThis.document, root, bt, toast = () => 
   const TITLES2 = { due: "Due", project: "Project", priority: "Priority", repeat: "Repeat" };
   function open(uid, kind, anchor) {
     if (!bt?.available?.()) return false;
+    const prior = doc.activeElement;
+    const restoreTo = anchor && typeof anchor.focus === "function" ? anchor : prior && prior !== doc.body && prior !== doc.documentElement ? prior : null;
     close();
     if (!root || !FILL[kind]) return false;
     openFor = uid;
@@ -14304,6 +14575,7 @@ function createTaskPopover({ doc = globalThis.document, root, bt, toast = () => 
     node2.setAttribute("data-task-pop", kind);
     el("div", "pxd-task-pop__title", node2, TITLES2[kind]);
     FILL[kind](node2, uid);
+    if (kind !== "repeat") focusEl3(node2.querySelector("button"));
     const a = anchor?.getBoundingClientRect?.();
     if (a) {
       placeAgain = () => {
@@ -14322,9 +14594,34 @@ function createTaskPopover({ doc = globalThis.document, root, bt, toast = () => 
       if (!node2?.contains?.(event.target) && !anchor?.contains?.(event.target)) close();
     }, true);
     on(doc, "keydown", (event) => {
+      if (!node2) return;
       if (event.key === "Escape") {
+        event.preventDefault();
         event.stopPropagation();
+        const back = restoreTo;
         close();
+        focusEl3(back);
+        return;
+      }
+      const inside4 = node2.contains?.(event.target) || node2.contains?.(doc.activeElement);
+      if (!inside4) return;
+      const tag = fieldTag(event);
+      if (tag === "input" || tag === "textarea" || tag === "select") return;
+      const buttons = [...node2.querySelectorAll("button")];
+      const current3 = event.target?.closest?.("button") || (buttons.includes(doc.activeElement) ? doc.activeElement : null);
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        const index = buttons.indexOf(current3);
+        const next = buttons[index + (event.key === "ArrowDown" ? 1 : -1)];
+        if (!next) return;
+        event.preventDefault();
+        event.stopPropagation();
+        focusEl3(next);
+        return;
+      }
+      if ((event.key === "Enter" || event.key === " ") && current3) {
+        event.preventDefault();
+        event.stopPropagation();
+        current3.click();
       }
     }, true);
     on(doc, "wheel", (event) => {
@@ -14359,6 +14656,7 @@ function openStatusChooser({ doc = globalThis.document, anchor, palette, current
     const row4 = el("button", "pxd-status-chooser__row", list);
     row4.type = "button";
     row4.setAttribute("role", "option");
+    row4.setAttribute("aria-label", name);
     row4.setAttribute("data-name", name);
     const glyph = el("span", "pxd-status-chooser__glyph", row4);
     glyph.setAttribute("data-status", entry.glyph || "diamond");
@@ -14373,6 +14671,7 @@ function openStatusChooser({ doc = globalThis.document, anchor, palette, current
   const remove = el("button", "pxd-status-chooser__row pxd-status-chooser__row--remove", list);
   remove.type = "button";
   remove.setAttribute("data-remove", "true");
+  remove.setAttribute("aria-label", "Remove status");
   const removeLabel = el("span", "pxd-status-chooser__name", remove);
   removeLabel.textContent = "Remove status";
   let closed = false;
@@ -14411,16 +14710,17 @@ function openStatusChooser({ doc = globalThis.document, anchor, palette, current
       event.preventDefault();
       event.stopPropagation();
       close();
+      focusEl3(anchor);
       return;
     }
-    if (event.key !== "Enter" && event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+    if (event.key !== "Enter" && event.key !== " " && event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
     const tag = String(event.target?.tagName || "").toLowerCase();
     if (tag === "input" || tag === "textarea") return;
     const inside4 = pop.contains?.(event.target) || pop.contains?.(doc.activeElement);
     if (!inside4) return;
     event.preventDefault();
     event.stopPropagation();
-    if (event.key === "Enter") {
+    if (event.key === "Enter" || event.key === " ") {
       const row4 = rowOf(event);
       if (!row4) return;
       if (row4.getAttribute("data-remove") === "true") finish("remove", null);
@@ -14881,6 +15181,16 @@ var SHORTCUTS = [
   })),
   { group: "Present", keys: "→ ↓ Space", label: "Next", action: "presentNext", mode: "present", events: [{ key: "ArrowRight" }, { key: "ArrowDown" }, { key: "PageDown" }, { key: " ", code: "Space" }], match: (ev) => !hasMod(ev) && !ev.alt && (ev.key === "ArrowRight" || ev.key === "ArrowDown" || ev.key === "PageDown" || ev.code === "Space" || ev.key === " ") },
   { group: "Present", keys: "← ↑", label: "Previous", action: "presentPrev", mode: "present", events: [{ key: "ArrowLeft" }, { key: "ArrowUp" }, { key: "PageUp" }], match: (ev) => !hasMod(ev) && !ev.alt && (ev.key === "ArrowLeft" || ev.key === "ArrowUp" || ev.key === "PageUp") }
+];
+var SHEET_KEYS = [
+  { group: "Trails", keys: "Alt+↑ / Alt+↓", label: "Reorder a trail stop" },
+  { group: "Trails", keys: "Enter", label: "Walk from this stop" },
+  { group: "Tasks", keys: "[", label: "Previous status lane" },
+  { group: "Tasks", keys: "]", label: "Next status lane" },
+  { group: "Regions", keys: "Arrows", label: "Nudge region 1 px" },
+  { group: "Regions", keys: "Shift+arrows", label: "Nudge region 10 px" },
+  { group: "Regions", keys: "Enter", label: "Confirm region" },
+  { group: "Regions", keys: "Esc", label: "Cancel region" }
 ];
 function findShortcut(ev, mode = "normal", settings) {
   return SHORTCUTS.find((row4) => {
@@ -16332,6 +16642,8 @@ function mountTimeline(parent, { doc, rows = [], onOpenDay, onShowOnBoard } = {}
   if (!document?.createElement) throw new Error("mountTimeline needs a document");
   const el = document.createElement("div");
   el.className = "pxd-timeline";
+  el.setAttribute("role", "region");
+  el.setAttribute("aria-label", "Timeline");
   let grouped = [];
   const collapsed = /* @__PURE__ */ new Set();
   let disposed = false;
@@ -16398,6 +16710,7 @@ function mountTimeline(parent, { doc, rows = [], onOpenDay, onShowOnBoard } = {}
       button.setAttribute("data-year", String(year.year));
       const shut = collapsed.has(year.year);
       button.setAttribute("aria-expanded", shut ? "false" : "true");
+      button.setAttribute("aria-label", `Year ${year.year}`);
       const label = document.createElement("span");
       label.className = "pxd-timeline__year-label";
       label.textContent = String(year.year);
@@ -16413,6 +16726,7 @@ function mountTimeline(parent, { doc, rows = [], onOpenDay, onShowOnBoard } = {}
         open.type = "button";
         open.className = "pxd-timeline__open";
         open.textContent = day.title;
+        open.setAttribute("aria-label", day.title || "Open day");
         const count = document.createElement("span");
         count.className = "pxd-timeline__count";
         count.textContent = String(day.count);
@@ -16421,6 +16735,7 @@ function mountTimeline(parent, { doc, rows = [], onOpenDay, onShowOnBoard } = {}
         show.className = "pxd-timeline__show";
         show.setAttribute("data-page-uid", day.pageUid || "");
         show.textContent = "Show on board";
+        show.setAttribute("aria-label", "Show on board");
         row4.append(open, count, show);
         days.append(row4);
       }
@@ -16428,7 +16743,12 @@ function mountTimeline(parent, { doc, rows = [], onOpenDay, onShowOnBoard } = {}
       el.append(group);
     }
   };
+  const onKey = (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    onClick(event);
+  };
   el.addEventListener("click", onClick);
+  el.addEventListener("keydown", onKey);
   render(rows);
   parent?.append?.(el);
   return {
@@ -16440,6 +16760,7 @@ function mountTimeline(parent, { doc, rows = [], onOpenDay, onShowOnBoard } = {}
       if (disposed) return;
       disposed = true;
       el.removeEventListener("click", onClick);
+      el.removeEventListener("keydown", onKey);
       el.remove();
     }
   };
@@ -16550,6 +16871,7 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
       event.stopPropagation();
       if (type === "click") trailClick(event);
       else if (type === "pointerdown") trailPointerDown(event);
+      else if (type === "keydown") trailKey(event);
     });
   }
   let resizing = null;
@@ -16885,6 +17207,7 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     const sig = `${active}|${trails.map((t) => `${t.uid}:${t.name}:${(t.stops || []).map((s) => `${s.uid}${s.ref}${s.note}`).join(",")}`).join(";")}`;
     if (sig === trailSig) return;
     trailSig = sig;
+    const focusedStop = trailsList.contains?.(doc.activeElement) ? doc.activeElement?.dataset?.stop || "" : "";
     trailsList.replaceChildren();
     if (!trails.length) {
       el("div", "pxd-panel__empty", trailsList, "No trails yet");
@@ -16898,18 +17221,22 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
       name.type = "button";
       name.dataset.trailAction = "select";
       name.dataset.trail = trail.uid;
+      name.setAttribute("aria-label", trail.name || "Trail");
       const rename = el("button", "pxd-btn pxd-trail__rename", head2, "Rename");
       rename.type = "button";
       rename.dataset.trailAction = "rename";
       rename.dataset.trail = trail.uid;
+      rename.setAttribute("aria-label", "Rename trail");
       const walk2 = el("button", "pxd-btn pxd-trail__walk", head2, "Walk");
       walk2.type = "button";
       walk2.dataset.trailAction = "walk";
       walk2.dataset.trail = trail.uid;
+      walk2.setAttribute("aria-label", "Walk trail");
       const del = el("button", "pxd-btn pxd-trail__delete", head2, "Delete");
       del.type = "button";
       del.dataset.trailAction = "delete";
       del.dataset.trail = trail.uid;
+      del.setAttribute("aria-label", "Delete trail");
       const stops = el("ol", "pxd-trail__stops", row5);
       for (const stop2 of trail.stops || []) {
         let title = stop2.ref;
@@ -16918,11 +17245,23 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
         } catch {
           title = stop2.ref;
         }
-        const li = el("li", "pxd-trail__stop", stops, title);
+        const li = el("li", "pxd-trail__stop", stops, title || "Trail stop");
         li.dataset.stop = stop2.uid;
         li.dataset.trail = trail.uid;
+        li.dataset.ref = stop2.ref || "";
         li.dataset.trailAction = "grip";
+        li.tabIndex = 0;
+        li.setAttribute("tabindex", "0");
+        li.setAttribute("role", "button");
+        li.setAttribute("aria-label", title || "Trail stop");
         if (stop2.note) el("div", "pxd-trail__note", li, stop2.note);
+        if (focusedStop && stop2.uid === focusedStop) {
+          try {
+            li.focus({ preventScroll: true });
+          } catch {
+            li.focus?.();
+          }
+        }
       }
     }
   };
@@ -16941,6 +17280,36 @@ function createPanel({ doc = globalThis.document, root, host, timers, on = {}, w
     } else if (action === "rename" && id) on.renameTrail?.(id);
     else if (action === "delete" && id) on.deleteTrail?.(id);
     else if (action === "walk" && id) on.walkTrail?.(id);
+  };
+  const trailKey = (event) => {
+    const stop2 = event.target?.closest?.(".pxd-trail__stop");
+    if (!stop2 || !trailsPane.contains(stop2)) return;
+    const key = event.key;
+    if ((key === "ArrowUp" || key === "ArrowDown") && event.altKey && !event.metaKey && !event.ctrlKey && !event.shiftKey) {
+      event.preventDefault?.();
+      const items = [...stop2.parentElement.querySelectorAll(".pxd-trail__stop")];
+      const index = items.indexOf(stop2);
+      const next = index + (key === "ArrowDown" ? 1 : -1);
+      if (index < 0 || next < 0 || next >= items.length) return;
+      const list = stop2.parentElement;
+      if (key === "ArrowDown") {
+        const after = items[next].nextElementSibling;
+        if (after) list.insertBefore(stop2, after);
+        else list.append(stop2);
+      } else list.insertBefore(stop2, items[next]);
+      on.moveStop?.(stop2.dataset.stop, next);
+      try {
+        stop2.focus({ preventScroll: true });
+      } catch {
+        stop2.focus?.();
+      }
+      return;
+    }
+    if ((key === "Enter" || key === " ") && !event.altKey && !event.metaKey && !event.ctrlKey && !event.shiftKey) {
+      event.preventDefault?.();
+      const id = stop2.dataset.trail || "";
+      if (id) on.walkTrail?.(id, stop2.dataset.ref || "");
+    }
   };
   const trailPointerDown = (event) => {
     if (event.button !== 0) return;
@@ -17921,6 +18290,7 @@ function mountButton(doc, node2, className, text2, onClick) {
   btn.setAttribute("type", "button");
   btn.className = className;
   btn.textContent = text2;
+  btn.setAttribute("aria-label", text2);
   const stop2 = (event) => event.stopPropagation?.();
   btn.addEventListener("pointerdown", stop2);
   btn.addEventListener("mousedown", stop2);
@@ -17945,6 +18315,16 @@ function renderRegionCard(doc, card2, model, hooks = {}) {
   caption.textContent = model?.caption ?? "";
   const open = typeof hooks.open === "function" ? hooks.open : () => {
   };
+  if (!node2._pxdRegionKeys) {
+    node2._pxdRegionKeys = true;
+    node2.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      const btn = event.target?.closest?.("button");
+      if (!btn || !node2.contains(btn)) return;
+      event.preventDefault();
+      btn.click();
+    });
+  }
   mountButton(doc, node2, "pxd-region-open", "Open drawing", () => open({ sidebar: false }));
   mountButton(doc, node2, "pxd-region-sidebar", "Open in sidebar", () => open({ sidebar: true }));
   node2.pxdUnmount = () => {
@@ -18132,13 +18512,26 @@ function copyDrawingPixels(img, doc) {
 function paintPdfChipStrip(doc, parent, chips, handlers) {
   const strip = doc.createElement("div");
   strip.className = "pxd-pdf-chips pxd-chrome";
+  strip.setAttribute("role", "group");
+  strip.setAttribute("aria-label", "PDF pages");
   const stop2 = (event) => event.stopPropagation?.();
   for (const type of ["pointerdown", "mousedown", "dblclick"]) strip.addEventListener(type, stop2);
+  strip.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    const button = event.target?.closest?.(".pxd-pdf-chip");
+    if (!button || !strip.contains(button)) return;
+    event.preventDefault();
+    stop2(event);
+    handlers?.onOpen?.(button._pxdPage);
+  });
   for (const chip of chips || []) {
     const button = doc.createElement("button");
     button.type = "button";
     button.setAttribute("type", "button");
     button.className = "pxd-pdf-chip pxd-chrome";
+    button._pxdPage = chip.page;
+    button.setAttribute("data-page", String(chip.page));
+    button.setAttribute("aria-label", `Page ${chip.page}, ${chip.count}`);
     button.append(doc.createTextNode(String(chip.page)));
     const badge = doc.createElement("span");
     badge.className = "pxd-pdf-chip__n";
@@ -25482,6 +25875,17 @@ function createReadPane({
 }
 
 // src/view/view-dialog.js
+function focusEl4(el) {
+  if (!el || typeof el.focus !== "function" || el.isConnected === false) return;
+  try {
+    el.focus({ preventScroll: true });
+  } catch {
+    try {
+      el.focus();
+    } catch {
+    }
+  }
+}
 function openViewDialog(doc, { caption = "", showCopy = true, dialogLabel = "", onSave, onCancel } = {}) {
   const root = doc.createElement("div");
   root.className = "pxd-view-dialog";
@@ -25495,13 +25899,14 @@ function openViewDialog(doc, { caption = "", showCopy = true, dialogLabel = "", 
   card2.className = "pxd-view-dialog__card";
   card2.addEventListener("submit", (event) => event.preventDefault());
   root.append(card2);
+  const glyph = dialogLabel === "Landmark glyph";
   const label = doc.createElement("label");
-  label.textContent = "Name";
+  label.textContent = glyph ? "Glyph" : "Name";
   const input = doc.createElement("input");
   input.className = "pxd-input";
   input.type = "text";
   input.value = caption;
-  input.setAttribute("aria-label", "View name");
+  input.setAttribute("aria-label", glyph ? "Landmark glyph" : "View name");
   label.append(input);
   card2.append(label);
   let copyBox = null;
@@ -25522,13 +25927,16 @@ function openViewDialog(doc, { caption = "", showCopy = true, dialogLabel = "", 
   save.type = "button";
   save.className = "pxd-btn pxd-view-save";
   save.textContent = "Save";
+  save.setAttribute("aria-label", "Save");
   const cancel = doc.createElement("button");
   cancel.type = "button";
   cancel.className = "pxd-btn pxd-view-cancel";
   cancel.textContent = "Cancel";
+  cancel.setAttribute("aria-label", "Cancel");
   actions.append(save, cancel);
   card2.append(actions);
   let closed = false;
+  let opener = null;
   const close = () => {
     if (closed) return;
     closed = true;
@@ -25551,15 +25959,26 @@ function openViewDialog(doc, { caption = "", showCopy = true, dialogLabel = "", 
     cancelDialog();
   });
   root.addEventListener("keydown", (event) => {
-    if (event.key !== "Escape") return;
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      const back = opener;
+      cancelDialog();
+      focusEl4(back);
+      return;
+    }
+    if (event.key !== "Enter" || event.shiftKey || event.metaKey || event.ctrlKey || event.altKey) return;
+    if (String(event.target?.tagName || "").toLowerCase() === "textarea") return;
     event.preventDefault();
     event.stopPropagation();
-    cancelDialog();
+    save.click();
   });
   return {
     el: root,
     close,
     focus() {
+      const cur = doc.activeElement;
+      if (cur && cur !== doc.body && cur !== doc.documentElement && !root.contains(cur)) opener = cur;
       try {
         input.focus();
       } catch {
@@ -27794,6 +28213,10 @@ function mountRegionMark({ doc = globalThis.document, root, img, onConfirm, onCa
   if (!doc || !root || !img || typeof root.append !== "function") return noop;
   const layer = doc.createElement("div");
   layer.className = "pxd-region-layer";
+  layer.tabIndex = 0;
+  layer.setAttribute("tabindex", "0");
+  layer.setAttribute("role", "dialog");
+  layer.setAttribute("aria-label", "Mark region");
   const draft = doc.createElement("div");
   draft.className = "pxd-region-draft";
   const bar = doc.createElement("div");
@@ -27928,8 +28351,44 @@ function mountRegionMark({ doc = globalThis.document, root, img, onConfirm, onCa
     } catch {
     }
   };
+  const typing = (event) => {
+    const tag = String(event.target?.tagName || "").toLowerCase();
+    return tag === "input" || tag === "textarea" || event.target?.isContentEditable;
+  };
+  const nudge = (event) => {
+    if (x0 == null || y0 == null) return false;
+    const key = event.key;
+    if (key !== "ArrowLeft" && key !== "ArrowRight" && key !== "ArrowUp" && key !== "ArrowDown") return false;
+    if (typing(event) || event.metaKey || event.ctrlKey || event.altKey) return false;
+    const box2 = imgBox();
+    if (!(box2.w > 0) || !(box2.h > 0)) return false;
+    const step = event.shiftKey ? 10 : 1;
+    let dx = 0;
+    let dy = 0;
+    if (key === "ArrowLeft") dx = -step / box2.w;
+    else if (key === "ArrowRight") dx = step / box2.w;
+    else if (key === "ArrowUp") dy = -step / box2.h;
+    else dy = step / box2.h;
+    const left = Math.min(x0, x1 ?? x0);
+    const right = Math.max(x0, x1 ?? x0);
+    const top = Math.min(y0, y1 ?? y0);
+    const bottom = Math.max(y0, y1 ?? y0);
+    const cdx = Math.min(1 - right, Math.max(-left, dx));
+    const cdy = Math.min(1 - bottom, Math.max(-top, dy));
+    x0 += cdx;
+    y0 += cdy;
+    if (x1 != null) x1 += cdx;
+    if (y1 != null) y1 += cdy;
+    place();
+    return true;
+  };
   const onKey = (event) => {
     if (dead) return;
+    if (nudge(event)) {
+      event.preventDefault?.();
+      event.stopPropagation?.();
+      return;
+    }
     if (event.key === "Escape") {
       event.preventDefault?.();
       event.stopPropagation?.();
@@ -28794,7 +29253,9 @@ function mountKanban({
         item.className = "pxd-kanban__card";
         item.setAttribute("data-uid", card2.uid);
         item.tabIndex = 0;
+        item.setAttribute("role", "button");
         item.textContent = kanbanTitle(card2) || card2.uid;
+        item.setAttribute("aria-label", item.textContent);
         listen(item, "pointerdown", (event) => {
           dragUid = card2.uid;
           event.stopPropagation();
@@ -29422,14 +29883,28 @@ function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
 }
 
 // src/view/shortcut-sheet.js
+function focusEl5(el) {
+  if (!el || typeof el.focus !== "function" || el.isConnected === false) return;
+  try {
+    el.focus({ preventScroll: true });
+  } catch {
+    try {
+      el.focus();
+    } catch {
+    }
+  }
+}
 function createShortcutSheet({ doc = globalThis.document, root, shortcuts = SHORTCUTS, settings = null } = {}) {
   let sheet = null;
+  let opener = null;
   const close = () => {
     sheet?.remove();
     sheet = null;
   };
   const open = () => {
     if (sheet) return;
+    const cur = doc.activeElement;
+    opener = cur && cur !== doc.body && cur !== doc.documentElement ? cur : null;
     sheet = doc.createElement("div");
     sheet.className = "pxd-sheet pxd-chrome";
     sheet.setAttribute("role", "dialog");
@@ -29455,7 +29930,8 @@ function createShortcutSheet({ doc = globalThis.document, root, shortcuts = SHOR
     grid.className = "pxd-sheet__grid";
     let groupEl = null;
     let groupName = "";
-    const visible2 = shortcuts.filter((row4) => settings == null || typeof row4.when !== "function" || row4.when(settings) !== false);
+    const rows = shortcuts === SHORTCUTS ? [...shortcuts, ...SHEET_KEYS] : shortcuts;
+    const visible2 = rows.filter((row4) => settings == null || typeof row4.when !== "function" || row4.when(settings) !== false);
     for (const row4 of visible2) {
       if (row4.group !== groupName) {
         groupName = row4.group;
@@ -29480,7 +29956,14 @@ function createShortcutSheet({ doc = globalThis.document, root, shortcuts = SHOR
     }
     sheet.append(head, grid);
     sheet.addEventListener("pointerdown", (event) => event.stopPropagation());
-    sheet.addEventListener("keydown", (event) => event.stopPropagation());
+    sheet.addEventListener("keydown", (event) => {
+      event.stopPropagation();
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      const back = opener;
+      close();
+      focusEl5(back);
+    });
     root.append(sheet);
     try {
       closeBtn.focus({ preventScroll: true });
@@ -30551,22 +31034,32 @@ function applyFullscreenChrome(mount, on, root = globalThis.document) {
       raf(place);
     });
   };
-  place();
   const disconnects = [];
   const article = root?.querySelector?.(".rm-article-wrapper");
   const sidebar = firstMatch(root, SIDEBAR_SELECTORS);
   const rightSidebar = firstMatch(root, RIGHT_SIDEBAR_SELECTORS);
   const RO = globalThis.ResizeObserver;
+  let observed = false;
   if (typeof RO === "function") {
     try {
       const ro = new RO(() => place());
-      if (article) ro.observe(article);
-      if (sidebar) ro.observe(sidebar);
-      if (rightSidebar && rightSidebar !== sidebar && rightSidebar !== article) ro.observe(rightSidebar);
+      if (article) {
+        ro.observe(article);
+        observed = true;
+      }
+      if (sidebar) {
+        ro.observe(sidebar);
+        observed = true;
+      }
+      if (rightSidebar && rightSidebar !== sidebar && rightSidebar !== article) {
+        ro.observe(rightSidebar);
+        observed = true;
+      }
       disconnects.push(() => ro.disconnect());
     } catch {
     }
   }
+  if (!observed) place();
   const MO = globalThis.MutationObserver;
   if (typeof MO === "function" && article) {
     try {
@@ -35561,9 +36054,9 @@ function buildBoardView(onFail, {
       moveStop: (stopUid, index) => {
         void session.moveStop?.(stopUid, index);
       },
-      walkTrail: (uid) => {
+      walkTrail: (uid, fromRef) => {
         if (uid) activeTrailUid = uid;
-        startWalk("trail");
+        startWalk("trail", fromRef);
       },
       ensureTimeline: () => loadTimelineRows(),
       openDay: (pageUid) => {
@@ -35776,13 +36269,17 @@ function buildBoardView(onFail, {
     const opts = only ? { only } : void 0;
     if (!presenter.start(board2(), rects(), opts)) toast("Nothing to present");
   };
-  startWalk = (mode) => {
+  startWalk = (mode, fromRef) => {
     quicklook.close();
     const b = board2();
     if (!b) return false;
     const world2 = rects();
     const vis = visibleWorldRect(vp, viewSize(), 0);
-    const stops = walkStops(b, world2, { mode, screen: vis, trail: currentTrail(b) });
+    let stops = walkStops(b, world2, { mode, screen: vis, trail: currentTrail(b) });
+    if (fromRef) {
+      const at = stops.findIndex((stop2) => stop2.uid === fromRef);
+      if (at > 0) stops = stops.slice(at);
+    }
     if (!presenter.start(b, world2, { stops })) {
       toast("Nothing to walk");
       return false;
@@ -37301,6 +37798,8 @@ function buildBoardView(onFail, {
       }
       return;
     }
+    const owned = event.target?.closest?.(".pxd-trail__stop, .pxd-region-layer");
+    if (owned && root.contains(owned)) return;
     const handled = ctl.handle({ type: "keydown", key: event.key, code: event.code, shift: event.shiftKey, alt: event.altKey, meta: event.metaKey, ctrl: event.ctrlKey, inputFocused, tabOwned });
     if (handled) {
       event.preventDefault();
@@ -39449,7 +39948,21 @@ function thumb(doc, parent, item) {
   });
   parent.append(box2);
 }
+function wireResurfaceKeys(panel) {
+  if (!panel || panel._pxdResurfaceKeys) return;
+  panel._pxdResurfaceKeys = true;
+  panel.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    const item = event.target?.closest?.(".pxd-resurface__item, .pxd-resurface__tab");
+    if (!item || !panel.contains(item)) return;
+    event.preventDefault();
+    item.click();
+  });
+}
 function fillResurface(doc, panel, { pageTitle, rows, intervals, onOpen } = {}) {
+  if (!panel.getAttribute?.("role")) panel.setAttribute?.("role", "region");
+  if (!panel.getAttribute?.("aria-label")) panel.setAttribute?.("aria-label", "Resurface");
+  wireResurfaceKeys(panel);
   panel.replaceChildren();
   const pageDate = pageTitleToDate(pageTitle);
   const tabs = matchResurface(rows, pageDate, parseIntervals(intervals));
@@ -39471,6 +39984,7 @@ function fillResurface(doc, panel, { pageTitle, rows, intervals, onOpen } = {}) 
       row4.type = "button";
       row4.className = "pxd-resurface__item";
       row4.textContent = item.title || item.uid;
+      row4.setAttribute("aria-label", item.title || item.uid || "Open");
       thumb(doc, row4, item);
       row4.addEventListener("click", (event) => {
         event.preventDefault();
@@ -39485,6 +39999,7 @@ function fillResurface(doc, panel, { pageTitle, rows, intervals, onOpen } = {}) 
     button.type = "button";
     button.className = "pxd-resurface__tab";
     button.textContent = tab.label;
+    button.setAttribute("aria-label", tab.label || "Resurface");
     button.addEventListener("click", (event) => {
       event.preventDefault();
       show(tab);
@@ -39736,10 +40251,18 @@ function readObstacles(obstacles) {
   }
   return obstacles ?? [];
 }
-function wireFrame(span, { doc, onOpen, delayMs, buildPopover, obstacles } = {}) {
+function wireFrame(span, { doc, onOpen, delayMs, buildPopover, obstacles, label } = {}) {
   span.tabIndex = 0;
+  span.setAttribute("role", "button");
+  span.setAttribute("aria-label", label || "Open region");
   const stop2 = (event) => event.stopPropagation?.();
   for (const type of STOP_TYPES2) span.addEventListener(type, stop2);
+  span.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault?.();
+    event.stopPropagation?.();
+    if (typeof onOpen === "function") onOpen({ shiftKey: Boolean(event.shiftKey) });
+  });
   span.addEventListener("click", (event) => {
     event.stopPropagation?.();
     event.preventDefault?.();
@@ -39946,7 +40469,7 @@ function mountRegionCrop({ doc = globalThis.document, button, region, file, maxH
       showMissing();
     }
   }
-  const closePop = wireFrame(span, { doc, onOpen, delayMs, buildPopover, obstacles });
+  const closePop = wireFrame(span, { doc, onOpen, delayMs, buildPopover, obstacles, label: region.caption || "Open region" });
   parent.insertBefore(span, nextSibling(button));
   let dead = false;
   return {
@@ -39982,7 +40505,7 @@ function mountRegionView({ doc = globalThis.document, button, region, board: boa
       span.append(caption);
     }
   }
-  const closePop = wireFrame(span, { doc, onOpen, delayMs, buildPopover, obstacles });
+  const closePop = wireFrame(span, { doc, onOpen, delayMs, buildPopover, obstacles, label: region.caption || "Open region" });
   parent.insertBefore(span, nextSibling(button));
   let dead = false;
   return {

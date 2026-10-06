@@ -325,7 +325,7 @@
 
 .pxd-root .pxd-task-pop .pxd-task-pop__btn:focus-visible {
   border-color: var(--pxd-accent);
-  outline: 2px solid var(--pxd-focus, #0d9488);
+  outline: 2px solid var(--pxd-focus, #0d9488) !important;
   outline-offset: 2px;
 }
 

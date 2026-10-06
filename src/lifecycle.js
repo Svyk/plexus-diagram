@@ -1,3 +1,5 @@
+import { guardCallback } from "./guard.js";
+
 function isPromiseLike(value) {
   return value != null && typeof value.then === "function";
 }
@@ -43,7 +45,8 @@ export function createLifecycle() {
     },
 
     interval(callback, delay, ...args) {
-      const id = globalThis.setInterval(callback, delay, ...args);
+      const guarded = guardCallback("interval", callback);
+      const id = globalThis.setInterval(guarded, delay, ...args);
       add(() => globalThis.clearInterval(id));
       return id;
     },
@@ -55,6 +58,8 @@ export function createLifecycle() {
     },
 
     observer(observer, target, options) {
+      if (observer && typeof observer.callback === "function") observer.callback = guardCallback("observer", observer.callback);
+      else if (observer && typeof observer.cb === "function") observer.cb = guardCallback("observer", observer.cb);
       observer.observe(target, options);
       add(() => observer.disconnect());
       return observer;
@@ -71,9 +76,10 @@ export function createLifecycle() {
       if (!dataApi?.addPullWatch || !dataApi?.removePullWatch) {
         throw new TypeError("A Roam data API with addPullWatch/removePullWatch is required");
       }
-      dataApi.addPullWatch(pattern, entity, callback);
-      add(() => dataApi.removePullWatch(pattern, entity, callback));
-      return callback;
+      const guarded = guardCallback("pullWatch", callback);
+      dataApi.addPullWatch(pattern, entity, guarded);
+      add(() => dataApi.removePullWatch(pattern, entity, guarded));
+      return guarded;
     },
 
     async settingsPanel(extensionAPI, config) {

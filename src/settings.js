@@ -1,3 +1,4 @@
+import { onGuardCount } from "./guard.js";
 import { bindPerfReadout, perfReadoutText, readHostPerf } from "./perf-log.js";
 
 export const SETTING_IDS = Object.freeze({
@@ -358,6 +359,54 @@ const SETTING_GROUPS = [
   ]],
 ];
 
+const ERROR_ROW_ID = "plexus-errors";
+let panelRef = null;
+let statsRef = null;
+let unhookErrors = null;
+
+function errorRow(n) {
+  const text = `${n} errors`;
+  return {
+    id: ERROR_ROW_ID,
+    name: text,
+    description: "Callback errors since this copy loaded. Nothing is sent.",
+    action: { type: "reactComponent", component: () => text },
+  };
+}
+
+function placeErrorRow() {
+  if (!panelRef) return;
+  const list = panelRef.settings;
+  const idx = list.findIndex((row) => row.id === ERROR_ROW_ID);
+  const n = Number(statsRef?.errors) || 0;
+  if (n <= 0) {
+    if (idx >= 0) list.splice(idx, 1);
+    return;
+  }
+  const row = errorRow(n);
+  if (idx >= 0) list[idx] = row;
+  else {
+    const at = list.findIndex((entry) => entry.id === SETTING_IDS.showVersionBadge);
+    list.splice(at >= 0 ? at + 1 : list.length, 0, row);
+  }
+}
+
+// The installed panel (no stats argument) follows this object. A positive count shows "N errors".
+export function bindErrorStats(stats) {
+  statsRef = stats && typeof stats === "object" ? stats : null;
+  if (!unhookErrors) unhookErrors = onGuardCount(() => placeErrorRow());
+  placeErrorRow();
+}
+
+export function clearErrorStats() {
+  if (unhookErrors) {
+    unhookErrors();
+    unhookErrors = null;
+  }
+  statsRef = null;
+  placeErrorRow();
+}
+
 function performanceGroupRow(id, name, description) {
   const text = () => perfReadoutText(readHostPerf());
   const row = groupRow(id, name, `${description} ${text()}`, text);
@@ -365,7 +414,7 @@ function performanceGroupRow(id, name, description) {
   return row;
 }
 
-export function createSettingsPanel() {
+export function createSettingsPanel({ stats } = {}) {
   const settings = [];
   for (const [id, name, description, members] of SETTING_GROUPS) {
     settings.push(id === "group-performance" ? performanceGroupRow(id, name, description) : groupRow(id, name, description));
@@ -377,5 +426,16 @@ export function createSettingsPanel() {
     description: "Put every Plexus setting back to its default. Open boards update right away.",
     action: { type: "button", content: "Reset Plexus settings", onClick: () => resetPlexusSettings() },
   });
-  return { tabTitle: "Plexus Diagram", settings };
+  const panel = { tabTitle: "Plexus Diagram", settings };
+  if (stats && typeof stats === "object") {
+    const n = Number(stats.errors) || 0;
+    if (n > 0) {
+      const at = settings.findIndex((entry) => entry.id === SETTING_IDS.showVersionBadge);
+      settings.splice(at >= 0 ? at + 1 : settings.length, 0, errorRow(n));
+    }
+    return panel;
+  }
+  panelRef = panel;
+  placeErrorRow();
+  return panel;
 }

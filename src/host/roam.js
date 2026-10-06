@@ -14,6 +14,7 @@ import { coverModel, pdfMacroUrl, pdfPagePlan } from "../model/pdf.js";
 import { LINKED_REF_CAP } from "../model/refs.js";
 import { createCardCache } from "../model/card-cache.js";
 import { attrNameOf, classifyString, mergePropsForWrite, parseBoardTitle, plainKeys } from "../model/schema.js";
+import { bindGuardStats, guardCallback } from "../guard.js";
 
 export const BOARD_PATTERN = `[:block/uid :block/string :block/order :block/heading :block/open :block/props
  {:block/children [:block/uid :block/string :block/order :block/heading :block/open :block/props
@@ -350,7 +351,8 @@ function queryRows(host, query, ...inputs) {
 }
 
 export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localStorage, graph } = {}) {
-  const stats = { writes: 0, watches: 0, pageWatches: 0, renders: 0, items: {} };
+  const stats = { writes: 0, watches: 0, pageWatches: 0, renders: 0, items: {}, errors: 0 };
+  bindGuardStats(stats);
   const data = api.data;
   // Every data.block.* call is its own Roam undo entry. The log groups the calls of one session transaction
   // (host.group) so one undo()/redo() steps over the whole user operation. A write outside a group is its own step.
@@ -381,6 +383,8 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     undoLog.push({ n: 1 });
     if (undoLog.length > UNDO_LOG_MAX) undoLog.shift();
   };
+  // Host writes plus blocks adopted from outside this host (one Roam entry each).
+  const groupSpan = (entry) => (entry.n || 0) + (entry.created?.length || 0);
   const cache = createCardCache();
   const warm = new Set();
   const boardKeys = new Map();
@@ -584,14 +588,13 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     if (compact.includes(":diagram/") && !cache.nativeKnown(id) && !node[":diagram/nodes"] && !node[":diagram/edges"]) return MISS;
     return node;
   };
-  if (typeof data.pull === "function") {
-    data.pull = (pattern, entity) => {
-      const hit = servePull(pattern, entity);
-      if (hit !== MISS) return hit;
-      return rawPull(pattern, entity);
-    };
-  }
-  const pull = (pattern, entity) => (typeof data.pull === "function" ? data.pull(pattern, entity) : rawPull(pattern, entity));
+  // Plexus's own reads go through the cache. Roam's global pull is never replaced: other extensions
+  // asked for their own pattern, and a cached node from Plexus's pattern would answer the wrong question.
+  const pull = (pattern, entity) => {
+    const hit = servePull(pattern, entity);
+    if (hit !== MISS) return hit;
+    return rawPull(pattern, entity);
+  };
   const pullMany = (uids, titles) => {
     if (!uids.length && !titles.length) return [];
     if (typeof data.pull_many === "function") {
@@ -684,6 +687,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
 
   const host = {
     api,
+    pull,
     stats,
     viewports: createViewportStore({ storage, graph: gname }),
 
@@ -758,11 +762,11 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       } else if (covers) slot.coversRefs = true;
       slot.n += 1;
       const entity = watchEntity(uid);
-      const wrapped = (before, after) => {
+      const wrapped = guardCallback("watchBoard", (before, after) => {
         if (after?.[":block/uid"]) absorb(uid, after, hasRefs(after));
         cb(after);
         if (covers) notifyPages(slot, after);
-      };
+      }, { stats });
       data.addPullWatch(pattern, entity, wrapped);
       stats.watches++;
       let active = true;
@@ -793,11 +797,12 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     watchBlock(uid, cb) {
       const id = String(uid ?? "");
       if (!id || typeof cb !== "function") return () => {};
+      cb = guardCallback("watchBlock", cb, { stats });
       let slot = watchedBlocks.get(id);
       if (!slot) {
         const entity = watchEntity(id);
         const subs = [];
-        const wrapped = (_before, after) => {
+        const wrapped = guardCallback("watchBlock", (_before, after) => {
           const next = after?.[":block/string"];
           if (typeof next === "string") {
             const node = cache.blockOf(id);
@@ -805,7 +810,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
             burstMemo.delete(id);
           }
           for (const token of subs.slice()) if (token.on) token.cb(after);
-        };
+        }, { stats });
         slot = { entity, wrapped, subs };
         data.addPullWatch(BLOCK_WATCH_PATTERN, entity, wrapped);
         watchedBlocks.set(id, slot);
@@ -870,6 +875,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     // A page already inside an open board shares that board's watch instead of adding another.
     watchPage(title, cb) {
       const name = String(title ?? "");
+      cb = guardCallback("watchPage", cb, { stats });
       for (const boardUid of cache.pageBoardsOf(name)) {
         const slot = watchedBoards.get(boardUid);
         if (!slot || slot.n <= 0 || !slot.coversRefs) continue;
@@ -1164,28 +1170,39 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       } finally {
         const g = openGroup; // the last chunk when the transaction rolled over
         openGroup = null;
-        if (g.n) {
+        if (g.n || g.created?.length) {
           undoLog.push(g);
           if (undoLog.length > UNDO_LOG_MAX) undoLog.shift();
         }
       }
     },
 
+    // A block another extension created inside the open group (Roam Plexus "New drawing").
+    // That write never passed through noteWrite, so it is one extra Roam undo entry.
+    // Recording the uid makes this group's undo/redo step over it too. No-op with no group open.
+    // A delete here would land on Roam's stack and come back on the next redo.
+    adoptCreated(uid) {
+      const id = typeof uid === "string" ? uid : "";
+      if (!openGroup || !id) return;
+      const list = openGroup.created || (openGroup.created = []);
+      if (!list.includes(id)) list.push(id);
+    },
+
     // Undo/redo step over a whole recorded group; with nothing recorded (or after invalidateUndo) it is Roam's single step.
     async undo() {
       lastWriteAt = Date.now();
       const entry = undoLog.pop();
-      const n = entry?.n ?? 1;
+      const span = entry ? groupSpan(entry) : 1;
       let done = 0;
       try {
-        for (; done < n; done++) await data.undo();
+        for (; done < span; done++) await data.undo();
       } finally {
         lastWriteAt = Date.now();
         if (entry) {
-          if (done >= n) redoLog.push(entry);
+          if (done >= span) redoLog.push(entry);
           else {
             if (done > 0) redoLog.push({ n: done });
-            undoLog.push({ n: n - done }); // a failed step leaves the rest of the group undoable
+            undoLog.push({ n: span - done }); // a failed step leaves the rest of the group undoable
           }
         }
       }
@@ -1193,15 +1210,15 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     async redo() {
       lastWriteAt = Date.now();
       const entry = redoLog.pop();
-      const n = entry?.n ?? 1;
+      const span = entry ? groupSpan(entry) : 1;
       let done = 0;
       try {
-        for (; done < n; done++) await data.redo();
+        for (; done < span; done++) await data.redo();
       } finally {
         lastWriteAt = Date.now();
         if (entry) {
-          if (done > 0) undoLog.push(done >= n ? entry : { n: done });
-          if (done < n) redoLog.push({ n: n - done });
+          if (done > 0) undoLog.push(done >= span ? entry : { n: done });
+          if (done < span) redoLog.push({ n: span - done });
         }
       }
     },

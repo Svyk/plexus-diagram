@@ -56,7 +56,14 @@ import {
   storedLayoutIn,
   writeEnhancedUidCache,
 } from "./discovery.js";
-import { bindSpeedFlagSource, normalizeSetting, noteSpeedFlags, notedSpeedFlags, onSettingsChange, parseSpeedFlags, readSettings, SETTING_IDS } from "./settings.js";
+import { guardCallback } from "./guard.js";
+
+// Plexus reads through the host cache when it has one; Roam's global pull is left as Roam made it.
+function pullVia(host, pattern, entity) {
+  if (typeof host?.pull === "function") return host.pull(pattern, entity);
+  return host?.api?.data?.pull?.(pattern, entity) ?? null;
+}
+import { bindErrorStats, bindSpeedFlagSource, clearErrorStats, normalizeSetting, noteSpeedFlags, notedSpeedFlags, onSettingsChange, parseSpeedFlags, readSettings, SETTING_IDS } from "./settings.js";
 import { createPerfLog, perfNow } from "./perf-log.js";
 import { createShiftWatch } from "./view/shift-watch.js";
 
@@ -149,7 +156,7 @@ export function readLegacyEnhanced(host) {
   try {
     const pageUid = host.pageUid?.(LEGACY_METADATA_PAGE);
     if (!pageUid) return out;
-    const tree = host.api.data.pull("[:block/uid :block/string {:block/children ...}]", [":block/uid", pageUid]);
+    const tree = pullVia(host, "[:block/uid :block/string {:block/children ...}]", [":block/uid", pageUid]);
     const list = pulledChildren(tree).find((child) => /^enhanced::/i.test(pulledString(child).trim()));
     for (const entry of pulledChildren(list)) {
       const uid = uidFromLegacyString(pulledString(entry));
@@ -521,7 +528,7 @@ export async function installPlexusDiagram({
     let kind = null;
     let enhanced = false;
     try {
-      const pulled = host.api.data.pull(AUTO_PATTERN, [":block/uid", uid]);
+      const pulled = pullVia(host, AUTO_PATTERN, [":block/uid", uid]);
       const plexus = readPlexus(pulled?.[":block/props"] ?? pulled?.props ?? null);
       enhanced = plexus?.v === 2;
       let nativeNodeCount = 0;
@@ -614,7 +621,7 @@ export async function installPlexusDiagram({
   function seedCrumbs(uid) {
     const self = { uid, title: boardTitle(host.blockString?.(uid)) };
     try {
-      const res = host.api.data.pull(ANCESTORS_PATTERN, [":block/uid", uid]);
+      const res = pullVia(host, ANCESTORS_PATTERN, [":block/uid", uid]);
       const parents = res?.[":block/parents"] ?? [];
       const chain = parents
         .filter((p) => isDiagramString(pulledString(p)) && readPlexus(p[":block/props"] ?? p.props)?.v === 2)
@@ -659,7 +666,7 @@ export async function installPlexusDiagram({
     let state;
     try {
       if (storage.getItem(key)) return;
-      state = host.api.data.pull("[:block/open]", [":block/uid", uid]);
+      state = pullVia(host, "[:block/open]", [":block/uid", uid]);
       if (!state) return;
       storage.setItem(key, "1"); // set BEFORE the write so a failure never loops
     } catch { return; }
@@ -954,7 +961,7 @@ export async function installPlexusDiagram({
     look();
     if (!handoff.cancelled && handoff.holdRaf == null && handoff.soonTimer == null && typeof MutationObserver === "function" && rec.mountEl) {
       try {
-        const observer = new MutationObserver(look);
+        const observer = new MutationObserver(guardCallback("observer", look));
         observer.observe(rec.mountEl, { childList: true, subtree: true });
         handoff.observer = observer;
       } catch { /* the 2s timeout still removes the sketch */ }
@@ -3035,20 +3042,20 @@ export async function installPlexusDiagram({
       }
     };
     const app = doc.querySelector(".roam-app");
-    if (app) lifecycle.observer(new MutationObserver(onAdded), app, { childList: true, subtree: true });
+    if (app) lifecycle.observer(new MutationObserver(guardCallback("observer", onAdded)), app, { childList: true, subtree: true });
     if (doc.body) {
       // Blueprint portals (popovers, sidebar previews) are siblings of .roam-app.
-      lifecycle.observer(new MutationObserver((records) => {
+      lifecycle.observer(new MutationObserver(guardCallback("observer", (records) => {
         for (const record of records) {
           for (const node of record.addedNodes || []) {
             if (node.nodeType !== 1 || !node.classList?.contains("bp3-portal") || portalObservers.has(node)) continue;
-            const observer = new MutationObserver(onAdded);
+            const observer = new MutationObserver(guardCallback("observer", onAdded));
             observer.observe(node, { childList: true, subtree: true });
             portalObservers.set(node, observer);
             scanAdded(node);
           }
         }
-      }), doc.body, { childList: true });
+      })), doc.body, { childList: true });
     }
   }
   scanRegions(doc);
@@ -3115,11 +3122,11 @@ export async function installPlexusDiagram({
     const article = doc.querySelector?.(".rm-article-wrapper");
     if (!article) return;
     let open = article.classList?.contains?.("rm-spacing--right-sidebar-open");
-    sidebarWatch = new MutationObserver(() => {
+    sidebarWatch = new MutationObserver(guardCallback("observer", () => {
       const next = article.classList?.contains?.("rm-spacing--right-sidebar-open");
       if (next && !open) parkMainForSidebar();
       open = next;
-    });
+    }));
     sidebarWatch.observe(article, { attributes: true, attributeFilter: ["class"] });
   }
   ensureSidebarWatch();
@@ -3132,7 +3139,9 @@ export async function installPlexusDiagram({
     lifecycle.event(win, "hashchange", onHash);
     lifecycle.event(win, "popstate", onNavigate);
   }
-  lifecycle.interval(reconcile, RECONCILE_INTERVAL_MS);
+  bindErrorStats(host.stats);
+  lifecycle.add(() => clearErrorStats());
+  lifecycle.interval(guardCallback("reconcile", reconcile, { stats: host.stats }), RECONCILE_INTERVAL_MS);
   lifecycle.add(() => {
     for (const rec of mounts.values()) forgetSketch(rec);
     sketchStore.dispose();

@@ -25,6 +25,7 @@ import { renderRegionCard, thumbRequest } from "./region-card.js";
 import { copyDrawingPixels, renderDrawingCard } from "./drawing-card.js";
 import { PDF_READER_H, PDF_READER_W, coverModel, coverOuterBox, embedSplit, readerRule, writeReaderPage } from "../model/pdf.js";
 import { paintPdfChipStrip } from "./pdf-chip-strip.js";
+import { guardCallback } from "../guard.js";
 import { notedSpeedFlags, parseSpeedFlags, SETTING_IDS } from "../settings.js";
 
 const SIDES = ["top", "right", "bottom", "left"];
@@ -611,7 +612,7 @@ export function createItemRenderer({
     syncShield();
     const MO = doc.defaultView?.MutationObserver || globalThis.MutationObserver;
     if (typeof MO !== "function") return;
-    const mo = new MO(() => syncShield());
+    const mo = new MO(guardCallback("embed-shield", () => syncShield()));
     try { mo.observe(live, { childList: true, subtree: true }); } catch { return; }
     node.__pxdEmbedMo = mo;
   };

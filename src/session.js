@@ -1369,7 +1369,12 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       const place = () => {
         if (api && typeof api.create === "function") {
           return Promise.resolve(api.create({ parentUid: spec.parentUid, order: spec.order }))
-            .then((made) => made?.uid || null);
+            .then((made) => {
+              const id = made?.uid || null;
+              // The drawing block is outside this host's write count. The open group still undoes it.
+              if (id) host.adoptCreated?.(id);
+              return id;
+            });
         }
         if (typeof host.createBlock !== "function") return Promise.resolve(null);
         return Promise.resolve(host.createBlock(spec)).then((made) => (typeof made === "string" ? made : made?.uid || null));

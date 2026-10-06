@@ -17,6 +17,8 @@ The second argument matches a target id prefix first, then a window title substr
 
 Input steps: `move {x,y}`, `down {x,y,mods?}`, `up {x,y,mods?}`, `click {x,y,count?,mods?}`, `drag {x1,y1,x2,y2,steps?,mods?}`, `key {key,code?,mods?}`, `text {text}`, `wait {ms}`, `wheel {x,y,dx,dy,mods?}`. `mods` is an array of `alt`, `ctrl`, `meta`, `shift`.
 
+`plexus-live.mjs input` key steps do not carry the OS clipboard. Check copy, cut, and paste by hand on a Test Lab board: select two cards, Cmd+C, click empty board, Cmd+V, and confirm two new cards and one undo; repeat for cut; repeat for a text paste into a card editor.
+
 Guards: `inject` refuses a window that already runs an installed Plexus (`window.__plexusDiagram` without `window.__pxdLive`), and `plexus-live.mjs` refuses the window titled `plx typing bench` for every command (the two `cdp-*` helpers do not check; pass the Svy or Readwisenotes target id).
 
 Settings for the injected build persist in that window's `localStorage["pxd-live-settings"]`.
@@ -28,11 +30,22 @@ node tools/live/ledger.mjs cleanup "Svy - "          # deletes ledger uids on te
 node tools/live/ledger.mjs roundtrip "Svy - "        # create, list, cleanup on Test Lab
 node tools/live/fixture.mjs <phase> ["Readwisenotes - Daily Notes"] [--cards N]
 node tools/live/bench.mjs ["Readwisenotes - "]          # 200 real keys, injected vs unloaded
+node tools/live/smoke.mjs ["Readwisenotes - "]          # ten REL-2 steps; exit 1 on any fail
+node tools/live/smoke.mjs --fail <step> ["Readwisenotes - "]
 node tools/live/taskboard.mjs ["Readwisenotes - Plexus"] [--count 40] [--repeat-every 10] [--title T]   # a board of Better Tasks task cards, ledgered
 PXD_REPO=/path/to/build-dir node tools/live/plexus-live.mjs inject <title>   # inject another build (extension.js + extension.css in that dir)
 ```
 
 `cleanup` deletes only blocks whose page is `Plexus Diagram/Test Lab` or `diagram testing`, and only in the window's graph. Page uids and every other page are left in the ledger. `fixture` builds `P<phase> fixture` through `window.__plexusDiagram.session(uid)` (the caller releases). A second run reuses the page and adds a new board.
+
+## Smoke
+
+```bash
+node tools/live/smoke.mjs "Readwisenotes - "                 # ten steps; exit 1 when any step fails
+node tools/live/smoke.mjs --fail <step> "Readwisenotes - "   # force that step to fail, then clean up
+```
+
+Steps, in order: `create-board`, `create-card`, `edit-text`, `add-arrow`, `add-section`, `move-card`, `undo`, `duplicate`, `sidebar`, `restore-native`. Each line is `pass <step>` or `fail <step>: <reason>`. The window must already be running Plexus. The board is created on `Plexus Diagram/Test Lab`. Opening it must leave `:edit/time` unchanged and must not write `plexus.v`; the first card stamps that marker. Sidebar opens one right-sidebar window, clicks Board and then Outline, and removes only that window. Cleanup deletes the block uids this run created. It does not run `ledger cleanup`, so other fixtures on Test Lab stay.
 
 ## Perf gate
 

@@ -28,20 +28,27 @@ test("registered commands and pull watches are removed once", async () => {
   };
   const pattern = "[:block/uid]";
   const entity = '[:block/uid "abc"]';
-  const callback = () => {};
+  let ran = 0;
+  const callback = () => { ran += 1; };
   const lifecycle = createLifecycle();
 
   await lifecycle.command(commandApi, { label: "Test", callback });
   lifecycle.pullWatch(dataApi, pattern, entity, callback);
+  const added = calls.find((entry) => entry[0] === "watch:add");
+  added[3]();
+  assert.equal(ran, 1);
   await lifecycle.dispose();
   await lifecycle.dispose();
+  const removed = calls.find((entry) => entry[0] === "watch:remove");
 
   assert.deepEqual(calls, [
     ["command:add", "Test"],
-    ["watch:add", pattern, entity, callback],
-    ["watch:remove", pattern, entity, callback],
+    ["watch:add", pattern, entity, added[3]],
+    ["watch:remove", pattern, entity, added[3]],
     ["command:remove", "Test"],
   ]);
+  assert.equal(removed[3], added[3]);
+  assert.notEqual(added[3], callback);
 });
 
 test("events, observers, and DOM nodes have explicit cleanup", async () => {

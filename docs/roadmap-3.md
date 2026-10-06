@@ -17,6 +17,7 @@
 | P25 | Heptabase parity, next wave | 2.16.0 | HEP-1, HEP-2, HEP-3, HEP-4, DOC-25 |
 | P26 | Feel instant | 2.17.0 | FAST-10, FAST-1, FAST-2, FAST-3, FAST-4, FAST-5, FAST-6, FAST-7, FAST-8, FAST-9, DOC-26 |
 | P27 | PDF highlights closer to Heptabase | 2.18.0 | PDFH-1, PDFH-2, PDFH-3, PDFH-4, PDFH-5, PDFH-6, PDFH-7, DOC-27 |
+| P28 | Edit in place, drag out of the PDF | 2.19.0 | PGE-2, PDFH-8, PDFH-9, PDFH-10, FIX-28 |
 
 P23-P26 were added 2026-10-05 and ship before P22; P22's 3.0.0 gate then covers them.
 
@@ -1067,3 +1068,32 @@ Top attrs: `Project Status:: Active`, `Aliases::`, `Repo::`, `Roadmap::`. Each t
       - **Why later**: … · **Revisit when**: …
       - **Effort**: S|M|L · **Sources**: … · **Roadmap**: `docs/…` §… <ID>
       - (on ship) **Shipped**, **Expected behavior**, **Testing**, **Limits**
+
+---
+
+## P28 — Edit in place, drag out of the PDF (2.19.0)
+
+From user testing of 2.18.0 (2026-10-06): the page-card editor looked like a different card, the link legend sat on the board bar, and a highlight could not be dragged out of the PDF the way Heptabase allows.
+
+### PGE-2 — A page card looks the same while you edit it
+- Phase: P28 · Version: 2.19.0 · Shipped
+- Summary: The page editor renders in world units (no 1/zoom counter-scale), 13px / 19.5px, 22px rows with a 2px gap, the resting card's 16px text inset and 12+6px child indent, thin scrollbar, Roam's reference count floated right so wrapping matches. Bullets sit in the 16px gutter, invisible at rest, a faint dot on hover, still the handle for block drag, menu and zoom.
+- Measured: text x identical, row y within 1.2 px of the resting view at zoom 0.61 (was 25 px vs 14.5 px pitch, 8.5px vs 13px text).
+
+### PDFH-8 — Drag a highlight out of the PDF
+- Phase: P28 · Version: 2.19.0 · Shipped
+- Roam fact: the highlight layer (`z-index 1`) sits under the text layer (`z-index 2`), and Roam calls preventDefault on `mousedown` over a highlight, so native HTML5 drag cannot start there. The highlight block uid is `memoizedProps.value.highlight.id` on a React fiber above `.rm-pdf-highlight-container`.
+- Design: pointermove hit-tests the page's mark rects once per frame and arms the mark (grab cursor). A press that moves 6px becomes a pointer drag with a chip; release over the board dispatches synthetic `dragover` + `drop` with a `DataTransfer` holding `((uid))`, so the board's existing drop path places the card (or pulses one already there). A press that does not move stays Roam's click. The browser's one click after the drop is swallowed on the same task only.
+
+### PDFH-9 — Locate a highlight
+- Phase: P28 · Version: 2.19.0 · Shipped
+- Summary: A list row, Place, and a highlight card's page footer scroll the reader to the highlight (Roam's own `scrollToHighlight` from the highlighter context, fallback scroll to 30%) and flash its marks for 1.6 s. Measured ~0.65 s from click.
+
+### PDFH-10 — Reader fills its box
+- Phase: P28 · Version: 2.19.0 · Shipped
+- Summary: The live box no longer scrolls; Roam's reader fills it (58%), the list takes the rest (42%). Roam's toolbar stays visible.
+
+### FIX-28 — Legend and sidebar copies
+- Phase: P28 · Version: 2.19.0 · Shipped
+- Summary: The link legend sits under the board bar beside Properties. A right-sidebar copy of the board the main window is zoomed into stays inline; before, both copies went fullscreen and the sidebar copy covered the main board and took its clicks and drops.
+

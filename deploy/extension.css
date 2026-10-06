@@ -5517,6 +5517,40 @@ body.roam-body.dark .pxd-root .pxd-present-hud,
   right: 0;
 }
 
+/* Roam's bullet stays reachable in the 16px gutter the text already leaves: invisible at rest like the
+   resting card, a small dot on row hover, and still the handle for block drag, the bullet menu and zoom. */
+.pxd-root .pxd-item.pxd-item--page .pxd-page-edit .rm-block-main > .controls {
+  position: absolute !important;
+  left: 0;
+  top: 0;
+  width: 16px !important;
+  max-width: 16px !important;
+  height: 22px;
+  overflow: visible;
+  z-index: 1;
+}
+
+.pxd-root .pxd-item--page .pxd-page-edit .rm-block-main > .controls .rm-bullet {
+  visibility: visible;
+  width: 16px !important;
+  height: 22px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: grab;
+}
+
+.pxd-root .pxd-item--page .pxd-page-edit .rm-block-main > .controls .rm-bullet__inner {
+  width: 5px !important;
+  height: 5px !important;
+  opacity: 0;
+  transition: opacity 120ms;
+}
+
+.pxd-root .pxd-item--page .pxd-page-edit .rm-block-main:hover > .controls .rm-bullet__inner {
+  opacity: 0.55;
+}
+
 /* PDF-7. Page chips and the On board chip. A border and a clear fill. No filled background. */
 
 .pxd-pdf-chips.pxd-pdf-chips {
@@ -6061,10 +6095,6 @@ body.roam-body.dark .pxd-root,
 .pxd-root:has(.pxd-props:not(.pxd-props--collapsed):not([hidden])) .pxd-legend {
   left: 240px;
   max-width: calc(100% - 304px);
-}
-
-.pxd-root:has(.pxd-props[hidden]) .pxd-legend {
-  left: 8px;
 }
 
 .pxd-root.pxd-root--docked.pxd-root--dock-left .pxd-legend {

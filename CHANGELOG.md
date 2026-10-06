@@ -7,6 +7,8 @@
 - Clicking a highlight in the pane's list, or the page footer on a highlight card, scrolls the PDF to that highlight and flashes it, not just to the top of its page.
 - The PDF reader fills its part of the pane. There is no longer a second scrollbar around it, and Roam's toolbar (highlight tools, zoom, page number) stays in view.
 - The link legend (the chips that turn link types on and off) sits under the board bar, beside Properties, instead of on top of the bar's buttons.
+- While you edit a page card, hovering a row shows a faint bullet in the margin; drag it to move the block, click it for Roam's block menu.
+- A board that is open in the right sidebar while the main window is zoomed into the same board stays in the sidebar. Before, both copies went fullscreen and the sidebar copy covered the main board, so clicks and drops on the board did nothing.
 
 ## 2.18.0 — 2026-10-06
 

@@ -60,6 +60,177 @@ function rect(left, top, width, height) {
   return { left, top, width, height, right: left + width, bottom: top + height, x: left, y: top };
 }
 
+const MARK_UID = "b0U1aGvkN";
+
+// Counts add/remove on the fake window. The press path listens there, not on document.
+function trackWindow(win) {
+  let added = 0;
+  let removed = 0;
+  const add = win.addEventListener;
+  const remove = win.removeEventListener;
+  const has = (type, fn) => Boolean(win.listeners?.get(type)?.has(fn));
+  win.addEventListener = (type, fn, opts) => {
+    const before = has(type, fn);
+    add(type, fn, opts);
+    if (!before && has(type, fn)) added += 1;
+  };
+  win.removeEventListener = (type, fn, opts) => {
+    const before = has(type, fn);
+    remove(type, fn, opts);
+    if (before && !has(type, fn)) removed += 1;
+  };
+  return { net: () => added - removed };
+}
+
+function installDragTypes(win) {
+  class DataTransfer {
+    constructor() { this.store = new Map(); }
+    setData(type, value) { this.store.set(String(type), String(value)); }
+    getData(type) { return this.store.has(String(type)) ? this.store.get(String(type)) : ""; }
+  }
+  class DragEvent {
+    constructor(type, init = {}) {
+      this.type = type;
+      this.bubbles = Boolean(init.bubbles);
+      this.cancelable = Boolean(init.cancelable);
+      this.clientX = Number(init.clientX) || 0;
+      this.clientY = Number(init.clientY) || 0;
+      this.dataTransfer = init.dataTransfer || null;
+    }
+  }
+  win.DataTransfer = DataTransfer;
+  win.DragEvent = DragEvent;
+}
+
+// Armed mark plus a board target. Drop hits whatever elementFromPoint returns.
+function createPointerRig() {
+  const stub = createDomStub();
+  const restore = stub.install();
+  try {
+    const doc = stub.document;
+    const win = stub.window;
+    const track = trackWindow(win);
+    installDragTypes(win);
+    const root = doc.createElement("div");
+    root.className = "pxd-root";
+    doc.body.append(root);
+    const board = doc.createElement("div");
+    board.className = "pxd-viewport";
+    root.append(board);
+    const outside = doc.createElement("div");
+    doc.body.append(outside);
+    const events = [];
+    for (const type of ["dragover", "drop"]) {
+      board.addEventListener(type, (event) => events.push({ type, event }));
+    }
+    const points = [];
+    let fromPoint = () => board;
+    doc.elementFromPoint = (x, y) => {
+      points.push([x, y]);
+      return fromPoint(x, y);
+    };
+    const pane = createReadPane({
+      doc,
+      root,
+      host: {
+        blockString() { return "quoted"; },
+        renderBlock(node) {
+          const box = doc.createElement("div");
+          box.className = "rm-pdf-container";
+          const scroller = doc.createElement("div");
+          scroller.className = "PdfHighlighter";
+          box.append(scroller);
+          node.append(box);
+        },
+      },
+    });
+    pane.open({ blockUid: "blk", cardUid: "card", title: "Paper", pageUid: "page" });
+    const page = doc.createElement("div");
+    page.className = "page";
+    const part = doc.createElement("div");
+    part.className = "TextHighlight__part";
+    part._rect = rect(10, 10, 40, 12);
+    part["__reactFiber$pointer"] = fiberAt(3, {
+      id: MARK_UID,
+      type: "text",
+      color: "yellow",
+      content: { text: "quoted passage" },
+    });
+    const span = doc.createElement("span");
+    page.append(part, span);
+    root.querySelector(".PdfHighlighter").append(page);
+    let dragstarts = 0;
+    span.addEventListener("dragstart", () => { dragstarts += 1; });
+    stub.flushFrames();
+    stub.flushTimers();
+    const arm = () => {
+      stub.dispatch(span, "pointermove", { clientX: 20, clientY: 16 });
+      stub.flushFrames();
+    };
+    return {
+      stub,
+      restore,
+      doc,
+      win,
+      root,
+      board,
+      outside,
+      pane,
+      span,
+      events,
+      points,
+      track,
+      arm,
+      get dragstarts() { return dragstarts; },
+      read: () => root.querySelector(".pxd-read"),
+      live: () => root.querySelector(".pxd-read__live"),
+      setFromPoint(fn) { fromPoint = fn; },
+      down() { stub.dispatch(span, "pointerdown", { clientX: 20, clientY: 16, button: 0 }); },
+      move(x, y, buttons = 1) { stub.dispatch(win, "pointermove", { clientX: x, clientY: y, buttons }); },
+      up(x, y) { stub.dispatch(win, "pointerup", { clientX: x, clientY: y, button: 0 }); },
+    };
+  } catch (err) {
+    restore();
+    throw err;
+  }
+}
+
+function withRig(fn) {
+  const rig = createPointerRig();
+  try {
+    fn(rig);
+  } finally {
+    try { rig.pane.dispose(); } catch { /* already closed */ }
+    rig.restore();
+  }
+}
+
+function windowClick(rig) {
+  let bubbled = 0;
+  const onClick = () => { bubbled += 1; };
+  rig.win.addEventListener("click", onClick);
+  const event = rig.stub.dispatch(rig.win, "click");
+  rig.win.removeEventListener("click", onClick);
+  return { cancelled: event.defaultPrevented === true && bubbled === 0, bubbled, event };
+}
+
+function assertDragging(rig) {
+  assert.equal(rig.dragstarts, 0);
+  assert.equal(rig.root.classList.contains("pxd-root--pdf-drag"), true);
+  const chip = rig.root.querySelector(".pxd-read__drag");
+  assert.ok(chip, "pointer chip");
+  assert.equal(chip.style.pointerEvents, "none");
+  assert.equal(chip.style.zIndex, "60");
+}
+
+function assertIdle(rig, base) {
+  assert.equal(rig.dragstarts, 0);
+  assert.equal(rig.events.some((entry) => entry.type === "drop"), false);
+  assert.equal(rig.root.classList.contains("pxd-root--pdf-drag"), false);
+  assert.equal(rig.root.querySelector(".pxd-read__drag"), null);
+  assert.equal(rig.track.net(), base);
+}
+
 test("a text-layer span over a mark rect arms, and a point outside restores draggable", () => {
   const stub = createDomStub();
   const restore = stub.install();
@@ -358,4 +529,159 @@ test("the pane source does not capture the pointer or listen on document", () =>
   assert.match(css, /\.pxd-root\.pxd-root--pdf-drag > \.pxd-viewport\s*\{[^}]*outline:\s*2px dashed/);
   assert.match(css, /\.pxd-root--dark\.pxd-root--pdf-drag > \.pxd-viewport\s*\{[^}]*background:\s*none/);
   assert.match(css, /\.pxd-root--dark\.pxd-root--pdf-drag > \.pxd-viewport\s*\{[^}]*border:\s*2px dashed/);
+});
+
+test("pointer drag of an armed mark drops ((uid)) on the board and releases the window listeners", () => {
+  withRig((rig) => {
+    rig.setFromPoint((x, y) => (x === 180 && y === 90 ? rig.board : null));
+    rig.arm();
+    assert.equal(rig.live().classList.contains("pxd-read__live--overmark"), true);
+    const base = rig.track.net();
+    rig.down();
+    assert.equal(rig.track.net(), base + 5);
+    rig.move(30, 16, 1);
+    assertDragging(rig);
+    rig.up(180, 90);
+    assert.deepEqual(rig.events.map((entry) => entry.type), ["dragover", "drop"]);
+    assert.equal(rig.events[1].event.dataTransfer.getData(CARD_MIME), `((${MARK_UID}))`);
+    assert.deepEqual(rig.points, [[180, 90]]);
+    assert.equal(rig.root.classList.contains("pxd-root--pdf-drag"), false);
+    assert.equal(rig.root.querySelector(".pxd-read__drag"), null);
+    assert.equal(rig.track.net(), base + 1);
+    rig.stub.flushTimers();
+    assert.equal(rig.track.net(), base);
+    assert.equal(rig.dragstarts, 0);
+  });
+});
+
+test("pointer drag released over the reader or outside the root dispatches no drop", () => {
+  withRig((rig) => {
+    for (const target of [rig.read(), rig.outside]) {
+      rig.events.length = 0;
+      rig.points.length = 0;
+      rig.setFromPoint(() => target);
+      rig.arm();
+      const base = rig.track.net();
+      rig.down();
+      rig.move(30, 16, 1);
+      assertDragging(rig);
+      rig.up(180, 90);
+      assert.deepEqual(rig.events.map((entry) => entry.type), []);
+      assert.equal(rig.root.classList.contains("pxd-root--pdf-drag"), false);
+      assert.equal(rig.root.querySelector(".pxd-read__drag"), null);
+      rig.stub.flushTimers();
+      assert.equal(rig.track.net(), base);
+      assert.equal(rig.dragstarts, 0);
+    }
+  });
+});
+
+test("a press that moves under 6px does not drop, chip, or cancel the next click", () => {
+  withRig((rig) => {
+    rig.arm();
+    const base = rig.track.net();
+    rig.down();
+    rig.move(25, 16, 1);
+    assert.equal(rig.root.classList.contains("pxd-root--pdf-drag"), false);
+    assert.equal(rig.root.querySelector(".pxd-read__drag"), null);
+    rig.up(25, 16);
+    assertIdle(rig, base);
+    assert.equal(windowClick(rig).cancelled, false);
+    assert.equal(rig.track.net(), base);
+  });
+});
+
+test("moving 5px does not start a pointer drag and moving 6px does", () => {
+  withRig((rig) => {
+    rig.arm();
+    const base = rig.track.net();
+    rig.down();
+    rig.move(25, 16, 1);
+    assert.equal(rig.root.querySelector(".pxd-read__drag"), null);
+    rig.move(26, 16, 1);
+    assertDragging(rig);
+    rig.stub.dispatch(rig.win, "keydown", { key: "Escape" });
+    assertIdle(rig, base);
+  });
+});
+
+test("the click after a pointer drag is cancelled until the swallow timer runs", () => {
+  withRig((rig) => {
+    rig.arm();
+    const base = rig.track.net();
+    rig.down();
+    rig.move(30, 16, 1);
+    rig.up(180, 90);
+    assert.equal(windowClick(rig).cancelled, true);
+    assert.equal(rig.track.net(), base);
+    rig.stub.flushTimers();
+    const later = windowClick(rig);
+    assert.equal(later.cancelled, false);
+    assert.equal(later.bubbled, 1);
+    assert.equal(rig.track.net(), base);
+    assert.equal(rig.dragstarts, 0);
+  });
+});
+
+test("escape during a pointer drag drops nothing and clears the window listeners", () => {
+  withRig((rig) => {
+    rig.arm();
+    const base = rig.track.net();
+    rig.down();
+    rig.move(30, 16, 1);
+    assertDragging(rig);
+    rig.stub.dispatch(rig.win, "keydown", { key: "Escape" });
+    assertIdle(rig, base);
+  });
+});
+
+test("blur during a pointer drag drops nothing and clears the window listeners", () => {
+  withRig((rig) => {
+    rig.arm();
+    const base = rig.track.net();
+    rig.down();
+    rig.move(30, 16, 1);
+    assertDragging(rig);
+    rig.stub.dispatch(rig.win, "blur");
+    assertIdle(rig, base);
+  });
+});
+
+test("a pointermove with no buttons ends a pointer drag without a drop", () => {
+  withRig((rig) => {
+    rig.arm();
+    const base = rig.track.net();
+    rig.down();
+    rig.move(30, 16, 1);
+    assertDragging(rig);
+    rig.move(30, 16, 0);
+    assertIdle(rig, base);
+  });
+});
+
+test("dispose during a press returns the window listener count to baseline", () => {
+  withRig((rig) => {
+    rig.arm();
+    const base = rig.track.net();
+    rig.down();
+    assert.equal(rig.track.net(), base + 5);
+    rig.pane.dispose();
+    assertIdle(rig, base);
+  });
+});
+
+test("dispose during the swallow window returns the window listener count to baseline", () => {
+  withRig((rig) => {
+    rig.arm();
+    const base = rig.track.net();
+    rig.down();
+    rig.move(30, 16, 1);
+    rig.up(180, 90);
+    assert.equal(rig.track.net(), base + 1);
+    assert.equal(rig.root.querySelector(".pxd-read__drag"), null);
+    rig.pane.dispose();
+    assert.equal(rig.track.net(), base);
+    assert.equal(rig.root.classList.contains("pxd-root--pdf-drag"), false);
+    assert.equal(rig.dragstarts, 0);
+  });
 });

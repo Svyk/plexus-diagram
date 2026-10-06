@@ -604,11 +604,20 @@ export function createReadPane({
     dragChip.style.left = `${Math.round(x + 12)}px`;
     dragChip.style.top = `${Math.round(y + 12)}px`;
   };
+  // The drop's mousedown and mouseup land on different nodes, so the browser sends one click to their
+  // common ancestor right after pointerup. Swallow only that click: the listener goes on the next task.
+  let swallowOff = null;
   const swallowClick = () => {
     const w = view();
-    const stop = (event) => { event.stopPropagation(); event.preventDefault(); };
-    w.addEventListener?.("click", stop, { capture: true, once: true });
-    w.setTimeout?.(() => w.removeEventListener?.("click", stop, true), 400);
+    swallowOff?.();
+    const stop = (event) => { event.stopPropagation(); event.preventDefault(); swallowOff?.(); };
+    const timer = w.setTimeout?.(() => swallowOff?.(), 0);
+    w.addEventListener?.("click", stop, true);
+    swallowOff = () => {
+      swallowOff = null;
+      w.removeEventListener?.("click", stop, true);
+      w.clearTimeout?.(timer);
+    };
   };
   const dropAt = (uid, x, y) => {
     const w = view();
@@ -628,6 +637,8 @@ export function createReadPane({
   };
   const onPressMove = (event) => {
     if (!press) return;
+    // The button came up outside the window: no pointerup reached us.
+    if (event.buttons === 0) { endPress(); return; }
     const x = Number(event.clientX);
     const y = Number(event.clientY);
     if (!press.active) {
@@ -674,6 +685,7 @@ export function createReadPane({
     pressListen(w, "pointerup", onPressUp);
     pressListen(w, "pointercancel", endPress);
     pressListen(w, "keydown", onPressKey);
+    pressListen(w, "blur", endPress);
   };
   const onLiveLeave = () => { if (!dragging) disarm(); };
   const chipLabel = (uid, highlight) => {
@@ -907,6 +919,7 @@ export function createReadPane({
     endSplit();
     releaseWatch();
     endPress();
+    swallowOff?.();
     endPdfDrag();
     clearLive();
     root?.classList?.remove("pxd-root--read", "pxd-root--read-stack");

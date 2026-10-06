@@ -411,7 +411,11 @@ test("a left dock offsets the Properties panel like the legend, and the chosen o
   const rule = rulesOf(block22(css)).find((r) => r.selectors.includes(".pxd-root.pxd-root--docked.pxd-root--dock-left .pxd-props"));
   assert.ok(rule, "props offset rule");
   assert.match(rule.body, /left:\s*64px/);
-  const legend = rulesOf(await read("rail.css")).find((r) => r.selectors.includes(".pxd-root.pxd-root--docked.pxd-root--dock-left .pxd-legend"));
-  assert.match(legend.body, /left:\s*64px/);
+  const rail = await read("rail.css");
+  const legends = rulesOf(rail).filter((r) => r.selectors.includes(".pxd-root.pxd-root--docked.pxd-root--dock-left .pxd-legend"));
+  const legend = legends[legends.length - 1];
+  assert.ok(legend, "last left-dock legend rule");
+  assert.match(legend.body, /left:\s*152px/);
+  assert.ok(rulesOf(rail).some((r) => r.selectors.some((sel) => sel.includes("pxd-root--dock-left") && sel.includes(".pxd-legend") && sel.includes(":has(.pxd-props:not(.pxd-props--collapsed)")) && /left:\s*296px/.test(r.body)));
   assert.ok(rulesOf(block22(css)).some((r) => r.selectors.some((x) => x.includes(".pxd-dock__chosen"))));
 });

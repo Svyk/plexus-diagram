@@ -132,10 +132,6 @@
   max-width: calc(100% - 304px);
 }
 
-.pxd-root:has(.pxd-props[hidden]) .pxd-legend {
-  left: 8px;
-}
-
 .pxd-root.pxd-root--docked.pxd-root--dock-left .pxd-legend {
   left: 152px;
 }

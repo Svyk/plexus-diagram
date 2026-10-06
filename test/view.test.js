@@ -1721,7 +1721,7 @@ test("F5: a plain-object settings map is honored by the view", async () => {
   }
 });
 
-test("NP-6: a sidebar mount defaults to the outline and does not open the block", async () => {
+test("NP-6: a sidebar mount defaults to the board and does not open the block", async () => {
   const prep = createDomStub();
   const undoPrep = prep.install();
   const sidebar = prep.document.createElement("div");
@@ -1739,13 +1739,19 @@ test("NP-6: a sidebar mount defaults to the outline and does not open the block"
   try {
     await f.flush();
     const root = f.view.root;
-    assert.ok(root.classList.contains("pxd-root--sidebar"));
-    assert.ok(root.classList.contains("pxd-root--outline"));
     const want = ["cardAAAA1", "cardBBBB2", "cardFAR03", "cardFAR04", "textTTTT5", "sectCCCC3", "edgesEEE5"];
+    assert.ok(root.classList.contains("pxd-root--sidebar"));
+    assert.equal(root.classList.contains("pxd-root--outline"), false);
+    assert.equal(root.querySelectorAll(".pxd-sidebar-outline__row").length, 0);
+    assert.deepEqual(rendered, []);
+    assert.equal(root.querySelector(".pxd-mode__board").classList.contains("pxd-mode__btn--on"), true);
+    assert.equal(f.session.mutations.some((m) => m[0] === "setBlockOpen"), false);
+    assert.equal(f.stub.localStorage.getItem("plexus-diagram:sidebar-mode:Svy:board0001"), null);
+    root.querySelector(".pxd-mode__outline").click();
+    assert.ok(root.classList.contains("pxd-root--outline"));
     assert.deepEqual([...root.querySelectorAll(".pxd-sidebar-outline__row")].map((r) => r.dataset.uid), want);
     assert.deepEqual(rendered, want);
     assert.equal(root.querySelector(".pxd-mode__outline").classList.contains("pxd-mode__btn--on"), true);
-    assert.equal(f.session.mutations.some((m) => m[0] === "setBlockOpen"), false);
     f.session.emit("change", { dirty: new Set(["cardAAAA1"]) });
     assert.deepEqual(rendered, want, "a string echo does not rebuild the outline");
     root.querySelector(".pxd-mode__board").click();
@@ -1802,6 +1808,7 @@ test("NP-7: a sidebar board keeps its own viewport, keys, and fullscreen", async
   });
   try {
     await f.flush();
+    side.root.querySelector(".pxd-mode__outline").click();
     const outlineKey = f.stub.dispatch(f.stub.window, "keydown", { key: "n" });
     assert.equal(outlineKey.propagationStopped, false, "outline mode does not swallow a key");
     assert.equal(side.root.dataset.tool, "select");

@@ -256,6 +256,10 @@ function setup({ enhanced = [], legacy = null, settings = {}, hash = "" } = {}) 
 
   const views = [];
   const mountView = (args) => {
+    if (env.failMount) {
+      env.mountAttempts = (env.mountAttempts || 0) + 1;
+      throw new Error("mount failed");
+    }
     const view = { args, disposed: 0, fullscreen: [], focused: [], dispose() { this.disposed += 1; }, setFullscreen(v) { this.fullscreen.push(v); }, focusUid(uid) { this.focused.push(uid); } };
     views.push(view);
     return view;
@@ -1733,4 +1737,74 @@ test("AE-1 a nested plain diagram opens as a virtual board in auto mode; one wit
     assert.deepEqual(t.writes.openBlock, ["shapesCCC1"]);
     assert.equal(t.writes.createBlock.length, 0);
   });
+});
+
+function countClassWrites(el) {
+  const box = { n: 0 };
+  const add = el.classList.add;
+  const remove = el.classList.remove;
+  el.classList.add = (...names) => { box.n += 1; return add.apply(el.classList, names); };
+  el.classList.remove = (...names) => { box.n += 1; return remove.apply(el.classList, names); };
+  return box;
+}
+
+test("reconcile does not rewrite an unchanged diagram class", async () => {
+  await withEnv({ enhanced: ["boardAAA1", "childBBB1"] }, async (t) => {
+    t.strings.set("boardAAA1", "{{[[diagram]]}}");
+    t.strings.set("childBBB1", "{{[[diagram]]:Untitled board}}");
+    const root = addBoardBlock(t.doc, "boardAAA1");
+    const nested = addOutlineBoard(t.doc, "childBBB1", root);
+    const writes = [root.native, root.panel, nested.native, nested.panel].map(countClassWrites);
+    const total = () => writes.reduce((sum, box) => sum + box.n, 0);
+    await t.install();
+    assert.ok(nested.native.classList.contains("pxd-outline-native"));
+    assert.ok(nested.panel.classList.contains("pxd-outline-native"));
+    assert.ok(root.native.classList.contains("pxd-native-hidden"));
+    const before = total();
+    assert.ok(before > 0);
+    t.tick();
+    t.tick();
+    assert.equal(total(), before, "a later reconcile does not touch a class that already matches");
+  });
+});
+
+test("a failed mount retries after 5s, then 30s, then waits for a page change", async () => {
+  const origNow = Date.now;
+  const origWarn = console.warn;
+  let now = 1_000_000;
+  const warns = [];
+  Date.now = () => now;
+  console.warn = (...args) => { warns.push(args); };
+  const mountWarns = () => warns.filter((args) => String(args[0]).includes("Mount failed") && args[1] === "boardAAA1").length;
+  try {
+    await withEnv({ enhanced: ["boardAAA1"] }, async (t) => {
+      t.env.failMount = true;
+      addNative(t.doc, "boardAAA1");
+      await t.install();
+      assert.equal(t.env.mountAttempts, 1);
+      t.tick();
+      assert.equal(t.env.mountAttempts, 1, "the next reconcile does not mount again");
+      now += 4999;
+      t.tick();
+      assert.equal(t.env.mountAttempts, 1, "4.999s is still inside the first backoff");
+      now += 1;
+      t.tick();
+      assert.equal(t.env.mountAttempts, 2);
+      now += 29999;
+      t.tick();
+      assert.equal(t.env.mountAttempts, 2, "29.999s is still inside the second backoff");
+      now += 1;
+      t.tick();
+      assert.equal(t.env.mountAttempts, 3);
+      now += 10 * 60 * 1000;
+      t.tick();
+      assert.equal(t.env.mountAttempts, 3, "after two retries the board waits for a page change");
+      assert.equal(mountWarns(), 1);
+      t.setHash("#/app/Svy/page/otherPAGE");
+      assert.equal(t.env.mountAttempts, 4, "a page change allows one more attempt");
+    });
+  } finally {
+    Date.now = origNow;
+    console.warn = origWarn;
+  }
 });

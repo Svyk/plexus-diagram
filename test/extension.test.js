@@ -243,3 +243,52 @@ test("a second load disposes the previous runtime before registering again", asy
   assert.equal(secondApi.calls.filter(([name]) => name === "command:add").length >= 1, true);
   await cleanup();
 });
+
+async function withWindow(run) {
+  const had = Object.prototype.hasOwnProperty.call(globalThis, "window");
+  const prev = globalThis.window;
+  try {
+    return await run();
+  } finally {
+    await extension.onunload().catch(() => {});
+    if (had) globalThis.window = prev;
+    else delete globalThis.window;
+  }
+}
+
+test("a second onload awaits a foreign teardown once before installing", async () => {
+  const errors = [];
+  const orig = console.error;
+  console.error = (...args) => { errors.push(args); };
+  let calls = 0;
+  try {
+    await withWindow(async () => {
+      const foreign = async () => { calls += 1; throw new Error("stale copy"); };
+      globalThis.window = { __plexusDiagramTeardown: foreign };
+      const api = fakeExtensionApi();
+      await extension.onload({ extensionAPI: api, extension: { version: "two" }, deps: stubDeps() });
+      assert.equal(calls, 1);
+      assert.ok(errors.some((args) => args.some((part) => String(part?.message || part).includes("stale"))));
+      assert.ok(api.calls.some(([name]) => name === "command:add"), "install continues after the previous copy throws");
+      const ours = globalThis.window.__plexusDiagramTeardown;
+      assert.equal(typeof ours, "function");
+      assert.notEqual(ours, foreign);
+      const interloper = async () => {};
+      globalThis.window.__plexusDiagramTeardown = interloper;
+      await extension.onunload();
+      assert.equal(globalThis.window.__plexusDiagramTeardown, interloper);
+    });
+  } finally {
+    console.error = orig;
+  }
+});
+
+test("unload deletes window.__plexusDiagramTeardown only when it is still this copy", async () => {
+  await withWindow(async () => {
+    globalThis.window = {};
+    await extension.onload({ extensionAPI: fakeExtensionApi(), extension: { version: "two" }, deps: stubDeps() });
+    assert.equal(typeof globalThis.window.__plexusDiagramTeardown, "function");
+    await extension.onunload();
+    assert.equal(globalThis.window.__plexusDiagramTeardown, undefined);
+  });
+});

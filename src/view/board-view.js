@@ -688,7 +688,7 @@ function createLocalViewportStore({ storage, graph, timers }) {
   };
 }
 
-export function mountBoardView({
+function buildBoardView(onFail, {
   host,
   session,
   mountEl,
@@ -887,31 +887,146 @@ export function mountBoardView({
   const board = () => session.board;
 
   // A sidebar root has no enhanced ancestor, so the collapsed board mounts here as a canvas.
-  // Outline renders each top-level block (and Connections) without writing :block/open.
+  // Outline lists each top-level block (and Connections) without writing :block/open.
+  // Rows render when they come within about a screen of the outline scroller, and unmount
+  // past about three screens, keeping the last height so the scroll position stays put.
+  // The Outline/Board choice is per board on this device. Opening does not write it.
+  const OUTLINE_NEAR = "100% 0px";
+  const OUTLINE_FAR = "300% 0px";
+  const sidebarModeKey = `plexus-diagram:sidebar-mode:${graph}:${boardUid}`;
   let outlineMode = false;
   let outlineHost = null;
   let outlineKey = "";
   let outlineBtn = null;
   let boardBtn = null;
-  const clearOutline = () => {
-    if (!outlineHost) return;
-    for (const row of [...outlineHost.children]) {
-      try { host?.unmount?.(row); } catch { /* stub */ }
+  let outlineNear = null;
+  let outlineFar = null;
+  const outlined = new WeakSet();
+  const readSidebarMode = () => {
+    try {
+      const v = storage?.getItem?.(sidebarModeKey);
+      return v === "outline" || v === "board" ? v : "";
+    } catch { return ""; }
+  };
+  const writeSidebarMode = (mode) => {
+    try { storage?.setItem?.(sidebarModeKey, mode); } catch { /* quota or private mode */ }
+  };
+  const forgetObserver = (obs) => {
+    if (!obs) return;
+    try { obs.disconnect(); } catch { /* already off */ }
+    const i = observers.indexOf(obs);
+    if (i >= 0) observers.splice(i, 1);
+  };
+  // leaveOutline, clearOutline, and dispose all come through here, so a hot reload cannot leave a scroll watcher up.
+  const disconnectOutline = () => {
+    const near = outlineNear;
+    const far = outlineFar;
+    outlineNear = null;
+    outlineFar = null;
+    forgetObserver(near);
+    forgetObserver(far);
+  };
+  const rowHeight = (row) => {
+    try {
+      const h = row.getBoundingClientRect?.().height;
+      if (h > 0) return h;
+    } catch { /* stub */ }
+    const off = Number(row.offsetHeight) || 0;
+    return off > 0 ? off : 0;
+  };
+  const renderOutlineRow = (row) => {
+    if (disposed || !row || outlined.has(row)) return;
+    if (!outlineHost?.contains?.(row)) return;
+    if (typeof host?.renderBlock !== "function") return;
+    try { host.renderBlock(row, row.dataset.uid); } catch { return; }
+    row.style.height = "";
+    outlined.add(row);
+  };
+  const releaseOutlineRow = (row) => {
+    if (!row || !outlined.has(row)) return;
+    const h = rowHeight(row);
+    try { host?.unmount?.(row); } catch { /* stub */ }
+    try { row.replaceChildren(); } catch { /* stub */ }
+    if (h > 0) row.style.height = `${Math.ceil(h)}px`;
+    outlined.delete(row);
+  };
+  const dropOutlineRow = (row) => {
+    try { outlineNear?.unobserve?.(row); } catch { /* stub */ }
+    try { outlineFar?.unobserve?.(row); } catch { /* stub */ }
+    releaseOutlineRow(row);
+  };
+  const ensureOutlineObserver = () => {
+    const IO = globalThis.IntersectionObserver;
+    if (typeof IO !== "function" || !outlineHost) return false;
+    if (outlineNear && outlineFar) return true;
+    disconnectOutline();
+    try {
+      outlineNear = new IO((entries) => {
+        if (disposed || !outlineMode) return;
+        for (const entry of entries) if (entry.isIntersecting) renderOutlineRow(entry.target);
+      }, { root: outlineHost, rootMargin: OUTLINE_NEAR });
+      outlineFar = new IO((entries) => {
+        if (disposed || !outlineMode) return;
+        for (const entry of entries) if (!entry.isIntersecting) releaseOutlineRow(entry.target);
+      }, { root: outlineHost, rootMargin: OUTLINE_FAR });
+    } catch {
+      disconnectOutline();
+      return false;
     }
+    observers.push(outlineNear, outlineFar);
+    return true;
+  };
+  const watchOutlineRow = (row) => {
+    if (!ensureOutlineObserver()) {
+      renderOutlineRow(row);
+      return;
+    }
+    try {
+      outlineNear.observe(row);
+      outlineFar.observe(row);
+    } catch {
+      renderOutlineRow(row);
+    }
+  };
+  const clearOutline = () => {
+    disconnectOutline();
+    if (!outlineHost) return;
+    for (const row of [...outlineHost.children]) releaseOutlineRow(row);
     outlineHost.replaceChildren();
   };
   const syncOutline = (force = false) => {
     if (!outlineMode || !outlineHost || disposed) return;
-    const key = sidebarOutlineUids(board()).join("\n");
+    const uids = sidebarOutlineUids(board());
+    const key = uids.join("\n");
     if (!force && key === outlineKey) return;
     outlineKey = key;
-    clearOutline();
-    if (typeof host?.renderBlock !== "function") return;
-    for (const uid of sidebarOutlineUids(board())) {
-      const row = el("div", "pxd-sidebar-outline__row", outlineHost);
-      row.dataset.uid = uid;
-      row.setAttribute("data-uid", uid);
-      try { host.renderBlock(row, uid); } catch { /* render failed */ }
+    if (force) clearOutline();
+    const have = new Map();
+    for (const row of [...outlineHost.children]) {
+      const uid = row.dataset?.uid;
+      if (uid && !have.has(uid)) have.set(uid, row);
+    }
+    const keep = new Set(uids);
+    for (const [uid, row] of have) {
+      if (keep.has(uid)) continue;
+      dropOutlineRow(row);
+      row.remove();
+      have.delete(uid);
+    }
+    let cursor = outlineHost.firstChild;
+    for (const uid of uids) {
+      let row = have.get(uid);
+      if (!row) {
+        row = el("div", "pxd-sidebar-outline__row");
+        row.dataset.uid = uid;
+        row.setAttribute("data-uid", uid);
+        if (cursor) outlineHost.insertBefore(row, cursor);
+        else outlineHost.append(row);
+        watchOutlineRow(row);
+      } else if (row !== cursor) {
+        outlineHost.insertBefore(row, cursor);
+      }
+      cursor = row.nextElementSibling;
     }
   };
   let tableMode = false;
@@ -927,6 +1042,7 @@ export function mountBoardView({
     outlineBtn?.classList.toggle("pxd-mode__btn--on", false);
     boardBtn?.classList.toggle("pxd-mode__btn--on", true);
     outlineKey = "";
+    disconnectOutline();
     clearOutline();
   };
   const setTable = (on) => {
@@ -976,8 +1092,8 @@ export function mountBoardView({
       listen(b, "click", on);
       return b;
     };
-    outlineBtn = modeBtn("pxd-mode__outline", "Outline", () => setOutline(true));
-    boardBtn = modeBtn("pxd-mode__board", "Board", () => setOutline(false));
+    outlineBtn = modeBtn("pxd-mode__outline", "Outline", () => { writeSidebarMode("outline"); setOutline(true); });
+    boardBtn = modeBtn("pxd-mode__board", "Board", () => { writeSidebarMode("board"); setOutline(false); });
     outlineHost = el("div", "pxd-sidebar-outline pxd-chrome", root);
   }
 
@@ -1016,7 +1132,19 @@ export function mountBoardView({
   };
 
   // ------------------------------------------------------------ layers
-  const itemsR = createItemRenderer({
+  // A throw after the renderer exists must dispose it. Otherwise a retrying reconcile leaks a listener set per tick.
+  onFail.push(
+    () => itemsR?.dispose?.(),
+    () => routeOff(),
+    () => fsDispose(),
+    () => subs.splice(0).forEach((off) => { try { off?.(); } catch { /* already off */ } }),
+    () => listeners.splice(0).forEach((off) => { try { off(); } catch { /* already off */ } }),
+    () => observers.splice(0).forEach((o) => { try { o.disconnect(); } catch { /* already off */ } }),
+    () => timers.cancelAll(),
+    () => root.remove(),
+  );
+  let itemsR = null;
+  itemsR = createItemRenderer({
     doc,
     host,
     session,
@@ -4544,6 +4672,7 @@ export function mountBoardView({
       editorPaste,
     },
   });
+  onFail.unshift(() => clip.dispose());
 
   // ------------------------------------------------------------ session events
   subs.push(session.on("change", ({ dirty: d, structural } = {}) => {
@@ -4605,7 +4734,7 @@ export function mountBoardView({
     getBoard: board,
     onClose: () => laterCtl.close(),
   });
-  if (inSidebar) setOutline(true);
+  if (inSidebar) setOutline(readSidebarMode() === "outline");
 
   // ------------------------------------------------------------ observers
   const RO = globalThis.ResizeObserver;
@@ -5236,6 +5365,7 @@ export function mountBoardView({
       step(() => pagePicker?.close());
       step(() => closeBlockEdit());
       step(() => { if (pointerBoard === root) pointerBoard = null; });
+      step(() => disconnectOutline());
       step(() => clearOutline());
       step(() => tableCtl.dispose());
       step(() => kanbanCtl.dispose());
@@ -5282,4 +5412,16 @@ export function mountBoardView({
     },
   };
   return view;
+}
+
+export function mountBoardView(options = {}) {
+  const onFail = [];
+  try {
+    return buildBoardView(onFail, options);
+  } catch (error) {
+    for (const fn of onFail.splice(0)) {
+      try { fn(); } catch (cleanupError) { console.warn("[plexus-diagram] dispose step failed", cleanupError); }
+    }
+    throw error;
+  }
 }

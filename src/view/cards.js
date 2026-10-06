@@ -14,7 +14,7 @@ import { CARD_MIME } from "./panel.js";
 import { lodForZoom, rectsIntersect } from "../model/geometry.js";
 import { SHAPES, shapePath } from "../model/shapes.js";
 import { fillFromTags, highlighterTags } from "../model/highlighter.js";
-import { watchEditorMenus } from "./editor-menus.js";
+import { nudgeEditorMenus, registerEditorMenus } from "./editor-menus.js";
 import { applyEditorCounterScale } from "./editor-scale.js";
 import { UNMOUNT_GRACE_MS, intrinsicSize, shellOffscreen, unmountDue } from "./offscreen.js";
 import { isStructuralString, parseRegion } from "../model/regions.js";
@@ -275,6 +275,64 @@ function cardContentKey(item, live = false, pdfOpen = false, chipSig = "") {
   return parts.join("\u0001");
 }
 
+// One ready/unload pair per window. Disconnected renderers are dropped when either event fires.
+const regionHubs = new WeakMap();
+
+function regionHub(win) {
+  if (!win || (typeof win !== "object" && typeof win !== "function")) return null;
+  let hub = regionHubs.get(win);
+  if (hub) return hub;
+  hub = { win, entries: new Set(), listening: false };
+  const detach = () => {
+    if (!hub.listening) return;
+    try { win.removeEventListener?.("roam-plexus:ready", hub.onReady); } catch { /* already gone */ }
+    try { win.removeEventListener?.("roam-plexus:unload", hub.onUnload); } catch { /* already gone */ }
+    hub.listening = false;
+  };
+  const prune = () => {
+    for (const entry of [...hub.entries]) {
+      if (entry.root?.isConnected !== false) continue;
+      hub.entries.delete(entry);
+      try { entry.release?.(); } catch { /* already gone */ }
+    }
+    if (!hub.entries.size) detach();
+  };
+  const fan = (key) => {
+    prune();
+    for (const entry of hub.entries) {
+      try { entry[key]?.(); } catch { /* one renderer */ }
+    }
+  };
+  hub.onReady = () => fan("onReady");
+  hub.onUnload = () => fan("onUnload");
+  hub.attach = () => {
+    if (hub.listening) return;
+    win.addEventListener?.("roam-plexus:ready", hub.onReady);
+    win.addEventListener?.("roam-plexus:unload", hub.onUnload);
+    hub.listening = true;
+  };
+  regionHubs.set(win, hub);
+  return hub;
+}
+
+function joinRegionHub(win, entry) {
+  const hub = regionHub(win);
+  if (!hub) return () => {};
+  hub.entries.add(entry);
+  hub.attach();
+  let left = false;
+  return () => {
+    if (left) return;
+    left = true;
+    hub.entries.delete(entry);
+    if (!hub.entries.size) {
+      try { win.removeEventListener?.("roam-plexus:ready", hub.onReady); } catch { /* already gone */ }
+      try { win.removeEventListener?.("roam-plexus:unload", hub.onUnload); } catch { /* already gone */ }
+      hub.listening = false;
+    }
+  };
+}
+
 export function createItemRenderer({
   doc = globalThis.document,
   host,
@@ -351,7 +409,6 @@ export function createItemRenderer({
   let zoomCache = 1;
   let paused = false;
   let editing = null;
-  let stopMenus = null;
   let queue = [];
   let idleHandle = null;
   let wanted = new Set();
@@ -364,20 +421,32 @@ export function createItemRenderer({
   let recoveries = [];
   let lastOutsideDown = -Infinity;
   let disposed = false;
+  let trackPopover = false;
+  let unregisterMenus = () => {};
+  let leaveRegionHub = () => {};
 
   // `.rm-block__input` is also the read-only block view. The caret lives on the textarea.
-  const menuAnchor = () => doc.querySelector?.(".pxd-item--editing textarea")
-    || doc.querySelector?.(".pxd-root .bp3-popover-open")
-    || null;
-  const ensureMenus = (getAnchor = menuAnchor) => {
-    if (disposed || stopMenus) return;
-    const stop = watchEditorMenus(doc, getAnchor, () => {
-      if (stopMenus === stop) stopMenus = null;
-    });
-    stopMenus = stop;
+  // Idle renderers return before any query. The search stays inside this board's root.
+  const menuRoot = itemsLayer?.closest?.(".pxd-root") || sectionsLayer?.closest?.(".pxd-root") || null;
+  const menuAnchor = () => {
+    if (disposed) return null;
+    if (!editing && !trackPopover) return null;
+    if (!editing) {
+      const pop = menuRoot?.querySelector?.(".bp3-popover-open") || null;
+      if (!pop) { trackPopover = false; return null; }
+      return pop;
+    }
+    const fromEditor = editing.editor?.querySelector?.("textarea") || editing.editor?.querySelector?.(".rm-block__input");
+    if (fromEditor) return fromEditor;
+    if (!menuRoot?.querySelector) return null;
+    return menuRoot.querySelector(".pxd-item--editing textarea")
+      || menuRoot.querySelector(".bp3-popover-open")
+      || null;
   };
-  const onMenuPointer = () => { if (!disposed) ensureMenus(); };
-  doc.addEventListener?.("pointerup", onMenuPointer, true);
+  unregisterMenus = registerEditorMenus(doc, {
+    root: menuRoot || itemsLayer || { isConnected: true },
+    anchor: menuAnchor,
+  });
 
   const later = (fn, ms) => (timers?.later ? timers.later(fn, ms) : (() => { const t = setTimeout(fn, ms); return () => clearTimeout(t); })());
   const idle = (fn, soon = false) => {
@@ -1734,15 +1803,13 @@ export function createItemRenderer({
     attachFocusGuard();
     attachFloor(editing);
     onEditChange?.(rec.uid);
-    ensureMenus(() => rec.editor?.querySelector?.("textarea"));
+    nudgeEditorMenus(doc);
   };
   const endStickyEdit = () => {
     const e = editing;
     if (!e?.sticky) return;
     e.leave?.();
     editing = null;
-    stopMenus?.();
-    stopMenus = null;
     detachFocusGuard();
     e.rec.el.classList.remove("pxd-item--typing");
     onEditChange?.(null);
@@ -2958,16 +3025,14 @@ export function createItemRenderer({
     applyEditorCounterScale(editor, zoomCache);
     frameLater(() => { if (editing?.uid === uid) { applyEditorCounterScale(editor, zoomCache); fitEditorText(editor); } });
     if (editing?.uid === uid && editor.contains?.(doc.activeElement)) editing.ready = true;
-    stopMenus?.();
-    stopMenus = null;
-    if (editing?.uid === uid) ensureMenus(() => editor.querySelector?.("textarea"));
+    if (editing?.uid === uid) nudgeEditorMenus(doc);
     return true;
   };
 
   const exitEdit = async ({ silent = false } = {}) => {
-    stopMenus?.();
-    stopMenus = null;
-    if (doc.querySelector?.(".pxd-root .bp3-popover-open")) ensureMenus();
+    const pop = menuRoot?.querySelector?.(".bp3-popover-open");
+    trackPopover = Boolean(pop);
+    if (trackPopover) nudgeEditorMenus(doc);
     const e = editing;
     if (!e) return;
     if (e.sticky) {
@@ -3207,16 +3272,24 @@ export function createItemRenderer({
     refreshRegionKinds(null);
   };
   const regionWin = regionWindow();
-  regionWin.addEventListener?.("roam-plexus:ready", onRegionReady);
-  regionWin.addEventListener?.("roam-plexus:unload", onRegionUnload);
+  leaveRegionHub = joinRegionHub(regionWin, {
+    root: menuRoot || itemsLayer || { isConnected: true },
+    onReady: onRegionReady,
+    onUnload: onRegionUnload,
+    release: () => {
+      try { regionWatch?.removeEventListener?.("change", onRegionChange); } catch { /* already gone */ }
+      regionWatch = null;
+    },
+  });
   bindRegionWatch();
 
   const dropRegionWatch = () => {
-    try { regionWin.removeEventListener?.("roam-plexus:ready", onRegionReady); } catch { /* already gone */ }
-    try { regionWin.removeEventListener?.("roam-plexus:unload", onRegionUnload); } catch { /* already gone */ }
+    leaveRegionHub?.();
+    leaveRegionHub = () => {};
     try { regionWatch?.removeEventListener?.("change", onRegionChange); } catch { /* already gone */ }
     regionWatch = null;
-    doc.removeEventListener?.("pointerup", onMenuPointer, true);
+    unregisterMenus?.();
+    unregisterMenus = () => {};
   };
   const dispose = () => {
     disposed = true;
@@ -3226,8 +3299,6 @@ export function createItemRenderer({
     pdfOpenUid = null;
     dropRegionWatch();
     closePeek();
-    stopMenus?.();
-    stopMenus = null;
     if (editing) {
       const e = editing;
       clearEditFade(e);

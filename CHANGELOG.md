@@ -1,5 +1,12 @@
 # Changelog
 
+## 2.13.2 — 2026-10-05
+
+- A board in the right sidebar opens as the board. Outline is still in the mode bar, and the last choice is remembered on this device.
+- Outline rows render when they scroll near the window. A row that scrolls far away unmounts and keeps its height, so a PDF lower down does not stay open.
+- Clicking and panning a board stays fast in a window that has been open for days. Old copies of a board no longer keep listening after they close, and loading Plexus again cleans up an earlier copy that never unloaded. One click had been waking thousands of leftover copies.
+- A board that fails to open waits before trying again, instead of retrying every 400 ms.
+
 ## 2.13.1 — 2026-10-05
 
 - An image card keeps its picture at map zoom. A collapsed or empty card still shows its title.

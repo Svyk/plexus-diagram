@@ -53,6 +53,7 @@ export const PACKAGE_VERSION = pkg.version;
 
 export const RECONCILE_INTERVAL_MS = 400;
 const NEGATIVE_TTL_MS = 1500;
+const MOUNT_BACKOFF_MS = [5000, 30000];
 const LEGACY_METADATA_PAGE = "plexus-diagram/metadata";
 const TITLE_PANEL_CLASS = "rm-diagram-title-panel";
 const NEW_BOARD_STRING = "{{[[diagram]]:Untitled board}}";
@@ -71,6 +72,16 @@ function sameTrail(a, b) {
   if (!a || !b || a.length !== b.length) return false;
   for (let i = 0; i < a.length; i += 1) if (a[i].uid !== b[i].uid) return false;
   return true;
+}
+
+// classList.add/remove of a token that is already in the right state still writes the
+// attribute in Roam, so a 400 ms reconcile was mutating every diagram's class.
+function setClassToken(el, name, on) {
+  const list = el?.classList;
+  if (!list || typeof list.contains !== "function" || !name) return;
+  const has = Boolean(list.contains(name));
+  if (on) { if (!has) list.add(name); }
+  else if (has) list.remove(name);
 }
 
 function cameraOf(rec) {
@@ -182,6 +193,7 @@ export async function installPlexusDiagram({
   const trusted = new Set(); // uids confirmed enhanced by this runtime (command results)
   const portalObservers = new Map(); // portal node -> its own added-nodes observer
   const negativeUntil = new Map(); // uid -> timestamp before which a failed pull is not repeated
+  const mountFail = new Map(); // uid -> { n, until } after a thrown mount; not retried every reconcile tick
   const autoCache = new Map(); // uid -> { kind: "virtual" | "convert" | null, at } (auto-enhance decision, one read per TTL)
   const virtualUids = new Set(); // uids shown as a board with no :plexus written yet
   const convertButtons = new Map(); // native element -> { el, uid }
@@ -405,7 +417,7 @@ export async function installPlexusDiagram({
     for (const observer of portalObservers.values()) observer.disconnect();
     portalObservers.clear();
     // Outline copies skipped by consider() carry a mark that no mount owns; clear it so unload leaves nothing.
-    for (const el of [...(doc?.querySelectorAll?.(`.${OUTLINE_NATIVE_CLASS}`) || [])]) el.classList.remove(OUTLINE_NATIVE_CLASS);
+    for (const el of [...(doc?.querySelectorAll?.(`.${OUTLINE_NATIVE_CLASS}`) || [])]) setClassToken(el, OUTLINE_NATIVE_CLASS, false);
     guardStyle?.remove?.();
     guardStyle = null;
   });
@@ -764,8 +776,7 @@ export async function installPlexusDiagram({
         rec.off = watchRec(rec);
         publishCards(rec.session?.board);
       } catch (error) {
-        console.error("[plexus-diagram] Nested mount failed; native diagram restored", error);
-        negativeUntil.set(rec.uid, Date.now() + 10 * NEGATIVE_TTL_MS);
+        noteMountFail(rec.uid, error);
         unmount(rec);
       }
     });
@@ -777,8 +788,8 @@ export async function installPlexusDiagram({
     mountEl.className = "pxd-mount";
     mountEl.dataset.diagramUid = uid;
     const titlePanel = titlePanelOf(native);
-    native.classList.remove(OUTLINE_NATIVE_CLASS);
-    titlePanel?.classList.remove(OUTLINE_NATIVE_CLASS);
+    setClassToken(native, OUTLINE_NATIVE_CLASS, false);
+    setClassToken(titlePanel, OUTLINE_NATIVE_CLASS, false);
     const rec = {
       uid,
       native,
@@ -794,7 +805,7 @@ export async function installPlexusDiagram({
       fullscreen: false,
       off: null,
     };
-    native.classList.add(NATIVE_HIDDEN_CLASS);
+    setClassToken(native, NATIVE_HIDDEN_CLASS, true);
     if (titlePanel) titlePanel.style.display = "none";
     native.after(mountEl);
     mounts.set(native, rec);
@@ -818,11 +829,11 @@ export async function installPlexusDiagram({
       rec.off = watchRec(rec);
       publishCards(rec.session?.board);
     } catch (error) {
-      console.error("[plexus-diagram] Mount failed; native diagram restored", error);
-      negativeUntil.set(uid, Date.now() + 10 * NEGATIVE_TTL_MS);
+      noteMountFail(uid, error);
       unmount(rec);
       return null;
     }
+    mountFail.delete(uid);
     unmountOutlineCopies(rec);
     resumeNestedOpen(rec);
     applyShow(rec);
@@ -910,7 +921,7 @@ export async function installPlexusDiagram({
       if (currentUid(rec) === rec.uid) migrateLegacy(rec);
       applyShow(rec);
     } catch (error) {
-      console.error("[plexus-diagram] Wake failed; native diagram restored", error);
+      noteMountFail(currentUid(rec), error);
       unmount(rec);
     }
   }
@@ -935,7 +946,7 @@ export async function installPlexusDiagram({
     try { rec.view?.dispose?.(); } catch (error) { console.warn("[plexus-diagram] view dispose failed", error); }
     try { rec.session?.release?.(); } catch (error) { console.warn("[plexus-diagram] session release failed", error); }
     rec.mountEl.remove();
-    rec.native.classList.remove(NATIVE_HIDDEN_CLASS);
+    setClassToken(rec.native, NATIVE_HIDDEN_CLASS, false);
     if (rec.titlePanel) rec.titlePanel.style.display = rec.titleDisplay;
   }
 
@@ -1029,8 +1040,8 @@ export async function installPlexusDiagram({
     }
     if (insideEnhancedOutline(native)) {
       // An outline copy stays native; exempt it from the pre-paint guard so its bullet is not blank.
-      native.classList.add(OUTLINE_NATIVE_CLASS);
-      titlePanelOf(native)?.classList.add(OUTLINE_NATIVE_CLASS);
+      setClassToken(native, OUTLINE_NATIVE_CLASS, true);
+      setClassToken(titlePanelOf(native), OUTLINE_NATIVE_CLASS, true);
       return;
     }
     // One plexus root per embed. A second .rm-diagram in that same copy stays native-hidden.
@@ -1038,12 +1049,26 @@ export async function installPlexusDiagram({
     if (scope) {
       for (const rec of mounts.values()) {
         if (embedScope(rec.native, readString) === scope) {
-          native.classList.add(NATIVE_HIDDEN_CLASS);
+          setClassToken(native, NATIVE_HIDDEN_CLASS, true);
           return;
         }
       }
     }
+    if (mountCooling(uid)) return;
     mount(uid, native, { ...options, virtual: virtualUids.has(uid) && !trusted.has(uid) });
+  }
+
+  function noteMountFail(uid, error) {
+    const prev = mountFail.get(uid);
+    const n = (prev?.n || 0) + 1;
+    const wait = n <= MOUNT_BACKOFF_MS.length ? MOUNT_BACKOFF_MS[n - 1] : Infinity;
+    mountFail.set(uid, { n, until: wait === Infinity ? Infinity : Date.now() + wait });
+    if (!prev) console.warn("[plexus-diagram] Mount failed; native diagram restored", uid, error);
+  }
+
+  function mountCooling(uid) {
+    const hit = mountFail.get(uid);
+    return Boolean(hit && Date.now() < hit.until);
   }
 
   function outlineImage(uid) {
@@ -1471,6 +1496,7 @@ export async function installPlexusDiagram({
   }
 
   function onNavigate() {
+    mountFail.clear();
     for (const rec of mounts.values()) {
       if (routeLeftZoomedDiagram(rec.uid)) {
         if (rec.fullscreen) setFullscreen(rec, false);

@@ -139,35 +139,119 @@ export function placeEditorMenus(doc, anchor) {
   return placed;
 }
 
-export function watchEditorMenus(doc, getAnchor, onIdle) {
-  let stopped = false;
-  let frame = 0;
-  let misses = 0;
-  const view = doc?.defaultView || globalThis;
+// One pointerup listener and one animation frame per document. Each board registers an
+// anchor scoped to its own root. A root that has left the document is dropped on the next
+// pointerup or frame, so a leaked renderer stops costing queries.
+const menusByDoc = new WeakMap();
+
+function menuHub(doc) {
+  let hub = menusByDoc.get(doc);
+  if (hub) return hub;
+  hub = { doc, entries: [], frame: 0, looping: false, misses: 0, listening: false, onPointer: null };
+  menusByDoc.set(doc, hub);
+  return hub;
+}
+
+function stopMenuHub(hub) {
+  hub.looping = false;
+  const view = hub.doc?.defaultView || globalThis;
+  if (hub.frame && typeof view.cancelAnimationFrame === "function") view.cancelAnimationFrame(hub.frame);
+  hub.frame = 0;
+  if (hub.listening) {
+    try { hub.doc.removeEventListener?.("pointerup", hub.onPointer, true); } catch { /* already gone */ }
+    hub.listening = false;
+  }
+}
+
+function pruneMenuHub(hub) {
+  const keep = [];
+  for (const entry of hub.entries) {
+    if (entry?.root && entry.root.isConnected === false) continue;
+    keep.push(entry);
+  }
+  hub.entries = keep;
+  if (!keep.length) stopMenuHub(hub);
+}
+
+function startMenuLoop(hub) {
+  if (hub.looping || !hub.entries.length) return;
+  hub.looping = true;
+  hub.misses = 0;
+  const view = hub.doc?.defaultView || globalThis;
   const tick = () => {
-    frame = 0;
-    if (stopped) return;
-    const anchor = typeof getAnchor === "function" ? getAnchor() : null;
+    hub.frame = 0;
+    if (!hub.looping) return;
+    pruneMenuHub(hub);
+    if (!hub.looping || !hub.entries.length) return;
+    let anchor = null;
+    for (const entry of hub.entries) {
+      let next = null;
+      try { next = typeof entry.anchor === "function" ? entry.anchor() : null; } catch { next = null; }
+      if (next) { anchor = next; break; }
+    }
     if (!anchor) {
-      misses += 1;
-      if (misses > 12) {
-        stopped = true;
-        onIdle?.();
+      hub.misses += 1;
+      if (hub.misses > 12) {
+        hub.looping = false;
+        for (const entry of hub.entries) {
+          try { entry.onIdle?.(); } catch { /* caller */ }
+        }
         return;
       }
     } else {
-      misses = 0;
-      placeEditorMenus(doc, anchor);
+      hub.misses = 0;
+      placeEditorMenus(hub.doc, anchor);
     }
-    if (stopped) return;
+    if (!hub.looping) return;
     const raf = view.requestAnimationFrame;
     if (typeof raf !== "function") return;
-    frame = raf(tick);
+    hub.frame = raf(tick);
   };
   tick();
+}
+
+function listenMenuHub(hub) {
+  if (hub.listening) return;
+  hub.onPointer = () => {
+    pruneMenuHub(hub);
+    if (hub.entries.length) startMenuLoop(hub);
+  };
+  hub.doc.addEventListener?.("pointerup", hub.onPointer, true);
+  hub.listening = true;
+}
+
+export function registerEditorMenus(doc, entry) {
+  if (!doc || !entry) return () => {};
+  const hub = menuHub(doc);
+  hub.entries.push(entry);
+  listenMenuHub(hub);
+  let gone = false;
   return () => {
-    stopped = true;
-    if (frame && typeof view.cancelAnimationFrame === "function") view.cancelAnimationFrame(frame);
-    frame = 0;
+    if (gone) return;
+    gone = true;
+    const i = hub.entries.indexOf(entry);
+    if (i >= 0) hub.entries.splice(i, 1);
+    if (!hub.entries.length) stopMenuHub(hub);
+  };
+}
+
+export function nudgeEditorMenus(doc) {
+  const hub = doc ? menusByDoc.get(doc) : null;
+  if (!hub || !hub.entries.length) return;
+  startMenuLoop(hub);
+}
+
+export function watchEditorMenus(doc, getAnchor, onIdle) {
+  const root = { isConnected: true };
+  let live = true;
+  const stop = registerEditorMenus(doc, {
+    root,
+    anchor: () => (live && typeof getAnchor === "function" ? getAnchor() : null),
+    onIdle: () => { if (live) onIdle?.(); },
+  });
+  nudgeEditorMenus(doc);
+  return () => {
+    live = false;
+    stop();
   };
 }

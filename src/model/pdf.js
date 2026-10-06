@@ -46,11 +46,168 @@ export function coverModel(source) {
   return { title, count, label };
 }
 
+// One live heavy embed per board: a pdf reader, a video, an iframe, or a tweet.
 export function readerRule(openUid, nextUid) {
   const current = openUid || null;
   if (nextUid == null || nextUid === "") return { open: current, close: null };
   if (nextUid === current) return { open: current, close: null };
   return { open: nextUid, close: current };
+}
+
+const HEAVY_MACRO = /\{\{\s*(?:\[\[)?(pdf|video|youtube|iframe|tweet|twitter)(?:\]\])?\s*:([^}]*)\}\}/gi;
+const HEAVY_ONE = /\{\{\s*(?:\[\[)?(pdf|video|youtube|iframe|tweet|twitter)(?:\]\])?\s*:([^}]*)\}\}/i;
+const REF_ONLY = /^\(\(([\w-]+)\)\)$/;
+const EMBED_ONLY = /^\{\{\s*(?:\[\[)?embed(?:\]\])?\s*:\s*\(\(([\w-]+)\)\)\s*\}\}$/i;
+
+function videoStem(url) {
+  const name = fileName(url);
+  if (!name) return "";
+  return name.replace(/\.(mp4|webm|mov|m4v|ogg)$/i, "");
+}
+
+function embedTitle(kind, name, url) {
+  if (name === "youtube") return "YouTube";
+  if (kind === "tweet") {
+    const handle = /(?:twitter\.com|x\.com)\/([A-Za-z0-9_]+)/i.exec(String(url || ""));
+    if (handle && handle[1].toLowerCase() !== "i" && handle[1].toLowerCase() !== "status") return `@${handle[1]}`;
+    return "Tweet";
+  }
+  if (kind === "iframe") {
+    try {
+      const host = new URL(url).hostname.replace(/^www\./, "");
+      if (host) return host;
+    } catch { /* the body is not a url */ }
+    return "Embed";
+  }
+  if (kind === "video") return videoStem(url) || "Video";
+  return fileName(url) || "PDF";
+}
+
+function embedKind(name) {
+  const n = String(name || "").toLowerCase();
+  if (n === "youtube" || n === "iframe") return "iframe";
+  if (n === "tweet" || n === "twitter") return "tweet";
+  if (n === "video") return "video";
+  return "pdf";
+}
+
+// A data url or an image element that has already decoded. An http url would fetch, so it is not a thumb.
+export function posterThumb(source) {
+  const src = source && typeof source === "object" ? source : {};
+  const direct = typeof src.thumb === "string" ? src.thumb.trim() : "";
+  if (direct.startsWith("data:image/") && !/["'()]/.test(direct)) return direct;
+  const img = src.thumb && typeof src.thumb === "object" ? src.thumb : null;
+  if (img && img.complete === true && Number(img.naturalWidth) > 0) {
+    const url = String(img.currentSrc || img.src || "");
+    if ((url.startsWith("data:image/") || url.startsWith("blob:")) && !/["'()]/.test(url)) return url;
+  }
+  const fromText = /data:image\/[a-zA-Z0-9.+-]+;base64,[A-Za-z0-9+/=]+/.exec(String(src.url || src.string || ""));
+  if (fromText && !/["'()]/.test(fromText[0])) return fromText[0];
+  return "";
+}
+
+// The first heavy macro in a string, or a raw iframe/video that is the whole string.
+// A pdf highlight is not a reader. A bare http url is not an embed.
+export function heavyEmbed(string) {
+  const text = String(string ?? "").trim();
+  if (!text) return null;
+  const match = HEAVY_ONE.exec(text);
+  if (match) {
+    const name = match[1].toLowerCase();
+    const body = String(match[2] || "").trim();
+    const urlMatch = /https?:\/\/[^\s}]+/.exec(body);
+    const url = urlMatch ? urlMatch[0] : body;
+    const kind = embedKind(name);
+    return { kind, url, title: embedTitle(kind, name, url) };
+  }
+  if (/^<iframe\b/i.test(text)) return { kind: "iframe", url: "", title: "Embed" };
+  if (/^<video\b/i.test(text)) return { kind: "video", url: "", title: "Video" };
+  return null;
+}
+
+// ((uid)) or {{[[embed]]: ((uid))}} and nothing else. One hop, resolved by the caller.
+export function heavyRefUid(string) {
+  const text = String(string ?? "").trim();
+  const block = REF_ONLY.exec(text);
+  if (block) return block[1];
+  const embed = EMBED_ONLY.exec(text);
+  if (embed) return embed[1];
+  return "";
+}
+
+// Title always. count and label only when the caller already has a number (pdf highlights).
+// A missing count stays off the poster. No page count is invented here.
+export function posterModel(source) {
+  const src = source && typeof source === "object" ? source : {};
+  const kind = embedKind(src.kind === "youtube" ? "iframe" : src.kind);
+  const thumb = posterThumb(src);
+  if (kind === "pdf" && (src.count != null || src.label || src.title || src.url)) {
+    const cover = coverModel(src);
+    const out = { kind: "pdf", title: cover.title, thumb };
+    if (typeof src.count === "number" && Number.isFinite(src.count)) {
+      out.count = cover.count;
+      out.label = cover.label;
+    }
+    return out;
+  }
+  const given = typeof src.title === "string" ? src.title.trim() : "";
+  const title = given || embedTitle(kind, src.kind === "youtube" ? "youtube" : kind, src.url);
+  const out = { kind, title, thumb };
+  if (typeof src.count === "number" && Number.isFinite(src.count) && src.count >= 0) {
+    out.count = src.count;
+    out.label = typeof src.label === "string" && src.label.trim() ? src.label.trim() : String(src.count);
+  }
+  return out;
+}
+
+// Poster for one string. A ref is one blockString hop. Pdf count comes only from `cover`.
+export function embedPoster(string, { read, cover, uid = "" } = {}) {
+  const text = String(string ?? "").trim();
+  if (!text) return null;
+  let hit = heavyEmbed(text);
+  let mountUid = uid || "";
+  let source = text;
+  if (!hit) {
+    const ref = heavyRefUid(text);
+    if (!ref || typeof read !== "function") return null;
+    let inner = "";
+    try { inner = read(ref); } catch { inner = ""; }
+    if (typeof inner !== "string") return null;
+    hit = heavyEmbed(inner.trim());
+    if (!hit) return null;
+    mountUid = ref;
+    source = inner.trim();
+  }
+  if (hit.kind === "pdf") {
+    let got = null;
+    if (typeof cover === "function") {
+      try { got = cover(source); } catch { got = null; }
+    }
+    const carried = got && typeof got === "object" && typeof got.count === "number" && Number.isFinite(got.count);
+    const model = posterModel({
+      kind: "pdf",
+      title: (got && typeof got.title === "string" && got.title.trim()) || hit.title,
+      url: hit.url,
+      count: carried ? got.count : undefined,
+      thumb: got?.thumb,
+    });
+    return { ...model, uid: mountUid, url: hit.url };
+  }
+  const model = posterModel({ kind: hit.kind, title: hit.title, url: hit.url });
+  return { ...model, uid: mountUid, url: hit.url };
+}
+
+// Every heavy embed in a string, plus leftover words. A pure ref contributes no leftover.
+export function embedSplit(string, opts = {}) {
+  const text = String(string ?? "");
+  const macros = [...text.matchAll(new RegExp(HEAVY_MACRO.source, "gi"))].map((m) => m[0]);
+  if (macros.length) {
+    const posters = macros.map((macro) => embedPoster(macro, opts)).filter(Boolean);
+    const rest = text.replace(new RegExp(HEAVY_MACRO.source, "gi"), " ").replace(/\s+/g, " ").trim();
+    return { posters, rest };
+  }
+  const one = embedPoster(text, opts);
+  return { posters: one ? [one] : [], rest: "" };
 }
 
 export function pdfCardForUrl(url, cards) {

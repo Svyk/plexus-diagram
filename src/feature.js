@@ -52,7 +52,9 @@ import { normalizeSetting, onSettingsChange, readSettings, SETTING_IDS } from ".
 export const PACKAGE_VERSION = pkg.version;
 
 export const RECONCILE_INTERVAL_MS = 400;
-const NEGATIVE_TTL_MS = 1500;
+// A uid already classified as not enhanced is not pulled again for about 30s.
+// An enhance command, or hashchange/popstate, clears that classification.
+const NEGATIVE_TTL_MS = 30000;
 const MOUNT_BACKOFF_MS = [5000, 30000];
 const LEGACY_METADATA_PAGE = "plexus-diagram/metadata";
 const TITLE_PANEL_CLASS = "rm-diagram-title-panel";
@@ -464,19 +466,22 @@ export async function installPlexusDiagram({
     const hit = autoCache.get(uid);
     if (hit && Date.now() - hit.at < NEGATIVE_TTL_MS) return hit.kind;
     let kind = null;
+    let enhanced = false;
     try {
       const pulled = host.api.data.pull(AUTO_PATTERN, [":block/uid", uid]);
       const plexus = readPlexus(pulled?.[":block/props"] ?? pulled?.props ?? null);
+      enhanced = plexus?.v === 2;
       let nativeNodeCount = 0;
-      if (plexus?.v !== 2 && plexus?.native !== true) {
+      if (!enhanced && plexus?.native !== true) {
         const nodes = host.pullNative?.(uid)?.[":diagram/nodes"];
         nativeNodeCount = Array.isArray(nodes) ? nodes.length : 0;
       }
       kind = autoEligibility({ plexus, nativeNodeCount, storedLayout: storedLayoutIn(pulled?.[":block/children"]) });
     } catch {
       kind = null;
+      enhanced = false;
     }
-    autoCache.set(uid, { kind, at: Date.now() });
+    autoCache.set(uid, { kind, enhanced, at: Date.now() });
     return kind;
   }
 
@@ -487,7 +492,28 @@ export async function installPlexusDiagram({
     const until = negativeUntil.get(uid);
     if (until && until > Date.now()) return false;
     const auto = autoCache.get(uid);
-    if (auto?.kind === "virtual" && virtualUids.has(uid) && Date.now() - auto.at < NEGATIVE_TTL_MS) return true;
+    const autoFresh = Boolean(auto && Date.now() - auto.at < NEGATIVE_TTL_MS);
+    if (autoFresh && auto.enhanced) {
+      trusted.add(uid);
+      virtualUids.delete(uid);
+      autoCache.delete(uid);
+      if (!guardUids.has(uid)) {
+        guardUids.add(uid);
+        syncGuard();
+      }
+      return true;
+    }
+    if (autoFresh && auto.kind === "virtual" && virtualUids.has(uid)) return true;
+    // The auto-enhance read already classified this uid. Do not pull :block/props again.
+    if (autoFresh && auto.kind !== "virtual") {
+      virtualUids.delete(uid);
+      negativeUntil.set(uid, Date.now() + NEGATIVE_TTL_MS);
+      if (guardUids.has(uid)) {
+        guardUids.delete(uid);
+        syncGuard();
+      }
+      return false;
+    }
     if (readEnhanced(host.api, uid)) {
       trusted.add(uid);
       virtualUids.delete(uid);
@@ -818,6 +844,7 @@ export async function installPlexusDiagram({
       ensureViewportWatch();
       recByMount.set(mountEl, rec);
       viewportWatch?.observe(mountEl);
+      applyVisibility(rec, sidebarWindows(), false);
       publicEmit("mount", { boardUid: uid });
       return rec;
     }
@@ -844,6 +871,7 @@ export async function installPlexusDiagram({
     ensureViewportWatch();
     recByMount.set(mountEl, rec);
     viewportWatch?.observe(mountEl);
+    applyVisibility(rec, sidebarWindows(), false);
     publicEmit("mount", { boardUid: uid });
     return rec;
   }
@@ -873,26 +901,130 @@ export async function installPlexusDiagram({
   }
 
   // An offscreen board still holds its card shells, and a keystroke is a Roam transaction
-  // that walks that DOM. Park the board as a sized gap and bring it back when it nears the viewport.
+  // that walks that DOM. One viewport observer parks every mount (main page and sidebar)
+  // as a sized gap. A collapsed sidebar window and a closed ancestor block are not
+  // intersection changes, so reconcile parks those too. Card shells stay in offscreen.js.
   const recByMount = new WeakMap();
   let viewportWatch = null;
   let sidebarWatch = null;
+  function holdsFocus(rec) {
+    const active = doc.activeElement;
+    if (!active) return false;
+    if (rec.mountEl?.contains?.(active)) return true;
+    try { return Boolean(rec.view?.root?.contains?.(active)); } catch { return false; }
+  }
+  function sidebarWindowEl(node) {
+    for (let cur = node; cur; cur = cur.parentElement) {
+      if (cur.classList?.contains?.("rm-sidebar-window")) return cur;
+    }
+    return null;
+  }
+  // Only ask Roam when a board sits in a sidebar window; reconcile runs every 400 ms.
+  function sidebarWindows() {
+    let any = false;
+    for (const rec of mounts.values()) {
+      if (sidebarWindowEl(rec.native) || sidebarWindowEl(rec.mountEl)) { any = true; break; }
+    }
+    if (!any) return null;
+    try {
+      const list = host.api?.ui?.rightSidebar?.getWindows?.();
+      return Array.isArray(list) ? list : null;
+    } catch { return null; }
+  }
+  function windowIsCollapsed(win, windows) {
+    if (!win) return false;
+    if (win.classList?.contains?.("rm-sidebar-window--collapsed") || win.classList?.contains?.("collapsed")) return true;
+    const id = win.id || "";
+    if (!id || !Array.isArray(windows)) return false;
+    for (const item of windows) {
+      if (!item) continue;
+      const wid = item["window-id"] || item.windowId || "";
+      // The DOM id is "sidebar-window-<window-id>".
+      if (!wid || (wid !== id && id !== `sidebar-window-${wid}`)) continue;
+      if (item.collapsed === true || item["collapsed?"] === true) return true;
+    }
+    return false;
+  }
+  // The closed bullet sits on the block's own line, not in a nested board.
+  function lineClosed(container) {
+    for (const child of container.children || []) {
+      if (!child.classList?.contains?.("rm-block-main") && !child.classList?.contains?.("rm-block__self")) continue;
+      if (classWithin(child, "rm-bullet--closed") || classWithin(child, "rm-caret-closed")) return true;
+    }
+    return false;
+  }
+  function classWithin(node, name) {
+    if (!node || node.classList?.contains?.("rm-block-children")) return false;
+    if (node.classList?.contains?.(name)) return true;
+    for (const child of node.children || []) {
+      if (classWithin(child, name)) return true;
+    }
+    return false;
+  }
+  // The board's own block folds its outline. Only an ancestor fold hides the diagram.
+  function ancestorClosed(node) {
+    let own = false;
+    for (let cur = node; cur; cur = cur.parentElement) {
+      if (!cur.classList?.contains?.("roam-block-container")) continue;
+      if (!own) { own = true; continue; }
+      if (cur.classList.contains("rm-block--closed") || lineClosed(cur)) return true;
+    }
+    return false;
+  }
+  function hostHides(rec, windows) {
+    const win = sidebarWindowEl(rec.native) || sidebarWindowEl(rec.mountEl);
+    if (windowIsCollapsed(win, windows)) return true;
+    return ancestorClosed(rec.native) || ancestorClosed(rec.mountEl);
+  }
   function ensureViewportWatch() {
     if (viewportWatch || typeof IntersectionObserver !== "function") return;
     viewportWatch = new IntersectionObserver((entries) => {
+      const windows = sidebarWindows();
       for (const entry of entries) {
         const rec = recByMount.get(entry.target);
         if (!rec || !mounts.has(rec.native)) continue;
-        if (entry.isIntersecting) wake(rec);
-        else hibernate(rec);
+        rec.seen = Boolean(entry.isIntersecting);
+        // A hide collapses the box. That false reading is not "scrolled away".
+        if (!hostHides(rec, windows)) rec.seenLive = rec.seen;
+        applyVisibility(rec, windows, true);
       }
     }, { rootMargin: "60px" });
   }
+  // fromObserver is the viewport callback. Reconcile only applies host hides,
+  // so a board parked for leaving the viewport is not rebuilt on the next 400 ms pass.
+  function applyVisibility(rec, windows, fromObserver) {
+    if (!rec || stopped || !mounts.has(rec.native)) return;
+    if (rec.fullscreen || holdsFocus(rec)) {
+      if (rec.dormant) wake(rec);
+      return;
+    }
+    const hidden = hostHides(rec, windows);
+    if (hidden) {
+      if (!rec.hostParked) {
+        rec.seenBeforeHost = rec.seenLive === true || (rec.seenLive == null && Boolean(rec.view));
+      }
+      rec.hostParked = true;
+      hibernate(rec, { force: true });
+      return;
+    }
+    if (rec.hostParked) {
+      rec.hostParked = false;
+      const back = rec.seenBeforeHost === true || rec.seen === true;
+      rec.seenBeforeHost = undefined;
+      if (back) wake(rec);
+      return;
+    }
+    if (!fromObserver) return;
+    if (rec.seen === true) { if (rec.dormant) wake(rec); }
+    else if (rec.seen === false) hibernate(rec);
+  }
   function hibernate(rec, { force = false } = {}) {
     if (!rec || rec.dormant || rec.fullscreen || !rec.view) return;
-    if (doc.activeElement && rec.mountEl.contains?.(doc.activeElement)) return;
+    if (holdsFocus(rec)) return;
     const height = rec.mountEl.getBoundingClientRect?.().height || 0;
     if (height < 40 && !force) return;
+    const vp = cameraOf(rec);
+    if (vp) rec.parkedVp = vp;
     rec.mountEl.style.minHeight = `${Math.max(40, Math.round(height))}px`;
     try { rec.off?.(); } catch { /* ignore */ }
     rec.off = null;
@@ -913,7 +1045,7 @@ export async function installPlexusDiagram({
         unmount(rec);
         return;
       }
-      rec.view = mountRecView(rec);
+      rec.view = mountRecView(rec, { viewport: rec.parkedVp || null });
       rec.off = watchRec(rec);
       publishCards(rec.session?.board);
       if (rec.session.board.virtual) markCollapsed(currentUid(rec));
@@ -1463,8 +1595,10 @@ export async function installPlexusDiagram({
   function reconcile() {
     if (stopped) return;
     ensureSidebarWatch();
+    const windows = sidebarWindows();
     for (const rec of [...mounts.values()]) {
       if (rec.native.isConnected === false || rec.mountEl.isConnected === false) unmount(rec);
+      else applyVisibility(rec, windows, false);
     }
     for (const [node, observer] of portalObservers) {
       if (node.isConnected === false) {
@@ -1497,6 +1631,9 @@ export async function installPlexusDiagram({
 
   function onNavigate() {
     mountFail.clear();
+    // The route changed. A uid classified on the previous page has to be read again.
+    negativeUntil.clear();
+    autoCache.clear();
     for (const rec of mounts.values()) {
       if (routeLeftZoomedDiagram(rec.uid)) {
         if (rec.fullscreen) setFullscreen(rec, false);
@@ -2147,21 +2284,19 @@ export async function installPlexusDiagram({
   }
   scanRegions(doc);
   for (const portal of doc?.querySelectorAll?.(".bp3-portal") || []) scanRegions(portal);
-  // Typing outside a board is a Roam transaction. Park every board that does not
-  // contain the caret before the keys land, and bring the visible ones back after a pause.
+  // Typing outside a board is a Roam transaction. The board view drops live Roam
+  // roots on its window keydown (quiet). An on-screen board stays mounted; this
+  // only asks a mount that exposes quiet. Off-screen boards are parked by the
+  // viewport observer, not by the key.
   let wakeTimer = null;
-  let parkKey = null;
-  const stopParkKeys = () => {
-    if (!parkKey) return;
-    doc.removeEventListener("keydown", parkKey, true);
-    parkKey = null;
-  };
+  let quietTimer = null;
   const wakeVisible = () => {
     wakeTimer = null;
-    stopParkKeys();
     const height = win.innerHeight || 0;
+    const windows = sidebarWindows();
     for (const rec of mounts.values()) {
       if (!rec.dormant) continue;
+      if (hostHides(rec, windows)) continue;
       const box = rec.mountEl.getBoundingClientRect?.();
       if (!box) continue;
       if (box.bottom > -60 && box.top < height + 60) wake(rec);
@@ -2171,34 +2306,33 @@ export async function installPlexusDiagram({
     if (wakeTimer) clearTimeout(wakeTimer);
     wakeTimer = setTimeout(wakeVisible, 700);
   };
-  const watchParkKeys = () => {
-    if (parkKey) return;
-    parkKey = (event) => {
-      if (!isTextEntryTarget(event.target)) return;
-      parkOutside(event.target);
-      armWake();
-    };
-    doc.addEventListener("keydown", parkKey, true);
-  };
-  const parkOutside = (target) => {
-    if (!isTextEntryTarget(target)) return;
-    let parked = false;
+  const endQuiet = () => {
+    quietTimer = null;
     for (const rec of mounts.values()) {
-      if (rec.mountEl.contains?.(target) || rec.view?.root?.contains?.(target)) continue;
-      if (rec.dormant || rec.fullscreen) continue;
-      hibernate(rec);
-      parked = rec.dormant || parked;
+      try { rec.view?.quiet?.(false); } catch { /* view gone */ }
     }
-    if (parked) watchParkKeys();
+  };
+  const armQuiet = () => {
+    if (quietTimer) clearTimeout(quietTimer);
+    quietTimer = setTimeout(endQuiet, 700);
+  };
+  const quietOutside = (target) => {
+    if (!isTextEntryTarget(target)) return;
+    let asked = false;
+    for (const rec of mounts.values()) {
+      if (!rec?.view || rec.dormant) continue;
+      if (rec.mountEl?.contains?.(target) || rec.view.root?.contains?.(target)) continue;
+      if (typeof rec.view.quiet !== "function") continue;
+      try {
+        rec.view.quiet(true);
+        asked = true;
+      } catch { /* view gone */ }
+    }
+    if (asked) armQuiet();
   };
   if (doc && typeof doc.addEventListener === "function") {
-    lifecycle.event(doc, "focusin", (event) => { parkOutside(event.target); armWake(); });
-    // `input` covers the burst after focus. A document keydown would sit beside the command sheet's own Escape listener.
-    lifecycle.event(doc, "input", (event) => {
-      if (!isTextEntryTarget(event.target)) return;
-      parkOutside(event.target);
-      armWake();
-    }, true);
+    // `input` covers the burst. A document keydown would sit beside the command sheet's own Escape listener.
+    lifecycle.event(doc, "input", (event) => quietOutside(event.target), true);
   }
   const parkMainForSidebar = () => {
     for (const rec of mounts.values()) {
@@ -2221,7 +2355,10 @@ export async function installPlexusDiagram({
   }
   ensureSidebarWatch();
   lifecycle.add(() => { sidebarWatch?.disconnect(); sidebarWatch = null; });
-  lifecycle.add(() => { if (wakeTimer) clearTimeout(wakeTimer); stopParkKeys(); });
+  lifecycle.add(() => {
+    if (wakeTimer) clearTimeout(wakeTimer);
+    if (quietTimer) clearTimeout(quietTimer);
+  });
   if (typeof win.addEventListener === "function") {
     lifecycle.event(win, "hashchange", onHash);
     lifecycle.event(win, "popstate", onNavigate);

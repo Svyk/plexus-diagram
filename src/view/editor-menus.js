@@ -9,6 +9,8 @@
 
 const MENU_SELECTOR = ".rm-autocomplete__results, .bp3-datepicker, .rm-date-picker";
 const claimed = new WeakSet();
+let menuSerial = 0;
+const menuIdentity = new WeakMap();
 
 const computedTransform = (node) => {
   if (!node) return "";
@@ -147,9 +149,36 @@ const menusByDoc = new WeakMap();
 function menuHub(doc) {
   let hub = menusByDoc.get(doc);
   if (hub) return hub;
-  hub = { doc, entries: [], frame: 0, looping: false, misses: 0, listening: false, onPointer: null };
+  hub = { doc, entries: [], frame: 0, looping: false, misses: 0, listening: false, onPointer: null, menuSig: "" };
   menusByDoc.set(doc, hub);
   return hub;
+}
+
+function menuToken(menu) {
+  let token = menuIdentity.get(menu);
+  if (token == null) {
+    menuSerial += 1;
+    token = menuSerial;
+    menuIdentity.set(menu, token);
+  }
+  const overlay = menu.closest?.(".bp3-overlay");
+  const open = !overlay
+    || overlay.classList?.contains?.("bp3-overlay-open")
+    || String(overlay.className || "").includes("bp3-overlay-open");
+  return `${token}.${open ? 1 : 0}`;
+}
+
+// Identity of the menus plus the anchor box. Style writes are not part of it,
+// so a pin we just applied does not look like a new menu on the next frame.
+function editorMenuSig(doc, anchor) {
+  const box = anchor.getBoundingClientRect?.() || {};
+  const n = (value) => Math.round(Number(value) || 0);
+  let menus = "";
+  for (const menu of doc.querySelectorAll?.(MENU_SELECTOR) || []) {
+    if (!menu || menu === anchor) continue;
+    menus += `${menuToken(menu)},`;
+  }
+  return `${n(box.left)},${n(box.top)},${n(box.width)},${n(box.height)}|${menus}`;
 }
 
 function stopMenuHub(hub) {
@@ -157,6 +186,7 @@ function stopMenuHub(hub) {
   const view = hub.doc?.defaultView || globalThis;
   if (hub.frame && typeof view.cancelAnimationFrame === "function") view.cancelAnimationFrame(hub.frame);
   hub.frame = 0;
+  hub.menuSig = "";
   if (hub.listening) {
     try { hub.doc.removeEventListener?.("pointerup", hub.onPointer, true); } catch { /* already gone */ }
     hub.listening = false;
@@ -190,6 +220,7 @@ function startMenuLoop(hub) {
       if (next) { anchor = next; break; }
     }
     if (!anchor) {
+      hub.menuSig = "";
       hub.misses += 1;
       if (hub.misses > 12) {
         hub.looping = false;
@@ -200,7 +231,13 @@ function startMenuLoop(hub) {
       }
     } else {
       hub.misses = 0;
-      placeEditorMenus(hub.doc, anchor);
+      // The caret and the menu set are the only reasons to pin. A steady frame
+      // does not write left/top, and it does not read menu layout to decide.
+      const sig = editorMenuSig(hub.doc, anchor);
+      if (sig !== hub.menuSig) {
+        hub.menuSig = sig;
+        placeEditorMenus(hub.doc, anchor);
+      }
     }
     if (!hub.looping) return;
     const raf = view.requestAnimationFrame;

@@ -61,6 +61,16 @@ export function createRowScheduler({ idle, now = () => Date.now(), budgetMs = 8,
       row.wanted = Boolean(on);
       if (on) schedule();
     },
+    // A refresh drops a row that left the outline. A string edit can flip heavy without starting over.
+    drop(id) {
+      rows.delete(id);
+    },
+    retarget(id, { heavy = false } = {}) {
+      const row = rows.get(id);
+      if (!row || row.done) return;
+      row.heavy = Boolean(heavy);
+      if (row.wanted) schedule();
+    },
     wantAll() {
       for (const row of rows.values()) row.wanted = true;
       schedule();

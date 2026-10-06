@@ -35,6 +35,8 @@ import {
   SCHEMA_VERSION,
   SECTION_STYLE_KEYS,
   boardColor,
+  classifyString,
+  firstLine,
   normalizeSectionDefaults,
   attrNameOf,
   boardString,
@@ -58,6 +60,7 @@ import { inflate, rectsIntersect, unionRect } from "./model/geometry.js";
 import { SHAPES } from "./model/shapes.js";
 import { sameSize as sameSizeRects, spaceOut as spaceOutRects, tidyRects } from "./model/layout.js";
 import { coveredBy, filterLinks, linksQuery, reduceLinks } from "./model/links.js";
+import { isQueryString } from "./model/query.js";
 import { autoEligibility, storedLayoutIn } from "./discovery.js";
 import { createEchoLedger, createWriteQueue } from "./host/roam.js";
 import { executeImport, planImport, readNative, readV06Entry } from "./host/migrate.js";
@@ -162,6 +165,88 @@ function attach(parentNode, node, order) {
   parentNode[KIDS] = kids;
 }
 
+function findChild(root, uid) {
+  const stack = [root];
+  while (stack.length) {
+    const node = stack.pop();
+    if (!node || typeof node !== "object") continue;
+    if (node[UID] === uid) return node;
+    const kids = node[KIDS];
+    if (Array.isArray(kids)) for (let i = kids.length - 1; i >= 0; i--) stack.push(kids[i]);
+  }
+  return null;
+}
+
+function refList(node) {
+  const refs = node?.[":block/refs"];
+  if (!refs) return [];
+  const list = Array.isArray(refs) ? refs : [refs];
+  return list
+    .filter((ref) => ref && typeof ref === "object" && !Array.isArray(ref))
+    .slice()
+    .sort((a, b) => String(a[UID] ?? "").localeCompare(String(b[UID] ?? "")));
+}
+
+// True when the only differences are :block/string on uids in `allowed`.
+function sameTree(a, b, allowed, state, stack) {
+  if (a === b) return true;
+  if (!a || !b || typeof a !== "object" || typeof b !== "object") return false;
+  const id = a[UID] ?? null;
+  if (id !== (b[UID] ?? null)) return false;
+  if (id && stack.has(id)) return true;
+  if (id) stack.add(id);
+  try {
+    const left = a[STR] ?? "";
+    const right = b[STR] ?? "";
+    if (left !== right) {
+      if (!id || !allowed.has(id)) return false;
+      state.hit = true;
+    }
+    if ((a[":node/title"] ?? null) !== (b[":node/title"] ?? null)) return false;
+    if ((a[ORD] ?? null) !== (b[ORD] ?? null)) return false;
+    if ((a[":block/heading"] || 0) !== (b[":block/heading"] || 0)) return false;
+    if ((a[OPEN] !== false) !== (b[OPEN] !== false)) return false;
+    if (stable(a[PROPS] ?? null) !== stable(b[PROPS] ?? null)) return false;
+    const ak = kidsOf(a);
+    const bk = kidsOf(b);
+    if (ak.length !== bk.length) return false;
+    for (let i = 0; i < ak.length; i++) if (!sameTree(ak[i], bk[i], allowed, state, stack)) return false;
+    const ar = refList(a);
+    const br = refList(b);
+    if (ar.length !== br.length) return false;
+    for (let i = 0; i < ar.length; i++) if (!sameTree(ar[i], br[i], allowed, state, stack)) return false;
+    return true;
+  } finally {
+    if (id) stack.delete(id);
+  }
+}
+
+function contentSig(nodes) {
+  const out = [];
+  const walk = (list) => {
+    for (const node of list || []) {
+      out.push(node?.[UID] ?? "", node?.[STR] ?? "");
+      const kids = node?.[KIDS];
+      if (Array.isArray(kids) && kids.length) walk(kids);
+    }
+  };
+  walk(nodes);
+  return out.join("\0");
+}
+
+// A typed string can stay on the item. A string that changes what the card is has to go through buildBoard.
+function canPatchString(item, string) {
+  if (item.type === "section") return true;
+  if (item.type === "text") return classifyString(string).kind === "note";
+  if (item.kind !== "note") return false;
+  return classifyString(string).kind === "note";
+}
+
+function writeItemString(item, string) {
+  item.string = string;
+  item.title = item.type === "section" ? firstLine(string) : isQueryString(string) ? "Query" : firstLine(string);
+}
+
 function unknownKeys(plexus, known) {
   const out = {};
   for (const [k, v] of Object.entries(plexus ?? {})) if (!known.includes(k)) out[k] = v;
@@ -202,6 +287,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
   let destroyed = false;
   let raw = clone(host.pullBoard(uid));
   let board = null;
+  let editingUid = null;
   let rects = new Map();
   let emitted = null;
   let rix = null;
@@ -412,6 +498,62 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
   }
 
   // ---- watch ----
+  // Uids whose string may change while this card is open: the card, its outline, and a block it cites.
+  const editingScope = (root, id) => {
+    const allowed = new Set([id]);
+    const item = board?.items.get(id);
+    if (!item) return allowed;
+    const node = findChild(root, id);
+    if (node) {
+      const walk = (n) => {
+        const nid = n?.[UID];
+        if (nid) allowed.add(nid);
+        for (const child of kidsOf(n)) walk(child);
+      };
+      walk(node);
+    }
+    if (item.target?.uid) allowed.add(item.target.uid);
+    return allowed;
+  };
+  const ownerOf = (root, id) => {
+    let found = null;
+    const walk = (node, itemUid) => {
+      if (!node || found) return;
+      const nid = node[UID];
+      const next = nid && board?.items.has(nid) ? nid : itemUid;
+      if (nid === id) { found = next; return; }
+      for (const child of kidsOf(node)) walk(child, next);
+    };
+    walk(root, null);
+    return found;
+  };
+  // The watch already delivered the new string. Patch that item and skip buildBoard.
+  const typingFlush = (prev, next, id) => {
+    if (!board || !prev || !next || !id) return null;
+    const state = { hit: false };
+    if (!sameTree(prev, next, editingScope(prev, id), state, new Set()) || !state.hit) return null;
+    const owner = board.items.has(id) ? id : ownerOf(next, id);
+    const item = owner ? board.items.get(owner) : null;
+    if (!item) return { dirty: null };
+    const node = ix().get(item.uid)?.node;
+    if (!node) return null;
+    for (const [iid, it] of board.items) {
+      if (iid === item.uid) continue;
+      const other = ix().get(iid)?.node;
+      if (other && (other[STR] ?? "") !== it.string) return null;
+    }
+    const nextString = node[STR] ?? "";
+    const own = nextString !== item.string;
+    if (own && !canPatchString(item, nextString)) return null;
+    if (own) writeItemString(item, nextString);
+    let dirty = own;
+    if (item.type !== "section") {
+      const kids = kidsOf(node);
+      if (contentSig(item.content) !== contentSig(kids)) dirty = true;
+      item.content = kids;
+    }
+    return { dirty: dirty ? item.uid : null };
+  };
   let latest = null;
   let scheduled = false;
   const flush = () => {
@@ -419,7 +561,17 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     if (destroyed || !latest) return;
     const incoming = clone(latest);
     latest = null;
+    const prev = raw;
     raw = rebase(incoming);
+    rix = null;
+    const typed = editingUid ? typingFlush(prev, raw, editingUid) : null;
+    if (typed) {
+      if (typed.dirty) {
+        emit("change", { structural: false, dirty: new Set([typed.dirty]) });
+        if (!queue.pending) host.invalidateUndo?.();
+      }
+      return;
+    }
     const diff = publish();
     // Our own writes and their echoes are already in the optimistic model: a change that still shows up once the
     // queue is idle is someone else's edit, so the host's grouped undo log no longer maps onto Roam's stack (the host
@@ -455,6 +607,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
         if (item.kind !== "highlight") continue;
         const id = item.target?.uid;
         if (typeof id !== "string" || id === "" || live.has(id)) continue;
+        // The board pull already joined this ref, so the one board watch covers its colour.
+        if (typeof host.coversBlock === "function" && host.coversBlock(id)) continue;
         // Past the cap a highlight colour refreshes when the board is next pulled.
         if (live.size >= HIGHLIGHT_WATCH_CAP) break;
         live.add(id);
@@ -892,6 +1046,11 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       if (!listeners.has(name)) listeners.set(name, new Set());
       listeners.get(name).add(fn);
       return () => listeners.get(name)?.delete(fn);
+    },
+
+    // The view calls this with the card uid while that card is open, and null when editing ends.
+    setEditing(id) {
+      editingUid = typeof id === "string" && id ? id : null;
     },
 
     idle: () => queue.idle(),

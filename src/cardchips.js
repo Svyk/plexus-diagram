@@ -57,12 +57,46 @@ export function createCardChips({
   let off = false;
   const sigs = new WeakMap(); // page row -> signature of the boards it shows
   let sweepGen = 0;
+  let placeFrame = 0;
+  let placeQueue = null;
   const view = () => doc?.defaultView || globalThis;
 
   const stopSweep = () => {
     sweepGen += 1;
     if (sweepTimer != null) view().clearTimeout?.(sweepTimer);
     sweepTimer = null;
+  };
+
+  // One article walk per frame. A burst of title or list inserts shares that walk.
+  const cancelPlace = () => {
+    placeQueue = null;
+    if (!placeFrame) return;
+    view().cancelAnimationFrame?.(placeFrame);
+    placeFrame = 0;
+  };
+
+  const scheduleArticle = (article) => {
+    if (!article || article.nodeType !== 1) return;
+    if (!placeQueue) placeQueue = new Set();
+    placeQueue.add(article);
+    if (placeFrame) return;
+    const run = () => {
+      placeFrame = 0;
+      const batch = placeQueue;
+      placeQueue = null;
+      if (!batch) return;
+      if (!isTargetPage()) return;
+      for (const page of batch) {
+        if (page.isConnected === false) continue;
+        placePage(page);
+      }
+    };
+    const raf = view().requestAnimationFrame?.bind(view());
+    if (typeof raf !== "function") {
+      run();
+      return;
+    }
+    placeFrame = raf(run);
   };
 
   const closePop = () => {
@@ -336,6 +370,47 @@ export function createCardChips({
     return list;
   };
 
+  // The page row is placed from the title, the references header, the page's
+  // first child list, or a chip row. A block Roam inserted while typing is none
+  // of those, and must not walk the article.
+  const isPageChrome = (node) => {
+    if (typeof node.matches !== "function") return false;
+    if (node.matches(".rm-title-display-container, h1.rm-title-display, .rm-title-display")) return true;
+    return node.matches(".rm-reference-main") && !node.closest?.("h1.rm-title-display");
+  };
+
+  const isPageChildList = (node) => {
+    if (typeof node.matches !== "function" || !node.matches(".rm-block-children")) return false;
+    if (node.closest?.("h1.rm-title-display")) return false;
+    if (node.parentElement?.closest?.(".rm-block-children")) return false;
+    return Boolean(articleOf(node));
+  };
+
+  // The current page is read when the placement runs, not when the node arrives: during
+  // navigation Roam inserts the new page before the route reports it.
+  const isTargetPage = () => {
+    const uid = typeof pageUid === "function" ? pageUid() : "";
+    return Boolean(uid && cache?.hasTarget?.(uid));
+  };
+  const refreshPage = (node) => {
+    if (node === doc.body || node === doc.documentElement || node.matches?.(".roam-app")) {
+      if (!isTargetPage()) return;
+      for (const article of node.querySelectorAll?.(".roam-article") || []) placePage(article);
+      return;
+    }
+    if (node.matches?.(".roam-article")) {
+      if (isTargetPage()) placePage(node);
+      return;
+    }
+    if (node.matches?.(".pxd-cardchip-row") || isPageChrome(node) || isPageChildList(node)) {
+      scheduleArticle(articleOf(node));
+      return;
+    }
+    // Any other insert: one scoped check per article per frame, and only while its row is missing.
+    const article = articleOf(node) || node.querySelector?.(".roam-article");
+    if (article && !article.querySelector?.(".pxd-cardchip-row")) scheduleArticle(article);
+  };
+
   // Each turn attaches at most SCAN_CAP containers. The rest wait on a timer
   // so a long outline does not write hundreds of chips in one pass. A scan
   // that arrives while that timer is armed still refreshes the first cap,
@@ -344,19 +419,25 @@ export function createCardChips({
     if (enabled() === false) {
       if (off) return;
       off = true;
+      cancelPlace();
       stopSweep();
       disposeChips();
       return;
     }
     off = false;
     if (!node || node.nodeType !== 1) return;
+    // A chip row is page chrome. Its descendants are not, and scanning them rebuilds the row.
+    if (node.matches?.(".pxd-cardchip-row")) {
+      refreshPage(node);
+      return;
+    }
     // Chips this module wrote come back through the mutation observer. They are not page content.
     if (node.closest?.(OWN)) return;
     const memo = new Map();
     const list = containersOf(node);
     const end = Math.min(SCAN_CAP, list.length);
     for (let i = 0; i < end; i += 1) attach(list[i], memo);
-    placePage(doc.body || node);
+    refreshPage(node);
     if (list.length <= SCAN_CAP || sweepTimer != null) return;
     const gen = sweepGen;
     const pending = list;
@@ -392,6 +473,7 @@ export function createCardChips({
   };
 
   const dispose = () => {
+    cancelPlace();
     stopSweep();
     if (doc?.removeEventListener) {
       doc.removeEventListener("pointerdown", onPointerDown, true);

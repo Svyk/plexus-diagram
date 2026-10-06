@@ -33,3 +33,16 @@ PXD_REPO=/path/to/build-dir node tools/live/plexus-live.mjs inject <title>   # i
 ```
 
 `cleanup` deletes only blocks whose page is `Plexus Diagram/Test Lab` or `diagram testing`, and only in the window's graph. Page uids and every other page are left in the ledger. `fixture` builds `P<phase> fixture` through `window.__plexusDiagram.session(uid)` (the caller releases). A second run reuses the page and adds a new board.
+
+## Perf gate
+
+```bash
+node tools/live/perf-gate.mjs "Readwisenotes - "    # four rows; exit 1 when a row is over its threshold
+node tools/live/perf-gate.mjs --dry                  # print the plan; do not connect
+```
+
+The gate builds one fixture on `Plexus Diagram/Test Lab`: 40 note cards, 3 images, one pdf ref, and one page card. The scratch block sits above that board (`BENCH_VIEW=page`, `BENCH_SCRATCH`). Typing uses the same key-to-paint sample as `bench.mjs` (keydown, animation frame, message channel) for 5 rounds of 200 keys. Thresholds are the named constants at the top of `perf-gate.mjs`: main idle and sidebar Board long tasks at most 350 ms over 3 s (Roam runs its own ~290 ms task every few seconds), no sidebar Outline long task that starts after 2 s, typing median at most +1.0 ms/key mounted and +0.1 ms/key parked, and the parked sidebar arm fails above 350 long-task ms. It also counts Plexus `pointerup` listeners (at most one per mounted board).
+
+The version line is `window.__plexusDiagram.version` from the build running in that window. For one board open it wraps every function on `roamAlphaAPI.data`, `data.block`, and `data.fast`, opens Daily Notes, waits, opens the fixture board, and restores the functions. The data-calls row is the count whose stack contains this build's blob URL. The log also prints the total.
+
+It refuses a window titled `plx typing bench`. It adds one right-sidebar window for the fixture board. Collapse uses `rightSidebar.collapseWindow({ window: { type: "block", "block-uid" } })`. Remove uses `unpinWindow` and `removeWindow` with that same block uid, and only for the window this run added. It does not call `rightSidebar.close`. A sidebar failure is printed and the typing rows still run. Parking the main board for those rows schedules `data.block.move` into the closed folder and polls `.roam-main .pxd-root`. That move promise stays pending while the evaluate awaits it, even after the root is gone. On every exit, including a failed row, it removes that window and checks the earlier window list is intact. `ledger cleanup` then deletes ledgered blocks on the test pages. Page lookup uses `roamAlphaAPI.pull("[:block/string {:block/page [:node/title]}]")`, because `data.pull` omits `:block/page`.

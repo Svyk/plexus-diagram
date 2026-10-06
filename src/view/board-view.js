@@ -16,7 +16,7 @@ import { findOnBoard } from "../model/find.js";
 import { readMindPreset, writeMindPreset } from "../model/mindmap.js";
 import { attrLegend, parseAttrStyles, styleAttrLinks } from "../model/attr-styles.js";
 import { HIGHLIGHT_COLORS } from "../model/highlight.js";
-import { pdfCardForUrl } from "../model/pdf.js";
+import { embedSplit, pdfCardForUrl, readerRule } from "../model/pdf.js";
 import { chipsForPdf } from "../model/pdf-chips.js";
 import { expandDateHighlights, highlightRows, placeHighlights } from "../model/highlight-pick.js";
 import { isDailyTitle } from "../model/library.js";
@@ -59,7 +59,7 @@ import { PLEXUS_MIME, copyPayload, editorPastePlan, imageMarkdown, inlineAtCaret
 import { boardToMarkdown, boardToSvg, dropExternalImages, imageSrc, pngFileName, sliceBoard } from "../model/export.js";
 import { createInteractions } from "./interactions.js";
 import { openPagePicker } from "./board-picker.js";
-import { createItemRenderer, isTextEntryTarget, pageBodyWantsWheel, syncBoardHighlighter } from "./cards.js";
+import { createItemRenderer, dropEmbedPoster, isTextEntryTarget, pageBodyWantsWheel, paintEmbedPoster, syncBoardHighlighter } from "./cards.js";
 import { openViewDialog } from "./view-dialog.js";
 import { viewMapModel } from "./minimap-svg.js";
 import { openRegionDeleteDialog } from "./region-delete-dialog.js";
@@ -222,6 +222,7 @@ export function pageRenameNeedsConfirm(refCount) {
 
 // An arrow end handle sits half under the card it ends on, so the card wins the browser hit-test there.
 // A pointer within `radius` px of a handle centre grabs the handle instead.
+// This scan reads layout (getBoundingClientRect). Gesture code uses edgeEndNearWorld instead.
 export function edgeEndNear(root, x, y, radius = 10) {
   const handles = root?.querySelectorAll?.(".pxd-edge__end");
   if (!handles?.length) return null;
@@ -235,6 +236,22 @@ export function edgeEndNear(root, x, y, radius = 10) {
   if (!best) return null;
   const edge = best.closest?.(".pxd-edge");
   return { kind: "edge-end", uid: edge?.dataset?.uid || edge?.getAttribute?.("data-uid"), end: best.dataset?.end || best.getAttribute?.("data-end") };
+}
+
+// Handle centres stored in world space when the edge renders. `radius` is screen px.
+// `zoom` turns the world distance into screen px, so a pan never has to read layout.
+export function edgeEndNearWorld(centers, world, radius = 10, zoom = 1) {
+  if (!world || !centers?.length) return null;
+  const z = zoom || 1;
+  let best = null;
+  let bestD = radius;
+  for (const h of centers) {
+    if (!h || !Number.isFinite(h.x) || !Number.isFinite(h.y)) continue;
+    const d = Math.hypot((h.x - world.x) * z, (h.y - world.y) * z);
+    if (d <= bestD) { best = h; bestD = d; }
+  }
+  if (!best) return null;
+  return { kind: "edge-end", uid: best.uid, end: best.end };
 }
 
 export function toggleTodoAt(string, index = 0) {
@@ -902,6 +919,49 @@ function buildBoardView(onFail, {
   let outlineNear = null;
   let outlineFar = null;
   const outlined = new WeakSet();
+  let outlineLiveUid = null;
+  const outlineRead = (id) => {
+    const item = board()?.items.get(id);
+    if (typeof item?.string === "string" && item.string.trim()) return item.string;
+    try {
+      const text = host?.blockString?.(id);
+      return typeof text === "string" ? text : "";
+    } catch { return ""; }
+  };
+  const outlineCover = (source) => {
+    try { return host?.pdfCover?.(source) ?? null; } catch { return null; }
+  };
+  const outlineHeavies = (uid) => {
+    const posters = [];
+    const seenUid = new Set();
+    const seenPoster = new Set();
+    const add = (poster, fallback) => {
+      if (!poster) return;
+      const mount = poster.uid || fallback || "";
+      const key = `${mount}\u0001${poster.kind || ""}\u0001${poster.title || ""}\u0001${poster.url || ""}`;
+      if (seenPoster.has(key)) return;
+      seenPoster.add(key);
+      posters.push(mount ? { ...poster, uid: mount } : poster);
+    };
+    const fromText = (text, id) => {
+      const split = embedSplit(text, { read: outlineRead, cover: outlineCover, uid: id });
+      for (const poster of split.posters) add(poster, id);
+    };
+    const walk = (id, depth) => {
+      if (!id || depth > 8 || seenUid.has(id)) return;
+      seenUid.add(id);
+      fromText(outlineRead(id), id);
+      const item = board()?.items.get(id);
+      for (const member of item?.members || []) walk(member, depth + 1);
+      for (const kid of item?.content || []) {
+        const kidUid = kid?.[":block/uid"] || kid?.uid || "";
+        if (kidUid) walk(kidUid, depth + 1);
+        else fromText(kid?.[":block/string"] ?? kid?.string ?? "", id);
+      }
+    };
+    if (uid) walk(uid, 0);
+    return posters;
+  };
   const readSidebarMode = () => {
     try {
       const v = storage?.getItem?.(sidebarModeKey);
@@ -934,17 +994,88 @@ function buildBoardView(onFail, {
     const off = Number(row.offsetHeight) || 0;
     return off > 0 ? off : 0;
   };
+  const closeOutlineLive = () => {
+    const prev = outlineLiveUid;
+    outlineLiveUid = null;
+    if (!prev || !outlineHost) return;
+    for (const row of [...outlineHost.children]) {
+      if (!row.querySelector?.(".pxd-embed-live")) continue;
+      const live = row.querySelector(".pxd-rs__live");
+      try { if (live) host?.unmount?.(live); } catch { /* stub */ }
+      outlined.delete(row);
+      try { row.replaceChildren(); } catch { /* stub */ }
+      row.style.height = "";
+      renderOutlineRow(row);
+    }
+  };
+  const openOutlineEmbed = (uid) => {
+    if (!uid) return;
+    const rule = readerRule(outlineLiveUid, uid);
+    if (rule.close == null && rule.open === (outlineLiveUid || null)) return;
+    outlineLiveUid = rule.open || null;
+    try { itemsR?.closeEmbed?.(); } catch { /* cards */ }
+    if (!outlineHost) return;
+    for (const row of [...outlineHost.children]) {
+      const heavies = outlineHeavies(row.dataset?.uid);
+      const hit = heavies.some((poster) => (poster.uid || row.dataset?.uid) === uid);
+      const live = row.querySelector?.(".pxd-embed-live");
+      if (!hit && !live) continue;
+      const node = live?.querySelector?.(".pxd-rs__live");
+      try { if (node) host?.unmount?.(node); } catch { /* stub */ }
+      outlined.delete(row);
+      try { row.replaceChildren(); } catch { /* stub */ }
+      row.style.height = "";
+      renderOutlineRow(row);
+    }
+  };
   const renderOutlineRow = (row) => {
     if (disposed || !row || outlined.has(row)) return;
     if (!outlineHost?.contains?.(row)) return;
+    const uid = row.dataset?.uid || "";
+    const heavies = uid ? outlineHeavies(uid) : [];
+    if (heavies.length) {
+      const own = outlineRead(uid);
+      const ownSplit = embedSplit(own, { read: outlineRead, cover: outlineCover, uid });
+      if (!ownSplit.posters.length && own.trim()) {
+        const text = el("div", "pxd-outline-rest", row);
+        text.textContent = plainText(own);
+      }
+      for (const poster of heavies) {
+        const mount = poster.uid || uid;
+        if (outlineLiveUid && mount === outlineLiveUid) {
+          const liveWrap = el("div", "pxd-embed-poster pxd-embed-live", row);
+          liveWrap.setAttribute("data-pxd-embed", mount);
+          if (poster.kind) liveWrap.setAttribute("data-kind", poster.kind);
+          const live = el("div", "pxd-rs__live", liveWrap);
+          try { host?.renderBlock?.(live, mount); } catch { /* host */ }
+        } else {
+          const node = paintEmbedPoster(doc, row, { ...poster, uid: mount }, (id) => openOutlineEmbed(id || mount));
+          const onFocus = () => openOutlineEmbed(mount);
+          node.addEventListener("focusin", onFocus);
+          const offs = node._pxdFocusOffs || (node._pxdFocusOffs = []);
+          offs.push(() => node.removeEventListener("focusin", onFocus));
+        }
+      }
+      row.style.height = "";
+      outlined.add(row);
+      return;
+    }
     if (typeof host?.renderBlock !== "function") return;
-    try { host.renderBlock(row, row.dataset.uid); } catch { return; }
+    try { host.renderBlock(row, uid); } catch { return; }
     row.style.height = "";
     outlined.add(row);
   };
   const releaseOutlineRow = (row) => {
     if (!row || !outlined.has(row)) return;
+    if (row.querySelector?.(".pxd-embed-live")) outlineLiveUid = null;
+    for (const node of row.querySelectorAll?.(".pxd-embed-poster") || []) {
+      const offs = node._pxdFocusOffs;
+      if (offs) for (const off of offs.splice(0)) off();
+      dropEmbedPoster(node);
+    }
     const h = rowHeight(row);
+    const live = row.querySelector?.(".pxd-rs__live");
+    try { if (live) host?.unmount?.(live); } catch { /* stub */ }
     try { host?.unmount?.(row); } catch { /* stub */ }
     try { row.replaceChildren(); } catch { /* stub */ }
     if (h > 0) row.style.height = `${Math.ceil(h)}px`;
@@ -989,6 +1120,7 @@ function buildBoardView(onFail, {
     }
   };
   const clearOutline = () => {
+    outlineLiveUid = null;
     disconnectOutline();
     if (!outlineHost) return;
     for (const row of [...outlineHost.children]) releaseOutlineRow(row);
@@ -1153,6 +1285,7 @@ function buildBoardView(onFail, {
     timers,
     onEditChange: (uid) => {
       root.classList.toggle("pxd-root--editing", Boolean(uid));
+      session.setEditing?.(uid || null);
       if (!uid && grown.size) { liveRects = null; resetGrown(); } // the edit ended: the commit (growToFit) takes over
     },
     onEditResize: (uid, h) => {
@@ -1183,6 +1316,7 @@ function buildBoardView(onFail, {
     pdfChips: (item) => pdfChipsFor(item),
     onPdfPulse: (uids) => { for (const uid of uids || []) pulseItem(uid); },
     onPdfOpen: (uid, page) => { void itemsR.openPdfAt?.(uid, page); },
+    onEmbedOpen: () => closeOutlineLive(),
   });
   itemsReady = true;
   repaintItemStyles = () => { if (!disposed) itemsR.repaintStyles(); };
@@ -1264,6 +1398,7 @@ function buildBoardView(onFail, {
   };
   // RF-2: every row a block arrow ends on shows in the edge's color, with a tooltip naming the other end.
   const rowEdges = new Map(); // `${card}|${row}` → [edge uids], kept for hover in both directions
+  let rowMarkKey = "";
   const edgeTone = (e) => (PALETTE.includes(e.color) ? `var(--pxd-${e.color}-line)` : hexColor(e.color) || "var(--pxd-edge)");
   const cardName = (b, uid) => {
     const it = b.items.get(uid);
@@ -1289,7 +1424,12 @@ function buildBoardView(onFail, {
       }
     }
     for (const [key, g] of groups) rowEdges.set(key, g.edges);
-    itemsR.markRows([...groups.values()].map((g) => ({ card: g.card, row: g.row, edges: g.edges, color: g.color, tip: g.tips.join(" | ") })));
+    const marks = [...groups.values()].map((g) => ({ card: g.card, row: g.row, edges: g.edges, color: g.color, tip: g.tips.join(" | ") }));
+    // runAnchors repeats on scroll. Skip the row attribute rewrite when the edge list, color and tip match.
+    const markKey = JSON.stringify(marks.map((g) => [g.card, g.row, g.edges.join(" "), g.color, g.tip]).sort((a, b) => String(a[0] + a[1]).localeCompare(String(b[0] + b[1]))));
+    if (markKey === rowMarkKey) return;
+    rowMarkKey = markKey;
+    itemsR.markRows(marks);
   };
   // The arrow lights its rows and the row lights its arrows. Each side sets only its own class, so no loop.
   const hoverRows = (edgeUid, on) => {
@@ -4004,14 +4144,41 @@ function buildBoardView(onFail, {
     }
     return { kind: "empty" };
   };
+  // Pan, marquee and card drag never use a handle. Only an edge-end drag, a connect, or a press that
+  // might start one looks at handle centres, and it uses the world points stored at render.
+  const END_GESTURE = new Set(["edge-end", "connect"]);
+  const NO_END_GESTURE = new Set(["pan", "marquee", "move", "lasso", "resize", "place", "section-draw", "board-draw"]);
+  const edgeEndWanted = (type, event) => {
+    const kind = ctl.gestureKind();
+    if (NO_END_GESTURE.has(kind)) return false;
+    if (END_GESTURE.has(kind)) return true;
+    if (type !== "pointerdown" && type !== "dblclick" && type !== "contextmenu") return false;
+    if (event.button === 1) return false;
+    return true;
+  };
+  const handleCenters = () => {
+    const uid = selection.edge;
+    const geo = uid ? edgesR.geometryOf?.(uid) : null;
+    if (!geo?.start || !geo?.end) return null;
+    return [
+      { uid, end: "from", x: geo.start.x, y: geo.start.y },
+      { uid, end: "to", x: geo.end.x, y: geo.end.y },
+    ];
+  };
   const normalize = (event, type = event.type) => {
     const screen = { x: (event.clientX || 0) - rootRect.left, y: (event.clientY || 0) - rootRect.top };
+    const world = screenToWorld(vp, screen);
+    let target = targetOf(event.target);
+    if (edgeEndWanted(type, event)) {
+      const near = edgeEndNearWorld(handleCenters(), world, 10, vp.zoom || 1);
+      if (near) target = near;
+    }
     return {
       type,
       screen,
       client: { x: event.clientX || 0, y: event.clientY || 0 },
-      world: screenToWorld(vp, screen),
-      target: edgeEndNear(root, event.clientX || 0, event.clientY || 0) || targetOf(event.target),
+      world,
+      target,
       button: event.button ?? 0,
       buttons: event.buttons ?? 0,
       shift: Boolean(event.shiftKey),

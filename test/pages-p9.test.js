@@ -211,7 +211,7 @@ test("PG-1: an outside edit repaints the page; an identical echo does not", asyn
     await poke();
     assert.equal(h.shell(uid).querySelectorAll("[data-pxd-row]").length, 4);
     assert.ok(h.shell(uid).querySelector("[data-pxd-row=newrow001]"));
-    assert.ok(h.calls.unmount >= 3, "the replaced rows were unmounted");
+    assert.equal(h.calls.unmount, 0, "unchanged rows keep their live roots");
   } finally { h.done(); }
 });
 

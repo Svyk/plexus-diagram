@@ -2038,44 +2038,65 @@ test("NP-9: native embeds keep a shield until edit, and a drag still moves the c
   try {
     await f.flush();
     const root = f.view.root;
-    const expectShield = ["np9hl0001", "np9pdf001", "np9vid001", "np9tw0001"];
-    for (const uid of expectShield) {
+    const hl = root.querySelector("[data-uid=np9hl0001]");
+    assert.ok(hl.querySelector(".pxd-embed-shield"), "pdf-highlight keeps a shield");
+    drag(hl.querySelector(".pxd-embed-shield"));
+    const pdf = root.querySelector("[data-uid=np9pdf001]");
+    assert.equal(pdf.querySelector(".pxd-embed-shield"), null);
+    assert.ok(pdf.querySelector(".pxd-pdf-cover"));
+    drag(pdf.querySelector(".pxd-pdf-title"));
+    for (const uid of ["np9vid001", "np9tw0001", "np9yt0001"]) {
       const card = root.querySelector(`[data-uid=${uid}]`);
-      if (uid === "np9pdf001") {
-        assert.equal(card.querySelector(".pxd-embed-shield"), null);
-        assert.ok(card.querySelector(".pxd-pdf-cover"), uid);
-        drag(card.querySelector(".pxd-pdf-title"));
-        continue;
-      }
-      assert.ok(card.querySelector(".pxd-embed-shield"), uid);
-      drag(card.querySelector(".pxd-embed-shield"));
+      assert.ok(card.querySelector(".pxd-embed-poster"), `${uid} is a poster at rest`);
+      assert.equal(card.querySelector(".pxd-rs__live"), null, `${uid} has no live root at rest`);
+      assert.equal(card.querySelector(".pxd-embed-shield"), null, `${uid} has no shield at rest`);
     }
     const img = root.querySelector("[data-uid=np9img001] img");
     assert.equal(root.querySelector("[data-uid=np9img001] .pxd-embed-shield"), null);
     drag(img);
+    for (const uid of ["np9vid001", "np9tw0001"]) {
+      drag(root.querySelector(`[data-uid=${uid}] .pxd-embed-poster`));
+    }
     const yt = root.querySelector("[data-uid=np9yt0001]");
-    assert.equal(yt.querySelector(".pxd-embed-shield"), null);
-    yt.querySelector(".pxd-rs__live").append(f.stub.document.createElement("iframe"));
-    for (const o of f.stub.observers) if (o.active) o.cb([]);
-    const shield = yt.querySelector(".pxd-embed-shield");
-    assert.ok(shield, "a late iframe grows a shield");
-    drag(shield);
+    drag(yt.querySelector(".pxd-embed-poster"));
     const moved = f.session.mutations.filter((m) => m[0] === "commitMove").map((m) => m[1][0]);
-    assert.deepEqual(moved, ["np9hl0001", "np9pdf001", "np9vid001", "np9tw0001", "np9img001", "np9yt0001"]);
-    f.stub.dispatch(shield, "dblclick", { clientX: 40, clientY: 40 });
+    assert.deepEqual(moved, ["np9hl0001", "np9pdf001", "np9img001", "np9vid001", "np9tw0001", "np9yt0001"]);
+    const settle = async () => {
+      for (let i = 0; i < 4; i += 1) { f.stub.flushFrames(); await tick(); }
+    };
+    const open = async (uid) => {
+      await settle();
+      const card = root.querySelector(`[data-uid=${uid}]`);
+      f.stub.dispatch(card.querySelector(".pxd-embed-open"), "click", {});
+      await settle();
+      return root.querySelector(`[data-uid=${uid}]`);
+    };
+    let ytOpen = await open("np9yt0001");
+    assert.equal(ytOpen.querySelector(".pxd-embed-poster"), null, "Open replaces the poster");
+    const live = ytOpen.querySelector(".pxd-rs__live");
+    assert.ok(live, "the opened embed has a live root");
+    live.append(f.stub.document.createElement("iframe"));
+    for (const o of f.stub.observers) if (o.active) o.cb([]);
+    const shield = ytOpen.querySelector(".pxd-embed-shield");
+    assert.ok(shield, "a live embed grows a shield");
+    drag(shield);
+    const vidOpen = await open("np9vid001");
+    assert.ok(vidOpen.querySelector(".pxd-rs__live"), "the video card is live now");
+    ytOpen = root.querySelector("[data-uid=np9yt0001]");
+    assert.ok(ytOpen.querySelector(".pxd-embed-poster"), "only one heavy embed is live per board");
+    assert.equal(ytOpen.querySelector(".pxd-rs__live"), null);
+    const renderedBefore = f.host.calls.renderBlock;
+    f.stub.dispatch(ytOpen.querySelector(".pxd-embed-poster"), "dblclick", { clientX: 40, clientY: 40 });
     for (let i = 0; i < 4; i += 1) { f.stub.flushFrames(); await tick(); }
     await tick(300);
     f.stub.flushFrames();
-    assert.ok(yt.classList.contains("pxd-item--editing"));
-    assert.equal(yt.querySelector(".pxd-embed-shield"), null);
-    assert.equal(f.host.calls.renderBlock, 1);
-    f.stub.dispatch(yt.querySelector(".rm-block__input"), "keydown", { key: "Escape" });
+    const ytEdit = root.querySelector("[data-uid=np9yt0001]");
+    assert.ok(ytEdit.classList.contains("pxd-item--editing"));
+    assert.equal(ytEdit.querySelector(".pxd-embed-shield"), null);
+    assert.equal(f.host.calls.renderBlock - renderedBefore, 1, "renderBlock runs once for the edit");
+    f.stub.dispatch(ytEdit.querySelector(".rm-block__input"), "keydown", { key: "Escape" });
     await tick();
-    assert.equal(yt.classList.contains("pxd-item--editing"), false);
-    assert.equal(yt.querySelector(".pxd-embed-shield"), null);
-    yt.querySelector(".pxd-rs__live").append(f.stub.document.createElement("iframe"));
-    for (const o of f.stub.observers) if (o.active) o.cb([]);
-    assert.ok(yt.querySelector(".pxd-embed-shield"), "the shield returns when the embed mounts again");
+    assert.equal(ytEdit.classList.contains("pxd-item--editing"), false);
   } finally {
     f.view.dispose();
     f.restore();

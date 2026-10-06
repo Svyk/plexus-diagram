@@ -102,6 +102,30 @@ function autoPlace(siblings) {
   });
 }
 
+function refNodes(node) {
+  const refs = node?.[":block/refs"];
+  if (!refs) return [];
+  return Array.isArray(refs) ? refs : [refs];
+}
+
+// The board pull already carried this ref. Reading it here does not ask Roam again.
+function embeddedRef(node, uid) {
+  if (!uid) return null;
+  return refNodes(node).find((ref) => ref?.[":block/uid"] === uid) ?? null;
+}
+
+function bagFromRef(ref) {
+  const page = ref?.[":block/page"];
+  const node = Array.isArray(page) ? page[0] : page;
+  const title = node?.[":node/title"];
+  const props = ref?.[":block/props"];
+  return {
+    props: props && typeof props === "object" && !Array.isArray(props) ? props : {},
+    string: typeof ref?.[":block/string"] === "string" ? ref[":block/string"] : "",
+    pageTitle: typeof title === "string" ? title : "",
+  };
+}
+
 // A block ref only costs a props read when its text carries a highlight tag or image, or it was a highlight before.
 const HIGHLIGHT_HINT = /#h\/|!\[/;
 function highlightCandidate(text, refUid, known) {
@@ -164,9 +188,13 @@ export function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, know
       else title = firstLine(cstring);
       let regionDrawing;
       let highlight;
-      if (kind === "block" && cls.refUid && typeof resolve === "function") {
+      if (kind === "block" && cls.refUid) {
+        const embedded = embeddedRef(child, cls.refUid);
         let targetText = null;
-        try { targetText = resolve(cls.refUid); } catch { targetText = null; }
+        if (embedded && typeof embedded[":block/string"] === "string") targetText = embedded[":block/string"];
+        else if (typeof resolve === "function") {
+          try { targetText = resolve(cls.refUid); } catch { targetText = null; }
+        }
         const regionModel = regionRefModel(typeof targetText === "string" ? targetText : "", plexusApi);
         if (regionModel) {
           kind = "region-ref";
@@ -178,9 +206,10 @@ export function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, know
         } else if (classifyString(typeof targetText === "string" ? targetText : "").kind === "pdf") {
           kind = "pdf";
           title = "PDF";
-        } else if (typeof propsOf === "function" && highlightCandidate(targetText, cls.refUid, knownHighlight)) {
+        } else if (highlightCandidate(targetText, cls.refUid, knownHighlight) && (embedded || typeof propsOf === "function")) {
           let bag = null;
-          try { bag = propsOf(cls.refUid); } catch { bag = null; }
+          if (embedded) bag = bagFromRef(embedded);
+          else try { bag = propsOf(cls.refUid); } catch { bag = null; }
           const src = bag && typeof bag === "object" ? bag : {};
           const model = highlightModel({
             props: src.props,
@@ -800,6 +829,12 @@ export function diffBoards(prev, next) {
     return { structural: true, dirty };
   }
   const same = (a, b) => JSON.stringify(a) === JSON.stringify(b);
+  // Child trees ride on item.content. A keystroke there is not a layout change, so the diff
+  // looks at string, kind, plexus fields, parent, and order — not the pulled children.
+  const body = (item) => {
+    const { content, ...rest } = item;
+    return rest;
+  };
   let structural = prev.containerUid !== next.containerUid
     || prev.items.size !== next.items.size
     || prev.edges.size !== next.edges.size
@@ -812,7 +847,7 @@ export function diffBoards(prev, next) {
     const old = prev.items.get(uid);
     if (!old) { structural = true; dirty.add(uid); continue; }
     if (old.parentUid !== item.parentUid || !same(old.members, item.members)) structural = true;
-    if (!same(old, item)) dirty.add(uid);
+    if (old.string !== item.string || old.kind !== item.kind || old.parentUid !== item.parentUid || old.order !== item.order || !same(body(old), body(item))) dirty.add(uid);
   }
   for (const [uid, edge] of next.edges) {
     const old = prev.edges.get(uid);

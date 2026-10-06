@@ -1,0 +1,36 @@
+/* PERF-5. A video, iframe, or tweet stays a poster until Open or focus. One live embed per board. */
+
+.pxd-root .pxd-embed-poster {
+  position: relative;
+  min-height: 48px;
+  border: 1px solid var(--pxd-border);
+  background-color: transparent;
+  background-repeat: no-repeat;
+  background-position: center;
+  background-size: cover;
+}
+
+.pxd-root .pxd-embed-poster__title,
+.pxd-root .pxd-embed-poster__count,
+.pxd-root .pxd-embed-rest,
+.pxd-root .pxd-outline-rest {
+  font: inherit;
+}
+
+.pxd-root .pxd-embed-poster__count {
+  color: var(--pxd-muted);
+}
+
+.pxd-root .pxd-embed-open {
+  position: relative;
+  z-index: 2;
+}
+
+.pxd-root .pxd-embed-live {
+  position: relative;
+  min-height: 48px;
+}
+
+.pxd-root .pxd-sidebar-outline .pxd-embed-poster {
+  margin: 4px 0;
+}

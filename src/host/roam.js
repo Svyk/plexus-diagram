@@ -12,12 +12,127 @@ import {
 import { splitNeighbors } from "../model/neighbors.js";
 import { coverModel, pdfMacroUrl, pdfPagePlan } from "../model/pdf.js";
 import { LINKED_REF_CAP } from "../model/refs.js";
-import { attrNameOf, mergePropsForWrite, parseBoardTitle, plainKeys } from "../model/schema.js";
+import { createCardCache } from "../model/card-cache.js";
+import { attrNameOf, classifyString, mergePropsForWrite, parseBoardTitle, plainKeys } from "../model/schema.js";
 
 export const BOARD_PATTERN = `[:block/uid :block/string :block/order :block/heading :block/open :block/props
  {:block/children [:block/uid :block/string :block/order :block/heading :block/open :block/props
    {:block/children [:block/uid :block/string :block/order :block/heading :block/open :block/props
      {:block/children ...}]}]}]`;
+
+// One pull of the board also brings card refs, page outlines, and native diagram attrs.
+// The inner `...` repeats that level only, so a page outline does not pull refs of refs.
+const REF_CHILD = `[:block/uid :block/string :block/order :block/heading :block/open :block/props
+ {:block/children [:block/uid :block/string :block/order :block/heading :block/open :block/props
+   {:block/children ...}]}]`;
+const NATIVE_PULL = `{:diagram/nodes [:db/id :diagram.node/data {:diagram.node/block [:block/uid :block/string]} {:diagram.node/parent-node [:db/id]}]}
+ {:diagram/edges [{:diagram.edge/source [:db/id]} {:diagram.edge/target [:db/id]} :diagram.edge/data]}`;
+const REF_BODY = `[:db/id :block/uid :block/string :node/title :block/order :block/heading :block/open :block/props :pdf/url
+ {:block/page [:node/title :block/uid :pdf/url]}
+ ${NATIVE_PULL}
+ {:block/children ${REF_CHILD}}]`;
+const OPEN_PATTERN = `[:db/id :block/uid :block/string :block/order :block/heading :block/open :block/props
+ {:block/page [:block/uid :pdf/url]}
+ {:block/parents [:block/uid :block/string :block/props {:block/parents [:db/id]}]}
+ ${NATIVE_PULL}
+ {:block/refs ${REF_BODY}}
+ {:block/children [:db/id :block/uid :block/string :block/order :block/heading :block/open :block/props
+   {:block/refs ${REF_BODY}}
+   ${NATIVE_PULL}
+   {:block/children [:db/id :block/uid :block/string :block/order :block/heading :block/open :block/props
+     {:block/refs ${REF_BODY}}
+     ${NATIVE_PULL}
+     {:block/children ...}]}]}]`;
+
+const LINKED_MANY = `[:find ?title ?u ?ss ?pt :in $ [?title ...] :where
+ [?p :node/title ?title] [?b :block/refs ?p] [?b :block/uid ?u] [?b :block/string ?ss] [?b :block/page ?pg] [?pg :node/title ?pt]]`;
+
+function childNodes(node) {
+  const kids = node?.[":block/children"];
+  return Array.isArray(kids) ? kids : [];
+}
+
+function pageNodeOf(node) {
+  const page = node?.[":block/page"];
+  const one = Array.isArray(page) ? page[0] : page;
+  return one && typeof one === "object" ? one : null;
+}
+
+// The board's page is :block/page when the pull has it, otherwise the parent the open pattern names.
+function inferBoardPage(node) {
+  const page = pageNodeOf(node);
+  const pageId = page?.[":block/uid"];
+  if (typeof pageId === "string" && pageId) return pageId;
+  const parents = node?.[":block/parents"];
+  const list = Array.isArray(parents) ? parents : (parents && typeof parents === "object" ? [parents] : []);
+  for (const parent of list) {
+    const id = parent?.[":block/uid"];
+    if (typeof id === "string" && id) return id;
+  }
+  return "";
+}
+
+function refNodes(node) {
+  const refs = node?.[":block/refs"];
+  if (!refs) return [];
+  return Array.isArray(refs) ? refs : [refs];
+}
+
+function hasRefs(node) {
+  const stack = [node];
+  while (stack.length) {
+    const cur = stack.pop();
+    if (!cur || typeof cur !== "object") continue;
+    if (refNodes(cur).length) return true;
+    for (const kid of childNodes(cur)) stack.push(kid);
+  }
+  return false;
+}
+
+function uniqueStrings(list) {
+  const out = [];
+  const seen = new Set();
+  for (const value of list) {
+    if (typeof value !== "string" || value === "" || seen.has(value)) continue;
+    seen.add(value);
+    out.push(value);
+  }
+  return out;
+}
+
+// Page cards and block refs named by card strings. Nested outline rows are not cards.
+function collectTargets(node) {
+  const titles = [];
+  const uids = [];
+  const stats = [];
+  const walk = (cur, isRoot) => {
+    if (!cur || typeof cur !== "object") return;
+    if (!isRoot) {
+      const uid = cur[":block/uid"];
+      if (typeof uid === "string" && uid) stats.push({ kind: "block", uid });
+      const cls = classifyString(cur[":block/string"] ?? "");
+      if (cls.kind === "page" && cls.title) {
+        titles.push(cls.title);
+        stats.push({ kind: "page", title: cls.title });
+      } else if (cls.kind === "block" && cls.refUid) {
+        uids.push(cls.refUid);
+        stats.push({ kind: "block", uid: cls.refUid });
+      }
+    }
+    for (const kid of childNodes(cur)) walk(kid, false);
+  };
+  walk(node, true);
+  return { titles: uniqueStrings(titles), uids: uniqueStrings(uids), stats };
+}
+
+function unpackPulls(rows) {
+  const out = [];
+  for (const row of rows || []) {
+    const cell = Array.isArray(row) ? row[0] : row;
+    if (cell && typeof cell === "object" && !Array.isArray(cell)) out.push(cell);
+  }
+  return out;
+}
 
 const ciPattern = (text) => `(?i)${String(text).replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`;
 
@@ -246,7 +361,9 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
   const UNDO_ECHO_MS = 900; // Roam echoes our own writes back through the pull watch; those are not foreign edits
   let openGroup = null;
   let lastWriteAt = -Infinity;
+  let dropBurst = () => {};
   const noteWrite = () => {
+    dropBurst();
     lastWriteAt = Date.now();
     redoLog.length = 0;
     if (openGroup) {
@@ -261,7 +378,285 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     undoLog.push({ n: 1 });
     if (undoLog.length > UNDO_LOG_MAX) undoLog.shift();
   };
-  const pull = (pattern, entity) => data.pull(pattern, entity);
+  const cache = createCardCache();
+  const warm = new Set();
+  const boardKeys = new Map();
+  const boardPageOf = new Map();
+  const pdfUrls = new Map();
+  const boardCovers = new Map();
+  const watchedBoards = new Map();
+  const eidByUid = new Map();
+  const eidByTitle = new Map();
+  const statsCache = new Map();
+  const STATS_TTL_MS = 120000;
+  const MISS = Symbol("pull-miss");
+  const rawPull = typeof data.pull === "function" ? data.pull.bind(data) : () => null;
+  const parseEntity = (entity) => {
+    if (Array.isArray(entity)) return { key: entity[0], value: entity[1] };
+    const match = /^\[\s*(:[\w/.-]+)\s+"((?:[^"\\]|\\.)*)"\s*\]$/.exec(String(entity ?? ""));
+    if (match) return { key: match[1], value: match[2].replace(/\\"/g, "\"").replace(/\\\\/g, "\\") };
+    return null;
+  };
+  const stillUsed = (prefix, except) => {
+    for (const [boardUid, keys] of boardKeys) {
+      if (boardUid !== except && keys.has(prefix)) return true;
+    }
+    return false;
+  };
+  const forgetUid = (id) => {
+    const uid = String(id ?? "");
+    if (!uid) return;
+    cache.forgetBlock(uid);
+    warm.delete(uid);
+    eidByUid.delete(uid);
+  };
+  // Index a board pull. `honored` means the pattern actually returned :block/refs, so page rows
+  // and diagram attrs in this tree are complete. A narrow echo keeps the refs already stored.
+  // Cached reads are trusted only while a mounted board's watch covers them.
+  const BURST_MS = 150;
+  const burstMemo = new Map();
+  const readBurst = (key) => {
+    const hit = burstMemo.get(key);
+    if (!hit || Date.now() - hit.at >= BURST_MS) return MISS;
+    return hit.value;
+  };
+  const writeBurst = (key, value) => {
+    burstMemo.set(key, { value, at: Date.now() });
+    if (burstMemo.size > 2000) burstMemo.clear();
+  };
+  dropBurst = () => burstMemo.clear(); // a write makes the 150 ms read memo stale
+  const liveCached = (id) => {
+    if (!id || !warm.has(id)) return null;
+    const key = `b:${id}`;
+    for (const [boardUid, keys] of boardKeys) {
+      const slot = watchedBoards.get(boardUid);
+      if (slot && slot.n > 0 && keys.has(key)) return cache.blockOf(id) || null;
+    }
+    return null;
+  };
+  const pageOfCoveringBoard = (id) => {
+    const key = `b:${id}`;
+    for (const [boardUid, keys] of boardKeys) {
+      const slot = watchedBoards.get(boardUid);
+      if (slot && slot.n > 0 && keys.has(key)) {
+        const page = boardPageOf.get(boardUid);
+        if (page) return page;
+      }
+    }
+    return "";
+  };
+  const watchedPdfUrl = (pageUid) => {
+    for (const [boardUid, slot] of watchedBoards) {
+      if (!slot || slot.n <= 0) continue;
+      const url = pdfUrls.get(`${boardUid}\0${pageUid}`);
+      if (typeof url === "string") return url;
+    }
+    return MISS;
+  };
+  // Parent string from the open pull: :block/parents on the node, or the cached block that lists it as a child.
+  const parentFromLive = (id, live) => {
+    const parents = live[":block/parents"];
+    const list = Array.isArray(parents) ? parents : (parents && typeof parents === "object" ? [parents] : []);
+    for (const parent of list) {
+      if (typeof parent?.[":block/string"] === "string") return parent[":block/string"];
+    }
+    const rev = live[":block/_children"];
+    const first = Array.isArray(rev) ? rev[0] : rev;
+    if (typeof first?.[":block/string"] === "string") return first[":block/string"];
+    const key = `b:${id}`;
+    for (const [boardUid, keys] of boardKeys) {
+      const slot = watchedBoards.get(boardUid);
+      if (!slot || slot.n <= 0 || !keys.has(key)) continue;
+      const owned = [cache.blockOf(boardUid)];
+      for (const other of keys) {
+        if (other.startsWith("b:")) owned.push(cache.blockOf(other.slice(2)));
+      }
+      for (const owner of owned) {
+        if (!owner || !childNodes(owner).some((child) => child?.[":block/uid"] === id)) continue;
+        if (typeof owner[":block/string"] === "string") return owner[":block/string"];
+      }
+    }
+    return MISS;
+  };
+  const absorb = (boardUid, node, honored) => {
+    const prev = boardKeys.get(boardUid) || new Set();
+    const next = new Set();
+    const see = (key) => next.add(key);
+    const pdfPrefix = `${boardUid}\0`;
+    if (honored) {
+      for (const key of pdfUrls.keys()) if (key.startsWith(pdfPrefix)) pdfUrls.delete(key);
+    }
+    const notePdf = (pageUid, url) => {
+      if (typeof pageUid === "string" && pageUid && typeof url === "string") pdfUrls.set(pdfPrefix + pageUid, url);
+    };
+    const walk = (cur, asRef, isRoot) => {
+      if (!cur || typeof cur !== "object") return;
+      const id = typeof cur[":block/uid"] === "string" ? cur[":block/uid"] : "";
+      const title = typeof cur[":node/title"] === "string" ? cur[":node/title"] : "";
+      if (id) {
+        cache.rememberBlock(id, cur);
+        see(`b:${id}`);
+        if (!isRoot) warm.add(id);
+        if (asRef) cache.markRef(id, boardUid);
+        if (honored) cache.markNative(id);
+        notePdf(id, cur[":pdf/url"]);
+      }
+      const page = pageNodeOf(cur);
+      if (page) notePdf(page[":block/uid"], page[":pdf/url"]);
+      if (title && (asRef || isRoot)) {
+        cache.rememberPage(title, cur);
+        cache.notePageBoard(title, boardUid);
+        see(`t:${title}`);
+      }
+      for (const ref of refNodes(cur)) walk(ref, true, false);
+      for (const kid of childNodes(cur)) walk(kid, asRef, false);
+    };
+    walk(node, false, true);
+    const inferred = inferBoardPage(node);
+    if (inferred) boardPageOf.set(boardUid, inferred);
+    else if (honored) boardPageOf.set(boardUid, "");
+    if (!honored) {
+      for (const key of prev) {
+        if (key.startsWith("t:")) see(key);
+        else if (key.startsWith("b:") && cache.isRef(key.slice(2))) see(key);
+      }
+    }
+    for (const key of prev) {
+      if (next.has(key)) continue;
+      if (key.startsWith("b:")) {
+        const id = key.slice(2);
+        warm.delete(id);
+        if (!stillUsed(key, boardUid)) cache.forgetBlock(id);
+      } else if (key.startsWith("t:") && !stillUsed(key, boardUid)) {
+        cache.forgetPage(key.slice(2));
+      }
+    }
+    if (typeof node?.[":block/uid"] === "string") warm.delete(node[":block/uid"]);
+    boardKeys.set(boardUid, next);
+  };
+  const addEntity = (boardUid, node) => {
+    const keys = boardKeys.get(boardUid) || new Set();
+    const walk = (cur) => {
+      if (!cur || typeof cur !== "object") return;
+      const id = typeof cur[":block/uid"] === "string" ? cur[":block/uid"] : "";
+      const title = typeof cur[":node/title"] === "string" ? cur[":node/title"] : "";
+      if (id) {
+        cache.rememberBlock(id, cur);
+        cache.markRef(id, boardUid);
+        warm.add(id);
+        keys.add(`b:${id}`);
+      }
+      if (title) {
+        cache.rememberPage(title, cur);
+        cache.notePageBoard(title, boardUid);
+        keys.add(`t:${title}`);
+      }
+      for (const kid of childNodes(cur)) walk(kid);
+    };
+    walk(node);
+    boardKeys.set(boardUid, keys);
+  };
+  const servePull = (pattern, entity) => {
+    const parsed = parseEntity(entity);
+    if (!parsed) return MISS;
+    const text = String(pattern ?? "");
+    const compact = text.replace(/\s+/g, "");
+    let node = null;
+    let id = "";
+    if (parsed.key === ":node/title") {
+      node = cache.pageOf(parsed.value);
+      id = node?.[":block/uid"] || "";
+    } else if (parsed.key === ":block/uid" || parsed.key === ":db/id") {
+      if (parsed.key === ":db/id") return MISS;
+      node = cache.blockOf(parsed.value);
+      id = parsed.value;
+    } else return MISS;
+    if (!node) return MISS;
+    if (compact.includes(":block/parents") && !node[":block/parents"]) return MISS;
+    if (compact.includes(":block/_children") && !node[":block/_children"]) return MISS;
+    if (compact.includes(":pdf/url") && node[":pdf/url"] == null) return MISS;
+    if (compact === "[:db/id]" && node[":db/id"] == null) return MISS;
+    if (compact === "[:block/open]" && !(":block/open" in node)) return MISS;
+    if (compact.includes(":diagram/") && !cache.nativeKnown(id) && !node[":diagram/nodes"] && !node[":diagram/edges"]) return MISS;
+    return node;
+  };
+  if (typeof data.pull === "function") {
+    data.pull = (pattern, entity) => {
+      const hit = servePull(pattern, entity);
+      if (hit !== MISS) return hit;
+      return rawPull(pattern, entity);
+    };
+  }
+  const pull = (pattern, entity) => (typeof data.pull === "function" ? data.pull(pattern, entity) : rawPull(pattern, entity));
+  const pullMany = (uids, titles) => {
+    if (!uids.length && !titles.length) return [];
+    if (typeof data.pull_many === "function") {
+      const eids = [];
+      for (const id of uids) eids.push([":block/uid", id]);
+      for (const title of titles) eids.push([":node/title", title]);
+      try {
+        const many = data.pull_many(REF_BODY, eids);
+        if (Array.isArray(many)) return many.filter((node) => node && typeof node === "object");
+      } catch { /* one datalog pull covers the same ids */ }
+    }
+    try {
+      if (uids.length && titles.length) {
+        return unpackPulls(host.q(
+          `[:find (pull ?e ${REF_BODY}) :in $ [?uid ...] [?title ...] :where (or [?e :block/uid ?uid] [?e :node/title ?title])]`,
+          uids,
+          titles,
+        ));
+      }
+      if (uids.length) {
+        return unpackPulls(host.q(
+          `[:find (pull ?e ${REF_BODY}) :in $ [?uid ...] :where [?e :block/uid ?uid]]`,
+          uids,
+        ));
+      }
+      return unpackPulls(host.q(
+        `[:find (pull ?e ${REF_BODY}) :in $ [?title ...] :where [?e :node/title ?title]]`,
+        titles,
+      ));
+    } catch {
+      return [];
+    }
+  };
+  const fetchLinked = (titles) => {
+    if (!titles.length) return;
+    let rows = [];
+    try {
+      rows = host.q(LINKED_MANY, titles) || [];
+    } catch {
+      return;
+    }
+    const byTitle = new Map();
+    for (const title of titles) byTitle.set(title, []);
+    for (const row of rows) {
+      const title = row?.[0];
+      const id = row?.[1];
+      if (!byTitle.has(title) || !id) continue;
+      const list = byTitle.get(title);
+      if (list.some((item) => item.uid === id) || list.length >= 40) continue;
+      list.push({ uid: id, string: String(row?.[2] ?? ""), pageTitle: row?.[3] || "" });
+    }
+    for (const [title, list] of byTitle) cache.rememberLinked(`page:${title}`, list);
+  };
+  const dropStats = (boardUid) => {
+    const prefix = `${boardUid || ""}\0`;
+    for (const key of [...statsCache.keys()]) if (key.startsWith(prefix)) statsCache.delete(key);
+  };
+  const freshStat = (boardUid, key) => {
+    const hit = statsCache.get(`${boardUid || ""}\0${key}`);
+    if (!hit) return null;
+    if (Date.now() - hit.at > STATS_TTL_MS) {
+      statsCache.delete(`${boardUid || ""}\0${key}`);
+      return null;
+    }
+    return hit.stats;
+  };
+  const notifyPages = (slot, after) => {
+    for (const set of slot.pages.values()) for (const fn of set) fn(after);
+  };
   let coverMemo = null;
   const readPdfCover = (url) => {
     const pages = [];
@@ -288,9 +683,33 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     stats,
     viewports: createViewportStore({ storage, graph: gname }),
 
+    // One wide pull fills the session cache, so later card, page, and badge reads do not call Roam again.
     pullBoard(uid) {
-      const res = pull(BOARD_PATTERN, eidKey(uid));
-      return res && res[":block/uid"] ? res : null;
+      if (warm.has(uid)) {
+        const cached = cache.blockOf(uid);
+        if (cached?.[":block/uid"]) return cached;
+      }
+      warm.delete(uid);
+      let node = null;
+      try { node = rawPull(OPEN_PATTERN, eidKey(uid)); } catch { node = null; }
+      let honored = Boolean(node?.[":block/uid"] && hasRefs(node));
+      if (!node?.[":block/uid"]) {
+        try { node = rawPull(BOARD_PATTERN, eidKey(uid)); } catch { node = null; }
+        honored = false;
+      }
+      if (!node?.[":block/uid"]) return null;
+      absorb(uid, node, honored);
+      const found = collectTargets(node);
+      if (!honored && (found.uids.length || found.titles.length)) {
+        for (const entity of pullMany(found.uids, found.titles)) addEntity(uid, entity);
+      }
+      try { fetchLinked(found.titles); } catch { /* a later linkedRefs ask reads Roam */ }
+      boardCovers.set(uid, honored);
+      dropStats(uid);
+      if (found.stats.length) {
+        try { host.cardStats(found.stats, { boardUid: uid }); } catch { /* badges ask again */ }
+      }
+      return node;
     },
 
     // One unwatched read. Not added to the board pull watch.
@@ -305,17 +724,42 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     },
 
     watchBoard(uid, cb) {
+      const covers = boardCovers.get(uid) === true;
+      const pattern = covers ? OPEN_PATTERN : BOARD_PATTERN;
+      let slot = watchedBoards.get(uid);
+      if (!slot) {
+        slot = { coversRefs: covers, n: 0, pages: new Map() };
+        watchedBoards.set(uid, slot);
+      } else if (covers) slot.coversRefs = true;
+      slot.n += 1;
       const entity = watchEntity(uid);
-      const wrapped = (before, after) => cb(after);
-      data.addPullWatch(BOARD_PATTERN, entity, wrapped);
+      const wrapped = (before, after) => {
+        if (after?.[":block/uid"]) absorb(uid, after, hasRefs(after));
+        cb(after);
+        if (covers) notifyPages(slot, after);
+      };
+      data.addPullWatch(pattern, entity, wrapped);
       stats.watches++;
       let active = true;
       return () => {
         if (!active) return;
         active = false;
-        data.removePullWatch(BOARD_PATTERN, entity, wrapped);
+        data.removePullWatch(pattern, entity, wrapped);
         stats.watches--;
+        slot.n = Math.max(0, slot.n - 1);
+        if (slot.n === 0 && slot.pages.size === 0) watchedBoards.delete(uid);
       };
+    },
+
+    // True when this ref was joined into a board pull whose one watch still includes it.
+    coversBlock(uid) {
+      const id = String(uid ?? "");
+      if (!cache.isRef(id)) return false;
+      for (const boardUid of cache.refBoardsOf(id)) {
+        const slot = watchedBoards.get(boardUid);
+        if (slot && slot.n > 0 && slot.coversRefs) return true;
+      }
+      return false;
     },
 
     // Highlight blocks live on the PDF page. cb receives the pull.
@@ -344,8 +788,16 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     },
 
     pullTree(uid, depth = 2, limit = 12) {
-      const res = pull(BOARD_PATTERN, eidKey(uid));
-      return res ? trimTree(res, depth, { left: limit }) : [];
+      const id = String(uid ?? "");
+      const live = liveCached(id);
+      if (live && ":block/children" in live) return trimTree(live, depth, { left: limit });
+      const burstKey = `tr:${id}\0${depth}\0${limit}`;
+      const burst = readBurst(burstKey);
+      if (burst !== MISS) return burst;
+      const res = rawPull(BOARD_PATTERN, eidKey(uid));
+      const value = res ? trimTree(res, depth, { left: limit }) : [];
+      writeBurst(burstKey, value);
+      return value;
     },
 
     pullPage(title) {
@@ -367,8 +819,31 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     },
 
     // One pull watch on a page, for a page card on screen. The caller releases it.
+    // A page already inside an open board shares that board's watch instead of adding another.
     watchPage(title, cb) {
-      const entity = `[:node/title ${JSON.stringify(String(title))}]`;
+      const name = String(title ?? "");
+      for (const boardUid of cache.pageBoardsOf(name)) {
+        const slot = watchedBoards.get(boardUid);
+        if (!slot || slot.n <= 0 || !slot.coversRefs) continue;
+        let set = slot.pages.get(name);
+        if (!set) {
+          set = new Set();
+          slot.pages.set(name, set);
+        }
+        const wrapped = (after) => cb(after);
+        set.add(wrapped);
+        stats.pageWatches++;
+        let active = true;
+        return () => {
+          if (!active) return;
+          active = false;
+          set.delete(wrapped);
+          if (set.size === 0) slot.pages.delete(name);
+          stats.pageWatches--;
+          if (slot.n === 0 && slot.pages.size === 0) watchedBoards.delete(boardUid);
+        };
+      }
+      const entity = `[:node/title ${JSON.stringify(name)}]`;
       const wrapped = (before, after) => cb(after);
       data.addPullWatch(BOARD_PATTERN, entity, wrapped);
       stats.pageWatches++;
@@ -435,19 +910,44 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       return typeof title === "string" && title ? `[[${title}]]` : `((${id}))`;
     },
 
+    // A block inside a watched board reads from the session cache (the watch keeps it fresh).
+    // Anything else is memoised for one paint burst, so a repaint does not pull the same block 10 times.
     blockString(uid) {
+      const id = String(uid ?? "");
+      const live = liveCached(id);
+      if (live && typeof live[":block/string"] === "string") return live[":block/string"];
+      const hit = readBurst(id);
+      if (hit !== MISS) return hit;
       const res = pull("[:block/string]", eidKey(uid));
-      return typeof res?.[":block/string"] === "string" ? res[":block/string"] : null;
+      const value = typeof res?.[":block/string"] === "string" ? res[":block/string"] : null;
+      writeBurst(id, value);
+      return value;
     },
 
     // Page uid that owns a block. Empty when the block is missing or is itself a page.
+    // A warm descendant without its own :block/page shares the watched board's page.
     blockPageUid(uid) {
-      let res = null;
-      try { res = pull("[{:block/page [:block/uid]}]", eidKey(uid)); } catch { return ""; }
-      const page = res?.[":block/page"];
-      const node = Array.isArray(page) ? page[0] : page;
-      const id = node?.[":block/uid"];
-      return typeof id === "string" ? id : "";
+      const id = String(uid ?? "");
+      const live = liveCached(id);
+      if (live) {
+        if (":block/page" in live) {
+          const own = pageNodeOf(live)?.[":block/uid"];
+          if (typeof own === "string" && own) return own;
+        } else if (!cache.isRef(id)) {
+          const boardPage = pageOfCoveringBoard(id);
+          if (boardPage) return boardPage;
+        }
+      }
+      const burst = readBurst(`pg:${id}`);
+      if (burst !== MISS) return burst;
+      let value = "";
+      try {
+        const res = rawPull("[{:block/page [:block/uid]}]", eidKey(uid));
+        const own = pageNodeOf(res)?.[":block/uid"];
+        value = typeof own === "string" ? own : "";
+      } catch { value = ""; }
+      writeBurst(`pg:${id}`, value);
+      return value;
     },
 
     // Page that owns a block. Empty when the block is missing or is itself a page.
@@ -490,17 +990,34 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     },
 
     parentString(uid) {
-      const res = pull("[{:block/_children [:block/string]}]", eidKey(uid));
+      const id = String(uid ?? "");
+      const live = liveCached(id);
+      if (live) {
+        const found = parentFromLive(id, live);
+        if (found !== MISS) return found;
+      }
+      const burst = readBurst(`ps:${id}`);
+      if (burst !== MISS) return burst;
+      const res = rawPull("[{:block/_children [:block/string]}]", eidKey(uid));
       const p = res?.[":block/_children"];
       const first = Array.isArray(p) ? p[0] : p;
-      return typeof first?.[":block/string"] === "string" ? first[":block/string"] : null;
+      const value = typeof first?.[":block/string"] === "string" ? first[":block/string"] : null;
+      writeBurst(`ps:${id}`, value);
+      return value;
     },
 
     resolveEid(ref) {
       const entity = ref?.uid ? eidKey(ref.uid) : ref?.title ? [":node/title", ref.title] : null;
       if (!entity) return null;
+      if (ref?.uid && eidByUid.has(ref.uid)) return eidByUid.get(ref.uid);
+      if (ref?.title && eidByTitle.has(ref.title)) return eidByTitle.get(ref.title);
       const res = pull("[:db/id]", entity);
-      return res?.[":db/id"] ?? null;
+      const id = res?.[":db/id"] ?? null;
+      if (id != null) {
+        if (ref?.uid) eidByUid.set(ref.uid, id);
+        if (ref?.title) eidByTitle.set(ref.title, id);
+      }
+      return id;
     },
 
     generateUid() { return api.util.generateUID(); },
@@ -520,9 +1037,11 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       stats.writes++;
       await data.block.update({ block: { uid, string } });
       noteWrite();
+      forgetUid(uid);
     },
 
     async updateProps(uid, plexus) {
+      forgetUid(uid);
       const merged = mergePropsForWrite(host.pullProps(uid), plexus);
       stats.writes++;
       await data.block.update({ block: { uid, props: merged } });
@@ -533,18 +1052,21 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       stats.writes++;
       await data.block.move({ location: { "parent-uid": parentUid, order }, block: { uid } });
       noteWrite();
+      forgetUid(uid);
     },
 
     async deleteBlock(uid) {
       stats.writes++;
       await data.block.delete({ block: { uid } });
       noteWrite();
+      forgetUid(uid);
     },
 
     async setOpen(uid, open) {
       stats.writes++;
       await data.block.update({ block: { uid, open } });
       noteWrite();
+      forgetUid(uid);
     },
 
     // Runs fn (a serialized write sequence) as one undo step. Groups do not nest; the write queue serializes callers.
@@ -630,13 +1152,24 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     },
 
     // Page attribute only. No block query and no file fetch.
+    // A watched board's pull already carries :pdf/url for ref pages.
     pdfPageUrl(pageUid) {
       const uid = typeof pageUid === "string" ? pageUid : "";
       if (!uid) return "";
-      let res = null;
-      try { res = pull("[:pdf/url]", eidKey(uid)); } catch { return ""; }
-      const url = res?.[":pdf/url"];
-      return typeof url === "string" ? url : "";
+      const live = liveCached(uid);
+      if (live && typeof live[":pdf/url"] === "string") return live[":pdf/url"];
+      const watched = watchedPdfUrl(uid);
+      if (watched !== MISS) return watched;
+      const burst = readBurst(`url:${uid}`);
+      if (burst !== MISS) return burst;
+      let value = "";
+      try {
+        const res = rawPull("[:pdf/url]", eidKey(uid));
+        const url = res?.[":pdf/url"];
+        value = typeof url === "string" ? url : "";
+      } catch { value = ""; }
+      writeBurst(`url:${uid}`, value);
+      return value;
     },
 
     // Read-only cover. :pdf/url is a page attribute. Highlight blocks sit anywhere on that page.
@@ -701,6 +1234,24 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
 
     // Card footer stats for many targets in at most four datalog queries.
     cardStats(targets, { boardUid } = {}) {
+      const keys = [];
+      for (const t of targets || []) {
+        if (!t) continue;
+        const ref = t.kind === "page" ? (t.title ? { title: t.title } : null) : t.uid ? { uid: t.uid } : null;
+        if (!ref) continue;
+        const key = t.kind === "page" ? `page:${t.title}` : `uid:${t.uid}`;
+        if (!keys.includes(key)) keys.push(key);
+      }
+      if (keys.length && keys.every((key) => freshStat(boardUid, key))) {
+        const result = new Map();
+        for (const key of keys) result.set(key, { ...freshStat(boardUid, key) });
+        return result;
+      }
+      const remember = (result) => {
+        const at = Date.now();
+        for (const [key, stat] of result) statsCache.set(`${boardUid || ""}\0${key}`, { at, stats: stat });
+        return result;
+      };
       const result = new Map();
       const byEid = new Map();
       for (const t of targets || []) {
@@ -715,7 +1266,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
         if (!byEid.has(eid)) byEid.set(eid, []);
         byEid.get(eid).push(key);
       }
-      if (!byEid.size) return result;
+      if (!byEid.size) return remember(result);
       const eids = [...byEid.keys()];
       const boardEid = boardUid ? host.resolveEid({ uid: boardUid }) ?? -1 : -1;
       const tally = (rows, field) => {
@@ -743,7 +1294,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       );
       if (todoEid != null) tally(listFor(todoEid), "open");
       if (doneEid != null) tally(listFor(doneEid), "done");
-      return result;
+      return remember(result);
     },
 
     async uploadFile(file) {
@@ -1137,6 +1688,18 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       const targetUid = kind === "block" ? String(item.target?.uid || "") : (pageTitle ? "" : cardUid);
       if (!pageTitle && !targetUid) return [];
       const cap = Number.isFinite(Number(limit)) ? Math.max(0, Math.floor(Number(limit))) : LINKED_REF_CAP;
+      if (pageTitle && cache.hasLinked(`page:${pageTitle}`)) {
+        const refs = [];
+        const seen = new Set();
+        for (const row of cache.linkedOf(`page:${pageTitle}`)) {
+          const id = row?.uid;
+          if (!id || id === cardUid || seen.has(id)) continue;
+          seen.add(id);
+          refs.push({ uid: id, string: String(row.string ?? ""), pageTitle: row.pageTitle || "" });
+          if (refs.length >= cap) break;
+        }
+        return refs;
+      }
       let rows = [];
       try {
         rows = host.q(

@@ -49,6 +49,28 @@ export function writeLedger(entries, path = LEDGER_PATH) {
   writeFileSync(path, entries.map((row) => JSON.stringify(row)).join("\n") + (entries.length ? "\n" : ""));
 }
 
+// `data.pull` drops :block/page. `roamAlphaAPI.pull` of
+// [:block/string {:block/page [:node/title]}] returns the page object, sometimes as a one-element array.
+// Self-contained: cleanup stringifies this function into the page.
+export function blockPageInfo(asPage, block) {
+  const getKey = (obj, key) => obj?.[key] ?? obj?.[":" + key];
+  const titleOf = (node) => {
+    if (!node) return "";
+    if (typeof node === "string") return node;
+    if (Array.isArray(node)) return titleOf(node[0]);
+    return getKey(node, "node/title") || "";
+  };
+  const ownTitle = getKey(asPage, "node/title");
+  if (typeof ownTitle === "string" && ownTitle) return { exists: true, isPage: true, page: ownTitle };
+  if (typeof asPage === "string" && asPage) return { exists: true, isPage: true, page: asPage };
+  if (typeof block === "string") return block ? { exists: true, isPage: false, page: block } : { exists: false };
+  const page = titleOf(getKey(block, "block/page"));
+  const blockUid = getKey(block, "block/uid");
+  const blockString = getKey(block, "block/string");
+  if (!blockUid && blockString == null && !page) return { exists: false };
+  return { exists: true, isPage: false, page };
+}
+
 // Newest first. Missing blocks are dropped. Pages and non-test pages stay.
 export function planCleanup(entries, { graph, pagesOf }) {
   const drop = new Set();
@@ -89,25 +111,24 @@ function graphName(windowSel) {
 }
 
 function describeUids(windowSel, uids) {
-  const expr = `(${describeInPage.toString()})(${JSON.stringify(uids)})`;
+  const expr = `(() => {
+    const info = ${blockPageInfo.toString()};
+    const api = window.roamAlphaAPI;
+    const pull = typeof api.pull === "function"
+      ? (...args) => api.pull(...args)
+      : (...args) => api.data.pull(...args);
+    const out = {};
+    for (const uid of ${JSON.stringify(uids)}) {
+      let asPage = null;
+      let block = null;
+      try { asPage = pull("[:node/title :block/uid]", [":block/uid", uid]); } catch { asPage = null; }
+      try { block = pull("[:block/string {:block/page [:node/title]}]", [":block/uid", uid]); } catch { block = null; }
+      out[uid] = info(asPage, block);
+    }
+    return JSON.stringify(out);
+  })()`;
   const raw = roamEval(windowSel, expr);
   return typeof raw === "string" ? JSON.parse(raw) : raw;
-}
-
-function describeInPage(uids) {
-  const api = window.roamAlphaAPI;
-  const get = (obj, key) => obj?.[key] ?? obj?.[":" + key];
-  const out = {};
-  for (const uid of uids) {
-    const asPage = api.data.pull("[:node/title :block/uid]", [":block/uid", uid]);
-    const title = get(asPage, "node/title");
-    if (title) { out[uid] = { exists: true, isPage: true, page: title }; continue; }
-    const block = api.data.pull("[:block/uid {:block/page [:node/title]}]", [":block/uid", uid]);
-    if (!get(block, "block/uid")) { out[uid] = { exists: false }; continue; }
-    const page = get(block, "block/page");
-    out[uid] = { exists: true, isPage: false, page: get(page, "node/title") || "" };
-  }
-  return JSON.stringify(out);
 }
 
 function deleteUids(windowSel, uids) {

@@ -9,6 +9,24 @@ export function createCardCache() {
   const boards = new Map();
   const titles = new Map();
   const cardBy = new Map();
+  // Pulled blocks and pages for the current graph session. A board open fills these
+  // from one read; later block and page reads reuse them.
+  const reads = new Map();
+  const pageReads = new Map();
+  const linkedReads = new Map();
+  const refBoards = new Map();
+  const pageBoards = new Map();
+  const refUids = new Set();
+  const nativeKnown = new Set();
+  const noteBoard = (map, key, boardUid) => {
+    if (!key || !boardUid) return;
+    let set = map.get(key);
+    if (!set) {
+      set = new Set();
+      map.set(key, set);
+    }
+    set.add(boardUid);
+  };
 
   const drop = (boardUid) => {
     const prev = boards.get(boardUid);
@@ -99,12 +117,74 @@ export function createCardCache() {
     targets() {
       return new Set(targetBoards.keys());
     },
+    rememberBlock(uid, node) {
+      if (typeof uid === "string" && uid && node && typeof node === "object") reads.set(uid, node);
+    },
+    blockOf(uid) {
+      return reads.get(uid);
+    },
+    rememberPage(title, node) {
+      if (typeof title === "string" && title && node && typeof node === "object") pageReads.set(title, node);
+    },
+    pageOf(title) {
+      return pageReads.get(title);
+    },
+    rememberLinked(key, rows) {
+      if (typeof key === "string" && key) linkedReads.set(key, Array.isArray(rows) ? rows : []);
+    },
+    hasLinked(key) {
+      return linkedReads.has(key);
+    },
+    linkedOf(key) {
+      return linkedReads.get(key) || [];
+    },
+    markRef(uid, boardUid) {
+      if (typeof uid !== "string" || uid === "") return;
+      refUids.add(uid);
+      noteBoard(refBoards, uid, boardUid);
+    },
+    isRef(uid) {
+      return refUids.has(uid);
+    },
+    refBoardsOf(uid) {
+      return [...(refBoards.get(uid) || [])];
+    },
+    notePageBoard(title, boardUid) {
+      noteBoard(pageBoards, title, boardUid);
+    },
+    pageBoardsOf(title) {
+      return [...(pageBoards.get(title) || [])];
+    },
+    markNative(uid) {
+      if (typeof uid === "string" && uid) nativeKnown.add(uid);
+    },
+    nativeKnown(uid) {
+      return nativeKnown.has(uid);
+    },
+    forgetBlock(uid) {
+      reads.delete(uid);
+      refUids.delete(uid);
+      refBoards.delete(uid);
+      nativeKnown.delete(uid);
+    },
+    forgetPage(title) {
+      pageReads.delete(title);
+      pageBoards.delete(title);
+      linkedReads.delete(`page:${title}`);
+    },
     clear() {
       childBoard.clear();
       targetBoards.clear();
       boards.clear();
       titles.clear();
       cardBy.clear();
+      reads.clear();
+      pageReads.clear();
+      linkedReads.clear();
+      refBoards.clear();
+      pageBoards.clear();
+      refUids.clear();
+      nativeKnown.clear();
     },
   };
 }

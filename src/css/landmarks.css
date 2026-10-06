@@ -1,0 +1,94 @@
+/* MEM-7. Glyph on a bordered disc. No fill, in either theme. Overview size is screen-constant. */
+
+.pxd-landmark {
+  position: absolute;
+  left: 8px;
+  top: 8px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-sizing: border-box;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  background: transparent;
+  line-height: 1;
+  pointer-events: none;
+}
+
+.pxd-item--landmark.pxd-landmark--S > .pxd-landmark,
+.pxd-section--landmark.pxd-landmark--S > .pxd-landmark {
+  width: 48px;
+  height: 48px;
+  font-size: 26px;
+}
+
+.pxd-item--landmark.pxd-landmark--M > .pxd-landmark,
+.pxd-section--landmark.pxd-landmark--M > .pxd-landmark {
+  width: 72px;
+  height: 72px;
+  font-size: 36px;
+}
+
+.pxd-item--landmark.pxd-landmark--L > .pxd-landmark,
+.pxd-section--landmark.pxd-landmark--L > .pxd-landmark {
+  width: 96px;
+  height: 96px;
+  font-size: 48px;
+}
+
+.pxd-root--dark .pxd-landmark {
+  background: transparent;
+  border-color: currentColor;
+}
+
+/* Overview hides every card header. A landmark keeps its glyph and its title. */
+.pxd-root.pxd-lod-overview .pxd-item.pxd-item--card.pxd-item--landmark > .pxd-item__header,
+.pxd-root.pxd-lod-overview .pxd-section.pxd-section--landmark > .pxd-section__title {
+  display: flex;
+}
+
+.pxd-root.pxd-lod-overview .pxd-item--landmark,
+.pxd-root.pxd-lod-overview .pxd-section--landmark {
+  overflow: visible;
+}
+
+.pxd-root.pxd-lod-overview .pxd-landmark--S > .pxd-landmark {
+  width: calc(48px * var(--pxd-screen-px, 1));
+  height: calc(48px * var(--pxd-screen-px, 1));
+  font-size: calc(26px * var(--pxd-screen-px, 1));
+}
+
+.pxd-root.pxd-lod-overview .pxd-landmark--M > .pxd-landmark {
+  width: calc(72px * var(--pxd-screen-px, 1));
+  height: calc(72px * var(--pxd-screen-px, 1));
+  font-size: calc(36px * var(--pxd-screen-px, 1));
+}
+
+.pxd-root.pxd-lod-overview .pxd-landmark--L > .pxd-landmark {
+  width: calc(96px * var(--pxd-screen-px, 1));
+  height: calc(96px * var(--pxd-screen-px, 1));
+  font-size: calc(48px * var(--pxd-screen-px, 1));
+}
+
+.pxd-minimap__marks {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.pxd-minimap__mark {
+  position: absolute;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 14px;
+  min-height: 14px;
+  padding: 0 2px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  background: transparent;
+  font-size: 10px;
+  line-height: 1;
+}

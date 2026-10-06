@@ -1,4 +1,5 @@
 import { onGuardCount } from "./guard.js";
+import { integrations, statusLine } from "./model/detect.js";
 import { bindPerfReadout, perfReadoutText, readHostPerf } from "./perf-log.js";
 
 export const SETTING_IDS = Object.freeze({
@@ -43,6 +44,9 @@ export const SETTING_IDS = Object.freeze({
   taskChips: "task-chips",
   taskDefaultProject: "task-default-project",
   betterTasks: "better-tasks",
+  resurface: "resurface",
+  regionsInline: "regions-inline",
+  interop: "interop",
   speedLog: "speed-log",
   // Hidden. Not a panel row. JSON object, parsed by parseSpeedFlags.
   speedFlags: "speed-flags",
@@ -90,6 +94,9 @@ const DEFAULTS = Object.freeze({
   [SETTING_IDS.taskChips]: "full",
   [SETTING_IDS.taskDefaultProject]: "",
   [SETTING_IDS.betterTasks]: false,
+  [SETTING_IDS.resurface]: true,
+  [SETTING_IDS.regionsInline]: true,
+  [SETTING_IDS.interop]: true,
   [SETTING_IDS.speedLog]: false,
 });
 
@@ -231,6 +238,7 @@ export function onSettingsChange(fn) {
 }
 
 function emit(id, value) {
+  if (INTEGRATION_SWITCH_IDS.has(id)) liveSwitches.set(id, normalizeSetting(id, value) === true);
   for (const fn of [...listeners]) {
     try {
       fn(id, value);
@@ -238,6 +246,7 @@ function emit(id, value) {
       console.error("[plexus-diagram] Settings listener failed", error);
     }
   }
+  if (INTEGRATION_SWITCH_IDS.has(id)) refreshIntegrations();
 }
 
 function switchRow(id, name, description) {
@@ -289,7 +298,109 @@ export async function resetPlexusSettings() {
   }
 }
 
+const STATUS_IDS = Object.freeze({
+  betterTasks: "status-better-tasks",
+  taskStatusTags: "status-task-status-tags",
+  roamPlexus: "status-roam-plexus",
+  compass: "status-compass",
+  highlighter: "status-highlighter",
+});
+
+const STATUS_FOR = Object.freeze({
+  [STATUS_IDS.betterTasks]: "better-tasks",
+  [STATUS_IDS.taskStatusTags]: "task-status-tags",
+  [STATUS_IDS.roamPlexus]: "roam-plexus",
+  [STATUS_IDS.compass]: "compass",
+  [STATUS_IDS.highlighter]: "highlighter",
+});
+
+const SWITCH_FOR = Object.freeze({
+  "better-tasks": SETTING_IDS.betterTasks,
+  "roam-plexus": SETTING_IDS.interop,
+  compass: SETTING_IDS.interop,
+});
+
+const INTEGRATION_SWITCH_IDS = new Set([
+  SETTING_IDS.betterTasks,
+  SETTING_IDS.taskTool,
+  SETTING_IDS.cardChips,
+  SETTING_IDS.resurface,
+  SETTING_IDS.regionsInline,
+  SETTING_IDS.interop,
+]);
+
+const integrationText = new Map();
+const liveSwitches = new Map();
+
+function integrationHost(win) {
+  if (win) return win;
+  return globalThis.window ?? globalThis;
+}
+
+function switchOn(detectId) {
+  const settingId = SWITCH_FOR[detectId];
+  if (!settingId) return undefined;
+  if (liveSwitches.has(settingId)) return liveSwitches.get(settingId);
+  let raw = null;
+  try { raw = settingsStore?.settings?.get?.(settingId); } catch { raw = null; }
+  if (raw == null || raw === "") return DEFAULTS[settingId] === true;
+  return normalizeSetting(settingId, raw) === true;
+}
+
+function syncIntegrationText(win) {
+  for (const found of integrations(integrationHost(win))) {
+    const statusId = Object.keys(STATUS_FOR).find((id) => STATUS_FOR[id] === found.id);
+    if (!statusId) continue;
+    integrationText.set(statusId, statusLine(found, switchOn(found.id)));
+  }
+}
+
+function reactOf() {
+  const host = globalThis.window ?? globalThis;
+  const React = host?.React ?? globalThis.React;
+  return React && typeof React.createElement === "function" ? React : null;
+}
+
+function integrationStatusComponent(statusId) {
+  return function IntegrationStatus() {
+    const text = integrationText.get(statusId) || "";
+    const React = reactOf();
+    if (!React) return text;
+    try { return React.createElement("span", { className: "pxd-integration-status" }, text); }
+    catch { return text; }
+  };
+}
+
+function statusSettingRow(statusId, label) {
+  return {
+    id: statusId,
+    name: label,
+    description: integrationText.get(statusId) || `${label}: not installed`,
+    action: { type: "reactComponent", component: integrationStatusComponent(statusId) },
+  };
+}
+
+function paintIntegrationRows() {
+  const list = panelRef?.settings;
+  if (!list) return;
+  for (const entry of list) {
+    if (!integrationText.has(entry.id)) continue;
+    entry.description = integrationText.get(entry.id);
+  }
+}
+
+// Re-reads detection. feature.js calls this on INTEGRATION_EVENTS (ready/unload).
+export function refreshIntegrations(win) {
+  syncIntegrationText(win);
+  paintIntegrationRows();
+}
+
 const SETTING_ROWS = {
+  [STATUS_IDS.betterTasks]: () => statusSettingRow(STATUS_IDS.betterTasks, "Better Tasks"),
+  [STATUS_IDS.taskStatusTags]: () => statusSettingRow(STATUS_IDS.taskStatusTags, "Task Status Tags"),
+  [STATUS_IDS.roamPlexus]: () => statusSettingRow(STATUS_IDS.roamPlexus, "Roam Plexus"),
+  [STATUS_IDS.compass]: () => statusSettingRow(STATUS_IDS.compass, "Compass"),
+  [STATUS_IDS.highlighter]: () => statusSettingRow(STATUS_IDS.highlighter, "Colour highlighter"),
   [SETTING_IDS.enabled]: () => switchRow(SETTING_IDS.enabled, "Enabled", "Turn the diagram overlay on or off."),
   [SETTING_IDS.autoEnhance]: () => switchRow(SETTING_IDS.autoEnhance, "Every diagram is a Plexus board", "On: every {{[[diagram]]}} opens as a Plexus board. Nothing is saved until you change the board. Off: only diagrams you enhance (Plexus: Enhance) or create with New whiteboard open in Plexus."),
   [SETTING_IDS.fullscreenOnZoom]: () => switchRow(SETTING_IDS.fullscreenOnZoom, "Fullscreen on zoom", "Open a diagram full screen when you zoom into its block. Esc leaves it."),
@@ -321,6 +432,9 @@ const SETTING_ROWS = {
   [SETTING_IDS.resurfaceIntervals]: () => inputRow(SETTING_IDS.resurfaceIntervals, "Resurface intervals", "Days, separated by commas. A daily page lists cards from those many days ago."),
   [SETTING_IDS.betterTasks]: () => switchRow(SETTING_IDS.betterTasks, "Better Tasks integration", "Use Better Tasks for task chips, the light checkbox, and task edits. Off leaves the TODO marker to Roam."),
   [SETTING_IDS.taskTool]: () => switchRow(SETTING_IDS.taskTool, "Task tool", "Show the Task tool (K) in the dock. It makes a Roam TODO block; Better Tasks sets its due date and project."),
+  [SETTING_IDS.resurface]: () => switchRow(SETTING_IDS.resurface, "Resurface", "Allow the resurface macro. A daily page can list cards from earlier days, and Plexus Commands can insert the button."),
+  [SETTING_IDS.regionsInline]: () => switchRow(SETTING_IDS.regionsInline, "Inline region crops", "Show a region crop beside its button. Off leaves the button and hides the crop."),
+  [SETTING_IDS.interop]: () => switchRow(SETTING_IDS.interop, "Roam Plexus and Compass", "Use Roam Plexus and Compass when they are loaded. Off hides Open in Compass and stops thumbnail calls."),
   [SETTING_IDS.taskChips]: () => selectRow(SETTING_IDS.taskChips, "Task chips", "What a task card shows under its title. Full: due date, project, priority, repeat, status. Due only: just the date. None: no chips.", TASK_CHIPS),
   [SETTING_IDS.taskDefaultProject]: () => inputRow(SETTING_IDS.taskDefaultProject, "Default project for new tasks", "A page name. A task made from the board gets it as its Better Tasks project. Empty uses Better Tasks' own default."),
   [SETTING_IDS.enterInCard]: () => selectRow(SETTING_IDS.enterInCard, "Enter in a card", "Newline adds a line to the card's block, like a native Roam diagram. Child makes a new child block inside the card.", ["newline", "child"]),
@@ -336,10 +450,15 @@ const SETTING_ROWS = {
 
 const SETTING_GROUPS = [
   ["group-cards", "Cards", "How new cards look, and the marks on them.", [
-    SETTING_IDS.defaultCardLook, SETTING_IDS.defaultCardWidth, SETTING_IDS.defaultCardHeight, SETTING_IDS.enterInCard, SETTING_IDS.showCardBadges, SETTING_IDS.cardChips, SETTING_IDS.spaceOut,
+    SETTING_IDS.defaultCardLook, SETTING_IDS.defaultCardWidth, SETTING_IDS.defaultCardHeight, SETTING_IDS.enterInCard, SETTING_IDS.showCardBadges, SETTING_IDS.spaceOut,
   ]],
-  ["group-integrations", "Integrations", "Better Tasks, the task tool, and what a task card shows.", [
-    SETTING_IDS.betterTasks, SETTING_IDS.taskTool, SETTING_IDS.taskChips, SETTING_IDS.taskDefaultProject,
+  ["group-integrations", "Integrations", "Sibling extensions, and the switches that turn them on.", [
+    STATUS_IDS.betterTasks, SETTING_IDS.betterTasks,
+    STATUS_IDS.taskStatusTags,
+    SETTING_IDS.taskTool, SETTING_IDS.taskChips, SETTING_IDS.taskDefaultProject,
+    STATUS_IDS.roamPlexus, STATUS_IDS.compass, SETTING_IDS.interop,
+    STATUS_IDS.highlighter,
+    SETTING_IDS.cardChips, SETTING_IDS.resurface, SETTING_IDS.regionsInline,
   ]],
   ["group-sections", "Sections", "How a section grows around its cards.", [
     SETTING_IDS.autoFitSections,
@@ -415,6 +534,7 @@ function performanceGroupRow(id, name, description) {
 }
 
 export function createSettingsPanel({ stats } = {}) {
+  syncIntegrationText();
   const settings = [];
   for (const [id, name, description, members] of SETTING_GROUPS) {
     settings.push(id === "group-performance" ? performanceGroupRow(id, name, description) : groupRow(id, name, description));

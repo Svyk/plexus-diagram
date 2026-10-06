@@ -39,6 +39,9 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
       // The fullscreen editor is a real Roam block. Its keys have to reach Roam (undo, indent).
       if ((type === "keydown" || type === "keyup") && event.target?.closest?.(".pxd-panel__info-mount")) return;
       event.stopPropagation();
+      // Trails controls share this listener so listenersPerBoard does not rise.
+      if (type === "click") trailClick(event);
+      else if (type === "pointerdown") trailPointerDown(event);
     });
   }
   let resizing = null;
@@ -83,7 +86,8 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
   const tabOutline = tabBtn("outline", "Outline", "list");
   const tabJournal = tabBtn("journal", "Journal", "calendar");
   const tabInfo = tabBtn("info", "Info", "info-sign");
-  const tabButtons = { search: tabSearch, related: tabRelated, boards: tabBoards, outline: tabOutline, journal: tabJournal, info: tabInfo };
+  const tabTrails = tabBtn("trails", "Trails", "flows");
+  const tabButtons = { search: tabSearch, related: tabRelated, boards: tabBoards, outline: tabOutline, journal: tabJournal, info: tabInfo, trails: tabTrails };
   const closeBtn = el("button", "pxd-btn pxd-iconbtn pxd-panel__close", head);
   closeBtn.type = "button";
   closeBtn.title = "Close";
@@ -200,6 +204,16 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
   const journalList = el("div", "pxd-panel__list pxd-journal__list", journalPane);
   const infoPane = el("div", "pxd-panel__pane pxd-panel__pane--info", panel);
   infoPane.style.display = "none";
+  const trailsPane = el("div", "pxd-panel__pane pxd-panel__pane--trails", panel);
+  trailsPane.style.display = "none";
+  const trailsBar = el("div", "pxd-trails__bar", trailsPane);
+  const trailsNew = el("button", "pxd-btn pxd-trails__new", trailsBar, "New trail");
+  trailsNew.setAttribute("aria-label", "New trail");
+  trailsNew.type = "button";
+  trailsNew.dataset.trailAction = "new";
+  const trailsList = el("div", "pxd-trails__list", trailsPane);
+  let trailSig = "";
+  let trailDrag = null;
   const infoTabsBar = el("div", "pxd-panel__infotabs", infoPane);
   const infoScroll = el("div", "pxd-panel__info", infoPane);
 
@@ -313,11 +327,108 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     outlinePane.style.display = tab === "outline" ? "" : "none";
     journalPane.style.display = tab === "journal" ? "" : "none";
     infoPane.style.display = tab === "info" ? "" : "none";
+    trailsPane.style.display = tab === "trails" ? "" : "none";
     if (tab === "related") void loadRelated();
     if (tab === "boards") void loadBoards();
     if (tab === "outline") renderOutline();
     if (tab === "journal") void loadJournal();
     if (tab === "info") void loadInfo();
+    if (tab === "trails") renderTrails();
+  };
+  const renderTrails = () => {
+    let trails = [];
+    let active = "";
+    try { trails = on.listTrails?.() || []; } catch { trails = []; }
+    try { active = on.activeTrail?.() || ""; } catch { active = ""; }
+    const sig = `${active}|${trails.map((t) => `${t.uid}:${t.name}:${(t.stops || []).map((s) => `${s.uid}${s.ref}${s.note}`).join(",")}`).join(";")}`;
+    if (sig === trailSig) return;
+    trailSig = sig;
+    trailsList.replaceChildren();
+    if (!trails.length) {
+      el("div", "pxd-panel__empty", trailsList, "No trails yet");
+      return;
+    }
+    for (const trail of trails) {
+      const row = el("div", `pxd-trail-row${trail.uid === active ? " pxd-trail-row--on" : ""}`, trailsList);
+      row.dataset.trail = trail.uid;
+      const head = el("div", "pxd-trail__head", row);
+      const name = el("button", "pxd-btn pxd-trail__name", head, trail.name || "Trail");
+      name.type = "button";
+      name.dataset.trailAction = "select";
+      name.dataset.trail = trail.uid;
+      const rename = el("button", "pxd-btn pxd-trail__rename", head, "Rename");
+      rename.type = "button";
+      rename.dataset.trailAction = "rename";
+      rename.dataset.trail = trail.uid;
+      const walk = el("button", "pxd-btn pxd-trail__walk", head, "Walk");
+      walk.type = "button";
+      walk.dataset.trailAction = "walk";
+      walk.dataset.trail = trail.uid;
+      const del = el("button", "pxd-btn pxd-trail__delete", head, "Delete");
+      del.type = "button";
+      del.dataset.trailAction = "delete";
+      del.dataset.trail = trail.uid;
+      const stops = el("ol", "pxd-trail__stops", row);
+      for (const stop of trail.stops || []) {
+        let title = stop.ref;
+        try { title = on.stopTitle?.(stop.ref) || stop.ref; } catch { title = stop.ref; }
+        const li = el("li", "pxd-trail__stop", stops, title);
+        li.dataset.stop = stop.uid;
+        li.dataset.trail = trail.uid;
+        li.dataset.trailAction = "grip";
+        if (stop.note) el("div", "pxd-trail__note", li, stop.note);
+      }
+    }
+  };
+  const trailClick = (event) => {
+    const node = event.target?.closest?.("[data-trail-action]");
+    if (!node || !trailsPane.contains(node)) return;
+    const action = node.dataset.trailAction || node.getAttribute?.("data-trail-action");
+    const id = node.dataset.trail || node.getAttribute?.("data-trail") || "";
+    if (action === "grip") return;
+    event.preventDefault?.();
+    if (action === "new") on.newTrail?.();
+    else if (action === "select" && id) { on.selectTrail?.(id); trailSig = ""; renderTrails(); }
+    else if (action === "rename" && id) on.renameTrail?.(id);
+    else if (action === "delete" && id) on.deleteTrail?.(id);
+    else if (action === "walk" && id) on.walkTrail?.(id);
+  };
+  // Document pointermove exists only while a stop is being dragged, then it is removed.
+  const trailPointerDown = (event) => {
+    if (event.button !== 0) return;
+    const node = event.target?.closest?.("[data-trail-action=grip]");
+    if (!node || !trailsPane.contains(node)) return;
+    const list = node.parentElement;
+    if (!list) return;
+    const rows = [...list.querySelectorAll("[data-stop]")];
+    const startIndex = rows.indexOf(node);
+    trailDrag = { el: node, list, startIndex, y: event.clientY, moved: false, uid: node.dataset.stop };
+    const move = (ev) => {
+      if (!trailDrag) return;
+      if (!trailDrag.moved && Math.abs(ev.clientY - trailDrag.y) < 4) return;
+      trailDrag.moved = true;
+      const items = [...trailDrag.list.querySelectorAll("[data-stop]")];
+      let before = null;
+      for (const row of items) {
+        if (row === trailDrag.el) continue;
+        const box = row.getBoundingClientRect?.();
+        if (box && ev.clientY < box.top + box.height / 2) { before = row; break; }
+      }
+      if (before) trailDrag.list.insertBefore(trailDrag.el, before);
+      else trailDrag.list.append(trailDrag.el);
+    };
+    const up = () => {
+      doc.removeEventListener?.("pointermove", move);
+      doc.removeEventListener?.("pointerup", up);
+      const drag = trailDrag;
+      trailDrag = null;
+      if (!drag?.moved) return;
+      const index = [...drag.list.querySelectorAll("[data-stop]")].indexOf(drag.el);
+      if (index < 0 || index === drag.startIndex) return;
+      on.moveStop?.(drag.uid, index);
+    };
+    doc.addEventListener?.("pointermove", move);
+    doc.addEventListener?.("pointerup", up);
   };
   // One delegated listener for every tab button (FAST-1 listenersPerBoard).
   listen(tabs, "click", (event) => {
@@ -659,6 +770,11 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     currentTab: () => tab,
     refreshOutline() { if (api.isOpen() && tab === "outline") renderOutline(); },
     refreshBoards() { if (tab === "boards") void loadBoards(); },
+    refreshTrails() {
+      if (tab !== "trails" || !api.isOpen()) return;
+      trailSig = "";
+      renderTrails();
+    },
     refreshViews() {
       if (tab !== "boards" || !api.isOpen()) return;
       let views = [];

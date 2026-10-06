@@ -44,6 +44,40 @@ function statusSubmenu(c) {
   return make("status", "Status ▸", { children });
 }
 
+function trailChildren(c, prefix) {
+  const trails = Array.isArray(c.trails) ? c.trails : [];
+  const children = [];
+  for (const trail of trails) {
+    if (!trail?.uid) continue;
+    children.push(make(`${prefix}:${trail.uid}`, trail.name || "Trail"));
+  }
+  children.push(make(`${prefix}:new`, "New trail…"));
+  return children;
+}
+
+function trailItem(c) {
+  return make("trail", "Add to trail ▸", { children: trailChildren(c, "trail-add") });
+}
+
+function selectionTrailItem(c) {
+  return make("trail-sel", "Add selection to trail ▸", { children: trailChildren(c, "trail-sel") });
+}
+
+function landmarkItem(c) {
+  const on = c.landmark === true;
+  if (!on) return make("landmark-toggle", "Make landmark");
+  const size = c.landmarkSize === "S" || c.landmarkSize === "L" ? c.landmarkSize : "M";
+  return make("landmark", "Landmark", {
+    children: [
+      make("landmark-toggle", "Remove landmark", { checked: true }),
+      make("landmark-glyph", "Glyph…"),
+      make("landmark-size:S", "Small", { checked: size === "S" }),
+      make("landmark-size:M", "Medium", { checked: size === "M" }),
+      make("landmark-size:L", "Large", { checked: size === "L" }),
+    ],
+  });
+}
+
 // Optional keys are only written when set, so items compare cleanly and carry no undefined noise.
 const make = (id, label, extra = {}) => {
   const out = { id, label };
@@ -234,6 +268,8 @@ export function buildMenu(kind, ctx = {}) {
         make("send-to", "Send to board…"),
         make("related", "Related…"),
         make("context", "Context"),
+        trailItem(c),
+        landmarkItem(c),
         sep(),
         make("delete", "Delete", { hint: "Del", danger: true }),
       );
@@ -265,6 +301,8 @@ export function buildMenu(kind, ctx = {}) {
         make("duplicate", "Duplicate", { hint: "Cmd D" }),
         make("copy-ref", "Copy ref"),
         make("copy-png", "Copy selection as PNG"),
+        trailItem(c),
+        landmarkItem(c),
         sep(),
         make("delete-frame", "Delete frame", { hint: "Del", danger: true }),
         make("delete-contents", "Delete frame and contents", { hint: "Shift Del", danger: true, disabled: empty }),
@@ -284,6 +322,8 @@ export function buildMenu(kind, ctx = {}) {
         pinItem(Boolean(c.pinned)),
         make("copy", "Copy", { hint: "Cmd C" }),
         make("copy-png", "Copy selection as PNG"),
+        trailItem(c),
+        landmarkItem(c),
         sep(),
         make("delete", "Delete", { hint: "Del", danger: true }),
       ];
@@ -358,6 +398,7 @@ export function buildMenu(kind, ctx = {}) {
         make("wrap-board", "Move into new board"),
         make("save-view-selection", "Save view of selection"),
         make("send-to", "Send to board…"),
+        selectionTrailItem(c),
         sep(),
         make("delete", "Delete", { hint: "Del", danger: true }),
       ];
@@ -370,6 +411,13 @@ export function buildMenu(kind, ctx = {}) {
         ...snapshotMenus(),
         make("save-view", "Save view…"),
         make("memory-lane", "Memory lane", { hint: "Shift T" }),
+        ...(c.walk ? [make("walk", "Walk", {
+          children: [
+            make("walk:reading", "Reading order"),
+            make("walk:nearest", "Nearest next"),
+            make("walk:trail", "Along the trail", { disabled: !c.hasTrail }),
+          ],
+        })] : []),
         sep(),
         make("export-svg", "Export as SVG"),
         make("export-png", "Export as PNG"),

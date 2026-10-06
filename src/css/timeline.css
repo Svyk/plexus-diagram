@@ -1,0 +1,101 @@
+/* NAV-3. Daily-notes spine in the Info panel. Borders only, no tinted fills. */
+
+.pxd-root .pxd-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 4px 0 8px;
+  color: inherit;
+}
+
+.pxd-root .pxd-timeline__empty {
+  padding: 4px 8px;
+  color: var(--pxd-muted, #57606a);
+  font-size: 12px;
+}
+
+.pxd-root .pxd-timeline__year,
+.pxd-root .pxd-timeline__open,
+.pxd-root .pxd-timeline__show {
+  border: 1px solid var(--pxd-border, #d0d7de);
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+
+.pxd-root .pxd-timeline__year {
+  display: flex;
+  align-items: center;
+  width: 100%;
+  height: 28px;
+  padding: 0 8px;
+  text-align: left;
+}
+
+.pxd-root .pxd-timeline__days {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin: 4px 0 0;
+}
+
+.pxd-root .pxd-timeline__days[hidden] {
+  display: none;
+}
+
+.pxd-root .pxd-timeline__day {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+}
+
+.pxd-root .pxd-timeline__open {
+  flex: 1;
+  min-width: 0;
+  height: 26px;
+  padding: 0 8px;
+  overflow: hidden;
+  text-align: left;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pxd-root .pxd-timeline__count {
+  flex: none;
+  color: var(--pxd-muted, #57606a);
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+.pxd-root .pxd-timeline__show {
+  flex: none;
+  height: 26px;
+  padding: 0 8px;
+  font-size: 12px;
+}
+
+.bp3-dark .pxd-root .pxd-timeline,
+body.bt-theme-dark .pxd-root .pxd-timeline,
+.rm-dark-theme .pxd-root .pxd-timeline,
+body.roam-body.dark .pxd-root .pxd-timeline {
+  border-color: #3b4b58;
+  color: #e6edf3;
+}
+
+.bp3-dark .pxd-root .pxd-timeline__year,
+.bp3-dark .pxd-root .pxd-timeline__open,
+.bp3-dark .pxd-root .pxd-timeline__show,
+body.bt-theme-dark .pxd-root .pxd-timeline__year,
+body.bt-theme-dark .pxd-root .pxd-timeline__open,
+body.bt-theme-dark .pxd-root .pxd-timeline__show,
+.rm-dark-theme .pxd-root .pxd-timeline__year,
+.rm-dark-theme .pxd-root .pxd-timeline__open,
+.rm-dark-theme .pxd-root .pxd-timeline__show,
+body.roam-body.dark .pxd-root .pxd-timeline__year,
+body.roam-body.dark .pxd-root .pxd-timeline__open,
+body.roam-body.dark .pxd-root .pxd-timeline__show {
+  border-color: #3b4b58;
+}

@@ -152,6 +152,10 @@ export function normalizeItemLayout(plexus) {
     titleFill: section ? styleColor(p.titleFill) : undefined,
     areaFill: section ? styleColor(p.areaFill) : undefined,
     shape: type === "text" && SHAPES.includes(p.shape) ? p.shape : undefined,
+    landmark: p.landmark === true ? true : undefined,
+    glyph: p.landmark === true ? (clampGlyph(p.glyph) || undefined) : undefined,
+    // M is the detail default and is omitted. S and L are the only stored sizes. landmark:false is never stored.
+    size: p.landmark === true && (p.size === "S" || p.size === "L") ? p.size : undefined,
   };
 }
 
@@ -181,6 +185,13 @@ export function lookForNewString(string, preferred) {
 }
 
 const round1 = (n) => Math.round(n * 10) / 10;
+
+// One emoji is one element. Two is the cap. Stored only while the item is a landmark.
+function clampGlyph(v) {
+  const chars = Array.from(String(v ?? "").trim());
+  if (!chars.length) return "";
+  return chars.slice(0, 2).join("");
+}
 
 export function serializeItemLayout(layout) {
   const l = isObject(layout) ? layout : {};
@@ -225,6 +236,12 @@ export function serializeItemLayout(layout) {
   if (BOARD_PATTERNS.includes(l.bg)) out.bg = l.bg;
   const tone = boardColor(l.bgColor);
   if (tone) out.bgColor = tone;
+  if (l.landmark === true) {
+    out.landmark = true;
+    const glyph = clampGlyph(l.glyph);
+    if (glyph) out.glyph = glyph;
+    if (l.size === "S" || l.size === "L") out.size = l.size;
+  }
   return out;
 }
 

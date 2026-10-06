@@ -33,7 +33,7 @@ const BOARDS = [
 test("the panel has Search, Related, Boards, Outline, Journal and Info tabs in that order", (t) => {
   const f = setup();
   t.after(f.restore);
-  assert.deepEqual(tabs(f).map((b) => b.getAttribute("aria-label")), ["Search", "Related", "Boards", "Outline", "Journal", "Info"]);
+  assert.deepEqual(tabs(f).map((b) => b.getAttribute("aria-label")), ["Search", "Related", "Boards", "Outline", "Journal", "Info", "Trails"]);
   assert.deepEqual([...tabs(f)].map((b) => b.querySelector(".bp3-icon")?.className), [
     "bp3-icon bp3-icon-search",
     "bp3-icon bp3-icon-diagram-tree",
@@ -41,9 +41,10 @@ test("the panel has Search, Related, Boards, Outline, Journal and Info tabs in t
     "bp3-icon bp3-icon-list",
     "bp3-icon bp3-icon-calendar",
     "bp3-icon bp3-icon-info-sign",
+    "bp3-icon bp3-icon-flows",
   ]);
   assert.ok([...tabs(f)].every((b) => b.title && b.textContent === ""));
-  assert.deepEqual(tabs(f).map((b) => b.dataset.tab), ["search", "related", "boards", "outline", "journal", "info"]);
+  assert.deepEqual(tabs(f).map((b) => b.dataset.tab), ["search", "related", "boards", "outline", "journal", "info", "trails"]);
   assert.deepEqual(shown(f), ["pxd-panel__pane--search"]);
   assert.deepEqual(tabs(f).filter((b) => classes(b).includes("pxd-panel__tab--on")).map((b) => b.dataset.tab), ["search"]);
 });

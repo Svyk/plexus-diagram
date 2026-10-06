@@ -1,0 +1,31 @@
+/* HEP-4. Reading-page source chip. A border and a clear fill. Dark mode keeps the border and no tinted fill. */
+
+.pxd-chip.pxd-chip--source {
+  display: inline-flex;
+  align-items: center;
+  align-self: flex-start;
+  flex: 0 0 auto;
+  width: fit-content;
+  max-width: 100%;
+  margin: 2px 0 4px;
+  padding: 0 6px;
+  border: 1px solid var(--pxd-border, #d0d7de);
+  border-radius: 999px;
+  background: transparent;
+  color: #1f2937;
+  font: inherit;
+  font-size: 12px;
+  line-height: 18px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  cursor: pointer;
+}
+
+.bp3-dark .pxd-chip.pxd-chip--source,
+body.bt-theme-dark .pxd-chip.pxd-chip--source,
+.pxd-root--dark .pxd-chip.pxd-chip--source {
+  border: 1px solid var(--pxd-border, #3b4b58);
+  background: transparent;
+  color: #e6edf3;
+}

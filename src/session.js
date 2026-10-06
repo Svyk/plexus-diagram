@@ -22,6 +22,7 @@ import {
   worldRects,
 } from "./model/board.js";
 import { whyPlan } from "./model/why.js";
+import { trailString } from "./model/trails.js";
 import {
   BOARD_PATTERNS,
   DOCK_POSITIONS,
@@ -73,7 +74,7 @@ const PROPS = ":block/props";
 const OPEN = ":block/open";
 
 const LINK_MODES = ["off", "attributes", "all"];
-const ITEM_KEYS = ["type", "x", "y", "w", "h", "color", "collapsed", "fontSize", "pinned", "min", "kids", "fit", "look", "axis", "textColor", "align", "fill", "border", "titleSize", "titleColor", "titleFill", "areaFill", "shape"];
+const ITEM_KEYS = ["type", "x", "y", "w", "h", "color", "collapsed", "fontSize", "pinned", "min", "kids", "fit", "look", "axis", "textColor", "align", "fill", "border", "titleSize", "titleColor", "titleFill", "areaFill", "shape", "landmark", "glyph", "size"];
 const EDGE_KEYS = ["type", "from", "to", "fromSide", "toSide", "dir", "route", "dash", "weight", "color", "fromBlock", "toBlock", "via"];
 const MAX_PARENT_STRINGS = 200;
 const DAILY_GAP = 20;
@@ -388,7 +389,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     if (!node) return "last";
     const at = kidsOf(node).findIndex((k) => {
       const type = readPlexus(k[PROPS])?.type;
-      if (type === "edges" || type === "snapshots" || type === "regions") return true;
+      if (type === "edges" || type === "snapshots" || type === "regions" || type === "trails") return true;
       return isContainerString(k[":block/string"] ?? k.string ?? "");
     });
     return at >= 0 ? at : "last";
@@ -925,6 +926,17 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     const existing = kidsOf(raw).find((k) => readPlexus(k[PROPS])?.type === "edges");
     if (existing) return existing[UID];
     return t.create({ parent: uid, order: "last", string: "Connections", plexus: { type: "edges" }, open: false });
+  }
+
+  function ensureTrails(t) {
+    if (board.trailsUid) return board.trailsUid;
+    const existing = kidsOf(raw).find((k) => readPlexus(k[PROPS])?.type === "trails");
+    if (existing) return existing[UID];
+    return t.create({ parent: uid, order: "last", string: "Trails", plexus: { type: "trails" }, open: false });
+  }
+
+  function trailByUid(id) {
+    return (board.trails || []).find((tr) => tr.uid === id) || null;
   }
 
   function refOf(id) {
@@ -2045,6 +2057,88 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
             else t.del(edge.whyUid);
           }
         }
+      });
+    },
+
+    createTrail(name, cardUids) {
+      return txn((t) => {
+        const parent = ensureTrails(t);
+        const id = t.create({ parent, order: "last", string: trailString(name), plexus: { type: "trail" }, open: true });
+        const ids = [];
+        for (const card of cardUids || []) if (card && board.items.has(card)) ids.push(card);
+        for (const card of capBulk(ids, emit)) t.create({ parent: id, order: "last", string: `((${card}))`, open: true });
+        return id;
+      });
+    },
+
+    renameTrail(id, name) {
+      return txn((t) => {
+        if (!trailByUid(id)) return;
+        t.string(id, trailString(name));
+        const base = rawPlexus(id);
+        if (base.type !== "trail") t.props(id, { ...base, type: "trail" });
+      });
+    },
+
+    deleteTrail(id) {
+      return txn((t) => {
+        if (!trailByUid(id)) return;
+        t.del(id);
+      });
+    },
+
+    addToTrail(trailUid, cardUid, note) {
+      return txn((t) => {
+        if (!trailByUid(trailUid) || !cardUid) return null;
+        const stop = t.create({ parent: trailUid, order: "last", string: `((${cardUid}))`, open: true });
+        const text = typeof note === "string" ? note.trim() : "";
+        if (text) t.create({ parent: stop, order: "first", string: text });
+        return stop;
+      });
+    },
+
+    addSelectionToTrail(trailUid, cardUids) {
+      return txn((t) => {
+        if (!trailByUid(trailUid)) return [];
+        const ids = [];
+        for (const id of cardUids || []) {
+          if (!id || !board.items.has(id)) continue;
+          ids.push(id);
+        }
+        const capped = capBulk(ids, emit);
+        const made = [];
+        for (const id of capped) made.push(t.create({ parent: trailUid, order: "last", string: `((${id}))`, open: true }));
+        return made;
+      });
+    },
+
+    moveStop(stopUid, finalIndex) {
+      return txn((t) => {
+        let parent = null;
+        for (const trail of board.trails || []) {
+          if ((trail.stops || []).some((s) => s.uid === stopUid)) { parent = trail.uid; break; }
+        }
+        if (!parent) return;
+        const index = Math.trunc(Number(finalIndex));
+        t.move(stopUid, parent, Number.isFinite(index) ? Math.max(0, index) : "last");
+      });
+    },
+
+    setLandmark(id, { on, glyph, size } = {}) {
+      return txn((t) => {
+        const item = board.items.get(id);
+        if (!item) return;
+        const nextOn = on === undefined ? item.landmark === true : Boolean(on);
+        if (!nextOn) {
+          t.props(id, itemPlexus(id, { landmark: false, glyph: "", size: undefined }));
+          return;
+        }
+        const patch = { landmark: true };
+        if (glyph !== undefined) patch.glyph = glyph;
+        else if (item.glyph) patch.glyph = item.glyph;
+        if (size !== undefined) patch.size = size;
+        else if (item.size === "S" || item.size === "L") patch.size = item.size;
+        t.props(id, itemPlexus(id, patch));
       });
     },
 

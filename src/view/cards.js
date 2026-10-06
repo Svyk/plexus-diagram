@@ -509,6 +509,7 @@ export function createItemRenderer({
   let focusSet = null;
   let badgeMap = new Map();
   let showBadges = false;
+  let trailBadgeMap = new Map();
   let taskChips = "full";
   let zoomCache = 1;
   let paused = false;
@@ -1282,6 +1283,10 @@ export function createItemRenderer({
     if (editing?.uid === item.uid) cls.push(editing.sticky ? "pxd-item--typing" : "pxd-item--editing");
     if (isSticky(item) && item.min) cls.push("pxd-item--min");
     if (item.pinned) cls.push(item.type === "section" ? "pxd-section--pinned" : "pxd-item--pinned");
+    if (item.landmark) {
+      cls.push(item.type === "section" ? "pxd-section--landmark" : "pxd-item--landmark");
+      cls.push(`pxd-landmark--${item.size === "S" || item.size === "L" ? item.size : "M"}`);
+    }
     if (focusSet && !focusSet.has(item.uid)) cls.push(item.type === "section" ? "pxd-section--focus-dim" : "pxd-item--focus-dim");
     if (item.type !== "section") {
       if (isKidsCard(item)) cls.push(item.kids ? "pxd-item--kids" : "pxd-item--kidsoff");
@@ -1354,6 +1359,29 @@ export function createItemRenderer({
     node.title = "";
     const announced = item.type === "section" ? (item.title || "Section") : String(rec.refTitle || item.title || "Untitled");
     node.setAttribute("aria-label", `${announced}, ${item.type}`);
+    if (item.landmark || rec.landmarkEl) paintLandmarkMark(rec, item);
+    if (trailBadgeMap.size || rec.trailBadge) paintTrailBadge(rec, item.uid);
+  };
+
+  // Created only for a real landmark or a real badge, so a board with neither adds no nodes.
+  const paintLandmarkMark = (rec, item) => {
+    if (!item.landmark) {
+      if (rec.landmarkEl) { rec.landmarkEl.remove(); rec.landmarkEl = null; }
+      return;
+    }
+    if (!rec.landmarkEl) rec.landmarkEl = el("span", "pxd-landmark", rec.el);
+    const text = item.glyph || "";
+    if (rec.landmarkEl.textContent !== text) rec.landmarkEl.textContent = text;
+  };
+  const paintTrailBadge = (rec, uid) => {
+    const n = trailBadgeMap.get(uid);
+    if (!n) {
+      if (rec.trailBadge) { rec.trailBadge.remove(); rec.trailBadge = null; }
+      return;
+    }
+    if (!rec.trailBadge) rec.trailBadge = el("span", "pxd-trail-badge", rec.el);
+    const text = String(n);
+    if (rec.trailBadge.textContent !== text) rec.trailBadge.textContent = text;
   };
 
   const position = (rec, rect) => {
@@ -3677,6 +3705,22 @@ export function createItemRenderer({
     showBadges = next;
     for (const rec of shells.values()) renderBadges(rec);
   };
+  let trailBadgeSig = "";
+  const setTrailBadges = (map) => {
+    const next = map instanceof Map ? map : new Map();
+    let sig = "";
+    if (next.size) {
+      const parts = [];
+      for (const [k, v] of next) parts.push(`${k}=${v}`);
+      sig = parts.join("|");
+    }
+    if (sig === trailBadgeSig) return;
+    trailBadgeSig = sig;
+    trailBadgeMap = next;
+    for (const [uid, rec] of shells) {
+      if (next.has(uid) || rec.trailBadge) paintTrailBadge(rec, uid);
+    }
+  };
 
   const setFocus = (uids) => {
     focusSet = uids ? new Set(uids) : null;
@@ -4373,6 +4417,7 @@ export function createItemRenderer({
     toggleKids,
     setBadges,
     setShowBadges,
+    setTrailBadges,
     setTaskChips,
     refreshStatuses,
     setFocus,

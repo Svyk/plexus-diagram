@@ -24,7 +24,8 @@ import { closeOpenWhyPopovers } from "./view/why-pop.js";
 import { createCardCache } from "./model/card-cache.js";
 import { imageSrc } from "./model/export.js";
 import { parseRegion } from "./model/regions.js";
-import { classifyString, parseBoardTitle, readPlexus, UNTITLED_BOARD } from "./model/schema.js";
+import { classifyString, firstLine, parseBoardTitle, readPlexus, UNTITLED_BOARD } from "./model/schema.js";
+import { parseTrailBlock, renderTrailStrip, trailStrip } from "./model/trails.js";
 import { eachRegionButton, openRegionCrop, openRegionView, regionUidForButton, resetCropUrls } from "./view/region-crop.js";
 import { chromeObstacles } from "./view/avoid.js";
 import { holeRect, previewImageBox, setCameraFromView } from "./view/region-hover-geom.js";
@@ -352,6 +353,10 @@ export async function installPlexusDiagram({
   lifecycle.add(() => cardChips.dispose());
   lifecycle.add(() => schedulePrefetch.dispose());
   lifecycle.add(() => resurface.dispose());
+  // Inline ((trailUid)) strips. The map is filled by scanTrails; unload drops every one.
+  const trailStrips = new Map();
+  const trailMiss = new Map();
+  lifecycle.add(() => dropAllTrailStrips());
   const editSeen = new Map();
   lifecycle.add(() => previewBoards.clear());
   lifecycle.add(() => clearPinnedToast());
@@ -2353,6 +2358,99 @@ export async function installPlexusDiagram({
     regionCrops.set(button, drop);
   }
 
+  function dropAllTrailStrips() {
+    for (const drop of [...trailStrips.values()]) {
+      try { drop(); } catch { /* already gone */ }
+    }
+    trailStrips.clear();
+  }
+
+  function stopTitleOf(ref) {
+    let text = "";
+    try { text = host.blockString?.(ref) || ""; } catch { text = ""; }
+    const line = firstLine(text) || String(text).split("\n")[0] || "";
+    return line.replace(/^\[\[|\]\]$/g, "").trim().slice(0, 48);
+  }
+
+  // pullTree returns the block's children, not the block. Rebuild a node parseTrailBlock can read.
+  function trailNodeFromPull(uid) {
+    let raw = null;
+    try { raw = host.pullTree?.(uid, 3, 40); } catch { raw = null; }
+    let props = null;
+    try { props = host.pullProps?.(uid) || null; } catch { props = null; }
+    let string = "";
+    try { string = host.blockString?.(uid) || ""; } catch { string = ""; }
+    const mapKid = (n) => ({
+      ":block/uid": n?.[":block/uid"] || n?.uid || "",
+      ":block/string": n?.[":block/string"] ?? n?.string ?? "",
+      ":block/order": n?.[":block/order"] ?? n?.order,
+      ":block/props": n?.[":block/props"] ?? n?.props,
+      ":block/children": (n?.[":block/children"] || n?.children || []).map(mapKid),
+    });
+    if (raw && !Array.isArray(raw) && (raw[":block/string"] != null || raw.string != null || raw[":block/uid"])) {
+      const kids = raw[":block/children"] || raw.children || [];
+      return { ...raw, ":block/uid": raw[":block/uid"] || raw.uid || uid, ":block/children": kids.map(mapKid) };
+    }
+    const kids = Array.isArray(raw) ? raw : [];
+    return {
+      ":block/uid": uid,
+      ":block/string": string,
+      ":block/props": props,
+      ":block/children": kids.map(mapKid),
+    };
+  }
+
+  function fillTrailStrip(button, uid) {
+    if (!button || !uid || button.getAttribute?.("data-plexus-owner")) return;
+    if ((trailMiss.get(uid) || 0) > Date.now()) return;
+    const trail = parseTrailBlock(trailNodeFromPull(uid));
+    if (!trail) {
+      trailMiss.set(uid, Date.now() + 2000);
+      return;
+    }
+    trailMiss.delete(uid);
+    button.setAttribute("data-plexus-owner", "trail");
+    if (button.style) button.style.display = "none";
+    const strip = doc.createElement("div");
+    if (typeof button.insertAdjacentElement === "function") button.insertAdjacentElement("afterend", strip);
+    else button.parentNode?.insertBefore?.(strip, button.nextSibling);
+    const boardUid = diagramAncestorUid(uid);
+    renderTrailStrip(doc, strip, trailStrip(trail.stops, stopTitleOf, 8), {
+      onStop(stop) {
+        const home = diagramAncestorUid(stop?.uid) || boardUid;
+        if (home) void openPublic(home, { card: stop.uid });
+      },
+      onWalk() {
+        if (boardUid) void openPublic(boardUid, { walk: trail.uid });
+      },
+    });
+    const drop = () => {
+      try { strip.remove(); } catch { /* gone */ }
+      if (button.style) button.style.display = "";
+      button.removeAttribute?.("data-plexus-owner");
+      trailStrips.delete(button);
+    };
+    trailStrips.set(button, drop);
+  }
+
+  function scanTrails(node) {
+    if (!active() || !node) return;
+    const found = [];
+    if (node.matches?.("button.rm-xparser-default-plexus-trail")) found.push(node);
+    if (typeof node.querySelectorAll === "function") {
+      try { found.push(...node.querySelectorAll("button.rm-xparser-default-plexus-trail")); } catch { /* not an element */ }
+    }
+    let seen = 0;
+    for (const button of found) {
+      if (button.getAttribute?.("data-plexus-owner")) continue;
+      if (seen >= 8) break;
+      seen += 1;
+      const block = button.closest?.(".roam-block-container[data-block-uid]") || button.closest?.(BLOCK_CONTAINER_SELECTOR);
+      const id = block?.getAttribute?.("data-block-uid") || "";
+      if (id) fillTrailStrip(button, id);
+    }
+  }
+
   function scanRegions(node) {
     if (!active()) return;
     eachRegionButton(node, considerRegionButton);
@@ -2367,6 +2465,7 @@ export async function installPlexusDiagram({
       resurface.scan(node);
     }
     scanRegions(node);
+    scanTrails(node);
   }
 
   function reconcile() {
@@ -2390,10 +2489,14 @@ export async function installPlexusDiagram({
     for (const [button, drop] of [...regionCrops]) {
       if (button.isConnected === false) drop();
     }
+    for (const [button, drop] of [...trailStrips]) {
+      if (button.isConnected === false) drop();
+    }
     if (!active()) {
       for (const rec of [...mounts.values()]) unmount(rec);
       for (const native of [...convertButtons.keys()]) dropConvert(native);
       for (const drop of [...regionCrops.values()]) drop();
+      dropAllTrailStrips();
       return;
     }
     if (!doc) return;
@@ -2955,6 +3058,14 @@ export async function installPlexusDiagram({
     const viewUid = typeof opts?.view === "string" ? opts.view : (typeof opts?.region === "string" ? opts.region : "");
     if (viewUid) showSavedView(rec, viewUid, 20);
     if (opts?.card) showCard(rec, opts.card);
+    if (opts?.walk) {
+      const kick = (left) => {
+        let started = false;
+        try { started = rec.view?.walkTrail?.(opts.walk) === true; } catch { started = false; }
+        if (!started && left > 0) lifecycle.timeout(() => kick(left - 1), 50);
+      };
+      kick(20);
+    }
   }
 
   function openPublic(boardUid, opts = {}) {

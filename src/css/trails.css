@@ -1,0 +1,97 @@
+/* MEM-6. The dashed path is decoration, not a connection. Badges and the inline strip carry no fill. */
+
+.pxd-trail {
+  fill: none;
+  stroke: currentColor;
+  stroke-width: 1.5;
+  stroke-dasharray: 6 5;
+  opacity: 0.55;
+  pointer-events: none;
+}
+
+.pxd-root--dark .pxd-trail {
+  opacity: 0.75;
+}
+
+.pxd-trail-badge {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  z-index: 3;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  background: transparent;
+  font-size: 11px;
+  line-height: 14px;
+  text-align: center;
+  pointer-events: none;
+}
+
+.pxd-root--dark .pxd-trail-badge {
+  background: transparent;
+}
+
+.pxd-panel__pane--trails {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.pxd-trails__bar {
+  display: flex;
+  gap: 6px;
+  padding: 8px;
+}
+
+.pxd-trails__list {
+  overflow: auto;
+  padding: 0 8px 8px;
+}
+
+.pxd-trail-row {
+  margin: 0 0 10px;
+}
+
+.pxd-trail-row--on > .pxd-trail__head .pxd-trail__name {
+  font-weight: 600;
+}
+
+.pxd-trail__head {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+}
+
+.pxd-trail__stops {
+  margin: 4px 0 0;
+  padding: 0 0 0 18px;
+}
+
+.pxd-trail__stop {
+  cursor: grab;
+}
+
+.pxd-trail-strip {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px;
+  margin: 4px 0;
+}
+
+.pxd-trail-strip__arrow {
+  opacity: 0.6;
+}
+
+.pxd-trail-strip__stop,
+.pxd-trail-strip__walk {
+  border: 1px solid currentColor;
+  border-radius: 999px;
+  background: transparent;
+  padding: 2px 8px;
+  cursor: pointer;
+}

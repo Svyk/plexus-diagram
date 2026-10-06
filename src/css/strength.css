@@ -1,0 +1,6 @@
+/* MEM-8. Dust dims the card. Same filter in light and dark: no tinted fill. */
+
+.pxd-root .pxd-item.pxd-item--dust {
+  opacity: 0.35;
+  filter: grayscale(1);
+}

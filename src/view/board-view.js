@@ -11,6 +11,8 @@ import { DRAWING_DROP_TOAST, drawingRefString, droppedDrawingUids } from "../mod
 import { annotatePlan } from "../model/annotate.js";
 import { rewriteBgTag } from "../model/highlighter.js";
 import { boundsOf, buildBoard, connectedUids, containerAt, descendantsOf, displayRects, edgesTouching, outlineOrder, sameColorUids, sectionAllUids, sectionFitPlan, sectionNoteUid, sidebarOutlineUids, worldRects } from "../model/board.js";
+import { trailBadges, trailPoints } from "../model/trails.js";
+import { landmarkDots, landmarkUids, walkStops } from "../model/landmarks.js";
 import { copyLinkText, hashFromUrl, pageUidFromHash, pxdTarget } from "../model/deeplink.js";
 import { findOnBoard } from "../model/find.js";
 import { readMindPreset, writeMindPreset } from "../model/mindmap.js";
@@ -2747,12 +2749,13 @@ function buildBoardView(onFail, {
     if (!api || !uid) return { status: "unknown", reason: "no-api" };
     try { return await api.setStatus(uid, name); } catch { return { status: "unknown", reason: "set-status-failed" }; }
   };
+  const trailRows = (b) => (b?.trails || []).map((t) => ({ uid: t.uid, name: t.name }));
   const menuContext = (kind, uid) => {
     const b = board();
     const item = uid ? b?.items.get(uid) : null;
     switch (kind) {
       case "canvas": return { canPaste: true, snapshots: b?.snapshots || [], taskTool: readSetting("task-tool") === true };
-      case "board-menu": return { snapshots: b?.snapshots || [], dock: b?.plexus?.dock };
+      case "board-menu": return { snapshots: b?.snapshots || [], dock: b?.plexus?.dock, walk: true, hasTrail: Boolean(b?.trails?.length) };
       case "card": {
         let queryText = item?.string || "";
         if (!isQueryString(queryText) && item?.target?.kind === "block") {
@@ -2762,7 +2765,7 @@ function buildBoardView(onFail, {
         const compassApi = globalThis.RoamCompass || globalThis.window?.RoamCompass || null;
         const plexusApi = globalThis.RoamPlexus || globalThis.window?.RoamPlexus || null;
         const task = isTaskItem(item) ? taskMeta(item.string, item.content) : null;
-        return { ...(task ? { statusTags, status: task.status || "" } : {}), item, regions: imageRegionRows(item?.content), canMakeTask: item?.type === "card" && item?.kind === "note" && !isTaskString(item.string) && !isQueryString(queryText), isBoard: item?.kind === "board", collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS.includes(item?.kind), canSpread: item?.kind === "note" || item?.kind === "block", isQuery: isQueryString(queryText), canExpand, mindPreset: readMindPreset(storage), compass: typeof compassApi?.open === "function", canAnnotate: item?.kind === "image" && typeof plexusApi?.create === "function" };
+        return { ...(task ? { statusTags, status: task.status || "" } : {}), item, regions: imageRegionRows(item?.content), canMakeTask: item?.type === "card" && item?.kind === "note" && !isTaskString(item.string) && !isQueryString(queryText), isBoard: item?.kind === "board", collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS.includes(item?.kind), canSpread: item?.kind === "note" || item?.kind === "block", isQuery: isQueryString(queryText), canExpand, mindPreset: readMindPreset(storage), compass: typeof compassApi?.open === "function", canAnnotate: item?.kind === "image" && typeof plexusApi?.create === "function", trails: trailRows(b), landmark: item?.landmark === true, landmarkSize: item?.size || "M" };
       }
       case "section": {
         const members = item && b ? [item.uid, ...descendantsOf(b, item.uid)] : [];
@@ -2774,9 +2777,12 @@ function buildBoardView(onFail, {
           collapsed: Boolean(item?.collapsed),
           hasNote: Boolean(item && sectionNoteUid(b, item.uid)),
           locked: members.length > 0 && members.every((u) => b.items.get(u)?.pinned),
+          trails: trailRows(b),
+          landmark: item?.landmark === true,
+          landmarkSize: item?.size || "M",
         };
       }
-      case "text": return { item, pinned: Boolean(item?.pinned) };
+      case "text": return { item, pinned: Boolean(item?.pinned), trails: trailRows(b), landmark: item?.landmark === true, landmarkSize: item?.size || "M" };
       case "edge": { const e = uid ? b?.edges.get(uid) : null; return { item: e, dir: e?.dir, route: e?.route, dash: e?.dash, blockEnd: Boolean(e?.fromBlock || e?.toBlock) }; }
       case "multi": {
         const items = selection.items.map((u) => b?.items.get(u)).filter(Boolean);
@@ -2786,6 +2792,7 @@ function buildBoardView(onFail, {
           allPinned: items.length > 0 && items.every((i) => i.pinned),
           anyCollapsed: items.some((i) => i.type === "card" && i.collapsed),
           sectionPair: sectionPair(items.map((i) => i.uid), (id) => b?.items.get(id)),
+          trails: trailRows(b),
         };
       }
       default: return {};
@@ -3209,6 +3216,46 @@ function buildBoardView(onFail, {
       case "label": if (edgeUid) openWhy(edgeUid, "label"); break;
       case "edit-why": if (edgeUid) openWhy(edgeUid, "why"); break;
       case "memory-lane": toggleMemoryLane(); break;
+      case "trail-add":
+      case "trail-sel": {
+        const targets = head === "trail-sel" ? uids.slice() : (item ? [item.uid] : []);
+        const run = (trailUid) => {
+          if (!trailUid) return;
+          activeTrailUid = trailUid;
+          if (head === "trail-sel") void session.addSelectionToTrail?.(trailUid, targets);
+          else if (item) void session.addToTrail?.(trailUid, item.uid);
+        };
+        if (arg === "new") {
+          askView({
+            caption: "",
+            showCopy: false,
+            dialogLabel: "New trail",
+            onSave: ({ caption }) => {
+              activeTrailUid = null;
+              Promise.resolve(session.createTrail?.(caption, targets)).then((id) => { if (id) activeTrailUid = id; }).catch(() => {});
+            },
+          });
+        } else if (arg) run(arg);
+        break;
+      }
+      case "landmark-toggle": if (item) void session.setLandmark?.(item.uid, { on: item.landmark !== true }); break;
+      case "landmark-glyph": {
+        if (!item) break;
+        askView({
+          caption: item.glyph || "",
+          showCopy: false,
+          dialogLabel: "Landmark glyph",
+          onSave: ({ caption }) => { void session.setLandmark?.(item.uid, { on: true, glyph: caption }); },
+        });
+        break;
+      }
+      case "landmark-size": if (item && arg) void session.setLandmark?.(item.uid, { on: true, size: arg }); break;
+      case "walk": {
+        if (arg === "nearest") startWalk("nearest");
+        else if (arg === "trail") startWalk("trail");
+        else startWalk("reading");
+        break;
+      }
       case "notes": if (edgeUid) host?.openInSidebar?.(edgeUid, "block"); break;
       case "write-to-graph": void writeEdgeToGraph(); break;
       case "align": alignSel(arg, uids); break;
@@ -3614,6 +3661,58 @@ function buildBoardView(onFail, {
     applyFocus();
   });
 
+  let activeTrailUid = null;
+  let trailPath = null;
+  let trailD = "";
+  let mmMarks = null;
+  let mmSig = "";
+  const currentTrail = (b) => {
+    const trails = b?.trails || [];
+    if (!trails.length) return null;
+    return trails.find((t) => t.uid === activeTrailUid) || trails[0];
+  };
+  let askTrailName = () => {};
+  let startWalk = () => {};
+  const paintTrailPath = (b, shown) => {
+    const trail = currentTrail(b);
+    const pts = trail ? trailPoints(trail.stops, shown) : [];
+    if (pts.length < 2) {
+      if (trailPath) { trailPath.remove(); trailPath = null; trailD = ""; }
+      return;
+    }
+    const d = pts.map((p, i) => `${i ? "L" : "M"}${p.x} ${p.y}`).join(" ");
+    if (!trailPath) {
+      trailPath = doc.createElementNS(SVG_NS, "path");
+      trailPath.setAttribute("class", "pxd-trail");
+      trailPath.setAttribute("fill", "none");
+      overlaySvg.append(trailPath);
+    }
+    if (d !== trailD) { trailD = d; trailPath.setAttribute("d", d); }
+  };
+  const syncTrailPaint = (b) => {
+    if (!b || !itemsR) return;
+    const trail = currentTrail(b);
+    itemsR.setTrailBadges?.(trail ? trailBadges(trail) : new Map());
+    paintTrailPath(b, paintRects());
+  };
+  // Overlay on the minimap element. The canvas clear lives in chrome.js and would wipe a canvas draw.
+  const paintLandmarkDots = (b, shown) => {
+    if (!landmarkUids(b).length) {
+      if (mmMarks) { mmMarks.remove(); mmMarks = null; mmSig = ""; }
+      return;
+    }
+    const dots = landmarkDots(b, shown, vp, size);
+    const sig = dots.map((d) => `${d.uid}:${d.glyph}:${Math.round(d.x)}:${Math.round(d.y)}`).join("|");
+    if (sig === mmSig && mmMarks) return;
+    mmSig = sig;
+    if (!mmMarks) mmMarks = el("div", "pxd-minimap__marks", chrome.minimap.el);
+    mmMarks.replaceChildren();
+    for (const dot of dots) {
+      const n = el("span", "pxd-minimap__mark", mmMarks, dot.glyph || "•");
+      n.style.left = `${dot.x}px`;
+      n.style.top = `${dot.y}px`;
+    }
+  };
   const PANEL_WIDTH_KEY = "plexus-diagram:panel-width";
   let panelWidth = PANEL_WIDTH_DEFAULT;
   try {
@@ -3664,6 +3763,20 @@ function buildBoardView(onFail, {
         } catch { /* a missing day is an empty list */ }
         return { rows: [] };
       },
+      listTrails: () => board()?.trails || [],
+      activeTrail: () => currentTrail(board())?.uid || "",
+      stopTitle: (ref) => board()?.items.get(ref)?.title || ref,
+      selectTrail: (uid) => { activeTrailUid = uid; syncTrailPaint(board()); },
+      newTrail: () => askTrailName("", (caption) => {
+        Promise.resolve(session.createTrail?.(caption)).then((id) => { if (id) activeTrailUid = id; }).catch(() => {});
+      }),
+      renameTrail: (uid) => {
+        const trail = (board()?.trails || []).find((t) => t.uid === uid);
+        askTrailName(trail?.name || "", (caption) => { void session.renameTrail?.(uid, caption); });
+      },
+      deleteTrail: (uid) => { void session.deleteTrail?.(uid); if (activeTrailUid === uid) activeTrailUid = null; },
+      moveStop: (stopUid, index) => { void session.moveStop?.(stopUid, index); },
+      walkTrail: (uid) => { if (uid) activeTrailUid = uid; startWalk("trail"); },
     },
   });
   let viewDialog = null;
@@ -3701,6 +3814,14 @@ function buildBoardView(onFail, {
       out.push({ title: item.title, rect: world.get(item.uid) });
     }
     return out;
+  };
+  askTrailName = (caption, onSave) => {
+    askView({
+      caption: caption || "",
+      showCopy: false,
+      dialogLabel: "Trail name",
+      onSave: ({ caption: next }) => onSave?.(next),
+    });
   };
   const askView = ({ caption, showCopy, dialogLabel, onSave }) => {
     closeViewDialog();
@@ -3821,6 +3942,16 @@ function buildBoardView(onFail, {
     quicklook.close();
     const opts = only ? { only } : undefined;
     if (!presenter.start(board(), rects(), opts)) toast("Nothing to present");
+  };
+  startWalk = (mode) => {
+    quicklook.close();
+    const b = board();
+    if (!b) return false;
+    const world = rects();
+    const vis = visibleWorldRect(vp, viewSize(), 0);
+    const stops = walkStops(b, world, { mode, screen: vis, trail: currentTrail(b) });
+    if (!presenter.start(b, world, { stops })) { toast("Nothing to walk"); return false; }
+    return true;
   };
   chrome.minimap.setVisible(setting("show-minimap", true) !== false);
   chrome.toolbar.setLinkMode(linkMode);
@@ -4047,7 +4178,15 @@ function buildBoardView(onFail, {
     }
     const b = board();
     const entry = { uid: b?.uid || boardUid, title: b?.title || "" };
-    const next = openBoardTab(entry);
+    let next = openBoardTab(entry);
+    // A board deleted since it was opened (or a test board cleaned up) drops out of the list.
+    const exists = (uid) => {
+      if (typeof host?.blockExists !== "function") return true;
+      try { return host.blockExists(uid) !== false; } catch { return true; }
+    };
+    for (const tab of [...(next?.tabs || [])]) {
+      if (tab.uid !== entry.uid && !exists(tab.uid)) next = closeBoardTab(tab.uid) || next;
+    }
     paintTabStrip(next?.tabs || [], entry.uid);
   };
   const applyFullscreen = (on) => {
@@ -5392,6 +5531,8 @@ function buildBoardView(onFail, {
       ensurePdfHighlightButtons();
       syncEmptyHint(emptyHint, b);
       itemsChanged = true;
+      syncTrailPaint(b);
+      if ((dirty.all || dirty.structural) && panel.currentTab?.() === "trails") panel.refreshTrails?.();
     }
     const edgesDue = dirty.all || dirty.structural || dirty.links || dirty.edges.size;
     // A collapse dirties only the section. Edges into its members still have to move
@@ -5451,7 +5592,11 @@ function buildBoardView(onFail, {
     } else if (dirty.viewport && chrome.ctx.isOpen()) {
       chrome.ctx.reposition();
     }
-    if (itemsChanged || dirty.minimap || (dirty.viewport && !gesturing)) chrome.minimap.update({ board: b, rects: paintRects(), vp, size });
+    if (itemsChanged || dirty.minimap || (dirty.viewport && !gesturing)) {
+      const shown = paintRects();
+      chrome.minimap.update({ board: b, rects: shown, vp, size });
+      paintLandmarkDots(b, shown);
+    }
     if (itemsChanged && !gesturing) {
       scheduleContent();
       updateBackToContent();
@@ -5810,6 +5955,12 @@ function buildBoardView(onFail, {
     setFullscreen(on) { if (Boolean(on) !== isFullscreen) applyFullscreen(on); },
     fit() { fitAll(); },
     // Select and pulse a card or connection by uid, without a page check (feature.js enters a nested board first).
+    walkTrail(trailUid) {
+      if (disposed || !board()) return false;
+      if (trailUid) activeTrailUid = trailUid;
+      startWalk("trail");
+      return true;
+    },
     focusUid(uid) {
       const ok = consumeDeepLink(`#?pxd=${encodeURIComponent(uid)}`);
       // A board inline on a long page: bring it on screen so the pulse is seen.

@@ -60,7 +60,7 @@ test("settings panel follows spec section 6 ids, defaults and row types", () => 
     "enter-in-card",
     "toolbar-layout", "dock-position", "dock-style", "dock-labels", "chrome-density", "dock-options",
     "tooltips", "tooltip-delay", "task-tool", "task-chips", "task-default-project", "better-tasks", "card-chips",
-    "why-prompt", "resurface-intervals", "auto-enhance", "speed-log",
+    "why-prompt", "resurface-intervals", "resurface", "regions-inline", "interop", "auto-enhance", "speed-log",
   ].sort());
   assert.equal(settingsDefaults()["auto-enhance"], true);
   assert.equal(settingsDefaults()["enter-in-card"], "newline");
@@ -171,15 +171,22 @@ test("UI-10: settings are grouped, described in plain language, and reset applie
     }
   }
   assert.deepEqual(groups, ["Cards", "Integrations", "Sections", "Connections", "Board", "Performance"]);
-  assert.deepEqual(members.Cards, ["default-card-look", "default-card-width", "default-card-height", "enter-in-card", "show-card-badges", "card-chips", "space-out"]);
-  assert.deepEqual(members.Integrations, ["better-tasks", "task-tool", "task-chips", "task-default-project"]);
+  assert.deepEqual(members.Cards, ["default-card-look", "default-card-width", "default-card-height", "enter-in-card", "show-card-badges", "space-out"]);
+  assert.deepEqual(members.Integrations, [
+    "status-better-tasks", "better-tasks", "status-task-status-tags", "task-tool", "task-chips", "task-default-project",
+    "status-roam-plexus", "status-compass", "interop", "status-highlighter", "card-chips", "resurface", "regions-inline",
+  ]);
   assert.deepEqual(members.Sections, ["auto-fit-sections"]);
   assert.deepEqual(members.Connections, ["graph-links", "attr-styles", "why-prompt"]);
   assert.ok(members.Board.includes("enabled"));
   assert.ok(members.Performance.includes("motion"));
   assert.equal(defaults["better-tasks"], false);
   assert.equal(defaults["task-tool"], false);
-  assert.deepEqual([...members.Cards, ...members.Integrations, ...members.Sections, ...members.Connections, ...members.Board, ...members.Performance].sort(), Object.keys(defaults).sort());
+  assert.equal(defaults.resurface, true);
+  assert.equal(defaults["regions-inline"], true);
+  assert.equal(defaults.interop, true);
+  const settingRows = Object.values(members).flat().filter((id) => Object.hasOwn(defaults, id));
+  assert.deepEqual(settingRows.sort(), Object.keys(defaults).sort());
 
   const saved = [];
   const seen = [];

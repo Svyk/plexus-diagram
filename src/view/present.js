@@ -107,21 +107,29 @@ export function createPresenter({ doc = globalThis.document, root, timers, on = 
     if (!board) return false;
     if (active) { teardown(); active = false; }
     const only = opts && typeof opts === "object" ? opts.only : null;
-    if (only) {
+    if (opts && Array.isArray(opts.stops)) {
+      steps = [];
+      for (const s of opts.stops) {
+        if (!s?.rect) continue;
+        const members = s.members instanceof Set ? s.members : new Set(s.members || (s.uid ? [s.uid] : []));
+        steps.push({ uid: s.uid ?? null, rect: s.rect, title: s.title || "", note: s.note || "", members });
+      }
+      if (!steps.length) return false;
+    } else if (only) {
       const item = board.items.get(only);
       const rect = rects?.get(only);
       if (!item || item.type !== "section" || !rect) return false;
       steps = [{ uid: only, rect, title: item.title || "", note: presenterNote(board, only), members: collectMembers(board, only) }];
     } else {
-    const rootSet = new Set(board.roots);
-    const sections = outlineOrder(board).filter((u) => rootSet.has(u) && board.items.get(u)?.type === "section" && rects.get(u));
-    steps = sections.map((uid) => ({
-      uid,
-      rect: rects.get(uid),
-      title: board.items.get(uid).title || "",
-      note: presenterNote(board, uid),
-      members: collectMembers(board, uid),
-    }));
+      const rootSet = new Set(board.roots);
+      const sections = outlineOrder(board).filter((u) => rootSet.has(u) && board.items.get(u)?.type === "section" && rects.get(u));
+      steps = sections.map((uid) => ({
+        uid,
+        rect: rects.get(uid),
+        title: board.items.get(uid).title || "",
+        note: presenterNote(board, uid),
+        members: collectMembers(board, uid),
+      }));
     }
     if (!steps.length) {
       const all = [...board.items.keys()].filter((u) => rects.get(u));

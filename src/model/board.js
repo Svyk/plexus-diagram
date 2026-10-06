@@ -21,6 +21,7 @@ import { regionRefModel } from "./region-card.js";
 import { drawingRefModel, isDrawingString } from "./drawing-card.js";
 import { isContainerString, parseRegion } from "./regions.js";
 import { listFromNodes } from "./snapshots.js";
+import { parseTrails } from "./trails.js";
 import { highlightModel } from "./highlight.js";
 import { readWhy } from "./why.js";
 
@@ -152,6 +153,7 @@ export function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, know
   const boardKids = sortedChildren(pulled);
   let snapshotsUid = null;
   let regionsUid = null;
+  let trailsUid = null;
   boardKids.forEach((child, index) => {
     const marker = readPlexus(child[":block/props"])?.type;
     if (containerUid === null && marker === "edges") {
@@ -160,6 +162,7 @@ export function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, know
     }
     if (snapshotsUid === null && marker === "snapshots") snapshotsUid = child[":block/uid"];
     if (regionsUid === null && marker === "regions") regionsUid = child[":block/uid"];
+    if (trailsUid === null && marker === "trails") trailsUid = child[":block/uid"];
   });
 
   const sectionDefaults = normalizeSectionDefaults(plexus?.defaults?.section);
@@ -168,7 +171,7 @@ export function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, know
     const siblings = [];
     for (const child of children) {
       const cuid = child[":block/uid"];
-      if (cuid === containerUid || cuid === snapshotsUid || cuid === regionsUid) continue;
+      if (cuid === containerUid || cuid === snapshotsUid || cuid === regionsUid || cuid === trailsUid) continue;
       const cplexus = readPlexus(child[":block/props"]);
       const cstring = child[":block/string"] ?? "";
       const heading = child[":block/heading"] || 0;
@@ -267,6 +270,7 @@ export function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, know
         target,
         ...(regionDrawing ? { regionDrawing } : {}),
         ...(highlight ? { highlight } : {}),
+        ...(layout.landmark ? { landmark: true, glyph: layout.glyph || "", size: layout.size === "S" || layout.size === "L" ? layout.size : "M" } : {}),
         enhanced: kind === "board" && (cplexus?.v === 2 || (typeof autoBoard === "function" && autoBoard(cuid, cplexus, kids) === true)),
         members: [],
         content: type === "section" ? [] : kids,
@@ -333,6 +337,8 @@ export function buildBoard(pulled, { defaults, resolve, plexusApi, propsOf, know
     snapshotsUid,
     snapshots: listFromNodes(sortedChildren(snapshotsUid ? boardKids.find((child) => child[":block/uid"] === snapshotsUid) : null)),
     regionsUid,
+    trailsUid,
+    trails: parseTrails(trailsUid ? boardKids.find((child) => child[":block/uid"] === trailsUid) : null),
     views: viewsOf(boardKids, regionsUid),
     childCount: boardKids.length,
     edges,
@@ -842,7 +848,8 @@ export function diffBoards(prev, next) {
     || prev.edges.size !== next.edges.size
     || !same(prev.roots, next.roots)
     || !same(prev.order, next.order)
-    || !same(prev.views, next.views);
+    || !same(prev.views, next.views)
+    || !same(prev.trails || [], next.trails || []);
   const dirty = new Set();
   if (prev.string !== next.string || !same(prev.plexus, next.plexus)) dirty.add(next.uid);
   for (const [uid, item] of next.items) {

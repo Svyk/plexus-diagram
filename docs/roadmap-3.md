@@ -15,7 +15,7 @@
 | P23 | Speed wherever a board lives | 2.14.0 | PERF-4, PERF-9, PERF-10, PERF-5, PERF-6, PERF-7, PERF-8, REL-1, DOC-23 |
 | P24 | Reliability and sibling debt | 2.15.0 | REL-2, REL-3, REL-4, REL-5, REL-6, ECO-8, ECO-9, DOC-24 |
 | P25 | Heptabase parity, next wave | 2.16.0 | HEP-1, HEP-2, HEP-3, HEP-4, DOC-25 |
-| P26 | Feel instant | 2.17.0 | FAST-1, FAST-2, FAST-3, FAST-4, FAST-5, FAST-6, FAST-7, FAST-8, FAST-9, DOC-26 |
+| P26 | Feel instant | 2.17.0 | FAST-10, FAST-1, FAST-2, FAST-3, FAST-4, FAST-5, FAST-6, FAST-7, FAST-8, FAST-9, DOC-26 |
 
 P23-P26 were added 2026-10-05 and ship before P22; P22's 3.0.0 gate then covers them.
 
@@ -736,6 +736,16 @@ Rules that bind every task below (docs/roadmap.md §3): add, never take away (3.
 ---
 
 ## P26 — Feel instant (2.17.0)
+
+### FAST-10 — Graph links after first paint
+- Phase: P26 · Version: 2.17.0 · Effort: S · Priority: high · Depends: none
+- Summary: Measured 2026-10-06 on the C. botulinum learning board: opening a board spends about 100 ms in `runLinks` (src/session.js computeLinks for the dashed graph-link curves) before the first paint, on every fresh mount and sidebar open. Links are decoration; they can arrive one idle callback later.
+- Roam model: Read-only.
+- Design: The session publishes the board without links first, then computes links in an idle callback (timeout 1 s) and publishes a links-only change. Edits that change refs recompute the same way. A test that needs links synchronously can await the session's links promise.
+- Build tips: `runLinks` / `computeLinks` / `refreshLinks` in `src/session.js`; the view already handles a `links` dirty flag (`dirty.links` in `src/view/board-view.js`).
+- Acceptance: 1. A CPU profile of one board open shows no `runLinks` before the first `.pxd-item` paint. 2. Links appear within 1 s of open. 3. FAST-1 budgets unchanged or lower. 4. `npm run check` green.
+- Out of scope: Changing which links are drawn.
+- Revisit when: n/a
 
 ### FAST-1 — Perf budgets that only go down
 - Phase: P26 · Version: 2.17.0 · Effort: L · Priority: high · Depends: PERF-8

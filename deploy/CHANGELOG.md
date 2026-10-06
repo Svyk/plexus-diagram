@@ -1,5 +1,19 @@
 # Changelog
 
+## 2.17.0 — 2026-10-06
+
+Feel instant (roadmap P26), after the claude.ai speed work:
+
+- Going back to a board you just left is instant: the last two boards stay ready (paused, nothing running) and come back as they were, fullscreen included, with no rebuild.
+- A board opens with a quick sketch of its last layout while the real board loads.
+- Hovering a board chip, a board card, a breadcrumb, or a link to a board quietly reads that board ahead of the click.
+- Cards load in small batches nearest the middle of the screen first, so a big board never freezes the page.
+- Selecting a card no longer touches every other card (the same cost on a 300-card board as on a 40-card one).
+- Faster text checks on every card (tags, regions, attributes, diagram detection).
+- Cards and page rows keep their size while their content loads, so nothing jumps.
+- Optional speed log in settings (off by default): open time, click time, pan smoothness, Plexus long tasks.
+- Developers: `npm run perf:ratchet` keeps measured counts from getting worse; a hidden `speed-flags` setting turns each speed feature off without a release.
+
 ## 2.14.1 — 2026-10-06
 
 - Typing stays light while a board sits in an open right sidebar. Plexus read Roam's whole sidebar window list every 400 ms (about 6 ms each time with 140 windows); it now reads the window's own open/closed arrow instead.

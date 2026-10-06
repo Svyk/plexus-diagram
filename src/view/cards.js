@@ -29,6 +29,7 @@ import { PDF_READER_H, PDF_READER_W, coverModel, coverOuterBox, embedSplit, read
 import { paintPdfChipStrip } from "./pdf-chip-strip.js";
 import { guardCallback } from "../guard.js";
 import { notedSpeedFlags, parseSpeedFlags, SETTING_IDS } from "../settings.js";
+import { buildSourceChip, sourceChipFor, sourceChipKey } from "../model/source-chip.js";
 
 const SIDES = ["top", "right", "bottom", "left"];
 const CHUNK_MS = 8;
@@ -442,6 +443,7 @@ export function createItemRenderer({
   onHighlightOpen = null,
   onHighlightNote = null,
   settings: speedSettings = null,
+  interopOn = null,
 } = {}) {
   // Production reads the hidden setting. A test passes `settings` and does not open the panel.
   const speedOf = () => {
@@ -490,12 +492,68 @@ export function createItemRenderer({
     onPulse: (uids) => { try { onPdfPulse?.(uids); } catch { /* host */ } },
     onOpen: (page) => { try { onPdfOpen?.(item.uid, page); } catch { /* host */ } },
   });
-  const contentKeyFor = (item, live = false) => cardContentKey(
-    item,
-    live,
-    item?.kind === "pdf" ? (onReadPane ? false : pdfOpenUid === item.uid) : ownsOpen(item),
-    item?.kind === "pdf" ? chipsFor(item).map((chip) => `${chip.page}:${chip.count}`).join(",") : "",
-  );
+  const interopAllowed = () => {
+    if (typeof interopOn !== "function") return true;
+    try { return interopOn() !== false; } catch { return true; }
+  };
+  // One pull of a reading page's children per sync. The next sync sees an author rename.
+  let sourcePass = 0;
+  let pageKids = new Map();
+  const sourceKids = (raw) => {
+    if (Array.isArray(raw)) return raw;
+    if (raw && typeof raw === "object") return raw[":block/children"] || raw.children || [];
+    return [];
+  };
+  const pageChildrenOf = (pageUid) => {
+    if (!pageUid) return [];
+    if (pageKids.has(pageUid)) return pageKids.get(pageUid);
+    let raw = null;
+    try { raw = host?.pullTree?.(pageUid, 1, 80); } catch { raw = null; }
+    if (raw && typeof raw.then === "function") {
+      const pass = sourcePass;
+      pageKids.set(pageUid, []);
+      raw.then((value) => {
+        if (pass !== sourcePass) return;
+        pageKids.set(pageUid, sourceKids(value));
+      }).catch(() => {});
+      return [];
+    }
+    const kids = sourceKids(raw);
+    pageKids.set(pageUid, kids);
+    return kids;
+  };
+  const sourceChipOf = (item) => {
+    if (item?.kind !== "block") return null;
+    const ref = item.target?.uid;
+    if (!ref) return null;
+    let refString = "";
+    try { refString = host?.blockString?.(ref) || ""; } catch { refString = ""; }
+    if (refString) {
+      if (classifyString(refString).kind === "board") return null;
+      if (isQueryString(refString)) return null;
+    }
+    let title = "";
+    try { title = host?.pageTitleOf?.(ref) || ""; } catch { title = ""; }
+    const text = typeof title === "string" ? title.trim() : "";
+    if (!text.startsWith("Articles/") && !text.startsWith("Media Captures/")) return null;
+    let pageUid = "";
+    try { pageUid = host?.pageUid?.(text) || ""; } catch { pageUid = ""; }
+    return sourceChipFor({ pageTitle: text, pageUid, pageChildren: pageChildrenOf(pageUid) });
+  };
+  const contentKeyFor = (item, live = false) => {
+    let key = cardContentKey(
+      item,
+      live,
+      item?.kind === "pdf" ? (onReadPane ? false : pdfOpenUid === item.uid) : ownsOpen(item),
+      item?.kind === "pdf" ? chipsFor(item).map((chip) => `${chip.page}:${chip.count}`).join(",") : "",
+    );
+    if (item?.kind === "block") {
+      const sig = sourceChipKey(sourceChipOf(item));
+      if (sig) key += `\u0001${sig}`;
+    }
+    if ((item?.kind === "drawing-ref" || item?.kind === "region-ref") && !interopAllowed()) key += "\u0001interop-off";
+    return key;
+  };
   const shells = new Map(); // uid → rec
   const mounted = new Map(); // uid → lastWanted (LRU order = insertion order)
   // ED-2: per-item board renders, on the same object as window.__plexusDiagram.stats.
@@ -1463,6 +1521,8 @@ export function createItemRenderer({
     if (shellQueue.length && timers?.frame) timers.frame(pumpShells);
   };
   const sync = ({ board, rects, dirty: changed = null, structural = false, view = null }) => {
+    sourcePass += 1;
+    pageKids = new Map();
     lastBoard = board;
     lastRects = rects;
     // A highlight card placed, removed or changed moves its PDF's page chips and count, though the PDF card itself did not change.
@@ -3047,6 +3107,15 @@ export function createItemRenderer({
             else rec.roots.push(...b.roots);
           }
           if (!sync) syncKidsBadge(rec, item);
+          if (!body.querySelector?.(".pxd-chip--source")) {
+            const chip = sourceChipOf(item);
+            if (chip) {
+              const node = buildSourceChip(doc, chip, {
+                onOpen: (uid) => { try { host?.openInSidebar?.(uid); } catch { /* host */ } },
+              });
+              if (node) body.append(node);
+            }
+          }
         };
         if (tree && typeof tree.then === "function") tree.then((t) => apply(t)).catch(() => {});
         else apply(tree, true);
@@ -3132,7 +3201,7 @@ export function createItemRenderer({
     return blob;
   };
   const loadDrawingBlob = async (api, drawingUid) => {
-    if (api && Number(api.apiVersion) >= 6 && typeof api.thumbnail === "function") {
+    if (interopAllowed() && api && Number(api.apiVersion) >= 6 && typeof api.thumbnail === "function") {
       let shot = null;
       try { shot = await blobOf(api.thumbnail(drawingUid, { maxWidth: 160 })); } catch { shot = null; }
       if (shot == null) {
@@ -3198,6 +3267,7 @@ export function createItemRenderer({
       visible: detail,
       maxWidth: Math.max(1, Math.round(Number(rec.rect?.w || item.w) || 160)),
       thumbnail: detail ? (opts) => {
+        if (!interopAllowed()) return null;
         if (lod !== "detail" || rec.el.classList.contains("pxd-item--offscreen")) return null;
         const live = regionWindow().RoamPlexus;
         if (!ref || typeof live?.thumbnail !== "function") return null;

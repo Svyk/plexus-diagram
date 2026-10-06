@@ -3,6 +3,7 @@
 // Rows click-add beside the selection and drag onto the board with a custom MIME.
 
 import { closeInfoTab, infoTabList, nextPanelWidth, PANEL_WIDTH_DEFAULT } from "../model/info.js";
+import { mountTimeline } from "./timeline.js";
 import { LIBRARY_TYPES, libraryFilterActive } from "../model/library.js";
 import { CARD_MIME, parseDropPayload } from "../model/drop.js";
 import { dailyTitle, startOfDay, stepDay } from "../model/journal.js";
@@ -627,13 +628,42 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
   };
   // Inline boards are too narrow for a second editor. Fullscreen mounts Roam's renderer in the panel.
   let infoMounted = false;
+  let timelineView = null;
   const unmountInfo = () => {
+    if (timelineView) {
+      try { timelineView.dispose(); } catch { /* already gone */ }
+      timelineView = null;
+    }
     if (!infoMounted) return;
     infoMounted = false;
     const prev = infoScroll.querySelector(".pxd-panel__info-mount");
     if (prev) {
       try { host?.unmount?.(prev); } catch { /* already gone */ }
     }
+  };
+  // No heading: the Info heading list is an exact snapshot in unowned tests.
+  // The section is created after the query so a superseded load does not leave buttons behind.
+  const paintTimeline = async (id) => {
+    if (id !== queryId || tab !== "info") return;
+    if (infoScroll.isConnected === false) return;
+    let rows = [];
+    try {
+      const got = await Promise.resolve(on.ensureTimeline?.());
+      rows = Array.isArray(got) ? got : [];
+    } catch { rows = []; }
+    if (id !== queryId || tab !== "info") return;
+    if (infoScroll.isConnected === false) return;
+    if (timelineView) {
+      try { timelineView.dispose(); } catch { /* already gone */ }
+      timelineView = null;
+    }
+    const section = el("section", "pxd-panel__info-sec", infoScroll);
+    timelineView = mountTimeline(section, {
+      doc,
+      rows,
+      onOpenDay: (pageUid) => { try { on.openDay?.(pageUid); } catch { /* host */ } },
+      onShowOnBoard: (uids) => { try { on.showOnBoard?.(uids); } catch { /* host */ } },
+    });
   };
   const infoSection = (label) => {
     const section = el("section", "pxd-panel__info-sec", infoScroll);
@@ -648,6 +678,7 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     const subject = followInfoSelection ? selected : (tabItem || selected);
     if (!subject || subject.type === "section") {
       el("div", "pxd-panel__empty", infoScroll, "Select a card");
+      void paintTimeline(id);
       return;
     }
     let info = null;
@@ -657,6 +688,7 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     infoScroll.replaceChildren();
     if (!info) {
       el("div", "pxd-panel__empty", infoScroll, "Nothing to show");
+      void paintTimeline(id);
       return;
     }
     const bodySec = infoSection("Card");
@@ -720,6 +752,7 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
       const wrap = el("div", "pxd-panel__info-tags", tagSec);
       for (const name of info.tags) el("span", "pxd-panel__info-tag", wrap, name);
     }
+    void paintTimeline(id);
   };
   listen(infoScroll, "click", (event) => {
     const board = event.target?.closest?.(".pxd-panel__info-board");

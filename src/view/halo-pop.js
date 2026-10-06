@@ -57,6 +57,7 @@ export function openHaloPopover({
   renderString,
   unmount,
   onPulse,
+  dustAge,
 } = {}) {
   const mounts = [];
   const pop = doc.createElement("div");
@@ -123,6 +124,15 @@ export function openHaloPopover({
   const count = Number.isFinite(n) && n > 0 ? n : 0;
   boards.textContent = `On ${count} ${count === 1 ? "board" : "boards"}`;
   pop.append(boards);
+
+  const age = String(dustAge ?? "").trim();
+  if (age) {
+    pop.setAttribute("data-dust-age", age);
+    const dust = doc.createElement("div");
+    dust.className = "pxd-halo__dust";
+    dust.textContent = age;
+    pop.append(dust);
+  }
 
   pop.addEventListener("pointerdown", (event) => {
     if (event.target?.closest?.("[data-link-uid], .rm-page-ref, .pxd-halo__link")) return;

@@ -25,6 +25,9 @@ import { isDailyTitle } from "../model/library.js";
 import { highlightLensTag, lensBright, lensCatalog, tagsForCard } from "../model/lens.js";
 import { HALO_PULL_LIGHT, company, haloRefs, headerText, readHaloPull } from "../model/halo.js";
 import { openHaloPopover } from "./halo-pop.js";
+import { timelineQuery } from "../model/timeline.js";
+import { createOpenStore, edgeOpens } from "../model/strength.js";
+import { applyDust, applyStrength, clearLens } from "./strength-lens.js";
 import { openWhyPopover } from "./why-pop.js";
 import { leavesBoardPointer } from "./overlay-hit.js";
 import { mountContextsDrawer } from "./contexts-drawer.js";
@@ -740,6 +743,7 @@ function buildBoardView(onFail, {
   lifecycle = null,
   onSelectTab = null,
   tabStore = null,
+  boardsOf = null,
 } = {}) {
   const doc = globalThis.document;
   const win = globalThis.window;
@@ -847,6 +851,23 @@ function buildBoardView(onFail, {
   const boardUid = session.uid;
   const graph = host?.graph || graphName(win);
   const storage = globalThis.localStorage;
+  let dateMode = "attribute";
+  let strengthOn = false;
+  let dustPeriod = "off";
+  let strengthScores = null;
+  let dustAges = null;
+  let strengthGen = 0;
+  let dustGen = 0;
+  let openStore = null;
+  let timelineRows = null;
+  let timelineCacheUid = "";
+  let timelinePending = null;
+  let timelinePendingUid = "";
+  const trackOpensOn = () => readSetting("track-opens") === true;
+  const bumpOpen = (uid) => {
+    if (!uid || !openStore) return;
+    try { openStore.bump(uid); } catch { /* storage */ }
+  };
   const vpStore = host?.viewports || host?.viewportStore || createLocalViewportStore({ storage, graph, timers });
   const tabsStore = tabStore || host?.tabs || null;
   let memoryTabs = [];
@@ -1428,6 +1449,7 @@ function buildBoardView(onFail, {
     onEmbedOpen: () => closeOutlineLive(),
     onHighlightOpen: (item) => { void openHighlightInReader(item); },
     onHighlightNote: (uid) => { void openHighlightNote(uid); },
+    interopOn: () => readSetting("interop") !== false,
     onReadPane: (detail) => {
       if (!detail?.open) {
         readPane?.close?.({ notify: false });
@@ -1545,6 +1567,251 @@ function buildBoardView(onFail, {
     blockText: (uid) => host?.blockString?.(uid),
     onHover: (uid, on) => hoverRows(uid, on),
   });
+
+  // NAV-3 / MEM-8. Queries run when Info opens or a lens turns on, not while the board is mounting.
+  const timelineTargetUid = (item) => {
+    if (!item || item.type === "section" || item.type === "text") return "";
+    if (item.target?.kind === "page") {
+      try { return host?.pageUid?.(item.target.title) || ""; } catch { return ""; }
+    }
+    if (item.target?.uid) return item.target.uid;
+    return item.uid || "";
+  };
+  const timelineIds = () => {
+    const ids = [];
+    const seen = new Set();
+    const add = (id) => {
+      const s = String(id || "").trim();
+      if (!s || seen.has(s)) return;
+      seen.add(s);
+      ids.push(s);
+    };
+    add(board()?.uid || boardUid);
+    const b = board();
+    if (b) for (const item of b.items.values()) if (item?.type === "card") add(timelineTargetUid(item));
+    return ids;
+  };
+  const loadTimelineRows = () => {
+    const uid = board()?.uid || boardUid;
+    if (timelineRows && timelineCacheUid === uid) return Promise.resolve(timelineRows);
+    if (timelinePending && timelinePendingUid === uid) return timelinePending;
+    const ids = timelineIds();
+    if (!ids.length || typeof host?.q !== "function") return Promise.resolve(timelineRows || []);
+    const spec = timelineQuery(ids);
+    let job;
+    try {
+      job = Promise.resolve(host.q(spec.query, ...spec.args)).then((rows) => {
+        const list = Array.isArray(rows) ? rows : [];
+        if (!disposed && (board()?.uid || boardUid) === uid) {
+          timelineRows = list;
+          timelineCacheUid = uid;
+        }
+        return list;
+      }).catch(() => []);
+    } catch {
+      return Promise.resolve([]);
+    }
+    timelinePending = job;
+    timelinePendingUid = uid;
+    const clear = () => {
+      if (timelinePending === job) {
+        timelinePending = null;
+        timelinePendingUid = "";
+      }
+    };
+    job.then(clear, clear);
+    return job;
+  };
+  const aliasTimelineRows = (rows) => {
+    const list = Array.isArray(rows) ? rows : [];
+    const b = board();
+    if (!b) return list;
+    const byTarget = new Map();
+    for (const item of b.items.values()) {
+      if (item?.type !== "card") continue;
+      const target = timelineTargetUid(item);
+      if (!target) continue;
+      if (!byTarget.has(target)) byTarget.set(target, []);
+      byTarget.get(target).push(item.uid);
+    }
+    const out = [];
+    for (const row of list) {
+      const key = Array.isArray(row) ? String(row[0] ?? "") : String(row?.cardUid ?? "");
+      const owners = byTarget.get(key) || [];
+      if (!owners.length) { out.push(row); continue; }
+      for (const itemUid of owners) {
+        if (Array.isArray(row)) out.push([itemUid, row[1], row[2], row[3], row[4]]);
+        else out.push({ ...row, cardUid: itemUid });
+      }
+    }
+    return out;
+  };
+  const pulseTimeline = (uids) => {
+    const wanted = uids instanceof Set ? uids : new Set(uids || []);
+    const b = board();
+    if (!b) return;
+    for (const item of b.items.values()) {
+      if (item?.type !== "card") continue;
+      const target = timelineTargetUid(item);
+      if (wanted.has(item.uid) || (target && wanted.has(target))) pulseItem(item.uid);
+    }
+  };
+  const edgeList = () => root.querySelectorAll?.(".pxd-edge") || [];
+  const dustShells = () => [...(root.querySelectorAll?.(".pxd-item[data-uid]") || [])];
+  const paintLenses = () => {
+    if (disposed) return;
+    if (strengthOn && strengthScores) {
+      try { applyStrength(edgeList(), strengthScores); } catch { /* paint */ }
+    }
+    if (dustPeriod && dustPeriod !== "off" && dustAges) {
+      try { applyDust(dustShells(), dustAges, dustPeriod); } catch { /* paint */ }
+    }
+  };
+  const boardsFor = (uid) => {
+    if (!uid) return [];
+    try {
+      if (typeof boardsOf === "function") {
+        const list = boardsOf(uid);
+        if (Array.isArray(list)) return list.map((row) => (row && typeof row === "object" ? row.uid : row)).filter(Boolean);
+      }
+    } catch { /* cache */ }
+    try {
+      const list = win?.PlexusDiagram?.boardsWith?.(uid);
+      return Array.isArray(list) ? list.map((row) => row?.uid).filter(Boolean) : [];
+    } catch { return []; }
+  };
+  const shareCount = (a, b) => {
+    const left = new Set(boardsFor(a));
+    let n = 0;
+    for (const id of boardsFor(b)) if (left.has(id)) n += 1;
+    return n;
+  };
+  const endTarget = (itemUid) => timelineTargetUid(board()?.items.get(itemUid)) || itemUid || "";
+  const ensureOpenStore = () => {
+    if (!trackOpensOn()) return openStore;
+    if (!openStore) openStore = createOpenStore({ storage, graph, enabled: true });
+    else openStore.setEnabled(true);
+    return openStore;
+  };
+  const askRows = (query, ids) => {
+    if (!ids.length || typeof host?.q !== "function") return Promise.resolve([]);
+    try {
+      return Promise.resolve(host.q(query, ids)).then((rows) => (Array.isArray(rows) ? rows : [])).catch(() => []);
+    } catch { return Promise.resolve([]); }
+  };
+  const refreshStrength = async () => {
+    const gen = ++strengthGen;
+    if (!strengthOn) {
+      strengthScores = null;
+      try { clearLens(edgeList(), []); } catch { /* paint */ }
+      if (dustPeriod !== "off" && dustAges) {
+        try { applyDust(dustShells(), dustAges, dustPeriod); } catch { /* paint */ }
+      }
+      return;
+    }
+    ensureOpenStore();
+    const edges = [...(board()?.edges?.values?.() || [])];
+    const ids = [];
+    const seen = new Set();
+    const ends = [];
+    const add = (id) => {
+      const s = String(id || "").trim();
+      if (!s || seen.has(s)) return;
+      seen.add(s);
+      ids.push(s);
+    };
+    for (const edge of edges) {
+      const from = endTarget(edge.from);
+      const to = endTarget(edge.to);
+      ends.push({ uid: edge.uid, from, to });
+      add(from);
+      add(to);
+    }
+    if (!ids.length) {
+      if (gen !== strengthGen || !strengthOn || disposed) return;
+      strengthScores = new Map();
+      paintLenses();
+      return;
+    }
+    const [refRows, editRows] = await Promise.all([
+      askRows("[:find ?u (count ?r) :in $ [?u ...] :where [?e :block/uid ?u] [?r :block/refs ?e]]", ids),
+      askRows("[:find ?u ?t :in $ [?u ...] :where [?e :block/uid ?u] [?e :edit/time ?t]]", ids),
+    ]);
+    if (disposed || gen !== strengthGen || !strengthOn) return;
+    const refCount = new Map();
+    for (const row of refRows) {
+      if (Array.isArray(row) && row.length >= 2) refCount.set(String(row[0]), Number(row[1]) || 0);
+    }
+    const editAt = new Map();
+    for (const row of editRows) {
+      if (Array.isArray(row) && row.length >= 2 && Number.isFinite(Number(row[1]))) editAt.set(String(row[0]), Number(row[1]));
+    }
+    const now = Date.now();
+    const track = Boolean(openStore && openStore.enabled);
+    const scores = new Map();
+    for (const edge of ends) {
+      const times = [editAt.get(edge.from), editAt.get(edge.to)].filter((n) => Number.isFinite(n));
+      const components = {
+        refs: (refCount.get(edge.from) || 0) + (refCount.get(edge.to) || 0),
+        shared: shareCount(edge.from, edge.to),
+        now,
+      };
+      if (times.length) components.editTime = Math.max(...times);
+      if (track) components.opens = edgeOpens(openStore, edge.from, edge.to);
+      scores.set(edge.uid, { components, trackOpens: track, now });
+    }
+    strengthScores = scores;
+    try { applyStrength(edgeList(), strengthScores); } catch { /* paint */ }
+  };
+  const refreshDust = async () => {
+    const gen = ++dustGen;
+    if (!dustPeriod || dustPeriod === "off") {
+      dustAges = null;
+      try { clearLens([], dustShells()); } catch { /* paint */ }
+      if (strengthOn && strengthScores) {
+        try { applyStrength(edgeList(), strengthScores); } catch { /* paint */ }
+      }
+      return;
+    }
+    const cards = [...(board()?.items?.values?.() || [])].filter((it) => it?.type === "card");
+    const ids = [];
+    const seen = new Set();
+    const pairs = [];
+    for (const card of cards) {
+      const target = timelineTargetUid(card) || card.uid;
+      pairs.push({ uid: card.uid, target });
+      if (target && !seen.has(target)) { seen.add(target); ids.push(target); }
+    }
+    if (!ids.length) {
+      if (gen !== dustGen || dustPeriod === "off" || disposed) return;
+      dustAges = new Map();
+      paintLenses();
+      return;
+    }
+    const rows = await askRows("[:find ?u ?e ?c :in $ [?u ...] :where [?b :block/uid ?u] [(get-else $ ?b :edit/time -1) ?e] [(get-else $ ?b :create/time -1) ?c]]", ids);
+    if (disposed || gen !== dustGen || dustPeriod === "off") return;
+    const by = new Map();
+    for (const row of rows) {
+      if (!Array.isArray(row)) continue;
+      const edit = Number(row[1]);
+      const create = Number(row[2]);
+      by.set(String(row[0]), {
+        edit: Number.isFinite(edit) && edit >= 0 ? edit : null,
+        create: Number.isFinite(create) && create >= 0 ? create : null,
+      });
+    }
+    const now = Date.now();
+    const ages = new Map();
+    for (const pair of pairs) {
+      const hit = by.get(pair.target) || {};
+      const age = { now };
+      if (hit.edit != null) age.editTime = hit.edit;
+      if (hit.create != null) age.createTime = hit.create;
+      ages.set(pair.uid, age);
+    }
+    dustAges = ages;
+    try { applyDust(dustShells(), dustAges, dustPeriod); } catch { /* paint */ }
+  };
 
   // BA-3: block ends follow their row. Row offsets are measured only for edges that have block ends, in one
   // batched frame, whenever the page body scrolls or re-renders, or the card moves, resizes or folds.
@@ -1997,9 +2264,11 @@ function buildBoardView(onFail, {
     if (!item) return;
     if (item.target.kind === "page") {
       const uid = host?.pageUid?.(item.target.title);
-      if (uid) host?.openInSidebar?.(uid, "outline");
+      if (uid) { bumpOpen(uid); host?.openInSidebar?.(uid, "outline"); }
     } else {
-      host?.openInSidebar?.(item.target.uid || item.uid, "block");
+      const uid = item.target.uid || item.uid;
+      bumpOpen(uid);
+      host?.openInSidebar?.(uid, "block");
     }
   };
   const stackAt = (strings, x, y, h) => strings.map((string, i) => ({ string, x, y: y + i * (h + 24) }));
@@ -2334,10 +2603,16 @@ function buildBoardView(onFail, {
     if (item.kind === "board" || boardTargetOf(item.uid)) { void openBoard(item.uid); return; }
     if (item.target.kind === "page") {
       const uid = host?.pageUid?.(item.target.title);
-      if (uid) { if (host?.api?.ui?.mainWindow?.openPage) host.api.ui.mainWindow.openPage({ page: { uid } }); else host?.openBlock?.(uid); }
+      if (uid) {
+        bumpOpen(uid);
+        if (host?.api?.ui?.mainWindow?.openPage) host.api.ui.mainWindow.openPage({ page: { uid } });
+        else host?.openBlock?.(uid);
+      }
       return;
     }
-    host?.openBlock?.(item.target.uid || item.uid);
+    const openUid = item.target.uid || item.uid;
+    bumpOpen(openUid);
+    host?.openBlock?.(openUid);
   };
 
   // ------------------------------------------------------------ background (pattern + tone)
@@ -2755,7 +3030,7 @@ function buildBoardView(onFail, {
     const item = uid ? b?.items.get(uid) : null;
     switch (kind) {
       case "canvas": return { canPaste: true, snapshots: b?.snapshots || [], taskTool: readSetting("task-tool") === true };
-      case "board-menu": return { snapshots: b?.snapshots || [], dock: b?.plexus?.dock, walk: true, hasTrail: Boolean(b?.trails?.length) };
+      case "board-menu": return { snapshots: b?.snapshots || [], dock: b?.plexus?.dock, walk: true, hasTrail: Boolean(b?.trails?.length), lens: true, strength: strengthOn, dust: dustPeriod };
       case "card": {
         let queryText = item?.string || "";
         if (!isQueryString(queryText) && item?.target?.kind === "block") {
@@ -2765,7 +3040,7 @@ function buildBoardView(onFail, {
         const compassApi = globalThis.RoamCompass || globalThis.window?.RoamCompass || null;
         const plexusApi = globalThis.RoamPlexus || globalThis.window?.RoamPlexus || null;
         const task = isTaskItem(item) ? taskMeta(item.string, item.content) : null;
-        return { ...(task ? { statusTags, status: task.status || "" } : {}), item, regions: imageRegionRows(item?.content), canMakeTask: item?.type === "card" && item?.kind === "note" && !isTaskString(item.string) && !isQueryString(queryText), isBoard: item?.kind === "board", collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS.includes(item?.kind), canSpread: item?.kind === "note" || item?.kind === "block", isQuery: isQueryString(queryText), canExpand, mindPreset: readMindPreset(storage), compass: typeof compassApi?.open === "function", canAnnotate: item?.kind === "image" && typeof plexusApi?.create === "function", trails: trailRows(b), landmark: item?.landmark === true, landmarkSize: item?.size || "M" };
+        return { ...(task ? { statusTags, status: task.status || "" } : {}), item, regions: imageRegionRows(item?.content), canMakeTask: item?.type === "card" && item?.kind === "note" && !isTaskString(item.string) && !isQueryString(queryText), isBoard: item?.kind === "board", collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS.includes(item?.kind), canSpread: item?.kind === "note" || item?.kind === "block", isQuery: isQueryString(queryText), canExpand, mindPreset: readMindPreset(storage), compass: typeof compassApi?.open === "function", interop: readSetting("interop") !== false, canAnnotate: item?.kind === "image" && typeof plexusApi?.create === "function", trails: trailRows(b), landmark: item?.landmark === true, landmarkSize: item?.size || "M" };
       }
       case "section": {
         const members = item && b ? [item.uid, ...descendantsOf(b, item.uid)] : [];
@@ -2780,6 +3055,7 @@ function buildBoardView(onFail, {
           trails: trailRows(b),
           landmark: item?.landmark === true,
           landmarkSize: item?.size || "M",
+          dateSource: dateMode,
         };
       }
       case "text": return { item, pinned: Boolean(item?.pinned), trails: trailRows(b), landmark: item?.landmark === true, landmarkSize: item?.size || "M" };
@@ -3011,7 +3287,30 @@ function buildBoardView(onFail, {
         else toast("Block history is available on this host");
         break;
       }
-      case "layout-dates": if (item) void session.layoutByDate?.(item.uid); break;
+      case "date-source": {
+        if (arg === "attribute" || arg === "first" || arg === "last") dateMode = arg;
+        break;
+      }
+      case "layout-dates": {
+        if (!item || item.type !== "section") break;
+        const write = (rows) => {
+          void session.layoutByDate?.(item.uid, { mode: dateMode, rows: aliasTimelineRows(rows) });
+        };
+        if (dateMode === "attribute" || (timelineRows && timelineCacheUid === b.uid)) write(timelineRows || []);
+        else void loadTimelineRows().then((rows) => { if (!disposed) write(rows); });
+        break;
+      }
+      case "lens-strength": {
+        strengthOn = !strengthOn;
+        void refreshStrength();
+        break;
+      }
+      case "lens-dust": {
+        const next = arg && arg !== "off" ? arg : "off";
+        dustPeriod = next === "6 months" || next === "1 year" || next === "2 years" || next === "off" ? next : "off";
+        void refreshDust();
+        break;
+      }
       case "focus-timer": {
         if (item?.type === "section") void session.setSectionLook?.(item.uid, "timer");
         stopTimer();
@@ -3708,7 +4007,8 @@ function buildBoardView(onFail, {
     if (!mmMarks) mmMarks = el("div", "pxd-minimap__marks", chrome.minimap.el);
     mmMarks.replaceChildren();
     for (const dot of dots) {
-      const n = el("span", "pxd-minimap__mark", mmMarks, dot.glyph || "•");
+      const n = el("span", "pxd-minimap__mark", mmMarks);
+      n.textContent = dot.glyph || "•";
       n.style.left = `${dot.x}px`;
       n.style.top = `${dot.y}px`;
     }
@@ -3777,6 +4077,9 @@ function buildBoardView(onFail, {
       deleteTrail: (uid) => { void session.deleteTrail?.(uid); if (activeTrailUid === uid) activeTrailUid = null; },
       moveStop: (stopUid, index) => { void session.moveStop?.(stopUid, index); },
       walkTrail: (uid) => { if (uid) activeTrailUid = uid; startWalk("trail"); },
+      ensureTimeline: () => loadTimelineRows(),
+      openDay: (pageUid) => { try { host?.openInSidebar?.(pageUid, "block"); } catch { /* host */ } },
+      showOnBoard: (uids) => pulseTimeline(uids),
     },
   });
   let viewDialog = null;
@@ -5608,6 +5911,7 @@ function buildBoardView(onFail, {
       else edgesR.setMeasures(new Map());
     }
     if (searchMatches.length || root.classList.contains("pxd-root--searching")) panel.refreshMarks();
+    if (itemsChanged || edgesDue || itemsMoveEdges) paintLenses();
     dirty.minimap = false;
     dirty.viewport = false;
     dirty.items = new Set();
@@ -5745,6 +6049,9 @@ function buildBoardView(onFail, {
       renderString: (el, string) => host?.renderString?.(el, string),
       unmount: (el) => { try { host?.unmount?.(el); } catch { /* already gone */ } },
       onPulse: (id) => { if (!disposed) pulseItem(id); },
+      dustAge: subject && !subject.from && !subject.to
+        ? (itemsR.shellOf(subject.uid)?.getAttribute?.("data-dust-age") || "")
+        : "",
     });
   };
   openHalo = (subject, anchor) => {
@@ -6060,7 +6367,19 @@ function buildBoardView(onFail, {
     setSettings(next) {
       if (disposed) return;
       const minimapBefore = setting("show-minimap", true) !== false;
+      const opensBefore = trackOpensOn();
+      const interopBefore = readSetting("interop") !== false;
       settingsRef = next;
+      if (openStore) {
+        try { openStore.setEnabled(trackOpensOn()); } catch { /* storage */ }
+      }
+      if (opensBefore !== trackOpensOn() && strengthOn) void refreshStrength();
+      if (interopBefore !== (readSetting("interop") !== false)) {
+        const live = board();
+        if (live) for (const item of live.items.values()) {
+          if (item?.kind === "drawing-ref" || item?.kind === "region-ref") dirty.items.add(item.uid);
+        }
+      }
       armSpeedLog();
       const nextLinks = setting("graph-links", "all");
       if (nextLinks !== linkMode && LINK_MODES.includes(nextLinks)) {

@@ -1,6 +1,7 @@
 import { namespaceParent } from "./model/namespace.js";
 import { isContainerString } from "./model/regions.js";
 import { backgroundImage, calendarLayout, cardTemplatePlan, zoomThreshold } from "./model/section6.js";
+import { dateSource } from "./model/timeline.js";
 import {
   boardPreview,
   boundsOf,
@@ -1857,12 +1858,30 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       });
     },
 
-    layoutByDate(id) {
+    layoutByDate(id, opts) {
       return txn((t) => {
         const item = board.items.get(id);
         if (!item || item.type !== "section") return 0;
+        const spec = opts && typeof opts === "object" ? opts : {};
+        const mode = (typeof opts === "string" ? opts : spec.mode) || "attribute";
+        const rows = Array.isArray(spec.rows) ? spec.rows : [];
         const cards = item.members.map((member) => board.items.get(member)).filter(Boolean);
-        const plan = calendarLayout(cards).slice(0, 45);
+        // The attribute source keeps 2.x placement exactly (UTC days). First/last mention come from the timeline.
+        if (mode === "attribute") {
+          const plan = calendarLayout(cards).slice(0, 45);
+          for (const spot of plan) t.props(spot.uid, itemPlexus(spot.uid, { x: spot.x, y: spot.y }));
+          return plan.length;
+        }
+        const spots = [];
+        for (const card of cards) {
+          const stamp = dateSource(card, rows, mode);
+          if (stamp == null || !Number.isFinite(stamp)) continue;
+          const day = new Date(stamp).getDate();
+          if (!Number.isFinite(day) || day < 1) continue;
+          spots.push({ uid: card.uid, x: 16 + (day - 1) * 28, y: 48, t: stamp });
+        }
+        spots.sort((a, b) => a.t - b.t || String(a.uid).localeCompare(String(b.uid)));
+        const plan = spots.slice(0, 45);
         for (const spot of plan) t.props(spot.uid, itemPlexus(spot.uid, { x: spot.x, y: spot.y }));
         return plan.length;
       });

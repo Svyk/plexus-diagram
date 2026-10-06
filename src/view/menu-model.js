@@ -221,7 +221,7 @@ export function buildMenu(kind, ctx = {}) {
         make("open", c.isBoard ? "Open board" : "Open"),
         ...(c.isBoard ? [make("open-own-page", "Open nested board in its own page")] : []),
         make("open-sidebar", "Open in sidebar", { hint: "Shift Click" }),
-        ...(c.compass ? [make("open-compass", "Open in Compass")] : []),
+        ...(c.compass && c.interop !== false ? [make("open-compass", "Open in Compass")] : []),
         sep(),
         make("copy", "Copy", { hint: "Cmd C" }),
         make("copy-png", "Copy selection as PNG"),
@@ -288,6 +288,13 @@ export function buildMenu(kind, ctx = {}) {
         c.locked ? make("unlock-contents", "Unlock") : make("lock-contents", "Lock"),
         make("present-section", "Present this section"),
         make("layout-dates", "Lay out by date"),
+        make("date-source", "Date source", {
+          children: [
+            make("date-source:attribute", "Attribute", { checked: !c.dateSource || c.dateSource === "attribute" }),
+            make("date-source:first", "First mention", { checked: c.dateSource === "first" }),
+            make("date-source:last", "Last mention", { checked: c.dateSource === "last" }),
+          ],
+        }),
         make("focus-timer", "Focus timer"),
         sep(),
         make("fit-section", "Fit to contents", { disabled: empty }),
@@ -411,6 +418,17 @@ export function buildMenu(kind, ctx = {}) {
         ...snapshotMenus(),
         make("save-view", "Save view…"),
         make("memory-lane", "Memory lane", { hint: "Shift T" }),
+        ...(c.lens ? [
+          make("lens-strength", "Strength", { checked: c.strength === true }),
+          make("lens-dust", "Dust", {
+            children: [
+              make("lens-dust:off", "Off", { checked: !c.dust || c.dust === "off" }),
+              make("lens-dust:6 months", "6 months", { checked: c.dust === "6 months" }),
+              make("lens-dust:1 year", "1 year", { checked: c.dust === "1 year" }),
+              make("lens-dust:2 years", "2 years", { checked: c.dust === "2 years" }),
+            ],
+          }),
+        ] : []),
         ...(c.walk ? [make("walk", "Walk", {
           children: [
             make("walk:reading", "Reading order"),

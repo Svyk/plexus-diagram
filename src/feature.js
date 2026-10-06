@@ -64,7 +64,8 @@ function pullVia(host, pattern, entity) {
   if (typeof host?.pull === "function") return host.pull(pattern, entity);
   return host?.api?.data?.pull?.(pattern, entity) ?? null;
 }
-import { bindErrorStats, bindSpeedFlagSource, clearErrorStats, normalizeSetting, noteSpeedFlags, notedSpeedFlags, onSettingsChange, parseSpeedFlags, readSettings, SETTING_IDS } from "./settings.js";
+import { bindErrorStats, bindSpeedFlagSource, clearErrorStats, normalizeSetting, noteSpeedFlags, notedSpeedFlags, onSettingsChange, parseSpeedFlags, readSettings, refreshIntegrations, SETTING_IDS } from "./settings.js";
+import { INTEGRATION_EVENTS } from "./model/detect.js";
 import { createPerfLog, perfNow } from "./perf-log.js";
 import { createShiftWatch } from "./view/shift-watch.js";
 
@@ -999,6 +1000,9 @@ export async function installPlexusDiagram({
         visit(rec, [{ uid, title: boardTitle(host.blockString?.(uid)) }]);
       },
       tabStore: host.tabs,
+      boardsOf: (uid) => {
+        try { return cardCache.boardsOf(uid); } catch { return []; }
+      },
       onCrumb: (index) => visit(rec, rec.crumbs.slice(0, index + 1)),
       onHistoryBack: () => historyMove(rec, "back"),
       onHistoryForward: () => historyMove(rec, "forward"),
@@ -2308,6 +2312,8 @@ export async function installPlexusDiagram({
     const region = parseRegion(text);
     if (!region || region.owner !== "plexus-diagram" || region.supported !== true) return;
     if (region.kind !== "img" && region.kind !== "view") return;
+    // Off leaves Roam's button and skips the crop. View maps stay.
+    if (region.kind !== "view" && settings[SETTING_IDS.regionsInline] === false) return;
     const delayMs = tooltipDelay(settings[SETTING_IDS.tooltipDelay]);
     const obstacles = () => {
       const root = doc?.querySelector?.(".pxd-root");
@@ -2445,8 +2451,10 @@ export async function installPlexusDiagram({
       if (button.getAttribute?.("data-plexus-owner")) continue;
       if (seen >= 8) break;
       seen += 1;
+      // A pasted ((trailUid)) renders the macro inside a block ref: the trail is the ref, not the block holding it.
+      const ref = button.closest?.(".rm-block-ref[data-uid]");
       const block = button.closest?.(".roam-block-container[data-block-uid]") || button.closest?.(BLOCK_CONTAINER_SELECTOR);
-      const id = block?.getAttribute?.("data-block-uid") || "";
+      const id = ref?.getAttribute?.("data-uid") || block?.getAttribute?.("data-block-uid") || "";
       if (id) fillTrailStrip(button, id);
     }
   }
@@ -2462,7 +2470,7 @@ export async function installPlexusDiagram({
       relChips.scan(node);
       boardChips.scan(node);
       cardChips.scan(node);
-      resurface.scan(node);
+      if (settings[SETTING_IDS.resurface] !== false) resurface.scan(node);
     }
     scanRegions(node);
     scanTrails(node);
@@ -2639,6 +2647,7 @@ export async function installPlexusDiagram({
   }
 
   async function resurfaceCommand(context) {
+    if (settings[SETTING_IDS.resurface] === false) return;
     const parentUid = focusedUid(context);
     if (!parentUid) {
       console.info("[plexus-diagram] Focus a block first");
@@ -2886,6 +2895,22 @@ export async function installPlexusDiagram({
     settings = { ...settings, [id]: next };
     if (id === SETTING_IDS.speedFlags) noteSpeedFlags(next);
     if (id === SETTING_IDS.speedLog) syncSpeedLog();
+    if (id === SETTING_IDS.resurface) {
+      if (next === false) {
+        try { resurface.dispose(); } catch { /* already clear */ }
+      } else {
+        try { resurface.scan(doc?.body || doc); } catch { /* host */ }
+      }
+    }
+    if (id === SETTING_IDS.regionsInline) {
+      if (next === false) {
+        for (const drop of [...regionCrops.values()]) {
+          try { drop(); } catch { /* already gone */ }
+        }
+      } else {
+        try { scanRegions(doc?.body || doc); } catch { /* host */ }
+      }
+    }
     if (id === SETTING_IDS.autoEnhance) {
       autoCache.clear();
       negativeUntil.clear();
@@ -3151,7 +3176,7 @@ export async function installPlexusDiagram({
     if (stopped || !active()) return;
     relChips.start();
     refreshCardCache();
-    resurface.scan(doc.body);
+    if (settings[SETTING_IDS.resurface] !== false) resurface.scan(doc.body);
   }, 600);
   lifecycle.interval(() => {
     if (stopped || !active()) return;
@@ -3184,6 +3209,7 @@ export async function installPlexusDiagram({
     }
   }
   scanRegions(doc);
+  scanTrails(doc?.body || doc);
   for (const portal of doc?.querySelectorAll?.(".bp3-portal") || []) scanRegions(portal);
   // Typing outside a board is a Roam transaction. The board view drops live Roam
   // roots on its window keydown (quiet). An on-screen board stays mounted; this
@@ -3260,7 +3286,13 @@ export async function installPlexusDiagram({
     if (wakeTimer) clearTimeout(wakeTimer);
     if (quietTimer) clearTimeout(quietTimer);
   });
+  try { refreshIntegrations(win); } catch { /* settings panel may be absent */ }
   if (typeof win.addEventListener === "function") {
+    for (const name of INTEGRATION_EVENTS) {
+      lifecycle.event(win, name, () => {
+        try { refreshIntegrations(win); } catch { /* panel */ }
+      });
+    }
     // TSK-3. One set of window listeners for Task Status Tags, not one per board (FAST-1 listener budget).
     const refreshStatuses = () => { for (const rec of mounts.values()) { try { rec.view?.refreshStatuses?.(); } catch { /* next paint */ } } };
     let statusApiSeen = null;

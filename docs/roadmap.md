@@ -726,3 +726,29 @@ POL-2. Each row is the most writes one gesture makes, measured by `test/pol-2-wr
 | Lay out by date | 45 | 1 |
 | Source chip | 0 | 0 |
 | Lenses and timeline viewing | 0 | 0 |
+
+#### POL-4 keyboard walkthrough (live, Readwisenotes, trusted CDP keys)
+
+| Step | Key | Result |
+|---|---|---|
+| Open the panel (Add), Trails tab, focus the first stop | Tab / focus | Stop is a named `role=button` with a focus ring |
+| Move the stop down | Alt+↓ | One `move` write; focus stays on the stop |
+| Move it down again | Alt+↓ | One `move` write; order updated in Roam |
+| Walk from that stop | Enter | Present mode starts at that stop |
+| Leave | Esc | Present mode ends, no write |
+| Open the shortcut sheet | ? | Lists Shift+V, Shift+T, Alt+↑/↓, `[` `]`, K |
+| Label audit inside `.pxd-root` | — | 0 unnamed `role=button`, 0 buttons without a name |
+
+Region overlay (arrows 1 px, Shift 10 px, Enter, Esc), status chooser, halo, why and task popovers (focus in, arrows, Esc returns focus), resurface, crops, PDF chips, timeline rows and the landmark glyph field are covered by `test/pol-4-a11y.test.js`; they were not walked live in this run.
+
+#### POL-5 320-card open (pxdPol5Brd: 20 sections, 300 cards, 150 connections; detail camera; medians of 5 cold opens)
+
+| Stage | Before | After |
+|---|---|---|
+| Shells visible | 441 ms | 360 ms |
+| First bodies | — (overview camera) | 366 ms |
+| Settled | ~1300 ms | 452 ms |
+| Long tasks > 100 ms after 400 ms | 115–150 ms ×2+ | none |
+| Detail pan | 60 fps | 60 fps (p95 17.7 ms) |
+
+Causes fixed: fullscreen read layout mid-mount (now placed from its ResizeObserver), and card stats ran four Datalog queries whose cost is the whole graph's `:block/refs` (now one reverse-attribute `pull_many`, about 19 ms for 300 cards). Roam alone opens the same block in a 55 ms task.

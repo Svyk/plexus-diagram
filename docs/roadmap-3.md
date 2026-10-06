@@ -12,6 +12,11 @@
 | P20 | PDF on the native annotator | 2.11.0 | PDF-1, PDF-2, PDF-3, PDF-4, PDF-5, PDF-6, PDF-7, DOC-20 |
 | P21 | Memory and navigation | 2.12.0 | MEM-1, MEM-2, NAV-1, NAV-2, MEM-3, MEM-4, MEM-5, MEM-6, MEM-7, NAV-3, MEM-8, DOC-21 |
 | P22 | Polish and 3.0 | 3.0.0 | POL-1, POL-2, POL-3, POL-4, POL-5, DOC-1, DOC-2, DOC-3, DOC-22 |
+| P23 | Speed wherever a board lives | 2.14.0 | PERF-4, PERF-9, PERF-10, PERF-5, PERF-6, PERF-7, PERF-8, REL-1, DOC-23 |
+| P24 | Reliability and sibling debt | 2.15.0 | REL-2, REL-3, REL-4, REL-5, ECO-8, ECO-9, DOC-24 |
+| P25 | Heptabase parity, next wave | 2.16.0 | HEP-1, HEP-2, HEP-3, HEP-4, DOC-25 |
+
+P23-P25 were added 2026-10-05 and ship before P22; P22's 3.0.0 gate then covers them.
 
 Rules that bind every task below (docs/roadmap.md §3): add, never take away (3.1); Roam data canonical, props merged on write (3.2); never `:diagram/*`, never `BT_attr*` from Plexus code (3.3); no writes on open, pan, zoom, select (3.4); at most 45 writes per user action (3.5); never stop `mouseup` in a renderBlock editor, window-capture keys, no `setPointerCapture` (3.6); typing budget +0.1 ms/key, exactly two palette entries (3.7); encrypted Svy through `file.get` (3.8); zero runtime deps (3.9); theme from `bp3-dark` or measured luminance, borders carry meaning in dark (3.10); tests for every module (3.11). Live testing on the Readwisenotes window `Readwisenotes - Plexus Diagram/Test Lab`; never a Svy board. Each phase ends with the §4 standing gate.
 
@@ -493,6 +498,228 @@ Rules that bind every task below (docs/roadmap.md §3): add, never take away (3.
 - Build tips: Run the typing bench on three pages: plain, 50 chips, daily page with the resurface macro.
 - Acceptance: 1. `npm run check` green. 2. Three typing benches ≤ +0.1. 3. Unload 0 `.pxd-*`, 0 decorated macro buttons left. 4. Published files byte-identical. 5. Ledger clean.
 - Out of scope: n/a
+- Revisit when: n/a
+
+---
+
+## P23 — Speed wherever a board lives (2.14.0)
+
+### PERF-4 — Sidebar copies open in Board mode; outline rows render lazily
+- Phase: P23 · Version: 2.14.0 · Effort: M · Priority: high · Depends: none
+- Summary: Status: being built now as 2.13.2. A sidebar copy opens in Board mode, and this device remembers the last choice for that board. Outline mode mounts a row only when it nears the scroller, and a row whose uid did not change stays mounted. Measured 2026-10-05 in Readwisenotes: the sidebar defaulted to Outline (`src/view/board-view.js` `if (inSidebar) setOutline(true)`); `syncOutline` rendered every top-level block's whole subtree at once, so a section holding a pdf ref mounted a full PDF.js reader (27 pages, 21 canvases). Steady state was 1.36 s of long tasks per 3 s, about 1,000 mutations per 2 s, and 81 frames per 3 s. The same board in Board mode: 0 long tasks, 181 frames per 3 s.
+- Roam model: No block or props writes. The mode lives in localStorage, the same class of store as the viewport.
+- Design: The first sidebar paint is Board. Outline remains the other button on the existing mode bar. The stored choice is per graph and per board uid. Changing it does not write the graph. Outline rows are diffed by uid: a new uid gets a shell, a removed uid is unmounted, an unchanged uid stays. `renderBlock` runs only after that shell intersects the outline scroller, with a one-screen margin.
+- Build tips: Remove `if (inSidebar) setOutline(true)` at the end of `mountBoardView` (`src/view/board-view.js`, about line 4608). `inSidebar` is `sidebarMountKind(nativeEl) !== "main"` (`sidebarMountKind` at line 109, the flag at line 809). Keep `setOutline` (line 954) for the Outline and Board buttons (lines 979-980). Store the choice at `plexus-diagram:sidebar-mode:${graph}:${boardUid}`, next to `viewportStorageId` (line 120) and `createViewportStore` in `src/host/roam.js` (key `plexus-diagram:vp:${graph}:${uid}`, line 177). `syncOutline` (line 903) currently clears `.pxd-sidebar-outline` and calls `host.renderBlock` for every uid from `sidebarOutlineUids` (`src/model/board.js` line 590) whenever the joined list changes. Replace that with a per-uid diff and an IntersectionObserver on `.pxd-sidebar-outline`. Leave the board park observer in `src/feature.js`.
+- Acceptance: 1. A fresh sidebar open of a Test Lab board, read with `node tools/live/plexus-live.mjs eval "Readwisenotes - "`: the root has `pxd-root--sidebar` and does not have `pxd-root--outline`. 2. Choose Outline, reload, and open that board in the sidebar again: Outline is restored. A different board still opens in Board. 3. On the 2026-10-05 Readwisenotes board, Outline is idle within 2 s of opening: a 3 s trace has 0 long tasks that start after 2 s (the old arm was 1.36 s of long tasks per 3 s). 4. Board mode on that same board stays at 0 long tasks over 3 s and at least 181 frames per 3 s. 5. Before the outline is scrolled, `.pxd-sidebar-outline .rm-pdf-container` count is 0; after the pdf row is scrolled into view the count is at least 1. 6. `node tools/live/ledger.mjs list` shows no new uid from this check.
+- Out of scope: Parking a board that has scrolled off the page (PERF-6). Poster embeds (PERF-5).
+- Revisit when: n/a
+
+### PERF-9 — Leaked card renderers cost nothing and stop leaking
+- Phase: P23 · Version: 2.14.0 · Effort: M · Priority: high · Depends: none
+- Summary: Status: being built now as 2.13.2. A Readwisenotes window open for days on installed 2.13.1 took about 1 s to paint each click on a board and panned in stutters. CDP listener counts showed 5,852 capture `pointerup` listeners from `onMenuPointer` (`src/view/cards.js`) and 5,850 `roam-plexus:ready`/`unload` pairs on `window`, across three loaded copies of the same build, with one `.pxd-root` in the DOM. Every click started a 13-frame loop per leaked renderer, each frame running two whole-document `querySelector` calls: about 23,000 query pairs per second, 5.9 s of 6.0 s busy. A fresh load of the same board: clicks paint in about 72 ms and nothing leaks on pan, click, navigation or sidebar open and close.
+- Roam model: None. No writes.
+- Design: One menu watcher per document (one `pointerup` listener, at most one rAF loop) with a registry of renderers whose anchors are scoped to their own root. Renderers whose root left the document are pruned on the next event. One shared pair of `roam-plexus:ready`/`unload` listeners per window. A new extension load awaits `window.__plexusDiagramTeardown` from an earlier copy before installing. A `mountBoardView` that throws disposes what it built, and feature.js retries a failing board with backoff instead of every reconcile tick.
+- Build tips: `watchEditorMenus` in `src/view/editor-menus.js` (line 142), `menuAnchor`/`ensureMenus`/`onMenuPointer` in `src/view/cards.js` (lines 369-380), the region listeners near line 3210, `activeLifecycle` in `src/extension.js`, the mount try blocks in `src/feature.js` (lines 763, 817, 905). Count listeners with CDP `DOMDebugger.getEventListeners` on `document` and `window`.
+- Acceptance: 1. With 50 renderers registered in a test, there is exactly one `pointerup` listener and one rAF loop. 2. Live: after a fresh load, then 20 navigations away and back plus 10 sidebar open/close cycles, the document has at most one Plexus `pointerup` listener per mounted board. 3. Loading the build twice without unload leaves one copy's listeners. 4. Click to paint p50 under 100 ms on the C. botulinum learning board (Event Timing). 5. A forced mount failure adds zero listeners and logs one warning.
+- Out of scope: Leaks in other extensions.
+- Revisit when: n/a
+
+### PERF-10 — Fewer Roam API calls per board open
+- Phase: P23 · Version: 2.14.0 · Effort: M · Priority: medium · Depends: none
+- Summary: Opening the C. botulinum learning board (39 cards, 4 page cards) costs about 155 `data.pull` calls plus 7 pull watches per open, measured 2026-10-05 by wrapping `roamAlphaAPI.data`. Roam caps the API at 1,500 calls per 60 s across all extensions ("roamAlphaApi maximum mutation rate limit exceeded"); a loop of board opens hit that cap after about nine opens. Plexus should not spend another extension's budget.
+- Roam model: Read-only. No new writes.
+- Design: Read a board in one or two `pull-many` / `data.q` calls (board block, its children with props, refs, and page titles in one pattern), cache by uid for the session with the existing card cache, and share one pull watch per board instead of one per card. Page cards read their rows through the same batched read.
+- Build tips: Count calls first by wrapping `window.roamAlphaAPI.data` for one open (helper in the PERF-8 gate). The reads live in `src/host/roam.js` (`pull` near line 4012 of the built file) and the session load in `src/session.js`. The card cache is `src/model/card-cache.js`.
+- Acceptance: 1. One open of the C. botulinum board makes at most 20 `roamAlphaAPI.data` calls, counted by wrapper. 2. 30 open/close cycles in 60 s do not trip Roam's rate limit. 3. Cards, page cards and badges look the same as before (screenshots before/after). 4. `npm run check` green.
+- Out of scope: Other extensions' call budgets.
+- Revisit when: n/a
+
+### PERF-5 — Heavy embeds are posters until asked
+- Phase: P23 · Version: 2.14.0 · Effort: M · Priority: high · Depends: none
+- Summary: A PDF reader, video, iframe, or tweet inside a card body, a page card, or an outline row stays a static poster until that card is focused or the user clicks Open. At most one live heavy embed per board.
+- Roam model: Read-only. Opening a poster does not write a block. The live PDF is still Roam's own reader.
+- Design: The poster shows a title, a count only when the block already carries one, and a first frame or thumbnail only when that image is already in memory. Open and focus mount the live node and close the previous live embed on that board. An outline row uses the same poster, so scrolling a pdf ref into view does not start PDF.js.
+- Build tips: `EMBED_SEL` in `src/view/cards.js` (line 402) is `iframe, video, .rm-pdf-highlight, .rm-pdf-container, .twitter-tweet, .rm-xparser-default-tweet`. `armEmbedShield` (line 407) runs after `renderBlock`. Draw the poster first and call `renderBlock` only for the one open uid. PDF cards already do this for the reader: `coverModel` (`src/model/pdf.js` line 40) returns `{ title, count, label }`, `readerRule` (line 49) keeps a single open uid, and `src/view/cards.js` applies it around line 1891. Generalise `readerRule` beyond `item.kind === "pdf"`. `readPdfCover` in `src/host/roam.js` (line 266) sets `count` by counting highlight blocks, then passes it to `coverModel`. Show that number as highlights. Do not fetch the PDF to invent a page count.
+- Acceptance: 1. A Test Lab board with one pdf ref, one video or iframe, and one tweet opens with `.pxd-root` containing 0 of `.rm-pdf-container`, `iframe`, and `video`, and each poster shows its title. 2. Open on the pdf leaves exactly one `.rm-pdf-container` inside `.pxd-root`. 3. Open on the video removes that container and leaves exactly one live embed. 4. Focusing a card that holds an iframe keeps the same single-live count. 5. `:edit/time` of the board and of the three blocks is unchanged across those opens. 6. `node tools/live/plexus-live.mjs shot "Readwisenotes - " .live/shots/PERF-5-poster.png .pxd-root` shows the posters.
+- Out of scope: Downloading a PDF to count its pages. Two live readers on one board.
+- Revisit when: n/a
+
+### PERF-6 — Park every board that is out of view
+- Phase: P23 · Version: 2.14.0 · Effort: M · Priority: high · Depends: none
+- Summary: A board that is off screen suspends paint, page watches, and observers, and wakes when it comes back. That includes a main-page board scrolled away, a collapsed sidebar window, and a board inside a closed Roam block. The sidebar path already parks. The others still run.
+- Roam model: None. Park and wake do not write. Wake rebuilds the view from the graph and restores the in-memory camera.
+- Design: One observer decides dormant versus awake for every mount. Dormant disposes the view, releases the session, and leaves a min-height gap, which the sidebar path already does. A board that contains the focused element stays awake. Fullscreen stays awake.
+- Build tips: `mount` in `src/feature.js` (about line 803) sets `rec.dormant` and observes only when `inRightSidebar(native)` (line 856). `ensureViewportWatch` (line 869) builds one IntersectionObserver with `rootMargin: "60px"` and calls `wake` (line 894) or `hibernate` (line 880). Observe main mounts on that same observer. Also park when the sidebar window is collapsed or the diagram's Roam parent block is closed, since a closed block is not an intersection change. `hibernate` already drops `rec.off` and calls `rec.session.release`. `src/view/offscreen.js` only decides card shells: `shellOffscreen`, `rectMisses`, `unmountDue`, and `UNMOUNT_GRACE_MS` (10_000). Use those for cards inside an awake board. Do not use them to park the board.
+- Acceptance: 1. Two boards on one Test Lab page. Scroll the first fully out of view: its mount has no `.pxd-root`, and the gap min-height is at least 40. 2. Scroll it back: `.pxd-root` returns within 1 s and the camera matches the pre-park viewport. 3. Collapse the right sidebar while a board is open in it: that copy has no `.pxd-root` until the sidebar is expanded. 4. Close a Roam block that contains a board: `stats.pageWatches` drops by that board's watches, and reopening the block brings the count back. 5. A board that holds the focused textarea keeps its `.pxd-root`. 6. Park and wake alone leave the board block's `:edit/time` unchanged.
+- Out of scope: Card `content-visibility` (PERF-3). Unloading the extension.
+- Revisit when: n/a
+
+### PERF-7 — Typing next to a mounted board under +1 ms/key
+- Phase: P23 · Version: 2.14.0 · Effort: L · Priority: high · Depends: none
+- Summary: Typing in a block beside a mounted 40-card board costs at most +1.0 ms per key (median). 2.12.1 and 2.13.0 measured about +2 ms/key with that board mounted and `BENCH_SCRATCH` above it. The bench goes back into the phase gate.
+- Roam model: None. The bench types into the existing scratch block above the board.
+- Design: Profile 40 keys with the board mounted and 40 with it unloaded. Attribute script time by script URL. Cut the Plexus share until the median delta over 5 interleaved rounds of 200 keys is at most +1.0 ms/key. The no-board budget stays +0.1 ms/key.
+- Build tips: `tools/live/bench.mjs` reads `BENCH_VIEW=page` (line 13) and `BENCH_SCRATCH` (lines 873 and 1041). The scratch block has to sit above the board or the board scrolls out and unmounts. Record CDP `Tracing` and split V8 time by script URL. Ignore `blob:` entries: other extensions load from blob URLs too, so a blob bucket is not Plexus. Count only the injected `extension.js` URL. Per-key work lives in `src/view/interactions.js` and `src/view/board-view.js`. Pull-watch callbacks in `src/host/roam.js` (about lines 310 and 325) increment `stats.watches`. Log that count per key before changing code, then re-measure after each cut. Do not add a document MutationObserver (rule 3.7).
+- Acceptance: 1. Five interleaved rounds, `BENCH_VIEW=page`, `BENCH_SCRATCH` set to the block above the 40-card board, `node tools/live/bench.mjs "Readwisenotes - "`: mounted median delta at most +1.0 ms/key and p95 at most +3 ms; unloaded at most +0.1 ms/key. 2. The trace table names the `extension.js` URL that still pays Plexus time, and lists the blob bucket separately, not as Plexus. 3. Each cut has a before and after median in the bench output. 4. Unload leaves 0 `.pxd-*`.
+- Out of scope: Open time for 300 cards (POL-5). Changing the +0.1 ms/key no-board budget.
+- Revisit when: n/a
+
+### PERF-8 — Live perf gate script
+- Phase: P23 · Version: 2.14.0 · Effort: M · Priority: high · Depends: none
+- Summary: `tools/live/perf-gate.mjs` measures one fixture board, prints a table, and exits non-zero when a row is over its threshold. Every later phase gate runs it.
+- Roam model: The script may create the fixture and must delete those blocks before it exits. It does not write a user's board.
+- Design: The fixture is 40 cards, 3 images, one pdf ref, and one page card, on `Plexus Diagram/Test Lab`. Rows: idle 3 s with the board in the main column; sidebar copy loaded versus parked; sidebar Board versus Outline; typing bench with the scratch block above the board. Thresholds, written at the top of the script: main idle long-task time 0 ms over 3 s; sidebar Board long-task time 0 ms over 3 s; sidebar Outline has no long task that starts after 2 s; typing median at most +1.0 ms/key mounted and at most +0.1 ms/key with the board parked. The parked arm fails when its long-task time is above 0.
+- Build tips: Follow `tools/live/README.md`. The target is `"Readwisenotes - "`. Drive the page with `plexus-live.mjs eval` and type with `bench.mjs` (`BENCH_VIEW`, `BENCH_SCRATCH`). Build the board with `node tools/live/fixture.mjs` or `taskboard.mjs` and record uids through `ledger.mjs`. Clean up with `node tools/live/ledger.mjs cleanup "Readwisenotes - "`, which deletes only blocks on `Plexus Diagram/Test Lab` and `diagram testing`. `plexus-live.mjs` refuses the window titled `plx typing bench`. `inject` refuses a window whose `window.__plexusDiagram` is set and whose `window.__pxdLive` is not.
+- Acceptance: 1. `node tools/live/perf-gate.mjs "Readwisenotes - "` prints the four rows and exits 0 on a build that meets the thresholds. 2. A build that still eagerly renders sidebar Outline exits non-zero. 3. After a run, `node tools/live/ledger.mjs list` has no uid on `Plexus Diagram/Test Lab` from this script. 4. DOC-23, DOC-24, and DOC-25 name this command.
+- Out of scope: Fixing a regression the script reports.
+- Revisit when: n/a
+
+### REL-1 — The reconcile tick stops rewriting unchanged classes
+- Phase: P23 · Version: 2.14.0 · Effort: S · Priority: high · Depends: none
+- Summary: Every 400 ms, reconcile rewrites the `class` attribute on `.rm-diagram` and `.rm-diagram-title-panel` even when the new value equals the old one. A MutationObserver on 2026-10-05 recorded those attribute mutations with `oldValue` equal to the new value, on every copy. The tick still runs. It writes a class only when the element does not already have it.
+- Roam model: None.
+- Design: `consider` adds `pxd-outline-native` or `pxd-native-hidden` only when that token is absent. The title panel gets the same check. Nothing else writes `class` to the same string.
+- Build tips: `RECONCILE_INTERVAL_MS` is 400 (`src/feature.js` line 54). `lifecycle.interval(reconcile, RECONCILE_INTERVAL_MS)` is at line 2203. `reconcile` (line 1438) calls `consider` for every `.rm-diagram`. The writes are `native.classList.add(OUTLINE_NATIVE_CLASS)` and `titlePanelOf(native)?.classList.add(OUTLINE_NATIVE_CLASS)` (lines 1032-1033) and `native.classList.add(NATIVE_HIDDEN_CLASS)` (line 1041). The strings are `pxd-outline-native` and `pxd-native-hidden` (`src/discovery.js` lines 8-9). `TITLE_PANEL_CLASS` is `rm-diagram-title-panel` (feature.js line 57). Guard each add with `classList.contains`. Do not assign `className` to the current class string. A unit test calls `consider` twice and asserts the second call produces no `class` attribute record (`MutationObserver`, `attributeOldValue: true`).
+- Acceptance: 1. On Test Lab with two mounted copies, a 2 s MutationObserver for `attributes` on `.rm-diagram, .rm-diagram-title-panel` reports 0 records whose `class` `oldValue` equals the new value. 2. An outline copy still has `pxd-outline-native`, and a second diagram in one embed still has `pxd-native-hidden`. 3. `npm run check` is green, including the double-call test.
+- Out of scope: Removing or slowing the 400 ms tick.
+- Revisit when: n/a
+
+### DOC-23 — P23 gate and release 2.14.0
+- Phase: P23 · Version: 2.14.0 · Effort: S · Priority: high · Depends: PERF-4, PERF-5, PERF-6, PERF-7, PERF-8, REL-1
+- Summary: Standing gate for the speed phase, then release 2.14.0. `tools/live/perf-gate.mjs` is part of the gate.
+- Roam model: None.
+- Design: Standing gate items, CHANGELOG 2.14.0, and a short note of the 2026-10-05 sidebar numbers against the new trace. README limits mention the poster and the parked board in one sentence each.
+- Build tips: `npm run check`. Run `node tools/live/perf-gate.mjs "Readwisenotes - "` and `node tools/live/bench.mjs "Readwisenotes - "` with `BENCH_VIEW=page`. Bump `package.json`, tag `v2.14.0`, and `cmp` the published `extension.js` and `extension.css` against the local build. Git author Svyatoslav Kleshchev, new commits only.
+- Acceptance: 1. `npm run check` green. 2. `node tools/live/perf-gate.mjs "Readwisenotes - "` exits 0. 3. Typing bench: no board at most +0.1 ms/key; 40-card board mounted at most +1.0 ms/key (medians). 4. Unload: 0 `.pxd-*`, listeners back to baseline, 0 watches, `window.__plexusDiagram` removed. 5. Published files byte-identical to the build. 6. Ledger empty.
+- Out of scope: A Depot PR.
+- Revisit when: n/a
+
+---
+
+## P24 — Reliability and sibling debt (2.15.0)
+
+### REL-2 — Real-Roam smoke suite
+- Phase: P24 · Version: 2.15.0 · Effort: M · Priority: high · Depends: none
+- Summary: `tools/live/smoke.mjs` runs a fixed checklist on `Plexus Diagram/Test Lab`, prints pass or fail per step, and cleans up through the ledger. The 2.8 to 2.12 run shipped real bugs while the fake-DOM tests stayed green: a cardchips `children.indexOf` throw with an observer loop, NAV-2 dropping top-level refs, and an image cut losing regions. This script is the acceptance core for later unattended runs.
+- Roam model: The script creates and deletes blocks on `Plexus Diagram/Test Lab` only. It does not touch another page.
+- Design: The steps, in order: create a card, edit its text, add an arrow, add a section, move the card into the section, undo, duplicate, open the board in the sidebar in Board and in Outline, restore native, and confirm the auto-enhance first-edit stamp. Each step prints `pass` or `fail` and a one-line reason. The process exits 0 only when every step passed, and it runs ledger cleanup on the way out, including after a failure.
+- Build tips: Drive the window with `node tools/live/plexus-live.mjs eval` and `input`, target `"Readwisenotes - "`, as in `tools/live/README.md`. Record uids with `ledger.mjs` and finish with `node tools/live/ledger.mjs cleanup "Readwisenotes - "`. Restore native goes through `session.restoreNative` (`src/session.js` line 1901), called from `restoreCommand` in `src/feature.js` (line 1536). The first-edit stamp is `stampBoard` in `src/session.js` (line 593): a virtual board's first write adds the board marker in that same group. Assert the marker is absent before the edit (`:edit/time` of the board unchanged on open) and present after the one edit.
+- Acceptance: 1. `node tools/live/smoke.mjs "Readwisenotes - "` prints pass for all 10 steps and exits 0. 2. Forcing one step to fail prints fail for that step and exits non-zero. 3. After either run, `node tools/live/ledger.mjs list` shows no smoke uid on `Plexus Diagram/Test Lab`. 4. Open of the fixture writes nothing: board `:edit/time` is unchanged until the edit step.
+- Out of scope: Replacing the unit tests. Covering copy and paste (REL-4).
+- Revisit when: n/a
+
+### REL-3 — "New drawing" joins Plexus undo
+- Phase: P24 · Version: 2.15.0 · Effort: M · Priority: medium · Depends: none
+- Summary: New drawing is one Plexus undo step. `window.RoamPlexus.create` writes the drawing block outside Plexus's undo log, a known limit since 2.13.0. One undo removes the drawing block and the ref card together.
+- Roam model: The drawing block is still created by Roam Plexus (the excalidraw macro string Roam Plexus writes). The ref card is still a Plexus block. Both deletes happen in the one undo step.
+- Design: After `RoamPlexus.create` returns a uid, that uid is recorded on the open Plexus undo group as a delete. Undo deletes the drawing block and the ref card. Redo creates both again. With Roam Plexus unloaded, the existing fallback create stays on the same group.
+- Build tips: `createDrawing` in `src/session.js` (line 1086) calls `api.create({ parentUid, order })`, then `txn` for the ref card, inside `grouped` (line 1101). `grouped` is `host.group` (`src/host/roam.js` line 551). That group only records writes that go through this host, and groups do not nest (line 550). Roam Plexus `create` (`~/roam-plexus/src/api.js` line 312) calls its own `host.createDrawing`, so the drawing uid never enters this `undoLog`. Push the returned uid onto the open group so `host.undo` (line 567) deletes it with the ref card. The fallback `host.createBlock(spec)` (session.js line 1096) already uses this host; keep it inside the same group. Do not open a second group from `stampedRun` (session.js line 622).
+- Acceptance: 1. On Test Lab, New drawing creates one drawing block and one ref card, and the write count for the gesture is at most 45. 2. One undo removes both, and a second undo does not remove a neighbouring card. 3. Redo restores both. 4. With Roam Plexus unloaded, the fallback create still undoes in one step. 5. `npm run check` green.
+- Out of scope: Changing Roam's own undo stack. Editing the drawing scene.
+- Revisit when: n/a
+
+### REL-4 — Clipboard acceptance without CDP keys
+- Phase: P24 · Version: 2.15.0 · Effort: M · Priority: medium · Depends: none
+- Summary: Copy, cut, and paste can be tested without CDP key events. CDP keys do not reach Electron's clipboard, so this stayed a manual check. A test seam drives `src/view/clipboard-io.js` with synthetic ClipboardEvents, and `tools/live/README.md` gains a short manual checklist for the real OS clipboard.
+- Roam model: None in the unit test. The manual checklist uses ordinary board writes and one undo.
+- Design: The seam calls the same handlers `createClipboardIO` registers. A synthetic copy receives the plexus mime and `text/plain`. A synthetic paste of that mime calls the plexus paste handler once. A synthetic cut calls the cut-done handler once. The README states that `plexus-live.mjs input` key steps do not carry the OS clipboard, then lists the three manual gestures.
+- Build tips: `createClipboardIO` (`src/view/clipboard-io.js` line 72) listens on `doc` for `copy`, `cut`, and `paste`, and on `win` for `keydown` and `paste`. The handlers are closed over, so either return `dispatch(event)` from `createClipboardIO` or let tests pass a fake `doc` that records `addEventListener`. Build the event so `clipboardData.getData` and `setData` work for `PLEXUS_MIME` from `src/model/clipboard.js`. Do not call `document.execCommand("copy")` in the unit test. In `tools/live/README.md`, under the harness commands, add: select two cards, Cmd+C, click empty board, Cmd+V, confirm two new cards and one undo; repeat for cut; repeat for a text paste into a card editor.
+- Acceptance: 1. A unit test pastes a synthetic plexus payload and asserts the plexus paste handler runs once, and a copy event receives `text/plain` plus the plexus mime. 2. A cut event calls the cut-done handler once. 3. `npm run check` green. 4. `tools/live/README.md` lists the three OS-clipboard gestures and states that input key steps do not carry the clipboard. 5. The manual pass on Test Lab is recorded as pass, or still open, in the phase notes before DOC-24 tags the release.
+- Out of scope: Making CDP synthesize an OS clipboard.
+- Revisit when: n/a
+
+### REL-5 — Error budget for callbacks
+- Phase: P24 · Version: 2.15.0 · Effort: M · Priority: medium · Depends: none
+- Summary: Every pull-watch, observer, and timer callback runs through one guard. The guard logs once per error signature, adds one to `stats.errors`, and stops a callback that throws 20 times in a minute. Settings shows a quiet "N errors" line when the count is not zero.
+- Roam model: None. The count is in memory and dies on unload.
+- Design: The signature is the error name plus the first stack frame. The first throw of a signature logs with `console.error`. Throws 2 through 19 of that signature only increment the count. The 20th throw in a 60 s window replaces that callback with a no-op until the minute has passed or the extension reloads. A different signature still logs. The settings row is plain text, hidden at 0.
+- Build tips: `src/host/roam.js` line 235 creates `stats = { writes, watches, pageWatches, renders, items }` and has no `errors` field. Add `errors: 0`. The pull-watch wrappers are about lines 310 and 325. `src/lifecycle.js` registers raw callbacks in `interval` (line 45), `observer` (line 57), and `pullWatch` (line 70). `reconcile` is started with `lifecycle.interval` (`src/feature.js` line 2203). `armEmbedShield` builds its own MutationObserver (`src/view/cards.js` line 418). Put `guardCallback(name, fn)` in one module and use it at those sites. The settings line is a read-only row in `src/settings.js` beside `showVersionBadge` (`show-version-badge`, line 17), rendered only when `stats.errors > 0`, text like `3 errors`. No network and no toast.
+- Acceptance: 1. A test callback that throws logs once across 19 calls and leaves `stats.errors === 19`. 2. The 20th throw in that minute silences it: the 21st call does not throw and does not increment. 3. A second signature still logs and increments. 4. With fake timers, the silenced callback is armed again after 60 s. 5. The settings panel has no errors line at 0, and shows `3 errors` when the count is 3. 6. Unload removes the panel.
+- Out of scope: Sending errors off the machine. A per-error settings page.
+- Revisit when: n/a
+
+### ECO-8 — Fix Roam Compass drawCardLinks page-ref edges
+- Phase: P24 · Version: 2.15.0 · Effort: M · Priority: medium · Depends: none
+- Summary: Roam Compass draws a connection edge when the connection string uses page refs, not only block refs. This sibling bug was left unfixed at Plexus Diagram 2.13.0. Fix it in `~/roam-compass`, test it, bump, and deploy Pages.
+- Roam model: Compass reads connection child strings. This task does not write them.
+- Design: A page-ref connection draws one line between those two card nodes, with the label that sits between the arrows, the same way a block-ref connection already draws. A string with one page ref and one block ref draws when both ends resolve. A string with one end draws nothing.
+- Build tips: In `~/roam-compass`, `connectionEdges` (`src/model/boards.js` line 82) collects ends with `BLOCK_REF = /\(\(([^)]+)\)\)/g` and skips the child when fewer than two uids match, so a page-ref connection returns nothing. `drawCardLinks` (`src/view/overlay.js` line 1524) only draws those edges. `endOf` looks up `boxes` by uid, and `blockRefOf` (line 53) only matches a string that is exactly a block ref. Teach `connectionEdges` to return page titles as ends, and resolve a title to the card node in `drawCardLinks`. The alias map (line 1528) already maps a block-ref target uid onto the card uid; add the title. Test page-ref, block-ref, mixed, and one-ended strings. `npm run check` in that repo. Deploy `https://svyk.github.io/roam-compass`. In the Roam client, remove that Pages URL and add the same URL back.
+- Acceptance: 1. `npm run check` in `~/roam-compass` is green, including the four edge cases. 2. On a Test Lab board, a page-ref connection between two cards produces one `.compass-edge` between those nodes while Compass is open on the board. 3. A block-ref connection still draws one edge. 4. `cmp` of the published `extension.js` against the local build is empty. 5. This task changes no file in plexus-Diagram.
+- Out of scope: New Compass features. Editing Plexus Diagram to work around the missing edge.
+- Revisit when: n/a
+
+### ECO-9 — Fix Roam Plexus validate("apiVersion", 6)
+- Phase: P24 · Version: 2.15.0 · Effort: S · Priority: medium · Depends: none
+- Summary: `window.RoamPlexus.validate("apiVersion", 6)` returns ok. Today it returns not ok, because validate demands the current version and the current version is 7. Callers that still probe 6, which Plexus Diagram does, get a false failure. Fix it in `~/roam-plexus`, test it, bump, and deploy Pages. `apiVersion` stays 7.
+- Roam model: None.
+- Design: `validate("apiVersion", 6)` and `validate("apiVersion", 7)` return ok with data 6 and data 7. `validate("apiVersion", 3)` stays not ok, with the error `apiVersion must be 7`. The frozen object's `apiVersion` field stays 7. No method is removed.
+- Build tips: `validate` in `~/roam-plexus/src/api.js` (line 442) returns ok only when `value === API_VERSION`. `API_VERSION` is 7, so 6 fails. `test/batch16.test.js` (lines 128-129) asserts 7 ok and 3 not ok, and does not assert 6. Accept the integers 6 and 7. Plexus Diagram still gates on `apiVersion >= 6` in `src/model/region-card.js` (line 6) and `src/view/cards.js` (line 2169); leave those checks. `npm run check` in roam-plexus. Deploy `https://svyk.github.io/roam-plexus`. Remove that Pages URL in the Roam client and add the same URL back.
+- Acceptance: 1. `npm run check` in `~/roam-plexus` is green. 2. The test asserts `validate("apiVersion", 6)` is ok with data 6, 7 is ok with data 7, and 3 is not ok. 3. After remove-and-readd, `window.RoamPlexus.apiVersion === 7` and `window.RoamPlexus.validate("apiVersion", 6).ok === true` in Readwisenotes. 4. `cmp` of the published `extension.js` against the local build is empty. 5. This task changes no file in plexus-Diagram.
+- Out of scope: Moving `apiVersion` off 7. A compatibility shim inside Plexus Diagram.
+- Revisit when: n/a
+
+### DOC-24 — P24 gate and release 2.15.0
+- Phase: P24 · Version: 2.15.0 · Effort: S · Priority: high · Depends: REL-2, REL-3, REL-4, REL-5, ECO-8, ECO-9
+- Summary: Standing gate for the reliability phase, then release 2.15.0. `tools/live/smoke.mjs` and `tools/live/perf-gate.mjs` are both part of the gate.
+- Roam model: None.
+- Design: Standing gate, CHANGELOG 2.15.0, and one line each for the smoke result, the Compass page-ref edge, and `validate("apiVersion", 6)`.
+- Build tips: `npm run check` in plexus-Diagram, roam-compass, and roam-plexus. Run `node tools/live/smoke.mjs "Readwisenotes - "` and `node tools/live/perf-gate.mjs "Readwisenotes - "`. Tag `v2.15.0` only after each Pages `cmp` matches. Remove and re-add the Compass and Roam Plexus Pages URLs before the live checks.
+- Acceptance: 1. `npm run check` green in all three repos. 2. `node tools/live/smoke.mjs "Readwisenotes - "` exits 0. 3. `node tools/live/perf-gate.mjs "Readwisenotes - "` exits 0. 4. Unload: 0 `.pxd-*`, listeners and watches at baseline. 5. Published files for all three repos byte-identical to their builds. 6. Ledger empty.
+- Out of scope: A Depot PR.
+- Revisit when: n/a
+
+---
+
+## P25 — Heptabase parity, next wave (2.16.0)
+
+### HEP-1 — Journal panel
+- Phase: P25 · Version: 2.16.0 · Effort: M · Priority: medium · Depends: none
+- Summary: The board panel shows today's daily page, with a date stepper. Dragging a block from that list onto the board makes a card. Opening the panel and stepping the date write nothing. The drop is the first write.
+- Roam model: The drop uses the existing card-create path and writes one block ref (plus its props) in one undo step. Reading the daily page and stepping the date are pulls only.
+- Design: A Journal tab lists the top-level blocks of the daily page for the stepped date. Each row shows the block's first line and is draggable. The stepper moves one day at a time. Clicking a row does not add a card. An empty day shows one line, "Nothing on this day."
+- Build tips: Tabs are built in `src/view/panel.js` by `tabBtn` (line 68): search, related, boards, outline, info. Add `journal` beside them. `row` (line 196) sets `draggable` and `CARD_MIME` (`src/model/drop.js`) and, on click, calls `on.addBeside`, which writes. Journal rows use the drag half only. `parseDropPayload` already turns that mime into a card string. Daily titles parse with `pageTitleToDate` (`src/model/resurface.js` line 9), which matches a title like `October 5th, 2026`. `addDaily` in `src/view/board-view.js` (line 2090) writes a page card for a date; the journal lists that page's children instead, and the drop is a block ref, not `addDaily`. Pull the children when the tab opens or the date changes. Compare `:edit/time` so a read is not a write.
+- Acceptance: 1. Open Journal on today's daily page: the row count equals that page's top-level blocks, and the board's `:edit/time` is unchanged. 2. Step back one day and forward one day: the list follows, and `:edit/time` stays unchanged. 3. Click a row: no new card, `:edit/time` unchanged. 4. Drag a row onto the board: one new card whose string is that block ref, one undo removes it, write count at most 45. 5. An empty day shows the empty line and still writes nothing. 6. Light and dark shots: `node tools/live/plexus-live.mjs shot "Readwisenotes - " .live/shots/HEP-1-journal.png .pxd-panel`.
+- Out of scope: Writing into the daily page. Scheduling. A second journal product.
+- Revisit when: n/a
+
+### HEP-2 — Board tabs in fullscreen
+- Phase: P25 · Version: 2.16.0 · Effort: M · Priority: medium · Depends: none
+- Summary: Fullscreen can hold several boards as tabs. Cmd+1 through Cmd+9 selects a tab. A recent-boards list on this device remembers the tabs. Nothing is written to Roam.
+- Roam model: None. Tabs and the recent list are localStorage, keyed by graph.
+- Design: The tab strip sits in the fullscreen chrome. Opening a board while fullscreen adds a tab, up to 9. Closing a tab leaves the board in the graph. Cmd+1 selects the first tab, through Cmd+9 for the ninth. The recent list restores those tabs on the next fullscreen enter, in the same order. Shift+1 and Shift+2 keep their current zoom commands.
+- Build tips: `applyFullscreenChrome` (`src/view/fullscreen.js` line 67) toggles one mount (`pxd-mount--fullscreen` and `body.pxd-has-fullscreen`). Add the strip inside that mount, not on `document.body` outside `.pxd-root`. Switching tabs calls `visit` (`src/feature.js`, used by `onOpenBoard` about line 588), which already replaces `rec.crumbs`. New keys go in `SHORTCUTS` (`src/view/shortcuts.js` line 21); the file says a key that is not in that list is not a shortcut. Shift+1 is Fit all (line 55) and Shift+2 is Fit selection (line 56), so the tab keys require meta or ctrl and must not match those shift rows. Store the uid list beside `createViewportStore` (`src/host/roam.js` line 177, key `plexus-diagram:vp:${graph}:${uid}`), for example `plexus-diagram:fullscreen-tabs:${graph}`, capped at 9. Do not write props.
+- Acceptance: 1. Enter fullscreen, open three boards: three tabs, and the visible board uid matches the selected tab. 2. Cmd+1, Cmd+2, and Cmd+3 select those tabs. Cmd+4 does nothing when only three tabs exist. 3. Shift+1 still fits all. 4. Leave fullscreen and enter again: the same three tabs return, from localStorage, and the board blocks' `:edit/time` values are unchanged. 5. A fourth graph's tabs do not appear in this graph. 6. The `?` sheet lists Cmd+1 through Cmd+9.
+- Out of scope: Syncing the tab list through Roam. Tabs outside fullscreen.
+- Revisit when: n/a
+
+### HEP-3 — Touch and tablet
+- Phase: P25 · Version: 2.16.0 · Effort: L · Priority: medium · Depends: none
+- Summary: A coarse pointer can pinch to zoom, pan with two fingers, long-press for the context menu, and grab a larger grip. `disable-on-mobile` still keeps Plexus off on phones.
+- Roam model: None. Gestures change the in-memory camera and open the existing menu.
+- Design: Two-finger pinch zooms around the midpoint. Two-finger move pans. A long-press of about 500 ms, with movement under 8 px, opens the context menu at that point. One-finger drag still moves a card or pans with the hand tool. Grips under `pointer: coarse` are at least 44 px on screen. The phone setting is unchanged.
+- Build tips: `onWheel` in `src/view/interactions.js` (line 665) already treats ctrl or meta wheel as pinch (`pinch` at line 671) for a trackpad. Add a two-pointer path beside it for touch: distance change calls the same `zoomAt` path, and a two-finger move calls `setViewport`. Long-press calls the same handler as `listen(root, "contextmenu")` in `src/view/board-view.js` (line 4092), which reaches `onContextMenu` in `interactions.js` (line 885). `.pxd-grip` in `src/extension.css` (line 617) is 8 px wide (`.pxd-grip--right` uses `calc(8px * var(--pxd-inv-zoom))`). Under `@media (pointer: coarse)` size the grip so the screen size is at least 44 px, still multiplied by `--pxd-inv-zoom`. `disable-on-mobile` is `SETTING_IDS.disableOnMobile` (`src/settings.js` line 18, default true). `isMobile` (`src/feature.js` line 135) reads `extensionAPI.platform.isMobile`, and the gate is at line 399. Leave that gate. A touch laptop or iPad that Roam does not report as mobile still gets the gestures.
+- Acceptance: 1. With a coarse-pointer emulation, two-finger pinch from zoom 1 to about 2 lands within 0.15 of the expected zoom and keeps the midpoint within 24 px. 2. Two-finger pan moves the camera by the finger delta within 8 px, and does not move a card. 3. A 500 ms press with under 8 px of movement opens `.pxd-menu`; a press that moves 20 px does not. 4. A selected card's grip is at least 44 px on screen under `pointer: coarse`, and stays 8 px under `pointer: fine`. 5. With `disable-on-mobile` on and `platform.isMobile` true, no `.pxd-root` mounts. 6. `:edit/time` is unchanged across pinch, pan, and long-press.
+- Out of scope: A phone layout. Turning `disable-on-mobile` off. A stylus-only mode.
+- Revisit when: n/a
+
+### HEP-4 — Highlights from reading pages to cards
+- Phase: P25 · Version: 2.16.0 · Effort: M · Priority: medium · Depends: none
+- Summary: Dragging a highlight block from a Readwise-style page (`Articles/…` or `Media Captures/…` in the notes graph) makes a card with a source chip. The chip shows the page title and the author when the page has an author attribute, and it opens that page in the sidebar.
+- Roam model: The drop writes one block-ref card, the same write as any other block drop, one undo step. The chip is computed on read from the page title and a child whose string starts with `Author::`. The author is not copied into props.
+- Design: The card is a normal block-ref card. The chip sits on it only when `pageTitleOf` starts with `Articles/` or `Media Captures/`. With an author child, the chip text is the title and the author. Without one, the chip is the title only. Click and Enter open the source page in the sidebar. A block from any other page gets no chip.
+- Build tips: `parseDropPayload` (`src/model/drop.js` line 12) already accepts `roam/block-uid-list` and a block-ref string, so the drag needs no new mime. Page title comes from `host.pageTitleOf` (`src/host/roam.js` line 454), which pulls the page title off the block. Read the author with one pull of that page's children, matching a string that starts with `Author::`. The chip is a `pxd-chip` drawn from `src/view/cards.js` with the other chips. Activate it through `host.openInSidebar` (`src/host/roam.js` line 607) with the page uid. PDF highlight cards stay on `src/model/highlight.js` and are unchanged. Do not write the title or the author onto the card block.
+- Acceptance: 1. Drag a block from a page titled `Articles/Example` that has an `Author::` child: one card, chip text contains the page title and the author, one undo removes the card. 2. The same drag from a page with no author child: the chip is the title only. 3. Click the chip: the sidebar shows that page (`openInSidebar`), and the card string is unchanged. 4. A block dragged from `Plexus Diagram/Test Lab` gets no source chip. 5. Renaming the author child updates the chip on the next paint without a props write (`:edit/time` of the card unchanged). 6. `npm run check` green.
+- Out of scope: PDF highlight cards (PDF-2). Editing the highlight. Creating the Articles page.
+- Revisit when: n/a
+
+### DOC-25 — P25 gate and release 2.16.0
+- Phase: P25 · Version: 2.16.0 · Effort: S · Priority: high · Depends: HEP-1, HEP-2, HEP-3, HEP-4
+- Summary: Standing gate for the Heptabase parity wave, then release 2.16.0. The gate includes the perf gate and the smoke suite.
+- Roam model: None.
+- Design: Standing gate, CHANGELOG 2.16.0, and a README paragraph of at most 120 words for the journal, fullscreen tabs, touch, and the reading-page chip. Shortcuts in the README include Cmd+1 through Cmd+9, generated from `SHORTCUTS`.
+- Build tips: `npm run check`. Run `node tools/live/perf-gate.mjs "Readwisenotes - "` and `node tools/live/smoke.mjs "Readwisenotes - "`. Re-check Shift+1 (fit all) after the tab keys land. Tag `v2.16.0` only after the Pages `cmp` matches. P22 remains 3.0.0 and ships after this.
+- Acceptance: 1. `npm run check` green. 2. `node tools/live/perf-gate.mjs "Readwisenotes - "` exits 0. 3. `node tools/live/smoke.mjs "Readwisenotes - "` exits 0. 4. One live check from each of HEP-1, HEP-2, HEP-3, and HEP-4 passes on this build. 5. Unload: 0 `.pxd-*`, listeners and watches at baseline, `window.__plexusDiagram` removed. 6. Published files byte-identical to the build. 7. Ledger empty.
+- Out of scope: 3.0 planning. A Depot PR.
 - Revisit when: n/a
 
 ---

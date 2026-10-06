@@ -16,6 +16,7 @@
 | P24 | Reliability and sibling debt | 2.15.0 | REL-2, REL-3, REL-4, REL-5, REL-6, ECO-8, ECO-9, DOC-24 |
 | P25 | Heptabase parity, next wave | 2.16.0 | HEP-1, HEP-2, HEP-3, HEP-4, DOC-25 |
 | P26 | Feel instant | 2.17.0 | FAST-10, FAST-1, FAST-2, FAST-3, FAST-4, FAST-5, FAST-6, FAST-7, FAST-8, FAST-9, DOC-26 |
+| P27 | PDF highlights closer to Heptabase | 2.18.0 | PDFH-1, PDFH-2, PDFH-3, PDFH-4, PDFH-5, PDFH-6, PDFH-7, DOC-27 |
 
 P23-P26 were added 2026-10-05 and ship before P22; P22's 3.0.0 gate then covers them.
 
@@ -848,6 +849,90 @@ Rules that bind every task below (docs/roadmap.md §3): add, never take away (3.
 - Revisit when: n/a
 
 ---
+
+## P27 — PDF highlights closer to Heptabase (2.18.0)
+
+Design, research and decisions: `docs/design-pdf-heptabase.md` (2026-10-06). Defaults taken while the user was away: in-board pane, footer jump, show existing notes only until measured, page jump plus flash, one reader with a switcher, pane stacks under narrow sidebar boards, keep colour control with a tooltip, no quote editing, page sort.
+
+### PDFH-1 — Open the PDF in a pane beside the board
+- Phase: P27 · Version: 2.18.0 · Effort: L · Priority: high · Depends: none
+- Summary: Open reader mounts Roam's reader in a pane beside the board. The PDF card stays a cover at its own size. The pane is live, so highlighting needs no Interact click. Closing the pane leaves every card in place and writes nothing.
+- Roam model: Read-only. `renderBlock` of the existing pdf block. No `:pdf-settings` write, no `:pdf-highlight` write, no new block. The pane width is localStorage `plexus-diagram:read:${graph}`, the same class of store as the viewport.
+- Design: The pane is `.pxd-read`, a sibling of `.pxd-world` inside `.pxd-root`, default right, 42% of the mount, clamped to 360–720 px. Under 720 px of mount width it stacks below the board. `readerRule` still allows one open uid, and a second open toasts "Closed the other reader" and unmounts the first. Escape closes the pane only when the target is pane chrome and `isTextEntryTarget` is false. The close control always unmounts. Wheel events over the pane do not zoom the board.
+- Build tips: Stop calling the 640×820 draw in `pdfReaderBox` / `drawnRect` / `applyPdfSize` (`src/view/cards.js`, `pdfReaderBox` at line 2320, `drawnRect` at line 2325, `applyPdfSize` at line 2339, `PDF_READER_W` and `PDF_READER_H` in `src/model/pdf.js` lines 5–6). Mount `renderBlock` from `paintPdfReader` (line 2405) into the pane instead of `rec.body`. Delete the shield path for this reader: `beginPdfInteract` (line 2380) and the document listeners in `armPdfLiveWatch` (line 2349). Keep `readerRule` (line 68) and `openEmbed` (line 2462). `armEmbedShield` stays for iframes, video, and tweets (`EMBED_SEL` at line 542). The splitter key follows `createViewportStore` (`src/host/roam.js` line 292). CSS only under `.pxd-read`.
+- Acceptance: 1. Open reader on a PDF card leaves the card's width and height unchanged and shows `.rm-pdf-container` inside `.pxd-read`. 2. A text selection in that reader can create a highlight with no Interact click, and the new block is Roam's, with `:pdf-highlight` present and no `plexus` prop written by Plexus. 3. Opening a second PDF unmounts the first reader and leaves one `.rm-pdf-container` owned by Plexus. 4. Close, and Escape on the list, remove the pane and leave the board block's `:edit/time` unchanged. 5. A wheel over the pane does not change the board zoom, and a wheel over the board still zooms. 6. `document` keydown listeners registered by Plexus do not grow when the pane opens. 7. `npm run check` is green.
+- Out of scope: The highlight list (PDFH-2). A second simultaneous reader. Writing `:pdf-settings`.
+- Revisit when: n/a
+
+### PDFH-2 — List this PDF's highlights in the pane
+- Phase: P27 · Version: 2.18.0 · Effort: M · Priority: high · Depends: PDFH-1
+- Summary: The pane lists every highlight on the open PDF's page: colour bar, snippet, page, and On board when a card already exists. A highlight created in the reader shows up in the list without a reload. Clicking a row turns the reader to that page.
+- Roam model: Read-only. The list is `pdfHighlightTree` plus `highlightRows`. A `watchPage` on the PDF page title is held while the pane is open and released on close. No block write.
+- Design: Rows sort by page, then Roam's child order. Filters are colour, page, and a snippet substring. Area rows render the image string. On board uses the placed set `highlightRows` already computes. Clicking a row calls the page-input path (`writeReaderPage`) and does not create a card. The Add highlights… modal stays on the card for bulk placement.
+- Build tips: `host.pdfHighlightTree` (`src/host/roam.js` line 1235) and `HIGHLIGHT_TREE_PATTERN` (line 158). `highlightRows` (`src/model/highlight-pick.js` line 94). `watchPage` (line 868) returns the unsubscribe. `pdfCover` (line 1266) supplies `pageUid` and the title `watchPage` needs. Reuse `openPdfAt` (`src/view/cards.js` line 2499) against the pane's reader. The 2026-10-05 measure found zero highlight lists inside `.rm-pdf-container`, so this list is the list. Do not decorate `.rm-pdf-highlight`. Release `watchPage` in the pane's close and in view dispose.
+- Acceptance: 1. A PDF page with two highlights on pages 1 and 2 shows two rows, with `p. 1` and `p. 2` and the `#h/` colour on the bar. 2. Creating one highlight in the pane's reader adds one row without a manual reload, and closing the pane drops `stats.pageWatches` by one. 3. A row whose uid is already a card shows On board. 4. Clicking the page-2 row sets the reader page input to 2 and writes nothing (`:edit/time` of the board unchanged). 5. The snippet filter hides a row whose text does not contain the query. 6. An area highlight row shows the image. 7. `npm run check` is green.
+- Out of scope: Dragging a row (PDFH-3). Sorting by `:create/time`. A graph-wide highlight app.
+- Revisit when: n/a
+
+### PDFH-3 — Drag a highlight from the list onto the board
+- Phase: P27 · Version: 2.18.0 · Effort: M · Priority: high · Depends: PDFH-2
+- Summary: Dragging a list row onto the board creates one highlight card at the drop point. Place on the focused row creates one card beside the PDF cover. A highlight that is already a card pulses that card and creates nothing.
+- Roam model: One `((highlightUid))` child of the board per new card, through the existing ref-card create. No `:pdf-highlight` write. The 45 cap stays on the modal. This gesture places one.
+- Design: `dragstart` sets `application/x-plexus-card` to `((uid))`. The drop lands in the current board drop handler. Place uses the origin already computed beside the PDF card (cover right edge plus 40 px). Both paths select the new card. A placed uid pulses and does not call create.
+- Build tips: `CARD_MIME` and `parseDropPayload` (`src/model/drop.js` lines 7 and 12) already prefer that mime. The drop listener is `src/view/board-view.js` line 4622, and `openHighlightPicker`'s origin is lines 4563–4566. `session.addRefCards` is what the modal's `onPlace` calls (line 4573). Placed detection is `placedSet` (`src/model/highlight-pick.js` line 60). The 2026-10-05 measure says overlay marks are not draggable, so the list row is the drag source. Do not try to drag `.rm-pdf-container`. One undo group, one create.
+- Acceptance: 1. Dragging a list row that is not On board creates one card whose string is `((uid))` of that highlight, and one undo removes it. 2. Dragging an On board row creates zero blocks and pulses the existing card. 3. Place on a new row creates one card to the right of the cover and selects it. 4. A drop of five rows is five creates only if the user dragged five, and a single row drag is one create. 5. The board's highlight props for that uid are unchanged across the create (`:pdf-highlight` deep-equal before and after). 6. `npm run check` is green.
+- Out of scope: Dragging the painted mark inside Roam's reader. The 45-card grid. Removing Add highlights….
+- Revisit when: n/a
+
+### PDFH-4 — A highlight card opens the pane on its page and flashes
+- Phase: P27 · Version: 2.18.0 · Effort: M · Priority: high · Depends: PDFH-1
+- Summary: The footer on a highlight card, and Open in reader, open the pane and set the reader to that highlight's page, then flash the card. This works when the PDF card on the board is still a cover. The native colour-icon click is not dispatched.
+- Roam model: Read-only. Page change goes through the reader input (`writeReaderPage`). No graph write. The pdf block is found by `:pdf/url` on the highlight's page.
+- Design: The footer is a button. The card body still drags and edits. Flash is class `pxd-item--flash` for 2 seconds. If no pdf block uid can be resolved, keep `openBlock` plus the toast "Click the highlight to open the PDF". A scroll-to-rect inside the reader ships in this task only when a Test Lab measure shows a scroller whose coordinates match `position.boundingRect`. Otherwise the task records the miss in `docs/roadmap.md` §8 and ships the page jump alone.
+- Build tips: `openHighlightInReader` (`src/view/board-view.js` line 3160), `pdfCardForUrl` (`src/model/pdf.js` line 234), `pdfPageUrl` (`src/host/roam.js` line 1246), `writeReaderPage` (line 245 of `src/model/pdf.js`), `openPdfAt` (`src/view/cards.js` line 2499). The forbid is measured in `docs/roadmap.md` §8 on 2026-10-05: a click on `.rm-pdf-highlight-color-icon` opened fullscreen and left Test Lab. Lookup of the pdf block is a read of blocks whose string contains the url, scoped to the `:pdf/url` page's refs, and it must not fetch the file. Do not add a document listener.
+- Acceptance: 1. With the PDF card on the board in cover state, activating the footer opens `.pxd-read`, sets the page input to the highlight's `pageNumber`, and adds `pxd-item--flash` to that card. 2. The click writes nothing. 3. With no resolvable pdf block, `openBlock` runs once and the toast shows, and no pane is left mounted. 4. A test that dispatches a click on `.rm-pdf-highlight-color-icon` is absent from the implementation. 5. The §8 row says whether rect scroll matched, and a mismatch leaves the page-input behaviour in place. 6. Dragging the card body still moves the card. 7. `npm run check` is green.
+- Out of scope: Flashing the ink inside the PDF. A custom scroll coordinate system invented without the measure.
+- Revisit when: n/a
+
+### PDFH-5 — Show the note on the highlight card
+- Phase: P27 · Version: 2.18.0 · Effort: M · Priority: medium · Depends: PDFH-2
+- Summary: The highlight card shows the note Roam already stored, and a Note action edits that note. The action's write is chosen only after a live trace of Roam's own note button. Until that trace, the card shows a child when one exists and does not create one.
+- Roam model: The note is a child of the highlight block if the trace says so. The create, when allowed, is one plain child block. No `:pdf-highlight` write. No second store.
+- Design: `highlightModel` gains `note`, the string of the first child that fails `highlightRecord`. `paintHighlight` renders it under the quote, clipped. The list row shows a note mark when `note` is non-empty. The Note action is hidden until the trace. After the trace: if Roam already created the child, the action focuses it with `renderBlock` and creates nothing; if Roam stores the note in the highlight string, the action is omitted and the string is what the card shows; if Roam stores no note, the action creates one child and focuses it. The trace is a §8 row before the create ships.
+- Build tips: `HIGHLIGHT_TREE_PATTERN` (`src/host/roam.js` line 158) already pulls one level under the highlight. `rowFrom` (`src/model/highlight-pick.js` line 72) omits children today. `highlightModel` (`src/model/highlight.js` line 121) and `paintHighlight` (`src/view/cards.js` line 2542). Focus uses `renderBlock` on the child, the same mount discipline as other card editors, and must not stop `mouseup` inside that editor. Gate the create behind the §8 row so a wrong guess cannot write.
+- Acceptance: 1. A highlight block with one non-highlight child renders that child's string on the card and a note mark on the list row. 2. A highlight with no children renders no note and writes nothing when the card is painted. 3. The §8 row names what Roam's note button created (child uid, string edit, or neither) on Test Lab. 4. The Note action creates a block only in the "neither" case, exactly one create, and one undo removes it. 5. `:pdf-highlight` on the parent is deep-equal before and after the note create. 6. `npm run check` is green.
+- Out of scope: Rich notes (images, tasks) as a designed layout. Editing the quoted highlight string. Rewriting Roam's highlight props.
+- Revisit when: n/a
+
+### PDFH-6 — Area rows and colour stay on Roam's data
+- Phase: P27 · Version: 2.18.0 · Effort: S · Priority: medium · Depends: PDFH-2
+- Summary: Area highlights in the list and on the card stay images. Colour stays the `#h/` tag. The pane does not promise that a tag rewrite recolours the mark painted on the page, because a 2026-10-05 measure showed the page mark staying yellow.
+- Roam model: No new writes. `setHighlightColor` remains the one string rewrite. Area `:image-size` and `:pdf-highlight` are read.
+- Design: An area row uses the image renderer and the PDF footer, and it drags through PDFH-3 as the same `((uid))`. The colour control on a highlight card still offers the seven names. The tooltip on that control says the card and the list follow the tag, and the mark in the PDF changes when Roam's reader changes it. Lens and Kanban "Highlight colour" stay.
+- Build tips: `naturalSize` and `highlightModel` (`src/model/highlight.js` lines 108 and 121). `setHighlightColor` (`src/session.js` line 1613) and `rewriteHighlightTag` (line 100). The measure is `docs/roadmap.md` §8, 2.11.2: tag rewrite turned the outline swatch green (167,232,200) and the page marks stayed yellow (255,234,133), prop keys unchanged. Do not add a props write to "fix" the page mark.
+- Acceptance: 1. An area row shows the image at the `:image-size` ratio and drags as one card. 2. Setting the card colour from yellow to green changes the block string's tag and leaves `:pdf-highlight` and `:image-size` deep-equal. 3. The list bar and the card bar are green after that write. 4. The tooltip text includes the measured limit that the page mark may stay yellow. 5. The highlight-colour lens still dims the other cards. 6. `npm run check` is green.
+- Out of scope: A new colour name. Repainting Roam's page mark. Region editing (PDF-5 already does that).
+- Revisit when: A later measure shows the page mark follows a tag rewrite. Then delete the tooltip sentence.
+
+### PDFH-7 — One reader, every PDF on the board, no new command
+- Phase: P27 · Version: 2.18.0 · Effort: S · Priority: medium · Depends: PDFH-1, PDFH-3
+- Summary: The pane header switches among PDF cards on this board and keeps a single live reader. Keyboard shortcuts for the list live on the pane. The command palette stays at two entries. Roam's find box is the PDF search.
+- Roam model: None. Switching readers unmounts one `renderBlock` and mounts another. No block write.
+- Design: The header lists kind `pdf` items on the current board by `coverModel` title. Choosing one runs `readerRule`. Arrow keys while the list (not the reader) is focused move the row selection. Enter jumps to that row's page. The Place button is in the row. `Cmd/Ctrl+F` is not rebound. No `document` listener and no palette command.
+- Build tips: `readerRule` (`src/model/pdf.js` line 68). Palette rule is roadmap §3.7, and `docs/roadmap.md` records the two-entry cap. Bind `keydown` on `.pxd-read` and ignore events whose target passes `isTextEntryTarget` or sits inside `.rm-pdf-container`. `coverModel` is `src/model/pdf.js` line 40. Confirm the palette array length in the test rather than adding a command.
+- Acceptance: 1. A board with two PDF cards shows both titles in the pane header, and choosing the second leaves one `.rm-pdf-container`. 2. Enter on a list row sets the page input and creates no block. 3. A keydown whose target is inside `.rm-pdf-container` is ignored by the pane handler. 4. The command palette registration count is unchanged by this phase. 5. `npm run check` is green.
+- Out of scope: A shortcut that creates a highlight (that stays Roam's S inside the reader). Two readers. A full-text index.
+- Revisit when: n/a
+
+### DOC-27 — P27 gate and release 2.18.0
+- Phase: P27 · Version: 2.18.0 · Effort: S · Priority: high · Depends: PDFH-1, PDFH-2, PDFH-3, PDFH-4, PDFH-5, PDFH-6, PDFH-7
+- Summary: Standing gate for the reading pane, then release 2.18.0. The gate checks that a highlight session writes no `:pdf-*` props, that the palette stays at two entries, and that unload removes the pane.
+- Roam model: None.
+- Design: CHANGELOG 2.18.0 and a README paragraph of at most 120 words: the pane, the drag from the list, and the footer jump. Shortcuts in the README stay inside the existing two palette commands. The §8 rows from PDFH-4 (rect scroll) and PDFH-5 (note shape) are filled before the tag.
+- Build tips: `npm run check`. Run `node tools/live/perf-gate.mjs "Readwisenotes - "` and `node tools/live/smoke.mjs "Readwisenotes - "`. Typing bench on Test Lab: pane closed, no board, median at most +0.1 ms per key; pane open, record the median and keep it at most +0.5, the DOC-20 reader allowance. Tag `v2.18.0` only after the Pages `cmp` matches. P22 stays 3.0.0 and ships after this. Git author Svyatoslav Kleshchev, new commits only.
+- Acceptance: 1. `npm run check` green. 2. `node tools/live/perf-gate.mjs "Readwisenotes - "` exits 0. 3. `node tools/live/smoke.mjs "Readwisenotes - "` exits 0. 4. One live check from each of PDFH-1, PDFH-3, and PDFH-4 passes on this build, and the PDFH-4 check records zero `:pdf-highlight` writes. 5. Unload leaves 0 `.pxd-*`, including `.pxd-read`, listeners and watches at baseline, and `window.__plexusDiagram` removed. 6. The command palette still has two Plexus entries. 7. Published files byte-identical to the build. 8. Ledger empty.
+- Out of scope: A Depot PR. 3.0 planning. Readwise or Zotero.
+- Revisit when: n/a
 
 ### POL-1 — Integrations settings group with live detection
 - Phase: P22 · Version: 3.0.0 · Effort: S · Priority: high · Depends: TSK-1, ECO-2

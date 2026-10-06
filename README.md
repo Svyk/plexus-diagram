@@ -194,6 +194,29 @@ Plexus Diagram, Roam Compass, and Roam Plexus notice each other. With Compass lo
 - A bulk add creates at most 45 cards, so that undo can still reach them.
 - A mind map adds at most 24 branches.
 
+### Writes and undo per gesture
+
+Each row is the most writes one gesture makes, measured by `test/pol-2-writes.test.js`. A longer input stops at 45 writes and shows the undo-cap toast. One Roam undo step is one Cmd+Z. Mark region writes the regions container and the region as two steps when the image card has no container yet, and one step when that container is already there.
+
+| Gesture | Writes (max) | Roam undo steps |
+| --- | --- | --- |
+| Mark region | 2 (≤ 3) | 2, or 1 if the container exists |
+| Save view | 2 (≤ 2) | 1 |
+| Add trail stop | 1, or 2 with a note | 1 |
+| Add selection to trail | 45 (≤ 45) | 1 |
+| New trail from a selection | 45 | 1 |
+| Move a trail stop | 1 | 1 |
+| Delete a trail | 1 | 1 |
+| Place highlights | 45 per chunk (≤ 45) | 1 per chunk |
+| Highlight note | 1 | 1 |
+| Why | 1 | 1 |
+| Landmark | 1 per item (≤ 45) | 1 |
+| Status change | 0 by Plexus | 0 |
+| Journal drag | 1 | 1 |
+| Lay out by date | 45 | 1 |
+| Source chip | 0 | 0 |
+| Lenses and timeline viewing | 0 | 0 |
+
 ## Settings
 
 Settings → Extensions → Plexus Diagram. Each change applies on the open board. **Reset Plexus settings** puts every value back to its default.

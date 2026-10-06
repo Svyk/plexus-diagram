@@ -461,21 +461,29 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
   let openGroup = null;
   let lastWriteAt = -Infinity;
   let dropBurst = () => {};
-  const noteWrite = () => {
+  // Debug only. The undo group that just closed, and how many create/update/move/delete writes it held.
+  const closeChunk = (chunk) => {
+    if (!(chunk.n || chunk.created?.length)) return;
+    undoLog.push(chunk);
+    if (undoLog.length > UNDO_LOG_MAX) undoLog.shift();
+    const named = typeof chunk.label === "string" && chunk.label ? chunk.label : (chunk.kinds || []).join("+");
+    stats.lastAction = { label: named, writes: chunk.n || 0 };
+  };
+  const noteWrite = (kind) => {
     dropBurst();
     lastWriteAt = Date.now();
     redoLog.length = 0;
     if (openGroup) {
       if (openGroup.n >= MAX_GROUP_WRITES) {
-        undoLog.push(openGroup);
-        if (undoLog.length > UNDO_LOG_MAX) undoLog.shift();
-        openGroup = { n: 0 };
+        const done = openGroup;
+        openGroup = { n: 0, kinds: [], label: done.label || "" };
+        closeChunk(done);
       }
       openGroup.n++;
+      if (kind && !openGroup.kinds.includes(kind)) openGroup.kinds.push(kind);
       return;
     }
-    undoLog.push({ n: 1 });
-    if (undoLog.length > UNDO_LOG_MAX) undoLog.shift();
+    closeChunk({ n: 1, kinds: kind ? [kind] : [] });
   };
   // Host writes plus blocks adopted from outside this host (one Roam entry each).
   const groupSpan = (entry) => (entry.n || 0) + (entry.created?.length || 0);
@@ -490,6 +498,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
   const eidByUid = new Map();
   const eidByTitle = new Map();
   const statsCache = new Map();
+  const PRIME_CHUNK = 40;
   const STATS_TTL_MS = 120000;
   const MISS = Symbol("pull-miss");
   const rawPull = typeof data.pull === "function" ? data.pull.bind(data) : () => null;
@@ -827,9 +836,25 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       };
       if (!light) prime();
       else {
+        // POL-5. Idle work in chunks of PRIME_CHUNK targets: one query over 300 cards was a 140 ms task.
         const idle = globalThis.requestIdleCallback;
-        if (typeof idle === "function") idle(() => prime(), { timeout: 1500 });
-        else setTimeout(prime, 250);
+        const later = (fn) => (typeof idle === "function" ? idle(() => fn(), { timeout: 1500 }) : setTimeout(fn, 250));
+        const titles = found.titles;
+        const targets = found.stats;
+        let ti = 0;
+        let si = 0;
+        const step = () => {
+          if (ti === 0 && si === 0) dropStats(uid);
+          if (ti < titles.length) {
+            try { fetchLinked(titles.slice(ti, ti + PRIME_CHUNK)); } catch { /* a later linkedRefs ask reads Roam */ }
+            ti += PRIME_CHUNK;
+          } else if (si < targets.length) {
+            try { host.cardStats(targets.slice(si, si + PRIME_CHUNK), { boardUid: uid }); } catch { /* badges ask again */ }
+            si += PRIME_CHUNK;
+          }
+          if (ti < titles.length || si < targets.length) later(step);
+        };
+        later(step);
       }
       return node;
     },
@@ -1045,7 +1070,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       if (existing) return existing;
       stats.writes++;
       await data.page.create({ page: { title: name } });
-      noteWrite();
+      noteWrite("create");
       return host.pageUid(name);
     },
 
@@ -1072,7 +1097,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       if (!uid) return false;
       stats.writes++;
       await data.page.update({ page: { uid, title: newTitle } });
-      noteWrite();
+      noteWrite("update");
       return true;
     },
 
@@ -1243,14 +1268,14 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       if (open !== undefined) block.open = open;
       stats.writes++;
       await data.block.create({ location: { "parent-uid": parentUid, order }, block });
-      noteWrite();
+      noteWrite("create");
       return id;
     },
 
     async updateString(uid, string) {
       stats.writes++;
       await data.block.update({ block: { uid, string } });
-      noteWrite();
+      noteWrite("update");
       forgetUid(uid);
     },
 
@@ -1259,43 +1284,41 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       const merged = mergePropsForWrite(host.pullProps(uid), plexus);
       stats.writes++;
       await data.block.update({ block: { uid, props: merged } });
-      noteWrite();
+      noteWrite("update");
     },
 
     async moveBlock(uid, parentUid, order = "last") {
       stats.writes++;
       await data.block.move({ location: { "parent-uid": parentUid, order }, block: { uid } });
-      noteWrite();
+      noteWrite("move");
       forgetUid(uid);
     },
 
     async deleteBlock(uid) {
       stats.writes++;
       await data.block.delete({ block: { uid } });
-      noteWrite();
+      noteWrite("delete");
       forgetUid(uid);
     },
 
     async setOpen(uid, open) {
       stats.writes++;
       await data.block.update({ block: { uid, open } });
-      noteWrite();
+      noteWrite("update");
       forgetUid(uid);
     },
 
     // Runs fn (a serialized write sequence) as one undo step. Groups do not nest; the write queue serializes callers.
-    async group(fn) {
+    // An optional label names the group in stats.lastAction. Otherwise the label is the write kinds in that group.
+    async group(fn, label) {
       if (openGroup) return fn();
-      openGroup = { n: 0 };
+      openGroup = { n: 0, kinds: [], label: typeof label === "string" ? label : "" };
       try {
         return await fn();
       } finally {
         const g = openGroup; // the last chunk when the transaction rolled over
         openGroup = null;
-        if (g.n || g.created?.length) {
-          undoLog.push(g);
-          if (undoLog.length > UNDO_LOG_MAX) undoLog.shift();
-        }
+        closeChunk(g);
       }
     },
 

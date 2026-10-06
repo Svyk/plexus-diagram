@@ -703,3 +703,26 @@ PERF-2, ranked by measured share of the 21.38 ms (c) key:
 
 - PDFH-5 trace, Readwisenotes, Roam Desktop: a PDF block copied onto Test Lab still stores new highlights on the PDF's original page ("Notes by" tree on the page that first held that PDF URL), not on the page of the copy. Roam's speech-bubble button in a highlight's tip creates exactly one empty child block under the highlight block, opens the highlight in the right sidebar, and focuses that child's editor. The highlight string and `:pdf-highlight` props are unchanged. Answer for PDFH-5: **child uid** (notes are child blocks). Trace blocks (highlight, child, PDF copy) and the sidebar window were deleted after the check; sidebar back to 140 windows.
 - POL-3 decision (Svy, 2026-10-06): "don't care about how big CSS or JavaScript is as long as it performs well." The 900 KB / 90 KB size budget is dropped; the build stays unminified (readable stack traces and CPU profiles). `npm run size` and `npm run size:gate` stay as reports, not as a check. POL-3 is judged on start-up: load-to-ready mark under 80 ms with no board on the page, start-up caches built after first idle, unload before idle leaves no scheduled work. Sizes at 2.20.0: extension.js 1,605 KB (897 KB minified), extension.css 204 KB (158 KB minified).
+
+### Writes and undo per gesture
+
+POL-2. Each row is the most writes one gesture makes, measured by `test/pol-2-writes.test.js`. A longer input stops at 45 writes and shows the undo-cap toast. One Roam undo step is one Cmd+Z. Mark region writes the regions container and the region as two steps when the image card has no container yet, and one step when that container is already there.
+
+| Gesture | Writes (max) | Roam undo steps |
+| --- | --- | --- |
+| Mark region | 2 (≤ 3) | 2, or 1 if the container exists |
+| Save view | 2 (≤ 2) | 1 |
+| Add trail stop | 1, or 2 with a note | 1 |
+| Add selection to trail | 45 (≤ 45) | 1 |
+| New trail from a selection | 45 | 1 |
+| Move a trail stop | 1 | 1 |
+| Delete a trail | 1 | 1 |
+| Place highlights | 45 per chunk (≤ 45) | 1 per chunk |
+| Highlight note | 1 | 1 |
+| Why | 1 | 1 |
+| Landmark | 1 per item (≤ 45) | 1 |
+| Status change | 0 by Plexus | 0 |
+| Journal drag | 1 | 1 |
+| Lay out by date | 45 | 1 |
+| Source chip | 0 | 0 |
+| Lenses and timeline viewing | 0 | 0 |

@@ -100,10 +100,13 @@ export function addPublicCard(opts = {}, createFn) {
   if (typeof make !== "function") return op;
   return make(op);
 }
-export function capBulk(list, emit) {
-  if (list.length <= BULK_CARD_CAP) return list;
-  emit("toast", { message: `Added ${BULK_CARD_CAP} of ${list.length} (Roam undo holds 50 changes)` });
-  return list.slice(0, BULK_CARD_CAP);
+// `limit` is for a gesture that already spent part of the 45-write budget on its own blocks.
+export function capBulk(list, emit, limit = BULK_CARD_CAP) {
+  const raw = Number(limit);
+  const cap = Math.min(BULK_CARD_CAP, Math.max(0, Number.isFinite(raw) ? Math.floor(raw) : BULK_CARD_CAP));
+  if (list.length <= cap) return list;
+  emit("toast", { message: `Added ${cap} of ${list.length} (Roam undo holds 50 changes)` });
+  return list.slice(0, cap);
 }
 
 // Registers fn(session, api); every session created afterwards runs it once before it is returned.
@@ -1868,7 +1871,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
         const cards = item.members.map((member) => board.items.get(member)).filter(Boolean);
         // The attribute source keeps 2.x placement exactly (UTC days). First/last mention come from the timeline.
         if (mode === "attribute") {
-          const plan = calendarLayout(cards).slice(0, 45);
+          const plan = capBulk(calendarLayout(cards), emit);
           for (const spot of plan) t.props(spot.uid, itemPlexus(spot.uid, { x: spot.x, y: spot.y }));
           return plan.length;
         }
@@ -1881,7 +1884,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
           spots.push({ uid: card.uid, x: 16 + (day - 1) * 28, y: 48, t: stamp });
         }
         spots.sort((a, b) => a.t - b.t || String(a.uid).localeCompare(String(b.uid)));
-        const plan = spots.slice(0, 45);
+        const plan = capBulk(spots, emit);
         for (const spot of plan) t.props(spot.uid, itemPlexus(spot.uid, { x: spot.x, y: spot.y }));
         return plan.length;
       });
@@ -2081,11 +2084,14 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
 
     createTrail(name, cardUids) {
       return txn((t) => {
+        // The trail block, and the Trails container when this board does not have one yet, share the 45-write budget.
+        const had = Boolean(board.trailsUid) || kidsOf(raw).some((k) => readPlexus(k[PROPS])?.type === "trails");
         const parent = ensureTrails(t);
         const id = t.create({ parent, order: "last", string: trailString(name), plexus: { type: "trail" }, open: true });
         const ids = [];
         for (const card of cardUids || []) if (card && board.items.has(card)) ids.push(card);
-        for (const card of capBulk(ids, emit)) t.create({ parent: id, order: "last", string: `((${card}))`, open: true });
+        const room = BULK_CARD_CAP - 1 - (had ? 0 : 1);
+        for (const card of capBulk(ids, emit, room)) t.create({ parent: id, order: "last", string: `((${card}))`, open: true });
         return id;
       });
     },
@@ -2143,21 +2149,31 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       });
     },
 
+    // One id, or a list. A list is one gesture and stops at 45.
     setLandmark(id, { on, glyph, size } = {}) {
+      const list = Array.isArray(id) ? id : [id];
       return txn((t) => {
-        const item = board.items.get(id);
-        if (!item) return;
-        const nextOn = on === undefined ? item.landmark === true : Boolean(on);
-        if (!nextOn) {
-          t.props(id, itemPlexus(id, { landmark: false, glyph: "", size: undefined }));
-          return;
+        const ids = [];
+        const seen = new Set();
+        for (const one of list) {
+          if (!one || seen.has(one) || !board.items.get(one)) continue;
+          seen.add(one);
+          ids.push(one);
         }
-        const patch = { landmark: true };
-        if (glyph !== undefined) patch.glyph = glyph;
-        else if (item.glyph) patch.glyph = item.glyph;
-        if (size !== undefined) patch.size = size;
-        else if (item.size === "S" || item.size === "L") patch.size = item.size;
-        t.props(id, itemPlexus(id, patch));
+        for (const one of capBulk(ids, emit)) {
+          const item = board.items.get(one);
+          const nextOn = on === undefined ? item.landmark === true : Boolean(on);
+          if (!nextOn) {
+            t.props(one, itemPlexus(one, { landmark: false, glyph: "", size: undefined }));
+            continue;
+          }
+          const patch = { landmark: true };
+          if (glyph !== undefined) patch.glyph = glyph;
+          else if (item.glyph) patch.glyph = item.glyph;
+          if (size !== undefined) patch.size = size;
+          else if (item.size === "S" || item.size === "L") patch.size = item.size;
+          t.props(one, itemPlexus(one, patch));
+        }
       });
     },
 

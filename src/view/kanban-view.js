@@ -272,7 +272,9 @@ export function mountKanban({
         item.className = "pxd-kanban__card";
         item.setAttribute("data-uid", card.uid);
         item.tabIndex = 0;
+        item.setAttribute("role", "button");
         item.textContent = kanbanTitle(card) || card.uid;
+        item.setAttribute("aria-label", item.textContent);
         listen(item, "pointerdown", (event) => {
           dragUid = card.uid;
           event.stopPropagation();

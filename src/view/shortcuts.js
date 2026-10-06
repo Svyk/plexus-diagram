@@ -86,6 +86,19 @@ export const SHORTCUTS = [
   { group: "Present", keys: "← ↑", label: "Previous", action: "presentPrev", mode: "present", events: [{ key: "ArrowLeft" }, { key: "ArrowUp" }, { key: "PageUp" }], match: (ev) => !hasMod(ev) && !ev.alt && (ev.key === "ArrowLeft" || ev.key === "ArrowUp" || ev.key === "PageUp") },
 ];
 
+// Shown on the ? sheet only. These keys are handled by the focused surface, so they are not
+// findShortcut rows: a row here would steal arrows, Enter, or Escape from the global table.
+export const SHEET_KEYS = [
+  { group: "Trails", keys: "Alt+↑ / Alt+↓", label: "Reorder a trail stop" },
+  { group: "Trails", keys: "Enter", label: "Walk from this stop" },
+  { group: "Tasks", keys: "[", label: "Previous status lane" },
+  { group: "Tasks", keys: "]", label: "Next status lane" },
+  { group: "Regions", keys: "Arrows", label: "Nudge region 1 px" },
+  { group: "Regions", keys: "Shift+arrows", label: "Nudge region 10 px" },
+  { group: "Regions", keys: "Enter", label: "Confirm region" },
+  { group: "Regions", keys: "Esc", label: "Cancel region" },
+];
+
 // A missing settings argument does not apply when. A row is skipped only when when is a function and returns false.
 export function findShortcut(ev, mode = "normal", settings) {
   return SHORTCUTS.find((row) => {

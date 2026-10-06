@@ -17,6 +17,10 @@ export function mountRegionMark({ doc = globalThis.document, root, img, onConfir
 
   const layer = doc.createElement("div");
   layer.className = "pxd-region-layer";
+  layer.tabIndex = 0;
+  layer.setAttribute("tabindex", "0");
+  layer.setAttribute("role", "dialog");
+  layer.setAttribute("aria-label", "Mark region");
   const draft = doc.createElement("div");
   draft.className = "pxd-region-draft";
   const bar = doc.createElement("div");
@@ -146,8 +150,47 @@ export function mountRegionMark({ doc = globalThis.document, root, img, onConfir
     try { input.focus(); } catch { /* stub */ }
   };
 
+  const typing = (event) => {
+    const tag = String(event.target?.tagName || "").toLowerCase();
+    return tag === "input" || tag === "textarea" || event.target?.isContentEditable;
+  };
+
+  // Fractions of the image. 1 px is 1/width or 1/height. The translation is clamped so the rect stays inside.
+  const nudge = (event) => {
+    if (x0 == null || y0 == null) return false;
+    const key = event.key;
+    if (key !== "ArrowLeft" && key !== "ArrowRight" && key !== "ArrowUp" && key !== "ArrowDown") return false;
+    if (typing(event) || event.metaKey || event.ctrlKey || event.altKey) return false;
+    const box = imgBox();
+    if (!(box.w > 0) || !(box.h > 0)) return false;
+    const step = event.shiftKey ? 10 : 1;
+    let dx = 0;
+    let dy = 0;
+    if (key === "ArrowLeft") dx = -step / box.w;
+    else if (key === "ArrowRight") dx = step / box.w;
+    else if (key === "ArrowUp") dy = -step / box.h;
+    else dy = step / box.h;
+    const left = Math.min(x0, x1 ?? x0);
+    const right = Math.max(x0, x1 ?? x0);
+    const top = Math.min(y0, y1 ?? y0);
+    const bottom = Math.max(y0, y1 ?? y0);
+    const cdx = Math.min(1 - right, Math.max(-left, dx));
+    const cdy = Math.min(1 - bottom, Math.max(-top, dy));
+    x0 += cdx;
+    y0 += cdy;
+    if (x1 != null) x1 += cdx;
+    if (y1 != null) y1 += cdy;
+    place();
+    return true;
+  };
+
   const onKey = (event) => {
     if (dead) return;
+    if (nudge(event)) {
+      event.preventDefault?.();
+      event.stopPropagation?.();
+      return;
+    }
     if (event.key === "Escape") {
       event.preventDefault?.();
       event.stopPropagation?.();

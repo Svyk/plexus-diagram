@@ -223,8 +223,8 @@
 
 .pxd-root .pxd-status-chooser__row:focus,
 .pxd-root .pxd-status-chooser__row:focus-visible {
-  outline: 2px solid var(--pxd-accent);
-  outline-offset: 1px;
+  outline: 2px solid var(--pxd-focus, #0d9488);
+  outline-offset: 2px;
 }
 
 .pxd-root .pxd-status-chooser__row--remove {

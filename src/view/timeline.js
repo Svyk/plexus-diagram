@@ -10,6 +10,8 @@ export function mountTimeline(parent, { doc, rows = [], onOpenDay, onShowOnBoard
 
   const el = document.createElement("div");
   el.className = "pxd-timeline";
+  el.setAttribute("role", "region");
+  el.setAttribute("aria-label", "Timeline");
   let grouped = [];
   const collapsed = new Set();
   let disposed = false;
@@ -79,6 +81,7 @@ export function mountTimeline(parent, { doc, rows = [], onOpenDay, onShowOnBoard
       button.setAttribute("data-year", String(year.year));
       const shut = collapsed.has(year.year);
       button.setAttribute("aria-expanded", shut ? "false" : "true");
+      button.setAttribute("aria-label", `Year ${year.year}`);
       const label = document.createElement("span");
       label.className = "pxd-timeline__year-label";
       label.textContent = String(year.year);
@@ -94,6 +97,7 @@ export function mountTimeline(parent, { doc, rows = [], onOpenDay, onShowOnBoard
         open.type = "button";
         open.className = "pxd-timeline__open";
         open.textContent = day.title;
+        open.setAttribute("aria-label", day.title || "Open day");
         const count = document.createElement("span");
         count.className = "pxd-timeline__count";
         count.textContent = String(day.count);
@@ -102,6 +106,7 @@ export function mountTimeline(parent, { doc, rows = [], onOpenDay, onShowOnBoard
         show.className = "pxd-timeline__show";
         show.setAttribute("data-page-uid", day.pageUid || "");
         show.textContent = "Show on board";
+        show.setAttribute("aria-label", "Show on board");
         row.append(open, count, show);
         days.append(row);
       }
@@ -110,7 +115,13 @@ export function mountTimeline(parent, { doc, rows = [], onOpenDay, onShowOnBoard
     }
   };
 
+  const onKey = (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    onClick(event);
+  };
+
   el.addEventListener("click", onClick);
+  el.addEventListener("keydown", onKey);
   render(rows);
   parent?.append?.(el);
 
@@ -121,6 +132,7 @@ export function mountTimeline(parent, { doc, rows = [], onOpenDay, onShowOnBoard
       if (disposed) return;
       disposed = true;
       el.removeEventListener("click", onClick);
+      el.removeEventListener("keydown", onKey);
       el.remove();
     },
   };

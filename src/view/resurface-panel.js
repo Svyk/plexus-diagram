@@ -17,7 +17,22 @@ function thumb(doc, parent, item) {
   parent.append(box);
 }
 
+function wireResurfaceKeys(panel) {
+  if (!panel || panel._pxdResurfaceKeys) return;
+  panel._pxdResurfaceKeys = true;
+  panel.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    const item = event.target?.closest?.(".pxd-resurface__item, .pxd-resurface__tab");
+    if (!item || !panel.contains(item)) return;
+    event.preventDefault();
+    item.click();
+  });
+}
+
 export function fillResurface(doc, panel, { pageTitle, rows, intervals, onOpen } = {}) {
+  if (!panel.getAttribute?.("role")) panel.setAttribute?.("role", "region");
+  if (!panel.getAttribute?.("aria-label")) panel.setAttribute?.("aria-label", "Resurface");
+  wireResurfaceKeys(panel);
   panel.replaceChildren();
   const pageDate = pageTitleToDate(pageTitle);
   const tabs = matchResurface(rows, pageDate, parseIntervals(intervals));
@@ -39,6 +54,7 @@ export function fillResurface(doc, panel, { pageTitle, rows, intervals, onOpen }
       row.type = "button";
       row.className = "pxd-resurface__item";
       row.textContent = item.title || item.uid;
+      row.setAttribute("aria-label", item.title || item.uid || "Open");
       thumb(doc, row, item);
       row.addEventListener("click", (event) => {
         event.preventDefault();
@@ -53,6 +69,7 @@ export function fillResurface(doc, panel, { pageTitle, rows, intervals, onOpen }
     button.type = "button";
     button.className = "pxd-resurface__tab";
     button.textContent = tab.label;
+    button.setAttribute("aria-label", tab.label || "Resurface");
     button.addEventListener("click", (event) => {
       event.preventDefault();
       show(tab);

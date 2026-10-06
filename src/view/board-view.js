@@ -4088,7 +4088,7 @@ function buildBoardView(onFail, {
       },
       deleteTrail: (uid) => { void session.deleteTrail?.(uid); if (activeTrailUid === uid) activeTrailUid = null; },
       moveStop: (stopUid, index) => { void session.moveStop?.(stopUid, index); },
-      walkTrail: (uid) => { if (uid) activeTrailUid = uid; startWalk("trail"); },
+      walkTrail: (uid, fromRef) => { if (uid) activeTrailUid = uid; startWalk("trail", fromRef); },
       ensureTimeline: () => loadTimelineRows(),
       openDay: (pageUid) => { try { host?.openInSidebar?.(pageUid, "block"); } catch { /* host */ } },
       showOnBoard: (uids) => pulseTimeline(uids),
@@ -4258,13 +4258,17 @@ function buildBoardView(onFail, {
     const opts = only ? { only } : undefined;
     if (!presenter.start(board(), rects(), opts)) toast("Nothing to present");
   };
-  startWalk = (mode) => {
+  startWalk = (mode, fromRef) => {
     quicklook.close();
     const b = board();
     if (!b) return false;
     const world = rects();
     const vis = visibleWorldRect(vp, viewSize(), 0);
-    const stops = walkStops(b, world, { mode, screen: vis, trail: currentTrail(b) });
+    let stops = walkStops(b, world, { mode, screen: vis, trail: currentTrail(b) });
+    if (fromRef) {
+      const at = stops.findIndex((stop) => stop.uid === fromRef);
+      if (at > 0) stops = stops.slice(at);
+    }
     if (!presenter.start(b, world, { stops })) { toast("Nothing to walk"); return false; }
     return true;
   };
@@ -5674,6 +5678,9 @@ function buildBoardView(onFail, {
       }
       return;
     }
+    // POL-4. A trail stop and the region layer handle their own arrows and Enter.
+    const owned = event.target?.closest?.(".pxd-trail__stop, .pxd-region-layer");
+    if (owned && root.contains(owned)) return;
     const handled = ctl.handle({ type: "keydown", key: event.key, code: event.code, shift: event.shiftKey, alt: event.altKey, meta: event.metaKey, ctrl: event.ctrlKey, inputFocused, tabOwned });
     if (handled) { event.preventDefault(); event.stopPropagation(); }
   };

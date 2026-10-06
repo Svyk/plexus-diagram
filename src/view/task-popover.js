@@ -9,6 +9,15 @@ import { placeNearAnchor } from "./avoid.js";
 const PRIORITIES = ["low", "medium", "high"];
 const GAP = 6;
 
+function focusEl(el) {
+  if (!el || typeof el.focus !== "function" || el.isConnected === false) return;
+  try { el.focus({ preventScroll: true }); } catch { try { el.focus(); } catch { /* gone */ } }
+}
+
+function fieldTag(event) {
+  return String(event?.target?.tagName || "").toLowerCase();
+}
+
 export function createTaskPopover({ doc = globalThis.document, root, bt, toast = () => {}, today = () => new Date() } = {}) {
   let node = null;
   let offs = [];
@@ -40,6 +49,7 @@ export function createTaskPopover({ doc = globalThis.document, root, bt, toast =
   const button = (parent, label, run, cls = "pxd-task-pop__btn") => {
     const b = el("button", cls, parent, label);
     b.type = "button";
+    b.setAttribute("aria-label", label);
     b.addEventListener("click", (event) => { event.stopPropagation(); run(); });
     return b;
   };
@@ -62,6 +72,11 @@ export function createTaskPopover({ doc = globalThis.document, root, bt, toast =
       if (!names.length) el("div", "pxd-task-pop__hint", list, "No projects yet");
       for (const name of names) button(list, name, () => apply(uid, { project: name }));
       placeAgain();
+      const active = doc.activeElement;
+      const tag = String(active?.tagName || "").toLowerCase();
+      if (tag !== "input" && tag !== "textarea" && (active == null || active === doc.body || node.contains(active))) {
+        focusEl(list.querySelector("button"));
+      }
     });
     button(box, "Clear", () => apply(uid, { project: "" }), "pxd-task-pop__btn pxd-task-pop__btn--clear");
   };
@@ -90,6 +105,10 @@ export function createTaskPopover({ doc = globalThis.document, root, bt, toast =
 
   function open(uid, kind, anchor) {
     if (!bt?.available?.()) return false;
+    const prior = doc.activeElement;
+    const restoreTo = (anchor && typeof anchor.focus === "function")
+      ? anchor
+      : (prior && prior !== doc.body && prior !== doc.documentElement ? prior : null);
     close();
     if (!root || !FILL[kind]) return false;
     openFor = uid;
@@ -99,6 +118,7 @@ export function createTaskPopover({ doc = globalThis.document, root, bt, toast =
     node.setAttribute("data-task-pop", kind);
     el("div", "pxd-task-pop__title", node, TITLES[kind]);
     FILL[kind](node, uid);
+    if (kind !== "repeat") focusEl(node.querySelector("button"));
     const a = anchor?.getBoundingClientRect?.();
     if (a) {
       placeAgain = () => { if (node && anchor.isConnected !== false) placeNearAnchor(node, anchor.getBoundingClientRect(), root, { gap: GAP }); };
@@ -112,7 +132,37 @@ export function createTaskPopover({ doc = globalThis.document, root, bt, toast =
       on(node, type, (event) => event.stopPropagation());
     }
     on(doc, "pointerdown", (event) => { if (!node?.contains?.(event.target) && !anchor?.contains?.(event.target)) close(); }, true);
-    on(doc, "keydown", (event) => { if (event.key === "Escape") { event.stopPropagation(); close(); } }, true);
+    on(doc, "keydown", (event) => {
+      if (!node) return;
+      if (event.key === "Escape") {
+        event.preventDefault();
+        event.stopPropagation();
+        const back = restoreTo;
+        close();
+        focusEl(back);
+        return;
+      }
+      const inside = node.contains?.(event.target) || node.contains?.(doc.activeElement);
+      if (!inside) return;
+      const tag = fieldTag(event);
+      if (tag === "input" || tag === "textarea" || tag === "select") return;
+      const buttons = [...node.querySelectorAll("button")];
+      const current = event.target?.closest?.("button") || (buttons.includes(doc.activeElement) ? doc.activeElement : null);
+      if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+        const index = buttons.indexOf(current);
+        const next = buttons[index + (event.key === "ArrowDown" ? 1 : -1)];
+        if (!next) return;
+        event.preventDefault();
+        event.stopPropagation();
+        focusEl(next);
+        return;
+      }
+      if ((event.key === "Enter" || event.key === " ") && current) {
+        event.preventDefault();
+        event.stopPropagation();
+        current.click();
+      }
+    }, true);
     on(doc, "wheel", (event) => { if (!node?.contains?.(event.target)) close(); }, true);
     return true;
   }
@@ -149,6 +199,7 @@ export function openStatusChooser({ doc = globalThis.document, anchor, palette, 
     const row = el("button", "pxd-status-chooser__row", list);
     row.type = "button";
     row.setAttribute("role", "option");
+    row.setAttribute("aria-label", name);
     row.setAttribute("data-name", name);
     const glyph = el("span", "pxd-status-chooser__glyph", row);
     glyph.setAttribute("data-status", entry.glyph || "diamond");
@@ -163,6 +214,7 @@ export function openStatusChooser({ doc = globalThis.document, anchor, palette, 
   const remove = el("button", "pxd-status-chooser__row pxd-status-chooser__row--remove", list);
   remove.type = "button";
   remove.setAttribute("data-remove", "true");
+  remove.setAttribute("aria-label", "Remove status");
   const removeLabel = el("span", "pxd-status-chooser__name", remove);
   removeLabel.textContent = "Remove status";
 
@@ -199,16 +251,17 @@ export function openStatusChooser({ doc = globalThis.document, anchor, palette, 
       event.preventDefault();
       event.stopPropagation();
       close();
+      focusEl(anchor);
       return;
     }
-    if (event.key !== "Enter" && event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
+    if (event.key !== "Enter" && event.key !== " " && event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
     const tag = String(event.target?.tagName || "").toLowerCase();
     if (tag === "input" || tag === "textarea") return;
     const inside = pop.contains?.(event.target) || pop.contains?.(doc.activeElement);
     if (!inside) return;
     event.preventDefault();
     event.stopPropagation();
-    if (event.key === "Enter") {
+    if (event.key === "Enter" || event.key === " ") {
       const row = rowOf(event);
       if (!row) return;
       if (row.getAttribute("data-remove") === "true") finish("remove", null);

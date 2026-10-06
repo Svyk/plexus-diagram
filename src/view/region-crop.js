@@ -26,10 +26,18 @@ function readObstacles(obstacles) {
   return obstacles ?? [];
 }
 
-function wireFrame(span, { doc, onOpen, delayMs, buildPopover, obstacles } = {}) {
+function wireFrame(span, { doc, onOpen, delayMs, buildPopover, obstacles, label } = {}) {
   span.tabIndex = 0;
+  span.setAttribute("role", "button");
+  span.setAttribute("aria-label", label || "Open region");
   const stop = (event) => event.stopPropagation?.();
   for (const type of STOP_TYPES) span.addEventListener(type, stop);
+  span.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault?.();
+    event.stopPropagation?.();
+    if (typeof onOpen === "function") onOpen({ shiftKey: Boolean(event.shiftKey) });
+  });
   span.addEventListener("click", (event) => {
     event.stopPropagation?.();
     event.preventDefault?.();
@@ -242,7 +250,7 @@ export function mountRegionCrop({ doc = globalThis.document, button, region, fil
     }
   }
 
-  const closePop = wireFrame(span, { doc, onOpen, delayMs, buildPopover, obstacles });
+  const closePop = wireFrame(span, { doc, onOpen, delayMs, buildPopover, obstacles, label: region.caption || "Open region" });
   parent.insertBefore(span, nextSibling(button));
   let dead = false;
   return {
@@ -278,7 +286,7 @@ function mountRegionView({ doc = globalThis.document, button, region, board, onO
       span.append(caption);
     }
   }
-  const closePop = wireFrame(span, { doc, onOpen, delayMs, buildPopover, obstacles });
+  const closePop = wireFrame(span, { doc, onOpen, delayMs, buildPopover, obstacles, label: region.caption || "Open region" });
   parent.insertBefore(span, nextSibling(button));
   let dead = false;
   return {

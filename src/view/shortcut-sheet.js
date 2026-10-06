@@ -1,13 +1,21 @@
-import { SHORTCUTS } from "./shortcuts.js";
+import { SHEET_KEYS, SHORTCUTS } from "./shortcuts.js";
+
+function focusEl(el) {
+  if (!el || typeof el.focus !== "function" || el.isConnected === false) return;
+  try { el.focus({ preventScroll: true }); } catch { try { el.focus(); } catch { /* gone */ } }
+}
 
 export function createShortcutSheet({ doc = globalThis.document, root, shortcuts = SHORTCUTS, settings = null } = {}) {
   let sheet = null;
+  let opener = null;
   const close = () => {
     sheet?.remove();
     sheet = null;
   };
   const open = () => {
     if (sheet) return;
+    const cur = doc.activeElement;
+    opener = cur && cur !== doc.body && cur !== doc.documentElement ? cur : null;
     sheet = doc.createElement("div");
     sheet.className = "pxd-sheet pxd-chrome";
     sheet.setAttribute("role", "dialog");
@@ -33,7 +41,8 @@ export function createShortcutSheet({ doc = globalThis.document, root, shortcuts
     grid.className = "pxd-sheet__grid";
     let groupEl = null;
     let groupName = "";
-    const visible = shortcuts.filter((row) => settings == null || typeof row.when !== "function" || row.when(settings) !== false);
+    const rows = shortcuts === SHORTCUTS ? [...shortcuts, ...SHEET_KEYS] : shortcuts;
+    const visible = rows.filter((row) => settings == null || typeof row.when !== "function" || row.when(settings) !== false);
     for (const row of visible) {
       if (row.group !== groupName) {
         groupName = row.group;
@@ -58,7 +67,14 @@ export function createShortcutSheet({ doc = globalThis.document, root, shortcuts
     }
     sheet.append(head, grid);
     sheet.addEventListener("pointerdown", (event) => event.stopPropagation());
-    sheet.addEventListener("keydown", (event) => event.stopPropagation());
+    sheet.addEventListener("keydown", (event) => {
+      event.stopPropagation();
+      if (event.key !== "Escape") return;
+      event.preventDefault();
+      const back = opener;
+      close();
+      focusEl(back);
+    });
     root.append(sheet);
     try { closeBtn.focus({ preventScroll: true }); } catch { closeBtn.focus?.(); }
   };

@@ -131,6 +131,7 @@ export function renderTrailStrip(doc, parent, stops, { onStop, onWalk } = {}) {
     btn.className = "pxd-trail-strip__stop";
     if (stop?.uid) btn.dataset.uid = stop.uid;
     btn.textContent = stop?.title || "";
+    btn.setAttribute("aria-label", stop?.title || "Trail stop");
     btn.addEventListener("click", (event) => {
       event.preventDefault?.();
       event.stopPropagation?.();
@@ -142,11 +143,35 @@ export function renderTrailStrip(doc, parent, stops, { onStop, onWalk } = {}) {
   walk.type = "button";
   walk.className = "pxd-trail-strip__walk";
   walk.textContent = "Walk";
+  walk.setAttribute("aria-label", "Walk trail");
   walk.addEventListener("click", (event) => {
     event.preventDefault?.();
     event.stopPropagation?.();
     onWalk?.();
   });
   parent.append(walk);
+  // POL-4. Roam cancels Enter before a button's own activation inside a block, so the strip handles it.
+  parent.__pxdStrip = { list, onStop, onWalk };
+  if (!parent.__pxdStripKeys) {
+    parent.__pxdStripKeys = true;
+    parent.addEventListener("keydown", (event) => {
+      const now = parent.__pxdStrip || {};
+      if (event.key !== "Enter" && event.key !== " ") return;
+      const target = event.target;
+      if (target?.closest?.(".pxd-trail-strip__walk")) {
+        event.preventDefault?.();
+        event.stopPropagation?.();
+        now.onWalk?.();
+        return;
+      }
+      const btn = target?.closest?.(".pxd-trail-strip__stop");
+      if (!btn) return;
+      const i = [...parent.querySelectorAll(".pxd-trail-strip__stop")].indexOf(btn);
+      if (i < 0) return;
+      event.preventDefault?.();
+      event.stopPropagation?.();
+      now.onStop?.(now.list?.[i]);
+    });
+  }
   return parent;
 }

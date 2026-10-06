@@ -5,6 +5,11 @@ import { buckets, formatMade, headerText, refsLine } from "../model/halo.js";
 
 const NS = "http://www.w3.org/2000/svg";
 
+function focusEl(el) {
+  if (!el || typeof el.focus !== "function" || el.isConnected === false) return;
+  try { el.focus({ preventScroll: true }); } catch { try { el.focus(); } catch { /* gone */ } }
+}
+
 function darkDoc(doc) {
   return Boolean(doc.querySelector?.(".bp3-dark, .bt-theme-dark, .rm-dark-theme, body.roam-body.dark"));
 }
@@ -60,11 +65,16 @@ export function openHaloPopover({
   dustAge,
 } = {}) {
   const mounts = [];
+  const prior = doc.activeElement;
+  const opener = prior && prior !== doc.body && prior !== doc.documentElement ? prior : null;
   const pop = doc.createElement("div");
   pop.className = "pxd-halo pxd-root";
   if (darkDoc(doc)) pop.classList.add("pxd-root--dark");
   pop.style.position = "fixed";
   pop.style.width = "320px";
+  pop.tabIndex = -1;
+  pop.setAttribute("role", "dialog");
+  pop.setAttribute("aria-label", "Card history");
 
   const head = doc.createElement("div");
   head.className = "pxd-halo__head";
@@ -87,7 +97,9 @@ export function openHaloPopover({
     const button = doc.createElement("button");
     button.type = "button";
     button.className = "pxd-halo__company";
-    button.textContent = row.label || "card";
+    const label = row.label || "card";
+    button.textContent = label;
+    button.setAttribute("aria-label", label);
     button.setAttribute("data-uid", row.uid || "");
     button.addEventListener("click", (event) => {
       event.stopPropagation();
@@ -138,6 +150,31 @@ export function openHaloPopover({
     if (event.target?.closest?.("[data-link-uid], .rm-page-ref, .pxd-halo__link")) return;
     event.stopPropagation();
   });
+  const companies = () => [...pop.querySelectorAll(".pxd-halo__company")];
+  pop.addEventListener("keydown", (event) => {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      close();
+      focusEl(opener);
+      return;
+    }
+    const buttons = companies();
+    if (!buttons.length) return;
+    if (event.key === "ArrowDown" || event.key === "ArrowUp") {
+      const index = buttons.indexOf(event.target);
+      const from = index < 0 ? 0 : index;
+      const next = buttons[from + (event.key === "ArrowDown" ? 1 : -1)];
+      if (!next) return;
+      event.preventDefault();
+      focusEl(next);
+      return;
+    }
+    if ((event.key === "Enter" || event.key === " ") && event.target?.classList?.contains?.("pxd-halo__company")) {
+      event.preventDefault();
+      event.target.click?.();
+    }
+  });
 
   doc.body?.append(pop);
   const box = anchor || { left: 16, top: 16, right: 48, bottom: 40 };
@@ -149,6 +186,9 @@ export function openHaloPopover({
   });
   pop.style.left = `${placed.left}px`;
   pop.style.top = `${placed.top}px`;
+  const first = pop.querySelector(".pxd-halo__company");
+  if (first) focusEl(first);
+  else focusEl(pop);
 
   const close = () => {
     for (const el of mounts) {

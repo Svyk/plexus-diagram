@@ -49,6 +49,7 @@ function mountButton(doc, node, className, text, onClick) {
   btn.setAttribute("type", "button");
   btn.className = className;
   btn.textContent = text;
+  btn.setAttribute("aria-label", text);
   const stop = (event) => event.stopPropagation?.();
   btn.addEventListener("pointerdown", stop);
   btn.addEventListener("mousedown", stop);
@@ -74,6 +75,16 @@ export function renderRegionCard(doc, card, model, hooks = {}) {
   }
   caption.textContent = model?.caption ?? "";
   const open = typeof hooks.open === "function" ? hooks.open : () => {};
+  if (!node._pxdRegionKeys) {
+    node._pxdRegionKeys = true;
+    node.addEventListener("keydown", (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      const btn = event.target?.closest?.("button");
+      if (!btn || !node.contains(btn)) return;
+      event.preventDefault();
+      btn.click();
+    });
+  }
   mountButton(doc, node, "pxd-region-open", "Open drawing", () => open({ sidebar: false }));
   mountButton(doc, node, "pxd-region-sidebar", "Open in sidebar", () => open({ sidebar: true }));
   node.pxdUnmount = () => {

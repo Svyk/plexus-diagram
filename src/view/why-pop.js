@@ -4,6 +4,11 @@ import { placePopover } from "../relchips.js";
 
 const openPops = new Set();
 
+function focusEl(el) {
+  if (!el || typeof el.focus !== "function" || el.isConnected === false) return;
+  try { el.focus({ preventScroll: true }); } catch { try { el.focus(); } catch { /* gone */ } }
+}
+
 function darkDoc(doc) {
   return Boolean(doc.querySelector?.(".bp3-dark, .bt-theme-dark, .rm-dark-theme, body.roam-body.dark"));
 }
@@ -77,6 +82,21 @@ export function openWhyPopover({
       event.preventDefault();
       event.stopPropagation();
       close(false);
+      focusEl(opener);
+      return;
+    }
+    if (event.key === "ArrowDown" && event.target === labelField) {
+      event.preventDefault();
+      focusEl(whyField);
+      return;
+    }
+    if (event.key === "ArrowUp" && event.target === whyField) {
+      let start = 0;
+      try { start = whyField.selectionStart; } catch { start = 0; }
+      if (start == null || start === 0) {
+        event.preventDefault();
+        focusEl(labelField);
+      }
       return;
     }
     if (event.key !== "Enter" || event.target !== whyField) return;
@@ -103,6 +123,8 @@ export function openWhyPopover({
   });
   pop.style.left = `${placed.left}px`;
   pop.style.top = `${placed.top}px`;
+  const prior = doc.activeElement;
+  const opener = prior && prior !== doc.body && prior !== doc.documentElement && !pop.contains(prior) ? prior : null;
   const field = focus === "why" ? whyField : labelField;
   try { field.focus(); } catch { /* stub */ }
   const closer = () => close(false);

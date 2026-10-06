@@ -1,5 +1,10 @@
 // REG-6. The Save click calls onSave before any await, so the clipboard write stays in the click.
 
+function focusEl(el) {
+  if (!el || typeof el.focus !== "function" || el.isConnected === false) return;
+  try { el.focus({ preventScroll: true }); } catch { try { el.focus(); } catch { /* gone */ } }
+}
+
 export function openViewDialog(doc, { caption = "", showCopy = true, dialogLabel = "", onSave, onCancel } = {}) {
   const root = doc.createElement("div");
   root.className = "pxd-view-dialog";
@@ -15,13 +20,14 @@ export function openViewDialog(doc, { caption = "", showCopy = true, dialogLabel
   card.addEventListener("submit", (event) => event.preventDefault());
   root.append(card);
 
+  const glyph = dialogLabel === "Landmark glyph";
   const label = doc.createElement("label");
-  label.textContent = "Name";
+  label.textContent = glyph ? "Glyph" : "Name";
   const input = doc.createElement("input");
   input.className = "pxd-input";
   input.type = "text";
   input.value = caption;
-  input.setAttribute("aria-label", "View name");
+  input.setAttribute("aria-label", glyph ? "Landmark glyph" : "View name");
   label.append(input);
   card.append(label);
 
@@ -44,14 +50,17 @@ export function openViewDialog(doc, { caption = "", showCopy = true, dialogLabel
   save.type = "button";
   save.className = "pxd-btn pxd-view-save";
   save.textContent = "Save";
+  save.setAttribute("aria-label", "Save");
   const cancel = doc.createElement("button");
   cancel.type = "button";
   cancel.className = "pxd-btn pxd-view-cancel";
   cancel.textContent = "Cancel";
+  cancel.setAttribute("aria-label", "Cancel");
   actions.append(save, cancel);
   card.append(actions);
 
   let closed = false;
+  let opener = null;
   const close = () => {
     if (closed) return;
     closed = true;
@@ -74,16 +83,27 @@ export function openViewDialog(doc, { caption = "", showCopy = true, dialogLabel
     cancelDialog();
   });
   root.addEventListener("keydown", (event) => {
-    if (event.key !== "Escape") return;
+    if (event.key === "Escape") {
+      event.preventDefault();
+      event.stopPropagation();
+      const back = opener;
+      cancelDialog();
+      focusEl(back);
+      return;
+    }
+    if (event.key !== "Enter" || event.shiftKey || event.metaKey || event.ctrlKey || event.altKey) return;
+    if (String(event.target?.tagName || "").toLowerCase() === "textarea") return;
     event.preventDefault();
     event.stopPropagation();
-    cancelDialog();
+    save.click();
   });
 
   return {
     el: root,
     close,
     focus() {
+      const cur = doc.activeElement;
+      if (cur && cur !== doc.body && cur !== doc.documentElement && !root.contains(cur)) opener = cur;
       try { input.focus(); } catch { /* the stub has no focus */ }
     },
   };

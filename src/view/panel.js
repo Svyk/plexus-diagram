@@ -43,6 +43,7 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
       // Trails controls share this listener so listenersPerBoard does not rise.
       if (type === "click") trailClick(event);
       else if (type === "pointerdown") trailPointerDown(event);
+      else if (type === "keydown") trailKey(event);
     });
   }
   let resizing = null;
@@ -357,26 +358,35 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
       name.type = "button";
       name.dataset.trailAction = "select";
       name.dataset.trail = trail.uid;
+      name.setAttribute("aria-label", trail.name || "Trail");
       const rename = el("button", "pxd-btn pxd-trail__rename", head, "Rename");
       rename.type = "button";
       rename.dataset.trailAction = "rename";
       rename.dataset.trail = trail.uid;
+      rename.setAttribute("aria-label", "Rename trail");
       const walk = el("button", "pxd-btn pxd-trail__walk", head, "Walk");
       walk.type = "button";
       walk.dataset.trailAction = "walk";
       walk.dataset.trail = trail.uid;
+      walk.setAttribute("aria-label", "Walk trail");
       const del = el("button", "pxd-btn pxd-trail__delete", head, "Delete");
       del.type = "button";
       del.dataset.trailAction = "delete";
       del.dataset.trail = trail.uid;
+      del.setAttribute("aria-label", "Delete trail");
       const stops = el("ol", "pxd-trail__stops", row);
       for (const stop of trail.stops || []) {
         let title = stop.ref;
         try { title = on.stopTitle?.(stop.ref) || stop.ref; } catch { title = stop.ref; }
-        const li = el("li", "pxd-trail__stop", stops, title);
+        const li = el("li", "pxd-trail__stop", stops, title || "Trail stop");
         li.dataset.stop = stop.uid;
         li.dataset.trail = trail.uid;
+        li.dataset.ref = stop.ref || "";
         li.dataset.trailAction = "grip";
+        li.tabIndex = 0;
+        li.setAttribute("tabindex", "0");
+        li.setAttribute("role", "button");
+        li.setAttribute("aria-label", title || "Trail stop");
         if (stop.note) el("div", "pxd-trail__note", li, stop.note);
       }
     }
@@ -393,6 +403,32 @@ export function createPanel({ doc = globalThis.document, root, host, timers, on 
     else if (action === "rename" && id) on.renameTrail?.(id);
     else if (action === "delete" && id) on.deleteTrail?.(id);
     else if (action === "walk" && id) on.walkTrail?.(id);
+  };
+  const trailKey = (event) => {
+    const stop = event.target?.closest?.(".pxd-trail__stop");
+    if (!stop || !trailsPane.contains(stop)) return;
+    const key = event.key;
+    if ((key === "ArrowUp" || key === "ArrowDown") && event.altKey && !event.metaKey && !event.ctrlKey && !event.shiftKey) {
+      event.preventDefault?.();
+      const items = [...stop.parentElement.querySelectorAll(".pxd-trail__stop")];
+      const index = items.indexOf(stop);
+      const next = index + (key === "ArrowDown" ? 1 : -1);
+      if (index < 0 || next < 0 || next >= items.length) return;
+      const list = stop.parentElement;
+      if (key === "ArrowDown") {
+        const after = items[next].nextElementSibling;
+        if (after) list.insertBefore(stop, after);
+        else list.append(stop);
+      } else list.insertBefore(stop, items[next]);
+      on.moveStop?.(stop.dataset.stop, next);
+      try { stop.focus({ preventScroll: true }); } catch { stop.focus?.(); }
+      return;
+    }
+    if ((key === "Enter" || key === " ") && !event.altKey && !event.metaKey && !event.ctrlKey && !event.shiftKey) {
+      event.preventDefault?.();
+      const id = stop.dataset.trail || "";
+      if (id) on.walkTrail?.(id, stop.dataset.ref || "");
+    }
   };
   // Document pointermove exists only while a stop is being dragged, then it is removed.
   const trailPointerDown = (event) => {

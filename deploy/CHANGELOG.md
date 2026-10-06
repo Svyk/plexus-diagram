@@ -1,5 +1,15 @@
 # Changelog
 
+## 3.0.0 — 2026-10-06
+
+Plexus 3.0: the 3.x roadmap is complete. This release makes large boards open fast, makes every new surface usable from the keyboard, caps every bulk gesture at what one Roam undo can take back, and documents the data model and module contracts as built.
+
+- Large boards open fast. A board with 300 cards, 20 sections and 150 connections shows its cards in about 360 ms and is idle by about 450 ms (it was about 1.3 s, with long pauses after the first paint). Card reference and board counts now come from one indexed read instead of four searches across the whole graph, and fullscreen no longer forces a page layout in the middle of opening.
+- Keyboard: trail stops in the panel take focus; Alt+↑ and Alt+↓ move a stop and Enter walks the trail from it. The region overlay nudges with the arrow keys (Shift for 10 px), Enter confirms and Esc cancels. The status, halo, why and task popovers take focus when they open, move with the arrow keys and give focus back on Esc. Trail strips, crops, PDF chips, timeline rows and the resurface panel open with Enter. Every button has a name, and focus rings show in light and dark even when another extension hides outlines. The `?` sheet lists the new keys.
+- Undo: every bulk gesture stops at 45 changes so one Roam undo takes it back, with a toast that says how many were added: adding cards to a trail, a new trail from a selection, landmarks on a selection, and Lay out by date. README, Limits has a table of writes and undo steps per gesture.
+- Fixed: moving a trail stop down (by keyboard or by dragging) did nothing.
+- Docs: `docs/spec-plexus-3.0.md` (every block kind and prop key, what is stored where, decorated macros, the public API, interop) and `docs/api-plexus-3.0.md` (module contracts). The README follows the 3.0 order and has an integrations table. `tools/spec-keys.mjs` and `tools/doc-check.mjs` fail when code and docs drift.
+
 ## 2.21.0 — 2026-10-06
 
 Trails, landmarks, a timeline, strength and dust lenses, source chips, and an Integrations section in settings.

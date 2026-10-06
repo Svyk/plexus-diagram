@@ -15,26 +15,20 @@ A Heptabase-style whiteboard for Roam `{{[[diagram]]}}` blocks. Cards, colored s
 
 Boards enhanced with 0.6 upgrade to the 1.0 format once, the first time they are opened.
 
-## 1.3 native parity
-
-An enhanced board keeps Roam's diagram controls and adds to them.
-
-- The right rail is zoom in, zoom out, fit view, Toggle Minimap, Save PNG, Open outline in sidebar, Edit Block, then Maximize.
-- Edit Block opens the diagram block's text. Esc returns to the board.
-- The Properties panel edits text, fill, border, edges, sections, and the background.
-- A note card is a plain block. Hover shows Color, Expand, and References.
-
 ## Surfaces
+
+An enhanced board keeps Roam's diagram controls and adds to them (the 1.3 native set: the rail, Edit Block, the Properties panel, and the note-card hover).
 
 ![The fixture board in the light theme](docs/img/board-light.png)
 
 ![The same board with the dark token set](docs/img/board-dark.png)
 
-- **Rail.** The vertical stack on the right (Settings can switch it to a horizontal bar): zoom in, zoom out, fit view, Toggle Minimap, Save PNG, Open outline in sidebar, Edit Block, Maximize, the zoom percent, and the version badge. The badge opens this version's changelog from the bundle. No network.
-- **Properties.** The panel on the canvas. It edits the selection: title size, title color, title fill, area fill, and border. Reset default clears that selection's overrides. Background, on the board, sets this board's pattern and tone.
+- **Rail.** The vertical stack on the right (Settings can switch it to a horizontal bar): zoom in, zoom out, fit view, Toggle Minimap, Save PNG, Open outline in sidebar, Edit Block, Maximize, the zoom percent, and the version badge. Edit Block opens the diagram block's text. Esc returns to the board. The badge opens this version's changelog from the bundle. No network.
+- **Properties.** The panel on the canvas. It edits the selection: text, title size, title color, title fill, area fill, fill, border, edges, and sections. Reset default clears that selection's overrides. Background, on the board, sets this board's pattern and tone.
 - **Board bar.** The top row: breadcrumbs, Add, Info, graph links, Find, and More. The last breadcrumb and the bar's bottom edge take the board's own color. More holds export, templates, snapshots, background, dock position and a Views submenu (Gallery, Timeline, Graph); the same Views submenu is in the canvas right-click menu. Hovering any control shows a tooltip with its name, shortcut and a one-line description (Settings, Hover tooltips and Tooltip delay). A selection shows a context bar: colors, align, distribute, and, for a connection, direction, route, dash, weight, and label. Toolbar layout in Settings: Split (default, tools in the dock), Classic (tools in the top bar, as in 2.1), or Dock only (the bar appears when the pointer is near the top edge).
 - **Panel.** Add opens the side panel, to the left of the rail. Search finds pages and blocks. Related lists what the selected card links to and what links to it. Info (also the I key) shows the card or the board. Boards lists saved views: a small map, Go, Copy ref, Rename, and Delete. Go restores the camera and writes nothing. The outline in the sidebar is the same canvas, not a second copy of the bullets.
 - **Tool dock.** The floating bar along the bottom, above the minimap: Select (V), Hand (H), Card (N), Text (T), Sticky (S), Shape (R), Section (G), Board (W), Connect (C). The active tool has a sliding highlight; double-click a tool to lock it (padlock). With Card, Sticky, Section or Shape active the dock shows that tool's options: with nothing selected a color, look or shape sets the next item you create (kept in memory only); with a selection it restyles the selection. Position, shape, labels and size are in Settings; a board can pick its own position from More, Dock position for this board. Below zoom 0.2 the dock keeps Select, Hand and Board. Hide it with Show tool palette.
+- A note card is a plain block. Hover shows Color, Expand, and References.
 
 ![The tool palette above the minimap](docs/img/palette.png)
 
@@ -57,17 +51,10 @@ An enhanced board keeps Roam's diagram controls and adds to them.
 | Drag from Roam | Drag any bullet from the outline or sidebar onto the board to add it as a `((ref))` card |
 | Right-click menu | Right-click empty board, a card, section, text, connection, or a multi-selection. The board menu (toolbar More) has export, fold all, journals, background |
 | Page cards | Add page… in the canvas menu searches for a page; dropping a page from the left sidebar does the same. A page card shows the title as a header (click opens the page, Shift-click the sidebar) and the whole outline, scrolling inside the card. Click a row to edit that block. A row that holds a board shows it as a small map with its title and item count (a one-line chip after four, and for the board you are on, "this board"); click opens it, Shift-click opens it in the sidebar. A row Roam cannot render shows its raw text. Roam's right sidebar title, links inside blocks and search results carry no drag data, so they cannot be dropped |
-| Arrows to blocks | Drag an arrow end over a page card: the row under the pointer lights up and the arrow connects to that block with a `((ref))` (so it shows in Roam's backlinks); the title connects to the page. The end follows the row when the card scrolls and shows a marker at the edge when the row is out of view (click it to scroll there). Select an arrow to drag its end handles; the arrow menu has Connect to the page instead The arrow continues into the card and its head stops beside the row; the row keeps a mark in the arrow's color. Hover either one and both light up; a row scrolled out of view becomes a pill at the card edge (click it to scroll back). |
-| Tasks on the board | The Task tool and Better Tasks start off. Turn them on under Settings, Integrations. A Task tool you already saved stays on. With both off, the dock has no Task button and K does nothing. With them on, K, then click the board, makes a task card: a Roam `{{[[TODO]]}}` block. With Better Tasks loaded, the card shows its checkbox, its title and chips for due date, project, priority, repeat, status, waiting-for and GTD. Click the due, project, priority or repeat chip to change it from a small popover; the change is made by Better Tasks, so Plexus never writes a `BT_attr` block itself, and Cmd+Z after a chip change is Roam's undo, not the board's. Cmd+Z right after K removes the new block in one step. Today's due date gets a teal border, an overdue task a red one, a done task is dimmed and struck through. Tick the checkbox on the card (it is a light checkbox of Plexus's own, so a board of many tasks stays under Better Tasks' 100-checkbox limit) and Better Tasks writes the completed date and, for a repeating task, the next occurrence on its daily or project page; a toast offers Add to board. Zoomed out, a task is a check box of at least 20 screen pixels with its due date. Dragging a task card onto a daily-page card (or a section named for a day) sets that day as its due date, the same attribute block keeps its uid; hold Shift to move the card only. A Kanban drop on Done goes through the same Better Tasks checkbox, so a repeating task also makes its next occurrence. Popovers, the children peek and the card menu open clear of the dock, top bar, rail, minimap and panels. The card menu has Make task for a plain note card. Better Tasks' own attribute blocks and its activity log never show as rows, badges or children on a card. Without Better Tasks the tool still makes a plain TODO card and the chips are read-only |
-| Task statuses | With Roam Task Status Tags 0.9.0+ loaded, a task card shows its status glyph on the checkbox and a status chip. The ring left of the checkbox opens the status chooser (Shift-click removes). Card menu and multi-select: Status ▸, at most 45 cards. Task Status Tags writes the tag; Plexus writes nothing. Kanban has Lanes: Status (columns per status, No status, Done; `[` `]` move a focused card) |
+| Arrows to blocks | Drag an arrow end over a page card: the row under the pointer lights up and the arrow connects to that block with a `((ref))` (so it shows in Roam's backlinks); the title connects to the page. The end follows the row when the card scrolls and shows a marker at the edge when the row is out of view (click it to scroll there). Select an arrow to drag its end handles; the arrow menu has Connect to the page instead. The arrow continues into the card and its head stops beside the row; the row keeps a mark in the arrow's color. Hover either one and both light up; a row scrolled out of view becomes a pill at the card edge (click it to scroll back). |
 | Journal | Panel tab Journal: the top-level blocks of a daily page, a day stepper and Today. Drag a row onto the board for a card. Viewing and stepping write nothing |
 | Fullscreen tabs | Boards opened while fullscreen become tabs above the board bar, up to 9. Cmd/Ctrl+1 to 9 switch tabs; the list returns next time, per graph, stored on this device only |
 | Touch | Pinch to zoom, two fingers to pan, long-press (half a second, still) for the menu, 44 px grips under a coarse pointer. Phones stay off with Disable on mobile |
-| Trails | Card menu: Add to trail. Walk trail plays the stops in present mode with each stop's note. A trail is a block under the board's collapsed `Trails` child with `((card))` children in order; `((trail))` pasted anywhere in Roam shows a strip of stops you can click. Panel tab Trails lists them |
-| Landmarks | Card menu: Make landmark. A landmark keeps a large glyph at every zoom (overview too) and shows on the minimap. Walk the board tours landmarks left to right, then down, or along a trail |
-| Timeline | Info tab: the daily pages that mention a card on the board, with a count per day; click a day to open it. Lay out by date can use the first or last mention instead of a date attribute |
-| Strength and Dust | More menu. Strength thickens a connection whose ends are referenced a lot, share other boards and were edited recently (hover for the reason). Dust dims cards untouched for 6 months, 1 year or 2 years. Views only: nothing is written |
-| Source chip | A block dragged from an `Articles/` or `Media Captures/` page shows the page title and its `Author::`. Click to open the page in the sidebar |
 | Highlighter colours | A card with `#bg-blue` or `#[[bg-blue]]` uses that colour when the colour highlighter is installed. A fill set on the card wins until you clear it. The colour picker's gear, Write as highlighter tag, stores one `#[[bg-name]]` in the block and clears the fill. One undo restores both. Hex, darker, and lighter stay on the card only. `#c:red` still colours text inside the card. |
 | Card children | A card with child blocks shows only its own block and a ▸ N badge. Click the badge to open the children as an editable outline in the card (remembered per card); hover it to peek. The card menu has Spread children as cards: one card per child with an arrow back, in one undo step |
 | Connections in Roam | A connection block (under a board's Connections) gets a small chip in the outline, the sidebar and linked references: "A —label→ B · on Board". Click it for a preview with a map of the two cards, the arrow and the target row; Open on board selects the connection (inside a nested board too), Open in sidebar opens the board block. Nothing is written The breadcrumb Roam draws above a connection block (in linked references and when zoomed into the block) opens the same preview on a plain click, with a ▦ mark; Shift, Cmd and Ctrl clicks keep Roam's behavior. The preview opens under the chip, else above or beside it, and never covers the chip or the block line |
@@ -85,25 +72,14 @@ An enhanced board keeps Roam's diagram controls and adds to them.
 | Search | `/` filters the board and steps through matches |
 | Add | The Add panel searches pages and blocks, and its Related tab lists what the selected card links to and is linked from |
 | Save view | More → Save view…, or Shift+V, stores the camera as one view block. With cards selected, the context bar saves a view of that selection. The Boards tab lists the views. Go restores the camera and writes nothing |
-| Mark region | On an image card, Mark region, then drag a rectangle on the picture. Confirm stores the region under the image and copies a block ref. The first undo removes the region. The next undo removes the empty container |
-| Mark image region | On an image block, right-click the bullet, then Extensions, then Plexus: Mark image region. Drag a rectangle and Confirm. The region is stored under the image and a block ref is copied. Escape writes nothing. The same region shows as a crop, at most 160px tall, in the outline, a block ref, an embed, the sidebar, and linked references. The crop has a 1px border and no shadow |
-| Open a region | Hover a crop for a larger preview. Click opens the image on its board, zoomed to the region, or scrolls the outline image into view and pulses the region. Shift-click opens the board in the sidebar |
+| Connection why | Double-click a label to set the label and a why note. Enter saves both. The outline chip adds because. Shift+T opens a memory lane. The links menu can suggest shared references. Plexus Commands can insert a resurface button. The command palette stays two entries |
 | Public API | `window.PlexusDiagram` lists boards, opens a card or a saved view, adds one card, and returns a small PNG of a board. The command palette stays two entries |
 | Roam Plexus on a board | A block ref of a Roam Plexus region shows the caption, a crop, Open drawing, and Open in sidebar. Without Roam Plexus the card is an ordinary block ref |
 | Drawing on a board | A block ref of a Roam drawing shows the picture. Regions lists its regions and adds a reference. New drawing here creates the drawing and the reference. The drawing block stays where it is |
-| PDF on a board | A pdf block is a card. The cover shows the file name and the highlight count. Open reader mounts Roam's reader. Interact uses that reader. One reader is open at a time. The command palette stays two entries |
-| Highlight on a board | A block ref of a PDF highlight shows a colour bar, the passage or the area picture, and the page. Changing the colour tag updates the bar. A block that is not a highlight stays a normal ref. A child block under the highlight shows as its note |
-| Open in reader | Opens a reading pane beside the board with Roam's reader and a list of the PDF's highlights (colour, page, note). Filter by colour, page or text. Place or drag a row to make a card, or drag a highlight straight out of the PDF onto the board; a highlight already on the board pulses. Clicking a row or a highlight card's footer scrolls the PDF to that highlight and flashes it. Closing the pane leaves the cards. The command palette stays two entries |
-| Page chips | A PDF card has one chip per page. Click pulses the cards from that page. Double-click opens the page. An arrow into a highlight shows the page. The outline says On board. These do not write |
-| Card context | Hover the info button to see when a card was made, the board, and cards from the same day. A block on a board shows a chip per board. Hover for a map. Click to open the card. These do not write |
-| Connection why | Double-click a label to set the label and a why note. Enter saves both. The outline chip adds because. Shift+T opens a memory lane. The links menu can suggest shared references. Plexus Commands can insert a resurface button. The command palette stays two entries |
-| Add highlights | On a PDF card, Add highlights lists that page's highlights by date, with a colour bar and a page number. Place as grid or column. One undo removes those cards. Drag a highlight's bullet onto the board for one card. Drop a date and confirm to add only its highlights. Paste of a highlight ref is unchanged |
-| Highlight colour | The tag lens can keep one highlight colour bright. An area picture uses its saved width and height. Mark region on an area card stores the region under that highlight. The page mark keeps the colour Roam painted |
-| Open a view | An inline view is a small map. Hover enlarges it. Click opens the board at that view and pulses the highlighted cards. Shift-click opens the board in the sidebar. The click does not write |
 
 The context bar above a selection has 10 colors for cards, sections, text, and connections; connection direction (→ ↔ —), flip, route (curve, straight, elbow), dashed line, weight, label, and notes.
 
-## What it means in Roam
+### What it means in Roam
 
 | On the board | In the graph |
 |---|---|
@@ -131,13 +107,64 @@ An image region and a saved view are blocks under `{{[[plexus-regions]]}}`. That
 
 Mark a region on the picture, or from the block menu. Plexus copies a block ref. Paste that ref on a daily note and the crop shows there. Save view stores the camera the same way. The image card shows a region count. Rename changes only the words after `}}`. Delete asks when another block still references the region.
 
+| Do | How |
+|---|---|
+| Mark region | On an image card, Mark region, then drag a rectangle on the picture. Confirm stores the region under the image and copies a block ref. The first undo removes the region. The next undo removes the empty container |
+| Mark image region | On an image block, right-click the bullet, then Extensions, then Plexus: Mark image region. Drag a rectangle and Confirm. The region is stored under the image and a block ref is copied. Escape writes nothing. The same region shows as a crop, at most 160px tall, in the outline, a block ref, an embed, the sidebar, and linked references. The crop has a 1px border and no shadow |
+| Open a region | Hover a crop for a larger preview. Click opens the image on its board, zoomed to the region, or scrolls the outline image into view and pulses the region. Shift-click opens the board in the sidebar |
+| Open a view | An inline view is a small map. Hover enlarges it. Click opens the board at that view and pulses the highlighted cards. Shift-click opens the board in the sidebar. The click does not write |
+
+## PDFs
+
+Roam's reader does the highlighting. A pdf block on the board is a card. Plexus adds the cover, highlight cards, page chips, and a reading pane beside the board.
+
+| Do | How |
+|---|---|
+| PDF on a board | A pdf block is a card. The cover shows the file name and the highlight count. Open reader mounts Roam's reader. Interact uses that reader. One reader is open at a time. The command palette stays two entries |
+| Highlight on a board | A block ref of a PDF highlight shows a colour bar, the passage or the area picture, and the page. Changing the colour tag updates the bar. A block that is not a highlight stays a normal ref. A child block under the highlight shows as its note |
+| Open in reader | Opens a reading pane beside the board with Roam's reader and a list of the PDF's highlights (colour, page, note). Filter by colour, page or text. Place or drag a row to make a card, or drag a highlight straight out of the PDF onto the board; a highlight already on the board pulses. Clicking a row or a highlight card's footer scrolls the PDF to that highlight and flashes it. Closing the pane leaves the cards. The command palette stays two entries |
+| Page chips | A PDF card has one chip per page. Click pulses the cards from that page. Double-click opens the page. An arrow into a highlight shows the page. The outline says On board. These do not write |
+| Add highlights | On a PDF card, Add highlights lists that page's highlights by date, with a colour bar and a page number. Place as grid or column. One undo removes those cards. Drag a highlight's bullet onto the board for one card. Drop a date and confirm to add only its highlights. Paste of a highlight ref is unchanged |
+| Highlight colour | The tag lens can keep one highlight colour bright. An area picture uses its saved width and height. Mark region on an area card stores the region under that highlight. The page mark keeps the colour Roam painted |
+
+## Tasks and statuses (opt-in)
+
+The Task tool and Better Tasks start off. Turn them on under Settings → Integrations. A Task tool you already saved stays on. With both off, the dock has no Task button and K does nothing.
+
+| Do | How |
+|---|---|
+| Tasks on the board | The Task tool and Better Tasks start off. Turn them on under Settings, Integrations. A Task tool you already saved stays on. With both off, the dock has no Task button and K does nothing. With them on, K, then click the board, makes a task card: a Roam `{{[[TODO]]}}` block. With Better Tasks loaded, the card shows its checkbox, its title and chips for due date, project, priority, repeat, status, waiting-for and GTD. Click the due, project, priority or repeat chip to change it from a small popover; the change is made by Better Tasks, so Plexus never writes a `BT_attr` block itself, and Cmd+Z after a chip change is Roam's undo, not the board's. Cmd+Z right after K removes the new block in one step. Today's due date gets a teal border, an overdue task a red one, a done task is dimmed and struck through. Tick the checkbox on the card (it is a light checkbox of Plexus's own, so a board of many tasks stays under Better Tasks' 100-checkbox limit) and Better Tasks writes the completed date and, for a repeating task, the next occurrence on its daily or project page; a toast offers Add to board. Zoomed out, a task is a check box of at least 20 screen pixels with its due date. Dragging a task card onto a daily-page card (or a section named for a day) sets that day as its due date, the same attribute block keeps its uid; hold Shift to move the card only. A Kanban drop on Done goes through the same Better Tasks checkbox, so a repeating task also makes its next occurrence. Popovers, the children peek and the card menu open clear of the dock, top bar, rail, minimap and panels. The card menu has Make task for a plain note card. Better Tasks' own attribute blocks and its activity log never show as rows, badges or children on a card. Without Better Tasks the tool still makes a plain TODO card and the chips are read-only |
+| Task statuses | With Roam Task Status Tags 0.9.0+ loaded, a task card shows its status glyph on the checkbox and a status chip. The ring left of the checkbox opens the status chooser (Shift-click removes). Card menu and multi-select: Status ▸, at most 45 cards. Task Status Tags writes the tag; Plexus writes nothing. Kanban has Lanes: Status (columns per status, No status, Done; `[` `]` move a focused card) |
+
+## Remembering
+
+Lenses, trails, landmarks, the timeline, and resurface. Strength, Dust, the timeline, and card context are views: they read Roam and do not write the graph.
+
+| Do | How |
+|---|---|
+| Trails | Card menu: Add to trail. Walk trail plays the stops in present mode with each stop's note. A trail is a block under the board's collapsed `Trails` child with `((card))` children in order; `((trail))` pasted anywhere in Roam shows a strip of stops you can click. Panel tab Trails lists them |
+| Landmarks | Card menu: Make landmark. A landmark keeps a large glyph at every zoom (overview too) and shows on the minimap. Walk the board tours landmarks left to right, then down, or along a trail |
+| Timeline | Info tab: the daily pages that mention a card on the board, with a count per day; click a day to open it. Lay out by date can use the first or last mention instead of a date attribute. Shift+T opens a memory lane |
+| Strength and Dust | More menu. Strength thickens a connection whose ends are referenced a lot, share other boards and were edited recently (hover for the reason). Dust dims cards untouched for 6 months, 1 year or 2 years. Views only: nothing is written |
+| Resurface | Allow the resurface macro from Settings → Integrations. A daily page lists cards from earlier days, and Plexus Commands can insert the button. The day list uses Resurface intervals (days, separated by commas) |
+| Card context | Hover the info button to see when a card was made, the board, and cards from the same day. A block on a board shows a chip per board. Hover for a map. Click to open the card. These do not write |
+| Source chip | A block dragged from an `Articles/` or `Media Captures/` page shows the page title and its `Author::`. Click to open the page in the sidebar |
+
 ## Works with
 
-Plexus Diagram, Roam Compass, and Roam Plexus notice each other. With Compass loaded, a card menu can open Compass on that page, and Compass can open the board that holds it. With Roam Plexus loaded, an image card can start an empty drawing beside it. If one of them is missing, that menu row stays hidden. Settings, Integrations shows which ones are detected (with versions) and has a switch for each.
+Plexus Diagram, Roam Compass, and Roam Plexus notice each other. Settings → Integrations shows which of these are detected, with versions.
+
+| Integration | What it adds | Settings → Integrations |
+|---|---|---|
+| Better Tasks | Task chips (due, project, priority, repeat, status, waiting-for, GTD), the light checkbox, and task edits. Plexus never writes a `BT_attr` block. Off leaves the TODO marker to Roam. Without Better Tasks the Task tool still makes a plain TODO and the chips are read-only | Better Tasks integration. Off by default. Task tool is its own switch, off unless you already saved it on |
+| Task Status Tags | The status glyph, the status chip, the ring chooser, and Kanban lanes by status. The extension writes the tag. Plexus writes nothing. `[` and `]` move a focused card between lanes | Status line only. No on/off switch |
+| Roam Plexus | A region ref shows the caption, a crop, Open drawing, and Open in sidebar. A drawing ref shows the picture. New drawing here creates the drawing and the reference. An image card can start an empty drawing beside it. If Roam Plexus is missing, the card is an ordinary block ref and that menu row stays hidden | Roam Plexus and Compass, shared with Compass |
+| Compass | A card menu can open Compass on that page, and Compass can open the board that holds it. If Compass is missing, that menu row stays hidden | Roam Plexus and Compass, the same switch. Off hides Open in Compass and stops thumbnail calls |
+| Colour highlighter | A card with `#bg-blue` or `#[[bg-blue]]` uses that colour. A fill set on the card wins until you clear it. Write as highlighter tag stores one `#[[bg-name]]` and clears the fill. One undo restores both. Hex, darker, and lighter stay on the card. `#c:red` still colours text inside the card | Status line only. No on/off switch |
 
 ## Shortcuts
 
-`?` opens this same list on the board. ⌘ means Command on a Mac and Ctrl elsewhere. Present keys apply only while a presentation is running.
+`?` opens this same list on the board. ⌘ means Command on a Mac and Ctrl elsewhere. Present keys apply only while a presentation is running. Arrow keys still nudge the selection 1 px, and Shift+arrows nudge 10 px. Trails, Tasks, and Regions rows are on the `?` sheet and are handled by that surface. They are not global shortcuts. K does nothing while the Task tool is off, and the `?` sheet hides that row then.
 
 | Group | Keys | Action |
 |---|---|---|
@@ -173,8 +200,8 @@ Plexus Diagram, Roam Compass, and Roam Plexus notice each other. With Compass lo
 | View | ⇧0 | Zoom to 100% |
 | View | ⇧1 | Fit all |
 | View | ⇧2 | Fit selection |
-| View | Arrows | Nudge 1 px |
-| View | Shift+arrows | Nudge 10 px |
+| View | Arrows | Nudge |
+| View | Shift+arrows | Nudge by 10 |
 | View | L | Cycle links |
 | View | / or ⌘F | Find on board |
 | View | I | Info |
@@ -182,11 +209,30 @@ Plexus Diagram, Roam Compass, and Roam Plexus notice each other. With Compass lo
 | View | Q | Quick Look |
 | View | P | Present |
 | View | ? | Shortcuts |
+| View | Shift+V | Save view |
+| View | Shift+T | Memory lane |
 | View | Escape | Close or step back |
 | Navigate | ⌘[ | Back |
 | Navigate | ⌘] | Forward |
+| Navigate | ⌘1 | Board tab 1 |
+| Navigate | ⌘2 | Board tab 2 |
+| Navigate | ⌘3 | Board tab 3 |
+| Navigate | ⌘4 | Board tab 4 |
+| Navigate | ⌘5 | Board tab 5 |
+| Navigate | ⌘6 | Board tab 6 |
+| Navigate | ⌘7 | Board tab 7 |
+| Navigate | ⌘8 | Board tab 8 |
+| Navigate | ⌘9 | Board tab 9 |
 | Present | → ↓ Space | Next |
 | Present | ← ↑ | Previous |
+| Trails | Alt+↑ / Alt+↓ | Reorder a trail stop |
+| Trails | Enter | Walk from this stop |
+| Tasks | [ | Previous status lane |
+| Tasks | ] | Next status lane |
+| Regions | Arrows | Nudge region 1 px |
+| Regions | Shift+arrows | Nudge region 10 px |
+| Regions | Enter | Confirm region |
+| Regions | Esc | Cancel region |
 
 ## Limits
 
@@ -226,13 +272,17 @@ Settings → Extensions → Plexus Diagram. Each change applies on the open boar
 | Cards | Default card look | New note cards. Block is a plain Roam block. Card keeps a title row. |
 | Cards | Default card width | Width of a new card, in pixels. |
 | Cards | Default card height | Height of a new card, in pixels. |
+| Cards | Enter in a card | Newline adds a line to the card's block, like a native Roam diagram. Child makes a new child block inside the card. |
 | Cards | Show card badges | Show how many references, tasks, and children a card has. |
-| Cards | Board chips | Show a board chip under a block that is a card on a board. |
 | Cards | Space out cards | After a move, push cards apart when they overlap. |
 | Integrations | Better Tasks integration | Use Better Tasks for task chips, the light checkbox, and task edits. Off leaves the TODO marker to Roam. Starts off. |
 | Integrations | Task tool | Show the Task tool (K) in the dock. Starts off. A saved on stays on. |
 | Integrations | Task chips | Full (due date, project, priority, repeat, status), due only, or none. |
 | Integrations | Default project for new tasks | A page name. A task made from the board gets it as its Better Tasks project. Empty uses Better Tasks' own default. |
+| Integrations | Roam Plexus and Compass | Use Roam Plexus and Compass when they are loaded. Off hides Open in Compass and stops thumbnail calls. |
+| Integrations | Board chips | Show a board chip under a block that is a card on a board. |
+| Integrations | Resurface | Allow the resurface macro. A daily page can list cards from earlier days, and Plexus Commands can insert the button. |
+| Integrations | Inline region crops | Show a region crop beside its button. Off leaves the button and hides the crop. |
 | Sections | Auto-fit sections | Grow a section when a card is moved or resized past its edge. |
 | Connections | Graph links | Show lines between cards that share a page reference or an attribute. All, attributes, or off. |
 | Connections | Attribute styles | One JSON object. Each attribute name gets a palette color and a line: solid, dashed, or dotted. |
@@ -263,6 +313,8 @@ Settings → Extensions → Plexus Diagram. Each change applies on the open boar
 | Performance | Motion | Full, reduced, or none. A system reduced-motion setting shortens Full. |
 | Performance | Disable on mobile | Do not open diagrams on a phone. |
 | Performance | Collapse the outline | Fold an enhanced board once, so the outline does not list every card. Opening the bullet is remembered. |
+| Performance | Speed log | Record open time, click-to-paint, pan frame rate, and long tasks in this tab. Nothing is sent or saved. |
+| Performance | speed-flags | Hidden. Not a panel row. A JSON object, parsed by parseSpeedFlags. |
 
 ## Privacy
 
@@ -275,7 +327,7 @@ npm ci --ignore-scripts --no-audit --no-fund
 npm run check
 ```
 
-Design: `docs/spec-plexus-1.0.md` and `docs/spec-plexus-1.2.md`. Module contracts: `docs/api-plexus-1.0.md`. Commit `src/` with the generated root `extension.js` / `extension.css` and `deploy/`.
+Design: `docs/spec-plexus-1.0.md`, `docs/spec-plexus-1.2.md`, and `docs/spec-plexus-3.0.md`. Module contracts: `docs/api-plexus-1.0.md`, `docs/api-plexus-2.0.md`, and `docs/api-plexus-3.0.md`. Commit `src/` with the generated root `extension.js` / `extension.css` and `deploy/`.
 
 ## Install
 

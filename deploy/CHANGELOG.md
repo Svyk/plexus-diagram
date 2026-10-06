@@ -1,5 +1,13 @@
 # Changelog
 
+## 2.19.0 — 2026-10-06
+
+- Clicking into a page card no longer changes how it looks. The editor keeps the card's own text size, row spacing, indent and line wrapping. Roam's bullets, guide lines and extra scrollbar stay hidden, and the row you clicked stays where it was.
+- Drag a highlight straight out of the PDF onto the board, as in Heptabase. Hover a highlight in the reading pane (the cursor becomes a hand), then drag it onto the board: a card lands where you drop it. A highlight that is already on the board pulses instead of being added twice. A plain click on a highlight still opens Roam's highlight menu, and selecting text to make a new highlight works as before.
+- Clicking a highlight in the pane's list, or the page footer on a highlight card, scrolls the PDF to that highlight and flashes it, not just to the top of its page.
+- The PDF reader fills its part of the pane. There is no longer a second scrollbar around it, and Roam's toolbar (highlight tools, zoom, page number) stays in view.
+- The link legend (the chips that turn link types on and off) sits under the board bar, beside Properties, instead of on top of the bar's buttons.
+
 ## 2.18.0 — 2026-10-06
 
 PDF highlights closer to Heptabase (roadmap P27), page cards you can edit in place, and two speed and freshness fixes:

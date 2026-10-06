@@ -1808,3 +1808,28 @@ test("a failed mount retries after 5s, then 30s, then waits for a page change", 
     console.warn = origWarn;
   }
 });
+
+test("fullscreen-on-zoom leaves a right-sidebar copy of the zoomed board inline", async () => {
+  const prev = globalThis.IntersectionObserver;
+  delete globalThis.IntersectionObserver;
+  try {
+    await withEnv({ enhanced: ["boardAAA1"], hash: "#/app/Svy/page/boardAAA1" }, async (t) => {
+      addNative(t.doc, "boardAAA1");
+      const side = t.doc.createElement("div");
+      side.id = "right-sidebar";
+      t.doc.body.append(side);
+      addNative(t.doc, "boardAAA1", { parent: side });
+      await t.install();
+      t.tick();
+      const full = t.views.map((v) => v.args.fullscreen);
+      assert.ok(full.length >= 1);
+      assert.equal(full.filter(Boolean).length, 1, `exactly one fullscreen copy, got ${JSON.stringify(full)}`);
+      t.setHash("#/app/Svy/page/08-27-2026");
+      t.setHash("#/app/Svy/page/boardAAA1");
+      const mounts = t.env.win.__plexusDiagram.mounts();
+      assert.equal(mounts.filter((m) => m.fullscreen).length, 1);
+    });
+  } finally {
+    if (prev) globalThis.IntersectionObserver = prev;
+  }
+});

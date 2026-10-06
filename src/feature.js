@@ -1575,14 +1575,15 @@ export async function installPlexusDiagram({
     try {
       if (!claimAlive(rec, uid, native)) {
         rec.session = acquireSession(currentUid(rec), { host, settings: liveSettings, ...virtualOptions(virtual) });
+        // Only the main window's copy goes fullscreen; a sidebar copy of the same board would cover it.
         rec.fullscreen = settings[SETTING_IDS.fullscreenOnZoom] !== false
-          && !routeLeftZoomedDiagram(uid);
+          && !routeLeftZoomedDiagram(uid) && !isSidebarMount(rec);
         rec.view = mountRecView(rec);
         rec.off = watchRec(rec);
         publishCards(rec.session?.board);
       } else {
         // A kept board left fullscreen when its page went away; a zoomed return puts it back.
-        const wantFull = settings[SETTING_IDS.fullscreenOnZoom] !== false && !routeLeftZoomedDiagram(uid);
+        const wantFull = settings[SETTING_IDS.fullscreenOnZoom] !== false && !routeLeftZoomedDiagram(uid) && !isSidebarMount(rec);
         if (wantFull !== Boolean(rec.fullscreen)) setFullscreen(rec, wantFull);
       }
     } catch (error) {
@@ -2392,7 +2393,7 @@ export async function installPlexusDiagram({
     for (const rec of mounts.values()) {
       if (routeLeftZoomedDiagram(rec.uid)) {
         if (rec.fullscreen) setFullscreen(rec, false);
-      } else if (settings[SETTING_IDS.fullscreenOnZoom] !== false && !rec.fullscreen) {
+      } else if (settings[SETTING_IDS.fullscreenOnZoom] !== false && !rec.fullscreen && !isSidebarMount(rec)) {
         setFullscreen(rec, true);
       }
     }

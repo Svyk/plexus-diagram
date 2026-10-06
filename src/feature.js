@@ -1305,7 +1305,9 @@ export async function installPlexusDiagram({
 
   function resumeView(rec, view) {
     const root = view?.root;
-    if (root && rec.mountEl && root.parentElement !== rec.mountEl) {
+    if (typeof view?.rebind === "function" && rec.mountEl) {
+      try { view.rebind(rec.mountEl); } catch { /* the mount is gone */ }
+    } else if (root && rec.mountEl && root.parentElement !== rec.mountEl) {
       try { rec.mountEl.append(root); } catch { /* the mount is gone */ }
     }
     try { view?.resume?.(); } catch { /* already live */ }
@@ -1578,6 +1580,10 @@ export async function installPlexusDiagram({
         rec.view = mountRecView(rec);
         rec.off = watchRec(rec);
         publishCards(rec.session?.board);
+      } else {
+        // A kept board left fullscreen when its page went away; a zoomed return puts it back.
+        const wantFull = settings[SETTING_IDS.fullscreenOnZoom] !== false && !routeLeftZoomedDiagram(uid);
+        if (wantFull !== Boolean(rec.fullscreen)) setFullscreen(rec, wantFull);
       }
     } catch (error) {
       noteMountFail(uid, error);

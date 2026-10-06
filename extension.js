@@ -4800,7 +4800,7 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
     stats,
     viewports: createViewportStore({ storage, graph: gname }),
     // One wide pull fills the session cache, so later card, page, and badge reads do not call Roam again.
-    pullBoard(uid) {
+    pullBoard(uid, { light = false } = {}) {
       if (warm.has(uid)) {
         const cached = cache.blockOf(uid);
         if (cached?.[":block/uid"]) return cached;
@@ -4828,17 +4828,25 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
       if (!honored && (found.uids.length || found.titles.length)) {
         for (const entity of pullMany(found.uids, found.titles)) addEntity(uid, entity);
       }
-      try {
-        fetchLinked(found.titles);
-      } catch {
-      }
       boardCovers.set(uid, honored);
-      dropStats(uid);
-      if (found.stats.length) {
+      const prime = () => {
         try {
-          host.cardStats(found.stats, { boardUid: uid });
+          fetchLinked(found.titles);
         } catch {
         }
+        dropStats(uid);
+        if (found.stats.length) {
+          try {
+            host.cardStats(found.stats, { boardUid: uid });
+          } catch {
+          }
+        }
+      };
+      if (!light) prime();
+      else {
+        const idle = globalThis.requestIdleCallback;
+        if (typeof idle === "function") idle(() => prime(), { timeout: 1500 });
+        else setTimeout(prime, 250);
       }
       return node2;
     },
@@ -7048,7 +7056,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     if (destroyed || pausedHolds >= holders) return;
     let fresh = null;
     try {
-      fresh = host.pullBoard?.(uid);
+      fresh = host.pullBoard?.(uid, { light: true });
     } catch {
       return;
     }
@@ -32208,6 +32216,20 @@ function buildBoardView(onFail, {
       if (!Number.isFinite(next.x) || !Number.isFinite(next.y) || !(zoom > 0)) return;
       moveViewport({ x: next.x, y: next.y, zoom });
     },
+    // A kept board comes back into a new mount element (Roam re-rendered the page).
+    // Point the view at it and re-apply fullscreen chrome or the inline height there.
+    rebind(nextMount) {
+      if (disposed || !nextMount || nextMount === mountEl) return;
+      try {
+        fsDispose();
+      } catch {
+      }
+      fsDispose = () => {
+      };
+      mountEl = nextMount;
+      if (root.parentElement !== mountEl) mountEl.append(root);
+      applyFullscreen(isFullscreen);
+    },
     // Park every observer, frame, and document listener. The same functions stay
     // registered so dispose can still remove them. Resume paints one frame.
     suspend() {
@@ -36150,7 +36172,12 @@ async function installPlexusDiagram({
   }
   function resumeView(rec, view) {
     const root = view?.root;
-    if (root && rec.mountEl && root.parentElement !== rec.mountEl) {
+    if (typeof view?.rebind === "function" && rec.mountEl) {
+      try {
+        view.rebind(rec.mountEl);
+      } catch {
+      }
+    } else if (root && rec.mountEl && root.parentElement !== rec.mountEl) {
       try {
         rec.mountEl.append(root);
       } catch {
@@ -36435,6 +36462,9 @@ async function installPlexusDiagram({
         rec.view = mountRecView(rec);
         rec.off = watchRec(rec);
         publishCards(rec.session?.board);
+      } else {
+        const wantFull = settings[SETTING_IDS.fullscreenOnZoom] !== false && !routeLeftZoomedDiagram(uid);
+        if (wantFull !== Boolean(rec.fullscreen)) setFullscreen(rec, wantFull);
       }
     } catch (error) {
       noteMountFail(uid, error);

@@ -611,7 +611,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
   function catchUpBoard() {
     if (destroyed || pausedHolds >= holders) return;
     let fresh = null;
-    try { fresh = host.pullBoard?.(uid); } catch { return; }
+    try { fresh = host.pullBoard?.(uid, { light: true }); } catch { return; }
     if (!fresh || !fresh[UID]) {
       markGone();
       return;

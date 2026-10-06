@@ -5464,6 +5464,16 @@ function buildBoardView(onFail, {
       if (!Number.isFinite(next.x) || !Number.isFinite(next.y) || !(zoom > 0)) return;
       moveViewport({ x: next.x, y: next.y, zoom });
     },
+    // A kept board comes back into a new mount element (Roam re-rendered the page).
+    // Point the view at it and re-apply fullscreen chrome or the inline height there.
+    rebind(nextMount) {
+      if (disposed || !nextMount || nextMount === mountEl) return;
+      try { fsDispose(); } catch { /* no chrome applied */ }
+      fsDispose = () => {};
+      mountEl = nextMount;
+      if (root.parentElement !== mountEl) mountEl.append(root);
+      applyFullscreen(isFullscreen);
+    },
     // Park every observer, frame, and document listener. The same functions stay
     // registered so dispose can still remove them. Resume paints one frame.
     suspend() {

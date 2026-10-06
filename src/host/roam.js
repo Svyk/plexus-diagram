@@ -684,7 +684,7 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     viewports: createViewportStore({ storage, graph: gname }),
 
     // One wide pull fills the session cache, so later card, page, and badge reads do not call Roam again.
-    pullBoard(uid) {
+    pullBoard(uid, { light = false } = {}) {
       if (warm.has(uid)) {
         const cached = cache.blockOf(uid);
         if (cached?.[":block/uid"]) return cached;
@@ -704,11 +704,21 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       if (!honored && (found.uids.length || found.titles.length)) {
         for (const entity of pullMany(found.uids, found.titles)) addEntity(uid, entity);
       }
-      try { fetchLinked(found.titles); } catch { /* a later linkedRefs ask reads Roam */ }
       boardCovers.set(uid, honored);
-      dropStats(uid);
-      if (found.stats.length) {
-        try { host.cardStats(found.stats, { boardUid: uid }); } catch { /* badges ask again */ }
+      // A keep-alive catch-up is light: the board shows at once and the badge and linked-ref
+      // queries (~140 ms on a 39-card board) run when the browser is idle.
+      const prime = () => {
+        try { fetchLinked(found.titles); } catch { /* a later linkedRefs ask reads Roam */ }
+        dropStats(uid);
+        if (found.stats.length) {
+          try { host.cardStats(found.stats, { boardUid: uid }); } catch { /* badges ask again */ }
+        }
+      };
+      if (!light) prime();
+      else {
+        const idle = globalThis.requestIdleCallback;
+        if (typeof idle === "function") idle(() => prime(), { timeout: 1500 });
+        else setTimeout(prime, 250);
       }
       return node;
     },

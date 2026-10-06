@@ -6125,6 +6125,49 @@ body.roam-body.dark .pxd-root,
   margin-left: auto;
 }
 
+/* With the control rail, the pane sits left of it, and the board area ends where the pane starts. */
+.pxd-root.pxd-root--rail .pxd-read:not(.pxd-read--stack) {
+  right: calc(var(--pxd-rail-w, 40px) + 16px);
+}
+
+.pxd-root.pxd-root--rail.pxd-root--read:not(.pxd-root--read-stack) > .pxd-viewport {
+  right: calc(var(--pxd-read-w, 360px) + var(--pxd-rail-w, 40px) + 16px);
+}
+
+/* The minimap stays on the board, left of the pane. */
+.pxd-root.pxd-root--read:not(.pxd-root--read-stack) .pxd-minimap {
+  right: calc(var(--pxd-read-w, 360px) + 12px);
+}
+
+.pxd-root.pxd-root--rail.pxd-root--read:not(.pxd-root--read-stack) .pxd-minimap {
+  right: calc(var(--pxd-read-w, 360px) + var(--pxd-rail-w, 40px) + 28px);
+}
+
+.pxd-root.pxd-root--read-stack .pxd-minimap {
+  bottom: calc(46% + 12px);
+}
+
+/* The header title truncates; the close button keeps its one line. */
+.pxd-read .pxd-read__head { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.pxd-read .pxd-read__title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.pxd-read .pxd-read__switch { flex: 0 1 auto; max-width: 40%; }
+.pxd-read .pxd-read__close { flex: 0 0 auto; white-space: nowrap; }
+
+/* The board bar and the tool dock end where the pane starts, so neither covers the reader. */
+.pxd-root.pxd-root--read:not(.pxd-root--read-stack) .pxd-toolbar,
+.pxd-root.pxd-root--read:not(.pxd-root--read-stack) .pxd-palette {
+  right: calc(var(--pxd-read-w, 360px) + 8px);
+}
+
+.pxd-root.pxd-root--rail.pxd-root--read:not(.pxd-root--read-stack) .pxd-toolbar,
+.pxd-root.pxd-root--rail.pxd-root--read:not(.pxd-root--read-stack) .pxd-palette {
+  right: calc(var(--pxd-read-w, 360px) + var(--pxd-rail-w, 40px) + 24px);
+}
+
+.pxd-root.pxd-root--read-stack.pxd-root--dock-bottom .pxd-palette {
+  bottom: calc(46% + 8px);
+}
+
 /* ECO-3. The thumb fits the card. The 1px border is the button signal, not a shadow. */
 
 .pxd-root .pxd-region-thumb {

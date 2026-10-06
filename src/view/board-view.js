@@ -1402,6 +1402,18 @@ function buildBoardView(onFail, {
         source: detail.source || "",
         pageUid: cover?.pageUid || "",
       });
+      // The board area just narrowed. Keep the PDF's card in view beside its reader.
+      const cardUid = detail.cardUid || "";
+      timers.frame(() => {
+        if (disposed || !cardUid) return;
+        measure();
+        const r = rects().get(cardUid);
+        if (!r) return;
+        // centerOn uses the whole root; the board area now ends where the pane begins.
+        const area = root.querySelector?.(".pxd-viewport")?.getBoundingClientRect?.();
+        const w = Number(area?.width) || size.width;
+        moveViewport({ x: w / 2 - (r.x + r.w / 2) * vp.zoom, y: size.height / 2 - (r.y + r.h / 2) * vp.zoom, zoom: vp.zoom });
+      });
     },
   });
   itemsReady = true;

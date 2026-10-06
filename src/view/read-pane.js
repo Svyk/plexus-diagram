@@ -225,6 +225,32 @@ export function createReadPane({
     if (!input) return false;
     return writeReaderPage(input, page);
   };
+  // A fresh reader has no page field yet, and once it loads Roam restores the last page it showed.
+  // Wait for the field, set the page, look again after that restore, and set it once more if it moved.
+  let pageWait = null;
+  const cancelPageWait = () => { if (pageWait) { clearTimeout(pageWait); pageWait = null; } };
+  const jumpPageWhenReady = (page) => {
+    cancelPageWait();
+    if (typeof page !== "number" || page < 1) return;
+    const started = Date.now();
+    let settled = 0;
+    const tick = () => {
+      pageWait = null;
+      if (!openFlag) return;
+      const input = readerField();
+      const ready = input && live.querySelector?.(".rm-pdf-container .page");
+      if (!ready) {
+        if (Date.now() - started < 5000) pageWait = setTimeout(tick, 100);
+        return;
+      }
+      if (String(input.value).trim() !== String(page)) {
+        writeReaderPage(input, page);
+        settled = 0;
+      } else settled += 1;
+      if (settled < 2 && Date.now() - started < 5000) pageWait = setTimeout(tick, 300);
+    };
+    tick();
+  };
   const mountReader = (blockUid) => {
     if (!blockUid) return;
     if (liveBlock === blockUid && live.querySelector?.(".rm-pdf-container")) return;
@@ -461,6 +487,7 @@ export function createReadPane({
   });
 
   function close(opts) {
+    cancelPageWait();
     const notify = !opts || opts.notify !== false;
     if (!openFlag && !pane.isConnected) return;
     openFlag = false;
@@ -499,7 +526,7 @@ export function createReadPane({
       titleNode.textContent = current.title || "PDF";
       applyBox();
       mountReader(blockUid);
-      if (typeof next.page === "number") jumpPage(next.page);
+      if (typeof next.page === "number") jumpPageWhenReady(next.page);
       armWatch(current.title);
       paintSwitcher();
       refreshList();

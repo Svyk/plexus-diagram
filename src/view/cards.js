@@ -429,6 +429,7 @@ export function createItemRenderer({
   let pdfLiveUid = null;
   let pdfLiveOff = null;
   let paneForce = null;
+  let panePage = null;
   let openingEmbed = false;
   let selectedPrimary = null;
   let openEmbed = () => {};
@@ -2513,7 +2514,7 @@ export function createItemRenderer({
           open: true,
           cardUid: nextItem?.kind === "pdf" ? nextItem.uid : "",
           blockUid: forced?.blockUid || blockUidOf(nextItem) || uid,
-          page: forced?.page,
+          page: forced?.page ?? panePage,
           source: forced?.source || (nextItem ? pdfSourceOf(nextItem) : ""),
         });
         return;
@@ -2563,7 +2564,12 @@ export function createItemRenderer({
       paneForce = null;
       return Promise.resolve(false);
     }
-    if (pdfOpenUid !== uid || paneForce) openPdf(uid);
+    panePage = typeof page === "number" ? page : null;
+    try {
+      if (pdfOpenUid !== uid || paneForce) openPdf(uid);
+    } finally {
+      panePage = null;
+    }
     const started = now();
     const want = String(page);
     const confirm = () => {

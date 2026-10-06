@@ -17276,6 +17276,7 @@ function createItemRenderer({
   let pdfLiveUid = null;
   let pdfLiveOff = null;
   let paneForce = null;
+  let panePage = null;
   let openingEmbed = false;
   let selectedPrimary = null;
   let openEmbed = () => {
@@ -19484,7 +19485,7 @@ function createItemRenderer({
           open: true,
           cardUid: nextItem?.kind === "pdf" ? nextItem.uid : "",
           blockUid: forced?.blockUid || blockUidOf(nextItem) || uid,
-          page: forced?.page,
+          page: forced?.page ?? panePage,
           source: forced?.source || (nextItem ? pdfSourceOf(nextItem) : "")
         });
         return;
@@ -19539,7 +19540,12 @@ function createItemRenderer({
       paneForce = null;
       return Promise.resolve(false);
     }
-    if (pdfOpenUid !== uid || paneForce) openPdf(uid);
+    panePage = typeof page === "number" ? page : null;
+    try {
+      if (pdfOpenUid !== uid || paneForce) openPdf(uid);
+    } finally {
+      panePage = null;
+    }
     const started = now();
     const want = String(page);
     const confirm = () => {
@@ -21687,6 +21693,35 @@ function createReadPane({
     if (!input) return false;
     return writeReaderPage(input, page);
   };
+  let pageWait = null;
+  const cancelPageWait = () => {
+    if (pageWait) {
+      clearTimeout(pageWait);
+      pageWait = null;
+    }
+  };
+  const jumpPageWhenReady = (page) => {
+    cancelPageWait();
+    if (typeof page !== "number" || page < 1) return;
+    const started = Date.now();
+    let settled = 0;
+    const tick = () => {
+      pageWait = null;
+      if (!openFlag) return;
+      const input = readerField();
+      const ready = input && live.querySelector?.(".rm-pdf-container .page");
+      if (!ready) {
+        if (Date.now() - started < 5e3) pageWait = setTimeout(tick, 100);
+        return;
+      }
+      if (String(input.value).trim() !== String(page)) {
+        writeReaderPage(input, page);
+        settled = 0;
+      } else settled += 1;
+      if (settled < 2 && Date.now() - started < 5e3) pageWait = setTimeout(tick, 300);
+    };
+    tick();
+  };
   const mountReader = (blockUid2) => {
     if (!blockUid2) return;
     if (liveBlock === blockUid2 && live.querySelector?.(".rm-pdf-container")) return;
@@ -21948,6 +21983,7 @@ function createReadPane({
     root?.addEventListener?.("pointerup", splitUp);
   });
   function close(opts) {
+    cancelPageWait();
     const notify = !opts || opts.notify !== false;
     if (!openFlag && !pane.isConnected) return;
     openFlag = false;
@@ -21992,7 +22028,7 @@ function createReadPane({
       titleNode.textContent = current3.title || "PDF";
       applyBox();
       mountReader(blockUid2);
-      if (typeof next.page === "number") jumpPage(next.page);
+      if (typeof next.page === "number") jumpPageWhenReady(next.page);
       armWatch(current3.title);
       paintSwitcher();
       refreshList();
@@ -28387,6 +28423,16 @@ function buildBoardView(onFail, {
         title: cover?.title || "",
         source: detail.source || "",
         pageUid: cover?.pageUid || ""
+      });
+      const cardUid = detail.cardUid || "";
+      timers.frame(() => {
+        if (disposed || !cardUid) return;
+        measure();
+        const r = rects().get(cardUid);
+        if (!r) return;
+        const area = root.querySelector?.(".pxd-viewport")?.getBoundingClientRect?.();
+        const w = Number(area?.width) || size.width;
+        moveViewport({ x: w / 2 - (r.x + r.w / 2) * vp.zoom, y: size.height / 2 - (r.y + r.h / 2) * vp.zoom, zoom: vp.zoom });
       });
     }
   });

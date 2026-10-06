@@ -36,6 +36,7 @@ export function intervalLabel(days) {
 }
 
 export function matchResurface(rows, pageDate, intervals, { slack = DAY, cap = RESURFACE_CAP } = {}) {
+  if (pageDate == null || pageDate === "") return [];
   const page = pageDate instanceof Date ? pageDate.getTime() : Number(pageDate);
   if (!Number.isFinite(page)) return [];
   const tabs = [];

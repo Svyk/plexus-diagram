@@ -15,7 +15,7 @@ import { copyLinkText, hashFromUrl, pageUidFromHash, pxdTarget } from "../model/
 import { findOnBoard } from "../model/find.js";
 import { readMindPreset, writeMindPreset } from "../model/mindmap.js";
 import { attrLegend, parseAttrStyles, styleAttrLinks } from "../model/attr-styles.js";
-import { HIGHLIGHT_COLORS } from "../model/highlight.js";
+import { HIGHLIGHT_COLORS, noteActionPlan } from "../model/highlight.js";
 import { embedSplit, pdfCardForUrl, readerRule } from "../model/pdf.js";
 import { chipsForPdf } from "../model/pdf-chips.js";
 import { expandDateHighlights, highlightRows, placeHighlights } from "../model/highlight-pick.js";
@@ -1387,6 +1387,7 @@ function buildBoardView(onFail, {
     onPdfOpen: (uid, page) => { void itemsR.openPdfAt?.(uid, page); },
     onEmbedOpen: () => closeOutlineLive(),
     onHighlightOpen: (item) => { void openHighlightInReader(item); },
+    onHighlightNote: (uid) => { void openHighlightNote(uid); },
     onReadPane: (detail) => {
       if (!detail?.open) {
         readPane?.close?.({ notify: false });
@@ -1429,12 +1430,20 @@ function buildBoardView(onFail, {
     doc,
     root,
     host,
+    onNote: (row) => { void openHighlightNote(row?.uid); },
     graph,
     storage,
     cards: () => [...(board()?.items.values() || [])].filter((it) => it?.kind === "pdf"),
     placed: () => [...(board()?.items.values() || [])],
     titleOf: (card) => {
-      try { return host?.pdfCover?.(pdfSourceOfItem(card))?.title || "PDF"; } catch { return "PDF"; }
+      // A PDF nobody has highlighted has no :pdf/url page; its cover title is a storage path.
+      // Name it by the page that holds the PDF block instead.
+      let cover = null;
+      try { cover = host?.pdfCover?.(pdfSourceOfItem(card)); } catch { cover = null; }
+      if (cover?.pageUid && cover.title) return cover.title;
+      let page = "";
+      try { page = host?.pageTitleOf?.(card?.target?.uid || card?.uid) || ""; } catch { page = ""; }
+      return page || cover?.title || "PDF";
     },
     onClose: () => { itemsR?.closeEmbed?.(); },
     onSwitch: (uid) => { itemsR?.openPdf?.(uid); },
@@ -3234,6 +3243,31 @@ function buildBoardView(onFail, {
     pageUid: (uid) => host?.blockPageUid?.(uid) || "",
     pageUrl: (uid) => host?.pdfPageUrl?.(uid) || "",
   });
+  // PDFH-5, after the live trace (roadmap §8 "Run 4"): Roam's note button makes one empty child under the
+  // highlight, opens the highlight in the right sidebar and focuses that child. Do the same: reuse the child
+  // that is already there, create one only when there is none (one undo step), never touch :pdf-highlight.
+  const openHighlightNote = async (hlUid) => {
+    if (typeof hlUid !== "string" || !hlUid) return;
+    const api = host?.api;
+    let kids = [];
+    try {
+      kids = api?.data?.pull?.("[{:block/children [:block/uid :block/string :block/order :block/props]}]", [":block/uid", hlUid])?.[":block/children"] || [];
+    } catch { kids = []; }
+    const plan = noteActionPlan(kids);
+    // Opening a sidebar window is itself a Roam undo entry. Open first, so the create is the top step
+    // and one undo removes the new note (live 2026-10-06: the other order made undo close the window).
+    const sidebar = api?.ui?.rightSidebar;
+    try { await sidebar?.addWindow?.({ window: { type: "block", "block-uid": hlUid } }); } catch { return; }
+    const noteUid = plan.kind === "focus" ? plan.uid : await session.addHighlightNote?.(hlUid);
+    if (!noteUid || disposed) return;
+    timers.later(() => {
+      if (disposed) return;
+      const win = (sidebar?.getWindows?.() || []).find((w) => w?.["block-uid"] === hlUid);
+      const windowId = win?.["window-id"];
+      if (!windowId) return;
+      try { api?.ui?.setBlockFocusAndSelection?.({ location: { "block-uid": noteUid, "window-id": windowId } }); } catch { /* Roam focus */ }
+    }, 200);
+  };
   const openHighlightInReader = async (item) => {
     if (!item || item.kind !== "highlight" || !item.target?.uid) return;
     const pageUid = host?.blockPageUid?.(item.target.uid) || "";

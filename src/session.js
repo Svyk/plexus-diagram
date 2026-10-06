@@ -1675,6 +1675,14 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     },
 
     // The highlight block is not on the board. setString returns when rawNode misses, so this reads blockString and writes one string op.
+    // PDFH-5. Roam's own note button makes one empty child under the highlight; this is the same write,
+    // one undo step. The highlight block is on the PDF's page, not on this board, so it is a host write.
+    addHighlightNote(highlightUid) {
+      if (typeof highlightUid !== "string" || !highlightUid || destroyed) return Promise.resolve(null);
+      return queue.run(() => grouped(() => host.createBlock({ parentUid: highlightUid, order: "last", string: "" })))
+        .then((id) => (typeof id === "string" ? id : null), (err) => { handleFailure(err); return null; });
+    },
+
     setHighlightColor(blockUid, name) {
       return txn((t) => {
         if (!HIGHLIGHT_COLORS.includes(name)) return;

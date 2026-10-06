@@ -436,6 +436,7 @@ export function createItemRenderer({
   onEmbedOpen = null,
   onReadPane = null,
   onHighlightOpen = null,
+  onHighlightNote = null,
   settings: speedSettings = null,
 } = {}) {
   // Production reads the hidden setting. A test passes `settings` and does not open the panel.
@@ -2681,6 +2682,19 @@ export function createItemRenderer({
       try { onHighlightOpen?.(item); } catch { /* host */ }
     };
     for (const type of ["pointerdown", "mousedown", "dblclick", "click"]) foot.addEventListener(type, openFoot);
+    // PDFH-5. Note opens the highlight's note the way Roam's own note button does (sidebar, child focused).
+    if (typeof onHighlightNote === "function" && item.target?.uid) {
+      const noteBtn = el("button", "pxd-highlight-notebtn pxd-chrome", rec.body);
+      noteBtn.type = "button";
+      noteBtn.textContent = "Note";
+      noteBtn.setAttribute("aria-label", "Open the note for this highlight");
+      const openNote = (event) => {
+        stopEvent(event);
+        if (event.type !== "click") return;
+        try { onHighlightNote(item.target.uid); } catch { /* host */ }
+      };
+      for (const type of ["pointerdown", "mousedown", "dblclick", "click"]) noteBtn.addEventListener(type, openNote);
+    }
   };
 
   // A mounted ((uid)) card follows edits to its source. The board pull does not, and coversBlock

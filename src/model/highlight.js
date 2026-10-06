@@ -128,11 +128,13 @@ function childFields(node, index) {
     : (isObject(node[":block/props"]) ? node[":block/props"] : {});
   const orderRaw = node.order ?? node[":block/order"];
   const order = typeof orderRaw === "number" && Number.isFinite(orderRaw) ? orderRaw : index;
-  return { string, props, order, index };
+  const uidRaw = typeof node.uid === "string" && node.uid
+    ? node.uid
+    : (typeof node[":block/uid"] === "string" ? node[":block/uid"] : "");
+  return { string, props, order, index, uid: uidRaw };
 }
 
-// The note is the first child that is not itself a highlight. Empty when there is none.
-export function highlightNote(children) {
+function orderedChildren(children) {
   const list = Array.isArray(children) ? children : [];
   const rows = [];
   for (let i = 0; i < list.length; i += 1) {
@@ -140,11 +142,26 @@ export function highlightNote(children) {
     if (row) rows.push(row);
   }
   rows.sort((a, b) => a.order - b.order || a.index - b.index);
-  for (const row of rows) {
+  return rows;
+}
+
+// The note string is the first child that is not itself a highlight.
+// Roam's note button creates that child empty; an empty string shows no note.
+export function highlightNote(children) {
+  for (const row of orderedChildren(children)) {
     if (highlightRecord(row.props)) continue;
     return row.string;
   }
   return "";
+}
+
+// Focus the note child Roam already created (empty or not). Otherwise the caller creates one plain child, string "".
+export function noteActionPlan(children) {
+  for (const row of orderedChildren(children)) {
+    if (highlightRecord(row.props)) continue;
+    return { kind: "focus", uid: row.uid };
+  }
+  return { kind: "create" };
 }
 
 export function highlightModel(input) {

@@ -5,7 +5,7 @@ import { CARD_MIME } from "../model/drop.js";
 import { HIGHLIGHT_COLORS, highlightModel } from "../model/highlight.js";
 import { highlightRows } from "../model/highlight-pick.js";
 import { dragChipText, fiberOf, highlightById, highlighterContext, PDF_MARK, uidFromMark } from "../model/pdf-drag.js";
-import { readPaneKey, readPaneWidth, writeReaderPage } from "../model/pdf.js";
+import { coverModel, pdfMacroUrl, readPaneKey, readPaneWidth, readerRule, writeReaderPage } from "../model/pdf.js";
 import { isTextEntryTarget } from "./cards.js";
 
 const PLACE_W = 300;
@@ -99,6 +99,7 @@ export function createReadPane({
   storage = globalThis.localStorage,
   onClose,
   onPlace,
+  onNote,
   onSwitch,
   cards,
   placed,
@@ -287,7 +288,10 @@ export function createReadPane({
         if (typeof title === "string" && title.trim()) return title.trim();
       } catch { /* host */ }
     }
-    return "PDF";
+    const macro = typeof card?.string === "string" ? card.string : "";
+    const url = pdfMacroUrl(macro) || (typeof card?.url === "string" ? card.url : "");
+    const given = typeof card?.title === "string" ? card.title : "";
+    return coverModel({ title: given, url, count: card?.count }).title;
   };
   const paintSwitcher = () => {
     let pdfs = [];
@@ -371,6 +375,15 @@ export function createReadPane({
       const meta = el("div", "pxd-read__meta", node);
       if (typeof row.page === "number") el("span", "pxd-read__pg", meta).textContent = `p. ${row.page}`;
       if (row.placed) el("span", "pxd-read__on", meta).textContent = "On board";
+      if (typeof row.note === "string" && row.note.trim()) {
+        const mark = el("span", "pxd-read__mark", meta);
+        mark.textContent = "Note";
+        mark.setAttribute("aria-label", "Note");
+      }
+      const noteBtn = el("button", "pxd-read__note pxd-chrome", meta);
+      noteBtn.type = "button";
+      noteBtn.textContent = "Note";
+      noteBtn.setAttribute("aria-label", "Note");
       const place = el("button", "pxd-read__place pxd-chrome", meta);
       place.type = "button";
       place.textContent = "Place";
@@ -440,6 +453,14 @@ export function createReadPane({
       if (row) {
         try { onPlace?.(row); } catch { /* host */ }
         showHighlight(row);
+      }
+      return;
+    }
+    if (event.target?.closest?.(".pxd-read__note")) {
+      event.stopPropagation();
+      const row = rowFromEvent(event);
+      if (row) {
+        try { onNote?.(row); } catch { /* host */ }
       }
       return;
     }
@@ -857,7 +878,10 @@ export function createReadPane({
   const onSwitchChange = () => {
     const uid = String(switcher.value || "");
     if (!uid || uid === current.cardUid) return;
-    try { onSwitch?.(uid); } catch { /* host */ }
+    const rule = readerRule(current.cardUid, uid);
+    if (!rule.open || rule.open === current.cardUid) return;
+    clearLive();
+    try { onSwitch?.(rule.open); } catch { /* host */ }
   };
   const onCloseClick = (event) => {
     event.stopPropagation();

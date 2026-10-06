@@ -1,0 +1,23 @@
+/* PDFH-5. A quiet Note action under the highlight footer; it opens Roam's note child in the sidebar. */
+.pxd-root .pxd-item .pxd-highlight-notebtn {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 1px 8px;
+  border: 1px solid var(--pxd-border, #d0d7de);
+  border-radius: 10px;
+  background: transparent;
+  color: var(--pxd-muted);
+  font-size: 11px;
+  line-height: 16px;
+  cursor: pointer;
+}
+
+.pxd-root .pxd-item .pxd-highlight-notebtn:hover,
+.pxd-root .pxd-item .pxd-highlight-notebtn:focus-visible {
+  color: var(--pxd-text, inherit);
+  border-color: var(--pxd-teal-line, #0d9488);
+}
+
+.pxd-root.pxd-lod-map .pxd-item .pxd-highlight-notebtn {
+  display: none;
+}

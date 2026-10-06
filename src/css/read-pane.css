@@ -217,8 +217,18 @@
   margin-top: 4px;
 }
 
-.pxd-read .pxd-read__place {
+.pxd-read .pxd-read__mark {
+  flex: 0 0 auto;
+  color: var(--pxd-muted);
+  font-size: 11px;
+}
+
+.pxd-read .pxd-read__note {
   margin-left: auto;
+}
+
+.pxd-read .pxd-read__place {
+  margin-left: 0;
 }
 
 /* With the control rail, the pane sits left of it, and the board area ends where the pane starts. */

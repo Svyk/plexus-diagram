@@ -246,5 +246,5 @@ test("page 2 footer is p. 2, a middle dot, and the trimmed page title", () => {
   const snapshot = structuredClone(props);
   highlightModel({ props, string: `${TEXT} #h/yellow`, pageTitle: TITLE });
   assert.deepEqual(props, snapshot);
-  assert.deepEqual(Object.keys(highlight).sort(), ["HIGHLIGHT_COLORS", "highlightModel", "highlightNote", "naturalSize", "rewriteHighlightTag"]);
+  assert.deepEqual(Object.keys(highlight).sort(), ["HIGHLIGHT_COLORS", "highlightModel", "highlightNote", "naturalSize", "noteActionPlan", "rewriteHighlightTag"]);
 });

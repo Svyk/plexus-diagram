@@ -363,6 +363,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
   let visibleLinks = [];
   let covered = new Set();
   let linkFingerprint = "";
+  let linkRefs = linkRefKey(board);
   const initialMode = typeof settings?.get === "function" ? settings.get("graph-links") : settings?.["graph-links"];
   let linkMode = LINK_MODES.includes(initialMode) ? initialMode : "all";
   const setting = (name, fallback) => {
@@ -424,7 +425,11 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     emitted = board;
     if (diff.structural || diff.dirty.size) emit("change", diff);
     recomputeLinks(false);
-    if (diff.structural) refreshLinks();
+    const nextRefs = linkRefKey(board);
+    if (nextRefs !== linkRefs) {
+      linkRefs = nextRefs;
+      refreshLinks();
+    }
     return diff;
   };
 
@@ -1014,6 +1019,19 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
   };
 
   // ---- links ----
+  // Cards only. Page refs key on the title; every other card keys on its target uid.
+  function linkRefKey(b) {
+    if (!b) return "";
+    const parts = [];
+    for (const item of b.items.values()) {
+      if (item.type !== "card" || !item.target) continue;
+      const t = item.target;
+      parts.push(t.kind === "page" ? `p:${t.title ?? ""}` : `u:${t.uid ?? ""}`);
+    }
+    parts.sort();
+    return parts.join("\n");
+  }
+
   function recomputeLinks(force) {
     if (!board) return;
     const filtered = filterLinks(allLinks, linkMode);
@@ -1067,25 +1085,66 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
   }
 
   let linkTimer = null;
+  let linkIdleId = null;
+  let linkEpoch = 0;
   let linkPromise = null;
   let linkResolve = null;
-  function runLinks() {
-    linkTimer = null;
-    if (!destroyed) {
-      try { computeLinks(); recomputeLinks(false); } catch (err) { console.error("[plexus session] links", err); }
-    }
+  function finishLinks() {
     const done = linkResolve;
     linkPromise = null;
     linkResolve = null;
     done?.();
   }
+  function runLinks() {
+    linkTimer = null;
+    linkIdleId = null;
+    if (!destroyed) {
+      try { computeLinks(); recomputeLinks(false); } catch (err) { console.error("[plexus session] links", err); }
+    }
+    finishLinks();
+  }
+  function cancelScheduledLinks() {
+    linkEpoch += 1;
+    if (linkTimer) clearTimeout(linkTimer);
+    linkTimer = null;
+    if (linkIdleId != null) {
+      try { globalThis.cancelIdleCallback?.(linkIdleId); } catch { /* already gone */ }
+      linkIdleId = null;
+    }
+  }
+  // The board is already published. Two frames let a sketch handoff mount
+  // .pxd-item before this query; the idle timeout is 1s so the curves still show.
+  function scheduleLinks() {
+    cancelScheduledLinks();
+    const epoch = linkEpoch;
+    const ric = globalThis.requestIdleCallback;
+    const raf = globalThis.requestAnimationFrame;
+    if (linkDelay !== 0 && !idle && typeof ric === "function" && typeof raf === "function") {
+      raf(() => {
+        if (epoch !== linkEpoch || destroyed) return;
+        raf(() => {
+          if (epoch !== linkEpoch || destroyed) return;
+          linkIdleId = ric(() => {
+            if (epoch !== linkEpoch) return;
+            linkIdleId = null;
+            runLinks();
+          }, { timeout: 1000 });
+        });
+      });
+      return;
+    }
+    linkTimer = setTimeout(() => {
+      if (epoch !== linkEpoch) return;
+      linkTimer = null;
+      runIdle(runLinks);
+    }, linkDelay);
+    linkTimer.unref?.();
+  }
   function refreshLinks() {
     if (destroyed) return Promise.resolve();
     if (linkMode === "off") return Promise.resolve();
     if (!linkPromise) linkPromise = new Promise((resolve) => { linkResolve = resolve; });
-    if (linkTimer) clearTimeout(linkTimer);
-    linkTimer = setTimeout(() => runIdle(runLinks), linkDelay);
-    linkTimer.unref?.();
+    scheduleLinks();
     return linkPromise;
   }
 
@@ -1098,6 +1157,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     get gone() { return gone; },
     get rects() { return rects; },
     get links() { return visibleLinks; },
+    get linksPromise() { return linkPromise ?? Promise.resolve(); },
     get coveredEdges() { return covered; },
     get busy() { return busy; },
     get linkMode() { return linkMode; },
@@ -2163,8 +2223,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
       }
       boardWatch = () => {};
       disposeHighlightWatches();
-      if (linkTimer) clearTimeout(linkTimer);
-      linkTimer = null;
+      cancelScheduledLinks();
       linkResolve?.();
       linkPromise = null;
       linkResolve = null;

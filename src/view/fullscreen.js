@@ -86,21 +86,24 @@ export function applyFullscreenChrome(mount, on, root = globalThis.document) {
     mount.style.minHeight = "0";
   };
   const placeAfterAnim = () => { place(); raf(() => { place(); raf(place); }); };
-  place();
   const disconnects = [];
   const article = root?.querySelector?.(".rm-article-wrapper");
   const sidebar = firstMatch(root, SIDEBAR_SELECTORS);
   const rightSidebar = firstMatch(root, RIGHT_SIDEBAR_SELECTORS);
   const RO = globalThis.ResizeObserver;
+  // POL-5. With a ResizeObserver the first place() runs in its first callback, after the browser's own
+  // layout and before paint. A place() here would force a whole-page layout in the middle of the mount.
+  let observed = false;
   if (typeof RO === "function") {
     try {
       const ro = new RO(() => place());
-      if (article) ro.observe(article);
-      if (sidebar) ro.observe(sidebar);
-      if (rightSidebar && rightSidebar !== sidebar && rightSidebar !== article) ro.observe(rightSidebar);
+      if (article) { ro.observe(article); observed = true; }
+      if (sidebar) { ro.observe(sidebar); observed = true; }
+      if (rightSidebar && rightSidebar !== sidebar && rightSidebar !== article) { ro.observe(rightSidebar); observed = true; }
       disconnects.push(() => ro.disconnect());
     } catch { /* stub */ }
   }
+  if (!observed) place();
   const MO = globalThis.MutationObserver;
   if (typeof MO === "function" && article) {
     try {

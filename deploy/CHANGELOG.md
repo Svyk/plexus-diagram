@@ -1,5 +1,16 @@
 # Changelog
 
+## 2.14.0 — 2026-10-06
+
+- PDFs, videos, tweets and other heavy embeds on a card, a page row or an outline row show a poster until you open them. Only one stays live per board.
+- A board you scroll away from, a collapsed sidebar window, or a board under a closed block stops working in the background and comes back where you left it.
+- Opening a board reads Roam about six times less (about 24 calls instead of 155 on a 39-card board), so other extensions keep their share of Roam's limit.
+- Typing in a card updates that card only. Typing on a page that is a page card updates the changed row only.
+- Typing outside a board keeps the board open instead of closing and reopening it.
+- Panning no longer measures every arrow handle on each mouse move.
+- Board chips at the top of a page are placed once per frame instead of scanning the whole page for every change.
+- A live speed check for developers: `node tools/live/perf-gate.mjs`.
+
 ## 2.13.2 — 2026-10-05
 
 - A board in the right sidebar opens as the board. Outline is still in the mode bar, and the last choice is remembered on this device.

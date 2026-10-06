@@ -90,10 +90,16 @@ export function uidFromBlockInputId(id, isDiagramUid) {
   const value = String(id || "");
   const prefix = "block-input-";
   if (!value.startsWith(prefix) || typeof isDiagramUid !== "function") return null;
+  const candidates = [];
   for (let i = value.length - 1; i >= prefix.length; i -= 1) {
     if (value[i] !== "-") continue;
     const candidate = value.slice(i + 1);
-    if (candidate && isDiagramUid(candidate)) return candidate;
+    if (candidate) candidates.push(candidate);
+  }
+  // One read for every candidate when the caller can batch; otherwise one read each.
+  if (typeof isDiagramUid.many === "function") return isDiagramUid.many(candidates) ?? null;
+  for (const candidate of candidates) {
+    if (isDiagramUid(candidate)) return candidate;
   }
   return null;
 }

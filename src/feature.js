@@ -575,6 +575,19 @@ export async function installPlexusDiagram({
   }
 
   const isDiagramUid = (candidate) => isDiagramString(host.blockString?.(candidate));
+  // An element id always names the same block, so the split is resolved once per id.
+  const inputUids = new Map();
+  isDiagramUid.many = (candidates) => {
+    const key = candidates[candidates.length - 1] || "";
+    const known = inputUids.get(key);
+    if (known !== undefined) return known && isDiagramUid(known) ? known : null;
+    const strings = host.blockStrings?.(candidates);
+    if (!strings) return candidates.find((candidate) => isDiagramUid(candidate)) ?? null;
+    const uid = candidates.find((candidate) => strings.get(candidate) != null) || "";
+    if (inputUids.size > 5000) inputUids.clear();
+    inputUids.set(key, uid);
+    return uid && isDiagramString(strings.get(uid)) ? uid : null;
+  };
 
   // A nested board that mounted before this parent claimed its rendered children is an outline copy.
   function unmountOutlineCopies(parent) {

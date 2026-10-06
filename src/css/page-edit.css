@@ -1,7 +1,10 @@
 /* PGE-1. A page card keeps its box while Roam's editor is open.
    extension.css sets height:auto !important on every editing card. enterEdit pins the page card's
    own height with an inline !important so this file does not have to fight that rule.
-   The editor scrolls inside the body. The header keeps the one title. Roam's title and mentions stay hidden. */
+   The editor scrolls inside the body. The header keeps the one title. Roam's title and mentions stay hidden.
+
+   PGE-2. The editor is the same rows: world px, no 1/zoom counter-scale, 13px / 19.5px, the 22px row,
+   bullets present but not drawn. Note-card editors are not matched here. */
 
 .pxd-root .pxd-item.pxd-item--page.pxd-item--editing {
   overflow: hidden;
@@ -29,16 +32,37 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
+  scrollbar-width: thin;
 }
 
 .pxd-root .pxd-item.pxd-item--page.pxd-item--editing > .pxd-item__body > .pxd-item__editor.pxd-page-edit {
+  position: relative !important;
+  left: auto !important;
+  top: auto !important;
   flex: 1 1 auto;
+  width: 100% !important;
+  height: auto !important;
   min-height: 0;
   max-height: 100%;
+  transform: none !important;
   overflow: auto;
   overscroll-behavior: contain;
-  font-size: inherit;
-  line-height: 1.4;
+  scrollbar-width: thin;
+  font-family: inherit;
+  font-size: 13px;
+  line-height: 19.5px;
+  color: inherit;
+}
+
+.pxd-root .pxd-item--page .pxd-page-edit::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+.pxd-root .pxd-item--page .pxd-page-edit::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 .pxd-root .pxd-item--page .pxd-page-edit :is(.rm-title-display, .rm-title-display-container, h1.rm-title-display) {
@@ -49,8 +73,73 @@
   display: none;
 }
 
+/* Roam's own page scroller would show a second bar (native ▲▼ on some builds). The card editor scrolls. */
+.pxd-root .pxd-item--page .pxd-page-edit :is(.rm-article-wrapper, .rm-zoom, .rm-zoom-item, .rm-blocks-wrapper) {
+  overflow: visible !important;
+  max-height: none !important;
+  height: auto !important;
+}
+
 .pxd-root .pxd-item--page .pxd-page-edit .roam-block-container {
-  margin: 2px 0;
+  margin: 2px 0 !important;
+  padding: 0 !important;
+}
+
+.pxd-root .pxd-item.pxd-item--page .pxd-page-edit :is(.rm-block-main, .roam-block, .rm-block) {
+  margin: 0 !important;
+  padding: 0 !important;
+}
+
+.pxd-root .pxd-item.pxd-item--page .pxd-page-edit .rm-block-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 0 !important;
+  min-height: 22px !important;
+  box-sizing: border-box;
+}
+
+/* Bullet stays in the DOM (Roam drag and zoom). Zero width so the text does not shift. */
+.pxd-root .pxd-item.pxd-item--page .pxd-page-edit .rm-api-render--block > .rm-block > .rm-block-main > .controls,
+.pxd-root .pxd-item--page .pxd-page-edit .rm-block-main > .controls {
+  display: flex;
+  flex: 0 0 0 !important;
+  width: 0 !important;
+  min-width: 0 !important;
+  max-width: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden;
+}
+
+.pxd-root .pxd-item--page .pxd-page-edit .rm-bullet {
+  visibility: hidden;
+  width: 0 !important;
+  min-width: 0 !important;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden;
+}
+
+.pxd-root .pxd-item--page .pxd-page-edit .rm-bullet__inner {
+  width: 0 !important;
+  height: 0 !important;
+  margin: 0 !important;
+}
+
+/* Roam's child guide (left border, and a ::before line on some builds). Hide it, then indent like .pxd-block__children. */
+.pxd-root .pxd-item--page .pxd-page-edit .rm-block-children {
+  margin-left: 0;
+  padding-left: 0;
+  border: 0;
+  box-shadow: none;
+  overflow: visible;
+}
+
+.pxd-root .pxd-item--page .pxd-page-edit .rm-block-children::before,
+.pxd-root .pxd-item--page .pxd-page-edit .rm-block-children::after {
+  content: none;
+  display: none;
+  border: 0;
 }
 
 .pxd-root .pxd-item--page .pxd-page-edit .rm-block-children .rm-block-children {
@@ -59,37 +148,23 @@
   border-left: 1px solid var(--pxd-border);
 }
 
-.pxd-root .pxd-item.pxd-item--page .pxd-page-edit .rm-api-render--block > .rm-block > .rm-block-main > .controls,
-.pxd-root .pxd-item--page .pxd-page-edit .rm-block-main > .controls {
-  display: flex;
-  flex: 0 0 20px;
-  width: 20px;
-  min-width: 20px;
-  align-items: flex-start;
-  justify-content: center;
-  margin: 0;
-  padding: 0;
+/* Roam pulls the page's top level left to line bullets up with its own title. The card has no Roam title. */
+.pxd-root .pxd-item--page .pxd-page-edit .rm-block-children.rm-level-0 {
+  margin-left: 0 !important;
+  padding-left: 0 !important;
+  border-left: 0 !important;
 }
 
-.pxd-root .pxd-item--page .pxd-page-edit .rm-bullet {
-  width: 20px;
-  margin: 0;
-  justify-content: center;
-}
-
-/* Roam sizes the inner dot elsewhere; without !important it spilled 12px wide onto the text. */
-.pxd-root .pxd-item--page .pxd-page-edit .rm-bullet__inner {
-  width: 6px !important;
-  height: 6px !important;
+.pxd-root .pxd-item.pxd-item--page .pxd-item__editor.pxd-page-edit :is(textarea.rm-block-input, textarea.rm-block__input, .rm-block__input, .rm-block__input--view, .rm-block-text) {
   margin: 0 !important;
-}
-
-.pxd-root .pxd-item--page .pxd-page-edit :is(textarea.rm-block-input, textarea.rm-block__input, .rm-block__input, .rm-block__input--view, .rm-block-text) {
-  margin: 0 !important;
-  padding: 0 0 0 6px !important;
-  font-size: inherit !important;
+  padding: 0 0 0 16px !important;
+  min-height: 0 !important;
+  border: 0;
   font-family: inherit;
-  line-height: 1.4 !important;
+  font-size: 13px !important;
+  font-weight: inherit;
+  line-height: 19.5px !important;
+  color: inherit;
 }
 
 .pxd-root .pxd-item--page .pxd-page-edit :is(.rm-page-ref, .rm-page-ref__brackets, .rm-block-ref) {
@@ -99,8 +174,24 @@
   letter-spacing: normal;
 }
 
-/* Roam pulls the page's top level 27px left to line bullets up with its own title.
-   The card has no Roam title, so that pull clipped the first letters of every row. */
-.pxd-root .pxd-item--page .pxd-page-edit .rm-block-children.rm-level-0 {
-  margin-left: 0;
+/* Roam's block container is a flex child, so margins do not collapse: 1px + 1px gives the view's 2px gap. */
+.pxd-root .pxd-item.pxd-item--page .pxd-page-edit .roam-block-container.rm-block {
+  margin: 1px 0 !important;
+}
+
+/* Roam's reference count sits after the text and took width from it, so rows wrapped earlier than the card.
+   It floats at the row's right edge instead; the text gets the full row like the resting view. */
+.pxd-root .pxd-item.pxd-item--page .pxd-page-edit .rm-block-main {
+  position: relative;
+}
+
+.pxd-root .pxd-item.pxd-item--page .pxd-page-edit .rm-block-main > .rm-block__input {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.pxd-root .pxd-item.pxd-item--page .pxd-page-edit .rm-block-main > .rm-block-separator ~ :not(.rm-block__input) {
+  position: absolute;
+  top: 0;
+  right: 0;
 }

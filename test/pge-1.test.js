@@ -170,5 +170,5 @@ test("PGE: page-edit CSS scrolls inside the card and hides the second title and 
   assert.match(css, /\.pxd-item--page\.pxd-item--editing \{[^}]*max-height: none/);
   assert.match(css, /\.rm-title-display/);
   assert.match(css, /\.rm-reference-main/);
-  assert.match(css, /font-size: inherit !important/);
+  assert.match(css, /font-size: 13px !important/);
 });

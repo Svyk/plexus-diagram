@@ -119,3 +119,27 @@
 .pxd-root.pxd-root--panel-open .pxd-minimap {
   right: calc(var(--pxd-panel-right) + var(--pxd-panel-w, 340px) + var(--pxd-panel-gap));
 }
+
+/* The legend sits under the board bar, beside Properties, never on the bar's buttons. */
+.pxd-root .pxd-legend {
+  top: 56px;
+  left: 96px;
+  max-width: calc(100% - 160px);
+}
+
+.pxd-root:has(.pxd-props:not(.pxd-props--collapsed):not([hidden])) .pxd-legend {
+  left: 240px;
+  max-width: calc(100% - 304px);
+}
+
+.pxd-root:has(.pxd-props[hidden]) .pxd-legend {
+  left: 8px;
+}
+
+.pxd-root.pxd-root--docked.pxd-root--dock-left .pxd-legend {
+  left: 152px;
+}
+
+.pxd-root.pxd-root--docked.pxd-root--dock-left:has(.pxd-props:not(.pxd-props--collapsed):not([hidden])) .pxd-legend {
+  left: 296px;
+}

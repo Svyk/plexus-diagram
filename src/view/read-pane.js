@@ -4,6 +4,7 @@
 import { CARD_MIME } from "../model/drop.js";
 import { HIGHLIGHT_COLORS, highlightModel } from "../model/highlight.js";
 import { highlightRows } from "../model/highlight-pick.js";
+import { dragChipText, PDF_MARK, uidFromMark } from "../model/pdf-drag.js";
 import { readPaneKey, readPaneWidth, writeReaderPage } from "../model/pdf.js";
 import { isTextEntryTarget } from "./cards.js";
 
@@ -152,6 +153,7 @@ export function createReadPane({
   let watchTitle = "";
   let selectedUid = "";
   let shown = [];
+  let catalog = [];
   let current = { cardUid: "", blockUid: "", title: "", pageUid: "", source: "" };
   let splitMove = null;
   let splitUp = null;
@@ -312,7 +314,8 @@ export function createReadPane({
     const pageText = String(pageFilt.value || "").trim();
     const pageWant = pageText === "" ? null : Number(pageText);
     const needle = String(snipFilt.value || "").trim().toLowerCase();
-    shown = sortRows(rows).filter((row) => {
+    catalog = sortRows(rows);
+    shown = catalog.filter((row) => {
       if (color && row.color !== color) return false;
       if (pageWant != null && Number.isFinite(pageWant) && row.page !== pageWant) return false;
       if (needle && !String(row.snippet || "").toLowerCase().includes(needle)) return false;
@@ -417,12 +420,89 @@ export function createReadPane({
     paintSelected();
     jumpPage(row.page);
   };
+  const markCache = new WeakMap();
+  let dragChip = null;
+  const blockExists = (uid) => {
+    if (typeof host?.blockString !== "function") return true;
+    try { return typeof host.blockString(uid) === "string"; } catch { return false; }
+  };
+  const markOf = (event) => {
+    const node = event.target;
+    if (!node || typeof node.closest !== "function") return null;
+    const mark = node.closest(PDF_MARK);
+    if (!mark || !live.contains?.(mark)) return null;
+    return mark;
+  };
+  const armMark = (mark) => {
+    const cached = markCache.get(mark);
+    if (cached) return cached;
+    const found = uidFromMark(mark, blockExists);
+    if (!found) return null;
+    markCache.set(mark, found);
+    return found;
+  };
+  const chipLabel = (uid, highlight) => {
+    const row = catalog.find((entry) => entry.uid === uid);
+    const text = (row && row.snippet) || highlight?.content?.text || "";
+    const color = (row && row.color) || (typeof highlight?.color === "string" ? highlight.color : "");
+    return { text: dragChipText(text), color };
+  };
+  const dropChip = () => {
+    const node = dragChip;
+    dragChip = null;
+    try { node?.remove?.(); } catch { /* already gone */ }
+  };
+  const clearDragClass = () => { root?.classList?.remove("pxd-root--pdf-drag"); };
+  const endPdfDrag = () => {
+    clearDragClass();
+    dropChip();
+  };
+  const paintChip = (data, color, text) => {
+    dropChip();
+    const chip = el("div", "pxd-read__drag");
+    chip.style.position = "fixed";
+    chip.style.left = "-1000px";
+    chip.style.top = "0";
+    const bar = el("span", "pxd-read__bar", chip);
+    if (color) bar.setAttribute("data-color", color);
+    el("span", "pxd-read__dragtext", chip).textContent = text || "";
+    pane.append(chip);
+    try { data.setDragImage?.(chip, 8, 8); } catch { /* no drag image */ }
+    dragChip = chip;
+  };
+  // The board cancels dragstart on the root. Stopping here keeps this native drag alive.
+  const beginDrag = (event, uid, color, text) => {
+    const data = event.dataTransfer;
+    if (!uid || !data || typeof data.setData !== "function") return;
+    const payload = `((${uid}))`;
+    data.setData(CARD_MIME, payload);
+    try { data.setData("text/plain", payload); } catch { /* second type */ }
+    try { data.effectAllowed = "copy"; } catch { /* read only */ }
+    paintChip(data, color, text);
+    root?.classList?.add("pxd-root--pdf-drag");
+    event.stopPropagation?.();
+  };
   const onListDrag = (event) => {
     const row = rowFromEvent(event);
-    const data = event.dataTransfer;
-    if (!row?.uid || !data || typeof data.setData !== "function") return;
-    data.setData(CARD_MIME, `((${row.uid}))`);
-    try { data.effectAllowed = "copy"; } catch { /* read only */ }
+    if (!row?.uid) return;
+    const label = chipLabel(row.uid, null);
+    beginDrag(event, row.uid, row.color || label.color, dragChipText(row.snippet || label.text));
+  };
+  const onMarkHover = (event) => {
+    const mark = markOf(event);
+    if (!mark) return;
+    const found = armMark(mark);
+    if (!found) return;
+    mark.draggable = true;
+    try { mark.setAttribute("draggable", "true"); } catch { /* stub */ }
+  };
+  const onMarkDrag = (event) => {
+    const mark = markOf(event);
+    if (!mark) return;
+    const found = markCache.get(mark);
+    if (!found?.uid) return;
+    const label = chipLabel(found.uid, found.highlight);
+    beginDrag(event, found.uid, label.color, label.text);
   };
   const onWheel = (event) => { event.stopPropagation(); };
   const onPointer = (event) => { event.stopPropagation(); };
@@ -433,6 +513,7 @@ export function createReadPane({
   const onDrop = (event) => {
     event.preventDefault();
     event.stopPropagation();
+    clearDragClass();
   };
   const onColor = () => refreshList();
   const onPageFilt = () => refreshList();
@@ -447,15 +528,20 @@ export function createReadPane({
     close({ notify: true });
   };
   const armed = [];
-  const listen = (node, type, fn) => {
-    node.addEventListener(type, fn);
-    armed.push([node, type, fn]);
+  const listen = (node, type, fn, capture = false) => {
+    node.addEventListener(type, fn, capture);
+    armed.push([node, type, fn, capture]);
   };
   listen(pane, "keydown", onPaneKey);
   listen(pane, "wheel", onWheel);
   listen(pane, "pointerdown", onPointer);
   listen(pane, "dragover", onDragOver);
   listen(pane, "drop", onDrop);
+  listen(pane, "dragend", endPdfDrag);
+  listen(live, "pointerover", onMarkHover, true);
+  listen(live, "mouseover", onMarkHover, true);
+  listen(live, "dragstart", onMarkDrag);
+  if (root) listen(root, "drop", clearDragClass);
   listen(list, "click", onListClick);
   listen(list, "dragstart", onListDrag);
   listen(colorSel, "change", onColor);
@@ -494,6 +580,7 @@ export function createReadPane({
     endSplit();
     releaseWatch();
     clearLive();
+    endPdfDrag();
     root?.classList?.remove("pxd-root--read", "pxd-root--read-stack");
     try { root?.style?.removeProperty?.("--pxd-read-w"); } catch { /* stub */ }
     pane.remove();
@@ -535,7 +622,7 @@ export function createReadPane({
     dispose() {
       close({ notify: false });
       endSplit();
-      for (const [node, type, fn] of armed) node.removeEventListener?.(type, fn);
+      for (const [node, type, fn, capture] of armed) node.removeEventListener?.(type, fn, capture);
       armed.length = 0;
     },
     layout(mountWidth) {

@@ -165,6 +165,27 @@ export function focusRoamInput(el) {
   return true;
 }
 
+// PGE-2. Offsets are screen px from getBoundingClientRect (body top to the row, then to the input).
+// scrollTop is world px. A page editor is not counter-scaled, so a screen delta is divided by the board zoom.
+export function pageEditScrollTop(scrollTop, inputOffset, rowOffset, zoom) {
+  const base = Number(scrollTop);
+  const top = Number.isFinite(base) ? base : 0;
+  const row = Number(rowOffset);
+  const input = Number(inputOffset);
+  if (!Number.isFinite(row) || !Number.isFinite(input)) return Math.max(0, top);
+  const delta = input - row;
+  if (!delta) return Math.max(0, top);
+  const z = Number(zoom);
+  const scale = z > 0 && Number.isFinite(z) ? z : 1;
+  return Math.max(0, top + delta / scale);
+}
+
+// Page edit stays in world px, the same size as the rows it replaces. Note editors keep the counter-scale.
+function scaleCardEditor(editor, zoom) {
+  if (editor?.classList?.contains("pxd-page-edit")) return false;
+  return applyEditorCounterScale(editor, zoom);
+}
+
 function nextFrame() {
   return new Promise((resolve) => {
     const raf = globalThis.requestAnimationFrame;
@@ -3336,7 +3357,7 @@ export function createItemRenderer({
     const prevZoom = zoomCache;
     zoomCache = next > 0 && Number.isFinite(next) ? next : 1;
     if (zoomCache !== prevZoom) closePeek();
-    if (editing?.editor) applyEditorCounterScale(editing.editor, zoomCache);
+    if (editing?.editor) scaleCardEditor(editing.editor, zoomCache);
     if (zoomCache !== prevZoom) for (const rec of shells.values()) if (rec.stickyLive && rec.editor && rec.editor !== editing?.editor) applyEditorCounterScale(rec.editor, zoomCache);
   };
 
@@ -3897,8 +3918,9 @@ export function createItemRenderer({
       }
     } catch { ok = false; }
     if (!ok) { await exitEdit({ silent: true }); return false; }
-    // EK-1: the measured box is the card's floor for the whole edit. The editor is absolutely placed under a
-    // zoom counter-scale, so it never holds the card open; only exitEdit releases the lock.
+    // EK-1: the measured box is the card's floor for the whole edit. A note editor is absolutely placed under a
+    // zoom counter-scale, so it never holds the card open; only exitEdit releases the lock. A page editor stays
+    // in world px (PGE-2), the same size as the rows it replaces.
     // Page cards skip the cross-fade. The outline and the editor would not match, and the fade is the delay.
     if (!pageEdit && !reduced) {
       editing.fadeCancel = later(() => {
@@ -3913,8 +3935,8 @@ export function createItemRenderer({
       input = await waitPageInput(editor, row, uid);
       if (disposed || editing?.uid !== uid) return false;
       if (input && rowOffset !== null) {
-        const delta = (Number(input.getBoundingClientRect?.().top) || 0) - (Number(rec.body.getBoundingClientRect?.().top) || 0) - rowOffset;
-        if (delta) editor.scrollTop = Math.max(0, (Number(editor.scrollTop) || 0) + delta / (zoomCache || 1));
+        const inputOffset = (Number(input.getBoundingClientRect?.().top) || 0) - (Number(rec.body.getBoundingClientRect?.().top) || 0);
+        editor.scrollTop = pageEditScrollTop(editor.scrollTop, inputOffset, rowOffset, zoomCache);
       }
     } else {
       await waitHydrateQuiet(editor, HYDRATE_CAP_MS);
@@ -3930,13 +3952,13 @@ export function createItemRenderer({
       }
       if (!input) input = editor.querySelector?.(".rm-block__input") || editor.querySelector?.("textarea");
     }
-    applyEditorCounterScale(editor, zoomCache);
+    scaleCardEditor(editor, zoomCache);
     if (input) focusRoamInput(input);
     fitEditorText(editor);
-    // Roam writes an explicit textarea height when the editor focuses. Apply again
-    // after that, and once more on the next frame, so the screen font is not clipped.
-    applyEditorCounterScale(editor, zoomCache);
-    frameLater(() => { if (editing?.uid === uid) { applyEditorCounterScale(editor, zoomCache); fitEditorText(editor); } });
+    // Roam writes an explicit textarea height when a note editor focuses. Apply the counter-scale again
+    // after that, and once more on the next frame, so the screen font is not clipped. Page edit skips it.
+    scaleCardEditor(editor, zoomCache);
+    frameLater(() => { if (editing?.uid === uid) { scaleCardEditor(editor, zoomCache); fitEditorText(editor); } });
     if (editing?.uid === uid && editor.contains?.(doc.activeElement)) editing.ready = true;
     if (editing?.uid === uid) nudgeEditorMenus(doc);
     return true;

@@ -39,12 +39,13 @@ const PALETTE_LIST = [
   ["shape", "Shape", "R", "square"],
   ["section", "Section", "G", "widget"],
   ["board", "Board", "W", "grid-view"],
+  ["table", "Table", "B", "th-list"],
   ["connect", "Connect", "C", "flows"],
 ];
 
 const LAYOUTS = ["split", "classic", "dock-only"];
 const DOCK_STYLES = ["pill", "strip"];
-const DOCK_GROUPS = [["select", "hand"], ["card", "task", "text", "sticky", "shape", "section", "board"], ["connect"]];
+const DOCK_GROUPS = [["select", "hand"], ["card", "task", "text", "sticky", "shape", "section", "board", "table"], ["connect"]];
 const SWATCH_TOOLS = new Set(["card", "sticky", "section"]);
 const REVEAL_PX = 48;
 const cap = (word) => word.charAt(0).toUpperCase() + word.slice(1);
@@ -83,7 +84,12 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
     if (name) b.setAttribute("aria-label", name);
     listen(b, "click", (event) => { event.preventDefault(); event.stopPropagation(); onClick?.(event); });
     listen(b, "pointerdown", (event) => event.stopPropagation());
-    listen(b, "dblclick", (event) => event.stopPropagation());
+    listen(b, "dblclick", (event) => {
+      event.stopPropagation();
+      if (typeof b.__pxdLock !== "function") return;
+      event.preventDefault();
+      b.__pxdLock();
+    });
     return b;
   };
   const iconButton = (parent, cls, icon, label, title, onClick) => {
@@ -227,7 +233,7 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
     b.dataset.tool = id;
     b.setAttribute("data-tool", id);
     tip(b, `tool.${id}`);
-    listen(b, "dblclick", (event) => { event.preventDefault(); event.stopPropagation(); on.setTool?.(id, true); });
+    b.__pxdLock = () => on.setTool?.(id, true);
     toolButtons.set(id, b);
   }
   const group2 = el("div", "pxd-toolbar__group", toolbar);
@@ -314,7 +320,7 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
       const tag = el("span", "pxd-dock__label", b);
       tag.setAttribute("data-label", label);
       tag.setAttribute("aria-hidden", "true");
-      listen(b, "dblclick", (event) => { event.preventDefault(); event.stopPropagation(); on.setTool?.(id, true); });
+      b.__pxdLock = () => on.setTool?.(id, true);
       paletteButtons.set(id, b);
     }
   });

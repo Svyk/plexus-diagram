@@ -57,6 +57,7 @@ import {
   withBoardMarker,
 } from "./model/schema.js";
 import { drawingCreateSpec, drawingRefString } from "./model/drawing-card.js";
+import { appendTable, TABLE_SIZE } from "./model/roam-table.js";
 import { HIGHLIGHT_COLORS, rewriteHighlightTag } from "./model/highlight.js";
 import { inflate, rectsIntersect, unionRect } from "./model/geometry.js";
 import { SHAPES } from "./model/shapes.js";
@@ -1286,6 +1287,18 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
         const tone = styleColor(color);
         if (tone) layout.color = tone;
         const id = t.create({ parent, string, plexus: serializeItemLayout(layout) });
+        applyFit(t, [id]);
+        return id;
+      });
+    },
+
+    createTable({ x, y, w, h } = {}) {
+      return txn((t) => {
+        const size = { w: w ?? TABLE_SIZE.w, h: h ?? TABLE_SIZE.h };
+        const parent = containerAt(board, { x: x + size.w / 2, y: y + size.h / 2 }, { rects });
+        const rel = toRelative(board, parent, { x, y }, rects);
+        const layout = { x: rel.x, y: rel.y, w: size.w, h: size.h };
+        const id = appendTable(t, { parent, plexus: serializeItemLayout(layout) });
         applyFit(t, [id]);
         return id;
       });

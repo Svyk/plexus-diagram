@@ -61,6 +61,7 @@ export const TIP_TEXT = {
   "tool.shape": e("Shape", "Click or drag to draw a shape. Pick its kind in the options beside the dock.", "R", LOCK),
   "tool.section": e("Section", "Drag a colored frame. Cards dropped inside become its members.", "G", LOCK),
   "tool.board": e("Board", "Click to make a nested board you can open in place.", "W", LOCK),
+  "tool.table": e("Table", "Click the board to make a Roam table. Cells edit in Roam.", "B", LOCK),
   "tool.connect": e("Connect", "Drag from one card to another to draw an arrow, which is saved as a Roam block. Drag empty space to pan; Shift-drag to select.", "C", LOCK),
   "dock.look.block": e("Block look", "Show new cards, or the selected one, as a plain Roam block."),
   "dock.look.card": e("Card look", "Show new cards, or the selected one, with a title row."),

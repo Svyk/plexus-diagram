@@ -2433,16 +2433,16 @@ function pointInPolygon(point, polygon) {
   for (let i = 0, j = n2 - 1; i < n2; j = i++) {
     if (onSegment(polygon[j], polygon[i], point)) return true;
   }
-  let inside4 = false;
+  let inside5 = false;
   for (let i = 0, j = n2 - 1; i < n2; j = i++) {
     const yi = polygon[i].y;
     const yj = polygon[j].y;
     const xi = polygon[i].x;
     const xj = polygon[j].x;
     const intersect = yi > point.y !== yj > point.y && point.x < (xj - xi) * (point.y - yi) / (yj - yi) + xi;
-    if (intersect) inside4 = !inside4;
+    if (intersect) inside5 = !inside5;
   }
-  return inside4;
+  return inside5;
 }
 function itemsInPolygon(board2, polygon, rects) {
   if (!board2 || !Array.isArray(polygon) || polygon.length < 3) return [];
@@ -3182,6 +3182,102 @@ var init_timeline = __esm({
     TIMELINE_DAY_CAP = 365;
     DAILY_TITLE_PATTERN = "^(January|February|March|April|May|June|July|August|September|October|November|December) \\d{1,2}(?:st|nd|rd|th), \\d{4}$";
     TIMELINE_QUERY = "[:find ?card ?ref ?title ?page ?time :in $ [?card ...] ?pat :where [?c :block/uid ?card] [?b :block/refs ?c] [?b :block/uid ?ref] [?b :block/page ?pg] [?pg :node/title ?title] [?pg :block/uid ?page] [(get-else $ ?b :create/time 0) ?time] [(re-pattern ?pat) ?re] [(re-find ?re ?title)]]";
+  }
+});
+
+// src/model/roam-table.js
+function isRoamTableString(value) {
+  return TABLE_RE.test(String(value ?? "").trim());
+}
+function appendTable(t, { parent, plexus, order } = {}) {
+  const root = t.create({
+    parent,
+    string: TABLE_ROOT,
+    plexus,
+    ...order !== void 0 ? { order } : {}
+  });
+  for (let r = 0; r < TABLE_ROWS; r += 1) {
+    const row4 = t.create({ parent: root, string: "", order: r });
+    for (let c = 0; c < TABLE_COLS; c += 1) t.create({ parent: row4, string: "", order: c });
+  }
+  return root;
+}
+function hostOf(node2) {
+  return node2?.closest?.(TABLE_HOST_SELECTOR) || null;
+}
+function tablePointerTarget(node2) {
+  return hostOf(node2);
+}
+function isFieldNode(node2) {
+  if (!node2 || node2.nodeType === 9) return false;
+  const tag = String(node2.tagName || "").toLowerCase();
+  if (tag === "input" || tag === "textarea" || tag === "select") return true;
+  if (node2.isContentEditable) return true;
+  const ce = node2.getAttribute?.("contenteditable");
+  return ce === "" || ce === "true";
+}
+function inside(boardRoot, node2) {
+  if (!node2) return false;
+  if (!boardRoot?.contains) return true;
+  return Boolean(boardRoot.contains(node2));
+}
+function ownerUid(node2) {
+  const uid = String(node2?.getAttribute?.("data-rg-owner") || "");
+  return /^[\w-]+$/.test(uid) ? uid : "";
+}
+function portalForBoard(node2, boardRoot) {
+  const portal = node2?.closest?.(PORTAL_SELECTOR);
+  if (!portal) return null;
+  if (inside(boardRoot, portal)) return portal;
+  const uid = ownerUid(portal);
+  if (!uid || typeof boardRoot?.querySelector !== "function") return null;
+  const match = boardRoot.querySelector(`[data-roam-grid-uid="${uid}"], [data-pxd-table="${uid}"]`);
+  return match ? portal : null;
+}
+function ownershipOf({ target, active, pointerTarget, boardRoot, sourceText } = {}) {
+  const focusHost = hostOf(active);
+  if (focusHost && inside(boardRoot, focusHost)) {
+    return { verified: true, reason: "focus", host: focusHost, sourceText };
+  }
+  const portal = portalForBoard(active, boardRoot) || portalForBoard(target, boardRoot);
+  if (portal) return { verified: true, reason: "portal", host: portal, sourceText };
+  const pointerHost = hostOf(pointerTarget || target);
+  const pointerInside = Boolean(pointerHost && inside(boardRoot, pointerHost));
+  const outsideField = isFieldNode(active) && !(pointerHost && pointerHost.contains?.(active));
+  if (pointerInside && !outsideField) {
+    return { verified: true, reason: "pointer", host: pointerHost, sourceText };
+  }
+  return { verified: false, sourceText };
+}
+function keyGate(event, ownership) {
+  const sourceText = ownership?.sourceText;
+  if (!ownership?.verified) return { yield: false, sourceText };
+  return {
+    yield: true,
+    reason: event?.key === "Escape" ? "escape" : "owned",
+    sourceText
+  };
+}
+var TABLE_ROOT, TABLE_ROWS, TABLE_COLS, TABLE_SIZE, TABLE_WRITES, TABLE_RE, TABLE_HOST_SELECTOR, PORTAL_SELECTOR;
+var init_roam_table = __esm({
+  "src/model/roam-table.js"() {
+    TABLE_ROOT = "{{[[table]]}}";
+    TABLE_ROWS = 3;
+    TABLE_COLS = 3;
+    TABLE_SIZE = { w: 480, h: 260 };
+    TABLE_WRITES = 1 + TABLE_ROWS * (1 + TABLE_COLS);
+    TABLE_RE = /^\{\{\s*(?:\[\[table\]\]|table)\s*\}\}$/i;
+    TABLE_HOST_SELECTOR = [
+      ".pxd-roam-table",
+      ".pxd-table-overlay",
+      "[data-roam-grid-uid]",
+      ".rg-root",
+      ".rg-portal",
+      "[data-rg-owner]",
+      ".rg-editor",
+      ".rg-lightbox"
+    ].join(", ");
+    PORTAL_SELECTOR = ".rg-portal, .rg-editor, .rg-lightbox, [data-rg-owner], .pxd-table-overlay";
   }
 });
 
@@ -4414,6 +4510,7 @@ var init_tooltip_text = __esm({
       "tool.shape": e("Shape", "Click or drag to draw a shape. Pick its kind in the options beside the dock.", "R", LOCK),
       "tool.section": e("Section", "Drag a colored frame. Cards dropped inside become its members.", "G", LOCK),
       "tool.board": e("Board", "Click to make a nested board you can open in place.", "W", LOCK),
+      "tool.table": e("Table", "Click the board to make a Roam table. Cells edit in Roam.", "B", LOCK),
       "tool.connect": e("Connect", "Drag from one card to another to draw an arrow, which is saved as a Roam block. Drag empty space to pan; Shift-drag to select.", "C", LOCK),
       "dock.look.block": e("Block look", "Show new cards, or the selected one, as a plain Roam block."),
       "dock.look.card": e("Card look", "Show new cards, or the selected one, with a title row."),
@@ -5006,7 +5103,7 @@ function previewModel(board2, edgeUid, { pad: pad2 = 48, maxOthers = 24, blockTe
   if (!a || !b) return null;
   const bounds = boundsOf([a, b]);
   const view = { x: bounds.x - pad2, y: bounds.y - pad2, w: bounds.w + 2 * pad2, h: bounds.h + 2 * pad2 };
-  const inside4 = (r) => r.x < view.x + view.w && r.x + r.w > view.x && r.y < view.y + view.h && r.y + r.h > view.y;
+  const inside5 = (r) => r.x < view.x + view.w && r.x + r.w > view.x && r.y < view.y + view.h && r.y + r.h > view.y;
   const label = (item) => itemLabel(item, blockText) || item.title || "";
   const cards = [];
   let others = 0;
@@ -5015,7 +5112,7 @@ function previewModel(board2, edgeUid, { pad: pad2 = 48, maxOthers = 24, blockTe
     if (!r) continue;
     const role = item.uid === edge.from ? "from" : item.uid === edge.to ? "to" : "other";
     if (role === "other") {
-      if (!inside4(r) || others >= maxOthers) continue;
+      if (!inside5(r) || others >= maxOthers) continue;
       others += 1;
     }
     cards.push({ uid: item.uid, type: item.type, rect: r, title: label(item), role });
@@ -5980,8 +6077,8 @@ function createTaskPopover({ doc = globalThis.document, root, bt, toast = () => 
         focusEl3(back);
         return;
       }
-      const inside4 = node2.contains?.(event.target) || node2.contains?.(doc.activeElement);
-      if (!inside4) return;
+      const inside5 = node2.contains?.(event.target) || node2.contains?.(doc.activeElement);
+      if (!inside5) return;
       const tag = fieldTag(event);
       if (tag === "input" || tag === "textarea" || tag === "select") return;
       const buttons = [...node2.querySelectorAll("button")];
@@ -6093,8 +6190,8 @@ function openStatusChooser({ doc = globalThis.document, anchor, palette, current
     if (event.key !== "Enter" && event.key !== " " && event.key !== "ArrowDown" && event.key !== "ArrowUp") return;
     const tag = String(event.target?.tagName || "").toLowerCase();
     if (tag === "input" || tag === "textarea") return;
-    const inside4 = pop.contains?.(event.target) || pop.contains?.(doc.activeElement);
-    if (!inside4) return;
+    const inside5 = pop.contains?.(event.target) || pop.contains?.(doc.activeElement);
+    if (!inside5) return;
     event.preventDefault();
     event.stopPropagation();
     if (event.key === "Enter" || event.key === " ") {
@@ -9548,6 +9645,163 @@ var init_source_chip = __esm({
   }
 });
 
+// src/view/table-card.js
+function tableCounterStyle(zoom) {
+  const z = Number(zoom);
+  if (!(z > 0) || !Number.isFinite(z) || nearOne2(z)) return null;
+  return {
+    width: `${z * 100}%`,
+    height: `${z * 100}%`,
+    transform: `scale(${1 / z})`,
+    transformOrigin: "top left"
+  };
+}
+function paintFit(fit, zoom, grid) {
+  const style = fit?.style;
+  if (!style?.setProperty) return;
+  const next = grid ? tableCounterStyle(zoom) : null;
+  for (const name of ["width", "height", "transform", "transform-origin"]) {
+    if (next) style.setProperty(name, next[name === "transform-origin" ? "transformOrigin" : name]);
+    else style.removeProperty?.(name);
+  }
+}
+function syncTableZoom(zoom) {
+  for (const rec of mounts) {
+    rec.zoom = zoom;
+    paintFit(rec.fit, zoom, rec.grid);
+  }
+}
+function drawBlock(renderBlock, el, uid) {
+  if (typeof renderBlock !== "function" || !el) return;
+  try {
+    renderBlock(el, uid);
+  } catch {
+  }
+}
+function mountRoamTable(doc, parent, { uid, renderBlock, zoom = 1, portalParent, unmount } = {}) {
+  const host = doc.createElement("div");
+  host.className = "pxd-roam-table pxd-rs";
+  if (uid) host.setAttribute("data-pxd-table", String(uid));
+  const bar = doc.createElement("div");
+  bar.className = "pxd-roam-table__bar";
+  const open = doc.createElement("button");
+  open.type = "button";
+  open.className = "pxd-roam-table__open";
+  open.setAttribute("aria-label", "Open grid");
+  open.textContent = "Open grid";
+  bar.append(open);
+  const fit = doc.createElement("div");
+  fit.className = "pxd-roam-table__fit";
+  const live = doc.createElement("div");
+  live.className = "pxd-rs__live";
+  fit.append(live);
+  host.append(bar, fit);
+  parent?.append?.(host);
+  const rec = { host, fit, zoom, grid: false, overlay: null };
+  mounts.add(rec);
+  drawBlock(renderBlock, live, uid);
+  const seeGrid = () => Boolean(live.querySelector?.("[data-roam-grid-uid], .rg-root"));
+  const syncGrid = () => {
+    rec.grid = seeGrid();
+    host.classList.toggle("pxd-roam-table--grid", rec.grid);
+    paintFit(fit, rec.zoom, rec.grid);
+  };
+  const view = doc.defaultView || globalThis.window || globalThis;
+  const Obs = view.MutationObserver || globalThis.MutationObserver;
+  let mo = null;
+  if (typeof Obs === "function") {
+    mo = new Obs(() => syncGrid());
+    try {
+      mo.observe(live, { childList: true, subtree: true, attributes: true });
+    } catch {
+    }
+  }
+  syncGrid();
+  const portalRoot = () => {
+    const given = portalParent && !portalParent.classList?.contains?.("pxd-world") ? portalParent : null;
+    if (given) return given;
+    const found = parent?.closest?.(".pxd-root");
+    if (found && !found.classList?.contains?.("pxd-world")) return found;
+    return doc.body || parent;
+  };
+  const closeOverlay = () => {
+    const overlay = rec.overlay;
+    if (!overlay) return;
+    rec.overlay = null;
+    const stage = overlay.querySelector?.(".pxd-table-overlay__stage");
+    try {
+      unmount?.(stage);
+    } catch {
+    }
+    try {
+      overlay.remove();
+    } catch {
+    }
+  };
+  const openOverlay = () => {
+    if (rec.overlay) return;
+    const overlay = doc.createElement("div");
+    overlay.className = "pxd-table-overlay";
+    if (uid) overlay.setAttribute("data-pxd-table", String(uid));
+    const close = doc.createElement("button");
+    close.type = "button";
+    close.className = "pxd-table-overlay__close";
+    close.setAttribute("aria-label", "Close grid");
+    close.textContent = "Close";
+    const stage = doc.createElement("div");
+    stage.className = "pxd-table-overlay__stage pxd-rs__live";
+    overlay.append(close, stage);
+    portalRoot()?.append?.(overlay);
+    rec.overlay = overlay;
+    drawBlock(renderBlock, stage, uid);
+    close.addEventListener("pointerdown", (event) => {
+      event.stopPropagation();
+    });
+    close.addEventListener("click", (event) => {
+      event.stopPropagation();
+      closeOverlay();
+    });
+  };
+  open.addEventListener("pointerdown", (event) => {
+    event.stopPropagation();
+  });
+  open.addEventListener("click", (event) => {
+    event.stopPropagation();
+    openOverlay();
+  });
+  const onKey = (event) => {
+    if (event.key !== "Escape" || !rec.overlay) return;
+    const field = event.target?.closest?.('input, textarea, [contenteditable="true"], [contenteditable=""]');
+    if (field && rec.overlay.contains?.(field)) return;
+    closeOverlay();
+    event.stopPropagation();
+  };
+  view.addEventListener?.("keydown", onKey, true);
+  host.__pxdEmbedMo = {
+    disconnect() {
+      try {
+        mo?.disconnect();
+      } catch {
+      }
+      mo = null;
+      mounts.delete(rec);
+      try {
+        view.removeEventListener?.("keydown", onKey, true);
+      } catch {
+      }
+      closeOverlay();
+    }
+  };
+  return host;
+}
+var mounts, nearOne2;
+var init_table_card = __esm({
+  "src/view/table-card.js"() {
+    mounts = /* @__PURE__ */ new Set();
+    nearOne2 = (z) => Math.abs(z - 1) < 1e-3;
+  }
+});
+
 // src/view/cards.js
 function bodyStyleOf(doc) {
   const view = doc?.defaultView || globalThis;
@@ -10879,7 +11133,28 @@ function createItemRenderer({
     });
     return node2;
   };
+  const mountTableHost = (parent, uid, budget) => {
+    const node2 = mountRoamTable(doc, parent, {
+      uid,
+      zoom: zoomCache,
+      renderBlock: typeof host?.renderBlock === "function" ? (el2, id) => host.renderBlock(el2, id) : null,
+      unmount: (el2) => {
+        try {
+          host?.unmount?.(el2);
+        } catch {
+        }
+      },
+      portalParent: boardRoot()
+    });
+    if (budget) budget.roots.push(node2);
+    return node2;
+  };
   const renderRowRoot = (parent, string, cls, uid) => {
+    if (isRoamTableString(string)) {
+      const node2 = mountTableHost(parent, uid);
+      for (const name of String(cls || "").split(/\s+/)) if (name) node2.classList.add(name);
+      return node2;
+    }
     const target = boardRowTarget(uid, string);
     return target ? mountBoardRow(parent, cls, target) : renderRoot(parent, string, cls, uid, { plain: true });
   };
@@ -11530,6 +11805,10 @@ function createItemRenderer({
       if (skipChildString(s)) continue;
       budget.n += 1;
       const rowUid = childUid(b);
+      if (isRoamTableString(s)) {
+        mountTableHost(parent, rowUid, budget);
+        continue;
+      }
       const row4 = el("div", "pxd-block", parent);
       row4.dataset.uid = rowUid;
       row4.setAttribute("data-pxd-row", rowUid);
@@ -11834,7 +12113,10 @@ function createItemRenderer({
       for (const type of ["pointerdown", "mousedown", "dblclick"]) fold.addEventListener(type, stopEvent);
     }
     const posters = embedSplit(s, embedOptsFor(uid)).posters;
-    if (posters.length) {
+    if (isRoamTableString(s)) {
+      const root = renderRowRoot(line, s, "pxd-rs pxd-block__text", uid);
+      if (root.classList?.contains("pxd-roam-table") || root.querySelector?.(".pxd-rs__live")) b.roots.push(root);
+    } else if (posters.length) {
       holdHeight(row4, embedBoxFor(uid).h);
       const root = renderRoot(line, s, "pxd-rs pxd-block__text", uid);
       if (root.classList?.contains("pxd-embed-live") || root.querySelector?.(".pxd-rs__live")) b.roots.push(root);
@@ -11878,7 +12160,7 @@ function createItemRenderer({
       const s = childString4(blk);
       if (skipChildString(s)) continue;
       const uid = childUid(blk);
-      const kids = childKids(blk);
+      const kids = isRoamTableString(s) ? [] : childKids(blk);
       const hasKids = kids.length > 0;
       const folded = blk.open === false && hasKids;
       if (b.n >= OUTLINE_CAP) {
@@ -11901,7 +12183,7 @@ function createItemRenderer({
         const s = childString4(blk);
         if (skipChildString(s)) continue;
         const uid = childUid(blk);
-        const kids = childKids(blk);
+        const kids = isRoamTableString(s) ? [] : childKids(blk);
         const hasKids = kids.length > 0;
         const folded = blk.open === false && hasKids;
         if (n2 >= OUTLINE_CAP) {
@@ -11932,7 +12214,7 @@ function createItemRenderer({
     } catch {
     }
     try {
-      host?.unmount?.(embedLive(live));
+      host?.unmount?.(live.querySelector?.(".pxd-rs__live") || embedLive(live));
     } catch {
     }
     if (rec.pageRoots) rec.pageRoots = rec.pageRoots.filter((node2) => node2 !== live);
@@ -11951,6 +12233,33 @@ function createItemRenderer({
       return;
     }
     const live = [...line?.children || []].find((node2) => node2.classList?.contains("pxd-rs") || node2.classList?.contains("pxd-embed-live") || node2.classList?.contains("pxd-rs--board"));
+    if (isRoamTableString(spec.string) && live?.classList?.contains("pxd-roam-table")) return;
+    const dropLive = () => {
+      try {
+        live.__pxdEmbedMo?.disconnect();
+      } catch {
+      }
+      try {
+        host?.unmount?.(live.querySelector?.(".pxd-rs__live") || embedLive(live));
+      } catch {
+      }
+      if (rec.pageRoots) rec.pageRoots = rec.pageRoots.filter((node2) => node2 !== live);
+      if (rec.roots) rec.roots = rec.roots.filter((node2) => node2 !== live);
+      live.remove();
+    };
+    if (isRoamTableString(spec.string)) {
+      if (live) dropLive();
+      const node2 = mountTableHost(line, spec.uid);
+      for (const name of ["pxd-rs", "pxd-block__text"]) node2.classList.add(name);
+      rec.pageRoots = [...rec.pageRoots || [], node2];
+      rec.roots = [...rec.roots || [], node2];
+      return;
+    }
+    if (live?.classList?.contains("pxd-roam-table")) {
+      dropLive();
+      addPlainRow(rec, line, spec.string, spec.uid);
+      return;
+    }
     const split = embedSplit(spec.string, embedOptsFor(spec.uid));
     if (!live) {
       if (split.posters.length) {
@@ -11968,7 +12277,7 @@ function createItemRenderer({
       } catch {
       }
       try {
-        host?.unmount?.(embedLive(live));
+        host?.unmount?.(live.querySelector?.(".pxd-rs__live") || embedLive(live));
       } catch {
       }
       if (rec.pageRoots) rec.pageRoots = rec.pageRoots.filter((node2) => node2 !== live);
@@ -12108,7 +12417,7 @@ function createItemRenderer({
       } catch {
       }
       try {
-        host?.unmount?.(embedLive(node2));
+        host?.unmount?.(node2.querySelector?.(".pxd-rs__live") || embedLive(node2));
       } catch {
       }
     }
@@ -13185,6 +13494,7 @@ function createItemRenderer({
     rec.editor = null;
     rec.bare = false;
     rec.el.classList.remove("pxd-item--bare");
+    rec.el.classList.remove("pxd-item--roam-table");
     const budget = { n: 0, roots: [] };
     if (item.collapsed) {
       rec.contentKey = contentKeyFor(item);
@@ -13269,6 +13579,11 @@ function createItemRenderer({
         }, { openUid: ref });
       } else if (typeof refString === "string" && isQueryString(refString) && host?.renderBlock) {
         budget.roots.push(mountQuery(body, ref));
+      } else if (isRoamTableString(refString)) {
+        rec.el.classList.add("pxd-item--roam-table");
+        mountTableHost(body, ref, budget);
+        rec.kidCount = 0;
+        rec.kidRows = 0;
       } else {
         rec.blockStringNode = null;
         if (typeof refString === "string" && refString.trim()) {
@@ -13315,6 +13630,11 @@ function createItemRenderer({
       }
     } else if (isQueryString(item.string) && host?.renderBlock) {
       budget.roots.push(mountQuery(body, item.uid));
+    } else if (isRoamTableString(item.string)) {
+      rec.el.classList.add("pxd-item--roam-table");
+      mountTableHost(body, item.uid, budget);
+      rec.kidCount = 0;
+      rec.kidRows = 0;
     } else {
       if (item.string?.trim()) budget.roots.push(taskBlockOn(item) ? mountTaskLine(body, item) : renderRoot(body, item.string, "pxd-rs pxd-item__string", item.uid));
       rec.kidCount = visibleKids(item.content).length;
@@ -13690,6 +14010,7 @@ function createItemRenderer({
   };
   const fillContent = ({ visibleRect, zoom = zoomCache, tier = null, dirty = null } = {}) => {
     zoomCache = zoom;
+    syncTableZoom(zoomCache);
     paintOffscreen(visibleRect);
     if (!lastBoard || !lastRects || !contentSched) return;
     const next = /* @__PURE__ */ new Set();
@@ -13768,6 +14089,7 @@ function createItemRenderer({
     if (zoomCache !== prevZoom) {
       for (const rec of shells.values()) if (rec.stickyLive && rec.editor && rec.editor !== editing?.editor) applyEditorCounterScale(rec.editor, zoomCache);
     }
+    syncTableZoom(zoomCache);
   };
   const setLod = (nextLod, zoom) => {
     const prev = lod;
@@ -15074,6 +15396,8 @@ var init_cards = __esm({
     init_guard();
     init_settings();
     init_source_chip();
+    init_roam_table();
+    init_table_card();
     SIDES3 = ["top", "right", "bottom", "left"];
     CHUNK_MS = 8;
     LRU_CAP = 80;
@@ -16404,6 +16728,7 @@ init_why();
 init_trails();
 init_schema();
 init_drawing_card();
+init_roam_table();
 init_highlight();
 init_geometry();
 init_shapes();
@@ -19557,7 +19882,7 @@ function readNative(host, boardUid) {
 }
 var round13 = (n2) => Math.round(n2 * 10) / 10;
 var centerOf2 = (r) => ({ x: r.x + r.w / 2, y: r.y + r.h / 2 });
-var inside = (r, p) => p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
+var inside2 = (r, p) => p.x >= r.x && p.x <= r.x + r.w && p.y >= r.y && p.y <= r.y + r.h;
 function defaultGen() {
   let n2 = 0;
   return () => `imp${String(++n2).padStart(6, "0")}`;
@@ -19604,7 +19929,7 @@ function planV06(board2, source, gen) {
     const c = centerOf2(abs);
     let best = null;
     for (const s of secs) {
-      if (!inside(s.abs, c)) continue;
+      if (!inside2(s.abs, c)) continue;
       if (!best || s.abs.w * s.abs.h < best.abs.w * best.abs.h) best = s;
     }
     const layout = { type: item.type, w: abs.w, h: abs.h, color: node2.color };
@@ -20996,6 +21321,17 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
         const tone = styleColor(color);
         if (tone) layout.color = tone;
         const id = t.create({ parent, string, plexus: serializeItemLayout(layout) });
+        applyFit(t, [id]);
+        return id;
+      });
+    },
+    createTable({ x, y, w, h } = {}) {
+      return txn((t) => {
+        const size = { w: w ?? TABLE_SIZE.w, h: h ?? TABLE_SIZE.h };
+        const parent = containerAt(board2, { x: x + size.w / 2, y: y + size.h / 2 }, { rects });
+        const rel = toRelative(board2, parent, { x, y }, rects);
+        const layout = { x: rel.x, y: rel.y, w: size.w, h: size.h };
+        const id = appendTable(t, { parent, plexus: serializeItemLayout(layout) });
         applyFit(t, [id]);
         return id;
       });
@@ -23229,6 +23565,7 @@ var package_default = {
 
 // src/view/board-view.js
 init_schema();
+init_roam_table();
 init_drawing_card();
 
 // src/model/annotate.js
@@ -24521,7 +24858,7 @@ function sparkline(doc, counts) {
   });
   return svg;
 }
-function dateNode(doc, ms, { pageExists, renderString, mounts }) {
+function dateNode(doc, ms, { pageExists, renderString, mounts: mounts2 }) {
   const label = formatMade(ms);
   const node2 = doc.createElement("span");
   node2.className = "pxd-halo__date";
@@ -24534,7 +24871,7 @@ function dateNode(doc, ms, { pageExists, renderString, mounts }) {
   const link = doc.createElement("span");
   link.className = "pxd-halo__link";
   node2.append(link);
-  mounts.push(link);
+  mounts2.push(link);
   try {
     renderString(link, `[[${label}]]`);
   } catch {
@@ -24552,7 +24889,7 @@ function openHaloPopover({
   onPulse,
   dustAge: dustAge2
 } = {}) {
-  const mounts = [];
+  const mounts2 = [];
   const prior = doc.activeElement;
   const opener = prior && prior !== doc.body && prior !== doc.documentElement ? prior : null;
   const pop = doc.createElement("div");
@@ -24566,7 +24903,7 @@ function openHaloPopover({
   const head = doc.createElement("div");
   head.className = "pxd-halo__head";
   head.append("Made ");
-  head.append(dateNode(doc, model.created, { pageExists, renderString, mounts }));
+  head.append(dateNode(doc, model.created, { pageExists, renderString, mounts: mounts2 }));
   const where = String(model.board || "").trim() || "Untitled board";
   const section2 = String(model.section || "").trim();
   head.append(` on ${where}${section2 ? ` › ${section2}` : ""}`);
@@ -24604,9 +24941,9 @@ function openHaloPopover({
     const shown = Number.isFinite(model.refTotal) && model.refTotal >= finite6.length ? model.refTotal : finite6.length;
     const noun = shown === 1 ? "time" : "times";
     refs.append(`Referenced ${shown} ${noun}, first `);
-    refs.append(dateNode(doc, Math.min(...finite6), { pageExists, renderString, mounts }));
+    refs.append(dateNode(doc, Math.min(...finite6), { pageExists, renderString, mounts: mounts2 }));
     refs.append(", last ");
-    refs.append(dateNode(doc, Math.max(...finite6), { pageExists, renderString, mounts }));
+    refs.append(dateNode(doc, Math.max(...finite6), { pageExists, renderString, mounts: mounts2 }));
   }
   pop.append(refs);
   const counts = buckets(finite6);
@@ -24670,13 +25007,13 @@ function openHaloPopover({
   if (first) focusEl(first);
   else focusEl(pop);
   const close = () => {
-    for (const el of mounts) {
+    for (const el of mounts2) {
       try {
         unmount?.(el);
       } catch {
       }
     }
-    mounts.length = 0;
+    mounts2.length = 0;
     pop.remove();
   };
   return { el: pop, close, header: headerText(model), counts };
@@ -25394,7 +25731,7 @@ function linkRanges(text3) {
   while (match = re.exec(text3)) ranges.push([match.index, match.index + match[0].length]);
   return ranges;
 }
-function inside2(ranges, start, end) {
+function inside3(ranges, start, end) {
   return ranges.some(([a, b]) => start >= a && end <= b);
 }
 function bareMention(text3, title) {
@@ -25409,7 +25746,7 @@ function bareMention(text3, title) {
     if (!hit) return false;
     const start = hit.index + hit[1].length;
     const end = start + hit[2].length;
-    if (!inside2(ranges, start, end)) return true;
+    if (!inside3(ranges, start, end)) return true;
     from = end > from ? end : from + 1;
   }
   return false;
@@ -25426,7 +25763,7 @@ function linkMention(text3, title) {
     if (!hit) return null;
     const start = hit.index + hit[1].length;
     const end = start + hit[2].length;
-    if (!inside2(ranges, start, end)) return `${src.slice(0, start)}[[${title}]]${src.slice(end)}`;
+    if (!inside3(ranges, start, end)) return `${src.slice(0, start)}[[${title}]]${src.slice(end)}`;
     from = end > from ? end : from + 1;
   }
   return null;
@@ -25917,6 +26254,7 @@ function boardToMarkdown(board2, rects) {
 // src/view/interactions.js
 init_schema();
 init_pdf();
+init_roam_table();
 init_board();
 init_geometry();
 
@@ -25978,6 +26316,7 @@ var SHORTCUTS = [
   { group: "Tools", keys: "R", label: "Shape", action: "tool", tool: "shape", letter: "r", events: [{ key: "r" }], match: (ev) => letter(ev, "r") },
   { group: "Tools", keys: "G", label: "Section", action: "tool", tool: "section", letter: "g", events: [{ key: "g" }], match: (ev) => letter(ev, "g") },
   { group: "Tools", keys: "W", label: "Board", action: "tool", tool: "board", letter: "w", events: [{ key: "w" }], match: (ev) => letter(ev, "w") },
+  { group: "Tools", keys: "B", label: "Table", action: "tool", tool: "table", letter: "b", events: [{ key: "b" }], match: (ev) => letter(ev, "b") },
   { group: "Tools", keys: "C", label: "Connect", action: "tool", tool: "connect", letter: "c", events: [{ key: "c" }], match: (ev) => letter(ev, "c") },
   { group: "Edit", keys: "Enter", label: "Edit, open, or rename", action: "enter", events: [{ key: "Enter" }], match: (ev) => !hasMod(ev) && !ev.alt && !ev.shift && ev.key === "Enter" },
   { group: "Edit", keys: "F2", label: "Rename page", action: "renamePage", events: [{ key: "F2" }], match: (ev) => !hasMod(ev) && !ev.alt && ev.key === "F2" },
@@ -26056,7 +26395,7 @@ function dayTargetOf(b, hit) {
   return day ? { uid: item.uid, title, iso: isoDay(new Date(day.y, day.m - 1, day.d)) } : null;
 }
 var TOOL_KEYS = Object.fromEntries(SHORTCUTS.filter((row4) => row4.letter).map((row4) => [row4.letter, row4.tool]));
-var TOOLS = ["select", "hand", "card", "task", "text", "sticky", "shape", "section", "board", "connect"];
+var TOOLS = ["select", "hand", "card", "task", "text", "sticky", "shape", "section", "board", "table", "connect"];
 var SHAPE_PLACE = { w: 160, h: 100 };
 var DRAG_THRESHOLD_PX = 4;
 var SNAP_PX = 6;
@@ -26323,7 +26662,7 @@ function createInteractions({ actions, settings } = {}) {
       begin({ kind: "board-draw", start: ev.world });
       return;
     }
-    if (state.tool === "card" || state.tool === "task" || state.tool === "text" || state.tool === "sticky" || state.tool === "shape") {
+    if (state.tool === "card" || state.tool === "task" || state.tool === "text" || state.tool === "sticky" || state.tool === "shape" || state.tool === "table") {
       begin({ kind: "place", tool: state.tool, start: ev.world });
       return;
     }
@@ -26560,16 +26899,20 @@ function createInteractions({ actions, settings } = {}) {
             p = call("createText", { x: g.start.x - STICKY_SIZE.w / 2, y: g.start.y - STICKY_SIZE.h / 2, w: STICKY_SIZE.w, h: STICKY_SIZE.h, look: "sticky" });
           } else if (g.tool === "shape") {
             p = call("createText", { x: g.start.x - SHAPE_PLACE.w / 2, y: g.start.y - SHAPE_PLACE.h / 2, w: SHAPE_PLACE.w, h: SHAPE_PLACE.h, shape: "rectangle" });
+          } else if (g.tool === "table") {
+            const d = TABLE_SIZE;
+            p = call("createTable", { x: g.start.x - d.w / 2, y: g.start.y - d.h / 2, w: d.w, h: d.h });
           } else {
             const d = DEFAULT_SIZES[g.tool === "task" ? "card" : g.tool];
             const at = { x: g.start.x - d.w / 2, y: g.start.y - d.h / 2 };
             p = g.tool === "text" ? call("createText", at) : g.tool === "task" ? call("createTask", at) : call("createCard", at);
           }
+          const placed = g.tool;
           end();
           Promise.resolve(p).then((uid) => {
             if (uid) {
               selectItems([uid]);
-              call("enterEdit", uid);
+              if (placed !== "table") call("enterEdit", uid);
             }
           }).catch(() => {
           });
@@ -30672,7 +31015,7 @@ function destroyQuiet(obj) {
   } catch {
   }
 }
-function createPdfFlip({ doc, win, lib = null, timers = null, urlOf = null, hostOf = null, sizeOf = null, onLive = null } = {}) {
+function createPdfFlip({ doc, win, lib = null, timers = null, urlOf = null, hostOf: hostOf2 = null, sizeOf = null, onLive = null } = {}) {
   let selected = "";
   let hovered = "";
   let lod = "detail";
@@ -30919,7 +31262,7 @@ function createPdfFlip({ doc, win, lib = null, timers = null, urlOf = null, host
   }
   async function openDoc(uid, url) {
     if (currentUid2 === uid && currentUrl === url && (pdf || loading)) {
-      const paper2 = typeof hostOf === "function" ? hostOf(uid) : null;
+      const paper2 = typeof hostOf2 === "function" ? hostOf2(uid) : null;
       if (paper2 && paper2 !== host) {
         mount(paper2);
         if (pdf) {
@@ -30944,7 +31287,7 @@ function createPdfFlip({ doc, win, lib = null, timers = null, urlOf = null, host
     destroyQuiet(oldTask);
     destroyQuiet(oldPdf);
     if (mine !== gen) return;
-    const paper = typeof hostOf === "function" ? hostOf(uid) : null;
+    const paper = typeof hostOf2 === "function" ? hostOf2(uid) : null;
     const reader = engine();
     if (!paper || !reader || typeof reader.getDocument !== "function") {
       if (mine !== gen) return;
@@ -30995,7 +31338,7 @@ function createPdfFlip({ doc, win, lib = null, timers = null, urlOf = null, host
     const count = Number(docPdf.numPages);
     total = Number.isFinite(count) && count >= 1 ? Math.floor(count) : 1;
     page = 1;
-    const paperNow = typeof hostOf === "function" ? hostOf(uid) : paper;
+    const paperNow = typeof hostOf2 === "function" ? hostOf2(uid) : paper;
     if (paperNow && paperNow !== host) mount(paperNow);
     showBar();
     await draw();
@@ -31053,7 +31396,7 @@ function createPdfFlip({ doc, win, lib = null, timers = null, urlOf = null, host
     }
     if (!changed2) {
       if ((pdf || loading) && currentUid2) {
-        const paper = typeof hostOf === "function" ? hostOf(currentUid2) : null;
+        const paper = typeof hostOf2 === "function" ? hostOf2(currentUid2) : null;
         if (paper && paper !== host) {
           mount(paper);
           if (pdf) {
@@ -31305,7 +31648,7 @@ function blockUidFromNode(node2) {
   }
   return null;
 }
-var inside3 = (node2, ancestor) => {
+var inside4 = (node2, ancestor) => {
   let el = node2;
   while (el && el.nodeType === 1) {
     if (el === ancestor) return true;
@@ -31317,7 +31660,7 @@ function inputBlockRole(node2, rootUid) {
   const uid = blockUidFromNode(node2);
   const editor = node2?.closest?.(".pxd-item__editor") || null;
   const nest = node2?.closest?.(".rm-block-children") || null;
-  if (nest && inside3(nest, editor)) return { role: "child", uid };
+  if (nest && inside4(nest, editor)) return { role: "child", uid };
   if (uid && rootUid && uid !== rootUid) return { role: "child", uid };
   return { role: "root", uid: uid || rootUid || null };
 }
@@ -32343,11 +32686,12 @@ var PALETTE_LIST = [
   ["shape", "Shape", "R", "square"],
   ["section", "Section", "G", "widget"],
   ["board", "Board", "W", "grid-view"],
+  ["table", "Table", "B", "th-list"],
   ["connect", "Connect", "C", "flows"]
 ];
 var LAYOUTS = ["split", "classic", "dock-only"];
 var DOCK_STYLES = ["pill", "strip"];
-var DOCK_GROUPS = [["select", "hand"], ["card", "task", "text", "sticky", "shape", "section", "board"], ["connect"]];
+var DOCK_GROUPS = [["select", "hand"], ["card", "task", "text", "sticky", "shape", "section", "board", "table"], ["connect"]];
 var REVEAL_PX = 48;
 var cap2 = (word) => word.charAt(0).toUpperCase() + word.slice(1);
 var SHAPE_LABELS = { rectangle: "Rectangle", rounded: "Rounded", ellipse: "Ellipse", diamond: "Diamond", parallelogram: "Parallelogram", cylinder: "Cylinder" };
@@ -32386,7 +32730,12 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
       onClick?.(event);
     });
     listen(b, "pointerdown", (event) => event.stopPropagation());
-    listen(b, "dblclick", (event) => event.stopPropagation());
+    listen(b, "dblclick", (event) => {
+      event.stopPropagation();
+      if (typeof b.__pxdLock !== "function") return;
+      event.preventDefault();
+      b.__pxdLock();
+    });
     return b;
   };
   const iconButton = (parent, cls, icon, label, title, onClick) => {
@@ -32530,11 +32879,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     b.dataset.tool = id;
     b.setAttribute("data-tool", id);
     tip(b, `tool.${id}`);
-    listen(b, "dblclick", (event) => {
-      event.preventDefault();
-      event.stopPropagation();
-      on.setTool?.(id, true);
-    });
+    b.__pxdLock = () => on.setTool?.(id, true);
     toolButtons.set(id, b);
   }
   const group2 = el("div", "pxd-toolbar__group", toolbar);
@@ -32625,11 +32970,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
       const tag = el("span", "pxd-dock__label", b);
       tag.setAttribute("data-label", label);
       tag.setAttribute("aria-hidden", "true");
-      listen(b, "dblclick", (event) => {
-        event.preventDefault();
-        event.stopPropagation();
-        on.setTool?.(id, true);
-      });
+      b.__pxdLock = () => on.setTool?.(id, true);
       paletteButtons.set(id, b);
     }
   });
@@ -35394,6 +35735,7 @@ function buildMenu(kind, ctx = {}) {
         make("new-lane-v", "Vertical lane"),
         make("new-board", "New board", { hint: "W" }),
         make("new-drawing", "New drawing here"),
+        make("new-table", "Table", { hint: "B" }),
         templateMenu(),
         make("save-template", "Save board as template"),
         ...snapshotMenus(),
@@ -40677,6 +41019,17 @@ function buildBoardView(onFail, {
         });
         break;
       }
+      case "new-table": {
+        const d = TABLE_SIZE;
+        Promise.resolve(session.createTable?.({ x: world2.x - d.w / 2, y: world2.y - d.h / 2, w: d.w, h: d.h })).then((uid) => {
+          if (uid && !disposed) {
+            freshItems.add(uid);
+            ctl.select([uid]);
+          }
+        }).catch(() => {
+        });
+        break;
+      }
       case "template": {
         const d = DEFAULT_BOARD_CARD;
         const rect = { x: world2.x - d.w / 2, y: world2.y - d.h / 2, w: d.w, h: d.h };
@@ -42805,6 +43158,10 @@ function buildBoardView(onFail, {
       if (uid) freshItems.add(uid);
       return uid;
     }),
+    createTable: (p) => Promise.resolve(session.createTable?.({ x: p.x, y: p.y, w: p.w, h: p.h })).then((uid) => {
+      if (uid) freshItems.add(uid);
+      return uid;
+    }),
     // A task card is a plain TODO block. Plexus writes the marker only; attributes come from Better Tasks.
     rescheduleTasks: (uids, day) => {
       const b = board2();
@@ -43214,8 +43571,17 @@ function buildBoardView(onFail, {
     if (next == null) return;
     session.setString?.(uid, next);
   };
+  let tablePointer = null;
+  const inRoamTable = (node2) => {
+    const hostNode = tablePointerTarget(node2);
+    return Boolean(hostNode && root.contains(hostNode));
+  };
   listen(root, "pointerdown", (event) => {
     if (leavesBoardPointer(event.target)) return;
+    if (inRoamTable(event.target)) {
+      tablePointer = event.target;
+      return;
+    }
     if (pdfClickShield(event.target)) return;
     else if (root.querySelector?.(".pxd-pdf-live")) itemsR.endPdfInteract();
     if (event.target?.closest?.(".pxd-refs")) {
@@ -43256,7 +43622,7 @@ function buildBoardView(onFail, {
   }, true);
   for (const type of ["mousedown", "mouseup"]) {
     listen(root, type, (event) => {
-      if (leavesBoardPointer(event.target)) return;
+      if (leavesBoardPointer(event.target) || inRoamTable(event.target)) return;
       const native = nativeClickKind(event.target);
       if (native === "checkbox" || native === "image") return;
       const editing = itemsR.editingUid();
@@ -43265,7 +43631,7 @@ function buildBoardView(onFail, {
     });
   }
   listen(root, "dragstart", (event) => {
-    if (leavesBoardPointer(event.target) || event.target?.closest?.(".pxd-item--editing, .pxd-refs__row")) return;
+    if (leavesBoardPointer(event.target) || inRoamTable(event.target) || event.target?.closest?.(".pxd-item--editing, .pxd-refs__row")) return;
     event.preventDefault();
   });
   listen(root, "click", (event) => {
@@ -43274,6 +43640,7 @@ function buildBoardView(onFail, {
       event.preventDefault();
       return;
     }
+    if (inRoamTable(event.target)) return;
     if (openRefFromClick(event)) {
       event.stopPropagation();
       event.preventDefault();
@@ -43302,10 +43669,11 @@ function buildBoardView(onFail, {
   listen(root, "click", (event) => {
     const kind = nativeClickKind(event.target);
     if (kind === "image" || kind === "checkbox") return;
+    if (inRoamTable(event.target)) return;
     if (!leavesBoardPointer(event.target)) event.stopPropagation();
   });
   listen(root, "dblclick", (event) => {
-    if (leavesBoardPointer(event.target) || event.target?.closest?.(".pxd-refs")) return;
+    if (leavesBoardPointer(event.target) || inRoamTable(event.target) || event.target?.closest?.(".pxd-refs")) return;
     if (nativeClickKind(event.target)) return;
     event.stopPropagation();
     event.preventDefault();
@@ -43314,6 +43682,10 @@ function buildBoardView(onFail, {
   });
   listen(root, "wheel", (event) => {
     if (leavesBoardPointer(event.target)) return;
+    if (inRoamTable(event.target)) {
+      event.stopPropagation();
+      return;
+    }
     if (pageBodyWantsWheel(event.target, event)) {
       event.stopPropagation();
       return;
@@ -43327,7 +43699,7 @@ function buildBoardView(onFail, {
     }
   }, { passive: false });
   const onRootContextMenu = (event) => {
-    if (leavesBoardPointer(event.target)) return;
+    if (leavesBoardPointer(event.target) || inRoamTable(event.target)) return;
     event.stopPropagation?.();
     if (event.defaultPrevented) return;
     const native = event.target?.closest?.(NATIVE_MENU_TARGETS);
@@ -43395,6 +43767,7 @@ function buildBoardView(onFail, {
     openHover(it);
   };
   listen(root, "pointermove", (event) => {
+    tablePointer = inRoamTable(event.target) ? event.target : null;
     lastPointer = { x: event.clientX || 0, y: event.clientY || 0 };
     if (event.target?.closest?.(".pxd-chrome")) {
       if (hoverPending && event.target.closest(".pxd-ctx")) cancelHoverGrace();
@@ -43408,6 +43781,7 @@ function buildBoardView(onFail, {
     pointerBoard = root;
   });
   listen(root, "pointerleave", () => {
+    tablePointer = null;
     pointerInside = false;
     if (pointerBoard === root) pointerBoard = null;
   });
@@ -43730,12 +44104,14 @@ function buildBoardView(onFail, {
     }
     const inputFocused = isTextEntryTarget(event.target) || isTextEntryTarget(doc.activeElement);
     if (inputFocused) {
-      const inside4 = root.contains?.(event.target) || root.contains?.(doc.activeElement);
-      if (!inside4 && !itemsR.isEditing()) return;
+      const inside5 = root.contains?.(event.target) || root.contains?.(doc.activeElement);
+      if (!inside5 && !itemsR.isEditing()) return;
       if ((event.metaKey || event.ctrlKey) && !event.altKey && String(event.key).toLowerCase() === "z") return;
     } else if (!ownsKeyboard()) {
       return;
     }
+    const tableKey = ownershipOf({ target: event.target, active: doc.activeElement, pointerTarget: tablePointer, boardRoot: root });
+    if (keyGate(event, tableKey).yield) return;
     if (!inputFocused && itemsR.isEditing() && event.key !== "Escape") {
       itemsR.recoverFocus();
       return;
@@ -46897,10 +47273,10 @@ function createPublicApi({ host, version, addCard: addCardFn, openBoard, thumbna
       }
       return out;
     },
-    regionsOf(ownerUid) {
+    regionsOf(ownerUid2) {
       let regions = [];
       try {
-        regions = regionsOf(pullBlock(host, ownerUid)) || [];
+        regions = regionsOf(pullBlock(host, ownerUid2)) || [];
       } catch {
         regions = [];
       }
@@ -47461,7 +47837,7 @@ async function installPlexusDiagram({
   };
   let closeCommandSheet = () => {
   };
-  const mounts = /* @__PURE__ */ new Map();
+  const mounts2 = /* @__PURE__ */ new Map();
   const trusted = /* @__PURE__ */ new Set();
   const portalObservers = /* @__PURE__ */ new Map();
   const negativeUntil = /* @__PURE__ */ new Map();
@@ -47628,7 +48004,7 @@ async function installPlexusDiagram({
       if (board2?.uid) noteCards(board2);
       else cardCache.setBoard(uid, "", []);
     }
-    for (const rec of mounts.values()) {
+    for (const rec of mounts2.values()) {
       if (rec.session?.board) noteCards(rec.session.board);
     }
     if (cacheLoadMs == null) cacheLoadMs = Date.now() - started;
@@ -47637,7 +48013,7 @@ async function installPlexusDiagram({
   }
   function chipPreview(boardUid, cardUid) {
     let board2 = null;
-    for (const rec of mounts.values()) {
+    for (const rec of mounts2.values()) {
       if (rec.session?.board?.uid === boardUid) board2 = rec.session.board;
     }
     if (!board2) board2 = previewBoards.get(boardUid) || null;
@@ -47708,7 +48084,7 @@ async function installPlexusDiagram({
   const active = () => !stopped && settings[SETTING_IDS.enabled] !== false && !(settings[SETTING_IDS.disableOnMobile] && isMobile(extensionAPI));
   lifecycle.add(() => {
     for (const native of [...convertButtons.keys()]) dropConvert(native);
-    for (const rec of [...mounts.values()]) unmount(rec);
+    for (const rec of [...mounts2.values()]) unmount(rec);
     disposeAlive();
     for (const observer of portalObservers.values()) observer.disconnect();
     portalObservers.clear();
@@ -47865,7 +48241,7 @@ async function installPlexusDiagram({
     return uid && isDiagramString(strings.get(uid)) ? uid : null;
   };
   function unmountOutlineCopies(parent) {
-    for (const other of [...mounts.values()]) {
+    for (const other of [...mounts2.values()]) {
       if (other !== parent && insideEnhancedOutline(other.native)) unmount(other);
     }
   }
@@ -47953,7 +48329,7 @@ async function installPlexusDiagram({
   function writeSketch(rec) {
     sketchTimers.delete(rec);
     if (speedFlags().sketch === false) return;
-    if (stopped || !rec || mounts.get(rec.native) !== rec || !liveSketchView(rec) || !rec.session?.board) return;
+    if (stopped || !rec || mounts2.get(rec.native) !== rec || !liveSketchView(rec) || !rec.session?.board) return;
     if (sketchGesturing(rec)) {
       scheduleSketch(rec);
       return;
@@ -47968,7 +48344,7 @@ async function installPlexusDiagram({
   function scheduleSketch(rec) {
     clearSketchTimer(rec);
     if (speedFlags().sketch === false) return;
-    if (stopped || !rec || mounts.get(rec.native) !== rec || !liveSketchView(rec)) return;
+    if (stopped || !rec || mounts2.get(rec.native) !== rec || !liveSketchView(rec)) return;
     const timer = setTimeout(() => writeSketch(rec), SKETCH_DEBOUNCE_MS);
     timer.unref?.();
     sketchTimers.set(rec, timer);
@@ -48280,7 +48656,7 @@ async function installPlexusDiagram({
   }
   function runSketchMount(handoff, standIn, { autofocus, viewport, logging, t0 }) {
     const rec = handoff.rec;
-    if (handoff.cancelled || stopped || mounts.get(rec.native) !== rec) return;
+    if (handoff.cancelled || stopped || mounts2.get(rec.native) !== rec) return;
     handoff.mounted = true;
     detachSketchInput(handoff);
     let view;
@@ -48302,7 +48678,7 @@ async function installPlexusDiagram({
       }
       return;
     }
-    if (handoff.cancelled || stopped || mounts.get(rec.native) !== rec || rec.view !== standIn) {
+    if (handoff.cancelled || stopped || mounts2.get(rec.native) !== rec || rec.view !== standIn) {
       try {
         view?.dispose?.();
       } catch {
@@ -48318,7 +48694,7 @@ async function installPlexusDiagram({
       handoff.flushQueued?.();
     } catch {
     }
-    if (handoff.cancelled || stopped || mounts.get(rec.native) !== rec || rec.view !== standIn) {
+    if (handoff.cancelled || stopped || mounts2.get(rec.native) !== rec || rec.view !== standIn) {
       try {
         view?.dispose?.();
       } catch {
@@ -48365,7 +48741,7 @@ async function installPlexusDiagram({
     if (typeof raf2 === "function") {
       handoff.rafId = raf2(() => {
         handoff.rafId = null;
-        if (handoff.cancelled || stopped || mounts.get(rec.native) !== rec) return;
+        if (handoff.cancelled || stopped || mounts2.get(rec.native) !== rec) return;
         const timer = setTimeout(start, 0);
         timer.unref?.();
         handoff.timeoutId = timer;
@@ -48410,7 +48786,7 @@ async function installPlexusDiagram({
       if (stopped) return;
       settings = { ...settings, [id]: normalizeSetting(id, value) };
     }
-    for (const rec of [...mounts.values()]) {
+    for (const rec of [...mounts2.values()]) {
       try {
         if (typeof rec.view?.setSettings === "function") rec.view.setSettings(settings);
       } catch (error) {
@@ -48460,7 +48836,7 @@ async function installPlexusDiagram({
   function enterNested(rec, trail, edgeUid) {
     visit(rec, trail);
     const focus = (left) => {
-      if (stopped || mounts.get(rec.native) !== rec) return;
+      if (stopped || mounts2.get(rec.native) !== rec) return;
       let done = false;
       try {
         done = Boolean(rec.view?.focusUid?.(edgeUid));
@@ -48481,7 +48857,7 @@ async function installPlexusDiagram({
     if (stopped || !boardUid || !edgeUid) return false;
     const trail = seedCrumbs(boardUid);
     const root = trail[0].uid;
-    for (const rec of mounts.values()) {
+    for (const rec of mounts2.values()) {
       if (rec.uid === root && rec.view) {
         enterNested(rec, trail, edgeUid);
         return true;
@@ -48519,7 +48895,7 @@ async function installPlexusDiagram({
     return true;
   }
   function visit(rec, next) {
-    if (stopped || mounts.get(rec.native) !== rec || !next?.length) return;
+    if (stopped || mounts2.get(rec.native) !== rec || !next?.length) return;
     if (next[next.length - 1].uid === currentUid(rec)) return;
     const backTop = rec.back?.[rec.back.length - 1];
     const fore = rec.forward?.[rec.forward.length - 1];
@@ -48547,7 +48923,7 @@ async function installPlexusDiagram({
     });
   }
   function historyMove(rec, dir) {
-    if (stopped || mounts.get(rec.native) !== rec) return false;
+    if (stopped || mounts2.get(rec.native) !== rec) return false;
     const from = dir === "back" ? rec.back : rec.forward;
     if (!from?.length) return false;
     const dest = from[from.length - 1];
@@ -48660,7 +49036,7 @@ async function installPlexusDiagram({
     if (rec?.fullscreen) return true;
     const uid = rec?.uid;
     const shown = currentUid(rec);
-    for (const other of mounts.values()) {
+    for (const other of mounts2.values()) {
       if (other === rec || !other.fullscreen) continue;
       if (other.native?.isConnected === false || other.mountEl?.isConnected === false) continue;
       if (other.uid === uid || other.uid === shown || currentUid(other) === uid || currentUid(other) === shown) return true;
@@ -48806,7 +49182,7 @@ async function installPlexusDiagram({
   }
   function navigate(rec, next, viewport, commit) {
     queueMicrotask(() => {
-      if (stopped || mounts.get(rec.native) !== rec || !next.length) return;
+      if (stopped || mounts2.get(rec.native) !== rec || !next.length) return;
       const target = next[next.length - 1].uid;
       if (target === currentUid(rec)) return;
       const virtual = !readEnhanced(host.api, target) && autoKind(target) === "virtual";
@@ -48899,7 +49275,7 @@ async function installPlexusDiagram({
     setClassToken(native, NATIVE_HIDDEN_CLASS, true);
     if (titlePanel) titlePanel.style.display = "none";
     native.after(mountEl);
-    mounts.set(native, rec);
+    mounts2.set(native, rec);
     if (inRightSidebar(native) && typeof IntersectionObserver === "function") {
       const h = native.getBoundingClientRect?.().height || 0;
       rec.mountEl.style.minHeight = `${Math.max(160, Math.round(h))}px`;
@@ -48985,7 +49361,7 @@ async function installPlexusDiagram({
   }
   function sidebarWindowsFromApi() {
     let any = false;
-    for (const rec of mounts.values()) {
+    for (const rec of mounts2.values()) {
       if (sidebarWindowEl(rec.native) || sidebarWindowEl(rec.mountEl)) {
         any = true;
         break;
@@ -49046,7 +49422,7 @@ async function installPlexusDiagram({
       const windows = sidebarWindows();
       for (const entry of entries) {
         const rec = recByMount.get(entry.target);
-        if (!rec || !mounts.has(rec.native)) continue;
+        if (!rec || !mounts2.has(rec.native)) continue;
         rec.seen = Boolean(entry.isIntersecting);
         if (!hostHides(rec, windows)) rec.seenLive = rec.seen;
         applyVisibility(rec, windows, true);
@@ -49054,7 +49430,7 @@ async function installPlexusDiagram({
     }, { rootMargin: "60px" });
   }
   function applyVisibility(rec, windows, fromObserver) {
-    if (!rec || stopped || !mounts.has(rec.native)) return;
+    if (!rec || stopped || !mounts2.has(rec.native)) return;
     if (rec.fullscreen || holdsFocus(rec)) {
       if (rec.dormant) wake(rec);
       return;
@@ -49137,7 +49513,7 @@ async function installPlexusDiagram({
     }
   }
   function unmount(rec) {
-    if (!rec || !mounts.has(rec.native)) return;
+    if (!rec || !mounts2.has(rec.native)) return;
     if (rec.fullscreen && pageLeft(rec) && rec.view && !rec.view.sketchStandIn) setFullscreen(rec, false);
     const keep = pageLeft(rec) && canPool(rec);
     const viewport = keep ? cameraOf(rec) : null;
@@ -49146,11 +49522,11 @@ async function installPlexusDiagram({
     forgetSketch(rec);
     viewportWatch?.unobserve(rec.mountEl);
     recByMount.delete(rec.mountEl);
-    mounts.delete(rec.native);
+    mounts2.delete(rec.native);
     const boardUid = rec.session?.board?.uid || rec.uid;
     publicEmit("unmount", { boardUid });
     let still = false;
-    for (const other of mounts.values()) {
+    for (const other of mounts2.values()) {
       if (other.session?.board?.uid === boardUid) still = true;
     }
     if (!still && boardUid) {
@@ -49243,7 +49619,7 @@ async function installPlexusDiagram({
     convertButtons.set(native, { el, uid });
   }
   function consider(native, options) {
-    if (stopped || !native || mounts.has(native) || native.isConnected === false) return;
+    if (stopped || !native || mounts2.has(native) || native.isConnected === false) return;
     if (!active()) {
       dropConvert(native);
       return;
@@ -49270,7 +49646,7 @@ async function installPlexusDiagram({
     }
     const scope = embedScope(native, readString);
     if (scope) {
-      for (const rec of mounts.values()) {
+      for (const rec of mounts2.values()) {
         if (embedScope(rec.native, readString) === scope) {
           setClassToken(native, NATIVE_HIDDEN_CLASS, true);
           return;
@@ -49312,7 +49688,7 @@ async function installPlexusDiagram({
     const sidebar = isSidebarMount(rec);
     if (showWhere === "sidebar") return sidebar;
     if (!sidebar) return true;
-    const main = [...mounts.values()].some((other) => other !== rec && other.view && !isSidebarMount(other) && (other.uid === rec.uid || currentUid(other) === rec.uid || other.uid === currentUid(rec)));
+    const main = [...mounts2.values()].some((other) => other !== rec && other.view && !isSidebarMount(other) && (other.uid === rec.uid || currentUid(other) === rec.uid || other.uid === currentUid(rec)));
     return !main;
   }
   function applyShow(rec) {
@@ -49352,7 +49728,7 @@ async function installPlexusDiagram({
         rec.shown = entry;
         visit(rec, trail);
         queueMicrotask(() => {
-          if (stopped || mounts.get(rec.native) !== rec) return;
+          if (stopped || mounts2.get(rec.native) !== rec) return;
           if (currentUid(rec) !== boardUid || !rec.view) return;
           try {
             rec.view.applyShow?.({ kind: "view", v: region.v, ids: region.ids || [] });
@@ -49371,11 +49747,11 @@ async function installPlexusDiagram({
     }
   }
   function applyShowAll() {
-    for (const rec of [...mounts.values()]) applyShow(rec);
+    for (const rec of [...mounts2.values()]) applyShow(rec);
   }
   function revealMain(boardUid) {
     if (!boardUid) return;
-    for (const rec of mounts.values()) {
+    for (const rec of mounts2.values()) {
       if (isSidebarMount(rec)) continue;
       if (rec.uid !== boardUid && currentUid(rec) !== boardUid) continue;
       try {
@@ -49837,7 +50213,7 @@ async function installPlexusDiagram({
     if (stopped) return;
     ensureSidebarWatch();
     const windows = sidebarWindows();
-    for (const rec of [...mounts.values()]) {
+    for (const rec of [...mounts2.values()]) {
       if (rec.native.isConnected === false || rec.mountEl.isConnected === false) unmount(rec);
       else applyVisibility(rec, windows, false);
     }
@@ -49857,7 +50233,7 @@ async function installPlexusDiagram({
       if (button.isConnected === false) drop();
     }
     if (!active()) {
-      for (const rec of [...mounts.values()]) unmount(rec);
+      for (const rec of [...mounts2.values()]) unmount(rec);
       for (const native of [...convertButtons.keys()]) dropConvert(native);
       for (const drop of [...regionCrops.values()]) drop();
       dropAllTrailStrips();
@@ -49875,7 +50251,7 @@ async function installPlexusDiagram({
     mountFail.clear();
     negativeUntil.clear();
     autoCache.clear();
-    for (const rec of mounts.values()) {
+    for (const rec of mounts2.values()) {
       if (routeLeftZoomedDiagram(rec.uid)) {
         if (rec.fullscreen) setFullscreen(rec, false);
       } else if (settings[SETTING_IDS.fullscreenOnZoom] !== false && !rec.fullscreen && !isSecondaryMount(rec)) {
@@ -49908,7 +50284,7 @@ async function installPlexusDiagram({
     if (fromFocus) return fromFocus;
     const zoomed = diagramUidFromLocation();
     if (zoomed && isDiagramString(host.blockString?.(zoomed))) return zoomed;
-    const uids = new Set([...mounts.values()].map((rec) => rec.uid));
+    const uids = new Set([...mounts2.values()].map((rec) => rec.uid));
     return uids.size === 1 ? [...uids][0] : null;
   }
   async function enhanceCommand(context, explicitUid = null) {
@@ -49936,7 +50312,7 @@ async function installPlexusDiagram({
       session.release();
     }
     markNative(uid);
-    for (const rec of [...mounts.values()]) if (rec.uid === uid) unmount(rec);
+    for (const rec of [...mounts2.values()]) if (rec.uid === uid) unmount(rec);
   }
   async function newWhiteboardCommand(context) {
     const parentUid = focusedUid(context);
@@ -49958,13 +50334,13 @@ async function installPlexusDiagram({
   }
   function fullscreenCommand(context) {
     const uid = resolveBoardUid(context);
-    const recs = [...mounts.values()].filter((rec2) => !uid || rec2.uid === uid);
+    const recs = [...mounts2.values()].filter((rec2) => !uid || rec2.uid === uid);
     const rec = recs.find((r) => r.native.isConnected !== false) || recs[0];
     if (rec) setFullscreen(rec, !rec.fullscreen);
   }
   function targetView(context) {
     const uid = resolveBoardUid(context);
-    const recs = [...mounts.values()].filter((rec2) => !uid || rec2.uid === uid);
+    const recs = [...mounts2.values()].filter((rec2) => !uid || rec2.uid === uid);
     const rec = recs.find((r) => r.native.isConnected !== false) || recs[0];
     return rec?.view ?? null;
   }
@@ -50269,7 +50645,7 @@ async function installPlexusDiagram({
       autoCache.clear();
       negativeUntil.clear();
       if (settings[id] === false) {
-        for (const rec of [...mounts.values()]) {
+        for (const rec of [...mounts2.values()]) {
           const virtual = rec.session ? rec.session.board?.virtual === true : rec.virtual && virtualUids.has(rec.uid);
           if (virtual) unmount(rec);
         }
@@ -50281,10 +50657,10 @@ async function installPlexusDiagram({
     }
     syncGuard();
     if (!active()) {
-      for (const rec of [...mounts.values()]) unmount(rec);
+      for (const rec of [...mounts2.values()]) unmount(rec);
       return;
     }
-    for (const rec of [...mounts.values()]) {
+    for (const rec of [...mounts2.values()]) {
       try {
         if (typeof rec.view?.setSettings === "function") {
           rec.view.setSettings(settings);
@@ -50420,7 +50796,7 @@ async function installPlexusDiagram({
     };
   }
   function findOpenMount(boardUid, sidebar) {
-    for (const rec of mounts.values()) {
+    for (const rec of mounts2.values()) {
       if (!rec?.view || rec.dormant) continue;
       if (rec.uid !== boardUid && currentUid(rec) !== boardUid) continue;
       if (sidebar ? isSidebarMount(rec) : !isSidebarMount(rec)) return rec;
@@ -50486,7 +50862,7 @@ async function installPlexusDiagram({
       } catch {
       }
     } else if (!findOpenMount(boardUid, false)) {
-      const asleep = [...mounts.values()].find((rec) => !isSidebarMount(rec) && (rec.uid === boardUid || currentUid(rec) === boardUid));
+      const asleep = [...mounts2.values()].find((rec) => !isSidebarMount(rec) && (rec.uid === boardUid || currentUid(rec) === boardUid));
       if (asleep?.mountEl) {
         try {
           asleep.mountEl.scrollIntoView?.({ block: "center" });
@@ -50542,7 +50918,7 @@ async function installPlexusDiagram({
   const api = {
     version: badge,
     stats: host.stats,
-    mounts: () => [...mounts.values()].map((rec) => ({
+    mounts: () => [...mounts2.values()].map((rec) => ({
       uid: rec.uid,
       current: currentUid(rec),
       crumbs: rec.crumbs.map((c) => c.uid),
@@ -50554,7 +50930,7 @@ async function installPlexusDiagram({
     openConnection: (boardUid, edgeUid) => openNestedConnection(boardUid, edgeUid),
     cardCacheMs: () => cacheLoadMs,
     cameraRect(boardUid) {
-      const rec = pickCameraMount([...mounts.values()], boardUid, isSidebarMount, currentUid);
+      const rec = pickCameraMount([...mounts2.values()], boardUid, isSidebarMount, currentUid);
       try {
         return rec?.view?.cameraRect?.() ?? null;
       } catch {
@@ -50617,7 +50993,7 @@ async function installPlexusDiagram({
     wakeTimer = null;
     const height = win.innerHeight || 0;
     const windows = sidebarWindows();
-    for (const rec of mounts.values()) {
+    for (const rec of mounts2.values()) {
       if (!rec.dormant) continue;
       if (hostHides(rec, windows)) continue;
       const box2 = rec.mountEl.getBoundingClientRect?.();
@@ -50631,7 +51007,7 @@ async function installPlexusDiagram({
   };
   const endQuiet = () => {
     quietTimer = null;
-    for (const rec of mounts.values()) {
+    for (const rec of mounts2.values()) {
       try {
         rec.view?.quiet?.(false);
       } catch {
@@ -50645,7 +51021,7 @@ async function installPlexusDiagram({
   const quietOutside = (target) => {
     if (!isTextEntryTarget(target)) return;
     let asked = false;
-    for (const rec of mounts.values()) {
+    for (const rec of mounts2.values()) {
       if (!rec?.view || rec.dormant) continue;
       if (rec.mountEl?.contains?.(target) || rec.view.root?.contains?.(target)) continue;
       if (typeof rec.view.quiet !== "function") continue;
@@ -50661,7 +51037,7 @@ async function installPlexusDiagram({
     lifecycle.event(doc, "input", (event) => quietOutside(event.target), true);
   }
   const parkMainForSidebar = () => {
-    for (const rec of mounts.values()) {
+    for (const rec of mounts2.values()) {
       if (inRightSidebar(rec.native) || inRightSidebar(rec.mountEl)) continue;
       hibernate(rec, { force: true });
     }
@@ -50702,7 +51078,7 @@ async function installPlexusDiagram({
       });
     }
     const refreshStatuses = () => {
-      for (const rec of mounts.values()) {
+      for (const rec of mounts2.values()) {
         try {
           rec.view?.refreshStatuses?.();
         } catch {
@@ -50743,7 +51119,7 @@ async function installPlexusDiagram({
   lifecycle.add(() => clearErrorStats());
   lifecycle.interval(guardCallback("reconcile", reconcile, { stats: host.stats }), RECONCILE_INTERVAL_MS);
   lifecycle.add(() => {
-    for (const rec of mounts.values()) forgetSketch(rec);
+    for (const rec of mounts2.values()) forgetSketch(rec);
     sketchStore.dispose();
   });
   lifecycle.add(() => {

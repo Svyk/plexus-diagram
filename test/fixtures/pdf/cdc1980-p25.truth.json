@@ -1,0 +1,4268 @@
+{
+ "source": "cdc1980-p25.pdf (CDC Annual Summary 1980, MMWR vol 29 no 54, p. 13; public domain)",
+ "note": "Double-entered by two independent transcribers from a 300 dpi render, 3/600 disagreements adjudicated by the orchestrator against the image, 2026-10-07.",
+ "headings": [
+  {
+   "level": 1,
+   "text": "NOTIFIABLE DISEASES — Summary of reported cases per 100,000 population, United States, 1971-1980"
+  }
+ ],
+ "tables": [
+  {
+   "caption": "NOTIFIABLE DISEASES — Summary of reported cases per 100,000 population, United States, 1971-1980",
+   "rows": 51,
+   "cols": 11,
+   "headerRows": 1,
+   "cells": [
+    {
+     "r": 0,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Disease",
+     "header": true
+    },
+    {
+     "r": 0,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "1980",
+     "header": true
+    },
+    {
+     "r": 0,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "1979",
+     "header": true
+    },
+    {
+     "r": 0,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "1978",
+     "header": true
+    },
+    {
+     "r": 0,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "1977",
+     "header": true
+    },
+    {
+     "r": 0,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "1976",
+     "header": true
+    },
+    {
+     "r": 0,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "1975",
+     "header": true
+    },
+    {
+     "r": 0,
+     "c": 7,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "1974",
+     "header": true
+    },
+    {
+     "r": 0,
+     "c": 8,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "1973",
+     "header": true
+    },
+    {
+     "r": 0,
+     "c": 9,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "1972",
+     "header": true
+    },
+    {
+     "r": 0,
+     "c": 10,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "1971",
+     "header": true
+    },
+    {
+     "r": 1,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Amebiasis",
+     "header": false
+    },
+    {
+     "r": 1,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "2.38",
+     "header": false
+    },
+    {
+     "r": 1,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "1.90",
+     "header": false
+    },
+    {
+     "r": 1,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "1.84",
+     "header": false
+    },
+    {
+     "r": 1,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "1.41",
+     "header": false
+    },
+    {
+     "r": 1,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "1.35",
+     "header": false
+    },
+    {
+     "r": 1,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "1.30",
+     "header": false
+    },
+    {
+     "r": 1,
+     "c": 7,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "1.30",
+     "header": false
+    },
+    {
+     "r": 1,
+     "c": 8,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "1.07",
+     "header": false
+    },
+    {
+     "r": 1,
+     "c": 9,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "1.06",
+     "header": false
+    },
+    {
+     "r": 1,
+     "c": 10,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "1.33",
+     "header": false
+    },
+    {
+     "r": 2,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Anthrax",
+     "header": false
+    },
+    {
+     "r": 2,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.00",
+     "header": false
+    },
+    {
+     "r": 2,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.00",
+     "header": false
+    },
+    {
+     "r": 2,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.00",
+     "header": false
+    },
+    {
+     "r": 2,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.00",
+     "header": false
+    },
+    {
+     "r": 2,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.00",
+     "header": false
+    },
+    {
+     "r": 2,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.00",
+     "header": false
+    },
+    {
+     "r": 2,
+     "c": 7,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.00",
+     "header": false
+    },
+    {
+     "r": 2,
+     "c": 8,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.00",
+     "header": false
+    },
+    {
+     "r": 2,
+     "c": 9,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.00",
+     "header": false
+    },
+    {
+     "r": 2,
+     "c": 10,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.00",
+     "header": false
+    },
+    {
+     "r": 3,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Aseptic meningitis",
+     "header": false
+    },
+    {
+     "r": 3,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "3.61",
+     "header": false
+    },
+    {
+     "r": 3,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "4.05",
+     "header": false
+    },
+    {
+     "r": 3,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "3.01",
+     "header": false
+    },
+    {
+     "r": 3,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "2.24",
+     "header": false
+    },
+    {
+     "r": 3,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "1.64",
+     "header": false
+    },
+    {
+     "r": 3,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "2.10",
+     "header": false
+    },
+    {
+     "r": 3,
+     "c": 7,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "1.53",
+     "header": false
+    },
+    {
+     "r": 3,
+     "c": 8,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "2.33",
+     "header": false
+    },
+    {
+     "r": 3,
+     "c": 9,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "2.23",
+     "header": false
+    },
+    {
+     "r": 3,
+     "c": 10,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "2.51",
+     "header": false
+    },
+    {
+     "r": 4,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Botulism, total",
+     "header": false
+    },
+    {
+     "r": 4,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.04",
+     "header": false
+    },
+    {
+     "r": 4,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.02",
+     "header": false
+    },
+    {
+     "r": 4,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.05",
+     "header": false
+    },
+    {
+     "r": 4,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.06",
+     "header": false
+    },
+    {
+     "r": 4,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.03",
+     "header": false
+    },
+    {
+     "r": 4,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.01",
+     "header": false
+    },
+    {
+     "r": 4,
+     "c": 7,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.01",
+     "header": false
+    },
+    {
+     "r": 4,
+     "c": 8,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.02",
+     "header": false
+    },
+    {
+     "r": 4,
+     "c": 9,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.01",
+     "header": false
+    },
+    {
+     "r": 4,
+     "c": 10,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.01",
+     "header": false
+    },
+    {
+     "r": 5,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Foodborne",
+     "header": false
+    },
+    {
+     "r": 5,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.01",
+     "header": false
+    },
+    {
+     "r": 5,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.01",
+     "header": false
+    },
+    {
+     "r": 5,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.03",
+     "header": false
+    },
+    {
+     "r": 5,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.04",
+     "header": false
+    },
+    {
+     "r": 5,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.01",
+     "header": false
+    },
+    {
+     "r": 5,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.01",
+     "header": false
+    },
+    {
+     "r": 5,
+     "c": 7,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.01",
+     "header": false
+    },
+    {
+     "r": 5,
+     "c": 8,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.02",
+     "header": false
+    },
+    {
+     "r": 5,
+     "c": 9,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.01",
+     "header": false
+    },
+    {
+     "r": 5,
+     "c": 10,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.01",
+     "header": false
+    },
+    {
+     "r": 6,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Infant",
+     "header": false
+    },
+    {
+     "r": 6,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.03",
+     "header": false
+    },
+    {
+     "r": 6,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.01",
+     "header": false
+    },
+    {
+     "r": 6,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.02",
+     "header": false
+    },
+    {
+     "r": 6,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.02",
+     "header": false
+    },
+    {
+     "r": 6,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.01",
+     "header": false
+    },
+    {
+     "r": 6,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.00",
+     "header": false
+    },
+    {
+     "r": 6,
+     "c": 7,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "—",
+     "header": false
+    },
+    {
+     "r": 6,
+     "c": 8,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "—",
+     "header": false
+    },
+    {
+     "r": 6,
+     "c": 9,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "—",
+     "header": false
+    },
+    {
+     "r": 6,
+     "c": 10,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "—",
+     "header": false
+    },
+    {
+     "r": 7,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Brucellois (undulant fever)",
+     "header": false
+    },
+    {
+     "r": 7,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.08",
+     "header": false
+    },
+    {
+     "r": 7,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.10",
+     "header": false
+    },
+    {
+     "r": 7,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.08",
+     "header": false
+    },
+    {
+     "r": 7,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.11",
+     "header": false
+    },
+    {
+     "r": 7,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.14",
+     "header": false
+    },
+    {
+     "r": 7,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.15",
+     "header": false
+    },
+    {
+     "r": 7,
+     "c": 7,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.11",
+     "header": false
+    },
+    {
+     "r": 7,
+     "c": 8,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.10",
+     "header": false
+    },
+    {
+     "r": 7,
+     "c": 9,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.09",
+     "header": false
+    },
+    {
+     "r": 7,
+     "c": 10,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.09",
+     "header": false
+    },
+    {
+     "r": 8,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Chancroid",
+     "header": false
+    },
+    {
+     "r": 8,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.35",
+     "header": false
+    },
+    {
+     "r": 8,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.38",
+     "header": false
+    },
+    {
+     "r": 8,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.24",
+     "header": false
+    },
+    {
+     "r": 8,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.21",
+     "header": false
+    },
+    {
+     "r": 8,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.29",
+     "header": false
+    },
+    {
+     "r": 8,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.33",
+     "header": false
+    },
+    {
+     "r": 8,
+     "c": 7,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.46",
+     "header": false
+    },
+    {
+     "r": 8,
+     "c": 8,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.56",
+     "header": false
+    },
+    {
+     "r": 8,
+     "c": 9,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.68",
+     "header": false
+    },
+    {
+     "r": 8,
+     "c": 10,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.64",
+     "header": false
+    },
+    {
+     "r": 9,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Chickenpox",
+     "header": false
+    },
+    {
+     "r": 9,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "96.69",
+     "header": false
+    },
+    {
+     "r": 9,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "102.93",
+     "header": false
+    },
+    {
+     "r": 9,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "80.42",
+     "header": false
+    },
+    {
+     "r": 9,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "97.63",
+     "header": false
+    },
+    {
+     "r": 9,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "96.06",
+     "header": false
+    },
+    {
+     "r": 9,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "78.11",
+     "header": false
+    },
+    {
+     "r": 9,
+     "c": 7,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "72.20",
+     "header": false
+    },
+    {
+     "r": 9,
+     "c": 8,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "97.68",
+     "header": false
+    },
+    {
+     "r": 9,
+     "c": 9,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "87.34",
+     "header": false
+    },
+    {
+     "r": 9,
+     "c": 10,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "*",
+     "header": false
+    },
+    {
+     "r": 10,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Cholera",
+     "header": false
+    },
+    {
+     "r": 10,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.00",
+     "header": false
+    },
+    {
+     "r": 10,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.00",
+     "header": false
+    },
+    {
+     "r": 10,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.01",
+     "header": false
+    },
+    {
+     "r": 10,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.00",
+     "header": false
+    },
+    {
+     "r": 10,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.00",
+     "header": false
+    },
+    {
+     "r": 10,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.00",
+     "header": false
+    },
+    {
+     "r": 10,
+     "c": 7,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.00",
+     "header": false
+    },
+    {
+     "r": 10,
+     "c": 8,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.00",
+     "header": false
+    },
+    {
+     "r": 10,
+     "c": 9,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.00",
+     "header": false
+    },
+    {
+     "r": 10,
+     "c": 10,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.00",
+     "header": false
+    },
+    {
+     "r": 11,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Diphtheria",
+     "header": false
+    },
+    {
+     "r": 11,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.00",
+     "header": false
+    },
+    {
+     "r": 11,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.03",
+     "header": false
+    },
+    {
+     "r": 11,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.03",
+     "header": false
+    },
+    {
+     "r": 11,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.04",
+     "header": false
+    },
+    {
+     "r": 11,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.06",
+     "header": false
+    },
+    {
+     "r": 11,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.14",
+     "header": false
+    },
+    {
+     "r": 11,
+     "c": 7,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.13",
+     "header": false
+    },
+    {
+     "r": 11,
+     "c": 8,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.11",
+     "header": false
+    },
+    {
+     "r": 11,
+     "c": 9,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.07",
+     "header": false
+    },
+    {
+     "r": 11,
+     "c": 10,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.10",
+     "header": false
+    },
+    {
+     "r": 12,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Encephalitis, primary",
+     "header": false
+    },
+    {
+     "r": 12,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.13",
+     "header": false
+    },
+    {
+     "r": 12,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.15",
+     "header": false
+    },
+    {
+     "r": 12,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.13",
+     "header": false
+    },
+    {
+     "r": 12,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.16",
+     "header": false
+    },
+    {
+     "r": 12,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.25",
+     "header": false
+    },
+    {
+     "r": 12,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "1.11",
+     "header": false
+    },
+    {
+     "r": 12,
+     "c": 7,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.10",
+     "header": false
+    },
+    {
+     "r": 12,
+     "c": 8,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.08",
+     "header": false
+    },
+    {
+     "r": 12,
+     "c": 9,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.08",
+     "header": false
+    },
+    {
+     "r": 12,
+     "c": 10,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.16",
+     "header": false
+    },
+    {
+     "r": 13,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Indeterminate",
+     "header": false
+    },
+    {
+     "r": 13,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.48",
+     "header": false
+    },
+    {
+     "r": 13,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.54",
+     "header": false
+    },
+    {
+     "r": 13,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.49",
+     "header": false
+    },
+    {
+     "r": 13,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.50",
+     "header": false
+    },
+    {
+     "r": 13,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.52",
+     "header": false
+    },
+    {
+     "r": 13,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.80",
+     "header": false
+    },
+    {
+     "r": 13,
+     "c": 7,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.45",
+     "header": false
+    },
+    {
+     "r": 13,
+     "c": 8,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.69",
+     "header": false
+    },
+    {
+     "r": 13,
+     "c": 9,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.43",
+     "header": false
+    },
+    {
+     "r": 13,
+     "c": 10,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.58",
+     "header": false
+    },
+    {
+     "r": 14,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Post childhood infections",
+     "header": false
+    },
+    {
+     "r": 14,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.02",
+     "header": false
+    },
+    {
+     "r": 14,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.04",
+     "header": false
+    },
+    {
+     "r": 14,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.04",
+     "header": false
+    },
+    {
+     "r": 14,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.06",
+     "header": false
+    },
+    {
+     "r": 14,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.08",
+     "header": false
+    },
+    {
+     "r": 14,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.11",
+     "header": false
+    },
+    {
+     "r": 14,
+     "c": 7,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.10",
+     "header": false
+    },
+    {
+     "r": 14,
+     "c": 8,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.17",
+     "header": false
+    },
+    {
+     "r": 14,
+     "c": 9,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.12",
+     "header": false
+    },
+    {
+     "r": 14,
+     "c": 10,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.21",
+     "header": false
+    },
+    {
+     "r": 15,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Gonorrhea",
+     "header": false
+    },
+    {
+     "r": 15,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "443.27",
+     "header": false
+    },
+    {
+     "r": 15,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "459.49",
+     "header": false
+    },
+    {
+     "r": 15,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "468.25",
+     "header": false
+    },
+    {
+     "r": 15,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "466.83",
+     "header": false
+    },
+    {
+     "r": 15,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "470.47",
+     "header": false
+    },
+    {
+     "r": 15,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "472.91",
+     "header": false
+    },
+    {
+     "r": 15,
+     "c": 7,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "432.12",
+     "header": false
+    },
+    {
+     "r": 15,
+     "c": 8,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "404.92",
+     "header": false
+    },
+    {
+     "r": 15,
+     "c": 9,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "371.62",
+     "header": false
+    },
+    {
+     "r": 15,
+     "c": 10,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "328.11",
+     "header": false
+    },
+    {
+     "r": 16,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Granuloma inguinale",
+     "header": false
+    },
+    {
+     "r": 16,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.02",
+     "header": false
+    },
+    {
+     "r": 16,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.03",
+     "header": false
+    },
+    {
+     "r": 16,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.03",
+     "header": false
+    },
+    {
+     "r": 16,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.03",
+     "header": false
+    },
+    {
+     "r": 16,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.03",
+     "header": false
+    },
+    {
+     "r": 16,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.03",
+     "header": false
+    },
+    {
+     "r": 16,
+     "c": 7,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.02",
+     "header": false
+    },
+    {
+     "r": 16,
+     "c": 8,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.03",
+     "header": false
+    },
+    {
+     "r": 16,
+     "c": 9,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.04",
+     "header": false
+    },
+    {
+     "r": 16,
+     "c": 10,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.04",
+     "header": false
+    },
+    {
+     "r": 17,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Hepatitis A",
+     "header": false
+    },
+    {
+     "r": 17,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "12.84",
+     "header": false
+    },
+    {
+     "r": 17,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "13.82",
+     "header": false
+    },
+    {
+     "r": 17,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "13.53",
+     "header": false
+    },
+    {
+     "r": 17,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "14.40",
+     "header": false
+    },
+    {
+     "r": 17,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "15.51",
+     "header": false
+    },
+    {
+     "r": 17,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "16.82",
+     "header": false
+    },
+    {
+     "r": 17,
+     "c": 7,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "19.54",
+     "header": false
+    },
+    {
+     "r": 17,
+     "c": 8,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "24.18",
+     "header": false
+    },
+    {
+     "r": 17,
+     "c": 9,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "25.97",
+     "header": false
+    },
+    {
+     "r": 17,
+     "c": 10,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "28.90",
+     "header": false
+    },
+    {
+     "r": 18,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Hepatitis B",
+     "header": false
+    },
+    {
+     "r": 18,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "8.39",
+     "header": false
+    },
+    {
+     "r": 18,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "7.02",
+     "header": false
+    },
+    {
+     "r": 18,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "6.89",
+     "header": false
+    },
+    {
+     "r": 18,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "7.78",
+     "header": false
+    },
+    {
+     "r": 18,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "7.14",
+     "header": false
+    },
+    {
+     "r": 18,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "6.30",
+     "header": false
+    },
+    {
+     "r": 18,
+     "c": 7,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "5.15",
+     "header": false
+    },
+    {
+     "r": 18,
+     "c": 8,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "4.03",
+     "header": false
+    },
+    {
+     "r": 18,
+     "c": 9,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "4.52",
+     "header": false
+    },
+    {
+     "r": 18,
+     "c": 10,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "4.74",
+     "header": false
+    },
+    {
+     "r": 19,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Hepatitis, unspecified",
+     "header": false
+    },
+    {
+     "r": 19,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "5.25",
+     "header": false
+    },
+    {
+     "r": 19,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "4.79",
+     "header": false
+    },
+    {
+     "r": 19,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "4.02",
+     "header": false
+    },
+    {
+     "r": 19,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "3.99",
+     "header": false
+    },
+    {
+     "r": 19,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "3.57",
+     "header": false
+    },
+    {
+     "r": 19,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "3.44",
+     "header": false
+    },
+    {
+     "r": 19,
+     "c": 7,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "3.95",
+     "header": false
+    },
+    {
+     "r": 19,
+     "c": 8,
+     "rowSpan": 1,
+     "colSpan": 3,
+     "text": "*",
+     "header": false
+    },
+    {
+     "r": 20,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Legionellosis",
+     "header": false
+    },
+    {
+     "r": 20,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.19",
+     "header": false
+    },
+    {
+     "r": 20,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.26",
+     "header": false
+    },
+    {
+     "r": 20,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.35",
+     "header": false
+    },
+    {
+     "r": 20,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.17",
+     "header": false
+    },
+    {
+     "r": 20,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.11",
+     "header": false
+    },
+    {
+     "r": 20,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 5,
+     "text": "*",
+     "header": false
+    },
+    {
+     "r": 21,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Leprosy",
+     "header": false
+    },
+    {
+     "r": 21,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.10",
+     "header": false
+    },
+    {
+     "r": 21,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.08",
+     "header": false
+    },
+    {
+     "r": 21,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.08",
+     "header": false
+    },
+    {
+     "r": 21,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.07",
+     "header": false
+    },
+    {
+     "r": 21,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.07",
+     "header": false
+    },
+    {
+     "r": 21,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.08",
+     "header": false
+    },
+    {
+     "r": 21,
+     "c": 7,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.06",
+     "header": false
+    },
+    {
+     "r": 21,
+     "c": 8,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.07",
+     "header": false
+    },
+    {
+     "r": 21,
+     "c": 9,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.06",
+     "header": false
+    },
+    {
+     "r": 21,
+     "c": 10,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.06",
+     "header": false
+    },
+    {
+     "r": 22,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Leptospirosis",
+     "header": false
+    },
+    {
+     "r": 22,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.04",
+     "header": false
+    },
+    {
+     "r": 22,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.04",
+     "header": false
+    },
+    {
+     "r": 22,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.05",
+     "header": false
+    },
+    {
+     "r": 22,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.03",
+     "header": false
+    },
+    {
+     "r": 22,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.03",
+     "header": false
+    },
+    {
+     "r": 22,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.04",
+     "header": false
+    },
+    {
+     "r": 22,
+     "c": 7,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.03",
+     "header": false
+    },
+    {
+     "r": 22,
+     "c": 8,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.03",
+     "header": false
+    },
+    {
+     "r": 22,
+     "c": 9,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.02",
+     "header": false
+    },
+    {
+     "r": 22,
+     "c": 10,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.03",
+     "header": false
+    },
+    {
+     "r": 23,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Lymphogranuloma venereum",
+     "header": false
+    },
+    {
+     "r": 23,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.09",
+     "header": false
+    },
+    {
+     "r": 23,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.11",
+     "header": false
+    },
+    {
+     "r": 23,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.13",
+     "header": false
+    },
+    {
+     "r": 23,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.16",
+     "header": false
+    },
+    {
+     "r": 23,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.17",
+     "header": false
+    },
+    {
+     "r": 23,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.17",
+     "header": false
+    },
+    {
+     "r": 23,
+     "c": 7,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.19",
+     "header": false
+    },
+    {
+     "r": 23,
+     "c": 8,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.20",
+     "header": false
+    },
+    {
+     "r": 23,
+     "c": 9,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.37",
+     "header": false
+    },
+    {
+     "r": 23,
+     "c": 10,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.34",
+     "header": false
+    },
+    {
+     "r": 24,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Malaria",
+     "header": false
+    },
+    {
+     "r": 24,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.91",
+     "header": false
+    },
+    {
+     "r": 24,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.41",
+     "header": false
+    },
+    {
+     "r": 24,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.34",
+     "header": false
+    },
+    {
+     "r": 24,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.25",
+     "header": false
+    },
+    {
+     "r": 24,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.22",
+     "header": false
+    },
+    {
+     "r": 24,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.18",
+     "header": false
+    },
+    {
+     "r": 24,
+     "c": 7,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.14",
+     "header": false
+    },
+    {
+     "r": 24,
+     "c": 8,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.11",
+     "header": false
+    },
+    {
+     "r": 24,
+     "c": 9,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.36",
+     "header": false
+    },
+    {
+     "r": 24,
+     "c": 10,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "1.15",
+     "header": false
+    },
+    {
+     "r": 25,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Measles (rubeola)",
+     "header": false
+    },
+    {
+     "r": 25,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "5.96",
+     "header": false
+    },
+    {
+     "r": 25,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "6.18",
+     "header": false
+    },
+    {
+     "r": 25,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "12.32",
+     "header": false
+    },
+    {
+     "r": 25,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "26.51",
+     "header": false
+    },
+    {
+     "r": 25,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "19.16",
+     "header": false
+    },
+    {
+     "r": 25,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "11.44",
+     "header": false
+    },
+    {
+     "r": 25,
+     "c": 7,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "10.45",
+     "header": false
+    },
+    {
+     "r": 25,
+     "c": 8,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "12.72",
+     "header": false
+    },
+    {
+     "r": 25,
+     "c": 9,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "15.50",
+     "header": false
+    },
+    {
+     "r": 25,
+     "c": 10,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "36.50",
+     "header": false
+    },
+    {
+     "r": 26,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Meningococcal infections, total",
+     "header": false
+    },
+    {
+     "r": 26,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "1.25",
+     "header": false
+    },
+    {
+     "r": 26,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "1.24",
+     "header": false
+    },
+    {
+     "r": 26,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "1.16",
+     "header": false
+    },
+    {
+     "r": 26,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.84",
+     "header": false
+    },
+    {
+     "r": 26,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.75",
+     "header": false
+    },
+    {
+     "r": 26,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.69",
+     "header": false
+    },
+    {
+     "r": 26,
+     "c": 7,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.64",
+     "header": false
+    },
+    {
+     "r": 26,
+     "c": 8,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.66",
+     "header": false
+    },
+    {
+     "r": 26,
+     "c": 9,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.64",
+     "header": false
+    },
+    {
+     "r": 26,
+     "c": 10,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "1.10",
+     "header": false
+    },
+    {
+     "r": 27,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Mumps",
+     "header": false
+    },
+    {
+     "r": 27,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "3.86",
+     "header": false
+    },
+    {
+     "r": 27,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "6.55",
+     "header": false
+    },
+    {
+     "r": 27,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "7.81",
+     "header": false
+    },
+    {
+     "r": 27,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "10.02",
+     "header": false
+    },
+    {
+     "r": 27,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "17.93",
+     "header": false
+    },
+    {
+     "r": 27,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "27.99",
+     "header": false
+    },
+    {
+     "r": 27,
+     "c": 7,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "29.00",
+     "header": false
+    },
+    {
+     "r": 27,
+     "c": 8,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "36.23",
+     "header": false
+    },
+    {
+     "r": 27,
+     "c": 9,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "38.42",
+     "header": false
+    },
+    {
+     "r": 27,
+     "c": 10,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "65.33",
+     "header": false
+    },
+    {
+     "r": 28,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Pertussis (whooping cough)",
+     "header": false
+    },
+    {
+     "r": 28,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.76",
+     "header": false
+    },
+    {
+     "r": 28,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.74",
+     "header": false
+    },
+    {
+     "r": 28,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.95",
+     "header": false
+    },
+    {
+     "r": 28,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "1.02",
+     "header": false
+    },
+    {
+     "r": 28,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.47",
+     "header": false
+    },
+    {
+     "r": 28,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.82",
+     "header": false
+    },
+    {
+     "r": 28,
+     "c": 7,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "1.15",
+     "header": false
+    },
+    {
+     "r": 28,
+     "c": 8,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.84",
+     "header": false
+    },
+    {
+     "r": 28,
+     "c": 9,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "1.58",
+     "header": false
+    },
+    {
+     "r": 28,
+     "c": 10,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "1.47",
+     "header": false
+    },
+    {
+     "r": 29,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Plague",
+     "header": false
+    },
+    {
+     "r": 29,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.01",
+     "header": false
+    },
+    {
+     "r": 29,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.01",
+     "header": false
+    },
+    {
+     "r": 29,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.01",
+     "header": false
+    },
+    {
+     "r": 29,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.01",
+     "header": false
+    },
+    {
+     "r": 29,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.01",
+     "header": false
+    },
+    {
+     "r": 29,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.01",
+     "header": false
+    },
+    {
+     "r": 29,
+     "c": 7,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.00",
+     "header": false
+    },
+    {
+     "r": 29,
+     "c": 8,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.00",
+     "header": false
+    },
+    {
+     "r": 29,
+     "c": 9,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.00",
+     "header": false
+    },
+    {
+     "r": 29,
+     "c": 10,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.00",
+     "header": false
+    },
+    {
+     "r": 30,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Poliomyelitis, total",
+     "header": false
+    },
+    {
+     "r": 30,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.00",
+     "header": false
+    },
+    {
+     "r": 30,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.02",
+     "header": false
+    },
+    {
+     "r": 30,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.01",
+     "header": false
+    },
+    {
+     "r": 30,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.01",
+     "header": false
+    },
+    {
+     "r": 30,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.01",
+     "header": false
+    },
+    {
+     "r": 30,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.00",
+     "header": false
+    },
+    {
+     "r": 30,
+     "c": 7,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.00",
+     "header": false
+    },
+    {
+     "r": 30,
+     "c": 8,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.00",
+     "header": false
+    },
+    {
+     "r": 30,
+     "c": 9,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.01",
+     "header": false
+    },
+    {
+     "r": 30,
+     "c": 10,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.01",
+     "header": false
+    },
+    {
+     "r": 31,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Paralytic",
+     "header": false
+    },
+    {
+     "r": 31,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.00",
+     "header": false
+    },
+    {
+     "r": 31,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.01",
+     "header": false
+    },
+    {
+     "r": 31,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.00",
+     "header": false
+    },
+    {
+     "r": 31,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.01",
+     "header": false
+    },
+    {
+     "r": 31,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.01",
+     "header": false
+    },
+    {
+     "r": 31,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.00",
+     "header": false
+    },
+    {
+     "r": 31,
+     "c": 7,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.00",
+     "header": false
+    },
+    {
+     "r": 31,
+     "c": 8,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.00",
+     "header": false
+    },
+    {
+     "r": 31,
+     "c": 9,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.01",
+     "header": false
+    },
+    {
+     "r": 31,
+     "c": 10,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.01",
+     "header": false
+    },
+    {
+     "r": 32,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Psittacosis",
+     "header": false
+    },
+    {
+     "r": 32,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.05",
+     "header": false
+    },
+    {
+     "r": 32,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.06",
+     "header": false
+    },
+    {
+     "r": 32,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.06",
+     "header": false
+    },
+    {
+     "r": 32,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.04",
+     "header": false
+    },
+    {
+     "r": 32,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.04",
+     "header": false
+    },
+    {
+     "r": 32,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.02",
+     "header": false
+    },
+    {
+     "r": 32,
+     "c": 7,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.08",
+     "header": false
+    },
+    {
+     "r": 32,
+     "c": 8,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.02",
+     "header": false
+    },
+    {
+     "r": 32,
+     "c": 9,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.02",
+     "header": false
+    },
+    {
+     "r": 32,
+     "c": 10,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.02",
+     "header": false
+    },
+    {
+     "r": 33,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Rabies, human",
+     "header": false
+    },
+    {
+     "r": 33,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.00",
+     "header": false
+    },
+    {
+     "r": 33,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.00",
+     "header": false
+    },
+    {
+     "r": 33,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.00",
+     "header": false
+    },
+    {
+     "r": 33,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.00",
+     "header": false
+    },
+    {
+     "r": 33,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.00",
+     "header": false
+    },
+    {
+     "r": 33,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.00",
+     "header": false
+    },
+    {
+     "r": 33,
+     "c": 7,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.00",
+     "header": false
+    },
+    {
+     "r": 33,
+     "c": 8,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.00",
+     "header": false
+    },
+    {
+     "r": 33,
+     "c": 9,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.00",
+     "header": false
+    },
+    {
+     "r": 33,
+     "c": 10,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.00",
+     "header": false
+    },
+    {
+     "r": 34,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Rheumatic fever, acute",
+     "header": false
+    },
+    {
+     "r": 34,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.30",
+     "header": false
+    },
+    {
+     "r": 34,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.44",
+     "header": false
+    },
+    {
+     "r": 34,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.60",
+     "header": false
+    },
+    {
+     "r": 34,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "1.23",
+     "header": false
+    },
+    {
+     "r": 34,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "1.32",
+     "header": false
+    },
+    {
+     "r": 34,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "2.01",
+     "header": false
+    },
+    {
+     "r": 34,
+     "c": 7,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "1.79",
+     "header": false
+    },
+    {
+     "r": 34,
+     "c": 8,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "1.92",
+     "header": false
+    },
+    {
+     "r": 34,
+     "c": 9,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "2.01",
+     "header": false
+    },
+    {
+     "r": 34,
+     "c": 10,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "2.16",
+     "header": false
+    },
+    {
+     "r": 35,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Rubella (German measles)",
+     "header": false
+    },
+    {
+     "r": 35,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "1.72",
+     "header": false
+    },
+    {
+     "r": 35,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "5.36",
+     "header": false
+    },
+    {
+     "r": 35,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "8.38",
+     "header": false
+    },
+    {
+     "r": 35,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "9.43",
+     "header": false
+    },
+    {
+     "r": 35,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "5.82",
+     "header": false
+    },
+    {
+     "r": 35,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "7.81",
+     "header": false
+    },
+    {
+     "r": 35,
+     "c": 7,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "5.64",
+     "header": false
+    },
+    {
+     "r": 35,
+     "c": 8,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "13.25",
+     "header": false
+    },
+    {
+     "r": 35,
+     "c": 9,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "12.25",
+     "header": false
+    },
+    {
+     "r": 35,
+     "c": 10,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "21.86",
+     "header": false
+    },
+    {
+     "r": 36,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Rubella congenital syndrome**",
+     "header": false
+    },
+    {
+     "r": 36,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.01",
+     "header": false
+    },
+    {
+     "r": 36,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.02",
+     "header": false
+    },
+    {
+     "r": 36,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.01",
+     "header": false
+    },
+    {
+     "r": 36,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.01",
+     "header": false
+    },
+    {
+     "r": 36,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.01",
+     "header": false
+    },
+    {
+     "r": 36,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.01",
+     "header": false
+    },
+    {
+     "r": 36,
+     "c": 7,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.01",
+     "header": false
+    },
+    {
+     "r": 36,
+     "c": 8,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.01",
+     "header": false
+    },
+    {
+     "r": 36,
+     "c": 9,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.01",
+     "header": false
+    },
+    {
+     "r": 36,
+     "c": 10,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.02",
+     "header": false
+    },
+    {
+     "r": 37,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Salmonellosis, excluding typhoid fever",
+     "header": false
+    },
+    {
+     "r": 37,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "14.88",
+     "header": false
+    },
+    {
+     "r": 37,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "15.06",
+     "header": false
+    },
+    {
+     "r": 37,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "13.49",
+     "header": false
+    },
+    {
+     "r": 37,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "12.87",
+     "header": false
+    },
+    {
+     "r": 37,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "10.74",
+     "header": false
+    },
+    {
+     "r": 37,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "10.61",
+     "header": false
+    },
+    {
+     "r": 37,
+     "c": 7,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "10.40",
+     "header": false
+    },
+    {
+     "r": 37,
+     "c": 8,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "11.35",
+     "header": false
+    },
+    {
+     "r": 37,
+     "c": 9,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "10.64",
+     "header": false
+    },
+    {
+     "r": 37,
+     "c": 10,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "10.63",
+     "header": false
+    },
+    {
+     "r": 38,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Shigellosis",
+     "header": false
+    },
+    {
+     "r": 38,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "8.41",
+     "header": false
+    },
+    {
+     "r": 38,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "9.15",
+     "header": false
+    },
+    {
+     "r": 38,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "8.95",
+     "header": false
+    },
+    {
+     "r": 38,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "7.42",
+     "header": false
+    },
+    {
+     "r": 38,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "6.15",
+     "header": false
+    },
+    {
+     "r": 38,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "7.78",
+     "header": false
+    },
+    {
+     "r": 38,
+     "c": 7,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "10.69",
+     "header": false
+    },
+    {
+     "r": 38,
+     "c": 8,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "10.79",
+     "header": false
+    },
+    {
+     "r": 38,
+     "c": 9,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "9.70",
+     "header": false
+    },
+    {
+     "r": 38,
+     "c": 10,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "7.83",
+     "header": false
+    },
+    {
+     "r": 39,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Smallpox",
+     "header": false
+    },
+    {
+     "r": 39,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 10,
+     "text": "Last documented case occurred in 1949",
+     "header": false
+    },
+    {
+     "r": 40,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Syphillis, primary and secondary",
+     "header": false
+    },
+    {
+     "r": 40,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "12.01",
+     "header": false
+    },
+    {
+     "r": 40,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "11.38",
+     "header": false
+    },
+    {
+     "r": 40,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "10.00",
+     "header": false
+    },
+    {
+     "r": 40,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "9.50",
+     "header": false
+    },
+    {
+     "r": 40,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "11.14",
+     "header": false
+    },
+    {
+     "r": 40,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "12.09",
+     "header": false
+    },
+    {
+     "r": 40,
+     "c": 7,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "12.11",
+     "header": false
+    },
+    {
+     "r": 40,
+     "c": 8,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "11.93",
+     "header": false
+    },
+    {
+     "r": 40,
+     "c": 9,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "11.83",
+     "header": false
+    },
+    {
+     "r": 40,
+     "c": 10,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "11.64",
+     "header": false
+    },
+    {
+     "r": 41,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Total all stages",
+     "header": false
+    },
+    {
+     "r": 41,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "30.39",
+     "header": false
+    },
+    {
+     "r": 41,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "30.68",
+     "header": false
+    },
+    {
+     "r": 41,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "30.00",
+     "header": false
+    },
+    {
+     "r": 41,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "30.10",
+     "header": false
+    },
+    {
+     "r": 41,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "33.69",
+     "header": false
+    },
+    {
+     "r": 41,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "38.00",
+     "header": false
+    },
+    {
+     "r": 41,
+     "c": 7,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "39.95",
+     "header": false
+    },
+    {
+     "r": 41,
+     "c": 8,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "42.03",
+     "header": false
+    },
+    {
+     "r": 41,
+     "c": 9,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "44.15",
+     "header": false
+    },
+    {
+     "r": 41,
+     "c": 10,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "46.99",
+     "header": false
+    },
+    {
+     "r": 42,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Tetanus",
+     "header": false
+    },
+    {
+     "r": 42,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.04",
+     "header": false
+    },
+    {
+     "r": 42,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.04",
+     "header": false
+    },
+    {
+     "r": 42,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.04",
+     "header": false
+    },
+    {
+     "r": 42,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.04",
+     "header": false
+    },
+    {
+     "r": 42,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.03",
+     "header": false
+    },
+    {
+     "r": 42,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.05",
+     "header": false
+    },
+    {
+     "r": 42,
+     "c": 7,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.05",
+     "header": false
+    },
+    {
+     "r": 42,
+     "c": 8,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.05",
+     "header": false
+    },
+    {
+     "r": 42,
+     "c": 9,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.06",
+     "header": false
+    },
+    {
+     "r": 42,
+     "c": 10,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.06",
+     "header": false
+    },
+    {
+     "r": 43,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Trichinosis",
+     "header": false
+    },
+    {
+     "r": 43,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.06",
+     "header": false
+    },
+    {
+     "r": 43,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.07",
+     "header": false
+    },
+    {
+     "r": 43,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.03",
+     "header": false
+    },
+    {
+     "r": 43,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.07",
+     "header": false
+    },
+    {
+     "r": 43,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.05",
+     "header": false
+    },
+    {
+     "r": 43,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.12",
+     "header": false
+    },
+    {
+     "r": 43,
+     "c": 7,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.06",
+     "header": false
+    },
+    {
+     "r": 43,
+     "c": 8,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.05",
+     "header": false
+    },
+    {
+     "r": 43,
+     "c": 9,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.04",
+     "header": false
+    },
+    {
+     "r": 43,
+     "c": 10,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.05",
+     "header": false
+    },
+    {
+     "r": 44,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Tuberculosis",
+     "header": false
+    },
+    {
+     "r": 44,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "12.25",
+     "header": false
+    },
+    {
+     "r": 44,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "12.57",
+     "header": false
+    },
+    {
+     "r": 44,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "13.08",
+     "header": false
+    },
+    {
+     "r": 44,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "13.93",
+     "header": false
+    },
+    {
+     "r": 44,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "14.96",
+     "header": false
+    },
+    {
+     "r": 44,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "15.95",
+     "header": false
+    },
+    {
+     "r": 44,
+     "c": 7,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "14.25",
+     "header": false
+    },
+    {
+     "r": 44,
+     "c": 8,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "14.77",
+     "header": false
+    },
+    {
+     "r": 44,
+     "c": 9,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "15.79",
+     "header": false
+    },
+    {
+     "r": 44,
+     "c": 10,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "17.07",
+     "header": false
+    },
+    {
+     "r": 45,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Tularemia",
+     "header": false
+    },
+    {
+     "r": 45,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.10",
+     "header": false
+    },
+    {
+     "r": 45,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.09",
+     "header": false
+    },
+    {
+     "r": 45,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.06",
+     "header": false
+    },
+    {
+     "r": 45,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.08",
+     "header": false
+    },
+    {
+     "r": 45,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.07",
+     "header": false
+    },
+    {
+     "r": 45,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.06",
+     "header": false
+    },
+    {
+     "r": 45,
+     "c": 7,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.07",
+     "header": false
+    },
+    {
+     "r": 45,
+     "c": 8,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.08",
+     "header": false
+    },
+    {
+     "r": 45,
+     "c": 9,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.07",
+     "header": false
+    },
+    {
+     "r": 45,
+     "c": 10,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.09",
+     "header": false
+    },
+    {
+     "r": 46,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Typhoid fever (cases)",
+     "header": false
+    },
+    {
+     "r": 46,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.23",
+     "header": false
+    },
+    {
+     "r": 46,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.24",
+     "header": false
+    },
+    {
+     "r": 46,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.23",
+     "header": false
+    },
+    {
+     "r": 46,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.18",
+     "header": false
+    },
+    {
+     "r": 46,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.20",
+     "header": false
+    },
+    {
+     "r": 46,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.18",
+     "header": false
+    },
+    {
+     "r": 46,
+     "c": 7,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.21",
+     "header": false
+    },
+    {
+     "r": 46,
+     "c": 8,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.32",
+     "header": false
+    },
+    {
+     "r": 46,
+     "c": 9,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.19",
+     "header": false
+    },
+    {
+     "r": 46,
+     "c": 10,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.20",
+     "header": false
+    },
+    {
+     "r": 47,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "(Carriers)",
+     "header": false
+    },
+    {
+     "r": 47,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.03",
+     "header": false
+    },
+    {
+     "r": 47,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.03",
+     "header": false
+    },
+    {
+     "r": 47,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.03",
+     "header": false
+    },
+    {
+     "r": 47,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 7,
+     "text": "NA",
+     "header": false
+    },
+    {
+     "r": 48,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Typhus fever, flea-borne (endemic, murine)",
+     "header": false
+    },
+    {
+     "r": 48,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.04",
+     "header": false
+    },
+    {
+     "r": 48,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.03",
+     "header": false
+    },
+    {
+     "r": 48,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.02",
+     "header": false
+    },
+    {
+     "r": 48,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.04",
+     "header": false
+    },
+    {
+     "r": 48,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.03",
+     "header": false
+    },
+    {
+     "r": 48,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.02",
+     "header": false
+    },
+    {
+     "r": 48,
+     "c": 7,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.01",
+     "header": false
+    },
+    {
+     "r": 48,
+     "c": 8,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.02",
+     "header": false
+    },
+    {
+     "r": 48,
+     "c": 9,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.01",
+     "header": false
+    },
+    {
+     "r": 48,
+     "c": 10,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.01",
+     "header": false
+    },
+    {
+     "r": 49,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Typhus fever, tick-borne (Rocky Mountain spotted)",
+     "header": false
+    },
+    {
+     "r": 49,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.52",
+     "header": false
+    },
+    {
+     "r": 49,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.49",
+     "header": false
+    },
+    {
+     "r": 49,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.49",
+     "header": false
+    },
+    {
+     "r": 49,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.53",
+     "header": false
+    },
+    {
+     "r": 49,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.44",
+     "header": false
+    },
+    {
+     "r": 49,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.40",
+     "header": false
+    },
+    {
+     "r": 49,
+     "c": 7,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.36",
+     "header": false
+    },
+    {
+     "r": 49,
+     "c": 8,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.32",
+     "header": false
+    },
+    {
+     "r": 49,
+     "c": 9,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.25",
+     "header": false
+    },
+    {
+     "r": 49,
+     "c": 10,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.21",
+     "header": false
+    },
+    {
+     "r": 50,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Yellow fever",
+     "header": false
+    },
+    {
+     "r": 50,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 10,
+     "text": "Last indigenous case reported 1911; last imported, 1924",
+     "header": false
+    }
+   ]
+  }
+ ]
+}

@@ -14,7 +14,7 @@ import {
   ownershipOf,
   planTableCreates,
 } from "../src/model/roam-table.js";
-import { mountRoamTable, syncTableZoom, tableCounterStyle } from "../src/view/table-card.js";
+import { mountRoamTable } from "../src/view/table-card.js";
 import { createItemRenderer } from "../src/view/cards.js";
 import { mountBoardView } from "../src/view/board-view.js";
 import { acquireSession, resetSessions } from "../src/session.js";
@@ -128,7 +128,7 @@ test("appendTable writes ten creates and nothing else", () => {
   assert.equal(ops.slice(1).every((op) => op.string === "" && op.plexus === undefined), true);
 });
 
-test("mountRoamTable renders the block once, counter-scales a grid, and opens at board scale", () => {
+test("mountRoamTable renders the block once, leaves a grid unscaled, and opens at board scale", () => {
   const stub = createDomStub();
   const restore = stub.install();
   try {
@@ -142,7 +142,6 @@ test("mountRoamTable renders the block once, counter-scales a grid, and opens at
     const calls = [];
     const host = mountRoamTable(doc, world, {
       uid: "table0001",
-      zoom: 2,
       portalParent: root,
       renderBlock(el, uid) { calls.push(uid); el.dataset.rendered = uid; },
       unmount(el) { el.dataset.unmounted = "1"; },
@@ -159,14 +158,8 @@ test("mountRoamTable renders the block once, counter-scales a grid, and opens at
     stub.flushMutations();
     assert.equal(host.classList.contains("pxd-roam-table--grid"), true);
     const fit = host.querySelector(".pxd-roam-table__fit");
-    assert.match(fit.style.transform, /scale\(/);
-    assert.equal(fit.style.width, "200%");
-    syncTableZoom(1);
     assert.equal(fit.style.transform || "", "");
-    syncTableZoom(2);
-    assert.equal(fit.style.width, "200%");
-    assert.match(fit.style.transform, /scale\(0\.5\)/);
-    assert.equal(tableCounterStyle(1), null);
+    assert.equal(fit.style.width || "", "");
     host.querySelector(".pxd-roam-table__open").click();
     const overlay = root.querySelector(".pxd-table-overlay");
     assert.ok(overlay);
@@ -178,8 +171,6 @@ test("mountRoamTable renders the block once, counter-scales a grid, and opens at
     assert.equal(root.querySelector(".pxd-table-overlay"), null);
     assert.equal(calls.length, 2);
     host.__pxdEmbedMo.disconnect();
-    syncTableZoom(4);
-    assert.equal(fit.style.width, "200%");
   } finally {
     restore();
   }

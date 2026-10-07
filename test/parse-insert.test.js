@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import assert from "node:assert/strict";
 import test, { afterEach } from "node:test";
 
@@ -115,6 +116,41 @@ test("parsed table size follows the text, the grid, and the caps", () => {
   const floor = parsedTableSize(table(1, 22, { grid: { xs: Array.from({ length: 23 }, (_, i) => i) } }));
   assert.equal(Object.values(floor.widths).every((n) => n === 56), true);
   assert.equal(floor.w, 1200);
+});
+
+test("parsed table size keeps every word whole on the report fixture", () => {
+  const truth = JSON.parse(readFileSync(new URL("./fixtures/pdf/report.truth.json", import.meta.url), "utf8"));
+  const t = truth.tables[0];
+  const withGrid = parsedTableSize({ ...t, grid: { xs: [0, 66, 150, 190, 215, 240, 300, 340] } });
+  const noGrid = parsedTableSize(t);
+  for (const size of [withGrid, noGrid]) {
+    assert.ok(size.w <= 1200 + 58);
+  }
+  assert.ok(withGrid.widths[0] >= 7.5 * 8 + 18);
+  assert.ok(withGrid.widths[1] >= 7.5 * 17 + 18);
+  const words = new Map();
+  for (const cell of t.cells) {
+    if (cell.colSpan !== 1) continue;
+    const longest = cell.text.split(/\s+/).reduce((m, w) => Math.max(m, w.length), 0);
+    words.set(cell.c, Math.max(words.get(cell.c) || 0, longest));
+  }
+  for (const [c, n] of words) assert.ok(withGrid.widths[c] >= n * 7.5 + 18, `col ${c}`);
+});
+
+test("parsed table size shrinks wide tables but never below the longest word", () => {
+  const long = "x".repeat(40);
+  const size = parsedTableSize({
+    rows: 2,
+    cols: 4,
+    grid: { xs: [0, 300, 600, 900, 1200] },
+    cells: [
+      { r: 0, c: 0, text: long, rowSpan: 1, colSpan: 1 },
+      { r: 1, c: 1, text: "a", rowSpan: 1, colSpan: 1 },
+    ],
+  });
+  const sum = Object.values(size.widths).reduce((a, b) => a + b, 0);
+  assert.ok(sum <= 1200);
+  assert.ok(size.widths[0] >= 40 * 7.5 + 18);
 });
 
 test("nestMarkdownUnderFirst keeps a single root and indents the rest", () => {

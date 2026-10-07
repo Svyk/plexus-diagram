@@ -3241,21 +3241,22 @@ function tableShape(table) {
   }
   return { cols: Math.max(0, cols), rows: Math.max(0, rows) };
 }
-function fitWidths(raw) {
-  let ws = raw.map((n2) => clampInt(n2, COL_MIN, COL_MAX));
+function fitWidths(raw, floors) {
+  const lo = raw.map((_, i) => clampInt(floors?.[i] ?? COL_MIN, COL_MIN, COL_MAX));
+  let ws = raw.map((n2, i) => Math.max(lo[i], clampInt(n2, COL_MIN, COL_MAX)));
   const sumOf = () => ws.reduce((a, b) => a + b, 0);
   let sum = sumOf();
   if (sum > WIDTH_CAP && ws.length) {
     const scale = WIDTH_CAP / sum;
-    ws = ws.map((n2) => clampInt(n2 * scale, COL_MIN, COL_MAX));
+    ws = ws.map((n2, i) => Math.max(lo[i], clampInt(n2 * scale, COL_MIN, COL_MAX)));
     sum = sumOf();
     let guard = 0;
     while (sum > WIDTH_CAP && guard < ws.length * (COL_MAX - COL_MIN + 1)) {
       guard += 1;
-      let i = 0;
-      for (let k = 1; k < ws.length; k += 1) if (ws[k] > ws[i]) i = k;
-      if (ws[i] <= COL_MIN) break;
-      const cut = Math.min(ws[i] - COL_MIN, sum - WIDTH_CAP);
+      let i = -1;
+      for (let k = 0; k < ws.length; k += 1) if (ws[k] > lo[k] && (i < 0 || ws[k] - lo[k] > ws[i] - lo[i])) i = k;
+      if (i < 0) break;
+      const cut = Math.min(ws[i] - lo[i], sum - WIDTH_CAP);
       ws[i] -= cut;
       sum -= cut;
     }
@@ -3277,7 +3278,7 @@ function widthsFromXs(xs2, cols) {
   if (count < 1) return null;
   const raw = [];
   for (let i = 0; i < count; i += 1) raw.push((bounds[i + 1] - bounds[i]) * PX_PER_PT);
-  return fitWidths(raw);
+  return raw;
 }
 function widthsFromText(table, cols) {
   const count = Math.max(1, cols || 1);
@@ -3291,7 +3292,26 @@ function widthsFromText(table, cols) {
       longest[c + i] = Math.max(longest[c + i], share);
     }
   }
-  return fitWidths(longest.map((n2) => n2 * CHAR_PX + CELL_PAD));
+  return longest.map((n2) => n2 * CHAR_PX + CELL_PAD);
+}
+function textFloors(table, cols) {
+  const count = Math.max(1, cols || 1);
+  const word = Array.from({ length: count }, () => 0);
+  const head = Array.from({ length: count }, () => 0);
+  const headerRows = Number.isInteger(table?.headerRows) ? table.headerRows : 0;
+  for (const cell of table?.cells || []) {
+    const c = Number.isInteger(cell?.c) ? cell.c : 0;
+    if (c < 0 || c >= count) continue;
+    const span = Math.max(1, Number(cell?.colSpan) || 1);
+    const text3 = String(cell?.text ?? "").trim();
+    const longest = text3.split(/\s+/).reduce((m, w) => Math.max(m, w.length), 0);
+    const isHead = cell?.header === true || Number.isInteger(cell?.r) && cell.r < headerRows;
+    for (let i = 0; i < span && c + i < count; i += 1) {
+      word[c + i] = Math.max(word[c + i], Math.ceil(longest / span));
+      if (isHead && span === 1) head[c + i] = Math.max(head[c + i], Math.min(22, text3.length));
+    }
+  }
+  return word.map((n2, i) => ({ word: n2, head: head[i] }));
 }
 function cardHeight(rows) {
   return Math.min(HEIGHT_CAP, COL_HEADER + Math.max(1, rows || 1) * ROW_PX + HEIGHT_CHROME);
@@ -3301,8 +3321,13 @@ function isRoamTableString(value) {
 }
 function parsedTableSize(table) {
   const shape = tableShape(table);
-  const fromGrid = widthsFromXs(table?.grid?.xs ?? table?.xs, shape.cols);
-  const fitted = fromGrid || widthsFromText(table, shape.cols);
+  const rawGrid = widthsFromXs(table?.grid?.xs ?? table?.xs, shape.cols);
+  const raw = rawGrid || widthsFromText(table, shape.cols);
+  const est = textFloors(table, raw.length);
+  const floors = est.map((e2) => e2.word ? e2.word * WORD_PX + WORD_PAD : 0);
+  const wanted = raw.map((n2, i) => Math.max(n2, floors[i], est[i].head ? est[i].head * WORD_PX + WORD_PAD : 0));
+  const fitted = fitWidths(wanted, floors);
+  const fromGrid = rawGrid ? fitted : null;
   const chrome = fromGrid ? ROW_HEADER + GRID_PAD : NATIVE_PAD;
   const w = fitted.sum > WIDTH_CAP ? WIDTH_CAP : Math.min(WIDTH_CAP + chrome, fitted.sum + chrome);
   return {
@@ -3380,7 +3405,7 @@ function keyGate(event, ownership) {
     sourceText
   };
 }
-var TABLE_ROOT, TABLE_ROWS, TABLE_COLS, TABLE_SIZE, TABLE_WRITES, COL_MIN, COL_MAX, PX_PER_PT, WIDTH_CAP, ROW_HEADER, GRID_PAD, NATIVE_PAD, COL_HEADER, ROW_PX, HEIGHT_CAP, HEIGHT_CHROME, CHAR_PX, CELL_PAD, TABLE_RE, TABLE_HOST_SELECTOR, PORTAL_SELECTOR;
+var TABLE_ROOT, TABLE_ROWS, TABLE_COLS, TABLE_SIZE, TABLE_WRITES, COL_MIN, COL_MAX, PX_PER_PT, WIDTH_CAP, ROW_HEADER, GRID_PAD, NATIVE_PAD, COL_HEADER, ROW_PX, HEIGHT_CAP, HEIGHT_CHROME, CHAR_PX, CELL_PAD, WORD_PX, WORD_PAD, TABLE_RE, TABLE_HOST_SELECTOR, PORTAL_SELECTOR;
 var init_roam_table = __esm({
   "src/model/roam-table.js"() {
     TABLE_ROOT = "{{[[table]]}}";
@@ -3401,6 +3426,8 @@ var init_roam_table = __esm({
     HEIGHT_CHROME = 8;
     CHAR_PX = 7;
     CELL_PAD = 16;
+    WORD_PX = 7.5;
+    WORD_PAD = 18;
     TABLE_RE = /^\{\{\s*(?:\[\[table\]\]|table)\s*\}\}$/i;
     TABLE_HOST_SELECTOR = [
       ".pxd-roam-table",
@@ -10393,31 +10420,6 @@ var init_source_chip = __esm({
 });
 
 // src/view/table-card.js
-function tableCounterStyle(zoom) {
-  const z = Number(zoom);
-  if (!(z > 0) || !Number.isFinite(z) || nearOne2(z)) return null;
-  return {
-    width: `${z * 100}%`,
-    height: `${z * 100}%`,
-    transform: `scale(${1 / z})`,
-    transformOrigin: "top left"
-  };
-}
-function paintFit(fit, zoom, grid) {
-  const style = fit?.style;
-  if (!style?.setProperty) return;
-  const next = grid ? tableCounterStyle(zoom) : null;
-  for (const name of ["width", "height", "transform", "transform-origin"]) {
-    if (next) style.setProperty(name, next[name === "transform-origin" ? "transformOrigin" : name]);
-    else style.removeProperty?.(name);
-  }
-}
-function syncTableZoom(zoom) {
-  for (const rec of mounts) {
-    rec.zoom = zoom;
-    paintFit(rec.fit, zoom, rec.grid);
-  }
-}
 function drawBlock(renderBlock, el, uid) {
   if (typeof renderBlock !== "function" || !el) return;
   try {
@@ -10425,7 +10427,7 @@ function drawBlock(renderBlock, el, uid) {
   } catch {
   }
 }
-function mountRoamTable(doc, parent, { uid, renderBlock, zoom = 1, portalParent, unmount } = {}) {
+function mountRoamTable(doc, parent, { uid, renderBlock, portalParent, unmount } = {}) {
   const host = doc.createElement("div");
   host.className = "pxd-roam-table pxd-rs";
   if (uid) host.setAttribute("data-pxd-table", String(uid));
@@ -10444,14 +10446,12 @@ function mountRoamTable(doc, parent, { uid, renderBlock, zoom = 1, portalParent,
   fit.append(live);
   host.append(bar, fit);
   parent?.append?.(host);
-  const rec = { host, fit, zoom, grid: false, overlay: null };
-  mounts.add(rec);
+  const rec = { host, grid: false, overlay: null };
   drawBlock(renderBlock, live, uid);
   const seeGrid = () => Boolean(live.querySelector?.("[data-roam-grid-uid], .rg-root"));
   const syncGrid = () => {
     rec.grid = seeGrid();
     host.classList.toggle("pxd-roam-table--grid", rec.grid);
-    paintFit(fit, rec.zoom, rec.grid);
   };
   const view = doc.defaultView || globalThis.window || globalThis;
   const Obs = view.MutationObserver || globalThis.MutationObserver;
@@ -10531,7 +10531,6 @@ function mountRoamTable(doc, parent, { uid, renderBlock, zoom = 1, portalParent,
       } catch {
       }
       mo = null;
-      mounts.delete(rec);
       try {
         view.removeEventListener?.("keydown", onKey, true);
       } catch {
@@ -10541,11 +10540,8 @@ function mountRoamTable(doc, parent, { uid, renderBlock, zoom = 1, portalParent,
   };
   return host;
 }
-var mounts, nearOne2;
 var init_table_card = __esm({
   "src/view/table-card.js"() {
-    mounts = /* @__PURE__ */ new Set();
-    nearOne2 = (z) => Math.abs(z - 1) < 1e-3;
   }
 });
 
@@ -11884,7 +11880,6 @@ function createItemRenderer({
   const mountTableHost = (parent, uid, budget) => {
     const node2 = mountRoamTable(doc, parent, {
       uid,
-      zoom: zoomCache,
       // open:false is display only: the table macro draws from the children, which must not list again as bullets.
       renderBlock: typeof host?.renderBlock === "function" ? (el2, id) => host.renderBlock(el2, id, { open: false }) : null,
       unmount: (el2) => {
@@ -14773,7 +14768,6 @@ function createItemRenderer({
   };
   const fillContent = ({ visibleRect, zoom = zoomCache, tier = null, dirty = null } = {}) => {
     zoomCache = zoom;
-    syncTableZoom(zoomCache);
     paintOffscreen(visibleRect);
     if (!lastBoard || !lastRects || !contentSched) return;
     const next = /* @__PURE__ */ new Set();
@@ -14852,7 +14846,6 @@ function createItemRenderer({
     if (zoomCache !== prevZoom) {
       for (const rec of shells.values()) if (rec.stickyLive && rec.editor && rec.editor !== editing?.editor) applyEditorCounterScale(rec.editor, zoomCache);
     }
-    syncTableZoom(zoomCache);
   };
   const setLod = (nextLod, zoom) => {
     const prev = lod;
@@ -26068,7 +26061,7 @@ function sparkline(doc, counts) {
   });
   return svg;
 }
-function dateNode(doc, ms, { pageExists, renderString, mounts: mounts2 }) {
+function dateNode(doc, ms, { pageExists, renderString, mounts }) {
   const label = formatMade(ms);
   const node2 = doc.createElement("span");
   node2.className = "pxd-halo__date";
@@ -26081,7 +26074,7 @@ function dateNode(doc, ms, { pageExists, renderString, mounts: mounts2 }) {
   const link = doc.createElement("span");
   link.className = "pxd-halo__link";
   node2.append(link);
-  mounts2.push(link);
+  mounts.push(link);
   try {
     renderString(link, `[[${label}]]`);
   } catch {
@@ -26099,7 +26092,7 @@ function openHaloPopover({
   onPulse,
   dustAge: dustAge2
 } = {}) {
-  const mounts2 = [];
+  const mounts = [];
   const prior = doc.activeElement;
   const opener = prior && prior !== doc.body && prior !== doc.documentElement ? prior : null;
   const pop = doc.createElement("div");
@@ -26113,7 +26106,7 @@ function openHaloPopover({
   const head = doc.createElement("div");
   head.className = "pxd-halo__head";
   head.append("Made ");
-  head.append(dateNode(doc, model.created, { pageExists, renderString, mounts: mounts2 }));
+  head.append(dateNode(doc, model.created, { pageExists, renderString, mounts }));
   const where = String(model.board || "").trim() || "Untitled board";
   const section2 = String(model.section || "").trim();
   head.append(` on ${where}${section2 ? ` › ${section2}` : ""}`);
@@ -26151,9 +26144,9 @@ function openHaloPopover({
     const shown = Number.isFinite(model.refTotal) && model.refTotal >= finite6.length ? model.refTotal : finite6.length;
     const noun = shown === 1 ? "time" : "times";
     refs.append(`Referenced ${shown} ${noun}, first `);
-    refs.append(dateNode(doc, Math.min(...finite6), { pageExists, renderString, mounts: mounts2 }));
+    refs.append(dateNode(doc, Math.min(...finite6), { pageExists, renderString, mounts }));
     refs.append(", last ");
-    refs.append(dateNode(doc, Math.max(...finite6), { pageExists, renderString, mounts: mounts2 }));
+    refs.append(dateNode(doc, Math.max(...finite6), { pageExists, renderString, mounts }));
   }
   pop.append(refs);
   const counts = buckets(finite6);
@@ -26217,13 +26210,13 @@ function openHaloPopover({
   if (first) focusEl(first);
   else focusEl(pop);
   const close = () => {
-    for (const el of mounts2) {
+    for (const el of mounts) {
       try {
         unmount?.(el);
       } catch {
       }
     }
-    mounts2.length = 0;
+    mounts.length = 0;
     pop.remove();
   };
   return { el: pop, close, header: headerText(model), counts };
@@ -55630,7 +55623,7 @@ async function installPlexusDiagram({
   };
   let closeCommandSheet = () => {
   };
-  const mounts2 = /* @__PURE__ */ new Map();
+  const mounts = /* @__PURE__ */ new Map();
   const trusted = /* @__PURE__ */ new Set();
   const portalObservers = /* @__PURE__ */ new Map();
   const negativeUntil = /* @__PURE__ */ new Map();
@@ -55797,7 +55790,7 @@ async function installPlexusDiagram({
       if (board2?.uid) noteCards(board2);
       else cardCache.setBoard(uid, "", []);
     }
-    for (const rec of mounts2.values()) {
+    for (const rec of mounts.values()) {
       if (rec.session?.board) noteCards(rec.session.board);
     }
     if (cacheLoadMs == null) cacheLoadMs = Date.now() - started;
@@ -55806,7 +55799,7 @@ async function installPlexusDiagram({
   }
   function chipPreview(boardUid, cardUid) {
     let board2 = null;
-    for (const rec of mounts2.values()) {
+    for (const rec of mounts.values()) {
       if (rec.session?.board?.uid === boardUid) board2 = rec.session.board;
     }
     if (!board2) board2 = previewBoards.get(boardUid) || null;
@@ -55877,7 +55870,7 @@ async function installPlexusDiagram({
   const active = () => !stopped && settings[SETTING_IDS.enabled] !== false && !(settings[SETTING_IDS.disableOnMobile] && isMobile(extensionAPI));
   lifecycle.add(() => {
     for (const native of [...convertButtons.keys()]) dropConvert(native);
-    for (const rec of [...mounts2.values()]) unmount(rec);
+    for (const rec of [...mounts.values()]) unmount(rec);
     disposeAlive();
     for (const observer of portalObservers.values()) observer.disconnect();
     portalObservers.clear();
@@ -56034,7 +56027,7 @@ async function installPlexusDiagram({
     return uid && isDiagramString(strings.get(uid)) ? uid : null;
   };
   function unmountOutlineCopies(parent) {
-    for (const other of [...mounts2.values()]) {
+    for (const other of [...mounts.values()]) {
       if (other !== parent && insideEnhancedOutline(other.native)) unmount(other);
     }
   }
@@ -56122,7 +56115,7 @@ async function installPlexusDiagram({
   function writeSketch(rec) {
     sketchTimers.delete(rec);
     if (speedFlags().sketch === false) return;
-    if (stopped || !rec || mounts2.get(rec.native) !== rec || !liveSketchView(rec) || !rec.session?.board) return;
+    if (stopped || !rec || mounts.get(rec.native) !== rec || !liveSketchView(rec) || !rec.session?.board) return;
     if (sketchGesturing(rec)) {
       scheduleSketch(rec);
       return;
@@ -56137,7 +56130,7 @@ async function installPlexusDiagram({
   function scheduleSketch(rec) {
     clearSketchTimer(rec);
     if (speedFlags().sketch === false) return;
-    if (stopped || !rec || mounts2.get(rec.native) !== rec || !liveSketchView(rec)) return;
+    if (stopped || !rec || mounts.get(rec.native) !== rec || !liveSketchView(rec)) return;
     const timer = setTimeout(() => writeSketch(rec), SKETCH_DEBOUNCE_MS);
     timer.unref?.();
     sketchTimers.set(rec, timer);
@@ -56449,7 +56442,7 @@ async function installPlexusDiagram({
   }
   function runSketchMount(handoff, standIn, { autofocus, viewport, logging, t0 }) {
     const rec = handoff.rec;
-    if (handoff.cancelled || stopped || mounts2.get(rec.native) !== rec) return;
+    if (handoff.cancelled || stopped || mounts.get(rec.native) !== rec) return;
     handoff.mounted = true;
     detachSketchInput(handoff);
     let view;
@@ -56471,7 +56464,7 @@ async function installPlexusDiagram({
       }
       return;
     }
-    if (handoff.cancelled || stopped || mounts2.get(rec.native) !== rec || rec.view !== standIn) {
+    if (handoff.cancelled || stopped || mounts.get(rec.native) !== rec || rec.view !== standIn) {
       try {
         view?.dispose?.();
       } catch {
@@ -56487,7 +56480,7 @@ async function installPlexusDiagram({
       handoff.flushQueued?.();
     } catch {
     }
-    if (handoff.cancelled || stopped || mounts2.get(rec.native) !== rec || rec.view !== standIn) {
+    if (handoff.cancelled || stopped || mounts.get(rec.native) !== rec || rec.view !== standIn) {
       try {
         view?.dispose?.();
       } catch {
@@ -56534,7 +56527,7 @@ async function installPlexusDiagram({
     if (typeof raf2 === "function") {
       handoff.rafId = raf2(() => {
         handoff.rafId = null;
-        if (handoff.cancelled || stopped || mounts2.get(rec.native) !== rec) return;
+        if (handoff.cancelled || stopped || mounts.get(rec.native) !== rec) return;
         const timer = setTimeout(start, 0);
         timer.unref?.();
         handoff.timeoutId = timer;
@@ -56579,7 +56572,7 @@ async function installPlexusDiagram({
       if (stopped) return;
       settings = { ...settings, [id]: normalizeSetting(id, value) };
     }
-    for (const rec of [...mounts2.values()]) {
+    for (const rec of [...mounts.values()]) {
       try {
         if (typeof rec.view?.setSettings === "function") rec.view.setSettings(settings);
       } catch (error) {
@@ -56629,7 +56622,7 @@ async function installPlexusDiagram({
   function enterNested(rec, trail, edgeUid) {
     visit(rec, trail);
     const focus = (left) => {
-      if (stopped || mounts2.get(rec.native) !== rec) return;
+      if (stopped || mounts.get(rec.native) !== rec) return;
       let done = false;
       try {
         done = Boolean(rec.view?.focusUid?.(edgeUid));
@@ -56650,7 +56643,7 @@ async function installPlexusDiagram({
     if (stopped || !boardUid || !edgeUid) return false;
     const trail = seedCrumbs(boardUid);
     const root = trail[0].uid;
-    for (const rec of mounts2.values()) {
+    for (const rec of mounts.values()) {
       if (rec.uid === root && rec.view) {
         enterNested(rec, trail, edgeUid);
         return true;
@@ -56688,7 +56681,7 @@ async function installPlexusDiagram({
     return true;
   }
   function visit(rec, next) {
-    if (stopped || mounts2.get(rec.native) !== rec || !next?.length) return;
+    if (stopped || mounts.get(rec.native) !== rec || !next?.length) return;
     if (next[next.length - 1].uid === currentUid(rec)) return;
     const backTop = rec.back?.[rec.back.length - 1];
     const fore = rec.forward?.[rec.forward.length - 1];
@@ -56716,7 +56709,7 @@ async function installPlexusDiagram({
     });
   }
   function historyMove(rec, dir) {
-    if (stopped || mounts2.get(rec.native) !== rec) return false;
+    if (stopped || mounts.get(rec.native) !== rec) return false;
     const from = dir === "back" ? rec.back : rec.forward;
     if (!from?.length) return false;
     const dest = from[from.length - 1];
@@ -56829,7 +56822,7 @@ async function installPlexusDiagram({
     if (rec?.fullscreen) return true;
     const uid = rec?.uid;
     const shown = currentUid(rec);
-    for (const other of mounts2.values()) {
+    for (const other of mounts.values()) {
       if (other === rec || !other.fullscreen) continue;
       if (other.native?.isConnected === false || other.mountEl?.isConnected === false) continue;
       if (other.uid === uid || other.uid === shown || currentUid(other) === uid || currentUid(other) === shown) return true;
@@ -56975,7 +56968,7 @@ async function installPlexusDiagram({
   }
   function navigate(rec, next, viewport, commit) {
     queueMicrotask(() => {
-      if (stopped || mounts2.get(rec.native) !== rec || !next.length) return;
+      if (stopped || mounts.get(rec.native) !== rec || !next.length) return;
       const target = next[next.length - 1].uid;
       if (target === currentUid(rec)) return;
       const virtual = !readEnhanced(host.api, target) && autoKind(target) === "virtual";
@@ -57068,7 +57061,7 @@ async function installPlexusDiagram({
     setClassToken(native, NATIVE_HIDDEN_CLASS, true);
     if (titlePanel) titlePanel.style.display = "none";
     native.after(mountEl);
-    mounts2.set(native, rec);
+    mounts.set(native, rec);
     if (inRightSidebar(native) && typeof IntersectionObserver === "function") {
       const h = native.getBoundingClientRect?.().height || 0;
       rec.mountEl.style.minHeight = `${Math.max(160, Math.round(h))}px`;
@@ -57154,7 +57147,7 @@ async function installPlexusDiagram({
   }
   function sidebarWindowsFromApi() {
     let any = false;
-    for (const rec of mounts2.values()) {
+    for (const rec of mounts.values()) {
       if (sidebarWindowEl(rec.native) || sidebarWindowEl(rec.mountEl)) {
         any = true;
         break;
@@ -57215,7 +57208,7 @@ async function installPlexusDiagram({
       const windows = sidebarWindows();
       for (const entry of entries) {
         const rec = recByMount.get(entry.target);
-        if (!rec || !mounts2.has(rec.native)) continue;
+        if (!rec || !mounts.has(rec.native)) continue;
         rec.seen = Boolean(entry.isIntersecting);
         if (!hostHides(rec, windows)) rec.seenLive = rec.seen;
         applyVisibility(rec, windows, true);
@@ -57223,7 +57216,7 @@ async function installPlexusDiagram({
     }, { rootMargin: "60px" });
   }
   function applyVisibility(rec, windows, fromObserver) {
-    if (!rec || stopped || !mounts2.has(rec.native)) return;
+    if (!rec || stopped || !mounts.has(rec.native)) return;
     if (rec.fullscreen || holdsFocus(rec)) {
       if (rec.dormant) wake(rec);
       return;
@@ -57306,7 +57299,7 @@ async function installPlexusDiagram({
     }
   }
   function unmount(rec) {
-    if (!rec || !mounts2.has(rec.native)) return;
+    if (!rec || !mounts.has(rec.native)) return;
     if (rec.fullscreen && pageLeft(rec) && rec.view && !rec.view.sketchStandIn) setFullscreen(rec, false);
     const keep = pageLeft(rec) && canPool(rec);
     const viewport = keep ? cameraOf(rec) : null;
@@ -57315,11 +57308,11 @@ async function installPlexusDiagram({
     forgetSketch(rec);
     viewportWatch?.unobserve(rec.mountEl);
     recByMount.delete(rec.mountEl);
-    mounts2.delete(rec.native);
+    mounts.delete(rec.native);
     const boardUid = rec.session?.board?.uid || rec.uid;
     publicEmit("unmount", { boardUid });
     let still = false;
-    for (const other of mounts2.values()) {
+    for (const other of mounts.values()) {
       if (other.session?.board?.uid === boardUid) still = true;
     }
     if (!still && boardUid) {
@@ -57412,7 +57405,7 @@ async function installPlexusDiagram({
     convertButtons.set(native, { el, uid });
   }
   function consider(native, options) {
-    if (stopped || !native || mounts2.has(native) || native.isConnected === false) return;
+    if (stopped || !native || mounts.has(native) || native.isConnected === false) return;
     if (!active()) {
       dropConvert(native);
       return;
@@ -57439,7 +57432,7 @@ async function installPlexusDiagram({
     }
     const scope = embedScope(native, readString);
     if (scope) {
-      for (const rec of mounts2.values()) {
+      for (const rec of mounts.values()) {
         if (embedScope(rec.native, readString) === scope) {
           setClassToken(native, NATIVE_HIDDEN_CLASS, true);
           return;
@@ -57481,7 +57474,7 @@ async function installPlexusDiagram({
     const sidebar = isSidebarMount(rec);
     if (showWhere === "sidebar") return sidebar;
     if (!sidebar) return true;
-    const main = [...mounts2.values()].some((other) => other !== rec && other.view && !isSidebarMount(other) && (other.uid === rec.uid || currentUid(other) === rec.uid || other.uid === currentUid(rec)));
+    const main = [...mounts.values()].some((other) => other !== rec && other.view && !isSidebarMount(other) && (other.uid === rec.uid || currentUid(other) === rec.uid || other.uid === currentUid(rec)));
     return !main;
   }
   function applyShow(rec) {
@@ -57521,7 +57514,7 @@ async function installPlexusDiagram({
         rec.shown = entry;
         visit(rec, trail);
         queueMicrotask(() => {
-          if (stopped || mounts2.get(rec.native) !== rec) return;
+          if (stopped || mounts.get(rec.native) !== rec) return;
           if (currentUid(rec) !== boardUid || !rec.view) return;
           try {
             rec.view.applyShow?.({ kind: "view", v: region.v, ids: region.ids || [] });
@@ -57540,11 +57533,11 @@ async function installPlexusDiagram({
     }
   }
   function applyShowAll() {
-    for (const rec of [...mounts2.values()]) applyShow(rec);
+    for (const rec of [...mounts.values()]) applyShow(rec);
   }
   function revealMain(boardUid) {
     if (!boardUid) return;
-    for (const rec of mounts2.values()) {
+    for (const rec of mounts.values()) {
       if (isSidebarMount(rec)) continue;
       if (rec.uid !== boardUid && currentUid(rec) !== boardUid) continue;
       try {
@@ -58006,7 +57999,7 @@ async function installPlexusDiagram({
     if (stopped) return;
     ensureSidebarWatch();
     const windows = sidebarWindows();
-    for (const rec of [...mounts2.values()]) {
+    for (const rec of [...mounts.values()]) {
       if (rec.native.isConnected === false || rec.mountEl.isConnected === false) unmount(rec);
       else applyVisibility(rec, windows, false);
     }
@@ -58026,7 +58019,7 @@ async function installPlexusDiagram({
       if (button.isConnected === false) drop();
     }
     if (!active()) {
-      for (const rec of [...mounts2.values()]) unmount(rec);
+      for (const rec of [...mounts.values()]) unmount(rec);
       for (const native of [...convertButtons.keys()]) dropConvert(native);
       for (const drop of [...regionCrops.values()]) drop();
       dropAllTrailStrips();
@@ -58044,7 +58037,7 @@ async function installPlexusDiagram({
     mountFail.clear();
     negativeUntil.clear();
     autoCache.clear();
-    for (const rec of mounts2.values()) {
+    for (const rec of mounts.values()) {
       if (routeLeftZoomedDiagram(rec.uid)) {
         if (rec.fullscreen) setFullscreen(rec, false);
       } else if (settings[SETTING_IDS.fullscreenOnZoom] !== false && !rec.fullscreen && !isSecondaryMount(rec)) {
@@ -58077,7 +58070,7 @@ async function installPlexusDiagram({
     if (fromFocus) return fromFocus;
     const zoomed = diagramUidFromLocation();
     if (zoomed && isDiagramString(host.blockString?.(zoomed))) return zoomed;
-    const uids = new Set([...mounts2.values()].map((rec) => rec.uid));
+    const uids = new Set([...mounts.values()].map((rec) => rec.uid));
     return uids.size === 1 ? [...uids][0] : null;
   }
   async function enhanceCommand(context, explicitUid = null) {
@@ -58105,7 +58098,7 @@ async function installPlexusDiagram({
       session.release();
     }
     markNative(uid);
-    for (const rec of [...mounts2.values()]) if (rec.uid === uid) unmount(rec);
+    for (const rec of [...mounts.values()]) if (rec.uid === uid) unmount(rec);
   }
   async function newWhiteboardCommand(context) {
     const parentUid = focusedUid(context);
@@ -58127,13 +58120,13 @@ async function installPlexusDiagram({
   }
   function fullscreenCommand(context) {
     const uid = resolveBoardUid(context);
-    const recs = [...mounts2.values()].filter((rec2) => !uid || rec2.uid === uid);
+    const recs = [...mounts.values()].filter((rec2) => !uid || rec2.uid === uid);
     const rec = recs.find((r) => r.native.isConnected !== false) || recs[0];
     if (rec) setFullscreen(rec, !rec.fullscreen);
   }
   function targetView(context) {
     const uid = resolveBoardUid(context);
-    const recs = [...mounts2.values()].filter((rec2) => !uid || rec2.uid === uid);
+    const recs = [...mounts.values()].filter((rec2) => !uid || rec2.uid === uid);
     const rec = recs.find((r) => r.native.isConnected !== false) || recs[0];
     return rec?.view ?? null;
   }
@@ -58438,7 +58431,7 @@ async function installPlexusDiagram({
       autoCache.clear();
       negativeUntil.clear();
       if (settings[id] === false) {
-        for (const rec of [...mounts2.values()]) {
+        for (const rec of [...mounts.values()]) {
           const virtual = rec.session ? rec.session.board?.virtual === true : rec.virtual && virtualUids.has(rec.uid);
           if (virtual) unmount(rec);
         }
@@ -58450,10 +58443,10 @@ async function installPlexusDiagram({
     }
     syncGuard();
     if (!active()) {
-      for (const rec of [...mounts2.values()]) unmount(rec);
+      for (const rec of [...mounts.values()]) unmount(rec);
       return;
     }
-    for (const rec of [...mounts2.values()]) {
+    for (const rec of [...mounts.values()]) {
       try {
         if (typeof rec.view?.setSettings === "function") {
           rec.view.setSettings(settings);
@@ -58589,7 +58582,7 @@ async function installPlexusDiagram({
     };
   }
   function findOpenMount(boardUid, sidebar) {
-    for (const rec of mounts2.values()) {
+    for (const rec of mounts.values()) {
       if (!rec?.view || rec.dormant) continue;
       if (rec.uid !== boardUid && currentUid(rec) !== boardUid) continue;
       if (sidebar ? isSidebarMount(rec) : !isSidebarMount(rec)) return rec;
@@ -58655,7 +58648,7 @@ async function installPlexusDiagram({
       } catch {
       }
     } else if (!findOpenMount(boardUid, false)) {
-      const asleep = [...mounts2.values()].find((rec) => !isSidebarMount(rec) && (rec.uid === boardUid || currentUid(rec) === boardUid));
+      const asleep = [...mounts.values()].find((rec) => !isSidebarMount(rec) && (rec.uid === boardUid || currentUid(rec) === boardUid));
       if (asleep?.mountEl) {
         try {
           asleep.mountEl.scrollIntoView?.({ block: "center" });
@@ -58711,7 +58704,7 @@ async function installPlexusDiagram({
   const api = {
     version: badge,
     stats: host.stats,
-    mounts: () => [...mounts2.values()].map((rec) => ({
+    mounts: () => [...mounts.values()].map((rec) => ({
       uid: rec.uid,
       current: currentUid(rec),
       crumbs: rec.crumbs.map((c) => c.uid),
@@ -58723,7 +58716,7 @@ async function installPlexusDiagram({
     openConnection: (boardUid, edgeUid) => openNestedConnection(boardUid, edgeUid),
     cardCacheMs: () => cacheLoadMs,
     cameraRect(boardUid) {
-      const rec = pickCameraMount([...mounts2.values()], boardUid, isSidebarMount, currentUid);
+      const rec = pickCameraMount([...mounts.values()], boardUid, isSidebarMount, currentUid);
       try {
         return rec?.view?.cameraRect?.() ?? null;
       } catch {
@@ -58786,7 +58779,7 @@ async function installPlexusDiagram({
     wakeTimer = null;
     const height = win.innerHeight || 0;
     const windows = sidebarWindows();
-    for (const rec of mounts2.values()) {
+    for (const rec of mounts.values()) {
       if (!rec.dormant) continue;
       if (hostHides(rec, windows)) continue;
       const box2 = rec.mountEl.getBoundingClientRect?.();
@@ -58800,7 +58793,7 @@ async function installPlexusDiagram({
   };
   const endQuiet = () => {
     quietTimer = null;
-    for (const rec of mounts2.values()) {
+    for (const rec of mounts.values()) {
       try {
         rec.view?.quiet?.(false);
       } catch {
@@ -58814,7 +58807,7 @@ async function installPlexusDiagram({
   const quietOutside = (target) => {
     if (!isTextEntryTarget(target)) return;
     let asked = false;
-    for (const rec of mounts2.values()) {
+    for (const rec of mounts.values()) {
       if (!rec?.view || rec.dormant) continue;
       if (rec.mountEl?.contains?.(target) || rec.view.root?.contains?.(target)) continue;
       if (typeof rec.view.quiet !== "function") continue;
@@ -58830,7 +58823,7 @@ async function installPlexusDiagram({
     lifecycle.event(doc, "input", (event) => quietOutside(event.target), true);
   }
   const parkMainForSidebar = () => {
-    for (const rec of mounts2.values()) {
+    for (const rec of mounts.values()) {
       if (inRightSidebar(rec.native) || inRightSidebar(rec.mountEl)) continue;
       hibernate(rec, { force: true });
     }
@@ -58871,7 +58864,7 @@ async function installPlexusDiagram({
       });
     }
     const refreshStatuses = () => {
-      for (const rec of mounts2.values()) {
+      for (const rec of mounts.values()) {
         try {
           rec.view?.refreshStatuses?.();
         } catch {
@@ -58912,7 +58905,7 @@ async function installPlexusDiagram({
   lifecycle.add(() => clearErrorStats());
   lifecycle.interval(guardCallback("reconcile", reconcile, { stats: host.stats }), RECONCILE_INTERVAL_MS);
   lifecycle.add(() => {
-    for (const rec of mounts2.values()) forgetSketch(rec);
+    for (const rec of mounts.values()) forgetSketch(rec);
     sketchStore.dispose();
   });
   lifecycle.add(() => {

@@ -32,7 +32,7 @@ import { guardCallback } from "../guard.js";
 import { notedSpeedFlags, parseSpeedFlags, SETTING_IDS } from "../settings.js";
 import { authorBlockUid, buildSourceChip, chipWithAuthor, sourceChipFor, sourceChipKey } from "../model/source-chip.js";
 import { isRoamTableString } from "../model/roam-table.js";
-import { mountRoamTable, syncTableZoom } from "./table-card.js";
+import { mountRoamTable } from "./table-card.js";
 
 const SIDES = ["top", "right", "bottom", "left"];
 const CHUNK_MS = 8;
@@ -1335,7 +1335,6 @@ export function createItemRenderer({
   const mountTableHost = (parent, uid, budget) => {
     const node = mountRoamTable(doc, parent, {
       uid,
-      zoom: zoomCache,
       // open:false is display only: the table macro draws from the children, which must not list again as bullets.
       renderBlock: typeof host?.renderBlock === "function" ? (el, id) => host.renderBlock(el, id, { open: false }) : null,
       unmount: (el) => { try { host?.unmount?.(el); } catch { /* not a roam root */ } },
@@ -4028,7 +4027,6 @@ export function createItemRenderer({
   };
   const fillContent = ({ visibleRect, zoom = zoomCache, tier = null, dirty = null } = {}) => {
     zoomCache = zoom;
-    syncTableZoom(zoomCache);
     paintOffscreen(visibleRect);
     if (!lastBoard || !lastRects || !contentSched) return;
     const next = new Set();
@@ -4111,7 +4109,6 @@ export function createItemRenderer({
     if (zoomCache !== prevZoom) closePeek();
     if (editing?.editor) scaleCardEditor(editing.editor, zoomCache);
     if (zoomCache !== prevZoom) for (const rec of shells.values()) if (rec.stickyLive && rec.editor && rec.editor !== editing?.editor) applyEditorCounterScale(rec.editor, zoomCache);
-    syncTableZoom(zoomCache);
   };
 
   const setLod = (nextLod, zoom) => {

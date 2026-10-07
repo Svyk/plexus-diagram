@@ -24,6 +24,8 @@ const HEIGHT_CAP = 800;
 const HEIGHT_CHROME = 8;
 const CHAR_PX = 7;
 const CELL_PAD = 16;
+const WORD_PX = 7.5;
+const WORD_PAD = 18;
 
 function clampInt(n, lo, hi) {
   const v = Math.round(Number(n));
@@ -47,21 +49,22 @@ function tableShape(table) {
   return { cols: Math.max(0, cols), rows: Math.max(0, rows) };
 }
 
-function fitWidths(raw) {
-  let ws = raw.map((n) => clampInt(n, COL_MIN, COL_MAX));
+function fitWidths(raw, floors) {
+  const lo = raw.map((_, i) => clampInt(floors?.[i] ?? COL_MIN, COL_MIN, COL_MAX));
+  let ws = raw.map((n, i) => Math.max(lo[i], clampInt(n, COL_MIN, COL_MAX)));
   const sumOf = () => ws.reduce((a, b) => a + b, 0);
   let sum = sumOf();
   if (sum > WIDTH_CAP && ws.length) {
     const scale = WIDTH_CAP / sum;
-    ws = ws.map((n) => clampInt(n * scale, COL_MIN, COL_MAX));
+    ws = ws.map((n, i) => Math.max(lo[i], clampInt(n * scale, COL_MIN, COL_MAX)));
     sum = sumOf();
     let guard = 0;
     while (sum > WIDTH_CAP && guard < ws.length * (COL_MAX - COL_MIN + 1)) {
       guard += 1;
-      let i = 0;
-      for (let k = 1; k < ws.length; k += 1) if (ws[k] > ws[i]) i = k;
-      if (ws[i] <= COL_MIN) break;
-      const cut = Math.min(ws[i] - COL_MIN, sum - WIDTH_CAP);
+      let i = -1;
+      for (let k = 0; k < ws.length; k += 1) if (ws[k] > lo[k] && (i < 0 || ws[k] - lo[k] > ws[i] - lo[i])) i = k;
+      if (i < 0) break;
+      const cut = Math.min(ws[i] - lo[i], sum - WIDTH_CAP);
       ws[i] -= cut;
       sum -= cut;
     }
@@ -84,7 +87,7 @@ function widthsFromXs(xs, cols) {
   if (count < 1) return null;
   const raw = [];
   for (let i = 0; i < count; i += 1) raw.push((bounds[i + 1] - bounds[i]) * PX_PER_PT);
-  return fitWidths(raw);
+  return raw;
 }
 
 function widthsFromText(table, cols) {
@@ -99,7 +102,30 @@ function widthsFromText(table, cols) {
       longest[c + i] = Math.max(longest[c + i], share);
     }
   }
-  return fitWidths(longest.map((n) => n * CHAR_PX + CELL_PAD));
+  return longest.map((n) => n * CHAR_PX + CELL_PAD);
+}
+
+// Per column: the longest single word, and the header's full text (up to 22
+// characters). Words never break inside, so these are the narrowest the column
+// can be without cutting a word; header words may only wrap at spaces.
+function textFloors(table, cols) {
+  const count = Math.max(1, cols || 1);
+  const word = Array.from({ length: count }, () => 0);
+  const head = Array.from({ length: count }, () => 0);
+  const headerRows = Number.isInteger(table?.headerRows) ? table.headerRows : 0;
+  for (const cell of table?.cells || []) {
+    const c = Number.isInteger(cell?.c) ? cell.c : 0;
+    if (c < 0 || c >= count) continue;
+    const span = Math.max(1, Number(cell?.colSpan) || 1);
+    const text = String(cell?.text ?? "").trim();
+    const longest = text.split(/\s+/).reduce((m, w) => Math.max(m, w.length), 0);
+    const isHead = cell?.header === true || (Number.isInteger(cell?.r) && cell.r < headerRows);
+    for (let i = 0; i < span && c + i < count; i += 1) {
+      word[c + i] = Math.max(word[c + i], Math.ceil(longest / span));
+      if (isHead && span === 1) head[c + i] = Math.max(head[c + i], Math.min(22, text.length));
+    }
+  }
+  return word.map((n, i) => ({ word: n, head: head[i] }));
 }
 
 function cardHeight(rows) {
@@ -118,8 +144,13 @@ export function isRoamTableString(value) {
 // columns themselves already exceed that. Height is the column header plus rows, capped at 800.
 export function parsedTableSize(table) {
   const shape = tableShape(table);
-  const fromGrid = widthsFromXs(table?.grid?.xs ?? table?.xs, shape.cols);
-  const fitted = fromGrid || widthsFromText(table, shape.cols);
+  const rawGrid = widthsFromXs(table?.grid?.xs ?? table?.xs, shape.cols);
+  const raw = rawGrid || widthsFromText(table, shape.cols);
+  const est = textFloors(table, raw.length);
+  const floors = est.map((e) => (e.word ? e.word * WORD_PX + WORD_PAD : 0));
+  const wanted = raw.map((n, i) => Math.max(n, floors[i], est[i].head ? est[i].head * WORD_PX + WORD_PAD : 0));
+  const fitted = fitWidths(wanted, floors);
+  const fromGrid = rawGrid ? fitted : null;
   const chrome = fromGrid ? ROW_HEADER + GRID_PAD : NATIVE_PAD;
   const w = fitted.sum > WIDTH_CAP ? WIDTH_CAP : Math.min(WIDTH_CAP + chrome, fitted.sum + chrome);
   return {

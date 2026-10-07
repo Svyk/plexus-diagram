@@ -1,46 +1,15 @@
 // Host for one Roam table inside a card. The live block is renderBlock, never a
-// flattened child list. A Roam Grid root is counter-scaled so its menus use
-// screen pixels. Open grid mounts a second render at 100% on .pxd-root, outside
-// the transformed .pxd-world. Column resize still follows screen pixels in the
-// card; the overlay is the accurate surface.
-
-const mounts = new Set();
-const nearOne = (z) => Math.abs(z - 1) < 0.001;
-
-export function tableCounterStyle(zoom) {
-  const z = Number(zoom);
-  if (!(z > 0) || !Number.isFinite(z) || nearOne(z)) return null;
-  return {
-    width: `${z * 100}%`,
-    height: `${z * 100}%`,
-    transform: `scale(${1 / z})`,
-    transformOrigin: "top left",
-  };
-}
-
-function paintFit(fit, zoom, grid) {
-  const style = fit?.style;
-  if (!style?.setProperty) return;
-  const next = grid ? tableCounterStyle(zoom) : null;
-  for (const name of ["width", "height", "transform", "transform-origin"]) {
-    if (next) style.setProperty(name, next[name === "transform-origin" ? "transformOrigin" : name]);
-    else style.removeProperty?.(name);
-  }
-}
-
-export function syncTableZoom(zoom) {
-  for (const rec of mounts) {
-    rec.zoom = zoom;
-    paintFit(rec.fit, zoom, rec.grid);
-  }
-}
+// flattened child list. The grid renders in world units and scales with the
+// board like any card body (Roam Grid divides pointer deltas by the ancestor's
+// scale). Open grid mounts a second render at 100% on .pxd-root, outside the
+// transformed .pxd-world, as the editing surface.
 
 function drawBlock(renderBlock, el, uid) {
   if (typeof renderBlock !== "function" || !el) return;
   try { renderBlock(el, uid); } catch { /* Roam declined this block */ }
 }
 
-export function mountRoamTable(doc, parent, { uid, renderBlock, zoom = 1, portalParent, unmount } = {}) {
+export function mountRoamTable(doc, parent, { uid, renderBlock, portalParent, unmount } = {}) {
   const host = doc.createElement("div");
   host.className = "pxd-roam-table pxd-rs";
   if (uid) host.setAttribute("data-pxd-table", String(uid));
@@ -60,15 +29,13 @@ export function mountRoamTable(doc, parent, { uid, renderBlock, zoom = 1, portal
   host.append(bar, fit);
   parent?.append?.(host);
 
-  const rec = { host, fit, zoom, grid: false, overlay: null };
-  mounts.add(rec);
+  const rec = { host, grid: false, overlay: null };
   drawBlock(renderBlock, live, uid);
 
   const seeGrid = () => Boolean(live.querySelector?.("[data-roam-grid-uid], .rg-root"));
   const syncGrid = () => {
     rec.grid = seeGrid();
     host.classList.toggle("pxd-roam-table--grid", rec.grid);
-    paintFit(fit, rec.zoom, rec.grid);
   };
 
   const view = doc.defaultView || globalThis.window || globalThis;
@@ -133,7 +100,6 @@ export function mountRoamTable(doc, parent, { uid, renderBlock, zoom = 1, portal
     disconnect() {
       try { mo?.disconnect(); } catch { /* already off */ }
       mo = null;
-      mounts.delete(rec);
       try { view.removeEventListener?.("keydown", onKey, true); } catch { /* already off */ }
       closeOverlay();
     },

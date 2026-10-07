@@ -4248,6 +4248,20 @@ function pdfTitlePlan(source) {
   const file = titleText(fileName(src.url));
   return file || "PDF";
 }
+function parsedDocTitle(doc) {
+  if (!doc || typeof doc !== "object") return "";
+  const given = typeof doc.title === "string" ? doc.title.trim() : "";
+  if (given && !isStorageTitle(given)) return given;
+  const blocks = doc.blocks && typeof doc.blocks === "object" ? doc.blocks : {};
+  const ids = Array.isArray(doc.order) ? doc.order : Object.keys(blocks);
+  for (const id of ids) {
+    const block = blocks[id];
+    if (block?.type !== "heading" || (block.level || 1) !== 1) continue;
+    const text3 = typeof block.text === "string" ? block.text.replace(/\s+/g, " ").trim() : "";
+    if (text3 && !isStorageTitle(text3)) return text3;
+  }
+  return "";
+}
 function coverModel(source) {
   const src = source && typeof source === "object" ? source : {};
   const title = pdfTitlePlan(src);
@@ -32926,6 +32940,9 @@ function createParseStore({ indexedDB: factory, now: now3, docCap = PARSE_DOC_CA
   };
 }
 
+// src/view/parse-view.js
+init_pdf();
+
 // src/view/parse-engine.js
 async function loadPageData(page, { includeOps = true } = {}) {
   const viewport = page.getViewport({ scale: 1 });
@@ -33614,6 +33631,7 @@ function createParseView({
   writeText = null,
   onToast = null,
   onCached = null,
+  onTitle = null,
   onProgress = null,
   adoptCreated = null,
   getContext = null,
@@ -33960,6 +33978,12 @@ function createParseView({
     clearBlockListeners();
     const blocks = shown();
     body.replaceChildren?.();
+    if (parsed) {
+      try {
+        onTitle?.(parsedDocTitle(parsed));
+      } catch {
+      }
+    }
     if (!parsed) {
       body.append(empty);
       empty.textContent = "";
@@ -35193,6 +35217,7 @@ function createReadPane({
   onSwitch,
   onSnapshot,
   onReadingChange,
+  onParsedTitle,
   cards,
   placed,
   titleOf: titleOf2,
@@ -36973,6 +36998,27 @@ function createReadPane({
     return parseHelper;
   };
   const pdfUrl = () => pdfMacroUrl(current3.source || "") || "";
+  let parsedTitle = "";
+  const realTitle = (value) => typeof value === "string" && value.trim() && value.trim() !== "PDF" ? value.trim() : "";
+  const shownTitle = () => realTitle(current3.title) || parsedTitle || "PDF";
+  const paintTitle = () => {
+    const text3 = shownTitle();
+    titleNode.textContent = text3;
+    const options = switcher.querySelectorAll?.("option") || [];
+    for (const opt of options) if (opt.value === current3.cardUid) opt.textContent = text3;
+  };
+  const noteParsedTitle = (value) => {
+    const text3 = typeof value === "string" ? value.trim() : "";
+    if (text3 === parsedTitle) return;
+    parsedTitle = text3;
+    if (openFlag) paintTitle();
+    if (text3) {
+      try {
+        onParsedTitle?.(pdfUrl(), text3);
+      } catch {
+      }
+    }
+  };
   const readerPdf = () => {
     try {
       const fiber = fiberOf(live.querySelector?.(".PdfHighlighter"));
@@ -37029,6 +37075,7 @@ function createReadPane({
         }
       },
       onCached: () => revealModes(),
+      onTitle: noteParsedTitle,
       onProgress: (info) => {
         const running = info && info.fraction != null && info.fraction < 1;
         setHidden2(progress, !running);
@@ -37055,6 +37102,7 @@ function createReadPane({
     } catch {
     }
     parsedView = null;
+    parsedTitle = "";
     viewMode = "reader";
     setHidden2(modes, true);
     setHidden2(progress, true);
@@ -37070,6 +37118,16 @@ function createReadPane({
     try {
       const hit = await ensureStore2().findByUrl(url);
       if (hit?.sha256 && openFlag) revealModes();
+      if (hit?.sha256 && openFlag && !realTitle(current3.title) && !parsedTitle) {
+        const hash = await optionsHash(BUILTIN_OPTIONS);
+        for (const engine of ["builtin", "docling", "mixed"]) {
+          const found = await ensureStore2().getParse(hit.sha256, engine, hash);
+          if (found) {
+            if (openFlag && url === pdfUrl()) noteParsedTitle(parsedDocTitle(found));
+            break;
+          }
+        }
+      }
     } catch {
     }
   }
@@ -37169,6 +37227,7 @@ function createReadPane({
         fitDone = false;
         userZoomed = false;
         settleNoted = false;
+        if (blockUid2 !== current3.blockUid) parsedTitle = "";
         fitState.path = "none";
         fitState.clicks = 0;
       }
@@ -37191,7 +37250,7 @@ function createReadPane({
       if (fresh) root.append(pane);
       openFlag = true;
       emitReading(current3.cardUid);
-      titleNode.textContent = current3.title || "PDF";
+      titleNode.textContent = shownTitle();
       ensureMotion();
       applyBox();
       if (fresh) startEnter();
@@ -37231,11 +37290,8 @@ function createReadPane({
     isOpen: () => openFlag && Boolean(pane.isConnected),
     cardUid: () => current3.cardUid || "",
     setTitle(title) {
-      const text3 = typeof title === "string" && title.trim() ? title.trim() : "PDF";
-      current3.title = text3;
-      titleNode.textContent = text3;
-      const options = switcher.querySelectorAll?.("option") || [];
-      for (const opt of options) if (opt.value === current3.cardUid) opt.textContent = text3;
+      current3.title = typeof title === "string" && title.trim() ? title.trim() : "PDF";
+      paintTitle();
     },
     // P32-3 probe: which path fitted the page (viewer | steps | viewer+steps | none) and the presses it took.
     fitInfo: () => ({ path: fitState.path, clicks: fitState.clicks, done: fitDone, userZoomed }),
@@ -46003,6 +46059,7 @@ function buildBoardView(onFail, {
   );
   let itemsR = null;
   let notePdfMeta = () => "";
+  const parsedTitles = /* @__PURE__ */ new Map();
   let pdfDisplayTitle = (card2) => {
     const title = typeof card2?.title === "string" ? card2.title.trim() : "";
     return title && title !== "PDF" && !title.startsWith("{{") ? title : "PDF";
@@ -46223,6 +46280,22 @@ function buildBoardView(onFail, {
       if (next === readingCard) return;
       readingCard = next;
       if (!disposed) itemsR.repaintStyles();
+      if (!disposed) {
+        try {
+          chrome.ctx.reposition();
+          chrome.toolbar.scheduleDock?.();
+        } catch {
+        }
+      }
+    },
+    onParsedTitle: (url, title) => {
+      if (disposed || typeof url !== "string" || !url || !title) return;
+      if (parsedTitles.get(url) === title) return;
+      parsedTitles.set(url, title);
+      try {
+        itemsR?.repaintStyles?.();
+      } catch {
+      }
     },
     onHover: (uid, on) => {
       if (!on || typeof uid !== "string" || !uid) return;
@@ -46292,13 +46365,14 @@ function buildBoardView(onFail, {
   notePdfMeta = (url) => {
     const key = typeof url === "string" ? url.trim() : "";
     if (!key) return "";
+    const parsedKnown = parsedTitles.get(key) || "";
     try {
       probePdfjs();
     } catch {
-      return "";
+      return parsedKnown;
     }
-    if (!pdfMeta) return "";
-    const known = pdfMeta.title(key) || "";
+    if (!pdfMeta) return parsedKnown;
+    const known = pdfMeta.title(key) || parsedKnown;
     const job = known ? null : pdfMeta.want(key);
     if (job && typeof job.then === "function") {
       job.then((got) => {

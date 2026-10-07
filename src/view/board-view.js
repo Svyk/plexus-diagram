@@ -1450,6 +1450,7 @@ function buildBoardView(onFail, {
   );
   let itemsR = null;
   let notePdfMeta = () => "";
+  const parsedTitles = new Map();
   let pdfDisplayTitle = (card) => {
     const title = typeof card?.title === "string" ? card.title.trim() : "";
     return title && title !== "PDF" && !title.startsWith("{{") ? title : "PDF";
@@ -1615,6 +1616,13 @@ function buildBoardView(onFail, {
       if (next === readingCard) return;
       readingCard = next;
       if (!disposed) itemsR.repaintStyles();
+      if (!disposed) { try { chrome.ctx.reposition(); chrome.toolbar.scheduleDock?.(); } catch { /* chrome */ } }
+    },
+    onParsedTitle: (url, title) => {
+      if (disposed || typeof url !== "string" || !url || !title) return;
+      if (parsedTitles.get(url) === title) return;
+      parsedTitles.set(url, title);
+      try { itemsR?.repaintStyles?.(); } catch { /* paint */ }
     },
     onHover: (uid, on) => {
       if (!on || typeof uid !== "string" || !uid) return;
@@ -1686,9 +1694,10 @@ function buildBoardView(onFail, {
   notePdfMeta = (url) => {
     const key = typeof url === "string" ? url.trim() : "";
     if (!key) return "";
-    try { probePdfjs(); } catch { return ""; }
-    if (!pdfMeta) return "";
-    const known = pdfMeta.title(key) || "";
+    const parsedKnown = parsedTitles.get(key) || "";
+    try { probePdfjs(); } catch { return parsedKnown; }
+    if (!pdfMeta) return parsedKnown;
+    const known = pdfMeta.title(key) || parsedKnown;
     const job = known ? null : pdfMeta.want(key);
     if (job && typeof job.then === "function") {
       job.then((got) => {

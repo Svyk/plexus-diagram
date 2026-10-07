@@ -8777,6 +8777,41 @@ body.bt-theme-dark .pxd-root.pxd-pdf-dark--invert {
   z-index: 2;
 }
 
+/* The dock stays inside the free area left of the pane. When that area is narrower than the dock,
+   the dock drops its labels, shrinks its buttons and scrolls instead of running under the pane. */
+.pxd-root.pxd-root--read .pxd-palette > * {
+  min-width: 0;
+  max-width: 100%;
+  box-sizing: border-box;
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+
+.pxd-root.pxd-root--read .pxd-palette > *::-webkit-scrollbar {
+  display: none;
+}
+
+.pxd-root.pxd-root--read:not(.pxd-root--read-stack) .pxd-palette {
+  justify-content: flex-start;
+}
+
+.pxd-root.pxd-root--read:not(.pxd-root--read-stack) .pxd-palette > * {
+  margin-inline: auto;
+}
+
+.pxd-root.pxd-root--docked.pxd-root--read .pxd-palette {
+  --pxd-dock-btn: 30px;
+}
+
+.pxd-root.pxd-root--docked.pxd-root--dock-labels.pxd-root--read .pxd-dock__btn {
+  height: var(--pxd-dock-btn);
+}
+
+.pxd-root.pxd-root--docked.pxd-root--dock-labels.pxd-root--read .pxd-dock__label {
+  display: none;
+}
+
 /* ECO-3. The thumb fits the card. The 1px border is the button signal, not a shadow. */
 
 .pxd-root .pxd-region-thumb {

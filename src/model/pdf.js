@@ -66,6 +66,22 @@ export function pdfTitlePlan(source) {
   return file || "PDF";
 }
 
+// The parsed document's name for the PDF: its title, else the first level-1 heading. Never a storage path.
+export function parsedDocTitle(doc) {
+  if (!doc || typeof doc !== "object") return "";
+  const given = typeof doc.title === "string" ? doc.title.trim() : "";
+  if (given && !isStorageTitle(given)) return given;
+  const blocks = doc.blocks && typeof doc.blocks === "object" ? doc.blocks : {};
+  const ids = Array.isArray(doc.order) ? doc.order : Object.keys(blocks);
+  for (const id of ids) {
+    const block = blocks[id];
+    if (block?.type !== "heading" || (block.level || 1) !== 1) continue;
+    const text = typeof block.text === "string" ? block.text.replace(/\s+/g, " ").trim() : "";
+    if (text && !isStorageTitle(text)) return text;
+  }
+  return "";
+}
+
 export function coverModel(source) {
   const src = source && typeof source === "object" ? source : {};
   const title = pdfTitlePlan(src);

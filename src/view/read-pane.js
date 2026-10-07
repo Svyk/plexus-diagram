@@ -5,12 +5,13 @@
 import { CARD_MIME } from "../model/drop.js";
 import { HIGHLIGHT_COLORS, highlightModel } from "../model/highlight.js";
 import { highlightRows } from "../model/highlight-pick.js";
-import { coverModel, pdfMacroUrl, readPaneKey, readPaneWidth, readerRule, writeReaderPage } from "../model/pdf.js";
+import { coverModel, parsedDocTitle, pdfMacroUrl, readPaneKey, readPaneWidth, readerRule, writeReaderPage } from "../model/pdf.js";
 import { dragChipText, fiberOf, highlightById, highlighterContext, PDF_MARK, uidFromMark } from "../model/pdf-drag.js";
 import { fitDecision, fitWidthStep, fitsWidth, pageIndicator, pageTotalText, pdfDocumentFromFiber, pillActions, viewerFromFiber } from "../model/read-pane-model.js";
 import { isTextEntryTarget } from "./cards.js";
 import { applyMotionClasses } from "./motion.js";
-import { BOTH_MIN_PX, createParseView, readParsedUrls } from "./parse-view.js";
+import { BOTH_MIN_PX, BUILTIN_OPTIONS, createParseView, readParsedUrls } from "./parse-view.js";
+import { optionsHash } from "../model/parse-hash.js";
 import { createParseStore } from "../host/parse-store.js";
 import { createHelperClient } from "../host/parse-helper-client.js";
 
@@ -154,6 +155,7 @@ export function createReadPane({
   onSwitch,
   onSnapshot,
   onReadingChange,
+  onParsedTitle,
   cards,
   placed,
   titleOf,
@@ -1657,6 +1659,23 @@ export function createReadPane({
     return parseHelper;
   };
   const pdfUrl = () => pdfMacroUrl(current.source || "") || "";
+  // Header title: the real name when there is one, else the parsed document's title, else "PDF".
+  let parsedTitle = "";
+  const realTitle = (value) => (typeof value === "string" && value.trim() && value.trim() !== "PDF" ? value.trim() : "");
+  const shownTitle = () => realTitle(current.title) || parsedTitle || "PDF";
+  const paintTitle = () => {
+    const text = shownTitle();
+    titleNode.textContent = text;
+    const options = switcher.querySelectorAll?.("option") || [];
+    for (const opt of options) if (opt.value === current.cardUid) opt.textContent = text;
+  };
+  const noteParsedTitle = (value) => {
+    const text = typeof value === "string" ? value.trim() : "";
+    if (text === parsedTitle) return;
+    parsedTitle = text;
+    if (openFlag) paintTitle();
+    if (text) { try { onParsedTitle?.(pdfUrl(), text); } catch { /* host */ } }
+  };
   const readerPdf = () => {
     try {
       const fiber = fiberOf(live.querySelector?.(".PdfHighlighter"));
@@ -1706,6 +1725,7 @@ export function createReadPane({
       readerEl: live,
       onToast: (message) => { try { host?.toast?.(message); } catch { /* host */ } },
       onCached: () => revealModes(),
+      onTitle: noteParsedTitle,
       onProgress: (info) => {
         const running = info && info.fraction != null && info.fraction < 1;
         setHidden(progress, !running);
@@ -1721,6 +1741,7 @@ export function createReadPane({
   function dropParsed() {
     try { parsedView?.dispose?.(); } catch { /* gone */ }
     parsedView = null;
+    parsedTitle = "";
     viewMode = "reader";
     setHidden(modes, true);
     setHidden(progress, true);
@@ -1736,6 +1757,16 @@ export function createReadPane({
     try {
       const hit = await ensureStore().findByUrl(url);
       if (hit?.sha256 && openFlag) revealModes();
+      if (hit?.sha256 && openFlag && !realTitle(current.title) && !parsedTitle) {
+        const hash = await optionsHash(BUILTIN_OPTIONS);
+        for (const engine of ["builtin", "docling", "mixed"]) {
+          const found = await ensureStore().getParse(hit.sha256, engine, hash);
+          if (found) {
+            if (openFlag && url === pdfUrl()) noteParsedTitle(parsedDocTitle(found));
+            break;
+          }
+        }
+      }
     } catch { /* store */ }
   }
   async function enterParsed(which) {
@@ -1817,6 +1848,7 @@ export function createReadPane({
         fitDone = false;
         userZoomed = false;
         settleNoted = false;
+        if (blockUid !== current.blockUid) parsedTitle = "";
         fitState.path = "none";
         fitState.clicks = 0;
       }
@@ -1838,7 +1870,7 @@ export function createReadPane({
       if (fresh) root.append(pane);
       openFlag = true;
       emitReading(current.cardUid);
-      titleNode.textContent = current.title || "PDF";
+      titleNode.textContent = shownTitle();
       ensureMotion();
       applyBox();
       if (fresh) startEnter();
@@ -1875,11 +1907,8 @@ export function createReadPane({
     isOpen: () => openFlag && Boolean(pane.isConnected),
     cardUid: () => current.cardUid || "",
     setTitle(title) {
-      const text = typeof title === "string" && title.trim() ? title.trim() : "PDF";
-      current.title = text;
-      titleNode.textContent = text;
-      const options = switcher.querySelectorAll?.("option") || [];
-      for (const opt of options) if (opt.value === current.cardUid) opt.textContent = text;
+      current.title = typeof title === "string" && title.trim() ? title.trim() : "PDF";
+      paintTitle();
     },
     // P32-3 probe: which path fitted the page (viewer | steps | viewer+steps | none) and the presses it took.
     fitInfo: () => ({ path: fitState.path, clicks: fitState.clicks, done: fitDone, userZoomed }),

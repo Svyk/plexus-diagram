@@ -9,6 +9,7 @@ import { resplitColumns } from "../model/parse/resplit.js";
 import { selectBlocks, tableGrid } from "../model/parse-schema.js";
 import { toCSV, toMarkdown } from "../model/parse-to-text.js";
 import { imageKey } from "../host/parse-store.js";
+import { parsedDocTitle } from "../model/pdf.js";
 import { loadPageData } from "./parse-engine.js";
 import { createParseOverlay } from "./parse-overlay.js";
 import { cropRect, createCropQueue } from "./parse-crop.js";
@@ -249,6 +250,7 @@ export function createParseView({
   writeText = null,
   onToast = null,
   onCached = null,
+  onTitle = null,
   onProgress = null,
   adoptCreated = null,
   getContext = null,
@@ -603,6 +605,7 @@ export function createParseView({
     clearBlockListeners();
     const blocks = shown();
     body.replaceChildren?.();
+    if (parsed) { try { onTitle?.(parsedDocTitle(parsed)); } catch { /* host */ } }
     if (!parsed) {
       body.append(empty);
       empty.textContent = "";

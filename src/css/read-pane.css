@@ -4,6 +4,7 @@
 
 .pxd-root.pxd-root--read > .pxd-viewport {
   right: var(--pxd-read-w, 360px);
+  transition: right var(--pxd-pdf-ms, 180ms) var(--pxd-pdf-ease, cubic-bezier(.2, .7, .2, 1));
 }
 
 .pxd-root.pxd-root--read-stack > .pxd-viewport {
@@ -16,9 +17,27 @@
   outline-offset: 2px;
 }
 
+.pxd-root {
+  --pxd-read-head-h: 40px;
+  --pxd-read-strip-h: 32px;
+  --pxd-read-pill-h: 36px;
+  --pxd-read-pill-bg: rgba(31, 41, 55, .92);
+  --pxd-read-pill-fg: #ffffff;
+  --pxd-read-pill-line: transparent;
+  --pxd-read-pill-shadow: 0 2px 6px rgba(0, 0, 0, .18), 0 8px 24px rgba(0, 0, 0, .18);
+  --pxd-reading-line: var(--pxd-accent);
+  --pxd-pdf-ease: cubic-bezier(.2, .7, .2, 1);
+  --pxd-pdf-ms: 180ms;
+  --pxd-pdf-radius: 6px;
+}
+
+.pxd-root.pxd-root--motion-off {
+  --pxd-pdf-ms: 0ms;
+}
+
 .pxd-read {
   position: absolute;
-  top: 0;
+  top: var(--pxd-tabs-h, 0px);
   right: 0;
   bottom: 0;
   z-index: 2;
@@ -34,6 +53,16 @@
   overflow: hidden;
   overscroll-behavior: contain;
   touch-action: pan-y;
+  transform: translateX(0);
+  transition: transform var(--pxd-pdf-ms, 180ms) var(--pxd-pdf-ease, cubic-bezier(.2, .7, .2, 1));
+}
+
+.pxd-read.pxd-read--enter:not(.pxd-read--stack) {
+  transform: translateX(100%);
+}
+
+.pxd-read.pxd-read--stack.pxd-read--enter {
+  transform: translateY(100%);
 }
 
 .pxd-read.pxd-read--stack {
@@ -73,8 +102,32 @@
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 8px 6px 12px;
+  box-sizing: border-box;
+  height: var(--pxd-read-head-h, 40px);
+  min-height: var(--pxd-read-head-h, 40px);
+  padding: 0 8px 0 12px;
   border-bottom: 1px solid var(--pxd-border, #d0d7de);
+}
+
+.pxd-read .pxd-read__dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--pxd-reading-line, var(--pxd-accent));
+}
+
+.pxd-read .pxd-read__glyph {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  color: var(--pxd-muted, inherit);
+}
+
+.pxd-read .pxd-read__glyph svg {
+  display: block;
+  width: 16px;
+  height: 16px;
 }
 
 .pxd-read .pxd-read__title {
@@ -82,12 +135,36 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: 13px;
   font-weight: 600;
 }
 
+.pxd-read .pxd-read__switchbtn,
+.pxd-read .pxd-read__highlights,
+.pxd-read .pxd-read__tools {
+  flex: 0 0 auto;
+}
+
+.pxd-read .pxd-read__highlights {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.pxd-read .pxd-read__switchbtn--off,
+.pxd-read .pxd-read__switch--off {
+  display: none;
+}
+
 .pxd-read .pxd-read__switch {
-  flex: 1;
-  min-width: 0;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
 
 .pxd-read .pxd-read__filters {
@@ -105,14 +182,86 @@
 /* The live box does not scroll. The reader fills it, and Roam's own scroller moves the pages.
    Side layout keeps a 220px floor. The stacked pane is only 46% tall, so the same 58/42
    split drops that floor and fits inside the pane. */
-.pxd-read .pxd-read__live {
+.pxd-read .pxd-read__stage {
+  position: relative;
   display: flex;
   flex-direction: column;
   flex: 1 1 58%;
+  min-height: 0;
+}
+
+.pxd-read .pxd-read__live {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
   min-height: 220px;
   overflow: hidden;
 }
 
+.pxd-read .pxd-read__pill {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  box-sizing: border-box;
+  height: var(--pxd-read-pill-h, 36px);
+  padding: 0 6px;
+  border: 1px solid var(--pxd-read-pill-line, transparent);
+  border-radius: var(--pxd-pdf-radius, 6px);
+  background: var(--pxd-read-pill-bg, rgba(31, 41, 55, .92));
+  color: var(--pxd-read-pill-fg, #fff);
+  box-shadow: var(--pxd-read-pill-shadow, none);
+  transform: translateX(-50%);
+}
+
+.pxd-read .pxd-read__pillbtn {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.pxd-read .pxd-read__pages {
+  padding: 0 4px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Roam's toolbar stays mounted. height 0, never display:none, because pdf.js measures the row. */
+.pxd-read .rm-pdf-toolbar {
+  flex: 0 0 0;
+  height: 0;
+  min-height: 0;
+  overflow: hidden;
+  visibility: hidden;
+}
+
+.pxd-read.pxd-read--tools .rm-pdf-toolbar {
+  flex: 0 0 auto;
+  height: 40px;
+  min-height: 40px;
+  overflow: visible;
+  visibility: visible;
+}
+
+.pxd-read .pxd-read__drawer {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 42%;
+  min-height: 0;
+}
+
+.pxd-read.pxd-read--stack .pxd-read__stage,
 .pxd-read.pxd-read--stack .pxd-read__live,
 .pxd-read.pxd-read--stack .pxd-read__list {
   min-height: 0;
@@ -281,6 +430,17 @@
   outline-offset: -2px;
 }
 
+.bp3-dark .pxd-root,
+body.bt-theme-dark .pxd-root,
+.rm-dark-theme .pxd-root,
+body.roam-body.dark .pxd-root,
+.pxd-root.pxd-root--dark {
+  --pxd-read-pill-bg: var(--pxd-chrome-bg);
+  --pxd-read-pill-fg: var(--pxd-text);
+  --pxd-read-pill-line: var(--pxd-border-strong);
+  --pxd-read-pill-shadow: 0 2px 6px rgba(0, 0, 0, .45);
+}
+
 .bp3-dark .pxd-root.pxd-root--pdf-drag > .pxd-viewport,
 body.bt-theme-dark .pxd-root.pxd-root--pdf-drag > .pxd-viewport,
 .rm-dark-theme .pxd-root.pxd-root--pdf-drag > .pxd-viewport,
@@ -292,7 +452,20 @@ body.roam-body.dark .pxd-root.pxd-root--pdf-drag > .pxd-viewport,
   border: 2px dashed var(--pxd-teal-line, #2dd4bf);
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .pxd-root {
+    --pxd-pdf-ms: 0ms;
+  }
+}
+
 @media (prefers-color-scheme: dark) {
+  :root:not(.bp3-light) .pxd-root:not(.pxd-root--light) {
+    --pxd-read-pill-bg: var(--pxd-chrome-bg);
+    --pxd-read-pill-fg: var(--pxd-text);
+    --pxd-read-pill-line: var(--pxd-border-strong);
+    --pxd-read-pill-shadow: 0 2px 6px rgba(0, 0, 0, .45);
+  }
+
   :root:not(.bp3-light) .pxd-root.pxd-root--pdf-drag:not(.pxd-root--light) > .pxd-viewport {
     outline: none;
     background: none;

@@ -1,12 +1,22 @@
-// PDF reading pane. One live Roam reader beside the board. The list is a read of the PDF page.
+// PDF reading pane. One live Roam reader beside the board. The highlight list is the drawer's.
 // Width is localStorage. No :pdf-highlight write, no document key listener, no palette command.
 
 import { CARD_MIME } from "../model/drop.js";
 import { HIGHLIGHT_COLORS, highlightModel } from "../model/highlight.js";
 import { highlightRows } from "../model/highlight-pick.js";
-import { dragChipText, fiberOf, highlightById, highlighterContext, PDF_MARK, uidFromMark } from "../model/pdf-drag.js";
 import { coverModel, pdfMacroUrl, readPaneKey, readPaneWidth, readerRule, writeReaderPage } from "../model/pdf.js";
+import { dragChipText, fiberOf, highlightById, highlighterContext, PDF_MARK, uidFromMark } from "../model/pdf-drag.js";
+import { fitDecision, pageIndicator, pillActions } from "../model/read-pane-model.js";
 import { isTextEntryTarget } from "./cards.js";
+import { applyMotionClasses } from "./motion.js";
+
+// U4 owns the visible drawer. The import is async so a missing file leaves the pane's own list.
+let liveDrawer = null;
+import("./read-drawer.js")
+  .then((mod) => {
+    liveDrawer = typeof mod?.createReadDrawer === "function" ? mod.createReadDrawer : null;
+  })
+  .catch(() => { liveDrawer = null; });
 
 const PLACE_W = 300;
 const PLACE_H = 140;
@@ -68,6 +78,31 @@ export function placeDecision(row, items, origin) {
   return { kind: "create", item };
 }
 
+function pdfGlyph(doc) {
+  const ns = "http://www.w3.org/2000/svg";
+  if (typeof doc?.createElementNS !== "function") return null;
+  const svg = doc.createElementNS(ns, "svg");
+  svg.setAttribute("viewBox", "0 0 16 16");
+  svg.setAttribute("width", "16");
+  svg.setAttribute("height", "16");
+  svg.setAttribute("aria-hidden", "true");
+  const path = doc.createElementNS(ns, "path");
+  path.setAttribute("d", "M3.5 1.5h6L13 5v9.5H3.5v-13zM9.5 1.8V5H13");
+  path.setAttribute("fill", "none");
+  path.setAttribute("stroke", "currentColor");
+  path.setAttribute("stroke-width", "1.2");
+  svg.append(path);
+  return svg;
+}
+
+function pillButton(doc, el, parent, label, text) {
+  const button = el("button", "pxd-read__pillbtn", parent);
+  button.type = "button";
+  button.textContent = text;
+  button.setAttribute("aria-label", label);
+  return button;
+}
+
 export function readerJumpPlan({ cardUid = "", blockUid = "" } = {}) {
   if (typeof cardUid === "string" && cardUid) return { action: "card", uid: cardUid };
   if (typeof blockUid === "string" && blockUid) return { action: "block", uid: blockUid };
@@ -100,10 +135,14 @@ export function createReadPane({
   onClose,
   onPlace,
   onNote,
+  onHover,
   onSwitch,
+  onSnapshot,
+  onReadingChange,
   cards,
   placed,
   titleOf,
+  createDrawer,
 } = {}) {
   const el = (tag, cls, parent) => {
     const node = doc.createElement(tag);
@@ -118,35 +157,52 @@ export function createReadPane({
   split.setAttribute("role", "separator");
   split.setAttribute("aria-orientation", "vertical");
   const head = el("div", "pxd-read__head", pane);
+  const dot = el("span", "pxd-read__dot", head);
+  dot.setAttribute("aria-hidden", "true");
+  const glyph = el("span", "pxd-read__glyph", head);
+  glyph.setAttribute("aria-hidden", "true");
+  const glyphSvg = pdfGlyph(doc);
+  if (glyphSvg) glyph.append(glyphSvg);
   const titleNode = el("div", "pxd-read__title", head);
+  const switchBtn = el("button", "pxd-read__switchbtn pxd-chrome", head);
+  switchBtn.type = "button";
+  switchBtn.textContent = "▾";
+  switchBtn.setAttribute("aria-label", "PDFs on this board");
   const switcher = el("select", "pxd-read__switch", head);
   switcher.setAttribute("aria-label", "PDF on this board");
+  const hlBtn = el("button", "pxd-read__highlights pxd-chrome", head);
+  hlBtn.type = "button";
+  hlBtn.setAttribute("aria-label", "Highlights");
+  hlBtn.setAttribute("aria-pressed", "false");
+  el("span", "pxd-read__hicon", hlBtn).textContent = "☰";
+  const countNode = el("span", "pxd-read__count", hlBtn);
+  countNode.textContent = "0";
+  const toolsBtn = el("button", "pxd-read__tools pxd-chrome", head);
+  toolsBtn.type = "button";
+  toolsBtn.textContent = "⚙";
+  toolsBtn.setAttribute("aria-label", "Tools");
+  toolsBtn.setAttribute("aria-pressed", "false");
   const closeBtn = el("button", "pxd-read__close pxd-chrome", head);
   closeBtn.type = "button";
   closeBtn.textContent = "Close";
   closeBtn.setAttribute("aria-label", "Close");
-  const live = el("div", "pxd-read__live", pane);
-  const filters = el("div", "pxd-read__filters", pane);
-  const colorSel = el("select", "pxd-read__color", filters);
-  colorSel.setAttribute("aria-label", "Colour");
-  const all = el("option", "", colorSel);
-  all.value = "";
-  all.textContent = "All colours";
-  for (const name of COLORS) {
-    const opt = el("option", "", colorSel);
-    opt.value = name;
-    opt.textContent = name;
-  }
-  const pageFilt = el("input", "pxd-read__pagefilt", filters);
-  pageFilt.setAttribute("aria-label", "Page");
-  pageFilt.placeholder = "Page";
-  const snipFilt = el("input", "pxd-read__find", filters);
-  snipFilt.setAttribute("aria-label", "Snippet");
-  snipFilt.placeholder = "Snippet";
-  const list = el("div", "pxd-read__list", pane);
-  list.tabIndex = 0;
-  list.setAttribute("role", "listbox");
-  list.setAttribute("aria-label", "Highlights");
+  const stage = el("div", "pxd-read__stage", pane);
+  const live = el("div", "pxd-read__live", stage);
+  const pill = el("div", "pxd-read__pill", stage);
+  pill.setAttribute("role", "toolbar");
+  pill.setAttribute("aria-label", "Reader");
+  const zoomOutBtn = pillButton(doc, el, pill, "Zoom out", "−");
+  const zoomInBtn = pillButton(doc, el, pill, "Zoom in", "+");
+  const fitBtn = pillButton(doc, el, pill, "Fit width", "⇔");
+  const pageNode = el("span", "pxd-read__pages", pill);
+  const searchBtn = pillButton(doc, el, pill, "Search", "⌕");
+  const drawerMount = el("div", "pxd-read__drawer", pane);
+  let colorSel = null;
+  let pageFilt = null;
+  let snipFilt = null;
+  let list = null;
+  let drawer = null;
+  let legacyKept = null;
 
   let openFlag = false;
   let mountW = 0;
@@ -154,23 +210,45 @@ export function createReadPane({
   let watchOff = null;
   let watchTitle = "";
   let selectedUid = "";
-  let shown = [];
   let catalog = [];
+  const sourceByUid = new Map();
   let current = { cardUid: "", blockUid: "", title: "", pageUid: "", source: "" };
+  let toolsOn = false;
+  let searchHold = false;
+  let searchWatch = null;
+  let userZoomed = false;
+  let fitDone = false;
+  let settleNoted = false;
+  let settleTimer = null;
+  let settleGen = 0;
+  let readingUid = "";
+  let enterFrame = 0;
+  let pillFrame = 0;
+  let scrollNode = null;
+  let barNode = null;
+  let pageInputNode = null;
   let splitMove = null;
   let splitUp = null;
 
+  // The drawer stores a fraction after the width ("420 0.4"). Number() of that string is NaN.
   const storedWidth = () => {
     try {
       const raw = storage?.getItem?.(readPaneKey(graph));
-      const n = Number(raw);
+      const first = String(raw ?? "").trim().split(/\s+/)[0];
+      const n = Number(first);
       return Number.isFinite(n) && n > 0 ? n : null;
     } catch {
       return null;
     }
   };
   const writeWidth = (px) => {
-    try { storage?.setItem?.(readPaneKey(graph), String(px)); } catch { /* private mode */ }
+    try {
+      const key = readPaneKey(graph);
+      const raw = storage?.getItem?.(key);
+      const text = typeof raw === "string" ? raw.trim() : "";
+      const rest = text ? text.split(/\s+/).slice(1).join(" ") : "";
+      storage?.setItem?.(key, rest ? `${px} ${rest}` : String(px));
+    } catch { /* private mode */ }
   };
   const mountWidthNow = () => {
     const w = Number(root?.getBoundingClientRect?.()?.width) || 0;
@@ -215,6 +293,7 @@ export function createReadPane({
   };
   const clearLive = () => {
     disarm();
+    detachReaderWatch();
     try { host?.unmount?.(live); } catch { /* not mounted */ }
     live.replaceChildren?.();
     liveBlock = "";
@@ -228,7 +307,9 @@ export function createReadPane({
   const jumpPage = (page) => {
     const input = readerField();
     if (!input) return false;
-    return writeReaderPage(input, page);
+    const wrote = writeReaderPage(input, page);
+    paintPill();
+    return wrote;
   };
   // A fresh reader has no page field yet, and once it loads Roam restores the last page it showed.
   // Wait for the field, set the page, look again after that restore, and set it once more if it moved.
@@ -305,9 +386,13 @@ export function createReadPane({
       opt.textContent = cardTitle(card);
     }
     switcher.value = current.cardUid || "";
+    const many = switcher.querySelectorAll?.("option")?.length >= 2;
+    switchBtn.classList.toggle("pxd-read__switchbtn--off", !many);
+    switcher.classList.toggle("pxd-read__switch--off", !many);
   };
   const paintSelected = () => {
-    for (const node of list.querySelectorAll?.(".pxd-read__row") || []) {
+    const nodes = list?.querySelectorAll?.(".pxd-read__row") || [];
+    for (const node of nodes) {
       const on = node.getAttribute?.("data-uid") === selectedUid;
       node.classList.toggle("pxd-read__row--on", on);
       node.setAttribute?.("aria-selected", on ? "true" : "false");
@@ -323,10 +408,10 @@ export function createReadPane({
       return [];
     }
   };
-  function refreshList() {
+  const catalogRows = () => {
     const tree = treeOf();
-    const byUid = new Map();
-    indexNodes(tree, byUid);
+    sourceByUid.clear();
+    indexNodes(tree, sourceByUid);
     let placedItems = [];
     try {
       const got = typeof placed === "function" ? placed() : [];
@@ -334,68 +419,117 @@ export function createReadPane({
     } catch { placedItems = []; }
     let rows = [];
     try { rows = highlightRows(tree, { placed: placedItems }); } catch { rows = []; }
-    const color = String(colorSel.value || "");
-    const pageText = String(pageFilt.value || "").trim();
-    const pageWant = pageText === "" ? null : Number(pageText);
-    const needle = String(snipFilt.value || "").trim().toLowerCase();
     catalog = sortRows(rows);
-    shown = catalog.filter((row) => {
-      if (color && row.color !== color) return false;
-      if (pageWant != null && Number.isFinite(pageWant) && row.page !== pageWant) return false;
-      if (needle && !String(row.snippet || "").toLowerCase().includes(needle)) return false;
-      return true;
-    });
-    list.replaceChildren?.();
-    for (const row of shown) {
-      const node = el("div", "pxd-read__row", list);
-      node.setAttribute("role", "option");
-      node.setAttribute("data-uid", row.uid);
-      node.draggable = true;
-      node.setAttribute("draggable", "true");
-      const bar = el("span", "pxd-read__bar", node);
-      bar.setAttribute("data-color", String(row.color || ""));
-      const source = byUid.get(row.uid);
-      const model = source ? highlightModel({ string: source.string, props: source.props, children: source.children }) : null;
-      if (model?.image && source) {
-        const media = el("div", "pxd-read__media", node);
-        const ratioW = model.natural?.w;
-        const ratioH = model.natural?.h;
-        if (typeof ratioW === "number" && typeof ratioH === "number" && ratioW > 0 && ratioH > 0) {
-          media.style.aspectRatio = `${ratioW} / ${ratioH}`;
+    return catalog;
+  };
+  // Same list the pane used to paint. U4's createReadDrawer replaces it when that module loads.
+  const legacyDrawer = () => {
+    const filters = el("div", "pxd-read__filters", drawerMount);
+    const color = el("select", "pxd-read__color", filters);
+    color.setAttribute("aria-label", "Colour");
+    const all = el("option", "", color);
+    all.value = "";
+    all.textContent = "All colours";
+    for (const name of COLORS) {
+      const opt = el("option", "", color);
+      opt.value = name;
+      opt.textContent = name;
+    }
+    const pageField = el("input", "pxd-read__pagefilt", filters);
+    pageField.setAttribute("aria-label", "Page");
+    pageField.placeholder = "Page";
+    const find = el("input", "pxd-read__find", filters);
+    find.setAttribute("aria-label", "Snippet");
+    find.placeholder = "Snippet";
+    const rowsEl = el("div", "pxd-read__list", drawerMount);
+    rowsEl.tabIndex = 0;
+    rowsEl.setAttribute("role", "listbox");
+    rowsEl.setAttribute("aria-label", "Highlights");
+    let bodyOpen = false;
+    const paintBody = () => drawerMount.classList.toggle("pxd-read__drawer--open", bodyOpen);
+    const refresh = () => {
+      const allRows = catalogRows();
+      const wantColor = String(color.value || "");
+      const pageText = String(pageField.value || "").trim();
+      const pageWant = pageText === "" ? null : Number(pageText);
+      const needle = String(find.value || "").trim().toLowerCase();
+      const shown = allRows.filter((row) => {
+        if (wantColor && row.color !== wantColor) return false;
+        if (pageWant != null && Number.isFinite(pageWant) && row.page !== pageWant) return false;
+        if (needle && !String(row.snippet || "").toLowerCase().includes(needle)) return false;
+        return true;
+      });
+      rowsEl.replaceChildren?.();
+      for (const row of shown) {
+        const node = el("div", "pxd-read__row", rowsEl);
+        node.setAttribute("role", "option");
+        node.setAttribute("data-uid", row.uid);
+        node.draggable = true;
+        node.setAttribute("draggable", "true");
+        const bar = el("span", "pxd-read__bar", node);
+        bar.setAttribute("data-color", String(row.color || ""));
+        const source = sourceByUid.get(row.uid);
+        const model = source ? highlightModel({ string: source.string, props: source.props, children: source.children }) : null;
+        if (model?.image && source) {
+          const media = el("div", "pxd-read__media", node);
+          const ratioW = model.natural?.w;
+          const ratioH = model.natural?.h;
+          if (typeof ratioW === "number" && typeof ratioH === "number" && ratioW > 0 && ratioH > 0) {
+            media.style.aspectRatio = `${ratioW} / ${ratioH}`;
+          }
+          try {
+            if (typeof host?.renderString === "function") host.renderString(media, source.string);
+            else media.textContent = source.string;
+          } catch {
+            media.textContent = source.string;
+          }
+        } else if (row.snippet && !String(row.snippet).startsWith("![")) {
+          el("div", "pxd-read__snip", node).textContent = row.snippet;
         }
-        try {
-          if (typeof host?.renderString === "function") host.renderString(media, source.string);
-          else media.textContent = source.string;
-        } catch {
-          media.textContent = source.string;
+        const meta = el("div", "pxd-read__meta", node);
+        if (typeof row.page === "number") el("span", "pxd-read__pg", meta).textContent = `p. ${row.page}`;
+        if (row.placed) el("span", "pxd-read__on", meta).textContent = "On board";
+        if (typeof row.note === "string" && row.note.trim()) {
+          const mark = el("span", "pxd-read__mark", meta);
+          mark.textContent = "Note";
+          mark.setAttribute("aria-label", "Note");
         }
-      } else if (row.snippet && !String(row.snippet).startsWith("![")) {
-        el("div", "pxd-read__snip", node).textContent = row.snippet;
+        const noteBtn = el("button", "pxd-read__note pxd-chrome", meta);
+        noteBtn.type = "button";
+        noteBtn.textContent = "Note";
+        noteBtn.setAttribute("aria-label", "Note");
+        const place = el("button", "pxd-read__place pxd-chrome", meta);
+        place.type = "button";
+        place.textContent = "Place";
       }
-      const meta = el("div", "pxd-read__meta", node);
-      if (typeof row.page === "number") el("span", "pxd-read__pg", meta).textContent = `p. ${row.page}`;
-      if (row.placed) el("span", "pxd-read__on", meta).textContent = "On board";
-      if (typeof row.note === "string" && row.note.trim()) {
-        const mark = el("span", "pxd-read__mark", meta);
-        mark.textContent = "Note";
-        mark.setAttribute("aria-label", "Note");
-      }
-      const noteBtn = el("button", "pxd-read__note pxd-chrome", meta);
-      noteBtn.type = "button";
-      noteBtn.textContent = "Note";
-      noteBtn.setAttribute("aria-label", "Note");
-      const place = el("button", "pxd-read__place pxd-chrome", meta);
-      place.type = "button";
-      place.textContent = "Place";
+    };
+    return {
+      refresh,
+      open() { bodyOpen = true; paintBody(); },
+      close() { bodyOpen = false; paintBody(); },
+      toggle() { bodyOpen = !bodyOpen; paintBody(); },
+      isOpen: () => bodyOpen,
+      focusSearch() { try { find.focus?.(); } catch { /* stub */ } },
+      setCount() {},
+      element: () => drawerMount,
+      dispose() {},
+    };
+  };
+  function refreshList() {
+    try { drawer?.refresh?.(); } catch { /* drawer */ }
+    if (legacyKept && drawer !== legacyKept) {
+      try { legacyKept.refresh(); } catch { /* list */ }
     }
     paintSelected();
+    paintCount();
   }
   const moveSelection = (step) => {
-    if (!shown.length) return;
-    let index = shown.findIndex((row) => row.uid === selectedUid);
-    if (index < 0) index = step > 0 ? -1 : shown.length;
-    index = Math.max(0, Math.min(shown.length - 1, index + step));
-    selectedUid = shown[index].uid;
+    const nodes = [...(list?.querySelectorAll?.(".pxd-read__row") || [])];
+    if (!nodes.length) return;
+    let index = nodes.findIndex((node) => node.getAttribute?.("data-uid") === selectedUid);
+    if (index < 0) index = step > 0 ? -1 : nodes.length;
+    index = Math.max(0, Math.min(nodes.length - 1, index + step));
+    selectedUid = nodes[index].getAttribute?.("data-uid") || "";
     paintSelected();
   };
   const showHighlight = (row) => {
@@ -410,7 +544,7 @@ export function createReadPane({
     locateHighlight(row.uid);
   };
   const jumpSelected = () => {
-    const row = shown.find((entry) => entry.uid === selectedUid);
+    const row = catalog.find((entry) => entry.uid === selectedUid);
     if (row) showHighlight(row);
   };
   const onPaneKey = (event) => {
@@ -424,7 +558,31 @@ export function createReadPane({
       close({ notify: true });
       return;
     }
-    const inList = target === list || Boolean(list.contains?.(target));
+    if (event.key === "[" || event.key === "]") {
+      event.preventDefault();
+      event.stopPropagation();
+      const { page, total } = pageParts();
+      if (page == null) return;
+      const next = page + (event.key === "]" ? 1 : -1);
+      if (next < 1) return;
+      if (total != null && next > total) return;
+      jumpPage(next);
+      return;
+    }
+    if (event.key === "/") {
+      event.preventDefault();
+      event.stopPropagation();
+      try { drawer?.focusSearch?.(); } catch { /* drawer */ }
+      return;
+    }
+    if (event.key === "h") {
+      event.preventDefault();
+      event.stopPropagation();
+      try { drawer?.toggle?.(); } catch { /* drawer */ }
+      paintDrawerPressed();
+      return;
+    }
+    const inList = Boolean(list) && (target === list || Boolean(list.contains?.(target)));
     if (!inList) return;
     if (target?.closest?.("button")) return;
     if (event.key === "ArrowDown" || event.key === "ArrowUp") {
@@ -442,9 +600,9 @@ export function createReadPane({
 
   const rowFromEvent = (event) => {
     const node = event.target?.closest?.(".pxd-read__row");
-    if (!node || !list.contains?.(node)) return null;
+    if (!node || !list?.contains?.(node)) return null;
     const uid = node.getAttribute?.("data-uid") || "";
-    return shown.find((entry) => entry.uid === uid) || null;
+    return catalog.find((entry) => entry.uid === uid) || null;
   };
   const onListClick = (event) => {
     if (event.target?.closest?.(".pxd-read__place")) {
@@ -887,10 +1045,292 @@ export function createReadPane({
     event.stopPropagation();
     close({ notify: true });
   };
+  const paintCount = () => {
+    const n = catalog.length;
+    countNode.textContent = String(n);
+    try { drawer?.setCount?.(n); } catch { /* drawer */ }
+  };
+  const paintDrawerPressed = () => {
+    const on = drawer?.isOpen?.() === true;
+    hlBtn.setAttribute("aria-pressed", on ? "true" : "false");
+  };
+  const paintTools = () => {
+    pane.classList.toggle("pxd-read--tools", toolsOn || searchHold);
+  };
+  const pageParts = () => {
+    const input = readerField();
+    const sibling = input?.nextElementSibling;
+    const side = sibling && String(sibling.tagName || "").toUpperCase() !== "INPUT" ? sibling.textContent : "";
+    return { input, ...pageIndicator(input?.value, side) };
+  };
+  const paintPill = () => {
+    const { page, total } = pageParts();
+    if (page == null) pageNode.textContent = "";
+    else if (total == null) pageNode.textContent = String(page);
+    else pageNode.textContent = `${page} / ${total}`;
+  };
+  const toolbarEl = () => live.querySelector?.(".rm-pdf-container .rm-pdf-toolbar");
+  const toolbarButtons = () => {
+    const bar = toolbarEl();
+    if (!bar?.querySelectorAll) return [];
+    return [...bar.querySelectorAll("button")];
+  };
+  const searchInput = () => {
+    const box = live.querySelector?.(".rm-pdf-container");
+    const inputs = [...(box?.querySelectorAll?.("input") || [])];
+    const page = readerField();
+    return inputs.find((node) => node !== page) || null;
+  };
+  const dropSearchWatch = () => {
+    if (!searchWatch) return;
+    searchWatch.node.removeEventListener?.("focusout", searchWatch.fn);
+    searchWatch.node.removeEventListener?.("blur", searchWatch.fn);
+    searchWatch = null;
+  };
+  const holdSearch = () => {
+    dropSearchWatch();
+    const input = searchInput();
+    if (!input) return;
+    searchHold = true;
+    paintTools();
+    const fn = () => {
+      searchHold = false;
+      paintTools();
+      dropSearchWatch();
+    };
+    input.addEventListener?.("focusout", fn);
+    input.addEventListener?.("blur", fn);
+    searchWatch = { node: input, fn };
+    try { input.focus?.(); } catch { /* stub */ }
+  };
+  const proxyPill = (name) => {
+    if (name === "zoomIn" || name === "zoomOut") userZoomed = true;
+    if (name === "fit") fitDone = true;
+    const button = pillActions(toolbarButtons())[name];
+    if (button && typeof button.click === "function") {
+      try { button.click(); } catch { /* roam */ }
+    }
+    if (name === "search") holdSearch();
+  };
+  const emitSnapshot = (as) => {
+    if (typeof onSnapshot !== "function") return;
+    const parts = pageParts();
+    const source = current.source || "";
+    try {
+      onSnapshot(live, {
+        as,
+        page: parts.page,
+        pageCount: parts.total,
+        url: pdfMacroUrl(source) || source,
+        blockUid: current.blockUid || "",
+        cardUid: current.cardUid || "",
+      });
+    } catch { /* host */ }
+  };
+  const emitReading = (uid) => {
+    const next = typeof uid === "string" ? uid : "";
+    if (next === readingUid) return;
+    readingUid = next;
+    try { onReadingChange?.(next); } catch { /* host */ }
+  };
   const armed = [];
+  const forget = (node, type, fn) => {
+    if (!node) return;
+    try { node.removeEventListener?.(type, fn); } catch { /* stub */ }
+    const idx = armed.findIndex((entry) => entry[0] === node && entry[1] === type && entry[2] === fn);
+    if (idx >= 0) armed.splice(idx, 1);
+  };
   const listen = (node, type, fn, capture = false) => {
+    if (!node || typeof node.addEventListener !== "function") return;
     node.addEventListener(type, fn, capture);
     armed.push([node, type, fn, capture]);
+  };
+  const onReaderScroll = () => {
+    const raf = clock().requestAnimationFrame;
+    if (typeof raf !== "function") { paintPill(); return; }
+    if (pillFrame) return;
+    pillFrame = raf(() => {
+      pillFrame = 0;
+      paintPill();
+    });
+  };
+  const onBarClick = (event) => {
+    const button = event.target?.closest?.("button");
+    if (!button) return;
+    const found = pillActions([button]);
+    if (found.zoomIn === button || found.zoomOut === button) userZoomed = true;
+  };
+  const detachReaderWatch = () => {
+    forget(scrollNode, "scroll", onReaderScroll);
+    forget(barNode, "click", onBarClick);
+    forget(pageInputNode, "input", paintPill);
+    scrollNode = null;
+    barNode = null;
+    pageInputNode = null;
+    if (pillFrame) {
+      try { (clock().cancelAnimationFrame || globalThis.cancelAnimationFrame)?.(pillFrame); } catch { /* stub */ }
+      pillFrame = 0;
+    }
+  };
+  const attachReaderWatch = () => {
+    const scroller = live.querySelector?.(".PdfHighlighter");
+    if (scroller && scroller !== scrollNode) {
+      forget(scrollNode, "scroll", onReaderScroll);
+      scrollNode = scroller;
+      listen(scroller, "scroll", onReaderScroll);
+    }
+    const bar = toolbarEl();
+    if (bar && bar !== barNode) {
+      forget(barNode, "click", onBarClick);
+      barNode = bar;
+      listen(bar, "click", onBarClick);
+    }
+    const input = readerField();
+    if (input && input !== pageInputNode) {
+      forget(pageInputNode, "input", paintPill);
+      pageInputNode = input;
+      listen(input, "input", paintPill);
+    }
+  };
+  const cancelSettle = () => {
+    if (settleTimer) { cancelLater(settleTimer); settleTimer = null; }
+    settleGen += 1;
+  };
+  const noteSettled = () => {
+    if (settleNoted || !openFlag) return;
+    if (!live.querySelector?.(".rm-pdf-container .page")) return;
+    settleNoted = true;
+    paintPill();
+    attachReaderWatch();
+    const fit = pillActions(toolbarButtons()).fit;
+    const hasFit = Boolean(fit);
+    if (!fitDone && fitDecision({ userZoomed, hasFit, settled: true })) {
+      fitDone = true;
+      if (typeof fit.click === "function") {
+        try { fit.click(); } catch { /* roam */ }
+      }
+    } else if (!fitDone) {
+      fitDone = true;
+    }
+    emitSnapshot("settle");
+  };
+  const armSettle = () => {
+    cancelSettle();
+    const gen = settleGen;
+    const started = Date.now();
+    const tick = () => {
+      settleTimer = null;
+      if (gen !== settleGen || !openFlag) return;
+      if (live.querySelector?.(".rm-pdf-container .page")) {
+        noteSettled();
+        return;
+      }
+      if (Date.now() - started < 5000) settleTimer = later(tick, 100);
+    };
+    tick();
+  };
+  const ensureMotion = () => {
+    if (!root?.classList) return;
+    const level = root.dataset?.motion;
+    if (level === "full" || level === "reduced" || level === "none") return;
+    try { applyMotionClasses(root, "full"); } catch { /* stub */ }
+  };
+  const dropEnter = () => {
+    if (enterFrame) {
+      try { (clock().cancelAnimationFrame || globalThis.cancelAnimationFrame)?.(enterFrame); } catch { /* stub */ }
+      enterFrame = 0;
+    }
+    pane.classList.remove("pxd-read--enter");
+  };
+  const startEnter = () => {
+    pane.classList.add("pxd-read--enter");
+    if (root?.classList?.contains?.("pxd-root--motion-off") || root?.dataset?.motion === "none") {
+      pane.classList.remove("pxd-read--enter");
+      return;
+    }
+    const raf = clock().requestAnimationFrame;
+    if (typeof raf !== "function") {
+      pane.classList.remove("pxd-read--enter");
+      return;
+    }
+    enterFrame = raf(() => {
+      enterFrame = 0;
+      pane.classList.remove("pxd-read--enter");
+    });
+  };
+  const drawerHooks = {
+    doc,
+    mount: drawerMount,
+    host,
+    rows: catalogRows,
+    placed,
+    onLocate(row) { showHighlight(row); },
+    onPlace(row) {
+      try { onPlace?.(row); } catch { /* host */ }
+      showHighlight(row);
+    },
+    onNote(row) {
+      try { onNote?.(row); } catch { /* host */ }
+    },
+    onHover(uid, on) {
+      try { onHover?.(uid, on); } catch { /* host */ }
+    },
+    storage,
+    key: readPaneKey(graph),
+  };
+  const hideNode = (node) => {
+    if (!node) return;
+    node.hidden = true;
+    node.setAttribute?.("hidden", "");
+  };
+  // U4 is the visible drawer. The old list stays in the DOM, hidden, so locate, note,
+  // drag and the existing row tests keep the nodes they already use.
+  const makeDrawer = () => {
+    if (typeof createDrawer === "function") {
+      try {
+        const made = createDrawer(drawerHooks);
+        if (made && typeof made.refresh === "function") return made;
+      } catch { /* test stub */ }
+    }
+    const legacy = legacyDrawer();
+    legacyKept = legacy;
+    if (typeof liveDrawer !== "function") return legacy;
+    try {
+      const made = liveDrawer(drawerHooks);
+      if (made && typeof made.refresh === "function") {
+        hideNode(drawerMount.querySelector?.(".pxd-read__filters"));
+        hideNode(drawerMount.querySelector?.(".pxd-read__list"));
+        return made;
+      }
+    } catch { /* U4 */ }
+    return legacy;
+  };
+  drawer = makeDrawer();
+  list = drawerMount.querySelector?.(".pxd-read__list") || null;
+  colorSel = drawerMount.querySelector?.(".pxd-read__color") || null;
+  pageFilt = drawerMount.querySelector?.(".pxd-read__pagefilt") || null;
+  snipFilt = drawerMount.querySelector?.(".pxd-read__find") || null;
+  const onHighlights = (event) => {
+    event.stopPropagation();
+    try { drawer?.toggle?.(); } catch { /* drawer */ }
+    paintDrawerPressed();
+  };
+  const onTools = (event) => {
+    event.stopPropagation();
+    toolsOn = !toolsOn;
+    toolsBtn.setAttribute("aria-pressed", toolsOn ? "true" : "false");
+    paintTools();
+  };
+  const onSwitchBtn = (event) => {
+    event.stopPropagation();
+    if (switchBtn.classList.contains("pxd-read__switchbtn--off")) return;
+    try {
+      if (typeof switcher.showPicker === "function") {
+        switcher.showPicker();
+        return;
+      }
+    } catch { /* unsupported */ }
+    try { switcher.focus?.(); } catch { /* stub */ }
   };
   listen(pane, "keydown", onPaneKey);
   listen(pane, "wheel", onWheel);
@@ -909,6 +1349,13 @@ export function createReadPane({
   listen(pageFilt, "input", onPageFilt);
   listen(snipFilt, "input", onFind);
   listen(switcher, "change", onSwitchChange);
+  listen(switchBtn, "click", onSwitchBtn);
+  listen(hlBtn, "click", onHighlights);
+  listen(toolsBtn, "click", onTools);
+  listen(zoomOutBtn, "click", (event) => { event.stopPropagation(); proxyPill("zoomOut"); });
+  listen(zoomInBtn, "click", (event) => { event.stopPropagation(); proxyPill("zoomIn"); });
+  listen(fitBtn, "click", (event) => { event.stopPropagation(); proxyPill("fit"); });
+  listen(searchBtn, "click", (event) => { event.stopPropagation(); proxyPill("search"); });
   listen(closeBtn, "click", onCloseClick);
   listen(split, "pointerdown", (event) => {
     if (event.button != null && event.button !== 0) return;
@@ -935,17 +1382,30 @@ export function createReadPane({
 
   function close(opts) {
     cancelPageWait();
+    cancelSettle();
     cancelMove();
     clearFlash();
+    dropEnter();
     const notify = !opts || opts.notify !== false;
+    const wasOpen = openFlag;
     if (!openFlag && !pane.isConnected) return;
+    if (wasOpen) emitSnapshot("close");
     openFlag = false;
     endSplit();
     releaseWatch();
     endPress();
     swallowOff?.();
     endPdfDrag();
+    dropSearchWatch();
+    searchHold = false;
+    toolsOn = false;
+    paintTools();
+    toolsBtn.setAttribute("aria-pressed", "false");
+    fitDone = false;
+    userZoomed = false;
+    settleNoted = false;
     clearLive();
+    emitReading("");
     root?.classList?.remove("pxd-root--read", "pxd-root--read-stack");
     try { root?.style?.removeProperty?.("--pxd-read-w"); } catch { /* stub */ }
     pane.remove();
@@ -959,6 +1419,11 @@ export function createReadPane({
       const next = detail && typeof detail === "object" ? detail : {};
       const blockUid = typeof next.blockUid === "string" ? next.blockUid : "";
       if (!blockUid || !root) return;
+      if (!openFlag || blockUid !== current.blockUid) {
+        fitDone = false;
+        userZoomed = false;
+        settleNoted = false;
+      }
       current = {
         cardUid: typeof next.cardUid === "string" ? next.cardUid : "",
         blockUid,
@@ -973,11 +1438,16 @@ export function createReadPane({
           if (!current.pageUid && typeof cover?.pageUid === "string") current.pageUid = cover.pageUid;
         } catch { /* host */ }
       }
-      if (!pane.isConnected) root.append(pane);
+      const fresh = !pane.isConnected;
+      if (fresh) root.append(pane);
       openFlag = true;
+      emitReading(current.cardUid);
       titleNode.textContent = current.title || "PDF";
+      ensureMotion();
       applyBox();
+      if (fresh) startEnter();
       mountReader(blockUid);
+      armSettle();
       const wanted = highlightUidOf(next);
       if (typeof next.page === "number") jumpPageWhenReady(next.page, wanted ? () => locateHighlight(wanted) : null);
       else if (wanted) locateHighlight(wanted);
@@ -989,6 +1459,9 @@ export function createReadPane({
     dispose() {
       close({ notify: false });
       endSplit();
+      dropSearchWatch();
+      detachReaderWatch();
+      try { drawer?.dispose?.(); } catch { /* drawer */ }
       for (const [node, type, fn, capture] of armed) node.removeEventListener?.(type, fn, capture);
       armed.length = 0;
     },

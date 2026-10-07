@@ -5879,6 +5879,11 @@ function buildBoardView(onFail, {
     }
     if (dirty.viewport) {
       world.style.transform = `translate(${vp.x}px, ${vp.y}px) scale(${vp.zoom})`;
+      // Roam Caret re-places its caret when a field on the board is focused and the camera moves.
+      const focused = doc.activeElement;
+      if (focused?.tagName === "TEXTAREA" && root.contains(focused)) {
+        try { win?.dispatchEvent?.(new win.CustomEvent("plexus-diagram:camera")); } catch { /* no caret */ }
+      }
       itemsR.setZoom(vp.zoom);
       paintInvZoom();
       // The tier flips (classes + font variables, once) the moment the zoom crosses the threshold, mid-gesture too.

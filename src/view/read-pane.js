@@ -6,7 +6,7 @@ import { HIGHLIGHT_COLORS, highlightModel } from "../model/highlight.js";
 import { highlightRows } from "../model/highlight-pick.js";
 import { coverModel, pdfMacroUrl, readPaneKey, readPaneWidth, readerRule, writeReaderPage } from "../model/pdf.js";
 import { dragChipText, fiberOf, highlightById, highlighterContext, PDF_MARK, uidFromMark } from "../model/pdf-drag.js";
-import { fitDecision, pageIndicator, pillActions } from "../model/read-pane-model.js";
+import { fitDecision, pageIndicator, pageTotalText, pillActions } from "../model/read-pane-model.js";
 import { isTextEntryTarget } from "./cards.js";
 import { applyMotionClasses } from "./motion.js";
 
@@ -78,7 +78,7 @@ export function placeDecision(row, items, origin) {
   return { kind: "create", item };
 }
 
-function pdfGlyph(doc) {
+function svgIcon(doc, pathD, stroke) {
   const ns = "http://www.w3.org/2000/svg";
   if (typeof doc?.createElementNS !== "function") return null;
   const svg = doc.createElementNS(ns, "svg");
@@ -87,11 +87,22 @@ function pdfGlyph(doc) {
   svg.setAttribute("height", "16");
   svg.setAttribute("aria-hidden", "true");
   const path = doc.createElementNS(ns, "path");
-  path.setAttribute("d", "M3.5 1.5h6L13 5v9.5H3.5v-13zM9.5 1.8V5H13");
+  path.setAttribute("d", pathD);
   path.setAttribute("fill", "none");
   path.setAttribute("stroke", "currentColor");
-  path.setAttribute("stroke-width", "1.2");
+  path.setAttribute("stroke-width", stroke);
   svg.append(path);
+  return svg;
+}
+
+function pdfGlyph(doc) {
+  return svgIcon(doc, "M3.5 1.5h6L13 5v9.5H3.5v-13zM9.5 1.8V5H13", "1.2");
+}
+
+function crossGlyph(doc) {
+  const svg = svgIcon(doc, "M4.2 4.2l7.6 7.6M11.8 4.2l-7.6 7.6", "1.5");
+  const path = svg?.querySelector?.("path");
+  path?.setAttribute?.("stroke-linecap", "round");
   return svg;
 }
 
@@ -180,11 +191,13 @@ export function createReadPane({
   const toolsBtn = el("button", "pxd-read__tools pxd-chrome", head);
   toolsBtn.type = "button";
   toolsBtn.textContent = "⚙";
-  toolsBtn.setAttribute("aria-label", "Tools");
+  toolsBtn.setAttribute("aria-label", "Roam tools");
   toolsBtn.setAttribute("aria-pressed", "false");
   const closeBtn = el("button", "pxd-read__close pxd-chrome", head);
   closeBtn.type = "button";
-  closeBtn.textContent = "Close";
+  const cross = crossGlyph(doc);
+  if (cross) closeBtn.append(cross);
+  else closeBtn.textContent = "✕";
   closeBtn.setAttribute("aria-label", "Close");
   const stage = el("div", "pxd-read__stage", pane);
   const live = el("div", "pxd-read__live", stage);
@@ -221,10 +234,11 @@ export function createReadPane({
   let settleNoted = false;
   let settleTimer = null;
   let settleGen = 0;
+  let fitTimer = null;
+  let fitGen = 0;
   let readingUid = "";
   let enterFrame = 0;
   let pillFrame = 0;
-  let scrollNode = null;
   let barNode = null;
   let pageInputNode = null;
   let splitMove = null;
@@ -299,9 +313,12 @@ export function createReadPane({
     liveBlock = "";
   };
   const readerField = () => {
-    const box = live.querySelector?.(".rm-pdf-container");
-    if (!box?.querySelectorAll) return null;
-    const inputs = [...box.querySelectorAll("input")];
+    const bar = live.querySelector?.(".rm-pdf-container .rm-pdf-toolbar");
+    const boxed = live.querySelector?.(".rm-pdf-container");
+    const pool = bar?.querySelectorAll ? [...bar.querySelectorAll("input")] : [];
+    const inputs = pool.length ? pool : [...(boxed?.querySelectorAll?.("input") || [])];
+    const named = inputs.find((node) => node.classList?.contains?.("bp3-input") && /^\d+$/.test(String(node.value || "").trim()));
+    if (named) return named;
     return inputs.find((node) => /^\d+$/.test(String(node.value || "").trim())) || inputs[0] || null;
   };
   const jumpPage = (page) => {
@@ -424,7 +441,8 @@ export function createReadPane({
   };
   // Same list the pane used to paint. U4's createReadDrawer replaces it when that module loads.
   const legacyDrawer = () => {
-    const filters = el("div", "pxd-read__filters", drawerMount);
+    const legacyBox = el("div", "pxd-read__legacy", drawerMount);
+    const filters = el("div", "pxd-read__filters", legacyBox);
     const color = el("select", "pxd-read__color", filters);
     color.setAttribute("aria-label", "Colour");
     const all = el("option", "", color);
@@ -441,7 +459,7 @@ export function createReadPane({
     const find = el("input", "pxd-read__find", filters);
     find.setAttribute("aria-label", "Snippet");
     find.placeholder = "Snippet";
-    const rowsEl = el("div", "pxd-read__list", drawerMount);
+    const rowsEl = el("div", "pxd-read__list", legacyBox);
     rowsEl.tabIndex = 0;
     rowsEl.setAttribute("role", "listbox");
     rowsEl.setAttribute("aria-label", "Highlights");
@@ -1057,11 +1075,29 @@ export function createReadPane({
   const paintTools = () => {
     pane.classList.toggle("pxd-read--tools", toolsOn || searchHold);
   };
+  // The "/ 9" span sits beside the page field. Roam wraps that field, so the span
+  // is often the wrap's sibling, or just another short span in the toolbar.
+  const totalCandidates = (input) => {
+    const bar = input?.closest?.(".rm-pdf-toolbar") || live.querySelector?.(".rm-pdf-container .rm-pdf-toolbar");
+    const out = [];
+    const push = (node) => {
+      if (!node || node === input) return;
+      out.push(node.textContent);
+    };
+    push(input?.nextElementSibling);
+    push(input?.previousElementSibling);
+    const parent = input?.parentElement;
+    if (parent && parent !== bar) {
+      push(parent.nextElementSibling);
+      push(parent.previousElementSibling);
+    }
+    const spans = bar?.querySelectorAll?.("span") || [];
+    for (const span of spans) push(span);
+    return out;
+  };
   const pageParts = () => {
     const input = readerField();
-    const sibling = input?.nextElementSibling;
-    const side = sibling && String(sibling.tagName || "").toUpperCase() !== "INPUT" ? sibling.textContent : "";
-    return { input, ...pageIndicator(input?.value, side) };
+    return { input, ...pageIndicator(input?.value, pageTotalText(totalCandidates(input))) };
   };
   const paintPill = () => {
     const { page, total } = pageParts();
@@ -1161,10 +1197,8 @@ export function createReadPane({
     if (found.zoomIn === button || found.zoomOut === button) userZoomed = true;
   };
   const detachReaderWatch = () => {
-    forget(scrollNode, "scroll", onReaderScroll);
     forget(barNode, "click", onBarClick);
     forget(pageInputNode, "input", paintPill);
-    scrollNode = null;
     barNode = null;
     pageInputNode = null;
     if (pillFrame) {
@@ -1173,12 +1207,6 @@ export function createReadPane({
     }
   };
   const attachReaderWatch = () => {
-    const scroller = live.querySelector?.(".PdfHighlighter");
-    if (scroller && scroller !== scrollNode) {
-      forget(scrollNode, "scroll", onReaderScroll);
-      scrollNode = scroller;
-      listen(scroller, "scroll", onReaderScroll);
-    }
     const bar = toolbarEl();
     if (bar && bar !== barNode) {
       forget(barNode, "click", onBarClick);
@@ -1202,17 +1230,50 @@ export function createReadPane({
     settleNoted = true;
     paintPill();
     attachReaderWatch();
-    const fit = pillActions(toolbarButtons()).fit;
-    const hasFit = Boolean(fit);
-    if (!fitDone && fitDecision({ userZoomed, hasFit, settled: true })) {
+    emitSnapshot("settle");
+  };
+  const cancelFit = () => {
+    if (fitTimer) { cancelLater(fitTimer); fitTimer = null; }
+    fitGen += 1;
+  };
+  // pdf.js inserts .page before it paints. Fit once the first canvas has width,
+  // and give up after 3s. A zoom in this pane session cancels it.
+  const paintedCanvas = () => {
+    const nodes = live.querySelectorAll?.(".page canvas") || [];
+    for (const node of nodes) {
+      const backing = Number(node?.width);
+      if (Number.isFinite(backing) && backing > 0) return true;
+      let laid = 0;
+      try { laid = Number(node?.getBoundingClientRect?.()?.width) || 0; } catch { laid = 0; }
+      if (laid > 0) return true;
+    }
+    return false;
+  };
+  const armFit = () => {
+    cancelFit();
+    if (fitDone || userZoomed || !openFlag) return;
+    const gen = fitGen;
+    const started = Date.now();
+    const tick = () => {
+      fitTimer = null;
+      if (gen !== fitGen || !openFlag || fitDone) return;
+      attachReaderWatch();
+      if (userZoomed) { fitDone = true; return; }
+      if (!paintedCanvas()) {
+        if (Date.now() - started < 3000) fitTimer = later(tick, 100);
+        return;
+      }
+      const fit = pillActions(toolbarButtons()).fit;
+      if (!fitDecision({ userZoomed, hasFit: Boolean(fit), settled: true })) {
+        fitDone = true;
+        return;
+      }
       fitDone = true;
       if (typeof fit.click === "function") {
         try { fit.click(); } catch { /* roam */ }
       }
-    } else if (!fitDone) {
-      fitDone = true;
-    }
-    emitSnapshot("settle");
+    };
+    tick();
   };
   const armSettle = () => {
     cancelSettle();
@@ -1278,18 +1339,40 @@ export function createReadPane({
     storage,
     key: readPaneKey(graph),
   };
-  const hideNode = (node) => {
-    if (!node) return;
-    node.hidden = true;
-    node.setAttribute?.("hidden", "");
+  // Header, then the reader, then the 32px strip. The open drawer sets its own
+  // height (a fraction of the pane) and that height has to win over the legacy
+  // 42% flex basis, which ignores an inline height.
+  const useDrawerLayout = () => {
+    pane.classList.add("pxd-read--drawer");
+    if (stage?.style) {
+      stage.style.flex = "1 1 auto";
+      stage.style.minHeight = "0";
+    }
+    if (live?.style) live.style.minHeight = "0";
+    if (drawerMount?.style) {
+      drawerMount.style.flex = "0 0 auto";
+      drawerMount.style.minHeight = "0";
+    }
   };
-  // U4 is the visible drawer. The old list stays in the DOM, hidden, so locate, note,
-  // drag and the existing row tests keep the nodes they already use.
+  const concealLegacy = () => {
+    const box = drawerMount.querySelector?.(".pxd-read__legacy");
+    if (box) {
+      box.hidden = true;
+      box.setAttribute?.("hidden", "");
+      if (box.style) box.style.display = "none";
+    }
+    useDrawerLayout();
+  };
+  // U4 is the visible drawer. The old filters and rows stay in the DOM for the
+  // row tests, inside a box that takes no height once the drawer is mounted.
   const makeDrawer = () => {
     if (typeof createDrawer === "function") {
       try {
         const made = createDrawer(drawerHooks);
-        if (made && typeof made.refresh === "function") return made;
+        if (made && typeof made.refresh === "function") {
+          useDrawerLayout();
+          return made;
+        }
       } catch { /* test stub */ }
     }
     const legacy = legacyDrawer();
@@ -1298,8 +1381,7 @@ export function createReadPane({
     try {
       const made = liveDrawer(drawerHooks);
       if (made && typeof made.refresh === "function") {
-        hideNode(drawerMount.querySelector?.(".pxd-read__filters"));
-        hideNode(drawerMount.querySelector?.(".pxd-read__list"));
+        concealLegacy();
         return made;
       }
     } catch { /* U4 */ }
@@ -1338,6 +1420,7 @@ export function createReadPane({
   listen(pane, "dragover", onDragOver);
   listen(pane, "drop", onDrop);
   listen(pane, "dragend", endPdfDrag);
+  listen(live, "scroll", onReaderScroll, true);
   listen(live, "pointermove", onPointerMove, { capture: true, passive: true });
   listen(live, "pointerleave", onLiveLeave);
   listen(live, "pointerdown", onLiveDown);
@@ -1383,6 +1466,7 @@ export function createReadPane({
   function close(opts) {
     cancelPageWait();
     cancelSettle();
+    cancelFit();
     cancelMove();
     clearFlash();
     dropEnter();
@@ -1447,7 +1531,9 @@ export function createReadPane({
       applyBox();
       if (fresh) startEnter();
       mountReader(blockUid);
+      attachReaderWatch();
       armSettle();
+      armFit();
       const wanted = highlightUidOf(next);
       if (typeof next.page === "number") jumpPageWhenReady(next.page, wanted ? () => locateHighlight(wanted) : null);
       else if (wanted) locateHighlight(wanted);

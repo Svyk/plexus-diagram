@@ -139,16 +139,49 @@
   font-weight: 600;
 }
 
-.pxd-read .pxd-read__switchbtn,
-.pxd-read .pxd-read__highlights,
-.pxd-read .pxd-read__tools {
+.pxd-read .pxd-read__switchbtn {
   flex: 0 0 auto;
+}
+
+.pxd-read .pxd-read__highlights,
+.pxd-read .pxd-read__tools,
+.pxd-read .pxd-read__close {
+  box-sizing: border-box;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
 }
 
 .pxd-read .pxd-read__highlights {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
   gap: 4px;
+  height: 28px;
+  min-width: 28px;
+  padding: 0 6px;
+}
+
+.pxd-read .pxd-read__tools,
+.pxd-read .pxd-read__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+}
+
+.pxd-read .pxd-read__close svg {
+  display: block;
+  width: 16px;
+  height: 16px;
 }
 
 .pxd-read .pxd-read__switchbtn--off,
@@ -259,6 +292,36 @@
   flex-direction: column;
   flex: 1 1 42%;
   min-height: 0;
+}
+
+/* Legacy filters and rows fill the drawer's 42% when they are the list.
+   The live drawer hides this box, so it keeps no height under the strip. */
+.pxd-read .pxd-read__legacy {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* Live drawer: the reader fills everything between the 40px header and the
+   32px strip. An open drawer sets an inline fraction of the pane, taken from
+   the reader. flex-basis auto is required so that inline height is the size. */
+.pxd-read.pxd-read--drawer .pxd-read__stage {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.pxd-read.pxd-read--drawer .pxd-read__live {
+  min-height: 0;
+}
+
+.pxd-read.pxd-read--drawer .pxd-read__drawer {
+  flex: 0 0 auto;
+  min-height: 0;
+}
+
+.pxd-read.pxd-read--drawer .pxd-read__legacy {
+  display: none;
 }
 
 .pxd-read.pxd-read--stack .pxd-read__stage,
@@ -406,7 +469,6 @@
 .pxd-read .pxd-read__head { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .pxd-read .pxd-read__title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pxd-read .pxd-read__switch { flex: 0 1 auto; max-width: 40%; }
-.pxd-read .pxd-read__close { flex: 0 0 auto; white-space: nowrap; }
 
 /* The board bar and the tool dock end where the pane starts, so neither covers the reader. */
 .pxd-root.pxd-root--read:not(.pxd-root--read-stack) .pxd-toolbar,

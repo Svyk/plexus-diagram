@@ -72,6 +72,19 @@ export function pageIndicator(inputValue, siblingText) {
   };
 }
 
+// Roam's total is a short span, "/ 9", beside the page field. The field is often
+// wrapped, so the span is not always the input's next sibling. Ignore longer
+// toolbar text that merely contains a slash.
+export function pageTotalText(candidates) {
+  const list = Array.isArray(candidates) ? candidates : [];
+  for (const value of list) {
+    const text = String(value ?? "").replace(/\u00a0/g, " ").trim();
+    if (!text || text.length > 16) continue;
+    if (/^\/\s*\d+$/.test(text)) return text;
+  }
+  return "";
+}
+
 export function pillActions(toolbarButtons, selectors = PILL_SELECTORS) {
   const buttons = Array.isArray(toolbarButtons) ? toolbarButtons : [];
   const table = selectors && typeof selectors === "object" ? selectors : PILL_SELECTORS;

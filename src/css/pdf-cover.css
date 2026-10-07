@@ -114,12 +114,20 @@ body.bt-theme-dark .pxd-root .pxd-pdf-paper,
 .pxd-root .pxd-pdf-skel__line:nth-child(6) { width: 48%; }
 
 .pxd-root .pxd-pdf-title--face {
+  box-sizing: border-box;
   max-width: 100%;
+  min-width: 0;
   padding: 0 10px;
   text-align: center;
   font-size: 13px;
   line-height: 1.3;
   color: var(--pxd-text);
+  /* Reader titles are often a file name with no spaces: break anywhere, at most four lines. */
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  overflow: hidden;
 }
 
 .pxd-root .pxd-pdf-cover--loading .pxd-pdf-title--face {

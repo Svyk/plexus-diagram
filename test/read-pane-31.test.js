@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import { readPaneKey } from "../src/model/pdf.js";
-import { fitDecision, pageIndicator, pillActions } from "../src/model/read-pane-model.js";
+import { fitDecision, pageIndicator, pageTotalText, pillActions } from "../src/model/read-pane-model.js";
 import { createReadPane } from "../src/view/read-pane.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
 
@@ -35,6 +35,15 @@ test("pageIndicator reads the page field and the / total beside it", () => {
   assert.deepEqual(pageIndicator("", ""), { page: null, total: null });
   assert.deepEqual(pageIndicator("3a", "/ 9"), { page: null, total: 9 });
   assert.deepEqual(pageIndicator("0", "/ 9"), { page: null, total: 9 });
+});
+
+test("pageTotalText keeps a short / total and skips wrapped toolbar noise", () => {
+  assert.equal(pageTotalText(["/ 9"]), "/ 9");
+  assert.equal(pageTotalText([" / 9 "]), "/ 9");
+  assert.equal(pageTotalText([null, "", "zoom", "/9"]), "/9");
+  assert.equal(pageTotalText(["page 3 / 9 and the rest of the toolbar"]), "");
+  assert.equal(pageTotalText(["3"]), "");
+  assert.equal(pageTotalText(null), "");
 });
 
 test("fit runs only after settle, and only when a fit control exists and the user has not zoomed", () => {
@@ -150,10 +159,11 @@ test("header, tools class, pill proxies and the page pill", () => {
     assert.equal(head.querySelector(".pxd-read__title").textContent, "Novel risk");
     assert.equal(head.querySelector(".pxd-read__switch").tagName, "SELECT");
     assert.equal(head.querySelector(".pxd-read__highlights").getAttribute("aria-label"), "Highlights");
-    assert.equal(head.querySelector(".pxd-read__tools").getAttribute("aria-label"), "Tools");
+    assert.equal(head.querySelector(".pxd-read__tools").getAttribute("aria-label"), "Roam tools");
     assert.equal(head.querySelector(".pxd-read__close").getAttribute("aria-label"), "Close");
+    assert.equal(head.querySelector(".pxd-read__close").textContent.includes("Close"), false);
     assert.equal(root.querySelector(".pxd-read__pages").textContent, "3 / 9");
-    assert.equal(built.hits.fit, 1);
+    assert.equal(built.hits.fit, 0);
     assert.equal(built.hits.unnamed, 0);
     assert.equal(built.hits.full, 0);
 
@@ -172,12 +182,12 @@ test("header, tools class, pill proxies and the page pill", () => {
     pillBtn("Fit width").click();
     assert.equal(built.hits.zoomOut, 1);
     assert.equal(built.hits.zoomIn, 1);
-    assert.equal(built.hits.fit, 2);
+    assert.equal(built.hits.fit, 1);
     assert.equal(built.hits.unnamed, 0);
     assert.equal(built.hits.full, 0);
     assert.equal(built.hits.highlight, 0);
     stub.flushTimers();
-    assert.equal(built.hits.fit, 2);
+    assert.equal(built.hits.fit, 1);
 
     pillBtn("Search").click();
     assert.equal(built.hits.search, 1);
@@ -224,6 +234,9 @@ test("fit is skipped once the user zoomed, and a missing fit control is left alo
     assert.equal(built.hits.zoomIn, 1);
     const leaf = doc.createElement("div");
     leaf.className = "page";
+    const canvas = doc.createElement("canvas");
+    canvas.width = 520;
+    leaf.append(canvas);
     built.box.append(leaf);
     stub.flushTimers();
     assert.equal(built.hits.fit, 0);
@@ -384,4 +397,136 @@ test("the pane source adds no document listener and the toolbar is tucked withou
   assert.match(css, /\.pxd-read\.pxd-read--tools \.rm-pdf-toolbar\s*\{[^}]*height:\s*40px/);
   assert.match(css, /\.pxd-read \.pxd-read__live\s*\{[^}]*overflow:\s*hidden/);
   assert.match(css, /\.pxd-read \.pxd-read__list\s*\{[^}]*flex:\s*1 1 42%/);
+  assert.match(css, /\.pxd-read \.pxd-read__pages\s*\{[^}]*tabular-nums/);
+  assert.match(css, /\.pxd-read\.pxd-read--drawer \.pxd-read__legacy\s*\{[^}]*display:\s*none/);
+  assert.match(css, /\.pxd-read\.pxd-read--drawer \.pxd-read__stage\s*\{[^}]*flex:\s*1 1 auto/);
+  assert.match(css, /\.pxd-read\.pxd-read--drawer \.pxd-read__drawer\s*\{[^}]*flex:\s*0 0 auto/);
+  assert.match(css, /\.pxd-read \.pxd-read__tools,\s*\.pxd-read \.pxd-read__close\s*\{[^}]*width:\s*28px;[^}]*height:\s*28px/);
+  assert.match(css, /\.pxd-read \.pxd-read__highlights\s*\{[^}]*height:\s*28px/);
+  assert.match(css, /\.pxd-read \.pxd-read__head\s*\{[^}]*height:\s*var\(--pxd-read-head-h,\s*40px\)/);
 });
+
+test("legacy filters hide, the reader fills to the strip, the pill reads / total, and fit waits for a canvas", async () => {
+  await import("../src/view/read-drawer.js");
+  const stub = createDomStub();
+  const restore = stub.install();
+  try {
+    const doc = stub.document;
+    const root = doc.createElement("div");
+    root.className = "pxd-root";
+    doc.body.append(root);
+    const hits = { fit: 0, zoomIn: 0 };
+    let built = null;
+    const pane = createReadPane({
+      doc,
+      root,
+      host: {
+        renderBlock(node) {
+          const box = doc.createElement("div");
+          box.className = "rm-pdf-container";
+          const bar = doc.createElement("div");
+          bar.className = "rm-pdf-toolbar";
+          const zoomIn = iconButton(doc, "bp3-icon bp3-icon-zoom-in");
+          const fit = iconButton(doc, "bp3-icon bp3-icon-zoom-to-fit");
+          zoomIn.click = () => { hits.zoomIn += 1; };
+          fit.click = () => { hits.fit += 1; };
+          const wrap = doc.createElement("div");
+          wrap.className = "bp3-input-group";
+          const input = doc.createElement("input");
+          input.className = "bp3-input";
+          input.value = "3";
+          wrap.append(input);
+          const total = doc.createElement("span");
+          total.textContent = "/ 9";
+          bar.append(zoomIn, fit, wrap, total);
+          const scroller = doc.createElement("div");
+          scroller.className = "PdfHighlighter";
+          const page = doc.createElement("div");
+          page.className = "page";
+          page.setAttribute("data-page-number", "3");
+          scroller.append(page);
+          box.append(bar, scroller);
+          built = { box, input, page, scroller };
+          node.append(box);
+        },
+        pdfHighlightTree() {
+          return Array.from({ length: 12 }, (_, i) => ({
+            uid: `h${i}`,
+            string: `line ${i} #h/yellow`,
+            props: { ":pdf-highlight": { position: { boundingRect: { pageNumber: 1 } } } },
+            children: [],
+          }));
+        },
+      },
+    });
+    const aside = pane.element();
+    assert.equal(aside.classList.contains("pxd-read--drawer"), true);
+    const legacy = aside.querySelector(".pxd-read__legacy");
+    assert.ok(legacy);
+    assert.equal(legacy.style.display, "none");
+    assert.equal(legacy.querySelector(".pxd-read__color").textContent.includes("All colours"), true);
+    assert.equal(legacy.querySelector(".pxd-read__pagefilt").placeholder, "Page");
+    assert.equal(legacy.querySelector(".pxd-read__find").placeholder, "Snippet");
+    assert.ok(legacy.querySelector(".pxd-read__list"));
+    const switcher = aside.querySelector("select.pxd-read__switch");
+    assert.ok(switcher);
+    assert.equal(switcher.closest(".pxd-read__legacy"), null);
+    assert.notEqual(switcher.style.display, "none");
+    const stage = aside.querySelector(".pxd-read__stage");
+    const mount = aside.querySelector(".pxd-read__drawer");
+    assert.equal(stage.style.flex, "1 1 auto");
+    assert.equal(mount.style.flex, "0 0 auto");
+    assert.equal(mount.style.height || "", "");
+    assert.ok(mount.querySelector(".pxd-read-drawer__strip"));
+
+    const head = aside.querySelector(".pxd-read__head");
+    const close = head.querySelector(".pxd-read__close");
+    const tools = head.querySelector(".pxd-read__tools");
+    const highlights = head.querySelector(".pxd-read__highlights");
+    assert.ok(close.querySelector("svg"));
+    assert.equal(close.textContent.includes("Close"), false);
+    assert.equal(close.getAttribute("aria-label"), "Close");
+    assert.equal(tools.getAttribute("aria-label"), "Roam tools");
+    assert.equal(tools.textContent, "⚙");
+    assert.equal(highlights.querySelector(".pxd-read__hicon").textContent, "☰");
+    assert.equal(highlights.getAttribute("aria-label"), "Highlights");
+
+    pane.open({ blockUid: "blk", cardUid: "card", title: "Novel risk", pageUid: "page" });
+    aside._rect = { left: 0, top: 0, width: 617, height: 656, right: 617, bottom: 656, x: 0, y: 0 };
+    assert.equal(highlights.querySelector(".pxd-read__count").textContent, "12");
+    assert.equal(root.querySelector(".pxd-read__pages").textContent, "3 / 9");
+    assert.equal(inputNextIsSpan(built.input), false);
+    assert.equal(hits.fit, 0);
+
+    built.input.value = "4";
+    stub.dispatch(built.scroller, "scroll");
+    assert.equal(root.querySelector(".pxd-read__pages").textContent, "3 / 9");
+    stub.flushFrames();
+    assert.equal(root.querySelector(".pxd-read__pages").textContent, "4 / 9");
+
+    const canvas = doc.createElement("canvas");
+    built.page.append(canvas);
+    stub.flushTimers();
+    assert.equal(hits.fit, 0);
+    canvas.width = 520;
+    stub.flushTimers();
+    assert.equal(hits.fit, 1);
+    stub.flushTimers();
+    assert.equal(hits.fit, 1);
+    assert.equal(hits.zoomIn, 0);
+
+    highlights.click();
+    assert.equal(mount.style.height, "262px");
+    assert.equal(highlights.getAttribute("aria-pressed"), "true");
+    highlights.click();
+    assert.equal(mount.style.height, "");
+    pane.dispose();
+  } finally {
+    restore();
+  }
+});
+
+function inputNextIsSpan(input) {
+  const next = input?.nextElementSibling;
+  return Boolean(next && String(next.tagName).toUpperCase() === "SPAN");
+}

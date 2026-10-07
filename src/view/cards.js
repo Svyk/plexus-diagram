@@ -254,7 +254,7 @@ function pageCaretRow(node) {
   return el.closest?.("[data-pxd-row]") || null;
 }
 
-export function pageCaretAtPoint(doc, x, y) {
+function caretHit(doc, x, y) {
   const px = Number(x);
   const py = Number(y);
   if (!doc || !Number.isFinite(px) || !Number.isFinite(py)) return null;
@@ -273,11 +273,35 @@ export function pageCaretAtPoint(doc, x, y) {
       }
     } catch { /* range */ }
   }
-  if (!hit?.node) return null;
+  return hit?.node ? hit : null;
+}
+
+export function pageCaretAtPoint(doc, x, y) {
+  const hit = caretHit(doc, x, y);
+  if (!hit) return null;
   const rowEl = pageCaretRow(hit.node);
   const row = rowEl?.getAttribute?.("data-pxd-row") || "";
   if (!row) return null;
   return { row, offset: pageCaretOffset(rowEl, hit.node, hit.offset) };
+}
+
+// G1. A note or block card has one string, not a page row. The checkbox, grips and
+// ports are not characters. task is true when the rendered title already dropped {{[[TODO]]}}.
+const NOTE_CARET_SKIP = ".pxd-item__editor, .pxd-task-check, .pxd-grip, .pxd-port, .pxd-row__fold, .pxd-row__more";
+
+export function noteCaretAtPoint(doc, x, y) {
+  const hit = caretHit(doc, x, y);
+  if (!hit) return null;
+  const el = hit.node.nodeType === 1 ? hit.node : hit.node.parentElement;
+  if (!el || el.closest?.(NOTE_CARET_SKIP)) return null;
+  const root = el.closest?.(".pxd-item__string") || el.closest?.(".pxd-rs");
+  if (!root || root.closest?.(NOTE_CARET_SKIP)) return null;
+  const card = root.closest?.("[data-uid]");
+  return {
+    uid: card?.getAttribute?.("data-uid") || "",
+    offset: pageCaretOffset(root, hit.node, hit.offset),
+    task: Boolean(root.classList?.contains("pxd-item__tasktext")),
+  };
 }
 
 // Window id is the segment of block-input-<window>-body-... on an input inside this card.
@@ -297,10 +321,24 @@ export function pageEditWindowId(editor) {
   return marked ? String(marked) : "";
 }
 
+// The body's used font is the rest size (13px, or 14px on a block-look card, or a custom size).
+// Reading the textarea would compound: its font is already the screen size.
+function restFontPx(node) {
+  if (!node) return 14;
+  try {
+    const view = node.ownerDocument?.defaultView || globalThis;
+    const cs = view?.getComputedStyle?.(node);
+    const raw = cs?.fontSize || cs?.getPropertyValue?.("font-size") || "";
+    const n = parseFloat(raw);
+    if (n > 0 && Number.isFinite(n)) return n;
+  } catch { /* computed style */ }
+  return 14;
+}
+
 // Page edit stays in world px, the same size as the rows it replaces. Note editors keep the counter-scale.
 function scaleCardEditor(editor, zoom) {
   if (editor?.classList?.contains("pxd-page-edit")) return false;
-  return applyEditorCounterScale(editor, zoom);
+  return applyEditorCounterScale(editor, zoom, restFontPx(editor?.parentElement), true);
 }
 
 function nextFrame() {
@@ -1348,8 +1386,10 @@ export function createItemRenderer({
         if (id) openEmbed(id);
         return;
       }
+      // A click focuses the cover after select. With a side pane, that must not open the reader.
+      // Without a pane, the cover focus still mounts the inline reader (the only reader there is).
       if (target?.closest?.(".pxd-pdf-cover") && rec.el.contains?.(target)) {
-        openEmbed(rec.uid);
+        if (typeof onReadPane !== "function") openEmbed(rec.uid);
         return;
       }
       if (target === rec.el) {
@@ -1679,8 +1719,8 @@ export function createItemRenderer({
       rec.el.style.width = `${PDF_READER_W}px`;
       rec.el.style.height = `${PDF_READER_H}px`;
     }
-    // Page edit pins height !important so the shared editing rule cannot grow the card. A resize rewrites that pin.
-    if (editing?.uid === rec.uid && rec.el.classList?.contains("pxd-item--page") && rec.el.style.height) {
+    // Editing pins height !important so height:auto cannot grow the card. A resize rewrites that pin.
+    if (editing?.uid === rec.uid && rec.el.classList?.contains("pxd-item--editing") && rec.el.style?.height && rec.el.style.setProperty) {
       rec.el.style.setProperty("height", rec.el.style.height, "important");
     }
     if (rec.shapeName) syncShape(rec, { type: "text", shape: rec.shapeName, w: rect.w, h: rect.h }, rect);
@@ -3010,6 +3050,12 @@ export function createItemRenderer({
   };
   openEmbed = (uid, opts = null) => {
     if (!uid || openingEmbed) return;
+    // Selecting or focusing a PDF, when the side pane exists, does not open it and does not close
+    // the reader that is already up. The pill, double-click, Enter, menu, and chips are not implicit.
+    if (opts?.implicit === true && typeof onReadPane === "function") {
+      const picked = paneItem(uid) || lastBoard?.items.get(uid);
+      if (picked?.kind === "pdf") return;
+    }
     // One live reader per board: opening the pane puts an inline card back to its cover. Selecting or
     // focusing the card that is reading inline (implicit) opens nothing else; an explicit open (pill,
     // double-click, highlight, menu) still goes to the pane.
@@ -4444,8 +4490,8 @@ export function createItemRenderer({
   const releaseEditLock = (rec) => {
     if (!rec?.el) return;
     rec.el.style.minHeight = "";
-    // Drop the page-edit !important pin. The value stays; only the priority goes back to the normal inline height.
-    if (rec.el.classList?.contains("pxd-item--page") && rec.el.style?.height) rec.el.style.height = rec.el.style.height;
+    // Drop the edit !important pin. The value stays; only the priority goes back to the normal inline height.
+    if (rec.el.style?.height) rec.el.style.height = rec.el.style.height;
     if (rec.body?.style) rec.body.style.minHeight = "";
     rec.el.classList.remove("pxd-item--xfade");
   };
@@ -4572,6 +4618,23 @@ export function createItemRenderer({
     // P32-5: with the reading pane, a PDF card never edits in place. The editor would mount Roam's reader
     // inside the card (the huge page on select). Open, Enter and the Open pill go to the pane instead.
     if (item.kind === "pdf" && onReadPane) return false;
+    // window.event lives only for this turn. Read the dblclick before the first await, while the rest
+    // string is still in the card. A keyboard Enter has no letter to land on, so it keeps Roam's caret.
+    const click = doc.defaultView?.event;
+    if (item.kind !== "page" && caretOff == null) {
+      const type = String(click?.type || "");
+      const mouse = type === "dblclick" || type === "click" || type === "pointerdown" || type === "pointerup" || type === "mousedown" || type === "mouseup";
+      const x = Number(click?.clientX);
+      const y = Number(click?.clientY);
+      const target = click?.target;
+      if (mouse && Number.isFinite(x) && Number.isFinite(y) && (!target || rec.el.contains?.(target))) {
+        const hit = noteCaretAtPoint(doc, x, y);
+        if (hit && (!hit.uid || hit.uid === uid)) {
+          const mark = hit.task ? (TASK_MARK.exec(String(item.string || ""))?.[0].length || 0) : 0;
+          caretOff = hit.offset + mark;
+        }
+      }
+    }
     if (editing) await exitEdit();
     if (!host?.renderBlock) { host?.openBlock?.(uid); return false; }
     const targetUid = item.target.kind === "block" ? item.target.uid : item.uid;
@@ -4619,6 +4682,8 @@ export function createItemRenderer({
     if (pageEdit) {
       const h = rec.el.style?.height || (Number(rec.rect?.h) > 0 ? `${Math.round(Number(rec.rect.h))}px` : "");
       if (h && rec.el.style?.setProperty) rec.el.style.setProperty("height", h, "important");
+    } else if (rec.el.style?.height && rec.el.style.setProperty) {
+      rec.el.style.setProperty("height", rec.el.style.height, "important");
     }
     rec.el.classList.add("pxd-item--editing");
     renderBadges(rec);
@@ -4690,21 +4755,36 @@ export function createItemRenderer({
       }
       if (!input) input = editor.querySelector?.(".rm-block__input") || editor.querySelector?.("textarea");
     }
+    const placeNoteCaret = () => {
+      if (pageEdit || caretOff == null) return;
+      const nodes = [input, editor.querySelector?.("textarea"), editor.querySelector?.(".rm-block__input")];
+      for (const node of nodes) {
+        if (typeof node?.setSelectionRange !== "function") continue;
+        try { node.setSelectionRange(caretOff, caretOff); } catch { /* range */ }
+        return;
+      }
+    };
     scaleCardEditor(editor, zoomCache);
     if (input) focusRoamInput(input);
     if (input && pageEdit && caretOff != null && typeof input.setSelectionRange === "function") {
       try { input.setSelectionRange(caretOff, caretOff); } catch { /* range */ }
     }
+    placeNoteCaret();
     if (pageEdit && placedScroll != null) editor.scrollTop = placedScroll;
     // A page row is 20px. Fitting the textarea to scrollHeight is what made one rest line wrap and shove the rows below.
     if (!pageEdit) fitEditorText(editor);
     // Roam writes an explicit textarea height when a note editor focuses. Apply the counter-scale again
     // after that, and once more on the next frame, so the screen font is not clipped. Page edit skips it.
+    // The synthetic click lands at the textarea's left edge, so the range is set again after it.
     scaleCardEditor(editor, zoomCache);
+    placeNoteCaret();
     frameLater(() => {
       if (editing?.uid !== uid) return;
       scaleCardEditor(editor, zoomCache);
-      if (!pageEdit) fitEditorText(editor);
+      if (!pageEdit) {
+        fitEditorText(editor);
+        placeNoteCaret();
+      }
       if (pageEdit && placedScroll != null) editor.scrollTop = placedScroll;
     });
     if (editing?.uid === uid && editor.contains?.(doc.activeElement)) editing.ready = true;

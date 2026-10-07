@@ -1,0 +1,130 @@
+/* G3. Three optional Heptabase looks, off unless the root carries the class.
+   Flat grey drops the grid. Pastel washes a section with its colour.
+   Tint moves a highlight's colour onto the card and hides the bar.
+   Dark keeps a coloured border and a fill of at most 6%. Host markers decide dark, not the OS scheme. */
+
+.pxd-root.pxd-look--pastel,
+.pxd-root.pxd-look--tint {
+  --pxd-bg: var(--pxd-surface);
+}
+
+.pxd-root.pxd-look--flat {
+  --pxd-bg: #f2f2f0;
+  background-color: #f2f2f0;
+}
+
+.pxd-root.pxd-look--flat .pxd-grid {
+  background-image: none;
+}
+
+.pxd-root.pxd-look--flat .pxd-grid::before {
+  content: none;
+  background-image: none;
+}
+
+.pxd-root.pxd-look--pastel .pxd-section {
+  background: color-mix(in srgb, var(--pxd-fill) 14%, var(--pxd-bg));
+}
+
+.pxd-root.pxd-look--tint .pxd-highlight-bar {
+  width: 0;
+  background: none;
+}
+
+.pxd-root.pxd-look--tint .pxd-item.pxd-item--highlight:has(.pxd-highlight-bar[data-color="gray"]) {
+  --pxd-line: var(--pxd-gray-line);
+  --pxd-fill: var(--pxd-gray-fill);
+}
+
+.pxd-root.pxd-look--tint .pxd-item.pxd-item--highlight:has(.pxd-highlight-bar[data-color="red"]) {
+  --pxd-line: var(--pxd-red-line);
+  --pxd-fill: var(--pxd-red-fill);
+}
+
+.pxd-root.pxd-look--tint .pxd-item.pxd-item--highlight:has(.pxd-highlight-bar[data-color="orange"]) {
+  --pxd-line: var(--pxd-orange-line);
+  --pxd-fill: var(--pxd-orange-fill);
+}
+
+.pxd-root.pxd-look--tint .pxd-item.pxd-item--highlight:has(.pxd-highlight-bar[data-color="yellow"]) {
+  --pxd-line: var(--pxd-yellow-line);
+  --pxd-fill: var(--pxd-yellow-fill);
+}
+
+.pxd-root.pxd-look--tint .pxd-item.pxd-item--highlight:has(.pxd-highlight-bar[data-color="green"]) {
+  --pxd-line: var(--pxd-green-line);
+  --pxd-fill: var(--pxd-green-fill);
+}
+
+.pxd-root.pxd-look--tint .pxd-item.pxd-item--highlight:has(.pxd-highlight-bar[data-color="teal"]) {
+  --pxd-line: var(--pxd-teal-line);
+  --pxd-fill: var(--pxd-teal-fill);
+}
+
+.pxd-root.pxd-look--tint .pxd-item.pxd-item--highlight:has(.pxd-highlight-bar[data-color="blue"]) {
+  --pxd-line: var(--pxd-blue-line);
+  --pxd-fill: var(--pxd-blue-fill);
+}
+
+.pxd-root.pxd-look--tint .pxd-item.pxd-item--highlight:has(.pxd-highlight-bar[data-color="indigo"]) {
+  --pxd-line: var(--pxd-indigo-line);
+  --pxd-fill: var(--pxd-indigo-fill);
+}
+
+.pxd-root.pxd-look--tint .pxd-item.pxd-item--highlight:has(.pxd-highlight-bar[data-color="purple"]) {
+  --pxd-line: var(--pxd-purple-line);
+  --pxd-fill: var(--pxd-purple-fill);
+}
+
+.pxd-root.pxd-look--tint .pxd-item.pxd-item--highlight:has(.pxd-highlight-bar[data-color="pink"]) {
+  --pxd-line: var(--pxd-pink-line);
+  --pxd-fill: var(--pxd-pink-fill);
+}
+
+.pxd-root.pxd-look--tint .pxd-item.pxd-item--highlight,
+.pxd-root.pxd-look--tint.pxd-lod-map .pxd-item.pxd-item--highlight:not(.pxd-item--editing),
+.pxd-root.pxd-look--tint.pxd-lod-overview .pxd-item.pxd-item--highlight {
+  background-color: var(--pxd-fill, transparent);
+  background-image: none;
+  border-color: var(--pxd-line, var(--pxd-border));
+}
+
+/* Dark: the current surface, no grid. Pastel and tint are a coloured border plus a 6% fill. */
+
+.bp3-dark .pxd-root.pxd-look--flat,
+body.bt-theme-dark .pxd-root.pxd-look--flat,
+.rm-dark-theme .pxd-root.pxd-look--flat,
+body.roam-body.dark .pxd-root.pxd-look--flat,
+.pxd-root.pxd-root--dark.pxd-look--flat {
+  --pxd-bg: var(--pxd-surface);
+  background-color: var(--pxd-surface);
+}
+
+.bp3-dark .pxd-root.pxd-look--pastel .pxd-section,
+body.bt-theme-dark .pxd-root.pxd-look--pastel .pxd-section,
+.rm-dark-theme .pxd-root.pxd-look--pastel .pxd-section,
+body.roam-body.dark .pxd-root.pxd-look--pastel .pxd-section,
+.pxd-root.pxd-root--dark.pxd-look--pastel .pxd-section {
+  background: color-mix(in srgb, var(--pxd-line, var(--pxd-border-strong)) 6%, transparent);
+  border-color: var(--pxd-line, var(--pxd-border-strong));
+}
+
+.bp3-dark .pxd-root.pxd-look--tint .pxd-item.pxd-item--highlight,
+.bp3-dark .pxd-root.pxd-look--tint.pxd-lod-map .pxd-item.pxd-item--highlight,
+.bp3-dark .pxd-root.pxd-look--tint.pxd-lod-overview .pxd-item.pxd-item--highlight,
+body.bt-theme-dark .pxd-root.pxd-look--tint .pxd-item.pxd-item--highlight,
+body.bt-theme-dark .pxd-root.pxd-look--tint.pxd-lod-map .pxd-item.pxd-item--highlight,
+body.bt-theme-dark .pxd-root.pxd-look--tint.pxd-lod-overview .pxd-item.pxd-item--highlight,
+.rm-dark-theme .pxd-root.pxd-look--tint .pxd-item.pxd-item--highlight,
+.rm-dark-theme .pxd-root.pxd-look--tint.pxd-lod-map .pxd-item.pxd-item--highlight,
+.rm-dark-theme .pxd-root.pxd-look--tint.pxd-lod-overview .pxd-item.pxd-item--highlight,
+body.roam-body.dark .pxd-root.pxd-look--tint .pxd-item.pxd-item--highlight,
+body.roam-body.dark .pxd-root.pxd-look--tint.pxd-lod-map .pxd-item.pxd-item--highlight,
+body.roam-body.dark .pxd-root.pxd-look--tint.pxd-lod-overview .pxd-item.pxd-item--highlight,
+.pxd-root.pxd-root--dark.pxd-look--tint .pxd-item.pxd-item--highlight,
+.pxd-root.pxd-root--dark.pxd-look--tint.pxd-lod-map .pxd-item.pxd-item--highlight,
+.pxd-root.pxd-root--dark.pxd-look--tint.pxd-lod-overview .pxd-item.pxd-item--highlight {
+  background-color: color-mix(in srgb, var(--pxd-line, var(--pxd-border-strong)) 6%, transparent);
+  background-image: none;
+  border-color: var(--pxd-line, var(--pxd-border-strong));
+}

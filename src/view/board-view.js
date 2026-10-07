@@ -71,6 +71,7 @@ import { createItemRenderer, dropEmbedPoster, isTextEntryTarget, pageBodyWantsWh
 import { createReadPane, highlightDropPlan, originBeside, placeDecision, readerJumpPlan } from "./read-pane.js";
 import { createPdfWarm } from "./pdf-warm.js";
 import { createFirstPageRenderer, detectPdfjs } from "./pdf-first-page.js";
+import { PDF_DARK_CLASSES, createPdfFlip, pdfDarkClass } from "./pdf-flip.js";
 import { openViewDialog } from "./view-dialog.js";
 import { viewMapModel } from "./minimap-svg.js";
 import { openRegionDeleteDialog } from "./region-delete-dialog.js";
@@ -936,10 +937,16 @@ function buildBoardView(onFail, {
   // follows the OS, and the theme extensions toggle their marker classes on <html>/<body>).
   let repaintItemStyles = () => {};
   let themeKey = null;
+  // G2. One dark-mode class for PDF pages. The filter itself lives in CSS and only runs while the board is dark.
+  const applyPdfDark = () => {
+    const want = pdfDarkClass(readSetting("pdf-dark"));
+    for (const name of PDF_DARK_CLASSES) root.classList.toggle(name, name === want);
+  };
   const applyTheme = () => {
     const dark = isDarkHost(mountEl, doc);
     root.classList.toggle("pxd-root--dark", dark);
     root.classList.toggle("pxd-root--light", !dark && isLightHost(mountEl, doc, globalThis.window));
+    applyPdfDark();
     const hl = syncBoardHighlighter(doc, root);
     // Cards repaint only when the dark flag or the highlighter flips, not on every html/body class change.
     const key = `${dark}|${hl}`;
@@ -1393,6 +1400,8 @@ function buildBoardView(onFail, {
   // Cover bytes stay local. The store and the warm mount exist only after a card asks, or a reader settles.
   let coverStore = null;
   let pdfWarm = null;
+  let pdfFlip = null;
+  let pdfHoverUid = "";
   let coverPaintAt = 0;
   let coverWarmWait = null;
   let readingCard = "";
@@ -1410,6 +1419,7 @@ function buildBoardView(onFail, {
   // ------------------------------------------------------------ layers
   // A throw after the renderer exists must dispose it. Otherwise a retrying reconcile leaks a listener set per tick.
   onFail.push(
+    () => { try { pdfFlip?.destroy?.(); pdfFlip = null; } catch { /* flip */ } },
     () => { try { pdfWarm?.cancelAll?.(); } catch { /* warm */ } },
     () => readPane?.dispose?.(),
     () => itemsR?.dispose?.(),
@@ -1810,7 +1820,7 @@ function buildBoardView(onFail, {
       plan = warmPlan({
         cards,
         visible,
-        hasLive: readerIsLive(),
+        hasLive: readerIsLive() || Boolean(pdfFlip?.live?.()),
         hasPane: readPane?.isOpen?.() === true,
         sinceOpenMs: since,
         done: pdfWarm ? pdfWarm.spent() : 0,
@@ -1824,7 +1834,7 @@ function buildBoardView(onFail, {
     if (!card) return;
     // Idle first: the warm waits for a quiet frame (at most 2 s), and a gesture that started meanwhile wins.
     const start = () => {
-      if (disposed || suspended || gesturing || readPane?.isOpen?.() === true) return;
+      if (disposed || suspended || gesturing || readPane?.isOpen?.() === true || pdfFlip?.live?.()) return;
       let job = null;
       try { job = ensurePdfWarm().request(card); } catch { job = null; }
       const next = () => {
@@ -2469,6 +2479,7 @@ function buildBoardView(onFail, {
       updateBackToContent();
       refreshBadges();
       refreshThumbnails();
+      pdfFlip?.settle?.();
     }, RESUME_MS);
   };
   const refreshThumbnails = () => {
@@ -3019,8 +3030,15 @@ function buildBoardView(onFail, {
     bgOverride = override;
     chrome.toolbar.setBackground({ pattern, tone: ownHex || tone, override });
   };
+  // G3. Root classes for the three optional looks. Defaults leave today's canvas, sections, and bar.
+  const applyLooks = () => {
+    root.classList.toggle("pxd-look--flat", setting("look-canvas", "dots") === "flat-grey");
+    root.classList.toggle("pxd-look--pastel", setting("look-sections", "none") === "pastel");
+    root.classList.toggle("pxd-look--tint", setting("look-highlights", "bar") === "tint");
+  };
   const applyMotion = () => {
     applyMotionClasses(root, currentMotion());
+    applyLooks();
   };
 
   // ------------------------------------------------------------ focus mode
@@ -3710,7 +3728,10 @@ function buildBoardView(onFail, {
       case "copy-outline": void view.copyOutline(); break;
       case "open-outline": openBoardOutline(); break;
       case "edit": if (item) { if (item.kind === "board") itemsR.renameBoard(item.uid); else void enterEdit(item.uid); } break;
-      case "open": openItem(item); break;
+      case "open":
+        if (item?.kind === "pdf") { try { itemsR.openPdf?.(item.uid); } catch { /* host */ } break; }
+        openItem(item);
+        break;
       case "open-own-page": openOwnPage(item); break;
       case "open-sidebar": openItemInSidebar(item); break;
       case "read-inline": {
@@ -4015,6 +4036,45 @@ function buildBoardView(onFail, {
       return typeof text === "string" ? text : "";
     }
     return typeof item?.string === "string" ? item.string : "";
+  };
+  // G2. The flipper is created the first time a PDF is selected or hovered, never on a note select.
+  const pdfUrlOf = (uid) => {
+    const item = board()?.items.get(uid);
+    if (!item || item.kind !== "pdf" || item.collapsed) return "";
+    return pdfMacroUrl(pdfSourceOfItem(item));
+  };
+  const ensurePdfFlip = () => {
+    if (pdfFlip) return pdfFlip;
+    pdfFlip = createPdfFlip({
+      doc,
+      win,
+      timers,
+      urlOf: pdfUrlOf,
+      hostOf: (uid) => itemsR.shellOf?.(uid)?.querySelector?.(".pxd-pdf-paper") || null,
+      sizeOf: (uid) => {
+        const rect = rects().get(uid);
+        if (!rect) return null;
+        const z = Number(vp.zoom) || 1;
+        return { cssW: rect.w * z, cssH: rect.h * z, dpr: Number(win?.devicePixelRatio) || 1 };
+      },
+      onLive: (on) => {
+        if (!on) return;
+        try { pdfWarm?.cancelAll?.(); } catch { /* warm */ }
+      },
+    });
+    return pdfFlip;
+  };
+  const syncPdfFlip = () => {
+    const items = selection.items;
+    const primary = items.length ? items[items.length - 1] : "";
+    const primaryItem = primary ? board()?.items.get(primary) : null;
+    const hoverItem = pdfHoverUid ? board()?.items.get(pdfHoverUid) : null;
+    if (primaryItem?.kind !== "pdf" && hoverItem?.kind !== "pdf" && !pdfFlip) return;
+    ensurePdfFlip().assign({
+      selected: primaryItem?.kind === "pdf" && !primaryItem.collapsed ? primary : "",
+      hovered: hoverItem?.kind === "pdf" && !hoverItem.collapsed ? pdfHoverUid : "",
+      lod: tier,
+    });
   };
   const pdfChipsFor = (item) => chipsForPdf(item, board()?.items, {
     source: pdfSourceOfItem,
@@ -5026,7 +5086,11 @@ function buildBoardView(onFail, {
       root.setAttribute("data-tool", tool);
       chrome.toolbar.setTool(tool, locked);
     },
-    onHover: (uid) => itemsR.setHover(uid),
+    onHover: (uid) => {
+      itemsR.setHover(uid);
+      pdfHoverUid = typeof uid === "string" ? uid : "";
+      syncPdfFlip();
+    },
     setGesturing: (on, info) => {
       gesturing = Boolean(on);
       root.classList.toggle("pxd-root--gesturing", gesturing);
@@ -6069,6 +6133,23 @@ function buildBoardView(onFail, {
       }
       return;
     }
+    // G2. Enter opens the pane. Plain arrows flip the selected PDF. Shift-arrows still nudge.
+    // Space stays "hold to pan". A key inside the reader, or a flipper that is not live, falls through.
+    if (!inputFocused && !event.shiftKey && !event.altKey && !event.metaKey && !event.ctrlKey
+      && !event.target?.closest?.(".pxd-read, .rm-pdf-container, .pxd-pdf-reader")) {
+      const only = selection.items.length === 1 ? board()?.items.get(selection.items[0]) : null;
+      if (only?.kind === "pdf" && event.key === "Enter") {
+        event.preventDefault();
+        event.stopPropagation();
+        try { itemsR.openPdf?.(only.uid); } catch { /* host */ }
+        return;
+      }
+      if (only?.kind === "pdf" && pdfFlip?.consumeKey?.(event.key)) {
+        event.preventDefault();
+        event.stopPropagation();
+        return;
+      }
+    }
     // POL-4. A trail stop and the region layer handle their own arrows and Enter.
     const owned = event.target?.closest?.(".pxd-trail__stop, .pxd-region-layer");
     if (owned && root.contains(owned)) return;
@@ -6283,7 +6364,7 @@ function buildBoardView(onFail, {
       paintInvZoom();
       // The tier flips (classes + font variables, once) the moment the zoom crosses the threshold, mid-gesture too.
       const nextTier = lodTier(vp.zoom, tier, { threshold: mapThreshold() });
-      if (nextTier !== tier) { tier = nextTier; paintTier(); chrome.toolbar.scheduleDock?.(); }
+      if (nextTier !== tier) { tier = nextTier; paintTier(); pdfFlip?.setLod?.(tier); chrome.toolbar.scheduleDock?.(); }
       if (!gesturing) {
         const g = gridBackground(vp, bgPattern);
         if (g) {
@@ -6305,6 +6386,7 @@ function buildBoardView(onFail, {
     }
     if (dirty.selection || itemsChanged) {
       itemsR.setSelection(selection.items);
+      syncPdfFlip();
       edgesR.setSelection({ edge: selection.edge, link: selection.link });
       if (suggestMode !== "off" && selection.items.join("|") !== suggestSelKey) refreshSuggest();
       if (!gesturing && !itemsR.isEditing()) showCtx(); else chrome.ctx.hide();
@@ -6794,6 +6876,7 @@ function buildBoardView(onFail, {
       const coverBefore = readSetting("pdf-cover");
       const warmBefore = coverWarmOn();
       settingsRef = next;
+      applyPdfDark();
       if (readSetting("pdf-cover") !== coverBefore) {
         forgetCovers();
         itemsR.repaintStyles();

@@ -337,6 +337,106 @@ body.bt-theme-dark .pxd-root .pxd-pdf-pill,
   display: none;
 }
 
+/* G2. The flipper canvas sits on the cover. The page bar is chrome, so a drag starts on the page, not the bar. */
+.pxd-root .pxd-pdf-flip {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.pxd-root .pxd-pdf-flip canvas {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.pxd-root .pxd-pdf-bar {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 6px;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 22px;
+  margin: 0;
+  padding: 0 8px;
+  border: 1px solid var(--pxd-border, #d0d7de);
+  border-radius: 999px;
+  background: var(--pxd-chrome-bg, #fff);
+  color: var(--pxd-text, #111418);
+  font-size: 11px;
+  line-height: 20px;
+  font-variant-numeric: tabular-nums;
+  pointer-events: auto;
+}
+
+.pxd-root .pxd-pdf-bar__step {
+  margin: 0;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: 20px;
+  cursor: pointer;
+}
+
+.pxd-root .pxd-pdf-bar__pages {
+  min-width: 3.5em;
+  text-align: center;
+}
+
+.pxd-root.pxd-lod-map .pxd-pdf-flip,
+.pxd-root.pxd-lod-overview .pxd-pdf-flip,
+.pxd-root.pxd-lod-map .pxd-pdf-bar,
+.pxd-root.pxd-lod-overview .pxd-pdf-bar {
+  display: none;
+}
+
+/* G2 pdf-dark. The paper token stays white. Dim and invert filter the painted page only. */
+.pxd-root.pxd-root--dark.pxd-pdf-dark--off .pxd-pdf-flip canvas,
+.bp3-dark .pxd-root.pxd-pdf-dark--off .pxd-pdf-flip canvas,
+body.bt-theme-dark .pxd-root.pxd-pdf-dark--off .pxd-pdf-flip canvas,
+.pxd-root.pxd-root--dark.pxd-pdf-dark--off .pxd-pdf-img,
+.bp3-dark .pxd-root.pxd-pdf-dark--off .pxd-pdf-img,
+body.bt-theme-dark .pxd-root.pxd-pdf-dark--off .pxd-pdf-img {
+  filter: none;
+}
+
+.pxd-root.pxd-root--dark.pxd-pdf-dark--dim .pxd-pdf-flip canvas,
+.bp3-dark .pxd-root.pxd-pdf-dark--dim .pxd-pdf-flip canvas,
+body.bt-theme-dark .pxd-root.pxd-pdf-dark--dim .pxd-pdf-flip canvas,
+.pxd-root.pxd-root--dark.pxd-pdf-dark--dim .pxd-pdf-img,
+.bp3-dark .pxd-root.pxd-pdf-dark--dim .pxd-pdf-img,
+body.bt-theme-dark .pxd-root.pxd-pdf-dark--dim .pxd-pdf-img {
+  filter: brightness(.82) contrast(1.05);
+}
+
+.pxd-root.pxd-root--dark.pxd-pdf-dark--invert .pxd-pdf-flip canvas,
+.bp3-dark .pxd-root.pxd-pdf-dark--invert .pxd-pdf-flip canvas,
+body.bt-theme-dark .pxd-root.pxd-pdf-dark--invert .pxd-pdf-flip canvas,
+.pxd-root.pxd-root--dark.pxd-pdf-dark--invert .pxd-pdf-img,
+.bp3-dark .pxd-root.pxd-pdf-dark--invert .pxd-pdf-img,
+body.bt-theme-dark .pxd-root.pxd-pdf-dark--invert .pxd-pdf-img {
+  filter: invert(.9) hue-rotate(180deg);
+}
+
+.pxd-root.pxd-root--dark.pxd-pdf-dark--dim .pxd-pdf-paper,
+.pxd-root.pxd-root--dark.pxd-pdf-dark--invert .pxd-pdf-paper,
+.bp3-dark .pxd-root.pxd-pdf-dark--dim .pxd-pdf-paper,
+.bp3-dark .pxd-root.pxd-pdf-dark--invert .pxd-pdf-paper,
+body.bt-theme-dark .pxd-root.pxd-pdf-dark--dim .pxd-pdf-paper,
+body.bt-theme-dark .pxd-root.pxd-pdf-dark--invert .pxd-pdf-paper {
+  background: #14171b;
+}
+
 /* P32-1 (live fix). Map and overview hide every card body, which left the cover with no box. A PDF card with a cached
    cover keeps its body as a full-card layer at those tiers, above the colour tile and the title tile. */
 .pxd-root.pxd-lod-map .pxd-item.pxd-item--pdf:not(.pxd-item--editing):has(.pxd-pdf-cover[data-cover-img]) > .pxd-item__body,

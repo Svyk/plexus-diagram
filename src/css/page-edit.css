@@ -249,3 +249,11 @@
 .pxd-root .pxd-item--page .pxd-page-edit .rm-block-main:hover > .rm-block__controls .rm-bullet__inner {
   opacity: 0.55;
 }
+
+/* G1. The separator still flex-grows and the reference-count slot still takes a column.
+   Both are display:none. The 16px bullet gutter above is unchanged. */
+.pxd-root .pxd-item.pxd-item--page .pxd-page-edit .rm-block-main > .rm-block-separator,
+.pxd-root .pxd-item.pxd-item--page .pxd-page-edit .rm-block-main > .rm-block__ref-count,
+.pxd-root .pxd-item.pxd-item--page .pxd-page-edit .rm-block-main > .rm-block-separator ~ div {
+  display: none !important;
+}

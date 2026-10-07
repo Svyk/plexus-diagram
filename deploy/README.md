@@ -280,6 +280,7 @@ Settings → Extensions → Plexus Diagram. Each change applies on the open boar
 | Cards | PDF card cover | First page, or the last page read. First page is the default. |
 | Cards | Prepare PDF covers in the background | On. A quiet board prepares a cover for a visible PDF that has none: Roam's PDF engine draws page 1 when it is reachable, otherwise a hidden reader does. |
 | Cards | Highlight click opens | Reader (default) or Sidebar. Shift-click on a highlight card's chip always opens the sidebar; the chip's arrow lists Reader, Sidebar and Open page in main. |
+| Cards | PDF pages in dark mode | Off, Dim, or Invert. Dim is the default. Applies when the board is dark, to the page canvas only, so highlight marks stay readable. Off keeps white pages. |
 | Integrations | Better Tasks integration | Use Better Tasks for task chips, the light checkbox, and task edits. Off leaves the TODO marker to Roam. Starts off. |
 | Integrations | Task tool | Show the Task tool (K) in the dock. Starts off. A saved on stays on. |
 | Integrations | Task chips | Full (due date, project, priority, repeat, status), due only, or none. |
@@ -312,6 +313,9 @@ Settings → Extensions → Plexus Diagram. Each change applies on the open boar
 | Board | Snap to grid | Snap a dragged card to the 24 pixel grid. Hold Alt while dragging to skip snapping. |
 | Board | Default board background: pattern | Dots, lines, grid, or plain, for boards that do not set their own. |
 | Board | Default board background: tone | Color wash for boards that do not set their own. |
+| Board | Canvas | Dots keeps the dot grid. Flat grey is a plain canvas, the Heptabase grey, with no grid. |
+| Board | Section fill | None leaves a section as it is today. Pastel washes it with its colour. |
+| Board | Highlight cards | Bar keeps the colour strip. Tint fills the card with the highlight colour and hides the strip. |
 | Board | Map view below (zoom) | Below 0.3, 0.45, or 0.6, cards show only their title. |
 | Board | Enable shortcuts | Use keyboard shortcuts on the board. |
 | Board | Show version badge | Show the version on the board. |

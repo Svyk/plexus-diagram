@@ -2816,6 +2816,72 @@ body.roam-body.dark .pxd-addboard.pxd-addboard {
   overflow-wrap: anywhere;
 }
 
+/* G1. A card editor must occupy the same box as the resting string.
+   Measured at zoom 54% (note 6rN5tqjeD): the rest string sits at (7, 6) and is 196px wide
+   (body padding 12px / 10px, times zoom). Roam's row was
+   controls 40 + autocomplete wrapper 29 + separator 116 (flex-grow) + ref-count slot 24,
+   so the textarea wrapped one word per line and a bullet and a "1" appeared.
+   Page cards are not matched here: they keep the 16px gutter in page-edit.css.
+   Sticky notes are .pxd-item--typing, not --editing, so they are not matched either.
+   The transform stays on .pxd-item__editor. The textarea is not transformed on its own
+   (Roam Caret 0.6.6 reads rect.width / offsetWidth). */
+
+.pxd-root .pxd-item.pxd-item--editing:not(.pxd-item--page) > .pxd-item__body > .pxd-item__editor:not(.pxd-page-edit) .rm-block-main > .rm-block__controls,
+.pxd-root .pxd-item.pxd-item--editing:not(.pxd-item--page) > .pxd-item__body > .pxd-item__editor:not(.pxd-page-edit) .rm-block-main > .controls {
+  display: none !important;
+}
+
+.pxd-root .pxd-item.pxd-item--editing:not(.pxd-item--page) > .pxd-item__body > .pxd-item__editor:not(.pxd-page-edit) .rm-block-main > .rm-block-separator,
+.pxd-root .pxd-item.pxd-item--editing:not(.pxd-item--page) > .pxd-item__body > .pxd-item__editor:not(.pxd-page-edit) .rm-block-main > .rm-block__ref-count,
+.pxd-root .pxd-item.pxd-item--editing:not(.pxd-item--page) > .pxd-item__body > .pxd-item__editor:not(.pxd-page-edit) .rm-block-main > .rm-block-separator ~ div {
+  display: none !important;
+}
+
+.pxd-root .pxd-item.pxd-item--editing:not(.pxd-item--page) > .pxd-item__body > .pxd-item__editor:not(.pxd-page-edit) .rm-block-main {
+  display: flex;
+  align-items: flex-start;
+  gap: 0;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+}
+
+.pxd-root .pxd-item.pxd-item--editing:not(.pxd-item--page) > .pxd-item__body > .pxd-item__editor:not(.pxd-page-edit) .rm-autocomplete__wrapper,
+.pxd-root .pxd-item.pxd-item--editing:not(.pxd-item--page) > .pxd-item__body > .pxd-item__editor:not(.pxd-page-edit) .rm-block-main > .rm-block__input {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  margin: 0;
+  padding: 0;
+}
+
+/* Beats the 1px padding-top in extension.css so the first line does not drop. */
+.pxd-root .pxd-item.pxd-item--editing:not(.pxd-item--page):not(.pxd-item--text) > .pxd-item__body > .pxd-item__editor:not(.pxd-page-edit) :is(textarea.rm-block-input, textarea.rm-block__input, .rm-block__input, .rm-block__input--view) {
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0;
+  background: transparent;
+  line-height: 1.4 !important;
+  white-space: pre-wrap;
+  overflow-wrap: break-word;
+  word-break: break-word;
+}
+
+/* Counter-scale lays the editor out at screen size from the padding edge (left/top 0, width z*100%).
+   Rest text starts after 12px / 10px of body padding. Inset by that padding, in the body's own px,
+   and shrink the layout width by the same padding times z so the visual box is the content box.
+   The inline width stays z*100%; this only wins while --pxd-ed-z is set. At zoom 1 the editor
+   stays in flow, inside the padding, and this rule does not match. */
+.pxd-root .pxd-item.pxd-item--editing:not(.pxd-item--page):not(.pxd-item--text) > .pxd-item__body > .pxd-item__editor[style*="--pxd-ed-z"]:not(.pxd-page-edit) {
+  left: 12px !important;
+  top: 10px !important;
+  width: calc(var(--pxd-ed-z) * 100% - 24px * var(--pxd-ed-z)) !important;
+  height: calc(var(--pxd-ed-z) * 100% - 20px * var(--pxd-ed-z)) !important;
+}
+
 /* P9 CH-1..CH-3. Children badge on the bottom edge, outline rows, hover peek. All scoped under .pxd-root. */
 
 .pxd-root .pxd-kids {
@@ -5080,6 +5146,137 @@ body.bt-theme-dark .pxd-root .pxd-highlight-chip__more,
   line-height: 1;
 }
 
+/* G3. Three optional Heptabase looks, off unless the root carries the class.
+   Flat grey drops the grid. Pastel washes a section with its colour.
+   Tint moves a highlight's colour onto the card and hides the bar.
+   Dark keeps a coloured border and a fill of at most 6%. Host markers decide dark, not the OS scheme. */
+
+.pxd-root.pxd-look--pastel,
+.pxd-root.pxd-look--tint {
+  --pxd-bg: var(--pxd-surface);
+}
+
+.pxd-root.pxd-look--flat {
+  --pxd-bg: #f2f2f0;
+  background-color: #f2f2f0;
+}
+
+.pxd-root.pxd-look--flat .pxd-grid {
+  background-image: none;
+}
+
+.pxd-root.pxd-look--flat .pxd-grid::before {
+  content: none;
+  background-image: none;
+}
+
+.pxd-root.pxd-look--pastel .pxd-section {
+  background: color-mix(in srgb, var(--pxd-fill) 14%, var(--pxd-bg));
+}
+
+.pxd-root.pxd-look--tint .pxd-highlight-bar {
+  width: 0;
+  background: none;
+}
+
+.pxd-root.pxd-look--tint .pxd-item.pxd-item--highlight:has(.pxd-highlight-bar[data-color="gray"]) {
+  --pxd-line: var(--pxd-gray-line);
+  --pxd-fill: var(--pxd-gray-fill);
+}
+
+.pxd-root.pxd-look--tint .pxd-item.pxd-item--highlight:has(.pxd-highlight-bar[data-color="red"]) {
+  --pxd-line: var(--pxd-red-line);
+  --pxd-fill: var(--pxd-red-fill);
+}
+
+.pxd-root.pxd-look--tint .pxd-item.pxd-item--highlight:has(.pxd-highlight-bar[data-color="orange"]) {
+  --pxd-line: var(--pxd-orange-line);
+  --pxd-fill: var(--pxd-orange-fill);
+}
+
+.pxd-root.pxd-look--tint .pxd-item.pxd-item--highlight:has(.pxd-highlight-bar[data-color="yellow"]) {
+  --pxd-line: var(--pxd-yellow-line);
+  --pxd-fill: var(--pxd-yellow-fill);
+}
+
+.pxd-root.pxd-look--tint .pxd-item.pxd-item--highlight:has(.pxd-highlight-bar[data-color="green"]) {
+  --pxd-line: var(--pxd-green-line);
+  --pxd-fill: var(--pxd-green-fill);
+}
+
+.pxd-root.pxd-look--tint .pxd-item.pxd-item--highlight:has(.pxd-highlight-bar[data-color="teal"]) {
+  --pxd-line: var(--pxd-teal-line);
+  --pxd-fill: var(--pxd-teal-fill);
+}
+
+.pxd-root.pxd-look--tint .pxd-item.pxd-item--highlight:has(.pxd-highlight-bar[data-color="blue"]) {
+  --pxd-line: var(--pxd-blue-line);
+  --pxd-fill: var(--pxd-blue-fill);
+}
+
+.pxd-root.pxd-look--tint .pxd-item.pxd-item--highlight:has(.pxd-highlight-bar[data-color="indigo"]) {
+  --pxd-line: var(--pxd-indigo-line);
+  --pxd-fill: var(--pxd-indigo-fill);
+}
+
+.pxd-root.pxd-look--tint .pxd-item.pxd-item--highlight:has(.pxd-highlight-bar[data-color="purple"]) {
+  --pxd-line: var(--pxd-purple-line);
+  --pxd-fill: var(--pxd-purple-fill);
+}
+
+.pxd-root.pxd-look--tint .pxd-item.pxd-item--highlight:has(.pxd-highlight-bar[data-color="pink"]) {
+  --pxd-line: var(--pxd-pink-line);
+  --pxd-fill: var(--pxd-pink-fill);
+}
+
+.pxd-root.pxd-look--tint .pxd-item.pxd-item--highlight,
+.pxd-root.pxd-look--tint.pxd-lod-map .pxd-item.pxd-item--highlight:not(.pxd-item--editing),
+.pxd-root.pxd-look--tint.pxd-lod-overview .pxd-item.pxd-item--highlight {
+  background-color: var(--pxd-fill, transparent);
+  background-image: none;
+  border-color: var(--pxd-line, var(--pxd-border));
+}
+
+/* Dark: the current surface, no grid. Pastel and tint are a coloured border plus a 6% fill. */
+
+.bp3-dark .pxd-root.pxd-look--flat,
+body.bt-theme-dark .pxd-root.pxd-look--flat,
+.rm-dark-theme .pxd-root.pxd-look--flat,
+body.roam-body.dark .pxd-root.pxd-look--flat,
+.pxd-root.pxd-root--dark.pxd-look--flat {
+  --pxd-bg: var(--pxd-surface);
+  background-color: var(--pxd-surface);
+}
+
+.bp3-dark .pxd-root.pxd-look--pastel .pxd-section,
+body.bt-theme-dark .pxd-root.pxd-look--pastel .pxd-section,
+.rm-dark-theme .pxd-root.pxd-look--pastel .pxd-section,
+body.roam-body.dark .pxd-root.pxd-look--pastel .pxd-section,
+.pxd-root.pxd-root--dark.pxd-look--pastel .pxd-section {
+  background: color-mix(in srgb, var(--pxd-line, var(--pxd-border-strong)) 6%, transparent);
+  border-color: var(--pxd-line, var(--pxd-border-strong));
+}
+
+.bp3-dark .pxd-root.pxd-look--tint .pxd-item.pxd-item--highlight,
+.bp3-dark .pxd-root.pxd-look--tint.pxd-lod-map .pxd-item.pxd-item--highlight,
+.bp3-dark .pxd-root.pxd-look--tint.pxd-lod-overview .pxd-item.pxd-item--highlight,
+body.bt-theme-dark .pxd-root.pxd-look--tint .pxd-item.pxd-item--highlight,
+body.bt-theme-dark .pxd-root.pxd-look--tint.pxd-lod-map .pxd-item.pxd-item--highlight,
+body.bt-theme-dark .pxd-root.pxd-look--tint.pxd-lod-overview .pxd-item.pxd-item--highlight,
+.rm-dark-theme .pxd-root.pxd-look--tint .pxd-item.pxd-item--highlight,
+.rm-dark-theme .pxd-root.pxd-look--tint.pxd-lod-map .pxd-item.pxd-item--highlight,
+.rm-dark-theme .pxd-root.pxd-look--tint.pxd-lod-overview .pxd-item.pxd-item--highlight,
+body.roam-body.dark .pxd-root.pxd-look--tint .pxd-item.pxd-item--highlight,
+body.roam-body.dark .pxd-root.pxd-look--tint.pxd-lod-map .pxd-item.pxd-item--highlight,
+body.roam-body.dark .pxd-root.pxd-look--tint.pxd-lod-overview .pxd-item.pxd-item--highlight,
+.pxd-root.pxd-root--dark.pxd-look--tint .pxd-item.pxd-item--highlight,
+.pxd-root.pxd-root--dark.pxd-look--tint.pxd-lod-map .pxd-item.pxd-item--highlight,
+.pxd-root.pxd-root--dark.pxd-look--tint.pxd-lod-overview .pxd-item.pxd-item--highlight {
+  background-color: color-mix(in srgb, var(--pxd-line, var(--pxd-border-strong)) 6%, transparent);
+  background-image: none;
+  border-color: var(--pxd-line, var(--pxd-border-strong));
+}
+
 /* MEM-3. Memory lane. Future cards fade. The outline is the fresh mark. */
 
 .pxd-root .pxd-memory {
@@ -5941,6 +6138,14 @@ body.roam-body.dark .pxd-root .pxd-present-hud,
   opacity: 0.55;
 }
 
+/* G1. The separator still flex-grows and the reference-count slot still takes a column.
+   Both are display:none. The 16px bullet gutter above is unchanged. */
+.pxd-root .pxd-item.pxd-item--page .pxd-page-edit .rm-block-main > .rm-block-separator,
+.pxd-root .pxd-item.pxd-item--page .pxd-page-edit .rm-block-main > .rm-block__ref-count,
+.pxd-root .pxd-item.pxd-item--page .pxd-page-edit .rm-block-main > .rm-block-separator ~ div {
+  display: none !important;
+}
+
 /* PDF-7. Page chips and the On board chip. A border and a clear fill. No filled background. */
 
 .pxd-pdf-chips.pxd-pdf-chips {
@@ -6332,6 +6537,106 @@ body.bt-theme-dark .pxd-root .pxd-pdf-pill,
 .pxd-root.pxd-lod-map .pxd-pdf-cover[data-cover-img] > .pxd-pdf-paper > .pxd-pdf-glyph,
 .pxd-root.pxd-lod-map .pxd-pdf-cover[data-cover-img] > .pxd-pdf-paper > .pxd-pdf-title--face {
   display: none;
+}
+
+/* G2. The flipper canvas sits on the cover. The page bar is chrome, so a drag starts on the page, not the bar. */
+.pxd-root .pxd-pdf-flip {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.pxd-root .pxd-pdf-flip canvas {
+  display: block;
+  max-width: 100%;
+  max-height: 100%;
+}
+
+.pxd-root .pxd-pdf-bar {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 6px;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 22px;
+  margin: 0;
+  padding: 0 8px;
+  border: 1px solid var(--pxd-border, #d0d7de);
+  border-radius: 999px;
+  background: var(--pxd-chrome-bg, #fff);
+  color: var(--pxd-text, #111418);
+  font-size: 11px;
+  line-height: 20px;
+  font-variant-numeric: tabular-nums;
+  pointer-events: auto;
+}
+
+.pxd-root .pxd-pdf-bar__step {
+  margin: 0;
+  padding: 0 4px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: 20px;
+  cursor: pointer;
+}
+
+.pxd-root .pxd-pdf-bar__pages {
+  min-width: 3.5em;
+  text-align: center;
+}
+
+.pxd-root.pxd-lod-map .pxd-pdf-flip,
+.pxd-root.pxd-lod-overview .pxd-pdf-flip,
+.pxd-root.pxd-lod-map .pxd-pdf-bar,
+.pxd-root.pxd-lod-overview .pxd-pdf-bar {
+  display: none;
+}
+
+/* G2 pdf-dark. The paper token stays white. Dim and invert filter the painted page only. */
+.pxd-root.pxd-root--dark.pxd-pdf-dark--off .pxd-pdf-flip canvas,
+.bp3-dark .pxd-root.pxd-pdf-dark--off .pxd-pdf-flip canvas,
+body.bt-theme-dark .pxd-root.pxd-pdf-dark--off .pxd-pdf-flip canvas,
+.pxd-root.pxd-root--dark.pxd-pdf-dark--off .pxd-pdf-img,
+.bp3-dark .pxd-root.pxd-pdf-dark--off .pxd-pdf-img,
+body.bt-theme-dark .pxd-root.pxd-pdf-dark--off .pxd-pdf-img {
+  filter: none;
+}
+
+.pxd-root.pxd-root--dark.pxd-pdf-dark--dim .pxd-pdf-flip canvas,
+.bp3-dark .pxd-root.pxd-pdf-dark--dim .pxd-pdf-flip canvas,
+body.bt-theme-dark .pxd-root.pxd-pdf-dark--dim .pxd-pdf-flip canvas,
+.pxd-root.pxd-root--dark.pxd-pdf-dark--dim .pxd-pdf-img,
+.bp3-dark .pxd-root.pxd-pdf-dark--dim .pxd-pdf-img,
+body.bt-theme-dark .pxd-root.pxd-pdf-dark--dim .pxd-pdf-img {
+  filter: brightness(.82) contrast(1.05);
+}
+
+.pxd-root.pxd-root--dark.pxd-pdf-dark--invert .pxd-pdf-flip canvas,
+.bp3-dark .pxd-root.pxd-pdf-dark--invert .pxd-pdf-flip canvas,
+body.bt-theme-dark .pxd-root.pxd-pdf-dark--invert .pxd-pdf-flip canvas,
+.pxd-root.pxd-root--dark.pxd-pdf-dark--invert .pxd-pdf-img,
+.bp3-dark .pxd-root.pxd-pdf-dark--invert .pxd-pdf-img,
+body.bt-theme-dark .pxd-root.pxd-pdf-dark--invert .pxd-pdf-img {
+  filter: invert(.9) hue-rotate(180deg);
+}
+
+.pxd-root.pxd-root--dark.pxd-pdf-dark--dim .pxd-pdf-paper,
+.pxd-root.pxd-root--dark.pxd-pdf-dark--invert .pxd-pdf-paper,
+.bp3-dark .pxd-root.pxd-pdf-dark--dim .pxd-pdf-paper,
+.bp3-dark .pxd-root.pxd-pdf-dark--invert .pxd-pdf-paper,
+body.bt-theme-dark .pxd-root.pxd-pdf-dark--dim .pxd-pdf-paper,
+body.bt-theme-dark .pxd-root.pxd-pdf-dark--invert .pxd-pdf-paper {
+  background: #14171b;
 }
 
 /* P32-1 (live fix). Map and overview hide every card body, which left the cover with no box. A PDF card with a cached
@@ -7788,6 +8093,39 @@ body.bt-theme-dark .pxd-root,
 .pxd-root .pxd-read .rm-block-main > .rm-block-separator,
 .pxd-root .pxd-read .rm-block-main > .rm-block__input ~ div:not(.rm-block__input) {
   display: none;
+}
+
+/* G2. Dark PDF pages. The filter is on the canvas only, so .Highlight and .textLayer stay readable. */
+.pxd-root.pxd-root--dark.pxd-pdf-dark--off .pxd-read .page > canvas,
+.bp3-dark .pxd-root.pxd-pdf-dark--off .pxd-read .page > canvas,
+body.bt-theme-dark .pxd-root.pxd-pdf-dark--off .pxd-read .page > canvas {
+  filter: none;
+}
+
+.pxd-root.pxd-root--dark.pxd-pdf-dark--dim .pxd-read .page > canvas,
+.bp3-dark .pxd-root.pxd-pdf-dark--dim .pxd-read .page > canvas,
+body.bt-theme-dark .pxd-root.pxd-pdf-dark--dim .pxd-read .page > canvas {
+  filter: brightness(.82) contrast(1.05);
+}
+
+.pxd-root.pxd-root--dark.pxd-pdf-dark--invert .pxd-read .page > canvas,
+.bp3-dark .pxd-root.pxd-pdf-dark--invert .pxd-read .page > canvas,
+body.bt-theme-dark .pxd-root.pxd-pdf-dark--invert .pxd-read .page > canvas {
+  filter: invert(.9) hue-rotate(180deg);
+}
+
+.pxd-root.pxd-root--dark.pxd-pdf-dark--dim,
+.pxd-root.pxd-root--dark.pxd-pdf-dark--invert,
+.bp3-dark .pxd-root.pxd-pdf-dark--dim,
+.bp3-dark .pxd-root.pxd-pdf-dark--invert,
+body.bt-theme-dark .pxd-root.pxd-pdf-dark--dim,
+body.bt-theme-dark .pxd-root.pxd-pdf-dark--invert {
+  --pxd-read-bed: #14171b;
+}
+
+.pxd-read .page > .textLayer,
+.pxd-read .page .Highlight {
+  z-index: 2;
 }
 
 /* ECO-3. The thumb fits the card. The 1px border is the button signal, not a shadow. */

@@ -15,6 +15,10 @@ export const SETTING_IDS = Object.freeze({
   snapGuides: "snap-guides",
   snapGrid: "snap-grid",
   grid: "grid",
+  // G3. Optional Heptabase looks. Defaults keep today's canvas, sections, and highlight bar.
+  lookCanvas: "look-canvas",
+  lookSections: "look-sections",
+  lookHighlights: "look-highlights",
   defaultCardWidth: "default-card-width",
   defaultCardHeight: "default-card-height",
   defaultCardLook: "default-card-look",
@@ -52,6 +56,7 @@ export const SETTING_IDS = Object.freeze({
   pdfCover: "pdf-cover",
   pdfCoverWarm: "pdf-cover-warm",
   highlightOpen: "highlight-open",
+  pdfDark: "pdf-dark",
   // Hidden. Not a panel row. JSON object, parsed by parseSpeedFlags.
   speedFlags: "speed-flags",
 });
@@ -69,6 +74,9 @@ const DEFAULTS = Object.freeze({
   [SETTING_IDS.snapGuides]: true,
   [SETTING_IDS.snapGrid]: false,
   [SETTING_IDS.grid]: "dots",
+  [SETTING_IDS.lookCanvas]: "dots",
+  [SETTING_IDS.lookSections]: "none",
+  [SETTING_IDS.lookHighlights]: "bar",
   [SETTING_IDS.defaultCardWidth]: 280,
   [SETTING_IDS.defaultCardHeight]: 160,
   [SETTING_IDS.defaultCardLook]: "block",
@@ -106,6 +114,7 @@ const DEFAULTS = Object.freeze({
   [SETTING_IDS.pdfCover]: "first",
   [SETTING_IDS.pdfCoverWarm]: true,
   [SETTING_IDS.highlightOpen]: "reader",
+  [SETTING_IDS.pdfDark]: "dim",
 });
 
 const BOARD_TONES = ["none", "paper", "gray", "red", "orange", "yellow", "green", "teal", "blue", "indigo", "purple", "pink"];
@@ -119,6 +128,9 @@ const ENUMS = Object.freeze({
   [SETTING_IDS.emptyDrag]: ["pan", "select"],
   [SETTING_IDS.controlsPosition]: ["rail", "bar"],
   [SETTING_IDS.grid]: ["dots", "lines", "grid", "plain"],
+  [SETTING_IDS.lookCanvas]: ["dots", "flat-grey"],
+  [SETTING_IDS.lookSections]: ["none", "pastel"],
+  [SETTING_IDS.lookHighlights]: ["bar", "tint"],
   [SETTING_IDS.defaultCardLook]: ["block", "card"],
   [SETTING_IDS.boardTone]: BOARD_TONES,
   [SETTING_IDS.mapZoom]: MAP_ZOOMS,
@@ -132,6 +144,7 @@ const ENUMS = Object.freeze({
   [SETTING_IDS.taskChips]: TASK_CHIPS,
   [SETTING_IDS.pdfCover]: ["first", "last-read"],
   [SETTING_IDS.highlightOpen]: ["reader", "sidebar"],
+  [SETTING_IDS.pdfDark]: ["off", "dim", "invert"],
 });
 
 const NUMBERS = new Set([SETTING_IDS.defaultCardWidth, SETTING_IDS.defaultCardHeight]);
@@ -434,6 +447,9 @@ const SETTING_ROWS = {
   [SETTING_IDS.snapGuides]: () => switchRow(SETTING_IDS.snapGuides, "Snap guides", "Line a dragged card up with its neighbours and show the guides."),
   [SETTING_IDS.snapGrid]: () => switchRow(SETTING_IDS.snapGrid, "Snap to grid", "Snap a dragged card to the 24 pixel grid. Hold Alt while dragging to skip snapping."),
   [SETTING_IDS.grid]: () => selectRow(SETTING_IDS.grid, "Default board background: pattern", "Pattern for boards that do not set their own. A board can override it from Background.", ["dots", "lines", "grid", "plain"]),
+  [SETTING_IDS.lookCanvas]: () => selectRow(SETTING_IDS.lookCanvas, "Canvas", "Dots keeps the dot grid. Flat grey is a plain canvas, the Heptabase grey, with no grid.", ["dots", "flat-grey"]),
+  [SETTING_IDS.lookSections]: () => selectRow(SETTING_IDS.lookSections, "Section fill", "None leaves a section as it is today. Pastel washes it with its colour.", ["none", "pastel"]),
+  [SETTING_IDS.lookHighlights]: () => selectRow(SETTING_IDS.lookHighlights, "Highlight cards", "Bar keeps the colour strip. Tint fills the card with the highlight colour and hides the strip.", ["bar", "tint"]),
   [SETTING_IDS.boardTone]: () => selectRow(SETTING_IDS.boardTone, "Default board background: tone", "Color wash for boards that do not set their own.", BOARD_TONES),
   [SETTING_IDS.mapZoom]: () => selectRow(SETTING_IDS.mapZoom, "Map view below (zoom)", "Below this zoom, cards show only their title.", MAP_ZOOMS),
   [SETTING_IDS.autoFitSections]: () => switchRow(SETTING_IDS.autoFitSections, "Auto-fit sections", "Grow a section when a card is moved or resized past its edge."),
@@ -461,12 +477,13 @@ const SETTING_ROWS = {
   [SETTING_IDS.pdfCover]: () => selectRow(SETTING_IDS.pdfCover, "PDF card cover", "First page shows page 1. Last page read shows the page that was open when the reader closed.", ["first", "last-read"]),
   [SETTING_IDS.pdfCoverWarm]: () => switchRow(SETTING_IDS.pdfCoverWarm, "Prepare PDF covers in the background", "On. A quiet board prepares a cover for a visible PDF that does not have one: Roam's PDF engine draws page 1 when it is reachable, otherwise a hidden reader does."),
   [SETTING_IDS.highlightOpen]: () => selectRow(SETTING_IDS.highlightOpen, "Highlight click opens", "Reader: the PDF pane scrolls to the highlight. Sidebar: Roam opens the highlight block in the right sidebar. Shift-click always opens the sidebar; the chip's arrow lists every choice.", ["reader", "sidebar"]),
+  [SETTING_IDS.pdfDark]: () => selectRow(SETTING_IDS.pdfDark, "PDF pages in dark mode", "When the board is dark. Off keeps white pages. Dim darkens the page. Invert flips the page colors. Marks stay readable.", ["off", "dim", "invert"]),
 };
 
 const SETTING_GROUPS = [
   ["group-cards", "Cards", "How new cards look, and the marks on them.", [
     SETTING_IDS.defaultCardLook, SETTING_IDS.defaultCardWidth, SETTING_IDS.defaultCardHeight, SETTING_IDS.enterInCard, SETTING_IDS.showCardBadges, SETTING_IDS.spaceOut,
-    SETTING_IDS.pdfCover, SETTING_IDS.pdfCoverWarm, SETTING_IDS.highlightOpen,
+    SETTING_IDS.pdfCover, SETTING_IDS.pdfCoverWarm, SETTING_IDS.highlightOpen, SETTING_IDS.pdfDark,
   ]],
   ["group-integrations", "Integrations", "Sibling extensions, and the switches that turn them on.", [
     STATUS_IDS.betterTasks, SETTING_IDS.betterTasks,
@@ -487,6 +504,7 @@ const SETTING_GROUPS = [
     SETTING_IDS.toolbarLayout, SETTING_IDS.dockPosition, SETTING_IDS.dockStyle, SETTING_IDS.dockLabels, SETTING_IDS.chromeDensity, SETTING_IDS.dockOptions,
     SETTING_IDS.tooltips, SETTING_IDS.tooltipDelay,
     SETTING_IDS.controlsPosition, SETTING_IDS.snapGuides, SETTING_IDS.snapGrid, SETTING_IDS.grid, SETTING_IDS.boardTone,
+    SETTING_IDS.lookCanvas, SETTING_IDS.lookSections, SETTING_IDS.lookHighlights,
     SETTING_IDS.mapZoom, SETTING_IDS.enableShortcuts, SETTING_IDS.showVersionBadge, SETTING_IDS.resurfaceIntervals,
   ]],
   ["group-performance", "Performance", "Motion, and when the overlay stays off.", [

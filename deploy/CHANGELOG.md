@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.3.0 — 2026-10-06
+
+Edit in place without the card changing, PDFs you flip through on the board, PDF dark mode, and three Heptabase looks.
+
+- Editing a note, block, task or page card no longer changes how it looks: the text stays in the same place, at the same size, with the same line breaks, at every zoom. Roam's bullet, its spacer and the reference-count slot no longer squeeze the text into a narrow column, the editor grows with its text, and the card keeps its size. Double-click a word and the cursor lands on it. With Roam Caret installed, its caret follows the board's zoom inside the card.
+- Clicking a PDF card selects it, as in Heptabase: the card becomes a small reader you flip through with the wheel, ← and →, or the `‹ 3 / 9 ›` bar. The side pane opens only from **Open**, a double-click, Enter, the card menu, or a highlight.
+- PDF pages in dark mode (setting **PDF pages in dark mode**): Dim (default) softens white pages on a dark board, Invert turns them dark, Off keeps white paper. Highlights stay readable.
+- Three Heptabase looks, all off by default: **Canvas** flat grey instead of dots, **Section fill** pastel, **Highlight cards** tinted instead of a colour bar. In dark mode they show as coloured borders.
+
 ## 3.2.0 — 2026-10-06
 
 PDF round 2: covers at every zoom, page 1 without opening the PDF, pages at reading width, one open per click.

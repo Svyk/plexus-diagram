@@ -621,3 +621,36 @@ body.bt-theme-dark .pxd-root,
 .pxd-root .pxd-read .rm-block-main > .rm-block__input ~ div:not(.rm-block__input) {
   display: none;
 }
+
+/* G2. Dark PDF pages. The filter is on the canvas only, so .Highlight and .textLayer stay readable. */
+.pxd-root.pxd-root--dark.pxd-pdf-dark--off .pxd-read .page > canvas,
+.bp3-dark .pxd-root.pxd-pdf-dark--off .pxd-read .page > canvas,
+body.bt-theme-dark .pxd-root.pxd-pdf-dark--off .pxd-read .page > canvas {
+  filter: none;
+}
+
+.pxd-root.pxd-root--dark.pxd-pdf-dark--dim .pxd-read .page > canvas,
+.bp3-dark .pxd-root.pxd-pdf-dark--dim .pxd-read .page > canvas,
+body.bt-theme-dark .pxd-root.pxd-pdf-dark--dim .pxd-read .page > canvas {
+  filter: brightness(.82) contrast(1.05);
+}
+
+.pxd-root.pxd-root--dark.pxd-pdf-dark--invert .pxd-read .page > canvas,
+.bp3-dark .pxd-root.pxd-pdf-dark--invert .pxd-read .page > canvas,
+body.bt-theme-dark .pxd-root.pxd-pdf-dark--invert .pxd-read .page > canvas {
+  filter: invert(.9) hue-rotate(180deg);
+}
+
+.pxd-root.pxd-root--dark.pxd-pdf-dark--dim,
+.pxd-root.pxd-root--dark.pxd-pdf-dark--invert,
+.bp3-dark .pxd-root.pxd-pdf-dark--dim,
+.bp3-dark .pxd-root.pxd-pdf-dark--invert,
+body.bt-theme-dark .pxd-root.pxd-pdf-dark--dim,
+body.bt-theme-dark .pxd-root.pxd-pdf-dark--invert {
+  --pxd-read-bed: #14171b;
+}
+
+.pxd-read .page > .textLayer,
+.pxd-read .page .Highlight {
+  z-index: 2;
+}

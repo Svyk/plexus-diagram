@@ -1,5 +1,14 @@
 # Changelog
 
+## 3.4.0 — 2026-10-06
+
+Boards that wear your Roam theme, edits that hold still, wider PDFs, and Roam tables on the board.
+
+- Plexus follows the theme your graph is using: the canvas, cards, text, borders and links take Roam's own colours, light or dark, and change when the theme does. Setting **Theme**: Follow Roam (default) or Plexus. Pastel sections are stronger in light mode.
+- Editing in place holds still. In page cards the bullet and fold arrow stay in the gutter and nested rows keep their indent; note, block and task editors keep the resting line height; a sticky no longer shows a blue box while you type. Links keep the same colour at rest and in edit.
+- Roam tables on the board. A card holding a `{{[[table]]}}` shows Roam's table, scrolls sideways when it is wider than the card and is never clipped. Enter or a double-click edits a cell with Roam's editor; Tab, arrows, typing, the wheel and right-click stay with the table while you work in it. New **Table** tool (B) and a **Table** item in the canvas menu add a 3×3 table in one undo. With Roam Grid installed, an enhanced table works inside the card, and **Open grid** shows it at full size.
+- PDF cards can be as wide as you like (up to 4000 px), and a large card redraws page 1 sharp instead of stretching a small cover. The pane title uses the PDF's own title, never a storage path; a zero highlight count is hidden; the format bar no longer covers the pane; a slow PDF shows its cover until the first page paints.
+
 ## 3.3.0 — 2026-10-06
 
 Edit in place without the card changing, PDFs you flip through on the board, PDF dark mode, and three Heptabase looks.

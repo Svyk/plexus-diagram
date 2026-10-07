@@ -1097,3 +1097,12 @@ From user testing of 2.18.0 (2026-10-06): the page-card editor looked like a dif
 - Phase: P28 · Version: 2.19.0 · Shipped
 - Summary: The link legend sits under the board bar beside Properties. A right-sidebar copy of the board the main window is zoomed into stays inline; before, both copies went fullscreen and the sidebar copy covered the main board and took its clicks and drops.
 
+
+### TBL-1 — Roam tables and Roam Grid in cards
+- Phase: P33 · Version: 3.4.0 · Shipped (Svy task `((tyf1xpuDh))`)
+- Summary: A card holding `{{[[table]]}}` renders Roam's table (rendered collapsed, so the child rows do not list again), scrolls sideways inside the card, and owns keys, wheel and right-click while focused or hovered. Table tool (B) writes a 3×3 in one undo: 10 creates, each row a chain of nested cells, because Roam reads a cell's child as the next column. With Roam Grid, **Open grid** shows the grid outside the zoom transform.
+- Limit: in-card Roam Grid column resize is zoom-dependent (Roam Grid adds screen deltas to layout px). Fix needs an additive Roam Grid API (`view.setScreenScale`), not built.
+
+### PDFP-1 — Parse a PDF into clean Markdown and tables (research)
+- Phase: P34 · Version: later · Research first (Svy task `((EYaZ57RAs))`)
+- Summary: Heptabase's PDF Parser (Parse button on a PDF card) extracts text, tables, equations and images with OCR into Markdown and lets you copy page ranges into cards. Plexus would write tables as native `{{[[table]]}}` blocks so Roam Grid can enhance them. Compare pdf.js text-layer clustering, a local parser helper (Docling, Marker, MinerU) and a per-page vision pass on three PDFs before building.

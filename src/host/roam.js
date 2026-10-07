@@ -470,6 +470,74 @@ function queryRows(host, query, ...inputs) {
   }
 }
 
+// Extra Roam undo entries createTableFromModel produces beyond returnInfo.writes
+// when enhance is on. returnInfo.writes counts the table only (1 on the markdown
+// path). MetadataStore.set is one createBlock on a warm roam/grid/metadata page,
+// so the default is 1: two Roam undos inside Roam Grid, plus one Plexus props write.
+// Live 2026-10-07 on Readwisenotes Test Lab (xxnGb6SEj): fromMarkdown of a 3×3
+// returned { uids: [root] } in 16 ms, and one data.undo removed that root while
+// the scratch parent stayed. window.roamGrid.v1 was loaded but had no
+// createTableFromModel and no capabilities array, so this constant is still the
+// source default. Measure it when that method is on the graph and change this one line.
+export const GRID_METADATA_UNDOS = 1;
+
+function roamGridV1() {
+  const holders = [];
+  if (typeof globalThis.window !== "undefined" && globalThis.window) holders.push(globalThis.window);
+  holders.push(globalThis);
+  for (const holder of holders) {
+    const v1 = holder?.roamGrid?.v1;
+    if (!v1 || typeof v1.createTableFromModel !== "function") continue;
+    const caps = v1.capabilities;
+    if (Array.isArray(caps) && caps.includes("createTableFromModel")) return v1;
+  }
+  return null;
+}
+
+// toGridSpec speaks in arrays (headerRows indexes, alignments [{col, align}]).
+// createTableFromModel wants headerRows as an integer count and columnAlignments
+// as a per-column array. Passing the arrays through throws.
+function gridModelArgs(spec) {
+  const src = spec && typeof spec === "object" ? spec : {};
+  const rows = Array.isArray(src.rows) ? src.rows : [];
+  const headerRows = Array.isArray(src.headerRows)
+    ? src.headerRows.length
+    : (Number.isInteger(src.headerRows) && src.headerRows > 0 ? src.headerRows : 0);
+  const args = {
+    rows,
+    merges: Array.isArray(src.merges) ? src.merges : [],
+    headerRows,
+    enhance: src.enhance !== false,
+    returnInfo: true,
+  };
+  if (src.parentUid) args.parentUid = src.parentUid;
+  if (src.afterUid) args.afterUid = src.afterUid;
+  if (src.order !== undefined) args.order = src.order;
+  if (Array.isArray(src.columnAlignments)) args.columnAlignments = src.columnAlignments;
+  else if (Array.isArray(src.alignments) && src.alignments.length) {
+    const cols = rows.reduce((max, row) => Math.max(max, Array.isArray(row) ? row.length : 0), 0);
+    const columnAlignments = Array.from({ length: cols }, () => null);
+    for (const entry of src.alignments) {
+      if (!entry || !Number.isInteger(entry.col) || entry.col < 0 || entry.col >= cols) continue;
+      columnAlignments[entry.col] = entry.align ?? null;
+    }
+    args.columnAlignments = columnAlignments;
+  } else if (src.alignments && typeof src.alignments === "object") args.alignments = src.alignments;
+  if (src.widths && typeof src.widths === "object") args.widths = src.widths;
+  return args;
+}
+
+function markdownRootUids(result) {
+  const raw = result?.uids || result?.blocks || result?.rootUids || (Array.isArray(result) ? result : []);
+  const roots = [];
+  if (!Array.isArray(raw)) return roots;
+  for (const item of raw) {
+    const id = typeof item === "string" ? item : (item && typeof item.uid === "string" ? item.uid : "");
+    if (id && !roots.includes(id)) roots.push(id);
+  }
+  return roots;
+}
+
 export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localStorage, graph } = {}) {
   const stats = { writes: 0, watches: 0, pageWatches: 0, renders: 0, items: {}, errors: 0 };
   bindGuardStats(stats);
@@ -1301,6 +1369,64 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
       return id;
     },
 
+    // One Roam undo for the whole tree. Roots are recorded with span 0 so groupSpan
+    // does not add another data.undo per root (that would pop the siblings after the tree).
+    async fromMarkdown({ parentUid, order = "last", markdown } = {}) {
+      const parent = String(parentUid ?? "");
+      if (!parent) return [];
+      const fn = data.block?.fromMarkdown;
+      if (typeof fn !== "function") throw new Error("fromMarkdown is missing");
+      const result = await fn({
+        location: { "parent-uid": parent, order },
+        "markdown-string": String(markdown ?? ""),
+      });
+      const roots = markdownRootUids(result);
+      stats.writes++;
+      noteWrite("create");
+      for (const id of roots) host.adoptCreated(id, { span: 0 });
+      return roots;
+    },
+
+    canCreateGridTable() { return Boolean(roamGridV1()); },
+
+    // null when Roam Grid is absent or lacks createTableFromModel. writes is the
+    // number of Roam undo entries counted (returnInfo.writes plus GRID_METADATA_UNDOS
+    // when enhance is on). The table uid is adopted with span 0; noteWrite owns the span.
+    async createGridTable(spec) {
+      const v1 = roamGridV1();
+      if (!v1) return null;
+      const args = gridModelArgs(spec);
+      const info = await v1.createTableFromModel(args);
+      const uid = typeof info?.uid === "string" ? info.uid : "";
+      if (!uid) return null;
+      const reported = Number.isInteger(info.writes) && info.writes > 0 ? info.writes : 1;
+      const meta = args.enhance === false ? 0 : GRID_METADATA_UNDOS;
+      const undos = reported + meta;
+      for (let i = 0; i < undos; i += 1) {
+        stats.writes++;
+        noteWrite(i === 0 ? "create" : "update");
+      }
+      host.adoptCreated(uid, { span: 0 });
+      const extra = Array.isArray(info.uids) ? info.uids : [];
+      for (const id of extra) if (typeof id === "string" && id && id !== uid) host.adoptCreated(id, { span: 0 });
+      const path = info.path === "sequential" ? "sequential" : "markdown";
+      return { uid, writes: undos, path };
+    },
+
+    // { parentUid, order } for a block, or null when Roam has no integer order.
+    blockLocation(uid) {
+      const id = String(uid ?? "");
+      if (!id) return null;
+      let res = null;
+      try { res = rawPull("[:block/uid :block/order {:block/_children [:block/uid]}]", eidKey(id)); } catch { return null; }
+      const order = res?.[":block/order"];
+      const parents = res?.[":block/_children"];
+      const parent = Array.isArray(parents) ? parents[0] : parents;
+      const parentUid = typeof parent?.[":block/uid"] === "string" ? parent[":block/uid"] : "";
+      if (!parentUid || !Number.isInteger(order)) return null;
+      return { parentUid, order };
+    },
+
     async updateString(uid, string) {
       stats.writes++;
       await data.block.update({ block: { uid, string } });
@@ -1355,10 +1481,13 @@ export function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis
     // That write never passed through noteWrite, so it is one extra Roam undo entry.
     // Recording the uid makes this group's undo/redo step over it too. No-op with no group open.
     // A delete here would land on Roam's stack and come back on the next redo.
-    adoptCreated(uid) {
+    // span 0 records a fromMarkdown / Roam Grid root whose undo is already inside noteWrite
+    // (one data.undo removes the whole tree). Those uids must not add to groupSpan.
+    adoptCreated(uid, opts) {
       const id = typeof uid === "string" ? uid : "";
       if (!openGroup || !id) return;
-      const list = openGroup.created || (openGroup.created = []);
+      const key = opts && opts.span === 0 ? "markdownRoots" : "created";
+      const list = openGroup[key] || (openGroup[key] = []);
       if (!list.includes(id)) list.push(id);
       redoLog.length = 0; // a new write drops Roam's redo stack; keep the log in step
     },

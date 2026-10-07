@@ -93,6 +93,8 @@ import { PANEL_WIDTH_DEFAULT, nextPanelWidth } from "../model/info.js";
 import { LONG_PRESS_CANCEL_PX, LONG_PRESS_MS, longPressAt } from "../model/touch.js";
 import { closeTab, openTab, tabAt } from "../model/tabs.js";
 import { createPanel, parseDropPayload } from "./panel.js";
+import { handleParseDrop } from "../model/drop.js";
+import { createParseStore } from "../host/parse-store.js";
 import { createMenu } from "./menu.js";
 import { createShortcutSheet } from "./shortcut-sheet.js";
 import { createTooltip } from "./tooltip.js";
@@ -6083,6 +6085,19 @@ function buildBoardView(onFail, {
     const resolveUid = (u) => (host?.cardStringForUid ? host.cardStringForUid(u) : `((${u}))`);
     const list = parseDropPayload(event.dataTransfer, { resolveUid, graph: host?.graph || "" });
     if (!list.length) return;
+    if (list.length === 1 && list[0].parse) {
+      void handleParseDrop({
+        payload: list[0].parse,
+        store: createParseStore(),
+        session,
+        point: p,
+        toast: (message) => toast(message),
+      }).then((res) => {
+        if (disposed) return;
+        if (Array.isArray(res?.uids) && res.uids.length) ctl.select(res.uids);
+      }).catch(() => {});
+      return;
+    }
     const dropped = highlightDropPlan(list, [...(board()?.items.values() || [])]);
     if (dropped.kind === "pulse") {
       if (dropped.uid) pulseItem(dropped.uid);

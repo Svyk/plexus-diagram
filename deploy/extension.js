@@ -3189,6 +3189,24 @@ var init_timeline = __esm({
 function isRoamTableString(value) {
   return TABLE_RE.test(String(value ?? "").trim());
 }
+function parsedTableSize(table) {
+  let cols = Number.isInteger(table?.cols) ? table.cols : 0;
+  let rows = Number.isInteger(table?.rows) ? table.rows : 0;
+  if (!rows && Array.isArray(table?.rows)) rows = table.rows.length;
+  if (!cols && Array.isArray(table?.rows) && Array.isArray(table.rows[0])) cols = table.rows[0].length;
+  if (Array.isArray(table?.cells)) {
+    for (const cell of table.cells) {
+      const r = (Number.isInteger(cell?.r) ? cell.r : 0) + (cell?.rowSpan ?? 1);
+      const c = (Number.isInteger(cell?.c) ? cell.c : 0) + (cell?.colSpan ?? 1);
+      if (!Number.isInteger(table?.rows)) rows = Math.max(rows, r);
+      if (!Number.isInteger(table?.cols)) cols = Math.max(cols, c);
+    }
+  }
+  return {
+    w: Math.min(1200, Math.max(480, 120 * (cols || 1))),
+    h: Math.min(800, Math.max(260, 28 * (rows || 1) + 40))
+  };
+}
 function appendTable(t, { parent, plexus, order } = {}) {
   const root = t.create({
     parent,
@@ -3278,6 +3296,350 @@ var init_roam_table = __esm({
       ".rg-lightbox"
     ].join(", ");
     PORTAL_SELECTOR = ".rg-portal, .rg-editor, .rg-lightbox, [data-rg-owner], .pxd-table-overlay";
+  }
+});
+
+// src/model/parse-schema.js
+function blocksInRange(doc, fromPage, toPage) {
+  const from = Math.min(fromPage, toPage);
+  const to = Math.max(fromPage, toPage);
+  const blocks = doc?.blocks || {};
+  const order = Array.isArray(doc?.order) ? doc.order : [];
+  const out = [];
+  for (const id of order) {
+    const block = blocks[id];
+    if (!block) continue;
+    if (block.page >= from && block.page <= to) out.push(block);
+  }
+  return out;
+}
+function selectBlocks(doc, idsOrRange) {
+  const blocks = doc?.blocks || {};
+  if (idsOrRange == null) {
+    const order = Array.isArray(doc?.order) ? doc.order : [];
+    return order.map((id) => blocks[id]).filter(Boolean);
+  }
+  if (Array.isArray(idsOrRange)) {
+    if (idsOrRange.length === 2 && idsOrRange.every((n2) => typeof n2 === "number")) {
+      return blocksInRange(doc, idsOrRange[0], idsOrRange[1]);
+    }
+    return idsOrRange.map((id) => blocks[id]).filter(Boolean);
+  }
+  if (typeof idsOrRange === "object") {
+    const from = idsOrRange.fromPage ?? idsOrRange.from;
+    const to = idsOrRange.toPage ?? idsOrRange.to;
+    if (from != null && to != null) return blocksInRange(doc, from, to);
+  }
+  return [];
+}
+function tableGrid(table) {
+  const rows = Number.isInteger(table?.rows) ? table.rows : 0;
+  const cols = Number.isInteger(table?.cols) ? table.cols : 0;
+  const grid = Array.from({ length: rows }, (_, r) => Array.from({ length: cols }, (_2, c) => ({ anchor: false, covered: false, cell: null, text: "", r, c })));
+  for (const cell of table?.cells || []) {
+    const rs = cell.rowSpan ?? 1;
+    const cs = cell.colSpan ?? 1;
+    for (let dr = 0; dr < rs; dr += 1) {
+      for (let dc = 0; dc < cs; dc += 1) {
+        const r = cell.r + dr;
+        const c = cell.c + dc;
+        if (r < 0 || c < 0 || r >= rows || c >= cols) continue;
+        const covered = dr !== 0 || dc !== 0;
+        grid[r][c] = {
+          anchor: !covered,
+          covered,
+          cell,
+          text: cell.text ?? "",
+          r,
+          c
+        };
+      }
+    }
+  }
+  return grid;
+}
+var BLOCK_TYPES, TYPE_SET;
+var init_parse_schema = __esm({
+  "src/model/parse-schema.js"() {
+    BLOCK_TYPES = Object.freeze([
+      "heading",
+      "para",
+      "list",
+      "table",
+      "figure",
+      "formula",
+      "caption",
+      "footnote",
+      "code",
+      "scan"
+    ]);
+    TYPE_SET = new Set(BLOCK_TYPES);
+  }
+});
+
+// src/model/parse-to-roam-md.js
+function flattenLine(text3) {
+  return String(text3 ?? "").replace(/\r/g, ESCAPES.whitespace.cr).replace(/ /g, ESCAPES.whitespace.nbsp).replace(/\t/g, ESCAPES.whitespace.tab).replace(/\n/g, ESCAPES.whitespace.newline).replace(ESCAPES.control, "").replace(/ {2,}/g, " ").trim();
+}
+function wrapInline(match) {
+  if (match.startsWith("`") && match.endsWith("`")) return match;
+  return `\`${match}\``;
+}
+function linkSafeText(text3) {
+  let out = String(text3 ?? "");
+  for (const rule of ESCAPES.link) {
+    if (rule.id === "hash") {
+      out = out.replace(rule.re, (full, pre, word) => `${pre}\`${word}\``);
+    } else if (rule.id === "attr") {
+      out = out.replace(rule.re, (full, word) => `\`${word}\``);
+    } else {
+      out = out.replace(rule.re, (full) => wrapInline(full));
+    }
+  }
+  return out;
+}
+function escapeMarkdownText(text3, { leading = true } = {}) {
+  let out = "";
+  const src = String(text3 ?? "");
+  for (let i = 0; i < src.length; i += 1) {
+    const ch = src[i];
+    out += ch === "\\" && i + 1 < src.length && ESCAPES.consumed.has(src[i + 1]) ? "\\\\" : ch;
+  }
+  if (leading && ESCAPES.leading.some((rule) => rule.re.test(out))) out = `\\${out}`;
+  return out;
+}
+function prepareLine(text3, { linkSafe, leading }) {
+  let line = flattenLine(text3);
+  if (linkSafe) line = linkSafeText(line);
+  return escapeMarkdownText(line, { leading });
+}
+function applyFootnoteRefs(text3, refs) {
+  if (!refs?.length) return text3;
+  let out = text3;
+  for (const ref of refs) {
+    const mark = String(ref.mark ?? "");
+    if (!mark) continue;
+    const token = `[${mark}]`;
+    if (out.includes(token)) continue;
+    const sup = Object.keys(SUPERSCRIPT).find((ch) => SUPERSCRIPT[ch] === mark);
+    if (sup && out.includes(sup)) {
+      out = out.replace(sup, token);
+      continue;
+    }
+    if (Number.isInteger(ref.at) && ref.at >= 0 && ref.at <= out.length) {
+      out = `${out.slice(0, ref.at)}${token}${out.slice(ref.at)}`;
+    } else {
+      out += token;
+    }
+  }
+  return out;
+}
+function bullet(depth, text3) {
+  return `${"  ".repeat(depth)}- ${text3 ?? ""}`;
+}
+function itemContent(item, ordered, numbered) {
+  const marker = item.marker || (ordered ? "1." : "•");
+  const text3 = item.text ?? "";
+  if (ordered && numbered) {
+    if (/^\d+\.$/.test(marker)) return marker === "1." ? `1. ${text3}` : `1. ${marker} ${text3}`;
+    return `1. ${marker} ${text3}`;
+  }
+  if (ordered) return `• ${marker} ${text3}`;
+  if (!marker || marker === "•" || marker === "-" || marker === "*") return `• ${text3}`;
+  return `• ${marker} ${text3}`;
+}
+function headingPrefix(level) {
+  if (level === 1) return "# ";
+  if (level === 2) return "## ";
+  if (level === 3) return "### ";
+  return null;
+}
+function toRoamMarkdown(doc, idsOrRange, options = {}) {
+  const linkSafe = options.linkSafe !== false;
+  const numbered = options.numbered === true;
+  const footnotes = options.footnotes === "end" ? "end" : "inline";
+  const blocks = selectBlocks(doc, idsOrRange);
+  const byId = new Map(blocks.map((block) => [block.id, block]));
+  const folded = /* @__PURE__ */ new Set();
+  for (const block of blocks) {
+    if (block.type === "caption" && block.for && byId.has(block.for)) folded.add(block.id);
+  }
+  const render = () => {
+    const lines = [];
+    const emittedNotes = /* @__PURE__ */ new Set();
+    const foldedHere = new Set(folded);
+    const putUser = (depth, text3, prefix = "", suffix = "") => {
+      const line = prepareLine(text3, { linkSafe, leading: prefix === "" });
+      lines.push(bullet(depth, `${prefix}${line}${suffix}`));
+    };
+    const emitRaw = (depth, text3) => {
+      lines.push(bullet(depth, text3));
+    };
+    const emitNote = (note) => {
+      if (!note || emittedNotes.has(note.id)) return;
+      emittedNotes.add(note.id);
+      const mark = note.mark ?? "";
+      putUser(0, note.text ?? "", `[${mark}] `);
+    };
+    const notesFor = (block) => {
+      const refs = block.footnoteRefs || [];
+      const notes = [];
+      for (const ref of refs) {
+        const note = ref.to ? byId.get(ref.to) : null;
+        if (note?.type === "footnote") notes.push(note);
+      }
+      return notes;
+    };
+    for (const block of blocks) {
+      if (foldedHere.has(block.id)) continue;
+      if (block.type === "footnote") {
+        if (footnotes === "end") continue;
+        if (emittedNotes.has(block.id)) continue;
+        emitNote(block);
+        continue;
+      }
+      if (block.type === "heading") {
+        const prefix = headingPrefix(block.level);
+        if (prefix) putUser(0, block.text ?? "", prefix);
+        else putUser(0, block.text ?? "", "**", "**");
+      } else if (block.type === "para") {
+        putUser(0, applyFootnoteRefs(block.text ?? "", block.footnoteRefs));
+        if (footnotes === "inline") {
+          for (const note of notesFor(block)) emitNote(note);
+        }
+      } else if (block.type === "list") {
+        for (const item of block.items || []) {
+          const depth = Number.isInteger(item.level) && item.level > 0 ? item.level : 0;
+          const text3 = item.text ?? "";
+          if (block.ordered === true && numbered) {
+            const marker = item.marker || "1.";
+            const body = marker === "1." ? text3 : `${marker} ${text3}`;
+            putUser(depth, body, "1. ");
+          } else {
+            putUser(depth, itemContent(item, block.ordered === true, false));
+          }
+        }
+      } else if (block.type === "table") {
+        emitTable(block, putUser, emitRaw, byId, foldedHere);
+      } else if (block.type === "figure") {
+        emitFigure(block, putUser, byId);
+      } else if (block.type === "formula") {
+        if (block.latex) {
+          const number = block.number ? ` ${block.number}` : "";
+          putUser(0, block.latex, "$$", `$$${number}`);
+        } else {
+          emitFigure(block, putUser, byId);
+        }
+      } else if (block.type === "caption") {
+        putUser(0, block.text ?? "");
+      } else if (block.type === "code") {
+        const body = flattenLine(block.text ?? "").replace(/```/g, "'''");
+        emitRaw(0, `\`\`\`${body}\`\`\``);
+      } else if (block.type === "scan") {
+        emitRaw(0, `Scanned page ${block.page} (no text)`);
+      }
+    }
+    if (footnotes === "end") {
+      for (const block of blocks) {
+        if (block.type === "footnote") emitNote(block);
+      }
+    }
+    return { lines };
+  };
+  const drafted = render();
+  return {
+    markdown: drafted.lines.join("\n"),
+    placeholders: [],
+    blockEstimate: drafted.lines.length
+  };
+}
+function captionFor(block, byId) {
+  if (block.caption && typeof block.caption === "string" && !byId.has(block.caption)) return block.caption;
+  for (const other of byId.values()) {
+    if (other.type === "caption" && other.for === block.id) return other.text ?? "";
+  }
+  return "";
+}
+function emitFigure(block, putUser, byId) {
+  const caption = captionFor(block, byId) || block.text || "";
+  const url = block.image?.url || block.url || "";
+  const kind = block.type === "formula" ? "formula" : "figure";
+  const page = block.page != null ? `, p. ${block.page}` : "";
+  if (url) {
+    putUser(0, caption, "![", `](${url})`);
+    return;
+  }
+  if (caption) putUser(0, caption, "", ` (${kind}${page})`);
+  else putUser(0, `${block.type === "formula" ? "Formula" : "Figure"} (${kind}${page})`);
+}
+function emitTable(block, putUser, emitRaw, byId, folded) {
+  emitRaw(0, "{{[[table]]}}");
+  const rows = Number.isInteger(block.rows) ? block.rows : 0;
+  const cols = Number.isInteger(block.cols) ? block.cols : 0;
+  const covered = /* @__PURE__ */ new Set();
+  const at = /* @__PURE__ */ new Map();
+  for (const cell of block.cells || []) {
+    const rs = cell.rowSpan ?? 1;
+    const cs = cell.colSpan ?? 1;
+    at.set(`${cell.r}:${cell.c}`, cell);
+    for (let dr = 0; dr < rs; dr += 1) {
+      for (let dc = 0; dc < cs; dc += 1) {
+        if (dr === 0 && dc === 0) continue;
+        covered.add(`${cell.r + dr}:${cell.c + dc}`);
+      }
+    }
+  }
+  for (let r = 0; r < rows; r += 1) {
+    for (let c = 0; c < cols; c += 1) {
+      const key = `${r}:${c}`;
+      const text3 = covered.has(key) ? "" : at.get(key)?.text ?? "";
+      putUser(1 + c, text3);
+    }
+  }
+  const caption = captionFor(block, byId);
+  if (caption) {
+    if (typeof block.caption === "string" && byId.has(block.caption)) folded.add(block.caption);
+    putUser(1, caption);
+  }
+}
+var ESCAPES, SUPERSCRIPT;
+var init_parse_to_roam_md = __esm({
+  "src/model/parse-to-roam-md.js"() {
+    init_parse_schema();
+    ESCAPES = Object.freeze({
+      whitespace: Object.freeze({
+        cr: "",
+        tab: " ",
+        nbsp: " ",
+        newline: " "
+      }),
+      control: /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g,
+      consumed: Object.freeze(/* @__PURE__ */ new Set(["\\", "#", "`", "*", "-", ".", ">", "[", "]", "(", ")"])),
+      leading: Object.freeze([
+        Object.freeze({ id: "hash", re: /^#/ }),
+        Object.freeze({ id: "fence", re: /^```/ }),
+        Object.freeze({ id: "rule", re: /^---/ })
+      ]),
+      link: Object.freeze([
+        Object.freeze({ id: "macro", re: /\{\{[\s\S]*?\}\}/g }),
+        Object.freeze({ id: "page", re: /\[\[[\s\S]*?\]\]/g }),
+        Object.freeze({ id: "block", re: /\(\([\s\S]*?\)\)/g }),
+        Object.freeze({ id: "hash", re: /(^|\s)(#[A-Za-z0-9][\w/-]*)/g }),
+        Object.freeze({ id: "attr", re: /^([^\s`][^:\n]{0,80}::)/ })
+      ])
+    });
+    SUPERSCRIPT = {
+      "⁰": "0",
+      "¹": "1",
+      "²": "2",
+      "³": "3",
+      "⁴": "4",
+      "⁵": "5",
+      "⁶": "6",
+      "⁷": "7",
+      "⁸": "8",
+      "⁹": "9"
+    };
   }
 });
 
@@ -6593,6 +6955,15 @@ function parseDropPayload(dataTransfer, { resolveUid, graph = "" } = {}) {
       return "";
     }
   };
+  const parseRaw = take(PARSE_MIME).trim();
+  if (parseRaw) {
+    try {
+      const payload = JSON.parse(parseRaw);
+      if (payload && typeof payload === "object" && !Array.isArray(payload)) return [{ parse: payload }];
+    } catch {
+    }
+    return [];
+  }
   const resolve = typeof resolveUid === "function" ? resolveUid : (uid) => `((${uid}))`;
   const own = take(CARD_MIME).trim();
   if (own) return [{ string: own }];
@@ -6654,10 +7025,77 @@ function parseDropPayload(dataTransfer, { resolveUid, graph = "" } = {}) {
   }
   return [];
 }
-var CARD_MIME, MAX_DROP, URL_LINE, APP_URL;
+function headingTitle(block) {
+  return String(block?.text ?? "").replace(/\s+/g, " ").trim();
+}
+function planParseInsert(doc, payload) {
+  const kind = payload?.kind;
+  const ids = Array.isArray(payload?.ids) ? payload.ids : [];
+  const blocks = selectBlocks(doc, ids);
+  if (kind === "table") {
+    const table = blocks.find((block) => block?.type === "table") || null;
+    if (!table) return { action: "empty" };
+    return { action: "table", table };
+  }
+  if (kind !== "blocks" || !blocks.length) return { action: "empty" };
+  const sections = [];
+  let current3 = null;
+  for (const block of blocks) {
+    if (block.type === "heading") {
+      current3 = { title: headingTitle(block), ids: [block.id] };
+      sections.push(current3);
+    } else if (!current3) {
+      current3 = { title: "", ids: [block.id] };
+      sections.push(current3);
+    } else current3.ids.push(block.id);
+  }
+  if (sections.length > 1) {
+    return {
+      action: "sections",
+      sections: sections.map((section2) => ({
+        title: section2.title,
+        markdown: toRoamMarkdown(doc, section2.ids).markdown
+      }))
+    };
+  }
+  return { action: "card", markdown: toRoamMarkdown(doc, ids).markdown };
+}
+async function handleParseDrop({ payload, store, session, point, toast } = {}) {
+  let doc = null;
+  try {
+    doc = await store?.getParse?.(payload?.sha256, payload?.engine, payload?.optsHash);
+  } catch {
+    doc = null;
+  }
+  if (!doc) {
+    if (typeof toast === "function") toast(PARSE_MISSING_TOAST);
+    return { ok: false, reason: "missing-cache", uids: [] };
+  }
+  const plan = planParseInsert(doc, payload);
+  const x = Number.isFinite(point?.x) ? point.x : 0;
+  const y = Number.isFinite(point?.y) ? point.y : 0;
+  if (plan.action === "table") {
+    const res = await session?.insertParsedTable?.({ x, y, table: plan.table, mode: "auto" });
+    return { ...res || { ok: false, reason: "empty" }, uids: res?.uid ? [res.uid] : [] };
+  }
+  if (plan.action === "sections") {
+    const res = await session?.sendParsedToBoard?.({ x, y, sections: plan.sections });
+    return { ...res || { ok: false, reason: "empty" }, uids: Array.isArray(res?.uids) ? res.uids : [] };
+  }
+  if (plan.action === "card") {
+    const res = await session?.insertParsedCard?.({ x, y, markdown: plan.markdown });
+    return { ...res || { ok: false, reason: "empty" }, uids: res?.uid ? [res.uid] : [] };
+  }
+  return { ok: false, reason: "empty", uids: [] };
+}
+var CARD_MIME, PARSE_MIME, PARSE_MISSING_TOAST, MAX_DROP, URL_LINE, APP_URL;
 var init_drop = __esm({
   "src/model/drop.js"() {
+    init_parse_schema();
+    init_parse_to_roam_md();
     CARD_MIME = "application/x-plexus-card";
+    PARSE_MIME = "application/x-plexus-parse";
+    PARSE_MISSING_TOAST = "Parse result not found; parse the PDF again";
     MAX_DROP = 50;
     URL_LINE = /^(?:https?|roam):\/\//i;
     APP_URL = /#\/app\/([^/?#]+)(?:\/page\/([\w-]+))?/;
@@ -16778,6 +17216,67 @@ init_trails();
 init_schema();
 init_drawing_card();
 init_roam_table();
+
+// src/model/parse-to-grid.js
+init_parse_schema();
+init_parse_to_roam_md();
+function isNumericCell(value) {
+  let s = String(value ?? "").trim();
+  if (!s) return false;
+  s = s.replace(/\s*\[[A-Za-z0-9]+\]\s*$/g, "");
+  s = s.replace(/[%±]/g, "");
+  s = s.replace(/(\d),(?=\d)/g, "$1");
+  s = s.trim();
+  const wrapped = /^\(([^)]+)\)$/.exec(s);
+  if (wrapped) s = `-${wrapped[1].trim()}`;
+  if (!/^[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?$/.test(s)) return false;
+  return Number.isFinite(Number(s));
+}
+function gridCellText(text3, { linkSafe = true } = {}) {
+  const line = flattenLine(text3);
+  return linkSafe ? linkSafeText(line) : line;
+}
+function cellText(slot2, repeatAnchor) {
+  if (!slot2 || slot2.cell == null) return "";
+  if (slot2.covered && !repeatAnchor) return "";
+  return gridCellText(slot2.text ?? "");
+}
+function toGridSpec(table) {
+  const grid = tableGrid(table);
+  const rows = grid.map((row4) => row4.map((slot2) => cellText(slot2, false)));
+  const merges = [];
+  for (const cell of table?.cells || []) {
+    const rowSpan = cell.rowSpan ?? 1;
+    const colSpan = cell.colSpan ?? 1;
+    if (rowSpan > 1 || colSpan > 1) {
+      merges.push({ row: cell.r, col: cell.c, rowSpan, colSpan });
+    }
+  }
+  const headerCount = Number.isInteger(table?.headerRows) && table.headerRows > 0 ? table.headerRows : 0;
+  const headerRows = Array.from({ length: headerCount }, (_, i) => i);
+  const cols = grid[0]?.length || 0;
+  const alignments = [];
+  for (let c = 0; c < cols; c += 1) {
+    const values = [];
+    for (let r = headerCount; r < grid.length; r += 1) {
+      const slot2 = grid[r][c];
+      if (!slot2 || slot2.covered || slot2.cell == null) continue;
+      const text3 = String(slot2.text ?? "").trim();
+      if (!text3) continue;
+      values.push(text3);
+    }
+    if (!values.length) continue;
+    const numeric = values.filter(isNumericCell).length / values.length;
+    if (numeric >= 0.8) alignments.push({ col: c, align: "right" });
+  }
+  return { rows, merges, headerRows, alignments, widths: null, enhance: true };
+}
+function flatRows(table) {
+  return tableGrid(table).map((row4) => row4.map((slot2) => cellText(slot2, true)));
+}
+
+// src/session.js
+init_parse_to_roam_md();
 init_highlight();
 init_geometry();
 init_shapes();
@@ -17890,6 +18389,56 @@ function queryRows(host, query, ...inputs) {
     return [];
   }
 }
+var GRID_METADATA_UNDOS = 1;
+function roamGridV1() {
+  const holders = [];
+  if (typeof globalThis.window !== "undefined" && globalThis.window) holders.push(globalThis.window);
+  holders.push(globalThis);
+  for (const holder of holders) {
+    const v1 = holder?.roamGrid?.v1;
+    if (!v1 || typeof v1.createTableFromModel !== "function") continue;
+    const caps = v1.capabilities;
+    if (Array.isArray(caps) && caps.includes("createTableFromModel")) return v1;
+  }
+  return null;
+}
+function gridModelArgs(spec) {
+  const src = spec && typeof spec === "object" ? spec : {};
+  const rows = Array.isArray(src.rows) ? src.rows : [];
+  const headerRows = Array.isArray(src.headerRows) ? src.headerRows.length : Number.isInteger(src.headerRows) && src.headerRows > 0 ? src.headerRows : 0;
+  const args = {
+    rows,
+    merges: Array.isArray(src.merges) ? src.merges : [],
+    headerRows,
+    enhance: src.enhance !== false,
+    returnInfo: true
+  };
+  if (src.parentUid) args.parentUid = src.parentUid;
+  if (src.afterUid) args.afterUid = src.afterUid;
+  if (src.order !== void 0) args.order = src.order;
+  if (Array.isArray(src.columnAlignments)) args.columnAlignments = src.columnAlignments;
+  else if (Array.isArray(src.alignments) && src.alignments.length) {
+    const cols = rows.reduce((max, row4) => Math.max(max, Array.isArray(row4) ? row4.length : 0), 0);
+    const columnAlignments = Array.from({ length: cols }, () => null);
+    for (const entry of src.alignments) {
+      if (!entry || !Number.isInteger(entry.col) || entry.col < 0 || entry.col >= cols) continue;
+      columnAlignments[entry.col] = entry.align ?? null;
+    }
+    args.columnAlignments = columnAlignments;
+  } else if (src.alignments && typeof src.alignments === "object") args.alignments = src.alignments;
+  if (src.widths && typeof src.widths === "object") args.widths = src.widths;
+  return args;
+}
+function markdownRootUids(result) {
+  const raw = result?.uids || result?.blocks || result?.rootUids || (Array.isArray(result) ? result : []);
+  const roots = [];
+  if (!Array.isArray(raw)) return roots;
+  for (const item of raw) {
+    const id = typeof item === "string" ? item : item && typeof item.uid === "string" ? item.uid : "";
+    if (id && !roots.includes(id)) roots.push(id);
+  }
+  return roots;
+}
 function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localStorage, graph } = {}) {
   const stats = { writes: 0, watches: 0, pageWatches: 0, renders: 0, items: {}, errors: 0 };
   bindGuardStats(stats);
@@ -18732,6 +19281,66 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
       noteWrite("create");
       return id;
     },
+    // One Roam undo for the whole tree. Roots are recorded with span 0 so groupSpan
+    // does not add another data.undo per root (that would pop the siblings after the tree).
+    async fromMarkdown({ parentUid, order = "last", markdown } = {}) {
+      const parent = String(parentUid ?? "");
+      if (!parent) return [];
+      const fn = data.block?.fromMarkdown;
+      if (typeof fn !== "function") throw new Error("fromMarkdown is missing");
+      const result = await fn({
+        location: { "parent-uid": parent, order },
+        "markdown-string": String(markdown ?? "")
+      });
+      const roots = markdownRootUids(result);
+      stats.writes++;
+      noteWrite("create");
+      for (const id of roots) host.adoptCreated(id, { span: 0 });
+      return roots;
+    },
+    canCreateGridTable() {
+      return Boolean(roamGridV1());
+    },
+    // null when Roam Grid is absent or lacks createTableFromModel. writes is the
+    // number of Roam undo entries counted (returnInfo.writes plus GRID_METADATA_UNDOS
+    // when enhance is on). The table uid is adopted with span 0; noteWrite owns the span.
+    async createGridTable(spec) {
+      const v1 = roamGridV1();
+      if (!v1) return null;
+      const args = gridModelArgs(spec);
+      const info = await v1.createTableFromModel(args);
+      const uid = typeof info?.uid === "string" ? info.uid : "";
+      if (!uid) return null;
+      const reported = Number.isInteger(info.writes) && info.writes > 0 ? info.writes : 1;
+      const meta = args.enhance === false ? 0 : GRID_METADATA_UNDOS;
+      const undos = reported + meta;
+      for (let i = 0; i < undos; i += 1) {
+        stats.writes++;
+        noteWrite(i === 0 ? "create" : "update");
+      }
+      host.adoptCreated(uid, { span: 0 });
+      const extra = Array.isArray(info.uids) ? info.uids : [];
+      for (const id of extra) if (typeof id === "string" && id && id !== uid) host.adoptCreated(id, { span: 0 });
+      const path = info.path === "sequential" ? "sequential" : "markdown";
+      return { uid, writes: undos, path };
+    },
+    // { parentUid, order } for a block, or null when Roam has no integer order.
+    blockLocation(uid) {
+      const id = String(uid ?? "");
+      if (!id) return null;
+      let res = null;
+      try {
+        res = rawPull("[:block/uid :block/order {:block/_children [:block/uid]}]", eidKey(id));
+      } catch {
+        return null;
+      }
+      const order = res?.[":block/order"];
+      const parents = res?.[":block/_children"];
+      const parent = Array.isArray(parents) ? parents[0] : parents;
+      const parentUid = typeof parent?.[":block/uid"] === "string" ? parent[":block/uid"] : "";
+      if (!parentUid || !Number.isInteger(order)) return null;
+      return { parentUid, order };
+    },
     async updateString(uid, string) {
       stats.writes++;
       await data.block.update({ block: { uid, string } });
@@ -18780,10 +19389,13 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
     // That write never passed through noteWrite, so it is one extra Roam undo entry.
     // Recording the uid makes this group's undo/redo step over it too. No-op with no group open.
     // A delete here would land on Roam's stack and come back on the next redo.
-    adoptCreated(uid) {
+    // span 0 records a fromMarkdown / Roam Grid root whose undo is already inside noteWrite
+    // (one data.undo removes the whole tree). Those uids must not add to groupSpan.
+    adoptCreated(uid, opts) {
       const id = typeof uid === "string" ? uid : "";
       if (!openGroup || !id) return;
-      const list = openGroup.created || (openGroup.created = []);
+      const key = opts && opts.span === 0 ? "markdownRoots" : "created";
+      const list = openGroup[key] || (openGroup[key] = []);
       if (!list.includes(id)) list.push(id);
       redoLog.length = 0;
     },
@@ -20191,6 +20803,84 @@ function addPublicCard(opts = {}, createFn) {
   if (typeof make2 !== "function") return op;
   return make2(op);
 }
+var PARSE_BLOCK_CHUNK = 400;
+var PARSE_CHUNK_CAP = 10;
+var PARSE_SECTION_CAP = Math.floor(BULK_CARD_CAP / 2);
+var PARSE_TOO_LARGE = "This range is too large. Narrow it and insert again.";
+var SECTION_GAP = 24;
+function nestMarkdownUnderFirst(markdown) {
+  const lines = String(markdown ?? "").split("\n");
+  let seen = 0;
+  let start = -1;
+  for (let i = 0; i < lines.length; i += 1) {
+    if (/^- /.test(lines[i])) {
+      seen += 1;
+      if (seen === 2) {
+        start = i;
+        break;
+      }
+    }
+  }
+  if (start < 0) return lines.join("\n");
+  return lines.map((line, i) => i >= start && line !== "" ? `  ${line}` : line).join("\n");
+}
+function bulletCount(markdown) {
+  return (String(markdown ?? "").match(/^\s*- /gm) || []).length;
+}
+function topLevelTrees(markdown) {
+  const trees = [];
+  let current3 = null;
+  for (const line of String(markdown ?? "").split("\n")) {
+    if (/^- /.test(line)) {
+      current3 = [line];
+      trees.push(current3);
+    } else if (current3) current3.push(line);
+  }
+  return trees;
+}
+function chunkParsedMarkdown(markdown, blockEstimate) {
+  const text3 = String(markdown ?? "");
+  const bullets = bulletCount(text3);
+  const estimate = Number.isFinite(Number(blockEstimate)) ? Number(blockEstimate) : bullets;
+  const ceiling = PARSE_BLOCK_CHUNK * PARSE_CHUNK_CAP;
+  if (bullets > ceiling || estimate > ceiling) return { ok: false, reason: "too-large" };
+  if (!text3.trim() || bullets === 0) return { ok: true, chunks: [] };
+  const chunks = [];
+  let buf = [];
+  let count = 0;
+  const treeBullets = (tree) => tree.filter((line) => /^\s*- /.test(line)).length;
+  for (const tree of topLevelTrees(text3)) {
+    const n2 = treeBullets(tree);
+    if (count > 0 && count + n2 > PARSE_BLOCK_CHUNK) {
+      chunks.push(buf.join("\n"));
+      buf = [];
+      count = 0;
+    }
+    buf.push(...tree);
+    count += n2;
+  }
+  if (buf.length) chunks.push(buf.join("\n"));
+  if (chunks.length > PARSE_CHUNK_CAP) return { ok: false, reason: "too-large" };
+  return { ok: true, chunks };
+}
+function advanceOrder(order, rootCount) {
+  if (typeof order !== "number") return "last";
+  return order + Math.max(rootCount, 1);
+}
+function flatTableMarkdown(table) {
+  const lines = ["- {{[[table]]}}"];
+  for (const row4 of flatRows(table)) {
+    for (let c = 0; c < row4.length; c += 1) {
+      lines.push(`${"  ".repeat(c + 1)}- ${escapeMarkdownText(String(row4[c] ?? ""))}`);
+    }
+  }
+  return lines.join("\n");
+}
+function nativeTableMarkdown(table) {
+  const id = typeof table?.id === "string" && table.id ? table.id : "t1";
+  const block = { ...table, id, type: table?.type || "table" };
+  return toRoamMarkdown({ blocks: { [id]: block }, order: [id] }, [id]).markdown;
+}
 function capBulk(list, emit2, limit = BULK_CARD_CAP) {
   const raw = Number(limit);
   const cap4 = Math.min(BULK_CARD_CAP, Math.max(0, Number.isFinite(raw) ? Math.floor(raw) : BULK_CARD_CAP));
@@ -21242,6 +21932,21 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     scheduleLinks();
     return linkPromise;
   }
+  const runParsed = (fn) => queue.run(async () => {
+    try {
+      const res = await grouped(fn);
+      if (!res || res.ok === false) return res;
+      return { ...res, writes: host.stats.lastAction?.writes ?? 0 };
+    } catch (err) {
+      handleFailure(err);
+      return { ok: false, reason: "write-failed" };
+    }
+  });
+  const placeParsed = (x, y, w, h) => {
+    const parent = containerAt(board2, { x: x + w / 2, y: y + h / 2 }, { rects });
+    const rel = toRelative(board2, parent, { x, y }, rects);
+    return { parent, rel };
+  };
   const session = {
     uid,
     host,
@@ -21383,6 +22088,126 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
         const id = appendTable(t, { parent, plexus: serializeItemLayout(layout) });
         applyFit(t, [id]);
         return id;
+      });
+    },
+    // Next sibling of the PDF block. No props. Chunks of 400 bullets, 10 chunks max.
+    insertParsedBelow({ pdfUid, markdown, blockEstimate } = {}) {
+      if (destroyed || gone) return Promise.resolve(void 0);
+      const plan = chunkParsedMarkdown(markdown, blockEstimate);
+      if (!plan.ok) {
+        emit2("toast", { message: PARSE_TOO_LARGE });
+        return Promise.resolve({ ok: false, reason: "too-large" });
+      }
+      if (!plan.chunks.length) return Promise.resolve({ ok: true, uids: [], writes: 0 });
+      const loc = host.blockLocation?.(pdfUid);
+      if (!loc) return Promise.resolve({ ok: false, reason: "missing" });
+      return runParsed(async () => {
+        let order = loc.order + 1;
+        const uids = [];
+        for (const chunk of plan.chunks) {
+          const roots = await host.fromMarkdown({ parentUid: loc.parentUid, order, markdown: chunk });
+          uids.push(...roots);
+          order = advanceOrder(order, roots.length);
+        }
+        repull();
+        return { ok: true, uids };
+      });
+    },
+    // One note card. Children stay in the block tree; kids stays off unless the layout says so.
+    insertParsedCard({ x, y, w, h, markdown } = {}) {
+      if (!board2 || destroyed || gone) return Promise.resolve(void 0);
+      const nested = nestMarkdownUnderFirst(markdown);
+      if (!String(nested).trim() || bulletCount(nested) === 0) return Promise.resolve({ ok: false, reason: "empty" });
+      const width = Number.isFinite(w) ? w : DEFAULT_SIZES.card.w;
+      const height = Number.isFinite(h) ? h : DEFAULT_SIZES.card.h;
+      const size = clampSize("card", width, height);
+      const { parent, rel } = placeParsed(x, y, size.w, size.h);
+      const layout = withCardLook({ x: rel.x, y: rel.y, w: size.w, h: size.h }, nested);
+      const plexus = serializeItemLayout(layout);
+      const order = insertOrder(parent);
+      return runParsed(async () => {
+        const roots = await host.fromMarkdown({ parentUid: parent, order, markdown: nested });
+        const uid2 = roots[0];
+        if (!uid2) return { ok: false, reason: "empty" };
+        await host.updateProps(uid2, plexus);
+        repull();
+        return { ok: true, uid: uid2 };
+      });
+    },
+    // auto = grid when Roam Grid can createTableFromModel, otherwise native.
+    // grid falls back to native when the API is missing. flat repeats covered cells.
+    insertParsedTable({ x, y, table, mode = "auto" } = {}) {
+      if (!board2 || destroyed || gone) return Promise.resolve(void 0);
+      const asked = mode === "grid" || mode === "native" || mode === "flat" ? mode : "auto";
+      const rawSize = parsedTableSize(table);
+      const size = clampSize("card", rawSize.w, rawSize.h);
+      const { parent, rel } = placeParsed(x, y, size.w, size.h);
+      const plexus = serializeItemLayout({ x: rel.x, y: rel.y, w: size.w, h: size.h });
+      const order = insertOrder(parent);
+      const tryGrid = asked === "grid" || asked === "auto" && host.canCreateGridTable?.();
+      return runParsed(async () => {
+        let uid2 = null;
+        let path = asked === "flat" ? "flat" : "native";
+        if (tryGrid) {
+          try {
+            const info = await host.createGridTable({ ...toGridSpec(table), parentUid: parent, order });
+            if (info?.uid) {
+              uid2 = info.uid;
+              path = "grid";
+            }
+          } catch {
+            uid2 = null;
+          }
+        }
+        if (!uid2) {
+          const markdown = asked === "flat" ? flatTableMarkdown(table) : nativeTableMarkdown(table);
+          const roots = await host.fromMarkdown({ parentUid: parent, order, markdown });
+          uid2 = roots[0] || null;
+          path = asked === "flat" ? "flat" : "native";
+        }
+        if (!uid2) return { ok: false, reason: "empty" };
+        await host.updateProps(uid2, plexus);
+        repull();
+        return { ok: true, uid: uid2, path, w: size.w, h: size.h };
+      });
+    },
+    // One card per section, stacked down from the drop point. Cap keeps one undo step.
+    sendParsedToBoard({ x, y, sections } = {}) {
+      if (!board2 || destroyed || gone) return Promise.resolve(void 0);
+      const list = Array.isArray(sections) ? sections.filter((section2) => section2 && String(section2.markdown ?? "").trim()) : [];
+      if (!list.length) return Promise.resolve({ ok: true, uids: [], writes: 0 });
+      const capped = capBulk(list, emit2, PARSE_SECTION_CAP);
+      const cardH = DEFAULT_SIZES.card.h;
+      const cardW = DEFAULT_SIZES.card.w;
+      return runParsed(async () => {
+        const uids = [];
+        let orderParent = null;
+        let orderCursor = null;
+        for (let i = 0; i < capped.length; i += 1) {
+          const nested = nestMarkdownUnderFirst(capped[i].markdown);
+          if (bulletCount(nested) === 0) continue;
+          const py = y + i * (cardH + SECTION_GAP);
+          const size = clampSize("card", cardW, cardH);
+          const { parent, rel } = placeParsed(x, py, size.w, size.h);
+          const layout = withCardLook({ x: rel.x, y: rel.y, w: size.w, h: size.h }, nested);
+          const plexus = serializeItemLayout(layout);
+          let order;
+          if (orderParent === parent && orderCursor != null) order = orderCursor;
+          else {
+            order = insertOrder(parent);
+            orderParent = parent;
+            orderCursor = order;
+          }
+          const roots = await host.fromMarkdown({ parentUid: parent, order, markdown: nested });
+          const uid2 = roots[0];
+          if (!uid2) continue;
+          await host.updateProps(uid2, plexus);
+          uids.push(uid2);
+          orderCursor = advanceOrder(order, roots.length);
+          orderParent = parent;
+        }
+        repull();
+        return { ok: true, uids };
       });
     },
     createText({ x, y, string = "", look, w, h, color, shape } = {}) {
@@ -34140,7 +34965,7 @@ function tableColumns(rows) {
   }
   return FIXED.concat(names);
 }
-function cellText(row4, column) {
+function cellText2(row4, column) {
   if (!row4) return "";
   if (column === "Title") return String(row4.title ?? "");
   if (column === "Section") return String(row4.section ?? "");
@@ -34153,7 +34978,7 @@ function filterRows3(rows, text3) {
   const needle = String(text3 ?? "").trim().toLowerCase();
   if (!needle) return (rows || []).slice();
   const cols = tableColumns(rows);
-  return (rows || []).filter((row4) => cols.some((column) => cellText(row4, column).toLowerCase().includes(needle)));
+  return (rows || []).filter((row4) => cols.some((column) => cellText2(row4, column).toLowerCase().includes(needle)));
 }
 function sortRows3(rows, column, dir = "asc") {
   const sign = dir === "desc" ? -1 : 1;
@@ -34164,7 +34989,7 @@ function sortRows3(rows, column, dir = "asc") {
       const bv = Number(b.edited) || 0;
       return (av - bv) * sign;
     }
-    return cellText(a, column).localeCompare(cellText(b, column)) * sign;
+    return cellText2(a, column).localeCompare(cellText2(b, column)) * sign;
   });
   return list;
 }
@@ -34395,7 +35220,7 @@ function mountTable({ doc = globalThis.document, root, host, getBoard } = {}) {
           const button = doc.createElement("button");
           button.type = "button";
           button.className = "pxd-btn pxd-table__value";
-          button.textContent = cellText(row4, column);
+          button.textContent = cellText2(row4, column);
           button.setAttribute("aria-label", `${column} for ${row4.title || row4.uid}`);
           listen(button, "click", () => openEditor(td, attr.uid), paintOffs);
           td.append(button);
@@ -34422,7 +35247,7 @@ function mountTable({ doc = globalThis.document, root, host, getBoard } = {}) {
         } else {
           const span = doc.createElement("span");
           span.className = "pxd-table__text";
-          span.textContent = column === "Edited" ? editedLabel(row4.edited) : cellText(row4, column);
+          span.textContent = column === "Edited" ? editedLabel(row4.edited) : cellText2(row4, column);
           td.append(span);
         }
         tr.append(td);
@@ -35264,6 +36089,312 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
 // src/view/board-view.js
 init_info();
 init_panel();
+init_drop();
+
+// src/model/parse-hash.js
+function bytesOf(input) {
+  if (input == null) return new Uint8Array();
+  if (typeof input === "string") return new TextEncoder().encode(input);
+  if (input instanceof ArrayBuffer) return new Uint8Array(input);
+  if (ArrayBuffer.isView(input)) return new Uint8Array(input.buffer, input.byteOffset, input.byteLength);
+  throw new TypeError("sha256Hex expects bytes");
+}
+async function sha256Hex(bytes) {
+  const view = bytesOf(bytes);
+  const digest = await crypto.subtle.digest("SHA-256", view);
+  const hex = [];
+  for (const byte2 of new Uint8Array(digest)) hex.push(byte2.toString(16).padStart(2, "0"));
+  return hex.join("");
+}
+function canonicalize(value) {
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (value && typeof value === "object") {
+    const out = {};
+    for (const key of Object.keys(value).sort()) out[key] = canonicalize(value[key]);
+    return out;
+  }
+  return value;
+}
+function canonicalOptions(options) {
+  const src = options && typeof options === "object" && !Array.isArray(options) ? options : {};
+  const copy = {};
+  for (const key of Object.keys(src).sort()) {
+    if (key === "scope") continue;
+    copy[key] = canonicalize(src[key]);
+  }
+  return copy;
+}
+function canonicalOptionsJson(options) {
+  return JSON.stringify(canonicalOptions(options));
+}
+async function optionsHash(options) {
+  return sha256Hex(canonicalOptionsJson(options));
+}
+
+// src/host/parse-store.js
+var PARSE_DOC_CAP = 50;
+var PARSE_IMAGE_CAP = 200 * 1024 * 1024;
+var META_KEY = "meta:lru";
+function parseKey(sha256, engine, optsHash) {
+  return `${sha256}|${engine}|${optsHash}`;
+}
+function requestResult2(req) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (value) => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
+    try {
+      req.onsuccess = () => done({ ok: true, result: req.result });
+      req.onerror = (event) => {
+        try {
+          event?.preventDefault?.();
+        } catch {
+        }
+        done({ ok: false, result: null });
+      };
+    } catch {
+      done({ ok: false, result: null });
+    }
+  });
+}
+function byteLengthOf(bytes) {
+  if (bytes == null) return 0;
+  if (typeof bytes === "string") return new TextEncoder().encode(bytes).byteLength;
+  if (bytes instanceof ArrayBuffer) return bytes.byteLength;
+  if (ArrayBuffer.isView(bytes)) return bytes.byteLength;
+  if (typeof bytes.size === "number") return bytes.size;
+  return 0;
+}
+function copyBytes(bytes) {
+  if (ArrayBuffer.isView(bytes)) return new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength).slice();
+  if (bytes instanceof ArrayBuffer) return new Uint8Array(bytes).slice();
+  return bytes;
+}
+function emptyMeta() {
+  return { docs: [], images: [] };
+}
+function createParseStore({ indexedDB: factory, now: now2, docCap = PARSE_DOC_CAP, imageCap = PARSE_IMAGE_CAP } = {}) {
+  const clock = typeof now2 === "function" ? now2 : () => Date.now();
+  const memory = {
+    parse: /* @__PURE__ */ new Map(),
+    images: /* @__PURE__ */ new Map(),
+    index: /* @__PURE__ */ new Map()
+  };
+  let dbPromise = null;
+  let idbDead = !factory;
+  const open = () => {
+    if (idbDead) return Promise.resolve(null);
+    if (!dbPromise) {
+      dbPromise = openDiagramDb(factory).then((db) => {
+        if (!db) {
+          idbDead = true;
+          dbPromise = null;
+        }
+        return db;
+      });
+    }
+    return dbPromise;
+  };
+  const run = async (storeName, mode, fn) => {
+    if (idbDead) return { ok: false };
+    try {
+      const db = await open();
+      if (!db || typeof db.transaction !== "function") {
+        idbDead = true;
+        return { ok: false };
+      }
+      const tx = db.transaction(storeName, mode);
+      const store = tx.objectStore(storeName);
+      return await fn(store);
+    } catch {
+      idbDead = true;
+      return { ok: false };
+    }
+  };
+  const backend = {
+    async get(storeName, key) {
+      if (!idbDead) {
+        const hit = await run(storeName, "readonly", (store) => requestResult2(store.get(key)));
+        if (hit?.ok) return hit.result === void 0 ? null : hit.result;
+      }
+      const map = storeName === STORE_PARSE ? memory.parse : storeName === STORE_PARSE_IMAGES ? memory.images : memory.index;
+      return map.has(key) ? map.get(key) : null;
+    },
+    async put(storeName, key, value) {
+      if (!idbDead) {
+        const wrote = await run(storeName, "readwrite", (store) => requestResult2(store.put(value, key)));
+        if (wrote?.ok) return true;
+      }
+      const map = storeName === STORE_PARSE ? memory.parse : storeName === STORE_PARSE_IMAGES ? memory.images : memory.index;
+      map.set(key, value);
+      return true;
+    },
+    async delete(storeName, key) {
+      if (!idbDead) {
+        const removed = await run(storeName, "readwrite", (store) => requestResult2(store.delete(key)));
+        if (removed?.ok) return true;
+      }
+      const map = storeName === STORE_PARSE ? memory.parse : storeName === STORE_PARSE_IMAGES ? memory.images : memory.index;
+      map.delete(key);
+      return true;
+    },
+    async keys(storeName) {
+      if (!idbDead) {
+        const hit = await run(storeName, "readonly", (store) => {
+          if (typeof store.getAllKeys === "function") return requestResult2(store.getAllKeys());
+          if (typeof store.getAll === "function") {
+            return requestResult2(store.getAll()).then((res) => {
+              if (!res?.ok || !Array.isArray(res.result)) return res;
+              const keys = res.result.map((row4) => row4?.key).filter((key) => key != null);
+              return { ok: true, result: keys };
+            });
+          }
+          return Promise.resolve({ ok: false, result: null });
+        });
+        if (hit?.ok && Array.isArray(hit.result)) return hit.result;
+      }
+      const map = storeName === STORE_PARSE ? memory.parse : storeName === STORE_PARSE_IMAGES ? memory.images : memory.index;
+      return [...map.keys()];
+    }
+  };
+  const loadMeta = async () => {
+    const raw = await backend.get(STORE_PARSE_INDEX, META_KEY);
+    if (!raw || typeof raw !== "object") return emptyMeta();
+    return {
+      docs: Array.isArray(raw.docs) ? raw.docs.filter((key) => typeof key === "string") : [],
+      images: Array.isArray(raw.images) ? raw.images.filter((row4) => row4 && typeof row4.key === "string" && typeof row4.bytes === "number") : []
+    };
+  };
+  const saveMeta = (meta) => backend.put(STORE_PARSE_INDEX, META_KEY, meta);
+  const touch = (list, key) => {
+    const next = list.filter((item) => item !== key);
+    next.push(key);
+    return next;
+  };
+  return {
+    async getParse(sha, engine, optsHash) {
+      try {
+        if (!sha || !engine || !optsHash) return null;
+        const key = parseKey(sha, engine, optsHash);
+        const record = await backend.get(STORE_PARSE, key);
+        if (!record?.doc) return null;
+        const meta = await loadMeta();
+        meta.docs = touch(meta.docs, key);
+        await saveMeta(meta);
+        return record.doc;
+      } catch {
+        return null;
+      }
+    },
+    async putParse(doc) {
+      try {
+        if (!doc || typeof doc !== "object" || !doc.sha256 || !doc.engine) return null;
+        const optsHash = typeof doc.optsHash === "string" && doc.optsHash ? doc.optsHash : await optionsHash(doc.options || {});
+        const key = parseKey(doc.sha256, doc.engine, optsHash);
+        const stored = { ...doc, optsHash };
+        const record = { doc: stored, optsHash, at: clock() };
+        if (!await backend.put(STORE_PARSE, key, record)) return null;
+        const meta = await loadMeta();
+        meta.docs = touch(meta.docs, key);
+        while (meta.docs.length > docCap) {
+          const oldest = meta.docs.shift();
+          if (oldest) await backend.delete(STORE_PARSE, oldest);
+        }
+        await saveMeta(meta);
+        return stored;
+      } catch {
+        return null;
+      }
+    },
+    async findByUrl(url) {
+      try {
+        if (!url) return null;
+        const record = await backend.get(STORE_PARSE_INDEX, url);
+        if (!record || record.sha256 == null) return null;
+        return {
+          sha256: record.sha256,
+          pageCount: record.pageCount ?? null,
+          at: record.at ?? null
+        };
+      } catch {
+        return null;
+      }
+    },
+    async indexUrl(url, info) {
+      try {
+        if (!url || !info || !info.sha256) return null;
+        const record = {
+          sha256: info.sha256,
+          pageCount: Number.isInteger(info.pageCount) ? info.pageCount : null,
+          at: clock()
+        };
+        if (!await backend.put(STORE_PARSE_INDEX, url, record)) return null;
+        return record;
+      } catch {
+        return null;
+      }
+    },
+    async getImage(key) {
+      try {
+        if (!key) return null;
+        const record = await backend.get(STORE_PARSE_IMAGES, key);
+        if (!record || record.bytes == null) return null;
+        const meta = await loadMeta();
+        meta.images = meta.images.filter((row4) => row4.key !== key).concat(
+          meta.images.filter((row4) => row4.key === key)
+        );
+        await saveMeta(meta);
+        return record.bytes;
+      } catch {
+        return null;
+      }
+    },
+    async putImage(key, bytes) {
+      try {
+        if (!key || bytes == null) return null;
+        const size = byteLengthOf(bytes);
+        if (size <= 0 || size > imageCap) return null;
+        const stored = copyBytes(bytes);
+        const meta = await loadMeta();
+        meta.images = meta.images.filter((row4) => row4.key !== key);
+        let used = meta.images.reduce((sum, row4) => sum + row4.bytes, 0);
+        while (meta.images.length && used + size > imageCap) {
+          const oldest = meta.images.shift();
+          used -= oldest.bytes;
+          await backend.delete(STORE_PARSE_IMAGES, oldest.key);
+        }
+        if (!await backend.put(STORE_PARSE_IMAGES, key, { bytes: stored, byteLength: size, at: clock() })) return null;
+        meta.images.push({ key, bytes: size });
+        await saveMeta(meta);
+        return stored;
+      } catch {
+        return null;
+      }
+    },
+    async clear() {
+      try {
+        const meta = await loadMeta();
+        for (const key of meta.docs) await backend.delete(STORE_PARSE, key);
+        for (const row4 of meta.images) await backend.delete(STORE_PARSE_IMAGES, row4.key);
+        const indexKeys = await backend.keys(STORE_PARSE_INDEX);
+        for (const key of indexKeys) await backend.delete(STORE_PARSE_INDEX, key);
+        const parseKeys = await backend.keys(STORE_PARSE);
+        for (const key of parseKeys) await backend.delete(STORE_PARSE, key);
+        const imageKeys = await backend.keys(STORE_PARSE_IMAGES);
+        for (const key of imageKeys) await backend.delete(STORE_PARSE_IMAGES, key);
+        memory.parse.clear();
+        memory.images.clear();
+        memory.index.clear();
+        return true;
+      } catch {
+        return null;
+      }
+    }
+  };
+}
 
 // src/view/menu.js
 init_avoid();
@@ -44010,6 +45141,20 @@ function buildBoardView(onFail, {
     const resolveUid = (u) => host?.cardStringForUid ? host.cardStringForUid(u) : `((${u}))`;
     const list = parseDropPayload(event.dataTransfer, { resolveUid, graph: host?.graph || "" });
     if (!list.length) return;
+    if (list.length === 1 && list[0].parse) {
+      void handleParseDrop({
+        payload: list[0].parse,
+        store: createParseStore(),
+        session,
+        point: p,
+        toast: (message) => toast(message)
+      }).then((res) => {
+        if (disposed) return;
+        if (Array.isArray(res?.uids) && res.uids.length) ctl.select(res.uids);
+      }).catch(() => {
+      });
+      return;
+    }
     const dropped = highlightDropPlan(list, [...board2()?.items.values() || []]);
     if (dropped.kind === "pulse") {
       if (dropped.uid) pulseItem(dropped.uid);

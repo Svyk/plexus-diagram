@@ -16,6 +16,26 @@ export function isRoamTableString(value) {
   return TABLE_RE.test(String(value ?? "").trim());
 }
 
+// Parsed tables scale with the grid. 3×3 stays the empty-table size (480×260).
+export function parsedTableSize(table) {
+  let cols = Number.isInteger(table?.cols) ? table.cols : 0;
+  let rows = Number.isInteger(table?.rows) ? table.rows : 0;
+  if (!rows && Array.isArray(table?.rows)) rows = table.rows.length;
+  if (!cols && Array.isArray(table?.rows) && Array.isArray(table.rows[0])) cols = table.rows[0].length;
+  if (Array.isArray(table?.cells)) {
+    for (const cell of table.cells) {
+      const r = (Number.isInteger(cell?.r) ? cell.r : 0) + (cell?.rowSpan ?? 1);
+      const c = (Number.isInteger(cell?.c) ? cell.c : 0) + (cell?.colSpan ?? 1);
+      if (!Number.isInteger(table?.rows)) rows = Math.max(rows, r);
+      if (!Number.isInteger(table?.cols)) cols = Math.max(cols, c);
+    }
+  }
+  return {
+    w: Math.min(1200, Math.max(480, 120 * (cols || 1))),
+    h: Math.min(800, Math.max(260, 28 * (rows || 1) + 40)),
+  };
+}
+
 export function appendTable(t, { parent, plexus, order } = {}) {
   const root = t.create({
     parent,

@@ -9260,9 +9260,9 @@ function panFps(deltas) {
     const n2 = Number(value);
     if (Number.isFinite(n2) && n2 > 0) finite6.push(n2);
   }
-  const median3 = percentile(finite6, 0.5);
-  if (!(median3 > 0)) return null;
-  return 1e3 / median3;
+  const median4 = percentile(finite6, 0.5);
+  if (!(median4 > 0)) return null;
+  return 1e3 / median4;
 }
 function numText(value) {
   if (!Number.isFinite(value)) return "—";
@@ -28934,8 +28934,8 @@ async function optionsHash(options) {
 var LIGATURES = { "ﬀ": "ff", "ﬁ": "fi", "ﬂ": "fl", "ﬃ": "ffi", "ﬄ": "ffl", "ﬅ": "st", "ﬆ": "st" };
 var SUP_MAX_RATIO = 0.85;
 var SUP_MIN_SHIFT = 0.1;
-var BOLD_RE = /bold|black|heavy|semibold|demibold|extrab|ultrab|-medi\b|cmbx|cmb\d|,bold|-b$|\bbd\b/i;
-var ITALIC_RE = /italic|oblique|-it\b|cmti|cmmi|slanted|-i$/i;
+var BOLD_RE = /bold|black|heavy|semibold|demibold|extrab|ultrab|-medi\b|cmbx|cmb\d|,bold|-b$|\bbd\b|\.BI?(\+|$)|\.B\b/i;
+var ITALIC_RE = /italic|oblique|-it\b|cmti|cmmi|slanted|-i$|\.B?I(\+|$)/i;
 var MATH_FONT_RE = /math|symbol|cmsy|cmmi|cmex|cmr\d|cmbx\d|msbm|msam|stix|txsy|txmi|pxsy|rsfs|wasy|eufm|euex/i;
 function mul(a, b) {
   return [
@@ -28971,13 +28971,15 @@ function normalizeText(str2) {
   }
   return out;
 }
+var MONO_FONT_RE = /mono|courier|cmtt|sftt|lmtt|typewriter|consol|menlo|inconsolata|firacode|sourcecodepro|txtt|beramono|luximono|t1xtt/i;
 function fontFlags(fontName, fonts) {
   const info = fonts && fonts[fontName];
   const name = info && (info.name || info.fontFamily) || "";
   const bold = Boolean(info && info.bold) || BOLD_RE.test(name) || info && info.weight >= 600 || false;
   const italic = Boolean(info && info.italic) || ITALIC_RE.test(name);
   const math = MATH_FONT_RE.test(name);
-  return { bold, italic, math, name };
+  const mono = Boolean(info && info.fontFamily === "monospace") || MONO_FONT_RE.test(name);
+  return { bold, italic, math, mono, name };
 }
 var MATH_CHAR_RE = /[∀-⋿Α-ω←-⇿\u{1D400}-\u{1D7FF}±×÷√∫∑∏≤≥≠∞]/u;
 function isMathChar(ch) {
@@ -29020,6 +29022,7 @@ function piecesOf(item, transform, fonts) {
         bold: flags.bold,
         italic: flags.italic,
         mathFont: flags.math,
+        mono: flags.mono,
         mathChars: math,
         rotated,
         leadingSpace: start > 0 && str2[start - 1] === " ",
@@ -29134,6 +29137,7 @@ function mergeWords(pieces, rowSize) {
       if (p.bold) cur.boldChars += p.text.length;
       if (p.italic) cur.italicChars += p.text.length;
       if (p.mathFont) cur.mathFontChars += p.text.length;
+      if (p.mono) cur.monoChars += p.text.length;
       continue;
     }
     cur = {
@@ -29152,6 +29156,7 @@ function mergeWords(pieces, rowSize) {
       boldChars: p.bold ? p.text.length : 0,
       italicChars: p.italic ? p.text.length : 0,
       mathFontChars: p.mathFont ? p.text.length : 0,
+      monoChars: p.mono ? p.text.length : 0,
       trailingSpace: p.trailingSpace
     };
     words.push(cur);
@@ -29162,6 +29167,7 @@ function mergeWords(pieces, rowSize) {
     w.y1 = w.base + w.size * 0.22;
     w.bold = w.boldChars >= w.text.length / 2;
     w.italic = w.italicChars >= w.text.length / 2;
+    w.mono = w.monoChars >= w.text.length / 2;
     w.rowSize = rowSize;
     delete w.trailingSpace;
   }
@@ -29658,15 +29664,84 @@ function segmentsOf(snapped) {
 }
 function connected(s, t, tol = 2) {
   if (s.axis === t.axis) {
-    if (s.axis !== "h") return false;
+    if (s.axis !== "h" || Math.abs(s.pos - t.pos) > 4) return false;
     const overlap = Math.min(s.b, t.b) - Math.max(s.a, t.a);
-    const shorter = Math.min(s.b - s.a, t.b - t.a);
-    return overlap >= 0.6 * shorter && Math.abs(s.pos - t.pos) <= 400;
+    return overlap >= 0.9 * Math.max(s.b - s.a, t.b - t.a);
   }
   const h = s.axis === "h" ? s : t;
   const v = s.axis === "h" ? t : s;
   return v.pos >= h.a - tol && v.pos <= h.b + tol && h.pos >= v.a - tol && h.pos <= v.b + tol;
 }
+function rowsBetween(words, { x0, x1, y0, y1 }) {
+  const inside5 = words.filter((w) => {
+    const cx = (w.x0 + w.x1) / 2;
+    const cy = w.base - 0.3 * w.size;
+    return cx >= x0 - 2 && cx <= x1 + 2 && cy > y0 && cy < y1;
+  }).sort((a, b) => a.base - b.base || a.x0 - b.x0);
+  const rows = [];
+  for (const w of inside5) {
+    const r = rows[rows.length - 1];
+    if (r && Math.abs(r.base - w.base) <= 0.3 * Math.max(r.size, w.size)) r.words.push(w);
+    else rows.push({ base: w.base, size: w.size, words: [w] });
+  }
+  for (const r of rows) {
+    r.words.sort((a, b) => a.x0 - b.x0);
+    r.x0 = r.words[0].x0;
+    r.x1 = Math.max(...r.words.map((w) => w.x1));
+    const chars = Math.max(1, r.words.reduce((n2, w) => n2 + w.text.length, 0));
+    const charW = r.words.reduce((n2, w) => n2 + (w.x1 - w.x0), 0) / chars || 0.5 * r.size;
+    const threshold = Math.max(1.8 * charW, 0.6 * r.size);
+    let tokens = 0;
+    let last = null;
+    for (const w of r.words) {
+      if (!last || w.x0 - last.x1 >= threshold) tokens++;
+      last = w;
+    }
+    r.tokens = tokens;
+    r.text = r.words.map((w) => w.text).join(" ");
+  }
+  return rows;
+}
+function tabularBetween(words, box2) {
+  const rows = rowsBetween(words, box2);
+  if (!rows.length) return { rows, tabular: true, empty: true };
+  const width = box2.x1 - box2.x0;
+  let multi = 0;
+  for (const r of rows) {
+    if (r.tokens >= 2) multi++;
+    const n2 = r.words.length;
+    const chars = r.words.reduce((k, w) => k + w.text.length, 0);
+    const prose = n2 >= 7 && chars / n2 >= 3.5 && r.x1 - r.x0 >= 0.7 * width && (r.tokens === 1 || r.tokens < n2 / 2 && shortTokens(r) === 0);
+    if (prose) return { rows, tabular: false, reason: "prose" };
+    if (CAPTION_START_RE.test(r.text) && r.words.length >= 3 && r.x0 - box2.x0 <= 0.15 * width) return { rows, tabular: false, reason: "caption" };
+  }
+  if (rows.length === 1 && rows[0].tokens === 1 && rows[0].words.length <= 6) return { rows, tabular: true, reason: "label row" };
+  const fragments = rows.every((r) => r.tokens >= 2 || r.words.length <= 4);
+  return { rows, tabular: multi >= Math.ceil(rows.length * 0.5) || multi >= 1 && fragments, reason: "single-token rows" };
+}
+function shortTokens(row4) {
+  const chars = Math.max(1, row4.words.reduce((n2, w) => n2 + w.text.length, 0));
+  const charW = row4.words.reduce((n2, w) => n2 + (w.x1 - w.x0), 0) / chars || 0.5 * row4.size;
+  const threshold = Math.max(1.8 * charW, 0.6 * row4.size);
+  let count = 0;
+  let cur = null;
+  const flush = () => {
+    if (cur && (cur.n <= 2 || isNumericText(cur.text))) count++;
+  };
+  for (const w of row4.words) {
+    if (cur && w.x0 - cur.x1 < threshold) {
+      cur.x1 = Math.max(cur.x1, w.x1);
+      cur.n++;
+      cur.text += ` ${w.text}`;
+    } else {
+      flush();
+      cur = { x1: w.x1, n: 1, text: w.text };
+    }
+  }
+  flush();
+  return count;
+}
+var CAPTION_START_RE = /^(table|fig(ure)?\.?|chart|exhibit|box)\s*\d+/i;
 function uniqPositions(values, tol) {
   const s = [...values].sort((a, b) => a - b);
   const out = [];
@@ -29703,6 +29778,7 @@ function findLatticeTables({ rules = [], boxes = [], words = [] }, { minW = 40, 
   const bands = [];
   const usedWords = /* @__PURE__ */ new Set();
   const usedRules = /* @__PURE__ */ new Set();
+  const leftover = [];
   for (const comp of comps.values()) {
     const hs = comp.filter((s) => s.axis === "h");
     const vs = comp.filter((s) => s.axis === "v");
@@ -29712,7 +29788,13 @@ function findLatticeTables({ rules = [], boxes = [], words = [] }, { minW = 40, 
     const x1 = Math.max(...comp.map((s) => s.axis === "h" ? s.b : s.pos));
     const y0 = Math.min(...comp.map((s) => s.axis === "v" ? s.a : s.pos));
     const y1 = Math.max(...comp.map((s) => s.axis === "v" ? s.b : s.pos));
-    if (x1 - x0 < minW || y1 - y0 < minH) continue;
+    if (x1 - x0 < minW || y1 - y0 < minH) {
+      for (const s of hs) if (s.b - s.a >= minW) {
+        s.compVs = vs;
+        leftover.push(s);
+      }
+      continue;
+    }
     const xs2 = xsAll.map((o) => o.pos);
     const ys2 = ysAll.map((o) => o.pos);
     let grid = null;
@@ -29723,7 +29805,7 @@ function findLatticeTables({ rules = [], boxes = [], words = [] }, { minW = 40, 
     const spansWidth = xs2.length >= 2 && xs2[xs2.length - 1] - xs2[0] >= 0.9 * (hx1 - hx0);
     const spansHeight = ys2.length >= 2 && ys2[ys2.length - 1] - ys2[0] >= 0.9 * (vy1 - vy0);
     if (xs2.length >= 2 && ys2.length >= 2 && spansWidth && spansHeight) grid = buildGrid(comp, xs2, ys2);
-    if (grid && grid.coverage >= 0.4) {
+    if (grid && grid.coverage >= 0.4 && grid.rows >= 2 && grid.cols >= 2) {
       const table = assembleTable(grid, comp, boxes, words, ysAll, usedWords);
       if (table) {
         tables.push(table);
@@ -29731,22 +29813,60 @@ function findLatticeTables({ rules = [], boxes = [], words = [] }, { minW = 40, 
         continue;
       }
     }
-    if (hs.length >= 2) {
-      const spans = hs.map((s) => s.b - s.a);
-      const full = Math.max(...spans);
-      bands.push({
-        x0,
-        x1,
-        y0,
-        y1,
-        ys: ysAll.map((o) => ({ y: o.pos, full: coverage(comp, "h", o.pos, x0, x1, 4) >= 0.85, thick: Math.max(...hs.filter((s) => Math.abs(s.pos - o.pos) <= 4).map((s) => s.thick)), parts: hs.filter((s) => Math.abs(s.pos - o.pos) <= 4).map((s) => [s.a, s.b]) })),
-        xs: xs2,
-        fullWidth: full,
-        segs: comp
-      });
+    const innerV = xs2.filter((x) => x > hx0 + 3 && x < hx1 - 3).length;
+    if (hs.length >= 2 && vs.length && (innerV > 0 || tabularBetween(words, { x0, x1, y0, y1 }).tabular)) {
+      bands.push(makeBand(hs, xs2));
+      continue;
+    }
+    for (const s of hs) {
+      s.compVs = vs;
+      leftover.push(s);
     }
   }
+  leftover.sort((a, b) => a.pos - b.pos || a.a - b.a);
+  const taken = /* @__PURE__ */ new Set();
+  for (let i = 0; i < leftover.length; i++) {
+    if (taken.has(leftover[i])) continue;
+    const group = [leftover[i]];
+    taken.add(leftover[i]);
+    let last = leftover[i];
+    for (let j = i + 1; j < leftover.length; j++) {
+      const s = leftover[j];
+      if (taken.has(s)) continue;
+      if (s.pos - last.pos < -0.5) continue;
+      const overlap = Math.min(s.b, last.b) - Math.max(s.a, last.a);
+      const shorter = Math.min(s.b - s.a, last.b - last.a);
+      if (overlap < 0.6 * shorter) continue;
+      const gx0 = Math.min(s.a, last.a);
+      const gx1 = Math.max(s.b, last.b);
+      const between = tabularBetween(words, { x0: gx0, x1: gx1, y0: last.pos, y1: s.pos });
+      if (between.empty && s.pos - last.pos > 6) break;
+      if (!between.tabular) break;
+      group.push(s);
+      taken.add(s);
+      last = s;
+    }
+    if (group.length < 2) continue;
+    const band = makeBand(group, uniqPositions(group.flatMap((s) => (s.compVs || []).map((v) => v.pos)), 4).map((o) => o.pos));
+    if (band.x1 - band.x0 < minW || band.y1 - band.y0 < minH) continue;
+    bands.push(band);
+  }
   return { tables, bands, usedWords, usedRules, segments: segs };
+}
+function makeBand(group, xs2) {
+  const bx0 = Math.min(...group.map((s) => s.a));
+  const bx1 = Math.max(...group.map((s) => s.b));
+  const ysG = uniqPositions(group.map((s) => s.pos), 4);
+  return {
+    x0: bx0,
+    x1: bx1,
+    y0: ysG[0].pos,
+    y1: ysG[ysG.length - 1].pos,
+    ys: ysG.map((o) => ({ y: o.pos, full: coverage(group, "h", o.pos, bx0, bx1, 4) >= 0.85, thick: Math.max(...group.filter((s) => Math.abs(s.pos - o.pos) <= 4).map((s) => s.thick)), parts: group.filter((s) => Math.abs(s.pos - o.pos) <= 4).map((s) => [s.a, s.b]) })),
+    xs: xs2,
+    fullWidth: Math.max(...group.map((s) => s.b - s.a)),
+    segs: group
+  };
 }
 function buildGrid(segs, xs2, ys2) {
   const cols = xs2.length - 1;
@@ -29775,7 +29895,62 @@ function buildGrid(segs, xs2, ys2) {
   }
   return { xs: xs2, ys: ys2, rows, cols, top, left, coverage: total ? present / total : 0 };
 }
-function assembleTable(grid, segs, boxes, words, ysAll, usedWords) {
+function splitRowsByText(grid, words) {
+  const { xs: xs2, ys: ys2, cols } = grid;
+  const newYs = [ys2[0]];
+  const newTop = [grid.top[0]];
+  const newLeft = [];
+  let changed2 = false;
+  for (let r = 0; r + 1 < ys2.length; r++) {
+    const rowsIn = rowsBetween(words, { x0: xs2[0], x1: xs2[cols], y0: ys2[r], y1: ys2[r + 1] });
+    let cuts = [];
+    if (rowsIn.length >= 3) {
+      const colOf = (w) => {
+        const mid = (w.x0 + w.x1) / 2;
+        for (let c = 0; c < cols; c++) if (mid >= xs2[c] && mid < xs2[c + 1]) return c;
+        return -1;
+      };
+      const perCol = Array.from({ length: cols }, () => ({ lines: 0, numeric: 0, short: 0 }));
+      for (const row4 of rowsIn) {
+        const byCol = /* @__PURE__ */ new Map();
+        for (const w of row4.words) {
+          const c = colOf(w);
+          if (c < 0) continue;
+          if (!byCol.has(c)) byCol.set(c, []);
+          byCol.get(c).push(w);
+        }
+        for (const [c, ws] of byCol) {
+          const text3 = ws.map((w) => w.text).join(" ");
+          perCol[c].lines++;
+          if (isNumericText(text3)) perCol[c].numeric++;
+          if (ws.length <= 2 || isNumericText(text3)) perCol[c].short++;
+        }
+      }
+      const aligned = perCol.filter((p) => p.lines >= 2 && p.short === p.lines);
+      const numericCols = perCol.filter((p) => p.lines >= 2 && p.numeric >= 0.5 * p.lines);
+      if (aligned.length >= 2 && numericCols.length >= 1) {
+        for (let i = 1; i < rowsIn.length; i++) {
+          const a = rowsIn[i - 1];
+          const b = rowsIn[i];
+          cuts.push((a.base + 0.22 * a.size + b.base - 0.8 * b.size) / 2);
+        }
+      }
+    }
+    for (const y of cuts) {
+      newYs.push(y);
+      newTop.push(Array.from({ length: cols }, () => true));
+      newLeft.push(grid.left[r]);
+      changed2 = true;
+    }
+    newYs.push(ys2[r + 1]);
+    newTop.push(grid.top[r + 1]);
+    newLeft.push(grid.left[r]);
+  }
+  if (!changed2) return grid;
+  return { ...grid, ys: newYs, rows: newYs.length - 1, top: newTop, left: newLeft, splitRows: true };
+}
+function assembleTable(gridIn, segs, boxes, words, ysAll, usedWords) {
+  const grid = splitRowsByText(gridIn, words);
   const { xs: xs2, ys: ys2, rows, cols, top, left } = grid;
   const uf = new UF(rows * cols);
   const id = (r, c) => r * cols + c;
@@ -29799,7 +29974,9 @@ function assembleTable(grid, segs, boxes, words, ysAll, usedWords) {
     const c0 = Math.min(...cellsIn.map((x) => x[1]));
     const c1 = Math.max(...cellsIn.map((x) => x[1]));
     if ((r1 - r0 + 1) * (c1 - c0 + 1) === cellsIn.length) {
-      cells.push({ r: r0, c: c0, rowSpan: r1 - r0 + 1, colSpan: c1 - c0 + 1 });
+      if (c1 > c0 && tokensSplitColumns(words, xs2, ys2, r0, r1, c0, c1)) {
+        for (const [r, c] of cellsIn) cells.push({ r, c, rowSpan: 1, colSpan: 1 });
+      } else cells.push({ r: r0, c: c0, rowSpan: r1 - r0 + 1, colSpan: c1 - c0 + 1 });
     } else {
       splitFixes += cellsIn.length;
       for (const [r, c] of cellsIn) cells.push({ r, c, rowSpan: 1, colSpan: 1 });
@@ -29874,6 +30051,7 @@ function assembleTable(grid, segs, boxes, words, ysAll, usedWords) {
   const bodyCol0 = cells.filter((k) => !k.header && k.c === 0);
   const bodyRest = cells.filter((k) => !k.header && k.c > 0 && k.text);
   if (bodyCol0.length && bodyCol0.every((k) => !k.numeric && k.text) && bodyRest.length && bodyRest.filter((k) => k.numeric).length >= 0.5 * bodyRest.length) headerCols = 1;
+  if (withText < 0.3 * cells.length) return null;
   const confidence = Math.max(0, Math.min(1, 0.5 * grid.coverage + 0.3 * (withText / cells.length) + 0.2 * (1 - splitFixes / cells.length)));
   return {
     type: "table",
@@ -29887,6 +30065,52 @@ function assembleTable(grid, segs, boxes, words, ysAll, usedWords) {
     grid: { xs: xs2.map(round), ys: ys2.map(round) },
     confidence: round(confidence)
   };
+}
+function tokensSplitColumns(words, xs2, ys2, r0, r1, c0, c1) {
+  const box2 = { x0: xs2[c0], x1: xs2[c1 + 1], y0: ys2[r0], y1: ys2[r1 + 1] };
+  const rows = rowsBetween(words, box2);
+  if (!rows.length) return false;
+  const inner = xs2.slice(c0 + 1, c1 + 1);
+  let split = 0;
+  for (const row4 of rows) {
+    const chars = Math.max(1, row4.words.reduce((n2, w) => n2 + w.text.length, 0));
+    const charW = row4.words.reduce((n2, w) => n2 + (w.x1 - w.x0), 0) / chars || 0.5 * row4.size;
+    const threshold = Math.max(1.8 * charW, 0.6 * row4.size);
+    const tokens = [];
+    let cur = null;
+    for (const w of row4.words) {
+      if (cur && w.x0 - cur.x1 < threshold) {
+        cur.x1 = Math.max(cur.x1, w.x1);
+      } else {
+        cur = { x0: w.x0, x1: w.x1 };
+        tokens.push(cur);
+      }
+    }
+    if (tokens.length < 2) return false;
+    const cols = /* @__PURE__ */ new Set();
+    for (const t of tokens) {
+      if (inner.some((x) => t.x0 < x - 1 && t.x1 > x + 1)) return false;
+      const mid = (t.x0 + t.x1) / 2;
+      let c = c0;
+      for (let i = c0; i <= c1; i++) if (mid >= xs2[i] && mid < xs2[i + 1]) {
+        c = i;
+        break;
+      }
+      cols.add(c);
+    }
+    if (cols.size >= 2) split++;
+  }
+  return split >= Math.ceil(rows.length * 0.5);
+}
+function looksLikeChart(band, graphics) {
+  const width = band.x1 - band.x0;
+  let bars = 0;
+  for (const b of graphics.boxes || []) {
+    const inside5 = b.x0 >= band.x0 - 2 && b.x1 <= band.x1 + 2 && b.y0 >= band.y0 - 2 && b.y1 <= band.y1 + 2;
+    if (!inside5 || b.light) continue;
+    if (b.x1 - b.x0 < 0.6 * width && b.y1 - b.y0 > 4 && b.x1 - b.x0 > 4) bars++;
+  }
+  return bars >= 4;
 }
 function alignOf(cell) {
   if (!cell.words || !cell.words.length) return "left";
@@ -30013,17 +30237,42 @@ function headingClasses(lines, bodySize) {
 function wordCount(text3) {
   return text3.trim().split(/\s+/).filter(Boolean).length;
 }
-function headingLevel(line, { bodySize, classes, nextIsBody = true }) {
+function headingLevel(line, { bodySize, classes, nextIsBody = true, isolated = false }) {
   const k = Math.round(line.size * 2) / 2;
   const text3 = line.text.trim();
   if (!text3 || CAPTION_RE.test(text3)) return 0;
   const idx = classes.indexOf(k);
   if (idx >= 0 && wordCount(text3) <= 24) return idx + 1;
   if (idx >= 0) return 0;
-  if (line.bold && k >= bodySize - 0.5 && k < bodySize * 1.15 && wordCount(text3) <= 14 && !/[.?!,;]$/.test(text3) && nextIsBody) {
+  const bodySized = k >= bodySize - 0.5 && k < bodySize * 1.15;
+  const hasWord = /[A-Za-z]{3}/.test(text3) && (line.mathShare || 0) < 0.1;
+  if (line.bold && bodySized && hasWord && wordCount(text3) <= 14 && !/[.?!,;]$/.test(text3) && nextIsBody) {
     return Math.min(4, classes.length + 1);
   }
+  const depth = numberedDepth(text3);
+  const rest = depth ? text3.replace(NUMBERED_RE, (m, num4, a, b, ...r) => m.slice(m.length - 1)) : "";
+  const wordy = depth && /^[A-Z][A-Za-z]{2,}/.test(rest) && (line.mathShare || 0) < 0.1 && !line.words.some((w) => w.sup || w.sub);
+  if (wordy && bodySized && wordCount(text3) <= 14 && !/[.?!,;:]$/.test(text3) && (line.bold || line.italic || isolated) && nextIsBody) {
+    return Math.min(6, classes.length + depth);
+  }
   return 0;
+}
+function refineBodyHeadingLevels(headings, { classes }) {
+  const base = classes.length + 1;
+  const body = headings.filter((h) => h.level === base && !numberedDepth(h.text) && h.spans && h.spans.length);
+  if (body.length < 2) return headings;
+  const key = (h) => {
+    const s = h.spans[0];
+    return `${Math.round(s.size * 2) / 2}|${s.italic ? 1 : 0}`;
+  };
+  const ranks = [...new Set(body.map(key))].sort((a, b) => {
+    const [sa, ia] = a.split("|").map(Number);
+    const [sb, ib] = b.split("|").map(Number);
+    return sb - sa || ia - ib;
+  });
+  if (ranks.length < 2) return headings;
+  for (const h of body) h.level = Math.min(6, base + ranks.indexOf(key(h)));
+  return headings;
 }
 function numberedDepth(text3) {
   const m = NUMBERED_RE.exec(text3.trim());
@@ -30041,6 +30290,75 @@ function applyNumbering(headings) {
     for (const h of numbered) h.level = Math.min(6, numberedDepth(h.text) + offset);
   }
   return headings;
+}
+
+// src/model/parse/formulas.js
+var EQ_NUMBER_RE = /^[(ð](\d+(\.\d+)?[a-z]?)[)Þ]$/;
+function equationRowSignals(words, { column = null } = {}) {
+  if (!words.length) return { number: null, lead: false, delimiters: false, math: false };
+  const sorted = [...words].sort((a, b) => a.x0 - b.x0);
+  const last = sorted[sorted.length - 1];
+  const base = sorted.filter((w) => !w.sup && !w.sub);
+  const first = base[0] || sorted[0];
+  const second = base[1];
+  const colW = column ? column.x1 - column.x0 : Infinity;
+  const number = EQ_NUMBER_RE.test(last.text) && (!column || last.x1 >= column.x1 - 0.12 * colW) ? last.text : null;
+  const NAME2 = /^[A-Za-z][⁰-⁹₀-₉0-9′*ʹ]*$/;
+  const EQ = /^(=|¼|:=|≡|≈)$/;
+  const lead = NAME2.test(first.text) && Boolean(second) && EQ.test(second.text) || /^[A-Za-z][⁰-⁹₀-₉0-9′*ʹ]*(=|¼)$/.test(first.text);
+  const rowSize = median2(sorted.map((w) => w.size)) || 10;
+  const delimiters = sorted.some((w) => w.size >= 1.6 * rowSize && /^[\[\]()|{}⎡⎤⎣⎦⎢⎥⎛⎞⎝⎠⎜⎟∣]+$/.test(w.text));
+  let chars = 0;
+  let math = 0;
+  for (const w of sorted) {
+    chars += w.text.length;
+    math += (w.mathChars || 0) + (w.mathFontChars || 0);
+  }
+  return { number, lead, delimiters, math: chars > 0 && math / chars >= 0.25 };
+}
+function median2(values) {
+  if (!values.length) return void 0;
+  const s = [...values].sort((a, b) => a - b);
+  const m = s.length >> 1;
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+}
+function mathShareOf(line, bodyFont = null) {
+  let chars = 0;
+  let math = 0;
+  let mathFont = 0;
+  for (const w of line.words) {
+    chars += w.text.length;
+    math += w.mathChars || 0;
+    if (w.mathFontChars && w.fontName !== bodyFont) mathFont += w.mathFontChars;
+  }
+  return chars ? Math.max(math, mathFont) / chars : 0;
+}
+function isMathLine(line, bodyFont = null) {
+  return mathShareOf(line, bodyFont) >= 0.25;
+}
+function detectFormulas(lines, { column, bodySize, bodyFont = null }) {
+  const out = [];
+  const colCenter = (column.x0 + column.x1) / 2;
+  const colWidth = column.x1 - column.x0;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (!isMathLine(line, bodyFont)) continue;
+    const prev = lines[i - 1];
+    const next = lines[i + 1];
+    const gapAbove = prev ? line.y0 - prev.y1 : Infinity;
+    const gapBelow = next ? next.y0 - line.y1 : Infinity;
+    const isolated = gapAbove >= 0.5 * line.size && gapBelow >= 0.5 * line.size;
+    const last = line.words[line.words.length - 1];
+    const number = last && EQ_NUMBER_RE.test(last.text) && last.x1 >= column.x1 - 0.1 * colWidth ? last.text : null;
+    const bodyCenter = number ? (line.x0 + line.words[line.words.length - 2]?.x1) / 2 : (line.x0 + line.x1) / 2;
+    const centred = Math.abs(bodyCenter - colCenter) <= 0.12 * colWidth;
+    if (!(isolated || number) || !(centred || number)) continue;
+    let end = i + 1;
+    while (end < lines.length && isMathLine(lines[end], bodyFont) && lines[end].y0 - lines[end - 1].y1 <= 1.2 * line.size) end++;
+    out.push({ start: i, end, number });
+    i = end - 1;
+  }
+  return out;
 }
 
 // src/model/parse/stream.js
@@ -30422,6 +30740,19 @@ function tableFromBand(band, words) {
     }
   }
   if (rowsIn.length < 2) return null;
+  const run = rowsIn.map((r) => ({ row: { words: r.tokens.flatMap((t) => t.words), lines: [] }, tokens: r.tokens }));
+  if (equationRun(run, { x0: band.x0, x1: band.x1 })) return null;
+  let prose = 0;
+  let tabular = 0;
+  const numbered = run.filter((r) => r.tokens.length >= 2 && /^\d{1,4}$/.test(r.tokens[0].text));
+  const mono = isMonospace(numbered.flatMap((r) => r.tokens.slice(1).flatMap((t) => t.words)));
+  for (const r of run) {
+    const first = r.tokens[0];
+    const codeLike = mono && r.tokens.length >= 2 && /^\d{1,4}$/.test(first.text);
+    if (r.tokens.length === 1 && r.row.words.length >= 5) prose++;
+    else if (r.tokens.length >= 2 && !codeLike) tabular++;
+  }
+  if (tabular < 2 || prose >= 0.4 * run.length) return null;
   const headerRowsHint = edges.length > 2 ? bandsOf[0] : 0;
   const table = buildTable(rowsIn, { bands: band, headerRowsHint });
   if (!table) return null;
@@ -30447,9 +30778,21 @@ function baselineRows(lines) {
   }
   return rows;
 }
-function detectStreamRuns(lines, { dots = [] } = {}) {
+function proseRow(row4, tokens, columnWidth = Infinity) {
+  const words = row4.words;
+  const n2 = words.length;
+  if (n2 < 6) return false;
+  const chars = words.reduce((k, w) => k + w.text.length, 0);
+  if (chars / n2 < 3.5) return false;
+  if (Number.isFinite(columnWidth) && row4.x1 - row4.x0 < 0.6 * columnWidth) return false;
+  const short = tokens.filter((t) => t.words.length <= 2 || isNumericText(t.text)).length;
+  return tokens.length === 1 || tokens.length < n2 / 2 && short === 0;
+}
+function detectStreamRuns(lines, { dots = [], column = null } = {}) {
   const out = [];
   const rows = baselineRows(lines);
+  const colBox = column || (lines.length ? { x0: Math.min(...lines.map((l) => l.x0)), x1: Math.max(...lines.map((l) => l.x1)) } : null);
+  const colW = colBox ? colBox.x1 - colBox.x0 : Infinity;
   let i = 0;
   while (i < rows.length) {
     const run = [];
@@ -30459,11 +30802,26 @@ function detectStreamRuns(lines, { dots = [] } = {}) {
       const tokens = row4.lines.flatMap((l) => tokenizeLine(l)).sort((a, b) => a.x0 - b.x0);
       const prev = run[run.length - 1];
       if (tokens.length < 2 || markerOf(row4.lines[0], dots) || CAPTION_RE.test(row4.text)) break;
+      if (proseRow(row4, tokens, colW)) break;
       if (prev && row4.base - prev.row.base > 2.2 * row4.size) break;
       run.push({ row: row4, tokens });
       j++;
     }
+    if (run.length >= 2) {
+      const eq = equationRun(run, colBox);
+      if (eq) {
+        out.push(eq);
+        i = j;
+        continue;
+      }
+    }
     if (run.length >= 3) {
+      const code = codeRun(run);
+      if (code) {
+        out.push(code);
+        i = j;
+        continue;
+      }
       const rowsIn = run.map((r) => ({ y0: r.row.y0, y1: r.row.y1, tokens: r.tokens }));
       const table = buildTable(rowsIn, {});
       if (table && !looksLikeProse(run)) {
@@ -30477,6 +30835,47 @@ function detectStreamRuns(lines, { dots = [] } = {}) {
     i = i + 1;
   }
   return out;
+}
+function equationRun(run, column) {
+  let number = null;
+  let lead = false;
+  let delimiters = false;
+  let math = 0;
+  for (const r of run) {
+    const sig = equationRowSignals(r.row.words, { column });
+    if (sig.number) number = sig.number;
+    if (sig.lead) lead = true;
+    if (sig.delimiters) delimiters = true;
+    if (sig.math) math++;
+  }
+  const strong = number && (lead || delimiters || math >= run.length / 2) || lead && delimiters || delimiters && math >= run.length / 2;
+  if (!strong) return null;
+  const lines = run.flatMap((r) => r.row.lines);
+  return { type: "formula", number, lines, usedWords: run.flatMap((r) => r.row.words) };
+}
+function isMonospace(words) {
+  const letters = words.filter((w) => w.text.length >= 2 && /[A-Za-z].*[A-Za-z]/.test(w.text));
+  if (letters.length >= 2 && letters.filter((w) => w.mono).length >= 0.6 * letters.length) return true;
+  const widths = words.filter((w) => w.text.length >= 2 && !w.sup && !w.sub && /[A-Za-z].*[A-Za-z]/.test(w.text)).map((w) => (w.x1 - w.x0) / w.text.length).sort((a, b) => a - b);
+  if (widths.length < 3) return false;
+  const med = widths[widths.length >> 1];
+  const agree = widths.filter((w) => Math.abs(w - med) <= 0.12 * med).length;
+  return agree >= 0.8 * widths.length;
+}
+function codeRun(run) {
+  let expect = null;
+  for (const r of run) {
+    const first = r.tokens[0];
+    if (!first || !/^\d{1,4}$/.test(first.text)) return null;
+    const n2 = Number(first.text);
+    if (expect != null && n2 !== expect) return null;
+    expect = n2 + 1;
+    if (r.tokens.length < 2) return null;
+  }
+  if (!isMonospace(run.flatMap((r) => r.tokens.slice(1).flatMap((t) => t.words)))) return null;
+  const lines = run.flatMap((r) => r.row.lines);
+  const text3 = run.map((r) => r.tokens.slice(1).map((t) => t.text).join(" ")).join("\n");
+  return { type: "code", lines, text: text3, usedWords: run.flatMap((r) => r.row.words) };
 }
 function looksLikeProse(run) {
   let wordy = 0;
@@ -30613,47 +31012,6 @@ function r2(v) {
   return Math.round(v * 100) / 100;
 }
 
-// src/model/parse/formulas.js
-var EQ_NUMBER_RE = /^\((\d+(\.\d+)?[a-z]?)\)$/;
-function mathShareOf(line, bodyFont = null) {
-  let chars = 0;
-  let math = 0;
-  let mathFont = 0;
-  for (const w of line.words) {
-    chars += w.text.length;
-    math += w.mathChars || 0;
-    if (w.mathFontChars && w.fontName !== bodyFont) mathFont += w.mathFontChars;
-  }
-  return chars ? Math.max(math, mathFont) / chars : 0;
-}
-function isMathLine(line, bodyFont = null) {
-  return mathShareOf(line, bodyFont) >= 0.25;
-}
-function detectFormulas(lines, { column, bodySize, bodyFont = null }) {
-  const out = [];
-  const colCenter = (column.x0 + column.x1) / 2;
-  const colWidth = column.x1 - column.x0;
-  for (let i = 0; i < lines.length; i++) {
-    const line = lines[i];
-    if (!isMathLine(line, bodyFont)) continue;
-    const prev = lines[i - 1];
-    const next = lines[i + 1];
-    const gapAbove = prev ? line.y0 - prev.y1 : Infinity;
-    const gapBelow = next ? next.y0 - line.y1 : Infinity;
-    const isolated = gapAbove >= 0.5 * line.size && gapBelow >= 0.5 * line.size;
-    const last = line.words[line.words.length - 1];
-    const number = last && EQ_NUMBER_RE.test(last.text) && last.x1 >= column.x1 - 0.1 * colWidth ? last.text : null;
-    const bodyCenter = number ? (line.x0 + line.words[line.words.length - 2]?.x1) / 2 : (line.x0 + line.x1) / 2;
-    const centred = Math.abs(bodyCenter - colCenter) <= 0.12 * colWidth;
-    if (!(isolated || number) || !(centred || number)) continue;
-    let end = i + 1;
-    while (end < lines.length && isMathLine(lines[end], bodyFont) && lines[end].y0 - lines[end - 1].y1 <= 1.2 * line.size) end++;
-    out.push({ start: i, end, number });
-    i = end - 1;
-  }
-  return out;
-}
-
 // src/model/parse/blocks.js
 var FOOTNOTE_MARK_RE = /^(\d{1,3}|[a-z]|[*†‡§¶])$/;
 var SUPERS2 = { 0: "⁰", 1: "¹", 2: "²", 3: "³", 4: "⁴", 5: "⁵", 6: "⁶", 7: "⁷", 8: "⁸", 9: "⁹" };
@@ -30718,7 +31076,7 @@ function groupParagraphs(lines, { bodySize = 10 } = {}) {
   let cur = [];
   const gaps = [];
   for (let i = 1; i < lines.length; i++) gaps.push(lines[i].base - lines[i - 1].base);
-  const normalGap = median2(gaps.filter((g) => g > 0 && g < 3 * bodySize)) || bodySize * 1.3;
+  const normalGap = median3(gaps.filter((g) => g > 0 && g < 3 * bodySize)) || bodySize * 1.3;
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i];
     const prev = cur[cur.length - 1];
@@ -30748,7 +31106,7 @@ function groupParagraphs(lines, { bodySize = 10 } = {}) {
   if (cur.length) groups.push(cur);
   return groups;
 }
-function median2(values) {
+function median3(values) {
   if (!values.length) return void 0;
   const s = [...values].sort((a, b) => a - b);
   const m = s.length >> 1;
@@ -30891,15 +31249,17 @@ function parsePageGeometry(data, n2) {
   const tables = [];
   const lattice = findLatticeTables({ rules: graphics.rules, boxes: graphics.boxes, words });
   for (const t of lattice.tables) {
+    if (isTitledBox(t)) continue;
     t.page = n2;
     tables.push(t);
   }
   for (const w2 of lattice.usedWords) used.add(w2);
   const usedRules = new Set(lattice.usedRules);
   for (const band of lattice.bands) {
+    if (looksLikeChart(band, graphics)) continue;
     const free = words.filter((w2) => !used.has(w2));
     const t = tableFromBand(band, free);
-    if (!t) continue;
+    if (!t || isTitledBox(t)) continue;
     t.page = n2;
     for (const w2 of t.usedWords) used.add(w2);
     delete t.usedWords;
@@ -30989,9 +31349,21 @@ function assembleDocument(pageRecords, { numPages, info = null, engineVersion = 
     const textBlocks = [];
     for (const seq of sequences) {
       let lines = seq;
-      for (const t of detectStreamRuns(lines, { dots })) {
+      for (const t of detectStreamRuns(lines, { dots, column: boxOfUnits(lines.length ? lines : seq) })) {
         const drop = new Set(t.lines);
         lines = lines.filter((l) => !drop.has(l));
+        if (t.type === "formula") {
+          textBlocks.push({ type: "formula", lines: t.lines, number: t.number, bbox: boxOfUnits(t.lines), text: joinLines(t.lines, { collectRefs: false }).text });
+          continue;
+        }
+        if (t.type === "code") {
+          textBlocks.push({ type: "code", lines: t.lines, bbox: boxOfUnits(t.lines), text: t.text });
+          continue;
+        }
+        if (isTitledBox(t)) {
+          lines = [...lines, ...t.lines].sort((a, b) => a.base - b.base || a.x0 - b.x0);
+          continue;
+        }
         delete t.lines;
         delete t.usedWords;
         t.page = pg.n;
@@ -31021,11 +31393,17 @@ function assembleDocument(pageRecords, { numPages, info = null, engineVersion = 
       }
       lines = lines.filter((l) => !listLines.has(l));
       let i = 0;
+      const levelAt = (k) => {
+        const line = lines[k];
+        const next = lines[k + 1];
+        const prev = lines[k - 1];
+        const nextIsBody = !next || !next.bold || Math.abs(next.size - line.size) > 0.6;
+        const isolated = !prev || line.base - prev.base > 1.5 * Math.max(line.size, prev.size) || prev.x1 - prev.x0 < 0.6 * (line.x1 - line.x0);
+        return headingLevel(line, { bodySize, classes, nextIsBody, isolated });
+      };
       while (i < lines.length) {
         const line = lines[i];
-        const next = lines[i + 1];
-        const nextIsBody = !next || !next.bold || Math.abs(next.size - line.size) > 0.6;
-        const level = headingLevel(line, { bodySize, classes, nextIsBody });
+        const level = levelAt(i);
         if (level) {
           const hl = [line];
           let j2 = i + 1;
@@ -31038,7 +31416,7 @@ function assembleDocument(pageRecords, { numPages, info = null, engineVersion = 
           continue;
         }
         let j = i + 1;
-        while (j < lines.length && !headingLevel(lines[j], { bodySize, classes, nextIsBody: !lines[j + 1] || !lines[j + 1].bold || Math.abs(lines[j + 1].size - lines[j].size) > 0.6 })) j++;
+        while (j < lines.length && !levelAt(j)) j++;
         const chunk = lines.slice(i, j);
         for (const group of groupParagraphs(chunk, { bodySize })) {
           const joined = joinLines(group);
@@ -31062,6 +31440,7 @@ function assembleDocument(pageRecords, { numPages, info = null, engineVersion = 
         i = j;
       }
     }
+    stitchTables(pageTables, textBlocks, bodySize);
     const captionFor2 = /* @__PURE__ */ new Map();
     for (const cb of textBlocks) {
       if (cb.type !== "caption") continue;
@@ -31083,7 +31462,7 @@ function assembleDocument(pageRecords, { numPages, info = null, engineVersion = 
     const unitOf = (b, id) => ({ id, x0: b.bbox.x0 ?? b.bbox[0], y0: b.bbox.y0 ?? b.bbox[1], x1: b.bbox.x1 ?? b.bbox[2], y1: b.bbox.y1 ?? b.bbox[3] });
     const captionIds = /* @__PURE__ */ new Map();
     for (const tb of textBlocks) {
-      const prefix = { heading: "b", para: "b", caption: "c", footnote: "n", list: "l", formula: "e" }[tb.type];
+      const prefix = { heading: "b", para: "b", caption: "c", footnote: "n", list: "l", formula: "e", code: "k" }[tb.type];
       const id = nextId(prefix);
       const bbox = [round(tb.bbox.x0), round(tb.bbox.y0), round(tb.bbox.x1), round(tb.bbox.y1)];
       const block = { id, type: tb.type, page: pg.n, bbox, confidence: 0.9, engine: "builtin" };
@@ -31111,6 +31490,8 @@ function assembleDocument(pageRecords, { numPages, info = null, engineVersion = 
         block.latex = null;
         block.number = tb.number;
         block.text = tb.text;
+      } else if (tb.type === "code") {
+        block.text = tb.text;
       }
       blocks[id] = block;
       units.push(unitOf(tb, id));
@@ -31135,6 +31516,8 @@ function assembleDocument(pageRecords, { numPages, info = null, engineVersion = 
     perPage.push({ n: pg.n, w: round(pg.w), h: round(pg.h), rotation: pg.rotation, kind: pg.kind, parsed: true, columns: ordered.columns, ms: pg.ms });
   }
   mergeContinuations(order, blocks);
+  linkContinuedTables(order, blocks, perPage);
+  refineBodyHeadingLevels(headings, { classes });
   applyNumbering(headings);
   for (const entry of refs) {
     if (!entry.ref) continue;
@@ -31165,6 +31548,57 @@ function assembleDocument(pageRecords, { numPages, info = null, engineVersion = 
     removed: furniture.removed,
     stats: { ms: 0, perPage: perPage.map((p) => p.ms), assembleMs: round(now2() - t1), bodySize, headingSizes: classes, range: [from, to] }
   };
+}
+function isTitledBox(t) {
+  if (t.rows < 2 || t.cols < 2) return true;
+  if (t.rows > 2) return false;
+  return t.cells.some((k) => k.colSpan === t.cols && k.text);
+}
+function stitchTables(tables, textBlocks, bodySize) {
+  tables.sort((a, b) => a.page - b.page || a.bbox[1] - b.bbox[1] || a.bbox[0] - b.bbox[0]);
+  for (let i = 0; i + 1 < tables.length; i++) {
+    const a = tables[i];
+    const b = tables[i + 1];
+    if (a.method !== "stream" || b.method !== "stream" || a.cols !== b.cols) continue;
+    const gap = b.bbox[1] - a.bbox[3];
+    if (gap < -2 || gap > 4 * bodySize) continue;
+    const ox = Math.min(a.bbox[2], b.bbox[2]) - Math.max(a.bbox[0], b.bbox[0]);
+    if (ox < 0.8 * Math.min(a.bbox[2] - a.bbox[0], b.bbox[2] - b.bbox[0])) continue;
+    const colW = (a.bbox[2] - a.bbox[0]) / a.cols;
+    let same2 = true;
+    for (let c = 1; c < a.cols; c++) if (Math.abs(a.grid.xs[c] - b.grid.xs[c]) > 0.35 * colW) same2 = false;
+    if (!same2) continue;
+    const between = textBlocks.some((tb) => tb.bbox.y0 >= a.bbox[3] - 1 && tb.bbox.y1 <= b.bbox[1] + 1 && Math.min(tb.bbox.x1, a.bbox[2]) - Math.max(tb.bbox.x0, a.bbox[0]) > 0);
+    if (between) continue;
+    const cells = [...a.cells, ...b.cells.map((k) => ({ ...k, r: k.r + a.rows, header: false }))];
+    const merged = {
+      ...a,
+      rows: a.rows + b.rows,
+      cells,
+      bbox: [Math.min(a.bbox[0], b.bbox[0]), a.bbox[1], Math.max(a.bbox[2], b.bbox[2]), b.bbox[3]],
+      grid: { xs: a.grid.xs, ys: [...a.grid.ys.slice(0, -1), (a.grid.ys[a.grid.ys.length - 1] + b.grid.ys[0]) / 2, ...b.grid.ys.slice(1)] },
+      confidence: Math.min(a.confidence, b.confidence)
+    };
+    tables.splice(i, 2, merged);
+    i--;
+  }
+  return tables;
+}
+function linkContinuedTables(order, blocks, pages) {
+  const byPage = /* @__PURE__ */ new Map();
+  for (const p of pages) byPage.set(p.n, p);
+  const tables = order.map((id) => blocks[id]).filter((b) => b && b.type === "table");
+  for (let i = 1; i < tables.length; i++) {
+    const b = tables[i];
+    const a = tables[i - 1];
+    if (b.page !== a.page + 1 || a.cols !== b.cols) continue;
+    const cap4 = b.caption ? blocks[b.caption] : null;
+    const says = cap4 && /\b(cont(inued|\.|'d)|continuation)\b/i.test(cap4.text);
+    const ph = byPage.get(a.page) ? byPage.get(a.page).h : 792;
+    const pb = byPage.get(b.page) ? byPage.get(b.page).h : 792;
+    const edges = a.bbox[3] >= 0.6 * ph && b.bbox[1] <= 0.35 * pb;
+    if (says || !cap4 && edges) b.continues = a.id;
+  }
 }
 function dominantFont(lines) {
   const counts = /* @__PURE__ */ new Map();

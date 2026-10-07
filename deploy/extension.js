@@ -3300,6 +3300,40 @@ var init_roam_table = __esm({
 });
 
 // src/model/parse-schema.js
+function boxOf(value) {
+  if (!Array.isArray(value) || value.length < 4) return null;
+  const [x0, y0, x1, y1] = value;
+  if (![x0, y0, x1, y1].every((n2) => typeof n2 === "number" && Number.isFinite(n2))) return null;
+  return [Math.min(x0, x1), Math.min(y0, y1), Math.max(x0, x1), Math.max(y0, y1)];
+}
+function iou(a, b) {
+  const A = boxOf(a);
+  const B = boxOf(b);
+  if (!A || !B) return 0;
+  const ix0 = Math.max(A[0], B[0]);
+  const iy0 = Math.max(A[1], B[1]);
+  const ix1 = Math.min(A[2], B[2]);
+  const iy1 = Math.min(A[3], B[3]);
+  const inter = Math.max(0, ix1 - ix0) * Math.max(0, iy1 - iy0);
+  const areaA = (A[2] - A[0]) * (A[3] - A[1]);
+  const areaB = (B[2] - B[0]) * (B[3] - B[1]);
+  const union = areaA + areaB - inter;
+  if (union <= 0) return 0;
+  return inter / union;
+}
+function targetOf(bbox) {
+  if (Array.isArray(bbox)) return { page: null, bbox: boxOf(bbox) };
+  if (bbox && typeof bbox === "object") {
+    const page = Number.isInteger(bbox.page) ? bbox.page : null;
+    const box2 = Array.isArray(bbox.bbox) ? boxOf(bbox.bbox) : boxOf(bbox);
+    return { page, bbox: box2 };
+  }
+  return { page: null, bbox: null };
+}
+function samePage(block, page) {
+  if (page == null) return true;
+  return block?.page === page;
+}
 function blocksInRange(doc, fromPage, toPage) {
   const from = Math.min(fromPage, toPage);
   const to = Math.max(fromPage, toPage);
@@ -3358,9 +3392,102 @@ function tableGrid(table) {
   }
   return grid;
 }
-var BLOCK_TYPES, TYPE_SET;
+function freshId(used) {
+  let n2 = 1;
+  while (used.has(`d${n2}`)) n2 += 1;
+  const id = `d${n2}`;
+  used.add(id);
+  return id;
+}
+function mergeScoped(baseDoc, scopedPageResult, bbox) {
+  const target = targetOf(bbox);
+  const base = baseDoc && typeof baseDoc === "object" ? baseDoc : {};
+  const baseBlocks = base.blocks && typeof base.blocks === "object" ? base.blocks : {};
+  const baseOrder = Array.isArray(base.order) ? base.order : [];
+  let page = target.page;
+  if (page == null && target.bbox) {
+    let best = 0;
+    for (const block of Object.values(baseBlocks)) {
+      const score = iou(block?.bbox, target.bbox);
+      if (score > best) {
+        best = score;
+        page = block.page;
+      }
+    }
+  }
+  const scopedBlocks = scopedPageResult?.blocks && typeof scopedPageResult.blocks === "object" ? scopedPageResult.blocks : {};
+  const scopedOrder = Array.isArray(scopedPageResult?.order) ? scopedPageResult.order : Object.keys(scopedBlocks);
+  const incoming = [];
+  for (const id of scopedOrder) {
+    const block = scopedBlocks[id];
+    if (!block || !samePage(block, page)) continue;
+    if (target.bbox && iou(block.bbox, target.bbox) >= IOU_MIN) incoming.push(block);
+  }
+  if (!incoming.length || !target.bbox) return baseDoc;
+  const drop = /* @__PURE__ */ new Set();
+  const consider = /* @__PURE__ */ new Set([...baseOrder, ...Object.keys(baseBlocks)]);
+  for (const id of consider) {
+    const block = baseBlocks[id];
+    if (!block || !samePage(block, page)) continue;
+    if (iou(block.bbox, target.bbox) >= IOU_MIN) drop.add(id);
+  }
+  const used = new Set(Object.keys(baseBlocks).filter((id) => !drop.has(id)));
+  const fresh = incoming.map((block) => {
+    const id = freshId(used);
+    return { ...block, id, engine: "docling" };
+  });
+  const order = [];
+  let inserted = false;
+  for (const id of baseOrder) {
+    if (drop.has(id)) {
+      if (!inserted) {
+        for (const block of fresh) order.push(block.id);
+        inserted = true;
+      }
+      continue;
+    }
+    order.push(id);
+  }
+  if (!inserted) {
+    for (const block of fresh) order.push(block.id);
+  }
+  const blocks = {};
+  for (const [id, block] of Object.entries(baseBlocks)) {
+    if (!drop.has(id)) blocks[id] = block;
+  }
+  for (const block of fresh) blocks[block.id] = block;
+  const grouped = [];
+  const index = /* @__PURE__ */ new Map();
+  for (const id of order) {
+    const engine = blocks[id]?.engine || base.engine || "builtin";
+    if (!index.has(engine)) {
+      const entry = { engine, ids: [] };
+      if (engine === "docling") {
+        entry.engineVersion = scopedPageResult?.engineVersion || null;
+        entry.bbox = target.bbox;
+        if (page != null) entry.page = page;
+      } else if (base.engineVersion) {
+        entry.engineVersion = base.engineVersion;
+      }
+      index.set(engine, entry);
+      grouped.push(entry);
+    }
+    index.get(engine).ids.push(id);
+  }
+  return {
+    ...base,
+    schema: SCHEMA,
+    engine: "mixed",
+    sources: grouped,
+    order,
+    blocks
+  };
+}
+var SCHEMA, IOU_MIN, BLOCK_TYPES, TYPE_SET;
 var init_parse_schema = __esm({
   "src/model/parse-schema.js"() {
+    SCHEMA = "pxd-parse/1";
+    IOU_MIN = 0.5;
     BLOCK_TYPES = Object.freeze([
       "heading",
       "para",
@@ -3421,9 +3548,9 @@ function applyFootnoteRefs(text3, refs) {
     if (!mark) continue;
     const token = `[${mark}]`;
     if (out.includes(token)) continue;
-    const sup = Object.keys(SUPERSCRIPT).find((ch) => SUPERSCRIPT[ch] === mark);
-    if (sup && out.includes(sup)) {
-      out = out.replace(sup, token);
+    const sup2 = Object.keys(SUPERSCRIPT).find((ch) => SUPERSCRIPT[ch] === mark);
+    if (sup2 && out.includes(sup2)) {
+      out = out.replace(sup2, token);
       continue;
     }
     if (Number.isInteger(ref.at) && ref.at >= 0 && ref.at <= out.length) {
@@ -24088,7 +24215,7 @@ init_regions();
 function finite2(value) {
   return typeof value === "number" && Number.isFinite(value) ? value : null;
 }
-function boxOf(rect) {
+function boxOf2(rect) {
   if (!rect || typeof rect !== "object") return null;
   const x = finite2(rect.x ?? rect.left);
   const y = finite2(rect.y ?? rect.top);
@@ -24102,7 +24229,7 @@ function clamp2(n2, lo, hi) {
   return Math.min(hi, Math.max(lo, n2));
 }
 function fracFromDrag(rect, x0, y0, x1, y1) {
-  const box2 = boxOf(rect);
+  const box2 = boxOf2(rect);
   if (!box2) return null;
   const pts = [x0, y0, x1, y1].map(finite2);
   if (pts.some((n2) => n2 === null)) return null;
@@ -29203,7 +29330,7 @@ function extractGraphics(ops, { transform = [1, 0, 0, 1, 0, 0], maxSegments = 5e
       if (sp.length < 2) continue;
       const points = sp.map((p) => [...applyPoint(ctm, p[0], p[1]), p[2]]);
       const hasCurve = points.some((p) => p[2]);
-      const bbox = boxOf2(points);
+      const bbox = boxOf3(points);
       out.segments += Math.max(1, points.length - 1);
       if (out.segments > maxSegments) {
         out.truncated = true;
@@ -29394,9 +29521,9 @@ function strokeWidth(lineWidth, ctm) {
 }
 function unitBox(ctm) {
   const pts = [applyPoint(ctm, 0, 0), applyPoint(ctm, 1, 0), applyPoint(ctm, 1, 1), applyPoint(ctm, 0, 1)];
-  return boxOf2(pts);
+  return boxOf3(pts);
 }
-function boxOf2(points) {
+function boxOf3(points) {
   let x0 = Infinity;
   let y0 = Infinity;
   let x1 = -Infinity;
@@ -30733,7 +30860,7 @@ function boxOfUnits(units) {
 }
 
 // src/model/parse/index.js
-var SCHEMA = "pxd-parse/1";
+var SCHEMA2 = "pxd-parse/1";
 var ENGINE_VERSION = "plexus-builtin/1";
 var now2 = () => typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
 function viewportTransform(w, h, rotation = 0) {
@@ -30935,7 +31062,7 @@ function assembleDocument(pageRecords, { numPages, info = null, engineVersion = 
         i = j;
       }
     }
-    const captionFor = /* @__PURE__ */ new Map();
+    const captionFor2 = /* @__PURE__ */ new Map();
     for (const cb of textBlocks) {
       if (cb.type !== "caption") continue;
       let best = null;
@@ -30950,7 +31077,7 @@ function assembleDocument(pageRecords, { numPages, info = null, engineVersion = 
         if (wantsTable !== isTable) continue;
         if (!best || gap < best.gap) best = { target, gap };
       }
-      if (best && !captionFor.has(best.target)) captionFor.set(best.target, cb);
+      if (best && !captionFor2.has(best.target)) captionFor2.set(best.target, cb);
       else if (!best) cb.type = "para";
     }
     const unitOf = (b, id) => ({ id, x0: b.bbox.x0 ?? b.bbox[0], y0: b.bbox.y0 ?? b.bbox[1], x1: b.bbox.x1 ?? b.bbox[2], y1: b.bbox.y1 ?? b.bbox[3] });
@@ -30990,7 +31117,7 @@ function assembleDocument(pageRecords, { numPages, info = null, engineVersion = 
     }
     for (const t of pageTables) {
       const id = nextId("t");
-      const cap4 = captionFor.get(t);
+      const cap4 = captionFor2.get(t);
       const block = { id, type: "table", page: pg.n, bbox: t.bbox, rows: t.rows, cols: t.cols, headerRows: t.headerRows, headerCols: t.headerCols, cells: t.cells, caption: cap4 ? captionIds.get(cap4) : null, method: t.method, grid: t.grid, confidence: t.confidence, engine: "builtin" };
       if (cap4) blocks[captionIds.get(cap4)].for = id;
       blocks[id] = block;
@@ -30998,7 +31125,7 @@ function assembleDocument(pageRecords, { numPages, info = null, engineVersion = 
     }
     for (const f of pageFigures) {
       const id = nextId("f");
-      const cap4 = captionFor.get(f);
+      const cap4 = captionFor2.get(f);
       blocks[id] = { id, type: "figure", page: pg.n, bbox: f.bbox, caption: cap4 ? captionIds.get(cap4) : null, image: { kind: "crop", source: f.kind }, confidence: f.kind === "drawing" ? 0.7 : 0.9, engine: "builtin" };
       if (cap4) blocks[captionIds.get(cap4)].for = id;
       units.push({ id, x0: f.bbox[0], y0: f.bbox[1], x1: f.bbox[2], y1: f.bbox[3] });
@@ -31024,7 +31151,7 @@ function assembleDocument(pageRecords, { numPages, info = null, engineVersion = 
   const pagesOut = [];
   for (const p of perPage) pagesOut.push({ n: p.n, w: p.w, h: p.h, rotation: p.rotation, kind: p.kind, parsed: true, columns: p.columns });
   return {
-    schema: SCHEMA,
+    schema: SCHEMA2,
     sha256,
     engine: "builtin",
     engineVersion,
@@ -31135,207 +31262,11 @@ function resplitColumns(table, words, xs2) {
   };
 }
 
-// src/model/parse-schema.js
-var SCHEMA2 = "pxd-parse/1";
-var IOU_MIN = 0.5;
-var BLOCK_TYPES = Object.freeze([
-  "heading",
-  "para",
-  "list",
-  "table",
-  "figure",
-  "formula",
-  "caption",
-  "footnote",
-  "code",
-  "scan"
-]);
-var TYPE_SET = new Set(BLOCK_TYPES);
-function boxOf3(value) {
-  if (!Array.isArray(value) || value.length < 4) return null;
-  const [x0, y0, x1, y1] = value;
-  if (![x0, y0, x1, y1].every((n2) => typeof n2 === "number" && Number.isFinite(n2))) return null;
-  return [Math.min(x0, x1), Math.min(y0, y1), Math.max(x0, x1), Math.max(y0, y1)];
-}
-function iou(a, b) {
-  const A = boxOf3(a);
-  const B = boxOf3(b);
-  if (!A || !B) return 0;
-  const ix0 = Math.max(A[0], B[0]);
-  const iy0 = Math.max(A[1], B[1]);
-  const ix1 = Math.min(A[2], B[2]);
-  const iy1 = Math.min(A[3], B[3]);
-  const inter = Math.max(0, ix1 - ix0) * Math.max(0, iy1 - iy0);
-  const areaA = (A[2] - A[0]) * (A[3] - A[1]);
-  const areaB = (B[2] - B[0]) * (B[3] - B[1]);
-  const union = areaA + areaB - inter;
-  if (union <= 0) return 0;
-  return inter / union;
-}
-function targetOf(bbox) {
-  if (Array.isArray(bbox)) return { page: null, bbox: boxOf3(bbox) };
-  if (bbox && typeof bbox === "object") {
-    const page = Number.isInteger(bbox.page) ? bbox.page : null;
-    const box2 = Array.isArray(bbox.bbox) ? boxOf3(bbox.bbox) : boxOf3(bbox);
-    return { page, bbox: box2 };
-  }
-  return { page: null, bbox: null };
-}
-function samePage(block, page) {
-  if (page == null) return true;
-  return block?.page === page;
-}
-function blocksInRange(doc, fromPage, toPage) {
-  const from = Math.min(fromPage, toPage);
-  const to = Math.max(fromPage, toPage);
-  const blocks = doc?.blocks || {};
-  const order = Array.isArray(doc?.order) ? doc.order : [];
-  const out = [];
-  for (const id of order) {
-    const block = blocks[id];
-    if (!block) continue;
-    if (block.page >= from && block.page <= to) out.push(block);
-  }
-  return out;
-}
-function selectBlocks(doc, idsOrRange) {
-  const blocks = doc?.blocks || {};
-  if (idsOrRange == null) {
-    const order = Array.isArray(doc?.order) ? doc.order : [];
-    return order.map((id) => blocks[id]).filter(Boolean);
-  }
-  if (Array.isArray(idsOrRange)) {
-    if (idsOrRange.length === 2 && idsOrRange.every((n2) => typeof n2 === "number")) {
-      return blocksInRange(doc, idsOrRange[0], idsOrRange[1]);
-    }
-    return idsOrRange.map((id) => blocks[id]).filter(Boolean);
-  }
-  if (typeof idsOrRange === "object") {
-    const from = idsOrRange.fromPage ?? idsOrRange.from;
-    const to = idsOrRange.toPage ?? idsOrRange.to;
-    if (from != null && to != null) return blocksInRange(doc, from, to);
-  }
-  return [];
-}
-function tableGrid(table) {
-  const rows = Number.isInteger(table?.rows) ? table.rows : 0;
-  const cols = Number.isInteger(table?.cols) ? table.cols : 0;
-  const grid = Array.from({ length: rows }, (_, r) => Array.from({ length: cols }, (_2, c) => ({ anchor: false, covered: false, cell: null, text: "", r, c })));
-  for (const cell of table?.cells || []) {
-    const rs = cell.rowSpan ?? 1;
-    const cs = cell.colSpan ?? 1;
-    for (let dr = 0; dr < rs; dr += 1) {
-      for (let dc = 0; dc < cs; dc += 1) {
-        const r = cell.r + dr;
-        const c = cell.c + dc;
-        if (r < 0 || c < 0 || r >= rows || c >= cols) continue;
-        const covered = dr !== 0 || dc !== 0;
-        grid[r][c] = {
-          anchor: !covered,
-          covered,
-          cell,
-          text: cell.text ?? "",
-          r,
-          c
-        };
-      }
-    }
-  }
-  return grid;
-}
-function freshId(used) {
-  let n2 = 1;
-  while (used.has(`d${n2}`)) n2 += 1;
-  const id = `d${n2}`;
-  used.add(id);
-  return id;
-}
-function mergeScoped(baseDoc, scopedPageResult, bbox) {
-  const target = targetOf(bbox);
-  const base = baseDoc && typeof baseDoc === "object" ? baseDoc : {};
-  const baseBlocks = base.blocks && typeof base.blocks === "object" ? base.blocks : {};
-  const baseOrder = Array.isArray(base.order) ? base.order : [];
-  let page = target.page;
-  if (page == null && target.bbox) {
-    let best = 0;
-    for (const block of Object.values(baseBlocks)) {
-      const score = iou(block?.bbox, target.bbox);
-      if (score > best) {
-        best = score;
-        page = block.page;
-      }
-    }
-  }
-  const scopedBlocks = scopedPageResult?.blocks && typeof scopedPageResult.blocks === "object" ? scopedPageResult.blocks : {};
-  const scopedOrder = Array.isArray(scopedPageResult?.order) ? scopedPageResult.order : Object.keys(scopedBlocks);
-  const incoming = [];
-  for (const id of scopedOrder) {
-    const block = scopedBlocks[id];
-    if (!block || !samePage(block, page)) continue;
-    if (target.bbox && iou(block.bbox, target.bbox) >= IOU_MIN) incoming.push(block);
-  }
-  if (!incoming.length || !target.bbox) return baseDoc;
-  const drop = /* @__PURE__ */ new Set();
-  const consider = /* @__PURE__ */ new Set([...baseOrder, ...Object.keys(baseBlocks)]);
-  for (const id of consider) {
-    const block = baseBlocks[id];
-    if (!block || !samePage(block, page)) continue;
-    if (iou(block.bbox, target.bbox) >= IOU_MIN) drop.add(id);
-  }
-  const used = new Set(Object.keys(baseBlocks).filter((id) => !drop.has(id)));
-  const fresh = incoming.map((block) => {
-    const id = freshId(used);
-    return { ...block, id, engine: "docling" };
-  });
-  const order = [];
-  let inserted = false;
-  for (const id of baseOrder) {
-    if (drop.has(id)) {
-      if (!inserted) {
-        for (const block of fresh) order.push(block.id);
-        inserted = true;
-      }
-      continue;
-    }
-    order.push(id);
-  }
-  if (!inserted) {
-    for (const block of fresh) order.push(block.id);
-  }
-  const blocks = {};
-  for (const [id, block] of Object.entries(baseBlocks)) {
-    if (!drop.has(id)) blocks[id] = block;
-  }
-  for (const block of fresh) blocks[block.id] = block;
-  const grouped = [];
-  const index = /* @__PURE__ */ new Map();
-  for (const id of order) {
-    const engine = blocks[id]?.engine || base.engine || "builtin";
-    if (!index.has(engine)) {
-      const entry = { engine, ids: [] };
-      if (engine === "docling") {
-        entry.engineVersion = scopedPageResult?.engineVersion || null;
-        entry.bbox = target.bbox;
-        if (page != null) entry.page = page;
-      } else if (base.engineVersion) {
-        entry.engineVersion = base.engineVersion;
-      }
-      index.set(engine, entry);
-      grouped.push(entry);
-    }
-    index.get(engine).ids.push(id);
-  }
-  return {
-    ...base,
-    schema: SCHEMA2,
-    engine: "mixed",
-    sources: grouped,
-    order,
-    blocks
-  };
-}
+// src/view/parse-view.js
+init_parse_schema();
 
 // src/model/parse-to-text.js
+init_parse_schema();
 function csvField(value, sep) {
   const text3 = value == null ? "" : String(value);
   const needs = sep === "	" ? /["\t\r\n]/ : /[",\r\n]/;
@@ -31387,7 +31318,7 @@ function tableToMarkdown(table) {
 ${body.join("\n")}
 </table>`;
 }
-var SUPERSCRIPT = {
+var SUPERSCRIPT2 = {
   "⁰": "0",
   "¹": "1",
   "²": "2",
@@ -31404,7 +31335,7 @@ function footnoteText(text3, refs) {
   for (const ref of refs || []) {
     const mark = String(ref.mark ?? "");
     if (!mark || out.includes(`[^${mark}]`)) continue;
-    const sup2 = Object.keys(SUPERSCRIPT).find((ch) => SUPERSCRIPT[ch] === mark);
+    const sup2 = Object.keys(SUPERSCRIPT2).find((ch) => SUPERSCRIPT2[ch] === mark);
     if (sup2 && out.includes(sup2)) out = out.replace(sup2, `[^${mark}]`);
     else out += `[^${mark}]`;
   }
@@ -31439,10 +31370,10 @@ function toMarkdown(doc, idsOrRange) {
         const depth = Number.isInteger(item.level) && item.level > 0 ? item.level : 0;
         const pad2 = "  ".repeat(depth);
         const marker = block.ordered ? `${item.marker || "1."} ` : "- ";
-        const bullet = block.ordered ? marker : "- ";
+        const bullet2 = block.ordered ? marker : "- ";
         const keep = !block.ordered && item.marker && item.marker !== "•" && item.marker !== "-" ? `${item.marker} ` : "";
         const orderedText = block.ordered ? `${item.marker && item.marker !== "1." ? `${item.marker} ` : ""}${item.text ?? ""}` : `${keep}${item.text ?? ""}`;
-        lines.push(`${pad2}${block.ordered ? "1. " : bullet}${orderedText}`.trimEnd());
+        lines.push(`${pad2}${block.ordered ? "1. " : bullet2}${orderedText}`.trimEnd());
       }
     } else if (block.type === "table") {
       lines.push(tableToMarkdown(block));
@@ -32168,7 +32099,7 @@ async function makeHighlight({ block, live, pageEl, page, getContext, adoptCreat
 
 // src/view/parse-view.js
 init_cards();
-var PARSE_MIME = "application/x-plexus-parse";
+var PARSE_MIME2 = "application/x-plexus-parse";
 var BUILTIN_OPTIONS = Object.freeze({ ocr: "none", formula: false, tables: "builtin" });
 var SYNC_MS = 250;
 var LOW_CONFIDENCE = 0.75;
@@ -32808,7 +32739,7 @@ function createParseView({
     const data = event.dataTransfer;
     const json = JSON.stringify(payload(blocks));
     if (data && typeof data.setData === "function") {
-      data.setData(PARSE_MIME, json);
+      data.setData(PARSE_MIME2, json);
       try {
         data.setData("text/plain", json);
       } catch {
@@ -32842,8 +32773,8 @@ function createParseView({
       const hit = doc.elementFromPoint?.(x, y) || doc.body;
       const json = JSON.stringify(payload(blocks));
       const transfer = {
-        types: [PARSE_MIME, "text/plain"],
-        getData: (type) => type === PARSE_MIME || type === "text/plain" ? json : "",
+        types: [PARSE_MIME2, "text/plain"],
+        getData: (type) => type === PARSE_MIME2 || type === "text/plain" ? json : "",
         setData() {
         }
       };
@@ -33452,6 +33383,7 @@ function createParseView({
 }
 
 // src/host/parse-helper-client.js
+init_parse_schema();
 var HEALTH_TIMEOUT_MS = 1500;
 var HEALTH_CACHE_MS = 6e4;
 var HELPER_NAME = "plexus-parse-helper";
@@ -41239,311 +41171,6 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
 init_info();
 init_panel();
 init_drop();
-
-// src/model/parse-hash.js
-function bytesOf(input) {
-  if (input == null) return new Uint8Array();
-  if (typeof input === "string") return new TextEncoder().encode(input);
-  if (input instanceof ArrayBuffer) return new Uint8Array(input);
-  if (ArrayBuffer.isView(input)) return new Uint8Array(input.buffer, input.byteOffset, input.byteLength);
-  throw new TypeError("sha256Hex expects bytes");
-}
-async function sha256Hex(bytes) {
-  const view = bytesOf(bytes);
-  const digest = await crypto.subtle.digest("SHA-256", view);
-  const hex = [];
-  for (const byte2 of new Uint8Array(digest)) hex.push(byte2.toString(16).padStart(2, "0"));
-  return hex.join("");
-}
-function canonicalize(value) {
-  if (Array.isArray(value)) return value.map(canonicalize);
-  if (value && typeof value === "object") {
-    const out = {};
-    for (const key of Object.keys(value).sort()) out[key] = canonicalize(value[key]);
-    return out;
-  }
-  return value;
-}
-function canonicalOptions(options) {
-  const src = options && typeof options === "object" && !Array.isArray(options) ? options : {};
-  const copy = {};
-  for (const key of Object.keys(src).sort()) {
-    if (key === "scope") continue;
-    copy[key] = canonicalize(src[key]);
-  }
-  return copy;
-}
-function canonicalOptionsJson(options) {
-  return JSON.stringify(canonicalOptions(options));
-}
-async function optionsHash(options) {
-  return sha256Hex(canonicalOptionsJson(options));
-}
-
-// src/host/parse-store.js
-var PARSE_DOC_CAP = 50;
-var PARSE_IMAGE_CAP = 200 * 1024 * 1024;
-var META_KEY = "meta:lru";
-function parseKey(sha256, engine, optsHash) {
-  return `${sha256}|${engine}|${optsHash}`;
-}
-function requestResult2(req) {
-  return new Promise((resolve) => {
-    let settled = false;
-    const done = (value) => {
-      if (settled) return;
-      settled = true;
-      resolve(value);
-    };
-    try {
-      req.onsuccess = () => done({ ok: true, result: req.result });
-      req.onerror = (event) => {
-        try {
-          event?.preventDefault?.();
-        } catch {
-        }
-        done({ ok: false, result: null });
-      };
-    } catch {
-      done({ ok: false, result: null });
-    }
-  });
-}
-function byteLengthOf(bytes) {
-  if (bytes == null) return 0;
-  if (typeof bytes === "string") return new TextEncoder().encode(bytes).byteLength;
-  if (bytes instanceof ArrayBuffer) return bytes.byteLength;
-  if (ArrayBuffer.isView(bytes)) return bytes.byteLength;
-  if (typeof bytes.size === "number") return bytes.size;
-  return 0;
-}
-function copyBytes(bytes) {
-  if (ArrayBuffer.isView(bytes)) return new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength).slice();
-  if (bytes instanceof ArrayBuffer) return new Uint8Array(bytes).slice();
-  return bytes;
-}
-function emptyMeta() {
-  return { docs: [], images: [] };
-}
-function createParseStore({ indexedDB: factory, now: now2, docCap = PARSE_DOC_CAP, imageCap = PARSE_IMAGE_CAP } = {}) {
-  const clock = typeof now2 === "function" ? now2 : () => Date.now();
-  const memory = {
-    parse: /* @__PURE__ */ new Map(),
-    images: /* @__PURE__ */ new Map(),
-    index: /* @__PURE__ */ new Map()
-  };
-  let dbPromise = null;
-  let idbDead = !factory;
-  const open = () => {
-    if (idbDead) return Promise.resolve(null);
-    if (!dbPromise) {
-      dbPromise = openDiagramDb(factory).then((db) => {
-        if (!db) {
-          idbDead = true;
-          dbPromise = null;
-        }
-        return db;
-      });
-    }
-    return dbPromise;
-  };
-  const run = async (storeName, mode, fn) => {
-    if (idbDead) return { ok: false };
-    try {
-      const db = await open();
-      if (!db || typeof db.transaction !== "function") {
-        idbDead = true;
-        return { ok: false };
-      }
-      const tx = db.transaction(storeName, mode);
-      const store = tx.objectStore(storeName);
-      return await fn(store);
-    } catch {
-      idbDead = true;
-      return { ok: false };
-    }
-  };
-  const backend = {
-    async get(storeName, key) {
-      if (!idbDead) {
-        const hit = await run(storeName, "readonly", (store) => requestResult2(store.get(key)));
-        if (hit?.ok) return hit.result === void 0 ? null : hit.result;
-      }
-      const map = storeName === STORE_PARSE ? memory.parse : storeName === STORE_PARSE_IMAGES ? memory.images : memory.index;
-      return map.has(key) ? map.get(key) : null;
-    },
-    async put(storeName, key, value) {
-      if (!idbDead) {
-        const wrote = await run(storeName, "readwrite", (store) => requestResult2(store.put(value, key)));
-        if (wrote?.ok) return true;
-      }
-      const map = storeName === STORE_PARSE ? memory.parse : storeName === STORE_PARSE_IMAGES ? memory.images : memory.index;
-      map.set(key, value);
-      return true;
-    },
-    async delete(storeName, key) {
-      if (!idbDead) {
-        const removed = await run(storeName, "readwrite", (store) => requestResult2(store.delete(key)));
-        if (removed?.ok) return true;
-      }
-      const map = storeName === STORE_PARSE ? memory.parse : storeName === STORE_PARSE_IMAGES ? memory.images : memory.index;
-      map.delete(key);
-      return true;
-    },
-    async keys(storeName) {
-      if (!idbDead) {
-        const hit = await run(storeName, "readonly", (store) => {
-          if (typeof store.getAllKeys === "function") return requestResult2(store.getAllKeys());
-          if (typeof store.getAll === "function") {
-            return requestResult2(store.getAll()).then((res) => {
-              if (!res?.ok || !Array.isArray(res.result)) return res;
-              const keys = res.result.map((row4) => row4?.key).filter((key) => key != null);
-              return { ok: true, result: keys };
-            });
-          }
-          return Promise.resolve({ ok: false, result: null });
-        });
-        if (hit?.ok && Array.isArray(hit.result)) return hit.result;
-      }
-      const map = storeName === STORE_PARSE ? memory.parse : storeName === STORE_PARSE_IMAGES ? memory.images : memory.index;
-      return [...map.keys()];
-    }
-  };
-  const loadMeta = async () => {
-    const raw = await backend.get(STORE_PARSE_INDEX, META_KEY);
-    if (!raw || typeof raw !== "object") return emptyMeta();
-    return {
-      docs: Array.isArray(raw.docs) ? raw.docs.filter((key) => typeof key === "string") : [],
-      images: Array.isArray(raw.images) ? raw.images.filter((row4) => row4 && typeof row4.key === "string" && typeof row4.bytes === "number") : []
-    };
-  };
-  const saveMeta = (meta) => backend.put(STORE_PARSE_INDEX, META_KEY, meta);
-  const touch = (list, key) => {
-    const next = list.filter((item) => item !== key);
-    next.push(key);
-    return next;
-  };
-  return {
-    async getParse(sha, engine, optsHash) {
-      try {
-        if (!sha || !engine || !optsHash) return null;
-        const key = parseKey(sha, engine, optsHash);
-        const record = await backend.get(STORE_PARSE, key);
-        if (!record?.doc) return null;
-        const meta = await loadMeta();
-        meta.docs = touch(meta.docs, key);
-        await saveMeta(meta);
-        return record.doc;
-      } catch {
-        return null;
-      }
-    },
-    async putParse(doc) {
-      try {
-        if (!doc || typeof doc !== "object" || !doc.sha256 || !doc.engine) return null;
-        const optsHash = typeof doc.optsHash === "string" && doc.optsHash ? doc.optsHash : await optionsHash(doc.options || {});
-        const key = parseKey(doc.sha256, doc.engine, optsHash);
-        const stored = { ...doc, optsHash };
-        const record = { doc: stored, optsHash, at: clock() };
-        if (!await backend.put(STORE_PARSE, key, record)) return null;
-        const meta = await loadMeta();
-        meta.docs = touch(meta.docs, key);
-        while (meta.docs.length > docCap) {
-          const oldest = meta.docs.shift();
-          if (oldest) await backend.delete(STORE_PARSE, oldest);
-        }
-        await saveMeta(meta);
-        return stored;
-      } catch {
-        return null;
-      }
-    },
-    async findByUrl(url) {
-      try {
-        if (!url) return null;
-        const record = await backend.get(STORE_PARSE_INDEX, url);
-        if (!record || record.sha256 == null) return null;
-        return {
-          sha256: record.sha256,
-          pageCount: record.pageCount ?? null,
-          at: record.at ?? null
-        };
-      } catch {
-        return null;
-      }
-    },
-    async indexUrl(url, info) {
-      try {
-        if (!url || !info || !info.sha256) return null;
-        const record = {
-          sha256: info.sha256,
-          pageCount: Number.isInteger(info.pageCount) ? info.pageCount : null,
-          at: clock()
-        };
-        if (!await backend.put(STORE_PARSE_INDEX, url, record)) return null;
-        return record;
-      } catch {
-        return null;
-      }
-    },
-    async getImage(key) {
-      try {
-        if (!key) return null;
-        const record = await backend.get(STORE_PARSE_IMAGES, key);
-        if (!record || record.bytes == null) return null;
-        const meta = await loadMeta();
-        meta.images = meta.images.filter((row4) => row4.key !== key).concat(
-          meta.images.filter((row4) => row4.key === key)
-        );
-        await saveMeta(meta);
-        return record.bytes;
-      } catch {
-        return null;
-      }
-    },
-    async putImage(key, bytes) {
-      try {
-        if (!key || bytes == null) return null;
-        const size = byteLengthOf(bytes);
-        if (size <= 0 || size > imageCap) return null;
-        const stored = copyBytes(bytes);
-        const meta = await loadMeta();
-        meta.images = meta.images.filter((row4) => row4.key !== key);
-        let used = meta.images.reduce((sum, row4) => sum + row4.bytes, 0);
-        while (meta.images.length && used + size > imageCap) {
-          const oldest = meta.images.shift();
-          used -= oldest.bytes;
-          await backend.delete(STORE_PARSE_IMAGES, oldest.key);
-        }
-        if (!await backend.put(STORE_PARSE_IMAGES, key, { bytes: stored, byteLength: size, at: clock() })) return null;
-        meta.images.push({ key, bytes: size });
-        await saveMeta(meta);
-        return stored;
-      } catch {
-        return null;
-      }
-    },
-    async clear() {
-      try {
-        const meta = await loadMeta();
-        for (const key of meta.docs) await backend.delete(STORE_PARSE, key);
-        for (const row4 of meta.images) await backend.delete(STORE_PARSE_IMAGES, row4.key);
-        const indexKeys = await backend.keys(STORE_PARSE_INDEX);
-        for (const key of indexKeys) await backend.delete(STORE_PARSE_INDEX, key);
-        const parseKeys = await backend.keys(STORE_PARSE);
-        for (const key of parseKeys) await backend.delete(STORE_PARSE, key);
-        const imageKeys = await backend.keys(STORE_PARSE_IMAGES);
-        for (const key of imageKeys) await backend.delete(STORE_PARSE_IMAGES, key);
-        memory.parse.clear();
-        memory.images.clear();
-        memory.index.clear();
-        return true;
-      } catch {
-        return null;
-      }
-    }
-  };
-}
 
 // src/view/menu.js
 init_avoid();

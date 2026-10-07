@@ -218,7 +218,7 @@ test("U2: edit rules use the rest row's left edge, width, and line-height", () =
   assert.match(edit, /flex:\s*1 1 auto/);
   assert.match(edit, /font-size:\s*13px !important/);
   assert.match(edit, /line-height:\s*19\.5px !important/);
-  assert.match(edit, /min-height:\s*20px !important/);
+  assert.match(edit, /min-height:\s*22px !important/);
   assert.match(edit, /white-space:\s*pre-wrap/);
   assert.match(edit, /overflow-wrap:\s*anywhere/);
   assert.match(edit, /\.rm-block-children \.rm-block-children \{[^}]*margin-left:\s*12px/);

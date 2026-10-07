@@ -6,7 +6,7 @@
    PGE-2. The editor is the same rows: world px, no 1/zoom counter-scale, 13px / 19.5px, the 20px row,
    bullets present in the 16px gutter. Note-card editors are not matched here.
 
-   U2. Rest rows are 20px tall, 13px / 19.5px, text inset 16px, and the text column is the row minus that
+   U2. Rest rows are 22px tall (inline min-height from the row painter), 13px / 19.5px, text inset 16px, and the text column is the row minus that
    gutter. Edit used to be 17px and narrower (Roam's bullet, controls, ref count, and wrapper padding),
    so a line that fit at rest wrapped and every row below jumped. */
 
@@ -102,7 +102,7 @@
   gap: 0 !important;
   width: 100%;
   max-width: 100%;
-  min-height: 20px !important;
+  min-height: 22px !important;
   box-sizing: border-box;
 }
 
@@ -170,7 +170,7 @@
   max-width: 100%;
   margin: 0 !important;
   padding: 0 0 0 16px !important;
-  min-height: 20px !important;
+  min-height: 22px !important;
   border: 0;
   font-family: inherit;
   font-size: 13px !important;
@@ -221,7 +221,7 @@
   top: 0;
   width: 16px !important;
   max-width: 16px !important;
-  height: 20px;
+  height: 22px;
   overflow: visible;
   z-index: 1;
 }
@@ -230,7 +230,7 @@
 .pxd-root .pxd-item--page .pxd-page-edit .rm-block-main > .rm-block__controls .rm-bullet {
   visibility: visible;
   width: 16px !important;
-  height: 20px;
+  height: 22px;
   display: flex;
   align-items: center;
   justify-content: center;

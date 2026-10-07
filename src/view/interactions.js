@@ -240,9 +240,18 @@ export function createInteractions({ actions, settings } = {}) {
       if (!(t.kind === "item" && t.uid === editing)) call("exitEdit");
     }
     // RF-5: with the Hand tool a press on a resize grip resizes; Space and the middle button still pan over it.
-    const handGrip = state.tool === "hand" && !state.space && ev.button === 0 && t.kind === "grip";
-    const panRequested = ev.button === 1 || state.space || (state.tool === "hand" && !handGrip);
+    // U1: a press on a card or a section moves it. Empty space still pans, and Shift there draws the selection box.
+    const movableKind = t.kind === "item" || t.kind === "section-title" || t.kind === "section-border";
+    const handPrimary = state.tool === "hand" && !state.space && ev.button === 0;
+    const handKeeps = handPrimary && (t.kind === "grip" || movableKind);
+    const specificHit = t.kind === "port" || t.kind === "grip" || t.kind === "edge-marker" || t.kind === "edge-end"
+      || t.kind === "edge" || t.kind === "label" || t.kind === "link" || movableKind;
+    const panRequested = ev.button === 1 || state.space || (state.tool === "hand" && !handKeeps);
     if (panRequested) {
+      if (handPrimary && ev.shift && !specificHit) {
+        begin({ kind: "marquee", start: ev.world, base: new Set(state.selection), shift: true });
+        return;
+      }
       begin({ kind: "pan", start: ev.screen, vp0: { ...vp() } });
       return;
     }
@@ -285,7 +294,7 @@ export function createInteractions({ actions, settings } = {}) {
           beginConnect(t.uid, nearestSide(r.get(t.uid), ev.world), ev.world);
           return;
         }
-        if (state.tool !== "select") break; // creation tools treat items as empty space
+        if (state.tool !== "select" && state.tool !== "hand") break; // creation tools treat items as empty space
         let deferred = false;
         const dup = Boolean(ev.alt);
         // Cmd/Ctrl-click adds (React Flow multiSelectionKey). Shift-click does the same.
@@ -336,6 +345,15 @@ export function createInteractions({ actions, settings } = {}) {
         base: ev.shift ? new Set(state.selection) : new Set(),
         shift: Boolean(ev.shift),
       });
+      return;
+    }
+    // U1: Select and Connect drag on empty space pans, and the tool stays put. Shift-drag keeps the box.
+    // empty-drag "select" restores a box on every empty drag. A click with no movement still clears.
+    const emptyPans = (state.tool === "select" || state.tool === "connect")
+      && !ev.shift
+      && setting("empty-drag", "pan") !== "select";
+    if (emptyPans) {
+      begin({ kind: "pan", start: ev.screen, vp0: { ...vp() }, clearOnClick: true });
       return;
     }
     begin({ kind: "marquee", start: ev.world, base: ev.shift ? new Set(state.selection) : new Set(), shift: ev.shift });
@@ -512,6 +530,7 @@ export function createInteractions({ actions, settings } = {}) {
     const r = rects();
     switch (g.kind) {
       case "pan":
+        if (!g.moved && g.clearOnClick) clearSelection();
         break;
       case "marquee":
       case "lasso":

@@ -2212,8 +2212,8 @@ test("HB-9: zoom keys move the focused board and stay quiet while a card is bein
     pointerDown(f, f.root.querySelector(".pxd-viewport"), 600, 150);
     pointerMove(f, 680, 220);
     pointerUp(f, 680, 220);
-    same(read(), quiet);
-    assert.equal(writes(), quietWrites, "the same keys while typing do not zoom, pan, or write");
+    same(read(), { x: quiet.x + 80, y: quiet.y + 70, zoom: quiet.zoom });
+    assert.equal(writes(), quietWrites, "dragging empty space pans and writes nothing");
   } finally {
     f.view.dispose();
     f.restore();

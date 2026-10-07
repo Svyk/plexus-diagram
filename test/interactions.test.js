@@ -194,7 +194,7 @@ test("tool Shift-lock keeps the section tool after a gesture; plain select rever
 });
 
 test("marquee selects contained items and a plain click on empty clears selection", () => {
-  const h = harness();
+  const h = harness({ settings: { "empty-drag": "select" } });
   h.ctl.handle(h.ev("pointerdown", { x: -50, y: -50 }));
   h.ctl.handle(h.ev("pointermove", { x: 700, y: 150 }));
   assert.deepEqual(h.ctl.getSelection().items.sort(), ["cardAAAA1", "cardBBBB2"]);
@@ -1049,7 +1049,7 @@ test("pinned: drag does nothing but still selects; mixed selections move only th
 });
 
 test("pinned: arrow nudge and resize grips are ignored, marquee still selects, selecting works", () => {
-  const h = harness();
+  const h = harness({ settings: { "empty-drag": "select" } });
   h.board.items.get("cardAAAA1").pinned = true;
   h.ctl.select(["cardAAAA1"]);
   key(h, "ArrowRight");
@@ -1299,11 +1299,11 @@ test("RF-5: with the Hand tool a press on a resize grip resizes instead of panni
   assert.equal(h.named("setViewport").length, 0, "nothing panned");
 });
 
-test("RF-5: with the Hand tool anything that is not a grip still pans, and Space or the middle button pan over a grip", () => {
+test("RF-5: with the Hand tool a press on an item starts a move; Space or the middle button still pan over a grip", () => {
   const h = harness();
   h.ctl.setTool("hand");
   h.ctl.handle(h.ev("pointerdown", { x: 50, y: 50 }, { target: { kind: "item", uid: "cardAAAA1", part: "body" } }));
-  assert.equal(h.ctl.gestureKind(), "pan");
+  assert.equal(h.ctl.gestureKind(), "move");
   h.ctl.handle(h.ev("pointerup", { x: 50, y: 50 }));
   const grip = { kind: "grip", uid: "cardAAAA1", part: "corner" };
   h.ctl.handle(h.ev("pointerdown", { x: 200, y: 100 }, { target: grip, button: 1 }));

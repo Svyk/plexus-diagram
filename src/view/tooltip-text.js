@@ -52,8 +52,8 @@ export const TIP_TEXT = {
   "sync:failed": e("Could not save", "The last change did not reach Roam. Undo it or try the action again."),
 
   // ---- tool dock and board-bar tools
-  "tool.select": e("Select", "Click cards to select them, drag to move, drag on empty space to box-select.", "V", LOCK),
-  "tool.hand": e("Hand", "Drag the board to pan without moving anything.", "H", LOCK),
+  "tool.select": e("Select", "Click cards to select them and drag to move them. Drag empty space to pan; Shift-drag to select.", "V", LOCK),
+  "tool.hand": e("Hand", "Drag a card to move it. Drag empty space to pan; Shift-drag to select.", "H", LOCK),
   "tool.card": e("Card", "Click the board to make a card, or drag to size one. It is a Roam block.", "N", LOCK),
   "tool.task": e("Task", "Click the board to make a task card: a Roam TODO block. Better Tasks sets its due date and project from the chips.", "K", LOCK),
   "tool.text": e("Text", "Click the board to place a free text label.", "T", LOCK),
@@ -61,7 +61,7 @@ export const TIP_TEXT = {
   "tool.shape": e("Shape", "Click or drag to draw a shape. Pick its kind in the options beside the dock.", "R", LOCK),
   "tool.section": e("Section", "Drag a colored frame. Cards dropped inside become its members.", "G", LOCK),
   "tool.board": e("Board", "Click to make a nested board you can open in place.", "W", LOCK),
-  "tool.connect": e("Connect", "Drag from one card to another to draw an arrow, which is saved as a Roam block.", "C", LOCK),
+  "tool.connect": e("Connect", "Drag from one card to another to draw an arrow, which is saved as a Roam block. Drag empty space to pan; Shift-drag to select.", "C", LOCK),
   "dock.look.block": e("Block look", "Show new cards, or the selected one, as a plain Roam block."),
   "dock.look.card": e("Card look", "Show new cards, or the selected one, with a title row."),
   "backtocontent": e("Back to content", "Fit the view back to your cards."),

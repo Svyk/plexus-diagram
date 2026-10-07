@@ -278,7 +278,8 @@ Settings → Extensions → Plexus Diagram. Each change applies on the open boar
 | Cards | Show card badges | Show how many references, tasks, and children a card has. |
 | Cards | Space out cards | After a move, push cards apart when they overlap. |
 | Cards | PDF card cover | First page, or the last page read. First page is the default. |
-| Cards | Prepare PDF covers in the background | Off. When on, a quiet board prepares a cover for a visible PDF that has none. |
+| Cards | Prepare PDF covers in the background | On. A quiet board prepares a cover for a visible PDF that has none: Roam's PDF engine draws page 1 when it is reachable, otherwise a hidden reader does. |
+| Cards | Highlight click opens | Reader (default) or Sidebar. Shift-click on a highlight card's chip always opens the sidebar; the chip's arrow lists Reader, Sidebar and Open page in main. |
 | Integrations | Better Tasks integration | Use Better Tasks for task chips, the light checkbox, and task edits. Off leaves the TODO marker to Roam. Starts off. |
 | Integrations | Task tool | Show the Task tool (K) in the dock. Starts off. A saved on stays on. |
 | Integrations | Task chips | Full (due date, project, priority, repeat, status), due only, or none. |

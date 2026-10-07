@@ -145,3 +145,46 @@ body.bt-theme-dark .pxd-root .pxd-highlight-chip,
 .pxd-root.pxd-lod-overview .pxd-highlight-chip {
   display: none;
 }
+
+/* P32-4. The chip's ▾ lists where a highlight opens. Quiet until the card is hovered or focused. */
+.pxd-root .pxd-highlight-chip__more {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  z-index: 2;
+  width: 18px;
+  height: var(--pxd-hl-chip-h, 20px);
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--pxd-border, #d0d7de);
+  border-radius: 999px;
+  background: var(--pxd-card, #fff);
+  color: var(--pxd-muted);
+  font: inherit;
+  font-size: 10px;
+  line-height: 18px;
+  text-align: center;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 80ms ease;
+}
+
+.pxd-root .pxd-item:hover .pxd-highlight-chip__more,
+.pxd-root .pxd-item:focus-within .pxd-highlight-chip__more,
+.pxd-root .pxd-item--selected .pxd-highlight-chip__more {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.bp3-dark .pxd-root .pxd-highlight-chip__more,
+body.bt-theme-dark .pxd-root .pxd-highlight-chip__more,
+.pxd-root.pxd-root--dark .pxd-highlight-chip__more {
+  border-color: var(--pxd-border-strong);
+  background: transparent;
+}
+
+.pxd-root.pxd-lod-map .pxd-highlight-chip__more,
+.pxd-root.pxd-lod-overview .pxd-highlight-chip__more {
+  display: none;
+}

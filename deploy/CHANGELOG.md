@@ -1,5 +1,17 @@
 # Changelog
 
+## 3.2.0 — 2026-10-06
+
+PDF round 2: covers at every zoom, page 1 without opening the PDF, pages at reading width, one open per click.
+
+- Zoomed out, a PDF card is still its page. Map and overview paint the saved cover on the card itself, as in Heptabase at 11-17 %, with no image element, title or strip at those tiers.
+- A PDF you have never opened gets a cover in the background: a quiet board (1.5 s after first paint, idle, one at a time, at most three per visit, never while you move or read) draws page 1 with Roam's own PDF engine, so nothing is opened or written. A capture that comes out blank is thrown away. Setting **Prepare PDF covers in the background** (on).
+- The reading pane fills its width: Roam's reader no longer stops short of the pane's right edge (its block row kept a separator and a reference-count slot beside the PDF). After the first page paints, the page is set to page width (through the viewer when it is reachable, otherwise by stepping Roam's own zoom buttons until the page fills the pane). Your own zoom is kept; resizing the pane refits.
+- One click on a highlight card does one thing. A plain click opens it in the reader (setting **Highlight click opens**: Reader or Sidebar). Shift-click opens Roam's sidebar. The chip's **▾** lists Open in reader, Open in sidebar and Open page in main. Nothing opens twice.
+- Selecting a PDF card never mounts Roam's reader inside the card. **Read inside the card** in the card menu is the one way to the inline reader; **Show the cover** takes it back, and opening the pane does too.
+- The fullscreen tab strip shows only from two tabs up, is 28 px tall, and reserves nothing while hidden. Tabs, their persistence and Cmd+1..9 are unchanged.
+- The reader's pages float on a soft grey bed in light mode; dark keeps the chrome colour.
+
 ## 3.1.0 — 2026-10-06
 
 PDFs that read like Heptabase, page cards that hold still while you edit, and tools that do what your hand expects.

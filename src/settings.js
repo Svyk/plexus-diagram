@@ -51,6 +51,7 @@ export const SETTING_IDS = Object.freeze({
   speedLog: "speed-log",
   pdfCover: "pdf-cover",
   pdfCoverWarm: "pdf-cover-warm",
+  highlightOpen: "highlight-open",
   // Hidden. Not a panel row. JSON object, parsed by parseSpeedFlags.
   speedFlags: "speed-flags",
 });
@@ -103,7 +104,8 @@ const DEFAULTS = Object.freeze({
   [SETTING_IDS.interop]: true,
   [SETTING_IDS.speedLog]: false,
   [SETTING_IDS.pdfCover]: "first",
-  [SETTING_IDS.pdfCoverWarm]: false,
+  [SETTING_IDS.pdfCoverWarm]: true,
+  [SETTING_IDS.highlightOpen]: "reader",
 });
 
 const BOARD_TONES = ["none", "paper", "gray", "red", "orange", "yellow", "green", "teal", "blue", "indigo", "purple", "pink"];
@@ -129,6 +131,7 @@ const ENUMS = Object.freeze({
   [SETTING_IDS.tooltipDelay]: TOOLTIP_DELAYS,
   [SETTING_IDS.taskChips]: TASK_CHIPS,
   [SETTING_IDS.pdfCover]: ["first", "last-read"],
+  [SETTING_IDS.highlightOpen]: ["reader", "sidebar"],
 });
 
 const NUMBERS = new Set([SETTING_IDS.defaultCardWidth, SETTING_IDS.defaultCardHeight]);
@@ -456,13 +459,14 @@ const SETTING_ROWS = {
   [SETTING_IDS.collapseOutline]: () => switchRow(SETTING_IDS.collapseOutline, "Collapse the outline", "Fold an enhanced board once, so the outline does not list every card. Opening the bullet is remembered."),
   [SETTING_IDS.speedLog]: () => switchRow(SETTING_IDS.speedLog, "Speed log", "Record open time, click-to-paint, pan frame rate, and long tasks in this tab. Nothing is sent or saved."),
   [SETTING_IDS.pdfCover]: () => selectRow(SETTING_IDS.pdfCover, "PDF card cover", "First page shows page 1. Last page read shows the page that was open when the reader closed.", ["first", "last-read"]),
-  [SETTING_IDS.pdfCoverWarm]: () => switchRow(SETTING_IDS.pdfCoverWarm, "Prepare PDF covers in the background", "Off. When on, a quiet board prepares a cover for a visible PDF that does not have one."),
+  [SETTING_IDS.pdfCoverWarm]: () => switchRow(SETTING_IDS.pdfCoverWarm, "Prepare PDF covers in the background", "On. A quiet board prepares a cover for a visible PDF that does not have one: Roam's PDF engine draws page 1 when it is reachable, otherwise a hidden reader does."),
+  [SETTING_IDS.highlightOpen]: () => selectRow(SETTING_IDS.highlightOpen, "Highlight click opens", "Reader: the PDF pane scrolls to the highlight. Sidebar: Roam opens the highlight block in the right sidebar. Shift-click always opens the sidebar; the chip's arrow lists every choice.", ["reader", "sidebar"]),
 };
 
 const SETTING_GROUPS = [
   ["group-cards", "Cards", "How new cards look, and the marks on them.", [
     SETTING_IDS.defaultCardLook, SETTING_IDS.defaultCardWidth, SETTING_IDS.defaultCardHeight, SETTING_IDS.enterInCard, SETTING_IDS.showCardBadges, SETTING_IDS.spaceOut,
-    SETTING_IDS.pdfCover, SETTING_IDS.pdfCoverWarm,
+    SETTING_IDS.pdfCover, SETTING_IDS.pdfCoverWarm, SETTING_IDS.highlightOpen,
   ]],
   ["group-integrations", "Integrations", "Sibling extensions, and the switches that turn them on.", [
     STATUS_IDS.betterTasks, SETTING_IDS.betterTasks,

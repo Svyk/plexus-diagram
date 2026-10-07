@@ -6,7 +6,7 @@ import { HIGHLIGHT_COLORS, highlightModel } from "../model/highlight.js";
 import { highlightRows } from "../model/highlight-pick.js";
 import { coverModel, pdfMacroUrl, readPaneKey, readPaneWidth, readerRule, writeReaderPage } from "../model/pdf.js";
 import { dragChipText, fiberOf, highlightById, highlighterContext, PDF_MARK, uidFromMark } from "../model/pdf-drag.js";
-import { fitDecision, pageIndicator, pageTotalText, pillActions } from "../model/read-pane-model.js";
+import { fitDecision, fitWidthStep, fitsWidth, pageIndicator, pageTotalText, pillActions, viewerFromFiber } from "../model/read-pane-model.js";
 import { isTextEntryTarget } from "./cards.js";
 import { applyMotionClasses } from "./motion.js";
 
@@ -236,6 +236,10 @@ export function createReadPane({
   let settleGen = 0;
   let fitTimer = null;
   let fitGen = 0;
+  // P32-3. Which path fitted the page and how many of Roam's zoom buttons it pressed. autoZoom keeps those
+  // presses from counting as the user's own zoom.
+  const fitState = { path: "none", clicks: 0 };
+  let autoZoom = false;
   let readingUid = "";
   let enterFrame = 0;
   let pillFrame = 0;
@@ -1191,6 +1195,7 @@ export function createReadPane({
     });
   };
   const onBarClick = (event) => {
+    if (autoZoom) return;
     const button = event.target?.closest?.("button");
     if (!button) return;
     const found = pillActions([button]);
@@ -1249,6 +1254,59 @@ export function createReadPane({
     }
     return false;
   };
+  // P32-3. Geometry of the first painted page against the scroller that holds it.
+  const fitGeom = () => {
+    const scroller = live.querySelector?.(".PdfHighlighter") || live.querySelector?.(".rm-pdf-viewer-container");
+    const page = live.querySelector?.(".page");
+    if (!scroller || !page) return null;
+    let pageW = 0;
+    let viewW = 0;
+    try { pageW = Number(page.getBoundingClientRect?.()?.width) || 0; } catch { pageW = 0; }
+    if (!(pageW > 0)) pageW = parseFloat(page.style?.width) || 0;
+    try { viewW = Number(scroller.clientWidth) || Number(scroller.getBoundingClientRect?.()?.width) || 0; } catch { viewW = 0; }
+    if (!(pageW > 0) || !(viewW > 0)) return null;
+    return { pageW, viewW };
+  };
+  const pressZoom = (name) => {
+    const button = pillActions(toolbarButtons())[name];
+    if (!button || typeof button.click !== "function") return false;
+    autoZoom = true;
+    try { button.click(); } catch { /* roam */ }
+    autoZoom = false;
+    return true;
+  };
+  // Fallback: step Roam's own zoom buttons until the page fills the scroller. Each press re-renders, so the
+  // next decision waits for the page width to change (at most 1.5 s), then stops on the model's word.
+  const runFitSteps = (gen) => {
+    fitState.path = fitState.path === "viewer" ? "viewer+steps" : "steps";
+    let last = 0;
+    let prev = "";
+    const step = () => {
+      fitTimer = null;
+      if (gen !== fitGen || !openFlag || userZoomed) { fitDone = true; return; }
+      const g = fitGeom();
+      if (!g) { fitDone = true; return; }
+      const action = fitWidthStep({ pageWidth: g.pageW, viewerWidth: g.viewW, lastPageWidth: last, clicks: fitState.clicks, prev });
+      if (action !== "in" && action !== "out") { fitDone = true; return; }
+      if (!pressZoom(action === "in" ? "zoomIn" : "zoomOut")) { fitDone = true; return; }
+      last = g.pageW;
+      prev = action;
+      fitState.clicks += 1;
+      const started = Date.now();
+      const wait = () => {
+        fitTimer = null;
+        if (gen !== fitGen || !openFlag) return;
+        const n = fitGeom();
+        if (n && n.pageW !== last) { step(); return; }
+        if (Date.now() - started < 1500) fitTimer = later(wait, 100);
+        else fitDone = true;
+      };
+      fitTimer = later(wait, 100);
+    };
+    step();
+  };
+  // pdf.js inserts .page before it paints. Fit once the first canvas has width, and give up after 3s.
+  // A zoom in this pane session cancels it. Page width first through the viewer; Roam's buttons otherwise.
   const armFit = () => {
     cancelFit();
     if (fitDone || userZoomed || !openFlag) return;
@@ -1263,15 +1321,33 @@ export function createReadPane({
         if (Date.now() - started < 3000) fitTimer = later(tick, 100);
         return;
       }
-      const fit = pillActions(toolbarButtons()).fit;
-      if (!fitDecision({ userZoomed, hasFit: Boolean(fit), settled: true })) {
+      const hasButtons = Boolean(pillActions(toolbarButtons()).zoomIn);
+      const viewer = viewerFromFiber(fiberOf(live.querySelector?.(".PdfHighlighter")));
+      if (!fitDecision({ userZoomed, hasFit: Boolean(viewer) || hasButtons, settled: true })) {
         fitDone = true;
         return;
       }
       fitDone = true;
-      if (typeof fit.click === "function") {
-        try { fit.click(); } catch { /* roam */ }
+      if (viewer) {
+        fitState.path = "viewer";
+        let set = false;
+        autoZoom = true;
+        try { viewer.currentScaleValue = "page-width"; set = true; } catch { set = false; }
+        autoZoom = false;
+        if (set) {
+          // Verify after the re-render; a viewer that ignored the value falls back to the buttons.
+          fitTimer = later(() => {
+            fitTimer = null;
+            if (gen !== fitGen || !openFlag || userZoomed) return;
+            const g = fitGeom();
+            if (g && fitsWidth({ pageWidth: g.pageW, viewerWidth: g.viewW })) return;
+            if (hasButtons) runFitSteps(gen);
+          }, 600);
+          return;
+        }
       }
+      if (hasButtons) runFitSteps(gen);
+      else fitState.path = "none";
     };
     tick();
   };
@@ -1458,6 +1534,12 @@ export function createReadPane({
       const width = applyBox(startW + (startX - (Number(ev.clientX) || 0))).width;
       endSplit();
       writeWidth(width);
+      // P32-3: a new pane width is a new reading width, unless the zoom is the user's own.
+      if (openFlag && !userZoomed) {
+        fitDone = false;
+        fitState.clicks = 0;
+        armFit();
+      }
     };
     root?.addEventListener?.("pointermove", splitMove);
     root?.addEventListener?.("pointerup", splitUp);
@@ -1507,6 +1589,8 @@ export function createReadPane({
         fitDone = false;
         userZoomed = false;
         settleNoted = false;
+        fitState.path = "none";
+        fitState.clicks = 0;
       }
       current = {
         cardUid: typeof next.cardUid === "string" ? next.cardUid : "",
@@ -1558,6 +1642,8 @@ export function createReadPane({
     },
     isOpen: () => openFlag && Boolean(pane.isConnected),
     cardUid: () => current.cardUid || "",
+    // P32-3 probe: which path fitted the page (viewer | steps | viewer+steps | none) and the presses it took.
+    fitInfo: () => ({ path: fitState.path, clicks: fitState.clicks, done: fitDone, userZoomed }),
     element: () => pane,
   };
 }

@@ -465,7 +465,7 @@ test("the pane source adds no document key listener and no colour-icon click", (
   assert.equal(paneSrc.includes("document.addEventListener"), false);
   assert.equal(paneSrc.includes("doc.addEventListener"), false);
   assert.equal(paneSrc.includes("rm-pdf-highlight-color-icon"), false);
-  assert.match(cardsSrc, /if \(!onReadPane && \(pdfReaderBox\(item\.uid\) \|\| speedOf\(\)\.posters === false\)\)/);
+  assert.match(cardsSrc, /if \(inlineUid === item\.uid \|\| \(!onReadPane && \(pdfReaderBox\(item\.uid\) \|\| speedOf\(\)\.posters === false\)\)\)/);
   assert.match(boardSrc, /readerJumpPlan/);
   assert.match(boardSrc, /highlightDropPlan/);
   assert.match(boardSrc, /placeDecision\(row, items, originBeside\(live\)\)/);

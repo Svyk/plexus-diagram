@@ -4752,6 +4752,49 @@ body.bt-theme-dark .pxd-root .pxd-highlight-chip,
   display: none;
 }
 
+/* P32-4. The chip's ▾ lists where a highlight opens. Quiet until the card is hovered or focused. */
+.pxd-root .pxd-highlight-chip__more {
+  position: absolute;
+  right: 6px;
+  bottom: 6px;
+  z-index: 2;
+  width: 18px;
+  height: var(--pxd-hl-chip-h, 20px);
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--pxd-border, #d0d7de);
+  border-radius: 999px;
+  background: var(--pxd-card, #fff);
+  color: var(--pxd-muted);
+  font: inherit;
+  font-size: 10px;
+  line-height: 18px;
+  text-align: center;
+  cursor: pointer;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 80ms ease;
+}
+
+.pxd-root .pxd-item:hover .pxd-highlight-chip__more,
+.pxd-root .pxd-item:focus-within .pxd-highlight-chip__more,
+.pxd-root .pxd-item--selected .pxd-highlight-chip__more {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.bp3-dark .pxd-root .pxd-highlight-chip__more,
+body.bt-theme-dark .pxd-root .pxd-highlight-chip__more,
+.pxd-root.pxd-root--dark .pxd-highlight-chip__more {
+  border-color: var(--pxd-border-strong);
+  background: transparent;
+}
+
+.pxd-root.pxd-lod-map .pxd-highlight-chip__more,
+.pxd-root.pxd-lod-overview .pxd-highlight-chip__more {
+  display: none;
+}
+
 /* PDFH-5. A quiet Note action under the highlight footer; it opens Roam's note child in the sidebar. */
 .pxd-root .pxd-item .pxd-highlight-notebtn {
   display: inline-block;
@@ -6274,6 +6317,38 @@ body.bt-theme-dark .pxd-root .pxd-pdf-pill,
   --pxd-pdf-hover-delay: 0ms;
 }
 
+/* P32-1. Map and overview paint the cached cover on the paper itself: the same data URL the detail
+   <img> uses, as a background. No <img>, no title, no strip at those tiers; the card reads as a small
+   page, as in Heptabase at 11-17 %. */
+.pxd-root.pxd-lod-map .pxd-pdf-cover[data-cover-img] > .pxd-pdf-paper,
+.pxd-root.pxd-lod-overview .pxd-pdf-cover[data-cover-img] > .pxd-pdf-paper {
+  background-color: var(--pxd-pdf-paper, #ffffff);
+  background-image: var(--pxd-cover);
+  background-size: cover;
+  background-position: top center;
+  background-repeat: no-repeat;
+}
+
+.pxd-root.pxd-lod-map .pxd-pdf-cover[data-cover-img] > .pxd-pdf-paper > .pxd-pdf-glyph,
+.pxd-root.pxd-lod-map .pxd-pdf-cover[data-cover-img] > .pxd-pdf-paper > .pxd-pdf-title--face {
+  display: none;
+}
+
+/* P32-1 (live fix). Map and overview hide every card body, which left the cover with no box. A PDF card with a cached
+   cover keeps its body as a full-card layer at those tiers, above the colour tile and the title tile. */
+.pxd-root.pxd-lod-map .pxd-item.pxd-item--pdf:not(.pxd-item--editing):has(.pxd-pdf-cover[data-cover-img]) > .pxd-item__body,
+.pxd-root.pxd-lod-overview .pxd-item.pxd-item--pdf:has(.pxd-pdf-cover[data-cover-img]) > .pxd-item__body {
+  display: block;
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+
+.pxd-root.pxd-lod-map .pxd-item.pxd-item--pdf:has(.pxd-pdf-cover[data-cover-img]) > .pxd-item__header,
+.pxd-root.pxd-lod-overview .pxd-item.pxd-item--pdf:has(.pxd-pdf-cover[data-cover-img]) > .pxd-item__header {
+  visibility: hidden;
+}
+
 /* NP-4. Properties panel, custom style keys, cross texture, animated dashes.
    Every rule is scoped under .pxd-root. A missing style key sets no variable, so 1.2 boards stay as they are. */
 
@@ -7678,6 +7753,43 @@ body.roam-body.dark .pxd-root.pxd-root--pdf-drag > .pxd-viewport,
   display: none;
 }
 
+/* P32-7. Heptabase reads on a soft grey bed with the white pages floating on it. Light only; dark keeps
+   the chrome colour so nothing is tinted. The pages themselves are pdf.js's and untouched. */
+.pxd-root {
+  --pxd-read-bed: #eef0f3;
+}
+
+.bp3-dark .pxd-root,
+body.bt-theme-dark .pxd-root,
+.pxd-root.pxd-root--dark {
+  --pxd-read-bed: var(--pxd-chrome-bg, transparent);
+}
+
+.pxd-read .pxd-read__live .rm-pdf-viewer-container,
+.pxd-read .pxd-read__live .PdfHighlighter {
+  background: var(--pxd-read-bed, transparent);
+}
+
+/* P32-3 (live fix). The reader is Roam's rendered PDF block, whose input sat at 476 px in a 616 px row
+   beside the bullet column, so fit width left a band on the right. The input, its span and the PDF
+   container fill the row; the bullet column stays. */
+.pxd-root .pxd-read .rm-block-main > .rm-block__input,
+.pxd-root .pxd-read .rm-block-main > .rm-block__input > span,
+.pxd-root .pxd-read .rm-pdf-container,
+.pxd-root .pxd-read .rm-pdf-viewer-container {
+  flex: 1 1 auto;
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+}
+
+/* The row also carries Roam's separator (116 px, flex-grow) and the reference-count slot after the input; in the
+   pane they only push the reader left. */
+.pxd-root .pxd-read .rm-block-main > .rm-block-separator,
+.pxd-root .pxd-read .rm-block-main > .rm-block__input ~ div:not(.rm-block__input) {
+  display: none;
+}
+
 /* ECO-3. The thumb fits the card. The 1px border is the button signal, not a shadow. */
 
 .pxd-root .pxd-region-thumb {
@@ -8629,21 +8741,29 @@ body.roam-body.dark .pxd-root .pxd-suggest__line {
   stroke: #9ca3af;
 }
 
-/* Fullscreen board tabs. Inside .pxd-root so the chrome tokens apply. Not on document.body. */
+/* Fullscreen board tabs. Inside .pxd-root so the chrome tokens apply. Not on document.body.
+   P32-6: the strip is painted only from two tabs up (board-view paintTabStrip), and it is 28 px tall. */
+
+.pxd-root {
+  --pxd-fstabs-h: 28px;
+}
 
 .pxd-root .pxd-fstabs {
   position: absolute;
-  top: 8px;
+  top: 6px;
   left: 8px;
   right: 8px;
   z-index: 12;
   display: flex;
-  gap: 4px;
+  align-items: center;
+  gap: 2px;
+  box-sizing: border-box;
+  height: var(--pxd-fstabs-h, 28px);
   overflow-x: auto;
   scrollbar-width: none;
-  padding: 4px;
+  padding: 2px 3px;
   border: 1px solid var(--pxd-border-strong);
-  border-radius: 8px;
+  border-radius: 7px;
   background: var(--pxd-bar-bg);
   box-shadow: var(--pxd-shadow);
 }
@@ -8659,9 +8779,13 @@ body.roam-body.dark .pxd-root .pxd-suggest__line {
 .pxd-root .pxd-fstab {
   display: flex;
   align-items: center;
+  box-sizing: border-box;
+  height: 22px;
   max-width: 160px;
+  padding-left: 8px;
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: 5px;
+  cursor: pointer;
 }
 
 .pxd-root .pxd-fstab--on {
@@ -8674,23 +8798,27 @@ body.roam-body.dark .pxd-root .pxd-suggest__line {
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 12px;
+  line-height: 20px;
 }
 
 .pxd-root .pxd-fstab__x {
-  width: 22px;
-  min-width: 22px;
+  width: 20px;
+  min-width: 20px;
+  height: 20px;
   padding: 0;
-  font-size: 14px;
+  font-size: 13px;
+  line-height: 20px;
 }
 
 /* The strip has its own row: the board bar, rail, Properties, legend and panel move down by its height
-   instead of sitting under it (live 2026-10-06: the strip covered the bar's first buttons). */
+   instead of sitting under it (live 2026-10-06: the strip covered the bar's first buttons).
+   Nothing is reserved while the strip is hidden. */
 .pxd-root.pxd-root--fstabs > .pxd-toolbar,
 .pxd-root.pxd-root--fstabs > .pxd-rail,
 .pxd-root.pxd-root--fstabs > .pxd-props,
 .pxd-root.pxd-root--fstabs > .pxd-legend,
 .pxd-root.pxd-root--fstabs > .pxd-panel {
-  margin-top: 46px;
+  margin-top: calc(var(--pxd-fstabs-h, 28px) + 8px);
 }
 
 .pxd-root.pxd-root--fstabs:not(:has(.pxd-fstab)) > .pxd-toolbar,

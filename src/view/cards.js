@@ -641,6 +641,7 @@ export function createItemRenderer({
   coverImage = null,
   onPdfOpenRequest = null,
   onHighlightHover = null,
+  onHighlightMenu = null,
   readingUid = null,
   settings: speedSettings = null,
   interopOn = null,
@@ -656,6 +657,8 @@ export function createItemRenderer({
   taskBlockOn = (item) => Boolean(bt?.available?.()) && isTaskCard(item);
   let pdfOpenUid = null;
   let pdfLiveUid = null;
+  // P32-5: the one PDF card that shows Roam's reader inside the card. Only the menu sets it.
+  let inlineUid = null;
   let pdfLiveOff = null;
   let paneForce = null;
   let panePage = null;
@@ -1351,7 +1354,7 @@ export function createItemRenderer({
       }
       if (target === rec.el) {
         const heavy = ownHeavyUid(lastBoard?.items.get(rec.uid));
-        if (heavy) openEmbed(heavy);
+        if (heavy) openEmbed(heavy, { implicit: true });
       }
     };
     rec.el.addEventListener("focusin", onShellFocus);
@@ -2722,8 +2725,8 @@ export function createItemRenderer({
 
   // PDF-1. One reader. Map lod keeps the cover at the card's own size.
   const pdfReaderBox = (uid) => {
-    if (onReadPane) return false;
     const item = lastBoard?.items.get(uid);
+    if (onReadPane) return Boolean(item && !item.collapsed && item.kind === "pdf" && inlineUid === uid && lod === "detail");
     return Boolean(item && !item.collapsed && item.kind === "pdf" && pdfOpenUid === uid && lod === "detail");
   };
   // The open reader is drawn 640x820 while the model keeps the card size. Culling and anchors use the drawn box.
@@ -2815,6 +2818,12 @@ export function createItemRenderer({
     const count = typeof safe.count === "number" && Number.isFinite(safe.count) && safe.count >= 1 ? safe.count : 0;
     const node = el("div", `pxd-pdf-cover pxd-pdf-cover--${state}`, rec.body);
     node.setAttribute("data-cover", state);
+    // P32-1: the cached image also paints the map and overview tiers, as a CSS background on the paper.
+    // The same data URL as the detail <img>, so the browser decodes it once per card. No DOM at those tiers.
+    if (state === "ready" && src) {
+      try { node.style.setProperty("--pxd-cover", `url("${src}")`); } catch { /* stub */ }
+      node.setAttribute("data-cover-img", "1");
+    }
     const paper = el("div", "pxd-pdf-paper", node);
     if (lod !== "overview") {
       if (showImage) {
@@ -2835,8 +2844,9 @@ export function createItemRenderer({
       } else {
         paintPdfGlyph(doc, paper, 28);
       }
-      // Detail ready is the page image alone. Map, loading, and no-cover keep the title on the paper.
-      if (lod === "map" || state === "loading" || state === "none") {
+      // Detail ready is the page image alone. Loading and no-cover keep the title on the paper, and so does
+      // map without an image. Map with an image is the page alone, as in Heptabase (P32-1).
+      if ((lod === "map" && !src) || state === "loading" || state === "none") {
         const face = el("div", "pxd-pdf-title pxd-pdf-title--face", paper);
         face.textContent = titleText;
       }
@@ -2998,8 +3008,15 @@ export function createItemRenderer({
     const pageField = inputs.find((node) => /^\d+$/.test(String(node.value || "").trim()));
     return pageField || inputs[0] || null;
   };
-  openEmbed = (uid) => {
+  openEmbed = (uid, opts = null) => {
     if (!uid || openingEmbed) return;
+    // One live reader per board: opening the pane puts an inline card back to its cover. Selecting or
+    // focusing the card that is reading inline (implicit) opens nothing else; an explicit open (pill,
+    // double-click, highlight, menu) still goes to the pane.
+    if (inlineUid && onReadPane) {
+      if (uid === inlineUid && opts?.implicit === true) return;
+      closeInline();
+    }
     const forced = paneForce;
     paneForce = null;
     const rule = readerRule(pdfOpenUid, uid);
@@ -3045,6 +3062,29 @@ export function createItemRenderer({
     } finally {
       openingEmbed = false;
     }
+  };
+  // P32-5: "Read inside the card". Explicit, from the menu only. The pane closes first (one live reader).
+  const readInline = (uid) => {
+    const rec = shells.get(uid);
+    const item = lastBoard?.items.get(uid);
+    if (!rec || !item || item.kind !== "pdf" || !onReadPane) return false;
+    if (inlineUid === uid) return true;
+    if (inlineUid) closeInline();
+    if (pdfOpenUid) {
+      pdfOpenUid = null;
+      tellPane({ open: false });
+    }
+    inlineUid = uid;
+    remountPdf(uid);
+    return true;
+  };
+  const closeInline = () => {
+    const uid = inlineUid;
+    if (!uid) return false;
+    inlineUid = null;
+    if (pdfLiveUid === uid) endPdfInteract();
+    remountPdf(uid);
+    return true;
   };
   closeEmbed = () => {
     tellPane({ open: false });
@@ -3178,12 +3218,26 @@ export function createItemRenderer({
     if (chipTitle) el("span", "pxd-highlight-chip__title", foot).textContent = chipTitle;
     if (chipPage) el("span", "pxd-highlight-chip__page", foot).textContent = chipTitle ? ` · ${chipPage}` : chipPage;
     foot.setAttribute("aria-label", [chipTitle, chipPage].filter(Boolean).join(", ") || "Open highlight");
+    // P32-4: one click does one thing. Shift-click is Roam's sidebar; a plain click follows the setting (host).
     const openFoot = (event) => {
       stopEvent(event);
       if (event.type !== "click") return;
-      try { onHighlightOpen?.(item); } catch { /* host */ }
+      try { onHighlightOpen?.(item, { mode: event.shiftKey ? "sidebar" : "" }); } catch { /* host */ }
     };
     for (const type of ["pointerdown", "mousedown", "dblclick", "click"]) foot.addEventListener(type, openFoot);
+    if (typeof onHighlightMenu === "function") {
+      const more = el("button", "pxd-highlight-chip__more pxd-chrome", rec.body);
+      more.type = "button";
+      more.textContent = "▾";
+      more.setAttribute("aria-label", "Where to open this highlight");
+      more.setAttribute("aria-haspopup", "menu");
+      const openMore = (event) => {
+        stopEvent(event);
+        if (event.type !== "click") return;
+        try { onHighlightMenu(item, more); } catch { /* host */ }
+      };
+      for (const type of ["pointerdown", "mousedown", "dblclick", "click"]) more.addEventListener(type, openMore);
+    }
     // PDFH-5. Note opens the highlight's note the way Roam's own note button does (sidebar, child focused).
     if (typeof onHighlightNote === "function" && item.target?.uid) {
       const noteBtn = el("button", "pxd-highlight-notebtn pxd-chrome", rec.body);
@@ -3425,7 +3479,7 @@ export function createItemRenderer({
       const cover = pdfCoverOf(item);
       rec.pdfCover = cover;
       if (editing?.uid !== item.uid && !rec.renaming) rec.header.textContent = String(cover.title || "PDF").slice(0, HEADER_TEXT_MAX);
-      if (!onReadPane && (pdfReaderBox(item.uid) || speedOf().posters === false)) budget.roots.push(paintPdfReader(rec, item));
+      if (inlineUid === item.uid || (!onReadPane && (pdfReaderBox(item.uid) || speedOf().posters === false))) budget.roots.push(paintPdfReader(rec, item));
       else paintPdfCover(rec, item, cover);
     } else if (item.kind === "highlight" && item.highlight) {
       paintHighlight(rec, item, budget);
@@ -4180,7 +4234,7 @@ export function createItemRenderer({
     const selected = selectedPrimary ? lastBoard?.items.get(selectedPrimary) : null;
     if (selected && focusSet.has(selectedPrimary)) {
       const heavy = ownHeavyUid(selected);
-      if (heavy) openEmbed(heavy);
+      if (heavy) openEmbed(heavy, { implicit: true });
       return;
     }
     const heavies = [];
@@ -4188,7 +4242,7 @@ export function createItemRenderer({
       const heavy = ownHeavyUid(lastBoard?.items.get(uid));
       if (heavy) heavies.push(heavy);
     }
-    if (heavies.length === 1) openEmbed(heavies[0]);
+    if (heavies.length === 1) openEmbed(heavies[0], { implicit: true });
   };
 
   const setSelection = (uids) => {
@@ -4216,7 +4270,7 @@ export function createItemRenderer({
     selectedPrimary = primary;
     if (!primary) return;
     const heavy = ownHeavyUid(lastBoard?.items.get(primary));
-    if (heavy) openEmbed(heavy);
+    if (heavy) openEmbed(heavy, { implicit: true });
   };
   const setHover = (uid) => {
     for (const [u, rec] of shells) {
@@ -4515,6 +4569,9 @@ export function createItemRenderer({
       }
     }
     if (isSticky(item)) return focusSticky(uid);
+    // P32-5: with the reading pane, a PDF card never edits in place. The editor would mount Roam's reader
+    // inside the card (the huge page on select). Open, Enter and the Open pill go to the pane instead.
+    if (item.kind === "pdf" && onReadPane) return false;
     if (editing) await exitEdit();
     if (!host?.renderBlock) { host?.openBlock?.(uid); return false; }
     const targetUid = item.target.kind === "block" ? item.target.uid : item.uid;
@@ -5027,6 +5084,9 @@ export function createItemRenderer({
       if (uids?.length && lastContent) fillContent(lastContent);
     },
     openPdf,
+    readInline,
+    closeInline,
+    inlineUid: () => inlineUid,
     openPdfAt,
     openPdfBlock,
     openEmbed,

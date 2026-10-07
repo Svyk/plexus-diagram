@@ -5,7 +5,8 @@
 // no document listener. A failure resolves null.
 // The holder stays visibility:hidden so pdf.js can measure it. It is never taken out of layout.
 
-import { COVER_MAX_W, WARM_MAX, coverKey, coverValid, scaleBox } from "../model/pdf-cover.js";
+import { COVER_MAX_W, WARM_MAX, coverKey, coverValid, scaleBox, isBlankCanvas } from "../model/pdf-cover.js";
+import { firstPageAllowed } from "./pdf-first-page.js";
 
 export const WARM_TIMEOUT_MS = 8000;
 export const WARM_POLL_MS = 100;
@@ -118,10 +119,13 @@ function applyHolderStyle(el) {
   try { style.setProperty?.("pointer-events", "none"); } catch { /* stub */ }
 }
 
-export function createPdfWarm({ doc, root, host, store, timers, now } = {}) {
+// P32-2: `renderFirst({ url, maxW })` is the pdf.js path (pdf-first-page.js). When it resolves a page
+// image the job never mounts a reader; null falls through to the hidden mount. `paths` counts both.
+export function createPdfWarm({ doc, root, host, store, timers, now, renderFirst } = {}) {
   const time = timersOf(timers);
   const nowFn = clockOf(now);
   const outcomes = new Map();
+  const paths = { pdfjs: 0, reader: 0 };
   let generation = 0;
   let pending = 0;
   let spentCount = 0;
@@ -161,6 +165,7 @@ export function createPdfWarm({ doc, root, host, store, timers, now } = {}) {
       const ctx = off.getContext?.("2d");
       if (!ctx || typeof ctx.drawImage !== "function" || typeof off.toBlob !== "function") return null;
       ctx.drawImage(canvas, 0, 0, box.w, box.h);
+      if (isBlankCanvas(off)) return null;
       return { box, blob: blobOf(off) };
     } catch {
       return null;
@@ -202,6 +207,29 @@ export function createPdfWarm({ doc, root, host, store, timers, now } = {}) {
       } catch {
         return null;
       }
+    } catch {
+      return null;
+    }
+  }
+
+  // A page-1 image from the pdf.js path, saved the way a reader snapshot is.
+  async function storeFirst(url, shot, hash, prior) {
+    try {
+      const prev = prior && typeof prior === "object" ? prior : {};
+      const record = {
+        url,
+        hash: typeof hash === "string" && hash.trim() ? hash.trim() : (typeof prev.hash === "string" ? prev.hash : ""),
+        first: shot.blob,
+        last: prev.last ?? null,
+        lastPage: positiveInt(prev.lastPage) ?? null,
+        pageCount: positiveInt(shot.pageCount) ?? positiveInt(prev.pageCount) ?? null,
+        w: positiveInt(shot.w) ?? null,
+        h: positiveInt(shot.h) ?? null,
+        ts: nowFn(),
+      };
+      if (!store || typeof store.put !== "function") return record;
+      const saved = await store.put(record);
+      return saved || null;
     } catch {
       return null;
     }
@@ -263,12 +291,36 @@ export function createPdfWarm({ doc, root, host, store, timers, now } = {}) {
           settle(job, record);
           return null;
         }
-        if (foreignReader(doc, null)) {
-          outcomes.set(job.uid, "skipped");
-          settle(job, null);
-          return null;
-        }
-        return mount(job, url, blockUid);
+        const viaPdfjs = typeof renderFirst === "function" && firstPageAllowed(url)
+          ? Promise.resolve().then(() => renderFirst({ url, maxW: COVER_MAX_W, hash: job.card.hash })).catch(() => null)
+          : Promise.resolve(null);
+        return viaPdfjs.then(async (shot) => {
+          if (job.gen !== generation || job.done) {
+            settle(job, null);
+            return null;
+          }
+          if (shot && shot.blob) {
+            const stored = await storeFirst(url, shot, job.card.hash, record);
+            if (job.gen !== generation || job.done) {
+              settle(job, null);
+              return null;
+            }
+            if (stored) {
+              paths.pdfjs += 1;
+              outcomes.set(job.uid, "ready");
+              finishSlot(job);
+              settle(job, stored);
+              return null;
+            }
+          }
+          if (foreignReader(doc, null)) {
+            outcomes.set(job.uid, "skipped");
+            settle(job, null);
+            return null;
+          }
+          paths.reader += 1;
+          return mount(job, url, blockUid);
+        });
       }).catch(() => {
         if (!job.done) {
           outcomes.set(job.uid, "none");
@@ -431,6 +483,10 @@ export function createPdfWarm({ doc, root, host, store, timers, now } = {}) {
     },
     running() {
       return pending > 0;
+    },
+    // P32-2 probe: how many covers came from pdf.js and how many from a hidden reader this board session.
+    report() {
+      return { spent: spentCount, pending, paths: { ...paths } };
     },
   };
 }

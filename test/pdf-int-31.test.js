@@ -339,8 +339,16 @@ test("background covers stay off unless the setting is on", async () => {
     on.flush();
     await tick(1800);
     on.stub.flushTimers();
+    // P32-2: the warm starts from an idle callback (flushIdle), then arms its begin timer (flushTimers once).
+    // Flushing timers again inside the poll would fire the 8 s kill timer and tear the holder down.
+    on.stub.flushIdle();
+    on.stub.flushTimers();
     await until(() => on.root.querySelector(".pxd-pdf-warm"), "warm holder");
     assert.ok(rendered.includes("pdfcard01"));
+    const probe = on.view.pdfProbe();
+    assert.equal(probe.covers.on, true);
+    assert.equal(probe.covers.pdfjs.found, false);
+    assert.deepEqual(probe.covers.warm.paths, { pdfjs: 0, reader: 1 });
   } finally {
     on.view.dispose();
     on.restore();
@@ -445,8 +453,11 @@ test("the tab strip height is the --pxd-tabs-h variable", async () => {
   });
   try {
     assert.equal(f.root.style["--pxd-tabs-h"], "0px");
+    // P32-6: one tab (this board) paints no strip and reserves nothing.
     f.view.setFullscreen(true);
-    assert.equal(f.root.style["--pxd-tabs-h"], "36px");
+    assert.equal(f.root.style["--pxd-tabs-h"], "0px");
+    assert.equal(f.root.querySelector(".pxd-fstabs"), null);
+    assert.equal(f.root.classList.contains("pxd-root--fstabs"), false);
     f.view.setFullscreen(false);
     assert.equal(f.root.style["--pxd-tabs-h"], "0px");
   } finally {
@@ -462,7 +473,7 @@ test("a new PDF card's default size is 240 by 320", () => {
 test("PDF cover settings default off the warm pass and offer first or last-read", () => {
   const defaults = settingsDefaults();
   assert.equal(defaults["pdf-cover"], "first");
-  assert.equal(defaults["pdf-cover-warm"], false);
+  assert.equal(defaults["pdf-cover-warm"], true);
   const rows = createSettingsPanel().settings;
   const cover = rows.find((row) => row.id === "pdf-cover");
   const warm = rows.find((row) => row.id === "pdf-cover-warm");

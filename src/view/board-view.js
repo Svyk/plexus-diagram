@@ -70,6 +70,7 @@ import { openPagePicker } from "./board-picker.js";
 import { createItemRenderer, dropEmbedPoster, isTextEntryTarget, pageBodyWantsWheel, paintEmbedPoster, syncBoardHighlighter } from "./cards.js";
 import { createReadPane, highlightDropPlan, originBeside, placeDecision, readerJumpPlan } from "./read-pane.js";
 import { createPdfWarm } from "./pdf-warm.js";
+import { createFirstPageRenderer, detectPdfjs } from "./pdf-first-page.js";
 import { openViewDialog } from "./view-dialog.js";
 import { viewMapModel } from "./minimap-svg.js";
 import { openRegionDeleteDialog } from "./region-delete-dialog.js";
@@ -1462,7 +1463,8 @@ function buildBoardView(onFail, {
     onPdfPulse: (uids) => { for (const uid of uids || []) pulseItem(uid); },
     onPdfOpen: (uid, page) => { void itemsR.openPdfAt?.(uid, page); },
     onEmbedOpen: () => closeOutlineLive(),
-    onHighlightOpen: (item) => { void openHighlightInReader(item); },
+    onHighlightOpen: (item, opts) => openHighlightAs(item, opts?.mode),
+    onHighlightMenu: (item, anchor) => openHighlightMenu(item, anchor),
     onHighlightNote: (uid) => { void openHighlightNote(uid); },
     interopOn: () => readSetting("interop") !== false,
     coverImage: (url) => coverImageFor(url),
@@ -1576,17 +1578,36 @@ function buildBoardView(onFail, {
     setTimeout: (fn, ms) => (typeof win?.setTimeout === "function" ? win.setTimeout(fn, ms) : setTimeout(fn, ms)),
     clearTimeout: (id) => (typeof win?.clearTimeout === "function" ? win.clearTimeout(id) : clearTimeout(id)),
   };
+  // P32-2. pdf.js is probed once per view, when the first warm is needed: Roam's own build, if it is a
+  // global with a worker configured, draws page 1 without a reader. Otherwise the hidden mount does.
+  let firstPage = null;
+  let pdfjsProbe = null;
+  const probePdfjs = () => {
+    if (pdfjsProbe) return pdfjsProbe;
+    const found = detectPdfjs(win);
+    pdfjsProbe = { found: Boolean(found), key: found?.key || "", version: found?.version || "", workerReady: Boolean(found?.workerReady) };
+    if (found && found.workerReady) firstPage = createFirstPageRenderer({ doc, lib: found.lib, timers: warmTimers });
+    return pdfjsProbe;
+  };
   const ensurePdfWarm = () => {
     if (pdfWarm) return pdfWarm;
+    probePdfjs();
     pdfWarm = createPdfWarm({
       doc,
       root,
       host,
       store: ensureCoverStore(),
       timers: warmTimers,
+      renderFirst: firstPage ? (spec) => firstPage.render(spec) : null,
     });
     return pdfWarm;
   };
+  const coverReport = () => ({
+    on: coverWarmOn(),
+    pdfjs: pdfjsProbe || { found: null },
+    firstPage: firstPage ? firstPage.report() : null,
+    warm: pdfWarm ? pdfWarm.report() : null,
+  });
   const pdfBlockUid = (item) => {
     if (item?.target?.kind === "block" && typeof item.target.uid === "string" && item.target.uid) return item.target.uid;
     return typeof item?.uid === "string" ? item.uid : "";
@@ -1801,13 +1822,28 @@ function buildBoardView(onFail, {
     if (!plan || gesturing) return;
     const card = cards.find((row) => row.uid === plan.uid);
     if (!card) return;
-    let job = null;
-    try { job = ensurePdfWarm().request(card); } catch { job = null; }
-    Promise.resolve(job).then((record) => {
-      if (disposed) return;
-      const face = coverFaces.get(card.url);
-      if (record || face?.state !== "ready") dropCover(card.url);
-    }).catch(() => {});
+    // Idle first: the warm waits for a quiet frame (at most 2 s), and a gesture that started meanwhile wins.
+    const start = () => {
+      if (disposed || suspended || gesturing || readPane?.isOpen?.() === true) return;
+      let job = null;
+      try { job = ensurePdfWarm().request(card); } catch { job = null; }
+      const next = () => {
+        // One PDF at a time: when a job ends, look again for the next visible PDF without a cover.
+        if (disposed || suspended) return;
+        if (coverWarmWait) { coverWarmWait(); coverWarmWait = null; }
+        coverWarmWait = timers.later(() => { coverWarmWait = null; considerCoverWarm(); }, 400);
+      };
+      Promise.resolve(job).then((record) => {
+        if (disposed) return;
+        const face = coverFaces.get(card.url);
+        if (record || face?.state !== "ready") dropCover(card.url);
+        next();
+      }).catch(() => next());
+    };
+    if (typeof win?.requestIdleCallback === "function") {
+      try { win.requestIdleCallback(() => start(), { timeout: 2000 }); return; } catch { /* fall through */ }
+    }
+    start();
   };
   const armCoverWarm = () => {
     if (coverWarmWait) { coverWarmWait(); coverWarmWait = null; }
@@ -3361,7 +3397,7 @@ function buildBoardView(onFail, {
         const compassApi = globalThis.RoamCompass || globalThis.window?.RoamCompass || null;
         const plexusApi = globalThis.RoamPlexus || globalThis.window?.RoamPlexus || null;
         const task = isTaskItem(item) ? taskMeta(item.string, item.content) : null;
-        return { ...(task ? { statusTags, status: task.status || "" } : {}), item, regions: imageRegionRows(item?.content), canMakeTask: item?.type === "card" && item?.kind === "note" && !isTaskString(item.string) && !isQueryString(queryText), isBoard: item?.kind === "board", collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS.includes(item?.kind), canSpread: item?.kind === "note" || item?.kind === "block", isQuery: isQueryString(queryText), canExpand, mindPreset: readMindPreset(storage), compass: typeof compassApi?.open === "function", interop: readSetting("interop") !== false, canAnnotate: item?.kind === "image" && typeof plexusApi?.create === "function", trails: trailRows(b), landmark: item?.landmark === true, landmarkSize: item?.size || "M" };
+        return { ...(task ? { statusTags, status: task.status || "" } : {}), item, regions: imageRegionRows(item?.content), canMakeTask: item?.type === "card" && item?.kind === "note" && !isTaskString(item.string) && !isQueryString(queryText), isBoard: item?.kind === "board", isPdf: item?.kind === "pdf", inlineReader: item?.kind === "pdf" && itemsR.inlineUid?.() === item?.uid, collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS.includes(item?.kind), canSpread: item?.kind === "note" || item?.kind === "block", isQuery: isQueryString(queryText), canExpand, mindPreset: readMindPreset(storage), compass: typeof compassApi?.open === "function", interop: readSetting("interop") !== false, canAnnotate: item?.kind === "image" && typeof plexusApi?.create === "function", trails: trailRows(b), landmark: item?.landmark === true, landmarkSize: item?.size || "M" };
       }
       case "section": {
         const members = item && b ? [item.uid, ...descendantsOf(b, item.uid)] : [];
@@ -3677,6 +3713,13 @@ function buildBoardView(onFail, {
       case "open": openItem(item); break;
       case "open-own-page": openOwnPage(item); break;
       case "open-sidebar": openItemInSidebar(item); break;
+      case "read-inline": {
+        if (!item || item.kind !== "pdf") break;
+        if (itemsR.inlineUid?.() === item.uid) itemsR.closeInline?.();
+        else itemsR.readInline?.(item.uid);
+        break;
+      }
+      case "hl-open": if (item) openHighlightAs(item, arg); break;
       case "open-compass": {
         if (!item) break;
         const api = globalThis.RoamCompass || globalThis.window?.RoamCompass || null;
@@ -4033,6 +4076,38 @@ function buildBoardView(onFail, {
     }
     try { host?.openBlock?.(item.target.uid); } catch { /* navigation can fail closed */ }
     toast(plan.toast);
+  };
+  // P32-4: one click on a highlight card opens it in one place. Shift-click is the sidebar (Roam's
+  // convention); a plain click follows the setting; the chip's ▾ lists all three.
+  const highlightOpenMode = () => (readSetting("highlight-open") === "sidebar" ? "sidebar" : "reader");
+  const openHighlightAs = (item, mode) => {
+    if (!item || item.kind !== "highlight") return;
+    const pick = mode === "sidebar" || mode === "main" || mode === "reader" ? mode : highlightOpenMode();
+    const uid = item.target?.uid || "";
+    if (pick === "sidebar") {
+      if (uid) { try { host?.openInSidebar?.(uid, "block"); } catch { /* host */ } }
+      return;
+    }
+    if (pick === "main") {
+      if (uid) { try { host?.openBlock?.(uid); } catch { /* host */ } }
+      return;
+    }
+    void openHighlightInReader(item);
+  };
+  const openHighlightMenu = (item, anchor) => {
+    if (!item || item.kind !== "highlight" || disposed) return false;
+    let r = null;
+    try { r = anchor?.getBoundingClientRect?.(); } catch { r = null; }
+    const x = Number(r?.left) || 0;
+    const y = (Number(r?.bottom) || 0) + 2;
+    const items = [
+      { id: "hl-open:reader", label: "Open in reader" },
+      { id: "hl-open:sidebar", label: "Open in sidebar", hint: "Shift Click" },
+      { id: "hl-open:main", label: "Open page in main" },
+    ];
+    const ok = menu.open({ x, y, items });
+    if (ok) menuCtx = { kind: "card", uid: item.uid, world: viewCenterWorld(), selection: [] };
+    return ok;
   };
   const chrome = createChrome({
     doc,
@@ -4740,7 +4815,9 @@ function buildBoardView(onFail, {
   // The strip lives inside .pxd-root so chrome tokens and overlay hit-testing apply. Leaving fullscreen keeps the list.
   let tabStrip = null;
   const paintTabStrip = (tabs, current) => {
-    if (!isFullscreen) {
+    // P32-6: one tab is just the board you are on. The strip shows from two tabs up; the list,
+    // its persistence and Cmd+1..9 do not depend on the strip being painted.
+    if (!isFullscreen || !Array.isArray(tabs) || tabs.length < 2) {
       tabStrip?.remove();
       tabStrip = null;
       root.classList.remove("pxd-root--fstabs");
@@ -6812,6 +6889,10 @@ function buildBoardView(onFail, {
     },
     stats() {
       return { timers: timers.count(), listeners: listeners.length + (captured ? 3 : 0), observers: observers.length, mounted: itemsR.mountedCount(), shells: itemsR.shellCount() };
+    },
+    // P32 live probes: cover source (pdf.js or hidden reader) and the pane's fit path. Read-only.
+    pdfProbe() {
+      return { covers: coverReport(), fit: readPane?.fitInfo?.() || null, inline: itemsR.inlineUid?.() || "" };
     },
     dispose() {
       if (disposing) return;

@@ -416,6 +416,7 @@ test("legacy filters hide, the reader fills to the strip, the pill reads / total
     root.className = "pxd-root";
     doc.body.append(root);
     const hits = { fit: 0, zoomIn: 0 };
+    const zoomInHook = { current: null };
     let built = null;
     const pane = createReadPane({
       doc,
@@ -428,7 +429,7 @@ test("legacy filters hide, the reader fills to the strip, the pill reads / total
           bar.className = "rm-pdf-toolbar";
           const zoomIn = iconButton(doc, "bp3-icon bp3-icon-zoom-in");
           const fit = iconButton(doc, "bp3-icon bp3-icon-zoom-to-fit");
-          zoomIn.click = () => { hits.zoomIn += 1; };
+          zoomIn.click = () => { hits.zoomIn += 1; zoomInHook.current?.(); };
           fit.click = () => { hits.fit += 1; };
           const wrap = doc.createElement("div");
           wrap.className = "bp3-input-group";
@@ -504,16 +505,24 @@ test("legacy filters hide, the reader fills to the strip, the pill reads / total
     stub.flushFrames();
     assert.equal(root.querySelector(".pxd-read__pages").textContent, "4 / 9");
 
+    // P32-3: page width, not Roam's fit page. Live: fit = 469 px wide in a 617 px pane, one zoom in = 595 px.
+    // No viewer behind the fiber here, so Roam's zoom-in button steps once and the next step would overflow.
     const canvas = doc.createElement("canvas");
     built.page.append(canvas);
+    built.scroller._rect = { left: 0, top: 40, width: 617, height: 600, right: 617, bottom: 640, x: 0, y: 40 };
+    built.page._rect = { left: 74, top: 40, width: 469, height: 630, right: 543, bottom: 670, x: 74, y: 40 };
+    zoomInHook.current = () => { built.page._rect = { ...built.page._rect, width: 595 }; };
     stub.flushTimers();
     assert.equal(hits.fit, 0);
+    assert.equal(hits.zoomIn, 0);
     canvas.width = 520;
     stub.flushTimers();
-    assert.equal(hits.fit, 1);
+    assert.equal(hits.fit, 0);
+    assert.equal(hits.zoomIn, 1);
     stub.flushTimers();
-    assert.equal(hits.fit, 1);
-    assert.equal(hits.zoomIn, 0);
+    stub.flushTimers();
+    assert.equal(hits.zoomIn, 1);
+    assert.deepEqual(pane.fitInfo(), { path: "steps", clicks: 1, done: true, userZoomed: false });
 
     highlights.click();
     assert.equal(mount.style.height, "262px");

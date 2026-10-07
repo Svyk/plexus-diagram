@@ -319,3 +319,35 @@ body.bt-theme-dark .pxd-root .pxd-pdf-pill,
   --pxd-pdf-fade: 0ms;
   --pxd-pdf-hover-delay: 0ms;
 }
+
+/* P32-1. Map and overview paint the cached cover on the paper itself: the same data URL the detail
+   <img> uses, as a background. No <img>, no title, no strip at those tiers; the card reads as a small
+   page, as in Heptabase at 11-17 %. */
+.pxd-root.pxd-lod-map .pxd-pdf-cover[data-cover-img] > .pxd-pdf-paper,
+.pxd-root.pxd-lod-overview .pxd-pdf-cover[data-cover-img] > .pxd-pdf-paper {
+  background-color: var(--pxd-pdf-paper, #ffffff);
+  background-image: var(--pxd-cover);
+  background-size: cover;
+  background-position: top center;
+  background-repeat: no-repeat;
+}
+
+.pxd-root.pxd-lod-map .pxd-pdf-cover[data-cover-img] > .pxd-pdf-paper > .pxd-pdf-glyph,
+.pxd-root.pxd-lod-map .pxd-pdf-cover[data-cover-img] > .pxd-pdf-paper > .pxd-pdf-title--face {
+  display: none;
+}
+
+/* P32-1 (live fix). Map and overview hide every card body, which left the cover with no box. A PDF card with a cached
+   cover keeps its body as a full-card layer at those tiers, above the colour tile and the title tile. */
+.pxd-root.pxd-lod-map .pxd-item.pxd-item--pdf:not(.pxd-item--editing):has(.pxd-pdf-cover[data-cover-img]) > .pxd-item__body,
+.pxd-root.pxd-lod-overview .pxd-item.pxd-item--pdf:has(.pxd-pdf-cover[data-cover-img]) > .pxd-item__body {
+  display: block;
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+}
+
+.pxd-root.pxd-lod-map .pxd-item.pxd-item--pdf:has(.pxd-pdf-cover[data-cover-img]) > .pxd-item__header,
+.pxd-root.pxd-lod-overview .pxd-item.pxd-item--pdf:has(.pxd-pdf-cover[data-cover-img]) > .pxd-item__header {
+  visibility: hidden;
+}

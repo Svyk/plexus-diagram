@@ -1,18 +1,26 @@
-/* Fullscreen board tabs. Inside .pxd-root so the chrome tokens apply. Not on document.body. */
+/* Fullscreen board tabs. Inside .pxd-root so the chrome tokens apply. Not on document.body.
+   P32-6: the strip is painted only from two tabs up (board-view paintTabStrip), and it is 28 px tall. */
+
+.pxd-root {
+  --pxd-fstabs-h: 28px;
+}
 
 .pxd-root .pxd-fstabs {
   position: absolute;
-  top: 8px;
+  top: 6px;
   left: 8px;
   right: 8px;
   z-index: 12;
   display: flex;
-  gap: 4px;
+  align-items: center;
+  gap: 2px;
+  box-sizing: border-box;
+  height: var(--pxd-fstabs-h, 28px);
   overflow-x: auto;
   scrollbar-width: none;
-  padding: 4px;
+  padding: 2px 3px;
   border: 1px solid var(--pxd-border-strong);
-  border-radius: 8px;
+  border-radius: 7px;
   background: var(--pxd-bar-bg);
   box-shadow: var(--pxd-shadow);
 }
@@ -28,9 +36,13 @@
 .pxd-root .pxd-fstab {
   display: flex;
   align-items: center;
+  box-sizing: border-box;
+  height: 22px;
   max-width: 160px;
+  padding-left: 8px;
   border: 1px solid transparent;
-  border-radius: 6px;
+  border-radius: 5px;
+  cursor: pointer;
 }
 
 .pxd-root .pxd-fstab--on {
@@ -43,23 +55,27 @@
   text-overflow: ellipsis;
   white-space: nowrap;
   font-size: 12px;
+  line-height: 20px;
 }
 
 .pxd-root .pxd-fstab__x {
-  width: 22px;
-  min-width: 22px;
+  width: 20px;
+  min-width: 20px;
+  height: 20px;
   padding: 0;
-  font-size: 14px;
+  font-size: 13px;
+  line-height: 20px;
 }
 
 /* The strip has its own row: the board bar, rail, Properties, legend and panel move down by its height
-   instead of sitting under it (live 2026-10-06: the strip covered the bar's first buttons). */
+   instead of sitting under it (live 2026-10-06: the strip covered the bar's first buttons).
+   Nothing is reserved while the strip is hidden. */
 .pxd-root.pxd-root--fstabs > .pxd-toolbar,
 .pxd-root.pxd-root--fstabs > .pxd-rail,
 .pxd-root.pxd-root--fstabs > .pxd-props,
 .pxd-root.pxd-root--fstabs > .pxd-legend,
 .pxd-root.pxd-root--fstabs > .pxd-panel {
-  margin-top: 46px;
+  margin-top: calc(var(--pxd-fstabs-h, 28px) + 8px);
 }
 
 .pxd-root.pxd-root--fstabs:not(:has(.pxd-fstab)) > .pxd-toolbar,

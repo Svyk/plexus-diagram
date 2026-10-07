@@ -106,3 +106,50 @@ export function pillActions(toolbarButtons, selectors = PILL_SELECTORS) {
 export function fitDecision({ userZoomed, hasFit, settled } = {}) {
   return userZoomed !== true && hasFit === true && settled === true;
 }
+
+// P32-3. Page width, not fit page. Two paths: the pdf.js viewer behind the React fiber owns an exact
+// "page-width" scale; Roam's own zoom buttons step by about a quarter and are the fallback.
+
+export const FIT_GUTTER = 24;
+export const FIT_MAX_CLICKS = 8;
+export const FIT_STEP_RATIO = 1.25;
+
+// Walk a fiber up to the class instance that owns the pdf.js PDFViewer (react-pdf-highlighter keeps it
+// on `this.viewer`). The viewer is recognised by its currentScaleValue property; nothing else is touched.
+export function viewerFromFiber(fiber) {
+  let current = fiber;
+  const seen = new Set();
+  for (let depth = 0; depth < 40 && current && typeof current === "object" && !seen.has(current); depth += 1) {
+    seen.add(current);
+    const node = current.stateNode;
+    const viewer = node && typeof node === "object" ? node.viewer : null;
+    if (viewer && typeof viewer === "object" && "currentScaleValue" in viewer) return viewer;
+    current = current.return;
+  }
+  return null;
+}
+
+// The page is at reading width when it fills the viewer minus pdf.js's own scrollbar padding (40 px)
+// and page borders. Wider than the viewer is an overflow, not a fit.
+export function fitsWidth({ pageWidth, viewerWidth } = {}) {
+  const page = Number(pageWidth);
+  const view = Number(viewerWidth);
+  if (!(page > 0) || !(view > 0)) return false;
+  return page <= view && page >= view - 64;
+}
+
+// One decision per step. `prev` is the last action; a step never zooms in after a zoom out (no ping-pong),
+// and a zoom out after a zoom in is the one correction an overshoot gets.
+export function fitWidthStep({ pageWidth, viewerWidth, lastPageWidth, clicks = 0, prev = "", gutter = FIT_GUTTER, maxClicks = FIT_MAX_CLICKS, ratio = FIT_STEP_RATIO } = {}) {
+  const page = Number(pageWidth);
+  const view = Number(viewerWidth);
+  if (!(page > 0) || !(view > 0)) return "stop";
+  if (Number(clicks) >= maxClicks) return "stop";
+  const target = view - gutter;
+  if (page > view - 4) return prev === "out" || prev === "in" || prev === "" ? "out" : "stop";
+  if (prev === "out") return "stop";
+  const last = Number(lastPageWidth);
+  const step = last > 0 && page > last ? page / last : ratio;
+  if (page * step <= target) return "in";
+  return "stop";
+}

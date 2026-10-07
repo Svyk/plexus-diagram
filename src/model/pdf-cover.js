@@ -158,3 +158,25 @@ export function coverState(record, warm) {
     return "none";
   }
 }
+
+// P32 live fix. A page captured before pdf.js painted it is all white; such a snapshot must not replace a cover.
+// Samples a 12×16 grid; any pixel darker than the threshold means the page has ink.
+export function isBlankCanvas(canvas, { threshold = 235 } = {}) {
+  try {
+    const w = Number(canvas?.width) || 0;
+    const h = Number(canvas?.height) || 0;
+    const ctx = canvas?.getContext?.("2d");
+    if (!ctx || typeof ctx.getImageData !== "function" || w < 2 || h < 2) return false;
+    for (let gy = 0; gy < 16; gy += 1) {
+      for (let gx = 0; gx < 12; gx += 1) {
+        const x = Math.min(w - 1, Math.floor(((gx + 0.5) * w) / 12));
+        const y = Math.min(h - 1, Math.floor(((gy + 0.5) * h) / 16));
+        const d = ctx.getImageData(x, y, 1, 1).data;
+        if (d[0] < threshold || d[1] < threshold || d[2] < threshold) return false;
+      }
+    }
+    return true;
+  } catch {
+    return false;
+  }
+}

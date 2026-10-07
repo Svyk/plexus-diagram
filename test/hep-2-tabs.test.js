@@ -187,7 +187,9 @@ test("HEP-2: leaving fullscreen restores the same tabs for that graph only", () 
 
   const other = createTabStore({ storage, graph: "Other" });
   const foreign = mount(stub, { uid: "boardDDD4", title: "Delta", store: other });
-  assert.deepEqual(tabsOf(foreign.view.root).map((t) => t.uid), ["boardDDD4"]);
+  // P32-6: one tab is kept in the store but paints no strip.
+  assert.deepEqual(other.get().map((t) => t.uid), ["boardDDD4"]);
+  assert.equal(foreign.view.root.querySelector(".pxd-fstabs"), null);
   foreign.view.dispose();
   restore();
 });
@@ -206,11 +208,13 @@ test("HEP-2: closing a tab does not delete the board", () => {
   });
   const alpha = view.root.querySelector('.pxd-fstab[data-uid="boardAAA1"] .pxd-fstab__x');
   alpha.click();
-  assert.deepEqual(tabsOf(view.root).map((t) => t.uid), ["boardBBB2"]);
+  // P32-6: the one tab left is this board; the strip goes away and the board stays fullscreen.
+  assert.deepEqual(store.get().map((t) => t.uid), ["boardBBB2"]);
+  assert.equal(view.root.querySelectorAll(".pxd-fstab").length, 0);
+  assert.equal(view.root.querySelector(".pxd-fstabs"), null);
+  assert.equal(view.root.classList.contains("pxd-root--fstabs"), false);
   assert.deepEqual(picked, []);
   assert.deepEqual(deleted, []);
-  view.root.querySelector(".pxd-fstab__x").click();
-  assert.equal(view.root.querySelectorAll(".pxd-fstab").length, 0);
   assert.equal(view.root.classList.contains("pxd-root--fullscreen"), true);
   assert.equal(view.root.dataset.board, "boardBBB2");
   assert.deepEqual(picked, []);
@@ -229,7 +233,8 @@ test("HEP-2: opening outside fullscreen does not add a tab, and the ? sheet list
   assert.equal(store.get().length, 0);
   quiet.view.setFullscreen(true);
   stub.flushFrames();
-  assert.deepEqual(tabsOf(quiet.view.root).map((t) => t.uid), ["boardAAA1"]);
+  assert.deepEqual(store.get().map((t) => t.uid), ["boardAAA1"]);
+  assert.equal(quiet.view.root.querySelector(".pxd-fstabs"), null);
   const help = stub.dispatch(stub.window, "keydown", { key: "?", code: "Slash", shiftKey: true, metaKey: false, ctrlKey: false, altKey: false });
   assert.equal(help.defaultPrevented, true);
   const keys = [...quiet.view.root.querySelectorAll(".pxd-sheet__keys")].map((node) => node.textContent);

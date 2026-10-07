@@ -584,3 +584,40 @@ body.roam-body.dark .pxd-root.pxd-root--pdf-drag > .pxd-viewport,
 .pxd-root .pxd-read .rm-block__ref-count {
   display: none;
 }
+
+/* P32-7. Heptabase reads on a soft grey bed with the white pages floating on it. Light only; dark keeps
+   the chrome colour so nothing is tinted. The pages themselves are pdf.js's and untouched. */
+.pxd-root {
+  --pxd-read-bed: #eef0f3;
+}
+
+.bp3-dark .pxd-root,
+body.bt-theme-dark .pxd-root,
+.pxd-root.pxd-root--dark {
+  --pxd-read-bed: var(--pxd-chrome-bg, transparent);
+}
+
+.pxd-read .pxd-read__live .rm-pdf-viewer-container,
+.pxd-read .pxd-read__live .PdfHighlighter {
+  background: var(--pxd-read-bed, transparent);
+}
+
+/* P32-3 (live fix). The reader is Roam's rendered PDF block, whose input sat at 476 px in a 616 px row
+   beside the bullet column, so fit width left a band on the right. The input, its span and the PDF
+   container fill the row; the bullet column stays. */
+.pxd-root .pxd-read .rm-block-main > .rm-block__input,
+.pxd-root .pxd-read .rm-block-main > .rm-block__input > span,
+.pxd-root .pxd-read .rm-pdf-container,
+.pxd-root .pxd-read .rm-pdf-viewer-container {
+  flex: 1 1 auto;
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+}
+
+/* The row also carries Roam's separator (116 px, flex-grow) and the reference-count slot after the input; in the
+   pane they only push the reader left. */
+.pxd-root .pxd-read .rm-block-main > .rm-block-separator,
+.pxd-root .pxd-read .rm-block-main > .rm-block__input ~ div:not(.rm-block__input) {
+  display: none;
+}

@@ -1,0 +1,1047 @@
+{
+ "source": "report.html",
+ "headings": [
+  {
+   "level": 1,
+   "text": "Environmental Monitoring of a Dry-Blend Powder Line"
+  },
+  {
+   "level": 2,
+   "text": "1 Introduction"
+  },
+  {
+   "level": 2,
+   "text": "2 Methods"
+  },
+  {
+   "level": 3,
+   "text": "2.1 Sampling"
+  },
+  {
+   "level": 3,
+   "text": "2.2 Risk score"
+  },
+  {
+   "level": 2,
+   "text": "3 Results"
+  },
+  {
+   "level": 2,
+   "text": "4 Discussion"
+  },
+  {
+   "level": 2,
+   "text": "5 Conclusion"
+  },
+  {
+   "level": 2,
+   "text": "Appendix A. Site register (excerpt)"
+  }
+ ],
+ "tables": [
+  {
+   "caption": "Table 1. Microbiological limits by product stage (n, c, m, M sampling plan)",
+   "style": "ruled",
+   "rows": 7,
+   "cols": 7,
+   "headerRows": 2,
+   "cells": [
+    {
+     "r": 0,
+     "c": 0,
+     "rowSpan": 2,
+     "colSpan": 1,
+     "text": "Product stage",
+     "header": true
+    },
+    {
+     "r": 0,
+     "c": 1,
+     "rowSpan": 2,
+     "colSpan": 1,
+     "text": "Organism",
+     "header": true
+    },
+    {
+     "r": 0,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 4,
+     "text": "Sampling plan",
+     "header": true
+    },
+    {
+     "r": 0,
+     "c": 6,
+     "rowSpan": 2,
+     "colSpan": 1,
+     "text": "Action",
+     "header": true
+    },
+    {
+     "r": 1,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "n",
+     "header": true
+    },
+    {
+     "r": 1,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "c",
+     "header": true
+    },
+    {
+     "r": 1,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "m (CFU/g)",
+     "header": true
+    },
+    {
+     "r": 1,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "M (CFU/g)",
+     "header": true
+    },
+    {
+     "r": 2,
+     "c": 0,
+     "rowSpan": 3,
+     "colSpan": 1,
+     "text": "Base powder",
+     "header": false
+    },
+    {
+     "r": 2,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Aerobic plate count",
+     "header": false
+    },
+    {
+     "r": 2,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "5",
+     "header": false
+    },
+    {
+     "r": 2,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "2",
+     "header": false
+    },
+    {
+     "r": 2,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "1,000",
+     "header": false
+    },
+    {
+     "r": 2,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "10,000",
+     "header": false
+    },
+    {
+     "r": 2,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Hold lot",
+     "header": false
+    },
+    {
+     "r": 3,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Enterobacteriaceae",
+     "header": false
+    },
+    {
+     "r": 3,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "10",
+     "header": false
+    },
+    {
+     "r": 3,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "2",
+     "header": false
+    },
+    {
+     "r": 3,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0",
+     "header": false
+    },
+    {
+     "r": 3,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "10",
+     "header": false
+    },
+    {
+     "r": 3,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Hold lot",
+     "header": false
+    },
+    {
+     "r": 4,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Cronobacter spp.",
+     "header": false
+    },
+    {
+     "r": 4,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "30",
+     "header": false
+    },
+    {
+     "r": 4,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0",
+     "header": false
+    },
+    {
+     "r": 4,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 2,
+     "text": "Absent in 10 g",
+     "header": false
+    },
+    {
+     "r": 4,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Reject",
+     "header": false
+    },
+    {
+     "r": 5,
+     "c": 0,
+     "rowSpan": 2,
+     "colSpan": 1,
+     "text": "Finished blend",
+     "header": false
+    },
+    {
+     "r": 5,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Salmonella spp.",
+     "header": false
+    },
+    {
+     "r": 5,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "60",
+     "header": false
+    },
+    {
+     "r": 5,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0",
+     "header": false
+    },
+    {
+     "r": 5,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 2,
+     "text": "Absent in 25 g",
+     "header": false
+    },
+    {
+     "r": 5,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Reject",
+     "header": false
+    },
+    {
+     "r": 6,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Yeast and mould",
+     "header": false
+    },
+    {
+     "r": 6,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "5",
+     "header": false
+    },
+    {
+     "r": 6,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "2",
+     "header": false
+    },
+    {
+     "r": 6,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "50",
+     "header": false
+    },
+    {
+     "r": 6,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "500",
+     "header": false
+    },
+    {
+     "r": 6,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Investigate",
+     "header": false
+    }
+   ]
+  },
+  {
+   "caption": "Table 2. Swab results by zone, first and second half of the year",
+   "style": "borderless",
+   "rows": 6,
+   "cols": 7,
+   "headerRows": 1,
+   "cells": [
+    {
+     "r": 0,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Zone",
+     "header": true
+    },
+    {
+     "r": 0,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Swabs H1",
+     "header": true
+    },
+    {
+     "r": 0,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Pos. H1",
+     "header": true
+    },
+    {
+     "r": 0,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Rate H1 (%)",
+     "header": true
+    },
+    {
+     "r": 0,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Swabs H2",
+     "header": true
+    },
+    {
+     "r": 0,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Pos. H2",
+     "header": true
+    },
+    {
+     "r": 0,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Rate H2 (%)",
+     "header": true
+    },
+    {
+     "r": 1,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Zone 1",
+     "header": false
+    },
+    {
+     "r": 1,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "312",
+     "header": false
+    },
+    {
+     "r": 1,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0",
+     "header": false
+    },
+    {
+     "r": 1,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.0",
+     "header": false
+    },
+    {
+     "r": 1,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "318",
+     "header": false
+    },
+    {
+     "r": 1,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0",
+     "header": false
+    },
+    {
+     "r": 1,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.0",
+     "header": false
+    },
+    {
+     "r": 2,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Zone 2",
+     "header": false
+    },
+    {
+     "r": 2,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "204",
+     "header": false
+    },
+    {
+     "r": 2,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "3",
+     "header": false
+    },
+    {
+     "r": 2,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "1.5",
+     "header": false
+    },
+    {
+     "r": 2,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "198",
+     "header": false
+    },
+    {
+     "r": 2,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "1",
+     "header": false
+    },
+    {
+     "r": 2,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.5",
+     "header": false
+    },
+    {
+     "r": 3,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Zone 3",
+     "header": false
+    },
+    {
+     "r": 3,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "96",
+     "header": false
+    },
+    {
+     "r": 3,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "9",
+     "header": false
+    },
+    {
+     "r": 3,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "9.4",
+     "header": false
+    },
+    {
+     "r": 3,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "101",
+     "header": false
+    },
+    {
+     "r": 3,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "2",
+     "header": false
+    },
+    {
+     "r": 3,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "2.0",
+     "header": false
+    },
+    {
+     "r": 4,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Zone 4",
+     "header": false
+    },
+    {
+     "r": 4,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "27",
+     "header": false
+    },
+    {
+     "r": 4,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "1",
+     "header": false
+    },
+    {
+     "r": 4,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "3.7",
+     "header": false
+    },
+    {
+     "r": 4,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "28",
+     "header": false
+    },
+    {
+     "r": 4,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "1",
+     "header": false
+    },
+    {
+     "r": 4,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "3.6",
+     "header": false
+    },
+    {
+     "r": 5,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Total",
+     "header": false
+    },
+    {
+     "r": 5,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "639",
+     "header": false
+    },
+    {
+     "r": 5,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "13",
+     "header": false
+    },
+    {
+     "r": 5,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "2.0",
+     "header": false
+    },
+    {
+     "r": 5,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "645",
+     "header": false
+    },
+    {
+     "r": 5,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "4",
+     "header": false
+    },
+    {
+     "r": 5,
+     "c": 6,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "0.6",
+     "header": false
+    }
+   ]
+  },
+  {
+   "caption": "Appendix A. Site register (excerpt)",
+   "style": "booktabs",
+   "rows": 7,
+   "cols": 6,
+   "headerRows": 1,
+   "cells": [
+    {
+     "r": 0,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Site ID",
+     "header": true
+    },
+    {
+     "r": 0,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Zone",
+     "header": true
+    },
+    {
+     "r": 0,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Description",
+     "header": true
+    },
+    {
+     "r": 0,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Surface",
+     "header": true
+    },
+    {
+     "r": 0,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "R",
+     "header": true
+    },
+    {
+     "r": 0,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Frequency",
+     "header": true
+    },
+    {
+     "r": 1,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Z1-014",
+     "header": false
+    },
+    {
+     "r": 1,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "1",
+     "header": false
+    },
+    {
+     "r": 1,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Blender discharge chute, inner wall",
+     "header": false
+    },
+    {
+     "r": 1,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Stainless steel",
+     "header": false
+    },
+    {
+     "r": 1,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "7.5",
+     "header": false
+    },
+    {
+     "r": 1,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Weekly",
+     "header": false
+    },
+    {
+     "r": 2,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Z1-022",
+     "header": false
+    },
+    {
+     "r": 2,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "1",
+     "header": false
+    },
+    {
+     "r": 2,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Filler hopper lid gasket",
+     "header": false
+    },
+    {
+     "r": 2,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Silicone",
+     "header": false
+    },
+    {
+     "r": 2,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "8.0",
+     "header": false
+    },
+    {
+     "r": 2,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Weekly",
+     "header": false
+    },
+    {
+     "r": 3,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Z2-031",
+     "header": false
+    },
+    {
+     "r": 3,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "2",
+     "header": false
+    },
+    {
+     "r": 3,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Filler frame, underside of cross-member near the lift motor",
+     "header": false
+    },
+    {
+     "r": 3,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Painted steel",
+     "header": false
+    },
+    {
+     "r": 3,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "4.5",
+     "header": false
+    },
+    {
+     "r": 3,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Monthly",
+     "header": false
+    },
+    {
+     "r": 4,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Z3-007",
+     "header": false
+    },
+    {
+     "r": 4,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "3",
+     "header": false
+    },
+    {
+     "r": 4,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Floor drain D-3, grate and basket",
+     "header": false
+    },
+    {
+     "r": 4,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Cast iron",
+     "header": false
+    },
+    {
+     "r": 4,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "9.0",
+     "header": false
+    },
+    {
+     "r": 4,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Weekly after wet clean",
+     "header": false
+    },
+    {
+     "r": 5,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Z3-011",
+     "header": false
+    },
+    {
+     "r": 5,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "3",
+     "header": false
+    },
+    {
+     "r": 5,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Wash-down hose reel and nozzle holster",
+     "header": false
+    },
+    {
+     "r": 5,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Plastic",
+     "header": false
+    },
+    {
+     "r": 5,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "6.5",
+     "header": false
+    },
+    {
+     "r": 5,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Weekly",
+     "header": false
+    },
+    {
+     "r": 6,
+     "c": 0,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Z4-002",
+     "header": false
+    },
+    {
+     "r": 6,
+     "c": 1,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "4",
+     "header": false
+    },
+    {
+     "r": 6,
+     "c": 2,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Corridor door threshold to warehouse",
+     "header": false
+    },
+    {
+     "r": 6,
+     "c": 3,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Rubber seal",
+     "header": false
+    },
+    {
+     "r": 6,
+     "c": 4,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "2.0",
+     "header": false
+    },
+    {
+     "r": 6,
+     "c": 5,
+     "rowSpan": 1,
+     "colSpan": 1,
+     "text": "Quarterly",
+     "header": false
+    }
+   ],
+   "captionKind": "heading"
+  }
+ ]
+}

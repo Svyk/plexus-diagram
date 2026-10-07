@@ -1,0 +1,429 @@
+/* Parsed view. Scoped to the reader, the parse surface, and the PDF card pills.
+   Dark mode uses borders. Fills stay transparent. */
+
+.pxd-read .pxd-read__modes {
+  align-items: center;
+  gap: 4px;
+  box-sizing: border-box;
+  height: 28px;
+  min-height: 28px;
+  padding: 0 8px;
+  border-bottom: 1px solid var(--pxd-border);
+}
+
+.pxd-read .pxd-read__modes[hidden] {
+  display: none;
+}
+
+.pxd-read .pxd-read__modes:not([hidden]) {
+  display: flex;
+}
+
+.pxd-read .pxd-read__mode {
+  height: 22px;
+  margin: 0;
+  padding: 0 8px;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--pxd-muted);
+  font: inherit;
+  font-size: 12px;
+  line-height: 22px;
+  cursor: pointer;
+}
+
+.pxd-read .pxd-read__mode[aria-pressed="true"] {
+  color: var(--pxd-text);
+  box-shadow: inset 0 -2px 0 var(--pxd-accent);
+}
+
+.pxd-read .pxd-read__progress {
+  flex: 0 0 2px;
+  height: 2px;
+  background: var(--pxd-border);
+}
+
+.pxd-read .pxd-read__progress[hidden] {
+  display: none;
+}
+
+.pxd-read .pxd-read__progressfill {
+  height: 2px;
+  background: var(--pxd-accent);
+}
+
+.pxd-read .pxd-read__parsed {
+  display: none;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.pxd-read.pxd-read--parsed .pxd-read__parsed,
+.pxd-read.pxd-read--both .pxd-read__parsed {
+  display: flex;
+  flex: 1 1 auto;
+}
+
+.pxd-read.pxd-read--parsed .pxd-read__live,
+.pxd-read.pxd-read--both.pxd-read--narrow .pxd-read__live {
+  display: none;
+}
+
+.pxd-read.pxd-read--parsed .pxd-read__stage,
+.pxd-read.pxd-read--both.pxd-read--narrow .pxd-read__stage {
+  flex: 0 0 auto;
+  min-height: 44px;
+}
+
+.pxd-read.pxd-read--parsed .pxd-read__pill,
+.pxd-read.pxd-read--both.pxd-read--narrow .pxd-read__pill {
+  position: static;
+  transform: none;
+  margin: 4px auto;
+}
+
+.pxd-read.pxd-read--both {
+  flex-direction: row;
+  flex-wrap: wrap;
+  align-content: stretch;
+}
+
+.pxd-read.pxd-read--both > .pxd-read__head,
+.pxd-read.pxd-read--both > .pxd-read__modes,
+.pxd-read.pxd-read--both > .pxd-read__progress,
+.pxd-read.pxd-read--both > .pxd-read__drawer {
+  flex: 1 0 100%;
+}
+
+.pxd-read.pxd-read--both > .pxd-read__stage,
+.pxd-read.pxd-read--both > .pxd-read__parsed {
+  flex: 1 1 40%;
+  min-width: 0;
+  min-height: 0;
+}
+
+.pxd-read .pxd-parse,
+.pxd-parse {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  background: var(--pxd-surface);
+  color: var(--pxd-text);
+}
+
+.pxd-parse .pxd-parse__bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  box-sizing: border-box;
+  min-height: 32px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--pxd-border);
+}
+
+.pxd-parse .pxd-parse__range,
+.pxd-parse .pxd-parse__search {
+  width: 72px;
+  height: 22px;
+  margin: 0;
+  padding: 0 6px;
+  border: 1px solid var(--pxd-border);
+  border-radius: 4px;
+  background: var(--pxd-card, var(--pxd-surface));
+  color: var(--pxd-text);
+  font: inherit;
+  font-size: 12px;
+}
+
+.pxd-parse .pxd-parse__search {
+  width: 120px;
+  flex: 1 1 80px;
+}
+
+.pxd-parse .pxd-parse__chip,
+.pxd-parse .pxd-parse__filter,
+.pxd-parse .pxd-parse__engine,
+.pxd-parse .pxd-parse__docling,
+.pxd-parse .pxd-parse__lock,
+.pxd-parse .pxd-parse__cancel,
+.pxd-parse .pxd-parse__act,
+.pxd-parse .pxd-parse__go {
+  height: 22px;
+  margin: 0;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--pxd-muted);
+  font: inherit;
+  font-size: 12px;
+  line-height: 20px;
+  cursor: pointer;
+}
+
+.pxd-parse .pxd-parse__chip[aria-pressed="true"],
+.pxd-parse .pxd-parse__filter[aria-pressed="true"],
+.pxd-parse .pxd-parse__lock[aria-pressed="true"] {
+  color: var(--pxd-text);
+  border-color: var(--pxd-border-strong);
+}
+
+.pxd-parse .pxd-parse__engine,
+.pxd-parse .pxd-parse__docling {
+  color: var(--pxd-text);
+  border-color: var(--pxd-border);
+}
+
+.pxd-parse .pxd-parse__track {
+  height: 2px;
+  background: var(--pxd-border);
+}
+
+.pxd-parse .pxd-parse__track[hidden] {
+  display: none;
+}
+
+.pxd-parse .pxd-parse__fill {
+  height: 2px;
+  background: var(--pxd-accent);
+}
+
+.pxd-parse .pxd-parse__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+  padding: 8px 12px 24px;
+}
+
+.pxd-parse .pxd-parse__page {
+  margin: 14px 0 6px;
+  color: var(--pxd-muted);
+  font-size: 11px;
+  letter-spacing: 0.04em;
+}
+
+.pxd-parse .pxd-parse__block {
+  display: flex;
+  gap: 8px;
+  margin: 0 0 8px;
+  padding: 2px 0;
+  border: 1px solid transparent;
+  background: transparent;
+}
+
+.pxd-parse .pxd-parse__gutter {
+  display: flex;
+  flex: 0 0 24px;
+  flex-direction: column;
+  align-items: center;
+  width: 24px;
+  gap: 2px;
+}
+
+.pxd-parse .pxd-parse__handle {
+  width: 24px;
+  height: 16px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--pxd-muted);
+  font: inherit;
+  font-size: 10px;
+  line-height: 16px;
+  cursor: grab;
+}
+
+.pxd-parse .pxd-parse__check {
+  margin: 0;
+}
+
+.pxd-parse .pxd-parse__main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+.pxd-parse .pxd-parse__h {
+  margin: 0 0 4px;
+  color: var(--pxd-text);
+  font-weight: 600;
+  line-height: 1.3;
+}
+
+.pxd-parse .pxd-parse__h1 { font-size: 1.35em; }
+.pxd-parse h1.pxd-parse__h { font-size: 1.35em; }
+.pxd-parse h2.pxd-parse__h { font-size: 1.2em; }
+.pxd-parse h3.pxd-parse__h { font-size: 1.1em; }
+.pxd-parse h4.pxd-parse__h,
+.pxd-parse h5.pxd-parse__h,
+.pxd-parse h6.pxd-parse__h { font-size: 1em; }
+
+.pxd-parse .pxd-parse__p,
+.pxd-parse .pxd-parse__list {
+  margin: 0;
+  color: var(--pxd-text);
+  font-size: 1em;
+  line-height: 1.45;
+}
+
+.pxd-parse .pxd-parse__code,
+.pxd-parse .pxd-parse__math {
+  color: var(--pxd-text);
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  font-size: 0.92em;
+}
+
+.pxd-parse .pxd-parse__crop {
+  display: block;
+  max-width: 100%;
+  height: auto;
+}
+
+.pxd-parse .pxd-parse__table {
+  width: 100%;
+  border-collapse: collapse;
+  background: transparent;
+  color: var(--pxd-text);
+  font-size: 13px;
+}
+
+.pxd-parse .pxd-parse__table th,
+.pxd-parse .pxd-parse__table td {
+  border: 1px solid var(--pxd-border);
+  padding: 4px 8px;
+  background: transparent;
+  text-align: left;
+  vertical-align: top;
+}
+
+.pxd-parse .pxd-parse__table th {
+  border-bottom: 1px solid var(--pxd-border-strong);
+  font-weight: 600;
+}
+
+.pxd-parse .pxd-parse__num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+
+.pxd-parse .pxd-parse__block--low {
+  border-left: 1px dotted var(--pxd-muted);
+}
+
+.pxd-parse .pxd-parse__block--on {
+  background: var(--pxd-accent-soft);
+  border-color: var(--pxd-border);
+}
+
+.pxd-parse .pxd-parse__block--focus {
+  outline: 1px solid var(--pxd-accent);
+  outline-offset: 1px;
+}
+
+.bp3-dark .pxd-parse .pxd-parse__block--on,
+body.bt-theme-dark .pxd-parse .pxd-parse__block--on,
+.pxd-root--dark .pxd-parse .pxd-parse__block--on {
+  background: transparent;
+  border-color: var(--pxd-border-strong);
+  box-shadow: inset 2px 0 0 var(--pxd-accent);
+}
+
+.pxd-parse .pxd-parse__tchip {
+  color: var(--pxd-muted);
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.pxd-parse .pxd-parse__removed {
+  margin-top: 16px;
+  color: var(--pxd-muted);
+  font-size: 12px;
+}
+
+.pxd-parse .pxd-parse__foot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-top: 1px solid var(--pxd-border);
+}
+
+.pxd-parse .pxd-parse__foot[hidden] {
+  display: none;
+}
+
+.pxd-parse .pxd-parse__summary {
+  margin-right: 4px;
+  color: var(--pxd-text);
+  font-size: 12px;
+}
+
+.pxd-parse .pxd-parse__empty,
+.pxd-parse .pxd-parse__lead {
+  color: var(--pxd-muted);
+  font-size: 13px;
+}
+
+.page > .pxd-parse-region,
+.page > .pxd-parse-grid,
+.page > .pxd-parse-merge {
+  box-sizing: border-box;
+  border: 1.5px solid var(--pxd-accent);
+  border-radius: 3px;
+  background: transparent;
+  pointer-events: none;
+}
+
+.page > .pxd-parse-grid {
+  border-width: 1px;
+  border-color: var(--pxd-border-strong);
+  border-radius: 0;
+}
+
+.page > .pxd-parse-merge {
+  border-width: 2px;
+}
+
+.page > .pxd-parse-region--fade {
+  opacity: 0;
+  transition: opacity 150ms linear;
+}
+
+.page > .pxd-parse-region--flash {
+  animation: pxd-parse-flash 700ms linear 2;
+}
+
+.page > .pxd-parse-col {
+  box-sizing: border-box;
+  background: transparent;
+  border-left: 1px solid var(--pxd-accent);
+  cursor: col-resize;
+  pointer-events: auto;
+}
+
+@keyframes pxd-parse-flash {
+  0% { opacity: 1; }
+  50% { opacity: 0.15; }
+  100% { opacity: 1; }
+}
+
+.pxd-root .pxd-pdf-pills {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 3;
+  display: flex;
+  gap: 8px;
+  transform: translate(-50%, -50%);
+}
+
+.pxd-root .pxd-pdf-pills .pxd-pdf-pill {
+  position: static;
+  transform: none;
+}

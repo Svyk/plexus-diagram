@@ -212,6 +212,24 @@ export const TIP_TEXT = {
   "parse.footnotes": e("Footnotes", "Inline places each note after the paragraph that cites it. End places every note after the insert."),
   "parse.merges-flat": e("Merged cells shown flat", "Roam Grid draws merges. Native Roam shows the covered cells empty.", null, "Insert as flat table repeats the anchor text into covered cells."),
   "parse.insert-flat": e("Insert as flat table", "Repeat the anchor text into covered cells so a native table still reads."),
+
+  "pdf.parse": e("Parse", "Parse this PDF with the built-in engine and open the parsed view."),
+  "parse.mode.reader": e("Reader", "Show the PDF reader."),
+  "parse.mode.parsed": e("Parsed", "Show the parsed blocks. The page strip stays."),
+  "parse.mode.both": e("Both", "Reader and parsed view side by side when the pane is wide enough."),
+  "parse.range": e("Page range", "All, the current page, or a range such as 1–5."),
+  "parse.search": e("Search", "Filter the parsed blocks. The PDF is not fetched again."),
+  "parse.chip": e("Parse engine", "Built-in runs on this machine. Docling uses the local helper."),
+  "parse.docling": e("Parse with Docling", "Send this PDF to the local helper. Nothing is sent until you press this."),
+  "parse.docling-off": e("Docling: not running", "Start tools/parse-helper/bin/plexus-parse-helper serve, then paste the token into Settings."),
+  "parse.docling-token": e("Docling: wrong token", "Paste the helper token into Settings."),
+  "parse.docling-models": e("Docling: downloading models", "The helper is downloading models. Parsing waits until they are ready."),
+  "parse.cancel": e("Cancel", "Stop this parse. Nothing is written to the graph."),
+  "parse.sync": e("Sync scroll", "Parsed scrolling follows the reader. Click to unlock."),
+  "parse.copy": e("Copy", "Copy Markdown. One table copies as CSV. Shift copies tables as CSV."),
+  "parse.insert": e("Insert below PDF", "Insert the selection under the PDF card."),
+  "parse.send": e("Send to board", "Place the selection on the board."),
+  "parse.highlight": e("Make highlight", "Ask Roam to highlight this text. Plexus does not write the highlight."),
 };
 
 for (const c of PALETTE) TIP_TEXT[`swatch.${c}`] = e(cap(c), `Color the selection ${c}, or tone the board ${c}.`);

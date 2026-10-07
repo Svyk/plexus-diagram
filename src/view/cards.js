@@ -1,6 +1,7 @@
 // Item shells (card / text / section), static content, LOD, culling, idle-chunked mounting,
 // and edit mode (spec 3.2). Roam content only ever comes from host.renderString /
-// renderBlock / renderPage; we never build <img> or fake editors.
+// renderBlock / renderPage. The PDF cover is the one <img>: a page image the integrator
+// already cached. Nothing here fetches the file or writes the graph.
 
 import { placeNearAnchor } from "./avoid.js";
 import { createRowScheduler, isHeavyRow, mountFpsFromStamps } from "./progressive.js";
@@ -25,7 +26,7 @@ import { regionRefModel } from "../model/region-card.js";
 import { imageRegionRows, regionBadge } from "../model/region-menu.js";
 import { renderRegionCard, thumbRequest } from "./region-card.js";
 import { copyDrawingPixels, renderDrawingCard } from "./drawing-card.js";
-import { PDF_READER_H, PDF_READER_W, coverModel, coverOuterBox, embedSplit, readerRule, writeReaderPage } from "../model/pdf.js";
+import { PDF_READER_H, PDF_READER_W, coverModel, coverOuterBox, embedSplit, pdfMacroUrl, readerRule, writeReaderPage } from "../model/pdf.js";
 import { paintPdfChipStrip } from "./pdf-chip-strip.js";
 import { guardCallback } from "../guard.js";
 import { notedSpeedFlags, parseSpeedFlags, SETTING_IDS } from "../settings.js";
@@ -377,7 +378,7 @@ function kidRowsOf(list, depth = 1, budget = { n: 0 }) {
   return budget.n;
 }
 
-function cardContentKey(item, live = false, pdfOpen = false, chipSig = "") {
+function cardContentKey(item, live = false, pdfOpen = false, chipSig = "", coverSig = "") {
   if (isSticky(item)) {
     return ["sticky", live ? "live" : item.string, item.min ? "m" : "", item.fontSize || "", item.textColor || "", item.align || ""].join("\u0001");
   }
@@ -388,6 +389,7 @@ function cardContentKey(item, live = false, pdfOpen = false, chipSig = "") {
     taskBlockOn(item) ? `tb${taskNamesSig()}${statusSig}` : "",
     item.kind === "pdf" ? (pdfOpen ? "o" : "") : (pdfOpen ? "h" : ""),
     item.kind === "pdf" && chipSig ? chipSig : "",
+    item.kind === "pdf" && coverSig ? coverSig : "",
     item.kind === "highlight" && item.highlight ? item.highlight.color ?? "" : "",
     item.kind === "highlight" && item.highlight ? item.highlight.page ?? "" : "",
     item.kind === "highlight" && item.highlight ? item.highlight.text ?? "" : "",
@@ -528,6 +530,88 @@ export function dropEmbedPoster(node) {
   }
 }
 
+// loading | none | error | ready. A ready face with no src is none: there is nothing to decode.
+function coverFace(image) {
+  if (!image || typeof image !== "object") return "none";
+  const state = image.state;
+  if (state === "loading" || state === "error" || state === "none") return state;
+  if (state === "ready") return typeof image.src === "string" && image.src ? "ready" : "none";
+  return typeof image.src === "string" && image.src ? "ready" : "none";
+}
+
+function coverSigOf(image) {
+  const state = coverFace(image);
+  const src = typeof image?.src === "string" ? image.src : "";
+  const last = image?.lastPage ?? "";
+  const ticks = Array.isArray(image?.ticks)
+    ? image.ticks.map((tick) => `${tick?.y01 ?? ""}:${tick?.color || ""}:${tick?.page ?? ""}`).join(",")
+    : "";
+  return [state, src, last, ticks].join("|");
+}
+
+function tickY01(tick) {
+  const y = Number(tick?.y01);
+  if (!Number.isFinite(y)) return 0;
+  if (y < 0) return 0;
+  if (y > 1) return 1;
+  return y;
+}
+
+function tickPage(tick) {
+  const n = Number(tick?.page);
+  return Number.isInteger(n) && n >= 1 ? n : null;
+}
+
+// The page title sits after the first " · " in the stored footer ("p. 3 · Title").
+function highlightChipTitle(footer) {
+  const text = typeof footer === "string" ? footer.trim() : "";
+  const mark = text.indexOf(" · ");
+  let title = mark >= 0 ? text.slice(mark + 3).trim() : "";
+  if (!title && text && !/^p\. \d+/.test(text)) title = text;
+  return title.length > 24 ? title.slice(0, 24) : title;
+}
+
+function highlightChipPage(hl) {
+  const page = hl?.page;
+  if (typeof page === "number" && Number.isFinite(page)) return `p. ${page}`;
+  if (typeof page === "string" && page.trim()) return `p. ${page.trim()}`;
+  const footer = typeof hl?.footer === "string" ? hl.footer.trim() : "";
+  const match = /^p\. \d+/.exec(footer);
+  return match ? match[0] : "";
+}
+
+// Same outline as the pane glyph. 28 px on the empty cover, 16 px in the source chip.
+function paintPdfGlyph(doc, parent, px) {
+  const ns = "http://www.w3.org/2000/svg";
+  const size = String(px);
+  if (typeof doc?.createElementNS === "function") {
+    const svg = doc.createElementNS(ns, "svg");
+    svg.setAttribute("class", "pxd-pdf-glyph");
+    svg.setAttribute("viewBox", "0 0 16 16");
+    svg.setAttribute("width", size);
+    svg.setAttribute("height", size);
+    svg.setAttribute("aria-hidden", "true");
+    const path = doc.createElementNS(ns, "path");
+    path.setAttribute("d", "M3.5 1.5h6L13 5v9.5H3.5v-13zM9.5 1.8V5H13");
+    path.setAttribute("fill", "none");
+    path.setAttribute("stroke", "currentColor");
+    path.setAttribute("stroke-width", "1.2");
+    svg.append(path);
+    parent?.append?.(svg);
+    return svg;
+  }
+  const span = doc.createElement("span");
+  span.className = "pxd-pdf-glyph";
+  span.setAttribute("aria-hidden", "true");
+  parent?.append?.(span);
+  return span;
+}
+
+function releaseBlob(url) {
+  if (typeof url !== "string" || !url.startsWith("blob:")) return;
+  try { globalThis.URL?.revokeObjectURL?.(url); } catch { /* already gone */ }
+}
+
 export function createItemRenderer({
   doc = globalThis.document,
   host,
@@ -554,6 +638,10 @@ export function createItemRenderer({
   onReadPane = null,
   onHighlightOpen = null,
   onHighlightNote = null,
+  coverImage = null,
+  onPdfOpenRequest = null,
+  onHighlightHover = null,
+  readingUid = null,
   settings: speedSettings = null,
   interopOn = null,
 } = {}) {
@@ -652,12 +740,22 @@ export function createItemRenderer({
     try { pageUid = host?.pageUid?.(text) || ""; } catch { pageUid = ""; }
     return sourceChipFor({ pageTitle: text, pageUid, pageChildren: pageChildrenOf(pageUid) });
   };
+  const readingUidOf = () => {
+    if (typeof readingUid !== "function") return "";
+    try {
+      const id = readingUid();
+      return typeof id === "string" ? id : "";
+    } catch {
+      return "";
+    }
+  };
   const contentKeyFor = (item, live = false) => {
     let key = cardContentKey(
       item,
       live,
       item?.kind === "pdf" ? (onReadPane ? false : pdfOpenUid === item.uid) : ownsOpen(item),
       item?.kind === "pdf" ? chipsFor(item).map((chip) => `${chip.page}:${chip.count}`).join(",") : "",
+      item?.kind === "pdf" ? coverSigOf(coverImageOf(item)) : "",
     );
     if (item?.kind === "block") {
       const sig = sourceChipKey(sourceChipOf(item));
@@ -1120,6 +1218,10 @@ export function createItemRenderer({
     dropLayoutWatch(rec);
     rec.scrollOff?.();
     rec.scrollOff = null;
+    try { rec.pdfCoverOff?.(); } catch { /* already off */ }
+    rec.pdfCoverOff = null;
+    try { rec.hlHoverOff?.(); } catch { /* already off */ }
+    rec.hlHoverOff = null;
     rec.pdfReader = null;
     if (!rec.roots?.length) return;
     for (const node of rec.roots) {
@@ -1473,6 +1575,7 @@ export function createItemRenderer({
       if (item.kind === "region-ref") cls.push("pxd-item--region");
       if (item.kind === "drawing-ref") cls.push("pxd-item--drawing");
       if (item.kind === "pdf" && pdfLiveUid === item.uid) cls.push("pxd-pdf-live");
+      if (item.kind === "pdf" && readingUidOf() === item.uid) cls.push("pxd-item--reading");
       if (item.kind === "highlight" && item.highlight?.image === true) cls.push("pxd-item--image");
       if (item.look === "block") cls.push("pxd-card--block");
       const task = isTaskCard(item) ? taskMeta(item.string, item.content) : null;
@@ -2632,11 +2735,22 @@ export function createItemRenderer({
     }
     return typeof item?.string === "string" ? item.string : "";
   };
+  const coverImageOf = (item) => {
+    if (typeof coverImage !== "function") return null;
+    const url = pdfMacroUrl(pdfSourceOf(item));
+    if (!url) return null;
+    try {
+      const got = coverImage(url);
+      return got && typeof got === "object" ? got : null;
+    } catch {
+      return null;
+    }
+  };
   const pdfCoverOf = (item) => {
     let cover = null;
     try { cover = host?.pdfCover?.(pdfSourceOf(item)); } catch { cover = null; }
-    if (!cover || typeof cover !== "object") return coverModel({ count: 0 });
-    return cover;
+    const model = (!cover || typeof cover !== "object") ? coverModel({ count: 0 }) : cover;
+    return { ...model, image: coverImageOf(item) };
   };
   const applyPdfSize = (rec) => {
     if (!rec?.el || !rec.rect) return;
@@ -2689,20 +2803,119 @@ export function createItemRenderer({
     armPdfLiveWatch();
   };
   const paintPdfCover = (rec, item, cover) => {
+    try { rec.pdfCoverOff?.(); } catch { /* already off */ }
+    rec.pdfCoverOff = null;
     rec.pdfReader = null;
-    const node = el("div", "pxd-pdf-cover", rec.body);
-    el("div", "pxd-pdf-title", node).textContent = String(cover.title || "PDF");
-    const coverChips = chipsFor(item);
-    if (coverChips.length) paintPdfChipStrip(doc, node, coverChips, chipHandlers(item));
-    el("div", "pxd-pdf-count", node).textContent = String(cover.label ?? "");
-    const open = el("button", "pxd-pdf-open pxd-chrome", node);
-    open.type = "button";
-    open.textContent = "Open reader";
-    for (const type of ["pointerdown", "mousedown", "dblclick"]) open.addEventListener(type, stopEvent);
-    open.addEventListener("click", (event) => {
+    const safe = cover && typeof cover === "object" ? cover : coverModel({ count: 0 });
+    const image = safe.image && typeof safe.image === "object" ? safe.image : null;
+    const state = coverFace(image);
+    const src = state === "ready" && typeof image.src === "string" ? image.src : "";
+    const showImage = state === "ready" && src && lod === "detail";
+    const titleText = String(safe.title || "PDF");
+    const count = typeof safe.count === "number" && Number.isFinite(safe.count) && safe.count >= 1 ? safe.count : 0;
+    const node = el("div", `pxd-pdf-cover pxd-pdf-cover--${state}`, rec.body);
+    node.setAttribute("data-cover", state);
+    const paper = el("div", "pxd-pdf-paper", node);
+    if (lod !== "overview") {
+      if (showImage) {
+        const img = el("img", "pxd-pdf-img", paper);
+        img.alt = "";
+        img.setAttribute("alt", "");
+        img.setAttribute("decoding", "async");
+        img.setAttribute("loading", "lazy");
+        img.setAttribute("src", src);
+        if (src.startsWith("blob:")) rec.pdfBlob = src;
+      } else if (state === "loading") {
+        const skel = el("div", "pxd-pdf-skel", paper);
+        skel.setAttribute("aria-hidden", "true");
+        for (let i = 0; i < 6; i += 1) el("span", "pxd-pdf-skel__line", skel);
+      } else if (state === "error") {
+        paintPdfGlyph(doc, paper, 28);
+        el("div", "pxd-pdf-miss", paper).textContent = "Could not read";
+      } else {
+        paintPdfGlyph(doc, paper, 28);
+      }
+      // Detail ready is the page image alone. Map, loading, and no-cover keep the title on the paper.
+      if (lod === "map" || state === "loading" || state === "none") {
+        const face = el("div", "pxd-pdf-title pxd-pdf-title--face", paper);
+        face.textContent = titleText;
+      }
+    }
+    const ticks = lod === "detail" && Array.isArray(image?.ticks) ? image.ticks : [];
+    if (ticks.length) {
+      const density = el("div", "pxd-pdf-density", node);
+      density.setAttribute("aria-label", "Highlights");
+      for (const tick of ticks) {
+        const y01 = tickY01(tick);
+        const page = tickPage(tick);
+        const mark = el("button", "pxd-pdf-tick pxd-chrome", density);
+        mark.type = "button";
+        mark.style.top = `${y01 * 100}%`;
+        mark.setAttribute("data-y01", String(y01));
+        if (tick?.color) mark.setAttribute("data-color", String(tick.color));
+        if (page != null) mark.setAttribute("data-page", String(page));
+        mark.setAttribute("aria-label", page != null ? `Page ${page}` : "Highlight");
+        const openTick = (event) => {
+          stopEvent(event);
+          if (event.type !== "click") return;
+          try { onPdfOpen?.(item.uid, page ?? undefined); } catch { /* host */ }
+        };
+        for (const type of ["pointerdown", "mousedown", "dblclick"]) mark.addEventListener(type, stopEvent);
+        mark.addEventListener("click", openTick);
+      }
+    }
+    if (lod !== "overview") {
+      const hover = el("div", "pxd-pdf-hover", node);
+      if (!count) hover.setAttribute("hidden", "");
+      const hoverTitle = el("div", "pxd-pdf-title", hover);
+      hoverTitle.textContent = titleText;
+      if (count) {
+        const countEl = el("div", "pxd-pdf-count", hover);
+        countEl.textContent = String(count);
+        countEl.setAttribute("aria-label", typeof safe.label === "string" && safe.label ? safe.label : `${count} highlights`);
+      }
+      const coverChips = chipsFor(item);
+      if (coverChips.length) paintPdfChipStrip(doc, hover, coverChips, chipHandlers(item));
+      const open = el("button", "pxd-pdf-open pxd-pdf-pill pxd-chrome", node);
+      open.type = "button";
+      open.textContent = "Open";
+      open.setAttribute("aria-label", "Open reader");
+      for (const type of ["pointerdown", "mousedown", "dblclick"]) open.addEventListener(type, stopEvent);
+      open.addEventListener("click", (event) => {
+        stopEvent(event);
+        openPdf(item.uid);
+      });
+    }
+    const dot = el("span", "pxd-pdf-dot", node);
+    dot.setAttribute("aria-hidden", "true");
+    const pdfSelected = () => rec.selected === true || selectedPrimary === item.uid;
+    const onKey = (event) => {
+      if (event.key !== "Enter" && event.key !== " ") return;
+      if (!pdfSelected()) return;
+      if (isTextEntryTarget(event.target)) return;
+      const tag = String(event.target?.tagName || "").toLowerCase();
+      if (tag === "button" || tag === "a" || tag === "input" || tag === "textarea" || tag === "select") return;
+      if (event.target?.closest?.(".pxd-pdf-chip, .pxd-pdf-tick")) return;
+      event.preventDefault?.();
       stopEvent(event);
-      openPdf(item.uid);
-    });
+      try { onPdfOpenRequest?.(item.uid); } catch { /* host */ }
+    };
+    const onDbl = (event) => {
+      if (!pdfSelected()) return;
+      if (event.target?.closest?.("button, a, .pxd-pdf-chip, .pxd-pdf-tick")) return;
+      stopEvent(event);
+      try { onPdfOpenRequest?.(item.uid); } catch { /* host */ }
+    };
+    rec.el.addEventListener("keydown", onKey);
+    rec.el.addEventListener("dblclick", onDbl);
+    rec.pdfCoverOff = () => {
+      rec.el.removeEventListener("keydown", onKey);
+      rec.el.removeEventListener("dblclick", onDbl);
+      const blob = rec.pdfBlob;
+      rec.pdfBlob = "";
+      releaseBlob(blob);
+      rec.pdfCoverOff = null;
+    };
   };
   const paintPdfReader = (rec, item) => {
     const reader = el("div", "pxd-pdf-reader", rec.body);
@@ -2922,6 +3135,19 @@ export function createItemRenderer({
   const paintHighlight = (rec, item, budget) => {
     const hl = item.highlight;
     const uid = item.target?.uid || item.uid;
+    try { rec.hlHoverOff?.(); } catch { /* already off */ }
+    rec.hlHoverOff = null;
+    if (typeof onHighlightHover === "function") {
+      const enter = () => { try { onHighlightHover(uid, true); } catch { /* host */ } };
+      const leave = () => { try { onHighlightHover(uid, false); } catch { /* host */ } };
+      rec.el.addEventListener("mouseenter", enter);
+      rec.el.addEventListener("mouseleave", leave);
+      rec.hlHoverOff = () => {
+        rec.el.removeEventListener("mouseenter", enter);
+        rec.el.removeEventListener("mouseleave", leave);
+        rec.hlHoverOff = null;
+      };
+    }
     const image = hl.image === true && lod === "detail";
     if (image) {
       const media = el("div", "pxd-highlight-media", rec.body);
@@ -2936,17 +3162,22 @@ export function createItemRenderer({
       if (line) el("div", "pxd-highlight-line", rec.body).textContent = line;
       return;
     }
-    if (!image && hl.text) budget.roots.push(renderRoot(rec.body, hl.text, "pxd-rs pxd-item__string", uid));
+    if (!image && hl.text) budget.roots.push(renderRoot(rec.body, hl.text, "pxd-rs pxd-item__string pxd-highlight-quote", uid));
     rec.hlNote = typeof hl.note === "string" ? hl.note : "";
     rec.hlNoteBox = null;
     if (rec.hlNote.trim()) {
       rec.hlNoteBox = el("div", "pxd-highlight-note", rec.body);
       budget.roots.push(renderRoot(rec.hlNoteBox, rec.hlNote, "pxd-rs", uid));
     }
-    const foot = el("button", "pxd-highlight-foot pxd-chrome", rec.body);
+    const chipTitle = highlightChipTitle(hl.footer);
+    const chipPage = highlightChipPage(hl);
+    const foot = el("button", "pxd-highlight-foot pxd-highlight-chip pxd-chrome", rec.body);
     foot.type = "button";
     rec.hlFoot = foot;
-    foot.textContent = typeof hl.footer === "string" ? hl.footer : "";
+    paintPdfGlyph(doc, foot, 16);
+    if (chipTitle) el("span", "pxd-highlight-chip__title", foot).textContent = chipTitle;
+    if (chipPage) el("span", "pxd-highlight-chip__page", foot).textContent = chipTitle ? ` · ${chipPage}` : chipPage;
+    foot.setAttribute("aria-label", [chipTitle, chipPage].filter(Boolean).join(", ") || "Open highlight");
     const openFoot = (event) => {
       stopEvent(event);
       if (event.type !== "click") return;
@@ -4768,7 +4999,16 @@ export function createItemRenderer({
       for (const [uid, rec] of shells) {
         if (editing?.uid === uid) continue;
         const item = lastBoard.items.get(uid);
-        if (item) paintShell(rec, item);
+        if (!item) continue;
+        paintShell(rec, item);
+        // The integrator has a new cover for this card. The shell class is already current.
+        if (item.kind !== "pdf" || rec.contentKey == null) continue;
+        const key = contentKeyFor(item);
+        if (key === rec.contentKey) continue;
+        unmountRoots(rec);
+        rec.body?.replaceChildren?.();
+        rec.contentKey = null;
+        mountContent(rec, item);
       }
     },
     expireContent(uids) {

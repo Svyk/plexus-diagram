@@ -158,7 +158,7 @@ test("an area highlight with natural 133 by 47 sets the ratio and both classes",
     assert.equal(kids[1].classList.contains("pxd-highlight-bar"), true);
     assert.equal(kids[1].getAttribute("data-color"), "orange");
     assert.equal(kids[2].classList.contains("pxd-highlight-foot"), true);
-    assert.equal(kids[2].textContent, `p. 2 · ${TITLE}`);
+    assert.equal(kids[2].textContent, `${TITLE} · p. 2`);
     assert.equal(media.querySelector(".pxd-rs__live").textContent.includes(MACRO), true);
     // The ratio is set before the media renders, whatever order the scheduler mounts cards in.
     const mediaRatios = ctx.ratiosAtRender.filter(Boolean);
@@ -206,10 +206,10 @@ test("map lod keeps the bar and the first line and paints no image", () => {
 });
 
 test("the highlight header rule still matches display none and the card has no fill", () => {
-  const css = readFileSync(new URL("../src/extension.css", import.meta.url), "utf8");
+  const css = readFileSync(new URL("../src/css/highlight-card.css", import.meta.url), "utf8");
   const start = css.indexOf("PDF-2 highlight card.");
   assert.ok(start > 0);
-  const slice = css.slice(start, css.indexOf("Focus mode dims", start));
+  const slice = css.slice(start, css.indexOf("PDF-U2", start));
   assert.match(slice, /\.pxd-root \.pxd-item\.pxd-item--highlight[\s\S]*background:\s*transparent/);
   assert.match(slice, /\.pxd-root \.pxd-item\.pxd-item--highlight:not\(\.pxd-item--collapsed\):not\(\.pxd-item--bare\) > \.pxd-item__header[\s\S]*display:\s*none;/);
   assert.equal(slice.includes(":not(.pxd-item--image)"), false);

@@ -98,12 +98,15 @@ test("a pdf cover shows the highlight count, and a second reader restores the fi
     assert.equal(ref.textContent.includes("((pdfblock1))"), false);
     const counts = itemsLayer.querySelectorAll(".pxd-pdf-count");
     assert.equal(counts.length, 2);
-    assert.equal(counts[0].textContent, "2 highlights");
-    assert.equal(counts[1].textContent, "2 highlights");
+    assert.equal(counts[0].textContent, "2");
+    assert.equal(counts[1].textContent, "2");
+    assert.equal(counts[0].getAttribute("aria-label"), "2 highlights");
+    assert.equal(counts[1].getAttribute("aria-label"), "2 highlights");
     assert.equal(self.querySelector(".pxd-pdf-title").textContent, "Self paper");
     assert.equal(ref.querySelector(".pxd-pdf-title").textContent, "Ref paper");
     const openBtn = self.querySelector("button.pxd-pdf-open.pxd-chrome");
-    assert.equal(openBtn.textContent, "Open reader");
+    assert.equal(openBtn.textContent, "Open");
+    assert.equal(openBtn.getAttribute("aria-label"), "Open reader");
     assert.equal(itemsLayer.querySelector(".pxd-pdf-reader"), null);
     assert.equal(rendered.length, 0);
     assert.ok(sources.includes(SELF));

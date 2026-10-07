@@ -1,0 +1,313 @@
+/* PDF-U2 cover. Paper stays white in both themes. Dark mode is a strong border and no tint. */
+
+.pxd-root {
+  --pxd-pdf-paper: #ffffff;
+  --pxd-pdf-paper-line: var(--pxd-border);
+  --pxd-pdf-skeleton: #e5e9ee;
+  --pxd-pdf-radius: 6px;
+  --pxd-pdf-shadow: 0 1px 2px rgba(17, 20, 24, 0.10), 0 6px 16px rgba(17, 20, 24, 0.10);
+  --pxd-pdf-shadow-hover: 0 2px 4px rgba(17, 20, 24, 0.12), 0 10px 24px rgba(17, 20, 24, 0.14);
+  --pxd-reading-line: var(--pxd-accent);
+  --pxd-pdf-strip-h: 28px;
+  --pxd-pdf-density-w: 6px;
+  --pxd-pdf-tick: 2px;
+  --pxd-pdf-ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --pxd-pdf-ms: 180ms;
+  --pxd-pdf-fade: 80ms;
+  --pxd-pdf-hover-delay: 120ms;
+}
+
+.bp3-dark .pxd-root,
+body.bt-theme-dark .pxd-root,
+.pxd-root.pxd-root--dark {
+  --pxd-pdf-paper: #ffffff;
+  --pxd-pdf-paper-line: var(--pxd-border-strong);
+  --pxd-pdf-skeleton: #cbd3dc;
+  --pxd-pdf-shadow: none;
+  --pxd-pdf-shadow-hover: none;
+  --pxd-reading-line: var(--pxd-accent);
+}
+
+.pxd-root .pxd-item.pxd-item--pdf > .pxd-item__body {
+  position: relative;
+  padding: 0;
+}
+
+.pxd-root .pxd-pdf-cover {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border: 1px solid var(--pxd-pdf-paper-line, var(--pxd-border));
+  border-radius: var(--pxd-pdf-radius, 6px);
+  background: var(--pxd-pdf-paper, #ffffff);
+  box-shadow: var(--pxd-pdf-shadow, none);
+}
+
+.pxd-root .pxd-item:hover > .pxd-item__body > .pxd-pdf-cover {
+  box-shadow: var(--pxd-pdf-shadow-hover, none);
+}
+
+.bp3-dark .pxd-root .pxd-pdf-cover,
+body.bt-theme-dark .pxd-root .pxd-pdf-cover,
+.pxd-root.pxd-root--dark .pxd-pdf-cover {
+  background: #ffffff;
+  border-color: var(--pxd-border-strong);
+  box-shadow: none;
+}
+
+.pxd-root .pxd-pdf-paper {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  overflow: hidden;
+  background: var(--pxd-pdf-paper, #ffffff);
+}
+
+.bp3-dark .pxd-root .pxd-pdf-paper,
+body.bt-theme-dark .pxd-root .pxd-pdf-paper,
+.pxd-root.pxd-root--dark .pxd-pdf-paper {
+  background: #ffffff;
+}
+
+.pxd-root .pxd-pdf-img {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top center;
+}
+
+.pxd-root.pxd-lod-map .pxd-pdf-img,
+.pxd-root.pxd-lod-overview .pxd-pdf-img {
+  display: none;
+}
+
+.pxd-root .pxd-pdf-glyph {
+  display: block;
+  flex: 0 0 auto;
+  color: var(--pxd-muted);
+}
+
+.pxd-root .pxd-pdf-skel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  padding: 16px 14px;
+  box-sizing: border-box;
+}
+
+.pxd-root .pxd-pdf-skel__line {
+  display: block;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--pxd-pdf-skeleton, #e5e9ee);
+}
+
+.pxd-root .pxd-pdf-skel__line:nth-child(3) { width: 72%; }
+.pxd-root .pxd-pdf-skel__line:nth-child(6) { width: 48%; }
+
+.pxd-root .pxd-pdf-title--face {
+  max-width: 100%;
+  padding: 0 10px;
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.3;
+  color: var(--pxd-text);
+}
+
+.pxd-root .pxd-pdf-cover--loading .pxd-pdf-title--face {
+  font-size: 12px;
+  color: var(--pxd-muted);
+}
+
+.pxd-root .pxd-pdf-miss {
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--pxd-muted);
+  text-align: center;
+}
+
+.pxd-root .pxd-pdf-hover {
+  position: absolute;
+  left: 0;
+  right: var(--pxd-pdf-density-w, 6px);
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: var(--pxd-pdf-strip-h, 28px);
+  padding: 0 8px;
+  overflow: hidden;
+  background: var(--pxd-chrome-bg, #fff);
+  background: color-mix(in srgb, var(--pxd-chrome-bg, #fff) 92%, transparent);
+  border-top: 1px solid var(--pxd-pdf-paper-line, var(--pxd-border));
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--pxd-pdf-fade, 80ms) var(--pxd-pdf-ease, ease) 0ms;
+}
+
+.pxd-root .pxd-pdf-hover[hidden] {
+  display: none;
+}
+
+.pxd-root .pxd-item:hover .pxd-pdf-hover:not([hidden]),
+.pxd-root .pxd-item:focus-within .pxd-pdf-hover:not([hidden]) {
+  opacity: 1;
+  pointer-events: auto;
+  transition-delay: var(--pxd-pdf-hover-delay, 120ms);
+}
+
+.bp3-dark .pxd-root .pxd-pdf-hover,
+body.bt-theme-dark .pxd-root .pxd-pdf-hover,
+.pxd-root.pxd-root--dark .pxd-pdf-hover {
+  background: var(--pxd-chrome-bg);
+  border-top-color: var(--pxd-border-strong);
+}
+
+.pxd-root .pxd-pdf-hover .pxd-pdf-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.pxd-root .pxd-pdf-count {
+  flex: 0 0 auto;
+  margin-left: auto;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.pxd-root .pxd-pdf-count::after {
+  content: " ●";
+}
+
+.pxd-root .pxd-pdf-hover .pxd-pdf-chips {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin: 0;
+}
+
+.pxd-root .pxd-pdf-pill {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 3;
+  height: 28px;
+  margin: 0;
+  padding: 0 14px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: var(--pxd-accent);
+  color: #ffffff;
+  font: inherit;
+  font-size: 13px;
+  line-height: 26px;
+  cursor: pointer;
+  transform: translate(-50%, -50%);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--pxd-pdf-fade, 80ms) var(--pxd-pdf-ease, ease) 0ms;
+}
+
+.pxd-root .pxd-item:hover .pxd-pdf-pill,
+.pxd-root .pxd-item:focus-within .pxd-pdf-pill {
+  opacity: 1;
+  pointer-events: auto;
+  transition-delay: var(--pxd-pdf-hover-delay, 120ms);
+}
+
+.bp3-dark .pxd-root .pxd-pdf-pill,
+body.bt-theme-dark .pxd-root .pxd-pdf-pill,
+.pxd-root.pxd-root--dark .pxd-pdf-pill {
+  background: transparent;
+  color: var(--pxd-accent);
+  border-color: var(--pxd-border-strong);
+}
+
+.pxd-root .pxd-pdf-density {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  width: var(--pxd-pdf-density-w, 6px);
+}
+
+.pxd-root .pxd-pdf-tick {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: var(--pxd-pdf-tick, 2px);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: var(--pxd-gray-line, #94a3b8);
+  cursor: pointer;
+}
+
+.pxd-root .pxd-pdf-tick[data-color="gray"] { background: var(--pxd-gray-line); }
+.pxd-root .pxd-pdf-tick[data-color="red"] { background: var(--pxd-red-line); }
+.pxd-root .pxd-pdf-tick[data-color="orange"] { background: var(--pxd-orange-line); }
+.pxd-root .pxd-pdf-tick[data-color="yellow"] { background: var(--pxd-yellow-line); }
+.pxd-root .pxd-pdf-tick[data-color="green"] { background: var(--pxd-green-line); }
+.pxd-root .pxd-pdf-tick[data-color="teal"] { background: var(--pxd-teal-line); }
+.pxd-root .pxd-pdf-tick[data-color="blue"] { background: var(--pxd-blue-line); }
+.pxd-root .pxd-pdf-tick[data-color="indigo"] { background: var(--pxd-indigo-line); }
+.pxd-root .pxd-pdf-tick[data-color="purple"] { background: var(--pxd-purple-line); }
+.pxd-root .pxd-pdf-tick[data-color="pink"] { background: var(--pxd-pink-line); }
+
+.pxd-root .pxd-item.pxd-item--reading {
+  outline: 2px solid var(--pxd-reading-line, var(--pxd-accent));
+  outline-offset: -2px;
+}
+
+.pxd-root .pxd-pdf-dot {
+  display: none;
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 4;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--pxd-reading-line, var(--pxd-accent));
+  pointer-events: none;
+}
+
+.pxd-root .pxd-item.pxd-item--reading .pxd-pdf-dot {
+  display: block;
+}
+
+.pxd-root.pxd-lod-overview .pxd-pdf-hover,
+.pxd-root.pxd-lod-overview .pxd-pdf-pill,
+.pxd-root.pxd-lod-overview .pxd-pdf-title--face,
+.pxd-root.pxd-lod-overview .pxd-pdf-density {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pxd-root {
+    --pxd-pdf-ms: 0ms;
+    --pxd-pdf-fade: 0ms;
+    --pxd-pdf-hover-delay: 0ms;
+  }
+}
+
+.pxd-root.pxd-root--motion-none {
+  --pxd-pdf-ms: 0ms;
+  --pxd-pdf-fade: 0ms;
+  --pxd-pdf-hover-delay: 0ms;
+}

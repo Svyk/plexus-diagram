@@ -226,6 +226,6 @@ test("a list row shows a note mark only when the note is non-empty", () => {
 });
 
 test("the note clip is about four lines", () => {
-  const css = readFileSync(new URL("../src/extension.css", import.meta.url), "utf8");
+  const css = readFileSync(new URL("../src/css/highlight-card.css", import.meta.url), "utf8");
   assert.match(css, /\.pxd-root \.pxd-highlight-note \{[\s\S]*-webkit-line-clamp:\s*4;/);
 });

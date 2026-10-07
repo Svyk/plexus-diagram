@@ -118,7 +118,8 @@ test("a pdf, a video, and a tweet open as posters, and one Open replaces the pre
     assert.equal(f.root.querySelectorAll("iframe").length, 0);
     assert.equal(f.root.querySelectorAll("video").length, 0);
     assert.equal(f.root.querySelector("[data-uid=pdfcard01] .pxd-pdf-title").textContent, "Paper");
-    assert.equal(f.root.querySelector("[data-uid=pdfcard01] .pxd-pdf-count").textContent, "4 highlights");
+    assert.equal(f.root.querySelector("[data-uid=pdfcard01] .pxd-pdf-count").textContent, "4");
+    assert.equal(f.root.querySelector("[data-uid=pdfcard01] .pxd-pdf-count").getAttribute("aria-label"), "4 highlights");
     assert.equal(f.root.querySelector("[data-uid=videocard1] .pxd-embed-poster__title").textContent, "clip");
     assert.equal(f.root.querySelector("[data-uid=tweetcard1] .pxd-embed-poster__title").textContent, "@jack");
     assert.equal(f.root.querySelector("[data-uid=framecard1] .pxd-embed-poster__title").textContent, "YouTube");

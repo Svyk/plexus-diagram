@@ -121,7 +121,8 @@ test("cover and reader chips pulse page 3 and open that page on the pdf card", a
     const cover = shell.querySelector(".pxd-pdf-cover");
     const strip = cover.querySelector(".pxd-pdf-chips");
     assert.equal(strip.classList.contains("pxd-chrome"), true);
-    assert.ok(cover.querySelector(".pxd-pdf-title").nextElementSibling === strip || cover.children[1] === strip);
+    assert.equal(strip.closest(".pxd-pdf-hover") != null, true);
+    assert.equal(cover.querySelector(".pxd-pdf-paper").querySelector(".pxd-pdf-chips"), null);
     const buttons = [...strip.querySelectorAll("button.pxd-pdf-chip")];
     assert.deepEqual(buttons.map(pageText), ["2", "3"]);
     assert.deepEqual(buttons.map((button) => button.querySelector(".pxd-pdf-chip__n").textContent), ["1", "2"]);

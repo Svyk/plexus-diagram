@@ -145,7 +145,7 @@ test("a yellow text highlight shows the bar, the passage, and p. 1", () => {
     assert.equal(kids[1].classList.contains("pxd-rs"), true);
     assert.equal(kids[1].querySelector(".pxd-rs__live").textContent, TEXT);
     assert.equal(kids[2].classList.contains("pxd-highlight-foot"), true);
-    assert.equal(kids[2].textContent, `p. 1 · ${TITLE}`);
+    assert.equal(kids[2].textContent, `${TITLE} · p. 1`);
     assert.equal(ctx.rendered.includes(TEXT), true);
     assert.equal(ctx.rendered.some((s) => String(s).includes("#h/")), false);
     assert.equal(card.textContent.includes(TEXT), true);
@@ -159,7 +159,7 @@ test("a yellow text highlight shows the bar, the passage, and p. 1", () => {
     const again = ctx.r.shellOf("hlcard01");
     assert.equal(again.querySelector(".pxd-highlight-bar").getAttribute("data-color"), "green");
     assert.equal(again.querySelector(".pxd-rs__live").textContent, "next passage\nsecond line");
-    assert.equal(again.querySelector(".pxd-highlight-foot").textContent, `p. 3 · ${TITLE}`);
+    assert.equal(again.querySelector(".pxd-highlight-foot").textContent, `${TITLE} · p. 3`);
     assert.equal(again.classList.contains("pxd-c-green"), false);
     assert.equal(item.color == null, true);
   } finally {
@@ -174,7 +174,7 @@ test("an area highlight calls renderString with the image macro", () => {
     assert.equal(ctx.rendered.includes(MACRO), true);
     assert.equal(card.querySelector(".pxd-rs__live").textContent, MACRO);
     assert.equal(card.querySelector(".pxd-highlight-bar").getAttribute("data-color"), "orange");
-    assert.equal(card.querySelector(".pxd-highlight-foot").textContent, `p. 2 · ${TITLE}`);
+    assert.equal(card.querySelector(".pxd-highlight-foot").textContent, `${TITLE} · p. 2`);
     assert.equal(card.classList.contains("pxd-c-orange"), false);
     assert.equal(ctx.board.items.get("areacard1").color == null, true);
     assert.equal(ctx.fileGets.length, 0);
@@ -240,12 +240,12 @@ test("map lod keeps the bar and the first line of a text highlight", () => {
 });
 
 test("highlight bar css stays under .pxd-root and does not paint a card fill", () => {
-  const css = readFileSync(new URL("../src/extension.css", import.meta.url), "utf8");
+  const css = readFileSync(new URL("../src/css/highlight-card.css", import.meta.url), "utf8");
   const start = css.indexOf("PDF-2 highlight card.");
   assert.ok(start > 0);
-  const slice = css.slice(start, css.indexOf("Focus mode dims", start));
+  const slice = css.slice(start, css.indexOf("PDF-U2", start));
   assert.match(slice, /\.pxd-root \.pxd-item\.pxd-item--highlight[\s\S]*background:\s*transparent/);
-  assert.match(slice, /\.pxd-root \.pxd-highlight-bar \{[\s\S]*position:\s*absolute;[\s\S]*left:\s*0;[\s\S]*top:\s*0;[\s\S]*bottom:\s*0;[\s\S]*width:\s*4px;/);
+  assert.match(slice, /\.pxd-root \.pxd-highlight-bar \{[\s\S]*position:\s*absolute;[\s\S]*left:\s*0;[\s\S]*top:\s*0;[\s\S]*bottom:\s*0;[\s\S]*width:\s*var\(--pxd-hl-bar-w,\s*3px\);/);
   assert.match(slice, /\.pxd-root \.pxd-highlight-bar\[data-color="yellow"\] \{ background: var\(--pxd-yellow-line\); \}/);
   assert.match(slice, /\.pxd-root\.pxd-lod-map \.pxd-item\.pxd-item--highlight > \.pxd-item__body \{[\s\S]*display:\s*block;/);
   assert.match(slice, /\.pxd-root \.pxd-item\.pxd-item--highlight:not\(\.pxd-item--collapsed\):not\(\.pxd-item--bare\) > \.pxd-item__header[\s\S]*display:\s*none;/);

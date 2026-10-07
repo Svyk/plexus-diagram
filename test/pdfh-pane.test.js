@@ -421,7 +421,7 @@ test("the wired pane keeps the cover, one reader, and the list", () => {
 
     const foot = itemsR.shellOf("hlcard01").querySelector("button.pxd-highlight-foot");
     assert.equal(foot.tagName, "BUTTON");
-    assert.match(foot.textContent, /^p\. /);
+    assert.match(foot.textContent, /p\. \d+/);
     const card = itemsR.shellOf("hlcard01");
     const body = card.querySelector(".pxd-item__body");
     const hits = [];

@@ -171,6 +171,11 @@ export function boxGridRules(boxes) {
       overlap += Math.max(0, Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0)) * Math.max(0, Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0));
     }
     if (overlap > 0.05 * covered) continue;
+    // The tiling's outer frame: unshaded rows between stripes keep their side boundaries.
+    rules.push({ axis: "h", x0: cl.x0, x1: cl.x1, y0: cl.y0, y1: cl.y0, thick: 0.5, fromBox: true });
+    rules.push({ axis: "h", x0: cl.x0, x1: cl.x1, y0: cl.y1, y1: cl.y1, thick: 0.5, fromBox: true });
+    rules.push({ axis: "v", x0: cl.x0, x1: cl.x0, y0: cl.y0, y1: cl.y1, thick: 0.5, fromBox: true });
+    rules.push({ axis: "v", x0: cl.x1, x1: cl.x1, y0: cl.y0, y1: cl.y1, thick: 0.5, fromBox: true });
     for (const b of cl.items) {
       rules.push({ axis: "h", x0: b.x0, x1: b.x1, y0: b.y0, y1: b.y0, thick: 0.5, fromBox: true });
       rules.push({ axis: "h", x0: b.x0, x1: b.x1, y0: b.y1, y1: b.y1, thick: 0.5, fromBox: true });
@@ -396,7 +401,14 @@ export function splitRowsByText(grid, words) {
       }
       const aligned = perCol.filter((p) => p.lines >= 2 && p.short === p.lines);
       const numericCols = perCol.filter((p) => p.lines >= 2 && p.numeric >= 0.5 * p.lines);
-      if (aligned.length >= 2 && numericCols.length >= 1) {
+      // Data rows carry numbers in two or more columns on one baseline; a wrapped header
+      // stacks words with at most a stray number per line.
+      const numericRows = rowsIn.filter((row) => {
+        const cs = new Set();
+        for (const w of row.words) { const c = colOf(w); if (c >= 0 && isNumericText(w.text)) cs.add(c); }
+        return cs.size >= 2;
+      }).length;
+      if (aligned.length >= 2 && numericCols.length >= 1 && numericRows >= 2) {
         // A line in one column set tighter than the row pitch is a wrapped cell, not a row.
         const pitches = rowsIn.slice(1).map((r, i) => r.base - rowsIn[i].base).sort((a, b) => a - b);
         const pitch = pitches[pitches.length >> 1];

@@ -90,6 +90,13 @@ export function parsePageGeometry(data, n) {
   const figs = kind === "scan" ? { figures: [], used: new Set() } : findFigures({ graphics: figGraphics, usedRules, usedBoxes: lattice.usedBoxes, words: words.filter((w) => !used.has(w)), bodySize: pageBody, pageW: w, pageH: h, ruleSegments: lattice.segments });
   for (const w of figs.used) used.add(w);
   const figures = figs.figures.map((f) => ({ ...f, page: n }));
+  // Rule bands beside a chart that only hold its labels go back to the text pass.
+  for (let i = tables.length - 1; i >= 0; i--) {
+    const t = tables[i];
+    if (t.method !== "stream" || !figureLabels(t, figures)) continue;
+    tables.splice(i, 1);
+    for (const w of words) if (used.has(w) && !figs.used.has(w) && w.x0 >= t.bbox[0] - 2 && w.x1 <= t.bbox[2] + 2 && w.base >= t.bbox[1] && w.base <= t.bbox[3] + 2) used.delete(w);
+  }
   return { n, w, h, rotation: data.rotation || 0, textRotation, kind, scanLayer, lines, rotated, words, graphics, tables, figures, used, ms: round(now() - t0) };
 }
 
@@ -194,7 +201,7 @@ export function assembleDocument(pageRecords, { numPages, info = null, engineVer
     for (const seq of sequences) {
       let lines = seq;
       // Stream tables, and aligned runs that are really equations or code listings.
-      for (const t of detectStreamRuns(lines, { dots, column: boxOfUnits(lines.length ? lines : seq) })) {
+      for (const t of detectStreamRuns(lines, { dots, column: boxOfUnits(lines.length ? lines : seq), rules: pg.graphics.rules })) {
         const drop = new Set(t.lines);
         lines = lines.filter((l) => !drop.has(l));
         if (t.type === "formula") {
@@ -205,7 +212,7 @@ export function assembleDocument(pageRecords, { numPages, info = null, engineVer
           textBlocks.push({ type: "code", lines: t.lines, bbox: boxOfUnits(t.lines), text: t.text });
           continue;
         }
-        if (isTitledBox(t)) { lines = [...lines, ...t.lines].sort((a, b) => a.base - b.base || a.x0 - b.x0); continue; }
+        if (isTitledBox(t) || figureLabels(t, pageFigures)) { lines = [...lines, ...t.lines].sort((a, b) => a.base - b.base || a.x0 - b.x0); continue; }
         delete t.lines; delete t.usedWords;
         t.page = pg.n;
         pageTables.push(t);
@@ -372,6 +379,18 @@ export function assembleDocument(pageRecords, { numPages, info = null, engineVer
     removed: furniture.removed,
     stats: { ms: 0, perPage: perPage.map((p) => p.ms), assembleMs: round(now() - t1), bodySize, headingSizes: classes, range: [from, to] },
   };
+}
+
+// Labels around a chart (legend entries, slice percentages) line up loosely: a sparse stream
+// table touching a drawing is the drawing's text, not a table.
+export function figureLabels(t, figures) {
+  const filled = t.cells.filter((k) => k.text).length;
+  const singles = Array.from({ length: t.rows }, (_, r) => t.cells.filter((k) => k.r === r && k.text).length === 1).filter(Boolean).length;
+  if (filled >= 0.6 * t.cells.length && singles < 0.5 * t.rows) return false;
+  return figures.some((f) => {
+    const b = f.bbox;
+    return t.bbox[0] <= b[2] + 12 && t.bbox[2] >= b[0] - 12 && t.bbox[1] <= b[3] + 12 && t.bbox[3] >= b[1] - 12;
+  });
 }
 
 // A heading over one spanning line of text ("ARTICLE INFO" + an editor line) is a box, not a

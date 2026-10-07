@@ -28838,6 +28838,20 @@ function viewerFromFiber(fiber) {
   }
   return null;
 }
+function pdfDocumentFromFiber(fiber) {
+  const isDoc = (value) => Boolean(value) && typeof value === "object" && typeof value.getPage === "function";
+  let current3 = fiber;
+  const seen = /* @__PURE__ */ new Set();
+  for (let depth = 0; depth < 40 && current3 && typeof current3 === "object" && !seen.has(current3); depth += 1) {
+    seen.add(current3);
+    const node2 = current3.stateNode && typeof current3.stateNode === "object" ? current3.stateNode : null;
+    const props = current3.memoizedProps && typeof current3.memoizedProps === "object" ? current3.memoizedProps : null;
+    const candidates = [node2?.viewer?.pdfDocument, props?.pdfDocument, node2?.props?.pdfDocument, props?.pdf];
+    for (const candidate of candidates) if (isDoc(candidate)) return candidate;
+    current3 = current3.return;
+  }
+  return null;
+}
 function fitsWidth({ pageWidth, viewerWidth } = {}) {
   const page = Number(pageWidth);
   const view = Number(viewerWidth);
@@ -36021,8 +36035,8 @@ function createReadPane({
   const pdfUrl = () => pdfMacroUrl(current3.source || "") || "";
   const readerPdf = () => {
     try {
-      const viewer = viewerFromFiber(fiberOf(live.querySelector?.(".PdfHighlighter")));
-      return viewer?.pdfDocument || null;
+      const fiber = fiberOf(live.querySelector?.(".PdfHighlighter"));
+      return viewerFromFiber(fiber)?.pdfDocument || pdfDocumentFromFiber(fiber);
     } catch {
       return null;
     }

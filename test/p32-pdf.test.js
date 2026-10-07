@@ -6,7 +6,7 @@ import test from "node:test";
 
 import { COVER_LS_KEY } from "../src/host/cover-store.js";
 import { buildBoard, worldRects } from "../src/model/board.js";
-import { FIT_GUTTER, FIT_MAX_CLICKS, fitWidthStep, fitsWidth, viewerFromFiber } from "../src/model/read-pane-model.js";
+import { FIT_GUTTER, FIT_MAX_CLICKS, fitWidthStep, fitsWidth, pdfDocumentFromFiber, viewerFromFiber } from "../src/model/read-pane-model.js";
 import { settingsDefaults } from "../src/settings.js";
 import { mountBoardView } from "../src/view/board-view.js";
 import { createItemRenderer } from "../src/view/cards.js";
@@ -319,6 +319,22 @@ test("P32-3: viewerFromFiber walks up to the instance that owns a pdf.js viewer"
   const loop = { stateNode: null };
   loop.return = loop;
   assert.equal(viewerFromFiber(loop), null);
+});
+
+test("pdfDocumentFromFiber finds the document on the viewer, on props two levels up, and nowhere else", () => {
+  const doc = { getPage() {}, numPages: 3 };
+  const viaViewer = { stateNode: null, return: { stateNode: { viewer: { currentScaleValue: "auto", pdfDocument: doc } }, return: null } };
+  assert.equal(pdfDocumentFromFiber(viaViewer), doc);
+  const viaProps = { stateNode: null, return: { stateNode: null, return: { memoizedProps: { pdfDocument: doc }, return: null } } };
+  assert.equal(pdfDocumentFromFiber(viaProps), doc);
+  assert.equal(pdfDocumentFromFiber({ stateNode: { props: { pdfDocument: doc } }, return: null }), doc);
+  assert.equal(pdfDocumentFromFiber({ memoizedProps: { pdf: doc }, return: null }), doc);
+  assert.equal(pdfDocumentFromFiber({ stateNode: {}, memoizedProps: {}, return: { stateNode: null, return: null } }), null);
+  assert.equal(pdfDocumentFromFiber(null), null);
+  assert.equal(pdfDocumentFromFiber({ memoizedProps: { pdfDocument: { numPages: 3 }, pdf: "x" }, return: null }), null);
+  const loop = { memoizedProps: {} };
+  loop.return = loop;
+  assert.equal(pdfDocumentFromFiber(loop), null);
 });
 
 // ---------- cards: the chip ▾ and Shift-click ----------

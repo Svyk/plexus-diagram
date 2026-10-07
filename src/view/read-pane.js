@@ -7,7 +7,7 @@ import { HIGHLIGHT_COLORS, highlightModel } from "../model/highlight.js";
 import { highlightRows } from "../model/highlight-pick.js";
 import { coverModel, pdfMacroUrl, readPaneKey, readPaneWidth, readerRule, writeReaderPage } from "../model/pdf.js";
 import { dragChipText, fiberOf, highlightById, highlighterContext, PDF_MARK, uidFromMark } from "../model/pdf-drag.js";
-import { fitDecision, fitWidthStep, fitsWidth, pageIndicator, pageTotalText, pillActions, viewerFromFiber } from "../model/read-pane-model.js";
+import { fitDecision, fitWidthStep, fitsWidth, pageIndicator, pageTotalText, pdfDocumentFromFiber, pillActions, viewerFromFiber } from "../model/read-pane-model.js";
 import { isTextEntryTarget } from "./cards.js";
 import { applyMotionClasses } from "./motion.js";
 import { BOTH_MIN_PX, createParseView, readParsedUrls } from "./parse-view.js";
@@ -1640,8 +1640,8 @@ export function createReadPane({
   const pdfUrl = () => pdfMacroUrl(current.source || "") || "";
   const readerPdf = () => {
     try {
-      const viewer = viewerFromFiber(fiberOf(live.querySelector?.(".PdfHighlighter")));
-      return viewer?.pdfDocument || null;
+      const fiber = fiberOf(live.querySelector?.(".PdfHighlighter"));
+      return viewerFromFiber(fiber)?.pdfDocument || pdfDocumentFromFiber(fiber);
     } catch { return null; }
   };
   const getPdf = async () => readerPdf();

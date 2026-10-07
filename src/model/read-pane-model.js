@@ -129,6 +129,23 @@ export function viewerFromFiber(fiber) {
   return null;
 }
 
+// The pdf.js PDFDocumentProxy behind a reader. Older Roam builds keep it on the viewer instance; newer ones pass
+// it as a `pdfDocument` prop a couple of fibers above `.PdfHighlighter`. Only objects with getPage() qualify.
+export function pdfDocumentFromFiber(fiber) {
+  const isDoc = (value) => Boolean(value) && typeof value === "object" && typeof value.getPage === "function";
+  let current = fiber;
+  const seen = new Set();
+  for (let depth = 0; depth < 40 && current && typeof current === "object" && !seen.has(current); depth += 1) {
+    seen.add(current);
+    const node = current.stateNode && typeof current.stateNode === "object" ? current.stateNode : null;
+    const props = current.memoizedProps && typeof current.memoizedProps === "object" ? current.memoizedProps : null;
+    const candidates = [node?.viewer?.pdfDocument, props?.pdfDocument, node?.props?.pdfDocument, props?.pdf];
+    for (const candidate of candidates) if (isDoc(candidate)) return candidate;
+    current = current.return;
+  }
+  return null;
+}
+
 // The page is at reading width when it fills the viewer minus pdf.js's own scrollbar padding (40 px)
 // and page borders. Wider than the viewer is an overflow, not a fit.
 export function fitsWidth({ pageWidth, viewerWidth } = {}) {

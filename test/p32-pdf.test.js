@@ -11,7 +11,7 @@ import { settingsDefaults } from "../src/settings.js";
 import { mountBoardView } from "../src/view/board-view.js";
 import { createItemRenderer } from "../src/view/cards.js";
 import { buildMenu } from "../src/view/menu-model.js";
-import { FIRST_PAGE_TIMEOUT_MS, createFirstPageRenderer, detectPdfjs, firstPageAllowed } from "../src/view/pdf-first-page.js";
+import { FIRST_PAGE_TIMEOUT_MS, createFirstPageRenderer, createPdfMetaLookup, detectPdfjs, firstPageAllowed } from "../src/view/pdf-first-page.js";
 import { createPdfWarm } from "../src/view/pdf-warm.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
 
@@ -126,6 +126,16 @@ test("P32-2: the renderer draws page 1 at the cover width, destroys the document
   assert.equal(r.busy(), false);
 });
 
+test("P32-2: a sharp maxW scales a PDF-point page up instead of stopping at the point width", async () => {
+  const { lib, log } = fakeLib({ width: 595, height: 792 });
+  const r = createFirstPageRenderer({ doc: canvasDoc(), lib, timers: fakeTimers() });
+  const shot = await r.render({ url: PDF_URL, maxW: 1600 });
+  assert.equal(shot.w, 1600);
+  assert.equal(shot.h, 2130);
+  assert.equal(await shot.blob.text(), "page1-1600x2130");
+  assert.deepEqual(log.filter((row) => row[0] === "render"), [["render", 1600, 2130]]);
+});
+
 test("P32-2: a second render while one is in flight resolves null, and the timeout destroys", async () => {
   const { lib, log } = fakeLib({ hang: true });
   const timers = fakeTimers();
@@ -149,6 +159,37 @@ test("P32-2: a failing document, an .enc url, or a missing lib resolve null with
   assert.equal(r.report().tried, 1, ".enc never counts as a try");
   const none = createFirstPageRenderer({ doc: canvasDoc(), lib: null, timers: fakeTimers() });
   assert.equal(await none.render({ url: PDF_URL }), null);
+});
+
+test("P32-2: metadata title is cached per url and does not take the page-1 lock", async () => {
+  const docs = [];
+  const lib = {
+    getDocument(spec) {
+      docs.push(spec.url);
+      const pdf = {
+        getMetadata() {
+          return Promise.resolve({ info: { Title: spec.url.includes("nature") ? "Nature methods" : "" } });
+        },
+        destroy() { docs.push("destroy"); },
+      };
+      return { promise: Promise.resolve(pdf), destroy() { docs.push("task"); } };
+    },
+  };
+  const lookup = createPdfMetaLookup({ lib });
+  const first = lookup.want("https://example.com/nature.pdf");
+  const again = lookup.want("https://example.com/nature.pdf");
+  assert.equal(again, first);
+  assert.equal(await first, "Nature methods");
+  assert.equal(lookup.title("https://example.com/nature.pdf"), "Nature methods");
+  assert.equal(lookup.want("https://example.com/nature.pdf"), null);
+  assert.equal(await lookup.want("https://example.com/empty.pdf"), "");
+  assert.equal(lookup.want("https://x/y.pdf.enc"), null);
+  assert.equal(docs.filter((row) => row === "https://example.com/nature.pdf").length, 1);
+  const page = createFirstPageRenderer({ doc: canvasDoc(), lib: fakeLib().lib, timers: fakeTimers() });
+  const meta = createPdfMetaLookup({ lib });
+  assert.equal(page.busy(), false);
+  assert.equal(await meta.want("https://example.com/nature.pdf"), "Nature methods");
+  assert.equal(page.busy(), false);
 });
 
 test("P32-2: the first-page module has no graph write, no console, and no document listener", () => {

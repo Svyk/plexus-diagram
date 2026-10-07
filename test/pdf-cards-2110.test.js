@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import { buildBoard, worldRects } from "../src/model/board.js";
-import { PDF_READER_H, PDF_READER_W, coverModel } from "../src/model/pdf.js";
+import { coverModel } from "../src/model/pdf.js";
 import { createItemRenderer } from "../src/view/cards.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
 
@@ -116,8 +116,8 @@ test("a pdf cover shows the highlight count, and a second reader restores the fi
     openBtn.click();
     assert.equal(itemsLayer.querySelectorAll(".pxd-pdf-reader").length, 1);
     assert.equal(rendered.at(-1), "pdfself01");
-    assert.equal(self.style.width, `${PDF_READER_W}px`);
-    assert.equal(self.style.height, `${PDF_READER_H}px`);
+    assert.equal(self.style.width, "220px");
+    assert.equal(self.style.height, "140px");
     const reader = self.querySelector(".pxd-pdf-reader");
     assert.ok(reader.querySelector(".pxd-embed-shield"));
     assert.equal(reader.__pxdEmbedMo.active, true);
@@ -158,12 +158,12 @@ test("a pdf cover shows the highlight count, and a second reader restores the fi
     assert.ok(ref.querySelector(".pxd-embed-shield"));
     assert.equal(rendered.at(-1), "pdfblock1");
     assert.equal(rendered.includes("pdfref001"), false);
-    assert.equal(ref.style.width, `${PDF_READER_W}px`);
-    assert.equal(ref.style.height, `${PDF_READER_H}px`);
+    assert.equal(ref.style.width, "240px");
+    assert.equal(ref.style.height, "150px");
 
     r.sync({ board, rects, structural: false });
     assert.equal(itemsLayer.querySelectorAll(".pxd-pdf-reader").length, 1);
-    assert.equal(ref.style.width, `${PDF_READER_W}px`);
+    assert.equal(ref.style.width, "240px");
 
     r.setLod("map", 0.3);
     flush();
@@ -179,8 +179,8 @@ test("a pdf cover shows the highlight count, and a second reader restores the fi
     assert.equal(itemsLayer.querySelectorAll(".pxd-pdf-reader").length, 1);
     assert.equal(ref.querySelector(".pxd-pdf-reader") != null, true);
     assert.equal(self.querySelector(".pxd-pdf-cover") != null, true);
-    assert.equal(ref.style.width, `${PDF_READER_W}px`);
-    assert.equal(ref.style.height, `${PDF_READER_H}px`);
+    assert.equal(ref.style.width, "240px");
+    assert.equal(ref.style.height, "150px");
     assert.deepEqual(writes, []);
     r.dispose();
   } finally {

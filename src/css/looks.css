@@ -23,7 +23,7 @@
 }
 
 .pxd-root.pxd-look--pastel .pxd-section {
-  background: color-mix(in srgb, var(--pxd-fill) 14%, var(--pxd-bg));
+  background: color-mix(in srgb, var(--pxd-fill) 24%, var(--pxd-bg));
 }
 
 .pxd-root.pxd-look--tint .pxd-highlight-bar {

@@ -403,6 +403,8 @@ test("the pane source adds no document listener and the toolbar is tucked withou
   assert.match(css, /\.pxd-read\.pxd-read--drawer \.pxd-read__drawer\s*\{[^}]*flex:\s*0 0 auto/);
   assert.match(css, /\.pxd-read \.pxd-read__tools,\s*\.pxd-read \.pxd-read__close\s*\{[^}]*width:\s*28px;[^}]*height:\s*28px/);
   assert.match(css, /\.pxd-read \.pxd-read__highlights\s*\{[^}]*height:\s*28px/);
+  assert.match(css, /\.pxd-root\.pxd-root--read:not\(\.pxd-root--read-stack\) \.pxd-ctx\s*\{[^}]*--pxd-read-w/);
+  assert.match(css, /\.pxd-read \.pxd-read__hold\s*\{[^}]*pointer-events:\s*none/);
   assert.match(css, /\.pxd-read \.pxd-read__head\s*\{[^}]*height:\s*var\(--pxd-read-head-h,\s*40px\)/);
 });
 
@@ -492,9 +494,12 @@ test("legacy filters hide, the reader fills to the strip, the pill reads / total
     assert.equal(highlights.querySelector(".pxd-read__hicon").textContent, "☰");
     assert.equal(highlights.getAttribute("aria-label"), "Highlights");
 
+    assert.equal(highlights.querySelector(".pxd-read__count").textContent, "");
+    assert.equal(highlights.querySelector(".pxd-read__count").hidden, true);
     pane.open({ blockUid: "blk", cardUid: "card", title: "Novel risk", pageUid: "page" });
     aside._rect = { left: 0, top: 0, width: 617, height: 656, right: 617, bottom: 656, x: 0, y: 0 };
     assert.equal(highlights.querySelector(".pxd-read__count").textContent, "12");
+    assert.equal(highlights.querySelector(".pxd-read__count").hidden, false);
     assert.equal(root.querySelector(".pxd-read__pages").textContent, "3 / 9");
     assert.equal(inputNextIsSpan(built.input), false);
     assert.equal(hits.fit, 0);

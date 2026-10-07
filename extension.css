@@ -2864,10 +2864,18 @@ body.roam-body.dark .pxd-addboard.pxd-addboard {
   padding: 0 !important;
   border: 0;
   background: transparent;
-  line-height: 1.4 !important;
+  line-height: 19.5px !important;
   white-space: pre-wrap;
   overflow-wrap: break-word;
   word-break: break-word;
+}
+
+/* The editor replaces the task row. --pxd-task-pad is the resting text's inset (checkbox, and a
+   status chip when one is showing). 22px is the checkbox plus its 6px gap when the measure missed.
+   Counter-scale multiplies by --pxd-ed-z so the inset stays the same on screen. */
+.pxd-root .pxd-item.pxd-item--task.pxd-item--editing:not(.pxd-item--page) > .pxd-item__body > .pxd-item__editor:not(.pxd-page-edit) textarea.rm-block-input,
+.pxd-root .pxd-item.pxd-item--task.pxd-item--editing:not(.pxd-item--page) > .pxd-item__body > .pxd-item__editor:not(.pxd-page-edit) textarea.rm-block__input {
+  padding-left: calc(var(--pxd-task-pad, 22px) * var(--pxd-ed-z, 1)) !important;
 }
 
 /* Counter-scale lays the editor out at screen size from the padding edge (left/top 0, width z*100%).
@@ -5171,7 +5179,7 @@ body.bt-theme-dark .pxd-root .pxd-highlight-chip__more,
 }
 
 .pxd-root.pxd-look--pastel .pxd-section {
-  background: color-mix(in srgb, var(--pxd-fill) 14%, var(--pxd-bg));
+  background: color-mix(in srgb, var(--pxd-fill) 24%, var(--pxd-bg));
 }
 
 .pxd-root.pxd-look--tint .pxd-highlight-bar {
@@ -5994,17 +6002,25 @@ body.roam-body.dark .pxd-root .pxd-present-hud,
   box-sizing: border-box;
 }
 
-/* Bullet stays in the DOM (Roam drag and zoom). Zero width so the text does not shift. */
+/* Bullet and caret stay in the DOM (Roam drag, zoom, fold). They share the 16px gutter the text already leaves. */
 .pxd-root .pxd-item.pxd-item--page .pxd-page-edit .rm-api-render--block > .rm-block > .rm-block-main > .controls,
-.pxd-root .pxd-item--page .pxd-page-edit .rm-block-main > .controls {
+.pxd-root .pxd-item.pxd-item--page .pxd-page-edit .rm-block-main > .controls,
+.pxd-root .pxd-item.pxd-item--page .pxd-page-edit .rm-block-main > .rm-block__controls {
+  position: absolute !important;
+  left: 0;
+  top: 0;
   display: flex;
-  flex: 0 0 0 !important;
-  width: 0 !important;
+  align-items: center;
+  justify-content: flex-start;
+  flex: 0 0 16px !important;
+  width: 16px !important;
   min-width: 0 !important;
-  max-width: 0 !important;
+  max-width: 16px !important;
+  height: 22px;
   margin: 0 !important;
   padding: 0 !important;
   overflow: hidden;
+  z-index: 1;
 }
 
 .pxd-root .pxd-item--page .pxd-page-edit .rm-bullet {
@@ -6045,6 +6061,13 @@ body.roam-body.dark .pxd-root .pxd-present-hud,
   border-left: 1px solid var(--pxd-border);
 }
 
+.pxd-root .pxd-item--page .pxd-page-edit .rm-block > .rm-block-children:not(.rm-level-0) {
+  margin-left: 12px;
+  padding-left: 6px;
+  padding-right: 0;
+  border-left: 1px solid var(--pxd-border);
+}
+
 /* Roam pulls the page's top level left to line bullets up with its own title. The card has no Roam title. */
 .pxd-root .pxd-item--page .pxd-page-edit .rm-block-children.rm-level-0 {
   margin-left: 0 !important;
@@ -6060,6 +6083,8 @@ body.roam-body.dark .pxd-root .pxd-present-hud,
   padding: 0 0 0 16px !important;
   min-height: 22px !important;
   border: 0;
+  background: transparent !important;
+  box-shadow: none !important;
   font-family: inherit;
   font-size: 13px !important;
   font-weight: inherit;
@@ -6110,7 +6135,7 @@ body.roam-body.dark .pxd-root .pxd-present-hud,
   width: 16px !important;
   max-width: 16px !important;
   height: 22px;
-  overflow: visible;
+  overflow: hidden;
   z-index: 1;
 }
 
@@ -6136,6 +6161,24 @@ body.roam-body.dark .pxd-root .pxd-present-hud,
 .pxd-root .pxd-item--page .pxd-page-edit .rm-block-main:hover > .controls .rm-bullet__inner,
 .pxd-root .pxd-item--page .pxd-page-edit .rm-block-main:hover > .rm-block__controls .rm-bullet__inner {
   opacity: 0.55;
+}
+
+/* A focused row's ▾ is a sibling of the text, wider than the gutter. Park it in the same 16px. */
+.pxd-root .pxd-item--page .pxd-page-edit .rm-block-main > .rm-caret,
+.pxd-root .pxd-item--page .pxd-page-edit .rm-block-main > .block-expand,
+.pxd-root .pxd-item--page .pxd-page-edit .rm-block-main > .rm-block__toggle,
+.pxd-root .pxd-item--page .pxd-page-edit .rm-block-main > .controls .rm-caret,
+.pxd-root .pxd-item--page .pxd-page-edit .rm-block-main > .rm-block__controls .rm-caret,
+.pxd-root .pxd-item--page .pxd-page-edit .rm-block-main > .controls button,
+.pxd-root .pxd-item--page .pxd-page-edit .rm-block-main > .rm-block__controls button {
+  flex: 0 0 8px;
+  width: 8px !important;
+  min-width: 0 !important;
+  max-width: 8px !important;
+  height: 16px;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden;
 }
 
 /* G1. The separator still flex-grows and the reference-count slot still takes a column.
@@ -6628,6 +6671,17 @@ body.bt-theme-dark .pxd-root.pxd-pdf-dark--invert .pxd-pdf-flip canvas,
 .bp3-dark .pxd-root.pxd-pdf-dark--invert .pxd-pdf-img,
 body.bt-theme-dark .pxd-root.pxd-pdf-dark--invert .pxd-pdf-img {
   filter: invert(.9) hue-rotate(180deg);
+}
+
+/* The in-card reader fills the card. Roam's viewer must not keep its own width. */
+.pxd-root .pxd-item--pdf .pxd-pdf-reader,
+.pxd-root .pxd-item--pdf .pxd-pdf-reader .rm-pdf-container,
+.pxd-root .pxd-item--pdf .pxd-pdf-reader .rm-pdf-viewer-container,
+.pxd-root .pxd-item--pdf .pxd-pdf-reader .PdfHighlighter {
+  width: 100% !important;
+  max-width: none !important;
+  height: 100%;
+  min-width: 0;
 }
 
 .pxd-root.pxd-root--dark.pxd-pdf-dark--dim .pxd-pdf-paper,
@@ -7949,9 +8003,28 @@ body.bt-theme-dark .pxd-read-drawer .pxd-pdf-chip--on,
   right: calc(var(--pxd-read-w, 360px) + 8px);
 }
 
+.pxd-root.pxd-root--read:not(.pxd-root--read-stack) .pxd-ctx {
+  max-width: calc(100% - var(--pxd-read-w, 360px) - 24px);
+}
+
 .pxd-root.pxd-root--rail.pxd-root--read:not(.pxd-root--read-stack) .pxd-toolbar,
 .pxd-root.pxd-root--rail.pxd-root--read:not(.pxd-root--read-stack) .pxd-palette {
   right: calc(var(--pxd-read-w, 360px) + var(--pxd-rail-w, 40px) + 24px);
+}
+
+.pxd-root.pxd-root--rail.pxd-root--read:not(.pxd-root--read-stack) .pxd-ctx {
+  max-width: calc(100% - var(--pxd-read-w, 360px) - var(--pxd-rail-w, 40px) - 40px);
+}
+
+.pxd-read .pxd-read__hold {
+  position: absolute;
+  inset: 0;
+  z-index: 2;
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+  object-position: top;
+  pointer-events: none;
 }
 
 .pxd-root.pxd-root--read-stack.pxd-root--dock-bottom .pxd-palette {
@@ -8993,6 +9066,23 @@ body.bt-theme-dark .pxd-chip.pxd-chip--source,
 .pxd-root .pxd-item--sticky.pxd-item--typing {
   box-shadow: 0 0 0 2px var(--pxd-accent-soft), 0 1px 2px rgba(28, 25, 23, 0.18), 0 3px 8px rgba(28, 25, 23, 0.12);
   cursor: text;
+}
+
+/* Roam's textarea paints a blue fill. The sticky body already has the rest padding, so the field is transparent. */
+.pxd-root .pxd-item--sticky .pxd-item__editor--sticky textarea,
+.pxd-root .pxd-item--sticky .pxd-item__editor--sticky .rm-block__input,
+.pxd-root .pxd-item--sticky .pxd-item__editor--sticky .rm-block-text {
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: inherit;
+  font: inherit;
+  font-size: var(--pxd-text-fs, 16px);
+  line-height: 1.4;
 }
 
 /* Minimized: the header only. The stored size is kept; the grips and ports go. */

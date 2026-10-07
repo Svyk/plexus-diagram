@@ -175,6 +175,21 @@ const FULL = () => {
   return { on, calls };
 };
 
+test("an open reader keeps the format bar on the board, left of the pane", (t) => {
+  const f = setup();
+  t.after(f.restore);
+  f.root.classList.add("pxd-root--read");
+  const pane = f.stub.document.createElement("div");
+  pane.className = "pxd-read";
+  pane._rect = { left: 480, top: 0, width: 320, height: 600, right: 800, bottom: 600, x: 480, y: 0 };
+  f.root.append(pane);
+  const ctx = showCtx(f, "card", { kind: "pdf" });
+  const left = Number.parseFloat(ctx.style.left);
+  const max = Number.parseFloat(ctx.style.maxWidth);
+  assert.ok(max <= 480 - 16, `max-width ${max} stays inside the board`);
+  assert.ok(left + 320 <= 480, `bar left ${left} plus its width stays left of the pane`);
+});
+
 test("card ctx bar gains Pin, Fit height, Copy ref, Duplicate, Send to board", (t) => {
   const { on, calls } = FULL();
   const f = setup(on);

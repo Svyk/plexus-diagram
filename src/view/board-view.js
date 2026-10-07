@@ -18,8 +18,8 @@ import { findOnBoard } from "../model/find.js";
 import { readMindPreset, writeMindPreset } from "../model/mindmap.js";
 import { attrLegend, parseAttrStyles, styleAttrLinks } from "../model/attr-styles.js";
 import { HIGHLIGHT_COLORS, noteActionPlan } from "../model/highlight.js";
-import { embedSplit, pdfCardForUrl, pdfMacroUrl, readerRule } from "../model/pdf.js";
-import { WARM_AFTER_MS, coverKey, coverState, densityTicks, warmPlan } from "../model/pdf-cover.js";
+import { coverModel, embedSplit, pdfCardForUrl, pdfMacroUrl, readerRule } from "../model/pdf.js";
+import { COVER_MAX_W, WARM_AFTER_MS, coverKey, coverState, densityTicks, sharpCoverPlan, warmPlan } from "../model/pdf-cover.js";
 import { PDF_MARK, uidFromMark } from "../model/pdf-drag.js";
 import { createCoverStore } from "../host/cover-store.js";
 import { chipsForPdf } from "../model/pdf-chips.js";
@@ -70,7 +70,8 @@ import { openPagePicker } from "./board-picker.js";
 import { createItemRenderer, dropEmbedPoster, isTextEntryTarget, pageBodyWantsWheel, paintEmbedPoster, syncBoardHighlighter } from "./cards.js";
 import { createReadPane, highlightDropPlan, originBeside, placeDecision, readerJumpPlan } from "./read-pane.js";
 import { createPdfWarm } from "./pdf-warm.js";
-import { createFirstPageRenderer, detectPdfjs } from "./pdf-first-page.js";
+import { createFirstPageRenderer, createPdfMetaLookup, detectPdfjs, firstPageAllowed } from "./pdf-first-page.js";
+import { createThemeFollow } from "./theme-follow.js";
 import { PDF_DARK_CLASSES, createPdfFlip, pdfDarkClass } from "./pdf-flip.js";
 import { openViewDialog } from "./view-dialog.js";
 import { viewMapModel } from "./minimap-svg.js";
@@ -937,6 +938,15 @@ function buildBoardView(onFail, {
   // follows the OS, and the theme extensions toggle their marker classes on <html>/<body>).
   let repaintItemStyles = () => {};
   let themeKey = null;
+  let themeFollow = null;
+  try {
+    themeFollow = createThemeFollow({
+      doc,
+      root,
+      timers,
+      getMode: () => (setting("theme", "follow-roam") === "plexus" ? "plexus" : "follow-roam"),
+    });
+  } catch { themeFollow = null; }
   // G2. One dark-mode class for PDF pages. The filter itself lives in CSS and only runs while the board is dark.
   const applyPdfDark = () => {
     const want = pdfDarkClass(readSetting("pdf-dark"));
@@ -948,6 +958,7 @@ function buildBoardView(onFail, {
     root.classList.toggle("pxd-root--light", !dark && isLightHost(mountEl, doc, globalThis.window));
     applyPdfDark();
     const hl = syncBoardHighlighter(doc, root);
+    try { themeFollow?.apply?.(); } catch { /* theme */ }
     // Cards repaint only when the dark flag or the highlighter flips, not on every html/body class change.
     const key = `${dark}|${hl}`;
     const flipped = themeKey !== null && key !== themeKey;
@@ -1432,6 +1443,11 @@ function buildBoardView(onFail, {
     () => root.remove(),
   );
   let itemsR = null;
+  let notePdfMeta = () => "";
+  let pdfDisplayTitle = (card) => {
+    const title = typeof card?.title === "string" ? card.title.trim() : "";
+    return title && title !== "PDF" && !title.startsWith("{{") ? title : "PDF";
+  };
   itemsR = createItemRenderer({
     doc,
     host,
@@ -1478,6 +1494,7 @@ function buildBoardView(onFail, {
     onHighlightNote: (uid) => { void openHighlightNote(uid); },
     interopOn: () => readSetting("interop") !== false,
     coverImage: (url) => coverImageFor(url),
+    pdfMetaTitle: (url) => notePdfMeta(url),
     readingUid: () => readingCard,
     onPdfOpenRequest: (uid) => { try { itemsR.openPdf?.(uid); } catch { /* host */ } },
     onHighlightHover: (uid, on) => { try { flashPaneMarks(uid, on); } catch { /* pane */ } },
@@ -1495,7 +1512,7 @@ function buildBoardView(onFail, {
         blockUid: detail.blockUid,
         page: detail.page,
         highlightUid: detail.highlightUid,
-        title: cover?.title || "",
+        title: pdfDisplayTitle(board()?.items.get(detail.cardUid || "") || { string: detail.source || "" }, detail.source || ""),
         source: detail.source || "",
         pageUid: cover?.pageUid || "",
       });
@@ -1530,15 +1547,12 @@ function buildBoardView(onFail, {
     storage,
     cards: () => [...(board()?.items.values() || [])].filter((it) => it?.kind === "pdf"),
     placed: () => [...(board()?.items.values() || [])],
-    titleOf: (card) => {
-      // A PDF nobody has highlighted has no :pdf/url page; its cover title is a storage path.
-      // Name it by the page that holds the PDF block instead.
-      let cover = null;
-      try { cover = host?.pdfCover?.(pdfSourceOfItem(card)); } catch { cover = null; }
-      if (cover?.pageUid && cover.title) return cover.title;
-      let page = "";
-      try { page = host?.pageTitleOf?.(card?.target?.uid || card?.uid) || ""; } catch { page = ""; }
-      return page || cover?.title || "PDF";
+    titleOf: (card) => pdfDisplayTitle(card),
+    coverSrc: (detail) => {
+      const url = pdfMacroUrl(detail?.source || "");
+      if (!url) return "";
+      const face = coverImageFor(url);
+      return face?.state === "ready" && face.src ? face.src : "";
     },
     onClose: () => { itemsR?.closeEmbed?.(); },
     onSwitch: (uid) => { itemsR?.openPdf?.(uid); },
@@ -1592,12 +1606,62 @@ function buildBoardView(onFail, {
   // global with a worker configured, draws page 1 without a reader. Otherwise the hidden mount does.
   let firstPage = null;
   let pdfjsProbe = null;
+  let pdfMeta = null;
   const probePdfjs = () => {
     if (pdfjsProbe) return pdfjsProbe;
     const found = detectPdfjs(win);
     pdfjsProbe = { found: Boolean(found), key: found?.key || "", version: found?.version || "", workerReady: Boolean(found?.workerReady) };
-    if (found && found.workerReady) firstPage = createFirstPageRenderer({ doc, lib: found.lib, timers: warmTimers });
+    if (found && found.workerReady) {
+      firstPage = createFirstPageRenderer({ doc, lib: found.lib, timers: warmTimers });
+      pdfMeta = createPdfMetaLookup({ lib: found.lib });
+    }
     return pdfjsProbe;
+  };
+  const aliasOfCard = (card) => {
+    const title = typeof card?.title === "string" ? card.title.trim() : "";
+    if (!title || title === "PDF" || title.startsWith("{{") || title.startsWith("((")) return "";
+    return title;
+  };
+  const textOfCard = (card, src) => {
+    const raw = typeof card?.string === "string" ? card.string.trim() : "";
+    const body = raw || (typeof src === "string" ? src.trim() : "");
+    if (!body || body.startsWith("{{") || body.startsWith("((")) return "";
+    return body;
+  };
+  notePdfMeta = (url) => {
+    const key = typeof url === "string" ? url.trim() : "";
+    if (!key) return "";
+    try { probePdfjs(); } catch { return ""; }
+    if (!pdfMeta) return "";
+    const known = pdfMeta.title(key) || "";
+    const job = known ? null : pdfMeta.want(key);
+    if (job && typeof job.then === "function") {
+      job.then((got) => {
+        if (disposed || !got) return;
+        try { itemsR?.repaintStyles?.(); } catch { /* paint */ }
+        try {
+          if (readPane?.isOpen?.() !== true || typeof readPane.setTitle !== "function") return;
+          const card = board()?.items.get(readPane.cardUid?.() || "");
+          if (card) readPane.setTitle(pdfDisplayTitle(card));
+        } catch { /* title */ }
+      }).catch(() => {});
+    }
+    return known;
+  };
+  pdfDisplayTitle = (card, source) => {
+    const src = typeof source === "string" && source ? source : pdfSourceOfItem(card);
+    const url = pdfMacroUrl(src);
+    const metadataTitle = url ? notePdfMeta(url) : "";
+    let cover = null;
+    try { cover = src ? host?.pdfCover?.(src) : null; } catch { cover = null; }
+    return coverModel({
+      metadataTitle,
+      alias: aliasOfCard(card),
+      text: textOfCard(card, src),
+      title: typeof cover?.title === "string" ? cover.title : "",
+      url: (typeof cover?.url === "string" && cover.url) || url,
+      count: cover?.count,
+    }).title;
   };
   const ensurePdfWarm = () => {
     if (pdfWarm) return pdfWarm;
@@ -1654,9 +1718,22 @@ function buildBoardView(onFail, {
     }
     return ticks.map((tick, i) => (pages[i] != null ? { ...tick, page: pages[i] } : tick));
   };
-  const presentFace = (url, face) => {
-    if (!face || face.state === "loading") return { state: "loading" };
+  const sharpFaces = new Map();
+  let sharpTimer = null;
+  const sharpOf = (url, face) => {
+    const sharp = sharpFaces.get(url);
+    if (!sharp?.src || !(Number(sharp.w) > Number(face?.w || 0))) return face;
     return {
+      ...face,
+      state: face?.state === "loading" || !face?.state ? "ready" : face.state,
+      src: sharp.src,
+      w: sharp.w,
+      h: sharp.h ?? face?.h ?? null,
+    };
+  };
+  const presentFace = (url, face) => {
+    if (!face || face.state === "loading") return sharpOf(url, { state: "loading", w: face?.w ?? null });
+    return sharpOf(url, {
       state: face.state,
       src: face.src || "",
       w: face.w ?? null,
@@ -1664,7 +1741,7 @@ function buildBoardView(onFail, {
       ticks: ticksFor(url, face.pageCount),
       lastPage: face.lastPage ?? null,
       pageCount: face.pageCount ?? null,
-    };
+    });
   };
   const imageOfCover = (record) => {
     if (!record || typeof record !== "object") return null;
@@ -1714,6 +1791,7 @@ function buildBoardView(onFail, {
           : emptyFace("error", record));
       }
       if (!disposed) itemsR.repaintStyles();
+      scheduleSharpCovers();
     }).catch(() => {
       if (disposed || coverGen.get(url) !== gen) return;
       coverFaces.set(url, emptyFace("none", null));
@@ -1724,10 +1802,90 @@ function buildBoardView(onFail, {
     const key = coverKey(url);
     if (!key) return null;
     const face = coverFaces.get(key);
-    if (face?.state === "loading") return { state: "loading" };
+    const sharp = sharpFaces.get(key);
+    if (face?.state === "loading") {
+      if (sharp?.src) return { state: "ready", src: sharp.src, w: sharp.w, h: sharp.h ?? null };
+      return { state: "loading" };
+    }
     if (face) return presentFace(key, face);
     loadCover(key);
+    if (sharp?.src) return { state: "ready", src: sharp.src, w: sharp.w, h: sharp.h ?? null };
     return { state: "loading" };
+  };
+  const revokeSharp = (src) => {
+    if (typeof src === "string" && src.startsWith("blob:")) {
+      try { globalThis.URL?.revokeObjectURL?.(src); } catch { /* gone */ }
+    }
+  };
+  const refreshSharpCovers = () => {
+    sharpTimer = null;
+    if (disposed || gesturing) return;
+    try { probePdfjs(); } catch { return; }
+    if (!firstPage) return;
+    if (firstPage.busy()) {
+      sharpTimer = timers.later(() => refreshSharpCovers(), 400);
+      return;
+    }
+    const dpr = Number(win?.devicePixelRatio) > 0 ? Number(win.devicePixelRatio) : 1;
+    const zoom = Number(vp?.zoom) > 0 ? Number(vp.zoom) : 1;
+    let picked = null;
+    for (const item of board()?.items.values() || []) {
+      if (!item || item.kind !== "pdf" || item.collapsed) continue;
+      const url = coverUrlOf(item);
+      if (!url || !firstPageAllowed(url)) continue;
+      const rect = rects().get(item.uid);
+      if (!rect) continue;
+      const sharp = sharpFaces.get(url);
+      const stored = coverFaces.get(url);
+      const coverW = sharp?.w || stored?.w || COVER_MAX_W;
+      const plan = sharpCoverPlan({ cardW: rect.w, zoom, dpr, coverW });
+      if (!plan) continue;
+      picked = { url, maxW: plan.maxW };
+      break;
+    }
+    if (!picked) return;
+    Promise.resolve(firstPage.render({ url: picked.url, maxW: picked.maxW })).then((result) => {
+      if (disposed) {
+        if (result?.blob) return;
+        return;
+      }
+      if (!result?.blob || typeof globalThis.URL?.createObjectURL !== "function") {
+        const prev = sharpFaces.get(picked.url);
+        sharpFaces.set(picked.url, { src: prev?.src || "", w: picked.maxW, h: prev?.h || 0, failed: true });
+        scheduleSharpCovers();
+        return;
+      }
+      let src = "";
+      try { src = globalThis.URL.createObjectURL(result.blob); } catch { src = ""; }
+      if (!src) {
+        sharpFaces.set(picked.url, { src: "", w: picked.maxW, failed: true });
+        scheduleSharpCovers();
+        return;
+      }
+      if (disposed) { revokeSharp(src); return; }
+      const prev = sharpFaces.get(picked.url);
+      if (prev?.src && prev.src !== src) revokeSharp(prev.src);
+      // Record the size we asked for. A render that comes back smaller must not
+      // be queued again, or each new blob rebuilds the card and drops the flipper.
+      const drawn = Number(result.w) > 0 ? Number(result.w) : 0;
+      sharpFaces.set(picked.url, { src, w: Math.max(drawn, picked.maxW), h: result.h || 0, failed: false });
+      try { itemsR?.repaintStyles?.(); } catch { /* paint */ }
+      try { syncPdfFlip?.(); } catch { /* flip follows the new paper */ }
+      scheduleSharpCovers();
+    }).catch(() => {
+      if (disposed) return;
+      const prev = sharpFaces.get(picked.url);
+      sharpFaces.set(picked.url, { src: prev?.src || "", w: picked.maxW, h: prev?.h || 0, failed: true });
+      scheduleSharpCovers();
+    });
+  };
+  const scheduleSharpCovers = () => {
+    if (disposed || sharpTimer) return;
+    sharpTimer = timers.later(() => {
+      sharpTimer = null;
+      if (disposed || gesturing) return;
+      refreshSharpCovers();
+    }, 250);
   };
   const dropCover = (url) => {
     const key = coverKey(typeof url === "string" ? url : "");
@@ -2480,6 +2638,7 @@ function buildBoardView(onFail, {
       refreshBadges();
       refreshThumbnails();
       pdfFlip?.settle?.();
+      scheduleSharpCovers();
     }, RESUME_MS);
   };
   const refreshThumbnails = () => {
@@ -3035,6 +3194,7 @@ function buildBoardView(onFail, {
     root.classList.toggle("pxd-look--flat", setting("look-canvas", "dots") === "flat-grey");
     root.classList.toggle("pxd-look--pastel", setting("look-sections", "none") === "pastel");
     root.classList.toggle("pxd-look--tint", setting("look-highlights", "bar") === "tint");
+    try { themeFollow?.apply?.(); } catch { /* theme */ }
   };
   const applyMotion = () => {
     applyMotionClasses(root, currentMotion());
@@ -5123,6 +5283,7 @@ function buildBoardView(onFail, {
           updateBackToContent();
           refreshBadges();
           considerCoverWarm();
+          scheduleSharpCovers();
         }, RESUME_MS);
       }
     },
@@ -6304,6 +6465,7 @@ function buildBoardView(onFail, {
   try {
     if (motionMq?.addEventListener) listen(motionMq, "change", () => { if (!disposed) applyMotion(); });
   } catch { /* no matchMedia */ }
+  try { themeFollow?.start?.(); } catch { /* theme */ }
   routeOff = watchRouteExit({ boardUid: routeUid, onExit: () => { if (isFullscreen) requestFullscreen(false); }, win });
 
   // ------------------------------------------------------------ render frame
@@ -7037,6 +7199,13 @@ function buildBoardView(onFail, {
       step(() => presenter.dispose());
       step(() => clip.dispose());
       step(() => { try { pdfWarm?.cancelAll?.(); } catch { /* warm */ } });
+      step(() => {
+        for (const face of sharpFaces.values()) revokeSharp(face?.src);
+        sharpFaces.clear();
+        sharpTimer?.();
+        sharpTimer = null;
+      });
+      step(() => { try { themeFollow?.stop?.(); } catch { /* theme */ } });
       step(() => { if (coverWarmWait) { coverWarmWait(); coverWarmWait = null; } });
       step(() => readPane?.dispose?.());
       step(() => itemsR.dispose());

@@ -2,7 +2,7 @@
 // page to an offscreen canvas. Everything is behind detection; a missing or unready pdf.js resolves null
 // and the hidden-reader warm (pdf-warm.js) takes over. No graph write, no console, no document listener.
 
-import { COVER_MAX_W, isBlankCanvas, scaleBox } from "../model/pdf-cover.js";
+import { COVER_MAX_W, isBlankCanvas, scaleBox, sharpBox } from "../model/pdf-cover.js";
 
 export const FIRST_PAGE_TIMEOUT_MS = 8000;
 export const FIRST_PAGE_JPEG = 0.72;
@@ -100,7 +100,10 @@ export function createFirstPageRenderer({ doc, lib, timers, now } = {}) {
       const page = await Promise.race([pdf.getPage(1), timeout]);
       if (timedOut || !page || typeof page.getViewport !== "function") { destroy(); count.failed += 1; return null; }
       const base = page.getViewport({ scale: 1 });
-      const box = scaleBox(base?.width, base?.height, maxW);
+      const pageW = Number(base?.width) || 0;
+      // A cover stays inside the page's own pixel size. A sharp pass may scale
+      // a PDF-point viewport up so a wide card is not a blurry 595px bitmap.
+      const box = maxW > pageW ? sharpBox(pageW, base?.height, maxW) : scaleBox(pageW, base?.height, maxW);
       if (!box) { destroy(); count.failed += 1; return null; }
       const scale = box.w / Number(base.width);
       const viewport = page.getViewport({ scale });
@@ -134,4 +137,69 @@ export function createFirstPageRenderer({ doc, lib, timers, now } = {}) {
     busy: () => busy,
     report: () => ({ ...count }),
   };
+}
+
+function metaTitleOf(meta) {
+  const info = meta && typeof meta === "object" && meta.info && typeof meta.info === "object" ? meta.info : meta;
+  const title = typeof info?.Title === "string" ? info.Title.trim() : "";
+  return title;
+}
+
+// A second document, not the page-1 canvas lock. The cache is per url, including an empty title.
+// want() returns null when the url is cached or disallowed, and the same promise when a fetch is already running.
+export function createPdfMetaLookup({ lib } = {}) {
+  const cache = new Map();
+  const inflight = new Map();
+
+  function title(url) {
+    const key = typeof url === "string" ? url.trim() : "";
+    return cache.has(key) ? cache.get(key) : "";
+  }
+
+  async function fetchOne(url) {
+    let task = null;
+    let pdf = null;
+    const destroy = () => {
+      try { pdf?.destroy?.(); } catch { /* gone */ }
+      try { task?.destroy?.(); } catch { /* gone */ }
+      pdf = null;
+      task = null;
+    };
+    try {
+      if (!lib || typeof lib.getDocument !== "function") return "";
+      task = lib.getDocument({ url });
+      const loaded = task && typeof task.promise?.then === "function" ? task.promise : Promise.resolve(task);
+      pdf = await loaded;
+      if (!pdf || typeof pdf.getMetadata !== "function") { destroy(); return ""; }
+      const meta = await pdf.getMetadata();
+      const got = metaTitleOf(meta);
+      destroy();
+      return got;
+    } catch {
+      destroy();
+      return "";
+    }
+  }
+
+  function want(url) {
+    const key = typeof url === "string" ? url.trim() : "";
+    if (!key || !firstPageAllowed(key) || !lib || typeof lib.getDocument !== "function") return null;
+    if (cache.has(key)) return null;
+    const pending = inflight.get(key);
+    if (pending) return pending;
+    const job = fetchOne(key).then((got) => {
+      const text = typeof got === "string" ? got : "";
+      cache.set(key, text);
+      inflight.delete(key);
+      return text;
+    }, () => {
+      cache.set(key, "");
+      inflight.delete(key);
+      return "";
+    });
+    inflight.set(key, job);
+    return job;
+  }
+
+  return { title, want };
 }

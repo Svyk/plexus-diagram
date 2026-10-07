@@ -46,10 +46,18 @@
   padding: 0 !important;
   border: 0;
   background: transparent;
-  line-height: 1.4 !important;
+  line-height: 19.5px !important;
   white-space: pre-wrap;
   overflow-wrap: break-word;
   word-break: break-word;
+}
+
+/* The editor replaces the task row. --pxd-task-pad is the resting text's inset (checkbox, and a
+   status chip when one is showing). 22px is the checkbox plus its 6px gap when the measure missed.
+   Counter-scale multiplies by --pxd-ed-z so the inset stays the same on screen. */
+.pxd-root .pxd-item.pxd-item--task.pxd-item--editing:not(.pxd-item--page) > .pxd-item__body > .pxd-item__editor:not(.pxd-page-edit) textarea.rm-block-input,
+.pxd-root .pxd-item.pxd-item--task.pxd-item--editing:not(.pxd-item--page) > .pxd-item__body > .pxd-item__editor:not(.pxd-page-edit) textarea.rm-block__input {
+  padding-left: calc(var(--pxd-task-pad, 22px) * var(--pxd-ed-z, 1)) !important;
 }
 
 /* Counter-scale lays the editor out at screen size from the padding edge (left/top 0, width z*100%).

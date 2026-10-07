@@ -5,7 +5,6 @@ import test, { afterEach } from "node:test";
 
 import { buildBoard, worldRects } from "../src/model/board.js";
 import { UNMOUNT_GRACE_MS } from "../src/view/offscreen.js";
-import { PDF_READER_H, PDF_READER_W } from "../src/model/pdf.js";
 import { createItemRenderer } from "../src/view/cards.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
 
@@ -76,7 +75,7 @@ test("A6/D5 a re-sync keeps the offscreen, future, fresh and pulse classes on a 
   } finally { t.restore(); }
 });
 
-test("B1 an open PDF reader is culled by its 640x820 box, not by the card rect", () => {
+test("B1 an open PDF reader is culled by the card rect", () => {
   const t = mk();
   try {
     const board = buildBoard(raw([child("pdfcard01", PDF, 0, { ":x": 0, ":y": 0, ":w": 280, ":h": 160 })]));
@@ -84,9 +83,11 @@ test("B1 an open PDF reader is culled by its 640x820 box, not by the card rect",
     t.r.sync({ board, rects, structural: true });
     t.r.setLod("detail", 1);
     t.r.openPdf("pdfcard01");
-    assert.deepEqual(t.r.drawnRect("pdfcard01"), { ...rects.get("pdfcard01"), w: PDF_READER_W, h: PDF_READER_H });
-    // The camera sees only the lower part of the reader; the 280x160 card is out of it.
+    assert.deepEqual(t.r.drawnRect("pdfcard01"), rects.get("pdfcard01"));
+    assert.equal(t.r.shellOf("pdfcard01").style.width, "280px");
     t.r.scheduleContent({ visibleRect: { x: 300, y: 300, w: 200, h: 200 }, zoom: 1, tier: "detail" });
+    assert.equal(t.r.shellOf("pdfcard01").classList.contains("pxd-item--offscreen"), true);
+    t.r.scheduleContent({ visibleRect: { x: -20, y: -20, w: 400, h: 300 }, zoom: 1, tier: "detail" });
     assert.equal(t.r.shellOf("pdfcard01").classList.contains("pxd-item--offscreen"), false);
     t.flush();
     assert.equal(t.r.mountedUids().includes("pdfcard01"), true);

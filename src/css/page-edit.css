@@ -106,17 +106,25 @@
   box-sizing: border-box;
 }
 
-/* Bullet stays in the DOM (Roam drag and zoom). Zero width so the text does not shift. */
+/* Bullet and caret stay in the DOM (Roam drag, zoom, fold). They share the 16px gutter the text already leaves. */
 .pxd-root .pxd-item.pxd-item--page .pxd-page-edit .rm-api-render--block > .rm-block > .rm-block-main > .controls,
-.pxd-root .pxd-item--page .pxd-page-edit .rm-block-main > .controls {
+.pxd-root .pxd-item.pxd-item--page .pxd-page-edit .rm-block-main > .controls,
+.pxd-root .pxd-item.pxd-item--page .pxd-page-edit .rm-block-main > .rm-block__controls {
+  position: absolute !important;
+  left: 0;
+  top: 0;
   display: flex;
-  flex: 0 0 0 !important;
-  width: 0 !important;
+  align-items: center;
+  justify-content: flex-start;
+  flex: 0 0 16px !important;
+  width: 16px !important;
   min-width: 0 !important;
-  max-width: 0 !important;
+  max-width: 16px !important;
+  height: 22px;
   margin: 0 !important;
   padding: 0 !important;
   overflow: hidden;
+  z-index: 1;
 }
 
 .pxd-root .pxd-item--page .pxd-page-edit .rm-bullet {
@@ -157,6 +165,13 @@
   border-left: 1px solid var(--pxd-border);
 }
 
+.pxd-root .pxd-item--page .pxd-page-edit .rm-block > .rm-block-children:not(.rm-level-0) {
+  margin-left: 12px;
+  padding-left: 6px;
+  padding-right: 0;
+  border-left: 1px solid var(--pxd-border);
+}
+
 /* Roam pulls the page's top level left to line bullets up with its own title. The card has no Roam title. */
 .pxd-root .pxd-item--page .pxd-page-edit .rm-block-children.rm-level-0 {
   margin-left: 0 !important;
@@ -172,6 +187,8 @@
   padding: 0 0 0 16px !important;
   min-height: 22px !important;
   border: 0;
+  background: transparent !important;
+  box-shadow: none !important;
   font-family: inherit;
   font-size: 13px !important;
   font-weight: inherit;
@@ -222,7 +239,7 @@
   width: 16px !important;
   max-width: 16px !important;
   height: 22px;
-  overflow: visible;
+  overflow: hidden;
   z-index: 1;
 }
 
@@ -248,6 +265,24 @@
 .pxd-root .pxd-item--page .pxd-page-edit .rm-block-main:hover > .controls .rm-bullet__inner,
 .pxd-root .pxd-item--page .pxd-page-edit .rm-block-main:hover > .rm-block__controls .rm-bullet__inner {
   opacity: 0.55;
+}
+
+/* A focused row's ▾ is a sibling of the text, wider than the gutter. Park it in the same 16px. */
+.pxd-root .pxd-item--page .pxd-page-edit .rm-block-main > .rm-caret,
+.pxd-root .pxd-item--page .pxd-page-edit .rm-block-main > .block-expand,
+.pxd-root .pxd-item--page .pxd-page-edit .rm-block-main > .rm-block__toggle,
+.pxd-root .pxd-item--page .pxd-page-edit .rm-block-main > .controls .rm-caret,
+.pxd-root .pxd-item--page .pxd-page-edit .rm-block-main > .rm-block__controls .rm-caret,
+.pxd-root .pxd-item--page .pxd-page-edit .rm-block-main > .controls button,
+.pxd-root .pxd-item--page .pxd-page-edit .rm-block-main > .rm-block__controls button {
+  flex: 0 0 8px;
+  width: 8px !important;
+  min-width: 0 !important;
+  max-width: 8px !important;
+  height: 16px;
+  margin: 0 !important;
+  padding: 0 !important;
+  overflow: hidden;
 }
 
 /* G1. The separator still flex-grows and the reference-count slot still takes a column.

@@ -428,6 +428,17 @@ body.bt-theme-dark .pxd-root.pxd-pdf-dark--invert .pxd-pdf-img {
   filter: invert(.9) hue-rotate(180deg);
 }
 
+/* The in-card reader fills the card. Roam's viewer must not keep its own width. */
+.pxd-root .pxd-item--pdf .pxd-pdf-reader,
+.pxd-root .pxd-item--pdf .pxd-pdf-reader .rm-pdf-container,
+.pxd-root .pxd-item--pdf .pxd-pdf-reader .rm-pdf-viewer-container,
+.pxd-root .pxd-item--pdf .pxd-pdf-reader .PdfHighlighter {
+  width: 100% !important;
+  max-width: none !important;
+  height: 100%;
+  min-width: 0;
+}
+
 .pxd-root.pxd-root--dark.pxd-pdf-dark--dim .pxd-pdf-paper,
 .pxd-root.pxd-root--dark.pxd-pdf-dark--invert .pxd-pdf-paper,
 .bp3-dark .pxd-root.pxd-pdf-dark--dim .pxd-pdf-paper,

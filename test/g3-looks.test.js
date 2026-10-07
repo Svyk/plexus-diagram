@@ -132,7 +132,7 @@ test("look CSS covers the light canvas and the dark border-and-fill", () => {
   assert.equal(css.includes("prefers-color-scheme"), false);
   assert.match(css, /\.pxd-look--flat[\s\S]*#f2f2f0/);
   assert.match(css, /\.pxd-look--flat \.pxd-grid \{[^}]*background-image:\s*none/);
-  assert.match(css, /color-mix\(in srgb, var\(--pxd-fill\) 14%, var\(--pxd-bg\)\)/);
+  assert.match(css, /color-mix\(in srgb, var\(--pxd-fill\) 24%, var\(--pxd-bg\)\)/);
   assert.match(css, /\.pxd-look--tint \.pxd-highlight-bar \{[^}]*width:\s*0/);
   for (const name of ["flat", "pastel", "tint"]) {
     assert.match(css, new RegExp(`\\.bp3-dark \\.pxd-root\\.pxd-look--${name}`));

@@ -4,6 +4,7 @@ const PDF_MACRO = "{{[[pdf]]:";
 
 export const PDF_READER_W = 640;
 export const PDF_READER_H = 820;
+export const PDF_CARD_MAX = 4000;
 
 export function pdfMacroUrl(s) {
   if (typeof s !== "string") return "";
@@ -37,13 +38,51 @@ function fileName(url) {
   return seg.trim();
 }
 
+// A Roam upload page is often titled with its storage path or a bare uid. Those are not names.
+export function isStorageTitle(value) {
+  const text = typeof value === "string" ? value.trim() : "";
+  if (!text) return true;
+  if (text.startsWith("{{") || text.includes("{{[[")) return true;
+  if (/imgs\/app\//i.test(text)) return true;
+  const last = text.split("/").filter(Boolean).pop() || text;
+  const bare = last.replace(/\.pdf$/i, "");
+  if (text.includes("/") && /^[A-Za-z0-9_-]{9,}$/.test(bare) && !/\.pdf$/i.test(last)) return true;
+  if (!text.includes(" ") && /^[A-Za-z0-9_-]{9,}$/.test(text) && !/\.pdf$/i.test(text)) return true;
+  return false;
+}
+
+function titleText(value) {
+  const text = typeof value === "string" ? value.trim() : "";
+  if (!text || text === "PDF" || isStorageTitle(text)) return "";
+  return text;
+}
+
+// metadata Title, then the block alias, then the block text, then a human page title, then the file name.
+export function pdfTitlePlan(source) {
+  const src = source && typeof source === "object" ? source : {};
+  const named = titleText(src.metadataTitle) || titleText(src.alias) || titleText(src.text) || titleText(src.title);
+  if (named) return named;
+  const file = titleText(fileName(src.url));
+  return file || "PDF";
+}
+
 export function coverModel(source) {
   const src = source && typeof source === "object" ? source : {};
-  const pageTitle = typeof src.title === "string" ? src.title.trim() : "";
-  const title = pageTitle || fileName(src.url) || "PDF";
+  const title = pdfTitlePlan(src);
   const count = typeof src.count === "number" && Number.isFinite(src.count) && src.count >= 1 ? src.count : 0;
   const label = count === 1 ? "1 highlight" : `${count} highlights`;
   return { title, count, label };
+}
+
+// Cap a PDF card. Does not raise a minimum; the resize gesture already applied one.
+export function clampPdfCard(rect) {
+  const src = rect && typeof rect === "object" ? rect : {};
+  const out = { ...src };
+  const w = Number(src.w);
+  const h = Number(src.h);
+  if (Number.isFinite(w)) out.w = Math.min(PDF_CARD_MAX, w);
+  if (Number.isFinite(h)) out.h = Math.min(PDF_CARD_MAX, h);
+  return out;
 }
 
 // FAST-9. Posters off means the caller mounts the embed. coverModel stays {title, count, label}.

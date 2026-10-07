@@ -12,7 +12,6 @@ import { tipIdForClass } from "./tooltip-text.js";
 const CTX_GAP = 12;
 const CTX_EDGE_CLEARANCE = 28;
 const CTX_MARGIN = 8;
-const CTX_MIN_WIDTH = 180;
 const TOAST_MS = 6000;
 const MINIMAP_W = 180;
 const MINIMAP_H = 120;
@@ -818,12 +817,19 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
     const railClear = railBox?.width ? Math.max(0, rootRect.right - railBox.left) : 0;
     const panelEl = root.querySelector?.(".pxd-panel");
     const pr = panelEl && panelEl.style?.display !== "none" ? panelEl.getBoundingClientRect() : null;
-    const room = pr?.width ? Math.min(W, pr.left - (rootRect.left || 0)) : W;
-    // A bar wider than the space left of the panel wraps into more rows instead of floating over the panel.
-    ctx.style.maxWidth = pr?.width && room > 0 ? `${Math.max(CTX_MIN_WIDTH, Math.round(room - 2 * CTX_MARGIN))}px` : "";
+    // The format bar is placed with left, so a CSS right offset would crush it. The open
+    // reader is the same kind of right-edge obstacle as the side panel.
+    const readEl = root.classList?.contains?.("pxd-root--read") ? root.querySelector?.(".pxd-read") : null;
+    const readBox = readEl ? readEl.getBoundingClientRect() : null;
+    const stops = [];
+    if (pr?.width) stops.push(pr.left - (rootRect.left || 0));
+    if (readBox?.width) stops.push(readBox.left - (rootRect.left || 0));
+    const room = stops.length ? Math.min(W, ...stops) : W;
+    // A bar wider than the space left of the panel or the reader wraps into more rows instead of covering them.
+    ctx.style.maxWidth = stops.length && room > 2 * CTX_MARGIN ? `${Math.round(room - 2 * CTX_MARGIN)}px` : "";
     const barW = ctx.offsetWidth || 320;
     const barH = ctx.offsetHeight || 36;
-    const rightLimit = pr?.width ? Math.max(barW + CTX_MARGIN, room) : Math.max(barW + CTX_MARGIN, W - railClear);
+    const rightLimit = stops.length ? room : Math.max(barW + CTX_MARGIN, W - railClear);
     let top = a.rect.y - gap - barH;
     if (top < topLimit) top = a.rect.y + a.rect.h + gap; // flip below near the top edge
     if (top + barH > H - CTX_MARGIN && a.rect.y - gap - barH >= topLimit) top = a.rect.y - gap - barH;

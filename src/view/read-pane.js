@@ -153,6 +153,7 @@ export function createReadPane({
   cards,
   placed,
   titleOf,
+  coverSrc,
   createDrawer,
 } = {}) {
   const el = (tag, cls, parent) => {
@@ -187,7 +188,8 @@ export function createReadPane({
   hlBtn.setAttribute("aria-pressed", "false");
   el("span", "pxd-read__hicon", hlBtn).textContent = "☰";
   const countNode = el("span", "pxd-read__count", hlBtn);
-  countNode.textContent = "0";
+  countNode.textContent = "";
+  countNode.hidden = true;
   const toolsBtn = el("button", "pxd-read__tools pxd-chrome", head);
   toolsBtn.type = "button";
   toolsBtn.textContent = "⚙";
@@ -344,6 +346,44 @@ export function createReadPane({
     (clock().clearTimeout || globalThis.clearTimeout)(id);
   };
   const cancelPageWait = () => { if (pageWait) { cancelLater(pageWait); pageWait = null; } };
+  let holdImg = null;
+  let holdWait = null;
+  let holdGen = 0;
+  const dropHold = () => {
+    holdGen += 1;
+    if (holdWait != null) { cancelLater(holdWait); holdWait = null; }
+    try { holdImg?.remove?.(); } catch { /* gone */ }
+    holdImg = null;
+  };
+  const pagePainted = () => {
+    const nodes = live.querySelectorAll?.(".rm-pdf-container canvas, .page canvas, canvas") || [];
+    for (const node of nodes) {
+      const box = node.getBoundingClientRect?.();
+      const w = Number(node.width) || Number(box?.width) || 0;
+      if (w > 0) return true;
+    }
+    return false;
+  };
+  const paintHold = (src) => {
+    dropHold();
+    const url = typeof src === "string" ? src.trim() : "";
+    if (!url) return;
+    const img = el("img", "pxd-read__hold", stage);
+    img.alt = "";
+    img.setAttribute("aria-hidden", "true");
+    img.src = url;
+    holdImg = img;
+    const gen = holdGen;
+    const started = Date.now();
+    const tick = () => {
+      holdWait = null;
+      if (gen !== holdGen || !openFlag) return;
+      if (pagePainted()) { dropHold(); return; }
+      if (Date.now() - started > 20000) return;
+      holdWait = later(tick, 150);
+    };
+    holdWait = later(tick, 150);
+  };
   const jumpPageWhenReady = (page, after) => {
     cancelPageWait();
     const gen = pageGen + 1;
@@ -382,6 +422,9 @@ export function createReadPane({
     clearLive();
     liveBlock = blockUid;
     try { host?.renderBlock?.(live, blockUid); } catch { /* host */ }
+    let src = "";
+    try { src = typeof coverSrc === "function" ? coverSrc(current) : ""; } catch { src = ""; }
+    if (typeof src === "string" && src) paintHold(src);
   };
   const cardTitle = (card) => {
     if (typeof titleOf === "function") {
@@ -1069,7 +1112,13 @@ export function createReadPane({
   };
   const paintCount = () => {
     const n = catalog.length;
-    countNode.textContent = String(n);
+    if (!n) {
+      countNode.textContent = "";
+      countNode.hidden = true;
+    } else {
+      countNode.hidden = false;
+      countNode.textContent = String(n);
+    }
     try { drawer?.setCount?.(n); } catch { /* drawer */ }
   };
   const paintDrawerPressed = () => {
@@ -1550,6 +1599,7 @@ export function createReadPane({
     cancelSettle();
     cancelFit();
     cancelMove();
+    dropHold();
     clearFlash();
     dropEnter();
     const notify = !opts || opts.notify !== false;
@@ -1642,6 +1692,13 @@ export function createReadPane({
     },
     isOpen: () => openFlag && Boolean(pane.isConnected),
     cardUid: () => current.cardUid || "",
+    setTitle(title) {
+      const text = typeof title === "string" && title.trim() ? title.trim() : "PDF";
+      current.title = text;
+      titleNode.textContent = text;
+      const options = switcher.querySelectorAll?.("option") || [];
+      for (const opt of options) if (opt.value === current.cardUid) opt.textContent = text;
+    },
     // P32-3 probe: which path fitted the page (viewer | steps | viewer+steps | none) and the presses it took.
     fitInfo: () => ({ path: fitState.path, clicks: fitState.clicks, done: fitDone, userZoomed }),
     element: () => pane,

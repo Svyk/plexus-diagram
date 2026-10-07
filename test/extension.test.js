@@ -61,7 +61,7 @@ test("settings panel follows spec section 6 ids, defaults and row types", () => 
     "toolbar-layout", "dock-position", "dock-style", "dock-labels", "chrome-density", "dock-options",
     "tooltips", "tooltip-delay", "task-tool", "task-chips", "task-default-project", "better-tasks", "card-chips", "empty-drag", "pdf-cover", "pdf-cover-warm", "highlight-open", "pdf-dark",
     "why-prompt", "resurface-intervals", "resurface", "regions-inline", "interop", "auto-enhance", "speed-log",
-    "look-canvas", "look-sections", "look-highlights",
+    "look-canvas", "look-sections", "look-highlights", "theme",
   ].sort());
   assert.equal(settingsDefaults()["auto-enhance"], true);
   assert.equal(settingsDefaults()["enter-in-card"], "newline");

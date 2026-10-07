@@ -26,7 +26,7 @@ import { regionRefModel } from "../model/region-card.js";
 import { imageRegionRows, regionBadge } from "../model/region-menu.js";
 import { renderRegionCard, thumbRequest } from "./region-card.js";
 import { copyDrawingPixels, renderDrawingCard } from "./drawing-card.js";
-import { PDF_READER_H, PDF_READER_W, coverModel, coverOuterBox, embedSplit, pdfMacroUrl, readerRule, writeReaderPage } from "../model/pdf.js";
+import { clampPdfCard, coverModel, coverOuterBox, embedSplit, pdfMacroUrl, readerRule, writeReaderPage } from "../model/pdf.js";
 import { paintPdfChipStrip } from "./pdf-chip-strip.js";
 import { guardCallback } from "../guard.js";
 import { notedSpeedFlags, parseSpeedFlags, SETTING_IDS } from "../settings.js";
@@ -677,6 +677,7 @@ export function createItemRenderer({
   onHighlightOpen = null,
   onHighlightNote = null,
   coverImage = null,
+  pdfMetaTitle = null,
   onPdfOpenRequest = null,
   onHighlightHover = null,
   onHighlightMenu = null,
@@ -1707,18 +1708,23 @@ export function createItemRenderer({
     if (rec.trailBadge.textContent !== text) rec.trailBadge.textContent = text;
   };
 
+  const shownRect = (uid, rect) => {
+    if (!rect) return rect;
+    const item = lastBoard?.items.get(uid);
+    if (item?.kind !== "pdf") return rect;
+    const capped = clampPdfCard(rect);
+    if (capped.w === rect.w && capped.h === rect.h) return rect;
+    return { ...rect, w: capped.w, h: capped.h };
+  };
   const position = (rec, rect) => {
     const prev = rec.rect;
     rec.rect = rect;
     // Same rect while editing: leave the first-frame lock alone. A later rect write must not put it back.
     if (editing?.uid === rec.uid && prev && prev.x === rect.x && prev.y === rect.y && prev.w === rect.w && prev.h === rect.h) return;
+    const shown = shownRect(rec.uid, rect);
     rec.el.style.transform = `translate(${rect.x}px, ${rect.y}px)`;
-    rec.el.style.width = `${rect.w}px`;
-    rec.el.style.height = `${rect.h}px`;
-    if (pdfReaderBox(rec.uid)) {
-      rec.el.style.width = `${PDF_READER_W}px`;
-      rec.el.style.height = `${PDF_READER_H}px`;
-    }
+    rec.el.style.width = `${shown.w}px`;
+    rec.el.style.height = `${shown.h}px`;
     // Editing pins height !important so height:auto cannot grow the card. A resize rewrites that pin.
     if (editing?.uid === rec.uid && rec.el.classList?.contains("pxd-item--editing") && rec.el.style?.height && rec.el.style.setProperty) {
       rec.el.style.setProperty("height", rec.el.style.height, "important");
@@ -2769,8 +2775,8 @@ export function createItemRenderer({
     if (onReadPane) return Boolean(item && !item.collapsed && item.kind === "pdf" && inlineUid === uid && lod === "detail");
     return Boolean(item && !item.collapsed && item.kind === "pdf" && pdfOpenUid === uid && lod === "detail");
   };
-  // The open reader is drawn 640x820 while the model keeps the card size. Culling and anchors use the drawn box.
-  const drawnRect = (uid, rect) => (rect && pdfReaderBox(uid) ? { ...rect, w: PDF_READER_W, h: PDF_READER_H } : rect);
+  // The open reader uses the card's own box, capped at PDF_CARD_MAX. Culling uses that box.
+  const drawnRect = (uid, rect) => shownRect(uid, rect);
   const pdfSourceOf = (item) => {
     if (item?.target?.kind === "block") {
       const text = host?.blockString?.(item.target.uid);
@@ -2789,21 +2795,40 @@ export function createItemRenderer({
       return null;
     }
   };
+  const humanAlias = (item) => {
+    const title = typeof item?.title === "string" ? item.title.trim() : "";
+    if (!title || title === "PDF" || title.startsWith("{{") || title.startsWith("((")) return "";
+    return title;
+  };
+  const humanText = (item) => {
+    const text = typeof item?.string === "string" ? item.string.trim() : "";
+    if (!text || text.startsWith("{{") || text.startsWith("((")) return "";
+    return text;
+  };
   const pdfCoverOf = (item) => {
     let cover = null;
     try { cover = host?.pdfCover?.(pdfSourceOf(item)); } catch { cover = null; }
-    const model = (!cover || typeof cover !== "object") ? coverModel({ count: 0 }) : cover;
-    return { ...model, image: coverImageOf(item) };
+    const url = pdfMacroUrl(pdfSourceOf(item));
+    let metadataTitle = "";
+    try {
+      const got = typeof pdfMetaTitle === "function" ? pdfMetaTitle(url) : "";
+      metadataTitle = typeof got === "string" ? got : "";
+    } catch { metadataTitle = ""; }
+    const model = coverModel({
+      metadataTitle,
+      alias: humanAlias(item),
+      text: humanText(item),
+      title: typeof cover?.title === "string" ? cover.title : "",
+      url: (typeof cover?.url === "string" && cover.url) || url,
+      count: cover?.count,
+    });
+    return { ...(cover && typeof cover === "object" ? cover : {}), ...model, image: coverImageOf(item) };
   };
   const applyPdfSize = (rec) => {
     if (!rec?.el || !rec.rect) return;
-    if (pdfReaderBox(rec.uid)) {
-      rec.el.style.width = `${PDF_READER_W}px`;
-      rec.el.style.height = `${PDF_READER_H}px`;
-      return;
-    }
-    rec.el.style.width = `${rec.rect.w}px`;
-    rec.el.style.height = `${rec.rect.h}px`;
+    const shown = shownRect(rec.uid, rec.rect);
+    rec.el.style.width = `${shown.w}px`;
+    rec.el.style.height = `${shown.h}px`;
   };
   const armPdfLiveWatch = () => {
     if (pdfLiveOff) return;
@@ -4668,6 +4693,13 @@ export function createItemRenderer({
     const rowOffset = clickedRow
       ? (Number(clickedRow.getBoundingClientRect?.().top) || 0) - (Number(rec.body.getBoundingClientRect?.().top) || 0)
       : null;
+    let taskPad = 0;
+    const taskLine = rec.body.querySelector?.(".pxd-item__taskline");
+    const taskText = taskLine?.querySelector?.(".pxd-item__tasktext");
+    if (taskLine && taskText) {
+      const delta = (Number(taskText.offsetLeft) || 0) - (Number(taskLine.offsetLeft) || 0);
+      if (delta > 1) taskPad = Math.round(delta);
+    }
     const ghost = el("div", "pxd-item__ghost");
     ghost.setAttribute("aria-hidden", "true");
     for (const node of [...(rec.body.children || [])]) ghost.append(node);
@@ -4676,6 +4708,7 @@ export function createItemRenderer({
     rec.contentKey = null;
     mounted.delete(uid);
     const editor = el("div", pageEdit ? "pxd-item__editor pxd-page-edit" : "pxd-item__editor", rec.body);
+    if (taskPad) editor.style.setProperty("--pxd-task-pad", `${taskPad}px`);
     // Rule 19.1: stop pointer/wheel at the overlay boundary BEFORE the synthetic focus click.
     for (const type of EDITOR_STOPPED) editor.addEventListener(type, stopEvent);
     editing = { uid, rec, editor, targetUid, item, ready: false, fadeCancel: null, releaseCancel: null };

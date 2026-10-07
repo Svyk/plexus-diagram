@@ -118,6 +118,23 @@
   cursor: text;
 }
 
+/* Roam's textarea paints a blue fill. The sticky body already has the rest padding, so the field is transparent. */
+.pxd-root .pxd-item--sticky .pxd-item__editor--sticky textarea,
+.pxd-root .pxd-item--sticky .pxd-item__editor--sticky .rm-block__input,
+.pxd-root .pxd-item--sticky .pxd-item__editor--sticky .rm-block-text {
+  box-sizing: border-box;
+  width: 100%;
+  margin: 0 !important;
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: inherit;
+  font: inherit;
+  font-size: var(--pxd-text-fs, 16px);
+  line-height: 1.4;
+}
+
 /* Minimized: the header only. The stored size is kept; the grips and ports go. */
 .pxd-root .pxd-item--sticky.pxd-item--min > .pxd-item__body,
 .pxd-root .pxd-item--sticky.pxd-item--min > .pxd-grip {

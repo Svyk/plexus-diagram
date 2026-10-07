@@ -33,6 +33,7 @@
 // Escape order: gesture, quick look, presentation, edit, focus, selection, popBoard, fullscreen.
 
 import { DEFAULT_BOARD_CARD, DEFAULT_SIZES, MIN_SIZES, STICKY_SIZE } from "../model/schema.js";
+import { clampPdfCard } from "../model/pdf.js";
 import { descendantsOf, findEdge, hitTest, itemsInPolygon, itemsInRect, outlineOrder, topLevelOf, boundsOf } from "../model/board.js";
 import { GRID_PITCH, nearestInDirection, nearestSide, snapMove, snapToGrid, zoomAt } from "../model/geometry.js";
 import { fingerPair, pinchViewport } from "../model/touch.js";
@@ -512,6 +513,11 @@ export function createInteractions({ actions, settings } = {}) {
       const next = { uid: g.uid, x: r0.x, y: r0.y, w: r0.w, h: r0.h };
       if (g.part === "corner" || g.part === "right") next.w = Math.max(min.w, r0.w + wdx);
       if (g.part === "corner" || g.part === "bottom") next.h = Math.max(min.h, r0.h + wdy);
+      if (item.kind === "pdf") {
+        const capped = clampPdfCard(next);
+        if (g.part === "corner" || g.part === "right") next.w = Math.max(min.w, capped.w);
+        if (g.part === "corner" || g.part === "bottom") next.h = Math.max(min.h, capped.h);
+      }
       g.rect = next;
       call("previewRects", [next]);
     }

@@ -3,11 +3,14 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  PDF_CARD_MAX,
   PDF_READER_H,
   PDF_READER_W,
+  clampPdfCard,
   coverModel,
   pdfMacroUrl,
   pdfPagePlan,
+  pdfTitlePlan,
   readerRule,
 } from "../src/model/pdf.js";
 import { mergePropsForWrite } from "../src/model/schema.js";
@@ -84,6 +87,23 @@ test("readerRule keeps the same uid open and closes the previous when another op
   assert.deepEqual(readerRule("", ""), { open: null, close: null });
   assert.equal(PDF_READER_W, 640);
   assert.equal(PDF_READER_H, 820);
+});
+
+test("pdfTitlePlan skips a storage path and prefers metadata, then alias, then text", () => {
+  assert.equal(pdfTitlePlan({ title: "imgs/app/Readwisenotes/UgDBF6x31a", url: "https://example.test/imgs/app/Readwisenotes/UgDBF6x31a" }), "PDF");
+  assert.equal(pdfTitlePlan({ title: "UgDBF6x31a", url: "https://example.test/file.pdf" }), "file");
+  assert.equal(pdfTitlePlan({
+    title: "imgs/app/Readwisenotes/UgDBF6x31a",
+    metadataTitle: "Nature methods",
+    alias: "Lab note",
+  }), "Nature methods");
+  assert.equal(pdfTitlePlan({ title: "UgDBF6x31a", alias: "Lab note" }), "Lab note");
+  assert.equal(pdfTitlePlan({ title: "imgs/app/Readwisenotes/UgDBF6x31a", text: "{{[[pdf]]: https://example.test/a.pdf}}" }), "PDF");
+  assert.equal(pdfTitlePlan({ title: "UgDBF6x31a", text: "A swollen culture" }), "A swollen culture");
+  assert.equal(pdfTitlePlan({ alias: "PDF", url: "https://example.test/papers/Note.pdf" }), "Note");
+  assert.equal(clampPdfCard({ x: 1, y: 2, w: 9000, h: 40 }).w, PDF_CARD_MAX);
+  assert.equal(clampPdfCard({ w: 220, h: 9000 }).h, PDF_CARD_MAX);
+  assert.deepEqual(clampPdfCard({ w: 220, h: 140 }), { w: 220, h: 140 });
 });
 
 test("mergePropsForWrite keeps :pdf-settings deep-equal when plexus is replaced", () => {

@@ -7,6 +7,7 @@ import test from "node:test";
 import { createCoverStore, COVER_DB, COVER_DB_VERSION, COVER_LS_CAP, COVER_LS_KEY, COVER_STORE } from "../src/host/cover-store.js";
 import {
   COVER_MAX_W,
+  SHARP_CAP,
   WARM_AFTER_MS,
   WARM_MAX,
   coverKey,
@@ -14,6 +15,8 @@ import {
   coverValid,
   densityTicks,
   scaleBox,
+  sharpBox,
+  sharpCoverPlan,
   warmPlan,
 } from "../src/model/pdf-cover.js";
 
@@ -123,6 +126,12 @@ test("coverValid rejects a hash mismatch and a record with no image", () => {
   assert.equal(coverValid(undefined, ""), false);
 });
 
+test("sharpBox scales a PDF-point page up to the card and never past 1600", () => {
+  assert.deepEqual(sharpBox(595, 791, 1600), { w: 1600, h: 2127 });
+  assert.deepEqual(sharpBox(2000, 1000, 2400), { w: 1600, h: 800 });
+  assert.equal(sharpBox(0, 791, 1600), null);
+});
+
 test("scaleBox fits the measured 512×688 page into 320px and does not scale up", () => {
   assert.deepEqual(scaleBox(512, 688), { w: 320, h: 430 });
   assert.deepEqual(scaleBox(400, 600), { w: 320, h: 480 });
@@ -134,6 +143,17 @@ test("scaleBox fits the measured 512×688 page into 320px and does not scale up"
   assert.equal(scaleBox(-1, 10), null);
   assert.equal(scaleBox(Number.NaN, 10), null);
   assert.deepEqual(scaleBox(640, 480, 0), scaleBox(640, 480));
+});
+
+test("sharpCoverPlan renders a wider page only when the card outgrows the stored cover", () => {
+  assert.equal(SHARP_CAP, 1600);
+  assert.equal(sharpCoverPlan({}), null);
+  assert.equal(sharpCoverPlan({ cardW: 200, zoom: 1, dpr: 1, coverW: 320 }), null);
+  assert.equal(sharpCoverPlan({ cardW: 321, zoom: 1, dpr: 1, coverW: 320 }), null);
+  assert.deepEqual(sharpCoverPlan({ cardW: 322, zoom: 1, dpr: 1, coverW: 320 }), { maxW: 322 });
+  assert.deepEqual(sharpCoverPlan({ cardW: 400, zoom: 2, dpr: 2, coverW: 320 }), { maxW: 1600 });
+  assert.deepEqual(sharpCoverPlan({ cardW: 2000, zoom: 2, dpr: 2, coverW: 320 }), { maxW: 1600 });
+  assert.equal(sharpCoverPlan({ zoom: 2, dpr: 2, coverW: 100 }), null);
 });
 
 test("densityTicks places one tick per highlight at (page - 1) / pageCount", () => {

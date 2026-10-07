@@ -316,6 +316,7 @@ Settings → Extensions → Plexus Diagram. Each change applies on the open boar
 | Board | Canvas | Dots keeps the dot grid. Flat grey is a plain canvas, the Heptabase grey, with no grid. |
 | Board | Section fill | None leaves a section as it is today. Pastel washes it with its colour. |
 | Board | Highlight cards | Bar keeps the colour strip. Tint fills the card with the highlight colour and hides the strip. |
+| Board | Theme | Follow Roam uses the colours of the open graph. Plexus keeps the slate board. |
 | Board | Map view below (zoom) | Below 0.3, 0.45, or 0.6, cards show only their title. |
 | Board | Enable shortcuts | Use keyboard shortcuts on the board. |
 | Board | Show version badge | Show the version on the board. |

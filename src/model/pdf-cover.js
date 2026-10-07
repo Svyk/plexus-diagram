@@ -4,6 +4,7 @@
 export const WARM_AFTER_MS = 1500;
 export const WARM_MAX = 3;
 export const COVER_MAX_W = 320;
+export const SHARP_CAP = 1600;
 
 function imageOf(value) {
   if (typeof value === "string") return value.length > 0;
@@ -53,6 +54,25 @@ export function coverValid(record, hash) {
   }
 }
 
+// Draw the page at exactly maxW pixels wide, scaling a PDF-point viewport up
+// when the card on screen is wider than that viewport. Capped at 1600.
+export function sharpBox(w, h, maxW = SHARP_CAP) {
+  try {
+    const width = Number(w);
+    const height = Number(h);
+    if (!Number.isFinite(width) || width <= 0 || !Number.isFinite(height) || height <= 0) return null;
+    const cap = Number(maxW);
+    const limit = Number.isFinite(cap) && cap > 0 ? Math.min(cap, SHARP_CAP) : COVER_MAX_W;
+    const targetH = height * (limit / width);
+    return {
+      w: Math.max(1, Math.round(limit)),
+      h: Math.max(1, Math.round(targetH)),
+    };
+  } catch {
+    return null;
+  }
+}
+
 // Fit inside maxW wide. Do not scale a smaller canvas up.
 // 512×688 (the measured fit backing size) becomes 320×430.
 export function scaleBox(w, h, maxW = COVER_MAX_W) {
@@ -68,6 +88,29 @@ export function scaleBox(w, h, maxW = COVER_MAX_W) {
       w: Math.max(1, Math.round(targetW)),
       h: Math.max(1, Math.round(targetH)),
     };
+  } catch {
+    return null;
+  }
+}
+
+// A sharper page-1 render, or null when the stored cover already covers the screen.
+// maxW is capped at 1600. The caller keeps that bitmap in memory only.
+export function sharpCoverPlan(input) {
+  try {
+    const src = input && typeof input === "object" ? input : {};
+    const cardW = Number(src.cardW);
+    if (!Number.isFinite(cardW) || cardW <= 0) return null;
+    const zoom = Number(src.zoom);
+    const dpr = Number(src.dpr);
+    const zoomN = Number.isFinite(zoom) && zoom > 0 ? zoom : 1;
+    const dprN = Number.isFinite(dpr) && dpr > 0 ? dpr : 1;
+    const pixels = cardW * zoomN * dprN;
+    const stored = Number(src.coverW);
+    const have = Number.isFinite(stored) && stored > 0 ? stored : 0;
+    if (pixels <= have + 1) return null;
+    const maxW = Math.min(SHARP_CAP, Math.ceil(pixels));
+    if (!(maxW > have)) return null;
+    return { maxW };
   } catch {
     return null;
   }

@@ -791,8 +791,31 @@ body.roam-body.dark .pxd-root .pxd-panel__outline-row:hover {
   border-width: 0 0 1px;
   border-bottom-color: var(--pxd-board-line, var(--pxd-bar-line));
   border-radius: 6px;
-  background: color-mix(in srgb, var(--pxd-chrome-bg) 92%, transparent);
+  background: var(--pxd-bar-bg);
   box-shadow: none;
+}
+
+/* U2. --pxd-chrome-bg is 4% clear, so the bar, legend chips, and Properties showed the cards through them.
+   The fill is the solid card token. Dark keeps the border that is already on these controls. */
+.pxd-root.pxd-root .pxd-toolbar {
+  background: var(--pxd-bar-bg);
+}
+
+.bp3-dark .pxd-root.pxd-root .pxd-toolbar,
+body.bt-theme-dark .pxd-root.pxd-root .pxd-toolbar,
+.rm-dark-theme .pxd-root.pxd-root .pxd-toolbar,
+body.roam-body.dark .pxd-root.pxd-root .pxd-toolbar,
+.pxd-root.pxd-root--dark.pxd-root .pxd-toolbar {
+  background: var(--pxd-bar-bg);
+  border-color: var(--pxd-border-strong);
+}
+
+.pxd-root.pxd-root .pxd-legend .pxd-legend__row {
+  background: var(--pxd-bar-bg);
+}
+
+.pxd-root.pxd-root .pxd-props {
+  background: var(--pxd-bar-bg);
 }
 
 .pxd-root.pxd-root--docked.pxd-root--rail .pxd-toolbar {

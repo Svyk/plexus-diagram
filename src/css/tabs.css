@@ -13,8 +13,16 @@
   padding: 4px;
   border: 1px solid var(--pxd-border-strong);
   border-radius: 8px;
-  background: var(--pxd-chrome-bg);
+  background: var(--pxd-bar-bg);
   box-shadow: var(--pxd-shadow);
+}
+
+.pxd-root .pxd-fstabs:empty {
+  display: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  box-shadow: none;
 }
 
 .pxd-root .pxd-fstab {
@@ -52,4 +60,12 @@
 .pxd-root.pxd-root--fstabs > .pxd-legend,
 .pxd-root.pxd-root--fstabs > .pxd-panel {
   margin-top: 46px;
+}
+
+.pxd-root.pxd-root--fstabs:not(:has(.pxd-fstab)) > .pxd-toolbar,
+.pxd-root.pxd-root--fstabs:not(:has(.pxd-fstab)) > .pxd-rail,
+.pxd-root.pxd-root--fstabs:not(:has(.pxd-fstab)) > .pxd-props,
+.pxd-root.pxd-root--fstabs:not(:has(.pxd-fstab)) > .pxd-legend,
+.pxd-root.pxd-root--fstabs:not(:has(.pxd-fstab)) > .pxd-panel {
+  margin-top: 0;
 }

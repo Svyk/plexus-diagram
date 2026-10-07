@@ -184,6 +184,118 @@ export function pageEditScrollTop(scrollTop, inputOffset, rowOffset, zoom) {
   return Math.max(0, top + delta / scale);
 }
 
+// U2. The caret is taken from the rest-state row, before renderPage replaces it.
+// Fold and more controls are not part of the block string.
+function pageCaretText(node) {
+  if (!node || node.nodeType !== 3) return "";
+  return String(node.nodeValue ?? node.textContent ?? "");
+}
+
+function pageCaretChrome(node) {
+  let el = node?.nodeType === 1 ? node : node?.parentElement;
+  while (el && el.nodeType === 1) {
+    if (el.classList?.contains("pxd-row__fold") || el.classList?.contains("pxd-row__more") || el.classList?.contains("pxd-grip") || el.classList?.contains("pxd-port")) return true;
+    if (el.hasAttribute?.("data-pxd-row")) return false;
+    el = el.parentElement;
+  }
+  return false;
+}
+
+function pageCaretSize(node) {
+  if (!node || pageCaretChrome(node)) return 0;
+  if (node.nodeType === 3) return pageCaretText(node).length;
+  const kids = node.childNodes ? Array.from(node.childNodes) : [];
+  if (kids.length) {
+    let n = 0;
+    for (const kid of kids) n += pageCaretSize(kid);
+    return n;
+  }
+  return node.nodeType === 1 ? String(node.textContent ?? "").length : 0;
+}
+
+function pageCaretOffset(root, node, offset) {
+  const index = Math.max(0, Number(offset) || 0);
+  if (!root || !node) return 0;
+  if (node !== root && typeof root.contains === "function" && !root.contains(node)) return 0;
+  let count = 0;
+  const visit = (current) => {
+    if (!current || pageCaretChrome(current)) return false;
+    if (current === node) {
+      if (current.nodeType === 3) {
+        count += Math.min(index, pageCaretText(current).length);
+        return true;
+      }
+      const kids = current.childNodes ? Array.from(current.childNodes) : [];
+      if (kids.length) {
+        const n = Math.min(index, kids.length);
+        for (let i = 0; i < n; i += 1) count += pageCaretSize(kids[i]);
+      } else {
+        count += Math.min(index, String(current.textContent ?? "").length);
+      }
+      return true;
+    }
+    if (current.nodeType === 3) {
+      count += pageCaretText(current).length;
+      return false;
+    }
+    const kids = current.childNodes ? Array.from(current.childNodes) : [];
+    for (const kid of kids) if (visit(kid)) return true;
+    return false;
+  };
+  visit(root);
+  return count;
+}
+
+function pageCaretRow(node) {
+  const el = node?.nodeType === 1 ? node : node?.parentElement;
+  if (!el) return null;
+  if (el.matches?.("[data-pxd-row]")) return el;
+  return el.closest?.("[data-pxd-row]") || null;
+}
+
+export function pageCaretAtPoint(doc, x, y) {
+  const px = Number(x);
+  const py = Number(y);
+  if (!doc || !Number.isFinite(px) || !Number.isFinite(py)) return null;
+  let hit = null;
+  try {
+    if (typeof doc.caretPositionFromPoint === "function") {
+      const pos = doc.caretPositionFromPoint(px, py);
+      if (pos?.offsetNode) hit = { node: pos.offsetNode, offset: pos.offset };
+    }
+  } catch { /* point */ }
+  if (!hit?.node) {
+    try {
+      if (typeof doc.caretRangeFromPoint === "function") {
+        const range = doc.caretRangeFromPoint(px, py);
+        if (range?.startContainer) hit = { node: range.startContainer, offset: range.startOffset };
+      }
+    } catch { /* range */ }
+  }
+  if (!hit?.node) return null;
+  const rowEl = pageCaretRow(hit.node);
+  const row = rowEl?.getAttribute?.("data-pxd-row") || "";
+  if (!row) return null;
+  return { row, offset: pageCaretOffset(rowEl, hit.node, hit.offset) };
+}
+
+// Window id is the segment of block-input-<window>-body-... on an input inside this card.
+// A wrong window id focuses the outline copy of the same block and Roam clears the embed.
+export function pageEditWindowId(editor) {
+  if (!editor?.querySelectorAll) return "";
+  const prefix = "block-input-";
+  for (const node of editor.querySelectorAll(".rm-block__input, textarea, [id^='block-input-']")) {
+    const id = String(node.id || node.getAttribute?.("id") || "");
+    if (!id.startsWith(prefix)) continue;
+    const bodyAt = id.indexOf("-body-");
+    if (bodyAt > prefix.length) return id.slice(prefix.length, bodyAt);
+  }
+  const own = editor.getAttribute?.("data-window-id");
+  if (own) return String(own);
+  const marked = editor.querySelector?.("[data-window-id]")?.getAttribute?.("data-window-id");
+  return marked ? String(marked) : "";
+}
+
 // Page edit stays in world px, the same size as the rows it replaces. Note editors keep the counter-scale.
 function scaleCardEditor(editor, zoom) {
   if (editor?.classList?.contains("pxd-page-edit")) return false;
@@ -570,6 +682,10 @@ export function createItemRenderer({
   let trailBadgeMap = new Map();
   let taskChips = "full";
   let zoomCache = 1;
+  // U2. Pointerdown on a page row, while the rest outline is still there. enterEdit reads it.
+  let pagePointer = null;
+  const PAGE_CARET_MS = 1000;
+  const PAGE_CLICK_PX = 5;
   let paused = false;
   let editing = null;
   let contentSched = null;
@@ -1110,6 +1226,7 @@ export function createItemRenderer({
       rec.body = el("div", "pxd-item__body", node);
       buildPorts(node);
       buildGrips(node);
+      if (item.kind === "page") armPageCaret(rec);
     }
     rec.el.dataset.uid = item.uid;
     rec.el.setAttribute("data-uid", item.uid);
@@ -1476,6 +1593,7 @@ export function createItemRenderer({
     if (selectedPrimary === uid) selectedPrimary = null;
     if (editing?.uid === uid) void exitEdit({ silent: true });
     try { rec.focusOff?.(); } catch { /* already off */ }
+    try { rec.pageCaretOff?.(); } catch { /* already off */ }
     dropEmbedPoster(rec.el);
     unmountRoots(rec);
     rec.el.remove();
@@ -4078,11 +4196,93 @@ export function createItemRenderer({
     return input || editor.querySelector?.(".rm-block__input") || editor.querySelector?.("textarea") || null;
   };
 
-  const enterEdit = async (uid, { row = "" } = {}) => {
+  // A selected page card enters edit on pointerup. The board root calls preventDefault on pointerdown,
+  // so a click listener never sees the gesture. The caret is stored while the rest rows still exist.
+  const pageHitIgnored = (target) => Boolean(target?.closest?.(".pxd-row__fold, .pxd-row__more, .pxd-grip, .pxd-port"));
+  const rememberPageCaret = (rec, event) => {
+    pagePointer = null;
+    if (!rec?.body || disposed) return;
+    if (event.button != null && event.button !== 0) return;
+    if (event.shiftKey || event.altKey || event.metaKey || event.ctrlKey) return;
+    if (pageHitIgnored(event.target)) return;
+    if (editing?.uid === rec.uid) return;
+    const x = Number(event.clientX);
+    const y = Number(event.clientY);
+    const hit = Number.isFinite(x) && Number.isFinite(y) ? pageCaretAtPoint(doc, x, y) : null;
+    const rowEl = event.target?.closest?.("[data-pxd-row]");
+    const row = hit?.row || rowEl?.getAttribute?.("data-pxd-row") || "";
+    if (!row) return;
+    const offset = Number(hit?.offset);
+    pagePointer = {
+      uid: rec.uid,
+      row,
+      offset: Number.isFinite(offset) ? offset : 0,
+      x: Number.isFinite(x) ? x : 0,
+      y: Number.isFinite(y) ? y : 0,
+      selected: Boolean(rec.selected),
+      at: now(),
+    };
+  };
+  const armPageCaret = (rec) => {
+    if (!rec?.body || rec.pageCaret) return;
+    rec.pageCaret = true;
+    const onDown = (event) => { if (!disposed) rememberPageCaret(rec, event); };
+    const onUp = (event) => {
+      if (disposed) return;
+      const pending = pagePointer;
+      if (!pending || pending.uid !== rec.uid || !pending.selected) return;
+      if (event.button != null && event.button !== 0) return;
+      if (event.shiftKey || event.altKey || event.metaKey || event.ctrlKey) return;
+      if (pageHitIgnored(event.target)) return;
+      if (editing?.uid === rec.uid) return;
+      const dx = (Number(event.clientX) || 0) - pending.x;
+      const dy = (Number(event.clientY) || 0) - pending.y;
+      if ((dx * dx) + (dy * dy) > PAGE_CLICK_PX * PAGE_CLICK_PX) return;
+      enterEdit(rec.uid, { row: pending.row, offset: pending.offset });
+    };
+    const onDbl = (event) => {
+      if (disposed || editing?.uid === rec.uid) return;
+      if (event.shiftKey || event.altKey || event.metaKey || event.ctrlKey) return;
+      if (pageHitIgnored(event.target)) return;
+      const x = Number(event.clientX);
+      const y = Number(event.clientY);
+      const hit = Number.isFinite(x) && Number.isFinite(y) ? pageCaretAtPoint(doc, x, y) : null;
+      const rowEl = event.target?.closest?.("[data-pxd-row]");
+      const row = hit?.row || rowEl?.getAttribute?.("data-pxd-row") || "";
+      if (!row) return;
+      const offset = Number(hit?.offset);
+      enterEdit(rec.uid, { row, offset: Number.isFinite(offset) ? offset : 0 });
+    };
+    rec.body.addEventListener("pointerdown", onDown);
+    rec.body.addEventListener("pointerup", onUp);
+    rec.body.addEventListener("dblclick", onDbl);
+    rec.pageCaretOff = () => {
+      rec.body?.removeEventListener("pointerdown", onDown);
+      rec.body?.removeEventListener("pointerup", onUp);
+      rec.body?.removeEventListener("dblclick", onDbl);
+      if (pagePointer?.uid === rec.uid) pagePointer = null;
+      rec.pageCaretOff = null;
+    };
+  };
+
+  const enterEdit = async (uid, { row = "", offset } = {}) => {
     const rec = shells.get(uid);
     const item = lastBoard?.items.get(uid);
     if (!rec || !item || rec.type === "section" || item.kind === "board" || item.kind === "drawing-ref" || rec.refBoard) return false;
     if (editing?.uid === uid) return true;
+    const pending = pagePointer;
+    const fresh = Boolean(pending && pending.uid === uid && (now() - pending.at) <= PAGE_CARET_MS);
+    if (fresh) pagePointer = null;
+    let caretRow = String(row || "");
+    const given = Number(offset);
+    let caretOff = Number.isFinite(given) ? given : null;
+    if (fresh) {
+      if (!caretRow) caretRow = String(pending.row || "");
+      if (caretOff == null && (!row || row === pending.row)) {
+        const n = Number(pending.offset);
+        if (Number.isFinite(n)) caretOff = n;
+      }
+    }
     if (isSticky(item)) return focusSticky(uid);
     if (editing) await exitEdit();
     if (!host?.renderBlock) { host?.openBlock?.(uid); return false; }
@@ -4113,7 +4313,7 @@ export function createItemRenderer({
     const lockH = pageEdit ? 0 : (boxHeight(rec.el) || contentH || Number(rec.rect?.h) || 0);
     const reduced = prefersReducedMotion();
     // PG-3: where the clicked row sits in the card, so the editor can put the same block back under the pointer.
-    const clickedRow = row ? rec.body.querySelector?.(`[data-pxd-row="${row}"]`) : null;
+    const clickedRow = caretRow ? rec.body.querySelector?.(`[data-pxd-row="${caretRow}"]`) : null;
     const rowOffset = clickedRow
       ? (Number(clickedRow.getBoundingClientRect?.().top) || 0) - (Number(rec.body.getBoundingClientRect?.().top) || 0)
       : null;
@@ -4166,12 +4366,27 @@ export function createItemRenderer({
       }, EDIT_FADE_MS);
     }
     let input = null;
+    let placedScroll = null;
     if (pageEdit) {
-      input = await waitPageInput(editor, row, uid);
+      input = await waitPageInput(editor, caretRow, uid);
       if (disposed || editing?.uid !== uid) return false;
       if (input && rowOffset !== null) {
         const inputOffset = (Number(input.getBoundingClientRect?.().top) || 0) - (Number(rec.body.getBoundingClientRect?.().top) || 0);
-        editor.scrollTop = pageEditScrollTop(editor.scrollTop, inputOffset, rowOffset, zoomCache);
+        placedScroll = pageEditScrollTop(editor.scrollTop, inputOffset, rowOffset, zoomCache);
+        editor.scrollTop = placedScroll;
+      }
+      // The window id comes from an input inside this editor, so the caret hits the embed, not the outline.
+      if (input && caretOff != null && caretRow) {
+        const win = pageEditWindowId(editor);
+        const place = host?.api?.ui?.setBlockFocusAndSelection;
+        if (win && typeof place === "function") {
+          try {
+            place({
+              location: { "block-uid": caretRow, "window-id": win },
+              selection: { start: caretOff, end: caretOff },
+            });
+          } catch { /* api */ }
+        }
       }
     } else {
       await waitHydrateQuiet(editor, HYDRATE_CAP_MS);
@@ -4189,11 +4404,21 @@ export function createItemRenderer({
     }
     scaleCardEditor(editor, zoomCache);
     if (input) focusRoamInput(input);
-    fitEditorText(editor);
+    if (input && pageEdit && caretOff != null && typeof input.setSelectionRange === "function") {
+      try { input.setSelectionRange(caretOff, caretOff); } catch { /* range */ }
+    }
+    if (pageEdit && placedScroll != null) editor.scrollTop = placedScroll;
+    // A page row is 20px. Fitting the textarea to scrollHeight is what made one rest line wrap and shove the rows below.
+    if (!pageEdit) fitEditorText(editor);
     // Roam writes an explicit textarea height when a note editor focuses. Apply the counter-scale again
     // after that, and once more on the next frame, so the screen font is not clipped. Page edit skips it.
     scaleCardEditor(editor, zoomCache);
-    frameLater(() => { if (editing?.uid === uid) { scaleCardEditor(editor, zoomCache); fitEditorText(editor); } });
+    frameLater(() => {
+      if (editing?.uid !== uid) return;
+      scaleCardEditor(editor, zoomCache);
+      if (!pageEdit) fitEditorText(editor);
+      if (pageEdit && placedScroll != null) editor.scrollTop = placedScroll;
+    });
     if (editing?.uid === uid && editor.contains?.(doc.activeElement)) editing.ready = true;
     if (editing?.uid === uid) nudgeEditorMenus(doc);
     return true;
@@ -4489,6 +4714,7 @@ export function createItemRenderer({
     for (const uid of [...shells.keys()]) {
       const rec = shells.get(uid);
       try { rec.focusOff?.(); } catch { /* already off */ }
+      try { rec.pageCaretOff?.(); } catch { /* already off */ }
       dropEmbedPoster(rec.el);
       unmountRoots(rec);
       dropKidsBadge(rec);

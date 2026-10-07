@@ -19,6 +19,7 @@
   --pxd-grid-dot: rgba(95, 107, 124, 0.28);
   --pxd-shadow: 0 1px 2px rgba(17, 20, 24, 0.10), 0 4px 12px rgba(17, 20, 24, 0.08);
   --pxd-chrome-bg: rgba(255, 255, 255, 0.96);
+  --pxd-bar-bg: var(--pxd-card);
   --pxd-bar-line: var(--pxd-border);
   --pxd-dock-border: var(--pxd-border);
   --pxd-dock-shadow: 0 2px 6px rgba(0, 0, 0, 0.12), 0 10px 28px rgba(0, 0, 0, 0.14);
@@ -75,6 +76,7 @@ body.roam-body.dark .pxd-root,
   --pxd-grid-dot: rgba(167, 182, 194, 0.22);
   --pxd-shadow: 0 1px 3px rgba(0, 0, 0, 0.35), 0 4px 12px rgba(0, 0, 0, 0.3);
   --pxd-chrome-bg: rgba(38, 51, 63, 0.96);
+  --pxd-bar-bg: var(--pxd-card);
   --pxd-bar-line: var(--pxd-border-strong);
   --pxd-dock-border: var(--pxd-border-strong);
   --pxd-dock-shadow: 0 2px 6px rgba(0, 0, 0, 0.45), 0 10px 28px rgba(0, 0, 0, 0.4);
@@ -108,6 +110,7 @@ body.roam-body.dark .pxd-root,
     --pxd-grid-dot: rgba(167, 182, 194, 0.22);
     --pxd-shadow: 0 1px 3px rgba(0, 0, 0, 0.35), 0 4px 12px rgba(0, 0, 0, 0.3);
     --pxd-chrome-bg: rgba(38, 51, 63, 0.96);
+    --pxd-bar-bg: var(--pxd-card);
     --pxd-bar-line: var(--pxd-border-strong);
     --pxd-dock-border: var(--pxd-border-strong);
     --pxd-dock-shadow: 0 2px 6px rgba(0, 0, 0, 0.45), 0 10px 28px rgba(0, 0, 0, 0.4);
@@ -1134,7 +1137,7 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   padding: 4px 6px;
   border: 1px solid var(--pxd-border);
   border-radius: 8px;
-  background: var(--pxd-chrome-bg);
+  background: var(--pxd-bar-bg);
   box-shadow: var(--pxd-shadow);
 }
 

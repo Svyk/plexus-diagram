@@ -57,7 +57,9 @@ import {
   withBoardMarker,
 } from "./model/schema.js";
 import { drawingCreateSpec, drawingRefString } from "./model/drawing-card.js";
-import { appendTable, TABLE_SIZE } from "./model/roam-table.js";
+import { appendTable, parsedTableSize, TABLE_SIZE } from "./model/roam-table.js";
+import { flatRows, toGridSpec } from "./model/parse-to-grid.js";
+import { escapeMarkdownText, toRoamMarkdown } from "./model/parse-to-roam-md.js";
 import { HIGHLIGHT_COLORS, rewriteHighlightTag } from "./model/highlight.js";
 import { inflate, rectsIntersect, unionRect } from "./model/geometry.js";
 import { SHAPES } from "./model/shapes.js";
@@ -101,6 +103,94 @@ export function addPublicCard(opts = {}, createFn) {
   if (typeof make !== "function") return op;
   return make(op);
 }
+// One fromMarkdown call holds at most this many bullet lines. A single top-level tree
+// that is larger stays one call so a nested table is never split.
+export const PARSE_BLOCK_CHUNK = 400;
+export const PARSE_CHUNK_CAP = 10;
+// Each sent section is fromMarkdown + props (2 writes). host.group splits at 45 writes,
+// and undo pops one chunk, so 45 cards would be two Plexus undo steps. 22 × 2 = 44.
+export const PARSE_SECTION_CAP = Math.floor(BULK_CARD_CAP / 2);
+const PARSE_TOO_LARGE = "This range is too large. Narrow it and insert again.";
+const SECTION_GAP = 24;
+
+// Indent every line from the second top-level bullet so one root carries the layout props.
+export function nestMarkdownUnderFirst(markdown) {
+  const lines = String(markdown ?? "").split("\n");
+  let seen = 0;
+  let start = -1;
+  for (let i = 0; i < lines.length; i += 1) {
+    if (/^- /.test(lines[i])) {
+      seen += 1;
+      if (seen === 2) { start = i; break; }
+    }
+  }
+  if (start < 0) return lines.join("\n");
+  return lines.map((line, i) => (i >= start && line !== "" ? `  ${line}` : line)).join("\n");
+}
+
+function bulletCount(markdown) {
+  return (String(markdown ?? "").match(/^\s*- /gm) || []).length;
+}
+
+function topLevelTrees(markdown) {
+  const trees = [];
+  let current = null;
+  for (const line of String(markdown ?? "").split("\n")) {
+    if (/^- /.test(line)) {
+      current = [line];
+      trees.push(current);
+    } else if (current) current.push(line);
+  }
+  return trees;
+}
+
+function chunkParsedMarkdown(markdown, blockEstimate) {
+  const text = String(markdown ?? "");
+  const bullets = bulletCount(text);
+  const estimate = Number.isFinite(Number(blockEstimate)) ? Number(blockEstimate) : bullets;
+  const ceiling = PARSE_BLOCK_CHUNK * PARSE_CHUNK_CAP;
+  if (bullets > ceiling || estimate > ceiling) return { ok: false, reason: "too-large" };
+  if (!text.trim() || bullets === 0) return { ok: true, chunks: [] };
+  const chunks = [];
+  let buf = [];
+  let count = 0;
+  const treeBullets = (tree) => tree.filter((line) => /^\s*- /.test(line)).length;
+  for (const tree of topLevelTrees(text)) {
+    const n = treeBullets(tree);
+    if (count > 0 && count + n > PARSE_BLOCK_CHUNK) {
+      chunks.push(buf.join("\n"));
+      buf = [];
+      count = 0;
+    }
+    buf.push(...tree);
+    count += n;
+  }
+  if (buf.length) chunks.push(buf.join("\n"));
+  if (chunks.length > PARSE_CHUNK_CAP) return { ok: false, reason: "too-large" };
+  return { ok: true, chunks };
+}
+
+function advanceOrder(order, rootCount) {
+  if (typeof order !== "number") return "last";
+  return order + Math.max(rootCount, 1);
+}
+
+function flatTableMarkdown(table) {
+  const lines = ["- {{[[table]]}}"];
+  for (const row of flatRows(table)) {
+    for (let c = 0; c < row.length; c += 1) {
+      lines.push(`${"  ".repeat(c + 1)}- ${escapeMarkdownText(String(row[c] ?? ""))}`);
+    }
+  }
+  return lines.join("\n");
+}
+
+function nativeTableMarkdown(table) {
+  const id = typeof table?.id === "string" && table.id ? table.id : "t1";
+  const block = { ...table, id, type: table?.type || "table" };
+  return toRoamMarkdown({ blocks: { [id]: block }, order: [id] }, [id]).markdown;
+}
+
 // `limit` is for a gesture that already spent part of the 45-write budget on its own blocks.
 export function capBulk(list, emit, limit = BULK_CARD_CAP) {
   const raw = Number(limit);
@@ -1166,6 +1256,24 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     return linkPromise;
   }
 
+  // Reads lastAction after the group closes (closeChunk runs in group()'s finally).
+  const runParsed = (fn) => queue.run(async () => {
+    try {
+      const res = await grouped(fn);
+      if (!res || res.ok === false) return res;
+      return { ...res, writes: host.stats.lastAction?.writes ?? 0 };
+    } catch (err) {
+      handleFailure(err);
+      return { ok: false, reason: "write-failed" };
+    }
+  });
+
+  const placeParsed = (x, y, w, h) => {
+    const parent = containerAt(board, { x: x + w / 2, y: y + h / 2 }, { rects });
+    const rel = toRelative(board, parent, { x, y }, rects);
+    return { parent, rel };
+  };
+
   // ---- session object ----
   const session = {
     uid,
@@ -1301,6 +1409,127 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
         const id = appendTable(t, { parent, plexus: serializeItemLayout(layout) });
         applyFit(t, [id]);
         return id;
+      });
+    },
+
+    // Next sibling of the PDF block. No props. Chunks of 400 bullets, 10 chunks max.
+    insertParsedBelow({ pdfUid, markdown, blockEstimate } = {}) {
+      if (destroyed || gone) return Promise.resolve(undefined);
+      const plan = chunkParsedMarkdown(markdown, blockEstimate);
+      if (!plan.ok) {
+        emit("toast", { message: PARSE_TOO_LARGE });
+        return Promise.resolve({ ok: false, reason: "too-large" });
+      }
+      if (!plan.chunks.length) return Promise.resolve({ ok: true, uids: [], writes: 0 });
+      const loc = host.blockLocation?.(pdfUid);
+      if (!loc) return Promise.resolve({ ok: false, reason: "missing" });
+      return runParsed(async () => {
+        let order = loc.order + 1;
+        const uids = [];
+        for (const chunk of plan.chunks) {
+          const roots = await host.fromMarkdown({ parentUid: loc.parentUid, order, markdown: chunk });
+          uids.push(...roots);
+          order = advanceOrder(order, roots.length);
+        }
+        repull();
+        return { ok: true, uids };
+      });
+    },
+
+    // One note card. Children stay in the block tree; kids stays off unless the layout says so.
+    insertParsedCard({ x, y, w, h, markdown } = {}) {
+      if (!board || destroyed || gone) return Promise.resolve(undefined);
+      const nested = nestMarkdownUnderFirst(markdown);
+      if (!String(nested).trim() || bulletCount(nested) === 0) return Promise.resolve({ ok: false, reason: "empty" });
+      const width = Number.isFinite(w) ? w : DEFAULT_SIZES.card.w;
+      const height = Number.isFinite(h) ? h : DEFAULT_SIZES.card.h;
+      const size = clampSize("card", width, height);
+      const { parent, rel } = placeParsed(x, y, size.w, size.h);
+      const layout = withCardLook({ x: rel.x, y: rel.y, w: size.w, h: size.h }, nested);
+      const plexus = serializeItemLayout(layout);
+      const order = insertOrder(parent);
+      return runParsed(async () => {
+        const roots = await host.fromMarkdown({ parentUid: parent, order, markdown: nested });
+        const uid = roots[0];
+        if (!uid) return { ok: false, reason: "empty" };
+        await host.updateProps(uid, plexus);
+        repull();
+        return { ok: true, uid };
+      });
+    },
+
+    // auto = grid when Roam Grid can createTableFromModel, otherwise native.
+    // grid falls back to native when the API is missing. flat repeats covered cells.
+    insertParsedTable({ x, y, table, mode = "auto" } = {}) {
+      if (!board || destroyed || gone) return Promise.resolve(undefined);
+      const asked = mode === "grid" || mode === "native" || mode === "flat" ? mode : "auto";
+      const rawSize = parsedTableSize(table);
+      const size = clampSize("card", rawSize.w, rawSize.h);
+      const { parent, rel } = placeParsed(x, y, size.w, size.h);
+      const plexus = serializeItemLayout({ x: rel.x, y: rel.y, w: size.w, h: size.h });
+      const order = insertOrder(parent);
+      const tryGrid = asked === "grid" || (asked === "auto" && host.canCreateGridTable?.());
+      return runParsed(async () => {
+        let uid = null;
+        let path = asked === "flat" ? "flat" : "native";
+        if (tryGrid) {
+          try {
+            const info = await host.createGridTable({ ...toGridSpec(table), parentUid: parent, order });
+            if (info?.uid) { uid = info.uid; path = "grid"; }
+          } catch {
+            uid = null;
+          }
+        }
+        if (!uid) {
+          const markdown = asked === "flat" ? flatTableMarkdown(table) : nativeTableMarkdown(table);
+          const roots = await host.fromMarkdown({ parentUid: parent, order, markdown });
+          uid = roots[0] || null;
+          path = asked === "flat" ? "flat" : "native";
+        }
+        if (!uid) return { ok: false, reason: "empty" };
+        await host.updateProps(uid, plexus);
+        repull();
+        return { ok: true, uid, path, w: size.w, h: size.h };
+      });
+    },
+
+    // One card per section, stacked down from the drop point. Cap keeps one undo step.
+    sendParsedToBoard({ x, y, sections } = {}) {
+      if (!board || destroyed || gone) return Promise.resolve(undefined);
+      const list = Array.isArray(sections) ? sections.filter((section) => section && String(section.markdown ?? "").trim()) : [];
+      if (!list.length) return Promise.resolve({ ok: true, uids: [], writes: 0 });
+      const capped = capBulk(list, emit, PARSE_SECTION_CAP);
+      const cardH = DEFAULT_SIZES.card.h;
+      const cardW = DEFAULT_SIZES.card.w;
+      return runParsed(async () => {
+        const uids = [];
+        let orderParent = null;
+        let orderCursor = null;
+        for (let i = 0; i < capped.length; i += 1) {
+          const nested = nestMarkdownUnderFirst(capped[i].markdown);
+          if (bulletCount(nested) === 0) continue;
+          const py = y + i * (cardH + SECTION_GAP);
+          const size = clampSize("card", cardW, cardH);
+          const { parent, rel } = placeParsed(x, py, size.w, size.h);
+          const layout = withCardLook({ x: rel.x, y: rel.y, w: size.w, h: size.h }, nested);
+          const plexus = serializeItemLayout(layout);
+          let order;
+          if (orderParent === parent && orderCursor != null) order = orderCursor;
+          else {
+            order = insertOrder(parent);
+            orderParent = parent;
+            orderCursor = order;
+          }
+          const roots = await host.fromMarkdown({ parentUid: parent, order, markdown: nested });
+          const uid = roots[0];
+          if (!uid) continue;
+          await host.updateProps(uid, plexus);
+          uids.push(uid);
+          orderCursor = advanceOrder(order, roots.length);
+          orderParent = parent;
+        }
+        repull();
+        return { ok: true, uids };
       });
     },
 

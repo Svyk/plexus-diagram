@@ -90,6 +90,56 @@ export function createFakeRoam({ echoDelay = 5, writeDelay = 0, echoMode = "fres
     return b;
   }
 
+  // One fromMarkdown is one undo, even when it builds a nested tree. Generic create/update stay
+  // call-counters only: existing undo tests assert call names and must not see blocks disappear.
+  const undoStack = [];
+  const CONSUMED = new Set(["\\", "#", "`", "*", "-", ".", ">", "[", "]", "(", ")"]);
+  const unescapeMeasured = (line) => {
+    let out = "";
+    const src = String(line ?? "");
+    for (let i = 0; i < src.length; i += 1) {
+      const next = src[i + 1];
+      if (src[i] === "\\" && next != null && CONSUMED.has(next)) {
+        out += next;
+        i += 1;
+      } else out += src[i];
+    }
+    return out;
+  };
+  function dropTree(uid) {
+    const b = blocks.get(uid);
+    if (!b) return;
+    for (const child of b.children.slice()) dropTree(child);
+    detach(uid);
+    blocks.delete(uid);
+  }
+  function parseMarkdownRoots(markdown) {
+    const root = { children: [] };
+    const stack = [{ depth: -1, node: root }];
+    let current = null;
+    for (const line of String(markdown ?? "").split("\n")) {
+      if (!line.trim()) continue;
+      const bullet = /^(\s*)- (.*)$/.exec(line);
+      if (!bullet) {
+        if (current) current.string += `\n${unescapeMeasured(line.trim())}`;
+        continue;
+      }
+      const depth = Math.floor(bullet[1].length / 2);
+      const node = makeBlock({ string: unescapeMeasured(bullet[2]) });
+      while (stack.length && stack[stack.length - 1].depth >= depth) stack.pop();
+      const parent = stack[stack.length - 1].node;
+      if (parent === root) root.children.push(node);
+      else {
+        node.parent = parent.uid;
+        parent.children.push(node.uid);
+        node.order = parent.children.length - 1;
+      }
+      stack.push({ depth, node });
+      current = node;
+    }
+    return root.children;
+  }
+
   function pullBlock(uid) {
     const b = blocks.get(uid);
     if (!b) return null;
@@ -256,6 +306,23 @@ export function createFakeRoam({ echoDelay = 5, writeDelay = 0, echoMode = "fres
             drop(block.uid);
           }, ["delete", block.uid]);
         },
+        fromMarkdown({ location, "markdown-string": markdown }) {
+          const parentUid = location?.["parent-uid"];
+          const entry = ["fromMarkdown", parentUid, 0];
+          let uids = [];
+          return write(parentUid, () => {
+            const roots = parseMarkdownRoots(markdown);
+            uids = roots.map((node) => node.uid);
+            entry[2] = roots.length;
+            const start = location?.order;
+            roots.forEach((node, i) => {
+              const order = typeof start === "number" ? start + i : "last";
+              attach(node.uid, parentUid, order);
+            });
+            undoStack.push(() => { for (const node of roots) dropTree(node.uid); });
+            try { fake.onFromMarkdown?.(uids); } catch { /* a test hook must not abort the write */ }
+          }, entry).then(() => ({ uids }));
+        },
       },
       page: {
         create({ page }) {
@@ -278,7 +345,12 @@ export function createFakeRoam({ echoDelay = 5, writeDelay = 0, echoMode = "fres
           }, ["page-update", page.uid || page.title, nextTitle]);
         },
       },
-      undo() { fake.calls.push(["undo"]); return Promise.resolve(); },
+      undo() {
+        fake.calls.push(["undo"]);
+        const fn = undoStack.pop();
+        if (typeof fn === "function") fn();
+        return Promise.resolve();
+      },
       redo() { fake.calls.push(["redo"]); return Promise.resolve(); },
     },
     get file() {
@@ -313,6 +385,14 @@ export function createFakeRoam({ echoDelay = 5, writeDelay = 0, echoMode = "fres
   };
 
   fake.api = api;
+  fake.onFromMarkdown = null;
+  fake.pushUndo = (fn) => { if (typeof fn === "function") undoStack.push(fn); };
+  fake.dropTree = (uid) => dropTree(uid);
+  fake.stampProps = (uid, props) => {
+    const b = blocks.get(uid);
+    if (!b || !props || typeof props !== "object") return;
+    Object.assign(b.props, plainKeys(props));
+  };
   fake.generateUid = () => `gen${String(++uidCounter).padStart(6, "0")}`;
   fake.setQ = (fn) => { qHandler = fn; };
   // Route q calls whose query text matches `match` (RegExp) to fn; returns {calls} for asserting.

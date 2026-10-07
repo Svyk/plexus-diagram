@@ -291,8 +291,9 @@ function buildTable(rowsIn, { bands = null, headerRowsHint = 0, caption = null }
   if (!headerRows) {
     const numericRow = (r) => { const cs = [...cellMap.values()].filter((c) => c.r === r && c.c > 0); return cs.length && cs.filter((c) => isNumericText(cellTextOf(c.words))).length >= 0.5 * cs.length; };
     const boldRow = (r) => { const ws = [...cellMap.values()].filter((c) => c.r === r).flatMap((c) => c.words); return ws.length && ws.every((w) => w.bold); };
+    const yearRow = (r) => { const cs = [...cellMap.values()].filter((c) => c.r === r && c.c > 0); return cs.length >= 2 && cs.every((c) => /^(1[89]|20)\d\d[a-z*]?$/.test(cellTextOf(c.words))); };
     while (headerRows < rows - 1 && boldRow(headerRows)) headerRows++;
-    if (!headerRows && rows >= 2 && !numericRow(0) && numericRow(1)) headerRows = 1;
+    if (!headerRows && rows >= 2 && (!numericRow(0) || yearRow(0)) && numericRow(1) && !yearRow(1)) headerRows = 1;
   }
   // Row spans: header band cells with nothing below in their column; body group labels (col 0 only).
   for (let r = 0; r < rows; r++) {
@@ -618,7 +619,7 @@ export function detectStreamRuns(lines, { dots = [], column = null } = {}) {
       if (code) { out.push(code); i = j; continue; }
       const rowsIn = run.map((r) => ({ y0: r.row.y0, y1: r.row.y1, tokens: r.tokens }));
       const table = buildTable(rowsIn, { headerRowsHint });
-      if (table && !looksLikeProse(run)) {
+      if (table && !looksLikeProse(run) && !sparseAxis(table)) {
         table.usedWords = run.flatMap((r) => r.row.words);
         table.lines = [...run.flatMap((r) => r.row.lines), ...ruleLines];
         out.push(table);
@@ -642,9 +643,20 @@ function singleTokenRow(row, tokens, run, next, colBox, lead) {
   const near = (a, b) => Math.abs(a.base - b.base) <= 1.6 * Math.max(a.size, b.size);
   const overlapping = (toks) => toks.find((t) => t.x0 < tok.x1 + 1 && t.x1 > tok.x0 - 1);
   const prev = run[run.length - 1];
+  // A footnote mark or bullet on its own baseline rides with the row above, in its column.
+  if (prev && near(row, prev.row) && row.words.length === 1 && /^[^A-Za-z0-9]{1,2}$|^[a-z0-9]$/.test(tok.text) && !overlapping(prev.tokens)) {
+    prev.tokens.push({ ...tok });
+    prev.tokens.sort((a, b) => a.x0 - b.x0);
+    prev.row.words.push(...tok.words);
+    prev.row.lines.push(...row.lines);
+    return "attach";
+  }
   if (prev && near(row, prev.row)) {
     const host = overlapping(prev.tokens);
-    if (host && prev.tokens.length >= 2) {
+    // A wrapped cell's second line reads as a continuation (lower case, bracket, dash) or
+    // is indented under its first line; a capitalised line at the label edge is a new row.
+    const continuation = /^[a-z(\-–]/.test(tok.text) || (host && tok.x0 - host.x0 >= 0.5 * row.size);
+    if (host && prev.tokens.length >= 2 && continuation && /[A-Za-z]/.test(tok.text)) {
       host.words.push(...tok.words);
       host.x0 = Math.min(host.x0, tok.x0); host.x1 = Math.max(host.x1, tok.x1);
       host.text = host.words.map((w) => w.text).join(" ");
@@ -709,18 +721,28 @@ export function isMonospace(words) {
 // code after it is set in a monospace font (a "No." column in a proportional font is a table).
 function codeRun(run) {
   let expect = null;
+  let withCode = 0;
   for (const r of run) {
     const first = r.tokens[0];
     if (!first || !/^\d{1,4}$/.test(first.text)) return null;
     const n = Number(first.text);
     if (expect != null && n !== expect) return null;
     expect = n + 1;
-    if (r.tokens.length < 2) return null;
+    if (r.tokens.length >= 2) withCode++; // a blank line keeps its number only
   }
+  if (withCode < 2) return null;
   if (!isMonospace(run.flatMap((r) => r.tokens.slice(1).flatMap((t) => t.words)))) return null;
   const lines = run.flatMap((r) => r.row.lines);
   const text = run.map((r) => r.tokens.slice(1).map((t) => t.text).join(" ")).join("\n");
   return { type: "code", lines, text, usedWords: run.flatMap((r) => r.row.words) };
+}
+
+// Axis ticks of a chart on a scanned page (no vector graphics to make a figure): a few rows
+// of short numbers with most cells empty.
+function sparseAxis(table) {
+  if (table.rows > 3) return false;
+  const filled = table.cells.filter((c) => c.text).length;
+  return filled < 0.6 * table.cells.length;
 }
 
 // Justified prose splits into tokens at random x; tables keep short cells with wide gaps.

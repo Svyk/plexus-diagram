@@ -1,7 +1,7 @@
 // Built-in PDF parse engine: page data from pdf.js -> pxd-parse/1 document. Pure except for
 // the yield between pages. `getPage(n)` returns { items, ops, w, h, rotation, transform, fonts }.
 
-import { buildLines, lineBox, makeLine, round } from "./lines.js";
+import { buildLines, dominantRotation, lineBox, makeLine, mul, round } from "./lines.js";
 import { extractGraphics } from "./rules.js";
 import { findLatticeTables, looksLikeChart } from "./lattice.js";
 import { baselineRows, detectStreamRuns, tableFromBand } from "./stream.js";
@@ -42,9 +42,22 @@ export function viewportTransform(w, h, rotation = 0) {
 // Pass 1 for one page: geometry only.
 export function parsePageGeometry(data, n) {
   const t0 = now();
-  const w = data.w; const h = data.h;
-  const transform = data.transform || viewportTransform(w, h, data.rotation || 0);
-  const { lines, rotated } = buildLines(data.items || [], { transform, fonts: data.fonts || {} });
+  let w = data.w; let h = data.h;
+  let transform = data.transform || viewportTransform(w, h, data.rotation || 0);
+  let { lines, rotated } = buildLines(data.items || [], { transform, fonts: data.fonts || {} });
+  // A landscape table set sideways on the page (text matrices rotated by 90 degrees): read the
+  // page in the text's own frame. Geometry below is then in that frame; `textRotation` says so.
+  const textRotation = dominantRotation(rotated, lines);
+  if (textRotation) {
+    const rad = (-textRotation * Math.PI) / 180;
+    const rot = [Math.cos(rad), Math.sin(rad), -Math.sin(rad), Math.cos(rad), 0, 0];
+    const corners = [[0, 0], [w, 0], [w, h], [0, h]].map(([x, y]) => [rot[0] * x + rot[2] * y, rot[1] * x + rot[3] * y]);
+    const minX = Math.min(...corners.map((c) => c[0])); const minY = Math.min(...corners.map((c) => c[1]));
+    const maxX = Math.max(...corners.map((c) => c[0])); const maxY = Math.max(...corners.map((c) => c[1]));
+    transform = mul([rot[0], rot[1], rot[2], rot[3], -minX, -minY], transform);
+    w = maxX - minX; h = maxY - minY;
+    ({ lines, rotated } = buildLines(data.items || [], { transform, fonts: data.fonts || {} }));
+  }
   const graphics = extractGraphics(data.ops, { transform });
   const words = lines.flatMap((l) => l.words);
   const pageArea = w * h;
@@ -77,7 +90,7 @@ export function parsePageGeometry(data, n) {
   const figs = kind === "scan" ? { figures: [], used: new Set() } : findFigures({ graphics: figGraphics, usedRules, usedBoxes: lattice.usedBoxes, words: words.filter((w) => !used.has(w)), bodySize: pageBody, pageW: w, pageH: h, ruleSegments: lattice.segments });
   for (const w of figs.used) used.add(w);
   const figures = figs.figures.map((f) => ({ ...f, page: n }));
-  return { n, w, h, rotation: data.rotation || 0, kind, scanLayer, lines, rotated, words, graphics, tables, figures, used, ms: round(now() - t0) };
+  return { n, w, h, rotation: data.rotation || 0, textRotation, kind, scanLayer, lines, rotated, words, graphics, tables, figures, used, ms: round(now() - t0) };
 }
 
 export async function parsePdf({ getPage, numPages, pages, signal, onPage, info = null, engineVersion = ENGINE_VERSION, sha256 = null, options = {} }) {
@@ -325,7 +338,7 @@ export function assembleDocument(pageRecords, { numPages, info = null, engineVer
     }
     const ordered = orderUnits(units, { gutters });
     for (const u of ordered.order) order.push(u.id);
-    perPage.push({ n: pg.n, w: round(pg.w), h: round(pg.h), rotation: pg.rotation, kind: pg.kind, parsed: true, columns: ordered.columns, ms: pg.ms });
+    perPage.push({ n: pg.n, w: round(pg.w), h: round(pg.h), rotation: pg.rotation, textRotation: pg.textRotation || 0, scanLayer: Boolean(pg.scanLayer), kind: pg.kind, parsed: true, columns: ordered.columns, ms: pg.ms });
   }
   mergeContinuations(order, blocks);
   linkContinuedTables(order, blocks, perPage);
@@ -343,7 +356,7 @@ export function assembleDocument(pageRecords, { numPages, info = null, engineVer
   let title = info && typeof info.Title === "string" && info.Title.trim() ? info.Title.trim() : null;
   if (!title) { const h1 = headings.find((h) => h.level === 1 && h.page === (firstPage ? firstPage.n : 1)) || headings.find((h) => h.level === 1); title = h1 ? h1.text : null; }
   const pagesOut = [];
-  for (const p of perPage) pagesOut.push({ n: p.n, w: p.w, h: p.h, rotation: p.rotation, kind: p.kind, parsed: true, columns: p.columns });
+  for (const p of perPage) pagesOut.push({ n: p.n, w: p.w, h: p.h, rotation: p.rotation, textRotation: p.textRotation, scanLayer: p.scanLayer, kind: p.kind, parsed: true, columns: p.columns });
   return {
     schema: SCHEMA,
     sha256,

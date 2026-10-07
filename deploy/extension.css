@@ -6189,6 +6189,11 @@ body.roam-body.dark .pxd-root .pxd-present-hud,
   display: none !important;
 }
 
+/* Follow-roam: resting card links take the colour Roam gives links in a block, so a row does not change colour when it enters edit. */
+.pxd-root.pxd-theme--roam .pxd-item__body .rm-page-ref--link:not([data-tag]) {
+  color: var(--pxd-link);
+}
+
 /* PDF-7. Page chips and the On board chip. A border and a clear fill. No filled background. */
 
 .pxd-pdf-chips.pxd-pdf-chips {

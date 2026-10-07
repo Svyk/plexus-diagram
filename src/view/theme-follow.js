@@ -78,7 +78,14 @@ export function sampleRoam(doc) {
   let block = null;
   try { main = d.querySelector(".roam-body-main") || d.body; } catch { main = d.body || null; }
   try { article = d.querySelector(".roam-article") || main; } catch { article = main; }
-  try { link = d.querySelector(".rm-page-ref"); } catch { link = null; }
+  // A link inside a real Roam block, outside any board: the colour an edited card row shows.
+  try {
+    // querySelectorAll returns document order, so try each selector in priority order.
+    for (const sel of [".roam-article .rm-block__input .rm-page-ref--link", ".roam-article .rm-page-ref--link", ".rm-page-ref"]) {
+      link = [...d.querySelectorAll(sel)].find((n) => !n.closest?.(".pxd-root")) || null;
+      if (link) break;
+    }
+  } catch { link = null; }
   try { block = d.querySelector(".roam-block-container") || article; } catch { block = article; }
   const background = opaqueColor(computed(d, main, "background-color"))
     || opaqueColor(computed(d, d.body, "background-color"))

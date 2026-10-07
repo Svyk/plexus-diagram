@@ -35,25 +35,27 @@ test("isRoamTableString accepts a table macro and rejects everything else", () =
   }
 });
 
-test("planTableCreates is one 3x3 of empty cells under {{[[table]]}}", () => {
+test("planTableCreates is one 3x3 of empty cells under {{[[table]]}}, columns nested", () => {
   const plan = planTableCreates();
   assert.equal(plan.writes, TABLE_WRITES);
-  assert.equal(plan.writes, 13);
-  assert.equal(plan.ops[0].string, TABLE_ROOT);
+  assert.equal(plan.writes, 10);
   assert.equal(plan.ops[0].string, "{{[[table]]}}");
   const rows = plan.ops.filter((op) => op.parent === plan.root);
   assert.equal(rows.length, 3);
   rows.forEach((row, index) => {
     assert.equal(row.string, "");
     assert.equal(row.order, index);
-    const cells = plan.ops.filter((op) => op.parent === row.uid);
-    assert.equal(cells.length, 3);
-    cells.forEach((cell, col) => {
+    // Roam reads a row as a chain: each cell's single child is the next column.
+    let cell = row;
+    for (let col = 1; col < 3; col += 1) {
+      const kids = plan.ops.filter((op) => op.parent === cell.uid);
+      assert.equal(kids.length, 1);
+      cell = kids[0];
       assert.equal(cell.string, "");
-      assert.equal(cell.order, col);
-    });
+    }
+    assert.equal(plan.ops.filter((op) => op.parent === cell.uid).length, 0);
   });
-  assert.equal(plan.ops.length, 13);
+  assert.equal(plan.ops.length, 10);
 });
 
 test("keyboard ownership yields only while it is verified and Escape keeps the source bytes", () => {
@@ -109,7 +111,7 @@ test("keyboard ownership yields only while it is verified and Escape keeps the s
   assert.equal(escapeKeeps(source, source), true);
 });
 
-test("appendTable writes thirteen creates and nothing else", () => {
+test("appendTable writes ten creates and nothing else", () => {
   const ops = [];
   const t = {
     create(spec) {
@@ -120,7 +122,7 @@ test("appendTable writes thirteen creates and nothing else", () => {
   };
   const root = appendTable(t, { parent: "board", plexus: { x: 1, y: 2, w: 3, h: 4 } });
   assert.equal(root, "id0");
-  assert.equal(ops.length, 13);
+  assert.equal(ops.length, 10);
   assert.equal(ops[0].string, "{{[[table]]}}");
   assert.deepEqual(ops[0].plexus, { x: 1, y: 2, w: 3, h: 4 });
   assert.equal(ops.slice(1).every((op) => op.string === "" && op.plexus === undefined), true);
@@ -315,7 +317,7 @@ test("a page outline row that is a table does not emit its children", () => {
   }
 });
 
-test("createTable is one undo of thirteen writes and a 3x3 of empty cells", async () => {
+test("createTable is one undo of ten writes and a 3x3 of empty cells", async () => {
   const fake = createFakeRoam();
   const host = createHost({ api: fake.api, storage: fake.storage, graph: "g" });
   fake.seedBoard({
@@ -339,20 +341,25 @@ test("createTable is one undo of thirteen writes and a 3x3 of empty cells", asyn
   assert.equal(rows.length, 3);
   for (const row of rows) {
     assert.equal(fake.block(row).string, "");
-    const cells = fake.children(row);
-    assert.equal(cells.length, 3);
-    for (const cell of cells) assert.equal(fake.block(cell).string, "");
+    let cell = row;
+    for (let col = 1; col < 3; col += 1) {
+      const kids = fake.children(cell);
+      assert.equal(kids.length, 1);
+      cell = kids[0];
+      assert.equal(fake.block(cell).string, "");
+    }
+    assert.equal(fake.children(cell).length, 0);
   }
   const writes = fake.writesLog();
-  assert.equal(writes.length, 13);
+  assert.equal(writes.length, 10);
   assert.equal(writes.every((row) => row[0] === "create"), true);
-  assert.equal(host.stats.lastAction.writes, 13);
+  assert.equal(host.stats.lastAction.writes, 10);
   const blob = JSON.stringify(fake.props(uid));
   assert.equal(blob.includes(":diagram"), false);
   assert.equal(blob.includes("BT_attr"), false);
   assert.equal(TABLE_SIZE.w, 480);
   await session.undo();
-  assert.equal(fake.calls.filter((row) => row[0] === "undo").length, 13);
+  assert.equal(fake.calls.filter((row) => row[0] === "undo").length, 10);
 });
 
 test("a focused grid inside a card keeps board keys and the wheel", async () => {

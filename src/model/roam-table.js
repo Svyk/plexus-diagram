@@ -7,7 +7,8 @@ export const TABLE_ROOT = "{{[[table]]}}";
 export const TABLE_ROWS = 3;
 export const TABLE_COLS = 3;
 export const TABLE_SIZE = { w: 480, h: 260 };
-export const TABLE_WRITES = 1 + TABLE_ROWS * (1 + TABLE_COLS);
+// Roam tables nest columns: a row block is column 1, its child column 2, and so on.
+export const TABLE_WRITES = 1 + TABLE_ROWS * TABLE_COLS;
 
 const TABLE_RE = /^\{\{\s*(?:\[\[table\]\]|table)\s*\}\}$/i;
 
@@ -23,8 +24,8 @@ export function appendTable(t, { parent, plexus, order } = {}) {
     ...(order !== undefined ? { order } : {}),
   });
   for (let r = 0; r < TABLE_ROWS; r += 1) {
-    const row = t.create({ parent: root, string: "", order: r });
-    for (let c = 0; c < TABLE_COLS; c += 1) t.create({ parent: row, string: "", order: c });
+    let cell = t.create({ parent: root, string: "", order: r });
+    for (let c = 1; c < TABLE_COLS; c += 1) cell = t.create({ parent: cell, string: "", order: 0 });
   }
   return root;
 }

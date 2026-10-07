@@ -157,3 +157,11 @@ test("an empty colour sample adds no theme class", () => {
     restore();
   }
 });
+
+test("--pxd-link keeps Roam's block link colour when it reads on the card, else the accent", () => {
+  const dark = { background: "rgb(32, 43, 51)", text: "rgb(225, 232, 237)", link: "rgb(129, 140, 248)", dark: true };
+  assert.equal(deriveTheme(dark).vars["--pxd-link"], "rgb(129, 140, 248)");
+  const faint = deriveTheme({ ...dark, link: "rgb(40, 50, 60)" });
+  assert.equal(faint.vars["--pxd-link"], faint.vars["--pxd-accent"]);
+  assert.equal(THEME_VARS.includes("--pxd-link"), true);
+});

@@ -3197,8 +3197,8 @@ function appendTable(t, { parent, plexus, order } = {}) {
     ...order !== void 0 ? { order } : {}
   });
   for (let r = 0; r < TABLE_ROWS; r += 1) {
-    const row4 = t.create({ parent: root, string: "", order: r });
-    for (let c = 0; c < TABLE_COLS; c += 1) t.create({ parent: row4, string: "", order: c });
+    let cell = t.create({ parent: root, string: "", order: r });
+    for (let c = 1; c < TABLE_COLS; c += 1) cell = t.create({ parent: cell, string: "", order: 0 });
   }
   return root;
 }
@@ -3265,7 +3265,7 @@ var init_roam_table = __esm({
     TABLE_ROWS = 3;
     TABLE_COLS = 3;
     TABLE_SIZE = { w: 480, h: 260 };
-    TABLE_WRITES = 1 + TABLE_ROWS * (1 + TABLE_COLS);
+    TABLE_WRITES = 1 + TABLE_ROWS * TABLE_COLS;
     TABLE_RE = /^\{\{\s*(?:\[\[table\]\]|table)\s*\}\}$/i;
     TABLE_HOST_SELECTOR = [
       ".pxd-roam-table",
@@ -11137,7 +11137,8 @@ function createItemRenderer({
     const node2 = mountRoamTable(doc, parent, {
       uid,
       zoom: zoomCache,
-      renderBlock: typeof host?.renderBlock === "function" ? (el2, id) => host.renderBlock(el2, id) : null,
+      // open:false is display only: the table macro draws from the children, which must not list again as bullets.
+      renderBlock: typeof host?.renderBlock === "function" ? (el2, id) => host.renderBlock(el2, id, { open: false }) : null,
       unmount: (el2) => {
         try {
           host?.unmount?.(el2);
@@ -30518,6 +30519,7 @@ function createPdfWarm({ doc, root, host, store, timers, now: now2, renderFirst 
 var BODY_CONTRAST = 4.5;
 var SURFACE_MIX = 0.04;
 var THEME_VARS = Object.freeze([
+  "--pxd-link",
   "--pxd-surface",
   "--pxd-card",
   "--pxd-text",
@@ -30712,6 +30714,9 @@ function deriveTheme(sample) {
     accent = hslToRgb(175, dark ? 60 : 80, dark ? 55 : 30, 1);
   }
   const accentSoft = { ...opaque(accent), a: dark ? 0.22 : 0.18 };
+  const linkSrc = parseColor(src.link);
+  const linkOnCard = linkSrc ? composite(linkSrc, cardOpaque) : null;
+  const link = linkOnCard && contrast(linkOnCard, cardOpaque) >= 3 ? opaque(linkSrc) : opaque(accent);
   const edge = mix(bg, ink, dark ? 0.55 : 0.45);
   const chrome = { ...cardOpaque, a: 0.96 };
   const vars = {
@@ -30722,6 +30727,7 @@ function deriveTheme(sample) {
     "--pxd-border": cssColor2(opaque(border)),
     "--pxd-border-strong": cssColor2(opaque(borderStrong)),
     "--pxd-accent": cssColor2(opaque(accent)),
+    "--pxd-link": cssColor2(link),
     "--pxd-accent-soft": cssColor2(accentSoft),
     "--pxd-edge": cssColor2(opaque(edge)),
     "--pxd-chrome-bg": cssColor2(chrome)
@@ -30829,7 +30835,10 @@ function sampleRoam(doc) {
     article = main;
   }
   try {
-    link = d.querySelector(".rm-page-ref");
+    for (const sel of [".roam-article .rm-block__input .rm-page-ref--link", ".roam-article .rm-page-ref--link", ".rm-page-ref"]) {
+      link = [...d.querySelectorAll(sel)].find((n2) => !n2.closest?.(".pxd-root")) || null;
+      if (link) break;
+    }
   } catch {
     link = null;
   }

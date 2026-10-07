@@ -292,3 +292,8 @@
 .pxd-root .pxd-item.pxd-item--page .pxd-page-edit .rm-block-main > .rm-block-separator ~ div {
   display: none !important;
 }
+
+/* Follow-roam: resting card links take the colour Roam gives links in a block, so a row does not change colour when it enters edit. */
+.pxd-root.pxd-theme--roam .pxd-item__body .rm-page-ref--link:not([data-tag]) {
+  color: var(--pxd-link);
+}

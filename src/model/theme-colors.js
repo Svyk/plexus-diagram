@@ -5,6 +5,7 @@ export const BODY_CONTRAST = 4.5;
 export const SURFACE_MIX = 0.04;
 
 export const THEME_VARS = Object.freeze([
+  "--pxd-link",
   "--pxd-surface",
   "--pxd-card",
   "--pxd-text",
@@ -208,6 +209,10 @@ export function deriveTheme(sample) {
     accent = hslToRgb(175, dark ? 60 : 80, dark ? 55 : 30, 1);
   }
   const accentSoft = { ...opaque(accent), a: dark ? 0.22 : 0.18 };
+  // Card links keep Roam's own link colour (the one an edited block shows) when it reads on the card.
+  const linkSrc = parseColor(src.link);
+  const linkOnCard = linkSrc ? composite(linkSrc, cardOpaque) : null;
+  const link = linkOnCard && contrast(linkOnCard, cardOpaque) >= 3 ? opaque(linkSrc) : opaque(accent);
 
   const edge = mix(bg, ink, dark ? 0.55 : 0.45);
   const chrome = { ...cardOpaque, a: 0.96 };
@@ -219,6 +224,7 @@ export function deriveTheme(sample) {
     "--pxd-border": cssColor(opaque(border)),
     "--pxd-border-strong": cssColor(opaque(borderStrong)),
     "--pxd-accent": cssColor(opaque(accent)),
+    "--pxd-link": cssColor(link),
     "--pxd-accent-soft": cssColor(accentSoft),
     "--pxd-edge": cssColor(opaque(edge)),
     "--pxd-chrome-bg": cssColor(chrome),

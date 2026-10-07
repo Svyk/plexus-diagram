@@ -1335,7 +1335,8 @@ export function createItemRenderer({
     const node = mountRoamTable(doc, parent, {
       uid,
       zoom: zoomCache,
-      renderBlock: typeof host?.renderBlock === "function" ? (el, id) => host.renderBlock(el, id) : null,
+      // open:false is display only: the table macro draws from the children, which must not list again as bullets.
+      renderBlock: typeof host?.renderBlock === "function" ? (el, id) => host.renderBlock(el, id, { open: false }) : null,
       unmount: (el) => { try { host?.unmount?.(el); } catch { /* not a roam root */ } },
       portalParent: boardRoot(),
     });

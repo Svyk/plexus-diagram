@@ -3,11 +3,11 @@
 
 import { buildLines, lineBox, makeLine, round } from "./lines.js";
 import { extractGraphics } from "./rules.js";
-import { findLatticeTables } from "./lattice.js";
+import { findLatticeTables, looksLikeChart } from "./lattice.js";
 import { baselineRows, detectStreamRuns, tableFromBand } from "./stream.js";
 import { findFigures } from "./figures.js";
 import { findFurniture } from "./furniture.js";
-import { applyNumbering, bodySizeOf, CAPTION_RE, headingClasses, headingLevel } from "./headings.js";
+import { applyNumbering, bodySizeOf, CAPTION_RE, headingClasses, headingLevel, refineBodyHeadingLevels } from "./headings.js";
 import { detectLists } from "./lists.js";
 import { detectFormulas } from "./formulas.js";
 import { FOOTNOTE_MARK_RE, groupParagraphs, joinLines, spansOf } from "./blocks.js";
@@ -54,13 +54,14 @@ export function parsePageGeometry(data, n) {
   const used = new Set();
   const tables = [];
   const lattice = findLatticeTables({ rules: graphics.rules, boxes: graphics.boxes, words });
-  for (const t of lattice.tables) { t.page = n; tables.push(t); }
+  for (const t of lattice.tables) { if (isTitledBox(t)) continue; t.page = n; tables.push(t); }
   for (const w of lattice.usedWords) used.add(w);
   const usedRules = new Set(lattice.usedRules);
   for (const band of lattice.bands) {
+    if (looksLikeChart(band, graphics)) continue;
     const free = words.filter((w) => !used.has(w));
     const t = tableFromBand(band, free);
-    if (!t) continue;
+    if (!t || isTitledBox(t)) continue;
     t.page = n;
     for (const w of t.usedWords) used.add(w);
     delete t.usedWords;
@@ -173,10 +174,19 @@ export function assembleDocument(pageRecords, { numPages, info = null, engineVer
     const textBlocks = [];
     for (const seq of sequences) {
       let lines = seq;
-      // Stream tables.
-      for (const t of detectStreamRuns(lines, { dots })) {
+      // Stream tables, and aligned runs that are really equations or code listings.
+      for (const t of detectStreamRuns(lines, { dots, column: boxOfUnits(lines.length ? lines : seq) })) {
         const drop = new Set(t.lines);
         lines = lines.filter((l) => !drop.has(l));
+        if (t.type === "formula") {
+          textBlocks.push({ type: "formula", lines: t.lines, number: t.number, bbox: boxOfUnits(t.lines), text: joinLines(t.lines, { collectRefs: false }).text });
+          continue;
+        }
+        if (t.type === "code") {
+          textBlocks.push({ type: "code", lines: t.lines, bbox: boxOfUnits(t.lines), text: t.text });
+          continue;
+        }
+        if (isTitledBox(t)) { lines = [...lines, ...t.lines].sort((a, b) => a.base - b.base || a.x0 - b.x0); continue; }
         delete t.lines; delete t.usedWords;
         t.page = pg.n;
         pageTables.push(t);
@@ -208,11 +218,17 @@ export function assembleDocument(pageRecords, { numPages, info = null, engineVer
       lines = lines.filter((l) => !listLines.has(l));
       // Headings and paragraphs.
       let i = 0;
+      const levelAt = (k) => {
+        const line = lines[k];
+        const next = lines[k + 1];
+        const prev = lines[k - 1];
+        const nextIsBody = !next || !next.bold || Math.abs(next.size - line.size) > 0.6;
+        const isolated = !prev || line.base - prev.base > 1.5 * Math.max(line.size, prev.size) || prev.x1 - prev.x0 < 0.6 * (line.x1 - line.x0);
+        return headingLevel(line, { bodySize, classes, nextIsBody, isolated });
+      };
       while (i < lines.length) {
         const line = lines[i];
-        const next = lines[i + 1];
-        const nextIsBody = !next || !next.bold || Math.abs(next.size - line.size) > 0.6;
-        const level = headingLevel(line, { bodySize, classes, nextIsBody });
+        const level = levelAt(i);
         if (level) {
           const hl = [line];
           let j = i + 1;
@@ -222,7 +238,7 @@ export function assembleDocument(pageRecords, { numPages, info = null, engineVer
           continue;
         }
         let j = i + 1;
-        while (j < lines.length && !headingLevel(lines[j], { bodySize, classes, nextIsBody: !lines[j + 1] || !lines[j + 1].bold || Math.abs(lines[j + 1].size - lines[j].size) > 0.6 })) j++;
+        while (j < lines.length && !levelAt(j)) j++;
         const chunk = lines.slice(i, j);
         for (const group of groupParagraphs(chunk, { bodySize })) {
           const joined = joinLines(group);
@@ -246,6 +262,7 @@ export function assembleDocument(pageRecords, { numPages, info = null, engineVer
         i = j;
       }
     }
+    stitchTables(pageTables, textBlocks, bodySize);
     // Captions attach to the nearest table or figure that overlaps horizontally.
     const captionFor = new Map();
     for (const cb of textBlocks) {
@@ -269,7 +286,7 @@ export function assembleDocument(pageRecords, { numPages, info = null, engineVer
     const unitOf = (b, id) => ({ id, x0: b.bbox.x0 ?? b.bbox[0], y0: b.bbox.y0 ?? b.bbox[1], x1: b.bbox.x1 ?? b.bbox[2], y1: b.bbox.y1 ?? b.bbox[3] });
     const captionIds = new Map();
     for (const tb of textBlocks) {
-      const prefix = { heading: "b", para: "b", caption: "c", footnote: "n", list: "l", formula: "e" }[tb.type];
+      const prefix = { heading: "b", para: "b", caption: "c", footnote: "n", list: "l", formula: "e", code: "k" }[tb.type];
       const id = nextId(prefix);
       const bbox = [round(tb.bbox.x0), round(tb.bbox.y0), round(tb.bbox.x1), round(tb.bbox.y1)];
       const block = { id, type: tb.type, page: pg.n, bbox, confidence: 0.9, engine: "builtin" };
@@ -281,6 +298,7 @@ export function assembleDocument(pageRecords, { numPages, info = null, engineVer
       } else if (tb.type === "footnote") { block.mark = tb.mark; block.text = tb.text; footnotes.push(block); }
       else if (tb.type === "list") { block.ordered = tb.ordered; block.items = tb.items; }
       else if (tb.type === "formula") { block.latex = null; block.number = tb.number; block.text = tb.text; }
+      else if (tb.type === "code") { block.text = tb.text; }
       blocks[id] = block;
       units.push(unitOf(tb, id));
     }
@@ -304,6 +322,8 @@ export function assembleDocument(pageRecords, { numPages, info = null, engineVer
     perPage.push({ n: pg.n, w: round(pg.w), h: round(pg.h), rotation: pg.rotation, kind: pg.kind, parsed: true, columns: ordered.columns, ms: pg.ms });
   }
   mergeContinuations(order, blocks);
+  linkContinuedTables(order, blocks, perPage);
+  refineBodyHeadingLevels(headings, { classes });
   applyNumbering(headings);
   // Footnote links: nearest footnote with the same mark on the same or a later page, else earlier.
   for (const entry of refs) {
@@ -333,6 +353,66 @@ export function assembleDocument(pageRecords, { numPages, info = null, engineVer
     removed: furniture.removed,
     stats: { ms: 0, perPage: perPage.map((p) => p.ms), assembleMs: round(now() - t1), bodySize, headingSizes: classes, range: [from, to] },
   };
+}
+
+// A heading over one spanning line of text ("ARTICLE INFO" + an editor line) is a box, not a
+// table: two rows where one is a single cell across every column.
+export function isTitledBox(t) {
+  if (t.rows < 2 || t.cols < 2) return true;
+  if (t.rows > 2) return false;
+  return t.cells.some((k) => k.colSpan === t.cols && k.text);
+}
+
+// Two stream tables in one column split by a slightly wider row gap: same column structure,
+// nothing between them, join them into one.
+export function stitchTables(tables, textBlocks, bodySize) {
+  tables.sort((a, b) => a.page - b.page || a.bbox[1] - b.bbox[1] || a.bbox[0] - b.bbox[0]);
+  for (let i = 0; i + 1 < tables.length; i++) {
+    const a = tables[i];
+    const b = tables[i + 1];
+    if (a.method !== "stream" || b.method !== "stream" || a.cols !== b.cols) continue;
+    const gap = b.bbox[1] - a.bbox[3];
+    if (gap < -2 || gap > 4 * bodySize) continue;
+    const ox = Math.min(a.bbox[2], b.bbox[2]) - Math.max(a.bbox[0], b.bbox[0]);
+    if (ox < 0.8 * Math.min(a.bbox[2] - a.bbox[0], b.bbox[2] - b.bbox[0])) continue;
+    const colW = (a.bbox[2] - a.bbox[0]) / a.cols;
+    let same = true;
+    for (let c = 1; c < a.cols; c++) if (Math.abs(a.grid.xs[c] - b.grid.xs[c]) > 0.35 * colW) same = false;
+    if (!same) continue;
+    const between = textBlocks.some((tb) => tb.bbox.y0 >= a.bbox[3] - 1 && tb.bbox.y1 <= b.bbox[1] + 1 && Math.min(tb.bbox.x1, a.bbox[2]) - Math.max(tb.bbox.x0, a.bbox[0]) > 0);
+    if (between) continue;
+    const cells = [...a.cells, ...b.cells.map((k) => ({ ...k, r: k.r + a.rows, header: false }))];
+    const merged = {
+      ...a,
+      rows: a.rows + b.rows,
+      cells,
+      bbox: [Math.min(a.bbox[0], b.bbox[0]), a.bbox[1], Math.max(a.bbox[2], b.bbox[2]), b.bbox[3]],
+      grid: { xs: a.grid.xs, ys: [...a.grid.ys.slice(0, -1), (a.grid.ys[a.grid.ys.length - 1] + b.grid.ys[0]) / 2, ...b.grid.ys.slice(1)] },
+      confidence: Math.min(a.confidence, b.confidence),
+    };
+    tables.splice(i, 2, merged);
+    i--;
+  }
+  return tables;
+}
+
+// A table at the top of a page continues the last table of the previous page when its caption
+// says so, or when both share the column count and sit at the page edges without a caption.
+export function linkContinuedTables(order, blocks, pages) {
+  const byPage = new Map();
+  for (const p of pages) byPage.set(p.n, p);
+  const tables = order.map((id) => blocks[id]).filter((b) => b && b.type === "table");
+  for (let i = 1; i < tables.length; i++) {
+    const b = tables[i];
+    const a = tables[i - 1];
+    if (b.page !== a.page + 1 || a.cols !== b.cols) continue;
+    const cap = b.caption ? blocks[b.caption] : null;
+    const says = cap && /\b(cont(inued|\.|'d)|continuation)\b/i.test(cap.text);
+    const ph = byPage.get(a.page) ? byPage.get(a.page).h : 792;
+    const pb = byPage.get(b.page) ? byPage.get(b.page).h : 792;
+    const edges = a.bbox[3] >= 0.6 * ph && b.bbox[1] <= 0.35 * pb;
+    if (says || (!cap && edges)) b.continues = a.id;
+  }
 }
 
 function dominantFont(lines) {

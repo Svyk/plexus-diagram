@@ -4,6 +4,7 @@ import { cellTextOf, isNumericText } from "./lattice.js";
 import { round } from "./lines.js";
 import { markerOf } from "./lists.js";
 import { CAPTION_RE } from "./headings.js";
+import { equationRowSignals } from "./formulas.js";
 
 const GAP_MIN = 3;
 
@@ -345,6 +346,22 @@ export function tableFromBand(band, words) {
     }
   }
   if (rowsIn.length < 2) return null;
+  // A framed code listing or display equation is not a table; the free pass reads its lines.
+  const run = rowsIn.map((r) => ({ row: { words: r.tokens.flatMap((t) => t.words), lines: [] }, tokens: r.tokens }));
+  if (equationRun(run, { x0: band.x0, x1: band.x1 })) return null;
+  // A framed box of prose and numbered monospace code: rows that are one long token, or a line
+  // number plus monospace text, are not table rows; a table needs three others.
+  let prose = 0;
+  let tabular = 0;
+  const numbered = run.filter((r) => r.tokens.length >= 2 && /^\d{1,4}$/.test(r.tokens[0].text));
+  const mono = isMonospace(numbered.flatMap((r) => r.tokens.slice(1).flatMap((t) => t.words)));
+  for (const r of run) {
+    const first = r.tokens[0];
+    const codeLike = mono && r.tokens.length >= 2 && /^\d{1,4}$/.test(first.text);
+    if (r.tokens.length === 1 && r.row.words.length >= 5) prose++;
+    else if (r.tokens.length >= 2 && !codeLike) tabular++;
+  }
+  if (tabular < 2 || prose >= 0.4 * run.length) return null;
   const headerRowsHint = edges.length > 2 ? bandsOf[0] : 0;
   const table = buildTable(rowsIn, { bands: band, headerRowsHint });
   if (!table) return null;
@@ -371,10 +388,25 @@ export function baselineRows(lines) {
   return rows;
 }
 
-// Free mode: runs of aligned multi-token rows inside one column.
-export function detectStreamRuns(lines, { dots = [] } = {}) {
+// A row of prose: many words, long on average, few gap tokens and none of them short.
+export function proseRow(row, tokens, columnWidth = Infinity) {
+  const words = row.words;
+  const n = words.length;
+  if (n < 6) return false;
+  const chars = words.reduce((k, w) => k + w.text.length, 0);
+  if (chars / n < 3.5) return false;
+  if (Number.isFinite(columnWidth) && row.x1 - row.x0 < 0.6 * columnWidth) return false;
+  const short = tokens.filter((t) => t.words.length <= 2 || isNumericText(t.text)).length;
+  return tokens.length === 1 || (tokens.length < n / 2 && short === 0);
+}
+
+// Free mode: runs of aligned multi-token rows inside one column. Returns tables, and the
+// candidates that read as display equations ("formula") or numbered code listings ("code").
+export function detectStreamRuns(lines, { dots = [], column = null } = {}) {
   const out = [];
   const rows = baselineRows(lines);
+  const colBox = column || (lines.length ? { x0: Math.min(...lines.map((l) => l.x0)), x1: Math.max(...lines.map((l) => l.x1)) } : null);
+  const colW = colBox ? colBox.x1 - colBox.x0 : Infinity;
   let i = 0;
   while (i < rows.length) {
     const run = [];
@@ -384,11 +416,18 @@ export function detectStreamRuns(lines, { dots = [] } = {}) {
       const tokens = row.lines.flatMap((l) => tokenizeLine(l)).sort((a, b) => a.x0 - b.x0);
       const prev = run[run.length - 1];
       if (tokens.length < 2 || markerOf(row.lines[0], dots) || CAPTION_RE.test(row.text)) break;
+      if (proseRow(row, tokens, colW)) break;
       if (prev && row.base - prev.row.base > 2.2 * row.size) break;
       run.push({ row, tokens });
       j++;
     }
+    if (run.length >= 2) {
+      const eq = equationRun(run, colBox);
+      if (eq) { out.push(eq); i = j; continue; }
+    }
     if (run.length >= 3) {
+      const code = codeRun(run);
+      if (code) { out.push(code); i = j; continue; }
       const rowsIn = run.map((r) => ({ y0: r.row.y0, y1: r.row.y1, tokens: r.tokens }));
       const table = buildTable(rowsIn, {});
       if (table && !looksLikeProse(run)) {
@@ -402,6 +441,56 @@ export function detectStreamRuns(lines, { dots = [] } = {}) {
     i = i + 1;
   }
   return out;
+}
+
+// Bracketed matrices and other multi-line display equations: an equation number at the column
+// edge or a "D =" lead-in on one row, plus delimiter or math glyphs.
+function equationRun(run, column) {
+  let number = null;
+  let lead = false;
+  let delimiters = false;
+  let math = 0;
+  for (const r of run) {
+    const sig = equationRowSignals(r.row.words, { column });
+    if (sig.number) number = sig.number;
+    if (sig.lead) lead = true;
+    if (sig.delimiters) delimiters = true;
+    if (sig.math) math++;
+  }
+  const strong = (number && (lead || delimiters || math >= run.length / 2)) || (lead && delimiters) || (delimiters && math >= run.length / 2);
+  if (!strong) return null;
+  const lines = run.flatMap((r) => r.row.lines);
+  return { type: "formula", number, lines, usedWords: run.flatMap((r) => r.row.words) };
+}
+
+// Monospace text: every word's width per glyph is the same (within 15%). Digits share one
+// width in proportional fonts too, so only words with letters count, and three are needed.
+export function isMonospace(words) {
+  const letters = words.filter((w) => w.text.length >= 2 && /[A-Za-z].*[A-Za-z]/.test(w.text));
+  if (letters.length >= 2 && letters.filter((w) => w.mono).length >= 0.6 * letters.length) return true;
+  const widths = words.filter((w) => w.text.length >= 2 && !w.sup && !w.sub && /[A-Za-z].*[A-Za-z]/.test(w.text)).map((w) => (w.x1 - w.x0) / w.text.length).sort((a, b) => a - b);
+  if (widths.length < 3) return false;
+  const med = widths[widths.length >> 1];
+  const agree = widths.filter((w) => Math.abs(w - med) <= 0.12 * med).length;
+  return agree >= 0.8 * widths.length;
+}
+
+// A listing: the first token of every row is the line number, counting up by one, and the
+// code after it is set in a monospace font (a "No." column in a proportional font is a table).
+function codeRun(run) {
+  let expect = null;
+  for (const r of run) {
+    const first = r.tokens[0];
+    if (!first || !/^\d{1,4}$/.test(first.text)) return null;
+    const n = Number(first.text);
+    if (expect != null && n !== expect) return null;
+    expect = n + 1;
+    if (r.tokens.length < 2) return null;
+  }
+  if (!isMonospace(run.flatMap((r) => r.tokens.slice(1).flatMap((t) => t.words)))) return null;
+  const lines = run.flatMap((r) => r.row.lines);
+  const text = run.map((r) => r.tokens.slice(1).map((t) => t.text).join(" ")).join("\n");
+  return { type: "code", lines, text, usedWords: run.flatMap((r) => r.row.words) };
 }
 
 // Justified prose splits into tokens at random x; tables keep short cells with wide gaps.

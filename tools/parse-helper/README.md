@@ -28,11 +28,12 @@ All routes except a rejected `Origin` require `Authorization: Bearer <token>`. H
 
 | Method | Path | Result |
 |---|---|---|
-| GET | `/v1/health` | `{helper, version:"0.1.0", schema:"pxd-parse/1", engines:["docling"], models, busy, warm}` |
+| GET | `/v1/health` | `{helper, version:"0.1.0", schema:"pxd-parse/1", engines:["docling","ocr"], models, busy, warm}` |
 | GET | `/v1/models` | `{state, items:[{name, state, bytes, done}]}` |
 | POST | `/v1/models/download` | `202` starts `docling-tools models download` |
 | HEAD, GET | `/v1/cache/{sha256}?opts={optsHash}` | cached document, or 404 |
 | POST | `/v1/jobs` | body is the PDF (max 200 MB). `X-Pxd-Options` is JSON. `202` `{job, sha256, pages, cached}` |
+| POST | `/v1/ocr` | body is the PDF. `X-Pxd-Options` `{pages}` → `200` `{schema:"pxd-ocr/1", pageCount, pages:[…], sha256, elapsedMs, cached}` (Vision word boxes + OpenCV rules for scanned pages, cached by sha256 + pages, 50 pages per call). `{cells:[{page, bbox}]}` → `{cells:[{page, bbox, text, conf, glyph}]}`, a 3× re-read of single cells, never cached (400 cells per call). Synchronous; one OCR runs at a time. |
 | GET | `/v1/jobs/{id}/events` | SSE `progress`, `page`, `done`, `error` |
 | GET | `/v1/jobs/{id}` | the document when `done`, else `{state}` |
 | DELETE | `/v1/jobs/{id}` | `204` cancels a running job (kills and respawns the worker). `404` otherwise |
@@ -65,6 +66,39 @@ Cache files are `~/Library/Caches/plexus-parse-helper/<sha256>/<optsHash>.json`,
 `convert_docling(doc, *, sha256="", options=None, engine_version="docling-2.91.0", created_at=None) -> dict`
 
 `refine_document(doc, pdf_path, *, ocr=True) -> dict`
+
+## OCR page records (`pxd-ocr/1`)
+
+`tools/parse-helper/bin/plexus-parse-helper ocr file.pdf --pages 25 --json out.json` and
+`--cells cells.json` (a JSON list of `{page, bbox}`) are the CLI forms of `/v1/ocr`.
+
+`ocr_pdf(pdf_path, pages=None) -> {"schema": "pxd-ocr/1", "pageCount", "pages": [record]}`.
+A record is what the engine's `parsePageGeometry` takes in place of pdf.js data:
+
+```json
+{"n": 1, "w": 597.4, "h": 405.1, "rotation": 0, "transform": [1, 0, 0, 1, 0, 0], "scan": true,
+ "dpi": 300, "deskew": 0.0, "fonts": {"ocr": {"name": "ocr"}}, "ops": {"fnArray": [], "argsArray": []},
+ "items": [{"str": "0.05", "transform": [5.9, 0, 0, 5.9, 251.8, 46.6], "width": 11.5, "height": 5.9,
+            "y0": 41.9, "y1": 47.9, "fontName": "ocr", "conf": 1.0}],
+ "rules": [{"x0": 103.4, "y0": 19.6, "x1": 568.1, "y1": 19.6, "thick": 0.5}]}
+```
+
+Coordinates are PDF points with the origin at the top-left of the rendered page after
+deskew (`deskew` is the angle applied, degrees, counter-clockwise positive). Each item is one
+word: `transform[4]` is its left edge, `transform[5]` its baseline (from the ink), `width` its
+ink width, `y0`/`y1` the box the engine should use, `conf` Vision's candidate confidence (0.3,
+0.5 or 1). Rules are segments in the same frame. The page is read in overlapping tiles (Vision
+returns at most about 250 observations per image), words are deduplicated by overlap, word
+sizes within 0.45–1.5× of the page's body size snap to it, and a second pass with language
+correction replaces words that have letters when it is at least as confident.
+
+`ocr_cells(pdf_path, cells) -> {"cells": [{page, bbox, text, conf, glyph}]}`: each cell is
+cropped from the page render, upscaled 3×, padded and read alone; `glyph` is `—`, `*` or
+`null` from an ink check (one thin solid run, one small blob), independent of `text`.
+
+Tests: `tests/test_ocr.py` runs on a saved Vision result (`tests/fixtures/ocr-table.vision.json`,
+made from `ocr-table.png`), so CI needs no Vision; the server tests stub the OCR runners
+(`create_app(..., ocr_runner=, cell_runner=)`).
 
 Blocks are keyed by id (`b` text, `l` list, `t` table, `f` figure, `e` formula, `c` caption, `n` footnote, `k` code). Coordinates are PDF points, origin top-left. Table cells are anchors only (`r`, `c`, `rowSpan`, `colSpan`, `text`, `header`, `bbox`, `align`, `numeric`). `headerRows` counts leading rows whose cells are all column headers. `method` is `"tableformer"`. `grid` is `{xs, ys}`. Images are not embedded. Page headers and footers go to `removed[]` with `running-header` or `running-footer`.
 

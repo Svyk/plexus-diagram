@@ -17,6 +17,7 @@ from plexus_parse_helper.auth import token_matches
 from plexus_parse_helper.cache import ParseCache
 from plexus_parse_helper.jobs import JobCancelled, JobManager, expand_pages
 from plexus_parse_helper.models import model_report, start_download
+from plexus_parse_helper.ocr import ocr_cells, ocr_options_hash, ocr_pdf
 from plexus_parse_helper.schema import normalize_options, options_hash, sha256_bytes
 
 MAX_BODY = 200 * 1024 * 1024
@@ -180,7 +181,7 @@ class JobBook:
         return 204
 
 
-def create_app(*, token: str, allow_origins: list[str] | None = None, jobs: JobManager | None = None, cache: ParseCache | None = None) -> FastAPI:
+def create_app(*, token: str, allow_origins: list[str] | None = None, jobs: JobManager | None = None, cache: ParseCache | None = None, ocr_runner=None, cell_runner=None) -> FastAPI:
     allow = set(allow_origins or ["https://roamresearch.com"])
     manager = jobs or JobManager()
     store = cache or ParseCache()
@@ -189,6 +190,9 @@ def create_app(*, token: str, allow_origins: list[str] | None = None, jobs: JobM
     app.state.book = book
     app.state.token = token
     app.state.manager = manager
+    run_ocr = ocr_runner or ocr_pdf
+    run_cells = cell_runner or ocr_cells
+    ocr_lock = threading.Lock()
 
     def authed(request: Request) -> bool:
         return token_matches(request.headers.get("authorization"), token)
@@ -202,7 +206,7 @@ def create_app(*, token: str, allow_origins: list[str] | None = None, jobs: JobM
             "helper": HELPER_NAME,
             "version": HELPER_VERSION,
             "schema": SCHEMA_ID,
-            "engines": ["docling"],
+            "engines": ["docling", "ocr"],
             "models": report["health"],
             "busy": manager.busy,
             "warm": bool(manager.warm),
@@ -279,6 +283,59 @@ def create_app(*, token: str, allow_origins: list[str] | None = None, jobs: JobM
         except ValueError as exc:
             return JSONResponse({"error": str(exc)}, status_code=400)
         return JSONResponse(body, status_code=status)
+
+    @app.post("/v1/ocr")
+    async def post_ocr(request: Request):
+        """Body is the PDF. X-Pxd-Options {pages, cells}. Page records are cached by
+        sha256 + pages; a cells request (re-read of single cells) is never cached."""
+        if not authed(request):
+            return JSONResponse({"error": "unauthorized"}, status_code=401)
+        length = request.headers.get("content-length")
+        if length and int(length) > MAX_BODY:
+            return JSONResponse({"error": "too large"}, status_code=413)
+        data = await request.body()
+        if len(data) > MAX_BODY:
+            return JSONResponse({"error": "too large"}, status_code=413)
+        if not data:
+            return JSONResponse({"error": "empty body"}, status_code=400)
+        raw = request.headers.get("x-pxd-options") or "{}"
+        try:
+            options = json.loads(raw)
+        except json.JSONDecodeError:
+            return JSONResponse({"error": "bad X-Pxd-Options"}, status_code=400)
+        pages = options.get("pages") or None
+        cells = options.get("cells") or None
+        sha = sha256_bytes(data)
+        ohash = ocr_options_hash(pages)
+        if not cells:
+            hit = store.get(sha, ohash)
+            if hit is not None:
+                hit["cached"] = True
+                return hit
+        fd, name = tempfile.mkstemp(suffix=".pdf", prefix="pxd-ocr-")
+        try:
+            os.write(fd, data)
+            os.close(fd)
+            started = time.perf_counter()
+            with ocr_lock:
+                if cells:
+                    if len(cells) > 400:
+                        return JSONResponse({"error": "cells cap is 400"}, status_code=400)
+                    out = run_cells(name, cells)
+                else:
+                    out = run_ocr(name, pages)
+            out["sha256"] = sha
+            out["elapsedMs"] = int((time.perf_counter() - started) * 1000)
+            out["cached"] = False
+        except ValueError as exc:
+            return JSONResponse({"error": str(exc)}, status_code=400)
+        except Exception as exc:
+            return JSONResponse({"error": f"ocr failed: {exc}"}, status_code=500)
+        finally:
+            Path(name).unlink(missing_ok=True)
+        if not cells:
+            store.put(sha, ohash, out)
+        return out
 
     @app.get("/v1/jobs/{job_id}/events")
     def events(job_id: str, request: Request):

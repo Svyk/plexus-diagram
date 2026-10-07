@@ -1693,6 +1693,7 @@ export function createReadPane({
       },
       adoptCreated: () => { try { refreshList(); } catch { /* list */ } },
       getContext: () => readerContext(),
+      scanAuto: (() => { try { return (settings?.get?.("parse-engine-default") || "auto") === "auto"; } catch { return false; } })(),
     });
     parsedMount.append(parsedView.element());
     try { parsedView.watchPageInput(readerField()); } catch { /* field */ }

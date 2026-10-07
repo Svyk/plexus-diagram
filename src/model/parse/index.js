@@ -12,6 +12,7 @@ import { detectLists } from "./lists.js";
 import { detectFormulas } from "./formulas.js";
 import { FOOTNOTE_MARK_RE, groupParagraphs, joinLines, spansOf } from "./blocks.js";
 import { boxOfUnits, crossesGutter, detectColumns, orderUnits, splitAtGutters } from "./xycut.js";
+import { repairOcrTable } from "./ocr-fix.js";
 
 export const SCHEMA = "pxd-parse/1";
 export const ENGINE_VERSION = "plexus-builtin/1";
@@ -58,7 +59,12 @@ export function parsePageGeometry(data, n) {
     w = maxX - minX; h = maxY - minY;
     ({ lines, rotated } = buildLines(data.items || [], { transform, fonts: data.fonts || {} }));
   }
-  const graphics = extractGraphics(data.ops, { transform });
+  const ocr = Boolean(data.scan && Array.isArray(data.rules));
+  if (ocr) {
+    data = { ...data, items: (data.items || []).filter((it) => !/^[.·•]+$/.test(it.str || "")) };
+    ({ lines, rotated } = buildLines(data.items, { transform, fonts: data.fonts || {} }));
+  }
+  const graphics = ocr ? ocrGraphics(data, w, h) : extractGraphics(data.ops, { transform });
   const words = lines.flatMap((l) => l.words);
   const pageArea = w * h;
   const imageArea = (im) => (im.x1 - im.x0) * (im.y1 - im.y0);
@@ -97,7 +103,28 @@ export function parsePageGeometry(data, n) {
     tables.splice(i, 1);
     for (const w of words) if (used.has(w) && !figs.used.has(w) && w.x0 >= t.bbox[0] - 2 && w.x1 <= t.bbox[2] + 2 && w.base >= t.bbox[1] && w.base <= t.bbox[3] + 2) used.delete(w);
   }
-  return { n, w, h, rotation: data.rotation || 0, textRotation, kind, scanLayer, lines, rotated, words, graphics, tables, figures, used, ms: round(now() - t0) };
+  return { n, w, h, rotation: data.rotation || 0, textRotation, kind, scanLayer, ocr, lines, rotated, words, graphics, tables, figures, used, ms: round(now() - t0) };
+}
+
+// An OCR page record (helper /v1/ocr): precomputed `rules` segments stand in for the pdf.js
+// operator list, and the page is one background image.
+export function ocrGraphics(data, w, h) {
+  const rules = [];
+  const dots = [];
+  // Leader dots read as text ("..", ". .") are dots, not words.
+  for (const it of data.items || []) {
+    if (!/^[.·•]+$/.test(it.str || "")) continue;
+    const size = it.transform[0];
+    const n = it.str.length;
+    for (let i = 0; i < n; i++) dots.push({ x: it.transform[4] + (it.width || size) * (i + 0.5) / n, y: it.transform[5] - 0.05 * size, r: 0.4 });
+  }
+  for (const r of data.rules || []) {
+    const horizontal = Math.abs(r.x1 - r.x0) >= Math.abs(r.y1 - r.y0);
+    const thick = r.thick || 0.5;
+    if (horizontal) rules.push({ axis: "h", x0: Math.min(r.x0, r.x1), x1: Math.max(r.x0, r.x1), y0: (r.y0 + r.y1) / 2, y1: (r.y0 + r.y1) / 2, thick });
+    else rules.push({ axis: "v", x0: (r.x0 + r.x1) / 2, x1: (r.x0 + r.x1) / 2, y0: Math.min(r.y0, r.y1), y1: Math.max(r.y0, r.y1), thick });
+  }
+  return { rules, boxes: [], dots, shapes: [], images: [{ x0: 0, y0: 0, x1: w, y1: h }], segments: rules.length, truncated: false };
 }
 
 export async function parsePdf({ getPage, numPages, pages, signal, onPage, info = null, engineVersion = ENGINE_VERSION, sha256 = null, options = {} }) {
@@ -332,6 +359,10 @@ export function assembleDocument(pageRecords, { numPages, info = null, engineVer
       const id = nextId("t");
       const cap = captionFor.get(t);
       const block = { id, type: "table", page: pg.n, bbox: t.bbox, rows: t.rows, cols: t.cols, headerRows: t.headerRows, headerCols: t.headerCols, cells: t.cells, caption: cap ? captionIds.get(cap) : null, method: t.method, grid: t.grid, confidence: t.confidence, engine: "builtin" };
+      if (pg.ocr) {
+        annotateOcrCells(block, pg.words);
+        block.repairs = repairOcrTable(block);
+      }
       if (cap) blocks[captionIds.get(cap)].for = id;
       blocks[id] = block;
       units.push({ id, x0: t.bbox[0], y0: t.bbox[1], x1: t.bbox[2], y1: t.bbox[3] });
@@ -345,7 +376,8 @@ export function assembleDocument(pageRecords, { numPages, info = null, engineVer
     }
     const ordered = orderUnits(units, { gutters });
     for (const u of ordered.order) order.push(u.id);
-    perPage.push({ n: pg.n, w: round(pg.w), h: round(pg.h), rotation: pg.rotation, textRotation: pg.textRotation || 0, scanLayer: Boolean(pg.scanLayer), kind: pg.kind, parsed: true, columns: ordered.columns, ms: pg.ms });
+    if (pg.ocr) for (const u of units) if (blocks[u.id]) blocks[u.id].engine = "ocr+builtin";
+    perPage.push({ n: pg.n, w: round(pg.w), h: round(pg.h), rotation: pg.rotation, textRotation: pg.textRotation || 0, scanLayer: Boolean(pg.scanLayer), ocr: Boolean(pg.ocr), kind: pg.kind, parsed: true, columns: ordered.columns, ms: pg.ms });
   }
   mergeContinuations(order, blocks);
   linkContinuedTables(order, blocks, perPage);
@@ -363,7 +395,7 @@ export function assembleDocument(pageRecords, { numPages, info = null, engineVer
   let title = info && typeof info.Title === "string" && info.Title.trim() ? info.Title.trim() : null;
   if (!title) { const h1 = headings.find((h) => h.level === 1 && h.page === (firstPage ? firstPage.n : 1)) || headings.find((h) => h.level === 1); title = h1 ? h1.text : null; }
   const pagesOut = [];
-  for (const p of perPage) pagesOut.push({ n: p.n, w: p.w, h: p.h, rotation: p.rotation, textRotation: p.textRotation, scanLayer: p.scanLayer, kind: p.kind, parsed: true, columns: p.columns });
+  for (const p of perPage) pagesOut.push({ n: p.n, w: p.w, h: p.h, rotation: p.rotation, textRotation: p.textRotation, scanLayer: p.scanLayer, ocr: p.ocr, kind: p.kind, parsed: true, columns: p.columns });
   return {
     schema: SCHEMA,
     sha256,
@@ -379,6 +411,34 @@ export function assembleDocument(pageRecords, { numPages, info = null, engineVer
     removed: furniture.removed,
     stats: { ms: 0, perPage: perPage.map((p) => p.ms), assembleMs: round(now() - t1), bodySize, headingSizes: classes, range: [from, to] },
   };
+}
+
+// OCR pages: each cell gets the lowest word confidence inside it and the tight box of those
+// words (`wbox`), which the cell re-read crops instead of the full grid cell.
+export function annotateOcrCells(table, words) {
+  for (const cell of table.cells) {
+    if (!cell.bbox) continue;
+    const [x0, y0, x1, y1] = cell.bbox;
+    let conf = null;
+    let box = null;
+    const bases = [];
+    let size = 0;
+    for (const w of words) {
+      const cx = (w.x0 + w.x1) / 2; const cy = w.base - 0.25 * w.size;
+      if (cx < x0 || cx > x1 || cy < y0 || cy > y1) continue;
+      if (w.conf != null) conf = conf == null ? w.conf : Math.min(conf, w.conf);
+      box = box ? [Math.min(box[0], w.x0), Math.min(box[1], w.y0), Math.max(box[2], w.x1), Math.max(box[3], w.y1)] : [w.x0, w.y0, w.x1, w.y1];
+      bases.push(w.base);
+      size = Math.max(size, w.size);
+    }
+    if (box) {
+      cell.wbox = box.map(round);
+      bases.sort((a, b) => a - b);
+      cell.wbase = round(bases[bases.length >> 1]);
+      cell.wsize = round(size);
+    }
+    cell.conf = conf == null ? (cell.text ? 1 : 0) : round(conf);
+  }
 }
 
 // Labels around a chart (legend entries, slice percentages) line up loosely: a sparse stream

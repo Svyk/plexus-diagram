@@ -186,10 +186,31 @@ export function visualRows(words) {
   const rows = [];
   for (const w of sorted) {
     const r = rows[rows.length - 1];
-    if (r && w.y0 < r.y1 - 1) { r.words.push(w); r.y1 = Math.max(r.y1, w.y1); r.y0 = Math.min(r.y0, w.y0); }
-    else rows.push({ y0: w.y0, y1: w.y1, words: [w] });
+    if (r && w.y0 < r.y1 - 1 && !ocrApart(r, w)) {
+      r.words.push(w); r.y1 = Math.max(r.y1, w.y1); r.y0 = Math.min(r.y0, w.y0);
+    } else rows.push({ y0: w.y0, y1: w.y1, words: [w] });
   }
   return rows;
+}
+
+// OCR words (they carry `conf`) join a row by baseline, not by box overlap alone: their boxes
+// are estimates, and the rows of a tightly set scan sit closer than one box height. A word
+// belongs when its baseline is within 0.7 em of the row's first one, or when it is the second
+// line of a wrapped cell: stacked under a row word at line pitch with a centred cell between.
+function ocrApart(row, w) {
+  if (w.conf == null) return false;
+  const anchor = row.words[0];
+  if (anchor.conf == null) return false;
+  const em = Math.max(w.size, anchor.size);
+  if (Math.abs(w.base - anchor.base) <= 0.7 * em) return false;
+  for (const u of row.words) {
+    const gap = Math.abs(w.base - u.base);
+    if (gap < 0.8 * em || gap > 1.6 * em) continue;
+    if (Math.min(w.x1, u.x1) - Math.max(w.x0, u.x0) <= 0) continue;
+    const lo = Math.min(w.base, u.base) + 0.2 * em; const hi = Math.max(w.base, u.base) - 0.2 * em;
+    if (row.words.some((v) => v.base > lo && v.base < hi)) return false;
+  }
+  return true;
 }
 
 // Rows inside one rule band. A lone word whose box bridges two baseline rows (a multirow

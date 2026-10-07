@@ -72,6 +72,8 @@ function piecesOf(item, transform, fonts) {
   const scaleX = Math.hypot(m[0], m[1]) / (Math.hypot(item.transform[0], item.transform[1]) || 1);
   const width = (item.width || 0) * scaleX;
   const flags = fontFlags(item.fontName, fonts);
+  // OCR word items (helper /v1/ocr) are whole words: never glue two into one.
+  const ocrWord = item.fontName === "ocr";
   if (!str.trim()) return [{ space: true, x0: x, x1: x + width, base, size, rotated, angle }];
   // Letter-spaced OCR text ("N O T I F I A B L E") comes as one-letter pieces: the item is one
   // word with its spaces removed (word breaks inside such an item are not recoverable).
@@ -109,8 +111,10 @@ function piecesOf(item, transform, fonts) {
         mathChars: math,
         rotated,
         angle,
-        leadingSpace: start > 0 && str[start - 1] === " ",
-        trailingSpace: end < str.length && str[end] === " ",
+        leadingSpace: ocrWord || (start > 0 && str[start - 1] === " "),
+        trailingSpace: ocrWord || (end < str.length && str[end] === " "),
+        conf: item.conf,
+        boxY: ocrWord && item.y0 != null && item.y1 != null ? [item.y0, item.y1] : null,
       });
     }
     i = end;
@@ -230,6 +234,7 @@ function mergeWords(pieces, rowSize) {
       if (p.italic) cur.italicChars += p.text.length;
       if (p.mathFont) cur.mathFontChars += p.text.length;
       if (p.mono) cur.monoChars += p.text.length;
+      if (p.conf != null) cur.conf = cur.conf == null ? p.conf : Math.min(cur.conf, p.conf);
       continue;
     }
     cur = {
@@ -250,13 +255,17 @@ function mergeWords(pieces, rowSize) {
       mathFontChars: p.mathFont ? p.text.length : 0,
       monoChars: p.mono ? p.text.length : 0,
       trailingSpace: p.trailingSpace,
+      conf: p.conf,
+      boxY: p.boxY,
     };
     words.push(cur);
     gapSpace = false;
   }
   for (const w of words) {
-    w.y0 = w.base - w.size * 0.8;
-    w.y1 = w.base + w.size * 0.22;
+    // OCR words carry their measured box; born-digital words get one from the font size.
+    w.y0 = w.boxY ? w.boxY[0] : w.base - w.size * 0.8;
+    w.y1 = w.boxY ? w.boxY[1] : w.base + w.size * 0.22;
+    delete w.boxY;
     w.bold = w.boldChars >= w.text.length / 2;
     w.italic = w.italicChars >= w.text.length / 2;
     w.mono = w.monoChars >= w.text.length / 2;

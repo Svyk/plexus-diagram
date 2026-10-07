@@ -113,6 +113,29 @@ async function main(argv) {
     process.stdout.write(`${printScore(s)}\n`);
     return;
   }
+  if (cmd === "diff") {
+    // Every cell that differs from the truth table: `r,c expected | got`.
+    const doc = JSON.parse(readFileSync(a, "utf8"));
+    const truth = JSON.parse(readFileSync(b, "utf8"));
+    const { matchTables } = await import("../test/parse-metrics.js");
+    const { normText } = await import("../test/parse-metrics.js");
+    for (const m of matchTables(doc, truth.tables).matches) {
+      if (!m.pred) { process.stdout.write(`${m.truth.caption}: MISSING\n`); continue; }
+      const got = new Map(m.pred.cells.map((k) => [`${k.r},${k.c}`, k]));
+      const want = new Map(m.truth.cells.map((k) => [`${k.r},${k.c}`, k]));
+      let wrong = 0;
+      for (const [key, t] of want) {
+        const g = got.get(key);
+        const same = g && normText(g.text) === normText(t.text) && (g.colSpan || 1) === (t.colSpan || 1) && (g.rowSpan || 1) === (t.rowSpan || 1);
+        if (same) continue;
+        wrong++;
+        process.stdout.write(`${key.padEnd(6)} expected ${JSON.stringify(t.text)}${t.colSpan > 1 ? ` [${t.colSpan}]` : ""} | got ${g ? JSON.stringify(g.text) + (g.colSpan > 1 ? ` [${g.colSpan}]` : "") : "(no cell)"}\n`);
+      }
+      for (const [key, g] of got) if (!want.has(key) && g.text) { wrong++; process.stdout.write(`${key.padEnd(6)} extra ${JSON.stringify(g.text)}\n`); }
+      process.stdout.write(`${m.truth.caption.slice(0, 40)}: ${wrong} wrong of ${want.size}\n`);
+    }
+    return;
+  }
   if (cmd === "parse") {
     const { parseFile } = await import("../test/parse-engine-fixtures.js");
     const range = c ? c.split("-").map(Number) : undefined;
@@ -127,7 +150,7 @@ async function main(argv) {
     process.stdout.write(`${a}: ${out.order.length} blocks\n`);
     return;
   }
-  process.stderr.write("usage: parse-score.mjs score <pxd.json> <truth.json> [html] | parse <pdf> [out.json] [from-to] | docling <docling.json> [out.json]\n");
+  process.stderr.write("usage: parse-score.mjs score <pxd.json> <truth.json> [html] | diff <pxd.json> <truth.json> | parse <pdf> [out.json] [from-to] | docling <docling.json> [out.json]\n");
   process.exitCode = 2;
 }
 

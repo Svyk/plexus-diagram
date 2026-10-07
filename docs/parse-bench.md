@@ -279,3 +279,102 @@ takes `rules` (the page's raw rules, for header underlines). New exports used by
 `refineColumns`, `splitTokensAt`, `headerRowGroups` (stream), `boxGridRules`, `LEADER_RE`
 (lattice), `letterSpaced`, `dominantRotation` (lines), `figureLabels` (index). Everything
 else in `pxd-parse/1` is unchanged.
+
+## Scanned tables (round 4, 2026-10-07): OCR word geometry + the built-in engine
+
+The helper's `/v1/ocr` renders the page at 300 dpi (pypdfium2), deskews by the dominant
+text-line angle, reads it with Apple Vision in overlapping tiles (Vision returns at most
+~250 observations per image, so a full page of numbers loses half its cells unless tiled;
+a full tile splits 2×2), takes WORD boxes from `boundingBoxForRange`, and sets each word's
+baseline from the ink inside its box (Vision's boxes are padded unevenly, by up to two
+points on a 6 pt table, which stacks neighbouring rows). A second Vision pass with
+language correction on replaces words that have letters when it is at least as confident
+(numbers keep the raw reading). OpenCV morphological opening gives the ruling lines. The
+engine takes the page record as if it came from pdf.js, with the rules standing in for the
+operator list, and the round-3 stream logic structures the table. Afterwards: numeric
+columns (≥ 80 % numbers) get their digit confusions mapped back (O/D/Q→0, B→8, S→5,
+l/I/|→1, Z→2, G→6, Б→6, stray spaces, the column's decimal mark, a leading "0."), a year
+header is fitted by majority vote, a dotted note row becomes one spanning cell, a value
+the stream pass widened over an empty neighbour goes back to its column, and cells that
+are still unreadable or empty are cropped at 3× and read alone (a dash or star comes from
+an ink check, never from Vision's reading of a mark). Text columns are never corrected.
+
+Scores are `tools/parse-score.mjs score` against the truth files; the CDC truth was
+double-entered (531 cells, 51×11, five column-spanning notes). Seconds are wall clock
+through `tools/parse-bench/scan.mjs` (helper CLI; one cold Python process per call, so the
+in-process server is a little faster). The helper's page OCR is ~10 s for the CDC page:
+3 s raw Vision over 12 tiles, 6 s for the language-correction pass, the rest render,
+deskew, rules and ink refinement; the cell re-read is ~1.6 s.
+
+| input | pipeline | structure F1 | cell F1 | seconds |
+|---|---|---|---|---|
+| cdc1980-p25-imageonly.pdf (200 dpi gray JPEG, no text) | built-in alone | no table (one `scan` block) | — | 0.3 |
+| cdc1980-p25-imageonly.pdf | Docling 2.91 + ocrmac (helper `parse`) | 0.821 | 0.082 | 13 |
+| cdc1980-p25-imageonly.pdf | **Vision words + rules + built-in + repair + re-read** | **1.000** | **0.957** | 14.3 (OCR 12.1, cells 1.7) |
+| cdc1980-p25.pdf (old OCR text layer) | built-in on the layer | 0.968 | 0.779 | 0.4 |
+| cdc1980-p25.pdf | fresh OCR (same flow) | 0.983 | 0.952 | 13.7 |
+| cdc1980-p25.pdf | auto: layer vs fresh per table by numeric validity | chose fresh → 0.983 | 0.952 | 13.7 |
+| report-scan.pdf (3 pages, 150 dpi, 0.4° skew) | Docling 2.91 + ocrmac | 1.000 | 0.918 | 13.3 |
+| report-scan.pdf | **this flow** (deskew −0.38/−0.60/−0.38°) | **1.000** (3/3 tables) | **0.975** (119/122 cells: T1 0.974, T2 0.952, Appendix 1.000) | 11.3 |
+
+The CDC image-only target (cell F1 ≥ 0.95) and the report-scan target (≥ 0.97) are met.
+The same engine on the two renders of the CDC page (the image-only fixture and the page
+with its layer) gives 51×11 both times; the layer-vs-fresh choice picked fresh (numeric
+validity 0.996 on 462 cells vs the layer's 0.998 on 466, but the fresh table reads 51 rows
+where the layer collapses Smallpox into Shigellosis), and on the held-out p24 it picked
+the layer for the second (bottom) table and fresh for the main one.
+
+### Every remaining wrong cell, cdc1980-p25-imageonly (23 of 531)
+
+| r,c | expected | got | class |
+|---|---|---|---|
+| 0,0 | Disease | (empty) | smudged header word in the scan; Vision reads nothing |
+| 2,0 | Anthrax | Anth rax | word split by the scan (two Vision words) |
+| 5,0 | Foodborne | Foodboma | label misread |
+| 7,0 | Brucellois (undulant fever) | Brucellois lundulant faver) | `(`→`l`, `e`→`a` |
+| 9,5 | 96.06 | 96.08 | digit misread (6/8), a valid number so not repairable |
+| 10,0 | Cholera | Cholara | label misread |
+| 13,8 | 0.69 | 0.60 | digit misread (9/0) |
+| 14,0 | Post childhood infections | Past childhood infections | label misread |
+| 18,0 | Hepatitis B | Hepatitis 8 | B/8 in a text column (never corrected by design) |
+| 19,1 | 5.25 | 6.25 | digit misread (5/6) |
+| 20,0 | Legionellosis | Legianellosis | label misread |
+| 21,0 | Leprosy | Laprost | label misread |
+| 25,0 | Measles (rubeola) | Measles (rubeala) | label misread |
+| 28,0 | Pertussis (whooping cough) | Pertussis (whaoping coughi | label misread |
+| 30,0 | Poliomyelitis, total | Paliomyelitis, ta1al | label misread |
+| 34,0 | Rheumatic fever, acute | Rhaumatic lever, acute | label misread |
+| 38,0 | Shigellosis | Shigellasis | label misread |
+| 38,2 | 9.15 | 9.16 | digit misread (5/6) |
+| 42,0 | Tetanus | Totan us | label misread + split |
+| 46,0 | Typhoid fever (cases) | Typhoid fever (cares) | label misread |
+| 48,0 | Typhus fever, flea-borne (endemic, murine) | Typhus faver, flea-borne landemic, murine) | label misread |
+| 49,0 | Typhus fever, tick-borne (Rocky Mountain spotted) | Typhus fever, tick-borne (Racky Mountain spotted) | label misread |
+| 50,1 | Last indigenous case reported 1911; last imported, 1924 [10] | Lact indigannus case reporter 1911; lner imported, 1924 [10] | note text misread (span right) |
+
+Every number the repair touched (19 cells such as `0.D3`, `D.OD`, `12.B4`, `1.1Б`, the year
+`1876`) is right; the four numeric errors left are valid numbers with one wrong digit.
+All 18 label errors are Vision misreads of 6 pt type at 200 dpi; the 3× crop re-read with
+language correction fixes some ("Aseptic", "Legionellosis", "Rocky Mountain spotted") but
+breaks others ("Tetanus" → "Totanus", "Shigellosis" → "Shigellasis"), so text cells keep
+the page reading. The layer PDF reads 29 wrong: the same classes plus five cells where
+the re-read filled a dotted note row with a neighbouring number (`20,7 → 0.06`).
+
+### Held-out CDC pages (by eye, no truth; `qpdf … --pages . N --` from the 144-page scan)
+
+| page | what is on it | engine result | error classes seen |
+|---|---|---|---|
+| p24, landscape "Summary of reported cases, United States, 1971–1980" (counts): 11 columns, population row + 59 disease rows, group rules, two dotted note rows, footnote marks on numbers | fresh table 46×11 (chosen over the layer's 46×11, validity 0.983 vs 0.966) plus a second table 12×17 for the last group (Tularemia … Yellow fever), where the layer was kept | (a) the bottom group splits off as its own table at the `Tuberculosis⁴` row and comes out 17 columns wide (footnote marks become columns); (b) the narrow label column wraps "Granuloma inguinale" and the wrap is not re-joined (one extra row); (c) "Trichinosis"/"Tuberculosis" rows merge (a footnote mark ⁴ between them); (d) `1972 1971` header read as one cell; (e) footnote marks on numbers (`264¹` → `264'`) are flagged low-confidence, 7 unrepaired; (f) `1,004,029` read as `1.004,029` (comma/period mix not covered by the decimal-style rule). Everything else: 46 rows, 11 columns, the `Last documented case occurred in 1949` span, the dashes, all right by eye. |
+| p35, portrait "Aseptic meningitis, reported cases by state and by month, 1980": 15 columns (State, Total, Jan–Dec, Unk.), 1 header row + 70 rows of regions and states, most cells `—` or one digit | fresh OCR finds only 286 words (38×15); the comparison keeps the OCR layer's 69×15 table (validity 0.945 on 813 cells vs 0.956 on 136) | Vision recall collapses on dense 5 pt single digits and dashes (hundreds of cells read as nothing), so the fresh table is a third of the real one; the automatic choice correctly falls back to the layer. The layer table is right in shape (69 of 71 rows, 15 columns) with the known layer misreads. A denser tile grid or a 400 dpi render for pages whose body size is under 6 pt is the next step. |
+
+Contracts added in this round: helper `POST /v1/ocr` and CLI `plexus-parse-helper ocr`
+(`pxd-ocr/1` page records, see the helper README); engine `parsePageGeometry` accepts a
+page record with `scan: true` and `rules` (items with `fontName: "ocr"`, `conf`, `y0`,
+`y1`; page `transform [1,0,0,1,0,0]`); `pages[].ocr`, `pages[].ocrChoice`; table blocks
+on such pages carry `engine: "ocr+builtin"`, `repairs {fixed, unrepaired, spans,
+numericCols}`, `ocrSource` (`fresh` | `layer`), `ocrCompare`; cells carry `conf`, `wbox`,
+`wbase`, `wsize`, `repaired`, `reread`. `src/model/parse/ocr-fix.js` (pure repair),
+`src/model/parse/ocr-merge.js` (`mergeOcrDocument`, `chooseTable`, `scanPagesOf`),
+`readScan` in `src/view/parse-engine.js`, `createHelperClient().ocr({bytes, sha256, pages |
+cells})`, the view's "Read the scan" button (auto with engine `auto` and a ready helper),
+and `tools/parse-score.mjs diff` (every wrong cell).

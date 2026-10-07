@@ -5,7 +5,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { tableFromTruth } from "../src/model/parse-schema.js";
-import { flatRows, isNumericCell, toGridSpec } from "../src/model/parse-to-grid.js";
+import { flatRows, gridCellText, isNumericCell, toGridSpec } from "../src/model/parse-to-grid.js";
 
 const truth = JSON.parse(readFileSync(
   join(dirname(fileURLToPath(import.meta.url)), "fixtures/pdf/report.truth.json"),
@@ -64,13 +64,17 @@ test("a column is right-aligned at 80 percent and not at 75", () => {
   assert.deepEqual(toGridSpec(table(["1", "2", "3", "4", "5", "no", "no", "8", "9", "10"])).alignments, [{ col: 0, align: "right" }]);
 });
 
-test("a leading marker in a cell is backticked, not placeholdered", () => {
-  const spec = toGridSpec({
+test("cells stay plain text: Roam Grid escapes them, so only whitespace and link wrapping apply", () => {
+  const cell = (text) => toGridSpec({
     rows: 1,
     cols: 1,
     headerRows: 0,
-    cells: [{ r: 0, c: 0, rowSpan: 1, colSpan: 1, text: "- n" }],
-  });
-  assert.equal(spec.rows[0][0], "`-` n");
-  assert.equal(spec.rows[0][0].includes("⟦"), false);
+    cells: [{ r: 0, c: 0, rowSpan: 1, colSpan: 1, text }],
+  }).rows[0][0];
+  assert.equal(cell("- item"), "- item");
+  assert.equal(cell("# x"), "# x");
+  assert.equal(cell("a\\.b"), "a\\.b");
+  assert.equal(cell("[[Page]]"), "`[[Page]]`");
+  assert.equal(cell("a\tb\nc"), "a b c");
+  assert.equal(gridCellText("[[Page]]", { linkSafe: false }), "[[Page]]");
 });

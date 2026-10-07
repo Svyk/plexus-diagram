@@ -1,32 +1,30 @@
 // Schema → Roam markdown for data.block.fromMarkdown.
 // One top-level bullet per block. Children indent by two spaces.
 //
-// ESCAPES is the rule table (§4.1). Checked 2026-10-07: `git -C ~/roam-grid log -5`
-// (332fe54, 5390e7f, cc73ecd, 636942a, ec01941) and ~/roam-grid/docs have no
-// measured fromMarkdown escaping table yet. The rules below are the design's.
-// [[…]] ((…)) {{…}} #word and a leading word:: are wrapped in inline code,
-// the wrap the design attributes to write_roam.py. When RG-1 lands a measured
-// table, replace this object from it.
+// ESCAPES is the rule table (§4.1), measured live on 2026-10-07 by the Roam Grid
+// agent against roamAlphaAPI.data.block.fromMarkdown (roam-grid commit 197e2a6,
+// encodeNativeTableCell). Leading "- ", "* ", "+ ", "1. ", "> ", "|", "**", "$$",
+// "[[", "((", "{{" and "#word" survive a block start unchanged. A leading "#"
+// (heading), "```" (fence) and "---" (rule) need a backslash. fromMarkdown eats a
+// backslash before any `consumed` character, so a literal backslash there is doubled.
+// [[…]] ((…)) {{…}} #word and a leading word:: are still wrapped in inline code.
 
 import { selectBlocks } from "./parse-schema.js";
 
 export const ESCAPES = Object.freeze({
   whitespace: Object.freeze({
     cr: "",
+    tab: " ",
     nbsp: " ",
     newline: " ",
   }),
-  markers: Object.freeze([
-    Object.freeze({ id: "bullet", re: /^- / }),
-    Object.freeze({ id: "star", re: /^\* / }),
-    Object.freeze({ id: "plus", re: /^\+ / }),
-    Object.freeze({ id: "quote", re: /^> / }),
-    Object.freeze({ id: "ordered", re: /^\d+\. / }),
-    Object.freeze({ id: "fence", re: /^```/ }),
+  control: /[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g,
+  consumed: Object.freeze(new Set(["\\", "#", "`", "*", "-", ".", ">", "[", "]", "(", ")"])),
+  leading: Object.freeze([
     Object.freeze({ id: "hash", re: /^#/ }),
+    Object.freeze({ id: "fence", re: /^```/ }),
+    Object.freeze({ id: "rule", re: /^---/ }),
   ]),
-  placeholder: "⟦pxd-cell-N⟧",
-  placeholderCap: 8,
   link: Object.freeze([
     Object.freeze({ id: "macro", re: /\{\{[\s\S]*?\}\}/g }),
     Object.freeze({ id: "page", re: /\[\[[\s\S]*?\]\]/g }),
@@ -44,8 +42,10 @@ const SUPERSCRIPT = {
 export function flattenLine(text) {
   return String(text ?? "")
     .replace(/\r/g, ESCAPES.whitespace.cr)
-    .replace(/\u00a0/g, ESCAPES.whitespace.nbsp)
+    .replace(/ /g, ESCAPES.whitespace.nbsp)
+    .replace(/\t/g, ESCAPES.whitespace.tab)
     .replace(/\n/g, ESCAPES.whitespace.newline)
+    .replace(ESCAPES.control, "")
     .replace(/ {2,}/g, " ")
     .trim();
 }
@@ -69,32 +69,23 @@ export function linkSafeText(text) {
   return out;
 }
 
-function markerHit(line) {
-  for (const rule of ESCAPES.markers) {
-    const match = rule.re.exec(line);
-    if (match && match.index === 0) return match[0];
+// Doubling first, then the leading escape, so the added backslash is not doubled.
+// `leading` is false when a structural prefix ("# ", "**", "[1] ") precedes the text.
+export function escapeMarkdownText(text, { leading = true } = {}) {
+  let out = "";
+  const src = String(text ?? "");
+  for (let i = 0; i < src.length; i += 1) {
+    const ch = src[i];
+    out += ch === "\\" && i + 1 < src.length && ESCAPES.consumed.has(src[i + 1]) ? "\\\\" : ch;
   }
-  return null;
+  if (leading && ESCAPES.leading.some((rule) => rule.re.test(out))) out = `\\${out}`;
+  return out;
 }
 
-function backtickMarker(line) {
-  const marker = markerHit(line);
-  if (!marker) return line;
-  const rest = line.slice(marker.length);
-  const shown = marker.trimEnd();
-  return `\`${shown}\`${rest ? ` ${rest}` : ""}`;
-}
-
-function prepareLine(text, { linkSafe, markers }) {
+function prepareLine(text, { linkSafe, leading }) {
   let line = flattenLine(text);
   if (linkSafe) line = linkSafeText(line);
-  if (!markerHit(line)) return { text: line, dangerous: false, raw: line };
-  if (markers === "backtick") return { text: backtickMarker(line), dangerous: false, raw: line };
-  return { text: line, dangerous: true, raw: line };
-}
-
-function placeholderToken(n) {
-  return ESCAPES.placeholder.replace("N", String(n));
+  return escapeMarkdownText(line, { leading });
 }
 
 function applyFootnoteRefs(text, refs) {
@@ -153,25 +144,16 @@ export function toRoamMarkdown(doc, idsOrRange, options = {}) {
     if (block.type === "caption" && block.for && byId.has(block.for)) folded.add(block.id);
   }
 
-  const render = (markerMode) => {
+  const render = () => {
     const lines = [];
-    const placeholders = [];
-    let serial = 0;
     const emittedNotes = new Set();
     const foldedHere = new Set(folded);
 
-    // User text is escaped. prefix and suffix are structural and stay raw,
-    // so a heading's "#" and a numbered "1. " are not treated as cell markers.
+    // User text is escaped. prefix and suffix are structural and stay raw; with a
+    // prefix only the backslash doubling applies, since the text no longer starts the block.
     const putUser = (depth, text, prefix = "", suffix = "") => {
-      const prepared = prepareLine(text, { linkSafe, markers: markerMode });
-      if (prepared.dangerous && markerMode === "placeholder") {
-        serial += 1;
-        const token = placeholderToken(serial);
-        placeholders.push({ token, text: prepared.raw });
-        lines.push(bullet(depth, `${prefix}${token}${suffix}`));
-        return;
-      }
-      lines.push(bullet(depth, `${prefix}${prepared.text}${suffix}`));
+      const line = prepareLine(text, { linkSafe, leading: prefix === "" });
+      lines.push(bullet(depth, `${prefix}${line}${suffix}`));
     };
     const emitRaw = (depth, text) => {
       lines.push(bullet(depth, text));
@@ -237,7 +219,7 @@ export function toRoamMarkdown(doc, idsOrRange, options = {}) {
       } else if (block.type === "caption") {
         putUser(0, block.text ?? "");
       } else if (block.type === "code") {
-        const body = prepareLine(block.text ?? "", { linkSafe, markers: "backtick" }).text;
+        const body = flattenLine(block.text ?? "").replace(/```/g, "'''");
         emitRaw(0, `\`\`\`${body}\`\`\``);
       } else if (block.type === "scan") {
         emitRaw(0, `Scanned page ${block.page} (no text)`);
@@ -248,15 +230,13 @@ export function toRoamMarkdown(doc, idsOrRange, options = {}) {
         if (block.type === "footnote") emitNote(block);
       }
     }
-    return { lines, placeholders };
+    return { lines };
   };
 
-  let drafted = render("placeholder");
-  if (drafted.placeholders.length > ESCAPES.placeholderCap) drafted = render("backtick");
-  const markdown = drafted.lines.join("\n");
+  const drafted = render();
   return {
-    markdown,
-    placeholders: drafted.placeholders,
+    markdown: drafted.lines.join("\n"),
+    placeholders: [],
     blockEstimate: drafted.lines.length,
   };
 }
@@ -311,9 +291,4 @@ function emitTable(block, putUser, emitRaw, byId, folded) {
     if (typeof block.caption === "string" && byId.has(block.caption)) folded.add(block.caption);
     putUser(1, caption);
   }
-}
-
-// Grid inserts have no second updateString pass, so a leading marker is backticked.
-export function escapeForGrid(text) {
-  return prepareLine(text, { linkSafe: true, markers: "backtick" }).text;
 }

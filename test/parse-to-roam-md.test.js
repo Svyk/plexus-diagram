@@ -5,7 +5,7 @@ import test from "node:test";
 import { fileURLToPath } from "node:url";
 
 import { SCHEMA, tableFromTruth, tableGrid } from "../src/model/parse-schema.js";
-import { ESCAPES, toRoamMarkdown } from "../src/model/parse-to-roam-md.js";
+import { ESCAPES, escapeMarkdownText, flattenLine, toRoamMarkdown } from "../src/model/parse-to-roam-md.js";
 
 const truth = JSON.parse(readFileSync(
   join(dirname(fileURLToPath(import.meta.url)), "fixtures/pdf/report.truth.json"),
@@ -98,8 +98,14 @@ test("a heading, paragraph, list, formula, and footnote mix", () => {
   assert.equal(numbered.markdown, "- 1. Swab the zone\n  - 1. a. Record CFU");
 });
 
-test("link-safe wraps page tokens and leading markers become placeholders, capped at 8", () => {
-  const para = (id, text) => ({ id, type: "para", page: 1, text });
+const para = (id, text) => ({ id, type: "para", page: 1, text });
+const one = (text, options) => toRoamMarkdown({
+  schema: SCHEMA,
+  order: ["a"],
+  blocks: { a: para("a", text) },
+}, null, options);
+
+test("link-safe wraps page tokens, block refs, and a leading attribute name", () => {
   const safe = toRoamMarkdown({
     schema: SCHEMA,
     order: ["a", "b", "c"],
@@ -114,23 +120,68 @@ test("link-safe wraps page tokens and leading markers become placeholders, cappe
     "- See `[[Page]]` and `((uid))`",
     "- `Name::` Ada",
   ].join("\n"));
+});
 
-  const risky = toRoamMarkdown({
+test("measured rules: leading list, quote, and bold markers need no escape and no placeholder", () => {
+  for (const text of ["- not a list", "* x", "+ x", "1. x", "> quote", "|", "**bold**", "$$x$$"]) {
+    const out = one(text);
+    assert.equal(out.markdown, `- ${text}`, text);
+    assert.deepEqual(out.placeholders, []);
+  }
+});
+
+test("measured rules: a leading #, fence, or --- gets one backslash", () => {
+  assert.equal(one("# not a heading").markdown, "- \\# not a heading");
+  assert.equal(one("## two").markdown, "- \\## two");
+  assert.equal(one("```code").markdown, "- \\```code");
+  assert.equal(one("---").markdown, "- \\---");
+  assert.equal(one("--- x").markdown, "- \\--- x");
+  assert.equal(one("a --- b").markdown, "- a --- b");
+});
+
+test("measured rules: a backslash before a consumed character is doubled, otherwise kept", () => {
+  assert.equal(one("a\\.b").markdown, "- a\\\\.b");
+  assert.equal(one("C:\\foo").markdown, "- C:\\foo");
+  assert.equal(one("a\\\\b").markdown, "- a\\\\\\b");
+  assert.equal(one("\\# x").markdown, "- \\\\# x");
+  assert.equal(escapeMarkdownText("a\\*b"), "a\\\\*b");
+  for (const ch of ESCAPES.consumed) {
+    assert.equal(escapeMarkdownText(`x\\${ch}`), `x\\\\${ch}`, ch);
+  }
+});
+
+test("with a structural prefix only the doubling applies; a heading's #1 is link-wrapped, so no leading escape", () => {
+  const heading = toRoamMarkdown({
     schema: SCHEMA,
-    order: ["d"],
-    blocks: { d: para("d", "- not a list") },
+    order: ["h"],
+    blocks: { h: { id: "h", type: "heading", level: 1, page: 1, text: "#1 priority" } },
   });
-  assert.equal(risky.markdown, "- ⟦pxd-cell-1⟧");
-  assert.deepEqual(risky.placeholders, [{ token: "⟦pxd-cell-1⟧", text: "- not a list" }]);
+  assert.equal(heading.markdown, "- # `#1` priority");
+  const plain = toRoamMarkdown({
+    schema: SCHEMA,
+    order: ["h"],
+    blocks: { h: { id: "h", type: "heading", level: 2, page: 1, text: "# x\\.y" } },
+  }, null, { linkSafe: false });
+  assert.equal(plain.markdown, "- ## # x\\\\.y");
+});
 
-  const ids = Array.from({ length: 9 }, (_, i) => `p${i}`);
-  const blocks = {};
-  for (const id of ids) blocks[id] = para(id, `- item ${id}`);
-  const overflow = toRoamMarkdown({ schema: SCHEMA, order: ids, blocks });
-  assert.equal(overflow.placeholders.length, 0);
-  assert.equal(overflow.markdown.includes("`"), true);
-  assert.equal(ESCAPES.placeholderCap, 8);
+test("tabs and newlines flatten to single spaces and control characters drop", () => {
+  assert.equal(flattenLine("  a\tb\r\nc\u0000\u0007  d\u00a0 e  "), "a b c d e");
+  assert.equal(one("a\tb\nc\r\n\nd").markdown, "- a b c d");
+});
 
+test("a code block body cannot break its fence, and placeholders stay empty", () => {
+  const out = toRoamMarkdown({
+    schema: SCHEMA,
+    order: ["c"],
+    blocks: { c: { id: "c", type: "code", page: 1, text: "a ``` b" } },
+  });
+  assert.equal(out.markdown, "- ```a ''' b```");
+  assert.deepEqual(out.placeholders, []);
+  assert.equal(out.blockEstimate, 1);
+});
+
+test("linkSafe false leaves page links alone", () => {
   const raw = toRoamMarkdown({
     schema: SCHEMA,
     order: ["a"],

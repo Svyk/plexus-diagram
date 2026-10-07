@@ -2,7 +2,7 @@
 // Covered cells are "" in `rows`. flatRows repeats the anchor text instead.
 
 import { tableGrid } from "./parse-schema.js";
-import { escapeForGrid } from "./parse-to-roam-md.js";
+import { flattenLine, linkSafeText } from "./parse-to-roam-md.js";
 
 // Strip %, ±, thousands separators, (negatives), and a trailing [a] / [1] mark.
 export function isNumericCell(value) {
@@ -18,10 +18,16 @@ export function isNumericCell(value) {
   return Number.isFinite(Number(s));
 }
 
+// Roam Grid's createTableFromModel escapes cells itself, so cells stay plain text.
+export function gridCellText(text, { linkSafe = true } = {}) {
+  const line = flattenLine(text);
+  return linkSafe ? linkSafeText(line) : line;
+}
+
 function cellText(slot, repeatAnchor) {
   if (!slot || slot.cell == null) return "";
   if (slot.covered && !repeatAnchor) return "";
-  return escapeForGrid(slot.text ?? "");
+  return gridCellText(slot.text ?? "");
 }
 
 export function toGridSpec(table) {

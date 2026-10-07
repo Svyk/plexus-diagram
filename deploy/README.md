@@ -326,6 +326,14 @@ Settings → Extensions → Plexus Diagram. Each change applies on the open boar
 | Performance | Disable on mobile | Do not open diagrams on a phone. |
 | Performance | Collapse the outline | Fold an enhanced board once, so the outline does not list every card. Opening the bullet is remembered. |
 | Performance | Speed log | Record open time, click-to-paint, pan frame rate, and long tasks in this tab. Nothing is sent or saved. |
+| PDF parse | Parse helper address | Address of the local parse helper. The default is http://127.0.0.1:48765. Plexus calls it only when you parse. |
+| PDF parse | Parse helper token | Secret from the helper's first start. Empty turns the helper off. Plexus sends it only to that address. |
+| PDF parse | Default parse engine | Auto uses the built-in parser and offers Docling when the helper is ready. Built-in never calls the helper. Docling uses the helper. |
+| PDF parse | Formula enrichment | Ask Docling to read formulas as LaTeX. Off leaves a formula as a crop. This is the slow part of a Docling parse. |
+| PDF parse | Parse OCR | Auto lets the helper decide. On forces OCR. Off skips it. Scanned pages need OCR. |
+| PDF parse | Safe links when inserting | Wrap [[pages]], ((blocks)), {{macros}}, #tags and Name:: so a parsed insert does not create pages. On by default. |
+| PDF parse | Numbered lists when inserting | On writes ordered lists with Roam's 1. syntax. Off keeps the original number as text on a bullet. |
+| PDF parse | Footnotes | Inline places each note after the paragraph that cites it. End places every note after the insert. |
 | Performance | speed-flags | Hidden. Not a panel row. A JSON object, parsed by parseSpeedFlags. |
 
 ## Privacy

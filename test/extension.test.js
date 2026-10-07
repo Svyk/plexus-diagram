@@ -62,6 +62,7 @@ test("settings panel follows spec section 6 ids, defaults and row types", () => 
     "tooltips", "tooltip-delay", "task-tool", "task-chips", "task-default-project", "better-tasks", "card-chips", "empty-drag", "pdf-cover", "pdf-cover-warm", "highlight-open", "pdf-dark",
     "why-prompt", "resurface-intervals", "resurface", "regions-inline", "interop", "auto-enhance", "speed-log",
     "look-canvas", "look-sections", "look-highlights", "theme",
+    "parse-helper-url", "parse-helper-token", "parse-engine-default", "parse-formula", "parse-ocr", "parse-link-safe", "parse-numbered", "parse-footnotes",
   ].sort());
   assert.equal(settingsDefaults()["auto-enhance"], true);
   assert.equal(settingsDefaults()["enter-in-card"], "newline");
@@ -164,14 +165,14 @@ test("UI-10: settings are grouped, described in plain language, and reset applie
       members[current] = [];
       assert.equal(row.action.type, "reactComponent");
     } else if (row.id === "reset-plexus-settings") {
-      assert.equal(current, "Performance");
+      assert.equal(current, "PDF parse");
       assert.equal(row.action.type, "button");
       assert.equal(row.action.content, "Reset Plexus settings");
     } else {
       members[current].push(row.id);
     }
   }
-  assert.deepEqual(groups, ["Cards", "Integrations", "Sections", "Connections", "Board", "Performance"]);
+  assert.deepEqual(groups, ["Cards", "Integrations", "Sections", "Connections", "Board", "Performance", "PDF parse"]);
   assert.deepEqual(members.Cards, ["default-card-look", "default-card-width", "default-card-height", "enter-in-card", "show-card-badges", "space-out", "pdf-cover", "pdf-cover-warm", "highlight-open", "pdf-dark"]);
   assert.deepEqual(members.Integrations, [
     "status-better-tasks", "better-tasks", "status-task-status-tags", "task-tool", "task-chips", "task-default-project",
@@ -181,6 +182,10 @@ test("UI-10: settings are grouped, described in plain language, and reset applie
   assert.deepEqual(members.Connections, ["graph-links", "attr-styles", "why-prompt"]);
   assert.ok(members.Board.includes("enabled"));
   assert.ok(members.Performance.includes("motion"));
+  assert.deepEqual(members["PDF parse"], [
+    "parse-helper-url", "parse-helper-token", "parse-engine-default", "parse-formula",
+    "parse-ocr", "parse-link-safe", "parse-numbered", "parse-footnotes",
+  ]);
   assert.equal(defaults["better-tasks"], false);
   assert.equal(defaults["task-tool"], false);
   assert.equal(defaults.resurface, true);

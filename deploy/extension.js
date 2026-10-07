@@ -4643,7 +4643,18 @@ var init_tooltip_text = __esm({
       relchip: e("Connection", "This block is a connection on a board. Click to see where it sits."),
       "relpop.board": e("Open on board", "Go to the board and select this connection."),
       "relpop.sidebar": e("Open in sidebar", "Open the board in the right sidebar."),
-      "edge.row": e("Linked block", "An arrow on the board ends on this block.")
+      "edge.row": e("Linked block", "An arrow on the board ends on this block."),
+      // ---- PDF parse (settings descriptions, and the flat-merge chip)
+      "parse.helper-url": e("Parse helper address", "Address of the local parse helper. The default is http://127.0.0.1:48765. Plexus calls it only when you parse."),
+      "parse.helper-token": e("Parse helper token", "Secret from the helper's first start. Empty turns the helper off. Plexus sends it only to that address."),
+      "parse.engine": e("Default parse engine", "Auto uses the built-in parser and offers Docling when the helper is ready. Built-in never calls the helper. Docling uses the helper."),
+      "parse.formula": e("Formula enrichment", "Ask Docling to read formulas as LaTeX. Off leaves a formula as a crop. This is the slow part of a Docling parse."),
+      "parse.ocr": e("Parse OCR", "Auto lets the helper decide. On forces OCR. Off skips it. Scanned pages need OCR."),
+      "parse.link-safe": e("Safe links when inserting", "Wrap [[pages]], ((blocks)), {{macros}}, #tags and Name:: so a parsed insert does not create pages. On by default."),
+      "parse.numbered": e("Numbered lists when inserting", "On writes ordered lists with Roam's 1. syntax. Off keeps the original number as text on a bullet."),
+      "parse.footnotes": e("Footnotes", "Inline places each note after the paragraph that cites it. End places every note after the insert."),
+      "parse.merges-flat": e("Merged cells shown flat", "Roam Grid draws merges. Native Roam shows the covered cells empty.", null, "Insert as flat table repeats the anchor text into covered cells."),
+      "parse.insert-flat": e("Insert as flat table", "Repeat the anchor text into covered cells so a native table still reads.")
     };
     for (const c of PALETTE) TIP_TEXT[`swatch.${c}`] = e(cap(c), `Color the selection ${c}, or tone the board ${c}.`);
     for (const s of SHAPES) TIP_TEXT[`dock.shape.${s}`] = e(cap(s), `Draw ${s === "rounded" ? "rounded rectangles" : `${s}s`} with the Shape tool, or change the selected shape.`);
@@ -9065,13 +9076,13 @@ function switchRow(id, name, description) {
     action: { type: "switch", onChange: (event) => emit(id, event?.target?.checked ?? event) }
   };
 }
-function inputRow(id, name, description) {
-  return {
-    id,
-    name,
-    description,
-    action: { type: "input", onChange: (event) => emit(id, event?.target?.value ?? event) }
-  };
+function inputRow(id, name, description, extra) {
+  const action = { type: "input", onChange: (event) => emit(id, event?.target?.value ?? event) };
+  if (extra && typeof extra === "object") {
+    if (extra.password) action.inputType = "password";
+    if (extra.placeholder) action.placeholder = extra.placeholder;
+  }
+  return { id, name, description, action };
 }
 function selectRow(id, name, description, items) {
   return {
@@ -9293,6 +9304,14 @@ var init_settings = __esm({
       pdfCoverWarm: "pdf-cover-warm",
       highlightOpen: "highlight-open",
       pdfDark: "pdf-dark",
+      parseHelperUrl: "parse-helper-url",
+      parseHelperToken: "parse-helper-token",
+      parseEngineDefault: "parse-engine-default",
+      parseFormula: "parse-formula",
+      parseOcr: "parse-ocr",
+      parseLinkSafe: "parse-link-safe",
+      parseNumbered: "parse-numbered",
+      parseFootnotes: "parse-footnotes",
       // Hidden. Not a panel row. JSON object, parsed by parseSpeedFlags.
       speedFlags: "speed-flags"
     });
@@ -9350,7 +9369,15 @@ var init_settings = __esm({
       [SETTING_IDS.pdfCover]: "first",
       [SETTING_IDS.pdfCoverWarm]: true,
       [SETTING_IDS.highlightOpen]: "reader",
-      [SETTING_IDS.pdfDark]: "dim"
+      [SETTING_IDS.pdfDark]: "dim",
+      [SETTING_IDS.parseHelperUrl]: "http://127.0.0.1:48765",
+      [SETTING_IDS.parseHelperToken]: "",
+      [SETTING_IDS.parseEngineDefault]: "auto",
+      [SETTING_IDS.parseFormula]: false,
+      [SETTING_IDS.parseOcr]: "auto",
+      [SETTING_IDS.parseLinkSafe]: true,
+      [SETTING_IDS.parseNumbered]: false,
+      [SETTING_IDS.parseFootnotes]: "inline"
     });
     BOARD_TONES2 = ["none", "paper", "gray", "red", "orange", "yellow", "green", "teal", "blue", "indigo", "purple", "pink"];
     MAP_ZOOMS = ["0.3", "0.45", "0.6"];
@@ -9379,7 +9406,10 @@ var init_settings = __esm({
       [SETTING_IDS.taskChips]: TASK_CHIPS,
       [SETTING_IDS.pdfCover]: ["first", "last-read"],
       [SETTING_IDS.highlightOpen]: ["reader", "sidebar"],
-      [SETTING_IDS.pdfDark]: ["off", "dim", "invert"]
+      [SETTING_IDS.pdfDark]: ["off", "dim", "invert"],
+      [SETTING_IDS.parseEngineDefault]: ["auto", "builtin", "docling"],
+      [SETTING_IDS.parseOcr]: ["auto", "on", "off"],
+      [SETTING_IDS.parseFootnotes]: ["inline", "end"]
     });
     NUMBERS = /* @__PURE__ */ new Set([SETTING_IDS.defaultCardWidth, SETTING_IDS.defaultCardHeight]);
     SPEED_FLAG_NAMES = ["posters", "parking", "keepAlive", "prefetch", "sketch", "budgetedMount"];
@@ -9475,7 +9505,15 @@ var init_settings = __esm({
       [SETTING_IDS.pdfCover]: () => selectRow(SETTING_IDS.pdfCover, "PDF card cover", "First page shows page 1. Last page read shows the page that was open when the reader closed.", ["first", "last-read"]),
       [SETTING_IDS.pdfCoverWarm]: () => switchRow(SETTING_IDS.pdfCoverWarm, "Prepare PDF covers in the background", "On. A quiet board prepares a cover for a visible PDF that does not have one: Roam's PDF engine draws page 1 when it is reachable, otherwise a hidden reader does."),
       [SETTING_IDS.highlightOpen]: () => selectRow(SETTING_IDS.highlightOpen, "Highlight click opens", "Reader: the PDF pane scrolls to the highlight. Sidebar: Roam opens the highlight block in the right sidebar. Shift-click always opens the sidebar; the chip's arrow lists every choice.", ["reader", "sidebar"]),
-      [SETTING_IDS.pdfDark]: () => selectRow(SETTING_IDS.pdfDark, "PDF pages in dark mode", "When the board is dark. Off keeps white pages. Dim darkens the page. Invert flips the page colors. Marks stay readable.", ["off", "dim", "invert"])
+      [SETTING_IDS.pdfDark]: () => selectRow(SETTING_IDS.pdfDark, "PDF pages in dark mode", "When the board is dark. Off keeps white pages. Dim darkens the page. Invert flips the page colors. Marks stay readable.", ["off", "dim", "invert"]),
+      [SETTING_IDS.parseHelperUrl]: () => inputRow(SETTING_IDS.parseHelperUrl, "Parse helper address", "Address of the local parse helper. The default is http://127.0.0.1:48765. Plexus calls it only when you parse."),
+      [SETTING_IDS.parseHelperToken]: () => inputRow(SETTING_IDS.parseHelperToken, "Parse helper token", "Secret from the helper's first start. Empty turns the helper off. Plexus sends it only to that address.", { password: true, placeholder: "Token" }),
+      [SETTING_IDS.parseEngineDefault]: () => selectRow(SETTING_IDS.parseEngineDefault, "Default parse engine", "Auto uses the built-in parser and offers Docling when the helper is ready. Built-in never calls the helper. Docling uses the helper.", ["auto", "builtin", "docling"]),
+      [SETTING_IDS.parseFormula]: () => switchRow(SETTING_IDS.parseFormula, "Formula enrichment", "Ask Docling to read formulas as LaTeX. Off leaves a formula as a crop. This is the slow part of a Docling parse."),
+      [SETTING_IDS.parseOcr]: () => selectRow(SETTING_IDS.parseOcr, "Parse OCR", "Auto lets the helper decide. On forces OCR. Off skips it. Scanned pages need OCR.", ["auto", "on", "off"]),
+      [SETTING_IDS.parseLinkSafe]: () => switchRow(SETTING_IDS.parseLinkSafe, "Safe links when inserting", "Wrap [[pages]], ((blocks)), {{macros}}, #tags and Name:: so a parsed insert does not create pages. On by default."),
+      [SETTING_IDS.parseNumbered]: () => switchRow(SETTING_IDS.parseNumbered, "Numbered lists when inserting", "On writes ordered lists with Roam's 1. syntax. Off keeps the original number as text on a bullet."),
+      [SETTING_IDS.parseFootnotes]: () => selectRow(SETTING_IDS.parseFootnotes, "Footnotes", "Inline places each note after the paragraph that cites it. End places every note after the insert.", ["inline", "end"])
     };
     SETTING_GROUPS = [
       ["group-cards", "Cards", "How new cards look, and the marks on them.", [
@@ -9548,6 +9586,16 @@ var init_settings = __esm({
         SETTING_IDS.disableOnMobile,
         SETTING_IDS.collapseOutline,
         SETTING_IDS.speedLog
+      ]],
+      ["group-parse", "PDF parse", "A local helper for harder PDFs, and how parsed text is inserted.", [
+        SETTING_IDS.parseHelperUrl,
+        SETTING_IDS.parseHelperToken,
+        SETTING_IDS.parseEngineDefault,
+        SETTING_IDS.parseFormula,
+        SETTING_IDS.parseOcr,
+        SETTING_IDS.parseLinkSafe,
+        SETTING_IDS.parseNumbered,
+        SETTING_IDS.parseFootnotes
       ]]
     ];
     ERROR_ROW_ID = "plexus-errors";
@@ -16128,14 +16176,14 @@ function createReadDrawer({
       endDrag();
       writeFraction();
     };
-    const arm3 = (type, fn) => {
+    const arm4 = (type, fn) => {
       win.addEventListener?.(type, fn);
       dragOff.push(() => win.removeEventListener?.(type, fn));
     };
     endDrag();
-    arm3("pointermove", move);
-    arm3("pointerup", up);
-    arm3("pointercancel", up);
+    arm4("pointermove", move);
+    arm4("pointerup", up);
+    arm4("pointercancel", up);
   };
   const onInput = (event) => {
     if (event.target !== find) return;
@@ -24180,10 +24228,83 @@ function highlightById(fiber, id) {
   return null;
 }
 
+// src/host/diagram-db.js
+var DIAGRAM_DB = "plexus-diagram";
+var DIAGRAM_DB_VERSION = 2;
+var STORE_COVERS = "covers";
+var STORE_PARSE = "parse";
+var STORE_PARSE_IMAGES = "parse-images";
+var STORE_PARSE_INDEX = "parse-index";
+var STORES = [STORE_COVERS, STORE_PARSE, STORE_PARSE_IMAGES, STORE_PARSE_INDEX];
+function arm(ms, fn) {
+  try {
+    const id = setTimeout(fn, ms);
+    try {
+      id?.unref?.();
+    } catch {
+    }
+    return id;
+  } catch {
+    return null;
+  }
+}
+function ensureStore(db, name) {
+  try {
+    if (db && !db.objectStoreNames?.contains?.(name)) db.createObjectStore(name);
+  } catch {
+  }
+}
+function openDiagramDb(factory, { capMs = 2e3 } = {}) {
+  return new Promise((resolve) => {
+    let settled = false;
+    let timer = null;
+    const done = (value) => {
+      if (settled) return;
+      settled = true;
+      if (timer != null) {
+        try {
+          clearTimeout(timer);
+        } catch {
+        }
+      }
+      resolve(value);
+    };
+    timer = arm(capMs, () => done(null));
+    try {
+      if (!factory || typeof factory.open !== "function") {
+        done(null);
+        return;
+      }
+      const req = factory.open(DIAGRAM_DB, DIAGRAM_DB_VERSION);
+      if (!req) {
+        done(null);
+        return;
+      }
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        for (const name of STORES) ensureStore(db, name);
+      };
+      req.onsuccess = () => done(req.result || null);
+      req.onerror = (event) => {
+        try {
+          event?.preventDefault?.();
+        } catch {
+        }
+        try {
+          req.preventDefault?.();
+        } catch {
+        }
+        done(null);
+      };
+      req.onblocked = () => done(null);
+    } catch {
+      done(null);
+    }
+  });
+}
+
 // src/host/cover-store.js
-var COVER_DB = "plexus-diagram";
-var COVER_STORE = "covers";
-var COVER_DB_VERSION = 1;
+var COVER_STORE = STORE_COVERS;
 var COVER_LS_KEY = "plexus-diagram:covers";
 var COVER_LS_CAP = 8;
 var IMAGE_CHAR_CAP = 12e4;
@@ -24191,7 +24312,7 @@ var OPEN_CAP_MS = 2e3;
 function emptyBook() {
   return { order: [], items: {} };
 }
-function arm(ms, fn) {
+function arm2(ms, fn) {
   try {
     const id = setTimeout(fn, ms);
     try {
@@ -24218,7 +24339,7 @@ function withCap(work, ms) {
       }
       resolve(value);
     };
-    timer = arm(ms, () => done(null));
+    timer = arm2(ms, () => done(null));
     Promise.resolve().then(work).then((value) => done(value), () => done(null));
   });
 }
@@ -24249,55 +24370,7 @@ function requestResult(req) {
   });
 }
 function openDb(factory) {
-  return new Promise((resolve) => {
-    let settled = false;
-    let timer = null;
-    const done = (value) => {
-      if (settled) return;
-      settled = true;
-      if (timer != null) {
-        try {
-          clearTimeout(timer);
-        } catch {
-        }
-      }
-      resolve(value);
-    };
-    timer = arm(OPEN_CAP_MS, () => done(null));
-    try {
-      if (!factory || typeof factory.open !== "function") {
-        done(null);
-        return;
-      }
-      const req = factory.open(COVER_DB, COVER_DB_VERSION);
-      if (!req) {
-        done(null);
-        return;
-      }
-      req.onupgradeneeded = () => {
-        try {
-          const db = req.result;
-          if (db && !db.objectStoreNames?.contains?.(COVER_STORE)) db.createObjectStore(COVER_STORE);
-        } catch {
-        }
-      };
-      req.onsuccess = () => done(req.result || null);
-      req.onerror = (event) => {
-        try {
-          event?.preventDefault?.();
-        } catch {
-        }
-        try {
-          req.preventDefault?.();
-        } catch {
-        }
-        done(null);
-      };
-      req.onblocked = () => done(null);
-    } catch {
-      done(null);
-    }
-  });
+  return openDiagramDb(factory, { capMs: OPEN_CAP_MS });
 }
 async function blobToDataUrl(blob) {
   try {
@@ -30048,7 +30121,7 @@ function positiveInt(value) {
   const n2 = Number(value);
   return Number.isInteger(n2) && n2 >= 1 ? n2 : null;
 }
-function arm2(timers, fn, ms) {
+function arm3(timers, fn, ms) {
   try {
     const id = timers.set(fn, ms);
     try {
@@ -30162,7 +30235,7 @@ function createPdfWarm({ doc, root, host, store, timers, now: now2, renderFirst 
           finish(null);
           return;
         }
-        timer = arm2(time, () => finish(null), WARM_TIMEOUT_MS);
+        timer = arm3(time, () => finish(null), WARM_TIMEOUT_MS);
         const returned = canvas.toBlob((blob) => finish(blob), "image/jpeg", COVER_JPEG);
         if (returned && typeof returned.then === "function") {
           returned.then((blob) => finish(blob), () => finish(null));
@@ -30390,12 +30463,12 @@ function createPdfWarm({ doc, root, host, store, timers, now: now2, renderFirst 
       settle(job, null);
       return null;
     }
-    job.killId = arm2(time, () => fail2(job, "error"), WARM_TIMEOUT_MS);
+    job.killId = arm3(time, () => fail2(job, "error"), WARM_TIMEOUT_MS);
     const look = () => {
       if (job.done || job.gen !== generation) return;
       const canvas = paintedCanvas(mountEl, 1);
       if (!canvas) {
-        job.pollId = arm2(time, look, WARM_POLL_MS);
+        job.pollId = arm3(time, look, WARM_POLL_MS);
         return;
       }
       disarm(time, job.killId);
@@ -30473,7 +30546,7 @@ function createPdfWarm({ doc, root, host, store, timers, now: now2, renderFirst 
         current3 = job;
         pending += 1;
         outcomes.set(uid, "loading");
-        job.startId = arm2(time, () => begin(job), 0);
+        job.startId = arm3(time, () => begin(job), 0);
         if (job.startId == null) {
           outcomes.set(uid, "skipped");
           settle(job, null);
@@ -47469,7 +47542,7 @@ function mountOutlineRegion({ doc = globalThis.document, img, onConfirm, onCance
   listen(doc, "scroll", follow, true);
   const view = doc.defaultView;
   if (view && view !== doc) listen(view, "resize", follow);
-  const arm3 = globalThis.setTimeout(() => {
+  const arm4 = globalThis.setTimeout(() => {
     if (dead) return;
     listen(doc, "pointerdown", (event) => {
       if (dead || root.contains(event.target)) return;
@@ -47477,7 +47550,7 @@ function mountOutlineRegion({ doc = globalThis.document, img, onConfirm, onCance
       onCancel?.();
     }, true);
   }, 0);
-  offs.push(() => globalThis.clearTimeout(arm3));
+  offs.push(() => globalThis.clearTimeout(arm4));
   const mark = mountRegionMark({
     doc,
     root,

@@ -681,6 +681,7 @@ export function createItemRenderer({
   coverImage = null,
   pdfMetaTitle = null,
   onPdfOpenRequest = null,
+  onPdfParse = null,
   onHighlightHover = null,
   onHighlightMenu = null,
   readingUid = null,
@@ -2998,7 +2999,8 @@ export function createItemRenderer({
       }
       const coverChips = chipsFor(item);
       if (coverChips.length) paintPdfChipStrip(doc, hover, coverChips, chipHandlers(item));
-      const open = el("button", "pxd-pdf-open pxd-pdf-pill pxd-chrome", node);
+      const pills = el("div", "pxd-pdf-pills", node);
+      const open = el("button", "pxd-pdf-open pxd-pdf-pill pxd-chrome", pills);
       open.type = "button";
       open.textContent = "Open";
       open.setAttribute("aria-label", "Open reader");
@@ -3006,6 +3008,16 @@ export function createItemRenderer({
       open.addEventListener("click", (event) => {
         stopEvent(event);
         openPdf(item.uid);
+      });
+      const parse = el("button", "pxd-pdf-parse pxd-pdf-pill pxd-chrome", pills);
+      parse.type = "button";
+      parse.textContent = "Parse";
+      parse.setAttribute("aria-label", "Parse PDF");
+      parse.setAttribute("data-tip", "pdf.parse");
+      for (const type of ["pointerdown", "mousedown", "dblclick"]) parse.addEventListener(type, stopEvent);
+      parse.addEventListener("click", (event) => {
+        stopEvent(event);
+        try { onPdfParse?.(item.uid); } catch { /* host */ }
       });
     }
     const dot = el("span", "pxd-pdf-dot", node);

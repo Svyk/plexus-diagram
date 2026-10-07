@@ -224,6 +224,8 @@ export function buildMenu(kind, ctx = {}) {
         make("open-sidebar", "Open in sidebar", { hint: "Shift Click" }),
         ...(c.compass && c.interop !== false ? [make("open-compass", "Open in Compass")] : []),
         ...(c.isPdf ? [make("read-inline", c.inlineReader ? "Show the cover" : "Read inside the card")] : []),
+        ...(c.isPdf ? [make("parse-pdf", "Parse PDF…")] : []),
+        ...(c.isPdf && c.hasParse ? [make("open-parsed", "Open parsed")] : []),
         sep(),
         make("copy", "Copy", { hint: "Cmd C" }),
         make("copy-png", "Copy selection as PNG"),

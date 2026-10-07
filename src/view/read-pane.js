@@ -1,5 +1,6 @@
 // PDF reading pane. One live Roam reader beside the board. The highlight list is the drawer's.
-// Width is localStorage. No :pdf-highlight write, no document key listener, no palette command.
+// Width is localStorage. No :pdf-highlight write, no palette command.
+// This pane adds no document key listener. The parsed view adds one while it is open and removes it on dispose.
 
 import { CARD_MIME } from "../model/drop.js";
 import { HIGHLIGHT_COLORS, highlightModel } from "../model/highlight.js";
@@ -9,6 +10,9 @@ import { dragChipText, fiberOf, highlightById, highlighterContext, PDF_MARK, uid
 import { fitDecision, fitWidthStep, fitsWidth, pageIndicator, pageTotalText, pillActions, viewerFromFiber } from "../model/read-pane-model.js";
 import { isTextEntryTarget } from "./cards.js";
 import { applyMotionClasses } from "./motion.js";
+import { BOTH_MIN_PX, createParseView, readParsedUrls } from "./parse-view.js";
+import { createParseStore } from "../host/parse-store.js";
+import { createHelperClient } from "../host/parse-helper-client.js";
 
 // U4 owns the visible drawer. The import is async so a missing file leaves the pane's own list.
 let liveDrawer = null;
@@ -155,12 +159,20 @@ export function createReadPane({
   titleOf,
   coverSrc,
   createDrawer,
+  session = null,
+  settings = null,
 } = {}) {
   const el = (tag, cls, parent) => {
     const node = doc.createElement(tag);
     if (cls) node.className = cls;
     parent?.append(node);
     return node;
+  };
+  const setHidden = (node, on) => {
+    if (!node) return;
+    node.hidden = Boolean(on);
+    if (on) node.setAttribute("hidden", "");
+    else node.removeAttribute("hidden");
   };
   const pane = el("aside", "pxd-read");
   pane.setAttribute("role", "complementary");
@@ -201,6 +213,23 @@ export function createReadPane({
   if (cross) closeBtn.append(cross);
   else closeBtn.textContent = "✕";
   closeBtn.setAttribute("aria-label", "Close");
+  const modes = el("div", "pxd-read__modes", pane);
+  modes.setAttribute("role", "toolbar");
+  modes.setAttribute("aria-label", "Reader mode");
+  setHidden(modes, true);
+  const modeBtns = {};
+  for (const [id, label, tip] of [["reader", "Reader", "parse.mode.reader"], ["parsed", "Parsed", "parse.mode.parsed"], ["both", "Both", "parse.mode.both"]]) {
+    const button = el("button", "pxd-read__mode", modes);
+    button.type = "button";
+    button.textContent = label;
+    button.setAttribute("data-mode", id);
+    button.setAttribute("data-tip", tip);
+    button.setAttribute("aria-pressed", id === "reader" ? "true" : "false");
+    modeBtns[id] = button;
+  }
+  const progress = el("div", "pxd-read__progress", pane);
+  setHidden(progress, true);
+  const progressFill = el("div", "pxd-read__progressfill", progress);
   const stage = el("div", "pxd-read__stage", pane);
   const live = el("div", "pxd-read__live", stage);
   const pill = el("div", "pxd-read__pill", stage);
@@ -211,6 +240,7 @@ export function createReadPane({
   const fitBtn = pillButton(doc, el, pill, "Fit width", "⇔");
   const pageNode = el("span", "pxd-read__pages", pill);
   const searchBtn = pillButton(doc, el, pill, "Search", "⌕");
+  const parsedMount = el("div", "pxd-read__parsed", pane);
   const drawerMount = el("div", "pxd-read__drawer", pane);
   let colorSel = null;
   let pageFilt = null;
@@ -422,6 +452,7 @@ export function createReadPane({
     clearLive();
     liveBlock = blockUid;
     try { host?.renderBlock?.(live, blockUid); } catch { /* host */ }
+    try { parsedView?.watchPageInput?.(readerField()); } catch { /* field */ }
     let src = "";
     try { src = typeof coverSrc === "function" ? coverSrc(current) : ""; } catch { src = ""; }
     if (typeof src === "string" && src) paintHold(src);
@@ -1594,6 +1625,126 @@ export function createReadPane({
     root?.addEventListener?.("pointerup", splitUp);
   });
 
+  let parsedView = null;
+  let parseStore = null;
+  let parseHelper = null;
+  let viewMode = "reader";
+  const ensureStore = () => {
+    if (!parseStore) parseStore = createParseStore({ indexedDB: doc.defaultView?.indexedDB });
+    return parseStore;
+  };
+  const ensureHelper = () => {
+    if (!parseHelper) parseHelper = createHelperClient({ settings, fetch: doc.defaultView?.fetch });
+    return parseHelper;
+  };
+  const pdfUrl = () => pdfMacroUrl(current.source || "") || "";
+  const readerPdf = () => {
+    try {
+      const viewer = viewerFromFiber(fiberOf(live.querySelector?.(".PdfHighlighter")));
+      return viewer?.pdfDocument || null;
+    } catch { return null; }
+  };
+  const getPdf = async () => readerPdf();
+  const pageElement = (n) => {
+    const pages = live.querySelectorAll?.(".page") || [];
+    for (const node of pages) {
+      if (Number(node.getAttribute?.("data-page-number")) === Number(n)) return node;
+    }
+    return null;
+  };
+  const revealModes = () => {
+    setHidden(modes, false);
+    pane.classList.add("pxd-read--modes");
+  };
+  function applyModeClass() {
+    pane.classList.remove("pxd-read--parsed", "pxd-read--both", "pxd-read--narrow");
+    const width = Number(pane.clientWidth) || Number(mountW) || 0;
+    if (viewMode === "parsed") pane.classList.add("pxd-read--parsed");
+    else if (viewMode === "both") {
+      pane.classList.add("pxd-read--both");
+      if (width > 0 && width < BOTH_MIN_PX) pane.classList.add("pxd-read--narrow");
+    }
+    for (const [id, button] of Object.entries(modeBtns)) {
+      button.setAttribute("aria-pressed", id === viewMode ? "true" : "false");
+    }
+  }
+  const ensureParsed = () => {
+    if (parsedView) return parsedView;
+    parsedView = createParseView({
+      doc,
+      store: ensureStore(),
+      helper: ensureHelper(),
+      session,
+      host,
+      storage,
+      pdfUid: current.cardUid,
+      url: pdfUrl(),
+      getPdf,
+      jumpPage,
+      pageNow: () => Number(String(readerField()?.value || "").trim()) || 1,
+      pageEl: pageElement,
+      readerEl: live,
+      onToast: (message) => { try { host?.toast?.(message); } catch { /* host */ } },
+      onCached: () => revealModes(),
+      onProgress: (info) => {
+        const running = info && info.fraction != null && info.fraction < 1;
+        setHidden(progress, !running);
+        progressFill.style.width = `${Math.round((Number(info?.fraction) || 0) * 100)}%`;
+      },
+      adoptCreated: () => { try { refreshList(); } catch { /* list */ } },
+      getContext: () => readerContext(),
+    });
+    parsedMount.append(parsedView.element());
+    try { parsedView.watchPageInput(readerField()); } catch { /* field */ }
+    return parsedView;
+  };
+  function dropParsed() {
+    try { parsedView?.dispose?.(); } catch { /* gone */ }
+    parsedView = null;
+    viewMode = "reader";
+    setHidden(modes, true);
+    setHidden(progress, true);
+    pane.classList.remove("pxd-read--modes", "pxd-read--parsed", "pxd-read--both", "pxd-read--narrow");
+    for (const [id, button] of Object.entries(modeBtns)) {
+      button.setAttribute("aria-pressed", id === "reader" ? "true" : "false");
+    }
+  }
+  async function noteCached() {
+    const url = pdfUrl();
+    if (!url || !openFlag) return;
+    if (readParsedUrls(storage).has(url)) revealModes();
+    try {
+      const hit = await ensureStore().findByUrl(url);
+      if (hit?.sha256 && openFlag) revealModes();
+    } catch { /* store */ }
+  }
+  async function enterParsed(which) {
+    if (!openFlag) return;
+    revealModes();
+    viewMode = which === "both" ? "both" : "parsed";
+    applyModeClass();
+    const view = ensureParsed();
+    view.setTarget({ url: pdfUrl(), pdfUid: current.cardUid });
+    try { view.watchPageInput(readerField()); } catch { /* field */ }
+    let found = null;
+    try { found = await view.restore(); } catch { found = null; }
+    if (!openFlag) return;
+    if (!found && view.blockCount() === 0) {
+      try { await view.parseBuiltin(); } catch { /* parse */ }
+    }
+  }
+  listen(modes, "click", (event) => {
+    const id = event.target?.closest?.("[data-mode]")?.getAttribute?.("data-mode");
+    if (!id) return;
+    if (id === "reader") {
+      viewMode = "reader";
+      revealModes();
+      applyModeClass();
+      return;
+    }
+    void enterParsed(id);
+  });
+
   function close(opts) {
     cancelPageWait();
     cancelSettle();
@@ -1605,6 +1756,7 @@ export function createReadPane({
     const notify = !opts || opts.notify !== false;
     const wasOpen = openFlag;
     if (!openFlag && !pane.isConnected) return;
+    dropParsed();
     if (wasOpen) emitSnapshot("close");
     openFlag = false;
     endSplit();
@@ -1674,6 +1826,9 @@ export function createReadPane({
       armWatch(current.title);
       paintSwitcher();
       refreshList();
+      void noteCached();
+      if (next.mode === "parsed" || next.mode === "both") void enterParsed(next.mode);
+      else if (parsedView && viewMode !== "reader") void enterParsed(viewMode);
     },
     close,
     dispose() {
@@ -1689,6 +1844,7 @@ export function createReadPane({
       if (typeof mountWidth === "number" && Number.isFinite(mountWidth) && mountWidth > 0) mountW = mountWidth;
       if (!openFlag) return;
       applyBox();
+      applyModeClass();
     },
     isOpen: () => openFlag && Boolean(pane.isConnected),
     cardUid: () => current.cardUid || "",
@@ -1702,5 +1858,7 @@ export function createReadPane({
     // P32-3 probe: which path fitted the page (viewer | steps | viewer+steps | none) and the presses it took.
     fitInfo: () => ({ path: fitState.path, clicks: fitState.clicks, done: fitDone, userZoomed }),
     element: () => pane,
+    parse() { void enterParsed(viewMode === "both" ? "both" : "parsed"); },
+    showParsed() { void enterParsed("parsed"); },
   };
 }

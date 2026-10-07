@@ -838,15 +838,15 @@ function mergePropsForWrite(props, plexus) {
 }
 function normalizeItemLayout(plexus) {
   const p = isObject(plexus) ? plexus : {};
-  const num3 = (v) => isNum(v) ? v : void 0;
+  const num4 = (v) => isNum(v) ? v : void 0;
   const type = ITEM_TYPES.includes(p.type) ? p.type : "card";
   const section2 = type === "section";
   return {
     type,
-    x: num3(p.x),
-    y: num3(p.y),
-    w: num3(p.w),
-    h: num3(p.h),
+    x: num4(p.x),
+    y: num4(p.y),
+    w: num4(p.w),
+    h: num4(p.h),
     color: styleColor(p.color),
     collapsed: p.collapsed === true ? true : p.collapsed === false ? false : void 0,
     // Sections use titleSize. Cards and text take an integer 10–48 (text used to be the four steps only).
@@ -1595,13 +1595,13 @@ function renderTrailStrip(doc, parent, stops, { onStop, onWalk } = {}) {
   if (!parent.__pxdStripKeys) {
     parent.__pxdStripKeys = true;
     parent.addEventListener("keydown", (event) => {
-      const now2 = parent.__pxdStrip || {};
+      const now3 = parent.__pxdStrip || {};
       if (event.key !== "Enter" && event.key !== " ") return;
       const target = event.target;
       if (target?.closest?.(".pxd-trail-strip__walk")) {
         event.preventDefault?.();
         event.stopPropagation?.();
-        now2.onWalk?.();
+        now3.onWalk?.();
         return;
       }
       const btn = target?.closest?.(".pxd-trail-strip__stop");
@@ -1610,7 +1610,7 @@ function renderTrailStrip(doc, parent, stops, { onStop, onWalk } = {}) {
       if (i < 0) return;
       event.preventDefault?.();
       event.stopPropagation?.();
-      now2.onStop?.(now2.list?.[i]);
+      now3.onStop?.(now3.list?.[i]);
     });
   }
   return parent;
@@ -2844,10 +2844,10 @@ function thumbnailBudget(uids, { cap: cap4 = THUMBNAIL_CAP } = {}) {
   }
   return out;
 }
-function timerStep(state, now2) {
+function timerStep(state, now3) {
   const remaining = Math.max(0, Number(state?.remainingMs) || 0);
   if (!state?.running || !state.endsAt) return { remainingMs: remaining, running: false, endsAt: null };
-  const left = Math.max(0, state.endsAt - now2);
+  const left = Math.max(0, state.endsAt - now3);
   return { remainingMs: left, running: left > 0, endsAt: left > 0 ? state.endsAt : null };
 }
 function presenterNote(board2, uid) {
@@ -3488,10 +3488,10 @@ function librarySelective(filter) {
   if (f.text || f.tag) return true;
   return f.type === "board" || f.type === "daily";
 }
-function editedSince(edited, days, now2 = Date.now()) {
+function editedSince(edited, days, now3 = Date.now()) {
   const n2 = Math.max(0, Math.floor(Number(days) || 0));
   if (!n2) return true;
-  const t = now2 instanceof Date ? now2.getTime() : Number(now2);
+  const t = now3 instanceof Date ? now3.getTime() : Number(now3);
   return Number.isFinite(edited) && edited > t - n2 * DAY_MS;
 }
 function libraryKind(row4) {
@@ -3501,7 +3501,7 @@ function libraryKind(row4) {
   if (row4?.kind === "daily" || isDailyTitle(title)) return "daily";
   return "page";
 }
-function narrowLibrary(rows, filter, now2 = Date.now()) {
+function narrowLibrary(rows, filter, now3 = Date.now()) {
   const f = normalizeLibraryFilter(filter);
   const needle = f.text.toLowerCase();
   return (Array.isArray(rows) ? rows : []).filter((row4) => {
@@ -3515,7 +3515,7 @@ function narrowLibrary(rows, filter, now2 = Date.now()) {
       const hay = [row4?.title, row4?.string, row4?.text].filter((v) => v != null).join("\n").toLowerCase();
       if (!hay.includes(needle)) return false;
     }
-    if (f.days && !editedSince(row4?.edited, f.days, now2)) return false;
+    if (f.days && !editedSince(row4?.edited, f.days, now3)) return false;
     if (f.orphan && (kind === "board" || row4?.onBoard)) return false;
     return true;
   });
@@ -3535,9 +3535,9 @@ function libraryCard(row4) {
   const label = row4?.pageTitle ? `in ${row4.pageTitle}` : "block";
   return { string: `((${uid}))`, text: String(row4?.string ?? row4?.text ?? "").slice(0, 120), kind, label };
 }
-function recentDailyTitles(days = 14, now2 = /* @__PURE__ */ new Date()) {
+function recentDailyTitles(days = 14, now3 = /* @__PURE__ */ new Date()) {
   const n2 = Math.max(1, Math.min(366, Math.floor(Number(days) || 14)));
-  const base = now2 instanceof Date ? now2 : new Date(now2);
+  const base = now3 instanceof Date ? now3 : new Date(now3);
   const titles = [];
   for (let i = 0; i < n2; i += 1) {
     const d = new Date(base.getFullYear(), base.getMonth(), base.getDate() - i, 12, 0, 0, 0);
@@ -4654,7 +4654,24 @@ var init_tooltip_text = __esm({
       "parse.numbered": e("Numbered lists when inserting", "On writes ordered lists with Roam's 1. syntax. Off keeps the original number as text on a bullet."),
       "parse.footnotes": e("Footnotes", "Inline places each note after the paragraph that cites it. End places every note after the insert."),
       "parse.merges-flat": e("Merged cells shown flat", "Roam Grid draws merges. Native Roam shows the covered cells empty.", null, "Insert as flat table repeats the anchor text into covered cells."),
-      "parse.insert-flat": e("Insert as flat table", "Repeat the anchor text into covered cells so a native table still reads.")
+      "parse.insert-flat": e("Insert as flat table", "Repeat the anchor text into covered cells so a native table still reads."),
+      "pdf.parse": e("Parse", "Parse this PDF with the built-in engine and open the parsed view."),
+      "parse.mode.reader": e("Reader", "Show the PDF reader."),
+      "parse.mode.parsed": e("Parsed", "Show the parsed blocks. The page strip stays."),
+      "parse.mode.both": e("Both", "Reader and parsed view side by side when the pane is wide enough."),
+      "parse.range": e("Page range", "All, the current page, or a range such as 1–5."),
+      "parse.search": e("Search", "Filter the parsed blocks. The PDF is not fetched again."),
+      "parse.chip": e("Parse engine", "Built-in runs on this machine. Docling uses the local helper."),
+      "parse.docling": e("Parse with Docling", "Send this PDF to the local helper. Nothing is sent until you press this."),
+      "parse.docling-off": e("Docling: not running", "Start tools/parse-helper/bin/plexus-parse-helper serve, then paste the token into Settings."),
+      "parse.docling-token": e("Docling: wrong token", "Paste the helper token into Settings."),
+      "parse.docling-models": e("Docling: downloading models", "The helper is downloading models. Parsing waits until they are ready."),
+      "parse.cancel": e("Cancel", "Stop this parse. Nothing is written to the graph."),
+      "parse.sync": e("Sync scroll", "Parsed scrolling follows the reader. Click to unlock."),
+      "parse.copy": e("Copy", "Copy Markdown. One table copies as CSV. Shift copies tables as CSV."),
+      "parse.insert": e("Insert below PDF", "Insert the selection under the PDF card."),
+      "parse.send": e("Send to board", "Place the selection on the board."),
+      "parse.highlight": e("Make highlight", "Ask Roam to highlight this text. Plexus does not write the highlight.")
     };
     for (const c of PALETTE) TIP_TEXT[`swatch.${c}`] = e(cap(c), `Color the selection ${c}, or tone the board ${c}.`);
     for (const s of SHAPES) TIP_TEXT[`dock.shape.${s}`] = e(cap(s), `Draw ${s === "rounded" ? "rounded rectangles" : `${s}s`} with the Shape tool, or change the selected shape.`);
@@ -4766,7 +4783,7 @@ function createTooltip({ doc = globalThis.document, root, timers, setting } = {}
     add("extra", info.extra);
     add("hint", info.hint);
   };
-  const place = (target) => {
+  const place2 = (target) => {
     if (target.isConnected === false) {
       hide();
       return;
@@ -4808,7 +4825,7 @@ function createTooltip({ doc = globalThis.document, root, timers, setting } = {}
     tip.style.display = "";
     current3 = target;
     target.setAttribute("aria-describedby", ID);
-    place(target);
+    place2(target);
     if (!dismiss.length) {
       const off = (node2, type, fn, opts) => {
         node2.addEventListener(type, fn, opts);
@@ -5348,7 +5365,7 @@ function createRelChips({ doc = globalThis.document, win = globalThis.window, ho
       return null;
     };
     const holder = scrollParent(chip);
-    const place = () => {
+    const place2 = () => {
       if (chip.isConnected === false) {
         closePop();
         return;
@@ -5394,7 +5411,7 @@ function createRelChips({ doc = globalThis.document, win = globalThis.window, ho
       if (queued || !pop) return;
       const id = win?.requestAnimationFrame?.(() => {
         queued = null;
-        if (pop) place();
+        if (pop) place2();
       });
       queued = () => win?.cancelAnimationFrame?.(id);
     };
@@ -5413,7 +5430,7 @@ function createRelChips({ doc = globalThis.document, win = globalThis.window, ho
       tooltip = null;
     }
     pop = { el, offs, tooltip, chip, natural: el.offsetHeight || 300 };
-    place();
+    place2();
   };
   const buildChip = (edgeUid) => {
     const boardUid = cache.boardOf(edgeUid);
@@ -5656,14 +5673,14 @@ function dueChip(content, today = /* @__PURE__ */ new Date()) {
   }
   if (raw == null || !title) return null;
   const due = parseRoamDay(title);
-  const now2 = dayOf(today);
-  return { text: title, overdue: Boolean(due && now2 && stamp(due) < stamp(now2)), today: Boolean(due && now2 && stamp(due) === stamp(now2)), raw, day: due };
+  const now3 = dayOf(today);
+  return { text: title, overdue: Boolean(due && now3 && stamp(due) < stamp(now3)), today: Boolean(due && now3 && stamp(due) === stamp(now3)), raw, day: due };
 }
 function shortDay(day, today = /* @__PURE__ */ new Date()) {
   if (!day) return "";
-  const now2 = dayOf(today);
+  const now3 = dayOf(today);
   const base = `${SHORT_MONTHS[day.m - 1]} ${day.d}`;
-  return now2 && day.y !== now2.y ? `${base}, ${day.y}` : base;
+  return now3 && day.y !== now3.y ? `${base}, ${day.y}` : base;
 }
 function dayChoices(today = /* @__PURE__ */ new Date()) {
   const at = (n2) => iso(new Date(today.getFullYear(), today.getMonth(), today.getDate() + n2));
@@ -6276,7 +6293,7 @@ function mountFpsFromStamps(stamps) {
   const fps = 1e3 / mid;
   return Number.isFinite(fps) ? Math.round(fps) : null;
 }
-function createRowScheduler({ idle, now: now2 = () => Date.now(), budgetMs = 8, render, eager = null } = {}) {
+function createRowScheduler({ idle, now: now3 = () => Date.now(), budgetMs = 8, render, eager = null } = {}) {
   const rows = /* @__PURE__ */ new Map();
   let handle = null;
   let disposed = false;
@@ -6323,11 +6340,11 @@ function createRowScheduler({ idle, now: now2 = () => Date.now(), budgetMs = 8, 
     handle = null;
     queued = false;
     if (disposed || held) return;
-    const start = now2();
+    const start = now3();
     const open = allNow();
     const has = deadline && typeof deadline.timeRemaining === "function" ? () => deadline.timeRemaining() > 1 : () => true;
     for (const row4 of pending()) {
-      if (!open && (held || now2() - start >= budgetMs || !has())) break;
+      if (!open && (held || now3() - start >= budgetMs || !has())) break;
       finish(row4);
     }
     if (!held && pending().length) schedule();
@@ -8028,9 +8045,9 @@ function shellOffscreen(uid, rect, view, { editingUid = null } = {}) {
   if (!uid || uid === editingUid) return false;
   return rectMisses(rect, view);
 }
-function unmountDue(seenAt, now2, grace = UNMOUNT_GRACE_MS) {
-  if (!Number.isFinite(seenAt) || !Number.isFinite(now2)) return false;
-  return now2 - seenAt >= grace;
+function unmountDue(seenAt, now3, grace = UNMOUNT_GRACE_MS) {
+  if (!Number.isFinite(seenAt) || !Number.isFinite(now3)) return false;
+  return now3 - seenAt >= grace;
 }
 var UNMOUNT_GRACE_MS;
 var init_offscreen = __esm({
@@ -8678,9 +8695,9 @@ function panFps(deltas) {
     const n2 = Number(value);
     if (Number.isFinite(n2) && n2 > 0) finite6.push(n2);
   }
-  const median = percentile(finite6, 0.5);
-  if (!(median > 0)) return null;
-  return 1e3 / median;
+  const median3 = percentile(finite6, 0.5);
+  if (!(median3 > 0)) return null;
+  return 1e3 / median3;
 }
 function numText(value) {
   if (!Number.isFinite(value)) return "—";
@@ -10435,6 +10452,7 @@ function createItemRenderer({
   coverImage = null,
   pdfMetaTitle = null,
   onPdfOpenRequest = null,
+  onPdfParse = null,
   onHighlightHover = null,
   onHighlightMenu = null,
   readingUid = null,
@@ -10903,7 +10921,7 @@ function createItemRenderer({
     const text3 = renderRoot(line, String(item.string).replace(TASK_MARK, ""), "pxd-rs pxd-item__string pxd-item__tasktext", item.uid);
     return text3;
   };
-  const setHidden = (node2, hidden) => {
+  const setHidden2 = (node2, hidden) => {
     node2.hidden = hidden;
     if (hidden) node2.setAttribute("hidden", "");
     else node2.removeAttribute("hidden");
@@ -10960,7 +10978,7 @@ function createItemRenderer({
     toggle.setAttribute("aria-label", toggle.textContent);
     toggle.setAttribute("aria-expanded", "false");
     const list = el("div", "pxd-refs__list", wrap);
-    setHidden(list, true);
+    setHidden2(list, true);
     for (const type of ["pointerdown", "mousedown", "dblclick"]) on(toggle, type, stopEvent);
     let filled = false;
     on(toggle, "click", (event) => {
@@ -10969,7 +10987,7 @@ function createItemRenderer({
       const open = toggle.getAttribute("aria-expanded") !== "true";
       toggle.setAttribute("aria-expanded", open ? "true" : "false");
       wrap.classList.toggle("pxd-refs--open", open);
-      setHidden(list, !open);
+      setHidden2(list, !open);
       if (!open || filled) return;
       filled = true;
       for (const ref of refs) addRefRow(list, rec, ref, on);
@@ -11682,14 +11700,14 @@ function createItemRenderer({
     let orderChanged = structural;
     let defer = null;
     if (!shells.size && board2.order.length > 80 && typeof timers?.frame === "function") {
-      const now2 = [];
+      const now3 = [];
       const later2 = [];
       for (const uid of board2.order) {
         const rect = rects.get(uid);
-        if (view && rect && rectsIntersect(rect, view)) now2.push(uid);
+        if (view && rect && rectsIntersect(rect, view)) now3.push(uid);
         else later2.push(uid);
       }
-      if (!now2.length && view) {
+      if (!now3.length && view) {
         const cx = view.x + view.w / 2;
         const cy = view.y + view.h / 2;
         const dist = (uid) => {
@@ -11698,8 +11716,8 @@ function createItemRenderer({
         };
         later2.sort((a, b) => dist(a) - dist(b));
       }
-      if (!now2.length) now2.push(...later2.splice(0, 24));
-      if (now2.length && later2.length) defer = new Set(later2);
+      if (!now3.length) now3.push(...later2.splice(0, 24));
+      if (now3.length && later2.length) defer = new Set(later2);
     }
     for (const uid of board2.order) {
       if (defer?.has(uid)) continue;
@@ -12189,7 +12207,7 @@ function createItemRenderer({
         rec.roots.push(...sub.roots);
       }
     };
-    if (folded) setHidden(wrap, true);
+    if (folded) setHidden2(wrap, true);
     row4.classList.toggle("pxd-prow--folded", folded);
     fold.addEventListener("click", (event) => {
       stopEvent(event);
@@ -12198,7 +12216,7 @@ function createItemRenderer({
       fold.setAttribute("aria-expanded", open ? "true" : "false");
       fold.setAttribute("aria-label", open ? "Fold" : "Unfold");
       row4.classList.toggle("pxd-prow--folded", !open);
-      setHidden(wrap, !open);
+      setHidden2(wrap, !open);
       onPageLayout?.(rec.uid);
     });
     return row4;
@@ -12357,7 +12375,7 @@ function createItemRenderer({
     }
     prow.classList.toggle("pxd-prow--folded", spec.folded);
     const wrap = childWithClass(prow, "pxd-block__children");
-    if (wrap) setHidden(wrap, spec.folded);
+    if (wrap) setHidden2(wrap, spec.folded);
   };
   const reorderProws = (parent, rows) => {
     let tail = null;
@@ -12924,7 +12942,8 @@ function createItemRenderer({
       }
       const coverChips = chipsFor(item);
       if (coverChips.length) paintPdfChipStrip(doc, hover, coverChips, chipHandlers(item));
-      const open = el("button", "pxd-pdf-open pxd-pdf-pill pxd-chrome", node2);
+      const pills = el("div", "pxd-pdf-pills", node2);
+      const open = el("button", "pxd-pdf-open pxd-pdf-pill pxd-chrome", pills);
       open.type = "button";
       open.textContent = "Open";
       open.setAttribute("aria-label", "Open reader");
@@ -12932,6 +12951,19 @@ function createItemRenderer({
       open.addEventListener("click", (event) => {
         stopEvent(event);
         openPdf(item.uid);
+      });
+      const parse = el("button", "pxd-pdf-parse pxd-pdf-pill pxd-chrome", pills);
+      parse.type = "button";
+      parse.textContent = "Parse";
+      parse.setAttribute("aria-label", "Parse PDF");
+      parse.setAttribute("data-tip", "pdf.parse");
+      for (const type of ["pointerdown", "mousedown", "dblclick"]) parse.addEventListener(type, stopEvent);
+      parse.addEventListener("click", (event) => {
+        stopEvent(event);
+        try {
+          onPdfParse?.(item.uid);
+        } catch {
+        }
       });
     }
     const dot = el("span", "pxd-pdf-dot", node2);
@@ -14866,10 +14898,10 @@ function createItemRenderer({
       }
       if (input && caretOff != null && caretRow) {
         const win = pageEditWindowId(editor);
-        const place = host?.api?.ui?.setBlockFocusAndSelection;
-        if (win && typeof place === "function") {
+        const place2 = host?.api?.ui?.setBlockFocusAndSelection;
+        if (win && typeof place2 === "function") {
           try {
-            place({
+            place2({
               location: { "block-uid": caretRow, "window-id": win },
               selection: { start: caretOff, end: caretOff }
             });
@@ -17736,7 +17768,7 @@ function createWriteQueue({ onBusy } = {}) {
   };
 }
 var canon = (v) => typeof v === "string" ? v : JSON.stringify(v);
-function createEchoLedger({ graceMs = 800, now: now2 = Date.now } = {}) {
+function createEchoLedger({ graceMs = 800, now: now3 = Date.now } = {}) {
   const state = /* @__PURE__ */ new Map();
   const keyOf2 = (uid, field) => `${uid}\0${field}`;
   const get = (uid, field, create) => {
@@ -17758,7 +17790,7 @@ function createEchoLedger({ graceMs = 800, now: now2 = Date.now } = {}) {
       const s = get(uid, field, false);
       if (!s) return;
       s.inflight = Math.max(0, s.inflight - 1);
-      if (s.inflight === 0) s.graceUntil = now2() + graceMs;
+      if (s.inflight === 0) s.graceUntil = now3() + graceMs;
     },
     accept(uid, field, value) {
       const k = keyOf2(uid, field);
@@ -17766,14 +17798,14 @@ function createEchoLedger({ graceMs = 800, now: now2 = Date.now } = {}) {
       if (!s) return true;
       const v = canon(value);
       const idle = s.inflight === 0;
-      if (idle && now2() >= s.graceUntil) {
+      if (idle && now3() >= s.graceUntil) {
         state.delete(k);
         return true;
       }
       const idx = s.pending.lastIndexOf(v);
       if (idx >= 0 && idx === s.pending.length - 1) {
         s.pending = [];
-        if (idle) s.graceUntil = now2() + graceMs;
+        if (idle) s.graceUntil = now3() + graceMs;
         return false;
       }
       return false;
@@ -17791,7 +17823,7 @@ function createEchoLedger({ graceMs = 800, now: now2 = Date.now } = {}) {
     }
   };
 }
-function createViewportStore({ storage = globalThis.localStorage, graph = "", now: now2 = Date.now } = {}) {
+function createViewportStore({ storage = globalThis.localStorage, graph = "", now: now3 = Date.now } = {}) {
   const key = (uid) => `plexus-diagram:vp:${graph}:${uid}`;
   const lastWrite = /* @__PURE__ */ new Map();
   const latest = /* @__PURE__ */ new Map();
@@ -17803,7 +17835,7 @@ function createViewportStore({ storage = globalThis.localStorage, graph = "", no
       storage?.setItem(key(uid), JSON.stringify(latest.get(uid)));
     } catch {
     }
-    lastWrite.set(uid, now2());
+    lastWrite.set(uid, now3());
     latest.delete(uid);
   };
   return {
@@ -17820,7 +17852,7 @@ function createViewportStore({ storage = globalThis.localStorage, graph = "", no
     set(uid, vp) {
       if (!vp) return;
       latest.set(uid, { x: vp.x, y: vp.y, zoom: vp.zoom });
-      const since = now2() - (lastWrite.get(uid) ?? -Infinity);
+      const since = now3() - (lastWrite.get(uid) ?? -Infinity);
       if (since >= 500) {
         flush(uid);
         return;
@@ -18579,7 +18611,7 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
     // A ref target is joined into the board pull, but the board watch does not fire when it changes.
     blockStrings(uids, { fresh = false } = {}) {
       const out = /* @__PURE__ */ new Map();
-      const now2 = Date.now();
+      const now3 = Date.now();
       const missing2 = [];
       for (const uid of uids || []) {
         const id = String(uid ?? "");
@@ -18595,7 +18627,7 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
           continue;
         }
         const hit = burstMemo.get(id);
-        if (hit && now2 - hit.at < BURST_MS) {
+        if (hit && now3 - hit.at < BURST_MS) {
           out.set(id, hit.value);
           continue;
         }
@@ -18614,7 +18646,7 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
       for (const id of missing2) {
         const value = found.has(id) ? found.get(id) : null;
         out.set(id, value);
-        burstMemo.set(id, { value, at: now2 });
+        burstMemo.set(id, { value, at: now3 });
         if (fresh && typeof value === "string") {
           const node2 = cache.blockOf(id);
           if (node2 && typeof node2 === "object") node2[":block/string"] = value;
@@ -20326,7 +20358,7 @@ function unknownKeys(plexus, known) {
   for (const [k, v] of Object.entries(plexus ?? {})) if (!known.includes(k)) out[k] = v;
   return out;
 }
-function createSession(uid, { host, settings = null, virtual = false, raf: raf2, now: now2 = Date.now, idle, linkDelay = 1500, graceMs = 800 } = {}) {
+function createSession(uid, { host, settings = null, virtual = false, raf: raf2, now: now3 = Date.now, idle, linkDelay = 1500, graceMs = 800 } = {}) {
   const schedule = raf2 ?? ((fn) => {
     if (typeof globalThis.requestAnimationFrame === "function") return globalThis.requestAnimationFrame(fn);
     const t = setTimeout(fn, 0);
@@ -20359,7 +20391,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
     syncState = state;
     emit2("sync", state);
   };
-  const ledger = createEchoLedger({ graceMs, now: now2 });
+  const ledger = createEchoLedger({ graceMs, now: now3 });
   let destroyed = false;
   let raw = clone(host.pullBoard(uid));
   let board2 = null;
@@ -21472,7 +21504,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       if (!board2 || destroyed || gone) return Promise.resolve(void 0);
       const spec = drawingCreateSpec(uid);
       const api2 = globalThis.RoamPlexus || globalThis.window?.RoamPlexus || null;
-      const place = () => {
+      const place2 = () => {
         if (api2 && typeof api2.create === "function") {
           return Promise.resolve(api2.create({ parentUid: spec.parentUid, order: spec.order })).then((made) => {
             const id = made?.uid || null;
@@ -21485,10 +21517,10 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       };
       const stamp2 = stampList();
       return grouped(() => {
-        const placed = stamp2.length ? stampedRun(stamp2, place).catch((err) => {
+        const placed = stamp2.length ? stampedRun(stamp2, place2).catch((err) => {
           handleFailure(err);
           return null;
-        }) : place();
+        }) : place2();
         return placed.then((drawingUid) => {
           const ref = drawingRefString(drawingUid);
           if (!ref || !board2 || destroyed || gone) return null;
@@ -21529,7 +21561,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       if (!top.length) return Promise.resolve(null);
       const preview = boardPreview(target);
       const cb = preview.bounds;
-      const place = cb ? { x: cb.x + cb.w + 48, y: cb.y } : { x: 0, y: 0 };
+      const place2 = cb ? { x: cb.x + cb.w + 48, y: cb.y } : { x: 0, y: 0 };
       const origin = boundsOf(top.map((id) => rects.get(id)));
       const moved = new Set(top);
       for (const id of top) for (const d of descendantsOf(board2, id)) moved.add(d);
@@ -21540,7 +21572,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       const undoEdges = [];
       const info = { createdContainer: null };
       return txn((t) => {
-        moveItemsInto(t, top, boardUid, origin, place, { moved, undoEdges, info });
+        moveItemsInto(t, top, boardUid, origin, place2, { moved, undoEdges, info });
         applyFit(t, [boardUid]);
         return {
           moved: top.slice(),
@@ -22442,13 +22474,13 @@ function createSession(uid, { host, settings = null, virtual = false, raf: raf2,
       open: collapseOutline() ? false : void 0
     });
   }
-  function moveItemsInto(t, top, boardUid, origin, place, track = {}) {
+  function moveItemsInto(t, top, boardUid, origin, place2, track = {}) {
     const moved = track.moved ?? new Set([...top].flatMap((id) => [id, ...descendantsOf(board2, id)]));
     if (rawPlexus(boardUid).v !== SCHEMA_VERSION) t.props(boardUid, withBoardMarker(rawPlexus(boardUid), true));
     for (const id of top) {
       const r = rects.get(id);
       t.move(id, boardUid, insertOrder(boardUid));
-      t.props(id, itemPlexus(id, { x: round14(r.x - origin.x + place.x), y: round14(r.y - origin.y + place.y) }));
+      t.props(id, itemPlexus(id, { x: round14(r.x - origin.x + place2.x), y: round14(r.y - origin.y + place2.y) }));
     }
     let childContainer = null;
     const childEdges = () => {
@@ -23170,10 +23202,10 @@ extendSession((session, api) => {
 // src/snapshots.js
 init_snapshots();
 extendSession((session, api) => {
-  session.saveSnapshot = (now2 = /* @__PURE__ */ new Date()) => {
+  session.saveSnapshot = (now3 = /* @__PURE__ */ new Date()) => {
     const board2 = api.board();
     if (!board2) return Promise.resolve(null);
-    const title = snapshotTitle(now2);
+    const title = snapshotTitle(now3);
     if (!title) return Promise.resolve(null);
     const items = captureLayout(board2);
     return api.txn((t) => {
@@ -25129,15 +25161,15 @@ function normCount(value, cap4) {
   if (!Number.isFinite(n2) || n2 <= 0 || !(cap4 > 0)) return 0;
   return Math.min(n2, cap4) / cap4;
 }
-function recencyNorm(editTime, now2) {
-  if (!Number.isFinite(editTime) || !Number.isFinite(now2)) return 0;
-  const days = Math.max(0, now2 - editTime) / DAY3;
+function recencyNorm(editTime, now3) {
+  if (!Number.isFinite(editTime) || !Number.isFinite(now3)) return 0;
+  const days = Math.max(0, now3 - editTime) / DAY3;
   return Math.exp(-Math.LN2 * days / RECENCY_HALF_LIFE_DAYS);
 }
-function strengthScore(components = {}, { trackOpens = false, now: now2 = components?.now ?? Date.now() } = {}) {
+function strengthScore(components = {}, { trackOpens = false, now: now3 = components?.now ?? Date.now() } = {}) {
   const refs = normCount(components?.refs, REFS_CAP);
   const shared = normCount(components?.shared, SHARED_CAP);
-  const recency = recencyNorm(components?.editTime ?? components?.edit, now2);
+  const recency = recencyNorm(components?.editTime ?? components?.edit, now3);
   if (trackOpens !== true) return clamp013(0.6 * refs + 0.25 * shared + 0.15 * recency);
   const opens = normCount(components?.opens, OPENS_CAP);
   return clamp013(0.5 * refs + 0.2 * shared + 0.15 * recency + 0.15 * opens);
@@ -25161,10 +25193,10 @@ function stampsOf(item) {
     now: Number.isFinite(item?.now) ? item.now : Date.now()
   };
 }
-function dustAge(editTime, createTime, now2) {
+function dustAge(editTime, createTime, now3) {
   const stamps = [editTime, createTime].filter((n2) => Number.isFinite(n2));
-  if (!stamps.length || !Number.isFinite(now2)) return null;
-  return Math.max(0, now2 - Math.max(...stamps));
+  if (!stamps.length || !Number.isFinite(now3)) return null;
+  return Math.max(0, now3 - Math.max(...stamps));
 }
 function dusty(item, period) {
   const limit = dustLimit(period);
@@ -25196,10 +25228,10 @@ function explain(components = {}) {
   const refs = countPhrase(components?.refs, "ref", "refs");
   const shared = countPhrase(components?.shared, "shared board", "shared boards");
   const edit = components?.editTime ?? components?.edit;
-  const now2 = Number.isFinite(components?.now) ? components.now : Date.now();
+  const now3 = Number.isFinite(components?.now) ? components.now : Date.now();
   let when = "not edited";
   if (Number.isFinite(edit)) {
-    const part = ageParts(Math.max(0, now2 - edit));
+    const part = ageParts(Math.max(0, now3 - edit));
     when = part.unit === "today" ? "edited today" : `edited ${part.n} ${part.n === 1 ? part.unit : `${part.unit}s`} ago`;
   }
   return `${refs}, ${shared}, ${when}`;
@@ -25681,7 +25713,7 @@ function mountMemoryLane({
   items = [],
   edges = [],
   snapshots = [],
-  now: now2 = Date.now(),
+  now: now3 = Date.now(),
   motion = "full",
   onFrame,
   onPreview,
@@ -25689,8 +25721,8 @@ function mountMemoryLane({
   clearTimer = (id) => clearTimeout(id)
 } = {}) {
   const index = timeIndex(items);
-  const start = index.length ? index[0].time : now2;
-  const end = now2;
+  const start = index.length ? index[0].time : now3;
+  const end = now3;
   const steps = monthSteps(start, end);
   const bar = doc.createElement("div");
   bar.className = "pxd-memory";
@@ -27906,6 +27938,4932 @@ function applyMotionClasses(root, level) {
   return profile;
 }
 
+// src/model/parse-hash.js
+function bytesOf(input) {
+  if (input == null) return new Uint8Array();
+  if (typeof input === "string") return new TextEncoder().encode(input);
+  if (input instanceof ArrayBuffer) return new Uint8Array(input);
+  if (ArrayBuffer.isView(input)) return new Uint8Array(input.buffer, input.byteOffset, input.byteLength);
+  throw new TypeError("sha256Hex expects bytes");
+}
+async function sha256Hex(bytes) {
+  const view = bytesOf(bytes);
+  const digest = await crypto.subtle.digest("SHA-256", view);
+  const hex = [];
+  for (const byte2 of new Uint8Array(digest)) hex.push(byte2.toString(16).padStart(2, "0"));
+  return hex.join("");
+}
+function canonicalize(value) {
+  if (Array.isArray(value)) return value.map(canonicalize);
+  if (value && typeof value === "object") {
+    const out = {};
+    for (const key of Object.keys(value).sort()) out[key] = canonicalize(value[key]);
+    return out;
+  }
+  return value;
+}
+function canonicalOptions(options) {
+  const src = options && typeof options === "object" && !Array.isArray(options) ? options : {};
+  const copy = {};
+  for (const key of Object.keys(src).sort()) {
+    if (key === "scope") continue;
+    copy[key] = canonicalize(src[key]);
+  }
+  return copy;
+}
+function canonicalOptionsJson(options) {
+  return JSON.stringify(canonicalOptions(options));
+}
+async function optionsHash(options) {
+  return sha256Hex(canonicalOptionsJson(options));
+}
+
+// src/model/parse/lines.js
+var LIGATURES = { "ﬀ": "ff", "ﬁ": "fi", "ﬂ": "fl", "ﬃ": "ffi", "ﬄ": "ffl", "ﬅ": "st", "ﬆ": "st" };
+var SUP_MAX_RATIO = 0.85;
+var SUP_MIN_SHIFT = 0.1;
+var BOLD_RE = /bold|black|heavy|semibold|demibold|extrab|ultrab|-medi\b|cmbx|cmb\d|,bold|-b$|\bbd\b/i;
+var ITALIC_RE = /italic|oblique|-it\b|cmti|cmmi|slanted|-i$/i;
+var MATH_FONT_RE = /math|symbol|cmsy|cmmi|cmex|cmr\d|cmbx\d|msbm|msam|stix|txsy|txmi|pxsy|rsfs|wasy|eufm|euex/i;
+function mul(a, b) {
+  return [
+    a[0] * b[0] + a[2] * b[1],
+    a[1] * b[0] + a[3] * b[1],
+    a[0] * b[2] + a[2] * b[3],
+    a[1] * b[2] + a[3] * b[3],
+    a[0] * b[4] + a[2] * b[5] + a[4],
+    a[1] * b[4] + a[3] * b[5] + a[5]
+  ];
+}
+function applyPoint(m, x, y) {
+  return [m[0] * x + m[2] * y + m[4], m[1] * x + m[3] * y + m[5]];
+}
+function normalizeText(str2) {
+  let out = "";
+  for (const ch of str2) {
+    const code = ch.codePointAt(0);
+    if (ch === "­") continue;
+    if (LIGATURES[ch]) {
+      out += LIGATURES[ch];
+      continue;
+    }
+    if (ch === " ") {
+      out += " ";
+      continue;
+    }
+    if (code >= 57344 && code <= 63743) {
+      out += "•";
+      continue;
+    }
+    out += ch;
+  }
+  return out;
+}
+function fontFlags(fontName, fonts) {
+  const info = fonts && fonts[fontName];
+  const name = info && (info.name || info.fontFamily) || "";
+  const bold = Boolean(info && info.bold) || BOLD_RE.test(name) || info && info.weight >= 600 || false;
+  const italic = Boolean(info && info.italic) || ITALIC_RE.test(name);
+  const math = MATH_FONT_RE.test(name);
+  return { bold, italic, math, name };
+}
+var MATH_CHAR_RE = /[∀-⋿Α-ω←-⇿\u{1D400}-\u{1D7FF}±×÷√∫∑∏≤≥≠∞]/u;
+function isMathChar(ch) {
+  return MATH_CHAR_RE.test(ch);
+}
+function piecesOf(item, transform, fonts) {
+  const str2 = normalizeText(item.str || "");
+  if (!str2) return [];
+  const m = mul(transform, item.transform);
+  const size = Math.hypot(m[2], m[3]) || Math.hypot(m[0], m[1]);
+  const angle = Math.atan2(m[1], m[0]);
+  const rotated = Math.abs(angle) > 0.01;
+  const x = m[4];
+  const base = m[5];
+  const scaleX = Math.hypot(m[0], m[1]) / (Math.hypot(item.transform[0], item.transform[1]) || 1);
+  const width = (item.width || 0) * scaleX;
+  const flags = fontFlags(item.fontName, fonts);
+  if (!str2.trim()) return [{ space: true, x0: x, x1: x + width, base, size, rotated }];
+  const perChar = width / Math.max(1, str2.length);
+  const out = [];
+  let i = 0;
+  const re = /(\s+)|(\S+)/g;
+  let match;
+  while (match = re.exec(str2)) {
+    const start = match.index;
+    const end = start + match[0].length;
+    if (match[1]) {
+      out.push({ space: true, x0: x + start * perChar, x1: x + end * perChar, base, size, rotated });
+    } else {
+      let math = 0;
+      for (const ch of match[2]) if (isMathChar(ch)) math++;
+      out.push({
+        text: match[2],
+        x0: x + start * perChar,
+        x1: x + end * perChar,
+        base,
+        size,
+        font: item.fontName,
+        fontName: flags.name,
+        bold: flags.bold,
+        italic: flags.italic,
+        mathFont: flags.math,
+        mathChars: math,
+        rotated,
+        leadingSpace: start > 0 && str2[start - 1] === " ",
+        trailingSpace: end < str2.length && str2[end] === " "
+      });
+    }
+    i = end;
+  }
+  return out;
+}
+function sameBaseline(a, b) {
+  return Math.abs(a.base - b.base) <= 0.3 * Math.max(a.size, b.size);
+}
+function buildLines(items, { transform = [1, 0, 0, 1, 0, 0], fonts = {}, splitGap = 2 } = {}) {
+  const pieces = [];
+  for (const item of items || []) for (const p of piecesOf(item, transform, fonts)) pieces.push(p);
+  const normal = pieces.filter((p) => !p.rotated);
+  const rotated = pieces.filter((p) => p.rotated && !p.space);
+  normal.sort((a, b) => a.base - b.base || a.x0 - b.x0);
+  const rows = [];
+  for (const p of normal) {
+    let row4 = null;
+    for (let i = rows.length - 1; i >= 0 && rows[i].base >= p.base - 2 * p.size; i--) {
+      const r = rows[i];
+      if (sameBaseline(r, p) && Math.abs(r.size - p.size) <= 0.15 * Math.max(r.size, p.size)) {
+        row4 = r;
+        break;
+      }
+    }
+    if (!row4) {
+      row4 = { base: p.base, size: p.size, pieces: [] };
+      rows.push(row4);
+    }
+    row4.pieces.push(p);
+    if (!p.space && p.size > row4.size) row4.size = p.size;
+  }
+  const main = [];
+  const small = [];
+  for (const r of rows) {
+    const text3 = r.pieces.filter((p) => !p.space);
+    const chars = text3.reduce((n2, p) => n2 + p.text.length, 0);
+    r.chars = chars;
+    main.push(r);
+  }
+  for (const r of main) {
+    r.x0 = Math.min(...r.pieces.map((p) => p.x0));
+    r.x1 = Math.max(...r.pieces.map((p) => p.x1));
+  }
+  const kept = [];
+  for (const r of main) {
+    let host = null;
+    for (const h of main) {
+      if (h === r || h.size * SUP_MAX_RATIO < r.size || r.chars > 24) continue;
+      const shift = (h.base - r.base) / h.size;
+      if (Math.abs(shift) > 0.7) continue;
+      const near = r.x0 >= h.x0 - h.size && r.x0 <= h.x1 + h.size;
+      if (!near) continue;
+      if (!host || Math.abs(h.base - r.base) < Math.abs(host.base - r.base)) host = h;
+    }
+    if (host) {
+      for (const p of r.pieces) {
+        if (p.space) {
+          host.pieces.push(p);
+          continue;
+        }
+        const shift = (host.base - p.base) / host.size;
+        p.sup = shift >= SUP_MIN_SHIFT;
+        p.sub = shift <= -SUP_MIN_SHIFT;
+        host.pieces.push(p);
+      }
+    } else kept.push(r);
+  }
+  const lines = [];
+  for (const r of kept) {
+    r.pieces.sort((a, b) => a.x0 - b.x0);
+    const words = mergeWords(r.pieces, r.size);
+    let frag = [];
+    for (let i = 0; i < words.length; i++) {
+      const w = words[i];
+      if (frag.length) {
+        const prev = frag[frag.length - 1];
+        if (w.x0 - prev.x1 > splitGap * Math.min(prev.size, w.size)) {
+          lines.push(makeLine(frag));
+          frag = [];
+        }
+      }
+      frag.push(w);
+    }
+    if (frag.length) lines.push(makeLine(frag));
+  }
+  lines.sort((a, b) => a.base - b.base || a.x0 - b.x0);
+  lines.forEach((l, i) => {
+    l.i = i;
+  });
+  return { lines, rotated };
+}
+function mergeWords(pieces, rowSize) {
+  const words = [];
+  let cur = null;
+  let gapSpace = false;
+  for (const p of pieces) {
+    if (p.space) {
+      gapSpace = true;
+      continue;
+    }
+    const glue = cur && !gapSpace && !cur.trailingSpace && !p.leadingSpace && p.x0 - cur.x1 < 0.2 * Math.min(cur.size, p.size) + 0.3 && Boolean(cur.sup) === Boolean(p.sup) && Boolean(cur.sub) === Boolean(p.sub);
+    if (glue) {
+      cur.text += p.text;
+      cur.x1 = Math.max(cur.x1, p.x1);
+      cur.mathChars += p.mathChars;
+      cur.trailingSpace = p.trailingSpace;
+      if (p.bold) cur.boldChars += p.text.length;
+      if (p.italic) cur.italicChars += p.text.length;
+      if (p.mathFont) cur.mathFontChars += p.text.length;
+      continue;
+    }
+    cur = {
+      text: p.text,
+      x0: p.x0,
+      x1: p.x1,
+      base: p.base,
+      size: p.size,
+      font: p.font,
+      fontName: p.fontName,
+      bold: p.bold,
+      italic: p.italic,
+      sup: Boolean(p.sup),
+      sub: Boolean(p.sub),
+      mathChars: p.mathChars,
+      boldChars: p.bold ? p.text.length : 0,
+      italicChars: p.italic ? p.text.length : 0,
+      mathFontChars: p.mathFont ? p.text.length : 0,
+      trailingSpace: p.trailingSpace
+    };
+    words.push(cur);
+    gapSpace = false;
+  }
+  for (const w of words) {
+    w.y0 = w.base - w.size * 0.8;
+    w.y1 = w.base + w.size * 0.22;
+    w.bold = w.boldChars >= w.text.length / 2;
+    w.italic = w.italicChars >= w.text.length / 2;
+    w.rowSize = rowSize;
+    delete w.trailingSpace;
+  }
+  return words;
+}
+function makeLine(words) {
+  const sizes = /* @__PURE__ */ new Map();
+  let chars = 0;
+  let bold = 0;
+  let italic = 0;
+  let math = 0;
+  let mathFont = 0;
+  for (const w of words) {
+    if (w.sup || w.sub) continue;
+    const key = Math.round(w.size * 2) / 2;
+    sizes.set(key, (sizes.get(key) || 0) + w.text.length);
+  }
+  for (const w of words) {
+    chars += w.text.length;
+    if (w.bold) bold += w.text.length;
+    if (w.italic) italic += w.text.length;
+    math += w.mathChars;
+    mathFont += w.mathFontChars;
+  }
+  let size = 0;
+  let best = -1;
+  for (const [k, n2] of sizes) if (n2 > best) {
+    best = n2;
+    size = k;
+  }
+  if (!size) size = Math.max(...words.map((w) => w.size));
+  const base = median(words.filter((w) => !w.sup && !w.sub).map((w) => w.base)) ?? words[0].base;
+  return {
+    words,
+    text: words.map((w) => w.text).join(" "),
+    x0: Math.min(...words.map((w) => w.x0)),
+    x1: Math.max(...words.map((w) => w.x1)),
+    y0: base - size * 0.8,
+    y1: base + size * 0.22,
+    base,
+    size,
+    chars,
+    bold: chars > 0 && bold / chars >= 0.6,
+    italic: chars > 0 && italic / chars >= 0.6,
+    mathShare: chars > 0 ? Math.max(math, mathFont) / chars : 0
+  };
+}
+function median(values) {
+  if (!values.length) return void 0;
+  const s = [...values].sort((a, b) => a - b);
+  const mid = s.length >> 1;
+  return s.length % 2 ? s[mid] : (s[mid - 1] + s[mid]) / 2;
+}
+function round(n2) {
+  return Math.round(n2 * 100) / 100;
+}
+function relineWords(words) {
+  const sorted = [...words].sort((a, b) => a.base - b.base || a.x0 - b.x0);
+  const rows = [];
+  for (const w of sorted) {
+    const r = rows[rows.length - 1];
+    if (r && Math.abs(r.base - w.base) <= 0.5 * Math.max(r.size, w.size)) r.words.push(w);
+    else rows.push({ base: w.base, size: w.size, words: [w] });
+  }
+  return rows.map((r) => makeLine(r.words.sort((a, b) => a.x0 - b.x0)));
+}
+
+// src/model/parse/rules.js
+var OP = {
+  setLineWidth: 2,
+  setGState: 9,
+  save: 10,
+  restore: 11,
+  transform: 12,
+  moveTo: 13,
+  lineTo: 14,
+  curveTo: 15,
+  curveTo2: 16,
+  curveTo3: 17,
+  closePath: 18,
+  rectangle: 19,
+  stroke: 20,
+  closeStroke: 21,
+  fill: 22,
+  eoFill: 23,
+  fillStroke: 24,
+  eoFillStroke: 25,
+  closeFillStroke: 26,
+  closeEOFillStroke: 27,
+  endPath: 28,
+  clip: 29,
+  eoClip: 30,
+  setFillColorN: 55,
+  setFillGray: 57,
+  setFillRGBColor: 59,
+  setFillCMYKColor: 61,
+  setFillColorSpace: 51,
+  setFillColor: 53,
+  paintFormXObjectBegin: 74,
+  paintFormXObjectEnd: 75,
+  paintImageMaskXObject: 83,
+  paintImageXObject: 85,
+  paintInlineImageXObject: 86,
+  paintImageXObjectRepeat: 88,
+  constructPath: 91
+};
+var FILL_OPS = /* @__PURE__ */ new Set([22, 23, 24, 25, 26, 27]);
+var STROKE_OPS = /* @__PURE__ */ new Set([20, 21, 24, 25, 26, 27]);
+var RULE_MIN_LEN = 8;
+var RULE_MAX_THICK = 2.5;
+var DOT_MAX = 5;
+function luminanceOf(color) {
+  if (color == null) return null;
+  let r;
+  let g;
+  let b;
+  if (typeof color === "string") {
+    const hex = color.replace("#", "");
+    if (hex.length !== 6) return null;
+    r = parseInt(hex.slice(0, 2), 16) / 255;
+    g = parseInt(hex.slice(2, 4), 16) / 255;
+    b = parseInt(hex.slice(4, 6), 16) / 255;
+  } else if (Array.isArray(color) || ArrayBuffer.isView(color)) {
+    if (color.length === 1) {
+      r = g = b = color[0] > 1 ? color[0] / 255 : color[0];
+    } else if (color.length >= 3) {
+      const scale = Math.max(color[0], color[1], color[2]) > 1 ? 255 : 1;
+      [r, g, b] = [color[0] / scale, color[1] / scale, color[2] / scale];
+    } else return null;
+  } else if (typeof color === "number") r = g = b = color > 1 ? color / 255 : color;
+  else return null;
+  return 0.2126 * r + 0.7152 * g + 0.0722 * b;
+}
+function isRect(points) {
+  if (points.length < 4 || points.length > 5) return null;
+  const pts = points.length === 5 ? points.slice(0, 4) : points;
+  const xs2 = pts.map((p) => p[0]);
+  const ys2 = pts.map((p) => p[1]);
+  const x0 = Math.min(...xs2);
+  const x1 = Math.max(...xs2);
+  const y0 = Math.min(...ys2);
+  const y1 = Math.max(...ys2);
+  for (const p of pts) {
+    const onX = Math.abs(p[0] - x0) <= 0.5 || Math.abs(p[0] - x1) <= 0.5;
+    const onY = Math.abs(p[1] - y0) <= 0.5 || Math.abs(p[1] - y1) <= 0.5;
+    if (!onX || !onY) return null;
+  }
+  return { x0, y0, x1, y1 };
+}
+function extractGraphics(ops, { transform = [1, 0, 0, 1, 0, 0], maxSegments = 5e3 } = {}) {
+  const out = { rules: [], boxes: [], dots: [], shapes: [], images: [], segments: 0, truncated: false };
+  if (!ops || !ops.fnArray) return out;
+  const fn = ops.fnArray;
+  const args = ops.argsArray;
+  const stack = [];
+  let ctm = transform.slice();
+  let fill = null;
+  let lineWidth = 1;
+  let pending = [];
+  let cur = null;
+  const emitPath = (subpaths, paintOp) => {
+    const filled = FILL_OPS.has(paintOp);
+    const stroked = STROKE_OPS.has(paintOp);
+    if (!filled && !stroked) return;
+    for (const sp of subpaths) {
+      if (sp.length < 2) continue;
+      const points = sp.map((p) => [...applyPoint(ctm, p[0], p[1]), p[2]]);
+      const hasCurve = points.some((p) => p[2]);
+      const bbox = boxOf2(points);
+      out.segments += Math.max(1, points.length - 1);
+      if (out.segments > maxSegments) {
+        out.truncated = true;
+        continue;
+      }
+      const rect = !hasCurve ? isRect(points) : null;
+      if (rect) {
+        const wd = rect.x1 - rect.x0;
+        const ht = rect.y1 - rect.y0;
+        if (filled) {
+          if (Math.min(wd, ht) <= RULE_MAX_THICK && Math.max(wd, ht) >= RULE_MIN_LEN) {
+            const axis2 = wd >= ht ? "h" : "v";
+            out.rules.push({ axis: axis2, ...rect, thick: Math.min(wd, ht), filled: true });
+          } else if (Math.max(wd, ht) <= DOT_MAX) {
+            out.dots.push({ x: (rect.x0 + rect.x1) / 2, y: (rect.y0 + rect.y1) / 2, r: Math.max(wd, ht) / 2 });
+          } else {
+            const lum = luminanceOf(fill);
+            out.boxes.push({ ...rect, fill, light: lum == null ? false : lum >= 0.7 });
+          }
+        } else {
+          if (Math.min(wd, ht) >= RULE_MIN_LEN) {
+            const t2 = strokeWidth(lineWidth, ctm);
+            out.rules.push({ axis: "h", x0: rect.x0, x1: rect.x1, y0: rect.y0, y1: rect.y0, thick: t2 });
+            out.rules.push({ axis: "h", x0: rect.x0, x1: rect.x1, y0: rect.y1, y1: rect.y1, thick: t2 });
+            out.rules.push({ axis: "v", x0: rect.x0, x1: rect.x0, y0: rect.y0, y1: rect.y1, thick: t2 });
+            out.rules.push({ axis: "v", x0: rect.x1, x1: rect.x1, y0: rect.y0, y1: rect.y1, thick: t2 });
+          } else out.shapes.push({ ...bbox, segs: 4, kind: "rect" });
+        }
+        continue;
+      }
+      if (hasCurve) {
+        if (filled && Math.max(bbox.x1 - bbox.x0, bbox.y1 - bbox.y0) <= DOT_MAX) {
+          out.dots.push({ x: (bbox.x0 + bbox.x1) / 2, y: (bbox.y0 + bbox.y1) / 2, r: (bbox.x1 - bbox.x0) / 2 });
+        } else out.shapes.push({ ...bbox, segs: points.length - 1, kind: "curve" });
+        continue;
+      }
+      let drawn = 0;
+      const t = strokeWidth(lineWidth, ctm);
+      for (let i = 1; i < points.length; i++) {
+        const [ax, ay] = points[i - 1];
+        const [bx, by] = points[i];
+        const dx = Math.abs(bx - ax);
+        const dy = Math.abs(by - ay);
+        if (stroked && dy <= 0.5 && dx >= RULE_MIN_LEN) {
+          out.rules.push({ axis: "h", x0: Math.min(ax, bx), x1: Math.max(ax, bx), y0: (ay + by) / 2, y1: (ay + by) / 2, thick: t });
+        } else if (stroked && dx <= 0.5 && dy >= RULE_MIN_LEN) {
+          out.rules.push({ axis: "v", x0: (ax + bx) / 2, x1: (ax + bx) / 2, y0: Math.min(ay, by), y1: Math.max(ay, by), thick: t });
+        } else drawn++;
+      }
+      if (filled && !stroked) {
+        if (Math.max(bbox.x1 - bbox.x0, bbox.y1 - bbox.y0) <= DOT_MAX) {
+          out.dots.push({ x: (bbox.x0 + bbox.x1) / 2, y: (bbox.y0 + bbox.y1) / 2, r: (bbox.x1 - bbox.x0) / 2 });
+        } else out.shapes.push({ ...bbox, segs: points.length - 1, kind: "poly" });
+      } else if (drawn) out.shapes.push({ ...bbox, segs: drawn, kind: "poly" });
+    }
+  };
+  const flushLegacy = (paintOp) => {
+    if (cur && cur.length) pending.push(cur);
+    cur = null;
+    if (pending.length) emitPath(pending, paintOp);
+    pending = [];
+  };
+  for (let i = 0; i < fn.length; i++) {
+    const op = fn[i];
+    const a = args[i];
+    switch (op) {
+      case OP.save:
+        stack.push({ ctm, fill, lineWidth });
+        break;
+      case OP.restore: {
+        const s = stack.pop();
+        if (s) {
+          ctm = s.ctm;
+          fill = s.fill;
+          lineWidth = s.lineWidth;
+        }
+        break;
+      }
+      case OP.transform:
+        if (a && a.length >= 6) ctm = mul(ctm, Array.from(a));
+        break;
+      case OP.paintFormXObjectBegin:
+        stack.push({ ctm, fill, lineWidth });
+        if (a && a[0] && a[0].length >= 6) ctm = mul(ctm, Array.from(a[0]));
+        break;
+      case OP.paintFormXObjectEnd: {
+        const s = stack.pop();
+        if (s) {
+          ctm = s.ctm;
+          fill = s.fill;
+          lineWidth = s.lineWidth;
+        }
+        break;
+      }
+      case OP.setLineWidth:
+        lineWidth = Number(a && a[0]) || lineWidth;
+        break;
+      case OP.setFillRGBColor:
+      case OP.setFillGray:
+      case OP.setFillCMYKColor:
+      case OP.setFillColor:
+        fill = a && a.length === 1 ? a[0] : a ? Array.from(a) : null;
+        if (op === OP.setFillCMYKColor && Array.isArray(fill) && fill.length === 4) {
+          const [c, m, y, k] = fill.map((v) => v > 1 ? v / 255 : v);
+          fill = [(1 - c) * (1 - k), (1 - m) * (1 - k), (1 - y) * (1 - k)];
+        }
+        break;
+      case OP.setFillColorN:
+        fill = null;
+        break;
+      case OP.constructPath: {
+        if (!a) break;
+        const paintOp = a[0];
+        const subpaths = decodePathData(a[1]);
+        emitPath(subpaths, paintOp);
+        break;
+      }
+      case OP.moveTo:
+        if (cur && cur.length) pending.push(cur);
+        cur = [[a[0], a[1], false]];
+        break;
+      case OP.lineTo:
+        if (!cur) cur = [];
+        cur.push([a[0], a[1], false]);
+        break;
+      case OP.curveTo:
+        if (!cur) cur = [];
+        cur.push([a[4], a[5], true]);
+        break;
+      case OP.curveTo2:
+      case OP.curveTo3:
+        if (!cur) cur = [];
+        cur.push([a[2], a[3], true]);
+        break;
+      case OP.closePath:
+        if (cur && cur.length) {
+          cur.push([cur[0][0], cur[0][1], false]);
+          pending.push(cur);
+          cur = null;
+        }
+        break;
+      case OP.rectangle: {
+        if (cur && cur.length) pending.push(cur);
+        const [x, y, w, h] = a;
+        pending.push([[x, y, false], [x + w, y, false], [x + w, y + h, false], [x, y + h, false], [x, y, false]]);
+        cur = null;
+        break;
+      }
+      case OP.stroke:
+      case OP.closeStroke:
+      case OP.fill:
+      case OP.eoFill:
+      case OP.fillStroke:
+      case OP.eoFillStroke:
+      case OP.closeFillStroke:
+      case OP.closeEOFillStroke:
+        flushLegacy(op);
+        break;
+      case OP.endPath:
+        pending = [];
+        cur = null;
+        break;
+      case OP.clip:
+      case OP.eoClip:
+        break;
+      case OP.paintImageXObject:
+      case OP.paintInlineImageXObject:
+      case OP.paintImageMaskXObject:
+        out.images.push(unitBox(ctm));
+        break;
+      case OP.paintImageXObjectRepeat: {
+        const [, sx, sy, positions] = a || [];
+        if (!positions) break;
+        for (let p = 0; p + 1 < positions.length; p += 2) {
+          out.images.push(unitBox(mul(ctm, [sx, 0, 0, sy, positions[p], positions[p + 1]])));
+        }
+        break;
+      }
+      default:
+        break;
+    }
+  }
+  return out;
+}
+function strokeWidth(lineWidth, ctm) {
+  const s = Math.sqrt(Math.abs(ctm[0] * ctm[3] - ctm[1] * ctm[2])) || 1;
+  return Math.max(0.1, lineWidth * s);
+}
+function unitBox(ctm) {
+  const pts = [applyPoint(ctm, 0, 0), applyPoint(ctm, 1, 0), applyPoint(ctm, 1, 1), applyPoint(ctm, 0, 1)];
+  return boxOf2(pts);
+}
+function boxOf2(points) {
+  let x0 = Infinity;
+  let y0 = Infinity;
+  let x1 = -Infinity;
+  let y1 = -Infinity;
+  for (const p of points) {
+    if (p[0] < x0) x0 = p[0];
+    if (p[0] > x1) x1 = p[0];
+    if (p[1] < y0) y0 = p[1];
+    if (p[1] > y1) y1 = p[1];
+  }
+  return { x0, y0, x1, y1 };
+}
+function decodePathData(data) {
+  const subpaths = [];
+  const arrays = !data ? [] : ArrayBuffer.isView(data) || typeof data[0] === "number" ? [data] : data;
+  for (const arr of arrays) {
+    if (!arr || !arr.length) continue;
+    let cur = null;
+    let i = 0;
+    while (i < arr.length) {
+      const op = arr[i++];
+      if (op === 0) {
+        if (cur && cur.length) subpaths.push(cur);
+        cur = [[arr[i], arr[i + 1], false]];
+        i += 2;
+      } else if (op === 1) {
+        if (!cur) cur = [];
+        cur.push([arr[i], arr[i + 1], false]);
+        i += 2;
+      } else if (op === 2) {
+        if (!cur) cur = [];
+        cur.push([arr[i + 4], arr[i + 5], true]);
+        i += 6;
+      } else if (op === 3) {
+        if (cur && cur.length) {
+          cur.push([cur[0][0], cur[0][1], false]);
+          subpaths.push(cur);
+        }
+        cur = null;
+      } else break;
+    }
+    if (cur && cur.length) subpaths.push(cur);
+  }
+  return subpaths;
+}
+function snapRules(rules, { tol = 1.5, join = 2 } = {}) {
+  const groups = { h: [], v: [] };
+  for (const axis2 of ["h", "v"]) {
+    const list = rules.filter((r) => r.axis === axis2).map((r) => ({
+      pos: axis2 === "h" ? (r.y0 + r.y1) / 2 : (r.x0 + r.x1) / 2,
+      a: axis2 === "h" ? r.x0 : r.y0,
+      b: axis2 === "h" ? r.x1 : r.y1,
+      thick: r.thick || 0.5
+    })).sort((p, q) => p.pos - q.pos || p.a - q.a);
+    let g = null;
+    for (const r of list) {
+      if (g && Math.abs(r.pos - g.pos) <= tol) {
+        g.items.push(r);
+        g.pos = (g.pos * (g.items.length - 1) + r.pos) / g.items.length;
+      } else {
+        g = { pos: r.pos, items: [r] };
+        groups[axis2].push(g);
+      }
+    }
+    for (const grp of groups[axis2]) {
+      grp.items.sort((p, q) => p.a - q.a);
+      const ivs = [];
+      for (const r of grp.items) {
+        const last = ivs[ivs.length - 1];
+        if (last && r.a <= last.b + join) {
+          last.b = Math.max(last.b, r.b);
+          last.thick = Math.max(last.thick, r.thick);
+        } else ivs.push({ a: r.a, b: r.b, thick: r.thick });
+      }
+      grp.intervals = ivs;
+      delete grp.items;
+    }
+  }
+  return groups;
+}
+
+// src/model/parse/lattice.js
+var NUMERIC_RE = /^[\s\d.,%±+\-–−()$€£¢×·^]*\d[\s\d.,%±+\-–−()$€£¢×·^]*$/;
+function isNumericText(text3) {
+  return NUMERIC_RE.test(text3.trim()) && /\d/.test(text3);
+}
+function cellTextOf(words) {
+  const lines = relineWords(words);
+  let text3 = "";
+  for (const line of lines) {
+    let t = "";
+    for (const w of line.words) {
+      const piece = w.sup && /^\d+$/.test(w.text) ? sup(w.text) : w.text;
+      if ((w.sup || w.sub) && t) t += piece;
+      else t += (t ? " " : "") + piece;
+    }
+    if (!text3) {
+      text3 = t;
+      continue;
+    }
+    if (text3.endsWith("-") && /^[A-Za-z0-9]/.test(t)) text3 += t;
+    else text3 += ` ${t}`;
+  }
+  return text3.replace(/\s+/g, " ").trim();
+}
+var SUPERS = { 0: "⁰", 1: "¹", 2: "²", 3: "³", 4: "⁴", 5: "⁵", 6: "⁶", 7: "⁷", 8: "⁸", 9: "⁹" };
+function sup(t) {
+  return t.split("").map((c) => SUPERS[c] ?? c).join("");
+}
+var UF = class {
+  constructor(n2) {
+    this.p = Array.from({ length: n2 }, (_, i) => i);
+  }
+  find(i) {
+    while (this.p[i] !== i) {
+      this.p[i] = this.p[this.p[i]];
+      i = this.p[i];
+    }
+    return i;
+  }
+  union(a, b) {
+    const x = this.find(a);
+    const y = this.find(b);
+    if (x !== y) this.p[y] = x;
+  }
+};
+function segmentsOf(snapped) {
+  const segs = [];
+  for (const g of snapped.h) for (const iv of g.intervals) segs.push({ axis: "h", pos: g.pos, a: iv.a, b: iv.b, thick: iv.thick });
+  for (const g of snapped.v) for (const iv of g.intervals) segs.push({ axis: "v", pos: g.pos, a: iv.a, b: iv.b, thick: iv.thick });
+  return segs;
+}
+function connected(s, t, tol = 2) {
+  if (s.axis === t.axis) {
+    if (s.axis !== "h") return false;
+    const overlap = Math.min(s.b, t.b) - Math.max(s.a, t.a);
+    const shorter = Math.min(s.b - s.a, t.b - t.a);
+    return overlap >= 0.6 * shorter && Math.abs(s.pos - t.pos) <= 400;
+  }
+  const h = s.axis === "h" ? s : t;
+  const v = s.axis === "h" ? t : s;
+  return v.pos >= h.a - tol && v.pos <= h.b + tol && h.pos >= v.a - tol && h.pos <= v.b + tol;
+}
+function uniqPositions(values, tol) {
+  const s = [...values].sort((a, b) => a - b);
+  const out = [];
+  for (const v of s) {
+    const last = out[out.length - 1];
+    if (last && v - last.sum / last.n <= tol) {
+      last.sum += v;
+      last.n++;
+      last.double = true;
+    } else out.push({ sum: v, n: 1 });
+  }
+  return out.map((o) => ({ pos: o.sum / o.n, double: Boolean(o.double) }));
+}
+function coverage(segs, axis2, pos, a, b, tol = 1.5) {
+  let covered = 0;
+  for (const s of segs) {
+    if (s.axis !== axis2 || Math.abs(s.pos - pos) > tol) continue;
+    covered += Math.max(0, Math.min(s.b, b) - Math.max(s.a, a));
+  }
+  return b > a ? Math.min(1, covered / (b - a)) : 0;
+}
+function findLatticeTables({ rules = [], boxes = [], words = [] }, { minW = 40, minH = 20 } = {}) {
+  const snapped = snapRules(rules);
+  const segs = segmentsOf(snapped);
+  const uf = new UF(segs.length);
+  for (let i = 0; i < segs.length; i++) for (let j = i + 1; j < segs.length; j++) if (connected(segs[i], segs[j])) uf.union(i, j);
+  const comps = /* @__PURE__ */ new Map();
+  segs.forEach((s, i) => {
+    const r = uf.find(i);
+    if (!comps.has(r)) comps.set(r, []);
+    comps.get(r).push(s);
+  });
+  const tables = [];
+  const bands = [];
+  const usedWords = /* @__PURE__ */ new Set();
+  const usedRules = /* @__PURE__ */ new Set();
+  for (const comp of comps.values()) {
+    const hs = comp.filter((s) => s.axis === "h");
+    const vs = comp.filter((s) => s.axis === "v");
+    const ysAll = uniqPositions(hs.map((s) => s.pos), 4);
+    const xsAll = uniqPositions(vs.map((s) => s.pos), 4);
+    const x0 = Math.min(...comp.map((s) => s.axis === "h" ? s.a : s.pos));
+    const x1 = Math.max(...comp.map((s) => s.axis === "h" ? s.b : s.pos));
+    const y0 = Math.min(...comp.map((s) => s.axis === "v" ? s.a : s.pos));
+    const y1 = Math.max(...comp.map((s) => s.axis === "v" ? s.b : s.pos));
+    if (x1 - x0 < minW || y1 - y0 < minH) continue;
+    const xs2 = xsAll.map((o) => o.pos);
+    const ys2 = ysAll.map((o) => o.pos);
+    let grid = null;
+    const hx0 = hs.length ? Math.min(...hs.map((s) => s.a)) : x0;
+    const hx1 = hs.length ? Math.max(...hs.map((s) => s.b)) : x1;
+    const vy0 = vs.length ? Math.min(...vs.map((s) => s.a)) : y0;
+    const vy1 = vs.length ? Math.max(...vs.map((s) => s.b)) : y1;
+    const spansWidth = xs2.length >= 2 && xs2[xs2.length - 1] - xs2[0] >= 0.9 * (hx1 - hx0);
+    const spansHeight = ys2.length >= 2 && ys2[ys2.length - 1] - ys2[0] >= 0.9 * (vy1 - vy0);
+    if (xs2.length >= 2 && ys2.length >= 2 && spansWidth && spansHeight) grid = buildGrid(comp, xs2, ys2);
+    if (grid && grid.coverage >= 0.4) {
+      const table = assembleTable(grid, comp, boxes, words, ysAll, usedWords);
+      if (table) {
+        tables.push(table);
+        for (const s of comp) usedRules.add(s);
+        continue;
+      }
+    }
+    if (hs.length >= 2) {
+      const spans = hs.map((s) => s.b - s.a);
+      const full = Math.max(...spans);
+      bands.push({
+        x0,
+        x1,
+        y0,
+        y1,
+        ys: ysAll.map((o) => ({ y: o.pos, full: coverage(comp, "h", o.pos, x0, x1, 4) >= 0.85, thick: Math.max(...hs.filter((s) => Math.abs(s.pos - o.pos) <= 4).map((s) => s.thick)), parts: hs.filter((s) => Math.abs(s.pos - o.pos) <= 4).map((s) => [s.a, s.b]) })),
+        xs: xs2,
+        fullWidth: full,
+        segs: comp
+      });
+    }
+  }
+  return { tables, bands, usedWords, usedRules, segments: segs };
+}
+function buildGrid(segs, xs2, ys2) {
+  const cols = xs2.length - 1;
+  const rows = ys2.length - 1;
+  const top = [];
+  const left = [];
+  let present = 0;
+  let total = 0;
+  for (let r = 0; r <= rows; r++) {
+    top[r] = [];
+    for (let c = 0; c < cols; c++) {
+      const ok = coverage(segs, "h", ys2[r], xs2[c], xs2[c + 1], 2.5) >= 0.6;
+      top[r][c] = ok;
+      total++;
+      if (ok) present++;
+    }
+  }
+  for (let r = 0; r < rows; r++) {
+    left[r] = [];
+    for (let c = 0; c <= cols; c++) {
+      const ok = coverage(segs, "v", xs2[c], ys2[r], ys2[r + 1], 2.5) >= 0.6;
+      left[r][c] = ok;
+      total++;
+      if (ok) present++;
+    }
+  }
+  return { xs: xs2, ys: ys2, rows, cols, top, left, coverage: total ? present / total : 0 };
+}
+function assembleTable(grid, segs, boxes, words, ysAll, usedWords) {
+  const { xs: xs2, ys: ys2, rows, cols, top, left } = grid;
+  const uf = new UF(rows * cols);
+  const id = (r, c) => r * cols + c;
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      if (c + 1 < cols && !left[r][c + 1]) uf.union(id(r, c), id(r, c + 1));
+      if (r + 1 < rows && !top[r + 1][c]) uf.union(id(r, c), id(r + 1, c));
+    }
+  }
+  const regions = /* @__PURE__ */ new Map();
+  for (let r = 0; r < rows; r++) for (let c = 0; c < cols; c++) {
+    const k = uf.find(id(r, c));
+    if (!regions.has(k)) regions.set(k, []);
+    regions.get(k).push([r, c]);
+  }
+  let splitFixes = 0;
+  const cells = [];
+  for (const cellsIn of regions.values()) {
+    const r0 = Math.min(...cellsIn.map((x) => x[0]));
+    const r1 = Math.max(...cellsIn.map((x) => x[0]));
+    const c0 = Math.min(...cellsIn.map((x) => x[1]));
+    const c1 = Math.max(...cellsIn.map((x) => x[1]));
+    if ((r1 - r0 + 1) * (c1 - c0 + 1) === cellsIn.length) {
+      cells.push({ r: r0, c: c0, rowSpan: r1 - r0 + 1, colSpan: c1 - c0 + 1 });
+    } else {
+      splitFixes += cellsIn.length;
+      for (const [r, c] of cellsIn) cells.push({ r, c, rowSpan: 1, colSpan: 1 });
+    }
+  }
+  cells.sort((a, b) => a.r - b.r || a.c - b.c);
+  const bx0 = xs2[0];
+  const bx1 = xs2[cols];
+  const by0 = ys2[0];
+  const by1 = ys2[rows];
+  for (const cell of cells) {
+    cell.bbox = [round(xs2[cell.c]), round(ys2[cell.r]), round(xs2[cell.c + cell.colSpan]), round(ys2[cell.r + cell.rowSpan])];
+    cell.words = [];
+  }
+  const lookup2 = (x, y) => {
+    let c = -1;
+    let r = -1;
+    for (let i = 0; i < cols; i++) if (x >= xs2[i] && x <= xs2[i + 1]) {
+      c = i;
+      break;
+    }
+    for (let j = 0; j < rows; j++) if (y >= ys2[j] && y <= ys2[j + 1]) {
+      r = j;
+      break;
+    }
+    if (c < 0 || r < 0) return null;
+    return cells.find((k) => r >= k.r && r < k.r + k.rowSpan && c >= k.c && c < k.c + k.colSpan) || null;
+  };
+  let inWords = 0;
+  for (const w of words) {
+    const cx = (w.x0 + w.x1) / 2;
+    const cy = w.base - 0.3 * w.size;
+    if (cx < bx0 - 1 || cx > bx1 + 1 || cy < by0 - 1 || cy > by1 + 1) continue;
+    const cell = lookup2(cx, cy);
+    if (!cell) continue;
+    cell.words.push(w);
+    usedWords.add(w);
+    inWords++;
+  }
+  if (!inWords) return null;
+  const rowShaded = [];
+  for (let r = 0; r < rows; r++) {
+    const rowH = ys2[r + 1] - ys2[r];
+    let shade = 0;
+    for (const b of boxes) {
+      if (!b.light) continue;
+      const oy = Math.min(b.y1, ys2[r + 1]) - Math.max(b.y0, ys2[r]);
+      const ox = Math.min(b.x1, bx1) - Math.max(b.x0, bx0);
+      if (oy > 0.5 * rowH && ox > 0) shade += ox;
+    }
+    rowShaded[r] = shade >= 0.5 * (bx1 - bx0);
+  }
+  const rowBold = [];
+  for (let r = 0; r < rows; r++) {
+    const ws = cells.filter((k) => r >= k.r && r < k.r + k.rowSpan).flatMap((k) => k.words);
+    rowBold[r] = ws.length > 0 && ws.every((w) => w.bold);
+  }
+  let headerRows = 0;
+  while (headerRows < rows - 1 && (rowShaded[headerRows] || rowBold[headerRows])) headerRows++;
+  if (!headerRows && ysAll[1] && ysAll[1].double) headerRows = 1;
+  for (const k of cells) if (k.r < headerRows && k.r + k.rowSpan > headerRows && k.r + k.rowSpan < rows) headerRows = k.r + k.rowSpan;
+  let withText = 0;
+  for (const cell of cells) {
+    cell.text = cellTextOf(cell.words);
+    cell.header = cell.r < headerRows;
+    cell.numeric = isNumericText(cell.text);
+    cell.align = alignOf(cell);
+    if (cell.text) withText++;
+    delete cell.words;
+  }
+  let headerCols = 0;
+  const bodyCol0 = cells.filter((k) => !k.header && k.c === 0);
+  const bodyRest = cells.filter((k) => !k.header && k.c > 0 && k.text);
+  if (bodyCol0.length && bodyCol0.every((k) => !k.numeric && k.text) && bodyRest.length && bodyRest.filter((k) => k.numeric).length >= 0.5 * bodyRest.length) headerCols = 1;
+  const confidence = Math.max(0, Math.min(1, 0.5 * grid.coverage + 0.3 * (withText / cells.length) + 0.2 * (1 - splitFixes / cells.length)));
+  return {
+    type: "table",
+    bbox: [round(bx0), round(by0), round(bx1), round(by1)],
+    rows,
+    cols,
+    headerRows,
+    headerCols,
+    cells,
+    method: "lattice",
+    grid: { xs: xs2.map(round), ys: ys2.map(round) },
+    confidence: round(confidence)
+  };
+}
+function alignOf(cell) {
+  if (!cell.words || !cell.words.length) return "left";
+  const x0 = Math.min(...cell.words.map((w) => w.x0));
+  const x1 = Math.max(...cell.words.map((w) => w.x1));
+  const dl = x0 - cell.bbox[0];
+  const dr = cell.bbox[2] - x1;
+  if (Math.abs(dl - dr) <= 2) return dl > 4 ? "center" : "left";
+  return dl < dr ? "left" : "right";
+}
+
+// src/model/parse/lists.js
+var MARKER_RE = /^([•◦▪■●○–—\-\*·]|\(?\d{1,3}[.)]|\(?[a-z][.)]|\(?[ivx]{1,5}[.)])$/;
+function markerOf(line, dots = []) {
+  const first = line.words[0];
+  if (!first) return null;
+  if (MARKER_RE.test(first.text) && line.words.length > 1) {
+    return { marker: first.text, markerX: first.x0, textX: line.words[1].x0, textWords: line.words.slice(1) };
+  }
+  const yMid = line.base - 0.35 * line.size;
+  for (const d of dots) {
+    if (d.x < line.x0 - 3 * line.size || d.x >= line.x0) continue;
+    if (Math.abs(d.y - yMid) > 0.6 * line.size) continue;
+    return { marker: "•", markerX: d.x - d.r, textX: line.x0, textWords: line.words };
+  }
+  return null;
+}
+function markerKind(marker) {
+  const m = marker.replace(/[().]/g, "");
+  if (/^\d+$/.test(m)) return "num";
+  if (/^[ivx]+$/i.test(m)) return "roman";
+  if (/^[a-z]$/i.test(m)) return "alpha";
+  return "bullet";
+}
+function detectLists(lines, { dots = [], joinText }) {
+  const out = [];
+  let i = 0;
+  while (i < lines.length) {
+    const m = markerOf(lines[i], dots);
+    if (!m) {
+      i++;
+      continue;
+    }
+    const items = [];
+    let j = i;
+    let last = null;
+    while (j < lines.length) {
+      const line = lines[j];
+      const mk = markerOf(line, dots);
+      if (mk) {
+        if (last && line.base - last.base > 2.2 * line.size) break;
+        items.push({ marker: mk.marker, markerX: mk.markerX, textX: mk.textX, lines: [{ ...line, words: mk.textWords, text: mk.textWords.map((w) => w.text).join(" ") }] });
+        last = line;
+        j++;
+        continue;
+      }
+      const item = items[items.length - 1];
+      const cont = item && line.x0 >= item.textX - 0.5 * line.size && line.base - last.base <= 1.7 * line.size && Math.abs(line.size - last.size) <= 0.6;
+      if (!cont) break;
+      item.lines.push(line);
+      last = line;
+      j++;
+    }
+    const kinds = items.map((it) => markerKind(it.marker));
+    const ordered = kinds.every((k) => k !== "bullet");
+    const enough = items.length >= 2 || items.length === 1 && kinds[0] === "bullet";
+    if (enough) {
+      const xs2 = items.map((it) => it.markerX);
+      const levels = clusterLevels(xs2);
+      out.push({
+        start: i,
+        end: j,
+        ordered,
+        items: items.map((it, k) => ({
+          text: joinText ? joinText(it.lines) : it.lines.map((l) => l.text).join(" "),
+          level: levels[k],
+          marker: it.marker,
+          lines: it.lines
+        }))
+      });
+    }
+    i = j;
+  }
+  return out;
+}
+function clusterLevels(xs2) {
+  const centers = [];
+  for (const x of xs2) {
+    if (!centers.some((c) => Math.abs(c - x) <= 6)) centers.push(x);
+  }
+  centers.sort((a, b) => a - b);
+  return xs2.map((x) => {
+    let best = 0;
+    for (let i = 0; i < centers.length; i++) if (Math.abs(centers[i] - x) < Math.abs(centers[best] - x)) best = i;
+    return best;
+  });
+}
+
+// src/model/parse/headings.js
+var NUMBERED_RE = /^((\d+)(\.\d+)*)\.?\s+\S/;
+var CAPTION_RE = /^(table|fig(ure)?\.?|figure)\s*\d+[A-Za-z]?[.:]?(\s|$)/i;
+function bodySizeOf(lines) {
+  const counts = /* @__PURE__ */ new Map();
+  for (const l of lines) {
+    const k = Math.round(l.size * 2) / 2;
+    counts.set(k, (counts.get(k) || 0) + l.chars);
+  }
+  let best = 0;
+  let size = 10;
+  for (const [k, n2] of counts) if (n2 > best) {
+    best = n2;
+    size = k;
+  }
+  return size;
+}
+function headingClasses(lines, bodySize) {
+  const counts = /* @__PURE__ */ new Map();
+  for (const l of lines) {
+    const k = Math.round(l.size * 2) / 2;
+    if (k >= bodySize * 1.15) counts.set(k, (counts.get(k) || 0) + 1);
+  }
+  return [...counts.keys()].sort((a, b) => b - a).slice(0, 3);
+}
+function wordCount(text3) {
+  return text3.trim().split(/\s+/).filter(Boolean).length;
+}
+function headingLevel(line, { bodySize, classes, nextIsBody = true }) {
+  const k = Math.round(line.size * 2) / 2;
+  const text3 = line.text.trim();
+  if (!text3 || CAPTION_RE.test(text3)) return 0;
+  const idx = classes.indexOf(k);
+  if (idx >= 0 && wordCount(text3) <= 24) return idx + 1;
+  if (idx >= 0) return 0;
+  if (line.bold && k >= bodySize - 0.5 && k < bodySize * 1.15 && wordCount(text3) <= 14 && !/[.?!,;]$/.test(text3) && nextIsBody) {
+    return Math.min(4, classes.length + 1);
+  }
+  return 0;
+}
+function numberedDepth(text3) {
+  const m = NUMBERED_RE.exec(text3.trim());
+  if (!m) return 0;
+  return m[1].split(".").length;
+}
+function applyNumbering(headings) {
+  const numbered = headings.filter((h) => numberedDepth(h.text) > 0);
+  if (numbered.length < 3) return headings;
+  const hasTitle = headings.some((h) => h.level === 1 && numberedDepth(h.text) === 0);
+  const offset = hasTitle ? 1 : 0;
+  let agree = 0;
+  for (const h of numbered) if (numberedDepth(h.text) + offset === h.level) agree++;
+  if (agree >= Math.ceil(numbered.length * 0.5)) {
+    for (const h of numbered) h.level = Math.min(6, numberedDepth(h.text) + offset);
+  }
+  return headings;
+}
+
+// src/model/parse/stream.js
+var GAP_MIN = 3;
+function tokenizeLine(line) {
+  const chars = Math.max(1, line.words.reduce((n2, w) => n2 + w.text.length, 0));
+  const inkW = line.words.reduce((n2, w) => n2 + (w.x1 - w.x0), 0);
+  const charW = inkW / chars || 0.5 * line.size;
+  const threshold = Math.max(1.8 * charW, 0.6 * line.size);
+  const tokens = [];
+  let cur = null;
+  for (const w of line.words) {
+    if (cur && w.x0 - cur.x1 < threshold) {
+      cur.words.push(w);
+      cur.x1 = Math.max(cur.x1, w.x1);
+    } else {
+      cur = { x0: w.x0, x1: w.x1, words: [w] };
+      tokens.push(cur);
+    }
+  }
+  for (const t of tokens) t.text = t.words.map((w) => w.text).join(" ");
+  return tokens;
+}
+function projectColumns(rows) {
+  const counts = rows.map((r) => r.length).sort((a, b) => a - b);
+  const q = counts[Math.min(counts.length - 1, Math.floor(counts.length * 0.6))] || 0;
+  const full = rows.filter((r) => r.length >= q && r.length >= 2);
+  const ivs = full.flat().map((t) => [t.x0, t.x1]).sort((a, b) => a[0] - b[0]);
+  const cols = [];
+  for (const [a, b] of ivs) {
+    const last = cols[cols.length - 1];
+    if (last && a <= last.x1 + GAP_MIN) last.x1 = Math.max(last.x1, b);
+    else cols.push({ x0: a, x1: b });
+  }
+  return cols;
+}
+function assignToken(t, cols) {
+  const hits = [];
+  cols.forEach((c, i) => {
+    const o = Math.min(t.x1, c.x1) - Math.max(t.x0, c.x0);
+    if (o > 0) hits.push({ i, o, frac: o / (c.x1 - c.x0), tfrac: o / (t.x1 - t.x0) });
+  });
+  if (!hits.length) {
+    const mid = (t.x0 + t.x1) / 2;
+    let best2 = 0;
+    cols.forEach((c, i) => {
+      if (Math.abs((c.x0 + c.x1) / 2 - mid) < Math.abs((cols[best2].x0 + cols[best2].x1) / 2 - mid)) best2 = i;
+    });
+    return { c: best2, span: 1 };
+  }
+  const strong = hits.filter((h) => h.frac >= 0.4 || h.tfrac >= 0.4);
+  if (strong.length >= 2) {
+    const mid = (t.x0 + t.x1) / 2;
+    let first = strong[0].i;
+    let last = strong[strong.length - 1].i;
+    const centre = (a, b) => (cols[a].x0 + cols[b].x1) / 2;
+    let best2 = Math.abs(centre(first, last) - mid);
+    const lo = hits[0].i;
+    const hi = hits[hits.length - 1].i;
+    for (const [a, b] of [[lo, last], [first, hi], [lo, hi]]) {
+      const d = Math.abs(centre(a, b) - mid);
+      if (d + 0.5 < best2) {
+        best2 = d;
+        first = a;
+        last = b;
+      }
+    }
+    return { c: first, span: last - first + 1 };
+  }
+  if (hits.length >= 2 && !strong.length) {
+    const mid = (t.x0 + t.x1) / 2;
+    const a = cols[hits[0].i];
+    const b = cols[hits[hits.length - 1].i];
+    if (mid > a.x1 && mid < b.x0) return { c: hits[0].i, span: hits[hits.length - 1].i - hits[0].i + 1 };
+  }
+  let best = hits[0];
+  for (const h of hits) if (h.o > best.o) best = h;
+  return { c: best.i, span: 1 };
+}
+function visualRows(words) {
+  const sorted = [...words].sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0);
+  const rows = [];
+  for (const w of sorted) {
+    const r = rows[rows.length - 1];
+    if (r && w.y0 < r.y1 - 1) {
+      r.words.push(w);
+      r.y1 = Math.max(r.y1, w.y1);
+      r.y0 = Math.min(r.y0, w.y0);
+    } else rows.push({ y0: w.y0, y1: w.y1, words: [w] });
+  }
+  return rows;
+}
+function bandRows(words) {
+  const base = baselineGroups(words);
+  const floating = [];
+  const keep = [];
+  for (let i = 0; i < base.length; i++) {
+    const g = base[i];
+    const prev = base[i - 1];
+    const next = base[i + 1];
+    const bridges = g.words.length === 1 && prev && next && g.y0 < prev.y1 - 1 && g.y1 > next.y0 + 1 && !(prev.y0 < next.y1 - 1 && prev.y1 > next.y0 + 1);
+    if (bridges) floating.push(g.words[0]);
+    else keep.push(...g.words);
+  }
+  return { rows: visualRows(keep), floating };
+}
+function baselineGroups(words) {
+  const sorted = [...words].sort((a, b) => a.base - b.base || a.x0 - b.x0);
+  const groups = [];
+  for (const w of sorted) {
+    const g = groups[groups.length - 1];
+    if (g && Math.abs(g.base - w.base) <= 0.3 * Math.max(g.size, w.size)) {
+      g.words.push(w);
+      g.y0 = Math.min(g.y0, w.y0);
+      g.y1 = Math.max(g.y1, w.y1);
+    } else groups.push({ base: w.base, size: w.size, y0: w.y0, y1: w.y1, words: [w] });
+  }
+  return groups;
+}
+function rowTokens(row4) {
+  const byLine = /* @__PURE__ */ new Map();
+  const scripts = [];
+  for (const w of row4.words) {
+    if (w.sup || w.sub) {
+      scripts.push(w);
+      continue;
+    }
+    const k = Math.round(w.base * 2) / 2;
+    if (!byLine.has(k)) byLine.set(k, []);
+    byLine.get(k).push(w);
+  }
+  const tokens = [];
+  for (const ws of byLine.values()) {
+    ws.sort((a, b) => a.x0 - b.x0);
+    const line = { words: ws, x0: ws[0].x0, x1: Math.max(...ws.map((w) => w.x1)), size: ws[0].size };
+    tokens.push(...tokenizeLine(line));
+  }
+  for (const sw of scripts) {
+    let best = null;
+    let dist = Infinity;
+    for (const t of tokens) {
+      const d = sw.x0 >= t.x0 && sw.x0 <= t.x1 ? 0 : Math.min(Math.abs(sw.x0 - t.x1), Math.abs(sw.x1 - t.x0));
+      if (d < dist) {
+        dist = d;
+        best = t;
+      }
+    }
+    if (best && dist <= 0.6 * sw.rowSize) {
+      best.words.push(sw);
+      best.words.sort((a, b) => a.x0 - b.x0 || a.base - b.base);
+      best.x1 = Math.max(best.x1, sw.x1);
+      best.x0 = Math.min(best.x0, sw.x0);
+    } else tokens.push({ x0: sw.x0, x1: sw.x1, words: [sw], text: sw.text });
+  }
+  for (const t of tokens) t.text = t.words.map((w) => w.text).join(" ");
+  return tokens.sort((a, b) => a.x0 - b.x0);
+}
+function buildTable(rowsIn, { bands = null, headerRowsHint = 0, caption = null }) {
+  const cols = projectColumns(rowsIn.map((r) => r.tokens));
+  if (cols.length < 2) return null;
+  const k = cols.length;
+  const placed = rowsIn.map((r) => r.tokens.map((t) => ({ t, ...assignToken(t, cols) })));
+  let conforming = 0;
+  placed.forEach((row4) => {
+    const seen = /* @__PURE__ */ new Set();
+    let dup = false;
+    for (const p of row4) {
+      if (seen.has(p.c)) dup = true;
+      seen.add(p.c);
+    }
+    const ok = seen.size >= 2 && (bands ? true : !dup);
+    if (ok) conforming++;
+  });
+  const stability = conforming / rowsIn.length;
+  if (stability < 0.7 && !bands) return null;
+  if (stability < 0.5) return null;
+  const rows = rowsIn.length;
+  const cellMap = /* @__PURE__ */ new Map();
+  placed.forEach((row4, r) => {
+    for (const p of row4) {
+      const key = `${r}:${p.c}`;
+      let cell = cellMap.get(key);
+      if (!cell) {
+        cell = { r, c: p.c, rowSpan: 1, colSpan: p.span, words: [], fixedRowSpan: 0 };
+        cellMap.set(key, cell);
+      }
+      cell.colSpan = Math.max(cell.colSpan, p.span);
+      if (p.t.rowSpan > 1) cell.fixedRowSpan = Math.max(cell.fixedRowSpan, p.t.rowSpan);
+      cell.words.push(...p.t.words);
+    }
+  });
+  let headerRows = headerRowsHint;
+  if (!headerRows) {
+    const numericRow = (r) => {
+      const cs = [...cellMap.values()].filter((c) => c.r === r && c.c > 0);
+      return cs.length && cs.filter((c) => isNumericText(cellTextOf(c.words))).length >= 0.5 * cs.length;
+    };
+    const boldRow = (r) => {
+      const ws = [...cellMap.values()].filter((c) => c.r === r).flatMap((c) => c.words);
+      return ws.length && ws.every((w) => w.bold);
+    };
+    while (headerRows < rows - 1 && boldRow(headerRows)) headerRows++;
+    if (!headerRows && rows >= 2 && !numericRow(0) && numericRow(1)) headerRows = 1;
+  }
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < k; c++) {
+      const cell = cellMap.get(`${r}:${c}`);
+      if (!cell) continue;
+      if (cell.fixedRowSpan > 1) {
+        cell.rowSpan = Math.min(cell.fixedRowSpan, rows - r);
+        continue;
+      }
+      if (r < headerRows) {
+        let rr = r + 1;
+        while (rr < headerRows && !coveredAt(cellMap, rr, c, cell.colSpan)) rr++;
+        cell.rowSpan = rr - r;
+      } else if (c === 0 && rowsIn[r].tokens.length === 1 && cell.colSpan === 1) {
+        let rr = r + 1;
+        while (rr < rows && !cellMap.get(`${rr}:0`) && rowsIn[rr].tokens.length > 0) rr++;
+        if (rr - r > 1) cell.rowSpan = rr - r;
+      }
+    }
+  }
+  for (const cell of [...cellMap.values()]) {
+    const mid = (Math.min(...cell.words.map((w) => w.x0)) + Math.max(...cell.words.map((w) => w.x1))) / 2;
+    let guard = 0;
+    while (guard++ < k) {
+      const c0 = cell.c;
+      const c1 = cell.c + cell.colSpan - 1;
+      const cur = Math.abs((cols[c0].x0 + cols[c1].x1) / 2 - mid);
+      const canLeft = c0 > 0 && !cellMap.has(`${cell.r}:${c0 - 1}`) && Math.abs((cols[c0 - 1].x0 + cols[c1].x1) / 2 - mid) < cur - 1;
+      const canRight = c1 + 1 < k && !cellMap.has(`${cell.r}:${c1 + 1}`) && Math.abs((cols[c0].x0 + cols[c1 + 1].x1) / 2 - mid) < cur - 1;
+      if (canLeft && (!canRight || Math.abs((cols[c0 - 1].x0 + cols[c1].x1) / 2 - mid) <= Math.abs((cols[c0].x0 + cols[c1 + 1].x1) / 2 - mid))) {
+        cellMap.delete(`${cell.r}:${c0}`);
+        cell.c = c0 - 1;
+        cell.colSpan++;
+        cellMap.set(`${cell.r}:${cell.c}`, cell);
+      } else if (canRight) cell.colSpan++;
+      else break;
+    }
+  }
+  if (bands) {
+    const byBand = /* @__PURE__ */ new Map();
+    rowsIn.forEach((row4, r) => {
+      if (!byBand.has(row4.band)) byBand.set(row4.band, []);
+      byBand.get(row4.band).push(r);
+    });
+    for (const rs of byBand.values()) {
+      if (rs.length < 2 || rs[0] < headerRows) continue;
+      const labels = rs.filter((r) => cellMap.get(`${r}:0`));
+      if (labels.length !== 1) continue;
+      const cell = cellMap.get(`${labels[0]}:0`);
+      if (cell.colSpan > 1 || isNumericText(cellTextOf(cell.words))) continue;
+      cellMap.delete(`${labels[0]}:0`);
+      cell.r = rs[0];
+      cell.rowSpan = rs.length;
+      cellMap.set(`${rs[0]}:0`, cell);
+    }
+  }
+  const covered = /* @__PURE__ */ new Set();
+  for (const cell of cellMap.values()) {
+    for (let r = cell.r; r < cell.r + cell.rowSpan; r++) for (let c = cell.c; c < cell.c + cell.colSpan; c++) if (r !== cell.r || c !== cell.c) covered.add(`${r}:${c}`);
+  }
+  const xs2 = [];
+  for (let c = 0; c < k; c++) xs2.push(c === 0 ? cols[0].x0 - 2 : (cols[c - 1].x1 + cols[c].x0) / 2);
+  xs2.push(cols[k - 1].x1 + 2);
+  const ys2 = [];
+  for (let r = 0; r < rows; r++) ys2.push(r === 0 ? rowsIn[0].y0 - 1 : (rowsIn[r - 1].y1 + rowsIn[r].y0) / 2);
+  ys2.push(rowsIn[rows - 1].y1 + 1);
+  if (bands) {
+    const ruleYs = bands.ys.filter((b) => b.full).map((b) => b.y);
+    if (ruleYs.length) {
+      ys2[0] = Math.min(ys2[0], ruleYs[0]);
+      ys2[ys2.length - 1] = Math.max(ys2[ys2.length - 1], ruleYs[ruleYs.length - 1]);
+    }
+  }
+  const colAlign = [];
+  for (let c = 0; c < k; c++) {
+    const body = [...cellMap.values()].filter((cell) => cell.c === c && cell.colSpan === 1 && cell.r >= headerRows);
+    const numeric = body.filter((cell) => isNumericText(cellTextOf(cell.words)));
+    const x1s = body.map((cell) => Math.max(...cell.words.map((w) => w.x1)));
+    const x0s = body.map((cell) => Math.min(...cell.words.map((w) => w.x0)));
+    const spread = (v) => v.length ? Math.max(...v) - Math.min(...v) : 0;
+    const right = body.length >= 2 && spread(x1s) + 1 < spread(x0s) && numeric.length >= 0.8 * body.length;
+    colAlign[c] = right ? "right" : body.length >= 2 && numeric.length >= 0.8 * body.length && spread(x1s) <= 1.5 ? "right" : "left";
+  }
+  const cells = [];
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < k; c++) {
+      if (covered.has(`${r}:${c}`)) continue;
+      const cell = cellMap.get(`${r}:${c}`) || { r, c, rowSpan: 1, colSpan: 1, words: [] };
+      const text3 = cellTextOf(cell.words);
+      cells.push({
+        r,
+        c,
+        rowSpan: cell.rowSpan,
+        colSpan: cell.colSpan,
+        text: text3,
+        header: r < headerRows,
+        bbox: [round(xs2[c]), round(ys2[r]), round(xs2[c + cell.colSpan]), round(ys2[r + cell.rowSpan])],
+        align: cell.colSpan > 1 ? "center" : colAlign[c],
+        numeric: isNumericText(text3)
+      });
+    }
+  }
+  let tight = 0;
+  let n2 = 0;
+  for (let c = 0; c < k; c++) {
+    const body = cells.filter((cell) => cell.c === c && cell.colSpan === 1 && cell.text);
+    if (body.length < 2) continue;
+    n2++;
+    const edge = colAlign[c] === "right" ? body.map((cell) => cell.bbox[2]) : body.map((cell) => cell.bbox[0]);
+    tight += Math.max(...edge) - Math.min(...edge) <= 2 ? 1 : 0.5;
+  }
+  const alignment = n2 ? tight / n2 : 1;
+  return {
+    type: "table",
+    bbox: [round(xs2[0]), round(ys2[0]), round(xs2[k]), round(ys2[rows])],
+    rows,
+    cols: k,
+    headerRows,
+    headerCols: 0,
+    cells,
+    method: "stream",
+    grid: { xs: xs2.map(round), ys: ys2.map(round) },
+    confidence: round(Math.max(0, Math.min(1, 0.6 * stability + 0.4 * alignment))),
+    caption
+  };
+}
+function coveredAt(cellMap, r, c, span) {
+  for (let cc = c; cc < c + span; cc++) if (cellMap.get(`${r}:${cc}`)) return true;
+  return false;
+}
+function tableFromBand(band, words) {
+  const inside5 = words.filter((w) => {
+    const cx = (w.x0 + w.x1) / 2;
+    const cy = w.base - 0.3 * w.size;
+    return cx >= band.x0 - 4 && cx <= band.x1 + 4 && cy >= band.y0 - 1 && cy <= band.y1 + 1;
+  });
+  if (!inside5.length) return null;
+  const fullYs = band.ys.filter((b) => b.full).map((b) => b.y);
+  const partial = band.ys.filter((b) => !b.full);
+  const rowsIn = [];
+  const bandsOf = [];
+  const edges = [band.y0 - 1, ...fullYs.filter((y) => y > band.y0 + 1 && y < band.y1 - 1), band.y1 + 1];
+  for (let i = 0; i + 1 < edges.length; i++) {
+    const ws = inside5.filter((w) => {
+      const cy = w.base - 0.3 * w.size;
+      return cy >= edges[i] && cy < edges[i + 1];
+    });
+    if (!ws.length) continue;
+    const { rows: vrowsRaw, floating } = bandRows(ws);
+    let vrows = vrowsRaw;
+    const parts = partial.filter((p) => p.y > edges[i] && p.y < edges[i + 1]);
+    const isHeader = bandsOf.length === 0 && edges.length > 2;
+    if (isHeader && (vrows.length > 1 || parts.length)) {
+      if (parts.length) {
+        const cuts = [edges[i], ...parts.map((p) => p.y), edges[i + 1]];
+        const merged = [];
+        for (let j = 0; j + 1 < cuts.length; j++) {
+          const rws = ws.filter((w) => {
+            const cy = w.base - 0.3 * w.size;
+            return cy >= cuts[j] && cy < cuts[j + 1];
+          });
+          if (rws.length) merged.push({ y0: Math.min(...rws.map((w) => w.y0)), y1: Math.max(...rws.map((w) => w.y1)), words: rws });
+        }
+        vrows = merged;
+      } else {
+        vrows = [{ y0: Math.min(...ws.map((w) => w.y0)), y1: Math.max(...ws.map((w) => w.y1)), words: ws }];
+      }
+    }
+    bandsOf.push(vrows.length);
+    const firstRow = rowsIn.length;
+    for (const r of vrows) rowsIn.push({ y0: r.y0, y1: r.y1, tokens: rowTokens(r).sort((a, b) => a.x0 - b.x0), band: i });
+    for (const fw of floating) {
+      const tok = { x0: fw.x0, x1: fw.x1, words: [fw], text: fw.text, rowSpan: vrows.length };
+      rowsIn[firstRow].tokens.push(tok);
+      rowsIn[firstRow].tokens.sort((a, b) => a.x0 - b.x0);
+    }
+  }
+  if (rowsIn.length < 2) return null;
+  const headerRowsHint = edges.length > 2 ? bandsOf[0] : 0;
+  const table = buildTable(rowsIn, { bands: band, headerRowsHint });
+  if (!table) return null;
+  table.usedWords = inside5;
+  return table;
+}
+function baselineRows(lines) {
+  const sorted = [...lines].sort((a, b) => a.base - b.base || a.x0 - b.x0);
+  const rows = [];
+  for (const l of sorted) {
+    const r = rows[rows.length - 1];
+    if (r && Math.abs(r.base - l.base) <= 0.3 * Math.max(r.size, l.size)) {
+      r.lines.push(l);
+      r.x1 = Math.max(r.x1, l.x1);
+    } else rows.push({ base: l.base, size: l.size, x0: l.x0, x1: l.x1, lines: [l] });
+  }
+  for (const r of rows) {
+    r.lines.sort((a, b) => a.x0 - b.x0);
+    r.words = r.lines.flatMap((l) => l.words);
+    r.y0 = Math.min(...r.lines.map((l) => l.y0));
+    r.y1 = Math.max(...r.lines.map((l) => l.y1));
+    r.text = r.lines.map((l) => l.text).join(" ");
+  }
+  return rows;
+}
+function detectStreamRuns(lines, { dots = [] } = {}) {
+  const out = [];
+  const rows = baselineRows(lines);
+  let i = 0;
+  while (i < rows.length) {
+    const run = [];
+    let j = i;
+    while (j < rows.length) {
+      const row4 = rows[j];
+      const tokens = row4.lines.flatMap((l) => tokenizeLine(l)).sort((a, b) => a.x0 - b.x0);
+      const prev = run[run.length - 1];
+      if (tokens.length < 2 || markerOf(row4.lines[0], dots) || CAPTION_RE.test(row4.text)) break;
+      if (prev && row4.base - prev.row.base > 2.2 * row4.size) break;
+      run.push({ row: row4, tokens });
+      j++;
+    }
+    if (run.length >= 3) {
+      const rowsIn = run.map((r) => ({ y0: r.row.y0, y1: r.row.y1, tokens: r.tokens }));
+      const table = buildTable(rowsIn, {});
+      if (table && !looksLikeProse(run)) {
+        table.usedWords = run.flatMap((r) => r.row.words);
+        table.lines = run.flatMap((r) => r.row.lines);
+        out.push(table);
+        i = j;
+        continue;
+      }
+    }
+    i = i + 1;
+  }
+  return out;
+}
+function looksLikeProse(run) {
+  let wordy = 0;
+  for (const r of run) {
+    const words = r.row.words.length;
+    const chars = r.row.words.reduce((n2, w) => n2 + w.text.length, 0);
+    if (words >= 6 && chars / words >= 3.5 && r.tokens.length < words / 2) wordy++;
+  }
+  return wordy >= run.length * 0.5;
+}
+
+// src/model/parse/figures.js
+var IMAGE_MIN = 12;
+function findFigures({ graphics, usedRules = /* @__PURE__ */ new Set(), words = [], bodySize = 10, pageW = 612, pageH = 792, ruleSegments = [] }) {
+  const prims = [];
+  for (const img of graphics.images || []) {
+    if (img.x1 - img.x0 >= IMAGE_MIN && img.y1 - img.y0 >= IMAGE_MIN) prims.push({ ...img, kind: "image", n: 1 });
+  }
+  for (const s of graphics.shapes || []) prims.push({ ...s, kind: "shape", n: Math.max(1, s.segs || 1) });
+  for (const b of graphics.boxes || []) {
+    if (b.light) continue;
+    if ((b.x1 - b.x0) * (b.y1 - b.y0) >= 0.8 * pageW * pageH) continue;
+    prims.push({ ...b, kind: "box", n: 1 });
+  }
+  for (const seg of ruleSegments) {
+    if (usedRules.has(seg)) continue;
+    const box2 = seg.axis === "h" ? { x0: seg.a, x1: seg.b, y0: seg.pos, y1: seg.pos } : { x0: seg.pos, x1: seg.pos, y0: seg.a, y1: seg.b };
+    prims.push({ ...box2, kind: "rule", n: 1 });
+  }
+  const clusters = clusterBoxes(prims, 6);
+  const figures = [];
+  const used = /* @__PURE__ */ new Set();
+  for (const cl of clusters) {
+    const hasImage = cl.items.some((p) => p.kind === "image");
+    const count = cl.items.reduce((n2, p) => n2 + p.n, 0);
+    const w = cl.x1 - cl.x0;
+    const h = cl.y1 - cl.y0;
+    if (!hasImage && !(count >= 6 && w >= 60 && h >= 40)) continue;
+    const fig = { x0: cl.x0, y0: cl.y0, x1: cl.x1, y1: cl.y1, kind: hasImage ? cl.items.length > 1 ? "mixed" : "image" : "drawing", count };
+    let changed2 = true;
+    let guard = 0;
+    while (changed2 && guard++ < 4) {
+      changed2 = false;
+      for (const wd of words) {
+        if (used.has(wd)) continue;
+        const cx = (wd.x0 + wd.x1) / 2;
+        const cy = (wd.y0 + wd.y1) / 2;
+        const inside5 = cx >= fig.x0 && cx <= fig.x1 && cy >= fig.y0 && cy <= fig.y1;
+        const margin = 12;
+        const near = wd.size <= 0.85 * bodySize && cx >= fig.x0 - margin && cx <= fig.x1 + margin && cy >= fig.y0 - margin && cy <= fig.y1 + margin;
+        if (!inside5 && !near) continue;
+        used.add(wd);
+        fig.x0 = Math.min(fig.x0, wd.x0);
+        fig.x1 = Math.max(fig.x1, wd.x1);
+        fig.y0 = Math.min(fig.y0, wd.y0);
+        fig.y1 = Math.max(fig.y1, wd.y1);
+        changed2 = true;
+      }
+    }
+    fig.bbox = [round(fig.x0), round(fig.y0), round(fig.x1), round(fig.y1)];
+    figures.push(fig);
+  }
+  return { figures, used };
+}
+function clusterBoxes(items, gap) {
+  const clusters = items.map((p) => ({ x0: p.x0, y0: p.y0, x1: p.x1, y1: p.y1, items: [p] }));
+  let merged = true;
+  let guard = 0;
+  while (merged && guard++ < 50) {
+    merged = false;
+    for (let i = 0; i < clusters.length; i++) {
+      for (let j = i + 1; j < clusters.length; j++) {
+        const a = clusters[i];
+        const b = clusters[j];
+        if (a.x0 > b.x1 + gap || b.x0 > a.x1 + gap || a.y0 > b.y1 + gap || b.y0 > a.y1 + gap) continue;
+        a.x0 = Math.min(a.x0, b.x0);
+        a.y0 = Math.min(a.y0, b.y0);
+        a.x1 = Math.max(a.x1, b.x1);
+        a.y1 = Math.max(a.y1, b.y1);
+        a.items.push(...b.items);
+        clusters.splice(j, 1);
+        j--;
+        merged = true;
+      }
+    }
+  }
+  return clusters;
+}
+
+// src/model/parse/furniture.js
+var PAGE_NUM_RE = /^(\d+|page\s+\d+(\s+of\s+\d+)?|[-–]\s*\d+\s*[-–]|\d+\s*\/\s*\d+)$/i;
+function normalizeFurniture(text3) {
+  return text3.replace(/\d+/g, "#").replace(/\s+/g, " ").trim().toLowerCase();
+}
+function findFurniture(pages, { band = 0.08 } = {}) {
+  const n2 = pages.length;
+  const need2 = Math.max(2, Math.min(3, n2), Math.ceil(n2 * 0.5));
+  const candidates = /* @__PURE__ */ new Map();
+  const cand = (line, page, where) => {
+    const key = `${where}|${normalizeFurniture(line.text)}`;
+    if (!candidates.has(key)) candidates.set(key, []);
+    candidates.get(key).push({ page, line, y: line.base });
+  };
+  for (const pg of pages) {
+    for (const line of pg.lines) {
+      const mid = (line.y0 + line.y1) / 2;
+      if (mid <= pg.h * band) cand(line, pg.n, "top");
+      else if (mid >= pg.h * (1 - band)) cand(line, pg.n, "bottom");
+    }
+  }
+  const removed = [];
+  const marks = /* @__PURE__ */ new Set();
+  for (const [key, list] of candidates) {
+    const pagesSeen = new Set(list.map((e2) => e2.page));
+    const recurring = pagesSeen.size >= need2 && n2 >= 2;
+    for (const e2 of list) {
+      const text3 = e2.line.text.trim();
+      const pageNum = PAGE_NUM_RE.test(text3);
+      let ok = pageNum;
+      if (recurring) {
+        const ys2 = list.filter((o) => o.page !== e2.page).map((o) => o.y);
+        ok = ok || ys2.some((y) => Math.abs(y - e2.y) <= 3) || ys2.length === 0;
+      }
+      if (!ok) continue;
+      const where = key.startsWith("top") ? "running-header" : "running-footer";
+      marks.add(e2.line);
+      removed.push({ page: e2.page, bbox: [r2(e2.line.x0), r2(e2.line.y0), r2(e2.line.x1), r2(e2.line.y1)], text: text3, reason: pageNum && !recurring ? "page-number" : where });
+    }
+  }
+  removed.sort((a, b) => a.page - b.page || a.bbox[1] - b.bbox[1]);
+  return { removed, isFurniture: (line) => marks.has(line) };
+}
+function r2(v) {
+  return Math.round(v * 100) / 100;
+}
+
+// src/model/parse/formulas.js
+var EQ_NUMBER_RE = /^\((\d+(\.\d+)?[a-z]?)\)$/;
+function mathShareOf(line, bodyFont = null) {
+  let chars = 0;
+  let math = 0;
+  let mathFont = 0;
+  for (const w of line.words) {
+    chars += w.text.length;
+    math += w.mathChars || 0;
+    if (w.mathFontChars && w.fontName !== bodyFont) mathFont += w.mathFontChars;
+  }
+  return chars ? Math.max(math, mathFont) / chars : 0;
+}
+function isMathLine(line, bodyFont = null) {
+  return mathShareOf(line, bodyFont) >= 0.25;
+}
+function detectFormulas(lines, { column, bodySize, bodyFont = null }) {
+  const out = [];
+  const colCenter = (column.x0 + column.x1) / 2;
+  const colWidth = column.x1 - column.x0;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    if (!isMathLine(line, bodyFont)) continue;
+    const prev = lines[i - 1];
+    const next = lines[i + 1];
+    const gapAbove = prev ? line.y0 - prev.y1 : Infinity;
+    const gapBelow = next ? next.y0 - line.y1 : Infinity;
+    const isolated = gapAbove >= 0.5 * line.size && gapBelow >= 0.5 * line.size;
+    const last = line.words[line.words.length - 1];
+    const number = last && EQ_NUMBER_RE.test(last.text) && last.x1 >= column.x1 - 0.1 * colWidth ? last.text : null;
+    const bodyCenter = number ? (line.x0 + line.words[line.words.length - 2]?.x1) / 2 : (line.x0 + line.x1) / 2;
+    const centred = Math.abs(bodyCenter - colCenter) <= 0.12 * colWidth;
+    if (!(isolated || number) || !(centred || number)) continue;
+    let end = i + 1;
+    while (end < lines.length && isMathLine(lines[end], bodyFont) && lines[end].y0 - lines[end - 1].y1 <= 1.2 * line.size) end++;
+    out.push({ start: i, end, number });
+    i = end - 1;
+  }
+  return out;
+}
+
+// src/model/parse/blocks.js
+var FOOTNOTE_MARK_RE = /^(\d{1,3}|[a-z]|[*†‡§¶])$/;
+var SUPERS2 = { 0: "⁰", 1: "¹", 2: "²", 3: "³", 4: "⁴", 5: "⁵", 6: "⁶", 7: "⁷", 8: "⁸", 9: "⁹" };
+function superscriptDigits(text3) {
+  return text3.split("").map((ch) => SUPERS2[ch] ?? ch).join("");
+}
+function lineTextWithRefs(line, { collectRefs = true } = {}) {
+  let text3 = "";
+  const refs = [];
+  for (const w of line.words) {
+    if (w.sup && collectRefs && FOOTNOTE_MARK_RE.test(w.text) && text3.length) {
+      refs.push({ mark: w.text, at: text3.length });
+      continue;
+    }
+    const piece = w.sup && /^\d+$/.test(w.text) ? superscriptDigits(w.text) : w.text;
+    if ((w.sup || w.sub) && text3 && !text3.endsWith(" ")) text3 += piece;
+    else if (text3 && /^[,.;:)\]]/.test(piece)) text3 += piece;
+    else text3 += (text3 ? " " : "") + piece;
+  }
+  return { text: text3, refs };
+}
+function joinLines(lines, { collectRefs = true, keepHyphenSet = null } = {}) {
+  let text3 = "";
+  const footnoteRefs = [];
+  for (const line of lines) {
+    const { text: t, refs } = lineTextWithRefs(line, { collectRefs });
+    if (!t) continue;
+    let glue = " ";
+    if (text3.endsWith("-") && text3.length > 1) {
+      const left = /(\S+)-$/.exec(text3)?.[1] || "";
+      const nextStartsLower = /^[a-z]/.test(t);
+      const keep = /\d/.test(left) || left === left.toUpperCase() && /[A-Z]/.test(left) || keepHyphenSet && keepHyphenSet.has(`${left}-${t.split(/\s/)[0]}`);
+      if (nextStartsLower && !keep) {
+        text3 = text3.slice(0, -1);
+        glue = "";
+      } else if (/^[A-Za-z0-9]/.test(t)) glue = "";
+    }
+    if (!text3) glue = "";
+    const base = text3.length + glue.length;
+    for (const r of refs) footnoteRefs.push({ mark: r.mark, at: base + r.at });
+    text3 += glue + t;
+  }
+  return { text: text3.replace(/\s+/g, " ").trim(), footnoteRefs };
+}
+function spansOf(lines) {
+  const spans = [];
+  for (const line of lines) {
+    for (const w of line.words) {
+      if (w.sup && FOOTNOTE_MARK_RE.test(w.text)) continue;
+      const last = spans[spans.length - 1];
+      const size = Math.round(w.size * 10) / 10;
+      const font = w.fontName || w.font || null;
+      if (last && last.bold === Boolean(w.bold) && last.italic === Boolean(w.italic) && last.size === size && last.font === font) {
+        last.text += ` ${w.text}`;
+      } else spans.push({ text: w.text, bold: Boolean(w.bold), italic: Boolean(w.italic), size, font: w.fontName || w.font || null });
+    }
+  }
+  return spans;
+}
+function groupParagraphs(lines, { bodySize = 10 } = {}) {
+  const groups = [];
+  let cur = [];
+  const gaps = [];
+  for (let i = 1; i < lines.length; i++) gaps.push(lines[i].base - lines[i - 1].base);
+  const normalGap = median2(gaps.filter((g) => g > 0 && g < 3 * bodySize)) || bodySize * 1.3;
+  for (let i = 0; i < lines.length; i++) {
+    const line = lines[i];
+    const prev = cur[cur.length - 1];
+    let join = Boolean(prev);
+    if (prev) {
+      const gap = line.base - prev.base;
+      const size = Math.max(prev.size, line.size);
+      if (gap > 1.7 * size) join = false;
+      else if (Math.abs(prev.size - line.size) > 0.6) join = false;
+      else if (Boolean(prev.bold) !== Boolean(line.bold) && (prev.chars > 20 || line.chars > 20)) join = false;
+      else {
+        const first = cur[0];
+        const flushWithFirst = Math.abs(line.x0 - first.x0) <= 1.5 * size;
+        const flushWithPrev = Math.abs(line.x0 - prev.x0) <= 1.5 * size;
+        const prevIndented = cur.length === 1 && prev.x0 - line.x0 > 0.8 * size && prev.x0 - line.x0 < 4 * size;
+        if (!(flushWithFirst || flushWithPrev || prevIndented)) join = false;
+        else if (/[.?!:]$/.test(prev.text) && /^[A-Z("“]/.test(line.text) && gap > 1.25 * normalGap) join = false;
+        else if (/[.?!]$/.test(prev.text) && line.x0 - prev.x0 > 0.8 * size && line.x0 - prev.x0 < 4 * size && cur.length >= 1) join = false;
+      }
+    }
+    if (!join && cur.length) {
+      groups.push(cur);
+      cur = [];
+    }
+    cur.push(line);
+  }
+  if (cur.length) groups.push(cur);
+  return groups;
+}
+function median2(values) {
+  if (!values.length) return void 0;
+  const s = [...values].sort((a, b) => a - b);
+  const m = s.length >> 1;
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+}
+
+// src/model/parse/xycut.js
+function detectColumns(lines, { pageW, minLines = 4 } = {}) {
+  const clusters = [];
+  for (const l of lines) {
+    if (l.chars < 8) continue;
+    let c = clusters.find((k) => Math.abs(k.x - l.x0) <= 3);
+    if (!c) {
+      c = { x: l.x0, lines: [] };
+      clusters.push(c);
+    }
+    c.lines.push(l);
+  }
+  const wideEnough = (c) => c.lines.filter((l) => l.x1 - l.x0 >= 0.25 * (pageW || 612)).length >= 3;
+  const dominant = clusters.filter((c) => c.lines.length >= minLines && wideEnough(c)).sort((a, b) => a.x - b.x);
+  const gutters = [];
+  for (let i = 1; i < dominant.length; i++) {
+    const right = dominant[i];
+    const leftX = dominant[i - 1].x;
+    if (right.x - leftX < 0.2 * (pageW || 612)) continue;
+    const leftEnds = lines.filter((l) => l.x0 >= leftX - 3 && l.x0 < right.x - 10 && l.x1 <= right.x + 1).map((l) => l.x1);
+    if (leftEnds.length < 3) continue;
+    const g0 = Math.max(...leftEnds);
+    const g1 = right.x;
+    if (g1 - g0 >= 6) gutters.push({ x0: g0, x1: g1 });
+  }
+  return gutters;
+}
+function splitAtGutters(lines, gutters, makeLine2) {
+  if (!gutters.length) return lines;
+  const out = [];
+  for (const line of lines) {
+    let parts = [line];
+    for (const g of gutters) {
+      const next = [];
+      for (const part of parts) {
+        if (!crossesGutter(part, g) || part.words.length < 2) {
+          next.push(part);
+          continue;
+        }
+        const left = part.words.filter((w) => (w.x0 + w.x1) / 2 < (g.x0 + g.x1) / 2);
+        const right = part.words.filter((w) => (w.x0 + w.x1) / 2 >= (g.x0 + g.x1) / 2);
+        const leftEnd = left.length ? Math.max(...left.map((w) => w.x1)) : -Infinity;
+        const rightStart = right.length ? Math.min(...right.map((w) => w.x0)) : Infinity;
+        if (left.length && right.length && rightStart - leftEnd >= 0.6 * (g.x1 - g.x0)) next.push(makeLine2(left), makeLine2(right));
+        else next.push(part);
+      }
+      parts = next;
+    }
+    out.push(...parts);
+  }
+  return out;
+}
+function crossesGutter(unit, g) {
+  return unit.x0 < g.x0 - 1 && unit.x1 > g.x1 + 1;
+}
+function orderUnits(units, { gutters = [] } = {}) {
+  const active = gutters.filter((g) => units.some((u) => u.x1 <= g.x0 + 1) && units.some((u) => u.x0 >= g.x1 - 1));
+  if (!active.length) return { order: byPosition(units), columns: 1 };
+  const sorted = [...units].sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0);
+  const wide = (u) => active.some((g) => crossesGutter(u, g));
+  const out = [];
+  let slice = [];
+  const flush = () => {
+    if (!slice.length) return;
+    const cols = splitColumns(slice, active);
+    for (const col of cols) out.push(...byPosition(col));
+    slice = [];
+  };
+  for (const u of sorted) {
+    if (wide(u)) {
+      flush();
+      out.push(u);
+    } else slice.push(u);
+  }
+  flush();
+  return { order: out, columns: active.length + 1 };
+}
+function splitColumns(units, gutters) {
+  const cols = gutters.map(() => []);
+  cols.push([]);
+  for (const u of units) {
+    const mid = (u.x0 + u.x1) / 2;
+    let idx = gutters.findIndex((g) => mid < (g.x0 + g.x1) / 2);
+    if (idx < 0) idx = gutters.length;
+    cols[idx].push(u);
+  }
+  return cols.filter((c) => c.length);
+}
+function byPosition(units) {
+  return [...units].sort((a, b) => {
+    const dy = a.y0 - b.y0;
+    if (Math.abs(dy) <= 2) return a.x0 - b.x0;
+    return dy;
+  });
+}
+function boxOfUnits(units) {
+  return {
+    x0: Math.min(...units.map((u) => u.x0)),
+    y0: Math.min(...units.map((u) => u.y0)),
+    x1: Math.max(...units.map((u) => u.x1)),
+    y1: Math.max(...units.map((u) => u.y1))
+  };
+}
+
+// src/model/parse/index.js
+var SCHEMA = "pxd-parse/1";
+var ENGINE_VERSION = "plexus-builtin/1";
+var now2 = () => typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
+function viewportTransform(w, h, rotation = 0) {
+  switch ((rotation % 360 + 360) % 360) {
+    case 90:
+      return [0, 1, 1, 0, 0, 0];
+    case 180:
+      return [-1, 0, 0, 1, w, 0];
+    case 270:
+      return [0, -1, -1, 0, h, w];
+    default:
+      return [1, 0, 0, -1, 0, h];
+  }
+}
+function parsePageGeometry(data, n2) {
+  const t0 = now2();
+  const w = data.w;
+  const h = data.h;
+  const transform = data.transform || viewportTransform(w, h, data.rotation || 0);
+  const { lines, rotated } = buildLines(data.items || [], { transform, fonts: data.fonts || {} });
+  const graphics = extractGraphics(data.ops, { transform });
+  const words = lines.flatMap((l) => l.words);
+  const pageArea = w * h;
+  const bigImage = graphics.images.some((im) => (im.x1 - im.x0) * (im.y1 - im.y0) >= 0.5 * pageArea);
+  const kind = words.length === 0 && bigImage ? "scan" : bigImage ? "mixed" : "text";
+  const pageBody = bodySizeOf(lines) || 10;
+  const used = /* @__PURE__ */ new Set();
+  const tables = [];
+  const lattice = findLatticeTables({ rules: graphics.rules, boxes: graphics.boxes, words });
+  for (const t of lattice.tables) {
+    t.page = n2;
+    tables.push(t);
+  }
+  for (const w2 of lattice.usedWords) used.add(w2);
+  const usedRules = new Set(lattice.usedRules);
+  for (const band of lattice.bands) {
+    const free = words.filter((w2) => !used.has(w2));
+    const t = tableFromBand(band, free);
+    if (!t) continue;
+    t.page = n2;
+    for (const w2 of t.usedWords) used.add(w2);
+    delete t.usedWords;
+    for (const s of band.segs) usedRules.add(s);
+    tables.push(t);
+  }
+  const figs = kind === "scan" ? { figures: [], used: /* @__PURE__ */ new Set() } : findFigures({ graphics, usedRules, words: words.filter((w2) => !used.has(w2)), bodySize: pageBody, pageW: w, pageH: h, ruleSegments: lattice.segments });
+  for (const w2 of figs.used) used.add(w2);
+  const figures = figs.figures.map((f) => ({ ...f, page: n2 }));
+  return { n: n2, w, h, rotation: data.rotation || 0, kind, lines, rotated, words, graphics, tables, figures, used, ms: round(now2() - t0) };
+}
+function assembleDocument(pageRecords, { numPages, info = null, engineVersion = ENGINE_VERSION, sha256 = null, options = {}, from = 1, to = numPages } = {}) {
+  const t1 = now2();
+  for (const pg of pageRecords) {
+    pg.free = [];
+    for (const line of pg.lines) {
+      const ws = line.words.filter((w) => !pg.used.has(w));
+      if (!ws.length) continue;
+      pg.free.push(ws.length === line.words.length ? line : makeLine(ws));
+    }
+  }
+  const furniture = findFurniture(pageRecords.map((pg) => ({ n: pg.n, h: pg.h, lines: pg.free })));
+  for (const pg of pageRecords) pg.free = pg.free.filter((l) => !furniture.isFurniture(l));
+  const allFree = pageRecords.flatMap((pg) => pg.free);
+  const bodySize = bodySizeOf(allFree) || 10;
+  const bodyFont = dominantFont(allFree);
+  let classes = headingClasses(allFree, bodySize);
+  const firstPage = pageRecords[0];
+  if (firstPage && classes.length) {
+    const onFirst = classes.filter((k) => firstPage.free.some((l) => Math.round(l.size * 2) / 2 === k && l.chars >= 3));
+    if (onFirst.length) classes = classes.filter((k) => k <= onFirst[0]);
+  }
+  const blocks = {};
+  const order = [];
+  const counters = {};
+  const nextId = (prefix) => {
+    counters[prefix] = (counters[prefix] || 0) + 1;
+    return `${prefix}${counters[prefix]}`;
+  };
+  const headings = [];
+  const refs = [];
+  const footnotes = [];
+  const perPage = [];
+  for (const pg of pageRecords) {
+    const units = [];
+    if (pg.kind === "scan") {
+      const id = nextId("s");
+      blocks[id] = { id, type: "scan", page: pg.n, bbox: [0, 0, round(pg.w), round(pg.h)], confidence: 1, engine: "builtin" };
+      units.push({ id, x0: 0, y0: 0, x1: pg.w, y1: pg.h });
+    }
+    const dots = pg.graphics.dots;
+    let gutters = detectColumns(pg.free, { pageW: pg.w });
+    if (gutters.length) {
+      pg.free = splitAtGutters(pg.free, gutters, makeLine);
+      gutters = detectColumns(pg.free, { pageW: pg.w });
+    }
+    const seqs = gutters.map(() => []);
+    seqs.push([]);
+    const wideSeq = [];
+    const byY = [...pg.free].sort((a, b) => a.base - b.base || a.x0 - b.x0);
+    const rowWide = /* @__PURE__ */ new Set();
+    for (const row4 of baselineRows(byY)) {
+      if (row4.lines.length >= 3 && gutters.some((g) => row4.x0 < g.x0 - 1 && row4.x1 > g.x1 + 1)) for (const l of row4.lines) rowWide.add(l);
+    }
+    let lastWide = null;
+    for (let k = 0; k < byY.length; k++) {
+      const line = byY[k];
+      let wide = rowWide.has(line) || gutters.some((g) => crossesGutter(line, g));
+      if (!wide && lastWide && line.base - lastWide.base <= 1.7 * line.size && Math.abs(line.x0 - lastWide.x0) <= 1.5 * line.size && Math.abs(line.size - lastWide.size) <= 0.6) {
+        const shared = byY.some((o) => o !== line && Math.abs(o.base - line.base) <= 0.3 * line.size);
+        if (!shared) wide = true;
+      }
+      if (wide) {
+        wideSeq.push(line);
+        lastWide = line;
+        continue;
+      }
+      lastWide = null;
+      const mid = (line.x0 + line.x1) / 2;
+      let idx = gutters.findIndex((g) => mid < (g.x0 + g.x1) / 2);
+      if (idx < 0) idx = gutters.length;
+      seqs[idx].push(line);
+    }
+    const sequences = [...seqs, wideSeq].filter((s) => s.length).map((s) => s.sort((a, b) => a.base - b.base || a.x0 - b.x0));
+    const pageTables = [...pg.tables];
+    const pageFigures = [...pg.figures];
+    const textBlocks = [];
+    for (const seq of sequences) {
+      let lines = seq;
+      for (const t of detectStreamRuns(lines, { dots })) {
+        const drop = new Set(t.lines);
+        lines = lines.filter((l) => !drop.has(l));
+        delete t.lines;
+        delete t.usedWords;
+        t.page = pg.n;
+        pageTables.push(t);
+      }
+      const column = boxOfUnits(lines.length ? lines : seq);
+      const formulaRuns = detectFormulas(lines, { column, bodySize, bodyFont });
+      const formulaLines = /* @__PURE__ */ new Set();
+      for (const run of formulaRuns) {
+        const fl = lines.slice(run.start, run.end);
+        fl.forEach((l) => formulaLines.add(l));
+        const box2 = boxOfUnits(fl);
+        textBlocks.push({ type: "formula", lines: fl, number: run.number, bbox: box2, text: joinLines(fl, { collectRefs: false }).text });
+      }
+      lines = lines.filter((l) => !formulaLines.has(l));
+      const listRuns = detectLists(lines, { dots, joinText: (ls) => joinLines(ls).text });
+      const listLines = /* @__PURE__ */ new Set();
+      for (const run of listRuns) {
+        const ls = lines.slice(run.start, run.end);
+        ls.forEach((l) => listLines.add(l));
+        const items = run.items.map((it) => {
+          const joined = joinLines(it.lines);
+          for (const r of joined.footnoteRefs) refs.push({ ...r, page: pg.n, block: null });
+          return { text: joined.text, level: it.level, marker: it.marker };
+        });
+        textBlocks.push({ type: "list", lines: ls, ordered: run.ordered, items, bbox: boxOfUnits(ls) });
+      }
+      lines = lines.filter((l) => !listLines.has(l));
+      let i = 0;
+      while (i < lines.length) {
+        const line = lines[i];
+        const next = lines[i + 1];
+        const nextIsBody = !next || !next.bold || Math.abs(next.size - line.size) > 0.6;
+        const level = headingLevel(line, { bodySize, classes, nextIsBody });
+        if (level) {
+          const hl = [line];
+          let j2 = i + 1;
+          while (j2 < lines.length && headingLevel(lines[j2], { bodySize, classes, nextIsBody: true }) === level && lines[j2].base - lines[j2 - 1].base <= 1.5 * line.size && Math.abs(lines[j2].size - line.size) <= 0.6) {
+            hl.push(lines[j2]);
+            j2++;
+          }
+          textBlocks.push({ type: "heading", level, lines: hl, bbox: boxOfUnits(hl), text: joinLines(hl, { collectRefs: false }).text });
+          i = j2;
+          continue;
+        }
+        let j = i + 1;
+        while (j < lines.length && !headingLevel(lines[j], { bodySize, classes, nextIsBody: !lines[j + 1] || !lines[j + 1].bold || Math.abs(lines[j + 1].size - lines[j].size) > 0.6 })) j++;
+        const chunk = lines.slice(i, j);
+        for (const group of groupParagraphs(chunk, { bodySize })) {
+          const joined = joinLines(group);
+          const first = group[0].words[0];
+          const isCaption = CAPTION_RE.test(joined.text);
+          const startsWithMark = first && first.sup && FOOTNOTE_MARK_RE.test(first.text) && group[0].size <= 0.9 * bodySize;
+          const lowOnPage = group[0].y0 >= 0.75 * pg.h;
+          const lastBase = group[group.length - 1].base;
+          const lastInColumn = !seq.some((l) => l.base > lastBase + 1 && l.size >= bodySize - 0.5);
+          if (startsWithMark && (lowOnPage || lastInColumn)) {
+            const mark = first.text;
+            const rest = { ...group[0], words: group[0].words.slice(1) };
+            rest.text = rest.words.map((w) => w.text).join(" ");
+            const text3 = joinLines([rest, ...group.slice(1)], { collectRefs: false }).text;
+            textBlocks.push({ type: "footnote", lines: group, mark, text: text3, bbox: boxOfUnits(group) });
+            continue;
+          }
+          const block = { type: isCaption ? "caption" : "para", lines: group, text: joined.text, footnoteRefs: joined.footnoteRefs, bbox: boxOfUnits(group) };
+          textBlocks.push(block);
+        }
+        i = j;
+      }
+    }
+    const captionFor = /* @__PURE__ */ new Map();
+    for (const cb of textBlocks) {
+      if (cb.type !== "caption") continue;
+      let best = null;
+      for (const target of [...pageTables, ...pageFigures]) {
+        const tb = target.bbox;
+        const ox = Math.min(tb[2], cb.bbox.x1) - Math.max(tb[0], cb.bbox.x0);
+        if (ox <= 0) continue;
+        const gap = cb.bbox.y1 <= tb[1] ? tb[1] - cb.bbox.y1 : cb.bbox.y0 >= tb[3] ? cb.bbox.y0 - tb[3] : 0;
+        if (gap > 3 * bodySize) continue;
+        const wantsTable = /^table/i.test(cb.text);
+        const isTable = target.type === "table";
+        if (wantsTable !== isTable) continue;
+        if (!best || gap < best.gap) best = { target, gap };
+      }
+      if (best && !captionFor.has(best.target)) captionFor.set(best.target, cb);
+      else if (!best) cb.type = "para";
+    }
+    const unitOf = (b, id) => ({ id, x0: b.bbox.x0 ?? b.bbox[0], y0: b.bbox.y0 ?? b.bbox[1], x1: b.bbox.x1 ?? b.bbox[2], y1: b.bbox.y1 ?? b.bbox[3] });
+    const captionIds = /* @__PURE__ */ new Map();
+    for (const tb of textBlocks) {
+      const prefix = { heading: "b", para: "b", caption: "c", footnote: "n", list: "l", formula: "e" }[tb.type];
+      const id = nextId(prefix);
+      const bbox = [round(tb.bbox.x0), round(tb.bbox.y0), round(tb.bbox.x1), round(tb.bbox.y1)];
+      const block = { id, type: tb.type, page: pg.n, bbox, confidence: 0.9, engine: "builtin" };
+      if (tb.type === "heading") {
+        block.level = tb.level;
+        block.text = tb.text;
+        block.spans = spansOf(tb.lines);
+        headings.push(block);
+      } else if (tb.type === "para" || tb.type === "caption") {
+        block.text = tb.text;
+        block.spans = spansOf(tb.lines);
+        if (tb.footnoteRefs && tb.footnoteRefs.length) {
+          block.footnoteRefs = tb.footnoteRefs.map((r) => ({ ...r, to: null }));
+          for (const r of block.footnoteRefs) refs.push({ ref: r, page: pg.n });
+        }
+        if (tb.type === "caption") captionIds.set(tb, id);
+      } else if (tb.type === "footnote") {
+        block.mark = tb.mark;
+        block.text = tb.text;
+        footnotes.push(block);
+      } else if (tb.type === "list") {
+        block.ordered = tb.ordered;
+        block.items = tb.items;
+      } else if (tb.type === "formula") {
+        block.latex = null;
+        block.number = tb.number;
+        block.text = tb.text;
+      }
+      blocks[id] = block;
+      units.push(unitOf(tb, id));
+    }
+    for (const t of pageTables) {
+      const id = nextId("t");
+      const cap4 = captionFor.get(t);
+      const block = { id, type: "table", page: pg.n, bbox: t.bbox, rows: t.rows, cols: t.cols, headerRows: t.headerRows, headerCols: t.headerCols, cells: t.cells, caption: cap4 ? captionIds.get(cap4) : null, method: t.method, grid: t.grid, confidence: t.confidence, engine: "builtin" };
+      if (cap4) blocks[captionIds.get(cap4)].for = id;
+      blocks[id] = block;
+      units.push({ id, x0: t.bbox[0], y0: t.bbox[1], x1: t.bbox[2], y1: t.bbox[3] });
+    }
+    for (const f of pageFigures) {
+      const id = nextId("f");
+      const cap4 = captionFor.get(f);
+      blocks[id] = { id, type: "figure", page: pg.n, bbox: f.bbox, caption: cap4 ? captionIds.get(cap4) : null, image: { kind: "crop", source: f.kind }, confidence: f.kind === "drawing" ? 0.7 : 0.9, engine: "builtin" };
+      if (cap4) blocks[captionIds.get(cap4)].for = id;
+      units.push({ id, x0: f.bbox[0], y0: f.bbox[1], x1: f.bbox[2], y1: f.bbox[3] });
+    }
+    const ordered = orderUnits(units, { gutters });
+    for (const u of ordered.order) order.push(u.id);
+    perPage.push({ n: pg.n, w: round(pg.w), h: round(pg.h), rotation: pg.rotation, kind: pg.kind, parsed: true, columns: ordered.columns, ms: pg.ms });
+  }
+  mergeContinuations(order, blocks);
+  applyNumbering(headings);
+  for (const entry of refs) {
+    if (!entry.ref) continue;
+    const same2 = footnotes.filter((f) => f.mark === entry.ref.mark);
+    const after = same2.filter((f) => f.page >= entry.page).sort((a, b) => a.page - b.page);
+    const pick = after[0] || same2[same2.length - 1];
+    if (pick) entry.ref.to = pick.id;
+  }
+  let title = info && typeof info.Title === "string" && info.Title.trim() ? info.Title.trim() : null;
+  if (!title) {
+    const h1 = headings.find((h) => h.level === 1 && h.page === (firstPage ? firstPage.n : 1)) || headings.find((h) => h.level === 1);
+    title = h1 ? h1.text : null;
+  }
+  const pagesOut = [];
+  for (const p of perPage) pagesOut.push({ n: p.n, w: p.w, h: p.h, rotation: p.rotation, kind: p.kind, parsed: true, columns: p.columns });
+  return {
+    schema: SCHEMA,
+    sha256,
+    engine: "builtin",
+    engineVersion,
+    options: { ocr: "none", formula: false, tables: "builtin", ...options },
+    createdAt: (/* @__PURE__ */ new Date()).toISOString(),
+    pageCount: numPages,
+    title,
+    pages: pagesOut,
+    order,
+    blocks,
+    removed: furniture.removed,
+    stats: { ms: 0, perPage: perPage.map((p) => p.ms), assembleMs: round(now2() - t1), bodySize, headingSizes: classes, range: [from, to] }
+  };
+}
+function dominantFont(lines) {
+  const counts = /* @__PURE__ */ new Map();
+  for (const l of lines) for (const w of l.words) counts.set(w.fontName, (counts.get(w.fontName) || 0) + w.text.length);
+  let best = null;
+  let n2 = 0;
+  for (const [k, v] of counts) if (v > n2) {
+    n2 = v;
+    best = k;
+  }
+  return best;
+}
+function mergeContinuations(order, blocks) {
+  for (let i = 0; i + 1 < order.length; i++) {
+    const a = blocks[order[i]];
+    const b = blocks[order[i + 1]];
+    if (!a || !b || a.type !== "para" || b.type !== "para") continue;
+    if (/[.?!:"”)\]]$/.test(a.text) || !/^[a-z]/.test(b.text)) continue;
+    if (Math.abs(a.spans?.[0]?.size - b.spans?.[0]?.size) > 0.6) continue;
+    const hyphen = a.text.endsWith("-");
+    const offset = a.text.length + (hyphen ? 0 : 1);
+    a.text = hyphen ? a.text.slice(0, -1) + b.text : `${a.text} ${b.text}`;
+    a.spans = [...a.spans || [], ...b.spans || []];
+    if (b.footnoteRefs) {
+      for (const r of b.footnoteRefs) r.at += offset - (hyphen ? 1 : 0);
+      a.footnoteRefs = [...a.footnoteRefs || [], ...b.footnoteRefs];
+    }
+    a.parts = [...a.parts || [{ page: a.page, bbox: a.bbox }], { page: b.page, bbox: b.bbox }];
+    delete blocks[b.id];
+    order.splice(i + 1, 1);
+    i--;
+  }
+}
+
+// src/model/parse/resplit.js
+function resplitColumns(table, words, xs2) {
+  const bounds = [...xs2].sort((a, b) => a - b);
+  if (bounds.length < 2) return table;
+  const ys2 = table.grid && table.grid.ys && table.grid.ys.length >= 2 ? table.grid.ys : [table.bbox[1], table.bbox[3]];
+  const rows = ys2.length - 1;
+  const cols = bounds.length - 1;
+  const buckets2 = /* @__PURE__ */ new Map();
+  for (const w of words) {
+    const cx = (w.x0 + w.x1) / 2;
+    const cy = w.base - 0.3 * w.size;
+    let c = -1;
+    for (let i = 0; i < cols; i++) if (cx >= bounds[i] && cx < bounds[i + 1]) {
+      c = i;
+      break;
+    }
+    if (c < 0) c = cx < bounds[0] ? 0 : cols - 1;
+    let r = -1;
+    for (let j = 0; j < rows; j++) if (cy >= ys2[j] && cy < ys2[j + 1]) {
+      r = j;
+      break;
+    }
+    if (r < 0) r = cy < ys2[0] ? 0 : rows - 1;
+    const key = `${r}:${c}`;
+    if (!buckets2.has(key)) buckets2.set(key, []);
+    buckets2.get(key).push(w);
+  }
+  const headerRows = Math.min(table.headerRows || 0, rows);
+  const cells = [];
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      const ws = buckets2.get(`${r}:${c}`) || [];
+      const text3 = cellTextOf(ws);
+      cells.push({
+        r,
+        c,
+        rowSpan: 1,
+        colSpan: 1,
+        text: text3,
+        header: r < headerRows,
+        bbox: [round(bounds[c]), round(ys2[r]), round(bounds[c + 1]), round(ys2[r + 1])],
+        align: "left",
+        numeric: isNumericText(text3)
+      });
+    }
+  }
+  for (let c = 0; c < cols; c++) {
+    const body = cells.filter((k) => k.c === c && !k.header && k.text);
+    if (body.length && body.filter((k) => k.numeric).length >= 0.8 * body.length) for (const k of body) k.align = "right";
+  }
+  return {
+    ...table,
+    rows,
+    cols,
+    headerRows,
+    headerCols: 0,
+    cells,
+    method: "stream",
+    grid: { xs: bounds.map(round), ys: ys2.map(round) },
+    bbox: [round(bounds[0]), round(ys2[0]), round(bounds[cols]), round(ys2[rows])]
+  };
+}
+
+// src/model/parse-schema.js
+var SCHEMA2 = "pxd-parse/1";
+var IOU_MIN = 0.5;
+var BLOCK_TYPES = Object.freeze([
+  "heading",
+  "para",
+  "list",
+  "table",
+  "figure",
+  "formula",
+  "caption",
+  "footnote",
+  "code",
+  "scan"
+]);
+var TYPE_SET = new Set(BLOCK_TYPES);
+function boxOf3(value) {
+  if (!Array.isArray(value) || value.length < 4) return null;
+  const [x0, y0, x1, y1] = value;
+  if (![x0, y0, x1, y1].every((n2) => typeof n2 === "number" && Number.isFinite(n2))) return null;
+  return [Math.min(x0, x1), Math.min(y0, y1), Math.max(x0, x1), Math.max(y0, y1)];
+}
+function iou(a, b) {
+  const A = boxOf3(a);
+  const B = boxOf3(b);
+  if (!A || !B) return 0;
+  const ix0 = Math.max(A[0], B[0]);
+  const iy0 = Math.max(A[1], B[1]);
+  const ix1 = Math.min(A[2], B[2]);
+  const iy1 = Math.min(A[3], B[3]);
+  const inter = Math.max(0, ix1 - ix0) * Math.max(0, iy1 - iy0);
+  const areaA = (A[2] - A[0]) * (A[3] - A[1]);
+  const areaB = (B[2] - B[0]) * (B[3] - B[1]);
+  const union = areaA + areaB - inter;
+  if (union <= 0) return 0;
+  return inter / union;
+}
+function targetOf(bbox) {
+  if (Array.isArray(bbox)) return { page: null, bbox: boxOf3(bbox) };
+  if (bbox && typeof bbox === "object") {
+    const page = Number.isInteger(bbox.page) ? bbox.page : null;
+    const box2 = Array.isArray(bbox.bbox) ? boxOf3(bbox.bbox) : boxOf3(bbox);
+    return { page, bbox: box2 };
+  }
+  return { page: null, bbox: null };
+}
+function samePage(block, page) {
+  if (page == null) return true;
+  return block?.page === page;
+}
+function blocksInRange(doc, fromPage, toPage) {
+  const from = Math.min(fromPage, toPage);
+  const to = Math.max(fromPage, toPage);
+  const blocks = doc?.blocks || {};
+  const order = Array.isArray(doc?.order) ? doc.order : [];
+  const out = [];
+  for (const id of order) {
+    const block = blocks[id];
+    if (!block) continue;
+    if (block.page >= from && block.page <= to) out.push(block);
+  }
+  return out;
+}
+function selectBlocks(doc, idsOrRange) {
+  const blocks = doc?.blocks || {};
+  if (idsOrRange == null) {
+    const order = Array.isArray(doc?.order) ? doc.order : [];
+    return order.map((id) => blocks[id]).filter(Boolean);
+  }
+  if (Array.isArray(idsOrRange)) {
+    if (idsOrRange.length === 2 && idsOrRange.every((n2) => typeof n2 === "number")) {
+      return blocksInRange(doc, idsOrRange[0], idsOrRange[1]);
+    }
+    return idsOrRange.map((id) => blocks[id]).filter(Boolean);
+  }
+  if (typeof idsOrRange === "object") {
+    const from = idsOrRange.fromPage ?? idsOrRange.from;
+    const to = idsOrRange.toPage ?? idsOrRange.to;
+    if (from != null && to != null) return blocksInRange(doc, from, to);
+  }
+  return [];
+}
+function tableGrid(table) {
+  const rows = Number.isInteger(table?.rows) ? table.rows : 0;
+  const cols = Number.isInteger(table?.cols) ? table.cols : 0;
+  const grid = Array.from({ length: rows }, (_, r) => Array.from({ length: cols }, (_2, c) => ({ anchor: false, covered: false, cell: null, text: "", r, c })));
+  for (const cell of table?.cells || []) {
+    const rs = cell.rowSpan ?? 1;
+    const cs = cell.colSpan ?? 1;
+    for (let dr = 0; dr < rs; dr += 1) {
+      for (let dc = 0; dc < cs; dc += 1) {
+        const r = cell.r + dr;
+        const c = cell.c + dc;
+        if (r < 0 || c < 0 || r >= rows || c >= cols) continue;
+        const covered = dr !== 0 || dc !== 0;
+        grid[r][c] = {
+          anchor: !covered,
+          covered,
+          cell,
+          text: cell.text ?? "",
+          r,
+          c
+        };
+      }
+    }
+  }
+  return grid;
+}
+function freshId(used) {
+  let n2 = 1;
+  while (used.has(`d${n2}`)) n2 += 1;
+  const id = `d${n2}`;
+  used.add(id);
+  return id;
+}
+function mergeScoped(baseDoc, scopedPageResult, bbox) {
+  const target = targetOf(bbox);
+  const base = baseDoc && typeof baseDoc === "object" ? baseDoc : {};
+  const baseBlocks = base.blocks && typeof base.blocks === "object" ? base.blocks : {};
+  const baseOrder = Array.isArray(base.order) ? base.order : [];
+  let page = target.page;
+  if (page == null && target.bbox) {
+    let best = 0;
+    for (const block of Object.values(baseBlocks)) {
+      const score = iou(block?.bbox, target.bbox);
+      if (score > best) {
+        best = score;
+        page = block.page;
+      }
+    }
+  }
+  const scopedBlocks = scopedPageResult?.blocks && typeof scopedPageResult.blocks === "object" ? scopedPageResult.blocks : {};
+  const scopedOrder = Array.isArray(scopedPageResult?.order) ? scopedPageResult.order : Object.keys(scopedBlocks);
+  const incoming = [];
+  for (const id of scopedOrder) {
+    const block = scopedBlocks[id];
+    if (!block || !samePage(block, page)) continue;
+    if (target.bbox && iou(block.bbox, target.bbox) >= IOU_MIN) incoming.push(block);
+  }
+  if (!incoming.length || !target.bbox) return baseDoc;
+  const drop = /* @__PURE__ */ new Set();
+  const consider = /* @__PURE__ */ new Set([...baseOrder, ...Object.keys(baseBlocks)]);
+  for (const id of consider) {
+    const block = baseBlocks[id];
+    if (!block || !samePage(block, page)) continue;
+    if (iou(block.bbox, target.bbox) >= IOU_MIN) drop.add(id);
+  }
+  const used = new Set(Object.keys(baseBlocks).filter((id) => !drop.has(id)));
+  const fresh = incoming.map((block) => {
+    const id = freshId(used);
+    return { ...block, id, engine: "docling" };
+  });
+  const order = [];
+  let inserted = false;
+  for (const id of baseOrder) {
+    if (drop.has(id)) {
+      if (!inserted) {
+        for (const block of fresh) order.push(block.id);
+        inserted = true;
+      }
+      continue;
+    }
+    order.push(id);
+  }
+  if (!inserted) {
+    for (const block of fresh) order.push(block.id);
+  }
+  const blocks = {};
+  for (const [id, block] of Object.entries(baseBlocks)) {
+    if (!drop.has(id)) blocks[id] = block;
+  }
+  for (const block of fresh) blocks[block.id] = block;
+  const grouped = [];
+  const index = /* @__PURE__ */ new Map();
+  for (const id of order) {
+    const engine = blocks[id]?.engine || base.engine || "builtin";
+    if (!index.has(engine)) {
+      const entry = { engine, ids: [] };
+      if (engine === "docling") {
+        entry.engineVersion = scopedPageResult?.engineVersion || null;
+        entry.bbox = target.bbox;
+        if (page != null) entry.page = page;
+      } else if (base.engineVersion) {
+        entry.engineVersion = base.engineVersion;
+      }
+      index.set(engine, entry);
+      grouped.push(entry);
+    }
+    index.get(engine).ids.push(id);
+  }
+  return {
+    ...base,
+    schema: SCHEMA2,
+    engine: "mixed",
+    sources: grouped,
+    order,
+    blocks
+  };
+}
+
+// src/model/parse-to-text.js
+function csvField(value, sep) {
+  const text3 = value == null ? "" : String(value);
+  const needs = sep === "	" ? /["\t\r\n]/ : /[",\r\n]/;
+  if (!needs.test(text3)) return text3;
+  return `"${text3.replace(/"/g, '""')}"`;
+}
+function toCSV(table, { tsv = false } = {}) {
+  const sep = tsv ? "	" : ",";
+  const grid = tableGrid(table);
+  const lines = grid.map((row4) => row4.map((slot2) => {
+    const text3 = !slot2 || slot2.covered || slot2.cell == null ? "" : String(slot2.text ?? "");
+    return csvField(text3, sep);
+  }).join(sep));
+  return lines.join("\r\n");
+}
+function htmlEscape(text3) {
+  return String(text3 ?? "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+function gfmCell(text3) {
+  return String(text3 ?? "").replace(/\|/g, "\\|").replace(/\n/g, " ");
+}
+function tableHasSpan(table) {
+  return (table.cells || []).some((cell) => (cell.rowSpan ?? 1) > 1 || (cell.colSpan ?? 1) > 1);
+}
+function tableToMarkdown(table) {
+  const grid = tableGrid(table);
+  if (!grid.length) return "";
+  if (!tableHasSpan(table)) {
+    const width = grid[0].length;
+    const lines = grid.map((row4) => `| ${row4.map((slot2) => gfmCell(slot2.text)).join(" | ")} |`);
+    const rule = `| ${Array.from({ length: width }, () => "---").join(" | ")} |`;
+    lines.splice(1, 0, rule);
+    return lines.join("\n");
+  }
+  const body = grid.map((row4) => {
+    const cells = [];
+    for (const slot2 of row4) {
+      if (slot2.covered) continue;
+      const cell = slot2.cell;
+      const tag = cell?.header ? "th" : "td";
+      const rs = cell && (cell.rowSpan ?? 1) > 1 ? ` rowspan="${cell.rowSpan}"` : "";
+      const cs = cell && (cell.colSpan ?? 1) > 1 ? ` colspan="${cell.colSpan}"` : "";
+      const text3 = cell ? htmlEscape(cell.text ?? "") : "";
+      cells.push(`<${tag}${rs}${cs}>${text3}</${tag}>`);
+    }
+    return `<tr>${cells.join("")}</tr>`;
+  });
+  return `<table>
+${body.join("\n")}
+</table>`;
+}
+var SUPERSCRIPT = {
+  "⁰": "0",
+  "¹": "1",
+  "²": "2",
+  "³": "3",
+  "⁴": "4",
+  "⁵": "5",
+  "⁶": "6",
+  "⁷": "7",
+  "⁸": "8",
+  "⁹": "9"
+};
+function footnoteText(text3, refs) {
+  let out = String(text3 ?? "");
+  for (const ref of refs || []) {
+    const mark = String(ref.mark ?? "");
+    if (!mark || out.includes(`[^${mark}]`)) continue;
+    const sup2 = Object.keys(SUPERSCRIPT).find((ch) => SUPERSCRIPT[ch] === mark);
+    if (sup2 && out.includes(sup2)) out = out.replace(sup2, `[^${mark}]`);
+    else out += `[^${mark}]`;
+  }
+  return out;
+}
+function toMarkdown(doc, idsOrRange) {
+  const blocks = selectBlocks(doc, idsOrRange);
+  const byId = new Map(blocks.map((block) => [block.id, block]));
+  const lines = [];
+  const notes = [];
+  const seenNotes = /* @__PURE__ */ new Set();
+  const skip = /* @__PURE__ */ new Set();
+  for (const block of blocks) {
+    if (block.type === "caption" && block.for && byId.has(block.for)) skip.add(block.id);
+  }
+  const captionOf = (block) => {
+    for (const other of blocks) {
+      if (other.type === "caption" && other.for === block.id) return other.text || "";
+    }
+    if (typeof block.caption === "string" && !byId.has(block.caption)) return block.caption;
+    return "";
+  };
+  for (const block of blocks) {
+    if (skip.has(block.id)) continue;
+    if (block.type === "heading") {
+      const level = Math.min(Math.max(block.level || 1, 1), 6);
+      lines.push(`${"#".repeat(level)} ${block.text ?? ""}`);
+    } else if (block.type === "para") {
+      lines.push(footnoteText(block.text ?? "", block.footnoteRefs));
+    } else if (block.type === "list") {
+      for (const item of block.items || []) {
+        const depth = Number.isInteger(item.level) && item.level > 0 ? item.level : 0;
+        const pad2 = "  ".repeat(depth);
+        const marker = block.ordered ? `${item.marker || "1."} ` : "- ";
+        const bullet = block.ordered ? marker : "- ";
+        const keep = !block.ordered && item.marker && item.marker !== "•" && item.marker !== "-" ? `${item.marker} ` : "";
+        const orderedText = block.ordered ? `${item.marker && item.marker !== "1." ? `${item.marker} ` : ""}${item.text ?? ""}` : `${keep}${item.text ?? ""}`;
+        lines.push(`${pad2}${block.ordered ? "1. " : bullet}${orderedText}`.trimEnd());
+      }
+    } else if (block.type === "table") {
+      lines.push(tableToMarkdown(block));
+      const caption = captionOf(block);
+      if (caption) lines.push(caption);
+    } else if (block.type === "formula") {
+      if (block.latex) lines.push(`$$${block.latex}$$${block.number ? ` ${block.number}` : ""}`);
+      else lines.push(block.text || "Formula");
+    } else if (block.type === "figure") {
+      const caption = captionOf(block) || block.text || "Figure";
+      const url = block.image?.url || "";
+      lines.push(url ? `![${caption}](${url})` : caption);
+    } else if (block.type === "caption") {
+      lines.push(block.text ?? "");
+    } else if (block.type === "code") {
+      lines.push(`\`\`\`
+${block.text ?? ""}
+\`\`\``);
+    } else if (block.type === "footnote") {
+      if (!seenNotes.has(block.id)) {
+        seenNotes.add(block.id);
+        notes.push(`[^${block.mark}]: ${block.text ?? ""}`);
+      }
+    } else if (block.type === "scan") {
+      lines.push(`Scanned page ${block.page} (no text)`);
+    }
+    for (const ref of block.footnoteRefs || []) {
+      const note = ref.to ? byId.get(ref.to) : null;
+      if (note && !seenNotes.has(note.id)) {
+        seenNotes.add(note.id);
+        notes.push(`[^${note.mark}]: ${note.text ?? ""}`);
+      }
+    }
+  }
+  if (notes.length) lines.push(notes.join("\n"));
+  return lines.join("\n\n");
+}
+
+// src/host/parse-store.js
+var PARSE_DOC_CAP = 50;
+var PARSE_IMAGE_CAP = 200 * 1024 * 1024;
+var META_KEY = "meta:lru";
+function parseKey(sha256, engine, optsHash) {
+  return `${sha256}|${engine}|${optsHash}`;
+}
+function imageKey(sha256, blockId) {
+  return `${sha256}/${blockId}`;
+}
+function requestResult2(req) {
+  return new Promise((resolve) => {
+    let settled = false;
+    const done = (value) => {
+      if (settled) return;
+      settled = true;
+      resolve(value);
+    };
+    try {
+      req.onsuccess = () => done({ ok: true, result: req.result });
+      req.onerror = (event) => {
+        try {
+          event?.preventDefault?.();
+        } catch {
+        }
+        done({ ok: false, result: null });
+      };
+    } catch {
+      done({ ok: false, result: null });
+    }
+  });
+}
+function byteLengthOf(bytes) {
+  if (bytes == null) return 0;
+  if (typeof bytes === "string") return new TextEncoder().encode(bytes).byteLength;
+  if (bytes instanceof ArrayBuffer) return bytes.byteLength;
+  if (ArrayBuffer.isView(bytes)) return bytes.byteLength;
+  if (typeof bytes.size === "number") return bytes.size;
+  return 0;
+}
+function copyBytes(bytes) {
+  if (ArrayBuffer.isView(bytes)) return new Uint8Array(bytes.buffer, bytes.byteOffset, bytes.byteLength).slice();
+  if (bytes instanceof ArrayBuffer) return new Uint8Array(bytes).slice();
+  return bytes;
+}
+function emptyMeta() {
+  return { docs: [], images: [] };
+}
+function createParseStore({ indexedDB: factory, now: now3, docCap = PARSE_DOC_CAP, imageCap = PARSE_IMAGE_CAP } = {}) {
+  const clock = typeof now3 === "function" ? now3 : () => Date.now();
+  const memory = {
+    parse: /* @__PURE__ */ new Map(),
+    images: /* @__PURE__ */ new Map(),
+    index: /* @__PURE__ */ new Map()
+  };
+  let dbPromise = null;
+  let idbDead = !factory;
+  const open = () => {
+    if (idbDead) return Promise.resolve(null);
+    if (!dbPromise) {
+      dbPromise = openDiagramDb(factory).then((db) => {
+        if (!db) {
+          idbDead = true;
+          dbPromise = null;
+        }
+        return db;
+      });
+    }
+    return dbPromise;
+  };
+  const run = async (storeName, mode, fn) => {
+    if (idbDead) return { ok: false };
+    try {
+      const db = await open();
+      if (!db || typeof db.transaction !== "function") {
+        idbDead = true;
+        return { ok: false };
+      }
+      const tx = db.transaction(storeName, mode);
+      const store = tx.objectStore(storeName);
+      return await fn(store);
+    } catch {
+      idbDead = true;
+      return { ok: false };
+    }
+  };
+  const backend = {
+    async get(storeName, key) {
+      if (!idbDead) {
+        const hit = await run(storeName, "readonly", (store) => requestResult2(store.get(key)));
+        if (hit?.ok) return hit.result === void 0 ? null : hit.result;
+      }
+      const map = storeName === STORE_PARSE ? memory.parse : storeName === STORE_PARSE_IMAGES ? memory.images : memory.index;
+      return map.has(key) ? map.get(key) : null;
+    },
+    async put(storeName, key, value) {
+      if (!idbDead) {
+        const wrote = await run(storeName, "readwrite", (store) => requestResult2(store.put(value, key)));
+        if (wrote?.ok) return true;
+      }
+      const map = storeName === STORE_PARSE ? memory.parse : storeName === STORE_PARSE_IMAGES ? memory.images : memory.index;
+      map.set(key, value);
+      return true;
+    },
+    async delete(storeName, key) {
+      if (!idbDead) {
+        const removed = await run(storeName, "readwrite", (store) => requestResult2(store.delete(key)));
+        if (removed?.ok) return true;
+      }
+      const map = storeName === STORE_PARSE ? memory.parse : storeName === STORE_PARSE_IMAGES ? memory.images : memory.index;
+      map.delete(key);
+      return true;
+    },
+    async keys(storeName) {
+      if (!idbDead) {
+        const hit = await run(storeName, "readonly", (store) => {
+          if (typeof store.getAllKeys === "function") return requestResult2(store.getAllKeys());
+          if (typeof store.getAll === "function") {
+            return requestResult2(store.getAll()).then((res) => {
+              if (!res?.ok || !Array.isArray(res.result)) return res;
+              const keys = res.result.map((row4) => row4?.key).filter((key) => key != null);
+              return { ok: true, result: keys };
+            });
+          }
+          return Promise.resolve({ ok: false, result: null });
+        });
+        if (hit?.ok && Array.isArray(hit.result)) return hit.result;
+      }
+      const map = storeName === STORE_PARSE ? memory.parse : storeName === STORE_PARSE_IMAGES ? memory.images : memory.index;
+      return [...map.keys()];
+    }
+  };
+  const loadMeta = async () => {
+    const raw = await backend.get(STORE_PARSE_INDEX, META_KEY);
+    if (!raw || typeof raw !== "object") return emptyMeta();
+    return {
+      docs: Array.isArray(raw.docs) ? raw.docs.filter((key) => typeof key === "string") : [],
+      images: Array.isArray(raw.images) ? raw.images.filter((row4) => row4 && typeof row4.key === "string" && typeof row4.bytes === "number") : []
+    };
+  };
+  const saveMeta = (meta) => backend.put(STORE_PARSE_INDEX, META_KEY, meta);
+  const touch = (list, key) => {
+    const next = list.filter((item) => item !== key);
+    next.push(key);
+    return next;
+  };
+  return {
+    async getParse(sha, engine, optsHash) {
+      try {
+        if (!sha || !engine || !optsHash) return null;
+        const key = parseKey(sha, engine, optsHash);
+        const record = await backend.get(STORE_PARSE, key);
+        if (!record?.doc) return null;
+        const meta = await loadMeta();
+        meta.docs = touch(meta.docs, key);
+        await saveMeta(meta);
+        return record.doc;
+      } catch {
+        return null;
+      }
+    },
+    async putParse(doc) {
+      try {
+        if (!doc || typeof doc !== "object" || !doc.sha256 || !doc.engine) return null;
+        const optsHash = typeof doc.optsHash === "string" && doc.optsHash ? doc.optsHash : await optionsHash(doc.options || {});
+        const key = parseKey(doc.sha256, doc.engine, optsHash);
+        const stored = { ...doc, optsHash };
+        const record = { doc: stored, optsHash, at: clock() };
+        if (!await backend.put(STORE_PARSE, key, record)) return null;
+        const meta = await loadMeta();
+        meta.docs = touch(meta.docs, key);
+        while (meta.docs.length > docCap) {
+          const oldest = meta.docs.shift();
+          if (oldest) await backend.delete(STORE_PARSE, oldest);
+        }
+        await saveMeta(meta);
+        return stored;
+      } catch {
+        return null;
+      }
+    },
+    async findByUrl(url) {
+      try {
+        if (!url) return null;
+        const record = await backend.get(STORE_PARSE_INDEX, url);
+        if (!record || record.sha256 == null) return null;
+        return {
+          sha256: record.sha256,
+          pageCount: record.pageCount ?? null,
+          at: record.at ?? null
+        };
+      } catch {
+        return null;
+      }
+    },
+    async indexUrl(url, info) {
+      try {
+        if (!url || !info || !info.sha256) return null;
+        const record = {
+          sha256: info.sha256,
+          pageCount: Number.isInteger(info.pageCount) ? info.pageCount : null,
+          at: clock()
+        };
+        if (!await backend.put(STORE_PARSE_INDEX, url, record)) return null;
+        return record;
+      } catch {
+        return null;
+      }
+    },
+    async getImage(key) {
+      try {
+        if (!key) return null;
+        const record = await backend.get(STORE_PARSE_IMAGES, key);
+        if (!record || record.bytes == null) return null;
+        const meta = await loadMeta();
+        meta.images = meta.images.filter((row4) => row4.key !== key).concat(
+          meta.images.filter((row4) => row4.key === key)
+        );
+        await saveMeta(meta);
+        return record.bytes;
+      } catch {
+        return null;
+      }
+    },
+    async putImage(key, bytes) {
+      try {
+        if (!key || bytes == null) return null;
+        const size = byteLengthOf(bytes);
+        if (size <= 0 || size > imageCap) return null;
+        const stored = copyBytes(bytes);
+        const meta = await loadMeta();
+        meta.images = meta.images.filter((row4) => row4.key !== key);
+        let used = meta.images.reduce((sum, row4) => sum + row4.bytes, 0);
+        while (meta.images.length && used + size > imageCap) {
+          const oldest = meta.images.shift();
+          used -= oldest.bytes;
+          await backend.delete(STORE_PARSE_IMAGES, oldest.key);
+        }
+        if (!await backend.put(STORE_PARSE_IMAGES, key, { bytes: stored, byteLength: size, at: clock() })) return null;
+        meta.images.push({ key, bytes: size });
+        await saveMeta(meta);
+        return stored;
+      } catch {
+        return null;
+      }
+    },
+    async clear() {
+      try {
+        const meta = await loadMeta();
+        for (const key of meta.docs) await backend.delete(STORE_PARSE, key);
+        for (const row4 of meta.images) await backend.delete(STORE_PARSE_IMAGES, row4.key);
+        const indexKeys = await backend.keys(STORE_PARSE_INDEX);
+        for (const key of indexKeys) await backend.delete(STORE_PARSE_INDEX, key);
+        const parseKeys = await backend.keys(STORE_PARSE);
+        for (const key of parseKeys) await backend.delete(STORE_PARSE, key);
+        const imageKeys = await backend.keys(STORE_PARSE_IMAGES);
+        for (const key of imageKeys) await backend.delete(STORE_PARSE_IMAGES, key);
+        memory.parse.clear();
+        memory.images.clear();
+        memory.index.clear();
+        return true;
+      } catch {
+        return null;
+      }
+    }
+  };
+}
+
+// src/view/parse-engine.js
+async function loadPageData(page, { includeOps = true } = {}) {
+  const viewport = page.getViewport({ scale: 1 });
+  const content = await page.getTextContent({ includeMarkedContent: false });
+  const ops = includeOps ? await page.getOperatorList() : { fnArray: [], argsArray: [] };
+  const fonts = {};
+  for (const name of Object.keys(content.styles || {})) {
+    let font = null;
+    try {
+      font = page.commonObjs && page.commonObjs.has && page.commonObjs.has(name) ? page.commonObjs.get(name) : null;
+    } catch {
+      font = null;
+    }
+    const style = content.styles[name] || {};
+    fonts[name] = {
+      name: font && font.name || style.fontFamily || name,
+      bold: Boolean(font && (font.bold || font.black)),
+      italic: Boolean(font && font.italic),
+      fontFamily: style.fontFamily || null
+    };
+  }
+  return {
+    items: content.items,
+    ops: { fnArray: ops.fnArray, argsArray: ops.argsArray },
+    w: viewport.width,
+    h: viewport.height,
+    rotation: viewport.rotation || 0,
+    transform: Array.from(viewport.transform),
+    fonts
+  };
+}
+
+// src/view/parse-overlay.js
+var FADE_MS = 150;
+function normRotation(rotation) {
+  const n2 = Number(rotation) || 0;
+  return (n2 % 360 + 360) % 360;
+}
+function num3(value, fallback = 0) {
+  const n2 = Number(value);
+  return Number.isFinite(n2) ? n2 : fallback;
+}
+function boxOf4(bbox) {
+  if (!Array.isArray(bbox) || bbox.length < 4) return null;
+  const x0 = num3(bbox[0]);
+  const y0 = num3(bbox[1]);
+  const x1 = num3(bbox[2]);
+  const y1 = num3(bbox[3]);
+  return [Math.min(x0, x1), Math.min(y0, y1), Math.max(x0, x1), Math.max(y0, y1)];
+}
+function viewportSize(w, h, rotation) {
+  const r = normRotation(rotation);
+  if (r === 90 || r === 270) return { w: h, h: w };
+  return { w, h };
+}
+function userBoxToViewport(bbox, page) {
+  const box2 = boxOf4(bbox);
+  if (!box2) return null;
+  const w = num3(page?.w, 1) || 1;
+  const h = num3(page?.h, 1) || 1;
+  const m = viewportTransform(w, h, normRotation(page?.rotation));
+  const corners = [
+    [box2[0], box2[1]],
+    [box2[2], box2[1]],
+    [box2[0], box2[3]],
+    [box2[2], box2[3]]
+  ];
+  const pts = corners.map(([x, y]) => applyPoint(m, x, y));
+  const xs2 = pts.map((p) => p[0]);
+  const ys2 = pts.map((p) => p[1]);
+  return [Math.min(...xs2), Math.min(...ys2), Math.max(...xs2), Math.max(...ys2)];
+}
+function bboxToPageRect(bbox, page, pageEl) {
+  let box2 = boxOf4(bbox);
+  if (!box2) return null;
+  const mediaW = num3(page?.w, 1) || 1;
+  const mediaH = num3(page?.h, 1) || 1;
+  let vw = mediaW;
+  if (page?.userSpace) {
+    box2 = userBoxToViewport(box2, page);
+    vw = viewportSize(mediaW, mediaH, page?.rotation).w || 1;
+  }
+  const client = num3(pageEl?.clientWidth, 0);
+  const scale = (client > 0 ? client : vw) / vw;
+  return {
+    left: box2[0] * scale,
+    top: box2[1] * scale,
+    width: (box2[2] - box2[0]) * scale,
+    height: (box2[3] - box2[1]) * scale,
+    scale
+  };
+}
+function place(node2, rect) {
+  node2.style.position = "absolute";
+  node2.style.left = `${rect.left}px`;
+  node2.style.top = `${rect.top}px`;
+  node2.style.width = `${Math.max(0, rect.width)}px`;
+  node2.style.height = `${Math.max(0, rect.height)}px`;
+}
+function createParseOverlay({ doc, pageEl, pageOf: pageOf3, onResplit } = {}) {
+  const owned = [];
+  const bound = [];
+  let fadeTimer = null;
+  let drag = null;
+  const win = () => doc?.defaultView || null;
+  const dropNode = (node2) => {
+    try {
+      node2?.remove?.();
+    } catch {
+    }
+  };
+  const clearNow = () => {
+    if (fadeTimer != null) {
+      const w = win();
+      (w?.clearTimeout || clearTimeout)(fadeTimer);
+      fadeTimer = null;
+    }
+    endDrag();
+    while (bound.length) {
+      const [node2, type, fn, capture] = bound.pop();
+      try {
+        node2?.removeEventListener?.(type, fn, capture);
+      } catch {
+      }
+    }
+    while (owned.length) dropNode(owned.pop());
+  };
+  const track = (node2, type, fn, capture = false) => {
+    node2.addEventListener(type, fn, capture);
+    bound.push([node2, type, fn, capture]);
+  };
+  const endDrag = () => {
+    const state = drag;
+    drag = null;
+    if (!state) return;
+    const w = win();
+    w?.removeEventListener?.("pointermove", state.move, true);
+    w?.removeEventListener?.("pointerup", state.up, true);
+    w?.removeEventListener?.("pointercancel", state.up, true);
+  };
+  const pageBox = (pageNumber) => {
+    const el = pageEl?.(pageNumber);
+    const info = pageOf3?.(pageNumber) || {};
+    return { el, info };
+  };
+  const add = (parent, cls) => {
+    const node2 = doc.createElement("div");
+    node2.className = cls;
+    node2.style.pointerEvents = "none";
+    parent.append(node2);
+    owned.push(node2);
+    return node2;
+  };
+  const show = (block) => {
+    clearNow();
+    if (!block || !doc) return null;
+    const pageNumber = block.page;
+    const { el, info } = pageBox(pageNumber);
+    if (!el) return null;
+    const rect = bboxToPageRect(block.bbox, info, el);
+    if (!rect) return null;
+    const node2 = add(el, "pxd-parse-region");
+    place(node2, rect);
+    node2.setAttribute("data-block", block.id || "");
+    return node2;
+  };
+  const showGrid = (table) => {
+    clearNow();
+    if (!table || !doc) return;
+    const { el, info } = pageBox(table.page);
+    if (!el) return;
+    const grid = table.grid || {};
+    const xs2 = Array.isArray(grid.xs) ? grid.xs : [];
+    const ys2 = Array.isArray(grid.ys) ? grid.ys : [];
+    const tableRect = bboxToPageRect(table.bbox, info, el);
+    if (tableRect) {
+      const frame = add(el, "pxd-parse-region pxd-parse-region--table");
+      place(frame, tableRect);
+    }
+    for (let r = 0; r < ys2.length - 1; r += 1) {
+      for (let c = 0; c < xs2.length - 1; c += 1) {
+        const cell = bboxToPageRect([xs2[c], ys2[r], xs2[c + 1], ys2[r + 1]], info, el);
+        if (!cell) continue;
+        const node2 = add(el, "pxd-parse-grid");
+        place(node2, cell);
+      }
+    }
+    for (const cell of table.cells || []) {
+      const rs = cell.rowSpan ?? 1;
+      const cs = cell.colSpan ?? 1;
+      if (rs < 2 && cs < 2) continue;
+      const rect = bboxToPageRect(cell.bbox, info, el);
+      if (!rect) continue;
+      const node2 = add(el, "pxd-parse-merge");
+      place(node2, rect);
+    }
+    for (let i = 1; i < xs2.length - 1; i += 1) {
+      const line = bboxToPageRect([xs2[i], ys2[0] ?? table.bbox?.[1] ?? 0, xs2[i], ys2[ys2.length - 1] ?? table.bbox?.[3] ?? 0], info, el);
+      if (!line) continue;
+      const handle = doc.createElement("div");
+      handle.className = "pxd-parse-col";
+      handle.style.position = "absolute";
+      handle.style.left = `${line.left - 3}px`;
+      handle.style.top = `${line.top}px`;
+      handle.style.width = "6px";
+      handle.style.height = `${Math.max(0, line.height)}px`;
+      handle.style.pointerEvents = "auto";
+      handle.setAttribute("data-col", String(i));
+      handle.setAttribute("role", "separator");
+      handle.setAttribute("aria-orientation", "vertical");
+      el.append(handle);
+      owned.push(handle);
+      const onDown = (event) => {
+        if (event.button != null && event.button !== 0) return;
+        event.stopPropagation?.();
+        const scale = line.scale || bboxToPageRect([0, 0, 1, 1], info, el)?.scale || 1;
+        const startX = num3(event.clientX);
+        const origin = xs2.slice();
+        const move = (ev) => {
+          const dx = (num3(ev.clientX) - startX) / scale;
+          const next = origin.slice();
+          const lo = origin[i - 1] + 4;
+          const hi = origin[i + 1] - 4;
+          next[i] = Math.min(hi, Math.max(lo, origin[i] + dx));
+          const moved = bboxToPageRect([next[i], 0, next[i], 1], info, el);
+          if (moved) handle.style.left = `${moved.left - 3}px`;
+          drag.xs = next;
+        };
+        const up = () => {
+          const xsNext = drag?.xs;
+          endDrag();
+          if (xsNext && typeof onResplit === "function") onResplit(table, xsNext);
+        };
+        endDrag();
+        drag = { move, up, xs: origin.slice() };
+        const w = win();
+        w?.addEventListener?.("pointermove", move, true);
+        w?.addEventListener?.("pointerup", up, true);
+        w?.addEventListener?.("pointercancel", up, true);
+      };
+      track(handle, "pointerdown", onDown);
+    }
+  };
+  return {
+    show,
+    showGrid,
+    flash(block) {
+      const node2 = show(block);
+      if (!node2) return;
+      node2.classList.add("pxd-parse-region--flash");
+    },
+    hide() {
+      for (const node2 of owned) node2.classList.add("pxd-parse-region--fade");
+      const w = win();
+      const later = w?.setTimeout || setTimeout;
+      if (fadeTimer != null) (w?.clearTimeout || clearTimeout)(fadeTimer);
+      fadeTimer = later(() => {
+        fadeTimer = null;
+        clearNow();
+      }, FADE_MS);
+    },
+    dispose() {
+      clearNow();
+    }
+  };
+}
+
+// src/view/make-highlight.js
+var CALLBACKS = ["onSelectionFinished", "addHighlight", "addPdfHighlight"];
+function rectOf3(bbox, page) {
+  const box2 = Array.isArray(bbox) ? bbox : [0, 0, 0, 0];
+  const width = Number(page?.w) || 0;
+  const height = Number(page?.h) || 0;
+  const pageNumber = Number(page?.n || page?.page) || 1;
+  const scaled = {
+    x1: box2[0],
+    y1: box2[1],
+    x2: box2[2],
+    y2: box2[3],
+    width,
+    height,
+    pageNumber
+  };
+  return scaled;
+}
+function highlightPosition(block, page) {
+  const scaled = rectOf3(block?.bbox, { ...page, n: block?.page });
+  return {
+    boundingRect: scaled,
+    rects: [scaled],
+    pageNumber: block?.page || scaled.pageNumber
+  };
+}
+function callbackOf(context) {
+  if (!context || typeof context !== "object") return null;
+  for (const name of CALLBACKS) {
+    if (typeof context[name] === "function") return context[name];
+  }
+  return null;
+}
+function intersects3(a, b) {
+  if (!a || !b) return false;
+  return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+}
+function spanRect(span, pageEl) {
+  const own = span?.getBoundingClientRect?.();
+  const page = pageEl?.getBoundingClientRect?.();
+  if (!own || !page) return null;
+  return {
+    left: own.left - page.left,
+    top: own.top - page.top,
+    right: own.right - page.left,
+    bottom: own.bottom - page.top
+  };
+}
+function spansInBbox(pageEl, bbox, page) {
+  const want = rectOf3(bbox, page);
+  const target = {
+    left: want.x1,
+    top: want.y1,
+    right: want.x2,
+    bottom: want.y2
+  };
+  const scale = pageEl?.clientWidth > 0 && page?.w > 0 ? pageEl.clientWidth / page.w : 1;
+  const scaled = {
+    left: target.left * scale,
+    top: target.top * scale,
+    right: target.right * scale,
+    bottom: target.bottom * scale
+  };
+  const nodes = pageEl?.querySelectorAll?.(".textLayer span") || [];
+  const hits = [];
+  for (const span of nodes) {
+    const rect = spanRect(span, pageEl);
+    if (intersects3(rect, scaled)) hits.push(span);
+  }
+  return hits;
+}
+function selectSpans(doc, spans) {
+  const sel = doc?.getSelection?.() || doc?.defaultView?.getSelection?.();
+  if (!sel || !spans?.length || typeof doc?.createRange !== "function") return false;
+  try {
+    sel.removeAllRanges?.();
+  } catch {
+  }
+  const range = doc.createRange();
+  const first = spans[0];
+  const last = spans[spans.length - 1];
+  try {
+    range.setStart(first.firstChild || first, 0);
+    const end = last.firstChild || last;
+    const len = typeof end.length === "number" ? end.length : end.childNodes?.length || 0;
+    range.setEnd(end, len);
+    sel.addRange(range);
+    return true;
+  } catch {
+    return false;
+  }
+}
+function uidOf2(result) {
+  if (typeof result === "string") return result;
+  if (result && typeof result === "object") {
+    if (typeof result.uid === "string") return result.uid;
+    if (typeof result.id === "string") return result.id;
+  }
+  return "";
+}
+async function makeHighlight({ block, live, pageEl, page, getContext, adoptCreated, toast } = {}) {
+  if (!block || block.type !== "para" && block.type !== "heading" && block.type !== "list" && block.type !== "caption" && block.type !== "footnote" && block.type !== "code") {
+    return { path: "skip", reason: "not-text" };
+  }
+  const context = typeof getContext === "function" ? getContext() : null;
+  const fn = callbackOf(context);
+  if (fn) {
+    let result = null;
+    try {
+      result = await fn(highlightPosition(block, page), { text: block.text || "" });
+    } catch {
+      result = null;
+    }
+    const uid = uidOf2(result);
+    if (uid) {
+      try {
+        adoptCreated?.(uid);
+      } catch {
+      }
+      return { path: "roam", uid };
+    }
+  }
+  const pageNode = typeof pageEl === "function" ? pageEl(block.page) : pageEl;
+  const doc = pageNode?.ownerDocument || live?.ownerDocument || null;
+  const spans = spansInBbox(pageNode, block.bbox, page);
+  selectSpans(doc, spans);
+  const layer = pageNode?.querySelector?.(".textLayer") || pageNode;
+  if (layer && doc) {
+    const event = { type: "mouseup", button: 0, bubbles: true, cancelable: true, target: layer };
+    try {
+      if (typeof layer.dispatchEvent === "function" && typeof doc.createEvent === "function") {
+        layer.dispatchEvent(new (doc.defaultView?.MouseEvent || MouseEvent)("mouseup", { bubbles: true, cancelable: true }));
+      } else {
+        layer.dispatchEvent?.(event);
+      }
+    } catch {
+      try {
+        layer.dispatchEvent?.(event);
+      } catch {
+      }
+    }
+  }
+  const message = "Pick a colour to save the highlight";
+  try {
+    toast?.(message);
+  } catch {
+  }
+  return { path: "picker", message };
+}
+
+// src/view/parse-view.js
+init_cards();
+var PARSE_MIME = "application/x-plexus-parse";
+var BUILTIN_OPTIONS = Object.freeze({ ocr: "none", formula: false, tables: "builtin" });
+var SYNC_MS = 250;
+var LOW_CONFIDENCE = 0.75;
+var BOTH_MIN_PX = 640;
+var URLS_KEY = "pxd-parse-urls";
+var HELPER_START = "tools/parse-helper/bin/plexus-parse-helper serve";
+var TEXT_TYPES = /* @__PURE__ */ new Set(["heading", "para", "list", "caption", "footnote", "code"]);
+function reasonLabel(reason) {
+  if (reason === "page-number") return "page numbers";
+  if (reason === "running-header" || reason === "header") return "running header";
+  if (reason === "running-footer" || reason === "footer") return "running footer";
+  return String(reason || "furniture").replace(/-/g, " ");
+}
+function removedSummary(removed) {
+  const counts = /* @__PURE__ */ new Map();
+  for (const row4 of removed || []) {
+    const label = reasonLabel(row4?.reason);
+    counts.set(label, (counts.get(label) || 0) + 1);
+  }
+  if (!counts.size) return "";
+  const parts = [...counts].map(([label, n2]) => `${label} (${n2})`);
+  return `Removed: ${parts.join(" · ")}`;
+}
+function formatSeconds(ms) {
+  const s = Math.max(0, Number(ms) || 0) / 1e3;
+  const text3 = s < 10 ? s.toFixed(1) : String(Math.round(s));
+  return `${text3} s`;
+}
+function engineChip({ phase = "idle", engine = "builtin", ms = null, page = 0, pageCount = 0, helper = "" } = {}) {
+  if (phase === "running") {
+    const which = engine === "docling" ? "Docling" : "built-in";
+    return { text: `Page ${page} of ${pageCount}`, cancel: true, detail: which };
+  }
+  if (helper === "not-running" || helper === "disabled") {
+    return { text: "Docling: not running", tip: `${HELPER_START}. Paste the token into Settings.` };
+  }
+  if (helper === "wrong-token") return { text: "Docling: wrong token", tip: "Paste the helper token into Settings." };
+  if (helper === "models-missing") return { text: "Docling: downloading models", tip: "The helper is downloading models." };
+  if (helper === "newer-schema") return { text: "Docling: newer schema", tip: "This Plexus is older than the helper." };
+  if ((engine === "docling" || engine === "mixed") && ms != null) return { text: `Docling · ${formatSeconds(ms)}` };
+  if (ms != null) return { text: `Built-in · ${formatSeconds(ms)}` };
+  return { text: "Built-in" };
+}
+function blockGroup(type) {
+  if (type === "table") return "table";
+  if (type === "figure") return "figure";
+  if (type === "formula") return "formula";
+  if (type === "scan") return "scan";
+  return "text";
+}
+function visibleBlocks(doc, { filters, query, range } = {}) {
+  const on = filters || { text: true, table: true, figure: true, formula: true };
+  const needle = String(query || "").trim().toLowerCase();
+  let blocks = selectBlocks(doc, range || null);
+  if (Array.isArray(range) && range.length === 2 && range.every((n2) => typeof n2 === "number")) {
+    blocks = selectBlocks(doc, range);
+  }
+  return blocks.filter((block) => {
+    const group = blockGroup(block.type);
+    if (group === "scan") return false;
+    if (on[group] === false) return false;
+    if (!needle) return true;
+    return haystack(block).includes(needle);
+  });
+}
+function haystack(block) {
+  const parts = [block.text, block.latex, block.number];
+  for (const item of block.items || []) parts.push(item.text, item.marker);
+  for (const cell of block.cells || []) parts.push(cell.text);
+  return parts.filter(Boolean).join(" ").toLowerCase();
+}
+function copyText(doc, ids, { shift = false } = {}) {
+  const blocks = selectBlocks(doc, ids);
+  const tables = blocks.filter((block) => block.type === "table");
+  if (shift && tables.length || blocks.length === 1 && blocks[0]?.type === "table") {
+    return { format: "csv", text: tables.map((table) => toCSV(table)).join("\r\n\r\n") };
+  }
+  return { format: "md", text: toMarkdown(doc, ids) };
+}
+function dragPayload({ sha256 = "", engine = "builtin", optsHash = "", ids = [], pdfUid = "", kind = "blocks" } = {}) {
+  return { sha256, engine, optsHash, ids: ids.slice(), pdfUid, kind };
+}
+function syncDecision({ locked = false, wheeling = false, now: now3 = 0, last = null, throttle = SYNC_MS } = {}) {
+  if (locked || wheeling) return { jump: false, last };
+  if (last != null && now3 - last < throttle) return { jump: false, last };
+  return { jump: true, last: now3 };
+}
+function keyCommand(event, { textEntry = false, owned = false } = {}) {
+  if (!owned || textEntry || !event) return null;
+  const key = event.key;
+  const meta = Boolean(event.metaKey || event.ctrlKey);
+  if (key === "ArrowDown") return event.shiftKey ? "extend-next" : "next";
+  if (key === "ArrowUp") return event.shiftKey ? "extend-prev" : "prev";
+  if (key === " ") return "toggle";
+  if (key === "Enter" && meta) return "send";
+  if (key === "Enter") return "locate";
+  if ((key === "c" || key === "C") && meta) return "copy";
+  if (key === "i" || key === "I") return "insert";
+  if (key === "h" || key === "H") return "highlight";
+  if (key === "d" || key === "D") return "docling-table";
+  if (key === "[") return "prev-table";
+  if (key === "]") return "next-table";
+  if (key === "/") return "search";
+  if (key === "Escape") return "clear";
+  return null;
+}
+function parseOwnsKey(event, root, pointerTarget) {
+  if (!root) return false;
+  const active = root.ownerDocument?.activeElement || null;
+  if (isTextEntryTarget(event?.target) || isTextEntryTarget(active)) return false;
+  if (active && root.contains?.(active)) return true;
+  if (event?.target && root.contains?.(event.target)) return true;
+  if (pointerTarget && root.contains?.(pointerTarget)) return true;
+  return false;
+}
+function readParsedUrls(storage) {
+  try {
+    const raw = storage?.getItem?.(URLS_KEY);
+    const list = JSON.parse(raw || "[]");
+    return new Set(Array.isArray(list) ? list.filter((url) => typeof url === "string" && url) : []);
+  } catch {
+    return /* @__PURE__ */ new Set();
+  }
+}
+function rememberParsedUrl(storage, url) {
+  if (!url || !storage?.setItem) return;
+  const urls2 = readParsedUrls(storage);
+  urls2.delete(url);
+  const next = [url, ...urls2].slice(0, 50);
+  try {
+    storage.setItem(URLS_KEY, JSON.stringify(next));
+  } catch {
+  }
+}
+function tableChipLabel(table) {
+  if (!table) return "";
+  if (table.method === "tableformer") return "TableFormer";
+  const method = table.method || "table";
+  const conf = typeof table.confidence === "number" ? table.confidence.toFixed(2) : "";
+  return conf ? `${method} · ${conf}` : method;
+}
+function scanSpan(doc) {
+  const pages = (doc?.pages || []).filter((page) => page.kind === "scan").map((page) => page.n);
+  const blocks = selectBlocks(doc, null).filter((block) => block.type === "scan").map((block) => block.page);
+  const nums = [.../* @__PURE__ */ new Set([...pages, ...blocks])].sort((a, b) => a - b);
+  if (!nums.length) return "";
+  const from = nums[0];
+  const to = nums[nums.length - 1];
+  const label = from === to ? String(from) : `${from}–${to}`;
+  return `Scanned pages ${label} · Parse with Docling for OCR`;
+}
+function setHidden(node2, on) {
+  if (!node2) return;
+  node2.hidden = Boolean(on);
+  if (on) node2.setAttribute("hidden", "");
+  else node2.removeAttribute("hidden");
+}
+function kindOf(blocks) {
+  if (blocks.length === 1 && blocks[0].type === "table") return "table";
+  if (blocks.length === 1 && (blocks[0].type === "figure" || blocks[0].type === "formula")) return blocks[0].type;
+  return "blocks";
+}
+function wordsFromTable(table) {
+  const words = [];
+  for (const cell of table?.cells || []) {
+    const box2 = cell.bbox;
+    if (!Array.isArray(box2)) continue;
+    const size = Math.max(8, (box2[3] - box2[1]) * 0.6);
+    words.push({ x0: box2[0], x1: box2[2], base: box2[3] - size * 0.2, size, text: cell.text || "" });
+  }
+  return words;
+}
+function emptyGeometry(n2) {
+  return {
+    n: n2,
+    w: 612,
+    h: 792,
+    rotation: 0,
+    kind: "text",
+    lines: [],
+    rotated: [],
+    words: [],
+    graphics: { dots: [], rules: [], boxes: [], images: [] },
+    tables: [],
+    figures: [],
+    used: /* @__PURE__ */ new Set(),
+    ms: 0
+  };
+}
+function createParseView({
+  doc = globalThis.document,
+  store = null,
+  helper = null,
+  session = null,
+  host = null,
+  storage = null,
+  pdfUid = "",
+  url = "",
+  getPdf = null,
+  loadGeometry = null,
+  jumpPage = null,
+  pageNow = null,
+  pageEl = null,
+  pageOf: pageOf3 = null,
+  readerEl = null,
+  writeText = null,
+  onToast = null,
+  onCached = null,
+  onProgress = null,
+  adoptCreated = null,
+  getContext = null,
+  clock = null
+} = {}) {
+  const el = (tag, cls, parent) => {
+    const node2 = doc.createElement(tag);
+    if (cls) node2.className = cls;
+    parent?.append?.(node2);
+    return node2;
+  };
+  const now3 = () => typeof clock === "function" ? clock() : Date.now();
+  const root = el("div", "pxd-parse");
+  root.tabIndex = -1;
+  root.setAttribute("role", "region");
+  root.setAttribute("aria-label", "Parsed PDF");
+  const bar = el("div", "pxd-parse__bar", root);
+  const rangeInput = el("input", "pxd-parse__range", bar);
+  rangeInput.type = "text";
+  rangeInput.value = "All";
+  rangeInput.setAttribute("aria-label", "Page range");
+  rangeInput.setAttribute("data-tip", "parse.range");
+  const currentBtn = el("button", "pxd-parse__chip", bar);
+  currentBtn.type = "button";
+  currentBtn.textContent = "Current page";
+  const allBtn = el("button", "pxd-parse__chip", bar);
+  allBtn.type = "button";
+  allBtn.textContent = "All";
+  allBtn.setAttribute("aria-pressed", "true");
+  const chip = el("button", "pxd-parse__engine", bar);
+  chip.type = "button";
+  chip.textContent = "Built-in";
+  const doclingBtn = el("button", "pxd-parse__docling", bar);
+  doclingBtn.type = "button";
+  doclingBtn.textContent = "Parse with Docling";
+  doclingBtn.setAttribute("data-tip", "parse.docling");
+  const filters = { text: true, table: true, figure: true, formula: true };
+  const filterBtns = {};
+  for (const name of ["Text", "Tables", "Figures", "Formulas"]) {
+    const key = name === "Tables" ? "table" : name === "Figures" ? "figure" : name === "Formulas" ? "formula" : "text";
+    const button = el("button", "pxd-parse__filter", bar);
+    button.type = "button";
+    button.textContent = name;
+    button.setAttribute("aria-pressed", "true");
+    button.setAttribute("data-filter", key);
+    filterBtns[key] = button;
+  }
+  const search = el("input", "pxd-parse__search", bar);
+  search.type = "search";
+  search.placeholder = "Search";
+  search.setAttribute("aria-label", "Search parsed text");
+  search.setAttribute("data-tip", "parse.search");
+  const lockBtn = el("button", "pxd-parse__lock", bar);
+  lockBtn.type = "button";
+  lockBtn.textContent = "⇅";
+  lockBtn.setAttribute("aria-label", "Sync scroll");
+  lockBtn.setAttribute("aria-pressed", "true");
+  lockBtn.setAttribute("data-tip", "parse.sync");
+  const cancelBtn = el("button", "pxd-parse__cancel", bar);
+  cancelBtn.type = "button";
+  cancelBtn.textContent = "Cancel";
+  cancelBtn.setAttribute("data-tip", "parse.cancel");
+  setHidden(cancelBtn, true);
+  const track = el("div", "pxd-parse__track", root);
+  const fill = el("div", "pxd-parse__fill", track);
+  setHidden(track, true);
+  const body = el("div", "pxd-parse__body", root);
+  body.tabIndex = 0;
+  const empty = el("div", "pxd-parse__empty", body);
+  empty.textContent = "No parse yet · Parse (built-in)";
+  const parseBtn = el("button", "pxd-parse__go", empty);
+  parseBtn.type = "button";
+  parseBtn.textContent = "Parse (built-in)";
+  const foot = el("div", "pxd-parse__foot", root);
+  setHidden(foot, true);
+  const summary = el("span", "pxd-parse__summary", foot);
+  const copyBtn = el("button", "pxd-parse__act", foot);
+  copyBtn.type = "button";
+  copyBtn.textContent = "Copy";
+  copyBtn.setAttribute("data-tip", "parse.copy");
+  const insertBtn = el("button", "pxd-parse__act", foot);
+  insertBtn.type = "button";
+  insertBtn.textContent = "Insert below PDF";
+  insertBtn.setAttribute("data-tip", "parse.insert");
+  const sendBtn = el("button", "pxd-parse__act", foot);
+  sendBtn.type = "button";
+  sendBtn.textContent = "Send to board";
+  sendBtn.setAttribute("data-tip", "parse.send");
+  const hlBtn = el("button", "pxd-parse__act", foot);
+  hlBtn.type = "button";
+  hlBtn.textContent = "Make highlight";
+  hlBtn.setAttribute("data-tip", "parse.highlight");
+  const tableMenu = el("details", "pxd-parse__insert", foot);
+  const tableSum = el("summary", "", tableMenu);
+  tableSum.textContent = "Insert table";
+  for (const [mode, label] of [["grid", "Roam Grid"], ["native", "Native"], ["flat", "Flat"]]) {
+    const button = el("button", "pxd-parse__act", tableMenu);
+    button.type = "button";
+    button.textContent = label;
+    button.setAttribute("data-mode", mode);
+  }
+  let currentUrl = url || "";
+  let currentUid2 = pdfUid || "";
+  let parsed = null;
+  let records = [];
+  let query = "";
+  let range = null;
+  let rangeLabel = "All";
+  let selected = [];
+  let anchor = -1;
+  let focusId = "";
+  let pointerTarget = null;
+  let locked = false;
+  let wheelingUntil = 0;
+  let lastJump = null;
+  let echo = false;
+  let abort = null;
+  let jobId = "";
+  let helperState = "";
+  let phase = "idle";
+  let dead = false;
+  let progress = { page: 0, pageCount: 0, engine: "builtin" };
+  let keyFn = null;
+  let wheelFn = null;
+  const armed = [];
+  const blockArmed = [];
+  const listen = (node2, type, fn, capture = false) => {
+    if (!node2 || typeof node2.addEventListener !== "function") return;
+    node2.addEventListener(type, fn, capture);
+    armed.push([node2, type, fn, capture]);
+  };
+  const clearBlockListeners = () => {
+    for (const [node2, type, fn, capture] of blockArmed) {
+      try {
+        node2?.removeEventListener?.(type, fn, capture);
+      } catch {
+      }
+    }
+    blockArmed.length = 0;
+  };
+  const listenBlock = (node2, type, fn, capture = false) => {
+    if (!node2 || typeof node2.addEventListener !== "function") return;
+    node2.addEventListener(type, fn, capture);
+    blockArmed.push([node2, type, fn, capture]);
+  };
+  const overlay = createParseOverlay({
+    doc,
+    pageEl: (n2) => pageEl?.(n2) || null,
+    pageOf: (n2) => pageInfo(n2),
+    onResplit: (table, xs2) => {
+      void commitResplit(table, xs2);
+    }
+  });
+  function pageInfo(n2) {
+    const fromDoc = (parsed?.pages || []).find((page) => page.n === n2);
+    const given = pageOf3?.(n2);
+    return { w: fromDoc?.w || given?.w || 612, h: fromDoc?.h || given?.h || 792, rotation: fromDoc?.rotation || given?.rotation || 0, ...given || {} };
+  }
+  function shown() {
+    return visibleBlocks(parsed, { filters, query, range });
+  }
+  function idsOf(blocks) {
+    return (blocks || shown()).map((block) => block.id);
+  }
+  function payload(blocks) {
+    const list = blocks || shown().filter((block) => selected.includes(block.id));
+    return dragPayload({
+      sha256: parsed?.sha256 || "",
+      engine: parsed?.engine || "builtin",
+      optsHash: parsed?.optsHash || "",
+      ids: list.map((block) => block.id),
+      pdfUid: currentUid2,
+      kind: kindOf(list)
+    });
+  }
+  function paintChip() {
+    const state = engineChip({
+      phase,
+      engine: progress.engine || parsed?.engine || "builtin",
+      ms: phase === "running" ? null : parsed?.stats?.ms,
+      page: progress.page,
+      pageCount: progress.pageCount,
+      helper: phase === "running" ? "" : helperState
+    });
+    chip.textContent = state.text;
+    chip.title = state.tip || "";
+    if (state.tip) chip.setAttribute("data-tip-extra", state.tip);
+    else chip.removeAttribute("data-tip-extra");
+    const tipId = phase === "running" ? "parse.cancel" : helperState === "wrong-token" ? "parse.docling-token" : helperState === "models-missing" ? "parse.docling-models" : helperState === "not-running" || helperState === "disabled" ? "parse.docling-off" : "parse.chip";
+    chip.setAttribute("data-tip", tipId);
+    const running = phase === "running";
+    setHidden(cancelBtn, !running);
+    setHidden(track, !running);
+    const denom = Number(progress.pageCount) || 0;
+    const frac = running && denom ? Math.max(0, Math.min(1, Number(progress.page) / denom)) : 0;
+    fill.style.width = `${Math.round(frac * 100)}%`;
+  }
+  function paintFoot() {
+    const blocks = shown().filter((block) => selected.includes(block.id));
+    setHidden(foot, blocks.length === 0);
+    const tables = blocks.filter((block) => block.type === "table").length;
+    const rest = blocks.length - tables;
+    const bits = [];
+    if (rest) bits.push(`${rest} block${rest === 1 ? "" : "s"}`);
+    if (tables) bits.push(`${tables} table${tables === 1 ? "" : "s"}`);
+    summary.textContent = bits.join(" · ");
+    const textish = blocks.some((block) => TEXT_TYPES.has(block.type));
+    setHidden(hlBtn, !textish);
+    setHidden(tableMenu, tables === 0);
+  }
+  function renderTable(table, parent) {
+    const grid = tableGrid(table);
+    const node2 = el("table", "pxd-parse__table", parent);
+    for (const row4 of grid) {
+      const tr = el("tr", "", node2);
+      for (const slot2 of row4) {
+        if (slot2.covered) continue;
+        const cell = slot2.cell;
+        const tag = cell?.header ? "th" : "td";
+        const td = el(tag, cell?.align === "right" || cell?.numeric ? "pxd-parse__num" : "", tr);
+        if ((cell?.rowSpan ?? 1) > 1) td.setAttribute("rowspan", String(cell.rowSpan));
+        if ((cell?.colSpan ?? 1) > 1) td.setAttribute("colspan", String(cell.colSpan));
+        td.textContent = cell ? String(cell.text ?? "") : "";
+      }
+    }
+    return node2;
+  }
+  function renderBlock(block, parent) {
+    const row4 = el("article", "pxd-parse__block", parent);
+    row4.tabIndex = 0;
+    row4.setAttribute("data-id", block.id);
+    row4.setAttribute("data-type", block.type);
+    row4.setAttribute("data-page", String(block.page ?? ""));
+    if (typeof block.confidence === "number" && block.confidence < LOW_CONFIDENCE) row4.classList.add("pxd-parse__block--low");
+    if (selected.includes(block.id)) row4.classList.add("pxd-parse__block--on");
+    if (focusId === block.id) row4.classList.add("pxd-parse__block--focus");
+    const gutter = el("div", "pxd-parse__gutter", row4);
+    const handle = el("button", "pxd-parse__handle", gutter);
+    handle.type = "button";
+    handle.textContent = "⋮⋮";
+    handle.draggable = true;
+    handle.setAttribute("aria-label", "Drag");
+    const check = el("input", "pxd-parse__check", gutter);
+    check.type = "checkbox";
+    check.checked = selected.includes(block.id);
+    check.setAttribute("aria-label", "Select");
+    const main = el("div", "pxd-parse__main", row4);
+    if (block.type === "heading") {
+      const level = Math.min(6, Math.max(1, block.level || 1));
+      const heading = el(`h${level}`, "pxd-parse__h", main);
+      heading.textContent = block.text || "";
+    } else if (block.type === "list") {
+      const list = el(block.ordered ? "ol" : "ul", "pxd-parse__list", main);
+      for (const item of block.items || []) {
+        const li = el("li", "", list);
+        li.textContent = item.text || "";
+        if (item.level) li.style.marginLeft = `${item.level * 16}px`;
+      }
+    } else if (block.type === "table") {
+      renderTable(block, main);
+      const menu = el("details", "pxd-parse__tmenu", main);
+      const sum = el("summary", "pxd-parse__tchip", menu);
+      sum.textContent = tableChipLabel(block);
+      const again = el("button", "pxd-parse__act", menu);
+      again.type = "button";
+      again.textContent = "Re-parse with Docling";
+      listenBlock(again, "click", (event) => {
+        event.stopPropagation?.();
+        void reparseTable(block);
+      });
+    } else if (block.type === "formula") {
+      if (block.latex) {
+        const math = el("div", "pxd-parse__math", main);
+        try {
+          if (typeof host?.renderString === "function") host.renderString(math, `$$${block.latex}$$`);
+          else math.textContent = block.latex;
+        } catch {
+          math.textContent = block.latex;
+        }
+        if (!math.textContent && !math.childElementCount) {
+          const code = el("code", "pxd-parse__code", math);
+          code.textContent = block.latex;
+        }
+      } else {
+        const img = el("img", "pxd-parse__crop", main);
+        img.alt = block.text || "Formula";
+        void paintCrop(block, img);
+      }
+    } else if (block.type === "figure") {
+      const img = el("img", "pxd-parse__crop", main);
+      img.alt = block.text || "Figure";
+      void paintCrop(block, img);
+    } else if (block.type === "code") {
+      const code = el("code", "pxd-parse__code", main);
+      code.textContent = block.text || "";
+    } else {
+      const p = el("p", "pxd-parse__p", main);
+      p.textContent = block.text || "";
+    }
+    listenBlock(handle, "dragstart", (event) => beginDrag(event, [block]));
+    listenBlock(handle, "pointerdown", (event) => beginPointerDrag(event, [block]));
+    return row4;
+  }
+  function render() {
+    if (dead) return;
+    clearBlockListeners();
+    const blocks = shown();
+    body.replaceChildren?.();
+    if (!parsed) {
+      body.append(empty);
+      empty.textContent = "";
+      empty.append(parseBtn);
+      const lead = el("div", "pxd-parse__lead", empty);
+      lead.textContent = "No parse yet · Parse (built-in)";
+      paintFoot();
+      paintChip();
+      return;
+    }
+    if (!blocks.length) {
+      const note = el("div", "pxd-parse__empty", body);
+      const scan = scanSpan(parsed);
+      const filtered = Boolean(query) || Object.values(filters).some((on) => !on);
+      if (scan && !filtered) note.textContent = scan;
+      else if (!filtered && (helperState === "not-running" || helperState === "disabled")) note.textContent = `Helper not running · Start: ${HELPER_START}`;
+      else note.textContent = "Nothing matches";
+    }
+    let page = null;
+    for (const block of blocks) {
+      if (block.page !== page) {
+        page = block.page;
+        const divider = el("div", "pxd-parse__page", body);
+        divider.textContent = `p. ${page}`;
+        divider.setAttribute("data-page", String(page));
+      }
+      renderBlock(block, body);
+    }
+    const removed = removedSummary(parsed.removed);
+    if (removed) {
+      const box2 = el("details", "pxd-parse__removed", body);
+      const sum = el("summary", "", box2);
+      sum.textContent = removed;
+      for (const row4 of parsed.removed || []) {
+        const line = el("div", "pxd-parse__removedrow", box2);
+        line.textContent = row4.text || "";
+      }
+    }
+    paintFoot();
+    paintChip();
+  }
+  function indexOfId(id) {
+    return shown().findIndex((block) => block.id === id);
+  }
+  function selectIds(ids, { focus = null } = {}) {
+    selected = ids.slice();
+    if (focus) focusId = focus;
+    render();
+    const node2 = body.querySelector?.(`[data-id="${focusId}"]`);
+    try {
+      node2?.focus?.();
+    } catch {
+    }
+  }
+  function move(delta, extend) {
+    const blocks = shown();
+    if (!blocks.length) return;
+    let index = indexOfId(focusId);
+    if (index < 0) index = delta > 0 ? -1 : 0;
+    const next = Math.max(0, Math.min(blocks.length - 1, index + delta));
+    focusId = blocks[next].id;
+    if (anchor < 0) anchor = index < 0 ? next : index;
+    if (extend) {
+      const from = Math.min(anchor, next);
+      const to = Math.max(anchor, next);
+      selected = blocks.slice(from, to + 1).map((block) => block.id);
+    } else {
+      anchor = next;
+      selected = [focusId];
+    }
+    render();
+    try {
+      body.querySelector?.(`[data-id="${focusId}"]`)?.focus?.();
+    } catch {
+    }
+  }
+  function locate(block) {
+    if (!block) return;
+    try {
+      jumpPage?.(block.page);
+    } catch {
+    }
+    const info = pageInfo(block.page);
+    overlay.flash({ ...block, bbox: block.bbox });
+    void info;
+  }
+  async function writeClipboard2(text3) {
+    if (typeof writeText === "function") {
+      await writeText(text3);
+      return;
+    }
+    try {
+      await doc.defaultView?.navigator?.clipboard?.writeText?.(text3);
+    } catch {
+    }
+  }
+  async function copySelection(shift) {
+    const ids = selected.length ? selected : focusId ? [focusId] : [];
+    if (!ids.length || !parsed) return;
+    const result = copyText(parsed, ids, { shift });
+    await writeClipboard2(result.text);
+  }
+  function callSession(name, extra) {
+    const fn = session?.[name];
+    if (typeof fn !== "function") return false;
+    const blocks = shown().filter((block) => selected.includes(block.id));
+    const bodyPayload = payload(blocks.length ? blocks : shown().filter((block) => block.id === focusId));
+    try {
+      fn(extra ? { ...bodyPayload, ...extra } : bodyPayload);
+    } catch {
+    }
+    return true;
+  }
+  function insertSelection() {
+    const blocks = shown().filter((block) => selected.includes(block.id));
+    const kind = kindOf(blocks.length ? blocks : shown().filter((block) => block.id === focusId));
+    if ((kind === "figure" || kind === "formula") && callSession("insertParsedCard")) return true;
+    return callSession("insertParsedBelow");
+  }
+  function beginDrag(event, blocks) {
+    const data = event.dataTransfer;
+    const json = JSON.stringify(payload(blocks));
+    if (data && typeof data.setData === "function") {
+      data.setData(PARSE_MIME, json);
+      try {
+        data.setData("text/plain", json);
+      } catch {
+      }
+      try {
+        data.effectAllowed = "copy";
+      } catch {
+      }
+    }
+    event.stopPropagation?.();
+  }
+  function beginPointerDrag(event, blocks) {
+    if (event.button != null && event.button !== 0) return;
+    const startX = Number(event.clientX) || 0;
+    const startY = Number(event.clientY) || 0;
+    let moved = false;
+    const win = doc.defaultView;
+    const move2 = (ev) => {
+      if (Math.abs((Number(ev.clientX) || 0) - startX) + Math.abs((Number(ev.clientY) || 0) - startY) > 4) moved = true;
+    };
+    const up = (ev) => {
+      win?.removeEventListener?.("pointermove", move2, true);
+      win?.removeEventListener?.("pointerup", up, true);
+      const moveIdx = armed.findIndex((entry) => entry[2] === move2);
+      if (moveIdx >= 0) armed.splice(moveIdx, 1);
+      const upIdx = armed.findIndex((entry) => entry[2] === up);
+      if (upIdx >= 0) armed.splice(upIdx, 1);
+      if (!moved) return;
+      const x = Number(ev.clientX) || 0;
+      const y = Number(ev.clientY) || 0;
+      const hit = doc.elementFromPoint?.(x, y) || doc.body;
+      const json = JSON.stringify(payload(blocks));
+      const transfer = {
+        types: [PARSE_MIME, "text/plain"],
+        getData: (type) => type === PARSE_MIME || type === "text/plain" ? json : "",
+        setData() {
+        }
+      };
+      try {
+        hit?.dispatchEvent?.({ type: "drop", clientX: x, clientY: y, dataTransfer: transfer, preventDefault() {
+        }, stopPropagation() {
+        } });
+      } catch {
+      }
+    };
+    listen(win, "pointermove", move2, true);
+    listen(win, "pointerup", up, true);
+  }
+  function wordsFor(table) {
+    const rec = records.find((row4) => row4.n === table.page);
+    if (rec?.words?.length) return rec.words;
+    return wordsFromTable(table);
+  }
+  async function commitResplit(table, xs2) {
+    if (!parsed?.blocks?.[table.id]) return;
+    const next = resplitColumns(table, wordsFor(table), xs2);
+    next.confidence = 1;
+    next.edited = true;
+    parsed = { ...parsed, blocks: { ...parsed.blocks, [table.id]: { ...next, id: table.id, type: "table", page: table.page } } };
+    try {
+      await store?.putParse?.(parsed);
+    } catch {
+    }
+    render();
+    overlay.showGrid(parsed.blocks[table.id]);
+  }
+  function imageSrc2(cached) {
+    if (typeof cached === "string" && cached) return cached;
+    return "";
+  }
+  async function cropAt2x(block) {
+    const box2 = block?.bbox;
+    if (!Array.isArray(box2) || box2.length < 4) return "";
+    const pdf = typeof getPdf === "function" ? await getPdf() : null;
+    if (!pdf || typeof pdf.getPage !== "function") return "";
+    let page = null;
+    try {
+      page = await pdf.getPage(block.page);
+    } catch {
+      return "";
+    }
+    if (!page || typeof page.getViewport !== "function" || typeof page.render !== "function") return "";
+    const canvas = doc.createElement?.("canvas");
+    const ctx = canvas?.getContext?.("2d");
+    if (!ctx || typeof canvas.toDataURL !== "function") return "";
+    const scale = 2;
+    let viewport = null;
+    try {
+      viewport = page.getViewport({ scale });
+    } catch {
+      return "";
+    }
+    const info = pageInfo(block.page);
+    const vw = Number(viewport?.width) || 0;
+    const vh = Number(viewport?.height) || 0;
+    const sx = vw / (info.w || 1);
+    const sy = vh / (info.h || 1);
+    const left = box2[0] * sx;
+    const top = box2[1] * sy;
+    canvas.width = Math.max(1, Math.ceil((box2[2] - box2[0]) * sx));
+    canvas.height = Math.max(1, Math.ceil((box2[3] - box2[1]) * sy));
+    try {
+      const task = page.render({ canvasContext: ctx, viewport, transform: [1, 0, 0, 1, -left, -top] });
+      if (task?.promise) await task.promise;
+      return canvas.toDataURL("image/png") || "";
+    } catch {
+      return "";
+    }
+  }
+  async function paintCrop(block, img) {
+    const key = parsed?.sha256 ? imageKey(parsed.sha256, block.id) : "";
+    if (key && store?.getImage) {
+      try {
+        const cached = await store.getImage(key);
+        const src = imageSrc2(cached);
+        if (src && img.isConnected !== false) {
+          img.src = src;
+          img.removeAttribute("data-crop");
+          return;
+        }
+      } catch {
+      }
+    }
+    img.setAttribute("data-crop", "pending");
+    const drawn = await cropAt2x(block);
+    if (!drawn || img.isConnected === false) return;
+    img.src = drawn;
+    img.removeAttribute("data-crop");
+    if (key && store?.putImage) {
+      try {
+        await store.putImage(key, drawn);
+      } catch {
+      }
+    }
+  }
+  async function geometryOf(n2, pdf) {
+    if (typeof loadGeometry === "function") {
+      const got = await loadGeometry(n2);
+      if (got?.lines) return got;
+      if (got) return parsePageGeometry(got, n2);
+    }
+    if (!pdf || typeof pdf.getPage !== "function") return emptyGeometry(n2);
+    const page = await pdf.getPage(n2);
+    const data = await loadPageData(page);
+    return parsePageGeometry(data, n2);
+  }
+  function rangeOf(total) {
+    if (Array.isArray(range) && range.length === 2) return [range[0], range[1]];
+    if (rangeLabel === "Current page") {
+      const page = Number(pageNow?.()) || 1;
+      return [page, page];
+    }
+    return [1, total];
+  }
+  async function finishDoc(docResult, ms) {
+    if (dead) return;
+    const optsHash = await optionsHash(docResult.options || BUILTIN_OPTIONS);
+    if (dead) return;
+    parsed = { ...docResult, optsHash, stats: { ...docResult.stats || {}, ms } };
+    phase = "idle";
+    try {
+      await store?.putParse?.(parsed);
+      if (currentUrl) {
+        await store?.indexUrl?.(currentUrl, { sha256: parsed.sha256, pageCount: parsed.pageCount });
+        rememberParsedUrl(storage, currentUrl);
+        try {
+          onCached?.(currentUrl);
+        } catch {
+        }
+      }
+    } catch {
+    }
+    render();
+    onProgress?.({ page: progress.pageCount, pageCount: progress.pageCount, fraction: 1 });
+  }
+  async function parseBuiltin(explicit) {
+    cancel();
+    const ctrl = new AbortController();
+    abort = ctrl;
+    phase = "running";
+    progress = { page: 0, pageCount: 0, engine: "builtin" };
+    paintChip();
+    const pdf = typeof getPdf === "function" ? await getPdf() : null;
+    if (ctrl.signal.aborted) return;
+    const total = Number(pdf?.numPages) || Number(explicit?.numPages) || 1;
+    const [from, to] = explicit?.pages || rangeOf(total);
+    const t0 = now3();
+    records = [];
+    let sha = parsed?.sha256 || "";
+    try {
+      if (!sha && pdf && typeof pdf.getData === "function") sha = await sha256Hex(await pdf.getData());
+    } catch {
+      sha = sha || "";
+    }
+    for (let n2 = from; n2 <= to; n2 += 1) {
+      if (ctrl.signal.aborted) return;
+      progress = { page: n2, pageCount: to, engine: "builtin" };
+      paintChip();
+      onProgress?.({ page: n2, pageCount: to, fraction: (n2 - from + 1) / Math.max(1, to - from + 1) });
+      const rec = await geometryOf(n2, pdf);
+      if (ctrl.signal.aborted) return;
+      records.push(rec);
+      const preview = assembleDocument(records, {
+        numPages: total,
+        sha256: sha,
+        options: BUILTIN_OPTIONS,
+        from,
+        to: n2
+      });
+      preview.stats = { ...preview.stats || {}, ms: now3() - t0 };
+      parsed = preview;
+      render();
+      if (n2 < to) await new Promise((resolve) => setTimeout(resolve, 0));
+    }
+    if (ctrl.signal.aborted) return;
+    const finalDoc = assembleDocument(records, {
+      numPages: total,
+      sha256: sha,
+      options: BUILTIN_OPTIONS,
+      from,
+      to
+    });
+    await finishDoc(finalDoc, now3() - t0);
+  }
+  async function parseDocling() {
+    if (!helper || helperState !== "ready") {
+      helperState = helperState || "not-running";
+      paintChip();
+      return;
+    }
+    cancel();
+    const ctrl = new AbortController();
+    abort = ctrl;
+    phase = "running";
+    progress = { page: 0, pageCount: 0, engine: "docling" };
+    paintChip();
+    const pdf = typeof getPdf === "function" ? await getPdf() : null;
+    const bytes = pdf && typeof pdf.getData === "function" ? await pdf.getData() : null;
+    const result = await helper.parse({
+      bytes,
+      sha256: parsed?.sha256,
+      options: {},
+      signal: ctrl.signal,
+      onProgress: (info) => {
+        progress = { page: info?.page || progress.page, pageCount: info?.total || info?.pageCount || progress.pageCount, engine: "docling" };
+        paintChip();
+        onProgress?.(progress);
+      },
+      onPage: (info) => {
+        if (info?.job) jobId = info.job;
+        progress = { page: info?.page || progress.page, pageCount: info?.total || progress.pageCount, engine: "docling" };
+        paintChip();
+      }
+    });
+    jobId = result?.job || jobId;
+    if (result?.doc) await finishDoc(result.doc, result.doc.stats?.ms ?? 0);
+    else phase = "idle";
+    paintChip();
+  }
+  async function reparseTable(table) {
+    if (!helper || typeof helper.reparseTable !== "function") {
+      helperState = helperState || "not-running";
+      paintChip();
+      render();
+      return;
+    }
+    const pdf = typeof getPdf === "function" ? await getPdf() : null;
+    const bytes = pdf && typeof pdf.getData === "function" ? await pdf.getData() : null;
+    const result = await helper.reparseTable({
+      bytes,
+      sha256: parsed?.sha256,
+      page: table.page,
+      bbox: table.bbox,
+      base: parsed
+    });
+    if (result?.job) jobId = result.job;
+    if (result?.merged) {
+      parsed = result.merged;
+      await finishDoc(parsed, parsed.stats?.ms ?? 0);
+    }
+  }
+  function cancel() {
+    try {
+      abort?.abort?.();
+    } catch {
+    }
+    abort = null;
+    if (jobId && typeof helper?.cancel === "function") {
+      const id = jobId;
+      jobId = "";
+      Promise.resolve(helper.cancel(id)).catch(() => {
+      });
+    }
+    if (phase === "running") phase = "idle";
+    paintChip();
+  }
+  function onKey(event) {
+    const owned = parseOwnsKey(event, root, pointerTarget);
+    const command = keyCommand(event, { textEntry: isTextEntryTarget(event.target) || isTextEntryTarget(doc.activeElement), owned });
+    if (!command) return;
+    event.preventDefault?.();
+    event.stopPropagation?.();
+    if (command === "next") move(1, false);
+    else if (command === "prev") move(-1, false);
+    else if (command === "extend-next") move(1, true);
+    else if (command === "extend-prev") move(-1, true);
+    else if (command === "toggle") {
+      if (!focusId) return;
+      selected = selected.includes(focusId) ? selected.filter((id) => id !== focusId) : selected.concat(focusId);
+      render();
+    } else if (command === "locate") locate(shown().find((block) => block.id === focusId));
+    else if (command === "copy") void copySelection(Boolean(event.shiftKey));
+    else if (command === "send") callSession("sendParsedToBoard");
+    else if (command === "insert") insertSelection();
+    else if (command === "highlight") {
+      const block = shown().find((item) => item.id === (focusId || selected[0]));
+      void makeHighlight({
+        block,
+        live: readerEl,
+        pageEl,
+        page: pageInfo(block?.page),
+        getContext,
+        adoptCreated,
+        toast: onToast
+      });
+    } else if (command === "docling-table") {
+      const block = shown().find((item) => item.id === focusId && item.type === "table") || shown().find((item) => item.type === "table");
+      if (block) void reparseTable(block);
+    } else if (command === "prev-table" || command === "next-table") {
+      const blocks = shown();
+      const tables = blocks.filter((item) => item.type === "table");
+      if (!tables.length) return;
+      const index = tables.findIndex((item) => item.id === focusId);
+      const step = command === "next-table" ? 1 : -1;
+      const next = tables[(index + step + tables.length) % tables.length];
+      focusId = next.id;
+      selected = [next.id];
+      anchor = blocks.findIndex((item) => item.id === next.id);
+      render();
+    } else if (command === "search") {
+      try {
+        search.focus?.();
+      } catch {
+      }
+    } else if (command === "clear") {
+      if (selected.length) {
+        selected = [];
+        anchor = -1;
+        render();
+        return;
+      }
+      try {
+        readerEl?.focus?.();
+      } catch {
+      }
+    }
+  }
+  function firstVisiblePage() {
+    const nodes = body.querySelectorAll?.(".pxd-parse__page") || [];
+    const top = body.getBoundingClientRect?.()?.top ?? 0;
+    let best = null;
+    for (const node2 of nodes) {
+      const rect = node2.getBoundingClientRect?.();
+      const page = Number(node2.getAttribute?.("data-page"));
+      if (!Number.isFinite(page)) continue;
+      if (!best && rect) best = page;
+      if (rect && rect.bottom >= top) return page;
+    }
+    return best;
+  }
+  function onBodyScroll() {
+    if (echo) return;
+    const decision = syncDecision({
+      locked,
+      wheeling: now3() < wheelingUntil,
+      now: now3(),
+      last: lastJump
+    });
+    lastJump = decision.last;
+    if (!decision.jump) return;
+    const page = firstVisiblePage();
+    if (page) {
+      try {
+        jumpPage?.(page);
+      } catch {
+      }
+    }
+  }
+  function armKeys() {
+    if (keyFn) return;
+    keyFn = onKey;
+    const win = doc.defaultView;
+    listen(win, "keydown", keyFn, true);
+  }
+  listen(body, "scroll", onBodyScroll);
+  listen(body, "click", (event) => {
+    const row4 = event.target?.closest?.(".pxd-parse__block");
+    if (!row4) return;
+    const id = row4.getAttribute("data-id");
+    const block = shown().find((item) => item.id === id);
+    if (!block) return;
+    if (event.target?.closest?.(".pxd-parse__check, .pxd-parse__handle, .pxd-parse__tmenu, button, a")) {
+      if (event.target?.closest?.(".pxd-parse__check")) {
+        const extend = event.shiftKey;
+        if (extend && anchor >= 0) move(indexOfId(id) - indexOfId(focusId || id), true);
+        else {
+          focusId = id;
+          anchor = indexOfId(id);
+          selected = selected.includes(id) ? selected.filter((item) => item !== id) : selected.concat(id);
+          render();
+        }
+      }
+      return;
+    }
+    focusId = id;
+    if (event.shiftKey && anchor >= 0) {
+      const next = indexOfId(id);
+      const from = Math.min(anchor, next);
+      const to = Math.max(anchor, next);
+      selected = shown().slice(from, to + 1).map((item) => item.id);
+    } else if (!event.metaKey && !event.ctrlKey) {
+      anchor = indexOfId(id);
+      selected = [id];
+    }
+    render();
+    locate(block);
+    if (block.type === "table") overlay.showGrid(block);
+    else overlay.show(block);
+  });
+  listen(body, "pointerover", (event) => {
+    const row4 = event.target?.closest?.(".pxd-parse__block");
+    if (!row4) return;
+    const block = shown().find((item) => item.id === row4.getAttribute("data-id"));
+    if (!block) return;
+    if (block.type === "table") overlay.showGrid(block);
+    else overlay.show(block);
+  });
+  listen(body, "pointerout", (event) => {
+    const next = event.relatedTarget;
+    if (next && root.contains?.(next)) return;
+    overlay.hide();
+  });
+  listen(root, "pointermove", (event) => {
+    pointerTarget = event.target;
+  });
+  listen(parseBtn, "click", () => {
+    void parseBuiltin();
+  });
+  listen(chip, "click", () => {
+    if (phase === "running") cancel();
+  });
+  listen(cancelBtn, "click", () => cancel());
+  listen(doclingBtn, "click", () => {
+    void (async () => {
+      await refreshHelper();
+      if (helperState === "ready") await parseDocling();
+    })();
+  });
+  listen(currentBtn, "click", () => {
+    rangeLabel = "Current page";
+    const page = Number(pageNow?.()) || 1;
+    range = [page, page];
+    rangeInput.value = String(page);
+    currentBtn.setAttribute("aria-pressed", "true");
+    allBtn.setAttribute("aria-pressed", "false");
+    render();
+  });
+  listen(allBtn, "click", () => {
+    rangeLabel = "All";
+    range = null;
+    rangeInput.value = "All";
+    allBtn.setAttribute("aria-pressed", "true");
+    currentBtn.setAttribute("aria-pressed", "false");
+    render();
+  });
+  listen(rangeInput, "change", () => {
+    const text3 = String(rangeInput.value || "").trim();
+    const match = /^(\d+)\s*[–-]\s*(\d+)$/.exec(text3);
+    if (match) {
+      range = [Number(match[1]), Number(match[2])];
+      rangeLabel = text3;
+    } else if (/^\d+$/.test(text3)) {
+      range = [Number(text3), Number(text3)];
+      rangeLabel = text3;
+    } else {
+      range = null;
+      rangeLabel = "All";
+    }
+    render();
+  });
+  listen(search, "input", () => {
+    query = String(search.value || "");
+    render();
+  });
+  for (const [key, button] of Object.entries(filterBtns)) {
+    listen(button, "click", () => {
+      filters[key] = !filters[key];
+      button.setAttribute("aria-pressed", filters[key] ? "true" : "false");
+      render();
+    });
+  }
+  listen(lockBtn, "click", () => {
+    locked = !locked;
+    lockBtn.setAttribute("aria-pressed", locked ? "false" : "true");
+    lockBtn.setAttribute("aria-label", locked ? "Sync scroll off" : "Sync scroll");
+  });
+  listen(copyBtn, "click", (event) => {
+    void copySelection(Boolean(event.shiftKey));
+  });
+  listen(insertBtn, "click", () => {
+    insertSelection();
+  });
+  listen(sendBtn, "click", () => {
+    callSession("sendParsedToBoard");
+  });
+  listen(hlBtn, "click", () => {
+    const block = shown().find((item) => selected.includes(item.id) && TEXT_TYPES.has(item.type)) || shown().find((item) => item.id === focusId);
+    void makeHighlight({ block, live: readerEl, pageEl, page: pageInfo(block?.page), getContext, adoptCreated, toast: onToast });
+  });
+  listen(tableMenu, "click", (event) => {
+    const mode = event.target?.getAttribute?.("data-mode");
+    if (!mode) return;
+    callSession("insertParsedTable", { mode, kind: "table" });
+  });
+  if (readerEl) {
+    wheelFn = () => {
+      wheelingUntil = now3() + 400;
+    };
+    listen(readerEl, "wheel", wheelFn);
+  }
+  async function restore2() {
+    if (!store || !currentUrl) return null;
+    const hit = await store.findByUrl(currentUrl);
+    if (!hit?.sha256) return null;
+    const hash = await optionsHash(BUILTIN_OPTIONS);
+    const engines = ["builtin", "docling", "mixed"];
+    for (const engine of engines) {
+      const found = await store.getParse(hit.sha256, engine, hash);
+      if (found) {
+        parsed = found;
+        rememberParsedUrl(storage, currentUrl);
+        try {
+          onCached?.(currentUrl);
+        } catch {
+        }
+        render();
+        return found;
+      }
+    }
+    return null;
+  }
+  async function refreshHelper() {
+    if (!helper || typeof helper.health !== "function") return;
+    try {
+      const health = await helper.health();
+      helperState = health?.state || "not-running";
+    } catch {
+      helperState = "not-running";
+    }
+    paintChip();
+  }
+  armKeys();
+  render();
+  return {
+    element: () => root,
+    setTarget(next) {
+      currentUrl = next?.url || "";
+      currentUid2 = next?.pdfUid || "";
+    },
+    restore: restore2,
+    parseBuiltin,
+    parseDocling,
+    cancel,
+    showDoc(docResult) {
+      parsed = docResult;
+      render();
+    },
+    noteReaderWheel() {
+      wheelingUntil = now3() + 400;
+    },
+    scrollBody() {
+      onBodyScroll();
+    },
+    focusSearch() {
+      try {
+        search.focus();
+      } catch {
+      }
+    },
+    chipText: () => chip.textContent,
+    selectedIds: () => selected.slice(),
+    blockCount: () => shown().length,
+    refreshHelper,
+    watchPageInput(input) {
+      if (!input) return;
+      const apply = () => {
+        const page = Number(String(input.value || "").trim());
+        if (!page) return;
+        echo = true;
+        const node2 = body.querySelector?.(`[data-page="${page}"]`);
+        if (node2) body.scrollTop = Number(node2.offsetTop) || 0;
+        echo = false;
+      };
+      listen(input, "input", apply);
+      if (typeof doc.defaultView?.MutationObserver === "function") {
+        const obs = new doc.defaultView.MutationObserver(apply);
+        try {
+          obs.observe(input, { attributes: true, characterData: true, subtree: true });
+        } catch {
+        }
+        armed.push([null, "observer", () => obs.disconnect(), false]);
+      }
+    },
+    dispose() {
+      dead = true;
+      cancel();
+      overlay.dispose();
+      clearBlockListeners();
+      for (const [node2, type, fn, capture] of armed) {
+        if (type === "observer") {
+          try {
+            fn();
+          } catch {
+          }
+          continue;
+        }
+        try {
+          node2?.removeEventListener?.(type, fn, capture);
+        } catch {
+        }
+      }
+      armed.length = 0;
+      keyFn = null;
+      wheelFn = null;
+      try {
+        root.remove();
+      } catch {
+      }
+    }
+  };
+}
+
+// src/host/parse-helper-client.js
+var HEALTH_TIMEOUT_MS = 1500;
+var HEALTH_CACHE_MS = 6e4;
+var HELPER_NAME = "plexus-parse-helper";
+function readSetting(settings, id, fallback) {
+  try {
+    if (typeof settings === "function") {
+      const all = settings();
+      if (all && typeof all.get === "function") {
+        const value = all.get(id);
+        return value == null || value === "" ? fallback : value;
+      }
+      if (all && typeof all === "object") return all[id] == null || all[id] === "" ? fallback : all[id];
+      return fallback;
+    }
+    if (settings && typeof settings.get === "function") {
+      const value = settings.get(id);
+      return value == null || value === "" ? fallback : value;
+    }
+    if (settings && typeof settings === "object") {
+      return settings[id] == null || settings[id] === "" ? fallback : settings[id];
+    }
+  } catch {
+  }
+  return fallback;
+}
+function schemaMajor(schema) {
+  const match = /\/(\d+)/.exec(String(schema || ""));
+  return match ? Number(match[1]) : null;
+}
+function withTimeout(ms, parent) {
+  const ctrl = new AbortController();
+  const timer = setTimeout(() => ctrl.abort(), ms);
+  const onAbort = () => ctrl.abort();
+  if (parent) {
+    if (parent.aborted) ctrl.abort();
+    else parent.addEventListener("abort", onAbort, { once: true });
+  }
+  return {
+    signal: ctrl.signal,
+    clear() {
+      clearTimeout(timer);
+      parent?.removeEventListener?.("abort", onAbort);
+    }
+  };
+}
+async function readSSE(response, { onProgress, onPage }) {
+  const reader = response.body?.getReader?.();
+  if (!reader) return;
+  const decoder = new TextDecoder();
+  let buf = "";
+  const dispatch = (frame) => {
+    let event = "message";
+    const data = [];
+    for (const line of frame.split("\n")) {
+      if (!line || line.startsWith(":")) continue;
+      if (line.startsWith("event:")) event = line.slice(6).trim();
+      else if (line.startsWith("data:")) data.push(line.slice(5).replace(/^ /, ""));
+    }
+    if (!data.length) return null;
+    const payload = JSON.parse(data.join("\n"));
+    if (event === "progress") onProgress?.(payload);
+    else if (event === "page") onPage?.(payload);
+    else if (event === "error") {
+      const error = new Error(payload.message || "parse error");
+      error.code = payload.code;
+      error.page = payload.page;
+      throw error;
+    }
+    return event;
+  };
+  for (; ; ) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += decoder.decode(value, { stream: true });
+    buf = buf.replace(/\r\n/g, "\n");
+    const frames = buf.split("\n\n");
+    buf = frames.pop() ?? "";
+    for (const frame of frames) {
+      if (dispatch(frame) === "done") {
+        try {
+          await reader.cancel();
+        } catch {
+        }
+        return;
+      }
+    }
+  }
+  if (buf.trim()) dispatch(buf);
+}
+function createHelperClient({ fetch: fetchImpl, settings, now: now3, timeoutMs = HEALTH_TIMEOUT_MS } = {}) {
+  const fetchFn = fetchImpl;
+  const clock = typeof now3 === "function" ? now3 : () => Date.now();
+  let healthCache = null;
+  const config = () => {
+    const url = String(readSetting(settings, "parse-helper-url", "http://127.0.0.1:48765")).replace(/\/$/, "");
+    const token = String(readSetting(settings, "parse-helper-token", "") || "").trim();
+    return { url, token };
+  };
+  const call = (url, init, signal) => fetchFn(url, {
+    ...init,
+    targetAddressSpace: "loopback",
+    signal: signal ?? init?.signal
+  });
+  async function health() {
+    const { url, token } = config();
+    const at = clock();
+    if (healthCache && healthCache.url === url && healthCache.token === token && at - healthCache.at < HEALTH_CACHE_MS) {
+      return healthCache.value;
+    }
+    if (!token) {
+      const value = { state: "not-running", reason: "disabled" };
+      healthCache = { url, token, at, value };
+      return value;
+    }
+    if (typeof fetchFn !== "function") {
+      const value = { state: "not-running" };
+      healthCache = { url, token, at, value };
+      return value;
+    }
+    const timer = withTimeout(timeoutMs);
+    try {
+      const res = await call(`${url}/v1/health`, {
+        method: "GET",
+        headers: { Authorization: `Bearer ${token}` }
+      }, timer.signal);
+      let value;
+      const httpOk = res.status >= 200 && res.status < 300;
+      if (res.status === 401) value = { state: "wrong-token" };
+      else if (!httpOk) value = { state: "not-running" };
+      else {
+        let body = null;
+        try {
+          body = await res.json();
+        } catch {
+          body = null;
+        }
+        const major = schemaMajor(body?.schema);
+        if (body?.helper !== HELPER_NAME || major == null) value = { state: "not-running" };
+        else if (major >= 2) value = { state: "newer-schema", schema: body.schema };
+        else {
+          const models = body.models || {};
+          const needed = ["layout", "tableformer", "ocr"];
+          const missing2 = needed.some((name) => models[name] !== "ready");
+          value = missing2 ? { state: "models-missing", schema: body.schema, models, version: body.version } : { state: "ready", schema: body.schema, models, version: body.version, busy: body.busy ?? 0 };
+        }
+      }
+      healthCache = { url, token, at, value };
+      return value;
+    } catch {
+      const value = { state: "not-running" };
+      healthCache = { url, token, at, value };
+      return value;
+    } finally {
+      timer.clear();
+    }
+  }
+  async function readJob(base, token, jobId, { onProgress, onPage, signal }) {
+    const headers = { Authorization: `Bearer ${token}` };
+    const events = await call(`${base}/v1/jobs/${encodeURIComponent(jobId)}/events`, {
+      method: "GET",
+      headers
+    }, signal);
+    await readSSE(events, { onProgress, onPage });
+    const finalRes = await call(`${base}/v1/jobs/${encodeURIComponent(jobId)}`, {
+      method: "GET",
+      headers
+    }, signal);
+    const doc = await finalRes.json();
+    return doc;
+  }
+  async function parse({ bytes, sha256, options, onProgress, onPage, signal } = {}) {
+    const { url, token } = config();
+    const sha = sha256 || await sha256Hex(bytes);
+    const optsHash = await optionsHash(options || {});
+    const headers = { Authorization: `Bearer ${token}` };
+    const cacheUrl = `${url}/v1/cache/${encodeURIComponent(sha)}?opts=${encodeURIComponent(optsHash)}`;
+    const head = await call(cacheUrl, { method: "HEAD", headers }, signal);
+    if (head.status === 200) {
+      const got = await call(cacheUrl, { method: "GET", headers }, signal);
+      return { doc: await got.json(), cached: true, sha256: sha, optsHash, job: null };
+    }
+    const posted = await call(`${url}/v1/jobs`, {
+      method: "POST",
+      headers: {
+        ...headers,
+        "Content-Type": "application/pdf",
+        "X-Pxd-Options": JSON.stringify(options || {})
+      },
+      body: bytes
+    }, signal);
+    const job = await posted.json();
+    if (posted.status === 409) {
+      const error = new Error("helper busy");
+      error.status = 409;
+      error.running = job?.running;
+      throw error;
+    }
+    const doc = await readJob(url, token, job.job, { onProgress, onPage, signal });
+    return { doc, cached: false, sha256: sha, optsHash, job: job.job };
+  }
+  async function cancel(jobId) {
+    const { url, token } = config();
+    const res = await call(`${url}/v1/jobs/${encodeURIComponent(jobId)}`, {
+      method: "DELETE",
+      headers: { Authorization: `Bearer ${token}` }
+    });
+    return res.status === 204 || res.status === 200;
+  }
+  async function reparseTable({ bytes, sha256, page, bbox, base, onProgress, onPage, signal } = {}) {
+    const { url, token } = config();
+    const sha = sha256 || await sha256Hex(bytes);
+    const ocr = readSetting(settings, "parse-ocr", "auto");
+    const formula = readSetting(settings, "parse-formula", false) === true;
+    const options = {
+      pages: [page],
+      ocr,
+      formula,
+      tables: "accurate",
+      scope: { page, bbox }
+    };
+    const posted = await call(`${url}/v1/jobs`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/pdf",
+        "X-Pxd-Options": JSON.stringify(options)
+      },
+      body: bytes
+    }, signal);
+    const job = await posted.json();
+    const doc = await readJob(url, token, job.job, { onProgress, onPage, signal });
+    const merged = base ? mergeScoped(base, doc, { page, bbox }) : null;
+    return { doc, merged, cached: false, sha256: sha, job: job.job };
+  }
+  return { health, parse, cancel, reparseTable };
+}
+
 // src/view/read-pane.js
 var liveDrawer = null;
 Promise.resolve().then(() => (init_read_drawer(), read_drawer_exports)).then((mod) => {
@@ -28034,13 +32992,21 @@ function createReadPane({
   placed,
   titleOf: titleOf2,
   coverSrc,
-  createDrawer
+  createDrawer,
+  session = null,
+  settings = null
 } = {}) {
   const el = (tag, cls, parent) => {
     const node2 = doc.createElement(tag);
     if (cls) node2.className = cls;
     parent?.append(node2);
     return node2;
+  };
+  const setHidden2 = (node2, on) => {
+    if (!node2) return;
+    node2.hidden = Boolean(on);
+    if (on) node2.setAttribute("hidden", "");
+    else node2.removeAttribute("hidden");
   };
   const pane = el("aside", "pxd-read");
   pane.setAttribute("role", "complementary");
@@ -28081,6 +33047,23 @@ function createReadPane({
   if (cross) closeBtn.append(cross);
   else closeBtn.textContent = "✕";
   closeBtn.setAttribute("aria-label", "Close");
+  const modes = el("div", "pxd-read__modes", pane);
+  modes.setAttribute("role", "toolbar");
+  modes.setAttribute("aria-label", "Reader mode");
+  setHidden2(modes, true);
+  const modeBtns = {};
+  for (const [id, label, tip] of [["reader", "Reader", "parse.mode.reader"], ["parsed", "Parsed", "parse.mode.parsed"], ["both", "Both", "parse.mode.both"]]) {
+    const button = el("button", "pxd-read__mode", modes);
+    button.type = "button";
+    button.textContent = label;
+    button.setAttribute("data-mode", id);
+    button.setAttribute("data-tip", tip);
+    button.setAttribute("aria-pressed", id === "reader" ? "true" : "false");
+    modeBtns[id] = button;
+  }
+  const progress = el("div", "pxd-read__progress", pane);
+  setHidden2(progress, true);
+  const progressFill = el("div", "pxd-read__progressfill", progress);
   const stage = el("div", "pxd-read__stage", pane);
   const live = el("div", "pxd-read__live", stage);
   const pill = el("div", "pxd-read__pill", stage);
@@ -28091,6 +33074,7 @@ function createReadPane({
   const fitBtn = pillButton(doc, el, pill, "Fit width", "⇔");
   const pageNode = el("span", "pxd-read__pages", pill);
   const searchBtn = pillButton(doc, el, pill, "Search", "⌕");
+  const parsedMount = el("div", "pxd-read__parsed", pane);
   const drawerMount = el("div", "pxd-read__drawer", pane);
   let colorSel = null;
   let pageFilt = null;
@@ -28331,6 +33315,10 @@ function createReadPane({
       host?.renderBlock?.(live, blockUid2);
     } catch {
     }
+    try {
+      parsedView?.watchPageInput?.(readerField());
+    } catch {
+    }
     let src = "";
     try {
       src = typeof coverSrc === "function" ? coverSrc(current3) : "";
@@ -28486,9 +33474,9 @@ function createReadPane({
         noteBtn.type = "button";
         noteBtn.textContent = "Note";
         noteBtn.setAttribute("aria-label", "Note");
-        const place = el("button", "pxd-read__place pxd-chrome", meta);
-        place.type = "button";
-        place.textContent = "Place";
+        const place2 = el("button", "pxd-read__place pxd-chrome", meta);
+        place2.type = "button";
+        place2.textContent = "Place";
       }
     };
     return {
@@ -29744,6 +34732,154 @@ function createReadPane({
     root?.addEventListener?.("pointermove", splitMove);
     root?.addEventListener?.("pointerup", splitUp);
   });
+  let parsedView = null;
+  let parseStore = null;
+  let parseHelper = null;
+  let viewMode = "reader";
+  const ensureStore2 = () => {
+    if (!parseStore) parseStore = createParseStore({ indexedDB: doc.defaultView?.indexedDB });
+    return parseStore;
+  };
+  const ensureHelper = () => {
+    if (!parseHelper) parseHelper = createHelperClient({ settings, fetch: doc.defaultView?.fetch });
+    return parseHelper;
+  };
+  const pdfUrl = () => pdfMacroUrl(current3.source || "") || "";
+  const readerPdf = () => {
+    try {
+      const viewer = viewerFromFiber(fiberOf(live.querySelector?.(".PdfHighlighter")));
+      return viewer?.pdfDocument || null;
+    } catch {
+      return null;
+    }
+  };
+  const getPdf = async () => readerPdf();
+  const pageElement = (n2) => {
+    const pages = live.querySelectorAll?.(".page") || [];
+    for (const node2 of pages) {
+      if (Number(node2.getAttribute?.("data-page-number")) === Number(n2)) return node2;
+    }
+    return null;
+  };
+  const revealModes = () => {
+    setHidden2(modes, false);
+    pane.classList.add("pxd-read--modes");
+  };
+  function applyModeClass() {
+    pane.classList.remove("pxd-read--parsed", "pxd-read--both", "pxd-read--narrow");
+    const width = Number(pane.clientWidth) || Number(mountW) || 0;
+    if (viewMode === "parsed") pane.classList.add("pxd-read--parsed");
+    else if (viewMode === "both") {
+      pane.classList.add("pxd-read--both");
+      if (width > 0 && width < BOTH_MIN_PX) pane.classList.add("pxd-read--narrow");
+    }
+    for (const [id, button] of Object.entries(modeBtns)) {
+      button.setAttribute("aria-pressed", id === viewMode ? "true" : "false");
+    }
+  }
+  const ensureParsed = () => {
+    if (parsedView) return parsedView;
+    parsedView = createParseView({
+      doc,
+      store: ensureStore2(),
+      helper: ensureHelper(),
+      session,
+      host,
+      storage,
+      pdfUid: current3.cardUid,
+      url: pdfUrl(),
+      getPdf,
+      jumpPage,
+      pageNow: () => Number(String(readerField()?.value || "").trim()) || 1,
+      pageEl: pageElement,
+      readerEl: live,
+      onToast: (message) => {
+        try {
+          host?.toast?.(message);
+        } catch {
+        }
+      },
+      onCached: () => revealModes(),
+      onProgress: (info) => {
+        const running = info && info.fraction != null && info.fraction < 1;
+        setHidden2(progress, !running);
+        progressFill.style.width = `${Math.round((Number(info?.fraction) || 0) * 100)}%`;
+      },
+      adoptCreated: () => {
+        try {
+          refreshList();
+        } catch {
+        }
+      },
+      getContext: () => readerContext()
+    });
+    parsedMount.append(parsedView.element());
+    try {
+      parsedView.watchPageInput(readerField());
+    } catch {
+    }
+    return parsedView;
+  };
+  function dropParsed() {
+    try {
+      parsedView?.dispose?.();
+    } catch {
+    }
+    parsedView = null;
+    viewMode = "reader";
+    setHidden2(modes, true);
+    setHidden2(progress, true);
+    pane.classList.remove("pxd-read--modes", "pxd-read--parsed", "pxd-read--both", "pxd-read--narrow");
+    for (const [id, button] of Object.entries(modeBtns)) {
+      button.setAttribute("aria-pressed", id === "reader" ? "true" : "false");
+    }
+  }
+  async function noteCached() {
+    const url = pdfUrl();
+    if (!url || !openFlag) return;
+    if (readParsedUrls(storage).has(url)) revealModes();
+    try {
+      const hit = await ensureStore2().findByUrl(url);
+      if (hit?.sha256 && openFlag) revealModes();
+    } catch {
+    }
+  }
+  async function enterParsed(which) {
+    if (!openFlag) return;
+    revealModes();
+    viewMode = which === "both" ? "both" : "parsed";
+    applyModeClass();
+    const view2 = ensureParsed();
+    view2.setTarget({ url: pdfUrl(), pdfUid: current3.cardUid });
+    try {
+      view2.watchPageInput(readerField());
+    } catch {
+    }
+    let found = null;
+    try {
+      found = await view2.restore();
+    } catch {
+      found = null;
+    }
+    if (!openFlag) return;
+    if (!found && view2.blockCount() === 0) {
+      try {
+        await view2.parseBuiltin();
+      } catch {
+      }
+    }
+  }
+  listen(modes, "click", (event) => {
+    const id = event.target?.closest?.("[data-mode]")?.getAttribute?.("data-mode");
+    if (!id) return;
+    if (id === "reader") {
+      viewMode = "reader";
+      revealModes();
+      applyModeClass();
+      return;
+    }
+    void enterParsed(id);
+  });
   function close(opts) {
     cancelPageWait();
     cancelSettle();
@@ -29755,6 +34891,7 @@ function createReadPane({
     const notify = !opts || opts.notify !== false;
     const wasOpen = openFlag;
     if (!openFlag && !pane.isConnected) return;
+    dropParsed();
     if (wasOpen) emitSnapshot("close");
     openFlag = false;
     endSplit();
@@ -29830,6 +34967,9 @@ function createReadPane({
       armWatch(current3.title);
       paintSwitcher();
       refreshList();
+      void noteCached();
+      if (next.mode === "parsed" || next.mode === "both") void enterParsed(next.mode);
+      else if (parsedView && viewMode !== "reader") void enterParsed(viewMode);
     },
     close,
     dispose() {
@@ -29848,6 +34988,7 @@ function createReadPane({
       if (typeof mountWidth === "number" && Number.isFinite(mountWidth) && mountWidth > 0) mountW = mountWidth;
       if (!openFlag) return;
       applyBox();
+      applyModeClass();
     },
     isOpen: () => openFlag && Boolean(pane.isConnected),
     cardUid: () => current3.cardUid || "",
@@ -29860,7 +35001,13 @@ function createReadPane({
     },
     // P32-3 probe: which path fitted the page (viewer | steps | viewer+steps | none) and the presses it took.
     fitInfo: () => ({ path: fitState.path, clicks: fitState.clicks, done: fitDone, userZoomed }),
-    element: () => pane
+    element: () => pane,
+    parse() {
+      void enterParsed(viewMode === "both" ? "both" : "parsed");
+    },
+    showParsed() {
+      void enterParsed("parsed");
+    }
   };
 }
 
@@ -29929,9 +35076,9 @@ function blobFrom(canvas, timers) {
     }
   });
 }
-function createFirstPageRenderer({ doc, lib, timers, now: now2 } = {}) {
+function createFirstPageRenderer({ doc, lib, timers, now: now3 } = {}) {
   const time = timersOf(timers);
-  const clock = typeof now2 === "function" ? now2 : () => Date.now();
+  const clock = typeof now3 === "function" ? now3 : () => Date.now();
   let busy = false;
   let count = { tried: 0, ok: 0, failed: 0, lastMs: 0 };
   async function render(spec) {
@@ -30111,8 +35258,8 @@ var WARM_TIMEOUT_MS = 8e3;
 var WARM_POLL_MS = 100;
 var COVER_JPEG = 0.72;
 var HOLDER_CLASS = "pxd-pdf-warm";
-function clockOf(now2) {
-  return typeof now2 === "function" ? now2 : () => Date.now();
+function clockOf(now3) {
+  return typeof now3 === "function" ? now3 : () => Date.now();
 }
 function timersOf2(timers) {
   const set = typeof timers?.setTimeout === "function" ? timers.setTimeout.bind(timers) : setTimeout;
@@ -30213,9 +35360,9 @@ function applyHolderStyle(el) {
   } catch {
   }
 }
-function createPdfWarm({ doc, root, host, store, timers, now: now2, renderFirst } = {}) {
+function createPdfWarm({ doc, root, host, store, timers, now: now3, renderFirst } = {}) {
   const time = timersOf2(timers);
-  const nowFn = clockOf(now2);
+  const nowFn = clockOf(now3);
   const outcomes = /* @__PURE__ */ new Map();
   const paths = { pdfjs: 0, reader: 0 };
   let generation = 0;
@@ -33939,7 +39086,7 @@ function mountRegionMark({ doc = globalThis.document, root, img, onConfirm, onCa
     target.addEventListener(type, fn, opts);
     offs.push(() => target.removeEventListener(type, fn, opts));
   };
-  const place = () => {
+  const place2 = () => {
     const box2 = imgBox();
     const rootBox = root.getBoundingClientRect();
     const imgLeft = box2.left;
@@ -34007,7 +39154,7 @@ function mountRegionMark({ doc = globalThis.document, root, img, onConfirm, onCa
     y0 = fy(event.clientY, box2);
     x1 = x0;
     y1 = y0;
-    place();
+    place2();
   };
   const onMouseDown = (event) => {
     event.stopPropagation();
@@ -34019,7 +39166,7 @@ function mountRegionMark({ doc = globalThis.document, root, img, onConfirm, onCa
     const box2 = imgBox();
     x1 = fx(event.clientX, box2);
     y1 = fy(event.clientY, box2);
-    place();
+    place2();
   };
   const onUp = (event) => {
     if (!dragging) return;
@@ -34027,7 +39174,7 @@ function mountRegionMark({ doc = globalThis.document, root, img, onConfirm, onCa
     const box2 = imgBox();
     x1 = fx(event.clientX, box2);
     y1 = fy(event.clientY, box2);
-    place();
+    place2();
     try {
       input.focus();
     } catch {
@@ -34061,7 +39208,7 @@ function mountRegionMark({ doc = globalThis.document, root, img, onConfirm, onCa
     y0 += cdy;
     if (x1 != null) x1 += cdx;
     if (y1 != null) y1 += cdy;
-    place();
+    place2();
     return true;
   };
   const onKey = (event) => {
@@ -34095,7 +39242,7 @@ function mountRegionMark({ doc = globalThis.document, root, img, onConfirm, onCa
     event.stopPropagation();
     confirm();
   });
-  place();
+  place2();
   return { destroy };
 }
 
@@ -34458,7 +39605,7 @@ function mountTable({ doc = globalThis.document, root, host, getBoard } = {}) {
     if (typeof doc.defaultView?.setTimeout === "function") doc.defaultView.setTimeout(later, 0);
     else later();
   });
-  const place = () => {
+  const place2 = () => {
     const toolbar2 = root?.querySelector?.(".pxd-toolbar");
     if (!toolbar2 || typeof toolbar2.getBoundingClientRect !== "function" || typeof root.getBoundingClientRect !== "function") return;
     const top = toolbar2.getBoundingClientRect().bottom - root.getBoundingClientRect().top;
@@ -34468,7 +39615,7 @@ function mountTable({ doc = globalThis.document, root, host, getBoard } = {}) {
   const toolbar = root?.querySelector?.(".pxd-toolbar");
   if (toolbar && typeof globalThis.ResizeObserver === "function") {
     resizeObs = new globalThis.ResizeObserver(() => {
-      if (open) place();
+      if (open) place2();
     });
     resizeObs.observe(toolbar);
   }
@@ -34476,7 +39623,7 @@ function mountTable({ doc = globalThis.document, root, host, getBoard } = {}) {
     el: box2,
     open() {
       open = true;
-      place();
+      place2();
       paint2();
     },
     close() {
@@ -34712,7 +39859,7 @@ function mountKanban({
   let dragUid = null;
   let painted = [];
   const pending = /* @__PURE__ */ new Map();
-  const place = () => {
+  const place2 = () => {
     const toolbar2 = root?.querySelector?.(".pxd-toolbar");
     if (!toolbar2 || typeof toolbar2.getBoundingClientRect !== "function" || typeof root.getBoundingClientRect !== "function") return;
     const top = toolbar2.getBoundingClientRect().bottom - root.getBoundingClientRect().top;
@@ -34982,7 +40129,7 @@ function mountKanban({
   const toolbar = root?.querySelector?.(".pxd-toolbar");
   if (toolbar && typeof globalThis.ResizeObserver === "function") {
     resizeObs = new globalThis.ResizeObserver(() => {
-      if (open) place();
+      if (open) place2();
     });
     resizeObs.observe(toolbar);
   }
@@ -34997,7 +40144,7 @@ function mountKanban({
         const saved2 = getBoard?.()?.plexus?.kanban;
         if (typeof saved2 === "string" && saved2) field = saved2;
       }
-      place();
+      place2();
       paint2();
     },
     close() {
@@ -35070,7 +40217,7 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
     collapsed = !collapsed;
     storage?.setItem?.(STORAGE_KEY, collapsed ? "1" : "0");
     paintCollapsed();
-    place();
+    place2();
   }, "props.toggle");
   head.setAttribute("aria-expanded", collapsed ? "false" : "true");
   const body = el("div", "pxd-props__body", panel);
@@ -35079,7 +40226,7 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
     body.style.display = collapsed ? "none" : "";
     head.setAttribute("aria-expanded", collapsed ? "false" : "true");
   };
-  const place = () => {
+  const place2 = () => {
     const tb = root.querySelector?.(".pxd-toolbar");
     const h = tb?.offsetHeight || 0;
     panel.style.top = `${8 + (h ? h + 6 : 44)}px`;
@@ -35247,14 +40394,14 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
       if (!blocksItems.length && !sections.length) defaultsGroup(board2);
     }
     diagram(board2);
-    place();
+    place2();
   };
   paintCollapsed();
-  place();
+  place2();
   return {
     el: panel,
     refresh,
-    place,
+    place: place2,
     isCollapsed: () => collapsed,
     dispose() {
       listeners3.splice(0).forEach((off) => off());
@@ -35854,6 +41001,8 @@ function buildMenu(kind, ctx = {}) {
         make("open-sidebar", "Open in sidebar", { hint: "Shift Click" }),
         ...c.compass && c.interop !== false ? [make("open-compass", "Open in Compass")] : [],
         ...c.isPdf ? [make("read-inline", c.inlineReader ? "Show the cover" : "Read inside the card")] : [],
+        ...c.isPdf ? [make("parse-pdf", "Parse PDF…")] : [],
+        ...c.isPdf && c.hasParse ? [make("open-parsed", "Open parsed")] : [],
         sep(),
         make("copy", "Copy", { hint: "Cmd C" }),
         make("copy-png", "Copy selection as PNG"),
@@ -36580,7 +41729,7 @@ async function writeClipboard({ text: text3 = "", mime = null, data = null } = {
   area.remove();
   return ok;
 }
-function createClipboardIO({ doc = globalThis.document, root, ownsKeyboard, isTextEntry, on = {}, now: now2 = () => Date.now() } = {}) {
+function createClipboardIO({ doc = globalThis.document, root, ownsKeyboard, isTextEntry, on = {}, now: now3 = () => Date.now() } = {}) {
   const offs = [];
   const win = doc.defaultView ?? globalThis.window;
   let lastCloneKey = -Infinity;
@@ -36616,7 +41765,7 @@ function createClipboardIO({ doc = globalThis.document, root, ownsKeyboard, isTe
     if (active(event) && copy(event, true)) on.cutDone?.();
   }, true);
   listen(win, "keydown", (event) => {
-    if ((event.metaKey || event.ctrlKey) && event.shiftKey && String(event.key).toLowerCase() === "v") lastCloneKey = now2();
+    if ((event.metaKey || event.ctrlKey) && event.shiftKey && String(event.key).toLowerCase() === "v") lastCloneKey = now3();
   }, true);
   listen(win, "paste", (event) => {
     if (!editorNode(event)) return;
@@ -36631,7 +41780,7 @@ function createClipboardIO({ doc = globalThis.document, root, ownsKeyboard, isTe
     const parsed = parseClipboard(event.clipboardData);
     if (!parsed) return;
     event.preventDefault();
-    if (parsed.kind === "plexus") on.pastePlexus?.(parsed.data, { clone: now2() - lastCloneKey <= CLONE_WINDOW_MS });
+    if (parsed.kind === "plexus") on.pastePlexus?.(parsed.data, { clone: now3() - lastCloneKey <= CLONE_WINDOW_MS });
     else if (parsed.kind === "images") on.pasteImages?.(parsed.files);
     else on.pasteText?.(parsed.entries);
   }, true);
@@ -36697,7 +41846,7 @@ function applyFullscreenChrome(mount, on, root = globalThis.document) {
     };
   }
   let alive = true;
-  const place = () => {
+  const place2 = () => {
     if (!alive || !mount?.style) return;
     const box2 = fullscreenInsets(root);
     mount.style.top = `${box2.top}px`;
@@ -36709,10 +41858,10 @@ function applyFullscreenChrome(mount, on, root = globalThis.document) {
     mount.style.minHeight = "0";
   };
   const placeAfterAnim = () => {
-    place();
+    place2();
     raf(() => {
-      place();
-      raf(place);
+      place2();
+      raf(place2);
     });
   };
   const disconnects = [];
@@ -36723,7 +41872,7 @@ function applyFullscreenChrome(mount, on, root = globalThis.document) {
   let observed = false;
   if (typeof RO === "function") {
     try {
-      const ro = new RO(() => place());
+      const ro = new RO(() => place2());
       if (article) {
         ro.observe(article);
         observed = true;
@@ -36740,7 +41889,7 @@ function applyFullscreenChrome(mount, on, root = globalThis.document) {
     } catch {
     }
   }
-  if (!observed) place();
+  if (!observed) place2();
   const MO = globalThis.MutationObserver;
   if (typeof MO === "function" && article) {
     try {
@@ -36750,7 +41899,7 @@ function applyFullscreenChrome(mount, on, root = globalThis.document) {
     } catch {
     }
   }
-  const cancel = raf(place);
+  const cancel = raf(place2);
   return () => {
     alive = false;
     cancel();
@@ -37519,7 +42668,7 @@ function openHighlightDialog(doc, { rows, origin, onPlace, onClose } = {}) {
       list.append(line);
     }
   };
-  const place = (mode) => {
+  const place2 = (mode) => {
     const result = placeHighlights(rowsState, { mode, origin: at });
     if (!result.items.length) return;
     onPlace?.(result.items, { omitted: result.omitted || 0 });
@@ -37534,11 +42683,11 @@ function openHighlightDialog(doc, { rows, origin, onPlace, onClose } = {}) {
   });
   gridBtn.addEventListener("click", (event) => {
     stop2(event);
-    place("grid");
+    place2("grid");
   });
   columnBtn.addEventListener("click", (event) => {
     stop2(event);
-    place("column");
+    place2("column");
   });
   root.addEventListener("keydown", (event) => {
     if (event.key === "Escape") {
@@ -37639,14 +42788,14 @@ function buildBoardView(onFail, {
   const doc = globalThis.document;
   const win = globalThis.window;
   let settingsRef = settings;
-  const readSetting = (k) => typeof settingsRef?.get === "function" ? settingsRef.get(k) : settingsRef?.[k];
-  const settingsProxy = { get: readSetting };
+  const readSetting2 = (k) => typeof settingsRef?.get === "function" ? settingsRef.get(k) : settingsRef?.[k];
+  const settingsProxy = { get: readSetting2 };
   const bt = createBt({
-    enabled: () => readSetting("better-tasks") === true,
+    enabled: () => readSetting2("better-tasks") === true,
     win
   });
   const setting = (k, d) => {
-    const v = readSetting(k);
+    const v = readSetting2(k);
     return v === void 0 || v === null ? d : v;
   };
   const flag = (k, d) => {
@@ -37759,7 +42908,7 @@ function buildBoardView(onFail, {
   let timelineCacheUid = "";
   let timelinePending = null;
   let timelinePendingUid = "";
-  const trackOpensOn = () => readSetting("track-opens") === true;
+  const trackOpensOn = () => readSetting2("track-opens") === true;
   const bumpOpen = (uid) => {
     if (!uid || !openStore) return;
     try {
@@ -37844,7 +42993,7 @@ function buildBoardView(onFail, {
     themeFollow = null;
   }
   const applyPdfDark = () => {
-    const want = pdfDarkClass(readSetting("pdf-dark"));
+    const want = pdfDarkClass(readSetting2("pdf-dark"));
     for (const name of PDF_DARK_CLASSES) root.classList.toggle(name, name === want);
   };
   const applyTheme = () => {
@@ -38490,13 +43639,23 @@ function buildBoardView(onFail, {
     onHighlightNote: (uid) => {
       void openHighlightNote(uid);
     },
-    interopOn: () => readSetting("interop") !== false,
+    interopOn: () => readSetting2("interop") !== false,
     coverImage: (url) => coverImageFor(url),
     pdfMetaTitle: (url) => notePdfMeta(url),
     readingUid: () => readingCard,
     onPdfOpenRequest: (uid) => {
       try {
         itemsR.openPdf?.(uid);
+      } catch {
+      }
+    },
+    onPdfParse: (uid) => {
+      try {
+        itemsR.openPdf?.(uid);
+      } catch {
+      }
+      try {
+        ensureReadPane().parse?.();
       } catch {
       }
     },
@@ -38590,6 +43749,8 @@ function buildBoardView(onFail, {
         if (item?.target?.uid === uid) pulseItem(item.uid);
       }
     },
+    session,
+    settings: { get: (id) => readSetting2(id) },
     onPlace: (row4) => {
       const items = [...board2()?.items.values() || []];
       const card2 = board2()?.items.get(readPane?.cardUid?.() || "");
@@ -38611,7 +43772,7 @@ function buildBoardView(onFail, {
     if (!disposed) itemsR.repaintStyles();
   };
   const coverWarmOn = () => {
-    const v = readSetting("pdf-cover-warm");
+    const v = readSetting2("pdf-cover-warm");
     return v === true || v === "true";
   };
   const ensureCoverStore = () => {
@@ -38785,7 +43946,7 @@ function buildBoardView(onFail, {
   };
   const imageOfCover = (record) => {
     if (!record || typeof record !== "object") return null;
-    const last = readSetting("pdf-cover") === "last-read";
+    const last = readSetting2("pdf-cover") === "last-read";
     const primary = last ? record.last : record.first;
     const fallback = last ? record.first : record.last;
     return primary || fallback || null;
@@ -39149,7 +44310,7 @@ function buildBoardView(onFail, {
     return [...b.items.values()].filter((it) => it.type === "card" && it.kind === "note" && isTaskString(it.string)).map((it) => it.uid);
   };
   const applyTaskSettings = () => {
-    const on = readSetting("better-tasks") === true;
+    const on = readSetting2("better-tasks") === true;
     if (!on) {
       itemsR.setTaskChips("none");
       if (betterTasksOn) {
@@ -39166,7 +44327,7 @@ function buildBoardView(onFail, {
     if (betterTasksOn) return;
     betterTasksOn = true;
     void bt.prime().then((names) => {
-      if (!names || disposed || readSetting("better-tasks") !== true) return;
+      if (!names || disposed || readSetting2("better-tasks") !== true) return;
       setTaskAttrNames(names);
       const uids = taskCardUids();
       if (uids.length) {
@@ -39402,7 +44563,7 @@ function buildBoardView(onFail, {
     for (const row4 of editRows) {
       if (Array.isArray(row4) && row4.length >= 2 && Number.isFinite(Number(row4[1]))) editAt.set(String(row4[0]), Number(row4[1]));
     }
-    const now2 = Date.now();
+    const now3 = Date.now();
     const track = Boolean(openStore && openStore.enabled);
     const scores = /* @__PURE__ */ new Map();
     for (const edge of ends) {
@@ -39410,11 +44571,11 @@ function buildBoardView(onFail, {
       const components = {
         refs: (refCount.get(edge.from) || 0) + (refCount.get(edge.to) || 0),
         shared: shareCount(edge.from, edge.to),
-        now: now2
+        now: now3
       };
       if (times.length) components.editTime = Math.max(...times);
       if (track) components.opens = edgeOpens(openStore, edge.from, edge.to);
-      scores.set(edge.uid, { components, trackOpens: track, now: now2 });
+      scores.set(edge.uid, { components, trackOpens: track, now: now3 });
     }
     strengthScores = scores;
     try {
@@ -39468,11 +44629,11 @@ function buildBoardView(onFail, {
         create: Number.isFinite(create) && create >= 0 ? create : null
       });
     }
-    const now2 = Date.now();
+    const now3 = Date.now();
     const ages = /* @__PURE__ */ new Map();
     for (const pair2 of pairs) {
       const hit = by.get(pair2.target) || {};
-      const age = { now: now2 };
+      const age = { now: now3 };
       if (hit.edit != null) age.editTime = hit.edit;
       if (hit.create != null) age.createTime = hit.create;
       ages.set(pair2.uid, age);
@@ -39750,13 +44911,13 @@ function buildBoardView(onFail, {
     itemsR.setShowBadges(flag("show-card-badges", true));
     if (!flag("show-card-badges", true) || tier !== "detail" || typeof host?.cardStats !== "function") return;
     const items = visibleBadgeItems();
-    const now2 = Date.now();
+    const now3 = Date.now();
     const misses = [];
     const seen = /* @__PURE__ */ new Set();
     for (const item of items) {
       const key = badgeKeyOf(item);
       const hit = badgeCache.get(key);
-      if (hit && now2 - hit.at < BADGE_TTL_MS || seen.has(key) || badgePending.has(key)) continue;
+      if (hit && now3 - hit.at < BADGE_TTL_MS || seen.has(key) || badgePending.has(key)) continue;
       seen.add(key);
       misses.push({ key, target: badgeTargetOf(item) });
     }
@@ -40351,7 +45512,7 @@ function buildBoardView(onFail, {
     const noun = types.size === 1 && (types.has("card") || types.has("section")) ? [...types][0] : "item";
     toast(`${label} ${list.length} ${list.length === 1 ? noun : `${noun}s`}`, true);
   };
-  const copyText = (text3, message) => {
+  const copyText2 = (text3, message) => {
     void writeClipboard({ text: text3 }).then((ok) => {
       if (!disposed) toast(ok ? message : "Copy failed");
     });
@@ -40867,7 +46028,7 @@ function buildBoardView(onFail, {
     const item = uid ? b?.items.get(uid) : null;
     switch (kind) {
       case "canvas":
-        return { canPaste: true, snapshots: b?.snapshots || [], taskTool: readSetting("task-tool") === true };
+        return { canPaste: true, snapshots: b?.snapshots || [], taskTool: readSetting2("task-tool") === true };
       case "board-menu":
         return { snapshots: b?.snapshots || [], dock: b?.plexus?.dock, walk: true, hasTrail: Boolean(b?.trails?.length), lens: true, strength: strengthOn, dust: dustPeriod };
       case "card": {
@@ -40883,7 +46044,8 @@ function buildBoardView(onFail, {
         const compassApi = globalThis.RoamCompass || globalThis.window?.RoamCompass || null;
         const plexusApi = globalThis.RoamPlexus || globalThis.window?.RoamPlexus || null;
         const task = isTaskItem(item) ? taskMeta(item.string, item.content) : null;
-        return { ...task ? { statusTags, status: task.status || "" } : {}, item, regions: imageRegionRows(item?.content), canMakeTask: item?.type === "card" && item?.kind === "note" && !isTaskString(item.string) && !isQueryString(queryText), isBoard: item?.kind === "board", isPdf: item?.kind === "pdf", inlineReader: item?.kind === "pdf" && itemsR.inlineUid?.() === item?.uid, collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS2.includes(item?.kind), canSpread: item?.kind === "note" || item?.kind === "block", isQuery: isQueryString(queryText), canExpand, mindPreset: readMindPreset(storage), compass: typeof compassApi?.open === "function", interop: readSetting("interop") !== false, canAnnotate: item?.kind === "image" && typeof plexusApi?.create === "function", trails: trailRows(b), landmark: item?.landmark === true, landmarkSize: item?.size || "M" };
+        const pdfUrl = item?.kind === "pdf" ? pdfMacroUrl(item?.string || "") || "" : "";
+        return { ...task ? { statusTags, status: task.status || "" } : {}, item, regions: imageRegionRows(item?.content), canMakeTask: item?.type === "card" && item?.kind === "note" && !isTaskString(item.string) && !isQueryString(queryText), isBoard: item?.kind === "board", isPdf: item?.kind === "pdf", hasParse: Boolean(pdfUrl) && readParsedUrls(storage).has(pdfUrl), inlineReader: item?.kind === "pdf" && itemsR.inlineUid?.() === item?.uid, collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS2.includes(item?.kind), canSpread: item?.kind === "note" || item?.kind === "block", isQuery: isQueryString(queryText), canExpand, mindPreset: readMindPreset(storage), compass: typeof compassApi?.open === "function", interop: readSetting2("interop") !== false, canAnnotate: item?.kind === "image" && typeof plexusApi?.create === "function", trails: trailRows(b), landmark: item?.landmark === true, landmarkSize: item?.size || "M" };
       }
       case "section": {
         const members = item && b ? [item.uid, ...descendantsOf(b, item.uid)] : [];
@@ -40990,7 +46152,7 @@ function buildBoardView(onFail, {
           break;
         }
         if (head === "region-copy") {
-          if (arg) copyText(`((${arg}))`, "Reference copied");
+          if (arg) copyText2(`((${arg}))`, "Reference copied");
           break;
         }
         if (head === "region-rename") {
@@ -41339,6 +46501,30 @@ function buildBoardView(onFail, {
         else itemsR.readInline?.(item.uid);
         break;
       }
+      case "parse-pdf": {
+        if (!item || item.kind !== "pdf") break;
+        try {
+          itemsR.openPdf?.(item.uid);
+        } catch {
+        }
+        try {
+          ensureReadPane().parse?.();
+        } catch {
+        }
+        break;
+      }
+      case "open-parsed": {
+        if (!item || item.kind !== "pdf") break;
+        try {
+          itemsR.openPdf?.(item.uid);
+        } catch {
+        }
+        try {
+          ensureReadPane().showParsed?.();
+        } catch {
+        }
+        break;
+      }
       case "hl-open":
         if (item) openHighlightAs(item, arg);
         break;
@@ -41400,7 +46586,7 @@ function buildBoardView(onFail, {
         doCopy(uids);
         break;
       case "copy-ref":
-        if (item) copyText(`((${item.uid}))`, "Reference copied");
+        if (item) copyText2(`((${item.uid}))`, "Reference copied");
         break;
       case "copy-link": {
         if (!item) break;
@@ -41411,7 +46597,7 @@ function buildBoardView(onFail, {
           pageUid = "";
         }
         if (!pageUid) pageUid = pageUidFromHash(win?.location?.hash || "");
-        copyText(copyLinkText(item, { graph, pageUid }), "Link copied");
+        copyText2(copyLinkText(item, { graph, pageUid }), "Link copied");
         break;
       }
       case "duplicate":
@@ -41894,7 +47080,7 @@ function buildBoardView(onFail, {
     }
     toast(plan.toast);
   };
-  const highlightOpenMode = () => readSetting("highlight-open") === "sidebar" ? "sidebar" : "reader";
+  const highlightOpenMode = () => readSetting2("highlight-open") === "sidebar" ? "sidebar" : "reader";
   const openHighlightAs = (item, mode) => {
     if (!item || item.kind !== "highlight") return;
     const pick = mode === "sidebar" || mode === "main" || mode === "reader" ? mode : highlightOpenMode();
@@ -42122,7 +47308,7 @@ function buildBoardView(onFail, {
       },
       copyRef: () => {
         const it = singleItem();
-        if (it) copyText(`((${it.uid}))`, "Reference copied");
+        if (it) copyText2(`((${it.uid}))`, "Reference copied");
       },
       markRegion: () => {
         const it = singleItem() || barCard();
@@ -42225,7 +47411,7 @@ function buildBoardView(onFail, {
       }
     }
   });
-  const tooltip = createTooltip({ doc, root, timers, setting: readSetting });
+  const tooltip = createTooltip({ doc, root, timers, setting: readSetting2 });
   tooltipCheck = () => tooltip.check();
   const lensPop = el("div", "pxd-popover pxd-lens pxd-chrome", root);
   lensPop.style.display = "none";
@@ -43409,7 +48595,7 @@ function buildBoardView(onFail, {
   };
   const ctl = createInteractions({ actions, settings: settingsProxy });
   ctl.setTool("select");
-  const targetOf = (t) => {
+  const targetOf2 = (t) => {
     if (!t || typeof t.closest !== "function") return { kind: "empty" };
     if (t.closest(".pxd-chrome")) return { kind: "chrome" };
     const port = t.closest(".pxd-port");
@@ -43471,7 +48657,7 @@ function buildBoardView(onFail, {
   const normalize2 = (event, type = event.type) => {
     const screen = { x: (event.clientX || 0) - rootRect.left, y: (event.clientY || 0) - rootRect.top };
     const world2 = screenToWorld(vp, screen);
-    let target = targetOf(event.target);
+    let target = targetOf2(event.target);
     if (edgeEndWanted(type, event)) {
       const near = edgeEndNearWorld(handleCenters(), world2, 10, vp.zoom || 1);
       if (near) target = near;
@@ -43619,7 +48805,7 @@ function buildBoardView(onFail, {
     if (next != null) session.setString?.(uid, next);
   };
   const completeLightCheck = async (uid, box2) => {
-    if (readSetting("better-tasks") !== true) return;
+    if (readSetting2("better-tasks") !== true) return;
     const item = board2()?.items?.get(uid);
     if (!item || !isTaskString(item.string)) return;
     const wasDone = taskState(item.string) === "DONE";
@@ -43741,10 +48927,10 @@ function buildBoardView(onFail, {
     const uid = page?.getAttribute("data-link-uid") || block?.getAttribute("data-uid");
     if (!uid || !api?.ui) return false;
     const key = `${uid}:${event.shiftKey ? 1 : 0}`;
-    const now2 = Date.now();
-    if (key === lastRefKey && now2 - lastRefAt < 500) return true;
+    const now3 = Date.now();
+    if (key === lastRefKey && now3 - lastRefAt < 500) return true;
     lastRefKey = key;
-    lastRefAt = now2;
+    lastRefAt = now3;
     if (event.shiftKey) api.ui.rightSidebar?.addWindow?.({ window: { type: page ? "outline" : "block", "block-uid": uid } });
     else if (page) api.ui.mainWindow?.openPage?.({ page: { uid } });
     else api.ui.mainWindow?.openBlock?.({ block: { uid } });
@@ -44372,7 +49558,7 @@ function buildBoardView(onFail, {
   });
   let kanbanBtOn = null;
   const syncKanbanTask = () => {
-    const on = readSetting("better-tasks") === true;
+    const on = readSetting2("better-tasks") === true;
     if (kanbanBtOn === on) return;
     const wasOpen = kanbanMode;
     kanbanCtl.dispose();
@@ -45086,7 +50272,7 @@ function buildBoardView(onFail, {
       if (disposed || !region) return;
       if (region.kind === "img") {
         let nudged = false;
-        const place = (left) => {
+        const place2 = (left) => {
           if (disposed) return;
           const card2 = rects().get(region.cardUid);
           const shell = itemsR.shellOf(region.cardUid);
@@ -45103,7 +50289,7 @@ function buildBoardView(onFail, {
                 size: viewSize()
               }));
             }
-            if (left > 0) timers.later(() => place(left - 1), 100);
+            if (left > 0) timers.later(() => place2(left - 1), 100);
             return;
           }
           const imageRect = {
@@ -45117,7 +50303,7 @@ function buildBoardView(onFail, {
             if (!disposed) pulseFraction(img, region.f);
           });
         };
-        place(20);
+        place2(20);
         return;
       }
       if (region.kind !== "view") return;
@@ -45137,12 +50323,12 @@ function buildBoardView(onFail, {
       if (disposed) return;
       const minimapBefore = setting("show-minimap", true) !== false;
       const opensBefore = trackOpensOn();
-      const interopBefore = readSetting("interop") !== false;
-      const coverBefore = readSetting("pdf-cover");
+      const interopBefore = readSetting2("interop") !== false;
+      const coverBefore = readSetting2("pdf-cover");
       const warmBefore = coverWarmOn();
       settingsRef = next;
       applyPdfDark();
-      if (readSetting("pdf-cover") !== coverBefore) {
+      if (readSetting2("pdf-cover") !== coverBefore) {
         forgetCovers();
         itemsR.repaintStyles();
       }
@@ -45166,7 +50352,7 @@ function buildBoardView(onFail, {
         }
       }
       if (opensBefore !== trackOpensOn() && strengthOn) void refreshStrength();
-      if (interopBefore !== (readSetting("interop") !== false)) {
+      if (interopBefore !== (readSetting2("interop") !== false)) {
         const live = board2();
         if (live) for (const item of live.items.values()) {
           if (item?.kind === "drawing-ref" || item?.kind === "region-ref") dirty.items.add(item.uid);
@@ -45187,7 +50373,7 @@ function buildBoardView(onFail, {
       chrome.toolbar.applyControls?.();
       itemsR.setShowBadges(flag("show-card-badges", true));
       applyTaskSettings();
-      if (readSetting("task-tool") !== true && ctl.getTool() === "task") ctl.setTool("select");
+      if (readSetting2("task-tool") !== true && ctl.getTool() === "task") ctl.setTool("select");
       syncKanbanTask();
       dirty.links = true;
       scheduleContent();
@@ -45517,7 +50703,7 @@ function parseSketch(raw) {
   }
   return { items, edges };
 }
-function createSketchStore({ storage = globalThis.localStorage, graph = "", now: now2 = Date.now, enabled = () => true } = {}) {
+function createSketchStore({ storage = globalThis.localStorage, graph = "", now: now3 = Date.now, enabled = () => true } = {}) {
   const graphOf = typeof graph === "function" ? graph : () => graph;
   const key = (uid) => sketchKey(graphOf(), uid);
   const lastWrite = /* @__PURE__ */ new Map();
@@ -45540,7 +50726,7 @@ function createSketchStore({ storage = globalThis.localStorage, graph = "", now:
       storage?.setItem(key(uid), text3);
     } catch {
     }
-    lastWrite.set(uid, now2());
+    lastWrite.set(uid, now3());
   };
   return {
     get(uid) {
@@ -45558,7 +50744,7 @@ function createSketchStore({ storage = globalThis.localStorage, graph = "", now:
       const text3 = packSketch(sketch);
       if (!text3) return;
       latest.set(uid, text3);
-      const since = now2() - (lastWrite.get(uid) ?? -Infinity);
+      const since = now3() - (lastWrite.get(uid) ?? -Infinity);
       if (since >= SKETCH_DEBOUNCE_MS) {
         flush(uid);
         return;
@@ -45869,7 +51055,7 @@ function createPrefetch({
   delayMs = DEFAULT_DELAY_MS,
   limit = DEFAULT_LIMIT,
   windowMs = DEFAULT_WINDOW_MS,
-  now: now2 = Date.now,
+  now: now3 = Date.now,
   enabled = () => true,
   setTimer = (fn, ms) => setTimeout(fn, ms),
   clearTimer = (id) => clearTimeout(id)
@@ -45881,7 +51067,7 @@ function createPrefetch({
   let inflight = 0;
   let queued = null;
   const pageTitle = (node2) => String(node2?.getAttribute?.("data-link-title") || node2?.getAttribute?.("data-page-title") || "").trim();
-  const targetOf = (node2) => {
+  const targetOf2 = (node2) => {
     if (!node2?.closest) return null;
     if (!node2.closest(HOVER_SEL)) return null;
     const cardChip = node2.closest(".pxd-cardchip");
@@ -45943,7 +51129,7 @@ function createPrefetch({
         return null;
       }
     }
-    const t = now2();
+    const t = now3();
     prune(t);
     if (misses.length >= limit) return null;
     misses.push(t);
@@ -45996,13 +51182,13 @@ function createPrefetch({
     queued = null;
   }
   const onOver = (event) => {
-    const hit = targetOf(event?.target);
+    const hit = targetOf2(event?.target);
     if (!hit?.uids?.length) return;
     if (hit.el?.contains?.(event.relatedTarget)) return;
     schedule(hit.uids, hit.el);
   };
   const onOut = (event) => {
-    const hit = targetOf(event?.target);
+    const hit = targetOf2(event?.target);
     if (!hit?.el) return;
     if (hit.el.contains?.(event.relatedTarget)) return;
     cancel(hit.el);
@@ -46650,8 +51836,8 @@ function resolveRegionTarget(hit, outline) {
   }
   return { kind: "outline", blockUid: outline?.blockUid, pageUid: outline?.pageUid };
 }
-function createShowStash(now2 = () => Date.now()) {
-  const clock = typeof now2 === "function" ? now2 : () => Date.now();
+function createShowStash(now3 = () => Date.now()) {
+  const clock = typeof now3 === "function" ? now3 : () => Date.now();
   let entry = null;
   const live = () => {
     if (!entry) return null;
@@ -46722,7 +51908,7 @@ function openHoverPopover({ doc, win, anchor, delayMs, build, obstacles, timers 
     for (const off of offs.splice(0)) off();
     el.remove?.();
   };
-  const place = () => {
+  const place2 = () => {
     if (closed) return;
     if (anchor && anchor.isConnected === false) {
       close();
@@ -46759,7 +51945,7 @@ function openHoverPopover({ doc, win, anchor, delayMs, build, obstacles, timers 
     document.body?.append(el);
     build?.(el);
     if (closed) return;
-    place();
+    place2();
     if (closed) return;
     on(document, "keydown", (event) => {
       if (event.key === "Escape" || event.key === "Esc") close();
@@ -46768,7 +51954,7 @@ function openHoverPopover({ doc, win, anchor, delayMs, build, obstacles, timers 
       if (!el.contains?.(event.target)) close();
     }, true);
     const again = () => {
-      if (!closed) place();
+      if (!closed) place2();
     };
     on(view, "scroll", again, true);
     on(document, "scroll", again, true);
@@ -49865,7 +55051,7 @@ async function installPlexusDiagram({
     const f = Array.isArray(frac) ? frac : [frac?.rx, frac?.ry, frac?.rw, frac?.rh];
     const viewH = () => doc.defaultView?.innerHeight || 0;
     let node2 = null;
-    const place = () => {
+    const place2 = () => {
       try {
         img.scrollIntoView?.({ block: "center", behavior: "instant" });
       } catch {
@@ -49893,7 +55079,7 @@ async function installPlexusDiagram({
     };
     const kick = (left) => {
       if (stopped) return;
-      place();
+      place2();
       if (left > 0) lifecycle.timeout(() => kick(left - 1), 100);
     };
     kick(10);

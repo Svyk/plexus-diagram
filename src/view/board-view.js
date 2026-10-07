@@ -70,6 +70,7 @@ import { createInteractions } from "./interactions.js";
 import { openPagePicker } from "./board-picker.js";
 import { createItemRenderer, dropEmbedPoster, isTextEntryTarget, pageBodyWantsWheel, paintEmbedPoster, syncBoardHighlighter } from "./cards.js";
 import { createReadPane, highlightDropPlan, originBeside, placeDecision, readerJumpPlan } from "./read-pane.js";
+import { readParsedUrls } from "./parse-view.js";
 import { createPdfWarm } from "./pdf-warm.js";
 import { createFirstPageRenderer, createPdfMetaLookup, detectPdfjs, firstPageAllowed } from "./pdf-first-page.js";
 import { createThemeFollow } from "./theme-follow.js";
@@ -1498,6 +1499,10 @@ function buildBoardView(onFail, {
     pdfMetaTitle: (url) => notePdfMeta(url),
     readingUid: () => readingCard,
     onPdfOpenRequest: (uid) => { try { itemsR.openPdf?.(uid); } catch { /* host */ } },
+    onPdfParse: (uid) => {
+      try { itemsR.openPdf?.(uid); } catch { /* host */ }
+      try { ensureReadPane().parse?.(); } catch { /* pane */ }
+    },
     onHighlightHover: (uid, on) => { try { flashPaneMarks(uid, on); } catch { /* pane */ } },
     onReadPane: (detail) => {
       if (!detail?.open) {
@@ -1570,6 +1575,8 @@ function buildBoardView(onFail, {
         if (item?.target?.uid === uid) pulseItem(item.uid);
       }
     },
+    session,
+    settings: { get: (id) => readSetting(id) },
     onPlace: (row) => {
       const items = [...(board()?.items.values() || [])];
       const card = board()?.items.get(readPane?.cardUid?.() || "");
@@ -3576,7 +3583,8 @@ function buildBoardView(onFail, {
         const compassApi = globalThis.RoamCompass || globalThis.window?.RoamCompass || null;
         const plexusApi = globalThis.RoamPlexus || globalThis.window?.RoamPlexus || null;
         const task = isTaskItem(item) ? taskMeta(item.string, item.content) : null;
-        return { ...(task ? { statusTags, status: task.status || "" } : {}), item, regions: imageRegionRows(item?.content), canMakeTask: item?.type === "card" && item?.kind === "note" && !isTaskString(item.string) && !isQueryString(queryText), isBoard: item?.kind === "board", isPdf: item?.kind === "pdf", inlineReader: item?.kind === "pdf" && itemsR.inlineUid?.() === item?.uid, collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS.includes(item?.kind), canSpread: item?.kind === "note" || item?.kind === "block", isQuery: isQueryString(queryText), canExpand, mindPreset: readMindPreset(storage), compass: typeof compassApi?.open === "function", interop: readSetting("interop") !== false, canAnnotate: item?.kind === "image" && typeof plexusApi?.create === "function", trails: trailRows(b), landmark: item?.landmark === true, landmarkSize: item?.size || "M" };
+        const pdfUrl = item?.kind === "pdf" ? (pdfMacroUrl(item?.string || "") || "") : "";
+        return { ...(task ? { statusTags, status: task.status || "" } : {}), item, regions: imageRegionRows(item?.content), canMakeTask: item?.type === "card" && item?.kind === "note" && !isTaskString(item.string) && !isQueryString(queryText), isBoard: item?.kind === "board", isPdf: item?.kind === "pdf", hasParse: Boolean(pdfUrl) && readParsedUrls(storage).has(pdfUrl), inlineReader: item?.kind === "pdf" && itemsR.inlineUid?.() === item?.uid, collapsed: Boolean(item?.collapsed), pinned: Boolean(item?.pinned), hasOutline: NOTE_KINDS.includes(item?.kind), canSpread: item?.kind === "note" || item?.kind === "block", isQuery: isQueryString(queryText), canExpand, mindPreset: readMindPreset(storage), compass: typeof compassApi?.open === "function", interop: readSetting("interop") !== false, canAnnotate: item?.kind === "image" && typeof plexusApi?.create === "function", trails: trailRows(b), landmark: item?.landmark === true, landmarkSize: item?.size || "M" };
       }
       case "section": {
         const members = item && b ? [item.uid, ...descendantsOf(b, item.uid)] : [];
@@ -3904,6 +3912,18 @@ function buildBoardView(onFail, {
         if (!item || item.kind !== "pdf") break;
         if (itemsR.inlineUid?.() === item.uid) itemsR.closeInline?.();
         else itemsR.readInline?.(item.uid);
+        break;
+      }
+      case "parse-pdf": {
+        if (!item || item.kind !== "pdf") break;
+        try { itemsR.openPdf?.(item.uid); } catch { /* host */ }
+        try { ensureReadPane().parse?.(); } catch { /* pane */ }
+        break;
+      }
+      case "open-parsed": {
+        if (!item || item.kind !== "pdf") break;
+        try { itemsR.openPdf?.(item.uid); } catch { /* host */ }
+        try { ensureReadPane().showParsed?.(); } catch { /* pane */ }
         break;
       }
       case "hl-open": if (item) openHighlightAs(item, arg); break;

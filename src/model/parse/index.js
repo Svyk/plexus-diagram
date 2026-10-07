@@ -48,14 +48,19 @@ export function parsePageGeometry(data, n) {
   const graphics = extractGraphics(data.ops, { transform });
   const words = lines.flatMap((l) => l.words);
   const pageArea = w * h;
-  const bigImage = graphics.images.some((im) => (im.x1 - im.x0) * (im.y1 - im.y0) >= 0.5 * pageArea);
+  const imageArea = (im) => (im.x1 - im.x0) * (im.y1 - im.y0);
+  const bigImage = graphics.images.some((im) => imageArea(im) >= 0.5 * pageArea);
+  // A page-sized image under a text layer is a scan with OCR text: the text is parsed as on
+  // any page and the image is the background, not a figure.
+  const scanLayer = words.length > 0 && graphics.images.some((im) => imageArea(im) >= 0.85 * pageArea);
   const kind = words.length === 0 && bigImage ? "scan" : bigImage ? "mixed" : "text";
   const pageBody = bodySizeOf(lines) || 10;
   const used = new Set();
   const tables = [];
   const lattice = findLatticeTables({ rules: graphics.rules, boxes: graphics.boxes, words });
+  const released = new Set(lattice.released);
   for (const t of lattice.tables) { if (isTitledBox(t)) continue; t.page = n; tables.push(t); }
-  for (const w of lattice.usedWords) used.add(w);
+  for (const w of lattice.usedWords) if (!released.has(w)) used.add(w);
   const usedRules = new Set(lattice.usedRules);
   for (const band of lattice.bands) {
     if (looksLikeChart(band, graphics)) continue;
@@ -68,10 +73,11 @@ export function parsePageGeometry(data, n) {
     for (const s of band.segs) usedRules.add(s);
     tables.push(t);
   }
-  const figs = kind === "scan" ? { figures: [], used: new Set() } : findFigures({ graphics, usedRules, words: words.filter((w) => !used.has(w)), bodySize: pageBody, pageW: w, pageH: h, ruleSegments: lattice.segments });
+  const figGraphics = scanLayer ? { ...graphics, images: graphics.images.filter((im) => imageArea(im) < 0.85 * pageArea) } : graphics;
+  const figs = kind === "scan" ? { figures: [], used: new Set() } : findFigures({ graphics: figGraphics, usedRules, usedBoxes: lattice.usedBoxes, words: words.filter((w) => !used.has(w)), bodySize: pageBody, pageW: w, pageH: h, ruleSegments: lattice.segments });
   for (const w of figs.used) used.add(w);
   const figures = figs.figures.map((f) => ({ ...f, page: n }));
-  return { n, w, h, rotation: data.rotation || 0, kind, lines, rotated, words, graphics, tables, figures, used, ms: round(now() - t0) };
+  return { n, w, h, rotation: data.rotation || 0, kind, scanLayer, lines, rotated, words, graphics, tables, figures, used, ms: round(now() - t0) };
 }
 
 export async function parsePdf({ getPage, numPages, pages, signal, onPage, info = null, engineVersion = ENGINE_VERSION, sha256 = null, options = {} }) {
@@ -370,7 +376,7 @@ export function stitchTables(tables, textBlocks, bodySize) {
   for (let i = 0; i + 1 < tables.length; i++) {
     const a = tables[i];
     const b = tables[i + 1];
-    if (a.method !== "stream" || b.method !== "stream" || a.cols !== b.cols) continue;
+    if (a.method !== "stream" || b.method !== "stream" || a.cols !== b.cols || b.headerRows > 0) continue;
     const gap = b.bbox[1] - a.bbox[3];
     if (gap < -2 || gap > 4 * bodySize) continue;
     const ox = Math.min(a.bbox[2], b.bbox[2]) - Math.max(a.bbox[0], b.bbox[0]);

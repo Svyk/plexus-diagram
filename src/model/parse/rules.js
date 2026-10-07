@@ -255,6 +255,7 @@ export function snapRules(rules, { tol = 1.5, join = 2 } = {}) {
       a: axis === "h" ? r.x0 : r.y0,
       b: axis === "h" ? r.x1 : r.y1,
       thick: r.thick || 0.5,
+      fromBox: Boolean(r.fromBox),
     })).sort((p, q) => p.pos - q.pos || p.a - q.a);
     let g = null;
     for (const r of list) {
@@ -266,8 +267,8 @@ export function snapRules(rules, { tol = 1.5, join = 2 } = {}) {
       const ivs = [];
       for (const r of grp.items) {
         const last = ivs[ivs.length - 1];
-        if (last && r.a <= last.b + join) { last.b = Math.max(last.b, r.b); last.thick = Math.max(last.thick, r.thick); }
-        else ivs.push({ a: r.a, b: r.b, thick: r.thick });
+        if (last && r.a <= last.b + join) { last.b = Math.max(last.b, r.b); last.thick = Math.max(last.thick, r.thick); last.fromBox = last.fromBox && r.fromBox; }
+        else ivs.push({ a: r.a, b: r.b, thick: r.thick, fromBox: r.fromBox });
       }
       grp.intervals = ivs;
       delete grp.items;

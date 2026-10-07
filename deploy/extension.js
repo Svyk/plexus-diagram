@@ -23553,13 +23553,15 @@ var package_default = {
     "verify:generated": "node scripts/verify-generated.mjs",
     check: "npm run build && npm run scan:secrets && node --check extension.js && npm test && npm run verify:generated",
     "bench:hot": "node --predictable --test --test-concurrency=1 test/fast-7-hot-paths.test.js",
-    "size:gate": "node scripts/size-gate.mjs"
+    "size:gate": "node scripts/size-gate.mjs",
+    "parse:score": "node tools/parse-score.mjs"
   },
   engines: {
     node: ">=20"
   },
   devDependencies: {
-    esbuild: "0.28.1"
+    esbuild: "0.28.1",
+    "pdfjs-dist": "5.4.149"
   },
   license: "MIT"
 };

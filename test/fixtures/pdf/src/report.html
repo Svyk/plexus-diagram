@@ -1,0 +1,125 @@
+<!doctype html>
+<html><head><meta charset="utf-8"><title>Plexus parse fixture: Environmental monitoring report</title>
+<style>
+@page { size: Letter; margin: 0.8in 0.7in; }
+body { font-family: "Helvetica Neue", Arial, sans-serif; font-size: 10pt; line-height: 1.35; color: #111; }
+.run-head { position: fixed; top: -0.55in; left: 0; right: 0; font-size: 8pt; color: #555; border-bottom: 0.5pt solid #999; }
+.run-foot { position: fixed; bottom: -0.55in; left: 0; right: 0; font-size: 8pt; color: #555; text-align: center; }
+h1 { font-size: 18pt; margin: 0 0 4pt; }
+h2 { font-size: 13pt; margin: 14pt 0 4pt; }
+h3 { font-size: 11pt; margin: 10pt 0 3pt; }
+.authors { font-size: 9pt; color: #333; margin-bottom: 10pt; }
+.abstract { font-size: 9pt; border-left: 2pt solid #999; padding-left: 8pt; margin-bottom: 12pt; }
+.cols { column-count: 2; column-gap: 0.3in; text-align: justify; hyphens: auto; }
+table { border-collapse: collapse; font-size: 8.5pt; margin: 6pt 0; }
+.ruled td, .ruled th { border: 0.6pt solid #000; padding: 2pt 4pt; }
+.ruled th { background: #eee; }
+.booktabs { border-top: 1.2pt solid #000; border-bottom: 1.2pt solid #000; }
+.booktabs thead th { border-bottom: 0.6pt solid #000; }
+.booktabs td, .booktabs th { padding: 2pt 8pt; }
+.num { text-align: right; font-variant-numeric: tabular-nums; }
+.borderless td, .borderless th { padding: 1pt 10pt 1pt 0; }
+.caption { font-size: 8.5pt; font-weight: bold; margin-top: 8pt; }
+.note { font-size: 7.5pt; color: #333; }
+figure { margin: 8pt 0; break-inside: avoid; }
+.span-all { column-span: all; }
+.eq { text-align: center; margin: 6pt 0; }
+</style></head><body>
+
+<h1>Environmental Monitoring of a Dry-Blend Powder Line</h1>
+<div class="authors">S. Kleshchev<sup>1</sup>, L. Boyd<sup>1,2</sup> &nbsp; <sup>1</sup>Quality Assurance, BlendHouse Portland &nbsp; <sup>2</sup>Food Safety Mentor Program</div>
+<div class="abstract"><b>Abstract.</b> We review twelve months of environmental swabs from a dry-blend powder line. Zone 1 contact surfaces stayed below action limits in every month, while Zone 3 floor drains drove most presumptive positives. Sanitation after wet cleaning, not the blend recipe, explained the seasonal peak. We propose a risk-weighted sampling rotation and report the effect of the change on detection rates.</div>
+
+<div class="cols">
+<h2>1 Introduction</h2>
+<p>Dry powder facilities depend on keeping water out. When water enters during a wet clean, organisms that persist in dry niches can grow, and a single harborage site can seed a whole zone<sup>3</sup>. Environmental monitoring (EM) programs therefore sample by zone, from product-contact surfaces (Zone 1) outward to non-production areas (Zone 4).</p>
+<p>This report has three aims:</p>
+<ul>
+<li>Describe positives by zone, site type and month.</li>
+<li>Test whether wet cleaning predicts the next positive.</li>
+<li>Propose a rotation that weights high-risk sites.</li>
+</ul>
+<h2>2 Methods</h2>
+<h3>2.1 Sampling</h3>
+<p>Sites were swabbed with pre-moistened sponges over 100 cm<sup>2</sup> where the surface allowed, otherwise the whole accessible surface. Each sample was enriched and screened for <i>Salmonella</i> spp. and <i>Cronobacter</i> spp. Presumptive positives were confirmed by the contract laboratory.</p>
+<h3>2.2 Risk score</h3>
+<p>Each site received a risk score from its zone weight <i>w</i><sub>z</sub>, its moisture exposure <i>m</i> and its history of positives <i>h</i>:</p>
+<div class="eq"><math display="block"><mi>R</mi><mo>=</mo><msub><mi>w</mi><mi>z</mi></msub><mo>·</mo><mo>(</mo><mn>1</mn><mo>+</mo><mi>m</mi><mo>)</mo><mo>+</mo><mn>2</mn><mi>h</mi></math></div>
+<p>Sites with <i>R</i> ≥ 6 were sampled weekly; the rest rotated monthly. A sampling plan of 1. weekly, 2. monthly and 3. quarterly tiers was kept.</p>
+<ol>
+<li>Weekly: all Zone 1 sites and any site with <i>R</i> ≥ 6.</li>
+<li>Monthly: remaining Zone 2 and Zone 3 sites.</li>
+<li>Quarterly: Zone 4.</li>
+</ol>
+</div>
+
+<div class="span-all">
+<p class="caption">Table 1. Microbiological limits by product stage (n, c, m, M sampling plan)</p>
+<table class="ruled">
+<thead>
+<tr><th rowspan="2">Product stage</th><th rowspan="2">Organism</th><th colspan="4">Sampling plan</th><th rowspan="2">Action</th></tr>
+<tr><th>n</th><th>c</th><th>m (CFU/g)</th><th>M (CFU/g)</th></tr>
+</thead>
+<tbody>
+<tr><td rowspan="3">Base powder</td><td>Aerobic plate count</td><td class="num">5</td><td class="num">2</td><td class="num">1,000</td><td class="num">10,000</td><td>Hold lot</td></tr>
+<tr><td><i>Enterobacteriaceae</i></td><td class="num">10</td><td class="num">2</td><td class="num">0</td><td class="num">10</td><td>Hold lot</td></tr>
+<tr><td><i>Cronobacter</i> spp.</td><td class="num">30</td><td class="num">0</td><td colspan="2">Absent in 10 g</td><td>Reject</td></tr>
+<tr><td rowspan="2">Finished blend</td><td><i>Salmonella</i> spp.</td><td class="num">60</td><td class="num">0</td><td colspan="2">Absent in 25 g</td><td>Reject</td></tr>
+<tr><td>Yeast and mould</td><td class="num">5</td><td class="num">2</td><td class="num">50</td><td class="num">500</td><td>Investigate</td></tr>
+</tbody></table>
+<p class="note">n = samples per lot; c = samples allowed between m and M. Limits follow the customer specification.</p>
+</div>
+
+<div class="cols">
+<h2>3 Results</h2>
+<p>Across 1,284 swabs, 41 were presumptive positive and 17 confirmed. Zone 3 drains accounted for 11 of the 17 confirmed results. No Zone 1 site was confirmed positive. The monthly pattern (Figure 1) peaks in March and August, the two months with the most wet cleans.</p>
+<p>Confirmed positives followed a wet clean within seven days in 13 of 17 cases (76%). A post-clean dry-out step, added in May, reduced that share to 2 of 6 in the second half of the year.</p>
+</div>
+
+<div class="span-all">
+<p class="caption">Table 2. Swab results by zone, first and second half of the year</p>
+<table class="borderless">
+<thead><tr><th>Zone</th><th class="num">Swabs H1</th><th class="num">Pos. H1</th><th class="num">Rate H1 (%)</th><th class="num">Swabs H2</th><th class="num">Pos. H2</th><th class="num">Rate H2 (%)</th></tr></thead>
+<tbody>
+<tr><td>Zone 1</td><td class="num">312</td><td class="num">0</td><td class="num">0.0</td><td class="num">318</td><td class="num">0</td><td class="num">0.0</td></tr>
+<tr><td>Zone 2</td><td class="num">204</td><td class="num">3</td><td class="num">1.5</td><td class="num">198</td><td class="num">1</td><td class="num">0.5</td></tr>
+<tr><td>Zone 3</td><td class="num">96</td><td class="num">9</td><td class="num">9.4</td><td class="num">101</td><td class="num">2</td><td class="num">2.0</td></tr>
+<tr><td>Zone 4</td><td class="num">27</td><td class="num">1</td><td class="num">3.7</td><td class="num">28</td><td class="num">1</td><td class="num">3.6</td></tr>
+<tr><td><b>Total</b></td><td class="num"><b>639</b></td><td class="num"><b>13</b></td><td class="num"><b>2.0</b></td><td class="num"><b>645</b></td><td class="num"><b>4</b></td><td class="num"><b>0.6</b></td></tr>
+</tbody></table>
+
+<figure>
+<svg width="420" height="150" viewBox="0 0 420 150" xmlns="http://www.w3.org/2000/svg" font-size="8" font-family="Arial">
+<line x1="30" y1="130" x2="410" y2="130" stroke="#000"/><line x1="30" y1="10" x2="30" y2="130" stroke="#000"/>
+<g fill="#4a7">
+<rect x="40" y="110" width="20" height="20"/><rect x="70" y="100" width="20" height="30"/><rect x="100" y="40" width="20" height="90"/><rect x="130" y="95" width="20" height="35"/><rect x="160" y="105" width="20" height="25"/><rect x="190" y="112" width="20" height="18"/><rect x="220" y="108" width="20" height="22"/><rect x="250" y="50" width="20" height="80"/><rect x="280" y="100" width="20" height="30"/><rect x="310" y="115" width="20" height="15"/><rect x="340" y="118" width="20" height="12"/><rect x="370" y="120" width="20" height="10"/>
+</g>
+<g text-anchor="middle"><text x="50" y="142">Jan</text><text x="80" y="142">Feb</text><text x="110" y="142">Mar</text><text x="140" y="142">Apr</text><text x="170" y="142">May</text><text x="200" y="142">Jun</text><text x="230" y="142">Jul</text><text x="260" y="142">Aug</text><text x="290" y="142">Sep</text><text x="320" y="142">Oct</text><text x="350" y="142">Nov</text><text x="380" y="142">Dec</text></g>
+</svg>
+<figcaption class="caption">Figure 1. Presumptive positives per month. Peaks follow wet-clean months.</figcaption>
+</figure>
+</div>
+
+<div class="cols">
+<h2>4 Discussion</h2>
+<p>The data point to water, not the blend recipe, as the driver. Drains and the floor around them stay wet for hours after a clean, and traffic carries that water toward Zone 2. The dry-out step shortened that window. A risk-weighted rotation puts more swabs where water lingers without adding total samples.</p>
+<p>Two limits apply. Twelve months is short for seasonal claims, and the contract laboratory changed its enrichment method in October, which may shift detection.</p>
+<h2>5 Conclusion</h2>
+<p>Keep Zone 1 weekly. Move drains to weekly after any wet clean. Keep the dry-out step. Review the rotation after the next twelve months.</p>
+<p class="note"><sup>3</sup> A harborage site is a niche where organisms survive cleaning, such as a cracked seal or a hollow roller.</p>
+</div>
+
+<div class="span-all" style="break-before: page">
+<h2>Appendix A. Site register (excerpt)</h2>
+<table class="booktabs">
+<thead><tr><th>Site ID</th><th>Zone</th><th>Description</th><th>Surface</th><th class="num">R</th><th>Frequency</th></tr></thead>
+<tbody>
+<tr><td>Z1-014</td><td>1</td><td>Blender discharge chute, inner wall</td><td>Stainless steel</td><td class="num">7.5</td><td>Weekly</td></tr>
+<tr><td>Z1-022</td><td>1</td><td>Filler hopper lid gasket</td><td>Silicone</td><td class="num">8.0</td><td>Weekly</td></tr>
+<tr><td>Z2-031</td><td>2</td><td>Filler frame, underside of cross-member near the lift motor</td><td>Painted steel</td><td class="num">4.5</td><td>Monthly</td></tr>
+<tr><td>Z3-007</td><td>3</td><td>Floor drain D-3, grate and basket</td><td>Cast iron</td><td class="num">9.0</td><td>Weekly after wet clean</td></tr>
+<tr><td>Z3-011</td><td>3</td><td>Wash-down hose reel and nozzle holster</td><td>Plastic</td><td class="num">6.5</td><td>Weekly</td></tr>
+<tr><td>Z4-002</td><td>4</td><td>Corridor door threshold to warehouse</td><td>Rubber seal</td><td class="num">2.0</td><td>Quarterly</td></tr>
+</tbody></table>
+</div>
+</body></html>

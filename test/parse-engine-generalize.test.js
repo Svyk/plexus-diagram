@@ -340,6 +340,8 @@ test("numbered body-size headings in italic or bold become headings with numberi
   assert.equal(byText["1 Ej"], undefined);
   assert.equal(headingLevel({ text: "4.1. Food data preprocessing", size: 10, bold: false, italic: false, words: [{ text: "4.1." }, { text: "Food" }], mathShare: 0 }, { bodySize: 10, classes: [16], isolated: true }), 3);
   assert.equal(headingLevel({ text: "2006. The year the market turned", size: 10, bold: false, italic: false, words: [], mathShare: 0 }, { bodySize: 10, classes: [16], isolated: false }), 0);
+  assert.equal(headingLevel({ text: "⁎ ⁎ ⁎⁎", size: 16, bold: true, italic: false, words: [], mathShare: 0 }, { bodySize: 10, classes: [16], isolated: true }), 0);
+  assert.equal(headingLevel({ text: "Title⁎", size: 16, bold: true, italic: false, words: [], mathShare: 0 }, { bodySize: 10, classes: [16], isolated: true }), 1);
 });
 
 test("a bar chart with gridlines and value labels is not a table", () => {

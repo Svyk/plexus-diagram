@@ -24,8 +24,8 @@ const HEIGHT_CAP = 800;
 const HEIGHT_CHROME = 8;
 const CHAR_PX = 7;
 const CELL_PAD = 16;
-const WORD_PX = 7.5;
-const WORD_PAD = 18;
+const WORD_PX = 8.2;
+const WORD_PAD = 24;
 
 function clampInt(n, lo, hi) {
   const v = Math.round(Number(n));

@@ -8353,6 +8353,10 @@ body.bt-theme-dark .pxd-read-drawer .pxd-pdf-chip--on,
   transform: translateX(-50%);
 }
 
+.pxd-read .pxd-read__pill[hidden] {
+  display: none;
+}
+
 .pxd-read .pxd-read__pillbtn {
   flex: 0 0 auto;
   width: 28px;

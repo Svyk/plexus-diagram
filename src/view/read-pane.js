@@ -1705,6 +1705,7 @@ export function createReadPane({
     for (const [id, button] of Object.entries(modeBtns)) {
       button.setAttribute("aria-pressed", id === viewMode ? "true" : "false");
     }
+    setHidden(pill, viewMode === "parsed" || pane.classList.contains("pxd-read--narrow"));
     paintPill();
   }
   const ensureParsed = () => {
@@ -1747,6 +1748,7 @@ export function createReadPane({
     setHidden(modes, true);
     setHidden(progress, true);
     pane.classList.remove("pxd-read--modes", "pxd-read--parsed", "pxd-read--both", "pxd-read--narrow");
+    setHidden(pill, false);
     for (const [id, button] of Object.entries(modeBtns)) {
       button.setAttribute("aria-pressed", id === "reader" ? "true" : "false");
     }

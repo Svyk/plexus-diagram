@@ -129,6 +129,34 @@ The card cover is the page image, first page or the last page you read, with a t
 | Add highlights | On a PDF card, Add highlights lists that page's highlights by date, with a colour bar and a page number. Place as grid or column. One undo removes those cards. Drag a highlight's bullet onto the board for one card. Drop a date and confirm to add only its highlights. Paste of a highlight ref is unchanged |
 | Highlight colour | The tag lens can keep one highlight colour bright. An area picture uses its saved width and height. Mark region on an area card stores the region under that highlight. The page mark keeps the colour Roam painted |
 
+## Parse a PDF
+
+Parse turns a PDF into text, headings, lists, tables and figures you can insert into Roam. Open the reading pane, then pick Parse. Reader shows the PDF, Parsed shows the parse, and Both shows them side by side (a narrow pane stacks them). Nothing is written until you insert.
+
+The built-in parser needs no install. It reads text, headings, lists, ruled and borderless tables with merged cells, figures, and formulas as crops. It follows two-column order and removes running headers and footers.
+
+The optional local helper adds Docling for formulas as LaTeX and for OCR. For a scanned page, Read the scan runs Apple Vision word boxes through the same table engine. To use it:
+
+| Step | How |
+|---|---|
+| Start | Run `tools/parse-helper/bin/plexus-parse-helper serve` |
+| Token | Run `plexus-parse-helper token`, then paste the result into Settings, Plexus Diagram, Parse helper token |
+| Scans | Read the scan appears on scanned pages when the helper is ready |
+
+An insert is one Roam write per table or page range, plus the card layout. Roam Grid tables keep merged cells when Roam Grid 0.18.3 or later is installed.
+
+Measured on the 67 government PDFs of ICDAR 2013 and on a scanned CDC table. Details are in `docs/parse-bench.md`.
+
+| Test | Built-in | Docling |
+|---|---|---|
+| ICDAR 2013, adjacency F1 | 0.979 | 0.865 |
+| ICDAR 2013, cell F1 | 0.932 | 0.795 |
+| ICDAR 2013, all 67 files | 2.5 s | 5 min |
+| Scanned CDC 1980 table (image only), structure F1 | 1.000 | 0.821 |
+| Scanned CDC 1980 table, cell F1 | 0.957 | 0.082 |
+
+Label words in small scanned type can still be misread, so check a scanned table before you insert it.
+
 ## Tasks and statuses (opt-in)
 
 The Task tool and Better Tasks start off. Turn them on under Settings → Integrations. A Task tool you already saved stays on. With both off, the dock has no Task button and K does nothing.

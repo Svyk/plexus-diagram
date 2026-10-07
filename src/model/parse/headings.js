@@ -34,7 +34,7 @@ export function wordCount(text) {
 export function headingLevel(line, { bodySize, classes, nextIsBody = true, isolated = false }) {
   const k = Math.round(line.size * 2) / 2;
   const text = line.text.trim();
-  if (!text || CAPTION_RE.test(text)) return 0;
+  if (!text || CAPTION_RE.test(text) || !/[\p{L}\p{N}]/u.test(text)) return 0;
   const idx = classes.indexOf(k);
   if (idx >= 0 && wordCount(text) <= 24) return idx + 1;
   if (idx >= 0) return 0;

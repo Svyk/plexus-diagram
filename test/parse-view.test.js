@@ -487,14 +487,17 @@ test("Parsed mode shows the strip and dispose drops its listeners", async () => 
     pane.element().querySelector('[data-mode="parsed"]').click();
     await new Promise((resolve) => setTimeout(resolve, 30));
     assert.equal(pane.element().classList.contains("pxd-read--parsed"), true);
+    assert.equal(pane.element().querySelector(".pxd-read__pill").hasAttribute("hidden"), true);
     assert.equal(pane.element().querySelector(".pxd-read__modes").hasAttribute("hidden"), false);
     assert.ok(pane.element().querySelector(".pxd-parse"));
     pane.element().querySelector('[data-mode="both"]').click();
     await new Promise((resolve) => setTimeout(resolve, 20));
     assert.equal(pane.element().classList.contains("pxd-read--both"), true);
+    assert.equal(pane.element().querySelector(".pxd-read__pill").hasAttribute("hidden"), false);
     pane.element()._rect = { left: 0, top: 0, width: 360, height: 600, right: 360, bottom: 600, x: 0, y: 0 };
     pane.layout(360);
     assert.equal(pane.element().classList.contains("pxd-read--narrow"), true);
+    assert.equal(pane.element().querySelector(".pxd-read__pill").hasAttribute("hidden"), true);
     assert.ok(pane.element().querySelector(".pxd-read__pageprev"));
     assert.ok(pane.element().querySelector(".pxd-read__pagenext"));
     assert.equal(pane.element().querySelector(".pxd-parse__docling").hidden, true);

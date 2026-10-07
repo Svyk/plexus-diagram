@@ -66,7 +66,8 @@ export function pdfTitlePlan(source) {
   return file || "PDF";
 }
 
-// The parsed document's name for the PDF: its title, else the first level-1 heading. Never a storage path.
+// The parsed document's name for the PDF: its title, else the first level-1 heading, else the first
+// table caption, else a short first paragraph on page 1. Never a storage path.
 export function parsedDocTitle(doc) {
   if (!doc || typeof doc !== "object") return "";
   const given = typeof doc.title === "string" ? doc.title.trim() : "";
@@ -78,6 +79,19 @@ export function parsedDocTitle(doc) {
     if (block?.type !== "heading" || (block.level || 1) !== 1) continue;
     const text = typeof block.text === "string" ? block.text.replace(/\s+/g, " ").trim() : "";
     if (text && !isStorageTitle(text)) return text;
+  }
+  const clean = (value) => (typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "");
+  for (const id of ids) {
+    const block = blocks[id];
+    if (block?.type !== "table" || !block.caption) continue;
+    const text = clean(blocks[block.caption]?.text);
+    if (text && !isStorageTitle(text)) return text;
+  }
+  for (const id of ids) {
+    const block = blocks[id];
+    if (block?.type !== "para" || (block.page || 1) !== 1) continue;
+    const text = clean(block.text);
+    if (text && text.length <= 160 && !/^scan\b/i.test(text) && !isStorageTitle(text)) return text;
   }
   return "";
 }

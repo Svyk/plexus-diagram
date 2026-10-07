@@ -23,6 +23,21 @@ test("parsedDocTitle prefers title, then the first level-1 heading, never a stor
   assert.equal(parsedDocTitle({}), "");
 });
 
+test("parsedDocTitle falls back to a table caption, then a short first-page paragraph", () => {
+  const blocks = {
+    p2: { id: "p2", type: "para", page: 2, text: "Later page text" },
+    t1: { id: "t1", type: "table", page: 1, caption: "c1" },
+    c1: { id: "c1", type: "caption", page: 1, text: "Table 1.  Cases\nby state" },
+    p1: { id: "p1", type: "para", page: 1, text: "NOTIFIABLE DISEASES - Summary of reported   cases" },
+    s1: { id: "s1", type: "scan", page: 1 },
+  };
+  assert.equal(parsedDocTitle({ order: ["s1", "p1", "t1", "c1"], blocks }), "Table 1. Cases by state");
+  assert.equal(parsedDocTitle({ order: ["s1", "p1"], blocks }), "NOTIFIABLE DISEASES - Summary of reported cases");
+  assert.equal(parsedDocTitle({ order: ["p2"], blocks }), "");
+  const long = { id: "l", type: "para", page: 1, text: "x ".repeat(100) };
+  assert.equal(parsedDocTitle({ order: ["l"], blocks: { l: long } }), "");
+});
+
 test("the parse view reports the document title when it renders a parse", () => {
   const stub = createDomStub();
   const restore = stub.install();

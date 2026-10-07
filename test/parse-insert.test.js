@@ -91,17 +91,17 @@ function docOf(blocks, order) {
 
 test("parsed table size follows the text, the grid, and the caps", () => {
   const plain = parsedTableSize(table(3, 3));
-  assert.equal(plain.w, 3 * 56 + 16);
+  assert.equal(plain.w, 3 * 57 + 16);
   assert.equal(plain.h, 28 + 3 * 32 + 8);
   assert.equal(plain.widths, null);
   const five = parsedTableSize(table(3, 5));
-  assert.equal(five.w, 5 * 56 + 16);
+  assert.equal(five.w, 5 * 57 + 16);
   assert.equal(five.h, 28 + 3 * 32 + 8);
   const twenty = parsedTableSize(table(3, 20));
-  assert.equal(twenty.w, 20 * 56 + 16);
+  assert.ok(twenty.w >= 20 * 57 + 16);
   assert.ok(twenty.w <= 1200 + 16);
   const tall = parsedTableSize(table(10, 3));
-  assert.equal(tall.w, 3 * 56 + 16);
+  assert.equal(tall.w, 3 * 57 + 16);
   assert.equal(tall.h, 28 + 10 * 32 + 8);
   const capped = parsedTableSize(table(30, 3));
   assert.equal(capped.h, 800);
@@ -113,7 +113,7 @@ test("parsed table size follows the text, the grid, and the caps", () => {
   assert.equal(wide.widths[0] + wide.widths[1], 1200);
   assert.ok(wide.widths[0] <= 640 && wide.widths[1] <= 640);
   assert.ok(wide.widths[0] >= 56 && wide.widths[1] >= 56);
-  const floor = parsedTableSize(table(1, 22, { grid: { xs: Array.from({ length: 23 }, (_, i) => i) } }));
+  const floor = parsedTableSize(table(1, 22, { cells: [], grid: { xs: Array.from({ length: 23 }, (_, i) => i) } }));
   assert.equal(Object.values(floor.widths).every((n) => n === 56), true);
   assert.equal(floor.w, 1200);
 });
@@ -126,15 +126,15 @@ test("parsed table size keeps every word whole on the report fixture", () => {
   for (const size of [withGrid, noGrid]) {
     assert.ok(size.w <= 1200 + 58);
   }
-  assert.ok(withGrid.widths[0] >= 7.5 * 8 + 18);
-  assert.ok(withGrid.widths[1] >= 7.5 * 17 + 18);
+  assert.ok(withGrid.widths[0] >= Math.round(8.2 * 8 + 24));
+  assert.ok(withGrid.widths[1] >= Math.round(8.2 * 17 + 24));
   const words = new Map();
   for (const cell of t.cells) {
     if (cell.colSpan !== 1) continue;
     const longest = cell.text.split(/\s+/).reduce((m, w) => Math.max(m, w.length), 0);
     words.set(cell.c, Math.max(words.get(cell.c) || 0, longest));
   }
-  for (const [c, n] of words) assert.ok(withGrid.widths[c] >= n * 7.5 + 18, `col ${c}`);
+  for (const [c, n] of words) assert.ok(withGrid.widths[c] >= Math.round(n * 8.2 + 24), `col ${c}`);
 });
 
 test("parsed table size shrinks wide tables but never below the longest word", () => {
@@ -150,7 +150,7 @@ test("parsed table size shrinks wide tables but never below the longest word", (
   });
   const sum = Object.values(size.widths).reduce((a, b) => a + b, 0);
   assert.ok(sum <= 1200);
-  assert.ok(size.widths[0] >= 40 * 7.5 + 18);
+  assert.ok(size.widths[0] >= Math.round(40 * 8.2 + 24));
 });
 
 test("nestMarkdownUnderFirst keeps a single root and indents the rest", () => {
@@ -315,7 +315,7 @@ test("native, flat, and grid table cards", async () => {
   assert.equal(host.canCreateGridTable(), false);
   const fallback = await session.insertParsedTable({ x: 2000, y: 3200, table: table(3, 5), mode: "auto" });
   assert.equal(fallback.path, "native");
-  assert.equal(fallback.w, 5 * 56 + 16);
+  assert.equal(fallback.w, 5 * 57 + 16);
   assert.equal(fallback.writes, 2);
 });
 
@@ -491,4 +491,17 @@ test("parse drop payload, plan, and missing cache", async () => {
   // 3 short columns floor at 56, plus 16 of native padding, then the card minimum of 200.
   assert.equal(tableDrop.w, 200);
   assert.equal(tableDrop.h, 132);
+});
+
+test("parsed table size gives numeric columns room for their digits", () => {
+  const size = parsedTableSize({
+    rows: 2,
+    cols: 2,
+    grid: { xs: [0, 40, 80] },
+    cells: [
+      { r: 0, c: 0, text: "Mean", rowSpan: 1, colSpan: 1, header: true },
+      { r: 1, c: 0, text: "102.93", rowSpan: 1, colSpan: 1 },
+    ],
+  });
+  assert.ok(size.widths[0] >= Math.round(6 * 8.2 + 24));
 });

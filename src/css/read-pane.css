@@ -250,6 +250,10 @@
   transform: translateX(-50%);
 }
 
+.pxd-read .pxd-read__pill[hidden] {
+  display: none;
+}
+
 .pxd-read .pxd-read__pillbtn {
   flex: 0 0 auto;
   width: 28px;

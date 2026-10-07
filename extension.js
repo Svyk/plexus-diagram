@@ -3426,8 +3426,8 @@ var init_roam_table = __esm({
     HEIGHT_CHROME = 8;
     CHAR_PX = 7;
     CELL_PAD = 16;
-    WORD_PX = 7.5;
-    WORD_PAD = 18;
+    WORD_PX = 8.2;
+    WORD_PAD = 24;
     TABLE_RE = /^\{\{\s*(?:\[\[table\]\]|table)\s*\}\}$/i;
     TABLE_HOST_SELECTOR = [
       ".pxd-roam-table",
@@ -4259,6 +4259,19 @@ function parsedDocTitle(doc) {
     if (block?.type !== "heading" || (block.level || 1) !== 1) continue;
     const text3 = typeof block.text === "string" ? block.text.replace(/\s+/g, " ").trim() : "";
     if (text3 && !isStorageTitle(text3)) return text3;
+  }
+  const clean = (value) => typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
+  for (const id of ids) {
+    const block = blocks[id];
+    if (block?.type !== "table" || !block.caption) continue;
+    const text3 = clean(blocks[block.caption]?.text);
+    if (text3 && !isStorageTitle(text3)) return text3;
+  }
+  for (const id of ids) {
+    const block = blocks[id];
+    if (block?.type !== "para" || (block.page || 1) !== 1) continue;
+    const text3 = clean(block.text);
+    if (text3 && text3.length <= 160 && !/^scan\b/i.test(text3) && !isStorageTitle(text3)) return text3;
   }
   return "";
 }
@@ -30671,7 +30684,7 @@ function wordCount(text3) {
 function headingLevel(line, { bodySize, classes, nextIsBody = true, isolated = false }) {
   const k = Math.round(line.size * 2) / 2;
   const text3 = line.text.trim();
-  if (!text3 || CAPTION_RE.test(text3)) return 0;
+  if (!text3 || CAPTION_RE.test(text3) || !/[\p{L}\p{N}]/u.test(text3)) return 0;
   const idx = classes.indexOf(k);
   if (idx >= 0 && wordCount(text3) <= 24) return idx + 1;
   if (idx >= 0) return 0;
@@ -37612,6 +37625,7 @@ function createReadPane({
     for (const [id, button] of Object.entries(modeBtns)) {
       button.setAttribute("aria-pressed", id === viewMode ? "true" : "false");
     }
+    setHidden2(pill, viewMode === "parsed" || pane.classList.contains("pxd-read--narrow"));
     paintPill();
   }
   const ensureParsed = () => {
@@ -37676,6 +37690,7 @@ function createReadPane({
     setHidden2(modes, true);
     setHidden2(progress, true);
     pane.classList.remove("pxd-read--modes", "pxd-read--parsed", "pxd-read--both", "pxd-read--narrow");
+    setHidden2(pill, false);
     for (const [id, button] of Object.entries(modeBtns)) {
       button.setAttribute("aria-pressed", id === "reader" ? "true" : "false");
     }

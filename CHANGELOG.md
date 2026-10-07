@@ -1,5 +1,17 @@
 # Changelog
 
+## 3.5.0 — 2026-10-07
+
+Parse a PDF into clean blocks and real tables, on the board, with merged cells, and better than Heptabase on tables.
+
+- **Parse / Parsed / Both** in the reading pane. The built-in parser needs no install and reads a 30-page paper in under a second: headings with their levels, paragraphs in two-column reading order, lists, footnotes linked to their marks, figures and formulas as page crops, and tables, ruled or borderless, with merged cells and header rows. Running headers, footers and page numbers are removed and listed, never silently dropped. Results are cached on this device; nothing is written to your graph until you insert.
+- Hover a parsed block and its region lights up on the page; click to jump there. Each table shows the grid it found over the PDF with a confidence chip, and you can drag a column boundary to fix it.
+- **Insert, send, or drag.** Insert below the PDF, send sections to the board as cards, or drag any block or table onto the board. A table becomes a table card: with Roam Grid 0.18.3+ it keeps merged cells, header rows, alignment and column widths (one Roam write, one undo); without it, a native Roam table. Make highlight turns a parsed passage into a Roam PDF highlight.
+- **Optional local helper** (`tools/parse-helper`, Docling on your Mac): formulas as LaTeX, OCR, and **Read the scan** for scanned pages — Apple Vision word boxes and the scan's own ruling lines go through the same table engine, numbers misread by OCR are repaired and re-read cell by cell.
+- Measured on the ICDAR 2013 table benchmark (67 government PDFs): built-in table structure F1 0.979 and exact-cell F1 0.932, against Docling's 0.865 and 0.795, in 2.5 s for all 67 against 5 minutes. On a 1980 CDC table scanned as an image only: structure 1.000 and cell F1 0.957, against Docling's 0.082. Small scanned type can still misread words (e.g. disease names in 6 pt print); numbers are checked against their column.
+- Roam Grid tables in cards scale with the board and get the whole card (no Roam row spacer, no break-out padding); columns are sized from the text.
+- The reading pane title falls back to the parsed title; the tool dock stays left of the pane.
+
 ## 3.4.0 — 2026-10-06
 
 Boards that wear your Roam theme, edits that hold still, wider PDFs, and Roam tables on the board.

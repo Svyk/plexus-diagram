@@ -578,3 +578,9 @@ body.roam-body.dark .pxd-root.pxd-root--pdf-drag > .pxd-viewport,
     box-shadow: 0 0 0 2px var(--pxd-mark-flash, var(--pxd-yellow-line, #ca8a04));
   }
 }
+
+/* The reader renders the PDF block, so Roam's reference count for that block floats over the pane's corner.
+   It stays on the block in Roam's outline. */
+.pxd-root .pxd-read .rm-block__ref-count {
+  display: none;
+}

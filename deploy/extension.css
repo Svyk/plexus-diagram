@@ -19,6 +19,7 @@
   --pxd-grid-dot: rgba(95, 107, 124, 0.28);
   --pxd-shadow: 0 1px 2px rgba(17, 20, 24, 0.10), 0 4px 12px rgba(17, 20, 24, 0.08);
   --pxd-chrome-bg: rgba(255, 255, 255, 0.96);
+  --pxd-bar-bg: var(--pxd-card);
   --pxd-bar-line: var(--pxd-border);
   --pxd-dock-border: var(--pxd-border);
   --pxd-dock-shadow: 0 2px 6px rgba(0, 0, 0, 0.12), 0 10px 28px rgba(0, 0, 0, 0.14);
@@ -75,6 +76,7 @@ body.roam-body.dark .pxd-root,
   --pxd-grid-dot: rgba(167, 182, 194, 0.22);
   --pxd-shadow: 0 1px 3px rgba(0, 0, 0, 0.35), 0 4px 12px rgba(0, 0, 0, 0.3);
   --pxd-chrome-bg: rgba(38, 51, 63, 0.96);
+  --pxd-bar-bg: var(--pxd-card);
   --pxd-bar-line: var(--pxd-border-strong);
   --pxd-dock-border: var(--pxd-border-strong);
   --pxd-dock-shadow: 0 2px 6px rgba(0, 0, 0, 0.45), 0 10px 28px rgba(0, 0, 0, 0.4);
@@ -108,6 +110,7 @@ body.roam-body.dark .pxd-root,
     --pxd-grid-dot: rgba(167, 182, 194, 0.22);
     --pxd-shadow: 0 1px 3px rgba(0, 0, 0, 0.35), 0 4px 12px rgba(0, 0, 0, 0.3);
     --pxd-chrome-bg: rgba(38, 51, 63, 0.96);
+    --pxd-bar-bg: var(--pxd-card);
     --pxd-bar-line: var(--pxd-border-strong);
     --pxd-dock-border: var(--pxd-border-strong);
     --pxd-dock-shadow: 0 2px 6px rgba(0, 0, 0, 0.45), 0 10px 28px rgba(0, 0, 0, 0.4);
@@ -1134,7 +1137,7 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   padding: 4px 6px;
   border: 1px solid var(--pxd-border);
   border-radius: 8px;
-  background: var(--pxd-chrome-bg);
+  background: var(--pxd-bar-bg);
   box-shadow: var(--pxd-shadow);
 }
 
@@ -2064,75 +2067,6 @@ body.pxd-has-fullscreen .breadcrumbs-content {
   display: none;
 }
 
-/* PDF-2 highlight card. The bar is the colour. The card fill stays clear and the border stays the card border. */
-.pxd-root .pxd-item.pxd-item--highlight,
-.pxd-root.pxd-lod-map .pxd-item.pxd-item--highlight:not(.pxd-item--editing),
-.pxd-root.pxd-lod-overview .pxd-item.pxd-item--highlight {
-  background: transparent;
-  background-color: transparent;
-  background-image: none;
-}
-
-.pxd-root .pxd-item.pxd-item--highlight > .pxd-item__body {
-  position: relative;
-  padding-top: 10px;
-}
-
-.pxd-root .pxd-item.pxd-item--highlight:not(.pxd-item--collapsed):not(.pxd-item--bare) > .pxd-item__header,
-.pxd-root.pxd-lod-map .pxd-item.pxd-item--highlight:not(.pxd-item--collapsed):not(.pxd-item--bare) > .pxd-item__header {
-  display: none;
-}
-
-.pxd-root .pxd-highlight-bar {
-  position: absolute;
-  left: 0;
-  top: 0;
-  bottom: 0;
-  width: 4px;
-  pointer-events: none;
-}
-
-.pxd-root .pxd-highlight-bar[data-color="gray"] { background: var(--pxd-gray-line); }
-.pxd-root .pxd-highlight-bar[data-color="red"] { background: var(--pxd-red-line); }
-.pxd-root .pxd-highlight-bar[data-color="orange"] { background: var(--pxd-orange-line); }
-.pxd-root .pxd-highlight-bar[data-color="yellow"] { background: var(--pxd-yellow-line); }
-.pxd-root .pxd-highlight-bar[data-color="green"] { background: var(--pxd-green-line); }
-.pxd-root .pxd-highlight-bar[data-color="teal"] { background: var(--pxd-teal-line); }
-.pxd-root .pxd-highlight-bar[data-color="blue"] { background: var(--pxd-blue-line); }
-.pxd-root .pxd-highlight-bar[data-color="indigo"] { background: var(--pxd-indigo-line); }
-.pxd-root .pxd-highlight-bar[data-color="purple"] { background: var(--pxd-purple-line); }
-.pxd-root .pxd-highlight-bar[data-color="pink"] { background: var(--pxd-pink-line); }
-
-.pxd-root .pxd-highlight-foot {
-  margin-top: 6px;
-  color: var(--pxd-muted);
-  font-size: 12px;
-}
-
-/* PDFH-5. The stored note sits under the quote, about four lines. */
-.pxd-root .pxd-highlight-note {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 4;
-  line-clamp: 4;
-  overflow: hidden;
-  margin-top: 6px;
-}
-
-/* PDF-5. The ratio is set inline before the picture loads. This box has no fill. */
-.pxd-root .pxd-highlight-media {
-  width: 100%;
-  max-width: 100%;
-}
-
-.pxd-root.pxd-lod-map .pxd-item.pxd-item--highlight > .pxd-item__body {
-  display: block;
-}
-
-.pxd-root.pxd-lod-overview .pxd-item.pxd-item--highlight > .pxd-item__body {
-  display: none;
-}
-
 /* Focus mode dims everything outside the focused set (class-only, no per-frame style work). */
 .pxd-root .pxd-item.pxd-item--focus-dim,
 .pxd-root .pxd-section.pxd-section--focus-dim {
@@ -2484,6 +2418,29 @@ body.roam-body.dark .pxd-root.pxd-bg-pink {
   :root:not(.bp3-light) .pxd-root.pxd-bg-pink:not(.pxd-root--light) {
     --pxd-surface: color-mix(in srgb, var(--pxd-pink-line) 7%, var(--bc-main, #1e2a35));
   }
+}
+
+/* U2. --pxd-chrome-bg is 4% clear, so the bar, legend chips, and Properties showed the cards through them.
+   The fill is the solid card token. Dark keeps the border that is already on these controls. */
+.pxd-root.pxd-root .pxd-toolbar {
+  background: var(--pxd-bar-bg);
+}
+
+.bp3-dark .pxd-root.pxd-root .pxd-toolbar,
+body.bt-theme-dark .pxd-root.pxd-root .pxd-toolbar,
+.rm-dark-theme .pxd-root.pxd-root .pxd-toolbar,
+body.roam-body.dark .pxd-root.pxd-root .pxd-toolbar,
+.pxd-root.pxd-root--dark.pxd-root .pxd-toolbar {
+  background: var(--pxd-bar-bg);
+  border-color: var(--pxd-border-strong);
+}
+
+.pxd-root.pxd-root .pxd-legend .pxd-legend__row {
+  background: var(--pxd-bar-bg);
+}
+
+.pxd-root.pxd-root .pxd-props {
+  background: var(--pxd-bar-bg);
 }
 
 /* P9 block arrows: drop-target highlight, block-end markers, selected-edge end handles. */
@@ -3879,9 +3836,10 @@ body.roam-body.dark .pxd-root .pxd-panel__outline-row:hover {
   border-width: 0 0 1px;
   border-bottom-color: var(--pxd-board-line, var(--pxd-bar-line));
   border-radius: 6px;
-  background: color-mix(in srgb, var(--pxd-chrome-bg) 92%, transparent);
+  background: var(--pxd-bar-bg);
   box-shadow: none;
 }
+
 
 .pxd-root.pxd-root--docked.pxd-root--rail .pxd-toolbar {
   right: 52px;
@@ -4644,6 +4602,154 @@ body.bt-theme-dark .pxd-halo .pxd-halo__spark,
 body.roam-body.dark .pxd-halo .pxd-halo__spark,
 .pxd-root--dark .pxd-halo .pxd-halo__spark {
   color: #e6edf3;
+}
+
+/* PDF-U2 highlight card tokens. The PDF-2 block below stays free of border declarations. */
+
+.pxd-root {
+  --pxd-hl-bar-w: 3px;
+  --pxd-hl-quote-size: 13px;
+  --pxd-hl-quote-lh: 1.5;
+  --pxd-hl-chip-h: 20px;
+}
+
+/* PDF-2 highlight card. The bar is the colour. The card fill stays clear and the border stays the card border. */
+.pxd-root .pxd-item.pxd-item--highlight,
+.pxd-root.pxd-lod-map .pxd-item.pxd-item--highlight:not(.pxd-item--editing),
+.pxd-root.pxd-lod-overview .pxd-item.pxd-item--highlight {
+  background: transparent;
+  background-color: transparent;
+  background-image: none;
+}
+
+.pxd-root .pxd-item.pxd-item--highlight > .pxd-item__body {
+  position: relative;
+  padding-top: 10px;
+}
+
+.pxd-root .pxd-item.pxd-item--highlight:not(.pxd-item--collapsed):not(.pxd-item--bare) > .pxd-item__header,
+.pxd-root.pxd-lod-map .pxd-item.pxd-item--highlight:not(.pxd-item--collapsed):not(.pxd-item--bare) > .pxd-item__header {
+  display: none;
+}
+
+.pxd-root .pxd-highlight-bar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: var(--pxd-hl-bar-w, 3px);
+  pointer-events: none;
+}
+
+.pxd-root .pxd-highlight-bar[data-color="gray"] { background: var(--pxd-gray-line); }
+.pxd-root .pxd-highlight-bar[data-color="red"] { background: var(--pxd-red-line); }
+.pxd-root .pxd-highlight-bar[data-color="orange"] { background: var(--pxd-orange-line); }
+.pxd-root .pxd-highlight-bar[data-color="yellow"] { background: var(--pxd-yellow-line); }
+.pxd-root .pxd-highlight-bar[data-color="green"] { background: var(--pxd-green-line); }
+.pxd-root .pxd-highlight-bar[data-color="teal"] { background: var(--pxd-teal-line); }
+.pxd-root .pxd-highlight-bar[data-color="blue"] { background: var(--pxd-blue-line); }
+.pxd-root .pxd-highlight-bar[data-color="indigo"] { background: var(--pxd-indigo-line); }
+.pxd-root .pxd-highlight-bar[data-color="purple"] { background: var(--pxd-purple-line); }
+.pxd-root .pxd-highlight-bar[data-color="pink"] { background: var(--pxd-pink-line); }
+
+.pxd-root .pxd-highlight-foot {
+  margin-top: 6px;
+  color: var(--pxd-muted);
+  font-size: 12px;
+}
+
+/* PDFH-5. The stored note sits under the quote, about four lines. */
+.pxd-root .pxd-highlight-note {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  line-clamp: 4;
+  overflow: hidden;
+  margin-top: 6px;
+}
+
+/* PDF-5. The ratio is set inline before the picture loads. This box has no fill. */
+.pxd-root .pxd-highlight-media {
+  width: 100%;
+  max-width: 100%;
+}
+
+.pxd-root.pxd-lod-map .pxd-item.pxd-item--highlight > .pxd-item__body {
+  display: block;
+}
+
+.pxd-root.pxd-lod-overview .pxd-item.pxd-item--highlight > .pxd-item__body {
+  display: none;
+}
+
+/* PDF-U2 quote fade, note hairline, and the source chip. Borders live here, not in the PDF-2 block. */
+.pxd-root .pxd-highlight-quote {
+  font-size: var(--pxd-hl-quote-size, 13px);
+  line-height: var(--pxd-hl-quote-lh, 1.5);
+  max-height: calc(var(--pxd-hl-quote-lh, 1.5) * var(--pxd-hl-quote-size, 13px) * 8);
+  overflow: hidden;
+  color: var(--pxd-text);
+  background: transparent;
+  -webkit-mask-image: linear-gradient(to bottom, #000 70%, transparent);
+  mask-image: linear-gradient(to bottom, #000 70%, transparent);
+}
+
+.pxd-root .pxd-highlight-note {
+  border-top: 1px solid var(--pxd-border);
+  padding-top: 6px;
+  font-size: 12px;
+  color: var(--pxd-muted);
+  background: transparent;
+}
+
+.bp3-dark .pxd-root .pxd-highlight-note,
+body.bt-theme-dark .pxd-root .pxd-highlight-note,
+.pxd-root.pxd-root--dark .pxd-highlight-note {
+  border-top-color: var(--pxd-border-strong);
+  background: transparent;
+}
+
+.bp3-dark .pxd-root .pxd-item.pxd-item--highlight,
+body.bt-theme-dark .pxd-root .pxd-item.pxd-item--highlight,
+.pxd-root.pxd-root--dark .pxd-item.pxd-item--highlight {
+  background: transparent;
+  background-color: transparent;
+}
+
+.pxd-root .pxd-highlight-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 100%;
+  height: var(--pxd-hl-chip-h, 20px);
+  padding: 0 6px;
+  border: 1px solid var(--pxd-border, #d0d7de);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--pxd-muted);
+  font-size: 11px;
+  line-height: 18px;
+  cursor: pointer;
+}
+
+.pxd-root .pxd-highlight-chip__title {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.bp3-dark .pxd-root .pxd-highlight-chip,
+body.bt-theme-dark .pxd-root .pxd-highlight-chip,
+.pxd-root.pxd-root--dark .pxd-highlight-chip {
+  border-color: var(--pxd-border-strong);
+  background: transparent;
+  color: var(--pxd-muted);
+}
+
+.pxd-root.pxd-lod-map .pxd-highlight-chip,
+.pxd-root.pxd-lod-overview .pxd-highlight-chip {
+  display: none;
 }
 
 /* PDFH-5. A quiet Note action under the highlight footer; it opens Roam's note child in the sidebar. */
@@ -5545,8 +5651,12 @@ body.roam-body.dark .pxd-root .pxd-present-hud,
    own height with an inline !important so this file does not have to fight that rule.
    The editor scrolls inside the body. The header keeps the one title. Roam's title and mentions stay hidden.
 
-   PGE-2. The editor is the same rows: world px, no 1/zoom counter-scale, 13px / 19.5px, the 22px row,
-   bullets present but not drawn. Note-card editors are not matched here. */
+   PGE-2. The editor is the same rows: world px, no 1/zoom counter-scale, 13px / 19.5px, the 20px row,
+   bullets present in the 16px gutter. Note-card editors are not matched here.
+
+   U2. Rest rows are 22px tall (inline min-height from the row painter), 13px / 19.5px, text inset 16px, and the text column is the row minus that
+   gutter. Edit used to be 17px and narrower (Roam's bullet, controls, ref count, and wrapper padding),
+   so a line that fit at rest wrapped and every row below jumped. */
 
 .pxd-root .pxd-item.pxd-item--page.pxd-item--editing {
   overflow: hidden;
@@ -5620,6 +5730,8 @@ body.roam-body.dark .pxd-root .pxd-present-hud,
   overflow: visible !important;
   max-height: none !important;
   height: auto !important;
+  margin: 0 !important;
+  padding: 0 !important;
 }
 
 .pxd-root .pxd-item--page .pxd-page-edit .roam-block-container {
@@ -5636,6 +5748,8 @@ body.roam-body.dark .pxd-root .pxd-present-hud,
   display: flex;
   align-items: flex-start;
   gap: 0 !important;
+  width: 100%;
+  max-width: 100%;
   min-height: 22px !important;
   box-sizing: border-box;
 }
@@ -5687,6 +5801,7 @@ body.roam-body.dark .pxd-root .pxd-present-hud,
 .pxd-root .pxd-item--page .pxd-page-edit .rm-block-children .rm-block-children {
   margin-left: 12px;
   padding-left: 6px;
+  padding-right: 0;
   border-left: 1px solid var(--pxd-border);
 }
 
@@ -5698,14 +5813,19 @@ body.roam-body.dark .pxd-root .pxd-present-hud,
 }
 
 .pxd-root .pxd-item.pxd-item--page .pxd-item__editor.pxd-page-edit :is(textarea.rm-block-input, textarea.rm-block__input, .rm-block__input, .rm-block__input--view, .rm-block-text) {
+  box-sizing: border-box;
+  width: 100% !important;
+  max-width: 100%;
   margin: 0 !important;
   padding: 0 0 0 16px !important;
-  min-height: 0 !important;
+  min-height: 22px !important;
   border: 0;
   font-family: inherit;
   font-size: 13px !important;
   font-weight: inherit;
   line-height: 19.5px !important;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
   color: inherit;
 }
 
@@ -5730,17 +5850,20 @@ body.roam-body.dark .pxd-root .pxd-present-hud,
 .pxd-root .pxd-item.pxd-item--page .pxd-page-edit .rm-block-main > .rm-block__input {
   flex: 1 1 auto;
   min-width: 0;
+  width: 100% !important;
+  box-sizing: border-box;
 }
 
 .pxd-root .pxd-item.pxd-item--page .pxd-page-edit .rm-block-main > .rm-block-separator ~ :not(.rm-block__input) {
-  position: absolute;
+  position: absolute !important;
   top: 0;
   right: 0;
 }
 
 /* Roam's bullet stays reachable in the 16px gutter the text already leaves: invisible at rest like the
    resting card, a small dot on row hover, and still the handle for block drag, the bullet menu and zoom. */
-.pxd-root .pxd-item.pxd-item--page .pxd-page-edit .rm-block-main > .controls {
+.pxd-root .pxd-item.pxd-item--page .pxd-page-edit .rm-block-main > .controls,
+.pxd-root .pxd-item.pxd-item--page .pxd-page-edit .rm-block-main > .rm-block__controls {
   position: absolute !important;
   left: 0;
   top: 0;
@@ -5751,7 +5874,8 @@ body.roam-body.dark .pxd-root .pxd-present-hud,
   z-index: 1;
 }
 
-.pxd-root .pxd-item--page .pxd-page-edit .rm-block-main > .controls .rm-bullet {
+.pxd-root .pxd-item--page .pxd-page-edit .rm-block-main > .controls .rm-bullet,
+.pxd-root .pxd-item--page .pxd-page-edit .rm-block-main > .rm-block__controls .rm-bullet {
   visibility: visible;
   width: 16px !important;
   height: 22px;
@@ -5761,14 +5885,16 @@ body.roam-body.dark .pxd-root .pxd-present-hud,
   cursor: grab;
 }
 
-.pxd-root .pxd-item--page .pxd-page-edit .rm-block-main > .controls .rm-bullet__inner {
+.pxd-root .pxd-item--page .pxd-page-edit .rm-block-main > .controls .rm-bullet__inner,
+.pxd-root .pxd-item--page .pxd-page-edit .rm-block-main > .rm-block__controls .rm-bullet__inner {
   width: 5px !important;
   height: 5px !important;
   opacity: 0;
   transition: opacity 120ms;
 }
 
-.pxd-root .pxd-item--page .pxd-page-edit .rm-block-main:hover > .controls .rm-bullet__inner {
+.pxd-root .pxd-item--page .pxd-page-edit .rm-block-main:hover > .controls .rm-bullet__inner,
+.pxd-root .pxd-item--page .pxd-page-edit .rm-block-main:hover > .rm-block__controls .rm-bullet__inner {
   opacity: 0.55;
 }
 
@@ -5824,6 +5950,328 @@ body.bt-theme-dark .pxd-boardchip.pxd-boardchip {
   fill: var(--pxd-text);
   font-size: 11px;
   pointer-events: none;
+}
+
+/* PDF-U2 cover. Paper stays white in both themes. Dark mode is a strong border and no tint. */
+
+.pxd-root {
+  --pxd-pdf-paper: #ffffff;
+  --pxd-pdf-paper-line: var(--pxd-border);
+  --pxd-pdf-skeleton: #e5e9ee;
+  --pxd-pdf-radius: 6px;
+  --pxd-pdf-shadow: 0 1px 2px rgba(17, 20, 24, 0.10), 0 6px 16px rgba(17, 20, 24, 0.10);
+  --pxd-pdf-shadow-hover: 0 2px 4px rgba(17, 20, 24, 0.12), 0 10px 24px rgba(17, 20, 24, 0.14);
+  --pxd-reading-line: var(--pxd-accent);
+  --pxd-pdf-strip-h: 28px;
+  --pxd-pdf-density-w: 6px;
+  --pxd-pdf-tick: 2px;
+  --pxd-pdf-ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --pxd-pdf-ms: 180ms;
+  --pxd-pdf-fade: 80ms;
+  --pxd-pdf-hover-delay: 120ms;
+}
+
+.bp3-dark .pxd-root,
+body.bt-theme-dark .pxd-root,
+.pxd-root.pxd-root--dark {
+  --pxd-pdf-paper: #ffffff;
+  --pxd-pdf-paper-line: var(--pxd-border-strong);
+  --pxd-pdf-skeleton: #cbd3dc;
+  --pxd-pdf-shadow: none;
+  --pxd-pdf-shadow-hover: none;
+  --pxd-reading-line: var(--pxd-accent);
+}
+
+.pxd-root .pxd-item.pxd-item--pdf > .pxd-item__body {
+  position: relative;
+  padding: 0;
+}
+
+.pxd-root .pxd-pdf-cover {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  border: 1px solid var(--pxd-pdf-paper-line, var(--pxd-border));
+  border-radius: var(--pxd-pdf-radius, 6px);
+  background: var(--pxd-pdf-paper, #ffffff);
+  box-shadow: var(--pxd-pdf-shadow, none);
+}
+
+.pxd-root .pxd-item:hover > .pxd-item__body > .pxd-pdf-cover {
+  box-shadow: var(--pxd-pdf-shadow-hover, none);
+}
+
+.bp3-dark .pxd-root .pxd-pdf-cover,
+body.bt-theme-dark .pxd-root .pxd-pdf-cover,
+.pxd-root.pxd-root--dark .pxd-pdf-cover {
+  background: #ffffff;
+  border-color: var(--pxd-border-strong);
+  box-shadow: none;
+}
+
+.pxd-root .pxd-pdf-paper {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  overflow: hidden;
+  background: var(--pxd-pdf-paper, #ffffff);
+}
+
+.bp3-dark .pxd-root .pxd-pdf-paper,
+body.bt-theme-dark .pxd-root .pxd-pdf-paper,
+.pxd-root.pxd-root--dark .pxd-pdf-paper {
+  background: #ffffff;
+}
+
+.pxd-root .pxd-pdf-img {
+  position: absolute;
+  inset: 0;
+  display: block;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: top center;
+}
+
+.pxd-root.pxd-lod-map .pxd-pdf-img,
+.pxd-root.pxd-lod-overview .pxd-pdf-img {
+  display: none;
+}
+
+.pxd-root .pxd-pdf-glyph {
+  display: block;
+  flex: 0 0 auto;
+  color: var(--pxd-muted);
+}
+
+.pxd-root .pxd-pdf-skel {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  padding: 16px 14px;
+  box-sizing: border-box;
+}
+
+.pxd-root .pxd-pdf-skel__line {
+  display: block;
+  height: 8px;
+  border-radius: 4px;
+  background: var(--pxd-pdf-skeleton, #e5e9ee);
+}
+
+.pxd-root .pxd-pdf-skel__line:nth-child(3) { width: 72%; }
+.pxd-root .pxd-pdf-skel__line:nth-child(6) { width: 48%; }
+
+.pxd-root .pxd-pdf-title--face {
+  box-sizing: border-box;
+  max-width: 100%;
+  min-width: 0;
+  padding: 0 10px;
+  text-align: center;
+  font-size: 13px;
+  line-height: 1.3;
+  color: var(--pxd-text);
+  /* Reader titles are often a file name with no spaces: break anywhere, at most four lines. */
+  overflow-wrap: anywhere;
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  overflow: hidden;
+}
+
+.pxd-root .pxd-pdf-cover--loading .pxd-pdf-title--face {
+  font-size: 12px;
+  color: var(--pxd-muted);
+}
+
+.pxd-root .pxd-pdf-miss {
+  font-size: 12px;
+  line-height: 1.3;
+  color: var(--pxd-muted);
+  text-align: center;
+}
+
+.pxd-root .pxd-pdf-hover {
+  position: absolute;
+  left: 0;
+  right: var(--pxd-pdf-density-w, 6px);
+  bottom: 0;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  height: var(--pxd-pdf-strip-h, 28px);
+  padding: 0 8px;
+  overflow: hidden;
+  background: var(--pxd-chrome-bg, #fff);
+  background: color-mix(in srgb, var(--pxd-chrome-bg, #fff) 92%, transparent);
+  border-top: 1px solid var(--pxd-pdf-paper-line, var(--pxd-border));
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--pxd-pdf-fade, 80ms) var(--pxd-pdf-ease, ease) 0ms;
+}
+
+.pxd-root .pxd-pdf-hover[hidden] {
+  display: none;
+}
+
+.pxd-root .pxd-item:hover .pxd-pdf-hover:not([hidden]),
+.pxd-root .pxd-item:focus-within .pxd-pdf-hover:not([hidden]) {
+  opacity: 1;
+  pointer-events: auto;
+  transition-delay: var(--pxd-pdf-hover-delay, 120ms);
+}
+
+.bp3-dark .pxd-root .pxd-pdf-hover,
+body.bt-theme-dark .pxd-root .pxd-pdf-hover,
+.pxd-root.pxd-root--dark .pxd-pdf-hover {
+  background: var(--pxd-chrome-bg);
+  border-top-color: var(--pxd-border-strong);
+}
+
+.pxd-root .pxd-pdf-hover .pxd-pdf-title {
+  flex: 1 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+
+.pxd-root .pxd-pdf-count {
+  flex: 0 0 auto;
+  margin-left: auto;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.pxd-root .pxd-pdf-count::after {
+  content: " ●";
+}
+
+.pxd-root .pxd-pdf-hover .pxd-pdf-chips {
+  flex: 0 1 auto;
+  min-width: 0;
+  margin: 0;
+}
+
+.pxd-root .pxd-pdf-pill {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  z-index: 3;
+  height: 28px;
+  margin: 0;
+  padding: 0 14px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: var(--pxd-accent);
+  color: #ffffff;
+  font: inherit;
+  font-size: 13px;
+  line-height: 26px;
+  cursor: pointer;
+  transform: translate(-50%, -50%);
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity var(--pxd-pdf-fade, 80ms) var(--pxd-pdf-ease, ease) 0ms;
+}
+
+.pxd-root .pxd-item:hover .pxd-pdf-pill,
+.pxd-root .pxd-item:focus-within .pxd-pdf-pill {
+  opacity: 1;
+  pointer-events: auto;
+  transition-delay: var(--pxd-pdf-hover-delay, 120ms);
+}
+
+.bp3-dark .pxd-root .pxd-pdf-pill,
+body.bt-theme-dark .pxd-root .pxd-pdf-pill,
+.pxd-root.pxd-root--dark .pxd-pdf-pill {
+  background: transparent;
+  color: var(--pxd-accent);
+  border-color: var(--pxd-border-strong);
+}
+
+.pxd-root .pxd-pdf-density {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 2;
+  width: var(--pxd-pdf-density-w, 6px);
+}
+
+.pxd-root .pxd-pdf-tick {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: var(--pxd-pdf-tick, 2px);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: var(--pxd-gray-line, #94a3b8);
+  cursor: pointer;
+}
+
+.pxd-root .pxd-pdf-tick[data-color="gray"] { background: var(--pxd-gray-line); }
+.pxd-root .pxd-pdf-tick[data-color="red"] { background: var(--pxd-red-line); }
+.pxd-root .pxd-pdf-tick[data-color="orange"] { background: var(--pxd-orange-line); }
+.pxd-root .pxd-pdf-tick[data-color="yellow"] { background: var(--pxd-yellow-line); }
+.pxd-root .pxd-pdf-tick[data-color="green"] { background: var(--pxd-green-line); }
+.pxd-root .pxd-pdf-tick[data-color="teal"] { background: var(--pxd-teal-line); }
+.pxd-root .pxd-pdf-tick[data-color="blue"] { background: var(--pxd-blue-line); }
+.pxd-root .pxd-pdf-tick[data-color="indigo"] { background: var(--pxd-indigo-line); }
+.pxd-root .pxd-pdf-tick[data-color="purple"] { background: var(--pxd-purple-line); }
+.pxd-root .pxd-pdf-tick[data-color="pink"] { background: var(--pxd-pink-line); }
+
+.pxd-root .pxd-item.pxd-item--reading {
+  outline: 2px solid var(--pxd-reading-line, var(--pxd-accent));
+  outline-offset: -2px;
+}
+
+.pxd-root .pxd-pdf-dot {
+  display: none;
+  position: absolute;
+  top: 6px;
+  left: 6px;
+  z-index: 4;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--pxd-reading-line, var(--pxd-accent));
+  pointer-events: none;
+}
+
+.pxd-root .pxd-item.pxd-item--reading .pxd-pdf-dot {
+  display: block;
+}
+
+.pxd-root.pxd-lod-overview .pxd-pdf-hover,
+.pxd-root.pxd-lod-overview .pxd-pdf-pill,
+.pxd-root.pxd-lod-overview .pxd-pdf-title--face,
+.pxd-root.pxd-lod-overview .pxd-pdf-density {
+  display: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pxd-root {
+    --pxd-pdf-ms: 0ms;
+    --pxd-pdf-fade: 0ms;
+    --pxd-pdf-hover-delay: 0ms;
+  }
+}
+
+.pxd-root.pxd-root--motion-none {
+  --pxd-pdf-ms: 0ms;
+  --pxd-pdf-fade: 0ms;
+  --pxd-pdf-hover-delay: 0ms;
 }
 
 /* NP-4. Properties panel, custom style keys, cross texture, animated dashes.
@@ -6326,12 +6774,330 @@ body.roam-body.dark .pxd-root,
   left: 296px;
 }
 
+/* PDF-U4. Highlight drawer under the reader. The strip stays. The body opens to a fraction of the pane.
+   Dark mode: colour dots and the new-row pulse are rings, not fills. */
+
+.pxd-read-drawer {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  min-height: var(--pxd-read-strip-h, 32px);
+  overflow: hidden;
+  border-top: 1px solid var(--pxd-border, #d0d7de);
+  background: var(--pxd-chrome-bg, var(--pxd-surface, #fff));
+  color: var(--pxd-text, inherit);
+}
+
+.pxd-read-drawer__edge {
+  flex: 0 0 6px;
+  height: 6px;
+  cursor: ns-resize;
+  touch-action: none;
+}
+
+.pxd-read-drawer__pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  height: var(--pxd-read-pill-h, 36px);
+  margin: 4px 8px;
+  padding: 0 10px;
+  border: 1px solid var(--pxd-read-pill-line, transparent);
+  border-radius: var(--pxd-pdf-radius, 6px);
+  background: var(--pxd-read-pill-bg, rgba(31, 41, 55, 0.92));
+  color: var(--pxd-read-pill-fg, #fff);
+  box-shadow: var(--pxd-read-pill-shadow, 0 2px 6px rgba(0, 0, 0, 0.18));
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.pxd-read-drawer__pillplace {
+  margin: 0;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: var(--pxd-pdf-radius, 6px);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  line-height: 24px;
+  cursor: pointer;
+}
+
+.pxd-read-drawer__strip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 var(--pxd-read-strip-h, 32px);
+  height: var(--pxd-read-strip-h, 32px);
+  min-height: var(--pxd-read-strip-h, 32px);
+  padding: 0 8px 0 4px;
+  box-sizing: border-box;
+}
+
+.pxd-read-drawer__chevron,
+.pxd-read-drawer__search {
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: 24px;
+  cursor: pointer;
+}
+
+.pxd-read-drawer__count {
+  flex: 0 0 auto;
+  font-size: 12px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+.pxd-read-drawer__dots {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+.pxd-read-drawer__dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+}
+
+.pxd-read-drawer__dotmark {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--pxd-dot, var(--pxd-muted, #5f6b7c));
+  box-shadow: none;
+}
+
+.pxd-read-drawer__dot[aria-pressed="true"] .pxd-read-drawer__dotmark {
+  box-shadow: 0 0 0 1px var(--pxd-text, #1f2937);
+}
+
+.pxd-read-drawer .pxd-pdf-chips {
+  margin: 0;
+  flex: 0 1 auto;
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+
+.pxd-read-drawer .pxd-pdf-chip {
+  height: 20px;
+  font-size: 11px;
+  line-height: 18px;
+}
+
+.pxd-read-drawer .pxd-pdf-chip--on {
+  border-color: var(--pxd-accent, #0f766e);
+  background: transparent;
+}
+
+.pxd-read-drawer__find {
+  flex: 0 0 160px;
+  width: 160px;
+  min-width: 0;
+  height: 24px;
+  margin: 0;
+  padding: 0 6px;
+  border: 1px solid var(--pxd-border, #d0d7de);
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+}
+
+.pxd-read-drawer__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.pxd-read-drawer__list {
+  outline: none;
+}
+
+.pxd-read-drawer__row {
+  position: relative;
+  padding: 6px 8px 6px 12px;
+  cursor: pointer;
+}
+
+.pxd-read-drawer__row--on {
+  background: var(--pxd-accent-soft, rgba(15, 118, 110, 0.12));
+}
+
+.pxd-read-drawer__row--new {
+  background: var(--pxd-hl-pulse, var(--pxd-accent-soft, rgba(15, 118, 110, 0.18)));
+  animation: pxd-drawer-pulse 600ms var(--pxd-pdf-ease, cubic-bezier(.2, .7, .2, 1));
+}
+
+.pxd-read-drawer__bar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: var(--pxd-hl-bar-w, 3px);
+  pointer-events: none;
+  background: var(--pxd-muted, #5f6b7c);
+}
+
+.pxd-read-drawer__bar[data-color="gray"] { background: var(--pxd-gray-line); }
+.pxd-read-drawer__bar[data-color="red"] { background: var(--pxd-red-line); }
+.pxd-read-drawer__bar[data-color="orange"] { background: var(--pxd-orange-line); }
+.pxd-read-drawer__bar[data-color="yellow"] { background: var(--pxd-yellow-line); }
+.pxd-read-drawer__bar[data-color="green"] { background: var(--pxd-green-line); }
+.pxd-read-drawer__bar[data-color="teal"] { background: var(--pxd-teal-line); }
+.pxd-read-drawer__bar[data-color="blue"] { background: var(--pxd-blue-line); }
+.pxd-read-drawer__bar[data-color="indigo"] { background: var(--pxd-indigo-line); }
+.pxd-read-drawer__bar[data-color="purple"] { background: var(--pxd-purple-line); }
+.pxd-read-drawer__bar[data-color="pink"] { background: var(--pxd-pink-line); }
+
+.pxd-read-drawer__snip {
+  font-size: var(--pxd-hl-quote-size, 13px);
+  line-height: var(--pxd-hl-quote-lh, 1.5);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.pxd-read-drawer__meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+  color: var(--pxd-muted, #5f6b7c);
+  font-size: 11px;
+  line-height: 14px;
+}
+
+.pxd-read-drawer__on {
+  display: inline-flex;
+  width: 14px;
+  height: 14px;
+  color: var(--pxd-muted, #5f6b7c);
+}
+
+.pxd-read-drawer__acts {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  gap: 4px;
+  padding-left: 4px;
+  background: var(--pxd-chrome-bg, #fff);
+}
+
+.pxd-read-drawer__note,
+.pxd-read-drawer__place,
+.pxd-read-drawer__locate {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--pxd-border, #d0d7de);
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.pxd-read-drawer__body[hidden],
+.pxd-read-drawer__edge[hidden],
+.pxd-read-drawer__find[hidden],
+.pxd-read-drawer__pill[hidden] {
+  display: none;
+}
+
+@keyframes pxd-drawer-pulse {
+  from { background: var(--pxd-hl-pulse, var(--pxd-accent-soft, rgba(15, 118, 110, 0.18))); }
+  to { background: transparent; }
+}
+
+.bp3-dark .pxd-read-drawer__dotmark,
+body.bt-theme-dark .pxd-read-drawer__dotmark,
+.pxd-root--dark .pxd-read-drawer__dotmark {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--pxd-dot, var(--pxd-border-strong, #3b4b58));
+}
+
+.bp3-dark .pxd-read-drawer__dot[aria-pressed="true"] .pxd-read-drawer__dotmark,
+body.bt-theme-dark .pxd-read-drawer__dot[aria-pressed="true"] .pxd-read-drawer__dotmark,
+.pxd-root--dark .pxd-read-drawer__dot[aria-pressed="true"] .pxd-read-drawer__dotmark {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--pxd-dot, var(--pxd-border-strong, #3b4b58)), 0 0 0 1px var(--pxd-border-strong, #3b4b58);
+}
+
+.bp3-dark .pxd-read-drawer__row--on,
+body.bt-theme-dark .pxd-read-drawer__row--on,
+.pxd-root--dark .pxd-read-drawer__row--on {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--pxd-accent, #2dd4bf);
+}
+
+.bp3-dark .pxd-read-drawer__row--new,
+body.bt-theme-dark .pxd-read-drawer__row--new,
+.pxd-root--dark .pxd-read-drawer__row--new {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--pxd-accent, #2dd4bf);
+  animation: none;
+}
+
+.bp3-dark .pxd-read-drawer__pill,
+body.bt-theme-dark .pxd-read-drawer__pill,
+.pxd-root--dark .pxd-read-drawer__pill {
+  background: var(--pxd-chrome-bg, transparent);
+  color: var(--pxd-text, #e6edf3);
+  border-color: var(--pxd-border-strong, #3b4b58);
+  box-shadow: none;
+}
+
+.bp3-dark .pxd-read-drawer .pxd-pdf-chip--on,
+body.bt-theme-dark .pxd-read-drawer .pxd-pdf-chip--on,
+.pxd-root--dark .pxd-read-drawer .pxd-pdf-chip--on {
+  background: transparent;
+  border-color: var(--pxd-accent, #2dd4bf);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pxd-read-drawer__row--new { animation: none; }
+}
+
+.pxd-root.pxd-root--motion-none .pxd-read-drawer__row--new,
+.pxd-root.pxd-root--motion-reduced .pxd-read-drawer__row--new {
+  animation: none;
+}
+
 /* PDFH-1. The reader sits on the root, outside the transformed world.
    The viewport shrink is the other half of that: .pxd-viewport is inset 0, so the pane
    would be clipped if it lived inside the viewport. */
 
 .pxd-root.pxd-root--read > .pxd-viewport {
   right: var(--pxd-read-w, 360px);
+  transition: right var(--pxd-pdf-ms, 180ms) var(--pxd-pdf-ease, cubic-bezier(.2, .7, .2, 1));
 }
 
 .pxd-root.pxd-root--read-stack > .pxd-viewport {
@@ -6344,9 +7110,27 @@ body.roam-body.dark .pxd-root,
   outline-offset: 2px;
 }
 
+.pxd-root {
+  --pxd-read-head-h: 40px;
+  --pxd-read-strip-h: 32px;
+  --pxd-read-pill-h: 36px;
+  --pxd-read-pill-bg: rgba(31, 41, 55, .92);
+  --pxd-read-pill-fg: #ffffff;
+  --pxd-read-pill-line: transparent;
+  --pxd-read-pill-shadow: 0 2px 6px rgba(0, 0, 0, .18), 0 8px 24px rgba(0, 0, 0, .18);
+  --pxd-reading-line: var(--pxd-accent);
+  --pxd-pdf-ease: cubic-bezier(.2, .7, .2, 1);
+  --pxd-pdf-ms: 180ms;
+  --pxd-pdf-radius: 6px;
+}
+
+.pxd-root.pxd-root--motion-off {
+  --pxd-pdf-ms: 0ms;
+}
+
 .pxd-read {
   position: absolute;
-  top: 0;
+  top: var(--pxd-tabs-h, 0px);
   right: 0;
   bottom: 0;
   z-index: 2;
@@ -6362,6 +7146,16 @@ body.roam-body.dark .pxd-root,
   overflow: hidden;
   overscroll-behavior: contain;
   touch-action: pan-y;
+  transform: translateX(0);
+  transition: transform var(--pxd-pdf-ms, 180ms) var(--pxd-pdf-ease, cubic-bezier(.2, .7, .2, 1));
+}
+
+.pxd-read.pxd-read--enter:not(.pxd-read--stack) {
+  transform: translateX(100%);
+}
+
+.pxd-read.pxd-read--stack.pxd-read--enter {
+  transform: translateY(100%);
 }
 
 .pxd-read.pxd-read--stack {
@@ -6401,8 +7195,32 @@ body.roam-body.dark .pxd-root,
   display: flex;
   align-items: center;
   gap: 6px;
-  padding: 6px 8px 6px 12px;
+  box-sizing: border-box;
+  height: var(--pxd-read-head-h, 40px);
+  min-height: var(--pxd-read-head-h, 40px);
+  padding: 0 8px 0 12px;
   border-bottom: 1px solid var(--pxd-border, #d0d7de);
+}
+
+.pxd-read .pxd-read__dot {
+  flex: 0 0 auto;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--pxd-reading-line, var(--pxd-accent));
+}
+
+.pxd-read .pxd-read__glyph {
+  flex: 0 0 auto;
+  width: 16px;
+  height: 16px;
+  color: var(--pxd-muted, inherit);
+}
+
+.pxd-read .pxd-read__glyph svg {
+  display: block;
+  width: 16px;
+  height: 16px;
 }
 
 .pxd-read .pxd-read__title {
@@ -6410,12 +7228,69 @@ body.roam-body.dark .pxd-root,
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-size: 13px;
   font-weight: 600;
 }
 
+.pxd-read .pxd-read__switchbtn {
+  flex: 0 0 auto;
+}
+
+.pxd-read .pxd-read__highlights,
+.pxd-read .pxd-read__tools,
+.pxd-read .pxd-read__close {
+  box-sizing: border-box;
+  margin: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.pxd-read .pxd-read__highlights {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  gap: 4px;
+  height: 28px;
+  min-width: 28px;
+  padding: 0 6px;
+}
+
+.pxd-read .pxd-read__tools,
+.pxd-read .pxd-read__close {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 28px;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+}
+
+.pxd-read .pxd-read__close svg {
+  display: block;
+  width: 16px;
+  height: 16px;
+}
+
+.pxd-read .pxd-read__switchbtn--off,
+.pxd-read .pxd-read__switch--off {
+  display: none;
+}
+
 .pxd-read .pxd-read__switch {
-  flex: 1;
-  min-width: 0;
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
 }
 
 .pxd-read .pxd-read__filters {
@@ -6433,14 +7308,116 @@ body.roam-body.dark .pxd-root,
 /* The live box does not scroll. The reader fills it, and Roam's own scroller moves the pages.
    Side layout keeps a 220px floor. The stacked pane is only 46% tall, so the same 58/42
    split drops that floor and fits inside the pane. */
-.pxd-read .pxd-read__live {
+.pxd-read .pxd-read__stage {
+  position: relative;
   display: flex;
   flex-direction: column;
   flex: 1 1 58%;
+  min-height: 0;
+}
+
+.pxd-read .pxd-read__live {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
   min-height: 220px;
   overflow: hidden;
 }
 
+.pxd-read .pxd-read__pill {
+  position: absolute;
+  left: 50%;
+  bottom: 12px;
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  box-sizing: border-box;
+  height: var(--pxd-read-pill-h, 36px);
+  padding: 0 6px;
+  border: 1px solid var(--pxd-read-pill-line, transparent);
+  border-radius: var(--pxd-pdf-radius, 6px);
+  background: var(--pxd-read-pill-bg, rgba(31, 41, 55, .92));
+  color: var(--pxd-read-pill-fg, #fff);
+  box-shadow: var(--pxd-read-pill-shadow, none);
+  transform: translateX(-50%);
+}
+
+.pxd-read .pxd-read__pillbtn {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font-size: 16px;
+  line-height: 1;
+}
+
+.pxd-read .pxd-read__pages {
+  padding: 0 4px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* Roam's toolbar stays mounted. height 0, never display:none, because pdf.js measures the row. */
+.pxd-read .rm-pdf-toolbar {
+  flex: 0 0 0;
+  height: 0;
+  min-height: 0;
+  overflow: hidden;
+  visibility: hidden;
+}
+
+.pxd-read.pxd-read--tools .rm-pdf-toolbar {
+  flex: 0 0 auto;
+  height: 40px;
+  min-height: 40px;
+  overflow: visible;
+  visibility: visible;
+}
+
+.pxd-read .pxd-read__drawer {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 42%;
+  min-height: 0;
+}
+
+/* Legacy filters and rows fill the drawer's 42% when they are the list.
+   The live drawer hides this box, so it keeps no height under the strip. */
+.pxd-read .pxd-read__legacy {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+/* Live drawer: the reader fills everything between the 40px header and the
+   32px strip. An open drawer sets an inline fraction of the pane, taken from
+   the reader. flex-basis auto is required so that inline height is the size. */
+.pxd-read.pxd-read--drawer .pxd-read__stage {
+  flex: 1 1 auto;
+  min-height: 0;
+}
+
+.pxd-read.pxd-read--drawer .pxd-read__live {
+  min-height: 0;
+}
+
+.pxd-read.pxd-read--drawer .pxd-read__drawer {
+  flex: 0 0 auto;
+  min-height: 0;
+}
+
+.pxd-read.pxd-read--drawer .pxd-read__legacy {
+  display: none;
+}
+
+.pxd-read.pxd-read--stack .pxd-read__stage,
 .pxd-read.pxd-read--stack .pxd-read__live,
 .pxd-read.pxd-read--stack .pxd-read__list {
   min-height: 0;
@@ -6585,7 +7562,6 @@ body.roam-body.dark .pxd-root,
 .pxd-read .pxd-read__head { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .pxd-read .pxd-read__title { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pxd-read .pxd-read__switch { flex: 0 1 auto; max-width: 40%; }
-.pxd-read .pxd-read__close { flex: 0 0 auto; white-space: nowrap; }
 
 /* The board bar and the tool dock end where the pane starts, so neither covers the reader. */
 .pxd-root.pxd-root--read:not(.pxd-root--read-stack) .pxd-toolbar,
@@ -6609,6 +7585,17 @@ body.roam-body.dark .pxd-root,
   outline-offset: -2px;
 }
 
+.bp3-dark .pxd-root,
+body.bt-theme-dark .pxd-root,
+.rm-dark-theme .pxd-root,
+body.roam-body.dark .pxd-root,
+.pxd-root.pxd-root--dark {
+  --pxd-read-pill-bg: var(--pxd-chrome-bg);
+  --pxd-read-pill-fg: var(--pxd-text);
+  --pxd-read-pill-line: var(--pxd-border-strong);
+  --pxd-read-pill-shadow: 0 2px 6px rgba(0, 0, 0, .45);
+}
+
 .bp3-dark .pxd-root.pxd-root--pdf-drag > .pxd-viewport,
 body.bt-theme-dark .pxd-root.pxd-root--pdf-drag > .pxd-viewport,
 .rm-dark-theme .pxd-root.pxd-root--pdf-drag > .pxd-viewport,
@@ -6620,7 +7607,20 @@ body.roam-body.dark .pxd-root.pxd-root--pdf-drag > .pxd-viewport,
   border: 2px dashed var(--pxd-teal-line, #2dd4bf);
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .pxd-root {
+    --pxd-pdf-ms: 0ms;
+  }
+}
+
 @media (prefers-color-scheme: dark) {
+  :root:not(.bp3-light) .pxd-root:not(.pxd-root--light) {
+    --pxd-read-pill-bg: var(--pxd-chrome-bg);
+    --pxd-read-pill-fg: var(--pxd-text);
+    --pxd-read-pill-line: var(--pxd-border-strong);
+    --pxd-read-pill-shadow: 0 2px 6px rgba(0, 0, 0, .45);
+  }
+
   :root:not(.bp3-light) .pxd-root.pxd-root--pdf-drag:not(.pxd-root--light) > .pxd-viewport {
     outline: none;
     background: none;
@@ -6670,6 +7670,12 @@ body.roam-body.dark .pxd-root.pxd-root--pdf-drag > .pxd-viewport,
     animation: none;
     box-shadow: 0 0 0 2px var(--pxd-mark-flash, var(--pxd-yellow-line, #ca8a04));
   }
+}
+
+/* The reader renders the PDF block, so Roam's reference count for that block floats over the pane's corner.
+   It stays on the block in Roam's outline. */
+.pxd-root .pxd-read .rm-block__ref-count {
+  display: none;
 }
 
 /* ECO-3. The thumb fits the card. The 1px border is the button signal, not a shadow. */
@@ -7638,8 +8644,16 @@ body.roam-body.dark .pxd-root .pxd-suggest__line {
   padding: 4px;
   border: 1px solid var(--pxd-border-strong);
   border-radius: 8px;
-  background: var(--pxd-chrome-bg);
+  background: var(--pxd-bar-bg);
   box-shadow: var(--pxd-shadow);
+}
+
+.pxd-root .pxd-fstabs:empty {
+  display: none;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  box-shadow: none;
 }
 
 .pxd-root .pxd-fstab {
@@ -7677,6 +8691,14 @@ body.roam-body.dark .pxd-root .pxd-suggest__line {
 .pxd-root.pxd-root--fstabs > .pxd-legend,
 .pxd-root.pxd-root--fstabs > .pxd-panel {
   margin-top: 46px;
+}
+
+.pxd-root.pxd-root--fstabs:not(:has(.pxd-fstab)) > .pxd-toolbar,
+.pxd-root.pxd-root--fstabs:not(:has(.pxd-fstab)) > .pxd-rail,
+.pxd-root.pxd-root--fstabs:not(:has(.pxd-fstab)) > .pxd-props,
+.pxd-root.pxd-root--fstabs:not(:has(.pxd-fstab)) > .pxd-legend,
+.pxd-root.pxd-root--fstabs:not(:has(.pxd-fstab)) > .pxd-panel {
+  margin-top: 0;
 }
 
 .pxd-root .pxd-lens {

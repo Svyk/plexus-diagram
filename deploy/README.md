@@ -36,13 +36,13 @@ An enhanced board keeps Roam's diagram controls and adds to them (the 1.3 native
 
 | Do | How |
 |---|---|
-| Pan | Trackpad scroll, Space + drag, middle-drag, or the Hand tool (H) |
+| Pan | Drag empty board with any of Select, Hand or Connect; trackpad scroll, Space + drag, middle-drag |
 | Zoom | Pinch or Ctrl/Cmd + scroll, `−` / `+`, click the % to reset, Shift+1 fit all, Shift+2 fit selection |
-| Select | Click; Shift-click to add; drag on empty board for a selection box; Cmd+A |
+| Select | Click; Shift-click to add; Shift-drag on empty board for a selection box (Settings, Drag on empty canvas: Select makes every empty drag a box); Alt-drag lasso; Cmd+A |
 | New card | Double-click empty board, or N. Type right away; an empty new card disappears when you click away |
 | Edit a card | Double-click or Enter. Roam's own editor opens in the card. A page card edits in place: same size and look, the cursor lands on the row you clicked, Esc returns to the same view. The card keeps its size while you edit, and its arrows stay attached; the editor fills the card and the card grows only if your text is taller. Esc to finish |
 | Open | Click a `[[link]]` in a card to go there (Shift-click: sidebar). Context bar: Open in sidebar |
-| Move / resize | Drag a card (from anywhere, links included); drag the right edge, bottom edge, or corner. Alignment guides snap to neighbours. The Hand tool resizes too: a press on a grip resizes, anything else pans (Space-drag always pans). Page cards have a wide grip band and a corner above the scrollbar. Grips, connection dots and arrow-end handles keep the same size on screen at every zoom |
+| Move / resize | Drag a card (from anywhere, links included); drag the right edge, bottom edge, or corner. Alignment guides snap to neighbours. The Hand tool moves cards and resizes too: drag a card to move it, a grip to resize, empty board to pan (Space-drag always pans). Page cards have a wide grip band and a corner above the scrollbar. Grips, connection dots and arrow-end handles keep the same size on screen at every zoom |
 | Section | G, then drag (or click for a default size). Cmd+G wraps the selection. Drop cards in and out of sections. A section grows to contain a card moved or resized past its edge (24 px padding, cascading through nested sections); Fit to contents shrinks it, and Auto-fit in the menu turns it off for one section |
 | Connect | Drag from a card's port (the dots on its edges) to another card or section. Drop on empty board to create a new linked card. C turns the whole card into a handle |
 | Text | T for a free heading on the board (16/24/32/48) |
@@ -117,6 +117,8 @@ Mark a region on the picture, or from the block menu. Plexus copies a block ref.
 ## PDFs
 
 Roam's reader does the highlighting. A pdf block on the board is a card. Plexus adds the cover, highlight cards, page chips, and a reading pane beside the board.
+
+The card cover is the page image, first page or the last page you read, with a tick for each highlight. Open opens the reading pane. Its pill zooms, fits the width, and shows the page. Tools shows Roam's toolbar, and the drawer lists highlights so you can place one on the board.
 
 | Do | How |
 |---|---|
@@ -275,6 +277,8 @@ Settings → Extensions → Plexus Diagram. Each change applies on the open boar
 | Cards | Enter in a card | Newline adds a line to the card's block, like a native Roam diagram. Child makes a new child block inside the card. |
 | Cards | Show card badges | Show how many references, tasks, and children a card has. |
 | Cards | Space out cards | After a move, push cards apart when they overlap. |
+| Cards | PDF card cover | First page, or the last page read. First page is the default. |
+| Cards | Prepare PDF covers in the background | Off. When on, a quiet board prepares a cover for a visible PDF that has none. |
 | Integrations | Better Tasks integration | Use Better Tasks for task chips, the light checkbox, and task edits. Off leaves the TODO marker to Roam. Starts off. |
 | Integrations | Task tool | Show the Task tool (K) in the dock. Starts off. A saved on stays on. |
 | Integrations | Task chips | Full (due date, project, priority, repeat, status), due only, or none. |
@@ -291,6 +295,7 @@ Settings → Extensions → Plexus Diagram. Each change applies on the open boar
 | Board | Every diagram is a Plexus board | On: every `{{[[diagram]]}}` opens as a Plexus board. Nothing is saved until you change the board. Off: only diagrams you enhance (Plexus: Enhance) or create with New whiteboard open in Plexus. |
 | Board | Fullscreen on zoom | Open a diagram full screen when you zoom into its block. Esc leaves it. |
 | Board | Mouse wheel | Pan or zoom. Pinch still zooms. |
+| Board | Drag on empty canvas | Pan moves the board when you drag empty space. Shift-drag draws a selection box. Select draws the box on every empty drag. |
 | Board | Show minimap | Show the small map of the whole board. |
 | Board | Show tool palette | Show the tool dock. |
 | Board | Toolbar layout | Split: board bar on top, tools in the dock. Classic: the 2.1 look. Dock only: hide the top bar until the pointer is near the top edge. |

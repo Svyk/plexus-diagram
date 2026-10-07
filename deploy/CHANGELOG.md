@@ -1,5 +1,19 @@
 # Changelog
 
+## 3.1.0 — 2026-10-06
+
+PDFs that read like Heptabase, page cards that hold still while you edit, and tools that do what your hand expects.
+
+- PDF cards show the page itself: white paper, no text on the face. Hover for the title, highlight count and page chips, and an **Open** pill; double-click or Enter opens it too. A thin strip on the edge marks where the highlights are; click a mark to open that page. The cover is saved on this device the first time you read the PDF (nothing is written to your graph); until page 1 has been on screen, the card shows the last page you read. Setting **PDF card cover**: first page or last page read.
+- The PDF opens in a pane beside the board with one slim header (title, other PDFs on the board, highlights, Roam's tools, close) and the pages at reading width. A floating pill drives Roam's own zoom out, zoom in, fit width and search, and shows `3 / 9`. Roam's toolbar is still there behind the tools button. The card you are reading gets an outline until you close the pane.
+- Highlights moved into a drawer at the bottom of the pane: colour and page chips, search, and Note, Place and Locate on hover. A new highlight pulses in the list and offers **Place on board** for a few seconds. Hovering a highlight card flashes its mark in the reader, and hovering a row pulses its card.
+- Highlight cards are quote cards with a colour bar and a source chip (`title · p. 3`).
+- Editing a page card keeps the card exactly as it looked: same rows, same spacing, nothing rewraps or moves, and the cursor lands where you clicked. One click on an already selected page card starts editing there.
+- Hand tool: drag a card to move it, drag empty board to pan. In Select and Connect, dragging empty board pans too; Shift-drag draws the selection box and Alt-drag the lasso. Setting **Drag on empty canvas** brings the old box-select back.
+- With Roam Caret 0.6.6 installed, its caret now shows inside cards at every zoom (Plexus tells it when the board moves).
+- The board bar, tab strip, legend and Properties are solid, and an empty tab strip no longer shows.
+- New PDF cards are 240 × 320.
+
 ## 3.0.0 — 2026-10-06
 
 Plexus 3.0: the 3.x roadmap is complete. This release makes large boards open fast, makes every new surface usable from the keyboard, caps every bulk gesture at what one Roam undo can take back, and documents the data model and module contracts as built.

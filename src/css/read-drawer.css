@@ -1,0 +1,316 @@
+/* PDF-U4. Highlight drawer under the reader. The strip stays. The body opens to a fraction of the pane.
+   Dark mode: colour dots and the new-row pulse are rings, not fills. */
+
+.pxd-read-drawer {
+  display: flex;
+  flex-direction: column;
+  box-sizing: border-box;
+  min-height: var(--pxd-read-strip-h, 32px);
+  overflow: hidden;
+  border-top: 1px solid var(--pxd-border, #d0d7de);
+  background: var(--pxd-chrome-bg, var(--pxd-surface, #fff));
+  color: var(--pxd-text, inherit);
+}
+
+.pxd-read-drawer__edge {
+  flex: 0 0 6px;
+  height: 6px;
+  cursor: ns-resize;
+  touch-action: none;
+}
+
+.pxd-read-drawer__pill {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 0 0 auto;
+  height: var(--pxd-read-pill-h, 36px);
+  margin: 4px 8px;
+  padding: 0 10px;
+  border: 1px solid var(--pxd-read-pill-line, transparent);
+  border-radius: var(--pxd-pdf-radius, 6px);
+  background: var(--pxd-read-pill-bg, rgba(31, 41, 55, 0.92));
+  color: var(--pxd-read-pill-fg, #fff);
+  box-shadow: var(--pxd-read-pill-shadow, 0 2px 6px rgba(0, 0, 0, 0.18));
+  font-size: 12px;
+  line-height: 16px;
+}
+
+.pxd-read-drawer__pillplace {
+  margin: 0;
+  padding: 0 8px;
+  border: 1px solid transparent;
+  border-radius: var(--pxd-pdf-radius, 6px);
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+  line-height: 24px;
+  cursor: pointer;
+}
+
+.pxd-read-drawer__strip {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 var(--pxd-read-strip-h, 32px);
+  height: var(--pxd-read-strip-h, 32px);
+  min-height: var(--pxd-read-strip-h, 32px);
+  padding: 0 8px 0 4px;
+  box-sizing: border-box;
+}
+
+.pxd-read-drawer__chevron,
+.pxd-read-drawer__search {
+  flex: 0 0 24px;
+  width: 24px;
+  height: 24px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  line-height: 24px;
+  cursor: pointer;
+}
+
+.pxd-read-drawer__count {
+  flex: 0 0 auto;
+  font-size: 12px;
+  line-height: 16px;
+  white-space: nowrap;
+}
+
+.pxd-read-drawer__dots {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 0 0 auto;
+}
+
+.pxd-read-drawer__dot {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 16px;
+  height: 16px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+}
+
+.pxd-read-drawer__dotmark {
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
+  background: var(--pxd-dot, var(--pxd-muted, #5f6b7c));
+  box-shadow: none;
+}
+
+.pxd-read-drawer__dot[aria-pressed="true"] .pxd-read-drawer__dotmark {
+  box-shadow: 0 0 0 1px var(--pxd-text, #1f2937);
+}
+
+.pxd-read-drawer .pxd-pdf-chips {
+  margin: 0;
+  flex: 0 1 auto;
+  flex-wrap: nowrap;
+  min-width: 0;
+}
+
+.pxd-read-drawer .pxd-pdf-chip {
+  height: 20px;
+  font-size: 11px;
+  line-height: 18px;
+}
+
+.pxd-read-drawer .pxd-pdf-chip--on {
+  border-color: var(--pxd-accent, #0f766e);
+  background: transparent;
+}
+
+.pxd-read-drawer__find {
+  flex: 0 0 160px;
+  width: 160px;
+  min-width: 0;
+  height: 24px;
+  margin: 0;
+  padding: 0 6px;
+  border: 1px solid var(--pxd-border, #d0d7de);
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  font-size: 12px;
+}
+
+.pxd-read-drawer__body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: auto;
+}
+
+.pxd-read-drawer__list {
+  outline: none;
+}
+
+.pxd-read-drawer__row {
+  position: relative;
+  padding: 6px 8px 6px 12px;
+  cursor: pointer;
+}
+
+.pxd-read-drawer__row--on {
+  background: var(--pxd-accent-soft, rgba(15, 118, 110, 0.12));
+}
+
+.pxd-read-drawer__row--new {
+  background: var(--pxd-hl-pulse, var(--pxd-accent-soft, rgba(15, 118, 110, 0.18)));
+  animation: pxd-drawer-pulse 600ms var(--pxd-pdf-ease, cubic-bezier(.2, .7, .2, 1));
+}
+
+.pxd-read-drawer__bar {
+  position: absolute;
+  left: 0;
+  top: 0;
+  bottom: 0;
+  width: var(--pxd-hl-bar-w, 3px);
+  pointer-events: none;
+  background: var(--pxd-muted, #5f6b7c);
+}
+
+.pxd-read-drawer__bar[data-color="gray"] { background: var(--pxd-gray-line); }
+.pxd-read-drawer__bar[data-color="red"] { background: var(--pxd-red-line); }
+.pxd-read-drawer__bar[data-color="orange"] { background: var(--pxd-orange-line); }
+.pxd-read-drawer__bar[data-color="yellow"] { background: var(--pxd-yellow-line); }
+.pxd-read-drawer__bar[data-color="green"] { background: var(--pxd-green-line); }
+.pxd-read-drawer__bar[data-color="teal"] { background: var(--pxd-teal-line); }
+.pxd-read-drawer__bar[data-color="blue"] { background: var(--pxd-blue-line); }
+.pxd-read-drawer__bar[data-color="indigo"] { background: var(--pxd-indigo-line); }
+.pxd-read-drawer__bar[data-color="purple"] { background: var(--pxd-purple-line); }
+.pxd-read-drawer__bar[data-color="pink"] { background: var(--pxd-pink-line); }
+
+.pxd-read-drawer__snip {
+  font-size: var(--pxd-hl-quote-size, 13px);
+  line-height: var(--pxd-hl-quote-lh, 1.5);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.pxd-read-drawer__meta {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 2px;
+  color: var(--pxd-muted, #5f6b7c);
+  font-size: 11px;
+  line-height: 14px;
+}
+
+.pxd-read-drawer__on {
+  display: inline-flex;
+  width: 14px;
+  height: 14px;
+  color: var(--pxd-muted, #5f6b7c);
+}
+
+.pxd-read-drawer__acts {
+  position: absolute;
+  right: 4px;
+  top: 50%;
+  transform: translateY(-50%);
+  display: flex;
+  gap: 4px;
+  padding-left: 4px;
+  background: var(--pxd-chrome-bg, #fff);
+}
+
+.pxd-read-drawer__note,
+.pxd-read-drawer__place,
+.pxd-read-drawer__locate {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin: 0;
+  padding: 0;
+  border: 1px solid var(--pxd-border, #d0d7de);
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.pxd-read-drawer__body[hidden],
+.pxd-read-drawer__edge[hidden],
+.pxd-read-drawer__find[hidden],
+.pxd-read-drawer__pill[hidden] {
+  display: none;
+}
+
+@keyframes pxd-drawer-pulse {
+  from { background: var(--pxd-hl-pulse, var(--pxd-accent-soft, rgba(15, 118, 110, 0.18))); }
+  to { background: transparent; }
+}
+
+.bp3-dark .pxd-read-drawer__dotmark,
+body.bt-theme-dark .pxd-read-drawer__dotmark,
+.pxd-root--dark .pxd-read-drawer__dotmark {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--pxd-dot, var(--pxd-border-strong, #3b4b58));
+}
+
+.bp3-dark .pxd-read-drawer__dot[aria-pressed="true"] .pxd-read-drawer__dotmark,
+body.bt-theme-dark .pxd-read-drawer__dot[aria-pressed="true"] .pxd-read-drawer__dotmark,
+.pxd-root--dark .pxd-read-drawer__dot[aria-pressed="true"] .pxd-read-drawer__dotmark {
+  background: transparent;
+  box-shadow: inset 0 0 0 1.5px var(--pxd-dot, var(--pxd-border-strong, #3b4b58)), 0 0 0 1px var(--pxd-border-strong, #3b4b58);
+}
+
+.bp3-dark .pxd-read-drawer__row--on,
+body.bt-theme-dark .pxd-read-drawer__row--on,
+.pxd-root--dark .pxd-read-drawer__row--on {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--pxd-accent, #2dd4bf);
+}
+
+.bp3-dark .pxd-read-drawer__row--new,
+body.bt-theme-dark .pxd-read-drawer__row--new,
+.pxd-root--dark .pxd-read-drawer__row--new {
+  background: transparent;
+  box-shadow: inset 0 0 0 1px var(--pxd-accent, #2dd4bf);
+  animation: none;
+}
+
+.bp3-dark .pxd-read-drawer__pill,
+body.bt-theme-dark .pxd-read-drawer__pill,
+.pxd-root--dark .pxd-read-drawer__pill {
+  background: var(--pxd-chrome-bg, transparent);
+  color: var(--pxd-text, #e6edf3);
+  border-color: var(--pxd-border-strong, #3b4b58);
+  box-shadow: none;
+}
+
+.bp3-dark .pxd-read-drawer .pxd-pdf-chip--on,
+body.bt-theme-dark .pxd-read-drawer .pxd-pdf-chip--on,
+.pxd-root--dark .pxd-read-drawer .pxd-pdf-chip--on {
+  background: transparent;
+  border-color: var(--pxd-accent, #2dd4bf);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pxd-read-drawer__row--new { animation: none; }
+}
+
+.pxd-root.pxd-root--motion-none .pxd-read-drawer__row--new,
+.pxd-root.pxd-root--motion-reduced .pxd-read-drawer__row--new {
+  animation: none;
+}

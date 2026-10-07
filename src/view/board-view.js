@@ -96,6 +96,7 @@ import { closeTab, openTab, tabAt } from "../model/tabs.js";
 import { createPanel, parseDropPayload } from "./panel.js";
 import { handleParseDrop } from "../model/drop.js";
 import { createParseStore } from "../host/parse-store.js";
+import { createParseActions, freeSpotBeside } from "./parse-actions.js";
 import { createMenu } from "./menu.js";
 import { createShortcutSheet } from "./shortcut-sheet.js";
 import { createTooltip } from "./tooltip.js";
@@ -1546,6 +1547,29 @@ function buildBoardView(onFail, {
     try { readPane?.layout?.(size.width); } catch { /* first layout on the next resize */ }
     return readPane;
   };
+  let parseActionsObj = null;
+  const placeParseBeside = (pdfUid, sz) => {
+    const items = [...(board()?.items.values() || [])];
+    const rs = rects();
+    const rectOf = (it) => rs.get(it.uid) || { x: it.x, y: it.y, w: it.w, h: it.h };
+    const card = board()?.items.get(pdfUid) || board()?.items.get(readPane?.cardUid?.() || "");
+    if (card) return freeSpotBeside(rectOf(card), sz, items.filter((it) => it !== card).map(rectOf));
+    const c = screenToWorld(vp, { x: size.width / 2, y: size.height / 2 });
+    return { x: c.x - (sz?.w || 0) / 2, y: c.y - (sz?.h || 0) / 2 };
+  };
+  const parseActions = () => {
+    if (!parseActionsObj) {
+      parseActionsObj = createParseActions({
+        session,
+        store: createParseStore(),
+        placeBeside: placeParseBeside,
+        toast: (message) => toast(message),
+        select: (uids) => { if (!disposed) ctl.select(uids); },
+        upload: (file) => host.uploadFile(file),
+      });
+    }
+    return parseActionsObj;
+  };
   const makeReadPane = () => (createReadPane({
     doc,
     root,
@@ -1577,7 +1601,7 @@ function buildBoardView(onFail, {
         if (item?.target?.uid === uid) pulseItem(item.uid);
       }
     },
-    session,
+    session: parseActions(),
     settings: { get: (id) => readSetting(id) },
     onPlace: (row) => {
       const items = [...(board()?.items.values() || [])];

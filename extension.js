@@ -31947,6 +31947,61 @@ function createParseOverlay({ doc, pageEl, pageOf: pageOf3, onResplit } = {}) {
   };
 }
 
+// src/view/parse-crop.js
+function cropRect(bbox, pageW, pageH, viewportW, viewportH) {
+  if (!Array.isArray(bbox) || bbox.length < 4) return null;
+  const sx = (Number(viewportW) || 0) / (Number(pageW) || 1);
+  const sy = (Number(viewportH) || 0) / (Number(pageH) || 1);
+  if (!(sx > 0) || !(sy > 0)) return null;
+  const left = bbox[0] * sx;
+  const top = bbox[1] * sy;
+  const width = Math.max(1, Math.ceil((bbox[2] - bbox[0]) * sx));
+  const height = Math.max(1, Math.ceil((bbox[3] - bbox[1]) * sy));
+  return { sx, sy, left, top, width, height };
+}
+function createCropQueue(limit = 2) {
+  const waiting = [];
+  let active = 0;
+  const pump = () => {
+    while (active < limit && waiting.length) {
+      const job = waiting.shift();
+      active += 1;
+      Promise.resolve().then(job.run).then(job.resolve, job.reject).finally(() => {
+        active -= 1;
+        pump();
+      });
+    }
+  };
+  return {
+    add(run) {
+      return new Promise((resolve, reject) => {
+        waiting.push({ run, resolve, reject });
+        pump();
+      });
+    },
+    get active() {
+      return active;
+    },
+    get waiting() {
+      return waiting.length;
+    }
+  };
+}
+function dataUrlToBlob2(url, BlobCtor = globalThis.Blob) {
+  const m = /^data:([^;,]+)?(;base64)?,(.*)$/s.exec(String(url || ""));
+  if (!m) return null;
+  const type = m[1] || "image/png";
+  let bytes;
+  if (m[2]) {
+    const bin = globalThis.atob(m[3]);
+    bytes = new Uint8Array(bin.length);
+    for (let i = 0; i < bin.length; i += 1) bytes[i] = bin.charCodeAt(i);
+  } else {
+    bytes = new TextEncoder().encode(decodeURIComponent(m[3]));
+  }
+  return new BlobCtor([bytes], { type });
+}
+
 // src/view/make-highlight.js
 var CALLBACKS = ["onSelectionFinished", "addHighlight", "addPdfHighlight"];
 function rectOf3(bbox, page) {
@@ -32833,14 +32888,11 @@ function createParseView({
       return "";
     }
     const info = pageInfo(block.page);
-    const vw = Number(viewport?.width) || 0;
-    const vh = Number(viewport?.height) || 0;
-    const sx = vw / (info.w || 1);
-    const sy = vh / (info.h || 1);
-    const left = box2[0] * sx;
-    const top = box2[1] * sy;
-    canvas.width = Math.max(1, Math.ceil((box2[2] - box2[0]) * sx));
-    canvas.height = Math.max(1, Math.ceil((box2[3] - box2[1]) * sy));
+    const rect = cropRect(box2, info.w, info.h, viewport?.width, viewport?.height);
+    if (!rect) return "";
+    const { left, top } = rect;
+    canvas.width = rect.width;
+    canvas.height = rect.height;
     try {
       const task = page.render({ canvasContext: ctx, viewport, transform: [1, 0, 0, 1, -left, -top] });
       if (task?.promise) await task.promise;
@@ -32849,7 +32901,33 @@ function createParseView({
       return "";
     }
   }
-  async function paintCrop(block, img) {
+  const cropQueue = createCropQueue(2);
+  let cropObserver = null;
+  const cropWaiting = /* @__PURE__ */ new Map();
+  function paintCrop(block, img) {
+    img.setAttribute("data-crop", "pending");
+    const run = () => cropQueue.add(() => paintCropNow(block, img));
+    const IO = doc.defaultView?.IntersectionObserver;
+    if (typeof IO !== "function") return run();
+    if (!cropObserver) {
+      cropObserver = new IO((entries) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          const go = cropWaiting.get(entry.target);
+          cropWaiting.delete(entry.target);
+          try {
+            cropObserver?.unobserve(entry.target);
+          } catch {
+          }
+          go?.();
+        }
+      });
+    }
+    cropWaiting.set(img, run);
+    cropObserver.observe(img);
+    return Promise.resolve();
+  }
+  async function paintCropNow(block, img) {
     const key = parsed?.sha256 ? imageKey(parsed.sha256, block.id) : "";
     if (key && store?.getImage) {
       try {
@@ -33356,6 +33434,11 @@ function createParseView({
     dispose() {
       dead = true;
       cancel();
+      try {
+        cropObserver?.disconnect();
+      } catch {
+      }
+      cropWaiting.clear();
       overlay.dispose();
       clearBlockListeners();
       for (const [node2, type, fn, capture] of armed) {
@@ -41172,6 +41255,159 @@ init_info();
 init_panel();
 init_drop();
 
+// src/view/parse-actions.js
+init_drop();
+init_parse_to_roam_md();
+init_parse_schema();
+var TABLE_SIZE2 = { w: 420, h: 260 };
+var CARD_SIZE = { w: 280, h: 160 };
+function freeSpotBeside(rect, size, others = [], gap = 40) {
+  const r = rect && typeof rect === "object" ? rect : null;
+  if (!r) return null;
+  const w = Number(size?.w) || CARD_SIZE.w;
+  const h = Number(size?.h) || CARD_SIZE.h;
+  const x = (Number(r.x) || 0) + (Number(r.w) || 0) + gap;
+  let y = Number(r.y) || 0;
+  const hit = (yy) => others.find((o) => o && x < o.x + o.w && x + w > o.x && yy < o.y + o.h && yy + h > o.y);
+  for (let guard = 0; guard < 200; guard += 1) {
+    const blocker = hit(y);
+    if (!blocker) break;
+    y = blocker.y + blocker.h + gap;
+  }
+  return { x, y };
+}
+function mergedCells(table) {
+  let n2 = 0;
+  for (const cell of table?.cells || []) {
+    if ((cell.rowSpan ?? 1) > 1 || (cell.colSpan ?? 1) > 1) n2 += 1;
+  }
+  return n2;
+}
+function plural(n2, one, many) {
+  return `${n2} ${n2 === 1 ? one : many}`;
+}
+function createParseActions({ session, store, placeBeside, toast, select, upload } = {}) {
+  const say = (message) => {
+    try {
+      if (typeof toast === "function") toast(message);
+    } catch {
+    }
+  };
+  const pick = (uids) => {
+    if (Array.isArray(uids) && uids.length) {
+      try {
+        select?.(uids);
+      } catch {
+      }
+    }
+  };
+  const spot = (pdfUid, size) => {
+    let at = null;
+    try {
+      at = placeBeside?.(pdfUid, size);
+    } catch {
+      at = null;
+    }
+    return { x: Number.isFinite(at?.x) ? at.x : 0, y: Number.isFinite(at?.y) ? at.y : 0 };
+  };
+  const load = async (payload) => {
+    let doc = null;
+    try {
+      doc = await store?.getParse?.(payload?.sha256, payload?.engine, payload?.optsHash);
+    } catch {
+      doc = null;
+    }
+    if (!doc) say(PARSE_MISSING_TOAST);
+    return doc;
+  };
+  async function withUploadedImages(doc, ids) {
+    const blocks = selectBlocks(doc, ids).filter((b) => (b?.type === "figure" || b?.type === "formula") && !(b.image?.url || b.url));
+    if (!blocks.length || typeof upload !== "function") return doc;
+    const next = { ...doc, blocks: { ...doc.blocks } };
+    for (const block of blocks) {
+      try {
+        const src = await store?.getImage?.(imageKey(doc.sha256, block.id));
+        const blob = typeof src === "string" ? dataUrlToBlob2(src) : src;
+        if (!blob) continue;
+        const file = new File([blob], `figure-p${block.page ?? 0}.png`, { type: "image/png" });
+        const url = await upload(file);
+        if (url) next.blocks[block.id] = { ...block, image: { ...block.image || {}, url } };
+      } catch {
+      }
+    }
+    return next;
+  }
+  const actions = {
+    async insertParsedBelow(payload) {
+      const doc = await load(payload);
+      if (!doc) return { ok: false, reason: "missing-cache" };
+      const { markdown, blockEstimate } = toRoamMarkdown(doc, payload.ids);
+      const res = await session?.insertParsedBelow?.({ pdfUid: payload.pdfUid, markdown, blockEstimate });
+      if (res?.ok) {
+        pick(res.uids);
+        say(`Inserted ${plural(blockEstimate, "block", "blocks")} below the PDF`);
+      }
+      return res || { ok: false, reason: "no-session" };
+    },
+    async insertParsedTable(payload) {
+      const doc = await load(payload);
+      if (!doc) return { ok: false, reason: "missing-cache" };
+      const table = selectBlocks(doc, payload.ids).find((b) => b?.type === "table");
+      if (!table) return { ok: false, reason: "empty" };
+      const at = Number.isFinite(payload.x) && Number.isFinite(payload.y) ? { x: payload.x, y: payload.y } : spot(payload.pdfUid, TABLE_SIZE2);
+      const res = await session?.insertParsedTable?.({ ...at, table, mode: payload.mode || "auto" });
+      if (res?.ok) {
+        pick(res.uid ? [res.uid] : []);
+        const merged = mergedCells(table);
+        const how = res.path === "grid" ? "Roam Grid" : res.path === "flat" ? "flat Roam table" : "native Roam table";
+        say(merged ? `Table inserted · ${how} with ${plural(merged, "merged cell", "merged cells")}` : `Table inserted · ${how}`);
+      }
+      return res || { ok: false, reason: "no-session" };
+    },
+    async sendParsedToBoard(payload) {
+      const doc = await load(payload);
+      if (!doc) return { ok: false, reason: "missing-cache" };
+      const blocks = selectBlocks(doc, payload.ids);
+      if (blocks.length && blocks.every((b) => b?.type === "table")) return actions.insertParsedTable(payload);
+      const withImages = await withUploadedImages(doc, payload.ids);
+      const plan = planParseInsert(withImages, { ...payload, kind: "blocks" });
+      if (plan.action === "sections") {
+        const at = spot(payload.pdfUid, CARD_SIZE);
+        const res = await session?.sendParsedToBoard?.({ ...at, sections: plan.sections });
+        if (res?.ok) {
+          pick(res.uids);
+          say(`Sent ${plural(plan.sections.length, "card", "cards")} to the board`);
+        }
+        return res || { ok: false, reason: "no-session" };
+      }
+      if (plan.action === "card") {
+        const at = spot(payload.pdfUid, CARD_SIZE);
+        const res = await session?.insertParsedCard?.({ ...at, markdown: plan.markdown });
+        if (res?.ok) {
+          pick(res.uid ? [res.uid] : []);
+          say("Sent 1 card to the board");
+        }
+        return res || { ok: false, reason: "no-session" };
+      }
+      return { ok: false, reason: "empty" };
+    },
+    async insertParsedCard(payload) {
+      const doc = await load(payload);
+      if (!doc) return { ok: false, reason: "missing-cache" };
+      const withImages = await withUploadedImages(doc, payload.ids);
+      const { markdown } = toRoamMarkdown(withImages, payload.ids);
+      const at = spot(payload.pdfUid, CARD_SIZE);
+      const res = await session?.insertParsedCard?.({ ...at, markdown });
+      if (res?.ok) {
+        pick(res.uid ? [res.uid] : []);
+        say("Card inserted");
+      }
+      return res || { ok: false, reason: "no-session" };
+    }
+  };
+  return actions;
+}
+
 // src/view/menu.js
 init_avoid();
 var MARGIN2 = 4;
@@ -44470,6 +44706,31 @@ function buildBoardView(onFail, {
     }
     return readPane;
   };
+  let parseActionsObj = null;
+  const placeParseBeside = (pdfUid, sz) => {
+    const items = [...board2()?.items.values() || []];
+    const rs = rects();
+    const rectOf4 = (it) => rs.get(it.uid) || { x: it.x, y: it.y, w: it.w, h: it.h };
+    const card2 = board2()?.items.get(pdfUid) || board2()?.items.get(readPane?.cardUid?.() || "");
+    if (card2) return freeSpotBeside(rectOf4(card2), sz, items.filter((it) => it !== card2).map(rectOf4));
+    const c = screenToWorld(vp, { x: size.width / 2, y: size.height / 2 });
+    return { x: c.x - (sz?.w || 0) / 2, y: c.y - (sz?.h || 0) / 2 };
+  };
+  const parseActions = () => {
+    if (!parseActionsObj) {
+      parseActionsObj = createParseActions({
+        session,
+        store: createParseStore(),
+        placeBeside: placeParseBeside,
+        toast: (message) => toast(message),
+        select: (uids) => {
+          if (!disposed) ctl.select(uids);
+        },
+        upload: (file) => host.uploadFile(file)
+      });
+    }
+    return parseActionsObj;
+  };
   const makeReadPane = () => createReadPane({
     doc,
     root,
@@ -44507,7 +44768,7 @@ function buildBoardView(onFail, {
         if (item?.target?.uid === uid) pulseItem(item.uid);
       }
     },
-    session,
+    session: parseActions(),
     settings: { get: (id) => readSetting2(id) },
     onPlace: (row4) => {
       const items = [...board2()?.items.values() || []];

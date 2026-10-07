@@ -11,6 +11,7 @@ import { toCSV, toMarkdown } from "../model/parse-to-text.js";
 import { imageKey } from "../host/parse-store.js";
 import { loadPageData } from "./parse-engine.js";
 import { createParseOverlay } from "./parse-overlay.js";
+import { cropRect, createCropQueue } from "./parse-crop.js";
 import { makeHighlight } from "./make-highlight.js";
 import { isTextEntryTarget } from "./cards.js";
 
@@ -749,14 +750,11 @@ export function createParseView({
     let viewport = null;
     try { viewport = page.getViewport({ scale }); } catch { return ""; }
     const info = pageInfo(block.page);
-    const vw = Number(viewport?.width) || 0;
-    const vh = Number(viewport?.height) || 0;
-    const sx = vw / (info.w || 1);
-    const sy = vh / (info.h || 1);
-    const left = box[0] * sx;
-    const top = box[1] * sy;
-    canvas.width = Math.max(1, Math.ceil((box[2] - box[0]) * sx));
-    canvas.height = Math.max(1, Math.ceil((box[3] - box[1]) * sy));
+    const rect = cropRect(box, info.w, info.h, viewport?.width, viewport?.height);
+    if (!rect) return "";
+    const { left, top } = rect;
+    canvas.width = rect.width;
+    canvas.height = rect.height;
     try {
       const task = page.render({ canvasContext: ctx, viewport, transform: [1, 0, 0, 1, -left, -top] });
       if (task?.promise) await task.promise;
@@ -766,7 +764,31 @@ export function createParseView({
     }
   }
 
-  async function paintCrop(block, img) {
+  const cropQueue = createCropQueue(2);
+  let cropObserver = null;
+  const cropWaiting = new Map();
+  function paintCrop(block, img) {
+    img.setAttribute("data-crop", "pending");
+    const run = () => cropQueue.add(() => paintCropNow(block, img));
+    const IO = doc.defaultView?.IntersectionObserver;
+    if (typeof IO !== "function") return run();
+    if (!cropObserver) {
+      cropObserver = new IO((entries) => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting) continue;
+          const go = cropWaiting.get(entry.target);
+          cropWaiting.delete(entry.target);
+          try { cropObserver?.unobserve(entry.target); } catch { /* gone */ }
+          go?.();
+        }
+      });
+    }
+    cropWaiting.set(img, run);
+    cropObserver.observe(img);
+    return Promise.resolve();
+  }
+
+  async function paintCropNow(block, img) {
     const key = parsed?.sha256 ? imageKey(parsed.sha256, block.id) : "";
     if (key && store?.getImage) {
       try {
@@ -1231,6 +1253,8 @@ export function createParseView({
     dispose() {
       dead = true;
       cancel();
+      try { cropObserver?.disconnect(); } catch { /* gone */ }
+      cropWaiting.clear();
       overlay.dispose();
       clearBlockListeners();
       for (const [node, type, fn, capture] of armed) {

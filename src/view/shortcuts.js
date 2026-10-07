@@ -30,6 +30,7 @@ export const SHORTCUTS = [
   { group: "Tools", keys: "R", label: "Shape", action: "tool", tool: "shape", letter: "r", events: [{ key: "r" }], match: (ev) => letter(ev, "r") },
   { group: "Tools", keys: "G", label: "Section", action: "tool", tool: "section", letter: "g", events: [{ key: "g" }], match: (ev) => letter(ev, "g") },
   { group: "Tools", keys: "W", label: "Board", action: "tool", tool: "board", letter: "w", events: [{ key: "w" }], match: (ev) => letter(ev, "w") },
+  { group: "Tools", keys: "B", label: "Table", action: "tool", tool: "table", letter: "b", events: [{ key: "b" }], match: (ev) => letter(ev, "b") },
   { group: "Tools", keys: "C", label: "Connect", action: "tool", tool: "connect", letter: "c", events: [{ key: "c" }], match: (ev) => letter(ev, "c") },
 
   { group: "Edit", keys: "Enter", label: "Edit, open, or rename", action: "enter", events: [{ key: "Enter" }], match: (ev) => !hasMod(ev) && !ev.alt && !ev.shift && ev.key === "Enter" },

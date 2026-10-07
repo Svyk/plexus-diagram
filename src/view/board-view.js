@@ -7,6 +7,7 @@
 // section auto-fit preview, context menu, clipboard, focus, presentation, card badges, back-to-content.
 
 import { BOARD_PATTERNS, BOARD_TONES, DEFAULT_BOARD_CARD, DEFAULT_SIZES, LANE_SIZE, PAGE_CARD, PALETTE, STICKY_SIZE, UNTITLED_BOARD, classifyString, hexColor, readPlexus, semanticRef, plainText } from "../model/schema.js";
+import { TABLE_SIZE, keyGate, ownershipOf, tablePointerTarget } from "../model/roam-table.js";
 import { DRAWING_DROP_TOAST, drawingRefString, droppedDrawingUids } from "../model/drawing-card.js";
 import { annotatePlan } from "../model/annotate.js";
 import { rewriteBgTag } from "../model/highlighter.js";
@@ -3581,6 +3582,11 @@ function buildBoardView(onFail, {
         Promise.resolve(session.createDrawing?.({ x: world.x - d.w / 2, y: world.y - d.h / 2 })).then((uid) => { if (uid && !disposed) ctl.select([uid]); }).catch(() => {});
         break;
       }
+      case "new-table": {
+        const d = TABLE_SIZE;
+        Promise.resolve(session.createTable?.({ x: world.x - d.w / 2, y: world.y - d.h / 2, w: d.w, h: d.h })).then((uid) => { if (uid && !disposed) { freshItems.add(uid); ctl.select([uid]); } }).catch(() => {});
+        break;
+      }
       case "template": {
         const d = DEFAULT_BOARD_CARD;
         const rect = { x: world.x - d.w / 2, y: world.y - d.h / 2, w: d.w, h: d.h };
@@ -5214,6 +5220,7 @@ function buildBoardView(onFail, {
     commitMove: (uids, dx, dy) => session.commitMove?.(uids, dx, dy),
     commitRects: (list) => session.commitRects?.(list),
     createCard: (p) => Promise.resolve(session.createCard?.({ x: p.x, y: p.y, ...(pendingFor("card") || {}) })).then((uid) => { if (uid) freshItems.add(uid); return uid; }),
+    createTable: (p) => Promise.resolve(session.createTable?.({ x: p.x, y: p.y, w: p.w, h: p.h })).then((uid) => { if (uid) freshItems.add(uid); return uid; }),
     // A task card is a plain TODO block. Plexus writes the marker only; attributes come from Better Tasks.
     rescheduleTasks: (uids, day) => {
       const b = board();
@@ -5611,8 +5618,14 @@ function buildBoardView(onFail, {
     if (next == null) return;
     session.setString?.(uid, next);
   };
+  let tablePointer = null;
+  const inRoamTable = (node) => {
+    const hostNode = tablePointerTarget(node);
+    return Boolean(hostNode && root.contains(hostNode));
+  };
   listen(root, "pointerdown", (event) => {
     if (leavesBoardPointer(event.target)) return;
+    if (inRoamTable(event.target)) { tablePointer = event.target; return; }
     // Interact is on: this click belongs to the reader. preventDefault or stopPropagation would block page nav.
     if (pdfClickShield(event.target)) return;
     else if (root.querySelector?.(".pxd-pdf-live")) itemsR.endPdfInteract();
@@ -5657,7 +5670,7 @@ function buildBoardView(onFail, {
   // mousedown/mouseup: inner React roots (renderString links) see them first; Roam's block handlers do not.
   for (const type of ["mousedown", "mouseup"]) {
     listen(root, type, (event) => {
-      if (leavesBoardPointer(event.target)) return;
+      if (leavesBoardPointer(event.target) || inRoamTable(event.target)) return;
       const native = nativeClickKind(event.target);
       if (native === "checkbox" || native === "image") return;
       const editing = itemsR.editingUid();
@@ -5666,13 +5679,14 @@ function buildBoardView(onFail, {
     });
   }
   listen(root, "dragstart", (event) => {
-    if (leavesBoardPointer(event.target) || event.target?.closest?.(".pxd-item--editing, .pxd-refs__row")) return;
+    if (leavesBoardPointer(event.target) || inRoamTable(event.target) || event.target?.closest?.(".pxd-item--editing, .pxd-refs__row")) return;
     event.preventDefault();
   });
   // Capture phase only cancels the click that ends a drag. Shielding Roam's block-edit handlers happens in
   // the bubble phase, after renderString's own React roots inside cards have handled [[link]] clicks.
   listen(root, "click", (event) => {
     if (suppressClick) { event.stopPropagation(); event.preventDefault(); return; }
+    if (inRoamTable(event.target)) return;
     // Roam's page-ref handlers stop click propagation inside the card's React root, so links are routed here,
     // in the capture phase, before the target sees the click.
     if (openRefFromClick(event)) { event.stopPropagation(); event.preventDefault(); }
@@ -5703,10 +5717,11 @@ function buildBoardView(onFail, {
   listen(root, "click", (event) => {
     const kind = nativeClickKind(event.target);
     if (kind === "image" || kind === "checkbox") return;
+    if (inRoamTable(event.target)) return;
     if (!leavesBoardPointer(event.target)) event.stopPropagation();
   });
   listen(root, "dblclick", (event) => {
-    if (leavesBoardPointer(event.target) || event.target?.closest?.(".pxd-refs")) return;
+    if (leavesBoardPointer(event.target) || inRoamTable(event.target) || event.target?.closest?.(".pxd-refs")) return;
     if (nativeClickKind(event.target)) return;
     event.stopPropagation();
     event.preventDefault();
@@ -5715,6 +5730,7 @@ function buildBoardView(onFail, {
   });
   listen(root, "wheel", (event) => {
     if (leavesBoardPointer(event.target)) return;
+    if (inRoamTable(event.target)) { event.stopPropagation(); return; }
     // PG-1: a plain wheel scrolls a long page card's body until it hits an end; Cmd/Ctrl+wheel still zooms.
     if (pageBodyWantsWheel(event.target, event)) { event.stopPropagation(); return; }
     measure(); // the outer Roam page scrolls without any pointer event on the board
@@ -5724,7 +5740,7 @@ function buildBoardView(onFail, {
   // Right-click: the controller decides what was hit and asks us to open the menu; an editing card keeps the
   // browser's own menu (the controller returns false there). A long-press calls this same function.
   const onRootContextMenu = (event) => {
-    if (leavesBoardPointer(event.target)) return;
+    if (leavesBoardPointer(event.target) || inRoamTable(event.target)) return;
     event.stopPropagation?.();
     // Roam's own menu for a ref / tag already handled this (its React root ran first); links and images keep the browser's.
     if (event.defaultPrevented) return;
@@ -5772,6 +5788,7 @@ function buildBoardView(onFail, {
     openHover(it);
   };
   listen(root, "pointermove", (event) => {
+    tablePointer = inRoamTable(event.target) ? event.target : null;
     lastPointer = { x: event.clientX || 0, y: event.clientY || 0 };
     if (event.target?.closest?.(".pxd-chrome")) {
       // The bar, its bridge and its popovers count as the card: hovering them keeps the toolbar.
@@ -5782,7 +5799,7 @@ function buildBoardView(onFail, {
     showHover(node?.getAttribute?.("data-uid") || node?.dataset?.uid || null);
   });
   listen(root, "pointerenter", () => { pointerInside = true; pointerBoard = root; });
-  listen(root, "pointerleave", () => { pointerInside = false; if (pointerBoard === root) pointerBoard = null; });
+  listen(root, "pointerleave", () => { tablePointer = null; pointerInside = false; if (pointerBoard === root) pointerBoard = null; });
   const closeHighlightDialog = () => {
     const node = highlightDialog;
     highlightDialog = null;
@@ -6079,6 +6096,8 @@ function buildBoardView(onFail, {
     } else if (!ownsKeyboard()) {
       return;
     }
+    const tableKey = ownershipOf({ target: event.target, active: doc.activeElement, pointerTarget: tablePointer, boardRoot: root });
+    if (keyGate(event, tableKey).yield) return;
     // Roam dropped focus to <body> mid-edit: put it back on the editor instead of running a board shortcut.
     if (!inputFocused && itemsR.isEditing() && event.key !== "Escape") { itemsR.recoverFocus(); return; }
     if (inputFocused && itemsR.isEditing()) {

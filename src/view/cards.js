@@ -31,6 +31,8 @@ import { paintPdfChipStrip } from "./pdf-chip-strip.js";
 import { guardCallback } from "../guard.js";
 import { notedSpeedFlags, parseSpeedFlags, SETTING_IDS } from "../settings.js";
 import { authorBlockUid, buildSourceChip, chipWithAuthor, sourceChipFor, sourceChipKey } from "../model/source-chip.js";
+import { isRoamTableString } from "../model/roam-table.js";
+import { mountRoamTable, syncTableZoom } from "./table-card.js";
 
 const SIDES = ["top", "right", "bottom", "left"];
 const CHUNK_MS = 8;
@@ -1328,7 +1330,23 @@ export function createItemRenderer({
     });
     return node;
   };
+  const mountTableHost = (parent, uid, budget) => {
+    const node = mountRoamTable(doc, parent, {
+      uid,
+      zoom: zoomCache,
+      renderBlock: typeof host?.renderBlock === "function" ? (el, id) => host.renderBlock(el, id) : null,
+      unmount: (el) => { try { host?.unmount?.(el); } catch { /* not a roam root */ } },
+      portalParent: boardRoot(),
+    });
+    if (budget) budget.roots.push(node);
+    return node;
+  };
   const renderRowRoot = (parent, string, cls, uid) => {
+    if (isRoamTableString(string)) {
+      const node = mountTableHost(parent, uid);
+      for (const name of String(cls || "").split(/\s+/)) if (name) node.classList.add(name);
+      return node;
+    }
     const target = boardRowTarget(uid, string);
     return target ? mountBoardRow(parent, cls, target) : renderRoot(parent, string, cls, uid, { plain: true });
   };
@@ -1970,6 +1988,10 @@ export function createItemRenderer({
       if (skipChildString(s)) continue;
       budget.n += 1;
       const rowUid = childUid(b);
+      if (isRoamTableString(s)) {
+        mountTableHost(parent, rowUid, budget);
+        continue;
+      }
       const row = el("div", "pxd-block", parent);
       row.dataset.uid = rowUid;
       row.setAttribute("data-pxd-row", rowUid);
@@ -2267,7 +2289,10 @@ export function createItemRenderer({
       for (const type of ["pointerdown", "mousedown", "dblclick"]) fold.addEventListener(type, stopEvent);
     }
     const posters = embedSplit(s, embedOptsFor(uid)).posters;
-    if (posters.length) {
+    if (isRoamTableString(s)) {
+      const root = renderRowRoot(line, s, "pxd-rs pxd-block__text", uid);
+      if (root.classList?.contains("pxd-roam-table") || root.querySelector?.(".pxd-rs__live")) b.roots.push(root);
+    } else if (posters.length) {
       holdHeight(row, embedBoxFor(uid).h);
       const root = renderRoot(line, s, "pxd-rs pxd-block__text", uid);
       if (root.classList?.contains("pxd-embed-live") || root.querySelector?.(".pxd-rs__live")) b.roots.push(root);
@@ -2308,7 +2333,7 @@ export function createItemRenderer({
       const s = childString(blk);
       if (skipChildString(s)) continue;
       const uid = childUid(blk);
-      const kids = childKids(blk);
+      const kids = isRoamTableString(s) ? [] : childKids(blk);
       const hasKids = kids.length > 0;
       const folded = blk.open === false && hasKids;
       if (b.n >= OUTLINE_CAP) { b.more += 1 + (folded ? 0 : countRows(kids)); continue; }
@@ -2329,7 +2354,7 @@ export function createItemRenderer({
         const s = childString(blk);
         if (skipChildString(s)) continue;
         const uid = childUid(blk);
-        const kids = childKids(blk);
+        const kids = isRoamTableString(s) ? [] : childKids(blk);
         const hasKids = kids.length > 0;
         const folded = blk.open === false && hasKids;
         if (n >= OUTLINE_CAP) { more += 1 + (folded ? 0 : countRows(kids)); continue; }
@@ -2353,7 +2378,7 @@ export function createItemRenderer({
     const live = [...(line?.children || [])].find((node) => node.classList?.contains("pxd-rs") || node.classList?.contains("pxd-embed-live") || node.classList?.contains("pxd-rs--board"));
     if (!live) return;
     try { live.__pxdEmbedMo?.disconnect(); } catch { /* already gone */ }
-    try { host?.unmount?.(embedLive(live)); } catch { /* not a roam root */ }
+    try { host?.unmount?.(live.querySelector?.(".pxd-rs__live") || embedLive(live)); } catch { /* not a roam root */ }
     if (rec.pageRoots) rec.pageRoots = rec.pageRoots.filter((node) => node !== live);
     if (rec.roots) rec.roots = rec.roots.filter((node) => node !== live);
   };
@@ -2370,6 +2395,27 @@ export function createItemRenderer({
       return;
     }
     const live = [...(line?.children || [])].find((node) => node.classList?.contains("pxd-rs") || node.classList?.contains("pxd-embed-live") || node.classList?.contains("pxd-rs--board"));
+    if (isRoamTableString(spec.string) && live?.classList?.contains("pxd-roam-table")) return;
+    const dropLive = () => {
+      try { live.__pxdEmbedMo?.disconnect(); } catch { /* already gone */ }
+      try { host?.unmount?.(live.querySelector?.(".pxd-rs__live") || embedLive(live)); } catch { /* not a roam root */ }
+      if (rec.pageRoots) rec.pageRoots = rec.pageRoots.filter((node) => node !== live);
+      if (rec.roots) rec.roots = rec.roots.filter((node) => node !== live);
+      live.remove();
+    };
+    if (isRoamTableString(spec.string)) {
+      if (live) dropLive();
+      const node = mountTableHost(line, spec.uid);
+      for (const name of ["pxd-rs", "pxd-block__text"]) node.classList.add(name);
+      rec.pageRoots = [...(rec.pageRoots || []), node];
+      rec.roots = [...(rec.roots || []), node];
+      return;
+    }
+    if (live?.classList?.contains("pxd-roam-table")) {
+      dropLive();
+      addPlainRow(rec, line, spec.string, spec.uid);
+      return;
+    }
     const split = embedSplit(spec.string, embedOptsFor(spec.uid));
     if (!live) {
       if (split.posters.length) {
@@ -2383,7 +2429,7 @@ export function createItemRenderer({
     }
     if (live.classList.contains("pxd-embed-live") || live.classList.contains("pxd-rs--board") || split.posters.length) {
       try { live.__pxdEmbedMo?.disconnect(); } catch { /* already gone */ }
-      try { host?.unmount?.(embedLive(live)); } catch { /* not a roam root */ }
+      try { host?.unmount?.(live.querySelector?.(".pxd-rs__live") || embedLive(live)); } catch { /* not a roam root */ }
       if (rec.pageRoots) rec.pageRoots = rec.pageRoots.filter((node) => node !== live);
       if (rec.roots) rec.roots = rec.roots.filter((node) => node !== live);
       live.remove();
@@ -2513,7 +2559,7 @@ export function createItemRenderer({
     const old = new Set(rec.pageRoots || []);
     for (const node of old) {
       try { node.__pxdEmbedMo?.disconnect(); } catch { /* already gone */ }
-      try { host?.unmount?.(embedLive(node)); } catch { /* not a roam root */ }
+      try { host?.unmount?.(node.querySelector?.(".pxd-rs__live") || embedLive(node)); } catch { /* not a roam root */ }
     }
     if (old.size && rec.roots) rec.roots = rec.roots.filter((node) => !old.has(node));
     startRowSched(rec);
@@ -3474,6 +3520,7 @@ export function createItemRenderer({
     rec.editor = null;
     rec.bare = false;
     rec.el.classList.remove("pxd-item--bare");
+    rec.el.classList.remove("pxd-item--roam-table");
     const budget = { n: 0, roots: [] };
     if (item.collapsed) {
       rec.contentKey = contentKeyFor(item);
@@ -3559,6 +3606,11 @@ export function createItemRenderer({
         }, { openUid: ref });
       } else if (typeof refString === "string" && isQueryString(refString) && host?.renderBlock) {
         budget.roots.push(mountQuery(body, ref));
+      } else if (isRoamTableString(refString)) {
+        rec.el.classList.add("pxd-item--roam-table");
+        mountTableHost(body, ref, budget);
+        rec.kidCount = 0;
+        rec.kidRows = 0;
       } else {
         rec.blockStringNode = null;
         if (typeof refString === "string" && refString.trim()) {
@@ -3599,6 +3651,11 @@ export function createItemRenderer({
       }
     } else if (isQueryString(item.string) && host?.renderBlock) {
       budget.roots.push(mountQuery(body, item.uid));
+    } else if (isRoamTableString(item.string)) {
+      rec.el.classList.add("pxd-item--roam-table");
+      mountTableHost(body, item.uid, budget);
+      rec.kidCount = 0;
+      rec.kidRows = 0;
     } else {
       if (item.string?.trim()) budget.roots.push(taskBlockOn(item) ? mountTaskLine(body, item) : renderRoot(body, item.string, "pxd-rs pxd-item__string", item.uid));
       rec.kidCount = visibleKids(item.content).length;
@@ -3933,6 +3990,7 @@ export function createItemRenderer({
   };
   const fillContent = ({ visibleRect, zoom = zoomCache, tier = null, dirty = null } = {}) => {
     zoomCache = zoom;
+    syncTableZoom(zoomCache);
     paintOffscreen(visibleRect);
     if (!lastBoard || !lastRects || !contentSched) return;
     const next = new Set();
@@ -4015,6 +4073,7 @@ export function createItemRenderer({
     if (zoomCache !== prevZoom) closePeek();
     if (editing?.editor) scaleCardEditor(editing.editor, zoomCache);
     if (zoomCache !== prevZoom) for (const rec of shells.values()) if (rec.stickyLive && rec.editor && rec.editor !== editing?.editor) applyEditorCounterScale(rec.editor, zoomCache);
+    syncTableZoom(zoomCache);
   };
 
   const setLod = (nextLod, zoom) => {

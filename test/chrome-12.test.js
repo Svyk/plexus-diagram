@@ -411,12 +411,12 @@ test("control rail uses native titles and the bar setting restores the zoom grou
   assert.equal(q(bar.root, ".pxd-toolbar__zoom").style.display, "");
 });
 
-test("UI-3: the palette lists ten tools, lifts above the minimap, and hides from the setting", async (t) => {
+test("UI-3: the palette lists eleven tools, lifts above the minimap, and hides from the setting", async (t) => {
   const tools = [];
   const f = setup({ setTool: (id) => tools.push(id) });
   t.after(f.restore);
   const buttons = [...f.root.querySelectorAll(".pxd-palette__btn")];
-  assert.deepEqual(buttons.map((b) => b.getAttribute("aria-label")), ["Select", "Hand", "Card", "Task", "Text", "Sticky", "Shape", "Section", "Board", "Connect"]);
+  assert.deepEqual(buttons.map((b) => b.getAttribute("aria-label")), ["Select", "Hand", "Card", "Task", "Text", "Sticky", "Shape", "Section", "Board", "Table", "Connect"]);
   for (const b of buttons) {
     assert.ok(b.querySelector(".bp3-icon"), b.getAttribute("aria-label"));
     assert.ok(b.getAttribute("data-tip"));

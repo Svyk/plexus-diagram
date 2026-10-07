@@ -7,7 +7,7 @@
 //   onSelection({ items, edge, link }) onTool(tool, locked) onHover(uid|null)
 //   setGesturing(bool) showMarquee(rect|null, kind) showLasso(points|null) showGuides(list) previewMove(uids, dx, dy)
 //   previewRects(list) showTempWire({ from, fromSide, point }|null)
-//   commitMove(uids, dx, dy) commitRects(list) createCard({x,y}) createText({x,y})
+//   commitMove(uids, dx, dy) commitRects(list) createCard({x,y}) createText({x,y}) createTable({x,y,w,h})
 //   createSection({rect}) wrapInSection(uids) deleteItems(uids, opts) deleteEdges(uids)
 //   createBoard({rect}) moveIntoBoard(uids, boardUid, dx, dy) openBoard(uid) popBoard() → true when it went up a level
 //   historyBack() historyForward() — Cmd/Ctrl+[ and Cmd/Ctrl+] through boards opened in place
@@ -33,6 +33,7 @@
 // Escape order: gesture, quick look, presentation, edit, focus, selection, popBoard, fullscreen.
 
 import { DEFAULT_BOARD_CARD, DEFAULT_SIZES, MIN_SIZES, STICKY_SIZE } from "../model/schema.js";
+import { TABLE_SIZE } from "../model/roam-table.js";
 import { descendantsOf, findEdge, hitTest, itemsInPolygon, itemsInRect, outlineOrder, topLevelOf, boundsOf } from "../model/board.js";
 import { GRID_PITCH, nearestInDirection, nearestSide, snapMove, snapToGrid, zoomAt } from "../model/geometry.js";
 import { fingerPair, pinchViewport } from "../model/touch.js";
@@ -49,7 +50,7 @@ function dayTargetOf(b, hit) {
 }
 
 export const TOOL_KEYS = Object.fromEntries(SHORTCUTS.filter((row) => row.letter).map((row) => [row.letter, row.tool]));
-export const TOOLS = ["select", "hand", "card", "task", "text", "sticky", "shape", "section", "board", "connect"];
+export const TOOLS = ["select", "hand", "card", "task", "text", "sticky", "shape", "section", "board", "table", "connect"];
 const SHAPE_PLACE = { w: 160, h: 100 };
 export const DRAG_THRESHOLD_PX = 4;
 export const SNAP_PX = 6;
@@ -332,7 +333,7 @@ export function createInteractions({ actions, settings } = {}) {
       begin({ kind: "board-draw", start: ev.world });
       return;
     }
-    if (state.tool === "card" || state.tool === "task" || state.tool === "text" || state.tool === "sticky" || state.tool === "shape") {
+    if (state.tool === "card" || state.tool === "task" || state.tool === "text" || state.tool === "sticky" || state.tool === "shape" || state.tool === "table") {
       begin({ kind: "place", tool: state.tool, start: ev.world });
       return;
     }
@@ -563,13 +564,17 @@ export function createInteractions({ actions, settings } = {}) {
             p = call("createText", { x: g.start.x - STICKY_SIZE.w / 2, y: g.start.y - STICKY_SIZE.h / 2, w: STICKY_SIZE.w, h: STICKY_SIZE.h, look: "sticky" });
           } else if (g.tool === "shape") {
             p = call("createText", { x: g.start.x - SHAPE_PLACE.w / 2, y: g.start.y - SHAPE_PLACE.h / 2, w: SHAPE_PLACE.w, h: SHAPE_PLACE.h, shape: "rectangle" });
+          } else if (g.tool === "table") {
+            const d = TABLE_SIZE;
+            p = call("createTable", { x: g.start.x - d.w / 2, y: g.start.y - d.h / 2, w: d.w, h: d.h });
           } else {
             const d = DEFAULT_SIZES[g.tool === "task" ? "card" : g.tool];
             const at = { x: g.start.x - d.w / 2, y: g.start.y - d.h / 2 };
             p = g.tool === "text" ? call("createText", at) : g.tool === "task" ? call("createTask", at) : call("createCard", at);
           }
+          const placed = g.tool;
           end();
-          Promise.resolve(p).then((uid) => { if (uid) { selectItems([uid]); call("enterEdit", uid); } }).catch(() => {});
+          Promise.resolve(p).then((uid) => { if (uid) { selectItems([uid]); if (placed !== "table") call("enterEdit", uid); } }).catch(() => {});
           afterToolUse();
           return;
         }

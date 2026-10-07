@@ -6,8 +6,9 @@ const LIGATURES = { "ﬀ": "ff", "ﬁ": "fi", "ﬂ": "fl", "ﬃ": "ffi", "ﬄ": 
 const SUP_MAX_RATIO = 0.85;
 const SUP_MIN_SHIFT = 0.1;
 
-export const BOLD_RE = /bold|black|heavy|semibold|demibold|extrab|ultrab|-medi\b|cmbx|cmb\d|,bold|-b$|\bbd\b/i;
-export const ITALIC_RE = /italic|oblique|-it\b|cmti|cmmi|slanted|-i$/i;
+// Adobe "AdvOT…" fonts mark weight and slant with a ".B", ".I" or ".BI" suffix.
+export const BOLD_RE = /bold|black|heavy|semibold|demibold|extrab|ultrab|-medi\b|cmbx|cmb\d|,bold|-b$|\bbd\b|\.BI?(\+|$)|\.B\b/i;
+export const ITALIC_RE = /italic|oblique|-it\b|cmti|cmmi|slanted|-i$|\.B?I(\+|$)/i;
 export const MATH_FONT_RE = /math|symbol|cmsy|cmmi|cmex|cmr\d|cmbx\d|msbm|msam|stix|txsy|txmi|pxsy|rsfs|wasy|eufm|euex/i;
 
 export function mul(a, b) {
@@ -39,13 +40,17 @@ export function normalizeText(str) {
   return out;
 }
 
+export const MONO_FONT_RE = /mono|courier|cmtt|sftt|lmtt|typewriter|consol|menlo|inconsolata|firacode|sourcecodepro|txtt|beramono|luximono|t1xtt/i;
+
 export function fontFlags(fontName, fonts) {
   const info = fonts && fonts[fontName];
   const name = (info && (info.name || info.fontFamily)) || "";
   const bold = Boolean(info && info.bold) || BOLD_RE.test(name) || (info && info.weight >= 600) || false;
   const italic = Boolean(info && info.italic) || ITALIC_RE.test(name);
   const math = MATH_FONT_RE.test(name);
-  return { bold, italic, math, name };
+  // pdf.js reports the generic family it mapped the font to; "monospace" marks code fonts.
+  const mono = Boolean(info && info.fontFamily === "monospace") || MONO_FONT_RE.test(name);
+  return { bold, italic, math, mono, name };
 }
 
 const MATH_CHAR_RE = /[∀-⋿Α-ω←-⇿\u{1D400}-\u{1D7FF}±×÷√∫∑∏≤≥≠∞]/u;
@@ -92,6 +97,7 @@ function piecesOf(item, transform, fonts) {
         bold: flags.bold,
         italic: flags.italic,
         mathFont: flags.math,
+        mono: flags.mono,
         mathChars: math,
         rotated,
         leadingSpace: start > 0 && str[start - 1] === " ",
@@ -207,6 +213,7 @@ function mergeWords(pieces, rowSize) {
       if (p.bold) cur.boldChars += p.text.length;
       if (p.italic) cur.italicChars += p.text.length;
       if (p.mathFont) cur.mathFontChars += p.text.length;
+      if (p.mono) cur.monoChars += p.text.length;
       continue;
     }
     cur = {
@@ -225,6 +232,7 @@ function mergeWords(pieces, rowSize) {
       boldChars: p.bold ? p.text.length : 0,
       italicChars: p.italic ? p.text.length : 0,
       mathFontChars: p.mathFont ? p.text.length : 0,
+      monoChars: p.mono ? p.text.length : 0,
       trailingSpace: p.trailingSpace,
     };
     words.push(cur);
@@ -235,6 +243,7 @@ function mergeWords(pieces, rowSize) {
     w.y1 = w.base + w.size * 0.22;
     w.bold = w.boldChars >= w.text.length / 2;
     w.italic = w.italicChars >= w.text.length / 2;
+    w.mono = w.monoChars >= w.text.length / 2;
     w.rowSize = rowSize;
     delete w.trailingSpace;
   }

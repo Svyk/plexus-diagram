@@ -1,6 +1,36 @@
 // Parse step: display formulas from isolated, centred or numbered math lines. Pure.
 
-export const EQ_NUMBER_RE = /^\((\d+(\.\d+)?[a-z]?)\)$/;
+// "(14)", "(3a)", "(2.1)"; Elsevier math fonts map the parentheses to ð Þ.
+export const EQ_NUMBER_RE = /^[(ð](\d+(\.\d+)?[a-z]?)[)Þ]$/;
+
+// Is this row of tokens the body of a display equation rather than a table row? Signals: an
+// equation number at the right edge of the column, a "name =" lead-in on the left (bracketed
+// matrices), oversized delimiter glyphs, or a high share of math glyphs.
+export function equationRowSignals(words, { column = null } = {}) {
+  if (!words.length) return { number: null, lead: false, delimiters: false, math: false };
+  const sorted = [...words].sort((a, b) => a.x0 - b.x0);
+  const last = sorted[sorted.length - 1];
+  const base = sorted.filter((w) => !w.sup && !w.sub); // "X⁰ = …": the script rides with X
+  const first = base[0] || sorted[0];
+  const second = base[1];
+  const colW = column ? column.x1 - column.x0 : Infinity;
+  const number = EQ_NUMBER_RE.test(last.text) && (!column || last.x1 >= column.x1 - 0.12 * colW) ? last.text : null;
+  const NAME = /^[A-Za-z][⁰-⁹₀-₉0-9′*ʹ]*$/;
+  const EQ = /^(=|¼|:=|≡|≈)$/;
+  const lead = (NAME.test(first.text) && Boolean(second) && EQ.test(second.text)) || /^[A-Za-z][⁰-⁹₀-₉0-9′*ʹ]*(=|¼)$/.test(first.text);
+  const rowSize = median(sorted.map((w) => w.size)) || 10;
+  const delimiters = sorted.some((w) => w.size >= 1.6 * rowSize && /^[\[\]()|{}⎡⎤⎣⎦⎢⎥⎛⎞⎝⎠⎜⎟∣]+$/.test(w.text));
+  let chars = 0; let math = 0;
+  for (const w of sorted) { chars += w.text.length; math += (w.mathChars || 0) + (w.mathFontChars || 0); }
+  return { number, lead, delimiters, math: chars > 0 && math / chars >= 0.25 };
+}
+
+function median(values) {
+  if (!values.length) return undefined;
+  const s = [...values].sort((a, b) => a - b);
+  const m = s.length >> 1;
+  return s.length % 2 ? s[m] : (s[m - 1] + s[m]) / 2;
+}
 
 export function mathShareOf(line, bodyFont = null) {
   let chars = 0;

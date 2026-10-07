@@ -73,3 +73,103 @@ attribution…" notice is read as a heading (12 pt bold).
   5000 segments per page and flags `truncated`.
 - Not measured here: rotated pages, right-to-left text, multi-page tables, scanned PDFs with
   a text layer (would parse as `mixed`).
+
+## ICDAR 2013 Table Competition (round 2, 2026-10-07)
+
+Born-digital EU and US government PDFs, 67 files, 156 table regions on 238 pages, with the
+competition ground truth (`<name>-reg.xml` regions, `<name>-str.xml` cells). The dataset lives
+outside the repo; run `node tools/parse-bench/icdar2013.mjs <dataset-dir> --docling <dir>`.
+Docling 2.91 (accurate tables, no OCR) ran once over all 67 files and its JSON is scored
+through the same `doclingToPxd` converter and the same metrics.
+
+**EU is the development split; US is held out.** Every engine change in round 2 was tuned on
+the EU files plus three unseen papers (below). The US numbers were read once, at the end, and
+nothing was changed after reading them.
+
+Metrics. Detection: predicted tables matched to GT regions per page by bbox IoU ≥ 0.5.
+Structure: the ICDAR 2013 adjacency-relation metric (Göbel et al.): for every non-empty GT cell
+the nearest non-empty neighbour to the right and below, as (content, neighbour, direction)
+relations, matched as multisets and micro-averaged over all GT tables; a GT table with no
+predicted table scores zero recall. Content is NFKC-normalised with all whitespace removed,
+because the GT itself writes "domestic(%)" for "domestic (%)". Predicted tables chained by
+`continues` count as one table. "Adj F1 (e2e)" also counts relations of unmatched predicted
+tables as false positives. Cell F1 is the stricter exact match on (r, c, rowSpan, colSpan,
+text). Speed is the built-in engine end to end (pdf.js text + ops + pure pass) in node.
+
+| Split | Engine | Docs | GT regions | Det P | Det R | Det F1 | Adj P | Adj R | Adj F1 | Adj F1 (e2e) | Cell F1 | ms/page (median) | total s |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| EU (dev) | Built-in | 27 | 76 | 0.987 | 1.000 | **0.993** | 0.999 | 0.994 | **0.997** | 0.996 | 0.940 | 9.8 | 1.2 |
+| EU (dev) | Docling 2.91 | 27 | 76 | 1.000 | 1.000 | 1.000 | 0.989 | 0.985 | 0.987 | 0.987 | 0.975 | n/a | n/a |
+| US (held out) | Built-in | 40 | 80 | 0.962 | 0.938 | **0.949** | 0.904 | 0.813 | **0.856** | 0.856 | 0.636 | 9.4 | 1.3 |
+| US (held out) | Docling 2.91 | 40 | 80 | 0.975 | 0.975 | 0.975 | 0.845 | 0.803 | 0.824 | 0.812 | 0.729 | n/a | n/a |
+| All | Built-in | 67 | 156 | 0.974 | 0.968 | 0.971 | 0.929 | 0.858 | 0.892 | 0.892 | 0.718 | 9.6 | 2.5 |
+| All | Docling 2.91 | 67 | 156 | 0.987 | 0.987 | 0.987 | 0.882 | 0.849 | 0.865 | 0.856 | 0.795 | n/a | n/a |
+
+Round 1 on the same harness, before any change: EU detection F1 0.427, adjacency F1 0.477;
+US detection F1 0.532, adjacency F1 0.799 (with whitespace-collapsed content).
+
+Targets on the held-out US split were detection F1 ≥ 0.90 (met: 0.949) and adjacency F1
+≥ 0.90 (not met: 0.856, above Docling's 0.824). Docling is not timed per file here; the
+fixture runs above put it at 40–180 s per file against 1–3 s for the built-in engine.
+
+### US failure classes (observed after the run, not tuned)
+
+- Under-segmented columns in dense numeric tables (us-037 16×13 → 15×6, us-002 32×8 → 33×3,
+  us-001 26×11 → 26×8, us-033 15×10 → 14×6). `projectColumns` takes column intervals from the
+  fullest rows and merges intervals that touch; group headers ("Weight Relative to Controls")
+  and sparse rows bridge neighbouring numeric columns. A per-column alignment profile over the
+  body rows would separate them.
+- Ruled tables whose rows are not ruled and whose cells are prose (us-032 7×3 → 3×3): the
+  text-row splitter needs a numeric column, so description rows stay merged.
+- Tables absorbed into figures (us-010, us-013, us-022): shaded cells and many short rules
+  cluster as a drawing before the stream pass sees the words; the GT region sits inside the
+  predicted figure.
+- Wide sparse tables with year headers read as paragraphs (us-023 9×12): label rows carry one
+  token, so the run never starts.
+- Ruled exhibit frames that enclose the title and the notes (us-014: 8×3 for a 6×3 GT): the
+  frame's rows above and below the data are counted as table rows.
+
+### Unseen PDFs: before and after round 2
+
+The orchestrator ran round 1 on three papers it had never seen; `/tmp/wo/pxd9/unseen/*.pxd.json`
+holds the round-1 output and `*.r2.json` the round-2 output.
+
+| File | Round 1 | Round 2 |
+|---|---|---|
+| risk.pdf p5 Table 2 (7×7 booktabs) | two tables 4×7 + 3×7, row Attr3 lost, last cell of Attr6 lost | one 7×7 table, every row and cell present |
+| risk.pdf eqs (9), (14), (15) (bracketed matrices) | tables with rows like "D ¼ 6" | `formula` blocks with `number` "(14)", "(15)", "ð9Þ" (Elsevier math font text kept as extracted) |
+| risk.pdf headings | 3 (title, journal, author marks) | 21 numbered headings "1. Introduction" … "5. Discussion and conclusion", depth from numbering (2.1 → level 5 under the two size classes) plus the unnumbered back-matter headings |
+| llama.pdf p3 Table 2 | 13×4, four numeric columns in one cell, bbox swallowed the caption, body text and Figure 1's axis numbers | 5×7 with "n heads", "learning rate" as header cells, bbox ends above the caption |
+| llama.pdf p19–27 framed prompt and code boxes | 1×1 / 3×1 lattice tables | prose boxes flow as paragraphs; numbered monospace listings are `code` blocks (5 on pages 19–22) |
+| goal.pdf Table 1 over pages 9–12 ("Table 1. Continued.") | four unrelated tables | four tables, each carrying `continues: <previous id>`; headings "Introduction", "Methods", "Search strategy" found (AdvOT ".B"/".BI" font suffixes read as bold / bold italic) |
+
+### What changed in the engine (all general rules, no per-file thresholds)
+
+- Lattice connectivity: rules connect only where they cross or touch (a double rule within
+  4 pt is one boundary); parallel horizontals never join. Stacked tables of the same width and
+  tables beside chart axes are separate components.
+- Booktabs bands: free horizontal rules join into a band only when the text between them reads
+  as table rows (`tabularBetween`: no full-width prose line, no caption line, gap-separated
+  tokens; a lone short label row or wrapped-cell fragments are allowed). A hollow grid with an
+  inner vertical is a band on its own.
+- Lattice cells: a region spanning columns without a rule splits when its text falls into
+  gap-separated tokens in distinct sub-columns; a grid row holding three or more aligned text
+  rows with a numeric column splits at the baselines. Grids with text in under 30 % of cells
+  (chart axes) and 1×n or n×1 grids (frames) are not tables.
+- Gates on every table candidate: equation runs (equation number at the column edge plus a
+  "D =" lead, oversized delimiters or math glyphs) become `formula`; numbered monospace rows
+  (pdf.js `fontFamily: "monospace"` or a typewriter font name) become `code`; a framed box of
+  prose is paragraphs; a heading over one spanning line is a titled box; bands over chart bars
+  (several non-light filled boxes narrower than the band) are skipped.
+- Stream runs stop at prose rows (long full-width lines with no short or numeric token) and
+  captions; two runs in one column with matching columns and nothing between them stitch;
+  a table at the top of a page continues the previous page's table when the caption says
+  "Continued" or both sit at the page edges with the same column count (`continues`).
+- Headings: numbered lines at body size ("3.2. The …") in bold or italic, or standing alone
+  above their paragraph, are headings with the numbering depth; bold body-size headings are
+  ranked by size then style (bold above bold italic).
+
+Contracts added for other units: table blocks may carry `continues: "<table id>"`; `code`
+blocks (`k…`) carry `text` with `\n` between lines; `formula.number` may be an Elsevier-font
+"ðNÞ". `detectStreamRuns` now returns typed items (`type: "table" | "formula" | "code"`).
+Everything else in `pxd-parse/1` is unchanged.

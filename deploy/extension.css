@@ -9805,6 +9805,29 @@ body.roam-body.dark .pxd-root .pxd-suggest__line {
   color: var(--pxd-text, inherit);
 }
 
+/* Roam's block row keeps a 116 px flex-grow separator and a reference-count slot beside the input.
+   In a table card they squeezed the table to half the card, and Roam Grid fits its columns to that width. */
+/* Roam Grid lets a wide grid break out of the page column with an inline padding-right and a
+   negative margin-right on the block row. In a card the card is the container, so that is cancelled. */
+.pxd-root .pxd-roam-table .roam-block-container > .rm-block-main {
+  flex: 1 1 auto;
+  width: 100%;
+  min-width: 0;
+  margin-right: 0 !important;
+  padding-right: 0 !important;
+}
+.pxd-root .pxd-roam-table .rm-block-main > .rm-block__input,
+.pxd-root .pxd-roam-table .rm-block-main > .rm-block__input > span {
+  flex: 1 1 auto;
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+}
+.pxd-root .pxd-roam-table .rm-block-main > .rm-block-separator,
+.pxd-root .pxd-roam-table .rm-block-main > .rm-block__input ~ div:not(.rm-block__input) {
+  display: none;
+}
+
 /* Fullscreen board tabs. Inside .pxd-root so the chrome tokens apply. Not on document.body.
    P32-6: the strip is painted only from two tabs up (board-view paintTabStrip), and it is 28 px tall. */
 

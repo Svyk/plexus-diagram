@@ -58,6 +58,14 @@ export const SETTING_IDS = Object.freeze({
   pdfCoverWarm: "pdf-cover-warm",
   highlightOpen: "highlight-open",
   pdfDark: "pdf-dark",
+  parseHelperUrl: "parse-helper-url",
+  parseHelperToken: "parse-helper-token",
+  parseEngineDefault: "parse-engine-default",
+  parseFormula: "parse-formula",
+  parseOcr: "parse-ocr",
+  parseLinkSafe: "parse-link-safe",
+  parseNumbered: "parse-numbered",
+  parseFootnotes: "parse-footnotes",
   // Hidden. Not a panel row. JSON object, parsed by parseSpeedFlags.
   speedFlags: "speed-flags",
 });
@@ -117,6 +125,14 @@ const DEFAULTS = Object.freeze({
   [SETTING_IDS.pdfCoverWarm]: true,
   [SETTING_IDS.highlightOpen]: "reader",
   [SETTING_IDS.pdfDark]: "dim",
+  [SETTING_IDS.parseHelperUrl]: "http://127.0.0.1:48765",
+  [SETTING_IDS.parseHelperToken]: "",
+  [SETTING_IDS.parseEngineDefault]: "auto",
+  [SETTING_IDS.parseFormula]: false,
+  [SETTING_IDS.parseOcr]: "auto",
+  [SETTING_IDS.parseLinkSafe]: true,
+  [SETTING_IDS.parseNumbered]: false,
+  [SETTING_IDS.parseFootnotes]: "inline",
 });
 
 const BOARD_TONES = ["none", "paper", "gray", "red", "orange", "yellow", "green", "teal", "blue", "indigo", "purple", "pink"];
@@ -148,6 +164,9 @@ const ENUMS = Object.freeze({
   [SETTING_IDS.pdfCover]: ["first", "last-read"],
   [SETTING_IDS.highlightOpen]: ["reader", "sidebar"],
   [SETTING_IDS.pdfDark]: ["off", "dim", "invert"],
+  [SETTING_IDS.parseEngineDefault]: ["auto", "builtin", "docling"],
+  [SETTING_IDS.parseOcr]: ["auto", "on", "off"],
+  [SETTING_IDS.parseFootnotes]: ["inline", "end"],
 });
 
 const NUMBERS = new Set([SETTING_IDS.defaultCardWidth, SETTING_IDS.defaultCardHeight]);
@@ -285,13 +304,13 @@ function switchRow(id, name, description) {
   };
 }
 
-function inputRow(id, name, description) {
-  return {
-    id,
-    name,
-    description,
-    action: { type: "input", onChange: (event) => emit(id, event?.target?.value ?? event) },
-  };
+function inputRow(id, name, description, extra) {
+  const action = { type: "input", onChange: (event) => emit(id, event?.target?.value ?? event) };
+  if (extra && typeof extra === "object") {
+    if (extra.password) action.inputType = "password";
+    if (extra.placeholder) action.placeholder = extra.placeholder;
+  }
+  return { id, name, description, action };
 }
 
 function selectRow(id, name, description, items) {
@@ -482,6 +501,14 @@ const SETTING_ROWS = {
   [SETTING_IDS.pdfCoverWarm]: () => switchRow(SETTING_IDS.pdfCoverWarm, "Prepare PDF covers in the background", "On. A quiet board prepares a cover for a visible PDF that does not have one: Roam's PDF engine draws page 1 when it is reachable, otherwise a hidden reader does."),
   [SETTING_IDS.highlightOpen]: () => selectRow(SETTING_IDS.highlightOpen, "Highlight click opens", "Reader: the PDF pane scrolls to the highlight. Sidebar: Roam opens the highlight block in the right sidebar. Shift-click always opens the sidebar; the chip's arrow lists every choice.", ["reader", "sidebar"]),
   [SETTING_IDS.pdfDark]: () => selectRow(SETTING_IDS.pdfDark, "PDF pages in dark mode", "When the board is dark. Off keeps white pages. Dim darkens the page. Invert flips the page colors. Marks stay readable.", ["off", "dim", "invert"]),
+  [SETTING_IDS.parseHelperUrl]: () => inputRow(SETTING_IDS.parseHelperUrl, "Parse helper address", "Address of the local parse helper. The default is http://127.0.0.1:48765. Plexus calls it only when you parse."),
+  [SETTING_IDS.parseHelperToken]: () => inputRow(SETTING_IDS.parseHelperToken, "Parse helper token", "Secret from the helper's first start. Empty turns the helper off. Plexus sends it only to that address.", { password: true, placeholder: "Token" }),
+  [SETTING_IDS.parseEngineDefault]: () => selectRow(SETTING_IDS.parseEngineDefault, "Default parse engine", "Auto uses the built-in parser and offers Docling when the helper is ready. Built-in never calls the helper. Docling uses the helper.", ["auto", "builtin", "docling"]),
+  [SETTING_IDS.parseFormula]: () => switchRow(SETTING_IDS.parseFormula, "Formula enrichment", "Ask Docling to read formulas as LaTeX. Off leaves a formula as a crop. This is the slow part of a Docling parse."),
+  [SETTING_IDS.parseOcr]: () => selectRow(SETTING_IDS.parseOcr, "Parse OCR", "Auto lets the helper decide. On forces OCR. Off skips it. Scanned pages need OCR.", ["auto", "on", "off"]),
+  [SETTING_IDS.parseLinkSafe]: () => switchRow(SETTING_IDS.parseLinkSafe, "Safe links when inserting", "Wrap [[pages]], ((blocks)), {{macros}}, #tags and Name:: so a parsed insert does not create pages. On by default."),
+  [SETTING_IDS.parseNumbered]: () => switchRow(SETTING_IDS.parseNumbered, "Numbered lists when inserting", "On writes ordered lists with Roam's 1. syntax. Off keeps the original number as text on a bullet."),
+  [SETTING_IDS.parseFootnotes]: () => selectRow(SETTING_IDS.parseFootnotes, "Footnotes", "Inline places each note after the paragraph that cites it. End places every note after the insert.", ["inline", "end"]),
 };
 
 const SETTING_GROUPS = [
@@ -513,6 +540,10 @@ const SETTING_GROUPS = [
   ]],
   ["group-performance", "Performance", "Motion, and when the overlay stays off.", [
     SETTING_IDS.motion, SETTING_IDS.disableOnMobile, SETTING_IDS.collapseOutline, SETTING_IDS.speedLog,
+  ]],
+  ["group-parse", "PDF parse", "A local helper for harder PDFs, and how parsed text is inserted.", [
+    SETTING_IDS.parseHelperUrl, SETTING_IDS.parseHelperToken, SETTING_IDS.parseEngineDefault, SETTING_IDS.parseFormula,
+    SETTING_IDS.parseOcr, SETTING_IDS.parseLinkSafe, SETTING_IDS.parseNumbered, SETTING_IDS.parseFootnotes,
   ]],
 ];
 

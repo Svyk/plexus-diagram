@@ -1,13 +1,15 @@
-// PDF-U1 cover cache. IndexedDB database "plexus-diagram", object store "covers",
-// key = pdf url. localStorage key "plexus-diagram:covers" holds at most 8 when
-// IndexedDB is missing, throws, or rejects. get() never writes.
+// PDF-U1 cover cache. IndexedDB database "plexus-diagram" (version 2, shared
+// with the parse stores; see diagram-db.js), object store "covers", key = pdf url.
+// localStorage key "plexus-diagram:covers" holds at most 8 when IndexedDB is
+// missing, throws, or rejects. get() never writes.
 // Every method returns a promise and resolves null on failure. No graph write.
 
 import { coverKey } from "../model/pdf-cover.js";
+import { DIAGRAM_DB, DIAGRAM_DB_VERSION, STORE_COVERS, openDiagramDb } from "./diagram-db.js";
 
-export const COVER_DB = "plexus-diagram";
-export const COVER_STORE = "covers";
-export const COVER_DB_VERSION = 1;
+export const COVER_DB = DIAGRAM_DB;
+export const COVER_STORE = STORE_COVERS;
+export const COVER_DB_VERSION = DIAGRAM_DB_VERSION;
 export const COVER_LS_KEY = "plexus-diagram:covers";
 export const COVER_LS_CAP = 8;
 // A 320px JPEG is about 34KB on disk, ~46KB as base64. Leave room for two images.
@@ -69,39 +71,7 @@ function requestResult(req) {
 }
 
 function openDb(factory) {
-  return new Promise((resolve) => {
-    let settled = false;
-    let timer = null;
-    const done = (value) => {
-      if (settled) return;
-      settled = true;
-      if (timer != null) {
-        try { clearTimeout(timer); } catch { /* ignore */ }
-      }
-      resolve(value);
-    };
-    timer = arm(OPEN_CAP_MS, () => done(null));
-    try {
-      if (!factory || typeof factory.open !== "function") { done(null); return; }
-      const req = factory.open(COVER_DB, COVER_DB_VERSION);
-      if (!req) { done(null); return; }
-      req.onupgradeneeded = () => {
-        try {
-          const db = req.result;
-          if (db && !db.objectStoreNames?.contains?.(COVER_STORE)) db.createObjectStore(COVER_STORE);
-        } catch { /* the open error path reports the failure */ }
-      };
-      req.onsuccess = () => done(req.result || null);
-      req.onerror = (event) => {
-        try { event?.preventDefault?.(); } catch { /* ignore */ }
-        try { req.preventDefault?.(); } catch { /* ignore */ }
-        done(null);
-      };
-      req.onblocked = () => done(null);
-    } catch {
-      done(null);
-    }
-  });
+  return openDiagramDb(factory, { capMs: OPEN_CAP_MS });
 }
 
 async function blobToDataUrl(blob) {

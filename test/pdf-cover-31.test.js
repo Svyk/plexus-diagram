@@ -65,7 +65,7 @@ test("constants match the cover budget", () => {
   assert.equal(COVER_MAX_W, 320);
   assert.equal(COVER_DB, "plexus-diagram");
   assert.equal(COVER_STORE, "covers");
-  assert.equal(COVER_DB_VERSION, 1);
+  assert.equal(COVER_DB_VERSION, 2);
   assert.equal(COVER_LS_KEY, "plexus-diagram:covers");
   assert.equal(COVER_LS_CAP, 8);
 });
@@ -331,7 +331,7 @@ test("IndexedDB plexus-diagram/covers stores the blob and skips localStorage", a
   const saved = await store.put({ url: PDF_URL, hash: "live", first, last: null, lastPage: 3, pageCount: 9, w: 320, h: 430, ts: 7 });
   assert.equal(saved.first, first);
   assert.deepEqual(opens, [[COVER_DB, COVER_DB_VERSION]]);
-  assert.deepEqual(created, [COVER_STORE]);
+  assert.deepEqual(created, [COVER_STORE, "parse", "parse-images", "parse-index"]);
   assert.equal(storage.writes, 0);
   const got = await store.get(PDF_URL);
   assert.equal(got.first, first);

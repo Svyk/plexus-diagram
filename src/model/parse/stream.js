@@ -1,7 +1,7 @@
 // Parse step: borderless and booktabs (stream) tables from aligned text. Pure.
 
-import { cellTextOf, isNumericText } from "./lattice.js";
-import { round } from "./lines.js";
+import { cellTextOf, isNumericText, LEADER_RE } from "./lattice.js";
+import { median, round } from "./lines.js";
 import { markerOf } from "./lists.js";
 import { CAPTION_RE } from "./headings.js";
 import { equationRowSignals } from "./formulas.js";
@@ -36,6 +36,110 @@ export function projectColumns(rows) {
     else cols.push({ x0: a, x1: b });
   }
   return cols;
+}
+
+// Column separators the coarse projection misses: a band of whitespace that nearly every row
+// leaves free inside one coarse column, with text aligned on at least one side of it. Dense
+// numeric tables keep neighbouring columns apart by less than the token gap, and group
+// headers bridge them; the body's shared whitespace still shows the boundary.
+export function refineColumns(rowsIn, cols) {
+  const words = rowsIn.flatMap((r) => r.tokens.flatMap((t) => t.words));
+  const size = median(words.map((w) => w.size)) || 10;
+  const out = [];
+  const seps = [];
+  for (const col of cols) {
+    const pieces = splitColumn(rowsIn, col, size);
+    out.push(...pieces.cols);
+    seps.push(...pieces.seps);
+  }
+  return { cols: out, seps };
+}
+
+function splitColumn(rowsIn, col, size) {
+  const rows = [];
+  for (const r of rowsIn) {
+    const ws = r.tokens.flatMap((t) => t.words).filter((w) => !LEADER_RE.test(w.text) && w.x1 > col.x0 + 0.5 && w.x0 < col.x1 - 0.5).sort((a, b) => a.x0 - b.x0);
+    if (ws.length) rows.push(ws);
+  }
+  if (rows.length < 3 || col.x1 - col.x0 < 2 * size) return { cols: [col], seps: [] };
+  // Ink coverage across the column at half-point steps.
+  const step = 0.5;
+  const n = Math.ceil((col.x1 - col.x0) / step) + 1;
+  const cover = new Int16Array(n);
+  for (const ws of rows) {
+    for (const w of ws) {
+      const i0 = Math.max(0, Math.floor((w.x0 - col.x0) / step));
+      const i1 = Math.min(n - 1, Math.ceil((w.x1 - col.x0) / step));
+      for (let i = i0; i <= i1; i++) cover[i]++;
+    }
+  }
+  // Header lines and spanning cells may cross a separator: up to a fifth of the rows.
+  const allow = Math.floor(0.2 * rows.length);
+  const minGap = Math.max(2, 0.3 * size);
+  const seps = [];
+  let i = 0;
+  while (i < n) {
+    if (cover[i] > allow) { i++; continue; }
+    let j = i;
+    while (j < n && cover[j] <= allow) j++;
+    const g0 = col.x0 + i * step; const g1 = col.x0 + (j - 1) * step;
+    i = j;
+    if (g1 - g0 < minGap || g0 <= col.x0 + 0.5 || g1 >= col.x1 - 0.5) continue;
+    // Words beside the gap: the last word ending before it, the first word starting after it.
+    const left = []; const right = [];
+    for (const ws of rows) {
+      const l = ws.filter((w) => w.x1 <= g0 + 0.75).pop();
+      const r = ws.find((w) => w.x0 >= g1 - 0.75);
+      if (l) left.push(l);
+      if (r) right.push(r);
+    }
+    if (left.length < 3 || right.length < 3) continue;
+    // A repeated unit or symbol beside the gap ("40 years", "$ 12") is part of the cell.
+    const same = (ws) => new Set(ws.map((w) => w.text.toLowerCase())).size === 1;
+    if (same(right) || same(left)) continue;
+    const spread = (v) => Math.max(...v) - Math.min(...v);
+    const tol = Math.max(1.5, 0.2 * size);
+    const tightL = spread(left.map((w) => w.x1)) <= tol;
+    const tightR = spread(right.map((w) => w.x0)) <= tol;
+    const numeric = (ws) => ws.filter((w) => isNumericText(w.text)).length >= 0.6 * ws.length;
+    // "15 455": a space as the thousands separator is not a column gap.
+    const groups = right.every((w) => /^\d{3}$/.test(w.text)) && left.every((w) => /^\d{1,3}$/.test(w.text));
+    if (groups) continue;
+    if (tightL || tightR || (numeric(left) && numeric(right))) seps.push({ x0: g0, x1: g1 });
+  }
+  if (!seps.length) return { cols: [col], seps: [] };
+  const edges = [col.x0, ...seps.map((g) => (g.x0 + g.x1) / 2), col.x1];
+  const cols = [];
+  for (let k = 0; k + 1 < edges.length; k++) {
+    const inside = rows.flat().filter((w) => (w.x0 + w.x1) / 2 >= edges[k] && (w.x0 + w.x1) / 2 < edges[k + 1]);
+    if (!inside.length) continue;
+    cols.push({ x0: Math.max(edges[k], Math.min(...inside.map((w) => w.x0))), x1: Math.min(edges[k + 1], Math.max(...inside.map((w) => w.x1))) });
+  }
+  return { cols: cols.length >= 2 ? cols : [col], seps: cols.length >= 2 ? seps : [] };
+}
+
+// A token whose words part exactly at a validated separator is two tokens (the separator was
+// found as whitespace, so a token with ink across it is a spanning cell and stays whole).
+export function splitTokensAt(tokens, seps) {
+  if (!seps.length) return tokens;
+  const out = [];
+  for (const t of tokens) {
+    let parts = [t.words];
+    for (const g of seps) {
+      if (g.x0 <= t.x0 || g.x1 >= t.x1) continue;
+      const next = [];
+      for (const ws of parts) {
+        const l = ws.filter((w) => w.x1 <= g.x0 + 0.75);
+        const r = ws.filter((w) => w.x0 >= g.x1 - 0.75);
+        if (l.length && r.length && l.length + r.length === ws.length && !r.every((w) => LEADER_RE.test(w.text)) && !l.every((w) => LEADER_RE.test(w.text))) next.push(l, r);
+        else next.push(ws);
+      }
+      parts = next;
+    }
+    if (parts.length === 1) { out.push(t); continue; }
+    for (const ws of parts) out.push({ x0: Math.min(...ws.map((w) => w.x0)), x1: Math.max(...ws.map((w) => w.x1)), words: ws, text: ws.map((w) => w.text).join(" "), rowSpan: t.rowSpan });
+  }
+  return out.sort((a, b) => a.x0 - b.x0);
 }
 
 function assignToken(t, cols) {
@@ -148,14 +252,21 @@ function rowTokens(row) {
   return tokens.sort((a, b) => a.x0 - b.x0);
 }
 
-function buildTable(rowsIn, { bands = null, headerRowsHint = 0, caption = null }) {
+function buildTable(rowsIn, { bands = null, headerRowsHint = 0, caption = null, rules = [] }) {
   // rowsIn: [{ y0, y1, tokens, band }]
-  const cols = projectColumns(rowsIn.map((r) => r.tokens));
-  if (cols.length < 2) return null;
+  const coarse = projectColumns(rowsIn.map((r) => r.tokens));
+  if (coarse.length < 2) return null;
+  const refined = refineColumns(rowsIn, coarse);
+  const cols = refined.cols;
+  if (refined.seps.length) for (const r of rowsIn) r.tokens = splitTokensAt(r.tokens, refined.seps);
   const k = cols.length;
   const placed = rowsIn.map((r) => r.tokens.map((t) => ({ t, ...assignToken(t, cols) })));
   let conforming = 0;
+  let counted = 0;
   placed.forEach((row) => {
+    // Group labels and spanning headers (one token) enter a run on their own terms.
+    if (row.length < 2) return;
+    counted++;
     const seen = new Set();
     let dup = false;
     for (const p of row) { if (seen.has(p.c)) dup = true; seen.add(p.c); }
@@ -163,7 +274,7 @@ function buildTable(rowsIn, { bands = null, headerRowsHint = 0, caption = null }
     const ok = seen.size >= 2 && (bands ? true : !dup);
     if (ok) conforming++;
   });
-  const stability = conforming / rowsIn.length;
+  const stability = counted ? conforming / counted : 0;
   if (stability < 0.7 && !bands) return null;
   if (stability < 0.5) return null;
   // Cells
@@ -184,8 +295,9 @@ function buildTable(rowsIn, { bands = null, headerRowsHint = 0, caption = null }
   if (!headerRows) {
     const numericRow = (r) => { const cs = [...cellMap.values()].filter((c) => c.r === r && c.c > 0); return cs.length && cs.filter((c) => isNumericText(cellTextOf(c.words))).length >= 0.5 * cs.length; };
     const boldRow = (r) => { const ws = [...cellMap.values()].filter((c) => c.r === r).flatMap((c) => c.words); return ws.length && ws.every((w) => w.bold); };
+    const yearRow = (r) => { const cs = [...cellMap.values()].filter((c) => c.r === r && c.c > 0); return cs.length >= 2 && cs.every((c) => /^(1[89]|20)\d\d[a-z*]?$/.test(cellTextOf(c.words))); };
     while (headerRows < rows - 1 && boldRow(headerRows)) headerRows++;
-    if (!headerRows && rows >= 2 && !numericRow(0) && numericRow(1)) headerRows = 1;
+    if (!headerRows && rows >= 2 && (!numericRow(0) || yearRow(0)) && numericRow(1) && !yearRow(1)) headerRows = 1;
   }
   // Row spans: header band cells with nothing below in their column; body group labels (col 0 only).
   for (let r = 0; r < rows; r++) {
@@ -204,21 +316,93 @@ function buildTable(rowsIn, { bands = null, headerRowsHint = 0, caption = null }
       }
     }
   }
+  // A rule drawn under a header cell (a \cmidrule) fixes its span to the columns it covers.
+  const underlines = [...(bands ? bands.ys.filter((b) => !b.full).flatMap((b) => b.parts.map(([a, c]) => ({ a, b: c, y: b.y }))) : []), ...rules.filter((r) => r.axis === "h").map((r) => ({ a: r.x0, b: r.x1, y: (r.y0 + r.y1) / 2 }))];
+  const fixedSpan = new Set();
+  if (underlines.length) {
+    for (const cell of [...cellMap.values()]) {
+      if (cell.r >= headerRows) continue;
+      const x0 = Math.min(...cell.words.map((w) => w.x0)); const x1 = Math.max(...cell.words.map((w) => w.x1));
+      const y1 = Math.max(...cell.words.map((w) => w.y1)); const size = cell.words[0].size;
+      const under = underlines.find((u) => u.y > y1 - 0.3 * size && u.y <= y1 + 1.5 * size && u.a <= x0 + 2 && u.b >= x1 - 2 && u.b - u.a < 0.95 * (cols[k - 1].x1 - cols[0].x0));
+      if (!under) continue;
+      const covered = [];
+      cols.forEach((c, i) => { const o = Math.min(c.x1, under.b) - Math.max(c.x0, under.a); if (o > 0.5 * (c.x1 - c.x0)) covered.push(i); });
+      // The rule must cover the cell's own column and at least one more, contiguously.
+      if (covered.length < 2 || covered[covered.length - 1] - covered[0] + 1 !== covered.length) continue;
+      if (covered[0] > cell.c || covered[covered.length - 1] < cell.c + cell.colSpan - 1) continue;
+      const c0 = covered[0]; const span = covered[covered.length - 1] - c0 + 1;
+      let free = true;
+      for (let c = c0; c < c0 + span; c++) { const o = cellMap.get(`${cell.r}:${c}`); if (o && o !== cell) free = false; }
+      if (!free) continue;
+      cellMap.delete(`${cell.r}:${cell.c}`); cell.c = c0; cell.colSpan = span; cellMap.set(`${cell.r}:${c0}`, cell);
+      fixedSpan.add(cell);
+    }
+  }
   // Centred text that does not touch the outer column of its span: widen into empty neighbours
-  // while the span centre moves closer to the text centre.
+  // while the span centre moves closer to the text centre. A header cell centred over a group
+  // of columns widens on both sides at once.
+  const emptyAt = (r, c) => c >= 0 && c < k && !cellMap.has(`${r}:${c}`);
   for (const cell of [...cellMap.values()]) {
+    if (fixedSpan.has(cell)) continue;
     const mid = (Math.min(...cell.words.map((w) => w.x0)) + Math.max(...cell.words.map((w) => w.x1))) / 2;
     let guard = 0;
     while (guard++ < k) {
       const c0 = cell.c; const c1 = cell.c + cell.colSpan - 1;
       const cur = Math.abs((cols[c0].x0 + cols[c1].x1) / 2 - mid);
-      const canLeft = c0 > 0 && !cellMap.has(`${cell.r}:${c0 - 1}`) && Math.abs((cols[c0 - 1].x0 + cols[c1].x1) / 2 - mid) < cur - 1;
-      const canRight = c1 + 1 < k && !cellMap.has(`${cell.r}:${c1 + 1}`) && Math.abs((cols[c0].x0 + cols[c1 + 1].x1) / 2 - mid) < cur - 1;
-      if (canLeft && (!canRight || Math.abs((cols[c0 - 1].x0 + cols[c1].x1) / 2 - mid) <= Math.abs((cols[c0].x0 + cols[c1 + 1].x1) / 2 - mid))) {
+      const dist = (a, b) => Math.abs((cols[a].x0 + cols[b].x1) / 2 - mid);
+      const canLeft = emptyAt(cell.r, c0 - 1) && dist(c0 - 1, c1) < cur - 1;
+      const canRight = emptyAt(cell.r, c1 + 1) && dist(c0, c1 + 1) < cur - 1;
+      // A header wider than the columns under it is a group header: it may sit a little
+      // off-centre over its group.
+      const textW = Math.max(...cell.words.map((w) => w.x1)) - Math.min(...cell.words.map((w) => w.x0));
+      const wide = textW > cols[c1].x1 - cols[c0].x0;
+      const slack = (a, b) => (wide ? 0.5 * ((cols[b].x1 - cols[a].x0) / (b - a + 1)) : 0);
+      const canBoth = cell.r < headerRows && c0 > 0 && emptyAt(cell.r, c0 - 1) && emptyAt(cell.r, c1 + 1) && dist(c0 - 1, c1 + 1) <= Math.max(cur + 1, slack(c0 - 1, c1 + 1));
+      if (canBoth) {
+        cellMap.delete(`${cell.r}:${c0}`); cell.c = c0 - 1; cell.colSpan += 2; cellMap.set(`${cell.r}:${cell.c}`, cell);
+      } else if (canLeft && (!canRight || dist(c0 - 1, c1) <= dist(c0, c1 + 1))) {
         cellMap.delete(`${cell.r}:${c0}`); cell.c = c0 - 1; cell.colSpan++; cellMap.set(`${cell.r}:${cell.c}`, cell);
       } else if (canRight) cell.colSpan++;
       else break;
     }
+    // Columns of uneven width can hide the centred span from the one-step walk: a header
+    // cell still off-centre takes the narrowest span through empty neighbours that is
+    // centred on its text.
+    if (cell.r < headerRows) {
+      const c0 = cell.c; const c1 = cell.c + cell.colSpan - 1;
+      if (Math.abs((cols[c0].x0 + cols[c1].x1) / 2 - mid) > 2) {
+        let a0 = c0; while (emptyAt(cell.r, a0 - 1)) a0--;
+        let b1 = c1; while (emptyAt(cell.r, b1 + 1)) b1++;
+        let best = null;
+        for (let a = a0; a <= c0; a++) for (let b = c1; b <= b1; b++) {
+          const d = Math.abs((cols[a].x0 + cols[b].x1) / 2 - mid);
+          if (d <= 2 && (!best || b - a < best.b - best.a)) best = { a, b };
+        }
+        if (best) { cellMap.delete(`${cell.r}:${c0}`); cell.c = best.a; cell.colSpan = best.b - best.a + 1; cellMap.set(`${cell.r}:${cell.c}`, cell); }
+      }
+    }
+  }
+  // A header label wrapped over two header baselines ("Total" / "population"): the lower
+  // line is a continuation (lower-case or bracketed) in the same single column.
+  for (const cell of [...cellMap.values()].sort((a, b) => a.r - b.r)) {
+    if (cell.r === 0 || cell.r >= headerRows || cell.colSpan !== 1) continue;
+    const above = cellMap.get(`${cell.r - 1}:${cell.c}`);
+    if (!above || above.colSpan !== 1 || above.rowSpan !== 1) continue;
+    const text = cellTextOf(cell.words);
+    if (!/^[a-z(]/.test(text) || isNumericText(text)) continue;
+    above.words.push(...cell.words);
+    above.rowSpan = cell.rowSpan + 1;
+    cellMap.delete(`${cell.r}:${cell.c}`);
+  }
+  // A header cell with nothing above it in its columns starts at the top of the header band
+  // ("Characteristic" set on the last header line spans every header row).
+  const coveredBy = (r, c0, c1) => [...cellMap.values()].some((o) => o.r <= r && r < o.r + o.rowSpan && o.c <= c1 && o.c + o.colSpan - 1 >= c0);
+  for (const cell of [...cellMap.values()].sort((a, b) => a.r - b.r)) {
+    if (cell.r === 0 || cell.r >= headerRows) continue;
+    let r = cell.r;
+    while (r > 0 && !coveredBy(r - 1, cell.c, cell.c + cell.colSpan - 1)) r--;
+    if (r < cell.r) { cellMap.delete(`${cell.r}:${cell.c}`); cell.rowSpan += cell.r - r; cell.r = r; cellMap.set(`${r}:${cell.c}`, cell); }
   }
   // Row labels set once per rule band ("(C)" beside seven rows) span the band.
   if (bands) {
@@ -297,8 +481,12 @@ function buildTable(rowsIn, { bands = null, headerRowsHint = 0, caption = null }
   };
 }
 
+// Is any column of [c, c + span) on row r taken by a cell (including a spanning one)?
 function coveredAt(cellMap, r, c, span) {
-  for (let cc = c; cc < c + span; cc++) if (cellMap.get(`${r}:${cc}`)) return true;
+  for (const o of cellMap.values()) {
+    if (o.r !== r) continue;
+    if (o.c < c + span && o.c + o.colSpan > c) return true;
+  }
   return false;
 }
 
@@ -313,6 +501,7 @@ export function tableFromBand(band, words) {
   const partial = band.ys.filter((b) => !b.full);
   const rowsIn = [];
   const bandsOf = [];
+  let headerBands = 0;
   const edges = [band.y0 - 1, ...fullYs.filter((y) => y > band.y0 + 1 && y < band.y1 - 1), band.y1 + 1];
   for (let i = 0; i + 1 < edges.length; i++) {
     const ws = inside.filter((w) => { const cy = w.base - 0.3 * w.size; return cy >= edges[i] && cy < edges[i + 1]; });
@@ -320,7 +509,15 @@ export function tableFromBand(band, words) {
     const { rows: vrowsRaw, floating } = bandRows(ws);
     let vrows = vrowsRaw;
     const parts = partial.filter((p) => p.y > edges[i] && p.y < edges[i + 1]);
-    const isHeader = bandsOf.length === 0 && edges.length > 2;
+    // Header bands: the first rule band, and following bands that carry partial rules
+    // (\cmidrules under group headers) while no body band has been seen.
+    const isHeader = edges.length > 2 && (bandsOf.length === 0 || (headerBands === bandsOf.length && headerBands < 2 && parts.length > 0 && !hasSubRows(ws, band)));
+    if (isHeader) headerBands++;
+    // Between two full rules the text is one row of (wrapped) cells unless it holds data
+    // sub-rows: baselines with numbers in two columns, or several label lines at the left edge.
+    if (!isHeader && edges.length > 2 && vrows.length > 1 && !hasSubRows(ws, band)) {
+      vrows = [{ y0: Math.min(...ws.map((w) => w.y0)), y1: Math.max(...ws.map((w) => w.y1)), words: ws }];
+    }
     if (isHeader && (vrows.length > 1 || parts.length)) {
       if (parts.length) {
         // Split header rows at partial rules, merge rows between rules.
@@ -332,7 +529,7 @@ export function tableFromBand(band, words) {
         }
         vrows = merged;
       } else {
-        vrows = [{ y0: Math.min(...ws.map((w) => w.y0)), y1: Math.max(...ws.map((w) => w.y1)), words: ws }];
+        vrows = headerRowGroups(ws);
       }
     }
     bandsOf.push(vrows.length);
@@ -362,11 +559,76 @@ export function tableFromBand(band, words) {
     else if (r.tokens.length >= 2 && !codeLike) tabular++;
   }
   if (tabular < 2 || prose >= 0.4 * run.length) return null;
-  const headerRowsHint = edges.length > 2 ? bandsOf[0] : 0;
+  const headerRowsHint = edges.length > 2 ? bandsOf.slice(0, headerBands).reduce((n, k) => n + k, 0) : 0;
+  mergeWrappedLabelRows(rowsIn, headerRowsHint);
   const table = buildTable(rowsIn, { bands: band, headerRowsHint });
   if (!table) return null;
   table.usedWords = inside;
   return table;
+}
+
+function hasSubRows(words, band) {
+  const base = baselineGroups(words);
+  if (base.length < 2) return false;
+  let numeric = 0;
+  let labels = 0;
+  // Placeholders ("-", "NA", "..") stand for values too.
+  const value = (t) => isNumericText(t.text) || /^[-–—.]{1,3}$|^n\/?a$/i.test(t.text);
+  for (const g of base) {
+    const toks = tokenizeLine({ words: [...g.words].sort((a, b) => a.x0 - b.x0), size: g.size });
+    if (toks.filter(value).length >= 2) numeric++;
+    const first = toks[0];
+    if (toks.length >= 2 && first.x0 - band.x0 <= 1.5 * g.size && /^[A-Z0-9(]/.test(first.text)) labels++;
+  }
+  return numeric >= 2 || labels >= 2;
+}
+
+// Header baselines without rules between them: stacked fragments of one label merge into a
+// row; a baseline whose token spans two or more tokens of the next one, a change of font
+// size, or a blank line starts a new header row.
+export function headerRowGroups(words) {
+  const base = baselineGroups(words);
+  const toks = base.map((g) => tokenizeLine({ words: [...g.words].sort((a, b) => a.x0 - b.x0), size: g.size }));
+  const groups = [];
+  for (let i = 0; i < base.length; i++) {
+    const g = base[i];
+    const prev = base[i - 1];
+    let split = i === 0;
+    if (!split) {
+      const spans = toks[i - 1].some((t) => toks[i].filter((u) => u.x0 < t.x1 - 1 && u.x1 > t.x0 + 1).length >= 2);
+      split = spans || Math.abs(g.size - prev.size) > 0.6 || g.base - prev.base > 1.9 * Math.max(g.size, prev.size);
+    }
+    if (split) groups.push({ y0: g.y0, y1: g.y1, words: [...g.words] });
+    else { const last = groups[groups.length - 1]; last.words.push(...g.words); last.y0 = Math.min(last.y0, g.y0); last.y1 = Math.max(last.y1, g.y1); }
+  }
+  return groups;
+}
+
+// A label-only line right under a data row, flush with its label and followed by another
+// data row that is not indented under it, is the label's wrapped second line.
+function mergeWrappedLabelRows(rowsIn, headerRows = 0) {
+  for (let i = Math.max(1, headerRows + 1); i < rowsIn.length; i++) {
+    const row = rowsIn[i];
+    const prev = rowsIn[i - 1];
+    const next = rowsIn[i + 1];
+    if (row.tokens.length !== 1 || prev.tokens.length < 2) continue;
+    if (prev.tokens.flatMap((t) => t.words).every((w) => w.bold)) continue; // a header row
+    const tok = row.tokens[0];
+    if (tok.words.length > 3 || !/[A-Za-z]/.test(tok.text)) continue;
+    const size = tok.words[0].size;
+    if (row.y0 - prev.y1 > 0.8 * size) continue;
+    const host = prev.tokens.find((t) => t.x0 < tok.x1 + 1 && t.x1 > tok.x0 - 1);
+    if (!host) continue;
+    const continuation = /^[a-z(\-–]/.test(tok.text) || tok.x0 - host.x0 >= 0.5 * size
+      || (next && next.y0 - row.y1 <= 0.8 * size && next.tokens[0].x0 - tok.x0 < 0.5 * size);
+    if (!continuation) continue;
+    host.words.push(...tok.words);
+    host.x0 = Math.min(host.x0, tok.x0); host.x1 = Math.max(host.x1, tok.x1);
+    host.text = host.words.map((w) => w.text).join(" ");
+    prev.y1 = Math.max(prev.y1, row.y1);
+    rowsIn.splice(i, 1);
+    i--;
+  }
 }
 
 // Line fragments on one baseline form a row (lines.js splits rows at wide gaps).
@@ -402,37 +664,69 @@ export function proseRow(row, tokens, columnWidth = Infinity) {
 
 // Free mode: runs of aligned multi-token rows inside one column. Returns tables, and the
 // candidates that read as display equations ("formula") or numbered code listings ("code").
-export function detectStreamRuns(lines, { dots = [], column = null } = {}) {
+export function detectStreamRuns(lines, { dots = [], column = null, rules = [] } = {}) {
   const out = [];
   const rows = baselineRows(lines);
   const colBox = column || (lines.length ? { x0: Math.min(...lines.map((l) => l.x0)), x1: Math.max(...lines.map((l) => l.x1)) } : null);
   const colW = colBox ? colBox.x1 - colBox.x0 : Infinity;
+  const tokensOf = (row) => row.lines.flatMap((l) => tokenizeLine(l)).sort((a, b) => a.x0 - b.x0);
   let i = 0;
   while (i < rows.length) {
     const run = [];
+    const ruleLines = [];
+    let headerRowsHint = 0;
+    let lead = null; // first line of a wrapped label, waiting for its multi-token row
+    let lastBase = null; // baseline of the last line taken into the run (rows, rules, wraps)
     let j = i;
     while (j < rows.length) {
       const row = rows[j];
-      const tokens = row.lines.flatMap((l) => tokenizeLine(l)).sort((a, b) => a.x0 - b.x0);
-      const prev = run[run.length - 1];
-      if (tokens.length < 2 || markerOf(row.lines[0], dots) || CAPTION_RE.test(row.text)) break;
+      const tokens = tokensOf(row);
+      if (markerOf(row.lines[0], dots) || CAPTION_RE.test(row.text)) break;
+      if (lastBase != null && row.base - lastBase > 2.2 * row.size) break;
+      // A rule drawn as text ("-----") separates header from body; it is not a row.
+      if (run.length && TEXT_RULE_RE.test(row.text.replace(/\s+/g, ""))) {
+        ruleLines.push(...row.lines);
+        if (!headerRowsHint && run.length <= 3) headerRowsHint = run.length;
+        lastBase = row.base;
+        j++;
+        continue;
+      }
+      if (tokens.length < 2) {
+        const peek = (k) => (rows[k] ? { row: rows[k], tokens: tokensOf(rows[k]) } : null);
+        const single = singleTokenRow(row, tokens, run, peek(j + 1), colBox, lead, peek(j + 2));
+        if (single === "attach") { lastBase = row.base; j++; continue; }
+        if (single === "lead") { lead = { row, tokens }; lastBase = row.base; j++; continue; }
+        if (single === "row") { run.push({ row, tokens }); lastBase = row.base; j++; continue; }
+        break;
+      }
       if (proseRow(row, tokens, colW)) break;
-      if (prev && row.base - prev.row.base > 2.2 * row.size) break;
+      if (lead) {
+        // The wrapped label's first line joins this row as its leading token.
+        const merged = mergeRows(lead, { row, tokens });
+        run.push(merged);
+        lead = null;
+        lastBase = row.base;
+        j++;
+        continue;
+      }
       run.push({ row, tokens });
+      lastBase = row.base;
       j++;
     }
+    if (lead) { j--; lead = null; }
+    const multi = run.filter((r) => r.tokens.length >= 2).length;
     if (run.length >= 2) {
       const eq = equationRun(run, colBox);
       if (eq) { out.push(eq); i = j; continue; }
     }
-    if (run.length >= 3) {
+    if (multi >= 3) {
       const code = codeRun(run);
       if (code) { out.push(code); i = j; continue; }
       const rowsIn = run.map((r) => ({ y0: r.row.y0, y1: r.row.y1, tokens: r.tokens }));
-      const table = buildTable(rowsIn, {});
-      if (table && !looksLikeProse(run)) {
+      const table = buildTable(rowsIn, { headerRowsHint, rules });
+      if (table && !looksLikeProse(run) && !sparseAxis(table)) {
         table.usedWords = run.flatMap((r) => r.row.words);
-        table.lines = run.flatMap((r) => r.row.lines);
+        table.lines = [...run.flatMap((r) => r.row.lines), ...ruleLines];
         out.push(table);
         i = j;
         continue;
@@ -441,6 +735,66 @@ export function detectStreamRuns(lines, { dots = [], column = null } = {}) {
     i = i + 1;
   }
   return out;
+}
+
+const TEXT_RULE_RE = /^[-–—_=.·•]{4,}$/;
+
+// A single-token row inside a run: a wrapped cell line that attaches to the token above it,
+// the first line of a wrapped label whose values sit on the next baseline ("lead"), a group
+// label at the left edge, or a group header centred over the columns ("row"); else the run ends.
+function singleTokenRow(row, tokens, run, next, colBox, lead, next2 = null) {
+  if (tokens.length !== 1 || row.words.length > 8 || lead) return null;
+  const tok = tokens[0];
+  const near = (a, b) => Math.abs(a.base - b.base) <= 1.6 * Math.max(a.size, b.size);
+  const overlapping = (toks) => toks.find((t) => t.x0 < tok.x1 + 1 && t.x1 > tok.x0 - 1);
+  const prev = run[run.length - 1];
+  // A footnote mark or bullet on its own baseline rides with the row above, in its column.
+  if (prev && near(row, prev.row) && row.words.length === 1 && /^[^A-Za-z0-9]{1,2}$|^[a-z0-9]$/.test(tok.text) && !overlapping(prev.tokens)) {
+    prev.tokens.push({ ...tok });
+    prev.tokens.sort((a, b) => a.x0 - b.x0);
+    prev.row.words.push(...tok.words);
+    prev.row.lines.push(...row.lines);
+    return "attach";
+  }
+  if (prev && near(row, prev.row)) {
+    const host = overlapping(prev.tokens);
+    // A wrapped cell's second line reads as a continuation (lower case, bracket, dash) or
+    // is indented under its first line; a capitalised line at the label edge is a new row.
+    let continuation = /^[a-z(\-–]/.test(tok.text) || (host && tok.x0 - host.x0 >= 0.5 * row.size);
+    // A short capitalised line flush with the label above, between two data rows that are
+    // not indented under it, is the label's second line ("American Indian/Alaska" / "Native").
+    const prevHeader = prev.row.words.every((w) => w.bold) || (run.length === 1 && prev.tokens.slice(1).every((t) => !isNumericText(t.text)));
+    if (!continuation && host && !prevHeader && row.words.length <= 3 && next && near(row, next.row) && next.tokens[0].x0 - tok.x0 < 0.5 * row.size) continuation = true;
+    if (host && prev.tokens.length >= 2 && continuation && /[A-Za-z]/.test(tok.text)) {
+      host.words.push(...tok.words);
+      host.x0 = Math.min(host.x0, tok.x0); host.x1 = Math.max(host.x1, tok.x1);
+      host.text = host.words.map((w) => w.text).join(" ");
+      prev.row.words.push(...tok.words);
+      prev.row.lines.push(...row.lines);
+      prev.row.y1 = Math.max(prev.row.y1, row.y1);
+      return "attach";
+    }
+  }
+  if (!next || !near(row, next.row)) return null;
+  // Stacked spanning headers ("2007" over "Inadequate housing"): look one line further.
+  const after = next.tokens.length >= 2 ? next : (next2 && next2.tokens.length >= 2 && near(next.row, next2.row) ? next2 : null);
+  if (!after) return null;
+  const leftEdge = colBox ? colBox.x0 : Math.min(...(prev ? prev.tokens : after.tokens).map((t) => t.x0));
+  const atLeft = tok.x0 - leftEdge <= 1.5 * row.size;
+  if (next.tokens.length >= 2 && !overlapping(next.tokens) && atLeft) return "lead";
+  // A group label at the left edge joins the run; a header centred over the columns only
+  // opens a run (after body rows it is the next table's header).
+  if (row.words.length <= 6 && (atLeft ? run.length >= 1 : run.length <= 2)) return "row";
+  return null;
+}
+
+function mergeRows(lead, cur) {
+  const tok = lead.tokens[0];
+  const row = cur.row;
+  row.words.push(...tok.words);
+  row.lines.push(...lead.row.lines);
+  row.y0 = Math.min(row.y0, lead.row.y0);
+  return { row, tokens: [...cur.tokens, { ...tok }].sort((a, b) => a.x0 - b.x0) };
 }
 
 // Bracketed matrices and other multi-line display equations: an equation number at the column
@@ -479,18 +833,28 @@ export function isMonospace(words) {
 // code after it is set in a monospace font (a "No." column in a proportional font is a table).
 function codeRun(run) {
   let expect = null;
+  let withCode = 0;
   for (const r of run) {
     const first = r.tokens[0];
     if (!first || !/^\d{1,4}$/.test(first.text)) return null;
     const n = Number(first.text);
     if (expect != null && n !== expect) return null;
     expect = n + 1;
-    if (r.tokens.length < 2) return null;
+    if (r.tokens.length >= 2) withCode++; // a blank line keeps its number only
   }
+  if (withCode < 2) return null;
   if (!isMonospace(run.flatMap((r) => r.tokens.slice(1).flatMap((t) => t.words)))) return null;
   const lines = run.flatMap((r) => r.row.lines);
   const text = run.map((r) => r.tokens.slice(1).map((t) => t.text).join(" ")).join("\n");
   return { type: "code", lines, text, usedWords: run.flatMap((r) => r.row.words) };
+}
+
+// Axis ticks of a chart on a scanned page (no vector graphics to make a figure): a few rows
+// of short numbers with most cells empty.
+function sparseAxis(table) {
+  if (table.rows > 3) return false;
+  const filled = table.cells.filter((c) => c.text).length;
+  return filled < 0.6 * table.cells.length;
 }
 
 // Justified prose splits into tokens at random x; tables keep short cells with wide gaps.

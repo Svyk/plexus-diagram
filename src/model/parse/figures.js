@@ -4,20 +4,20 @@ import { round } from "./lines.js";
 
 const IMAGE_MIN = 12;
 
-export function findFigures({ graphics, usedRules = new Set(), words = [], bodySize = 10, pageW = 612, pageH = 792, ruleSegments = [] }) {
+export function findFigures({ graphics, usedRules = new Set(), usedBoxes = new Set(), words = [], bodySize = 10, pageW = 612, pageH = 792, ruleSegments = [] }) {
   const prims = [];
   for (const img of graphics.images || []) {
     if (img.x1 - img.x0 >= IMAGE_MIN && img.y1 - img.y0 >= IMAGE_MIN) prims.push({ ...img, kind: "image", n: 1 });
   }
   for (const s of graphics.shapes || []) prims.push({ ...s, kind: "shape", n: Math.max(1, s.segs || 1) });
   for (const b of graphics.boxes || []) {
-    if (b.light) continue;
+    if (b.light || usedBoxes.has(b)) continue;
     if ((b.x1 - b.x0) * (b.y1 - b.y0) >= 0.8 * pageW * pageH) continue;
     prims.push({ ...b, kind: "box", n: 1 });
   }
   // Rules not consumed by a lattice table (chart axes, grid lines) count toward drawings.
   for (const seg of ruleSegments) {
-    if (usedRules.has(seg)) continue;
+    if (usedRules.has(seg) || seg.fromBox) continue;
     const box = seg.axis === "h" ? { x0: seg.a, x1: seg.b, y0: seg.pos, y1: seg.pos } : { x0: seg.pos, x1: seg.pos, y0: seg.a, y1: seg.b };
     prims.push({ ...box, kind: "rule", n: 1 });
   }

@@ -72,7 +72,15 @@ function piecesOf(item, transform, fonts) {
   const scaleX = Math.hypot(m[0], m[1]) / (Math.hypot(item.transform[0], item.transform[1]) || 1);
   const width = (item.width || 0) * scaleX;
   const flags = fontFlags(item.fontName, fonts);
-  if (!str.trim()) return [{ space: true, x0: x, x1: x + width, base, size, rotated }];
+  if (!str.trim()) return [{ space: true, x0: x, x1: x + width, base, size, rotated, angle }];
+  // Letter-spaced OCR text ("N O T I F I A B L E") comes as one-letter pieces: the item is one
+  // word with its spaces removed (word breaks inside such an item are not recoverable).
+  const spaced = letterSpaced(str) ? str.replace(/\s+/g, "") : null;
+  if (spaced) {
+    let math = 0;
+    for (const ch of spaced) if (isMathChar(ch)) math++;
+    return [{ text: spaced, x0: x, x1: x + width, base, size, font: item.fontName, fontName: flags.name, bold: flags.bold, italic: flags.italic, mathFont: flags.math, mono: flags.mono, mathChars: math, rotated, angle, leadingSpace: false, trailingSpace: false, spaced: true }];
+  }
   const perChar = width / Math.max(1, str.length);
   const out = [];
   let i = 0;
@@ -100,6 +108,7 @@ function piecesOf(item, transform, fonts) {
         mono: flags.mono,
         mathChars: math,
         rotated,
+        angle,
         leadingSpace: start > 0 && str[start - 1] === " ",
         trailingSpace: end < str.length && str[end] === " ",
       });
@@ -107,6 +116,13 @@ function piecesOf(item, transform, fonts) {
     i = end;
   }
   return out;
+}
+
+export function letterSpaced(str) {
+  const parts = str.trim().split(/\s+/);
+  if (parts.length < 4) return false;
+  const single = parts.filter((p) => p.length === 1).length;
+  return single >= 0.6 * parts.length;
 }
 
 function sameBaseline(a, b) {
@@ -248,6 +264,20 @@ function mergeWords(pieces, rowSize) {
     delete w.trailingSpace;
   }
   return words;
+}
+
+// Angle (degrees, a multiple of 90) of the rotated text that outweighs the upright text on a
+// page, else 0. Pieces are the `rotated` output of buildLines.
+export function dominantRotation(rotated, lines) {
+  const upright = lines.reduce((n, l) => n + l.chars, 0);
+  const byAngle = new Map();
+  for (const p of rotated) {
+    const deg = Math.round((p.angle * 180) / Math.PI / 90) * 90;
+    byAngle.set(deg, (byAngle.get(deg) || 0) + (p.text ? p.text.length : 0));
+  }
+  let best = 0; let chars = 0;
+  for (const [deg, n] of byAngle) if (n > chars) { chars = n; best = deg; }
+  return chars > 1.5 * upright && chars >= 20 ? best : 0;
 }
 
 export function makeLine(words) {

@@ -173,3 +173,109 @@ Contracts added for other units: table blocks may carry `continues: "<table id>"
 blocks (`k…`) carry `text` with `\n` between lines; `formula.number` may be an Elsevier-font
 "ðNÞ". `detectStreamRuns` now returns typed items (`type: "table" | "formula" | "code"`).
 Everything else in `pxd-parse/1` is unchanged.
+
+## ICDAR 2013 (round 3, 2026-10-07)
+
+Round 3 tuned on both splits (the WO allowed it) and kept a new held-out set honest instead:
+EU Regulation 2073/2005 (Annex I), two arXiv papers on table structure, and two scanned CDC
+pages with an OCR text layer. Same harness, same metrics, same Docling JSON as round 2.
+
+| Split | Engine | Docs | GT regions | Det P | Det R | Det F1 | Adj P | Adj R | Adj F1 | Adj F1 (e2e) | Cell F1 | ms/page (median) | total s |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| EU | Built-in r3 | 27 | 76 | 0.987 | 1.000 | 0.993 | 0.999 | 0.993 | **0.996** | 0.995 | **0.942** | 10.1 | 1.2 |
+| EU | Built-in r2 | 27 | 76 | 0.987 | 1.000 | 0.993 | 0.999 | 0.994 | 0.997 | 0.996 | 0.940 | 9.8 | 1.2 |
+| EU | Docling 2.91 | 27 | 76 | 1.000 | 1.000 | 1.000 | 0.989 | 0.985 | 0.987 | 0.987 | 0.975 | n/a | n/a |
+| US | Built-in r3 | 40 | 80 | 0.988 | 0.988 | **0.988** | 0.979 | 0.968 | **0.974** | 0.973 | **0.928** | 9.1 | 1.3 |
+| US | Built-in r2 | 40 | 80 | 0.962 | 0.938 | 0.949 | 0.904 | 0.813 | 0.856 | 0.856 | 0.636 | 9.4 | 1.3 |
+| US | Docling 2.91 | 40 | 80 | 0.975 | 0.975 | 0.975 | 0.845 | 0.803 | 0.824 | 0.812 | 0.729 | n/a | n/a |
+| All | Built-in r3 | 67 | 156 | 0.987 | 0.994 | 0.990 | 0.984 | 0.975 | 0.979 | 0.979 | 0.932 | 9.1 | 2.4 |
+| All | Docling 2.91 | 67 | 156 | 0.987 | 0.987 | 0.987 | 0.882 | 0.849 | 0.865 | 0.856 | 0.795 | n/a | n/a |
+
+Every round-2 US failure class is closed: us-037 16×13 (was 15×6), us-002 32×8, us-001
+26×11, us-033 15×10, us-032 7×3, us-010 / us-013 / us-022 found (were figures or absent),
+us-023 9×12 (was paragraphs), us-014 6×3 (was 8×3), us-034 two 19×8 tables, us-007 header
+in one row, us-024 header spans and wrapped labels. Cell F1 is now where the engine beats
+Docling most (0.928 vs 0.729 on US). Files still under 0.9 on cells: us-001 (0.75: a
+dense table whose header row the GT splits differently), us-040 (0.21: the GT has an empty
+spacer row the page does not rule), us-003 / us-004 (0.89 / 0.92).
+
+### What changed in the engine (general rules, no per-file thresholds)
+
+- Columns: after the coarse projection, every coarse column is scanned for whitespace shared
+  by at least 80 % of its rows (`refineColumns`); a gap counts when the text beside it is
+  aligned (tight left or right edges) or numeric on both sides, not a space thousands
+  separator ("15 455") and not a repeated unit ("40 years"). Tokens that part exactly at such
+  a gap split (`splitTokensAt`); ink across it stays one spanning cell. Dot leaders stay
+  with their label and leave the cell text.
+- Lattice: filled boxes that tile a rectangle (coloured headers, zebra stripes, per-cell
+  fills) supply the grid as rules (`boxGridRules`), white boxes and nested insets excluded;
+  rules connect across a 4 pt cell-spacing gap; a frame's title row (caption-like, full width)
+  and trailing notes rows (`Note:`, `Source:`, `Exhibit reads:`, long prose) are stripped and
+  handed back to the text pass; unruled prose rows inside a ruled row split at a blank line
+  when the new row starts with a label in column 0; a ruled row with stacked header words
+  stays one row (numeric sub-rows need two baselines with numbers in two columns); the header
+  fill is the fill that covers only the leading rows (zebra striping is not a header).
+- Bands: between two full rules the text is one row unless it holds data sub-rows; later
+  bands with partial rules and no values are header bands too; header baselines without
+  rules group by font size and by a token spanning two tokens below; a label-only line
+  flush under a data row, followed by a row that is not indented under it, is the label's
+  second line.
+- Stream runs: a text rule ("------") is a header boundary, not a row; a single-token line
+  attaches to the cell above as a wrapped line (lower-case, bracketed, indented, or a short
+  capitalised line between two data rows), leads the next row when its values sit on the
+  next baseline, joins as a group label at the left edge, or opens a run as a centred group
+  header (stacked headers look one line further); a centred header after body rows starts
+  the next table and two stacked tables with their own headers are never stitched; run gaps
+  are measured from the last consumed line.
+- Header spans: a partial rule under a header cell fixes its span; header cells widen
+  symmetrically over empty neighbours (with slack when the text is wider than its columns)
+  and fall back to the narrowest centred span; a header cell with nothing above it starts at
+  the top of the header band; a lower-case or bracketed header line below a single-column
+  header cell is its wrapped second line.
+- Gates: a sparse stream table beside a drawing is the drawing's labels (pie chart legends);
+  three rows of ticks with mostly empty cells on a scan page are an axis; a bare line number
+  without code keeps a listing a `code` block; a row of four-digit years over decimals is a
+  header row; a pure-number line in the page margin is a page number only when nothing
+  shares its baseline (years in a table header at the page top are not).
+
+### Scans with an OCR text layer
+
+A page-sized image under text is a scan with an OCR layer (`pages[].scanLayer`): the image
+is the background, not a figure, and the text parses as on any page. Letter-spaced OCR items
+("N O T I F I A B L E") join into one word (word breaks inside such an item are not
+recoverable from pdf.js items). Text set sideways (every item's matrix rotated by a multiple
+of 90°) is read in its own frame; `pages[].textRotation` reports the angle and every bbox
+on that page is in the rotated frame.
+
+| File | Result |
+|---|---|
+| `cdc1980-p25.pdf` (1980 CDC summary p25, landscape scan with OCR layer) | one 50×11 stream table, header row `Disease, 1980 … 1971`, 49 disease rows (page kind `mixed`, scanLayer true, no figure). The OCR layer carries 51 label baselines; wrong cells, all from the layer itself: `Shigellosis Smallpox` (Smallpox's note "Last documented case occurred in 1949" is not in the layer, so the bare label attached to the row above), a footnote mark `•` placed as a cell beside `Hepatitis, unspecified`, `Brucellosis` 1973 = `. 0.10`, `Chickenpox` 1971 = `*`, `Yellow fever` note read as `Last inHinennus r.as` over three columns, `(Carriers)` cells after 1978 = `NA . .`. Every numeric cell checked by eye against the render is right. Title heading `NOTIFIABLE DISEASES—Summaryofreportedcasesper 100,000population…` (letter-spaced OCR, word breaks lost). |
+| `cdc1980-p25-imageonly.pdf` | page kind `scan`, one `scan` block (needs OCR on the helper) |
+| `cdc1970-p3.pdf` (MMWR 1970 p3) | the page holds Figure 2 (diphtheria cases by week) and prose, no table; 0 tables (round 2 read the figure's axis ticks as a 3×8 table) |
+| original `cdc-morbidity-summary-1980.pdf` p25 | the PDF already stores the page as 597×405 landscape with upright OCR text; the rotation code was exercised by the EU regulation below and by a synthetic test |
+
+### New held-out set (not tuned on; read once at the end, by eye against the render)
+
+| File | What the engine produces |
+|---|---|
+| `eu-reg-2073-2005.pdf` p9 (Chapter 1 food safety criteria) | text matrices rotated 90°, read upright (`textRotation -90`); one 19×8 stream table: `Food category (span 2) \| Micro-organisms \| Sampling plan n, c \| Limits \| Analytical reference method \| Stage`, two header rows. Right by eye: column set, the n/c sub-header, every criterion's first line. Wrong: the food-category number ("1.1.") is its own column; the m/M limit columns are one column; wrapped criteria still leave 8 extra fragment rows (the page has 8 criteria plus the header). The ruled grid did not form because the vertical rules are segmented per row group; the band path builds it. |
+| `eu-reg-2073-2005.pdf` p15 (process hygiene) | 32×7 stream, two header rows; `3,5 log / 5,0 log` m/M pairs stay in one cell (narrow gap, wrapped units), carcass entries split into several rows. |
+| `arxiv-tables-structure.pdf` p6 (Tables 2, 3) | 16×6 and 13×6, N row-spans right, every number right except `0.38.0` for `38.0` (a stray glyph in the PDF text). |
+| `arxiv-tables-structure.pdf` p7 (Table 5) | 12×5: TaBERT and TABBIE (FREQ) lines merge into one row per corruption (small-caps rows whose boxes overlap); TABBIE (MIX) rows right. |
+| `arxiv-tables-structure.pdf` p8 (Figures 5, 6) | the figure's small example tables come out as 7×3, 7×6 and one 41×25 lattice of the nearest-neighbour boxes; a figure, not a table. |
+| `arxiv-tabdata-2025.pdf` p7 (Table 1) | 12×11, body right; group headers UNIQUE / COUNT / DIAMOND found, COUNT(=) and DOUBLE missed, the `Transactions synthetic data` section row sits in the middle columns instead of spanning. |
+| `arxiv-tabdata-2025.pdf` p24 (Tables 7, 8) | 11×5 right; 11×6 right except small-caps headers read as `T ASK`, `M ETRIC` (the first letter is a separate pdf.js item). |
+| `arxiv-tabdata-2025.pdf` p27 (Table 10) | 11×9: `Orig Clean` of the second group merged into one column (a late change moved it from 12×10); body values right. |
+
+Unseen PDFs from round 2 (`risk`, `llama`, `goal`): risk p5 Table 1 7×5 and Table 2 7×7,
+llama p3 Table 2 5×7 and Table 7 11×4 unchanged; llama Table 8 is 10×6 (was 10×5, the
+pass@ columns were merged); goal Table 1 pages 9–12 are 28/25/29/26 rows (were 33/34/33/29:
+wrapped cells such as "Within-subjects design, one session" are one row now, checked against
+the render), still chained by `continues`.
+
+Contracts added: `pages[].textRotation` (0, 90, -90, 180) and `pages[].scanLayer`
+(boolean); table geometry on a rotated page is in the rotated frame. `detectStreamRuns`
+takes `rules` (the page's raw rules, for header underlines). New exports used by tests:
+`refineColumns`, `splitTokensAt`, `headerRowGroups` (stream), `boxGridRules`, `LEADER_RE`
+(lattice), `letterSpaced`, `dominantRotation` (lines), `figureLabels` (index). Everything
+else in `pxd-parse/1` is unchanged.

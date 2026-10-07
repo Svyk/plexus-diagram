@@ -1,7 +1,7 @@
 // Parse step: ruled (lattice) tables from rules and boxes. Pure.
 
 import { relineWords, round } from "./lines.js";
-import { snapRules } from "./rules.js";
+import { luminanceOf, snapRules } from "./rules.js";
 
 export const NUMERIC_RE = /^[\s\d.,%±+\-–−()$€£¢×·^]*\d[\s\d.,%±+\-–−()$€£¢×·^]*$/;
 
@@ -10,8 +10,11 @@ export function isNumericText(text) {
 }
 
 // Words of one cell -> text; wrapped lines ending in "-" join without a space.
+export const LEADER_RE = /^[.·…]{4,}$/;
+
 export function cellTextOf(words) {
-  const lines = relineWords(words);
+  const lines = relineWords(words.filter((w) => !LEADER_RE.test(w.text)));
+  if (!lines.length) return "";
   let text = "";
   for (const line of lines) {
     let t = "";
@@ -38,12 +41,12 @@ class UF {
 
 function segmentsOf(snapped) {
   const segs = [];
-  for (const g of snapped.h) for (const iv of g.intervals) segs.push({ axis: "h", pos: g.pos, a: iv.a, b: iv.b, thick: iv.thick });
-  for (const g of snapped.v) for (const iv of g.intervals) segs.push({ axis: "v", pos: g.pos, a: iv.a, b: iv.b, thick: iv.thick });
+  for (const g of snapped.h) for (const iv of g.intervals) segs.push({ axis: "h", pos: g.pos, a: iv.a, b: iv.b, thick: iv.thick, fromBox: iv.fromBox });
+  for (const g of snapped.v) for (const iv of g.intervals) segs.push({ axis: "v", pos: g.pos, a: iv.a, b: iv.b, thick: iv.thick, fromBox: iv.fromBox });
   return segs;
 }
 
-function connected(s, t, tol = 2) {
+function connected(s, t, tol = 4) {
   // Only crossing or touching rules connect. Collinear rules were merged by snapRules; two
   // parallel horizontals never join on their own (stacked tables share a width).
   if (s.axis === t.axis) {
@@ -88,22 +91,114 @@ export function tabularBetween(words, box) {
   const rows = rowsBetween(words, box);
   if (!rows.length) return { rows, tabular: true, empty: true };
   const width = box.x1 - box.x0;
-  let multi = 0;
   for (const r of rows) {
-    if (r.tokens >= 2) multi++;
     const n = r.words.length;
     const chars = r.words.reduce((k, w) => k + w.text.length, 0);
     // Prose: a long full-width line that does not break into gap-separated tokens, or whose
     // tokens are all long runs. Any short or numeric token beside a label makes a table row.
-    const prose = n >= 7 && chars / n >= 3.5 && r.x1 - r.x0 >= 0.7 * width && (r.tokens === 1 || (r.tokens < n / 2 && shortTokens(r) === 0));
+    const prose = n >= 7 && chars / n >= 3.5 && r.x1 - r.x0 >= 0.7 * width && (r.tokens === 1 || (r.tokens < n / 2 && shortTokens(r) === 0 && longestToken(r) >= 5));
     if (prose) return { rows, tabular: false, reason: "prose" };
     if (CAPTION_START_RE.test(r.text) && r.words.length >= 3 && r.x0 - box.x0 <= 0.15 * width) return { rows, tabular: false, reason: "caption" };
   }
   // One short single-token line between two rules is a group label or a wrapped cell line.
   if (rows.length === 1 && rows[0].tokens === 1 && rows[0].words.length <= 6) return { rows, tabular: true, reason: "label row" };
+  // Visual rows: baseline rows chained by box overlap, so a label wrapped onto two baselines
+  // with its numbers centred between them counts once, as one multi-token row.
+  const groups = [];
+  for (const r of rows) {
+    const y0 = r.base - 0.8 * r.size; const y1 = r.base + 0.22 * r.size;
+    const g = groups[groups.length - 1];
+    if (g && y0 < g.y1 - 1) { g.y1 = Math.max(g.y1, y1); g.rows.push(r); }
+    else groups.push({ y0, y1, rows: [r] });
+  }
+  let multi = 0;
+  for (const g of groups) {
+    if (g.rows.some((r) => r.tokens >= 2)) { multi++; continue; }
+    // Two single-token baselines in distinct x ranges (label, then a value beside it).
+    const spans = g.rows.map((r) => [r.x0, r.x1]);
+    const disjoint = spans.some((a, i) => spans.some((b, j) => j > i && (a[1] < b[0] - 2 || b[1] < a[0] - 2)));
+    if (disjoint) multi++;
+  }
   // Wrapped cells put short single-token fragments on their own baselines around the row.
   const fragments = rows.every((r) => r.tokens >= 2 || r.words.length <= 4);
-  return { rows, tabular: multi >= Math.ceil(rows.length * 0.5) || (multi >= 1 && fragments), reason: "single-token rows" };
+  return { rows, tabular: multi >= Math.ceil(groups.length * 0.5) || (multi >= 1 && fragments), reason: "single-token rows" };
+}
+
+// Filled boxes that tile a rectangle (coloured header rows, zebra shading, framed cells) carry
+// the table grid in their edges. Boxes nested inside another box (padding insets) are dropped;
+// a sparse set of boxes (chart bars) is not a tiling.
+export function boxGridRules(boxes) {
+  // White boxes are line backgrounds and knockouts, not tiles.
+  const big = (boxes || []).filter((b) => b.x1 - b.x0 >= 8 && b.y1 - b.y0 >= 4 && !((luminanceOf(b.fill) ?? 0) >= 0.97));
+  const area = (b) => (b.x1 - b.x0) * (b.y1 - b.y0);
+  const outer = big.filter((b) => !big.some((o) => o !== b && o.x0 <= b.x0 + 0.5 && o.x1 >= b.x1 - 0.5 && o.y0 <= b.y0 + 0.5 && o.y1 >= b.y1 - 0.5 && area(o) > area(b) + 1));
+  // Clusters of touching boxes.
+  const clusters = outer.map((b) => ({ x0: b.x0, y0: b.y0, x1: b.x1, y1: b.y1, items: [b] }));
+  // Zebra stripes sit one unshaded row apart: boxes of overlapping width join across a
+  // vertical gap of up to one typical box height.
+  const heights = outer.map((b) => b.y1 - b.y0).sort((a, b) => a - b);
+  const rowH = heights.length ? heights[heights.length >> 1] : 0;
+  let merged = true;
+  let guard = 0;
+  while (merged && guard++ < 50) {
+    merged = false;
+    for (let i = 0; i < clusters.length; i++) {
+      for (let j = i + 1; j < clusters.length; j++) {
+        const a = clusters[i]; const b = clusters[j];
+        const vgap = Math.max(a.y0 - b.y1, b.y0 - a.y1);
+        const xo = Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0);
+        const stripe = vgap <= 1.3 * rowH && xo >= 0.5 * Math.min(a.x1 - a.x0, b.x1 - b.x0);
+        if (a.x0 > b.x1 + 3 || b.x0 > a.x1 + 3 || (vgap > 3 && !stripe)) continue;
+        a.x0 = Math.min(a.x0, b.x0); a.y0 = Math.min(a.y0, b.y0); a.x1 = Math.max(a.x1, b.x1); a.y1 = Math.max(a.y1, b.y1);
+        a.items.push(...b.items);
+        clusters.splice(j, 1); j--; merged = true;
+      }
+    }
+  }
+  const rules = [];
+  const used = [];
+  for (const cl of clusters) {
+    if (cl.items.length < 4) continue;
+    const xs = uniqPositions(cl.items.flatMap((b) => [b.x0, b.x1]), 3);
+    const ys = uniqPositions(cl.items.flatMap((b) => [b.y0, b.y1]), 3);
+    if (xs.length < 3 || ys.length < 3) continue;
+    const covered = cl.items.reduce((n, b) => n + area(b), 0);
+    if (covered < 0.45 * area(cl)) continue;
+    // Boxes must not overlap each other (a tiling), beyond a sliver.
+    let overlap = 0;
+    for (let i = 0; i < cl.items.length; i++) for (let j = i + 1; j < cl.items.length; j++) {
+      const a = cl.items[i]; const b = cl.items[j];
+      overlap += Math.max(0, Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0)) * Math.max(0, Math.min(a.y1, b.y1) - Math.max(a.y0, b.y0));
+    }
+    if (overlap > 0.05 * covered) continue;
+    // The tiling's outer frame: unshaded rows between stripes keep their side boundaries.
+    rules.push({ axis: "h", x0: cl.x0, x1: cl.x1, y0: cl.y0, y1: cl.y0, thick: 0.5, fromBox: true });
+    rules.push({ axis: "h", x0: cl.x0, x1: cl.x1, y0: cl.y1, y1: cl.y1, thick: 0.5, fromBox: true });
+    rules.push({ axis: "v", x0: cl.x0, x1: cl.x0, y0: cl.y0, y1: cl.y1, thick: 0.5, fromBox: true });
+    rules.push({ axis: "v", x0: cl.x1, x1: cl.x1, y0: cl.y0, y1: cl.y1, thick: 0.5, fromBox: true });
+    for (const b of cl.items) {
+      rules.push({ axis: "h", x0: b.x0, x1: b.x1, y0: b.y0, y1: b.y0, thick: 0.5, fromBox: true });
+      rules.push({ axis: "h", x0: b.x0, x1: b.x1, y0: b.y1, y1: b.y1, thick: 0.5, fromBox: true });
+      rules.push({ axis: "v", x0: b.x0, x1: b.x0, y0: b.y0, y1: b.y1, thick: 0.5, fromBox: true });
+      rules.push({ axis: "v", x0: b.x1, x1: b.x1, y0: b.y0, y1: b.y1, thick: 0.5, fromBox: true });
+      used.push(b);
+    }
+  }
+  return { rules, boxes: used };
+}
+
+// Word count of the longest gap-separated token of a row.
+function longestToken(row) {
+  const chars = Math.max(1, row.words.reduce((n, w) => n + w.text.length, 0));
+  const charW = row.words.reduce((n, w) => n + (w.x1 - w.x0), 0) / chars || 0.5 * row.size;
+  const threshold = Math.max(1.8 * charW, 0.6 * row.size);
+  let best = 0; let cur = 0; let last = null;
+  for (const w of row.words) {
+    if (last && w.x0 - last.x1 < threshold) cur++; else cur = 1;
+    best = Math.max(best, cur);
+    last = w;
+  }
+  return best;
 }
 
 // Gap-separated tokens of a row that are numbers or at most two words.
@@ -146,7 +241,8 @@ function coverage(segs, axis, pos, a, b, tol = 1.5) {
 
 // Returns { tables, bands, usedWords:Set, usedRules:Set(segment index), components }
 export function findLatticeTables({ rules = [], boxes = [], words = [] }, { minW = 40, minH = 20 } = {}) {
-  const snapped = snapRules(rules);
+  const tiling = boxGridRules(boxes);
+  const snapped = snapRules(tiling.rules.length ? [...rules, ...tiling.rules] : rules);
   const segs = segmentsOf(snapped);
   const uf = new UF(segs.length);
   for (let i = 0; i < segs.length; i++) for (let j = i + 1; j < segs.length; j++) if (connected(segs[i], segs[j])) uf.union(i, j);
@@ -157,6 +253,7 @@ export function findLatticeTables({ rules = [], boxes = [], words = [] }, { minW
   const bands = [];
   const usedWords = new Set();
   const usedRules = new Set();
+  const released = []; // words of frame rows (title, notes) handed back to the text pass
   const leftover = []; // horizontal rules not consumed by a grid table
   for (const comp of comps.values()) {
     const hs = comp.filter((s) => s.axis === "h");
@@ -187,6 +284,8 @@ export function findLatticeTables({ rules = [], boxes = [], words = [] }, { minW
     if (grid && grid.coverage >= 0.4 && grid.rows >= 2 && grid.cols >= 2) {
       const table = assembleTable(grid, comp, boxes, words, ysAll, usedWords);
       if (table) {
+        released.push(...(table.released || []));
+        delete table.released;
         tables.push(table);
         for (const s of comp) usedRules.add(s);
         continue;
@@ -195,7 +294,7 @@ export function findLatticeTables({ rules = [], boxes = [], words = [] }, { minW
     // Hollow grid (partial verticals inside wider horizontals): one band when its text reads
     // as rows. Otherwise the horizontals are free rules; a frame around prose is not a table.
     const innerV = xs.filter((x) => x > hx0 + 3 && x < hx1 - 3).length;
-    if (hs.length >= 2 && vs.length && (innerV > 0 || tabularBetween(words, { x0, x1, y0, y1 }).tabular)) {
+    if (ys.length >= 2 && vs.length && (innerV > 0 || tabularBetween(words, { x0, x1, y0, y1 }).tabular)) {
       bands.push(makeBand(hs, xs));
       continue;
     }
@@ -230,7 +329,13 @@ export function findLatticeTables({ rules = [], boxes = [], words = [] }, { minW
     if (band.x1 - band.x0 < minW || band.y1 - band.y0 < minH) continue;
     bands.push(band);
   }
-  return { tables, bands, usedWords, usedRules, segments: segs };
+  // Boxes that drew a table's grid or sit inside one are the table's, not a figure's.
+  const usedBoxes = new Set();
+  for (const b of boxes) {
+    const inside = tables.some((t) => b.x0 >= t.bbox[0] - 2 && b.x1 <= t.bbox[2] + 2 && b.y0 >= t.bbox[1] - 2 && b.y1 <= t.bbox[3] + 2);
+    if (inside) usedBoxes.add(b);
+  }
+  return { tables, bands, usedWords, usedRules, usedBoxes, released, segments: segs };
 }
 
 function makeBand(group, xs) {
@@ -296,12 +401,28 @@ export function splitRowsByText(grid, words) {
       }
       const aligned = perCol.filter((p) => p.lines >= 2 && p.short === p.lines);
       const numericCols = perCol.filter((p) => p.lines >= 2 && p.numeric >= 0.5 * p.lines);
-      if (aligned.length >= 2 && numericCols.length >= 1) {
+      // Data rows carry numbers in two or more columns on one baseline; a wrapped header
+      // stacks words with at most a stray number per line.
+      const numericRows = rowsIn.filter((row) => {
+        const cs = new Set();
+        for (const w of row.words) { const c = colOf(w); if (c >= 0 && isNumericText(w.text)) cs.add(c); }
+        return cs.size >= 2;
+      }).length;
+      if (aligned.length >= 2 && numericCols.length >= 1 && numericRows >= 2) {
+        // A line in one column set tighter than the row pitch is a wrapped cell, not a row.
+        const pitches = rowsIn.slice(1).map((r, i) => r.base - rowsIn[i].base).sort((a, b) => a - b);
+        const pitch = pitches[pitches.length >> 1];
+        const colsOf = (r) => new Set(r.words.map(colOf).filter((c) => c >= 0));
         for (let i = 1; i < rowsIn.length; i++) {
           const a = rowsIn[i - 1]; const b = rowsIn[i];
+          const tight = b.base - a.base < 0.7 * pitch;
+          if (tight && (colsOf(a).size <= 1 || colsOf(b).size <= 1)) continue;
           cuts.push((a.base + 0.22 * a.size + b.base - 0.8 * b.size) / 2);
         }
-      }
+      } else cuts = proseRowCuts(rowsIn, colOf);
+    } else if (rowsIn.length === 2) {
+      const colOf = (w) => { const mid = (w.x0 + w.x1) / 2; for (let c = 0; c < cols; c++) if (mid >= xs[c] && mid < xs[c + 1]) return c; return -1; };
+      cuts = proseRowCuts(rowsIn, colOf);
     }
     for (const y of cuts) { newYs.push(y); newTop.push(Array.from({ length: cols }, () => true)); newLeft.push(grid.left[r]); changed = true; }
     newYs.push(ys[r + 1]);
@@ -310,6 +431,65 @@ export function splitRowsByText(grid, words) {
   }
   if (!changed) return grid;
   return { ...grid, ys: newYs, rows: newYs.length - 1, top: newTop, left: newLeft, splitRows: true };
+}
+
+// Unruled rows of prose cells inside one ruled row: baselines fall into groups separated by
+// a blank line, and most groups start with text in two or more columns on one baseline.
+function proseRowCuts(rowsIn, colOf) {
+  const groups = [[rowsIn[0]]];
+  const hasLabel = (r) => r.words.some((w) => colOf(w) === 0);
+  for (let i = 1; i < rowsIn.length; i++) {
+    const a = rowsIn[i - 1]; const b = rowsIn[i];
+    if (b.base - a.base > 1.7 * Math.min(a.size, b.size) && hasLabel(b)) groups.push([b]);
+    else groups[groups.length - 1].push(b);
+  }
+  if (groups.length < 2) return [];
+  let aligned = 0;
+  for (const g of groups) {
+    const cols = new Set();
+    for (const w of g[0].words) { const c = colOf(w); if (c >= 0) cols.add(c); }
+    if (cols.size >= 2) aligned++;
+  }
+  if (aligned < Math.ceil(groups.length * 0.5)) return [];
+  const cuts = [];
+  for (let i = 1; i < groups.length; i++) {
+    const a = groups[i - 1][groups[i - 1].length - 1]; const b = groups[i][0];
+    cuts.push((a.base + 0.22 * a.size + b.base - 0.8 * b.size) / 2);
+  }
+  return cuts;
+}
+
+const NOTES_RE = /^(notes?|sources?|exhibit reads|table reads|figure reads|\*|[a-z]\s|\d\s)/i;
+
+// A ruled frame that encloses the title above the table and the notes below it: leading rows
+// made of one full-width cell that reads as a caption, and trailing full-width rows of notes.
+function frameRows(cells, rows, cols) {
+  const fullRow = (r) => {
+    const at = cells.filter((k) => r >= k.r && r < k.r + k.rowSpan);
+    if (at.length !== 1 || at[0].colSpan !== cols || at[0].rowSpan !== 1) return null;
+    return at[0];
+  };
+  const drop = new Set();
+  for (let r = 0; r < rows - 1; r++) {
+    const k = fullRow(r);
+    if (!k) break;
+    const text = cellTextOf(k.words);
+    const n = text ? text.split(/\s+/).length : 0;
+    if (!text || CAPTION_START_RE.test(text) || (r === 0 && n >= 6)) drop.add(r);
+    else break;
+  }
+  // Trailing block of full-width rows: dropped from the topmost row that reads as a note
+  // downward (continuation lines of a note are short, so the block is judged as a whole).
+  const trailing = [];
+  for (let r = rows - 1; r > 0; r--) {
+    const k = fullRow(r);
+    if (!k || drop.has(r)) break;
+    trailing.unshift({ r, text: cellTextOf(k.words) });
+  }
+  const first = trailing.findIndex((t) => !t.text || NOTES_RE.test(t.text) || t.text.split(/\s+/).length >= 8);
+  if (first >= 0) for (const t of trailing.slice(first)) drop.add(t.r);
+  if (drop.size >= rows - 1) return new Set();
+  return drop;
 }
 
 function assembleTable(gridIn, segs, boxes, words, ysAll, usedWords) {
@@ -368,22 +548,50 @@ function assembleTable(gridIn, segs, boxes, words, ysAll, usedWords) {
     const cell = lookup(cx, cy);
     if (!cell) continue;
     cell.words.push(w);
-    usedWords.add(w);
     inWords++;
   }
   if (!inWords) return null;
+  const framed = frameRows(cells, rows, cols);
+  const released = [];
+  if (framed.size) {
+    const keep = [];
+    for (const k of cells) { if (framed.has(k.r)) released.push(...k.words); else keep.push(k); }
+    const rowMap = [];
+    const newYs = [];
+    let next = 0;
+    for (let r = 0; r < rows; r++) { rowMap[r] = framed.has(r) ? -1 : next++; if (!framed.has(r)) newYs.push(ys[r]); }
+    newYs.push(ys[rows]);
+    for (let r = rows - 1; r >= 0; r--) if (!framed.has(r)) { newYs[newYs.length - 1] = ys[r + 1]; break; }
+    for (const k of keep) { k.r = rowMap[k.r]; k.bbox = [round(xs[k.c]), round(newYs[k.r]), round(xs[k.c + k.colSpan]), round(newYs[k.r + k.rowSpan])]; }
+    return finishTable({ xs, ys: newYs, rows: newYs.length - 1, cols, coverage: grid.coverage }, keep, boxes, ysAll, usedWords, splitFixes, released);
+  }
+  return finishTable(grid, cells, boxes, ysAll, usedWords, splitFixes, released);
+}
+
+function finishTable(grid, cells, boxes, ysAll, usedWords, splitFixes, released) {
+  const { xs, ys, rows, cols } = grid;
+  const bx0 = xs[0]; const bx1 = xs[cols]; const by0 = ys[0]; const by1 = ys[rows];
+  for (const cell of cells) for (const w of cell.words) usedWords.add(w);
   // Header rows: shaded (light box over the row) or all-bold leading rows, or a double rule below.
-  const rowShaded = [];
+  // Header shading: a fill (light or dark) that covers the leading rows and no later row;
+  // zebra striping recurs down the body and is not a header.
+  const rowFill = [];
   for (let r = 0; r < rows; r++) {
     const rowH = ys[r + 1] - ys[r];
-    let shade = 0;
+    const byFill = new Map();
     for (const b of boxes) {
-      if (!b.light) continue;
       const oy = Math.min(b.y1, ys[r + 1]) - Math.max(b.y0, ys[r]);
       const ox = Math.min(b.x1, bx1) - Math.max(b.x0, bx0);
-      if (oy > 0.5 * rowH && ox > 0) shade += ox;
+      if (oy > 0.5 * rowH && ox > 0) { const k = JSON.stringify(b.fill ?? (b.light ? "light" : "dark")); byFill.set(k, (byFill.get(k) || 0) + ox); }
     }
-    rowShaded[r] = shade >= 0.5 * (bx1 - bx0);
+    let best = null;
+    for (const [k, v] of byFill) if (v >= 0.5 * (bx1 - bx0) && (!best || v > best.v)) best = { k, v };
+    rowFill[r] = best ? best.k : null;
+  }
+  const rowShaded = [];
+  for (let r = 0; r < rows; r++) {
+    const k = rowFill[r];
+    rowShaded[r] = Boolean(k) && rowFill.slice(0, r + 1).every((f) => f === k) && !rowFill.slice(r + 1).includes(k);
   }
   const rowBold = [];
   for (let r = 0; r < rows; r++) {
@@ -418,6 +626,7 @@ function assembleTable(gridIn, segs, boxes, words, ysAll, usedWords) {
     cells, method: "lattice",
     grid: { xs: xs.map(round), ys: ys.map(round) },
     confidence: round(confidence),
+    released,
   };
 }
 

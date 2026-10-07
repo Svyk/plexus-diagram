@@ -16,11 +16,15 @@ export function findFurniture(pages, { band = 0.08 } = {}) {
     if (!candidates.has(key)) candidates.set(key, []);
     candidates.get(key).push({ page, line, y: line.base });
   };
+  const alone = new Set();
   for (const pg of pages) {
     for (const line of pg.lines) {
       const mid = (line.y0 + line.y1) / 2;
       if (mid <= pg.h * band) cand(line, pg.n, "top");
       else if (mid >= pg.h * (1 - band)) cand(line, pg.n, "bottom");
+      else continue;
+      // A page number stands alone on its baseline; a year in a table header row does not.
+      if (!pg.lines.some((o) => o !== line && Math.abs(o.base - line.base) <= 0.3 * Math.max(o.size, line.size))) alone.add(line);
     }
   }
   const removed = [];
@@ -30,7 +34,7 @@ export function findFurniture(pages, { band = 0.08 } = {}) {
     const recurring = pagesSeen.size >= need && n >= 2;
     for (const e of list) {
       const text = e.line.text.trim();
-      const pageNum = PAGE_NUM_RE.test(text);
+      const pageNum = PAGE_NUM_RE.test(text) && alone.has(e.line);
       let ok = pageNum;
       if (recurring) {
         const ys = list.filter((o) => o.page !== e.page).map((o) => o.y);

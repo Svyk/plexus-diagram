@@ -1,0 +1,10 @@
+#!/bin/sh
+# Prefer the Homebrew 3.14 env (docling is already installed there).
+# Fall back to uv + CPython 3.12 only when those imports fail.
+ROOT=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd)
+PY314=/opt/homebrew/opt/python@3.14/bin/python3.14
+if [ -x "$PY314" ] && "$PY314" -c "import docling, fastapi, uvicorn, pypdfium2" >/dev/null 2>&1; then
+  export PYTHONPATH="$ROOT${PYTHONPATH:+:$PYTHONPATH}"
+  exec "$PY314" -m plexus_parse_helper "$@"
+fi
+exec uv run --python 3.12 --project "$ROOT" python -m plexus_parse_helper "$@"

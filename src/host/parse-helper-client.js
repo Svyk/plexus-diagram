@@ -250,5 +250,36 @@ export function createHelperClient({ fetch: fetchImpl, settings, now, timeoutMs 
     return { doc, merged, cached: false, sha256: sha, job: job.job };
   }
 
-  return { health, parse, cancel, reparseTable };
+  // Scanned pages: POST /v1/ocr with the PDF bytes. `pages` → pxd-ocr/1 page records
+  // (cached by the helper); `cells` → re-read of single cells, never cached. One call.
+  async function ocr({ bytes, sha256, pages, cells, signal } = {}) {
+    const { url, token } = config();
+    const sha = sha256 || await sha256Hex(bytes);
+    const options = {};
+    if (pages && pages.length) options.pages = pages;
+    if (cells && cells.length) options.cells = cells.map((c) => ({ page: c.page, bbox: c.bbox }));
+    const res = await call(`${url}/v1/ocr`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/pdf",
+        "X-Pxd-Options": JSON.stringify(options),
+      },
+      body: bytes,
+    }, signal);
+    let body = null;
+    try { body = await res.json(); } catch { body = null; }
+    if (res.status < 200 || res.status >= 300) {
+      const error = new Error(body?.error || `ocr ${res.status}`);
+      error.status = res.status;
+      throw error;
+    }
+    if (cells && cells.length && Array.isArray(body?.cells)) {
+      // Hand the caller's ids back beside the helper's answers (same order as sent).
+      body.cells = body.cells.map((c, i) => ({ ...cells[i], ...c }));
+    }
+    return { ...body, sha256: sha };
+  }
+
+  return { health, parse, cancel, reparseTable, ocr };
 }

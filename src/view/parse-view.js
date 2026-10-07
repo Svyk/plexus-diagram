@@ -10,7 +10,8 @@ import { selectBlocks, tableGrid } from "../model/parse-schema.js";
 import { toCSV, toMarkdown } from "../model/parse-to-text.js";
 import { imageKey } from "../host/parse-store.js";
 import { parsedDocTitle } from "../model/pdf.js";
-import { loadPageData } from "./parse-engine.js";
+import { loadPageData, readScan } from "./parse-engine.js";
+import { scanPagesOf } from "../model/parse/ocr-merge.js";
 import { createParseOverlay } from "./parse-overlay.js";
 import { cropRect, createCropQueue } from "./parse-crop.js";
 import { makeHighlight } from "./make-highlight.js";
@@ -255,6 +256,7 @@ export function createParseView({
   adoptCreated = null,
   getContext = null,
   clock = null,
+  scanAuto = false,
 } = {}) {
   const el = (tag, cls, parent) => {
     const node = doc.createElement(tag);
@@ -322,6 +324,12 @@ export function createParseView({
   const filterPop = el("div", "pxd-parse__pop", filterMenu);
   filterPop.setAttribute("role", "menu");
   setHidden(filterPop, true);
+  // Scanned pages (image only, or an old OCR text layer): OCR through the helper, then the
+  // built-in engine. Shown only when the parse has such pages and the helper is ready.
+  const scanBtn = el("button", "pxd-parse__scan", bar);
+  scanBtn.type = "button";
+  scanBtn.textContent = "Read the scan";
+  scanBtn.hidden = true;
   const filters = { text: true, table: true, figure: true, formula: true };
   const filterBtns = {};
   for (const name of ["Text", "Tables", "Figures", "Formulas"]) {
@@ -646,6 +654,7 @@ export function createParseView({
     }
     paintFoot();
     paintChip();
+    paintScan();
   }
 
   function indexOfId(id) {
@@ -956,6 +965,65 @@ export function createParseView({
       to,
     });
     await finishDoc(finalDoc, now() - t0);
+    // Engine "auto" with a ready helper reads scanned pages without a click.
+    if (scanAuto && scanPagesOf(finalDoc).length) {
+      await refreshHelper();
+      if (helperState === "ready") await readScanNow();
+    }
+  }
+
+  function paintScan() {
+    const pages = parsed ? scanPagesOf(parsed) : [];
+    scanBtn.hidden = !(pages.length && helperState === "ready" && phase !== "running" && typeof helper?.ocr === "function");
+    if (!scanBtn.hidden) scanBtn.textContent = pages.length === 1 ? `Read the scan (p. ${pages[0]})` : `Read the scan (${pages.length} pages)`;
+  }
+
+  // Read the scan: helper OCR for the scan pages of the current parse, engine on the result,
+  // merged into the document (a scanLayer page keeps the better table reading). No writes.
+  async function readScanNow() {
+    if (!parsed || !helper || typeof helper.ocr !== "function" || helperState !== "ready") return;
+    const pages = scanPagesOf(parsed);
+    if (!pages.length) return;
+    cancel();
+    const ctrl = new AbortController();
+    abort = ctrl;
+    phase = "running";
+    progress = { page: 0, pageCount: pages.length, engine: "builtin" };
+    paintChip();
+    paintScan();
+    try {
+      const pdf = typeof getPdf === "function" ? await getPdf() : null;
+      if (ctrl.signal.aborted) return;
+      const bytes = pdf && typeof pdf.getData === "function" ? await pdf.getData() : null;
+      if (ctrl.signal.aborted) return;
+      const [from, to] = parsed.stats?.range || [1, parsed.pageCount || 1];
+      let recs = records.length ? records : [];
+      if (!recs.length) {
+        for (let n = from; n <= to; n += 1) {
+          if (pages.includes(n)) continue;
+          recs.push(await geometryOf(n, pdf));
+          if (ctrl.signal.aborted) return;
+        }
+      }
+      const t0 = now();
+      const result = await readScan({
+        helper, bytes, sha256: parsed.sha256, base: parsed, records: recs, pages,
+        numPages: parsed.pageCount, from, to, signal: ctrl.signal,
+        onPhase: (info) => {
+          progress = { page: info?.phase === "cells" ? pages.length : 0, pageCount: pages.length, engine: "builtin" };
+          paintChip();
+          onProgress?.({ page: progress.page, pageCount: pages.length, fraction: info?.phase === "cells" ? 0.9 : 0.3 });
+        },
+      });
+      if (ctrl.signal.aborted) return;
+      if (result?.records) records = result.records;
+      await finishDoc(result.doc, (parsed.stats?.ms || 0) + (now() - t0));
+    } catch (error) {
+      if (error?.name !== "AbortError") { try { onToast?.(`Read the scan failed: ${error?.message || error}`); } catch { /* host */ } }
+      phase = "idle";
+      paintChip();
+    }
+    paintScan();
   }
 
   async function parseDocling() {
@@ -1194,6 +1262,7 @@ export function createParseView({
   listen(chip, "click", () => { toggleMenu(enginePop); });
   listen(againBtn, "click", () => { closeMenus(); void parseBuiltin(); });
   listen(cancelBtn, "click", () => { closeMenus(); cancel(); });
+  listen(scanBtn, "click", () => { closeMenus(); void readScanNow(); });
   listen(doclingBtn, "click", () => {
     closeMenus();
     void (async () => {
@@ -1318,6 +1387,8 @@ export function createParseView({
 
   return {
     element: () => root,
+    refreshHelper,
+    readScan: readScanNow,
     setTarget(next) {
       currentUrl = next?.url || "";
       currentUid = next?.pdfUid || "";

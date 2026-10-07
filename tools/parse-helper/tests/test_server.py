@@ -52,7 +52,7 @@ def test_health_cors_and_forbidden_origin(tmp_path):
     body = ok.json()
     assert body["schema"] == "pxd-parse/1"
     assert body["version"] == "0.1.0"
-    assert body["engines"] == ["docling"]
+    assert body["engines"] == ["docling", "ocr"]
     assert body["warm"] is False
     pre = client.options("/v1/health", headers={"Origin": "https://roamresearch.com"})
     assert pre.status_code == 204

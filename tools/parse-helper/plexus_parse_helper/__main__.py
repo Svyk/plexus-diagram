@@ -99,6 +99,25 @@ def cmd_parse(args) -> int:
     return 0
 
 
+def cmd_ocr(args) -> int:
+    from plexus_parse_helper.ocr import ocr_cells, ocr_pdf
+
+    if args.cells:
+        cells = json.loads(Path(args.cells).read_text(encoding="utf-8"))
+        out = ocr_cells(args.pdf, cells)
+    else:
+        out = ocr_pdf(args.pdf, _pages(args.pages), on_page=lambda n, of: print(f"page {n}/{of}", file=sys.stderr))
+    if args.json:
+        path = Path(args.json)
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_text(json.dumps(out, ensure_ascii=False), encoding="utf-8")
+    if args.cells:
+        print(json.dumps({"cells": len(out["cells"])}))
+    else:
+        print(json.dumps({"pages": [{"n": p["n"], "items": len(p["items"]), "rules": len(p["rules"]), "deskew": p["deskew"]} for p in out["pages"]]}))
+    return 0
+
+
 def _render_plist() -> dict:
     text = PLIST_TEMPLATE.read_text(encoding="utf-8")
     text = text.replace("__BIN__", str(BIN))
@@ -150,6 +169,13 @@ def main(argv: list[str] | None = None) -> int:
     parse.add_argument("--ocr", default="auto", choices=["auto", "on", "off"])
     parse.add_argument("--truth", default=None)
     parse.set_defaults(func=cmd_parse)
+
+    ocr = sub.add_parser("ocr", help="Vision word boxes + ruling lines for scanned pages (pxd-ocr/1)")
+    ocr.add_argument("pdf")
+    ocr.add_argument("--pages", default=None, help="1,3,5-9")
+    ocr.add_argument("--json", default=None)
+    ocr.add_argument("--cells", default=None, help="JSON file of [{page, bbox}] cells to re-read at 3x")
+    ocr.set_defaults(func=cmd_ocr)
 
     sub.add_parser("install-agent").set_defaults(func=cmd_install_agent)
     sub.add_parser("uninstall-agent").set_defaults(func=cmd_uninstall_agent)

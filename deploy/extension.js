@@ -29168,6 +29168,7 @@ function piecesOf(item, transform, fonts) {
   const scaleX = Math.hypot(m[0], m[1]) / (Math.hypot(item.transform[0], item.transform[1]) || 1);
   const width = (item.width || 0) * scaleX;
   const flags = fontFlags(item.fontName, fonts);
+  const ocrWord = item.fontName === "ocr";
   if (!str2.trim()) return [{ space: true, x0: x, x1: x + width, base, size, rotated, angle }];
   const spaced = letterSpaced(str2) ? str2.replace(/\s+/g, "") : null;
   if (spaced) {
@@ -29203,8 +29204,10 @@ function piecesOf(item, transform, fonts) {
         mathChars: math,
         rotated,
         angle,
-        leadingSpace: start > 0 && str2[start - 1] === " ",
-        trailingSpace: end < str2.length && str2[end] === " "
+        leadingSpace: ocrWord || start > 0 && str2[start - 1] === " ",
+        trailingSpace: ocrWord || end < str2.length && str2[end] === " ",
+        conf: item.conf,
+        boxY: ocrWord && item.y0 != null && item.y1 != null ? [item.y0, item.y1] : null
       });
     }
     i = end;
@@ -29322,6 +29325,7 @@ function mergeWords(pieces, rowSize) {
       if (p.italic) cur.italicChars += p.text.length;
       if (p.mathFont) cur.mathFontChars += p.text.length;
       if (p.mono) cur.monoChars += p.text.length;
+      if (p.conf != null) cur.conf = cur.conf == null ? p.conf : Math.min(cur.conf, p.conf);
       continue;
     }
     cur = {
@@ -29341,14 +29345,17 @@ function mergeWords(pieces, rowSize) {
       italicChars: p.italic ? p.text.length : 0,
       mathFontChars: p.mathFont ? p.text.length : 0,
       monoChars: p.mono ? p.text.length : 0,
-      trailingSpace: p.trailingSpace
+      trailingSpace: p.trailingSpace,
+      conf: p.conf,
+      boxY: p.boxY
     };
     words.push(cur);
     gapSpace = false;
   }
   for (const w of words) {
-    w.y0 = w.base - w.size * 0.8;
-    w.y1 = w.base + w.size * 0.22;
+    w.y0 = w.boxY ? w.boxY[0] : w.base - w.size * 0.8;
+    w.y1 = w.boxY ? w.boxY[1] : w.base + w.size * 0.22;
+    delete w.boxY;
     w.bold = w.boldChars >= w.text.length / 2;
     w.italic = w.italicChars >= w.text.length / 2;
     w.mono = w.monoChars >= w.text.length / 2;
@@ -30965,13 +30972,29 @@ function visualRows(words) {
   const rows = [];
   for (const w of sorted) {
     const r = rows[rows.length - 1];
-    if (r && w.y0 < r.y1 - 1) {
+    if (r && w.y0 < r.y1 - 1 && !ocrApart(r, w)) {
       r.words.push(w);
       r.y1 = Math.max(r.y1, w.y1);
       r.y0 = Math.min(r.y0, w.y0);
     } else rows.push({ y0: w.y0, y1: w.y1, words: [w] });
   }
   return rows;
+}
+function ocrApart(row4, w) {
+  if (w.conf == null) return false;
+  const anchor = row4.words[0];
+  if (anchor.conf == null) return false;
+  const em = Math.max(w.size, anchor.size);
+  if (Math.abs(w.base - anchor.base) <= 0.7 * em) return false;
+  for (const u of row4.words) {
+    const gap = Math.abs(w.base - u.base);
+    if (gap < 0.8 * em || gap > 1.6 * em) continue;
+    if (Math.min(w.x1, u.x1) - Math.max(w.x0, u.x0) <= 0) continue;
+    const lo = Math.min(w.base, u.base) + 0.2 * em;
+    const hi = Math.max(w.base, u.base) - 0.2 * em;
+    if (row4.words.some((v) => v.base > lo && v.base < hi)) return false;
+  }
+  return true;
 }
 function bandRows(words) {
   const base = baselineGroups(words);
@@ -32010,6 +32033,273 @@ function boxOfUnits(units) {
   };
 }
 
+// src/model/parse/ocr-fix.js
+var LOW_CONF = 0.3;
+var NUMERIC_COLUMN_SHARE = 0.8;
+var DIGIT_MAP = { O: "0", o: "0", D: "0", Q: "0", B: "8", S: "5", s: "5", l: "1", I: "1", "|": "1", Z: "2", G: "6", "Б": "6", "б": "6", "А": "4" };
+var NUMERIC_LIKE_RE = /^[\dOoDQBSslIZGБбА|.,()%+\-–—\s]+$/;
+var PLACEHOLDER_RE = /^(?:[-–—]{1,3}|\*{1,3}|n\/?a|nn)$/i;
+function isPlaceholder(text3) {
+  return PLACEHOLDER_RE.test(String(text3 || "").trim());
+}
+function numericLike(text3) {
+  const s = String(text3 || "").trim();
+  return s.length > 0 && NUMERIC_LIKE_RE.test(s) && (/\d/.test(s) || /[OoDQBSslIZGБб]\s*[.,]\s*[OoDQBSslIZGБб]/.test(s));
+}
+function decimalStyle(values) {
+  let period = 0;
+  let comma = 0;
+  for (const v of values) {
+    if (/\d\.\d/.test(v)) period++;
+    if (/\d,\d{1,2}(?!\d)/.test(v)) comma++;
+  }
+  if (!period && !comma) return null;
+  return period >= comma ? "." : ",";
+}
+function repairNumber(text3, { decimal = ".", leadingZero = true } = {}) {
+  let s = String(text3 || "").trim();
+  if (!s) return s;
+  s = s.replace(/(\d)\s*([.,])\s*(\d)/g, "$1$2$3").replace(/(\d)\s+(\d)/g, "$1$2");
+  const toStyle = (v) => decimal === "." ? v.replace(/^(\d+),(\d{1,2})$/, "$1.$2") : decimal === "," ? v.replace(/^(\d+)\.(\d{1,2})$/, "$1,$2") : v;
+  const lead = (v) => leadingZero ? v.replace(/^([.,])(\d)/, "0$1$2") : v;
+  s = lead(toStyle(s));
+  if (isNumericText(s) || isPlaceholder(s)) return s;
+  if (!numericLike(s)) return null;
+  s = lead(toStyle(s.replace(/[OoDQBSslIZGБбА|]/g, (ch) => DIGIT_MAP[ch] ?? ch)));
+  return isNumericText(s) ? s : null;
+}
+function bodyCellsOfColumn(table, c) {
+  return table.cells.filter((k) => k.c === c && k.colSpan === 1 && k.r >= (table.headerRows || 0));
+}
+function repairNumericColumns(table, { share = NUMERIC_COLUMN_SHARE } = {}) {
+  const fixed = [];
+  const unrepaired = [];
+  const numericCols = [];
+  for (let c = 0; c < table.cols; c++) {
+    const body = bodyCellsOfColumn(table, c).filter((k) => k.text && k.text.trim());
+    if (body.length < 2) continue;
+    const numeric = body.filter((k) => isNumericText(k.text) || isPlaceholder(k.text));
+    const mappable = body.filter((k) => !isNumericText(k.text) && !isPlaceholder(k.text) && numericLike(k.text) && repairNumber(k.text) != null);
+    if (numeric.length + mappable.length < share * body.length || numeric.length === 0) continue;
+    numericCols.push(c);
+    const values = numeric.filter((k) => isNumericText(k.text)).map((k) => k.text);
+    const decimal = decimalStyle(values) || ".";
+    const leadingZero = !values.some((v) => /^[.,]\d/.test(v));
+    for (const cell of body) {
+      if (/^[-–—]{1,3}$/.test(cell.text.trim()) && cell.text.trim() !== "—") {
+        cell.text = "—";
+        cell.numeric = false;
+        continue;
+      }
+      if (isNumericText(cell.text) || isPlaceholder(cell.text)) continue;
+      const to = repairNumber(cell.text, { decimal, leadingZero });
+      if (to != null && to !== cell.text) {
+        fixed.push({ r: cell.r, c: cell.c, from: cell.text, to });
+        cell.text = to;
+        cell.numeric = true;
+        cell.repaired = true;
+      } else if (to == null) {
+        cell.conf = Math.min(cell.conf ?? 1, LOW_CONF);
+        unrepaired.push({ r: cell.r, c: cell.c, text: cell.text });
+      }
+    }
+  }
+  return { fixed, unrepaired, numericCols };
+}
+function repairYearHeader(table) {
+  const fixed = [];
+  for (let r = 0; r < (table.headerRows || 0); r++) {
+    const row4 = table.cells.filter((k) => k.r === r && k.colSpan === 1).sort((a, b) => a.c - b.c);
+    const years = row4.map((k) => /^\d{4}$/.test(k.text || "") ? Number(k.text) : null);
+    if (years.filter((y) => y != null).length < 4) continue;
+    for (const step of [-1, 1]) {
+      const votes = /* @__PURE__ */ new Map();
+      years.forEach((y, i) => {
+        if (y != null) votes.set(y - step * i, (votes.get(y - step * i) || 0) + 1);
+      });
+      let base = null;
+      let n2 = 0;
+      for (const [k, v] of votes) if (v > n2) {
+        n2 = v;
+        base = k;
+      }
+      if (n2 < 0.6 * years.filter((y) => y != null).length || n2 < 3) continue;
+      years.forEach((y, i) => {
+        if (y == null) return;
+        const want = base + step * i;
+        if (want === y || editDistance(String(want), String(y)) !== 1) return;
+        fixed.push({ r, c: row4[i].c, from: row4[i].text, to: String(want) });
+        row4[i].text = String(want);
+        row4[i].repaired = true;
+      });
+      break;
+    }
+  }
+  return fixed;
+}
+function editDistance(a, b) {
+  const m = a.length;
+  const n2 = b.length;
+  const d = Array.from({ length: m + 1 }, (_, i) => [i, ...Array(n2).fill(0)]);
+  for (let j = 1; j <= n2; j++) d[0][j] = j;
+  for (let i = 1; i <= m; i++) for (let j = 1; j <= n2; j++) d[i][j] = Math.min(d[i - 1][j] + 1, d[i][j - 1] + 1, d[i - 1][j - 1] + (a[i - 1] === b[j - 1] ? 0 : 1));
+  return d[m][n2];
+}
+function spanNoteRows(table, { numericCols = null } = {}) {
+  const spans = [];
+  const cols = table.cols;
+  const numericSet = numericCols ? new Set(numericCols) : null;
+  const headerRows = table.headerRows || 0;
+  for (let r = headerRows; r < table.rows; r++) {
+    const row4 = table.cells.filter((k) => k.r === r).sort((a, b) => a.c - b.c);
+    const values = row4.filter((k) => k.c > 0);
+    if (values.length < 2) continue;
+    const filled = values.filter((k) => k.text && k.text.trim());
+    if (!filled.length) continue;
+    let prefixEnd = 0;
+    for (const k of values) {
+      if (k.c !== prefixEnd + 1 || k.colSpan !== 1 || !isNumericText(k.text)) break;
+      prefixEnd = k.c;
+    }
+    const rest = filled.filter((k) => k.c > prefixEnd);
+    if (!rest.length) continue;
+    if (rest.some((k) => isNumericText(k.text) && !/^\d{4}$/.test(k.text))) continue;
+    let text3 = rest.map((k) => k.text.trim()).join(" ");
+    if (rest.length > 1 && rest.every((k) => isPlaceholder(k.text) && k.text.trim() === rest[0].text.trim())) text3 = rest[0].text.trim();
+    const words = text3.split(/\s+/);
+    const prose = words.length >= 3 && /[A-Za-z]{3,}/.test(text3);
+    if (!prose && !(isPlaceholder(text3) && !/^[-–—]+$/.test(text3))) continue;
+    if (numericSet && !rest.every((k) => numericSet.has(k.c) || k.colSpan > 1)) continue;
+    const start = prefixEnd + 1;
+    const end = cols - 1;
+    if (end - start + 1 < 2) continue;
+    const first = rest[0];
+    const keep = { ...first, c: start, colSpan: end - start + 1, text: text3, align: "center", numeric: false, header: false };
+    const removed = new Set(values.filter((k) => k.c >= start).map((k) => `${k.r}:${k.c}`));
+    table.cells = table.cells.filter((k) => !(k.r === r && removed.has(`${k.r}:${k.c}`)));
+    table.cells.push(keep);
+    spans.push({ r, c: start, colSpan: keep.colSpan, text: text3 });
+  }
+  if (spans.length) table.cells.sort((a, b) => a.r - b.r || a.c - b.c);
+  return spans;
+}
+function unspanNarrowCells(table) {
+  const xs2 = table.grid?.xs;
+  if (!xs2 || xs2.length !== table.cols + 1) return [];
+  const headerRows = table.headerRows || 0;
+  const changed2 = [];
+  const extra = [];
+  for (const cell of table.cells) {
+    if (cell.r < headerRows || cell.colSpan <= 1 || !cell.wbox || !cell.text) continue;
+    const cx = (cell.wbox[0] + cell.wbox[2]) / 2;
+    let col = -1;
+    for (let c = cell.c; c < cell.c + cell.colSpan; c++) if (cx >= xs2[c] && cx <= xs2[c + 1]) col = c;
+    if (col < 0 || cell.wbox[0] < xs2[col] - 1 || cell.wbox[2] > xs2[col + 1] + 1) continue;
+    for (let c = cell.c; c < cell.c + cell.colSpan; c++) {
+      if (c === col) continue;
+      extra.push({ r: cell.r, c, rowSpan: cell.rowSpan, colSpan: 1, text: "", header: false, bbox: [xs2[c], cell.bbox?.[1] ?? 0, xs2[c + 1], cell.bbox?.[3] ?? 0], align: cell.align, numeric: false, conf: 0, wbase: cell.wbase, wsize: cell.wsize });
+    }
+    changed2.push({ r: cell.r, from: cell.c, span: cell.colSpan, to: col });
+    cell.c = col;
+    cell.colSpan = 1;
+    cell.align = "right";
+    if (cell.bbox) cell.bbox = [xs2[col], cell.bbox[1], xs2[col + 1], cell.bbox[3]];
+  }
+  if (extra.length) {
+    table.cells.push(...extra);
+    table.cells.sort((a, b) => a.r - b.r || a.c - b.c);
+  }
+  return changed2;
+}
+function repairOcrTable(table) {
+  unspanNarrowCells(table);
+  const years = repairYearHeader(table);
+  const { fixed, unrepaired, numericCols } = repairNumericColumns(table);
+  const spans = spanNoteRows(table, { numericCols });
+  return { fixed: [...years, ...fixed], unrepaired, spans, numericCols };
+}
+function tableNumericValidity(table) {
+  let total = 0;
+  let good = 0;
+  for (let c = 1; c < table.cols; c++) {
+    const body = bodyCellsOfColumn(table, c).filter((k) => k.text && k.text.trim());
+    if (body.length < 2) continue;
+    const numeric = body.filter((k) => isNumericText(k.text) || isPlaceholder(k.text));
+    if (numeric.length < 0.5 * body.length) continue;
+    total += body.length;
+    good += numeric.length;
+  }
+  return { total, good, share: total ? good / total : 0 };
+}
+function cellsToReread(table, { numericCols = [] } = {}) {
+  const out = [];
+  const set = new Set(numericCols);
+  for (const cell of table.cells) {
+    if (cell.r < (table.headerRows || 0) || cell.colSpan !== 1 || !set.has(cell.c)) continue;
+    const empty = !cell.text || !cell.text.trim();
+    const low = (cell.conf ?? 1) <= LOW_CONF && !isNumericText(cell.text);
+    if (!empty && !low) continue;
+    const box2 = cell.wbox && !empty ? cell.wbox : rowBox(table, cell);
+    if (!box2) continue;
+    out.push({ page: table.page, bbox: box2, id: table.id, r: cell.r, c: cell.c, empty });
+  }
+  return out;
+}
+function rowBox(table, cell) {
+  const row4 = table.cells.filter((k) => k.r === cell.r && k.wbase != null);
+  if (!row4.length || !cell.bbox) return null;
+  const bases = row4.map((k) => k.wbase).sort((a, b) => a - b);
+  const base = bases[bases.length >> 1];
+  const size = Math.max(...row4.map((k) => k.wsize || 0)) || cell.bbox[3] - cell.bbox[1];
+  return [cell.bbox[0] + 1, base - 0.65 * size, cell.bbox[2] - 1, base + 0.12 * size];
+}
+function applyCellOcr(table, results) {
+  const applied = [];
+  for (const res of results || []) {
+    if (res.id && table.id && res.id !== table.id) continue;
+    const cell = table.cells.find((k) => k.r === res.r && k.c === res.c);
+    if (!cell) continue;
+    let text3 = String(res.text || "").trim().replace(/^[.·•\s]+(?=\S)/, "").replace(/(?<=\S)[.·•\s]+$/, (m) => /\d$/.test(m) ? m : "");
+    const column = bodyCellsOfColumn(table, cell.c).filter((k) => k !== cell && isNumericText(k.text)).map((k) => k.text);
+    const decimal = decimalStyle(column) || ".";
+    const leadingZero = !column.some((v) => /^[.,]\d/.test(v));
+    let to = null;
+    if (text3 && !/\s/.test(text3) && !isPlaceholder(text3)) {
+      const number = repairNumber(text3, { decimal, leadingZero });
+      if (number != null && fitsColumn(number, column)) to = number;
+    }
+    if (to == null && res.glyph && isPlaceholder(res.glyph) && (!cell.text || !cell.text.trim())) to = res.glyph;
+    if (to == null && /^(?:n\/?a|nn)$/i.test(text3) && (!cell.text || !cell.text.trim())) to = text3;
+    if (to == null || to === cell.text) continue;
+    applied.push({ r: cell.r, c: cell.c, from: cell.text, to });
+    cell.text = to;
+    cell.numeric = isNumericText(to);
+    cell.conf = res.conf ?? cell.conf;
+    cell.reread = true;
+  }
+  if (applied.length) spanNoteRows(table, { numericCols: table.repairs?.numericCols || null });
+  return applied;
+}
+function fitsColumn(number, column) {
+  if (!column.length) return true;
+  const decimals = (v) => {
+    const m = /[.,](\d+)$/.exec(v);
+    return m ? m[1].length : 0;
+  };
+  const counts = /* @__PURE__ */ new Map();
+  for (const v of column) counts.set(decimals(v), (counts.get(decimals(v)) || 0) + 1);
+  let typical = 0;
+  let best = -1;
+  for (const [k, n2] of counts) if (n2 > best) {
+    best = n2;
+    typical = k;
+  }
+  if (decimals(number) !== typical) return false;
+  const intDigits = (v) => v.replace(/[^\d.,]/g, "").split(/[.,]/)[0].length;
+  const widest = Math.max(...column.map(intDigits));
+  return intDigits(number) <= widest + 1;
+}
+
 // src/model/parse/index.js
 var SCHEMA2 = "pxd-parse/1";
 var ENGINE_VERSION = "plexus-builtin/1";
@@ -32046,7 +32336,12 @@ function parsePageGeometry(data, n2) {
     h = maxY - minY;
     ({ lines, rotated } = buildLines(data.items || [], { transform, fonts: data.fonts || {} }));
   }
-  const graphics = extractGraphics(data.ops, { transform });
+  const ocr = Boolean(data.scan && Array.isArray(data.rules));
+  if (ocr) {
+    data = { ...data, items: (data.items || []).filter((it) => !/^[.·•]+$/.test(it.str || "")) };
+    ({ lines, rotated } = buildLines(data.items, { transform, fonts: data.fonts || {} }));
+  }
+  const graphics = ocr ? ocrGraphics(data, w, h) : extractGraphics(data.ops, { transform });
   const words = lines.flatMap((l) => l.words);
   const pageArea = w * h;
   const imageArea = (im) => (im.x1 - im.x0) * (im.y1 - im.y0);
@@ -32086,7 +32381,24 @@ function parsePageGeometry(data, n2) {
     tables.splice(i, 1);
     for (const w2 of words) if (used.has(w2) && !figs.used.has(w2) && w2.x0 >= t.bbox[0] - 2 && w2.x1 <= t.bbox[2] + 2 && w2.base >= t.bbox[1] && w2.base <= t.bbox[3] + 2) used.delete(w2);
   }
-  return { n: n2, w, h, rotation: data.rotation || 0, textRotation, kind, scanLayer, lines, rotated, words, graphics, tables, figures, used, ms: round(now2() - t0) };
+  return { n: n2, w, h, rotation: data.rotation || 0, textRotation, kind, scanLayer, ocr, lines, rotated, words, graphics, tables, figures, used, ms: round(now2() - t0) };
+}
+function ocrGraphics(data, w, h) {
+  const rules = [];
+  const dots = [];
+  for (const it of data.items || []) {
+    if (!/^[.·•]+$/.test(it.str || "")) continue;
+    const size = it.transform[0];
+    const n2 = it.str.length;
+    for (let i = 0; i < n2; i++) dots.push({ x: it.transform[4] + (it.width || size) * (i + 0.5) / n2, y: it.transform[5] - 0.05 * size, r: 0.4 });
+  }
+  for (const r of data.rules || []) {
+    const horizontal = Math.abs(r.x1 - r.x0) >= Math.abs(r.y1 - r.y0);
+    const thick = r.thick || 0.5;
+    if (horizontal) rules.push({ axis: "h", x0: Math.min(r.x0, r.x1), x1: Math.max(r.x0, r.x1), y0: (r.y0 + r.y1) / 2, y1: (r.y0 + r.y1) / 2, thick });
+    else rules.push({ axis: "v", x0: (r.x0 + r.x1) / 2, x1: (r.x0 + r.x1) / 2, y0: Math.min(r.y0, r.y1), y1: Math.max(r.y0, r.y1), thick });
+  }
+  return { rules, boxes: [], dots, shapes: [], images: [{ x0: 0, y0: 0, x1: w, y1: h }], segments: rules.length, truncated: false };
 }
 function assembleDocument(pageRecords, { numPages, info = null, engineVersion = ENGINE_VERSION, sha256 = null, options = {}, from = 1, to = numPages } = {}) {
   const t1 = now2();
@@ -32317,6 +32629,10 @@ function assembleDocument(pageRecords, { numPages, info = null, engineVersion = 
       const id = nextId("t");
       const cap4 = captionFor2.get(t);
       const block = { id, type: "table", page: pg.n, bbox: t.bbox, rows: t.rows, cols: t.cols, headerRows: t.headerRows, headerCols: t.headerCols, cells: t.cells, caption: cap4 ? captionIds.get(cap4) : null, method: t.method, grid: t.grid, confidence: t.confidence, engine: "builtin" };
+      if (pg.ocr) {
+        annotateOcrCells(block, pg.words);
+        block.repairs = repairOcrTable(block);
+      }
       if (cap4) blocks[captionIds.get(cap4)].for = id;
       blocks[id] = block;
       units.push({ id, x0: t.bbox[0], y0: t.bbox[1], x1: t.bbox[2], y1: t.bbox[3] });
@@ -32330,7 +32646,10 @@ function assembleDocument(pageRecords, { numPages, info = null, engineVersion = 
     }
     const ordered = orderUnits(units, { gutters });
     for (const u of ordered.order) order.push(u.id);
-    perPage.push({ n: pg.n, w: round(pg.w), h: round(pg.h), rotation: pg.rotation, textRotation: pg.textRotation || 0, scanLayer: Boolean(pg.scanLayer), kind: pg.kind, parsed: true, columns: ordered.columns, ms: pg.ms });
+    if (pg.ocr) {
+      for (const u of units) if (blocks[u.id]) blocks[u.id].engine = "ocr+builtin";
+    }
+    perPage.push({ n: pg.n, w: round(pg.w), h: round(pg.h), rotation: pg.rotation, textRotation: pg.textRotation || 0, scanLayer: Boolean(pg.scanLayer), ocr: Boolean(pg.ocr), kind: pg.kind, parsed: true, columns: ordered.columns, ms: pg.ms });
   }
   mergeContinuations(order, blocks);
   linkContinuedTables(order, blocks, perPage);
@@ -32349,7 +32668,7 @@ function assembleDocument(pageRecords, { numPages, info = null, engineVersion = 
     title = h1 ? h1.text : null;
   }
   const pagesOut = [];
-  for (const p of perPage) pagesOut.push({ n: p.n, w: p.w, h: p.h, rotation: p.rotation, textRotation: p.textRotation, scanLayer: p.scanLayer, kind: p.kind, parsed: true, columns: p.columns });
+  for (const p of perPage) pagesOut.push({ n: p.n, w: p.w, h: p.h, rotation: p.rotation, textRotation: p.textRotation, scanLayer: p.scanLayer, ocr: p.ocr, kind: p.kind, parsed: true, columns: p.columns });
   return {
     schema: SCHEMA2,
     sha256,
@@ -32365,6 +32684,32 @@ function assembleDocument(pageRecords, { numPages, info = null, engineVersion = 
     removed: furniture.removed,
     stats: { ms: 0, perPage: perPage.map((p) => p.ms), assembleMs: round(now2() - t1), bodySize, headingSizes: classes, range: [from, to] }
   };
+}
+function annotateOcrCells(table, words) {
+  for (const cell of table.cells) {
+    if (!cell.bbox) continue;
+    const [x0, y0, x1, y1] = cell.bbox;
+    let conf = null;
+    let box2 = null;
+    const bases = [];
+    let size = 0;
+    for (const w of words) {
+      const cx = (w.x0 + w.x1) / 2;
+      const cy = w.base - 0.25 * w.size;
+      if (cx < x0 || cx > x1 || cy < y0 || cy > y1) continue;
+      if (w.conf != null) conf = conf == null ? w.conf : Math.min(conf, w.conf);
+      box2 = box2 ? [Math.min(box2[0], w.x0), Math.min(box2[1], w.y0), Math.max(box2[2], w.x1), Math.max(box2[3], w.y1)] : [w.x0, w.y0, w.x1, w.y1];
+      bases.push(w.base);
+      size = Math.max(size, w.size);
+    }
+    if (box2) {
+      cell.wbox = box2.map(round);
+      bases.sort((a, b) => a - b);
+      cell.wbase = round(bases[bases.length >> 1]);
+      cell.wsize = round(size);
+    }
+    cell.conf = conf == null ? cell.text ? 1 : 0 : round(conf);
+  }
 }
 function figureLabels(t, figures) {
   const filled = t.cells.filter((k) => k.text).length;
@@ -32943,6 +33288,78 @@ function createParseStore({ indexedDB: factory, now: now3, docCap = PARSE_DOC_CA
 // src/view/parse-view.js
 init_pdf();
 
+// src/model/parse/ocr-merge.js
+function iou2(a, b) {
+  const ix = Math.min(a[2], b[2]) - Math.max(a[0], b[0]);
+  const iy = Math.min(a[3], b[3]) - Math.max(a[1], b[1]);
+  if (ix <= 0 || iy <= 0) return 0;
+  const inter = ix * iy;
+  const union = (a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - inter;
+  return union > 0 ? inter / union : 0;
+}
+function chooseTable(fresh, layer) {
+  const f = tableNumericValidity(fresh);
+  const l = tableNumericValidity(layer);
+  const freshScore = f.share * Math.min(1, f.total / Math.max(1, l.total));
+  const layerScore = l.share * Math.min(1, l.total / Math.max(1, f.total));
+  const sameShape = fresh.rows === layer.rows && fresh.cols === layer.cols;
+  const chose = layerScore > freshScore + 0.05 || sameShape && layerScore > freshScore + 0.02 ? "layer" : "fresh";
+  return { chose, fresh: { ...f, score: round2(freshScore) }, layer: { ...l, score: round2(layerScore) } };
+}
+function round2(n2) {
+  return Math.round(n2 * 1e3) / 1e3;
+}
+function mergeOcrDocument(base, fresh, { pages = [] } = {}) {
+  const set = new Set(pages);
+  const doc = { ...fresh, blocks: { ...fresh.blocks }, pages: fresh.pages.map((p) => ({ ...p })) };
+  const choices = [];
+  const layerTables = Object.values(base?.blocks || {}).filter((b) => b.type === "table" && set.has(b.page));
+  const basePages = new Map((base?.pages || []).map((p) => [p.n, p]));
+  for (const page of doc.pages) {
+    if (!set.has(page.n)) continue;
+    const was = basePages.get(page.n);
+    page.ocrChoice = was && was.scanLayer ? "compared" : "fresh";
+  }
+  for (const id of Object.keys(doc.blocks)) {
+    const block = doc.blocks[id];
+    if (block.type !== "table" || !set.has(block.page)) continue;
+    const was = basePages.get(block.page);
+    if (!was || !was.scanLayer) {
+      doc.blocks[id] = { ...block, ocrSource: "fresh" };
+      continue;
+    }
+    let best = null;
+    for (const lt of layerTables) {
+      if (lt.page !== block.page) continue;
+      const overlap = iou2(lt.bbox, block.bbox);
+      if (overlap >= 0.5 && (!best || overlap > best.overlap)) best = { table: lt, overlap };
+    }
+    if (!best) {
+      doc.blocks[id] = { ...block, ocrSource: "fresh" };
+      continue;
+    }
+    const verdict = chooseTable(block, best.table);
+    choices.push({ page: block.page, id, layerId: best.table.id, ...verdict });
+    if (verdict.chose === "layer") {
+      doc.blocks[id] = { ...best.table, id, caption: block.caption, engine: "builtin", ocrSource: "layer", ocrCompare: verdict };
+    } else {
+      doc.blocks[id] = { ...block, ocrSource: "fresh", ocrCompare: verdict };
+    }
+  }
+  if (choices.length) {
+    for (const page of doc.pages) {
+      if (page.ocrChoice !== "compared") continue;
+      const mine = choices.filter((c) => c.page === page.n);
+      page.ocrChoice = mine.length && mine.every((c) => c.chose === "layer") ? "layer" : mine.some((c) => c.chose === "layer") ? "mixed" : "fresh";
+    }
+  }
+  doc.ocr = { pages: [...set].sort((a, b) => a - b), choices };
+  return { doc, choices };
+}
+function scanPagesOf(doc) {
+  return (doc?.pages || []).filter((p) => !p.ocr && (p.kind === "scan" || p.scanLayer)).map((p) => p.n);
+}
+
 // src/view/parse-engine.js
 async function loadPageData(page, { includeOps = true } = {}) {
   const viewport = page.getViewport({ scale: 1 });
@@ -32973,6 +33390,41 @@ async function loadPageData(page, { includeOps = true } = {}) {
     transform: Array.from(viewport.transform),
     fonts
   };
+}
+async function readScan({ helper, bytes, sha256, base, records, pages, numPages, info = null, options = {}, from, to, signal, onPhase } = {}) {
+  if (!helper || typeof helper.ocr !== "function") throw new Error("helper has no ocr");
+  const wanted = (pages && pages.length ? pages : scanPagesOf(base)).filter((n2) => !from || !to || n2 >= from && n2 <= to);
+  if (!wanted.length) return { doc: base, choices: [], rereads: [], pages: [] };
+  const throwIfAborted = () => {
+    if (signal && signal.aborted) throw Object.assign(new Error("parse aborted"), { name: "AbortError" });
+  };
+  onPhase?.({ phase: "ocr", pages: wanted });
+  const got = await helper.ocr({ bytes, sha256, pages: wanted, signal });
+  throwIfAborted();
+  const byPage = new Map((got?.pages || []).map((p) => [p.n, p]));
+  const next = records.map((rec) => byPage.has(rec.n) ? parsePageGeometry(byPage.get(rec.n), rec.n) : rec);
+  for (const n2 of wanted) if (byPage.has(n2) && !records.some((r) => r.n === n2)) next.push(parsePageGeometry(byPage.get(n2), n2));
+  next.sort((a, b) => a.n - b.n);
+  const lo = from ?? next[0]?.n ?? 1;
+  const hi = to ?? next[next.length - 1]?.n ?? numPages;
+  const fresh = assembleDocument(next, { numPages: numPages || base?.pageCount || hi, info, sha256: sha256 || base?.sha256 || null, options: { ...base?.options || {}, ...options, ocr: "vision" }, from: lo, to: hi });
+  const merged = mergeOcrDocument(base, fresh, { pages: wanted });
+  const doc = merged.doc;
+  const tables = doc.order.map((id) => doc.blocks[id]).filter((b) => b && b.type === "table" && b.repairs && b.ocrSource !== "layer");
+  const requests = tables.flatMap((t) => cellsToReread(t, { numericCols: t.repairs.numericCols }));
+  let rereads = [];
+  if (requests.length) {
+    onPhase?.({ phase: "cells", count: requests.length });
+    const answer = await helper.ocr({ bytes, sha256, cells: requests, signal });
+    throwIfAborted();
+    const results = (answer?.cells || []).map((c, i) => ({ ...requests[i], ...c }));
+    for (const t of tables) {
+      const applied = applyCellOcr(t, results.filter((r) => r.id === t.id));
+      if (applied.length) rereads.push({ id: t.id, applied });
+    }
+  }
+  doc.ocr = { ...doc.ocr || {}, rereads: rereads.reduce((n2, r) => n2 + r.applied.length, 0), elapsedMs: got?.elapsedMs ?? null };
+  return { doc, choices: merged.choices, rereads, pages: wanted, records: next };
 }
 
 // src/view/parse-overlay.js
@@ -33635,7 +34087,8 @@ function createParseView({
   onProgress = null,
   adoptCreated = null,
   getContext = null,
-  clock = null
+  clock = null,
+  scanAuto = false
 } = {}) {
   const el = (tag, cls, parent) => {
     const node2 = doc.createElement(tag);
@@ -33703,6 +34156,10 @@ function createParseView({
   const filterPop = el("div", "pxd-parse__pop", filterMenu);
   filterPop.setAttribute("role", "menu");
   setHidden(filterPop, true);
+  const scanBtn = el("button", "pxd-parse__scan", bar);
+  scanBtn.type = "button";
+  scanBtn.textContent = "Read the scan";
+  scanBtn.hidden = true;
   const filters = { text: true, table: true, figure: true, formula: true };
   const filterBtns = {};
   for (const name of ["Text", "Tables", "Figures", "Formulas"]) {
@@ -34024,6 +34481,7 @@ function createParseView({
     }
     paintFoot();
     paintChip();
+    paintScan();
   }
   function indexOfId(id) {
     return shown().findIndex((block) => block.id === id);
@@ -34368,6 +34826,73 @@ function createParseView({
       to
     });
     await finishDoc(finalDoc, now3() - t0);
+    if (scanAuto && scanPagesOf(finalDoc).length) {
+      await refreshHelper();
+      if (helperState === "ready") await readScanNow();
+    }
+  }
+  function paintScan() {
+    const pages = parsed ? scanPagesOf(parsed) : [];
+    scanBtn.hidden = !(pages.length && helperState === "ready" && phase !== "running" && typeof helper?.ocr === "function");
+    if (!scanBtn.hidden) scanBtn.textContent = pages.length === 1 ? `Read the scan (p. ${pages[0]})` : `Read the scan (${pages.length} pages)`;
+  }
+  async function readScanNow() {
+    if (!parsed || !helper || typeof helper.ocr !== "function" || helperState !== "ready") return;
+    const pages = scanPagesOf(parsed);
+    if (!pages.length) return;
+    cancel();
+    const ctrl = new AbortController();
+    abort = ctrl;
+    phase = "running";
+    progress = { page: 0, pageCount: pages.length, engine: "builtin" };
+    paintChip();
+    paintScan();
+    try {
+      const pdf = typeof getPdf === "function" ? await getPdf() : null;
+      if (ctrl.signal.aborted) return;
+      const bytes = pdf && typeof pdf.getData === "function" ? await pdf.getData() : null;
+      if (ctrl.signal.aborted) return;
+      const [from, to] = parsed.stats?.range || [1, parsed.pageCount || 1];
+      let recs = records.length ? records : [];
+      if (!recs.length) {
+        for (let n2 = from; n2 <= to; n2 += 1) {
+          if (pages.includes(n2)) continue;
+          recs.push(await geometryOf(n2, pdf));
+          if (ctrl.signal.aborted) return;
+        }
+      }
+      const t0 = now3();
+      const result = await readScan({
+        helper,
+        bytes,
+        sha256: parsed.sha256,
+        base: parsed,
+        records: recs,
+        pages,
+        numPages: parsed.pageCount,
+        from,
+        to,
+        signal: ctrl.signal,
+        onPhase: (info) => {
+          progress = { page: info?.phase === "cells" ? pages.length : 0, pageCount: pages.length, engine: "builtin" };
+          paintChip();
+          onProgress?.({ page: progress.page, pageCount: pages.length, fraction: info?.phase === "cells" ? 0.9 : 0.3 });
+        }
+      });
+      if (ctrl.signal.aborted) return;
+      if (result?.records) records = result.records;
+      await finishDoc(result.doc, (parsed.stats?.ms || 0) + (now3() - t0));
+    } catch (error) {
+      if (error?.name !== "AbortError") {
+        try {
+          onToast?.(`Read the scan failed: ${error?.message || error}`);
+        } catch {
+        }
+      }
+      phase = "idle";
+      paintChip();
+    }
+    paintScan();
   }
   async function parseDocling() {
     if (!helper || helperState !== "ready") {
@@ -34630,6 +35155,10 @@ function createParseView({
     closeMenus();
     cancel();
   });
+  listen(scanBtn, "click", () => {
+    closeMenus();
+    void readScanNow();
+  });
   listen(doclingBtn, "click", () => {
     closeMenus();
     void (async () => {
@@ -34772,6 +35301,8 @@ function createParseView({
   void refreshHelper();
   return {
     element: () => root,
+    refreshHelper,
+    readScan: readScanNow,
     setTarget(next) {
       currentUrl = next?.url || "";
       currentUid2 = next?.pdfUid || "";
@@ -35067,11 +35598,11 @@ function createHelperClient({ fetch: fetchImpl, settings, now: now3, timeoutMs =
   async function reparseTable({ bytes, sha256, page, bbox, base, onProgress, onPage, signal } = {}) {
     const { url, token } = config();
     const sha = sha256 || await sha256Hex(bytes);
-    const ocr = readSetting(settings, "parse-ocr", "auto");
+    const ocr2 = readSetting(settings, "parse-ocr", "auto");
     const formula = readSetting(settings, "parse-formula", false) === true;
     const options = {
       pages: [page],
-      ocr,
+      ocr: ocr2,
       formula,
       tables: "accurate",
       scope: { page, bbox }
@@ -35090,7 +35621,38 @@ function createHelperClient({ fetch: fetchImpl, settings, now: now3, timeoutMs =
     const merged = base ? mergeScoped(base, doc, { page, bbox }) : null;
     return { doc, merged, cached: false, sha256: sha, job: job.job };
   }
-  return { health, parse, cancel, reparseTable };
+  async function ocr({ bytes, sha256, pages, cells, signal } = {}) {
+    const { url, token } = config();
+    const sha = sha256 || await sha256Hex(bytes);
+    const options = {};
+    if (pages && pages.length) options.pages = pages;
+    if (cells && cells.length) options.cells = cells.map((c) => ({ page: c.page, bbox: c.bbox }));
+    const res = await call(`${url}/v1/ocr`, {
+      method: "POST",
+      headers: {
+        Authorization: `Bearer ${token}`,
+        "Content-Type": "application/pdf",
+        "X-Pxd-Options": JSON.stringify(options)
+      },
+      body: bytes
+    }, signal);
+    let body = null;
+    try {
+      body = await res.json();
+    } catch {
+      body = null;
+    }
+    if (res.status < 200 || res.status >= 300) {
+      const error = new Error(body?.error || `ocr ${res.status}`);
+      error.status = res.status;
+      throw error;
+    }
+    if (cells && cells.length && Array.isArray(body?.cells)) {
+      body.cells = body.cells.map((c, i) => ({ ...cells[i], ...c }));
+    }
+    return { ...body, sha256: sha };
+  }
+  return { health, parse, cancel, reparseTable, ocr };
 }
 
 // src/view/read-pane.js
@@ -37087,7 +37649,14 @@ function createReadPane({
         } catch {
         }
       },
-      getContext: () => readerContext()
+      getContext: () => readerContext(),
+      scanAuto: (() => {
+        try {
+          return (settings?.get?.("parse-engine-default") || "auto") === "auto";
+        } catch {
+          return false;
+        }
+      })()
     });
     parsedMount.append(parsedView.element());
     try {

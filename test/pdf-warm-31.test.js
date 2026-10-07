@@ -5,6 +5,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import test from "node:test";
 
+import { WARM_MAX } from "../src/model/pdf-cover.js";
 import { COVER_JPEG, WARM_POLL_MS, WARM_TIMEOUT_MS, createPdfWarm } from "../src/view/pdf-warm.js";
 import { createDomStub } from "./fixtures/dom-stub.js";
 
@@ -359,6 +360,47 @@ test("a reader already on the page skips the warm", async () => {
   assert.equal(doc.querySelectorAll(".rm-pdf-container").length, 1);
 });
 
+test("an outline reader below the window does not skip the warm", async () => {
+  const { doc, root, timers, warm, host } = harness({
+    paint(el, _uid, document) {
+      paintPages(el, document, [{ n: 1, marker: "page-1", w: 0, h: 0 }]);
+    },
+  });
+  doc.defaultView = { innerWidth: 800, innerHeight: 600 };
+  const open = doc.createElement("div");
+  open.className = "rm-pdf-container";
+  open._rect = { left: 0, top: 900, width: 428, height: 700, right: 428, bottom: 1600, x: 0, y: 900 };
+  doc.body.append(open);
+  const pending = warm.request(card());
+  timers.flush(0);
+  await tick();
+  assert.ok(root.querySelector(".pxd-pdf-warm"));
+  assert.equal(host.calls.some((call) => call[0] === "render"), true);
+  assert.notEqual(warm.outcome("card-1"), "skipped");
+  warm.cancelAll();
+  assert.equal(await pending, null);
+});
+
+test("a reader inside the window still skips the warm", async () => {
+  const { doc, root, timers, warm, host } = harness({
+    paint(el, _uid, document) {
+      paintPages(el, document, [{ n: 1, marker: "page-1", w: 512, h: 688 }]);
+    },
+  });
+  doc.defaultView = { innerWidth: 800, innerHeight: 600 };
+  const open = doc.createElement("div");
+  open.className = "rm-pdf-container";
+  open._rect = { left: 40, top: 80, width: 428, height: 400, right: 468, bottom: 480, x: 40, y: 80 };
+  doc.body.append(open);
+  const pending = warm.request(card());
+  timers.flush(0);
+  await tick();
+  assert.equal(await pending, null);
+  assert.equal(root.querySelector(".pxd-pdf-warm"), null);
+  assert.equal(host.calls.length, 0);
+  assert.equal(warm.outcome("card-1"), "skipped");
+});
+
 test("a stored first page is a cache hit and does not render", async () => {
   const { store, timers, warm, host } = harness();
   const first = new Blob(["kept"], { type: "image/jpeg" });
@@ -371,7 +413,7 @@ test("a stored first page is a cache hit and does not render", async () => {
   assert.equal(warm.spent(), 0);
 });
 
-test("one warm at a time, and the fourth mount does not start", async () => {
+test("one warm at a time, and the mount past WARM_MAX does not start", async () => {
   const { root, timers, warm, host } = harness({
     paint(el, _uid, doc) {
       paintPages(el, doc, [{ n: 1, marker: "page-1", w: 0, h: 0 }]);
@@ -387,18 +429,18 @@ test("one warm at a time, and the fourth mount does not start", async () => {
   assert.equal(await first, null);
   assert.equal(warm.spent(), 1);
 
-  for (let i = 2; i <= 3; i += 1) {
+  for (let i = 2; i <= WARM_MAX; i += 1) {
     const pending = warm.request(card({ uid: `card-${i}`, blockUid: `block-${i}` }));
     timers.flush(0);
     await tick();
     timers.flush(WARM_TIMEOUT_MS);
     assert.equal(await pending, null);
   }
-  assert.equal(warm.spent(), 3);
-  const fourth = warm.request(card({ uid: "card-4", blockUid: "block-4" }));
-  assert.equal(await fourth, null);
+  assert.equal(warm.spent(), WARM_MAX);
+  const extra = warm.request(card({ uid: "card-extra", blockUid: "block-extra" }));
+  assert.equal(await extra, null);
   assert.equal(timers.pending(0), 0);
-  assert.equal(host.calls.filter((call) => call[0] === "render").length, 3);
+  assert.equal(host.calls.filter((call) => call[0] === "render").length, WARM_MAX);
 });
 
 test("renderBlock throwing unmounts as error and does not log", async () => {

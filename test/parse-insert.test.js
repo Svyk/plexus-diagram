@@ -40,7 +40,7 @@ function wideTree(children) {
   return out;
 }
 
-function setup() {
+function setup(extra = []) {
   const fake = createFakeRoam();
   const host = createHost({ api: fake.api, storage: fake.storage, graph: "g" });
   fake.seedBoard({
@@ -48,6 +48,7 @@ function setup() {
     props: { plexus: { v: 2 } },
     children: [
       { uid: "c1", string: "note", props: { plexus: { x: 0, y: 0, w: 280, h: 160 } } },
+      ...extra,
     ],
   });
   fake.seedPage({
@@ -87,12 +88,33 @@ function docOf(blocks, order) {
   return { sha256: "sha", engine: "docling", optsHash: "opt", order, blocks };
 }
 
-test("parsed table size clamps to the design range", () => {
-  assert.deepEqual(parsedTableSize(table(3, 3)), { w: 480, h: 260 });
-  assert.deepEqual(parsedTableSize(table(3, 5)), { w: 600, h: 260 });
-  assert.deepEqual(parsedTableSize(table(3, 20)), { w: 1200, h: 260 });
-  assert.deepEqual(parsedTableSize(table(10, 3)), { w: 480, h: 320 });
-  assert.deepEqual(parsedTableSize(table(30, 3)), { w: 480, h: 800 });
+test("parsed table size follows the text, the grid, and the caps", () => {
+  const plain = parsedTableSize(table(3, 3));
+  assert.equal(plain.w, 3 * 56 + 16);
+  assert.equal(plain.h, 28 + 3 * 32 + 8);
+  assert.equal(plain.widths, null);
+  const five = parsedTableSize(table(3, 5));
+  assert.equal(five.w, 5 * 56 + 16);
+  assert.equal(five.h, 28 + 3 * 32 + 8);
+  const twenty = parsedTableSize(table(3, 20));
+  assert.equal(twenty.w, 20 * 56 + 16);
+  assert.ok(twenty.w <= 1200 + 16);
+  const tall = parsedTableSize(table(10, 3));
+  assert.equal(tall.w, 3 * 56 + 16);
+  assert.equal(tall.h, 28 + 10 * 32 + 8);
+  const capped = parsedTableSize(table(30, 3));
+  assert.equal(capped.h, 800);
+  const grid = parsedTableSize(table(2, 2, { grid: { xs: [0, 80, 200] } }));
+  assert.deepEqual(grid.widths, { 0: 112, 1: 168 });
+  assert.equal(grid.w, 112 + 168 + 42 + 16);
+  assert.equal(grid.h, 28 + 2 * 32 + 8);
+  const wide = parsedTableSize(table(1, 2, { grid: { xs: [0, 500, 1400] } }));
+  assert.equal(wide.widths[0] + wide.widths[1], 1200);
+  assert.ok(wide.widths[0] <= 640 && wide.widths[1] <= 640);
+  assert.ok(wide.widths[0] >= 56 && wide.widths[1] >= 56);
+  const floor = parsedTableSize(table(1, 22, { grid: { xs: Array.from({ length: 23 }, (_, i) => i) } }));
+  assert.equal(Object.values(floor.widths).every((n) => n === 56), true);
+  assert.equal(floor.w, 1200);
 });
 
 test("nestMarkdownUnderFirst keeps a single root and indents the rest", () => {
@@ -178,6 +200,23 @@ test("ten chunks of 400 is the cap and one undo", async () => {
   assert.deepEqual(fake.children("page1"), ["pdf1", "old1"]);
 });
 
+test("a board-hosted PDF inserts a note card beside it", async () => {
+  const { fake, session } = setup([
+    { uid: "pdfcard", string: "{{[[pdf]]: http://x/a.pdf}}", props: { plexus: { x: 10, y: 20, w: 240, h: 320 } } },
+  ]);
+  const res = await session.insertParsedBelow({ pdfUid: "pdfcard", markdown: "- Beside\n- More" });
+  assert.equal(res.ok, true);
+  assert.equal(res.path, "card");
+  assert.deepEqual(res.uids, [res.uid]);
+  assert.equal(res.writes, 2);
+  assert.equal(fake.block(res.uid).string, "Beside");
+  assert.equal(session.board.items.has(res.uid), true);
+  const props = fake.props(res.uid);
+  assert.equal(props.plexus.x, 10 + 240 + 40);
+  assert.equal(props.plexus.y, 20);
+  assert.equal(fake.children("page1").includes(res.uid), false);
+});
+
 test("a parsed card is two writes and one undo, children without the kids flag", async () => {
   const { fake, session } = setup();
   const res = await session.insertParsedCard({ x: 48, y: 64, markdown: "- Alpha\n- Beta\n  - Gamma" });
@@ -221,10 +260,10 @@ test("native, flat, and grid table cards", async () => {
   assert.equal(native.ok, true);
   assert.equal(native.path, "native");
   assert.equal(native.writes, 2);
-  assert.equal(native.w, 480);
-  assert.equal(native.h, 260);
+  assert.equal(native.w, 200);
+  assert.equal(native.h, 28 + 3 * 32 + 8);
   assert.equal(isRoamTableString(fake.block(native.uid).string), true);
-  assert.equal(session.board.items.get(native.uid).w, 480);
+  assert.equal(session.board.items.get(native.uid).w, 200);
   assert.equal(fake.props(native.uid).plexus.look, undefined);
 
   const flat = await session.insertParsedTable({ x: 2000, y: 2400, table: merged, mode: "flat" });
@@ -240,7 +279,7 @@ test("native, flat, and grid table cards", async () => {
   assert.equal(host.canCreateGridTable(), false);
   const fallback = await session.insertParsedTable({ x: 2000, y: 3200, table: table(3, 5), mode: "auto" });
   assert.equal(fallback.path, "native");
-  assert.equal(fallback.w, 600);
+  assert.equal(fallback.w, 5 * 56 + 16);
   assert.equal(fallback.writes, 2);
 });
 
@@ -267,11 +306,12 @@ test("Roam Grid table is three undos and one step removes the table and the meta
           "markdown-string": "- {{[[table]]}}\n  - a\n    - b",
         });
         metaUid = fake.generateUid();
+        const madeMeta = metaUid;
         await fake.api.data.block.create({
           location: { "parent-uid": spec.parentUid, order: "last" },
-          block: { uid: metaUid, string: "grid-meta" },
+          block: { uid: madeMeta, string: "grid-meta" },
         });
-        fake.pushUndo(() => fake.dropTree(metaUid));
+        fake.pushUndo(() => fake.dropTree(madeMeta));
         return { uid: made.uids[0], writes: 1, path: "markdown" };
       },
     },
@@ -280,12 +320,47 @@ test("Roam Grid table is three undos and one step removes the table and the meta
   assert.equal(grid.path, "grid");
   assert.equal(grid.writes, 3);
   assert.equal(seen.headerRows, 1);
+  assert.equal(seen.widths, undefined);
   assert.deepEqual(seen.columnAlignments, [null, "right"]);
-  assert.equal(fake.has(metaUid), true);
   fake.calls.length = 0;
   await session.undo();
   assert.equal(fake.calls.filter((row) => row[0] === "undo").length, 3);
   assert.equal(fake.has(grid.uid), false);
+  assert.equal(fake.has(metaUid), false);
+});
+
+test("a measured grid passes column widths and one undo removes that table", async () => {
+  const { fake, session } = setup();
+  let metaUid = null;
+  let seen = null;
+  globalThis.roamGrid = {
+    v1: {
+      capabilities: ["createTableFromModel"],
+      async createTableFromModel(spec) {
+        seen = spec;
+        const made = await fake.api.data.block.fromMarkdown({
+          location: { "parent-uid": spec.parentUid, order: spec.order },
+          "markdown-string": "- {{[[table]]}}\n  - a\n    - b",
+        });
+        metaUid = fake.generateUid();
+        const madeMeta = metaUid;
+        await fake.api.data.block.create({
+          location: { "parent-uid": spec.parentUid, order: "last" },
+          block: { uid: madeMeta, string: "grid-meta" },
+        });
+        fake.pushUndo(() => fake.dropTree(madeMeta));
+        return { uid: made.uids[0], writes: 1, path: "markdown" };
+      },
+    },
+  };
+  const measured = table(2, 2, { grid: { xs: [0, 80, 200] }, headerRows: 1 });
+  const sized = await session.insertParsedTable({ x: 2000, y: 4000, table: measured, mode: "grid" });
+  assert.equal(sized.path, "grid");
+  assert.deepEqual(seen.widths, { 0: 112, 1: 168 });
+  fake.calls.length = 0;
+  await session.undo();
+  assert.equal(fake.calls.filter((row) => row[0] === "undo").length, 3);
+  assert.equal(fake.has(sized.uid), false);
   assert.equal(fake.has(metaUid), false);
 });
 
@@ -377,5 +452,7 @@ test("parse drop payload, plan, and missing cache", async () => {
   });
   assert.equal(tableDrop.path, "native");
   assert.equal(isRoamTableString(fake.block(tableDrop.uid).string), true);
-  assert.equal(tableDrop.w, 480);
+  // 3 short columns floor at 56, plus 16 of native padding, then the card minimum of 200.
+  assert.equal(tableDrop.w, 200);
+  assert.equal(tableDrop.h, 132);
 });

@@ -64,44 +64,127 @@
 .pxd-read.pxd-read--both .pxd-read__parsed {
   display: flex;
   flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
 }
 
-.pxd-read.pxd-read--parsed .pxd-read__live,
-.pxd-read.pxd-read--both.pxd-read--narrow .pxd-read__live {
+.pxd-read.pxd-read--parsed .pxd-read__live {
   display: none;
 }
 
-.pxd-read.pxd-read--parsed .pxd-read__stage,
-.pxd-read.pxd-read--both.pxd-read--narrow .pxd-read__stage {
+/* The page strip reads Roam's page field. display:none never mounts that
+   field, so the reader stays laid out off the window and only the strip shows. */
+.pxd-read.pxd-read--both.pxd-read--narrow .pxd-read__live {
+  display: flex;
+  position: absolute;
+  left: -10000px;
+  top: 0;
+  width: 480px;
+  height: 640px;
+  min-height: 640px;
+  flex: none;
+  overflow: hidden;
+  visibility: hidden;
+  pointer-events: none;
+}
+
+.pxd-read.pxd-read--parsed .pxd-read__live,
+.pxd-read.pxd-read--both .pxd-read__live {
+  min-height: 0;
+  height: 100%;
+  overflow: hidden;
+}
+
+.pxd-read.pxd-read--parsed > .pxd-read__stage {
   flex: 0 0 auto;
-  min-height: 44px;
+  min-height: 0;
+  max-height: 44px;
+  overflow: hidden;
 }
 
 .pxd-read.pxd-read--parsed .pxd-read__pill,
 .pxd-read.pxd-read--both.pxd-read--narrow .pxd-read__pill {
   position: static;
   transform: none;
-  margin: 4px auto;
+  margin: 2px auto;
 }
 
+/* Both is a grid so the content row is height-bounded. A wrapping flex line
+   sized itself to the PDF and the pane clipped it, so nothing inside scrolled. */
 .pxd-read.pxd-read--both {
-  flex-direction: row;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: auto auto auto minmax(0, 1fr) auto;
   align-content: stretch;
 }
 
-.pxd-read.pxd-read--both > .pxd-read__head,
-.pxd-read.pxd-read--both > .pxd-read__modes,
-.pxd-read.pxd-read--both > .pxd-read__progress,
-.pxd-read.pxd-read--both > .pxd-read__drawer {
-  flex: 1 0 100%;
-}
-
-.pxd-read.pxd-read--both > .pxd-read__stage,
-.pxd-read.pxd-read--both > .pxd-read__parsed {
-  flex: 1 1 40%;
+.pxd-read.pxd-read--both > .pxd-read__head { grid-column: 1 / -1; grid-row: 1; }
+.pxd-read.pxd-read--both > .pxd-read__modes { grid-column: 1 / -1; grid-row: 2; }
+.pxd-read.pxd-read--both > .pxd-read__progress { grid-column: 1 / -1; grid-row: 3; }
+.pxd-read.pxd-read--both > .pxd-read__stage {
+  grid-column: 1;
+  grid-row: 4;
   min-width: 0;
   min-height: 0;
+  overflow: hidden;
+}
+.pxd-read.pxd-read--both > .pxd-read__parsed {
+  grid-column: 2;
+  grid-row: 4;
+}
+.pxd-read.pxd-read--both > .pxd-read__drawer,
+.pxd-read.pxd-read--drawer.pxd-read--both > .pxd-read__drawer {
+  grid-column: 1 / -1;
+  grid-row: 5;
+  min-height: 32px;
+  max-height: 42%;
+  overflow: hidden;
+}
+
+.pxd-read.pxd-read--parsed > .pxd-read__drawer,
+.pxd-read.pxd-read--drawer.pxd-read--parsed > .pxd-read__drawer {
+  min-height: 32px;
+  max-height: 42%;
+  overflow: hidden;
+}
+
+.pxd-read.pxd-read--both.pxd-read--narrow {
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: auto auto auto auto minmax(0, 1fr) auto;
+}
+
+.pxd-read.pxd-read--both.pxd-read--narrow > .pxd-read__stage {
+  grid-column: 1;
+  grid-row: 4;
+  max-height: 32px;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.pxd-read.pxd-read--both.pxd-read--narrow > .pxd-read__parsed {
+  grid-column: 1;
+  grid-row: 5;
+}
+
+.pxd-read.pxd-read--both.pxd-read--narrow > .pxd-read__drawer {
+  grid-row: 6;
+}
+
+.pxd-read .pxd-read__pageprev,
+.pxd-read .pxd-read__pagenext {
+  display: none;
+}
+
+.pxd-read.pxd-read--both.pxd-read--narrow .pxd-read__pillbtn {
+  display: none;
+}
+
+.pxd-read.pxd-read--both.pxd-read--narrow .pxd-read__pageprev,
+.pxd-read.pxd-read--both.pxd-read--narrow .pxd-read__pagenext {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .pxd-read .pxd-parse,
@@ -111,19 +194,52 @@
   flex: 1 1 auto;
   min-width: 0;
   min-height: 0;
+  height: 100%;
+  overflow: hidden;
   background: var(--pxd-surface);
   color: var(--pxd-text);
+  font-size: 13px;
+  line-height: 19.5px;
 }
 
 .pxd-parse .pxd-parse__bar {
   display: flex;
-  flex-wrap: wrap;
+  flex: 0 0 32px;
+  flex-wrap: nowrap;
   align-items: center;
-  gap: 6px;
+  gap: 4px;
   box-sizing: border-box;
+  height: 32px;
   min-height: 32px;
-  padding: 4px 8px;
+  max-height: 32px;
+  padding: 0 6px;
   border-bottom: 1px solid var(--pxd-border);
+  overflow: visible;
+}
+
+.pxd-parse .pxd-parse__menu {
+  position: relative;
+  flex: 0 1 auto;
+  min-width: 0;
+}
+
+.pxd-parse .pxd-parse__pop {
+  position: absolute;
+  top: calc(100% + 2px);
+  left: 0;
+  z-index: 4;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 168px;
+  padding: 4px;
+  border: 1px solid var(--pxd-border);
+  border-radius: 6px;
+  background: var(--pxd-surface);
+}
+
+.pxd-parse .pxd-parse__pop[hidden] {
+  display: none;
 }
 
 .pxd-parse .pxd-parse__range,
@@ -147,8 +263,12 @@
 
 .pxd-parse .pxd-parse__chip,
 .pxd-parse .pxd-parse__filter,
+.pxd-parse .pxd-parse__filterbtn,
+.pxd-parse .pxd-parse__rangebtn,
+.pxd-parse .pxd-parse__searchbtn,
 .pxd-parse .pxd-parse__engine,
 .pxd-parse .pxd-parse__docling,
+.pxd-parse .pxd-parse__again,
 .pxd-parse .pxd-parse__lock,
 .pxd-parse .pxd-parse__cancel,
 .pxd-parse .pxd-parse__act,
@@ -171,6 +291,21 @@
 .pxd-parse .pxd-parse__lock[aria-pressed="true"] {
   color: var(--pxd-text);
   border-color: var(--pxd-border-strong);
+}
+
+.pxd-parse .pxd-parse__engine,
+.pxd-parse .pxd-parse__rangebtn,
+.pxd-parse .pxd-parse__filterbtn,
+.pxd-parse .pxd-parse__searchbtn,
+.pxd-parse .pxd-parse__lock {
+  max-width: 148px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pxd-parse .pxd-parse__search[hidden] {
+  display: none;
 }
 
 .pxd-parse .pxd-parse__engine,
@@ -252,23 +387,23 @@
   margin: 0 0 4px;
   color: var(--pxd-text);
   font-weight: 600;
-  line-height: 1.3;
+  line-height: 19.5px;
 }
 
-.pxd-parse .pxd-parse__h1 { font-size: 1.35em; }
-.pxd-parse h1.pxd-parse__h { font-size: 1.35em; }
-.pxd-parse h2.pxd-parse__h { font-size: 1.2em; }
-.pxd-parse h3.pxd-parse__h { font-size: 1.1em; }
+.pxd-parse .pxd-parse__h1,
+.pxd-parse h1.pxd-parse__h { font-size: 16px; line-height: 22px; font-weight: 600; }
+.pxd-parse h2.pxd-parse__h { font-size: 14.5px; line-height: 20px; font-weight: 600; }
+.pxd-parse h3.pxd-parse__h { font-size: 13.5px; line-height: 19px; font-weight: 600; }
 .pxd-parse h4.pxd-parse__h,
 .pxd-parse h5.pxd-parse__h,
-.pxd-parse h6.pxd-parse__h { font-size: 1em; }
+.pxd-parse h6.pxd-parse__h { font-size: 13px; line-height: 19.5px; font-weight: 600; }
 
 .pxd-parse .pxd-parse__p,
 .pxd-parse .pxd-parse__list {
   margin: 0;
   color: var(--pxd-text);
-  font-size: 1em;
-  line-height: 1.45;
+  font-size: 13px;
+  line-height: 19.5px;
 }
 
 .pxd-parse .pxd-parse__code,
@@ -289,7 +424,8 @@
   border-collapse: collapse;
   background: transparent;
   color: var(--pxd-text);
-  font-size: 13px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
 
 .pxd-parse .pxd-parse__table th,
@@ -302,7 +438,7 @@
 }
 
 .pxd-parse .pxd-parse__table th {
-  border-bottom: 1px solid var(--pxd-border-strong);
+  border-bottom: 2px solid var(--pxd-border-strong);
   font-weight: 600;
 }
 
@@ -347,11 +483,16 @@ body.bt-theme-dark .pxd-parse .pxd-parse__block--on,
 
 .pxd-parse .pxd-parse__foot {
   display: flex;
+  flex: 0 0 auto;
   flex-wrap: wrap;
   align-items: center;
   gap: 6px;
+  position: sticky;
+  bottom: 0;
+  z-index: 2;
   padding: 6px 8px;
   border-top: 1px solid var(--pxd-border);
+  background: var(--pxd-surface);
 }
 
 .pxd-parse .pxd-parse__foot[hidden] {

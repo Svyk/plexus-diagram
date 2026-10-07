@@ -48,6 +48,13 @@ export function formatSeconds(ms) {
   return `${text} s`;
 }
 
+// All when the document is short or the count is not known yet. Current page past 60.
+export function defaultRangeChoice(pageCount) {
+  const n = Number(pageCount);
+  if (!Number.isFinite(n) || n <= 0 || n <= 60) return "all";
+  return "current";
+}
+
 export function engineChip({ phase = "idle", engine = "builtin", ms = null, page = 0, pageCount = 0, helper = "" } = {}) {
   if (phase === "running") {
     const which = engine === "docling" ? "Docling" : "built-in";
@@ -259,52 +266,88 @@ export function createParseView({
   root.setAttribute("role", "region");
   root.setAttribute("aria-label", "Parsed PDF");
   const bar = el("div", "pxd-parse__bar", root);
-  const rangeInput = el("input", "pxd-parse__range", bar);
-  rangeInput.type = "text";
-  rangeInput.value = "All";
-  rangeInput.setAttribute("aria-label", "Page range");
-  rangeInput.setAttribute("data-tip", "parse.range");
-  const currentBtn = el("button", "pxd-parse__chip", bar);
-  currentBtn.type = "button";
-  currentBtn.textContent = "Current page";
-  const allBtn = el("button", "pxd-parse__chip", bar);
-  allBtn.type = "button";
-  allBtn.textContent = "All";
-  allBtn.setAttribute("aria-pressed", "true");
-  const chip = el("button", "pxd-parse__engine", bar);
+  const engineMenu = el("div", "pxd-parse__menu", bar);
+  const chip = el("button", "pxd-parse__engine", engineMenu);
   chip.type = "button";
   chip.textContent = "Built-in";
-  const doclingBtn = el("button", "pxd-parse__docling", bar);
+  chip.setAttribute("aria-haspopup", "menu");
+  const enginePop = el("div", "pxd-parse__pop", engineMenu);
+  enginePop.setAttribute("role", "menu");
+  setHidden(enginePop, true);
+  const againBtn = el("button", "pxd-parse__again", enginePop);
+  againBtn.type = "button";
+  againBtn.textContent = "Parse again (built-in)";
+  const doclingBtn = el("button", "pxd-parse__docling", enginePop);
   doclingBtn.type = "button";
   doclingBtn.textContent = "Parse with Docling";
   doclingBtn.setAttribute("data-tip", "parse.docling");
+  setHidden(doclingBtn, true);
+  const cancelBtn = el("button", "pxd-parse__cancel", enginePop);
+  cancelBtn.type = "button";
+  cancelBtn.textContent = "Cancel";
+  cancelBtn.setAttribute("data-tip", "parse.cancel");
+  setHidden(cancelBtn, true);
+  const rangeMenu = el("div", "pxd-parse__menu", bar);
+  const rangeBtn = el("button", "pxd-parse__rangebtn", rangeMenu);
+  rangeBtn.type = "button";
+  rangeBtn.textContent = "All";
+  rangeBtn.setAttribute("aria-label", "Page range");
+  rangeBtn.setAttribute("aria-haspopup", "menu");
+  const rangePop = el("div", "pxd-parse__pop", rangeMenu);
+  rangePop.setAttribute("role", "menu");
+  setHidden(rangePop, true);
+  const currentBtn = el("button", "pxd-parse__chip", rangePop);
+  currentBtn.type = "button";
+  currentBtn.textContent = "Current page";
+  currentBtn.setAttribute("data-range", "current");
+  const allBtn = el("button", "pxd-parse__chip", rangePop);
+  allBtn.type = "button";
+  allBtn.textContent = "All";
+  allBtn.setAttribute("data-range", "all");
+  allBtn.setAttribute("aria-pressed", "true");
+  const rangeInput = el("input", "pxd-parse__range", rangePop);
+  rangeInput.type = "text";
+  rangeInput.value = "";
+  rangeInput.placeholder = "3-7";
+  rangeInput.setAttribute("aria-label", "Page range");
+  rangeInput.setAttribute("data-tip", "parse.range");
+  const filterMenu = el("div", "pxd-parse__menu", bar);
+  const filterBtn = el("button", "pxd-parse__filterbtn", filterMenu);
+  filterBtn.type = "button";
+  filterBtn.textContent = "Filter";
+  filterBtn.setAttribute("aria-haspopup", "menu");
+  filterBtn.setAttribute("aria-label", "Filter blocks");
+  const filterPop = el("div", "pxd-parse__pop", filterMenu);
+  filterPop.setAttribute("role", "menu");
+  setHidden(filterPop, true);
   const filters = { text: true, table: true, figure: true, formula: true };
   const filterBtns = {};
   for (const name of ["Text", "Tables", "Figures", "Formulas"]) {
     const key = name === "Tables" ? "table" : name === "Figures" ? "figure" : name === "Formulas" ? "formula" : "text";
-    const button = el("button", "pxd-parse__filter", bar);
+    const button = el("button", "pxd-parse__filter", filterPop);
     button.type = "button";
     button.textContent = name;
     button.setAttribute("aria-pressed", "true");
     button.setAttribute("data-filter", key);
     filterBtns[key] = button;
   }
+  const searchBtn = el("button", "pxd-parse__searchbtn", bar);
+  searchBtn.type = "button";
+  searchBtn.textContent = "⌕";
+  searchBtn.setAttribute("aria-label", "Search");
+  searchBtn.setAttribute("data-tip", "parse.search");
   const search = el("input", "pxd-parse__search", bar);
   search.type = "search";
   search.placeholder = "Search";
   search.setAttribute("aria-label", "Search parsed text");
   search.setAttribute("data-tip", "parse.search");
+  setHidden(search, true);
   const lockBtn = el("button", "pxd-parse__lock", bar);
   lockBtn.type = "button";
   lockBtn.textContent = "⇅";
   lockBtn.setAttribute("aria-label", "Sync scroll");
   lockBtn.setAttribute("aria-pressed", "true");
   lockBtn.setAttribute("data-tip", "parse.sync");
-  const cancelBtn = el("button", "pxd-parse__cancel", bar);
-  cancelBtn.type = "button";
-  cancelBtn.textContent = "Cancel";
-  cancelBtn.setAttribute("data-tip", "parse.cancel");
-  setHidden(cancelBtn, true);
   const track = el("div", "pxd-parse__track", root);
   const fill = el("div", "pxd-parse__fill", track);
   setHidden(track, true);
@@ -351,6 +394,7 @@ export function createParseView({
   let query = "";
   let range = null;
   let rangeLabel = "All";
+  let rangeTouched = false;
   let selected = [];
   let anchor = -1;
   let focusId = "";
@@ -441,6 +485,7 @@ export function createParseView({
     chip.setAttribute("data-tip", tipId);
     const running = phase === "running";
     setHidden(cancelBtn, !running);
+    setHidden(doclingBtn, helperState !== "ready");
     setHidden(track, !running);
     const denom = Number(progress.pageCount) || 0;
     const frac = running && denom ? Math.max(0, Math.min(1, Number(progress.page) / denom)) : 0;
@@ -684,7 +729,7 @@ export function createParseView({
     const startX = Number(event.clientX) || 0;
     const startY = Number(event.clientY) || 0;
     let moved = false;
-    const win = doc.defaultView;
+    const win = doc.defaultView || doc;
     const move = (ev) => {
       if (Math.abs((Number(ev.clientX) || 0) - startX) + Math.abs((Number(ev.clientY) || 0) - startY) > 4) moved = true;
     };
@@ -705,9 +750,20 @@ export function createParseView({
         getData: (type) => (type === PARSE_MIME || type === "text/plain" ? json : ""),
         setData() {},
       };
+      const plain = { type: "drop", bubbles: true, cancelable: true, clientX: x, clientY: y, dataTransfer: transfer, preventDefault() {}, stopPropagation() {} };
+      let dropped = plain;
       try {
-        hit?.dispatchEvent?.({ type: "drop", clientX: x, clientY: y, dataTransfer: transfer, preventDefault() {}, stopPropagation() {} });
-      } catch { /* stub */ }
+        // A plain object is not an Event. The browser throws and the drop never lands.
+        // The test document stores listeners on the node, and its dispatcher wants the plain object.
+        if (typeof Event === "function" && hit && !hit.listeners) {
+          const evn = new Event("drop", { bubbles: true, cancelable: true });
+          Object.defineProperty(evn, "clientX", { value: x });
+          Object.defineProperty(evn, "clientY", { value: y });
+          Object.defineProperty(evn, "dataTransfer", { value: transfer });
+          dropped = evn;
+        }
+      } catch { dropped = plain; }
+      try { hit?.dispatchEvent?.(dropped); } catch { /* stub */ }
     };
     listen(win, "pointermove", move, true);
     listen(win, "pointerup", up, true);
@@ -860,6 +916,7 @@ export function createParseView({
     const pdf = typeof getPdf === "function" ? await getPdf() : null;
     if (ctrl.signal.aborted) return;
     const total = Number(pdf?.numPages) || Number(explicit?.numPages) || 1;
+    if (!explicit?.pages && !rangeTouched) applyDefaultRange(total);
     const [from, to] = explicit?.pages || rangeOf(total);
     const t0 = now();
     records = [];
@@ -1107,33 +1164,63 @@ export function createParseView({
     overlay.hide();
   });
   listen(root, "pointermove", (event) => { pointerTarget = event.target; });
-  listen(parseBtn, "click", () => { void parseBuiltin(); });
-  listen(chip, "click", () => { if (phase === "running") cancel(); });
-  listen(cancelBtn, "click", () => cancel());
+  const pops = [enginePop, rangePop, filterPop];
+  const closeMenus = () => { for (const pop of pops) setHidden(pop, true); };
+  const toggleMenu = (pop) => {
+    const open = pop.hidden !== true && !pop.hasAttribute?.("hidden");
+    closeMenus();
+    setHidden(pop, open);
+  };
+  function paintRangeButton() {
+    rangeBtn.textContent = rangeLabel === "Current page" ? "Current page" : (rangeLabel || "All");
+    currentBtn.setAttribute("aria-pressed", rangeLabel === "Current page" ? "true" : "false");
+    allBtn.setAttribute("aria-pressed", rangeLabel === "All" ? "true" : "false");
+  }
+  function applyDefaultRange(total) {
+    if (defaultRangeChoice(total) === "current") {
+      rangeLabel = "Current page";
+      const page = Number(pageNow?.()) || 1;
+      range = [page, page];
+    } else {
+      rangeLabel = "All";
+      range = null;
+    }
+    paintRangeButton();
+  }
+  listen(parseBtn, "click", () => { closeMenus(); void parseBuiltin(); });
+  listen(chip, "click", () => { toggleMenu(enginePop); });
+  listen(againBtn, "click", () => { closeMenus(); void parseBuiltin(); });
+  listen(cancelBtn, "click", () => { closeMenus(); cancel(); });
   listen(doclingBtn, "click", () => {
+    closeMenus();
     void (async () => {
       await refreshHelper();
       if (helperState === "ready") await parseDocling();
     })();
   });
+  listen(rangeBtn, "click", () => { toggleMenu(rangePop); });
+  listen(filterBtn, "click", () => { toggleMenu(filterPop); });
   listen(currentBtn, "click", () => {
+    rangeTouched = true;
     rangeLabel = "Current page";
     const page = Number(pageNow?.()) || 1;
     range = [page, page];
-    rangeInput.value = String(page);
-    currentBtn.setAttribute("aria-pressed", "true");
-    allBtn.setAttribute("aria-pressed", "false");
+    rangeInput.value = "";
+    paintRangeButton();
+    closeMenus();
     render();
   });
   listen(allBtn, "click", () => {
+    rangeTouched = true;
     rangeLabel = "All";
     range = null;
-    rangeInput.value = "All";
-    allBtn.setAttribute("aria-pressed", "true");
-    currentBtn.setAttribute("aria-pressed", "false");
+    rangeInput.value = "";
+    paintRangeButton();
+    closeMenus();
     render();
   });
   listen(rangeInput, "change", () => {
+    rangeTouched = true;
     const text = String(rangeInput.value || "").trim();
     const match = /^(\d+)\s*[–-]\s*(\d+)$/.exec(text);
     if (match) {
@@ -1142,11 +1229,24 @@ export function createParseView({
     } else if (/^\d+$/.test(text)) {
       range = [Number(text), Number(text)];
       rangeLabel = text;
+    } else if (!text) {
+      range = null;
+      rangeLabel = "All";
     } else {
       range = null;
       rangeLabel = "All";
     }
+    paintRangeButton();
     render();
+  });
+  listen(searchBtn, "click", () => {
+    const open = search.hidden === true || search.hasAttribute?.("hidden");
+    setHidden(search, !open);
+    if (open) { try { search.focus?.(); } catch { /* stub */ } }
+  });
+  listen(doc, "click", (event) => {
+    if (bar.contains?.(event.target)) return;
+    closeMenus();
   });
   listen(search, "input", () => { query = String(search.value || ""); render(); });
   for (const [key, button] of Object.entries(filterBtns)) {
@@ -1211,6 +1311,7 @@ export function createParseView({
 
   armKeys();
   render();
+  void refreshHelper();
 
   return {
     element: () => root,

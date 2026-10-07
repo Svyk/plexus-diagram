@@ -1413,6 +1413,8 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     },
 
     // Next sibling of the PDF block. No props. Chunks of 400 bullets, 10 chunks max.
+    // A PDF that is already a board card gets a note card beside it instead: a sibling
+    // under the board would show up as a stray card.
     insertParsedBelow({ pdfUid, markdown, blockEstimate } = {}) {
       if (destroyed || gone) return Promise.resolve(undefined);
       const plan = chunkParsedMarkdown(markdown, blockEstimate);
@@ -1421,6 +1423,35 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
         return Promise.resolve({ ok: false, reason: "too-large" });
       }
       if (!plan.chunks.length) return Promise.resolve({ ok: true, uids: [], writes: 0 });
+      if (board?.items?.has?.(pdfUid)) {
+        const nested = nestMarkdownUnderFirst(markdown);
+        if (!String(nested).trim() || bulletCount(nested) === 0) return Promise.resolve({ ok: false, reason: "empty" });
+        const item = board.items.get(pdfUid);
+        const rect = rects.get(pdfUid) || { x: item?.x || 0, y: item?.y || 0, w: item?.w || DEFAULT_SIZES.card.w, h: item?.h || DEFAULT_SIZES.card.h };
+        const size = clampSize("card", DEFAULT_SIZES.card.w, DEFAULT_SIZES.card.h);
+        const gap = 40;
+        let x = (Number(rect.x) || 0) + (Number(rect.w) || 0) + gap;
+        let y = Number(rect.y) || 0;
+        const others = [];
+        for (const [id, r] of rects) if (id !== pdfUid && r) others.push(r);
+        for (let guard = 0; guard < 200; guard += 1) {
+          const blocker = others.find((o) => x < o.x + o.w && x + size.w > o.x && y < o.y + o.h && y + size.h > o.y);
+          if (!blocker) break;
+          y = (Number(blocker.y) || 0) + (Number(blocker.h) || 0) + gap;
+        }
+        const { parent, rel } = placeParsed(x, y, size.w, size.h);
+        const layout = withCardLook({ x: rel.x, y: rel.y, w: size.w, h: size.h }, nested);
+        const plexus = serializeItemLayout(layout);
+        const order = insertOrder(parent);
+        return runParsed(async () => {
+          const roots = await host.fromMarkdown({ parentUid: parent, order, markdown: nested });
+          const uid = roots[0];
+          if (!uid) return { ok: false, reason: "empty" };
+          await host.updateProps(uid, plexus);
+          repull();
+          return { ok: true, uid, uids: [uid], path: "card" };
+        });
+      }
       const loc = host.blockLocation?.(pdfUid);
       if (!loc) return Promise.resolve({ ok: false, reason: "missing" });
       return runParsed(async () => {
@@ -1474,7 +1505,9 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
         let path = asked === "flat" ? "flat" : "native";
         if (tryGrid) {
           try {
-            const info = await host.createGridTable({ ...toGridSpec(table), parentUid: parent, order });
+            const spec = { ...toGridSpec(table), parentUid: parent, order };
+            if (rawSize.widths) spec.widths = rawSize.widths;
+            const info = await host.createGridTable(spec);
             if (info?.uid) { uid = info.uid; path = "grid"; }
           } catch {
             uid = null;

@@ -1,7 +1,7 @@
 import test from "node:test";
 import assert from "node:assert/strict";
 import {
-  screenToWorld, worldToScreen, clampZoom, zoomAt, fitViewport, visibleWorldRect, lodForZoom,
+  screenToWorld, worldToScreen, clampZoom, zoomAt, fitViewport, visibleWorldRect, panToShow, lodForZoom,
   center, inflate, unionRect, rectsIntersect, rectContains, pointInRect,
   sidePoint, nearestSide, autoSides, edgePath, arrowHeadPath, arrowSize,
   snapMove, snapToGrid, alignRects, distributeRects, gridBackground, lodTier, lodFonts, nearestInDirection,
@@ -51,6 +51,23 @@ test("fitViewport centers bounds with padding, respects limits, null bounds", ()
   assert.equal(fitViewport({ x: 0, y: 0, w: 1e6, h: 1e6 }, size).zoom, 0.1);
   assert.equal(fitViewport({ x: 0, y: 0, w: 1e6, h: 1e6 }, size, { minZoom: 0.05 }).zoom, 0.05);
   assert.deepEqual(fitViewport(null, size), { x: 500, y: 300, zoom: 1 });
+});
+
+test("panToShow keeps zoom when the card fits and only zooms out when it cannot", () => {
+  const vp = { x: 0, y: 0, zoom: 1 };
+  const size = { width: 400, height: 300 };
+  const on = panToShow(vp, size, { x: 40, y: 40, w: 100, h: 80 }, { pad: 24 });
+  assert.equal(on.moved, false);
+  assert.equal(on.zoom, 1);
+  assert.equal(on.x, 0);
+  const off = panToShow(vp, size, { x: 500, y: 40, w: 80, h: 40 }, { pad: 24 });
+  assert.equal(off.moved, true);
+  assert.equal(off.zoom, 1);
+  assert.ok(off.x < 0);
+  const huge = panToShow(vp, size, { x: 0, y: 0, w: 2000, h: 2000 }, { pad: 24 });
+  assert.equal(huge.moved, true);
+  assert.ok(huge.zoom < 1);
+  assert.ok(huge.zoom >= 0.1);
 });
 
 test("visibleWorldRect with margin", () => {

@@ -61,7 +61,7 @@ function plan(over) {
 
 test("constants match the cover budget", () => {
   assert.equal(WARM_AFTER_MS, 1500);
-  assert.equal(WARM_MAX, 3);
+  assert.equal(WARM_MAX, 8);
   assert.equal(COVER_MAX_W, 320);
   assert.equal(COVER_DB, "plexus-diagram");
   assert.equal(COVER_STORE, "covers");
@@ -80,8 +80,9 @@ test("warmPlan returns one on-screen pdf, and each gate refuses", () => {
   assert.equal(plan({ hasPane: true }), null, "open pane");
   assert.equal(plan({ saveData: true }), null, "save-data");
   assert.equal(plan({ inFlight: true }), null, "one at a time");
-  assert.equal(plan({ done: 3 }), null, "budget spent");
-  assert.deepEqual(plan({ done: 2 }), { uid: "a", blockUid: "b-a" }, "one slot left");
+  assert.equal(plan({ done: 8 }), null, "budget spent");
+  assert.deepEqual(plan({ done: 3 }), { uid: "a", blockUid: "b-a" }, "three done still plans");
+  assert.deepEqual(plan({ done: 7 }), { uid: "a", blockUid: "b-a" }, "one slot left");
   assert.equal(plan({ moving: true }), null, "pan or zoom");
   assert.equal(plan({ done: -1 }), null);
   assert.equal(plan({ sinceOpenMs: undefined, done: 0 }), null);

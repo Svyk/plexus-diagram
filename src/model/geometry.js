@@ -40,6 +40,44 @@ export function fitViewport(bounds, size, { padding = 64, maxZoom = 1.5, minZoom
   return { x: cx - c.x * zoom, y: cy - c.y * zoom, zoom };
 }
 
+// Pan so `rect` sits inside the viewport. Zoom stays put when the rect fits.
+// Zoom out only when it is off-screen and larger than the padded viewport. Never zoom in.
+export function panToShow(vp, size, rect, { pad = 24 } = {}) {
+  const zoom0 = Number(vp?.zoom);
+  const width = Number(size?.width);
+  const height = Number(size?.height);
+  const same = { x: Number(vp?.x) || 0, y: Number(vp?.y) || 0, zoom: zoom0 > 0 ? zoom0 : 1, moved: false };
+  if (!vp || !(zoom0 > 0) || !(width > 0) || !(height > 0) || !rect || !(Number(rect.w) > 0) || !(Number(rect.h) > 0)) return same;
+  const view = visibleWorldRect(vp, size, 0);
+  const padW = pad / zoom0;
+  const padH = pad / zoom0;
+  const left = rect.x - padW;
+  const top = rect.y - padH;
+  const right = rect.x + rect.w + padW;
+  const bottom = rect.y + rect.h + padH;
+  const fits = rect.w + 2 * padW <= view.w + 0.5 && rect.h + 2 * padH <= view.h + 0.5;
+  const onScreen = left >= view.x - 0.5 && top >= view.y - 0.5 && right <= view.x + view.w + 0.5 && bottom <= view.y + view.h + 0.5;
+  if (onScreen) return { x: vp.x, y: vp.y, zoom: zoom0, moved: false };
+  if (fits) {
+    let dx = 0;
+    let dy = 0;
+    if (left < view.x) dx = left - view.x;
+    else if (right > view.x + view.w) dx = right - (view.x + view.w);
+    if (top < view.y) dy = top - view.y;
+    else if (bottom > view.y + view.h) dy = bottom - (view.y + view.h);
+    return { x: vp.x - dx * zoom0, y: vp.y - dy * zoom0, zoom: zoom0, moved: dx !== 0 || dy !== 0 };
+  }
+  const availW = Math.max(1, width - 2 * pad);
+  const availH = Math.max(1, height - 2 * pad);
+  const zoom = clampZoom(Math.min(zoom0, availW / rect.w, availH / rect.h));
+  return {
+    x: width / 2 - (rect.x + rect.w / 2) * zoom,
+    y: height / 2 - (rect.y + rect.h / 2) * zoom,
+    zoom,
+    moved: true,
+  };
+}
+
 export function visibleWorldRect(vp, size, margin = 0) {
   const mw = size.width * margin;
   const mh = size.height * margin;

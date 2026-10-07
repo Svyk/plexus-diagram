@@ -2,7 +2,7 @@
 // A bad argument degrades to an empty result. Nothing here throws.
 
 export const WARM_AFTER_MS = 1500;
-export const WARM_MAX = 3;
+export const WARM_MAX = 8;
 export const COVER_MAX_W = 320;
 export const SHARP_CAP = 1600;
 
@@ -117,7 +117,7 @@ export function sharpCoverPlan(input) {
 }
 
 // One card, or null. Never during the open window, never beside a live reader
-// or an open pane, never while another warm is in flight, never past 3,
+// or an open pane, never while another warm is in flight, never past WARM_MAX,
 // never on save-data, never while the camera is moving.
 // `visible` is a Set, a list of uids, or (uid) => boolean. Omit it and nothing warms.
 // `moving` is optional; the integrator passes true during pan or zoom.

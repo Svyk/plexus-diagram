@@ -92,12 +92,47 @@ function hasFirst(record) {
   return Boolean(value) && typeof value === "object" && typeof value.size === "number" && value.size > 0;
 }
 
+function boxOf(node) {
+  try {
+    return typeof node.getBoundingClientRect === "function" ? node.getBoundingClientRect() : null;
+  } catch {
+    return null;
+  }
+}
+
+function viewportOf(doc) {
+  try {
+    const view = doc?.defaultView;
+    const w = Number(view?.innerWidth);
+    const h = Number(view?.innerHeight);
+    if (w > 0 && h > 0) return { w, h };
+  } catch { /* stub */ }
+  return null;
+}
+
+// A reader with no measurable box still counts. A positive box that misses the
+// window does not: the page outline keeps every PDF mounted below the board.
+function readerInView(node, doc) {
+  const rect = boxOf(node);
+  const view = viewportOf(doc);
+  if (!rect || !view) return true;
+  const width = Number(rect.width);
+  const height = Number(rect.height);
+  if (!(width > 0) || !(height > 0)) return true;
+  const left = Number(rect.left ?? rect.x);
+  const top = Number(rect.top ?? rect.y);
+  if (!Number.isFinite(left) || !Number.isFinite(top)) return true;
+  return left < view.w && top < view.h && left + width > 0 && top + height > 0;
+}
+
 function foreignReader(doc, holder) {
   try {
     const nodes = doc?.querySelectorAll?.(".rm-pdf-container") || [];
     for (let i = 0; i < nodes.length; i += 1) {
       const node = nodes[i];
       if (holder && typeof holder.contains === "function" && holder.contains(node)) continue;
+      if (typeof node.closest === "function" && node.closest(".pxd-pdf-warm, .pxd-read")) continue;
+      if (!readerInView(node, doc)) continue;
       return true;
     }
     return false;

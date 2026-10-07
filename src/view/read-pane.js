@@ -238,7 +238,11 @@ export function createReadPane({
   const zoomOutBtn = pillButton(doc, el, pill, "Zoom out", "−");
   const zoomInBtn = pillButton(doc, el, pill, "Zoom in", "+");
   const fitBtn = pillButton(doc, el, pill, "Fit width", "⇔");
+  const prevPageBtn = pillButton(doc, el, pill, "Previous page", "‹");
+  prevPageBtn.classList.add("pxd-read__pageprev");
   const pageNode = el("span", "pxd-read__pages", pill);
+  const nextPageBtn = pillButton(doc, el, pill, "Next page", "›");
+  nextPageBtn.classList.add("pxd-read__pagenext");
   const searchBtn = pillButton(doc, el, pill, "Search", "⌕");
   const parsedMount = el("div", "pxd-read__parsed", pane);
   const drawerMount = el("div", "pxd-read__drawer", pane);
@@ -1185,9 +1189,20 @@ export function createReadPane({
   };
   const paintPill = () => {
     const { page, total } = pageParts();
+    const narrowBoth = pane.classList.contains("pxd-read--both") && pane.classList.contains("pxd-read--narrow");
     if (page == null) pageNode.textContent = "";
+    else if (narrowBoth && total != null) pageNode.textContent = `page ${page} / ${total}`;
+    else if (narrowBoth) pageNode.textContent = `page ${page}`;
     else if (total == null) pageNode.textContent = String(page);
     else pageNode.textContent = `${page} / ${total}`;
+  };
+  const stepPage = (delta) => {
+    const { page, total } = pageParts();
+    if (page == null) return;
+    const next = page + delta;
+    if (next < 1) return;
+    if (total != null && next > total) return;
+    jumpPage(next);
   };
   const toolbarEl = () => live.querySelector?.(".rm-pdf-container .rm-pdf-toolbar");
   const toolbarButtons = () => {
@@ -1507,7 +1522,9 @@ export function createReadPane({
     if (live?.style) live.style.minHeight = "0";
     if (drawerMount?.style) {
       drawerMount.style.flex = "0 0 auto";
-      drawerMount.style.minHeight = "0";
+      // An inline min-height of 0 beats the parsed/both rule and lets the
+      // closed 32px strip shrink inside the grid. Leave the floor to CSS.
+      drawerMount.style.minHeight = "";
     }
   };
   const concealLegacy = () => {
@@ -1594,6 +1611,8 @@ export function createReadPane({
   listen(zoomOutBtn, "click", (event) => { event.stopPropagation(); proxyPill("zoomOut"); });
   listen(zoomInBtn, "click", (event) => { event.stopPropagation(); proxyPill("zoomIn"); });
   listen(fitBtn, "click", (event) => { event.stopPropagation(); proxyPill("fit"); });
+  listen(prevPageBtn, "click", (event) => { event.stopPropagation(); stepPage(-1); });
+  listen(nextPageBtn, "click", (event) => { event.stopPropagation(); stepPage(1); });
   listen(searchBtn, "click", (event) => { event.stopPropagation(); proxyPill("search"); });
   listen(closeBtn, "click", onCloseClick);
   listen(split, "pointerdown", (event) => {
@@ -1667,6 +1686,7 @@ export function createReadPane({
     for (const [id, button] of Object.entries(modeBtns)) {
       button.setAttribute("aria-pressed", id === viewMode ? "true" : "false");
     }
+    paintPill();
   }
   const ensureParsed = () => {
     if (parsedView) return parsedView;
@@ -1723,6 +1743,12 @@ export function createReadPane({
     revealModes();
     viewMode = which === "both" ? "both" : "parsed";
     applyModeClass();
+    try { drawer?.close?.(); } catch { /* drawer */ }
+    if (viewMode === "both" && pane.classList.contains("pxd-read--narrow") && !live.querySelector?.(".rm-pdf-container")) {
+      settleNoted = false;
+      mountReader(current.blockUid);
+      armSettle();
+    }
     const view = ensureParsed();
     view.setTarget({ url: pdfUrl(), pdfUid: current.cardUid });
     try { view.watchPageInput(readerField()); } catch { /* field */ }

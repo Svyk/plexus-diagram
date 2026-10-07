@@ -4,10 +4,10 @@
 import { planParseInsert, PARSE_MISSING_TOAST } from "../model/drop.js";
 import { toRoamMarkdown } from "../model/parse-to-roam-md.js";
 import { selectBlocks } from "../model/parse-schema.js";
+import { parsedTableSize } from "../model/roam-table.js";
 import { imageKey } from "../host/parse-store.js";
 import { dataUrlToBlob } from "./parse-crop.js";
 
-const TABLE_SIZE = { w: 420, h: 260 };
 const CARD_SIZE = { w: 280, h: 160 };
 
 // Next free spot to the right of `rect`; steps down past any rect in `others` it would overlap.
@@ -39,10 +39,13 @@ function plural(n, one, many) {
   return `${n} ${n === 1 ? one : many}`;
 }
 
-export function createParseActions({ session, store, placeBeside, toast, select, upload } = {}) {
+export function createParseActions({ session, store, placeBeside, toast, select, show, upload } = {}) {
   const say = (message) => { try { if (typeof toast === "function") toast(message); } catch { /* host */ } };
   const pick = (uids) => {
-    if (Array.isArray(uids) && uids.length) { try { select?.(uids); } catch { /* host */ } }
+    const list = (Array.isArray(uids) ? uids : []).filter((id) => typeof id === "string" && id);
+    if (!list.length) return;
+    try { select?.(list); } catch { /* host */ }
+    try { show?.(list); } catch { /* host */ }
   };
   const spot = (pdfUid, size) => {
     let at = null;
@@ -81,7 +84,8 @@ export function createParseActions({ session, store, placeBeside, toast, select,
       const res = await session?.insertParsedBelow?.({ pdfUid: payload.pdfUid, markdown, blockEstimate });
       if (res?.ok) {
         pick(res.uids);
-        say(`Inserted ${plural(blockEstimate, "block", "blocks")} below the PDF`);
+        const where = res.path === "card" ? "beside the PDF" : "below the PDF";
+        say(`Inserted ${plural(blockEstimate, "block", "blocks")} ${where}`);
       }
       return res || { ok: false, reason: "no-session" };
     },
@@ -91,7 +95,8 @@ export function createParseActions({ session, store, placeBeside, toast, select,
       if (!doc) return { ok: false, reason: "missing-cache" };
       const table = selectBlocks(doc, payload.ids).find((b) => b?.type === "table");
       if (!table) return { ok: false, reason: "empty" };
-      const at = Number.isFinite(payload.x) && Number.isFinite(payload.y) ? { x: payload.x, y: payload.y } : spot(payload.pdfUid, TABLE_SIZE);
+      const sized = parsedTableSize(table);
+      const at = Number.isFinite(payload.x) && Number.isFinite(payload.y) ? { x: payload.x, y: payload.y } : spot(payload.pdfUid, sized);
       const res = await session?.insertParsedTable?.({ ...at, table, mode: payload.mode || "auto" });
       if (res?.ok) {
         pick(res.uid ? [res.uid] : []);

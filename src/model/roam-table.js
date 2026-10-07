@@ -9,15 +9,29 @@ export const TABLE_COLS = 3;
 export const TABLE_SIZE = { w: 480, h: 260 };
 // Roam tables nest columns: a row block is column 1, its child column 2, and so on.
 export const TABLE_WRITES = 1 + TABLE_ROWS * TABLE_COLS;
+// Roam Grid column pixels. The sum of column widths stays at 1200 when it can;
+// the card adds the 42px row header and 16px of padding on top of that sum.
+const COL_MIN = 56;
+const COL_MAX = 640;
+const PX_PER_PT = 1.4;
+const WIDTH_CAP = 1200;
+const ROW_HEADER = 42;
+const GRID_PAD = 16;
+const NATIVE_PAD = 16;
+const COL_HEADER = 28;
+const ROW_PX = 32;
+const HEIGHT_CAP = 800;
+const HEIGHT_CHROME = 8;
+const CHAR_PX = 7;
+const CELL_PAD = 16;
 
-const TABLE_RE = /^\{\{\s*(?:\[\[table\]\]|table)\s*\}\}$/i;
-
-export function isRoamTableString(value) {
-  return TABLE_RE.test(String(value ?? "").trim());
+function clampInt(n, lo, hi) {
+  const v = Math.round(Number(n));
+  if (!Number.isFinite(v)) return lo;
+  return Math.min(hi, Math.max(lo, v));
 }
 
-// Parsed tables scale with the grid. 3×3 stays the empty-table size (480×260).
-export function parsedTableSize(table) {
+function tableShape(table) {
   let cols = Number.isInteger(table?.cols) ? table.cols : 0;
   let rows = Number.isInteger(table?.rows) ? table.rows : 0;
   if (!rows && Array.isArray(table?.rows)) rows = table.rows.length;
@@ -30,9 +44,88 @@ export function parsedTableSize(table) {
       if (!Number.isInteger(table?.cols)) cols = Math.max(cols, c);
     }
   }
+  return { cols: Math.max(0, cols), rows: Math.max(0, rows) };
+}
+
+function fitWidths(raw) {
+  let ws = raw.map((n) => clampInt(n, COL_MIN, COL_MAX));
+  const sumOf = () => ws.reduce((a, b) => a + b, 0);
+  let sum = sumOf();
+  if (sum > WIDTH_CAP && ws.length) {
+    const scale = WIDTH_CAP / sum;
+    ws = ws.map((n) => clampInt(n * scale, COL_MIN, COL_MAX));
+    sum = sumOf();
+    let guard = 0;
+    while (sum > WIDTH_CAP && guard < ws.length * (COL_MAX - COL_MIN + 1)) {
+      guard += 1;
+      let i = 0;
+      for (let k = 1; k < ws.length; k += 1) if (ws[k] > ws[i]) i = k;
+      if (ws[i] <= COL_MIN) break;
+      const cut = Math.min(ws[i] - COL_MIN, sum - WIDTH_CAP);
+      ws[i] -= cut;
+      sum -= cut;
+    }
+  }
+  const map = {};
+  for (let i = 0; i < ws.length; i += 1) map[String(i)] = ws[i];
+  return { map, sum };
+}
+
+function widthsFromXs(xs, cols) {
+  if (!Array.isArray(xs) || xs.length < 2) return null;
+  const bounds = [];
+  for (const n of xs) {
+    const v = Number(n);
+    if (!Number.isFinite(v)) return null;
+    if (bounds.length && v < bounds[bounds.length - 1]) return null;
+    bounds.push(v);
+  }
+  const count = cols > 0 ? Math.min(cols, bounds.length - 1) : bounds.length - 1;
+  if (count < 1) return null;
+  const raw = [];
+  for (let i = 0; i < count; i += 1) raw.push((bounds[i + 1] - bounds[i]) * PX_PER_PT);
+  return fitWidths(raw);
+}
+
+function widthsFromText(table, cols) {
+  const count = Math.max(1, cols || 1);
+  const longest = Array.from({ length: count }, () => 0);
+  for (const cell of table?.cells || []) {
+    const c = Number.isInteger(cell?.c) ? cell.c : 0;
+    if (c < 0 || c >= count) continue;
+    const span = Math.max(1, Number(cell?.colSpan) || 1);
+    const share = Math.ceil(String(cell?.text ?? "").length / span);
+    for (let i = 0; i < span && c + i < count; i += 1) {
+      longest[c + i] = Math.max(longest[c + i], share);
+    }
+  }
+  return fitWidths(longest.map((n) => n * CHAR_PX + CELL_PAD));
+}
+
+function cardHeight(rows) {
+  return Math.min(HEIGHT_CAP, COL_HEADER + Math.max(1, rows || 1) * ROW_PX + HEIGHT_CHROME);
+}
+
+const TABLE_RE = /^\{\{\s*(?:\[\[table\]\]|table)\s*\}\}$/i;
+
+export function isRoamTableString(value) {
+  return TABLE_RE.test(String(value ?? "").trim());
+}
+
+// widths is null unless grid.xs gives column boundaries. Each width is in [56, 640].
+// The sum is at most 1200 unless every column is already at the 56px floor.
+// Card width adds grid chrome (row header + padding) and stays at 1200 when the
+// columns themselves already exceed that. Height is the column header plus rows, capped at 800.
+export function parsedTableSize(table) {
+  const shape = tableShape(table);
+  const fromGrid = widthsFromXs(table?.grid?.xs ?? table?.xs, shape.cols);
+  const fitted = fromGrid || widthsFromText(table, shape.cols);
+  const chrome = fromGrid ? ROW_HEADER + GRID_PAD : NATIVE_PAD;
+  const w = fitted.sum > WIDTH_CAP ? WIDTH_CAP : Math.min(WIDTH_CAP + chrome, fitted.sum + chrome);
   return {
-    w: Math.min(1200, Math.max(480, 120 * (cols || 1))),
-    h: Math.min(800, Math.max(260, 28 * (rows || 1) + 40)),
+    w,
+    h: cardHeight(shape.rows),
+    widths: fromGrid ? fromGrid.map : null,
   };
 }
 

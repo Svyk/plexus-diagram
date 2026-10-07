@@ -19,6 +19,7 @@ import {
   blockGroup,
   copyText,
   createParseView,
+  defaultRangeChoice,
   engineChip,
   keyCommand,
   parseOwnsKey,
@@ -417,6 +418,57 @@ test("the PDF card Parse button sits beside Open and calls onPdfParse", () => {
   }
 });
 
+test("default range is all through 60 pages and current after that", () => {
+  assert.equal(defaultRangeChoice(1), "all");
+  assert.equal(defaultRangeChoice(60), "all");
+  assert.equal(defaultRangeChoice(61), "current");
+  assert.equal(defaultRangeChoice(0), "all");
+  assert.equal(defaultRangeChoice(undefined), "all");
+});
+
+test("a pointer drag drops the parse payload on the element under the pointer", () => {
+  const { stub, doc, restore } = mount();
+  try {
+    const view = createParseView({ doc });
+    doc.body.append(view.element());
+    view.showDoc(sample());
+    const board = doc.createElement("div");
+    doc.body.append(board);
+    const seen = [];
+    board.addEventListener("drop", (event) => {
+      seen.push(event.dataTransfer.getData(PARSE_MIME));
+    });
+    doc.elementFromPoint = () => board;
+    const handle = view.element().querySelector('[data-id="t1"] .pxd-parse__handle');
+    stub.dispatch(handle, "pointerdown", { button: 0, clientX: 10, clientY: 10 });
+    stub.dispatch(doc, "pointermove", { clientX: 40, clientY: 12 });
+    stub.dispatch(doc, "pointerup", { clientX: 48, clientY: 16 });
+    assert.equal(seen.length, 1);
+    const payload = JSON.parse(seen[0]);
+    assert.equal(payload.kind, "table");
+    assert.deepEqual(payload.ids, ["t1"]);
+  } finally {
+    restore();
+  }
+});
+
+test("a helper that is not running replaces the timing chip", async () => {
+  const { stub, doc, restore } = mount();
+  try {
+    const view = createParseView({
+      doc,
+      helper: { async health() { return { state: "not-running" }; } },
+    });
+    doc.body.append(view.element());
+    view.showDoc(sample());
+    await new Promise((resolve) => setImmediate(resolve));
+    assert.equal(view.chipText(), "Docling: not running");
+    assert.equal(view.element().querySelector(".pxd-parse__docling").hidden, true);
+  } finally {
+    restore();
+  }
+});
+
 test("Parsed mode shows the strip and dispose drops its listeners", async () => {
   const { stub, doc, restore } = mount();
   const root = doc.createElement("div");
@@ -443,6 +495,10 @@ test("Parsed mode shows the strip and dispose drops its listeners", async () => 
     pane.element()._rect = { left: 0, top: 0, width: 360, height: 600, right: 360, bottom: 600, x: 0, y: 0 };
     pane.layout(360);
     assert.equal(pane.element().classList.contains("pxd-read--narrow"), true);
+    assert.ok(pane.element().querySelector(".pxd-read__pageprev"));
+    assert.ok(pane.element().querySelector(".pxd-read__pagenext"));
+    assert.equal(pane.element().querySelector(".pxd-parse__docling").hidden, true);
+    assert.equal(pane.element().querySelector(".pxd-read-drawer--open"), null);
     pane.dispose();
     assert.equal(stub.listenerCount(), before);
   } finally {

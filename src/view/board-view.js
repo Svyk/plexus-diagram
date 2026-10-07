@@ -56,6 +56,7 @@ import {
   screenPx,
   lodFonts,
   lodTier,
+  panToShow,
   rectsIntersect,
   screenToWorld,
   viewportFromWorldRect,
@@ -1510,7 +1511,7 @@ function buildBoardView(onFail, {
     onReadPane: (detail) => {
       if (!detail?.open) {
         readPane?.close?.({ notify: false });
-        if (!disposed) armCoverWarm();
+        if (!disposed) armCoverWarmLater(700, { replace: true });
         return;
       }
       try { pdfWarm?.cancelAll?.(); } catch { /* warm */ }
@@ -1548,6 +1549,25 @@ function buildBoardView(onFail, {
     return readPane;
   };
   let parseActionsObj = null;
+  const revealParsed = (uids) => {
+    const uid = Array.isArray(uids) ? uids.find((id) => typeof id === "string" && id) : "";
+    if (!uid || disposed) return;
+    const run = (left) => {
+      if (disposed) return;
+      try { measure(); } catch { /* layout */ }
+      const rect = rects().get(uid);
+      if (!rect) {
+        if (left > 0) timers.frame(() => run(left - 1));
+        return;
+      }
+      const box = size.width && size.height ? size : { width: 800, height: 560 };
+      const next = panToShow(vp, box, rect, { pad: 24 });
+      if (next.moved) moveViewport({ x: next.x, y: next.y, zoom: next.zoom });
+      if (itemsR.shellOf?.(uid)) pulseItem(uid);
+      else if (left > 0) timers.frame(() => { if (!disposed) pulseItem(uid); });
+    };
+    timers.frame(() => run(8));
+  };
   const placeParseBeside = (pdfUid, sz) => {
     const items = [...(board()?.items.values() || [])];
     const rs = rects();
@@ -1565,6 +1585,7 @@ function buildBoardView(onFail, {
         placeBeside: placeParseBeside,
         toast: (message) => toast(message),
         select: (uids) => { if (!disposed) ctl.select(uids); },
+        show: (uids) => { if (!disposed) revealParsed(uids); },
         upload: (file) => host.uploadFile(file),
       });
     }
@@ -1963,10 +1984,11 @@ function buildBoardView(onFail, {
   };
   const readerIsLive = () => {
     try {
-      if (root.querySelector?.(".pxd-pdf-live")) return true;
+      if (readPane?.isOpen?.() === true) return true;
+      if (pdfFlip?.live?.()) return true;
       const nodes = root.querySelectorAll?.(".rm-pdf-container") || [];
       for (const node of nodes) {
-        if (typeof node.closest === "function" && node.closest(".pxd-pdf-warm")) continue;
+        if (typeof node.closest === "function" && node.closest(".pxd-pdf-warm, .pxd-read")) continue;
         return true;
       }
     } catch { /* stub */ }
@@ -2026,7 +2048,11 @@ function buildBoardView(onFail, {
     if (!card) return;
     // Idle first: the warm waits for a quiet frame (at most 2 s), and a gesture that started meanwhile wins.
     const start = () => {
-      if (disposed || suspended || gesturing || readPane?.isOpen?.() === true || pdfFlip?.live?.()) return;
+      if (disposed || suspended) return;
+      if (gesturing || readPane?.isOpen?.() === true || pdfFlip?.live?.()) {
+        armCoverWarmLater(600);
+        return;
+      }
       let job = null;
       try { job = ensurePdfWarm().request(card); } catch { job = null; }
       const next = () => {
@@ -2046,6 +2072,18 @@ function buildBoardView(onFail, {
       try { win.requestIdleCallback(() => start(), { timeout: 2000 }); return; } catch { /* fall through */ }
     }
     start();
+  };
+  const armCoverWarmLater = (ms, { replace = false } = {}) => {
+    if (disposed || suspended || !coverWarmOn() || !coverPaintAt) return;
+    if (coverWarmWait) {
+      if (!replace) return;
+      coverWarmWait();
+      coverWarmWait = null;
+    }
+    coverWarmWait = timers.later(() => {
+      coverWarmWait = null;
+      considerCoverWarm();
+    }, ms);
   };
   const armCoverWarm = () => {
     if (coverWarmWait) { coverWarmWait(); coverWarmWait = null; }
@@ -2673,6 +2711,9 @@ function buildBoardView(onFail, {
       refreshThumbnails();
       pdfFlip?.settle?.();
       scheduleSharpCovers();
+      // Fit and other camera moves are not pointer gestures, so the gesture-end
+      // warm pass never runs. Look again once the viewport has settled.
+      considerCoverWarm();
     }, RESUME_MS);
   };
   const refreshThumbnails = () => {
@@ -6138,7 +6179,10 @@ function buildBoardView(onFail, {
         toast: (message) => toast(message),
       }).then((res) => {
         if (disposed) return;
-        if (Array.isArray(res?.uids) && res.uids.length) ctl.select(res.uids);
+        if (Array.isArray(res?.uids) && res.uids.length) {
+          ctl.select(res.uids);
+          revealParsed(res.uids);
+        }
       }).catch(() => {});
       return;
     }

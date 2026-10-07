@@ -230,7 +230,7 @@ test("U2: edit rules use the rest row's left edge, width, and line-height", () =
 test("U2: an empty tab strip is hidden and the bar token is opaque in light and dark", () => {
   const tabs = readFileSync(new URL("../src/css/tabs.css", import.meta.url), "utf8");
   const ext = readFileSync(new URL("../src/extension.css", import.meta.url), "utf8");
-  const chrome = readFileSync(new URL("../src/css/chrome.css", import.meta.url), "utf8");
+  const chrome = readFileSync(new URL("../src/css/bar-fill.css", import.meta.url), "utf8");
   assert.match(tabs, /\.pxd-fstabs:empty \{[^}]*display:\s*none/);
   assert.match(tabs, /:not\(:has\(\.pxd-fstab\)\)[^{]*\{[^}]*margin-top:\s*0/);
   assert.match(tabs, /\.pxd-fstabs \{[^}]*background:\s*var\(--pxd-bar-bg\)/);

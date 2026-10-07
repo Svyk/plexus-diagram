@@ -1031,6 +1031,7 @@ function createSession(uid, { host, settings = null, virtual = false, raf, now =
     if (item.type === "section") return DEFAULT_SIZES.section;
     if (item.type === "text") return DEFAULT_SIZES.text;
     if (item.kind === "board") return DEFAULT_BOARD_CARD;
+    if (item.kind === "pdf") return DEFAULT_SIZES.pdf;
     return { w: sizeSetting("default-card-width", DEFAULT_SIZES.card.w), h: sizeSetting("default-card-height", DEFAULT_SIZES.card.h) };
   };
 

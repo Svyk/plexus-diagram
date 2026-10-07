@@ -18,7 +18,10 @@ import { findOnBoard } from "../model/find.js";
 import { readMindPreset, writeMindPreset } from "../model/mindmap.js";
 import { attrLegend, parseAttrStyles, styleAttrLinks } from "../model/attr-styles.js";
 import { HIGHLIGHT_COLORS, noteActionPlan } from "../model/highlight.js";
-import { embedSplit, pdfCardForUrl, readerRule } from "../model/pdf.js";
+import { embedSplit, pdfCardForUrl, pdfMacroUrl, readerRule } from "../model/pdf.js";
+import { WARM_AFTER_MS, coverKey, coverState, densityTicks, warmPlan } from "../model/pdf-cover.js";
+import { PDF_MARK, uidFromMark } from "../model/pdf-drag.js";
+import { createCoverStore } from "../host/cover-store.js";
 import { chipsForPdf } from "../model/pdf-chips.js";
 import { expandDateHighlights, highlightRows, placeHighlights } from "../model/highlight-pick.js";
 import { isDailyTitle } from "../model/library.js";
@@ -66,6 +69,7 @@ import { createInteractions } from "./interactions.js";
 import { openPagePicker } from "./board-picker.js";
 import { createItemRenderer, dropEmbedPoster, isTextEntryTarget, pageBodyWantsWheel, paintEmbedPoster, syncBoardHighlighter } from "./cards.js";
 import { createReadPane, highlightDropPlan, originBeside, placeDecision, readerJumpPlan } from "./read-pane.js";
+import { createPdfWarm } from "./pdf-warm.js";
 import { openViewDialog } from "./view-dialog.js";
 import { viewMapModel } from "./minimap-svg.js";
 import { openRegionDeleteDialog } from "./region-delete-dialog.js";
@@ -1385,6 +1389,15 @@ function buildBoardView(onFail, {
   };
 
   let readPane = null;
+  // Cover bytes stay local. The store and the warm mount exist only after a card asks, or a reader settles.
+  let coverStore = null;
+  let pdfWarm = null;
+  let coverPaintAt = 0;
+  let coverWarmWait = null;
+  let readingCard = "";
+  const coverFaces = new Map();
+  const coverGen = new Map();
+  const flashedMarks = [];
   const measure = () => {
     const r = root.getBoundingClientRect();
     rootRect = { left: r.left || 0, top: r.top || 0, width: r.width || 0, height: r.height || 0 };
@@ -1396,6 +1409,7 @@ function buildBoardView(onFail, {
   // ------------------------------------------------------------ layers
   // A throw after the renderer exists must dispose it. Otherwise a retrying reconcile leaks a listener set per tick.
   onFail.push(
+    () => { try { pdfWarm?.cancelAll?.(); } catch { /* warm */ } },
     () => readPane?.dispose?.(),
     () => itemsR?.dispose?.(),
     () => routeOff(),
@@ -1451,11 +1465,17 @@ function buildBoardView(onFail, {
     onHighlightOpen: (item) => { void openHighlightInReader(item); },
     onHighlightNote: (uid) => { void openHighlightNote(uid); },
     interopOn: () => readSetting("interop") !== false,
+    coverImage: (url) => coverImageFor(url),
+    readingUid: () => readingCard,
+    onPdfOpenRequest: (uid) => { try { itemsR.openPdf?.(uid); } catch { /* host */ } },
+    onHighlightHover: (uid, on) => { try { flashPaneMarks(uid, on); } catch { /* pane */ } },
     onReadPane: (detail) => {
       if (!detail?.open) {
         readPane?.close?.({ notify: false });
+        if (!disposed) armCoverWarm();
         return;
       }
+      try { pdfWarm?.cancelAll?.(); } catch { /* warm */ }
       let cover = null;
       try { cover = detail.source ? host?.pdfCover?.(detail.source) : null; } catch { cover = null; }
       ensureReadPane().open?.({
@@ -1510,6 +1530,19 @@ function buildBoardView(onFail, {
     },
     onClose: () => { itemsR?.closeEmbed?.(); },
     onSwitch: (uid) => { itemsR?.openPdf?.(uid); },
+    onSnapshot: (liveEl, info) => takeCoverSnapshot(liveEl, info),
+    onReadingChange: (uid) => {
+      const next = typeof uid === "string" ? uid : "";
+      if (next === readingCard) return;
+      readingCard = next;
+      if (!disposed) itemsR.repaintStyles();
+    },
+    onHover: (uid, on) => {
+      if (!on || typeof uid !== "string" || !uid) return;
+      for (const item of board()?.items.values() || []) {
+        if (item?.target?.uid === uid) pulseItem(item.uid);
+      }
+    },
     onPlace: (row) => {
       const items = [...(board()?.items.values() || [])];
       const card = board()?.items.get(readPane?.cardUid?.() || "");
@@ -1527,6 +1560,282 @@ function buildBoardView(onFail, {
     },
   }));
   repaintItemStyles = () => { if (!disposed) itemsR.repaintStyles(); };
+
+  // PDF covers. Nothing here runs at mount: the renderer asks coverImageFor on first paint,
+  // and the warm timer arms only when the setting is on.
+  const coverWarmOn = () => {
+    const v = readSetting("pdf-cover-warm");
+    return v === true || v === "true";
+  };
+  const ensureCoverStore = () => {
+    if (coverStore) return coverStore;
+    coverStore = createCoverStore({ indexedDB: win?.indexedDB, storage });
+    return coverStore;
+  };
+  const warmTimers = {
+    setTimeout: (fn, ms) => (typeof win?.setTimeout === "function" ? win.setTimeout(fn, ms) : setTimeout(fn, ms)),
+    clearTimeout: (id) => (typeof win?.clearTimeout === "function" ? win.clearTimeout(id) : clearTimeout(id)),
+  };
+  const ensurePdfWarm = () => {
+    if (pdfWarm) return pdfWarm;
+    pdfWarm = createPdfWarm({
+      doc,
+      root,
+      host,
+      store: ensureCoverStore(),
+      timers: warmTimers,
+    });
+    return pdfWarm;
+  };
+  const pdfBlockUid = (item) => {
+    if (item?.target?.kind === "block" && typeof item.target.uid === "string" && item.target.uid) return item.target.uid;
+    return typeof item?.uid === "string" ? item.uid : "";
+  };
+  const coverUrlOf = (item) => coverKey(pdfMacroUrl(pdfSourceOfItem(item)));
+  const wholePage = (value) => {
+    const n = Number(value);
+    return Number.isInteger(n) && n >= 1 ? n : null;
+  };
+  const rowsForCover = (url) => {
+    const key = coverKey(url);
+    if (!key) return [];
+    const rows = [];
+    for (const other of board()?.items.values() || []) {
+      if (other?.kind !== "highlight" || !other.target?.uid) continue;
+      let pageUid = "";
+      let pageUrl = "";
+      try { pageUid = host?.blockPageUid?.(other.target.uid) || ""; } catch { pageUid = ""; }
+      try { pageUrl = pageUid ? (host?.pdfPageUrl?.(pageUid) || "") : ""; } catch { pageUrl = ""; }
+      if (coverKey(pageUrl) !== key) continue;
+      rows.push({ page: other.highlight?.page, color: other.highlight?.color || "", highlight: other.highlight });
+    }
+    return rows;
+  };
+  const ticksFor = (url, pageCount) => {
+    const rows = rowsForCover(url);
+    const ticks = densityTicks(rows, pageCount);
+    const total = Number(pageCount);
+    const pages = [];
+    for (const row of rows) {
+      const page = wholePage(row?.page) || wholePage(row?.highlight?.page);
+      if (!page || !Number.isInteger(total) || total < 1 || page > total) continue;
+      pages.push(page);
+    }
+    return ticks.map((tick, i) => (pages[i] != null ? { ...tick, page: pages[i] } : tick));
+  };
+  const presentFace = (url, face) => {
+    if (!face || face.state === "loading") return { state: "loading" };
+    return {
+      state: face.state,
+      src: face.src || "",
+      w: face.w ?? null,
+      h: face.h ?? null,
+      ticks: ticksFor(url, face.pageCount),
+      lastPage: face.lastPage ?? null,
+      pageCount: face.pageCount ?? null,
+    };
+  };
+  const imageOfCover = (record) => {
+    if (!record || typeof record !== "object") return null;
+    const last = readSetting("pdf-cover") === "last-read";
+    const primary = last ? record.last : record.first;
+    const fallback = last ? record.first : record.last;
+    return primary || fallback || null;
+  };
+  const uidForCoverUrl = (url) => {
+    const key = coverKey(url);
+    if (!key) return "";
+    for (const item of board()?.items.values() || []) {
+      if (item?.kind === "pdf" && coverUrlOf(item) === key) return item.uid;
+    }
+    return "";
+  };
+  const emptyFace = (state, record) => ({
+    state: state === "ready" ? "none" : state,
+    src: "",
+    w: record?.w ?? null,
+    h: record?.h ?? null,
+    lastPage: record?.lastPage ?? null,
+    pageCount: record?.pageCount ?? null,
+  });
+  const srcOfCover = async (image) => {
+    if (typeof image === "string") return image.startsWith("data:") ? image : "";
+    const data = await blobToDataUrl(image);
+    return typeof data === "string" && data.startsWith("data:") ? data : "";
+  };
+  const loadCover = (url) => {
+    const gen = (coverGen.get(url) || 0) + 1;
+    coverGen.set(url, gen);
+    coverFaces.set(url, { state: "loading" });
+    let pending = null;
+    try { pending = ensureCoverStore().get(url); } catch { pending = Promise.resolve(null); }
+    Promise.resolve(pending).then(async (record) => {
+      if (disposed || coverGen.get(url) !== gen) return;
+      const image = imageOfCover(record);
+      if (!image) {
+        const warm = pdfWarm ? pdfWarm.outcome(uidForCoverUrl(url)) : "idle";
+        coverFaces.set(url, emptyFace(coverState(null, warm), record));
+      } else {
+        const src = await srcOfCover(image);
+        if (disposed || coverGen.get(url) !== gen) return;
+        coverFaces.set(url, src
+          ? { state: "ready", src, w: record?.w ?? null, h: record?.h ?? null, lastPage: record?.lastPage ?? null, pageCount: record?.pageCount ?? null }
+          : emptyFace("error", record));
+      }
+      if (!disposed) itemsR.repaintStyles();
+    }).catch(() => {
+      if (disposed || coverGen.get(url) !== gen) return;
+      coverFaces.set(url, emptyFace("none", null));
+      if (!disposed) itemsR.repaintStyles();
+    });
+  };
+  const coverImageFor = (url) => {
+    const key = coverKey(url);
+    if (!key) return null;
+    const face = coverFaces.get(key);
+    if (face?.state === "loading") return { state: "loading" };
+    if (face) return presentFace(key, face);
+    loadCover(key);
+    return { state: "loading" };
+  };
+  const dropCover = (url) => {
+    const key = coverKey(typeof url === "string" ? url : "");
+    if (!key) return;
+    coverFaces.delete(key);
+    coverGen.set(key, (coverGen.get(key) || 0) + 1);
+    if (!disposed) itemsR.repaintStyles();
+  };
+  const forgetCovers = () => {
+    const keys = new Set([...coverFaces.keys(), ...coverGen.keys()]);
+    coverFaces.clear();
+    for (const key of keys) coverGen.set(key, (coverGen.get(key) || 0) + 1);
+  };
+  const clearFlashedMarks = () => {
+    for (const node of flashedMarks) node.classList?.remove("pxd-read__mark-flash");
+    flashedMarks.length = 0;
+  };
+  // flashParts lives inside the pane and scrolls. Hover only toggles the same class.
+  const flashPaneMarks = (highlightUid, on) => {
+    clearFlashedMarks();
+    if (!on || typeof highlightUid !== "string" || !highlightUid) return;
+    if (readPane?.isOpen?.() !== true) return;
+    const card = board()?.items.get(readPane.cardUid?.() || "");
+    if (!card || card.kind !== "pdf") return;
+    const pdfUrl = coverUrlOf(card);
+    if (!pdfUrl) return;
+    let pageUid = "";
+    let pageUrl = "";
+    try { pageUid = host?.blockPageUid?.(highlightUid) || ""; } catch { pageUid = ""; }
+    try { pageUrl = pageUid ? (host?.pdfPageUrl?.(pageUid) || "") : ""; } catch { pageUrl = ""; }
+    if (coverKey(pageUrl) !== pdfUrl) return;
+    const live = root.querySelector?.(".pxd-read__live");
+    const nodes = live?.querySelectorAll?.(PDF_MARK) || [];
+    for (const node of nodes) {
+      let found = null;
+      try { found = uidFromMark(node); } catch { found = null; }
+      if (found?.uid !== highlightUid) continue;
+      node.classList?.add("pxd-read__mark-flash");
+      flashedMarks.push(node);
+    }
+  };
+  const readerIsLive = () => {
+    try {
+      if (root.querySelector?.(".pxd-pdf-live")) return true;
+      const nodes = root.querySelectorAll?.(".rm-pdf-container") || [];
+      for (const node of nodes) {
+        if (typeof node.closest === "function" && node.closest(".pxd-pdf-warm")) continue;
+        return true;
+      }
+    } catch { /* stub */ }
+    return false;
+  };
+  const saveDataOn = () => {
+    try { return win?.navigator?.connection?.saveData === true; } catch { return false; }
+  };
+  const coverHashOf = (item) => {
+    try {
+      const cover = host?.pdfCover?.(pdfSourceOfItem(item));
+      return typeof cover?.hash === "string" ? cover.hash.trim() : "";
+    } catch { return ""; }
+  };
+  const considerCoverWarm = () => {
+    if (disposed || suspended || !coverWarmOn() || !coverPaintAt) return;
+    const since = Date.now() - coverPaintAt;
+    if (since < WARM_AFTER_MS) { armCoverWarm(); return; }
+    if (gesturing) return;
+    const cards = [];
+    const visible = new Set();
+    const view = size.width ? visibleWorldRect(vp, size, 0) : null;
+    const r = rects();
+    for (const item of board()?.items.values() || []) {
+      if (item?.kind !== "pdf") continue;
+      const url = coverUrlOf(item);
+      const blockUid = pdfBlockUid(item);
+      if (!url || !blockUid) continue;
+      const rect = r.get(item.uid);
+      if (view && rect && rectsIntersect(rect, view)) visible.add(item.uid);
+      const hash = coverHashOf(item);
+      cards.push({
+        uid: item.uid,
+        blockUid,
+        kind: "pdf",
+        hasCover: coverFaces.get(url)?.state === "ready",
+        url,
+        ...(hash ? { hash } : {}),
+      });
+    }
+    let plan = null;
+    try {
+      plan = warmPlan({
+        cards,
+        visible,
+        hasLive: readerIsLive(),
+        hasPane: readPane?.isOpen?.() === true,
+        sinceOpenMs: since,
+        done: pdfWarm ? pdfWarm.spent() : 0,
+        inFlight: pdfWarm ? pdfWarm.running() : false,
+        saveData: saveDataOn(),
+        moving: gesturing,
+      });
+    } catch { plan = null; }
+    if (!plan || gesturing) return;
+    const card = cards.find((row) => row.uid === plan.uid);
+    if (!card) return;
+    let job = null;
+    try { job = ensurePdfWarm().request(card); } catch { job = null; }
+    Promise.resolve(job).then((record) => {
+      if (disposed) return;
+      const face = coverFaces.get(card.url);
+      if (record || face?.state !== "ready") dropCover(card.url);
+    }).catch(() => {});
+  };
+  const armCoverWarm = () => {
+    if (coverWarmWait) { coverWarmWait(); coverWarmWait = null; }
+    if (disposed || suspended || !coverWarmOn() || !coverPaintAt) return;
+    const wait = Math.max(0, WARM_AFTER_MS - (Date.now() - coverPaintAt));
+    coverWarmWait = timers.later(() => {
+      coverWarmWait = null;
+      considerCoverWarm();
+    }, wait);
+  };
+  const takeCoverSnapshot = (liveEl, info) => {
+    const spec = info && typeof info === "object" ? info : {};
+    const settle = spec.as === "settle";
+    let job = null;
+    try {
+      job = ensurePdfWarm().snapshotFrom(liveEl, {
+        page: settle ? 1 : spec.page,
+        url: spec.url,
+        pageCount: spec.pageCount,
+        as: settle ? "first" : "last",
+      });
+    } catch { job = null; }
+    Promise.resolve(job).then(() => {
+      if (!disposed) dropCover(spec.url);
+    }).catch(() => {
+      if (!disposed) dropCover(spec.url);
+    });
+  };
   const taskPop = createTaskPopover({ doc, root, bt, toast: (m) => chrome.toast.show(m) });
   const taskDone = createTaskCompleter({ doc, getRoot: () => root, host, bt, win });
   let betterTasksOn = false;
@@ -4435,6 +4744,7 @@ function buildBoardView(onFail, {
       tabStrip?.remove();
       tabStrip = null;
       root.classList.remove("pxd-root--fstabs");
+      root.style.setProperty("--pxd-tabs-h", "0px");
       return;
     }
     root.classList.add("pxd-root--fstabs");
@@ -4473,6 +4783,8 @@ function buildBoardView(onFail, {
       x.setAttribute("aria-label", `Close ${tab.title || "board"}`);
       x.setAttribute("data-uid", tab.uid);
     }
+    const h = Math.round(Number(tabStrip.offsetHeight) || 0);
+    root.style.setProperty("--pxd-tabs-h", `${h > 0 ? h : 0}px`);
   };
   const selectFullscreenTab = (uid) => {
     if (!uid || uid === (board()?.uid || boardUid)) return;
@@ -4648,6 +4960,7 @@ function buildBoardView(onFail, {
         itemsR.setPaused(true);
         chrome.ctx.hide();
         menu.close();
+        try { pdfWarm?.cancelAll?.(); } catch { /* warm */ }
       } else {
         // Only a gesture that actually moved swallows its click; a plain click must reach links and chrome.
         if (info?.moved) {
@@ -4668,6 +4981,7 @@ function buildBoardView(onFail, {
           schedule();
           updateBackToContent();
           refreshBadges();
+          considerCoverWarm();
         }, RESUME_MS);
       }
     },
@@ -5839,6 +6153,10 @@ function buildBoardView(onFail, {
     if (disposed || suspended) return;
     const b = board();
     if (!b) return;
+    if (!coverPaintAt) {
+      coverPaintAt = Date.now();
+      armCoverWarm();
+    }
     let itemsChanged = false;
     if (dirty.all || dirty.structural || dirty.items.size) {
       // Live preview rects (edit growth, drag fit) ride along: a sync for a dirty card must not snap grown section shells back.
@@ -6325,6 +6643,8 @@ function buildBoardView(onFail, {
       if (resumeTimer) { resumeTimer(); resumeTimer = null; }
       if (badgeTimer) { badgeTimer(); badgeTimer = null; }
       if (outsideQuiet) { outsideQuiet(); outsideQuiet = null; }
+      if (coverWarmWait) { coverWarmWait(); coverWarmWait = null; }
+      try { pdfWarm?.cancelAll?.(); } catch { /* warm */ }
       try { cancelHoverGrace(); } catch { /* none armed */ }
       try { clearZoomAnim(); } catch { /* none armed */ }
       suspendObservers();
@@ -6333,6 +6653,7 @@ function buildBoardView(onFail, {
       if (disposed || !suspended) return;
       suspended = false;
       resumeObservers();
+      armCoverWarm();
       dirty.all = true;
       dirty.structural = true;
       schedule();
@@ -6393,7 +6714,20 @@ function buildBoardView(onFail, {
       const minimapBefore = setting("show-minimap", true) !== false;
       const opensBefore = trackOpensOn();
       const interopBefore = readSetting("interop") !== false;
+      const coverBefore = readSetting("pdf-cover");
+      const warmBefore = coverWarmOn();
       settingsRef = next;
+      if (readSetting("pdf-cover") !== coverBefore) {
+        forgetCovers();
+        itemsR.repaintStyles();
+      }
+      if (coverWarmOn() !== warmBefore) {
+        if (coverWarmOn()) armCoverWarm();
+        else {
+          if (coverWarmWait) { coverWarmWait(); coverWarmWait = null; }
+          try { pdfWarm?.cancelAll?.(); } catch { /* warm */ }
+        }
+      }
       if (openStore) {
         try { openStore.setEnabled(trackOpensOn()); } catch { /* storage */ }
       }
@@ -6538,6 +6872,8 @@ function buildBoardView(onFail, {
       step(() => quicklook.dispose());
       step(() => presenter.dispose());
       step(() => clip.dispose());
+      step(() => { try { pdfWarm?.cancelAll?.(); } catch { /* warm */ } });
+      step(() => { if (coverWarmWait) { coverWarmWait(); coverWarmWait = null; } });
       step(() => readPane?.dispose?.());
       step(() => itemsR.dispose());
       step(() => edgesR.dispose());

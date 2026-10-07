@@ -118,6 +118,8 @@ Mark a region on the picture, or from the block menu. Plexus copies a block ref.
 
 Roam's reader does the highlighting. A pdf block on the board is a card. Plexus adds the cover, highlight cards, page chips, and a reading pane beside the board.
 
+The card cover is the page image, first page or the last page you read, with a tick for each highlight. Open opens the reading pane. Its pill zooms, fits the width, and shows the page. Tools shows Roam's toolbar, and the drawer lists highlights so you can place one on the board.
+
 | Do | How |
 |---|---|
 | PDF on a board | A pdf block is a card. The cover shows the file name and the highlight count. Open reader mounts Roam's reader. Interact uses that reader. One reader is open at a time. The command palette stays two entries |
@@ -275,6 +277,8 @@ Settings → Extensions → Plexus Diagram. Each change applies on the open boar
 | Cards | Enter in a card | Newline adds a line to the card's block, like a native Roam diagram. Child makes a new child block inside the card. |
 | Cards | Show card badges | Show how many references, tasks, and children a card has. |
 | Cards | Space out cards | After a move, push cards apart when they overlap. |
+| Cards | PDF card cover | First page, or the last page read. First page is the default. |
+| Cards | Prepare PDF covers in the background | Off. When on, a quiet board prepares a cover for a visible PDF that has none. |
 | Integrations | Better Tasks integration | Use Better Tasks for task chips, the light checkbox, and task edits. Off leaves the TODO marker to Roam. Starts off. |
 | Integrations | Task tool | Show the Task tool (K) in the dock. Starts off. A saved on stays on. |
 | Integrations | Task chips | Full (due date, project, priority, repeat, status), due only, or none. |

@@ -1561,7 +1561,7 @@ function buildBoardView(onFail, {
     if (!parseActionsObj) {
       parseActionsObj = createParseActions({
         session,
-        store: createParseStore(),
+        store: createParseStore({ indexedDB: doc.defaultView?.indexedDB }),
         placeBeside: placeParseBeside,
         toast: (message) => toast(message),
         select: (uids) => { if (!disposed) ctl.select(uids); },
@@ -6132,7 +6132,7 @@ function buildBoardView(onFail, {
     if (list.length === 1 && list[0].parse) {
       void handleParseDrop({
         payload: list[0].parse,
-        store: createParseStore(),
+        store: createParseStore({ indexedDB: doc.defaultView?.indexedDB }),
         session,
         point: p,
         toast: (message) => toast(message),

@@ -176,3 +176,11 @@ test("board-view hands createReadPane the actions object, not the raw session", 
   assert.doesNotMatch(call, /^\s*session,$/m);
   assert.match(src, /createParseActions\(\{[^}]*session,/s);
 });
+
+test("board-view gives every parse store the page's IndexedDB, so it sees what the parsed view saved", async () => {
+  const { readFileSync } = await import("node:fs");
+  const src = readFileSync(new URL("../src/view/board-view.js", import.meta.url), "utf8");
+  const calls = src.match(/createParseStore\([^)]*\)/g) || [];
+  assert.ok(calls.length >= 2);
+  for (const call of calls) assert.match(call, /indexedDB/);
+});

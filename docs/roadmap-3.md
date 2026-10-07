@@ -1104,5 +1104,5 @@ From user testing of 2.18.0 (2026-10-06): the page-card editor looked like a dif
 - Limit: in-card Roam Grid column resize is zoom-dependent (Roam Grid adds screen deltas to layout px). Fix needs an additive Roam Grid API (`view.setScreenScale`), not built.
 
 ### PDFP-1 — Parse a PDF into clean Markdown and tables (research)
-- Phase: P34 · Version: later · Research first (Svy task `((EYaZ57RAs))`)
+- Phase: P34 · Version: 3.5.0 · Shipped (Svy task `((EYaZ57RAs))`); bench in `docs/parse-bench.md`
 - Summary: Heptabase's PDF Parser (Parse button on a PDF card) extracts text, tables, equations and images with OCR into Markdown and lets you copy page ranges into cards. Plexus would write tables as native `{{[[table]]}}` blocks so Roam Grid can enhance them. Compare pdf.js text-layer clustering, a local parser helper (Docling, Marker, MinerU) and a per-page vision pass on three PDFs before building.

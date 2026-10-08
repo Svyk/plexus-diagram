@@ -16051,6 +16051,20 @@ function createItemRenderer({
     }
     return input || editor.querySelector?.(".rm-block__input") || editor.querySelector?.("textarea") || null;
   };
+  const NOTE_INPUT_MS = 400;
+  const noteInput = (editor) => editor.querySelector?.("textarea") || null;
+  const waitNoteInput = async (editor, uid) => {
+    const start = now();
+    let input = noteInput(editor);
+    while (!input && now() - start < NOTE_INPUT_MS) {
+      await new Promise((resolve) => {
+        frameLater(resolve);
+      });
+      if (disposed || editing?.uid !== uid) return null;
+      input = noteInput(editor);
+    }
+    return input;
+  };
   const pageHitIgnored = (target) => Boolean(target?.closest?.(".pxd-row__fold, .pxd-row__more, .pxd-grip, .pxd-port"));
   const rememberPageCaret = (rec, event) => {
     pagePointer = null;
@@ -16254,6 +16268,8 @@ function createItemRenderer({
       }, EDIT_FADE_MS);
     }
     let input = null;
+    let early = null;
+    let kept = false;
     let placedScroll = null;
     if (pageEdit) {
       input = await waitPageInput(editor, caretRow, uid);
@@ -16277,6 +16293,19 @@ function createItemRenderer({
         }
       }
     } else {
+      early = await waitNoteInput(editor, uid);
+      if (disposed || editing?.uid !== uid) return false;
+      if (early) {
+        scaleCardEditor(editor, zoomCache);
+        focusRoamInput(early);
+        if (caretOff != null && typeof early.setSelectionRange === "function") {
+          try {
+            early.setSelectionRange(caretOff, caretOff);
+          } catch {
+          }
+        }
+        editing.ready = true;
+      }
       await waitHydrateQuiet(editor, HYDRATE_CAP_MS);
       if (disposed || editing?.uid !== uid) return false;
       if (rowOffset !== null) {
@@ -16292,9 +16321,13 @@ function createItemRenderer({
         }
       }
       if (!input) input = editor.querySelector?.(".rm-block__input") || editor.querySelector?.("textarea");
+      if (early && editor.contains?.(doc.activeElement) && (input === early || input?.contains?.(early) || early.contains?.(input) || input?.contains?.(doc.activeElement))) {
+        kept = true;
+        input = null;
+      }
     }
     const placeNoteCaret = () => {
-      if (pageEdit || caretOff == null) return;
+      if (pageEdit || caretOff == null || kept) return;
       const nodes = [input, editor.querySelector?.("textarea"), editor.querySelector?.(".rm-block__input")];
       for (const node2 of nodes) {
         if (typeof node2?.setSelectionRange !== "function") continue;
@@ -47082,6 +47115,7 @@ function createParseActions({ session, store, placeBeside, toast, select, show, 
 // src/view/menu.js
 init_avoid();
 var MARGIN2 = 4;
+var HOP = 120;
 var ROW_HEIGHT = 28;
 var MENU_WIDTH = 200;
 var STOP_EVENTS = ["pointerdown", "pointerup", "click", "dblclick", "wheel", "contextmenu", "keydown"];
@@ -47322,23 +47356,42 @@ function createMenu({ doc = globalThis.document, root, on = {} } = {}) {
       const rows = list.filter((item) => !item.separator).length;
       const w = menuEl.offsetWidth || MENU_WIDTH;
       let h = menuEl.offsetHeight || rows * ROW_HEIGHT;
-      const W = rootRect.width || 0;
-      const H = rootRect.height || 0;
+      const innerW = Number(doc.defaultView?.innerWidth) || 0;
+      const innerH = Number(doc.defaultView?.innerHeight) || 0;
+      const rl = rootRect.left || 0;
+      const rt = rootRect.top || 0;
+      const vl = Math.max(rl, 0);
+      const vt = Math.max(rt, 0);
+      const vr = rootRect.width ? innerW ? Math.min(rootRect.right, innerW) : rootRect.right : 0;
+      const vb = rootRect.height ? innerH ? Math.min(rootRect.bottom, innerH) : rootRect.bottom : 0;
+      const W = vr > vl ? vr - vl : 0;
+      const H = vb > vt ? vb - vt : 0;
       if (H && h > H - 2 * MARGIN2) {
         h = Math.max(ROW_HEIGHT * 3, H - 2 * MARGIN2);
         menuEl.classList.add("pxd-menu--scroll");
         menuEl.style.maxHeight = `${Math.round(h)}px`;
       }
-      let left = x - (rootRect.left || 0);
-      let top = y - (rootRect.top || 0);
-      if (W) left = Math.max(MARGIN2, Math.min(left, W - w - MARGIN2));
-      if (H) top = Math.max(MARGIN2, Math.min(top, H - h - MARGIN2));
+      let vpLeft = x;
+      let vpTop = y;
+      if (W && vpLeft + w > vr - MARGIN2 && x - w >= vl + MARGIN2) vpLeft = x - w;
+      if (H && vpTop + h > vb - MARGIN2 && y - h >= vt + MARGIN2) vpTop = y - h;
+      if (W) vpLeft = Math.max(vl + MARGIN2, Math.min(vpLeft, vr - w - MARGIN2));
+      if (H) vpTop = Math.max(vt + MARGIN2, Math.min(vpTop, vb - h - MARGIN2));
+      const left = vpLeft - rl;
+      const top = vpTop - rt;
       menuEl.style.left = `${Math.round(left)}px`;
       menuEl.style.top = `${Math.round(top)}px`;
-      const spot = { left: (rootRect.left || 0) + left, top: (rootRect.top || 0) + top };
-      const box2 = { left: spot.left, top: spot.top, right: spot.left + w, bottom: spot.top + h };
+      const box2 = { left: vpLeft, top: vpTop, right: vpLeft + w, bottom: vpTop + h };
       if (chromeObstacles(root, { win }).some((o) => box2.left < o.right && box2.right > o.left && box2.top < o.bottom && box2.bottom > o.top)) {
         placeNearAnchor(menuEl, pointAnchor(x, y), root, { gap: 0 });
+        const nl = Number.parseFloat(menuEl.style.left) + rl;
+        const nt = Number.parseFloat(menuEl.style.top) + rt;
+        if (!(Math.abs(nl - vpLeft) <= HOP && Math.abs(nt - vpTop) <= HOP) || menuEl.style.maxHeight && !menuEl.classList.contains("pxd-menu--scroll")) {
+          menuEl.style.left = `${Math.round(left)}px`;
+          menuEl.style.top = `${Math.round(top)}px`;
+          menuEl.style.maxHeight = menuEl.classList.contains("pxd-menu--scroll") ? `${Math.round(h)}px` : "";
+          menuEl.style.overflowY = "";
+        }
       }
       return true;
     },

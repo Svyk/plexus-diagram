@@ -26,6 +26,7 @@ const METHODS = [
   "regionsOf",
   "removeEventListener",
   "spec",
+  "tablesFromPdf",
   "thumbnail",
   "viewsOf",
 ];

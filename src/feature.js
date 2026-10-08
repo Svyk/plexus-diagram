@@ -31,6 +31,9 @@ import { chromeObstacles } from "./view/avoid.js";
 import { holeRect, previewImageBox, setCameraFromView } from "./view/region-hover-geom.js";
 import { drawViewMap, minimapSvg, viewMapModel } from "./view/minimap-svg.js";
 import { boundsOf, buildBoard, worldRects } from "./model/board.js";
+import { createHelperClient } from "./host/parse-helper-client.js";
+import { createParseStore } from "./host/parse-store.js";
+import { createPdfTables } from "./host/pdf-tables.js";
 import { boardBounds, createPublicApi, emitPublicEvent, fitThumbSize, installPublicApi, thumbStroke, uninstallPublicApi } from "./model/public-api.js";
 import { motionProfile, resolveMotion } from "./view/motion.js";
 import { createShowStash, pickCameraMount, resolveRegionTarget } from "./view/region-open.js";
@@ -3119,7 +3122,18 @@ export async function installPlexusDiagram({
     });
   }
 
+  const pdfTables = createPdfTables({
+    store: createParseStore({ indexedDB: win.indexedDB }),
+    helper: createHelperClient({ settings: extensionAPI?.settings, setSetting: (id, value) => extensionAPI?.settings?.set?.(id, value), fetch: win.fetch?.bind(win) }),
+    fetchBytes: async (url) => {
+      const res = await win.fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return new Uint8Array(await res.arrayBuffer());
+    },
+  });
   const publicApi = createPublicApi({
+    tablesFromPdf: pdfTables.tablesFromPdf,
+    capabilities: pdfTables.capabilities,
     host: {
       graphName: () => host.graph || graphFromHash(),
       listBoards: (...args) => host.listBoards?.(...args),

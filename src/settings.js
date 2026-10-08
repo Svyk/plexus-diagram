@@ -63,6 +63,7 @@ export const SETTING_IDS = Object.freeze({
   parseEngineDefault: "parse-engine-default",
   parseFormula: "parse-formula",
   parseOcr: "parse-ocr",
+  parseAutoRead: "parse-auto-read",
   parseLinkSafe: "parse-link-safe",
   parseNumbered: "parse-numbered",
   parseFootnotes: "parse-footnotes",
@@ -130,6 +131,7 @@ const DEFAULTS = Object.freeze({
   [SETTING_IDS.parseEngineDefault]: "auto",
   [SETTING_IDS.parseFormula]: false,
   [SETTING_IDS.parseOcr]: "auto",
+  [SETTING_IDS.parseAutoRead]: true,
   [SETTING_IDS.parseLinkSafe]: true,
   [SETTING_IDS.parseNumbered]: false,
   [SETTING_IDS.parseFootnotes]: "inline",
@@ -506,6 +508,7 @@ const SETTING_ROWS = {
   [SETTING_IDS.parseEngineDefault]: () => selectRow(SETTING_IDS.parseEngineDefault, "Default parse engine", "Auto uses the built-in parser and offers Docling when the helper is ready. Built-in never calls the helper. Docling uses the helper.", ["auto", "builtin", "docling"]),
   [SETTING_IDS.parseFormula]: () => switchRow(SETTING_IDS.parseFormula, "Formula enrichment", "Ask Docling to read formulas as LaTeX. Off leaves a formula as a crop. This is the slow part of a Docling parse."),
   [SETTING_IDS.parseOcr]: () => selectRow(SETTING_IDS.parseOcr, "Parse OCR", "Auto lets the helper decide. On forces OCR. Off skips it. Scanned pages need OCR.", ["auto", "on", "off"]),
+  [SETTING_IDS.parseAutoRead]: () => switchRow(SETTING_IDS.parseAutoRead, "Auto-read scanned pages", "Read the text of a scanned page as soon as you open it, once the reading models are on this device. Off waits until you press Read text."),
   [SETTING_IDS.parseLinkSafe]: () => switchRow(SETTING_IDS.parseLinkSafe, "Safe links when inserting", "Wrap [[pages]], ((blocks)), {{macros}}, #tags and Name:: so a parsed insert does not create pages. On by default."),
   [SETTING_IDS.parseNumbered]: () => switchRow(SETTING_IDS.parseNumbered, "Numbered lists when inserting", "On writes ordered lists with Roam's 1. syntax. Off keeps the original number as text on a bullet."),
   [SETTING_IDS.parseFootnotes]: () => selectRow(SETTING_IDS.parseFootnotes, "Footnotes", "Inline places each note after the paragraph that cites it. End places every note after the insert.", ["inline", "end"]),
@@ -543,7 +546,7 @@ const SETTING_GROUPS = [
   ]],
   ["group-parse", "PDF parse", "A local helper for harder PDFs, and how parsed text is inserted.", [
     SETTING_IDS.parseHelperUrl, SETTING_IDS.parseHelperToken, SETTING_IDS.parseEngineDefault, SETTING_IDS.parseFormula,
-    SETTING_IDS.parseOcr, SETTING_IDS.parseLinkSafe, SETTING_IDS.parseNumbered, SETTING_IDS.parseFootnotes,
+    SETTING_IDS.parseOcr, SETTING_IDS.parseAutoRead, SETTING_IDS.parseLinkSafe, SETTING_IDS.parseNumbered, SETTING_IDS.parseFootnotes,
   ]],
 ];
 

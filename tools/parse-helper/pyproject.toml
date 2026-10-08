@@ -9,6 +9,11 @@ dependencies = [
   "fastapi>=0.115",
   "uvicorn>=0.32",
   "pypdfium2>=4.30",
+  "numpy",
+  "pillow",
+  "opencv-python-headless",
+  "ocrmac>=1.0; sys_platform == 'darwin'",
+  "pyobjc-framework-Vision; sys_platform == 'darwin'",
 ]
 
 [project.scripts]

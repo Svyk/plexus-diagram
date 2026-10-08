@@ -1,0 +1,189 @@
+/* P-ONBOARD. The status strip and the Engines panel. A border carries state; fills stay clear. */
+
+.pxd-parse-status.pxd-parse-status {
+  display: flex;
+  flex: 0 0 auto;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px 8px;
+  box-sizing: border-box;
+  min-height: 28px;
+  padding: 3px 8px;
+  border-bottom: 1px solid var(--pxd-border, #d0d7de);
+  color: var(--pxd-text, inherit);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.pxd-parse-status.pxd-parse-status[hidden] {
+  display: none;
+}
+
+.pxd-parse-status .pxd-parse-status__text {
+  flex: 1 1 160px;
+  min-width: 0;
+}
+
+.pxd-parse-status .pxd-parse-status__bar,
+.pxd-engines .pxd-engines__bar {
+  flex: 0 0 72px;
+  height: 2px;
+  background: var(--pxd-border, #d0d7de);
+}
+
+.pxd-parse-status .pxd-parse-status__fill,
+.pxd-engines .pxd-engines__fill {
+  display: block;
+  height: 2px;
+  background: var(--pxd-accent, #0f766e);
+}
+
+.pxd-parse-status .pxd-parse-status__btn,
+.pxd-engines .pxd-engines__btn {
+  height: 22px;
+  margin: 0;
+  padding: 0 8px;
+  border: 1px solid var(--pxd-border, #d0d7de);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--pxd-text, inherit);
+  font: inherit;
+  font-size: 12px;
+  line-height: 20px;
+  cursor: pointer;
+}
+
+.pxd-parse-status .pxd-parse-status__btn--primary,
+.pxd-engines .pxd-engines__btn--primary {
+  border-color: var(--pxd-accent, #0f766e);
+  box-shadow: inset 0 -2px 0 var(--pxd-accent, #0f766e);
+}
+
+.pxd-parse-status .pxd-parse-status__btn:focus-visible,
+.pxd-engines .pxd-engines__btn:focus-visible {
+  outline: 2px solid var(--pxd-accent, #0f766e);
+  outline-offset: 1px;
+}
+
+.pxd-engines.pxd-engines {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  box-sizing: border-box;
+  padding: 8px;
+  border: 1px solid var(--pxd-border, #d0d7de);
+  border-radius: 6px;
+  color: var(--pxd-text, inherit);
+  font-size: 12px;
+  line-height: 18px;
+}
+
+.pxd-engines.pxd-engines[hidden] {
+  display: none;
+}
+
+.pxd-engines .pxd-engines__title {
+  font-weight: 600;
+}
+
+.pxd-engines .pxd-engines__rows {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.pxd-engines .pxd-engines__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 8px;
+  min-height: 28px;
+}
+
+.pxd-engines .pxd-engines__row--disabled {
+  color: var(--pxd-muted, #5f6b7c);
+}
+
+.pxd-engines .pxd-engines__dot {
+  flex: 0 0 8px;
+  width: 8px;
+  height: 8px;
+  box-sizing: border-box;
+  border: 2px solid var(--pxd-muted, #5f6b7c);
+  border-radius: 50%;
+  background: transparent;
+}
+
+.pxd-engines .pxd-engines__dot--ok {
+  border-color: var(--pxd-accent, #0f766e);
+  background: var(--pxd-accent, #0f766e);
+}
+
+.pxd-engines .pxd-engines__dot--warn {
+  border-color: var(--pxd-text, #1f2937);
+}
+
+.pxd-engines .pxd-engines__dot--busy {
+  border-color: var(--pxd-accent, #0f766e);
+}
+
+.pxd-engines .pxd-engines__name {
+  flex: 0 0 auto;
+  min-width: 112px;
+  font-weight: 500;
+}
+
+.pxd-engines .pxd-engines__text {
+  flex: 1 1 120px;
+  min-width: 0;
+  color: var(--pxd-muted, #5f6b7c);
+}
+
+.pxd-engines .pxd-engines__sheet {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 8px;
+  border: 1px solid var(--pxd-border, #d0d7de);
+  border-radius: 6px;
+}
+
+.pxd-engines .pxd-engines__sheet-title {
+  font-weight: 600;
+}
+
+.pxd-engines .pxd-engines__command {
+  display: block;
+  max-width: 100%;
+  box-sizing: border-box;
+  padding: 4px 6px;
+  border: 1px solid var(--pxd-border, #d0d7de);
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  font-size: 11px;
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.pxd-engines .pxd-engines__note {
+  color: var(--pxd-muted, #5f6b7c);
+}
+
+.pxd-engines .pxd-engines__advanced {
+  color: var(--pxd-muted, #5f6b7c);
+}
+
+.pxd-engines .pxd-engines__token {
+  height: 22px;
+  margin: 4px 6px 0 0;
+  padding: 0 6px;
+  box-sizing: border-box;
+  border: 1px solid var(--pxd-border, #d0d7de);
+  border-radius: 4px;
+  background: transparent;
+  color: var(--pxd-text, inherit);
+  font: inherit;
+  font-size: 12px;
+}

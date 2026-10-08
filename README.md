@@ -139,8 +139,10 @@ The optional local helper adds Docling for formulas as LaTeX and for OCR. For a 
 
 | Step | How |
 |---|---|
-| Start | Run `tools/parse-helper/bin/plexus-parse-helper serve` |
-| Token | Run `plexus-parse-helper token`, then paste the result into Settings, Plexus Diagram, Parse helper token |
+| Install | Open Engines (from the notice under the reader header, or the pane gear), press Set up, copy the command and run it in Terminal. It installs the helper and starts it at login |
+| Pair | When the command says "Back to Roam: click Pair", press Pair. The token is stored for you; nothing is pasted. Pairing is open for 90 seconds, and `plexus-parse-helper pair` reopens it |
+| Models | Press Download on the helper row. A bar shows progress, and Cancel keeps what is fetched |
+| By hand | Run `plexus-parse-helper token` and paste the result into Advanced in Engines, or into Settings, Plexus Diagram, Parse helper token |
 | Scans | Read the scan appears on scanned pages when the helper is ready |
 
 An insert is one Roam write per table or page range, plus the card layout. Roam Grid tables keep merged cells when Roam Grid 0.18.3 or later is installed.
@@ -359,6 +361,7 @@ Settings → Extensions → Plexus Diagram. Each change applies on the open boar
 | PDF parse | Default parse engine | Auto uses the built-in parser and offers Docling when the helper is ready. Built-in never calls the helper. Docling uses the helper. |
 | PDF parse | Formula enrichment | Ask Docling to read formulas as LaTeX. Off leaves a formula as a crop. This is the slow part of a Docling parse. |
 | PDF parse | Parse OCR | Auto lets the helper decide. On forces OCR. Off skips it. Scanned pages need OCR. |
+| PDF parse | Auto-read scanned pages | Read the text of a scanned page as soon as you open it, once the reading models are on this device. Off waits until you press Read text. |
 | PDF parse | Safe links when inserting | Wrap [[pages]], ((blocks)), {{macros}}, #tags and Name:: so a parsed insert does not create pages. On by default. |
 | PDF parse | Numbered lists when inserting | On writes ordered lists with Roam's 1. syntax. Off keeps the original number as text on a bullet. |
 | PDF parse | Footnotes | Inline places each note after the paragraph that cites it. End places every note after the insert. |

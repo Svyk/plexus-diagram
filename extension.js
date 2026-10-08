@@ -5310,6 +5310,7 @@ var init_tooltip_text = __esm({
       "parse.engine": e("Default parse engine", "Auto uses the built-in parser and offers Docling when the helper is ready. Built-in never calls the helper. Docling uses the helper."),
       "parse.formula": e("Formula enrichment", "Ask Docling to read formulas as LaTeX. Off leaves a formula as a crop. This is the slow part of a Docling parse."),
       "parse.ocr": e("Parse OCR", "Auto lets the helper decide. On forces OCR. Off skips it. Scanned pages need OCR."),
+      "parse.auto-read": e("Auto-read scanned pages", "Read the text of a scanned page as soon as you open it, once the reading models are on this device. Off waits until you press Read text."),
       "parse.link-safe": e("Safe links when inserting", "Wrap [[pages]], ((blocks)), {{macros}}, #tags and Name:: so a parsed insert does not create pages. On by default."),
       "parse.numbered": e("Numbered lists when inserting", "On writes ordered lists with Roam's 1. syntax. Off keeps the original number as text on a bullet."),
       "parse.footnotes": e("Footnotes", "Inline places each note after the paragraph that cites it. End places every note after the insert."),
@@ -5326,6 +5327,26 @@ var init_tooltip_text = __esm({
       "parse.docling-off": e("Docling: not running", "Start tools/parse-helper/bin/plexus-parse-helper serve, then paste the token into Settings."),
       "parse.docling-token": e("Docling: wrong token", "Paste the helper token into Settings."),
       "parse.docling-models": e("Docling: downloading models", "The helper is downloading models. Parsing waits until they are ready."),
+      "parse.strip.read-text": e("Read text", "Read the words on this scanned page on this device. Nothing leaves your computer."),
+      "parse.strip.use-helper": e("Use local helper", "Open Engines to set up or pair the local helper (Docling and Apple Vision)."),
+      "parse.strip.not-now": e("Not now", "Hide this notice for this page."),
+      "parse.strip.start-helper": e("Start helper", "Open Engines to start the local helper."),
+      "parse.strip.setup-helper": e("Set up helper", "Open Engines to install the local helper (Docling and Apple Vision)."),
+      "parse.strip.retry": e("Retry", "Try to read this page again."),
+      "parse.strip.cancel": e("Cancel", "Stop reading this page."),
+      "engines.builtin": e("On this device", "The built-in parser. It runs in Roam and needs nothing installed."),
+      "engines.ocr": e("In-browser reading", "Reads the words on scanned pages inside Roam. The models download once, after you ask."),
+      "engines.helper": e("Local helper", "Docling for layout, formulas and tables, and Apple Vision for scans. It runs on this Mac and listens only on 127.0.0.1."),
+      "engines.cloud": e("Cloud", "Reading through a service with your own key. Not available yet."),
+      "engines.pair": e("Pair", "Fetch the helper's token. Works for 90 seconds after the installer or plexus-parse-helper pair."),
+      "engines.setup": e("Set up", "Show the one command that installs the local helper."),
+      "engines.start": e("Start", "Show how to start the local helper."),
+      "engines.download": e("Download", "Download the helper's models. They are stored on this Mac."),
+      "engines.download-device": e("Download", "Download the reading models into this browser's storage, once."),
+      "engines.cancel": e("Cancel", "Stop the download. What is already fetched is kept."),
+      "engines.update": e("Update Plexus", "The helper is newer than this Plexus. Reload the extension from Roam Depot."),
+      "engines.copy": e("Copy command", "Copy the command, then paste it in Terminal."),
+      "engines.token-save": e("Save token", "Store a token you copied by hand. Pair is easier."),
       "parse.cancel": e("Cancel", "Stop this parse. Nothing is written to the graph."),
       "parse.sync": e("Sync scroll", "Parsed scrolling follows the reader. Click to unlock."),
       "parse.copy": e("Copy", "Copy Markdown. One table copies as CSV. Shift copies tables as CSV."),
@@ -10062,6 +10083,7 @@ var init_settings = __esm({
       parseEngineDefault: "parse-engine-default",
       parseFormula: "parse-formula",
       parseOcr: "parse-ocr",
+      parseAutoRead: "parse-auto-read",
       parseLinkSafe: "parse-link-safe",
       parseNumbered: "parse-numbered",
       parseFootnotes: "parse-footnotes",
@@ -10128,6 +10150,7 @@ var init_settings = __esm({
       [SETTING_IDS.parseEngineDefault]: "auto",
       [SETTING_IDS.parseFormula]: false,
       [SETTING_IDS.parseOcr]: "auto",
+      [SETTING_IDS.parseAutoRead]: true,
       [SETTING_IDS.parseLinkSafe]: true,
       [SETTING_IDS.parseNumbered]: false,
       [SETTING_IDS.parseFootnotes]: "inline"
@@ -10264,6 +10287,7 @@ var init_settings = __esm({
       [SETTING_IDS.parseEngineDefault]: () => selectRow(SETTING_IDS.parseEngineDefault, "Default parse engine", "Auto uses the built-in parser and offers Docling when the helper is ready. Built-in never calls the helper. Docling uses the helper.", ["auto", "builtin", "docling"]),
       [SETTING_IDS.parseFormula]: () => switchRow(SETTING_IDS.parseFormula, "Formula enrichment", "Ask Docling to read formulas as LaTeX. Off leaves a formula as a crop. This is the slow part of a Docling parse."),
       [SETTING_IDS.parseOcr]: () => selectRow(SETTING_IDS.parseOcr, "Parse OCR", "Auto lets the helper decide. On forces OCR. Off skips it. Scanned pages need OCR.", ["auto", "on", "off"]),
+      [SETTING_IDS.parseAutoRead]: () => switchRow(SETTING_IDS.parseAutoRead, "Auto-read scanned pages", "Read the text of a scanned page as soon as you open it, once the reading models are on this device. Off waits until you press Read text."),
       [SETTING_IDS.parseLinkSafe]: () => switchRow(SETTING_IDS.parseLinkSafe, "Safe links when inserting", "Wrap [[pages]], ((blocks)), {{macros}}, #tags and Name:: so a parsed insert does not create pages. On by default."),
       [SETTING_IDS.parseNumbered]: () => switchRow(SETTING_IDS.parseNumbered, "Numbered lists when inserting", "On writes ordered lists with Roam's 1. syntax. Off keeps the original number as text on a bullet."),
       [SETTING_IDS.parseFootnotes]: () => selectRow(SETTING_IDS.parseFootnotes, "Footnotes", "Inline places each note after the paragraph that cites it. End places every note after the insert.", ["inline", "end"])
@@ -10346,6 +10370,7 @@ var init_settings = __esm({
         SETTING_IDS.parseEngineDefault,
         SETTING_IDS.parseFormula,
         SETTING_IDS.parseOcr,
+        SETTING_IDS.parseAutoRead,
         SETTING_IDS.parseLinkSafe,
         SETTING_IDS.parseNumbered,
         SETTING_IDS.parseFootnotes
@@ -35489,10 +35514,12 @@ async function readSSE(response, { onProgress, onPage }) {
   }
   if (buf.trim()) dispatch(buf);
 }
-function createHelperClient({ fetch: fetchImpl, settings, now: now3, timeoutMs = HEALTH_TIMEOUT_MS } = {}) {
+var TOKEN_SETTING = "parse-helper-token";
+function createHelperClient({ fetch: fetchImpl, settings, setSetting, now: now3, timeoutMs = HEALTH_TIMEOUT_MS } = {}) {
   const fetchFn = fetchImpl;
   const clock = typeof now3 === "function" ? now3 : () => Date.now();
   let healthCache = null;
+  let probeCache = null;
   const config = () => {
     const url = String(readSetting(settings, "parse-helper-url", "http://127.0.0.1:48765")).replace(/\/$/, "");
     const token = String(readSetting(settings, "parse-helper-token", "") || "").trim();
@@ -35503,10 +35530,10 @@ function createHelperClient({ fetch: fetchImpl, settings, now: now3, timeoutMs =
     targetAddressSpace: "loopback",
     signal: signal ?? init?.signal
   });
-  async function health() {
+  async function health({ force = false } = {}) {
     const { url, token } = config();
     const at = clock();
-    if (healthCache && healthCache.url === url && healthCache.token === token && at - healthCache.at < HEALTH_CACHE_MS) {
+    if (!force && healthCache && healthCache.url === url && healthCache.token === token && at - healthCache.at < HEALTH_CACHE_MS) {
       return healthCache.value;
     }
     if (!token) {
@@ -35540,10 +35567,10 @@ function createHelperClient({ fetch: fetchImpl, settings, now: now3, timeoutMs =
         if (body?.helper !== HELPER_NAME || major == null) value = { state: "not-running" };
         else if (major >= 2) value = { state: "newer-schema", schema: body.schema };
         else {
-          const models = body.models || {};
+          const models2 = body.models || {};
           const needed = ["layout", "tableformer", "ocr"];
-          const missing2 = needed.some((name) => models[name] !== "ready");
-          value = missing2 ? { state: "models-missing", schema: body.schema, models, version: body.version } : { state: "ready", schema: body.schema, models, version: body.version, busy: body.busy ?? 0 };
+          const missing2 = needed.some((name) => models2[name] !== "ready");
+          value = missing2 ? { state: "models-missing", schema: body.schema, models: models2, version: body.version } : { state: "ready", schema: body.schema, models: models2, version: body.version, busy: body.busy ?? 0 };
         }
       }
       healthCache = { url, token, at, value };
@@ -35554,6 +35581,111 @@ function createHelperClient({ fetch: fetchImpl, settings, now: now3, timeoutMs =
       return value;
     } finally {
       timer.clear();
+    }
+  }
+  function invalidate() {
+    healthCache = null;
+    probeCache = null;
+  }
+  async function probe({ force = false } = {}) {
+    const { url } = config();
+    const at = clock();
+    if (!force && probeCache && probeCache.url === url && at - probeCache.at < HEALTH_CACHE_MS) return probeCache.value;
+    let value = { state: "not-installed" };
+    if (typeof fetchFn === "function") {
+      const timer = withTimeout(timeoutMs);
+      try {
+        const res = await call(`${url}/v1/health`, { method: "GET" }, timer.signal);
+        let body = null;
+        try {
+          body = await res.json();
+        } catch {
+          body = null;
+        }
+        if (res.status === 401 && body?.helper === HELPER_NAME) value = { state: "not-paired" };
+      } catch {
+      } finally {
+        timer.clear();
+      }
+    }
+    probeCache = { url, at, value };
+    return value;
+  }
+  async function models() {
+    const { url, token } = config();
+    if (!token || typeof fetchFn !== "function") return null;
+    const timer = withTimeout(timeoutMs);
+    try {
+      const res = await call(`${url}/v1/models`, { method: "GET", headers: { Authorization: `Bearer ${token}` } }, timer.signal);
+      if (res.status < 200 || res.status >= 300) return null;
+      return await res.json();
+    } catch {
+      return null;
+    } finally {
+      timer.clear();
+    }
+  }
+  async function status({ force = false } = {}) {
+    const { token } = config();
+    if (!token) return { ...await probe({ force }), paired: false };
+    const h = await health({ force });
+    if (h.state === "models-missing") {
+      const report = await models();
+      const bytes = Number(report?.bytes) || 0;
+      const done = Number(report?.done) || 0;
+      const fraction = Number.isFinite(report?.fraction) ? report.fraction : bytes ? done / bytes : 0;
+      if (report?.state === "downloading") {
+        return { ...h, state: "downloading", paired: true, progress: { bytes, done, fraction } };
+      }
+      return { ...h, paired: true, progress: { bytes, done, fraction } };
+    }
+    return { ...h, paired: true };
+  }
+  async function pair2({ signal } = {}) {
+    const { url } = config();
+    if (typeof fetchFn !== "function") return { ok: false, reason: "not-running" };
+    if (typeof setSetting !== "function") return { ok: false, reason: "no-settings" };
+    const timer = withTimeout(timeoutMs, signal);
+    try {
+      const res = await call(`${url}/v1/pair`, { method: "GET" }, timer.signal);
+      if (res.status === 404) return { ok: false, reason: "window-closed" };
+      if (res.status < 200 || res.status >= 300) return { ok: false, reason: "error", status: res.status };
+      let body = null;
+      try {
+        body = await res.json();
+      } catch {
+        body = null;
+      }
+      if (body?.helper !== HELPER_NAME || typeof body.token !== "string" || !body.token) return { ok: false, reason: "error" };
+      await setSetting(TOKEN_SETTING, body.token);
+      invalidate();
+      return { ok: true, version: body.version };
+    } catch {
+      return { ok: false, reason: "not-running" };
+    } finally {
+      timer.clear();
+    }
+  }
+  async function downloadModels() {
+    const { url, token } = config();
+    if (!token || typeof fetchFn !== "function") return false;
+    try {
+      const res = await call(`${url}/v1/models/download`, { method: "POST", headers: { Authorization: `Bearer ${token}` } });
+      invalidate();
+      return res.status === 202 || res.status === 200;
+    } catch {
+      return false;
+    }
+  }
+  async function cancelModels() {
+    const { url, token } = config();
+    if (!token || typeof fetchFn !== "function") return false;
+    try {
+      const res = await call(`${url}/v1/models/download`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
+      invalidate();
+      return res.status === 200;
+    } catch {
+      return false;
     }
   }
   async function readJob(base, token, jobId, { onProgress, onPage, signal }) {
@@ -35665,7 +35797,7 @@ function createHelperClient({ fetch: fetchImpl, settings, now: now3, timeoutMs =
     }
     return { ...body, sha256: sha };
   }
-  return { health, parse, cancel, reparseTable, ocr };
+  return { health, status, pair: pair2, models, downloadModels, cancelModels, invalidate, parse, cancel, reparseTable, ocr };
 }
 
 // src/view/read-pane.js

@@ -62,7 +62,7 @@ test("settings panel follows spec section 6 ids, defaults and row types", () => 
     "tooltips", "tooltip-delay", "task-tool", "task-chips", "task-default-project", "better-tasks", "card-chips", "empty-drag", "pdf-cover", "pdf-cover-warm", "highlight-open", "pdf-dark",
     "why-prompt", "resurface-intervals", "resurface", "regions-inline", "interop", "auto-enhance", "speed-log",
     "look-canvas", "look-sections", "look-highlights", "theme",
-    "parse-helper-url", "parse-helper-token", "parse-engine-default", "parse-formula", "parse-ocr", "parse-link-safe", "parse-numbered", "parse-footnotes",
+    "parse-helper-url", "parse-helper-token", "parse-engine-default", "parse-formula", "parse-ocr", "parse-auto-read", "parse-link-safe", "parse-numbered", "parse-footnotes",
   ].sort());
   assert.equal(settingsDefaults()["auto-enhance"], true);
   assert.equal(settingsDefaults()["enter-in-card"], "newline");
@@ -184,7 +184,7 @@ test("UI-10: settings are grouped, described in plain language, and reset applie
   assert.ok(members.Performance.includes("motion"));
   assert.deepEqual(members["PDF parse"], [
     "parse-helper-url", "parse-helper-token", "parse-engine-default", "parse-formula",
-    "parse-ocr", "parse-link-safe", "parse-numbered", "parse-footnotes",
+    "parse-ocr", "parse-auto-read", "parse-link-safe", "parse-numbered", "parse-footnotes",
   ]);
   assert.equal(defaults["better-tasks"], false);
   assert.equal(defaults["task-tool"], false);

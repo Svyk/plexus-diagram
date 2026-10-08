@@ -8,7 +8,88 @@ const UID_RE = /^[\w-]{1,36}$/;
 
 const hasClass = (node, name) => Boolean(node?.classList?.contains?.(name));
 
-export function cellUidOf(node) {
+// Native Roam tables render read-only cells with no block input and no uid in the DOM: only
+// `<td data-row data-col>` plus the text. The uid comes from the table's block tree: each child of the
+// `{{[[table]]}}` block is a row, the row block is column 1, its single child column 2, and so on.
+// Roam's renderer is closed, so the base of data-row / data-col (0 or 1, header row included) is read
+// from the page: every rendered td is checked against the block string it would map to under each base,
+// the best match wins, and a tie keeps NATIVE_CELL_BASE. Cached per table; `forgetTableCells` drops it.
+export const NATIVE_CELL_BASE = 0;
+const GRID_DEPTH = 40;
+const GRID_LIMIT = 2000;
+const CACHE_MS = 1000;
+const tableCache = new Map();
+
+export const forgetTableCells = (tableUid) => { if (tableUid == null) tableCache.clear(); else tableCache.delete(String(tableUid)); };
+
+const plain = (s) => String(s ?? "")
+  .replace(/\{\{[^}]*\}\}/g, "").replace(/\[\[|\]\]|\(\(|\)\)|\*\*|__|\^\^|~~|`/g, "")
+  .replace(/\s+/g, " ").trim().toLowerCase();
+
+const nowMs = () => (typeof performance !== "undefined" && performance.now ? performance.now() : Date.now());
+
+// grid[r][c] = { uid, string }, from the pulled children of the table block.
+function gridOf(tree) {
+  const grid = [];
+  for (const row of Array.isArray(tree) ? tree : []) {
+    const cells = [];
+    for (let n = row; n; n = n.children?.[0]) cells.push({ uid: n.uid, string: n.string ?? "" });
+    grid.push(cells);
+  }
+  return grid;
+}
+
+const tableUidOf = (node) => node?.closest?.("[data-pxd-table]")?.getAttribute?.("data-pxd-table") || null;
+const attrInt = (td, name) => {
+  const v = td.getAttribute?.(name) ?? td.dataset?.[name.slice(5)];
+  const n = Number.parseInt(v, 10);
+  return Number.isInteger(n) && n >= 0 ? n : null;
+};
+
+function detectBases(grid, tds) {
+  const score = { "0,0": 0, "0,1": 0, "1,0": 0, "1,1": 0 };
+  for (const td of tds) {
+    const r = attrInt(td, "data-row");
+    const c = attrInt(td, "data-col");
+    const text = plain(td.textContent);
+    if (r == null || c == null || !text) continue;
+    for (const rb of [0, 1]) for (const cb of [0, 1]) {
+      const cell = grid[r - rb]?.[c - cb];
+      if (cell && plain(cell.string) === text) score[`${rb},${cb}`] += 1;
+    }
+  }
+  const dflt = `${NATIVE_CELL_BASE},${NATIVE_CELL_BASE}`;
+  let best = dflt;
+  for (const k of Object.keys(score)) if (score[k] > score[best]) best = k;
+  const [rowBase, colBase] = best.split(",").map(Number);
+  return { rowBase, colBase };
+}
+
+function tableCells(tableUid, pullTree, scope) {
+  const hit = tableCache.get(tableUid);
+  if (hit && nowMs() - hit.at < CACHE_MS && hit.pull === pullTree) return hit;
+  let tree = null;
+  try { tree = pullTree(tableUid, GRID_DEPTH, GRID_LIMIT); } catch { tree = null; }
+  const grid = gridOf(tree);
+  const tds = scope?.querySelectorAll?.("td") || [];
+  const entry = { at: nowMs(), pull: pullTree, grid, ...detectBases(grid, tds) };
+  tableCache.set(tableUid, entry);
+  return entry;
+}
+
+function nativeCellUid(td, pullTree) {
+  if (typeof pullTree !== "function") return null;
+  const tableUid = tableUidOf(td);
+  const r = attrInt(td, "data-row");
+  const c = attrInt(td, "data-col");
+  if (!tableUid || r == null || c == null) return null;
+  const t = tableCells(tableUid, pullTree, td.closest("table") || td.closest(".rm-table"));
+  const uid = t.grid[r - t.rowBase]?.[c - t.colBase]?.uid;
+  return typeof uid === "string" && UID_RE.test(uid) ? uid : null;
+}
+
+// `pullTree(uid, depth, limit)` is the host's block pull; without it only Roam Grid and block-input cells resolve.
+export function cellUidOf(node, { pullTree } = {}) {
   if (!node || typeof node.closest !== "function") return null;
   const grid = node.closest(".rg-cell");
   if (grid) {
@@ -19,7 +100,7 @@ export function cellUidOf(node) {
   if (!td || !td.closest?.(".rm-table")) return null;
   const input = td.querySelector?.(".rm-block__input, .roam-block");
   const m = UID_AT_END.exec(String(input?.id || ""));
-  return m ? m[1] : null;
+  return m ? m[1] : nativeCellUid(td, pullTree);
 }
 
 export function cellElementOf(node) {
@@ -27,14 +108,27 @@ export function cellElementOf(node) {
   return node.closest(".rg-cell") || node.closest("td");
 }
 
-export function findCell(host, uid) {
+export function findCell(host, uid, { pullTree } = {}) {
   if (!host || !UID_RE.test(String(uid || ""))) return null;
   const grids = host.querySelectorAll?.(".rg-cell") || [];
   for (const cell of grids) {
     if ((cell.dataset?.uid || cell.getAttribute?.("data-uid")) === uid) return cell;
   }
   const tds = host.querySelectorAll?.(".rm-table td") || [];
-  for (const td of tds) if (cellUidOf(td) === uid) return td;
+  for (const td of tds) {
+    const input = td.querySelector?.(".rm-block__input, .roam-block");
+    if (input && UID_AT_END.exec(String(input.id || ""))?.[1] === uid) return td;
+  }
+  const tableUid = host.getAttribute?.("data-pxd-table") || tableUidOf(host);
+  if (typeof pullTree !== "function" || !tableUid) return null;
+  const any = tds[0];
+  const t = tableCells(tableUid, pullTree, any?.closest?.("table") || host);
+  for (let r = 0; r < t.grid.length; r += 1) {
+    const c = t.grid[r].findIndex((cell) => cell.uid === uid);
+    if (c < 0) continue;
+    for (const td of tds) if (attrInt(td, "data-row") === r + t.rowBase && attrInt(td, "data-col") === c + t.colBase) return td;
+    return null;
+  }
   return null;
 }
 
@@ -64,13 +158,13 @@ function visibleClip(cell, host, body) {
 
 // Same shape as the page-row measure so blockAnchor / blockInner take it unchanged. A cell that is not
 // rendered, or sits outside the clip on either axis, is reported so the end clamps to the card edge.
-export function measureCell({ card, host, body, uid, zoom = 1 } = {}) {
+export function measureCell({ card, host, body, uid, zoom = 1, pullTree } = {}) {
   const cardRect = rectOf(card);
   const bodyRect = rectOf(body);
   if (!cardRect || !bodyRect) return null;
   const z = zoom || 1;
   const out = { bodyTop: round1((bodyRect.top - cardRect.top) / z), bodyBottom: round1((bodyRect.bottom - cardRect.top) / z) };
-  const cell = findCell(host, uid);
+  const cell = findCell(host, uid, { pullTree });
   const r = cell ? rectOf(cell) : null;
   if (!r || (!r.width && !r.height)) return { ...out, rowTop: null, rowHeight: 0, rendered: false };
   const clip = visibleClip(cell, host, body);

@@ -5674,7 +5674,7 @@ function buildBoardView(onFail, {
       if (card.closest?.(".pxd-root") !== root) return null;
       const uid = card.dataset?.uid || card.getAttribute?.("data-uid");
       if (isTableCard(card)) {
-        const cell = cellUidOf(node);
+        const cell = cellUidOf(node, { pullTree: host?.pullTree });
         targetEl = cell ? cellElementOf(node) : null;
         targetCls = "pxd-row--target";
         targetEl?.classList.add(targetCls);

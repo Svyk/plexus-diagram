@@ -1,12 +1,37 @@
 // Structure chips on the reader page. Hovering a parsed block outlines it and shows a chip at its
 // top-right that runs one of the existing parse actions. Hover, outline and dots write nothing;
 // only a chip click calls `run`. Pointer events are on the chip alone. No setPointerCapture.
+// "Show parsed" adds a persistent soft box per parsed block with a copy icon at its left edge;
+// boxes are pointer-events none, only the icons take clicks (one delegated listener).
 
-import { bboxToPageRect } from "./parse-overlay.js";
+import { bboxToPagePercent, bboxToPageRect } from "./parse-overlay.js";
 
 const HIDE_MS = 220;
 const DOT_CAP = 400;
+// Breathing room around the exact block extent, in CSS px (the box geometry itself is exact).
+export const BOX_PAD = 3;
 export const CHIP_TYPES = Object.freeze(["table", "figure", "heading", "list", "formula"]);
+export const SHOW_PARSED_KEY = "pxd-show-parsed";
+export const BESIDE_LABEL = "Insert beside PDF";
+// Chip acts that put something on the board: they place by click unless extra.beside is set.
+export const PLACE_ACTS = Object.freeze(["table", "card", "board"]);
+
+// On unless this device turned it off.
+export function readShowParsed(storage) {
+  try { return storage?.getItem?.(SHOW_PARSED_KEY) !== "0"; } catch { return true; }
+}
+
+export function writeShowParsed(storage, on) {
+  try { storage?.setItem?.(SHOW_PARSED_KEY, on ? "1" : "0"); } catch { /* private mode */ }
+}
+
+// Pure. Box and copy-icon geometry for one block in percent of its page.
+export function parsedBoxPlan(block, page) {
+  if (!block || !Array.isArray(block.bbox)) return null;
+  const pct = bboxToPagePercent(block.bbox, page);
+  if (!pct || !(pct.width > 0) || !(pct.height > 0)) return null;
+  return { id: block.id, type: block.type || "para", ...pct };
+}
 
 function tableShape(table) {
   const grid = table?.grid;
@@ -51,22 +76,24 @@ export function chipPlan(block, doc, { latexReady = false } = {}) {
         { label: "Flat", act: "table", ids, extra: { mode: "flat", kind: "table" } },
         { label: "Copy as Markdown", act: "copy", ids },
         { label: "Card", act: "card", ids },
+        { label: BESIDE_LABEL, act: "table", ids, extra: { mode: "grid", kind: "table", beside: true } },
       ],
     };
   }
   if (block.type === "figure") {
-    return { type: "figure", label: "Figure · Card", primary: { act: "card", ids }, menu: [] };
+    return { type: "figure", label: "Figure · Card", primary: { act: "card", ids }, menu: [{ label: BESIDE_LABEL, act: "card", ids, extra: { beside: true } }] };
   }
   if (block.type === "formula") {
     return {
       type: "formula",
       label: "Card",
       primary: { act: "card", ids },
-      menu: latexReady ? [{ label: "LaTeX", act: "latex", ids }] : [],
+      menu: [...(latexReady ? [{ label: "LaTeX", act: "latex", ids }] : []), { label: BESIDE_LABEL, act: "card", ids, extra: { beside: true } }],
     };
   }
   if (block.type === "heading") {
-    return { type: "heading", label: "Insert section", primary: { act: "board", ids: sectionIds(doc, block.id) }, menu: [] };
+    const section = sectionIds(doc, block.id);
+    return { type: "heading", label: "Insert section", primary: { act: "board", ids: section }, menu: [{ label: BESIDE_LABEL, act: "board", ids: section, extra: { beside: true } }] };
   }
   return { type: "list", label: "Insert list", primary: { act: "below", ids }, menu: [] };
 }
@@ -80,6 +107,9 @@ export function createPageChips({
   run,
   isLatexReady = null,
   getSelection = null,
+  copy = null,
+  storage = null,
+  boxCap = 4000,
 } = {}) {
   const win = () => doc?.defaultView || null;
   const bound = [];
@@ -89,6 +119,11 @@ export function createPageChips({
   let hideTimer = null;
   let current = null;
   let disposed = false;
+  let showParsed = readShowParsed(storage);
+  // n -> { layer, boxes: Map(id -> box), observer }
+  const layers = new Map();
+  let boxCount = 0;
+  let syncFrame = 0;
 
   const on = (node, type, fn, capture = false) => {
     if (!node || typeof node.addEventListener !== "function") return;
@@ -134,6 +169,7 @@ export function createPageChips({
 
   const hide = () => {
     stopTimer();
+    if (current) hot(current, false);
     current = null;
     drop(outline);
     drop(chipNode);
@@ -152,9 +188,136 @@ export function createPageChips({
     return node;
   };
 
-  const fire = (item, block) => {
+  // pointer: where the click was; from: the block's client rect, so a placement ghost can grow out of it.
+  const fire = (item, block, event, el) => {
+    let from = null;
+    try {
+      const page = el?.getBoundingClientRect?.();
+      const r = bboxToPageRect(block.bbox, info(block.page), el);
+      if (page && r) from = { left: page.left + r.left, top: page.top + r.top, width: r.width, height: r.height };
+    } catch { from = null; }
+    const pointer = { x: Number(event?.clientX) || 0, y: Number(event?.clientY) || 0 };
     hideAll();
-    try { run?.(item.act, { ids: item.ids, extra: item.extra || null, block }); } catch { /* host */ }
+    try { run?.(item.act, { ids: item.ids, extra: item.extra || null, block, pointer, from }); } catch { /* host */ }
+  };
+
+  const hot = (id, on) => {
+    for (const entry of layers.values()) {
+      const box = entry.boxes.get(id);
+      if (box) box.classList.toggle("pxd-parsed-box--hot", on);
+    }
+  };
+
+  const buildLayer = (n, el, parsed) => {
+    const layer = doc.createElement("div");
+    layer.className = "pxd-parsed-layer";
+    layer.style.pointerEvents = "none";
+    layer.setAttribute("aria-hidden", "false");
+    const boxes = new Map();
+    for (const id of parsed?.order || []) {
+      if (boxCount >= boxCap) break;
+      const block = parsed.blocks?.[id];
+      if (!block || block.page !== n) continue;
+      const plan = parsedBoxPlan(block, info(n));
+      if (!plan) continue;
+      const box = doc.createElement("div");
+      box.className = `pxd-parsed-box pxd-parsed-box--${plan.type}`;
+      box.setAttribute("data-block", plan.id);
+      box.style.left = `calc(${plan.left}% - ${BOX_PAD}px)`;
+      box.style.top = `calc(${plan.top}% - ${BOX_PAD}px)`;
+      box.style.width = `calc(${plan.width}% + ${2 * BOX_PAD}px)`;
+      box.style.height = `calc(${plan.height}% + ${2 * BOX_PAD}px)`;
+      box.style.pointerEvents = "none";
+      const icon = doc.createElement("button");
+      icon.type = "button";
+      icon.className = "pxd-parsed-copy";
+      icon.setAttribute("data-block", plan.id);
+      icon.setAttribute("aria-label", block.type === "table" ? "Copy table as Markdown" : "Copy text");
+      icon.setAttribute("data-tip", "page-chip.copy");
+      icon.style.left = `calc(${plan.left}% - ${BOX_PAD}px)`;
+      icon.style.top = `calc(${plan.top}% - ${BOX_PAD}px)`;
+      icon.style.pointerEvents = "auto";
+      icon.textContent = "⧉";
+      layer.append(box, icon);
+      boxes.set(plan.id, box);
+      boxCount += 1;
+    }
+    el.append(layer);
+    let observer = null;
+    const MO = win()?.MutationObserver;
+    if (typeof MO === "function") {
+      // The reader clears foreign children when it re-renders a page; put the layer back.
+      observer = new MO(() => queueSync());
+      try { observer.observe(el, { childList: true }); } catch { observer = null; }
+    }
+    return { layer, boxes, observer, el };
+  };
+
+  const dropLayers = () => {
+    for (const entry of layers.values()) {
+      try { entry.observer?.disconnect(); } catch { /* gone */ }
+      drop(entry.layer);
+    }
+    layers.clear();
+    boxCount = 0;
+  };
+
+  // Lazy per page: a page gets its layer once the reader has drawn it (pdf.js data-loaded), or at
+  // once when the reader marks no page at all. A detached layer is re-appended, never rebuilt.
+  const sync = () => {
+    syncFrame = 0;
+    if (disposed || !showParsed) return;
+    const parsed = getParsed?.();
+    if (!parsed) return;
+    const pages = new Set();
+    for (const id of parsed.order || []) { const b = parsed.blocks?.[id]; if (b && b.page) pages.add(b.page); }
+    const els = [];
+    let marked = false;
+    for (const n of pages) {
+      const el = pageEl?.(n);
+      if (!el) continue;
+      if (el.hasAttribute?.("data-loaded")) marked = true;
+      els.push([n, el]);
+    }
+    for (const [n, el] of els) {
+      const entry = layers.get(n);
+      if (entry) {
+        if (entry.el !== el) {
+          try { entry.observer?.disconnect(); } catch { /* gone */ }
+          drop(entry.layer);
+          layers.delete(n);
+        } else {
+          if (entry.layer.parentElement !== el) el.append(entry.layer);
+          continue;
+        }
+      }
+      if (marked && !el.hasAttribute?.("data-loaded")) continue;
+      layers.set(n, buildLayer(n, el, parsed));
+    }
+  };
+
+  function queueSync() {
+    if (syncFrame || disposed || !showParsed) return;
+    const raf = win()?.requestAnimationFrame;
+    if (typeof raf !== "function") { sync(); return; }
+    syncFrame = raf(() => sync());
+  }
+
+  const onIcon = (event) => {
+    const icon = event.target?.closest?.(".pxd-parsed-copy");
+    if (!icon) return false;
+    event.stopPropagation?.();
+    return icon;
+  };
+  const onIconDown = (event) => { if (onIcon(event)) event.preventDefault?.(); };
+  const onIconClick = (event) => {
+    const icon = onIcon(event);
+    if (!icon) return;
+    event.preventDefault?.();
+    const id = icon.getAttribute("data-block");
+    const block = getParsed?.()?.blocks?.[id];
+    if (!block) return;
+    try { copy?.(block); } catch { /* host */ }
   };
 
   const show = (block, el, parsed) => {
@@ -163,6 +326,7 @@ export function createPageChips({
     if (!plan || !rect) return;
     hide();
     current = block.id;
+    hot(block.id, true);
     outline = doc.createElement("div");
     outline.className = "pxd-page-outline";
     outline.style.position = "absolute";
@@ -186,7 +350,7 @@ export function createPageChips({
     const swallow = (event) => { event.stopPropagation?.(); };
     on(node, "pointerdown", swallow);
     on(node, "mousedown", swallow);
-    on(main, "click", (event) => { event.stopPropagation?.(); fire(plan.primary, block); });
+    on(main, "click", (event) => { event.stopPropagation?.(); fire(plan.primary, block, event, el); });
     if (plan.menu.length) {
       const caret = button("pxd-page-chip__more", "▾", "page-chip.more");
       caret.setAttribute("aria-haspopup", "menu");
@@ -199,7 +363,8 @@ export function createPageChips({
         entry.setAttribute("role", "menuitem");
         entry.setAttribute("data-act", item.act);
         if (item.extra?.mode) entry.setAttribute("data-mode", item.extra.mode);
-        on(entry, "click", (event) => { event.stopPropagation?.(); fire(item, block); });
+        if (item.extra?.beside) entry.setAttribute("data-beside", "true");
+        on(entry, "click", (event) => { event.stopPropagation?.(); fire(item, block, event, el); });
         menu.append(entry);
       }
       on(caret, "click", (event) => {
@@ -223,6 +388,7 @@ export function createPageChips({
     if (disposed) return;
     const parsed = getParsed?.();
     if (!parsed) return;
+    if (showParsed && layers.size === 0) queueSync();
     if (chipNode && chipNode.contains?.(event.target)) { stopTimer(); return; }
     if (selecting()) { if (current) hideAll(); return; }
     const n = pageNumberOf(event.target, parsed);
@@ -292,22 +458,46 @@ export function createPageChips({
   on(win(), "keydown", onKeyDown, true);
   on(win(), "keyup", onKeyUp, true);
   on(win(), "blur", clearDots);
+  on(target, "pointerdown", onIconDown, true);
+  on(target, "mousedown", onIconDown, true);
+  on(target, "click", onIconClick, true);
+  on(target, "scroll", queueSync, true);
+  if (showParsed) queueSync();
 
   return {
     hover: onMove,
     hide: hideAll,
     current: () => current,
+    // Repaint the persistent boxes (new parse, new pages). Writes nothing to the graph.
+    refresh() {
+      if (disposed) return;
+      dropLayers();
+      if (showParsed) sync();
+    },
+    sync,
+    shown: () => showParsed,
+    setShown(on) {
+      showParsed = Boolean(on);
+      writeShowParsed(storage, showParsed);
+      dropLayers();
+      if (showParsed) sync();
+      return showParsed;
+    },
+    boxCount: () => boxCount,
     dispose() {
       disposed = true;
       hideAll();
       clearDots();
+      dropLayers();
+      if (syncFrame) { try { win()?.cancelAnimationFrame?.(syncFrame); } catch { /* stub */ } syncFrame = 0; }
       while (bound.length) off(bound.pop());
     },
   };
 }
 
 // Maps a chip action onto the session/actions object. Returns false when nothing was called.
-export function runChipAction({ act, ids, extra, block }, { session, payload, copy, latex } = {}) {
+// client: the placed ghost's top-left in client px (click-to-place); the insert lands there.
+export function runChipAction({ act, ids, extra, block, client }, { session, payload, copy, latex } = {}) {
   const blocks = ids || [];
   if (act === "copy") { copy?.(blocks); return true; }
   if (act === "latex") { latex?.(block); return true; }
@@ -318,6 +508,7 @@ export function runChipAction({ act, ids, extra, block }, { session, payload, co
   const fn = name ? session?.[name] : null;
   if (typeof fn !== "function") return false;
   const body = payload(blocks);
-  fn(extra ? { ...body, ...extra } : body);
+  const merged = extra ? { ...body, ...extra } : body;
+  fn(client && Number.isFinite(client.x) && Number.isFinite(client.y) ? { ...merged, client: { x: client.x, y: client.y } } : merged);
   return true;
 }

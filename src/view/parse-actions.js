@@ -3,7 +3,7 @@
 
 import { planParseInsert, PARSE_MISSING_TOAST, textCardMarkdown } from "../model/drop.js";
 import { toRoamMarkdown } from "../model/parse-to-roam-md.js";
-import { selectBlocks } from "../model/parse-schema.js";
+import { selectBlocks, tableGrid } from "../model/parse-schema.js";
 import { parsedTableSize } from "../model/roam-table.js";
 import { pageNoteBlocks } from "../model/footnotes.js";
 import { imageKey } from "../host/parse-store.js";
@@ -40,7 +40,26 @@ function plural(n, one, many) {
   return `${n} ${n === 1 ? one : many}`;
 }
 
-export function createParseActions({ session, store, placeBeside, toast, select, show, upload } = {}) {
+// Pure. What the click-to-place preview shows for a chip action, and how wide it is (board px).
+// A table previews its first rows at the inserted table's width; a figure its crop; text its words.
+export function placementContent(doc, ids, act, extra = null) {
+  const blocks = selectBlocks(doc, ids);
+  const first = blocks[0] || null;
+  if (!first) return { content: { kind: "text", text: "" }, width: CARD_SIZE.w };
+  if (act === "table" && first.type === "table") {
+    const rows = tableGrid(first).slice(0, 8).map((row) => row.filter((slot) => !slot.covered).map((slot) => String(slot.cell?.text ?? "")));
+    const sized = parsedTableSize(first);
+    const width = Math.max(200, Math.min(900, Number(sized?.w) || CARD_SIZE.w));
+    return { content: { kind: "table", rows, rowCap: 8, colCap: 12, page: first.page, mode: extra?.mode || "grid" }, width };
+  }
+  if (blocks.length === 1 && first.type === "figure") {
+    return { content: { kind: "figure", text: first.caption && doc?.blocks?.[first.caption]?.text ? doc.blocks[first.caption].text : "", page: first.page }, width: CARD_SIZE.w };
+  }
+  const text = blocks.map((b) => (b.type === "list" ? (b.items || []).map((item) => item.text).join(" ") : b.text || b.latex || "")).join(" ");
+  return { content: { kind: "text", text, page: first.page }, width: CARD_SIZE.w };
+}
+
+export function createParseActions({ session, store, placeBeside, toast, select, show, upload, toWorld } = {}) {
   const say = (message) => { try { if (typeof toast === "function") toast(message); } catch { /* host */ } };
   const pick = (uids) => {
     const list = (Array.isArray(uids) ? uids : []).filter((id) => typeof id === "string" && id);
@@ -54,6 +73,17 @@ export function createParseActions({ session, store, placeBeside, toast, select,
     return { x: Number.isFinite(at?.x) ? at.x : 0, y: Number.isFinite(at?.y) ? at.y : 0 };
   };
   const fnFormat = () => session?.footnoteFormat?.() ?? "off";
+  // Where an insert lands: a placed client point (click-to-place), explicit board x/y, else beside the PDF.
+  const where = (payload, size) => {
+    const c = payload?.client;
+    if (c && Number.isFinite(c.x) && Number.isFinite(c.y) && typeof toWorld === "function") {
+      let p = null;
+      try { p = toWorld({ x: c.x, y: c.y }); } catch { p = null; }
+      if (Number.isFinite(p?.x) && Number.isFinite(p?.y)) return { x: p.x, y: p.y };
+    }
+    if (Number.isFinite(payload?.x) && Number.isFinite(payload?.y)) return { x: payload.x, y: payload.y };
+    return spot(payload?.pdfUid, size);
+  };
   const load = async (payload) => {
     let doc = null;
     try { doc = await store?.getParse?.(payload?.sha256, payload?.engine, payload?.optsHash); } catch { doc = null; }
@@ -98,7 +128,7 @@ export function createParseActions({ session, store, placeBeside, toast, select,
       const table = selectBlocks(doc, payload.ids).find((b) => b?.type === "table");
       if (!table) return { ok: false, reason: "empty" };
       const sized = parsedTableSize(table);
-      const at = Number.isFinite(payload.x) && Number.isFinite(payload.y) ? { x: payload.x, y: payload.y } : spot(payload.pdfUid, sized);
+      const at = where(payload, sized);
       const res = await session?.insertParsedTable?.({ ...at, table, mode: payload.mode || "auto", notes: pageNoteBlocks(doc, table) });
       if (res?.ok) {
         pick(res.uid ? [res.uid] : []);
@@ -117,7 +147,7 @@ export function createParseActions({ session, store, placeBeside, toast, select,
       const withImages = await withUploadedImages(doc, payload.ids);
       const plan = planParseInsert(withImages, { ...payload, kind: "blocks", footnoteFormat: fnFormat() });
       if (plan.action === "sections") {
-        const at = spot(payload.pdfUid, CARD_SIZE);
+        const at = where(payload, CARD_SIZE);
         const res = await session?.sendParsedToBoard?.({ ...at, sections: plan.sections });
         if (res?.ok) {
           pick(res.uids);
@@ -126,7 +156,7 @@ export function createParseActions({ session, store, placeBeside, toast, select,
         return res || { ok: false, reason: "no-session" };
       }
       if (plan.action === "card") {
-        const at = spot(payload.pdfUid, CARD_SIZE);
+        const at = where(payload, CARD_SIZE);
         const res = await session?.insertParsedCard?.({ ...at, markdown: plan.markdown });
         if (res?.ok) {
           pick(res.uid ? [res.uid] : []);
@@ -141,7 +171,7 @@ export function createParseActions({ session, store, placeBeside, toast, select,
     async insertTextCard(payload) {
       const markdown = textCardMarkdown(payload || {});
       if (!markdown) return { ok: false, reason: "empty" };
-      const at = Number.isFinite(payload.x) && Number.isFinite(payload.y) ? { x: payload.x, y: payload.y } : spot(payload.pdfUid, CARD_SIZE);
+      const at = where(payload, CARD_SIZE);
       const res = await session?.insertParsedCard?.({ ...at, markdown });
       if (res?.ok) {
         pick(res.uid ? [res.uid] : []);
@@ -155,7 +185,7 @@ export function createParseActions({ session, store, placeBeside, toast, select,
       if (!doc) return { ok: false, reason: "missing-cache" };
       const withImages = await withUploadedImages(doc, payload.ids);
       const { markdown } = toRoamMarkdown(withImages, payload.ids, { footnoteFormat: fnFormat() });
-      const at = spot(payload.pdfUid, CARD_SIZE);
+      const at = where(payload, CARD_SIZE);
       const res = await session?.insertParsedCard?.({ ...at, markdown });
       if (res?.ok) {
         pick(res.uid ? [res.uid] : []);

@@ -47,11 +47,13 @@ export function zoneScale(zone, zoom) {
   return PANE_SCALE;
 }
 
-// What the ghost shows. Text is clamped by CSS; a table keeps its first three rows.
+// What the ghost shows. Text is clamped by CSS; a table keeps its first three rows (rowCap, colCap up to 12).
 export function ghostContent(source = {}) {
   const kind = ["text", "table", "figure", "highlight", "blocks"].includes(source.kind) ? source.kind : "text";
   const text = String(source.text ?? "").replace(/\s+/g, " ").trim();
-  const rows = Array.isArray(source.rows) ? source.rows.slice(0, 3).map((row) => (Array.isArray(row) ? row.slice(0, 6).map((cell) => String(cell ?? "")) : [])) : [];
+  const rowCap = clamp(Math.round(num(source.rowCap, 3)) || 3, 1, 12);
+  const colCap = clamp(Math.round(num(source.colCap, 6)) || 6, 1, 12);
+  const rows = Array.isArray(source.rows) ? source.rows.slice(0, rowCap).map((row) => (Array.isArray(row) ? row.slice(0, colCap).map((cell) => String(cell ?? "")) : [])) : [];
   const src = typeof source.src === "string" ? source.src : "";
   const color = typeof source.color === "string" ? source.color : "";
   const page = Number.isFinite(Number(source.page)) && Number(source.page) > 0 ? Number(source.page) : null;
@@ -104,13 +106,17 @@ export function createDragGhost({
   content = {},
   zoom = null,
   blocked = null,
+  width = GHOST_W,
+  grab: grabAt = null,
   now = () => globalThis.performance?.now?.() ?? Date.now(),
 } = {}) {
   const win = doc?.defaultView || globalThis;
   const host = root || doc?.body;
   const look = ghostContent(content);
   const node = buildGhost(doc, look);
-  node.style.width = `${GHOST_W}px`;
+  const ghostW = clamp(num(width, GHOST_W) || GHOST_W, 120, 1200);
+  node.style.width = `${ghostW}px`;
+  if (ghostW !== GHOST_W) node.style.maxWidth = "none";
   node.style.transform = "translate3d(-10000px, -10000px, 0)";
   host?.append?.(node);
   // One layout read at start: the fixed layer's origin (a transformed root moves it), the card height,
@@ -123,7 +129,7 @@ export function createDragGhost({
     if (box) origin = { x: num(box.left), y: num(box.top) };
     height = num(node.offsetHeight, 0) || num(box?.height, 0) || 120;
   } catch { /* stub */ }
-  const size = { w: GHOST_W, h: height };
+  const size = { w: ghostW, h: height };
   const rects = {
     rootRect: root?.getBoundingClientRect?.() || null,
     paneRect: pane?.getBoundingClientRect?.() || null,
@@ -133,7 +139,7 @@ export function createDragGhost({
   const zoomNow = zoom != null ? num(zoom, 1) : boardZoom(root, win);
   const start = { x: num(pointer?.x), y: num(pointer?.y) };
   const src = from && num(from.width) > 0 && num(from.height) > 0 ? from : { left: start.x - 8, top: start.y - 8, width: 16, height: 16 };
-  const grab = {
+  const grab = grabAt ? { fx: clamp(num(grabAt.fx, 0.5), 0, 1), fy: clamp(num(grabAt.fy, 0.5), 0, 1) } : {
     fx: clamp((start.x - num(src.left)) / num(src.width, 1), 0, 1),
     fy: clamp((start.y - num(src.top)) / num(src.height, 1), 0, 1),
   };
@@ -254,4 +260,91 @@ export function dispatchDrop({ doc = globalThis.document, root, pointer, at, ent
   const plain = { type: "drop", bubbles: true, cancelable: true, clientX: x, clientY: y, dataTransfer: transfer, preventDefault() {}, stopPropagation() {} };
   try { target.dispatchEvent(plain); } catch { return false; }
   return true;
+}
+
+export const PLACE_GRAB = Object.freeze({ fx: 0.5, fy: 0.5 });
+const SWALLOW_MS = 600;
+
+// Click-to-place. An opaque preview hangs on the pointer (same ghost as the drag: board zoom and a
+// dashed outline over the board); a click on the board calls onPlace with the ghost's top-left in
+// client px; Esc, a right click, or a click outside the board cancels. Window-capture listeners only,
+// no pointer capture, mouseup is never stopped. The click that placed or cancelled is swallowed.
+export function startPlacement({
+  doc = globalThis.document,
+  root,
+  pane = null,
+  pointer = { x: 0, y: 0 },
+  from = null,
+  content = {},
+  width = GHOST_W,
+  zoom = null,
+  blocked = null,
+  onPlace = null,
+  onCancel = null,
+  now,
+} = {}) {
+  const win = doc?.defaultView || globalThis;
+  const ghost = createDragGhost({ doc, root, pane, from, pointer, content, width, zoom, blocked, grab: PLACE_GRAB, ...(now ? { now } : {}) });
+  try { ghost.element().classList.add("pxd-ghost--place"); } catch { /* stub */ }
+  try { root?.classList?.add?.("pxd-root--placing"); } catch { /* stub */ }
+  let done = false;
+  let swallowUntil = 0;
+  const clock = () => (typeof now === "function" ? now() : (globalThis.performance?.now?.() ?? Date.now()));
+  const bound = [];
+  const on = (type, fn) => { win?.addEventListener?.(type, fn, true); bound.push([type, fn]); };
+  const release = () => { while (bound.length) { const [type, fn] = bound.pop(); win?.removeEventListener?.(type, fn, true); } };
+  const finish = () => {
+    done = true;
+    swallowUntil = clock() + SWALLOW_MS;
+    try { root?.classList?.remove?.("pxd-root--placing"); } catch { /* stub */ }
+    // The click and mousedown of the deciding press are still on their way; eat them, then let go.
+    const later = win?.setTimeout || globalThis.setTimeout;
+    try { later(release, SWALLOW_MS); } catch { release(); }
+  };
+  const cancel = (reason = "cancel") => {
+    if (done) return;
+    ghost.cancel();
+    finish();
+    try { onCancel?.(reason); } catch { /* host */ }
+  };
+  const place = () => {
+    if (done) return;
+    const at = ghost.dropPoint();
+    ghost.land();
+    finish();
+    try { onPlace?.({ client: { x: at.x, y: at.y }, size: { w: at.w, h: at.h } }); } catch { /* host */ }
+  };
+  const eat = (event) => {
+    event.preventDefault?.();
+    event.stopPropagation?.();
+    event.stopImmediatePropagation?.();
+  };
+  on("pointermove", (event) => { if (!done) ghost.move(event.clientX, event.clientY); });
+  on("pointerdown", (event) => {
+    if (done) { if (clock() <= swallowUntil) eat(event); return; }
+    eat(event);
+    ghost.move(event.clientX, event.clientY);
+    ghost.frame();
+    if (event.button != null && event.button !== 0) { cancel("button"); return; }
+    if (ghost.zone() === "board") place();
+    else cancel("outside");
+  });
+  on("mousedown", (event) => { if (!done || clock() <= swallowUntil) eat(event); });
+  on("click", (event) => { if (!done || clock() <= swallowUntil) eat(event); });
+  on("contextmenu", (event) => {
+    if (done && clock() > swallowUntil) return;
+    eat(event);
+    cancel("button");
+  });
+  on("keydown", (event) => {
+    if (done || event.key !== "Escape") return;
+    eat(event);
+    cancel("escape");
+  });
+  return {
+    active: () => !done,
+    cancel: () => cancel("api"),
+    ghost,
+    dispose() { if (!done) cancel("dispose"); release(); },
+  };
 }

@@ -21,6 +21,7 @@ import { createDragGhost, dispatchDrop } from "./drag-ghost.js";
 import { renderEnginesPanel } from "./engines-panel.js";
 import { selectionBarPlacement, selectionInReader } from "./make-highlight.js";
 import { renderParseStatus } from "./parse-status.js";
+import { readShowParsed, writeShowParsed } from "./page-chips.js";
 import { compactPage, createTextLayer, pageRecords } from "./text-layer.js";
 
 // U4 owns the visible drawer. The import is async so a missing file leaves the pane's own list.
@@ -277,6 +278,12 @@ export function createReadPane({
     button.setAttribute("aria-pressed", id === "reader" ? "true" : "false");
     modeBtns[id] = button;
   }
+  // Show parsed: soft boxes and copy icons on every parsed block. Shown with the modes, once a parse exists.
+  const showParsedBtn = el("button", "pxd-read__mode pxd-read__showparsed", modes);
+  showParsedBtn.type = "button";
+  showParsedBtn.textContent = "Show parsed";
+  showParsedBtn.setAttribute("data-tip", "parse.show-parsed");
+  showParsedBtn.setAttribute("aria-pressed", readShowParsed(storage) ? "true" : "false");
   const progress = el("div", "pxd-read__progress", pane);
   setHidden(progress, true);
   const progressFill = el("div", "pxd-read__progressfill", progress);
@@ -2275,6 +2282,12 @@ export function createReadPane({
       try { await view.parseBuiltin(); } catch { /* parse */ }
     }
   }
+  listen(showParsedBtn, "click", (event) => {
+    event.stopPropagation?.();
+    const next = showParsedBtn.getAttribute("aria-pressed") !== "true";
+    const on = parsedView ? parsedView.setShowParsed(next) : (writeShowParsed(storage, next), next);
+    showParsedBtn.setAttribute("aria-pressed", on ? "true" : "false");
+  });
   listen(modes, "click", (event) => {
     const id = event.target?.closest?.("[data-mode]")?.getAttribute?.("data-mode");
     if (!id) return;

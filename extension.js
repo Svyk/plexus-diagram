@@ -4676,9 +4676,9 @@ function titleText(value) {
 function pdfTitlePlan(source) {
   const src = source && typeof source === "object" ? source : {};
   const named = cleanPdfTitle(src.metadataTitle) || titleText(src.alias) || titleText(src.text) || titleText(src.title) || cleanPdfTitle(src.parsedTitle);
-  if (named) return named;
+  if (named) return segmentTitle(named);
   const file = titleText(fileName(src.url));
-  return file || "PDF";
+  return file ? segmentTitle(file) : "PDF";
 }
 function parsedTitleLines(doc) {
   if (!doc || typeof doc !== "object") return [];
@@ -52587,14 +52587,20 @@ function createDeviceOcr({ source = null, env = globalThis, dpi = 300, createSou
     }
     return words;
   }
-  async function warmTitleLexicon() {
-    try {
-      const set = typeof web().cachedLexicon === "function" ? await web().cachedLexicon() : null;
-      if (set) setTitleLexicon(set);
-      return Boolean(set);
-    } catch {
-      return false;
+  let warmJob = null;
+  function warmTitleLexicon() {
+    if (!warmJob) {
+      warmJob = (async () => {
+        try {
+          const set = typeof web().cachedLexicon === "function" ? await web().cachedLexicon() : null;
+          if (set) setTitleLexicon(set);
+          return Boolean(set);
+        } catch {
+          return false;
+        }
+      })();
     }
+    return warmJob;
   }
   return { status, download, cancel, read: read2, readCells, lexicon, warmTitleLexicon, label: "In-browser reading (beta)" };
 }
@@ -52605,6 +52611,33 @@ function sharedDeviceOcr() {
     if (supported(globalThis)) shared.warmTitleLexicon();
   }
   return shared;
+}
+
+// src/view/title-lexicon-warm.js
+function scheduleTitleLexiconWarm({ win, hasPdf, ocr, isDisposed, onWarm, setTimer = setTimeout }) {
+  if (typeof hasPdf !== "function" || !hasPdf()) return false;
+  const run = () => {
+    if (isDisposed()) return;
+    let job = null;
+    try {
+      job = ocr()?.warmTitleLexicon?.();
+    } catch {
+      job = null;
+    }
+    Promise.resolve(job).then((ok) => {
+      if (ok === true && !isDisposed()) onWarm();
+    }).catch(() => {
+    });
+  };
+  if (typeof win?.requestIdleCallback === "function") {
+    try {
+      win.requestIdleCallback(run, { timeout: 1500 });
+      return true;
+    } catch {
+    }
+  }
+  setTimer(run, 1500);
+  return true;
 }
 
 // src/view/menu.js
@@ -62613,6 +62646,23 @@ function buildBoardView(onFail, {
     if (!coverPaintAt) {
       coverPaintAt = Date.now();
       armCoverWarm();
+      scheduleTitleLexiconWarm({
+        win,
+        hasPdf: () => [...b.items.values()].some((it) => it?.kind === "pdf"),
+        ocr: sharedDeviceOcr,
+        isDisposed: () => disposed,
+        onWarm: () => {
+          try {
+            itemsR?.repaintStyles?.();
+          } catch {
+          }
+          try {
+            readPane?.refreshCards?.();
+          } catch {
+          }
+        },
+        setTimer: (fn, ms) => timers.later(fn, ms)
+      });
     }
     let itemsChanged = false;
     if (dirty.all || dirty.structural || dirty.items.size) {

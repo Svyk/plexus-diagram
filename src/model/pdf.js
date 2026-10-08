@@ -1,6 +1,6 @@
 // PDF-1 cover plan. The reader is Roam's. No fetch and no :pdf write.
 
-import { capTitle, isBannerOf, isCutPrefix, isJunkTitleText, titleWordCount } from "./title-cap.js";
+import { capTitle, isBannerOf, isCutPrefix, isJunkTitleText, segmentTitle, titleWordCount } from "./title-cap.js";
 
 const PDF_MACRO = "{{[[pdf]]:";
 
@@ -85,9 +85,9 @@ export function pdfTitlePlan(source) {
   const src = source && typeof source === "object" ? source : {};
   const named = cleanPdfTitle(src.metadataTitle) || titleText(src.alias) || titleText(src.text) || titleText(src.title)
     || cleanPdfTitle(src.parsedTitle);
-  if (named) return named;
+  if (named) return segmentTitle(named);
   const file = titleText(fileName(src.url));
-  return file || "PDF";
+  return file ? segmentTitle(file) : "PDF";
 }
 
 // Running headers and the text of page 1 of a parsed document (capped), for the metadata banner check.

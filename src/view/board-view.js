@@ -102,6 +102,7 @@ import { officeTargetFromText } from "../model/anydoc-to-parse.js";
 import { createAnydocHost } from "../host/anydoc.js";
 import { createParseStore, restorableByUrl } from "../host/parse-store.js";
 import { sharedDeviceOcr } from "../host/device-ocr.js";
+import { scheduleTitleLexiconWarm } from "./title-lexicon-warm.js";
 import { createParseActions, freeSpotBeside } from "./parse-actions.js";
 import { createMenu } from "./menu.js";
 import { createShortcutSheet } from "./shortcut-sheet.js";
@@ -6879,6 +6880,17 @@ function buildBoardView(onFail, {
     if (!coverPaintAt) {
       coverPaintAt = Date.now();
       armCoverWarm();
+      scheduleTitleLexiconWarm({
+        win,
+        hasPdf: () => [...b.items.values()].some((it) => it?.kind === "pdf"),
+        ocr: sharedDeviceOcr,
+        isDisposed: () => disposed,
+        onWarm: () => {
+          try { itemsR?.repaintStyles?.(); } catch { /* paint */ }
+          try { readPane?.refreshCards?.(); } catch { /* switcher */ }
+        },
+        setTimer: (fn, ms) => timers.later(fn, ms),
+      });
     }
     let itemsChanged = false;
     if (dirty.all || dirty.structural || dirty.items.size) {

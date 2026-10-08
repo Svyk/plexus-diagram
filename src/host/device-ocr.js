@@ -128,12 +128,18 @@ export function createDeviceOcr({ source = null, env = globalThis, dpi = 300, cr
   }
 
   // Hands the cached word list (never fetched) to the title splitter.
-  async function warmTitleLexicon() {
-    try {
-      const set = typeof web().cachedLexicon === "function" ? await web().cachedLexicon() : null;
-      if (set) setTitleLexicon(set);
-      return Boolean(set);
-    } catch { return false; }
+  let warmJob = null;
+  function warmTitleLexicon() {
+    if (!warmJob) {
+      warmJob = (async () => {
+        try {
+          const set = typeof web().cachedLexicon === "function" ? await web().cachedLexicon() : null;
+          if (set) setTitleLexicon(set);
+          return Boolean(set);
+        } catch { return false; }
+      })();
+    }
+    return warmJob;
   }
 
   return { status, download, cancel, read, readCells, lexicon, warmTitleLexicon, label: "In-browser reading (beta)" };

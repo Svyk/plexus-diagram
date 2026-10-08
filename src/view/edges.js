@@ -85,14 +85,14 @@ export function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, o
         fromPoint = an.point;
         fromSide = an.side;
         fromClamp = an.clamped;
-        if (!an.clamped) fromInnerSpec = { rect: routed.a, side: an.side, point: an.point, rowLeft: m.from.rowLeft, rowRight: m.from.rowRight };
+        if (!an.clamped) fromInnerSpec = { rect: routed.a, side: an.side, point: an.point, rowLeft: m.from.rowLeft, rowRight: m.from.rowRight, cell: m.from.cell === true };
       }
       if (m.to && edge.toBlock && routed.to === edge.to) {
         const an = blockAnchor({ rect: routed.b, ...m.to, other: center(routed.a) });
         toPoint = an.point;
         toSide = an.side;
         toClamp = an.clamped;
-        if (!an.clamped) toInnerSpec = { rect: routed.b, side: an.side, point: an.point, rowLeft: m.to.rowLeft, rowRight: m.to.rowRight };
+        if (!an.clamped) toInnerSpec = { rect: routed.b, side: an.side, point: an.point, rowLeft: m.to.rowLeft, rowRight: m.to.rowRight, cell: m.to.cell === true };
       }
     }
     const geo = edgePath({ a: routed.a, b: routed.b, fromSide, toSide, route: edge.route, offset: pairOffset(board, edge), via, fromPoint, toPoint });

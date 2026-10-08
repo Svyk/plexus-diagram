@@ -181,7 +181,7 @@ export function measureCell({ card, host, body, uid, zoom = 1, pullTree } = {}) 
   }
   const left = clip ? Math.max(r.left, clip.left) : r.left;
   const right = clip ? Math.min(r.right, clip.right) : r.right;
-  return { ...out, rowTop, rowHeight, rowLeft: round1((left - cardRect.left) / z), rowRight: round1((right - cardRect.left) / z), rendered: true };
+  return { ...out, rowTop, rowHeight, rowLeft: round1((left - cardRect.left) / z), rowRight: round1((right - cardRect.left) / z), rendered: true, cell: true };
 }
 
 // Scroll every scroller between the cell and the card body so the cell sits in the middle of each view.

@@ -284,11 +284,11 @@ function blockAnchor({ rect, rowTop, rowHeight = 0, bodyTop = 0, bodyBottom, oth
   if (cy > bottom) return { point: { x, y: rect.y + rect.h }, side: side2, clamped: "bottom" };
   return { point: { x, y: rect.y + cy }, side: side2, clamped: null };
 }
-function blockInner({ rect, side: side2, point, rowLeft, rowRight } = {}) {
+function blockInner({ rect, side: side2, point, rowLeft, rowRight, cell = false } = {}) {
   if (!rect || !point || rowLeft == null || !Number.isFinite(rowLeft)) return null;
   const right = side2 === "right";
-  const reach = right ? rect.w - (Number.isFinite(rowRight) ? rowRight : rect.w) + 2 : rowLeft - 2;
-  const depth = Math.min(Math.max(reach, INNER_MIN), Math.max(INNER_MIN, rect.w / 2));
+  const reach = cell ? right ? rect.w - (Number.isFinite(rowRight) ? rowRight : rect.w) + CELL_INSET : rowLeft + CELL_INSET : right ? rect.w - (Number.isFinite(rowRight) ? rowRight : rect.w) + 2 : rowLeft - 2;
+  const depth = Math.min(Math.max(reach, INNER_MIN), cell ? Math.max(INNER_MIN, rect.w) : Math.max(INNER_MIN, rect.w / 2));
   const dir = right ? -1 : 1;
   return {
     from: { x: point.x + dir * INNER_NOTCH, y: point.y },
@@ -511,7 +511,7 @@ function gridBackground(vp, style, base = GRID_PITCH) {
   const mod = (v) => (v % size + size) % size;
   return { size, x: mod(vp.x), y: mod(vp.y), major: size * 5 };
 }
-var num, clampNum, screenPx, invZoom, CONE, SIDES, INNER_NOTCH, INNER_MIN, NORMALS, xs, ys, EPS, GRID_PITCH, MIN_GRID_PITCH;
+var num, clampNum, screenPx, invZoom, CONE, SIDES, INNER_NOTCH, INNER_MIN, CELL_INSET, NORMALS, xs, ys, EPS, GRID_PITCH, MIN_GRID_PITCH;
 var init_geometry = __esm({
   "src/model/geometry.js"() {
     init_shapes();
@@ -526,6 +526,7 @@ var init_geometry = __esm({
     SIDES = ["top", "right", "bottom", "left"];
     INNER_NOTCH = 4;
     INNER_MIN = 10;
+    CELL_INSET = 3;
     NORMALS = {
       top: { x: 0, y: -1 },
       right: { x: 1, y: 0 },
@@ -11703,7 +11704,7 @@ function measureCell({ card: card2, host, body, uid, zoom = 1, pullTree } = {}) 
   }
   const left = clip4 ? Math.max(r.left, clip4.left) : r.left;
   const right = clip4 ? Math.min(r.right, clip4.right) : r.right;
-  return { ...out, rowTop, rowHeight, rowLeft: round16((left - cardRect.left) / z), rowRight: round16((right - cardRect.left) / z), rendered: true };
+  return { ...out, rowTop, rowHeight, rowLeft: round16((left - cardRect.left) / z), rowRight: round16((right - cardRect.left) / z), rendered: true, cell: true };
 }
 function revealCell(cell, body) {
   if (!cell) return false;
@@ -13363,7 +13364,7 @@ function createItemRenderer({
     rec.stickyBits = null;
     rec.el.classList.remove("pxd-sticky--picking");
   };
-  const TRANSIENT_CLASSES = ["pxd-item--offscreen", "pxd-item--future", "pxd-item--fresh", "pxd-item--pulse", "pxd-item--flash"];
+  const TRANSIENT_CLASSES = ["pxd-item--offscreen", "pxd-item--future", "pxd-item--fresh", "pxd-item--pulse", "pxd-item--flash", "pxd-item--roam-table"];
   const imageRegionString2 = (text3) => {
     const region = parseRegion(text3);
     return Boolean(region && region.kind === "img" && region.supported === true && region.owner === "plexus-diagram" && region.error == null);
@@ -45184,14 +45185,14 @@ function createEdgeLayer({ doc = globalThis.document, svg, labelsLayer, overlayS
         fromPoint = an.point;
         fromSide = an.side;
         fromClamp = an.clamped;
-        if (!an.clamped) fromInnerSpec = { rect: routed.a, side: an.side, point: an.point, rowLeft: m.from.rowLeft, rowRight: m.from.rowRight };
+        if (!an.clamped) fromInnerSpec = { rect: routed.a, side: an.side, point: an.point, rowLeft: m.from.rowLeft, rowRight: m.from.rowRight, cell: m.from.cell === true };
       }
       if (m.to && edge.toBlock && routed.to === edge.to) {
         const an = blockAnchor({ rect: routed.b, ...m.to, other: center(routed.a) });
         toPoint = an.point;
         toSide = an.side;
         toClamp = an.clamped;
-        if (!an.clamped) toInnerSpec = { rect: routed.b, side: an.side, point: an.point, rowLeft: m.to.rowLeft, rowRight: m.to.rowRight };
+        if (!an.clamped) toInnerSpec = { rect: routed.b, side: an.side, point: an.point, rowLeft: m.to.rowLeft, rowRight: m.to.rowRight, cell: m.to.cell === true };
       }
     }
     const geo = edgePath({ a: routed.a, b: routed.b, fromSide, toSide, route: edge.route, offset: pairOffset2(board2, edge), via, fromPoint, toPoint });

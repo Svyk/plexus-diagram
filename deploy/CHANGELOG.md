@@ -1,5 +1,18 @@
 # Changelog
 
+## 3.6.0 — 2026-10-07
+
+The PDF page is the workspace: select, copy, highlight and drag text straight off the page — scans included — plus structure chips, a smoother drag, setup without dead ends, and office files on the board.
+
+- **Text on every page, scans too.** A scanned page gets an invisible text layer from the local helper's OCR. Select across the page image, copy it, or press a colour in Roam's own highlight tip: the highlight is a real Roam block, also on scans. A read scan reopens with its text in about a second, no new read.
+- **Selection bar**: Copy · Card · Quote · drag handle, placed beside Roam's tip, never over it.
+- **Card-shaped drag.** Dragging a selection, a highlight or an outline row shows a ghost of the card that will land, and drops exactly where the ghost is.
+- **Structure chips on the page.** Hover a table: "Table 7×7 · Roam Grid ▾" (Native, Flat, Copy as Markdown, Card). Figures, sections, lists and formulas get their own chip. Hold Shift to see the reading order.
+- **Read / Read + Outline.** The Parsed tab became an Outline: an index of headings, tables and figures with page numbers, filters and bulk actions. Every PDF is parsed quietly when it opens (no writes, no network), so chips and the title are there in Read mode.
+- **No dead ends.** A one-line strip under the reader says what is happening and always has a button. The Engines panel (pane ⚙) shows each reading engine with one action. The local helper installs with one copied command and pairs with one click — no token to paste.
+- **Word, Excel, PowerPoint, OpenDocument, EPUB and CSV on the board** (anydoc, WebAssembly, loaded from this site only when you convert, then cached): a document becomes section cards, a deck one card per slide, a sheet a Roam Grid table.
+- Roam Grid table cards grow with the card; the reader pill hides in the outline; titles come from the parse when the PDF has none.
+
 ## 3.5.0 — 2026-10-07
 
 Parse a PDF into clean blocks and real tables, on the board, with merged cells, and better than Heptabase on tables.

@@ -5541,6 +5541,7 @@ var init_tooltip_text = __esm({
       "tool.board": e("Board", "Click to make a nested board you can open in place.", "W", LOCK),
       "tool.table": e("Table", "Click the board to make a Roam table. Cells edit in Roam.", "B", LOCK),
       "tool.connect": e("Connect", "Drag from one card to another to draw an arrow, which is saved as a Roam block. Drag empty space to pan; Shift-drag to select.", "C", LOCK),
+      "dock.more": e("More tools", "The rest of the tools, when the board is too narrow to show them all."),
       "dock.look.block": e("Block look", "Show new cards, or the selected one, as a plain Roam block."),
       "dock.look.card": e("Card look", "Show new cards, or the selected one, with a title row."),
       "backtocontent": e("Back to content", "Fit the view back to your cards."),
@@ -7396,6 +7397,45 @@ function avoidDock(bar, { card: card2, dock, gap = 10, topLimit = 0, margin = 8 
   const hop = dock.top - margin - bar.h;
   if (hop >= topLimit) return { ...bar, top: hop };
   return bar;
+}
+function avoidObstacles(bar, obstacles, { topLimit = 0, margin = 8, bounds = {} } = {}) {
+  const list = (obstacles || []).filter((o) => o && o.right > o.left && o.bottom > o.top);
+  if (!bar || !list.length) return bar;
+  const box2 = (b) => ({ left: b.left, top: b.top, right: b.left + b.w, bottom: b.top + b.h });
+  const clear = (b) => !list.some((o) => overlaps(box2(b), o));
+  const fits = (b) => b.left >= margin && b.top >= topLimit && (bounds.right == null || b.left + b.w <= bounds.right) && (bounds.bottom == null || b.top + b.h <= bounds.bottom);
+  if (clear(bar)) return bar;
+  let cur = bar;
+  for (let pass = 0; pass < 4; pass += 1) {
+    const hit = list.find((o) => overlaps(box2(cur), o));
+    if (!hit) return cur;
+    const options = [
+      { ...cur, left: hit.left - margin - cur.w },
+      { ...cur, top: hit.top - margin - cur.h },
+      { ...cur, top: hit.bottom + margin }
+    ];
+    const whole2 = options.find((o) => fits(o) && clear(o));
+    if (whole2) return whole2;
+    const part = options.find((o) => fits(o) && !overlaps(box2(o), hit));
+    if (!part) return bar;
+    cur = part;
+  }
+  return clear(cur) ? cur : bar;
+}
+function dockOverflow(widths, avail, { gap = 4, pad: pad2 = 14, more = 32, keep = -1 } = {}) {
+  const w = (widths || []).map((n2) => Math.max(0, Number(n2) || 0));
+  const total = (idx) => idx.reduce((sum, i) => sum + w[i], 0) + gap * Math.max(0, idx.length - 1);
+  const all = w.map((_, i) => i);
+  if (pad2 + total(all) <= avail) return [];
+  const shown = [...all];
+  const hidden = [];
+  while (shown.length > 1 && pad2 + total(shown) + gap + more > avail) {
+    let at = shown.length - 1;
+    while (at >= 0 && shown[at] === keep) at -= 1;
+    if (at < 0) break;
+    hidden.unshift(shown.splice(at, 1)[0]);
+  }
+  return hidden;
 }
 function quickLookTitle(item, displayTitle) {
   const shown = typeof displayTitle === "string" ? displayTitle.trim() : "";
@@ -36288,6 +36328,44 @@ function parsedBoxPlan(block, page) {
   return { id: block.id, type: block.type || "para", ...pct2 };
 }
 var COPY_ICON = 18;
+var COPY_GAP = 5;
+var MIN_BOX_H = 14;
+var MIN_BOX_W = 40;
+var MIN_IMAGE = 24;
+var MARK_TEXT = /^[\p{L}\p{N}†‡*§¶]{1,3}$/u;
+function skipParsedBox(block, plan, page) {
+  const W = Number(page?.w) > 0 ? Number(page.w) : 612;
+  const H = Number(page?.h) > 0 ? Number(page.h) : 792;
+  const w = plan.width / 100 * W;
+  const h = plan.height / 100 * H;
+  if (h < MIN_BOX_H && w < MIN_BOX_W) return true;
+  if ((block?.type === "figure" || block?.type === "image") && (h < MIN_IMAGE || w < MIN_IMAGE)) return true;
+  const text3 = typeof block?.text === "string" ? block.text.trim() : "";
+  if (block?.type !== "table" && text3 && MARK_TEXT.test(text3)) return true;
+  return false;
+}
+function copyHoverId(entries, x, y, page, size = COPY_ICON) {
+  const W = Number(page?.w) > 0 ? Number(page.w) : 612;
+  const H = Number(page?.h) > 0 ? Number(page.h) : 792;
+  let best = null;
+  let bestArea = Infinity;
+  for (const e2 of entries || []) {
+    const left = e2.left / 100 * W - BOX_PAD;
+    const top = e2.top / 100 * H - BOX_PAD;
+    const iconLeft = left - COPY_GAP - size;
+    const iconTop = top + (e2.dy || 0);
+    if (x >= iconLeft && x <= iconLeft + size && y >= iconTop && y <= iconTop + size) return e2.id;
+    const right = left + e2.width / 100 * W + 2 * BOX_PAD;
+    const bottom = top + e2.height / 100 * H + 2 * BOX_PAD;
+    if (x < left || x > right || y < top || y > bottom) continue;
+    const area = (right - left) * (bottom - top);
+    if (area < bestArea) {
+      bestArea = area;
+      best = e2.id;
+    }
+  }
+  return best;
+}
 function copyIconNudges(plans, page, size = COPY_ICON) {
   const W = Number(page?.w) > 0 ? Number(page.w) : 612;
   const H = Number(page?.h) > 0 ? Number(page.h) : 792;
@@ -36480,12 +36558,39 @@ function createPageChips({
       if (box2) box2.classList.toggle("pxd-parsed-box--hot", on2);
     }
   };
+  let copyShown = null;
+  const showCopy = (id) => {
+    if (id === copyShown) return;
+    for (const entry of layers.values()) {
+      if (copyShown) entry.icons.get(copyShown)?.classList.remove("pxd-parsed-copy--show");
+      if (id) entry.icons.get(id)?.classList.add("pxd-parsed-copy--show");
+    }
+    copyShown = id;
+  };
+  const updateCopy = (event, parsed) => {
+    if (!showParsed || layers.size === 0) {
+      showCopy(null);
+      return;
+    }
+    const n2 = pageNumberOf3(event.target, parsed);
+    const entry = n2 ? layers.get(n2) : null;
+    const el = entry?.el;
+    if (!el) {
+      showCopy(null);
+      return;
+    }
+    const box2 = el.getBoundingClientRect();
+    const x = (Number(event.clientX) || 0) - box2.left;
+    const y = (Number(event.clientY) || 0) - box2.top;
+    showCopy(copyHoverId(entry.rects, x, y, { w: box2.width, h: box2.height }));
+  };
   const buildLayer = (n2, el, parsed) => {
     const layer = doc.createElement("div");
     layer.className = "pxd-parsed-layer";
     layer.style.pointerEvents = "none";
     layer.setAttribute("aria-hidden", "false");
     const boxes = /* @__PURE__ */ new Map();
+    const icons = /* @__PURE__ */ new Map();
     const entries = [];
     let budget = boxCap - boxCount;
     for (const id of parsed?.order || []) {
@@ -36495,7 +36600,6 @@ function createPageChips({
       const plan = parsedBoxPlan(block, info(n2));
       if (!plan) continue;
       entries.push({ block, plan });
-      budget -= 1;
     }
     let pageBox = null;
     try {
@@ -36504,10 +36608,15 @@ function createPageChips({
       pageBox = null;
     }
     const fallback = info(n2);
-    const nudges = copyIconNudges(entries.map((e2) => e2.plan), {
+    const pagePx = {
       w: pageBox?.width > 0 ? pageBox.width : fallback?.w,
       h: pageBox?.height > 0 ? pageBox.height : fallback?.h
-    });
+    };
+    const kept = entries.filter((e2) => !skipParsedBox(e2.block, e2.plan, pagePx)).slice(0, Math.max(0, budget));
+    entries.length = 0;
+    entries.push(...kept);
+    const nudges = copyIconNudges(entries.map((e2) => e2.plan), pagePx);
+    const rects = [];
     for (const { block, plan } of entries) {
       const box2 = doc.createElement("div");
       box2.className = `pxd-parsed-box pxd-parsed-box--${plan.type}`;
@@ -36526,10 +36635,12 @@ function createPageChips({
       icon.style.left = `calc(${plan.left}% - ${BOX_PAD}px)`;
       const nudge = nudges.get(plan.id) || 0;
       icon.style.top = nudge ? `calc(${plan.top}% - ${BOX_PAD}px + ${nudge}px)` : `calc(${plan.top}% - ${BOX_PAD}px)`;
-      icon.style.pointerEvents = "auto";
+      icon.style.pointerEvents = "none";
       icon.textContent = "⧉";
       layer.append(box2, icon);
       boxes.set(plan.id, box2);
+      icons.set(plan.id, icon);
+      rects.push({ id: plan.id, left: plan.left, top: plan.top, width: plan.width, height: plan.height, dy: nudge });
       boxCount += 1;
     }
     el.append(layer);
@@ -36543,7 +36654,7 @@ function createPageChips({
         observer = null;
       }
     }
-    return { layer, boxes, observer, el };
+    return { layer, boxes, icons, rects, observer, el };
   };
   const dropLayers = () => {
     for (const entry of layers.values()) {
@@ -36554,6 +36665,7 @@ function createPageChips({
       drop(entry.layer);
     }
     layers.clear();
+    copyShown = null;
     boxCount = 0;
   };
   const sync = () => {
@@ -36707,6 +36819,7 @@ function createPageChips({
     const parsed = getParsed?.();
     if (!parsed) return;
     if (showParsed && layers.size === 0) queueSync();
+    updateCopy(event, parsed);
     if (chipNode && chipNode.contains?.(event.target)) {
       stopTimer();
       return;
@@ -36780,6 +36893,7 @@ function createPageChips({
     if (selecting()) hideAll();
   };
   const onLeave = () => {
+    showCopy(null);
     if (current3 && hideTimer == null) hideTimer = later(hideAll, HIDE_MS);
   };
   const target = host || doc;
@@ -47567,6 +47681,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
   let activeLocked = false;
   const px = (v) => Number.isFinite(Number(v)) ? Number(v) : 0;
   const layoutDock = () => {
+    fitDock();
     const b = paletteButtons.get(activeTool);
     const visible2 = Boolean(b) && px(b.offsetWidth) > 0;
     dockIndicator.classList.toggle("pxd-dock__indicator--locked", activeLocked);
@@ -47576,6 +47691,60 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     dockIndicator.style.setProperty("--pxd-ind-y", `${px(b.offsetTop)}px`);
     dockIndicator.style.setProperty("--pxd-ind-w", `${px(b.offsetWidth)}px`);
     dockIndicator.style.setProperty("--pxd-ind-h", `${px(b.offsetHeight)}px`);
+  };
+  const DOCK_PAD = 14;
+  const DOCK_GAP = 4;
+  let dockMore = null;
+  let dockMenu = null;
+  let dockFitKey = "";
+  const closeDockMenu = () => {
+    dockMenu?.remove();
+    dockMenu = null;
+    dockMore?.setAttribute("aria-expanded", "false");
+  };
+  const fitDock = () => {
+    const avail = px(palette.clientWidth) || px(palette.offsetWidth);
+    if (!(avail > 0) || palette.style.display === "none") return;
+    const tools = [...paletteButtons].filter(([, b]) => b.style.display !== "none");
+    const key = `${avail}|${activeTool}|${tools.length}|${root.classList.contains("pxd-root--dock-labels")}|${root.classList.contains("pxd-root--dense")}`;
+    if (key === dockFitKey) return;
+    dockFitKey = key;
+    closeDockMenu();
+    palette.classList.remove("pxd-palette--tight");
+    for (const [, b] of paletteButtons) b.classList.remove("pxd-dock__btn--overflow");
+    dockMore?.remove();
+    dockMore = null;
+    const btnW = tools.map(([, b]) => px(b.offsetWidth) || 36);
+    const natural = btnW.reduce((sum, n2) => sum + n2, 0) + DOCK_GAP * Math.max(0, tools.length - 1) + DOCK_PAD;
+    const full = natural + (px(dockOptions.offsetWidth) ? px(dockOptions.offsetWidth) + DOCK_GAP : 0) + paletteBar.querySelectorAll(".pxd-dock__sep").length * (1 + DOCK_GAP);
+    if (!tools.length || full <= avail) return;
+    palette.classList.add("pxd-palette--tight");
+    const keepAt = tools.findIndex(([id]) => id === activeTool);
+    const hidden = dockOverflow(btnW, avail, { gap: DOCK_GAP, pad: DOCK_PAD, more: btnW[0] || 36, keep: keepAt });
+    if (!hidden.length) return;
+    const gone = hidden.map((i) => tools[i]);
+    for (const [, b] of gone) b.classList.add("pxd-dock__btn--overflow");
+    dockMore = iconButton(paletteBar, "pxd-palette__btn pxd-dock__btn pxd-dock__more", "more", "More tools", "More tools", () => {
+      if (dockMenu) {
+        closeDockMenu();
+        return;
+      }
+      dockMenu = el("div", "pxd-dock__more-menu", paletteBar);
+      dockMenu.setAttribute("role", "menu");
+      for (const [id, b] of gone) {
+        const label = b.getAttribute("aria-label") || id;
+        const item = button2(dockMenu, "pxd-dock__more-item", label, label, () => {
+          closeDockMenu();
+          on.setTool?.(id, false);
+        });
+        item.setAttribute("role", "menuitem");
+        item.setAttribute("data-tool", id);
+      }
+      dockMore.setAttribute("aria-expanded", "true");
+    });
+    dockMore.setAttribute("aria-haspopup", "menu");
+    dockMore.setAttribute("aria-expanded", "false");
+    dockMore.setAttribute("data-tip", "dock.more");
   };
   let dockFrame = null;
   const scheduleDock = () => {
@@ -48171,6 +48340,18 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     if (db?.width && db?.height) {
       const dock = { left: db.left - (rootRect.left || 0), top: db.top - (rootRect.top || 0), right: db.right - (rootRect.left || 0), bottom: db.bottom - (rootRect.top || 0) };
       const placed = avoidDock({ left, top, w: barW, h: barH }, { card: a.rect, dock, gap, topLimit, margin: CTX_MARGIN });
+      top = placed.top;
+    }
+    const asRoot = (node2) => {
+      if (!node2 || node2.style?.display === "none") return null;
+      const b = node2.getBoundingClientRect?.();
+      if (!b?.width || !b?.height) return null;
+      return { left: b.left - (rootRect.left || 0), top: b.top - (rootRect.top || 0), right: b.right - (rootRect.left || 0), bottom: b.bottom - (rootRect.top || 0) };
+    };
+    const blocks = [asRoot(minimap), asRoot(railEl), dockEl ? asRoot(dockEl) : null].filter(Boolean);
+    if (blocks.length) {
+      const placed = avoidObstacles({ left, top, w: barW, h: barH }, blocks, { topLimit, margin: CTX_MARGIN, bounds: { right: rightLimit, bottom: H } });
+      left = placed.left;
       top = placed.top;
     }
     ctx.style.left = `${Math.round(left)}px`;
@@ -61999,6 +62180,7 @@ function buildBoardView(onFail, {
           if (disposed || suspended) return;
           syncCramped();
           chrome.ctx.reposition();
+          chrome.toolbar.scheduleDock?.();
         }, 240);
       }));
       area.observe(viewport);

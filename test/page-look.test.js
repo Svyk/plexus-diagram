@@ -1,6 +1,7 @@
 // Page look: exact geometry on sideways pages, persistent "Show parsed" boxes with copy icons, and
 // click-to-place for chip inserts. Nothing here writes to the graph until a placement click.
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import test from "node:test";
 
 import { bboxToPagePercent, bboxToPageRect, frameBoxToViewport } from "../src/view/parse-overlay.js";
@@ -9,10 +10,12 @@ import {
   PLACE_ACTS,
   SHOW_PARSED_KEY,
   chipPlan,
+  copyHoverId,
   createPageChips,
   parsedBoxPlan,
   readShowParsed,
   runChipAction,
+  skipParsedBox,
   writeShowParsed,
 } from "../src/view/page-chips.js";
 import { startPlacement } from "../src/view/drag-ghost.js";
@@ -109,7 +112,12 @@ function rig({ storage = null, loaded = null } = {}) {
   const before = stub.listenerCount();
   const chips = createPageChips({
     doc,
-    getParsed: () => sample(),
+    getParsed: () => {
+      const doc = sample();
+      doc.blocks.h1.text = "Introduction";
+      doc.blocks.p1.text = "Body text";
+      return doc;
+    },
     pageEl: (n) => (n === 1 ? page : null),
     pageOf: () => ({ w: 100, h: 200, rotation: 0 }),
     run: (act, item) => calls.push({ act, ...item }),
@@ -136,7 +144,7 @@ test("Show parsed: default on, one soft box and one copy icon per parsed block, 
     assert.equal(icons.length, 4);
     assert.ok(boxes.every((b) => b.style.pointerEvents === "none"));
     assert.equal(layer.style.pointerEvents, "none");
-    assert.ok(icons.every((b) => b.style.pointerEvents === "auto"));
+    assert.ok(icons.every((b) => b.style.pointerEvents === "none"), "hidden copy buttons take no clicks");
     const table = boxes.find((b) => b.getAttribute("data-block") === "t1");
     assert.equal(table.style.top, "calc(15% - 3px)");
     assert.equal(table.style.height, "calc(15% + 6px)");
@@ -227,6 +235,7 @@ test("lazy paint: with pdf.js load marks only drawn pages get a layer", () => {
     const p2 = mk(2, false);
     const parsed = sample();
     parsed.blocks.p1.page = 2;
+    parsed.blocks.p1.text = "Body text";
     const chips = createPageChips({ doc, getParsed: () => parsed, pageEl: (n) => (n === 1 ? p1 : n === 2 ? p2 : null), pageOf: () => ({ w: 100, h: 200 }), run() {} });
     stub.flushFrames();
     assert.ok(p1.querySelector(".pxd-parsed-layer"));
@@ -375,4 +384,95 @@ test("placementContent: table preview rows and inserted width, figure caption, t
 test("tooltips exist for the copy icon and the Show parsed toggle", () => {
   assert.ok(TIP_TEXT["page-chip.copy"]?.desc);
   assert.ok(TIP_TEXT["parse.show-parsed"]?.desc);
+});
+
+test("skipParsedBox: specks, bare marks and tiny images get no box; real blocks and tables do", () => {
+  const page = { w: 600, h: 800 };
+  const plan = (w, h) => ({ width: (w / 600) * 100, height: (h / 800) * 100 });
+  assert.equal(skipParsedBox({ type: "figure" }, plan(30, 10), page), true, "logo speck");
+  assert.equal(skipParsedBox({ type: "para", text: "long enough text" }, plan(30, 10), page), true, "under 14 tall and 40 wide");
+  assert.equal(skipParsedBox({ type: "para", text: "long enough text" }, plan(200, 10), page), false, "a thin wide line stays");
+  assert.equal(skipParsedBox({ type: "para", text: "long enough text" }, plan(30, 40), page), false, "a narrow tall block stays");
+  for (const mark of ["1", "a", "*", "†", "‡", "12", "a,"]) {
+    assert.equal(skipParsedBox({ type: "para", text: mark }, plan(60, 20), page), mark !== "a,", `mark ${mark}`);
+  }
+  assert.equal(skipParsedBox({ type: "para", text: "Keyword" }, plan(60, 20), page), false);
+  assert.equal(skipParsedBox({ type: "figure" }, plan(100, 20), page), true, "image under 24 px tall");
+  assert.equal(skipParsedBox({ type: "figure" }, plan(20, 100), page), true, "image under 24 px wide");
+  assert.equal(skipParsedBox({ type: "figure" }, plan(100, 60), page), false);
+  assert.equal(skipParsedBox({ type: "table", text: "1" }, plan(100, 60), page), false);
+});
+
+test("copyHoverId: the box under the pointer or its own button; smallest box wins; empty page none", () => {
+  const page = { w: 100, h: 200 };
+  const entries = [
+    { id: "big", left: 10, top: 10, width: 80, height: 50, dy: 0 },
+    { id: "small", left: 30, top: 20, width: 20, height: 10, dy: 0 },
+  ];
+  assert.equal(copyHoverId(entries, 35, 40, page), "small");
+  assert.equal(copyHoverId(entries, 80, 50, page), "big");
+  assert.equal(copyHoverId(entries, 2, 150, page), null);
+  // The big box's button sits left of its corner (x 10-3-5-18 .. 10-3-5), top 20-3.
+  assert.equal(copyHoverId(entries, 1, 25, page), "big");
+  const nudged = [{ id: "n", left: 50, top: 10, width: 10, height: 5, dy: 20 }];
+  assert.equal(copyHoverId(nudged, 30, 40, page), "n");
+  assert.equal(copyHoverId(nudged, 30, 20, page), null);
+});
+
+test("copy buttons hide at rest and show only for the hovered box; one delegated listener, none added", () => {
+  const h = rig();
+  try {
+    h.stub.flushFrames();
+    const icons = h.page.querySelectorAll(".pxd-parsed-copy");
+    const shown = () => icons.filter((n) => n.classList.contains("pxd-parsed-copy--show")).map((n) => n.getAttribute("data-block"));
+    assert.deepEqual(shown(), [], "nothing at rest");
+    assert.ok(icons.every((n) => n.style.pointerEvents === "none"), "hidden buttons are click-through");
+    const count = h.stub.listenerCount();
+    h.stub.dispatch(h.page, "pointermove", { clientX: 10 + 60, clientY: 20 + 16 });
+    assert.deepEqual(shown(), ["p1"], "a plain paragraph has no chip, only the copy button");
+    assert.equal(h.stub.listenerCount(), count, "hover adds no listener");
+    h.stub.dispatch(h.page, "pointermove", { clientX: 10 + 60, clientY: 20 + 45 });
+    assert.deepEqual(shown(), ["t1"]);
+    h.stub.dispatch(h.page, "pointermove", { clientX: 10 + 60, clientY: 20 + 85 });
+    assert.deepEqual(shown(), ["f1"], "moves to the next box");
+    h.stub.dispatch(h.page, "pointermove", { clientX: 10 + 60, clientY: 20 + 190 });
+    assert.deepEqual(shown(), [], "empty page space hides it");
+    h.stub.dispatch(h.page, "pointermove", { clientX: 10 + 60, clientY: 20 + 45 });
+    h.stub.dispatch(h.page, "pointerleave", {});
+    assert.deepEqual(shown(), [], "leaving hides it");
+    const css = readFileSync(new URL("../src/css/page-chips.css", import.meta.url), "utf8");
+    assert.match(css, /\.pxd-parsed-copy \{[^}]*opacity: 0;/s);
+    assert.match(css, /\.pxd-parsed-copy\.pxd-parsed-copy--show[^{]*\{[^}]*pointer-events: auto/s);
+    assert.match(css, /pxd-parsed-copy:focus-visible/);
+    assert.match(css, /transition: opacity/);
+  } finally { h.chips.dispose(); h.restore(); }
+});
+
+test("tiny blocks and marks get no box at all", () => {
+  const stub = createDomStub();
+  const restore = stub.install();
+  try {
+    const doc = globalThis.document;
+    const page = doc.createElement("div");
+    page.className = "page";
+    page.setAttribute("data-page-number", "1");
+    page._rect = { left: 0, top: 0, width: 600, height: 800, right: 600, bottom: 800 };
+    doc.body.append(page);
+    const parsed = {
+      pages: [{ n: 1, w: 600, h: 800, rotation: 0 }],
+      order: ["logo", "sup", "chip", "para", "img"],
+      blocks: {
+        logo: { id: "logo", type: "figure", page: 1, bbox: [10, 10, 30, 22] },
+        sup: { id: "sup", type: "para", page: 1, text: "1,", bbox: [100, 100, 130, 130] },
+        chip: { id: "chip", type: "para", page: 1, text: "a", bbox: [100, 140, 130, 170] },
+        para: { id: "para", type: "para", page: 1, text: "Real paragraph text", bbox: [50, 200, 500, 260] },
+        img: { id: "img", type: "figure", page: 1, bbox: [50, 300, 70, 500] },
+      },
+    };
+    const chips = createPageChips({ doc, getParsed: () => parsed, pageEl: () => page, pageOf: () => ({ w: 600, h: 800 }), run() {} });
+    stub.flushFrames();
+    const ids = page.querySelectorAll(".pxd-parsed-box").map((b) => b.getAttribute("data-block"));
+    assert.deepEqual(ids, ["sup", "para"], "the 1-char mark, the speck logo and the thin image are skipped; '1,' is not a pure mark");
+    chips.dispose();
+  } finally { restore(); }
 });

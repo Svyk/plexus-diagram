@@ -36,6 +36,50 @@ export function parsedBoxPlan(block, page) {
 }
 
 export const COPY_ICON = 18;
+// Gap between a copy button and its box's left edge (the CSS translate is -100% - 5px).
+export const COPY_GAP = 5;
+// Blocks too small to be worth a box: under this height AND width in page px; image blocks under this size either way.
+export const MIN_BOX_H = 14;
+export const MIN_BOX_W = 40;
+export const MIN_IMAGE = 24;
+const MARK_TEXT = /^[\p{L}\p{N}†‡*§¶]{1,3}$/u;
+
+// Pure. True when a parsed block gets no box: a speck (logo dot, tick), a bare mark ("1", "a", "*", "†")
+// or a tiny image. plan: percent box from parsedBoxPlan; page: { w, h } in px.
+export function skipParsedBox(block, plan, page) {
+  const W = Number(page?.w) > 0 ? Number(page.w) : 612;
+  const H = Number(page?.h) > 0 ? Number(page.h) : 792;
+  const w = (plan.width / 100) * W;
+  const h = (plan.height / 100) * H;
+  if (h < MIN_BOX_H && w < MIN_BOX_W) return true;
+  if ((block?.type === "figure" || block?.type === "image") && (h < MIN_IMAGE || w < MIN_IMAGE)) return true;
+  const text = typeof block?.text === "string" ? block.text.trim() : "";
+  if (block?.type !== "table" && text && MARK_TEXT.test(text)) return true;
+  return false;
+}
+
+// Pure. Which copy button to show for a pointer at (x, y) px on a page of size page: the one whose box, or whose
+// own button, the pointer is over. A button under the pointer wins; else the smallest box.
+// entries: [{ id, left, top, width, height, dy }] in percent (dy: the button's extra drop in px).
+export function copyHoverId(entries, x, y, page, size = COPY_ICON) {
+  const W = Number(page?.w) > 0 ? Number(page.w) : 612;
+  const H = Number(page?.h) > 0 ? Number(page.h) : 792;
+  let best = null;
+  let bestArea = Infinity;
+  for (const e of entries || []) {
+    const left = (e.left / 100) * W - BOX_PAD;
+    const top = (e.top / 100) * H - BOX_PAD;
+    const iconLeft = left - COPY_GAP - size;
+    const iconTop = top + (e.dy || 0);
+    if (x >= iconLeft && x <= iconLeft + size && y >= iconTop && y <= iconTop + size) return e.id;
+    const right = left + (e.width / 100) * W + 2 * BOX_PAD;
+    const bottom = top + (e.height / 100) * H + 2 * BOX_PAD;
+    if (x < left || x > right || y < top || y > bottom) continue;
+    const area = (right - left) * (bottom - top);
+    if (area < bestArea) { bestArea = area; best = e.id; }
+  }
+  return best;
+}
 
 // Pure. Copy buttons sit at their box's top-left corner. Two boxes close together would stack the buttons,
 // so a later button moves down by one button height (plus a 2 px gap) until it clears every earlier one.
@@ -237,12 +281,35 @@ export function createPageChips({
     }
   };
 
+  // The copy button of the box under the pointer is the only one drawn; the rest stay clear of the page.
+  let copyShown = null;
+  const showCopy = (id) => {
+    if (id === copyShown) return;
+    for (const entry of layers.values()) {
+      if (copyShown) entry.icons.get(copyShown)?.classList.remove("pxd-parsed-copy--show");
+      if (id) entry.icons.get(id)?.classList.add("pxd-parsed-copy--show");
+    }
+    copyShown = id;
+  };
+  const updateCopy = (event, parsed) => {
+    if (!showParsed || layers.size === 0) { showCopy(null); return; }
+    const n = pageNumberOf(event.target, parsed);
+    const entry = n ? layers.get(n) : null;
+    const el = entry?.el;
+    if (!el) { showCopy(null); return; }
+    const box = el.getBoundingClientRect();
+    const x = (Number(event.clientX) || 0) - box.left;
+    const y = (Number(event.clientY) || 0) - box.top;
+    showCopy(copyHoverId(entry.rects, x, y, { w: box.width, h: box.height }));
+  };
+
   const buildLayer = (n, el, parsed) => {
     const layer = doc.createElement("div");
     layer.className = "pxd-parsed-layer";
     layer.style.pointerEvents = "none";
     layer.setAttribute("aria-hidden", "false");
     const boxes = new Map();
+    const icons = new Map();
     const entries = [];
     let budget = boxCap - boxCount;
     for (const id of parsed?.order || []) {
@@ -252,15 +319,19 @@ export function createPageChips({
       const plan = parsedBoxPlan(block, info(n));
       if (!plan) continue;
       entries.push({ block, plan });
-      budget -= 1;
     }
     let pageBox = null;
     try { pageBox = el?.getBoundingClientRect?.() || null; } catch { pageBox = null; }
     const fallback = info(n);
-    const nudges = copyIconNudges(entries.map((e) => e.plan), {
+    const pagePx = {
       w: pageBox?.width > 0 ? pageBox.width : fallback?.w,
       h: pageBox?.height > 0 ? pageBox.height : fallback?.h,
-    });
+    };
+    const kept = entries.filter((e) => !skipParsedBox(e.block, e.plan, pagePx)).slice(0, Math.max(0, budget));
+    entries.length = 0;
+    entries.push(...kept);
+    const nudges = copyIconNudges(entries.map((e) => e.plan), pagePx);
+    const rects = [];
     for (const { block, plan } of entries) {
       const box = doc.createElement("div");
       box.className = `pxd-parsed-box pxd-parsed-box--${plan.type}`;
@@ -279,10 +350,12 @@ export function createPageChips({
       icon.style.left = `calc(${plan.left}% - ${BOX_PAD}px)`;
       const nudge = nudges.get(plan.id) || 0;
       icon.style.top = nudge ? `calc(${plan.top}% - ${BOX_PAD}px + ${nudge}px)` : `calc(${plan.top}% - ${BOX_PAD}px)`;
-      icon.style.pointerEvents = "auto";
+      icon.style.pointerEvents = "none";
       icon.textContent = "⧉";
       layer.append(box, icon);
       boxes.set(plan.id, box);
+      icons.set(plan.id, icon);
+      rects.push({ id: plan.id, left: plan.left, top: plan.top, width: plan.width, height: plan.height, dy: nudge });
       boxCount += 1;
     }
     el.append(layer);
@@ -293,7 +366,7 @@ export function createPageChips({
       observer = new MO(() => queueSync());
       try { observer.observe(el, { childList: true }); } catch { observer = null; }
     }
-    return { layer, boxes, observer, el };
+    return { layer, boxes, icons, rects, observer, el };
   };
 
   const dropLayers = () => {
@@ -302,6 +375,7 @@ export function createPageChips({
       drop(entry.layer);
     }
     layers.clear();
+    copyShown = null;
     boxCount = 0;
   };
 
@@ -439,6 +513,7 @@ export function createPageChips({
     const parsed = getParsed?.();
     if (!parsed) return;
     if (showParsed && layers.size === 0) queueSync();
+    updateCopy(event, parsed);
     if (chipNode && chipNode.contains?.(event.target)) { stopTimer(); return; }
     if (selecting()) { if (current) hideAll(); return; }
     const n = pageNumberOf(event.target, parsed);
@@ -499,7 +574,7 @@ export function createPageChips({
   const onKeyDown = (event) => { if (event.key === "Shift" && !selecting()) showDots(); };
   const onKeyUp = (event) => { if (event.key === "Shift") clearDots(); };
   const onSelection = () => { if (selecting()) hideAll(); };
-  const onLeave = () => { if (current && hideTimer == null) hideTimer = later(hideAll, HIDE_MS); };
+  const onLeave = () => { showCopy(null); if (current && hideTimer == null) hideTimer = later(hideAll, HIDE_MS); };
 
   const target = host || doc;
   on(target, "pointermove", onMove, true);

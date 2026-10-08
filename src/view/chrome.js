@@ -7,7 +7,7 @@ import { changelogEntry } from "../model/changelog.js";
 import { CHANGELOG_TEXT } from "../changelog-text.js";
 import { buildColorPicker } from "./color-picker.js";
 import { placeNearAnchor } from "./avoid.js";
-import { avoidDock, readerLimit } from "../model/card-face.js";
+import { avoidDock, avoidObstacles, dockOverflow, readerLimit } from "../model/card-face.js";
 import { tipIdForClass } from "./tooltip-text.js";
 
 const CTX_GAP = 12;
@@ -355,6 +355,7 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
   let activeLocked = false;
   const px = (v) => (Number.isFinite(Number(v)) ? Number(v) : 0);
   const layoutDock = () => {
+    fitDock();
     const b = paletteButtons.get(activeTool);
     const visible = Boolean(b) && px(b.offsetWidth) > 0;
     dockIndicator.classList.toggle("pxd-dock__indicator--locked", activeLocked);
@@ -364,6 +365,57 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
     dockIndicator.style.setProperty("--pxd-ind-y", `${px(b.offsetTop)}px`);
     dockIndicator.style.setProperty("--pxd-ind-w", `${px(b.offsetWidth)}px`);
     dockIndicator.style.setProperty("--pxd-ind-h", `${px(b.offsetHeight)}px`);
+  };
+  // One row inside the board. When the tools do not fit: labels, separators and tool options go first, then the
+  // trailing tools move behind a "…" button that opens them as a menu (the active tool stays in the row).
+  const DOCK_PAD = 14;
+  const DOCK_GAP = 4;
+  let dockMore = null;
+  let dockMenu = null;
+  let dockFitKey = "";
+  const closeDockMenu = () => {
+    dockMenu?.remove();
+    dockMenu = null;
+    dockMore?.setAttribute("aria-expanded", "false");
+  };
+  const fitDock = () => {
+    const avail = px(palette.clientWidth) || px(palette.offsetWidth);
+    if (!(avail > 0) || palette.style.display === "none") return;
+    const tools = [...paletteButtons].filter(([, b]) => b.style.display !== "none");
+    const key = `${avail}|${activeTool}|${tools.length}|${root.classList.contains("pxd-root--dock-labels")}|${root.classList.contains("pxd-root--dense")}`;
+    if (key === dockFitKey) return;
+    dockFitKey = key;
+    closeDockMenu();
+    palette.classList.remove("pxd-palette--tight");
+    for (const [, b] of paletteButtons) b.classList.remove("pxd-dock__btn--overflow");
+    dockMore?.remove();
+    dockMore = null;
+    const btnW = tools.map(([, b]) => px(b.offsetWidth) || 36);
+    const natural = btnW.reduce((sum, n) => sum + n, 0) + DOCK_GAP * Math.max(0, tools.length - 1) + DOCK_PAD;
+    const full = natural + (px(dockOptions.offsetWidth) ? px(dockOptions.offsetWidth) + DOCK_GAP : 0)
+      + paletteBar.querySelectorAll(".pxd-dock__sep").length * (1 + DOCK_GAP);
+    if (!tools.length || full <= avail) return;
+    palette.classList.add("pxd-palette--tight");
+    const keepAt = tools.findIndex(([id]) => id === activeTool);
+    const hidden = dockOverflow(btnW, avail, { gap: DOCK_GAP, pad: DOCK_PAD, more: btnW[0] || 36, keep: keepAt });
+    if (!hidden.length) return;
+    const gone = hidden.map((i) => tools[i]);
+    for (const [, b] of gone) b.classList.add("pxd-dock__btn--overflow");
+    dockMore = iconButton(paletteBar, "pxd-palette__btn pxd-dock__btn pxd-dock__more", "more", "More tools", "More tools", () => {
+      if (dockMenu) { closeDockMenu(); return; }
+      dockMenu = el("div", "pxd-dock__more-menu", paletteBar);
+      dockMenu.setAttribute("role", "menu");
+      for (const [id, b] of gone) {
+        const label = b.getAttribute("aria-label") || id;
+        const item = button(dockMenu, "pxd-dock__more-item", label, label, () => { closeDockMenu(); on.setTool?.(id, false); });
+        item.setAttribute("role", "menuitem");
+        item.setAttribute("data-tool", id);
+      }
+      dockMore.setAttribute("aria-expanded", "true");
+    });
+    dockMore.setAttribute("aria-haspopup", "menu");
+    dockMore.setAttribute("aria-expanded", "false");
+    dockMore.setAttribute("data-tip", "dock.more");
   };
   let dockFrame = null;
   const scheduleDock = () => {
@@ -933,6 +985,19 @@ export function createChrome({ doc = globalThis.document, root, version = "", se
     if (db?.width && db?.height) {
       const dock = { left: db.left - (rootRect.left || 0), top: db.top - (rootRect.top || 0), right: db.right - (rootRect.left || 0), bottom: db.bottom - (rootRect.top || 0) };
       const placed = avoidDock({ left, top, w: barW, h: barH }, { card: a.rect, dock, gap, topLimit, margin: CTX_MARGIN });
+      top = placed.top;
+    }
+    // The minimap and the zoom rail are obstacles too: the bar steps aside instead of landing on them.
+    const asRoot = (node) => {
+      if (!node || node.style?.display === "none") return null;
+      const b = node.getBoundingClientRect?.();
+      if (!b?.width || !b?.height) return null;
+      return { left: b.left - (rootRect.left || 0), top: b.top - (rootRect.top || 0), right: b.right - (rootRect.left || 0), bottom: b.bottom - (rootRect.top || 0) };
+    };
+    const blocks = [asRoot(minimap), asRoot(railEl), dockEl ? asRoot(dockEl) : null].filter(Boolean);
+    if (blocks.length) {
+      const placed = avoidObstacles({ left, top, w: barW, h: barH }, blocks, { topLimit, margin: CTX_MARGIN, bounds: { right: rightLimit, bottom: H } });
+      left = placed.left;
       top = placed.top;
     }
     ctx.style.left = `${Math.round(left)}px`;

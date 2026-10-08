@@ -71,6 +71,57 @@ export function avoidDock(bar, { card, dock, gap = 10, topLimit = 0, margin = 8 
   return bar;
 }
 
+// Where the context bar goes so it covers none of `obstacles` (dock, minimap, zoom rail), each { left, top, right, bottom }
+// in root px. `bar` is { left, top, w, h }; `bounds` { right, bottom } the free area's far edges. Tries, per overlap, left of
+// the obstacle, then above it, then below it, and keeps the first spot that clears every obstacle. Unchanged when
+// nothing fits, or when nothing overlaps.
+export function avoidObstacles(bar, obstacles, { topLimit = 0, margin = 8, bounds = {} } = {}) {
+  const list = (obstacles || []).filter((o) => o && o.right > o.left && o.bottom > o.top);
+  if (!bar || !list.length) return bar;
+  const box = (b) => ({ left: b.left, top: b.top, right: b.left + b.w, bottom: b.top + b.h });
+  const clear = (b) => !list.some((o) => overlaps(box(b), o));
+  const fits = (b) => b.left >= margin && b.top >= topLimit
+    && (bounds.right == null || b.left + b.w <= bounds.right)
+    && (bounds.bottom == null || b.top + b.h <= bounds.bottom);
+  if (clear(bar)) return bar;
+  let cur = bar;
+  for (let pass = 0; pass < 4; pass += 1) {
+    const hit = list.find((o) => overlaps(box(cur), o));
+    if (!hit) return cur;
+    const options = [
+      { ...cur, left: hit.left - margin - cur.w },
+      { ...cur, top: hit.top - margin - cur.h },
+      { ...cur, top: hit.bottom + margin },
+    ];
+    const whole = options.find((o) => fits(o) && clear(o));
+    if (whole) return whole;
+    const part = options.find((o) => fits(o) && !overlaps(box(o), hit));
+    if (!part) return bar;
+    cur = part;
+  }
+  return clear(cur) ? cur : bar;
+}
+
+// Which dock tools stay in the row. `widths` are the tools' widths in order, `avail` the room the row has, `gap` the
+// space between tools, `pad` the bar's padding and border, `more` the width of the "…" button, `keep` an index that
+// never moves behind it (the active tool). Returns the indices that go behind "…", trailing tools first.
+// Nothing hides when everything fits.
+export function dockOverflow(widths, avail, { gap = 4, pad = 14, more = 32, keep = -1 } = {}) {
+  const w = (widths || []).map((n) => Math.max(0, Number(n) || 0));
+  const total = (idx) => idx.reduce((sum, i) => sum + w[i], 0) + gap * Math.max(0, idx.length - 1);
+  const all = w.map((_, i) => i);
+  if (pad + total(all) <= avail) return [];
+  const shown = [...all];
+  const hidden = [];
+  while (shown.length > 1 && pad + total(shown) + gap + more > avail) {
+    let at = shown.length - 1;
+    while (at >= 0 && shown[at] === keep) at -= 1;
+    if (at < 0) break;
+    hidden.unshift(shown.splice(at, 1)[0]);
+  }
+  return hidden;
+}
+
 // Quick Look and the card title: a display title, never the raw {{[[pdf]]: …}} macro or a ((ref)).
 export function quickLookTitle(item, displayTitle) {
   const shown = typeof displayTitle === "string" ? displayTitle.trim() : "";

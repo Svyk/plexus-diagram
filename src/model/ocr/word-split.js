@@ -109,19 +109,45 @@ export function inkRows(mask, pageW, proj, c0, c1) {
   if (solid && glyphRows) {
     for (let y = 0; y < proj.h; y++) if (rows[y] >= 0.85 * span) rows[y] = 0;
   }
+  // The busiest row nearest the box centre: a det box on a tight scan also holds the bottom of
+  // the line above, whose dense digit feet can outweigh this line's own rows.
   let max = 0;
   let peak = -1;
-  for (let y = 0; y < proj.h; y++) if (rows[y] > max) { max = rows[y]; peak = y; }
-  if (!max) return null;
+  let bestScore = 0;
+  const mid = (proj.h - 1) / 2;
+  for (let y = 0; y < proj.h; y++) {
+    const score = rows[y] * (1 - 0.6 * Math.abs(y - mid) / Math.max(1, mid));
+    if (score > bestScore) { bestScore = score; peak = y; }
+  }
+  if (peak < 0) return null;
+  max = rows[peak];
+  // The block around the busiest row runs to an empty row, or to the thinnest row before ink
+  // grows back past a quarter of the peak: on a 6 pt scan the next line touches this one
+  // through a pixel or two, while a descender only thins out.
+  const edge = (step) => {
+    let y = peak;
+    let valley = peak;
+    let thin = false;
+    while (y + step >= 0 && y + step < proj.h && rows[y + step]) {
+      y += step;
+      if (!thin && rows[y] < 0.1 * max) { thin = true; valley = y; }
+      if (thin && rows[y] < rows[valley]) valley = y;
+      if (thin && rows[y] >= 0.25 * max) return valley - step;
+    }
+    return y;
+  };
+  const top = edge(-1);
+  const bottom = edge(1);
+  for (let y = top; y <= bottom; y++) if (rows[y] > max) { max = rows[y]; }
   let base = peak;
-  for (let y = proj.h - 1; y >= 0; y--) {
+  for (let y = bottom; y >= peak; y--) {
     if (rows[y] >= 0.25 * max) { base = y; break; }
   }
-  let top = peak;
-  while (top > 0 && rows[top - 1]) top--;
-  let bottom = Math.max(peak, base);
-  while (bottom < proj.h - 1 && rows[bottom + 1]) bottom++;
-  return { base: proj.y0 + base + 1, top: proj.y0 + top, bottom: proj.y0 + bottom + 1 };
+  let capTop = peak;
+  for (let y = top; y <= peak; y++) {
+    if (rows[y] >= 0.25 * max) { capTop = y; break; }
+  }
+  return { base: proj.y0 + base + 1, top: proj.y0 + top, bottom: proj.y0 + bottom + 1, capTop: proj.y0 + capTop };
 }
 
 function inkHeight(proj) {
@@ -192,13 +218,14 @@ export function snapWords(groups, seg, proj) {
   return words;
 }
 
-// Font size (pt) from the ink height of a read segment, the scale Vision reports: ascender to
-// descender is ~0.95 em, cap or digit height ~0.7 em. x-height-only text ("one") says too
-// little and returns null, so the caller keeps the det box height.
-export function sizeFromInk(text, inkH) {
-  if (!(inkH > 0)) return null;
-  if (/[gjpqy,;()[\]{}|]/.test(text) && /[A-Z0-9bdfhklt]/.test(text)) return inkH / 0.95;
-  if (/[A-Z0-9bdfhklt]/.test(text)) return inkH / 0.7;
+// Font size (pt) from the cap height of a read segment (capTop to baseline, rows that carry a
+// quarter of the busiest row): Vision reports a size of ~1.56 cap heights (6.06 pt for the CDC
+// scan, 9.36 pt for report-scan), so this matches its scale. The
+// whole ink block is no measure: on a 6 pt scan it runs into the next line. x-height-only text
+// ("one") says too little and returns null, so the caller keeps the det box height.
+export function sizeFromInk(text, capH) {
+  if (!(capH > 0)) return null;
+  if (/[A-Z0-9bdfhklt]/.test(text)) return capH / 0.64;
   return null;
 }
 

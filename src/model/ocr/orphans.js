@@ -70,6 +70,8 @@ export function acceptOrphanRead(text, conf, blob, em) {
   if (/^[-–—]$/.test(t)) return w >= 1.8 * h && h <= 0.2 * em;
   if (conf < 0.6) return false;
   if (HALLUCINATION.test(t)) return false;
+  // Dots, colons and leader runs on a scan are specks and decoration, not cell text.
+  if (!/[\p{L}\p{N}]/u.test(t)) return false;
   const maxChars = Math.ceil((blob.x1 - blob.x0) / (0.25 * em)) + 2;
   return t.replace(/\s+/g, "").length <= maxChars;
 }

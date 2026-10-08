@@ -2,8 +2,9 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 
 import { padWhite } from "../src/model/ocr/image.js";
-import { widthBatches } from "../src/model/ocr/recognize.js";
-import { inkProjection, inkRows, inkRuns, innerGaps, segmentLine, sizeFromInk, snapWords } from "../src/model/ocr/word-split.js";
+import { detLimitFor, widthBatches } from "../src/model/ocr/recognize.js";
+import { acceptOrphanRead, blobBaseline, coverMask, dashFromShape, orphanBlobs } from "../src/model/ocr/orphans.js";
+import { dashRuns, inkProjection, inkRows, inkRuns, innerGaps, joinNumberWords, localMask, segmentLine, sizeFromInk, snapWords } from "../src/model/ocr/word-split.js";
 import { baselineRows, rowBaseline } from "../src/model/ocr/words-from-ctc.js";
 
 // A page mask with filled rectangles [x0, y0, x1, y1).
@@ -75,8 +76,8 @@ test("snapWords puts word edges on the projection's inner gaps", () => {
 });
 
 test("sizeFromInk reads cap height or ascender-to-descender", () => {
-  assert.equal(sizeFromInk("1980", 7), 10);
-  assert.equal(sizeFromInk("Weekly", 9.5), 10);
+  assert.equal(sizeFromInk("1980", 6.4), 10);
+  assert.equal(sizeFromInk("Weekly", 6.4), 10);
   assert.equal(sizeFromInk("one", 5), null);
   assert.equal(sizeFromInk("A", 0), null);
 });
@@ -106,4 +107,81 @@ test("padWhite pads x and y separately", () => {
   assert.equal(out.h, 3);
   assert.equal(out.rgb[(1 * 5 + 2) * 3], 0);
   assert.equal(out.rgb[0], 255);
+});
+
+test("inkRows skips an underline so the baseline is the glyphs'", () => {
+  const w = 60;
+  const h = 40;
+  const mask = maskWith(w, h, [[5, 8, 15, 28], [20, 8, 30, 28], [35, 8, 45, 28], [2, 30, 58, 32]]);
+  const proj = inkProjection(mask, w, h, { x0: 0, y0: 0, x1: 60, y1: 40 });
+  const rows = inkRows(mask, w, proj, 2, 58);
+  assert.equal(rows.base, 28);
+  assert.equal(rows.top, 8);
+});
+
+test("dashRuns finds a free-standing dash between glyphs, not an H crossbar", () => {
+  const w = 120;
+  const h = 40;
+  // "1" stem, gap, dash at mid height, gap, "2" stem. Baseline 30, cap height 20.
+  const mask = maskWith(w, h, [[10, 10, 14, 30], [18, 19, 30, 22], [34, 10, 38, 30]]);
+  const proj = inkProjection(mask, w, h, { x0: 0, y0: 0, x1: 120, y1: 40 });
+  assert.deepEqual(dashRuns(mask, w, proj, 10, 38, 30, 20), [{ c0: 18, c1: 30 }]);
+  const hbar = maskWith(w, h, [[10, 10, 14, 30], [14, 19, 26, 22], [26, 10, 30, 30]]);
+  const projH = inkProjection(hbar, w, h, { x0: 0, y0: 0, x1: 120, y1: 40 });
+  assert.deepEqual(dashRuns(hbar, w, projH, 10, 30, 30, 20), []);
+});
+
+test("joinNumberWords rejoins a thousands group, not a date", () => {
+  const words = [{ text: "348,", x0: 0, x1: 30, conf: 1 }, { text: "928", x0: 33, x1: 55, conf: 0.9 }];
+  assert.deepEqual(joinNumberWords(words, 5), [{ text: "348,928", x0: 0, x1: 55, conf: 0.9 }]);
+  const date = [{ text: "21,", x0: 0, x1: 20, conf: 1 }, { text: "2010", x0: 23, x1: 50, conf: 1 }];
+  assert.equal(joinNumberWords(date, 5).length, 2);
+  assert.equal(joinNumberWords(words, 2).length, 2);
+});
+
+test("localMask binarises a shaded cell with its own threshold", () => {
+  const w = 20;
+  const h = 10;
+  const gray = new Uint8Array(w * h).fill(120);
+  for (let y = 3; y < 7; y++) for (let x = 5; x < 9; x++) gray[y * w + x] = 10;
+  const mask = new Uint8Array(w * h).fill(1);
+  assert.equal(localMask(gray, mask, w, h, { x0: 0, y0: 0, x1: 20, y1: 10 }), true);
+  assert.equal(mask[0], 0);
+  assert.equal(mask[4 * w + 6], 1);
+  const flat = new Uint8Array(w * h).fill(200);
+  assert.equal(localMask(flat, new Uint8Array(w * h), w, h, { x0: 0, y0: 0, x1: 20, y1: 10 }), false);
+});
+
+test("detLimitFor scales the det map toward the target box height", () => {
+  assert.equal(detLimitFor(13.5, 1600, 3300), 3200);
+  assert.equal(detLimitFor(27, 1600, 3300), 1600);
+  assert.equal(detLimitFor(54, 1600, 3300), 960);
+  assert.equal(detLimitFor(10, 1600, 1200), 1200);
+});
+
+test("orphanBlobs keeps uncovered text-sized ink and groups a number's digits", () => {
+  const w = 200;
+  const h = 100;
+  const comps = [
+    { area: 60, x0: 10, y0: 40, x1: 14, y1: 59 },
+    { area: 60, x0: 18, y0: 40, x1: 22, y1: 59 },
+    { area: 40, x0: 80, y0: 50, x1: 92, y1: 52 },
+    { area: 2, x0: 150, y0: 10, x1: 150, y1: 10 },
+    { area: 600, x0: 0, y0: 90, x1: 199, y1: 92 },
+    { area: 60, x0: 120, y0: 40, x1: 124, y1: 59 },
+  ];
+  const covered = coverMask([{ x0: 115, y0: 35, x1: 130, y1: 65 }], w, h);
+  const blobs = orphanBlobs(comps, covered, w, 28);
+  assert.deepEqual(blobs.map((b) => [b.x0, b.x1, b.parts]), [[10, 23, 2], [80, 93, 1]]);
+  assert.equal(dashFromShape(blobs[1], 28), "–");
+  assert.equal(dashFromShape(blobs[0], 28), null);
+  assert.equal(blobBaseline(blobs[0], 28), 60);
+});
+
+test("acceptOrphanRead drops the rec model's empty-crop hallucination", () => {
+  const blob = { x0: 0, x1: 40, y0: 0, y1: 20 };
+  assert.equal(acceptOrphanRead("cYanmaGenta", 0.9, blob, 28), false);
+  assert.equal(acceptOrphanRead("12", 0.95, blob, 28), true);
+  assert.equal(acceptOrphanRead("12", 0.4, blob, 28), false);
+  assert.equal(acceptOrphanRead("-", 0.4, { x0: 0, x1: 10, y0: 0, y1: 3 }, 28), true);
 });

@@ -34,7 +34,7 @@ async function sessions() {
   if (detSession) return;
   ort = await import("onnxruntime-node");
   detSession = await ort.InferenceSession.create(join(modelDir, MODEL_FILES.det.file));
-  recSession = await ort.InferenceSession.create(join(modelDir, MODEL_FILES.rec.file));
+  recSession = await ort.InferenceSession.create(join(modelDir, MODEL_FILES.rec.file), JSON.parse(process.env.PXD_ORT_REC || "{}"));
   dict = dictLines(readFileSync(join(modelDir, MODEL_FILES.dict.file), "utf8"));
 }
 
@@ -65,7 +65,9 @@ export function renderPdfPage(pdfPath, n, dpi) {
   return { rgb, width, height, pointW, pointH, pageCount, dpi };
 }
 
+// PXD_OCR_OPTS (JSON) overrides preparePageImage options for bench sweeps, e.g. {"detLimit":2560}.
 export function createPpocrSource({ pdfPath, dpi = 300, log = () => {}, options = {} } = {}) {
+  options = { ...JSON.parse(process.env.PXD_OCR_OPTS || "{}"), ...options };
   const prepared = new Map();
   let pageCount = 0;
 

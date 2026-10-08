@@ -6,7 +6,7 @@ import { boxesFromProb, dominantAngle } from "./db-boxes.js";
 import { cropRgb, detResize, grayFromRgb, nchwNormalize, padWhite, recResize, resizeRgb, rotateRgb } from "./image.js";
 import { inkGlyph, otsuThreshold, rulesFromCanvas } from "./rules-from-canvas.js";
 import { bucketConf, ctcDecode, ctcText, round2, snapOcrItems, wordItem, wordsFromCtc } from "./words-from-ctc.js";
-import { dashRuns, joinNumberWords, localMask, segmentLine, sizeFromInk, snapWords } from "./word-split.js";
+import { dashRuns, inkRows, joinNumberWords, localMask, segmentLine, sizeFromInk, snapWords } from "./word-split.js";
 import { acceptOrphanRead, blobBaseline, coverMask, dashFromShape, orphanBlobs } from "./orphans.js";
 import { labelComponents } from "./components.js";
 
@@ -271,14 +271,19 @@ async function readSegments(image, w, h, boxes, mask, scaleX, scaleY, runRec, di
     const capH = crop.seg.ink ? crop.seg.ink.base - crop.seg.ink.top : 0;
     const words = capH ? joinNumberWords(snapped, 0.35 * capH) : snapped;
     const boxPt = { x0: crop.box.x0 / scaleX, y0: crop.box.y0 / scaleY, x1: crop.box.x1 / scaleX, y1: crop.box.y1 / scaleY };
-    if (crop.seg.ink) {
-      const ink = crop.seg.ink;
-      const size = sizeFromInk(named.map((g) => g.text).join(""), (ink.bottom - ink.top) / scaleY) || boxPt.y1 - boxPt.y0;
-      boxPt.y1 = ink.base / scaleY + 0.2 * size;
-      boxPt.y0 = boxPt.y1 - size;
-    }
+    const ink = crop.seg.ink;
+    const size = ink ? sizeFromInk(named.map((g) => g.text).join(""), (ink.base - ink.capTop) / scaleY) || boxPt.y1 - boxPt.y0 : 0;
     for (const word of words) {
-      if (word.text) items.push(wordItem(word.text, word.x0 / scaleX, word.x1 / scaleX, boxPt, word.conf));
+      if (!word.text) continue;
+      let box = boxPt;
+      if (ink) {
+        // Each word's own baseline: across a long phrase a 0.3° scan skew moves the bottom
+        // ink row by a few pixels, and the phrase-wide baseline then sits under its middle.
+        const own = inkRows(mask, w, crop.proj, Math.max(0, word.x0 - crop.proj.x0), Math.min(crop.proj.w, word.x1 - crop.proj.x0));
+        const base = (own ? own.base : ink.base) / scaleY;
+        box = { ...boxPt, y1: base + 0.2 * size, y0: base - 0.8 * size };
+      }
+      items.push(wordItem(word.text, word.x0 / scaleX, word.x1 / scaleX, box, word.conf));
     }
   });
   if (lineBoxes.length) {

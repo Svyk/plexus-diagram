@@ -93,7 +93,7 @@ test("measureCell: card-relative offsets in world px, zoom divides, a missing ce
     table._rect = rect(100, 1030, 480, 230);
     h.cell("cellAAAA1")._rect = rect(140, 1060, 80, 20);
     const m = measureCell({ card: h.shell, host: table, body: h.body, uid: "cellAAAA1", zoom: 1 });
-    assert.deepEqual(m, { bodyTop: 30, bodyBottom: 260, rowTop: 60, rowHeight: 20, rowLeft: 40, rowRight: 120, rendered: true });
+    assert.deepEqual(m, { bodyTop: 30, bodyBottom: 260, rowTop: 60, rowHeight: 20, rowLeft: 40, rowRight: 120, rendered: true, cell: true });
     const z = measureCell({ card: h.shell, host: table, body: h.body, uid: "cellAAAA1", zoom: 2 });
     assert.equal(z.rowTop, 30);
     assert.equal(z.rowHeight, 10);
@@ -265,4 +265,27 @@ test("a drop on a table card but not on a cell connects to the card, and a plain
   p.ctl.handle(p.ev("pointerdown", { x: 200, y: 50 }, { target: { kind: "port", uid: "noteA0001", side: "right" } }));
   p.ctl.handle(p.ev("pointermove", { x: 500, y: 450 }));
   assert.equal(p.named("blockTarget").length, 0);
+});
+
+test("a table card keeps its table class after the shell re-syncs, so measureRow still finds cells", () => {
+  const h = tableCardHarness();
+  try {
+    assert.ok(h.shell.classList.contains("pxd-item--roam-table"));
+    const board = buildBoard(raw("b1", "{{[[diagram]]:B}}", plx({ v: 2 }), [raw("tbl000001", TABLE, plx({ x: 5, y: 5, w: 480, h: 260 }), [], 0)]));
+    h.r.sync({ board, rects: worldRects(board), dirty: null, structural: true });
+    assert.ok(h.shell.classList.contains("pxd-item--roam-table"), "className rewrite must not drop the table marker");
+    assert.ok(h.r.measureRow("tbl000001", "cellAAAA1"), "measureRow reaches the table host");
+  } finally { h.done(); }
+});
+
+test("blockInner for a cell end lands the tip inside the cell however far in it sits", async () => {
+  const { blockInner, CELL_INSET } = await import("../src/model/geometry.js");
+  const rect = { x: 1000, y: 0, w: 1258, h: 800 };
+  const point = { x: 1000, y: 100 };
+  const row = blockInner({ rect, side: "left", point, rowLeft: 653, rowRight: 803 });
+  assert.equal(row.tip.x, 1000 + 629, "a row end stops at half the card");
+  const cell = blockInner({ rect, side: "left", point, rowLeft: 653, rowRight: 803, cell: true });
+  assert.equal(cell.tip.x, 1000 + 653 + CELL_INSET);
+  const r = blockInner({ rect, side: "right", point: { x: 2258, y: 100 }, rowLeft: 100, rowRight: 250, cell: true });
+  assert.equal(r.tip.x, 2258 - (1258 - 250 + CELL_INSET));
 });

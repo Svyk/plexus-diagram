@@ -255,13 +255,17 @@ export function blockAnchor({ rect, rowTop, rowHeight = 0, bodyTop = 0, bodyBott
 // to a tip in the gutter just outside the row's text on the facing side. `angle` points into the card.
 export const INNER_NOTCH = 4;
 export const INNER_MIN = 10;
-export function blockInner({ rect, side, point, rowLeft, rowRight } = {}) {
+// `cell` (a table cell end) lands the tip a few px inside the cell on the facing side, however far in it sits.
+export const CELL_INSET = 3;
+export function blockInner({ rect, side, point, rowLeft, rowRight, cell = false } = {}) {
   if (!rect || !point || rowLeft == null || !Number.isFinite(rowLeft)) return null;
   const right = side === "right";
-  const reach = right
-    ? rect.w - (Number.isFinite(rowRight) ? rowRight : rect.w) + 2
-    : rowLeft - 2;
-  const depth = Math.min(Math.max(reach, INNER_MIN), Math.max(INNER_MIN, rect.w / 2));
+  const reach = cell
+    ? (right ? rect.w - (Number.isFinite(rowRight) ? rowRight : rect.w) + CELL_INSET : rowLeft + CELL_INSET)
+    : right
+      ? rect.w - (Number.isFinite(rowRight) ? rowRight : rect.w) + 2
+      : rowLeft - 2;
+  const depth = Math.min(Math.max(reach, INNER_MIN), cell ? Math.max(INNER_MIN, rect.w) : Math.max(INNER_MIN, rect.w / 2));
   const dir = right ? -1 : 1;
   return {
     from: { x: point.x + dir * INNER_NOTCH, y: point.y },

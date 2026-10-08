@@ -11237,6 +11237,136 @@ var init_table_card = __esm({
   }
 });
 
+// src/view/table-cells.js
+function cellUidOf(node2) {
+  if (!node2 || typeof node2.closest !== "function") return null;
+  const grid = node2.closest(".rg-cell");
+  if (grid) {
+    const uid = grid.dataset?.uid || grid.getAttribute?.("data-uid") || "";
+    return UID_RE5.test(uid) ? uid : null;
+  }
+  const td = node2.closest("td");
+  if (!td || !td.closest?.(".rm-table")) return null;
+  const input = td.querySelector?.(".rm-block__input, .roam-block");
+  const m = UID_AT_END.exec(String(input?.id || ""));
+  return m ? m[1] : null;
+}
+function cellElementOf(node2) {
+  if (!node2 || typeof node2.closest !== "function") return null;
+  return node2.closest(".rg-cell") || node2.closest("td");
+}
+function findCell(host, uid) {
+  if (!host || !UID_RE5.test(String(uid || ""))) return null;
+  const grids = host.querySelectorAll?.(".rg-cell") || [];
+  for (const cell of grids) {
+    if ((cell.dataset?.uid || cell.getAttribute?.("data-uid")) === uid) return cell;
+  }
+  const tds = host.querySelectorAll?.(".rm-table td") || [];
+  for (const td of tds) if (cellUidOf(td) === uid) return td;
+  return null;
+}
+function visibleClip(cell, host, body) {
+  let clip4 = rectOf3(body);
+  const cut = (node2) => {
+    const r = rectOf3(node2);
+    if (!r) return;
+    if (!clip4) {
+      clip4 = r;
+      return;
+    }
+    clip4 = { top: Math.max(clip4.top, r.top), bottom: Math.min(clip4.bottom, r.bottom), left: Math.max(clip4.left, r.left), right: Math.min(clip4.right, r.right) };
+  };
+  cut(host);
+  for (let n2 = cell?.parentElement; n2 && n2 !== host && n2 !== body; n2 = n2.parentElement) {
+    if (n2.scrollHeight > n2.clientHeight || n2.scrollWidth > n2.clientWidth) cut(n2);
+  }
+  return clip4;
+}
+function measureCell({ card: card2, host, body, uid, zoom = 1 } = {}) {
+  const cardRect = rectOf3(card2);
+  const bodyRect = rectOf3(body);
+  if (!cardRect || !bodyRect) return null;
+  const z = zoom || 1;
+  const out = { bodyTop: round16((bodyRect.top - cardRect.top) / z), bodyBottom: round16((bodyRect.bottom - cardRect.top) / z) };
+  const cell = findCell(host, uid);
+  const r = cell ? rectOf3(cell) : null;
+  if (!r || !r.width && !r.height) return { ...out, rowTop: null, rowHeight: 0, rendered: false };
+  const clip4 = visibleClip(cell, host, body);
+  const rowHeight = round16(r.height / z);
+  let rowTop = round16((r.top - cardRect.top) / z);
+  if (clip4) {
+    const cx = (r.left + r.right) / 2;
+    if (cx < clip4.left || cx > clip4.right) rowTop = round16(out.bodyTop - rowHeight * 2 - 1);
+    else {
+      const cy = (r.top + r.bottom) / 2;
+      if (cy < clip4.top) rowTop = round16(out.bodyTop - rowHeight * 2 - 1);
+      else if (cy > clip4.bottom) rowTop = round16(out.bodyBottom + 1);
+    }
+  }
+  const left = clip4 ? Math.max(r.left, clip4.left) : r.left;
+  const right = clip4 ? Math.min(r.right, clip4.right) : r.right;
+  return { ...out, rowTop, rowHeight, rowLeft: round16((left - cardRect.left) / z), rowRight: round16((right - cardRect.left) / z), rendered: true };
+}
+function revealCell(cell, body) {
+  if (!cell) return false;
+  const r = rectOf3(cell);
+  if (!r || !r.width && !r.height) return false;
+  for (let n2 = cell.parentElement; n2; n2 = n2.parentElement) {
+    const canY = n2.scrollHeight > n2.clientHeight;
+    const canX = n2.scrollWidth > n2.clientWidth;
+    if (canY || canX) {
+      const v = rectOf3(n2);
+      if (v) {
+        if (canY) n2.scrollTop = Math.max(0, (Number(n2.scrollTop) || 0) + ((r.top + r.bottom) / 2 - (v.top + v.bottom) / 2));
+        if (canX) n2.scrollLeft = Math.max(0, (Number(n2.scrollLeft) || 0) + ((r.left + r.right) / 2 - (v.left + v.right) / 2));
+      }
+    }
+    if (n2 === body) break;
+  }
+  return true;
+}
+function watchTable({ host, body, onChange, doc } = {}) {
+  if (!host || typeof onChange !== "function") return () => {
+  };
+  const view = doc?.defaultView || globalThis;
+  const RO = view.ResizeObserver || globalThis.ResizeObserver;
+  let ro = null;
+  if (typeof RO === "function") {
+    ro = new RO(() => onChange());
+    try {
+      ro.observe(host);
+      if (host.firstElementChild) ro.observe(host.firstElementChild);
+    } catch {
+    }
+  }
+  const opts = { capture: true, passive: true };
+  host.addEventListener?.("scroll", onChange, opts);
+  if (body && body !== host) body.addEventListener?.("scroll", onChange, opts);
+  return () => {
+    try {
+      ro?.disconnect();
+    } catch {
+    }
+    host.removeEventListener?.("scroll", onChange, opts);
+    if (body && body !== host) body.removeEventListener?.("scroll", onChange, opts);
+  };
+}
+var UID_AT_END, UID_RE5, hasClass, rectOf3, round16, isTableCard;
+var init_table_cells = __esm({
+  "src/view/table-cells.js"() {
+    UID_AT_END = /-([\w-]{9})$/;
+    UID_RE5 = /^[\w-]{1,36}$/;
+    hasClass = (node2, name) => Boolean(node2?.classList?.contains?.(name));
+    rectOf3 = (node2) => {
+      const r = node2?.getBoundingClientRect?.();
+      if (!r) return null;
+      return { top: r.top, bottom: r.bottom, left: r.left, right: r.right, width: r.width ?? r.right - r.left, height: r.height ?? r.bottom - r.top };
+    };
+    round16 = (n2) => Math.round(n2 * 10) / 10;
+    isTableCard = (card2) => hasClass(card2, "pxd-item--roam-table");
+  }
+});
+
 // src/view/cards.js
 function bodyStyleOf(doc) {
   const view = doc?.defaultView || globalThis;
@@ -13448,17 +13578,20 @@ function createItemRenderer({
     if (!w) return;
     rec.layoutWatch = null;
     try {
-      w.ro.disconnect();
+      w.ro?.disconnect();
     } catch {
     }
+    w.off?.();
     w.cancel?.();
   };
+  const tableHostOf = (rec) => rec?.el?.classList?.contains?.("pxd-item--roam-table") ? rec.el.querySelector?.(".pxd-roam-table") ?? null : null;
   const armLayoutWatch = (rec) => {
-    if (rec.layoutWatch || disposed || !rec.pageHolder || !layoutSet.has(rec.uid)) return;
+    const tableHost = rec.pageHolder ? null : tableHostOf(rec);
+    if (rec.layoutWatch || disposed || !rec.pageHolder && !tableHost || !layoutSet.has(rec.uid)) return;
     const RO = doc.defaultView?.ResizeObserver || globalThis.ResizeObserver;
     if (typeof RO !== "function") return;
-    const w = { ro: null, cancel: null, queued: false };
-    w.ro = new RO(() => {
+    const w = { ro: null, off: null, cancel: null, queued: false };
+    const ping = () => {
       if (w.queued || disposed) return;
       w.queued = true;
       w.cancel = frameLater(() => {
@@ -13466,11 +13599,16 @@ function createItemRenderer({
         w.cancel = null;
         if (!disposed && rec.layoutWatch === w) onPageLayout?.(rec.uid);
       });
-    });
-    try {
-      w.ro.observe(rec.pageHolder);
-    } catch {
-      return;
+    };
+    if (tableHost) {
+      w.off = watchTable({ host: tableHost, body: rec.body, onChange: ping, doc });
+    } else {
+      w.ro = new RO(ping);
+      try {
+        w.ro.observe(rec.pageHolder);
+      } catch {
+        return;
+      }
     }
     rec.layoutWatch = w;
   };
@@ -13881,25 +14019,33 @@ function createItemRenderer({
     onPageLayout?.(rec.uid);
     return b.roots;
   };
-  const round16 = (n2) => Math.round(n2 * 10) / 10;
+  const round17 = (n2) => Math.round(n2 * 10) / 10;
   const measureRow = (uid, rowUid) => {
     const rec = shells.get(uid);
+    const table = rec && !rec.pageHolder && editing?.uid !== uid ? tableHostOf(rec) : null;
+    if (table) return measureCell({ card: rec.el, host: table, body: rec.body, uid: rowUid, zoom: zoomCache || 1 });
     const holder = rec?.pageHolder;
     if (!rec?.body || !holder || holder.isConnected === false || editing?.uid === uid || !rec.pageKey) return null;
     const z = zoomCache || 1;
     const card2 = rec.el.getBoundingClientRect();
     const body = rec.body.getBoundingClientRect();
-    const out = { bodyTop: round16((body.top - card2.top) / z), bodyBottom: round16((body.bottom - card2.top) / z) };
+    const out = { bodyTop: round17((body.top - card2.top) / z), bodyBottom: round17((body.bottom - card2.top) / z) };
     const row4 = holder.querySelector?.(`[data-pxd-row="${rowUid}"]`);
     const r = row4 ? row4.getBoundingClientRect() : null;
     if (!r || !r.width && !r.height) return { ...out, rowTop: null, rowHeight: 0, rendered: false };
     const cardLeft = card2.left;
-    return { ...out, rowTop: round16((r.top - card2.top) / z), rowHeight: round16(r.height / z), rowLeft: round16((r.left - cardLeft) / z), rowRight: round16((r.right - cardLeft) / z), rendered: true };
+    return { ...out, rowTop: round17((r.top - card2.top) / z), rowHeight: round17(r.height / z), rowLeft: round17((r.left - cardLeft) / z), rowRight: round17((r.right - cardLeft) / z), rendered: true };
   };
   const markedRows = /* @__PURE__ */ new Set();
-  const rowOf = (uid, rowUid) => shells.get(uid)?.pageHolder?.querySelector?.(`[data-pxd-row="${rowUid}"]`) ?? null;
+  const rowOf = (uid, rowUid) => {
+    const rec = shells.get(uid);
+    if (rec?.pageHolder) return rec.pageHolder.querySelector?.(`[data-pxd-row="${rowUid}"]`) ?? null;
+    const table = tableHostOf(rec);
+    return table ? findCell(table, rowUid) : null;
+  };
   const unmarkRow = (row4) => {
     row4.classList.remove("pxd-row--linked", "pxd-row--hot");
+    row4.removeAttribute("data-pxd-hot");
     row4.style.removeProperty("--pxd-row-line");
     row4.removeAttribute("data-pxd-edges");
     row4.removeAttribute("data-tip");
@@ -13928,11 +14074,22 @@ function createItemRenderer({
   const setRowHot = (uid, rowUid, on) => {
     const row4 = rowOf(uid, rowUid);
     row4?.classList?.toggle("pxd-row--hot", Boolean(on));
+    if (row4 && !row4.hasAttribute?.("data-pxd-row")) {
+      if (on) row4.setAttribute("data-pxd-hot", "");
+      else row4.removeAttribute("data-pxd-hot");
+    }
   };
   const revealRow = (uid, rowUid) => {
     const rec = shells.get(uid);
-    const row4 = rec?.pageHolder?.querySelector?.(`[data-pxd-row="${rowUid}"]`);
+    const row4 = rowOf(uid, rowUid);
     if (!rec?.body || !row4) return false;
+    if (!rec.pageHolder) {
+      if (!revealCell(row4, rec.body)) return false;
+      row4.classList.add("pxd-row--flash");
+      later(() => row4.classList.remove("pxd-row--flash"), 600);
+      onPageLayout?.(uid);
+      return true;
+    }
     rec.rowSched?.renderNow?.(rowUid);
     const r = row4.getBoundingClientRect();
     if (!r.width && !r.height) return false;
@@ -15083,6 +15240,7 @@ function createItemRenderer({
     } else if (isRoamTableString(item.string)) {
       rec.el.classList.add("pxd-item--roam-table");
       mountTableHost(body, item.uid, budget);
+      armLayoutWatch(rec);
       rec.kidCount = 0;
       rec.kidRows = 0;
     } else {
@@ -16879,6 +17037,7 @@ var init_cards = __esm({
     init_source_chip();
     init_roam_table();
     init_table_card();
+    init_table_cells();
     SIDES3 = ["top", "right", "bottom", "left"];
     CHUNK_MS = 8;
     LRU_CAP = 80;
@@ -28457,7 +28616,7 @@ function createInteractions({ actions, settings } = {}) {
   const isEditing = () => Boolean(call("isEditing"));
   const blockTargetFor = (ev, uid) => {
     const item = uid ? board2()?.items.get(uid) : null;
-    if (!item || item.kind !== "page") {
+    if (!item || item.kind !== "page" && !isRoamTableString(item.string)) {
       call("clearBlockTarget");
       return null;
     }
@@ -34737,7 +34896,7 @@ function dataUrlToBlob2(url, BlobCtor = globalThis.Blob) {
 
 // src/view/make-highlight.js
 var CALLBACKS = ["onSelectionFinished", "addHighlight", "addPdfHighlight"];
-function rectOf3(bbox, page) {
+function rectOf4(bbox, page) {
   const box2 = Array.isArray(bbox) ? bbox : [0, 0, 0, 0];
   const width = Number(page?.w) || 0;
   const height = Number(page?.h) || 0;
@@ -34754,7 +34913,7 @@ function rectOf3(bbox, page) {
   return scaled;
 }
 function highlightPosition(block, page) {
-  const scaled = rectOf3(block?.bbox, { ...page, n: block?.page });
+  const scaled = rectOf4(block?.bbox, { ...page, n: block?.page });
   return {
     boundingRect: scaled,
     rects: [scaled],
@@ -34784,7 +34943,7 @@ function spanRect(span, pageEl) {
   };
 }
 function spansInBbox(pageEl, bbox, page) {
-  const want = rectOf3(bbox, page);
+  const want = rectOf4(bbox, page);
   const target = {
     left: want.x1,
     top: want.y1,
@@ -39818,7 +39977,7 @@ function createReadPane({
     pressListen(w, "keydown", onPressKey);
     pressListen(w, "blur", endPress);
   };
-  const rectOf4 = (node2) => {
+  const rectOf5 = (node2) => {
     try {
       return node2?.getBoundingClientRect?.() || null;
     } catch {
@@ -39843,7 +40002,7 @@ function createReadPane({
     }
     if (event.button !== 0) return;
     if (armedUid && targetIsArmed(event.target)) {
-      startPress({ kind: "mark", uid: armedUid, highlight: armedHighlight, from: rectOf4(armedPart) }, event);
+      startPress({ kind: "mark", uid: armedUid, highlight: armedHighlight, from: rectOf5(armedPart) }, event);
       return;
     }
     const x = Number(event.clientX);
@@ -39872,7 +40031,7 @@ function createReadPane({
     } catch {
     }
     row4.draggable = false;
-    startPress({ kind: "row", uid, highlight: null, from: rectOf4(row4), row: row4, rowPrev }, event);
+    startPress({ kind: "row", uid, highlight: null, from: rectOf5(row4), row: row4, rowPrev }, event);
   };
   const onLiveLeave = () => {
     if (!dragging) disarm2();
@@ -40015,7 +40174,7 @@ function createReadPane({
   }
   const tipRect = () => {
     const tip = live.querySelector?.(".PdfHighlighter__tip-container");
-    const r = rectOf4(tip);
+    const r = rectOf5(tip);
     return r && r.right > r.left && r.bottom > r.top ? r : null;
   };
   const placeBar = () => {
@@ -40028,9 +40187,9 @@ function createReadPane({
     barInfo = info;
     armBarKeys();
     setHidden2(bar, false);
-    const paneBox = rectOf4(pane);
+    const paneBox = rectOf5(pane);
     const usePane = paneBox && paneBox.right > paneBox.left && paneBox.bottom > paneBox.top;
-    const viewport = usePane ? paneBox : rectOf4(root);
+    const viewport = usePane ? paneBox : rectOf5(root);
     if (!viewport) return;
     const size = { w: Number(bar.offsetWidth) || 200, h: Number(bar.offsetHeight) || 30 };
     let obstacles = [];
@@ -42544,7 +42703,7 @@ function classText(node2) {
   if (typeof node2.className === "string") return node2.className;
   return "";
 }
-function hasClass(node2, name) {
+function hasClass2(node2, name) {
   if (!node2 || !name) return false;
   try {
     if (node2.classList?.contains?.(name)) return true;
@@ -42555,10 +42714,10 @@ function hasClass(node2, name) {
 function hostDark(doc, background) {
   const root = doc?.documentElement;
   const body = doc?.body;
-  if (hasClass(root, "bp3-dark") || hasClass(body, "bp3-dark")) return true;
-  if (hasClass(body, "bt-theme-dark") || hasClass(root, "bt-theme-dark")) return true;
-  if (hasClass(root, "rm-dark-theme") || hasClass(body, "rm-dark-theme")) return true;
-  if (hasClass(body, "roam-body") && hasClass(body, "dark")) return true;
+  if (hasClass2(root, "bp3-dark") || hasClass2(body, "bp3-dark")) return true;
+  if (hasClass2(body, "bt-theme-dark") || hasClass2(root, "bt-theme-dark")) return true;
+  if (hasClass2(root, "rm-dark-theme") || hasClass2(body, "rm-dark-theme")) return true;
+  if (hasClass2(body, "roam-body") && hasClass2(body, "dark")) return true;
   const color = parseColor(background);
   return Boolean(color && luminance(color) < 0.4);
 }
@@ -48835,6 +48994,7 @@ function mountPrintSheet(doc, board2) {
 }
 
 // src/view/board-view.js
+init_table_cells();
 var SVG_NS4 = "http://www.w3.org/2000/svg";
 var pointerBoard = null;
 function sidebarMountKind(nativeEl) {
@@ -50460,9 +50620,9 @@ function buildBoardView(onFail, {
   const placeParseBeside = (pdfUid, sz) => {
     const items = [...board2()?.items.values() || []];
     const rs = rects();
-    const rectOf4 = (it) => rs.get(it.uid) || { x: it.x, y: it.y, w: it.w, h: it.h };
+    const rectOf5 = (it) => rs.get(it.uid) || { x: it.x, y: it.y, w: it.w, h: it.h };
     const card2 = board2()?.items.get(pdfUid) || board2()?.items.get(readPane?.cardUid?.() || "");
-    if (card2) return freeSpotBeside(rectOf4(card2), sz, items.filter((it) => it !== card2).map(rectOf4));
+    if (card2) return freeSpotBeside(rectOf5(card2), sz, items.filter((it) => it !== card2).map(rectOf5));
     const c = screenToWorld(vp, { x: size.width / 2, y: size.height / 2 });
     return { x: c.x - (sz?.w || 0) / 2, y: c.y - (sz?.h || 0) / 2 };
   };
@@ -51533,7 +51693,7 @@ function buildBoardView(onFail, {
   };
   listen(root, "pointerover", (event) => {
     if (event.buttons) return;
-    const row4 = event.target?.closest?.(".pxd-row--linked");
+    const row4 = event.target?.closest?.(".pxd-row--linked, [data-pxd-edges]");
     if (!row4) return;
     for (const uid of String(row4.getAttribute("data-pxd-edges") || "").split(" ").filter(Boolean)) {
       edgesR.setHover(uid, true);
@@ -51541,7 +51701,7 @@ function buildBoardView(onFail, {
     }
   });
   listen(root, "pointerout", (event) => {
-    const row4 = event.target?.closest?.(".pxd-row--linked");
+    const row4 = event.target?.closest?.(".pxd-row--linked, [data-pxd-edges]");
     if (!row4 || row4.contains?.(event.relatedTarget)) return;
     for (const uid of String(row4.getAttribute("data-pxd-edges") || "").split(" ").filter(Boolean)) {
       edgesR.setHover(uid, false);
@@ -55422,8 +55582,16 @@ function buildBoardView(onFail, {
     for (const node2 of doc.elementsFromPoint(pt.x, pt.y) || []) {
       const card2 = node2.closest?.(".pxd-item");
       if (!card2) continue;
-      if (!card2.classList.contains("pxd-item--page") || card2.closest?.(".pxd-root") !== root) return null;
+      if (card2.closest?.(".pxd-root") !== root) return null;
       const uid = card2.dataset?.uid || card2.getAttribute?.("data-uid");
+      if (isTableCard(card2)) {
+        const cell = cellUidOf(node2);
+        targetEl = cell ? cellElementOf(node2) : null;
+        targetCls = "pxd-row--target";
+        targetEl?.classList.add(targetCls);
+        return { uid, row: cell, header: false, cell: Boolean(cell) };
+      }
+      if (!card2.classList.contains("pxd-item--page")) return null;
       const row4 = node2.closest?.("[data-pxd-row]");
       const header = row4 ? null : node2.closest?.(".pxd-item__header");
       targetEl = row4 || header || null;

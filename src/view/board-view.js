@@ -1586,6 +1586,7 @@ function buildBoardView(onFail, {
         session,
         store: createParseStore({ indexedDB: doc.defaultView?.indexedDB }),
         placeBeside: placeParseBeside,
+        toWorld: (pt) => { measure(); return screenToWorld(vp, { x: pt.x - rootRect.left, y: pt.y - rootRect.top }); },
         toast: (message) => toast(message),
         select: (uids) => { if (!disposed) ctl.select(uids); },
         show: (uids) => { if (!disposed) revealParsed(uids); },

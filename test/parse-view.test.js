@@ -490,7 +490,7 @@ test("Read + Outline shows the strip and dispose drops its listeners", async () 
     });
     pane.open({ blockUid: "blk", cardUid: "card", title: "Paper", source: "{{[[pdf]]: https://example.test/a.pdf}}" });
     assert.equal(pane.element().querySelector(".pxd-read__modes").hasAttribute("hidden"), true);
-    assert.deepEqual(pane.element().querySelectorAll(".pxd-read__mode").map((b) => b.textContent), ["Read", "Read + Outline"]);
+    assert.deepEqual(pane.element().querySelectorAll(".pxd-read__mode").map((b) => b.textContent), ["Read", "Read + Outline", "Show parsed"]);
     assert.equal(pane.element().querySelector('[data-mode="parsed"]'), null);
     pane.element().querySelector('[data-mode="both"]').click();
     await new Promise((resolve) => setTimeout(resolve, 30));

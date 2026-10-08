@@ -13,11 +13,12 @@ import { parsedDocTitle } from "../model/pdf.js";
 import { loadPageData, mergeOcrPageRecords, readScan } from "./parse-engine.js";
 import { scanPagesOf } from "../model/parse/ocr-merge.js";
 import { createParseOverlay } from "./parse-overlay.js";
-import { createPageChips, runChipAction } from "./page-chips.js";
+import { createPageChips, PLACE_ACTS, readShowParsed, runChipAction, writeShowParsed } from "./page-chips.js";
 import { cropRect, createCropQueue } from "./parse-crop.js";
 import { makeHighlight } from "./make-highlight.js";
 import { isTextEntryTarget } from "./cards.js";
-import { createDragGhost, dispatchDrop } from "./drag-ghost.js";
+import { createDragGhost, dispatchDrop, startPlacement } from "./drag-ghost.js";
+import { placementContent } from "./parse-actions.js";
 import { createAnydocHost } from "../host/anydoc.js";
 import { markdownToParse } from "../model/anydoc-to-parse.js";
 
@@ -515,7 +516,7 @@ export function createParseView({
   function pageInfo(n) {
     const fromDoc = (parsed?.pages || []).find((page) => page.n === n);
     const given = pageOf?.(n);
-    return { w: fromDoc?.w || given?.w || 612, h: fromDoc?.h || given?.h || 792, rotation: fromDoc?.rotation || given?.rotation || 0, ...(given || {}) };
+    return { w: fromDoc?.w || given?.w || 612, h: fromDoc?.h || given?.h || 792, rotation: fromDoc?.rotation || given?.rotation || 0, textRotation: fromDoc?.textRotation || 0, ...(given || {}) };
   }
 
   function shown() {
@@ -541,8 +542,13 @@ export function createParseView({
     pageEl: (n) => pageEl?.(n) || null,
     pageOf: (n) => pageInfo(n),
     isLatexReady: () => helperState === "ready",
+    storage,
+    copy: (block) => {
+      if (!parsed || !block) return;
+      void writeClipboard(toMarkdown(parsed, [block.id])).then(() => { try { onToast?.("Copied"); } catch { /* host */ } });
+    },
     run: (act, item) => {
-      runChipAction({ act, ...item }, {
+      const go = (extra = {}) => runChipAction({ act, ...item, ...extra }, {
         session,
         payload: (ids) => payload(ids.map((id) => parsed?.blocks?.[id]).filter(Boolean)),
         copy: (ids) => { if (parsed) void writeClipboard(copyText(parsed, ids, { shift: false }).text); },
@@ -551,8 +557,41 @@ export function createParseView({
           else onToast?.("Run Docling on this page to read the formula as LaTeX");
         },
       });
+      if (!PLACE_ACTS.includes(act) || item?.extra?.beside || !ghostRoot || !parsed) { go(); return; }
+      void beginPlacement(act, item, go);
     },
   }));
+
+  // Click-to-place: the chip's insert waits for a click on the board at the preview's top-left.
+  let placing = null;
+  async function beginPlacement(act, item, go) {
+    try { placing?.dispose(); } catch { /* gone */ }
+    placing = null;
+    const ids = item?.ids || [];
+    const plan = placementContent(parsed, ids, act, item?.extra);
+    const first = parsed?.blocks?.[ids[0]];
+    if (plan.content.kind === "figure" && first && store?.getImage) {
+      try {
+        const src = await Promise.race([
+          store.getImage(imageKey(parsed.sha256, first.id)),
+          new Promise((resolve) => { const id = setTimeout(() => resolve(null), 120); id?.unref?.(); }),
+        ]);
+        if (typeof src === "string") plan.content.src = src;
+      } catch { /* caption only */ }
+    }
+    if (dead) return;
+    placing = startPlacement({
+      doc,
+      root: ghostRoot,
+      pane: ghostPane,
+      pointer: item?.pointer || { x: 0, y: 0 },
+      from: item?.from || null,
+      content: plan.content,
+      width: plan.width,
+      onPlace: ({ client }) => { placing = null; go({ client }); },
+      onCancel: () => { placing = null; },
+    });
+  }
 
   function idsOf(blocks) {
     return (blocks || shown()).map((block) => block.id);
@@ -733,7 +772,11 @@ export function createParseView({
     clearBlockListeners();
     const blocks = shown();
     body.replaceChildren?.();
-    if (parsed) { chipsOn(); try { onTitle?.(parsedDocTitle(parsed)); } catch { /* host */ } }
+    if (parsed) {
+      const chips = chipsOn();
+      if (chips.__doc !== parsed) { chips.__doc = parsed; try { chips.refresh(); } catch { /* reader */ } }
+      try { onTitle?.(parsedDocTitle(parsed)); } catch { /* host */ }
+    }
     if (parsed && typeof onScan === "function") {
       const scanned = scanPagesOf(parsed);
       try { onScan({ pages: scanned.length ? scanned : scanPageNumbers(parsed), readScan: readScanNow, helperState, partial: phase === "running", sha256: parsed.sha256 || "" }); } catch { /* host */ }
@@ -1655,6 +1698,10 @@ export function createParseView({
     scrollBody() { onBodyScroll(); },
     focusSearch() { try { search.focus(); } catch { /* stub */ } },
     chipText: () => chip.textContent,
+    // Show parsed: persistent boxes and copy icons on the page. Remembered per device.
+    showParsed: () => (pageChips ? pageChips.shown() : readShowParsed(storage)),
+    setShowParsed(on) { return pageChips ? pageChips.setShown(on) : (writeShowParsed(storage, on), Boolean(on)); },
+    hasParse: () => Boolean(parsed),
     selectedIds: () => selected.slice(),
     blockCount: () => shown().length,
     isBusy: () => phase === "running",
@@ -1683,6 +1730,8 @@ export function createParseView({
       try { cropObserver?.disconnect(); } catch { /* gone */ }
       cropWaiting.clear();
       overlay.dispose();
+      try { placing?.dispose(); } catch { /* gone */ }
+      placing = null;
       pageChips?.dispose();
       clearBlockListeners();
       for (const [node, type, fn, capture] of armed) {

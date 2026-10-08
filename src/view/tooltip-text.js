@@ -202,11 +202,13 @@ export const TIP_TEXT = {
   "edge.row": e("Linked block", "An arrow on the board ends on this block."),
 
   // ---- PDF parse (settings descriptions, and the flat-merge chip)
-  "page-chip.table": e("Table", "Insert this table as a Roam Grid with its merged cells. Open the arrow for native, flat, Markdown or a card."),
-  "page-chip.more": e("More ways", "Other ways to insert this block."),
-  "page-chip.figure": e("Figure", "Send this figure to the board as a card."),
-  "page-chip.formula": e("Formula", "Send this formula to the board as a card."),
-  "page-chip.heading": e("Section", "Send this heading and the text up to the next heading to the board as a card."),
+  "page-chip.table": e("Table", "Insert this table as a Roam Grid with its merged cells: a preview follows the pointer, click the board to place it, Esc cancels. Open the arrow for native, flat, Markdown, a card or Insert beside PDF."),
+  "page-chip.more": e("More ways", "Other ways to insert this block, including Insert beside PDF."),
+  "page-chip.figure": e("Figure", "Send this figure to the board as a card. Click the board to place it; Esc cancels."),
+  "page-chip.formula": e("Formula", "Send this formula to the board as a card. Click the board to place it; Esc cancels."),
+  "page-chip.heading": e("Section", "Send this heading and the text up to the next heading to the board as a card. Click the board to place it; Esc cancels."),
+  "page-chip.copy": e("Copy", "Copy this block's text, or the table as Markdown."),
+  "parse.show-parsed": e("Show parsed", "Draw a soft box around every parsed block on the page, with a copy button at its left edge. Remembered on this device."),
   "page-chip.list": e("List", "Insert this list below the PDF."),
   "parse.helper-url": e("Parse helper address", "Address of the local parse helper. The default is http://127.0.0.1:48765. Plexus calls it only when you parse."),
   "parse.helper-token": e("Parse helper token", "Secret from the helper's first start. Empty turns the helper off. Plexus sends it only to that address."),

@@ -5305,11 +5305,13 @@ var init_tooltip_text = __esm({
       "relpop.sidebar": e("Open in sidebar", "Open the board in the right sidebar."),
       "edge.row": e("Linked block", "An arrow on the board ends on this block."),
       // ---- PDF parse (settings descriptions, and the flat-merge chip)
-      "page-chip.table": e("Table", "Insert this table as a Roam Grid with its merged cells. Open the arrow for native, flat, Markdown or a card."),
-      "page-chip.more": e("More ways", "Other ways to insert this block."),
-      "page-chip.figure": e("Figure", "Send this figure to the board as a card."),
-      "page-chip.formula": e("Formula", "Send this formula to the board as a card."),
-      "page-chip.heading": e("Section", "Send this heading and the text up to the next heading to the board as a card."),
+      "page-chip.table": e("Table", "Insert this table as a Roam Grid with its merged cells: a preview follows the pointer, click the board to place it, Esc cancels. Open the arrow for native, flat, Markdown, a card or Insert beside PDF."),
+      "page-chip.more": e("More ways", "Other ways to insert this block, including Insert beside PDF."),
+      "page-chip.figure": e("Figure", "Send this figure to the board as a card. Click the board to place it; Esc cancels."),
+      "page-chip.formula": e("Formula", "Send this formula to the board as a card. Click the board to place it; Esc cancels."),
+      "page-chip.heading": e("Section", "Send this heading and the text up to the next heading to the board as a card. Click the board to place it; Esc cancels."),
+      "page-chip.copy": e("Copy", "Copy this block's text, or the table as Markdown."),
+      "parse.show-parsed": e("Show parsed", "Draw a soft box around every parsed block on the page, with a copy button at its left edge. Remembered on this device."),
       "page-chip.list": e("List", "Insert this list below the PDF."),
       "parse.helper-url": e("Parse helper address", "Address of the local parse helper. The default is http://127.0.0.1:48765. Plexus calls it only when you parse."),
       "parse.helper-token": e("Parse helper token", "Secret from the helper's first start. Empty turns the helper off. Plexus sends it only to that address."),
@@ -34115,16 +34117,47 @@ function userBoxToViewport(bbox, page) {
   const ys2 = pts.map((p) => p[1]);
   return [Math.min(...xs2), Math.min(...ys2), Math.max(...xs2), Math.max(...ys2)];
 }
-function bboxToPageRect(bbox, page, pageEl) {
-  let box2 = boxOf4(bbox);
+function frameBoxToViewport(bbox, page) {
+  const box2 = boxOf4(bbox);
   if (!box2) return null;
-  const mediaW = num3(page?.w, 1) || 1;
-  const mediaH = num3(page?.h, 1) || 1;
-  let vw = mediaW;
+  const fw = num3(page?.w, 1) || 1;
+  const fh = num3(page?.h, 1) || 1;
+  const tr = Math.round(num3(page?.textRotation) / 90) * 90;
+  if (!normRotation(tr)) return { box: box2, vw: fw, vh: fh };
+  const quarter = normRotation(tr) % 180 === 90;
+  const vw = quarter ? fh : fw;
+  const vh = quarter ? fw : fh;
+  const rad = -tr * Math.PI / 180;
+  const a = Math.round(Math.cos(rad));
+  const b = Math.round(Math.sin(rad));
+  const c = -b;
+  const d = a;
+  const xs2 = [0, vw, vw, 0].map((x, i) => a * x + c * [0, 0, vh, vh][i]);
+  const ys2 = [0, vw, vw, 0].map((x, i) => b * x + d * [0, 0, vh, vh][i]);
+  const minX = Math.min(...xs2);
+  const minY = Math.min(...ys2);
+  const pts = [[box2[0], box2[1]], [box2[2], box2[1]], [box2[0], box2[3]], [box2[2], box2[3]]].map(([fx, fy]) => {
+    const u = fx + minX;
+    const w = fy + minY;
+    return [a * u + b * w, c * u + d * w];
+  });
+  const px = pts.map((p) => p[0]);
+  const py = pts.map((p) => p[1]);
+  return { box: [Math.min(...px), Math.min(...py), Math.max(...px), Math.max(...py)], vw, vh };
+}
+function viewportBox(bbox, page) {
   if (page?.userSpace) {
-    box2 = userBoxToViewport(box2, page);
-    vw = viewportSize(mediaW, mediaH, page?.rotation).w || 1;
+    const box2 = userBoxToViewport(bbox, page);
+    if (!box2) return null;
+    const size = viewportSize(num3(page?.w, 1) || 1, num3(page?.h, 1) || 1, page?.rotation);
+    return { box: box2, vw: size.w || 1, vh: size.h || 1 };
   }
+  return frameBoxToViewport(bbox, page);
+}
+function bboxToPageRect(bbox, page, pageEl) {
+  const at = viewportBox(bbox, page);
+  if (!at) return null;
+  const { box: box2, vw } = at;
   const client = num3(pageEl?.clientWidth, 0);
   const scale = (client > 0 ? client : vw) / vw;
   return {
@@ -34133,6 +34166,17 @@ function bboxToPageRect(bbox, page, pageEl) {
     width: (box2[2] - box2[0]) * scale,
     height: (box2[3] - box2[1]) * scale,
     scale
+  };
+}
+function bboxToPagePercent(bbox, page) {
+  const at = viewportBox(bbox, page);
+  if (!at) return null;
+  const { box: box2, vw, vh } = at;
+  return {
+    left: box2[0] / vw * 100,
+    top: box2[1] / vh * 100,
+    width: (box2[2] - box2[0]) / vw * 100,
+    height: (box2[3] - box2[1]) / vh * 100
   };
 }
 function place(node2, rect) {
@@ -34239,7 +34283,8 @@ function createParseOverlay({ doc, pageEl, pageOf: pageOf3, onResplit } = {}) {
       const node2 = add(el, "pxd-parse-merge");
       place(node2, rect);
     }
-    for (let i = 1; i < xs2.length - 1; i += 1) {
+    const upright = !normRotation(Math.round(num3(info?.textRotation) / 90) * 90);
+    for (let i = 1; upright && i < xs2.length - 1; i += 1) {
       const line = bboxToPageRect([xs2[i], ys2[0] ?? table.bbox?.[1] ?? 0, xs2[i], ys2[ys2.length - 1] ?? table.bbox?.[3] ?? 0], info, el);
       if (!line) continue;
       const handle = doc.createElement("div");
@@ -34313,7 +34358,30 @@ function createParseOverlay({ doc, pageEl, pageOf: pageOf3, onResplit } = {}) {
 // src/view/page-chips.js
 var HIDE_MS = 220;
 var DOT_CAP = 400;
+var BOX_PAD = 3;
 var CHIP_TYPES = Object.freeze(["table", "figure", "heading", "list", "formula"]);
+var SHOW_PARSED_KEY = "pxd-show-parsed";
+var BESIDE_LABEL = "Insert beside PDF";
+var PLACE_ACTS = Object.freeze(["table", "card", "board"]);
+function readShowParsed(storage) {
+  try {
+    return storage?.getItem?.(SHOW_PARSED_KEY) !== "0";
+  } catch {
+    return true;
+  }
+}
+function writeShowParsed(storage, on) {
+  try {
+    storage?.setItem?.(SHOW_PARSED_KEY, on ? "1" : "0");
+  } catch {
+  }
+}
+function parsedBoxPlan(block, page) {
+  if (!block || !Array.isArray(block.bbox)) return null;
+  const pct2 = bboxToPagePercent(block.bbox, page);
+  if (!pct2 || !(pct2.width > 0) || !(pct2.height > 0)) return null;
+  return { id: block.id, type: block.type || "para", ...pct2 };
+}
 function tableShape2(table) {
   const grid = table?.grid;
   let rows = Number(table?.rows) || (Array.isArray(grid?.ys) ? grid.ys.length - 1 : 0);
@@ -34351,23 +34419,25 @@ function chipPlan(block, doc, { latexReady = false } = {}) {
         { label: "Native", act: "table", ids, extra: { mode: "native", kind: "table" } },
         { label: "Flat", act: "table", ids, extra: { mode: "flat", kind: "table" } },
         { label: "Copy as Markdown", act: "copy", ids },
-        { label: "Card", act: "card", ids }
+        { label: "Card", act: "card", ids },
+        { label: BESIDE_LABEL, act: "table", ids, extra: { mode: "grid", kind: "table", beside: true } }
       ]
     };
   }
   if (block.type === "figure") {
-    return { type: "figure", label: "Figure · Card", primary: { act: "card", ids }, menu: [] };
+    return { type: "figure", label: "Figure · Card", primary: { act: "card", ids }, menu: [{ label: BESIDE_LABEL, act: "card", ids, extra: { beside: true } }] };
   }
   if (block.type === "formula") {
     return {
       type: "formula",
       label: "Card",
       primary: { act: "card", ids },
-      menu: latexReady ? [{ label: "LaTeX", act: "latex", ids }] : []
+      menu: [...latexReady ? [{ label: "LaTeX", act: "latex", ids }] : [], { label: BESIDE_LABEL, act: "card", ids, extra: { beside: true } }]
     };
   }
   if (block.type === "heading") {
-    return { type: "heading", label: "Insert section", primary: { act: "board", ids: sectionIds(doc, block.id) }, menu: [] };
+    const section2 = sectionIds(doc, block.id);
+    return { type: "heading", label: "Insert section", primary: { act: "board", ids: section2 }, menu: [{ label: BESIDE_LABEL, act: "board", ids: section2, extra: { beside: true } }] };
   }
   return { type: "list", label: "Insert list", primary: { act: "below", ids }, menu: [] };
 }
@@ -34379,7 +34449,10 @@ function createPageChips({
   pageOf: pageOf3,
   run,
   isLatexReady = null,
-  getSelection = null
+  getSelection = null,
+  copy = null,
+  storage = null,
+  boxCap = 4e3
 } = {}) {
   const win = () => doc?.defaultView || null;
   const bound = [];
@@ -34389,6 +34462,10 @@ function createPageChips({
   let hideTimer = null;
   let current3 = null;
   let disposed = false;
+  let showParsed = readShowParsed(storage);
+  const layers = /* @__PURE__ */ new Map();
+  let boxCount = 0;
+  let syncFrame = 0;
   const on = (node2, type, fn, capture = false) => {
     if (!node2 || typeof node2.addEventListener !== "function") return;
     node2.addEventListener(type, fn, capture);
@@ -34438,6 +34515,7 @@ function createPageChips({
   const info = (n2) => pageOf3?.(n2) || {};
   const hide = () => {
     stopTimer();
+    if (current3) hot(current3, false);
     current3 = null;
     drop(outline);
     drop(chipNode);
@@ -34453,10 +34531,150 @@ function createPageChips({
     if (tip) node2.setAttribute("data-tip", tip);
     return node2;
   };
-  const fire2 = (item, block) => {
+  const fire2 = (item, block, event, el) => {
+    let from = null;
+    try {
+      const page = el?.getBoundingClientRect?.();
+      const r = bboxToPageRect(block.bbox, info(block.page), el);
+      if (page && r) from = { left: page.left + r.left, top: page.top + r.top, width: r.width, height: r.height };
+    } catch {
+      from = null;
+    }
+    const pointer = { x: Number(event?.clientX) || 0, y: Number(event?.clientY) || 0 };
     hideAll();
     try {
-      run?.(item.act, { ids: item.ids, extra: item.extra || null, block });
+      run?.(item.act, { ids: item.ids, extra: item.extra || null, block, pointer, from });
+    } catch {
+    }
+  };
+  const hot = (id, on2) => {
+    for (const entry of layers.values()) {
+      const box2 = entry.boxes.get(id);
+      if (box2) box2.classList.toggle("pxd-parsed-box--hot", on2);
+    }
+  };
+  const buildLayer = (n2, el, parsed) => {
+    const layer = doc.createElement("div");
+    layer.className = "pxd-parsed-layer";
+    layer.style.pointerEvents = "none";
+    layer.setAttribute("aria-hidden", "false");
+    const boxes = /* @__PURE__ */ new Map();
+    for (const id of parsed?.order || []) {
+      if (boxCount >= boxCap) break;
+      const block = parsed.blocks?.[id];
+      if (!block || block.page !== n2) continue;
+      const plan = parsedBoxPlan(block, info(n2));
+      if (!plan) continue;
+      const box2 = doc.createElement("div");
+      box2.className = `pxd-parsed-box pxd-parsed-box--${plan.type}`;
+      box2.setAttribute("data-block", plan.id);
+      box2.style.left = `calc(${plan.left}% - ${BOX_PAD}px)`;
+      box2.style.top = `calc(${plan.top}% - ${BOX_PAD}px)`;
+      box2.style.width = `calc(${plan.width}% + ${2 * BOX_PAD}px)`;
+      box2.style.height = `calc(${plan.height}% + ${2 * BOX_PAD}px)`;
+      box2.style.pointerEvents = "none";
+      const icon = doc.createElement("button");
+      icon.type = "button";
+      icon.className = "pxd-parsed-copy";
+      icon.setAttribute("data-block", plan.id);
+      icon.setAttribute("aria-label", block.type === "table" ? "Copy table as Markdown" : "Copy text");
+      icon.setAttribute("data-tip", "page-chip.copy");
+      icon.style.left = `calc(${plan.left}% - ${BOX_PAD}px)`;
+      icon.style.top = `calc(${plan.top}% - ${BOX_PAD}px)`;
+      icon.style.pointerEvents = "auto";
+      icon.textContent = "⧉";
+      layer.append(box2, icon);
+      boxes.set(plan.id, box2);
+      boxCount += 1;
+    }
+    el.append(layer);
+    let observer = null;
+    const MO = win()?.MutationObserver;
+    if (typeof MO === "function") {
+      observer = new MO(() => queueSync());
+      try {
+        observer.observe(el, { childList: true });
+      } catch {
+        observer = null;
+      }
+    }
+    return { layer, boxes, observer, el };
+  };
+  const dropLayers = () => {
+    for (const entry of layers.values()) {
+      try {
+        entry.observer?.disconnect();
+      } catch {
+      }
+      drop(entry.layer);
+    }
+    layers.clear();
+    boxCount = 0;
+  };
+  const sync = () => {
+    syncFrame = 0;
+    if (disposed || !showParsed) return;
+    const parsed = getParsed?.();
+    if (!parsed) return;
+    const pages = /* @__PURE__ */ new Set();
+    for (const id of parsed.order || []) {
+      const b = parsed.blocks?.[id];
+      if (b && b.page) pages.add(b.page);
+    }
+    const els = [];
+    let marked = false;
+    for (const n2 of pages) {
+      const el = pageEl?.(n2);
+      if (!el) continue;
+      if (el.hasAttribute?.("data-loaded")) marked = true;
+      els.push([n2, el]);
+    }
+    for (const [n2, el] of els) {
+      const entry = layers.get(n2);
+      if (entry) {
+        if (entry.el !== el) {
+          try {
+            entry.observer?.disconnect();
+          } catch {
+          }
+          drop(entry.layer);
+          layers.delete(n2);
+        } else {
+          if (entry.layer.parentElement !== el) el.append(entry.layer);
+          continue;
+        }
+      }
+      if (marked && !el.hasAttribute?.("data-loaded")) continue;
+      layers.set(n2, buildLayer(n2, el, parsed));
+    }
+  };
+  function queueSync() {
+    if (syncFrame || disposed || !showParsed) return;
+    const raf2 = win()?.requestAnimationFrame;
+    if (typeof raf2 !== "function") {
+      sync();
+      return;
+    }
+    syncFrame = raf2(() => sync());
+  }
+  const onIcon = (event) => {
+    const icon = event.target?.closest?.(".pxd-parsed-copy");
+    if (!icon) return false;
+    event.stopPropagation?.();
+    return icon;
+  };
+  const onIconDown = (event) => {
+    if (onIcon(event)) event.preventDefault?.();
+  };
+  const onIconClick = (event) => {
+    const icon = onIcon(event);
+    if (!icon) return;
+    event.preventDefault?.();
+    const id = icon.getAttribute("data-block");
+    const block = getParsed?.()?.blocks?.[id];
+    if (!block) return;
+    try {
+      copy?.(block);
     } catch {
     }
   };
@@ -34466,6 +34684,7 @@ function createPageChips({
     if (!plan || !rect) return;
     hide();
     current3 = block.id;
+    hot(block.id, true);
     outline = doc.createElement("div");
     outline.className = "pxd-page-outline";
     outline.style.position = "absolute";
@@ -34492,7 +34711,7 @@ function createPageChips({
     on(node2, "mousedown", swallow);
     on(main, "click", (event) => {
       event.stopPropagation?.();
-      fire2(plan.primary, block);
+      fire2(plan.primary, block, event, el);
     });
     if (plan.menu.length) {
       const caret = button2("pxd-page-chip__more", "▾", "page-chip.more");
@@ -34506,9 +34725,10 @@ function createPageChips({
         entry.setAttribute("role", "menuitem");
         entry.setAttribute("data-act", item.act);
         if (item.extra?.mode) entry.setAttribute("data-mode", item.extra.mode);
+        if (item.extra?.beside) entry.setAttribute("data-beside", "true");
         on(entry, "click", (event) => {
           event.stopPropagation?.();
-          fire2(item, block);
+          fire2(item, block, event, el);
         });
         menu.append(entry);
       }
@@ -34535,6 +34755,7 @@ function createPageChips({
     if (disposed) return;
     const parsed = getParsed?.();
     if (!parsed) return;
+    if (showParsed && layers.size === 0) queueSync();
     if (chipNode && chipNode.contains?.(event.target)) {
       stopTimer();
       return;
@@ -34617,19 +34838,48 @@ function createPageChips({
   on(win(), "keydown", onKeyDown, true);
   on(win(), "keyup", onKeyUp, true);
   on(win(), "blur", clearDots);
+  on(target, "pointerdown", onIconDown, true);
+  on(target, "mousedown", onIconDown, true);
+  on(target, "click", onIconClick, true);
+  on(target, "scroll", queueSync, true);
+  if (showParsed) queueSync();
   return {
     hover: onMove,
     hide: hideAll,
     current: () => current3,
+    // Repaint the persistent boxes (new parse, new pages). Writes nothing to the graph.
+    refresh() {
+      if (disposed) return;
+      dropLayers();
+      if (showParsed) sync();
+    },
+    sync,
+    shown: () => showParsed,
+    setShown(on2) {
+      showParsed = Boolean(on2);
+      writeShowParsed(storage, showParsed);
+      dropLayers();
+      if (showParsed) sync();
+      return showParsed;
+    },
+    boxCount: () => boxCount,
     dispose() {
       disposed = true;
       hideAll();
       clearDots();
+      dropLayers();
+      if (syncFrame) {
+        try {
+          win()?.cancelAnimationFrame?.(syncFrame);
+        } catch {
+        }
+        syncFrame = 0;
+      }
       while (bound.length) off(bound.pop());
     }
   };
 }
-function runChipAction({ act, ids, extra, block }, { session, payload, copy, latex } = {}) {
+function runChipAction({ act, ids, extra, block, client }, { session, payload, copy, latex } = {}) {
   const blocks = ids || [];
   if (act === "copy") {
     copy?.(blocks);
@@ -34643,7 +34893,8 @@ function runChipAction({ act, ids, extra, block }, { session, payload, copy, lat
   const fn = name ? session?.[name] : null;
   if (typeof fn !== "function") return false;
   const body = payload(blocks);
-  fn(extra ? { ...body, ...extra } : body);
+  const merged = extra ? { ...body, ...extra } : body;
+  fn(client && Number.isFinite(client.x) && Number.isFinite(client.y) ? { ...merged, client: { x: client.x, y: client.y } } : merged);
   return true;
 }
 
@@ -34953,7 +35204,9 @@ function zoneScale(zone, zoom) {
 function ghostContent(source = {}) {
   const kind = ["text", "table", "figure", "highlight", "blocks"].includes(source.kind) ? source.kind : "text";
   const text3 = String(source.text ?? "").replace(/\s+/g, " ").trim();
-  const rows = Array.isArray(source.rows) ? source.rows.slice(0, 3).map((row4) => Array.isArray(row4) ? row4.slice(0, 6).map((cell) => String(cell ?? "")) : []) : [];
+  const rowCap = clamp3(Math.round(num4(source.rowCap, 3)) || 3, 1, 12);
+  const colCap = clamp3(Math.round(num4(source.colCap, 6)) || 6, 1, 12);
+  const rows = Array.isArray(source.rows) ? source.rows.slice(0, rowCap).map((row4) => Array.isArray(row4) ? row4.slice(0, colCap).map((cell) => String(cell ?? "")) : []) : [];
   const src = typeof source.src === "string" ? source.src : "";
   const color = typeof source.color === "string" ? source.color : "";
   const page = Number.isFinite(Number(source.page)) && Number(source.page) > 0 ? Number(source.page) : null;
@@ -35001,13 +35254,17 @@ function createDragGhost({
   content = {},
   zoom = null,
   blocked: blocked3 = null,
+  width = GHOST_W,
+  grab: grabAt = null,
   now: now3 = () => globalThis.performance?.now?.() ?? Date.now()
 } = {}) {
   const win = doc?.defaultView || globalThis;
   const host = root || doc?.body;
   const look = ghostContent(content);
   const node2 = buildGhost(doc, look);
-  node2.style.width = `${GHOST_W}px`;
+  const ghostW = clamp3(num4(width, GHOST_W) || GHOST_W, 120, 1200);
+  node2.style.width = `${ghostW}px`;
+  if (ghostW !== GHOST_W) node2.style.maxWidth = "none";
   node2.style.transform = "translate3d(-10000px, -10000px, 0)";
   host?.append?.(node2);
   let origin = { x: 0, y: 0 };
@@ -35019,7 +35276,7 @@ function createDragGhost({
     height = num4(node2.offsetHeight, 0) || num4(box2?.height, 0) || 120;
   } catch {
   }
-  const size = { w: GHOST_W, h: height };
+  const size = { w: ghostW, h: height };
   const rects = {
     rootRect: root?.getBoundingClientRect?.() || null,
     paneRect: pane?.getBoundingClientRect?.() || null,
@@ -35029,7 +35286,7 @@ function createDragGhost({
   const zoomNow = zoom != null ? num4(zoom, 1) : boardZoom(root, win);
   const start = { x: num4(pointer?.x), y: num4(pointer?.y) };
   const src = from && num4(from.width) > 0 && num4(from.height) > 0 ? from : { left: start.x - 8, top: start.y - 8, width: 16, height: 16 };
-  const grab = {
+  const grab = grabAt ? { fx: clamp3(num4(grabAt.fx, 0.5), 0, 1), fy: clamp3(num4(grabAt.fy, 0.5), 0, 1) } : {
     fx: clamp3((start.x - num4(src.left)) / num4(src.width, 1), 0, 1),
     fy: clamp3((start.y - num4(src.top)) / num4(src.height, 1), 0, 1)
   };
@@ -35173,6 +35430,329 @@ function dispatchDrop({ doc = globalThis.document, root, pointer, at, entries = 
     return false;
   }
   return true;
+}
+var PLACE_GRAB = Object.freeze({ fx: 0.5, fy: 0.5 });
+var SWALLOW_MS = 600;
+function startPlacement({
+  doc = globalThis.document,
+  root,
+  pane = null,
+  pointer = { x: 0, y: 0 },
+  from = null,
+  content = {},
+  width = GHOST_W,
+  zoom = null,
+  blocked: blocked3 = null,
+  onPlace = null,
+  onCancel = null,
+  now: now3
+} = {}) {
+  const win = doc?.defaultView || globalThis;
+  const ghost = createDragGhost({ doc, root, pane, from, pointer, content, width, zoom, blocked: blocked3, grab: PLACE_GRAB, ...now3 ? { now: now3 } : {} });
+  try {
+    ghost.element().classList.add("pxd-ghost--place");
+  } catch {
+  }
+  try {
+    root?.classList?.add?.("pxd-root--placing");
+  } catch {
+  }
+  let done = false;
+  let swallowUntil = 0;
+  const clock = () => typeof now3 === "function" ? now3() : globalThis.performance?.now?.() ?? Date.now();
+  const bound = [];
+  const on = (type, fn) => {
+    win?.addEventListener?.(type, fn, true);
+    bound.push([type, fn]);
+  };
+  const release = () => {
+    while (bound.length) {
+      const [type, fn] = bound.pop();
+      win?.removeEventListener?.(type, fn, true);
+    }
+  };
+  const finish = () => {
+    done = true;
+    swallowUntil = clock() + SWALLOW_MS;
+    try {
+      root?.classList?.remove?.("pxd-root--placing");
+    } catch {
+    }
+    const later = win?.setTimeout || globalThis.setTimeout;
+    try {
+      later(release, SWALLOW_MS);
+    } catch {
+      release();
+    }
+  };
+  const cancel = (reason = "cancel") => {
+    if (done) return;
+    ghost.cancel();
+    finish();
+    try {
+      onCancel?.(reason);
+    } catch {
+    }
+  };
+  const place2 = () => {
+    if (done) return;
+    const at = ghost.dropPoint();
+    ghost.land();
+    finish();
+    try {
+      onPlace?.({ client: { x: at.x, y: at.y }, size: { w: at.w, h: at.h } });
+    } catch {
+    }
+  };
+  const eat = (event) => {
+    event.preventDefault?.();
+    event.stopPropagation?.();
+    event.stopImmediatePropagation?.();
+  };
+  on("pointermove", (event) => {
+    if (!done) ghost.move(event.clientX, event.clientY);
+  });
+  on("pointerdown", (event) => {
+    if (done) {
+      if (clock() <= swallowUntil) eat(event);
+      return;
+    }
+    eat(event);
+    ghost.move(event.clientX, event.clientY);
+    ghost.frame();
+    if (event.button != null && event.button !== 0) {
+      cancel("button");
+      return;
+    }
+    if (ghost.zone() === "board") place2();
+    else cancel("outside");
+  });
+  on("mousedown", (event) => {
+    if (!done || clock() <= swallowUntil) eat(event);
+  });
+  on("click", (event) => {
+    if (!done || clock() <= swallowUntil) eat(event);
+  });
+  on("contextmenu", (event) => {
+    if (done && clock() > swallowUntil) return;
+    eat(event);
+    cancel("button");
+  });
+  on("keydown", (event) => {
+    if (done || event.key !== "Escape") return;
+    eat(event);
+    cancel("escape");
+  });
+  return {
+    active: () => !done,
+    cancel: () => cancel("api"),
+    ghost,
+    dispose() {
+      if (!done) cancel("dispose");
+      release();
+    }
+  };
+}
+
+// src/view/parse-actions.js
+init_drop();
+init_parse_to_roam_md();
+init_parse_schema();
+init_roam_table();
+var CARD_SIZE = { w: 280, h: 160 };
+function freeSpotBeside(rect, size, others = [], gap = 40) {
+  const r = rect && typeof rect === "object" ? rect : null;
+  if (!r) return null;
+  const w = Number(size?.w) || CARD_SIZE.w;
+  const h = Number(size?.h) || CARD_SIZE.h;
+  const x = (Number(r.x) || 0) + (Number(r.w) || 0) + gap;
+  let y = Number(r.y) || 0;
+  const hit = (yy) => others.find((o) => o && x < o.x + o.w && x + w > o.x && yy < o.y + o.h && yy + h > o.y);
+  for (let guard = 0; guard < 200; guard += 1) {
+    const blocker = hit(y);
+    if (!blocker) break;
+    y = blocker.y + blocker.h + gap;
+  }
+  return { x, y };
+}
+function mergedCells(table) {
+  let n2 = 0;
+  for (const cell of table?.cells || []) {
+    if ((cell.rowSpan ?? 1) > 1 || (cell.colSpan ?? 1) > 1) n2 += 1;
+  }
+  return n2;
+}
+function plural(n2, one, many) {
+  return `${n2} ${n2 === 1 ? one : many}`;
+}
+function placementContent(doc, ids, act, extra = null) {
+  const blocks = selectBlocks(doc, ids);
+  const first = blocks[0] || null;
+  if (!first) return { content: { kind: "text", text: "" }, width: CARD_SIZE.w };
+  if (act === "table" && first.type === "table") {
+    const rows = tableGrid(first).slice(0, 8).map((row4) => row4.filter((slot2) => !slot2.covered).map((slot2) => String(slot2.cell?.text ?? "")));
+    const sized = parsedTableSize(first);
+    const width = Math.max(200, Math.min(900, Number(sized?.w) || CARD_SIZE.w));
+    return { content: { kind: "table", rows, rowCap: 8, colCap: 12, page: first.page, mode: extra?.mode || "grid" }, width };
+  }
+  if (blocks.length === 1 && first.type === "figure") {
+    return { content: { kind: "figure", text: first.caption && doc?.blocks?.[first.caption]?.text ? doc.blocks[first.caption].text : "", page: first.page }, width: CARD_SIZE.w };
+  }
+  const text3 = blocks.map((b) => b.type === "list" ? (b.items || []).map((item) => item.text).join(" ") : b.text || b.latex || "").join(" ");
+  return { content: { kind: "text", text: text3, page: first.page }, width: CARD_SIZE.w };
+}
+function createParseActions({ session, store, placeBeside, toast, select, show, upload, toWorld } = {}) {
+  const say = (message) => {
+    try {
+      if (typeof toast === "function") toast(message);
+    } catch {
+    }
+  };
+  const pick = (uids) => {
+    const list = (Array.isArray(uids) ? uids : []).filter((id) => typeof id === "string" && id);
+    if (!list.length) return;
+    try {
+      select?.(list);
+    } catch {
+    }
+    try {
+      show?.(list);
+    } catch {
+    }
+  };
+  const spot = (pdfUid, size) => {
+    let at = null;
+    try {
+      at = placeBeside?.(pdfUid, size);
+    } catch {
+      at = null;
+    }
+    return { x: Number.isFinite(at?.x) ? at.x : 0, y: Number.isFinite(at?.y) ? at.y : 0 };
+  };
+  const where = (payload, size) => {
+    const c = payload?.client;
+    if (c && Number.isFinite(c.x) && Number.isFinite(c.y) && typeof toWorld === "function") {
+      let p = null;
+      try {
+        p = toWorld({ x: c.x, y: c.y });
+      } catch {
+        p = null;
+      }
+      if (Number.isFinite(p?.x) && Number.isFinite(p?.y)) return { x: p.x, y: p.y };
+    }
+    if (Number.isFinite(payload?.x) && Number.isFinite(payload?.y)) return { x: payload.x, y: payload.y };
+    return spot(payload?.pdfUid, size);
+  };
+  const load = async (payload) => {
+    let doc = null;
+    try {
+      doc = await store?.getParse?.(payload?.sha256, payload?.engine, payload?.optsHash);
+    } catch {
+      doc = null;
+    }
+    if (!doc) say(PARSE_MISSING_TOAST);
+    return doc;
+  };
+  async function withUploadedImages(doc, ids) {
+    const blocks = selectBlocks(doc, ids).filter((b) => (b?.type === "figure" || b?.type === "formula") && !(b.image?.url || b.url));
+    if (!blocks.length || typeof upload !== "function") return doc;
+    const next = { ...doc, blocks: { ...doc.blocks } };
+    for (const block of blocks) {
+      try {
+        const src = await store?.getImage?.(imageKey(doc.sha256, block.id));
+        const blob = typeof src === "string" ? dataUrlToBlob2(src) : src;
+        if (!blob) continue;
+        const file = new File([blob], `figure-p${block.page ?? 0}.png`, { type: "image/png" });
+        const url = await upload(file);
+        if (url) next.blocks[block.id] = { ...block, image: { ...block.image || {}, url } };
+      } catch {
+      }
+    }
+    return next;
+  }
+  const actions = {
+    async insertParsedBelow(payload) {
+      const doc = await load(payload);
+      if (!doc) return { ok: false, reason: "missing-cache" };
+      const { markdown, blockEstimate } = toRoamMarkdown(doc, payload.ids);
+      const res = await session?.insertParsedBelow?.({ pdfUid: payload.pdfUid, markdown, blockEstimate });
+      if (res?.ok) {
+        pick(res.uids);
+        const where2 = res.path === "card" ? "beside the PDF" : "below the PDF";
+        say(`Inserted ${plural(blockEstimate, "block", "blocks")} ${where2}`);
+      }
+      return res || { ok: false, reason: "no-session" };
+    },
+    async insertParsedTable(payload) {
+      const doc = await load(payload);
+      if (!doc) return { ok: false, reason: "missing-cache" };
+      const table = selectBlocks(doc, payload.ids).find((b) => b?.type === "table");
+      if (!table) return { ok: false, reason: "empty" };
+      const sized = parsedTableSize(table);
+      const at = where(payload, sized);
+      const res = await session?.insertParsedTable?.({ ...at, table, mode: payload.mode || "auto" });
+      if (res?.ok) {
+        pick(res.uid ? [res.uid] : []);
+        const merged = mergedCells(table);
+        const how = res.path === "grid" ? "Roam Grid" : res.path === "flat" ? "flat Roam table" : "native Roam table";
+        say(merged ? `Table inserted · ${how} with ${plural(merged, "merged cell", "merged cells")}` : `Table inserted · ${how}`);
+      }
+      return res || { ok: false, reason: "no-session" };
+    },
+    async sendParsedToBoard(payload) {
+      const doc = await load(payload);
+      if (!doc) return { ok: false, reason: "missing-cache" };
+      const blocks = selectBlocks(doc, payload.ids);
+      if (blocks.length && blocks.every((b) => b?.type === "table")) return actions.insertParsedTable(payload);
+      const withImages = await withUploadedImages(doc, payload.ids);
+      const plan = planParseInsert(withImages, { ...payload, kind: "blocks" });
+      if (plan.action === "sections") {
+        const at = where(payload, CARD_SIZE);
+        const res = await session?.sendParsedToBoard?.({ ...at, sections: plan.sections });
+        if (res?.ok) {
+          pick(res.uids);
+          say(`Sent ${plural(plan.sections.length, "card", "cards")} to the board`);
+        }
+        return res || { ok: false, reason: "no-session" };
+      }
+      if (plan.action === "card") {
+        const at = where(payload, CARD_SIZE);
+        const res = await session?.insertParsedCard?.({ ...at, markdown: plan.markdown });
+        if (res?.ok) {
+          pick(res.uid ? [res.uid] : []);
+          say("Sent 1 card to the board");
+        }
+        return res || { ok: false, reason: "no-session" };
+      }
+      return { ok: false, reason: "empty" };
+    },
+    // U3. Card / Quote from a reader selection: one note card beside the PDF (fromMarkdown + props, 2 writes).
+    async insertTextCard(payload) {
+      const markdown = textCardMarkdown(payload || {});
+      if (!markdown) return { ok: false, reason: "empty" };
+      const at = where(payload, CARD_SIZE);
+      const res = await session?.insertParsedCard?.({ ...at, markdown });
+      if (res?.ok) {
+        pick(res.uid ? [res.uid] : []);
+        say(payload.quote ? "Quote card inserted" : "Card inserted");
+      }
+      return res || { ok: false, reason: "no-session" };
+    },
+    async insertParsedCard(payload) {
+      const doc = await load(payload);
+      if (!doc) return { ok: false, reason: "missing-cache" };
+      const withImages = await withUploadedImages(doc, payload.ids);
+      const { markdown } = toRoamMarkdown(withImages, payload.ids);
+      const at = where(payload, CARD_SIZE);
+      const res = await session?.insertParsedCard?.({ ...at, markdown });
+      if (res?.ok) {
+        pick(res.uid ? [res.uid] : []);
+        say("Card inserted");
+      }
+      return res || { ok: false, reason: "no-session" };
+    }
+  };
+  return actions;
 }
 
 // assets/anydoc/anydoc_wasm.js
@@ -36075,7 +36655,7 @@ function createParseView({
   function pageInfo(n2) {
     const fromDoc = (parsed?.pages || []).find((page) => page.n === n2);
     const given = pageOf3?.(n2);
-    return { w: fromDoc?.w || given?.w || 612, h: fromDoc?.h || given?.h || 792, rotation: fromDoc?.rotation || given?.rotation || 0, ...given || {} };
+    return { w: fromDoc?.w || given?.w || 612, h: fromDoc?.h || given?.h || 792, rotation: fromDoc?.rotation || given?.rotation || 0, textRotation: fromDoc?.textRotation || 0, ...given || {} };
   }
   function shown() {
     const blocks = visibleBlocks(parsed, { filters, query, range });
@@ -36097,8 +36677,18 @@ function createParseView({
     pageEl: (n2) => pageEl?.(n2) || null,
     pageOf: (n2) => pageInfo(n2),
     isLatexReady: () => helperState === "ready",
+    storage,
+    copy: (block) => {
+      if (!parsed || !block) return;
+      void writeClipboard2(toMarkdown(parsed, [block.id])).then(() => {
+        try {
+          onToast?.("Copied");
+        } catch {
+        }
+      });
+    },
     run: (act, item) => {
-      runChipAction({ act, ...item }, {
+      const go = (extra = {}) => runChipAction({ act, ...item, ...extra }, {
         session,
         payload: (ids) => payload(ids.map((id) => parsed?.blocks?.[id]).filter(Boolean)),
         copy: (ids) => {
@@ -36109,8 +36699,54 @@ function createParseView({
           else onToast?.("Run Docling on this page to read the formula as LaTeX");
         }
       });
+      if (!PLACE_ACTS.includes(act) || item?.extra?.beside || !ghostRoot || !parsed) {
+        go();
+        return;
+      }
+      void beginPlacement(act, item, go);
     }
   }));
+  let placing = null;
+  async function beginPlacement(act, item, go) {
+    try {
+      placing?.dispose();
+    } catch {
+    }
+    placing = null;
+    const ids = item?.ids || [];
+    const plan = placementContent(parsed, ids, act, item?.extra);
+    const first = parsed?.blocks?.[ids[0]];
+    if (plan.content.kind === "figure" && first && store?.getImage) {
+      try {
+        const src = await Promise.race([
+          store.getImage(imageKey(parsed.sha256, first.id)),
+          new Promise((resolve) => {
+            const id = setTimeout(() => resolve(null), 120);
+            id?.unref?.();
+          })
+        ]);
+        if (typeof src === "string") plan.content.src = src;
+      } catch {
+      }
+    }
+    if (dead) return;
+    placing = startPlacement({
+      doc,
+      root: ghostRoot,
+      pane: ghostPane,
+      pointer: item?.pointer || { x: 0, y: 0 },
+      from: item?.from || null,
+      content: plan.content,
+      width: plan.width,
+      onPlace: ({ client }) => {
+        placing = null;
+        go({ client });
+      },
+      onCancel: () => {
+        placing = null;
+      }
+    });
+  }
   function idsOf(blocks) {
     return (blocks || shown()).map((block) => block.id);
   }
@@ -36290,7 +36926,14 @@ function createParseView({
     const blocks = shown();
     body.replaceChildren?.();
     if (parsed) {
-      chipsOn();
+      const chips = chipsOn();
+      if (chips.__doc !== parsed) {
+        chips.__doc = parsed;
+        try {
+          chips.refresh();
+        } catch {
+        }
+      }
       try {
         onTitle?.(parsedDocTitle(parsed));
       } catch {
@@ -37320,6 +37963,12 @@ function createParseView({
       }
     },
     chipText: () => chip.textContent,
+    // Show parsed: persistent boxes and copy icons on the page. Remembered per device.
+    showParsed: () => pageChips2 ? pageChips2.shown() : readShowParsed(storage),
+    setShowParsed(on) {
+      return pageChips2 ? pageChips2.setShown(on) : (writeShowParsed(storage, on), Boolean(on));
+    },
+    hasParse: () => Boolean(parsed),
     selectedIds: () => selected.slice(),
     blockCount: () => shown().length,
     isBusy: () => phase === "running",
@@ -37354,6 +38003,11 @@ function createParseView({
       }
       cropWaiting.clear();
       overlay.dispose();
+      try {
+        placing?.dispose();
+      } catch {
+      }
+      placing = null;
       pageChips2?.dispose();
       clearBlockListeners();
       for (const [node2, type, fn, capture] of armed) {
@@ -38878,6 +39532,11 @@ function createReadPane({
     button2.setAttribute("aria-pressed", id === "reader" ? "true" : "false");
     modeBtns[id] = button2;
   }
+  const showParsedBtn = el("button", "pxd-read__mode pxd-read__showparsed", modes);
+  showParsedBtn.type = "button";
+  showParsedBtn.textContent = "Show parsed";
+  showParsedBtn.setAttribute("data-tip", "parse.show-parsed");
+  showParsedBtn.setAttribute("aria-pressed", readShowParsed(storage) ? "true" : "false");
   const progress = el("div", "pxd-read__progress", pane);
   setHidden2(progress, true);
   const progressFill = el("div", "pxd-read__progressfill", progress);
@@ -41300,6 +41959,12 @@ function createReadPane({
       }
     }
   }
+  listen(showParsedBtn, "click", (event) => {
+    event.stopPropagation?.();
+    const next = showParsedBtn.getAttribute("aria-pressed") !== "true";
+    const on = parsedView ? parsedView.setShowParsed(next) : (writeShowParsed(storage, next), next);
+    showParsedBtn.setAttribute("aria-pressed", on ? "true" : "false");
+  });
   listen(modes, "click", (event) => {
     const id = event.target?.closest?.("[data-mode]")?.getAttribute?.("data-mode");
     if (!id) return;
@@ -46908,177 +47573,6 @@ init_panel();
 init_drop();
 init_anydoc_to_parse();
 
-// src/view/parse-actions.js
-init_drop();
-init_parse_to_roam_md();
-init_parse_schema();
-init_roam_table();
-var CARD_SIZE = { w: 280, h: 160 };
-function freeSpotBeside(rect, size, others = [], gap = 40) {
-  const r = rect && typeof rect === "object" ? rect : null;
-  if (!r) return null;
-  const w = Number(size?.w) || CARD_SIZE.w;
-  const h = Number(size?.h) || CARD_SIZE.h;
-  const x = (Number(r.x) || 0) + (Number(r.w) || 0) + gap;
-  let y = Number(r.y) || 0;
-  const hit = (yy) => others.find((o) => o && x < o.x + o.w && x + w > o.x && yy < o.y + o.h && yy + h > o.y);
-  for (let guard = 0; guard < 200; guard += 1) {
-    const blocker = hit(y);
-    if (!blocker) break;
-    y = blocker.y + blocker.h + gap;
-  }
-  return { x, y };
-}
-function mergedCells(table) {
-  let n2 = 0;
-  for (const cell of table?.cells || []) {
-    if ((cell.rowSpan ?? 1) > 1 || (cell.colSpan ?? 1) > 1) n2 += 1;
-  }
-  return n2;
-}
-function plural(n2, one, many) {
-  return `${n2} ${n2 === 1 ? one : many}`;
-}
-function createParseActions({ session, store, placeBeside, toast, select, show, upload } = {}) {
-  const say = (message) => {
-    try {
-      if (typeof toast === "function") toast(message);
-    } catch {
-    }
-  };
-  const pick = (uids) => {
-    const list = (Array.isArray(uids) ? uids : []).filter((id) => typeof id === "string" && id);
-    if (!list.length) return;
-    try {
-      select?.(list);
-    } catch {
-    }
-    try {
-      show?.(list);
-    } catch {
-    }
-  };
-  const spot = (pdfUid, size) => {
-    let at = null;
-    try {
-      at = placeBeside?.(pdfUid, size);
-    } catch {
-      at = null;
-    }
-    return { x: Number.isFinite(at?.x) ? at.x : 0, y: Number.isFinite(at?.y) ? at.y : 0 };
-  };
-  const load = async (payload) => {
-    let doc = null;
-    try {
-      doc = await store?.getParse?.(payload?.sha256, payload?.engine, payload?.optsHash);
-    } catch {
-      doc = null;
-    }
-    if (!doc) say(PARSE_MISSING_TOAST);
-    return doc;
-  };
-  async function withUploadedImages(doc, ids) {
-    const blocks = selectBlocks(doc, ids).filter((b) => (b?.type === "figure" || b?.type === "formula") && !(b.image?.url || b.url));
-    if (!blocks.length || typeof upload !== "function") return doc;
-    const next = { ...doc, blocks: { ...doc.blocks } };
-    for (const block of blocks) {
-      try {
-        const src = await store?.getImage?.(imageKey(doc.sha256, block.id));
-        const blob = typeof src === "string" ? dataUrlToBlob2(src) : src;
-        if (!blob) continue;
-        const file = new File([blob], `figure-p${block.page ?? 0}.png`, { type: "image/png" });
-        const url = await upload(file);
-        if (url) next.blocks[block.id] = { ...block, image: { ...block.image || {}, url } };
-      } catch {
-      }
-    }
-    return next;
-  }
-  const actions = {
-    async insertParsedBelow(payload) {
-      const doc = await load(payload);
-      if (!doc) return { ok: false, reason: "missing-cache" };
-      const { markdown, blockEstimate } = toRoamMarkdown(doc, payload.ids);
-      const res = await session?.insertParsedBelow?.({ pdfUid: payload.pdfUid, markdown, blockEstimate });
-      if (res?.ok) {
-        pick(res.uids);
-        const where = res.path === "card" ? "beside the PDF" : "below the PDF";
-        say(`Inserted ${plural(blockEstimate, "block", "blocks")} ${where}`);
-      }
-      return res || { ok: false, reason: "no-session" };
-    },
-    async insertParsedTable(payload) {
-      const doc = await load(payload);
-      if (!doc) return { ok: false, reason: "missing-cache" };
-      const table = selectBlocks(doc, payload.ids).find((b) => b?.type === "table");
-      if (!table) return { ok: false, reason: "empty" };
-      const sized = parsedTableSize(table);
-      const at = Number.isFinite(payload.x) && Number.isFinite(payload.y) ? { x: payload.x, y: payload.y } : spot(payload.pdfUid, sized);
-      const res = await session?.insertParsedTable?.({ ...at, table, mode: payload.mode || "auto" });
-      if (res?.ok) {
-        pick(res.uid ? [res.uid] : []);
-        const merged = mergedCells(table);
-        const how = res.path === "grid" ? "Roam Grid" : res.path === "flat" ? "flat Roam table" : "native Roam table";
-        say(merged ? `Table inserted · ${how} with ${plural(merged, "merged cell", "merged cells")}` : `Table inserted · ${how}`);
-      }
-      return res || { ok: false, reason: "no-session" };
-    },
-    async sendParsedToBoard(payload) {
-      const doc = await load(payload);
-      if (!doc) return { ok: false, reason: "missing-cache" };
-      const blocks = selectBlocks(doc, payload.ids);
-      if (blocks.length && blocks.every((b) => b?.type === "table")) return actions.insertParsedTable(payload);
-      const withImages = await withUploadedImages(doc, payload.ids);
-      const plan = planParseInsert(withImages, { ...payload, kind: "blocks" });
-      if (plan.action === "sections") {
-        const at = spot(payload.pdfUid, CARD_SIZE);
-        const res = await session?.sendParsedToBoard?.({ ...at, sections: plan.sections });
-        if (res?.ok) {
-          pick(res.uids);
-          say(`Sent ${plural(plan.sections.length, "card", "cards")} to the board`);
-        }
-        return res || { ok: false, reason: "no-session" };
-      }
-      if (plan.action === "card") {
-        const at = spot(payload.pdfUid, CARD_SIZE);
-        const res = await session?.insertParsedCard?.({ ...at, markdown: plan.markdown });
-        if (res?.ok) {
-          pick(res.uid ? [res.uid] : []);
-          say("Sent 1 card to the board");
-        }
-        return res || { ok: false, reason: "no-session" };
-      }
-      return { ok: false, reason: "empty" };
-    },
-    // U3. Card / Quote from a reader selection: one note card beside the PDF (fromMarkdown + props, 2 writes).
-    async insertTextCard(payload) {
-      const markdown = textCardMarkdown(payload || {});
-      if (!markdown) return { ok: false, reason: "empty" };
-      const at = Number.isFinite(payload.x) && Number.isFinite(payload.y) ? { x: payload.x, y: payload.y } : spot(payload.pdfUid, CARD_SIZE);
-      const res = await session?.insertParsedCard?.({ ...at, markdown });
-      if (res?.ok) {
-        pick(res.uid ? [res.uid] : []);
-        say(payload.quote ? "Quote card inserted" : "Card inserted");
-      }
-      return res || { ok: false, reason: "no-session" };
-    },
-    async insertParsedCard(payload) {
-      const doc = await load(payload);
-      if (!doc) return { ok: false, reason: "missing-cache" };
-      const withImages = await withUploadedImages(doc, payload.ids);
-      const { markdown } = toRoamMarkdown(withImages, payload.ids);
-      const at = spot(payload.pdfUid, CARD_SIZE);
-      const res = await session?.insertParsedCard?.({ ...at, markdown });
-      if (res?.ok) {
-        pick(res.uid ? [res.uid] : []);
-        say("Card inserted");
-      }
-      return res || { ok: false, reason: "no-session" };
-    }
-  };
-  return actions;
-}
-
 // src/view/menu.js
 init_avoid();
 var MARGIN2 = 4;
@@ -50419,6 +50913,10 @@ function buildBoardView(onFail, {
         session,
         store: createParseStore({ indexedDB: doc.defaultView?.indexedDB }),
         placeBeside: placeParseBeside,
+        toWorld: (pt) => {
+          measure();
+          return screenToWorld(vp, { x: pt.x - rootRect.left, y: pt.y - rootRect.top });
+        },
         toast: (message) => toast(message),
         select: (uids) => {
           if (!disposed) ctl.select(uids);

@@ -6166,6 +6166,80 @@ body.roam-body.dark .pxd-root .pxd-present-hud,
   z-index: 4;
 }
 
+/* Show parsed: a persistent soft box per parsed block and a copy icon at its left edge.
+   Light: faint gray fill and border. Dark: border only. Only the icons take pointer events. */
+.page > .pxd-parsed-layer {
+  position: absolute;
+  inset: 0;
+  z-index: 3;
+  pointer-events: none;
+}
+
+.page > .pxd-parsed-layer > .pxd-parsed-box {
+  position: absolute;
+  box-sizing: border-box;
+  border: 1px solid color-mix(in srgb, var(--pxd-border-strong, #9ca3af) 55%, transparent);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--pxd-muted, #6b7280) 7%, transparent);
+  pointer-events: none;
+  transition: border-color 120ms ease-out, background-color 120ms ease-out;
+}
+
+.page > .pxd-parsed-layer > .pxd-parsed-box.pxd-parsed-box--hot {
+  border-color: var(--pxd-border-strong, #6b7280);
+  background: color-mix(in srgb, var(--pxd-muted, #6b7280) 12%, transparent);
+}
+
+.bp3-dark .pxd-root .page > .pxd-parsed-layer > .pxd-parsed-box,
+.pxd-root.pxd-root--dark .page > .pxd-parsed-layer > .pxd-parsed-box {
+  background: transparent;
+}
+
+.bp3-dark .pxd-root .page > .pxd-parsed-layer > .pxd-parsed-box.pxd-parsed-box--hot,
+.pxd-root.pxd-root--dark .page > .pxd-parsed-layer > .pxd-parsed-box.pxd-parsed-box--hot {
+  background: transparent;
+  border-color: var(--pxd-accent);
+}
+
+.page > .pxd-parsed-layer > .pxd-parsed-copy {
+  position: absolute;
+  box-sizing: border-box;
+  width: 18px;
+  height: 18px;
+  margin: 0;
+  padding: 0;
+  transform: translate(calc(-100% - 5px), -1px);
+  font-size: 11px;
+  line-height: 16px;
+  text-align: center;
+  color: var(--pxd-muted, #6b7280);
+  background: var(--pxd-surface);
+  border: 1px solid var(--pxd-border, #d1d5db);
+  border-radius: 4px;
+  cursor: pointer;
+  opacity: 0.7;
+  pointer-events: auto;
+}
+
+.page > .pxd-parsed-layer > .pxd-parsed-copy:hover,
+.page > .pxd-parsed-layer > .pxd-parsed-copy:focus-visible {
+  opacity: 1;
+  color: var(--pxd-fg, inherit);
+  border-color: var(--pxd-accent);
+  outline: none;
+}
+
+/* Click-to-place: the preview is solid and the board shows where it lands. */
+.pxd-root .pxd-item.pxd-ghost.pxd-ghost--place {
+  opacity: 1;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+}
+
+.pxd-root.pxd-root--placing,
+.pxd-root.pxd-root--placing * {
+  cursor: copy !important;
+}
+
 /* PGE-1. A page card keeps its box while Roam's editor is open.
    extension.css sets height:auto !important on every editing card. enterEdit pins the page card's
    own height with an inline !important so this file does not have to fight that rule.

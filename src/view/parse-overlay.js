@@ -50,19 +50,55 @@ export function userBoxToViewport(bbox, page) {
   return [Math.min(...xs), Math.min(...ys), Math.max(...xs), Math.max(...ys)];
 }
 
-// bbox is top-left viewport points in page.w × page.h, unless page.userSpace.
-// scale = pageEl.clientWidth / viewport width. Rotation 90/270 swaps that width
-// only for a user-space box; a stored parse bbox is already in viewport space.
-export function bboxToPageRect(bbox, page, pageEl) {
-  let box = boxOf(bbox);
+// A page whose text runs sideways (engine `textRotation` ±90/180) stores its geometry in the text's
+// own frame: frame = R(-textRotation) · viewport + t, with page.w × page.h the frame size. This is the
+// inverse, back to top-left viewport points, plus the viewport size. Exact for multiples of 90°.
+export function frameBoxToViewport(bbox, page) {
+  const box = boxOf(bbox);
   if (!box) return null;
-  const mediaW = num(page?.w, 1) || 1;
-  const mediaH = num(page?.h, 1) || 1;
-  let vw = mediaW;
+  const fw = num(page?.w, 1) || 1;
+  const fh = num(page?.h, 1) || 1;
+  const tr = Math.round(num(page?.textRotation) / 90) * 90;
+  if (!(normRotation(tr))) return { box, vw: fw, vh: fh };
+  const quarter = normRotation(tr) % 180 === 90;
+  const vw = quarter ? fh : fw;
+  const vh = quarter ? fw : fh;
+  const rad = (-tr * Math.PI) / 180;
+  const a = Math.round(Math.cos(rad));
+  const b = Math.round(Math.sin(rad));
+  const c = -b;
+  const d = a;
+  const xs = [0, vw, vw, 0].map((x, i) => a * x + c * [0, 0, vh, vh][i]);
+  const ys = [0, vw, vw, 0].map((x, i) => b * x + d * [0, 0, vh, vh][i]);
+  const minX = Math.min(...xs);
+  const minY = Math.min(...ys);
+  const pts = [[box[0], box[1]], [box[2], box[1]], [box[0], box[3]], [box[2], box[3]]].map(([fx, fy]) => {
+    const u = fx + minX;
+    const w = fy + minY;
+    return [a * u + b * w, c * u + d * w];
+  });
+  const px = pts.map((p) => p[0]);
+  const py = pts.map((p) => p[1]);
+  return { box: [Math.min(...px), Math.min(...py), Math.max(...px), Math.max(...py)], vw, vh };
+}
+
+// Viewport box and size for a stored bbox (frame-aware) or a user-space box (page.userSpace).
+function viewportBox(bbox, page) {
   if (page?.userSpace) {
-    box = userBoxToViewport(box, page);
-    vw = viewportSize(mediaW, mediaH, page?.rotation).w || 1;
+    const box = userBoxToViewport(bbox, page);
+    if (!box) return null;
+    const size = viewportSize(num(page?.w, 1) || 1, num(page?.h, 1) || 1, page?.rotation);
+    return { box, vw: size.w || 1, vh: size.h || 1 };
   }
+  return frameBoxToViewport(bbox, page);
+}
+
+// bbox is top-left viewport points in page.w × page.h (the text frame when page.textRotation is set),
+// unless page.userSpace. scale = pageEl.clientWidth / viewport width.
+export function bboxToPageRect(bbox, page, pageEl) {
+  const at = viewportBox(bbox, page);
+  if (!at) return null;
+  const { box, vw } = at;
   const client = num(pageEl?.clientWidth, 0);
   const scale = (client > 0 ? client : vw) / vw;
   return {
@@ -71,6 +107,19 @@ export function bboxToPageRect(bbox, page, pageEl) {
     width: (box[2] - box[0]) * scale,
     height: (box[3] - box[1]) * scale,
     scale,
+  };
+}
+
+// The same box in percent of the page element: survives reader zoom without a layout read.
+export function bboxToPagePercent(bbox, page) {
+  const at = viewportBox(bbox, page);
+  if (!at) return null;
+  const { box, vw, vh } = at;
+  return {
+    left: (box[0] / vw) * 100,
+    top: (box[1] / vh) * 100,
+    width: ((box[2] - box[0]) / vw) * 100,
+    height: ((box[3] - box[1]) / vh) * 100,
   };
 }
 
@@ -181,7 +230,9 @@ export function createParseOverlay({ doc, pageEl, pageOf, onResplit } = {}) {
       const node = add(el, "pxd-parse-merge");
       place(node, rect);
     }
-    for (let i = 1; i < xs.length - 1; i += 1) {
+    // Column handles drag along the frame's x axis, which is not the screen's on a sideways page.
+    const upright = !normRotation(Math.round(num(info?.textRotation) / 90) * 90);
+    for (let i = 1; upright && i < xs.length - 1; i += 1) {
       const line = bboxToPageRect([xs[i], ys[0] ?? table.bbox?.[1] ?? 0, xs[i], ys[ys.length - 1] ?? table.bbox?.[3] ?? 0], info, el);
       if (!line) continue;
       const handle = doc.createElement("div");

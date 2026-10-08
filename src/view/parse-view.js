@@ -10,7 +10,7 @@ import { selectBlocks, tableGrid } from "../model/parse-schema.js";
 import { toCSV, toMarkdown } from "../model/parse-to-text.js";
 import { imageKey, restorableByUrl } from "../host/parse-store.js";
 import { parsedDocTitle } from "../model/pdf.js";
-import { loadPageData, mergeOcrPageRecords, readScan, rereadCells } from "./parse-engine.js";
+import { loadPageData, mergeOcrPageRecords, readScan, rereadCells, rereadLines } from "./parse-engine.js";
 import { scanPagesOf } from "../model/parse/ocr-merge.js";
 import { createParseOverlay } from "./parse-overlay.js";
 import { createPageChips, PLACE_ACTS, readShowParsed, runChipAction, writeShowParsed } from "./page-chips.js";
@@ -1300,7 +1300,8 @@ export function createParseView({
   // OCR pages from the pane (on-device read): the same merge readScan does, without a helper.
   // `readCells(requests)` (optional) answers { cells } from the same source for the doubtful-cell re-read;
   // it runs under `signal` and reports through `onPhase`. A failed or aborted re-read keeps the merge.
-  async function applyOcr(ocrPages, { readCells = null, signal = null, onPhase = null } = {}) {
+  // The same source first re-reads doubtful text lines (`lexicon`: Set, null, or async loader).
+  async function applyOcr(ocrPages, { readCells = null, signal = null, onPhase = null, lexicon = null } = {}) {
     if (dead || !parsed || phase === "running") return false;
     const incoming = (Array.isArray(ocrPages) ? ocrPages : []).filter((p) => p && Number.isFinite(Number(p.n)));
     const pages = scanPagesOf(parsed).filter((n) => incoming.some((p) => Number(p.n) === n));
@@ -1319,7 +1320,19 @@ export function createParseView({
         }
       }
       const t0 = now();
-      const merged = mergeOcrPageRecords({ base, ocrPages: incoming, records: recs, pages, numPages: base.pageCount, from, to, sha256: base.sha256 });
+      let merged = mergeOcrPageRecords({ base, ocrPages: incoming, records: recs, pages, numPages: base.pageCount, from, to, sha256: base.sha256 });
+      if (typeof readCells === "function") {
+        try {
+          const lined = await rereadLines({ doc: merged.doc, ocrPages: incoming, ocr: readCells, lexicon, signal, onPhase });
+          if (lined.applied.length && !dead && parsed === base) {
+            merged = mergeOcrPageRecords({ base, ocrPages: lined.pages, records: recs, pages, numPages: base.pageCount, from, to, sha256: base.sha256 });
+            merged.doc.ocr = { ...(merged.doc.ocr || {}), lines: lined.applied.length };
+            const read = merged.records.filter((rec) => rec?.ocr && pages.includes(rec.n));
+            if (read.length) { try { onOcrPages?.(read, base.sha256); } catch { /* host */ } }
+          }
+        } catch { /* keep the first merge */ }
+      }
+      if (dead || parsed !== base) return false;
       records = merged.records;
       if (typeof readCells === "function") {
         try {

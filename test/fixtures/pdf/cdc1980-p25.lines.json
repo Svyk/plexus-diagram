@@ -1,0 +1,10 @@
+{
+  "source": "cdc1980-p25.pdf: every text line outside the table (title and notes), read from the 300 dpi render, 2026-10-08. The rotated page-edge running title is not included.",
+  "lines": [
+    "NOTIFIABLE DISEASES — Summary of reported cases per 100,000 population, United States, 1971-1980",
+    "Note: Rates less than 0.01 after rounding are shown as 0.00.",
+    "Population data from those states where diseases were not notifiable (NN) were excluded from rate calculation. Civilian resident population used for chancroid, gonorrhea, granuloma inguinale, lymphogranuloma venereum, and syphilis.",
+    "*Not previously notifiable nationally.",
+    "**Per 1,000 live births."
+  ]
+}

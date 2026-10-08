@@ -2119,6 +2119,7 @@ export function createReadPane({
             try {
               await parsedView?.applyOcr?.(pageRecords(out), {
                 readCells: (cells) => deviceOcr.readCells({ cells, url: pdfUrl(), getPdf, signal: ctl.signal }),
+                lexicon: typeof deviceOcr.lexicon === "function" ? () => deviceOcr.lexicon({ signal: ctl.signal }) : null,
                 signal: ctl.signal,
                 onPhase: () => { ocrRun = { ...ocrRun, phase: "cells", progress: null }; paintStrip(); },
               });

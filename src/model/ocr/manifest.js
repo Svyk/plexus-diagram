@@ -53,6 +53,14 @@ export const MODEL_FILES = {
   },
 };
 
+// English word list for the text-line lexicon pass (SCOWL sizes 10-40, gzip). Served from our
+// own Pages origin beside the models; never fetched at load.
+export const LEXICON_FILE = {
+  file: "en-words.txt.gz",
+  sha256: "b754012207b309972024fbe5778525f8d39ffb3dd9c615244f943aa5676b7f60",
+  bytes: 115131,
+};
+
 export function dictLines(text) {
   return String(text || "").replace(/^\uFEFF/, "").split(/\r?\n/).filter((line) => line.length > 0);
 }

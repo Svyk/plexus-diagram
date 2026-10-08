@@ -2,7 +2,9 @@
 // Scanned-table bench (dev only). Runs the built-in pass, then the same "Read the scan" flow the
 // view runs (helper OCR → engine → merge → cell re-read), with the helper's CLI standing in for
 // /v1/ocr. Prints the timing, the score against a truth file, and every wrong cell.
-//   node tools/parse-bench/scan.mjs <file.pdf> [truth.json] [--out doc.json] [--pages 1-3] [--layer] [--source vision|ppocr-web]
+//   node tools/parse-bench/scan.mjs <file.pdf> [truth.json] [--out doc.json] [--pages 1-3] [--layer] [--source vision|ppocr-web] [--text lines.json|src.html]
+// --text scores the words outside tables against a list of lines (tools/parse-bench/text-lines.mjs).
+// PXD_OCR_LINES=0 skips the text-line re-read (the before column).
 // --layer keeps the page's own text layer (no OCR) for the comparison column.
 // --source ppocr-web runs the in-browser models through onnxruntime-node. Default stays vision.
 import { readFileSync, writeFileSync, mkdtempSync } from "node:fs";
@@ -71,7 +73,9 @@ export async function runScan(pdfPath, { pages, log = () => {}, layerOnly = fals
   if (layerOnly) return { doc: base, base, ms: builtinMs, builtinMs, pages: [], choices: [], rereads: [], source };
   const helper = await sourceHelper(pdfPath, source, log);
   const wanted = scanPagesOf(base);
-  const result = await readScan({ helper, bytes, base, records, pages: wanted, numPages, info, from, to, onPhase: (p) => log(`phase ${JSON.stringify(p)}`) });
+  const lines = process.env.PXD_OCR_LINES !== "0";
+  const lexicon = lines && source === "ppocr-web" ? (await import("./ppocr-node.mjs")).loadLexicon() : null;
+  const result = await readScan({ helper, bytes, base, records, pages: wanted, numPages, info, from, to, lexicon, lines, onPhase: (p) => log(`phase ${JSON.stringify(p)}`) });
   return { ...result, base, ms: performance.now() - t0, builtinMs, source };
 }
 
@@ -85,11 +89,12 @@ function takeArgs(argv) {
     return argv[i + 1] && !argv[i + 1].startsWith("--") ? argv[i + 1] : null;
   };
   const source = flag("--source") || "vision";
+  const text = flag("--text");
   const out = flag("--out");
   const pages = flag("--pages");
   if (argv.includes("--layer")) consumed.add(argv.indexOf("--layer"));
   const files = argv.filter((a, i) => !consumed.has(i) && !a.startsWith("--"));
-  return { files, source, out, pages, layer: argv.includes("--layer") };
+  return { files, source, out, pages, text, layer: argv.includes("--layer") };
 }
 
 async function main(argv) {
@@ -103,9 +108,15 @@ async function main(argv) {
   process.stdout.write(`${pdfPath}: ocrSource ${args.source}, ${(result.ms / 1000).toFixed(2)} s total (built-in ${(result.builtinMs / 1000).toFixed(2)} s), OCR pages ${result.pages.join(",") || "none"}, tables ${tables.map((t) => `${t.id} ${t.rows}x${t.cols} ${t.method}${t.ocrSource ? ` ${t.ocrSource}` : ""}`).join(", ")}\n`);
   if (result.choices?.length) process.stdout.write(`choices ${JSON.stringify(result.choices)}\n`);
   if (result.rereads?.length) process.stdout.write(`re-read cells ${JSON.stringify(result.rereads)}\n`);
+  if (result.lines?.length) process.stdout.write(`re-read lines ${JSON.stringify(result.lines)}\n`);
   if (truthPath) {
     const truth = JSON.parse(readFileSync(truthPath, "utf8"));
     process.stdout.write(`${printScore(scoreDoc(result.doc, truth))}\n`);
+  }
+  if (args.text) {
+    const { scoreTextLines, textTruth } = await import("./text-lines.mjs");
+    const s = scoreTextLines(result.doc, textTruth(args.text));
+    process.stdout.write(`text lines word accuracy ${s.accuracy.toFixed(3)} (${s.matched}/${s.words}), exact lines ${s.exact}/${s.lines}\n`);
   }
 }
 

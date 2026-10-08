@@ -25,6 +25,7 @@ const LONG_WORD = /^[A-Za-z][A-Za-z,.'()\-]{4,}$/;
 const CELL_PAD_PT = 1.5;
 const CELL_TIGHT_PT = 0.5;
 const CELL_SCALE = 3;
+const LINE_SCALES = [1, 2, 3];
 
 function aborted() {
   const error = new Error("ocr aborted");
@@ -437,8 +438,52 @@ export async function recognizePageImage(opts) {
   return (await preparePageImage(opts)).record;
 }
 
+// A text line read whole at 1×, 2× and 3× (a cell's side pad and white margin; the line box
+// itself is already clipped clear of its neighbours). Every read is
+// returned in `reads` ({ text, conf, confs, scale }); the top-level fields are the read with the
+// best mean letter confidence. Text keeps the model's own spaces and case; `confs` holds one
+// confidence per character of `text` (1 for spaces).
+async function readLine(prep, cell, runRec, dict, signal) {
+  const scale = prep.dpi / 72;
+  const [x0, y0, x1, y1] = cell.bbox;
+  // Lines sit closer than cells: a cell's vertical pad would take the next line's ascenders.
+  const crop = cropRgb(prep.rgb, prep.width, prep.height, (x0 - CELL_PAD_PT) * scale, y0 * scale, (x1 + CELL_PAD_PT) * scale, y1 * scale);
+  let best = { page: cell.page, bbox: cell.bbox, text: "", conf: 0, confs: [], scale: 0, reads: [] };
+  if (crop.w < 2 || crop.h < 2) return best;
+  const reads = [];
+  for (const k of LINE_SCALES) {
+    throwIfAborted(signal);
+    const scaled = k === 1 ? crop : resizeRgb(crop.rgb, crop.w, crop.h, crop.w * k, crop.h * k);
+    const padded = padWhite(scaled.rgb, scaled.w, scaled.h, Math.max(3, Math.round((8 * k) / CELL_SCALE)));
+    const resized = recResize(padded.rgb, padded.w, padded.h, REC_H);
+    const out = await runRec(nchwNormalize(resized.rgb, resized.w, resized.h), [1, 3, resized.h, resized.w]);
+    const contentT = Math.max(1, Math.min(out.time, Math.round(out.time * (resized.contentW || resized.w) / resized.w)));
+    const chars = ctcDecode(out.logits.subarray(0, contentT * out.classes), contentT, out.classes, dict);
+    let text = "";
+    const confs = [];
+    let sum = 0;
+    let n = 0;
+    for (const ch of chars) {
+      if (SPACE_CH.has(ch.ch)) {
+        if (text && !text.endsWith(" ")) { text += " "; confs.push(1); }
+        continue;
+      }
+      text += ch.ch;
+      confs.push(Math.round(ch.conf * 100) / 100);
+      sum += ch.conf;
+      n++;
+    }
+    if (text.endsWith(" ")) { text = text.slice(0, -1); confs.pop(); }
+    const conf = n ? Math.round((sum / n) * 1000) / 1000 : 0;
+    reads.push({ text, conf, confs, scale: k });
+    if (conf > best.conf) best = { page: cell.page, bbox: cell.bbox, text, conf, confs, scale: k };
+  }
+  return { ...best, reads };
+}
+
 async function readCell(prep, cell, runRec, dict, signal) {
   throwIfAborted(signal);
+  if (cell.line) return readLine(prep, cell, runRec, dict, signal);
   const scale = prep.dpi / 72;
   const [x0, y0, x1, y1] = cell.bbox;
   const crop = cropRgb(prep.rgb, prep.width, prep.height, (x0 - CELL_PAD_PT) * scale, (y0 - CELL_PAD_PT) * scale, (x1 + CELL_PAD_PT) * scale, (y1 + CELL_PAD_PT) * scale);

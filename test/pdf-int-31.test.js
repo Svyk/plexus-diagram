@@ -426,7 +426,9 @@ test("hovering a highlight card flashes its mark and does not scroll the reader"
     ],
   });
   try {
-    f.flush();
+    // Card paint is time-sliced per frame; on a loaded machine both cards can need more than one frame.
+    for (let i = 0; i < 40 && !f.root.querySelector(".pxd-pdf-open"); i += 1) f.flush();
+    for (let i = 0; i < 5; i += 1) f.flush();
     f.root.querySelector(".pxd-pdf-open").click();
     const live = f.root.querySelector(".pxd-read__live");
     const box = f.stub.document.createElement("div");

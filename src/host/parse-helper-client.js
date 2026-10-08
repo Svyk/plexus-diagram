@@ -97,10 +97,13 @@ async function readSSE(response, { onProgress, onPage }) {
   if (buf.trim()) dispatch(buf);
 }
 
-export function createHelperClient({ fetch: fetchImpl, settings, now, timeoutMs = HEALTH_TIMEOUT_MS } = {}) {
+export const TOKEN_SETTING = "parse-helper-token";
+
+export function createHelperClient({ fetch: fetchImpl, settings, setSetting, now, timeoutMs = HEALTH_TIMEOUT_MS } = {}) {
   const fetchFn = fetchImpl;
   const clock = typeof now === "function" ? now : () => Date.now();
   let healthCache = null;
+  let probeCache = null;
 
   const config = () => {
     const url = String(readSetting(settings, "parse-helper-url", "http://127.0.0.1:48765")).replace(/\/$/, "");
@@ -114,10 +117,10 @@ export function createHelperClient({ fetch: fetchImpl, settings, now, timeoutMs 
     signal: signal ?? init?.signal,
   });
 
-  async function health() {
+  async function health({ force = false } = {}) {
     const { url, token } = config();
     const at = clock();
-    if (healthCache && healthCache.url === url && healthCache.token === token && at - healthCache.at < HEALTH_CACHE_MS) {
+    if (!force && healthCache && healthCache.url === url && healthCache.token === token && at - healthCache.at < HEALTH_CACHE_MS) {
       return healthCache.value;
     }
     if (!token) {
@@ -163,6 +166,116 @@ export function createHelperClient({ fetch: fetchImpl, settings, now, timeoutMs 
       return value;
     } finally {
       timer.clear();
+    }
+  }
+
+  function invalidate() {
+    healthCache = null;
+    probeCache = null;
+  }
+
+  // No token yet: is something answering on the address? An unauthenticated health is 401 with
+  // the helper's name. Anything else (refused, timeout, a different server) is "not installed".
+  async function probe({ force = false } = {}) {
+    const { url } = config();
+    const at = clock();
+    if (!force && probeCache && probeCache.url === url && at - probeCache.at < HEALTH_CACHE_MS) return probeCache.value;
+    let value = { state: "not-installed" };
+    if (typeof fetchFn === "function") {
+      const timer = withTimeout(timeoutMs);
+      try {
+        const res = await call(`${url}/v1/health`, { method: "GET" }, timer.signal);
+        let body = null;
+        try { body = await res.json(); } catch { body = null; }
+        if (res.status === 401 && body?.helper === HELPER_NAME) value = { state: "not-paired" };
+      } catch { /* refused or timed out */ } finally {
+        timer.clear();
+      }
+    }
+    probeCache = { url, at, value };
+    return value;
+  }
+
+  async function models() {
+    const { url, token } = config();
+    if (!token || typeof fetchFn !== "function") return null;
+    const timer = withTimeout(timeoutMs);
+    try {
+      const res = await call(`${url}/v1/models`, { method: "GET", headers: { Authorization: `Bearer ${token}` } }, timer.signal);
+      if (res.status < 200 || res.status >= 300) return null;
+      return await res.json();
+    } catch {
+      return null;
+    } finally {
+      timer.clear();
+    }
+  }
+
+  // The Engines panel row state. One of: not-installed, not-paired, not-running, wrong-token,
+  // newer-schema, models-missing, downloading, ready. `force` skips the 60 s cache (pane open,
+  // panel visible). `paired` is true when a token is stored.
+  async function status({ force = false } = {}) {
+    const { token } = config();
+    if (!token) return { ...(await probe({ force })), paired: false };
+    const h = await health({ force });
+    if (h.state === "models-missing") {
+      const report = await models();
+      const bytes = Number(report?.bytes) || 0;
+      const done = Number(report?.done) || 0;
+      const fraction = Number.isFinite(report?.fraction) ? report.fraction : (bytes ? done / bytes : 0);
+      if (report?.state === "downloading") {
+        return { ...h, state: "downloading", paired: true, progress: { bytes, done, fraction } };
+      }
+      return { ...h, paired: true, progress: { bytes, done, fraction } };
+    }
+    return { ...h, paired: true };
+  }
+
+  // Ask the helper for its token. It answers only inside the 90 s pairing window and only to an
+  // allowed Origin, so this works right after install.sh or `plexus-parse-helper pair`.
+  async function pair({ signal } = {}) {
+    const { url } = config();
+    if (typeof fetchFn !== "function") return { ok: false, reason: "not-running" };
+    if (typeof setSetting !== "function") return { ok: false, reason: "no-settings" };
+    const timer = withTimeout(timeoutMs, signal);
+    try {
+      const res = await call(`${url}/v1/pair`, { method: "GET" }, timer.signal);
+      if (res.status === 404) return { ok: false, reason: "window-closed" };
+      if (res.status < 200 || res.status >= 300) return { ok: false, reason: "error", status: res.status };
+      let body = null;
+      try { body = await res.json(); } catch { body = null; }
+      if (body?.helper !== HELPER_NAME || typeof body.token !== "string" || !body.token) return { ok: false, reason: "error" };
+      await setSetting(TOKEN_SETTING, body.token);
+      invalidate();
+      return { ok: true, version: body.version };
+    } catch {
+      return { ok: false, reason: "not-running" };
+    } finally {
+      timer.clear();
+    }
+  }
+
+  async function downloadModels() {
+    const { url, token } = config();
+    if (!token || typeof fetchFn !== "function") return false;
+    try {
+      const res = await call(`${url}/v1/models/download`, { method: "POST", headers: { Authorization: `Bearer ${token}` } });
+      invalidate();
+      return res.status === 202 || res.status === 200;
+    } catch {
+      return false;
+    }
+  }
+
+  async function cancelModels() {
+    const { url, token } = config();
+    if (!token || typeof fetchFn !== "function") return false;
+    try {
+      const res = await call(`${url}/v1/models/download`, { method: "DELETE", headers: { Authorization: `Bearer ${token}` } });
+      invalidate();
+      return res.status === 200;
+    } catch {
+      return false;
     }
   }
 
@@ -281,5 +394,5 @@ export function createHelperClient({ fetch: fetchImpl, settings, now, timeoutMs 
     return { ...body, sha256: sha };
   }
 
-  return { health, parse, cancel, reparseTable, ocr };
+  return { health, status, pair, models, downloadModels, cancelModels, invalidate, parse, cancel, reparseTable, ocr };
 }

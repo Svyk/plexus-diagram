@@ -71,6 +71,9 @@ export async function bundleEntry({
   return output.text;
 }
 
+// Served by Pages as /helper/install.sh. The source lives beside the helper it installs.
+const HELPER_INSTALLER = "tools/parse-helper/install.sh";
+
 export async function readCss(rootDirectory = defaultRoot) {
   const root = resolve(rootDirectory);
   const parts = [await readFile(resolve(root, "src/extension.css"), "utf8")];
@@ -114,8 +117,9 @@ export async function build(rootDirectory = defaultRoot, options = {}) {
     writeFile(resolve(rootDirectory, "extension.css"), css, "utf8"),
   ]);
   await rm(deployDir, { recursive: true, force: true });
-  await mkdir(deployDir, { recursive: true });
+  await mkdir(resolve(deployDir, "helper"), { recursive: true });
   await Promise.all([
+    copyFile(resolve(rootDirectory, HELPER_INSTALLER), resolve(deployDir, "helper", "install.sh")),
     writeFile(resolve(deployDir, "extension.js"), javascript, "utf8"),
     writeFile(resolve(deployDir, "extension.css"), css, "utf8"),
     ...["README.md", "CHANGELOG.md", "LICENSE"].map((name) => (
@@ -136,6 +140,7 @@ export async function verifyGeneratedArtifacts(rootDirectory = defaultRoot) {
     ["deploy/README.md", await readFile(resolve(rootDirectory, "README.md"), "utf8")],
     ["deploy/CHANGELOG.md", await readFile(resolve(rootDirectory, "CHANGELOG.md"), "utf8")],
     ["deploy/LICENSE", await readFile(resolve(rootDirectory, "LICENSE"), "utf8")],
+    ["deploy/helper/install.sh", await readFile(resolve(rootDirectory, HELPER_INSTALLER), "utf8")],
     ["deploy/.nojekyll", ""],
   ];
   const drift = [];

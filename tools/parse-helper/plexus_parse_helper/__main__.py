@@ -1,4 +1,4 @@
-"""plexus-parse-helper serve|token|install-agent|uninstall-agent|parse."""
+"""plexus-parse-helper serve|token|pair|install-agent|uninstall-agent|parse|ocr."""
 
 from __future__ import annotations
 
@@ -11,17 +11,15 @@ import sys
 from pathlib import Path
 
 from plexus_parse_helper import DEFAULT_PORT, HELPER_NAME
+from plexus_parse_helper.agent import AGENT_PATH, PLIST_LABEL, render_plist, resolve_bin
 from plexus_parse_helper.auth import load_or_create_token, print_token_banner
 from plexus_parse_helper.cache import ParseCache
 from plexus_parse_helper.jobs import JobManager, ProcessWorker, convert_file
+from plexus_parse_helper.pair import PAIR_SECONDS, open_window
 from plexus_parse_helper.schema import normalize_options
 from plexus_parse_helper.server import create_app
 
 ROOT = Path(__file__).resolve().parents[1]
-PLIST_TEMPLATE = ROOT / "launchd" / "com.plexus.parse-helper.plist.template"
-PLIST_LABEL = "com.plexus.parse-helper"
-AGENT_PATH = Path.home() / "Library" / "LaunchAgents" / f"{PLIST_LABEL}.plist"
-BIN = ROOT / "bin" / "plexus-parse-helper"
 
 
 def _pages(text: str | None):
@@ -118,27 +116,32 @@ def cmd_ocr(args) -> int:
     return 0
 
 
-def _render_plist() -> dict:
-    text = PLIST_TEMPLATE.read_text(encoding="utf-8")
-    text = text.replace("__BIN__", str(BIN))
-    text = text.replace("__HOME__", str(Path.home()))
-    return plistlib.loads(text.encode("utf-8"))
+def cmd_pair(args) -> int:
+    load_or_create_token(Path(args.token_file) if args.token_file else None)
+    open_window(Path(args.pair_file) if args.pair_file else None, seconds=args.seconds)
+    print(f"Pairing is open for {args.seconds} s.")
+    print("Back to Roam: click Pair.")
+    return 0
 
 
 def cmd_install_agent(_args) -> int:
+    """Idempotent: rewrites the plist, reloads the agent, and starts it."""
     AGENT_PATH.parent.mkdir(parents=True, exist_ok=True)
+    (Path.home() / "Library" / "Logs").mkdir(parents=True, exist_ok=True)
     with AGENT_PATH.open("wb") as fh:
-        plistlib.dump(_render_plist(), fh)
+        plistlib.dump(render_plist(resolve_bin()), fh)
     domain = f"gui/{os.getuid()}"
-    subprocess.run(["launchctl", "bootout", domain, str(AGENT_PATH)], check=False)
-    subprocess.run(["launchctl", "bootstrap", domain, str(AGENT_PATH)], check=True)
+    subprocess.run(["launchctl", "bootout", f"{domain}/{PLIST_LABEL}"], check=False, stderr=subprocess.DEVNULL)
+    boot = subprocess.run(["launchctl", "bootstrap", domain, str(AGENT_PATH)], check=False)
+    if boot.returncode != 0:
+        subprocess.run(["launchctl", "kickstart", "-k", f"{domain}/{PLIST_LABEL}"], check=True)
     print(AGENT_PATH)
     return 0
 
 
 def cmd_uninstall_agent(_args) -> int:
     domain = f"gui/{os.getuid()}"
-    subprocess.run(["launchctl", "bootout", domain, str(AGENT_PATH)], check=False)
+    subprocess.run(["launchctl", "bootout", f"{domain}/{PLIST_LABEL}"], check=False, stderr=subprocess.DEVNULL)
     AGENT_PATH.unlink(missing_ok=True)
     print("removed")
     return 0
@@ -176,6 +179,12 @@ def main(argv: list[str] | None = None) -> int:
     ocr.add_argument("--json", default=None)
     ocr.add_argument("--cells", default=None, help="JSON file of [{page, bbox}] cells to re-read at 3x")
     ocr.set_defaults(func=cmd_ocr)
+
+    pair = sub.add_parser("pair", help="Open the pairing window so Roam can fetch the token (no copy-paste)")
+    pair.add_argument("--seconds", type=int, default=PAIR_SECONDS)
+    pair.add_argument("--token-file", default=None)
+    pair.add_argument("--pair-file", default=None)
+    pair.set_defaults(func=cmd_pair)
 
     sub.add_parser("install-agent").set_defaults(func=cmd_install_agent)
     sub.add_parser("uninstall-agent").set_defaults(func=cmd_uninstall_agent)

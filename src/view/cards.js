@@ -33,7 +33,7 @@ import { notedSpeedFlags, parseSpeedFlags, SETTING_IDS } from "../settings.js";
 import { authorBlockUid, buildSourceChip, chipWithAuthor, sourceChipFor, sourceChipKey } from "../model/source-chip.js";
 import { isRoamTableString } from "../model/roam-table.js";
 import { mountRoamTable } from "./table-card.js";
-import { findCell, measureCell, revealCell, watchTable } from "./table-cells.js";
+import { findCell, forgetTableCells, measureCell, revealCell, watchTable } from "./table-cells.js";
 
 const SIDES = ["top", "right", "bottom", "left"];
 const CHUNK_MS = 8;
@@ -1341,6 +1341,7 @@ export function createItemRenderer({
       unmount: (el) => { try { host?.unmount?.(el); } catch { /* not a roam root */ } },
       portalParent: boardRoot(),
     });
+    forgetTableCells(uid);
     if (budget) budget.roots.push(node);
     return node;
   };
@@ -2608,7 +2609,7 @@ export function createItemRenderer({
   const measureRow = (uid, rowUid) => {
     const rec = shells.get(uid);
     const table = rec && !rec.pageHolder && editing?.uid !== uid ? tableHostOf(rec) : null;
-    if (table) return measureCell({ card: rec.el, host: table, body: rec.body, uid: rowUid, zoom: zoomCache || 1 });
+    if (table) return measureCell({ card: rec.el, host: table, body: rec.body, uid: rowUid, zoom: zoomCache || 1, pullTree: host?.pullTree });
     const holder = rec?.pageHolder;
     if (!rec?.body || !holder || holder.isConnected === false || editing?.uid === uid || !rec.pageKey) return null;
     const z = zoomCache || 1;
@@ -2628,7 +2629,7 @@ export function createItemRenderer({
     const rec = shells.get(uid);
     if (rec?.pageHolder) return rec.pageHolder.querySelector?.(`[data-pxd-row="${rowUid}"]`) ?? null;
     const table = tableHostOf(rec);
-    return table ? findCell(table, rowUid) : null;
+    return table ? findCell(table, rowUid, { pullTree: host?.pullTree }) : null;
   };
   const unmarkRow = (row) => {
     row.classList.remove("pxd-row--linked", "pxd-row--hot");

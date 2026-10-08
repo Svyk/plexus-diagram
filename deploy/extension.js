@@ -1666,8 +1666,8 @@ function highlightRecord(props) {
   if (!isObject2(props)) return null;
   const keys = Object.keys(props);
   const colon = keys.includes(":pdf-highlight");
-  const plain = keys.includes("pdf-highlight");
-  if (!colon && !plain) return null;
+  const plain2 = keys.includes("pdf-highlight");
+  if (!colon && !plain2) return null;
   const raw = colon ? props[":pdf-highlight"] : props["pdf-highlight"];
   if (!isObject2(raw)) return {};
   const flat2 = plainKeys(raw);
@@ -5091,8 +5091,8 @@ function isObject3(value) {
 function highlightRecord2(props) {
   if (!isObject3(props)) return null;
   const colon = Object.prototype.hasOwnProperty.call(props, ":pdf-highlight");
-  const plain = Object.prototype.hasOwnProperty.call(props, "pdf-highlight");
-  if (!colon && !plain) return null;
+  const plain2 = Object.prototype.hasOwnProperty.call(props, "pdf-highlight");
+  if (!colon && !plain2) return null;
   const raw = colon ? props[":pdf-highlight"] : props["pdf-highlight"];
   if (!isObject3(raw)) return {};
   const flat2 = plainKeys(raw);
@@ -6451,7 +6451,7 @@ function createRelChips({ doc = globalThis.document, win = globalThis.window, ho
   const crumbs = /* @__PURE__ */ new WeakSet();
   const crumbOffs = [];
   const crumbGlyphs = /* @__PURE__ */ new Set();
-  const plain = (event) => event.button === 0 && !event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey;
+  const plain2 = (event) => event.button === 0 && !event.shiftKey && !event.metaKey && !event.ctrlKey && !event.altKey;
   const crumbFor = (zoom) => {
     if (disposed || !zoom || crumbs.has(zoom) || zoom.querySelector?.(`.${CRUMB_CLASS}`)) return;
     const holder = zoom.parentElement;
@@ -6472,10 +6472,10 @@ function createRelChips({ doc = globalThis.document, win = globalThis.window, ho
     crumbGlyphs.add(glyph);
     for (const el of [...items, glyph]) {
       const swallow = (event) => {
-        if (plain(event)) stop2(event);
+        if (plain2(event)) stop2(event);
       };
       const open = (event) => {
-        if (!plain(event)) return;
+        if (!plain2(event)) return;
         stop2(event);
         event.preventDefault?.();
         openPop(el, edgeUid, avoid());
@@ -8119,13 +8119,13 @@ function parseDropPayload(dataTransfer, { resolveUid, graph = "" } = {}) {
   if (blockRef) return [{ string: `((${blockRef[1]}))` }];
   const linked = take("text/html").match(/data-link-title="([^"]+)"/);
   if (linked) return [{ string: `[[${linked[1].replace(/&amp;/g, "&").replace(/&quot;/g, '"')}]]` }];
-  const plain = take("text/plain").trim();
-  const tag = /^#([^\s#[\]/][^\s#[\]]*)$/.exec(plain);
+  const plain2 = take("text/plain").trim();
+  const tag = /^#([^\s#[\]/][^\s#[\]]*)$/.exec(plain2);
   if (tag) return [{ string: `[[${tag[1]}]]` }];
-  if (/^[A-Za-z0-9_-]{9}$/.test(plain)) {
+  if (/^[A-Za-z0-9_-]{9}$/.test(plain2)) {
     let string = null;
     try {
-      string = resolve(plain);
+      string = resolve(plain2);
     } catch {
       string = null;
     }
@@ -11540,7 +11540,59 @@ var init_table_card = __esm({
 });
 
 // src/view/table-cells.js
-function cellUidOf(node2) {
+function gridOf(tree) {
+  const grid = [];
+  for (const row4 of Array.isArray(tree) ? tree : []) {
+    const cells = [];
+    for (let n2 = row4; n2; n2 = n2.children?.[0]) cells.push({ uid: n2.uid, string: n2.string ?? "" });
+    grid.push(cells);
+  }
+  return grid;
+}
+function detectBases(grid, tds) {
+  const score = { "0,0": 0, "0,1": 0, "1,0": 0, "1,1": 0 };
+  for (const td of tds) {
+    const r = attrInt(td, "data-row");
+    const c = attrInt(td, "data-col");
+    const text3 = plain(td.textContent);
+    if (r == null || c == null || !text3) continue;
+    for (const rb of [0, 1]) for (const cb of [0, 1]) {
+      const cell = grid[r - rb]?.[c - cb];
+      if (cell && plain(cell.string) === text3) score[`${rb},${cb}`] += 1;
+    }
+  }
+  const dflt = `${NATIVE_CELL_BASE},${NATIVE_CELL_BASE}`;
+  let best = dflt;
+  for (const k of Object.keys(score)) if (score[k] > score[best]) best = k;
+  const [rowBase, colBase] = best.split(",").map(Number);
+  return { rowBase, colBase };
+}
+function tableCells(tableUid, pullTree, scope) {
+  const hit = tableCache.get(tableUid);
+  if (hit && nowMs() - hit.at < CACHE_MS && hit.pull === pullTree) return hit;
+  let tree = null;
+  try {
+    tree = pullTree(tableUid, GRID_DEPTH, GRID_LIMIT);
+  } catch {
+    tree = null;
+  }
+  const grid = gridOf(tree);
+  const tds = scope?.querySelectorAll?.("td") || [];
+  const entry = { at: nowMs(), pull: pullTree, grid, ...detectBases(grid, tds) };
+  tableCache.set(tableUid, entry);
+  return entry;
+}
+function nativeCellUid(td, pullTree) {
+  if (typeof pullTree !== "function") return null;
+  const tableUid = tableUidOf(td);
+  const r = attrInt(td, "data-row");
+  const c = attrInt(td, "data-col");
+  if (!tableUid || r == null || c == null) return null;
+  const t = tableCells(tableUid, pullTree, td.closest("table") || td.closest(".rm-table"));
+  const uid = t.grid[r - t.rowBase]?.[c - t.colBase]?.uid;
+  return typeof uid === "string" && UID_RE5.test(uid) ? uid : null;
+}
+function cellUidOf(node2, { pullTree } = {}) {
   if (!node2 || typeof node2.closest !== "function") return null;
   const grid = node2.closest(".rg-cell");
   if (grid) {
@@ -11551,20 +11603,33 @@ function cellUidOf(node2) {
   if (!td || !td.closest?.(".rm-table")) return null;
   const input = td.querySelector?.(".rm-block__input, .roam-block");
   const m = UID_AT_END.exec(String(input?.id || ""));
-  return m ? m[1] : null;
+  return m ? m[1] : nativeCellUid(td, pullTree);
 }
 function cellElementOf(node2) {
   if (!node2 || typeof node2.closest !== "function") return null;
   return node2.closest(".rg-cell") || node2.closest("td");
 }
-function findCell(host, uid) {
+function findCell(host, uid, { pullTree } = {}) {
   if (!host || !UID_RE5.test(String(uid || ""))) return null;
   const grids = host.querySelectorAll?.(".rg-cell") || [];
   for (const cell of grids) {
     if ((cell.dataset?.uid || cell.getAttribute?.("data-uid")) === uid) return cell;
   }
   const tds = host.querySelectorAll?.(".rm-table td") || [];
-  for (const td of tds) if (cellUidOf(td) === uid) return td;
+  for (const td of tds) {
+    const input = td.querySelector?.(".rm-block__input, .roam-block");
+    if (input && UID_AT_END.exec(String(input.id || ""))?.[1] === uid) return td;
+  }
+  const tableUid = host.getAttribute?.("data-pxd-table") || tableUidOf(host);
+  if (typeof pullTree !== "function" || !tableUid) return null;
+  const any = tds[0];
+  const t = tableCells(tableUid, pullTree, any?.closest?.("table") || host);
+  for (let r = 0; r < t.grid.length; r += 1) {
+    const c = t.grid[r].findIndex((cell) => cell.uid === uid);
+    if (c < 0) continue;
+    for (const td of tds) if (attrInt(td, "data-row") === r + t.rowBase && attrInt(td, "data-col") === c + t.colBase) return td;
+    return null;
+  }
   return null;
 }
 function visibleClip(cell, host, body) {
@@ -11584,13 +11649,13 @@ function visibleClip(cell, host, body) {
   }
   return clip4;
 }
-function measureCell({ card: card2, host, body, uid, zoom = 1 } = {}) {
+function measureCell({ card: card2, host, body, uid, zoom = 1, pullTree } = {}) {
   const cardRect = rectOf3(card2);
   const bodyRect = rectOf3(body);
   if (!cardRect || !bodyRect) return null;
   const z = zoom || 1;
   const out = { bodyTop: round16((bodyRect.top - cardRect.top) / z), bodyBottom: round16((bodyRect.bottom - cardRect.top) / z) };
-  const cell = findCell(host, uid);
+  const cell = findCell(host, uid, { pullTree });
   const r = cell ? rectOf3(cell) : null;
   if (!r || !r.width && !r.height) return { ...out, rowTop: null, rowHeight: 0, rendered: false };
   const clip4 = visibleClip(cell, host, body);
@@ -11653,12 +11718,29 @@ function watchTable({ host, body, onChange, doc } = {}) {
     if (body && body !== host) body.removeEventListener?.("scroll", onChange, opts);
   };
 }
-var UID_AT_END, UID_RE5, hasClass, rectOf3, round16, isTableCard;
+var UID_AT_END, UID_RE5, hasClass, NATIVE_CELL_BASE, GRID_DEPTH, GRID_LIMIT, CACHE_MS, tableCache, forgetTableCells, plain, nowMs, tableUidOf, attrInt, rectOf3, round16, isTableCard;
 var init_table_cells = __esm({
   "src/view/table-cells.js"() {
     UID_AT_END = /-([\w-]{9})$/;
     UID_RE5 = /^[\w-]{1,36}$/;
     hasClass = (node2, name) => Boolean(node2?.classList?.contains?.(name));
+    NATIVE_CELL_BASE = 0;
+    GRID_DEPTH = 40;
+    GRID_LIMIT = 2e3;
+    CACHE_MS = 1e3;
+    tableCache = /* @__PURE__ */ new Map();
+    forgetTableCells = (tableUid) => {
+      if (tableUid == null) tableCache.clear();
+      else tableCache.delete(String(tableUid));
+    };
+    plain = (s) => String(s ?? "").replace(/\{\{[^}]*\}\}/g, "").replace(/\[\[|\]\]|\(\(|\)\)|\*\*|__|\^\^|~~|`/g, "").replace(/\s+/g, " ").trim().toLowerCase();
+    nowMs = () => typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
+    tableUidOf = (node2) => node2?.closest?.("[data-pxd-table]")?.getAttribute?.("data-pxd-table") || null;
+    attrInt = (td, name) => {
+      const v = td.getAttribute?.(name) ?? td.dataset?.[name.slice(5)];
+      const n2 = Number.parseInt(v, 10);
+      return Number.isInteger(n2) && n2 >= 0 ? n2 : null;
+    };
     rectOf3 = (node2) => {
       const r = node2?.getBoundingClientRect?.();
       if (!r) return null;
@@ -12818,7 +12900,7 @@ function createItemRenderer({
     node2.classList.add("pxd-rs--plain");
     el("span", "pxd-rs__plain", node2).textContent = String(string ?? "");
   };
-  const renderRoot = (parent, string, cls = "pxd-rs", uid = "", { plain = false } = {}) => {
+  const renderRoot = (parent, string, cls = "pxd-rs", uid = "", { plain: plain2 = false } = {}) => {
     const node2 = el("div", cls, parent);
     if (!string) return node2;
     const split = embedSplit(String(string), embedOptsFor(uid));
@@ -12873,7 +12955,7 @@ function createItemRenderer({
       live.remove();
     } catch {
     }
-    if (plain) showPlainRow(node2, string);
+    if (plain2) showPlainRow(node2, string);
     else showRenderChip(node2, uid);
     if (!loggedRenderErrors.has(uid)) {
       loggedRenderErrors.add(uid);
@@ -13014,6 +13096,7 @@ function createItemRenderer({
       },
       portalParent: boardRoot()
     });
+    forgetTableCells(uid);
     if (budget) budget.roots.push(node2);
     return node2;
   };
@@ -13866,13 +13949,13 @@ function createItemRenderer({
     if (!rec.rowTable) return;
     holdHeight(line, KID_ROW_H);
     const heavy = isHeavyRow(string);
-    const plain = el("div", `pxd-block__text pxd-block__plain${heavy ? " pxd-block__plain--heavy" : ""}`, line);
-    plain.textContent = heavy ? "…" : plainText(string);
-    plain.setAttribute("data-pxd-plain", uid);
-    rec.rowTable.set(uid, { line, plain, string, heavy });
+    const plain2 = el("div", `pxd-block__text pxd-block__plain${heavy ? " pxd-block__plain--heavy" : ""}`, line);
+    plain2.textContent = heavy ? "…" : plainText(string);
+    plain2.setAttribute("data-pxd-plain", uid);
+    rec.rowTable.set(uid, { line, plain: plain2, string, heavy });
     const io = heavy ? rec.rowIOHeavy : rec.rowIO;
     rec.rowSched.add(uid, { heavy, wanted: !io });
-    io?.observe(plain);
+    io?.observe(plain2);
   };
   const layoutSet = /* @__PURE__ */ new Set();
   const dropLayoutWatch = (rec) => {
@@ -14325,7 +14408,7 @@ function createItemRenderer({
   const measureRow = (uid, rowUid) => {
     const rec = shells.get(uid);
     const table = rec && !rec.pageHolder && editing?.uid !== uid ? tableHostOf(rec) : null;
-    if (table) return measureCell({ card: rec.el, host: table, body: rec.body, uid: rowUid, zoom: zoomCache || 1 });
+    if (table) return measureCell({ card: rec.el, host: table, body: rec.body, uid: rowUid, zoom: zoomCache || 1, pullTree: host?.pullTree });
     const holder = rec?.pageHolder;
     if (!rec?.body || !holder || holder.isConnected === false || editing?.uid === uid || !rec.pageKey) return null;
     const z = zoomCache || 1;
@@ -14343,7 +14426,7 @@ function createItemRenderer({
     const rec = shells.get(uid);
     if (rec?.pageHolder) return rec.pageHolder.querySelector?.(`[data-pxd-row="${rowUid}"]`) ?? null;
     const table = tableHostOf(rec);
-    return table ? findCell(table, rowUid) : null;
+    return table ? findCell(table, rowUid, { pullTree: host?.pullTree }) : null;
   };
   const unmarkRow = (row4) => {
     row4.classList.remove("pxd-row--linked", "pxd-row--hot");
@@ -21300,8 +21383,8 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
       const queries = [];
       const lim = Math.max(1, Math.floor(Number(limit) || 40));
       if (!librarySelective(f)) return { rows: [], queries };
-      const nowMs = Date.now();
-      const since = f.days ? nowMs - f.days * 864e5 : null;
+      const nowMs2 = Date.now();
+      const since = f.days ? nowMs2 - f.days * 864e5 : null;
       const cap4 = libraryCap();
       const candidates = [];
       const seen = /* @__PURE__ */ new Set();
@@ -21474,7 +21557,7 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
         }
       }
       if (wantDaily && !f.tag) {
-        let titles = recentDailyTitles(f.days || 14, nowMs);
+        let titles = recentDailyTitles(f.days || 14, nowMs2);
         if (f.text && isDailyTitle(f.text) && !titles.includes(f.text)) titles = titles.concat(f.text);
         if (titles.length) {
           const find = "?t ?u ?e";
@@ -21539,7 +21622,7 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
           else row4.onBoard = onTitle.has(row4.title);
         }
       }
-      const rows = narrowLibrary(candidates, f, nowMs).slice(0, lim).map(libraryCard);
+      const rows = narrowLibrary(candidates, f, nowMs2).slice(0, lim).map(libraryCard);
       return { rows, queries };
     },
     // Graph neighbours of a card target, ordered for the Related panel:
@@ -25338,10 +25421,10 @@ extendSession((session, api) => {
       const board2 = api.board();
       const item = board2?.items.get(cardUid);
       if (!item || item.type !== "card") return Promise.resolve(none);
-      const plain = (list) => list.filter((n2) => n2?.uid).map((n2) => ({
+      const plain2 = (list) => list.filter((n2) => n2?.uid).map((n2) => ({
         uid: n2.uid,
         string: n2.string ?? "",
-        children: plain(n2.children ?? [])
+        children: plain2(n2.children ?? [])
       }));
       const rawTree = (list) => list.filter((n2) => n2?.[UID2]).map((n2) => ({
         uid: n2[UID2],
@@ -25350,8 +25433,8 @@ extendSession((session, api) => {
       }));
       let tree;
       if (item.kind === "note") tree = rawTree(api.kidsOf({ [KIDS2]: item.content }));
-      else if (item.kind === "block") tree = plain(host.pullTree(item.target.uid, preset.depth, max) ?? []);
-      else if (item.kind === "page") tree = plain(host.pagePreview(item.target.title, preset.depth, max)?.blocks ?? []);
+      else if (item.kind === "block") tree = plain2(host.pullTree(item.target.uid, preset.depth, max) ?? []);
+      else if (item.kind === "page") tree = plain2(host.pagePreview(item.target.title, preset.depth, max)?.blocks ?? []);
       else return Promise.resolve(none);
       const flat2 = [];
       const walk2 = (list, depth, parent) => {
@@ -36192,11 +36275,11 @@ function dispatchDrop({ doc = globalThis.document, root, pointer, at, entries = 
   const map = new Map(entries);
   const transfer = { types: [...map.keys()], getData: (type) => map.get(type) || "", setData() {
   } };
-  const plain = { type: "drop", bubbles: true, cancelable: true, clientX: x, clientY: y, dataTransfer: transfer, preventDefault() {
+  const plain2 = { type: "drop", bubbles: true, cancelable: true, clientX: x, clientY: y, dataTransfer: transfer, preventDefault() {
   }, stopPropagation() {
   } };
   try {
-    target.dispatchEvent(plain);
+    target.dispatchEvent(plain2);
   } catch {
     return false;
   }
@@ -49292,8 +49375,8 @@ function withoutEchoes(items) {
 function bodySizeOf2(items) {
   const wordy = items.filter((item) => item.str.length >= 3 || /\d/.test(item.str));
   const source = wordy.length >= 4 ? wordy : items;
-  const plain = source.filter((item) => TALL_RE.test(item.str) && !DESC_RE.test(item.str));
-  const pool = (plain.length ? plain : source).map((item) => item.transform[0]).sort((a, b) => a - b);
+  const plain2 = source.filter((item) => TALL_RE.test(item.str) && !DESC_RE.test(item.str));
+  const pool = (plain2.length ? plain2 : source).map((item) => item.transform[0]).sort((a, b) => a - b);
   const median4 = pool[pool.length >> 1] || items[0].transform[0];
   let body = median4;
   const sorted = items.map((item) => item.transform[5]).sort((a, b) => a - b);
@@ -59303,7 +59386,7 @@ function buildBoardView(onFail, {
       if (card2.closest?.(".pxd-root") !== root) return null;
       const uid = card2.dataset?.uid || card2.getAttribute?.("data-uid");
       if (isTableCard(card2)) {
-        const cell = cellUidOf(node2);
+        const cell = cellUidOf(node2, { pullTree: host?.pullTree });
         targetEl = cell ? cellElementOf(node2) : null;
         targetCls = "pxd-row--target";
         targetEl?.classList.add(targetCls);

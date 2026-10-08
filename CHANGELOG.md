@@ -1,5 +1,18 @@
 # Changelog
 
+## 3.8.0 — 2026-10-08
+
+PDFs on the board feel finished: clean cards with real titles, a proper Quick Look, a reader that opens where you expect, and scanned pages read in the browser without freezing Roam.
+
+- **PDF cards.** A small highlighter button with the highlight count replaces Roam's big white "Add highlights…" button; the title gets the room. Hover shows solid Open / Parse pills that stay readable over any cover and move above the dock and toolbar. "1 ref", not "1 refs"; one-page PDFs show no page arrows.
+- **Real titles.** Cards, the reader, the PDF switcher and Quick Look show the paper's title from the largest type on page 1 — not the journal banner ("Science of the Total Environment"), not a running date ("22.12.2005"), not a table note. Titles appear at rest, read in the background one PDF at a time, and saved titles show at once. Run-together words in a title are split when the word list is on this device ("Summaryofreportedcasesper" → "Summary of reported cases per").
+- **Quick Look (Q)** shows the card's title, opens at the card's page (page 1 by default), turns pages with a pill and the arrow keys, and falls back to Roam's reader when a PDF will not load.
+- **Open and Parse.** The reader keeps the board at least 360 px wide, centres the card in what is left, and themes its PDF switcher. Parse opens at the card's page with the parsed boxes; on a narrow reader the outline is a tab, starts at the top, and rows are one line. Copy buttons on parsed boxes show on hover beside the box (never under its chip) and confirm with "Copied"; a figure copies as an image with its caption; tiny marks get no box; and the dock and card toolbar fit a narrow board (extra tools behind "…") without covering the minimap.
+- **Reading order.** A sidebar column next to an abstract no longer interleaves with it line by line (the column gap is measured beside the column, and full-width rules separate bands).
+- **Superscripts.** Footnote marks land between the right words ("Kleshchev¹, Boyd¹˒²", "whole zone³" linked to its note); unit superscripts like cm² stay inline.
+- **Scans in the browser.** In-browser reading now runs in a background worker: a scan read no longer freezes Roam (longest pause 23 s → 0.3 s on a dense table page). Doubtful text lines are re-read up close and checked against a word list (the CDC 1980 title now reads exactly), centred cells in wrapped rows stay in their row, and the page is rendered the same way the reader shows it.
+- **Fixes:** covers never go blank after heavy zooming; a reopened scan keeps its read; PDFs parsed by an older version are re-parsed quietly on open (scans you read are kept); left/right docks keep their tools; the header highlight count updates; no repaint loop or per-frame layout work while panning with a selection.
+
 ## 3.7.0 — 2026-10-08
 
 Parsed text you can see and copy, scans read without installing anything, arrows to table cells, PDF footnotes that work in Roam, and typing that never drops a key.

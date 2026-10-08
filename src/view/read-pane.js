@@ -5,7 +5,7 @@
 import { CARD_MIME, PARSE_MIME } from "../model/drop.js";
 import { HIGHLIGHT_COLORS, highlightModel } from "../model/highlight.js";
 import { highlightRows } from "../model/highlight-pick.js";
-import { coverModel, parsedDocTitle, pdfMacroUrl, readPaneKey, readPaneWidth, readerRule, writeReaderPage } from "../model/pdf.js";
+import { cleanPdfTitle, coverModel, parsedDocTitle, pdfFileTitle, pdfMacroUrl, readPaneKey, readPaneWidth, readerRule, writeReaderPage } from "../model/pdf.js";
 import { dragChipText, fiberOf, highlightById, highlighterContext, PDF_MARK, uidFromMark } from "../model/pdf-drag.js";
 import { fitDecision, fitWidthStep, fitsWidth, pageIndicator, pageTotalText, pdfDocumentFromFiber, pillActions, viewerFromFiber } from "../model/read-pane-model.js";
 import { isTextEntryTarget } from "./cards.js";
@@ -275,6 +275,7 @@ export function createReadPane({
     button.textContent = label;
     button.setAttribute("data-mode", id);
     button.setAttribute("data-tip", tip);
+    button.setAttribute("aria-label", label);
     button.setAttribute("aria-pressed", id === "reader" ? "true" : "false");
     modeBtns[id] = button;
   }
@@ -283,6 +284,7 @@ export function createReadPane({
   showParsedBtn.type = "button";
   showParsedBtn.textContent = "Show parsed";
   showParsedBtn.setAttribute("data-tip", "parse.show-parsed");
+  showParsedBtn.setAttribute("aria-label", "Show parsed text boxes");
   showParsedBtn.setAttribute("aria-pressed", readShowParsed(storage) ? "true" : "false");
   const progress = el("div", "pxd-read__progress", pane);
   setHidden(progress, true);
@@ -1905,8 +1907,14 @@ export function createReadPane({
   const pdfUrl = () => pdfMacroUrl(current.source || "") || "";
   // Header title: the real name when there is one, else the parsed document's title, else "PDF".
   let parsedTitle = "";
-  const realTitle = (value) => (typeof value === "string" && value.trim() && value.trim() !== "PDF" ? value.trim() : "");
-  const shownTitle = () => realTitle(current.title) || parsedTitle || "PDF";
+  const realTitle = (value) => cleanPdfTitle(value);
+  const shownTitle = () => {
+    const given = realTitle(current.title);
+    const file = pdfFileTitle(pdfUrl());
+    // A title that is only the file name ranks below the first parsed heading.
+    if (given && !(parsedTitle && file && given === file)) return given;
+    return parsedTitle || given || file || "PDF";
+  };
   const paintTitle = () => {
     const text = shownTitle();
     titleNode.textContent = text;

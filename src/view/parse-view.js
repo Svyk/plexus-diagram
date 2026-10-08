@@ -589,6 +589,7 @@ export function createParseView({
       from: item?.from || null,
       content: plan.content,
       width: plan.width,
+      footprint: { w: plan.width, h: plan.height },
       onPlace: ({ client }) => { placing = null; go({ client }); },
       onCancel: () => { placing = null; },
     });

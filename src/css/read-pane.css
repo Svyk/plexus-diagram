@@ -803,3 +803,40 @@ body.bt-theme-dark .pxd-root.pxd-pdf-dark--invert {
   font: inherit;
   cursor: pointer;
 }
+
+/* The board bar stays one row left of the reader and never paints over it: it clips, the crumbs shrink,
+   and the actions that no longer fit live in the More menu (Table, Kanban, Tag lens, Focus, Present). */
+.pxd-root.pxd-root--read:not(.pxd-root--read-stack) .pxd-toolbar {
+  flex-wrap: nowrap;
+  overflow: hidden;
+  min-width: 0;
+}
+
+.pxd-root.pxd-root--read:not(.pxd-root--read-stack) .pxd-toolbar > .pxd-crumbs {
+  flex: 0 1 auto;
+  min-width: 0;
+  overflow: hidden;
+  order: -2;
+}
+
+.pxd-root.pxd-root--read:not(.pxd-root--read-stack) .pxd-toolbar > .pxd-toolbar__group:not(.pxd-crumbs) {
+  flex: 0 0 auto;
+}
+
+.pxd-root.pxd-root--read:not(.pxd-root--read-stack) .pxd-toolbar > .pxd-toolbar__group:has(.pxd-toolbar__more) {
+  display: contents;
+}
+
+.pxd-root.pxd-root--read:not(.pxd-root--read-stack) .pxd-toolbar .pxd-toolbar__more {
+  order: -1;
+  flex: 0 0 auto;
+}
+
+.pxd-root.pxd-root--read:not(.pxd-root--read-stack) .pxd-toolbar .pxd-toolbar__table,
+.pxd-root.pxd-root--read:not(.pxd-root--read-stack) .pxd-toolbar .pxd-toolbar__kanban,
+.pxd-root.pxd-root--read:not(.pxd-root--read-stack) .pxd-toolbar .pxd-toolbar__bg,
+.pxd-root.pxd-root--read:not(.pxd-root--read-stack) .pxd-toolbar .pxd-toolbar__lens,
+.pxd-root.pxd-root--read:not(.pxd-root--read-stack) .pxd-toolbar .pxd-toolbar__focus,
+.pxd-root.pxd-root--read:not(.pxd-root--read-stack) .pxd-toolbar .pxd-toolbar__present {
+  display: none;
+}

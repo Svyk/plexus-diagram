@@ -102,6 +102,19 @@
   outline-offset: 2px;
 }
 
+/* Click-to-place at low zoom: the preview is drawn legibly, this dashed box is the real landing size. */
+.pxd-root .pxd-ghost-foot {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 59;
+  box-sizing: border-box;
+  border: 2px dashed var(--pxd-accent);
+  border-radius: 4px;
+  pointer-events: none;
+  will-change: transform;
+}
+
 .pxd-root .pxd-item.pxd-ghost--blocked {
   opacity: .45;
 }

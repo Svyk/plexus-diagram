@@ -34,8 +34,29 @@ function fileName(url) {
   }
   let seg = path.split("/").filter(Boolean).pop() || "";
   try { seg = decodeURIComponent(seg); } catch { /* keep the raw segment */ }
-  if (seg.endsWith(".pdf")) seg = seg.slice(0, -4);
+  // Firebase keeps the whole storage path in one segment (imgs%2Fapp%2Fgraph%2Fname.pdf): the name is its tail.
+  seg = seg.split("/").filter(Boolean).pop() || "";
+  seg = seg.replace(/\.pdf$/i, "");
   return seg.trim();
+}
+
+// The decoded file name of a PDF url, without prefix or extension. "" when it is only a storage id.
+export function pdfFileTitle(url) {
+  const name = fileName(url);
+  return titleText(name);
+}
+
+const ROMAN_ONLY = /^[ivxlcdm]+\.?$/i;
+
+// A PDF's metadata Title is often junk: "I", "Untitled", "Microsoft Word - report". A real title has a
+// name of at least 4 characters once a Word prefix is stripped, and is not only a roman numeral.
+export function cleanPdfTitle(value) {
+  let text = typeof value === "string" ? value.replace(/\s+/g, " ").trim() : "";
+  text = text.replace(/^(?:microsoft\s+(?:word|powerpoint|excel)\s*[-\u2013\u2014]\s*)/i, "").trim();
+  if (text.length < 4) return "";
+  if (ROMAN_ONLY.test(text)) return "";
+  if (/^untitled\b/i.test(text)) return "";
+  return titleText(text);
 }
 
 // A Roam upload page is often titled with its storage path or a bare uid. Those are not names.
@@ -57,10 +78,11 @@ function titleText(value) {
   return text;
 }
 
-// metadata Title, then the block alias, then the block text, then a human page title, then the file name.
+// metadata Title (when real), then the block alias, then the block text, then a human page title, then the first parsed heading, then the file name.
 export function pdfTitlePlan(source) {
   const src = source && typeof source === "object" ? source : {};
-  const named = titleText(src.metadataTitle) || titleText(src.alias) || titleText(src.text) || titleText(src.title);
+  const named = cleanPdfTitle(src.metadataTitle) || titleText(src.alias) || titleText(src.text) || titleText(src.title)
+    || cleanPdfTitle(src.parsedTitle);
   if (named) return named;
   const file = titleText(fileName(src.url));
   return file || "PDF";

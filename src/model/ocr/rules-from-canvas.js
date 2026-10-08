@@ -179,7 +179,9 @@ export function fillsFromCanvas(gray, width, height, scale, { tol = 14, minWPt =
   const per = scale / step;
   const minW = minWPt * per;
   const minH = minHPt * per;
-  const k = Math.max(3, Math.round(openPt * per));
+  // Odd, so the open's erosion and dilation windows are centred and the result stays inside
+  // the region.
+  const k = 2 * Math.floor(Math.max(3, Math.round(openPt * per)) / 2) + 1;
   const label = new Int32Array(sw * sh);
   const queue = new Int32Array(sw * sh);
   const pageArea = sw * sh;

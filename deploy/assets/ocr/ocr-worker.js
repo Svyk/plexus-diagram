@@ -512,7 +512,7 @@ function fillsFromCanvas(gray, width, height, scale, { tol = 14, minWPt = 8, min
   const per = scale / step;
   const minW = minWPt * per;
   const minH = minHPt * per;
-  const k = Math.max(3, Math.round(openPt * per));
+  const k = 2 * Math.floor(Math.max(3, Math.round(openPt * per)) / 2) + 1;
   const label = new Int32Array(sw * sh);
   const queue = new Int32Array(sw * sh);
   const pageArea = sw * sh;

@@ -33040,9 +33040,12 @@ function ocrGraphics(data, w, h) {
     if (horizontal) rules.push({ axis: "h", x0: Math.min(r.x0, r.x1), x1: Math.max(r.x0, r.x1), y0: (r.y0 + r.y1) / 2, y1: (r.y0 + r.y1) / 2, thick });
     else rules.push({ axis: "v", x0: (r.x0 + r.x1) / 2, x1: (r.x0 + r.x1) / 2, y0: Math.min(r.y0, r.y1), y1: Math.max(r.y0, r.y1), thick });
   }
+  const fills = data.fills || [];
   const boxes = [];
-  for (const f of data.fills || []) {
+  for (const f of fills) {
     boxes.push({ x0: f.x0, y0: f.y0, x1: f.x1, y1: f.y1, fill: f.gray, light: (luminanceOf(f.gray) ?? 0) >= 0.7 });
+    const repeats = fills.some((o) => o !== f && Math.abs(o.x0 - f.x0) <= 3 && Math.abs(o.x1 - f.x1) <= 3);
+    if (!repeats) continue;
     rules.push({ axis: "h", x0: f.x0, x1: f.x1, y0: f.y0, y1: f.y0, thick: 0.5, fromBox: true });
     rules.push({ axis: "h", x0: f.x0, x1: f.x1, y0: f.y1, y1: f.y1, thick: 0.5, fromBox: true });
   }
@@ -47520,7 +47523,7 @@ function fillsFromCanvas(gray, width, height, scale, { tol = 14, minWPt = 8, min
   const per = scale / step;
   const minW = minWPt * per;
   const minH = minHPt * per;
-  const k = Math.max(3, Math.round(openPt * per));
+  const k = 2 * Math.floor(Math.max(3, Math.round(openPt * per)) / 2) + 1;
   const label = new Int32Array(sw * sh);
   const queue = new Int32Array(sw * sh);
   const pageArea = sw * sh;

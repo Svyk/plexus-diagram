@@ -80,6 +80,9 @@ test("ocrGraphics turns raster fills into boxes and their top and bottom edges i
   assert.equal(g.boxes[1].light, true);
   assert.deepEqual(g.rules.map((r) => [r.axis, r.y0]), [["h", 20], ["h", 30], ["h", 30], ["h", 40]]);
   assert.ok(g.rules.every((r) => r.fromBox));
+  const lone = ocrGraphics({ rules: [], items: [], fills: [{ x0: 10, y0: 20, x1: 90, y1: 60, gray: 0.86 }] }, 100, 80);
+  assert.equal(lone.boxes.length, 1);
+  assert.equal(lone.rules.length, 0, "a lone shaded box (a callout) draws no row edges");
 });
 
 test("full-width zebra fills bound a table on an OCR page", () => {

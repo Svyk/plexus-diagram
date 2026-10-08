@@ -123,6 +123,7 @@ test("fillsFromCanvas finds a dark header and a light zebra row with text on the
   assert.ok(Math.abs(head.x0 - 10) <= 1 && Math.abs(head.x1 - 90) <= 1, JSON.stringify(head));
   assert.ok(head.gray < 0.4 && row.gray > 0.8);
   assert.ok(Math.abs(row.y0 - 20) <= 1 && Math.abs(row.y1 - 30) <= 1, JSON.stringify(row));
+  assert.ok(fills.every((f) => f.x0 >= 0 && f.y0 >= 0 && Number.isFinite(f.gray)), "opened parts stay inside their region");
   const rules = rulesFromCanvas(gray, width, height, 4, { fills });
   assert.ok(rules.every((r) => !(r.y0 === r.y1 && r.y0 > head.y0 + 1 && r.y0 < head.y1 - 1)), "no rules inside the header fill");
 });

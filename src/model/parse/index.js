@@ -125,12 +125,16 @@ export function ocrGraphics(data, w, h) {
     else rules.push({ axis: "v", x0: (r.x0 + r.x1) / 2, x1: (r.x0 + r.x1) / 2, y0: Math.min(r.y0, r.y1), y1: Math.max(r.y0, r.y1), thick });
   }
   // Filled regions found in the raster (cell and row fills) stand in for filled path boxes.
-  // A raster has no invisible per-cell boxes, only what is seen: a fill's top and bottom
-  // edges are drawn row edges, so they count as rules, and full-width zebra rows bound table
-  // rows without a tiling (a tiling of cell fills still gives the columns via boxGridRules).
+  // A raster has no invisible per-cell boxes, only what is seen: the top and bottom edges of
+  // fills that repeat at one width (zebra rows, a header over shaded rows) are drawn row edges,
+  // so they count as rules and bound table rows without a tiling (a tiling of cell fills
+  // still gives the columns via boxGridRules). A lone shaded box (a callout) gives none.
+  const fills = data.fills || [];
   const boxes = [];
-  for (const f of data.fills || []) {
+  for (const f of fills) {
     boxes.push({ x0: f.x0, y0: f.y0, x1: f.x1, y1: f.y1, fill: f.gray, light: (luminanceOf(f.gray) ?? 0) >= 0.7 });
+    const repeats = fills.some((o) => o !== f && Math.abs(o.x0 - f.x0) <= 3 && Math.abs(o.x1 - f.x1) <= 3);
+    if (!repeats) continue;
     rules.push({ axis: "h", x0: f.x0, x1: f.x1, y0: f.y0, y1: f.y0, thick: 0.5, fromBox: true });
     rules.push({ axis: "h", x0: f.x0, x1: f.x1, y0: f.y1, y1: f.y1, thick: 0.5, fromBox: true });
   }

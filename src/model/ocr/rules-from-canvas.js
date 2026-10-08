@@ -3,7 +3,7 @@
 
 import { labelComponents } from "./components.js";
 
-function otsuThreshold(gray) {
+export function otsuThreshold(gray) {
   const hist = new Uint32Array(256);
   for (let i = 0; i < gray.length; i++) hist[gray[i]]++;
   const total = gray.length;

@@ -75,7 +75,7 @@ export function softenPhrase(text) {
     .replace(/\)([A-Za-z])/g, ") $1");
 }
 
-function wordItem(text, x0, x1, box, conf) {
+export function wordItem(text, x0, x1, box, conf) {
   const width = Math.max(0.4, x1 - x0);
   const size = Math.max(0.5, box.y1 - box.y0);
   const base = box.y1 - 0.2 * size;
@@ -198,6 +198,37 @@ function bodySizeOf(items) {
   return { body, median };
 }
 
+// Items sorted by baseline → rows. An item joins the row when it sits within 0.3 em of the
+// row's last baseline and the row stays under 0.45 em tall.
+export function baselineRows(sorted) {
+  const rows = [];
+  let row = null;
+  for (const item of sorted) {
+    const base = item.transform[5];
+    const size = item.transform[0] || 1;
+    if (row && base - row.last <= 0.3 * size && base - row.first <= 0.45 * size) {
+      row.items.push(item);
+      row.last = base;
+      continue;
+    }
+    row = { first: base, last: base, items: [item] };
+    rows.push(row);
+  }
+  return rows.map((r) => r.items);
+}
+
+// Width-weighted median baseline: a superscript mark or a short speck does not move the row.
+export function rowBaseline(row) {
+  const pairs = row.map((item) => [item.transform[5], Math.max(0.1, item.width || 0)]).sort((a, b) => a[0] - b[0]);
+  const total = pairs.reduce((s, p) => s + p[1], 0);
+  let acc = 0;
+  for (const [base, w] of pairs) {
+    acc += w;
+    if (acc >= total / 2) return base;
+  }
+  return pairs[pairs.length - 1][0];
+}
+
 // Same idea as the helper: one body size, one baseline per row, specks dropped.
 export function snapOcrItems(items) {
   if (!items.length) return [];
@@ -220,15 +251,14 @@ export function snapOcrItems(items) {
     kept.push(item);
   }
   kept.sort((a, b) => a.transform[5] - b.transform[5] || a.transform[4] - b.transform[4]);
-  let anchor = null;
-  for (const item of kept) {
-    const base = item.transform[5];
-    const size = item.transform[0] || 1;
-    if (anchor == null || base - anchor > 0.3 * size) anchor = base;
-    const shift = anchor - base;
-    item.transform[5] = round2(anchor);
-    item.y0 = round2(item.y0 + shift);
-    item.y1 = round2(item.y1 + shift);
+  for (const row of baselineRows(kept)) {
+    const anchor = rowBaseline(row);
+    for (const item of row) {
+      const shift = anchor - item.transform[5];
+      item.transform[5] = round2(anchor);
+      item.y0 = round2(item.y0 + shift);
+      item.y1 = round2(item.y1 + shift);
+    }
   }
   kept.sort((a, b) => a.transform[5] - b.transform[5] || a.transform[4] - b.transform[4]);
   return kept;

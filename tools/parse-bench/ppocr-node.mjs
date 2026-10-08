@@ -65,7 +65,7 @@ export function renderPdfPage(pdfPath, n, dpi) {
   return { rgb, width, height, pointW, pointH, pageCount, dpi };
 }
 
-export function createPpocrSource({ pdfPath, dpi = 300, log = () => {} } = {}) {
+export function createPpocrSource({ pdfPath, dpi = 300, log = () => {}, options = {} } = {}) {
   const prepared = new Map();
   let pageCount = 0;
 
@@ -76,7 +76,7 @@ export function createPpocrSource({ pdfPath, dpi = 300, log = () => {} } = {}) {
     pageCount = rendered.pageCount || pageCount;
     const t0 = performance.now();
     const prep = await preparePageImage({
-      ...rendered, dpi, page: n, runDet, runRec, dict, signal,
+      ...rendered, dpi, page: n, runDet, runRec, dict, signal, ...options,
     });
     log(`ppocr-web p${n} ${(performance.now() - t0).toFixed(0)} ms  items ${prep.record.items.length}  rules ${prep.record.rules.length}  deskew ${prep.record.deskew}`);
     prepared.set(n, prep);

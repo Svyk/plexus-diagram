@@ -2,7 +2,11 @@
 // Word-box agreement of the PP-OCR web source against a saved Vision fixture, plus ruling
 // lines against the helper's OpenCV port.
 //   node tools/parse-bench/ocr-agree.mjs [ocr-table.png] [ocr-table.vision.json]
+//   node tools/parse-bench/ocr-agree.mjs --pdf file.pdf --vision vision-ocr.json [--page 1]
 // A match is IoU >= 0.5 and the same text. Rules match when both ends are within 2 pt.
+// The PNG fixture keeps Vision's raw tile observations; overlapping tiles read the same word
+// twice (sometimes differently), so words are deduplicated by IoU >= 0.3, longest text kept.
+// --vision takes the helper's merged pxd-ocr/1 output (plexus-parse-helper ocr --json).
 
 import { readFileSync } from "node:fs";
 import { execFileSync } from "node:child_process";
@@ -71,6 +75,19 @@ function visionWords(fixture) {
   return words;
 }
 
+export function dedupeWords(words) {
+  const kept = [];
+  for (const word of [...words].sort((a, b) => b.text.length - a.text.length)) {
+    if (kept.some((other) => iou(other, word) >= 0.3)) continue;
+    kept.push(word);
+  }
+  return kept;
+}
+
+function recordWords(record) {
+  return record.items.map(itemBox);
+}
+
 function iou(a, b) {
   const x0 = Math.max(a.x0, b.x0);
   const y0 = Math.max(a.y0, b.y0);
@@ -133,7 +150,30 @@ function matchRules(helper, ours) {
   return matched;
 }
 
+async function mainPdf(pdfPath, visionPath, page) {
+  const { createPpocrSource } = await import("./ppocr-node.mjs");
+  const vision = recordWords(JSON.parse(readFileSync(visionPath, "utf8")).pages.find((p) => p.n === page));
+  const source = createPpocrSource({ pdfPath, dpi: 300 });
+  const t0 = performance.now();
+  const record = (await source.ocr({ pages: [page] })).pages[0];
+  const ms = performance.now() - t0;
+  const ours = recordWords(record);
+  const matched = matchWords(vision, ours);
+  const agreement = vision.length ? matched / vision.length : 0;
+  process.stdout.write([
+    `words vision ${vision.length} ours ${ours.length} matched ${matched}`,
+    `agreement ${(agreement * 100).toFixed(1)}% (IoU>=0.5 and equal text), ${ms.toFixed(0)} ms`,
+  ].join("\n") + "\n");
+  if (agreement < 0.95) process.exitCode = 1;
+}
+
 async function main(argv) {
+  const pdfAt = argv.indexOf("--pdf");
+  if (pdfAt >= 0) {
+    const visionAt = argv.indexOf("--vision");
+    const pageAt = argv.indexOf("--page");
+    return mainPdf(argv[pdfAt + 1], argv[visionAt + 1], pageAt >= 0 ? Number(argv[pageAt + 1]) : 1);
+  }
   const pngPath = argv[0] || defaultPng;
   const visionPath = argv[1] || defaultVision;
   const fixture = JSON.parse(readFileSync(visionPath, "utf8"));
@@ -145,7 +185,7 @@ async function main(argv) {
   const prep = await preparePageImage({
     ...image, dpi, pointW, pointH, page: 1, runDet, runRec, dict,
   });
-  const vision = visionWords(fixture);
+  const vision = dedupeWords(visionWords(fixture));
   const ours = prep.record.items.map(itemBox);
   const matched = matchWords(vision, ours);
   const agreement = vision.length ? matched / vision.length : 0;

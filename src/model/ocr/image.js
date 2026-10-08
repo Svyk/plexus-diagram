@@ -65,15 +65,15 @@ export function grayFromRgb(rgb, w, h) {
   return out;
 }
 
-export function padWhite(rgb, w, h, pad) {
-  if (!pad) return { rgb, w, h };
+export function padWhite(rgb, w, h, pad, padY = pad) {
+  if (!pad && !padY) return { rgb, w, h };
   const dw = w + pad * 2;
-  const dh = h + pad * 2;
+  const dh = h + padY * 2;
   const out = new Uint8Array(dw * dh * 3);
   out.fill(255);
   for (let y = 0; y < h; y++) {
     const src = y * w * 3;
-    out.set(rgb.subarray(src, src + w * 3), ((y + pad) * dw + pad) * 3);
+    out.set(rgb.subarray(src, src + w * 3), ((y + padY) * dw + pad) * 3);
   }
   return { rgb: out, w: dw, h: dh };
 }

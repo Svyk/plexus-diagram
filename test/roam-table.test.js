@@ -444,3 +444,11 @@ test("a focused grid inside a card keeps board keys and the wheel", async () => 
     restore();
   }
 });
+
+test("table-card.css lets a Roam Grid table fill its card in both directions", async () => {
+  const { readFileSync } = await import("node:fs");
+  const css = readFileSync(new URL("../src/css/table-card.css", import.meta.url), "utf8");
+  assert.match(css, /\.pxd-roam-table--grid \.rg-root \{[^}]*max-width: none;/);
+  assert.match(css, /\.pxd-roam-table--grid \.rg-viewport \{[^}]*max-height: none;/);
+  assert.match(css, /\.pxd-roam-table--grid \{[^}]*height: 100%;/);
+});

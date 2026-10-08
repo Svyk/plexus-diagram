@@ -80,3 +80,36 @@
 .pxd-root .pxd-roam-table .rm-block-main > .rm-block__input ~ div:not(.rm-block__input) {
   display: none;
 }
+
+/* A Roam Grid table fills its card. Roam Grid caps .rg-root at --rg-max-width and the viewport at
+   min(68vh, 720px), so a card dragged bigger kept the grid at its old size. The card is the container:
+   every box from the card down to the viewport takes the card height, and the viewport scrolls. */
+.pxd-root .pxd-roam-table--grid {
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+}
+.pxd-root .pxd-roam-table--grid > .pxd-roam-table__fit {
+  flex: 1 1 auto;
+  min-height: 0;
+  height: 100%;
+}
+.pxd-root .pxd-roam-table--grid :is(.pxd-rs__live, .rm-api-render--block, .roam-block-container, .rm-block-main, .rm-block__input, .dont-focus-block, .dont-focus-block > span) {
+  height: 100%;
+  min-height: 0;
+}
+.pxd-root .pxd-roam-table--grid :is(.dont-focus-block, .dont-focus-block > span) {
+  display: block;
+}
+.pxd-root .pxd-roam-table--grid .rg-root {
+  max-width: none;
+  height: 100%;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+}
+.pxd-root .pxd-roam-table--grid .rg-viewport {
+  max-height: none;
+  flex: 1 1 auto;
+  min-height: 0;
+}

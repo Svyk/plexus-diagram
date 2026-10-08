@@ -39,7 +39,7 @@ export async function loadEngineState({ client, device, force = true } = {}) {
 const button = (id, label, tip) => ({ id, label, tip });
 
 function deviceOcrRow(device) {
-  const row = { id: "device-ocr", name: "In-browser reading", tip: "engines.ocr" };
+  const row = { id: "device-ocr", name: "In-browser reading (beta)", tip: "engines.ocr" };
   switch (device?.state) {
     case "ready":
       return { ...row, dot: "ok", text: "Ready", button: null };

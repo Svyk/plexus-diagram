@@ -244,7 +244,7 @@ export const TIP_TEXT = {
   "parse.strip.retry": e("Retry", "Try to read this page again."),
   "parse.strip.cancel": e("Cancel", "Stop reading this page."),
   "engines.builtin": e("On this device", "The built-in parser. It runs in Roam and needs nothing installed."),
-  "engines.ocr": e("In-browser reading", "Reads the words on scanned pages inside Roam. The models download once, after you ask."),
+  "engines.ocr": e("In-browser reading (beta)", "Reads the words on scanned pages inside Roam. The models download once, after you ask. Less accurate than the local helper, which is used instead when it is ready."),
   "engines.helper": e("Local helper", "Docling for layout, formulas and tables, and Apple Vision for scans. It runs on this Mac and listens only on 127.0.0.1."),
   "engines.cloud": e("Cloud", "Reading through a service with your own key. Not available yet."),
   "engines.pair": e("Pair", "Fetch the helper's token. Works for 90 seconds after the installer or plexus-parse-helper pair."),

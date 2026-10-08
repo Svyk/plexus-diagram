@@ -39,6 +39,58 @@ function blobUrl(buffer, type) {
   return URL.createObjectURL(new Blob([buffer], { type }));
 }
 
+// Response body with byte progress when the body streams; arrayBuffer() otherwise.
+async function readBody(res, onBytes, signal) {
+  const reader = onBytes && res.body && typeof res.body.getReader === "function" ? res.body.getReader() : null;
+  if (!reader) {
+    const buf = await res.arrayBuffer();
+    onBytes?.(buf.byteLength);
+    return buf;
+  }
+  const parts = [];
+  let size = 0;
+  for (;;) {
+    throwIfAborted(signal);
+    const { done, value } = await reader.read();
+    if (done) break;
+    parts.push(value);
+    size += value.byteLength;
+    onBytes(size);
+  }
+  const out = new Uint8Array(size);
+  let at = 0;
+  for (const part of parts) { out.set(part, at); at += part.byteLength; }
+  return out.buffer;
+}
+
+// One page of an open pdf.js document as RGB at `dpi`.
+export async function renderPdfPage(pdfDoc, n, dpi = DPI) {
+  const page = await pdfDoc.getPage(n);
+  const viewport = page.getViewport({ scale: dpi / 72 });
+  const width = Math.ceil(viewport.width);
+  const height = Math.ceil(viewport.height);
+  const canvas = typeof OffscreenCanvas === "function"
+    ? new OffscreenCanvas(width, height)
+    : globalThis.document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d", { willReadFrequently: true });
+  await page.render({ canvasContext: ctx, viewport }).promise;
+  const pixels = ctx.getImageData(0, 0, width, height).data;
+  const rgb = new Uint8Array(width * height * 3);
+  for (let i = 0, j = 0; i < pixels.length; i += 4, j += 3) {
+    rgb[j] = pixels[i];
+    rgb[j + 1] = pixels[i + 1];
+    rgb[j + 2] = pixels[i + 2];
+  }
+  return {
+    rgb, width, height, dpi,
+    pointW: viewport.width * 72 / dpi,
+    pointH: viewport.height * 72 / dpi,
+    pageCount: pdfDoc.numPages,
+  };
+}
+
 export function createOcrWeb({
   assetBase = PAGES_ORIGIN,
   ortBase = ORT_BASE,
@@ -62,7 +114,7 @@ export function createOcrWeb({
     try { return await cachesImpl.open(CACHE_NAME); } catch { return null; }
   }
 
-  async function loadVerified(url, expect, signal) {
+  async function loadVerified(url, expect, signal, onBytes = null) {
     throwIfAborted(signal);
     const cache = await openCache();
     if (cache) {
@@ -70,14 +122,14 @@ export function createOcrWeb({
       if (hit) {
         const buf = await hit.arrayBuffer();
         const hash = await sha256Hex(cryptoImpl, buf);
-        if (hash === expect.sha256 && buf.byteLength === expect.bytes) return buf;
+        if (hash === expect.sha256 && buf.byteLength === expect.bytes) { onBytes?.(buf.byteLength); return buf; }
       }
     }
     if (typeof fetchImpl !== "function") throw new Error("fetch is not available");
     fetched.push(url);
     const res = await fetchImpl(url, signal ? { signal } : undefined);
     if (!res?.ok) throw new Error(`fetch failed ${res?.status || ""} ${url}`.trim());
-    const buf = await res.arrayBuffer();
+    const buf = await readBody(res, onBytes, signal);
     const hash = await sha256Hex(cryptoImpl, buf);
     if (hash !== expect.sha256 || buf.byteLength !== expect.bytes) {
       throw new Error(`sha256 mismatch for ${url}`);
@@ -88,14 +140,53 @@ export function createOcrWeb({
     return buf;
   }
 
-  async function loadModel(spec, signal) {
+  async function loadModel(spec, signal, onBytes = null) {
     const own = joinUrl(assetBase, `assets/ocr/${spec.file}`);
     try {
-      return await loadVerified(own, spec, signal);
+      return await loadVerified(own, spec, signal, onBytes);
     } catch (error) {
       if (error?.name === "AbortError" || !spec.url) throw error;
-      return loadVerified(spec.url, spec, signal);
+      return loadVerified(spec.url, spec, signal, onBytes);
     }
+  }
+
+  // Every asset ocr() needs: [{ spec, urls }] (a model may come from its fallback URL).
+  function assetList() {
+    return [
+      ...Object.values(ORT_FILES).map((spec) => ({ spec, model: false, urls: [joinUrl(ortBase, spec.file)] })),
+      ...Object.values(MODEL_FILES).map((spec) => ({ spec, model: true, urls: [joinUrl(assetBase, `assets/ocr/${spec.file}`), ...(spec.url ? [spec.url] : [])] })),
+    ];
+  }
+
+  // True when Cache Storage already holds every asset. Reads the cache only; never fetches.
+  async function cached() {
+    if (engine) return true;
+    const cache = await openCache();
+    if (!cache) return false;
+    for (const { urls } of assetList()) {
+      let hit = false;
+      for (const url of urls) {
+        try { if (await cache.match(url)) { hit = true; break; } } catch { /* cache */ }
+      }
+      if (!hit) return false;
+    }
+    return true;
+  }
+
+  // Download (or verify from the cache) every asset without reading a page.
+  // onProgress(doneBytes, totalBytes).
+  async function prefetch({ signal = null, onProgress = null } = {}) {
+    const list = assetList();
+    const total = list.reduce((n, a) => n + a.spec.bytes, 0);
+    let done = 0;
+    for (const { spec, model, urls } of list) {
+      const onBytes = (n) => onProgress?.(done + Math.min(spec.bytes, n), total);
+      if (model) await loadModel(spec, signal, onBytes);
+      else await loadVerified(urls[0], spec, signal, onBytes);
+      done += spec.bytes;
+      onProgress?.(done, total);
+    }
+    return { bytes: total };
   }
 
   function localEngine(runDet, runRec, dict) {
@@ -125,30 +216,7 @@ export function createOcrWeb({
     const data = bytes instanceof Uint8Array ? bytes : new Uint8Array(bytes || []);
     const task = lib.getDocument({ data, isEvalSupported: false, verbosity: 0 });
     const doc = await task.promise;
-    const page = await doc.getPage(n);
-    const viewport = page.getViewport({ scale: dpi / 72 });
-    const width = Math.ceil(viewport.width);
-    const height = Math.ceil(viewport.height);
-    const canvas = typeof OffscreenCanvas === "function"
-      ? new OffscreenCanvas(width, height)
-      : globalThis.document.createElement("canvas");
-    canvas.width = width;
-    canvas.height = height;
-    const ctx = canvas.getContext("2d", { willReadFrequently: true });
-    await page.render({ canvasContext: ctx, viewport }).promise;
-    const pixels = ctx.getImageData(0, 0, width, height).data;
-    const rgb = new Uint8Array(width * height * 3);
-    for (let i = 0, j = 0; i < pixels.length; i += 4, j += 3) {
-      rgb[j] = pixels[i];
-      rgb[j + 1] = pixels[i + 1];
-      rgb[j + 2] = pixels[i + 2];
-    }
-    return {
-      rgb, width, height, dpi,
-      pointW: viewport.width * 72 / dpi,
-      pointH: viewport.height * 72 / dpi,
-      pageCount: doc.numPages,
-    };
+    return renderPdfPage(doc, n, dpi);
   }
 
   async function bootWorker(signal) {
@@ -194,6 +262,10 @@ export function createOcrWeb({
     await call({ type: "init", ...urls, det, rec, dictText }, [det, rec]);
     return {
       stop() { try { worker.postMessage({ type: "abort" }); } catch { /* gone */ } },
+      forget() {
+        records.clear();
+        try { worker.postMessage({ type: "forget" }); } catch { /* gone */ }
+      },
       async page(n, bytes, signal) {
         throwIfAborted(signal);
         if (records.has(n)) return records.get(n);
@@ -275,9 +347,18 @@ export function createOcrWeb({
     return { schema: SCHEMA, engine: ENGINE, sha256, elapsedMs, ...body };
   }
 
+  // Page frames and records are per document: drop them before reading another PDF.
+  function forget() {
+    prepared.clear();
+    engine?.forget?.();
+  }
+
   return {
     health,
     ocr,
+    cached,
+    prefetch,
+    forget,
     schema: SCHEMA,
     engine: ENGINE,
     fetches: () => fetched.slice(),

@@ -1873,6 +1873,10 @@ self.onmessage = (ev) => {
     controller.abort();
     return;
   }
+  if (msg.type === "forget") {
+    pages.clear();
+    return;
+  }
   if (msg.type === "init") controller = new AbortController();
   const run = msg.type === "init" ? onInit(msg) : msg.type === "page" ? onPage(msg) : msg.type === "cells" ? onCells(msg) : null;
   if (run) run.catch((error) => fail(msg.id, error));

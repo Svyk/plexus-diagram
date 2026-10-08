@@ -1980,8 +1980,10 @@ export function createReadPane({
     } catch { return 0; }
   };
   // No dead end: a scanned page always has a status strip with the next step. Source order for a read:
-  // the in-browser source when it is ready, else the local helper; otherwise the Engines panel opens on
-  // the setup sheet. Nothing here writes to the graph.
+  // the local helper when it is ready (more accurate), else the in-browser source (beta) when its models
+  // are cached; Read text on a page whose models are not downloaded yet downloads them first (an explicit
+  // click, never automatic). Otherwise the Engines panel opens on the setup sheet. Nothing here writes
+  // to the graph.
   const autoReadOn = () => { try { return settings?.get?.("parse-auto-read") !== false; } catch { return true; } };
   let helperSnap = { state: "not-installed", paired: false };
   let deviceNow = null;
@@ -2033,6 +2035,7 @@ export function createReadPane({
     paintStrip();
   };
   const deviceReady = () => deviceNow?.state === "ready" && typeof deviceOcr?.read === "function";
+  const deviceDownloadable = () => deviceNow?.state === "not-downloaded" && typeof deviceOcr?.download === "function" && typeof deviceOcr?.read === "function";
   const helperIsReady = () => helperSnap.state === "ready";
   function openEngines({ sheet = false } = {}) {
     if (!panel) {
@@ -2049,7 +2052,7 @@ export function createReadPane({
     if (sheet) panel.showSheet();
   }
   const closeEngines = () => { try { panel?.setVisible(false); } catch { /* panel */ } };
-  const runRead = async (prefer = "", { fresh = true } = {}) => {
+  const runRead = async (prefer = "", { fresh = true, explicit = false } = {}) => {
     if (running || !scanInfo) return;
     running = true;
     const info = scanInfo;
@@ -2057,13 +2060,31 @@ export function createReadPane({
     try {
       if (fresh) await refreshSnaps(true);
       let source = "";
-      if (prefer !== "helper" && deviceReady()) source = "device";
-      else if (helperIsReady()) source = "helper";
+      let fetchModels = false;
+      if (prefer !== "device" && helperIsReady()) source = "helper";
+      else if (prefer !== "helper" && deviceReady()) source = "device";
+      else if (prefer !== "helper" && explicit && deviceDownloadable()) { source = "device"; fetchModels = true; }
       if (!source) { openEngines({ sheet: true }); return; }
       ctl = new AbortController();
       runCtl = ctl;
       ocrRun = { state: "running", source, ms: 0, progress: null };
       paintStrip();
+      if (fetchModels) {
+        const stopDownload = () => { try { deviceOcr.cancel?.(); } catch { /* device */ } };
+        ctl.signal.addEventListener?.("abort", stopDownload, { once: true });
+        const poll = setInterval(async () => {
+          const st = await readDevice();
+          if (st?.state === "downloading") { ocrRun = { ...ocrRun, progress: Number(st.progress) || 0 }; paintStrip(); }
+        }, 250);
+        poll?.unref?.();
+        let ok = false;
+        try { ok = await deviceOcr.download(); } catch { ok = false; } finally { clearInterval(poll); }
+        deviceNow = await readDevice();
+        if (!ok || ctl.signal.aborted || !deviceReady()) {
+          ocrRun = ctl.signal.aborted ? { state: "idle", source: "", ms: 0, progress: null } : { state: "failed", source, ms: 0, progress: null };
+          return;
+        }
+      }
       // The OCR source needs the reader's pdf.js document for the page images and bytes.
       if (live.querySelector?.(".rm-pdf-container")) await waitReaderPdf(bgGen);
       const t0 = Date.now();
@@ -2099,9 +2120,9 @@ export function createReadPane({
     }
   };
   function onStripAction(id) {
-    if (id === "read-text") void runRead();
+    if (id === "read-text") void runRead("", { explicit: true });
     else if (id === "use-helper") void runRead("helper");
-    else if (id === "retry") { ocrRun = { state: "idle", source: "", ms: 0, progress: null }; void runRead(); }
+    else if (id === "retry") { ocrRun = { state: "idle", source: "", ms: 0, progress: null }; void runRead("", { explicit: true }); }
     else if (id === "not-now") { dismissedUrls.add(pdfUrl()); paintStrip(); }
     else if (id === "start-helper" || id === "setup-helper") openEngines({ sheet: true });
     else if (id === "cancel") {
@@ -2147,7 +2168,7 @@ export function createReadPane({
     const pages = Array.isArray(info?.pages) ? info.pages : [];
     scanInfo = { ...(info || {}), pages: pages.length ? pages : [0] };
     dismissedUrls.delete(pdfUrl());
-    void runRead();
+    void runRead("", { explicit: true });
   };
   const ensureParsed = () => {
     if (parsedView) return parsedView;

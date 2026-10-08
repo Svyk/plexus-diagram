@@ -6823,6 +6823,7 @@ function buildBoardView(onFail, {
           if (disposed || suspended) return;
           syncCramped();
           chrome.ctx.reposition();
+          chrome.toolbar.scheduleDock?.();
         }, 240);
       }));
       area.observe(viewport);

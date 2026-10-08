@@ -1071,3 +1071,50 @@ body.roam-body.dark .pxd-root .pxd-panel__outline-row:hover {
 .pxd-root.pxd-root--docked.pxd-lod-overview .pxd-dock__options {
   display: none;
 }
+
+/* ---- narrow board: the dock stays one row. Labels, separators and tool options drop out; the rest sit behind "…". */
+
+.pxd-root.pxd-root--docked .pxd-dock__btn.pxd-dock__btn--overflow {
+  display: none;
+}
+
+.pxd-root.pxd-root--docked .pxd-palette.pxd-palette--tight .pxd-dock__label,
+.pxd-root.pxd-root--docked .pxd-palette.pxd-palette--tight .pxd-dock__sep,
+.pxd-root.pxd-root--docked .pxd-palette.pxd-palette--tight .pxd-dock__options {
+  display: none;
+}
+
+.pxd-root.pxd-root--docked.pxd-root--dock-labels .pxd-palette.pxd-palette--tight .pxd-dock__btn {
+  height: var(--pxd-dock-btn);
+}
+
+.pxd-root.pxd-root--docked .pxd-dock__bar {
+  position: relative;
+}
+
+.pxd-root.pxd-root--docked .pxd-dock__more-menu {
+  position: absolute;
+  right: 0;
+  bottom: calc(100% + 6px);
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  min-width: 140px;
+  padding: 4px;
+  border: 1px solid var(--pxd-border);
+  border-radius: 8px;
+  background: var(--pxd-chrome-bg);
+  box-shadow: var(--pxd-shadow);
+}
+
+.pxd-root.pxd-root--docked.pxd-root--dock-top .pxd-dock__more-menu {
+  top: calc(100% + 6px);
+  bottom: auto;
+}
+
+.pxd-root.pxd-root--docked .pxd-dock__more-item {
+  justify-content: flex-start;
+  padding: 4px 8px;
+  text-align: left;
+  white-space: nowrap;
+}

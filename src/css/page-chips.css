@@ -131,7 +131,14 @@
   border: 1px solid var(--pxd-border, #d1d5db);
   border-radius: 4px;
   cursor: pointer;
-  opacity: 0.7;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 120ms ease-out;
+}
+
+.page > .pxd-parsed-layer > .pxd-parsed-copy.pxd-parsed-copy--show,
+.page > .pxd-parsed-layer > .pxd-parsed-copy:focus-visible {
+  opacity: 0.85;
   pointer-events: auto;
 }
 

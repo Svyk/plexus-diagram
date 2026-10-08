@@ -12,7 +12,7 @@ import { applyNumbering, bodySizeOf, CAPTION_RE, headingClasses, headingLevel, r
 import { detectLists } from "./lists.js";
 import { detectFormulas } from "./formulas.js";
 import { FOOTNOTE_MARK_RE, groupParagraphs, inlineUnlinkedRefs, joinLines, spansOf } from "./blocks.js";
-import { boxOfUnits, crossesGutter, detectColumns, orderUnits, splitAtGutters } from "./xycut.js";
+import { boxOfUnits, crossesGutter, detectColumns, orderUnits, ruleCuts, splitAtGutters } from "./xycut.js";
 import { repairOcrTable } from "./ocr-fix.js";
 import { capTitle, isCutPrefix, isJunkTitleText, isMetaBanner } from "../title-cap.js";
 import { cleanPdfTitle } from "../pdf.js";
@@ -21,7 +21,10 @@ export const SCHEMA = "pxd-parse/1";
 export const ENGINE_VERSION = "plexus-builtin/1";
 // Revision of the built-in engine's output. Bump whenever parse output changes: cached built-in
 // parses with an older (or no) parseRev are re-parsed instead of restored.
-export const PARSE_REV = 5;
+export const PARSE_REV = 6;
+
+// A footnote mark on its own (asterisk-like signs, a number, a letter).
+const MARK_ONLY_RE = /^([*†‡§¶⁎∗]{1,3}|\d{1,3}|[a-z])$/u;
 
 const now = () => (typeof performance !== "undefined" && performance.now ? performance.now() : Date.now());
 
@@ -273,7 +276,15 @@ export function assembleDocument(pageRecords, { numPages, info = null, engineVer
     const seqs = gutters.map(() => []);
     seqs.push([]);
     const wideSeq = [];
-    const byY = [...pg.free].sort((a, b) => a.base - b.base || a.x0 - b.x0);
+    let byY = [...pg.free].sort((a, b) => a.base - b.base || a.x0 - b.x0);
+    // A footnote mark set apart at the start of a wide line joins that line.
+    for (const l of [...byY]) {
+      if (l.chars > 3 || !l.words.every((w) => MARK_ONLY_RE.test(w.text))) continue;
+      const host = byY.find((o) => o !== l && Math.abs(o.base - l.base) <= 0.6 * Math.max(l.size, o.size) && o.x0 >= l.x1 - 1 && o.x0 - l.x1 <= 1.5 * l.size && gutters.some((g) => crossesGutter(o, g)));
+      if (!host) continue;
+      const joined = makeLine([...l.words.map((w) => ({ ...w, sup: true })), ...host.words]);
+      byY = byY.filter((o) => o !== l).map((o) => (o === host ? joined : o));
+    }
     // Table-like baseline rows (3+ fragments straddling a gutter) stay together as wide units.
     const rowWide = new Set();
     for (const row of baselineRows(byY)) {
@@ -448,7 +459,7 @@ export function assembleDocument(pageRecords, { numPages, info = null, engineVer
       if (cap) blocks[captionIds.get(cap)].for = id;
       units.push({ id, x0: f.bbox[0], y0: f.bbox[1], x1: f.bbox[2], y1: f.bbox[3] });
     }
-    const ordered = orderUnits(units, { gutters });
+    const ordered = orderUnits(units, { gutters, cuts: ruleCuts(pg.graphics.rules, gutters, units), lineHeight: bodySize });
     for (const u of ordered.order) order.push(u.id);
     if (pg.ocr) for (const u of units) if (blocks[u.id]) blocks[u.id].engine = "ocr+builtin";
     perPage.push({ n: pg.n, w: round(pg.w), h: round(pg.h), rotation: pg.rotation, textRotation: pg.textRotation || 0, scanLayer: Boolean(pg.scanLayer), ocr: Boolean(pg.ocr), kind: pg.kind, parsed: true, columns: ordered.columns, ms: pg.ms });

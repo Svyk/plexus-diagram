@@ -137,12 +137,17 @@ export function groupParagraphs(lines, { bodySize = 10 } = {}) {
       else if (Boolean(prev.bold) !== Boolean(line.bold) && (prev.chars > 20 || line.chars > 20)) join = false;
       else {
         const first = cur[0];
-        const flushWithFirst = Math.abs(line.x0 - first.x0) <= 1.5 * size;
+        // A leading footnote mark hangs left of the text the next line is flush with.
+        const textX0 = first.words.length > 1 && first.words[0].sup ? first.words[1].x0 : first.x0;
+        const flushWithFirst = Math.abs(line.x0 - first.x0) <= 1.5 * size || Math.abs(line.x0 - textX0) <= 1.5 * size;
         const flushWithPrev = Math.abs(line.x0 - prev.x0) <= 1.5 * size;
         const prevIndented = cur.length === 1 && prev.x0 - line.x0 > 0.8 * size && prev.x0 - line.x0 < 4 * size;
         if (!(flushWithFirst || flushWithPrev || prevIndented)) join = false;
         else if (/[.?!:]$/.test(prev.text) && /^[A-Z("“]/.test(line.text) && gap > 1.25 * normalGap) join = false;
-        else if (/[.?!]$/.test(prev.text) && line.x0 - prev.x0 > 0.8 * size && line.x0 - prev.x0 < 4 * size && cur.length >= 1) join = false;
+        else {
+          const prevX0 = prev === first ? textX0 : prev.x0;
+          if (/[.?!]$/.test(prev.text) && line.x0 - prevX0 > 0.8 * size && line.x0 - prevX0 < 4 * size && cur.length >= 1) join = false;
+        }
       }
     }
     if (!join && cur.length) { groups.push(cur); cur = []; }

@@ -17,7 +17,12 @@ export function detectColumns(lines, { pageW, minLines = 4 } = {}) {
     const right = dominant[i];
     const leftX = dominant[i - 1].x;
     if (right.x - leftX < 0.2 * (pageW || 612)) continue;
-    const leftEnds = lines.filter((l) => l.x0 >= leftX - 3 && l.x0 < right.x - 10 && l.x1 <= right.x + 1).map((l) => l.x1);
+    // Only left lines beside the right column bound the gutter: a front-matter line far above or
+    // below it (a title tail, a copyright line) may run almost to the right column's edge.
+    const beside = (l) => right.lines.some((r) => Math.abs(r.base - l.base) <= 2.5 * Math.max(l.size, r.size));
+    const leftLines = lines.filter((l) => l.x0 >= leftX - 3 && l.x0 < right.x - 10 && l.x1 <= right.x + 1);
+    const besideEnds = leftLines.filter(beside).map((l) => l.x1);
+    const leftEnds = besideEnds.length >= 3 ? besideEnds : leftLines.map((l) => l.x1);
     if (leftEnds.length < 3) continue;
     const g0 = Math.max(...leftEnds);
     const g1 = right.x;
@@ -54,8 +59,36 @@ export function crossesGutter(unit, g) {
   return unit.x0 < g.x0 - 1 && unit.x1 > g.x1 + 1;
 }
 
+// Horizontal rules that run across a gutter on both sides at one height (one long rule, or one
+// rule per column): the bands above and below are read separately, like a wide unit.
+export function ruleCuts(rules, gutters, units) {
+  if (!gutters.length || !units.length) return [];
+  const minX = Math.min(...units.map((u) => u.x0));
+  const maxX = Math.max(...units.map((u) => u.x1));
+  // A figure's or table's own frame is not a band separator.
+  const framed = (r) => units.some((u) => r.x0 >= u.x0 - 2 && r.x1 <= u.x1 + 2 && r.y0 > u.y0 + 1 && r.y0 < u.y1 - 1);
+  const hs = (rules || []).filter((r) => r.axis === "h" && !framed(r)).sort((a, b) => a.y0 - b.y0);
+  const rows = [];
+  for (const r of hs) {
+    const row = rows.find((w) => Math.abs(w.y - r.y0) <= 2);
+    if (row) row.rules.push(r); else rows.push({ y: r.y0, rules: [r] });
+  }
+  const cuts = [];
+  for (const row of rows) {
+    const spans = gutters.some((g) => {
+      const left = row.rules.some((r) => r.x0 < g.x0 - 1 && Math.min(r.x1, g.x0) - Math.max(r.x0, minX) >= 0.5 * (g.x0 - minX));
+      const right = row.rules.some((r) => r.x1 > g.x1 + 1 && Math.min(r.x1, maxX) - Math.max(r.x0, g.x1) >= 0.5 * (maxX - g.x1));
+      return left && right;
+    });
+    if (spans) cuts.push(row.y);
+  }
+  return cuts;
+}
+
 // units: [{ x0, y0, x1, y1, ... }]. Returns { order: units[], columns }.
-export function orderUnits(units, { gutters = [] } = {}) {
+// `cuts`: heights where a full-width rule separates bands. A cut under a row of column headings
+// (one short unit per column, at most `2 * lineHeight` tall) does not separate them from their text.
+export function orderUnits(units, { gutters = [], cuts = [], lineHeight = 0 } = {}) {
   const active = gutters.filter((g) => units.some((u) => u.x1 <= g.x0 + 1) && units.some((u) => u.x0 >= g.x1 - 1));
   if (!active.length) return { order: byPosition(units), columns: 1 };
   const sorted = [...units].sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0);
@@ -68,7 +101,13 @@ export function orderUnits(units, { gutters = [] } = {}) {
     for (const col of cols) out.push(...byPosition(col));
     slice = [];
   };
+  const headingRow = () => lineHeight > 0 && splitColumns(slice, active).every((c) => c.length === 1 && c[0].y1 - c[0].y0 <= 2 * lineHeight);
+  const pending = [...cuts].sort((a, b) => a - b);
   for (const u of sorted) {
+    while (pending.length && pending[0] <= u.y0 + 1) {
+      pending.shift();
+      if (!headingRow()) flush();
+    }
     if (wide(u)) {
       // Narrow units that started above this wide unit's top but overlap it belong before it.
       flush();

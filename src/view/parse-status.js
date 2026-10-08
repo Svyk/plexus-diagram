@@ -10,7 +10,8 @@
 //   scanned: boolean,                 // the current page has no text layer
 //   dismissed?: boolean,              // "Not now" was pressed for this page
 //   ocr: { state: "idle"|"running"|"done"|"failed", source?: "device"|"helper", ms?, progress? (0..1),
-//          modelsCached: boolean, modelMB?: number },
+//          modelsCached: boolean, modelMB?: number,
+//          deviceAvailable?: boolean },   // false: no in-browser source exists, so only the local helper can read
 //   helper: { state: <client.status().state>, paired: boolean },
 // }
 // Actions (onAction(id)): read-text, use-helper, not-now, start-helper, setup-helper, retry, cancel.
@@ -63,18 +64,22 @@ export function stripModel(kind, input = {}) {
         progress: Number.isFinite(ocr.progress) ? Math.max(0, Math.min(1, ocr.progress)) : null,
       };
     case "scan-first":
-      return {
-        kind,
-        text: `This page is an image. Read its text on this device (one-time ${mb} MB download).`,
-        tip: "parse.strip.read-text",
-        buttons: [btn("read-text", true), btn("use-helper"), btn("not-now")],
-      };
     case "scan-cached":
-      return {
+      if (ocr.deviceAvailable === false) {
+        return input.helper?.state === "ready"
+          ? { kind, text: "This page is an image. Read its text with the local helper.", tip: "parse.strip.use-helper", buttons: [btn("read-text", true), btn("not-now")] }
+          : { kind, text: "This page is an image. Its text needs the local helper.", tip: "parse.strip.setup-helper", buttons: [btn("setup-helper", true), btn("not-now")] };
+      }
+      return kind === "scan-cached" ? {
         kind,
         text: "This page is an image. Read its text on this device.",
         tip: "parse.strip.read-text",
         buttons: [btn("read-text", true), btn("not-now")],
+      } : {
+        kind,
+        text: `This page is an image. Read its text on this device (one-time ${mb} MB download).`,
+        tip: "parse.strip.read-text",
+        buttons: [btn("read-text", true), btn("use-helper"), btn("not-now")],
       };
     case "helper-done": {
       const t = secondsText(ocr.ms);
@@ -87,6 +92,9 @@ export function stripModel(kind, input = {}) {
       };
     }
     case "helper-off":
+      if (ocr.deviceAvailable === false) {
+        return { kind, text: "Local helper is off. Start it to read this page.", tip: "parse.strip.start-helper", buttons: [btn("start-helper", true), btn("not-now")] };
+      }
       return {
         kind,
         text: "Local helper is off. Reading on this device instead.",
@@ -121,7 +129,10 @@ export function renderParseStatus(doc, parent, input, { onAction, later } = {}) 
   el.setAttribute("role", "status");
   el.setAttribute("aria-live", "polite");
   const stop = (event) => event.stopPropagation?.();
-  for (const type of ["pointerdown", "mousedown", "dblclick"]) el.addEventListener(type, stop);
+  const heldStatic = [];
+  const heldButtons = [];
+  const release = (store) => { for (const [node, type, fn] of store.splice(0)) node.removeEventListener?.(type, fn); };
+  for (const type of ["pointerdown", "mousedown", "dblclick"]) { el.addEventListener(type, stop); heldStatic.push([el, type, stop]); }
 
   let current = null;
   let hideTimer = null;
@@ -136,6 +147,7 @@ export function renderParseStatus(doc, parent, input, { onAction, later } = {}) 
   };
 
   const paint = (model) => {
+    release(heldButtons);
     el.innerHTML = "";
     const text = doc.createElement("span");
     text.className = "pxd-parse-status__text";
@@ -162,10 +174,12 @@ export function renderParseStatus(doc, parent, input, { onAction, later } = {}) 
       node.setAttribute("data-action", b.id);
       node.setAttribute("data-tip", TIP_FOR_ACTION[b.id]);
       node.textContent = b.label;
-      node.addEventListener("click", (event) => {
+      const onClick = (event) => {
         event.stopPropagation?.();
         onAction?.(b.id);
-      });
+      };
+      node.addEventListener("click", onClick);
+      heldButtons.push([node, "click", onClick]);
       el.append(node);
     }
   };
@@ -177,6 +191,7 @@ export function renderParseStatus(doc, parent, input, { onAction, later } = {}) 
     if (!model) {
       current = null;
       clearTimer();
+      release(heldButtons);
       el.innerHTML = "";
       el.setAttribute("hidden", "");
       el.setAttribute("data-kind", "");
@@ -195,6 +210,7 @@ export function renderParseStatus(doc, parent, input, { onAction, later } = {}) 
           hideTimer = null;
           if (!disposed && mine === generation && current?.kind === "helper-done") {
             current = null;
+            release(heldButtons);
             el.innerHTML = "";
             el.setAttribute("hidden", "");
             el.setAttribute("data-kind", "");
@@ -210,6 +226,8 @@ export function renderParseStatus(doc, parent, input, { onAction, later } = {}) 
   function dispose() {
     disposed = true;
     clearTimer();
+    release(heldButtons);
+    release(heldStatic);
     el.remove?.();
   }
 

@@ -95,11 +95,11 @@ test("removed furniture, chips, copy, and scan copy are pure", () => {
   assert.equal(removedSummary(sample().removed), "Removed: running header (3) · page numbers (3)");
   assert.equal(engineChip({ ms: 400 }).text, "Built-in · 0.4 s");
   assert.equal(engineChip({ engine: "docling", ms: 24000 }).text, "Docling · 24 s");
-  assert.equal(engineChip({ helper: "not-running" }).text, "Docling: not running");
-  assert.match(engineChip({ helper: "not-running" }).tip, /plexus-parse-helper serve/);
-  assert.match(engineChip({ helper: "disabled" }).tip, /Paste the token/);
-  assert.equal(engineChip({ helper: "wrong-token" }).text, "Docling: wrong token");
-  assert.equal(engineChip({ helper: "models-missing" }).text, "Docling: downloading models");
+  assert.equal(engineChip({ helper: "not-running" }).text, "Local helper: off");
+  assert.match(engineChip({ helper: "not-running" }).tip, /Engines/);
+  assert.match(engineChip({ helper: "disabled" }).tip, /Engines/);
+  assert.equal(engineChip({ helper: "wrong-token" }).text, "Local helper: wrong token");
+  assert.equal(engineChip({ helper: "models-missing" }).text, "Local helper: downloading models");
   assert.equal(engineChip({ phase: "running", page: 4, pageCount: 12 }).text, "Page 4 of 12");
   assert.equal(engineChip({ phase: "running", page: 4, pageCount: 12 }).cancel, true);
   const doc = sample();
@@ -127,7 +127,7 @@ test("removed furniture, chips, copy, and scan copy are pure", () => {
   assert.equal(syncDecision({ now: 400, last: 0 }).jump, true);
   assert.equal(BOTH_MIN_PX, 640);
   assert.equal(tipEntry("pdf.parse").name, "Parse");
-  assert.equal(tipEntry("parse.docling-off").name, "Docling: not running");
+  assert.equal(tipEntry("parse.docling-off").name, "Local helper: off");
 });
 
 test("overlay maps viewport boxes by page scale and user-space boxes through rotation", () => {
@@ -463,7 +463,7 @@ test("a helper that is not running replaces the timing chip", async () => {
     doc.body.append(view.element());
     view.showDoc(sample());
     await new Promise((resolve) => setImmediate(resolve));
-    assert.equal(view.chipText(), "Docling: not running");
+    assert.equal(view.chipText(), "Local helper: off");
     assert.equal(view.element().querySelector(".pxd-parse__docling").hidden, true);
   } finally {
     restore();

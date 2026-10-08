@@ -136,7 +136,13 @@ export function renderEnginesPanel(doc, parent, deps = {}) {
   el.setAttribute("role", "region");
   el.setAttribute("aria-label", "Engines");
   const stop = (event) => event.stopPropagation?.();
-  for (const type of ["pointerdown", "mousedown", "dblclick"]) el.addEventListener(type, stop);
+  // Listeners are tracked so a repaint or dispose leaves none behind.
+  const heldStatic = [];
+  const heldRows = [];
+  const heldSheet = [];
+  const bindTo = (store) => (node, type, fn) => { node.addEventListener(type, fn); store.push([node, type, fn]); };
+  const release = (store) => { for (const [node, type, fn] of store.splice(0)) node.removeEventListener?.(type, fn); };
+  for (const type of ["pointerdown", "mousedown", "dblclick"]) bindTo(heldStatic)(el, type, stop);
 
   const title = doc.createElement("div");
   title.className = "pxd-engines__title";
@@ -162,6 +168,7 @@ export function renderEnginesPanel(doc, parent, deps = {}) {
     const sig = JSON.stringify(rows);
     if (sig === signature) return;
     signature = sig;
+    release(heldRows);
     list.innerHTML = "";
     for (const row of rows) {
       const node = doc.createElement("div");
@@ -201,7 +208,7 @@ export function renderEnginesPanel(doc, parent, deps = {}) {
         b.setAttribute("data-action", row.button.id);
         b.setAttribute("data-tip", row.button.tip);
         b.textContent = row.button.label;
-        b.addEventListener("click", (event) => {
+        bindTo(heldRows)(b, "click", (event) => {
           event.stopPropagation?.();
           void act(row.button.id);
         });
@@ -213,6 +220,7 @@ export function renderEnginesPanel(doc, parent, deps = {}) {
   }
 
   function paintSheet() {
+    release(heldSheet);
     sheetHost.innerHTML = "";
     if (!sheetOpen) return;
     const sheet = helperSheet(state?.helper?.state, platform);
@@ -234,7 +242,7 @@ export function renderEnginesPanel(doc, parent, deps = {}) {
     copyBtn.setAttribute("data-action", "copy");
     copyBtn.setAttribute("data-tip", "engines.copy");
     copyBtn.textContent = sheet.copyLabel;
-    copyBtn.addEventListener("click", (event) => {
+    bindTo(heldSheet)(copyBtn, "click", (event) => {
       event.stopPropagation?.();
       // A script cannot fill the clipboard: only a real click does.
       if (event.isTrusted === false) return;
@@ -249,7 +257,7 @@ export function renderEnginesPanel(doc, parent, deps = {}) {
       pairBtn.setAttribute("data-action", "pair");
       pairBtn.setAttribute("data-tip", "engines.pair");
       pairBtn.textContent = "Pair";
-      pairBtn.addEventListener("click", (event) => {
+      bindTo(heldSheet)(pairBtn, "click", (event) => {
         event.stopPropagation?.();
         void act("pair");
       });
@@ -277,7 +285,7 @@ export function renderEnginesPanel(doc, parent, deps = {}) {
   tokenSave.setAttribute("data-action", "save-token");
   tokenSave.setAttribute("data-tip", "engines.token-save");
   tokenSave.textContent = "Save token";
-  tokenSave.addEventListener("click", (event) => {
+  bindTo(heldStatic)(tokenSave, "click", (event) => {
     event.stopPropagation?.();
     void act("save-token");
   });
@@ -362,6 +370,9 @@ export function renderEnginesPanel(doc, parent, deps = {}) {
   function dispose() {
     disposed = true;
     stopTimer();
+    release(heldRows);
+    release(heldSheet);
+    release(heldStatic);
     el.remove?.();
   }
 

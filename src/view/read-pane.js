@@ -18,7 +18,9 @@ import { imageKey } from "../host/parse-store.js";
 import { placePopover } from "../relchips.js";
 import { chromeObstacles } from "./avoid.js";
 import { createDragGhost, dispatchDrop } from "./drag-ghost.js";
+import { renderEnginesPanel } from "./engines-panel.js";
 import { selectionBarPlacement, selectionInReader } from "./make-highlight.js";
+import { renderParseStatus } from "./parse-status.js";
 import { compactPage, createTextLayer, pageRecords } from "./text-layer.js";
 
 // U4 owns the visible drawer. The import is async so a missing file leaves the pane's own list.
@@ -203,6 +205,10 @@ export function createReadPane({
   session = null,
   settings = null,
   onNeedOcr = null,
+  setSetting = null,
+  // Injection point for an in-browser OCR source: { status(): {state, progress?, mb?}, download(), cancel(),
+  // read({ pages, url, getPdf, signal, onProgress }) -> pxd-ocr/1 page records }. None ships yet.
+  deviceOcr = null,
 } = {}) {
   const el = (tag, cls, parent) => {
     const node = doc.createElement(tag);
@@ -255,6 +261,8 @@ export function createReadPane({
   if (cross) closeBtn.append(cross);
   else closeBtn.textContent = "✕";
   closeBtn.setAttribute("aria-label", "Close");
+  const stripMount = el("div", "pxd-read__strip", pane);
+  const enginesMount = el("div", "pxd-read__engines", pane);
   const modes = el("div", "pxd-read__modes", pane);
   modes.setAttribute("role", "toolbar");
   modes.setAttribute("aria-label", "Reader mode");
@@ -1792,6 +1800,8 @@ export function createReadPane({
     toolsOn = !toolsOn;
     toolsBtn.setAttribute("aria-pressed", toolsOn ? "true" : "false");
     paintTools();
+    if (toolsOn) openEngines();
+    else closeEngines();
   };
   const onSwitchBtn = (event) => {
     event.stopPropagation();
@@ -1876,8 +1886,13 @@ export function createReadPane({
     if (!parseStore) parseStore = createParseStore({ indexedDB: doc.defaultView?.indexedDB });
     return parseStore;
   };
+  function setSettingFn(id, value) {
+    if (typeof setSetting === "function") return setSetting(id, value);
+    if (typeof settings?.set === "function") return settings.set(id, value);
+    return undefined;
+  }
   const ensureHelper = () => {
-    if (!parseHelper) parseHelper = createHelperClient({ settings, fetch: doc.defaultView?.fetch });
+    if (!parseHelper) parseHelper = createHelperClient({ settings, setSetting: setSettingFn, fetch: doc.defaultView?.fetch });
     return parseHelper;
   };
   const pdfUrl = () => pdfMacroUrl(current.source || "") || "";
@@ -1943,9 +1958,12 @@ export function createReadPane({
     } catch { stored = []; }
     try { await store.putImage(key, JSON.stringify(mergeOcrPages(stored, pages))); } catch { /* cache */ }
   };
+  let ocrCovered = false;
+  let ocrGot = 0;
   const setOcrPages = (input, { sha256 = "", persist = true } = {}) => {
     const pages = pageRecords(input);
     const n = textLayer.setPages(pages);
+    if (n) { ocrCovered = true; ocrGot += 1; paintStrip(); }
     const sha = sha256 || ocrSha;
     if (n && persist && sha) void persistOcr(pages, sha);
     return n;
@@ -1956,27 +1974,170 @@ export function createReadPane({
     try {
       const raw = await ensureStore().getImage(imageKey(sha, OCR_LAYER_ID));
       if (typeof raw !== "string" || !openFlag || sha !== ocrSha) return 0;
-      return textLayer.setPages(JSON.parse(raw));
+      const n = textLayer.setPages(JSON.parse(raw));
+      if (n) { ocrCovered = true; paintStrip(); }
+      return n;
     } catch { return 0; }
   };
-  // No dead end: a scanned page with nothing to read offers Read text. The host can take over (the status
-  // strip, the in-browser source); otherwise the local helper reads it when it is ready.
+  // No dead end: a scanned page always has a status strip with the next step. Source order for a read:
+  // the in-browser source when it is ready, else the local helper; otherwise the Engines panel opens on
+  // the setup sheet. Nothing here writes to the graph.
+  const autoReadOn = () => { try { return settings?.get?.("parse-auto-read") !== false; } catch { return true; } };
+  let helperSnap = { state: "not-installed", paired: false };
+  let deviceNow = null;
+  let scanInfo = null;
+  let ocrRun = { state: "idle", source: "", ms: 0, progress: null };
+  let runCtl = null;
+  let running = false;
+  let strip = null;
+  let panel = null;
+  const dismissedUrls = new Set();
+  const autoTried = new Set();
+  const stripLater = (fn, ms) => {
+    const id = setTimeout(fn, ms);
+    id?.unref?.();
+    return () => clearTimeout(id);
+  };
+  const stripInput = () => {
+    const pages = scanInfo?.pages || [];
+    return {
+      scanned: pages.length > 0 && !ocrCovered,
+      dismissed: dismissedUrls.has(pdfUrl()),
+      ocr: {
+        state: ocrRun.state,
+        source: ocrRun.source,
+        ms: ocrRun.ms,
+        progress: ocrRun.progress,
+        modelsCached: deviceNow?.state === "ready",
+        modelMB: deviceNow?.mb,
+        deviceAvailable: Boolean(deviceOcr) && deviceNow?.state !== "unavailable",
+      },
+      helper: { state: helperSnap.state, paired: helperSnap.paired },
+    };
+  };
+  function paintStrip() {
+    if (!strip && !scanInfo) return;
+    if (!strip) strip = renderParseStatus(doc, stripMount, stripInput(), { onAction: onStripAction, later: stripLater });
+    else strip.update(stripInput());
+  }
+  const readDevice = async () => {
+    if (!deviceOcr || typeof deviceOcr.status !== "function") return null;
+    try { return (await deviceOcr.status()) || null; } catch { return null; }
+  };
+  const refreshSnaps = async (force = true) => {
+    try {
+      const status = await ensureHelper().status({ force });
+      helperSnap = { state: status?.state || "not-installed", paired: Boolean(status?.paired) };
+    } catch { helperSnap = { state: "not-installed", paired: false }; }
+    deviceNow = await readDevice();
+    paintStrip();
+  };
+  const deviceReady = () => deviceNow?.state === "ready" && typeof deviceOcr?.read === "function";
+  const helperIsReady = () => helperSnap.state === "ready";
+  function openEngines({ sheet = false } = {}) {
+    if (!panel) {
+      panel = renderEnginesPanel(doc, enginesMount, {
+        client: ensureHelper(),
+        ...(deviceOcr ? { device: deviceOcr } : {}),
+        setSetting: setSettingFn,
+        copy: (text) => doc.defaultView?.navigator?.clipboard?.writeText?.(text),
+        toast: (text) => { try { host?.toast?.(text); } catch { /* host */ } },
+        onUpdate: () => { void refreshSnaps(false); },
+      });
+    }
+    panel.setVisible(true);
+    if (sheet) panel.showSheet();
+  }
+  const closeEngines = () => { try { panel?.setVisible(false); } catch { /* panel */ } };
+  const runRead = async (prefer = "", { fresh = true } = {}) => {
+    if (running || !scanInfo) return;
+    running = true;
+    const info = scanInfo;
+    let ctl = null;
+    try {
+      if (fresh) await refreshSnaps(true);
+      let source = "";
+      if (prefer !== "helper" && deviceReady()) source = "device";
+      else if (helperIsReady()) source = "helper";
+      if (!source) { openEngines({ sheet: true }); return; }
+      ctl = new AbortController();
+      runCtl = ctl;
+      const t0 = Date.now();
+      const before = ocrGot;
+      ocrRun = { state: "running", source, ms: 0, progress: null };
+      paintStrip();
+      try {
+        if (source === "device") {
+          const out = await deviceOcr.read({
+            pages: info.pages,
+            url: pdfUrl(),
+            getPdf,
+            signal: ctl.signal,
+            onProgress: (fraction) => { ocrRun = { ...ocrRun, progress: Number(fraction) }; paintStrip(); },
+          });
+          if (!ctl.signal.aborted) setOcrPages(out, { sha256: ocrSha });
+        } else {
+          await info.readScan();
+        }
+        if (ctl.signal.aborted) ocrRun = { state: "idle", source: "", ms: 0, progress: null };
+        else ocrRun = { state: ocrGot > before ? "done" : "failed", source, ms: Date.now() - t0, progress: null };
+      } catch {
+        ocrRun = ctl.signal.aborted ? { state: "idle", source: "", ms: 0, progress: null } : { state: "failed", source, ms: 0, progress: null };
+      }
+    } finally {
+      running = false;
+      if (runCtl === ctl) runCtl = null;
+      paintStrip();
+    }
+  };
+  function onStripAction(id) {
+    if (id === "read-text") void runRead();
+    else if (id === "use-helper") void runRead("helper");
+    else if (id === "retry") { ocrRun = { state: "idle", source: "", ms: 0, progress: null }; void runRead(); }
+    else if (id === "not-now") { dismissedUrls.add(pdfUrl()); paintStrip(); }
+    else if (id === "start-helper" || id === "setup-helper") openEngines({ sheet: true });
+    else if (id === "cancel") {
+      try { runCtl?.abort(); } catch { /* abort */ }
+      try { parsedView?.cancel?.(); } catch { /* view */ }
+      ocrRun = { state: "idle", source: "", ms: 0, progress: null };
+      paintStrip();
+    }
+  }
+  // The parse reports its scanned pages; the strip follows, and auto-read starts once per page set.
+  const noteScan = (info) => {
+    const pages = Array.isArray(info?.pages) ? info.pages : [];
+    scanInfo = pages.length ? { ...info, pages } : null;
+    if (!scanInfo) { paintStrip(); return; }
+    const sig = `${pdfUrl()}|${pages.join(",")}`;
+    const first = !autoTried.has(sig);
+    autoTried.add(sig);
+    paintStrip();
+    if (!first) return;
+    void (async () => {
+      await refreshSnaps(true);
+      if (autoReadOn() && !ocrCovered && !dismissedUrls.has(pdfUrl()) && ocrRun.state === "idle" && (deviceReady() || helperIsReady())) {
+        await runRead("", { fresh: false });
+      }
+    })();
+  };
+  const resetOcrState = () => {
+    try { runCtl?.abort(); } catch { /* abort */ }
+    scanInfo = null;
+    ocrRun = { state: "idle", source: "", ms: 0, progress: null };
+    ocrCovered = false;
+    autoTried.clear();
+    try { strip?.dispose(); } catch { /* strip */ }
+    strip = null;
+  };
   const needOcr = (info) => {
     if (typeof onNeedOcr === "function") {
       try { onNeedOcr({ ...(info || {}), url: pdfUrl(), cardUid: current.cardUid || "", setOcrPages }); } catch { /* host */ }
       return;
     }
-    void (async () => {
-      try { await parsedView?.refreshHelper?.(); } catch { /* helper */ }
-      if (info?.helperState === "ready" || (await helperReady())) {
-        try { await info?.readScan?.(); } catch { /* scan */ }
-        return;
-      }
-      try { host?.toast?.("Scanned page: start the local helper to read its text (Settings → Parse)"); } catch { /* host */ }
-    })();
-  };
-  const helperReady = async () => {
-    try { return (await ensureHelper().health())?.state === "ready"; } catch { return false; }
+    const pages = Array.isArray(info?.pages) ? info.pages : [];
+    scanInfo = { ...(info || {}), pages: pages.length ? pages : [0] };
+    dismissedUrls.delete(pdfUrl());
+    void runRead();
   };
   const ensureParsed = () => {
     if (parsedView) return parsedView;
@@ -2006,10 +2167,11 @@ export function createReadPane({
       getContext: () => readerContext(),
       outline: true,
       onNeedOcr: (info) => needOcr(info),
+      onScan: (info) => noteScan(info),
       onOcrPages: (pages, sha) => { setOcrPages(pages, { sha256: sha || "" }); },
       ghostRoot: root,
       ghostPane: pane,
-      scanAuto: (() => { try { return (settings?.get?.("parse-engine-default") || "auto") === "auto"; } catch { return false; } })(),
+      scanAuto: false,
     });
     parsedMount.append(parsedView.element());
     try { parsedView.watchPageInput(readerField()); } catch { /* field */ }
@@ -2061,6 +2223,7 @@ export function createReadPane({
       mountReader(current.blockUid);
       armSettle();
     }
+    void refreshSnaps(true);
     const view = ensureParsed();
     view.setTarget({ url: pdfUrl(), pdfUid: current.cardUid });
     try { view.watchPageInput(readerField()); } catch { /* field */ }
@@ -2111,6 +2274,9 @@ export function createReadPane({
     toolsOn = false;
     paintTools();
     toolsBtn.setAttribute("aria-pressed", "false");
+    resetOcrState();
+    try { panel?.dispose(); } catch { /* panel */ }
+    panel = null;
     fitDone = false;
     userZoomed = false;
     settleNoted = false;
@@ -2132,6 +2298,7 @@ export function createReadPane({
       if (blockUid !== current.blockUid) {
         textLayer.clear();
         ocrSha = "";
+        resetOcrState();
       }
       if (!openFlag || blockUid !== current.blockUid) {
         fitDone = false;
@@ -2210,6 +2377,10 @@ export function createReadPane({
     mode: () => viewMode,
     // U2 contract for OCR sources: pxd-ocr/1 page records (or { pages }) for the open PDF.
     setOcrPages: (pages, opts) => setOcrPages(pages, opts),
+    noteScan,
+    openEngines,
+    stripKind: () => strip?.kind() ?? null,
+    ocrRun: () => ({ ...ocrRun }),
     textLayerStats: () => textLayer.stats(),
     selectionBarOpen: () => Boolean(barInfo) && !bar.hasAttribute("hidden"),
   };

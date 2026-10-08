@@ -25,7 +25,6 @@ export const SYNC_MS = 250;
 export const LOW_CONFIDENCE = 0.75;
 export const BOTH_MIN_PX = 640;
 const URLS_KEY = "pxd-parse-urls";
-const HELPER_START = "tools/parse-helper/bin/plexus-parse-helper serve";
 const TEXT_TYPES = new Set(["heading", "para", "list", "caption", "footnote", "code"]);
 const INDEX_TYPES = new Set(["heading", "table", "figure", "formula"]);
 
@@ -66,11 +65,11 @@ export function engineChip({ phase = "idle", engine = "builtin", ms = null, page
     return { text: `Page ${page} of ${pageCount}`, cancel: true, detail: which };
   }
   if (helper === "not-running" || helper === "disabled") {
-    return { text: "Docling: not running", tip: `${HELPER_START}. Paste the token into Settings.` };
+    return { text: "Local helper: off", tip: "Open Engines (the gear) to set up or start the local helper." };
   }
-  if (helper === "wrong-token") return { text: "Docling: wrong token", tip: "Paste the helper token into Settings." };
-  if (helper === "models-missing") return { text: "Docling: downloading models", tip: "The helper is downloading models." };
-  if (helper === "newer-schema") return { text: "Docling: newer schema", tip: "This Plexus is older than the helper." };
+  if (helper === "wrong-token") return { text: "Local helper: wrong token", tip: "Open Engines (the gear) and pair the local helper again." };
+  if (helper === "models-missing") return { text: "Local helper: downloading models", tip: "The helper is downloading models." };
+  if (helper === "newer-schema") return { text: "Local helper: newer schema", tip: "This Plexus is older than the helper." };
   if ((engine === "docling" || engine === "mixed") && ms != null) return { text: `Docling · ${formatSeconds(ms)}` };
   if (ms != null) return { text: `Built-in · ${formatSeconds(ms)}` };
   return { text: "Built-in" };
@@ -301,6 +300,7 @@ export function createParseView({
   scanAuto = false,
   outline = false,
   onNeedOcr = null,
+  onScan = null,
   onOcrPages = null,
   ghostRoot = null,
   ghostPane = null,
@@ -716,6 +716,10 @@ export function createParseView({
     const blocks = shown();
     body.replaceChildren?.();
     if (parsed) { try { onTitle?.(parsedDocTitle(parsed)); } catch { /* host */ } }
+    if (parsed && typeof onScan === "function") {
+      const scanned = scanPagesOf(parsed);
+      try { onScan({ pages: scanned.length ? scanned : scanPageNumbers(parsed), readScan: readScanNow, helperState }); } catch { /* host */ }
+    }
     if (!parsed) {
       body.append(empty);
       empty.textContent = "";
@@ -738,7 +742,7 @@ export function createParseView({
         read.setAttribute("data-tip", "parse.read-text");
         listenBlock(read, "click", (event) => { event.stopPropagation?.(); needOcr(); });
       }
-      else if (!filtered && (helperState === "not-running" || helperState === "disabled")) note.textContent = `Helper not running · Start: ${HELPER_START}`;
+      else if (!filtered && (helperState === "not-running" || helperState === "disabled")) note.textContent = "Local helper is off · open Engines (the gear) to start it";
       else note.textContent = "Nothing matches";
     }
     let page = null;

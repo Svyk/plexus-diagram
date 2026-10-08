@@ -1602,18 +1602,18 @@ function renderTrailStrip(doc, parent, stops, { onStop, onWalk } = {}) {
       arrow2.textContent = "→";
       parent.append(arrow2);
     }
-    const btn = doc.createElement("button");
-    btn.type = "button";
-    btn.className = "pxd-trail-strip__stop";
-    if (stop2?.uid) btn.dataset.uid = stop2.uid;
-    btn.textContent = stop2?.title || "";
-    btn.setAttribute("aria-label", stop2?.title || "Trail stop");
-    btn.addEventListener("click", (event) => {
+    const btn2 = doc.createElement("button");
+    btn2.type = "button";
+    btn2.className = "pxd-trail-strip__stop";
+    if (stop2?.uid) btn2.dataset.uid = stop2.uid;
+    btn2.textContent = stop2?.title || "";
+    btn2.setAttribute("aria-label", stop2?.title || "Trail stop");
+    btn2.addEventListener("click", (event) => {
       event.preventDefault?.();
       event.stopPropagation?.();
       onStop?.(stop2);
     });
-    parent.append(btn);
+    parent.append(btn2);
   });
   const walk2 = doc.createElement("button");
   walk2.type = "button";
@@ -1639,9 +1639,9 @@ function renderTrailStrip(doc, parent, stops, { onStop, onWalk } = {}) {
         now3.onWalk?.();
         return;
       }
-      const btn = target?.closest?.(".pxd-trail-strip__stop");
-      if (!btn) return;
-      const i = [...parent.querySelectorAll(".pxd-trail-strip__stop")].indexOf(btn);
+      const btn2 = target?.closest?.(".pxd-trail-strip__stop");
+      if (!btn2) return;
+      const i = [...parent.querySelectorAll(".pxd-trail-strip__stop")].indexOf(btn2);
       if (i < 0) return;
       event.preventDefault?.();
       event.stopPropagation?.();
@@ -5335,9 +5335,9 @@ var init_tooltip_text = __esm({
       "parse.search": e("Search", "Filter the parsed blocks. The PDF is not fetched again."),
       "parse.chip": e("Parse engine", "Built-in runs on this machine. Docling uses the local helper."),
       "parse.docling": e("Parse with Docling", "Send this PDF to the local helper. Nothing is sent until you press this."),
-      "parse.docling-off": e("Docling: not running", "Start tools/parse-helper/bin/plexus-parse-helper serve, then paste the token into Settings."),
-      "parse.docling-token": e("Docling: wrong token", "Paste the helper token into Settings."),
-      "parse.docling-models": e("Docling: downloading models", "The helper is downloading models. Parsing waits until they are ready."),
+      "parse.docling-off": e("Local helper: off", "Open Engines (the gear) to set up or start the local helper."),
+      "parse.docling-token": e("Local helper: wrong token", "Open Engines (the gear) and pair the local helper again."),
+      "parse.docling-models": e("Local helper: downloading models", "The helper is downloading models. Parsing waits until they are ready."),
       "parse.strip.read-text": e("Read text", "Read the words on this scanned page on this device. Nothing leaves your computer."),
       "parse.strip.use-helper": e("Use local helper", "Open Engines to set up or pair the local helper (Docling and Apple Vision)."),
       "parse.strip.not-now": e("Not now", "Hide this notice for this page."),
@@ -6025,7 +6025,7 @@ function createRelChips({ doc = globalThis.document, win = globalThis.window, ho
     else mk("div", "pxd-relpop__empty", el, "The connected cards could not be found on the board.");
     if (rel?.toBlockText) mk("div", "pxd-relpop__note", el, `Ends on the block “${clip2(rel.toBlockText, 60)}”`);
     const row4 = mk("div", "pxd-relpop__actions", el);
-    const button = (tip, text3, fn) => {
+    const button2 = (tip, text3, fn) => {
       const b = mk("button", "pxd-btn pxd-relpop__btn", row4, text3);
       b.type = "button";
       b.setAttribute("data-tip", tip);
@@ -6035,11 +6035,11 @@ function createRelChips({ doc = globalThis.document, win = globalThis.window, ho
       });
       return b;
     };
-    button("relpop.board", "Open on board", () => {
+    button2("relpop.board", "Open on board", () => {
       closePop();
       if (boardUid) openOnBoard(boardUid, edgeUid);
     });
-    button("relpop.sidebar", "Open in sidebar", () => {
+    button2("relpop.sidebar", "Open in sidebar", () => {
       closePop();
       if (boardUid) {
         try {
@@ -6690,7 +6690,7 @@ function createTaskPopover({ doc = globalThis.document, root, bt, toast = () => 
     const res = await bt.modify(uid, { attributes });
     if (!res.ok) toast({ message: `Better Tasks could not change that: ${res.reason}` });
   };
-  const button = (parent, label, run, cls = "pxd-task-pop__btn") => {
+  const button2 = (parent, label, run, cls = "pxd-task-pop__btn") => {
     const b = el("button", cls, parent, label);
     b.type = "button";
     b.setAttribute("aria-label", label);
@@ -6701,14 +6701,14 @@ function createTaskPopover({ doc = globalThis.document, root, bt, toast = () => 
     return b;
   };
   const fillDue = (box2, uid) => {
-    for (const choice of dayChoices(today())) button(box2, choice.label, () => apply(uid, { due: choice.value }));
+    for (const choice of dayChoices(today())) button2(box2, choice.label, () => apply(uid, { due: choice.value }));
     const pick = el("input", "pxd-task-pop__input", box2);
     pick.type = "date";
     pick.setAttribute("aria-label", "Pick a date");
     pick.addEventListener("change", () => {
       if (pick.value) void apply(uid, { due: pick.value });
     });
-    button(box2, "Clear", () => apply(uid, { due: "" }), "pxd-task-pop__btn pxd-task-pop__btn--clear");
+    button2(box2, "Clear", () => apply(uid, { due: "" }), "pxd-task-pop__btn pxd-task-pop__btn--clear");
   };
   const fillProject = (box2, uid) => {
     const list = el("div", "pxd-task-pop__list", box2);
@@ -6717,7 +6717,7 @@ function createTaskPopover({ doc = globalThis.document, root, bt, toast = () => 
       if (!node2 || openFor !== uid) return;
       list.replaceChildren();
       if (!names.length) el("div", "pxd-task-pop__hint", list, "No projects yet");
-      for (const name of names) button(list, name, () => apply(uid, { project: name }));
+      for (const name of names) button2(list, name, () => apply(uid, { project: name }));
       placeAgain();
       const active = doc.activeElement;
       const tag = String(active?.tagName || "").toLowerCase();
@@ -6725,11 +6725,11 @@ function createTaskPopover({ doc = globalThis.document, root, bt, toast = () => 
         focusEl3(list.querySelector("button"));
       }
     });
-    button(box2, "Clear", () => apply(uid, { project: "" }), "pxd-task-pop__btn pxd-task-pop__btn--clear");
+    button2(box2, "Clear", () => apply(uid, { project: "" }), "pxd-task-pop__btn pxd-task-pop__btn--clear");
   };
   const fillPriority = (box2, uid) => {
-    for (const level of PRIORITIES) button(box2, level, () => apply(uid, { priority: level }));
-    button(box2, "Clear", () => apply(uid, { priority: "" }), "pxd-task-pop__btn pxd-task-pop__btn--clear");
+    for (const level of PRIORITIES) button2(box2, level, () => apply(uid, { priority: level }));
+    button2(box2, "Clear", () => apply(uid, { priority: "" }), "pxd-task-pop__btn pxd-task-pop__btn--clear");
   };
   const fillRepeat = (box2, uid) => {
     const input = el("input", "pxd-task-pop__input", box2);
@@ -6747,8 +6747,8 @@ function createTaskPopover({ doc = globalThis.document, root, bt, toast = () => 
         go();
       }
     });
-    button(box2, "Set", go);
-    button(box2, "Clear", () => apply(uid, { repeat: "" }), "pxd-task-pop__btn pxd-task-pop__btn--clear");
+    button2(box2, "Set", go);
+    button2(box2, "Clear", () => apply(uid, { repeat: "" }), "pxd-task-pop__btn pxd-task-pop__btn--clear");
     try {
       input.focus({ preventScroll: true });
     } catch {
@@ -7223,17 +7223,17 @@ function mountTimeline(parent, { doc, rows = [], onOpenDay, onShowOnBoard } = {}
     for (const year of grouped) {
       const group = document.createElement("div");
       group.className = "pxd-timeline__group";
-      const button = document.createElement("button");
-      button.type = "button";
-      button.className = "pxd-timeline__year";
-      button.setAttribute("data-year", String(year.year));
+      const button2 = document.createElement("button");
+      button2.type = "button";
+      button2.className = "pxd-timeline__year";
+      button2.setAttribute("data-year", String(year.year));
       const shut = collapsed.has(year.year);
-      button.setAttribute("aria-expanded", shut ? "false" : "true");
-      button.setAttribute("aria-label", `Year ${year.year}`);
+      button2.setAttribute("aria-expanded", shut ? "false" : "true");
+      button2.setAttribute("aria-label", `Year ${year.year}`);
       const label = document.createElement("span");
       label.className = "pxd-timeline__year-label";
       label.textContent = String(year.year);
-      button.append(label);
+      button2.append(label);
       const days = document.createElement("div");
       days.className = "pxd-timeline__days";
       if (shut) days.setAttribute("hidden", "");
@@ -7258,7 +7258,7 @@ function mountTimeline(parent, { doc, rows = [], onOpenDay, onShowOnBoard } = {}
         row4.append(open, count, show);
         days.append(row4);
       }
-      group.append(button, days);
+      group.append(button2, days);
       el.append(group);
     }
   };
@@ -8950,20 +8950,20 @@ function paintThumb(doc, node2, blob) {
 }
 function mountButton(doc, node2, className, text3, onClick) {
   node2.querySelector(`.${className}`)?.remove();
-  const btn = doc.createElement("button");
-  btn.type = "button";
-  btn.setAttribute("type", "button");
-  btn.className = className;
-  btn.textContent = text3;
-  btn.setAttribute("aria-label", text3);
+  const btn2 = doc.createElement("button");
+  btn2.type = "button";
+  btn2.setAttribute("type", "button");
+  btn2.className = className;
+  btn2.textContent = text3;
+  btn2.setAttribute("aria-label", text3);
   const stop2 = (event) => event.stopPropagation?.();
-  btn.addEventListener("pointerdown", stop2);
-  btn.addEventListener("mousedown", stop2);
-  btn.addEventListener("click", (event) => {
+  btn2.addEventListener("pointerdown", stop2);
+  btn2.addEventListener("mousedown", stop2);
+  btn2.addEventListener("click", (event) => {
     stop2(event);
     onClick();
   });
-  node2.append(btn);
+  node2.append(btn2);
 }
 function wantsThumb(hooks) {
   return hooks?.tier === "detail" && hooks.visible !== false && typeof hooks.thumbnail === "function";
@@ -8984,10 +8984,10 @@ function renderRegionCard(doc, card2, model, hooks = {}) {
     node2._pxdRegionKeys = true;
     node2.addEventListener("keydown", (event) => {
       if (event.key !== "Enter" && event.key !== " ") return;
-      const btn = event.target?.closest?.("button");
-      if (!btn || !node2.contains(btn)) return;
+      const btn2 = event.target?.closest?.("button");
+      if (!btn2 || !node2.contains(btn2)) return;
       event.preventDefault();
-      btn.click();
+      btn2.click();
     });
   }
   mountButton(doc, node2, "pxd-region-open", "Open drawing", () => open({ sidebar: false }));
@@ -9047,14 +9047,14 @@ function onPress(el, fn) {
 }
 function mountButton2(doc, node2, className, text3, fn) {
   node2.querySelector(`.${className}`)?.remove();
-  const btn = doc.createElement("button");
-  btn.type = "button";
-  btn.setAttribute("type", "button");
-  btn.className = className;
-  btn.textContent = text3;
-  onPress(btn, fn);
-  node2.append(btn);
-  return btn;
+  const btn2 = doc.createElement("button");
+  btn2.type = "button";
+  btn2.setAttribute("type", "button");
+  btn2.className = className;
+  btn2.textContent = text3;
+  onPress(btn2, fn);
+  node2.append(btn2);
+  return btn2;
 }
 function showThumb(hooks) {
   if (hooks?.tier !== "detail" || hooks.visible === false) return false;
@@ -9191,29 +9191,29 @@ function paintPdfChipStrip(doc, parent, chips, handlers) {
   for (const type of ["pointerdown", "mousedown", "dblclick"]) strip.addEventListener(type, stop2);
   strip.addEventListener("keydown", (event) => {
     if (event.key !== "Enter" && event.key !== " ") return;
-    const button = event.target?.closest?.(".pxd-pdf-chip");
-    if (!button || !strip.contains(button)) return;
+    const button2 = event.target?.closest?.(".pxd-pdf-chip");
+    if (!button2 || !strip.contains(button2)) return;
     event.preventDefault();
     stop2(event);
-    handlers?.onOpen?.(button._pxdPage);
+    handlers?.onOpen?.(button2._pxdPage);
   });
   for (const chip of chips || []) {
-    const button = doc.createElement("button");
-    button.type = "button";
-    button.setAttribute("type", "button");
-    button.className = "pxd-pdf-chip pxd-chrome";
-    button._pxdPage = chip.page;
-    button.setAttribute("data-page", String(chip.page));
-    button.setAttribute("aria-label", `Page ${chip.page}, ${chip.count}`);
-    button.append(doc.createTextNode(String(chip.page)));
+    const button2 = doc.createElement("button");
+    button2.type = "button";
+    button2.setAttribute("type", "button");
+    button2.className = "pxd-pdf-chip pxd-chrome";
+    button2._pxdPage = chip.page;
+    button2.setAttribute("data-page", String(chip.page));
+    button2.setAttribute("aria-label", `Page ${chip.page}, ${chip.count}`);
+    button2.append(doc.createTextNode(String(chip.page)));
     const badge = doc.createElement("span");
     badge.className = "pxd-pdf-chip__n";
     badge.textContent = String(chip.count);
-    button.append(badge);
+    button2.append(badge);
     let armed = false;
-    button.addEventListener("pointerdown", stop2);
-    button.addEventListener("mousedown", stop2);
-    button.addEventListener("click", () => {
+    button2.addEventListener("pointerdown", stop2);
+    button2.addEventListener("mousedown", stop2);
+    button2.addEventListener("click", () => {
       armed = true;
       handlers.later(() => {
         if (!armed) return;
@@ -9221,12 +9221,12 @@ function paintPdfChipStrip(doc, parent, chips, handlers) {
         handlers.onPulse(chip.uids);
       }, 280);
     });
-    button.addEventListener("dblclick", (event) => {
+    button2.addEventListener("dblclick", (event) => {
       armed = false;
       stop2(event);
       handlers.onOpen(chip.page);
     });
-    strip.append(button);
+    strip.append(button2);
   }
   parent.append(strip);
   return strip;
@@ -10471,28 +10471,28 @@ function sourceChipKey(chip) {
 }
 function buildSourceChip(doc, chip, { onOpen } = {}) {
   if (!chip || typeof doc?.createElement !== "function") return null;
-  const button = doc.createElement("button");
-  button.type = "button";
-  button.setAttribute("type", "button");
-  button.className = "pxd-chip pxd-chip--source";
-  button.textContent = chip.text || "";
-  button.setAttribute("aria-label", `Open ${chip.text || chip.title || "source"}`);
+  const button2 = doc.createElement("button");
+  button2.type = "button";
+  button2.setAttribute("type", "button");
+  button2.className = "pxd-chip pxd-chip--source";
+  button2.textContent = chip.text || "";
+  button2.setAttribute("aria-label", `Open ${chip.text || chip.title || "source"}`);
   const stop2 = (event) => {
     event.stopPropagation?.();
   };
-  button.addEventListener("pointerdown", stop2);
-  button.addEventListener("mousedown", stop2);
+  button2.addEventListener("pointerdown", stop2);
+  button2.addEventListener("mousedown", stop2);
   const open = (event) => {
     stop2(event);
     if (typeof onOpen === "function") onOpen(chip.pageUid);
   };
-  button.addEventListener("click", open);
-  button.addEventListener("keydown", (event) => {
+  button2.addEventListener("click", open);
+  button2.addEventListener("keydown", (event) => {
     if (event.key !== "Enter") return;
     event.preventDefault?.();
     open(event);
   });
-  return button;
+  return button2;
 }
 var READING_PREFIXES, AUTHOR_PREFIX;
 var init_source_chip = __esm({
@@ -12593,12 +12593,12 @@ function createItemRenderer({
     if (!want) return dropKidsBadge(rec);
     const text3 = `${item.kids ? "▾" : "▸"} ${rec.kidCount}`;
     if (!rec.kidsBtn) {
-      const btn = el("button", "pxd-kids", rec.el);
-      btn.type = "button";
+      const btn2 = el("button", "pxd-kids", rec.el);
+      btn2.type = "button";
       rec.kidsOffs = [];
       const on = (type, fn) => {
-        btn.addEventListener(type, fn);
-        rec.kidsOffs.push(() => btn.removeEventListener(type, fn));
+        btn2.addEventListener(type, fn);
+        rec.kidsOffs.push(() => btn2.removeEventListener(type, fn));
       };
       for (const type of ["pointerdown", "mousedown", "dblclick"]) {
         on(type, (event) => {
@@ -12617,7 +12617,7 @@ function createItemRenderer({
         peekTimer = later(() => openPeek(rec), PEEK_DELAY_MS);
       });
       on("mouseleave", () => closePeek());
-      rec.kidsBtn = btn;
+      rec.kidsBtn = btn2;
     }
     rec.kidsBtn.textContent = text3;
     rec.kidsBtn.setAttribute("aria-expanded", item.kids ? "true" : "false");
@@ -12664,7 +12664,7 @@ function createItemRenderer({
       el("div", "pxd-board-preview__empty", holder).textContent = "Empty board";
     } else {
       const canvas = el("div", "pxd-board-preview__canvas", holder);
-      const pct = (n2) => `${Math.round(n2 * 1e4) / 100}%`;
+      const pct2 = (n2) => `${Math.round(n2 * 1e4) / 100}%`;
       const addMini = (r) => {
         const cls = ["pxd-mini"];
         if (r.type === "section") cls.push("pxd-mini--section");
@@ -12672,10 +12672,10 @@ function createItemRenderer({
         if (r.color) cls.push(`pxd-c-${r.color}`);
         if (r.w * innerW < TINY_MINI_PX) cls.push("pxd-mini--tiny");
         const mini = el("div", cls.join(" "), canvas);
-        mini.style.left = pct(r.x);
-        mini.style.top = pct(r.y);
-        mini.style.width = pct(r.w);
-        mini.style.height = pct(r.h);
+        mini.style.left = pct2(r.x);
+        mini.style.top = pct2(r.y);
+        mini.style.width = pct2(r.w);
+        mini.style.height = pct2(r.h);
         let title = r.title;
         if (!title && r.ref) {
           const text3 = host?.blockString?.(r.ref);
@@ -26203,18 +26203,18 @@ function openHaloPopover({
   if (!company2.length) withRow.append("none");
   company2.forEach((row4, index) => {
     if (index) withRow.append(", ");
-    const button = doc.createElement("button");
-    button.type = "button";
-    button.className = "pxd-halo__company";
+    const button2 = doc.createElement("button");
+    button2.type = "button";
+    button2.className = "pxd-halo__company";
     const label = row4.label || "card";
-    button.textContent = label;
-    button.setAttribute("aria-label", label);
-    button.setAttribute("data-uid", row4.uid || "");
-    button.addEventListener("click", (event) => {
+    button2.textContent = label;
+    button2.setAttribute("aria-label", label);
+    button2.setAttribute("data-uid", row4.uid || "");
+    button2.addEventListener("click", (event) => {
       event.stopPropagation();
       if (row4.uid) onPulse?.(row4.uid);
     });
-    withRow.append(button);
+    withRow.append(button2);
   });
   pop.append(withRow);
   const refs = doc.createElement("div");
@@ -26846,23 +26846,23 @@ function mountContextsDrawer({
         head.textContent = year ? String(year) : "Undated";
         list.append(head);
       }
-      const button = doc.createElement("button");
-      button.type = "button";
-      button.className = "pxd-contexts__row";
-      button.setAttribute("data-uid", row4.uid);
+      const button2 = doc.createElement("button");
+      button2.type = "button";
+      button2.className = "pxd-contexts__row";
+      button2.setAttribute("data-uid", row4.uid);
       const crumb = doc.createElement("div");
       crumb.className = "pxd-contexts__crumb";
       crumb.textContent = row4.crumb || "Untitled";
       const snippet = doc.createElement("div");
       snippet.className = "pxd-contexts__snippet";
       snippet.textContent = row4.snippet || "";
-      button.append(crumb, snippet);
-      button.addEventListener("click", (event) => {
+      button2.append(crumb, snippet);
+      button2.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
         onOpen?.(row4.uid, { sidebar: Boolean(event.shiftKey) });
       });
-      list.append(button);
+      list.append(button2);
     }
   };
   if (chunks[0]) paint2(chunks[0]);
@@ -26920,17 +26920,17 @@ function mountMemoryLane({
   const ticks = doc.createElement("div");
   ticks.className = "pxd-memory__ticks";
   for (const snap of snapshots) {
-    const button = doc.createElement("button");
-    button.type = "button";
-    button.className = "pxd-memory__tick";
-    button.textContent = snap.title || "Snapshot";
-    button.addEventListener("click", (event) => {
+    const button2 = doc.createElement("button");
+    button2.type = "button";
+    button2.className = "pxd-memory__tick";
+    button2.textContent = snap.title || "Snapshot";
+    button2.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
       const preview = previewLayout(snap.items);
       onPreview?.(preview);
     });
-    ticks.append(button);
+    ticks.append(button2);
   }
   bar.append(play, range, ticks);
   parent?.append(bar);
@@ -28988,25 +28988,25 @@ function tokensOf(node2) {
   return out;
 }
 var PLAIN = /* @__PURE__ */ new Set(["bp3-button", "bp3-minimal", "bp3-small", "bp3-icon"]);
-function blocked(button) {
-  if (!button || typeof button !== "object") return true;
-  if (button.classList?.contains?.("rm-pdf-color-button")) return true;
-  const tokens = tokensOf(button);
+function blocked(button2) {
+  if (!button2 || typeof button2 !== "object") return true;
+  if (button2.classList?.contains?.("rm-pdf-color-button")) return true;
+  const tokens = tokensOf(button2);
   if (tokens.some((name) => BLOCKED_ICONS.has(name))) return true;
-  const aria = button.getAttribute?.("aria-label") || "";
-  const title = button.getAttribute?.("title") || "";
+  const aria = button2.getAttribute?.("aria-label") || "";
+  const title = button2.getAttribute?.("title") || "";
   const named = tokens.some((name) => name.startsWith("bp3-icon-") || name && !PLAIN.has(name) && !name.startsWith("bp3-"));
   if (!named && !aria && !title) return true;
   return false;
 }
-function matches(button, spec) {
+function matches(button2, spec) {
   if (!spec || typeof spec !== "object") return false;
-  const tokens = tokensOf(button);
+  const tokens = tokensOf(button2);
   if (spec.icon && tokens.includes(spec.icon)) return true;
   const label = typeof spec.label === "string" ? spec.label : "";
   if (!label) return false;
-  const aria = button.getAttribute?.("aria-label") || "";
-  const title = button.getAttribute?.("title") || "";
+  const aria = button2.getAttribute?.("aria-label") || "";
+  const title = button2.getAttribute?.("title") || "";
   return aria === label || title === label;
 }
 function pageIndicator(inputValue, siblingText) {
@@ -29037,10 +29037,10 @@ function pillActions(toolbarButtons, selectors = PILL_SELECTORS) {
   for (const key of Object.keys(out)) {
     const spec = table[key];
     if (!spec) continue;
-    for (const button of buttons) {
-      if (blocked(button)) continue;
-      if (!matches(button, spec)) continue;
-      out[key] = button;
+    for (const button2 of buttons) {
+      if (blocked(button2)) continue;
+      if (!matches(button2, spec)) continue;
+      out[key] = button2;
       break;
     }
   }
@@ -33866,7 +33866,7 @@ function createPageChips({
     chipNode = null;
   };
   const later = (fn, ms) => (win()?.setTimeout || setTimeout)(fn, ms);
-  const button = (cls, text3, tip) => {
+  const button2 = (cls, text3, tip) => {
     const node2 = doc.createElement("button");
     node2.type = "button";
     node2.className = cls;
@@ -33903,7 +33903,7 @@ function createPageChips({
     chipNode.style.left = `${rect.left + rect.width}px`;
     chipNode.style.top = `${Math.max(0, rect.top)}px`;
     chipNode.style.pointerEvents = "auto";
-    const main = button("pxd-page-chip__main", plan.label, `page-chip.${plan.type}`);
+    const main = button2("pxd-page-chip__main", plan.label, `page-chip.${plan.type}`);
     chipNode.append(main);
     const node2 = chipNode;
     const swallow = (event) => {
@@ -33916,14 +33916,14 @@ function createPageChips({
       fire2(plan.primary, block);
     });
     if (plan.menu.length) {
-      const caret = button("pxd-page-chip__more", "▾", "page-chip.more");
+      const caret = button2("pxd-page-chip__more", "▾", "page-chip.more");
       caret.setAttribute("aria-haspopup", "menu");
       const menu = doc.createElement("div");
       menu.className = "pxd-page-chip__menu";
       menu.setAttribute("role", "menu");
       menu.hidden = true;
       for (const item of plan.menu) {
-        const entry = button("pxd-page-chip__item", item.label);
+        const entry = button2("pxd-page-chip__item", item.label);
         entry.setAttribute("role", "menuitem");
         entry.setAttribute("data-act", item.act);
         if (item.extra?.mode) entry.setAttribute("data-mode", item.extra.mode);
@@ -34603,7 +34603,6 @@ var SYNC_MS = 250;
 var LOW_CONFIDENCE = 0.75;
 var BOTH_MIN_PX = 640;
 var URLS_KEY = "pxd-parse-urls";
-var HELPER_START = "tools/parse-helper/bin/plexus-parse-helper serve";
 var TEXT_TYPES = /* @__PURE__ */ new Set(["heading", "para", "list", "caption", "footnote", "code"]);
 var INDEX_TYPES = /* @__PURE__ */ new Set(["heading", "table", "figure", "formula"]);
 function reasonLabel(reason) {
@@ -34638,11 +34637,11 @@ function engineChip({ phase = "idle", engine = "builtin", ms = null, page = 0, p
     return { text: `Page ${page} of ${pageCount}`, cancel: true, detail: which };
   }
   if (helper === "not-running" || helper === "disabled") {
-    return { text: "Docling: not running", tip: `${HELPER_START}. Paste the token into Settings.` };
+    return { text: "Local helper: off", tip: "Open Engines (the gear) to set up or start the local helper." };
   }
-  if (helper === "wrong-token") return { text: "Docling: wrong token", tip: "Paste the helper token into Settings." };
-  if (helper === "models-missing") return { text: "Docling: downloading models", tip: "The helper is downloading models." };
-  if (helper === "newer-schema") return { text: "Docling: newer schema", tip: "This Plexus is older than the helper." };
+  if (helper === "wrong-token") return { text: "Local helper: wrong token", tip: "Open Engines (the gear) and pair the local helper again." };
+  if (helper === "models-missing") return { text: "Local helper: downloading models", tip: "The helper is downloading models." };
+  if (helper === "newer-schema") return { text: "Local helper: newer schema", tip: "This Plexus is older than the helper." };
   if ((engine === "docling" || engine === "mixed") && ms != null) return { text: `Docling · ${formatSeconds(ms)}` };
   if (ms != null) return { text: `Built-in · ${formatSeconds(ms)}` };
   return { text: "Built-in" };
@@ -34852,6 +34851,7 @@ function createParseView({
   scanAuto = false,
   outline = false,
   onNeedOcr = null,
+  onScan = null,
   onOcrPages = null,
   ghostRoot = null,
   ghostPane = null
@@ -34930,12 +34930,12 @@ function createParseView({
   const filterBtns = {};
   for (const name of ["Text", "Tables", "Figures", "Formulas"]) {
     const key = name === "Tables" ? "table" : name === "Figures" ? "figure" : name === "Formulas" ? "formula" : "text";
-    const button = el("button", "pxd-parse__filter", filterPop);
-    button.type = "button";
-    button.textContent = name;
-    button.setAttribute("aria-pressed", "true");
-    button.setAttribute("data-filter", key);
-    filterBtns[key] = button;
+    const button2 = el("button", "pxd-parse__filter", filterPop);
+    button2.type = "button";
+    button2.textContent = name;
+    button2.setAttribute("aria-pressed", "true");
+    button2.setAttribute("data-filter", key);
+    filterBtns[key] = button2;
   }
   const searchBtn = el("button", "pxd-parse__searchbtn", bar);
   searchBtn.type = "button";
@@ -34987,10 +34987,10 @@ function createParseView({
   const tableSum = el("summary", "", tableMenu);
   tableSum.textContent = "Insert table";
   for (const [mode, label] of [["grid", "Roam Grid"], ["native", "Native"], ["flat", "Flat"]]) {
-    const button = el("button", "pxd-parse__act", tableMenu);
-    button.type = "button";
-    button.textContent = label;
-    button.setAttribute("data-mode", mode);
+    const button2 = el("button", "pxd-parse__act", tableMenu);
+    button2.type = "button";
+    button2.textContent = label;
+    button2.setAttribute("data-mode", mode);
   }
   let currentUrl = url || "";
   let currentUid2 = pdfUid || "";
@@ -35267,6 +35267,13 @@ function createParseView({
       } catch {
       }
     }
+    if (parsed && typeof onScan === "function") {
+      const scanned = scanPagesOf(parsed);
+      try {
+        onScan({ pages: scanned.length ? scanned : scanPageNumbers(parsed), readScan: readScanNow, helperState });
+      } catch {
+      }
+    }
     if (!parsed) {
       body.append(empty);
       empty.textContent = "";
@@ -35291,7 +35298,7 @@ function createParseView({
           event.stopPropagation?.();
           needOcr();
         });
-      } else if (!filtered && (helperState === "not-running" || helperState === "disabled")) note.textContent = `Helper not running · Start: ${HELPER_START}`;
+      } else if (!filtered && (helperState === "not-running" || helperState === "disabled")) note.textContent = "Local helper is off · open Engines (the gear) to start it";
       else note.textContent = "Nothing matches";
     }
     let page = null;
@@ -36109,10 +36116,10 @@ function createParseView({
     query = String(search.value || "");
     render();
   });
-  for (const [key, button] of Object.entries(filterBtns)) {
-    listen(button, "click", () => {
+  for (const [key, button2] of Object.entries(filterBtns)) {
+    listen(button2, "click", () => {
       filters[key] = !filters[key];
-      button.setAttribute("aria-pressed", filters[key] ? "true" : "false");
+      button2.setAttribute("aria-pressed", filters[key] ? "true" : "false");
       render();
     });
   }
@@ -36647,6 +36654,568 @@ function createHelperClient({ fetch: fetchImpl, settings, setSetting, now: now3,
 init_relchips();
 init_avoid();
 
+// src/view/engines-panel.js
+var INSTALL_COMMAND = "curl -fsSL https://svyk.github.io/plexus-diagram/helper/install.sh | sh";
+var RESTART_COMMAND = "plexus-parse-helper install-agent";
+var MANUAL_COMMAND = 'uv tool install "git+https://github.com/Svyk/plexus-diagram#subdirectory=tools/parse-helper" && plexus-parse-helper serve';
+var HELPER_MB_FALLBACK = 500;
+var DEFAULT_POLL_MS = 3e3;
+var mbText = (bytes) => `${Math.max(1, Math.round(bytes / (1024 * 1024)))} MB`;
+var pct = (fraction) => `${Math.round(Math.max(0, Math.min(1, Number(fraction) || 0)) * 100)}%`;
+async function loadEngineState({ client, device, force = true } = {}) {
+  const [helper, dev] = await Promise.all([
+    client ? client.status({ force }).catch(() => ({ state: "not-installed", paired: false })) : { state: "not-installed", paired: false },
+    (async () => device?.status ? device.status() : { state: "unavailable" })().catch(() => ({ state: "unavailable" }))
+  ]);
+  return { device: dev || { state: "unavailable" }, helper: helper || { state: "not-installed", paired: false } };
+}
+var button = (id, label, tip) => ({ id, label, tip });
+function deviceOcrRow(device) {
+  const row4 = { id: "device-ocr", name: "In-browser reading", tip: "engines.ocr" };
+  switch (device?.state) {
+    case "ready":
+      return { ...row4, dot: "ok", text: "Ready", button: null };
+    case "not-downloaded": {
+      const mb = Number(device.mb) > 0 ? Math.round(device.mb) : 30;
+      return { ...row4, dot: "off", text: `Not downloaded (${mb} MB, once)`, button: button("download-device", "Download", "engines.download-device") };
+    }
+    case "downloading":
+      return {
+        ...row4,
+        dot: "busy",
+        text: `Downloading · ${pct(device.progress)}`,
+        progress: Math.max(0, Math.min(1, Number(device.progress) || 0)),
+        button: button("cancel-device", "Cancel", "engines.cancel")
+      };
+    default:
+      return { ...row4, dot: "off", text: "Not available in this build", button: null, disabled: true };
+  }
+}
+function helperRow(helper) {
+  const row4 = { id: "helper", name: "Local helper", tip: "engines.helper" };
+  switch (helper?.state) {
+    case "ready":
+      return { ...row4, dot: "ok", text: helper.version ? `Ready · v${helper.version}` : "Ready", button: null };
+    case "not-paired":
+      return { ...row4, dot: "warn", text: "Running, not paired", button: button("pair", "Pair", "engines.pair") };
+    case "wrong-token":
+      return { ...row4, dot: "warn", text: "Token does not match", button: button("pair", "Pair again", "engines.pair") };
+    case "not-running":
+      return { ...row4, dot: "warn", text: "Not running", button: button("start", "Start", "engines.start") };
+    case "models-missing": {
+      const bytes = Number(helper.progress?.bytes) || 0;
+      const size = bytes ? mbText(bytes) : `${HELPER_MB_FALLBACK} MB`;
+      return { ...row4, dot: "warn", text: `Models not downloaded (${size})`, button: button("download", "Download", "engines.download") };
+    }
+    case "downloading": {
+      const fraction = Math.max(0, Math.min(1, Number(helper.progress?.fraction) || 0));
+      return {
+        ...row4,
+        dot: "busy",
+        text: `Downloading models · ${pct(fraction)}`,
+        progress: fraction,
+        button: button("cancel", "Cancel", "engines.cancel")
+      };
+    }
+    case "newer-schema":
+      return { ...row4, dot: "warn", text: "Newer than this Plexus", button: button("update", "Update Plexus", "engines.update") };
+    default:
+      return { ...row4, dot: "off", text: "Not installed", button: button("setup", "Set up", "engines.setup") };
+  }
+}
+function engineRows(state, { platform = "mac" } = {}) {
+  void platform;
+  return [
+    { id: "device", name: "On this device", dot: "ok", text: "Built-in parser · ready", button: null, tip: "engines.builtin" },
+    deviceOcrRow(state?.device),
+    helperRow(state?.helper),
+    { id: "cloud", name: "Cloud", dot: "off", text: "Coming soon", button: null, disabled: true, tip: "engines.cloud" }
+  ];
+}
+function helperSheet(helperState, platform = "mac") {
+  if (platform !== "mac") {
+    return {
+      title: "Set up the local helper",
+      command: MANUAL_COMMAND,
+      note: "The installer is for macOS. On another system run this in a terminal; it needs uv. Then click Pair.",
+      copyLabel: "Copy command"
+    };
+  }
+  if (helperState === "not-running") {
+    return {
+      title: "Start the local helper",
+      command: RESTART_COMMAND,
+      note: "Paste this in Terminal. It restarts the helper and keeps it starting at login. Then come back here.",
+      copyLabel: "Copy command"
+    };
+  }
+  return {
+    title: "Set up the local helper",
+    command: INSTALL_COMMAND,
+    note: 'Paste this in Terminal. It installs the helper and starts it. When it says "Back to Roam: click Pair", click Pair here.',
+    copyLabel: "Copy command"
+  };
+}
+var DOT_LABEL = { ok: "ready", warn: "needs attention", busy: "working", off: "off" };
+function renderEnginesPanel(doc, parent, deps = {}) {
+  const { client, device, setSetting, copy, toast, onUpdate } = deps;
+  const platform = deps.platform || "mac";
+  const pollMs = deps.pollMs > 0 ? deps.pollMs : DEFAULT_POLL_MS;
+  const setIv = deps.setInterval || ((fn, ms) => globalThis.setInterval(fn, ms));
+  const clearIv = deps.clearInterval || ((id) => globalThis.clearInterval(id));
+  const el = doc.createElement("div");
+  el.className = "pxd-engines pxd-chrome";
+  el.setAttribute("role", "region");
+  el.setAttribute("aria-label", "Engines");
+  const stop2 = (event) => event.stopPropagation?.();
+  const heldStatic = [];
+  const heldRows = [];
+  const heldSheet = [];
+  const bindTo = (store) => (node2, type, fn) => {
+    node2.addEventListener(type, fn);
+    store.push([node2, type, fn]);
+  };
+  const release = (store) => {
+    for (const [node2, type, fn] of store.splice(0)) node2.removeEventListener?.(type, fn);
+  };
+  for (const type of ["pointerdown", "mousedown", "dblclick"]) bindTo(heldStatic)(el, type, stop2);
+  const title = doc.createElement("div");
+  title.className = "pxd-engines__title";
+  title.textContent = "Engines";
+  const list = doc.createElement("div");
+  list.className = "pxd-engines__rows";
+  const sheetHost = doc.createElement("div");
+  sheetHost.className = "pxd-engines__sheet-host";
+  el.append(title, list, sheetHost);
+  let state = null;
+  let sheetOpen = false;
+  let signature = "";
+  let timer = null;
+  let visible2 = true;
+  let busy = false;
+  let disposed = false;
+  const say = (text3) => {
+    try {
+      toast?.(text3);
+    } catch {
+    }
+  };
+  function paintRows() {
+    const rows = engineRows(state, { platform });
+    const sig = JSON.stringify(rows);
+    if (sig === signature) return;
+    signature = sig;
+    release(heldRows);
+    list.innerHTML = "";
+    for (const row4 of rows) {
+      const node2 = doc.createElement("div");
+      node2.className = `pxd-engines__row${row4.disabled ? " pxd-engines__row--disabled" : ""}`;
+      node2.setAttribute("data-row", row4.id);
+      node2.setAttribute("data-dot", row4.dot);
+      const dot = doc.createElement("span");
+      dot.className = `pxd-engines__dot pxd-engines__dot--${row4.dot}`;
+      dot.setAttribute("role", "img");
+      dot.setAttribute("aria-label", DOT_LABEL[row4.dot] || row4.dot);
+      const name = doc.createElement("span");
+      name.className = "pxd-engines__name";
+      name.setAttribute("data-tip", row4.tip);
+      name.textContent = row4.name;
+      const text3 = doc.createElement("span");
+      text3.className = "pxd-engines__text";
+      text3.textContent = row4.text;
+      node2.append(dot, name, text3);
+      if (row4.progress != null) {
+        const bar = doc.createElement("span");
+        bar.className = "pxd-engines__bar";
+        bar.setAttribute("role", "progressbar");
+        bar.setAttribute("aria-valuemin", "0");
+        bar.setAttribute("aria-valuemax", "100");
+        bar.setAttribute("aria-valuenow", String(Math.round(row4.progress * 100)));
+        const fill = doc.createElement("span");
+        fill.className = "pxd-engines__fill";
+        fill.style.width = pct(row4.progress);
+        bar.append(fill);
+        node2.append(bar);
+      }
+      if (row4.button) {
+        const b = doc.createElement("button");
+        b.type = "button";
+        b.setAttribute("type", "button");
+        b.className = "pxd-engines__btn";
+        b.setAttribute("data-action", row4.button.id);
+        b.setAttribute("data-tip", row4.button.tip);
+        b.textContent = row4.button.label;
+        bindTo(heldRows)(b, "click", (event) => {
+          event.stopPropagation?.();
+          void act(row4.button.id);
+        });
+        node2.append(b);
+      }
+      list.append(node2);
+    }
+    paintSheet();
+  }
+  function paintSheet() {
+    release(heldSheet);
+    sheetHost.innerHTML = "";
+    if (!sheetOpen) return;
+    const sheet = helperSheet(state?.helper?.state, platform);
+    const box2 = doc.createElement("div");
+    box2.className = "pxd-engines__sheet";
+    const head = doc.createElement("div");
+    head.className = "pxd-engines__sheet-title";
+    head.textContent = sheet.title;
+    const code = doc.createElement("code");
+    code.className = "pxd-engines__command";
+    code.textContent = sheet.command;
+    const note = doc.createElement("div");
+    note.className = "pxd-engines__note";
+    note.textContent = sheet.note;
+    const copyBtn = doc.createElement("button");
+    copyBtn.type = "button";
+    copyBtn.setAttribute("type", "button");
+    copyBtn.className = "pxd-engines__btn";
+    copyBtn.setAttribute("data-action", "copy");
+    copyBtn.setAttribute("data-tip", "engines.copy");
+    copyBtn.textContent = sheet.copyLabel;
+    bindTo(heldSheet)(copyBtn, "click", (event) => {
+      event.stopPropagation?.();
+      if (event.isTrusted === false) return;
+      Promise.resolve(copy?.(sheet.command)).then(() => say("Command copied")).catch(() => say("Could not copy. Select the command and copy it."));
+    });
+    box2.append(head, code, note, copyBtn);
+    if (state?.helper?.state !== "ready") {
+      const pairBtn = doc.createElement("button");
+      pairBtn.type = "button";
+      pairBtn.setAttribute("type", "button");
+      pairBtn.className = "pxd-engines__btn pxd-engines__btn--primary";
+      pairBtn.setAttribute("data-action", "pair");
+      pairBtn.setAttribute("data-tip", "engines.pair");
+      pairBtn.textContent = "Pair";
+      bindTo(heldSheet)(pairBtn, "click", (event) => {
+        event.stopPropagation?.();
+        void act("pair");
+      });
+      box2.append(pairBtn);
+    }
+    sheetHost.append(box2);
+  }
+  const advanced = doc.createElement("details");
+  advanced.className = "pxd-engines__advanced";
+  const summary = doc.createElement("summary");
+  summary.textContent = "Advanced";
+  const tokenInput = doc.createElement("input");
+  tokenInput.type = "password";
+  tokenInput.setAttribute("type", "password");
+  tokenInput.className = "pxd-engines__token";
+  tokenInput.setAttribute("autocomplete", "off");
+  tokenInput.setAttribute("aria-label", "Helper token");
+  tokenInput.setAttribute("placeholder", "Token");
+  const tokenSave = doc.createElement("button");
+  tokenSave.type = "button";
+  tokenSave.setAttribute("type", "button");
+  tokenSave.className = "pxd-engines__btn";
+  tokenSave.setAttribute("data-action", "save-token");
+  tokenSave.setAttribute("data-tip", "engines.token-save");
+  tokenSave.textContent = "Save token";
+  bindTo(heldStatic)(tokenSave, "click", (event) => {
+    event.stopPropagation?.();
+    void act("save-token");
+  });
+  advanced.append(summary, tokenInput, tokenSave);
+  el.append(advanced);
+  async function act(id) {
+    if (disposed) return;
+    if (id === "setup" || id === "start") {
+      sheetOpen = !sheetOpen;
+      paintSheet();
+      return;
+    }
+    if (id === "pair") {
+      const result = await client?.pair?.();
+      if (result?.ok) say("Helper paired");
+      else if (result?.reason === "window-closed") say("Pairing window closed. Run plexus-parse-helper pair, then click Pair.");
+      else if (result?.reason === "not-running") say("The helper is not running.");
+      else say("Could not pair.");
+    } else if (id === "download") {
+      await client?.downloadModels?.();
+    } else if (id === "cancel") {
+      await client?.cancelModels?.();
+    } else if (id === "download-device") {
+      await device?.download?.();
+    } else if (id === "cancel-device") {
+      await device?.cancel?.();
+    } else if (id === "update") {
+      onUpdate?.();
+    } else if (id === "save-token") {
+      const value = String(tokenInput.value || "").trim();
+      if (!value || typeof setSetting !== "function") return;
+      await setSetting("parse-helper-token", value);
+      tokenInput.value = "";
+      client?.invalidate?.();
+      say("Token saved");
+    }
+    await refresh();
+  }
+  async function refresh() {
+    if (disposed || busy) return state;
+    busy = true;
+    try {
+      const next = await loadEngineState({ client, device, force: true });
+      if (disposed) return state;
+      state = next;
+      if (sheetOpen && state.helper.state === "ready") sheetOpen = false;
+      paintRows();
+      return state;
+    } finally {
+      busy = false;
+    }
+  }
+  function stopTimer() {
+    if (timer != null) clearIv(timer);
+    timer = null;
+  }
+  function startTimer() {
+    if (timer == null && visible2 && !disposed) timer = setIv(() => {
+      void refresh();
+    }, pollMs);
+  }
+  function setVisible(value) {
+    visible2 = Boolean(value);
+    if (visible2) {
+      el.removeAttribute("hidden");
+      startTimer();
+      void refresh();
+    } else {
+      el.setAttribute("hidden", "");
+      stopTimer();
+    }
+  }
+  function showSheet() {
+    sheetOpen = true;
+    paintSheet();
+  }
+  function dispose() {
+    disposed = true;
+    stopTimer();
+    release(heldRows);
+    release(heldSheet);
+    release(heldStatic);
+    el.remove?.();
+  }
+  parent.append(el);
+  startTimer();
+  void refresh();
+  return { el, refresh, setVisible, showSheet, dispose };
+}
+
+// src/view/parse-status.js
+var DEFAULT_MODEL_MB = 30;
+var DONE_VISIBLE_MS = 3e3;
+var BUTTON_LABEL = {
+  "read-text": "Read text",
+  "use-helper": "Use local helper",
+  "not-now": "Not now",
+  "start-helper": "Start helper",
+  "setup-helper": "Set up helper",
+  retry: "Retry",
+  cancel: "Cancel"
+};
+function secondsText(ms) {
+  const n2 = Number(ms);
+  if (!Number.isFinite(n2) || n2 < 0) return "";
+  return `${(Math.round(n2 / 100) / 10).toFixed(1)} s`;
+}
+function stripKind(input = {}) {
+  const ocr = input.ocr || {};
+  const helper = input.helper || {};
+  if (ocr.state === "failed") return "unreadable";
+  if (ocr.state === "running") return "reading";
+  if (ocr.state === "done" && ocr.source === "helper") return "helper-done";
+  if (!input.scanned || input.dismissed) return null;
+  if (helper.paired && helper.state === "not-running") return "helper-off";
+  return ocr.modelsCached ? "scan-cached" : "scan-first";
+}
+var btn = (id, primary = false) => ({ id, label: BUTTON_LABEL[id], primary });
+function stripModel(kind, input = {}) {
+  const ocr = input.ocr || {};
+  const mb = Number(ocr.modelMB) > 0 ? Math.round(Number(ocr.modelMB)) : DEFAULT_MODEL_MB;
+  switch (kind) {
+    case "reading":
+      return {
+        kind,
+        text: "Reading text on this page…",
+        tip: "parse.strip.cancel",
+        buttons: [btn("cancel")],
+        progress: Number.isFinite(ocr.progress) ? Math.max(0, Math.min(1, ocr.progress)) : null
+      };
+    case "scan-first":
+    case "scan-cached":
+      if (ocr.deviceAvailable === false) {
+        return input.helper?.state === "ready" ? { kind, text: "This page is an image. Read its text with the local helper.", tip: "parse.strip.use-helper", buttons: [btn("read-text", true), btn("not-now")] } : { kind, text: "This page is an image. Its text needs the local helper.", tip: "parse.strip.setup-helper", buttons: [btn("setup-helper", true), btn("not-now")] };
+      }
+      return kind === "scan-cached" ? {
+        kind,
+        text: "This page is an image. Read its text on this device.",
+        tip: "parse.strip.read-text",
+        buttons: [btn("read-text", true), btn("not-now")]
+      } : {
+        kind,
+        text: `This page is an image. Read its text on this device (one-time ${mb} MB download).`,
+        tip: "parse.strip.read-text",
+        buttons: [btn("read-text", true), btn("use-helper"), btn("not-now")]
+      };
+    case "helper-done": {
+      const t = secondsText(ocr.ms);
+      return {
+        kind,
+        text: t ? `Read with local helper · ${t}` : "Read with local helper",
+        tip: "engines.helper",
+        buttons: [],
+        autoHideMs: DONE_VISIBLE_MS
+      };
+    }
+    case "helper-off":
+      if (ocr.deviceAvailable === false) {
+        return { kind, text: "Local helper is off. Start it to read this page.", tip: "parse.strip.start-helper", buttons: [btn("start-helper", true), btn("not-now")] };
+      }
+      return {
+        kind,
+        text: "Local helper is off. Reading on this device instead.",
+        tip: "parse.strip.start-helper",
+        buttons: ocr.modelsCached ? [btn("start-helper", true)] : [btn("read-text", true), btn("start-helper")]
+      };
+    case "unreadable":
+      return {
+        kind,
+        text: "Could not read this page. Try the local helper or a higher zoom.",
+        tip: "parse.strip.retry",
+        buttons: [btn("setup-helper", true), btn("retry")]
+      };
+    default:
+      return null;
+  }
+}
+var TIP_FOR_ACTION = {
+  "read-text": "parse.strip.read-text",
+  "use-helper": "parse.strip.use-helper",
+  "not-now": "parse.strip.not-now",
+  "start-helper": "parse.strip.start-helper",
+  "setup-helper": "parse.strip.setup-helper",
+  retry: "parse.strip.retry",
+  cancel: "parse.strip.cancel"
+};
+function renderParseStatus(doc, parent, input, { onAction, later } = {}) {
+  const el = doc.createElement("div");
+  el.className = "pxd-parse-status pxd-chrome";
+  el.setAttribute("role", "status");
+  el.setAttribute("aria-live", "polite");
+  const stop2 = (event) => event.stopPropagation?.();
+  const heldStatic = [];
+  const heldButtons = [];
+  const release = (store) => {
+    for (const [node2, type, fn] of store.splice(0)) node2.removeEventListener?.(type, fn);
+  };
+  for (const type of ["pointerdown", "mousedown", "dblclick"]) {
+    el.addEventListener(type, stop2);
+    heldStatic.push([el, type, stop2]);
+  }
+  let current3 = null;
+  let hideTimer = null;
+  let disposed = false;
+  let generation = 0;
+  const clearTimer = () => {
+    if (typeof hideTimer === "function") hideTimer();
+    else if (hideTimer && typeof hideTimer.cancel === "function") hideTimer.cancel();
+    hideTimer = null;
+    generation += 1;
+  };
+  const paint2 = (model) => {
+    release(heldButtons);
+    el.innerHTML = "";
+    const text3 = doc.createElement("span");
+    text3.className = "pxd-parse-status__text";
+    text3.textContent = model.text;
+    el.append(text3);
+    if (model.progress != null) {
+      const bar = doc.createElement("span");
+      bar.className = "pxd-parse-status__bar";
+      bar.setAttribute("role", "progressbar");
+      bar.setAttribute("aria-valuemin", "0");
+      bar.setAttribute("aria-valuemax", "100");
+      bar.setAttribute("aria-valuenow", String(Math.round(model.progress * 100)));
+      const fill = doc.createElement("span");
+      fill.className = "pxd-parse-status__fill";
+      fill.style.width = `${Math.round(model.progress * 100)}%`;
+      bar.append(fill);
+      el.append(bar);
+    }
+    for (const b of model.buttons) {
+      const node2 = doc.createElement("button");
+      node2.type = "button";
+      node2.setAttribute("type", "button");
+      node2.className = `pxd-parse-status__btn${b.primary ? " pxd-parse-status__btn--primary" : ""}`;
+      node2.setAttribute("data-action", b.id);
+      node2.setAttribute("data-tip", TIP_FOR_ACTION[b.id]);
+      node2.textContent = b.label;
+      const onClick = (event) => {
+        event.stopPropagation?.();
+        onAction?.(b.id);
+      };
+      node2.addEventListener("click", onClick);
+      heldButtons.push([node2, "click", onClick]);
+      el.append(node2);
+    }
+  };
+  function update(next) {
+    if (disposed) return;
+    const kind = stripKind(next);
+    const model = kind ? stripModel(kind, next) : null;
+    if (!model) {
+      current3 = null;
+      clearTimer();
+      release(heldButtons);
+      el.innerHTML = "";
+      el.setAttribute("hidden", "");
+      el.setAttribute("data-kind", "");
+      return;
+    }
+    el.removeAttribute("hidden");
+    el.setAttribute("data-kind", model.kind);
+    const same2 = current3 && current3.kind === model.kind && current3.text === model.text && current3.progress === model.progress && current3.buttons.map((b) => b.id).join() === model.buttons.map((b) => b.id).join();
+    if (!same2) paint2(model);
+    if (model.autoHideMs && (!current3 || current3.kind !== model.kind)) {
+      clearTimer();
+      if (typeof later === "function") {
+        const mine = generation;
+        hideTimer = later(() => {
+          hideTimer = null;
+          if (!disposed && mine === generation && current3?.kind === "helper-done") {
+            current3 = null;
+            release(heldButtons);
+            el.innerHTML = "";
+            el.setAttribute("hidden", "");
+            el.setAttribute("data-kind", "");
+          }
+        }, model.autoHideMs);
+      }
+    } else if (!model.autoHideMs) {
+      clearTimer();
+    }
+    current3 = model;
+  }
+  function dispose() {
+    disposed = true;
+    clearTimer();
+    release(heldButtons);
+    release(heldStatic);
+    el.remove?.();
+  }
+  parent.append(el);
+  update(input);
+  return { el, update, kind: () => current3?.kind ?? null, dispose };
+}
+
 // src/view/text-layer.js
 var WORD_CLASS = "pxd-tl-word";
 var WORD_ATTR = "data-pxd-word";
@@ -37078,11 +37647,11 @@ function crossGlyph(doc) {
   return svg;
 }
 function pillButton(doc, el, parent, label, text3) {
-  const button = el("button", "pxd-read__pillbtn", parent);
-  button.type = "button";
-  button.textContent = text3;
-  button.setAttribute("aria-label", label);
-  return button;
+  const button2 = el("button", "pxd-read__pillbtn", parent);
+  button2.type = "button";
+  button2.textContent = text3;
+  button2.setAttribute("aria-label", label);
+  return button2;
 }
 function readerJumpPlan({ cardUid = "", blockUid: blockUid2 = "" } = {}) {
   if (typeof cardUid === "string" && cardUid) return { action: "card", uid: cardUid };
@@ -37125,7 +37694,11 @@ function createReadPane({
   createDrawer,
   session = null,
   settings = null,
-  onNeedOcr = null
+  onNeedOcr = null,
+  setSetting = null,
+  // Injection point for an in-browser OCR source: { status(): {state, progress?, mb?}, download(), cancel(),
+  // read({ pages, url, getPdf, signal, onProgress }) -> pxd-ocr/1 page records }. None ships yet.
+  deviceOcr = null
 } = {}) {
   const el = (tag, cls, parent) => {
     const node2 = doc.createElement(tag);
@@ -37178,19 +37751,21 @@ function createReadPane({
   if (cross) closeBtn.append(cross);
   else closeBtn.textContent = "✕";
   closeBtn.setAttribute("aria-label", "Close");
+  const stripMount = el("div", "pxd-read__strip", pane);
+  const enginesMount = el("div", "pxd-read__engines", pane);
   const modes = el("div", "pxd-read__modes", pane);
   modes.setAttribute("role", "toolbar");
   modes.setAttribute("aria-label", "Reader mode");
   setHidden2(modes, true);
   const modeBtns = {};
   for (const [id, label, tip] of [["reader", "Read", "parse.mode.reader"], ["both", "Read + Outline", "parse.mode.both"]]) {
-    const button = el("button", "pxd-read__mode", modes);
-    button.type = "button";
-    button.textContent = label;
-    button.setAttribute("data-mode", id);
-    button.setAttribute("data-tip", tip);
-    button.setAttribute("aria-pressed", id === "reader" ? "true" : "false");
-    modeBtns[id] = button;
+    const button2 = el("button", "pxd-read__mode", modes);
+    button2.type = "button";
+    button2.textContent = label;
+    button2.setAttribute("data-mode", id);
+    button2.setAttribute("data-tip", tip);
+    button2.setAttribute("aria-pressed", id === "reader" ? "true" : "false");
+    modeBtns[id] = button2;
   }
   const progress = el("div", "pxd-read__progress", pane);
   setHidden2(progress, true);
@@ -37216,11 +37791,11 @@ function createReadPane({
   bar.setAttribute("aria-label", "Selection");
   setHidden2(bar, true);
   for (const [act, text3, tip] of [["copy", "Copy", "read.sel.copy"], ["card", "Card", "read.sel.card"], ["quote", "Quote", "read.sel.quote"]]) {
-    const button = el("button", "pxd-selbar__btn pxd-chrome", bar);
-    button.type = "button";
-    button.textContent = text3;
-    button.setAttribute("data-act", act);
-    button.setAttribute("data-tip", tip);
+    const button2 = el("button", "pxd-selbar__btn pxd-chrome", bar);
+    button2.type = "button";
+    button2.textContent = text3;
+    button2.setAttribute("data-act", act);
+    button2.setAttribute("data-tip", tip);
   }
   const barHandle = el("button", "pxd-selbar__handle pxd-chrome", bar);
   barHandle.type = "button";
@@ -38604,10 +39179,10 @@ function createReadPane({
   const proxyPill = (name) => {
     if (name === "zoomIn" || name === "zoomOut") userZoomed = true;
     if (name === "fit") fitDone = true;
-    const button = pillActions(toolbarButtons())[name];
-    if (button && typeof button.click === "function") {
+    const button2 = pillActions(toolbarButtons())[name];
+    if (button2 && typeof button2.click === "function") {
       try {
-        button.click();
+        button2.click();
       } catch {
       }
     }
@@ -38668,10 +39243,10 @@ function createReadPane({
   };
   const onBarClick = (event) => {
     if (autoZoom) return;
-    const button = event.target?.closest?.("button");
-    if (!button) return;
-    const found = pillActions([button]);
-    if (found.zoomIn === button || found.zoomOut === button) userZoomed = true;
+    const button2 = event.target?.closest?.("button");
+    if (!button2) return;
+    const found = pillActions([button2]);
+    if (found.zoomIn === button2 || found.zoomOut === button2) userZoomed = true;
   };
   const detachReaderWatch = () => {
     forget(barNode, "click", onBarClick);
@@ -38758,11 +39333,11 @@ function createReadPane({
     return { pageW, viewW };
   };
   const pressZoom = (name) => {
-    const button = pillActions(toolbarButtons())[name];
-    if (!button || typeof button.click !== "function") return false;
+    const button2 = pillActions(toolbarButtons())[name];
+    if (!button2 || typeof button2.click !== "function") return false;
     autoZoom = true;
     try {
-      button.click();
+      button2.click();
     } catch {
     }
     autoZoom = false;
@@ -39006,6 +39581,8 @@ function createReadPane({
     toolsOn = !toolsOn;
     toolsBtn.setAttribute("aria-pressed", toolsOn ? "true" : "false");
     paintTools();
+    if (toolsOn) openEngines();
+    else closeEngines();
   };
   const onSwitchBtn = (event) => {
     event.stopPropagation();
@@ -39110,8 +39687,13 @@ function createReadPane({
     if (!parseStore) parseStore = createParseStore({ indexedDB: doc.defaultView?.indexedDB });
     return parseStore;
   };
+  function setSettingFn(id, value) {
+    if (typeof setSetting === "function") return setSetting(id, value);
+    if (typeof settings?.set === "function") return settings.set(id, value);
+    return void 0;
+  }
   const ensureHelper = () => {
-    if (!parseHelper) parseHelper = createHelperClient({ settings, fetch: doc.defaultView?.fetch });
+    if (!parseHelper) parseHelper = createHelperClient({ settings, setSetting: setSettingFn, fetch: doc.defaultView?.fetch });
     return parseHelper;
   };
   const pdfUrl = () => pdfMacroUrl(current3.source || "") || "";
@@ -39163,8 +39745,8 @@ function createReadPane({
       pane.classList.add("pxd-read--both");
       if (width > 0 && width < BOTH_MIN_PX) pane.classList.add("pxd-read--narrow");
     }
-    for (const [id, button] of Object.entries(modeBtns)) {
-      button.setAttribute("aria-pressed", id === viewMode ? "true" : "false");
+    for (const [id, button2] of Object.entries(modeBtns)) {
+      button2.setAttribute("aria-pressed", id === viewMode ? "true" : "false");
     }
     setHidden2(pill, pane.classList.contains("pxd-read--narrow"));
     paintPill();
@@ -39186,9 +39768,16 @@ function createReadPane({
     } catch {
     }
   };
+  let ocrCovered = false;
+  let ocrGot = 0;
   const setOcrPages = (input, { sha256 = "", persist = true } = {}) => {
     const pages = pageRecords(input);
     const n2 = textLayer.setPages(pages);
+    if (n2) {
+      ocrCovered = true;
+      ocrGot += 1;
+      paintStrip();
+    }
     const sha = sha256 || ocrSha;
     if (n2 && persist && sha) void persistOcr(pages, sha);
     return n2;
@@ -39199,10 +39788,210 @@ function createReadPane({
     try {
       const raw = await ensureStore2().getImage(imageKey(sha, OCR_LAYER_ID));
       if (typeof raw !== "string" || !openFlag || sha !== ocrSha) return 0;
-      return textLayer.setPages(JSON.parse(raw));
+      const n2 = textLayer.setPages(JSON.parse(raw));
+      if (n2) {
+        ocrCovered = true;
+        paintStrip();
+      }
+      return n2;
     } catch {
       return 0;
     }
+  };
+  const autoReadOn = () => {
+    try {
+      return settings?.get?.("parse-auto-read") !== false;
+    } catch {
+      return true;
+    }
+  };
+  let helperSnap = { state: "not-installed", paired: false };
+  let deviceNow = null;
+  let scanInfo = null;
+  let ocrRun = { state: "idle", source: "", ms: 0, progress: null };
+  let runCtl = null;
+  let running = false;
+  let strip = null;
+  let panel = null;
+  const dismissedUrls = /* @__PURE__ */ new Set();
+  const autoTried = /* @__PURE__ */ new Set();
+  const stripLater = (fn, ms) => {
+    const id = setTimeout(fn, ms);
+    id?.unref?.();
+    return () => clearTimeout(id);
+  };
+  const stripInput = () => {
+    const pages = scanInfo?.pages || [];
+    return {
+      scanned: pages.length > 0 && !ocrCovered,
+      dismissed: dismissedUrls.has(pdfUrl()),
+      ocr: {
+        state: ocrRun.state,
+        source: ocrRun.source,
+        ms: ocrRun.ms,
+        progress: ocrRun.progress,
+        modelsCached: deviceNow?.state === "ready",
+        modelMB: deviceNow?.mb,
+        deviceAvailable: Boolean(deviceOcr) && deviceNow?.state !== "unavailable"
+      },
+      helper: { state: helperSnap.state, paired: helperSnap.paired }
+    };
+  };
+  function paintStrip() {
+    if (!strip && !scanInfo) return;
+    if (!strip) strip = renderParseStatus(doc, stripMount, stripInput(), { onAction: onStripAction, later: stripLater });
+    else strip.update(stripInput());
+  }
+  const readDevice = async () => {
+    if (!deviceOcr || typeof deviceOcr.status !== "function") return null;
+    try {
+      return await deviceOcr.status() || null;
+    } catch {
+      return null;
+    }
+  };
+  const refreshSnaps = async (force = true) => {
+    try {
+      const status = await ensureHelper().status({ force });
+      helperSnap = { state: status?.state || "not-installed", paired: Boolean(status?.paired) };
+    } catch {
+      helperSnap = { state: "not-installed", paired: false };
+    }
+    deviceNow = await readDevice();
+    paintStrip();
+  };
+  const deviceReady = () => deviceNow?.state === "ready" && typeof deviceOcr?.read === "function";
+  const helperIsReady = () => helperSnap.state === "ready";
+  function openEngines({ sheet = false } = {}) {
+    if (!panel) {
+      panel = renderEnginesPanel(doc, enginesMount, {
+        client: ensureHelper(),
+        ...deviceOcr ? { device: deviceOcr } : {},
+        setSetting: setSettingFn,
+        copy: (text3) => doc.defaultView?.navigator?.clipboard?.writeText?.(text3),
+        toast: (text3) => {
+          try {
+            host?.toast?.(text3);
+          } catch {
+          }
+        },
+        onUpdate: () => {
+          void refreshSnaps(false);
+        }
+      });
+    }
+    panel.setVisible(true);
+    if (sheet) panel.showSheet();
+  }
+  const closeEngines = () => {
+    try {
+      panel?.setVisible(false);
+    } catch {
+    }
+  };
+  const runRead = async (prefer = "", { fresh = true } = {}) => {
+    if (running || !scanInfo) return;
+    running = true;
+    const info = scanInfo;
+    let ctl = null;
+    try {
+      if (fresh) await refreshSnaps(true);
+      let source = "";
+      if (prefer !== "helper" && deviceReady()) source = "device";
+      else if (helperIsReady()) source = "helper";
+      if (!source) {
+        openEngines({ sheet: true });
+        return;
+      }
+      ctl = new AbortController();
+      runCtl = ctl;
+      const t0 = Date.now();
+      const before = ocrGot;
+      ocrRun = { state: "running", source, ms: 0, progress: null };
+      paintStrip();
+      try {
+        if (source === "device") {
+          const out = await deviceOcr.read({
+            pages: info.pages,
+            url: pdfUrl(),
+            getPdf,
+            signal: ctl.signal,
+            onProgress: (fraction) => {
+              ocrRun = { ...ocrRun, progress: Number(fraction) };
+              paintStrip();
+            }
+          });
+          if (!ctl.signal.aborted) setOcrPages(out, { sha256: ocrSha });
+        } else {
+          await info.readScan();
+        }
+        if (ctl.signal.aborted) ocrRun = { state: "idle", source: "", ms: 0, progress: null };
+        else ocrRun = { state: ocrGot > before ? "done" : "failed", source, ms: Date.now() - t0, progress: null };
+      } catch {
+        ocrRun = ctl.signal.aborted ? { state: "idle", source: "", ms: 0, progress: null } : { state: "failed", source, ms: 0, progress: null };
+      }
+    } finally {
+      running = false;
+      if (runCtl === ctl) runCtl = null;
+      paintStrip();
+    }
+  };
+  function onStripAction(id) {
+    if (id === "read-text") void runRead();
+    else if (id === "use-helper") void runRead("helper");
+    else if (id === "retry") {
+      ocrRun = { state: "idle", source: "", ms: 0, progress: null };
+      void runRead();
+    } else if (id === "not-now") {
+      dismissedUrls.add(pdfUrl());
+      paintStrip();
+    } else if (id === "start-helper" || id === "setup-helper") openEngines({ sheet: true });
+    else if (id === "cancel") {
+      try {
+        runCtl?.abort();
+      } catch {
+      }
+      try {
+        parsedView?.cancel?.();
+      } catch {
+      }
+      ocrRun = { state: "idle", source: "", ms: 0, progress: null };
+      paintStrip();
+    }
+  }
+  const noteScan = (info) => {
+    const pages = Array.isArray(info?.pages) ? info.pages : [];
+    scanInfo = pages.length ? { ...info, pages } : null;
+    if (!scanInfo) {
+      paintStrip();
+      return;
+    }
+    const sig = `${pdfUrl()}|${pages.join(",")}`;
+    const first = !autoTried.has(sig);
+    autoTried.add(sig);
+    paintStrip();
+    if (!first) return;
+    void (async () => {
+      await refreshSnaps(true);
+      if (autoReadOn() && !ocrCovered && !dismissedUrls.has(pdfUrl()) && ocrRun.state === "idle" && (deviceReady() || helperIsReady())) {
+        await runRead("", { fresh: false });
+      }
+    })();
+  };
+  const resetOcrState = () => {
+    try {
+      runCtl?.abort();
+    } catch {
+    }
+    scanInfo = null;
+    ocrRun = { state: "idle", source: "", ms: 0, progress: null };
+    ocrCovered = false;
+    autoTried.clear();
+    try {
+      strip?.dispose();
+    } catch {
+    }
+    strip = null;
   };
   const needOcr = (info) => {
     if (typeof onNeedOcr === "function") {
@@ -39212,30 +40001,10 @@ function createReadPane({
       }
       return;
     }
-    void (async () => {
-      try {
-        await parsedView?.refreshHelper?.();
-      } catch {
-      }
-      if (info?.helperState === "ready" || await helperReady()) {
-        try {
-          await info?.readScan?.();
-        } catch {
-        }
-        return;
-      }
-      try {
-        host?.toast?.("Scanned page: start the local helper to read its text (Settings → Parse)");
-      } catch {
-      }
-    })();
-  };
-  const helperReady = async () => {
-    try {
-      return (await ensureHelper().health())?.state === "ready";
-    } catch {
-      return false;
-    }
+    const pages = Array.isArray(info?.pages) ? info.pages : [];
+    scanInfo = { ...info || {}, pages: pages.length ? pages : [0] };
+    dismissedUrls.delete(pdfUrl());
+    void runRead();
   };
   const ensureParsed = () => {
     if (parsedView) return parsedView;
@@ -39262,8 +40031,8 @@ function createReadPane({
       onCached: () => revealModes(),
       onTitle: noteParsedTitle,
       onProgress: (info) => {
-        const running = info && info.fraction != null && info.fraction < 1;
-        setHidden2(progress, !running);
+        const running2 = info && info.fraction != null && info.fraction < 1;
+        setHidden2(progress, !running2);
         progressFill.style.width = `${Math.round((Number(info?.fraction) || 0) * 100)}%`;
       },
       adoptCreated: () => {
@@ -39275,18 +40044,13 @@ function createReadPane({
       getContext: () => readerContext(),
       outline: true,
       onNeedOcr: (info) => needOcr(info),
+      onScan: (info) => noteScan(info),
       onOcrPages: (pages, sha) => {
         setOcrPages(pages, { sha256: sha || "" });
       },
       ghostRoot: root,
       ghostPane: pane,
-      scanAuto: (() => {
-        try {
-          return (settings?.get?.("parse-engine-default") || "auto") === "auto";
-        } catch {
-          return false;
-        }
-      })()
+      scanAuto: false
     });
     parsedMount.append(parsedView.element());
     try {
@@ -39307,8 +40071,8 @@ function createReadPane({
     setHidden2(progress, true);
     pane.classList.remove("pxd-read--modes", "pxd-read--parsed", "pxd-read--both", "pxd-read--narrow");
     setHidden2(pill, false);
-    for (const [id, button] of Object.entries(modeBtns)) {
-      button.setAttribute("aria-pressed", id === "reader" ? "true" : "false");
+    for (const [id, button2] of Object.entries(modeBtns)) {
+      button2.setAttribute("aria-pressed", id === "reader" ? "true" : "false");
     }
   }
   async function noteCached() {
@@ -39348,6 +40112,7 @@ function createReadPane({
       mountReader(current3.blockUid);
       armSettle();
     }
+    void refreshSnaps(true);
     const view2 = ensureParsed();
     view2.setTarget({ url: pdfUrl(), pdfUid: current3.cardUid });
     try {
@@ -39407,6 +40172,12 @@ function createReadPane({
     toolsOn = false;
     paintTools();
     toolsBtn.setAttribute("aria-pressed", "false");
+    resetOcrState();
+    try {
+      panel?.dispose();
+    } catch {
+    }
+    panel = null;
     fitDone = false;
     userZoomed = false;
     settleNoted = false;
@@ -39433,6 +40204,7 @@ function createReadPane({
       if (blockUid2 !== current3.blockUid) {
         textLayer.clear();
         ocrSha = "";
+        resetOcrState();
       }
       if (!openFlag || blockUid2 !== current3.blockUid) {
         fitDone = false;
@@ -39521,6 +40293,10 @@ function createReadPane({
     mode: () => viewMode,
     // U2 contract for OCR sources: pxd-ocr/1 page records (or { pages }) for the open PDF.
     setOcrPages: (pages, opts) => setOcrPages(pages, opts),
+    noteScan,
+    openEngines,
+    stripKind: () => strip?.kind() ?? null,
+    ocrRun: () => ({ ...ocrRun }),
     textLayerStats: () => textLayer.stats(),
     selectionBarOpen: () => Boolean(barInfo) && !bar.hasAttribute("hidden")
   };
@@ -40307,10 +41083,10 @@ function byte(n2) {
 function alpha(n2) {
   if (n2 == null || n2 === "") return 1;
   const raw = String(n2).trim();
-  const pct = raw.endsWith("%");
-  const x = Number(pct ? raw.slice(0, -1) : raw);
+  const pct2 = raw.endsWith("%");
+  const x = Number(pct2 ? raw.slice(0, -1) : raw);
   if (!Number.isFinite(x)) return null;
-  const v = pct ? x / 100 : x;
+  const v = pct2 ? x / 100 : x;
   return Math.max(0, Math.min(1, v));
 }
 function hexByte(text3) {
@@ -41360,7 +42136,7 @@ function openRegionDeleteDialog(doc, { message = "", onDelete, onOpen, onCancel 
   card2.append(text3);
   const actions = doc.createElement("div");
   actions.className = "pxd-view-dialog__actions";
-  const button = (cls, label, run) => {
+  const button2 = (cls, label, run) => {
     const node2 = doc.createElement("button");
     node2.type = "button";
     node2.className = `pxd-btn ${cls}`;
@@ -41372,10 +42148,10 @@ function openRegionDeleteDialog(doc, { message = "", onDelete, onOpen, onCancel 
     });
     return node2;
   };
-  const cancel = button("pxd-region-delete-cancel", "Cancel", onCancel);
+  const cancel = button2("pxd-region-delete-cancel", "Cancel", onCancel);
   actions.append(
-    button("pxd-region-delete", "Delete", onDelete),
-    button("pxd-region-open-refs", "Open references", onOpen),
+    button2("pxd-region-delete", "Delete", onDelete),
+    button2("pxd-region-open-refs", "Open references", onOpen),
     cancel
   );
   card2.append(actions);
@@ -42495,7 +43271,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     if (state !== void 0) node2.setAttribute("data-tip-state", state);
     return node2;
   };
-  const button = (parent, cls, label, title, onClick) => {
+  const button2 = (parent, cls, label, title, onClick) => {
     const b = el("button", `pxd-btn ${cls}`, parent, label);
     b.type = "button";
     tip(b, tipIdForClass(cls));
@@ -42516,7 +43292,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     return b;
   };
   const iconButton = (parent, cls, icon, label, title, onClick) => {
-    const b = button(parent, `pxd-iconbtn ${cls}`, "", title || label, onClick);
+    const b = button2(parent, `pxd-iconbtn ${cls}`, "", title || label, onClick);
     b.setAttribute("aria-label", label);
     const i = el("span", `bp3-icon bp3-icon-${icon}`, b);
     i.setAttribute("aria-hidden", "true");
@@ -42530,18 +43306,18 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
   };
   const swatches = (parent, onPick, { key = "color", paper = false } = {}) => {
     const wrap = el("div", "pxd-swatches", parent);
-    const none = button(wrap, "pxd-swatch pxd-swatch--none", "", key === "tone" ? "Default" : "No color", () => onPick(null));
+    const none = button2(wrap, "pxd-swatch pxd-swatch--none", "", key === "tone" ? "Default" : "No color", () => onPick(null));
     tip(none, "swatch.none");
     none.dataset[key] = "";
     if (key !== "color") none.setAttribute(`data-${key}`, "");
     if (paper) {
-      const p = button(wrap, "pxd-swatch pxd-swatch--paper", "", "Paper", () => onPick("paper"));
+      const p = button2(wrap, "pxd-swatch pxd-swatch--paper", "", "Paper", () => onPick("paper"));
       tip(p, "swatch.paper");
       p.dataset[key] = "paper";
       p.setAttribute(`data-${key}`, "paper");
     }
     for (const c of PALETTE) {
-      const s = button(wrap, `pxd-swatch pxd-c-${c}`, "", c, () => onPick(c));
+      const s = button2(wrap, `pxd-swatch pxd-c-${c}`, "", c, () => onPick(c));
       tip(s, `swatch.${c}`);
       s.dataset[key] = c;
       s.setAttribute(`data-${key}`, c);
@@ -42678,7 +43454,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
   });
   const group3 = el("div", "pxd-toolbar__group pxd-toolbar__zoom", toolbar);
   iconButton(group3, "pxd-toolbar__zoom-out", "minus", "Zoom out", "Zoom out (Cmd −)", () => on.zoomOut?.());
-  const zoomLabel = button(group3, "pxd-toolbar__zoom", "100%", "Zoom to 100% (Shift 0)", () => on.zoomReset?.());
+  const zoomLabel = button2(group3, "pxd-toolbar__zoom", "100%", "Zoom to 100% (Shift 0)", () => on.zoomReset?.());
   iconButton(group3, "pxd-toolbar__zoom-in", "plus", "Zoom in", "Zoom in (Cmd =)", () => on.zoomIn?.());
   iconButton(group3, "pxd-toolbar__fit", "zoom-to-fit", "Fit", "Fit all (Shift 1)", () => on.fit?.());
   const minimapBtn = iconButton(group3, "pxd-toolbar__minimap", "map", "Minimap", "Toggle minimap", () => on.toggleMinimap?.());
@@ -42703,7 +43479,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     el("pre", "pxd-changelog__body", logEl, entry || "No changelog entry for this version.");
     listen(logEl, "pointerdown", (event) => event.stopPropagation());
   };
-  const badge = button(toolbar, "pxd-badge", version ? `v${version}` : "", "Show changelog", toggleLog);
+  const badge = button2(toolbar, "pxd-badge", version ? `v${version}` : "", "Show changelog", toggleLog);
   const sync = el("span", "pxd-sync", toolbar);
   tip(sync, "sync", "idle");
   sync.setAttribute("aria-label", "Synced");
@@ -42712,7 +43488,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
   railEl.setAttribute("role", "toolbar");
   railEl.setAttribute("aria-label", "Diagram controls");
   const railBtn = (cls, icon, title, fn) => {
-    const b = button(railEl, `pxd-rail__btn ${cls}`, "", title, fn);
+    const b = button2(railEl, `pxd-rail__btn ${cls}`, "", title, fn);
     b.setAttribute("aria-label", title);
     const i = el("span", `bp3-icon bp3-icon-${icon}`, b);
     i.setAttribute("aria-hidden", "true");
@@ -42727,8 +43503,8 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
   const railEdit = railBtn("pxd-rail__edit", "edit", "Edit Block", () => on.editBlock?.());
   const railFull = railBtn("pxd-rail__fullscreen", "maximize", "Maximize", () => on.toggleFullscreen?.());
   const railExtra = el("div", "pxd-rail__extra", railEl);
-  const railZoom = button(railExtra, "pxd-rail__zoom", "100%", "Zoom to 100% (Shift 0)", () => on.zoomReset?.());
-  const railBadge = button(railExtra, "pxd-badge pxd-rail__badge", version ? `v${version}` : "", "Show changelog", toggleLog);
+  const railZoom = button2(railExtra, "pxd-rail__zoom", "100%", "Zoom to 100% (Shift 0)", () => on.zoomReset?.());
+  const railBadge = button2(railExtra, "pxd-badge pxd-rail__badge", version ? `v${version}` : "", "Show changelog", toggleLog);
   const palette = el("div", "pxd-palette pxd-dock pxd-chrome", root);
   const paletteBar = el("div", "pxd-palette__bar pxd-dock__bar", palette);
   const dockIndicator = el("span", "pxd-dock__indicator", paletteBar);
@@ -42764,14 +43540,14 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
   swatches(colorOpts, (c) => on.setColor?.(c));
   const lookOpts = optionSet("pxd-dock__looks");
   for (const look of ["block", "card"]) {
-    const b = button(lookOpts, "pxd-dock__opt", cap2(look), `Show selected as ${look}`, () => on.setLook?.(look));
+    const b = button2(lookOpts, "pxd-dock__opt", cap2(look), `Show selected as ${look}`, () => on.setLook?.(look));
     b.dataset.look = look;
     b.setAttribute("data-look", look);
     tip(b, `dock.look.${look}`);
   }
   const shapeOpts = optionSet("pxd-dock__shapes");
   for (const shape of SHAPES) {
-    const b = button(shapeOpts, "pxd-dock__opt", SHAPE_LABELS[shape] || shape, `Shape: ${SHAPE_LABELS[shape] || shape}`, () => on.setShape?.(shape));
+    const b = button2(shapeOpts, "pxd-dock__opt", SHAPE_LABELS[shape] || shape, `Shape: ${SHAPE_LABELS[shape] || shape}`, () => on.setShape?.(shape));
     b.dataset.shape = shape;
     b.setAttribute("data-shape", shape);
     tip(b, `dock.shape.${shape}`);
@@ -43014,7 +43790,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
   const patternSeg = el("div", "pxd-seg pxd-bg__pattern", popEl);
   const patternButtons = /* @__PURE__ */ new Map();
   for (const pattern of BOARD_PATTERNS) {
-    const b = button(patternSeg, "pxd-seg__btn", PATTERN_LABELS[pattern] || pattern, PATTERN_LABELS[pattern] || pattern, () => on.setBackground?.({ bg: pattern }));
+    const b = button2(patternSeg, "pxd-seg__btn", PATTERN_LABELS[pattern] || pattern, PATTERN_LABELS[pattern] || pattern, () => on.setBackground?.({ bg: pattern }));
     b.dataset.value = pattern;
     b.setAttribute("data-value", pattern);
     tip(b, `bg.pattern.${pattern}`);
@@ -43024,8 +43800,8 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
   const toneWrap = swatches(popEl, (tone) => on.setBackground?.({ bgColor: tone }), { key: "tone", paper: true });
   toneWrap.classList.add("pxd-bg__tones");
   const popFoot = el("div", "pxd-popover__foot", popEl);
-  button(popFoot, "pxd-bg__default", "Use as default", "Use this pattern and tone for every board", () => on.useBackgroundAsDefault?.());
-  const resetBtn = button(popFoot, "pxd-bg__reset", "Reset", "Clear this board's override", () => on.setBackground?.({ bg: null, bgColor: null }));
+  button2(popFoot, "pxd-bg__default", "Use as default", "Use this pattern and tone for every board", () => on.useBackgroundAsDefault?.());
+  const resetBtn = button2(popFoot, "pxd-bg__reset", "Reset", "Clear this board's override", () => on.setBackground?.({ bg: null, bgColor: null }));
   let bgOffs = [];
   const popover = {
     el: popEl,
@@ -43068,7 +43844,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
   let bgState = { pattern: null, tone: null, override: false };
   popover.setState(bgState);
   applyControls();
-  const backEl = button(root, "pxd-backtocontent pxd-chrome", "Back to content", "Fit the view back to your cards", () => on.backToContent?.());
+  const backEl = button2(root, "pxd-backtocontent pxd-chrome", "Back to content", "Fit the view back to your cards", () => on.backToContent?.());
   tip(backEl, "backtocontent");
   backEl.style.display = "none";
   for (const type of ["pointerup", "wheel", "keydown", "keyup", "contextmenu"]) listen(backEl, type, (event) => event.stopPropagation());
@@ -43089,11 +43865,11 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
     ctx.dataset.kind = kind;
     ctx.setAttribute("data-kind", kind);
     const row4 = el("div", "pxd-ctx__row", ctx);
-    const btn = (cls, icon, label, title, fn) => iconButton(row4, `pxd-ctx__btn ${cls}`, icon, label, title, fn);
+    const btn2 = (cls, icon, label, title, fn) => iconButton(row4, `pxd-ctx__btn ${cls}`, icon, label, title, fn);
     const seg = (cls, options, current3, fn) => {
       const wrap = el("div", `pxd-seg ${cls}`, row4);
       for (const [value, label, title, icon] of options) {
-        const b = button(wrap, `pxd-seg__btn${value === current3 ? " pxd-seg__btn--on" : ""}${icon ? " pxd-iconbtn" : ""}`, icon ? "" : label, title || label, () => fn(value));
+        const b = button2(wrap, `pxd-seg__btn${value === current3 ? " pxd-seg__btn--on" : ""}${icon ? " pxd-iconbtn" : ""}`, icon ? "" : label, title || label, () => fn(value));
         if (icon) {
           b.setAttribute("aria-label", title || label);
           const i = el("span", `bp3-icon bp3-icon-${icon}`, b);
@@ -43105,14 +43881,14 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
       return wrap;
     };
     const opt = (name, cls, icon, label, title, fn) => {
-      if (typeof on[name] === "function") btn(cls, icon, label, title, fn);
+      if (typeof on[name] === "function") btn2(cls, icon, label, title, fn);
     };
     const optSeg = (name, cls, options, fn) => {
       if (typeof on[name] === "function") seg(cls, options, null, fn);
     };
     const pinButton = (pinned2) => opt("pin", "pxd-ctx__pin-toggle", pinned2 ? "unpin" : "pin", pinned2 ? "Unpin" : "Pin", pinned2 ? "Unpin: allow moving and resizing again" : "Pin: lock position and size", () => on.pin(!pinned2));
     const TIDY = [["grid", "Grid", "Tidy into a grid", "grid"], ["row", "Row", "Tidy into a row", "drag-handle-horizontal"], ["column", "Column", "Tidy into a column", "drag-handle-vertical"]];
-    const iconBtn = (cls, icon, label, title, fn) => btn(cls, icon, label, title, fn);
+    const iconBtn = (cls, icon, label, title, fn) => btn2(cls, icon, label, title, fn);
     switch (kind) {
       case "card":
       case "cards": {
@@ -43163,25 +43939,25 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
         }
         swatches(row4, (c) => on.setColor?.(c));
         if (kind === "card") {
-          btn("pxd-ctx__edit", "edit", "Edit", "Edit (Enter)", () => on.edit?.());
-          btn("pxd-ctx__sidebar", "panel-stats", "Open in sidebar", "Open in the right sidebar", () => on.openSidebar?.());
-          btn("pxd-ctx__collapse", model?.collapsed ? "expand-all" : "collapse-all", model?.collapsed ? "Expand" : "Collapse", "Collapse to title", () => on.collapse?.());
-          btn("pxd-ctx__related", "diagram-tree", "Related…", "Show related pages and blocks", () => on.related?.());
+          btn2("pxd-ctx__edit", "edit", "Edit", "Edit (Enter)", () => on.edit?.());
+          btn2("pxd-ctx__sidebar", "panel-stats", "Open in sidebar", "Open in the right sidebar", () => on.openSidebar?.());
+          btn2("pxd-ctx__collapse", model?.collapsed ? "expand-all" : "collapse-all", model?.collapsed ? "Expand" : "Collapse", "Collapse to title", () => on.collapse?.());
+          btn2("pxd-ctx__related", "diagram-tree", "Related…", "Show related pages and blocks", () => on.related?.());
           pinButton(Boolean(model?.pinned));
           opt("fitHeight", "pxd-ctx__fit-height", "arrows-vertical", "Fit height", "Grow or shrink the card to its text", () => on.fitHeight());
           opt("copyRef", "pxd-ctx__copy-ref", "clipboard", "Copy ref", "Copy a block or page reference", () => on.copyRef());
           opt("duplicate", "pxd-ctx__duplicate", "duplicate", "Duplicate", "Duplicate (Cmd D)", () => on.duplicate());
           opt("sendTo", "pxd-ctx__send-to", "send-to", "Send to board…", "Move into another board", () => on.sendTo());
           if (NOTE_KINDS.includes(model?.kind)) opt("expandOutline", "pxd-ctx__mindmap", "layout-hierarchy", "Mind map", "Expand the children as a mind map", () => on.expandOutline());
-          if (model?.kind === "image" || model?.kind === "highlight" && model?.highlight?.image === true) btn("pxd-ctx__mark-region", "highlight", "Mark region", "Drag a rectangle on this image", () => on.markRegion?.());
-          if (model?.kind === "highlight") btn("pxd-ctx__open-reader", "document-open", "Open in reader", "Open this highlight in the PDF reader", () => on.openInReader?.());
+          if (model?.kind === "image" || model?.kind === "highlight" && model?.highlight?.image === true) btn2("pxd-ctx__mark-region", "highlight", "Mark region", "Drag a rectangle on this image", () => on.markRegion?.());
+          if (model?.kind === "highlight") btn2("pxd-ctx__open-reader", "document-open", "Open in reader", "Open this highlight in the PDF reader", () => on.openInReader?.());
           opt("selectSameColor", "pxd-ctx__same-color", "full-circle", "Select same color", "Select every item of this color", () => on.selectSameColor());
           opt("selectConnected", "pxd-ctx__connected", "flows", "Select connected", "Select items linked to this one", () => on.selectConnected());
         } else {
           seg("pxd-ctx__align", [["left", "L", "Align left", "alignment-left"], ["center", "C", "Align centers", "alignment-horizontal-center"], ["right", "R", "Align right", "alignment-right"], ["top", "T", "Align top", "alignment-top"], ["middle", "M", "Align middles", "alignment-vertical-center"], ["bottom", "B", "Align bottom", "alignment-bottom"]], null, (v) => on.align?.(v));
           seg("pxd-ctx__distribute", [["h", "H", "Distribute horizontally", "horizontal-distribution"], ["v", "V", "Distribute vertically", "vertical-distribution"]], null, (v) => on.distribute?.(v));
-          btn("pxd-ctx__wrap", "group-objects", "Wrap in section", "Wrap in a new section (Cmd G)", () => on.wrap?.());
-          btn("pxd-ctx__wrap-board", "folder-new", "Move into new board", "Move the selection into a new nested board", () => on.wrapBoard?.());
+          btn2("pxd-ctx__wrap", "group-objects", "Wrap in section", "Wrap in a new section (Cmd G)", () => on.wrap?.());
+          btn2("pxd-ctx__wrap-board", "folder-new", "Move into new board", "Move the selection into a new nested board", () => on.wrapBoard?.());
           optSeg("tidy", "pxd-ctx__tidy", TIDY, (v) => on.tidy(v));
           optSeg("sameSize", "pxd-ctx__same-size", [["width", "W", "Same width"], ["height", "H", "Same height"], ["both", "WH", "Same width and height"]], (v) => on.sameSize(v));
           opt("fold", "pxd-ctx__fold", model?.anyCollapsed ? "expand-all" : "collapse-all", model?.anyCollapsed ? "Unfold" : "Fold", model?.anyCollapsed ? "Expand the collapsed cards" : "Collapse the cards to titles", () => on.fold(!model?.anyCollapsed));
@@ -43189,21 +43965,21 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
           opt("duplicate", "pxd-ctx__duplicate", "duplicate", "Duplicate", "Duplicate (Cmd D)", () => on.duplicate());
           opt("saveViewSelection", "pxd-ctx__save-view", "camera", "Save view", "Save a view of the selection", () => on.saveViewSelection());
         }
-        btn("pxd-ctx__delete pxd-btn--danger", "trash", "Delete", "Delete (Del)", () => on.delete?.());
+        btn2("pxd-ctx__delete pxd-btn--danger", "trash", "Delete", "Delete (Del)", () => on.delete?.());
         break;
       }
       case "board":
         swatches(row4, (c) => on.setColor?.(c));
-        btn("pxd-ctx__open-board", "document-open", "Open", "Open this board (Enter)", () => on.openBoard?.());
+        btn2("pxd-ctx__open-board", "document-open", "Open", "Open this board (Enter)", () => on.openBoard?.());
         opt("openOwnPage", "pxd-ctx__own-page", "document", "Own page", "Open nested board in its own page", () => on.openOwnPage());
-        if (model?.enhanced) btn("pxd-ctx__rename-board", "edit", "Rename board", "Rename the board", () => on.renameBoard?.());
-        btn("pxd-ctx__sidebar", "panel-stats", "Open in sidebar", "Open in the right sidebar", () => on.openSidebar?.());
-        btn("pxd-ctx__delete pxd-btn--danger", "trash", "Delete", "Delete (Del)", () => on.delete?.());
+        if (model?.enhanced) btn2("pxd-ctx__rename-board", "edit", "Rename board", "Rename the board", () => on.renameBoard?.());
+        btn2("pxd-ctx__sidebar", "panel-stats", "Open in sidebar", "Open in the right sidebar", () => on.openSidebar?.());
+        btn2("pxd-ctx__delete pxd-btn--danger", "trash", "Delete", "Delete (Del)", () => on.delete?.());
         break;
       case "section":
         swatches(row4, (c) => on.setColor?.(c));
-        btn("pxd-ctx__rename", "edit", "Rename", "Rename (Enter)", () => on.rename?.());
-        btn("pxd-ctx__contents", "multi-select", "Select contents", "Select the section's members", () => on.selectContents?.());
+        btn2("pxd-ctx__rename", "edit", "Rename", "Rename (Enter)", () => on.rename?.());
+        btn2("pxd-ctx__contents", "multi-select", "Select contents", "Select the section's members", () => on.selectContents?.());
         opt("selectAllInSection", "pxd-ctx__all-in-section", "select", "Select all in section", "Select everything inside the section", () => on.selectAllInSection());
         opt("selectSameColor", "pxd-ctx__same-color", "full-circle", "Select same color", "Select every item of this color", () => on.selectSameColor());
         opt("selectConnected", "pxd-ctx__connected", "flows", "Select connected", "Select items linked to this one", () => on.selectConnected());
@@ -43216,33 +43992,33 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
         optSeg("tidy", "pxd-ctx__tidy", TIDY, (v) => on.tidy(v));
         opt("foldAll", "pxd-ctx__fold-all", "collapse-all", "Fold all", "Collapse every card in the section", () => on.foldAll(true));
         pinButton(Boolean(model?.pinned));
-        btn("pxd-ctx__delete pxd-btn--danger", "trash", "Delete frame", "Delete the frame, keep the cards (Del). Shift+Del deletes contents too", () => on.delete?.());
+        btn2("pxd-ctx__delete pxd-btn--danger", "trash", "Delete frame", "Delete the frame, keep the cards (Del). Shift+Del deletes contents too", () => on.delete?.());
         break;
       case "text":
         swatches(row4, (c) => on.setColor?.(c));
         seg("pxd-ctx__size", FONT_SIZES.map((s, i) => [s, ["S", "M", "L", "XL"][i], `${s}px`]), model?.fontSize || 24, (v) => on.setFontSize?.(v));
-        btn("pxd-ctx__delete pxd-btn--danger", "trash", "Delete", "Delete (Del)", () => on.delete?.());
+        btn2("pxd-ctx__delete pxd-btn--danger", "trash", "Delete", "Delete (Del)", () => on.delete?.());
         break;
       case "edge":
         seg("pxd-ctx__dir", [["one", "→", "One way"], ["two", "↔", "Two way"], ["none", "—", "No arrow"]], model?.dir, (v) => on.edgeDir?.(v));
-        btn("pxd-ctx__flip", "swap-horizontal", "Flip", "Swap endpoints", () => on.flip?.());
-        if (model?.fromBlock || model?.toBlock) btn("pxd-ctx__unblock", "document", "Page", "Connect to the page instead of a block", () => on.unblock?.());
+        btn2("pxd-ctx__flip", "swap-horizontal", "Flip", "Swap endpoints", () => on.flip?.());
+        if (model?.fromBlock || model?.toBlock) btn2("pxd-ctx__unblock", "document", "Page", "Connect to the page instead of a block", () => on.unblock?.());
         seg("pxd-ctx__route", [["curve", "Curve", "Curve", "path"], ["straight", "Straight", "Straight", "flow-linear"], ["elbow", "Elbow", "Elbow", "step-chart"]], model?.route, (v) => on.route?.(v));
         seg("pxd-ctx__dash", [["solid", "Solid", "Solid", "minus"], ["dashed", "Dashed", "Dashed", "slash"], ["animated", "Animated", "Animated", "pulse"]], model?.dash, (v) => on.dash?.(v));
         seg("pxd-ctx__weight", [[1, "1"], [2, "2"], [3, "3"], [4, "4"]], model?.weight, (v) => on.weight?.(v));
         swatches(row4, (c) => on.setColor?.(c));
-        btn("pxd-ctx__label", "tag", "Label", "Edit the label", () => on.label?.());
-        btn("pxd-ctx__notes", "annotation", "Notes", "Open the connection block in the sidebar", () => on.notes?.());
-        btn("pxd-ctx__write", "inheritance", "Write to graph", "Create an attribute on the source", () => on.writeToGraph?.());
-        btn("pxd-ctx__delete pxd-btn--danger", "trash", "Delete", "Delete (Del)", () => on.delete?.());
+        btn2("pxd-ctx__label", "tag", "Label", "Edit the label", () => on.label?.());
+        btn2("pxd-ctx__notes", "annotation", "Notes", "Open the connection block in the sidebar", () => on.notes?.());
+        btn2("pxd-ctx__write", "inheritance", "Write to graph", "Create an attribute on the source", () => on.writeToGraph?.());
+        btn2("pxd-ctx__delete pxd-btn--danger", "trash", "Delete", "Delete (Del)", () => on.delete?.());
         break;
       case "link": {
         const list = el("div", "pxd-ctx__sources", row4);
         for (const s of model?.sources || []) {
-          const b = button(list, "pxd-ctx__source", (s.string || s.uid || "").slice(0, 60), "Open in the sidebar", () => on.openSource?.(s.uid));
+          const b = button2(list, "pxd-ctx__source", (s.string || s.uid || "").slice(0, 60), "Open in the sidebar", () => on.openSource?.(s.uid));
           b.dataset.uid = s.uid;
         }
-        btn("pxd-ctx__pin", "new-link", "Pin as connection", "Create a board connection from this link", () => on.pinLink?.());
+        btn2("pxd-ctx__pin", "new-link", "Pin as connection", "Create a board connection from this link", () => on.pinLink?.());
         break;
       }
       default:
@@ -43332,7 +44108,7 @@ function createChrome({ doc = globalThis.document, root, version = "", settings,
       toast.replaceChildren();
       el("span", "pxd-toast__text", toast, message || "");
       if (action?.label) {
-        button(toast, "pxd-toast__action", action.label, action.label, () => {
+        button2(toast, "pxd-toast__action", action.label, action.label, () => {
           action.run?.();
           toastApi.hide();
         });
@@ -43601,12 +44377,12 @@ function mountRegionMark({ doc = globalThis.document, root, img, onConfirm, onCa
   input.type = "text";
   input.maxLength = 80;
   input.setAttribute("aria-label", "Caption");
-  const button = doc.createElement("button");
-  button.className = "pxd-region-confirm";
-  button.type = "button";
-  button.setAttribute("aria-label", "Confirm");
-  button.textContent = "Confirm";
-  bar.append(input, button);
+  const button2 = doc.createElement("button");
+  button2.className = "pxd-region-confirm";
+  button2.type = "button";
+  button2.setAttribute("aria-label", "Confirm");
+  button2.textContent = "Confirm";
+  bar.append(input, button2);
   layer.append(draft, bar);
   root.append(layer);
   let dead = false;
@@ -43783,7 +44559,7 @@ function mountRegionMark({ doc = globalThis.document, root, img, onConfirm, onCa
   listen(doc, "keydown", onKey);
   const win = doc.defaultView;
   if (win && win !== doc) listen(win, "keydown", onKey, true);
-  listen(button, "click", (event) => {
+  listen(button2, "click", (event) => {
     event.preventDefault();
     event.stopPropagation();
     confirm();
@@ -44056,14 +44832,14 @@ function mountTable({ doc = globalThis.document, root, host, getBoard } = {}) {
     const head = doc.createElement("tr");
     for (const column of cols) {
       const th = doc.createElement("th");
-      const button = doc.createElement("button");
-      button.type = "button";
-      button.className = "pxd-btn pxd-table__sort";
-      button.setAttribute("data-col", column);
+      const button2 = doc.createElement("button");
+      button2.type = "button";
+      button2.className = "pxd-btn pxd-table__sort";
+      button2.setAttribute("data-col", column);
       const mark = sortColumn === column ? sortDir === "desc" ? " ↓" : " ↑" : "";
-      button.textContent = `${column}${mark}`;
-      button.setAttribute("aria-label", `Sort by ${column}`);
-      listen(button, "click", () => {
+      button2.textContent = `${column}${mark}`;
+      button2.setAttribute("aria-label", `Sort by ${column}`);
+      listen(button2, "click", () => {
         if (sortColumn === column) sortDir = sortDir === "asc" ? "desc" : "asc";
         else {
           sortColumn = column;
@@ -44071,7 +44847,7 @@ function mountTable({ doc = globalThis.document, root, host, getBoard } = {}) {
         }
         paint2();
       }, paintOffs);
-      th.append(button);
+      th.append(button2);
       head.append(th);
     }
     thead.append(head);
@@ -44087,13 +44863,13 @@ function mountTable({ doc = globalThis.document, root, host, getBoard } = {}) {
         const attr = (row4.attrs || []).find((item) => item.name === column);
         const pendingValue = filled.get(`${row4.uid}\0${column}`);
         if (attr?.uid) {
-          const button = doc.createElement("button");
-          button.type = "button";
-          button.className = "pxd-btn pxd-table__value";
-          button.textContent = cellText2(row4, column);
-          button.setAttribute("aria-label", `${column} for ${row4.title || row4.uid}`);
-          listen(button, "click", () => openEditor(td, attr.uid), paintOffs);
-          td.append(button);
+          const button2 = doc.createElement("button");
+          button2.type = "button";
+          button2.className = "pxd-btn pxd-table__value";
+          button2.textContent = cellText2(row4, column);
+          button2.setAttribute("aria-label", `${column} for ${row4.title || row4.uid}`);
+          listen(button2, "click", () => openEditor(td, attr.uid), paintOffs);
+          td.append(button2);
         } else if (pendingValue != null) {
           const span = doc.createElement("span");
           span.className = "pxd-table__text";
@@ -44737,7 +45513,7 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
     parent?.append(node2);
     return node2;
   };
-  const button = (parent, cls, label, title, fn, tipId) => {
+  const button2 = (parent, cls, label, title, fn, tipId) => {
     const b = el("button", `pxd-btn ${cls}`, parent, label);
     b.type = "button";
     if (tipId) b.setAttribute("data-tip", tipId);
@@ -44759,7 +45535,7 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
     listen(panel, type, (event) => event.stopPropagation());
   }
   listen(panel, "keydown", (event) => event.stopPropagation());
-  const head = button(panel, "pxd-props__toggle", "Properties", "Properties", () => {
+  const head = button2(panel, "pxd-props__toggle", "Properties", "Properties", () => {
     collapsed = !collapsed;
     storage?.setItem?.(STORAGE_KEY, collapsed ? "1" : "0");
     paintCollapsed();
@@ -44780,7 +45556,7 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
   const choice = (parent, options, current3, fn, tip) => {
     const wrap = el("div", "pxd-seg pxd-props__choices", parent);
     for (const [value, label] of options) {
-      const b = button(wrap, `pxd-seg__btn${value === current3 ? " pxd-seg__btn--on" : ""}`, label, label, () => fn(value), `props.choice.${tip}`);
+      const b = button2(wrap, `pxd-seg__btn${value === current3 ? " pxd-seg__btn--on" : ""}`, label, label, () => fn(value), `props.choice.${tip}`);
       b.setAttribute("data-value", value);
     }
     return wrap;
@@ -44803,9 +45579,9 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
       }
       onCommit(v);
     };
-    const dec = button(row4, "pxd-props__dec", "−", "Smaller", () => commit(shown - 1), "props.step.dec");
+    const dec = button2(row4, "pxd-props__dec", "−", "Smaller", () => commit(shown - 1), "props.step.dec");
     row4.insertBefore(dec, input);
-    button(row4, "pxd-props__inc", "+", "Larger", () => commit(shown + 1), "props.step.inc");
+    button2(row4, "pxd-props__inc", "+", "Larger", () => commit(shown + 1), "props.step.inc");
     listen(input, "change", () => commit(input.value));
     listen(input, "keydown", (event) => {
       event.stopPropagation();
@@ -44818,7 +45594,7 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
   const colorField = (parent, label, value, fn) => {
     const row4 = el("div", "pxd-props__field", parent);
     el("span", "pxd-props__label", row4, label);
-    const chip = button(row4, "pxd-props__chip", "", label, () => {
+    const chip = button2(row4, "pxd-props__chip", "", label, () => {
       const open = row4.querySelector(".pxd-picker");
       if (open) {
         open.remove();
@@ -44862,7 +45638,7 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
     choice(g, [["", "Default"], ...ALIGNS.map((a) => [a, a[0].toUpperCase() + a.slice(1)])], align, (v) => on.setItemStyle?.({ align: v || null }), "align");
     colorField(g, "Fill", same2 ? sample.fill : void 0, (c) => on.setItemStyle?.({ fill: c }));
     colorField(g, "Border", same2 ? sample.border : void 0, (c) => on.setItemStyle?.({ border: c }));
-    button(g, "pxd-props__reset", "Reset selected", "Remove text size, color, align, fill, and border", () => on.resetItems?.(), "props.reset");
+    button2(g, "pxd-props__reset", "Reset selected", "Remove text size, color, align, fill, and border", () => on.resetItems?.(), "props.reset");
   };
   const edgeGroup = (edge) => {
     const g = group("Connection", "edge");
@@ -44875,7 +45651,7 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
     el("span", "pxd-props__label", g, "Weight");
     choice(g, [[1, "1"], [2, "2"], [3, "3"], [4, "4"]], [1, 2, 3, 4].includes(edge.weight) ? edge.weight : 1, (v) => on.setEdge?.({ weight: v }), "weight");
     colorField(g, "Color", edge.color, (c) => on.setEdge?.({ color: c }));
-    button(g, "pxd-props__reset", "Reset", "Remove direction, decoration, type, weight, and color", () => on.resetEdge?.(), "props.reset");
+    button2(g, "pxd-props__reset", "Reset", "Remove direction, decoration, type, weight, and color", () => on.resetEdge?.(), "props.reset");
   };
   const sectionGroup = (items, title, key, write, resetLabel, reset) => {
     const g = group(title, key);
@@ -44898,7 +45674,7 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
     colorField(g, "Title fill", pick("titleFill"), (c) => write({ titleFill: c }));
     colorField(g, "Area fill", pick("areaFill"), (c) => write({ areaFill: c }));
     colorField(g, "Border", pick("border"), (c) => write({ border: c }));
-    button(g, "pxd-props__reset", resetLabel, resetLabel, reset, "props.reset");
+    button2(g, "pxd-props__reset", resetLabel, resetLabel, reset, "props.reset");
   };
   const defaultsGroup = (board2) => {
     const stored = board2?.defaults?.section || {};
@@ -44918,7 +45694,7 @@ function createPropsPanel({ doc = globalThis.document, root, storage, on = {} } 
     el("span", "pxd-props__label", g, "Texture");
     const pattern = BOARD_PATTERNS.includes(bg.bg) ? bg.bg : "";
     choice(g, [["", "Default"], ...BOARD_PATTERNS.map((p) => [p, PATTERN_LABELS2[p] || p])], pattern, (v) => on.setBackground?.({ bg: v || null }), "texture");
-    button(g, "pxd-props__reset", "Reset default", "Clear this board's background", () => on.setBackground?.({ bg: null, bgColor: null }), "props.reset");
+    button2(g, "pxd-props__reset", "Reset default", "Clear this board's background", () => on.setBackground?.({ bg: null, bgColor: null }), "props.reset");
   };
   let last = null;
   const refresh = (state) => {
@@ -46185,7 +46961,7 @@ function createPresenter({ doc = globalThis.document, root, timers, on = {} } = 
     parent?.append(n2);
     return n2;
   };
-  const button = (parent, cls, label, fn) => {
+  const button2 = (parent, cls, label, fn) => {
     const b = el("button", `pxd-btn ${cls}`, parent, label);
     b.type = "button";
     if (label) b.setAttribute("aria-label", label);
@@ -46292,19 +47068,19 @@ function createPresenter({ doc = globalThis.document, root, timers, on = {} } = 
     titleEl = el("span", "pxd-present-hud__title", hud);
     noteEl = el("span", "pxd-present-hud__note", hud);
     countEl = el("span", "pxd-present-hud__count", hud);
-    prevBtn = button(hud, "pxd-present-hud__prev", "Prev", () => goto(index - 1));
-    nextBtn = button(hud, "pxd-present-hud__next", "Next", () => goto(index + 1));
-    button(hud, "pxd-present-hud__laser", "Laser", () => {
+    prevBtn = button2(hud, "pxd-present-hud__prev", "Prev", () => goto(index - 1));
+    nextBtn = button2(hud, "pxd-present-hud__next", "Next", () => goto(index + 1));
+    button2(hud, "pxd-present-hud__laser", "Laser", () => {
       laserOn = !laserOn;
       penOn = false;
       root?.classList.toggle("pxd-root--laser", laserOn);
     });
-    button(hud, "pxd-present-hud__pen", "Pen", () => {
+    button2(hud, "pxd-present-hud__pen", "Pen", () => {
       penOn = !penOn;
       laserOn = false;
       root?.classList.remove("pxd-root--laser");
     });
-    button(hud, "pxd-present-hud__exit", "Exit", () => stop2());
+    button2(hud, "pxd-present-hud__exit", "Exit", () => stop2());
     ink = el("div", "pxd-present-ink", root);
     const dot = el("div", "pxd-present-laser", ink);
     const onMove = (event) => {
@@ -47233,23 +48009,23 @@ function selectHighlightPage(rows, { color, page } = {}) {
   });
 }
 function pdfHighlightButton(doc, onClick) {
-  const btn = doc.createElement("button");
-  btn.type = "button";
-  btn.className = "pxd-pdf-highlights pxd-chrome";
-  btn.textContent = PDF_HIGHLIGHTS_LABEL;
-  btn.setAttribute("aria-label", PDF_HIGHLIGHTS_LABEL);
+  const btn2 = doc.createElement("button");
+  btn2.type = "button";
+  btn2.className = "pxd-pdf-highlights pxd-chrome";
+  btn2.textContent = PDF_HIGHLIGHTS_LABEL;
+  btn2.setAttribute("aria-label", PDF_HIGHLIGHTS_LABEL);
   const stop2 = (event) => {
     event.preventDefault?.();
     event.stopPropagation?.();
   };
-  btn.addEventListener("pointerdown", stop2);
-  btn.addEventListener("mousedown", stop2);
-  btn.addEventListener("dblclick", stop2);
-  btn.addEventListener("click", (event) => {
+  btn2.addEventListener("pointerdown", stop2);
+  btn2.addEventListener("mousedown", stop2);
+  btn2.addEventListener("dblclick", stop2);
+  btn2.addEventListener("click", (event) => {
     stop2(event);
     onClick?.(event);
   });
-  return btn;
+  return btn2;
 }
 function openHighlightDialog(doc, { rows, origin, onPlace, onClose } = {}) {
   let rowsState = (Array.isArray(rows) ? rows : []).map((row4) => ({ ...row4, selected: false }));
@@ -48538,6 +49314,7 @@ function buildBoardView(onFail, {
     },
     session: parseActions(),
     settings: { get: (id) => readSetting2(id) },
+    setSetting: (id, value) => typeof onSetDefaults === "function" ? onSetDefaults({ [id]: value }) : void 0,
     onPlace: (row4) => {
       const items = [...board2()?.items.values() || []];
       const card2 = board2()?.items.get(readPane?.cardUid?.() || "");
@@ -50080,17 +50857,17 @@ function buildBoardView(onFail, {
     menu2.style.top = `${(box2.bottom || 40) + 4}px`;
     menu2.style.height = "auto";
     const add = (label, run) => {
-      const button = doc.createElement("button");
-      button.type = "button";
-      button.className = "pxd-linksmenu__row";
-      button.textContent = label;
-      button.addEventListener("click", (event) => {
+      const button2 = doc.createElement("button");
+      button2.type = "button";
+      button2.className = "pxd-linksmenu__row";
+      button2.textContent = label;
+      button2.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
         run();
         closeLinksMenu();
       });
-      menu2.append(button);
+      menu2.append(button2);
     };
     const reason = line.getAttribute("data-reason") || "";
     const a = line.getAttribute("data-a");
@@ -50250,17 +51027,17 @@ function buildBoardView(onFail, {
     menu2.style.top = `${(box2.bottom || 40) + 4}px`;
     menu2.style.height = "auto";
     const add = (label, run) => {
-      const button = doc.createElement("button");
-      button.type = "button";
-      button.className = "pxd-linksmenu__row";
-      button.textContent = label;
-      button.addEventListener("click", (event) => {
+      const button2 = doc.createElement("button");
+      button2.type = "button";
+      button2.className = "pxd-linksmenu__row";
+      button2.textContent = label;
+      button2.addEventListener("click", (event) => {
         event.preventDefault();
         event.stopPropagation();
         run();
         closeLinksMenu();
       });
-      menu2.append(button);
+      menu2.append(button2);
     };
     const setLinks = (mode) => {
       linkMode = mode;
@@ -52260,13 +53037,13 @@ function buildBoardView(onFail, {
     }
     paintLens();
     lensPop.style.display = "";
-    const btn = chrome.toolbar.lensButton;
+    const btn2 = chrome.toolbar.lensButton;
     const rootRect2 = root.getBoundingClientRect();
-    const b = btn?.getBoundingClientRect?.() || { left: rootRect2.left, top: rootRect2.top, right: rootRect2.left, bottom: rootRect2.top };
-    placeNearAnchor(lensPop, b, root, { gap: 6, skip: btn?.closest?.(".pxd-toolbar, .pxd-dock") || null });
+    const b = btn2?.getBoundingClientRect?.() || { left: rootRect2.left, top: rootRect2.top, right: rootRect2.left, bottom: rootRect2.top };
+    placeNearAnchor(lensPop, b, root, { gap: 6, skip: btn2?.closest?.(".pxd-toolbar, .pxd-dock") || null });
     const onDown = (event) => {
       if (suspended) return;
-      if (lensPop.contains(event.target) || btn?.contains?.(event.target)) return;
+      if (lensPop.contains(event.target) || btn2?.contains?.(event.target)) return;
       closeLens();
     };
     const onKey = (event) => {
@@ -52712,23 +53489,23 @@ function buildBoardView(onFail, {
     legend.hidden = false;
     legend.removeAttribute("hidden");
     for (const row4 of rows) {
-      const btn = doc.createElement("button");
-      btn.type = "button";
-      btn.className = `pxd-legend__row pxd-c-${row4.color}${row4.on ? "" : " is-off"}`;
-      btn.setAttribute("data-attr", row4.name);
-      btn.setAttribute("aria-pressed", row4.on ? "true" : "false");
-      btn.title = row4.on ? `Hide ${row4.name}` : `Show ${row4.name}`;
-      btn.setAttribute("aria-label", btn.title);
-      btn.textContent = row4.name;
-      legend.append(btn);
+      const btn2 = doc.createElement("button");
+      btn2.type = "button";
+      btn2.className = `pxd-legend__row pxd-c-${row4.color}${row4.on ? "" : " is-off"}`;
+      btn2.setAttribute("data-attr", row4.name);
+      btn2.setAttribute("aria-pressed", row4.on ? "true" : "false");
+      btn2.title = row4.on ? `Hide ${row4.name}` : `Show ${row4.name}`;
+      btn2.setAttribute("aria-label", btn2.title);
+      btn2.textContent = row4.name;
+      legend.append(btn2);
     }
   };
   listen(legend, "click", (ev) => {
-    const btn = ev.target?.closest?.(".pxd-legend__row");
-    if (!btn || disposed) return;
+    const btn2 = ev.target?.closest?.(".pxd-legend__row");
+    if (!btn2 || disposed) return;
     ev.preventDefault();
     ev.stopPropagation();
-    const name = btn.getAttribute("data-attr") || "";
+    const name = btn2.getAttribute("data-attr") || "";
     if (!name) return;
     if (hiddenAttrs.has(name)) hiddenAttrs.delete(name);
     else hiddenAttrs.add(name);
@@ -53951,9 +54728,9 @@ function buildBoardView(onFail, {
       if (item?.kind !== "pdf") continue;
       const shell = itemsR.shellOf?.(item.uid);
       if (!shell || shell.querySelector?.(".pxd-pdf-highlights")) continue;
-      const btn = pdfHighlightButton(doc, () => openHighlightPicker(item, btn));
-      btn.classList.add("pxd-hl-add");
-      shell.append(btn);
+      const btn2 = pdfHighlightButton(doc, () => openHighlightPicker(item, btn2));
+      btn2.classList.add("pxd-hl-add");
+      shell.append(btn2);
     }
   };
   const dropEffectFor = (effectAllowed) => {
@@ -54735,8 +55512,8 @@ function buildBoardView(onFail, {
   openHalo = (subject, anchor) => {
     const sub = subject?.uid ? subject : haloSubjectNow();
     if (!sub?.uid || sub.type === "section") return;
-    const btn = root.querySelector?.(".pxd-toolbar__info");
-    const box2 = anchor || btn?.getBoundingClientRect?.() || { left: 24, top: 24, right: 56, bottom: 48 };
+    const btn2 = root.querySelector?.(".pxd-toolbar__info");
+    const box2 = anchor || btn2?.getBoundingClientRect?.() || { left: 24, top: 24, right: 56, bottom: 48 };
     void showHalo(sub, box2);
   };
   contextLineFor = async (subject) => {
@@ -54755,9 +55532,9 @@ function buildBoardView(onFail, {
     haloPop = null;
   };
   bindInfoHover = () => {
-    const btn = root.querySelector?.(".pxd-toolbar__info");
-    if (!btn || haloButtons.has(btn)) return;
-    haloButtons.add(btn);
+    const btn2 = root.querySelector?.(".pxd-toolbar__info");
+    if (!btn2 || haloButtons.has(btn2)) return;
+    haloButtons.add(btn2);
     const armHalo = () => {
       haloWait?.();
       haloWait = timers.later(() => {
@@ -54765,17 +55542,17 @@ function buildBoardView(onFail, {
         if (!disposed) openHalo();
       }, 400);
     };
-    listen(btn, "pointerenter", armHalo);
-    listen(btn, "mouseenter", armHalo);
-    listen(btn, "pointerleave", () => {
+    listen(btn2, "pointerenter", armHalo);
+    listen(btn2, "mouseenter", armHalo);
+    listen(btn2, "pointerleave", () => {
       haloWait?.();
       haloWait = null;
     });
-    listen(btn, "mouseleave", () => {
+    listen(btn2, "mouseleave", () => {
       haloWait?.();
       haloWait = null;
     });
-    listen(btn, "pointerdown", () => {
+    listen(btn2, "pointerdown", () => {
       haloWait?.();
       haloWait = null;
     });
@@ -56555,16 +57332,16 @@ function fillResurface(doc, panel, { pageTitle, rows, intervals, onOpen } = {}) 
     }
   };
   tabs.forEach((tab, index) => {
-    const button = doc.createElement("button");
-    button.type = "button";
-    button.className = "pxd-resurface__tab";
-    button.textContent = tab.label;
-    button.setAttribute("aria-label", tab.label || "Resurface");
-    button.addEventListener("click", (event) => {
+    const button2 = doc.createElement("button");
+    button2.type = "button";
+    button2.className = "pxd-resurface__tab";
+    button2.textContent = tab.label;
+    button2.setAttribute("aria-label", tab.label || "Resurface");
+    button2.addEventListener("click", (event) => {
       event.preventDefault();
       show(tab);
     });
-    bar.append(button);
+    bar.append(button2);
     if (index === 0) show(tab);
   });
   panel.append(bar, body);
@@ -56581,15 +57358,15 @@ function createResurface({ doc, pageTitle, rows, intervals, onOpen } = {}) {
       panels.delete(entry);
     }
   };
-  const mount = (button) => {
-    if (!button || button.dataset?.pxdResurface === "1") return;
-    if (button.dataset) button.dataset.pxdResurface = "1";
+  const mount = (button2) => {
+    if (!button2 || button2.dataset?.pxdResurface === "1") return;
+    if (button2.dataset) button2.dataset.pxdResurface = "1";
     const panel = doc.createElement("div");
     panel.className = "pxd-resurface pxd-root";
     fillResurface(doc, panel, { pageTitle: pageTitle?.(), rows: rows?.() || [], intervals: intervals?.(), onOpen });
-    if (typeof button.insertAdjacentElement === "function") button.insertAdjacentElement("afterend", panel);
-    else button.parentElement?.append(panel);
-    panels.add({ button, panel });
+    if (typeof button2.insertAdjacentElement === "function") button2.insertAdjacentElement("afterend", panel);
+    else button2.parentElement?.append(panel);
+    panels.add({ button: button2, panel });
   };
   return {
     scan(node2) {
@@ -56597,7 +57374,7 @@ function createResurface({ doc, pageTitle, rows, intervals, onOpen } = {}) {
       prune();
       const root = node2?.querySelectorAll ? node2 : doc;
       const buttons = root?.querySelectorAll?.(BUTTON) || [];
-      for (const button of buttons) mount(button);
+      for (const button2 of buttons) mount(button2);
       if (!panels.size) {
         lastSig = "";
         lastList = null;
@@ -56615,14 +57392,14 @@ ${list.map((row4) => `${row4.uid}:${row4.time}`).join(",")}`;
       if (sig === lastSig) return;
       lastSig = sig;
       const spec = { pageTitle: pageTitle?.(), rows: list, intervals: intervals?.(), onOpen };
-      for (const { button, panel } of panels) {
-        if (button?.isConnected) fillResurface(doc, panel, spec);
+      for (const { button: button2, panel } of panels) {
+        if (button2?.isConnected) fillResurface(doc, panel, spec);
       }
     },
     dispose() {
-      for (const { button, panel } of panels) {
+      for (const { button: button2, panel } of panels) {
         panel.remove();
-        if (button?.dataset) delete button.dataset.pxdResurface;
+        if (button2?.dataset) delete button2.dataset.pxdResurface;
       }
       panels.clear();
       lastSig = "";
@@ -56932,12 +57709,12 @@ function cropFrame(frac, naturalW, naturalH, maxH = CROP_MAX_H) {
     top: -ry * imgH
   };
 }
-function regionUidForButton(button, blockString2) {
-  const refUid = button?.closest?.(".rm-block-ref[data-uid]")?.getAttribute?.("data-uid");
+function regionUidForButton(button2, blockString2) {
+  const refUid = button2?.closest?.(".rm-block-ref[data-uid]")?.getAttribute?.("data-uid");
   if (refUid) return refUid;
-  const card2 = button?.closest?.(".pxd-item[data-uid]");
+  const card2 = button2?.closest?.(".pxd-item[data-uid]");
   const cardUid = card2?.getAttribute?.("data-uid") || "";
-  const container = button?.closest?.(".roam-block-container[data-block-uid]");
+  const container = button2?.closest?.(".roam-block-container[data-block-uid]");
   const containerInside = Boolean(container && card2?.contains?.(container));
   if (!containerInside && cardUid && typeof blockString2 === "function") {
     let text3 = "";
@@ -56952,19 +57729,19 @@ function regionUidForButton(button, blockString2) {
   }
   return container?.getAttribute?.("data-block-uid") || "";
 }
-function hideButton(button) {
-  button.setAttribute("data-plexus-owner", "plexus-diagram");
-  button.style.display = "none";
+function hideButton(button2) {
+  button2.setAttribute("data-plexus-owner", "plexus-diagram");
+  button2.style.display = "none";
 }
-function showButton(button) {
-  if (!button) return;
-  if (button.getAttribute?.("data-plexus-owner") === "plexus-diagram") button.removeAttribute("data-plexus-owner");
-  if (button.style) button.style.display = "";
+function showButton(button2) {
+  if (!button2) return;
+  if (button2.getAttribute?.("data-plexus-owner") === "plexus-diagram") button2.removeAttribute("data-plexus-owner");
+  if (button2.style) button2.style.display = "";
 }
-function claimRegionButton(button) {
-  if (!button || button.nodeType !== 1) return false;
-  if (button.getAttribute?.("data-plexus-owner")) return false;
-  hideButton(button);
+function claimRegionButton(button2) {
+  if (!button2 || button2.nodeType !== 1) return false;
+  if (button2.getAttribute?.("data-plexus-owner")) return false;
+  hideButton(button2);
   return true;
 }
 function nextSibling(node2) {
@@ -56986,10 +57763,10 @@ function applyFrame(frame, img, frac, maxH) {
   img.style.top = `${box2.top}px`;
   return true;
 }
-function mountRegionCrop({ doc = globalThis.document, button, region, file, maxH = CROP_MAX_H, onOpen, delayMs, buildPopover, obstacles } = {}) {
+function mountRegionCrop({ doc = globalThis.document, button: button2, region, file, maxH = CROP_MAX_H, onOpen, delayMs, buildPopover, obstacles } = {}) {
   const noop = { destroy() {
   } };
-  const parent = button?.parentElement;
+  const parent = button2?.parentElement;
   if (!doc || !parent || !region) return noop;
   const span = doc.createElement("span");
   span.className = "pxd-region-crop";
@@ -57039,7 +57816,7 @@ function mountRegionCrop({ doc = globalThis.document, button, region, file, maxH
     }
   }
   const closePop = wireFrame(span, { doc, onOpen, delayMs, buildPopover, obstacles, label: region.caption || "Open region" });
-  parent.insertBefore(span, nextSibling(button));
+  parent.insertBefore(span, nextSibling(button2));
   let dead = false;
   return {
     el: span,
@@ -57049,14 +57826,14 @@ function mountRegionCrop({ doc = globalThis.document, button, region, file, maxH
       closePop();
       span.remove();
       if (key) dropUrl(key);
-      showButton(button);
+      showButton(button2);
     }
   };
 }
-function mountRegionView({ doc = globalThis.document, button, region, board: board2, onOpen, delayMs, buildPopover, obstacles } = {}) {
+function mountRegionView({ doc = globalThis.document, button: button2, region, board: board2, onOpen, delayMs, buildPopover, obstacles } = {}) {
   const noop = { destroy() {
   } };
-  const parent = button?.parentElement;
+  const parent = button2?.parentElement;
   if (!doc || !parent || !region) return noop;
   const span = doc.createElement("span");
   span.className = "pxd-region-view";
@@ -57075,7 +57852,7 @@ function mountRegionView({ doc = globalThis.document, button, region, board: boa
     }
   }
   const closePop = wireFrame(span, { doc, onOpen, delayMs, buildPopover, obstacles, label: region.caption || "Open region" });
-  parent.insertBefore(span, nextSibling(button));
+  parent.insertBefore(span, nextSibling(button2));
   let dead = false;
   return {
     el: span,
@@ -57084,7 +57861,7 @@ function mountRegionView({ doc = globalThis.document, button, region, board: boa
       dead = true;
       closePop();
       span.remove();
-      showButton(button);
+      showButton(button2);
     }
   };
 }
@@ -57094,10 +57871,10 @@ var cropHooks = (extra) => ({
   buildPopover: extra.buildPopover,
   obstacles: extra.obstacles
 });
-function openRegionCrop({ doc, button, region, loadFile, maxH = CROP_MAX_H, onOpen, delayMs, buildPopover, obstacles } = {}) {
+function openRegionCrop({ doc, button: button2, region, loadFile, maxH = CROP_MAX_H, onOpen, delayMs, buildPopover, obstacles } = {}) {
   const noop = { destroy() {
   }, pending: Promise.resolve() };
-  if (!claimRegionButton(button)) return noop;
+  if (!claimRegionButton(button2)) return noop;
   const hooks = cropHooks({ onOpen, delayMs, buildPopover, obstacles });
   let handle = null;
   let dead = false;
@@ -57105,29 +57882,29 @@ function openRegionCrop({ doc, button, region, loadFile, maxH = CROP_MAX_H, onOp
     if (dead) return;
     dead = true;
     if (handle) handle.destroy();
-    else showButton(button);
+    else showButton(button2);
   };
   const pending = Promise.resolve().then(() => typeof loadFile === "function" ? loadFile(region) : null).then((file) => {
-    if (dead || button.isConnected === false) {
-      if (!dead) showButton(button);
+    if (dead || button2.isConnected === false) {
+      if (!dead) showButton(button2);
       dead = true;
       return;
     }
-    handle = mountRegionCrop({ doc, button, region, file, maxH, ...hooks });
+    handle = mountRegionCrop({ doc, button: button2, region, file, maxH, ...hooks });
   }).catch(() => {
-    if (dead || button.isConnected === false) {
-      if (!dead) showButton(button);
+    if (dead || button2.isConnected === false) {
+      if (!dead) showButton(button2);
       dead = true;
       return;
     }
-    handle = mountRegionCrop({ doc, button, region, file: null, maxH, ...hooks });
+    handle = mountRegionCrop({ doc, button: button2, region, file: null, maxH, ...hooks });
   });
   return { destroy, pending };
 }
-function openRegionView({ doc, button, region, loadBoard, onOpen, delayMs, buildPopover, obstacles } = {}) {
+function openRegionView({ doc, button: button2, region, loadBoard, onOpen, delayMs, buildPopover, obstacles } = {}) {
   const noop = { destroy() {
   }, pending: Promise.resolve() };
-  if (!claimRegionButton(button)) return noop;
+  if (!claimRegionButton(button2)) return noop;
   const hooks = cropHooks({ onOpen, delayMs, buildPopover, obstacles });
   let handle = null;
   let dead = false;
@@ -57135,22 +57912,22 @@ function openRegionView({ doc, button, region, loadBoard, onOpen, delayMs, build
     if (dead) return;
     dead = true;
     if (handle) handle.destroy();
-    else showButton(button);
+    else showButton(button2);
   };
   const pending = Promise.resolve().then(() => typeof loadBoard === "function" ? loadBoard(region) : null).then((board2) => {
-    if (dead || button.isConnected === false) {
-      if (!dead) showButton(button);
+    if (dead || button2.isConnected === false) {
+      if (!dead) showButton(button2);
       dead = true;
       return;
     }
-    handle = mountRegionView({ doc, button, region, board: board2, ...hooks });
+    handle = mountRegionView({ doc, button: button2, region, board: board2, ...hooks });
   }).catch(() => {
-    if (dead || button.isConnected === false) {
-      if (!dead) showButton(button);
+    if (dead || button2.isConnected === false) {
+      if (!dead) showButton(button2);
       dead = true;
       return;
     }
-    handle = mountRegionView({ doc, button, region, board: null, ...hooks });
+    handle = mountRegionView({ doc, button: button2, region, board: null, ...hooks });
   });
   return { destroy, pending };
 }
@@ -57162,11 +57939,11 @@ function eachRegionButton(root, fn, cap4 = REGION_SCAN_CAP) {
     found.push(...root.querySelectorAll("button.rm-xparser-default-plexus-region"));
   }
   let seen = 0;
-  for (const button of found) {
-    if (button.getAttribute?.("data-plexus-owner")) continue;
+  for (const button2 of found) {
+    if (button2.getAttribute?.("data-plexus-owner")) continue;
     if (seen >= cap4) break;
     seen += 1;
-    fn(button);
+    fn(button2);
   }
   return seen;
 }
@@ -60011,26 +60788,26 @@ async function installPlexusDiagram({
     return board2;
   }
   function popButton(parent, text3, shiftKey, onOpen) {
-    const button = (parent.ownerDocument || doc).createElement("button");
-    button.type = "button";
-    button.textContent = text3;
-    button.addEventListener("pointerdown", (event) => event.stopPropagation?.());
-    button.addEventListener("click", (event) => {
+    const button2 = (parent.ownerDocument || doc).createElement("button");
+    button2.type = "button";
+    button2.textContent = text3;
+    button2.addEventListener("pointerdown", (event) => event.stopPropagation?.());
+    button2.addEventListener("click", (event) => {
       event.preventDefault?.();
       event.stopPropagation?.();
       onOpen?.({ shiftKey });
     });
-    parent.append(button);
-    return button;
+    parent.append(button2);
+    return button2;
   }
   function sizedInline(node2, w, h) {
     node2.style.setProperty("display", "inline-block", "important");
     node2.style.width = `${w}px`;
     node2.style.height = `${h}px`;
   }
-  function fillImagePopover(el, button, region, onOpen) {
+  function fillImagePopover(el, button2, region, onOpen) {
     const popDoc = el.ownerDocument || doc;
-    const crop = button?.parentElement?.querySelector?.(".pxd-region-crop");
+    const crop = button2?.parentElement?.querySelector?.(".pxd-region-crop");
     const img = crop?.querySelector?.("img");
     const box2 = previewImageBox(img?.naturalWidth, img?.naturalHeight);
     if (box2) {
@@ -60107,9 +60884,9 @@ async function installPlexusDiagram({
     popButton(el, "Open", false, onOpen);
     popButton(el, "Open in sidebar", true, onOpen);
   }
-  function considerRegionButton(button) {
-    if (!active() || !button || button.getAttribute?.("data-plexus-owner")) return;
-    const uid = regionUidForButton(button, (id) => {
+  function considerRegionButton(button2) {
+    if (!active() || !button2 || button2.getAttribute?.("data-plexus-owner")) return;
+    const uid = regionUidForButton(button2, (id) => {
       try {
         return host.blockString?.(id) || "";
       } catch {
@@ -60140,11 +60917,11 @@ async function installPlexusDiagram({
     };
     const buildPopover = (el) => {
       if (region.kind === "view") fillViewPopover(el, region, onOpen);
-      else fillImagePopover(el, button, region, onOpen);
+      else fillImagePopover(el, button2, region, onOpen);
     };
     const handle = region.kind === "view" ? openRegionView({
       doc,
-      button,
+      button: button2,
       region,
       onOpen,
       delayMs,
@@ -60153,7 +60930,7 @@ async function installPlexusDiagram({
       loadBoard: () => loadViewBoard(region)
     }) : openRegionCrop({
       doc,
-      button,
+      button: button2,
       region,
       onOpen,
       delayMs,
@@ -60170,9 +60947,9 @@ async function installPlexusDiagram({
     });
     const drop = () => {
       handle.destroy();
-      regionCrops.delete(button);
+      regionCrops.delete(button2);
     };
-    regionCrops.set(button, drop);
+    regionCrops.set(button2, drop);
   }
   function dropAllTrailStrips() {
     for (const drop of [...trailStrips.values()]) {
@@ -60231,8 +61008,8 @@ async function installPlexusDiagram({
       ":block/children": kids.map(mapKid)
     };
   }
-  function fillTrailStrip(button, uid) {
-    if (!button || !uid || button.getAttribute?.("data-plexus-owner")) return;
+  function fillTrailStrip(button2, uid) {
+    if (!button2 || !uid || button2.getAttribute?.("data-plexus-owner")) return;
     if ((trailMiss.get(uid) || 0) > Date.now()) return;
     const trail = parseTrailBlock(trailNodeFromPull(uid));
     if (!trail) {
@@ -60240,11 +61017,11 @@ async function installPlexusDiagram({
       return;
     }
     trailMiss.delete(uid);
-    button.setAttribute("data-plexus-owner", "trail");
-    if (button.style) button.style.display = "none";
+    button2.setAttribute("data-plexus-owner", "trail");
+    if (button2.style) button2.style.display = "none";
     const strip = doc.createElement("div");
-    if (typeof button.insertAdjacentElement === "function") button.insertAdjacentElement("afterend", strip);
-    else button.parentNode?.insertBefore?.(strip, button.nextSibling);
+    if (typeof button2.insertAdjacentElement === "function") button2.insertAdjacentElement("afterend", strip);
+    else button2.parentNode?.insertBefore?.(strip, button2.nextSibling);
     const boardUid = diagramAncestorUid(uid);
     renderTrailStrip(doc, strip, trailStrip(trail.stops, stopTitleOf, 8), {
       onStop(stop2) {
@@ -60260,11 +61037,11 @@ async function installPlexusDiagram({
         strip.remove();
       } catch {
       }
-      if (button.style) button.style.display = "";
-      button.removeAttribute?.("data-plexus-owner");
-      trailStrips.delete(button);
+      if (button2.style) button2.style.display = "";
+      button2.removeAttribute?.("data-plexus-owner");
+      trailStrips.delete(button2);
     };
-    trailStrips.set(button, drop);
+    trailStrips.set(button2, drop);
   }
   function scanTrails(node2) {
     if (!active() || !node2) return;
@@ -60277,14 +61054,14 @@ async function installPlexusDiagram({
       }
     }
     let seen = 0;
-    for (const button of found) {
-      if (button.getAttribute?.("data-plexus-owner")) continue;
+    for (const button2 of found) {
+      if (button2.getAttribute?.("data-plexus-owner")) continue;
       if (seen >= 8) break;
       seen += 1;
-      const ref = button.closest?.(".rm-block-ref[data-uid]");
-      const block = button.closest?.(".roam-block-container[data-block-uid]") || button.closest?.(BLOCK_CONTAINER_SELECTOR);
+      const ref = button2.closest?.(".rm-block-ref[data-uid]");
+      const block = button2.closest?.(".roam-block-container[data-block-uid]") || button2.closest?.(BLOCK_CONTAINER_SELECTOR);
       const id = ref?.getAttribute?.("data-uid") || block?.getAttribute?.("data-block-uid") || "";
-      if (id) fillTrailStrip(button, id);
+      if (id) fillTrailStrip(button2, id);
     }
   }
   function scanRegions(node2) {
@@ -60319,11 +61096,11 @@ async function installPlexusDiagram({
     for (const native of [...convertButtons.keys()]) {
       if (native.isConnected === false) dropConvert(native);
     }
-    for (const [button, drop] of [...regionCrops]) {
-      if (button.isConnected === false) drop();
+    for (const [button2, drop] of [...regionCrops]) {
+      if (button2.isConnected === false) drop();
     }
-    for (const [button, drop] of [...trailStrips]) {
-      if (button.isConnected === false) drop();
+    for (const [button2, drop] of [...trailStrips]) {
+      if (button2.isConnected === false) drop();
     }
     if (!active()) {
       for (const rec of [...mounts.values()]) unmount(rec);

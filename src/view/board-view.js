@@ -1632,6 +1632,7 @@ function buildBoardView(onFail, {
     },
     session: parseActions(),
     settings: { get: (id) => readSetting(id) },
+    setSetting: (id, value) => (typeof onSetDefaults === "function" ? onSetDefaults({ [id]: value }) : undefined),
     onPlace: (row) => {
       const items = [...(board()?.items.values() || [])];
       const card = board()?.items.get(readPane?.cardUid?.() || "");

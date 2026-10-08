@@ -233,15 +233,15 @@ function grayFromRgb(rgb, w, h) {
   }
   return out;
 }
-function padWhite(rgb, w, h, pad) {
-  if (!pad) return { rgb, w, h };
+function padWhite(rgb, w, h, pad, padY = pad) {
+  if (!pad && !padY) return { rgb, w, h };
   const dw = w + pad * 2;
-  const dh = h + pad * 2;
+  const dh = h + padY * 2;
   const out = new Uint8Array(dw * dh * 3);
   out.fill(255);
   for (let y = 0; y < h; y++) {
     const src = y * w * 3;
-    out.set(rgb.subarray(src, src + w * 3), ((y + pad) * dw + pad) * 3);
+    out.set(rgb.subarray(src, src + w * 3), ((y + padY) * dw + pad) * 3);
   }
   return { rgb: out, w: dw, h: dh };
 }
@@ -661,6 +661,32 @@ function bodySizeOf(items) {
   }
   return { body, median };
 }
+function baselineRows(sorted) {
+  const rows = [];
+  let row = null;
+  for (const item of sorted) {
+    const base = item.transform[5];
+    const size = item.transform[0] || 1;
+    if (row && base - row.last <= 0.3 * size && base - row.first <= 0.45 * size) {
+      row.items.push(item);
+      row.last = base;
+      continue;
+    }
+    row = { first: base, last: base, items: [item] };
+    rows.push(row);
+  }
+  return rows.map((r) => r.items);
+}
+function rowBaseline(row) {
+  const pairs = row.map((item) => [item.transform[5], Math.max(0.1, item.width || 0)]).sort((a, b) => a[0] - b[0]);
+  const total = pairs.reduce((s, p) => s + p[1], 0);
+  let acc = 0;
+  for (const [base, w] of pairs) {
+    acc += w;
+    if (acc >= total / 2) return base;
+  }
+  return pairs[pairs.length - 1][0];
+}
 function snapOcrItems(items) {
   if (!items.length) return [];
   items = withoutEchoes(items);
@@ -682,24 +708,412 @@ function snapOcrItems(items) {
     kept.push(item);
   }
   kept.sort((a, b) => a.transform[5] - b.transform[5] || a.transform[4] - b.transform[4]);
-  let anchor = null;
-  for (const item of kept) {
-    const base = item.transform[5];
-    const size = item.transform[0] || 1;
-    if (anchor == null || base - anchor > 0.3 * size) anchor = base;
-    const shift = anchor - base;
-    item.transform[5] = round22(anchor);
-    item.y0 = round22(item.y0 + shift);
-    item.y1 = round22(item.y1 + shift);
+  for (const row of baselineRows(kept)) {
+    const anchor = rowBaseline(row);
+    for (const item of row) {
+      const shift = anchor - item.transform[5];
+      item.transform[5] = round22(anchor);
+      item.y0 = round22(item.y0 + shift);
+      item.y1 = round22(item.y1 + shift);
+    }
   }
   kept.sort((a, b) => a.transform[5] - b.transform[5] || a.transform[4] - b.transform[4]);
   return kept;
 }
 
+// src/model/ocr/word-split.js
+function inkProjection(mask, pageW, pageH, box) {
+  const x0 = Math.max(0, Math.floor(box.x0));
+  const y0 = Math.max(0, Math.floor(box.y0));
+  const x1 = Math.min(pageW, Math.ceil(box.x1));
+  const y1 = Math.min(pageH, Math.ceil(box.y1));
+  const w = x1 - x0;
+  const h = y1 - y0;
+  if (w < 2 || h < 2) return null;
+  const ruleRow = new Uint8Array(h);
+  for (let y = 0; y < h; y++) {
+    const row = (y0 + y) * pageW + x0;
+    let longest = 0;
+    let run = 0;
+    for (let x = 0; x < w; x++) {
+      if (mask[row + x]) {
+        run++;
+        if (run > longest) longest = run;
+      } else run = 0;
+    }
+    const through = mask[row] && mask[row + w - 1] && longest >= 0.9 * w;
+    if (longest >= 0.6 * w && longest >= 3 * h || through) ruleRow[y] = 1;
+  }
+  const cols = new Uint16Array(w);
+  const rowInk = new Uint32Array(h);
+  for (let y = 0; y < h; y++) {
+    if (ruleRow[y]) continue;
+    const row = (y0 + y) * pageW + x0;
+    for (let x = 0; x < w; x++) {
+      if (mask[row + x]) {
+        cols[x]++;
+        rowInk[y]++;
+      }
+    }
+  }
+  const live = h - ruleRow.reduce((s, v) => s + v, 0);
+  for (let x = 0; x < w; x++) {
+    if (cols[x] >= 0.92 * live && live >= 6) {
+      const left = x > 0 ? cols[x - 1] : 0;
+      const right = x < w - 1 ? cols[x + 1] : 0;
+      if (left < 0.6 * live || right < 0.6 * live) cols[x] = 0;
+    }
+  }
+  let top = -1;
+  let bottom = -1;
+  for (let y = 0; y < h; y++) {
+    if (rowInk[y]) {
+      if (top < 0) top = y;
+      bottom = y;
+    }
+  }
+  return { x0, y0, w, h, cols, rowInk, ruleRow, top, bottom };
+}
+function inkRuns(cols, minGap, minInk = 2) {
+  const runs = [];
+  let start = -1;
+  let last = -1;
+  let ink = 0;
+  for (let x = 0; x < cols.length; x++) {
+    if (!cols[x]) continue;
+    if (start >= 0 && x - last - 1 >= minGap) {
+      if (ink >= minInk) runs.push({ x0: start, x1: last + 1, ink });
+      start = -1;
+      ink = 0;
+    }
+    if (start < 0) start = x;
+    last = x;
+    ink += cols[x];
+  }
+  if (start >= 0 && ink >= minInk) runs.push({ x0: start, x1: last + 1, ink });
+  return runs;
+}
+function innerGaps(cols, from, to) {
+  const gaps = [];
+  let start = -1;
+  for (let x = from; x < to; x++) {
+    if (!cols[x]) {
+      if (start < 0) start = x;
+      continue;
+    }
+    if (start > from) gaps.push({ x0: start, x1: x, w: x - start });
+    start = -1;
+  }
+  return gaps;
+}
+function inkRows(mask, pageW, proj, c0, c1) {
+  const rows = new Uint32Array(proj.h);
+  const span = c1 - c0;
+  let solid = 0;
+  let glyphRows = 0;
+  for (let y = 0; y < proj.h; y++) {
+    if (proj.ruleRow[y]) continue;
+    const row = (proj.y0 + y) * pageW + proj.x0;
+    let n = 0;
+    for (let x = c0; x < c1; x++) n += mask[row + x];
+    rows[y] = n;
+    if (span >= 4 && n >= 0.85 * span) solid++;
+    else if (n) glyphRows++;
+  }
+  if (solid && glyphRows) {
+    for (let y = 0; y < proj.h; y++) if (rows[y] >= 0.85 * span) rows[y] = 0;
+  }
+  let max = 0;
+  let peak = -1;
+  let bestScore = 0;
+  const mid = (proj.h - 1) / 2;
+  for (let y = 0; y < proj.h; y++) {
+    const score = rows[y] * (1 - 0.6 * Math.abs(y - mid) / Math.max(1, mid));
+    if (score > bestScore) {
+      bestScore = score;
+      peak = y;
+    }
+  }
+  if (peak < 0) return null;
+  max = rows[peak];
+  const edge = (step) => {
+    let y = peak;
+    let valley = peak;
+    let thin = false;
+    while (y + step >= 0 && y + step < proj.h && rows[y + step]) {
+      y += step;
+      if (!thin && rows[y] < 0.1 * max) {
+        thin = true;
+        valley = y;
+      }
+      if (thin && rows[y] < rows[valley]) valley = y;
+      if (thin && rows[y] >= 0.25 * max) return valley - step;
+    }
+    return y;
+  };
+  const top = edge(-1);
+  const bottom = edge(1);
+  for (let y = top; y <= bottom; y++) if (rows[y] > max) {
+    max = rows[y];
+  }
+  let base = peak;
+  for (let y = bottom; y >= peak; y--) {
+    if (rows[y] >= 0.25 * max) {
+      base = y;
+      break;
+    }
+  }
+  let capTop = peak;
+  for (let y = top; y <= peak; y++) {
+    if (rows[y] >= 0.25 * max) {
+      capTop = y;
+      break;
+    }
+  }
+  return { base: proj.y0 + base + 1, top: proj.y0 + top, bottom: proj.y0 + bottom + 1, capTop: proj.y0 + capTop };
+}
+function inkHeight(proj) {
+  if (proj.top < 0) return 0;
+  return proj.bottom - proj.top + 1;
+}
+function segmentLine(mask, pageW, pageH, box, { gapRatio = 0.35, minGapPx = 2 } = {}) {
+  const proj = inkProjection(mask, pageW, pageH, box);
+  if (!proj) return null;
+  const inkH = inkHeight(proj);
+  if (inkH < 3) return null;
+  const minGap = Math.max(minGapPx, Math.round(gapRatio * inkH));
+  const minInk = Math.max(2, Math.round(0.02 * inkH * inkH));
+  const runs = inkRuns(proj.cols, minGap, minInk);
+  if (!runs.length) return null;
+  const segments = runs.map((run) => ({
+    x0: proj.x0 + run.x0,
+    x1: proj.x0 + run.x1,
+    y0: proj.y0,
+    y1: proj.y0 + proj.h,
+    cols: [run.x0, run.x1],
+    ink: inkRows(mask, pageW, proj, run.x0, run.x1)
+  }));
+  return { proj, inkH, minGap, segments };
+}
+function snapWords(groups, seg, proj) {
+  const [c0, c1] = seg.cols;
+  if (groups.length <= 1) {
+    return groups.map((g) => ({ text: g.text, x0: proj.x0 + c0, x1: proj.x0 + c1 }));
+  }
+  const span = c1 - c0;
+  const gaps = innerGaps(proj.cols, c0, c1);
+  const cuts = [];
+  const used = /* @__PURE__ */ new Set();
+  for (let i = 1; i < groups.length; i++) {
+    const want = (groups[i - 1].c1 + groups[i].c0) / 2;
+    let best = -1;
+    let bestD = Infinity;
+    gaps.forEach((gap, k) => {
+      if (used.has(k)) return;
+      const mid = (gap.x0 + gap.x1) / 2;
+      const d = Math.abs(mid - want) - 0.25 * gap.w;
+      if (d < bestD) {
+        bestD = d;
+        best = k;
+      }
+    });
+    if (best >= 0 && bestD <= Math.max(6, 0.12 * span)) {
+      used.add(best);
+      cuts.push({ x0: gaps[best].x0, x1: gaps[best].x1 });
+    } else {
+      const x = Math.round(want);
+      cuts.push({ x0: x, x1: x });
+    }
+  }
+  cuts.sort((a, b) => a.x0 - b.x0);
+  const words = [];
+  let from = c0;
+  groups.forEach((g, i) => {
+    const to = i < cuts.length ? cuts[i].x0 : c1;
+    words.push({ text: g.text, x0: proj.x0 + from, x1: proj.x0 + Math.max(from + 1, to) });
+    if (i < cuts.length) from = cuts[i].x1;
+  });
+  return words;
+}
+function sizeFromInk(text, capH) {
+  if (!(capH > 0)) return null;
+  if (/[A-Z0-9bdfhklt]/.test(text)) return capH / 0.64;
+  return null;
+}
+function dashRuns(mask, pageW, proj, c0, c1, base, capH) {
+  if (!(capH > 4)) return [];
+  const lo = base - 0.65 * capH;
+  const hi = base - 0.15 * capH;
+  const kind = new Uint8Array(c1 - c0);
+  for (let x = c0; x < c1; x++) {
+    let top = -1;
+    let bottom = -1;
+    for (let y = 0; y < proj.h; y++) {
+      if (proj.ruleRow[y]) continue;
+      if (mask[(proj.y0 + y) * pageW + proj.x0 + x]) {
+        if (top < 0) top = y;
+        bottom = y;
+      }
+    }
+    if (top < 0) {
+      kind[x - c0] = 0;
+      continue;
+    }
+    const yTop = proj.y0 + top;
+    const yBot = proj.y0 + bottom + 1;
+    kind[x - c0] = yTop >= lo && yBot <= hi && yBot - yTop <= 0.25 * capH ? 2 : 1;
+  }
+  const runs = [];
+  let start = -1;
+  for (let i = 0; i <= kind.length; i++) {
+    if (i < kind.length && kind[i] === 2) {
+      if (start < 0) start = i;
+      continue;
+    }
+    if (start < 0) continue;
+    const end = i;
+    const apart = start > 0 && kind[start - 1] === 0 && end < kind.length && kind[end] === 0;
+    const left = kind.slice(Math.max(0, start - Math.ceil(0.4 * capH)), start).some((k) => k === 1);
+    const right = kind.slice(end, end + Math.ceil(0.4 * capH)).some((k) => k === 1);
+    if (apart && end - start >= 0.3 * capH && left && right) runs.push({ c0: c0 + start, c1: c0 + end });
+    start = -1;
+  }
+  return runs;
+}
+function joinNumberWords(words, maxGap) {
+  const out = [];
+  for (const word of words) {
+    const prev = out[out.length - 1];
+    if (prev && /\d[,.]$/.test(prev.text) && /^\d{3}(?:[,.]\d+)*,?$/.test(word.text) && /^[$€£(]?[\d,.]+$/.test(prev.text) && word.x0 - prev.x1 <= maxGap) {
+      prev.text += word.text;
+      prev.x1 = word.x1;
+      prev.conf = Math.min(prev.conf, word.conf);
+      continue;
+    }
+    out.push({ ...word });
+  }
+  return out;
+}
+function localMask(gray, mask, pageW, pageH, box, minContrast = 60) {
+  const x0 = Math.max(0, Math.floor(box.x0));
+  const y0 = Math.max(0, Math.floor(box.y0));
+  const x1 = Math.min(pageW, Math.ceil(box.x1));
+  const y1 = Math.min(pageH, Math.ceil(box.y1));
+  if (x1 - x0 < 2 || y1 - y0 < 2) return false;
+  const hist = new Uint32Array(256);
+  for (let y = y0; y < y1; y++) for (let x = x0; x < x1; x++) hist[gray[y * pageW + x]]++;
+  const total = (x1 - x0) * (y1 - y0);
+  let sum = 0;
+  for (let i = 0; i < 256; i++) sum += i * hist[i];
+  let sumB = 0;
+  let wB = 0;
+  let best = -1;
+  let thresh = 0;
+  let meanDark = 0;
+  let meanLight = 0;
+  for (let t = 0; t < 256; t++) {
+    wB += hist[t];
+    if (!wB) continue;
+    const wF = total - wB;
+    if (!wF) break;
+    sumB += t * hist[t];
+    const mB = sumB / wB;
+    const mF = (sum - sumB) / wF;
+    const between = wB * wF * (mB - mF) * (mB - mF);
+    if (between > best) {
+      best = between;
+      thresh = t;
+      meanDark = mB;
+      meanLight = mF;
+    }
+  }
+  if (meanLight - meanDark < minContrast) return false;
+  for (let y = y0; y < y1; y++) {
+    const row = y * pageW;
+    for (let x = x0; x < x1; x++) mask[row + x] = gray[row + x] <= thresh ? 1 : 0;
+  }
+  return true;
+}
+
+// src/model/ocr/orphans.js
+function coverMask(boxes, pageW, pageH, pad = 0) {
+  const mask = new Uint8Array(pageW * pageH);
+  for (const b of boxes || []) {
+    const x0 = Math.max(0, Math.floor(b.x0 - pad));
+    const y0 = Math.max(0, Math.floor(b.y0 - pad));
+    const x1 = Math.min(pageW, Math.ceil(b.x1 + pad));
+    const y1 = Math.min(pageH, Math.ceil(b.y1 + pad));
+    for (let y = y0; y < y1; y++) mask.fill(1, y * pageW + x0, y * pageW + x1);
+  }
+  return mask;
+}
+function orphanBlobs(components, covered, pageW, em) {
+  if (!(em > 0)) return [];
+  const minArea = Math.max(4, 0.01 * em * em);
+  const parts = [];
+  for (const c of components || []) {
+    const w = c.x1 - c.x0 + 1;
+    const h = c.y1 - c.y0 + 1;
+    if (c.area < minArea) continue;
+    if (h > 1.3 * em || w > 4 * em) continue;
+    if (w >= 2.5 * em && h <= 0.2 * em) continue;
+    const cx = Math.round((c.x0 + c.x1) / 2);
+    const cy = Math.round((c.y0 + c.y1) / 2);
+    if (covered[cy * pageW + cx]) continue;
+    parts.push({ x0: c.x0, y0: c.y0, x1: c.x1 + 1, y1: c.y1 + 1 });
+  }
+  parts.sort((a, b) => a.x0 - b.x0);
+  const blobs = [];
+  for (const p of parts) {
+    const pcy = (p.y0 + p.y1) / 2;
+    const host = blobs.find((b) => p.x0 - b.x1 <= 0.5 * em && p.x0 >= b.x0 - 0.5 * em && Math.abs(pcy - (b.y0 + b.y1) / 2) <= 0.6 * em && Math.max(b.y1, p.y1) - Math.min(b.y0, p.y0) <= 1.3 * em);
+    if (host) {
+      host.x0 = Math.min(host.x0, p.x0);
+      host.y0 = Math.min(host.y0, p.y0);
+      host.x1 = Math.max(host.x1, p.x1);
+      host.y1 = Math.max(host.y1, p.y1);
+      host.parts++;
+    } else blobs.push({ ...p, parts: 1 });
+  }
+  return blobs.filter((b) => b.x1 - b.x0 <= 8 * em);
+}
+function blobBaseline(blob, em) {
+  const h = blob.y1 - blob.y0;
+  if (h >= 0.45 * em) return blob.y1;
+  return (blob.y0 + blob.y1) / 2 + 0.25 * em;
+}
+var HALLUCINATION = /yanma|ianm|gent|cmyk/i;
+function acceptOrphanRead(text, conf, blob, em) {
+  const t = String(text || "").trim();
+  if (!t) return false;
+  const w = blob.x1 - blob.x0;
+  const h = blob.y1 - blob.y0;
+  if (/^[-–—]$/.test(t)) return w >= 1.8 * h && h <= 0.2 * em;
+  if (conf < 0.6) return false;
+  if (HALLUCINATION.test(t)) return false;
+  if (!/[\p{L}\p{N}]/u.test(t)) return false;
+  const maxChars = Math.ceil((blob.x1 - blob.x0) / (0.25 * em)) + 2;
+  return t.replace(/\s+/g, "").length <= maxChars;
+}
+function dashFromShape(blob, em) {
+  const w = blob.x1 - blob.x0;
+  const h = blob.y1 - blob.y0;
+  if (blob.parts !== 1 || h > 0.2 * em || w < 3 * h || w < 0.2 * em || w > 1.6 * em) return null;
+  if (w < 0.45 * em) return "-";
+  if (w < 0.8 * em) return "\u2013";
+  return "\u2014";
+}
+
 // src/model/ocr/recognize.js
-var DET_LIMIT = 960;
+var DET_LIMIT = "auto";
+var DET_PROBE = 1600;
+var DET_TARGET_H = 27;
+var DET_MIN = 960;
+var DET_MAX = 4096;
 var REC_H = 48;
 var BATCH = 8;
+var SEG_BATCH = 16;
+var SPACE_CH = /* @__PURE__ */ new Set([" ", "\u3000", "\xA0"]);
 var CLEAN_NUM = /^\d{1,4}(?:\.\d+)?$/;
 var LONG_WORD = /^[A-Za-z][A-Za-z,.'()\-]{4,}$/;
 var CELL_PAD_PT = 1.5;
@@ -730,7 +1144,28 @@ function pageRecord(n, items, rules, w, h, dpi, deskew) {
     engine: "ppocr-web"
   };
 }
-async function detect(rgb, width, height, runDet, signal, { detLimit = DET_LIMIT, unclipRatio = 1.5, boxThresh = 0.6 } = {}) {
+function detLimitFor(probeH, probeLimit, longSide, target = DET_TARGET_H) {
+  const probeScale = Math.min(1, probeLimit / longSide);
+  if (!(probeH > 0)) return Math.min(longSide, probeLimit);
+  const scale = Math.min(1, probeScale * target / probeH);
+  return Math.round(Math.max(DET_MIN, Math.min(DET_MAX, longSide * scale)));
+}
+function medianMapHeight(boxes, mapScale) {
+  const hs = boxes.map((b) => (b.y1 - b.y0) * mapScale).sort((a, b) => a - b);
+  return hs.length ? hs[hs.length >> 1] : 0;
+}
+async function detect(rgb, width, height, runDet, signal, opts = {}) {
+  const { detLimit = DET_LIMIT } = opts;
+  if (detLimit !== "auto") return detectAt(rgb, width, height, runDet, signal, opts);
+  const long = Math.max(width, height);
+  const probe = await detectAt(rgb, width, height, runDet, signal, { ...opts, detLimit: DET_PROBE });
+  const probeScale = Math.min(1, DET_PROBE / long);
+  const limit = detLimitFor(medianMapHeight(probe, probeScale), DET_PROBE, long);
+  opts.chosenLimit = limit;
+  if (Math.abs(Math.min(limit, long) - Math.min(DET_PROBE, long)) <= 0.12 * Math.min(DET_PROBE, long)) return probe;
+  return detectAt(rgb, width, height, runDet, signal, { ...opts, detLimit: limit });
+}
+async function detectAt(rgb, width, height, runDet, signal, { detLimit = DET_PROBE, unclipRatio = 1.5, boxThresh = 0.6 } = {}) {
   throwIfAborted(signal);
   const resized = detResize(rgb, width, height, detLimit);
   const data = nchwNormalize(resized.rgb, resized.w, resized.h);
@@ -769,7 +1204,6 @@ async function readCrops(crops, scaleX, scaleY, runRec, dict2, signal) {
     const maxW = Math.max(...chunk.map((c) => c.resized.w));
     const height = REC_H;
     const data = new Float32Array(chunk.length * 3 * height * maxW);
-    data.fill(1);
     const normals = chunk.map((c) => nchwNormalize(c.resized.rgb, c.resized.w, c.resized.h));
     chunk.forEach((c, b) => blitLeft(data, b, maxW, normals[b], c.resized.w, height));
     const out = await runRec(data, [chunk.length, 3, height, maxW]);
@@ -791,6 +1225,186 @@ async function readCrops(crops, scaleX, scaleY, runRec, dict2, signal) {
   }
   return items;
 }
+function widthBatches(widths, batchSize = SEG_BATCH, ratio = 1.3) {
+  const order = widths.map((_, i) => i).sort((a, b) => widths[a] - widths[b]);
+  const batches = [];
+  let cur = [];
+  for (const k of order) {
+    if (cur.length && (cur.length >= batchSize || widths[k] > ratio * widths[cur[0]] + 16)) {
+      batches.push(cur);
+      cur = [];
+    }
+    cur.push(k);
+  }
+  if (cur.length) batches.push(cur);
+  return batches;
+}
+async function recBatches(crops, runRec, signal, batchSize = SEG_BATCH) {
+  const out = new Array(crops.length);
+  for (const idx of widthBatches(crops.map((c) => c.resized.w), batchSize)) {
+    throwIfAborted(signal);
+    const maxW = Math.max(...idx.map((k) => crops[k].resized.w));
+    const data = new Float32Array(idx.length * 3 * REC_H * maxW);
+    idx.forEach((k, b) => {
+      const c = crops[k].resized;
+      blitLeft(data, b, maxW, nchwNormalize(c.rgb, c.w, c.h), c.w, REC_H);
+    });
+    const res = await runRec(data, [idx.length, 3, REC_H, maxW]);
+    idx.forEach((k, b) => {
+      const c = crops[k].resized;
+      const contentT = Math.max(1, Math.min(res.time, Math.round(res.time * (c.contentW || c.w) / maxW)));
+      const start = b * res.time * res.classes;
+      out[k] = { logits: res.logits.slice(start, start + contentT * res.classes), time: contentT, classes: res.classes };
+    });
+  }
+  return out;
+}
+function pageMask(gray) {
+  const thresh = otsuThreshold(gray);
+  const mask = new Uint8Array(gray.length);
+  for (let i = 0; i < gray.length; i++) if (gray[i] <= thresh) mask[i] = 1;
+  return mask;
+}
+var DASHES = /* @__PURE__ */ new Set(["-", "\u2013", "\u2014", "\u2212"]);
+function restoreDashes(chars, crop, time, mask, pageW) {
+  const ink = crop.seg.ink;
+  const capH = ink.base - ink.top;
+  const [c0, c1] = crop.seg.cols;
+  const runs = dashRuns(mask, pageW, crop.proj, c0, c1, ink.base, capH);
+  if (!runs.length) return;
+  const toT = (col) => (col + crop.proj.x0 - crop.cropLeft) / crop.cropW * time;
+  for (const run of runs) {
+    const t0 = toT(run.c0) - 1;
+    const t1 = toT(run.c1) + 1;
+    if (chars.some((ch2) => DASHES.has(ch2.ch) && ch2.t >= t0 && ch2.t <= t1)) continue;
+    const t = Math.round((toT(run.c0) + toT(run.c1)) / 2);
+    const at = chars.findIndex((ch2) => ch2.t > t);
+    const ch = { ch: run.c1 - run.c0 >= 1.2 * capH ? "\u2014" : "\u2013", t, conf: 0.9 };
+    if (at < 0) chars.push(ch);
+    else chars.splice(at, 0, ch);
+  }
+}
+async function readSegments(image, w, h, boxes, mask, scaleX, scaleY, runRec, dict2, signal, opts) {
+  const crops = [];
+  const lineBoxes = [];
+  for (const box of boxes) {
+    const bw = box.x1 - box.x0;
+    const bh = box.y1 - box.y0;
+    const split = bh <= bw * 1.4 ? segmentLine(mask, w, h, box, opts) : null;
+    if (!split) {
+      lineBoxes.push(box);
+      continue;
+    }
+    const { segments, proj, inkH } = split;
+    const padX = Math.max(2, Math.round(opts.padRatio * inkH));
+    segments.forEach((seg, i) => {
+      const prev = segments[i - 1];
+      const next = segments[i + 1];
+      const left = Math.max(prev ? (prev.x1 + seg.x0) / 2 : -Infinity, seg.x0 - padX);
+      const right = Math.min(next ? (seg.x1 + next.x0) / 2 : Infinity, seg.x1 + padX);
+      const ink = seg.ink;
+      const padY = ink ? Math.max(2, Math.round(opts.padYRatio * (ink.bottom - ink.top))) : 2;
+      const top = ink ? Math.max(box.y0 - 2, ink.top - padY) : box.y0 - 2;
+      const bottom = ink ? Math.min(box.y1 + 2, ink.bottom + padY) : box.y1 + 2;
+      const crop = cropRgb(image, w, h, left, top, right, bottom);
+      if (crop.w < 2 || crop.h < 2) return;
+      const white = Math.round(opts.whiteRatio * crop.h);
+      const padded = padWhite(crop.rgb, crop.w, crop.h, white, white);
+      const cropLeft = Math.max(0, Math.floor(left)) - white;
+      crops.push({ box, seg, proj, cropLeft, cropW: padded.w, resized: recResize(padded.rgb, padded.w, padded.h, REC_H) });
+    });
+  }
+  const reads = await recBatches(crops, runRec, signal);
+  const items = [];
+  crops.forEach((crop, k) => {
+    const read = reads[k];
+    const chars = ctcDecode(read.logits, read.time, read.classes, dict2);
+    if (crop.seg.ink && mask) restoreDashes(chars, crop, read.time, mask, w);
+    const groups = [];
+    let cur = null;
+    for (const ch of chars) {
+      if (SPACE_CH.has(ch.ch)) {
+        cur = null;
+        continue;
+      }
+      if (!cur) {
+        cur = { chars: [] };
+        groups.push(cur);
+      }
+      cur.chars.push(ch);
+    }
+    if (!groups.length) return;
+    const toCol = (t) => crop.cropLeft + t / read.time * crop.cropW - crop.proj.x0;
+    const named = groups.map((g) => ({
+      text: g.chars.map((c) => c.ch).join(""),
+      c0: toCol(g.chars[0].t),
+      c1: toCol(g.chars[g.chars.length - 1].t + 1),
+      conf: g.chars.reduce((s, c) => s + c.conf, 0) / g.chars.length
+    }));
+    const snapped = snapWords(named, crop.seg, crop.proj).map((word, i) => ({ ...word, conf: named[i].conf }));
+    const capH = crop.seg.ink ? crop.seg.ink.base - crop.seg.ink.top : 0;
+    const words = capH ? joinNumberWords(snapped, 0.35 * capH) : snapped;
+    const boxPt = { x0: crop.box.x0 / scaleX, y0: crop.box.y0 / scaleY, x1: crop.box.x1 / scaleX, y1: crop.box.y1 / scaleY };
+    const ink = crop.seg.ink;
+    const size = ink ? sizeFromInk(named.map((g) => g.text).join(""), (ink.base - ink.capTop) / scaleY) || boxPt.y1 - boxPt.y0 : 0;
+    for (const word of words) {
+      if (!word.text) continue;
+      let box = boxPt;
+      if (ink) {
+        const own = inkRows(mask, w, crop.proj, Math.max(0, word.x0 - crop.proj.x0), Math.min(crop.proj.w, word.x1 - crop.proj.x0));
+        const base = (own ? own.base : ink.base) / scaleY;
+        box = { ...boxPt, y1: base + 0.2 * size, y0: base - 0.8 * size };
+      }
+      items.push(wordItem(word.text, word.x0 / scaleX, word.x1 / scaleX, box, word.conf));
+    }
+  });
+  if (lineBoxes.length) {
+    const lineCrops = [];
+    for (const box of lineBoxes) {
+      const crop = prepareCrop(image, w, h, box);
+      if (crop) lineCrops.push(crop);
+    }
+    items.push(...await readCrops(lineCrops, scaleX, scaleY, runRec, dict2, signal));
+  }
+  return items;
+}
+function medianSize(items) {
+  const sizes = items.filter((i) => /[A-Z0-9bdfhklt]/.test(i.str)).map((i) => i.transform[0]).sort((a, b) => a - b);
+  return sizes.length ? sizes[sizes.length >> 1] : 0;
+}
+async function readOrphans(image, w, h, boxes, mask, items, scaleX, scaleY, runRec, dict2, signal) {
+  const emPt = medianSize(items);
+  if (!emPt) return [];
+  const em = emPt * scaleY;
+  const covered = coverMask(boxes, w, h, Math.round(0.1 * em));
+  const blobs = orphanBlobs(labelComponents(mask, w, h), covered, w, em);
+  if (!blobs.length) return [];
+  const crops = [];
+  const out = [];
+  const place = (text, blob, conf) => {
+    const base = blobBaseline(blob, em) / scaleY;
+    const box = { x0: blob.x0 / scaleX, x1: blob.x1 / scaleX, y1: base + 0.2 * emPt, y0: base - 0.8 * emPt };
+    out.push(wordItem(text, box.x0, box.x1, box, conf));
+  };
+  for (const blob of blobs) {
+    const dash = dashFromShape(blob, em);
+    if (dash) {
+      place(dash, blob, 1);
+      continue;
+    }
+    const crop = cropRgb(image, w, h, blob.x0 - 1, blob.y0 - 1, blob.x1 + 1, blob.y1 + 1);
+    if (crop.w < 1 || crop.h < 1) continue;
+    const padY = Math.max(0, Math.round((1.2 * em - crop.h) / 2));
+    const padded = padWhite(crop.rgb, crop.w, crop.h, Math.round(0.35 * em), padY);
+    crops.push({ blob, resized: recResize(padded.rgb, padded.w, padded.h, REC_H) });
+  }
+  const reads = crops.length ? await recBatches(crops, runRec, signal) : [];
+  crops.forEach((crop, k) => {
+    const read = ctcText({ logits: reads[k].logits, time: reads[k].time, classes: reads[k].classes, dict: dict2 });
+    if (acceptOrphanRead(read.text, read.conf, crop.blob, em)) place(read.text.replace(/\s+/g, ""), crop.blob, read.conf);
+  });
+  return out;
+}
 async function preparePageImage({
   rgb,
   width,
@@ -805,7 +1419,14 @@ async function preparePageImage({
   signal,
   detLimit = DET_LIMIT,
   unclipRatio = 1.5,
-  boxThresh = 0.6
+  boxThresh = 0.5,
+  split = true,
+  gapRatio = 0.9,
+  padRatio = 0.2,
+  padYRatio = 0.1,
+  whiteRatio = 0,
+  orphans = true,
+  localInk = true
 } = {}) {
   throwIfAborted(signal);
   const detOpts = { detLimit, unclipRatio, boxThresh };
@@ -819,7 +1440,7 @@ async function preparePageImage({
     let bestResidual = Math.abs(tilt);
     for (const applied of [-tilt, tilt]) {
       const rotated = rotateRgb(image, w, h, applied);
-      const again = await detect(rotated.rgb, rotated.w, rotated.h, runDet, signal, detOpts);
+      const again = await detect(rotated.rgb, rotated.w, rotated.h, runDet, signal, detOpts.chosenLimit ? { ...detOpts, detLimit: detOpts.chosenLimit } : detOpts);
       const residual = Math.abs(dominantAngle(again));
       if (residual + 0.02 < bestResidual) {
         bestResidual = residual;
@@ -838,12 +1459,21 @@ async function preparePageImage({
   const gray = grayFromRgb(image, w, h);
   const rules = rulesFromCanvas(gray, w, h, scaleX);
   const ordered = [...boxes].sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0);
-  const crops = [];
-  for (const box of ordered) {
-    const crop = prepareCrop(image, w, h, box);
-    if (crop) crops.push(crop);
+  let raw;
+  if (split) {
+    const mask = pageMask(gray);
+    if (localInk) for (const box of ordered) localMask(gray, mask, w, h, box);
+    raw = await readSegments(image, w, h, ordered, mask, scaleX, scaleY, runRec, dict2, signal, { gapRatio, padRatio, padYRatio, whiteRatio });
+    if (orphans) raw.push(...await readOrphans(image, w, h, ordered, mask, raw, scaleX, scaleY, runRec, dict2, signal));
+  } else {
+    const crops = [];
+    for (const box of ordered) {
+      const crop = prepareCrop(image, w, h, box);
+      if (crop) crops.push(crop);
+    }
+    raw = await readCrops(crops, scaleX, scaleY, runRec, dict2, signal);
   }
-  const items = snapOcrItems(await readCrops(crops, scaleX, scaleY, runRec, dict2, signal));
+  const items = snapOcrItems(raw);
   const frame = { rgb: image, width: w, height: h, dpi };
   await polishDirty(items, frame, page, runRec, dict2, signal);
   return { record: pageRecord(page, items, rules, ptW, ptH, dpi, deskew), rgb: image, width: w, height: h, dpi };
@@ -851,6 +1481,7 @@ async function preparePageImage({
 async function polishDirty(items, frame, page, runRec, dict2, signal) {
   const dirty = items.filter((item) => {
     const text = item.str.trim();
+    if (/^[-–—.•*·]+$/.test(text)) return false;
     return !CLEAN_NUM.test(text) && !LONG_WORD.test(text);
   });
   if (!dirty.length) return;

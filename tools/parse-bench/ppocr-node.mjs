@@ -33,9 +33,12 @@ let ort = null;
 async function sessions() {
   if (detSession) return;
   ort = await import("onnxruntime-node");
-  detSession = await ort.InferenceSession.create(join(modelDir, MODEL_FILES.det.file));
-  recSession = await ort.InferenceSession.create(join(modelDir, MODEL_FILES.rec.file), JSON.parse(process.env.PXD_ORT_REC || "{}"));
-  dict = dictLines(readFileSync(join(modelDir, MODEL_FILES.dict.file), "utf8"));
+  // PXD_OCR_MODELS (JSON {det, rec, dict} paths) swaps in other PP-OCR exports for a comparison
+  // run, e.g. the PP-OCRv5 server det/rec. The shipped manifest files are the default.
+  const alt = JSON.parse(process.env.PXD_OCR_MODELS || "{}");
+  detSession = await ort.InferenceSession.create(alt.det || join(modelDir, MODEL_FILES.det.file));
+  recSession = await ort.InferenceSession.create(alt.rec || join(modelDir, MODEL_FILES.rec.file));
+  dict = dictLines(readFileSync(alt.dict || join(modelDir, MODEL_FILES.dict.file), "utf8"));
 }
 
 export async function runDet(data, dims) {

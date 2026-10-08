@@ -113,11 +113,11 @@ function itemBox(item) {
   };
 }
 
-function matchWords(vision, ours) {
+function matchWords(vision, ours, sameText = true) {
   const pairs = [];
   for (let v = 0; v < vision.length; v++) {
     for (let o = 0; o < ours.length; o++) {
-      if (vision[v].text !== ours[o].text) continue;
+      if (sameText && vision[v].text !== ours[o].text) continue;
       const score = iou(vision[v], ours[o]);
       if (score >= 0.5) pairs.push({ v, o, score });
     }
@@ -159,10 +159,11 @@ async function mainPdf(pdfPath, visionPath, page) {
   const ms = performance.now() - t0;
   const ours = recordWords(record);
   const matched = matchWords(vision, ours);
+  const boxes = matchWords(vision, ours, false);
   const agreement = vision.length ? matched / vision.length : 0;
   process.stdout.write([
-    `words vision ${vision.length} ours ${ours.length} matched ${matched}`,
-    `agreement ${(agreement * 100).toFixed(1)}% (IoU>=0.5 and equal text), ${ms.toFixed(0)} ms`,
+    `words vision ${vision.length} ours ${ours.length} matched ${matched}, boxes only ${boxes}`,
+    `agreement ${(agreement * 100).toFixed(1)}% (IoU>=0.5 and equal text), boxes ${(100 * boxes / Math.max(1, vision.length)).toFixed(1)}% (IoU>=0.5), ${ms.toFixed(0)} ms`,
   ].join("\n") + "\n");
   if (agreement < 0.95) process.exitCode = 1;
 }

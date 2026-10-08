@@ -93,22 +93,28 @@ export async function readScan({ helper, bytes, sha256, base, records, pages, nu
   const merged = mergeOcrPageRecords({ base, ocrPages: got?.pages || [], records, pages: wanted, numPages, info, options, from, to, sha256 });
   const doc = merged.doc;
   const next = merged.records;
-  // Second read for cells the numeric repair left unreadable or empty.
-  const tables = doc.order.map((id) => doc.blocks[id]).filter((b) => b && b.type === "table" && b.repairs && b.ocrSource !== "layer");
-  const requests = tables.flatMap((t) => cellsToReread(t, { numericCols: t.repairs.numericCols }));
-  let rereads = [];
-  if (requests.length) {
-    onPhase?.({ phase: "cells", count: requests.length });
-    const answer = await helper.ocr({ bytes, sha256, cells: requests, signal });
-    throwIfAborted();
-    const results = (answer?.cells || []).map((c, i) => ({ ...requests[i], ...c }));
-    for (const t of tables) {
-      const applied = applyCellOcr(t, results.filter((r) => r.id === t.id));
-      if (applied.length) rereads.push({ id: t.id, applied });
-    }
-  }
+  const rereads = await rereadCells({ doc, ocr: (req) => helper.ocr({ bytes, sha256, cells: req, signal }), signal, onPhase });
   doc.ocr = { ...(doc.ocr || {}), rereads: rereads.reduce((n, r) => n + r.applied.length, 0), elapsedMs: got?.elapsedMs ?? null };
   return { doc, choices: merged.choices, rereads, pages: wanted, records: next };
+}
+
+// Second read for cells the numeric repair left unreadable or empty. `ocr(requests)` answers with
+// { cells } in request order (helper or on-device source); applied in place on the tables of `doc`.
+export async function rereadCells({ doc, ocr, signal, onPhase } = {}) {
+  const throwIfAborted = () => { if (signal && signal.aborted) throw Object.assign(new Error("parse aborted"), { name: "AbortError" }); };
+  const tables = doc.order.map((id) => doc.blocks[id]).filter((b) => b && b.type === "table" && b.repairs && b.ocrSource !== "layer");
+  const requests = tables.flatMap((t) => cellsToReread(t, { numericCols: t.repairs.numericCols }));
+  const rereads = [];
+  if (!requests.length || typeof ocr !== "function") return rereads;
+  onPhase?.({ phase: "cells", count: requests.length });
+  const answer = await ocr(requests);
+  throwIfAborted();
+  const results = (answer?.cells || []).map((c, i) => ({ ...requests[i], ...c }));
+  for (const t of tables) {
+    const applied = applyCellOcr(t, results.filter((r) => r.id === t.id));
+    if (applied.length) rereads.push({ id: t.id, applied });
+  }
+  return rereads;
 }
 
 // The offline half of readScan: pxd-ocr/1 page records (helper or on-device) replace the geometry of

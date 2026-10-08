@@ -590,7 +590,7 @@ function fillsFromCanvas(gray, width, height, scale, { tol = 14, minWPt = 8, min
       opened = morph1d(opened, lw, lh, k, false, false);
       opened = morph1d(opened, lw, lh, k, true, true);
       opened = morph1d(opened, lw, lh, k, false, true);
-      for (const part of flatParts(opened, lw, lh)) {
+      for (const part of rowMerged(flatParts(opened, lw, lh), lw, lh)) {
         const bw = part.x1 - part.x0 + 1;
         const bh = part.y1 - part.y0 + 1;
         if (bw < minW || bh < minH) continue;
@@ -632,6 +632,23 @@ function fillsFromCanvas(gray, width, height, scale, { tol = 14, minWPt = 8, min
     }
   }
   out.sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0);
+  return out;
+}
+function rowMerged(parts, w, h, tol = 2) {
+  const out = [];
+  for (const part of [...parts].sort((a, b) => a.x0 - b.x0)) {
+    const same = out.find((o) => Math.abs(o.y0 - part.y0) <= tol && Math.abs(o.y1 - part.y1) <= tol);
+    if (!same) {
+      out.push(part);
+      continue;
+    }
+    for (let i = 0; i < w * h; i++) if (part.mask[i]) same.mask[i] = 1;
+    same.x0 = Math.min(same.x0, part.x0);
+    same.x1 = Math.max(same.x1, part.x1);
+    same.y0 = Math.min(same.y0, part.y0);
+    same.y1 = Math.max(same.y1, part.y1);
+    same.area += part.area;
+  }
   return out;
 }
 function flatParts(mask, w, h) {

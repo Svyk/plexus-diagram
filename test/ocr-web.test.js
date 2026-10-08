@@ -139,6 +139,17 @@ test("fillsFromCanvas mends the anti-aliased seam between two abutting fills of 
   assert.ok(Math.abs(fills[0].y0 - 10) <= 1 && Math.abs(fills[0].y1 - 35) <= 1, JSON.stringify(fills[0]));
 });
 
+test("fillsFromCanvas keeps a short shaded cell whole when its text nearly fills the height", () => {
+  const width = 400;
+  const height = 200;
+  const { gray, rect } = fillPage(width, height);
+  rect(40, 40, 360, 80, 224); // a 10 pt cell at scale 4
+  for (let x = 100; x < 160; x += 9) rect(x, 43, x + 6, 77, 20); // a word whose ink leaves under 1 pt above and below
+  const fills = fillsFromCanvas(gray, width, height, 4);
+  assert.equal(fills.length, 1, JSON.stringify(fills));
+  assert.ok(Math.abs(fills[0].x0 - 10) <= 1 && Math.abs(fills[0].x1 - 90) <= 1, JSON.stringify(fills[0]));
+});
+
 test("fillsFromCanvas skips text, a rounded bar and a blank page", () => {
   const width = 400;
   const height = 300;

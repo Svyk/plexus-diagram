@@ -9,8 +9,11 @@ import {
   BESIDE_LABEL,
   PLACE_ACTS,
   SHOW_PARSED_KEY,
+  COPIED_MS,
+  chipClearLeft,
   chipPlan,
   copyHoverId,
+  copyIconSpot,
   createPageChips,
   parsedBoxPlan,
   readShowParsed,
@@ -412,8 +415,8 @@ test("copyHoverId: the box under the pointer or its own button; smallest box win
   assert.equal(copyHoverId(entries, 35, 40, page), "small");
   assert.equal(copyHoverId(entries, 80, 50, page), "big");
   assert.equal(copyHoverId(entries, 2, 150, page), null);
-  // The big box's button sits left of its corner (x 10-3-5-18 .. 10-3-5), top 20-3.
-  assert.equal(copyHoverId(entries, 1, 25, page), "big");
+  // On this narrow page the gutter would fall off the page, so the button sits inside the box's left edge.
+  assert.equal(copyHoverId(entries, 1, 25, page), null, "a 100 px page has no gutter: the button moved inside");
   const nudged = [{ id: "n", left: 50, top: 10, width: 10, height: 5, dy: 20 }];
   assert.equal(copyHoverId(nudged, 30, 40, page), "n");
   assert.equal(copyHoverId(nudged, 30, 20, page), null);
@@ -489,5 +492,63 @@ test("a shown copy button can take the click: no inline pointer-events overrides
     assert.deepEqual(h.copied, [shown[0].getAttribute("data-block")]);
     const css = readFileSync(new URL("../src/css/page-chips.css", import.meta.url), "utf8");
     assert.match(css, /\.pxd-parsed-copy \{[^}]*pointer-events: none/s);
+  } finally { h.chips.dispose(); h.restore(); }
+});
+
+const intersects = (a, b) => a.x < b.x + b.w && a.x + a.w > b.x && a.y < b.y + b.h && a.y + a.h > b.y;
+
+test("chip never covers the copy button: box at the left edge, middle and right edge of the page", () => {
+  const page = { w: 600, h: 800 };
+  const chipW = 112;
+  for (const [name, left, width] of [["left edge", 0, 12], ["middle", 40, 10], ["right edge", 88, 12], ["wide box", 10, 80], ["narrow at 8%", 8, 6]]) {
+    const entry = { left, top: 10, width, height: 5 };
+    const spot = copyIconSpot(entry, page, 0);
+    const boxRight = ((left + width) / 100) * page.w + 3;
+    const chipTop = (10 / 100) * page.h - 3;
+    const x = chipClearLeft(boxRight - chipW, { w: chipW, top: chipTop, h: 20 }, spot);
+    const btn = { x: spot.x, y: spot.y, w: spot.size, h: spot.size };
+    assert.equal(intersects({ x, y: chipTop, w: chipW, h: 20 }, btn), false, name);
+    if (left === 0) assert.equal(spot.inside, true, "gutter off the page: inside-left");
+    else if (left * 6 - 3 - 5 - 18 >= 0) assert.equal(spot.inside, false, `${name}: gutter button`);
+  }
+  // A wide box keeps the chip where it was.
+  const wide = copyIconSpot({ left: 10, top: 10, width: 80, height: 5 }, page, 0);
+  assert.equal(chipClearLeft(500 - 112, { w: 112, top: 77, h: 20 }, wide), 388);
+});
+
+test("copyIconSpot: gutter ~20 px left of the box, top aligned; inside only when the gutter is off the page", () => {
+  const page = { w: 600, h: 800 };
+  const g = copyIconSpot({ left: 20, top: 10 }, page, 0);
+  assert.equal(g.inside, false);
+  assert.equal(g.x, 120 - 3 - 5 - 18);
+  assert.equal(g.y, 80 - 3 - 1);
+  const edge = copyIconSpot({ left: 0, top: 10 }, page, 0);
+  assert.equal(edge.inside, true);
+  assert.equal(edge.x, -3 + 2);
+  assert.equal(copyIconSpot({ left: 20, top: 10 }, page, 20).y, g.y + 20, "the stacking nudge still drops it");
+});
+
+test("the hit zone covers the gutter button, and the button stays shown while the pointer is on it", () => {
+  const page = { w: 600, h: 800 };
+  const entries = [{ id: "a", left: 30, top: 10, width: 40, height: 5, dy: 0 }];
+  const spot = copyIconSpot(entries[0], page, 0);
+  assert.equal(copyHoverId(entries, spot.x + 4, spot.y + 4, page), "a");
+  assert.equal(copyHoverId(entries, spot.x - 4, spot.y + 4, page), null);
+});
+
+test("copy click copies that block and the button says Copied for a moment", () => {
+  const h = rig();
+  try {
+    h.stub.flushFrames();
+    const icon = h.page.querySelectorAll(".pxd-parsed-copy").find((n) => n.getAttribute("data-block") === "t1");
+    const label = icon.getAttribute("aria-label");
+    icon.click();
+    assert.deepEqual(h.copied, ["t1"]);
+    assert.equal(icon.getAttribute("aria-label"), "Copied");
+    assert.equal(icon.classList.contains("pxd-parsed-copy--copied"), true);
+    assert.ok(COPIED_MS >= 1000 && COPIED_MS <= 1500);
+    h.stub.flushTimers?.();
+    assert.equal(icon.getAttribute("aria-label"), label);
+    assert.equal(icon.classList.contains("pxd-parsed-copy--copied"), false);
   } finally { h.chips.dispose(); h.restore(); }
 });

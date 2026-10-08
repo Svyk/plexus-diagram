@@ -69,7 +69,7 @@ test("dispose revokes live faces and cancels pending revokes", () => {
   store.commit("p", b, { src: "blob:b", w: 2 });
   store.dispose();
   flush();
-  assert.deepEqual(revoked, ["blob:b"]);
+  assert.deepEqual(revoked.slice().sort(), ["blob:a", "blob:b"], "the pending retire of blob:a is revoked at once, not leaked");
 });
 
 test("data URLs are never revoked", () => {

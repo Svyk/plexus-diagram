@@ -86,10 +86,12 @@ export function createQuickLook({ doc = globalThis.document, root, host, timers,
 
   const engine = () => {
     if (pdfLib && typeof pdfLib.getDocument === "function") return pdfLib;
-    return detectPdfjs(win)?.lib || null;
+    const found = detectPdfjs(win);
+    return found?.workerReady ? found.lib : null;
   };
   // Returns true when the pdf.js preview took the body.
-  const fillPdf = (body, item) => {
+  // `onFail` runs when the document cannot be loaded: the caller swaps in Roam's reader.
+  const fillPdf = (body, item, onFail) => {
     let spec = null;
     try { spec = on.pdfOf?.(item) || null; } catch { spec = null; }
     const url = typeof spec?.url === "string" ? spec.url : "";
@@ -158,10 +160,11 @@ export function createQuickLook({ doc = globalThis.document, root, host, timers,
       if (event.key !== "ArrowLeft" && event.key !== "ArrowRight") return;
       if (step(event.key === "ArrowLeft" ? -1 : 1)) { event.preventDefault?.(); event.stopPropagation?.(); }
     };
-    doc.addEventListener("keydown", onKey, true);
+    const keyTarget = win || doc;
+    keyTarget.addEventListener("keydown", onKey, true);
     pdfOff = () => {
       live = false;
-      doc.removeEventListener("keydown", onKey, true);
+      keyTarget.removeEventListener("keydown", onKey, true);
       try { render?.cancel?.(); } catch { /* done */ }
       try { task?.destroy?.(); } catch { /* done */ }
       try { pdf?.destroy?.(); } catch { /* done */ }
@@ -172,10 +175,20 @@ export function createQuickLook({ doc = globalThis.document, root, host, timers,
     paint();
     (async () => {
       try { task = lib.getDocument({ url }); } catch { task = null; }
-      if (!task) return;
       let got = null;
-      try { got = await (task.promise || task); } catch { got = null; }
-      if (!live || !got) return;
+      if (task) {
+        try { got = await (task.promise || task); } catch { got = null; }
+      }
+      if (!live) return;
+      if (!got) {
+        try { pdfOff?.(); } catch { /* already closed */ }
+        pdfOff = null;
+        stage.remove();
+        pill.remove();
+        node?.classList.remove("pxd-quicklook--pdf");
+        onFail?.();
+        return;
+      }
       pdf = got;
       total = Number(got.numPages) || 1;
       page = startPage(spec?.page, total);
@@ -186,7 +199,10 @@ export function createQuickLook({ doc = globalThis.document, root, host, timers,
   };
 
   const fill = (body, item) => {
-    if (item.kind === "pdf" && fillPdf(body, item)) return;
+    if (item.kind === "pdf" && fillPdf(body, item, () => { if (node && current === item) fillRoam(body, item); })) return;
+    fillRoam(body, item);
+  };
+  const fillRoam = (body, item) => {
     if (item.kind === "pdf") node.classList.add("pxd-quicklook--pdf-roam");
     const blocksInto = (result) => {
       if (!node || !body.parentElement) return;

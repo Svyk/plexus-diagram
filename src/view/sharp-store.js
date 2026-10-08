@@ -13,7 +13,7 @@ export function createSharpStore({ revoke, later, delay = REVOKE_DELAY_MS } = {}
   const retire = (src) => {
     if (typeof src !== "string" || !src.startsWith("blob:")) return;
     if (typeof later !== "function") return;
-    const entry = { off: null };
+    const entry = { off: null, src };
     entry.off = later(() => { pending.delete(entry); free(src); }, delay);
     pending.add(entry);
   };
@@ -46,7 +46,10 @@ export function createSharpStore({ revoke, later, delay = REVOKE_DELAY_MS } = {}
       for (const face of faces.values()) free(face?.src);
       faces.clear();
       gens.clear();
-      for (const entry of pending) { try { entry.off?.(); } catch { /* timer */ } }
+      for (const entry of pending) {
+        try { entry.off?.(); } catch { /* timer */ }
+        free(entry.src);
+      }
       pending.clear();
     },
   };

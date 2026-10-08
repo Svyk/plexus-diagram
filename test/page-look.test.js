@@ -144,7 +144,7 @@ test("Show parsed: default on, one soft box and one copy icon per parsed block, 
     assert.equal(icons.length, 4);
     assert.ok(boxes.every((b) => b.style.pointerEvents === "none"));
     assert.equal(layer.style.pointerEvents, "none");
-    assert.ok(icons.every((b) => b.style.pointerEvents === "none"), "hidden copy buttons take no clicks");
+    assert.ok(icons.every((b) => !b.style.pointerEvents), "pointer-events is driven by the class only, never inline");
     const table = boxes.find((b) => b.getAttribute("data-block") === "t1");
     assert.equal(table.style.top, "calc(15% - 3px)");
     assert.equal(table.style.height, "calc(15% + 6px)");
@@ -426,7 +426,7 @@ test("copy buttons hide at rest and show only for the hovered box; one delegated
     const icons = h.page.querySelectorAll(".pxd-parsed-copy");
     const shown = () => icons.filter((n) => n.classList.contains("pxd-parsed-copy--show")).map((n) => n.getAttribute("data-block"));
     assert.deepEqual(shown(), [], "nothing at rest");
-    assert.ok(icons.every((n) => n.style.pointerEvents === "none"), "hidden buttons are click-through");
+    assert.ok(icons.every((n) => !n.style.pointerEvents), "no inline pointer-events: the CSS class decides");
     const count = h.stub.listenerCount();
     h.stub.dispatch(h.page, "pointermove", { clientX: 10 + 60, clientY: 20 + 16 });
     assert.deepEqual(shown(), ["p1"], "a plain paragraph has no chip, only the copy button");
@@ -475,4 +475,19 @@ test("tiny blocks and marks get no box at all", () => {
     assert.deepEqual(ids, ["sup", "para"], "the 1-char mark, the speck logo and the thin image are skipped; '1,' is not a pure mark");
     chips.dispose();
   } finally { restore(); }
+});
+
+test("a shown copy button can take the click: no inline pointer-events overrides the --show class, and the click copies", () => {
+  const h = rig();
+  try {
+    h.stub.flushFrames();
+    h.stub.dispatch(h.page, "pointermove", { clientX: 10 + 60, clientY: 20 + 45 });
+    const shown = h.page.querySelectorAll(".pxd-parsed-copy").filter((n) => n.classList.contains("pxd-parsed-copy--show"));
+    assert.equal(shown.length, 1);
+    assert.equal(shown[0].style.pointerEvents || "", "", "the stylesheet decides, so --show wins");
+    shown[0].click();
+    assert.deepEqual(h.copied, [shown[0].getAttribute("data-block")]);
+    const css = readFileSync(new URL("../src/css/page-chips.css", import.meta.url), "utf8");
+    assert.match(css, /\.pxd-parsed-copy \{[^}]*pointer-events: none/s);
+  } finally { h.chips.dispose(); h.restore(); }
 });

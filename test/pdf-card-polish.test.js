@@ -304,3 +304,76 @@ test("the outline starts at the top, and one page field gets one watch however o
     restore();
   }
 });
+
+function quickLookRig(extra = {}) {
+  const stub = createDomStub();
+  const restore = stub.install();
+  const doc = stub.document;
+  const root = doc.createElement("div");
+  root.className = "pxd-root";
+  doc.body.append(root);
+  const rendered = [];
+  const ql = createQuickLook({
+    doc,
+    root,
+    win: extra.win ?? stub.window,
+    pdfLib: extra.pdfLib,
+    host: { renderString: (n, s) => rendered.push(s), unmount() {} },
+    on: { titleOf: () => "Report", pdfOf: () => ({ url: "https://example.test/a.pdf", page: 1 }) },
+  });
+  const card = { uid: "p3", kind: "pdf", type: "card", string: "{{[[pdf]]: https://example.test/a.pdf}}", content: [], target: { kind: "self", uid: "p3" } };
+  return { stub, restore, doc, root, ql, rendered, card };
+}
+
+test("Quick Look: a pdf.js global with no worker configured is not used; Roam's reader takes the body", async () => {
+  const lib = fakePdf(3);
+  lib.GlobalWorkerOptions = {};
+  const stub0 = createDomStub();
+  const win = { ...stub0.window, pdfjsLib: lib };
+  const f = quickLookRig({ win });
+  try {
+    f.ql.open(f.card);
+    await settle();
+    const node = f.root.querySelector(".pxd-quicklook");
+    assert.ok(node.classList.contains("pxd-quicklook--pdf-roam"));
+    assert.equal(lib.made.length, 0, "getDocument is never called without a worker");
+    assert.deepEqual(f.rendered, [f.card.string]);
+    f.ql.dispose();
+  } finally { f.restore(); }
+});
+
+test("Quick Look: when the document fails to load it falls back to Roam's reader and drops the pdf.js stage", async () => {
+  const lib = { GlobalWorkerOptions: { workerSrc: "w.js" }, getDocument: () => ({ promise: Promise.reject(new Error("expired")), destroy() {} }) };
+  const f = quickLookRig({ pdfLib: lib });
+  try {
+    f.ql.open(f.card);
+    await settle();
+    const node = f.root.querySelector(".pxd-quicklook");
+    assert.ok(node.classList.contains("pxd-quicklook--pdf-roam"));
+    assert.ok(!node.classList.contains("pxd-quicklook--pdf"));
+    assert.equal(node.querySelector(".pxd-ql__canvas"), null, "no empty canvas");
+    assert.equal(node.querySelector(".pxd-ql__pill"), null, "no empty pill");
+    assert.deepEqual(f.rendered, [f.card.string]);
+    f.ql.dispose();
+  } finally { f.restore(); }
+});
+
+test("Quick Look: the arrow-key listener is on the window in the capture phase, and closing removes it", async () => {
+  const lib = fakePdf(3);
+  const f = quickLookRig({ pdfLib: lib });
+  try {
+    const seen = [];
+    const win = f.stub.window;
+    const add = win.addEventListener.bind(win);
+    win.addEventListener = (type, fn, opts) => { seen.push(["add", type, opts]); return add(type, fn, opts); };
+    const docAdd = f.doc.addEventListener.bind(f.doc);
+    const docSeen = [];
+    f.doc.addEventListener = (type, fn, opts) => { docSeen.push(type); return docAdd(type, fn, opts); };
+    f.ql.open(f.card);
+    await settle();
+    assert.ok(seen.some(([, type, opts]) => type === "keydown" && opts === true), "window capture keydown");
+    assert.equal(docSeen.filter((t) => t === "keydown").length, 1, "only the Escape listener stays on the document");
+    f.ql.close();
+    f.ql.dispose();
+  } finally { f.restore(); }
+});

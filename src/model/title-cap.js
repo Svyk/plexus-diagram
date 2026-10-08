@@ -1,8 +1,69 @@
 // Titles are cut on a word boundary at about 80 characters, with an ellipsis. Never mid-word.
 export const TITLE_CAP = 80;
 
-export function capTitle(text, cap = TITLE_CAP) {
-  const clean = typeof text === "string" ? text.replace(/\s+/g, " ").trim() : "";
+// Word list for title segmentation, set only from a lexicon already in Cache Storage.
+let titleLexicon = null;
+export function setTitleLexicon(words) {
+  titleLexicon = words && typeof words.has === "function" ? words : null;
+}
+
+const SEG_MIN = 12;
+const SEG_MAX_WORDS = 12;
+
+// Split one run-together letter token ("Summaryofreportedcasesper") into dictionary words by
+// dynamic programming: fewest words, then longer words. Every piece must be a word of 2+
+// letters ("a" and "I" allowed). Returns the pieces in original case, or null.
+export function segmentToken(token, lexicon) {
+  const t = String(token || "");
+  if (!lexicon || t.length < SEG_MIN || !/^\p{L}+$/u.test(t)) return null;
+  const lower = t.toLowerCase();
+  if (lexicon.has(lower)) return null;
+  const n = lower.length;
+  const best = new Array(n + 1).fill(null);
+  best[0] = { count: 0, sq: 0, prev: -1 };
+  for (let i = 1; i <= n; i++) {
+    for (let j = Math.max(0, i - 24); j < i; j++) {
+      if (!best[j]) continue;
+      const len = i - j;
+      const word = lower.slice(j, i);
+      if (!(lexicon.has(word) && (len >= 2 || word === "a" || word === "i"))) continue;
+      const cand = { count: best[j].count + 1, sq: best[j].sq + len * len, prev: j };
+      const cur = best[i];
+      if (!cur || cand.count < cur.count || (cand.count === cur.count && cand.sq > cur.sq)) best[i] = cand;
+    }
+  }
+  if (!best[n] || best[n].count < 2 || best[n].count > SEG_MAX_WORDS) return null;
+  const out = [];
+  for (let i = n; i > 0; i = best[i].prev) out.unshift(t.slice(best[i].prev, i));
+  return out;
+}
+
+// Titles only: split run-together words (a text layer with no spaces). No lexicon, no change.
+export function segmentTitle(text, lexicon = titleLexicon) {
+  const clean = typeof text === "string" ? text : "";
+  if (!lexicon || !clean) return clean;
+  return clean.replace(/\S*\p{L}{12,}\S*/gu, (word) => {
+    const runs = word.match(/\p{L}+|[^\p{L}]+/gu) || [];
+    let split = false;
+    const parts = runs.map((run) => {
+      const pieces = /^\p{L}{12,}$/u.test(run) ? segmentToken(run, lexicon) : null;
+      if (pieces) split = true;
+      return pieces ? pieces.join(" ") : run;
+    });
+    if (!split) return word;
+    // A split word's neighbours (letters beside a number) become separate words too.
+    let out = "";
+    for (let i = 0; i < parts.length; i++) {
+      const prev = runs[i - 1];
+      if (i && /^\p{L}/u.test(runs[i]) !== /^\p{L}/u.test(prev) && /\p{N}/u.test(/^\p{L}/u.test(runs[i]) ? prev : runs[i])) out += " ";
+      out += parts[i];
+    }
+    return out;
+  });
+}
+
+export function capTitle(text, cap = TITLE_CAP, lexicon = titleLexicon) {
+  const clean = segmentTitle(typeof text === "string" ? text.replace(/\s+/g, " ").trim() : "", lexicon);
   if (clean.length <= cap) return clean;
   const cut = clean.slice(0, cap + 1);
   const space = cut.lastIndexOf(" ");

@@ -16498,10 +16498,24 @@ function createItemRenderer({
   };
   const NOTE_INPUT_MS = 400;
   const noteInput = (editor) => editor.querySelector?.("textarea") || null;
-  const waitNoteInput = async (editor, uid) => {
+  const noteView = (editor, row4) => {
+    const list = editor.querySelectorAll?.(".rm-block__input") || [];
+    if (!row4) return list[0] || null;
+    for (const node2 of list) {
+      if (String(node2.id || node2.getAttribute?.("id") || "").endsWith(`-${row4}`)) return node2;
+    }
+    return null;
+  };
+  const waitNoteInput = async (editor, uid, row4 = "") => {
     const start = now();
     let input = noteInput(editor);
+    let clicked = false;
     while (!input && now() - start < NOTE_INPUT_MS) {
+      const view = clicked ? null : noteView(editor, row4);
+      if (view) {
+        clicked = true;
+        focusRoamInput(view);
+      }
       await new Promise((resolve) => {
         frameLater(resolve);
       });
@@ -16738,7 +16752,7 @@ function createItemRenderer({
         }
       }
     } else {
-      early = await waitNoteInput(editor, uid);
+      early = await waitNoteInput(editor, uid, row4);
       if (disposed || editing?.uid !== uid) return false;
       if (early) {
         scaleCardEditor(editor, zoomCache);
@@ -51029,6 +51043,164 @@ function createShortcutSheet({ doc = globalThis.document, root, shortcuts = SHOR
   };
 }
 
+// src/view/type-ahead.js
+var ARM_MS = 4e3;
+var isEditable = (node2) => {
+  if (!node2 || typeof node2 !== "object") return false;
+  const tag = String(node2.tagName || "").toLowerCase();
+  if (tag === "input" || tag === "textarea" || tag === "select") return true;
+  if (node2.isContentEditable) return true;
+  return typeof node2.getAttribute === "function" && node2.getAttribute("contenteditable") === "true";
+};
+function createTypeAhead({ doc, isTarget, later, armMs = ARM_MS } = {}) {
+  let armed = false;
+  let buffer = "";
+  let stopTimer = null;
+  let last = null;
+  const ups = /* @__PURE__ */ new Set();
+  const fresh = (kind, data) => {
+    if (last && last.kind !== kind && last.data === data) {
+      last = null;
+      return false;
+    }
+    last = { kind, data };
+    return true;
+  };
+  const clearTimer = () => {
+    stopTimer?.();
+    stopTimer = null;
+  };
+  const cancel = () => {
+    armed = false;
+    buffer = "";
+    last = null;
+    clearTimer();
+  };
+  const arm4 = () => {
+    armed = true;
+    buffer = "";
+    last = null;
+    clearTimer();
+    if (typeof later === "function") stopTimer = later(cancel, armMs);
+  };
+  const insert = (target, text3) => {
+    if (!text3) return true;
+    const view = doc?.defaultView || globalThis;
+    if (doc?.activeElement !== target) {
+      try {
+        target.focus?.({ preventScroll: true });
+      } catch {
+      }
+    }
+    let done = false;
+    if (doc?.activeElement === target && typeof doc.execCommand === "function") {
+      try {
+        done = doc.execCommand("insertText", false, text3) === true;
+      } catch {
+        done = false;
+      }
+    }
+    if (done) return true;
+    if (typeof target.setRangeText !== "function") return false;
+    const value = String(target.value ?? "");
+    const start = Number.isFinite(target.selectionStart) ? target.selectionStart : value.length;
+    const end = Number.isFinite(target.selectionEnd) ? target.selectionEnd : start;
+    try {
+      target.setRangeText(text3, start, end, "end");
+    } catch {
+      return false;
+    }
+    const Ctor = view?.InputEvent || view?.Event || globalThis.Event;
+    if (typeof Ctor === "function") {
+      try {
+        target.dispatchEvent(new Ctor("input", { bubbles: true, inputType: "insertText", data: text3 }));
+      } catch {
+      }
+    }
+    return true;
+  };
+  const flush = (target) => {
+    if (!armed) return "";
+    if (!target || !isTarget?.(target)) return "";
+    const text3 = buffer;
+    cancel();
+    if (text3) insert(target, text3);
+    return text3;
+  };
+  const take = (event) => {
+    if (!armed || !event) return false;
+    const target = event.target;
+    const active = doc?.activeElement;
+    const entry = isEditable(target) ? target : isEditable(active) ? active : null;
+    if (entry) {
+      if (isTarget?.(entry)) flush(entry);
+      else cancel();
+      return false;
+    }
+    if (event.isComposing) return false;
+    if (event.metaKey || event.ctrlKey || event.altKey) return false;
+    const key = String(event.key || "");
+    if (key === "Escape") {
+      cancel();
+      return false;
+    }
+    if (key.length === 1) buffer += key;
+    else if (key === "Backspace") buffer = buffer.slice(0, -1);
+    event.preventDefault?.();
+    event.stopImmediatePropagation?.();
+    event.stopPropagation?.();
+    if (event.code || key) ups.add(event.code || key);
+    return true;
+  };
+  const takeUp = (event) => {
+    const id = event?.code || event?.key;
+    if (!id || !ups.has(id)) return false;
+    ups.delete(id);
+    event.stopImmediatePropagation?.();
+    event.stopPropagation?.();
+    return true;
+  };
+  const takeInput = (event) => {
+    if (!armed || !event) return false;
+    const target = event.target;
+    if (isEditable(target)) {
+      if (isTarget?.(target)) flush(target);
+      else cancel();
+      return false;
+    }
+    const type = String(event.inputType || "");
+    if (type === "insertText" || type === "insertReplacementText") {
+      const data = String(event.data ?? "");
+      if (fresh("input", data)) buffer += data;
+    } else if (type === "deleteContentBackward") buffer = buffer.slice(0, -1);
+    else return false;
+    event.preventDefault?.();
+    event.stopImmediatePropagation?.();
+    return true;
+  };
+  const takeText = (event) => {
+    if (!armed || !event) return false;
+    if (isEditable(event.target)) return false;
+    const data = String(event.data ?? "");
+    if (!data) return false;
+    if (fresh("text", data)) buffer += data;
+    event.preventDefault?.();
+    event.stopImmediatePropagation?.();
+    return true;
+  };
+  return {
+    arm: arm4,
+    cancel,
+    flush,
+    take,
+    takeUp,
+    takeInput,
+    takeText,
+    isArmed: () => armed,
+    pending: () => buffer
+  };
+}
+
 // src/view/board-view.js
 init_tooltip();
 
@@ -53195,6 +53367,11 @@ function buildBoardView(onFail, {
   };
   const heightKey = `plexus-diagram:h:${graph}:${routeUid}`;
   const root = el("div", "pxd-root", mountEl);
+  const typeAhead = createTypeAhead({
+    doc,
+    later: (fn, ms) => timers.later(fn, ms),
+    isTarget: (node2) => String(node2?.tagName || "").toLowerCase() === "textarea" && Boolean(root.contains?.(node2) && node2.closest?.(".pxd-item"))
+  });
   root.tabIndex = 0;
   root.setAttribute("tabindex", "0");
   root.setAttribute("role", "region");
@@ -58370,7 +58547,10 @@ function buildBoardView(onFail, {
       applyLod();
     }
     const ok = await itemsR.enterEdit(uid, opts);
-    if (ok) chrome.ctx.hide();
+    if (ok) {
+      chrome.ctx.hide();
+      typeAhead.flush(doc.activeElement);
+    } else typeAhead.cancel();
     return ok;
   };
   const freshItems = /* @__PURE__ */ new Set();
@@ -58796,10 +58976,14 @@ function buildBoardView(onFail, {
     updateEdge: (uid, patch) => session.updateEdge?.(uid, patch),
     commitMove: (uids, dx, dy) => session.commitMove?.(uids, dx, dy),
     commitRects: (list) => session.commitRects?.(list),
-    createCard: (p) => Promise.resolve(session.createCard?.({ x: p.x, y: p.y, ...pendingFor("card") || {} })).then((uid) => {
-      if (uid) freshItems.add(uid);
-      return uid;
-    }),
+    createCard: (p) => {
+      typeAhead.arm();
+      return Promise.resolve(session.createCard?.({ x: p.x, y: p.y, ...pendingFor("card") || {} })).then((uid) => {
+        if (uid) freshItems.add(uid);
+        else typeAhead.cancel();
+        return uid;
+      });
+    },
     createTable: (p) => Promise.resolve(session.createTable?.({ x: p.x, y: p.y, w: p.w, h: p.h })).then((uid) => {
       if (uid) freshItems.add(uid);
       return uid;
@@ -58819,14 +59003,18 @@ function buildBoardView(onFail, {
         chrome.toast.show({ message: bad ? `Better Tasks could not set the due date: ${bad.reason}` : `Due ${day.title}` });
       });
     },
-    createTask: (p) => Promise.resolve(session.createCard?.({ x: p.x, y: p.y, string: "{{[[TODO]]}} " })).then((uid) => {
-      if (uid) {
-        freshItems.add(uid);
-        freshTasks.add(uid);
-      }
-      return uid;
-    }),
+    createTask: (p) => {
+      typeAhead.arm();
+      return Promise.resolve(session.createCard?.({ x: p.x, y: p.y, string: "{{[[TODO]]}} " })).then((uid) => {
+        if (uid) {
+          freshItems.add(uid);
+          freshTasks.add(uid);
+        } else typeAhead.cancel();
+        return uid;
+      });
+    },
     createText: (p) => {
+      typeAhead.arm();
       const spec = { x: p.x, y: p.y };
       if (p.look) spec.look = p.look;
       if (typeof p.w === "number") spec.w = p.w;
@@ -58839,6 +59027,7 @@ function buildBoardView(onFail, {
       if (p.shape && shaped?.shape) spec.shape = shaped.shape;
       return Promise.resolve(session.createText?.(spec)).then((uid) => {
         if (uid && p.look !== "sticky") freshItems.add(uid);
+        if (!uid) typeAhead.cancel();
         return uid;
       });
     },
@@ -59662,6 +59851,7 @@ function buildBoardView(onFail, {
   let outsideQuiet = null;
   let swallowEnterUp = false;
   const onKeyDown = (event) => {
+    if (typeAhead.take(event)) return;
     const consumePdfEscape = () => {
       if (event.key !== "Escape") return false;
       const liveNode = root.querySelector?.(".pxd-pdf-live");
@@ -59857,6 +60047,7 @@ function buildBoardView(onFail, {
     }
   };
   const onKeyUp = (event) => {
+    if (typeAhead.takeUp(event)) return;
     if (swallowEnterUp && event.key === "Enter") {
       swallowEnterUp = false;
       event.stopPropagation();
@@ -59870,6 +60061,14 @@ function buildBoardView(onFail, {
   }, true);
   listen(win, "keydown", onKeyDown, true);
   listen(win, "keyup", onKeyUp, true);
+  listen(win, "beforeinput", typeAhead.takeInput, true);
+  listen(win, "textInput", typeAhead.takeText, true);
+  listen(win, "focusin", (event) => {
+    if (!typeAhead.isArmed() || !root.contains?.(event.target)) return;
+    timers.frame(() => {
+      if (!disposed && doc.activeElement === event.target) typeAhead.flush(event.target);
+    });
+  }, true);
   const clip4 = createClipboardIO({
     doc,
     root,

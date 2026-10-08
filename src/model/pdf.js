@@ -1,5 +1,7 @@
 // PDF-1 cover plan. The reader is Roam's. No fetch and no :pdf write.
 
+import { capTitle, isCutPrefix } from "./title-cap.js";
+
 const PDF_MACRO = "{{[[pdf]]:";
 
 export const PDF_READER_W = 640;
@@ -91,11 +93,18 @@ export function pdfTitlePlan(source) {
 // The parsed document's name for the PDF: its title, else the first level-1 heading, else the first
 // table caption, else a short first paragraph on page 1. Never a storage path.
 export function parsedDocTitle(doc) {
+  return capTitle(parsedDocTitleRaw(doc));
+}
+
+function parsedDocTitleRaw(doc) {
   if (!doc || typeof doc !== "object") return "";
-  const given = cleanPdfTitle(doc.title);
-  if (given) return given;
   const blocks = doc.blocks && typeof doc.blocks === "object" ? doc.blocks : {};
   const ids = Array.isArray(doc.order) ? doc.order : Object.keys(blocks);
+  const given = cleanPdfTitle(doc.title);
+  if (given) {
+    const first = ids.map((id) => blocks[id]).find((b) => b?.type === "heading" && (b.level || 1) === 1);
+    if (!isCutPrefix(given, first?.text)) return given;
+  }
   for (const id of ids) {
     const block = blocks[id];
     if (block?.type !== "heading" || (block.level || 1) !== 1) continue;

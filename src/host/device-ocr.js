@@ -67,8 +67,7 @@ export function createDeviceOcr({ source = null, env = globalThis, dpi = 300, cr
     try { downloading?.ctl.abort(); } catch { /* abort */ }
   }
 
-  async function read({ pages = [], url = "", getPdf = null, signal = null, onProgress = null } = {}) {
-    if (signal?.aborted) throw abortError();
+  async function openPdf({ url, getPdf, signal }) {
     let pdf = typeof getPdf === "function" ? await getPdf() : null;
     if (!pdf || typeof pdf.getPage !== "function") {
       // No open reader: the PDF itself, through Roam's pdf.js.
@@ -78,6 +77,12 @@ export function createDeviceOcr({ source = null, env = globalThis, dpi = 300, cr
       if (!res?.ok) throw new Error(`fetch failed ${res?.status || ""}`.trim());
       pdf = await lib.getDocument({ data: new Uint8Array(await res.arrayBuffer()), isEvalSupported: false, verbosity: 0 }).promise;
     }
+    return pdf;
+  }
+
+  async function read({ pages = [], url = "", getPdf = null, signal = null, onProgress = null } = {}) {
+    if (signal?.aborted) throw abortError();
+    const pdf = await openPdf({ url, getPdf, signal });
     currentPdf = pdf;
     const key = `${url}|${pdf?.fingerprints?.[0] || pdf?.numPages || ""}`;
     const src = web();
@@ -95,7 +100,19 @@ export function createDeviceOcr({ source = null, env = globalThis, dpi = 300, cr
     return { schema: SCHEMA, engine: ENGINE, pages: out };
   }
 
-  return { status, download, cancel, read, label: "In-browser reading (beta)" };
+  // Doubtful-cell re-read at higher zoom on the same source. Never downloads: without cached
+  // models it answers nothing, so an automatic read cannot start a fetch.
+  async function readCells({ cells = [], url = "", getPdf = null, signal = null } = {}) {
+    if (signal?.aborted) throw abortError();
+    if (!cells.length) return { cells: [] };
+    const st = await status();
+    if (st.state !== "ready") return { cells: [] };
+    currentPdf = await openPdf({ url, getPdf, signal });
+    const got = await web().ocr({ cells, signal });
+    return { cells: got?.cells || [] };
+  }
+
+  return { status, download, cancel, read, readCells, label: "In-browser reading (beta)" };
 }
 
 let shared = null;

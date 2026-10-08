@@ -4475,6 +4475,27 @@ var init_library = __esm({
   }
 });
 
+// src/model/title-cap.js
+function capTitle(text3, cap4 = TITLE_CAP) {
+  const clean = typeof text3 === "string" ? text3.replace(/\s+/g, " ").trim() : "";
+  if (clean.length <= cap4) return clean;
+  const cut = clean.slice(0, cap4 + 1);
+  const space = cut.lastIndexOf(" ");
+  const head = (space > 0 ? cut.slice(0, space) : clean.slice(0, cap4)).replace(/[\s,;:.\-–—]+$/, "");
+  return `${head}…`;
+}
+function isCutPrefix(title, heading) {
+  const t = typeof title === "string" ? title.trim() : "";
+  const h = typeof heading === "string" ? heading.replace(/\s+/g, " ").trim() : "";
+  return t.length > 0 && h.length > t.length && h.toLowerCase().startsWith(t.toLowerCase()) && /\S/.test(h[t.length]);
+}
+var TITLE_CAP;
+var init_title_cap = __esm({
+  "src/model/title-cap.js"() {
+    TITLE_CAP = 80;
+  }
+});
+
 // src/model/pdf.js
 function pdfMacroUrl(s) {
   if (typeof s !== "string") return "";
@@ -4544,11 +4565,17 @@ function pdfTitlePlan(source) {
   return file || "PDF";
 }
 function parsedDocTitle(doc) {
+  return capTitle(parsedDocTitleRaw(doc));
+}
+function parsedDocTitleRaw(doc) {
   if (!doc || typeof doc !== "object") return "";
-  const given = cleanPdfTitle(doc.title);
-  if (given) return given;
   const blocks = doc.blocks && typeof doc.blocks === "object" ? doc.blocks : {};
   const ids = Array.isArray(doc.order) ? doc.order : Object.keys(blocks);
+  const given = cleanPdfTitle(doc.title);
+  if (given) {
+    const first = ids.map((id) => blocks[id]).find((b) => b?.type === "heading" && (b.level || 1) === 1);
+    if (!isCutPrefix(given, first?.text)) return given;
+  }
   for (const id of ids) {
     const block = blocks[id];
     if (block?.type !== "heading" || (block.level || 1) !== 1) continue;
@@ -4791,6 +4818,7 @@ function readPaneWidth(mountWidth, stored) {
 var PDF_MACRO, PDF_READER_W, PDF_READER_H, PDF_CARD_MAX, ROMAN_ONLY, HEAVY_MACRO, HEAVY_ONE, REF_ONLY2, EMBED_ONLY;
 var init_pdf = __esm({
   "src/model/pdf.js"() {
+    init_title_cap();
     PDF_MACRO = "{{[[pdf]]:";
     PDF_READER_W = 640;
     PDF_READER_H = 820;
@@ -33658,6 +33686,7 @@ function fitsColumn(number, column) {
 }
 
 // src/model/parse/index.js
+init_title_cap();
 var SCHEMA2 = "pxd-parse/1";
 var ENGINE_VERSION = "plexus-builtin/1";
 var now2 = () => typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
@@ -34058,10 +34087,9 @@ function assembleDocument(pageRecords2, { numPages, info = null, engineVersion =
     if (pick) entry.ref.to = pick.id;
   }
   let title = info && typeof info.Title === "string" && info.Title.trim() ? info.Title.trim() : null;
-  if (!title) {
-    const h1 = headings.find((h) => h.level === 1 && h.page === (firstPage ? firstPage.n : 1)) || headings.find((h) => h.level === 1);
-    title = h1 ? h1.text : null;
-  }
+  const h1 = headings.find((h) => h.level === 1 && h.page === (firstPage ? firstPage.n : 1)) || headings.find((h) => h.level === 1);
+  if (!title || h1 && isCutPrefix(title, h1.text)) title = h1 ? h1.text : title;
+  if (title) title = capTitle(title);
   const pagesOut = [];
   for (const p of perPage) pagesOut.push({ n: p.n, w: p.w, h: p.h, rotation: p.rotation, textRotation: p.textRotation, scanLayer: p.scanLayer, ocr: p.ocr, kind: p.kind, parsed: true, columns: p.columns });
   return {
@@ -34412,6 +34440,78 @@ ${block.text ?? ""}
   return lines.join("\n\n");
 }
 
+// src/model/parse/ocr-merge.js
+function iou2(a, b) {
+  const ix = Math.min(a[2], b[2]) - Math.max(a[0], b[0]);
+  const iy = Math.min(a[3], b[3]) - Math.max(a[1], b[1]);
+  if (ix <= 0 || iy <= 0) return 0;
+  const inter = ix * iy;
+  const union = (a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - inter;
+  return union > 0 ? inter / union : 0;
+}
+function chooseTable(fresh, layer) {
+  const f = tableNumericValidity(fresh);
+  const l = tableNumericValidity(layer);
+  const freshScore = f.share * Math.min(1, f.total / Math.max(1, l.total));
+  const layerScore = l.share * Math.min(1, l.total / Math.max(1, f.total));
+  const sameShape = fresh.rows === layer.rows && fresh.cols === layer.cols;
+  const chose = layerScore > freshScore + 0.05 || sameShape && layerScore > freshScore + 0.02 ? "layer" : "fresh";
+  return { chose, fresh: { ...f, score: round2(freshScore) }, layer: { ...l, score: round2(layerScore) } };
+}
+function round2(n2) {
+  return Math.round(n2 * 1e3) / 1e3;
+}
+function mergeOcrDocument(base, fresh, { pages = [] } = {}) {
+  const set = new Set(pages);
+  const doc = { ...fresh, blocks: { ...fresh.blocks }, pages: fresh.pages.map((p) => ({ ...p })) };
+  const choices = [];
+  const layerTables = Object.values(base?.blocks || {}).filter((b) => b.type === "table" && set.has(b.page));
+  const basePages = new Map((base?.pages || []).map((p) => [p.n, p]));
+  for (const page of doc.pages) {
+    if (!set.has(page.n)) continue;
+    const was = basePages.get(page.n);
+    page.ocrChoice = was && was.scanLayer ? "compared" : "fresh";
+  }
+  for (const id of Object.keys(doc.blocks)) {
+    const block = doc.blocks[id];
+    if (block.type !== "table" || !set.has(block.page)) continue;
+    const was = basePages.get(block.page);
+    if (!was || !was.scanLayer) {
+      doc.blocks[id] = { ...block, ocrSource: "fresh" };
+      continue;
+    }
+    let best = null;
+    for (const lt of layerTables) {
+      if (lt.page !== block.page) continue;
+      const overlap = iou2(lt.bbox, block.bbox);
+      if (overlap >= 0.5 && (!best || overlap > best.overlap)) best = { table: lt, overlap };
+    }
+    if (!best) {
+      doc.blocks[id] = { ...block, ocrSource: "fresh" };
+      continue;
+    }
+    const verdict = chooseTable(block, best.table);
+    choices.push({ page: block.page, id, layerId: best.table.id, ...verdict });
+    if (verdict.chose === "layer") {
+      doc.blocks[id] = { ...best.table, id, caption: block.caption, engine: "builtin", ocrSource: "layer", ocrCompare: verdict };
+    } else {
+      doc.blocks[id] = { ...block, ocrSource: "fresh", ocrCompare: verdict };
+    }
+  }
+  if (choices.length) {
+    for (const page of doc.pages) {
+      if (page.ocrChoice !== "compared") continue;
+      const mine = choices.filter((c) => c.page === page.n);
+      page.ocrChoice = mine.length && mine.every((c) => c.chose === "layer") ? "layer" : mine.some((c) => c.chose === "layer") ? "mixed" : "fresh";
+    }
+  }
+  doc.ocr = { pages: [...set].sort((a, b) => a - b), choices };
+  return { doc, choices };
+}
+function scanPagesOf(doc) {
+  return (doc?.pages || []).filter((p) => !p.ocr && (p.kind === "scan" || p.scanLayer)).map((p) => p.n);
+}
+
 // src/host/parse-store.js
 init_parse_hash();
 var PARSE_DOC_CAP = 50;
@@ -34419,6 +34519,28 @@ var PARSE_IMAGE_CAP = 200 * 1024 * 1024;
 var META_KEY = "meta:lru";
 function parseKey(sha256, engine, optsHash) {
   return `${sha256}|${engine}|${optsHash}`;
+}
+async function restorableParse(store, sha, { engines, plainHash, readHashOf = null } = {}) {
+  if (!store || !sha) return null;
+  let listed = [];
+  try {
+    listed = typeof store.listParses === "function" ? await store.listParses(sha) : [];
+  } catch {
+    listed = [];
+  }
+  for (const engine of engines) {
+    const mine = listed.filter((row4) => row4.engine === engine);
+    const read2 = mine.filter((row4) => row4.doc?.options?.ocr === "vision" && !scanPagesOf(row4.doc).length).pop();
+    if (read2) return read2.doc;
+    const plain = await store.getParse(sha, engine, plainHash) || mine.pop()?.doc || null;
+    if (!plain) continue;
+    if (scanPagesOf(plain).length && readHashOf) {
+      const alt = await store.getParse(sha, engine, await readHashOf(plain));
+      if (alt) return alt;
+    }
+    return plain;
+  }
+  return null;
 }
 function imageKey(sha256, blockId) {
   return `${sha256}/${blockId}`;
@@ -34574,6 +34696,23 @@ function createParseStore({ indexedDB: factory, now: now3, docCap = PARSE_DOC_CA
         return null;
       }
     },
+    // Every cached parse of one PDF: [{ engine, optsHash, at, doc }], oldest first.
+    async listParses(sha) {
+      try {
+        if (!sha) return [];
+        const prefix = `${sha}|`;
+        const keys = (await backend.keys(STORE_PARSE)).filter((key) => typeof key === "string" && key.startsWith(prefix));
+        const out = [];
+        for (const key of keys) {
+          const record = await backend.get(STORE_PARSE, key);
+          if (!record?.doc) continue;
+          out.push({ engine: record.doc.engine || key.split("|")[1], optsHash: record.optsHash || key.split("|")[2], at: record.at || 0, doc: record.doc });
+        }
+        return out.sort((a, b) => a.at - b.at);
+      } catch {
+        return [];
+      }
+    },
     async putParse(doc) {
       try {
         if (!doc || typeof doc !== "object" || !doc.sha256 || !doc.engine) return null;
@@ -34684,78 +34823,6 @@ function createParseStore({ indexedDB: factory, now: now3, docCap = PARSE_DOC_CA
 // src/view/parse-view.js
 init_pdf();
 
-// src/model/parse/ocr-merge.js
-function iou2(a, b) {
-  const ix = Math.min(a[2], b[2]) - Math.max(a[0], b[0]);
-  const iy = Math.min(a[3], b[3]) - Math.max(a[1], b[1]);
-  if (ix <= 0 || iy <= 0) return 0;
-  const inter = ix * iy;
-  const union = (a[2] - a[0]) * (a[3] - a[1]) + (b[2] - b[0]) * (b[3] - b[1]) - inter;
-  return union > 0 ? inter / union : 0;
-}
-function chooseTable(fresh, layer) {
-  const f = tableNumericValidity(fresh);
-  const l = tableNumericValidity(layer);
-  const freshScore = f.share * Math.min(1, f.total / Math.max(1, l.total));
-  const layerScore = l.share * Math.min(1, l.total / Math.max(1, f.total));
-  const sameShape = fresh.rows === layer.rows && fresh.cols === layer.cols;
-  const chose = layerScore > freshScore + 0.05 || sameShape && layerScore > freshScore + 0.02 ? "layer" : "fresh";
-  return { chose, fresh: { ...f, score: round2(freshScore) }, layer: { ...l, score: round2(layerScore) } };
-}
-function round2(n2) {
-  return Math.round(n2 * 1e3) / 1e3;
-}
-function mergeOcrDocument(base, fresh, { pages = [] } = {}) {
-  const set = new Set(pages);
-  const doc = { ...fresh, blocks: { ...fresh.blocks }, pages: fresh.pages.map((p) => ({ ...p })) };
-  const choices = [];
-  const layerTables = Object.values(base?.blocks || {}).filter((b) => b.type === "table" && set.has(b.page));
-  const basePages = new Map((base?.pages || []).map((p) => [p.n, p]));
-  for (const page of doc.pages) {
-    if (!set.has(page.n)) continue;
-    const was = basePages.get(page.n);
-    page.ocrChoice = was && was.scanLayer ? "compared" : "fresh";
-  }
-  for (const id of Object.keys(doc.blocks)) {
-    const block = doc.blocks[id];
-    if (block.type !== "table" || !set.has(block.page)) continue;
-    const was = basePages.get(block.page);
-    if (!was || !was.scanLayer) {
-      doc.blocks[id] = { ...block, ocrSource: "fresh" };
-      continue;
-    }
-    let best = null;
-    for (const lt of layerTables) {
-      if (lt.page !== block.page) continue;
-      const overlap = iou2(lt.bbox, block.bbox);
-      if (overlap >= 0.5 && (!best || overlap > best.overlap)) best = { table: lt, overlap };
-    }
-    if (!best) {
-      doc.blocks[id] = { ...block, ocrSource: "fresh" };
-      continue;
-    }
-    const verdict = chooseTable(block, best.table);
-    choices.push({ page: block.page, id, layerId: best.table.id, ...verdict });
-    if (verdict.chose === "layer") {
-      doc.blocks[id] = { ...best.table, id, caption: block.caption, engine: "builtin", ocrSource: "layer", ocrCompare: verdict };
-    } else {
-      doc.blocks[id] = { ...block, ocrSource: "fresh", ocrCompare: verdict };
-    }
-  }
-  if (choices.length) {
-    for (const page of doc.pages) {
-      if (page.ocrChoice !== "compared") continue;
-      const mine = choices.filter((c) => c.page === page.n);
-      page.ocrChoice = mine.length && mine.every((c) => c.chose === "layer") ? "layer" : mine.some((c) => c.chose === "layer") ? "mixed" : "fresh";
-    }
-  }
-  doc.ocr = { pages: [...set].sort((a, b) => a - b), choices };
-  return { doc, choices };
-}
-function scanPagesOf(doc) {
-  return (doc?.pages || []).filter((p) => !p.ocr && (p.kind === "scan" || p.scanLayer)).map((p) => p.n);
-}
-
 // src/view/parse-engine.js
 var GLOBAL_KEYS = ["pdfjsLib", "pdfjs-dist/build/pdf", "pdfjs", "PDFJS"];
 function detectPdfjs(win = typeof window !== "undefined" ? window : null) {
@@ -34809,21 +34876,27 @@ async function readScan({ helper, bytes, sha256, base, records, pages, numPages,
   const merged = mergeOcrPageRecords({ base, ocrPages: got?.pages || [], records, pages: wanted, numPages, info, options, from, to, sha256 });
   const doc = merged.doc;
   const next = merged.records;
-  const tables = doc.order.map((id) => doc.blocks[id]).filter((b) => b && b.type === "table" && b.repairs && b.ocrSource !== "layer");
-  const requests = tables.flatMap((t) => cellsToReread(t, { numericCols: t.repairs.numericCols }));
-  let rereads = [];
-  if (requests.length) {
-    onPhase?.({ phase: "cells", count: requests.length });
-    const answer = await helper.ocr({ bytes, sha256, cells: requests, signal });
-    throwIfAborted3();
-    const results = (answer?.cells || []).map((c, i) => ({ ...requests[i], ...c }));
-    for (const t of tables) {
-      const applied = applyCellOcr(t, results.filter((r) => r.id === t.id));
-      if (applied.length) rereads.push({ id: t.id, applied });
-    }
-  }
+  const rereads = await rereadCells({ doc, ocr: (req) => helper.ocr({ bytes, sha256, cells: req, signal }), signal, onPhase });
   doc.ocr = { ...doc.ocr || {}, rereads: rereads.reduce((n2, r) => n2 + r.applied.length, 0), elapsedMs: got?.elapsedMs ?? null };
   return { doc, choices: merged.choices, rereads, pages: wanted, records: next };
+}
+async function rereadCells({ doc, ocr, signal, onPhase } = {}) {
+  const throwIfAborted3 = () => {
+    if (signal && signal.aborted) throw Object.assign(new Error("parse aborted"), { name: "AbortError" });
+  };
+  const tables = doc.order.map((id) => doc.blocks[id]).filter((b) => b && b.type === "table" && b.repairs && b.ocrSource !== "layer");
+  const requests = tables.flatMap((t) => cellsToReread(t, { numericCols: t.repairs.numericCols }));
+  const rereads = [];
+  if (!requests.length || typeof ocr !== "function") return rereads;
+  onPhase?.({ phase: "cells", count: requests.length });
+  const answer = await ocr(requests);
+  throwIfAborted3();
+  const results = (answer?.cells || []).map((c, i) => ({ ...requests[i], ...c }));
+  for (const t of tables) {
+    const applied = applyCellOcr(t, results.filter((r) => r.id === t.id));
+    if (applied.length) rereads.push({ id: t.id, applied });
+  }
+  return rereads;
 }
 function mergeOcrPageRecords({ base, ocrPages, records, pages, numPages, info = null, options = {}, from, to, sha256 } = {}) {
   const wanted = pages && pages.length ? pages : scanPagesOf(base);
@@ -38366,7 +38439,7 @@ function createParseView({
     }
     paintScan();
   }
-  async function applyOcr(ocrPages) {
+  async function applyOcr(ocrPages, { readCells = null, signal = null, onPhase = null } = {}) {
     if (dead || !parsed || phase === "running") return false;
     const incoming = (Array.isArray(ocrPages) ? ocrPages : []).filter((p) => p && Number.isFinite(Number(p.n)));
     const pages = scanPagesOf(parsed).filter((n2) => incoming.some((p) => Number(p.n) === n2));
@@ -38387,6 +38460,13 @@ function createParseView({
       const t0 = now3();
       const merged = mergeOcrPageRecords({ base, ocrPages: incoming, records: recs, pages, numPages: base.pageCount, from, to, sha256: base.sha256 });
       records = merged.records;
+      if (typeof readCells === "function") {
+        try {
+          const rereads = await rereadCells({ doc: merged.doc, ocr: readCells, signal, onPhase });
+          merged.doc.ocr = { ...merged.doc.ocr || {}, rereads: rereads.reduce((n2, r) => n2 + r.applied.length, 0) };
+        } catch {
+        }
+      }
       await finishDoc(merged.doc, (base.stats?.ms || 0) + (now3() - t0));
       return true;
     } catch {
@@ -38773,25 +38853,20 @@ function createParseView({
     const hit = await store.findByUrl(currentUrl);
     if (!hit?.sha256) return null;
     const hash = await optionsHash(BUILTIN_OPTIONS);
-    const engines = ["builtin", "docling", "mixed", "anydoc"];
-    for (const engine of engines) {
-      const found = await store.getParse(hit.sha256, engine, hash);
-      if (found) {
-        parsed = found;
-        if (scanPagesOf(found).length) {
-          const read2 = await store.getParse(hit.sha256, engine, await optionsHash({ ...found.options || BUILTIN_OPTIONS, ocr: "vision" }));
-          if (read2) parsed = read2;
-        }
-        rememberParsedUrl(storage, currentUrl);
-        try {
-          onCached?.(currentUrl);
-        } catch {
-        }
-        render();
-        return parsed;
-      }
+    const found = await restorableParse(store, hit.sha256, {
+      engines: ["builtin", "docling", "mixed", "anydoc"],
+      plainHash: hash,
+      readHashOf: (plain) => optionsHash({ ...plain.options || BUILTIN_OPTIONS, ocr: "vision" })
+    });
+    if (!found) return null;
+    parsed = found;
+    rememberParsedUrl(storage, currentUrl);
+    try {
+      onCached?.(currentUrl);
+    } catch {
     }
-    return null;
+    render();
+    return parsed;
   }
   async function refreshHelper() {
     if (!helper || typeof helper.health !== "function") return;
@@ -42613,7 +42688,14 @@ function createReadPane({
           if (!ctl.signal.aborted) {
             setOcrPages(out, { sha256: ocrSha });
             try {
-              await parsedView?.applyOcr?.(pageRecords(out));
+              await parsedView?.applyOcr?.(pageRecords(out), {
+                readCells: (cells) => deviceOcr.readCells({ cells, url: pdfUrl(), getPdf, signal: ctl.signal }),
+                signal: ctl.signal,
+                onPhase: () => {
+                  ocrRun = { ...ocrRun, phase: "cells", progress: null };
+                  paintStrip();
+                }
+              });
             } catch {
             }
           }
@@ -50883,8 +50965,7 @@ function createDeviceOcr({ source = null, env = globalThis, dpi = 300, createSou
     } catch {
     }
   }
-  async function read2({ pages = [], url = "", getPdf = null, signal = null, onProgress = null } = {}) {
-    if (signal?.aborted) throw abortError2();
+  async function openPdf({ url, getPdf, signal }) {
     let pdf = typeof getPdf === "function" ? await getPdf() : null;
     if (!pdf || typeof pdf.getPage !== "function") {
       const lib = env.pdfjsLib;
@@ -50893,6 +50974,11 @@ function createDeviceOcr({ source = null, env = globalThis, dpi = 300, createSou
       if (!res?.ok) throw new Error(`fetch failed ${res?.status || ""}`.trim());
       pdf = await lib.getDocument({ data: new Uint8Array(await res.arrayBuffer()), isEvalSupported: false, verbosity: 0 }).promise;
     }
+    return pdf;
+  }
+  async function read2({ pages = [], url = "", getPdf = null, signal = null, onProgress = null } = {}) {
+    if (signal?.aborted) throw abortError2();
+    const pdf = await openPdf({ url, getPdf, signal });
     currentPdf = pdf;
     const key = `${url}|${pdf?.fingerprints?.[0] || pdf?.numPages || ""}`;
     const src = web();
@@ -50912,7 +50998,16 @@ function createDeviceOcr({ source = null, env = globalThis, dpi = 300, createSou
     ready = true;
     return { schema: SCHEMA3, engine: ENGINE, pages: out };
   }
-  return { status, download, cancel, read: read2, label: "In-browser reading (beta)" };
+  async function readCells({ cells = [], url = "", getPdf = null, signal = null } = {}) {
+    if (signal?.aborted) throw abortError2();
+    if (!cells.length) return { cells: [] };
+    const st = await status();
+    if (st.state !== "ready") return { cells: [] };
+    currentPdf = await openPdf({ url, getPdf, signal });
+    const got = await web().ocr({ cells, signal });
+    return { cells: got?.cells || [] };
+  }
+  return { status, download, cancel, read: read2, readCells, label: "In-browser reading (beta)" };
 }
 var shared = null;
 function sharedDeviceOcr() {
@@ -63333,16 +63428,12 @@ function createPdfTables({ store = null, helper = null, pdfjs, fetchBytes, sha25
     const hit = await store.findByUrl(url);
     if (!hit?.sha256) return null;
     const hash = await optionsHash(OPTIONS);
-    for (const engine of ENGINES) {
-      const found = await store.getParse(hit.sha256, engine, hash);
-      if (!found) continue;
-      let doc = found;
-      if (scanPagesOf(found).length) {
-        const read2 = await store.getParse(hit.sha256, engine, await optionsHash({ ...found.options || OPTIONS, ocr: "vision" }));
-        if (read2) doc = read2;
-      }
-      return { doc, sha256: hit.sha256 };
-    }
+    const doc = await restorableParse(store, hit.sha256, {
+      engines: ENGINES,
+      plainHash: hash,
+      readHashOf: (plain) => optionsHash({ ...plain.options || OPTIONS, ocr: "vision" })
+    });
+    if (doc) return { doc, sha256: hit.sha256 };
     return null;
   }
   async function builtin(url, wanted, signal) {

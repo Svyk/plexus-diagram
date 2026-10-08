@@ -13,6 +13,7 @@ import { detectFormulas } from "./formulas.js";
 import { FOOTNOTE_MARK_RE, groupParagraphs, joinLines, spansOf } from "./blocks.js";
 import { boxOfUnits, crossesGutter, detectColumns, orderUnits, splitAtGutters } from "./xycut.js";
 import { repairOcrTable } from "./ocr-fix.js";
+import { capTitle, isCutPrefix } from "../title-cap.js";
 
 export const SCHEMA = "pxd-parse/1";
 export const ENGINE_VERSION = "plexus-builtin/1";
@@ -428,7 +429,9 @@ export function assembleDocument(pageRecords, { numPages, info = null, engineVer
   }
   // Title: metadata first, then the first level-1 heading on the first parsed page.
   let title = info && typeof info.Title === "string" && info.Title.trim() ? info.Title.trim() : null;
-  if (!title) { const h1 = headings.find((h) => h.level === 1 && h.page === (firstPage ? firstPage.n : 1)) || headings.find((h) => h.level === 1); title = h1 ? h1.text : null; }
+  const h1 = headings.find((h) => h.level === 1 && h.page === (firstPage ? firstPage.n : 1)) || headings.find((h) => h.level === 1);
+  if (!title || (h1 && isCutPrefix(title, h1.text))) title = h1 ? h1.text : title;
+  if (title) title = capTitle(title);
   const pagesOut = [];
   for (const p of perPage) pagesOut.push({ n: p.n, w: p.w, h: p.h, rotation: p.rotation, textRotation: p.textRotation, scanLayer: p.scanLayer, ocr: p.ocr, kind: p.kind, parsed: true, columns: p.columns });
   return {

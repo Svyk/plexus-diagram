@@ -8,9 +8,9 @@ import { assembleDocument, parsePageGeometry } from "../model/parse/index.js";
 import { resplitColumns } from "../model/parse/resplit.js";
 import { selectBlocks, tableGrid } from "../model/parse-schema.js";
 import { toCSV, toMarkdown } from "../model/parse-to-text.js";
-import { imageKey } from "../host/parse-store.js";
+import { imageKey, restorableParse } from "../host/parse-store.js";
 import { parsedDocTitle } from "../model/pdf.js";
-import { loadPageData, mergeOcrPageRecords, readScan } from "./parse-engine.js";
+import { loadPageData, mergeOcrPageRecords, readScan, rereadCells } from "./parse-engine.js";
 import { scanPagesOf } from "../model/parse/ocr-merge.js";
 import { createParseOverlay } from "./parse-overlay.js";
 import { createPageChips, PLACE_ACTS, readShowParsed, runChipAction, writeShowParsed } from "./page-chips.js";
@@ -1298,7 +1298,9 @@ export function createParseView({
   }
 
   // OCR pages from the pane (on-device read): the same merge readScan does, without a helper.
-  async function applyOcr(ocrPages) {
+  // `readCells(requests)` (optional) answers { cells } from the same source for the doubtful-cell re-read;
+  // it runs under `signal` and reports through `onPhase`. A failed or aborted re-read keeps the merge.
+  async function applyOcr(ocrPages, { readCells = null, signal = null, onPhase = null } = {}) {
     if (dead || !parsed || phase === "running") return false;
     const incoming = (Array.isArray(ocrPages) ? ocrPages : []).filter((p) => p && Number.isFinite(Number(p.n)));
     const pages = scanPagesOf(parsed).filter((n) => incoming.some((p) => Number(p.n) === n));
@@ -1319,6 +1321,12 @@ export function createParseView({
       const t0 = now();
       const merged = mergeOcrPageRecords({ base, ocrPages: incoming, records: recs, pages, numPages: base.pageCount, from, to, sha256: base.sha256 });
       records = merged.records;
+      if (typeof readCells === "function") {
+        try {
+          const rereads = await rereadCells({ doc: merged.doc, ocr: readCells, signal, onPhase });
+          merged.doc.ocr = { ...(merged.doc.ocr || {}), rereads: rereads.reduce((n, r) => n + r.applied.length, 0) };
+        } catch { /* keep the merged read */ }
+      }
       await finishDoc(merged.doc, (base.stats?.ms || 0) + (now() - t0));
       return true;
     } catch {
@@ -1657,22 +1665,18 @@ export function createParseView({
     const hit = await store.findByUrl(currentUrl);
     if (!hit?.sha256) return null;
     const hash = await optionsHash(BUILTIN_OPTIONS);
-    const engines = ["builtin", "docling", "mixed", "anydoc"];
-    for (const engine of engines) {
-      const found = await store.getParse(hit.sha256, engine, hash);
-      if (found) {
-        parsed = found;
-        if (scanPagesOf(found).length) {
-          const read = await store.getParse(hit.sha256, engine, await optionsHash({ ...(found.options || BUILTIN_OPTIONS), ocr: "vision" }));
-          if (read) parsed = read;
-        }
-        rememberParsedUrl(storage, currentUrl);
-        try { onCached?.(currentUrl); } catch { /* host */ }
-        render();
-        return parsed;
-      }
-    }
-    return null;
+    // The OCR-merged parse supersedes the scan-only one saved before the read.
+    const found = await restorableParse(store, hit.sha256, {
+      engines: ["builtin", "docling", "mixed", "anydoc"],
+      plainHash: hash,
+      readHashOf: (plain) => optionsHash({ ...(plain.options || BUILTIN_OPTIONS), ocr: "vision" }),
+    });
+    if (!found) return null;
+    parsed = found;
+    rememberParsedUrl(storage, currentUrl);
+    try { onCached?.(currentUrl); } catch { /* host */ }
+    render();
+    return parsed;
   }
 
   async function refreshHelper() {

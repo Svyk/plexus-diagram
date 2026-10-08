@@ -6,6 +6,7 @@ import { sha256Hex, optionsHash } from "../model/parse-hash.js";
 import { assembleDocument, parsePageGeometry } from "../model/parse/index.js";
 import { scanPagesOf } from "../model/parse/ocr-merge.js";
 import { toGridModelSpec } from "../model/parse-to-grid.js";
+import { restorableParse } from "./parse-store.js";
 import { detectPdfjs, loadPageData, readScan } from "../view/parse-engine.js";
 
 export const PDF_TABLES_CAPABILITIES = Object.freeze(["tablesFromPdf", "tablesFromPdf.cache", "tablesFromPdf.scan.helper", "tablesFromPdf.scan.source"]);
@@ -63,16 +64,12 @@ export function createPdfTables({ store = null, helper = null, pdfjs, fetchBytes
     const hit = await store.findByUrl(url);
     if (!hit?.sha256) return null;
     const hash = await optionsHash(OPTIONS);
-    for (const engine of ENGINES) {
-      const found = await store.getParse(hit.sha256, engine, hash);
-      if (!found) continue;
-      let doc = found;
-      if (scanPagesOf(found).length) {
-        const read = await store.getParse(hit.sha256, engine, await optionsHash({ ...(found.options || OPTIONS), ocr: "vision" }));
-        if (read) doc = read;
-      }
-      return { doc, sha256: hit.sha256 };
-    }
+    const doc = await restorableParse(store, hit.sha256, {
+      engines: ENGINES,
+      plainHash: hash,
+      readHashOf: (plain) => optionsHash({ ...(plain.options || OPTIONS), ocr: "vision" }),
+    });
+    if (doc) return { doc, sha256: hit.sha256 };
     return null;
   }
 

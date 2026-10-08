@@ -2117,7 +2117,13 @@ export function createReadPane({
           });
           if (!ctl.signal.aborted) {
             setOcrPages(out, { sha256: ocrSha });
-            try { await parsedView?.applyOcr?.(pageRecords(out)); } catch { /* view */ }
+            try {
+              await parsedView?.applyOcr?.(pageRecords(out), {
+                readCells: (cells) => deviceOcr.readCells({ cells, url: pdfUrl(), getPdf, signal: ctl.signal }),
+                signal: ctl.signal,
+                onPhase: () => { ocrRun = { ...ocrRun, phase: "cells", progress: null }; paintStrip(); },
+              });
+            } catch { /* view */ }
           }
         } else {
           try { await parsedView?.refreshHelper?.(); } catch { /* helper */ }

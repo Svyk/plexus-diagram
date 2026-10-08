@@ -3,6 +3,7 @@
 // 50 documents LRU, 200 MB of images LRU. When IndexedDB is missing or fails,
 // the same API runs on an in-memory fallback. No graph writes.
 
+import { scanPagesOf } from "../model/parse/ocr-merge.js";
 import { openDiagramDb, STORE_PARSE, STORE_PARSE_IMAGES, STORE_PARSE_INDEX } from "./diagram-db.js";
 import { optionsHash } from "../model/parse-hash.js";
 
@@ -12,6 +13,27 @@ const META_KEY = "meta:lru";
 
 export function parseKey(sha256, engine, optsHash) {
   return `${sha256}|${engine}|${optsHash}`;
+}
+
+// The parse to restore for a PDF. Per engine (in order): the newest OCR-read parse (no scanned page
+// left unread) wins over the scan-only one saved before the read; otherwise the plain options hash.
+export async function restorableParse(store, sha, { engines, plainHash, readHashOf = null } = {}) {
+  if (!store || !sha) return null;
+  let listed = [];
+  try { listed = typeof store.listParses === "function" ? await store.listParses(sha) : []; } catch { listed = []; }
+  for (const engine of engines) {
+    const mine = listed.filter((row) => row.engine === engine);
+    const read = mine.filter((row) => row.doc?.options?.ocr === "vision" && !scanPagesOf(row.doc).length).pop();
+    if (read) return read.doc;
+    const plain = (await store.getParse(sha, engine, plainHash)) || mine.pop()?.doc || null;
+    if (!plain) continue;
+    if (scanPagesOf(plain).length && readHashOf) {
+      const alt = await store.getParse(sha, engine, await readHashOf(plain));
+      if (alt) return alt;
+    }
+    return plain;
+  }
+  return null;
 }
 
 export function imageKey(sha256, blockId) {
@@ -177,6 +199,24 @@ export function createParseStore({ indexedDB: factory, now, docCap = PARSE_DOC_C
         return record.doc;
       } catch {
         return null;
+      }
+    },
+
+    // Every cached parse of one PDF: [{ engine, optsHash, at, doc }], oldest first.
+    async listParses(sha) {
+      try {
+        if (!sha) return [];
+        const prefix = `${sha}|`;
+        const keys = (await backend.keys(STORE_PARSE)).filter((key) => typeof key === "string" && key.startsWith(prefix));
+        const out = [];
+        for (const key of keys) {
+          const record = await backend.get(STORE_PARSE, key);
+          if (!record?.doc) continue;
+          out.push({ engine: record.doc.engine || key.split("|")[1], optsHash: record.optsHash || key.split("|")[2], at: record.at || 0, doc: record.doc });
+        }
+        return out.sort((a, b) => a.at - b.at);
+      } catch {
+        return [];
       }
     },
 

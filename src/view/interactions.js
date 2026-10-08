@@ -34,7 +34,7 @@
 
 import { DEFAULT_BOARD_CARD, DEFAULT_SIZES, MIN_SIZES, STICKY_SIZE } from "../model/schema.js";
 import { clampPdfCard } from "../model/pdf.js";
-import { TABLE_SIZE } from "../model/roam-table.js";
+import { TABLE_SIZE, isRoamTableString } from "../model/roam-table.js";
 import { descendantsOf, findEdge, hitTest, itemsInPolygon, itemsInRect, outlineOrder, topLevelOf, boundsOf } from "../model/board.js";
 import { GRID_PITCH, nearestInDirection, nearestSide, snapMove, snapToGrid, zoomAt } from "../model/geometry.js";
 import { fingerPair, pinchViewport } from "../model/touch.js";
@@ -201,7 +201,7 @@ export function createInteractions({ actions, settings } = {}) {
   // Returns the descriptor for the card the hit test chose, or null.
   const blockTargetFor = (ev, uid) => {
     const item = uid ? board()?.items.get(uid) : null;
-    if (!item || item.kind !== "page") { call("clearBlockTarget"); return null; }
+    if (!item || (item.kind !== "page" && !isRoamTableString(item.string))) { call("clearBlockTarget"); return null; }
     const bt = call("blockTarget", ev.client || null);
     return bt && bt.uid === uid ? bt : null;
   };

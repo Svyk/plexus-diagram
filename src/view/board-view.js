@@ -123,6 +123,7 @@ import {
   zoomThreshold,
 } from "../model/section6.js";
 import { mountLater, mountPrintSheet } from "./later-views.js";
+import { cellElementOf, cellUidOf, isTableCard } from "./table-cells.js";
 
 const SVG_NS = "http://www.w3.org/2000/svg";
 
@@ -2500,12 +2501,12 @@ function buildBoardView(onFail, {
   };
   listen(root, "pointerover", (event) => {
     if (event.buttons) return;
-    const row = event.target?.closest?.(".pxd-row--linked");
+    const row = event.target?.closest?.(".pxd-row--linked, [data-pxd-edges]");
     if (!row) return;
     for (const uid of String(row.getAttribute("data-pxd-edges") || "").split(" ").filter(Boolean)) { edgesR.setHover(uid, true); hoverRows(uid, true); }
   });
   listen(root, "pointerout", (event) => {
-    const row = event.target?.closest?.(".pxd-row--linked");
+    const row = event.target?.closest?.(".pxd-row--linked, [data-pxd-edges]");
     if (!row || row.contains?.(event.relatedTarget)) return;
     for (const uid of String(row.getAttribute("data-pxd-edges") || "").split(" ").filter(Boolean)) { edgesR.setHover(uid, false); hoverRows(uid, false); }
   });
@@ -5638,8 +5639,16 @@ function buildBoardView(onFail, {
     for (const node of doc.elementsFromPoint(pt.x, pt.y) || []) {
       const card = node.closest?.(".pxd-item");
       if (!card) continue;
-      if (!card.classList.contains("pxd-item--page") || card.closest?.(".pxd-root") !== root) return null;
+      if (card.closest?.(".pxd-root") !== root) return null;
       const uid = card.dataset?.uid || card.getAttribute?.("data-uid");
+      if (isTableCard(card)) {
+        const cell = cellUidOf(node);
+        targetEl = cell ? cellElementOf(node) : null;
+        targetCls = "pxd-row--target";
+        targetEl?.classList.add(targetCls);
+        return { uid, row: cell, header: false, cell: Boolean(cell) };
+      }
+      if (!card.classList.contains("pxd-item--page")) return null;
       const row = node.closest?.("[data-pxd-row]");
       const header = row ? null : node.closest?.(".pxd-item__header");
       targetEl = row || header || null;

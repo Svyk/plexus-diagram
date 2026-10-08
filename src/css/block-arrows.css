@@ -187,3 +187,20 @@ body.roam-body.dark .pxd-root .pxd-row.pxd-row--linked:hover,
 .pxd-root .pxd-row.pxd-row--linked {
   position: relative;
 }
+
+/* Table cells (cell ends): a frame in the edge color, no fill. Keyed on attributes because Roam Grid owns the
+   cell's class list and may rewrite it on render. */
+.pxd-root .pxd-roam-table [data-pxd-edges] {
+  box-shadow: inset 0 0 0 2px var(--pxd-row-line, var(--pxd-edge));
+}
+
+.pxd-root .pxd-roam-table [data-pxd-edges][data-pxd-hot],
+.pxd-root .pxd-roam-table [data-pxd-edges]:hover {
+  box-shadow: inset 0 0 0 3px var(--pxd-row-line, var(--pxd-edge));
+}
+
+.pxd-root .pxd-roam-table .pxd-row--target {
+  background: transparent;
+  outline: 2px solid var(--pxd-accent);
+  outline-offset: -2px;
+}

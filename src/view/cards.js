@@ -33,6 +33,7 @@ import { notedSpeedFlags, parseSpeedFlags, SETTING_IDS } from "../settings.js";
 import { authorBlockUid, buildSourceChip, chipWithAuthor, sourceChipFor, sourceChipKey } from "../model/source-chip.js";
 import { isRoamTableString } from "../model/roam-table.js";
 import { mountRoamTable } from "./table-card.js";
+import { findCell, measureCell, revealCell, watchTable } from "./table-cells.js";
 
 const SIDES = ["top", "right", "bottom", "left"];
 const CHUNK_MS = 8;
@@ -2204,15 +2205,18 @@ export function createItemRenderer({
     const w = rec.layoutWatch;
     if (!w) return;
     rec.layoutWatch = null;
-    try { w.ro.disconnect(); } catch { /* already off */ }
+    try { w.ro?.disconnect(); } catch { /* already off */ }
+    w.off?.();
     w.cancel?.();
   };
+  const tableHostOf = (rec) => (rec?.el?.classList?.contains?.("pxd-item--roam-table") ? rec.el.querySelector?.(".pxd-roam-table") ?? null : null);
   const armLayoutWatch = (rec) => {
-    if (rec.layoutWatch || disposed || !rec.pageHolder || !layoutSet.has(rec.uid)) return;
+    const tableHost = rec.pageHolder ? null : tableHostOf(rec);
+    if (rec.layoutWatch || disposed || (!rec.pageHolder && !tableHost) || !layoutSet.has(rec.uid)) return;
     const RO = doc.defaultView?.ResizeObserver || globalThis.ResizeObserver;
     if (typeof RO !== "function") return;
-    const w = { ro: null, cancel: null, queued: false };
-    w.ro = new RO(() => {
+    const w = { ro: null, off: null, cancel: null, queued: false };
+    const ping = () => {
       if (w.queued || disposed) return;
       w.queued = true;
       w.cancel = frameLater(() => {
@@ -2220,8 +2224,13 @@ export function createItemRenderer({
         w.cancel = null;
         if (!disposed && rec.layoutWatch === w) onPageLayout?.(rec.uid);
       });
-    });
-    try { w.ro.observe(rec.pageHolder); } catch { return; }
+    };
+    if (tableHost) {
+      w.off = watchTable({ host: tableHost, body: rec.body, onChange: ping, doc });
+    } else {
+      w.ro = new RO(ping);
+      try { w.ro.observe(rec.pageHolder); } catch { return; }
+    }
     rec.layoutWatch = w;
   };
   const setLayoutWatch = (uids) => {
@@ -2598,6 +2607,8 @@ export function createItemRenderer({
   const round1 = (n) => Math.round(n * 10) / 10;
   const measureRow = (uid, rowUid) => {
     const rec = shells.get(uid);
+    const table = rec && !rec.pageHolder && editing?.uid !== uid ? tableHostOf(rec) : null;
+    if (table) return measureCell({ card: rec.el, host: table, body: rec.body, uid: rowUid, zoom: zoomCache || 1 });
     const holder = rec?.pageHolder;
     if (!rec?.body || !holder || holder.isConnected === false || editing?.uid === uid || !rec.pageKey) return null;
     const z = zoomCache || 1;
@@ -2613,9 +2624,15 @@ export function createItemRenderer({
   // RF-2: rows that a block arrow ends on carry a persistent mark (class, edge color, edge uids, tooltip text).
   // `entries` = [{ card, row, edges: [uid], color, tip }]; rows marked before and absent now are cleared.
   const markedRows = new Set();
-  const rowOf = (uid, rowUid) => shells.get(uid)?.pageHolder?.querySelector?.(`[data-pxd-row="${rowUid}"]`) ?? null;
+  const rowOf = (uid, rowUid) => {
+    const rec = shells.get(uid);
+    if (rec?.pageHolder) return rec.pageHolder.querySelector?.(`[data-pxd-row="${rowUid}"]`) ?? null;
+    const table = tableHostOf(rec);
+    return table ? findCell(table, rowUid) : null;
+  };
   const unmarkRow = (row) => {
     row.classList.remove("pxd-row--linked", "pxd-row--hot");
+    row.removeAttribute("data-pxd-hot");
     row.style.removeProperty("--pxd-row-line");
     row.removeAttribute("data-pxd-edges");
     row.removeAttribute("data-tip");
@@ -2643,12 +2660,20 @@ export function createItemRenderer({
   const setRowHot = (uid, rowUid, on) => {
     const row = rowOf(uid, rowUid);
     row?.classList?.toggle("pxd-row--hot", Boolean(on));
+    if (row && !row.hasAttribute?.("data-pxd-row")) { if (on) row.setAttribute("data-pxd-hot", ""); else row.removeAttribute("data-pxd-hot"); }
   };
   // Scrolls the body so the row is centered and flashes it. False when the row is not on screen to scroll to.
   const revealRow = (uid, rowUid) => {
     const rec = shells.get(uid);
-    const row = rec?.pageHolder?.querySelector?.(`[data-pxd-row="${rowUid}"]`);
+    const row = rowOf(uid, rowUid);
     if (!rec?.body || !row) return false;
+    if (!rec.pageHolder) {
+      if (!revealCell(row, rec.body)) return false;
+      row.classList.add("pxd-row--flash");
+      later(() => row.classList.remove("pxd-row--flash"), 600);
+      onPageLayout?.(uid);
+      return true;
+    }
     rec.rowSched?.renderNow?.(rowUid);
     const r = row.getBoundingClientRect();
     if (!r.width && !r.height) return false;
@@ -3691,6 +3716,7 @@ export function createItemRenderer({
     } else if (isRoamTableString(item.string)) {
       rec.el.classList.add("pxd-item--roam-table");
       mountTableHost(body, item.uid, budget);
+      armLayoutWatch(rec);
       rec.kidCount = 0;
       rec.kidRows = 0;
     } else {

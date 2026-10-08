@@ -26985,6 +26985,16 @@ function warmPlan(input) {
       if (!visibleHas(src.visible, uid)) continue;
       return { uid, blockUid: blockUid2 };
     }
+    if (src.offscreenTitles !== true) return null;
+    for (const card2 of cards) {
+      if (!card2 || typeof card2 !== "object") continue;
+      if (card2.kind && card2.kind !== "pdf") continue;
+      if (!card2.hasCover || !card2.needsTitle) continue;
+      const uid = text2(card2.uid);
+      const blockUid2 = text2(card2.blockUid);
+      if (!uid || !blockUid2) continue;
+      return { uid, blockUid: blockUid2 };
+    }
     return null;
   } catch {
     return null;
@@ -27379,10 +27389,9 @@ var TITLE_LINES = 60;
 var TITLE_LINE_CHARS = 160;
 function titleOf(raw) {
   const titleRev = Number.isInteger(raw?.titleRev) && raw.titleRev > 0 ? raw.titleRev : 0;
-  const fresh = titleRev >= TITLE_REV;
-  const pageTitle = typeof raw?.pageTitle === "string" && fresh ? raw.pageTitle.slice(0, 300) : null;
+  const pageTitle = typeof raw?.pageTitle === "string" ? raw.pageTitle.slice(0, 300) : null;
   const lines = Array.isArray(raw?.titleLines) ? raw.titleLines.filter((t) => typeof t === "string").slice(0, TITLE_LINES).map((t) => t.slice(0, TITLE_LINE_CHARS)) : [];
-  return { pageTitle, titleRev: pageTitle === null ? 0 : titleRev, titleLines: lines };
+  return { pageTitle, titleRev: pageTitle === null ? 0 : titleRev, titleStale: pageTitle !== null && titleRev < TITLE_REV, titleLines: lines };
 }
 function createCoverStore({ indexedDB, storage } = {}) {
   const factory = indexedDB || null;
@@ -45030,11 +45039,23 @@ function titleFields(next, prev) {
   return {
     titleRev: got ? TITLE_REV : typeof prev?.pageTitle === "string" ? positiveInt(prev.titleRev) ?? null : null,
     pageTitle: got ? next.pageTitle : typeof prev?.pageTitle === "string" ? prev.pageTitle : null,
-    titleLines: got ? Array.isArray(next.titleLines) ? next.titleLines : [] : Array.isArray(prev?.titleLines) ? prev.titleLines : []
+    titleLines: got ? Array.isArray(next.titleLines) ? next.titleLines : [] : Array.isArray(prev?.titleLines) ? prev.titleLines : [],
+    titleStale: got ? false : prev?.titleStale === true
   };
 }
 function needsPageTitle(record) {
-  return Boolean(record) && typeof record === "object" && typeof record.pageTitle !== "string";
+  if (!record || typeof record !== "object") return false;
+  if (typeof record.pageTitle !== "string") return true;
+  if (record.titleStale === true) return true;
+  return !(Number.isInteger(record.titleRev) && record.titleRev >= TITLE_REV);
+}
+function staleRead(record, read2) {
+  const old = typeof record?.pageTitle === "string" ? record.pageTitle : "";
+  const got = read2 && typeof read2.pageTitle === "string";
+  if (!old.trim()) return got ? read2 : { pageTitle: "", titleLines: [] };
+  if (!got) return null;
+  if (read2.pageTitle.trim()) return read2;
+  return { pageTitle: old, titleLines: Array.isArray(record.titleLines) ? record.titleLines : [] };
 }
 function hasFirst(record) {
   const value = record?.first;
@@ -45296,7 +45317,13 @@ function createPdfWarm({ doc, root, host, store, timers, now: now3, renderFirst 
               settle(job, null);
               return null;
             }
-            const stored = await storeTitle(record, read3 && typeof read3.pageTitle === "string" ? read3 : { pageTitle: "", titleLines: [] });
+            const next = staleRead(record, read3);
+            if (!next) {
+              finishSlot(job);
+              settle(job, null);
+              return null;
+            }
+            const stored = await storeTitle(record, next);
             finishSlot(job);
             settle(job, stored || record);
             return null;
@@ -56663,7 +56690,7 @@ function buildBoardView(onFail, {
   let pdfjsProbe = null;
   let pdfMeta = null;
   const probePdfjs = () => {
-    if (pdfjsProbe) return pdfjsProbe;
+    if (pdfjsProbe && firstPage) return pdfjsProbe;
     const found = detectPdfjs2(win);
     pdfjsProbe = { found: Boolean(found), key: found?.key || "", version: found?.version || "", workerReady: Boolean(found?.workerReady) };
     if (found && found.workerReady) {
@@ -56781,7 +56808,12 @@ function buildBoardView(onFail, {
       host,
       store: ensureCoverStore(),
       timers: warmTimers,
-      renderFirst: firstPage ? (spec) => spec?.titleOnly && firstPage.busy() ? { busy: true } : firstPage.render(spec) : null
+      // Looked up per call: pdf.js may turn up after the warm was made. No renderer yet reads as busy for a
+      // title (nothing is stored) and as no image for a cover (the hidden reader draws it).
+      renderFirst: (spec) => {
+        if (!firstPage) return spec?.titleOnly ? { busy: true } : null;
+        return spec?.titleOnly && firstPage.busy() ? { busy: true } : firstPage.render(spec);
+      }
     });
     return pdfWarm;
   };
@@ -56789,7 +56821,15 @@ function buildBoardView(onFail, {
     on: coverWarmOn(),
     pdfjs: pdfjsProbe || { found: null },
     firstPage: firstPage ? firstPage.report() : null,
-    warm: pdfWarm ? pdfWarm.report() : null
+    warm: pdfWarm ? pdfWarm.report() : null,
+    why: warmWhy,
+    titles: [...coverFaces.entries()].map(([url, face]) => ({
+      url: url.slice(-12),
+      state: face?.state || "",
+      title: typeof face?.pageTitle === "string" ? face.pageTitle.slice(0, 60) : null,
+      stale: face?.titleStale === true,
+      tries: titleTries.get(url) || 0
+    }))
   });
   const pdfBlockUid = (item) => {
     if (item?.target?.kind === "block" && typeof item.target.uid === "string" && item.target.uid) return item.target.uid;
@@ -56878,6 +56918,7 @@ function buildBoardView(onFail, {
   };
   const titleFace = (record) => ({
     pageTitle: typeof record?.pageTitle === "string" ? record.pageTitle : null,
+    titleStale: record?.titleStale === true,
     titleLines: Array.isArray(record?.titleLines) ? record.titleLines : []
   });
   const emptyFace = (state, record) => ({
@@ -57110,16 +57151,35 @@ function buildBoardView(onFail, {
       return "";
     }
   };
+  let warmWhy = "";
   const titleTries = /* @__PURE__ */ new Map();
-  const TITLE_TRIES_MAX = 2;
+  const titleNextAt = /* @__PURE__ */ new Map();
+  const TITLE_TRIES_MAX = 3;
+  const TITLE_BACKOFF_MS = 3e3;
+  const titleAsks = /* @__PURE__ */ new Map();
+  const TITLE_ASKS_MAX = 12;
+  let idleRetries = 0;
+  const IDLE_RETRY_MS = 1e3;
+  const IDLE_RETRY_MAX = 6;
+  const titleWanted = (url, { anyRenderer = false } = {}) => {
+    const face = coverFaces.get(url);
+    if (face?.state !== "ready") return false;
+    if (typeof face.pageTitle === "string" && face.titleStale !== true) return false;
+    return !parsedTitles.get(url) && (anyRenderer || Boolean(firstPage)) && firstPageAllowed(url) && (titleTries.get(url) || 0) < TITLE_TRIES_MAX;
+  };
   const considerCoverWarm = () => {
+    warmWhy = "off";
     if (disposed || suspended || !coverWarmOn() || !coverPaintAt) return;
     const since = Date.now() - coverPaintAt;
     if (since < WARM_AFTER_MS) {
+      warmWhy = "early";
       armCoverWarm();
       return;
     }
-    if (gesturing) return;
+    if (gesturing) {
+      warmWhy = "gesture";
+      return;
+    }
     try {
       probePdfjs();
     } catch {
@@ -57128,6 +57188,8 @@ function buildBoardView(onFail, {
     const visible2 = /* @__PURE__ */ new Set();
     const view2 = size.width ? visibleWorldRect(vp, size, 0) : null;
     const r = rects();
+    const now3 = Date.now();
+    let pending = 0;
     for (const item of board2()?.items.values() || []) {
       if (item?.kind !== "pdf") continue;
       const url = coverUrlOf(item);
@@ -57135,15 +57197,21 @@ function buildBoardView(onFail, {
       if (!url || !blockUid2) continue;
       const rect = r.get(item.uid);
       if (view2 && rect && rectsIntersect(rect, view2)) visible2.add(item.uid);
-      const hash = coverHashOf(item);
+      if (!coverFaces.has(url)) {
+        loadCover(url);
+        pending += 1;
+      } else if (coverFaces.get(url)?.state === "loading") pending += 1;
+      const wanted = titleWanted(url);
+      const due = now3 >= (titleNextAt.get(url) || 0);
+      if (wanted ? !due : titleWanted(url, { anyRenderer: true })) pending += 1;
       cards.push({
         uid: item.uid,
         blockUid: blockUid2,
         kind: "pdf",
         hasCover: coverFaces.get(url)?.state === "ready",
-        needsTitle: coverFaces.get(url)?.state === "ready" && typeof coverFaces.get(url)?.pageTitle !== "string" && !parsedTitles.get(url) && Boolean(firstPage) && firstPageAllowed(url) && (titleTries.get(url) || 0) < TITLE_TRIES_MAX,
+        needsTitle: wanted && due,
         url,
-        ...hash ? { hash } : {}
+        item
       });
     }
     let plan = null;
@@ -57157,20 +57225,41 @@ function buildBoardView(onFail, {
         done: pdfWarm ? pdfWarm.spent() : 0,
         inFlight: pdfWarm ? pdfWarm.running() : false,
         saveData: saveDataOn(),
-        moving: gesturing
+        moving: gesturing,
+        offscreenTitles: true
       });
     } catch {
       plan = null;
     }
-    if (!plan || gesturing) return;
-    const card2 = cards.find((row4) => row4.uid === plan.uid);
-    if (!card2) return;
+    if (!plan || gesturing) {
+      const titles = cards.filter((c) => c.needsTitle).length;
+      warmWhy = `no plan: ${cards.length} cards, ${visible2.size} visible, ${cards.filter((c) => c.hasCover).length} covered, ${titles} need a title, ${pending} pending, retry ${idleRetries}`;
+      if ((pending || titles) && !gesturing && idleRetries < IDLE_RETRY_MAX) {
+        const wait = IDLE_RETRY_MS * 2 ** idleRetries;
+        idleRetries += 1;
+        armCoverWarmLater(wait);
+      }
+      return;
+    }
+    idleRetries = 0;
+    const picked = cards.find((row4) => row4.uid === plan.uid);
+    if (!picked) return;
+    const { item: pickedItem, ...card2 } = picked;
+    const hash = coverHashOf(pickedItem);
+    if (hash) card2.hash = hash;
+    warmWhy = `warm ${card2.uid}${card2.needsTitle ? " (title)" : ""}`;
     const start = () => {
       if (disposed || suspended) return;
       if (gesturing || readPane?.isOpen?.() === true || pdfFlip?.live?.()) {
         armCoverWarmLater(600);
         return;
       }
+      if (card2.needsTitle && card2.hasCover && firstPage?.busy?.()) {
+        warmWhy = `renderer busy for ${card2.uid}`;
+        armCoverWarmLater(600);
+        return;
+      }
+      const triedBefore = firstPage ? Number(firstPage.report().tried) || 0 : 0;
       let job = null;
       try {
         job = ensurePdfWarm().request(card2);
@@ -57191,7 +57280,17 @@ function buildBoardView(onFail, {
       Promise.resolve(job).then((record) => {
         if (disposed) return;
         const face = coverFaces.get(card2.url);
-        if (card2.needsTitle) titleTries.set(card2.url, (titleTries.get(card2.url) || 0) + 1);
+        const tried = firstPage ? (Number(firstPage.report().tried) || 0) > triedBefore : false;
+        if (card2.needsTitle && tried) {
+          const n2 = (titleTries.get(card2.url) || 0) + 1;
+          titleTries.set(card2.url, n2);
+          titleNextAt.set(card2.url, Date.now() + TITLE_BACKOFF_MS * 2 ** (n2 - 1));
+        } else if (card2.needsTitle) {
+          const asks = (titleAsks.get(card2.url) || 0) + 1;
+          titleAsks.set(card2.url, asks);
+          if (asks >= TITLE_ASKS_MAX) titleTries.set(card2.url, TITLE_TRIES_MAX);
+          else titleNextAt.set(card2.url, Date.now() + 1e3);
+        }
         if (record && face?.state === "ready" && card2.hasCover) refreshCoverTitle(card2.url, record);
         else if (record || face?.state !== "ready") dropCover(card2.url);
         next();
@@ -69597,6 +69696,14 @@ async function installPlexusDiagram({
     // "Open on board" for a connection (RF-3).
     openConnection: (boardUid, edgeUid) => openNestedConnection(boardUid, edgeUid),
     cardCacheMs: () => cacheLoadMs,
+    // Read-only cover and title probe for each mounted board.
+    pdfProbe: () => [...mounts.values()].map((rec) => {
+      try {
+        return { uid: rec.uid, ...rec.view?.pdfProbe?.() };
+      } catch {
+        return { uid: rec.uid };
+      }
+    }),
     cameraRect(boardUid) {
       const rec = pickCameraMount([...mounts.values()], boardUid, isSidebarMount, currentUid);
       try {

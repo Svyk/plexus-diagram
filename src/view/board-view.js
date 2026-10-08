@@ -1758,8 +1758,9 @@ function buildBoardView(onFail, {
   let firstPage = null;
   let pdfjsProbe = null;
   let pdfMeta = null;
+  // A probe that found no usable pdf.js is not final: Roam may load it later, so the next call looks again.
   const probePdfjs = () => {
-    if (pdfjsProbe) return pdfjsProbe;
+    if (pdfjsProbe && firstPage) return pdfjsProbe;
     const found = detectPdfjs(win);
     pdfjsProbe = { found: Boolean(found), key: found?.key || "", version: found?.version || "", workerReady: Boolean(found?.workerReady) };
     if (found && found.workerReady) {
@@ -1860,7 +1861,12 @@ function buildBoardView(onFail, {
       host,
       store: ensureCoverStore(),
       timers: warmTimers,
-      renderFirst: firstPage ? (spec) => (spec?.titleOnly && firstPage.busy() ? { busy: true } : firstPage.render(spec)) : null,
+      // Looked up per call: pdf.js may turn up after the warm was made. No renderer yet reads as busy for a
+      // title (nothing is stored) and as no image for a cover (the hidden reader draws it).
+      renderFirst: (spec) => {
+        if (!firstPage) return spec?.titleOnly ? { busy: true } : null;
+        return spec?.titleOnly && firstPage.busy() ? { busy: true } : firstPage.render(spec);
+      },
     });
     return pdfWarm;
   };
@@ -1869,6 +1875,14 @@ function buildBoardView(onFail, {
     pdfjs: pdfjsProbe || { found: null },
     firstPage: firstPage ? firstPage.report() : null,
     warm: pdfWarm ? pdfWarm.report() : null,
+    why: warmWhy,
+    titles: [...coverFaces.entries()].map(([url, face]) => ({
+      url: url.slice(-12),
+      state: face?.state || "",
+      title: typeof face?.pageTitle === "string" ? face.pageTitle.slice(0, 60) : null,
+      stale: face?.titleStale === true,
+      tries: titleTries.get(url) || 0,
+    })),
   });
   const pdfBlockUid = (item) => {
     if (item?.target?.kind === "block" && typeof item.target.uid === "string" && item.target.uid) return item.target.uid;
@@ -1949,6 +1963,7 @@ function buildBoardView(onFail, {
   };
   const titleFace = (record) => ({
     pageTitle: typeof record?.pageTitle === "string" ? record.pageTitle : null,
+    titleStale: record?.titleStale === true,
     titleLines: Array.isArray(record?.titleLines) ? record.titleLines : [],
   });
   const emptyFace = (state, record) => ({
@@ -2145,18 +2160,40 @@ function buildBoardView(onFail, {
       return typeof cover?.hash === "string" ? cover.hash.trim() : "";
     } catch { return ""; }
   };
+  let warmWhy = "";
+  // Title reads per url: real reads only (a busy renderer is not a try), at most TITLE_TRIES_MAX per view,
+  // spaced by TITLE_BACKOFF_MS × 2^(tries − 1).
   const titleTries = new Map();
-  const TITLE_TRIES_MAX = 2;
+  const titleNextAt = new Map();
+  const TITLE_TRIES_MAX = 3;
+  const TITLE_BACKOFF_MS = 3000;
+  const titleAsks = new Map();
+  const TITLE_ASKS_MAX = 12;
+  // Nothing to warm yet but work is pending (covers still loading, a title waiting on backoff or on a busy
+  // renderer): look again after IDLE_RETRY_MS × 2^n, at most IDLE_RETRY_MAX times in a row.
+  let idleRetries = 0;
+  const IDLE_RETRY_MS = 1000;
+  const IDLE_RETRY_MAX = 6;
+  // `anyRenderer`: wanted once pdf.js turns up (counts as pending work, so the look is repeated, boundedly).
+  const titleWanted = (url, { anyRenderer = false } = {}) => {
+    const face = coverFaces.get(url);
+    if (face?.state !== "ready") return false;
+    if (typeof face.pageTitle === "string" && face.titleStale !== true) return false;
+    return !parsedTitles.get(url) && (anyRenderer || Boolean(firstPage)) && firstPageAllowed(url) && (titleTries.get(url) || 0) < TITLE_TRIES_MAX;
+  };
   const considerCoverWarm = () => {
+    warmWhy = "off";
     if (disposed || suspended || !coverWarmOn() || !coverPaintAt) return;
     const since = Date.now() - coverPaintAt;
-    if (since < WARM_AFTER_MS) { armCoverWarm(); return; }
-    if (gesturing) return;
+    if (since < WARM_AFTER_MS) { warmWhy = "early"; armCoverWarm(); return; }
+    if (gesturing) { warmWhy = "gesture"; return; }
     try { probePdfjs(); } catch { /* no renderer */ }
     const cards = [];
     const visible = new Set();
     const view = size.width ? visibleWorldRect(vp, size, 0) : null;
     const r = rects();
+    const now = Date.now();
+    let pending = 0;
     for (const item of board()?.items.values() || []) {
       if (item?.kind !== "pdf") continue;
       const url = coverUrlOf(item);
@@ -2164,17 +2201,20 @@ function buildBoardView(onFail, {
       if (!url || !blockUid) continue;
       const rect = r.get(item.uid);
       if (view && rect && rectsIntersect(rect, view)) visible.add(item.uid);
-      const hash = coverHashOf(item);
+      // A card never painted has no face yet: read its cover record (IndexedDB only) so its title can be checked.
+      if (!coverFaces.has(url)) { loadCover(url); pending += 1; }
+      else if (coverFaces.get(url)?.state === "loading") pending += 1;
+      const wanted = titleWanted(url);
+      const due = now >= (titleNextAt.get(url) || 0);
+      if (wanted ? !due : titleWanted(url, { anyRenderer: true })) pending += 1;
       cards.push({
         uid: item.uid,
         blockUid,
         kind: "pdf",
         hasCover: coverFaces.get(url)?.state === "ready",
-        needsTitle: coverFaces.get(url)?.state === "ready" && typeof coverFaces.get(url)?.pageTitle !== "string"
-          && !parsedTitles.get(url) && Boolean(firstPage) && firstPageAllowed(url)
-          && (titleTries.get(url) || 0) < TITLE_TRIES_MAX,
+        needsTitle: wanted && due,
         url,
-        ...(hash ? { hash } : {}),
+        item,
       });
     }
     let plan = null;
@@ -2189,11 +2229,27 @@ function buildBoardView(onFail, {
         inFlight: pdfWarm ? pdfWarm.running() : false,
         saveData: saveDataOn(),
         moving: gesturing,
+        offscreenTitles: true,
       });
     } catch { plan = null; }
-    if (!plan || gesturing) return;
-    const card = cards.find((row) => row.uid === plan.uid);
-    if (!card) return;
+    if (!plan || gesturing) {
+      const titles = cards.filter((c) => c.needsTitle).length;
+      warmWhy = `no plan: ${cards.length} cards, ${visible.size} visible, ${cards.filter((c) => c.hasCover).length} covered, ${titles} need a title, ${pending} pending, retry ${idleRetries}`;
+      if ((pending || titles) && !gesturing && idleRetries < IDLE_RETRY_MAX) {
+        const wait = IDLE_RETRY_MS * 2 ** idleRetries;
+        idleRetries += 1;
+        armCoverWarmLater(wait);
+      }
+      return;
+    }
+    idleRetries = 0;
+    const picked = cards.find((row) => row.uid === plan.uid);
+    if (!picked) return;
+    // The cover hash is read for the one card that warms (host.pdfCover is a graph read).
+    const { item: pickedItem, ...card } = picked;
+    const hash = coverHashOf(pickedItem);
+    if (hash) card.hash = hash;
+    warmWhy = `warm ${card.uid}${card.needsTitle ? " (title)" : ""}`;
     // Idle first: the warm waits for a quiet frame (at most 2 s), and a gesture that started meanwhile wins.
     const start = () => {
       if (disposed || suspended) return;
@@ -2201,6 +2257,13 @@ function buildBoardView(onFail, {
         armCoverWarmLater(600);
         return;
       }
+      // A title-only pass waits for the shared renderer (a sharp cover may hold it) instead of spending a try.
+      if (card.needsTitle && card.hasCover && firstPage?.busy?.()) {
+        warmWhy = `renderer busy for ${card.uid}`;
+        armCoverWarmLater(600);
+        return;
+      }
+      const triedBefore = firstPage ? Number(firstPage.report().tried) || 0 : 0;
       let job = null;
       try { job = ensurePdfWarm().request(card); } catch { job = null; }
       const next = () => {
@@ -2212,7 +2275,18 @@ function buildBoardView(onFail, {
       Promise.resolve(job).then((record) => {
         if (disposed) return;
         const face = coverFaces.get(card.url);
-        if (card.needsTitle) titleTries.set(card.url, (titleTries.get(card.url) || 0) + 1);
+        const tried = firstPage ? (Number(firstPage.report().tried) || 0) > triedBefore : false;
+        if (card.needsTitle && tried) {
+          const n = (titleTries.get(card.url) || 0) + 1;
+          titleTries.set(card.url, n);
+          titleNextAt.set(card.url, Date.now() + TITLE_BACKOFF_MS * 2 ** (n - 1));
+        } else if (card.needsTitle) {
+          // Asked but nothing was read (busy, superseded): no try is spent, but the asks are bounded too.
+          const asks = (titleAsks.get(card.url) || 0) + 1;
+          titleAsks.set(card.url, asks);
+          if (asks >= TITLE_ASKS_MAX) titleTries.set(card.url, TITLE_TRIES_MAX);
+          else titleNextAt.set(card.url, Date.now() + 1000);
+        }
         if (record && face?.state === "ready" && card.hasCover) refreshCoverTitle(card.url, record);
         else if (record || face?.state !== "ready") dropCover(card.url);
         next();

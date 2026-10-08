@@ -94,12 +94,28 @@ function titleFields(next, prev) {
     titleRev: got ? TITLE_REV : (typeof prev?.pageTitle === "string" ? positiveInt(prev.titleRev) ?? null : null),
     pageTitle: got ? next.pageTitle : (typeof prev?.pageTitle === "string" ? prev.pageTitle : null),
     titleLines: got ? (Array.isArray(next.titleLines) ? next.titleLines : []) : (Array.isArray(prev?.titleLines) ? prev.titleLines : []),
+    titleStale: got ? false : prev?.titleStale === true,
   };
 }
 
-// A cached cover whose page title was never read: one title-only pass fills it.
+// A cached cover whose page title was never read, or was read by an older splitter: a title-only pass fills it.
 export function needsPageTitle(record) {
-  return Boolean(record) && typeof record === "object" && typeof record.pageTitle !== "string";
+  if (!record || typeof record !== "object") return false;
+  if (typeof record.pageTitle !== "string") return true;
+  if (record.titleStale === true) return true;
+  return !(Number.isInteger(record.titleRev) && record.titleRev >= TITLE_REV);
+}
+
+// A title-only read over an older title. A fresh non-empty title replaces it. A fresh empty answer keeps the
+// older title (accepted at TITLE_REV, so it is not read again). A failed read stores nothing: the older title
+// stays and is read again on a later open.
+function staleRead(record, read) {
+  const old = typeof record?.pageTitle === "string" ? record.pageTitle : "";
+  const got = read && typeof read.pageTitle === "string";
+  if (!old.trim()) return got ? read : { pageTitle: "", titleLines: [] };
+  if (!got) return null;
+  if (read.pageTitle.trim()) return read;
+  return { pageTitle: old, titleLines: Array.isArray(record.titleLines) ? record.titleLines : [] };
 }
 
 function hasFirst(record) {
@@ -364,8 +380,11 @@ export function createPdfWarm({ doc, root, host, store, timers, now, renderFirst
               if (job.gen !== generation || job.done) { settle(job, null); return null; }
               // A busy renderer is not an answer: store nothing, the title is asked for again later.
               if (read && read.busy === true) { settle(job, null); return null; }
-              // A failed read stores "" so the same PDF is not fetched again on every board open.
-              const stored = await storeTitle(record, read && typeof read.pageTitle === "string" ? read : { pageTitle: "", titleLines: [] });
+              // A failed read stores "" so the same PDF is not fetched again on every board open, unless an
+              // older title exists: that one stays (see staleRead).
+              const next = staleRead(record, read);
+              if (!next) { finishSlot(job); settle(job, null); return null; }
+              const stored = await storeTitle(record, next);
               finishSlot(job);
               settle(job, stored || record);
               return null;

@@ -3167,6 +3167,10 @@ export async function installPlexusDiagram({
     // "Open on board" for a connection (RF-3).
     openConnection: (boardUid, edgeUid) => openNestedConnection(boardUid, edgeUid),
     cardCacheMs: () => cacheLoadMs,
+    // Read-only cover and title probe for each mounted board.
+    pdfProbe: () => [...mounts.values()].map((rec) => {
+      try { return { uid: rec.uid, ...rec.view?.pdfProbe?.() }; } catch { return { uid: rec.uid }; }
+    }),
     cameraRect(boardUid) {
       const rec = pickCameraMount([...mounts.values()], boardUid, isSidebarMount, currentUid);
       try { return rec?.view?.cameraRect?.() ?? null; } catch { return null; }

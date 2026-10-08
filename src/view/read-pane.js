@@ -11,10 +11,9 @@ import { fitDecision, fitWidthStep, fitsWidth, pageIndicator, pageTotalText, pdf
 import { isTextEntryTarget } from "./cards.js";
 import { applyMotionClasses } from "./motion.js";
 import { BOTH_MIN_PX, BUILTIN_OPTIONS, createParseView, readParsedUrls } from "./parse-view.js";
-import { optionsHash } from "../model/parse-hash.js";
 import { createParseStore } from "../host/parse-store.js";
 import { createHelperClient } from "../host/parse-helper-client.js";
-import { imageKey } from "../host/parse-store.js";
+import { imageKey, restorableByUrl } from "../host/parse-store.js";
 import { placePopover } from "../relchips.js";
 import { chromeObstacles } from "./avoid.js";
 import { createDragGhost, dispatchDrop } from "./drag-ghost.js";
@@ -2283,14 +2282,10 @@ export function createReadPane({
       if (hit?.sha256 && openFlag && url === pdfUrl()) void loadOcrLayer(hit.sha256);
       if (hit?.sha256 && openFlag) revealModes();
       if (hit?.sha256 && openFlag && !realTitle(current.title) && !parsedTitle) {
-        const hash = await optionsHash(BUILTIN_OPTIONS);
-        for (const engine of ["builtin", "docling", "mixed"]) {
-          const found = await ensureStore().getParse(hit.sha256, engine, hash);
-          if (found) {
-            if (openFlag && url === pdfUrl()) noteParsedTitle(parsedDocTitle(found));
-            break;
-          }
-        }
+        const found = await restorableByUrl(ensureStore(), url, { plainOptions: BUILTIN_OPTIONS });
+        const title = found ? parsedDocTitle(found) : "";
+        // The restore may have named the document while this lookup ran; never blank it.
+        if (title && !parsedTitle && openFlag && url === pdfUrl()) noteParsedTitle(title);
       }
     } catch { /* store */ }
   }

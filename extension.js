@@ -34543,6 +34543,17 @@ async function restorableParse(store, sha, { engines, plainHash, readHashOf = nu
   }
   return null;
 }
+var RESTORE_ENGINES = Object.freeze(["builtin", "docling", "mixed", "anydoc"]);
+async function restorableByUrl(store, url, { plainOptions, engines = RESTORE_ENGINES } = {}) {
+  if (!store || !url) return null;
+  const hit = await store.findByUrl(url);
+  if (!hit?.sha256) return null;
+  return restorableParse(store, hit.sha256, {
+    engines,
+    plainHash: await optionsHash(plainOptions),
+    readHashOf: (plain2) => optionsHash({ ...plain2.options || plainOptions, ocr: "vision" })
+  });
+}
 function imageKey(sha256, blockId) {
   return `${sha256}/${blockId}`;
 }
@@ -35192,6 +35203,8 @@ function createParseOverlay({ doc, pageEl, pageOf: pageOf3, onResplit } = {}) {
 
 // src/view/page-chips.js
 var HIDE_MS = 220;
+var SYNC_RETRIES = 40;
+var SYNC_RETRY_MS = 250;
 var DOT_CAP = 400;
 var BOX_PAD = 3;
 var CHIP_TYPES = Object.freeze(["table", "figure", "heading", "list", "formula"]);
@@ -35322,6 +35335,7 @@ function createPageChips({
   const layers = /* @__PURE__ */ new Map();
   let boxCount = 0;
   let syncFrame = 0;
+  let syncRetries = 0;
   const on = (node2, type, fn, capture = false) => {
     if (!node2 || typeof node2.addEventListener !== "function") return;
     node2.addEventListener(type, fn, capture);
@@ -35520,6 +35534,12 @@ function createPageChips({
       }
       if (marked && !el.hasAttribute?.("data-loaded")) continue;
       layers.set(n2, buildLayer(n2, el, parsed));
+    }
+    if (layers.size === 0 && syncRetries < SYNC_RETRIES) {
+      syncRetries += 1;
+      later(queueSync, SYNC_RETRY_MS);
+    } else if (layers.size > 0) {
+      syncRetries = 0;
     }
   };
   function queueSync() {
@@ -35724,6 +35744,7 @@ function createPageChips({
     // Repaint the persistent boxes (new parse, new pages). Writes nothing to the graph.
     refresh() {
       if (disposed) return;
+      syncRetries = 0;
       dropLayers();
       if (showParsed) sync();
     },
@@ -35732,6 +35753,7 @@ function createPageChips({
     setShown(on2) {
       showParsed = Boolean(on2);
       writeShowParsed(storage, showParsed);
+      syncRetries = 0;
       dropLayers();
       if (showParsed) sync();
       return showParsed;
@@ -38851,14 +38873,7 @@ function createParseView({
   }
   async function restore2() {
     if (!store || !currentUrl) return null;
-    const hit = await store.findByUrl(currentUrl);
-    if (!hit?.sha256) return null;
-    const hash = await optionsHash(BUILTIN_OPTIONS);
-    const found = await restorableParse(store, hit.sha256, {
-      engines: ["builtin", "docling", "mixed", "anydoc"],
-      plainHash: hash,
-      readHashOf: (plain2) => optionsHash({ ...plain2.options || BUILTIN_OPTIONS, ocr: "vision" })
-    });
+    const found = await restorableByUrl(store, currentUrl, { plainOptions: BUILTIN_OPTIONS });
     if (!found) return null;
     parsed = found;
     rememberParsedUrl(storage, currentUrl);
@@ -38982,9 +38997,6 @@ function createParseView({
     }
   };
 }
-
-// src/view/read-pane.js
-init_parse_hash();
 
 // src/host/parse-helper-client.js
 init_parse_hash();
@@ -42910,14 +42922,9 @@ function createReadPane({
       if (hit?.sha256 && openFlag && url === pdfUrl()) void loadOcrLayer(hit.sha256);
       if (hit?.sha256 && openFlag) revealModes();
       if (hit?.sha256 && openFlag && !realTitle(current3.title) && !parsedTitle) {
-        const hash = await optionsHash(BUILTIN_OPTIONS);
-        for (const engine of ["builtin", "docling", "mixed"]) {
-          const found = await ensureStore2().getParse(hit.sha256, engine, hash);
-          if (found) {
-            if (openFlag && url === pdfUrl()) noteParsedTitle(parsedDocTitle(found));
-            break;
-          }
-        }
+        const found = await restorableByUrl(ensureStore2(), url, { plainOptions: BUILTIN_OPTIONS });
+        const title = found ? parsedDocTitle(found) : "";
+        if (title && !parsedTitle && openFlag && url === pdfUrl()) noteParsedTitle(title);
       }
     } catch {
     }
@@ -54690,12 +54697,34 @@ function buildBoardView(onFail, {
     if (!body || body.startsWith("{{") || body.startsWith("((")) return "";
     return body;
   };
+  const storedQueued = /* @__PURE__ */ new Set();
+  let titleStore = null;
+  const noteStoredTitle = (key) => {
+    if (storedQueued.has(key)) return;
+    storedQueued.add(key);
+    if (!titleStore) titleStore = createParseStore({ indexedDB: doc.defaultView?.indexedDB });
+    restorableByUrl(titleStore, key, { plainOptions: BUILTIN_OPTIONS }).then((found) => {
+      const title = found ? parsedDocTitle(found) : "";
+      if (disposed || !title || parsedTitles.get(key)) return;
+      parsedTitles.set(key, title);
+      try {
+        itemsR?.repaintStyles?.();
+      } catch {
+      }
+      try {
+        readPane?.refreshCards?.();
+      } catch {
+      }
+    }).catch(() => {
+    });
+  };
   const metaQueued = /* @__PURE__ */ new Set();
   let metaTail = Promise.resolve();
   notePdfMeta = (url) => {
     const key = typeof url === "string" ? url.trim() : "";
     if (!key) return "";
     const parsedKnown = parsedTitles.get(key) || "";
+    if (!parsedKnown) noteStoredTitle(key);
     try {
       probePdfjs();
     } catch {

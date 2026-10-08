@@ -19,7 +19,7 @@ import { findOnBoard } from "../model/find.js";
 import { readMindPreset, writeMindPreset } from "../model/mindmap.js";
 import { attrLegend, parseAttrStyles, styleAttrLinks } from "../model/attr-styles.js";
 import { HIGHLIGHT_COLORS, noteActionPlan } from "../model/highlight.js";
-import { cleanPdfTitle, coverModel, embedSplit, pdfCardForUrl, pdfMacroUrl, readerRule } from "../model/pdf.js";
+import { cleanPdfTitle, coverModel, embedSplit, parsedDocTitle, pdfCardForUrl, pdfMacroUrl, readerRule } from "../model/pdf.js";
 import { COVER_MAX_W, WARM_AFTER_MS, coverKey, coverState, densityTicks, sharpCoverPlan, warmPlan } from "../model/pdf-cover.js";
 import { PDF_MARK, uidFromMark } from "../model/pdf-drag.js";
 import { createCoverStore } from "../host/cover-store.js";
@@ -71,7 +71,7 @@ import { createInteractions } from "./interactions.js";
 import { openPagePicker } from "./board-picker.js";
 import { createItemRenderer, dropEmbedPoster, isTextEntryTarget, pageBodyWantsWheel, paintEmbedPoster, syncBoardHighlighter } from "./cards.js";
 import { createReadPane, highlightDropPlan, originBeside, placeDecision, readerJumpPlan } from "./read-pane.js";
-import { readParsedUrls } from "./parse-view.js";
+import { BUILTIN_OPTIONS, readParsedUrls } from "./parse-view.js";
 import { createPdfWarm } from "./pdf-warm.js";
 import { createFirstPageRenderer, createPdfMetaLookup, detectPdfjs, firstPageAllowed } from "./pdf-first-page.js";
 import { createThemeFollow } from "./theme-follow.js";
@@ -98,7 +98,7 @@ import { createPanel, parseDropPayload } from "./panel.js";
 import { handleOfficeDrop, handleParseDrop } from "../model/drop.js";
 import { officeTargetFromText } from "../model/anydoc-to-parse.js";
 import { createAnydocHost } from "../host/anydoc.js";
-import { createParseStore } from "../host/parse-store.js";
+import { createParseStore, restorableByUrl } from "../host/parse-store.js";
 import { sharedDeviceOcr } from "../host/device-ocr.js";
 import { createParseActions, freeSpotBeside } from "./parse-actions.js";
 import { createMenu } from "./menu.js";
@@ -1712,12 +1712,29 @@ function buildBoardView(onFail, {
     if (!body || body.startsWith("{{") || body.startsWith("((")) return "";
     return body;
   };
+  // A PDF parsed before (any session) names itself from the cache, so the switcher and the cards show
+  // its title without opening it. IndexedDB only; nothing is parsed or fetched.
+  const storedQueued = new Set();
+  let titleStore = null;
+  const noteStoredTitle = (key) => {
+    if (storedQueued.has(key)) return;
+    storedQueued.add(key);
+    if (!titleStore) titleStore = createParseStore({ indexedDB: doc.defaultView?.indexedDB });
+    restorableByUrl(titleStore, key, { plainOptions: BUILTIN_OPTIONS }).then((found) => {
+      const title = found ? parsedDocTitle(found) : "";
+      if (disposed || !title || parsedTitles.get(key)) return;
+      parsedTitles.set(key, title);
+      try { itemsR?.repaintStyles?.(); } catch { /* paint */ }
+      try { readPane?.refreshCards?.(); } catch { /* switcher */ }
+    }).catch(() => {});
+  };
   const metaQueued = new Set();
   let metaTail = Promise.resolve();
   notePdfMeta = (url) => {
     const key = typeof url === "string" ? url.trim() : "";
     if (!key) return "";
     const parsedKnown = parsedTitles.get(key) || "";
+    if (!parsedKnown) noteStoredTitle(key);
     try { probePdfjs(); } catch { return parsedKnown; }
     if (!pdfMeta) return parsedKnown;
     const known = cleanPdfTitle(pdfMeta.title(key)) || parsedKnown;

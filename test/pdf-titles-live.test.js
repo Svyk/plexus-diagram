@@ -138,7 +138,7 @@ test("title-only render opens the PDF, reads the title, draws nothing and destro
   assert.equal(renderer.busy(), false);
 });
 
-test("the cover store keeps the page title and its lines; old records read as never read", async () => {
+test("the cover store keeps the page title and its lines; an older title is kept, marked stale, and read again", async () => {
   const stub = createDomStub();
   const store = createCoverStore({ indexedDB: null, storage: stub.localStorage });
   const url = "https://example.test/a.pdf";
@@ -155,8 +155,9 @@ test("the cover store keeps the page title and its lines; old records read as ne
   assert.equal(needsPageTitle(await store.get(url)), false, "a page with no title is not read again");
   await store.put({ ...got, pageTitle: "Trace ability", titleRev: TITLE_REV - 1 });
   const stale = await store.get(url);
-  assert.equal(stale.pageTitle, null, "a title from an older splitter is read again");
-  assert.equal(needsPageTitle(stale), true);
+  assert.equal(stale.pageTitle, "Trace ability", "a title from an older splitter is still shown");
+  assert.equal(stale.titleStale, true);
+  assert.equal(needsPageTitle(stale), true, "and read again");
 });
 
 test("warmPlan picks a covered card that still needs its title, never one that has it", () => {

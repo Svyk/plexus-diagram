@@ -121,6 +121,8 @@ export function sharpCoverPlan(input) {
 // never on save-data, never while the camera is moving.
 // `visible` is a Set, a list of uids, or (uid) => boolean. Omit it and nothing warms.
 // `moving` is optional; the integrator passes true during pan or zoom.
+// `offscreenTitles: true` lets a covered card that only needs its title (nothing is drawn) warm when no
+// visible card does: titles show in the switcher and Quick Look too.
 export function warmPlan(input) {
   try {
     const src = input && typeof input === "object" ? input : {};
@@ -138,6 +140,16 @@ export function warmPlan(input) {
       const blockUid = text(card.blockUid);
       if (!uid || !blockUid) continue;
       if (!visibleHas(src.visible, uid)) continue;
+      return { uid, blockUid };
+    }
+    if (src.offscreenTitles !== true) return null;
+    for (const card of cards) {
+      if (!card || typeof card !== "object") continue;
+      if (card.kind && card.kind !== "pdf") continue;
+      if (!card.hasCover || !card.needsTitle) continue;
+      const uid = text(card.uid);
+      const blockUid = text(card.blockUid);
+      if (!uid || !blockUid) continue;
       return { uid, blockUid };
     }
     return null;

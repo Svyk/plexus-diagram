@@ -34532,13 +34532,13 @@ async function restorableParse(store, sha, { engines, plainHash, readHashOf = nu
     const mine = listed.filter((row4) => row4.engine === engine);
     const read2 = mine.filter((row4) => row4.doc?.options?.ocr === "vision" && !scanPagesOf(row4.doc).length).pop();
     if (read2) return read2.doc;
-    const plain = await store.getParse(sha, engine, plainHash) || mine.pop()?.doc || null;
-    if (!plain) continue;
-    if (scanPagesOf(plain).length && readHashOf) {
-      const alt = await store.getParse(sha, engine, await readHashOf(plain));
+    const plain2 = await store.getParse(sha, engine, plainHash) || mine.pop()?.doc || null;
+    if (!plain2) continue;
+    if (scanPagesOf(plain2).length && readHashOf) {
+      const alt = await store.getParse(sha, engine, await readHashOf(plain2));
       if (alt) return alt;
     }
-    return plain;
+    return plain2;
   }
   return null;
 }
@@ -38856,7 +38856,7 @@ function createParseView({
     const found = await restorableParse(store, hit.sha256, {
       engines: ["builtin", "docling", "mixed", "anydoc"],
       plainHash: hash,
-      readHashOf: (plain) => optionsHash({ ...plain.options || BUILTIN_OPTIONS, ocr: "vision" })
+      readHashOf: (plain2) => optionsHash({ ...plain2.options || BUILTIN_OPTIONS, ocr: "vision" })
     });
     if (!found) return null;
     parsed = found;
@@ -63431,7 +63431,7 @@ function createPdfTables({ store = null, helper = null, pdfjs, fetchBytes, sha25
     const doc = await restorableParse(store, hit.sha256, {
       engines: ENGINES,
       plainHash: hash,
-      readHashOf: (plain) => optionsHash({ ...plain.options || OPTIONS, ocr: "vision" })
+      readHashOf: (plain2) => optionsHash({ ...plain2.options || OPTIONS, ocr: "vision" })
     });
     if (doc) return { doc, sha256: hit.sha256 };
     return null;

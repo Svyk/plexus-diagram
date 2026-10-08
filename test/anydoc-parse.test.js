@@ -226,6 +226,12 @@ test("encrypted bytes and a refused url toast instead of writing", async () => {
   assert.equal(refused.toast, "Could not fetch this file");
 });
 
+// Polls instead of a fixed sleep: a loaded machine can take longer than 50 ms to settle the async conversion.
+const until = async (cond, ms = 2000) => {
+  const end = Date.now() + ms;
+  while (!cond() && Date.now() < end) await new Promise((resolve) => setTimeout(resolve, 5));
+};
+
 test("alternative read replaces the outline only when conversion works", async () => {
   const stub = createDomStub();
   const restore = stub.install();
@@ -239,7 +245,7 @@ test("alternative read replaces the outline only when conversion works", async (
       clock: () => 20,
     });
     blocked.element().querySelector(".pxd-parse__alt").click();
-    await new Promise((resolve) => setTimeout(resolve, 30));
+    await until(() => toasts.length > 0);
     assert.match(toasts.at(-1), /built-in parse stays/);
     assert.equal(blocked.chipText().includes("Alternative read"), false);
 
@@ -252,7 +258,7 @@ test("alternative read replaces the outline only when conversion works", async (
       clock: () => 40,
     });
     ok.element().querySelector(".pxd-parse__alt").click();
-    await new Promise((resolve) => setTimeout(resolve, 50));
+    await until(() => /^Alternative read/.test(ok.chipText()));
     assert.equal(done.length, 0);
     assert.match(ok.chipText(), /^Alternative read/);
     assert.match(ok.element().textContent, /There/);

@@ -1,5 +1,7 @@
 // Module worker for PP-OCR. The page renders; this thread runs det, rec, rules, and cell crops.
-// ORT is imported from a URL the page already verified. esbuild must leave that import dynamic.
+// The page starts it from a blob URL of the SHA-checked bundle (a Pages URL is cross-origin on
+// roamresearch.com). ORT is imported from a blob URL the page already verified. esbuild must
+// leave that import dynamic. An abort stops the running job only; the next message starts fresh.
 
 import { dictLines } from "../model/ocr/manifest.js";
 import { preparePageImage, recognizeCells } from "../model/ocr/recognize.js";
@@ -47,7 +49,7 @@ self.onmessage = (ev) => {
   const msg = ev.data || {};
   if (msg.type === "abort") { controller.abort(); return; }
   if (msg.type === "forget") { pages.clear(); return; }
-  if (msg.type === "init") controller = new AbortController();
+  if (msg.type === "init" || controller.signal.aborted) controller = new AbortController();
   const run = msg.type === "init" ? onInit(msg) : msg.type === "page" ? onPage(msg) : msg.type === "cells" ? onCells(msg) : null;
   if (run) run.catch((error) => fail(msg.id, error));
 };

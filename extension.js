@@ -51882,6 +51882,9 @@ async function recognizeCells({ pages, cells, runRec, dict, signal } = {}) {
   return { cells: out };
 }
 
+// src/model/ocr/worker-asset.js
+var OCR_WORKER = { "file": "ocr-worker.js", "sha256": "04aa4325bcd0c3d1378f6a1812dcaf12ec78a45ae14808cf262bb45380d3537e", "bytes": 68967 };
+
 // src/host/ocr-ort.js
 async function openSession(ort, buffer) {
   try {
@@ -51930,8 +51933,20 @@ async function sha256Hex2(cryptoImpl, buffer) {
   const digest = await cryptoImpl.subtle.digest("SHA-256", buffer);
   return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, "0")).join("");
 }
-function blobUrl(buffer, type) {
-  return URL.createObjectURL(new Blob([buffer], { type }));
+function yieldToPage() {
+  return new Promise((resolve) => setTimeout(resolve, 0));
+}
+function yieldingRunners({ runDet, runRec }, pause = yieldToPage) {
+  return {
+    async runDet(data, dims) {
+      await pause();
+      return runDet(data, dims);
+    },
+    async runRec(data, dims) {
+      await pause();
+      return runRec(data, dims);
+    }
+  };
 }
 async function readBody(res, onBytes, signal) {
   const reader = onBytes && res.body && typeof res.body.getReader === "function" ? res.body.getReader() : null;
@@ -52039,8 +52054,16 @@ function createOcrWeb({
   pdfjs = null,
   workerUrl = null,
   useWorker = true,
+  Worker: WorkerImpl = globalThis.Worker,
+  createObjectURL = (blob) => URL.createObjectURL(blob),
+  pause = yieldToPage,
+  importModule = (url) => import(url),
+  files = null,
   dpi = DPI
 } = {}) {
+  const ortFiles = files?.ort || ORT_FILES;
+  const modelFiles = files?.models || MODEL_FILES;
+  const workerFile = files?.worker || OCR_WORKER;
   let state = "cold";
   const fetched = [];
   const prepared2 = /* @__PURE__ */ new Map();
@@ -52092,8 +52115,8 @@ function createOcrWeb({
   }
   function assetList() {
     return [
-      ...Object.values(ORT_FILES).map((spec) => ({ spec, model: false, urls: [joinUrl(ortBase, spec.file)] })),
-      ...Object.values(MODEL_FILES).map((spec) => ({ spec, model: true, urls: [joinUrl(assetBase, `assets/ocr/${spec.file}`), ...spec.url ? [spec.url] : []] }))
+      ...Object.values(ortFiles).map((spec) => ({ spec, model: false, urls: [joinUrl(ortBase, spec.file)] })),
+      ...Object.values(modelFiles).map((spec) => ({ spec, model: true, urls: [joinUrl(assetBase, `assets/ocr/${spec.file}`), ...spec.url ? [spec.url] : []] }))
     ];
   }
   async function cached() {
@@ -52130,6 +52153,13 @@ function createOcrWeb({
       await lexicon({ signal });
     } catch (error) {
       if (error?.name === "AbortError") throw error;
+    }
+    if (useWorker && !workerUrl) {
+      try {
+        await loadVerified(joinUrl(assetBase, `assets/ocr/${workerFile.file}`), workerFile, signal);
+      } catch (error) {
+        if (error?.name === "AbortError") throw error;
+      }
     }
     return { bytes: total };
   }
@@ -52177,22 +52207,26 @@ function createOcrWeb({
     const doc = await task.promise;
     return renderPdfPage(doc, n2, dpi);
   }
+  async function workerScriptUrl(signal) {
+    if (workerUrl) return workerUrl;
+    const text3 = await loadVerified(joinUrl(assetBase, `assets/ocr/${workerFile.file}`), workerFile, signal);
+    return createObjectURL(new Blob([text3], { type: "text/javascript" }));
+  }
   async function bootWorker(signal) {
-    const ortMjs = await loadVerified(joinUrl(ortBase, ORT_FILES.mjs.file), ORT_FILES.mjs, signal);
-    const wasmMjs = await loadVerified(joinUrl(ortBase, ORT_FILES.wasmMjs.file), ORT_FILES.wasmMjs, signal);
-    const wasm2 = await loadVerified(joinUrl(ortBase, ORT_FILES.wasm.file), ORT_FILES.wasm, signal);
-    const det = await loadModel(MODEL_FILES.det, signal);
-    const rec = await loadModel(MODEL_FILES.rec, signal);
-    const dictBuf = await loadModel(MODEL_FILES.dict, signal);
+    const ortMjs = await loadVerified(joinUrl(ortBase, ortFiles.mjs.file), ortFiles.mjs, signal);
+    const wasmMjs = await loadVerified(joinUrl(ortBase, ortFiles.wasmMjs.file), ortFiles.wasmMjs, signal);
+    const wasm2 = await loadVerified(joinUrl(ortBase, ortFiles.wasm.file), ortFiles.wasm, signal);
+    const det = await loadModel(modelFiles.det, signal);
+    const rec = await loadModel(modelFiles.rec, signal);
+    const dictBuf = await loadModel(modelFiles.dict, signal);
     const dictText = new TextDecoder().decode(dictBuf);
+    const scriptUrl = await workerScriptUrl(signal);
     const urls2 = {
-      ortUrl: blobUrl(ortMjs, "text/javascript"),
-      wasmMjsUrl: blobUrl(wasmMjs, "text/javascript"),
-      wasmUrl: blobUrl(wasm2, "application/wasm")
+      ortUrl: createObjectURL(new Blob([ortMjs], { type: "text/javascript" })),
+      wasmMjsUrl: createObjectURL(new Blob([wasmMjs], { type: "text/javascript" })),
+      wasmUrl: createObjectURL(new Blob([wasm2], { type: "application/wasm" }))
     };
-    const scriptUrl = workerUrl || joinUrl(assetBase, "assets/ocr/ocr-worker.js");
-    fetched.push(scriptUrl);
-    const worker = new Worker(scriptUrl, { type: "module" });
+    const worker = new WorkerImpl(scriptUrl, { type: "module" });
     const pending = /* @__PURE__ */ new Map();
     let seq = 0;
     const records = /* @__PURE__ */ new Map();
@@ -52205,24 +52239,55 @@ function createOcrWeb({
       const waiter = pending.get(msg.id);
       if (!waiter) return;
       pending.delete(msg.id);
-      if (msg.type === "error") waiter.reject(Object.assign(new Error(msg.message), { name: msg.message === "ocr aborted" ? "AbortError" : "Error" }));
+      if (msg.type === "error") waiter.reject(msg.message === "ocr aborted" ? abortError() : new Error(msg.message));
       else waiter.resolve(msg);
     };
-    worker.onerror = (ev) => rejectAll(new Error(ev?.message || "ocr worker failed"));
-    function call(msg, transfers) {
+    let dead = null;
+    let api = null;
+    worker.onerror = (ev) => {
+      dead = new Error(ev?.message || "ocr worker failed");
+      rejectAll(dead);
+      if (api && engine === api) engine = null;
+    };
+    function call(msg, transfers, signal2) {
+      if (signal2?.aborted) return Promise.reject(abortError());
+      if (dead) return Promise.reject(dead);
       const id = ++seq;
       return new Promise((resolve, reject) => {
-        pending.set(id, { resolve, reject });
+        const onAbort = () => {
+          if (!pending.has(id)) return;
+          pending.delete(id);
+          try {
+            worker.postMessage({ type: "abort" });
+          } catch {
+          }
+          reject(abortError());
+        };
+        const done = (fn) => (value) => {
+          signal2?.removeEventListener?.("abort", onAbort);
+          fn(value);
+        };
+        pending.set(id, { resolve: done(resolve), reject: done(reject) });
+        signal2?.addEventListener?.("abort", onAbort, { once: true });
         try {
           worker.postMessage({ ...msg, id }, transfers || []);
         } catch (error) {
           pending.delete(id);
+          signal2?.removeEventListener?.("abort", onAbort);
           reject(error);
         }
       });
     }
-    await call({ type: "init", ...urls2, det, rec, dictText }, [det, rec]);
-    return {
+    try {
+      await call({ type: "init", ...urls2, det, rec, dictText }, [det, rec], signal);
+    } catch (error) {
+      try {
+        worker.terminate?.();
+      } catch {
+      }
+      throw error;
+    }
+    api = {
       stop() {
         try {
           worker.postMessage({ type: "abort" });
@@ -52250,17 +52315,18 @@ function createOcrWeb({
           pointW: rendered.pointW,
           pointH: rendered.pointH,
           rgb
-        }, [rgb.buffer]);
+        }, [rgb.buffer], signal2);
         records.set(n2, msg.record);
         return msg.record;
       },
       async cells(list, bytes, signal2) {
         const need2 = [...new Set(list.map((c) => c.page))];
         for (const n2 of need2) if (!records.has(n2)) await this.page(n2, bytes, signal2);
-        const msg = await call({ type: "cells", cells: list });
+        const msg = await call({ type: "cells", cells: list }, void 0, signal2);
         return msg.cells;
       }
     };
+    return api;
   }
   async function ensure(signal) {
     if (engine) return engine;
@@ -52271,7 +52337,7 @@ function createOcrWeb({
       return engine;
     }
     state = "loading";
-    if (useWorker && typeof Worker === "function") {
+    if (useWorker && typeof WorkerImpl === "function") {
       try {
         engine = await bootWorker(signal);
         state = "ready";
@@ -52284,21 +52350,21 @@ function createOcrWeb({
         engine = null;
       }
     }
-    const ortMjs = await loadVerified(joinUrl(ortBase, ORT_FILES.mjs.file), ORT_FILES.mjs, signal);
-    const wasmMjs = await loadVerified(joinUrl(ortBase, ORT_FILES.wasmMjs.file), ORT_FILES.wasmMjs, signal);
-    const wasm2 = await loadVerified(joinUrl(ortBase, ORT_FILES.wasm.file), ORT_FILES.wasm, signal);
-    const det = await loadModel(MODEL_FILES.det, signal);
-    const rec = await loadModel(MODEL_FILES.rec, signal);
-    const dictBuf = await loadModel(MODEL_FILES.dict, signal);
-    const ort = await import(blobUrl(ortMjs, "text/javascript"));
+    const ortMjs = await loadVerified(joinUrl(ortBase, ortFiles.mjs.file), ortFiles.mjs, signal);
+    const wasmMjs = await loadVerified(joinUrl(ortBase, ortFiles.wasmMjs.file), ortFiles.wasmMjs, signal);
+    const wasm2 = await loadVerified(joinUrl(ortBase, ortFiles.wasm.file), ortFiles.wasm, signal);
+    const det = await loadModel(modelFiles.det, signal);
+    const rec = await loadModel(modelFiles.rec, signal);
+    const dictBuf = await loadModel(modelFiles.dict, signal);
+    const ort = await importModule(createObjectURL(new Blob([ortMjs], { type: "text/javascript" })));
     if (ort.env?.wasm) {
       ort.env.wasm.wasmPaths = {
-        mjs: blobUrl(wasmMjs, "text/javascript"),
-        wasm: blobUrl(wasm2, "application/wasm")
+        mjs: createObjectURL(new Blob([wasmMjs], { type: "text/javascript" })),
+        wasm: createObjectURL(new Blob([wasm2], { type: "application/wasm" }))
       };
       if (typeof crossOriginIsolated === "undefined" || !crossOriginIsolated) ort.env.wasm.numThreads = 1;
     }
-    const runners = await createOrtRunners(ort, det, rec);
+    const runners = yieldingRunners(await createOrtRunners(ort, det, rec), pause);
     engine = localEngine(runners.runDet, runners.runRec, dictLines(new TextDecoder().decode(dictBuf)));
     state = "ready";
     return engine;

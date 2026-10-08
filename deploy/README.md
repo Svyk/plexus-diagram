@@ -154,6 +154,22 @@ The optional local helper adds Docling for formulas as LaTeX and for OCR. For a 
 | By hand | Run `plexus-parse-helper token` and paste the result into Advanced in Engines, or into Settings, Plexus Diagram, Parse helper token |
 | Scans | Read the scan appears on scanned pages when the helper is ready. The outline's Read text button asks for the same reading |
 
+### In-browser reading (beta)
+
+Without the helper, a scanned page can be read inside Roam. Engines has an In-browser reading (beta) row with Download: onnxruntime-web and the PP-OCRv5 mobile models, about 39 MB once, hash-checked and kept in this browser's Cache Storage. Read text on a scanned page downloads them first if they are not there yet; Cancel stops the download. Nothing is fetched when a board or the reader opens, and automatic reading never starts a download. When the local helper is ready, Read text uses the helper instead, because it reads more accurately.
+
+Measured in node with onnxruntime-node and the same model files (browser speed is not measured here). Details are in `docs/parse-bench.md`.
+
+| Test | In-browser (beta) | Local helper (Apple Vision) |
+|---|---|---|
+| Scanned CDC 1980 table (image only), structure F1 | 0.983 | 1.000 |
+| Scanned CDC 1980 table, cell F1 | 0.922 | 0.957 |
+| Scanned 3-page report, cell F1 per table | 0.947 / 0.976 / 0.952 | 0.974 / 0.952 / 1.000 |
+| ICDAR 2013 rasterised at 300 dpi, adjacency F1 / cell F1 | 0.876 / 0.787 | not measured |
+| ICDAR 2013 rasterised at 150 dpi, adjacency F1 / cell F1 | 0.850 / 0.792 | not measured |
+
+Expect more misread letters in small scanned labels than with the helper. For comparison, the built-in parser on the same 67 files' own text layers reads 0.979 / 0.932.
+
 An insert is one Roam write per table or page range, plus the card layout. Roam Grid tables keep merged cells when Roam Grid 0.18.3 or later is installed.
 
 Measured on the 67 government PDFs of ICDAR 2013 and on a scanned CDC table. Details are in `docs/parse-bench.md`.

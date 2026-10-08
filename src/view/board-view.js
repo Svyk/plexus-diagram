@@ -99,6 +99,7 @@ import { handleOfficeDrop, handleParseDrop } from "../model/drop.js";
 import { officeTargetFromText } from "../model/anydoc-to-parse.js";
 import { createAnydocHost } from "../host/anydoc.js";
 import { createParseStore } from "../host/parse-store.js";
+import { sharedDeviceOcr } from "../host/device-ocr.js";
 import { createParseActions, freeSpotBeside } from "./parse-actions.js";
 import { createMenu } from "./menu.js";
 import { createShortcutSheet } from "./shortcut-sheet.js";
@@ -1600,6 +1601,7 @@ function buildBoardView(onFail, {
     doc,
     root,
     host,
+    deviceOcr: sharedDeviceOcr(),
     onNote: (row) => { void openHighlightNote(row?.uid); },
     graph,
     storage,

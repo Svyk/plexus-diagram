@@ -305,6 +305,7 @@ export function createParseView({
   getContext = null,
   clock = null,
   scanAuto = false,
+  ocrSource = null,
   lazyKeys = false,
   outline = false,
   onNeedOcr = null,
@@ -1224,20 +1225,31 @@ export function createParseView({
     // Engine "auto" with a ready helper reads scanned pages without a click.
     if (scanAuto && scanPagesOf(finalDoc).length) {
       await refreshHelper();
-      if (helperState === "ready") await readScanNow();
+      const engine = ocrEngine();
+      if (engine && (engine === ocrSource || helperState === "ready")) await readScanNow();
     }
+  }
+
+  // A caller-supplied OCR source (same ocr() shape as the helper) wins. Otherwise the helper.
+  function ocrEngine() {
+    if (ocrSource && typeof ocrSource.ocr === "function") return ocrSource;
+    if (helper && typeof helper.ocr === "function") return helper;
+    return null;
   }
 
   function paintScan() {
     const pages = parsed ? scanPagesOf(parsed) : [];
-    scanBtn.hidden = !(pages.length && helperState === "ready" && phase !== "running" && typeof helper?.ocr === "function");
+    const engine = ocrEngine();
+    const ready = Boolean(engine && (engine === ocrSource || helperState === "ready"));
+    scanBtn.hidden = !(pages.length && ready && phase !== "running");
     if (!scanBtn.hidden) scanBtn.textContent = pages.length === 1 ? `Read the scan (p. ${pages[0]})` : `Read the scan (${pages.length} pages)`;
   }
 
   // Read the scan: helper OCR for the scan pages of the current parse, engine on the result,
   // merged into the document (a scanLayer page keeps the better table reading). No writes.
   async function readScanNow() {
-    if (!parsed || !helper || typeof helper.ocr !== "function" || helperState !== "ready") return;
+    const engine = ocrEngine();
+    if (!parsed || !engine || (engine !== ocrSource && helperState !== "ready")) return;
     const pages = scanPagesOf(parsed);
     if (!pages.length) return;
     cancel();
@@ -1263,7 +1275,7 @@ export function createParseView({
       }
       const t0 = now();
       const result = await readScan({
-        helper, bytes, sha256: parsed.sha256, base: parsed, records: recs, pages,
+        helper: engine, bytes, sha256: parsed.sha256, base: parsed, records: recs, pages,
         numPages: parsed.pageCount, from, to, signal: ctrl.signal,
         onPhase: (info) => {
           progress = { page: info?.phase === "cells" ? pages.length : 0, pageCount: pages.length, engine: "builtin" };

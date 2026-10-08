@@ -73,6 +73,34 @@ test("ocrGraphics turns helper rules into engine rules and one page image", () =
   assert.equal(g.dots.length, 2, "leader dots become dots");
 });
 
+test("ocrGraphics turns raster fills into boxes and their top and bottom edges into rules", () => {
+  const g = ocrGraphics({ rules: [], items: [word("Head", 20, 28), word("1.5", 20, 38)], fills: [{ x0: 10, y0: 20, x1: 90, y1: 30, gray: 0.33 }, { x0: 10, y0: 30, x1: 90, y1: 40, gray: 0.86 }] }, 100, 80);
+  assert.equal(g.boxes.length, 2);
+  assert.equal(g.boxes[0].light, false);
+  assert.equal(g.boxes[1].light, true);
+  assert.deepEqual(g.rules.map((r) => [r.axis, r.y0]), [["h", 20], ["h", 30], ["h", 30], ["h", 40]]);
+  assert.ok(g.rules.every((r) => r.fromBox));
+  const lone = ocrGraphics({ rules: [], items: [], fills: [{ x0: 10, y0: 20, x1: 90, y1: 60, gray: 0.86 }] }, 100, 80);
+  assert.equal(lone.boxes.length, 1);
+  assert.equal(lone.rules.length, 0, "a lone shaded box (a callout) draws no row edges");
+  const strips = ocrGraphics({ rules: [], items: [], fills: [{ x0: 10, y0: 20, x1: 90, y1: 30, gray: 0.86 }, { x0: 10, y0: 31, x1: 90, y1: 40, gray: 0.86 }] }, 100, 80);
+  assert.equal(strips.rules.length, 0, "fills with no words (a chart's plot strips) draw no row edges");
+});
+
+test("full-width zebra fills bound a table on an OCR page", () => {
+  const items = [];
+  const fills = [];
+  for (let r = 0; r < 5; r++) {
+    const base = 120 + r * 20;
+    items.push(word(`Row ${r}`, 60, base, { size: 8 }), word(String(100 + r), 200, base, { size: 8 }), word(String(200 + r), 260, base, { size: 8 }));
+    if (r % 2 === 0) fills.push({ x0: 50, y0: base - 13, x1: 300, y1: base + 7, gray: r === 0 ? 0.3 : 0.86 });
+  }
+  const rec = parsePageGeometry({ n: 1, w: 400, h: 400, transform: [1, 0, 0, 1, 0, 0], scan: true, fonts: { ocr: { name: "ocr" } }, items, rules: [], fills, ops: { fnArray: [], argsArray: [] } }, 1);
+  assert.equal(rec.tables.length, 1);
+  assert.equal(rec.tables[0].rows, 5);
+  assert.equal(rec.tables[0].cols, 3);
+});
+
 test("OCR words keep their confidence and never glue to a neighbour", () => {
   const { lines } = buildLines([word("Anth", 20, 30, { conf: 0.7 }), word("rax", 33.5, 30, { conf: 0.9 })]);
   assert.equal(lines.length, 1);

@@ -149,23 +149,66 @@ test("auto-read does nothing while no source is ready", async () => {
   assert.equal(reads, 0);
 });
 
-test("the in-browser source is preferred when it is ready", async () => {
+test("the local helper is preferred when both it and the in-browser source are ready", async () => {
+  let helperReads = 0;
+  let deviceReads = 0;
+  const device = {
+    status: () => ({ state: "ready", mb: 39 }),
+    download() {},
+    cancel() {},
+    read: async () => { deviceReads += 1; return [OCR.pages[0]]; },
+  };
+  await rig(async ({ pane }) => {
+    pane.noteScan({ pages: [1], helperState: "ready", readScan: async () => { helperReads += 1; pane.setOcrPages(OCR.pages[0]); } });
+    await settle();
+    assert.equal(pane.ocrRun().state, "done");
+    assert.equal(pane.ocrRun().source, "helper");
+  }, { deviceOcr: device, values: { "parse-helper-token": "t" }, fetchImpl: async () => res(200, READY) });
+  assert.equal(helperReads, 1);
+  assert.equal(deviceReads, 0);
+});
+
+test("the in-browser source reads when the helper is not ready", async () => {
   let helperReads = 0;
   const device = {
-    status: () => ({ state: "ready", mb: 30 }),
+    status: () => ({ state: "ready", mb: 39 }),
     download() {},
     cancel() {},
     read: async () => [OCR.pages[0]],
   };
   await rig(async ({ pane, root }) => {
-    pane.noteScan({ pages: [1], helperState: "ready", readScan: async () => { helperReads += 1; } });
+    pane.noteScan({ pages: [1], helperState: "not-running", readScan: async () => { helperReads += 1; } });
     await settle();
     assert.equal(pane.ocrRun().state, "done");
     assert.equal(pane.ocrRun().source, "device");
     assert.equal(pane.stripKind(), null);
     assert.equal(root.querySelector(".pxd-parse-status").hasAttribute("hidden"), true);
-  }, { deviceOcr: device, values: { "parse-helper-token": "t" }, fetchImpl: async () => res(200, READY) });
+  }, { deviceOcr: device });
   assert.equal(helperReads, 0);
+});
+
+test("Read text with the models not downloaded downloads them, then reads; auto-read never downloads", async () => {
+  let state = "not-downloaded";
+  let downloads = 0;
+  let reads = 0;
+  const device = {
+    status: () => ({ state, mb: 39, progress: 0.5 }),
+    async download() { downloads += 1; state = "ready"; return true; },
+    cancel() {},
+    read: async () => { reads += 1; return [OCR.pages[0]]; },
+  };
+  await rig(async ({ pane, root }) => {
+    pane.noteScan({ pages: [1], helperState: "not-running", readScan: async () => {} });
+    await settle();
+    assert.equal(downloads, 0, "auto-read does not download");
+    assert.equal(pane.stripKind(), "scan-first");
+    root.querySelector('[data-action="read-text"]').click();
+    for (let i = 0; i < 5; i++) await settle();
+    assert.equal(downloads, 1);
+    assert.equal(reads, 1);
+    assert.equal(pane.ocrRun().source, "device");
+    assert.equal(pane.ocrRun().state, "done");
+  }, { deviceOcr: device, values: { "parse-auto-read": true } });
 });
 
 test("Cancel stops a running read", async () => {

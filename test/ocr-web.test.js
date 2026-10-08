@@ -128,6 +128,17 @@ test("fillsFromCanvas finds a dark header and a light zebra row with text on the
   assert.ok(rules.every((r) => !(r.y0 === r.y1 && r.y0 > head.y0 + 1 && r.y0 < head.y1 - 1)), "no rules inside the header fill");
 });
 
+test("fillsFromCanvas mends the anti-aliased seam between two abutting fills of one colour", () => {
+  const width = 400;
+  const height = 300;
+  const { gray, rect } = fillPage(width, height);
+  rect(40, 40, 200, 140, 179);
+  rect(42, 100, 198, 101, 197); // lighter seam where two fills meet, short of the region ends
+  const fills = fillsFromCanvas(gray, width, height, 4);
+  assert.equal(fills.length, 1, JSON.stringify(fills));
+  assert.ok(Math.abs(fills[0].y0 - 10) <= 1 && Math.abs(fills[0].y1 - 35) <= 1, JSON.stringify(fills[0]));
+});
+
 test("fillsFromCanvas skips text, a rounded bar and a blank page", () => {
   const width = 400;
   const height = 300;

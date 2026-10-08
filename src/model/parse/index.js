@@ -128,16 +128,37 @@ export function ocrGraphics(data, w, h) {
   // A raster has no invisible per-cell boxes, only what is seen: the top and bottom edges of
   // fills that repeat at one width (zebra rows, a header over shaded rows) are drawn row edges,
   // so they count as rules and bound table rows without a tiling (a tiling of cell fills
-  // still gives the columns via boxGridRules). A lone shaded box (a callout) gives none.
+  // still gives the columns via boxGridRules). A lone shaded box (a callout) gives none. Light
+  // fills where most hold no word are a chart's plot area cut into strips by its grid lines
+  // and curves (one strip may hold the legend): they are neither boxes nor row edges.
   const fills = data.fills || [];
+  const holdsText = (f) => (data.items || []).some((it) => {
+    const x = it.transform[4] + (it.width || 0) / 2;
+    const y = it.transform[5] - 0.3 * (it.transform[0] || 0);
+    return x > f.x0 && x < f.x1 && y > f.y0 && y < f.y1;
+  });
+  const texty = fills.map(holdsText);
+  const light = fills.map((f) => (luminanceOf(f.gray) ?? 0) >= 0.7);
+  const textShare = (idx) => idx.filter((i) => texty[i]).length / Math.max(1, idx.length);
+  // Clusters of touching fills.
+  const root = fills.map((_, i) => i);
+  const find = (i) => { while (root[i] !== i) { root[i] = root[root[i]]; i = root[i]; } return i; };
+  for (let i = 0; i < fills.length; i++) for (let j = i + 1; j < fills.length; j++) {
+    const a = fills[i]; const b = fills[j];
+    if (a.x0 <= b.x1 + 3 && b.x0 <= a.x1 + 3 && a.y0 <= b.y1 + 3 && b.y0 <= a.y1 + 3) root[find(j)] = find(i);
+  }
+  const members = new Map();
+  fills.forEach((_, i) => { const r = find(i); if (!members.has(r)) members.set(r, []); members.get(r).push(i); });
+  const plot = fills.map((_, i) => light[i] && members.get(find(i)).length >= 2 && textShare(members.get(find(i))) < 0.5);
   const boxes = [];
-  for (const f of fills) {
-    boxes.push({ x0: f.x0, y0: f.y0, x1: f.x1, y1: f.y1, fill: f.gray, light: (luminanceOf(f.gray) ?? 0) >= 0.7 });
-    const repeats = fills.some((o) => o !== f && Math.abs(o.x0 - f.x0) <= 3 && Math.abs(o.x1 - f.x1) <= 3);
-    if (!repeats) continue;
+  fills.forEach((f, i) => {
+    if (plot[i]) return;
+    boxes.push({ x0: f.x0, y0: f.y0, x1: f.x1, y1: f.y1, fill: f.gray, light: light[i] });
+    const group = fills.map((_, j) => j).filter((j) => !plot[j] && Math.abs(fills[j].x0 - f.x0) <= 3 && Math.abs(fills[j].x1 - f.x1) <= 3);
+    if (group.length < 2 || textShare(group) < 0.5) return;
     rules.push({ axis: "h", x0: f.x0, x1: f.x1, y0: f.y0, y1: f.y0, thick: 0.5, fromBox: true });
     rules.push({ axis: "h", x0: f.x0, x1: f.x1, y0: f.y1, y1: f.y1, thick: 0.5, fromBox: true });
-  }
+  });
   return { rules, boxes, dots, shapes: [], images: [{ x0: 0, y0: 0, x1: w, y1: h }], segments: rules.length, truncated: false };
 }
 

@@ -74,7 +74,7 @@ test("ocrGraphics turns helper rules into engine rules and one page image", () =
 });
 
 test("ocrGraphics turns raster fills into boxes and their top and bottom edges into rules", () => {
-  const g = ocrGraphics({ rules: [], items: [], fills: [{ x0: 10, y0: 20, x1: 90, y1: 30, gray: 0.33 }, { x0: 10, y0: 30, x1: 90, y1: 40, gray: 0.86 }] }, 100, 80);
+  const g = ocrGraphics({ rules: [], items: [word("Head", 20, 28), word("1.5", 20, 38)], fills: [{ x0: 10, y0: 20, x1: 90, y1: 30, gray: 0.33 }, { x0: 10, y0: 30, x1: 90, y1: 40, gray: 0.86 }] }, 100, 80);
   assert.equal(g.boxes.length, 2);
   assert.equal(g.boxes[0].light, false);
   assert.equal(g.boxes[1].light, true);
@@ -83,6 +83,8 @@ test("ocrGraphics turns raster fills into boxes and their top and bottom edges i
   const lone = ocrGraphics({ rules: [], items: [], fills: [{ x0: 10, y0: 20, x1: 90, y1: 60, gray: 0.86 }] }, 100, 80);
   assert.equal(lone.boxes.length, 1);
   assert.equal(lone.rules.length, 0, "a lone shaded box (a callout) draws no row edges");
+  const strips = ocrGraphics({ rules: [], items: [], fills: [{ x0: 10, y0: 20, x1: 90, y1: 30, gray: 0.86 }, { x0: 10, y0: 31, x1: 90, y1: 40, gray: 0.86 }] }, 100, 80);
+  assert.equal(strips.rules.length, 0, "fills with no words (a chart's plot strips) draw no row edges");
 });
 
 test("full-width zebra fills bound a table on an OCR page", () => {

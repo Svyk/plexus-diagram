@@ -33041,14 +33041,43 @@ function ocrGraphics(data, w, h) {
     else rules.push({ axis: "v", x0: (r.x0 + r.x1) / 2, x1: (r.x0 + r.x1) / 2, y0: Math.min(r.y0, r.y1), y1: Math.max(r.y0, r.y1), thick });
   }
   const fills = data.fills || [];
+  const holdsText = (f) => (data.items || []).some((it) => {
+    const x = it.transform[4] + (it.width || 0) / 2;
+    const y = it.transform[5] - 0.3 * (it.transform[0] || 0);
+    return x > f.x0 && x < f.x1 && y > f.y0 && y < f.y1;
+  });
+  const texty = fills.map(holdsText);
+  const light = fills.map((f) => (luminanceOf(f.gray) ?? 0) >= 0.7);
+  const textShare = (idx) => idx.filter((i) => texty[i]).length / Math.max(1, idx.length);
+  const root = fills.map((_, i) => i);
+  const find = (i) => {
+    while (root[i] !== i) {
+      root[i] = root[root[i]];
+      i = root[i];
+    }
+    return i;
+  };
+  for (let i = 0; i < fills.length; i++) for (let j = i + 1; j < fills.length; j++) {
+    const a = fills[i];
+    const b = fills[j];
+    if (a.x0 <= b.x1 + 3 && b.x0 <= a.x1 + 3 && a.y0 <= b.y1 + 3 && b.y0 <= a.y1 + 3) root[find(j)] = find(i);
+  }
+  const members = /* @__PURE__ */ new Map();
+  fills.forEach((_, i) => {
+    const r = find(i);
+    if (!members.has(r)) members.set(r, []);
+    members.get(r).push(i);
+  });
+  const plot = fills.map((_, i) => light[i] && members.get(find(i)).length >= 2 && textShare(members.get(find(i))) < 0.5);
   const boxes = [];
-  for (const f of fills) {
-    boxes.push({ x0: f.x0, y0: f.y0, x1: f.x1, y1: f.y1, fill: f.gray, light: (luminanceOf(f.gray) ?? 0) >= 0.7 });
-    const repeats = fills.some((o) => o !== f && Math.abs(o.x0 - f.x0) <= 3 && Math.abs(o.x1 - f.x1) <= 3);
-    if (!repeats) continue;
+  fills.forEach((f, i) => {
+    if (plot[i]) return;
+    boxes.push({ x0: f.x0, y0: f.y0, x1: f.x1, y1: f.y1, fill: f.gray, light: light[i] });
+    const group = fills.map((_, j) => j).filter((j) => !plot[j] && Math.abs(fills[j].x0 - f.x0) <= 3 && Math.abs(fills[j].x1 - f.x1) <= 3);
+    if (group.length < 2 || textShare(group) < 0.5) return;
     rules.push({ axis: "h", x0: f.x0, x1: f.x1, y0: f.y0, y1: f.y0, thick: 0.5, fromBox: true });
     rules.push({ axis: "h", x0: f.x0, x1: f.x1, y0: f.y1, y1: f.y1, thick: 0.5, fromBox: true });
-  }
+  });
   return { rules, boxes, dots, shapes: [], images: [{ x0: 0, y0: 0, x1: w, y1: h }], segments: rules.length, truncated: false };
 }
 function assembleDocument(pageRecords2, { numPages, info = null, engineVersion = ENGINE_VERSION, sha256 = null, options = {}, from = 1, to = numPages } = {}) {
@@ -47501,7 +47530,7 @@ function inkGlyph(gray, width, height) {
   if (bw / Math.max(1, bh) >= 0.6 && bw / Math.max(1, bh) <= 1.6 && bw <= 0.5 * height && bh <= 0.5 * height && bw >= 5) return "*";
   return null;
 }
-function fillsFromCanvas(gray, width, height, scale, { tol = 14, minWPt = 8, minHPt = 4, edge = 0.8, solid = 0.55, openPt = 2 } = {}) {
+function fillsFromCanvas(gray, width, height, scale, { tol = 14, minWPt = 8, minHPt = 4, edge = 0.7, solid = 0.55, openPt = 2 } = {}) {
   if (!gray || width < 8 || height < 8 || !(scale > 0)) return [];
   const step = Math.max(1, Math.floor(scale / 2));
   const sw = Math.floor(width / step);
@@ -47593,7 +47622,11 @@ function fillsFromCanvas(gray, width, height, scale, { tol = 14, minWPt = 8, min
       const lh = y1 - y0 + 1 + 2 * k;
       const local = new Uint8Array(lw * lh);
       for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (label[y * sw + x] === id) local[(y - y0 + k) * lw + (x - x0 + k)] = 1;
-      let opened = morph1d(local, lw, lh, k, true, false);
+      let closed = morph1d(local, lw, lh, 3, true, true);
+      closed = morph1d(closed, lw, lh, 3, false, true);
+      closed = morph1d(closed, lw, lh, 3, true, false);
+      closed = morph1d(closed, lw, lh, 3, false, false);
+      let opened = morph1d(closed, lw, lh, k, true, false);
       opened = morph1d(opened, lw, lh, k, false, false);
       opened = morph1d(opened, lw, lh, k, true, true);
       opened = morph1d(opened, lw, lh, k, false, true);
@@ -47617,12 +47650,12 @@ function fillsFromCanvas(gray, width, height, scale, { tol = 14, minWPt = 8, min
         const ix1 = Math.max(part.x0, part.x1 - 1);
         if (share(part.x0, iy0, part.x1, iy0) < edge || share(part.x0, iy1, part.x1, iy1) < edge) continue;
         if (share(ix0, part.y0, ix0, part.y1) < edge || share(ix1, part.y0, ix1, part.y1) < edge) continue;
-        const corner = (x, y) => part.mask[y * lw + x];
-        if (!corner(part.x0, part.y0) || !corner(part.x1, part.y0) || !corner(part.x0, part.y1) || !corner(part.x1, part.y1)) continue;
+        const corners = part.mask[part.y0 * lw + part.x0] + part.mask[part.y0 * lw + part.x1] + part.mask[part.y1 * lw + part.x0] + part.mask[part.y1 * lw + part.x1];
+        if (corners < 3) continue;
         let sum = 0;
         let n2 = 0;
         for (let y = part.y0; y <= part.y1; y++) for (let x = part.x0; x <= part.x1; x++) {
-          if (!part.mask[y * lw + x]) continue;
+          if (!part.mask[y * lw + x] || !local[y * lw + x]) continue;
           sum += g[(y + y0 - k) * sw + (x + x0 - k)];
           n2++;
         }

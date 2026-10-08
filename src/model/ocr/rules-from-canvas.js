@@ -156,10 +156,10 @@ export function inkGlyph(gray, width, height) {
 // one grey level, darker than the paper, with four straight edges. Grown on a ~0.5 pt grid from
 // seeds whose 3×3 neighbourhood is flat (anti-aliased glyph edges never seed), each region
 // keeps pixels within `tol` of its seed, so text on a fill leaves holes but does not join, and
-// two touching fills of different shades stay two boxes. A morphological open (`openPt`)
-// cuts thin strokes of the same colour (a table frame joining every fill) before the shape
-// tests. Returns boxes in points with the fill's grey (0 black … 1 white).
-export function fillsFromCanvas(gray, width, height, scale, { tol = 14, minWPt = 8, minHPt = 4, edge = 0.8, solid = 0.55, openPt = 2 } = {}) {
+// two touching fills of different shades stay two boxes. A 3-sample close mends seams between
+// abutting fills of one colour, then a morphological open (`openPt`) cuts thin strokes of the
+// same colour (a table frame joining every fill) before the shape tests. Returns boxes in points with the fill's grey (0 black … 1 white).
+export function fillsFromCanvas(gray, width, height, scale, { tol = 14, minWPt = 8, minHPt = 4, edge = 0.7, solid = 0.55, openPt = 2 } = {}) {
   if (!gray || width < 8 || height < 8 || !(scale > 0)) return [];
   const step = Math.max(1, Math.floor(scale / 2));
   const sw = Math.floor(width / step);
@@ -223,7 +223,13 @@ export function fillsFromCanvas(gray, width, height, scale, { tol = 14, minWPt =
       const lh = y1 - y0 + 1 + 2 * k;
       const local = new Uint8Array(lw * lh);
       for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (label[y * sw + x] === id) local[(y - y0 + k) * lw + (x - x0 + k)] = 1;
-      let opened = morph1d(local, lw, lh, k, true, false);
+      // Close first: two abutting fills of one colour leave a lighter anti-aliased seam one
+      // sample wide, which the open would widen into a cut.
+      let closed = morph1d(local, lw, lh, 3, true, true);
+      closed = morph1d(closed, lw, lh, 3, false, true);
+      closed = morph1d(closed, lw, lh, 3, true, false);
+      closed = morph1d(closed, lw, lh, 3, false, false);
+      let opened = morph1d(closed, lw, lh, k, true, false);
       opened = morph1d(opened, lw, lh, k, false, false);
       opened = morph1d(opened, lw, lh, k, true, true);
       opened = morph1d(opened, lw, lh, k, false, true);
@@ -242,12 +248,13 @@ export function fillsFromCanvas(gray, width, height, scale, { tol = 14, minWPt =
         const ix0 = Math.min(part.x1, part.x0 + 1); const ix1 = Math.max(part.x0, part.x1 - 1);
         if (share(part.x0, iy0, part.x1, iy0) < edge || share(part.x0, iy1, part.x1, iy1) < edge) continue;
         if (share(ix0, part.y0, ix0, part.y1) < edge || share(ix1, part.y0, ix1, part.y1) < edge) continue;
-        // Square corners: an opened rectangle keeps them; a rounded bar or badge does not.
-        const corner = (x, y) => part.mask[y * lw + x];
-        if (!corner(part.x0, part.y0) || !corner(part.x1, part.y0) || !corner(part.x0, part.y1) || !corner(part.x1, part.y1)) continue;
+        // Square corners: an opened rectangle keeps them; a rounded bar or badge does not. One
+        // corner may be lost to anti-aliasing where two rules meet.
+        const corners = part.mask[part.y0 * lw + part.x0] + part.mask[part.y0 * lw + part.x1] + part.mask[part.y1 * lw + part.x0] + part.mask[part.y1 * lw + part.x1];
+        if (corners < 3) continue;
         let sum = 0; let n = 0;
         for (let y = part.y0; y <= part.y1; y++) for (let x = part.x0; x <= part.x1; x++) {
-          if (!part.mask[y * lw + x]) continue;
+          if (!part.mask[y * lw + x] || !local[y * lw + x]) continue;
           sum += g[(y + y0 - k) * sw + (x + x0 - k)];
           n++;
         }

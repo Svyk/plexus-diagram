@@ -490,7 +490,7 @@ function inkGlyph(gray, width, height) {
   if (bw / Math.max(1, bh) >= 0.6 && bw / Math.max(1, bh) <= 1.6 && bw <= 0.5 * height && bh <= 0.5 * height && bw >= 5) return "*";
   return null;
 }
-function fillsFromCanvas(gray, width, height, scale, { tol = 14, minWPt = 8, minHPt = 4, edge = 0.8, solid = 0.55, openPt = 2 } = {}) {
+function fillsFromCanvas(gray, width, height, scale, { tol = 14, minWPt = 8, minHPt = 4, edge = 0.7, solid = 0.55, openPt = 2 } = {}) {
   if (!gray || width < 8 || height < 8 || !(scale > 0)) return [];
   const step = Math.max(1, Math.floor(scale / 2));
   const sw = Math.floor(width / step);
@@ -582,7 +582,11 @@ function fillsFromCanvas(gray, width, height, scale, { tol = 14, minWPt = 8, min
       const lh = y1 - y0 + 1 + 2 * k;
       const local = new Uint8Array(lw * lh);
       for (let y = y0; y <= y1; y++) for (let x = x0; x <= x1; x++) if (label[y * sw + x] === id) local[(y - y0 + k) * lw + (x - x0 + k)] = 1;
-      let opened = morph1d(local, lw, lh, k, true, false);
+      let closed = morph1d(local, lw, lh, 3, true, true);
+      closed = morph1d(closed, lw, lh, 3, false, true);
+      closed = morph1d(closed, lw, lh, 3, true, false);
+      closed = morph1d(closed, lw, lh, 3, false, false);
+      let opened = morph1d(closed, lw, lh, k, true, false);
       opened = morph1d(opened, lw, lh, k, false, false);
       opened = morph1d(opened, lw, lh, k, true, true);
       opened = morph1d(opened, lw, lh, k, false, true);
@@ -606,12 +610,12 @@ function fillsFromCanvas(gray, width, height, scale, { tol = 14, minWPt = 8, min
         const ix1 = Math.max(part.x0, part.x1 - 1);
         if (share(part.x0, iy0, part.x1, iy0) < edge || share(part.x0, iy1, part.x1, iy1) < edge) continue;
         if (share(ix0, part.y0, ix0, part.y1) < edge || share(ix1, part.y0, ix1, part.y1) < edge) continue;
-        const corner = (x, y) => part.mask[y * lw + x];
-        if (!corner(part.x0, part.y0) || !corner(part.x1, part.y0) || !corner(part.x0, part.y1) || !corner(part.x1, part.y1)) continue;
+        const corners = part.mask[part.y0 * lw + part.x0] + part.mask[part.y0 * lw + part.x1] + part.mask[part.y1 * lw + part.x0] + part.mask[part.y1 * lw + part.x1];
+        if (corners < 3) continue;
         let sum = 0;
         let n = 0;
         for (let y = part.y0; y <= part.y1; y++) for (let x = part.x0; x <= part.x1; x++) {
-          if (!part.mask[y * lw + x]) continue;
+          if (!part.mask[y * lw + x] || !local[y * lw + x]) continue;
           sum += g[(y + y0 - k) * sw + (x + x0 - k)];
           n++;
         }

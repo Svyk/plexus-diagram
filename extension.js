@@ -4485,8 +4485,56 @@ var init_library = __esm({
 });
 
 // src/model/title-cap.js
-function capTitle(text3, cap4 = TITLE_CAP) {
-  const clean = typeof text3 === "string" ? text3.replace(/\s+/g, " ").trim() : "";
+function setTitleLexicon(words) {
+  titleLexicon = words && typeof words.has === "function" ? words : null;
+}
+function segmentToken(token, lexicon) {
+  const t = String(token || "");
+  if (!lexicon || t.length < SEG_MIN || !/^\p{L}+$/u.test(t)) return null;
+  const lower3 = t.toLowerCase();
+  if (lexicon.has(lower3)) return null;
+  const n2 = lower3.length;
+  const best = new Array(n2 + 1).fill(null);
+  best[0] = { count: 0, sq: 0, prev: -1 };
+  for (let i = 1; i <= n2; i++) {
+    for (let j = Math.max(0, i - 24); j < i; j++) {
+      if (!best[j]) continue;
+      const len = i - j;
+      const word = lower3.slice(j, i);
+      if (!(lexicon.has(word) && (len >= 2 || word === "a" || word === "i"))) continue;
+      const cand = { count: best[j].count + 1, sq: best[j].sq + len * len, prev: j };
+      const cur = best[i];
+      if (!cur || cand.count < cur.count || cand.count === cur.count && cand.sq > cur.sq) best[i] = cand;
+    }
+  }
+  if (!best[n2] || best[n2].count < 2 || best[n2].count > SEG_MAX_WORDS) return null;
+  const out = [];
+  for (let i = n2; i > 0; i = best[i].prev) out.unshift(t.slice(best[i].prev, i));
+  return out;
+}
+function segmentTitle(text3, lexicon = titleLexicon) {
+  const clean = typeof text3 === "string" ? text3 : "";
+  if (!lexicon || !clean) return clean;
+  return clean.replace(/\S*\p{L}{12,}\S*/gu, (word) => {
+    const runs = word.match(/\p{L}+|[^\p{L}]+/gu) || [];
+    let split = false;
+    const parts = runs.map((run) => {
+      const pieces2 = /^\p{L}{12,}$/u.test(run) ? segmentToken(run, lexicon) : null;
+      if (pieces2) split = true;
+      return pieces2 ? pieces2.join(" ") : run;
+    });
+    if (!split) return word;
+    let out = "";
+    for (let i = 0; i < parts.length; i++) {
+      const prev = runs[i - 1];
+      if (i && /^\p{L}/u.test(runs[i]) !== /^\p{L}/u.test(prev) && /\p{N}/u.test(/^\p{L}/u.test(runs[i]) ? prev : runs[i])) out += " ";
+      out += parts[i];
+    }
+    return out;
+  });
+}
+function capTitle(text3, cap4 = TITLE_CAP, lexicon = titleLexicon) {
+  const clean = segmentTitle(typeof text3 === "string" ? text3.replace(/\s+/g, " ").trim() : "", lexicon);
   if (clean.length <= cap4) return clean;
   const cut = clean.slice(0, cap4 + 1);
   const space = cut.lastIndexOf(" ");
@@ -4532,10 +4580,13 @@ function isMetaBanner(metaTitle, { pageTitle = "", lines = [] } = {}) {
   }
   return false;
 }
-var TITLE_CAP, MONTHS5, JUNK_LINE_RES, CITATION_REST;
+var TITLE_CAP, titleLexicon, SEG_MIN, SEG_MAX_WORDS, MONTHS5, JUNK_LINE_RES, CITATION_REST;
 var init_title_cap = __esm({
   "src/model/title-cap.js"() {
     TITLE_CAP = 80;
+    titleLexicon = null;
+    SEG_MIN = 12;
+    SEG_MAX_WORDS = 12;
     MONTHS5 = "jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|jun(?:e)?|jul(?:y)?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?";
     JUNK_LINE_RES = [
       /^(?:notes?|sources?)\s*(?:[:.\-–—]|$)/i,
@@ -52208,6 +52259,19 @@ function createOcrWeb({
     lexiconSet = parseLexicon(text3);
     return lexiconSet;
   }
+  async function cachedLexicon() {
+    if (lexiconSet) return lexiconSet;
+    if (typeof DecompressionStream !== "function") return null;
+    const cache = await openCache();
+    if (!cache) return null;
+    const hit = await cache.match(joinUrl(assetBase, `assets/ocr/${LEXICON_FILE.file}`));
+    if (!hit) return null;
+    const buf = await hit.arrayBuffer();
+    if (buf.byteLength !== LEXICON_FILE.bytes || await sha256Hex2(cryptoImpl, buf) !== LEXICON_FILE.sha256) return null;
+    const stream = new Blob([buf]).stream().pipeThrough(new DecompressionStream("gzip"));
+    lexiconSet = parseLexicon(await new Response(stream).text());
+    return lexiconSet;
+  }
   function localEngine(runDet, runRec, dict) {
     return {
       async page(n2, bytes, signal) {
@@ -52397,6 +52461,7 @@ function createOcrWeb({
     cached,
     prefetch,
     lexicon,
+    cachedLexicon,
     forget,
     schema: SCHEMA3,
     engine: ENGINE,
@@ -52405,6 +52470,7 @@ function createOcrWeb({
 }
 
 // src/host/device-ocr.js
+init_title_cap();
 var DEVICE_OCR_BYTES = [...Object.values(ORT_FILES), ...Object.values(MODEL_FILES), LEXICON_FILE].reduce((n2, f) => n2 + f.bytes, 0);
 var MB = Math.round(DEVICE_OCR_BYTES / (1024 * 1024));
 function abortError2() {
@@ -52521,11 +52587,23 @@ function createDeviceOcr({ source = null, env = globalThis, dpi = 300, createSou
     }
     return words;
   }
-  return { status, download, cancel, read: read2, readCells, lexicon, label: "In-browser reading (beta)" };
+  async function warmTitleLexicon() {
+    try {
+      const set = typeof web().cachedLexicon === "function" ? await web().cachedLexicon() : null;
+      if (set) setTitleLexicon(set);
+      return Boolean(set);
+    } catch {
+      return false;
+    }
+  }
+  return { status, download, cancel, read: read2, readCells, lexicon, warmTitleLexicon, label: "In-browser reading (beta)" };
 }
 var shared = null;
 function sharedDeviceOcr() {
-  if (!shared) shared = createDeviceOcr();
+  if (!shared) {
+    shared = createDeviceOcr();
+    if (supported(globalThis)) shared.warmTitleLexicon();
+  }
   return shared;
 }
 

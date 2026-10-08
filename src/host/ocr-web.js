@@ -247,6 +247,21 @@ export function createOcrWeb({
     return lexiconSet;
   }
 
+  // The word list only if Cache Storage already holds a verified copy. Never fetches.
+  async function cachedLexicon() {
+    if (lexiconSet) return lexiconSet;
+    if (typeof DecompressionStream !== "function") return null;
+    const cache = await openCache();
+    if (!cache) return null;
+    const hit = await cache.match(joinUrl(assetBase, `assets/ocr/${LEXICON_FILE.file}`));
+    if (!hit) return null;
+    const buf = await hit.arrayBuffer();
+    if (buf.byteLength !== LEXICON_FILE.bytes || (await sha256Hex(cryptoImpl, buf)) !== LEXICON_FILE.sha256) return null;
+    const stream = new Blob([buf]).stream().pipeThrough(new DecompressionStream("gzip"));
+    lexiconSet = parseLexicon(await new Response(stream).text());
+    return lexiconSet;
+  }
+
   function localEngine(runDet, runRec, dict) {
     return {
       async page(n, bytes, signal) {
@@ -417,6 +432,7 @@ export function createOcrWeb({
     cached,
     prefetch,
     lexicon,
+    cachedLexicon,
     forget,
     schema: SCHEMA,
     engine: ENGINE,

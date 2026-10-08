@@ -9,6 +9,7 @@
 
 import { LEXICON_FILE, MODEL_FILES, ORT_FILES, SCHEMA, ENGINE } from "../model/ocr/manifest.js";
 import { createOcrWeb, renderPdfPage } from "./ocr-web.js";
+import { setTitleLexicon } from "../model/title-cap.js";
 
 export const DEVICE_OCR_BYTES = [...Object.values(ORT_FILES), ...Object.values(MODEL_FILES), LEXICON_FILE].reduce((n, f) => n + f.bytes, 0);
 const MB = Math.round(DEVICE_OCR_BYTES / (1024 * 1024));
@@ -126,13 +127,25 @@ export function createDeviceOcr({ source = null, env = globalThis, dpi = 300, cr
     return words;
   }
 
-  return { status, download, cancel, read, readCells, lexicon, label: "In-browser reading (beta)" };
+  // Hands the cached word list (never fetched) to the title splitter.
+  async function warmTitleLexicon() {
+    try {
+      const set = typeof web().cachedLexicon === "function" ? await web().cachedLexicon() : null;
+      if (set) setTitleLexicon(set);
+      return Boolean(set);
+    } catch { return false; }
+  }
+
+  return { status, download, cancel, read, readCells, lexicon, warmTitleLexicon, label: "In-browser reading (beta)" };
 }
 
 let shared = null;
 
 // One per window: boards share the download state and the worker.
 export function sharedDeviceOcr() {
-  if (!shared) shared = createDeviceOcr();
+  if (!shared) {
+    shared = createDeviceOcr();
+    if (supported(globalThis)) shared.warmTitleLexicon();
+  }
   return shared;
 }

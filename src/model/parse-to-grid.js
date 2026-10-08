@@ -65,3 +65,32 @@ export function toGridSpec(table) {
 export function flatRows(table) {
   return tableGrid(table).map((row) => row.map((slot) => cellText(slot, true)));
 }
+
+const PX_PER_PT = 96 / 72;
+
+// toGridSpec reshaped for Roam Grid's createTableFromModel: headerRows is a count,
+// alignments are per column, widths are pixels keyed by column index (from the ruled grid).
+export function toGridModelSpec(table) {
+  const base = toGridSpec(table);
+  const cols = base.rows[0]?.length || 0;
+  const columnAlignments = Array.from({ length: cols }, () => "");
+  for (const a of base.alignments) if (a.col < cols) columnAlignments[a.col] = a.align;
+  let widths = null;
+  const xs = table?.grid?.xs;
+  if (Array.isArray(xs) && xs.length === cols + 1) {
+    widths = {};
+    for (let c = 0; c < cols; c += 1) {
+      const pt = Number(xs[c + 1]) - Number(xs[c]);
+      if (Number.isFinite(pt) && pt > 0) widths[c] = Math.round(pt * PX_PER_PT);
+    }
+    if (!Object.keys(widths).length) widths = null;
+  }
+  return {
+    rows: base.rows,
+    merges: base.merges,
+    headerRows: base.headerRows.length,
+    columnAlignments: columnAlignments.some(Boolean) ? columnAlignments : null,
+    widths,
+    enhance: true,
+  };
+}

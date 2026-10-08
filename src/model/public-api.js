@@ -155,7 +155,8 @@ function fire(win, type, detail, Ctor) {
   }
 }
 
-export function createPublicApi({ host, version, addCard: addCardFn, openBoard, thumbnail: thumbnailFn } = {}) {
+export function createPublicApi({ host, version, addCard: addCardFn, openBoard, thumbnail: thumbnailFn, tablesFromPdf: tablesFn, capabilities: capList } = {}) {
+  const capabilities = Object.freeze(Array.isArray(capList) ? capList.map(String) : []);
   const buckets = new Map();
 
   function emit(type, detail) {
@@ -173,6 +174,7 @@ export function createPublicApi({ host, version, addCard: addCardFn, openBoard, 
   const api = {
     apiVersion: API_VERSION,
     version: String(version ?? ""),
+    capabilities,
     isAvailable() {
       try {
         const name = host?.graphName?.();
@@ -264,6 +266,10 @@ export function createPublicApi({ host, version, addCard: addCardFn, openBoard, 
       emit("change", { boardUid, uid });
       return { uid };
     },
+    async tablesFromPdf(opts) {
+      if (typeof tablesFn !== "function") throw new Error("PDF tables are not available");
+      return tablesFn(opts && typeof opts === "object" ? opts : {});
+    },
     addEventListener(type, cb) {
       if (!EVENTS.has(type) || typeof cb !== "function") return;
       let bag = buckets.get(type);
@@ -280,6 +286,7 @@ export function createPublicApi({ host, version, addCard: addCardFn, openBoard, 
       return {
         apiVersion: API_VERSION,
         events: [...API_EVENTS],
+        capabilities: [...capabilities],
         methods: Object.keys(api).filter((key) => typeof api[key] === "function").sort(),
       };
     },

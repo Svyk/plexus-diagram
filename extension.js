@@ -18235,6 +18235,31 @@ function toGridSpec(table) {
 function flatRows(table) {
   return tableGrid(table).map((row4) => row4.map((slot2) => cellText(slot2, true)));
 }
+var PX_PER_PT2 = 96 / 72;
+function toGridModelSpec(table) {
+  const base = toGridSpec(table);
+  const cols = base.rows[0]?.length || 0;
+  const columnAlignments = Array.from({ length: cols }, () => "");
+  for (const a of base.alignments) if (a.col < cols) columnAlignments[a.col] = a.align;
+  let widths = null;
+  const xs2 = table?.grid?.xs;
+  if (Array.isArray(xs2) && xs2.length === cols + 1) {
+    widths = {};
+    for (let c = 0; c < cols; c += 1) {
+      const pt = Number(xs2[c + 1]) - Number(xs2[c]);
+      if (Number.isFinite(pt) && pt > 0) widths[c] = Math.round(pt * PX_PER_PT2);
+    }
+    if (!Object.keys(widths).length) widths = null;
+  }
+  return {
+    rows: base.rows,
+    merges: base.merges,
+    headerRows: base.headerRows.length,
+    columnAlignments: columnAlignments.some(Boolean) ? columnAlignments : null,
+    widths,
+    enhance: true
+  };
+}
 
 // src/session.js
 init_parse_to_roam_md();
@@ -19842,19 +19867,19 @@ function createHost({ api = globalThis.roamAlphaAPI, storage = globalThis.localS
       }
     },
     watchBoard(uid, cb) {
-      const covers = boardCovers.get(uid) === true;
-      const pattern = covers ? OPEN_PATTERN : BOARD_PATTERN;
+      const covers2 = boardCovers.get(uid) === true;
+      const pattern = covers2 ? OPEN_PATTERN : BOARD_PATTERN;
       let slot2 = watchedBoards.get(uid);
       if (!slot2) {
-        slot2 = { coversRefs: covers, n: 0, pages: /* @__PURE__ */ new Map() };
+        slot2 = { coversRefs: covers2, n: 0, pages: /* @__PURE__ */ new Map() };
         watchedBoards.set(uid, slot2);
-      } else if (covers) slot2.coversRefs = true;
+      } else if (covers2) slot2.coversRefs = true;
       slot2.n += 1;
       const entity = watchEntity(uid);
       const wrapped = guardCallback("watchBoard", (before, after) => {
         if (after?.[":block/uid"]) absorb(uid, after, hasRefs(after));
         cb(after);
-        if (covers) notifyPages(slot2, after);
+        if (covers2) notifyPages(slot2, after);
       }, { stats });
       data.addPullWatch(pattern, entity, wrapped);
       stats.watches++;
@@ -34003,6 +34028,15 @@ function scanPagesOf(doc) {
 }
 
 // src/view/parse-engine.js
+var GLOBAL_KEYS = ["pdfjsLib", "pdfjs-dist/build/pdf", "pdfjs", "PDFJS"];
+function detectPdfjs(win = typeof window !== "undefined" ? window : null) {
+  if (!win) return null;
+  for (const key of GLOBAL_KEYS) {
+    const lib = win[key];
+    if (lib && typeof lib.getDocument === "function") return lib;
+  }
+  return null;
+}
 async function loadPageData(page, { includeOps = true } = {}) {
   const viewport = page.getViewport({ scale: 1 });
   const content = await page.getTextContent({ includeMarkedContent: false });
@@ -41475,11 +41509,11 @@ function createReadPane({
 // src/view/pdf-first-page.js
 var FIRST_PAGE_TIMEOUT_MS = 8e3;
 var FIRST_PAGE_JPEG = 0.72;
-var GLOBAL_KEYS = ["pdfjsLib", "pdfjs-dist/build/pdf", "pdfjs", "PDFJS"];
-function detectPdfjs(win) {
+var GLOBAL_KEYS2 = ["pdfjsLib", "pdfjs-dist/build/pdf", "pdfjs", "PDFJS"];
+function detectPdfjs2(win) {
   const scope = win && typeof win === "object" ? win : null;
   if (!scope) return null;
-  for (const key of GLOBAL_KEYS) {
+  for (const key of GLOBAL_KEYS2) {
     let lib = null;
     try {
       lib = scope[key];
@@ -42104,7 +42138,7 @@ function createPdfWarm({ doc, root, host, store, timers, now: now3, renderFirst 
       settle(job, null);
       return null;
     }
-    job.killId = arm3(time, () => fail2(job, "error"), WARM_TIMEOUT_MS);
+    job.killId = arm3(time, () => fail3(job, "error"), WARM_TIMEOUT_MS);
     const look = () => {
       if (job.done || job.gen !== generation) return;
       const canvas = paintedCanvas(mountEl, 1);
@@ -42140,7 +42174,7 @@ function createPdfWarm({ doc, root, host, store, timers, now: now3, renderFirst 
     look();
     return null;
   }
-  function fail2(job, status) {
+  function fail3(job, status) {
     if (job.done) return;
     teardown(job);
     outcomes.set(job.uid, status);
@@ -42797,7 +42831,7 @@ function createPdfFlip({ doc, win, lib = null, timers = null, urlOf = null, host
   };
   const engine = () => {
     if (lib && typeof lib.getDocument === "function") return lib;
-    return detectPdfjs(win)?.lib || null;
+    return detectPdfjs2(win)?.lib || null;
   };
   const unwheel = () => {
     if (wheelNode && wheelFn) {
@@ -50525,7 +50559,7 @@ function buildBoardView(onFail, {
   let pdfMeta = null;
   const probePdfjs = () => {
     if (pdfjsProbe) return pdfjsProbe;
-    const found = detectPdfjs(win);
+    const found = detectPdfjs2(win);
     pdfjsProbe = { found: Boolean(found), key: found?.key || "", version: found?.version || "", workerReady: Boolean(found?.workerReady) };
     if (found && found.workerReady) {
       firstPage = createFirstPageRenderer({ doc, lib: found.lib, timers: warmTimers });
@@ -59171,6 +59205,174 @@ init_avoid();
 init_minimap_svg();
 init_board();
 
+// src/host/pdf-tables.js
+init_parse_hash();
+var PDF_TABLES_CAPABILITIES = Object.freeze(["tablesFromPdf", "tablesFromPdf.cache", "tablesFromPdf.scan.helper", "tablesFromPdf.scan.source"]);
+var OPTIONS = Object.freeze({ ocr: "none", formula: false, tables: "builtin" });
+var ENGINES = ["builtin", "docling", "mixed", "anydoc"];
+function fail2(code, message) {
+  return Object.assign(new Error(message), { code });
+}
+function pageSet(pages, total) {
+  if (pages == null) return null;
+  const list = Array.isArray(pages) ? pages : [pages];
+  const set = new Set(list.map(Number).filter((n2) => Number.isInteger(n2) && n2 >= 1 && (!total || n2 <= total)));
+  return set.size ? set : null;
+}
+function tablesOfDoc(doc, wanted = null) {
+  const out = [];
+  for (const id of doc?.order || []) {
+    const block = doc.blocks?.[id];
+    if (!block || block.type !== "table") continue;
+    if (wanted && !wanted.has(block.page)) continue;
+    const spec = toGridModelSpec(block);
+    if (!spec.rows.length || !spec.rows[0].length) continue;
+    out.push({
+      id,
+      page: block.page,
+      caption: block.caption && doc.blocks[block.caption]?.text || "",
+      rows: spec.rows.length,
+      cols: spec.rows[0].length,
+      merged: spec.merges.length,
+      confidence: block.confidence ?? null,
+      source: block.ocrSource || (block.engine === "docling" ? "docling" : "builtin"),
+      spec
+    });
+  }
+  return out;
+}
+function covers(doc, wanted) {
+  if (!doc) return false;
+  if (!wanted) return (doc.pages || []).every((p) => p.parsed !== false);
+  const parsed = new Set((doc.pages || []).filter((p) => p.parsed !== false).map((p) => p.n));
+  for (const n2 of wanted) if (!parsed.has(n2)) return false;
+  return true;
+}
+function createPdfTables({ store = null, helper = null, pdfjs, fetchBytes, sha256 = sha256Hex, ocrSource = null } = {}) {
+  const lib = () => pdfjs !== void 0 ? pdfjs : detectPdfjs();
+  async function cached(url) {
+    if (!store || typeof store.findByUrl !== "function") return null;
+    const hit = await store.findByUrl(url);
+    if (!hit?.sha256) return null;
+    const hash = await optionsHash(OPTIONS);
+    for (const engine of ENGINES) {
+      const found = await store.getParse(hit.sha256, engine, hash);
+      if (!found) continue;
+      let doc = found;
+      if (scanPagesOf(found).length) {
+        const read2 = await store.getParse(hit.sha256, engine, await optionsHash({ ...found.options || OPTIONS, ocr: "vision" }));
+        if (read2) doc = read2;
+      }
+      return { doc, sha256: hit.sha256 };
+    }
+    return null;
+  }
+  async function builtin(url, wanted, signal) {
+    const pdfjsLib = lib();
+    if (!pdfjsLib) throw fail2("no-pdfjs", "pdf.js is not available");
+    if (typeof fetchBytes !== "function") throw fail2("no-fetch", "no way to read the PDF bytes");
+    let bytes;
+    try {
+      bytes = await fetchBytes(url);
+    } catch (error) {
+      throw fail2("fetch-failed", `Could not read the PDF: ${error?.message || error}`);
+    }
+    const sha = await sha256(bytes);
+    const pdf = await pdfjsLib.getDocument({ data: new Uint8Array(bytes).slice() }).promise;
+    const numPages = pdf.numPages;
+    const want = wanted ? [...wanted].filter((n2) => n2 <= numPages) : null;
+    const from = want ? Math.min(...want) : 1;
+    const to = want ? Math.max(...want) : numPages;
+    let info = null;
+    try {
+      info = (await pdf.getMetadata()).info || null;
+    } catch {
+      info = null;
+    }
+    const records = [];
+    for (let n2 = from; n2 <= to; n2 += 1) {
+      if (signal?.aborted) throw Object.assign(new Error("aborted"), { name: "AbortError" });
+      const page = await pdf.getPage(n2);
+      records.push(parsePageGeometry(await loadPageData(page), n2));
+      try {
+        page.cleanup?.();
+      } catch {
+      }
+    }
+    const doc = assembleDocument(records, { numPages, info, sha256: sha, options: OPTIONS, from, to, engineVersion: `plexus-builtin/pdfjs-${pdfjsLib.version || "unknown"}` });
+    return { doc, records, bytes, sha256: sha, numPages, info, full: from === 1 && to === numPages };
+  }
+  async function ocrState(source) {
+    if (source) return { source: source === helper ? "helper" : "injected", state: "ready" };
+    if (helper && typeof helper.health === "function") {
+      try {
+        return { source: null, state: (await helper.health())?.state || "not-running" };
+      } catch {
+      }
+    }
+    return { source: null, state: "none" };
+  }
+  async function tablesFromPdf({ url, pages, scan = "auto", ocrSource: injected = null, signal } = {}) {
+    if (!url || typeof url !== "string") throw fail2("bad-url", "url is required");
+    let wanted = pageSet(pages, 0);
+    let hit = await cached(url);
+    if (hit && !covers(hit.doc, wanted)) hit = null;
+    let doc = hit?.doc || null;
+    let ctx = null;
+    let from = hit ? "cache" : "parse";
+    if (!doc) {
+      ctx = await builtin(url, wanted, signal);
+      doc = ctx.doc;
+      if (store && ctx.full) {
+        try {
+          await store.putParse(doc);
+          await store.indexUrl?.(url, { sha256: ctx.sha256, pageCount: ctx.numPages });
+        } catch {
+        }
+      }
+    }
+    if (wanted) wanted = pageSet([...wanted], doc.pageCount || 0);
+    const scanPages = scanPagesOf(doc).filter((n2) => !wanted || wanted.has(n2));
+    let ocr = { source: null, state: "none" };
+    let engine = doc.engine;
+    if (scanPages.length && scan !== "off") {
+      let source = injected || ocrSource || null;
+      if (!source && helper && typeof helper.ocr === "function") {
+        const health = await ocrState(null);
+        ocr = health;
+        if (health.state === "ready") source = helper;
+      }
+      if (source && typeof source.ocr === "function") {
+        ocr = { source: source === helper ? "helper" : "injected", state: "ready" };
+        if (!ctx) ctx = await builtin(url, null, signal);
+        const read2 = await readScan({ helper: source, bytes: ctx.bytes, sha256: ctx.sha256, base: ctx.doc, records: ctx.records, pages: scanPages, numPages: ctx.numPages, info: ctx.info, options: OPTIONS, signal });
+        doc = read2.doc;
+        engine = doc.engine;
+        from = from === "cache" ? "cache+ocr" : "ocr";
+        if (store && ctx.full) {
+          try {
+            await store.putParse({ ...doc, options: { ...doc.options || OPTIONS, ocr: "vision" } });
+          } catch {
+          }
+        }
+      }
+    }
+    const needsOcr = scanPagesOf(doc).filter((n2) => !wanted || wanted.has(n2));
+    return {
+      tables: tablesOfDoc(doc, wanted),
+      engine,
+      scanned: scanPages.length > 0,
+      scanPages,
+      ocrPages: (doc.pages || []).filter((p) => p.ocr && (!wanted || wanted.has(p.n))).map((p) => p.n),
+      needsOcr: scan === "off" ? scanPages : needsOcr,
+      ocr,
+      from,
+      pageCount: doc.pageCount ?? null
+    };
+  }
+  return { tablesFromPdf, capabilities: PDF_TABLES_CAPABILITIES };
+}
+
 // src/model/public-api.js
 init_board();
 init_deeplink();
@@ -59302,7 +59504,8 @@ function fire(win, type, detail, Ctor) {
   } catch {
   }
 }
-function createPublicApi({ host, version, addCard: addCardFn, openBoard, thumbnail: thumbnailFn } = {}) {
+function createPublicApi({ host, version, addCard: addCardFn, openBoard, thumbnail: thumbnailFn, tablesFromPdf: tablesFn, capabilities: capList } = {}) {
+  const capabilities = Object.freeze(Array.isArray(capList) ? capList.map(String) : []);
   const buckets2 = /* @__PURE__ */ new Map();
   function emit2(type, detail) {
     const bag = buckets2.get(type);
@@ -59317,6 +59520,7 @@ function createPublicApi({ host, version, addCard: addCardFn, openBoard, thumbna
   const api = {
     apiVersion: API_VERSION,
     version: String(version ?? ""),
+    capabilities,
     isAvailable() {
       try {
         const name = host?.graphName?.();
@@ -59406,6 +59610,10 @@ function createPublicApi({ host, version, addCard: addCardFn, openBoard, thumbna
       emit2("change", { boardUid, uid });
       return { uid };
     },
+    async tablesFromPdf(opts) {
+      if (typeof tablesFn !== "function") throw new Error("PDF tables are not available");
+      return tablesFn(opts && typeof opts === "object" ? opts : {});
+    },
     addEventListener(type, cb) {
       if (!EVENTS.has(type) || typeof cb !== "function") return;
       let bag = buckets2.get(type);
@@ -59422,6 +59630,7 @@ function createPublicApi({ host, version, addCard: addCardFn, openBoard, thumbna
       return {
         apiVersion: API_VERSION,
         events: [...API_EVENTS],
+        capabilities: [...capabilities],
         methods: Object.keys(api).filter((key) => typeof api[key] === "function").sort()
       };
     },
@@ -62981,7 +63190,18 @@ async function installPlexusDiagram({
       });
     });
   }
+  const pdfTables = createPdfTables({
+    store: createParseStore({ indexedDB: win.indexedDB }),
+    helper: createHelperClient({ settings: extensionAPI?.settings, setSetting: (id, value) => extensionAPI?.settings?.set?.(id, value), fetch: win.fetch?.bind(win) }),
+    fetchBytes: async (url) => {
+      const res = await win.fetch(url);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      return new Uint8Array(await res.arrayBuffer());
+    }
+  });
   const publicApi = createPublicApi({
+    tablesFromPdf: pdfTables.tablesFromPdf,
+    capabilities: pdfTables.capabilities,
     host: {
       graphName: () => host.graph || graphFromHash(),
       listBoards: (...args) => host.listBoards?.(...args),

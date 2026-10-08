@@ -186,7 +186,7 @@ export function visualRows(words) {
   const rows = [];
   for (const w of sorted) {
     const r = rows[rows.length - 1];
-    if (r && w.y0 < r.y1 - 1 && !ocrApart(r, w)) {
+    if (r && w.y0 < r.y1 - 1 && !ocrApart(r, w, sorted)) {
       r.words.push(w); r.y1 = Math.max(r.y1, w.y1); r.y0 = Math.min(r.y0, w.y0);
     } else rows.push({ y0: w.y0, y1: w.y1, words: [w] });
   }
@@ -197,7 +197,10 @@ export function visualRows(words) {
 // are estimates, and the rows of a tightly set scan sit closer than one box height. A word
 // belongs when its baseline is within 0.7 em of the row's first one, or when it is the second
 // line of a wrapped cell: stacked under a row word at line pitch with a centred cell between.
-function ocrApart(row, w) {
+// The centred cell itself can arrive before the wrapped second line and sit a little past 0.7 em
+// (half a pitch plus baseline noise): it joins when, within 0.8 em, a later word stacks under a
+// row word at line pitch with w's line centred between them and clear of that column.
+function ocrApart(row, w, words = []) {
   if (w.conf == null) return false;
   const anchor = row.words[0];
   if (anchor.conf == null) return false;
@@ -210,7 +213,24 @@ function ocrApart(row, w) {
     const lo = Math.min(w.base, u.base) + 0.2 * em; const hi = Math.max(w.base, u.base) - 0.2 * em;
     if (row.words.some((v) => v.base > lo && v.base < hi)) return false;
   }
-  return true;
+  return !centredLine(row, w, words, em);
+}
+
+function centredLine(row, w, words, em) {
+  if (w.base - row.words[0].base > 0.8 * em) return false;
+  const line = words.filter((v) => v.conf != null && !row.words.includes(v) && Math.abs(v.base - w.base) <= 0.3 * em);
+  const overlaps = (a, b) => Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0) > 0;
+  for (const u of row.words) {
+    if (Math.abs(u.base - row.words[0].base) > 0.3 * em) continue;
+    if (line.some((v) => overlaps(u, v))) continue;
+    for (const v of words) {
+      if (v.conf == null || row.words.includes(v) || line.includes(v) || !overlaps(u, v)) continue;
+      const gap = v.base - u.base;
+      if (gap < 0.8 * em || gap > 1.6 * em) continue;
+      if (Math.abs(w.base - (u.base + v.base) / 2) <= 0.15 * em) return true;
+    }
+  }
+  return false;
 }
 
 // Rows inside one rule band. A lone word whose box bridges two baseline rows (a multirow

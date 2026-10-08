@@ -32744,7 +32744,7 @@ function visualRows(words) {
   const rows = [];
   for (const w of sorted) {
     const r = rows[rows.length - 1];
-    if (r && w.y0 < r.y1 - 1 && !ocrApart(r, w)) {
+    if (r && w.y0 < r.y1 - 1 && !ocrApart(r, w, sorted)) {
       r.words.push(w);
       r.y1 = Math.max(r.y1, w.y1);
       r.y0 = Math.min(r.y0, w.y0);
@@ -32752,7 +32752,7 @@ function visualRows(words) {
   }
   return rows;
 }
-function ocrApart(row4, w) {
+function ocrApart(row4, w, words = []) {
   if (w.conf == null) return false;
   const anchor = row4.words[0];
   if (anchor.conf == null) return false;
@@ -32766,7 +32766,23 @@ function ocrApart(row4, w) {
     const hi = Math.max(w.base, u.base) - 0.2 * em;
     if (row4.words.some((v) => v.base > lo && v.base < hi)) return false;
   }
-  return true;
+  return !centredLine(row4, w, words, em);
+}
+function centredLine(row4, w, words, em) {
+  if (w.base - row4.words[0].base > 0.8 * em) return false;
+  const line = words.filter((v) => v.conf != null && !row4.words.includes(v) && Math.abs(v.base - w.base) <= 0.3 * em);
+  const overlaps2 = (a, b) => Math.min(a.x1, b.x1) - Math.max(a.x0, b.x0) > 0;
+  for (const u of row4.words) {
+    if (Math.abs(u.base - row4.words[0].base) > 0.3 * em) continue;
+    if (line.some((v) => overlaps2(u, v))) continue;
+    for (const v of words) {
+      if (v.conf == null || row4.words.includes(v) || line.includes(v) || !overlaps2(u, v)) continue;
+      const gap = v.base - u.base;
+      if (gap < 0.8 * em || gap > 1.6 * em) continue;
+      if (Math.abs(w.base - (u.base + v.base) / 2) <= 0.15 * em) return true;
+    }
+  }
+  return false;
 }
 function bandRows(words) {
   const base = baselineGroups(words);

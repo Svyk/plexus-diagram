@@ -476,6 +476,7 @@ Second cause, same title: on the pdf.js raster the recogniser boxed `cases per` 
 | report-scan cell F1 t1 / t2 / t3, text | 0.895 / 1.000 / 0.356, 0.969 | unchanged | 0.947 / 0.976 / 0.952, 0.956 |
 | ICDAR 2013 at 300 dpi (pypdfium2), adjacency / detection / cell | | | 0.876 / 0.957 / 0.787, every count identical to round 4 |
 
+<<<<<<< HEAD
 Live (Readwisenotes, window dpr 1.095, helper stopped, in-browser read on open): CDC title exact, cell F1 0.932, text 0.900; open → title on the card and in the pane about 27 s (built-in parse +0.9 s, OCR read with line and cell passes ~25 s). The read runs on the main thread: `new Worker()` for `assets/ocr/ocr-worker.js` on our Pages origin throws SecurityError from roamresearch.com, and `createOcrWeb` falls back to the inline engine. report-scan t3 on a pdf.js raster (0.356) against pypdfium2 (0.952) is open.
 
 ### In-browser OCR off the main thread (fix/ocr-worker)
@@ -490,3 +491,26 @@ Cause: `new Worker("https://svyk.github.io/plexus-diagram/assets/ocr/ocr-worker.
 | longest gap between frames / 100 ms timer drift | 23.4 s / 23.8 s | 269 ms / 298 ms | 1.7 s / 2.5 s |
 
 OCR words (`ocr-layer`) and both stored parses are identical before and after; the title is exact.
+=======
+Live (Readwisenotes, window dpr 1.095, helper stopped, in-browser read on open): CDC title exact, cell F1 0.932, text 0.900; open → title on the card and in the pane about 27 s (built-in parse +0.9 s, OCR read with line and cell passes ~25 s). The read runs on the main thread: `new Worker()` for `assets/ocr/ocr-worker.js` on our Pages origin throws SecurityError from roamresearch.com, and `createOcrWeb` falls back to the inline engine. report-scan t3 on a pdf.js raster (0.356) against pypdfium2 (0.952) was open; round 6 closes it.
+
+### Round 6 (2026-10-08): the wrapped row on the pdf.js raster
+
+report-scan t3 read cell F1 0.356 on the pdf.js raster because one table row split in two. The intermediate stages for page 3 were diffed between the two renders: the ruling lines are the same three rules (within 0.5 pt), neither render has fills, the det-box deskew is 0.39° vs 0.40°, and every word has the same text and box within about 0.4 pt. The difference is the baseline of one line. The `Z2-` / `031` row wraps over two lines, and its single-line cells (`2`, `Painted steel`, `4.5`, `Monthly`) are centred between them. In the PDF those cells sit exactly half a pitch (6.0 pt) below the first line. The OCR size estimate is 9.0 for 8.5 pt type, so `visualRows` (`src/model/parse/stream.js`) joins a word to the row within 0.7 em = 6.3 pt. On the pdf.js raster the centred line measured 6.34 pt below the first, so it started a new row, and the second line (`031`, `motor`) then joined that new row. The wrapped-cell rule only looked back at words already in the row, and the centred cell arrives before the second line. The pypdfium2 raster passed by 0.11 pt on that row and by 0.04 pt on the `Z3-` / `007` row, so both renders were one baseline wobble from the same failure.
+
+Fix: `ocrApart` now also looks ahead (`centredLine`). A word up to 0.8 em below the row's first baseline joins when a later word stacks under a first-line row word at line pitch (0.8–1.6 em, overlapping it horizontally), the word sits within 0.15 em of the middle of that pair, and no word on its own line overlaps that column. Evenly pitched rows with every column filled stay apart, because the middle row has a word in the stacked column. Born-digital words (no `conf`) are unchanged.
+
+Node, onnxruntime-node, PP-OCRv5 mobile, 300 dpi, main (56abf84) against this round:
+
+| Bench | pdf.js before | pdf.js after | pypdfium2 before | pypdfium2 after |
+|---|---|---|---|---|
+| report-scan cell F1 t1 / t2 / t3 | 0.895 / 1.000 / 0.356 | 0.895 / 1.000 / **0.976** | 0.947 / 0.976 / 0.952 | 0.947 / 0.976 / 0.952 |
+| report-scan t3 structure F1, rows | 0.933, 8 rows | 1.000, 7 rows | 1.000, 7 rows | 1.000, 7 rows |
+| report-scan text-line word accuracy | 0.969 | 0.969 | 0.956 | 0.956 |
+| CDC image-only, structure / cell F1 | 0.983 / 0.932 | 0.983 / 0.932 | 0.983 / 0.922 | 0.983 / 0.922 |
+| CDC image-only, text-line word accuracy | 0.900 | 0.900 | 0.950 | 0.950 |
+| ICDAR 2013 at 300 dpi, adjacency / detection / cell | | | 0.876 / 0.957 / 0.787 | 0.876 / 0.957 / 0.787 |
+| ICDAR 2013 at 150 dpi, adjacency / detection / cell | | | 0.850 / 0.945 / 0.792 | 0.850 / 0.945 / 0.792 |
+
+ICDAR runs through pypdfium2 (`icdar2013-scan.mjs`); every per-document score is identical before and after at both dpi. What t3 still gets wrong on the pdf.js raster: `Z1-014` reads `21-014` (one cell), the same misread as on pypdfium2. t1 on the pdf.js raster (0.895 vs 0.947) is a separate open item: `c`→`*` and `2`→empty in a re-read, and a stray `1` joins `Absent in 25 g` and `5`.
+>>>>>>> fix/ocr-pdfjs-tables

@@ -9,6 +9,7 @@ import { bucketConf, ctcDecode, ctcText, round2, snapOcrItems, wordItem, wordsFr
 import { dashRuns, inkRows, joinNumberWords, localMask, segmentLine, sizeFromInk, snapWords } from "./word-split.js";
 import { acceptOrphanRead, blobBaseline, coverMask, dashFromShape, orphanBlobs } from "./orphans.js";
 import { labelComponents } from "./components.js";
+import { baselineSkew, rotateItems } from "./fine-skew.js";
 
 const DET_LIMIT = "auto";
 const DET_PROBE = 1600;
@@ -338,7 +339,7 @@ async function readOrphans(image, w, h, boxes, mask, items, scaleX, scaleY, runR
 // Returns { record, rgb, width, height, dpi } for the deskewed page (the cell re-read frame).
 export async function preparePageImage({
   rgb, width, height, dpi = 300, pointW = null, pointH = null, page = 1, runDet, runRec, dict, signal,
-  detLimit = DET_LIMIT, unclipRatio = 1.5, boxThresh = 0.5, split = true, gapRatio = 0.9, padRatio = 0.2, padYRatio = 0.1, whiteRatio = 0, orphans = true, localInk = true,
+  detLimit = DET_LIMIT, unclipRatio = 1.5, boxThresh = 0.5, split = true, gapRatio = 0.9, padRatio = 0.2, padYRatio = 0.1, whiteRatio = 0, orphans = true, localInk = true, fineSkew = true,
 } = {}) {
   throwIfAborted(signal);
   const detOpts = { detLimit, unclipRatio, boxThresh };
@@ -368,9 +369,7 @@ export async function preparePageImage({
   const scaleY = h / (pointH || (h * 72 / dpi));
   const ptW = pointW || w / (dpi / 72);
   const ptH = pointH || h / (dpi / 72);
-  const gray = grayFromRgb(image, w, h);
-  const fills = fillsFromCanvas(gray, w, h, scaleX);
-  const rules = rulesFromCanvas(gray, w, h, scaleX, { fills });
+  let gray = grayFromRgb(image, w, h);
   const ordered = [...boxes].sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0);
   let raw;
   if (split) {
@@ -386,6 +385,21 @@ export async function preparePageImage({
     }
     raw = await readCrops(crops, scaleX, scaleY, runRec, dict, signal);
   }
+  // Fine deskew: the residual left by the det-box angle, from the words' own baselines. The
+  // image turns by it (for rules, fills and cell re-reads) and the words move with it, so
+  // nothing is read twice.
+  const residual = fineSkew ? baselineSkew(raw) : null;
+  if (residual != null && Math.abs(residual) >= 0.05 && Math.abs(residual) <= 1) {
+    const turned = rotateRgb(image, w, h, residual);
+    if (turned.w === w && turned.h === h) {
+      rotateItems(raw, residual, w, h, scaleX, scaleY);
+      image = turned.rgb;
+      gray = grayFromRgb(image, w, h);
+      deskew += residual;
+    }
+  }
+  const fills = fillsFromCanvas(gray, w, h, scaleX);
+  const rules = rulesFromCanvas(gray, w, h, scaleX, { fills });
   const items = snapOcrItems(raw);
   const frame = { rgb: image, width: w, height: h, dpi };
   await polishDirty(items, frame, page, runRec, dict, signal);

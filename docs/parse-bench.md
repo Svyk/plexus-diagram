@@ -476,8 +476,7 @@ Second cause, same title: on the pdf.js raster the recogniser boxed `cases per` 
 | report-scan cell F1 t1 / t2 / t3, text | 0.895 / 1.000 / 0.356, 0.969 | unchanged | 0.947 / 0.976 / 0.952, 0.956 |
 | ICDAR 2013 at 300 dpi (pypdfium2), adjacency / detection / cell | | | 0.876 / 0.957 / 0.787, every count identical to round 4 |
 
-<<<<<<< HEAD
-Live (Readwisenotes, window dpr 1.095, helper stopped, in-browser read on open): CDC title exact, cell F1 0.932, text 0.900; open → title on the card and in the pane about 27 s (built-in parse +0.9 s, OCR read with line and cell passes ~25 s). The read runs on the main thread: `new Worker()` for `assets/ocr/ocr-worker.js` on our Pages origin throws SecurityError from roamresearch.com, and `createOcrWeb` falls back to the inline engine. report-scan t3 on a pdf.js raster (0.356) against pypdfium2 (0.952) is open.
+Live (Readwisenotes, window dpr 1.095, helper stopped, in-browser read on open): CDC title exact, cell F1 0.932, text 0.900; open → title on the card and in the pane about 27 s (built-in parse +0.9 s, OCR read with line and cell passes ~25 s). The read runs on the main thread: `new Worker()` for `assets/ocr/ocr-worker.js` on our Pages origin throws SecurityError from roamresearch.com, and `createOcrWeb` falls back to the inline engine. report-scan t3 on a pdf.js raster (0.356) against pypdfium2 (0.952) was open; round 6 closes it. The main-thread read is fixed by the next section.
 
 ### In-browser OCR off the main thread (fix/ocr-worker)
 
@@ -491,8 +490,6 @@ Cause: `new Worker("https://svyk.github.io/plexus-diagram/assets/ocr/ocr-worker.
 | longest gap between frames / 100 ms timer drift | 23.4 s / 23.8 s | 269 ms / 298 ms | 1.7 s / 2.5 s |
 
 OCR words (`ocr-layer`) and both stored parses are identical before and after; the title is exact.
-=======
-Live (Readwisenotes, window dpr 1.095, helper stopped, in-browser read on open): CDC title exact, cell F1 0.932, text 0.900; open → title on the card and in the pane about 27 s (built-in parse +0.9 s, OCR read with line and cell passes ~25 s). The read runs on the main thread: `new Worker()` for `assets/ocr/ocr-worker.js` on our Pages origin throws SecurityError from roamresearch.com, and `createOcrWeb` falls back to the inline engine. report-scan t3 on a pdf.js raster (0.356) against pypdfium2 (0.952) was open; round 6 closes it.
 
 ### Round 6 (2026-10-08): the wrapped row on the pdf.js raster
 
@@ -513,4 +510,3 @@ Node, onnxruntime-node, PP-OCRv5 mobile, 300 dpi, main (56abf84) against this ro
 | ICDAR 2013 at 150 dpi, adjacency / detection / cell | | | 0.850 / 0.945 / 0.792 | 0.850 / 0.945 / 0.792 |
 
 ICDAR runs through pypdfium2 (`icdar2013-scan.mjs`); every per-document score is identical before and after at both dpi. What t3 still gets wrong on the pdf.js raster: `Z1-014` reads `21-014` (one cell), the same misread as on pypdfium2. t1 on the pdf.js raster (0.895 vs 0.947) is a separate open item: `c`→`*` and `2`→empty in a re-read, and a stray `1` joins `Absent in 25 g` and `5`.
->>>>>>> fix/ocr-pdfjs-tables

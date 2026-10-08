@@ -33792,12 +33792,16 @@ function groupParagraphs(lines, { bodySize = 10 } = {}) {
       else if (Boolean(prev.bold) !== Boolean(line.bold) && (prev.chars > 20 || line.chars > 20)) join = false;
       else {
         const first = cur[0];
-        const flushWithFirst = Math.abs(line.x0 - first.x0) <= 1.5 * size;
+        const textX0 = first.words.length > 1 && first.words[0].sup ? first.words[1].x0 : first.x0;
+        const flushWithFirst = Math.abs(line.x0 - first.x0) <= 1.5 * size || Math.abs(line.x0 - textX0) <= 1.5 * size;
         const flushWithPrev = Math.abs(line.x0 - prev.x0) <= 1.5 * size;
         const prevIndented = cur.length === 1 && prev.x0 - line.x0 > 0.8 * size && prev.x0 - line.x0 < 4 * size;
         if (!(flushWithFirst || flushWithPrev || prevIndented)) join = false;
         else if (/[.?!:]$/.test(prev.text) && /^[A-Z("“]/.test(line.text) && gap > 1.25 * normalGap) join = false;
-        else if (/[.?!]$/.test(prev.text) && line.x0 - prev.x0 > 0.8 * size && line.x0 - prev.x0 < 4 * size && cur.length >= 1) join = false;
+        else {
+          const prevX0 = prev === first ? textX0 : prev.x0;
+          if (/[.?!]$/.test(prev.text) && line.x0 - prevX0 > 0.8 * size && line.x0 - prevX0 < 4 * size && cur.length >= 1) join = false;
+        }
       }
     }
     if (!join && cur.length) {
@@ -33835,7 +33839,10 @@ function detectColumns(lines, { pageW, minLines = 4 } = {}) {
     const right = dominant[i];
     const leftX = dominant[i - 1].x;
     if (right.x - leftX < 0.2 * (pageW || 612)) continue;
-    const leftEnds = lines.filter((l) => l.x0 >= leftX - 3 && l.x0 < right.x - 10 && l.x1 <= right.x + 1).map((l) => l.x1);
+    const beside = (l) => right.lines.some((r) => Math.abs(r.base - l.base) <= 2.5 * Math.max(l.size, r.size));
+    const leftLines = lines.filter((l) => l.x0 >= leftX - 3 && l.x0 < right.x - 10 && l.x1 <= right.x + 1);
+    const besideEnds = leftLines.filter(beside).map((l) => l.x1);
+    const leftEnds = besideEnds.length >= 3 ? besideEnds : leftLines.map((l) => l.x1);
     if (leftEnds.length < 3) continue;
     const g0 = Math.max(...leftEnds);
     const g1 = right.x;
@@ -33871,7 +33878,30 @@ function splitAtGutters(lines, gutters, makeLine2) {
 function crossesGutter(unit, g) {
   return unit.x0 < g.x0 - 1 && unit.x1 > g.x1 + 1;
 }
-function orderUnits(units, { gutters = [] } = {}) {
+function ruleCuts(rules, gutters, units) {
+  if (!gutters.length || !units.length) return [];
+  const minX = Math.min(...units.map((u) => u.x0));
+  const maxX = Math.max(...units.map((u) => u.x1));
+  const framed = (r) => units.some((u) => r.x0 >= u.x0 - 2 && r.x1 <= u.x1 + 2 && r.y0 > u.y0 + 1 && r.y0 < u.y1 - 1);
+  const hs = (rules || []).filter((r) => r.axis === "h" && !framed(r)).sort((a, b) => a.y0 - b.y0);
+  const rows = [];
+  for (const r of hs) {
+    const row4 = rows.find((w) => Math.abs(w.y - r.y0) <= 2);
+    if (row4) row4.rules.push(r);
+    else rows.push({ y: r.y0, rules: [r] });
+  }
+  const cuts = [];
+  for (const row4 of rows) {
+    const spans = gutters.some((g) => {
+      const left = row4.rules.some((r) => r.x0 < g.x0 - 1 && Math.min(r.x1, g.x0) - Math.max(r.x0, minX) >= 0.5 * (g.x0 - minX));
+      const right = row4.rules.some((r) => r.x1 > g.x1 + 1 && Math.min(r.x1, maxX) - Math.max(r.x0, g.x1) >= 0.5 * (maxX - g.x1));
+      return left && right;
+    });
+    if (spans) cuts.push(row4.y);
+  }
+  return cuts;
+}
+function orderUnits(units, { gutters = [], cuts = [], lineHeight = 0 } = {}) {
   const active = gutters.filter((g) => units.some((u) => u.x1 <= g.x0 + 1) && units.some((u) => u.x0 >= g.x1 - 1));
   if (!active.length) return { order: byPosition(units), columns: 1 };
   const sorted = [...units].sort((a, b) => a.y0 - b.y0 || a.x0 - b.x0);
@@ -33884,7 +33914,13 @@ function orderUnits(units, { gutters = [] } = {}) {
     for (const col of cols) out.push(...byPosition(col));
     slice = [];
   };
+  const headingRow = () => lineHeight > 0 && splitColumns(slice, active).every((c) => c.length === 1 && c[0].y1 - c[0].y0 <= 2 * lineHeight);
+  const pending = [...cuts].sort((a, b) => a - b);
   for (const u of sorted) {
+    while (pending.length && pending[0] <= u.y0 + 1) {
+      pending.shift();
+      if (!headingRow()) flush();
+    }
     if (wide(u)) {
       flush();
       out.push(u);
@@ -34192,7 +34228,8 @@ init_title_cap();
 init_pdf();
 var SCHEMA2 = "pxd-parse/1";
 var ENGINE_VERSION = "plexus-builtin/1";
-var PARSE_REV = 5;
+var PARSE_REV = 6;
+var MARK_ONLY_RE = /^([*†‡§¶⁎∗]{1,3}|\d{1,3}|[a-z])$/u;
 var now2 = () => typeof performance !== "undefined" && performance.now ? performance.now() : Date.now();
 function viewportTransform(w, h, rotation = 0) {
   switch ((rotation % 360 + 360) % 360) {
@@ -34401,7 +34438,14 @@ function assembleDocument(pageRecords2, { numPages, info = null, engineVersion =
     const seqs = gutters.map(() => []);
     seqs.push([]);
     const wideSeq = [];
-    const byY = [...pg.free].sort((a, b) => a.base - b.base || a.x0 - b.x0);
+    let byY = [...pg.free].sort((a, b) => a.base - b.base || a.x0 - b.x0);
+    for (const l of [...byY]) {
+      if (l.chars > 3 || !l.words.every((w) => MARK_ONLY_RE.test(w.text))) continue;
+      const host = byY.find((o) => o !== l && Math.abs(o.base - l.base) <= 0.6 * Math.max(l.size, o.size) && o.x0 >= l.x1 - 1 && o.x0 - l.x1 <= 1.5 * l.size && gutters.some((g) => crossesGutter(o, g)));
+      if (!host) continue;
+      const joined = makeLine([...l.words.map((w) => ({ ...w, sup: true })), ...host.words]);
+      byY = byY.filter((o) => o !== l).map((o) => o === host ? joined : o);
+    }
     const rowWide = /* @__PURE__ */ new Set();
     for (const row4 of baselineRows(byY)) {
       if (row4.lines.length >= 3 && gutters.some((g) => row4.x0 < g.x0 - 1 && row4.x1 > g.x1 + 1)) for (const l of row4.lines) rowWide.add(l);
@@ -34597,7 +34641,7 @@ function assembleDocument(pageRecords2, { numPages, info = null, engineVersion =
       if (cap4) blocks[captionIds.get(cap4)].for = id;
       units.push({ id, x0: f.bbox[0], y0: f.bbox[1], x1: f.bbox[2], y1: f.bbox[3] });
     }
-    const ordered = orderUnits(units, { gutters });
+    const ordered = orderUnits(units, { gutters, cuts: ruleCuts(pg.graphics.rules, gutters, units), lineHeight: bodySize });
     for (const u of ordered.order) order.push(u.id);
     if (pg.ocr) {
       for (const u of units) if (blocks[u.id]) blocks[u.id].engine = "ocr+builtin";
